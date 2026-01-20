@@ -14,6 +14,7 @@ def create_job_queue(
     visibility_timeout: int = 60,
     message_retention: int = 1209600,  # 14 days
     dlq_max_receive_count: int = 3,
+    allowed_principal_arns: list[pulumi.Output[str]] = None,
 ) -> dict:
     """
     Create SQS queue with dead-letter queue for job processing.
@@ -21,6 +22,14 @@ def create_job_queue(
     Failed messages (after maxReceiveCount attempts) are moved to the DLQ.
     The DLQ has a redrive-allow-policy that permits moving messages back
     to the main queue for reprocessing.
+
+    Args:
+        name: Resource name prefix
+        kms_key_arn: KMS key ARN for encryption
+        visibility_timeout: Message visibility timeout in seconds
+        message_retention: Message retention period in seconds
+        dlq_max_receive_count: Max receives before moving to DLQ
+        allowed_principal_arns: List of IAM role ARNs allowed to access the queue
     """
     # Dead-letter queue for failed jobs
     dlq = aws.sqs.Queue(
@@ -60,6 +69,36 @@ def create_job_queue(
         ),
     )
 
+    # SQS queue policy to restrict access to specific IAM roles
+    queue_policy = None
+    if allowed_principal_arns:
+        def build_queue_policy(args):
+            queue_arn, principals = args[0], args[1:]
+            return json.dumps({
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Sid": "AllowTaskRoles",
+                        "Effect": "Allow",
+                        "Principal": {"AWS": list(principals)},
+                        "Action": [
+                            "sqs:SendMessage",
+                            "sqs:ReceiveMessage",
+                            "sqs:DeleteMessage",
+                            "sqs:GetQueueAttributes",
+                            "sqs:ChangeMessageVisibility",
+                        ],
+                        "Resource": queue_arn,
+                    },
+                ],
+            })
+
+        queue_policy = aws.sqs.QueuePolicy(
+            f"{name}-queue-policy",
+            queue_url=queue.url,
+            policy=pulumi.Output.all(queue.arn, *allowed_principal_arns).apply(build_queue_policy),
+        )
+
     return {
         "queue": queue,
         "queue_url": queue.url,
@@ -67,6 +106,7 @@ def create_job_queue(
         "dlq": dlq,
         "dlq_url": dlq.url,
         "dlq_arn": dlq.arn,
+        "queue_policy": queue_policy,
     }
 
 
@@ -74,15 +114,23 @@ def create_job_store(
     name: str,
     kms_key_arn: pulumi.Output[str],
     ttl_days: int = 30,
+    enable_deletion_protection: bool = True,
 ) -> dict:
     """
     Create DynamoDB table for job state tracking.
+
+    Args:
+        name: Resource name prefix
+        kms_key_arn: KMS key ARN for encryption
+        ttl_days: TTL for job records
+        enable_deletion_protection: Prevent accidental table deletion
     """
     table = aws.dynamodb.Table(
         f"{name}-jobs-table",
         name=f"{name}-jobs",
         billing_mode="PAY_PER_REQUEST",
         hash_key="job_id",
+        deletion_protection_enabled=enable_deletion_protection,
         attributes=[
             aws.dynamodb.TableAttributeArgs(name="job_id", type="S"),
             aws.dynamodb.TableAttributeArgs(name="group_id", type="S"),
@@ -149,9 +197,42 @@ def create_worker_service(
     environment: dict = None,
     secret_keys: list[str] = None,
     external_secrets_prefix: str = None,
+    capacity_providers: pulumi.Resource = None,
+    fargate_base: int = 1,
+    fargate_weight: int = 1,
+    fargate_spot_base: int = 0,
+    fargate_spot_weight: int = 2,
+    enable_circuit_breaker: bool = True,
 ) -> dict:
     """
     Create ECS Fargate service for job workers.
+
+    Args:
+        name: Resource name prefix
+        cluster_arn: ECS cluster ARN
+        subnet_ids: Subnet IDs for the service
+        security_group_id: Security group ID
+        container_image: Container image URI
+        queue_url: SQS queue URL
+        table_name: DynamoDB table name
+        kms_key_id: KMS key ID for secrets decryption
+        log_group_name: CloudWatch log group name
+        queue_arn: SQS queue ARN
+        table_arn: DynamoDB table ARN
+        worker_cpu: CPU units for worker task
+        worker_memory: Memory in MB for worker task
+        worker_min_instances: Minimum worker count
+        worker_max_instances: Maximum worker count
+        worker_concurrency: Jobs per worker
+        environment: Environment variables
+        secret_keys: Secret keys from Secrets Manager
+        external_secrets_prefix: Prefix for external secrets
+        capacity_providers: Cluster capacity providers resource for dependency
+        fargate_base: Base count for FARGATE capacity provider
+        fargate_weight: Weight for FARGATE capacity provider
+        fargate_spot_base: Base count for FARGATE_SPOT capacity provider
+        fargate_spot_weight: Weight for FARGATE_SPOT capacity provider
+        enable_circuit_breaker: Enable deployment circuit breaker with rollback
     """
     region_obj = aws.get_region()
     region = region_obj.region
@@ -388,14 +469,34 @@ def create_worker_service(
         tags={"Name": f"{name}-worker-task"},
     )
 
-    # Worker service (no load balancer)
+    # Build capacity provider strategies
+    capacity_provider_strategies = []
+    if fargate_base > 0 or fargate_weight > 0:
+        capacity_provider_strategies.append(
+            aws.ecs.ServiceCapacityProviderStrategyArgs(
+                capacity_provider="FARGATE",
+                base=fargate_base,
+                weight=fargate_weight,
+            )
+        )
+    if fargate_spot_base > 0 or fargate_spot_weight > 0:
+        capacity_provider_strategies.append(
+            aws.ecs.ServiceCapacityProviderStrategyArgs(
+                capacity_provider="FARGATE_SPOT",
+                base=fargate_spot_base,
+                weight=fargate_spot_weight,
+            )
+        )
+
+    # Worker service with capacity providers and circuit breaker (no load balancer)
+    service_opts = pulumi.ResourceOptions(depends_on=[capacity_providers]) if capacity_providers else None
     worker_service = aws.ecs.Service(
         f"{name}-worker-service",
         name=f"{name}-worker",
         cluster=cluster_arn,
         task_definition=task_definition.arn,
         desired_count=worker_min_instances,
-        launch_type="FARGATE",
+        capacity_provider_strategies=capacity_provider_strategies if capacity_provider_strategies else None,
         network_configuration=aws.ecs.ServiceNetworkConfigurationArgs(
             subnets=subnet_ids,
             security_groups=[security_group_id],
@@ -403,7 +504,17 @@ def create_worker_service(
         ),
         deployment_maximum_percent=200,
         deployment_minimum_healthy_percent=100,
+        force_new_deployment=True,
+        deployment_circuit_breaker=(
+            aws.ecs.ServiceDeploymentCircuitBreakerArgs(
+                enable=True,
+                rollback=True,
+            )
+            if enable_circuit_breaker
+            else None
+        ),
         tags={"Name": f"{name}-worker-service"},
+        opts=service_opts,
     )
 
     # Auto-scaling based on SQS queue depth
@@ -454,10 +565,72 @@ def create_job_alarms(
     queue_name: str,
     dlq_name: str,
     sns_topic_arn: pulumi.Output[str] = None,
+    slack_channel_id: str = None,
+    slack_workspace_id: str = None,
 ) -> dict:
     """
     Create CloudWatch alarms for job queue monitoring.
+
+    Args:
+        name: Resource name prefix
+        queue_name: SQS queue name
+        dlq_name: Dead-letter queue name
+        sns_topic_arn: Optional SNS topic ARN for existing notifications
+        slack_channel_id: Slack channel ID for AWS Chatbot integration
+        slack_workspace_id: Slack workspace ID for AWS Chatbot integration
     """
+    # Create SNS topic and Chatbot integration if Slack is configured
+    notification_topic = None
+    chatbot_config = None
+    alarm_actions = []
+
+    if slack_channel_id and slack_workspace_id:
+        notification_topic = aws.sns.Topic(
+            f"{name}-job-alarms-topic",
+            name=f"{name}-job-alarms",
+            tags={"Name": f"{name}-job-alarms"},
+        )
+
+        chatbot_role = aws.iam.Role(
+            f"{name}-chatbot-role",
+            name=f"{name}-chatbot-role",
+            assume_role_policy=json.dumps({
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {
+                            "Service": "chatbot.amazonaws.com",
+                        },
+                        "Action": "sts:AssumeRole",
+                    },
+                ],
+            }),
+            tags={"Name": f"{name}-chatbot-role"},
+        )
+
+        aws.iam.RolePolicyAttachment(
+            f"{name}-chatbot-policy",
+            role=chatbot_role.name,
+            policy_arn="arn:aws:iam::aws:policy/AWSResourceExplorerReadOnlyAccess",
+        )
+
+        chatbot_config = aws.chatbot.SlackChannelConfiguration(
+            f"{name}-slack-channel",
+            configuration_name=f"{name}-job-alarms",
+            iam_role_arn=chatbot_role.arn,
+            slack_channel_id=slack_channel_id,
+            slack_team_id=slack_workspace_id,
+            sns_topic_arns=[notification_topic.arn],
+            logging_level="ERROR",
+            guardrail_policy_arns=["arn:aws:iam::aws:policy/ReadOnlyAccess"],
+            tags={"Name": f"{name}-slack-channel"},
+        )
+
+        alarm_actions = [notification_topic.arn]
+    elif sns_topic_arn:
+        alarm_actions = [sns_topic_arn]
+
     alarms = {}
 
     # DLQ messages alarm (any message in DLQ is bad)
@@ -472,8 +645,8 @@ def create_job_alarms(
         statistic="Sum",
         threshold=0,
         dimensions={"QueueName": dlq_name},
-        alarm_actions=[sns_topic_arn] if sns_topic_arn else [],
-        ok_actions=[sns_topic_arn] if sns_topic_arn else [],
+        alarm_actions=alarm_actions,
+        ok_actions=alarm_actions,
         tags={"Name": f"{name}-dlq-alarm"},
     )
 
@@ -489,8 +662,8 @@ def create_job_alarms(
         statistic="Average",
         threshold=100,
         dimensions={"QueueName": queue_name},
-        alarm_actions=[sns_topic_arn] if sns_topic_arn else [],
-        ok_actions=[sns_topic_arn] if sns_topic_arn else [],
+        alarm_actions=alarm_actions,
+        ok_actions=alarm_actions,
         tags={"Name": f"{name}-queue-depth-alarm"},
     )
 
@@ -506,9 +679,13 @@ def create_job_alarms(
         statistic="Maximum",
         threshold=3600,  # 1 hour
         dimensions={"QueueName": queue_name},
-        alarm_actions=[sns_topic_arn] if sns_topic_arn else [],
-        ok_actions=[sns_topic_arn] if sns_topic_arn else [],
+        alarm_actions=alarm_actions,
+        ok_actions=alarm_actions,
         tags={"Name": f"{name}-old-messages-alarm"},
     )
 
-    return alarms
+    return {
+        "alarms": alarms,
+        "sns_topic": notification_topic,
+        "chatbot_config": chatbot_config,
+    }

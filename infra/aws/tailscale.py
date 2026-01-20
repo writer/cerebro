@@ -3,7 +3,11 @@ Tailscale Subnet Router for VPC access.
 
 Deploys an EC2 instance running Tailscale that advertises the VPC CIDR,
 allowing tailnet members to access internal services like the ALB.
+
+Auth key is fetched from Secrets Manager (Infisical-synced) at boot.
 """
+
+import json
 
 import pulumi
 import pulumi_aws as aws
@@ -17,11 +21,12 @@ def create_tailscale_subnet_router(
     vpc_id: pulumi.Output[str],
     subnet_id: pulumi.Output[str],
     advertise_routes: Union[list[str], pulumi.Output[list[str]]],
-    tailscale_auth_key: pulumi.Output[str],
     tailscale_hostname: str,
+    auth_key_secret_arn: pulumi.Output[str],
     tailscale_version: str = "1.76.6",
     instance_type: str = "t3.micro",
     tags: list[str] = None,
+    kms_key_arn: pulumi.Output[str] = None,
 ) -> dict:
     """
     Create a Tailscale subnet router instance.
@@ -30,15 +35,18 @@ def create_tailscale_subnet_router(
         name: Resource name prefix
         vpc_id: VPC ID
         subnet_id: Private subnet ID for the instance
-        vpc_cidr: VPC CIDR to advertise (e.g., "10.0.0.0/16")
-        tailscale_auth_key: Tailscale auth key (reusable, ephemeral)
+        advertise_routes: VPC CIDRs to advertise (e.g., ["10.0.10.0/24", "10.0.11.0/24"])
         tailscale_hostname: Hostname for the Tailscale device
+        auth_key_secret_arn: Secrets Manager secret ARN containing the Tailscale auth key
         tailscale_version: Tailscale version to install
         instance_type: EC2 instance type
         tags: Tailscale tags (e.g., ["tag:prod", "tag:exitnode"])
+        kms_key_arn: Optional KMS key ARN used by Secrets Manager for decryption
     """
     if tags is None:
         tags = ["tag:exitnode"]
+
+    region = aws.get_region()
 
     # Security group - egress only, no ingress needed
     security_group = aws.ec2.SecurityGroup(
@@ -57,15 +65,15 @@ def create_tailscale_subnet_router(
         tags={"Name": f"{name}-tailscale-sg"},
     )
 
-    # IAM role for SSM access
-    assume_role_policy = """{
+    # IAM role for Secrets Manager access and SSM Session Manager
+    assume_role_policy = json.dumps({
         "Version": "2012-10-17",
         "Statement": [{
             "Action": "sts:AssumeRole",
             "Principal": {"Service": "ec2.amazonaws.com"},
-            "Effect": "Allow"
-        }]
-    }"""
+            "Effect": "Allow",
+        }],
+    })
 
     role = aws.iam.Role(
         f"{name}-tailscale-role",
@@ -74,10 +82,49 @@ def create_tailscale_subnet_router(
         tags={"Name": f"{name}-tailscale-role"},
     )
 
+    # SSM Session Manager access (for debugging/management)
     aws.iam.RolePolicyAttachment(
         f"{name}-tailscale-ssm",
         role=role.name,
         policy_arn="arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore",
+    )
+
+    # Secrets Manager access for auth key
+    # Build policy with proper Output handling
+    def build_secrets_policy(args):
+        secret_arn = args[0]
+        kms_arn = args[1] if len(args) > 1 else None
+        
+        statements = [
+            {
+                "Sid": "GetTailscaleAuthKey",
+                "Effect": "Allow",
+                "Action": ["secretsmanager:GetSecretValue"],
+                "Resource": secret_arn,
+            },
+        ]
+        if kms_arn:
+            statements.append({
+                "Sid": "DecryptSecret",
+                "Effect": "Allow",
+                "Action": ["kms:Decrypt"],
+                "Resource": kms_arn,
+            })
+        return json.dumps({
+            "Version": "2012-10-17",
+            "Statement": statements,
+        })
+
+    # Build policy using Output.all to handle both ARNs
+    if kms_key_arn is not None:
+        secrets_policy = pulumi.Output.all(auth_key_secret_arn, kms_key_arn).apply(build_secrets_policy)
+    else:
+        secrets_policy = pulumi.Output.all(auth_key_secret_arn).apply(build_secrets_policy)
+
+    aws.iam.RolePolicy(
+        f"{name}-tailscale-secrets",
+        role=role.name,
+        policy=secrets_policy,
     )
 
     instance_profile = aws.iam.InstanceProfile(
@@ -96,14 +143,9 @@ def create_tailscale_subnet_router(
         ],
     )
 
-    # User data script - handle both static list and Output types for routes
+    # User data script - fetch auth key from Secrets Manager at boot
     def build_user_data(args):
-        if isinstance(args, tuple):
-            auth_key, routes = args
-        else:
-            auth_key = args
-            routes = advertise_routes if isinstance(advertise_routes, list) else []
-        
+        secret_arn, routes = args
         routes_str = ",".join(routes) if isinstance(routes, list) else routes
         
         return f"""#!/bin/bash
@@ -116,7 +158,24 @@ echo "=== Tailscale Subnet Router Setup Started at $(date) ==="
 
 # Update system
 dnf update -y
-dnf install -y jq
+dnf install -y jq awscli
+
+# Fetch auth key from Secrets Manager (Infisical-synced)
+echo "Fetching Tailscale auth key from Secrets Manager..."
+SECRET_JSON=$(aws secretsmanager get-secret-value --secret-id "{secret_arn}" --query 'SecretString' --output text --region {region.region})
+
+# Try to parse as JSON first (Infisical format), fallback to raw string
+if echo "$SECRET_JSON" | jq -e '.TAILSCALE_AUTH_KEY' >/dev/null 2>&1; then
+    TAILSCALE_AUTHKEY=$(echo "$SECRET_JSON" | jq -r '.TAILSCALE_AUTH_KEY')
+else
+    TAILSCALE_AUTHKEY="$SECRET_JSON"
+fi
+
+if [ -z "$TAILSCALE_AUTHKEY" ] || [ "$TAILSCALE_AUTHKEY" = "null" ]; then
+    echo "ERROR: Failed to fetch Tailscale auth key from Secrets Manager"
+    exit 1
+fi
+echo "Successfully fetched auth key from Secrets Manager"
 
 # Install Tailscale
 rpm --import https://pkgs.tailscale.com/stable/amazon-linux/2023/repo.gpg
@@ -146,22 +205,27 @@ systemctl enable tailscaled
 systemctl start tailscaled
 sleep 5
 
-# Store config
+# Store config (secret ARN only, not the actual key)
 mkdir -p /etc/tailscale
 cat > /etc/tailscale/config << 'TSCONFIG'
-TAILSCALE_AUTHKEY="{auth_key}"
+SECRET_ARN="{secret_arn}"
+AWS_REGION="{region.region}"
 TAILSCALE_HOSTNAME="{tailscale_hostname}"
 TAILSCALE_ROUTES="{routes_str}"
 TSCONFIG
 chmod 600 /etc/tailscale/config
 
-# Connect to Tailscale
+# Connect to Tailscale (auth key in memory only, not written to disk)
 echo "Connecting to Tailscale..."
 tailscale up \\
-  --authkey="{auth_key}" \\
+  --authkey="$TAILSCALE_AUTHKEY" \\
   --hostname="{tailscale_hostname}" \\
   --advertise-routes="{routes_str}" \\
   --accept-risk=all
+
+# Clear auth key from environment
+unset TAILSCALE_AUTHKEY
+unset SECRET_JSON
 
 sleep 5
 
@@ -175,7 +239,7 @@ else
     echo "WARNING: Tailscale may not be fully connected (Backend: $BACKEND, Online: $ONLINE)"
 fi
 
-# Create monitor script
+# Create monitor script that fetches auth key from Secrets Manager
 cat > /usr/local/bin/tailscale-monitor.sh << 'MONITOR'
 #!/bin/bash
 source /etc/tailscale/config
@@ -184,6 +248,22 @@ ONLINE=$(tailscale status --json | jq -r '.Self.Online' 2>/dev/null || echo "Unk
 
 if [ "$BACKEND" != "Running" ] || [ "$ONLINE" != "true" ]; then
     echo "Reconnecting Tailscale..."
+    
+    # Fetch auth key from Secrets Manager
+    SECRET_JSON=$(aws secretsmanager get-secret-value --secret-id "$SECRET_ARN" --query 'SecretString' --output text --region "$AWS_REGION")
+    
+    # Try to parse as JSON first, fallback to raw string
+    if echo "$SECRET_JSON" | jq -e '.TAILSCALE_AUTH_KEY' >/dev/null 2>&1; then
+        TAILSCALE_AUTHKEY=$(echo "$SECRET_JSON" | jq -r '.TAILSCALE_AUTH_KEY')
+    else
+        TAILSCALE_AUTHKEY="$SECRET_JSON"
+    fi
+    
+    if [ -z "$TAILSCALE_AUTHKEY" ] || [ "$TAILSCALE_AUTHKEY" = "null" ]; then
+        echo "ERROR: Failed to fetch auth key from Secrets Manager"
+        exit 1
+    fi
+    
     tailscale logout || true
     sleep 5
     systemctl restart tailscaled
@@ -193,6 +273,10 @@ if [ "$BACKEND" != "Running" ] || [ "$ONLINE" != "true" ]; then
       --hostname="$TAILSCALE_HOSTNAME" \\
       --advertise-routes="$TAILSCALE_ROUTES" \\
       --accept-risk=all
+    
+    # Clear auth key from environment
+    unset TAILSCALE_AUTHKEY
+    unset SECRET_JSON
 fi
 MONITOR
 chmod +x /usr/local/bin/tailscale-monitor.sh
@@ -224,13 +308,13 @@ echo "=== Tailscale Setup Completed at $(date) ==="
 tailscale status
 """
 
-    # Build user_data from auth key and routes (handling Output types)
-    if isinstance(advertise_routes, pulumi.Output):
-        user_data = pulumi.Output.all(tailscale_auth_key, advertise_routes).apply(build_user_data)
-    else:
-        user_data = tailscale_auth_key.apply(build_user_data)
+    # Build user_data from secret ARN and routes
+    # Use Output.from_input to handle both plain values and Outputs uniformly
+    secret_arn_out = pulumi.Output.from_input(auth_key_secret_arn)
+    routes_out = pulumi.Output.from_input(advertise_routes)
+    user_data = pulumi.Output.all(secret_arn_out, routes_out).apply(build_user_data)
 
-    # EC2 instance
+    # EC2 instance with IMDSv2 enforcement
     instance = aws.ec2.Instance(
         f"{name}-tailscale",
         ami=ami.id,
@@ -245,6 +329,11 @@ tailscale status
             volume_type="gp3",
             volume_size=20,
             encrypted=True,
+        ),
+        metadata_options=aws.ec2.InstanceMetadataOptionsArgs(
+            http_endpoint="enabled",
+            http_tokens="required",  # IMDSv2 only
+            http_put_response_hop_limit=1,
         ),
         tags={"Name": f"{name}-tailscale"},
     )

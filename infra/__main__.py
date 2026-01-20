@@ -13,9 +13,8 @@ Deploys:
 
 import pulumi
 import pulumi_aws as aws
-import pulumi_tailscale as tailscale
 
-from aws import compute, ecr, infisical, jobs, kms, load_balancer, monitoring, networking, tailscale as ts, waf
+from aws import compute, ecr, endpoints, infisical, jobs, kms, load_balancer, monitoring, networking, tailscale as ts, waf
 
 # Configuration
 config = pulumi.Config()
@@ -63,7 +62,18 @@ api_max_instances = _config_int("apiMaxInstances", 10)
 
 # Feature flags
 enable_waf = _config_bool("enableWaf", True)
+enable_vpc_endpoints = _config_bool("enableVpcEndpoints", True)
+# Environment-aware defaults: production gets more secure settings
+is_production = "prod" in environment.lower()
+enable_alb_access_logs = _config_bool("enableAlbAccessLogs", is_production)
+enable_alb_deletion_protection = _config_bool("enableAlbDeletionProtection", is_production)
+enable_kms_log_encryption = _config_bool("enableKmsLogEncryption", is_production)
+nat_gateway_per_az = _config_bool("natGatewayPerAz", is_production)
 log_retention_days = _config_int("logRetentionDays", 30)
+
+# Slack integration for job alarms
+slack_channel_id = config.get("slackAlarmChannelId")
+slack_workspace_id = config.get("slackWorkspaceId")
 
 # Infisical integration
 enable_infisical = _config_bool("enableInfisicalSyncRole", False)
@@ -86,6 +96,22 @@ worker_max_instances = _config_int("workerMaxInstances", 10)
 worker_concurrency = _config_int("workerConcurrency", 4)
 
 # =============================================================================
+# KMS (must come before networking for flow logs encryption)
+# =============================================================================
+
+kms_key = kms.create_kms_key(
+    name=f"cerebro-{environment}",
+    description="Cerebro encryption key",
+)
+
+# Optional KMS key for CloudWatch Logs encryption
+logs_kms_key = None
+if enable_kms_log_encryption:
+    logs_kms_key = kms.create_cloudwatch_logs_key(
+        name=f"cerebro-{environment}",
+    )
+
+# =============================================================================
 # NETWORKING
 # =============================================================================
 
@@ -95,16 +121,11 @@ vpc_stack = networking.create_vpc(
     cidr_block=vpc_cidr,
     availability_zones=2,
     enable_nat_gateway=True,
+    nat_gateway_per_az=nat_gateway_per_az,
     alb_ingress_cidrs=[vpc_cidr] if alb_internal else None,
-)
-
-# =============================================================================
-# KMS
-# =============================================================================
-
-kms_key = kms.create_kms_key(
-    name=f"cerebro-{environment}",
-    description="Cerebro encryption key",
+    enable_flow_logs=True,
+    flow_logs_retention_days=log_retention_days,
+    flow_logs_kms_key_arn=logs_kms_key["key_arn"] if logs_kms_key else None,
 )
 
 # =============================================================================
@@ -142,7 +163,23 @@ alb_stack = load_balancer.create_alb(
     internal=alb_internal,
     health_check_path="/health",
     container_port=8080,
+    enable_deletion_protection=enable_alb_deletion_protection,
+    enable_access_logs=enable_alb_access_logs,
 )
+
+# =============================================================================
+# VPC ENDPOINTS (optional)
+# =============================================================================
+
+endpoints_stack = None
+if enable_vpc_endpoints:
+    endpoints_stack = endpoints.create_vpc_endpoints(
+        name=f"cerebro-{environment}",
+        vpc_id=vpc_stack["vpc_id"],
+        private_subnet_ids=vpc_stack["private_subnet_ids"],
+        route_table_ids=vpc_stack["private_route_table_ids"] + [vpc_stack["public_route_table_id"]],
+        fargate_security_group_id=vpc_stack["app_security_group_id"],
+    )
 
 # =============================================================================
 # DISTRIBUTED JOB QUEUE
@@ -204,7 +241,9 @@ ecs_stack = compute.create_ecs_cluster(
     secret_keys=secret_keys,
     external_secrets_prefix=external_secrets_prefix,
     job_queue_url=job_queue_stack["queue_url"],
+    job_queue_arn=job_queue_stack["queue_arn"],
     job_table_name=job_store_stack["table_name"],
+    log_group_kms_key_id=logs_kms_key["key_arn"] if logs_kms_key else None,
 )
 
 # Worker service
@@ -230,13 +269,54 @@ if enable_workers:
         environment=app_environment,
         secret_keys=secret_keys,
         external_secrets_prefix=external_secrets_prefix,
+        capacity_providers=ecs_stack["capacity_providers"],
     )
 
-# Job queue alarms
-job_alarms = jobs.create_job_alarms(
+# SQS Queue Policy - restrict access to ECS task roles (API + Worker)
+# API needs SendMessage to enqueue jobs, Worker needs full access to process them
+import json as _json
+
+def _build_sqs_policy(args):
+    queue_arn = args[0]
+    role_arns = [arn for arn in args[1:] if arn]
+    if not role_arns:
+        return _json.dumps({"Version": "2012-10-17", "Statement": []})
+    return _json.dumps({
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Sid": "AllowECSTaskRoles",
+                "Effect": "Allow",
+                "Principal": {"AWS": role_arns},
+                "Action": [
+                    "sqs:SendMessage",
+                    "sqs:ReceiveMessage",
+                    "sqs:DeleteMessage",
+                    "sqs:GetQueueAttributes",
+                    "sqs:ChangeMessageVisibility",
+                ],
+                "Resource": queue_arn,
+            },
+        ],
+    })
+
+sqs_queue_policy = aws.sqs.QueuePolicy(
+    f"cerebro-{environment}-queue-policy",
+    queue_url=job_queue_stack["queue_url"],
+    policy=pulumi.Output.all(
+        job_queue_stack["queue_arn"],
+        ecs_stack["task_role"].arn,
+        worker_stack["task_role"].arn if worker_stack else None,
+    ).apply(_build_sqs_policy),
+)
+
+# Job queue alarms with optional Slack integration
+job_alarms_stack = jobs.create_job_alarms(
     name=f"cerebro-{environment}",
     queue_name=f"cerebro-{environment}-jobs",
     dlq_name=f"cerebro-{environment}-jobs-dlq",
+    slack_channel_id=slack_channel_id,
+    slack_workspace_id=slack_workspace_id,
 )
 
 # =============================================================================
@@ -262,6 +342,9 @@ if enable_waf:
         name=f"cerebro-{environment}",
         alb_arn=alb_stack["alb"].arn,
         rate_limit=2000,
+        enable_logging=True,
+        log_retention_days=log_retention_days,
+        log_group_kms_key_id=logs_kms_key["key_arn"] if logs_kms_key else None,
     )
 
 # =============================================================================
@@ -270,14 +353,17 @@ if enable_waf:
 
 tailscale_stack = None
 if enable_tailscale:
-    # Create a reusable, ephemeral auth key
-    ts_auth_key = tailscale.TailnetKey(
-        f"cerebro-{environment}-tailscale-key",
-        reusable=True,
-        ephemeral=True,
-        preauthorized=True,
-        expiry=7776000,  # 90 days
-        tags=["tag:exitnode"],
+    # Auth key is stored in Secrets Manager (Infisical-synced)
+    # Default: {external_secrets_prefix}/TAILSCALE_AUTH_KEY
+    # Override via config: tailscaleAuthKeySecretName
+    tailscale_auth_key_secret_name = (
+        config.get("tailscaleAuthKeySecretName")
+        or f"{external_secrets_prefix}/TAILSCALE_AUTH_KEY"
+    )
+    
+    # Get the secret ARN from the name
+    tailscale_auth_key_secret = aws.secretsmanager.get_secret(
+        name=tailscale_auth_key_secret_name,
     )
     
     # Advertise only the private subnets (where ALB/ECS live)
@@ -287,8 +373,9 @@ if enable_tailscale:
         vpc_id=vpc_stack["vpc_id"],
         subnet_id=vpc_stack["private_subnet_ids"][0],
         advertise_routes=["10.0.10.0/24", "10.0.11.0/24"],  # private subnets only
-        tailscale_auth_key=ts_auth_key.key,
         tailscale_hostname=tailscale_hostname,
+        auth_key_secret_arn=tailscale_auth_key_secret.arn,
+        kms_key_arn=kms_key.arn,
     )
 
 # =============================================================================
@@ -313,12 +400,20 @@ pulumi.export(
 if waf_stack:
     pulumi.export("waf_web_acl_arn", waf_stack["web_acl"].arn)
 
+# KMS key outputs
+if logs_kms_key:
+    pulumi.export("logs_kms_key_arn", logs_kms_key["key_arn"])
+
 # Job queue outputs
 pulumi.export("job_queue_url", job_queue_stack["queue_url"])
 pulumi.export("job_queue_arn", job_queue_stack["queue_arn"])
 pulumi.export("job_dlq_url", job_queue_stack["dlq_url"])
 pulumi.export("job_table_name", job_store_stack["table_name"])
 pulumi.export("job_table_arn", job_store_stack["table_arn"])
+
+# Job alarms Slack integration outputs
+if job_alarms_stack.get("sns_topic"):
+    pulumi.export("job_alarms_sns_topic_arn", job_alarms_stack["sns_topic"].arn)
 
 if worker_stack:
     pulumi.export("worker_service_name", worker_stack["service"].name)

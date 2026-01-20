@@ -2,6 +2,8 @@
 AWS WAF for API protection.
 """
 
+import json
+
 import pulumi
 import pulumi_aws as aws
 
@@ -10,6 +12,9 @@ def create_waf(
     name: str,
     alb_arn: pulumi.Output[str],
     rate_limit: int = 2000,
+    enable_logging: bool = True,
+    log_retention_days: int = 30,
+    log_group_kms_key_id: pulumi.Output[str] = None,
 ) -> dict:
     """
     Create WAF Web ACL with common protections.
@@ -18,6 +23,9 @@ def create_waf(
         name: WAF name prefix
         alb_arn: ALB ARN to associate
         rate_limit: Requests per 5 minutes per IP
+        enable_logging: Enable WAF request logging to CloudWatch
+        log_retention_days: Days to retain WAF logs
+        log_group_kms_key_id: Optional KMS key for log encryption
     """
     web_acl = aws.wafv2.WebAcl(
         f"{name}-waf",
@@ -113,12 +121,68 @@ def create_waf(
     )
 
     # Associate WAF with ALB
-    aws.wafv2.WebAclAssociation(
+    waf_association = aws.wafv2.WebAclAssociation(
         f"{name}-waf-association",
         resource_arn=alb_arn,
         web_acl_arn=web_acl.arn,
     )
 
+    # WAF Logging to CloudWatch
+    log_group = None
+    log_resource_policy = None
+    if enable_logging:
+        region = aws.get_region()
+
+        log_group = aws.cloudwatch.LogGroup(
+            f"{name}-waf-logs",
+            name=f"aws-waf-logs-{name}",
+            retention_in_days=log_retention_days,
+            kms_key_id=log_group_kms_key_id,
+            tags={"Name": f"{name}-waf-logs"},
+        )
+
+        # CloudWatch Logs resource policy to allow WAF to write logs
+        log_resource_policy = aws.cloudwatch.LogResourcePolicy(
+            f"{name}-waf-logs-policy",
+            policy_name=f"{name}-waf-logs-policy",
+            policy_document=log_group.arn.apply(
+                lambda arn: json.dumps({
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Sid": "AllowWAFLogging",
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "delivery.logs.amazonaws.com",
+                            },
+                            "Action": [
+                                "logs:CreateLogStream",
+                                "logs:PutLogEvents",
+                            ],
+                            "Resource": f"{arn}:*",
+                            "Condition": {
+                                "StringEquals": {
+                                    "aws:SourceService": "wafv2",
+                                },
+                                "ArnLike": {
+                                    "aws:SourceArn": f"arn:aws:wafv2:{region.region}:*:*/*/*",
+                                },
+                            },
+                        },
+                    ],
+                })
+            ),
+        )
+
+        aws.wafv2.WebAclLoggingConfiguration(
+            f"{name}-waf-logging",
+            log_destination_configs=[log_group.arn],
+            resource_arn=web_acl.arn,
+            opts=pulumi.ResourceOptions(depends_on=[log_resource_policy]),
+        )
+
     return {
         "web_acl": web_acl,
+        "association": waf_association,
+        "log_group": log_group,
     }
