@@ -1,0 +1,43 @@
+{
+  "id": "gcp-cloudrun-default-service-account",
+  "name": "Cloud Run Service Using Default Compute Service Account",
+  "description": "Cloud Run services using the default compute service account have excessive privileges and pose a security risk",
+  "effect": "forbid",
+  "resource": "gcp::cloudrun::revision",
+  "conditions": [
+    "service_account CONTAINS 'compute@developer.gserviceaccount.com'"
+  ],
+  "severity": "high",
+  "remediation": "Create a dedicated service account with minimal required permissions for the Cloud Run service. Update the service to use the dedicated service account instead of the default compute service account.",
+  "tags": [
+    "gcp",
+    "cloudrun",
+    "serverless",
+    "iam",
+    "least-privilege"
+  ],
+  "risk_categories": [
+    "UNPROTECTED_PRINCIPAL",
+    "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": ["AC-6", "AC-2"]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": ["5", "6"]
+    },
+    {
+      "name": "SOC 2",
+      "controls": ["CC6"]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Privilege Escalation",
+      "technique": "T1078"
+    }
+  ]
+}

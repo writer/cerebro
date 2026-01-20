@@ -1,0 +1,43 @@
+{
+  "id": "gcp-cloudrun-public-ingress",
+  "name": "Cloud Run Service Allows Public Internet Access",
+  "description": "Cloud Run service is configured to allow ingress from all sources including the public internet",
+  "effect": "forbid",
+  "resource": "gcp::cloudrun::service",
+  "conditions": [
+    "ingress == 'INGRESS_TRAFFIC_ALL'"
+  ],
+  "severity": "medium",
+  "remediation": "Configure ingress settings to restrict traffic to internal sources only or use IAP/Cloud Armor for authentication. Set ingress to 'INGRESS_TRAFFIC_INTERNAL_ONLY' or 'INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER'.",
+  "tags": [
+    "gcp",
+    "cloudrun",
+    "serverless",
+    "exposure",
+    "network"
+  ],
+  "risk_categories": [
+    "EXTERNAL_EXPOSURE",
+    "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": ["SC-7", "AC-3"]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": ["12", "13"]
+    },
+    {
+      "name": "SOC 2",
+      "controls": ["CC6"]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Initial Access",
+      "technique": "T1190"
+    }
+  ]
+}

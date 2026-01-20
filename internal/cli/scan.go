@@ -319,6 +319,8 @@ func resourceToTable(resource string) string {
 		"gcp::iam::service_account":     "gcp_iam_service_accounts",
 		"gcp::sql::database_instance":   "gcp_sql_instances",
 		"gcp::cloudfunctions::function": "gcp_cloudfunctions_functions",
+		"gcp::cloudrun::service":        "gcp_cloudrun_services",
+		"gcp::cloudrun::revision":       "gcp_cloudrun_revisions",
 		"gcp::pubsub::topic":            "gcp_pubsub_topics",
 		"gcp::container::cluster":       "gcp_container_clusters",
 		// Azure

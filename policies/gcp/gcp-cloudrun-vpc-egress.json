@@ -1,0 +1,32 @@
+{
+  "id": "gcp-cloudrun-no-vpc-connector",
+  "name": "Cloud Run Service Without VPC Connector",
+  "description": "Cloud Run service is not configured with a VPC connector, allowing direct egress to the public internet",
+  "effect": "forbid",
+  "resource": "gcp::cloudrun::revision",
+  "conditions": [
+    "vpc_access IS NULL OR vpc_access.connector == ''"
+  ],
+  "severity": "low",
+  "remediation": "Configure a VPC connector for the Cloud Run service to control egress traffic and enable access to VPC resources.",
+  "tags": [
+    "gcp",
+    "cloudrun",
+    "serverless",
+    "vpc",
+    "network"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": ["SC-7"]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": ["12"]
+    }
+  ]
+}

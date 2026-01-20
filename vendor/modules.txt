@@ -98,6 +98,11 @@ cloud.google.com/go/pubsub/v2/apiv1/pubsubpb
 cloud.google.com/go/resourcemanager/apiv3
 cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb
 cloud.google.com/go/resourcemanager/internal
+# cloud.google.com/go/run v1.14.0
+## explicit; go 1.24.0
+cloud.google.com/go/run/apiv2
+cloud.google.com/go/run/apiv2/runpb
+cloud.google.com/go/run/internal
 # cloud.google.com/go/storage v1.59.1
 ## explicit; go 1.24.0
 cloud.google.com/go/storage

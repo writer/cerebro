@@ -396,6 +396,8 @@ func (e *GCPSyncEngine) getGCPTables() []GCPTableSpec {
 		e.gcpSQLInstanceTable(),
 		// Serverless
 		e.gcpCloudFunctionTable(),
+		e.gcpCloudRunServiceTable(),
+		e.gcpCloudRunRevisionTable(),
 		// Messaging
 		e.gcpPubSubTopicTable(),
 		// Container
