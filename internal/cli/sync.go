@@ -52,8 +52,8 @@ var (
 	syncGCPProjects  string // comma-separated list of projects
 	syncGCPOrg       string // organization ID for multi-project sync
 	syncMultiRegion  bool
-	syncUseAssetAPI  bool   // use Cloud Asset Inventory API
-	syncSecurity     bool   // sync security data (vulnerabilities, SCC findings)
+	syncUseAssetAPI  bool // use Cloud Asset Inventory API
+	syncSecurity     bool // sync security data (vulnerabilities, SCC findings)
 )
 
 func init() {
@@ -204,8 +204,8 @@ func runGCPSync(ctx context.Context, start time.Time, projectID string) error {
 	if syncSecurity {
 		Info("Syncing GCP security data (Container Analysis, Artifact Registry, SCC)...")
 		securitySyncer := nativesync.NewGCPSecuritySync(client, slog.Default(), projectID, syncGCPOrg)
-		if err := securitySyncer.SyncAll(ctx); err != nil {
-			Warning("Security sync failed: %v", err)
+		if secErr := securitySyncer.SyncAll(ctx); secErr != nil {
+			Warning("Security sync failed: %v", secErr)
 		} else {
 			Success("Security data synced successfully")
 		}

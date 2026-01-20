@@ -74,7 +74,7 @@ func (s *SnowflakeStore) Load(ctx context.Context) error {
 			f.ResolvedAt = &resolvedAt.Time
 		}
 		if resourceData != nil {
-			json.Unmarshal(resourceData, &f.Resource)
+			_ = json.Unmarshal(resourceData, &f.Resource)
 		}
 		if remediation.Valid {
 			f.Remediation = remediation.String

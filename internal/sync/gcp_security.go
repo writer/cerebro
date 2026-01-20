@@ -65,7 +65,7 @@ func (s *GCPSecuritySync) syncVulnerabilityOccurrences(ctx context.Context) erro
 	if err != nil {
 		return fmt.Errorf("failed to create container analysis client: %w", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	grafeasClient := client.GetGrafeasClient()
 
@@ -97,23 +97,23 @@ func (s *GCPSecuritySync) syncVulnerabilityOccurrences(ctx context.Context) erro
 		resourceURI := occ.GetResourceUri()
 
 		vulns = append(vulns, map[string]interface{}{
-			"_cq_id":            occ.GetName(),
-			"project_id":        s.projectID,
-			"name":              occ.GetName(),
-			"resource_uri":      resourceURI,
-			"note_name":         occ.GetNoteName(),
-			"kind":              "VULNERABILITY",
-			"create_time":       occ.GetCreateTime().AsTime().Format(time.RFC3339),
-			"update_time":       occ.GetUpdateTime().AsTime().Format(time.RFC3339),
-			"severity":          vuln.GetSeverity().String(),
-			"cvss_score":        vuln.GetCvssScore(),
-			"cvss_v3_score":     vuln.GetCvssv3().GetBaseScore(),
+			"_cq_id":             occ.GetName(),
+			"project_id":         s.projectID,
+			"name":               occ.GetName(),
+			"resource_uri":       resourceURI,
+			"note_name":          occ.GetNoteName(),
+			"kind":               "VULNERABILITY",
+			"create_time":        occ.GetCreateTime().AsTime().Format(time.RFC3339),
+			"update_time":        occ.GetUpdateTime().AsTime().Format(time.RFC3339),
+			"severity":           vuln.GetSeverity().String(),
+			"cvss_score":         vuln.GetCvssScore(),
+			"cvss_v3_score":      vuln.GetCvssv3().GetBaseScore(),
 			"effective_severity": vuln.GetEffectiveSeverity().String(),
-			"fix_available":     vuln.GetFixAvailable(),
-			"long_description":  vuln.GetLongDescription(),
-			"short_description": vuln.GetShortDescription(),
-			"cve_id":            extractCVEFromNote(occ.GetNoteName()),
-			"package_issue":     formatPackageIssues(vuln.GetPackageIssue()),
+			"fix_available":      vuln.GetFixAvailable(),
+			"long_description":   vuln.GetLongDescription(),
+			"short_description":  vuln.GetShortDescription(),
+			"cve_id":             extractCVEFromNote(occ.GetNoteName()),
+			"package_issue":      formatPackageIssues(vuln.GetPackageIssue()),
 		})
 	}
 
@@ -132,11 +132,11 @@ func (s *GCPSecuritySync) syncArtifactRegistryImages(ctx context.Context) error 
 	if err != nil {
 		return fmt.Errorf("failed to create artifact registry client: %w", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// List all repositories across common locations
 	locations := []string{"us", "us-central1", "us-east1", "us-west1", "europe-west1", "asia-east1"}
-	
+
 	var images []map[string]interface{}
 	for _, loc := range locations {
 		repoReq := &artifactregistrypb.ListRepositoriesRequest{
@@ -176,17 +176,17 @@ func (s *GCPSecuritySync) syncArtifactRegistryImages(ctx context.Context) error 
 				}
 
 				images = append(images, map[string]interface{}{
-					"_cq_id":         img.GetUri(),
-					"project_id":     s.projectID,
-					"name":           img.GetName(),
-					"uri":            img.GetUri(),
-					"tags":           strings.Join(img.GetTags(), ","),
-					"image_size":     img.GetImageSizeBytes(),
-					"upload_time":    img.GetUploadTime().AsTime().Format(time.RFC3339),
-					"media_type":     img.GetMediaType(),
-					"build_time":     img.GetBuildTime().AsTime().Format(time.RFC3339),
-					"update_time":    img.GetUpdateTime().AsTime().Format(time.RFC3339),
-					"repository":     repo.GetName(),
+					"_cq_id":      img.GetUri(),
+					"project_id":  s.projectID,
+					"name":        img.GetName(),
+					"uri":         img.GetUri(),
+					"tags":        strings.Join(img.GetTags(), ","),
+					"image_size":  img.GetImageSizeBytes(),
+					"upload_time": img.GetUploadTime().AsTime().Format(time.RFC3339),
+					"media_type":  img.GetMediaType(),
+					"build_time":  img.GetBuildTime().AsTime().Format(time.RFC3339),
+					"update_time": img.GetUpdateTime().AsTime().Format(time.RFC3339),
+					"repository":  repo.GetName(),
 				})
 			}
 		}
@@ -207,10 +207,10 @@ func (s *GCPSecuritySync) syncSCCFindings(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to create security center client: %w", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	parent := fmt.Sprintf("organizations/%s/sources/-", s.orgID)
-	
+
 	// Filter for active, high severity findings
 	filter := `state="ACTIVE" AND (severity="CRITICAL" OR severity="HIGH")`
 
@@ -232,22 +232,22 @@ func (s *GCPSecuritySync) syncSCCFindings(ctx context.Context) error {
 
 		finding := resp.GetFinding()
 		findings = append(findings, map[string]interface{}{
-			"_cq_id":           finding.GetName(),
-			"project_id":       s.projectID,
-			"name":             finding.GetName(),
-			"parent":           finding.GetParent(),
-			"resource_name":    finding.GetResourceName(),
-			"state":            finding.GetState().String(),
-			"category":         finding.GetCategory(),
-			"external_uri":     finding.GetExternalUri(),
-			"severity":         finding.GetSeverity().String(),
-			"finding_class":    finding.GetFindingClass().String(),
-			"mute":             finding.GetMute().String(),
-			"create_time":      finding.GetCreateTime().AsTime().Format(time.RFC3339),
-			"event_time":       finding.GetEventTime().AsTime().Format(time.RFC3339),
-			"description":      finding.GetDescription(),
-			"indicator":        formatIndicator(finding.GetIndicator()),
-			"vulnerability":    formatVulnerability(finding.GetVulnerability()),
+			"_cq_id":        finding.GetName(),
+			"project_id":    s.projectID,
+			"name":          finding.GetName(),
+			"parent":        finding.GetParent(),
+			"resource_name": finding.GetResourceName(),
+			"state":         finding.GetState().String(),
+			"category":      finding.GetCategory(),
+			"external_uri":  finding.GetExternalUri(),
+			"severity":      finding.GetSeverity().String(),
+			"finding_class": finding.GetFindingClass().String(),
+			"mute":          finding.GetMute().String(),
+			"create_time":   finding.GetCreateTime().AsTime().Format(time.RFC3339),
+			"event_time":    finding.GetEventTime().AsTime().Format(time.RFC3339),
+			"description":   finding.GetDescription(),
+			"indicator":     formatIndicator(finding.GetIndicator()),
+			"vulnerability": formatVulnerability(finding.GetVulnerability()),
 		})
 	}
 

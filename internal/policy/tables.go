@@ -93,14 +93,14 @@ var ResourceToTableMapping = map[string][]string{
 	"aws::ecs::task_definition": {"aws_ecs_task_definitions"},
 
 	// GCP
-	"gcp::compute::instance":      {"gcp_compute_instances"},
-	"gcp::compute::firewall":      {"gcp_compute_firewalls"},
-	"gcp::iam::service_account":   {"gcp_iam_service_accounts"},
-	"gcp::storage::bucket":        {"gcp_storage_buckets"},
-	"gcp::sql::instance":          {"gcp_sql_instances"},
-	"gcp::container::cluster":     {"gcp_container_clusters"},
-	"gcp::cloudrun::service":      {"gcp_cloudrun_services"},
-	"gcp::cloudrun::revision":     {"gcp_cloudrun_revisions"},
+	"gcp::compute::instance":        {"gcp_compute_instances"},
+	"gcp::compute::firewall":        {"gcp_compute_firewalls"},
+	"gcp::iam::service_account":     {"gcp_iam_service_accounts"},
+	"gcp::storage::bucket":          {"gcp_storage_buckets"},
+	"gcp::sql::instance":            {"gcp_sql_instances"},
+	"gcp::container::cluster":       {"gcp_container_clusters"},
+	"gcp::cloudrun::service":        {"gcp_cloudrun_services"},
+	"gcp::cloudrun::revision":       {"gcp_cloudrun_revisions"},
 	"gcp::cloudfunctions::function": {"gcp_cloudfunctions_functions"},
 
 	// Azure
