@@ -1,6 +1,6 @@
 {
   "id": "group-excessive-admin",
-  "wiz_control_id": "wc-id-2132",
+  "control_id": "wc-id-2132",
   "name": "Group with excessive admin privileges",
   "description": "A group has excessive administrative privileges, affecting all members",
   "effect": "forbid",

@@ -1,6 +1,6 @@
 {
   "id": "account-lateral-dormant",
-  "wiz_control_id": "wc-id-990",
+  "control_id": "wc-id-990",
   "name": "Account with a lateral movement finding to admin is inactive for over 90 days",
   "description": "A dormant account has an attack path to admin privileges, posing a risk if the account is compromised",
   "effect": "forbid",

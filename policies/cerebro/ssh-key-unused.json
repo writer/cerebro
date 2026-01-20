@@ -1,6 +1,6 @@
 {
   "id": "ssh-key-unused",
-  "wiz_control_id": "wc-id-912",
+  "control_id": "wc-id-912",
   "name": "SSH key pair is not used by any VM",
   "description": "An SSH key pair exists but is not associated with any VM",
   "effect": "forbid",

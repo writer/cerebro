@@ -1,6 +1,6 @@
 {
   "id": "s3-write-logging-disabled",
-  "wiz_control_id": "wc-id-942",
+  "control_id": "wc-id-942",
   "name": "S3 Bucket with object-level write data events logging disabled",
   "description": "An S3 bucket does not have CloudTrail data event logging enabled for write operations",
   "effect": "forbid",

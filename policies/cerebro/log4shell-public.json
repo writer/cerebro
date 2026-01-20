@@ -1,6 +1,6 @@
 {
   "id": "log4shell-public",
-  "wiz_control_id": "wc-id-609",
+  "control_id": "wc-id-609",
   "name": "Publicly exposed unprivileged VM/serverless vulnerable to CVE-2021-44228 (Log4Shell)",
   "description": "A publicly exposed resource is vulnerable to Log4Shell",
   "effect": "forbid",

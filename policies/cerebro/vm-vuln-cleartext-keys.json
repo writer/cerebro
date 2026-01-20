@@ -1,6 +1,6 @@
 {
   "id": "vm-vuln-cleartext-keys",
-  "wiz_control_id": "wc-id-1368",
+  "control_id": "wc-id-1368",
   "name": "Internet-facing VM/serverless with initial access vulnerabilities and cleartext cloud keys granting high privileges",
   "description": "An internet-facing resource has vulnerabilities and contains cleartext cloud keys with high privileges",
   "effect": "forbid",

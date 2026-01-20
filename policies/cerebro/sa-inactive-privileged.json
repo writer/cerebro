@@ -1,6 +1,6 @@
 {
   "id": "sa-inactive-privileged",
-  "wiz_control_id": "wc-id-806",
+  "control_id": "wc-id-806",
   "name": "Service account with high privileges is inactive for over 90 days",
   "description": "A service account with high privileges has been inactive for over 90 days",
   "effect": "forbid",

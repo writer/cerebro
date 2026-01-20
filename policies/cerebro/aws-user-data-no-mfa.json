@@ -1,6 +1,6 @@
 {
   "id": "aws-user-data-no-mfa",
-  "wiz_control_id": "wc-id-2217",
+  "control_id": "wc-id-2217",
   "name": "AWS user account with access to sensitive data and MFA disabled",
   "description": "An AWS user with access to sensitive data does not have MFA enabled",
   "effect": "forbid",

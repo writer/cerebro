@@ -1,6 +1,6 @@
 {
   "id": "third-party-sa-privileged",
-  "wiz_control_id": "wc-id-971",
+  "control_id": "wc-id-971",
   "name": "Third party service account with high privileges",
   "description": "A service account owned by a third party has high privileges in the environment",
   "effect": "forbid",

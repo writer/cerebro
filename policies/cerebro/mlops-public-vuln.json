@@ -1,6 +1,6 @@
 {
   "id": "mlops-public-vuln",
-  "wiz_control_id": "wc-id-2275",
+  "control_id": "wc-id-2275",
   "name": "Publicly exposed VM/serverless with MLOps with initial access vulnerabilities",
   "description": "A publicly exposed MLOps resource has vulnerabilities that could enable initial access",
   "effect": "forbid",

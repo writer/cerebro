@@ -1,6 +1,6 @@
 {
   "id": "gcr-excessive-privileges",
-  "wiz_control_id": "wc-id-453",
+  "control_id": "wc-id-453",
   "name": "Google Container Registry allows excessive high privileges to user/service accounts",
   "description": "GCR grants excessive privileges that could allow supply chain attacks",
   "effect": "forbid",

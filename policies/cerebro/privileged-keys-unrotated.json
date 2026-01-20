@@ -1,6 +1,6 @@
 {
   "id": "privileged-keys-unrotated",
-  "wiz_control_id": "wc-id-2222",
+  "control_id": "wc-id-2222",
   "name": "User/service account with high privileges and active access keys that were used in the past 90 days but not rotated in the past year",
   "description": "A privileged account has active access keys that have not been rotated in over a year",
   "effect": "forbid",

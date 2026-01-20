@@ -1,6 +1,6 @@
 {
   "id": "openssl-vuln-internal",
-  "wiz_control_id": "wc-id-997",
+  "control_id": "wc-id-997",
   "name": "Internal VM/serverless vulnerable to CVE-2022-3602 or CVE-2022-3786 (OpenSSL vulnerability)",
   "description": "An internal resource is vulnerable to OpenSSL buffer overflow vulnerabilities",
   "effect": "forbid",

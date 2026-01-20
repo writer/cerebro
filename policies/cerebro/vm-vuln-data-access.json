@@ -1,6 +1,6 @@
 {
   "id": "vm-vuln-data-access",
-  "wiz_control_id": "wc-id-1211",
+  "control_id": "wc-id-1211",
   "name": "Internet-facing VM/serverless with initial access vulnerabilities and data access to sensitive data",
   "description": "An internet-facing resource has vulnerabilities and access to sensitive data",
   "effect": "forbid",

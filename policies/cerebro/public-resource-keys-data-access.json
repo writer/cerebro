@@ -1,6 +1,6 @@
 {
   "id": "public-resource-keys-data-access",
-  "wiz_control_id": "wc-id-1337",
+  "control_id": "wc-id-1337",
   "name": "Publicly exposed resource with cleartext cloud keys allowing access to sensitive data",
   "description": "A public resource contains keys that grant access to sensitive data",
   "effect": "forbid",

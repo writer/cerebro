@@ -1,6 +1,6 @@
 {
   "id": "vm-public-admin",
-  "wiz_control_id": "wc-id-54",
+  "control_id": "wc-id-54",
   "name": "Publicly exposed VM with admin privileges",
   "description": "A publicly exposed virtual machine has administrative privileges, creating a critical attack surface",
   "effect": "forbid",

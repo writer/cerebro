@@ -1,6 +1,6 @@
 {
   "id": "vm-public-data-access",
-  "wiz_control_id": "wc-id-1194",
+  "control_id": "wc-id-1194",
   "name": "Publicly exposed VM/serverless with data access to sensitive data",
   "description": "A publicly exposed compute resource has access to sensitive data",
   "effect": "forbid",

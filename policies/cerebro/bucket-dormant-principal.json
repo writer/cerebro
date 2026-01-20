@@ -1,6 +1,6 @@
 {
   "id": "bucket-dormant-principal",
-  "wiz_control_id": "wc-id-2692",
+  "control_id": "wc-id-2692",
   "name": "Bucket with sensitive data can be accessed by a principal that has been inactive in the last 90 days",
   "description": "A dormant principal still has access to a bucket containing sensitive data",
   "effect": "forbid",

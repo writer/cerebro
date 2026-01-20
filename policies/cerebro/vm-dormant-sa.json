@@ -1,6 +1,6 @@
 {
   "id": "vm-dormant-sa",
-  "wiz_control_id": "wc-id-345",
+  "control_id": "wc-id-345",
   "name": "VM using a service account with high privileges that is inactive for over 90 days",
   "description": "A VM is using a highly privileged service account that has been inactive for over 90 days",
   "effect": "forbid",

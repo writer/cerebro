@@ -1,6 +1,6 @@
 {
   "id": "vm-cleartext-keys-cross-account",
-  "wiz_control_id": "wc-id-259",
+  "control_id": "wc-id-259",
   "name": "VM/serverless with cleartext cloud keys granting permission to access resources in external subscriptions",
   "description": "A compute resource contains cleartext cloud keys that grant access to resources in other cloud accounts or subscriptions",
   "effect": "forbid",

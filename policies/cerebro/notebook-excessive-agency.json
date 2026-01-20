@@ -1,6 +1,6 @@
 {
   "id": "notebook-excessive-agency",
-  "wiz_control_id": "wc-id-2273",
+  "control_id": "wc-id-2273",
   "name": "Notebook with excessive agency",
   "description": "A notebook has excessive permissions that could lead to unintended resource access",
   "effect": "forbid",

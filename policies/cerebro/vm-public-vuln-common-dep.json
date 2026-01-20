@@ -1,6 +1,6 @@
 {
   "id": "vm-public-vuln-common-dep",
-  "wiz_control_id": "wc-id-2448",
+  "control_id": "wc-id-2448",
   "name": "Publicly exposed VM/serverless with initial access vulnerabilities affecting a common dependency",
   "description": "A publicly exposed resource has vulnerabilities in a commonly used dependency",
   "effect": "forbid",

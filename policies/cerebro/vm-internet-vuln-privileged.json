@@ -1,6 +1,6 @@
 {
   "id": "vm-internet-vuln-privileged",
-  "wiz_control_id": "wc-id-140",
+  "control_id": "wc-id-140",
   "name": "Internet-facing VM with high privileges and initial access vulnerabilities",
   "description": "An internet-facing VM has both high privileges and vulnerabilities that could enable initial access, creating a critical combined risk",
   "effect": "forbid",

@@ -1,6 +1,6 @@
 {
   "id": "serverless-public-admin",
-  "wiz_control_id": "wc-id-289",
+  "control_id": "wc-id-289",
   "name": "Publicly exposed serverless with admin privileges",
   "description": "A publicly exposed serverless function has administrative privileges",
   "effect": "forbid",

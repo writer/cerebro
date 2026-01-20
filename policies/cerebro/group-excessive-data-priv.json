@@ -1,6 +1,6 @@
 {
   "id": "group-excessive-data-priv",
-  "wiz_control_id": "wc-id-2203",
+  "control_id": "wc-id-2203",
   "name": "Group with excessive data privileges",
   "description": "A group has excessive data access privileges",
   "effect": "forbid",

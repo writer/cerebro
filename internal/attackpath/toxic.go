@@ -72,14 +72,14 @@ type ToxicCombinationDetector struct {
 	patterns []ToxicPattern
 }
 
-// NewToxicCombinationDetector creates a detector with default Wiz-like patterns
+// NewToxicCombinationDetector creates a detector with default standard patterns
 func NewToxicCombinationDetector() *ToxicCombinationDetector {
 	return &ToxicCombinationDetector{
 		patterns: DefaultToxicPatterns(),
 	}
 }
 
-// DefaultToxicPatterns returns patterns based on Wiz's toxic combination detection
+// DefaultToxicPatterns returns patterns based on industry-standard toxic combination detection
 func DefaultToxicPatterns() []ToxicPattern {
 	return []ToxicPattern{
 		{

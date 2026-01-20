@@ -1,6 +1,6 @@
 {
   "id": "gke-wildcard-permissions",
-  "wiz_control_id": "wc-id-447",
+  "control_id": "wc-id-447",
   "name": "GKE role/cluster role assigned permissions that contain wildcards",
   "description": "A GKE role uses wildcard permissions which grant overly broad access",
   "effect": "forbid",

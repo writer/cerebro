@@ -1,6 +1,6 @@
 {
   "id": "log4shell-privileged",
-  "wiz_control_id": "wc-id-613",
+  "control_id": "wc-id-613",
   "name": "VM/serverless with high privileges vulnerable to CVE-2021-44228 (Log4Shell)",
   "description": "A privileged resource is vulnerable to Log4Shell",
   "effect": "forbid",

@@ -1,6 +1,6 @@
 {
   "id": "dirty-pipe-privileged",
-  "wiz_control_id": "wc-id-667",
+  "control_id": "wc-id-667",
   "name": "VM with high privileges vulnerable to CVE-2022-0847 (Dirty Pipe)",
   "description": "A privileged VM is vulnerable to the Dirty Pipe kernel exploit",
   "effect": "forbid",

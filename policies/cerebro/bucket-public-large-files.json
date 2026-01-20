@@ -1,6 +1,6 @@
 {
   "id": "bucket-public-large-files",
-  "wiz_control_id": "wc-id-2559",
+  "control_id": "wc-id-2559",
   "name": "Publicly readable bucket contains large log and data files",
   "description": "A public bucket contains large files that may contain sensitive information",
   "effect": "forbid",

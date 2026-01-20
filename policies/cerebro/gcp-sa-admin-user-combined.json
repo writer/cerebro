@@ -1,6 +1,6 @@
 {
   "id": "gcp-sa-admin-user-combined",
-  "wiz_control_id": "wc-id-623",
+  "control_id": "wc-id-623",
   "name": "User account with both 'Service Account Admin' and 'Service Account User' roles assigned",
   "description": "A user can both create and impersonate service accounts, a dangerous privilege combination",
   "effect": "forbid",

@@ -21,7 +21,7 @@
     "UNPROTECTED_DATA",
     "UNPROTECTED_PRINCIPAL"
   ],
-  "wiz_control_id": "wc-id-1211",
+  "control_id": "wc-id-1211",
   "frameworks": [
     {
       "name": "NIST 800-53 r5",

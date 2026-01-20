@@ -1,6 +1,6 @@
 {
   "id": "admin-keys-unrotated",
-  "wiz_control_id": "wc-id-2219",
+  "control_id": "wc-id-2219",
   "name": "Admin user/service account with active access keys were used in the past 90 days but not rotated in the past year",
   "description": "An active admin access key has not been rotated in over a year",
   "effect": "forbid",

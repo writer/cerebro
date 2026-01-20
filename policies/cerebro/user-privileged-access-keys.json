@@ -1,6 +1,6 @@
 {
   "id": "user-privileged-access-keys",
-  "wiz_control_id": "wc-id-522",
+  "control_id": "wc-id-522",
   "name": "User account with high privileges has active access keys",
   "description": "A user with high privileges has active access keys, increasing compromise risk",
   "effect": "forbid",

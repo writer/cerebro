@@ -1,6 +1,6 @@
 {
   "id": "bucket-cleartext-keys-data",
-  "wiz_control_id": "wc-id-2419",
+  "control_id": "wc-id-2419",
   "name": "Bucket with cleartext cloud keys granting data access to sensitive data",
   "description": "A bucket contains cleartext cloud keys that grant access to sensitive data",
   "effect": "forbid",

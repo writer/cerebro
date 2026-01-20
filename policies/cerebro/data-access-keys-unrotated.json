@@ -1,6 +1,6 @@
 {
   "id": "data-access-keys-unrotated",
-  "wiz_control_id": "wc-id-2225",
+  "control_id": "wc-id-2225",
   "name": "User/service account with access to sensitive data and active access keys unrotated in the past year",
   "description": "An account with access to sensitive data has access keys that have not been rotated in over a year",
   "effect": "forbid",

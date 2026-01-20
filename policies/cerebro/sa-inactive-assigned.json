@@ -1,6 +1,6 @@
 {
   "id": "sa-inactive-assigned",
-  "wiz_control_id": "wc-id-887",
+  "control_id": "wc-id-887",
   "name": "Service account with high privileges is inactive for over 90 days and assigned to a resource",
   "description": "An inactive privileged service account is still assigned to a resource",
   "effect": "forbid",

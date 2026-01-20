@@ -1,6 +1,6 @@
 {
   "id": "gke-pod-create",
-  "wiz_control_id": "wc-id-448",
+  "control_id": "wc-id-448",
   "name": "GKE user/service accounts with the privileges to create pods",
   "description": "An identity can create pods in GKE, which could be used for privilege escalation",
   "effect": "forbid",

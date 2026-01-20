@@ -8,7 +8,7 @@ import (
 func TestPublicVMPolicies(t *testing.T) {
 	engine := NewEngine()
 
-	// Load a subset of wiz policies for testing
+	// Load a subset of policies for testing
 	engine.AddPolicy(&Policy{
 		ID:          "vm-public-admin",
 		Name:        "Publicly exposed VM with admin privileges",
@@ -377,7 +377,7 @@ func TestKubernetesPolicies(t *testing.T) {
 func TestLoadPoliciesFromDisk(t *testing.T) {
 	engine := NewEngine()
 
-	// Load wiz policies from disk
+	// Load policies from disk
 	if err := engine.LoadPolicies("../../policies/cerebro"); err != nil {
 		t.Fatalf("LoadPolicies failed: %v", err)
 	}

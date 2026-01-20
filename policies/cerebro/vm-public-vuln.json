@@ -1,6 +1,6 @@
 {
   "id": "vm-public-vuln",
-  "wiz_control_id": "wc-id-139",
+  "control_id": "wc-id-139",
   "name": "Publicly exposed VM/serverless with initial access vulnerabilities",
   "description": "A publicly exposed compute resource has critical or high severity vulnerabilities that could enable initial access",
   "effect": "forbid",

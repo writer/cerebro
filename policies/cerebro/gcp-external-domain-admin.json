@@ -1,6 +1,6 @@
 {
   "id": "gcp-external-domain-admin",
-  "wiz_control_id": "wc-id-1830",
+  "control_id": "wc-id-1830",
   "name": "User account with non organizational domain (gmail) and high/admin access in GCP",
   "description": "A personal email account (non-organizational) has high or admin access to GCP resources",
   "effect": "forbid",

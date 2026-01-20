@@ -1,6 +1,6 @@
 {
   "id": "bedrock-excessive-permissions",
-  "wiz_control_id": "wc-id-2780",
+  "control_id": "wc-id-2780",
   "name": "Bedrock AI Service Role with Excessive Permissions",
   "description": "An AWS Bedrock service role has excessive permissions beyond model invocation",
   "effect": "forbid",

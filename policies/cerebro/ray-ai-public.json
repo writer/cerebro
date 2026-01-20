@@ -1,6 +1,6 @@
 {
   "id": "ray-ai-public",
-  "wiz_control_id": "wc-id-2033",
+  "control_id": "wc-id-2033",
   "name": "Publicly exposed VM vulnerable with Ray AI installed (authentication not supported)",
   "description": "A VM with Ray AI framework is publicly exposed without authentication",
   "effect": "forbid",

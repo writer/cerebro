@@ -1,6 +1,6 @@
 {
   "id": "storage-key-exposed",
-  "wiz_control_id": "wc-id-2031",
+  "control_id": "wc-id-2031",
   "name": "Validated exposure of storage account key/SAS token",
   "description": "A storage account key or SAS token has been validated as exposed",
   "effect": "forbid",

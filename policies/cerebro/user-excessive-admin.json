@@ -1,6 +1,6 @@
 {
   "id": "user-excessive-admin",
-  "wiz_control_id": "wc-id-909",
+  "control_id": "wc-id-909",
   "name": "User account with excessive admin privileges",
   "description": "A user account has more admin privileges than necessary for their role",
   "effect": "forbid",

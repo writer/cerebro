@@ -1,6 +1,6 @@
 {
   "id": "vm-public-eol-targeted",
-  "wiz_control_id": "wc-id-2436",
+  "control_id": "wc-id-2436",
   "name": "Publicly exposed VM with end-of-life targeted technology",
   "description": "A publicly exposed VM has EOL software that is commonly targeted by attackers",
   "effect": "forbid",

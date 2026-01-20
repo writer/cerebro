@@ -1,6 +1,6 @@
 {
   "id": "bucket-public-low-exposure",
-  "wiz_control_id": "wc-id-2836",
+  "control_id": "wc-id-2836",
   "name": "Publicly readable non-empty bucket with low exposure level",
   "description": "A non-empty bucket is publicly readable even with low exposure level",
   "effect": "forbid",

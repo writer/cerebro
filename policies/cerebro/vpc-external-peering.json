@@ -1,6 +1,6 @@
 {
   "id": "vpc-external-peering",
-  "wiz_control_id": "wc-id-37",
+  "control_id": "wc-id-37",
   "name": "Virtual network is peered with a virtual network from an external subscription",
   "description": "A VPC/VNet is peered with a network in a different subscription or account",
   "effect": "forbid",

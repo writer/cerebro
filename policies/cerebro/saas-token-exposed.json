@@ -1,6 +1,6 @@
 {
   "id": "saas-token-exposed",
-  "wiz_control_id": "wc-id-2017",
+  "control_id": "wc-id-2017",
   "name": "Validated exposure of SaaS API token",
   "description": "A SaaS API token has been validated as exposed and functional",
   "effect": "forbid",

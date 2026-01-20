@@ -1,6 +1,6 @@
 {
   "id": "data-resource-excessive-access",
-  "wiz_control_id": "wc-id-2565",
+  "control_id": "wc-id-2565",
   "name": "Data resource with sensitive data has excessive access permissions",
   "description": "A data resource with sensitive data has overly broad access permissions",
   "effect": "forbid",

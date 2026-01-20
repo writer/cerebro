@@ -1,6 +1,6 @@
 {
   "id": "sa-external-web-identity",
-  "wiz_control_id": "wc-id-123",
+  "control_id": "wc-id-123",
   "name": "Service account with high privileges can be assumed by an external web identity",
   "description": "A highly privileged service account can be assumed by an external web identity provider",
   "effect": "forbid",

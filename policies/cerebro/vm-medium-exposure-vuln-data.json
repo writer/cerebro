@@ -1,6 +1,6 @@
 {
   "id": "vm-medium-exposure-vuln-data",
-  "wiz_control_id": "wc-id-2922",
+  "control_id": "wc-id-2922",
   "name": "Internet-facing VM/serverless (medium exposure) with initial access vulnerabilities and data access to sensitive data",
   "description": "A medium-exposure internet-facing resource has vulnerabilities and data access",
   "effect": "forbid",

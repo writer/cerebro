@@ -1,6 +1,6 @@
 {
   "id": "bucket-cleartext-admin-keys",
-  "wiz_control_id": "wc-id-2421",
+  "control_id": "wc-id-2421",
   "name": "Bucket with cleartext highly privileged cloud keys",
   "description": "A bucket contains cleartext cloud keys with high privileges",
   "effect": "forbid",

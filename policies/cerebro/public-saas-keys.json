@@ -1,6 +1,6 @@
 {
   "id": "public-saas-keys",
-  "wiz_control_id": "wc-id-894",
+  "control_id": "wc-id-894",
   "name": "Publicly exposed resource with cleartext SaaS API keys",
   "description": "A public resource contains cleartext SaaS API keys",
   "effect": "forbid",

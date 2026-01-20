@@ -1,6 +1,6 @@
 {
   "id": "serverless-public-high-priv",
-  "wiz_control_id": "wc-id-313",
+  "control_id": "wc-id-313",
   "name": "Publicly exposed serverless with high privileges",
   "description": "A publicly exposed serverless function has high privileges",
   "effect": "forbid",

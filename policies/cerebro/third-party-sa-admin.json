@@ -1,6 +1,6 @@
 {
   "id": "third-party-sa-admin",
-  "wiz_control_id": "wc-id-2210",
+  "control_id": "wc-id-2210",
   "name": "Third party service account with admin privileges",
   "description": "A service account owned by a third party has administrative privileges",
   "effect": "forbid",

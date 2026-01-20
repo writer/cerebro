@@ -1,6 +1,6 @@
 {
   "id": "vm-vuln-lateral-admin",
-  "wiz_control_id": "wc-id-857",
+  "control_id": "wc-id-857",
   "name": "Internet-facing VM/serverless with initial access vulnerabilities and a lateral movement finding to admin privileges",
   "description": "An internet-facing resource has vulnerabilities that could enable initial access and an attack path to admin privileges",
   "effect": "forbid",

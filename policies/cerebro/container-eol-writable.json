@@ -1,6 +1,6 @@
 {
   "id": "container-eol-writable",
-  "wiz_control_id": "wc-id-1524",
+  "control_id": "wc-id-1524",
   "name": "Container with end-of-life software on the writable layer",
   "description": "A running container has end-of-life software installed on the writable layer",
   "effect": "forbid",

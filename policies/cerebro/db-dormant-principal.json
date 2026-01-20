@@ -1,6 +1,6 @@
 {
   "id": "db-dormant-principal",
-  "wiz_control_id": "wc-id-2693",
+  "control_id": "wc-id-2693",
   "name": "Database server with sensitive data can be accessed by a principal that has been inactive in the last 90 days",
   "description": "A dormant principal still has access to a database containing sensitive data",
   "effect": "forbid",

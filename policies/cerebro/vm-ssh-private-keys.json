@@ -1,6 +1,6 @@
 {
   "id": "vm-ssh-private-keys",
-  "wiz_control_id": "wc-id-343",
+  "control_id": "wc-id-343",
   "name": "VM/serverless with cleartext SSH private keys that can be used to access other resources",
   "description": "A compute resource contains SSH private keys that can be used to access other resources",
   "effect": "forbid",

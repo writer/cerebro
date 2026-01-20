@@ -1,6 +1,6 @@
 {
   "id": "vm-vuln-keys-data-access",
-  "wiz_control_id": "wc-id-1104",
+  "control_id": "wc-id-1104",
   "name": "Internet-facing VM/serverless with initial access vulnerabilities and cleartext cloud keys with data access to sensitive data",
   "description": "An internet-facing resource has vulnerabilities and contains keys with sensitive data access",
   "effect": "forbid",

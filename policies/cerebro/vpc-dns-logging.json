@@ -1,6 +1,6 @@
 {
   "id": "vpc-dns-logging",
-  "wiz_control_id": "wc-id-2175",
+  "control_id": "wc-id-2175",
   "name": "VPC has no Route 53 DNS resolver with logging enabled",
   "description": "A VPC does not have DNS query logging enabled for security visibility",
   "effect": "forbid",

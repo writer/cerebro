@@ -1,6 +1,6 @@
 {
   "id": "k8s-wildcard-permissions",
-  "wiz_control_id": "wc-id-473",
+  "control_id": "wc-id-473",
   "name": "Kubernetes role/cluster role assigned permissions that contain wildcards",
   "description": "A Kubernetes role uses wildcard permissions which grant overly broad access",
   "effect": "forbid",

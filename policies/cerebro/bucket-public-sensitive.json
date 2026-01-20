@@ -22,7 +22,7 @@
     "EXTERNAL_ATTACK_SURFACE",
     "UNPROTECTED_DATA"
   ],
-  "wiz_control_id": "wc-id-1264",
+  "control_id": "wc-id-1264",
   "frameworks": [
     {
       "name": "NIST 800-53 r5",

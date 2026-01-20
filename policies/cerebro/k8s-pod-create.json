@@ -1,6 +1,6 @@
 {
   "id": "k8s-pod-create",
-  "wiz_control_id": "wc-id-474",
+  "control_id": "wc-id-474",
   "name": "User/service accounts with the privileges to create pods",
   "description": "An identity can create pods in Kubernetes, which could be used for privilege escalation",
   "effect": "forbid",

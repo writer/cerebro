@@ -1,6 +1,6 @@
 {
   "id": "vm-public-high-priv",
-  "wiz_control_id": "wc-id-311",
+  "control_id": "wc-id-311",
   "name": "Publicly exposed VM with high privileges",
   "description": "A publicly exposed virtual machine has high privileges that could enable lateral movement",
   "effect": "forbid",

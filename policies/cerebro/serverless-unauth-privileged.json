@@ -1,6 +1,6 @@
 {
   "id": "serverless-unauth-privileged",
-  "wiz_control_id": "wc-id-851",
+  "control_id": "wc-id-851",
   "name": "Publicly exposed serverless with high privileges can be invoked by unauthenticated users",
   "description": "A privileged serverless function allows unauthenticated invocations",
   "effect": "forbid",

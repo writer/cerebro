@@ -1,6 +1,6 @@
 {
   "id": "bucket-keys-excessive-access",
-  "wiz_control_id": "wc-id-1340",
+  "control_id": "wc-id-1340",
   "name": "Bucket with cleartext cloud keys allowing high privileges can be accessed by an account with excessive data access",
   "description": "A bucket with privileged keys can be accessed by an overly permissive account",
   "effect": "forbid",

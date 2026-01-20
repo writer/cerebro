@@ -1,6 +1,6 @@
 {
   "id": "group-excessive-high-priv",
-  "wiz_control_id": "wc-id-2198",
+  "control_id": "wc-id-2198",
   "name": "Group with excessive high privileges",
   "description": "A group has excessive high-level privileges",
   "effect": "forbid",

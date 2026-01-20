@@ -1,6 +1,6 @@
 {
   "id": "public-resource-cleartext-keys",
-  "wiz_control_id": "wc-id-269",
+  "control_id": "wc-id-269",
   "name": "Publicly exposed resource with cleartext cloud keys granting high privileges",
   "description": "A publicly exposed resource contains cleartext cloud credentials with high privileges",
   "effect": "forbid",

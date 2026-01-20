@@ -1,6 +1,6 @@
 {
   "id": "internal-vm-cross-account-keys",
-  "wiz_control_id": "wc-id-405",
+  "control_id": "wc-id-405",
   "name": "Internal VM/serverless with cleartext cloud keys granting permission to access resources in other subscriptions with high privileges",
   "description": "An internal resource contains highly privileged cross-account access keys",
   "effect": "forbid",

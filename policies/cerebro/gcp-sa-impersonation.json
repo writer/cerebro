@@ -1,6 +1,6 @@
 {
   "id": "gcp-sa-impersonation",
-  "wiz_control_id": "wc-id-972",
+  "control_id": "wc-id-972",
   "name": "GCP user account assigned with the 'Service Account User' or 'Service Account Token Creator' roles",
   "description": "A GCP user can impersonate service accounts, potentially escalating privileges",
   "effect": "forbid",

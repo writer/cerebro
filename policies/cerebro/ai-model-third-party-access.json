@@ -1,6 +1,6 @@
 {
   "id": "ai-model-third-party-access",
-  "wiz_control_id": "wc-id-2274",
+  "control_id": "wc-id-2274",
   "name": "3rd party access to AI model in bucket",
   "description": "A third party has access to AI model artifacts stored in a bucket",
   "effect": "forbid",

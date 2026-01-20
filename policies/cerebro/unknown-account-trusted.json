@@ -1,6 +1,6 @@
 {
   "id": "unknown-account-trusted",
-  "wiz_control_id": "wc-id-2082",
+  "control_id": "wc-id-2082",
   "name": "Unknown AWS account with trusted access to non-admin IAM role",
   "description": "An unknown AWS account has trust relationship to assume a role",
   "effect": "forbid",

@@ -1,6 +1,6 @@
 {
   "id": "vm-kernel-vuln-container",
-  "wiz_control_id": "wc-id-183",
+  "control_id": "wc-id-183",
   "name": "VM with kernel vulnerabilities is running a container",
   "description": "A VM with kernel vulnerabilities is running containers, risking container escape",
   "effect": "forbid",

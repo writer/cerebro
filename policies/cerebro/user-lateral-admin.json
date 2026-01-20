@@ -1,6 +1,6 @@
 {
   "id": "user-lateral-admin",
-  "wiz_control_id": "wc-id-921",
+  "control_id": "wc-id-921",
   "name": "User account with lateral movement to admin in another account",
   "description": "A user account has an attack path that leads to admin privileges in another cloud account",
   "effect": "forbid",

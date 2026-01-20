@@ -1,6 +1,6 @@
 {
   "id": "aws-user-inactive-admin-no-mfa",
-  "wiz_control_id": "wc-id-2211",
+  "control_id": "wc-id-2211",
   "name": "Inactive AWS user account with admin privileges and MFA disabled",
   "description": "An inactive AWS user with admin privileges does not have MFA enabled",
   "effect": "forbid",

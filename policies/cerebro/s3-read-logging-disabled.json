@@ -1,6 +1,6 @@
 {
   "id": "s3-read-logging-disabled",
-  "wiz_control_id": "wc-id-943",
+  "control_id": "wc-id-943",
   "name": "S3 Bucket with object-level read data events logging disabled",
   "description": "An S3 bucket does not have CloudTrail data event logging enabled for read operations",
   "effect": "forbid",

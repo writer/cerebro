@@ -1,6 +1,6 @@
 {
   "id": "vm-public-vuln-cross-account-keys",
-  "wiz_control_id": "wc-id-1370",
+  "control_id": "wc-id-1370",
   "name": "Publicly exposed VM/serverless with initial access vulnerabilities and cleartext cloud keys granting permissions in another subscription",
   "description": "A public vulnerable resource contains cross-account access keys",
   "effect": "forbid",

@@ -1,6 +1,6 @@
 {
   "id": "public-resource-cleartext-admin-keys",
-  "wiz_control_id": "wc-id-270",
+  "control_id": "wc-id-270",
   "name": "Publicly exposed resource with cleartext cloud keys granting admin privileges",
   "description": "A publicly exposed resource contains cleartext cloud credentials with administrative privileges",
   "effect": "forbid",

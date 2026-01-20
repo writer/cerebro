@@ -1,6 +1,6 @@
 {
   "id": "user-excessive-data-priv",
-  "wiz_control_id": "wc-id-2200",
+  "control_id": "wc-id-2200",
   "name": "User account with excessive data privileges",
   "description": "A user account has excessive data access privileges",
   "effect": "forbid",

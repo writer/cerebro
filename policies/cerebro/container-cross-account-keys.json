@@ -1,6 +1,6 @@
 {
   "id": "container-cross-account-keys",
-  "wiz_control_id": "wc-id-1037",
+  "control_id": "wc-id-1037",
   "name": "Internal container using a container image with cleartext cloud keys granting permission to access resources in other subscriptions",
   "description": "A container uses an image with cleartext cross-account access keys",
   "effect": "forbid",

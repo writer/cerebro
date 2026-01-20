@@ -1,6 +1,6 @@
 {
   "id": "gke-cluster-admin",
-  "wiz_control_id": "wc-id-445",
+  "control_id": "wc-id-445",
   "name": "GKE cluster-admin role is used by an account",
   "description": "An account is using the cluster-admin role in GKE, granting full cluster control",
   "effect": "forbid",

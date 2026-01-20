@@ -1,6 +1,6 @@
 {
   "id": "vm-public-eol",
-  "wiz_control_id": "wc-id-169",
+  "control_id": "wc-id-169",
   "name": "Publicly exposed VM with end-of-life software",
   "description": "A publicly exposed VM is running end-of-life software that no longer receives security updates",
   "effect": "forbid",
