@@ -295,55 +295,25 @@ func (e *Engine) EvaluateAsset(ctx context.Context, asset map[string]interface{}
 }
 
 // mapResourceToTable maps high-level resource types to specific CloudQuery tables
+// Uses the shared ResourceToTableMapping for consistency
 func mapResourceToTable(resourceType string) string {
-	// Normalize
-	resourceType = strings.ToLower(resourceType)
-
-	// Direct table name references
+	// Direct table name references (e.g., already a table name)
 	if strings.Contains(resourceType, "_") {
-		return resourceType
+		return strings.ToLower(resourceType)
 	}
 
-	// Mapping
-	// This should be expanded as we add more resources
-	switch resourceType {
-	// AWS
-	case "aws::s3::bucket":
-		return "aws_s3_buckets"
-	case "aws::iam::user":
-		return "aws_iam_users"
-	case "aws::iam::role":
-		return "aws_iam_roles"
-	case "aws::iam::policy":
-		return "aws_iam_policies"
-	case "aws::ec2::instance":
-		return "aws_ec2_instances"
-	case "aws::ec2::securitygroup":
-		return "aws_ec2_security_groups"
-	case "aws::ec2::vpc":
-		return "aws_ec2_vpcs"
-	case "aws::rds::dbinstance":
-		return "aws_rds_instances"
-	case "aws::lambda::function":
-		return "aws_lambda_functions"
-	case "aws::kms::key":
-		return "aws_kms_keys"
-
-	// GCP
-	case "gcp::storage::bucket":
-		return "gcp_storage_buckets"
-	case "gcp::compute::instance":
-		return "gcp_compute_instances"
-
-	// Azure
-	case "azure::compute::virtualmachine":
-		return "azure_compute_virtual_machines"
-	case "azure::storage::account":
-		return "azure_storage_accounts"
-
-	default:
-		return ""
+	// Look up in the shared mapping (try exact match first)
+	if tables, ok := ResourceToTableMapping[resourceType]; ok && len(tables) > 0 {
+		return tables[0]
 	}
+
+	// Try lowercase (resource types in mapping are lowercase)
+	lowerResource := strings.ToLower(resourceType)
+	if tables, ok := ResourceToTableMapping[lowerResource]; ok && len(tables) > 0 {
+		return tables[0]
+	}
+
+	return ""
 }
 
 func (e *Engine) matchPolicy(p *Policy, req *EvalRequest) bool {
@@ -439,13 +409,38 @@ func getNestedValue(asset map[string]interface{}, path string) interface{} {
 
 	for _, part := range parts {
 		if m, ok := current.(map[string]interface{}); ok {
-			current = m[part]
+			// Case-insensitive field lookup (Snowflake returns uppercase keys)
+			current = getFieldCaseInsensitive(m, part)
 		} else {
 			return nil
 		}
 	}
 
 	return current
+}
+
+// getFieldCaseInsensitive looks up a field in a map, trying exact match first, then case-insensitive
+func getFieldCaseInsensitive(m map[string]interface{}, key string) interface{} {
+	// Try exact match first
+	if v, ok := m[key]; ok {
+		return v
+	}
+	// Try uppercase (common for Snowflake)
+	if v, ok := m[strings.ToUpper(key)]; ok {
+		return v
+	}
+	// Try lowercase
+	if v, ok := m[strings.ToLower(key)]; ok {
+		return v
+	}
+	// Try case-insensitive search
+	keyLower := strings.ToLower(key)
+	for k, v := range m {
+		if strings.ToLower(k) == keyLower {
+			return v
+		}
+	}
+	return nil
 }
 
 // compareValues compares an asset value against an expected value
@@ -487,7 +482,9 @@ func compareValues(val interface{}, expected string, operator string) bool {
 
 	// Default string comparison
 	strVal := fmt.Sprintf("%v", val)
-	expected = strings.Trim(expected, "\"'") // Remove quotes from expected
+	// Strip quotes from both actual and expected values (Snowflake VARIANT columns include quotes)
+	strVal = strings.Trim(strVal, "\"'")
+	expected = strings.Trim(expected, "\"'")
 
 	switch operator {
 	case "==":
