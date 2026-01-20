@@ -16,7 +16,6 @@ func (e *GCPSyncEngine) gcpGKEClusterTable() GCPTableSpec {
 	}
 }
 
-//nolint:staticcheck // GKE API still exposes deprecated fields needed for parity.
 func (e *GCPSyncEngine) fetchGCPGKEClusters(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
 	client, err := container.NewClusterManagerClient(ctx)
 	if err != nil {
@@ -24,7 +23,6 @@ func (e *GCPSyncEngine) fetchGCPGKEClusters(ctx context.Context, projectID strin
 	}
 	defer func() { _ = client.Close() }()
 
-	// List clusters across all locations
 	req := &containerpb.ListClustersRequest{
 		Parent: fmt.Sprintf("projects/%s/locations/-", projectID),
 	}
@@ -49,7 +47,6 @@ func (e *GCPSyncEngine) fetchGCPGKEClusters(ctx context.Context, projectID strin
 			"name":                    cluster.Name,
 			"location":                cluster.Location,
 			"description":             cluster.Description,
-			"initial_node_count":      cluster.InitialNodeCount,
 			"logging_service":         cluster.LoggingService,
 			"monitoring_service":      cluster.MonitoringService,
 			"network":                 cluster.Network,
@@ -60,32 +57,35 @@ func (e *GCPSyncEngine) fetchGCPGKEClusters(ctx context.Context, projectID strin
 			"resource_labels":         cluster.ResourceLabels,
 			"label_fingerprint":       cluster.LabelFingerprint,
 			"status":                  cluster.Status.String(),
-			"status_message":          cluster.StatusMessage,
 			"node_ipv4_cidr_size":     cluster.NodeIpv4CidrSize,
 			"services_ipv4_cidr":      cluster.ServicesIpv4Cidr,
 			"current_master_version":  cluster.CurrentMasterVersion,
-			"current_node_version":    cluster.CurrentNodeVersion,
 			"create_time":             cluster.CreateTime,
 			"endpoint":                cluster.Endpoint,
 			"self_link":               selfLink,
 		}
 
-		// Node config (default pool)
-		if cluster.NodeConfig != nil {
-			row["node_config"] = serializeNodeConfig(cluster.NodeConfig)
+		// Get initial_node_count, current_node_version, and node_config from first node pool
+		// (replaces deprecated cluster-level fields)
+		if len(cluster.NodePools) > 0 {
+			firstPool := cluster.NodePools[0]
+			row["initial_node_count"] = firstPool.InitialNodeCount
+			row["current_node_version"] = firstPool.Version
+			if firstPool.Config != nil {
+				row["node_config"] = serializeNodeConfig(firstPool.Config)
+			}
 		}
 
-		// Master auth
+		// Master auth (username field removed as deprecated)
 		if cluster.MasterAuth != nil {
 			row["master_auth"] = map[string]interface{}{
-				"username":                  cluster.MasterAuth.Username,
 				"cluster_ca_certificate":    cluster.MasterAuth.ClusterCaCertificate,
 				"client_certificate":        cluster.MasterAuth.ClientCertificate,
 				"client_certificate_config": cluster.MasterAuth.ClientCertificateConfig,
 			}
 		}
 
-		// Node pools
+		// Node pools (status_message removed as deprecated)
 		if len(cluster.NodePools) > 0 {
 			var nodePools []map[string]interface{}
 			for _, np := range cluster.NodePools {
@@ -96,7 +96,6 @@ func (e *GCPSyncEngine) fetchGCPGKEClusters(ctx context.Context, projectID strin
 					"self_link":          np.SelfLink,
 					"version":            np.Version,
 					"status":             np.Status.String(),
-					"status_message":     np.StatusMessage,
 				}
 				if np.Config != nil {
 					pool["config"] = serializeNodeConfig(np.Config)
@@ -145,14 +144,17 @@ func (e *GCPSyncEngine) fetchGCPGKEClusters(ctx context.Context, projectID strin
 			}
 		}
 
-		// Master authorized networks
-		if cluster.MasterAuthorizedNetworksConfig != nil {
+		// Master authorized networks (use new ControlPlaneEndpointsConfig)
+		if cluster.ControlPlaneEndpointsConfig != nil &&
+			cluster.ControlPlaneEndpointsConfig.IpEndpointsConfig != nil &&
+			cluster.ControlPlaneEndpointsConfig.IpEndpointsConfig.AuthorizedNetworksConfig != nil {
+			anc := cluster.ControlPlaneEndpointsConfig.IpEndpointsConfig.AuthorizedNetworksConfig
 			config := map[string]interface{}{
-				"enabled": cluster.MasterAuthorizedNetworksConfig.Enabled,
+				"enabled": anc.Enabled,
 			}
-			if len(cluster.MasterAuthorizedNetworksConfig.CidrBlocks) > 0 {
+			if len(anc.CidrBlocks) > 0 {
 				var blocks []map[string]interface{}
-				for _, b := range cluster.MasterAuthorizedNetworksConfig.CidrBlocks {
+				for _, b := range anc.CidrBlocks {
 					blocks = append(blocks, map[string]interface{}{
 						"display_name": b.DisplayName,
 						"cidr_block":   b.CidrBlock,
@@ -163,15 +165,24 @@ func (e *GCPSyncEngine) fetchGCPGKEClusters(ctx context.Context, projectID strin
 			row["master_authorized_networks_config"] = config
 		}
 
-		// Private cluster config
-		if cluster.PrivateClusterConfig != nil {
-			row["private_cluster_config"] = map[string]interface{}{
-				"enable_private_nodes":    cluster.PrivateClusterConfig.EnablePrivateNodes,
-				"enable_private_endpoint": cluster.PrivateClusterConfig.EnablePrivateEndpoint,
-				"master_ipv4_cidr_block":  cluster.PrivateClusterConfig.MasterIpv4CidrBlock,
-				"private_endpoint":        cluster.PrivateClusterConfig.PrivateEndpoint,
-				"public_endpoint":         cluster.PrivateClusterConfig.PublicEndpoint,
+		// Private cluster config (use new NetworkConfig and ControlPlaneEndpointsConfig)
+		privateClusterConfig := map[string]interface{}{}
+		if cluster.NetworkConfig != nil {
+			privateClusterConfig["enable_private_nodes"] = cluster.NetworkConfig.DefaultEnablePrivateNodes
+		}
+		if cluster.ControlPlaneEndpointsConfig != nil &&
+			cluster.ControlPlaneEndpointsConfig.IpEndpointsConfig != nil {
+			ipConfig := cluster.ControlPlaneEndpointsConfig.IpEndpointsConfig
+			if ipConfig.EnablePublicEndpoint != nil {
+				privateClusterConfig["enable_private_endpoint"] = !*ipConfig.EnablePublicEndpoint
 			}
+			privateClusterConfig["private_endpoint"] = ipConfig.PrivateEndpoint
+		}
+		if cluster.PrivateClusterConfig != nil {
+			privateClusterConfig["master_ipv4_cidr_block"] = cluster.PrivateClusterConfig.MasterIpv4CidrBlock
+		}
+		if len(privateClusterConfig) > 0 {
+			row["private_cluster_config"] = privateClusterConfig
 		}
 
 		// Database encryption
@@ -203,11 +214,13 @@ func (e *GCPSyncEngine) fetchGCPGKEClusters(ctx context.Context, projectID strin
 			}
 		}
 
-		// Binary authorization
+		// Binary authorization (use EvaluationMode instead of deprecated Enabled field)
 		if cluster.BinaryAuthorization != nil {
+			evalMode := cluster.BinaryAuthorization.EvaluationMode.String()
+			enabled := evalMode != "DISABLED" && evalMode != "EVALUATION_MODE_UNSPECIFIED"
 			row["binary_authorization"] = map[string]interface{}{
-				"enabled":         cluster.BinaryAuthorization.Enabled,
-				"evaluation_mode": cluster.BinaryAuthorization.EvaluationMode.String(),
+				"enabled":         enabled,
+				"evaluation_mode": evalMode,
 			}
 		}
 
