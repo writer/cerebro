@@ -27,7 +27,7 @@ Examples:
 }
 
 var (
-	scanTable               string
+	scanTables              []string
 	scanLimit               int
 	scanDryRun              bool
 	scanOutput              string
@@ -38,12 +38,12 @@ var (
 )
 
 func init() {
-	scanCmd.Flags().StringVarP(&scanTable, "table", "t", "", "Scan specific table only")
+	scanCmd.Flags().StringSliceVarP(&scanTables, "table", "t", nil, "Tables to scan (can specify multiple: -t table1 -t table2)")
 	scanCmd.Flags().IntVarP(&scanLimit, "limit", "l", 500, "Maximum assets to scan per table")
 	scanCmd.Flags().BoolVar(&scanDryRun, "dry-run", false, "Show what would be scanned without scanning")
-	scanCmd.Flags().StringVarP(&scanOutput, "output", "o", "table", "Output format (table,json)")
+	scanCmd.Flags().StringVarP(&scanOutput, "output", "o", "table", "Output format (table, json, csv)")
 	scanCmd.Flags().BoolVar(&scanFull, "full", false, "Force full scan, ignoring watermarks")
-	scanCmd.Flags().BoolVar(&scanToxicCombos, "toxic-combos", true, "Detect toxic combinations of risk factors (Wiz-style)")
+	scanCmd.Flags().BoolVar(&scanToxicCombos, "toxic-combos", true, "Detect toxic combinations of risk factors")
 	scanCmd.Flags().BoolVar(&scanUseGraph, "graph", true, "Use security graph for enhanced analysis (attack paths, blast radius)")
 	scanCmd.Flags().BoolVar(&scanExtractRelationships, "extract-relationships", false, "Extract resource relationships before scanning")
 }
@@ -93,8 +93,8 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	// Determine tables to scan
 	var tables []string
-	if scanTable != "" {
-		tables = []string{scanTable}
+	if len(scanTables) > 0 {
+		tables = scanTables
 	} else {
 		// Get tables based on resource types in policies
 		tableSet := make(map[string]bool)
@@ -276,6 +276,22 @@ func runScan(cmd *cobra.Command, args []string) error {
 		})
 	}
 
+	if scanOutput == FormatCSV {
+		// CSV header
+		headers := []string{"severity", "policy_id", "resource_id", "resource_name", "toxic_combo"}
+		rows := make([][]string, 0, len(allFindings))
+		for _, f := range allFindings {
+			rows = append(rows, []string{
+				toString(f["severity"]),
+				toString(f["policy_id"]),
+				toString(f["resource_id"]),
+				toString(f["resource_name"]),
+				toString(f["toxic_combo"]),
+			})
+		}
+		return CSVOutput(headers, rows)
+	}
+
 	// Summary
 	fmt.Println()
 	fmt.Println(strings.Repeat("=", 50))
@@ -356,4 +372,22 @@ func resourceToTable(resource string) string {
 	}
 
 	return ""
+}
+
+// toString safely converts interface{} to string
+func toString(v interface{}) string {
+	if v == nil {
+		return ""
+	}
+	switch val := v.(type) {
+	case string:
+		return val
+	case bool:
+		if val {
+			return "true"
+		}
+		return "false"
+	default:
+		return fmt.Sprintf("%v", v)
+	}
 }
