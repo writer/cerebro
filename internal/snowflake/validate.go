@@ -77,7 +77,7 @@ func QuoteIdentifier(name string) string {
 }
 
 // SafeTableRef returns a safe table reference for SQL queries.
-// It validates and optionally quotes the identifier.
+// It validates and normalizes identifiers to uppercase (Snowflake convention).
 func SafeTableRef(database, schema, table string) (string, error) {
 	if err := ValidateTableName(database); err != nil {
 		return "", fmt.Errorf("invalid database name: %w", err)
@@ -89,5 +89,9 @@ func SafeTableRef(database, schema, table string) (string, error) {
 		return "", fmt.Errorf("invalid table name: %w", err)
 	}
 
-	return fmt.Sprintf("%s.%s.%s", database, schema, table), nil
+	// Normalize to uppercase for Snowflake (tables are stored as uppercase)
+	return fmt.Sprintf("%s.%s.%s",
+		strings.ToUpper(database),
+		strings.ToUpper(schema),
+		strings.ToUpper(table)), nil
 }

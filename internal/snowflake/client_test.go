@@ -167,7 +167,8 @@ func TestSafeTableRef_Valid(t *testing.T) {
 		t.Errorf("SafeTableRef returned error: %v", err)
 	}
 
-	expected := "CEREBRO.RAW.aws_iam_users"
+	// SafeTableRef normalizes to uppercase for Snowflake
+	expected := "CEREBRO.RAW.AWS_IAM_USERS"
 	if ref != expected {
 		t.Errorf("SafeTableRef = %q, want %q", ref, expected)
 	}
