@@ -224,6 +224,34 @@ func runScan(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Relationship-based toxic combination detection (SQL query approach)
+	if scanToxicCombos && application.Snowflake != nil {
+		toxicFindings, err := detectToxicCombinationsFromRelationships(ctx, application.Snowflake)
+		if err != nil {
+			Warning("Failed to detect toxic combinations from relationships: %v", err)
+		} else if len(toxicFindings) > 0 {
+			// Count by severity
+			critCount, highCount := 0, 0
+			for _, f := range toxicFindings {
+				sev := toString(f["severity"])
+				if sev == "CRITICAL" {
+					critCount++
+				} else if sev == "HIGH" {
+					highCount++
+				}
+				allFindings = append(allFindings, f)
+			}
+			fmt.Printf("\n%s Toxic combinations detected:\n", color(colorRed, "⚠"))
+			if critCount > 0 {
+				fmt.Printf("  %s CRITICAL findings\n", color(colorRed, fmt.Sprintf("%d", critCount)))
+			}
+			if highCount > 0 {
+				fmt.Printf("  %s HIGH findings\n", color(colorYellow, fmt.Sprintf("%d", highCount)))
+			}
+			totalViolations += int64(len(toxicFindings))
+		}
+	}
+
 	var graphAttackPaths []map[string]interface{}
 	var graphToxicCount int
 	if scanToxicCombos && graphAvailable {
@@ -277,15 +305,17 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 
 	if scanOutput == FormatCSV {
-		// CSV header
-		headers := []string{"severity", "policy_id", "resource_id", "resource_name", "toxic_combo"}
+		// CSV header - include title and risks for toxic combo parity
+		headers := []string{"severity", "policy_id", "title", "resource_id", "resource_name", "risks", "toxic_combo"}
 		rows := make([][]string, 0, len(allFindings))
 		for _, f := range allFindings {
 			rows = append(rows, []string{
 				toString(f["severity"]),
 				toString(f["policy_id"]),
+				toString(f["title"]),
 				toString(f["resource_id"]),
 				toString(f["resource_name"]),
+				toString(f["risks"]),
 				toString(f["toxic_combo"]),
 			})
 		}
@@ -390,4 +420,147 @@ func toString(v interface{}) string {
 	default:
 		return fmt.Sprintf("%v", v)
 	}
+}
+
+// detectToxicCombinationsFromRelationships queries the relationship table to detect toxic combinations
+func detectToxicCombinationsFromRelationships(ctx context.Context, sf *snowflake.Client) ([]map[string]interface{}, error) {
+	// Query for toxic combinations using relationship data
+	query := `
+WITH toxic_cloudrun AS (
+    -- CRITICAL: Cloud Run with default SA + public exposure
+    SELECT 
+        s.NAME as resource_id,
+        REPLACE(s.NAME, '"', '') as clean_name,
+        REPLACE(s.URI, '"', '') as url,
+        r_sa.TARGET_ID as service_account,
+        ARRAY_AGG(DISTINCT r.REL_TYPE) as risk_factors
+    FROM GCP_CLOUDRUN_SERVICES s
+    JOIN RAW.RESOURCE_RELATIONSHIPS r_sa 
+        ON REPLACE(s.NAME, '"', '') = r_sa.SOURCE_ID 
+        AND r_sa.REL_TYPE = 'USES_DEFAULT_SA'
+    LEFT JOIN RAW.RESOURCE_RELATIONSHIPS r
+        ON REPLACE(s.NAME, '"', '') = r.SOURCE_ID
+    WHERE s.INGRESS = 'INGRESS_TRAFFIC_ALL'
+    GROUP BY s.NAME, s.URI, r_sa.TARGET_ID
+),
+toxic_buckets AS (
+    -- CRITICAL: Public buckets
+    SELECT 
+        b.NAME as resource_id,
+        REPLACE(b.NAME, '"', '') as clean_name,
+        REPLACE(b.SELF_LINK, '"', '') as url,
+        NULL as service_account,
+        ARRAY_CONSTRUCT('PUBLIC_ACCESS', 'DATA_STORAGE') as risk_factors
+    FROM GCP_STORAGE_BUCKETS b
+    WHERE b.IAM_POLICY LIKE '%allUsers%' OR b.IAM_POLICY LIKE '%allAuthenticatedUsers%'
+),
+high_iam_confused_deputy AS (
+    -- HIGH: IAM roles without confused deputy protection that trust AWS services
+    SELECT 
+        r.ARN as resource_id,
+        REPLACE(r.ARN, '"', '') as clean_name,
+        NULL as url,
+        NULL as service_account,
+        ARRAY_CONSTRUCT('CONFUSED_DEPUTY', 'PRIVILEGE_ESCALATION') as risk_factors
+    FROM AWS_IAM_ROLES r
+    WHERE r.ASSUME_ROLE_POLICY_DOCUMENT NOT LIKE '%aws:SourceArn%'
+      AND r.ASSUME_ROLE_POLICY_DOCUMENT NOT LIKE '%aws:SourceAccount%'
+      AND r.ASSUME_ROLE_POLICY_DOCUMENT LIKE '%sts:AssumeRole%'
+      AND r.ASSUME_ROLE_POLICY_DOCUMENT LIKE '%Service%'
+),
+high_cloudrun_no_auth AS (
+    -- HIGH: Cloud Run services with no authentication
+    SELECT 
+        s.NAME as resource_id,
+        REPLACE(s.NAME, '"', '') as clean_name,
+        REPLACE(s.URI, '"', '') as url,
+        NULL as service_account,
+        ARRAY_CONSTRUCT('NO_AUTHENTICATION', 'EXTERNAL_EXPOSURE') as risk_factors
+    FROM GCP_CLOUDRUN_SERVICES s
+    WHERE s.INGRESS = 'INGRESS_TRAFFIC_ALL'
+      AND NOT EXISTS (
+          SELECT 1 FROM RAW.RESOURCE_RELATIONSHIPS r 
+          WHERE REPLACE(s.NAME, '"', '') = r.SOURCE_ID AND r.REL_TYPE = 'USES_DEFAULT_SA'
+      )
+)
+SELECT 
+    'CRITICAL' as severity,
+    'toxic-cloudrun-external-default-sa' as policy_id,
+    'Internet-facing Cloud Run with default SA and data access' as title,
+    clean_name as resource_name,
+    resource_id,
+    url,
+    service_account,
+    risk_factors,
+    'Cloud Run service is publicly accessible, uses default compute service account with broad permissions' as description,
+    'EXTERNAL_EXPOSURE, UNPROTECTED_PRINCIPAL, UNPROTECTED_DATA' as risks
+FROM toxic_cloudrun
+
+UNION ALL
+
+SELECT 
+    'CRITICAL' as severity,
+    'toxic-bucket-public-data' as policy_id,
+    'Publicly readable bucket contains sensitive data' as title,
+    clean_name as resource_name,
+    resource_id,
+    url,
+    service_account,
+    risk_factors,
+    'Storage bucket is publicly accessible and may contain sensitive data' as description,
+    'EXTERNAL_EXPOSURE, UNPROTECTED_DATA' as risks
+FROM toxic_buckets
+
+UNION ALL
+
+SELECT 
+    'HIGH' as severity,
+    'iam-confused-deputy-risk' as policy_id,
+    'IAM role vulnerable to confused deputy attack' as title,
+    clean_name as resource_name,
+    resource_id,
+    url,
+    service_account,
+    risk_factors,
+    'IAM role trust policy allows AWS services to assume it without SourceArn/SourceAccount conditions' as description,
+    'CONFUSED_DEPUTY, PRIVILEGE_ESCALATION' as risks
+FROM high_iam_confused_deputy
+
+UNION ALL
+
+SELECT 
+    'HIGH' as severity,
+    'cloudrun-public-no-auth' as policy_id,
+    'Cloud Run service publicly accessible' as title,
+    clean_name as resource_name,
+    resource_id,
+    url,
+    service_account,
+    risk_factors,
+    'Cloud Run service is exposed to internet without IAM authentication' as description,
+    'EXTERNAL_EXPOSURE, NO_AUTHENTICATION' as risks
+FROM high_cloudrun_no_auth
+`
+	result, err := sf.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("toxic combination query failed: %w", err)
+	}
+
+	var findings []map[string]interface{}
+	for _, row := range result.Rows {
+		findings = append(findings, map[string]interface{}{
+			"severity":        toString(row["SEVERITY"]),
+			"policy_id":       toString(row["POLICY_ID"]),
+			"title":           toString(row["TITLE"]),
+			"resource_id":     toString(row["RESOURCE_ID"]),
+			"resource_name":   toString(row["RESOURCE_NAME"]),
+			"url":             toString(row["URL"]),
+			"service_account": toString(row["SERVICE_ACCOUNT"]),
+			"description":     toString(row["DESCRIPTION"]),
+			"risks":           toString(row["RISKS"]),
+			"toxic_combo":     true,
+		})
+	}
+
+	return findings, nil
 }
