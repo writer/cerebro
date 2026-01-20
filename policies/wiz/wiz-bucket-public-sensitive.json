@@ -1,64 +1,54 @@
 {
-  "id": "wiz-bucket-public-sensitive",
-  "wiz_control_id": "wc-id-1264",
+  "id": "wiz-bucket-public-read-sensitive",
   "name": "Publicly readable bucket contains sensitive data",
-  "description": "A publicly readable storage bucket contains sensitive data findings, creating a data breach risk",
+  "description": "Storage bucket allows anonymous read access (allUsers) and may contain sensitive data, creating a direct data breach risk",
   "effect": "forbid",
-  "resource": "storage::bucket|storage::blob_container|storage::account",
+  "resource": "gcp::storage::bucket",
   "conditions": [
-    "is_public == true",
-    "sensitive_data_findings ANY (severity IN ('CRITICAL', 'HIGH'))"
+    "iam_policy CONTAINS 'allUsers'"
   ],
   "severity": "critical",
-  "remediation": "Remove public access immediately. Implement proper access controls. Review and rotate any exposed credentials found in the bucket.",
+  "remediation": "1. Remove public access by removing allUsers and allAuthenticatedUsers from IAM bindings. 2. Implement proper access controls using IAM. 3. Enable uniform bucket-level access. 4. Review bucket contents for sensitive data.",
   "tags": [
-    "wiz",
+    "gcp",
     "storage",
-    "sensitive-data",
-    "public-exposure",
-    "data-breach"
+    "public-access",
+    "data-exposure",
+    "toxic-combination",
+    "wiz-parity"
   ],
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
+    "EXTERNAL_ATTACK_SURFACE",
     "UNPROTECTED_DATA"
   ],
+  "wiz_control_id": "wc-id-1264",
   "frameworks": [
     {
       "name": "NIST 800-53 r5",
-      "controls": [
-        "AC-3",
-        "SC-7"
-      ]
-    },
-    {
-      "name": "PCI DSS v4.0.1",
-      "controls": [
-        "1.3",
-        "1.4"
-      ]
-    },
-    {
-      "name": "SOC 2",
-      "controls": [
-        "CC6"
-      ]
+      "controls": ["AC-3", "SC-7", "AC-6"]
     },
     {
       "name": "CIS Controls v8",
-      "controls": [
-        "12",
-        "13"
-      ]
+      "controls": ["3", "12", "13"]
+    },
+    {
+      "name": "SOC 2",
+      "controls": ["CC6"]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": ["1.4", "3.3", "3.5"]
     }
   ],
   "mitre_attack": [
     {
-      "tactic": "Initial Access",
-      "technique": "T1190"
-    },
-    {
       "tactic": "Collection",
       "technique": "T1530"
+    },
+    {
+      "tactic": "Exfiltration",
+      "technique": "T1567"
     }
   ]
 }

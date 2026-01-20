@@ -519,12 +519,12 @@ func parseFloat64(s string) (float64, error) {
 
 // extractResourceID extracts the resource identifier from an asset
 func extractResourceID(asset map[string]interface{}) string {
-	// Try common ID fields in order of preference
-	keys := []string{"arn", "_cq_id", "id", "resource_id", "instance_id", "role_id", "user_id", "bucket_name", "function_name"}
+	// Try common ID fields in order of preference (case-insensitive for Snowflake)
+	keys := []string{"arn", "_cq_id", "id", "resource_id", "instance_id", "role_id", "user_id", "bucket_name", "function_name", "name", "uid"}
 	for _, key := range keys {
-		if val, ok := asset[key]; ok {
+		if val := getFieldCaseInsensitive(asset, key); val != nil {
 			if str, ok := val.(string); ok && str != "" {
-				return str
+				return strings.Trim(str, "\"") // Strip Snowflake quotes
 			}
 		}
 	}
@@ -533,12 +533,12 @@ func extractResourceID(asset map[string]interface{}) string {
 
 // extractResourceName extracts the resource name from an asset
 func extractResourceName(asset map[string]interface{}) string {
-	// Try common name fields
+	// Try common name fields (case-insensitive for Snowflake)
 	keys := []string{"name", "role_name", "user_name", "bucket_name", "function_name", "instance_id", "display_name", "title"}
 	for _, key := range keys {
-		if val, ok := asset[key]; ok {
+		if val := getFieldCaseInsensitive(asset, key); val != nil {
 			if str, ok := val.(string); ok && str != "" {
-				return str
+				return strings.Trim(str, "\"") // Strip Snowflake quotes
 			}
 		}
 	}
