@@ -1,0 +1,48 @@
+{
+  "id": "container-cleartext-cloud-keys",
+  "name": "Container image with cleartext cloud keys granting high privileges",
+  "description": "A container image contains hardcoded cloud credentials (AWS access keys, GCP service account keys) that grant high privileges, enabling lateral movement if the container is compromised",
+  "effect": "forbid",
+  "resource": "aws::ecs::task_definition",
+  "conditions": [
+    "container_definitions CONTAINS 'AWS_ACCESS_KEY' OR container_definitions CONTAINS 'AWS_SECRET' OR container_definitions CONTAINS 'GOOGLE_APPLICATION_CREDENTIALS'"
+  ],
+  "severity": "high",
+  "remediation": "1. Remove hardcoded credentials from container images. 2. Use IAM roles for tasks (ECS) or workload identity (GKE). 3. Rotate any exposed credentials immediately. 4. Scan images for secrets before deployment.",
+  "tags": [
+    "aws",
+    "ecs",
+    "container",
+    "secrets",
+    "credentials",
+    "security"
+  ],
+  "risk_categories": [
+    "INSECURE_USE_OF_SECRETS",
+    "UNPROTECTED_PRINCIPAL"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": ["IA-5", "SC-12", "SC-28"]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": ["3", "16"]
+    },
+    {
+      "name": "SOC 2",
+      "controls": ["CC6"]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Credential Access",
+      "technique": "T1552"
+    },
+    {
+      "tactic": "Lateral Movement",
+      "technique": "T1550"
+    }
+  ]
+}

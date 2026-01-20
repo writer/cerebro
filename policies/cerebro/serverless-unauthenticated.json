@@ -1,0 +1,48 @@
+{
+  "id": "serverless-unauthenticated-invocation",
+  "name": "Publicly exposed serverless with high privileges can be invoked by unauthenticated users",
+  "description": "Cloud Function or Cloud Run service is publicly accessible without authentication and runs with high privileges, allowing anyone to invoke it and potentially abuse its permissions",
+  "effect": "forbid",
+  "resource": "gcp::cloudfunctions::function",
+  "conditions": [
+    "service_config.ingress_settings == 'ALLOW_ALL' OR service_config.ingress_settings == 'INGRESS_SETTINGS_UNSPECIFIED'"
+  ],
+  "severity": "high",
+  "remediation": "1. Enable IAM-based authentication for the function. 2. Restrict ingress to internal traffic only. 3. Create dedicated service account with minimal permissions. 4. Use VPC connectors for private access.",
+  "tags": [
+    "gcp",
+    "cloudfunctions",
+    "serverless",
+    "authentication",
+    "public-access",
+    "security"
+  ],
+  "risk_categories": [
+    "EXTERNAL_EXPOSURE",
+    "UNPROTECTED_PRINCIPAL"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": ["AC-3", "AC-6", "SC-7"]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": ["5", "6", "12"]
+    },
+    {
+      "name": "SOC 2",
+      "controls": ["CC6"]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Initial Access",
+      "technique": "T1190"
+    },
+    {
+      "tactic": "Execution",
+      "technique": "T1648"
+    }
+  ]
+}
