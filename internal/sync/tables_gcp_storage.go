@@ -88,7 +88,7 @@ func (e *GCPSyncEngine) fetchGCPStorageBuckets(ctx context.Context, projectID st
 		}
 
 		// Public access prevention
-		row["public_access_prevention"] = string(attrs.PublicAccessPrevention)
+		row["public_access_prevention"] = attrs.PublicAccessPrevention.String()
 
 		// Uniform bucket-level access
 		row["uniform_bucket_level_access"] = attrs.UniformBucketLevelAccess.Enabled

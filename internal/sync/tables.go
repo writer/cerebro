@@ -79,11 +79,13 @@ func (e *SyncEngine) getAWSTables() []TableSpec {
 		e.elbv2TargetGroupTable(),
 		// Messaging
 		e.snsTopicTable(),
+		e.sqsQueueTable(),
 		// Storage (EFS)
 		e.efsFileSystemTable(),
 		e.efsMountTargetTable(),
 		// Logging
 		e.cloudtrailTrailTable(),
+		e.cloudwatchLogGroupTable(),
 	}
 }
 

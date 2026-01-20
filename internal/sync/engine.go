@@ -39,12 +39,26 @@ func WithRegions(regions []string) EngineOption {
 	return func(e *SyncEngine) { e.regions = regions }
 }
 
+// DefaultAWSRegions returns commonly used AWS regions for multi-region scanning
+var DefaultAWSRegions = []string{
+	"us-east-1",
+	"us-east-2",
+	"us-west-1",
+	"us-west-2",
+	"eu-west-1",
+	"eu-west-2",
+	"eu-central-1",
+	"ap-southeast-1",
+	"ap-southeast-2",
+	"ap-northeast-1",
+}
+
 func NewSyncEngine(sf *snowflake.Client, logger *slog.Logger, opts ...EngineOption) *SyncEngine {
 	e := &SyncEngine{
 		sf:          sf,
 		logger:      logger,
-		concurrency: 10, // default parallel tables
-		regions:     []string{"us-east-1"},
+		concurrency: 10,
+		regions:     []string{"us-east-1"}, // default to single region, use WithRegions(DefaultAWSRegions) for multi-region
 	}
 	for _, opt := range opts {
 		opt(e)

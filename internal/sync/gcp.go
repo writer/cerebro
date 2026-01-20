@@ -2,9 +2,12 @@ package sync
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -12,7 +15,7 @@ import (
 	"github.com/writerinternal/cerebro/internal/snowflake"
 )
 
-// GCPSyncEngine orchestrates GCP resource syncing
+// GCPSyncEngine orchestrates GCP resource syncing with change detection
 type GCPSyncEngine struct {
 	sf          *snowflake.Client
 	logger      *slog.Logger
@@ -50,14 +53,13 @@ type GCPTableSpec struct {
 	Fetch   func(ctx context.Context, projectID string) ([]map[string]interface{}, error)
 }
 
-// SyncAll syncs all GCP resources
+// SyncAll syncs all GCP resources with change detection
 func (e *GCPSyncEngine) SyncAll(ctx context.Context) ([]SyncResult, error) {
 	if e.projectID == "" {
 		return nil, fmt.Errorf("GCP project ID not set")
 	}
 
 	tables := e.getGCPTables()
-
 	results := make([]SyncResult, len(tables))
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, e.concurrency)
@@ -75,6 +77,12 @@ func (e *GCPSyncEngine) SyncAll(ctx context.Context) ([]SyncResult, error) {
 	}
 
 	wg.Wait()
+
+	// Persist change history
+	if err := e.persistChangeHistory(ctx, results); err != nil {
+		e.logger.Warn("failed to persist change history", "error", err)
+	}
+
 	return results, nil
 }
 
@@ -84,7 +92,9 @@ func (e *GCPSyncEngine) syncTable(ctx context.Context, table GCPTableSpec) SyncR
 		Table: table.Name,
 	}
 
-	if err := e.ensureGCPTable(ctx, table.Name, table.Columns); err != nil {
+	e.logger.Info("syncing", "table", table.Name)
+
+	if err := e.ensureTable(ctx, table.Name, table.Columns); err != nil {
 		e.logger.Error("ensure table failed", "table", table.Name, "error", err)
 		result.Errors = 1
 		result.Duration = time.Since(start)
@@ -99,7 +109,8 @@ func (e *GCPSyncEngine) syncTable(ctx context.Context, table GCPTableSpec) SyncR
 		return result
 	}
 
-	if err := e.upsertGCPRows(ctx, table.Name, rows); err != nil {
+	changes, err := e.upsertWithChanges(ctx, table.Name, rows)
+	if err != nil {
 		e.logger.Error("upsert failed", "table", table.Name, "error", err)
 		result.Errors = 1
 		result.Duration = time.Since(start)
@@ -107,16 +118,21 @@ func (e *GCPSyncEngine) syncTable(ctx context.Context, table GCPTableSpec) SyncR
 	}
 
 	result.Synced = len(rows)
+	result.Changes = changes
 	result.Duration = time.Since(start)
-	
+
+	if changes.HasChanges() {
+		e.logger.Info("detected changes", "table", table.Name, "added", len(changes.Added), "modified", len(changes.Modified), "removed", len(changes.Removed))
+	}
+
 	e.logger.Info("synced", "table", table.Name, "count", result.Synced)
 	return result
 }
 
-func (e *GCPSyncEngine) ensureGCPTable(ctx context.Context, table string, columns []string) error {
+func (e *GCPSyncEngine) ensureTable(ctx context.Context, table string, columns []string) error {
 	colDefs := make([]string, len(columns))
 	for i, col := range columns {
-		colDefs[i] = fmt.Sprintf("%s VARIANT", col)
+		colDefs[i] = fmt.Sprintf("%s VARIANT", strings.ToUpper(col))
 	}
 
 	createQuery := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
@@ -124,80 +140,227 @@ func (e *GCPSyncEngine) ensureGCPTable(ctx context.Context, table string, column
 		_CQ_SYNC_TIME TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP(),
 		_CQ_HASH VARCHAR,
 		%s
-	)`, table, joinStrings(colDefs, ", "))
+	)`, table, strings.Join(colDefs, ", "))
 
 	_, err := e.sf.Query(ctx, createQuery)
-	return err
-}
+	if err != nil {
+		return err
+	}
 
-func (e *GCPSyncEngine) upsertGCPRows(ctx context.Context, table string, rows []map[string]interface{}) error {
-	for _, row := range rows {
-		if err := e.upsertGCPRow(ctx, table, row); err != nil {
-			return err
+	// Schema evolution: add missing columns
+	existingCols, err := e.getTableColumns(ctx, table)
+	if err != nil {
+		return nil // Table might be new
+	}
+
+	existingSet := make(map[string]bool)
+	for _, col := range existingCols {
+		existingSet[strings.ToUpper(col)] = true
+	}
+
+	for _, col := range columns {
+		upperCol := strings.ToUpper(col)
+		if !existingSet[upperCol] {
+			alterQuery := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s VARIANT", table, upperCol)
+			if _, err := e.sf.Exec(ctx, alterQuery); err != nil {
+				e.logger.Debug("failed to add column", "table", table, "column", upperCol, "error", err)
+			}
 		}
 	}
+
 	return nil
 }
 
-func (e *GCPSyncEngine) upsertGCPRow(ctx context.Context, table string, row map[string]interface{}) error {
-	id, ok := row["_cq_id"].(string)
-	if !ok || id == "" {
-		return fmt.Errorf("row missing _cq_id")
+func (e *GCPSyncEngine) getTableColumns(ctx context.Context, table string) ([]string, error) {
+	query := fmt.Sprintf(`
+		SELECT COLUMN_NAME 
+		FROM INFORMATION_SCHEMA.COLUMNS 
+		WHERE TABLE_NAME = '%s' 
+		AND TABLE_SCHEMA = CURRENT_SCHEMA()
+	`, strings.ToUpper(table))
+
+	result, err := e.sf.Query(ctx, query)
+	if err != nil {
+		return nil, err
 	}
 
-	delete(row, "_cq_id")
-
-	// Build column list and values
-	cols := []string{"_CQ_ID"}
-	selects := []string{fmt.Sprintf("'%s'", strings.ReplaceAll(id, "'", "''"))}
-	
-	for col, val := range row {
-		cols = append(cols, strings.ToUpper(col))
-		jsonVal, _ := json.Marshal(val)
-		escaped := strings.ReplaceAll(string(jsonVal), "'", "''")
-		selects = append(selects, fmt.Sprintf("PARSE_JSON('%s')", escaped))
+	var columns []string
+	for _, row := range result.Rows {
+		if col, ok := row["COLUMN_NAME"].(string); ok {
+			columns = append(columns, col)
+		}
 	}
-
-	query := fmt.Sprintf("INSERT INTO %s (%s) SELECT %s",
-		table, joinStrings(cols, ", "), joinStrings(selects, ", "))
-
-	_, err := e.sf.Query(ctx, query)
-	return err
+	return columns, nil
 }
 
-func buildSelectList(cols, vals []string) string {
-	var parts []string
-	for i, col := range cols {
-		parts = append(parts, fmt.Sprintf("%s AS %s", vals[i], col))
+func (e *GCPSyncEngine) upsertWithChanges(ctx context.Context, table string, rows []map[string]interface{}) (*ChangeSet, error) {
+	changes := &ChangeSet{}
+
+	if len(rows) == 0 {
+		// Check for deletions even when no new rows
+		existing := e.getExistingHashes(ctx, table)
+		for id := range existing {
+			changes.Removed = append(changes.Removed, id)
+		}
+		if len(changes.Removed) > 0 {
+			if _, err := e.sf.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table)); err != nil {
+				e.logger.Debug("delete failed", "error", err)
+			}
+		}
+		return changes, nil
 	}
-	return joinStrings(parts, ", ")
+
+	// Get existing rows with their hashes
+	existing := e.getExistingHashes(ctx, table)
+
+	// Build new row map with hashes
+	newRows := make(map[string]string)
+	for _, row := range rows {
+		id, ok := row["_cq_id"].(string)
+		if !ok {
+			continue
+		}
+		hash := e.hashRowContent(row)
+		newRows[id] = hash
+	}
+
+	// Detect changes
+	for id, oldHash := range existing {
+		if newHash, exists := newRows[id]; !exists {
+			changes.Removed = append(changes.Removed, id)
+		} else if newHash != oldHash {
+			changes.Modified = append(changes.Modified, id)
+		}
+	}
+
+	for id := range newRows {
+		if _, exists := existing[id]; !exists {
+			changes.Added = append(changes.Added, id)
+		}
+	}
+
+	// Delete all and reinsert (simple but effective)
+	if _, err := e.sf.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table)); err != nil {
+		e.logger.Debug("delete failed", "error", err)
+	}
+
+	// Batch insert
+	for _, row := range rows {
+		id, ok := row["_cq_id"].(string)
+		if !ok {
+			continue
+		}
+		hash := e.hashRowContent(row)
+		delete(row, "_cq_id")
+
+		cols := []string{"_CQ_ID", "_CQ_HASH"}
+		selects := []string{
+			fmt.Sprintf("'%s'", strings.ReplaceAll(id, "'", "''")),
+			fmt.Sprintf("'%s'", hash),
+		}
+
+		for k, v := range row {
+			cols = append(cols, strings.ToUpper(k))
+			jsonVal, _ := json.Marshal(v)
+			escaped := strings.ReplaceAll(string(jsonVal), "'", "''")
+			selects = append(selects, fmt.Sprintf("PARSE_JSON('%s')", escaped))
+		}
+
+		query := fmt.Sprintf("INSERT INTO %s (%s) SELECT %s",
+			table, strings.Join(cols, ", "), strings.Join(selects, ", "))
+
+		if _, err := e.sf.Exec(ctx, query); err != nil {
+			return changes, fmt.Errorf("insert row: %w", err)
+		}
+	}
+
+	return changes, nil
 }
 
-func buildUpdateList(cols []string) string {
-	var parts []string
-	for _, col := range cols {
-		parts = append(parts, fmt.Sprintf("t.%s = s.%s", col, col))
-	}
-	return joinStrings(parts, ", ")
-}
+func (e *GCPSyncEngine) getExistingHashes(ctx context.Context, table string) map[string]string {
+	result := make(map[string]string)
 
-func buildInsertValues(cols []string) string {
-	var parts []string
-	for _, col := range cols {
-		parts = append(parts, fmt.Sprintf("s.%s", col))
+	query := fmt.Sprintf("SELECT _CQ_ID, _CQ_HASH FROM %s", table)
+	rows, err := e.sf.Query(ctx, query)
+	if err != nil {
+		return result
 	}
-	return joinStrings(parts, ", ")
-}
 
-func joinStrings(s []string, sep string) string {
-	if len(s) == 0 {
-		return ""
+	for _, row := range rows.Rows {
+		id, _ := row["_CQ_ID"].(string)
+		hash, _ := row["_CQ_HASH"].(string)
+		if id != "" {
+			result[id] = hash
+		}
 	}
-	result := s[0]
-	for i := 1; i < len(s); i++ {
-		result += sep + s[i]
-	}
+
 	return result
+}
+
+func (e *GCPSyncEngine) hashRowContent(row map[string]interface{}) string {
+	// Create deterministic JSON by sorting keys
+	keys := make([]string, 0, len(row))
+	for k := range row {
+		if k != "_cq_id" && k != "_cq_hash" {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+
+	h := sha256.New()
+	for _, k := range keys {
+		h.Write([]byte(k))
+		jsonVal, _ := json.Marshal(row[k])
+		h.Write(jsonVal)
+	}
+
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func (e *GCPSyncEngine) persistChangeHistory(ctx context.Context, results []SyncResult) error {
+	createQuery := `CREATE TABLE IF NOT EXISTS _sync_change_history (
+		id VARCHAR PRIMARY KEY,
+		table_name VARCHAR,
+		change_type VARCHAR,
+		resource_id VARCHAR,
+		sync_time TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP(),
+		provider VARCHAR
+	)`
+
+	if _, err := e.sf.Exec(ctx, createQuery); err != nil {
+		return err
+	}
+
+	for _, r := range results {
+		if r.Changes == nil {
+			continue
+		}
+
+		for _, id := range r.Changes.Added {
+			e.insertChangeRecord(ctx, r.Table, "added", id, "gcp")
+		}
+		for _, id := range r.Changes.Modified {
+			e.insertChangeRecord(ctx, r.Table, "modified", id, "gcp")
+		}
+		for _, id := range r.Changes.Removed {
+			e.insertChangeRecord(ctx, r.Table, "removed", id, "gcp")
+		}
+	}
+
+	return nil
+}
+
+func (e *GCPSyncEngine) insertChangeRecord(ctx context.Context, table, changeType, resourceID, provider string) {
+	id := fmt.Sprintf("%s-%s-%s-%d", table, changeType, resourceID, time.Now().UnixNano())
+	query := fmt.Sprintf(`INSERT INTO _sync_change_history (id, table_name, change_type, resource_id, provider) 
+		VALUES ('%s', '%s', '%s', '%s', '%s')`,
+		strings.ReplaceAll(id, "'", "''"),
+		table,
+		changeType,
+		strings.ReplaceAll(resourceID, "'", "''"),
+		provider)
+
+	e.sf.Exec(ctx, query)
 }
 
 // getGCPTables returns all GCP table definitions
@@ -205,9 +368,21 @@ func (e *GCPSyncEngine) getGCPTables() []GCPTableSpec {
 	return []GCPTableSpec{
 		// Compute
 		e.gcpComputeInstanceTable(),
+		e.gcpComputeFirewallTable(),
+		// Networking
+		e.gcpComputeNetworkTable(),
+		e.gcpComputeSubnetworkTable(),
 		// Storage
 		e.gcpStorageBucketTable(),
 		// IAM
 		e.gcpIAMServiceAccountTable(),
+		// Database
+		e.gcpSQLInstanceTable(),
+		// Serverless
+		e.gcpCloudFunctionTable(),
+		// Messaging
+		e.gcpPubSubTopicTable(),
+		// Container
+		e.gcpGKEClusterTable(),
 	}
 }

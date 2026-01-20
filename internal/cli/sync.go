@@ -49,6 +49,7 @@ var (
 	syncNative       bool
 	syncGCP          bool
 	syncGCPProject   string
+	syncMultiRegion  bool
 )
 
 func init() {
@@ -60,6 +61,7 @@ func init() {
 	syncCmd.Flags().BoolVar(&syncNative, "native", true, "Use native AWS sync (default, use --native=false for CloudQuery)")
 	syncCmd.Flags().BoolVar(&syncGCP, "gcp", false, "Sync GCP resources instead of AWS")
 	syncCmd.Flags().StringVar(&syncGCPProject, "gcp-project", "", "GCP project ID to sync (required with --gcp)")
+	syncCmd.Flags().BoolVar(&syncMultiRegion, "multi-region", false, "Scan all major AWS regions (us-east-1, us-west-2, eu-west-1, etc.)")
 }
 
 func runSync(cmd *cobra.Command, args []string) error {
@@ -177,7 +179,11 @@ func runGCPSync(ctx context.Context, start time.Time, projectID string) error {
 }
 
 func runNativeSync(ctx context.Context, start time.Time) error {
-	Info("Starting native AWS sync...")
+	if syncMultiRegion {
+		Info("Starting multi-region AWS sync (%d regions)...", len(nativesync.DefaultAWSRegions))
+	} else {
+		Info("Starting native AWS sync...")
+	}
 	
 	client, err := createSnowflakeClient()
 	if err != nil {
@@ -185,7 +191,12 @@ func runNativeSync(ctx context.Context, start time.Time) error {
 	}
 	defer client.Close()
 	
-	syncer := nativesync.NewSyncEngine(client, slog.Default())
+	opts := []nativesync.EngineOption{}
+	if syncMultiRegion {
+		opts = append(opts, nativesync.WithRegions(nativesync.DefaultAWSRegions))
+	}
+	
+	syncer := nativesync.NewSyncEngine(client, slog.Default(), opts...)
 	results, err := syncer.SyncAll(ctx)
 	if err != nil {
 		return fmt.Errorf("sync failed: %w", err)
