@@ -140,7 +140,7 @@ func GenerateCloudProviderURL(data map[string]interface{}, resourceType, platfor
 	case "GCP":
 		return generateGCPConsoleURL(data, resourceType)
 	case "Azure":
-		return generateAzurePortalURL(data, resourceType)
+		return generateAzurePortalURL(data)
 	}
 	return ""
 }
@@ -310,7 +310,7 @@ func generateGCPConsoleURL(data map[string]interface{}, resourceType string) str
 	return ""
 }
 
-func generateAzurePortalURL(data map[string]interface{}, resourceType string) string {
+func generateAzurePortalURL(data map[string]interface{}) string {
 	resourceID := extractString(data, "id")
 	if resourceID == "" || !strings.HasPrefix(resourceID, "/subscriptions/") {
 		return ""

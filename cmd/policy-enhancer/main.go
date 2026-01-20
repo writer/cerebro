@@ -43,9 +43,9 @@ func main() {
 	dryRun := flag.Bool("dry-run", false, "Don't write files, just show what would change")
 	flag.Parse()
 
-	err := filepath.Walk(*dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
+	if err := filepath.Walk(*dir, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
 		}
 		if info.IsDir() || !strings.HasSuffix(path, ".json") {
 			return nil
@@ -58,8 +58,8 @@ func main() {
 		}
 
 		var policy Policy
-		if err := json.Unmarshal(data, &policy); err != nil {
-			log.Printf("Error parsing %s: %v", path, err)
+		if unmarshalErr := json.Unmarshal(data, &policy); unmarshalErr != nil {
+			log.Printf("Error parsing %s: %v", path, unmarshalErr)
 			return nil
 		}
 
@@ -87,16 +87,14 @@ func main() {
 			return nil
 		}
 
-		if err := os.WriteFile(path, output, 0644); err != nil {
+		if err := os.WriteFile(path, output, 0600); err != nil {
 			log.Printf("Error writing %s: %v", path, err)
 			return nil
 		}
 
 		fmt.Printf("Enhanced: %s\n", path)
 		return nil
-	})
-
-	if err != nil {
+	}); err != nil {
 		log.Fatal(err)
 	}
 }

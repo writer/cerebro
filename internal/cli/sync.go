@@ -41,18 +41,18 @@ Examples:
 }
 
 var (
-	syncConfigPath    string
-	syncSource        string
-	syncEnsureTables  bool
-	syncValidate      bool
-	syncScanAfter     bool
-	syncNative        bool
-	syncGCP           bool
-	syncGCPProject    string
-	syncGCPProjects   string // comma-separated list of projects
-	syncGCPOrg        string // organization ID for multi-project sync
-	syncMultiRegion   bool
-	syncUseAssetAPI   bool // use Cloud Asset Inventory API
+	syncConfigPath   string
+	syncSource       string
+	syncEnsureTables bool
+	syncValidate     bool
+	syncScanAfter    bool
+	syncNative       bool
+	syncGCP          bool
+	syncGCPProject   string
+	syncGCPProjects  string // comma-separated list of projects
+	syncGCPOrg       string // organization ID for multi-project sync
+	syncMultiRegion  bool
+	syncUseAssetAPI  bool // use Cloud Asset Inventory API
 )
 
 func init() {
@@ -142,7 +142,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 	Info("Running: cloudquery %s", strings.Join(cqArgs, " "))
 	fmt.Println()
 
-	cqCmd := exec.Command("cloudquery", cqArgs...)
+	cqCmd := exec.CommandContext(ctx, "cloudquery", cqArgs...) //#nosec G204 -- args are controlled and not executed via shell
 	cqCmd.Stdout = os.Stdout
 	cqCmd.Stderr = os.Stderr
 	cqCmd.Env = os.Environ()
@@ -183,21 +183,21 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 func runGCPSync(ctx context.Context, start time.Time, projectID string) error {
 	Info("Starting GCP sync for project: %s", projectID)
-	
+
 	client, err := createSnowflakeClient()
 	if err != nil {
 		return fmt.Errorf("create snowflake client: %w", err)
 	}
-	defer client.Close()
-	
+	defer func() { _ = client.Close() }()
+
 	syncer := nativesync.NewGCPSyncEngine(client, slog.Default(), nativesync.WithGCPProject(projectID))
 	results, err := syncer.SyncAll(ctx)
 	if err != nil {
 		return fmt.Errorf("sync failed: %w", err)
 	}
-	
+
 	printSyncResults(results, start, "GCP")
-	
+
 	// Extract resource relationships for graph building
 	Info("Extracting resource relationships...")
 	relExtractor := nativesync.NewRelationshipExtractor(client, slog.Default())
@@ -207,21 +207,21 @@ func runGCPSync(ctx context.Context, start time.Time, projectID string) error {
 	} else {
 		Info("Extracted %d relationships", relCount)
 	}
-	
+
 	return nil
 }
 
 func runGCPOrgSync(ctx context.Context, start time.Time, orgID string) error {
 	Info("Discovering projects in organization: %s", orgID)
-	
+
 	// List all projects in the organization using Cloud Asset Inventory
 	projects, err := nativesync.ListOrganizationProjects(ctx, orgID)
 	if err != nil {
 		return fmt.Errorf("list organization projects: %w", err)
 	}
-	
+
 	Info("Found %d projects in organization", len(projects))
-	
+
 	if syncUseAssetAPI {
 		return runGCPAssetAPISync(ctx, start, projects)
 	}
@@ -230,13 +230,13 @@ func runGCPOrgSync(ctx context.Context, start time.Time, orgID string) error {
 
 func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []string) error {
 	Info("Starting GCP multi-project sync for %d projects...", len(projects))
-	
+
 	client, err := createSnowflakeClient()
 	if err != nil {
 		return fmt.Errorf("create snowflake client: %w", err)
 	}
-	defer client.Close()
-	
+	defer func() { _ = client.Close() }()
+
 	var allResults []nativesync.SyncResult
 	for i, projectID := range projects {
 		Info("[%d/%d] Syncing project: %s", i+1, len(projects), projectID)
@@ -248,26 +248,26 @@ func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []str
 		}
 		allResults = append(allResults, results...)
 	}
-	
+
 	printSyncResults(allResults, start, "GCP")
 	return nil
 }
 
 func runGCPAssetAPISync(ctx context.Context, start time.Time, projects []string) error {
 	Info("Starting GCP sync via Cloud Asset Inventory API for %d projects...", len(projects))
-	
+
 	client, err := createSnowflakeClient()
 	if err != nil {
 		return fmt.Errorf("create snowflake client: %w", err)
 	}
-	defer client.Close()
-	
+	defer func() { _ = client.Close() }()
+
 	syncer := nativesync.NewGCPAssetInventoryEngine(client, slog.Default(), nativesync.WithProjects(projects))
 	results, err := syncer.SyncAll(ctx)
 	if err != nil {
 		return fmt.Errorf("sync failed: %w", err)
 	}
-	
+
 	printSyncResults(results, start, "GCP (Asset API)")
 	return nil
 }
@@ -278,26 +278,26 @@ func runNativeSync(ctx context.Context, start time.Time) error {
 	} else {
 		Info("Starting native AWS sync...")
 	}
-	
+
 	client, err := createSnowflakeClient()
 	if err != nil {
 		return fmt.Errorf("create snowflake client: %w", err)
 	}
-	defer client.Close()
-	
+	defer func() { _ = client.Close() }()
+
 	opts := []nativesync.EngineOption{}
 	if syncMultiRegion {
 		opts = append(opts, nativesync.WithRegions(nativesync.DefaultAWSRegions))
 	}
-	
+
 	syncer := nativesync.NewSyncEngine(client, slog.Default(), opts...)
 	results, err := syncer.SyncAll(ctx)
 	if err != nil {
 		return fmt.Errorf("sync failed: %w", err)
 	}
-	
+
 	printSyncResults(results, start, "AWS")
-	
+
 	// Extract resource relationships for graph building
 	Info("Extracting resource relationships...")
 	relExtractor := nativesync.NewRelationshipExtractor(client, slog.Default())
@@ -307,14 +307,14 @@ func runNativeSync(ctx context.Context, start time.Time) error {
 	} else {
 		Info("Extracted %d relationships", relCount)
 	}
-	
+
 	if syncScanAfter {
 		Info("Triggering policy scan...")
 		if err := runPostSyncScan(ctx); err != nil {
 			Warning("Post-sync scan failed: %v", err)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -322,19 +322,19 @@ func printSyncResults(results []nativesync.SyncResult, start time.Time, provider
 	fmt.Println()
 	fmt.Printf("%s Sync Results:\n", provider)
 	fmt.Println("─────────────────────────────────────────")
-	
+
 	totalSynced := 0
 	totalErrors := 0
 	totalAdded := 0
 	totalModified := 0
 	totalRemoved := 0
-	
+
 	for _, r := range results {
 		status := "✓"
 		if r.Errors > 0 {
 			status = "✗"
 		}
-		
+
 		changeInfo := ""
 		if r.Changes != nil && r.Changes.HasChanges() {
 			changeInfo = fmt.Sprintf(" [%s]", r.Changes.Summary())
@@ -342,19 +342,19 @@ func printSyncResults(results []nativesync.SyncResult, start time.Time, provider
 			totalModified += len(r.Changes.Modified)
 			totalRemoved += len(r.Changes.Removed)
 		}
-		
+
 		fmt.Printf("  %s %-30s %4d resources (%s)%s\n", status, r.Table, r.Synced, r.Duration.Round(time.Millisecond), changeInfo)
 		totalSynced += r.Synced
 		totalErrors += r.Errors
 	}
-	
+
 	fmt.Println("─────────────────────────────────────────")
 	fmt.Printf("  Total: %d resources synced in %s\n", totalSynced, time.Since(start).Round(time.Second))
-	
+
 	if totalAdded > 0 || totalModified > 0 || totalRemoved > 0 {
 		fmt.Printf("  Changes: +%d added, ~%d modified, -%d removed\n", totalAdded, totalModified, totalRemoved)
 	}
-	
+
 	if totalErrors > 0 {
 		Warning("%d tables had errors", totalErrors)
 	} else {
@@ -367,7 +367,7 @@ func ensureCloudQueryTables(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Import cloudquery package for TableManager
 	// For now, just verify connection
@@ -409,7 +409,7 @@ func getTableRowCounts(ctx context.Context) map[string]int64 {
 	if err != nil {
 		return counts
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Check key tables
 	tables := []string{"aws_s3_buckets", "aws_ec2_instances", "aws_iam_users"}
@@ -446,7 +446,7 @@ func runPostSyncScan(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize app: %w", err)
 	}
-	defer application.Close()
+	defer func() { _ = application.Close() }()
 
 	if application.Snowflake == nil {
 		return fmt.Errorf("snowflake not configured")
@@ -527,7 +527,7 @@ func filterCloudQueryConfig(configPath string, sources []string) (string, []stri
 	if err != nil {
 		return "", nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	sourceSet := make(map[string]struct{}, len(sources))
 	for _, source := range sources {
@@ -541,11 +541,11 @@ func filterCloudQueryConfig(configPath string, sources []string) (string, []stri
 
 	for {
 		var doc map[string]interface{}
-		if err := decoder.Decode(&doc); err != nil {
-			if err == io.EOF {
+		if decodeErr := decoder.Decode(&doc); decodeErr != nil {
+			if decodeErr == io.EOF {
 				break
 			}
-			return "", nil, err
+			return "", nil, decodeErr
 		}
 		if len(doc) == 0 {
 			continue
@@ -576,17 +576,17 @@ func filterCloudQueryConfig(configPath string, sources []string) (string, []stri
 	if err != nil {
 		return "", available, err
 	}
-	defer tempFile.Close()
+	defer func() { _ = tempFile.Close() }()
 
 	encoder := yaml.NewEncoder(tempFile)
 	for _, doc := range filtered {
-		if err := encoder.Encode(doc); err != nil {
+		if encodeErr := encoder.Encode(doc); encodeErr != nil {
 			_ = encoder.Close()
-			return "", available, err
+			return "", available, encodeErr
 		}
 	}
-	if err := encoder.Close(); err != nil {
-		return "", available, err
+	if closeErr := encoder.Close(); closeErr != nil {
+		return "", available, closeErr
 	}
 
 	return tempFile.Name(), available, nil
@@ -613,12 +613,12 @@ func buildSnowflakeDSNFromKeyPair() (string, bool, error) {
 	account := os.Getenv("SNOWFLAKE_ACCOUNT")
 	user := os.Getenv("SNOWFLAKE_USER")
 	rawKey := os.Getenv("SNOWFLAKE_PRIVATE_KEY")
-	
+
 	// Also check for connection string - if it exists, use it directly
 	if connStr := os.Getenv("SNOWFLAKE_CONNECTION_STRING"); connStr != "" {
 		return connStr, true, nil
 	}
-	
+
 	if account == "" || user == "" || rawKey == "" {
 		// Debug: show what's missing
 		missing := []string{}

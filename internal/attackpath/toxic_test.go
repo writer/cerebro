@@ -93,11 +93,11 @@ func TestToxicCombinationDetector_NoMatch(t *testing.T) {
 
 func TestBuildRiskProfile(t *testing.T) {
 	props := map[string]interface{}{
-		"public":             true,
-		"high_privilege":     true,
-		"sensitive_data":     true,
-		"privileged":         true,
-		"secrets_in_env":     true,
+		"public":         true,
+		"high_privilege": true,
+		"sensitive_data": true,
+		"privileged":     true,
+		"secrets_in_env": true,
 	}
 
 	profile := BuildRiskProfile(

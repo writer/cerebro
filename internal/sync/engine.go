@@ -416,7 +416,7 @@ func hashRowContent(row map[string]interface{}) string {
 	sort.Strings(keys)
 
 	// Build deterministic JSON
-	var parts []string
+	parts := make([]string, 0, len(keys))
 	for _, k := range keys {
 		v, _ := json.Marshal(row[k])
 		parts = append(parts, fmt.Sprintf("%q:%s", k, string(v)))

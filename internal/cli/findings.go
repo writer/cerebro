@@ -275,7 +275,7 @@ func runFindingsExport(cmd *cobra.Command, args []string) error {
 	}
 
 	if findingsExportFile != "" {
-		if err := os.WriteFile(findingsExportFile, data, 0644); err != nil {
+		if err := os.WriteFile(findingsExportFile, data, 0600); err != nil {
 			return fmt.Errorf("write file: %w", err)
 		}
 		Success("Exported %d findings to %s", len(list), findingsExportFile)

@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
@@ -25,7 +26,7 @@ func (e *SyncEngine) fetchCloudTrailTrails(ctx context.Context, cfg aws.Config, 
 		return nil, err
 	}
 
-	var rows []map[string]interface{}
+	rows := make([]map[string]interface{}, 0, len(listOut.TrailList))
 	for _, trail := range listOut.TrailList {
 		// Only process trails in their home region to avoid duplicates
 		if aws.ToString(trail.HomeRegion) != region {
@@ -33,6 +34,12 @@ func (e *SyncEngine) fetchCloudTrailTrails(ctx context.Context, cfg aws.Config, 
 		}
 
 		arn := aws.ToString(trail.TrailARN)
+		snsTopicARN := aws.ToString(trail.SnsTopicARN)
+		snsTopicName := ""
+		if snsTopicARN != "" {
+			parts := strings.Split(snsTopicARN, ":")
+			snsTopicName = parts[len(parts)-1]
+		}
 
 		row := map[string]interface{}{
 			"_cq_id":                         arn,
@@ -43,8 +50,8 @@ func (e *SyncEngine) fetchCloudTrailTrails(ctx context.Context, cfg aws.Config, 
 			"name":                           aws.ToString(trail.Name),
 			"s3_bucket_name":                 aws.ToString(trail.S3BucketName),
 			"s3_key_prefix":                  aws.ToString(trail.S3KeyPrefix),
-			"sns_topic_name":                 aws.ToString(trail.SnsTopicName),
-			"sns_topic_arn":                  aws.ToString(trail.SnsTopicARN),
+			"sns_topic_name":                 snsTopicName,
+			"sns_topic_arn":                  snsTopicARN,
 			"include_global_service_events":  aws.ToBool(trail.IncludeGlobalServiceEvents),
 			"is_multi_region_trail":          aws.ToBool(trail.IsMultiRegionTrail),
 			"home_region":                    aws.ToString(trail.HomeRegion),

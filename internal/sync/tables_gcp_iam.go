@@ -22,9 +22,9 @@ func (e *GCPSyncEngine) fetchGCPIAMServiceAccounts(ctx context.Context, projectI
 	if err != nil {
 		return nil, fmt.Errorf("create IAM client: %w", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
-	var rows []map[string]interface{}
+	rows := make([]map[string]interface{}, 0, 100)
 
 	req := &adminpb.ListServiceAccountsRequest{
 		Name: fmt.Sprintf("projects/%s", projectID),
@@ -61,13 +61,13 @@ func (e *GCPSyncEngine) fetchGCPIAMServiceAccounts(ctx context.Context, projectI
 			var keys []map[string]interface{}
 			for _, key := range keysResp.Keys {
 				keyInfo := map[string]interface{}{
-					"name":            key.Name,
-					"key_algorithm":   key.KeyAlgorithm.String(),
-					"key_origin":      key.KeyOrigin.String(),
-					"key_type":        key.KeyType.String(),
-					"valid_after":     key.ValidAfterTime.AsTime(),
-					"valid_before":    key.ValidBeforeTime.AsTime(),
-					"disabled":        key.Disabled,
+					"name":          key.Name,
+					"key_algorithm": key.KeyAlgorithm.String(),
+					"key_origin":    key.KeyOrigin.String(),
+					"key_type":      key.KeyType.String(),
+					"valid_after":   key.ValidAfterTime.AsTime(),
+					"valid_before":  key.ValidBeforeTime.AsTime(),
+					"disabled":      key.Disabled,
 				}
 				keys = append(keys, keyInfo)
 			}

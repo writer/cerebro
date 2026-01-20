@@ -41,7 +41,12 @@ func (e *SyncEngine) fetchEC2Instances(ctx context.Context, cfg aws.Config, regi
 		return nil, err
 	}
 
-	var rows []map[string]interface{}
+	instanceCount := 0
+	for _, res := range out.Reservations {
+		instanceCount += len(res.Instances)
+	}
+
+	rows := make([]map[string]interface{}, 0, instanceCount)
 	for _, res := range out.Reservations {
 		for _, inst := range res.Instances {
 			instanceID := aws.ToString(inst.InstanceId)
@@ -88,7 +93,7 @@ func (e *SyncEngine) fetchSecurityGroups(ctx context.Context, cfg aws.Config, re
 		return nil, err
 	}
 
-	var rows []map[string]interface{}
+	rows := make([]map[string]interface{}, 0, len(out.SecurityGroups))
 	for _, sg := range out.SecurityGroups {
 		groupID := aws.ToString(sg.GroupId)
 		arn := fmt.Sprintf("arn:aws:ec2:%s:%s:security-group/%s", region, accountID, groupID)
@@ -120,7 +125,7 @@ func (e *SyncEngine) fetchVPCs(ctx context.Context, cfg aws.Config, region strin
 		return nil, err
 	}
 
-	var rows []map[string]interface{}
+	rows := make([]map[string]interface{}, 0, len(out.Vpcs))
 	for _, vpc := range out.Vpcs {
 		vpcID := aws.ToString(vpc.VpcId)
 		arn := fmt.Sprintf("arn:aws:ec2:%s:%s:vpc/%s", region, accountID, vpcID)

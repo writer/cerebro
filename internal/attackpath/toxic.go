@@ -8,19 +8,19 @@ import (
 
 // ToxicCombination represents a dangerous combination of risk factors on a resource
 type ToxicCombination struct {
-	ID            string            `json:"id"`
-	Title         string            `json:"title"`
-	Description   string            `json:"description"`
-	Severity      RiskLevel         `json:"severity"`
-	ResourceID    string            `json:"resource_id"`
-	ResourceName  string            `json:"resource_name"`
-	ResourceType  string            `json:"resource_type"`
-	Provider      string            `json:"provider"`
-	Region        string            `json:"region,omitempty"`
-	RiskFactors   []RiskFactor      `json:"risk_factors"`
-	Remediation   string            `json:"remediation"`
-	MitreAttack   []string          `json:"mitre_attack,omitempty"`
-	ControlID     string            `json:"control_id,omitempty"`
+	ID           string       `json:"id"`
+	Title        string       `json:"title"`
+	Description  string       `json:"description"`
+	Severity     RiskLevel    `json:"severity"`
+	ResourceID   string       `json:"resource_id"`
+	ResourceName string       `json:"resource_name"`
+	ResourceType string       `json:"resource_type"`
+	Provider     string       `json:"provider"`
+	Region       string       `json:"region,omitempty"`
+	RiskFactors  []RiskFactor `json:"risk_factors"`
+	Remediation  string       `json:"remediation"`
+	MitreAttack  []string     `json:"mitre_attack,omitempty"`
+	ControlID    string       `json:"control_id,omitempty"`
 }
 
 // RiskFactor represents a single risk attribute
@@ -34,37 +34,37 @@ type RiskFactor struct {
 type RiskFactorType string
 
 const (
-	RiskFactorNetworkExposed     RiskFactorType = "NETWORK_EXPOSED"
-	RiskFactorPublicAccess       RiskFactorType = "PUBLIC_ACCESS"
-	RiskFactorHighPrivilege      RiskFactorType = "HIGH_PRIVILEGE"
-	RiskFactorDataAccess         RiskFactorType = "DATA_ACCESS"
-	RiskFactorSensitiveData      RiskFactorType = "SENSITIVE_DATA"
-	RiskFactorVulnerable         RiskFactorType = "VULNERABLE"
-	RiskFactorSecretsExposed     RiskFactorType = "SECRETS_EXPOSED"
-	RiskFactorNoAuth             RiskFactorType = "NO_AUTHENTICATION"
-	RiskFactorNoEncryption       RiskFactorType = "NO_ENCRYPTION"
-	RiskFactorNoLogging          RiskFactorType = "NO_LOGGING"
+	RiskFactorNetworkExposed      RiskFactorType = "NETWORK_EXPOSED"
+	RiskFactorPublicAccess        RiskFactorType = "PUBLIC_ACCESS"
+	RiskFactorHighPrivilege       RiskFactorType = "HIGH_PRIVILEGE"
+	RiskFactorDataAccess          RiskFactorType = "DATA_ACCESS"
+	RiskFactorSensitiveData       RiskFactorType = "SENSITIVE_DATA"
+	RiskFactorVulnerable          RiskFactorType = "VULNERABLE"
+	RiskFactorSecretsExposed      RiskFactorType = "SECRETS_EXPOSED"
+	RiskFactorNoAuth              RiskFactorType = "NO_AUTHENTICATION"
+	RiskFactorNoEncryption        RiskFactorType = "NO_ENCRYPTION"
+	RiskFactorNoLogging           RiskFactorType = "NO_LOGGING"
 	RiskFactorPrivilegedContainer RiskFactorType = "PRIVILEGED_CONTAINER"
-	RiskFactorRootUser           RiskFactorType = "ROOT_USER"
-	RiskFactorInactive           RiskFactorType = "INACTIVE_PRINCIPAL"
-	RiskFactorUnrotatedKeys      RiskFactorType = "UNROTATED_KEYS"
-	RiskFactorExternalRegistry   RiskFactorType = "EXTERNAL_REGISTRY"
+	RiskFactorRootUser            RiskFactorType = "ROOT_USER"
+	RiskFactorInactive            RiskFactorType = "INACTIVE_PRINCIPAL"
+	RiskFactorUnrotatedKeys       RiskFactorType = "UNROTATED_KEYS"
+	RiskFactorExternalRegistry    RiskFactorType = "EXTERNAL_REGISTRY"
 )
 
 // ToxicPattern defines a pattern of risk factors that creates a toxic combination
 type ToxicPattern struct {
-	ID                string           `json:"id"`
-	Title             string           `json:"title"`
-	Description       string           `json:"description"`
-	RequiredFactors   []RiskFactorType `json:"required_factors"`
-	OptionalFactors   []RiskFactorType `json:"optional_factors,omitempty"`
-	MinFactors        int              `json:"min_factors"` // minimum total factors needed
-	BaseSeverity      RiskLevel        `json:"base_severity"`
+	ID                 string            `json:"id"`
+	Title              string            `json:"title"`
+	Description        string            `json:"description"`
+	RequiredFactors    []RiskFactorType  `json:"required_factors"`
+	OptionalFactors    []RiskFactorType  `json:"optional_factors,omitempty"`
+	MinFactors         int               `json:"min_factors"` // minimum total factors needed
+	BaseSeverity       RiskLevel         `json:"base_severity"`
 	SeverityEscalation map[int]RiskLevel `json:"severity_escalation,omitempty"` // factor count -> severity
-	Remediation       string           `json:"remediation"`
-	MitreAttack       []string         `json:"mitre_attack,omitempty"`
-	ControlID         string           `json:"control_id,omitempty"`
-	AppliesTo         []string         `json:"applies_to,omitempty"` // resource types
+	Remediation        string            `json:"remediation"`
+	MitreAttack        []string          `json:"mitre_attack,omitempty"`
+	ControlID          string            `json:"control_id,omitempty"`
+	AppliesTo          []string          `json:"applies_to,omitempty"` // resource types
 }
 
 // ToxicCombinationDetector detects toxic combinations of risk factors
@@ -370,23 +370,23 @@ func formatResourceType(rt string) string {
 	// Convert resource types to human-readable format
 	rt = strings.ReplaceAll(rt, "_", " ")
 	rt = strings.ReplaceAll(rt, "::", " ")
-	
+
 	// Common mappings
 	mappings := map[string]string{
-		"run revision":     "serverless",
-		"task definition":  "container task",
-		"ec2 instance":     "VM",
-		"lambda function":  "serverless function",
-		"ecs service":      "container service",
+		"run revision":    "serverless",
+		"task definition": "container task",
+		"ec2 instance":    "VM",
+		"lambda function": "serverless function",
+		"ecs service":     "container service",
 	}
-	
+
 	lower := strings.ToLower(rt)
 	for pattern, replacement := range mappings {
 		if strings.Contains(lower, pattern) {
 			return replacement
 		}
 	}
-	
+
 	return rt
 }
 
@@ -403,7 +403,7 @@ func BuildRiskProfile(resourceID, resourceName, resourceType, provider, region s
 	}
 
 	// Detect risk factors from properties
-	
+
 	// Network exposure
 	if isPublic, ok := properties["public"].(bool); ok && isPublic {
 		profile.RiskFactors = append(profile.RiskFactors, RiskFactor{

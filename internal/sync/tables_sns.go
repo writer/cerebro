@@ -65,7 +65,7 @@ func (e *SyncEngine) fetchSNSTopics(ctx context.Context, cfg aws.Config, region 
 				row["subscriptions_pending"] = attrs.Attributes["SubscriptionsPending"]
 				row["subscriptions_deleted"] = attrs.Attributes["SubscriptionsDeleted"]
 				row["kms_master_key_id"] = attrs.Attributes["KmsMasterKeyId"]
-				
+
 				// Parse policies as JSON to store as VARIANT
 				if policy := attrs.Attributes["Policy"]; policy != "" {
 					var policyObj interface{}

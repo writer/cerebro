@@ -16,14 +16,13 @@ func (e *GCPSyncEngine) gcpGKEClusterTable() GCPTableSpec {
 	}
 }
 
+//nolint:staticcheck // GKE API still exposes deprecated fields needed for parity.
 func (e *GCPSyncEngine) fetchGCPGKEClusters(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
 	client, err := container.NewClusterManagerClient(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("create container client: %w", err)
 	}
-	defer client.Close()
-
-	var rows []map[string]interface{}
+	defer func() { _ = client.Close() }()
 
 	// List clusters across all locations
 	req := &containerpb.ListClustersRequest{
@@ -34,6 +33,8 @@ func (e *GCPSyncEngine) fetchGCPGKEClusters(ctx context.Context, projectID strin
 	if err != nil {
 		return nil, fmt.Errorf("list clusters: %w", err)
 	}
+
+	rows := make([]map[string]interface{}, 0, len(resp.Clusters))
 
 	for _, cluster := range resp.Clusters {
 		selfLink := cluster.SelfLink
@@ -77,10 +78,10 @@ func (e *GCPSyncEngine) fetchGCPGKEClusters(ctx context.Context, projectID strin
 		// Master auth
 		if cluster.MasterAuth != nil {
 			row["master_auth"] = map[string]interface{}{
-				"username":                       cluster.MasterAuth.Username,
-				"cluster_ca_certificate":         cluster.MasterAuth.ClusterCaCertificate,
-				"client_certificate":             cluster.MasterAuth.ClientCertificate,
-				"client_certificate_config":      cluster.MasterAuth.ClientCertificateConfig,
+				"username":                  cluster.MasterAuth.Username,
+				"cluster_ca_certificate":    cluster.MasterAuth.ClusterCaCertificate,
+				"client_certificate":        cluster.MasterAuth.ClientCertificate,
+				"client_certificate_config": cluster.MasterAuth.ClientCertificateConfig,
 			}
 		}
 
@@ -136,11 +137,11 @@ func (e *GCPSyncEngine) fetchGCPGKEClusters(ctx context.Context, projectID strin
 		// IP allocation policy
 		if cluster.IpAllocationPolicy != nil {
 			row["ip_allocation_policy"] = map[string]interface{}{
-				"use_ip_aliases":               cluster.IpAllocationPolicy.UseIpAliases,
-				"cluster_secondary_range_name": cluster.IpAllocationPolicy.ClusterSecondaryRangeName,
+				"use_ip_aliases":                cluster.IpAllocationPolicy.UseIpAliases,
+				"cluster_secondary_range_name":  cluster.IpAllocationPolicy.ClusterSecondaryRangeName,
 				"services_secondary_range_name": cluster.IpAllocationPolicy.ServicesSecondaryRangeName,
-				"cluster_ipv4_cidr_block":      cluster.IpAllocationPolicy.ClusterIpv4CidrBlock,
-				"services_ipv4_cidr_block":     cluster.IpAllocationPolicy.ServicesIpv4CidrBlock,
+				"cluster_ipv4_cidr_block":       cluster.IpAllocationPolicy.ClusterIpv4CidrBlock,
+				"services_ipv4_cidr_block":      cluster.IpAllocationPolicy.ServicesIpv4CidrBlock,
 			}
 		}
 
@@ -218,18 +219,18 @@ func (e *GCPSyncEngine) fetchGCPGKEClusters(ctx context.Context, projectID strin
 
 func serializeNodeConfig(nc *containerpb.NodeConfig) map[string]interface{} {
 	config := map[string]interface{}{
-		"machine_type":     nc.MachineType,
-		"disk_size_gb":     nc.DiskSizeGb,
-		"disk_type":        nc.DiskType,
-		"oauth_scopes":     nc.OauthScopes,
-		"service_account":  nc.ServiceAccount,
-		"metadata":         nc.Metadata,
-		"image_type":       nc.ImageType,
-		"labels":           nc.Labels,
-		"local_ssd_count":  nc.LocalSsdCount,
-		"tags":             nc.Tags,
-		"preemptible":      nc.Preemptible,
-		"spot":             nc.Spot,
+		"machine_type":    nc.MachineType,
+		"disk_size_gb":    nc.DiskSizeGb,
+		"disk_type":       nc.DiskType,
+		"oauth_scopes":    nc.OauthScopes,
+		"service_account": nc.ServiceAccount,
+		"metadata":        nc.Metadata,
+		"image_type":      nc.ImageType,
+		"labels":          nc.Labels,
+		"local_ssd_count": nc.LocalSsdCount,
+		"tags":            nc.Tags,
+		"preemptible":     nc.Preemptible,
+		"spot":            nc.Spot,
 	}
 
 	if nc.ShieldedInstanceConfig != nil {

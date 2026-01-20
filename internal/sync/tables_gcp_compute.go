@@ -22,7 +22,7 @@ func (e *GCPSyncEngine) fetchGCPComputeInstances(ctx context.Context, projectID 
 	if err != nil {
 		return nil, fmt.Errorf("create compute client: %w", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	var rows []map[string]interface{}
 

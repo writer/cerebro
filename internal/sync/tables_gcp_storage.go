@@ -21,9 +21,9 @@ func (e *GCPSyncEngine) fetchGCPStorageBuckets(ctx context.Context, projectID st
 	if err != nil {
 		return nil, fmt.Errorf("create storage client: %w", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
-	var rows []map[string]interface{}
+	rows := make([]map[string]interface{}, 0, 100)
 
 	it := client.Buckets(ctx, projectID)
 	for {
@@ -38,18 +38,18 @@ func (e *GCPSyncEngine) fetchGCPStorageBuckets(ctx context.Context, projectID st
 		selfLink := fmt.Sprintf("https://storage.googleapis.com/b/%s", attrs.Name)
 
 		row := map[string]interface{}{
-			"_cq_id":                  selfLink,
-			"project_id":              projectID,
-			"name":                    attrs.Name,
-			"location":                attrs.Location,
-			"location_type":           attrs.LocationType,
-			"storage_class":           attrs.StorageClass,
-			"time_created":            attrs.Created,
-			"updated":                 attrs.Updated,
-			"versioning_enabled":      attrs.VersioningEnabled,
+			"_cq_id":                   selfLink,
+			"project_id":               projectID,
+			"name":                     attrs.Name,
+			"location":                 attrs.Location,
+			"location_type":            attrs.LocationType,
+			"storage_class":            attrs.StorageClass,
+			"time_created":             attrs.Created,
+			"updated":                  attrs.Updated,
+			"versioning_enabled":       attrs.VersioningEnabled,
 			"default_event_based_hold": attrs.DefaultEventBasedHold,
-			"labels":                  attrs.Labels,
-			"self_link":               selfLink,
+			"labels":                   attrs.Labels,
+			"self_link":                selfLink,
 		}
 
 		// Logging
@@ -63,7 +63,7 @@ func (e *GCPSyncEngine) fetchGCPStorageBuckets(ctx context.Context, projectID st
 			var rules []map[string]interface{}
 			for _, rule := range attrs.Lifecycle.Rules {
 				ruleInfo := map[string]interface{}{
-					"action_type":          string(rule.Action.Type),
+					"action_type":          rule.Action.Type,
 					"action_storage_class": rule.Action.StorageClass,
 				}
 				if rule.Condition.AgeInDays > 0 {
@@ -140,11 +140,11 @@ func (e *GCPSyncEngine) fetchGCPStorageBuckets(ctx context.Context, projectID st
 			var aclEntries []map[string]interface{}
 			for _, entry := range acl {
 				aclEntries = append(aclEntries, map[string]interface{}{
-					"entity":      string(entry.Entity),
-					"role":        string(entry.Role),
-					"entity_id":   entry.EntityID,
-					"domain":      entry.Domain,
-					"email":       entry.Email,
+					"entity":       string(entry.Entity),
+					"role":         string(entry.Role),
+					"entity_id":    entry.EntityID,
+					"domain":       entry.Domain,
+					"email":        entry.Email,
 					"project_team": serializeProjectTeam(entry.ProjectTeam),
 				})
 			}

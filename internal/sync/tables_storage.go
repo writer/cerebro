@@ -39,7 +39,7 @@ func (e *SyncEngine) fetchS3Buckets(ctx context.Context, cfg aws.Config, region 
 		return nil, err
 	}
 
-	var rows []map[string]interface{}
+	rows := make([]map[string]interface{}, 0, len(listOut.Buckets))
 	for _, bucket := range listOut.Buckets {
 		name := aws.ToString(bucket.Name)
 		arn := fmt.Sprintf("arn:aws:s3:::%s", name)

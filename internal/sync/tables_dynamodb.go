@@ -31,7 +31,7 @@ func (e *SyncEngine) fetchDynamoDBTables(ctx context.Context, cfg aws.Config, re
 		tableNames = append(tableNames, page.TableNames...)
 	}
 
-	var rows []map[string]interface{}
+	rows := make([]map[string]interface{}, 0, len(tableNames))
 	for _, tableName := range tableNames {
 		// Describe each table
 		desc, err := client.DescribeTable(ctx, &dynamodb.DescribeTableInput{
@@ -45,20 +45,20 @@ func (e *SyncEngine) fetchDynamoDBTables(ctx context.Context, cfg aws.Config, re
 		arn := aws.ToString(table.TableArn)
 
 		row := map[string]interface{}{
-			"_cq_id":                     arn,
-			"arn":                        arn,
-			"account_id":                 accountID,
-			"region":                     region,
-			"table_name":                 tableName,
-			"name":                       tableName,
-			"table_status":               string(table.TableStatus),
-			"creation_date_time":         table.CreationDateTime,
-			"item_count":                 table.ItemCount,
-			"table_size_bytes":           table.TableSizeBytes,
-			"key_schema":                 table.KeySchema,
-			"attribute_definitions":      table.AttributeDefinitions,
-			"global_secondary_indexes":   table.GlobalSecondaryIndexes,
-			"local_secondary_indexes":    table.LocalSecondaryIndexes,
+			"_cq_id":                      arn,
+			"arn":                         arn,
+			"account_id":                  accountID,
+			"region":                      region,
+			"table_name":                  tableName,
+			"name":                        tableName,
+			"table_status":                string(table.TableStatus),
+			"creation_date_time":          table.CreationDateTime,
+			"item_count":                  table.ItemCount,
+			"table_size_bytes":            table.TableSizeBytes,
+			"key_schema":                  table.KeySchema,
+			"attribute_definitions":       table.AttributeDefinitions,
+			"global_secondary_indexes":    table.GlobalSecondaryIndexes,
+			"local_secondary_indexes":     table.LocalSecondaryIndexes,
 			"deletion_protection_enabled": table.DeletionProtectionEnabled,
 		}
 

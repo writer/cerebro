@@ -130,8 +130,6 @@ func (b *Builder) buildRelationshipEdges(ctx context.Context) {
 		case "MEMBER_OF":
 			if isIdentityType(sourceType) && isIdentityType(targetType) {
 				kind = EdgeKindMemberOf
-			} else {
-				kind = EdgeKindConnectsTo
 			}
 		case "READS_FROM":
 			kind = EdgeKindCanRead
@@ -147,8 +145,6 @@ func (b *Builder) buildRelationshipEdges(ctx context.Context) {
 				edgeSourceType = "network:internet"
 				edgeTargetType = sourceType
 			}
-		default:
-			kind = EdgeKindConnectsTo
 		}
 
 		b.ensureRelationshipNode(edgeSource, edgeSourceType)

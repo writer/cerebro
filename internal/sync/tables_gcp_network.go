@@ -38,9 +38,9 @@ func (e *GCPSyncEngine) fetchGCPComputeFirewalls(ctx context.Context, projectID 
 	if err != nil {
 		return nil, fmt.Errorf("create firewall client: %w", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
-	var rows []map[string]interface{}
+	rows := make([]map[string]interface{}, 0, 100)
 
 	req := &computepb.ListFirewallsRequest{
 		Project: projectID,
@@ -59,23 +59,23 @@ func (e *GCPSyncEngine) fetchGCPComputeFirewalls(ctx context.Context, projectID 
 		selfLink := ptrToString(fw.SelfLink)
 
 		row := map[string]interface{}{
-			"_cq_id":                   selfLink,
-			"project_id":               projectID,
-			"name":                     ptrToString(fw.Name),
-			"id":                       ptrToUint64(fw.Id),
-			"description":              ptrToString(fw.Description),
-			"network":                  ptrToString(fw.Network),
-			"priority":                 ptrToInt32(fw.Priority),
-			"direction":                ptrToString(fw.Direction),
-			"source_ranges":            fw.SourceRanges,
-			"destination_ranges":       fw.DestinationRanges,
-			"source_tags":              fw.SourceTags,
-			"target_tags":              fw.TargetTags,
-			"source_service_accounts":  fw.SourceServiceAccounts,
-			"target_service_accounts":  fw.TargetServiceAccounts,
-			"disabled":                 ptrToBool(fw.Disabled),
-			"creation_timestamp":       ptrToString(fw.CreationTimestamp),
-			"self_link":                selfLink,
+			"_cq_id":                  selfLink,
+			"project_id":              projectID,
+			"name":                    ptrToString(fw.Name),
+			"id":                      ptrToUint64(fw.Id),
+			"description":             ptrToString(fw.Description),
+			"network":                 ptrToString(fw.Network),
+			"priority":                ptrToInt32(fw.Priority),
+			"direction":               ptrToString(fw.Direction),
+			"source_ranges":           fw.SourceRanges,
+			"destination_ranges":      fw.DestinationRanges,
+			"source_tags":             fw.SourceTags,
+			"target_tags":             fw.TargetTags,
+			"source_service_accounts": fw.SourceServiceAccounts,
+			"target_service_accounts": fw.TargetServiceAccounts,
+			"disabled":                ptrToBool(fw.Disabled),
+			"creation_timestamp":      ptrToString(fw.CreationTimestamp),
+			"self_link":               selfLink,
 		}
 
 		// Allowed rules
@@ -121,9 +121,9 @@ func (e *GCPSyncEngine) fetchGCPComputeNetworks(ctx context.Context, projectID s
 	if err != nil {
 		return nil, fmt.Errorf("create networks client: %w", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
-	var rows []map[string]interface{}
+	rows := make([]map[string]interface{}, 0, 100)
 
 	req := &computepb.ListNetworksRequest{
 		Project: projectID,
@@ -164,13 +164,13 @@ func (e *GCPSyncEngine) fetchGCPComputeNetworks(ctx context.Context, projectID s
 			var peerings []map[string]interface{}
 			for _, p := range net.Peerings {
 				peerings = append(peerings, map[string]interface{}{
-					"name":                          ptrToString(p.Name),
-					"network":                       ptrToString(p.Network),
-					"state":                         ptrToString(p.State),
-					"auto_create_routes":            ptrToBool(p.AutoCreateRoutes),
-					"export_custom_routes":          ptrToBool(p.ExportCustomRoutes),
-					"import_custom_routes":          ptrToBool(p.ImportCustomRoutes),
-					"exchange_subnet_routes":        ptrToBool(p.ExchangeSubnetRoutes),
+					"name":                                ptrToString(p.Name),
+					"network":                             ptrToString(p.Network),
+					"state":                               ptrToString(p.State),
+					"auto_create_routes":                  ptrToBool(p.AutoCreateRoutes),
+					"export_custom_routes":                ptrToBool(p.ExportCustomRoutes),
+					"import_custom_routes":                ptrToBool(p.ImportCustomRoutes),
+					"exchange_subnet_routes":              ptrToBool(p.ExchangeSubnetRoutes),
 					"export_subnet_routes_with_public_ip": ptrToBool(p.ExportSubnetRoutesWithPublicIp),
 					"import_subnet_routes_with_public_ip": ptrToBool(p.ImportSubnetRoutesWithPublicIp),
 				})
@@ -189,9 +189,9 @@ func (e *GCPSyncEngine) fetchGCPComputeSubnetworks(ctx context.Context, projectI
 	if err != nil {
 		return nil, fmt.Errorf("create subnetworks client: %w", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
-	var rows []map[string]interface{}
+	rows := make([]map[string]interface{}, 0, 100)
 
 	req := &computepb.AggregatedListSubnetworksRequest{
 		Project: projectID,
@@ -215,21 +215,21 @@ func (e *GCPSyncEngine) fetchGCPComputeSubnetworks(ctx context.Context, projectI
 			selfLink := ptrToString(subnet.SelfLink)
 
 			row := map[string]interface{}{
-				"_cq_id":                    selfLink,
-				"project_id":                projectID,
-				"region":                    ptrToString(subnet.Region),
-				"name":                      ptrToString(subnet.Name),
-				"id":                        ptrToUint64(subnet.Id),
-				"description":               ptrToString(subnet.Description),
-				"network":                   ptrToString(subnet.Network),
-				"ip_cidr_range":             ptrToString(subnet.IpCidrRange),
-				"gateway_address":           ptrToString(subnet.GatewayAddress),
-				"private_ip_google_access":  ptrToBool(subnet.PrivateIpGoogleAccess),
-				"purpose":                   ptrToString(subnet.Purpose),
-				"role":                      ptrToString(subnet.Role),
-				"state":                     ptrToString(subnet.State),
-				"creation_timestamp":        ptrToString(subnet.CreationTimestamp),
-				"self_link":                 selfLink,
+				"_cq_id":                   selfLink,
+				"project_id":               projectID,
+				"region":                   ptrToString(subnet.Region),
+				"name":                     ptrToString(subnet.Name),
+				"id":                       ptrToUint64(subnet.Id),
+				"description":              ptrToString(subnet.Description),
+				"network":                  ptrToString(subnet.Network),
+				"ip_cidr_range":            ptrToString(subnet.IpCidrRange),
+				"gateway_address":          ptrToString(subnet.GatewayAddress),
+				"private_ip_google_access": ptrToBool(subnet.PrivateIpGoogleAccess),
+				"purpose":                  ptrToString(subnet.Purpose),
+				"role":                     ptrToString(subnet.Role),
+				"state":                    ptrToString(subnet.State),
+				"creation_timestamp":       ptrToString(subnet.CreationTimestamp),
+				"self_link":                selfLink,
 			}
 
 			// Secondary IP ranges

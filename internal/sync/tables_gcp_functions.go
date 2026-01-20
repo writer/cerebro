@@ -22,9 +22,9 @@ func (e *GCPSyncEngine) fetchGCPCloudFunctions(ctx context.Context, projectID st
 	if err != nil {
 		return nil, fmt.Errorf("create functions client: %w", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
-	var rows []map[string]interface{}
+	rows := make([]map[string]interface{}, 0, 100)
 
 	// List functions across all locations
 	req := &functionspb.ListFunctionsRequest{
@@ -71,11 +71,11 @@ func (e *GCPSyncEngine) fetchGCPCloudFunctions(ctx context.Context, projectID st
 		// Build config
 		if fn.BuildConfig != nil {
 			buildConfig := map[string]interface{}{
-				"build":                     fn.BuildConfig.Build,
-				"runtime":                   fn.BuildConfig.Runtime,
-				"entry_point":               fn.BuildConfig.EntryPoint,
-				"docker_repository":         fn.BuildConfig.DockerRepository,
-				"service_account":           fn.BuildConfig.ServiceAccount,
+				"build":             fn.BuildConfig.Build,
+				"runtime":           fn.BuildConfig.Runtime,
+				"entry_point":       fn.BuildConfig.EntryPoint,
+				"docker_repository": fn.BuildConfig.DockerRepository,
+				"service_account":   fn.BuildConfig.ServiceAccount,
 			}
 
 			if fn.BuildConfig.Source != nil {
@@ -106,19 +106,19 @@ func (e *GCPSyncEngine) fetchGCPCloudFunctions(ctx context.Context, projectID st
 		// Service config
 		if fn.ServiceConfig != nil {
 			serviceConfig := map[string]interface{}{
-				"service":                         fn.ServiceConfig.Service,
-				"timeout_seconds":                 fn.ServiceConfig.TimeoutSeconds,
-				"available_memory":                fn.ServiceConfig.AvailableMemory,
-				"available_cpu":                   fn.ServiceConfig.AvailableCpu,
-				"max_instance_count":              fn.ServiceConfig.MaxInstanceCount,
-				"min_instance_count":              fn.ServiceConfig.MinInstanceCount,
+				"service":                          fn.ServiceConfig.Service,
+				"timeout_seconds":                  fn.ServiceConfig.TimeoutSeconds,
+				"available_memory":                 fn.ServiceConfig.AvailableMemory,
+				"available_cpu":                    fn.ServiceConfig.AvailableCpu,
+				"max_instance_count":               fn.ServiceConfig.MaxInstanceCount,
+				"min_instance_count":               fn.ServiceConfig.MinInstanceCount,
 				"max_instance_request_concurrency": fn.ServiceConfig.MaxInstanceRequestConcurrency,
-				"vpc_connector":                   fn.ServiceConfig.VpcConnector,
-				"vpc_connector_egress_settings":   fn.ServiceConfig.VpcConnectorEgressSettings.String(),
-				"ingress_settings":                fn.ServiceConfig.IngressSettings.String(),
-				"uri":                             fn.ServiceConfig.Uri,
-				"service_account_email":           fn.ServiceConfig.ServiceAccountEmail,
-				"all_traffic_on_latest_revision":  fn.ServiceConfig.AllTrafficOnLatestRevision,
+				"vpc_connector":                    fn.ServiceConfig.VpcConnector,
+				"vpc_connector_egress_settings":    fn.ServiceConfig.VpcConnectorEgressSettings.String(),
+				"ingress_settings":                 fn.ServiceConfig.IngressSettings.String(),
+				"uri":                              fn.ServiceConfig.Uri,
+				"service_account_email":            fn.ServiceConfig.ServiceAccountEmail,
+				"all_traffic_on_latest_revision":   fn.ServiceConfig.AllTrafficOnLatestRevision,
 			}
 
 			if len(fn.ServiceConfig.SecretEnvironmentVariables) > 0 {
@@ -140,13 +140,13 @@ func (e *GCPSyncEngine) fetchGCPCloudFunctions(ctx context.Context, projectID st
 		// Event trigger
 		if fn.EventTrigger != nil {
 			eventTrigger := map[string]interface{}{
-				"trigger":                  fn.EventTrigger.Trigger,
-				"trigger_region":           fn.EventTrigger.TriggerRegion,
-				"event_type":               fn.EventTrigger.EventType,
-				"pubsub_topic":             fn.EventTrigger.PubsubTopic,
-				"service_account_email":    fn.EventTrigger.ServiceAccountEmail,
-				"retry_policy":             fn.EventTrigger.RetryPolicy.String(),
-				"channel":                  fn.EventTrigger.Channel,
+				"trigger":               fn.EventTrigger.Trigger,
+				"trigger_region":        fn.EventTrigger.TriggerRegion,
+				"event_type":            fn.EventTrigger.EventType,
+				"pubsub_topic":          fn.EventTrigger.PubsubTopic,
+				"service_account_email": fn.EventTrigger.ServiceAccountEmail,
+				"retry_policy":          fn.EventTrigger.RetryPolicy.String(),
+				"channel":               fn.EventTrigger.Channel,
 			}
 
 			if len(fn.EventTrigger.EventFilters) > 0 {

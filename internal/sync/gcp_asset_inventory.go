@@ -54,23 +54,23 @@ func NewGCPAssetInventoryEngine(sf *snowflake.Client, logger *slog.Logger, opts 
 
 // GCPAssetType maps asset types to table names
 var GCPAssetTypes = map[string]string{
-	"compute.googleapis.com/Instance":       "gcp_compute_instances",
-	"compute.googleapis.com/Firewall":       "gcp_compute_firewalls",
-	"compute.googleapis.com/Network":        "gcp_compute_networks",
-	"compute.googleapis.com/Subnetwork":     "gcp_compute_subnetworks",
-	"storage.googleapis.com/Bucket":         "gcp_storage_buckets",
-	"iam.googleapis.com/ServiceAccount":     "gcp_iam_service_accounts",
-	"sqladmin.googleapis.com/Instance":      "gcp_sql_instances",
+	"compute.googleapis.com/Instance":        "gcp_compute_instances",
+	"compute.googleapis.com/Firewall":        "gcp_compute_firewalls",
+	"compute.googleapis.com/Network":         "gcp_compute_networks",
+	"compute.googleapis.com/Subnetwork":      "gcp_compute_subnetworks",
+	"storage.googleapis.com/Bucket":          "gcp_storage_buckets",
+	"iam.googleapis.com/ServiceAccount":      "gcp_iam_service_accounts",
+	"sqladmin.googleapis.com/Instance":       "gcp_sql_instances",
 	"cloudfunctions.googleapis.com/Function": "gcp_cloudfunctions_functions",
-	"pubsub.googleapis.com/Topic":           "gcp_pubsub_topics",
-	"container.googleapis.com/Cluster":      "gcp_container_clusters",
-	"cloudkms.googleapis.com/CryptoKey":     "gcp_kms_keys",
-	"secretmanager.googleapis.com/Secret":   "gcp_secretmanager_secrets",
-	"bigquery.googleapis.com/Dataset":       "gcp_bigquery_datasets",
-	"bigquery.googleapis.com/Table":         "gcp_bigquery_tables",
-	"run.googleapis.com/Service":            "gcp_run_services",
-	"logging.googleapis.com/LogSink":        "gcp_logging_sinks",
-	"dns.googleapis.com/ManagedZone":        "gcp_dns_zones",
+	"pubsub.googleapis.com/Topic":            "gcp_pubsub_topics",
+	"container.googleapis.com/Cluster":       "gcp_container_clusters",
+	"cloudkms.googleapis.com/CryptoKey":      "gcp_kms_keys",
+	"secretmanager.googleapis.com/Secret":    "gcp_secretmanager_secrets",
+	"bigquery.googleapis.com/Dataset":        "gcp_bigquery_datasets",
+	"bigquery.googleapis.com/Table":          "gcp_bigquery_tables",
+	"run.googleapis.com/Service":             "gcp_run_services",
+	"logging.googleapis.com/LogSink":         "gcp_logging_sinks",
+	"dns.googleapis.com/ManagedZone":         "gcp_dns_zones",
 }
 
 // SyncAll syncs all GCP resources using Cloud Asset Inventory API
@@ -83,18 +83,18 @@ func (e *GCPAssetInventoryEngine) SyncAll(ctx context.Context) ([]SyncResult, er
 	if err != nil {
 		return nil, fmt.Errorf("create asset client: %w", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// If we have multiple projects, sync each one
 	if len(e.projects) > 0 {
-		return e.syncMultipleProjects(ctx, client)
+		return e.syncMultipleProjects(ctx, client), nil
 	}
 
 	// Single scope sync
-	return e.syncScope(ctx, client, e.scope)
+	return e.syncScope(ctx, client, e.scope), nil
 }
 
-func (e *GCPAssetInventoryEngine) syncMultipleProjects(ctx context.Context, client *asset.Client) ([]SyncResult, error) {
+func (e *GCPAssetInventoryEngine) syncMultipleProjects(ctx context.Context, client *asset.Client) []SyncResult {
 	var allResults []SyncResult
 	var mu sync.Mutex
 	var wg sync.WaitGroup
@@ -108,11 +108,7 @@ func (e *GCPAssetInventoryEngine) syncMultipleProjects(ctx context.Context, clie
 			defer func() { <-sem }()
 
 			scope := fmt.Sprintf("projects/%s", proj)
-			results, err := e.syncScope(ctx, client, scope)
-			if err != nil {
-				e.logger.Error("sync project failed", "project", proj, "error", err)
-				return
-			}
+			results := e.syncScope(ctx, client, scope)
 
 			mu.Lock()
 			allResults = append(allResults, results...)
@@ -121,10 +117,10 @@ func (e *GCPAssetInventoryEngine) syncMultipleProjects(ctx context.Context, clie
 	}
 
 	wg.Wait()
-	return allResults, nil
+	return allResults
 }
 
-func (e *GCPAssetInventoryEngine) syncScope(ctx context.Context, client *asset.Client, scope string) ([]SyncResult, error) {
+func (e *GCPAssetInventoryEngine) syncScope(ctx context.Context, client *asset.Client, scope string) []SyncResult {
 	var results []SyncResult
 	start := time.Now()
 
@@ -185,7 +181,7 @@ func (e *GCPAssetInventoryEngine) syncScope(ctx context.Context, client *asset.C
 	}
 
 	wg.Wait()
-	return results, nil
+	return results
 }
 
 func (e *GCPAssetInventoryEngine) syncAssetType(ctx context.Context, assetType string, assets []*assetpb.ResourceSearchResult) SyncResult {
@@ -208,7 +204,7 @@ func (e *GCPAssetInventoryEngine) syncAssetType(ctx context.Context, assetType s
 	}
 
 	// Ensure table exists
-	columns := e.getColumnsForAssetType(assetType)
+	columns := e.getColumnsForAssetType()
 	if err := e.ensureTable(ctx, tableName, columns); err != nil {
 		e.logger.Error("ensure table failed", "table", tableName, "error", err)
 		result.Errors = 1
@@ -284,9 +280,9 @@ func (e *GCPAssetInventoryEngine) assetToRow(asset *assetpb.ResourceSearchResult
 			if relResources != nil && len(relResources.RelatedResources) > 0 {
 				for _, relResource := range relResources.RelatedResources {
 					relationships = append(relationships, map[string]interface{}{
-						"type":              relType,
+						"type":               relType,
 						"full_resource_name": relResource.FullResourceName,
-						"asset_type":        relResource.AssetType,
+						"asset_type":         relResource.AssetType,
 					})
 				}
 			}
@@ -318,7 +314,7 @@ func (e *GCPAssetInventoryEngine) assetToRow(asset *assetpb.ResourceSearchResult
 	return row
 }
 
-func (e *GCPAssetInventoryEngine) getColumnsForAssetType(_ string) []string {
+func (e *GCPAssetInventoryEngine) getColumnsForAssetType() []string {
 	return []string{
 		"name",
 		"asset_type",
@@ -365,7 +361,7 @@ func ListOrganizationProjects(ctx context.Context, orgID string) ([]string, erro
 	if err != nil {
 		return nil, fmt.Errorf("create asset client: %w", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	scope := fmt.Sprintf("organizations/%s", orgID)
 	req := &assetpb.SearchAllResourcesRequest{

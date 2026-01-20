@@ -70,9 +70,9 @@ func NewClient(config ClientConfig) (*Client, error) {
 
 	// Key-pair authentication takes precedence
 	if config.PrivateKey != "" && config.Account != "" && config.User != "" {
-		privateKey, err := parsePrivateKey(config.PrivateKey)
-		if err != nil {
-			return nil, cerrors.Wrapf(opNewClient, err, "failed to parse private key")
+		privateKey, parseErr := parsePrivateKey(config.PrivateKey)
+		if parseErr != nil {
+			return nil, cerrors.Wrapf(opNewClient, parseErr, "failed to parse private key")
 		}
 
 		cfg = &sf.Config{

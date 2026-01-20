@@ -118,7 +118,9 @@ func (e *SyncEngine) fetchCredentialReport(ctx context.Context, cfg aws.Config, 
 	accountID := e.getAccountIDFromConfig(ctx, cfg)
 
 	// Generate report
-	client.GenerateCredentialReport(ctx, &iam.GenerateCredentialReportInput{})
+	if _, err := client.GenerateCredentialReport(ctx, &iam.GenerateCredentialReportInput{}); err != nil {
+		return nil, err
+	}
 	time.Sleep(2 * time.Second)
 
 	reportOut, err := client.GetCredentialReport(ctx, &iam.GetCredentialReportInput{})

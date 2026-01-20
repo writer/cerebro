@@ -52,7 +52,7 @@ func (e *SyncEngine) fetchECSClusters(ctx context.Context, cfg aws.Config, regio
 		return nil, err
 	}
 
-	var rows []map[string]interface{}
+	rows := make([]map[string]interface{}, 0, len(descOut.Clusters))
 	for _, c := range descOut.Clusters {
 		rows = append(rows, map[string]interface{}{
 			"_cq_id":     aws.ToString(c.ClusterArn),
@@ -77,7 +77,7 @@ func (e *SyncEngine) fetchECSServices(ctx context.Context, cfg aws.Config, regio
 		return nil, err
 	}
 
-	var rows []map[string]interface{}
+	rows := make([]map[string]interface{}, 0, len(listClusters.ClusterArns))
 	for _, clusterArn := range listClusters.ClusterArns {
 		listOut, err := client.ListServices(ctx, &ecs.ListServicesInput{Cluster: aws.String(clusterArn)})
 		if err != nil || len(listOut.ServiceArns) == 0 {
@@ -123,7 +123,7 @@ func (e *SyncEngine) fetchECSTaskDefinitions(ctx context.Context, cfg aws.Config
 		return nil, err
 	}
 
-	var rows []map[string]interface{}
+	rows := make([]map[string]interface{}, 0, len(listOut.TaskDefinitionArns))
 	for _, arn := range listOut.TaskDefinitionArns {
 		descOut, err := client.DescribeTaskDefinition(ctx, &ecs.DescribeTaskDefinitionInput{
 			TaskDefinition: aws.String(arn),

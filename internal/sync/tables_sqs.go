@@ -22,13 +22,13 @@ func (e *SyncEngine) fetchSQSQueues(ctx context.Context, cfg aws.Config, region 
 	client := sqs.NewFromConfig(cfg)
 	accountID := e.getAccountIDFromConfig(ctx, cfg)
 
-	var rows []map[string]interface{}
-
 	// List all queues
 	listOut, err := client.ListQueues(ctx, &sqs.ListQueuesInput{})
 	if err != nil {
 		return nil, fmt.Errorf("list queues: %w", err)
 	}
+
+	rows := make([]map[string]interface{}, 0, len(listOut.QueueUrls))
 
 	for _, queueURL := range listOut.QueueUrls {
 		// Get queue attributes
@@ -42,7 +42,7 @@ func (e *SyncEngine) fetchSQSQueues(ctx context.Context, cfg aws.Config, region 
 		}
 
 		arn := attrs.Attributes["QueueArn"]
-		
+
 		// Extract queue name from URL
 		name := ""
 		if parts := splitArn(queueURL); len(parts) > 0 {
@@ -50,25 +50,25 @@ func (e *SyncEngine) fetchSQSQueues(ctx context.Context, cfg aws.Config, region 
 		}
 
 		row := map[string]interface{}{
-			"_cq_id":                                      arn,
-			"arn":                                         arn,
-			"account_id":                                  accountID,
-			"region":                                      region,
-			"url":                                         queueURL,
-			"name":                                        name,
-			"visibility_timeout":                          attrs.Attributes["VisibilityTimeout"],
-			"maximum_message_size":                        attrs.Attributes["MaximumMessageSize"],
-			"message_retention_period":                    attrs.Attributes["MessageRetentionPeriod"],
-			"delay_seconds":                               attrs.Attributes["DelaySeconds"],
-			"receive_message_wait_time_seconds":           attrs.Attributes["ReceiveMessageWaitTimeSeconds"],
-			"approximate_number_of_messages":              attrs.Attributes["ApproximateNumberOfMessages"],
-			"approximate_number_of_messages_delayed":      attrs.Attributes["ApproximateNumberOfMessagesDelayed"],
-			"approximate_number_of_messages_not_visible":  attrs.Attributes["ApproximateNumberOfMessagesNotVisible"],
-			"created_timestamp":                           attrs.Attributes["CreatedTimestamp"],
-			"last_modified_timestamp":                     attrs.Attributes["LastModifiedTimestamp"],
-			"sqs_managed_sse_enabled":                     attrs.Attributes["SqsManagedSseEnabled"] == "true",
-			"fifo_queue":                                  attrs.Attributes["FifoQueue"] == "true",
-			"content_based_deduplication":                 attrs.Attributes["ContentBasedDeduplication"] == "true",
+			"_cq_id":                                 arn,
+			"arn":                                    arn,
+			"account_id":                             accountID,
+			"region":                                 region,
+			"url":                                    queueURL,
+			"name":                                   name,
+			"visibility_timeout":                     attrs.Attributes["VisibilityTimeout"],
+			"maximum_message_size":                   attrs.Attributes["MaximumMessageSize"],
+			"message_retention_period":               attrs.Attributes["MessageRetentionPeriod"],
+			"delay_seconds":                          attrs.Attributes["DelaySeconds"],
+			"receive_message_wait_time_seconds":      attrs.Attributes["ReceiveMessageWaitTimeSeconds"],
+			"approximate_number_of_messages":         attrs.Attributes["ApproximateNumberOfMessages"],
+			"approximate_number_of_messages_delayed": attrs.Attributes["ApproximateNumberOfMessagesDelayed"],
+			"approximate_number_of_messages_not_visible": attrs.Attributes["ApproximateNumberOfMessagesNotVisible"],
+			"created_timestamp":                          attrs.Attributes["CreatedTimestamp"],
+			"last_modified_timestamp":                    attrs.Attributes["LastModifiedTimestamp"],
+			"sqs_managed_sse_enabled":                    attrs.Attributes["SqsManagedSseEnabled"] == "true",
+			"fifo_queue":                                 attrs.Attributes["FifoQueue"] == "true",
+			"content_based_deduplication":                attrs.Attributes["ContentBasedDeduplication"] == "true",
 		}
 
 		// Only add KMS fields if they have values

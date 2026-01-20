@@ -340,7 +340,9 @@ func (e *GCPSyncEngine) persistChangeHistory(ctx context.Context, results []Sync
 		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS provider VARCHAR",
 	}
 	for _, q := range alterQueries {
-		e.sf.Exec(ctx, q) // Ignore errors - column may already exist
+		if _, err := e.sf.Exec(ctx, q); err != nil {
+			e.logger.Debug("failed to ensure change history column", "query", q, "error", err)
+		}
 	}
 
 	for _, r := range results {
@@ -372,7 +374,9 @@ func (e *GCPSyncEngine) insertChangeRecord(ctx context.Context, table, changeTyp
 		strings.ReplaceAll(resourceID, "'", "''"),
 		provider)
 
-	e.sf.Exec(ctx, query)
+	if _, err := e.sf.Exec(ctx, query); err != nil {
+		e.logger.Debug("failed to insert change record", "error", err)
+	}
 }
 
 // getGCPTables returns all GCP table definitions

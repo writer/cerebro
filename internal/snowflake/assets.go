@@ -78,7 +78,7 @@ func (c *Client) GetAssets(ctx context.Context, table string, filter AssetFilter
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Add table name to each asset for policy matching
 	for i := range result.Rows {
 		result.Rows[i]["_cq_table"] = table

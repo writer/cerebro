@@ -180,7 +180,7 @@ func formatJSON(data map[string]interface{}) string {
 }
 
 func formatTags(tags map[string]string) string {
-	if tags == nil || len(tags) == 0 {
+	if len(tags) == 0 {
 		return ""
 	}
 	pairs := make([]string, 0, len(tags))
@@ -191,7 +191,7 @@ func formatTags(tags map[string]string) string {
 }
 
 func formatEvidence(evidence []Evidence) string {
-	if evidence == nil || len(evidence) == 0 {
+	if len(evidence) == 0 {
 		return ""
 	}
 	b, err := json.Marshal(evidence)

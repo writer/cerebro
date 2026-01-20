@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"cloud.google.com/go/pubsub"
+	pubsub "cloud.google.com/go/pubsub" //nolint:staticcheck // v1 client still required for topic metadata
 	"google.golang.org/api/iterator"
 )
 
@@ -16,14 +16,15 @@ func (e *GCPSyncEngine) gcpPubSubTopicTable() GCPTableSpec {
 	}
 }
 
+//nolint:staticcheck // Pub/Sub client v1 still required for metadata and IAM enumeration.
 func (e *GCPSyncEngine) fetchGCPPubSubTopics(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
 	client, err := pubsub.NewClient(ctx, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("create pubsub client: %w", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
-	var rows []map[string]interface{}
+	rows := make([]map[string]interface{}, 0, 100)
 
 	it := client.Topics(ctx)
 	for {

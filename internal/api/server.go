@@ -839,7 +839,7 @@ func (s *Server) exportFindings(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=findings.%s", format))
 	w.WriteHeader(http.StatusOK)
-	w.Write(data)
+	_, _ = w.Write(data)
 }
 
 func (s *Server) assignFinding(w http.ResponseWriter, r *http.Request) {

@@ -21,12 +21,12 @@ func (e *GCPSyncEngine) fetchGCPSQLInstances(ctx context.Context, projectID stri
 		return nil, fmt.Errorf("create sqladmin service: %w", err)
 	}
 
-	var rows []map[string]interface{}
-
 	resp, err := service.Instances.List(projectID).Context(ctx).Do()
 	if err != nil {
 		return nil, fmt.Errorf("list sql instances: %w", err)
 	}
+
+	rows := make([]map[string]interface{}, 0, len(resp.Items))
 
 	for _, inst := range resp.Items {
 		selfLink := inst.SelfLink
@@ -35,20 +35,20 @@ func (e *GCPSyncEngine) fetchGCPSQLInstances(ctx context.Context, projectID stri
 		}
 
 		row := map[string]interface{}{
-			"_cq_id":                           selfLink,
-			"project_id":                       projectID,
-			"name":                             inst.Name,
-			"database_version":                 inst.DatabaseVersion,
-			"region":                           inst.Region,
-			"state":                            inst.State,
-			"gce_zone":                         inst.GceZone,
-			"instance_type":                    inst.InstanceType,
-			"master_instance_name":             inst.MasterInstanceName,
-			"backend_type":                     inst.BackendType,
-			"connection_name":                  inst.ConnectionName,
-			"self_link":                        selfLink,
-			"service_account_email_address":    inst.ServiceAccountEmailAddress,
-			"create_time":                      inst.CreateTime,
+			"_cq_id":                        selfLink,
+			"project_id":                    projectID,
+			"name":                          inst.Name,
+			"database_version":              inst.DatabaseVersion,
+			"region":                        inst.Region,
+			"state":                         inst.State,
+			"gce_zone":                      inst.GceZone,
+			"instance_type":                 inst.InstanceType,
+			"master_instance_name":          inst.MasterInstanceName,
+			"backend_type":                  inst.BackendType,
+			"connection_name":               inst.ConnectionName,
+			"self_link":                     selfLink,
+			"service_account_email_address": inst.ServiceAccountEmailAddress,
+			"create_time":                   inst.CreateTime,
 		}
 
 		// IP addresses
@@ -92,12 +92,12 @@ func (e *GCPSyncEngine) fetchGCPSQLInstances(ctx context.Context, projectID stri
 			// IP configuration
 			if inst.Settings.IpConfiguration != nil {
 				ipConfig := map[string]interface{}{
-					"ipv4_enabled":        inst.Settings.IpConfiguration.Ipv4Enabled,
-					"private_network":     inst.Settings.IpConfiguration.PrivateNetwork,
-					"require_ssl":         inst.Settings.IpConfiguration.RequireSsl,
-					"ssl_mode":            inst.Settings.IpConfiguration.SslMode,
+					"ipv4_enabled":    inst.Settings.IpConfiguration.Ipv4Enabled,
+					"private_network": inst.Settings.IpConfiguration.PrivateNetwork,
+					"require_ssl":     inst.Settings.IpConfiguration.RequireSsl,
+					"ssl_mode":        inst.Settings.IpConfiguration.SslMode,
 				}
-				
+
 				// Authorized networks
 				if len(inst.Settings.IpConfiguration.AuthorizedNetworks) > 0 {
 					var networks []map[string]interface{}
