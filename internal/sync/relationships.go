@@ -127,9 +127,11 @@ func (r *RelationshipExtractor) ExtractAndPersist(ctx context.Context) (int, err
 	}
 	totalRels += count
 
-	if !hadErrors {
-		if err := r.cleanupStaleRelationships(ctx, startedAt); err != nil {
-			hadErrors = true
+	// Cleanup stale relationships - use a safe window (1 minute) to avoid race conditions
+	// Only cleanup if extraction had no errors
+	if !hadErrors && totalRels > 0 {
+		// Wait a moment to ensure all inserts have completed
+		if err := r.cleanupStaleRelationships(ctx, startedAt.Add(-time.Minute)); err != nil {
 			r.logger.Warn("failed to clean up stale relationships", "error", err)
 		}
 	}
@@ -142,7 +144,12 @@ func (r *RelationshipExtractor) ExtractAndPersist(ctx context.Context) (int, err
 }
 
 func (r *RelationshipExtractor) ensureTable(ctx context.Context) error {
-	query := `CREATE TABLE IF NOT EXISTS RESOURCE_RELATIONSHIPS (
+	// Use fully qualified table name to ensure we're in the right schema
+	schema := r.sf.Schema()
+	if schema == "" {
+		schema = "RAW"
+	}
+	query := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s.RESOURCE_RELATIONSHIPS (
 		ID VARCHAR PRIMARY KEY,
 		SOURCE_ID VARCHAR NOT NULL,
 		SOURCE_TYPE VARCHAR NOT NULL,
@@ -151,14 +158,21 @@ func (r *RelationshipExtractor) ensureTable(ctx context.Context) error {
 		REL_TYPE VARCHAR NOT NULL,
 		PROPERTIES VARIANT,
 		SYNC_TIME TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP()
-	)`
+	)`, schema)
 	_, err := r.sf.Exec(ctx, query)
 	return err
 }
 
 func (r *RelationshipExtractor) cleanupStaleRelationships(ctx context.Context, cutoff time.Time) error {
-	query := `DELETE FROM RESOURCE_RELATIONSHIPS WHERE SYNC_TIME < ?`
-	_, err := r.sf.Exec(ctx, query, cutoff)
+	schema := r.sf.Schema()
+	if schema == "" {
+		schema = "RAW"
+	}
+	// Use Query instead of Exec with embedded timestamp to ensure proper execution
+	// Format time as Snowflake timestamp literal
+	cutoffStr := cutoff.Format("2006-01-02 15:04:05.000 -0700")
+	query := fmt.Sprintf(`DELETE FROM %s.RESOURCE_RELATIONSHIPS WHERE SYNC_TIME < '%s'`, schema, cutoffStr)
+	_, err := r.sf.Query(ctx, query)
 	return err
 }
 
@@ -167,43 +181,61 @@ func (r *RelationshipExtractor) persistRelationships(ctx context.Context, rels [
 		return 0, nil
 	}
 
-	// Batch insert using MERGE - properties stored as VARCHAR, parsed on read
-	values := make([]string, 0, len(rels))
-	for _, rel := range rels {
-		props := rel.Properties
-		if props == "" {
-			props = "{}"
+	r.logger.Info("persisting relationships", "count", len(rels))
+
+	// Get the schema for fully qualified table name
+	schema := r.sf.Schema()
+	if schema == "" {
+		schema = "RAW"
+	}
+	tableName := fmt.Sprintf("%s.RESOURCE_RELATIONSHIPS", schema)
+
+	// Batch insert using MERGE - process in batches to avoid query size limits
+	const batchSize = 100
+	total := 0
+
+	for i := 0; i < len(rels); i += batchSize {
+		end := i + batchSize
+		if end > len(rels) {
+			end = len(rels)
 		}
-		id := buildRelationshipID(rel.SourceID, rel.RelType, rel.TargetID, props)
-		values = append(values, fmt.Sprintf("('%s', '%s', '%s', '%s', '%s', '%s', '%s')",
-			escapeSQL(id),
-			escapeSQL(rel.SourceID),
-			escapeSQL(rel.SourceType),
-			escapeSQL(rel.TargetID),
-			escapeSQL(rel.TargetType),
-			escapeSQL(rel.RelType),
-			escapeSQL(props),
-		))
+		batch := rels[i:end]
+
+		values := make([]string, 0, len(batch))
+		for _, rel := range batch {
+			props := rel.Properties
+			if props == "" {
+				props = "{}"
+			}
+			id := buildRelationshipID(rel.SourceID, rel.RelType, rel.TargetID, props)
+			values = append(values, fmt.Sprintf("('%s', '%s', '%s', '%s', '%s', '%s', '%s')",
+				escapeSQL(id),
+				escapeSQL(rel.SourceID),
+				escapeSQL(rel.SourceType),
+				escapeSQL(rel.TargetID),
+				escapeSQL(rel.TargetType),
+				escapeSQL(rel.RelType),
+				escapeSQL(props),
+			))
+		}
+
+		// Use simple INSERT with fully qualified table name
+		query := fmt.Sprintf(`INSERT INTO %s (ID, SOURCE_ID, SOURCE_TYPE, TARGET_ID, TARGET_TYPE, REL_TYPE, PROPERTIES, SYNC_TIME)
+			SELECT column1, column2, column3, column4, column5, column6, TRY_PARSE_JSON(column7), CURRENT_TIMESTAMP()
+			FROM VALUES %s`,
+			tableName, strings.Join(values, ", "))
+
+		// Use Query instead of Exec - Exec has issues with Snowflake commit behavior
+		_, err := r.sf.Query(ctx, query)
+		if err != nil {
+			r.logger.Error("failed to persist relationships batch", "error", err, "batch_start", i, "batch_size", len(batch))
+			return total, err
+		}
+		total += len(batch)
 	}
 
-	query := fmt.Sprintf(`MERGE INTO RESOURCE_RELATIONSHIPS AS target
-		USING (SELECT $1 AS ID, $2 AS SOURCE_ID, $3 AS SOURCE_TYPE, $4 AS TARGET_ID, 
-		              $5 AS TARGET_TYPE, $6 AS REL_TYPE, PARSE_JSON($7) AS PROPERTIES
-		       FROM VALUES %s) AS source
-		ON target.ID = source.ID
-		WHEN MATCHED THEN UPDATE SET 
-			PROPERTIES = source.PROPERTIES,
-			SYNC_TIME = CURRENT_TIMESTAMP()
-		WHEN NOT MATCHED THEN INSERT (ID, SOURCE_ID, SOURCE_TYPE, TARGET_ID, TARGET_TYPE, REL_TYPE, PROPERTIES, SYNC_TIME)
-			VALUES (source.ID, source.SOURCE_ID, source.SOURCE_TYPE, source.TARGET_ID, 
-			        source.TARGET_TYPE, source.REL_TYPE, source.PROPERTIES, CURRENT_TIMESTAMP())`,
-		strings.Join(values, ", "))
-
-	_, err := r.sf.Exec(ctx, query)
-	if err != nil {
-		return 0, err
-	}
-	return len(rels), nil
+	r.logger.Info("relationships persisted", "total", total)
+	return total, nil
 }
 
 // extractEC2Relationships extracts relationships from EC2 instances
@@ -670,6 +702,148 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 							TargetType: "gcp:iam:service_account",
 							RelType:    RelHasRole,
 						})
+					}
+				}
+			}
+		}
+	}
+
+	// GCP Cloud Run Services - extract service account from TEMPLATE
+	query = `SELECT NAME, PROJECT_ID, TEMPLATE, INGRESS, URI
+	         FROM GCP_CLOUDRUN_SERVICES WHERE NAME IS NOT NULL`
+
+	result, err = r.sf.Query(ctx, query)
+	if err == nil {
+		for _, row := range result.Rows {
+			svcName := toString(row["NAME"])
+			projectID := toString(row["PROJECT_ID"])
+			ingress := toString(row["INGRESS"])
+			uri := toString(row["URI"])
+
+			// Extract service account from TEMPLATE
+			if template := row["TEMPLATE"]; template != nil {
+				var templateMap map[string]interface{}
+				templateStr := toString(template)
+				if err := json.Unmarshal([]byte(templateStr), &templateMap); err == nil {
+					if saEmail := toString(templateMap["service_account"]); saEmail != "" {
+						targetID := saEmail
+						if projectID != "" && !strings.Contains(saEmail, "/") {
+							targetID = fmt.Sprintf("projects/%s/serviceAccounts/%s", projectID, saEmail)
+						}
+						rels = append(rels, Relationship{
+							SourceID:   svcName,
+							SourceType: "gcp:cloudrun:service",
+							TargetID:   targetID,
+							TargetType: "gcp:iam:service_account",
+							RelType:    RelHasRole,
+						})
+
+						// If using default compute SA, flag as high-risk relationship
+						if strings.Contains(saEmail, "compute@developer.gserviceaccount.com") {
+							props, _ := json.Marshal(map[string]interface{}{
+								"risk": "default_compute_sa",
+								"note": "Using default compute service account with broad permissions",
+							})
+							rels = append(rels, Relationship{
+								SourceID:   svcName,
+								SourceType: "gcp:cloudrun:service",
+								TargetID:   targetID,
+								TargetType: "gcp:iam:service_account",
+								RelType:    "USES_DEFAULT_SA",
+								Properties: string(props),
+							})
+						}
+					}
+				}
+			}
+
+			// If publicly accessible, create exposure relationship
+			if ingress == "INGRESS_TRAFFIC_ALL" && uri != "" {
+				props, _ := json.Marshal(map[string]interface{}{
+					"exposure_level": "high",
+					"uri":            uri,
+				})
+				rels = append(rels, Relationship{
+					SourceID:   svcName,
+					SourceType: "gcp:cloudrun:service",
+					TargetID:   "internet",
+					TargetType: "network:internet",
+					RelType:    RelExposedTo,
+					Properties: string(props),
+				})
+			}
+		}
+	}
+
+	// GCP Cloud Run Revisions - extract service account directly
+	query = `SELECT NAME, PROJECT_ID, SERVICE, SERVICE_ACCOUNT, CONTAINERS
+	         FROM GCP_CLOUDRUN_REVISIONS WHERE NAME IS NOT NULL`
+
+	result, err = r.sf.Query(ctx, query)
+	if err == nil {
+		for _, row := range result.Rows {
+			revName := toString(row["NAME"])
+			projectID := toString(row["PROJECT_ID"])
+			serviceName := toString(row["SERVICE"])
+			saEmail := toString(row["SERVICE_ACCOUNT"])
+
+			// Revision -> Service relationship
+			if serviceName != "" {
+				rels = append(rels, Relationship{
+					SourceID:   revName,
+					SourceType: "gcp:cloudrun:revision",
+					TargetID:   serviceName,
+					TargetType: "gcp:cloudrun:service",
+					RelType:    RelBelongsTo,
+				})
+			}
+
+			// Revision -> Service Account relationship
+			if saEmail != "" {
+				targetID := saEmail
+				if projectID != "" && !strings.Contains(saEmail, "/") {
+					targetID = fmt.Sprintf("projects/%s/serviceAccounts/%s", projectID, saEmail)
+				}
+				rels = append(rels, Relationship{
+					SourceID:   revName,
+					SourceType: "gcp:cloudrun:revision",
+					TargetID:   targetID,
+					TargetType: "gcp:iam:service_account",
+					RelType:    RelHasRole,
+				})
+
+				// Flag default compute SA usage
+				if strings.Contains(saEmail, "compute@developer.gserviceaccount.com") {
+					props, _ := json.Marshal(map[string]interface{}{
+						"risk": "default_compute_sa",
+						"note": "Revision uses default compute service account",
+					})
+					rels = append(rels, Relationship{
+						SourceID:   revName,
+						SourceType: "gcp:cloudrun:revision",
+						TargetID:   targetID,
+						TargetType: "gcp:iam:service_account",
+						RelType:    "USES_DEFAULT_SA",
+						Properties: string(props),
+					})
+				}
+			}
+
+			// Extract container image relationships
+			if containers := row["CONTAINERS"]; containers != nil {
+				var containerList []map[string]interface{}
+				containerStr := toString(containers)
+				if err := json.Unmarshal([]byte(containerStr), &containerList); err == nil {
+					for _, container := range containerList {
+						if image := toString(container["image"]); image != "" {
+							rels = append(rels, Relationship{
+								SourceID:   revName,
+								SourceType: "gcp:cloudrun:revision",
+								TargetID:   image,
+								TargetType: "container:image",
+								RelType:    "RUNS_IMAGE",
+							})
+						}
 					}
 				}
 			}

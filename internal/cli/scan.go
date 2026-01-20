@@ -10,6 +10,7 @@ import (
 
 	"github.com/writerinternal/cerebro/internal/app"
 	"github.com/writerinternal/cerebro/internal/snowflake"
+	nativesync "github.com/writerinternal/cerebro/internal/sync"
 )
 
 var scanCmd = &cobra.Command{
@@ -26,13 +27,14 @@ Examples:
 }
 
 var (
-	scanTable       string
-	scanLimit       int
-	scanDryRun      bool
-	scanOutput      string
-	scanFull        bool
-	scanToxicCombos bool
-	scanUseGraph    bool
+	scanTable               string
+	scanLimit               int
+	scanDryRun              bool
+	scanOutput              string
+	scanFull                bool
+	scanToxicCombos         bool
+	scanUseGraph            bool
+	scanExtractRelationships bool
 )
 
 func init() {
@@ -43,6 +45,7 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanFull, "full", false, "Force full scan, ignoring watermarks")
 	scanCmd.Flags().BoolVar(&scanToxicCombos, "toxic-combos", true, "Detect toxic combinations of risk factors (Wiz-style)")
 	scanCmd.Flags().BoolVar(&scanUseGraph, "graph", true, "Use security graph for enhanced analysis (attack paths, blast radius)")
+	scanCmd.Flags().BoolVar(&scanExtractRelationships, "extract-relationships", false, "Extract resource relationships before scanning")
 }
 
 func runScan(cmd *cobra.Command, args []string) error {
@@ -56,6 +59,17 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	if application.Snowflake == nil {
 		return fmt.Errorf("snowflake not configured - set SNOWFLAKE_CONNECTION_STRING")
+	}
+
+	// Extract relationships if requested
+	if scanExtractRelationships {
+		Info("Extracting resource relationships from synced data...")
+		relExtractor := nativesync.NewRelationshipExtractor(application.Snowflake, application.Logger)
+		relCount, err := relExtractor.ExtractAndPersist(ctx)
+		if err != nil {
+			Warning("Relationship extraction had errors: %v", err)
+		}
+		Info("Extracted %d relationships", relCount)
 	}
 
 	policies := application.Policy.ListPolicies()

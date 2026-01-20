@@ -68,7 +68,9 @@ func runQuery(cmd *cobra.Command, args []string) error {
 	defer func() { _ = client.Close() }()
 
 	query := strings.Join(args, " ")
-	if !strings.Contains(strings.ToUpper(query), "LIMIT") && queryLimit > 0 {
+	upperQuery := strings.ToUpper(strings.TrimSpace(query))
+	// Only add LIMIT to SELECT queries that don't already have one
+	if strings.HasPrefix(upperQuery, "SELECT") && !strings.Contains(upperQuery, "LIMIT") && queryLimit > 0 {
 		query = fmt.Sprintf("%s LIMIT %d", query, queryLimit)
 	}
 
