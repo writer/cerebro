@@ -196,19 +196,32 @@ func runScan(cmd *cobra.Command, args []string) error {
 }
 
 func resourceToTable(resource string) string {
-	// Map resource patterns to CloudQuery table names
+	// Map resource patterns to Snowflake table names
 	mapping := map[string]string{
-		"aws::s3::bucket":          "aws_s3_buckets",
-		"aws::ec2::instance":       "aws_ec2_instances",
-		"aws::iam::user":           "aws_iam_users",
-		"aws::iam::role":           "aws_iam_roles",
-		"aws::rds::instance":       "aws_rds_instances",
-		"aws::lambda::function":    "aws_lambda_functions",
-		"aws::ec2::security_group": "aws_ec2_security_groups",
-		"gcp::storage::bucket":     "gcp_storage_buckets",
-		"gcp::compute::instance":   "gcp_compute_instances",
-		"azure::storage::account":  "azure_storage_accounts",
-		"azure::compute::vm":       "azure_compute_virtual_machines",
+		// AWS - synced by native engine
+		"aws::s3::bucket":                "aws_s3_buckets",
+		"aws::ec2::instance":             "aws_ec2_instances",
+		"aws::ec2::security_group":       "aws_ec2_security_groups",
+		"aws::ec2::vpc":                  "aws_ec2_vpcs",
+		"aws::iam::user":                 "aws_iam_users",
+		"aws::iam::role":                 "aws_iam_roles",
+		"aws::iam::credential_report":    "aws_iam_credential_reports",
+		"aws::lambda::function":          "aws_lambda_functions",
+		"aws::ecs::cluster":              "aws_ecs_clusters",
+		"aws::ecs::service":              "aws_ecs_services",
+		"aws::ecs::task_definition":      "aws_ecs_task_definitions",
+		"aws::ecr::repository":           "aws_ecr_repositories",
+		"aws::kms::key":                  "aws_kms_keys",
+		"aws::secretsmanager::secret":    "aws_secretsmanager_secrets",
+		"aws::rds::instance":             "aws_rds_instances",
+		"aws::rds::db_instance":          "aws_rds_instances",
+		// GCP
+		"gcp::storage::bucket":           "gcp_storage_buckets",
+		"gcp::compute::instance":         "gcp_compute_instances",
+		// Azure
+		"azure::storage::account":        "azure_storage_accounts",
+		"azure::compute::vm":             "azure_compute_virtual_machines",
+		"azure::compute::virtual_machine": "azure_compute_virtual_machines",
 	}
 
 	if table, ok := mapping[resource]; ok {
@@ -219,7 +232,8 @@ func resourceToTable(resource string) string {
 	// e.g., "aws::s3::bucket" -> "aws_s3_buckets"
 	parts := strings.Split(resource, "::")
 	if len(parts) >= 3 {
-		return parts[0] + "_" + parts[1] + "_" + parts[2] + "s"
+		tableName := parts[0] + "_" + parts[1] + "_" + parts[2] + "s"
+		return strings.ToLower(tableName)
 	}
 
 	return ""
