@@ -166,10 +166,6 @@ type Config struct {
 	SnykAPIToken string
 	SnykOrgID    string
 
-	// Wiz Provider
-	WizClientID     string
-	WizClientSecret string
-
 	// Datadog Provider
 	DatadogAPIKey string
 	DatadogAppKey string
@@ -272,8 +268,6 @@ func LoadConfig() *Config {
 		AzureSubscriptionID:       getEnv("AZURE_SUBSCRIPTION_ID", ""),
 		SnykAPIToken:              getEnv("SNYK_API_TOKEN", ""),
 		SnykOrgID:                 getEnv("SNYK_ORG_ID", ""),
-		WizClientID:               getEnv("WIZ_CLIENT_ID", ""),
-		WizClientSecret:           getEnv("WIZ_CLIENT_SECRET", ""),
 		DatadogAPIKey:             getEnv("DATADOG_API_KEY", ""),
 		DatadogAppKey:             getEnv("DATADOG_APP_KEY", ""),
 		DatadogSite:               getEnv("DATADOG_SITE", "datadoghq.com"),
@@ -566,17 +560,6 @@ func (a *App) initProviders(ctx context.Context) {
 		})
 		a.Providers.Register(snyk)
 		a.Logger.Info("snyk provider registered")
-	}
-
-	// Register Wiz if configured
-	if a.Config.WizClientID != "" {
-		wiz := providers.NewWizProvider()
-		_ = wiz.Configure(ctx, map[string]interface{}{
-			"client_id":     a.Config.WizClientID,
-			"client_secret": a.Config.WizClientSecret,
-		})
-		a.Providers.Register(wiz)
-		a.Logger.Info("wiz provider registered")
 	}
 
 	// Register Datadog if configured

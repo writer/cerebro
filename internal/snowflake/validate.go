@@ -12,7 +12,7 @@ var validTableNameRegex = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 // knownTablePrefixes are CloudQuery and Cerebro table prefixes
 var knownTablePrefixes = []string{
 	"aws_", "gcp_", "azure_", "k8s_", "okta_", "github_",
-	"snyk_", "wiz_", "crowdstrike_", "sentinelone_", "tenable_",
+	"snyk_", "crowdstrike_", "sentinelone_", "tenable_",
 	"datadog_", "qualys_", "semgrep_", "gitlab_", "cloudflare_",
 	"auth0_", "slack_", "splunk_", "terraform_",
 	"cerebro_",
