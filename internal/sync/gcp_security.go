@@ -134,57 +134,61 @@ func (s *GCPSecuritySync) syncArtifactRegistryImages(ctx context.Context) error 
 	}
 	defer client.Close()
 
-	// List all repositories first
-	repoReq := &artifactregistrypb.ListRepositoriesRequest{
-		Parent: fmt.Sprintf("projects/%s/locations/-", s.projectID),
-	}
-
+	// List all repositories across common locations
+	locations := []string{"us", "us-central1", "us-east1", "us-west1", "europe-west1", "asia-east1"}
+	
 	var images []map[string]interface{}
-	repoIt := client.ListRepositories(ctx, repoReq)
-	for {
-		repo, err := repoIt.Next()
-		if err == iterator.Done {
-			break
-		}
-		if err != nil {
-			s.logger.Warn("failed to list repositories", "error", err)
-			break
+	for _, loc := range locations {
+		repoReq := &artifactregistrypb.ListRepositoriesRequest{
+			Parent: fmt.Sprintf("projects/%s/locations/%s", s.projectID, loc),
 		}
 
-		// Only process Docker repositories
-		if repo.GetFormat() != artifactregistrypb.Repository_DOCKER {
-			continue
-		}
-
-		// List docker images in this repository
-		imgReq := &artifactregistrypb.ListDockerImagesRequest{
-			Parent: repo.GetName(),
-		}
-
-		imgIt := client.ListDockerImages(ctx, imgReq)
+		repoIt := client.ListRepositories(ctx, repoReq)
 		for {
-			img, err := imgIt.Next()
+			repo, err := repoIt.Next()
 			if err == iterator.Done {
 				break
 			}
 			if err != nil {
-				s.logger.Warn("failed to list docker images", "error", err, "repo", repo.GetName())
+				// Skip locations that don't exist or have no repos
 				break
 			}
 
-			images = append(images, map[string]interface{}{
-				"_cq_id":         img.GetUri(),
-				"project_id":     s.projectID,
-				"name":           img.GetName(),
-				"uri":            img.GetUri(),
-				"tags":           strings.Join(img.GetTags(), ","),
-				"image_size":     img.GetImageSizeBytes(),
-				"upload_time":    img.GetUploadTime().AsTime().Format(time.RFC3339),
-				"media_type":     img.GetMediaType(),
-				"build_time":     img.GetBuildTime().AsTime().Format(time.RFC3339),
-				"update_time":    img.GetUpdateTime().AsTime().Format(time.RFC3339),
-				"repository":     repo.GetName(),
-			})
+			// Only process Docker repositories
+			if repo.GetFormat() != artifactregistrypb.Repository_DOCKER {
+				continue
+			}
+
+			// List docker images in this repository
+			imgReq := &artifactregistrypb.ListDockerImagesRequest{
+				Parent: repo.GetName(),
+			}
+
+			imgIt := client.ListDockerImages(ctx, imgReq)
+			for {
+				img, err := imgIt.Next()
+				if err == iterator.Done {
+					break
+				}
+				if err != nil {
+					s.logger.Warn("failed to list docker images", "error", err, "repo", repo.GetName())
+					break
+				}
+
+				images = append(images, map[string]interface{}{
+					"_cq_id":         img.GetUri(),
+					"project_id":     s.projectID,
+					"name":           img.GetName(),
+					"uri":            img.GetUri(),
+					"tags":           strings.Join(img.GetTags(), ","),
+					"image_size":     img.GetImageSizeBytes(),
+					"upload_time":    img.GetUploadTime().AsTime().Format(time.RFC3339),
+					"media_type":     img.GetMediaType(),
+					"build_time":     img.GetBuildTime().AsTime().Format(time.RFC3339),
+					"update_time":    img.GetUpdateTime().AsTime().Format(time.RFC3339),
+					"repository":     repo.GetName(),
+				})
+			}
 		}
 	}
 
