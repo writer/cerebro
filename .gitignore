@@ -34,3 +34,5 @@ Thumbs.db
 
 infra/__pycache__/*
 infra/aws/__pycache__/*
+
+coverage.out

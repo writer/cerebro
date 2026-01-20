@@ -1,5 +1,5 @@
 {
-  "id": "wiz-bucket-public-read-sensitive",
+  "id": "wiz-bucket-public-sensitive",
   "name": "Publicly readable bucket contains sensitive data",
   "description": "Storage bucket allows anonymous read access (allUsers) and may contain sensitive data, creating a direct data breach risk",
   "effect": "forbid",

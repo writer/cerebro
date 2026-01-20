@@ -182,8 +182,12 @@ func (s *Store) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 			existing.RiskCategories = pf.RiskCategories
 		}
 		if len(pf.Frameworks) > 0 {
+			totalControls := 0
+			for _, fm := range pf.Frameworks {
+				totalControls += len(fm.Controls)
+			}
 			frameworks := make([]string, 0, len(pf.Frameworks))
-			securityCategories := make([]string, 0)
+			securityCategories := make([]string, 0, totalControls)
 			for _, fm := range pf.Frameworks {
 				frameworks = append(frameworks, fm.Name)
 				for _, control := range fm.Controls {

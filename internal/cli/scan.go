@@ -27,13 +27,13 @@ Examples:
 }
 
 var (
-	scanTables              []string
-	scanLimit               int
-	scanDryRun              bool
-	scanOutput              string
-	scanFull                bool
-	scanToxicCombos         bool
-	scanUseGraph            bool
+	scanTables               []string
+	scanLimit                int
+	scanDryRun               bool
+	scanOutput               string
+	scanFull                 bool
+	scanToxicCombos          bool
+	scanUseGraph             bool
 	scanExtractRelationships bool
 )
 
@@ -233,10 +233,10 @@ func runScan(cmd *cobra.Command, args []string) error {
 			// Count by severity
 			critCount, highCount := 0, 0
 			for _, f := range toxicFindings {
-				sev := toString(f["severity"])
-				if sev == "CRITICAL" {
+				switch toString(f["severity"]) {
+				case "CRITICAL":
 					critCount++
-				} else if sev == "HIGH" {
+				case "HIGH":
 					highCount++
 				}
 				allFindings = append(allFindings, f)
@@ -546,7 +546,7 @@ FROM high_cloudrun_no_auth
 		return nil, fmt.Errorf("toxic combination query failed: %w", err)
 	}
 
-	var findings []map[string]interface{}
+	findings := make([]map[string]interface{}, 0, len(result.Rows))
 	for _, row := range result.Rows {
 		findings = append(findings, map[string]interface{}{
 			"severity":        toString(row["SEVERITY"]),
