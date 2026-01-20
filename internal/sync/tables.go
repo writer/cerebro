@@ -72,6 +72,18 @@ func (e *SyncEngine) getAWSTables() []TableSpec {
 		e.secretsManagerSecretTable(),
 		// Database
 		e.rdsInstanceTable(),
+		e.dynamoDBTableTable(),
+		e.redshiftClusterTable(),
+		// Networking
+		e.elbv2LoadBalancerTable(),
+		e.elbv2TargetGroupTable(),
+		// Messaging
+		e.snsTopicTable(),
+		// Storage (EFS)
+		e.efsFileSystemTable(),
+		e.efsMountTargetTable(),
+		// Logging
+		e.cloudtrailTrailTable(),
 	}
 }
 

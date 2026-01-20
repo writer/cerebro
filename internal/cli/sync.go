@@ -47,6 +47,8 @@ var (
 	syncValidate     bool
 	syncScanAfter    bool
 	syncNative       bool
+	syncGCP          bool
+	syncGCPProject   string
 )
 
 func init() {
@@ -56,11 +58,21 @@ func init() {
 	syncCmd.Flags().BoolVar(&syncValidate, "validate", false, "Validate sync completed successfully")
 	syncCmd.Flags().BoolVar(&syncScanAfter, "scan-after", false, "Run policy scan after successful sync")
 	syncCmd.Flags().BoolVar(&syncNative, "native", true, "Use native AWS sync (default, use --native=false for CloudQuery)")
+	syncCmd.Flags().BoolVar(&syncGCP, "gcp", false, "Sync GCP resources instead of AWS")
+	syncCmd.Flags().StringVar(&syncGCPProject, "gcp-project", "", "GCP project ID to sync (required with --gcp)")
 }
 
 func runSync(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	start := time.Now()
+
+	// GCP sync
+	if syncGCP {
+		if syncGCPProject == "" {
+			return fmt.Errorf("--gcp-project is required with --gcp")
+		}
+		return runGCPSync(ctx, start, syncGCPProject)
+	}
 
 	// Use native sync if requested
 	if syncNative {
@@ -145,6 +157,25 @@ func runSync(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+func runGCPSync(ctx context.Context, start time.Time, projectID string) error {
+	Info("Starting GCP sync for project: %s", projectID)
+	
+	client, err := createSnowflakeClient()
+	if err != nil {
+		return fmt.Errorf("create snowflake client: %w", err)
+	}
+	defer client.Close()
+	
+	syncer := nativesync.NewGCPSyncEngine(client, slog.Default(), nativesync.WithGCPProject(projectID))
+	results, err := syncer.SyncAll(ctx)
+	if err != nil {
+		return fmt.Errorf("sync failed: %w", err)
+	}
+	
+	printSyncResults(results, start, "GCP")
+	return nil
+}
+
 func runNativeSync(ctx context.Context, start time.Time) error {
 	Info("Starting native AWS sync...")
 	
@@ -154,14 +185,27 @@ func runNativeSync(ctx context.Context, start time.Time) error {
 	}
 	defer client.Close()
 	
-	syncer := nativesync.NewAWSSyncer(client, slog.Default())
+	syncer := nativesync.NewSyncEngine(client, slog.Default())
 	results, err := syncer.SyncAll(ctx)
 	if err != nil {
 		return fmt.Errorf("sync failed: %w", err)
 	}
 	
+	printSyncResults(results, start, "AWS")
+	
+	if syncScanAfter {
+		Info("Triggering policy scan...")
+		if err := runPostSyncScan(ctx); err != nil {
+			Warning("Post-sync scan failed: %v", err)
+		}
+	}
+	
+	return nil
+}
+
+func printSyncResults(results []nativesync.SyncResult, start time.Time, provider string) {
 	fmt.Println()
-	fmt.Println("Sync Results:")
+	fmt.Printf("%s Sync Results:\n", provider)
 	fmt.Println("─────────────────────────────────────────")
 	
 	totalSynced := 0
@@ -201,15 +245,6 @@ func runNativeSync(ctx context.Context, start time.Time) error {
 	} else {
 		Success("Sync completed successfully")
 	}
-	
-	if syncScanAfter {
-		Info("Triggering policy scan...")
-		if err := runPostSyncScan(ctx); err != nil {
-			Warning("Post-sync scan failed: %v", err)
-		}
-	}
-	
-	return nil
 }
 
 func ensureCloudQueryTables(ctx context.Context) error {
