@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -28,28 +27,6 @@ func NewAWSSyncer(sf *snowflake.Client, logger *slog.Logger) *AWSSyncer {
 		logger: logger,
 		region: "us-east-1",
 	}
-}
-
-type SyncResult struct {
-	Table    string
-	Synced   int
-	Errors   int
-	Duration time.Duration
-	Changes  *ChangeSet
-}
-
-type ChangeSet struct {
-	Added    []string // ARNs/IDs of new resources
-	Removed  []string // ARNs/IDs of removed resources
-	Modified []string // ARNs/IDs of modified resources
-}
-
-func (c *ChangeSet) HasChanges() bool {
-	return len(c.Added) > 0 || len(c.Removed) > 0 || len(c.Modified) > 0
-}
-
-func (c *ChangeSet) Summary() string {
-	return fmt.Sprintf("+%d/~%d/-%d", len(c.Added), len(c.Modified), len(c.Removed))
 }
 
 type syncFunc struct {

@@ -301,6 +301,11 @@ github.com/aws/aws-sdk-go-v2/service/kms/types
 github.com/aws/aws-sdk-go-v2/service/lambda
 github.com/aws/aws-sdk-go-v2/service/lambda/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/lambda/types
+# github.com/aws/aws-sdk-go-v2/service/rds v1.114.0
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/rds
+github.com/aws/aws-sdk-go-v2/service/rds/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/rds/types
 # github.com/aws/aws-sdk-go-v2/service/s3 v1.95.1
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/s3
