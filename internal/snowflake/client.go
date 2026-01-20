@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/pem"
 	"fmt"
+	"strings"
 	"time"
 
 	sf "github.com/snowflakedb/gosnowflake"
@@ -306,6 +307,22 @@ func (c *Client) ListTables(ctx context.Context) ([]string, error) {
 	}
 
 	return tables, nil
+}
+
+// ListAvailableTables returns all tables in the configured schema as lowercase names.
+// This is used for policy validation and scanning to ensure consistent table name matching.
+func (c *Client) ListAvailableTables(ctx context.Context) ([]string, error) {
+	tables, err := c.ListTables(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Normalize to lowercase for consistent matching
+	result := make([]string, len(tables))
+	for i, t := range tables {
+		result[i] = strings.ToLower(t)
+	}
+	return result, nil
 }
 
 // WithTimeout returns a context with the specified timeout, suitable for database operations.

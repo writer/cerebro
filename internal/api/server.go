@@ -1067,16 +1067,8 @@ func (s *Server) generateComplianceReport(w http.ResponseWriter, r *http.Request
 	}
 	report.Summary.WeightedScore, _, _ = compliance.CalculateWeightedScore(framework.Controls, failingControlIDs)
 
-	// Include data freshness warning if available
-	var dataWarning string
-	if s.app.CloudQuery != nil {
-		freshness, err := s.app.CloudQuery.CheckDataFreshness(r.Context(), "aws_s3_buckets")
-		if err == nil && freshness.IsStale {
-			dataWarning = fmt.Sprintf("Warning: CloudQuery data is %.1f hours old", freshness.HoursSinceSync)
-		}
-	}
-
 	// Return enhanced response with evidence
+	var dataWarning string
 	response := map[string]interface{}{
 		"report":         report,
 		"total_findings": totalFindings,
@@ -2612,12 +2604,12 @@ func (s *Server) ingestTelemetry(w http.ResponseWriter, r *http.Request) {
 // CloudQuery handlers
 
 func (s *Server) listCloudQueryTables(w http.ResponseWriter, r *http.Request) {
-	if s.app.CloudQuery == nil {
-		s.error(w, http.StatusServiceUnavailable, "cloudquery not initialized")
+	if s.app.Snowflake == nil {
+		s.error(w, http.StatusServiceUnavailable, "snowflake not initialized")
 		return
 	}
 
-	tables, err := s.app.CloudQuery.ListAvailableTables(r.Context())
+	tables, err := s.app.Snowflake.ListAvailableTables(r.Context())
 	if err != nil {
 		s.error(w, http.StatusInternalServerError, err.Error())
 		return
@@ -2630,23 +2622,33 @@ func (s *Server) listCloudQueryTables(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getAssetInventory(w http.ResponseWriter, r *http.Request) {
-	if s.app.CloudQuery == nil {
-		s.error(w, http.StatusServiceUnavailable, "cloudquery not initialized")
+	if s.app.Snowflake == nil {
+		s.error(w, http.StatusServiceUnavailable, "snowflake not initialized")
 		return
 	}
 
-	inventory, err := s.app.CloudQuery.GetAssetInventory(r.Context())
+	tables, err := s.app.Snowflake.ListAvailableTables(r.Context())
 	if err != nil {
 		s.error(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+
+	inventory := make(map[string]int)
+	for _, table := range tables {
+		result, err := s.app.Snowflake.Query(r.Context(), "SELECT COUNT(*) as cnt FROM "+table)
+		if err == nil && len(result.Rows) > 0 {
+			if cnt, ok := result.Rows[0]["CNT"].(int64); ok {
+				inventory[table] = int(cnt)
+			}
+		}
 	}
 
 	s.json(w, http.StatusOK, inventory)
 }
 
 func (s *Server) checkDataFreshness(w http.ResponseWriter, r *http.Request) {
-	if s.app.CloudQuery == nil {
-		s.error(w, http.StatusServiceUnavailable, "cloudquery not initialized")
+	if s.app.Snowflake == nil {
+		s.error(w, http.StatusServiceUnavailable, "snowflake not initialized")
 		return
 	}
 
@@ -2656,65 +2658,48 @@ func (s *Server) checkDataFreshness(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	freshness, err := s.app.CloudQuery.CheckDataFreshness(r.Context(), table)
-	if err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	s.json(w, http.StatusOK, freshness)
-}
-
-func (s *Server) getTableStats(w http.ResponseWriter, r *http.Request) {
-	if s.app.CloudQuery == nil {
-		s.error(w, http.StatusServiceUnavailable, "cloudquery not initialized")
-		return
-	}
-
-	table := chi.URLParam(r, "table")
-	if table == "" {
-		s.error(w, http.StatusBadRequest, "table name required")
-		return
-	}
-
-	stats, err := s.app.CloudQuery.GetTableStats(r.Context(), table)
-	if err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	s.json(w, http.StatusOK, stats)
-}
-
-func (s *Server) ensureCloudQueryTables(w http.ResponseWriter, r *http.Request) {
-	if s.app.CloudQuery == nil {
-		s.error(w, http.StatusServiceUnavailable, "cloudquery not initialized")
-		return
-	}
-
-	provider := r.URL.Query().Get("provider")
-	var err error
-
-	switch provider {
-	case "aws":
-		err = s.app.CloudQuery.EnsureAWSTables(r.Context())
-	case "gcp":
-		err = s.app.CloudQuery.EnsureGCPTables(r.Context())
-	case "azure":
-		err = s.app.CloudQuery.EnsureAzureTables(r.Context())
-	default:
-		err = s.app.CloudQuery.EnsureTables(r.Context())
-	}
-
+	// Check when data was last synced by looking at _cq_sync_time
+	result, err := s.app.Snowflake.Query(r.Context(), "SELECT MAX(_cq_sync_time) as last_sync FROM "+table)
 	if err != nil {
 		s.error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	s.json(w, http.StatusOK, map[string]interface{}{
-		"status":   "ok",
-		"provider": provider,
-		"message":  "tables created successfully",
+		"table":     table,
+		"last_sync": result.Rows,
+	})
+}
+
+func (s *Server) getTableStats(w http.ResponseWriter, r *http.Request) {
+	if s.app.Snowflake == nil {
+		s.error(w, http.StatusServiceUnavailable, "snowflake not initialized")
+		return
+	}
+
+	table := chi.URLParam(r, "table")
+	if table == "" {
+		s.error(w, http.StatusBadRequest, "table name required")
+		return
+	}
+
+	result, err := s.app.Snowflake.Query(r.Context(), "SELECT COUNT(*) as count FROM "+table)
+	if err != nil {
+		s.error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"table": table,
+		"stats": result.Rows,
+	})
+}
+
+func (s *Server) ensureCloudQueryTables(w http.ResponseWriter, r *http.Request) {
+	// Tables are now auto-created by the sync engine
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"status":  "ok",
+		"message": "tables are auto-created by sync engine",
 	})
 }
 
@@ -2731,13 +2716,13 @@ func (s *Server) getScanWatermarks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getPolicyCoverage(w http.ResponseWriter, r *http.Request) {
-	if s.app.CloudQuery == nil {
-		s.error(w, http.StatusServiceUnavailable, "cloudquery not initialized")
+	if s.app.Snowflake == nil {
+		s.error(w, http.StatusServiceUnavailable, "snowflake not initialized")
 		return
 	}
 
-	// Get available tables from CloudQuery
-	availableTables, err := s.app.CloudQuery.ListAvailableTables(r.Context())
+	// Get available tables
+	availableTables, err := s.app.Snowflake.ListAvailableTables(r.Context())
 	if err != nil {
 		s.error(w, http.StatusInternalServerError, err.Error())
 		return

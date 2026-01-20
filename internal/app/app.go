@@ -46,7 +46,6 @@ import (
 	"github.com/writerinternal/cerebro/internal/attackpath"
 	"github.com/writerinternal/cerebro/internal/auth"
 	"github.com/writerinternal/cerebro/internal/cache"
-	"github.com/writerinternal/cerebro/internal/cloudquery"
 	"github.com/writerinternal/cerebro/internal/compliance"
 	"github.com/writerinternal/cerebro/internal/findings"
 	"github.com/writerinternal/cerebro/internal/graph"
@@ -101,9 +100,6 @@ type App struct {
 
 	// Snowflake-backed stores (when available)
 	SnowflakeFindings *findings.SnowflakeStore
-
-	// CloudQuery table management
-	CloudQuery *cloudquery.TableManager
 
 	// Incremental scanning
 	ScanWatermarks *scanner.WatermarkStore
@@ -352,7 +348,6 @@ func New(ctx context.Context) (*App, error) {
 	app.initScheduler(ctx)
 	app.initRepositories()
 	app.initSnowflakeFindings(ctx)
-	app.initCloudQuery()
 	app.initScanWatermarks(ctx)
 
 	// Initialize new services
@@ -699,24 +694,6 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 		return fmt.Errorf("snowflake not configured")
 	}
 
-	// Check data freshness before scan (spot check first few tables)
-	if a.CloudQuery != nil {
-		checkCount := 3
-		if len(tables) < checkCount {
-			checkCount = len(tables)
-		}
-		for i := 0; i < checkCount; i++ {
-			freshness, err := a.CloudQuery.CheckDataFreshness(ctx, tables[i])
-			if err == nil && freshness.IsStale {
-				a.Logger.Warn("cloudquery data is stale",
-					"table", tables[i],
-					"hours_old", freshness.HoursSinceSync,
-					"last_sync", freshness.LastSyncTime,
-				)
-			}
-		}
-	}
-
 	totalScanned := 0
 	totalViolations := 0
 
@@ -805,14 +782,6 @@ func (a *App) initSnowflakeFindings(ctx context.Context) {
 	}
 }
 
-func (a *App) initCloudQuery() {
-	if a.Snowflake == nil {
-		return
-	}
-	a.CloudQuery = cloudquery.NewTableManager(a.Snowflake, a.Config.SnowflakeSchema)
-	a.Logger.Info("cloudquery table manager initialized")
-}
-
 func (a *App) initScanWatermarks(ctx context.Context) {
 	var db interface{ Query(string) error }
 	if a.Snowflake != nil {
@@ -828,14 +797,14 @@ func (a *App) initScanWatermarks(ctx context.Context) {
 	a.Logger.Info("scan watermarks initialized")
 }
 
-// validatePolicyCoverage checks that required CloudQuery tables exist for loaded policies
+// validatePolicyCoverage checks that required tables exist for loaded policies
 func (a *App) validatePolicyCoverage(ctx context.Context) {
-	if a.CloudQuery == nil {
-		a.Logger.Warn("skipping policy coverage validation - CloudQuery not configured")
+	if a.Snowflake == nil {
+		a.Logger.Warn("skipping policy coverage validation - Snowflake not configured")
 		return
 	}
 
-	availableTables, err := a.CloudQuery.ListAvailableTables(ctx)
+	availableTables, err := a.Snowflake.ListAvailableTables(ctx)
 	if err != nil {
 		a.Logger.Warn("failed to list available tables for policy validation", "error", err)
 		return
@@ -936,7 +905,7 @@ func splitTables(s string) []string {
 	return result
 }
 
-// defaultScanTables returns the comprehensive list of CloudQuery tables to scan
+// defaultScanTables returns the comprehensive list of tables to scan
 func defaultScanTables() []string {
 	return []string{
 		// AWS IAM
@@ -1083,17 +1052,17 @@ func (a *App) initHealth() {
 		return nil
 	}))
 
-	a.Health.Register("cloudquery_data", health.PingCheck("cloudquery_data", func(ctx context.Context) error {
-		if a.CloudQuery == nil {
+	a.Health.Register("sync_data", health.PingCheck("sync_data", func(ctx context.Context) error {
+		if a.Snowflake == nil {
 			return fmt.Errorf("not configured")
 		}
 		// Check that at least some tables have data
-		tables, err := a.CloudQuery.ListAvailableTables(ctx)
+		tables, err := a.Snowflake.ListAvailableTables(ctx)
 		if err != nil {
 			return fmt.Errorf("cannot list tables: %w", err)
 		}
 		if len(tables) == 0 {
-			return fmt.Errorf("no cloudquery tables found - sync may be needed")
+			return fmt.Errorf("no synced tables found - sync may be needed")
 		}
 		return nil
 	}))
