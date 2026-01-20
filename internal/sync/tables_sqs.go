@@ -66,11 +66,17 @@ func (e *SyncEngine) fetchSQSQueues(ctx context.Context, cfg aws.Config, region 
 			"approximate_number_of_messages_not_visible":  attrs.Attributes["ApproximateNumberOfMessagesNotVisible"],
 			"created_timestamp":                           attrs.Attributes["CreatedTimestamp"],
 			"last_modified_timestamp":                     attrs.Attributes["LastModifiedTimestamp"],
-			"kms_master_key_id":                           attrs.Attributes["KmsMasterKeyId"],
-			"kms_data_key_reuse_period_seconds":           attrs.Attributes["KmsDataKeyReusePeriodSeconds"],
-			"sqs_managed_sse_enabled":                     attrs.Attributes["SqsManagedSseEnabled"],
-			"fifo_queue":                                  attrs.Attributes["FifoQueue"],
-			"content_based_deduplication":                 attrs.Attributes["ContentBasedDeduplication"],
+			"sqs_managed_sse_enabled":                     attrs.Attributes["SqsManagedSseEnabled"] == "true",
+			"fifo_queue":                                  attrs.Attributes["FifoQueue"] == "true",
+			"content_based_deduplication":                 attrs.Attributes["ContentBasedDeduplication"] == "true",
+		}
+
+		// Only add KMS fields if they have values
+		if kmsKey := attrs.Attributes["KmsMasterKeyId"]; kmsKey != "" {
+			row["kms_master_key_id"] = kmsKey
+		}
+		if kmsReuse := attrs.Attributes["KmsDataKeyReusePeriodSeconds"]; kmsReuse != "" {
+			row["kms_data_key_reuse_period_seconds"] = kmsReuse
 		}
 
 		// Parse policy as JSON
