@@ -197,6 +197,17 @@ func runGCPSync(ctx context.Context, start time.Time, projectID string) error {
 	}
 	
 	printSyncResults(results, start, "GCP")
+	
+	// Extract resource relationships for graph building
+	Info("Extracting resource relationships...")
+	relExtractor := nativesync.NewRelationshipExtractor(client, slog.Default())
+	relCount, err := relExtractor.ExtractAndPersist(ctx)
+	if err != nil {
+		Warning("Relationship extraction failed: %v", err)
+	} else {
+		Info("Extracted %d relationships", relCount)
+	}
+	
 	return nil
 }
 
@@ -286,6 +297,16 @@ func runNativeSync(ctx context.Context, start time.Time) error {
 	}
 	
 	printSyncResults(results, start, "AWS")
+	
+	// Extract resource relationships for graph building
+	Info("Extracting resource relationships...")
+	relExtractor := nativesync.NewRelationshipExtractor(client, slog.Default())
+	relCount, err := relExtractor.ExtractAndPersist(ctx)
+	if err != nil {
+		Warning("Relationship extraction failed: %v", err)
+	} else {
+		Info("Extracted %d relationships", relCount)
+	}
 	
 	if syncScanAfter {
 		Info("Triggering policy scan...")

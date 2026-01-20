@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/writerinternal/cerebro/internal/app"
+	"github.com/writerinternal/cerebro/internal/scanner"
 	"github.com/writerinternal/cerebro/internal/snowflake"
 )
 
@@ -32,6 +33,7 @@ var (
 	scanOutput      string
 	scanFull        bool
 	scanToxicCombos bool
+	scanUseGraph    bool
 )
 
 func init() {
@@ -41,6 +43,7 @@ func init() {
 	scanCmd.Flags().StringVarP(&scanOutput, "output", "o", "table", "Output format (table,json)")
 	scanCmd.Flags().BoolVar(&scanFull, "full", false, "Force full scan, ignoring watermarks")
 	scanCmd.Flags().BoolVar(&scanToxicCombos, "toxic-combos", true, "Detect toxic combinations of risk factors (Wiz-style)")
+	scanCmd.Flags().BoolVar(&scanUseGraph, "graph", true, "Use security graph for enhanced analysis (attack paths, blast radius)")
 }
 
 func runScan(cmd *cobra.Command, args []string) error {
@@ -133,10 +136,19 @@ func runScan(cmd *cobra.Command, args []string) error {
 		}
 
 		var scannedCount, violationCount int64
+		var attackPathCount int
 		
 		if scanToxicCombos {
-			// Enhanced scan with toxic combination detection
-			enhancedResult := application.Scanner.ScanWithToxicCombinations(ctx, assets)
+			var enhancedResult *scanner.EnhancedScanResult
+			
+			// Use graph-based analysis if enabled and graph is available
+			if scanUseGraph && application.SecurityGraph != nil && application.SecurityGraph.NodeCount() > 0 {
+				enhancedResult = application.Scanner.ScanWithGraph(ctx, assets, application.SecurityGraph)
+				attackPathCount = len(enhancedResult.AttackPaths)
+			} else {
+				enhancedResult = application.Scanner.ScanWithToxicCombinations(ctx, assets)
+			}
+			
 			scannedCount = enhancedResult.Scanned
 			violationCount = enhancedResult.TotalFindings
 			
@@ -163,14 +175,21 @@ func runScan(cmd *cobra.Command, args []string) error {
 				})
 			}
 			
-			// Show table results with toxic combo count
+			// Show table results with toxic combo count and attack paths
 			toxicCount := len(enhancedResult.ToxicCombinations)
-			if toxicCount > 0 {
-				fmt.Printf("  Scanned: %d, Violations: %d (policy: %d, toxic combos: %s) (%s)\n",
+			if toxicCount > 0 || attackPathCount > 0 {
+				extras := []string{}
+				if toxicCount > 0 {
+					extras = append(extras, fmt.Sprintf("toxic: %s", color(colorRed, fmt.Sprintf("%d", toxicCount))))
+				}
+				if attackPathCount > 0 {
+					extras = append(extras, fmt.Sprintf("attack paths: %s", color(colorYellow, fmt.Sprintf("%d", attackPathCount))))
+				}
+				fmt.Printf("  Scanned: %d, Violations: %d (policy: %d, %s) (%s)\n",
 					scannedCount,
 					violationCount,
 					len(enhancedResult.Findings),
-					color(colorRed, fmt.Sprintf("%d", toxicCount)),
+					strings.Join(extras, ", "),
 					enhancedResult.Duration.Round(time.Millisecond))
 			} else {
 				fmt.Printf("  Scanned: %d, Violations: %d (%s)\n",
