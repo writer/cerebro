@@ -167,7 +167,7 @@ func (r *RelationshipExtractor) persistRelationships(ctx context.Context, rels [
 		return 0, nil
 	}
 
-	// Batch insert using MERGE
+	// Batch insert using MERGE - properties stored as VARCHAR, parsed on read
 	values := make([]string, 0, len(rels))
 	for _, rel := range rels {
 		props := rel.Properties
@@ -175,7 +175,7 @@ func (r *RelationshipExtractor) persistRelationships(ctx context.Context, rels [
 			props = "{}"
 		}
 		id := buildRelationshipID(rel.SourceID, rel.RelType, rel.TargetID, props)
-		values = append(values, fmt.Sprintf("('%s', '%s', '%s', '%s', '%s', '%s', PARSE_JSON('%s'))",
+		values = append(values, fmt.Sprintf("('%s', '%s', '%s', '%s', '%s', '%s', '%s')",
 			escapeSQL(id),
 			escapeSQL(rel.SourceID),
 			escapeSQL(rel.SourceType),
@@ -188,7 +188,7 @@ func (r *RelationshipExtractor) persistRelationships(ctx context.Context, rels [
 
 	query := fmt.Sprintf(`MERGE INTO RESOURCE_RELATIONSHIPS AS target
 		USING (SELECT $1 AS ID, $2 AS SOURCE_ID, $3 AS SOURCE_TYPE, $4 AS TARGET_ID, 
-		              $5 AS TARGET_TYPE, $6 AS REL_TYPE, $7 AS PROPERTIES
+		              $5 AS TARGET_TYPE, $6 AS REL_TYPE, PARSE_JSON($7) AS PROPERTIES
 		       FROM VALUES %s) AS source
 		ON target.ID = source.ID
 		WHEN MATCHED THEN UPDATE SET 
@@ -493,7 +493,7 @@ func (r *RelationshipExtractor) extractSecurityGroupRelationships(ctx context.Co
 
 // extractS3Relationships extracts S3 bucket relationships
 func (r *RelationshipExtractor) extractS3Relationships(ctx context.Context) (int, error) {
-	query := `SELECT ARN, NAME, SERVER_SIDE_ENCRYPTION_CONFIGURATION, LOGGING, POLICY
+	query := `SELECT ARN, NAME, ENCRYPTION, LOGGING_TARGET_BUCKET
 	          FROM AWS_S3_BUCKETS WHERE ARN IS NOT NULL`
 
 	result, err := r.sf.Query(ctx, query)
@@ -504,43 +504,40 @@ func (r *RelationshipExtractor) extractS3Relationships(ctx context.Context) (int
 	var rels []Relationship
 	for _, row := range result.Rows {
 		bucketARN := toString(row["ARN"])
+		if bucketARN == "" {
+			continue
+		}
 
-		// KMS encryption relationship
-		if sseConfig := row["SERVER_SIDE_ENCRYPTION_CONFIGURATION"]; sseConfig != nil {
-			if configMap, ok := sseConfig.(map[string]interface{}); ok {
-				if rules, ok := configMap["Rules"].([]interface{}); ok {
-					for _, rule := range rules {
-						if ruleMap, ok := rule.(map[string]interface{}); ok {
-							if apply, ok := ruleMap["ApplyServerSideEncryptionByDefault"].(map[string]interface{}); ok {
-								if kmsKeyID := toString(apply["KMSMasterKeyID"]); kmsKeyID != "" {
-									rels = append(rels, Relationship{
-										SourceID:   bucketARN,
-										SourceType: "aws:s3:bucket",
-										TargetID:   kmsKeyID,
-										TargetType: "aws:kms:key",
-										RelType:    RelEncryptedBy,
-									})
-								}
-							}
-						}
+		// KMS encryption relationship - extract from ENCRYPTION column
+		if enc := row["ENCRYPTION"]; enc != nil {
+			encStr := toString(enc)
+			// Check if KMS encryption is configured
+			if strings.Contains(encStr, "aws:kms") || strings.Contains(encStr, "KMS") {
+				// Try to parse as JSON to extract KMS key ARN
+				var encMap map[string]interface{}
+				if err := json.Unmarshal([]byte(encStr), &encMap); err == nil {
+					if kmsKeyID := toString(encMap["KMSMasterKeyID"]); kmsKeyID != "" {
+						rels = append(rels, Relationship{
+							SourceID:   bucketARN,
+							SourceType: "aws:s3:bucket",
+							TargetID:   kmsKeyID,
+							TargetType: "aws:kms:key",
+							RelType:    RelEncryptedBy,
+						})
 					}
 				}
 			}
 		}
 
 		// Logging relationship
-		if logging := row["LOGGING"]; logging != nil {
-			if logMap, ok := logging.(map[string]interface{}); ok {
-				if targetBucket := toString(logMap["TargetBucket"]); targetBucket != "" {
-					rels = append(rels, Relationship{
-						SourceID:   bucketARN,
-						SourceType: "aws:s3:bucket",
-						TargetID:   fmt.Sprintf("arn:aws:s3:::%s", targetBucket),
-						TargetType: "aws:s3:bucket",
-						RelType:    RelLogsTo,
-					})
-				}
-			}
+		if targetBucket := toString(row["LOGGING_TARGET_BUCKET"]); targetBucket != "" {
+			rels = append(rels, Relationship{
+				SourceID:   bucketARN,
+				SourceType: "aws:s3:bucket",
+				TargetID:   fmt.Sprintf("arn:aws:s3:::%s", targetBucket),
+				TargetType: "aws:s3:bucket",
+				RelType:    RelLogsTo,
+			})
 		}
 	}
 
@@ -646,8 +643,8 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 		}
 	}
 
-	// GCP Cloud Functions
-	query = `SELECT NAME, PROJECT_ID, SERVICE_ACCOUNT_EMAIL, VPC_CONNECTOR
+	// GCP Cloud Functions - service account is in SERVICE_CONFIG
+	query = `SELECT NAME, PROJECT_ID, SERVICE_CONFIG
 	         FROM GCP_CLOUDFUNCTIONS_FUNCTIONS WHERE NAME IS NOT NULL`
 
 	result, err = r.sf.Query(ctx, query)
@@ -656,18 +653,25 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 			funcName := toString(row["NAME"])
 			projectID := toString(row["PROJECT_ID"])
 
-			if saEmail := toString(row["SERVICE_ACCOUNT_EMAIL"]); saEmail != "" {
-				targetID := saEmail
-				if projectID != "" {
-					targetID = fmt.Sprintf("projects/%s/serviceAccounts/%s", projectID, saEmail)
+			// Extract service account from SERVICE_CONFIG
+			if svcConfig := row["SERVICE_CONFIG"]; svcConfig != nil {
+				var configMap map[string]interface{}
+				configStr := toString(svcConfig)
+				if err := json.Unmarshal([]byte(configStr), &configMap); err == nil {
+					if saEmail := toString(configMap["service_account_email"]); saEmail != "" {
+						targetID := saEmail
+						if projectID != "" {
+							targetID = fmt.Sprintf("projects/%s/serviceAccounts/%s", projectID, saEmail)
+						}
+						rels = append(rels, Relationship{
+							SourceID:   funcName,
+							SourceType: "gcp:cloudfunctions:function",
+							TargetID:   targetID,
+							TargetType: "gcp:iam:service_account",
+							RelType:    RelHasRole,
+						})
+					}
 				}
-				rels = append(rels, Relationship{
-					SourceID:   funcName,
-					SourceType: "gcp:cloudfunctions:function",
-					TargetID:   targetID,
-					TargetType: "gcp:iam:service_account",
-					RelType:    RelHasRole,
-				})
 			}
 		}
 	}
@@ -726,10 +730,17 @@ func toString(v interface{}) string {
 	if v == nil {
 		return ""
 	}
-	if s, ok := v.(string); ok {
-		return s
+	var s string
+	if str, ok := v.(string); ok {
+		s = str
+	} else {
+		s = fmt.Sprintf("%v", v)
 	}
-	return fmt.Sprintf("%v", v)
+	// Snowflake VARIANT columns return strings with JSON quotes - strip them
+	if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
+		s = s[1 : len(s)-1]
+	}
+	return s
 }
 
 func getStringAny(m map[string]interface{}, keys ...string) string {
@@ -792,18 +803,19 @@ func parsePolicyDocument(value interface{}) (map[string]interface{}, error) {
 	if doc := asMap(value); doc != nil {
 		return doc, nil
 	}
-	if raw, ok := value.(string); ok {
-		decoded, err := url.QueryUnescape(raw)
-		if err != nil {
-			decoded = raw
-		}
-		var doc map[string]interface{}
-		if err := json.Unmarshal([]byte(decoded), &doc); err != nil {
-			return nil, err
-		}
-		return doc, nil
+	raw := toString(value) // Use toString to strip Snowflake VARIANT quotes
+	if raw == "" {
+		return nil, nil
 	}
-	return nil, nil
+	decoded, err := url.QueryUnescape(raw)
+	if err != nil {
+		decoded = raw
+	}
+	var doc map[string]interface{}
+	if err := json.Unmarshal([]byte(decoded), &doc); err != nil {
+		return nil, err
+	}
+	return doc, nil
 }
 
 func encodeProperties(props map[string]interface{}) (string, error) {
