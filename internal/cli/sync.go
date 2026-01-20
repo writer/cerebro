@@ -55,7 +55,7 @@ func init() {
 	syncCmd.Flags().BoolVar(&syncEnsureTables, "ensure-tables", false, "Create Snowflake tables before sync")
 	syncCmd.Flags().BoolVar(&syncValidate, "validate", false, "Validate sync completed successfully")
 	syncCmd.Flags().BoolVar(&syncScanAfter, "scan-after", false, "Run policy scan after successful sync")
-	syncCmd.Flags().BoolVar(&syncNative, "native", false, "Use native AWS sync instead of CloudQuery")
+	syncCmd.Flags().BoolVar(&syncNative, "native", true, "Use native AWS sync (default, use --native=false for CloudQuery)")
 }
 
 func runSync(cmd *cobra.Command, args []string) error {
@@ -166,18 +166,35 @@ func runNativeSync(ctx context.Context, start time.Time) error {
 	
 	totalSynced := 0
 	totalErrors := 0
+	totalAdded := 0
+	totalModified := 0
+	totalRemoved := 0
+	
 	for _, r := range results {
 		status := "✓"
 		if r.Errors > 0 {
 			status = "✗"
 		}
-		fmt.Printf("  %s %-30s %4d resources (%s)\n", status, r.Table, r.Synced, r.Duration.Round(time.Millisecond))
+		
+		changeInfo := ""
+		if r.Changes != nil && r.Changes.HasChanges() {
+			changeInfo = fmt.Sprintf(" [%s]", r.Changes.Summary())
+			totalAdded += len(r.Changes.Added)
+			totalModified += len(r.Changes.Modified)
+			totalRemoved += len(r.Changes.Removed)
+		}
+		
+		fmt.Printf("  %s %-30s %4d resources (%s)%s\n", status, r.Table, r.Synced, r.Duration.Round(time.Millisecond), changeInfo)
 		totalSynced += r.Synced
 		totalErrors += r.Errors
 	}
 	
 	fmt.Println("─────────────────────────────────────────")
 	fmt.Printf("  Total: %d resources synced in %s\n", totalSynced, time.Since(start).Round(time.Second))
+	
+	if totalAdded > 0 || totalModified > 0 || totalRemoved > 0 {
+		fmt.Printf("  Changes: +%d added, ~%d modified, -%d removed\n", totalAdded, totalModified, totalRemoved)
+	}
 	
 	if totalErrors > 0 {
 		Warning("%d tables had errors", totalErrors)

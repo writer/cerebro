@@ -257,6 +257,11 @@ github.com/aws/aws-sdk-go-v2/service/dynamodbstreams/types
 github.com/aws/aws-sdk-go-v2/service/ec2
 github.com/aws/aws-sdk-go-v2/service/ec2/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/ec2/types
+# github.com/aws/aws-sdk-go-v2/service/ecr v1.55.1
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/ecr
+github.com/aws/aws-sdk-go-v2/service/ecr/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/ecr/types
 # github.com/aws/aws-sdk-go-v2/service/ecs v1.70.1
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/ecs
@@ -286,6 +291,11 @@ github.com/aws/aws-sdk-go-v2/service/internal/presigned-url
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared/arn
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared/config
+# github.com/aws/aws-sdk-go-v2/service/kms v1.49.5
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/kms
+github.com/aws/aws-sdk-go-v2/service/kms/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/kms/types
 # github.com/aws/aws-sdk-go-v2/service/lambda v1.87.1
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/lambda
@@ -298,6 +308,11 @@ github.com/aws/aws-sdk-go-v2/service/s3/internal/arn
 github.com/aws/aws-sdk-go-v2/service/s3/internal/customizations
 github.com/aws/aws-sdk-go-v2/service/s3/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/s3/types
+# github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.41.1
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/secretsmanager
+github.com/aws/aws-sdk-go-v2/service/secretsmanager/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/secretsmanager/types
 # github.com/aws/aws-sdk-go-v2/service/sqs v1.42.17
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/sqs
