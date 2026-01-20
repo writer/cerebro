@@ -26,11 +26,12 @@ Examples:
 }
 
 var (
-	scanTable  string
-	scanLimit  int
-	scanDryRun bool
-	scanOutput string
-	scanFull   bool
+	scanTable       string
+	scanLimit       int
+	scanDryRun      bool
+	scanOutput      string
+	scanFull        bool
+	scanToxicCombos bool
 )
 
 func init() {
@@ -39,6 +40,7 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanDryRun, "dry-run", false, "Show what would be scanned without scanning")
 	scanCmd.Flags().StringVarP(&scanOutput, "output", "o", "table", "Output format (table,json)")
 	scanCmd.Flags().BoolVar(&scanFull, "full", false, "Force full scan, ignoring watermarks")
+	scanCmd.Flags().BoolVar(&scanToxicCombos, "toxic-combos", true, "Detect toxic combinations of risk factors (Wiz-style)")
 }
 
 func runScan(cmd *cobra.Command, args []string) error {
@@ -130,41 +132,85 @@ func runScan(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		result := application.Scanner.ScanAssets(ctx, assets)
-		totalScanned += result.Scanned
-		totalViolations += result.Violations
+		var scannedCount, violationCount int64
+		
+		if scanToxicCombos {
+			// Enhanced scan with toxic combination detection
+			enhancedResult := application.Scanner.ScanWithToxicCombinations(ctx, assets)
+			scannedCount = enhancedResult.Scanned
+			violationCount = enhancedResult.TotalFindings
+			
+			// Persist and collect policy findings
+			for _, f := range enhancedResult.Findings {
+				application.Findings.Upsert(ctx, f)
+				allFindings = append(allFindings, map[string]interface{}{
+					"id":          f.ID,
+					"policy_id":   f.PolicyID,
+					"resource_id": f.ResourceID,
+					"severity":    f.Severity,
+				})
+			}
+			
+			// Persist and collect toxic combination findings
+			for _, f := range enhancedResult.ToxicCombinations {
+				application.Findings.Upsert(ctx, f)
+				allFindings = append(allFindings, map[string]interface{}{
+					"id":          f.ID,
+					"policy_id":   f.PolicyID,
+					"resource_id": f.ResourceID,
+					"severity":    f.Severity,
+					"toxic_combo": true,
+				})
+			}
+			
+			// Show table results with toxic combo count
+			toxicCount := len(enhancedResult.ToxicCombinations)
+			if toxicCount > 0 {
+				fmt.Printf("  Scanned: %d, Violations: %d (policy: %d, toxic combos: %s) (%s)\n",
+					scannedCount,
+					violationCount,
+					len(enhancedResult.Findings),
+					color(colorRed, fmt.Sprintf("%d", toxicCount)),
+					enhancedResult.Duration.Round(time.Millisecond))
+			} else {
+				fmt.Printf("  Scanned: %d, Violations: %d (%s)\n",
+					scannedCount,
+					len(enhancedResult.Findings),
+					enhancedResult.Duration.Round(time.Millisecond))
+			}
+		} else {
+			// Standard policy-only scan
+			result := application.Scanner.ScanAssets(ctx, assets)
+			scannedCount = result.Scanned
+			violationCount = result.Violations
+			
+			for _, f := range result.Findings {
+				application.Findings.Upsert(ctx, f)
+				allFindings = append(allFindings, map[string]interface{}{
+					"id":          f.ID,
+					"policy_id":   f.PolicyID,
+					"resource_id": f.ResourceID,
+					"severity":    f.Severity,
+				})
+			}
+			
+			fmt.Printf("  Scanned: %d, Violations: %d (%s)\n",
+				scannedCount,
+				violationCount,
+				result.Duration.Round(time.Millisecond))
+		}
+		
+		totalScanned += scannedCount
+		totalViolations += violationCount
 
 		// Update watermark
 		if application.ScanWatermarks != nil {
-			application.ScanWatermarks.SetWatermark(table, time.Now().UTC(), result.Scanned)
+			application.ScanWatermarks.SetWatermark(table, time.Now().UTC(), scannedCount)
 			// Persist watermarks (best effort)
 			go func() {
 				_ = application.ScanWatermarks.PersistWatermarks(ctx)
 			}()
 		}
-
-		// Persist findings
-		for _, f := range result.Findings {
-			application.Findings.Upsert(ctx, f)
-			resourceID := ""
-			if arn, ok := f.Resource["arn"].(string); ok {
-				resourceID = arn
-			} else if name, ok := f.Resource["name"].(string); ok {
-				resourceID = name
-			}
-			allFindings = append(allFindings, map[string]interface{}{
-				"id":          f.ID,
-				"policy_id":   f.PolicyID,
-				"resource_id": resourceID,
-				"severity":    f.Severity,
-			})
-		}
-
-		// Show table results
-		fmt.Printf("  Scanned: %d, Violations: %d (%s)\n",
-			result.Scanned,
-			result.Violations,
-			result.Duration.Round(time.Millisecond))
 	}
 
 	duration := time.Since(start)
@@ -257,3 +303,5 @@ func resourceToTable(resource string) string {
 
 	return ""
 }
+
+

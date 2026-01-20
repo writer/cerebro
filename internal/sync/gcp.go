@@ -262,7 +262,10 @@ func (e *GCPSyncEngine) upsertWithChanges(ctx context.Context, table string, row
 		for k, v := range row {
 			cols = append(cols, strings.ToUpper(k))
 			jsonVal, _ := json.Marshal(v)
-			escaped := strings.ReplaceAll(string(jsonVal), "'", "''")
+			// Escape single quotes and backslashes for Snowflake SQL
+			escaped := string(jsonVal)
+			escaped = strings.ReplaceAll(escaped, "\\", "\\\\")
+			escaped = strings.ReplaceAll(escaped, "'", "''")
 			selects = append(selects, fmt.Sprintf("PARSE_JSON('%s')", escaped))
 		}
 

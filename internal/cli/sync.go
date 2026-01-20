@@ -41,15 +41,18 @@ Examples:
 }
 
 var (
-	syncConfigPath   string
-	syncSource       string
-	syncEnsureTables bool
-	syncValidate     bool
-	syncScanAfter    bool
-	syncNative       bool
-	syncGCP          bool
-	syncGCPProject   string
-	syncMultiRegion  bool
+	syncConfigPath    string
+	syncSource        string
+	syncEnsureTables  bool
+	syncValidate      bool
+	syncScanAfter     bool
+	syncNative        bool
+	syncGCP           bool
+	syncGCPProject    string
+	syncGCPProjects   string // comma-separated list of projects
+	syncGCPOrg        string // organization ID for multi-project sync
+	syncMultiRegion   bool
+	syncUseAssetAPI   bool // use Cloud Asset Inventory API
 )
 
 func init() {
@@ -60,8 +63,11 @@ func init() {
 	syncCmd.Flags().BoolVar(&syncScanAfter, "scan-after", false, "Run policy scan after successful sync")
 	syncCmd.Flags().BoolVar(&syncNative, "native", true, "Use native AWS sync (default, use --native=false for CloudQuery)")
 	syncCmd.Flags().BoolVar(&syncGCP, "gcp", false, "Sync GCP resources instead of AWS")
-	syncCmd.Flags().StringVar(&syncGCPProject, "gcp-project", "", "GCP project ID to sync (required with --gcp)")
+	syncCmd.Flags().StringVar(&syncGCPProject, "gcp-project", "", "GCP project ID to sync (required with --gcp unless using --gcp-org)")
+	syncCmd.Flags().StringVar(&syncGCPProjects, "gcp-projects", "", "Comma-separated list of GCP project IDs to sync")
+	syncCmd.Flags().StringVar(&syncGCPOrg, "gcp-org", "", "GCP organization ID for multi-project sync (syncs all projects)")
 	syncCmd.Flags().BoolVar(&syncMultiRegion, "multi-region", false, "Scan all major AWS regions (us-east-1, us-west-2, eu-west-1, etc.)")
+	syncCmd.Flags().BoolVar(&syncUseAssetAPI, "asset-api", false, "Use GCP Cloud Asset Inventory API for efficient bulk fetching")
 }
 
 func runSync(cmd *cobra.Command, args []string) error {
@@ -70,8 +76,24 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 	// GCP sync
 	if syncGCP {
+		// Handle multi-project sync via organization
+		if syncGCPOrg != "" {
+			return runGCPOrgSync(ctx, start, syncGCPOrg)
+		}
+		// Handle multi-project sync via explicit list
+		if syncGCPProjects != "" {
+			projects := strings.Split(syncGCPProjects, ",")
+			for i, p := range projects {
+				projects[i] = strings.TrimSpace(p)
+			}
+			return runGCPMultiProjectSync(ctx, start, projects)
+		}
+		// Handle single project sync
 		if syncGCPProject == "" {
-			return fmt.Errorf("--gcp-project is required with --gcp")
+			return fmt.Errorf("--gcp-project, --gcp-projects, or --gcp-org is required with --gcp")
+		}
+		if syncUseAssetAPI {
+			return runGCPAssetAPISync(ctx, start, []string{syncGCPProject})
 		}
 		return runGCPSync(ctx, start, syncGCPProject)
 	}
@@ -175,6 +197,67 @@ func runGCPSync(ctx context.Context, start time.Time, projectID string) error {
 	}
 	
 	printSyncResults(results, start, "GCP")
+	return nil
+}
+
+func runGCPOrgSync(ctx context.Context, start time.Time, orgID string) error {
+	Info("Discovering projects in organization: %s", orgID)
+	
+	// List all projects in the organization using Cloud Asset Inventory
+	projects, err := nativesync.ListOrganizationProjects(ctx, orgID)
+	if err != nil {
+		return fmt.Errorf("list organization projects: %w", err)
+	}
+	
+	Info("Found %d projects in organization", len(projects))
+	
+	if syncUseAssetAPI {
+		return runGCPAssetAPISync(ctx, start, projects)
+	}
+	return runGCPMultiProjectSync(ctx, start, projects)
+}
+
+func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []string) error {
+	Info("Starting GCP multi-project sync for %d projects...", len(projects))
+	
+	client, err := createSnowflakeClient()
+	if err != nil {
+		return fmt.Errorf("create snowflake client: %w", err)
+	}
+	defer client.Close()
+	
+	var allResults []nativesync.SyncResult
+	for i, projectID := range projects {
+		Info("[%d/%d] Syncing project: %s", i+1, len(projects), projectID)
+		syncer := nativesync.NewGCPSyncEngine(client, slog.Default(), nativesync.WithGCPProject(projectID))
+		results, err := syncer.SyncAll(ctx)
+		if err != nil {
+			Warning("Failed to sync project %s: %v", projectID, err)
+			continue
+		}
+		allResults = append(allResults, results...)
+	}
+	
+	printSyncResults(allResults, start, "GCP")
+	return nil
+}
+
+func runGCPAssetAPISync(ctx context.Context, start time.Time, projects []string) error {
+	Info("Starting GCP sync via Cloud Asset Inventory API for %d projects...", len(projects))
+	
+	client, err := createSnowflakeClient()
+	if err != nil {
+		return fmt.Errorf("create snowflake client: %w", err)
+	}
+	defer client.Close()
+	
+	syncer := nativesync.NewGCPAssetInventoryEngine(client, slog.Default(), nativesync.WithProjects(projects))
+	results, err := syncer.SyncAll(ctx)
+	if err != nil {
+		return fmt.Errorf("sync failed: %w", err)
+	}
+	
+	printSyncResults(results, start, "GCP (Asset API)")
 	return nil
 }
 
