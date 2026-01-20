@@ -67,6 +67,9 @@ func (b *Builder) Build(ctx context.Context) error {
 	// Build Code-to-Cloud edges (inferred from tags)
 	b.buildSCMInference()
 
+	// Build edges from extracted relationships
+	b.buildRelationshipEdges(ctx)
+
 	// Update metadata
 	b.graph.SetMetadata(Metadata{
 		BuiltAt:       time.Now(),
@@ -86,6 +89,179 @@ func (b *Builder) Build(ctx context.Context) error {
 // Graph returns the built graph
 func (b *Builder) Graph() *Graph {
 	return b.graph
+}
+
+func (b *Builder) buildRelationshipEdges(ctx context.Context) {
+	rels, err := b.source.Query(ctx, `
+		SELECT source_id, source_type, target_id, target_type, rel_type, properties
+		FROM resource_relationships
+	`)
+	if err != nil {
+		b.logger.Debug("relationship table not available", "error", err)
+		return
+	}
+
+	for _, row := range rels.Rows {
+		sourceID := toString(row["source_id"])
+		targetID := toString(row["target_id"])
+		if sourceID == "" || targetID == "" {
+			continue
+		}
+
+		sourceType := strings.ToLower(toString(row["source_type"]))
+		targetType := strings.ToLower(toString(row["target_type"]))
+		relType := strings.ToUpper(toString(row["rel_type"]))
+
+		edgeSource := sourceID
+		edgeTarget := targetID
+		edgeSourceType := sourceType
+		edgeTargetType := targetType
+		kind := EdgeKindConnectsTo
+
+		switch relType {
+		case "ASSUMABLE_BY", "TRUSTED_BY":
+			kind = EdgeKindCanAssume
+			edgeSource = targetID
+			edgeTarget = sourceID
+			edgeSourceType = targetType
+			edgeTargetType = sourceType
+		case "HAS_ROLE":
+			kind = EdgeKindCanAssume
+		case "MEMBER_OF":
+			if isIdentityType(sourceType) && isIdentityType(targetType) {
+				kind = EdgeKindMemberOf
+			} else {
+				kind = EdgeKindConnectsTo
+			}
+		case "READS_FROM":
+			kind = EdgeKindCanRead
+		case "WRITES_TO":
+			kind = EdgeKindCanWrite
+		case "HAS_PERMISSION":
+			kind = EdgeKindCanAdmin
+		case "EXPOSED_TO":
+			kind = EdgeKindExposedTo
+			if targetID == "internet" || targetType == "network:internet" {
+				edgeSource = "internet"
+				edgeTarget = sourceID
+				edgeSourceType = "network:internet"
+				edgeTargetType = sourceType
+			}
+		default:
+			kind = EdgeKindConnectsTo
+		}
+
+		b.ensureRelationshipNode(edgeSource, edgeSourceType)
+		b.ensureRelationshipNode(edgeTarget, edgeTargetType)
+
+		edge := &Edge{
+			Source: edgeSource,
+			Target: edgeTarget,
+			Kind:   kind,
+			Effect: EdgeEffectAllow,
+			Properties: map[string]any{
+				"relationship_type": relType,
+			},
+		}
+		if props := row["properties"]; props != nil {
+			edge.Properties["properties"] = props
+		}
+
+		b.addEdgeIfMissing(edge)
+	}
+
+	b.logger.Debug("added relationship edges", "count", len(rels.Rows))
+}
+
+func (b *Builder) ensureRelationshipNode(id, resourceType string) {
+	if id == "" {
+		return
+	}
+	if _, ok := b.graph.GetNode(id); ok {
+		return
+	}
+
+	kind := nodeKindForResourceType(resourceType)
+	if kind == "" {
+		return
+	}
+
+	node := &Node{
+		ID:       id,
+		Kind:     kind,
+		Name:     id,
+		Provider: providerForResourceType(resourceType),
+	}
+
+	if arn, err := ParseARN(id); err == nil {
+		node.Account = arn.Account
+		node.Region = arn.Region
+	}
+
+	b.graph.AddNode(node)
+}
+
+func nodeKindForResourceType(resourceType string) NodeKind {
+	switch strings.ToLower(resourceType) {
+	case "aws:iam:user":
+		return NodeKindUser
+	case "aws:iam:role":
+		return NodeKindRole
+	case "aws:iam:group":
+		return NodeKindGroup
+	case "aws:iam:instance_profile":
+		return NodeKindRole
+	case "gcp:iam:service_account", "gcp:iam:serviceaccount":
+		return NodeKindServiceAccount
+	case "aws:s3:bucket", "gcp:storage:bucket":
+		return NodeKindBucket
+	case "aws:ec2:instance", "gcp:compute:instance":
+		return NodeKindInstance
+	case "aws:lambda:function", "gcp:cloudfunctions:function":
+		return NodeKindFunction
+	case "aws:rds:db_instance", "gcp:sql:instance":
+		return NodeKindDatabase
+	case "aws:secretsmanager:secret", "gcp:secretmanager:secret":
+		return NodeKindSecret
+	case "aws:ec2:security_group", "aws:ec2:vpc", "aws:ec2:subnet", "gcp:compute:network", "gcp:compute:subnetwork":
+		return NodeKindNetwork
+	case "network:internet":
+		return NodeKindInternet
+	default:
+		return ""
+	}
+}
+
+func providerForResourceType(resourceType string) string {
+	resourceType = strings.ToLower(resourceType)
+	if strings.HasPrefix(resourceType, "aws:") {
+		return "aws"
+	}
+	if strings.HasPrefix(resourceType, "gcp:") {
+		return "gcp"
+	}
+	if strings.HasPrefix(resourceType, "azure:") {
+		return "azure"
+	}
+	return ""
+}
+
+func isIdentityType(resourceType string) bool {
+	switch strings.ToLower(resourceType) {
+	case "aws:iam:user", "aws:iam:role", "aws:iam:group", "aws:iam:instance_profile", "gcp:iam:service_account", "gcp:iam:serviceaccount":
+		return true
+	default:
+		return false
+	}
+}
+
+func (b *Builder) addEdgeIfMissing(edge *Edge) {
+	for _, existing := range b.graph.GetOutEdges(edge.Source) {
+		if existing.Target == edge.Target && existing.Kind == edge.Kind {
+			return
+		}
+	}
+	b.graph.AddEdge(edge)
 }
 
 func (b *Builder) buildAWSNodes(ctx context.Context) {

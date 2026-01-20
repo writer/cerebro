@@ -9,7 +9,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/writerinternal/cerebro/internal/app"
-	"github.com/writerinternal/cerebro/internal/scanner"
 	"github.com/writerinternal/cerebro/internal/snowflake"
 )
 
@@ -65,6 +64,18 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 
 	Info("Loaded %d policies", len(policies))
+
+	graphAvailable := false
+	if scanUseGraph {
+		Info("Building security graph for enhanced analysis...")
+		if err := application.RebuildSecurityGraph(ctx); err != nil {
+			Warning("Security graph build failed, falling back to profile-based analysis: %v", err)
+		} else if application.SecurityGraph != nil && application.SecurityGraph.NodeCount() > 0 {
+			graphAvailable = true
+		} else {
+			Warning("Security graph is empty, falling back to profile-based analysis")
+		}
+	}
 
 	// Determine tables to scan
 	var tables []string
@@ -136,35 +147,30 @@ func runScan(cmd *cobra.Command, args []string) error {
 		}
 
 		var scannedCount, violationCount int64
-		var attackPathCount int
-		
-		if scanToxicCombos {
-			var enhancedResult *scanner.EnhancedScanResult
-			
-			// Use graph-based analysis if enabled and graph is available
-			if scanUseGraph && application.SecurityGraph != nil && application.SecurityGraph.NodeCount() > 0 {
-				enhancedResult = application.Scanner.ScanWithGraph(ctx, assets, application.SecurityGraph)
-				attackPathCount = len(enhancedResult.AttackPaths)
-			} else {
-				enhancedResult = application.Scanner.ScanWithToxicCombinations(ctx, assets)
-			}
-			
-			scannedCount = enhancedResult.Scanned
-			violationCount = enhancedResult.TotalFindings
-			
-			// Persist and collect policy findings
-			for _, f := range enhancedResult.Findings {
-				application.Findings.Upsert(ctx, f)
-				allFindings = append(allFindings, map[string]interface{}{
-					"id":          f.ID,
-					"policy_id":   f.PolicyID,
-					"resource_id": f.ResourceID,
-					"severity":    f.Severity,
-				})
-			}
-			
-			// Persist and collect toxic combination findings
-			for _, f := range enhancedResult.ToxicCombinations {
+		var toxicCount int
+
+		// Standard policy scan
+		result := application.Scanner.ScanAssets(ctx, assets)
+		scannedCount = result.Scanned
+		violationCount = result.Violations
+
+		for _, f := range result.Findings {
+			application.Findings.Upsert(ctx, f)
+			allFindings = append(allFindings, map[string]interface{}{
+				"id":          f.ID,
+				"policy_id":   f.PolicyID,
+				"resource_id": f.ResourceID,
+				"severity":    f.Severity,
+			})
+		}
+
+		// Profile-based toxic combinations (only when graph analysis is not used)
+		if scanToxicCombos && !graphAvailable {
+			toxicFindings := application.Scanner.DetectToxicCombinations(ctx, assets)
+			toxicCount = len(toxicFindings)
+			violationCount += int64(toxicCount)
+
+			for _, f := range toxicFindings {
 				application.Findings.Upsert(ctx, f)
 				allFindings = append(allFindings, map[string]interface{}{
 					"id":          f.ID,
@@ -172,53 +178,25 @@ func runScan(cmd *cobra.Command, args []string) error {
 					"resource_id": f.ResourceID,
 					"severity":    f.Severity,
 					"toxic_combo": true,
+					"graph_based": false,
 				})
 			}
-			
-			// Show table results with toxic combo count and attack paths
-			toxicCount := len(enhancedResult.ToxicCombinations)
-			if toxicCount > 0 || attackPathCount > 0 {
-				extras := []string{}
-				if toxicCount > 0 {
-					extras = append(extras, fmt.Sprintf("toxic: %s", color(colorRed, fmt.Sprintf("%d", toxicCount))))
-				}
-				if attackPathCount > 0 {
-					extras = append(extras, fmt.Sprintf("attack paths: %s", color(colorYellow, fmt.Sprintf("%d", attackPathCount))))
-				}
-				fmt.Printf("  Scanned: %d, Violations: %d (policy: %d, %s) (%s)\n",
-					scannedCount,
-					violationCount,
-					len(enhancedResult.Findings),
-					strings.Join(extras, ", "),
-					enhancedResult.Duration.Round(time.Millisecond))
-			} else {
-				fmt.Printf("  Scanned: %d, Violations: %d (%s)\n",
-					scannedCount,
-					len(enhancedResult.Findings),
-					enhancedResult.Duration.Round(time.Millisecond))
-			}
+		}
+
+		if scanToxicCombos && toxicCount > 0 {
+			fmt.Printf("  Scanned: %d, Violations: %d (policy: %d, toxic: %s) (%s)\n",
+				scannedCount,
+				violationCount,
+				len(result.Findings),
+				color(colorRed, fmt.Sprintf("%d", toxicCount)),
+				result.Duration.Round(time.Millisecond))
 		} else {
-			// Standard policy-only scan
-			result := application.Scanner.ScanAssets(ctx, assets)
-			scannedCount = result.Scanned
-			violationCount = result.Violations
-			
-			for _, f := range result.Findings {
-				application.Findings.Upsert(ctx, f)
-				allFindings = append(allFindings, map[string]interface{}{
-					"id":          f.ID,
-					"policy_id":   f.PolicyID,
-					"resource_id": f.ResourceID,
-					"severity":    f.Severity,
-				})
-			}
-			
 			fmt.Printf("  Scanned: %d, Violations: %d (%s)\n",
 				scannedCount,
 				violationCount,
 				result.Duration.Round(time.Millisecond))
 		}
-		
+
 		totalScanned += scannedCount
 		totalViolations += violationCount
 
@@ -232,14 +210,55 @@ func runScan(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	var graphAttackPaths []map[string]interface{}
+	var graphToxicCount int
+	if scanToxicCombos && graphAvailable {
+		graphResult := application.Scanner.AnalyzeGraph(ctx, application.SecurityGraph)
+		if graphResult != nil {
+			graphToxicCount = len(graphResult.ToxicCombinations)
+			for _, f := range graphResult.ToxicCombinations {
+				application.Findings.Upsert(ctx, f)
+				allFindings = append(allFindings, map[string]interface{}{
+					"id":          f.ID,
+					"policy_id":   f.PolicyID,
+					"resource_id": f.ResourceID,
+					"severity":    f.Severity,
+					"toxic_combo": true,
+					"graph_based": true,
+				})
+			}
+
+			for _, ap := range graphResult.AttackPaths {
+				graphAttackPaths = append(graphAttackPaths, map[string]interface{}{
+					"id":             ap.ID,
+					"entry_point":    ap.EntryPoint,
+					"target":         ap.Target,
+					"steps":          ap.Steps,
+					"risk_score":     ap.RiskScore,
+					"exploitability": ap.Exploitability,
+					"impact":         ap.Impact,
+				})
+			}
+
+			totalViolations += int64(graphToxicCount)
+		}
+	}
+
+	if graphAvailable {
+		fmt.Printf("\nGraph analysis: toxic combinations: %d, attack paths: %d\n", graphToxicCount, len(graphAttackPaths))
+	}
+
 	duration := time.Since(start)
 
 	if scanOutput == FormatJSON {
 		return JSONOutput(map[string]interface{}{
-			"scanned":    totalScanned,
-			"violations": totalViolations,
-			"duration":   duration.String(),
-			"findings":   allFindings,
+			"scanned":            totalScanned,
+			"violations":         totalViolations,
+			"duration":           duration.String(),
+			"findings":           allFindings,
+			"graph_used":         graphAvailable,
+			"graph_toxic_count":  graphToxicCount,
+			"graph_attack_paths": graphAttackPaths,
 		})
 	}
 
@@ -264,44 +283,44 @@ func resourceToTable(resource string) string {
 	// Map resource patterns to Snowflake table names
 	mapping := map[string]string{
 		// AWS - synced by native engine
-		"aws::s3::bucket":                 "aws_s3_buckets",
-		"aws::ec2::instance":              "aws_ec2_instances",
-		"aws::ec2::security_group":        "aws_ec2_security_groups",
-		"aws::ec2::vpc":                   "aws_ec2_vpcs",
-		"aws::iam::user":                  "aws_iam_users",
-		"aws::iam::role":                  "aws_iam_roles",
-		"aws::iam::credential_report":     "aws_iam_credential_reports",
-		"aws::lambda::function":           "aws_lambda_functions",
-		"aws::ecs::cluster":               "aws_ecs_clusters",
-		"aws::ecs::service":               "aws_ecs_services",
-		"aws::ecs::task_definition":       "aws_ecs_task_definitions",
-		"aws::ecr::repository":            "aws_ecr_repositories",
-		"aws::kms::key":                   "aws_kms_keys",
-		"aws::secretsmanager::secret":     "aws_secretsmanager_secrets",
-		"aws::rds::instance":              "aws_rds_instances",
-		"aws::rds::db_instance":           "aws_rds_instances",
-		"aws::dynamodb::table":            "aws_dynamodb_tables",
-		"aws::redshift::cluster":          "aws_redshift_clusters",
-		"aws::elbv2::load_balancer":       "aws_elbv2_load_balancers",
-		"aws::elbv2::target_group":        "aws_elbv2_target_groups",
-		"aws::sns::topic":                 "aws_sns_topics",
-		"aws::efs::file_system":           "aws_efs_file_systems",
-		"aws::efs::mount_target":          "aws_efs_mount_targets",
-		"aws::cloudtrail::trail":          "aws_cloudtrail_trails",
-		"aws::sqs::queue":                 "aws_sqs_queues",
-		"aws::logs::log_group":            "aws_cloudwatch_log_groups",
-		"aws::cloudwatch::log_group":      "aws_cloudwatch_log_groups",
+		"aws::s3::bucket":             "aws_s3_buckets",
+		"aws::ec2::instance":          "aws_ec2_instances",
+		"aws::ec2::security_group":    "aws_ec2_security_groups",
+		"aws::ec2::vpc":               "aws_ec2_vpcs",
+		"aws::iam::user":              "aws_iam_users",
+		"aws::iam::role":              "aws_iam_roles",
+		"aws::iam::credential_report": "aws_iam_credential_reports",
+		"aws::lambda::function":       "aws_lambda_functions",
+		"aws::ecs::cluster":           "aws_ecs_clusters",
+		"aws::ecs::service":           "aws_ecs_services",
+		"aws::ecs::task_definition":   "aws_ecs_task_definitions",
+		"aws::ecr::repository":        "aws_ecr_repositories",
+		"aws::kms::key":               "aws_kms_keys",
+		"aws::secretsmanager::secret": "aws_secretsmanager_secrets",
+		"aws::rds::instance":          "aws_rds_instances",
+		"aws::rds::db_instance":       "aws_rds_instances",
+		"aws::dynamodb::table":        "aws_dynamodb_tables",
+		"aws::redshift::cluster":      "aws_redshift_clusters",
+		"aws::elbv2::load_balancer":   "aws_elbv2_load_balancers",
+		"aws::elbv2::target_group":    "aws_elbv2_target_groups",
+		"aws::sns::topic":             "aws_sns_topics",
+		"aws::efs::file_system":       "aws_efs_file_systems",
+		"aws::efs::mount_target":      "aws_efs_mount_targets",
+		"aws::cloudtrail::trail":      "aws_cloudtrail_trails",
+		"aws::sqs::queue":             "aws_sqs_queues",
+		"aws::logs::log_group":        "aws_cloudwatch_log_groups",
+		"aws::cloudwatch::log_group":  "aws_cloudwatch_log_groups",
 		// GCP - synced by native engine
-		"gcp::storage::bucket":            "gcp_storage_buckets",
-		"gcp::compute::instance":          "gcp_compute_instances",
-		"gcp::compute::firewall":          "gcp_compute_firewalls",
-		"gcp::compute::network":           "gcp_compute_networks",
-		"gcp::compute::subnetwork":        "gcp_compute_subnetworks",
-		"gcp::iam::service_account":       "gcp_iam_service_accounts",
-		"gcp::sql::database_instance":     "gcp_sql_instances",
-		"gcp::cloudfunctions::function":   "gcp_cloudfunctions_functions",
-		"gcp::pubsub::topic":              "gcp_pubsub_topics",
-		"gcp::container::cluster":         "gcp_container_clusters",
+		"gcp::storage::bucket":          "gcp_storage_buckets",
+		"gcp::compute::instance":        "gcp_compute_instances",
+		"gcp::compute::firewall":        "gcp_compute_firewalls",
+		"gcp::compute::network":         "gcp_compute_networks",
+		"gcp::compute::subnetwork":      "gcp_compute_subnetworks",
+		"gcp::iam::service_account":     "gcp_iam_service_accounts",
+		"gcp::sql::database_instance":   "gcp_sql_instances",
+		"gcp::cloudfunctions::function": "gcp_cloudfunctions_functions",
+		"gcp::pubsub::topic":            "gcp_pubsub_topics",
+		"gcp::container::cluster":       "gcp_container_clusters",
 		// Azure
 		"azure::storage::account":         "azure_storage_accounts",
 		"azure::compute::vm":              "azure_compute_virtual_machines",
@@ -322,5 +341,3 @@ func resourceToTable(resource string) string {
 
 	return ""
 }
-
-

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,13 +16,12 @@ import (
 
 // Scanner performs parallel policy evaluation across assets
 type Scanner struct {
-	engine             *policy.Engine
-	toxicDetector      *attackpath.ToxicCombinationDetector
-	graphToxicEngine   *graph.ToxicCombinationEngine
-	attackPathSim      *graph.AttackPathSimulator
-	workers            int
-	batchSize          int
-	logger             *slog.Logger
+	engine           *policy.Engine
+	toxicDetector    *attackpath.ToxicCombinationDetector
+	graphToxicEngine *graph.ToxicCombinationEngine
+	workers          int
+	batchSize        int
+	logger           *slog.Logger
 }
 
 type ScanConfig struct {
@@ -43,16 +43,6 @@ func NewScanner(engine *policy.Engine, cfg ScanConfig, logger *slog.Logger) *Sca
 		workers:          cfg.Workers,
 		batchSize:        cfg.BatchSize,
 		logger:           logger,
-	}
-}
-
-// SetSecurityGraph configures the scanner to use graph-based analysis
-func (s *Scanner) SetSecurityGraph(g *graph.Graph) {
-	if g != nil && g.NodeCount() > 0 {
-		s.attackPathSim = graph.NewAttackPathSimulator(g)
-		s.logger.Info("scanner configured with security graph", 
-			"nodes", g.NodeCount(), 
-			"edges", g.EdgeCount())
 	}
 }
 
@@ -171,6 +161,47 @@ func (s *Scanner) ScanWithToxicCombinations(ctx context.Context, assets []map[st
 	// First run standard policy scan
 	policyResult := s.ScanAssets(ctx, assets)
 
+	toxicFindings := s.DetectToxicCombinations(ctx, assets)
+
+	return &EnhancedScanResult{
+		ScanResult:        policyResult,
+		ToxicCombinations: toxicFindings,
+	}
+}
+
+// EnhancedScanResult includes both policy findings and toxic combinations
+type EnhancedScanResult struct {
+	*ScanResult
+	ToxicCombinations []policy.Finding
+}
+
+// AttackPathSummary is a simplified attack path for findings output
+type AttackPathSummary struct {
+	ID             string   `json:"id"`
+	EntryPoint     string   `json:"entry_point"`
+	Target         string   `json:"target"`
+	Steps          []string `json:"steps"`
+	RiskScore      float64  `json:"risk_score"`
+	Exploitability float64  `json:"exploitability"`
+	Impact         float64  `json:"impact"`
+}
+
+// GraphAnalysisResult contains graph-based toxic combinations and attack paths
+type GraphAnalysisResult struct {
+	ToxicCombinations []policy.Finding
+	AttackPaths       []AttackPathSummary
+}
+
+// AllFindings returns combined policy and toxic combination findings
+func (r *EnhancedScanResult) AllFindings() []policy.Finding {
+	all := make([]policy.Finding, 0, len(r.Findings)+len(r.ToxicCombinations))
+	all = append(all, r.Findings...)
+	all = append(all, r.ToxicCombinations...)
+	return all
+}
+
+// DetectToxicCombinations runs risk-profile based toxic combination detection
+func (s *Scanner) DetectToxicCombinations(ctx context.Context, assets []map[string]interface{}) []policy.Finding {
 	// Build risk profiles from assets
 	profiles := make([]attackpath.ResourceRiskProfile, 0, len(assets))
 	for _, asset := range assets {
@@ -200,7 +231,7 @@ func (s *Scanner) ScanWithToxicCombinations(ctx context.Context, assets []map[st
 			ResourceID:   combo.ResourceID,
 			ResourceName: combo.ResourceName,
 		}
-		
+
 		// Add risk categories from factors
 		for _, f := range combo.RiskFactors {
 			finding.RiskCategories = append(finding.RiskCategories, string(f.Type))
@@ -221,67 +252,25 @@ func (s *Scanner) ScanWithToxicCombinations(ctx context.Context, assets []map[st
 		"toxic_combinations", len(toxicCombos),
 	)
 
-	return &EnhancedScanResult{
-		ScanResult:        policyResult,
-		ToxicCombinations: toxicFindings,
-		TotalFindings:     int64(len(policyResult.Findings)) + int64(len(toxicFindings)),
+	return toxicFindings
+}
+
+// AnalyzeGraph runs graph-based toxic combination detection and attack path simulation
+func (s *Scanner) AnalyzeGraph(ctx context.Context, g *graph.Graph) *GraphAnalysisResult {
+	if g == nil || g.NodeCount() == 0 {
+		s.logger.Warn("no security graph available for analysis")
+		return nil
 	}
-}
 
-// EnhancedScanResult includes both policy findings and toxic combinations
-type EnhancedScanResult struct {
-	*ScanResult
-	ToxicCombinations []policy.Finding
-	AttackPaths       []AttackPathSummary
-	TotalFindings     int64
-	GraphAnalyzed     bool
-}
-
-// AttackPathSummary is a simplified attack path for findings output
-type AttackPathSummary struct {
-	ID             string   `json:"id"`
-	EntryPoint     string   `json:"entry_point"`
-	Target         string   `json:"target"`
-	Steps          []string `json:"steps"`
-	RiskScore      float64  `json:"risk_score"`
-	Exploitability float64  `json:"exploitability"`
-	Impact         float64  `json:"impact"`
-}
-
-// AllFindings returns combined policy and toxic combination findings
-func (r *EnhancedScanResult) AllFindings() []policy.Finding {
-	all := make([]policy.Finding, 0, len(r.Findings)+len(r.ToxicCombinations))
-	all = append(all, r.Findings...)
-	all = append(all, r.ToxicCombinations...)
-	return all
-}
-
-// ScanWithGraph runs policy evaluation, graph-based toxic combination detection, and attack path analysis
-func (s *Scanner) ScanWithGraph(ctx context.Context, assets []map[string]interface{}, g *graph.Graph) *EnhancedScanResult {
-	// First run standard policy scan
-	policyResult := s.ScanAssets(ctx, assets)
-	
-	result := &EnhancedScanResult{
-		ScanResult:        policyResult,
+	result := &GraphAnalysisResult{
 		ToxicCombinations: make([]policy.Finding, 0),
 		AttackPaths:       make([]AttackPathSummary, 0),
 	}
-	
-	// If no graph or empty graph, fall back to profile-based detection
-	if g == nil || g.NodeCount() == 0 {
-		s.logger.Warn("no security graph available, using profile-based detection")
-		profileResult := s.ScanWithToxicCombinations(ctx, assets)
-		return profileResult
-	}
-	
-	result.GraphAnalyzed = true
-	
-	// Run graph-based toxic combination detection
+
 	graphToxics := s.graphToxicEngine.Analyze(g)
-	s.logger.Info("graph toxic combination analysis complete", 
+	s.logger.Info("graph toxic combination analysis complete",
 		"combinations_found", len(graphToxics))
-	
-	// Convert graph toxic combinations to findings
+
 	for _, tc := range graphToxics {
 		finding := policy.Finding{
 			ID:          tc.ID,
@@ -291,8 +280,7 @@ func (s *Scanner) ScanWithGraph(ctx context.Context, assets []map[string]interfa
 			Severity:    string(tc.Severity),
 			Description: tc.Description,
 		}
-		
-		// Add affected assets
+
 		if len(tc.AffectedAssets) > 0 {
 			finding.ResourceID = tc.AffectedAssets[0]
 			finding.Resource = map[string]interface{}{
@@ -300,13 +288,11 @@ func (s *Scanner) ScanWithGraph(ctx context.Context, assets []map[string]interfa
 				"affected_ids":   tc.AffectedAssets,
 			}
 		}
-		
-		// Add risk factors
+
 		for _, rf := range tc.Factors {
 			finding.RiskCategories = append(finding.RiskCategories, string(rf.Type))
 		}
-		
-		// Add attack path info to description if present
+
 		if tc.AttackPath != nil {
 			finding.Description = fmt.Sprintf("%s\n\nAttack Path: %s (Exploitability: %.1f, Impact: %.1f, Likelihood: %.1f)",
 				finding.Description,
@@ -315,68 +301,59 @@ func (s *Scanner) ScanWithGraph(ctx context.Context, assets []map[string]interfa
 				tc.AttackPath.Impact,
 				tc.AttackPath.Likelihood)
 		}
-		
-		// Add remediation steps
+
 		if len(tc.Remediation) > 0 {
-			var remediationStrs []string
+			remediationStrs := make([]string, 0, len(tc.Remediation))
 			for _, r := range tc.Remediation {
 				remediationStrs = append(remediationStrs, fmt.Sprintf("%d. %s", r.Priority, r.Action))
 			}
-			finding.Remediation = fmt.Sprintf("Recommended actions:\n%s", 
-				joinStrings(remediationStrs, "\n"))
+			finding.Remediation = fmt.Sprintf("Recommended actions:\n%s",
+				strings.Join(remediationStrs, "\n"))
 		}
-		
+
 		result.ToxicCombinations = append(result.ToxicCombinations, finding)
 	}
-	
-	// Run attack path simulation if configured
-	if s.attackPathSim != nil {
-		simResult := s.attackPathSim.Simulate(10) // max 10 steps per path
-		s.logger.Info("attack path simulation complete",
-			"paths_found", simResult.TotalPaths,
-			"critical_paths", simResult.CriticalPaths,
-			"chokepoints", len(simResult.Chokepoints))
-		
-		// Convert attack paths to summaries
-		for _, path := range simResult.Paths {
-			if path.Priority <= 10 { // Only include top priority paths
-				steps := make([]string, 0, len(path.Steps))
-				for _, step := range path.Steps {
-					steps = append(steps, step.Description)
-				}
-				
-				summary := AttackPathSummary{
-					ID:             path.ID,
-					EntryPoint:     path.EntryPoint.Name,
-					Target:         path.Target.Name,
-					Steps:          steps,
-					RiskScore:      path.TotalScore,
-					Exploitability: path.Exploitability,
-					Impact:         path.Impact,
-				}
-				result.AttackPaths = append(result.AttackPaths, summary)
-			}
+
+	sim := graph.NewAttackPathSimulator(g)
+	simResult := sim.Simulate(10)
+	s.logger.Info("attack path simulation complete",
+		"paths_found", simResult.TotalPaths,
+		"critical_paths", simResult.CriticalPaths,
+		"chokepoints", len(simResult.Chokepoints))
+
+	for _, path := range simResult.Paths {
+		if path.Priority > 10 {
+			continue
 		}
+		steps := make([]string, 0, len(path.Steps))
+		for _, step := range path.Steps {
+			steps = append(steps, step.Description)
+		}
+
+		entryName := ""
+		targetName := ""
+		if path.EntryPoint != nil {
+			entryName = path.EntryPoint.Name
+		}
+		if path.Target != nil {
+			targetName = path.Target.Name
+		}
+
+		result.AttackPaths = append(result.AttackPaths, AttackPathSummary{
+			ID:             path.ID,
+			EntryPoint:     entryName,
+			Target:         targetName,
+			Steps:          steps,
+			RiskScore:      path.TotalScore,
+			Exploitability: path.Exploitability,
+			Impact:         path.Impact,
+		})
 	}
-	
-	result.TotalFindings = int64(len(policyResult.Findings)) + int64(len(result.ToxicCombinations))
-	
-	s.logger.Info("graph-enhanced scan complete",
-		"policy_findings", len(policyResult.Findings),
+
+	s.logger.Info("graph analysis complete",
 		"toxic_combinations", len(result.ToxicCombinations),
 		"attack_paths", len(result.AttackPaths))
-	
-	return result
-}
 
-func joinStrings(strs []string, sep string) string {
-	if len(strs) == 0 {
-		return ""
-	}
-	result := strs[0]
-	for i := 1; i < len(strs); i++ {
-		result += sep + strs[i]
-	}
 	return result
 }
 

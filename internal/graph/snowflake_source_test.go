@@ -24,6 +24,16 @@ func TestNormalizeTableNames(t *testing.T) {
 			expected: "SELECT * FROM AWS_S3_BUCKETS WHERE id IN (SELECT bucket_id FROM AWS_S3_POLICIES)",
 		},
 		{
+			name:     "join clauses",
+			input:    "SELECT * FROM aws_iam_users u JOIN aws_iam_roles r ON u.arn = r.arn",
+			expected: "SELECT * FROM AWS_IAM_USERS u JOIN AWS_IAM_ROLES r ON u.arn = r.arn",
+		},
+		{
+			name:     "schema qualified",
+			input:    "SELECT * FROM raw.aws_iam_users",
+			expected: "SELECT * FROM RAW.AWS_IAM_USERS",
+		},
+		{
 			name:     "case insensitive FROM",
 			input:    "SELECT * from aws_iam_roles",
 			expected: "SELECT * from AWS_IAM_ROLES",

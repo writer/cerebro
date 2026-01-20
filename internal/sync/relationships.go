@@ -2,8 +2,12 @@ package sync
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strings"
 	"time"
 
@@ -23,26 +27,26 @@ type Relationship struct {
 
 // RelationshipType constants
 const (
-	RelHasRole         = "HAS_ROLE"
-	RelMemberOf        = "MEMBER_OF"
-	RelAttachedTo      = "ATTACHED_TO"
-	RelBelongsTo       = "BELONGS_TO"
-	RelCanAccess       = "CAN_ACCESS"
-	RelExposedTo       = "EXPOSED_TO"
-	RelTrustedBy       = "TRUSTED_BY"
-	RelContains        = "CONTAINS"
-	RelProtects        = "PROTECTS"
-	RelEncryptedBy     = "ENCRYPTED_BY"
-	RelManagedBy       = "MANAGED_BY"
-	RelLogsTo          = "LOGS_TO"
-	RelReadsFrom       = "READS_FROM"
-	RelWritesTo        = "WRITES_TO"
-	RelInvokes         = "INVOKES"
-	RelRoutes          = "ROUTES"
-	RelInSubnet        = "IN_SUBNET"
-	RelInVPC           = "IN_VPC"
-	RelAssumableBy     = "ASSUMABLE_BY"
-	RelHasPermission   = "HAS_PERMISSION"
+	RelHasRole       = "HAS_ROLE"
+	RelMemberOf      = "MEMBER_OF"
+	RelAttachedTo    = "ATTACHED_TO"
+	RelBelongsTo     = "BELONGS_TO"
+	RelCanAccess     = "CAN_ACCESS"
+	RelExposedTo     = "EXPOSED_TO"
+	RelTrustedBy     = "TRUSTED_BY"
+	RelContains      = "CONTAINS"
+	RelProtects      = "PROTECTS"
+	RelEncryptedBy   = "ENCRYPTED_BY"
+	RelManagedBy     = "MANAGED_BY"
+	RelLogsTo        = "LOGS_TO"
+	RelReadsFrom     = "READS_FROM"
+	RelWritesTo      = "WRITES_TO"
+	RelInvokes       = "INVOKES"
+	RelRoutes        = "ROUTES"
+	RelInSubnet      = "IN_SUBNET"
+	RelInVPC         = "IN_VPC"
+	RelAssumableBy   = "ASSUMABLE_BY"
+	RelHasPermission = "HAS_PERMISSION"
 )
 
 // RelationshipExtractor extracts relationships from synced resources
@@ -63,11 +67,14 @@ func (r *RelationshipExtractor) ExtractAndPersist(ctx context.Context) (int, err
 		return 0, err
 	}
 
+	startedAt := time.Now()
 	var totalRels int
+	var hadErrors bool
 
 	// Extract from EC2 instances
 	count, err := r.extractEC2Relationships(ctx)
 	if err != nil {
+		hadErrors = true
 		r.logger.Warn("failed to extract EC2 relationships", "error", err)
 	}
 	totalRels += count
@@ -75,6 +82,7 @@ func (r *RelationshipExtractor) ExtractAndPersist(ctx context.Context) (int, err
 	// Extract from IAM roles
 	count, err = r.extractIAMRoleRelationships(ctx)
 	if err != nil {
+		hadErrors = true
 		r.logger.Warn("failed to extract IAM role relationships", "error", err)
 	}
 	totalRels += count
@@ -82,6 +90,7 @@ func (r *RelationshipExtractor) ExtractAndPersist(ctx context.Context) (int, err
 	// Extract from Lambda functions
 	count, err = r.extractLambdaRelationships(ctx)
 	if err != nil {
+		hadErrors = true
 		r.logger.Warn("failed to extract Lambda relationships", "error", err)
 	}
 	totalRels += count
@@ -89,6 +98,7 @@ func (r *RelationshipExtractor) ExtractAndPersist(ctx context.Context) (int, err
 	// Extract from Security Groups
 	count, err = r.extractSecurityGroupRelationships(ctx)
 	if err != nil {
+		hadErrors = true
 		r.logger.Warn("failed to extract Security Group relationships", "error", err)
 	}
 	totalRels += count
@@ -96,6 +106,7 @@ func (r *RelationshipExtractor) ExtractAndPersist(ctx context.Context) (int, err
 	// Extract from S3 buckets
 	count, err = r.extractS3Relationships(ctx)
 	if err != nil {
+		hadErrors = true
 		r.logger.Warn("failed to extract S3 relationships", "error", err)
 	}
 	totalRels += count
@@ -103,6 +114,7 @@ func (r *RelationshipExtractor) ExtractAndPersist(ctx context.Context) (int, err
 	// Extract from ECS
 	count, err = r.extractECSRelationships(ctx)
 	if err != nil {
+		hadErrors = true
 		r.logger.Warn("failed to extract ECS relationships", "error", err)
 	}
 	totalRels += count
@@ -110,11 +122,22 @@ func (r *RelationshipExtractor) ExtractAndPersist(ctx context.Context) (int, err
 	// Extract GCP relationships
 	count, err = r.extractGCPRelationships(ctx)
 	if err != nil {
+		hadErrors = true
 		r.logger.Warn("failed to extract GCP relationships", "error", err)
 	}
 	totalRels += count
 
-	r.logger.Info("relationship extraction complete", "total", totalRels)
+	if !hadErrors {
+		if err := r.cleanupStaleRelationships(ctx, startedAt); err != nil {
+			hadErrors = true
+			r.logger.Warn("failed to clean up stale relationships", "error", err)
+		}
+	}
+
+	r.logger.Info("relationship extraction complete", "total", totalRels, "errors", hadErrors)
+	if hadErrors {
+		return totalRels, fmt.Errorf("relationship extraction encountered errors")
+	}
 	return totalRels, nil
 }
 
@@ -133,6 +156,12 @@ func (r *RelationshipExtractor) ensureTable(ctx context.Context) error {
 	return err
 }
 
+func (r *RelationshipExtractor) cleanupStaleRelationships(ctx context.Context, cutoff time.Time) error {
+	query := `DELETE FROM RESOURCE_RELATIONSHIPS WHERE SYNC_TIME < ?`
+	_, err := r.sf.Exec(ctx, query, cutoff)
+	return err
+}
+
 func (r *RelationshipExtractor) persistRelationships(ctx context.Context, rels []Relationship) (int, error) {
 	if len(rels) == 0 {
 		return 0, nil
@@ -141,19 +170,19 @@ func (r *RelationshipExtractor) persistRelationships(ctx context.Context, rels [
 	// Batch insert using MERGE
 	values := make([]string, 0, len(rels))
 	for _, rel := range rels {
-		id := fmt.Sprintf("%s|%s|%s", rel.SourceID, rel.RelType, rel.TargetID)
 		props := rel.Properties
 		if props == "" {
 			props = "{}"
 		}
+		id := buildRelationshipID(rel.SourceID, rel.RelType, rel.TargetID, props)
 		values = append(values, fmt.Sprintf("('%s', '%s', '%s', '%s', '%s', '%s', PARSE_JSON('%s'))",
-			escape(id),
-			escape(rel.SourceID),
-			escape(rel.SourceType),
-			escape(rel.TargetID),
-			escape(rel.TargetType),
-			escape(rel.RelType),
-			escape(props),
+			escapeSQL(id),
+			escapeSQL(rel.SourceID),
+			escapeSQL(rel.SourceType),
+			escapeSQL(rel.TargetID),
+			escapeSQL(rel.TargetType),
+			escapeSQL(rel.RelType),
+			escapeSQL(props),
 		))
 	}
 
@@ -165,9 +194,9 @@ func (r *RelationshipExtractor) persistRelationships(ctx context.Context, rels [
 		WHEN MATCHED THEN UPDATE SET 
 			PROPERTIES = source.PROPERTIES,
 			SYNC_TIME = CURRENT_TIMESTAMP()
-		WHEN NOT MATCHED THEN INSERT (ID, SOURCE_ID, SOURCE_TYPE, TARGET_ID, TARGET_TYPE, REL_TYPE, PROPERTIES)
+		WHEN NOT MATCHED THEN INSERT (ID, SOURCE_ID, SOURCE_TYPE, TARGET_ID, TARGET_TYPE, REL_TYPE, PROPERTIES, SYNC_TIME)
 			VALUES (source.ID, source.SOURCE_ID, source.SOURCE_TYPE, source.TARGET_ID, 
-			        source.TARGET_TYPE, source.REL_TYPE, source.PROPERTIES)`,
+			        source.TARGET_TYPE, source.REL_TYPE, source.PROPERTIES, CURRENT_TIMESTAMP())`,
 		strings.Join(values, ", "))
 
 	_, err := r.sf.Exec(ctx, query)
@@ -179,9 +208,9 @@ func (r *RelationshipExtractor) persistRelationships(ctx context.Context, rels [
 
 // extractEC2Relationships extracts relationships from EC2 instances
 func (r *RelationshipExtractor) extractEC2Relationships(ctx context.Context) (int, error) {
-	query := `SELECT ARN, VPC_ID, SUBNET_ID, IAM_INSTANCE_PROFILE, SECURITY_GROUPS 
+	query := `SELECT ARN, ACCOUNT_ID, REGION, VPC_ID, SUBNET_ID, IAM_INSTANCE_PROFILE, SECURITY_GROUPS 
 	          FROM AWS_EC2_INSTANCES WHERE ARN IS NOT NULL`
-	
+
 	result, err := r.sf.Query(ctx, query)
 	if err != nil {
 		return 0, err
@@ -190,13 +219,19 @@ func (r *RelationshipExtractor) extractEC2Relationships(ctx context.Context) (in
 	var rels []Relationship
 	for _, row := range result.Rows {
 		instanceARN := toString(row["ARN"])
-		
+		if instanceARN == "" {
+			continue
+		}
+		accountID := toString(row["ACCOUNT_ID"])
+		region := toString(row["REGION"])
+
 		// VPC relationship
 		if vpcID := toString(row["VPC_ID"]); vpcID != "" {
+			vpcARN := awsARNForResource("vpc", region, accountID, vpcID)
 			rels = append(rels, Relationship{
 				SourceID:   instanceARN,
 				SourceType: "aws:ec2:instance",
-				TargetID:   vpcID,
+				TargetID:   vpcARN,
 				TargetType: "aws:ec2:vpc",
 				RelType:    RelInVPC,
 			})
@@ -204,19 +239,29 @@ func (r *RelationshipExtractor) extractEC2Relationships(ctx context.Context) (in
 
 		// Subnet relationship
 		if subnetID := toString(row["SUBNET_ID"]); subnetID != "" {
+			subnetARN := awsARNForResource("subnet", region, accountID, subnetID)
 			rels = append(rels, Relationship{
 				SourceID:   instanceARN,
 				SourceType: "aws:ec2:instance",
-				TargetID:   subnetID,
+				TargetID:   subnetARN,
 				TargetType: "aws:ec2:subnet",
 				RelType:    RelInSubnet,
 			})
 		}
 
-		// IAM role relationship
+		// IAM instance profile relationship
 		if profile := row["IAM_INSTANCE_PROFILE"]; profile != nil {
-			if profileMap, ok := profile.(map[string]interface{}); ok {
-				if roleARN := toString(profileMap["arn"]); roleARN != "" {
+			switch val := profile.(type) {
+			case map[string]interface{}:
+				if roleARN := toString(val["arn"]); roleARN != "" {
+					rels = append(rels, Relationship{
+						SourceID:   instanceARN,
+						SourceType: "aws:ec2:instance",
+						TargetID:   roleARN,
+						TargetType: "aws:iam:instance_profile",
+						RelType:    RelHasRole,
+					})
+				} else if roleARN := toString(val["Arn"]); roleARN != "" {
 					rels = append(rels, Relationship{
 						SourceID:   instanceARN,
 						SourceType: "aws:ec2:instance",
@@ -225,23 +270,32 @@ func (r *RelationshipExtractor) extractEC2Relationships(ctx context.Context) (in
 						RelType:    RelHasRole,
 					})
 				}
+			case string:
+				if val != "" {
+					rels = append(rels, Relationship{
+						SourceID:   instanceARN,
+						SourceType: "aws:ec2:instance",
+						TargetID:   val,
+						TargetType: "aws:iam:instance_profile",
+						RelType:    RelHasRole,
+					})
+				}
 			}
 		}
 
 		// Security group relationships
-		if sgs := row["SECURITY_GROUPS"]; sgs != nil {
-			if sgList, ok := sgs.([]interface{}); ok {
-				for _, sg := range sgList {
-					if sgMap, ok := sg.(map[string]interface{}); ok {
-						if sgID := toString(sgMap["GroupId"]); sgID != "" {
-							rels = append(rels, Relationship{
-								SourceID:   instanceARN,
-								SourceType: "aws:ec2:instance",
-								TargetID:   sgID,
-								TargetType: "aws:ec2:security_group",
-								RelType:    RelMemberOf,
-							})
-						}
+		if sgList := asSlice(row["SECURITY_GROUPS"]); len(sgList) > 0 {
+			for _, sg := range sgList {
+				if sgMap := asMap(sg); sgMap != nil {
+					if sgID := getStringAny(sgMap, "GroupId", "groupId", "group_id"); sgID != "" {
+						sgARN := awsARNForResource("security-group", region, accountID, sgID)
+						rels = append(rels, Relationship{
+							SourceID:   instanceARN,
+							SourceType: "aws:ec2:instance",
+							TargetID:   sgARN,
+							TargetType: "aws:ec2:security_group",
+							RelType:    RelMemberOf,
+						})
 					}
 				}
 			}
@@ -255,7 +309,7 @@ func (r *RelationshipExtractor) extractEC2Relationships(ctx context.Context) (in
 func (r *RelationshipExtractor) extractIAMRoleRelationships(ctx context.Context) (int, error) {
 	query := `SELECT ARN, ROLE_NAME, ASSUME_ROLE_POLICY_DOCUMENT 
 	          FROM AWS_IAM_ROLES WHERE ARN IS NOT NULL`
-	
+
 	result, err := r.sf.Query(ctx, query)
 	if err != nil {
 		return 0, err
@@ -264,26 +318,34 @@ func (r *RelationshipExtractor) extractIAMRoleRelationships(ctx context.Context)
 	var rels []Relationship
 	for _, row := range result.Rows {
 		roleARN := toString(row["ARN"])
-		
+		if roleARN == "" {
+			continue
+		}
+
 		// Parse trust policy to extract who can assume the role
 		if trustPolicy := row["ASSUME_ROLE_POLICY_DOCUMENT"]; trustPolicy != nil {
-			// Trust policy is already parsed as JSON by Snowflake
-			if policyDoc, ok := trustPolicy.(map[string]interface{}); ok {
-				if statements, ok := policyDoc["Statement"].([]interface{}); ok {
-					for _, stmt := range statements {
-						if stmtMap, ok := stmt.(map[string]interface{}); ok {
-							if effect := toString(stmtMap["Effect"]); effect == "Allow" {
-								if principal := stmtMap["Principal"]; principal != nil {
-									principals := extractPrincipals(principal)
-									for _, p := range principals {
-										rels = append(rels, Relationship{
-											SourceID:   roleARN,
-											SourceType: "aws:iam:role",
-											TargetID:   p,
-											TargetType: inferPrincipalType(p),
-											RelType:    RelAssumableBy,
-										})
-									}
+			policyDoc, err := parsePolicyDocument(trustPolicy)
+			if err != nil {
+				r.logger.Warn("failed to parse trust policy", "role", roleARN, "error", err)
+				continue
+			}
+			if policyDoc == nil {
+				continue
+			}
+			if statements, ok := policyDoc["Statement"].([]interface{}); ok {
+				for _, stmt := range statements {
+					if stmtMap, ok := stmt.(map[string]interface{}); ok {
+						if effect := toString(stmtMap["Effect"]); effect == "Allow" {
+							if principal := stmtMap["Principal"]; principal != nil {
+								principals := extractPrincipals(principal)
+								for _, p := range principals {
+									rels = append(rels, Relationship{
+										SourceID:   roleARN,
+										SourceType: "aws:iam:role",
+										TargetID:   p,
+										TargetType: inferPrincipalType(p),
+										RelType:    RelAssumableBy,
+									})
 								}
 							}
 						}
@@ -300,7 +362,7 @@ func (r *RelationshipExtractor) extractIAMRoleRelationships(ctx context.Context)
 func (r *RelationshipExtractor) extractLambdaRelationships(ctx context.Context) (int, error) {
 	query := `SELECT ARN, FUNCTION_NAME, ROLE, VPC_CONFIG 
 	          FROM AWS_LAMBDA_FUNCTIONS WHERE ARN IS NOT NULL`
-	
+
 	result, err := r.sf.Query(ctx, query)
 	if err != nil {
 		return 0, err
@@ -309,7 +371,11 @@ func (r *RelationshipExtractor) extractLambdaRelationships(ctx context.Context) 
 	var rels []Relationship
 	for _, row := range result.Rows {
 		functionARN := toString(row["ARN"])
-		
+		if functionARN == "" {
+			continue
+		}
+		region, accountID := awsRegionAccountFromARN(functionARN)
+
 		// Execution role relationship
 		if roleARN := toString(row["ROLE"]); roleARN != "" {
 			rels = append(rels, Relationship{
@@ -322,30 +388,30 @@ func (r *RelationshipExtractor) extractLambdaRelationships(ctx context.Context) 
 		}
 
 		// VPC relationships
-		if vpcConfig := row["VPC_CONFIG"]; vpcConfig != nil {
-			if vpcMap, ok := vpcConfig.(map[string]interface{}); ok {
-				if vpcID := toString(vpcMap["VpcId"]); vpcID != "" {
-					rels = append(rels, Relationship{
-						SourceID:   functionARN,
-						SourceType: "aws:lambda:function",
-						TargetID:   vpcID,
-						TargetType: "aws:ec2:vpc",
-						RelType:    RelInVPC,
-					})
-				}
-				
-				// Security groups
-				if sgs, ok := vpcMap["SecurityGroupIds"].([]interface{}); ok {
-					for _, sg := range sgs {
-						if sgID := toString(sg); sgID != "" {
-							rels = append(rels, Relationship{
-								SourceID:   functionARN,
-								SourceType: "aws:lambda:function",
-								TargetID:   sgID,
-								TargetType: "aws:ec2:security_group",
-								RelType:    RelMemberOf,
-							})
-						}
+		if vpcConfig := asMap(row["VPC_CONFIG"]); vpcConfig != nil {
+			if vpcID := getStringAny(vpcConfig, "VpcId", "vpcId", "vpc_id"); vpcID != "" {
+				vpcARN := awsARNForResource("vpc", region, accountID, vpcID)
+				rels = append(rels, Relationship{
+					SourceID:   functionARN,
+					SourceType: "aws:lambda:function",
+					TargetID:   vpcARN,
+					TargetType: "aws:ec2:vpc",
+					RelType:    RelInVPC,
+				})
+			}
+
+			// Security groups
+			if sgs := asSlice(vpcConfig["SecurityGroupIds"]); len(sgs) > 0 {
+				for _, sg := range sgs {
+					if sgID := toString(sg); sgID != "" {
+						sgARN := awsARNForResource("security-group", region, accountID, sgID)
+						rels = append(rels, Relationship{
+							SourceID:   functionARN,
+							SourceType: "aws:lambda:function",
+							TargetID:   sgARN,
+							TargetType: "aws:ec2:security_group",
+							RelType:    RelMemberOf,
+						})
 					}
 				}
 			}
@@ -357,9 +423,9 @@ func (r *RelationshipExtractor) extractLambdaRelationships(ctx context.Context) 
 
 // extractSecurityGroupRelationships extracts ingress/egress rules
 func (r *RelationshipExtractor) extractSecurityGroupRelationships(ctx context.Context) (int, error) {
-	query := `SELECT ARN, GROUP_ID, VPC_ID, IP_PERMISSIONS, IP_PERMISSIONS_EGRESS 
+	query := `SELECT ARN, ACCOUNT_ID, REGION, GROUP_ID, VPC_ID, IP_PERMISSIONS, IP_PERMISSIONS_EGRESS 
 	          FROM AWS_EC2_SECURITY_GROUPS WHERE ARN IS NOT NULL`
-	
+
 	result, err := r.sf.Query(ctx, query)
 	if err != nil {
 		return 0, err
@@ -368,39 +434,53 @@ func (r *RelationshipExtractor) extractSecurityGroupRelationships(ctx context.Co
 	var rels []Relationship
 	for _, row := range result.Rows {
 		sgARN := toString(row["ARN"])
-		
+		if sgARN == "" {
+			continue
+		}
+		accountID := toString(row["ACCOUNT_ID"])
+		region := toString(row["REGION"])
+
 		// VPC relationship
 		if vpcID := toString(row["VPC_ID"]); vpcID != "" {
+			vpcARN := awsARNForResource("vpc", region, accountID, vpcID)
 			rels = append(rels, Relationship{
 				SourceID:   sgARN,
 				SourceType: "aws:ec2:security_group",
-				TargetID:   vpcID,
+				TargetID:   vpcARN,
 				TargetType: "aws:ec2:vpc",
 				RelType:    RelBelongsTo,
 			})
 		}
 
 		// Check for internet exposure (0.0.0.0/0 ingress)
-		if perms := row["IP_PERMISSIONS"]; perms != nil {
-			if permList, ok := perms.([]interface{}); ok {
-				for _, perm := range permList {
-					if permMap, ok := perm.(map[string]interface{}); ok {
-						if ranges, ok := permMap["IpRanges"].([]interface{}); ok {
-							for _, r := range ranges {
-								if rMap, ok := r.(map[string]interface{}); ok {
-									if cidr := toString(rMap["CidrIp"]); cidr == "0.0.0.0/0" || cidr == "::/0" {
-										rels = append(rels, Relationship{
-											SourceID:   sgARN,
-											SourceType: "aws:ec2:security_group",
-											TargetID:   "internet",
-											TargetType: "network:internet",
-											RelType:    RelExposedTo,
-											Properties: fmt.Sprintf(`{"from_port":%v,"to_port":%v}`, 
-												permMap["FromPort"], permMap["ToPort"]),
-										})
-									}
-								}
-							}
+		if permList := asSlice(row["IP_PERMISSIONS"]); len(permList) > 0 {
+			for _, perm := range permList {
+				permMap := asMap(perm)
+				if permMap == nil {
+					continue
+				}
+				if ranges := asSlice(permMap["IpRanges"]); len(ranges) > 0 {
+					for _, r := range ranges {
+						rMap := asMap(r)
+						if rMap == nil {
+							continue
+						}
+						cidr := toString(rMap["CidrIp"])
+						if cidr == "0.0.0.0/0" || cidr == "::/0" {
+							props, _ := encodeProperties(map[string]interface{}{
+								"from_port": permMap["FromPort"],
+								"to_port":   permMap["ToPort"],
+								"protocol":  permMap["IpProtocol"],
+								"cidr":      cidr,
+							})
+							rels = append(rels, Relationship{
+								SourceID:   sgARN,
+								SourceType: "aws:ec2:security_group",
+								TargetID:   "internet",
+								TargetType: "network:internet",
+								RelType:    RelExposedTo,
+								Properties: props,
+							})
 						}
 					}
 				}
@@ -415,7 +495,7 @@ func (r *RelationshipExtractor) extractSecurityGroupRelationships(ctx context.Co
 func (r *RelationshipExtractor) extractS3Relationships(ctx context.Context) (int, error) {
 	query := `SELECT ARN, NAME, SERVER_SIDE_ENCRYPTION_CONFIGURATION, LOGGING, POLICY
 	          FROM AWS_S3_BUCKETS WHERE ARN IS NOT NULL`
-	
+
 	result, err := r.sf.Query(ctx, query)
 	if err != nil {
 		return 0, err
@@ -424,7 +504,7 @@ func (r *RelationshipExtractor) extractS3Relationships(ctx context.Context) (int
 	var rels []Relationship
 	for _, row := range result.Rows {
 		bucketARN := toString(row["ARN"])
-		
+
 		// KMS encryption relationship
 		if sseConfig := row["SERVER_SIDE_ENCRYPTION_CONFIGURATION"]; sseConfig != nil {
 			if configMap, ok := sseConfig.(map[string]interface{}); ok {
@@ -471,7 +551,7 @@ func (r *RelationshipExtractor) extractS3Relationships(ctx context.Context) (int
 func (r *RelationshipExtractor) extractECSRelationships(ctx context.Context) (int, error) {
 	query := `SELECT ARN, CLUSTER_ARN, TASK_DEFINITION, NETWORK_CONFIGURATION
 	          FROM AWS_ECS_SERVICES WHERE ARN IS NOT NULL`
-	
+
 	result, err := r.sf.Query(ctx, query)
 	if err != nil {
 		return 0, err
@@ -480,7 +560,7 @@ func (r *RelationshipExtractor) extractECSRelationships(ctx context.Context) (in
 	var rels []Relationship
 	for _, row := range result.Rows {
 		serviceARN := toString(row["ARN"])
-		
+
 		// Cluster relationship
 		if clusterARN := toString(row["CLUSTER_ARN"]); clusterARN != "" {
 			rels = append(rels, Relationship{
@@ -514,55 +594,51 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 	// GCP Compute instances
 	query := `SELECT ID, PROJECT_ID, NETWORK_INTERFACES, SERVICE_ACCOUNTS
 	          FROM GCP_COMPUTE_INSTANCES WHERE ID IS NOT NULL`
-	
+
 	result, err := r.sf.Query(ctx, query)
 	if err == nil {
 		for _, row := range result.Rows {
 			instanceID := toString(row["ID"])
 			projectID := toString(row["PROJECT_ID"])
-			
+
 			// Service account relationships
-			if sas := row["SERVICE_ACCOUNTS"]; sas != nil {
-				if saList, ok := sas.([]interface{}); ok {
-					for _, sa := range saList {
-						if saMap, ok := sa.(map[string]interface{}); ok {
-							if email := toString(saMap["email"]); email != "" {
-								rels = append(rels, Relationship{
-									SourceID:   instanceID,
-									SourceType: "gcp:compute:instance",
-									TargetID:   fmt.Sprintf("projects/%s/serviceAccounts/%s", projectID, email),
-									TargetType: "gcp:iam:service_account",
-									RelType:    RelHasRole,
-								})
-							}
+			if saList := asSlice(row["SERVICE_ACCOUNTS"]); len(saList) > 0 {
+				for _, sa := range saList {
+					if saMap := asMap(sa); saMap != nil {
+						if email := getStringAny(saMap, "email", "Email"); email != "" {
+							rels = append(rels, Relationship{
+								SourceID:   instanceID,
+								SourceType: "gcp:compute:instance",
+								TargetID:   fmt.Sprintf("projects/%s/serviceAccounts/%s", projectID, email),
+								TargetType: "gcp:iam:service_account",
+								RelType:    RelHasRole,
+							})
 						}
 					}
 				}
 			}
 
 			// Network relationships
-			if nics := row["NETWORK_INTERFACES"]; nics != nil {
-				if nicList, ok := nics.([]interface{}); ok {
-					for _, nic := range nicList {
-						if nicMap, ok := nic.(map[string]interface{}); ok {
-							if network := toString(nicMap["network"]); network != "" {
-								rels = append(rels, Relationship{
-									SourceID:   instanceID,
-									SourceType: "gcp:compute:instance",
-									TargetID:   network,
-									TargetType: "gcp:compute:network",
-									RelType:    RelInVPC,
-								})
-							}
-							if subnetwork := toString(nicMap["subnetwork"]); subnetwork != "" {
-								rels = append(rels, Relationship{
-									SourceID:   instanceID,
-									SourceType: "gcp:compute:instance",
-									TargetID:   subnetwork,
-									TargetType: "gcp:compute:subnetwork",
-									RelType:    RelInSubnet,
-								})
-							}
+			if nicList := asSlice(row["NETWORK_INTERFACES"]); len(nicList) > 0 {
+				for _, nic := range nicList {
+					if nicMap := asMap(nic); nicMap != nil {
+						if network := toString(nicMap["network"]); network != "" {
+							rels = append(rels, Relationship{
+								SourceID:   instanceID,
+								SourceType: "gcp:compute:instance",
+								TargetID:   network,
+								TargetType: "gcp:compute:network",
+								RelType:    RelInVPC,
+							})
+						}
+						if subnetwork := toString(nicMap["subnetwork"]); subnetwork != "" {
+							rels = append(rels, Relationship{
+								SourceID:   instanceID,
+								SourceType: "gcp:compute:instance",
+								TargetID:   subnetwork,
+								TargetType: "gcp:compute:subnetwork",
+								RelType:    RelInSubnet,
+							})
 						}
 					}
 				}
@@ -571,19 +647,24 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 	}
 
 	// GCP Cloud Functions
-	query = `SELECT NAME, SERVICE_ACCOUNT_EMAIL, VPC_CONNECTOR
+	query = `SELECT NAME, PROJECT_ID, SERVICE_ACCOUNT_EMAIL, VPC_CONNECTOR
 	         FROM GCP_CLOUDFUNCTIONS_FUNCTIONS WHERE NAME IS NOT NULL`
-	
+
 	result, err = r.sf.Query(ctx, query)
 	if err == nil {
 		for _, row := range result.Rows {
 			funcName := toString(row["NAME"])
-			
+			projectID := toString(row["PROJECT_ID"])
+
 			if saEmail := toString(row["SERVICE_ACCOUNT_EMAIL"]); saEmail != "" {
+				targetID := saEmail
+				if projectID != "" {
+					targetID = fmt.Sprintf("projects/%s/serviceAccounts/%s", projectID, saEmail)
+				}
 				rels = append(rels, Relationship{
 					SourceID:   funcName,
 					SourceType: "gcp:cloudfunctions:function",
-					TargetID:   saEmail,
+					TargetID:   targetID,
 					TargetType: "gcp:iam:service_account",
 					RelType:    RelHasRole,
 				})
@@ -597,7 +678,7 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 // Helper functions
 func extractPrincipals(principal interface{}) []string {
 	var principals []string
-	
+
 	switch p := principal.(type) {
 	case string:
 		if p != "*" {
@@ -619,7 +700,7 @@ func extractPrincipals(principal interface{}) []string {
 			}
 		}
 	}
-	
+
 	return principals
 }
 
@@ -651,6 +732,115 @@ func toString(v interface{}) string {
 	return fmt.Sprintf("%v", v)
 }
 
-func escape(s string) string {
+func getStringAny(m map[string]interface{}, keys ...string) string {
+	for _, key := range keys {
+		if v, ok := m[key]; ok {
+			if s := toString(v); s != "" {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
+func asMap(v interface{}) map[string]interface{} {
+	if v == nil {
+		return nil
+	}
+	switch val := v.(type) {
+	case map[string]interface{}:
+		return val
+	case []byte:
+		var m map[string]interface{}
+		if err := json.Unmarshal(val, &m); err == nil {
+			return m
+		}
+	case string:
+		var m map[string]interface{}
+		if err := json.Unmarshal([]byte(val), &m); err == nil {
+			return m
+		}
+	}
+	return nil
+}
+
+func asSlice(v interface{}) []interface{} {
+	if v == nil {
+		return nil
+	}
+	switch val := v.(type) {
+	case []interface{}:
+		return val
+	case []byte:
+		var s []interface{}
+		if err := json.Unmarshal(val, &s); err == nil {
+			return s
+		}
+	case string:
+		var s []interface{}
+		if err := json.Unmarshal([]byte(val), &s); err == nil {
+			return s
+		}
+	}
+	return nil
+}
+
+func parsePolicyDocument(value interface{}) (map[string]interface{}, error) {
+	if value == nil {
+		return nil, nil
+	}
+	if doc := asMap(value); doc != nil {
+		return doc, nil
+	}
+	if raw, ok := value.(string); ok {
+		decoded, err := url.QueryUnescape(raw)
+		if err != nil {
+			decoded = raw
+		}
+		var doc map[string]interface{}
+		if err := json.Unmarshal([]byte(decoded), &doc); err != nil {
+			return nil, err
+		}
+		return doc, nil
+	}
+	return nil, nil
+}
+
+func encodeProperties(props map[string]interface{}) (string, error) {
+	if len(props) == 0 {
+		return "{}", nil
+	}
+	encoded, err := json.Marshal(props)
+	if err != nil {
+		return "{}", err
+	}
+	return string(encoded), nil
+}
+
+func escapeSQL(s string) string {
 	return strings.ReplaceAll(s, "'", "''")
+}
+
+func buildRelationshipID(sourceID, relType, targetID, props string) string {
+	base := fmt.Sprintf("%s|%s|%s", sourceID, relType, targetID)
+	if props == "" || props == "{}" {
+		return base
+	}
+	hash := sha256.Sum256([]byte(props))
+	return fmt.Sprintf("%s|%s", base, hex.EncodeToString(hash[:8]))
+}
+
+func awsARNForResource(resource string, region, accountID, id string) string {
+	if region == "" || accountID == "" || id == "" {
+		return id
+	}
+	return fmt.Sprintf("arn:aws:ec2:%s:%s:%s/%s", region, accountID, resource, id)
+}
+
+func awsRegionAccountFromARN(arn string) (string, string) {
+	parts := strings.Split(arn, ":")
+	if len(parts) < 6 {
+		return "", ""
+	}
+	return parts[3], parts[4]
 }

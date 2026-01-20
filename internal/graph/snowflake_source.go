@@ -18,8 +18,8 @@ func NewSnowflakeSource(client *snowflake.Client) *SnowflakeSource {
 	return &SnowflakeSource{client: client}
 }
 
-// tableNamePattern matches table names in FROM clauses (e.g., "FROM aws_iam_users")
-var tableNamePattern = regexp.MustCompile(`(?i)\bFROM\s+([a-z][a-z0-9_]*)`)
+// tableNamePattern matches table names in common clauses (FROM/JOIN/UPDATE/INTO)
+var tableNamePattern = regexp.MustCompile(`(?i)\b(?:FROM|JOIN|UPDATE|INTO)\s+([a-z][a-z0-9_\.]+)`)
 
 // normalizeTableNames converts table names to uppercase for Snowflake compatibility
 // Our sync engine creates uppercase tables (AWS_IAM_USERS) but queries use lowercase (aws_iam_users)
@@ -39,7 +39,7 @@ func normalizeTableNames(query string) string {
 func (s *SnowflakeSource) Query(ctx context.Context, query string, args ...any) (*QueryResult, error) {
 	// Normalize table names to uppercase for Snowflake
 	normalizedQuery := normalizeTableNames(query)
-	
+
 	result, err := s.client.Query(ctx, normalizedQuery, args...)
 	if err != nil {
 		return nil, err
