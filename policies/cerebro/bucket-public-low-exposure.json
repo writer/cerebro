@@ -1,0 +1,32 @@
+{
+  "id": "bucket-public-low-exposure",
+  "control_id": "wc-id-2836",
+  "name": "Publicly readable non-empty bucket with low exposure level",
+  "description": "A non-empty bucket is publicly readable even with low exposure level",
+  "effect": "forbid",
+  "resource": "storage::bucket|storage::blob_container",
+  "conditions": [
+    "is_public == true",
+    "object_count \u003e 0"
+  ],
+  "severity": "medium",
+  "remediation": "Review if public access is required. Remove public access if not necessary for business operations.",
+  "tags": [
+    "wiz",
+    "storage",
+    "public-exposure"
+  ],
+  "risk_categories": [
+    "EXTERNAL_EXPOSURE"
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Initial Access",
+      "technique": "T1190"
+    },
+    {
+      "tactic": "Collection",
+      "technique": "T1530"
+    }
+  ]
+}

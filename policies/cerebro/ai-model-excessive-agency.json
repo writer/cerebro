@@ -1,0 +1,47 @@
+{
+  "id": "ai-model-excessive-agency",
+  "control_id": "wc-id-2272",
+  "name": "AI Model with excessive agency",
+  "description": "An AI model has excessive permissions or agency that could lead to unintended actions",
+  "effect": "forbid",
+  "resource": "ai::model|ai::endpoint",
+  "conditions": [
+    "execution_role.has_admin_role == true OR can_modify_resources == true OR can_invoke_other_models == true"
+  ],
+  "severity": "high",
+  "remediation": "Reduce model permissions to minimum required. Implement guardrails and output filtering.",
+  "tags": [
+    "wiz",
+    "ai",
+    "agency",
+    "permissions"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "7.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "5",
+        "6"
+      ]
+    }
+  ]
+}

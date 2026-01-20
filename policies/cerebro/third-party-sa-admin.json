@@ -1,0 +1,58 @@
+{
+  "id": "third-party-sa-admin",
+  "control_id": "wc-id-2210",
+  "name": "Third party service account with admin privileges",
+  "description": "A service account owned by a third party has administrative privileges",
+  "effect": "forbid",
+  "resource": "iam::service_account|iam::role",
+  "conditions": [
+    "is_third_party == true",
+    "has_admin_role == true"
+  ],
+  "severity": "high",
+  "remediation": "Third parties should never have admin access. Reduce privileges immediately. Implement proper vendor access management.",
+  "tags": [
+    "wiz",
+    "identity",
+    "third-party",
+    "admin"
+  ],
+  "risk_categories": [
+    "IDENTITY_RISK",
+    "PRIVILEGE_ESCALATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "7.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "5",
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Privilege Escalation",
+      "technique": "T1078"
+    }
+  ]
+}

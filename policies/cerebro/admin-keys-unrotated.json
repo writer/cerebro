@@ -1,0 +1,71 @@
+{
+  "id": "admin-keys-unrotated",
+  "control_id": "wc-id-2219",
+  "name": "Admin user/service account with active access keys were used in the past 90 days but not rotated in the past year",
+  "description": "An active admin access key has not been rotated in over a year",
+  "effect": "forbid",
+  "resource": "iam::user|iam::service_account",
+  "conditions": [
+    "has_admin_role == true",
+    "access_keys ANY (status == 'Active' AND last_used_days_ago \u003c 90 AND created_days_ago \u003e 365)"
+  ],
+  "severity": "high",
+  "remediation": "Rotate admin access keys immediately. Implement automated key rotation policy.",
+  "tags": [
+    "wiz",
+    "identity",
+    "access-keys",
+    "admin",
+    "rotation"
+  ],
+  "risk_categories": [
+    "IDENTITY_RISK",
+    "PRIVILEGE_ESCALATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "AC-6",
+        "IA-5",
+        "SC-12"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "7.2",
+        "3.5",
+        "8.6"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "5",
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Persistence",
+      "technique": "T1098"
+    },
+    {
+      "tactic": "Privilege Escalation",
+      "technique": "T1078"
+    },
+    {
+      "tactic": "Credential Access",
+      "technique": "T1552"
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "id": "efs-public-subnet",
+  "control_id": "wc-id-2142",
+  "name": "AWS EFS mount target associated with a public subnet",
+  "description": "An EFS mount target is in a public subnet, potentially exposing file data",
+  "effect": "forbid",
+  "resource": "aws::efs::mount_target",
+  "conditions": [
+    "subnet.is_public == true"
+  ],
+  "severity": "high",
+  "remediation": "Move EFS mount targets to private subnets. Use VPC endpoints for access.",
+  "tags": [
+    "wiz",
+    "aws",
+    "storage",
+    "efs",
+    "public-subnet"
+  ],
+  "risk_categories": [
+    "EXTERNAL_EXPOSURE",
+    "UNPROTECTED_DATA"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-3",
+        "SC-7"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "1.3",
+        "1.4"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "12",
+        "13"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Initial Access",
+      "technique": "T1190"
+    },
+    {
+      "tactic": "Collection",
+      "technique": "T1530"
+    }
+  ]
+}

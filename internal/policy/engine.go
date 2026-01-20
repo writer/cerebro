@@ -69,14 +69,14 @@ type Policy struct {
 	Tags        []string `json:"tags"`          // Tags for categorization
 	Raw         string   `json:"raw,omitempty"` // Raw Cedar policy text (optional)
 
-	// Wiz compatibility fields
-	WizControlID string `json:"wiz_control_id,omitempty"` // Wiz control ID (e.g., "wc-id-1211")
+	// External control mapping
+	ControlID string `json:"control_id,omitempty"` // External control ID for reference
 
 	// Remediation guidance
 	Remediation      string   `json:"remediation,omitempty"`       // Markdown remediation guidance
 	RemediationSteps []string `json:"remediation_steps,omitempty"` // Step-by-step remediation
 
-	// Risk categorization (matches Wiz's Risks field)
+	// Risk categorization
 	RiskCategories []string `json:"risk_categories,omitempty"` // EXTERNAL_EXPOSURE, UNPROTECTED_DATA, etc.
 
 	// Compliance framework mappings
@@ -98,7 +98,7 @@ type MitreMapping struct {
 	Technique string `json:"technique"` // ATT&CK technique ID (e.g., "T1190")
 }
 
-// Risk category constants matching Wiz's risk categorization
+// Risk category constants for security findings
 const (
 	RiskExternalExposure      = "EXTERNAL_EXPOSURE"
 	RiskExternalAttackSurface = "EXTERNAL_ATTACK_SURFACE"
@@ -134,9 +134,9 @@ type Finding struct {
 	Description string                 `json:"description"`
 	Remediation string                 `json:"remediation"`
 
-	// Enhanced fields for Wiz parity
+	// Enhanced fields
 	Title          string   `json:"title,omitempty"`
-	ControlID      string   `json:"control_id,omitempty"`      // Wiz control ID
+	ControlID      string   `json:"control_id,omitempty"`      // External control ID
 	RiskCategories []string `json:"risk_categories,omitempty"` // Risk categorization
 	ResourceType   string   `json:"resource_type,omitempty"`
 	ResourceID     string   `json:"resource_id,omitempty"`
@@ -280,7 +280,7 @@ func (e *Engine) EvaluateAsset(ctx context.Context, asset map[string]interface{}
 				Resource:       asset,
 				Description:    violation,
 				Remediation:    p.Remediation,
-				ControlID:      p.WizControlID,
+				ControlID:      p.ControlID,
 				RiskCategories: p.RiskCategories,
 				ResourceType:   p.Resource,
 				ResourceID:     resourceID,

@@ -1,0 +1,57 @@
+{
+  "id": "data-resource-org-access",
+  "control_id": "wc-id-2568",
+  "name": "Data resource with sensitive data allows organization-wide access",
+  "description": "A resource with sensitive data allows access to the entire organization",
+  "effect": "forbid",
+  "resource": "storage::bucket|database::instance|storage::blob_container",
+  "conditions": [
+    "has_sensitive_data == true",
+    "iam_policy.allows_org_wide_access == true"
+  ],
+  "severity": "high",
+  "remediation": "Remove organization-wide access. Implement granular access controls based on business need.",
+  "tags": [
+    "wiz",
+    "data",
+    "org-wide-access",
+    "sensitive-data"
+  ],
+  "risk_categories": [
+    "UNPROTECTED_DATA"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "7.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "5",
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Collection",
+      "technique": "T1530"
+    }
+  ]
+}

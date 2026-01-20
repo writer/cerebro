@@ -1,0 +1,35 @@
+{
+  "id": "unknown-account-trusted",
+  "control_id": "wc-id-2082",
+  "name": "Unknown AWS account with trusted access to non-admin IAM role",
+  "description": "An unknown AWS account has trust relationship to assume a role",
+  "effect": "forbid",
+  "resource": "aws::iam::role",
+  "conditions": [
+    "trust_policy.principals ANY (type == 'AWS' AND account_id NOT IN known_accounts)"
+  ],
+  "severity": "medium",
+  "remediation": "Review and validate all cross-account trust relationships. Remove unknown accounts.",
+  "tags": [
+    "wiz",
+    "aws",
+    "identity",
+    "trust",
+    "cross-account"
+  ],
+  "risk_categories": [
+    "IDENTITY_RISK",
+    "LATERAL_MOVEMENT",
+    "PRIVILEGE_ESCALATION"
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Persistence",
+      "technique": "T1098"
+    },
+    {
+      "tactic": "Lateral Movement",
+      "technique": "T1021"
+    }
+  ]
+}

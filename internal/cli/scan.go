@@ -426,22 +426,25 @@ func toString(v interface{}) string {
 func detectToxicCombinationsFromRelationships(ctx context.Context, sf *snowflake.Client) ([]map[string]interface{}, error) {
 	// Query for toxic combinations using relationship data
 	query := `
-WITH toxic_cloudrun AS (
-    -- CRITICAL: Cloud Run with default SA + public exposure
+WITH toxic_cloudrun_with_vuln AS (
+    -- CRITICAL: Cloud Run with default SA + public exposure + unpinned image (vulnerability risk)
     SELECT 
         s.NAME as resource_id,
         REPLACE(s.NAME, '"', '') as clean_name,
         REPLACE(s.URI, '"', '') as url,
         r_sa.TARGET_ID as service_account,
-        ARRAY_AGG(DISTINCT r.REL_TYPE) as risk_factors
+        TEMPLATE:containers[0]:image::VARCHAR as container_image,
+        CASE 
+            WHEN TEMPLATE:containers[0]:image::VARCHAR LIKE '%:latest%' 
+                 OR (TEMPLATE:containers[0]:image::VARCHAR NOT LIKE '%@sha256:%' 
+                     AND TEMPLATE:containers[0]:image::VARCHAR NOT LIKE '%:%') 
+            THEN TRUE ELSE FALSE 
+        END as unpinned_image
     FROM GCP_CLOUDRUN_SERVICES s
     JOIN RAW.RESOURCE_RELATIONSHIPS r_sa 
         ON REPLACE(s.NAME, '"', '') = r_sa.SOURCE_ID 
         AND r_sa.REL_TYPE = 'USES_DEFAULT_SA'
-    LEFT JOIN RAW.RESOURCE_RELATIONSHIPS r
-        ON REPLACE(s.NAME, '"', '') = r.SOURCE_ID
     WHERE s.INGRESS = 'INGRESS_TRAFFIC_ALL'
-    GROUP BY s.NAME, s.URI, r_sa.TARGET_ID
 ),
 toxic_buckets AS (
     -- CRITICAL: Public buckets
@@ -450,7 +453,8 @@ toxic_buckets AS (
         REPLACE(b.NAME, '"', '') as clean_name,
         REPLACE(b.SELF_LINK, '"', '') as url,
         NULL as service_account,
-        ARRAY_CONSTRUCT('PUBLIC_ACCESS', 'DATA_STORAGE') as risk_factors
+        NULL as container_image,
+        FALSE as unpinned_image
     FROM GCP_STORAGE_BUCKETS b
     WHERE b.IAM_POLICY LIKE '%allUsers%' OR b.IAM_POLICY LIKE '%allAuthenticatedUsers%'
 ),
@@ -461,7 +465,8 @@ high_iam_confused_deputy AS (
         REPLACE(r.ARN, '"', '') as clean_name,
         NULL as url,
         NULL as service_account,
-        ARRAY_CONSTRUCT('CONFUSED_DEPUTY', 'PRIVILEGE_ESCALATION') as risk_factors
+        NULL as container_image,
+        FALSE as unpinned_image
     FROM AWS_IAM_ROLES r
     WHERE r.ASSUME_ROLE_POLICY_DOCUMENT NOT LIKE '%aws:SourceArn%'
       AND r.ASSUME_ROLE_POLICY_DOCUMENT NOT LIKE '%aws:SourceAccount%'
@@ -469,13 +474,14 @@ high_iam_confused_deputy AS (
       AND r.ASSUME_ROLE_POLICY_DOCUMENT LIKE '%Service%'
 ),
 high_cloudrun_no_auth AS (
-    -- HIGH: Cloud Run services with no authentication
+    -- HIGH: Cloud Run services with no authentication (not using default SA)
     SELECT 
         s.NAME as resource_id,
         REPLACE(s.NAME, '"', '') as clean_name,
         REPLACE(s.URI, '"', '') as url,
         NULL as service_account,
-        ARRAY_CONSTRUCT('NO_AUTHENTICATION', 'EXTERNAL_EXPOSURE') as risk_factors
+        TEMPLATE:containers[0]:image::VARCHAR as container_image,
+        FALSE as unpinned_image
     FROM GCP_CLOUDRUN_SERVICES s
     WHERE s.INGRESS = 'INGRESS_TRAFFIC_ALL'
       AND NOT EXISTS (
@@ -483,6 +489,24 @@ high_cloudrun_no_auth AS (
           WHERE REPLACE(s.NAME, '"', '') = r.SOURCE_ID AND r.REL_TYPE = 'USES_DEFAULT_SA'
       )
 )
+-- CRITICAL: Cloud Run with default SA + public + unpinned image = vulnerability risk
+SELECT 
+    'CRITICAL' as severity,
+    'toxic-cloudrun-vuln-default-sa' as policy_id,
+    'Internet-facing Cloud Run with vulnerabilities and data access' as title,
+    clean_name as resource_name,
+    resource_id,
+    url,
+    service_account,
+    container_image,
+    'Cloud Run is public, uses default SA with data access, and runs unpinned image susceptible to supply chain attacks' as description,
+    'EXTERNAL_EXPOSURE, VULNERABILITY, UNPROTECTED_PRINCIPAL, UNPROTECTED_DATA' as risks
+FROM toxic_cloudrun_with_vuln
+WHERE unpinned_image = TRUE
+
+UNION ALL
+
+-- CRITICAL: Cloud Run with default SA + public (no unpinned image)
 SELECT 
     'CRITICAL' as severity,
     'toxic-cloudrun-external-default-sa' as policy_id,
@@ -491,10 +515,11 @@ SELECT
     resource_id,
     url,
     service_account,
-    risk_factors,
+    container_image,
     'Cloud Run service is publicly accessible, uses default compute service account with broad permissions' as description,
     'EXTERNAL_EXPOSURE, UNPROTECTED_PRINCIPAL, UNPROTECTED_DATA' as risks
-FROM toxic_cloudrun
+FROM toxic_cloudrun_with_vuln
+WHERE unpinned_image = FALSE
 
 UNION ALL
 
@@ -506,7 +531,7 @@ SELECT
     resource_id,
     url,
     service_account,
-    risk_factors,
+    container_image,
     'Storage bucket is publicly accessible and may contain sensitive data' as description,
     'EXTERNAL_EXPOSURE, UNPROTECTED_DATA' as risks
 FROM toxic_buckets
@@ -521,7 +546,7 @@ SELECT
     resource_id,
     url,
     service_account,
-    risk_factors,
+    container_image,
     'IAM role trust policy allows AWS services to assume it without SourceArn/SourceAccount conditions' as description,
     'CONFUSED_DEPUTY, PRIVILEGE_ESCALATION' as risks
 FROM high_iam_confused_deputy
@@ -536,7 +561,7 @@ SELECT
     resource_id,
     url,
     service_account,
-    risk_factors,
+    container_image,
     'Cloud Run service is exposed to internet without IAM authentication' as description,
     'EXTERNAL_EXPOSURE, NO_AUTHENTICATION' as risks
 FROM high_cloudrun_no_auth

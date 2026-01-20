@@ -53,6 +53,7 @@ var (
 	syncGCPOrg       string // organization ID for multi-project sync
 	syncMultiRegion  bool
 	syncUseAssetAPI  bool // use Cloud Asset Inventory API
+	syncSecurity     bool // sync security data (vulnerabilities, SCC findings)
 )
 
 func init() {
@@ -68,6 +69,7 @@ func init() {
 	syncCmd.Flags().StringVar(&syncGCPOrg, "gcp-org", "", "GCP organization ID for multi-project sync (syncs all projects)")
 	syncCmd.Flags().BoolVar(&syncMultiRegion, "multi-region", false, "Scan all major AWS regions (us-east-1, us-west-2, eu-west-1, etc.)")
 	syncCmd.Flags().BoolVar(&syncUseAssetAPI, "asset-api", false, "Use GCP Cloud Asset Inventory API for efficient bulk fetching")
+	syncCmd.Flags().BoolVar(&syncSecurity, "security", false, "Sync security data (Container Analysis vulnerabilities, SCC findings, Artifact Registry)")
 }
 
 func runSync(cmd *cobra.Command, args []string) error {
@@ -197,6 +199,17 @@ func runGCPSync(ctx context.Context, start time.Time, projectID string) error {
 	}
 
 	printSyncResults(results, start, "GCP")
+
+	// Sync security data if requested
+	if syncSecurity {
+		Info("Syncing GCP security data (Container Analysis, Artifact Registry, SCC)...")
+		securitySyncer := nativesync.NewGCPSecuritySync(client, slog.Default(), projectID, syncGCPOrg)
+		if secErr := securitySyncer.SyncAll(ctx); secErr != nil {
+			Warning("Security sync failed: %v", secErr)
+		} else {
+			Success("Security data synced successfully")
+		}
+	}
 
 	// Extract resource relationships for graph building
 	Info("Extracting resource relationships...")

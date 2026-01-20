@@ -1,0 +1,54 @@
+{
+  "id": "ai-model-third-party-access",
+  "control_id": "wc-id-2274",
+  "name": "3rd party access to AI model in bucket",
+  "description": "A third party has access to AI model artifacts stored in a bucket",
+  "effect": "forbid",
+  "resource": "storage::bucket",
+  "conditions": [
+    "contains_ml_model == true",
+    "iam_policy.principals ANY (is_third_party == true)"
+  ],
+  "severity": "high",
+  "remediation": "Review and restrict third-party access to AI model artifacts. Implement proper model governance.",
+  "tags": [
+    "wiz",
+    "ai",
+    "third-party",
+    "model-security"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "7.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "5",
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Collection",
+      "technique": "T1530"
+    }
+  ]
+}

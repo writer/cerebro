@@ -1,0 +1,70 @@
+{
+  "id": "vm-public-vuln",
+  "control_id": "wc-id-139",
+  "name": "Publicly exposed VM/serverless with initial access vulnerabilities",
+  "description": "A publicly exposed compute resource has critical or high severity vulnerabilities that could enable initial access",
+  "effect": "forbid",
+  "resource": "compute::instance|serverless::function",
+  "conditions": [
+    "is_public == true",
+    "vulnerabilities ANY (severity IN ('CRITICAL', 'HIGH') AND initial_access == true)"
+  ],
+  "severity": "critical",
+  "remediation": "Patch vulnerabilities immediately. If patching is not possible, remove public access. Implement WAF or other compensating controls.",
+  "tags": [
+    "wiz",
+    "compute",
+    "vulnerability",
+    "public-exposure",
+    "initial-access"
+  ],
+  "risk_categories": [
+    "EXTERNAL_EXPOSURE",
+    "VULNERABILITY"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-3",
+        "SC-7",
+        "AC-2",
+        "AC-6",
+        "RA-5",
+        "SI-2"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "1.3",
+        "1.4",
+        "7.2",
+        "6.3",
+        "11.3"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "12",
+        "13",
+        "5",
+        "6",
+        "7"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Initial Access",
+      "technique": "T1190"
+    }
+  ]
+}

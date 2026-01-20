@@ -1,0 +1,70 @@
+{
+  "id": "aws-user-inactive-data-no-mfa",
+  "control_id": "wc-id-2213",
+  "name": "Inactive AWS user account with data access to sensitive data and MFA disabled",
+  "description": "An inactive AWS user with access to sensitive data does not have MFA enabled",
+  "effect": "forbid",
+  "resource": "aws::iam::user",
+  "conditions": [
+    "has_sensitive_data_access == true",
+    "mfa_enabled == false",
+    "last_activity_days_ago \u003e 90"
+  ],
+  "severity": "critical",
+  "remediation": "Disable or delete inactive accounts with data access. Enable MFA if account must be retained.",
+  "tags": [
+    "wiz",
+    "aws",
+    "identity",
+    "mfa",
+    "data-access",
+    "dormant"
+  ],
+  "risk_categories": [
+    "UNPROTECTED_DATA",
+    "IDENTITY_RISK",
+    "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "IA-2",
+        "IA-5",
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "8.3",
+        "8.4",
+        "7.2"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "6",
+        "5"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Persistence",
+      "technique": "T1098"
+    },
+    {
+      "tactic": "Collection",
+      "technique": "T1530"
+    }
+  ]
+}

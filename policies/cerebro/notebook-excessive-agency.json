@@ -1,0 +1,48 @@
+{
+  "id": "notebook-excessive-agency",
+  "control_id": "wc-id-2273",
+  "name": "Notebook with excessive agency",
+  "description": "A notebook has excessive permissions that could lead to unintended resource access",
+  "effect": "forbid",
+  "resource": "ai::notebook",
+  "conditions": [
+    "execution_role.has_admin_role == true OR can_access_production_data == true"
+  ],
+  "severity": "high",
+  "remediation": "Reduce notebook execution role permissions. Separate development and production access.",
+  "tags": [
+    "wiz",
+    "ai",
+    "notebook",
+    "agency",
+    "permissions"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "7.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "5",
+        "6"
+      ]
+    }
+  ]
+}

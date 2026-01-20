@@ -1,0 +1,70 @@
+{
+  "id": "storage-key-exposed",
+  "control_id": "wc-id-2031",
+  "name": "Validated exposure of storage account key/SAS token",
+  "description": "A storage account key or SAS token has been validated as exposed",
+  "effect": "forbid",
+  "resource": "*",
+  "conditions": [
+    "secrets ANY (type IN ('storage_account_key', 'sas_token') AND validated_exposed == true)"
+  ],
+  "severity": "critical",
+  "remediation": "Rotate the exposed keys immediately. Check for unauthorized data access. Regenerate SAS tokens.",
+  "tags": [
+    "wiz",
+    "secrets",
+    "storage",
+    "validated-exposure"
+  ],
+  "risk_categories": [
+    "EXTERNAL_EXPOSURE",
+    "UNPROTECTED_DATA"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-3",
+        "SC-7",
+        "IA-5",
+        "SC-12"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "1.3",
+        "1.4",
+        "3.5",
+        "8.6"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "12",
+        "13"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Initial Access",
+      "technique": "T1190"
+    },
+    {
+      "tactic": "Credential Access",
+      "technique": "T1552"
+    },
+    {
+      "tactic": "Collection",
+      "technique": "T1530"
+    }
+  ]
+}

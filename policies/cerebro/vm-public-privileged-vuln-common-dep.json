@@ -1,0 +1,78 @@
+{
+  "id": "vm-public-privileged-vuln-common-dep",
+  "control_id": "wc-id-2449",
+  "name": "Publicly exposed VM/serverless with high privileges and initial access vulnerabilities affecting a common dependency",
+  "description": "A privileged public resource has vulnerabilities in a common dependency",
+  "effect": "forbid",
+  "resource": "compute::instance|serverless::function",
+  "conditions": [
+    "is_public == true",
+    "service_account.has_high_privilege == true OR attached_role.has_high_privilege == true",
+    "vulnerabilities ANY (severity IN ('CRITICAL', 'HIGH') AND initial_access == true AND is_common_dependency == true)"
+  ],
+  "severity": "critical",
+  "remediation": "Patch immediately. Reduce privileges. This is a critical combined risk.",
+  "tags": [
+    "wiz",
+    "compute",
+    "vulnerability",
+    "dependency",
+    "privileged",
+    "public-exposure"
+  ],
+  "risk_categories": [
+    "EXTERNAL_EXPOSURE",
+    "IDENTITY_RISK",
+    "VULNERABILITY",
+    "PRIVILEGE_ESCALATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-3",
+        "SC-7",
+        "AC-2",
+        "AC-6",
+        "RA-5",
+        "SI-2"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "1.3",
+        "1.4",
+        "7.2",
+        "6.3",
+        "11.3"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "12",
+        "13",
+        "5",
+        "6",
+        "7"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Initial Access",
+      "technique": "T1190"
+    },
+    {
+      "tactic": "Privilege Escalation",
+      "technique": "T1078"
+    }
+  ]
+}

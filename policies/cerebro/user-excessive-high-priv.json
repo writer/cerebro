@@ -1,0 +1,61 @@
+{
+  "id": "user-excessive-high-priv",
+  "control_id": "wc-id-2195",
+  "name": "User account with excessive high privileges",
+  "description": "A user account has excessive high-level privileges",
+  "effect": "forbid",
+  "resource": "iam::user",
+  "conditions": [
+    "high_privilege_role_count \u003e 5"
+  ],
+  "severity": "high",
+  "remediation": "Apply least privilege principle. Remove unnecessary roles. Use just-in-time access for elevated privileges.",
+  "tags": [
+    "wiz",
+    "identity",
+    "user",
+    "excessive-privilege"
+  ],
+  "risk_categories": [
+    "IDENTITY_RISK",
+    "PRIVILEGE_ESCALATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "7.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "5",
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Persistence",
+      "technique": "T1098"
+    },
+    {
+      "tactic": "Privilege Escalation",
+      "technique": "T1078"
+    }
+  ]
+}

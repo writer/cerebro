@@ -1,0 +1,71 @@
+{
+  "id": "bucket-cleartext-admin-keys",
+  "control_id": "wc-id-2421",
+  "name": "Bucket with cleartext highly privileged cloud keys",
+  "description": "A bucket contains cleartext cloud keys with high privileges",
+  "effect": "forbid",
+  "resource": "storage::bucket|storage::blob_container",
+  "conditions": [
+    "secrets ANY (type == 'cloud_key' AND cleartext == true AND grants_high_privilege == true)"
+  ],
+  "severity": "critical",
+  "remediation": "Remove cleartext keys immediately. Rotate all exposed credentials. Use IAM roles instead.",
+  "tags": [
+    "wiz",
+    "storage",
+    "secrets",
+    "cleartext-keys",
+    "admin"
+  ],
+  "risk_categories": [
+    "UNPROTECTED_DATA",
+    "IDENTITY_RISK",
+    "PRIVILEGE_ESCALATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "AC-6",
+        "IA-5",
+        "SC-12"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "7.2",
+        "3.5",
+        "8.6"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "5",
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Privilege Escalation",
+      "technique": "T1078"
+    },
+    {
+      "tactic": "Credential Access",
+      "technique": "T1552"
+    },
+    {
+      "tactic": "Collection",
+      "technique": "T1530"
+    }
+  ]
+}

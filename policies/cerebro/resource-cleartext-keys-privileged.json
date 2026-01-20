@@ -1,0 +1,70 @@
+{
+  "id": "resource-cleartext-keys-privileged",
+  "control_id": "wc-id-254",
+  "name": "Resource with cleartext cloud keys granting high privileges",
+  "description": "A resource contains cleartext cloud credentials that grant high privileges",
+  "effect": "forbid",
+  "resource": "*",
+  "conditions": [
+    "secrets ANY (type == 'cloud_key' AND cleartext == true AND grants_high_privilege == true)"
+  ],
+  "severity": "critical",
+  "remediation": "Remove cleartext keys. Use IAM roles, managed identities, or secret managers. Rotate any potentially exposed credentials.",
+  "tags": [
+    "wiz",
+    "secrets",
+    "cleartext-keys",
+    "privileged"
+  ],
+  "risk_categories": [
+    "UNPROTECTED_DATA",
+    "IDENTITY_RISK",
+    "PRIVILEGE_ESCALATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "AC-6",
+        "IA-5",
+        "SC-12"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "7.2",
+        "3.5",
+        "8.6"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "5",
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Initial Access",
+      "technique": "T1078"
+    },
+    {
+      "tactic": "Privilege Escalation",
+      "technique": "T1078"
+    },
+    {
+      "tactic": "Credential Access",
+      "technique": "T1552"
+    }
+  ]
+}

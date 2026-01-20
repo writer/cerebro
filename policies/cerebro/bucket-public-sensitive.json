@@ -1,0 +1,54 @@
+{
+  "id": "bucket-public-sensitive",
+  "name": "Publicly readable bucket contains sensitive data",
+  "description": "Storage bucket allows anonymous read access (allUsers) and may contain sensitive data, creating a direct data breach risk",
+  "effect": "forbid",
+  "resource": "gcp::storage::bucket",
+  "conditions": [
+    "iam_policy CONTAINS 'allUsers'"
+  ],
+  "severity": "critical",
+  "remediation": "1. Remove public access by removing allUsers and allAuthenticatedUsers from IAM bindings. 2. Implement proper access controls using IAM. 3. Enable uniform bucket-level access. 4. Review bucket contents for sensitive data.",
+  "tags": [
+    "gcp",
+    "storage",
+    "public-access",
+    "data-exposure",
+    "toxic-combination",
+    "security"
+  ],
+  "risk_categories": [
+    "EXTERNAL_EXPOSURE",
+    "EXTERNAL_ATTACK_SURFACE",
+    "UNPROTECTED_DATA"
+  ],
+  "control_id": "wc-id-1264",
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": ["AC-3", "SC-7", "AC-6"]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": ["3", "12", "13"]
+    },
+    {
+      "name": "SOC 2",
+      "controls": ["CC6"]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": ["1.4", "3.3", "3.5"]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Collection",
+      "technique": "T1530"
+    },
+    {
+      "tactic": "Exfiltration",
+      "technique": "T1567"
+    }
+  ]
+}

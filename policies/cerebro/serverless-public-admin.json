@@ -1,0 +1,73 @@
+{
+  "id": "serverless-public-admin",
+  "control_id": "wc-id-289",
+  "name": "Publicly exposed serverless with admin privileges",
+  "description": "A publicly exposed serverless function has administrative privileges",
+  "effect": "forbid",
+  "resource": "serverless::function",
+  "conditions": [
+    "is_public == true",
+    "execution_role.has_admin_role == true"
+  ],
+  "severity": "critical",
+  "remediation": "Remove admin privileges from the function. Implement least privilege IAM policies. Add authentication to the function endpoint.",
+  "tags": [
+    "wiz",
+    "serverless",
+    "admin",
+    "public-exposure"
+  ],
+  "risk_categories": [
+    "EXTERNAL_EXPOSURE",
+    "IDENTITY_RISK",
+    "PRIVILEGE_ESCALATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-3",
+        "SC-7",
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "1.3",
+        "1.4",
+        "7.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "12",
+        "13",
+        "5",
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Initial Access",
+      "technique": "T1190"
+    },
+    {
+      "tactic": "Execution",
+      "technique": "T1059"
+    },
+    {
+      "tactic": "Privilege Escalation",
+      "technique": "T1078"
+    }
+  ]
+}

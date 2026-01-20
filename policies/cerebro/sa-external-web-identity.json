@@ -1,0 +1,69 @@
+{
+  "id": "sa-external-web-identity",
+  "control_id": "wc-id-123",
+  "name": "Service account with high privileges can be assumed by an external web identity",
+  "description": "A highly privileged service account can be assumed by an external web identity provider",
+  "effect": "forbid",
+  "resource": "iam::service_account|iam::role",
+  "conditions": [
+    "has_high_privilege == true",
+    "trust_policy.allows_external_web_identity == true"
+  ],
+  "severity": "high",
+  "remediation": "Restrict web identity federation to specific issuers and subjects. Reduce privileges or add conditions to the trust policy.",
+  "tags": [
+    "wiz",
+    "identity",
+    "web-identity",
+    "federation",
+    "privileged"
+  ],
+  "risk_categories": [
+    "EXTERNAL_EXPOSURE",
+    "IDENTITY_RISK",
+    "LATERAL_MOVEMENT",
+    "PRIVILEGE_ESCALATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "7.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "5",
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Initial Access",
+      "technique": "T1190"
+    },
+    {
+      "tactic": "Privilege Escalation",
+      "technique": "T1078"
+    },
+    {
+      "tactic": "Lateral Movement",
+      "technique": "T1021"
+    }
+  ]
+}

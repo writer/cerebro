@@ -1,0 +1,77 @@
+{
+  "id": "vm-internet-vuln-privileged",
+  "control_id": "wc-id-140",
+  "name": "Internet-facing VM with high privileges and initial access vulnerabilities",
+  "description": "An internet-facing VM has both high privileges and vulnerabilities that could enable initial access, creating a critical combined risk",
+  "effect": "forbid",
+  "resource": "compute::instance",
+  "conditions": [
+    "is_internet_facing == true",
+    "service_account.has_high_privilege == true OR attached_role.has_high_privilege == true",
+    "vulnerabilities ANY (severity IN ('CRITICAL', 'HIGH') AND initial_access == true)"
+  ],
+  "severity": "critical",
+  "remediation": "Immediately patch vulnerabilities and reduce privileges. Consider isolating the VM until both issues are resolved.",
+  "tags": [
+    "wiz",
+    "compute",
+    "vulnerability",
+    "privileged",
+    "internet-facing"
+  ],
+  "risk_categories": [
+    "EXTERNAL_EXPOSURE",
+    "IDENTITY_RISK",
+    "VULNERABILITY",
+    "PRIVILEGE_ESCALATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-3",
+        "SC-7",
+        "AC-2",
+        "AC-6",
+        "RA-5",
+        "SI-2"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "1.3",
+        "1.4",
+        "7.2",
+        "6.3",
+        "11.3"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "12",
+        "13",
+        "5",
+        "6",
+        "7"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Initial Access",
+      "technique": "T1190"
+    },
+    {
+      "tactic": "Privilege Escalation",
+      "technique": "T1078"
+    }
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "id": "db-dormant-principal",
+  "control_id": "wc-id-2693",
+  "name": "Database server with sensitive data can be accessed by a principal that has been inactive in the last 90 days",
+  "description": "A dormant principal still has access to a database containing sensitive data",
+  "effect": "forbid",
+  "resource": "database::instance|database::cluster",
+  "conditions": [
+    "has_sensitive_data == true",
+    "iam_policy.principals ANY (last_activity_days_ago \u003e 90)"
+  ],
+  "severity": "medium",
+  "remediation": "Review and remove access for dormant principals. Implement regular database access reviews.",
+  "tags": [
+    "wiz",
+    "database",
+    "dormant",
+    "sensitive-data"
+  ],
+  "risk_categories": [
+    "UNPROTECTED_DATA"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "7.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "5",
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Collection",
+      "technique": "T1530"
+    }
+  ]
+}

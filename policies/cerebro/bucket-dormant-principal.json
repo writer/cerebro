@@ -1,0 +1,57 @@
+{
+  "id": "bucket-dormant-principal",
+  "control_id": "wc-id-2692",
+  "name": "Bucket with sensitive data can be accessed by a principal that has been inactive in the last 90 days",
+  "description": "A dormant principal still has access to a bucket containing sensitive data",
+  "effect": "forbid",
+  "resource": "storage::bucket|storage::blob_container",
+  "conditions": [
+    "has_sensitive_data == true",
+    "iam_policy.principals ANY (last_activity_days_ago \u003e 90)"
+  ],
+  "severity": "medium",
+  "remediation": "Review and remove access for dormant principals. Implement regular access certification.",
+  "tags": [
+    "wiz",
+    "storage",
+    "dormant",
+    "sensitive-data"
+  ],
+  "risk_categories": [
+    "UNPROTECTED_DATA"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "7.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "5",
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Collection",
+      "technique": "T1530"
+    }
+  ]
+}

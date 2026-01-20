@@ -1,0 +1,64 @@
+{
+  "id": "account-lateral-dormant",
+  "control_id": "wc-id-990",
+  "name": "Account with a lateral movement finding to admin is inactive for over 90 days",
+  "description": "A dormant account has an attack path to admin privileges, posing a risk if the account is compromised",
+  "effect": "forbid",
+  "resource": "iam::user|iam::service_account",
+  "conditions": [
+    "last_activity_days_ago \u003e 90",
+    "attack_paths ANY (target.is_admin == true)"
+  ],
+  "severity": "high",
+  "remediation": "Disable or delete dormant accounts. Break the attack path to admin if the account must be retained.",
+  "tags": [
+    "wiz",
+    "identity",
+    "dormant",
+    "lateral-movement",
+    "admin"
+  ],
+  "risk_categories": [
+    "IDENTITY_RISK",
+    "LATERAL_MOVEMENT",
+    "PRIVILEGE_ESCALATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "7.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "5",
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Privilege Escalation",
+      "technique": "T1078"
+    },
+    {
+      "tactic": "Lateral Movement",
+      "technique": "T1021"
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "id": "aws-user-inactive-admin-no-mfa",
+  "control_id": "wc-id-2211",
+  "name": "Inactive AWS user account with admin privileges and MFA disabled",
+  "description": "An inactive AWS user with admin privileges does not have MFA enabled",
+  "effect": "forbid",
+  "resource": "aws::iam::user",
+  "conditions": [
+    "has_admin_role == true",
+    "mfa_enabled == false",
+    "last_activity_days_ago \u003e 90"
+  ],
+  "severity": "critical",
+  "remediation": "Disable or delete inactive admin accounts. If account is needed, enable MFA immediately.",
+  "tags": [
+    "wiz",
+    "aws",
+    "identity",
+    "mfa",
+    "admin",
+    "dormant"
+  ],
+  "risk_categories": [
+    "IDENTITY_RISK",
+    "MISCONFIGURATION",
+    "PRIVILEGE_ESCALATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "IA-2",
+        "IA-5",
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "8.3",
+        "8.4",
+        "7.2"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "6",
+        "5"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Persistence",
+      "technique": "T1098"
+    },
+    {
+      "tactic": "Privilege Escalation",
+      "technique": "T1078"
+    }
+  ]
+}

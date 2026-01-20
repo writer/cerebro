@@ -1,0 +1,41 @@
+{
+  "id": "ssh-key-unused",
+  "control_id": "wc-id-912",
+  "name": "SSH key pair is not used by any VM",
+  "description": "An SSH key pair exists but is not associated with any VM",
+  "effect": "forbid",
+  "resource": "compute::ssh_key",
+  "conditions": [
+    "associated_instances_count == 0"
+  ],
+  "severity": "low",
+  "remediation": "Delete unused SSH key pairs. Maintain key hygiene for security.",
+  "tags": [
+    "wiz",
+    "compute",
+    "ssh",
+    "hygiene"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "IA-5",
+        "SC-12"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "3.5",
+        "8.6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Credential Access",
+      "technique": "T1552"
+    }
+  ]
+}

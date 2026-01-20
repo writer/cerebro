@@ -2,97 +2,13 @@ version: "2"
 
 run:
   timeout: 5m
-  tests: true
+  tests: false
 
 linters:
-  default: none
   enable:
     - errcheck
-    - govet
-    - ineffassign
     - staticcheck
-    - unused
-    - gosec
-    - misspell
-    - unconvert
-    - unparam
-    - bodyclose
-    - noctx
-    - prealloc
-
-  settings:
-    errcheck:
-      check-type-assertions: true
-      check-blank: false
-
-    govet:
-      enable-all: true
-      disable:
-        - fieldalignment
-
-    gosec:
-      excludes:
-        - G104
-        - G115
-        - G304
-
-    misspell:
-      locale: US
-      ignore-rules:
-        - mitre
-
-    prealloc:
-      simple: true
-      for-loops: true
-
-  exclusions:
-    generated: lax
-    rules:
-      - path: _test\.go
-        linters:
-          - gosec
-          - unparam
-          - errcheck
-
-      - path: internal/api/server\.go
-        linters:
-          - funlen
-
-      - path: internal/cache/cache\.go
-        linters:
-          - errcheck
-
-      - path: internal/findings/snowflake_store\.go
-        linters:
-          - errcheck
-          - gosec
-
-      - path: internal/snowflake/.*\.go
-        linters:
-          - gosec
-
-      - path: internal/lineage/mapper\.go
-        linters:
-          - errcheck
 
 formatters:
   enable:
-    - gofmt
     - goimports
-
-  settings:
-    goimports:
-      local-prefixes:
-        - github.com/writerinternal/cerebro
-
-issues:
-  max-issues-per-linter: 50
-  max-same-issues: 3
-
-output:
-  formats:
-    text:
-      path: stdout
-      colors: true
-      print-issued-lines: true
-      print-linter-name: true

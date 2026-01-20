@@ -1,0 +1,49 @@
+{
+  "id": "vm-public-high-privileges",
+  "name": "Internet-facing VM with high privileges",
+  "description": "Compute instance is exposed to the public internet via external IP and has high privileges through its service account, creating an attractive target for attackers",
+  "effect": "forbid",
+  "resource": "gcp::compute::instance",
+  "conditions": [
+    "network_interfaces CONTAINS 'accessConfigs'",
+    "service_accounts CONTAINS 'compute@developer.gserviceaccount.com'"
+  ],
+  "severity": "critical",
+  "remediation": "1. Remove external IP if not required (use Cloud NAT for egress). 2. Create dedicated service account with minimal permissions. 3. Apply OS-level hardening. 4. Enable Shielded VM features. 5. Use VPC Service Controls.",
+  "tags": [
+    "gcp",
+    "compute",
+    "public-ip",
+    "privileged",
+    "toxic-combination",
+    "security"
+  ],
+  "risk_categories": [
+    "EXTERNAL_EXPOSURE",
+    "UNPROTECTED_PRINCIPAL"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": ["AC-6", "SC-7", "SI-2"]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": ["5", "6", "7", "12"]
+    },
+    {
+      "name": "SOC 2",
+      "controls": ["CC6"]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Initial Access",
+      "technique": "T1190"
+    },
+    {
+      "tactic": "Privilege Escalation",
+      "technique": "T1078"
+    }
+  ]
+}

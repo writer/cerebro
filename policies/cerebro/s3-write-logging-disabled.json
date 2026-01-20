@@ -1,0 +1,63 @@
+{
+  "id": "s3-write-logging-disabled",
+  "control_id": "wc-id-942",
+  "name": "S3 Bucket with object-level write data events logging disabled",
+  "description": "An S3 bucket does not have CloudTrail data event logging enabled for write operations",
+  "effect": "forbid",
+  "resource": "aws::s3::bucket",
+  "conditions": [
+    "cloudtrail_data_events.write_enabled == false"
+  ],
+  "severity": "medium",
+  "remediation": "Enable CloudTrail data events for write operations on the bucket.",
+  "tags": [
+    "wiz",
+    "aws",
+    "s3",
+    "logging",
+    "cloudtrail"
+  ],
+  "risk_categories": [
+    "UNPROTECTED_DATA",
+    "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AU-2",
+        "AU-12"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "10.2",
+        "10.3"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC4",
+        "CC7"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "8"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Defense Evasion",
+      "technique": "T1562"
+    },
+    {
+      "tactic": "Collection",
+      "technique": "T1530"
+    }
+  ]
+}

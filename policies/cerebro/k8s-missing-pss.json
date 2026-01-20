@@ -1,0 +1,22 @@
+{
+  "id": "k8s-missing-pss",
+  "control_id": "wc-id-1217",
+  "name": "Kubernetes clusters with at least one namespace missing PSS policy",
+  "description": "A namespace in the cluster is missing Pod Security Standards enforcement",
+  "effect": "forbid",
+  "resource": "k8s::namespace",
+  "conditions": [
+    "labels NOT CONTAINS 'pod-security.kubernetes.io/enforce'"
+  ],
+  "severity": "medium",
+  "remediation": "Apply Pod Security Standards labels to all namespaces. Use 'restricted' or 'baseline' policy.",
+  "tags": [
+    "wiz",
+    "kubernetes",
+    "pss",
+    "pod-security"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ]
+}

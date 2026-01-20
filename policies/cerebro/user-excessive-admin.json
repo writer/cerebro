@@ -1,0 +1,61 @@
+{
+  "id": "user-excessive-admin",
+  "control_id": "wc-id-909",
+  "name": "User account with excessive admin privileges",
+  "description": "A user account has more admin privileges than necessary for their role",
+  "effect": "forbid",
+  "resource": "iam::user",
+  "conditions": [
+    "admin_role_count \u003e 3 OR has_wildcard_admin == true"
+  ],
+  "severity": "high",
+  "remediation": "Apply least privilege principle. Remove unnecessary admin roles. Implement break-glass procedures for emergency access.",
+  "tags": [
+    "wiz",
+    "identity",
+    "admin",
+    "excessive-privilege"
+  ],
+  "risk_categories": [
+    "IDENTITY_RISK",
+    "PRIVILEGE_ESCALATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "7.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "5",
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Persistence",
+      "technique": "T1098"
+    },
+    {
+      "tactic": "Privilege Escalation",
+      "technique": "T1078"
+    }
+  ]
+}

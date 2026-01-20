@@ -20,6 +20,15 @@ serve: build
 test:
 	go test -v ./...
 
+# Lint code
+lint:
+	golangci-lint run --timeout 5m ./...
+
+# Format code
+fmt:
+	goimports -w $$(find . -name '*.go' -not -path './vendor/*')
+	gofmt -w $$(find . -name '*.go' -not -path './vendor/*')
+
 # Sync cloud assets via CloudQuery
 sync: build
 	./bin/cerebro sync

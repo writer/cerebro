@@ -1,0 +1,68 @@
+{
+  "id": "aws-user-data-no-mfa",
+  "control_id": "wc-id-2217",
+  "name": "AWS user account with access to sensitive data and MFA disabled",
+  "description": "An AWS user with access to sensitive data does not have MFA enabled",
+  "effect": "forbid",
+  "resource": "aws::iam::user",
+  "conditions": [
+    "has_sensitive_data_access == true",
+    "mfa_enabled == false"
+  ],
+  "severity": "high",
+  "remediation": "Enable MFA immediately for all users with access to sensitive data.",
+  "tags": [
+    "wiz",
+    "aws",
+    "identity",
+    "mfa",
+    "data-access"
+  ],
+  "risk_categories": [
+    "UNPROTECTED_DATA",
+    "IDENTITY_RISK",
+    "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "IA-2",
+        "IA-5",
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "8.3",
+        "8.4",
+        "7.2"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "6",
+        "5"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Persistence",
+      "technique": "T1098"
+    },
+    {
+      "tactic": "Collection",
+      "technique": "T1530"
+    }
+  ]
+}

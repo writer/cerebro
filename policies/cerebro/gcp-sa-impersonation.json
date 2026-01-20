@@ -1,0 +1,61 @@
+{
+  "id": "gcp-sa-impersonation",
+  "control_id": "wc-id-972",
+  "name": "GCP user account assigned with the 'Service Account User' or 'Service Account Token Creator' roles",
+  "description": "A GCP user can impersonate service accounts, potentially escalating privileges",
+  "effect": "forbid",
+  "resource": "gcp::iam::member",
+  "conditions": [
+    "roles ANY (name IN ('roles/iam.serviceAccountUser', 'roles/iam.serviceAccountTokenCreator'))"
+  ],
+  "severity": "medium",
+  "remediation": "Review service account impersonation permissions. Remove if not required. Implement proper IAM conditions.",
+  "tags": [
+    "wiz",
+    "gcp",
+    "identity",
+    "impersonation"
+  ],
+  "risk_categories": [
+    "IDENTITY_RISK",
+    "PRIVILEGE_ESCALATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "7.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "5",
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Persistence",
+      "technique": "T1098"
+    },
+    {
+      "tactic": "Privilege Escalation",
+      "technique": "T1078"
+    }
+  ]
+}

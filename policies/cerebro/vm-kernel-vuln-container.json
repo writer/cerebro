@@ -1,0 +1,46 @@
+{
+  "id": "vm-kernel-vuln-container",
+  "control_id": "wc-id-183",
+  "name": "VM with kernel vulnerabilities is running a container",
+  "description": "A VM with kernel vulnerabilities is running containers, risking container escape",
+  "effect": "forbid",
+  "resource": "compute::instance",
+  "conditions": [
+    "vulnerabilities ANY (component == 'kernel' AND severity IN ('CRITICAL', 'HIGH'))",
+    "running_containers_count \u003e 0"
+  ],
+  "severity": "high",
+  "remediation": "Patch kernel vulnerabilities. Consider migrating containers to patched nodes.",
+  "tags": [
+    "wiz",
+    "compute",
+    "vulnerability",
+    "kernel",
+    "container"
+  ],
+  "risk_categories": [
+    "VULNERABILITY"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "RA-5",
+        "SI-2"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "6.3",
+        "11.3"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "7"
+      ]
+    }
+  ]
+}

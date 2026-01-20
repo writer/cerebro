@@ -1,0 +1,60 @@
+{
+  "id": "sa-inactive-assigned",
+  "control_id": "wc-id-887",
+  "name": "Service account with high privileges is inactive for over 90 days and assigned to a resource",
+  "description": "An inactive privileged service account is still assigned to a resource",
+  "effect": "forbid",
+  "resource": "iam::service_account",
+  "conditions": [
+    "has_high_privilege == true",
+    "last_activity_days_ago \u003e 90",
+    "assigned_resources_count \u003e 0"
+  ],
+  "severity": "high",
+  "remediation": "Review and update resource assignments. Remove inactive service accounts or reduce their privileges.",
+  "tags": [
+    "wiz",
+    "identity",
+    "dormant",
+    "privileged",
+    "assigned"
+  ],
+  "risk_categories": [
+    "IDENTITY_RISK",
+    "PRIVILEGE_ESCALATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "7.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "5",
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Privilege Escalation",
+      "technique": "T1078"
+    }
+  ]
+}

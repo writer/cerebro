@@ -1,0 +1,59 @@
+{
+  "id": "vm-public-eol-targeted",
+  "control_id": "wc-id-2436",
+  "name": "Publicly exposed VM with end-of-life targeted technology",
+  "description": "A publicly exposed VM has EOL software that is commonly targeted by attackers",
+  "effect": "forbid",
+  "resource": "compute::instance",
+  "conditions": [
+    "is_public == true",
+    "installed_packages ANY (end_of_life == true AND is_commonly_targeted == true)"
+  ],
+  "severity": "critical",
+  "remediation": "Update or remove targeted EOL software immediately. This is an actively exploited attack surface.",
+  "tags": [
+    "wiz",
+    "compute",
+    "eol",
+    "targeted",
+    "public-exposure"
+  ],
+  "risk_categories": [
+    "EXTERNAL_EXPOSURE"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-3",
+        "SC-7"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "1.3",
+        "1.4"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "12",
+        "13"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Initial Access",
+      "technique": "T1190"
+    }
+  ]
+}

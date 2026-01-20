@@ -3,13 +3,17 @@ module github.com/writerinternal/cerebro
 go 1.25.0
 
 require (
+	cloud.google.com/go/artifactregistry v1.19.0
 	cloud.google.com/go/asset v1.22.0
 	cloud.google.com/go/compute v1.53.0
 	cloud.google.com/go/container v1.45.0
+	cloud.google.com/go/containeranalysis v0.14.2
 	cloud.google.com/go/functions v1.19.7
 	cloud.google.com/go/iam v1.5.3
 	cloud.google.com/go/pubsub v1.50.1
 	cloud.google.com/go/resourcemanager v1.10.7
+	cloud.google.com/go/run v1.14.0
+	cloud.google.com/go/securitycenter v1.38.1
 	cloud.google.com/go/storage v1.59.1
 	github.com/aws/aws-sdk-go-v2 v1.41.1
 	github.com/aws/aws-sdk-go-v2/config v1.27.11
@@ -41,6 +45,7 @@ require (
 	go.yaml.in/yaml/v2 v2.4.2
 	golang.org/x/time v0.14.0
 	google.golang.org/api v0.260.0
+	google.golang.org/genproto v0.0.0-20260120174246-409b4a993575
 	modernc.org/sqlite v1.44.0
 )
 
@@ -51,12 +56,12 @@ require (
 	cloud.google.com/go/auth v0.18.0 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
+	cloud.google.com/go/grafeas v0.3.16 // indirect
 	cloud.google.com/go/longrunning v0.8.0 // indirect
 	cloud.google.com/go/monitoring v1.24.3 // indirect
 	cloud.google.com/go/orgpolicy v1.15.1 // indirect
 	cloud.google.com/go/osconfig v1.15.1 // indirect
 	cloud.google.com/go/pubsub/v2 v2.0.0 // indirect
-	cloud.google.com/go/run v1.14.0 // indirect
 	github.com/99designs/go-keychain v0.0.0-20191008050251-8e49817e8af4 // indirect
 	github.com/99designs/keyring v1.2.2 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.4.0 // indirect
@@ -150,7 +155,6 @@ require (
 	golang.org/x/text v0.32.0 // indirect
 	golang.org/x/tools v0.39.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
-	google.golang.org/genproto v0.0.0-20260114163908-3f89685c29c3 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20251222181119-0a764e51fe1b // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251222181119-0a764e51fe1b // indirect
 	google.golang.org/grpc v1.78.0 // indirect

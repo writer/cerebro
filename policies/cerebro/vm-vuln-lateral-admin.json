@@ -1,0 +1,82 @@
+{
+  "id": "vm-vuln-lateral-admin",
+  "control_id": "wc-id-857",
+  "name": "Internet-facing VM/serverless with initial access vulnerabilities and a lateral movement finding to admin privileges",
+  "description": "An internet-facing resource has vulnerabilities that could enable initial access and an attack path to admin privileges",
+  "effect": "forbid",
+  "resource": "compute::instance|serverless::function",
+  "conditions": [
+    "is_internet_facing == true",
+    "vulnerabilities ANY (severity IN ('CRITICAL', 'HIGH') AND initial_access == true)",
+    "attack_paths ANY (target.is_admin == true)"
+  ],
+  "severity": "critical",
+  "remediation": "Patch vulnerabilities immediately. Break the attack path by removing excessive permissions or trust relationships. Consider isolating the resource.",
+  "tags": [
+    "wiz",
+    "compute",
+    "vulnerability",
+    "lateral-movement",
+    "admin"
+  ],
+  "risk_categories": [
+    "EXTERNAL_EXPOSURE",
+    "IDENTITY_RISK",
+    "VULNERABILITY",
+    "LATERAL_MOVEMENT",
+    "PRIVILEGE_ESCALATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-3",
+        "SC-7",
+        "AC-2",
+        "AC-6",
+        "RA-5",
+        "SI-2"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "1.3",
+        "1.4",
+        "7.2",
+        "6.3",
+        "11.3"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "12",
+        "13",
+        "5",
+        "6",
+        "7"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Initial Access",
+      "technique": "T1190"
+    },
+    {
+      "tactic": "Privilege Escalation",
+      "technique": "T1078"
+    },
+    {
+      "tactic": "Lateral Movement",
+      "technique": "T1021"
+    }
+  ]
+}

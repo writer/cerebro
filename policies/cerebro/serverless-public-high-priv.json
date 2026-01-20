@@ -1,0 +1,72 @@
+{
+  "id": "serverless-public-high-priv",
+  "control_id": "wc-id-313",
+  "name": "Publicly exposed serverless with high privileges",
+  "description": "A publicly exposed serverless function has high privileges",
+  "effect": "forbid",
+  "resource": "serverless::function",
+  "conditions": [
+    "is_public == true",
+    "execution_role.has_high_privilege == true"
+  ],
+  "severity": "critical",
+  "remediation": "Reduce function privileges to minimum required. Add authentication. Consider using API Gateway with authorization.",
+  "tags": [
+    "wiz",
+    "serverless",
+    "high-privilege",
+    "public-exposure"
+  ],
+  "risk_categories": [
+    "EXTERNAL_EXPOSURE",
+    "PRIVILEGE_ESCALATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-3",
+        "SC-7",
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "1.3",
+        "1.4",
+        "7.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "12",
+        "13",
+        "5",
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Initial Access",
+      "technique": "T1190"
+    },
+    {
+      "tactic": "Execution",
+      "technique": "T1059"
+    },
+    {
+      "tactic": "Privilege Escalation",
+      "technique": "T1078"
+    }
+  ]
+}

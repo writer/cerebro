@@ -1,0 +1,57 @@
+{
+  "id": "group-excessive-high-priv",
+  "control_id": "wc-id-2198",
+  "name": "Group with excessive high privileges",
+  "description": "A group has excessive high-level privileges",
+  "effect": "forbid",
+  "resource": "iam::group",
+  "conditions": [
+    "high_privilege_role_count \u003e 5"
+  ],
+  "severity": "high",
+  "remediation": "Review and reduce group privileges. Create more granular groups based on job functions.",
+  "tags": [
+    "wiz",
+    "identity",
+    "group",
+    "excessive-privilege"
+  ],
+  "risk_categories": [
+    "IDENTITY_RISK",
+    "PRIVILEGE_ESCALATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "7.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "5",
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Privilege Escalation",
+      "technique": "T1078"
+    }
+  ]
+}

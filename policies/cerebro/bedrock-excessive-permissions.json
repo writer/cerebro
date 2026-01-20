@@ -1,0 +1,55 @@
+{
+  "id": "bedrock-excessive-permissions",
+  "control_id": "wc-id-2780",
+  "name": "Bedrock AI Service Role with Excessive Permissions",
+  "description": "An AWS Bedrock service role has excessive permissions beyond model invocation",
+  "effect": "forbid",
+  "resource": "aws::iam::role",
+  "conditions": [
+    "used_by_bedrock == true",
+    "policy_document CONTAINS ('*') OR has_admin_actions == true"
+  ],
+  "severity": "high",
+  "remediation": "Reduce Bedrock service role to minimum required permissions. Use specific model ARNs in policies.",
+  "tags": [
+    "wiz",
+    "aws",
+    "bedrock",
+    "ai",
+    "excessive-permissions"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "7.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "5",
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Persistence",
+      "technique": "T1098"
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "id": "ray-ai-public",
+  "control_id": "wc-id-2033",
+  "name": "Publicly exposed VM vulnerable with Ray AI installed (authentication not supported)",
+  "description": "A VM with Ray AI framework is publicly exposed without authentication",
+  "effect": "forbid",
+  "resource": "compute::instance",
+  "conditions": [
+    "is_public == true",
+    "installed_packages ANY (name == 'ray')"
+  ],
+  "severity": "critical",
+  "remediation": "Remove public access. Ray does not support authentication by default. Use network-level controls.",
+  "tags": [
+    "wiz",
+    "compute",
+    "ray",
+    "ai",
+    "public-exposure"
+  ],
+  "risk_categories": [
+    "EXTERNAL_EXPOSURE",
+    "IDENTITY_RISK"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-3",
+        "SC-7",
+        "IA-2",
+        "IA-5"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "1.3",
+        "1.4",
+        "8.3",
+        "8.4"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "12",
+        "13",
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Initial Access",
+      "technique": "T1190"
+    }
+  ]
+}
