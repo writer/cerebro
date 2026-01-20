@@ -492,6 +492,8 @@ spec:
   path: cloudquery/snowflake
   registry: cloudquery
   version: "v5.2.0"
+  migrate_mode: forced
+  write_mode: append
   spec:
     connection_string: "${SNOWFLAKE_CONNECTION_STRING}"
     database: CEREBRO

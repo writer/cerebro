@@ -7,6 +7,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"strings"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/writerinternal/cerebro/internal/app"
 	"github.com/writerinternal/cerebro/internal/snowflake"
+	nativesync "github.com/writerinternal/cerebro/internal/sync"
 )
 
 var syncCmd = &cobra.Command{
@@ -44,6 +46,7 @@ var (
 	syncEnsureTables bool
 	syncValidate     bool
 	syncScanAfter    bool
+	syncNative       bool
 )
 
 func init() {
@@ -52,11 +55,17 @@ func init() {
 	syncCmd.Flags().BoolVar(&syncEnsureTables, "ensure-tables", false, "Create Snowflake tables before sync")
 	syncCmd.Flags().BoolVar(&syncValidate, "validate", false, "Validate sync completed successfully")
 	syncCmd.Flags().BoolVar(&syncScanAfter, "scan-after", false, "Run policy scan after successful sync")
+	syncCmd.Flags().BoolVar(&syncNative, "native", false, "Use native AWS sync instead of CloudQuery")
 }
 
 func runSync(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	start := time.Now()
+
+	// Use native sync if requested
+	if syncNative {
+		return runNativeSync(ctx, start)
+	}
 
 	// Check CloudQuery CLI is available
 	if _, err := exec.LookPath("cloudquery"); err != nil {
@@ -133,6 +142,56 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	return nil
+}
+
+func runNativeSync(ctx context.Context, start time.Time) error {
+	Info("Starting native AWS sync...")
+	
+	client, err := createSnowflakeClient()
+	if err != nil {
+		return fmt.Errorf("create snowflake client: %w", err)
+	}
+	defer client.Close()
+	
+	syncer := nativesync.NewAWSSyncer(client, slog.Default())
+	results, err := syncer.SyncAll(ctx)
+	if err != nil {
+		return fmt.Errorf("sync failed: %w", err)
+	}
+	
+	fmt.Println()
+	fmt.Println("Sync Results:")
+	fmt.Println("─────────────────────────────────────────")
+	
+	totalSynced := 0
+	totalErrors := 0
+	for _, r := range results {
+		status := "✓"
+		if r.Errors > 0 {
+			status = "✗"
+		}
+		fmt.Printf("  %s %-30s %4d resources (%s)\n", status, r.Table, r.Synced, r.Duration.Round(time.Millisecond))
+		totalSynced += r.Synced
+		totalErrors += r.Errors
+	}
+	
+	fmt.Println("─────────────────────────────────────────")
+	fmt.Printf("  Total: %d resources synced in %s\n", totalSynced, time.Since(start).Round(time.Second))
+	
+	if totalErrors > 0 {
+		Warning("%d tables had errors", totalErrors)
+	} else {
+		Success("Sync completed successfully")
+	}
+	
+	if syncScanAfter {
+		Info("Triggering policy scan...")
+		if err := runPostSyncScan(ctx); err != nil {
+			Warning("Post-sync scan failed: %v", err)
+		}
+	}
+	
 	return nil
 }
 
@@ -386,11 +445,32 @@ func getStringMap(value interface{}) map[string]interface{} {
 func buildSnowflakeDSNFromKeyPair() (string, bool, error) {
 	account := os.Getenv("SNOWFLAKE_ACCOUNT")
 	user := os.Getenv("SNOWFLAKE_USER")
-	privateKey := normalizePrivateKey(os.Getenv("SNOWFLAKE_PRIVATE_KEY"))
-	if account == "" || user == "" || privateKey == "" {
+	rawKey := os.Getenv("SNOWFLAKE_PRIVATE_KEY")
+	
+	// Also check for connection string - if it exists, use it directly
+	if connStr := os.Getenv("SNOWFLAKE_CONNECTION_STRING"); connStr != "" {
+		return connStr, true, nil
+	}
+	
+	if account == "" || user == "" || rawKey == "" {
+		// Debug: show what's missing
+		missing := []string{}
+		if account == "" {
+			missing = append(missing, "SNOWFLAKE_ACCOUNT")
+		}
+		if user == "" {
+			missing = append(missing, "SNOWFLAKE_USER")
+		}
+		if rawKey == "" {
+			missing = append(missing, "SNOWFLAKE_PRIVATE_KEY")
+		}
+		if len(missing) > 0 {
+			Warning("Snowflake key-pair auth not configured, missing: %s", strings.Join(missing, ", "))
+		}
 		return "", false, nil
 	}
 
+	privateKey := normalizePrivateKey(rawKey)
 	key, err := parsePrivateKey(privateKey)
 	if err != nil {
 		return "", false, fmt.Errorf("failed to parse SNOWFLAKE_PRIVATE_KEY: %w", err)
