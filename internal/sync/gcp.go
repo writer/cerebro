@@ -331,6 +331,15 @@ func (e *GCPSyncEngine) persistChangeHistory(ctx context.Context, results []Sync
 		return err
 	}
 
+	// Ensure all columns exist (for tables created by older versions)
+	alterQueries := []string{
+		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS change_type VARCHAR",
+		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS provider VARCHAR",
+	}
+	for _, q := range alterQueries {
+		e.sf.Exec(ctx, q) // Ignore errors - column may already exist
+	}
+
 	for _, r := range results {
 		if r.Changes == nil {
 			continue

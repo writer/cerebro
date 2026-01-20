@@ -72,15 +72,22 @@ func (e *GCPSyncEngine) fetchGCPComputeInstances(ctx context.Context, projectID 
 				row["zone"] = extractZoneFromSelfLink(selfLink)
 			}
 
-			// Add metadata
-			if instance.Metadata != nil {
-				metaItems := make(map[string]string)
+			// Add metadata (only include non-sensitive items with reasonable lengths)
+			if instance.Metadata != nil && len(instance.Metadata.Items) > 0 {
+				metaItems := make(map[string]interface{})
 				for _, item := range instance.Metadata.Items {
 					if item.Key != nil && item.Value != nil {
-						metaItems[*item.Key] = *item.Value
+						key := *item.Key
+						val := *item.Value
+						// Skip large values (like SSH keys) that break JSON parsing
+						if len(val) < 1000 && key != "ssh-keys" && key != "sshKeys" {
+							metaItems[key] = val
+						}
 					}
 				}
-				row["metadata"] = metaItems
+				if len(metaItems) > 0 {
+					row["metadata"] = metaItems
+				}
 			}
 
 			// Add network interfaces
