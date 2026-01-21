@@ -119,14 +119,14 @@ def create_alb(
         )
 
         # Lifecycle rule for log retention
-        aws.s3.BucketLifecycleConfigurationV2(
+        aws.s3.BucketLifecycleConfiguration(
             f"{name}-alb-logs-lifecycle",
             bucket=access_logs_bucket.id,
             rules=[
-                aws.s3.BucketLifecycleConfigurationV2RuleArgs(
+                aws.s3.BucketLifecycleConfigurationRuleArgs(
                     id="expire-old-logs",
                     status="Enabled",
-                    expiration=aws.s3.BucketLifecycleConfigurationV2RuleExpirationArgs(
+                    expiration=aws.s3.BucketLifecycleConfigurationRuleExpirationArgs(
                         days=access_logs_retention_days,
                     ),
                 ),
