@@ -71,9 +71,9 @@ func (e *GCPSyncEngine) fetchGCPPubSubTopics(ctx context.Context, projectID stri
 			}
 		}
 
-	if topic.MessageRetentionDuration != nil {
-		row["message_retention_duration"] = topic.MessageRetentionDuration.AsDuration().String()
-	}
+		if topic.MessageRetentionDuration != nil {
+			row["message_retention_duration"] = topic.MessageRetentionDuration.AsDuration().String()
+		}
 
 		// Get IAM policy
 		policy, err := client.TopicAdminClient.GetIamPolicy(ctx, &iampb.GetIamPolicyRequest{
