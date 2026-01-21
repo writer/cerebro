@@ -187,14 +187,14 @@ if enable_vpc_endpoints:
 
 job_queue_stack = jobs.create_job_queue(
     name=f"cerebro-{environment}",
-    kms_key_arn=kms_key.arn,
+    kms_key_arn=kms_key["key_arn"],
     visibility_timeout=60,
     message_retention=1209600,  # 14 days
 )
 
 job_store_stack = jobs.create_job_store(
     name=f"cerebro-{environment}",
-    kms_key_arn=kms_key.arn,
+    kms_key_arn=kms_key["key_arn"],
 )
 
 # =============================================================================
@@ -229,7 +229,7 @@ ecs_stack = compute.create_ecs_cluster(
     vpc_id=vpc_stack["vpc_id"],
     subnet_ids=vpc_stack["private_subnet_ids"],
     security_group_id=vpc_stack["app_security_group_id"],
-    kms_key_id=kms_key.id,
+    kms_key_id=kms_key["key_id"],
     target_group_arn=alb_stack["target_group"].arn,
     container_image=container_image,
     api_cpu=api_cpu,
@@ -257,7 +257,7 @@ if enable_workers:
         container_image=container_image,
         queue_url=job_queue_stack["queue_url"],
         table_name=job_store_stack["table_name"],
-        kms_key_id=kms_key.id,
+        kms_key_id=kms_key["key_id"],
         log_group_name=ecs_stack["log_group"].name,
         queue_arn=job_queue_stack["queue_arn"],
         table_arn=job_store_stack["table_arn"],
@@ -375,7 +375,7 @@ if enable_tailscale:
         advertise_routes=["10.0.10.0/24", "10.0.11.0/24"],  # private subnets only
         tailscale_hostname=tailscale_hostname,
         auth_key_secret_arn=tailscale_auth_key_secret.arn,
-        kms_key_arn=kms_key.arn,
+        kms_key_arn=kms_key["key_arn"],
     )
 
 # =============================================================================
@@ -386,7 +386,8 @@ pulumi.export("vpc_id", vpc_stack["vpc_id"])
 pulumi.export("ecs_cluster_name", ecs_stack["cluster"].name)
 pulumi.export("ecs_service_name", ecs_stack["api_service"].name)
 pulumi.export("alb_dns_name", alb_stack["alb"].dns_name)
-pulumi.export("kms_key_id", kms_key.id)
+pulumi.export("kms_key_id", kms_key["key_id"])
+pulumi.export("kms_key_alias", kms_key["alias"].name)
 
 pulumi.export(
     "api_url",
@@ -428,7 +429,7 @@ if enable_infisical and infisical_principal_arn:
         name=f"cerebro-{environment}",
         assume_role_principal_arn=infisical_principal_arn,
         external_id=infisical_external_id,
-        kms_key_arn=kms_key.arn,
+        kms_key_arn=kms_key["key_arn"],
     )
     pulumi.export("infisical_role_arn", infisical_stack["role_arn"])
 

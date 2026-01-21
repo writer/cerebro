@@ -7,7 +7,7 @@ import json
 import pulumi_aws as aws
 
 
-def create_kms_key(name: str, description: str) -> aws.kms.Key:
+def create_kms_key(name: str, description: str) -> dict:
     """
     Create KMS key for secrets/app data encryption.
 
@@ -17,11 +17,14 @@ def create_kms_key(name: str, description: str) -> aws.kms.Key:
     - Secrets Manager service for encryption
     - SQS service for encryption
     - DynamoDB service for encryption
+
+    Returns:
+        dict with key, key_id, key_arn, and alias
     """
     caller = aws.get_caller_identity()
     region = aws.get_region()
 
-    return aws.kms.Key(
+    key = aws.kms.Key(
         f"{name}-kms",
         description=description,
         deletion_window_in_days=30,
@@ -99,6 +102,19 @@ def create_kms_key(name: str, description: str) -> aws.kms.Key:
         ),
         tags={"Name": name},
     )
+
+    alias = aws.kms.Alias(
+        f"{name}-kms-alias",
+        name=f"alias/{name}/primary",
+        target_key_id=key.key_id,
+    )
+
+    return {
+        "key": key,
+        "key_id": key.key_id,
+        "key_arn": key.arn,
+        "alias": alias,
+    }
 
 
 def create_cloudwatch_logs_key(name: str) -> dict:
