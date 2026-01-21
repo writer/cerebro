@@ -3,8 +3,11 @@ package sync
 import (
 	"context"
 	"fmt"
+	"path"
 
-	pubsub "cloud.google.com/go/pubsub"
+	iampb "cloud.google.com/go/iam/apiv1/iampb"
+	pubsub "cloud.google.com/go/pubsub/v2"
+	pubsubpb "cloud.google.com/go/pubsub/v2/apiv1/pubsubpb"
 	"google.golang.org/api/iterator"
 )
 
@@ -25,7 +28,9 @@ func (e *GCPSyncEngine) fetchGCPPubSubTopics(ctx context.Context, projectID stri
 
 	rows := make([]map[string]interface{}, 0, 100)
 
-	it := client.Topics(ctx)
+	it := client.TopicAdminClient.ListTopics(ctx, &pubsubpb.ListTopicsRequest{
+		Project: fmt.Sprintf("projects/%s", projectID),
+	})
 	for {
 		topic, err := it.Next()
 		if err == iterator.Done {
@@ -35,48 +40,44 @@ func (e *GCPSyncEngine) fetchGCPPubSubTopics(ctx context.Context, projectID stri
 			return nil, fmt.Errorf("list topics: %w", err)
 		}
 
-		// Get topic config
-		config, err := topic.Config(ctx)
-		if err != nil {
-			continue
-		}
-
-		topicID := topic.ID()
-		fullName := fmt.Sprintf("projects/%s/topics/%s", projectID, topicID)
+		topicID := path.Base(topic.Name)
+		fullName := topic.Name
 
 		row := map[string]interface{}{
 			"_cq_id":     fullName,
 			"project_id": projectID,
 			"name":       topicID,
-			"labels":     config.Labels,
+			"labels":     topic.Labels,
 		}
 
-		if config.KMSKeyName != "" {
-			row["kms_key_name"] = config.KMSKeyName
+		if topic.KmsKeyName != "" {
+			row["kms_key_name"] = topic.KmsKeyName
 		}
 
 		// Schema settings
-		if config.SchemaSettings != nil {
+		if topic.SchemaSettings != nil {
 			row["schema_settings"] = map[string]interface{}{
-				"schema":            config.SchemaSettings.Schema,
-				"encoding":          string(config.SchemaSettings.Encoding),
-				"first_revision_id": config.SchemaSettings.FirstRevisionID,
-				"last_revision_id":  config.SchemaSettings.LastRevisionID,
+				"schema":            topic.SchemaSettings.Schema,
+				"encoding":          topic.SchemaSettings.Encoding.String(),
+				"first_revision_id": topic.SchemaSettings.FirstRevisionId,
+				"last_revision_id":  topic.SchemaSettings.LastRevisionId,
 			}
 		}
 
 		// Message storage policy
-		if len(config.MessageStoragePolicy.AllowedPersistenceRegions) > 0 {
+		if topic.MessageStoragePolicy != nil && len(topic.MessageStoragePolicy.AllowedPersistenceRegions) > 0 {
 			row["message_storage_policy"] = map[string]interface{}{
-				"allowed_persistence_regions": config.MessageStoragePolicy.AllowedPersistenceRegions,
+				"allowed_persistence_regions": topic.MessageStoragePolicy.AllowedPersistenceRegions,
 			}
 		}
 
 		// Get IAM policy
-		policy, err := topic.IAM().Policy(ctx)
+		policy, err := client.TopicAdminClient.GetIamPolicy(ctx, &iampb.GetIamPolicyRequest{
+			Resource: topic.Name,
+		})
 		if err == nil {
 			var bindings []map[string]interface{}
-			for _, b := range policy.InternalProto.GetBindings() {
+			for _, b := range policy.GetBindings() {
 				bindings = append(bindings, map[string]interface{}{
 					"role":    b.GetRole(),
 					"members": b.GetMembers(),
@@ -84,22 +85,24 @@ func (e *GCPSyncEngine) fetchGCPPubSubTopics(ctx context.Context, projectID stri
 			}
 			row["iam_policy"] = map[string]interface{}{
 				"bindings": bindings,
-				"version":  policy.InternalProto.GetVersion(),
+				"version":  policy.GetVersion(),
 			}
 		}
 
 		// Get subscriptions for this topic
 		var subs []string
-		subIt := topic.Subscriptions(ctx)
+		subIt := client.TopicAdminClient.ListTopicSubscriptions(ctx, &pubsubpb.ListTopicSubscriptionsRequest{
+			Topic: topic.Name,
+		})
 		for {
-			sub, err := subIt.Next()
+			subscription, err := subIt.Next()
 			if err == iterator.Done {
 				break
 			}
 			if err != nil {
 				break
 			}
-			subs = append(subs, sub.ID())
+			subs = append(subs, path.Base(subscription))
 		}
 		row["subscriptions"] = subs
 

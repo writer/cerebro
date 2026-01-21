@@ -3,6 +3,8 @@ package sync
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 
 	container "cloud.google.com/go/container/apiv1"
 	"cloud.google.com/go/container/apiv1/containerpb"
@@ -36,6 +38,18 @@ func (e *GCPSyncEngine) fetchGCPGKEClusters(ctx context.Context, projectID strin
 	rows := make([]map[string]interface{}, 0, len(resp.Clusters))
 
 	for _, cluster := range resp.Clusters {
+		defaultPool := defaultNodePool(cluster.NodePools)
+		statusMessage := statusMessageFromConditions(cluster.Conditions)
+		currentNodeVersion := minNodePoolVersion(cluster.NodePools)
+		if currentNodeVersion == "" && defaultPool != nil {
+			currentNodeVersion = defaultPool.Version
+		}
+
+		initialNodeCount := int32(0)
+		if defaultPool != nil {
+			initialNodeCount = defaultPool.InitialNodeCount
+		}
+
 		selfLink := cluster.SelfLink
 		if selfLink == "" {
 			selfLink = fmt.Sprintf("https://container.googleapis.com/v1/projects/%s/locations/%s/clusters/%s",
@@ -48,7 +62,7 @@ func (e *GCPSyncEngine) fetchGCPGKEClusters(ctx context.Context, projectID strin
 			"name":                    cluster.Name,
 			"location":                cluster.Location,
 			"description":             cluster.Description,
-			"initial_node_count":      cluster.InitialNodeCount,
+			"initial_node_count":      initialNodeCount,
 			"logging_service":         cluster.LoggingService,
 			"monitoring_service":      cluster.MonitoringService,
 			"network":                 cluster.Network,
@@ -59,25 +73,24 @@ func (e *GCPSyncEngine) fetchGCPGKEClusters(ctx context.Context, projectID strin
 			"resource_labels":         cluster.ResourceLabels,
 			"label_fingerprint":       cluster.LabelFingerprint,
 			"status":                  cluster.Status.String(),
-			"status_message":          cluster.StatusMessage,
+			"status_message":          statusMessage,
 			"node_ipv4_cidr_size":     cluster.NodeIpv4CidrSize,
 			"services_ipv4_cidr":      cluster.ServicesIpv4Cidr,
 			"current_master_version":  cluster.CurrentMasterVersion,
-			"current_node_version":    cluster.CurrentNodeVersion,
+			"current_node_version":    currentNodeVersion,
 			"create_time":             cluster.CreateTime,
 			"endpoint":                cluster.Endpoint,
 			"self_link":               selfLink,
 		}
 
 		// Node config (default pool)
-		if cluster.NodeConfig != nil {
-			row["node_config"] = serializeNodeConfig(cluster.NodeConfig)
+		if defaultPool != nil && defaultPool.Config != nil {
+			row["node_config"] = serializeNodeConfig(defaultPool.Config)
 		}
 
 		// Master auth
 		if cluster.MasterAuth != nil {
 			row["master_auth"] = map[string]interface{}{
-				"username":                  cluster.MasterAuth.Username,
 				"cluster_ca_certificate":    cluster.MasterAuth.ClusterCaCertificate,
 				"client_certificate":        cluster.MasterAuth.ClientCertificate,
 				"client_certificate_config": cluster.MasterAuth.ClientCertificateConfig,
@@ -95,7 +108,10 @@ func (e *GCPSyncEngine) fetchGCPGKEClusters(ctx context.Context, projectID strin
 					"self_link":          np.SelfLink,
 					"version":            np.Version,
 					"status":             np.Status.String(),
-					"status_message":     np.StatusMessage,
+				}
+				poolStatusMessage := statusMessageFromConditions(np.Conditions)
+				if poolStatusMessage != "" {
+					pool["status_message"] = poolStatusMessage
 				}
 				if np.Config != nil {
 					pool["config"] = serializeNodeConfig(np.Config)
@@ -144,33 +160,50 @@ func (e *GCPSyncEngine) fetchGCPGKEClusters(ctx context.Context, projectID strin
 			}
 		}
 
-		// Master authorized networks
-		if cluster.MasterAuthorizedNetworksConfig != nil {
-			config := map[string]interface{}{
-				"enabled": cluster.MasterAuthorizedNetworksConfig.Enabled,
-			}
-			if len(cluster.MasterAuthorizedNetworksConfig.CidrBlocks) > 0 {
-				var blocks []map[string]interface{}
-				for _, b := range cluster.MasterAuthorizedNetworksConfig.CidrBlocks {
-					blocks = append(blocks, map[string]interface{}{
-						"display_name": b.DisplayName,
-						"cidr_block":   b.CidrBlock,
-					})
+		var ipEndpointsConfig *containerpb.ControlPlaneEndpointsConfig_IPEndpointsConfig
+		if cluster.ControlPlaneEndpointsConfig != nil {
+			ipEndpointsConfig = cluster.ControlPlaneEndpointsConfig.GetIpEndpointsConfig()
+		}
+		if ipEndpointsConfig != nil {
+			if authorizedConfig := ipEndpointsConfig.GetAuthorizedNetworksConfig(); authorizedConfig != nil {
+				config := map[string]interface{}{
+					"enabled": authorizedConfig.Enabled,
 				}
-				config["cidr_blocks"] = blocks
+				if len(authorizedConfig.CidrBlocks) > 0 {
+					var blocks []map[string]interface{}
+					for _, b := range authorizedConfig.CidrBlocks {
+						blocks = append(blocks, map[string]interface{}{
+							"display_name": b.DisplayName,
+							"cidr_block":   b.CidrBlock,
+						})
+					}
+					config["cidr_blocks"] = blocks
+				}
+				row["master_authorized_networks_config"] = config
 			}
-			row["master_authorized_networks_config"] = config
 		}
 
 		// Private cluster config
-		if cluster.PrivateClusterConfig != nil {
-			row["private_cluster_config"] = map[string]interface{}{
-				"enable_private_nodes":    cluster.PrivateClusterConfig.EnablePrivateNodes,
-				"enable_private_endpoint": cluster.PrivateClusterConfig.EnablePrivateEndpoint,
-				"master_ipv4_cidr_block":  cluster.PrivateClusterConfig.MasterIpv4CidrBlock,
-				"private_endpoint":        cluster.PrivateClusterConfig.PrivateEndpoint,
-				"public_endpoint":         cluster.PrivateClusterConfig.PublicEndpoint,
+		privateConfig := map[string]interface{}{}
+		if cluster.NetworkConfig != nil && cluster.NetworkConfig.DefaultEnablePrivateNodes != nil {
+			privateConfig["enable_private_nodes"] = cluster.NetworkConfig.GetDefaultEnablePrivateNodes()
+		}
+		if ipEndpointsConfig != nil {
+			if ipEndpointsConfig.EnablePublicEndpoint != nil {
+				privateConfig["enable_private_endpoint"] = !ipEndpointsConfig.GetEnablePublicEndpoint()
 			}
+			if ipEndpointsConfig.PrivateEndpoint != "" {
+				privateConfig["private_endpoint"] = ipEndpointsConfig.PrivateEndpoint
+			}
+			if ipEndpointsConfig.PublicEndpoint != "" {
+				privateConfig["public_endpoint"] = ipEndpointsConfig.PublicEndpoint
+			}
+		}
+		if cluster.PrivateClusterConfig != nil && cluster.PrivateClusterConfig.MasterIpv4CidrBlock != "" {
+			privateConfig["master_ipv4_cidr_block"] = cluster.PrivateClusterConfig.MasterIpv4CidrBlock
+		}
+		if len(privateConfig) > 0 {
+			row["private_cluster_config"] = privateConfig
 		}
 
 		// Database encryption
@@ -205,7 +238,7 @@ func (e *GCPSyncEngine) fetchGCPGKEClusters(ctx context.Context, projectID strin
 		// Binary authorization
 		if cluster.BinaryAuthorization != nil {
 			row["binary_authorization"] = map[string]interface{}{
-				"enabled":         cluster.BinaryAuthorization.Enabled,
+				"enabled":         cluster.BinaryAuthorization.EvaluationMode == containerpb.BinaryAuthorization_PROJECT_SINGLETON_POLICY_ENFORCE,
 				"evaluation_mode": cluster.BinaryAuthorization.EvaluationMode.String(),
 			}
 		}
@@ -246,4 +279,113 @@ func serializeNodeConfig(nc *containerpb.NodeConfig) map[string]interface{} {
 	}
 
 	return config
+}
+
+func defaultNodePool(pools []*containerpb.NodePool) *containerpb.NodePool {
+	for _, pool := range pools {
+		if pool.Name == "default-pool" {
+			return pool
+		}
+	}
+	if len(pools) > 0 {
+		return pools[0]
+	}
+	return nil
+}
+
+func statusMessageFromConditions(conditions []*containerpb.StatusCondition) string {
+	if len(conditions) == 0 {
+		return ""
+	}
+
+	messages := make([]string, 0, len(conditions))
+	for _, condition := range conditions {
+		if condition == nil {
+			continue
+		}
+		if condition.Message != "" {
+			messages = append(messages, condition.Message)
+		}
+	}
+
+	return strings.Join(messages, "; ")
+}
+
+func minNodePoolVersion(pools []*containerpb.NodePool) string {
+	minVersion := ""
+	for _, pool := range pools {
+		if pool.Version == "" {
+			continue
+		}
+		if minVersion == "" || compareNodeVersions(pool.Version, minVersion) < 0 {
+			minVersion = pool.Version
+		}
+	}
+	return minVersion
+}
+
+func compareNodeVersions(left, right string) int {
+	leftVersion, leftOK := parseNodeVersion(left)
+	rightVersion, rightOK := parseNodeVersion(right)
+	if leftOK && rightOK {
+		if leftVersion.major != rightVersion.major {
+			return compareInts(leftVersion.major, rightVersion.major)
+		}
+		if leftVersion.minor != rightVersion.minor {
+			return compareInts(leftVersion.minor, rightVersion.minor)
+		}
+		if leftVersion.patch != rightVersion.patch {
+			return compareInts(leftVersion.patch, rightVersion.patch)
+		}
+		return 0
+	}
+	if left == right {
+		return 0
+	}
+	if left < right {
+		return -1
+	}
+	return 1
+}
+
+func compareInts(left, right int) int {
+	if left < right {
+		return -1
+	}
+	if left > right {
+		return 1
+	}
+	return 0
+}
+
+type nodeVersion struct {
+	major int
+	minor int
+	patch int
+}
+
+func parseNodeVersion(version string) (nodeVersion, bool) {
+	base := strings.SplitN(version, "-", 2)[0]
+	parts := strings.Split(base, ".")
+	if len(parts) < 2 {
+		return nodeVersion{}, false
+	}
+
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return nodeVersion{}, false
+	}
+	minor, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return nodeVersion{}, false
+	}
+	patch := 0
+	if len(parts) > 2 {
+		patch, err = strconv.Atoi(parts[2])
+		if err != nil {
+			return nodeVersion{}, false
+		}
+	}
+
+	return nodeVersion{major: major, minor: minor, patch: patch}, true
 }
