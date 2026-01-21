@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	pubsub "cloud.google.com/go/pubsub" //nolint:staticcheck // v1 client still required for topic metadata
+	pubsub "cloud.google.com/go/pubsub"
 	"google.golang.org/api/iterator"
 )
 
@@ -16,7 +16,6 @@ func (e *GCPSyncEngine) gcpPubSubTopicTable() GCPTableSpec {
 	}
 }
 
-//nolint:staticcheck // Pub/Sub client v1 still required for metadata and IAM enumeration.
 func (e *GCPSyncEngine) fetchGCPPubSubTopics(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
 	client, err := pubsub.NewClient(ctx, projectID)
 	if err != nil {

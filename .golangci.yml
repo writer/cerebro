@@ -8,6 +8,15 @@ linters:
   enable:
     - errcheck
     - staticcheck
+  settings:
+    staticcheck:
+      checks:
+        - "all"
+        - "-SA1019"  # Disabled: GKE and Pub/Sub APIs expose deprecated fields needed for data parity
+        - "-ST1000"  # Package comments not required
+        - "-ST1020"  # Comment style for exported methods
+        - "-ST1021"  # Comment style for exported types
+        - "-ST1022"  # Comment style for exported variables
 
 formatters:
   enable:

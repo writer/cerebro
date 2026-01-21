@@ -16,7 +16,6 @@ func (e *GCPSyncEngine) gcpGKEClusterTable() GCPTableSpec {
 	}
 }
 
-//nolint:staticcheck // GKE API still exposes deprecated fields needed for parity.
 func (e *GCPSyncEngine) fetchGCPGKEClusters(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
 	client, err := container.NewClusterManagerClient(ctx)
 	if err != nil {
