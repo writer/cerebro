@@ -10,7 +10,7 @@ def create_infisical_sync_role(
     name: str,
     assume_role_principal_arn: str,
     external_id: Optional[str] = None,
-    kms_key_arn: Optional[pulumi.Output] = None,
+    kms_key_arn: pulumi.Output = None,
 ) -> dict:
     """
     Create IAM role for Infisical to sync secrets to AWS Secrets Manager.
@@ -19,11 +19,16 @@ def create_infisical_sync_role(
         name: Resource name prefix
         assume_role_principal_arn: ARN of Infisical's AWS principal
         external_id: Optional external ID for additional security
-        kms_key_arn: Optional KMS key ARN for encryption
+        kms_key_arn: KMS key ARN for encryption (required for production use)
     
     Returns:
         Dict with role and policy resources
+    
+    Raises:
+        ValueError: If kms_key_arn is not provided
     """
+    if not kms_key_arn:
+        raise ValueError("kms_key_arn is required for Infisical sync role - wildcard KMS access is not allowed")
     role_name = f"{name}-infisical-sync"
     
     # Build trust policy
@@ -90,89 +95,54 @@ def create_infisical_sync_role(
         },
     ]
     
-    # Add KMS permissions if key provided
-    if kms_key_arn:
-        policy_statements.append({
-            "Sid": "KMSPermissions",
-            "Effect": "Allow",
-            "Action": [
-                "kms:Encrypt",
-                "kms:Decrypt",
-                "kms:DescribeKey",
-                "kms:GenerateDataKey",
+    # Build policy with KMS key (required, validated above)
+    policy_json = kms_key_arn.apply(
+        lambda arn: pulumi.Output.json_dumps({
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "ListSecrets",
+                    "Effect": "Allow",
+                    "Action": [
+                        "secretsmanager:ListSecrets",
+                        "secretsmanager:BatchGetSecretValue",
+                    ],
+                    "Resource": "*",
+                },
+                {
+                    "Sid": "ManageSecrets",
+                    "Effect": "Allow",
+                    "Action": [
+                        "secretsmanager:GetSecretValue",
+                        "secretsmanager:CreateSecret",
+                        "secretsmanager:UpdateSecret",
+                        "secretsmanager:DeleteSecret",
+                        "secretsmanager:DescribeSecret",
+                        "secretsmanager:TagResource",
+                        "secretsmanager:UntagResource",
+                    ],
+                    "Resource": f"arn:aws:secretsmanager:{region.region}:{caller.account_id}:secret:{name}/*",
+                },
+                {
+                    "Sid": "ListKMSAliases",
+                    "Effect": "Allow",
+                    "Action": "kms:ListAliases",
+                    "Resource": "*",
+                },
+                {
+                    "Sid": "KMSPermissions",
+                    "Effect": "Allow",
+                    "Action": [
+                        "kms:Encrypt",
+                        "kms:Decrypt",
+                        "kms:DescribeKey",
+                        "kms:GenerateDataKey",
+                    ],
+                    "Resource": arn,
+                },
             ],
-            "Resource": kms_key_arn,
         })
-    else:
-        # Allow any KMS key if none specified
-        policy_statements.append({
-            "Sid": "KMSPermissions",
-            "Effect": "Allow",
-            "Action": [
-                "kms:Encrypt",
-                "kms:Decrypt",
-                "kms:DescribeKey",
-                "kms:GenerateDataKey",
-            ],
-            "Resource": "*",
-        })
-    
-    secrets_policy = {
-        "Version": "2012-10-17",
-        "Statement": policy_statements,
-    }
-    
-    # Handle kms_key_arn being an Output
-    if kms_key_arn and isinstance(kms_key_arn, pulumi.Output):
-        policy_json = kms_key_arn.apply(
-            lambda arn: pulumi.Output.json_dumps({
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Sid": "ListSecrets",
-                        "Effect": "Allow",
-                        "Action": [
-                            "secretsmanager:ListSecrets",
-                            "secretsmanager:BatchGetSecretValue",
-                        ],
-                        "Resource": "*",
-                    },
-                    {
-                        "Sid": "ManageSecrets",
-                        "Effect": "Allow",
-                        "Action": [
-                            "secretsmanager:GetSecretValue",
-                            "secretsmanager:CreateSecret",
-                            "secretsmanager:UpdateSecret",
-                            "secretsmanager:DeleteSecret",
-                            "secretsmanager:DescribeSecret",
-                            "secretsmanager:TagResource",
-                            "secretsmanager:UntagResource",
-                        ],
-                        "Resource": f"arn:aws:secretsmanager:{region.region}:{caller.account_id}:secret:{name}/*",
-                    },
-                    {
-                        "Sid": "ListKMSAliases",
-                        "Effect": "Allow",
-                        "Action": "kms:ListAliases",
-                        "Resource": "*",
-                    },
-                    {
-                        "Sid": "KMSPermissions",
-                        "Effect": "Allow",
-                        "Action": [
-                            "kms:Encrypt",
-                            "kms:Decrypt",
-                            "kms:DescribeKey",
-                            "kms:GenerateDataKey",
-                        ],
-                        "Resource": arn,
-                    },
-                ],
-            })
-        )
-    else:
-        policy_json = pulumi.Output.json_dumps(secrets_policy)
+    )
     
     policy = aws.iam.RolePolicy(
         f"{name}-infisical-sync-policy",

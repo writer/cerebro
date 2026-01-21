@@ -292,7 +292,7 @@ func (e *GCPAssetInventoryEngine) assetToRow(asset *assetpb.ResourceSearchResult
 
 	// Add versioned resources if available
 	if len(asset.VersionedResources) > 0 {
-		versions := make([]map[string]interface{}, 0)
+		versions := make([]map[string]interface{}, 0, len(asset.VersionedResources))
 		for _, vr := range asset.VersionedResources {
 			versions = append(versions, map[string]interface{}{
 				"version":  vr.Version,

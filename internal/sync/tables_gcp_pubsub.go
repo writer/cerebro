@@ -107,6 +107,10 @@ func fetchGCPPubSubTopicsWithAdmin(ctx context.Context, projectID string, adminC
 			}
 		}
 
+		if topic.MessageRetentionDuration != nil {
+			row["message_retention_duration"] = topic.MessageRetentionDuration.AsDuration().String()
+		}
+
 		// Get IAM policy
 		policy, err := adminClient.GetIamPolicy(ctx, &iampb.GetIamPolicyRequest{
 			Resource: topic.Name,

@@ -571,7 +571,7 @@ FROM high_cloudrun_no_auth
 		return nil, fmt.Errorf("toxic combination query failed: %w", err)
 	}
 
-	var findings []map[string]interface{}
+	findings := make([]map[string]interface{}, 0, len(result.Rows))
 	for _, row := range result.Rows {
 		findings = append(findings, map[string]interface{}{
 			"severity":        toString(row["SEVERITY"]),

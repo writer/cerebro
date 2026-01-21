@@ -5,3 +5,10 @@ config:
   cerebro:enableInfisicalSyncRole: true
   cerebro:useExternalSecrets: true
   cerebro:infisicalAssumeRolePrincipalArn: "arn:aws:iam::381492033652:root"
+  cerebro:enableVpcEndpoints: true
+  cerebro:enableAlbAccessLogs: true
+  cerebro:enableAlbDeletionProtection: true
+  cerebro:enableKmsLogEncryption: true
+  cerebro:natGatewayPerAz: true
+  # cerebro:slackAlarmChannelId: "C09D3SK229H"
+  # cerebro:slackWorkspaceId: "E07UFCSGMTM"

@@ -25,7 +25,14 @@ def create_ecs_cluster(
     secret_keys: list[str] = None,
     external_secrets_prefix: str = None,
     job_queue_url: pulumi.Output[str] = None,
+    job_queue_arn: pulumi.Output[str] = None,
     job_table_name: pulumi.Output[str] = None,
+    log_group_kms_key_id: pulumi.Output[str] = None,
+    fargate_base: int = 1,
+    fargate_weight: int = 1,
+    fargate_spot_base: int = 0,
+    fargate_spot_weight: int = 2,
+    enable_circuit_breaker: bool = True,
 ) -> dict:
     """
     Create ECS cluster with Fargate service for Go API.
@@ -43,15 +50,30 @@ def create_ecs_cluster(
         tags={"Name": f"{name}-cluster"},
     )
 
+    # Capacity providers for Fargate and Fargate Spot
+    capacity_providers = aws.ecs.ClusterCapacityProviders(
+        f"{name}-capacity-providers",
+        cluster_name=cluster.name,
+        capacity_providers=["FARGATE", "FARGATE_SPOT"],
+        default_capacity_provider_strategies=[
+            aws.ecs.ClusterCapacityProvidersDefaultCapacityProviderStrategyArgs(
+                capacity_provider="FARGATE",
+                weight=1,
+                base=1,
+            ),
+        ],
+    )
+
     # IAM roles
     execution_role = _create_execution_role(name, kms_key_id, external_secrets_prefix)
-    task_role = _create_task_role(name, kms_key_id)
+    task_role = _create_task_role(name, kms_key_id, job_queue_arn)
 
-    # CloudWatch log group
+    # CloudWatch log group with optional KMS encryption
     log_group = aws.cloudwatch.LogGroup(
         f"{name}-logs",
         name=f"/ecs/{name}",
         retention_in_days=log_retention_days,
+        kms_key_id=log_group_kms_key_id,
         tags={"Name": f"{name}-logs"},
     )
 
@@ -71,14 +93,33 @@ def create_ecs_cluster(
         job_table_name=job_table_name,
     )
 
-    # ECS Service
+    # Build capacity provider strategies
+    capacity_provider_strategies = []
+    if fargate_base > 0 or fargate_weight > 0:
+        capacity_provider_strategies.append(
+            aws.ecs.ServiceCapacityProviderStrategyArgs(
+                capacity_provider="FARGATE",
+                base=fargate_base,
+                weight=fargate_weight,
+            )
+        )
+    if fargate_spot_base > 0 or fargate_spot_weight > 0:
+        capacity_provider_strategies.append(
+            aws.ecs.ServiceCapacityProviderStrategyArgs(
+                capacity_provider="FARGATE_SPOT",
+                base=fargate_spot_base,
+                weight=fargate_spot_weight,
+            )
+        )
+
+    # ECS Service with capacity providers and circuit breaker
     api_service = aws.ecs.Service(
         f"{name}-service",
         name=f"{name}-api",
         cluster=cluster.id,
         task_definition=task_definition.arn,
         desired_count=api_min_instances,
-        launch_type="FARGATE",
+        capacity_provider_strategies=capacity_provider_strategies if capacity_provider_strategies else None,
         network_configuration=aws.ecs.ServiceNetworkConfigurationArgs(
             subnets=subnet_ids,
             security_groups=[security_group_id],
@@ -94,7 +135,17 @@ def create_ecs_cluster(
         health_check_grace_period_seconds=120,
         deployment_maximum_percent=200,
         deployment_minimum_healthy_percent=100,
+        force_new_deployment=True,
+        deployment_circuit_breaker=(
+            aws.ecs.ServiceDeploymentCircuitBreakerArgs(
+                enable=True,
+                rollback=True,
+            )
+            if enable_circuit_breaker
+            else None
+        ),
         tags={"Name": f"{name}-service"},
+        opts=pulumi.ResourceOptions(depends_on=[capacity_providers]),
     )
 
     # Auto Scaling
@@ -143,8 +194,10 @@ def create_ecs_cluster(
 
     return {
         "cluster": cluster,
+        "capacity_providers": capacity_providers,
         "api_service": api_service,
         "task_definition": task_definition,
+        "task_role": task_role,
         "log_group": log_group,
     }
 
@@ -212,7 +265,11 @@ def _create_execution_role(
     return role
 
 
-def _create_task_role(name: str, kms_key_id: pulumi.Output[str]) -> aws.iam.Role:
+def _create_task_role(
+    name: str,
+    kms_key_id: pulumi.Output[str],
+    job_queue_arn: pulumi.Output[str] = None,
+) -> aws.iam.Role:
     """Create IAM task role for application."""
     role = aws.iam.Role(
         f"{name}-task-role",
@@ -240,6 +297,27 @@ def _create_task_role(name: str, kms_key_id: pulumi.Output[str]) -> aws.iam.Role
             }],
         }),
     )
+
+    # SQS permissions for sending jobs to queue (if queue ARN provided)
+    # Use `is not None` to avoid boolean evaluation of Pulumi Output
+    if job_queue_arn is not None:
+        aws.iam.RolePolicy(
+            f"{name}-task-sqs",
+            role=role.name,
+            policy=job_queue_arn.apply(
+                lambda arn: json.dumps({
+                    "Version": "2012-10-17",
+                    "Statement": [{
+                        "Effect": "Allow",
+                        "Action": [
+                            "sqs:SendMessage",
+                            "sqs:GetQueueAttributes",
+                        ],
+                        "Resource": arn,
+                    }],
+                })
+            ),
+        )
 
     return role
 

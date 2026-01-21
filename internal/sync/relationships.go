@@ -689,7 +689,7 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 			if svcConfig := row["SERVICE_CONFIG"]; svcConfig != nil {
 				var configMap map[string]interface{}
 				configStr := toString(svcConfig)
-				if err := json.Unmarshal([]byte(configStr), &configMap); err == nil {
+				if unmarshalErr := json.Unmarshal([]byte(configStr), &configMap); unmarshalErr == nil {
 					if saEmail := toString(configMap["service_account_email"]); saEmail != "" {
 						targetID := saEmail
 						if projectID != "" {
@@ -724,7 +724,7 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 			if template := row["TEMPLATE"]; template != nil {
 				var templateMap map[string]interface{}
 				templateStr := toString(template)
-				if err := json.Unmarshal([]byte(templateStr), &templateMap); err == nil {
+				if unmarshalErr := json.Unmarshal([]byte(templateStr), &templateMap); unmarshalErr == nil {
 					if saEmail := toString(templateMap["service_account"]); saEmail != "" {
 						targetID := saEmail
 						if projectID != "" && !strings.Contains(saEmail, "/") {
