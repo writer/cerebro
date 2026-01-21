@@ -3,11 +3,11 @@ package sync
 import (
 	"context"
 	"fmt"
-	"strings"
+	"path"
 
-	"cloud.google.com/go/iam/apiv1/iampb"
-	pubsubadmin "cloud.google.com/go/pubsub/apiv1"
-	"cloud.google.com/go/pubsub/v2/apiv1/pubsubpb"
+	iampb "cloud.google.com/go/iam/apiv1/iampb"
+	pubsub "cloud.google.com/go/pubsub/v2"
+	pubsubpb "cloud.google.com/go/pubsub/v2/apiv1/pubsubpb"
 	"google.golang.org/api/iterator"
 )
 
@@ -20,24 +20,17 @@ func (e *GCPSyncEngine) gcpPubSubTopicTable() GCPTableSpec {
 }
 
 func (e *GCPSyncEngine) fetchGCPPubSubTopics(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
-	adminClient, err := pubsubadmin.NewPublisherClient(ctx)
+	client, err := pubsub.NewClient(ctx, projectID)
 	if err != nil {
-		return nil, fmt.Errorf("create pubsub admin client: %w", err)
+		return nil, fmt.Errorf("create pubsub client: %w", err)
 	}
-	defer func() { _ = adminClient.Close() }()
-
-	subAdminClient, err := pubsubadmin.NewSubscriberClient(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("create pubsub subscriber admin client: %w", err)
-	}
-	defer func() { _ = subAdminClient.Close() }()
+	defer func() { _ = client.Close() }()
 
 	rows := make([]map[string]interface{}, 0, 100)
 
-	req := &pubsubpb.ListTopicsRequest{
+	it := client.TopicAdminClient.ListTopics(ctx, &pubsubpb.ListTopicsRequest{
 		Project: fmt.Sprintf("projects/%s", projectID),
-	}
-	it := adminClient.ListTopics(ctx, req)
+	})
 	for {
 		topic, err := it.Next()
 		if err == iterator.Done {
@@ -47,7 +40,7 @@ func (e *GCPSyncEngine) fetchGCPPubSubTopics(ctx context.Context, projectID stri
 			return nil, fmt.Errorf("list topics: %w", err)
 		}
 
-		topicID := extractPubSubResourceID(topic.Name)
+		topicID := path.Base(topic.Name)
 		fullName := topic.Name
 
 		row := map[string]interface{}{
@@ -61,6 +54,7 @@ func (e *GCPSyncEngine) fetchGCPPubSubTopics(ctx context.Context, projectID stri
 			row["kms_key_name"] = topic.KmsKeyName
 		}
 
+		// Schema settings
 		if topic.SchemaSettings != nil {
 			row["schema_settings"] = map[string]interface{}{
 				"schema":            topic.SchemaSettings.Schema,
@@ -70,21 +64,22 @@ func (e *GCPSyncEngine) fetchGCPPubSubTopics(ctx context.Context, projectID stri
 			}
 		}
 
+		// Message storage policy
 		if topic.MessageStoragePolicy != nil && len(topic.MessageStoragePolicy.AllowedPersistenceRegions) > 0 {
 			row["message_storage_policy"] = map[string]interface{}{
 				"allowed_persistence_regions": topic.MessageStoragePolicy.AllowedPersistenceRegions,
 			}
 		}
 
-		if topic.MessageRetentionDuration != nil {
-			row["message_retention_duration"] = topic.MessageRetentionDuration.AsDuration().String()
-		}
+	if topic.MessageRetentionDuration != nil {
+		row["message_retention_duration"] = topic.MessageRetentionDuration.AsDuration().String()
+	}
 
-		iamReq := &iampb.GetIamPolicyRequest{
-			Resource: fullName,
-		}
-		policy, err := adminClient.GetIamPolicy(ctx, iamReq)
-		if err == nil && policy != nil {
+		// Get IAM policy
+		policy, err := client.TopicAdminClient.GetIamPolicy(ctx, &iampb.GetIamPolicyRequest{
+			Resource: topic.Name,
+		})
+		if err == nil {
 			var bindings []map[string]interface{}
 			for _, b := range policy.GetBindings() {
 				bindings = append(bindings, map[string]interface{}{
@@ -98,22 +93,20 @@ func (e *GCPSyncEngine) fetchGCPPubSubTopics(ctx context.Context, projectID stri
 			}
 		}
 
+		// Get subscriptions for this topic
 		var subs []string
-		subReq := &pubsubpb.ListSubscriptionsRequest{
-			Project: fmt.Sprintf("projects/%s", projectID),
-		}
-		subIt := subAdminClient.ListSubscriptions(ctx, subReq)
+		subIt := client.TopicAdminClient.ListTopicSubscriptions(ctx, &pubsubpb.ListTopicSubscriptionsRequest{
+			Topic: topic.Name,
+		})
 		for {
-			sub, err := subIt.Next()
+			subscription, err := subIt.Next()
 			if err == iterator.Done {
 				break
 			}
 			if err != nil {
 				break
 			}
-			if sub.Topic == fullName {
-				subs = append(subs, extractPubSubResourceID(sub.Name))
-			}
+			subs = append(subs, path.Base(subscription))
 		}
 		row["subscriptions"] = subs
 
@@ -121,12 +114,4 @@ func (e *GCPSyncEngine) fetchGCPPubSubTopics(ctx context.Context, projectID stri
 	}
 
 	return rows, nil
-}
-
-func extractPubSubResourceID(fullName string) string {
-	parts := strings.Split(fullName, "/")
-	if len(parts) > 0 {
-		return parts[len(parts)-1]
-	}
-	return fullName
 }
