@@ -8,7 +8,9 @@ services:
     environment:
       API_PORT: 8080
       LOG_LEVEL: info
-      SNOWFLAKE_CONNECTION_STRING: ${SNOWFLAKE_CONNECTION_STRING:-}
+      SNOWFLAKE_ACCOUNT: ${SNOWFLAKE_ACCOUNT:-}
+      SNOWFLAKE_USER: ${SNOWFLAKE_USER:-}
+      SNOWFLAKE_PRIVATE_KEY: ${SNOWFLAKE_PRIVATE_KEY:-}
       SNOWFLAKE_DATABASE: ${SNOWFLAKE_DATABASE:-CEREBRO}
       SNOWFLAKE_SCHEMA: ${SNOWFLAKE_SCHEMA:-RAW}
       CEDAR_POLICIES_PATH: /app/policies
@@ -32,7 +34,7 @@ services:
       AZURE_TENANT_ID: ${AZURE_TENANT_ID:-}
       AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:-}
       AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET:-}
-      SNOWFLAKE_CONNECTION_STRING: ${SNOWFLAKE_CONNECTION_STRING:-}
+      SNOWFLAKE_KEYPAIR_DSN: ${SNOWFLAKE_KEYPAIR_DSN:-}
     command: ["sync", "/config/cloudquery.yml"]
     profiles:
       - sync  # Only run with: docker-compose --profile sync up cloudquery

@@ -153,7 +153,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return err
 	} else if ok {
 		Info("Using key-pair authentication for CloudQuery Snowflake destination")
-		cqCmd.Env = upsertEnv(cqCmd.Env, "SNOWFLAKE_CONNECTION_STRING", dsn)
+		cqCmd.Env = upsertEnv(cqCmd.Env, "SNOWFLAKE_KEYPAIR_DSN", dsn)
 	}
 
 	if err := cqCmd.Run(); err != nil {
@@ -396,22 +396,19 @@ func createSnowflakeClient() (*snowflake.Client, error) {
 	privateKey := normalizePrivateKey(os.Getenv("SNOWFLAKE_PRIVATE_KEY"))
 	account := os.Getenv("SNOWFLAKE_ACCOUNT")
 	user := os.Getenv("SNOWFLAKE_USER")
-	connStr := os.Getenv("SNOWFLAKE_CONNECTION_STRING")
 
-	hasKeyPairAuth := privateKey != "" && account != "" && user != ""
-	if !hasKeyPairAuth && connStr == "" {
-		return nil, fmt.Errorf("snowflake not configured: set SNOWFLAKE_PRIVATE_KEY/ACCOUNT/USER or SNOWFLAKE_CONNECTION_STRING")
+	if privateKey == "" || account == "" || user == "" {
+		return nil, fmt.Errorf("snowflake not configured: set SNOWFLAKE_PRIVATE_KEY, SNOWFLAKE_ACCOUNT, and SNOWFLAKE_USER")
 	}
 
 	return snowflake.NewClient(snowflake.ClientConfig{
-		ConnectionString: connStr,
-		Account:          account,
-		User:             user,
-		PrivateKey:       privateKey,
-		Database:         os.Getenv("SNOWFLAKE_DATABASE"),
-		Schema:           os.Getenv("SNOWFLAKE_SCHEMA"),
-		Warehouse:        os.Getenv("SNOWFLAKE_WAREHOUSE"),
-		Role:             os.Getenv("SNOWFLAKE_ROLE"),
+		Account:    account,
+		User:       user,
+		PrivateKey: privateKey,
+		Database:   os.Getenv("SNOWFLAKE_DATABASE"),
+		Schema:     os.Getenv("SNOWFLAKE_SCHEMA"),
+		Warehouse:  os.Getenv("SNOWFLAKE_WAREHOUSE"),
+		Role:       os.Getenv("SNOWFLAKE_ROLE"),
 	})
 }
 
@@ -626,11 +623,6 @@ func buildSnowflakeDSNFromKeyPair() (string, bool, error) {
 	account := os.Getenv("SNOWFLAKE_ACCOUNT")
 	user := os.Getenv("SNOWFLAKE_USER")
 	rawKey := os.Getenv("SNOWFLAKE_PRIVATE_KEY")
-
-	// Also check for connection string - if it exists, use it directly
-	if connStr := os.Getenv("SNOWFLAKE_CONNECTION_STRING"); connStr != "" {
-		return connStr, true, nil
-	}
 
 	if account == "" || user == "" || rawKey == "" {
 		// Debug: show what's missing

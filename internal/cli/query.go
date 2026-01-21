@@ -43,24 +43,19 @@ func init() {
 func runQuery(cmd *cobra.Command, args []string) error {
 	cfg := config.Load()
 
-	// Check if key-pair auth is configured
-	hasKeyPairAuth := cfg.SnowflakePrivateKey != "" &&
-		cfg.SnowflakeAccount != "" &&
-		cfg.SnowflakeUser != ""
-
-	if !hasKeyPairAuth && cfg.SnowflakeConnection == "" {
-		return fmt.Errorf("snowflake not configured: set SNOWFLAKE_PRIVATE_KEY/ACCOUNT/USER or SNOWFLAKE_CONNECTION_STRING")
+	// Require key-pair auth
+	if cfg.SnowflakePrivateKey == "" || cfg.SnowflakeAccount == "" || cfg.SnowflakeUser == "" {
+		return fmt.Errorf("snowflake not configured: set SNOWFLAKE_PRIVATE_KEY, SNOWFLAKE_ACCOUNT, and SNOWFLAKE_USER")
 	}
 
 	client, err := snowflake.NewClient(snowflake.ClientConfig{
-		ConnectionString: cfg.SnowflakeConnection,
-		Account:          cfg.SnowflakeAccount,
-		User:             cfg.SnowflakeUser,
-		PrivateKey:       cfg.SnowflakePrivateKey,
-		Database:         cfg.SnowflakeDatabase,
-		Schema:           cfg.SnowflakeSchema,
-		Warehouse:        cfg.SnowflakeWarehouse,
-		Role:             cfg.SnowflakeRole,
+		Account:    cfg.SnowflakeAccount,
+		User:       cfg.SnowflakeUser,
+		PrivateKey: cfg.SnowflakePrivateKey,
+		Database:   cfg.SnowflakeDatabase,
+		Schema:     cfg.SnowflakeSchema,
+		Warehouse:  cfg.SnowflakeWarehouse,
+		Role:       cfg.SnowflakeRole,
 	})
 	if err != nil {
 		return fmt.Errorf("connect to snowflake: %w", err)

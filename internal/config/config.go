@@ -10,7 +10,6 @@ import (
 type Config struct {
 	Port                int
 	LogLevel            string
-	SnowflakeConnection string
 	SnowflakeAccount    string
 	SnowflakeUser       string
 	SnowflakePrivateKey string
@@ -34,7 +33,6 @@ func Load() *Config {
 	return &Config{
 		Port:                getEnvInt("API_PORT", 8080),
 		LogLevel:            getEnv("LOG_LEVEL", "info"),
-		SnowflakeConnection: getEnv("SNOWFLAKE_CONNECTION_STRING", ""),
 		SnowflakeAccount:    getEnv("SNOWFLAKE_ACCOUNT", ""),
 		SnowflakeUser:       getEnv("SNOWFLAKE_USER", ""),
 		SnowflakePrivateKey: normalizePrivateKey(getEnv("SNOWFLAKE_PRIVATE_KEY", "")),

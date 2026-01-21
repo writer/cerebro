@@ -58,7 +58,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 	defer func() { _ = application.Close() }()
 
 	if application.Snowflake == nil {
-		return fmt.Errorf("snowflake not configured - set SNOWFLAKE_CONNECTION_STRING")
+		return fmt.Errorf("snowflake not configured: set SNOWFLAKE_PRIVATE_KEY, SNOWFLAKE_ACCOUNT, and SNOWFLAKE_USER")
 	}
 
 	// Extract relationships if requested
