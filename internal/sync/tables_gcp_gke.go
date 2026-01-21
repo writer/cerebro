@@ -10,6 +10,31 @@ import (
 	"cloud.google.com/go/container/apiv1/containerpb"
 )
 
+type gkeClusterManagerClient interface {
+	ListClusters(ctx context.Context, req *containerpb.ListClustersRequest) (*containerpb.ListClustersResponse, error)
+	Close() error
+}
+
+type gkeClusterManagerClientWrapper struct {
+	client *container.ClusterManagerClient
+}
+
+func (w gkeClusterManagerClientWrapper) ListClusters(ctx context.Context, req *containerpb.ListClustersRequest) (*containerpb.ListClustersResponse, error) {
+	return w.client.ListClusters(ctx, req)
+}
+
+func (w gkeClusterManagerClientWrapper) Close() error {
+	return w.client.Close()
+}
+
+var newGKEClusterManagerClient = func(ctx context.Context) (gkeClusterManagerClient, error) {
+	client, err := container.NewClusterManagerClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return gkeClusterManagerClientWrapper{client: client}, nil
+}
+
 func (e *GCPSyncEngine) gcpGKEClusterTable() GCPTableSpec {
 	return GCPTableSpec{
 		Name:    "gcp_container_clusters",
@@ -19,11 +44,16 @@ func (e *GCPSyncEngine) gcpGKEClusterTable() GCPTableSpec {
 }
 
 func (e *GCPSyncEngine) fetchGCPGKEClusters(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
-	client, err := container.NewClusterManagerClient(ctx)
+	client, err := newGKEClusterManagerClient(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("create container client: %w", err)
 	}
 	defer func() { _ = client.Close() }()
+
+	return fetchGCPGKEClustersWithClient(ctx, projectID, client)
+}
+
+func fetchGCPGKEClustersWithClient(ctx context.Context, projectID string, client gkeClusterManagerClient) ([]map[string]interface{}, error) {
 
 	// List clusters across all locations
 	req := &containerpb.ListClustersRequest{

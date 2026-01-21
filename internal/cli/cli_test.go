@@ -1,6 +1,9 @@
 package cli
 
 import (
+	"io"
+	"os"
+	"strings"
 	"testing"
 )
 
@@ -100,4 +103,73 @@ func TestBootstrapCmd(t *testing.T) {
 	if bootstrapCmd.Use != "bootstrap" {
 		t.Errorf("expected Use 'bootstrap', got %s", bootstrapCmd.Use)
 	}
+}
+
+func TestVersionCommandOutput(t *testing.T) {
+	currentVersion := Version
+	currentCommit := Commit
+	currentBuild := BuildDate
+	t.Cleanup(func() {
+		Version = currentVersion
+		Commit = currentCommit
+		BuildDate = currentBuild
+	})
+
+	Version = "1.2.3"
+	Commit = "abc123"
+	BuildDate = "2026-01-21"
+
+	output := captureStdout(t, func() {
+		versionCmd.Run(versionCmd, nil)
+	})
+
+	if !strings.Contains(output, "cerebro 1.2.3") {
+		t.Fatalf("unexpected version output: %q", output)
+	}
+	if !strings.Contains(output, "commit:  abc123") {
+		t.Fatalf("unexpected commit output: %q", output)
+	}
+	if !strings.Contains(output, "built:   2026-01-21") {
+		t.Fatalf("unexpected build output: %q", output)
+	}
+}
+
+func TestCompletionCommandOutput(t *testing.T) {
+	output := captureStdout(t, func() {
+		if err := completionCmd.RunE(completionCmd, []string{"bash"}); err != nil {
+			t.Fatalf("unexpected completion error: %v", err)
+		}
+	})
+
+	if output == "" {
+		t.Fatal("expected completion output")
+	}
+}
+
+func TestCompletionCommandArgs(t *testing.T) {
+	if err := completionCmd.Args(completionCmd, []string{"invalid"}); err == nil {
+		t.Fatal("expected args validation error")
+	}
+}
+
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+
+	originalStdout := os.Stdout
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create pipe: %v", err)
+	}
+
+	os.Stdout = writer
+	fn()
+	_ = writer.Close()
+	os.Stdout = originalStdout
+
+	output, err := io.ReadAll(reader)
+	_ = reader.Close()
+	if err != nil {
+		t.Fatalf("failed to read output: %v", err)
+	}
+	return string(output)
 }

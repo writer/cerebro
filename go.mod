@@ -10,7 +10,7 @@ require (
 	cloud.google.com/go/containeranalysis v0.14.2
 	cloud.google.com/go/functions v1.19.7
 	cloud.google.com/go/iam v1.5.3
-	cloud.google.com/go/pubsub v1.50.1
+	cloud.google.com/go/pubsub/v2 v2.0.0
 	cloud.google.com/go/resourcemanager v1.10.7
 	cloud.google.com/go/run v1.14.0
 	cloud.google.com/go/securitycenter v1.38.1
@@ -61,7 +61,6 @@ require (
 	cloud.google.com/go/monitoring v1.24.3 // indirect
 	cloud.google.com/go/orgpolicy v1.15.1 // indirect
 	cloud.google.com/go/osconfig v1.15.1 // indirect
-	cloud.google.com/go/pubsub/v2 v2.0.0 // indirect
 	github.com/99designs/go-keychain v0.0.0-20191008050251-8e49817e8af4 // indirect
 	github.com/99designs/keyring v1.2.2 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.4.0 // indirect

@@ -7,9 +7,40 @@ import (
 
 	iampb "cloud.google.com/go/iam/apiv1/iampb"
 	pubsub "cloud.google.com/go/pubsub/v2"
+	pubsubadmin "cloud.google.com/go/pubsub/v2/apiv1"
 	pubsubpb "cloud.google.com/go/pubsub/v2/apiv1/pubsubpb"
 	"google.golang.org/api/iterator"
 )
+
+type pubsubTopicIterator interface {
+	Next() (*pubsubpb.Topic, error)
+}
+
+type pubsubStringIterator interface {
+	Next() (string, error)
+}
+
+type pubsubTopicAdminClient interface {
+	ListTopics(ctx context.Context, req *pubsubpb.ListTopicsRequest) pubsubTopicIterator
+	GetIamPolicy(ctx context.Context, req *iampb.GetIamPolicyRequest) (*iampb.Policy, error)
+	ListTopicSubscriptions(ctx context.Context, req *pubsubpb.ListTopicSubscriptionsRequest) pubsubStringIterator
+}
+
+type pubsubTopicAdminWrapper struct {
+	client *pubsubadmin.TopicAdminClient
+}
+
+func (w pubsubTopicAdminWrapper) ListTopics(ctx context.Context, req *pubsubpb.ListTopicsRequest) pubsubTopicIterator {
+	return w.client.ListTopics(ctx, req)
+}
+
+func (w pubsubTopicAdminWrapper) GetIamPolicy(ctx context.Context, req *iampb.GetIamPolicyRequest) (*iampb.Policy, error) {
+	return w.client.GetIamPolicy(ctx, req)
+}
+
+func (w pubsubTopicAdminWrapper) ListTopicSubscriptions(ctx context.Context, req *pubsubpb.ListTopicSubscriptionsRequest) pubsubStringIterator {
+	return w.client.ListTopicSubscriptions(ctx, req)
+}
 
 func (e *GCPSyncEngine) gcpPubSubTopicTable() GCPTableSpec {
 	return GCPTableSpec{
@@ -26,9 +57,14 @@ func (e *GCPSyncEngine) fetchGCPPubSubTopics(ctx context.Context, projectID stri
 	}
 	defer func() { _ = client.Close() }()
 
+	return fetchGCPPubSubTopicsWithAdmin(ctx, projectID, pubsubTopicAdminWrapper{client: client.TopicAdminClient})
+}
+
+func fetchGCPPubSubTopicsWithAdmin(ctx context.Context, projectID string, adminClient pubsubTopicAdminClient) ([]map[string]interface{}, error) {
+
 	rows := make([]map[string]interface{}, 0, 100)
 
-	it := client.TopicAdminClient.ListTopics(ctx, &pubsubpb.ListTopicsRequest{
+	it := adminClient.ListTopics(ctx, &pubsubpb.ListTopicsRequest{
 		Project: fmt.Sprintf("projects/%s", projectID),
 	})
 	for {
@@ -72,7 +108,7 @@ func (e *GCPSyncEngine) fetchGCPPubSubTopics(ctx context.Context, projectID stri
 		}
 
 		// Get IAM policy
-		policy, err := client.TopicAdminClient.GetIamPolicy(ctx, &iampb.GetIamPolicyRequest{
+		policy, err := adminClient.GetIamPolicy(ctx, &iampb.GetIamPolicyRequest{
 			Resource: topic.Name,
 		})
 		if err == nil {
@@ -91,7 +127,7 @@ func (e *GCPSyncEngine) fetchGCPPubSubTopics(ctx context.Context, projectID stri
 
 		// Get subscriptions for this topic
 		var subs []string
-		subIt := client.TopicAdminClient.ListTopicSubscriptions(ctx, &pubsubpb.ListTopicSubscriptionsRequest{
+		subIt := adminClient.ListTopicSubscriptions(ctx, &pubsubpb.ListTopicSubscriptionsRequest{
 			Topic: topic.Name,
 		})
 		for {
