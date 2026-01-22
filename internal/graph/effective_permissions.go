@@ -739,7 +739,10 @@ func (c *EffectivePermissionsCalculator) assessRisk(ep *EffectivePermissions) *P
 
 // ClearCache clears the permissions cache
 func (c *EffectivePermissionsCalculator) ClearCache() {
-	c.cache = sync.Map{}
+	c.cache.Range(func(key, value any) bool {
+		c.cache.Delete(key)
+		return true
+	})
 }
 
 // ComparePermissions shows the difference between two principals' permissions

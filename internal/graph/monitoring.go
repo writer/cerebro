@@ -19,6 +19,7 @@ type ToxicCombinationMonitor struct {
 	mu          sync.RWMutex
 	stopCh      chan struct{}
 	running     bool
+	stopOnce    sync.Once
 }
 
 // ToxicCombinationEvent represents a change in toxic combinations
@@ -101,9 +102,11 @@ func (m *ToxicCombinationMonitor) Start(ctx context.Context) error {
 	}
 }
 
-// Stop stops the monitor
+// Stop stops the monitor (safe to call multiple times)
 func (m *ToxicCombinationMonitor) Stop() {
-	close(m.stopCh)
+	m.stopOnce.Do(func() {
+		close(m.stopCh)
+	})
 }
 
 // GetLastResults returns the most recent scan results
@@ -228,6 +231,7 @@ type AttackPathMonitor struct {
 	mu          sync.RWMutex
 	stopCh      chan struct{}
 	running     bool
+	stopOnce    sync.Once
 }
 
 // AttackPathEvent represents a change in attack paths
@@ -292,9 +296,11 @@ func (m *AttackPathMonitor) Start(ctx context.Context) error {
 	}
 }
 
-// Stop stops the monitor
+// Stop stops the monitor (safe to call multiple times)
 func (m *AttackPathMonitor) Stop() {
-	close(m.stopCh)
+	m.stopOnce.Do(func() {
+		close(m.stopCh)
+	})
 }
 
 // GetLastResult returns the most recent simulation result
@@ -394,6 +400,7 @@ type PrivilegeEscalationMonitor struct {
 	mu          sync.RWMutex
 	stopCh      chan struct{}
 	running     bool
+	stopOnce    sync.Once
 }
 
 // PrivilegeEscalationEvent represents a new escalation risk
@@ -457,9 +464,11 @@ func (m *PrivilegeEscalationMonitor) Start(ctx context.Context) error {
 	}
 }
 
-// Stop stops the monitor
+// Stop stops the monitor (safe to call multiple times)
 func (m *PrivilegeEscalationMonitor) Stop() {
-	close(m.stopCh)
+	m.stopOnce.Do(func() {
+		close(m.stopCh)
+	})
 }
 
 func (m *PrivilegeEscalationMonitor) scan() {

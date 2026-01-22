@@ -23,6 +23,7 @@ type Pool struct {
 	started   bool
 	startTime time.Time
 	endTime   time.Time
+	sem       chan struct{} // semaphore to limit concurrent workers
 }
 
 // NewPool creates a new worker pool.
@@ -35,6 +36,7 @@ func NewPool(workers int, logger *slog.Logger) *Pool {
 		logger:  logger,
 		errors:  make([]error, 0),
 		results: make([]interface{}, 0),
+		sem:     make(chan struct{}, workers),
 	}
 }
 
@@ -47,6 +49,7 @@ func (p *Pool) Start(ctx context.Context) {
 
 // Submit submits a task to be executed by the pool.
 // The task function receives the pool's context.
+// Blocks if all workers are busy until a slot becomes available.
 func (p *Pool) Submit(task func(ctx context.Context) (interface{}, error)) {
 	if !p.started {
 		p.mu.Lock()
@@ -55,9 +58,17 @@ func (p *Pool) Submit(task func(ctx context.Context) (interface{}, error)) {
 		return
 	}
 
+	// Acquire semaphore slot (blocks if at capacity)
+	select {
+	case p.sem <- struct{}{}:
+	case <-p.ctx.Done():
+		return
+	}
+
 	p.wg.Add(1)
 	go func() {
 		defer p.wg.Done()
+		defer func() { <-p.sem }() // release semaphore slot
 
 		select {
 		case <-p.ctx.Done():
