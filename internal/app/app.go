@@ -802,8 +802,29 @@ func (a *App) validatePolicyCoverage(ctx context.Context) {
 
 // Close cleanly shuts down all services
 func (a *App) Close() error {
+	var errs []error
+
+	// Close Snowflake connection
 	if a.Snowflake != nil {
-		return a.Snowflake.Close()
+		if err := a.Snowflake.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("snowflake: %w", err))
+		}
+	}
+
+	// Close findings store if it implements io.Closer (e.g., SQLiteStore)
+	if closer, ok := a.Findings.(interface{ Close() error }); ok {
+		if err := closer.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("findings store: %w", err))
+		}
+	}
+
+	// Stop scheduler if running
+	if a.Scheduler != nil {
+		a.Scheduler.Stop()
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("close errors: %v", errs)
 	}
 	return nil
 }
