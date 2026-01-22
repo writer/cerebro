@@ -30,7 +30,8 @@ func TestLoadDefaults(t *testing.T) {
 func TestLoadFromEnv(t *testing.T) {
 	os.Setenv("API_PORT", "9000")
 	os.Setenv("LOG_LEVEL", "debug")
-	os.Setenv("SNOWFLAKE_CONNECTION_STRING", "user:pass@account/db")
+	os.Setenv("SNOWFLAKE_ACCOUNT", "testaccount")
+	os.Setenv("SNOWFLAKE_USER", "testuser")
 	os.Setenv("SNOWFLAKE_DATABASE", "TESTDB")
 	os.Setenv("SNOWFLAKE_SCHEMA", "TESTSCHEMA")
 	defer os.Clearenv()
@@ -43,8 +44,11 @@ func TestLoadFromEnv(t *testing.T) {
 	if cfg.LogLevel != "debug" {
 		t.Errorf("expected log level 'debug', got '%s'", cfg.LogLevel)
 	}
-	if cfg.SnowflakeConnection != "user:pass@account/db" {
-		t.Errorf("expected snowflake connection string, got '%s'", cfg.SnowflakeConnection)
+	if cfg.SnowflakeAccount != "testaccount" {
+		t.Errorf("expected snowflake account 'testaccount', got '%s'", cfg.SnowflakeAccount)
+	}
+	if cfg.SnowflakeUser != "testuser" {
+		t.Errorf("expected snowflake user 'testuser', got '%s'", cfg.SnowflakeUser)
 	}
 	if cfg.SnowflakeDatabase != "TESTDB" {
 		t.Errorf("expected database 'TESTDB', got '%s'", cfg.SnowflakeDatabase)

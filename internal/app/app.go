@@ -125,15 +125,14 @@ type Config struct {
 	Port     int
 	LogLevel string
 
-	// Snowflake
-	SnowflakeConnectionString string
-	SnowflakeAccount          string
-	SnowflakeUser             string
-	SnowflakePrivateKey       string
-	SnowflakeDatabase         string
-	SnowflakeSchema           string
-	SnowflakeWarehouse        string
-	SnowflakeRole             string
+	// Snowflake (key-pair auth only)
+	SnowflakeAccount    string
+	SnowflakeUser       string
+	SnowflakePrivateKey string
+	SnowflakeDatabase   string
+	SnowflakeSchema     string
+	SnowflakeWarehouse  string
+	SnowflakeRole       string
 
 	// Policies
 	PoliciesPath string
@@ -239,72 +238,71 @@ type Config struct {
 
 func LoadConfig() *Config {
 	return &Config{
-		Port:                      getEnvInt("API_PORT", 8080),
-		LogLevel:                  getEnv("LOG_LEVEL", "info"),
-		SnowflakeConnectionString: getEnv("SNOWFLAKE_CONNECTION_STRING", ""),
-		SnowflakeAccount:          getEnv("SNOWFLAKE_ACCOUNT", ""),
-		SnowflakeUser:             getEnv("SNOWFLAKE_USER", ""),
-		SnowflakePrivateKey:       normalizePrivateKey(getEnv("SNOWFLAKE_PRIVATE_KEY", "")),
-		SnowflakeDatabase:         getEnv("SNOWFLAKE_DATABASE", "CEREBRO"),
-		SnowflakeSchema:           getEnv("SNOWFLAKE_SCHEMA", "CEREBRO"),
-		SnowflakeWarehouse:        getEnv("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH"),
-		SnowflakeRole:             getEnv("SNOWFLAKE_ROLE", ""),
-		PoliciesPath:              getEnv("POLICIES_PATH", "policies"),
-		AnthropicAPIKey:           getEnv("ANTHROPIC_API_KEY", ""),
-		OpenAIAPIKey:              getEnv("OPENAI_API_KEY", ""),
-		JiraBaseURL:               getEnv("JIRA_BASE_URL", ""),
-		JiraEmail:                 getEnv("JIRA_EMAIL", ""),
-		JiraAPIToken:              getEnv("JIRA_API_TOKEN", ""),
-		JiraProject:               getEnv("JIRA_PROJECT", "SEC"),
-		LinearAPIKey:              getEnv("LINEAR_API_KEY", ""),
-		LinearTeamID:              getEnv("LINEAR_TEAM_ID", ""),
-		CrowdStrikeClientID:       getEnv("CROWDSTRIKE_CLIENT_ID", ""),
-		CrowdStrikeClientSecret:   getEnv("CROWDSTRIKE_CLIENT_SECRET", ""),
-		OktaDomain:                getEnv("OKTA_DOMAIN", ""),
-		OktaAPIToken:              getEnv("OKTA_API_TOKEN", ""),
-		AzureTenantID:             getEnv("AZURE_TENANT_ID", ""),
-		AzureClientID:             getEnv("AZURE_CLIENT_ID", ""),
-		AzureClientSecret:         getEnv("AZURE_CLIENT_SECRET", ""),
-		AzureSubscriptionID:       getEnv("AZURE_SUBSCRIPTION_ID", ""),
-		SnykAPIToken:              getEnv("SNYK_API_TOKEN", ""),
-		SnykOrgID:                 getEnv("SNYK_ORG_ID", ""),
-		DatadogAPIKey:             getEnv("DATADOG_API_KEY", ""),
-		DatadogAppKey:             getEnv("DATADOG_APP_KEY", ""),
-		DatadogSite:               getEnv("DATADOG_SITE", "datadoghq.com"),
-		GitHubToken:               getEnv("GITHUB_TOKEN", ""),
-		GitHubOrg:                 getEnv("GITHUB_ORG", ""),
-		SentinelOneAPIToken:       getEnv("SENTINELONE_API_TOKEN", ""),
-		SentinelOneBaseURL:        getEnv("SENTINELONE_BASE_URL", ""),
-		TenableAccessKey:          getEnv("TENABLE_ACCESS_KEY", ""),
-		TenableSecretKey:          getEnv("TENABLE_SECRET_KEY", ""),
-		QualysUsername:            getEnv("QUALYS_USERNAME", ""),
-		QualysPassword:            getEnv("QUALYS_PASSWORD", ""),
-		QualysPlatform:            getEnv("QUALYS_PLATFORM", "US1"),
-		SemgrepAPIToken:           getEnv("SEMGREP_API_TOKEN", ""),
-		GitLabToken:               getEnv("GITLAB_TOKEN", ""),
-		GitLabBaseURL:             getEnv("GITLAB_BASE_URL", "https://gitlab.com"),
-		TerraformCloudToken:       getEnv("TFC_TOKEN", ""),
-		SplunkURL:                 getEnv("SPLUNK_URL", ""),
-		SplunkToken:               getEnv("SPLUNK_TOKEN", ""),
-		Auth0Domain:               getEnv("AUTH0_DOMAIN", ""),
-		Auth0ClientID:             getEnv("AUTH0_CLIENT_ID", ""),
-		Auth0ClientSecret:         getEnv("AUTH0_CLIENT_SECRET", ""),
-		CloudflareAPIToken:        getEnv("CLOUDFLARE_API_TOKEN", ""),
-		SlackWebhookURL:           getEnv("SLACK_WEBHOOK_URL", ""),
-		SlackSigningSecret:        getEnv("SLACK_SIGNING_SECRET", ""),
-		PagerDutyKey:              getEnv("PAGERDUTY_ROUTING_KEY", ""),
-		ScanInterval:              getEnv("SCAN_INTERVAL", ""),
-		ScanTables:                getEnv("SCAN_TABLES", ""),
-		JobQueueURL:               getEnv("JOB_QUEUE_URL", ""),
-		JobTableName:              getEnv("JOB_TABLE_NAME", ""),
-		JobRegion:                 getEnv("JOB_REGION", getEnv("AWS_REGION", "")),
-		JobWorkerConcurrency:      getEnvInt("JOB_WORKER_CONCURRENCY", 4),
-		JobVisibilityTimeout:      getEnvDuration("JOB_VISIBILITY_TIMEOUT", 30*time.Second),
-		JobPollWait:               getEnvDuration("JOB_POLL_WAIT", 10*time.Second),
-		JobMaxAttempts:            getEnvInt("JOB_MAX_ATTEMPTS", 3),
-		RateLimitEnabled:          getEnvBool("RATE_LIMIT_ENABLED", false),
-		RateLimitRequests:         getEnvInt("RATE_LIMIT_REQUESTS", 1000),
-		RateLimitWindow:           getEnvDuration("RATE_LIMIT_WINDOW", time.Hour),
+		Port:                    getEnvInt("API_PORT", 8080),
+		LogLevel:                getEnv("LOG_LEVEL", "info"),
+		SnowflakeAccount:        getEnv("SNOWFLAKE_ACCOUNT", ""),
+		SnowflakeUser:           getEnv("SNOWFLAKE_USER", ""),
+		SnowflakePrivateKey:     normalizePrivateKey(getEnv("SNOWFLAKE_PRIVATE_KEY", "")),
+		SnowflakeDatabase:       getEnv("SNOWFLAKE_DATABASE", "CEREBRO"),
+		SnowflakeSchema:         getEnv("SNOWFLAKE_SCHEMA", "CEREBRO"),
+		SnowflakeWarehouse:      getEnv("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH"),
+		SnowflakeRole:           getEnv("SNOWFLAKE_ROLE", ""),
+		PoliciesPath:            getEnv("POLICIES_PATH", "policies"),
+		AnthropicAPIKey:         getEnv("ANTHROPIC_API_KEY", ""),
+		OpenAIAPIKey:            getEnv("OPENAI_API_KEY", ""),
+		JiraBaseURL:             getEnv("JIRA_BASE_URL", ""),
+		JiraEmail:               getEnv("JIRA_EMAIL", ""),
+		JiraAPIToken:            getEnv("JIRA_API_TOKEN", ""),
+		JiraProject:             getEnv("JIRA_PROJECT", "SEC"),
+		LinearAPIKey:            getEnv("LINEAR_API_KEY", ""),
+		LinearTeamID:            getEnv("LINEAR_TEAM_ID", ""),
+		CrowdStrikeClientID:     getEnv("CROWDSTRIKE_CLIENT_ID", ""),
+		CrowdStrikeClientSecret: getEnv("CROWDSTRIKE_CLIENT_SECRET", ""),
+		OktaDomain:              getEnv("OKTA_DOMAIN", ""),
+		OktaAPIToken:            getEnv("OKTA_API_TOKEN", ""),
+		AzureTenantID:           getEnv("AZURE_TENANT_ID", ""),
+		AzureClientID:           getEnv("AZURE_CLIENT_ID", ""),
+		AzureClientSecret:       getEnv("AZURE_CLIENT_SECRET", ""),
+		AzureSubscriptionID:     getEnv("AZURE_SUBSCRIPTION_ID", ""),
+		SnykAPIToken:            getEnv("SNYK_API_TOKEN", ""),
+		SnykOrgID:               getEnv("SNYK_ORG_ID", ""),
+		DatadogAPIKey:           getEnv("DATADOG_API_KEY", ""),
+		DatadogAppKey:           getEnv("DATADOG_APP_KEY", ""),
+		DatadogSite:             getEnv("DATADOG_SITE", "datadoghq.com"),
+		GitHubToken:             getEnv("GITHUB_TOKEN", ""),
+		GitHubOrg:               getEnv("GITHUB_ORG", ""),
+		SentinelOneAPIToken:     getEnv("SENTINELONE_API_TOKEN", ""),
+		SentinelOneBaseURL:      getEnv("SENTINELONE_BASE_URL", ""),
+		TenableAccessKey:        getEnv("TENABLE_ACCESS_KEY", ""),
+		TenableSecretKey:        getEnv("TENABLE_SECRET_KEY", ""),
+		QualysUsername:          getEnv("QUALYS_USERNAME", ""),
+		QualysPassword:          getEnv("QUALYS_PASSWORD", ""),
+		QualysPlatform:          getEnv("QUALYS_PLATFORM", "US1"),
+		SemgrepAPIToken:         getEnv("SEMGREP_API_TOKEN", ""),
+		GitLabToken:             getEnv("GITLAB_TOKEN", ""),
+		GitLabBaseURL:           getEnv("GITLAB_BASE_URL", "https://gitlab.com"),
+		TerraformCloudToken:     getEnv("TFC_TOKEN", ""),
+		SplunkURL:               getEnv("SPLUNK_URL", ""),
+		SplunkToken:             getEnv("SPLUNK_TOKEN", ""),
+		Auth0Domain:             getEnv("AUTH0_DOMAIN", ""),
+		Auth0ClientID:           getEnv("AUTH0_CLIENT_ID", ""),
+		Auth0ClientSecret:       getEnv("AUTH0_CLIENT_SECRET", ""),
+		CloudflareAPIToken:      getEnv("CLOUDFLARE_API_TOKEN", ""),
+		SlackWebhookURL:         getEnv("SLACK_WEBHOOK_URL", ""),
+		SlackSigningSecret:      getEnv("SLACK_SIGNING_SECRET", ""),
+		PagerDutyKey:            getEnv("PAGERDUTY_ROUTING_KEY", ""),
+		ScanInterval:            getEnv("SCAN_INTERVAL", ""),
+		ScanTables:              getEnv("SCAN_TABLES", ""),
+		JobQueueURL:             getEnv("JOB_QUEUE_URL", ""),
+		JobTableName:            getEnv("JOB_TABLE_NAME", ""),
+		JobRegion:               getEnv("JOB_REGION", getEnv("AWS_REGION", "")),
+		JobWorkerConcurrency:    getEnvInt("JOB_WORKER_CONCURRENCY", 4),
+		JobVisibilityTimeout:    getEnvDuration("JOB_VISIBILITY_TIMEOUT", 30*time.Second),
+		JobPollWait:             getEnvDuration("JOB_POLL_WAIT", 10*time.Second),
+		JobMaxAttempts:          getEnvInt("JOB_MAX_ATTEMPTS", 3),
+		RateLimitEnabled:        getEnvBool("RATE_LIMIT_ENABLED", false),
+		RateLimitRequests:       getEnvInt("RATE_LIMIT_REQUESTS", 1000),
+		RateLimitWindow:         getEnvDuration("RATE_LIMIT_WINDOW", time.Hour),
 	}
 }
 
@@ -366,24 +364,19 @@ func New(ctx context.Context) (*App, error) {
 }
 
 func (a *App) initSnowflake(ctx context.Context) error {
-	// Check if key-pair auth is configured
-	hasKeyPairAuth := a.Config.SnowflakePrivateKey != "" &&
-		a.Config.SnowflakeAccount != "" &&
-		a.Config.SnowflakeUser != ""
-
-	if !hasKeyPairAuth && a.Config.SnowflakeConnectionString == "" {
-		return fmt.Errorf("snowflake not configured: set SNOWFLAKE_PRIVATE_KEY/ACCOUNT/USER or SNOWFLAKE_CONNECTION_STRING")
+	// Require key-pair auth
+	if a.Config.SnowflakePrivateKey == "" || a.Config.SnowflakeAccount == "" || a.Config.SnowflakeUser == "" {
+		return fmt.Errorf("snowflake not configured: set SNOWFLAKE_PRIVATE_KEY, SNOWFLAKE_ACCOUNT, and SNOWFLAKE_USER")
 	}
 
 	client, err := snowflake.NewClient(snowflake.ClientConfig{
-		ConnectionString: a.Config.SnowflakeConnectionString,
-		Account:          a.Config.SnowflakeAccount,
-		User:             a.Config.SnowflakeUser,
-		PrivateKey:       a.Config.SnowflakePrivateKey,
-		Database:         a.Config.SnowflakeDatabase,
-		Schema:           a.Config.SnowflakeSchema,
-		Warehouse:        a.Config.SnowflakeWarehouse,
-		Role:             a.Config.SnowflakeRole,
+		Account:    a.Config.SnowflakeAccount,
+		User:       a.Config.SnowflakeUser,
+		PrivateKey: a.Config.SnowflakePrivateKey,
+		Database:   a.Config.SnowflakeDatabase,
+		Schema:     a.Config.SnowflakeSchema,
+		Warehouse:  a.Config.SnowflakeWarehouse,
+		Role:       a.Config.SnowflakeRole,
 	})
 	if err != nil {
 		return err

@@ -48,7 +48,7 @@ func runBootstrap(cmd *cobra.Command, args []string) error {
 
 	if application.Snowflake == nil {
 		Error("Snowflake not configured")
-		fmt.Println("  Set SNOWFLAKE_CONNECTION_STRING environment variable")
+		fmt.Println("  Set SNOWFLAKE_PRIVATE_KEY, SNOWFLAKE_ACCOUNT, and SNOWFLAKE_USER environment variables")
 		return fmt.Errorf("snowflake not configured")
 	}
 

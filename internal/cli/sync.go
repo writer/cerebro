@@ -2,9 +2,6 @@ package cli
 
 import (
 	"context"
-	"crypto/rsa"
-	"crypto/x509"
-	"encoding/pem"
 	"fmt"
 	"io"
 	"log/slog"
@@ -13,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	sf "github.com/snowflakedb/gosnowflake"
 	"github.com/spf13/cobra"
 	"go.yaml.in/yaml/v2"
 
@@ -149,11 +145,11 @@ func runSync(cmd *cobra.Command, args []string) error {
 	cqCmd.Stderr = os.Stderr
 	cqCmd.Env = os.Environ()
 
-	if dsn, ok, err := buildSnowflakeDSNFromKeyPair(); err != nil {
+	if dsn, ok, err := snowflake.BuildDSNFromEnv(); err != nil {
 		return err
 	} else if ok {
 		Info("Using key-pair authentication for CloudQuery Snowflake destination")
-		cqCmd.Env = upsertEnv(cqCmd.Env, "SNOWFLAKE_CONNECTION_STRING", dsn)
+		cqCmd.Env = upsertEnv(cqCmd.Env, "SNOWFLAKE_KEYPAIR_DSN", dsn)
 	}
 
 	if err := cqCmd.Run(); err != nil {
@@ -393,25 +389,19 @@ func ensureCloudQueryTables(ctx context.Context) error {
 }
 
 func createSnowflakeClient() (*snowflake.Client, error) {
-	privateKey := normalizePrivateKey(os.Getenv("SNOWFLAKE_PRIVATE_KEY"))
-	account := os.Getenv("SNOWFLAKE_ACCOUNT")
-	user := os.Getenv("SNOWFLAKE_USER")
-	connStr := os.Getenv("SNOWFLAKE_CONNECTION_STRING")
-
-	hasKeyPairAuth := privateKey != "" && account != "" && user != ""
-	if !hasKeyPairAuth && connStr == "" {
-		return nil, fmt.Errorf("snowflake not configured: set SNOWFLAKE_PRIVATE_KEY/ACCOUNT/USER or SNOWFLAKE_CONNECTION_STRING")
+	cfg := snowflake.DSNConfigFromEnv()
+	if missing := cfg.MissingFields(); len(missing) > 0 {
+		return nil, fmt.Errorf("snowflake not configured: set %s", strings.Join(missing, ", "))
 	}
 
 	return snowflake.NewClient(snowflake.ClientConfig{
-		ConnectionString: connStr,
-		Account:          account,
-		User:             user,
-		PrivateKey:       privateKey,
-		Database:         os.Getenv("SNOWFLAKE_DATABASE"),
-		Schema:           os.Getenv("SNOWFLAKE_SCHEMA"),
-		Warehouse:        os.Getenv("SNOWFLAKE_WAREHOUSE"),
-		Role:             os.Getenv("SNOWFLAKE_ROLE"),
+		Account:    cfg.Account,
+		User:       cfg.User,
+		PrivateKey: cfg.PrivateKey,
+		Database:   cfg.Database,
+		Schema:     cfg.Schema,
+		Warehouse:  cfg.Warehouse,
+		Role:       cfg.Role,
 	})
 }
 
@@ -472,22 +462,6 @@ func runPostSyncScan(ctx context.Context) error {
 	fmt.Printf("Would scan %d policies against CloudQuery data\n", len(application.Policy.ListPolicies()))
 
 	return nil
-}
-
-func normalizePrivateKey(value string) string {
-	if value == "" {
-		return value
-	}
-	if strings.Contains(value, "\\n") {
-		value = strings.ReplaceAll(value, "\\n", "\n")
-	}
-	value = strings.ReplaceAll(value, "\r\n", "\n")
-	value = strings.ReplaceAll(value, "\r", "\n")
-	lines := strings.Split(value, "\n")
-	for i, line := range lines {
-		lines[i] = strings.TrimSpace(line)
-	}
-	return strings.TrimSpace(strings.Join(lines, "\n"))
 }
 
 func prepareCloudQueryConfig(configPath, sourceFilter string) (string, func(), error) {
@@ -620,90 +594,6 @@ func getStringMap(value interface{}) map[string]interface{} {
 	default:
 		return nil
 	}
-}
-
-func buildSnowflakeDSNFromKeyPair() (string, bool, error) {
-	account := os.Getenv("SNOWFLAKE_ACCOUNT")
-	user := os.Getenv("SNOWFLAKE_USER")
-	rawKey := os.Getenv("SNOWFLAKE_PRIVATE_KEY")
-
-	// Also check for connection string - if it exists, use it directly
-	if connStr := os.Getenv("SNOWFLAKE_CONNECTION_STRING"); connStr != "" {
-		return connStr, true, nil
-	}
-
-	if account == "" || user == "" || rawKey == "" {
-		// Debug: show what's missing
-		missing := []string{}
-		if account == "" {
-			missing = append(missing, "SNOWFLAKE_ACCOUNT")
-		}
-		if user == "" {
-			missing = append(missing, "SNOWFLAKE_USER")
-		}
-		if rawKey == "" {
-			missing = append(missing, "SNOWFLAKE_PRIVATE_KEY")
-		}
-		if len(missing) > 0 {
-			Warning("Snowflake key-pair auth not configured, missing: %s", strings.Join(missing, ", "))
-		}
-		return "", false, nil
-	}
-
-	privateKey := normalizePrivateKey(rawKey)
-	key, err := parsePrivateKey(privateKey)
-	if err != nil {
-		return "", false, fmt.Errorf("failed to parse SNOWFLAKE_PRIVATE_KEY: %w", err)
-	}
-
-	database := os.Getenv("SNOWFLAKE_DATABASE")
-	if database == "" {
-		database = "CEREBRO"
-	}
-	schema := os.Getenv("SNOWFLAKE_SCHEMA")
-	if schema == "" {
-		schema = "RAW"
-	}
-
-	cfg := &sf.Config{
-		Account:       account,
-		User:          user,
-		Authenticator: sf.AuthTypeJwt,
-		PrivateKey:    key,
-		Database:      database,
-		Schema:        schema,
-		Warehouse:     os.Getenv("SNOWFLAKE_WAREHOUSE"),
-		Role:          os.Getenv("SNOWFLAKE_ROLE"),
-	}
-
-	dsn, err := sf.DSN(cfg)
-	if err != nil {
-		return "", false, fmt.Errorf("failed to build Snowflake DSN: %w", err)
-	}
-
-	return dsn, true, nil
-}
-
-func parsePrivateKey(pemData string) (*rsa.PrivateKey, error) {
-	block, _ := pem.Decode([]byte(pemData))
-	if block == nil {
-		return nil, fmt.Errorf("failed to decode PEM block")
-	}
-
-	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-	if err == nil {
-		rsaKey, ok := key.(*rsa.PrivateKey)
-		if !ok {
-			return nil, fmt.Errorf("key is not an RSA private key")
-		}
-		return rsaKey, nil
-	}
-
-	rsaKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse private key: %w", err)
-	}
-	return rsaKey, nil
 }
 
 func upsertEnv(env []string, key, value string) []string {

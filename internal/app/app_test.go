@@ -56,7 +56,9 @@ func TestLoadConfig_Defaults(t *testing.T) {
 
 func TestNew_WithoutSnowflake(t *testing.T) {
 	// Clear snowflake config to test initialization without it
-	os.Unsetenv("SNOWFLAKE_CONNECTION_STRING")
+	os.Unsetenv("SNOWFLAKE_PRIVATE_KEY")
+	os.Unsetenv("SNOWFLAKE_ACCOUNT")
+	os.Unsetenv("SNOWFLAKE_USER")
 
 	ctx := context.Background()
 	app, err := New(ctx)
@@ -146,7 +148,9 @@ func TestNew_WithoutSnowflake(t *testing.T) {
 }
 
 func TestNew_ServicesWired(t *testing.T) {
-	os.Unsetenv("SNOWFLAKE_CONNECTION_STRING")
+	os.Unsetenv("SNOWFLAKE_PRIVATE_KEY")
+	os.Unsetenv("SNOWFLAKE_ACCOUNT")
+	os.Unsetenv("SNOWFLAKE_USER")
 
 	ctx := context.Background()
 	app, err := New(ctx)
@@ -187,7 +191,9 @@ func TestNew_ServicesWired(t *testing.T) {
 }
 
 func TestApp_Close(t *testing.T) {
-	os.Unsetenv("SNOWFLAKE_CONNECTION_STRING")
+	os.Unsetenv("SNOWFLAKE_PRIVATE_KEY")
+	os.Unsetenv("SNOWFLAKE_ACCOUNT")
+	os.Unsetenv("SNOWFLAKE_USER")
 
 	ctx := context.Background()
 	app, _ := New(ctx)

@@ -23,10 +23,8 @@ const (
 )
 
 // ClientConfig holds configuration for creating a Snowflake client.
-// Supports both connection string (password auth) and key-pair authentication.
+// Requires key-pair authentication via Account, User, and PrivateKey.
 type ClientConfig struct {
-	// ConnectionString is the traditional DSN (user:password@account/db/schema)
-	ConnectionString string
 	// Account is the Snowflake account identifier (e.g., "ykc27695.us-east-1")
 	Account string
 	// User is the Snowflake username
@@ -61,47 +59,27 @@ type QueryResult struct {
 	Count   int                      `json:"count"`
 }
 
-// NewClient creates a new Snowflake client.
-// Supports both connection string (password auth) and key-pair authentication.
-// Key-pair auth is used when Account, User, and PrivateKey are all provided.
+// NewClient creates a new Snowflake client using key-pair authentication.
+// Requires Account, User, and PrivateKey to be set.
 func NewClient(config ClientConfig) (*Client, error) {
-	var cfg *sf.Config
-	var err error
+	if config.PrivateKey == "" || config.Account == "" || config.User == "" {
+		return nil, cerrors.E(opNewClient, cerrors.ErrMissingRequired, "key-pair auth required: set SNOWFLAKE_PRIVATE_KEY, SNOWFLAKE_ACCOUNT, and SNOWFLAKE_USER")
+	}
 
-	// Key-pair authentication takes precedence
-	if config.PrivateKey != "" && config.Account != "" && config.User != "" {
-		privateKey, parseErr := parsePrivateKey(config.PrivateKey)
-		if parseErr != nil {
-			return nil, cerrors.Wrapf(opNewClient, parseErr, "failed to parse private key")
-		}
+	privateKey, err := parsePrivateKey(config.PrivateKey)
+	if err != nil {
+		return nil, cerrors.Wrapf(opNewClient, err, "failed to parse private key")
+	}
 
-		cfg = &sf.Config{
-			Account:       config.Account,
-			User:          config.User,
-			Authenticator: sf.AuthTypeJwt,
-			PrivateKey:    privateKey,
-			Database:      config.Database,
-			Schema:        config.Schema,
-			Warehouse:     config.Warehouse,
-			Role:          config.Role,
-		}
-	} else if config.ConnectionString != "" {
-		// Fall back to connection string (password auth)
-		cfg, err = sf.ParseDSN(config.ConnectionString)
-		if err != nil {
-			return nil, cerrors.Wrapf(opNewClient, err, "invalid connection string")
-		}
-		if config.Database != "" {
-			cfg.Database = config.Database
-		}
-		if config.Schema != "" {
-			cfg.Schema = config.Schema
-		}
-		if config.Warehouse != "" {
-			cfg.Warehouse = config.Warehouse
-		}
-	} else {
-		return nil, cerrors.E(opNewClient, cerrors.ErrMissingRequired, "either connection string or key-pair config (account, user, private_key) is required")
+	cfg := &sf.Config{
+		Account:       config.Account,
+		User:          config.User,
+		Authenticator: sf.AuthTypeJwt,
+		PrivateKey:    privateKey,
+		Database:      config.Database,
+		Schema:        config.Schema,
+		Warehouse:     config.Warehouse,
+		Role:          config.Role,
 	}
 
 	dsn, err := sf.DSN(cfg)

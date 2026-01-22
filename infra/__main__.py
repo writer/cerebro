@@ -133,10 +133,8 @@ vpc_stack = networking.create_vpc(
 # =============================================================================
 
 # Infisical-synced secrets (each key is a dedicated secret)
-# Key-pair auth (preferred): SNOWFLAKE_PRIVATE_KEY, SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER
-# Fallback: SNOWFLAKE_CONNECTION_STRING
+# Snowflake key-pair auth (required)
 secret_keys = [
-    "SNOWFLAKE_CONNECTION_STRING",
     "SNOWFLAKE_PRIVATE_KEY",
     "SNOWFLAKE_ACCOUNT",
     "SNOWFLAKE_USER",

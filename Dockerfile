@@ -19,7 +19,13 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /cerebro ./c
 # Runtime image
 FROM alpine:3.19
 
-RUN apk add --no-cache ca-certificates wget
+ARG TARGETARCH
+
+RUN apk add --no-cache ca-certificates wget curl
+
+# Install CloudQuery CLI for sync command (arch-aware)
+RUN curl -L "https://github.com/cloudquery/cloudquery/releases/latest/download/cloudquery_linux_${TARGETARCH}" -o /usr/local/bin/cloudquery \
+    && chmod +x /usr/local/bin/cloudquery
 
 COPY --from=builder /cerebro /usr/local/bin/cerebro
 COPY policies /app/policies

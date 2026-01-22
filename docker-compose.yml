@@ -8,7 +8,9 @@ services:
     environment:
       API_PORT: 8080
       LOG_LEVEL: info
-      SNOWFLAKE_CONNECTION_STRING: ${SNOWFLAKE_CONNECTION_STRING:-}
+      SNOWFLAKE_ACCOUNT: ${SNOWFLAKE_ACCOUNT:-}
+      SNOWFLAKE_USER: ${SNOWFLAKE_USER:-}
+      SNOWFLAKE_PRIVATE_KEY: ${SNOWFLAKE_PRIVATE_KEY:-}
       SNOWFLAKE_DATABASE: ${SNOWFLAKE_DATABASE:-CEREBRO}
       SNOWFLAKE_SCHEMA: ${SNOWFLAKE_SCHEMA:-RAW}
       CEDAR_POLICIES_PATH: /app/policies
@@ -20,22 +22,29 @@ services:
       timeout: 5s
       retries: 3
 
-  # CloudQuery for syncing cloud assets
-  cloudquery:
-    image: ghcr.io/cloudquery/cloudquery:latest
+  # CloudQuery sync with auto-generated DSN from key-pair env vars
+  # Uses cerebro sync command which handles DSN generation internally
+  cloudquery-sync:
+    build: .
     volumes:
-      - ./config:/config:ro
+      - ./config:/app/config:ro
     environment:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
-      GOOGLE_APPLICATION_CREDENTIALS: /config/gcp-credentials.json
+      GOOGLE_APPLICATION_CREDENTIALS: /app/config/gcp-credentials.json
       AZURE_TENANT_ID: ${AZURE_TENANT_ID:-}
       AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:-}
       AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET:-}
-      SNOWFLAKE_CONNECTION_STRING: ${SNOWFLAKE_CONNECTION_STRING:-}
-    command: ["sync", "/config/cloudquery.yml"]
+      SNOWFLAKE_ACCOUNT: ${SNOWFLAKE_ACCOUNT:-}
+      SNOWFLAKE_USER: ${SNOWFLAKE_USER:-}
+      SNOWFLAKE_PRIVATE_KEY: ${SNOWFLAKE_PRIVATE_KEY:-}
+      SNOWFLAKE_DATABASE: ${SNOWFLAKE_DATABASE:-CEREBRO}
+      SNOWFLAKE_SCHEMA: ${SNOWFLAKE_SCHEMA:-RAW}
+      SNOWFLAKE_WAREHOUSE: ${SNOWFLAKE_WAREHOUSE:-}
+      SNOWFLAKE_ROLE: ${SNOWFLAKE_ROLE:-}
+    command: ["sync", "--native=false", "--config", "/app/config/cloudquery.yml"]
     profiles:
-      - sync  # Only run with: docker-compose --profile sync up cloudquery
+      - sync  # Only run with: docker-compose --profile sync up cloudquery-sync
 
 networks:
   default:
