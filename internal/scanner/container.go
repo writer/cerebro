@@ -169,9 +169,9 @@ func (s *ContainerScanner) ScanImage(ctx context.Context, registry, repo, tag st
 	}
 
 	// Get vulnerabilities from registry's native scanning
-	vulns, err := client.GetVulnerabilities(ctx, repo, tag)
-	if err != nil {
-		// Continue without native scan results
+	vulns, vulnErr := client.GetVulnerabilities(ctx, repo, tag)
+	if vulnErr != nil {
+		// Continue without native scan results but note the error
 		vulns = []ImageVulnerability{}
 	}
 
@@ -199,19 +199,23 @@ func (s *ContainerScanner) ScanImage(ctx context.Context, registry, repo, tag st
 	return result, nil
 }
 
-// ScanAllRepositories scans all repositories in registered registries
+// ScanAllRepositories scans all repositories in registered registries.
+// Returns partial results and aggregated errors - scanning continues on individual failures.
 func (s *ContainerScanner) ScanAllRepositories(ctx context.Context) ([]ContainerScanResult, error) {
 	var results []ContainerScanResult
+	var scanErrors []string
 
 	for name, client := range s.registries {
 		repos, err := client.ListRepositories(ctx)
 		if err != nil {
+			scanErrors = append(scanErrors, fmt.Sprintf("registry %s: list repos: %v", name, err))
 			continue
 		}
 
 		for _, repo := range repos {
 			tags, err := client.ListTags(ctx, repo.Name)
 			if err != nil {
+				scanErrors = append(scanErrors, fmt.Sprintf("registry %s repo %s: list tags: %v", name, repo.Name, err))
 				continue
 			}
 
@@ -219,15 +223,28 @@ func (s *ContainerScanner) ScanAllRepositories(ctx context.Context) ([]Container
 			for _, tag := range tags {
 				if tag.Name == "latest" || tag.Name == "main" || strings.HasPrefix(tag.Name, "v") {
 					result, err := s.ScanImage(ctx, name, repo.Name, tag.Name)
-					if err == nil {
-						results = append(results, *result)
+					if err != nil {
+						scanErrors = append(scanErrors, fmt.Sprintf("%s/%s:%s: %v", name, repo.Name, tag.Name, err))
+						continue
 					}
+					results = append(results, *result)
 				}
 			}
 		}
 	}
 
-	return results, nil
+	var err error
+	if len(scanErrors) > 0 {
+		err = fmt.Errorf("scan completed with %d errors: %s", len(scanErrors), strings.Join(scanErrors[:min(5, len(scanErrors))], "; "))
+	}
+	return results, err
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func summarizeVulnerabilities(vulns []ImageVulnerability) VulnerabilitySummary {

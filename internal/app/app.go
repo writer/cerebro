@@ -509,95 +509,83 @@ func (a *App) initAttackPath() {
 func (a *App) initProviders(ctx context.Context) {
 	a.Providers = providers.NewRegistry()
 
+	// Helper to configure and register providers with error logging
+	registerProvider := func(name string, p providers.Provider, config map[string]interface{}) {
+		if err := p.Configure(ctx, config); err != nil {
+			a.Logger.Warn("provider configuration failed, skipping registration",
+				"provider", name,
+				"error", err)
+			return
+		}
+		a.Providers.Register(p)
+		a.Logger.Info("provider registered", "provider", name)
+	}
+
 	// Register CrowdStrike if configured
 	if a.Config.CrowdStrikeClientID != "" {
-		cs := providers.NewCrowdStrikeProvider()
-		_ = cs.Configure(ctx, map[string]interface{}{
+		registerProvider("crowdstrike", providers.NewCrowdStrikeProvider(), map[string]interface{}{
 			"client_id":     a.Config.CrowdStrikeClientID,
 			"client_secret": a.Config.CrowdStrikeClientSecret,
 		})
-		a.Providers.Register(cs)
-		a.Logger.Info("crowdstrike provider registered")
 	}
 
 	// Register Okta if configured
 	if a.Config.OktaDomain != "" {
-		okta := providers.NewOktaProvider()
-		_ = okta.Configure(ctx, map[string]interface{}{
+		registerProvider("okta", providers.NewOktaProvider(), map[string]interface{}{
 			"domain":    a.Config.OktaDomain,
 			"api_token": a.Config.OktaAPIToken,
 		})
-		a.Providers.Register(okta)
-		a.Logger.Info("okta provider registered")
 	}
 
 	// Register Azure if configured
 	if a.Config.AzureTenantID != "" && a.Config.AzureClientID != "" {
-		azure := providers.NewAzureProvider()
-		_ = azure.Configure(ctx, map[string]interface{}{
+		registerProvider("azure", providers.NewAzureProvider(), map[string]interface{}{
 			"tenant_id":       a.Config.AzureTenantID,
 			"client_id":       a.Config.AzureClientID,
 			"client_secret":   a.Config.AzureClientSecret,
 			"subscription_id": a.Config.AzureSubscriptionID,
 		})
-		a.Providers.Register(azure)
-		a.Logger.Info("azure provider registered")
 	}
 
 	// Register Snyk if configured
 	if a.Config.SnykAPIToken != "" {
-		snyk := providers.NewSnykProvider()
-		_ = snyk.Configure(ctx, map[string]interface{}{
+		registerProvider("snyk", providers.NewSnykProvider(), map[string]interface{}{
 			"api_token": a.Config.SnykAPIToken,
 			"org_id":    a.Config.SnykOrgID,
 		})
-		a.Providers.Register(snyk)
-		a.Logger.Info("snyk provider registered")
 	}
 
 	// Register Datadog if configured
 	if a.Config.DatadogAPIKey != "" {
-		dd := providers.NewDatadogProvider()
-		_ = dd.Configure(ctx, map[string]interface{}{
+		registerProvider("datadog", providers.NewDatadogProvider(), map[string]interface{}{
 			"api_key": a.Config.DatadogAPIKey,
 			"app_key": a.Config.DatadogAppKey,
 			"site":    a.Config.DatadogSite,
 		})
-		a.Providers.Register(dd)
-		a.Logger.Info("datadog provider registered")
 	}
 
 	// Register GitHub if configured
 	if a.Config.GitHubToken != "" && a.Config.GitHubOrg != "" {
-		gh := providers.NewGitHubProvider()
-		_ = gh.Configure(ctx, map[string]interface{}{
+		registerProvider("github", providers.NewGitHubProvider(), map[string]interface{}{
 			"token": a.Config.GitHubToken,
 			"org":   a.Config.GitHubOrg,
 		})
-		a.Providers.Register(gh)
-		a.Logger.Info("github provider registered")
 	}
 
 	// Register SentinelOne if configured
 	if a.Config.SentinelOneAPIToken != "" {
-		s1 := providers.NewSentinelOneProvider()
-		_ = s1.Configure(ctx, map[string]interface{}{
+		registerProvider("sentinelone", providers.NewSentinelOneProvider(), map[string]interface{}{
 			"api_token": a.Config.SentinelOneAPIToken,
 			"base_url":  a.Config.SentinelOneBaseURL,
 		})
-		a.Providers.Register(s1)
-		a.Logger.Info("sentinelone provider registered")
 	}
 
 	// Register Tenable if configured
 	if a.Config.TenableAccessKey != "" {
-		tenable := providers.NewTenableProvider()
-		_ = tenable.Configure(ctx, map[string]interface{}{
+		registerProvider("tenable", providers.NewTenableProvider(), map[string]interface{}{
 			"access_key": a.Config.TenableAccessKey,
 			"secret_key": a.Config.TenableSecretKey,
 		})
-		a.Providers.Register(tenable)
-		a.Logger.Info("tenable provider registered")
 	}
 }
 
