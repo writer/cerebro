@@ -1,0 +1,43 @@
+{
+  "id": "aws-eks-private-endpoint",
+  "name": "EKS Cluster Private Endpoint Enabled",
+  "description": "EKS clusters should have private endpoint access enabled to allow communication within the VPC without traversing the public internet",
+  "effect": "forbid",
+  "resource": "aws_eks_clusters",
+  "conditions": [
+    "resources_vpc_config.endpoint_private_access != true"
+  ],
+  "severity": "medium",
+  "remediation": "Enable private endpoint access for the EKS cluster. This allows nodes and kubectl within the VPC to communicate with the control plane privately",
+  "remediation_steps": [
+    "Navigate to EKS in AWS Console",
+    "Select the cluster",
+    "Go to 'Networking' tab",
+    "Click 'Manage networking'",
+    "Enable 'Private endpoint access'",
+    "Save changes"
+  ],
+  "tags": [
+    "eks",
+    "kubernetes",
+    "private-endpoint",
+    "network-security"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "CIS EKS Benchmark v1.3",
+      "controls": ["5.4.1"]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": ["SC-7", "AC-4"]
+    },
+    {
+      "name": "SOC 2",
+      "controls": ["CC6.6"]
+    }
+  ]
+}

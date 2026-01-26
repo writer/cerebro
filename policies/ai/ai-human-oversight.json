@@ -1,0 +1,15 @@
+{
+  "id": "ai-human-oversight",
+  "name": "AI High-Risk Decisions Human Oversight",
+  "description": "Ensures high-risk AI decisions have human oversight mechanisms (ISO 42001, EU AI Act)",
+  "effect": "forbid",
+  "resource": "ai_models",
+  "conditions": ["risk_level = 'high'", "human_oversight_enabled = false"],
+  "severity": "high",
+  "remediation": "Implement human oversight mechanisms for high-risk AI systems. Enable human review before consequential decisions.",
+  "tags": ["ai", "ml", "human-oversight", "high-risk", "iso42001"],
+  "frameworks": [
+    {"name": "ISO 42001", "controls": ["6.2", "9.1"]},
+    {"name": "EU AI Act", "controls": ["Art.14"]}
+  ]
+}

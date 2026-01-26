@@ -1,0 +1,15 @@
+{
+  "id": "ai-model-inventory",
+  "name": "AI Model Inventory Maintained",
+  "description": "Ensures all AI/ML models are documented in a central inventory (ISO 42001)",
+  "effect": "forbid",
+  "resource": "ai_models",
+  "conditions": ["last_inventory_update IS NULL OR last_inventory_update < NOW() - INTERVAL '90 days'"],
+  "severity": "medium",
+  "remediation": "Update AI model inventory with all deployed models. Document model purpose, inputs, outputs, and risk assessment.",
+  "tags": ["ai", "ml", "inventory", "governance", "iso42001"],
+  "frameworks": [
+    {"name": "ISO 42001", "controls": ["7.1", "7.2"]},
+    {"name": "SOC 2", "controls": ["CC6.1"]}
+  ]
+}

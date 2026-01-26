@@ -1,0 +1,47 @@
+{
+  "id": "endpoint-screenlock-configured",
+  "name": "Endpoint Screen Lock Configured",
+  "description": "Corporate endpoints should have automatic screen lock configured to activate after a maximum of 15 minutes of inactivity",
+  "effect": "forbid",
+  "resource": "mdm_devices",
+  "conditions": [
+    "screen_lock_enabled != true",
+    "device_type == WORKSTATION"
+  ],
+  "severity": "medium",
+  "remediation": "Configure automatic screen lock through MDM policy or device settings",
+  "remediation_steps": [
+    "Identify devices without screen lock configured",
+    "Deploy MDM profile enforcing screen lock timeout",
+    "Set maximum inactivity timeout to 15 minutes or less",
+    "Require password/biometric to unlock",
+    "Verify policy compliance after deployment"
+  ],
+  "tags": [
+    "endpoint",
+    "screen-lock",
+    "physical-security",
+    "access-control"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "CIS Controls v8",
+      "controls": ["4.3"]
+    },
+    {
+      "name": "SOC 2",
+      "controls": ["CC6.1"]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": ["A.7.7", "A.8.1"]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": ["AC-11"]
+    }
+  ]
+}

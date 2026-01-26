@@ -1,0 +1,38 @@
+{
+  "id": "gcp-log-sink-access",
+  "name": "GCP Log Sink Access Restricted",
+  "description": "Ensures only authorized users can access log sink destinations",
+  "severity": "HIGH",
+  "category": "gcp",
+  "resource_type": "gcp_logging_sink",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC1.1"
+      ]
+    },
+    {
+      "name": "CIS Benchmarks",
+      "controls": [
+        "1.1"
+      ]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-1"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT id, name, destination, writer_identity FROM gcp_logging_sinks WHERE destination_iam_permissions_public = true",
+  "remediation": "Restrict IAM permissions on log sink destinations. Remove public access and grant only to necessary service accounts.",
+  "tags": [
+    "gcp",
+    "logging",
+    "sink",
+    "access",
+    "security"
+  ]
+}

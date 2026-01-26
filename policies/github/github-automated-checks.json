@@ -1,0 +1,31 @@
+{
+  "id": "github-automated-checks",
+  "name": "GitHub Code Changes Have Automated Checks",
+  "description": "Ensures repositories have required status checks configured for pull requests",
+  "severity": "MEDIUM",
+  "category": "github",
+  "resource_type": "github_branch_protection",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC1.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.1"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT id, repository, branch FROM github_branch_protections WHERE required_status_checks IS NULL OR array_length(required_status_checks, 1) = 0",
+  "remediation": "Configure required status checks in branch protection rules. Add CI/CD checks that must pass before merging.",
+  "tags": [
+    "github",
+    "ci-cd",
+    "automated-checks",
+    "code-quality"
+  ]
+}

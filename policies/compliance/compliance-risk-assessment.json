@@ -1,0 +1,48 @@
+{
+  "id": "compliance-risk-assessment-annual",
+  "name": "Annual Risk Assessment Completed",
+  "description": "The organization should complete a formal risk assessment at least annually to identify and prioritize security risks",
+  "effect": "forbid",
+  "resource": "compliance_documents",
+  "conditions": [
+    "document_type == RISK_ASSESSMENT",
+    "days_since_completion > 365"
+  ],
+  "severity": "high",
+  "remediation": "Conduct a comprehensive risk assessment covering all areas of information security",
+  "remediation_steps": [
+    "Define scope of the risk assessment",
+    "Identify assets and their value",
+    "Identify threats and vulnerabilities",
+    "Assess likelihood and impact of risks",
+    "Calculate risk scores and prioritize",
+    "Document treatment plans for high risks",
+    "Get management sign-off"
+  ],
+  "tags": [
+    "compliance",
+    "risk-assessment",
+    "risk-management"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": ["CC3.1", "CC3.2"]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": ["6.1.2", "8.2"]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": ["RA-3"]
+    },
+    {
+      "name": "HIPAA",
+      "controls": ["164.308(a)(1)(ii)(A)"]
+    }
+  ]
+}

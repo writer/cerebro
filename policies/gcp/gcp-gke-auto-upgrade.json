@@ -1,0 +1,41 @@
+{
+  "id": "gcp-gke-auto-upgrade",
+  "name": "GKE Node Pool Auto-Upgrade Enabled",
+  "description": "GKE node pools should have auto-upgrade enabled to automatically receive security patches and updates",
+  "effect": "forbid",
+  "resource": "gcp_container_node_pools",
+  "conditions": [
+    "management.auto_upgrade != true"
+  ],
+  "severity": "medium",
+  "remediation": "Enable auto-upgrade for the node pool",
+  "remediation_steps": [
+    "Use gcloud: gcloud container node-pools update POOL_NAME --cluster=CLUSTER_NAME --enable-autoupgrade",
+    "Or via Console: Navigate to cluster, select node pool, edit, and enable auto-upgrade",
+    "Configure maintenance windows to control when upgrades occur"
+  ],
+  "tags": [
+    "gke",
+    "kubernetes",
+    "node-pools",
+    "auto-upgrade",
+    "patching"
+  ],
+  "risk_categories": [
+    "VULNERABILITY"
+  ],
+  "frameworks": [
+    {
+      "name": "CIS GKE Benchmark v1.4",
+      "controls": ["5.5.3"]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": ["SI-2"]
+    },
+    {
+      "name": "SOC 2",
+      "controls": ["CC7.1"]
+    }
+  ]
+}

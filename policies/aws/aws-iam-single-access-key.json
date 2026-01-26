@@ -1,0 +1,41 @@
+{
+  "id": "aws-iam-single-access-key",
+  "name": "IAM Users Have Single Active Access Key",
+  "description": "IAM users should have at most one active access key. Having multiple active access keys increases the risk of credential exposure",
+  "effect": "forbid",
+  "resource": "aws_iam_users",
+  "conditions": [
+    "active_access_key_count > 1"
+  ],
+  "severity": "medium",
+  "remediation": "Deactivate or delete extra access keys for IAM users, keeping only one active key per user",
+  "remediation_steps": [
+    "List access keys: aws iam list-access-keys --user-name <username>",
+    "Identify which key is actively used",
+    "Deactivate unused keys: aws iam update-access-key --user-name <username> --access-key-id <key-id> --status Inactive",
+    "After confirming the inactive key is not needed, delete it: aws iam delete-access-key --user-name <username> --access-key-id <key-id>"
+  ],
+  "tags": [
+    "cis-aws-1.13",
+    "iam",
+    "access-keys",
+    "credential-hygiene"
+  ],
+  "risk_categories": [
+    "IDENTITY_RISK"
+  ],
+  "frameworks": [
+    {
+      "name": "CIS AWS Foundations Benchmark v2.0",
+      "controls": ["1.13"]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": ["AC-2", "IA-5"]
+    },
+    {
+      "name": "SOC 2",
+      "controls": ["CC6.1"]
+    }
+  ]
+}

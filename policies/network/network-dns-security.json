@@ -1,0 +1,31 @@
+{
+  "id": "network-dns-security",
+  "name": "DNS Security Extensions Enabled",
+  "description": "Ensures DNSSEC is enabled for domain validation to prevent DNS spoofing",
+  "severity": "MEDIUM",
+  "category": "network",
+  "resource_type": "dns_zone",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC1.1"
+      ]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-1"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT id, zone_name, dnssec_enabled FROM dns_zones WHERE is_public = true AND dnssec_enabled = false",
+  "remediation": "Enable DNSSEC for all public DNS zones to protect against DNS spoofing and cache poisoning.",
+  "tags": [
+    "network",
+    "dns",
+    "dnssec",
+    "security"
+  ]
+}

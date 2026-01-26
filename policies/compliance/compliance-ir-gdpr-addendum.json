@@ -1,0 +1,31 @@
+{
+  "id": "compliance-ir-gdpr-addendum",
+  "name": "Incident Response Plan GDPR Addendum",
+  "description": "Ensures incident response plan includes GDPR breach notification procedures",
+  "severity": "HIGH",
+  "category": "compliance",
+  "resource_type": "policy_document",
+  "frameworks": [
+    {
+      "name": "GDPR",
+      "controls": [
+        "Art.5"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC1.1"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT id, policy_type, status, last_approved_date FROM policy_documents WHERE policy_type = 'incident_response_gdpr' AND (status != 'approved' OR last_approved_date < NOW() - INTERVAL '365 days')",
+  "remediation": "Add GDPR breach notification procedures to incident response plan. Include 72-hour notification requirement.",
+  "tags": [
+    "compliance",
+    "gdpr",
+    "incident-response",
+    "breach-notification"
+  ]
+}

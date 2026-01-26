@@ -1,0 +1,31 @@
+{
+  "id": "compliance-gdpr-policy",
+  "name": "GDPR Compliance Policy Exists",
+  "description": "Ensures the organization has an approved GDPR compliance policy",
+  "severity": "HIGH",
+  "category": "compliance",
+  "resource_type": "policy_document",
+  "frameworks": [
+    {
+      "name": "GDPR",
+      "controls": [
+        "Art.5"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC1.1"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT id, policy_type, status, last_approved_date FROM policy_documents WHERE policy_type = 'gdpr_compliance' AND (status != 'approved' OR last_approved_date < NOW() - INTERVAL '365 days')",
+  "remediation": "Create and approve a GDPR compliance policy. Review and update annually.",
+  "tags": [
+    "compliance",
+    "gdpr",
+    "privacy",
+    "policy"
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "id": "compliance-bcdr-plan-exists",
+  "name": "Business Continuity Plan Exists",
+  "description": "The organization should have a documented business continuity and disaster recovery plan that is tested annually",
+  "effect": "forbid",
+  "resource": "compliance_documents",
+  "conditions": [
+    "document_type == BCDR_PLAN",
+    "approved != true"
+  ],
+  "severity": "high",
+  "remediation": "Create and approve a business continuity and disaster recovery plan that covers critical systems and processes",
+  "remediation_steps": [
+    "Identify critical business functions and systems",
+    "Define RTO (Recovery Time Objective) and RPO (Recovery Point Objective)",
+    "Document recovery procedures for each critical system",
+    "Identify alternate processing locations if needed",
+    "Get management approval",
+    "Schedule annual testing and updates"
+  ],
+  "tags": [
+    "compliance",
+    "bcdr",
+    "business-continuity",
+    "disaster-recovery"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": ["A1.1", "A1.2", "A1.3"]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": ["A.5.29", "A.5.30"]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": ["CP-2", "CP-4"]
+    },
+    {
+      "name": "HIPAA",
+      "controls": ["164.308(a)(7)"]
+    }
+  ]
+}

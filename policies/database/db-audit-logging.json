@@ -1,0 +1,43 @@
+{
+  "id": "db-audit-logging",
+  "name": "Database Audit Logging Enabled",
+  "description": "Ensures audit logging is enabled for database activity tracking",
+  "severity": "MEDIUM",
+  "category": "database",
+  "resource_type": "database",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC1.1"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0",
+      "controls": [
+        "1.1"
+      ]
+    },
+    {
+      "name": "HIPAA",
+      "controls": [
+        "164.312"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.1"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT id, name, engine, audit_logging_enabled FROM databases WHERE audit_logging_enabled = false",
+  "remediation": "Enable database audit logging to track queries, logins, and administrative actions.",
+  "tags": [
+    "database",
+    "audit",
+    "logging",
+    "monitoring"
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "id": "backup-retention",
+  "name": "Backup Retention Policy Compliance",
+  "description": "Ensures backups are retained according to data classification requirements",
+  "severity": "MEDIUM",
+  "category": "backup",
+  "resource_type": "backup",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC1.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.1"
+      ]
+    },
+    {
+      "name": "HIPAA",
+      "controls": [
+        "164.312"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT id, backup_name, target_system, retention_days, required_retention_days FROM backups WHERE retention_days < required_retention_days",
+  "remediation": "Configure backup retention to meet data classification requirements. Ensure compliance with regulatory requirements.",
+  "tags": [
+    "backup",
+    "retention",
+    "compliance",
+    "data-lifecycle"
+  ]
+}

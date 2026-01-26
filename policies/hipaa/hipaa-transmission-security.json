@@ -1,0 +1,26 @@
+{
+  "id": "hipaa-transmission-security",
+  "name": "HIPAA Transmission Security",
+  "description": "Ensures PHI is encrypted during transmission (HIPAA 164.312(e)(2)(ii))",
+  "severity": "CRITICAL",
+  "category": "hipaa",
+  "resource_type": "network_endpoint",
+  "frameworks": [
+    {
+      "name": "HIPAA",
+      "controls": [
+        "164.312"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT id, hostname, port, tls_enabled, phi_transmitted FROM network_endpoints WHERE phi_transmitted = true AND tls_enabled = false",
+  "remediation": "Enable TLS 1.2 or higher for all endpoints transmitting PHI. Disable unencrypted protocols.",
+  "tags": [
+    "hipaa",
+    "transmission",
+    "tls",
+    "encryption",
+    "healthcare"
+  ]
+}

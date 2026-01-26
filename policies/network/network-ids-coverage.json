@@ -1,0 +1,44 @@
+{
+  "id": "network-ids-coverage",
+  "name": "Network IDS/IPS Coverage",
+  "description": "Ensures intrusion detection/prevention systems monitor critical network segments",
+  "severity": "HIGH",
+  "category": "network",
+  "resource_type": "network_segment",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC1.1"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0",
+      "controls": [
+        "1.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.1"
+      ]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-1"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT id, name, classification, ids_monitored FROM network_segments WHERE classification IN ('critical', 'sensitive', 'cde') AND ids_monitored = false",
+  "remediation": "Deploy IDS/IPS to monitor all critical network segments. Ensure signatures are updated regularly.",
+  "tags": [
+    "network",
+    "ids",
+    "ips",
+    "monitoring",
+    "security"
+  ]
+}

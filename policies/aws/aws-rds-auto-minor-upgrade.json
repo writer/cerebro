@@ -1,0 +1,42 @@
+{
+  "id": "aws-rds-auto-minor-upgrade",
+  "name": "RDS Auto Minor Version Upgrade Enabled",
+  "description": "RDS instances should have automatic minor version upgrades enabled to receive security patches and bug fixes automatically",
+  "effect": "forbid",
+  "resource": "aws_rds_instances",
+  "conditions": [
+    "auto_minor_version_upgrade != true"
+  ],
+  "severity": "low",
+  "remediation": "Enable automatic minor version upgrades for the RDS instance. Use: aws rds modify-db-instance --db-instance-identifier <name> --auto-minor-version-upgrade --apply-immediately",
+  "remediation_steps": [
+    "Navigate to RDS in AWS Console",
+    "Select the database instance",
+    "Click 'Modify'",
+    "Under 'Maintenance', enable 'Auto minor version upgrade'",
+    "Apply changes"
+  ],
+  "tags": [
+    "rds",
+    "patching",
+    "maintenance",
+    "security-updates"
+  ],
+  "risk_categories": [
+    "VULNERABILITY"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": ["SI-2", "CM-3"]
+    },
+    {
+      "name": "SOC 2",
+      "controls": ["CC7.1"]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": ["A.8.8", "A.8.19"]
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "id": "vendor-auth-method",
+  "name": "Vendor Authentication Method Specified",
+  "description": "Ensures all vendors have their authentication method documented",
+  "severity": "MEDIUM",
+  "category": "vendor",
+  "resource_type": "vendor",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC1.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.1"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT id, name, risk_level FROM vendors WHERE authentication_method IS NULL OR authentication_method = ''",
+  "remediation": "Document the authentication method for vendor access (SSO, MFA, API keys, etc.).",
+  "tags": [
+    "vendor",
+    "authentication",
+    "documentation",
+    "security"
+  ]
+}

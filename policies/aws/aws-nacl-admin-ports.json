@@ -1,0 +1,59 @@
+{
+  "id": "aws-nacl-admin-ports-restricted",
+  "name": "Network ACLs Restrict Admin Port Access",
+  "description": "Network ACLs should not allow unrestricted ingress (0.0.0.0/0) to remote server administration ports (SSH port 22, RDP port 3389)",
+  "effect": "forbid",
+  "resource": "aws_ec2_network_acls",
+  "conditions": [
+    "allows_admin_ports_from_internet == true"
+  ],
+  "severity": "high",
+  "remediation": "Modify Network ACL rules to restrict access to ports 22 and 3389 from specific IP ranges only, not 0.0.0.0/0",
+  "remediation_steps": [
+    "Navigate to VPC in AWS Console",
+    "Select 'Network ACLs'",
+    "Review inbound rules for each NACL",
+    "Identify rules allowing 0.0.0.0/0 to ports 22 or 3389",
+    "Modify or remove these rules",
+    "Add rules allowing access only from trusted IP ranges"
+  ],
+  "tags": [
+    "cis-aws-5.1",
+    "nacl",
+    "vpc",
+    "network-security",
+    "admin-access"
+  ],
+  "risk_categories": [
+    "EXTERNAL_EXPOSURE",
+    "EXTERNAL_ATTACK_SURFACE"
+  ],
+  "frameworks": [
+    {
+      "name": "CIS AWS Foundations Benchmark v2.0",
+      "controls": ["5.1"]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": ["AC-4", "SC-7"]
+    },
+    {
+      "name": "SOC 2",
+      "controls": ["CC6.1", "CC6.6"]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": ["1.3.1"]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Initial Access",
+      "technique": "T1190"
+    },
+    {
+      "tactic": "Lateral Movement",
+      "technique": "T1021"
+    }
+  ]
+}

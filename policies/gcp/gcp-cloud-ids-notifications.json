@@ -1,0 +1,42 @@
+{
+  "id": "gcp-cloud-ids-notifications",
+  "name": "GCP Cloud IDS Notifications Configured",
+  "description": "GCP Cloud IDS (Intrusion Detection System) should have notifications configured to alert the security team of detected threats",
+  "effect": "forbid",
+  "resource": "gcp_ids_endpoints",
+  "conditions": [
+    "has_notification_configuration == false"
+  ],
+  "severity": "high",
+  "remediation": "Configure Cloud Monitoring alerts or Pub/Sub notifications for Cloud IDS findings",
+  "remediation_steps": [
+    "Navigate to Cloud IDS in GCP Console",
+    "Review endpoint configuration",
+    "Create Cloud Monitoring alert policies for IDS threat logs",
+    "Configure notification channels (email, Slack, PagerDuty)",
+    "Test the alerting pipeline with a sample notification"
+  ],
+  "tags": [
+    "cloud-ids",
+    "intrusion-detection",
+    "notifications",
+    "alerting"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": ["IR-4", "SI-4"]
+    },
+    {
+      "name": "SOC 2",
+      "controls": ["CC7.2", "CC7.3"]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": ["A.5.24", "A.5.25"]
+    }
+  ]
+}

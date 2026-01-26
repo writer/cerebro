@@ -1,0 +1,32 @@
+{
+  "id": "cert-self-signed",
+  "name": "Self-Signed Certificates in Production",
+  "description": "Identifies self-signed certificates that should not be used in production environments",
+  "severity": "MEDIUM",
+  "category": "certificate",
+  "resource_type": "certificate",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC1.1"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0",
+      "controls": [
+        "1.1"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT id, domain, issuer, subject FROM certificates WHERE is_self_signed = true AND environment = 'production'",
+  "remediation": "Replace self-signed certificates with certificates issued by a trusted Certificate Authority (CA).",
+  "tags": [
+    "ssl",
+    "tls",
+    "certificate",
+    "self-signed",
+    "trust"
+  ]
+}

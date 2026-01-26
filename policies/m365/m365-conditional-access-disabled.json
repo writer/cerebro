@@ -1,0 +1,38 @@
+{
+  "id": "m365-conditional-access-disabled",
+  "name": "M365 Conditional Access Policies Disabled",
+  "description": "Identifies Conditional Access policies that are in disabled or report-only state",
+  "severity": "MEDIUM",
+  "category": "m365",
+  "resource_type": "entra_conditional_access_policy",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC1.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.1"
+      ]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-1"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT id, display_name, state, created_datetime FROM entra_conditional_access_policies WHERE state IN ('disabled', 'enabledForReportingButNotEnforced')",
+  "remediation": "Review disabled Conditional Access policies. Enable policies that should be enforced or document why they are disabled.",
+  "tags": [
+    "m365",
+    "entra",
+    "conditional-access",
+    "policy",
+    "security"
+  ]
+}

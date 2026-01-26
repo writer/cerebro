@@ -1,0 +1,15 @@
+{
+  "id": "ai-bias-testing",
+  "name": "AI Model Bias Testing Performed",
+  "description": "Ensures AI models are tested for bias and fairness before deployment (ISO 42001)",
+  "effect": "forbid",
+  "resource": "ai_models",
+  "conditions": ["model_type IN ('classification', 'recommendation', 'scoring')", "(last_bias_test IS NULL OR last_bias_test < NOW() - INTERVAL '180 days')"],
+  "severity": "high",
+  "remediation": "Perform bias testing on AI models that make decisions affecting individuals. Document testing methodology and results.",
+  "tags": ["ai", "ml", "bias", "fairness", "iso42001"],
+  "frameworks": [
+    {"name": "ISO 42001", "controls": ["6.1", "9.2"]},
+    {"name": "SOC 2", "controls": ["CC1.4"]}
+  ]
+}

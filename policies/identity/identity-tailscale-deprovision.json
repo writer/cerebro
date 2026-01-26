@@ -1,0 +1,32 @@
+{
+  "id": "identity-tailscale-deprovision",
+  "name": "Tailscale Accounts Deprovisioned on Termination",
+  "description": "Ensures Tailscale network access is revoked when personnel leave the company",
+  "severity": "HIGH",
+  "category": "identity",
+  "resource_type": "tailscale_user",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC1.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.1"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT t.id, t.login_name, t.display_name, e.termination_date FROM tailscale_users t JOIN employees e ON t.login_name LIKE '%' || e.work_email || '%' WHERE e.status = 'terminated' AND t.status = 'active'",
+  "remediation": "Remove Tailscale access for terminated employees within 24 hours of termination.",
+  "tags": [
+    "tailscale",
+    "network",
+    "identity",
+    "offboarding",
+    "access-control"
+  ]
+}

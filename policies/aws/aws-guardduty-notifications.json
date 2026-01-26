@@ -1,0 +1,42 @@
+{
+  "id": "aws-guardduty-notifications",
+  "name": "GuardDuty Findings Have Notifications Configured",
+  "description": "GuardDuty findings should be configured to send notifications via SNS, EventBridge, or another alerting mechanism to ensure security team awareness",
+  "effect": "forbid",
+  "resource": "aws_guardduty_detectors",
+  "conditions": [
+    "has_notification_configuration == false"
+  ],
+  "severity": "high",
+  "remediation": "Configure EventBridge rules to capture GuardDuty findings and send notifications to SNS topics or other targets",
+  "remediation_steps": [
+    "Navigate to EventBridge in AWS Console",
+    "Create a new rule with source 'aws.guardduty'",
+    "Select 'GuardDuty Finding' as the event type",
+    "Add targets (SNS topic, Lambda, or other notification services)",
+    "Alternatively, configure GuardDuty to publish to SNS directly in the GuardDuty settings"
+  ],
+  "tags": [
+    "guardduty",
+    "notifications",
+    "alerting",
+    "incident-response"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": ["IR-4", "SI-4"]
+    },
+    {
+      "name": "SOC 2",
+      "controls": ["CC7.2", "CC7.3"]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": ["A.5.24", "A.5.25"]
+    }
+  ]
+}

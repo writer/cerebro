@@ -1,0 +1,38 @@
+{
+  "id": "container-host-network",
+  "name": "Container Host Network Disabled",
+  "description": "Ensures containers do not use host network namespace",
+  "severity": "HIGH",
+  "category": "container",
+  "resource_type": "container",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC1.1"
+      ]
+    },
+    {
+      "name": "CIS Benchmarks",
+      "controls": [
+        "1.1"
+      ]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-1"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT id, name, image, namespace, host_network FROM containers WHERE host_network = true",
+  "remediation": "Disable host network mode for containers. Use Kubernetes services for networking.",
+  "tags": [
+    "container",
+    "network",
+    "host",
+    "isolation",
+    "kubernetes"
+  ]
+}

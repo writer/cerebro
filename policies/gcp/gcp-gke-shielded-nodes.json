@@ -1,0 +1,36 @@
+{
+  "id": "gcp-gke-shielded-nodes",
+  "name": "GKE Shielded Nodes Enabled",
+  "description": "GKE clusters should have Shielded GKE Nodes enabled to protect against rootkit and bootkit attacks",
+  "effect": "forbid",
+  "resource": "gcp_container_clusters",
+  "conditions": [
+    "shielded_nodes.enabled != true"
+  ],
+  "severity": "medium",
+  "remediation": "Enable Shielded GKE Nodes on the cluster",
+  "remediation_steps": [
+    "For existing clusters: gcloud container clusters update CLUSTER_NAME --enable-shielded-nodes",
+    "For new clusters: gcloud container clusters create CLUSTER_NAME --enable-shielded-nodes",
+    "Existing nodes will be recreated with shielded node features"
+  ],
+  "tags": [
+    "gke",
+    "kubernetes",
+    "shielded-nodes",
+    "secure-boot"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "CIS GKE Benchmark v1.4",
+      "controls": ["5.5.1"]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": ["SI-7"]
+    }
+  ]
+}

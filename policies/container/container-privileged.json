@@ -1,0 +1,37 @@
+{
+  "id": "container-privileged",
+  "name": "Container Privileged Mode Disabled",
+  "description": "Ensures containers are not running in privileged mode",
+  "severity": "CRITICAL",
+  "category": "container",
+  "resource_type": "container",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC1.1"
+      ]
+    },
+    {
+      "name": "CIS Benchmarks",
+      "controls": [
+        "1.1"
+      ]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-1"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT id, name, image, namespace, privileged FROM containers WHERE privileged = true",
+  "remediation": "Disable privileged mode for containers. Use specific capabilities instead of full privileged access.",
+  "tags": [
+    "container",
+    "privileged",
+    "security",
+    "kubernetes"
+  ]
+}

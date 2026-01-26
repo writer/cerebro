@@ -1,0 +1,36 @@
+{
+  "id": "gcp-gke-auto-repair",
+  "name": "GKE Node Pool Auto-Repair Enabled",
+  "description": "GKE node pools should have auto-repair enabled to automatically repair unhealthy nodes",
+  "effect": "forbid",
+  "resource": "gcp_container_node_pools",
+  "conditions": [
+    "management.auto_repair != true"
+  ],
+  "severity": "low",
+  "remediation": "Enable auto-repair for the node pool",
+  "remediation_steps": [
+    "Use gcloud: gcloud container node-pools update POOL_NAME --cluster=CLUSTER_NAME --enable-autorepair",
+    "Or via Console: Navigate to cluster, select node pool, edit, and enable auto-repair"
+  ],
+  "tags": [
+    "gke",
+    "kubernetes",
+    "node-pools",
+    "auto-repair",
+    "availability"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "CIS GKE Benchmark v1.4",
+      "controls": ["5.5.2"]
+    },
+    {
+      "name": "SOC 2",
+      "controls": ["A1.1"]
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "id": "aws-iam-users-via-groups",
+  "name": "IAM Users Receive Permissions Only Through Groups",
+  "description": "IAM users should receive permissions exclusively through group memberships, not through directly attached policies, for easier permission management and auditing",
+  "effect": "forbid",
+  "resource": "aws_iam_users",
+  "conditions": [
+    "attached_policy_count > 0"
+  ],
+  "severity": "low",
+  "remediation": "Remove directly attached policies from IAM users and grant permissions through group membership instead",
+  "remediation_steps": [
+    "List attached policies: aws iam list-attached-user-policies --user-name <username>",
+    "Create appropriate IAM groups if they don't exist",
+    "Attach the policies to the groups instead",
+    "Add the user to the appropriate groups",
+    "Detach policies from user: aws iam detach-user-policy --user-name <username> --policy-arn <policy-arn>"
+  ],
+  "tags": [
+    "cis-aws-1.15",
+    "iam",
+    "permissions",
+    "groups",
+    "least-privilege"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "CIS AWS Foundations Benchmark v2.0",
+      "controls": ["1.15"]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": ["AC-2", "AC-6"]
+    },
+    {
+      "name": "SOC 2",
+      "controls": ["CC6.1", "CC6.3"]
+    }
+  ]
+}

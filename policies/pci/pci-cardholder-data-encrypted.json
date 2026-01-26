@@ -1,0 +1,25 @@
+{
+  "id": "pci-cardholder-data-encrypted",
+  "name": "Cardholder Data Encrypted at Rest",
+  "description": "Ensures cardholder data is encrypted at rest using strong cryptography (PCI DSS 3.4)",
+  "severity": "CRITICAL",
+  "category": "pci",
+  "resource_type": "database",
+  "frameworks": [
+    {
+      "name": "PCI DSS v4.0",
+      "controls": [
+        "1.1"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT id, name, engine, encryption_enabled, data_classification FROM databases WHERE data_classification = 'cardholder_data' AND (encryption_enabled = false OR encryption_enabled IS NULL)",
+  "remediation": "Enable encryption at rest for all databases containing cardholder data. Use AES-256 or stronger encryption.",
+  "tags": [
+    "pci",
+    "encryption",
+    "cardholder-data",
+    "requirement-3"
+  ]
+}

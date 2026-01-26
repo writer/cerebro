@@ -1,0 +1,52 @@
+{
+  "id": "aws-ecs-ssh-denied",
+  "name": "ECS Services Deny Public SSH Access",
+  "description": "ECS services should not allow public SSH access (port 22) through their associated security groups",
+  "effect": "forbid",
+  "resource": "aws_ecs_services",
+  "conditions": [
+    "allows_public_ssh == true"
+  ],
+  "severity": "critical",
+  "remediation": "Remove security group rules that allow inbound SSH (port 22) from 0.0.0.0/0 or ::/0 for ECS services",
+  "remediation_steps": [
+    "Identify security groups attached to the ECS service",
+    "Find rules allowing port 22 from 0.0.0.0/0",
+    "Remove or modify these rules",
+    "Use SSM Session Manager or bastion hosts for administrative access instead"
+  ],
+  "tags": [
+    "ecs",
+    "ssh",
+    "security-groups",
+    "network-security"
+  ],
+  "risk_categories": [
+    "EXTERNAL_EXPOSURE",
+    "EXTERNAL_ATTACK_SURFACE"
+  ],
+  "frameworks": [
+    {
+      "name": "CIS AWS Foundations Benchmark v2.0",
+      "controls": ["5.2"]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": ["AC-17", "SC-7"]
+    },
+    {
+      "name": "SOC 2",
+      "controls": ["CC6.1", "CC6.6"]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Initial Access",
+      "technique": "T1190"
+    },
+    {
+      "tactic": "Lateral Movement",
+      "technique": "T1021.004"
+    }
+  ]
+}

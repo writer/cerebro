@@ -1,0 +1,34 @@
+{
+  "id": "gcp-gke-cos-containerd",
+  "name": "GKE Nodes Use Container-Optimized OS",
+  "description": "GKE node pools should use Container-Optimized OS with containerd (cos_containerd) for optimal security and performance",
+  "effect": "forbid",
+  "resource": "gcp_container_node_pools",
+  "conditions": [
+    "config.image_type != COS_CONTAINERD"
+  ],
+  "severity": "low",
+  "remediation": "Update the node pool to use COS_CONTAINERD image type",
+  "remediation_steps": [
+    "Create a new node pool with image type cos_containerd",
+    "Migrate workloads to the new node pool",
+    "Delete the old node pool",
+    "Note: Image type cannot be changed on existing node pools"
+  ],
+  "tags": [
+    "gke",
+    "kubernetes",
+    "node-pools",
+    "cos",
+    "containerd"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "CIS GKE Benchmark v1.4",
+      "controls": ["5.5.4"]
+    }
+  ]
+}

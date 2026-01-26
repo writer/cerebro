@@ -1,0 +1,38 @@
+{
+  "id": "container-image-scan",
+  "name": "Container Image Vulnerability Scan",
+  "description": "Ensures container images are scanned for vulnerabilities before deployment",
+  "severity": "HIGH",
+  "category": "container",
+  "resource_type": "container_image",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC1.1"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0",
+      "controls": [
+        "1.1"
+      ]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-1"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT id, image, tag, last_scan_date, critical_vulns, high_vulns FROM container_images WHERE last_scan_date IS NULL OR last_scan_date < NOW() - INTERVAL '7 days'",
+  "remediation": "Integrate container image scanning into CI/CD pipeline. Block images with critical vulnerabilities.",
+  "tags": [
+    "container",
+    "image",
+    "vulnerability",
+    "scan",
+    "security"
+  ]
+}

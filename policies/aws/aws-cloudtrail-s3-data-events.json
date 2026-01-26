@@ -1,0 +1,51 @@
+{
+  "id": "aws-cloudtrail-s3-data-events",
+  "name": "CloudTrail S3 Data Events Logging",
+  "description": "CloudTrail should be configured to log S3 object-level data events (read and write) for comprehensive audit logging of bucket access",
+  "effect": "forbid",
+  "resource": "aws_cloudtrail_trails",
+  "conditions": [
+    "is_multi_region_trail == true",
+    "has_s3_data_events == false"
+  ],
+  "severity": "medium",
+  "remediation": "Configure S3 data event logging in CloudTrail to capture object-level API activity for all S3 buckets",
+  "remediation_steps": [
+    "Navigate to CloudTrail in AWS Console",
+    "Select the multi-region trail",
+    "Go to 'Data events' section",
+    "Add data event selector for S3",
+    "Select 'All current and future S3 buckets'",
+    "Enable both Read and Write events",
+    "Save the configuration"
+  ],
+  "tags": [
+    "cis-aws-3.10",
+    "cis-aws-3.11",
+    "cloudtrail",
+    "s3",
+    "data-events",
+    "logging"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "CIS AWS Foundations Benchmark v2.0",
+      "controls": ["3.10", "3.11"]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": ["AU-2", "AU-12"]
+    },
+    {
+      "name": "SOC 2",
+      "controls": ["CC4.1", "CC7.2"]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": ["10.2.1"]
+    }
+  ]
+}

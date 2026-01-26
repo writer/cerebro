@@ -1,0 +1,43 @@
+{
+  "id": "aws-ec2-iam-instance-profile",
+  "name": "EC2 Instances Use IAM Instance Profiles",
+  "description": "EC2 instances should use IAM instance profiles/roles for AWS API access instead of embedded access keys, which are harder to rotate and audit",
+  "effect": "forbid",
+  "resource": "aws_ec2_instances",
+  "conditions": [
+    "iam_instance_profile == null",
+    "state.name == running"
+  ],
+  "severity": "medium",
+  "remediation": "Attach an IAM instance profile to the EC2 instance and remove any hardcoded credentials from the instance",
+  "remediation_steps": [
+    "Create an IAM role with the necessary permissions",
+    "Create an instance profile and add the role to it",
+    "Attach the instance profile to the EC2 instance",
+    "Update application code to use the SDK's default credential provider",
+    "Remove any hardcoded access keys from the instance"
+  ],
+  "tags": [
+    "ec2",
+    "iam",
+    "instance-profile",
+    "credentials"
+  ],
+  "risk_categories": [
+    "IDENTITY_RISK"
+  ],
+  "frameworks": [
+    {
+      "name": "CIS AWS Foundations Benchmark v2.0",
+      "controls": ["1.16"]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": ["AC-2", "IA-2"]
+    },
+    {
+      "name": "SOC 2",
+      "controls": ["CC6.1"]
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "id": "aws-ecs-ports-restricted",
+  "name": "ECS Services Restrict Public Ports",
+  "description": "ECS services should restrict public ports to only 80 and 443, minimizing attack surface from unnecessary exposed ports",
+  "effect": "forbid",
+  "resource": "aws_ecs_services",
+  "conditions": [
+    "has_unauthorized_public_ports == true"
+  ],
+  "severity": "high",
+  "remediation": "Modify ECS service security groups to only allow inbound traffic on ports 80 and 443 from the internet",
+  "remediation_steps": [
+    "Identify the security groups attached to the ECS service's network configuration",
+    "Review inbound rules for ports other than 80/443 that allow 0.0.0.0/0",
+    "Remove or modify rules to restrict access to only necessary ports",
+    "For internal services, ensure they are not publicly accessible"
+  ],
+  "tags": [
+    "ecs",
+    "ports",
+    "security-groups",
+    "network-security"
+  ],
+  "risk_categories": [
+    "EXTERNAL_EXPOSURE",
+    "EXTERNAL_ATTACK_SURFACE"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": ["SC-7", "AC-4"]
+    },
+    {
+      "name": "SOC 2",
+      "controls": ["CC6.1", "CC6.6"]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": ["1.3.1"]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Initial Access",
+      "technique": "T1190"
+    }
+  ]
+}

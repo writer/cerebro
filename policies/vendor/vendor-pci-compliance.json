@@ -1,0 +1,31 @@
+{
+  "id": "vendor-pci-compliance",
+  "name": "High Risk Vendors PCI DSS Compliance",
+  "description": "Ensures high-risk vendors processing cardholder data have PCI DSS compliance documentation",
+  "severity": "HIGH",
+  "category": "vendor",
+  "resource_type": "vendor",
+  "frameworks": [
+    {
+      "name": "PCI DSS v4.0",
+      "controls": [
+        "1.1"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC1.1"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT id, name, risk_level, processes_cardholder_data FROM vendors WHERE processes_cardholder_data = true AND risk_level = 'high' AND (pci_aoc_date IS NULL OR pci_aoc_date < NOW() - INTERVAL '365 days')",
+  "remediation": "Obtain current PCI DSS Attestation of Compliance (AOC) from all high-risk vendors that process cardholder data.",
+  "tags": [
+    "vendor",
+    "pci",
+    "compliance",
+    "cardholder-data"
+  ]
+}

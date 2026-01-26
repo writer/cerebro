@@ -1,0 +1,32 @@
+{
+  "id": "m365-guest-access-review",
+  "name": "M365 Guest Users Without Recent Access Review",
+  "description": "Identifies guest users who have not had access reviewed in the last 90 days",
+  "severity": "MEDIUM",
+  "category": "m365",
+  "resource_type": "entra_user",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC1.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.1"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT id, user_principal_name, display_name, created_datetime, last_sign_in_datetime FROM entra_users WHERE user_type = 'Guest' AND (last_access_review IS NULL OR last_access_review < NOW() - INTERVAL '90 days')",
+  "remediation": "Conduct regular access reviews for guest users. Remove guest accounts that are no longer needed.",
+  "tags": [
+    "m365",
+    "entra",
+    "guest",
+    "access-review",
+    "identity"
+  ]
+}

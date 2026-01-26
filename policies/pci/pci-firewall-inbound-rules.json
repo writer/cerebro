@@ -1,0 +1,25 @@
+{
+  "id": "pci-firewall-inbound-rules",
+  "name": "PCI Firewall Inbound Rules Reviewed",
+  "description": "Ensures firewall and router rule sets are reviewed at least every 6 months (PCI DSS 1.1.7)",
+  "severity": "HIGH",
+  "category": "pci",
+  "resource_type": "firewall_rule",
+  "frameworks": [
+    {
+      "name": "PCI DSS v4.0",
+      "controls": [
+        "1.1"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT id, name, direction, last_reviewed_date FROM firewall_rules WHERE direction = 'inbound' AND cde_scope = true AND (last_reviewed_date IS NULL OR last_reviewed_date < NOW() - INTERVAL '180 days')",
+  "remediation": "Review all inbound firewall rules every 6 months. Document the review and remove unnecessary rules.",
+  "tags": [
+    "pci",
+    "firewall",
+    "review",
+    "requirement-1"
+  ]
+}

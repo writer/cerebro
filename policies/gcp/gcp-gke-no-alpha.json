@@ -1,0 +1,33 @@
+{
+  "id": "gcp-gke-no-alpha-clusters",
+  "name": "GKE Clusters No Alpha Features",
+  "description": "GKE clusters should not have alpha features enabled as they are not covered by GKE SLA and may have stability issues",
+  "effect": "forbid",
+  "resource": "gcp_container_clusters",
+  "conditions": [
+    "enable_kubernetes_alpha == true"
+  ],
+  "severity": "medium",
+  "remediation": "Alpha clusters cannot be upgraded to standard clusters. Create a new cluster without alpha features and migrate workloads",
+  "remediation_steps": [
+    "Create a new GKE cluster without alpha features",
+    "Migrate workloads to the new cluster",
+    "Delete the alpha cluster",
+    "Note: Alpha clusters cannot be converted to standard clusters"
+  ],
+  "tags": [
+    "gke",
+    "kubernetes",
+    "alpha",
+    "stability"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "CIS GKE Benchmark v1.4",
+      "controls": ["5.1.1"]
+    }
+  ]
+}

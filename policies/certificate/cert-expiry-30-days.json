@@ -1,0 +1,38 @@
+{
+  "id": "cert-expiry-30-days",
+  "name": "SSL/TLS Certificates Expiring Within 30 Days",
+  "description": "Identifies SSL/TLS certificates that will expire within the next 30 days",
+  "severity": "HIGH",
+  "category": "certificate",
+  "resource_type": "certificate",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC1.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.1"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0",
+      "controls": [
+        "1.1"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT id, domain, issuer, valid_to, days_until_expiry FROM certificates WHERE days_until_expiry <= 30 AND days_until_expiry > 0",
+  "remediation": "Renew the certificate before expiration. Contact your certificate authority or use automated certificate management (e.g., Let's Encrypt, AWS ACM).",
+  "tags": [
+    "ssl",
+    "tls",
+    "certificate",
+    "expiry",
+    "availability"
+  ]
+}

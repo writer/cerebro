@@ -1,0 +1,37 @@
+{
+  "id": "network-unused-ports",
+  "name": "Unused Network Ports Disabled",
+  "description": "Identifies servers with unused network services/ports that should be disabled",
+  "severity": "MEDIUM",
+  "category": "network",
+  "resource_type": "server",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC1.1"
+      ]
+    },
+    {
+      "name": "CIS Benchmarks",
+      "controls": [
+        "1.1"
+      ]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-1"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT id, hostname, listening_ports, required_ports FROM servers WHERE array_length(listening_ports, 1) > array_length(required_ports, 1)",
+  "remediation": "Disable unnecessary network services and close unused ports. Document required services.",
+  "tags": [
+    "network",
+    "ports",
+    "hardening",
+    "security"
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "id": "hipaa-automatic-logoff",
+  "name": "HIPAA Automatic Logoff",
+  "description": "Ensures automatic logoff is enabled for PHI systems after inactivity (HIPAA 164.312(a)(2)(iii))",
+  "severity": "MEDIUM",
+  "category": "hipaa",
+  "resource_type": "system",
+  "frameworks": [
+    {
+      "name": "HIPAA",
+      "controls": [
+        "164.312"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT id, name, contains_phi, session_timeout_minutes FROM systems WHERE contains_phi = true AND (session_timeout_minutes IS NULL OR session_timeout_minutes > 15)",
+  "remediation": "Configure automatic session timeout of 15 minutes or less for PHI systems.",
+  "tags": [
+    "hipaa",
+    "session",
+    "timeout",
+    "logoff",
+    "healthcare"
+  ]
+}

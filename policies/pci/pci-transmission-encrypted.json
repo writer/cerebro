@@ -1,0 +1,25 @@
+{
+  "id": "pci-transmission-encrypted",
+  "name": "Cardholder Data Encrypted in Transit",
+  "description": "Ensures cardholder data is encrypted during transmission using TLS 1.2+ (PCI DSS 4.1)",
+  "severity": "CRITICAL",
+  "category": "pci",
+  "resource_type": "tls_endpoint",
+  "frameworks": [
+    {
+      "name": "PCI DSS v4.0",
+      "controls": [
+        "1.1"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT id, hostname, port, tls_version, service_type FROM tls_endpoints WHERE service_type = 'payment' AND tls_version < 'TLSv1.2'",
+  "remediation": "Configure all payment endpoints to use TLS 1.2 or higher. Disable TLS 1.0 and 1.1.",
+  "tags": [
+    "pci",
+    "encryption",
+    "tls",
+    "requirement-4"
+  ]
+}

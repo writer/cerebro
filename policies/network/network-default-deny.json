@@ -1,0 +1,43 @@
+{
+  "id": "network-default-deny",
+  "name": "Network Firewall Default Deny",
+  "description": "Ensures firewalls have default deny rules and explicit allow rules",
+  "severity": "HIGH",
+  "category": "network",
+  "resource_type": "firewall",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC1.1"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0",
+      "controls": [
+        "1.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.1"
+      ]
+    },
+    {
+      "name": "CIS Benchmarks",
+      "controls": [
+        "1.1"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT id, name, default_policy FROM firewalls WHERE default_policy != 'deny'",
+  "remediation": "Configure firewalls with default deny policy. Create explicit allow rules only for required traffic.",
+  "tags": [
+    "network",
+    "firewall",
+    "default-deny",
+    "security"
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "id": "aws-iam-access-analyzer-enabled",
+  "name": "IAM Access Analyzer Enabled",
+  "description": "IAM Access Analyzer should be enabled in all regions to identify resources shared with external entities and validate IAM policies",
+  "effect": "forbid",
+  "resource": "aws_accessanalyzer_analyzers",
+  "conditions": [
+    "status != ACTIVE"
+  ],
+  "severity": "medium",
+  "remediation": "Enable IAM Access Analyzer in all active regions. Use: aws accessanalyzer create-analyzer --analyzer-name <name> --type ACCOUNT --region <region>",
+  "remediation_steps": [
+    "Navigate to IAM in AWS Console",
+    "Select 'Access Analyzer' from the left menu",
+    "Click 'Create analyzer'",
+    "Select 'Account' as the zone of trust",
+    "Name the analyzer and create it",
+    "Repeat for all active regions"
+  ],
+  "tags": [
+    "cis-aws-1.21",
+    "iam",
+    "access-analyzer",
+    "external-access",
+    "policy-validation"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION",
+    "EXTERNAL_EXPOSURE"
+  ],
+  "frameworks": [
+    {
+      "name": "CIS AWS Foundations Benchmark v2.0",
+      "controls": ["1.21"]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": ["AC-6", "CA-7"]
+    },
+    {
+      "name": "SOC 2",
+      "controls": ["CC6.1", "CC6.3"]
+    }
+  ]
+}
