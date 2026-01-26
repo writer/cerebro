@@ -39,18 +39,18 @@ func (e *SyncEngine) ec2SecurityGroupTable() TableSpec {
 					}
 
 					row := map[string]interface{}{
-						"_cq_id":               arn,
-						"arn":                  arn,
-						"group_id":             groupID,
-						"group_name":           ptrToStr(sg.GroupName),
-						"description":          ptrToStr(sg.Description),
-						"region":               region,
-						"account_id":           ptrToStr(sg.OwnerId),
-						"vpc_id":               ptrToStr(sg.VpcId),
-						"owner_id":             ptrToStr(sg.OwnerId),
-						"ip_permissions":       sg.IpPermissions,
+						"_cq_id":                arn,
+						"arn":                   arn,
+						"group_id":              groupID,
+						"group_name":            ptrToStr(sg.GroupName),
+						"description":           ptrToStr(sg.Description),
+						"region":                region,
+						"account_id":            ptrToStr(sg.OwnerId),
+						"vpc_id":                ptrToStr(sg.VpcId),
+						"owner_id":              ptrToStr(sg.OwnerId),
+						"ip_permissions":        sg.IpPermissions,
 						"ip_permissions_egress": sg.IpPermissionsEgress,
-						"tags":                 tags,
+						"tags":                  tags,
 					}
 
 					results = append(results, row)
@@ -369,21 +369,21 @@ func (e *SyncEngine) ec2NatGatewayTable() TableSpec {
 					}
 
 					row := map[string]interface{}{
-						"_cq_id":               arn,
-						"arn":                  arn,
-						"nat_gateway_id":       ngwID,
-						"region":               region,
-						"account_id":           e.accountID,
-						"vpc_id":               ptrToStr(ngw.VpcId),
-						"subnet_id":            ptrToStr(ngw.SubnetId),
-						"state":                string(ngw.State),
-						"connectivity_type":    string(ngw.ConnectivityType),
+						"_cq_id":                arn,
+						"arn":                   arn,
+						"nat_gateway_id":        ngwID,
+						"region":                region,
+						"account_id":            e.accountID,
+						"vpc_id":                ptrToStr(ngw.VpcId),
+						"subnet_id":             ptrToStr(ngw.SubnetId),
+						"state":                 string(ngw.State),
+						"connectivity_type":     string(ngw.ConnectivityType),
 						"nat_gateway_addresses": ngw.NatGatewayAddresses,
-						"create_time":          ngw.CreateTime,
-						"delete_time":          ngw.DeleteTime,
-						"failure_code":         ptrToStr(ngw.FailureCode),
-						"failure_message":      ptrToStr(ngw.FailureMessage),
-						"tags":                 tags,
+						"create_time":           ngw.CreateTime,
+						"delete_time":           ngw.DeleteTime,
+						"failure_code":          ptrToStr(ngw.FailureCode),
+						"failure_message":       ptrToStr(ngw.FailureMessage),
+						"tags":                  tags,
 					}
 
 					results = append(results, row)

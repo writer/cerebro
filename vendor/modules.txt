@@ -359,6 +359,23 @@ github.com/aws/aws-sdk-go-v2/service/apigateway/types
 github.com/aws/aws-sdk-go-v2/service/apigatewayv2
 github.com/aws/aws-sdk-go-v2/service/apigatewayv2/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/apigatewayv2/types
+# github.com/aws/aws-sdk-go-v2/service/appsync v1.53.1
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/appsync
+github.com/aws/aws-sdk-go-v2/service/appsync/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/appsync/types
+# github.com/aws/aws-sdk-go-v2/service/bedrock v1.53.1
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/bedrock
+github.com/aws/aws-sdk-go-v2/service/bedrock/document
+github.com/aws/aws-sdk-go-v2/service/bedrock/internal/document
+github.com/aws/aws-sdk-go-v2/service/bedrock/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/bedrock/types
+# github.com/aws/aws-sdk-go-v2/service/cloudfront v1.59.0
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/cloudfront
+github.com/aws/aws-sdk-go-v2/service/cloudfront/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/cloudfront/types
 # github.com/aws/aws-sdk-go-v2/service/cloudtrail v1.55.5
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/cloudtrail
@@ -369,6 +386,11 @@ github.com/aws/aws-sdk-go-v2/service/cloudtrail/types
 github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs
 github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types
+# github.com/aws/aws-sdk-go-v2/service/codebuild v1.68.9
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/codebuild
+github.com/aws/aws-sdk-go-v2/service/codebuild/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/codebuild/types
 # github.com/aws/aws-sdk-go-v2/service/configservice v1.61.0
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/configservice

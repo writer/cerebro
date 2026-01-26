@@ -108,18 +108,18 @@ func (e *SyncEngine) ecrImageTable() TableSpec {
 							}
 
 							row := map[string]interface{}{
-								"_cq_id":                        arn,
-								"arn":                           arn,
-								"repository_name":               ptrToStr(repo.RepositoryName),
-								"registry_id":                   ptrToStr(img.RegistryId),
-								"region":                        region,
-								"account_id":                    e.accountID,
-								"image_digest":                  ptrToStr(img.ImageDigest),
-								"image_tags":                    img.ImageTags,
-								"image_pushed_at":               img.ImagePushedAt,
-								"image_size_in_bytes":           img.ImageSizeInBytes,
-								"image_scan_status":             scanStatus,
-								"image_scan_findings_summary":   scanSummary,
+								"_cq_id":                      arn,
+								"arn":                         arn,
+								"repository_name":             ptrToStr(repo.RepositoryName),
+								"registry_id":                 ptrToStr(img.RegistryId),
+								"region":                      region,
+								"account_id":                  e.accountID,
+								"image_digest":                ptrToStr(img.ImageDigest),
+								"image_tags":                  img.ImageTags,
+								"image_pushed_at":             img.ImagePushedAt,
+								"image_size_in_bytes":         img.ImageSizeInBytes,
+								"image_scan_status":           scanStatus,
+								"image_scan_findings_summary": scanSummary,
 							}
 
 							results = append(results, row)

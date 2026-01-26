@@ -27,9 +27,12 @@ var ResourceToTableMapping = map[string][]string{
 	"aws::iam::account":         {"aws_iam_accounts"},
 	"aws::iam::password_policy": {"aws_iam_password_policies"},
 
-	// RDS
-	"aws::rds::instance": {"aws_rds_db_instances"},
-	"aws::rds::cluster":  {"aws_rds_db_clusters"},
+	// IAM additional
+	"aws::iam::access_key":              {"aws_iam_user_access_keys"},
+	"aws::iam::account_password_policy": {"aws_iam_password_policies"},
+	"aws::iam::account_summary":         {"aws_iam_accounts"},
+	"aws::iam::credential_report":       {"aws_iam_credential_reports"},
+	"aws::iam::saml_provider":           {"aws_iam_saml_identity_providers"},
 
 	// Lambda
 	"aws::lambda::function": {"aws_lambda_functions"},
@@ -49,16 +52,82 @@ var ResourceToTableMapping = map[string][]string{
 	"aws::cloudwatch::log_group": {"aws_cloudwatch_log_groups"},
 
 	// Config
-	"aws::config::recorder": {"aws_config_configuration_recorders"},
+	"aws::config::recorder":          {"aws_config_configuration_recorders"},
+	"aws::config::configuration_recorder": {"aws_config_configuration_recorders"},
+	"aws::config::rule":              {"aws_config_rules"},
+	"aws::config::delivery_channel":  {"aws_config_delivery_channels"},
+	"aws::config::conformance_pack":  {"aws_config_conformance_packs"},
 
 	// GuardDuty
 	"aws::guardduty::detector": {"aws_guardduty_detectors"},
+	"aws::guardduty::finding":  {"aws_guardduty_findings"},
+
+	// SecurityHub
+	"aws::securityhub::hub":      {"aws_securityhub_hubs"},
+	"aws::securityhub::finding":  {"aws_securityhub_findings"},
+	"aws::securityhub::standard": {"aws_securityhub_standards"},
 
 	// EKS
-	"aws::eks::cluster": {"aws_eks_clusters"},
+	"aws::eks::cluster":         {"aws_eks_clusters"},
+	"aws::eks::nodegroup":       {"aws_eks_node_groups"},
+	"aws::eks::fargate_profile": {"aws_eks_fargate_profiles"},
+
+	// SageMaker
+	"aws::sagemaker::notebook": {"aws_sagemaker_notebook_instances"},
+	"aws::sagemaker::model":    {"aws_sagemaker_models"},
+	"aws::sagemaker::endpoint": {"aws_sagemaker_endpoints"},
+
+	// VPC / Networking
+	"aws::ec2::nacl":             {"aws_ec2_network_acls"},
+	"aws::ec2::network_acl":      {"aws_ec2_network_acls"},
+	"aws::ec2::subnet":           {"aws_ec2_subnets"},
+	"aws::ec2::route_table":      {"aws_ec2_route_tables"},
+	"aws::ec2::internet_gateway": {"aws_ec2_internet_gateways"},
+	"aws::ec2::nat_gateway":      {"aws_ec2_nat_gateways"},
 
 	// ECR
-	"aws::ecr::repository": {"aws_ecr_repositories"},
+	"aws::ecr::repository":        {"aws_ecr_repositories"},
+	"aws::ecr_public::repository": {"aws_ecr_public_repositories"},
+
+	// API Gateway
+	"aws::apigateway::rest_api": {"aws_apigateway_rest_apis"},
+	"aws::apigateway::stage":    {"aws_apigateway_stages"},
+	"aws::apigateway::method":   {"aws_apigateway_rest_api_methods"},
+	"aws::apigatewayv2::api":    {"aws_apigatewayv2_apis"},
+
+	// AppSync
+	"aws::appsync::graphql_api": {"aws_appsync_graphql_apis"},
+
+	// EFS
+	"aws::efs::file_system":  {"aws_efs_file_systems"},
+	"aws::efs::mount_target": {"aws_efs_mount_targets"},
+
+	// Bedrock
+	"aws::bedrock::custom_model":                  {"aws_bedrock_custom_models"},
+	"aws::bedrock::provisioned_model_throughput":  {"aws_bedrock_provisioned_model_throughputs"},
+
+	// CloudFront
+	"aws::cloudfront::distribution": {"aws_cloudfront_distributions"},
+
+	// CodeBuild
+	"aws::codebuild::project":           {"aws_codebuild_projects"},
+	"aws::codebuild::source_credential": {"aws_codebuild_source_credentials"},
+
+	// RDS (consolidated)
+	"aws::rds::instance":    {"aws_rds_db_instances"},
+	"aws::rds::db_instance": {"aws_rds_db_instances"},
+	"aws::rds::cluster":     {"aws_rds_db_clusters"},
+	"aws::rds::db_snapshot": {"aws_rds_db_snapshots"},
+	"aws::rds::db_cluster":  {"aws_rds_db_clusters"},
+
+	// EBS
+	"aws::ec2::ebs_encryption_by_default": {"aws_ec2_regional_configs"},
+
+	// CloudWatch Logs
+	"aws::logs::log_group": {"aws_cloudwatch_log_groups"},
+
+	// WAF
+	"aws::wafv2::web_acl": {"aws_wafv2_web_acls"},
 
 	// Secrets Manager
 	"aws::secretsmanager::secret": {"aws_secretsmanager_secrets"},
@@ -78,15 +147,6 @@ var ResourceToTableMapping = map[string][]string{
 
 	// OpenSearch
 	"aws::opensearch::domain": {"aws_opensearch_domains"},
-
-	// API Gateway
-	"aws::apigateway::rest_api": {"aws_apigateway_rest_apis"},
-
-	// CloudFront
-	"aws::cloudfront::distribution": {"aws_cloudfront_distributions"},
-
-	// CodeBuild
-	"aws::codebuild::project": {"aws_codebuild_projects"},
 
 	// ECS
 	"aws::ecs::cluster":         {"aws_ecs_clusters"},

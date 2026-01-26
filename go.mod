@@ -27,8 +27,12 @@ require (
 	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.20.17
 	github.com/aws/aws-sdk-go-v2/service/apigateway v1.38.4
 	github.com/aws/aws-sdk-go-v2/service/apigatewayv2 v1.33.5
+	github.com/aws/aws-sdk-go-v2/service/appsync v1.53.1
+	github.com/aws/aws-sdk-go-v2/service/bedrock v1.53.1
+	github.com/aws/aws-sdk-go-v2/service/cloudfront v1.59.0
 	github.com/aws/aws-sdk-go-v2/service/cloudtrail v1.55.5
 	github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.63.1
+	github.com/aws/aws-sdk-go-v2/service/codebuild v1.68.9
 	github.com/aws/aws-sdk-go-v2/service/configservice v1.61.0
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.53.6
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.279.2

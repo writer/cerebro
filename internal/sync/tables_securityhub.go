@@ -32,13 +32,13 @@ func (e *SyncEngine) securityHubTable() TableSpec {
 			}
 
 			row := map[string]interface{}{
-				"_cq_id":                   arn,
-				"arn":                      arn,
-				"hub_arn":                  ptrToStr(hub.HubArn),
-				"region":                   region,
-				"account_id":               e.accountID,
-				"subscribed_at":            ptrToStr(hub.SubscribedAt),
-				"auto_enable_controls":     hub.AutoEnableControls,
+				"_cq_id":                    arn,
+				"arn":                       arn,
+				"hub_arn":                   ptrToStr(hub.HubArn),
+				"region":                    region,
+				"account_id":                e.accountID,
+				"subscribed_at":             ptrToStr(hub.SubscribedAt),
+				"auto_enable_controls":      hub.AutoEnableControls,
 				"control_finding_generator": string(hub.ControlFindingGenerator),
 			}
 

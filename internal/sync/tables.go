@@ -125,6 +125,17 @@ func (e *SyncEngine) getAWSTables() []TableSpec {
 		// Logging
 		e.cloudtrailTrailTable(),
 		e.cloudwatchLogGroupTable(),
+		// CodeBuild
+		e.codebuildProjectTable(),
+		e.codebuildSourceCredentialTable(),
+		// AppSync
+		e.appsyncGraphQLApiTable(),
+		// Bedrock
+		e.bedrockCustomModelTable(),
+		e.bedrockProvisionedThroughputTable(),
+		e.bedrockGuardrailTable(),
+		// CloudFront
+		e.cloudfrontDistributionTable(),
 	}
 }
 

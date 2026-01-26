@@ -37,20 +37,20 @@ Examples:
 }
 
 var (
-	syncConfigPath       string
-	syncSource           string
-	syncEnsureTables     bool
-	syncValidate         bool
-	syncScanAfter        bool
-	syncNative           bool
-	syncGCP              bool
-	syncGCPProject       string
-	syncGCPProjects      string // comma-separated list of projects
-	syncGCPOrg           string // organization ID for multi-project sync
-	syncMultiRegion      bool
-	syncUseAssetAPI      bool   // use Cloud Asset Inventory API
-	syncSecurity         bool   // sync security data (vulnerabilities, SCC findings)
-	syncAzure            bool   // sync Azure resources
+	syncConfigPath        string
+	syncSource            string
+	syncEnsureTables      bool
+	syncValidate          bool
+	syncScanAfter         bool
+	syncNative            bool
+	syncGCP               bool
+	syncGCPProject        string
+	syncGCPProjects       string // comma-separated list of projects
+	syncGCPOrg            string // organization ID for multi-project sync
+	syncMultiRegion       bool
+	syncUseAssetAPI       bool   // use Cloud Asset Inventory API
+	syncSecurity          bool   // sync security data (vulnerabilities, SCC findings)
+	syncAzure             bool   // sync Azure resources
 	syncAzureSubscription string // Azure subscription ID
 )
 
