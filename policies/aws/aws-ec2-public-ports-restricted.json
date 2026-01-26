@@ -1,0 +1,27 @@
+{
+  "id": "aws-ec2-public-ports-restricted",
+  "name": "EC2 Instance Public Ports Restricted",
+  "description": "Ensures EC2 instances do not expose sensitive ports (SSH, RDP, databases) to the public internet",
+  "effect": "forbid",
+  "resource": "aws_ec2_instances",
+  "conditions": [
+    "public_ip_address IS NOT NULL",
+    "security_groups @> '[{\"rules\": [{\"from_port\": 22, \"cidr\": \"0.0.0.0/0\"}]}]' OR security_groups @> '[{\"rules\": [{\"from_port\": 3389, \"cidr\": \"0.0.0.0/0\"}]}]' OR security_groups @> '[{\"rules\": [{\"from_port\": 3306, \"cidr\": \"0.0.0.0/0\"}]}]' OR security_groups @> '[{\"rules\": [{\"from_port\": 5432, \"cidr\": \"0.0.0.0/0\"}]}]'"
+  ],
+  "severity": "critical",
+  "remediation": "Restrict security group rules to allow access only from specific IP ranges or through a bastion host/VPN. Remove 0.0.0.0/0 CIDR blocks for sensitive ports.",
+  "remediation_steps": [
+    "Identify EC2 instances with public IPs and open sensitive ports",
+    "Review security groups attached to these instances",
+    "Remove or restrict inbound rules allowing 0.0.0.0/0 for ports 22, 3389, 3306, 5432",
+    "Implement bastion hosts or VPN for administrative access",
+    "Use AWS Systems Manager Session Manager for SSH-less access"
+  ],
+  "tags": ["aws", "ec2", "network", "security-group", "ports", "exposure"],
+  "risk_categories": ["EXPOSED_INFRASTRUCTURE"],
+  "frameworks": [
+    {"name": "CIS AWS Foundations Benchmark v2.0", "controls": ["5.2", "5.3"]},
+    {"name": "SOC 2", "controls": ["CC6.1", "CC6.6"]},
+    {"name": "PCI DSS v4.0", "controls": ["1.3.1", "1.3.2"]}
+  ]
+}

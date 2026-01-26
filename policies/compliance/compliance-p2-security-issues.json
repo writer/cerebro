@@ -1,0 +1,27 @@
+{
+  "id": "compliance-p2-security-issues",
+  "name": "P2 Security Issues Resolved Timely",
+  "description": "Ensures P2 (high) security issues are resolved within SLA (7 days)",
+  "effect": "forbid",
+  "resource": "security_issues",
+  "conditions": [
+    "priority = 'P2'",
+    "status != 'resolved'",
+    "created_at < NOW() - INTERVAL '7 days'"
+  ],
+  "severity": "high",
+  "remediation": "Prioritize and resolve P2 security issues within 7 days of discovery.",
+  "remediation_steps": [
+    "Assign owner and track in issue tracker",
+    "Assess impact and develop remediation plan",
+    "Implement fix with appropriate testing",
+    "Verify resolution and close issue"
+  ],
+  "tags": ["compliance", "security-issues", "p2", "high", "sla"],
+  "risk_categories": ["UNMITIGATED_RISK"],
+  "frameworks": [
+    {"name": "SOC 2", "controls": ["CC7.3"]},
+    {"name": "ISO 27001:2022", "controls": ["A.5.24"]},
+    {"name": "NIST 800-53 r5", "controls": ["IR-4"]}
+  ]
+}

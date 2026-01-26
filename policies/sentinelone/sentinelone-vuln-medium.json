@@ -1,0 +1,21 @@
+{
+  "id": "sentinelone-vuln-medium",
+  "name": "SentinelOne Agent Medium Vulnerabilities Addressed",
+  "description": "Ensures medium vulnerabilities detected by SentinelOne are addressed within SLA (30 days)",
+  "effect": "forbid",
+  "resource": "sentinelone_vulnerabilities",
+  "conditions": [
+    "severity = 'Medium'",
+    "status = 'open'",
+    "detected_at < NOW() - INTERVAL '30 days'"
+  ],
+  "severity": "medium",
+  "remediation": "Patch or update affected software to address medium severity vulnerabilities within 30 days.",
+  "tags": ["sentinelone", "endpoint", "vulnerability", "medium", "sla", "compliance"],
+  "risk_categories": ["VULNERABLE_WORKLOAD"],
+  "frameworks": [
+    {"name": "SOC 2", "controls": ["CC7.1"]},
+    {"name": "PCI DSS v4.0", "controls": ["6.3.1"]},
+    {"name": "NIST 800-53 r5", "controls": ["RA-5", "SI-2"]}
+  ]
+}

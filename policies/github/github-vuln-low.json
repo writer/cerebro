@@ -1,0 +1,20 @@
+{
+  "id": "github-vuln-low",
+  "name": "GitHub Repo Low Vulnerabilities Addressed",
+  "description": "Ensures low vulnerabilities identified by Dependabot/Code Scanning are addressed within SLA (90 days)",
+  "effect": "forbid",
+  "resource": "github_dependabot_alerts",
+  "conditions": [
+    "severity = 'low'",
+    "state = 'open'",
+    "created_at < NOW() - INTERVAL '90 days'"
+  ],
+  "severity": "low",
+  "remediation": "Review and address Dependabot alerts for low severity vulnerabilities during regular maintenance.",
+  "tags": ["github", "dependabot", "vulnerability", "low", "sla", "compliance"],
+  "risk_categories": ["VULNERABLE_CODE"],
+  "frameworks": [
+    {"name": "SOC 2", "controls": ["CC7.1"]},
+    {"name": "NIST 800-53 r5", "controls": ["RA-5"]}
+  ]
+}

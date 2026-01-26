@@ -1,0 +1,21 @@
+{
+  "id": "github-vuln-medium",
+  "name": "GitHub Repo Medium Vulnerabilities Addressed",
+  "description": "Ensures medium vulnerabilities identified by Dependabot/Code Scanning are addressed within SLA (30 days)",
+  "effect": "forbid",
+  "resource": "github_dependabot_alerts",
+  "conditions": [
+    "severity = 'moderate'",
+    "state = 'open'",
+    "created_at < NOW() - INTERVAL '30 days'"
+  ],
+  "severity": "medium",
+  "remediation": "Update dependencies to address medium severity vulnerabilities within 30 days.",
+  "tags": ["github", "dependabot", "vulnerability", "medium", "sla", "compliance"],
+  "risk_categories": ["VULNERABLE_CODE"],
+  "frameworks": [
+    {"name": "SOC 2", "controls": ["CC7.1"]},
+    {"name": "PCI DSS v4.0", "controls": ["6.3.1"]},
+    {"name": "NIST 800-53 r5", "controls": ["RA-5", "SI-2"]}
+  ]
+}

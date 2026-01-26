@@ -1,0 +1,20 @@
+{
+  "id": "gcp-container-vuln-low",
+  "name": "GCP Container Low Vulnerabilities Addressed",
+  "description": "Ensures low vulnerabilities in GCP container images are tracked and addressed within SLA (90 days)",
+  "effect": "forbid",
+  "resource": "gcp_container_vulnerabilities",
+  "conditions": [
+    "severity = 'LOW'",
+    "state = 'ACTIVE'",
+    "discovered_at < NOW() - INTERVAL '90 days'"
+  ],
+  "severity": "low",
+  "remediation": "Address low vulnerabilities during regular maintenance cycles within 90 days.",
+  "tags": ["gcp", "container", "vulnerability", "low", "sla", "compliance"],
+  "risk_categories": ["VULNERABLE_WORKLOAD"],
+  "frameworks": [
+    {"name": "SOC 2", "controls": ["CC7.1"]},
+    {"name": "NIST 800-53 r5", "controls": ["RA-5"]}
+  ]
+}

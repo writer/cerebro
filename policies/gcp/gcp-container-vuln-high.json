@@ -1,0 +1,21 @@
+{
+  "id": "gcp-container-vuln-high",
+  "name": "GCP Container High Vulnerabilities Addressed",
+  "description": "Ensures high vulnerabilities in GCP container images are remediated within SLA (14 days)",
+  "effect": "forbid",
+  "resource": "gcp_container_vulnerabilities",
+  "conditions": [
+    "severity = 'HIGH'",
+    "state = 'ACTIVE'",
+    "discovered_at < NOW() - INTERVAL '14 days'"
+  ],
+  "severity": "high",
+  "remediation": "Update container images to address high vulnerabilities within 14 days of discovery.",
+  "tags": ["gcp", "container", "vulnerability", "high", "sla", "compliance"],
+  "risk_categories": ["VULNERABLE_WORKLOAD"],
+  "frameworks": [
+    {"name": "SOC 2", "controls": ["CC7.1"]},
+    {"name": "PCI DSS v4.0", "controls": ["6.3.1"]},
+    {"name": "NIST 800-53 r5", "controls": ["RA-5", "SI-2"]}
+  ]
+}

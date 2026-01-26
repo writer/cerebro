@@ -1,0 +1,28 @@
+{
+  "id": "gcp-container-vuln-critical",
+  "name": "GCP Container Critical Vulnerabilities Addressed",
+  "description": "Ensures critical vulnerabilities in GCP container images are remediated within SLA (7 days)",
+  "effect": "forbid",
+  "resource": "gcp_container_vulnerabilities",
+  "conditions": [
+    "severity = 'CRITICAL'",
+    "state = 'ACTIVE'",
+    "discovered_at < NOW() - INTERVAL '7 days'"
+  ],
+  "severity": "critical",
+  "remediation": "Update container images to address critical vulnerabilities. Rebuild and redeploy containers with patched base images.",
+  "remediation_steps": [
+    "Identify affected container images in GCR/Artifact Registry",
+    "Review vulnerability details in Container Analysis",
+    "Update base images or application dependencies",
+    "Rebuild container images",
+    "Deploy updated images to GKE clusters"
+  ],
+  "tags": ["gcp", "container", "vulnerability", "critical", "sla", "compliance"],
+  "risk_categories": ["VULNERABLE_WORKLOAD"],
+  "frameworks": [
+    {"name": "SOC 2", "controls": ["CC7.1"]},
+    {"name": "PCI DSS v4.0", "controls": ["6.3.1", "11.3.1"]},
+    {"name": "NIST 800-53 r5", "controls": ["RA-5", "SI-2"]}
+  ]
+}
