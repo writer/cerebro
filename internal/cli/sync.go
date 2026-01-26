@@ -455,7 +455,7 @@ func runPostSyncScan(ctx context.Context) error {
 	defer func() { _ = application.Close() }()
 
 	if application.Snowflake == nil {
-		return fmt.Errorf("snowflake not configured")
+		return fmt.Errorf("snowflake not configured: set SNOWFLAKE_PRIVATE_KEY/ACCOUNT/USER or SNOWFLAKE_CONNECTION_STRING")
 	}
 
 	fmt.Println("Scanning synced assets...")

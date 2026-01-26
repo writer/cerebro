@@ -105,4 +105,5 @@ func init() {
 	rootCmd.AddCommand(findingsCmd)
 	rootCmd.AddCommand(scanCmd)
 	rootCmd.AddCommand(statusCmd)
+	rootCmd.AddCommand(notificationsCmd)
 }

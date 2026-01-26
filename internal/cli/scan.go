@@ -81,13 +81,17 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	graphAvailable := false
 	if scanUseGraph {
-		Info("Building security graph for enhanced analysis...")
-		if err := application.RebuildSecurityGraph(ctx); err != nil {
-			Warning("Security graph build failed, falling back to profile-based analysis: %v", err)
+		spinner := NewSpinner("Building security graph for enhanced analysis")
+		spinner.Start()
+		err := application.RebuildSecurityGraph(ctx)
+		if err != nil {
+			spinner.Stop(false, "Security graph build failed, falling back to profile-based analysis")
+			Warning("Graph error: %v", err)
 		} else if application.SecurityGraph != nil && application.SecurityGraph.NodeCount() > 0 {
+			spinner.Stop(true, fmt.Sprintf("Security graph built (%d nodes)", application.SecurityGraph.NodeCount()))
 			graphAvailable = true
 		} else {
-			Warning("Security graph is empty, falling back to profile-based analysis")
+			spinner.Stop(false, "Security graph is empty, falling back to profile-based analysis")
 		}
 	}
 
