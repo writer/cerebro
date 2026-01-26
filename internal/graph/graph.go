@@ -12,6 +12,16 @@ type Graph struct {
 	inEdges  map[string][]*Edge // target -> edges
 	mu       sync.RWMutex
 	metadata Metadata
+
+	// Indexes for O(1) lookups - rebuilt on BuildIndex()
+	indexByKind      map[NodeKind][]*Node
+	indexByAccount   map[string][]*Node
+	indexByRisk      map[RiskLevel][]*Node
+	indexByProvider  map[string][]*Node
+	crossAccountEdge []*Edge
+	internetNodes    []*Node // Pre-computed internet-facing nodes
+	crownJewels      []*Node // Pre-computed high-value targets
+	indexBuilt       bool
 }
 
 // Metadata contains information about the graph
@@ -176,4 +186,270 @@ func (g *Graph) Metadata() Metadata {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	return g.metadata
+}
+
+// BuildIndex builds all secondary indexes for O(1) lookups.
+// Should be called after bulk graph construction for optimal performance.
+func (g *Graph) BuildIndex() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	// Initialize index maps
+	g.indexByKind = make(map[NodeKind][]*Node)
+	g.indexByAccount = make(map[string][]*Node)
+	g.indexByRisk = make(map[RiskLevel][]*Node)
+	g.indexByProvider = make(map[string][]*Node)
+	g.crossAccountEdge = nil
+	g.internetNodes = nil
+	g.crownJewels = nil
+
+	// Index all nodes
+	for _, node := range g.nodes {
+		g.indexByKind[node.Kind] = append(g.indexByKind[node.Kind], node)
+
+		if node.Account != "" {
+			g.indexByAccount[node.Account] = append(g.indexByAccount[node.Account], node)
+		}
+
+		g.indexByRisk[node.Risk] = append(g.indexByRisk[node.Risk], node)
+
+		if node.Provider != "" {
+			g.indexByProvider[node.Provider] = append(g.indexByProvider[node.Provider], node)
+		}
+
+		// Pre-compute internet-facing nodes
+		if g.isInternetFacing(node) {
+			g.internetNodes = append(g.internetNodes, node)
+		}
+
+		// Pre-compute crown jewels (high-value targets)
+		if g.isCrownJewel(node) {
+			g.crownJewels = append(g.crownJewels, node)
+		}
+	}
+
+	// Index cross-account edges
+	for _, edgeList := range g.outEdges {
+		for _, edge := range edgeList {
+			if edge.IsCrossAccount() {
+				g.crossAccountEdge = append(g.crossAccountEdge, edge)
+			}
+		}
+	}
+
+	g.indexBuilt = true
+}
+
+// isInternetFacing checks if a node is exposed to the internet
+func (g *Graph) isInternetFacing(node *Node) bool {
+	if node.Properties == nil {
+		return false
+	}
+
+	// Check for common internet exposure indicators
+	if exposed, ok := node.Properties["internet_exposed"].(bool); ok && exposed {
+		return true
+	}
+	if public, ok := node.Properties["public"].(bool); ok && public {
+		return true
+	}
+	if publicIP, ok := node.Properties["public_ip"].(string); ok && publicIP != "" {
+		return true
+	}
+
+	// Check specific node types
+	switch node.Kind {
+	case NodeKindNetwork:
+		// Load balancers, API gateways, etc are usually network type
+		if nodeType, ok := node.Properties["type"].(string); ok {
+			if nodeType == "load_balancer" || nodeType == "api_gateway" || nodeType == "cdn" {
+				return true
+			}
+		}
+	case NodeKindInstance:
+		if publicIP, ok := node.Properties["public_ip_address"].(string); ok && publicIP != "" {
+			return true
+		}
+	case NodeKindFunction:
+		// Lambda/Functions with public URL
+		if funcURL, ok := node.Properties["function_url"].(string); ok && funcURL != "" {
+			return true
+		}
+	case NodeKindBucket:
+		if public, ok := node.Properties["public_access_block_enabled"].(bool); ok && !public {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isCrownJewel checks if a node is a high-value target
+func (g *Graph) isCrownJewel(node *Node) bool {
+	// High criticality
+	if node.Risk == RiskCritical || node.Risk == RiskHigh {
+		return true
+	}
+
+	if node.Properties == nil {
+		return false
+	}
+
+	// Contains sensitive data
+	if dataClass, ok := node.Properties["data_classification"].(string); ok {
+		if dataClass == "confidential" || dataClass == "restricted" || dataClass == "sensitive" {
+			return true
+		}
+	}
+
+	// High-value node kinds
+	switch node.Kind {
+	case NodeKindDatabase, NodeKindSecret, NodeKindBucket:
+		// Check if contains PII/sensitive data
+		if containsPII, ok := node.Properties["contains_pii"].(bool); ok && containsPII {
+			return true
+		}
+		// Production databases/buckets
+		if env, ok := node.Properties["environment"].(string); ok && env == "production" {
+			return true
+		}
+	case NodeKindRole, NodeKindServiceAccount:
+		// Admin roles
+		if admin, ok := node.Properties["is_admin"].(bool); ok && admin {
+			return true
+		}
+	}
+
+	return false
+}
+
+// GetNodesByKindIndexed returns nodes of specific kinds using the index (O(1) per kind)
+func (g *Graph) GetNodesByKindIndexed(kinds ...NodeKind) []*Node {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	if !g.indexBuilt {
+		// Fall back to scan if index not built
+		return g.getNodesByKindScan(kinds...)
+	}
+
+	var result []*Node
+	for _, kind := range kinds {
+		result = append(result, g.indexByKind[kind]...)
+	}
+	return result
+}
+
+// getNodesByKindScan is the non-indexed fallback
+func (g *Graph) getNodesByKindScan(kinds ...NodeKind) []*Node {
+	kindSet := make(map[NodeKind]bool)
+	for _, k := range kinds {
+		kindSet[k] = true
+	}
+	var nodes []*Node
+	for _, n := range g.nodes {
+		if kindSet[n.Kind] {
+			nodes = append(nodes, n)
+		}
+	}
+	return nodes
+}
+
+// GetNodesByAccountIndexed returns nodes for an account using the index (O(1))
+func (g *Graph) GetNodesByAccountIndexed(accountID string) []*Node {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	if !g.indexBuilt {
+		// Fall back to scan
+		var nodes []*Node
+		for _, n := range g.nodes {
+			if n.Account == accountID {
+				nodes = append(nodes, n)
+			}
+		}
+		return nodes
+	}
+
+	return g.indexByAccount[accountID]
+}
+
+// GetNodesByRisk returns nodes with a specific risk level using the index
+func (g *Graph) GetNodesByRisk(risk RiskLevel) []*Node {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	if !g.indexBuilt {
+		var nodes []*Node
+		for _, n := range g.nodes {
+			if n.Risk == risk {
+				nodes = append(nodes, n)
+			}
+		}
+		return nodes
+	}
+
+	return g.indexByRisk[risk]
+}
+
+// GetInternetFacingNodes returns pre-computed internet-facing nodes (O(1))
+func (g *Graph) GetInternetFacingNodes() []*Node {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	if !g.indexBuilt {
+		var nodes []*Node
+		for _, n := range g.nodes {
+			if g.isInternetFacing(n) {
+				nodes = append(nodes, n)
+			}
+		}
+		return nodes
+	}
+
+	return g.internetNodes
+}
+
+// GetCrownJewels returns pre-computed high-value target nodes (O(1))
+func (g *Graph) GetCrownJewels() []*Node {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	if !g.indexBuilt {
+		var nodes []*Node
+		for _, n := range g.nodes {
+			if g.isCrownJewel(n) {
+				nodes = append(nodes, n)
+			}
+		}
+		return nodes
+	}
+
+	return g.crownJewels
+}
+
+// GetCrossAccountEdgesIndexed returns pre-computed cross-account edges (O(1))
+func (g *Graph) GetCrossAccountEdgesIndexed() []*Edge {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	if !g.indexBuilt {
+		return g.GetCrossAccountEdges()
+	}
+
+	return g.crossAccountEdge
+}
+
+// InvalidateIndex marks the index as stale (call after modifications)
+func (g *Graph) InvalidateIndex() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.indexBuilt = false
+}
+
+// IsIndexBuilt returns whether the index is current
+func (g *Graph) IsIndexBuilt() bool {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.indexBuilt
 }

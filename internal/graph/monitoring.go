@@ -34,7 +34,6 @@ type ToxicCombinationEvent struct {
 // NewToxicCombinationMonitor creates a new monitor
 func NewToxicCombinationMonitor(g *Graph, interval time.Duration, logger *slog.Logger) *ToxicCombinationMonitor {
 	engine := NewToxicCombinationEngine()
-	engine.RegisterMultiCloudRules()
 
 	return &ToxicCombinationMonitor{
 		graph:    g,

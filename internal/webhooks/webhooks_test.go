@@ -13,7 +13,10 @@ import (
 func TestServiceRegisterWebhook(t *testing.T) {
 	svc := NewService()
 
-	webhook := svc.RegisterWebhook("https://example.com/hook", []EventType{EventFindingCreated}, "secret123")
+	webhook, err := svc.RegisterWebhook("https://example.com/hook", []EventType{EventFindingCreated}, "secret123")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if webhook.ID == "" {
 		t.Error("expected webhook ID to be set")
@@ -29,10 +32,38 @@ func TestServiceRegisterWebhook(t *testing.T) {
 	}
 }
 
+func TestServiceRegisterWebhook_SSRFProtection(t *testing.T) {
+	svc := NewService()
+
+	tests := []struct {
+		name    string
+		url     string
+		wantErr bool
+	}{
+		{"valid HTTPS", "https://example.com/hook", false},
+		{"HTTP not allowed", "http://example.com/hook", true},
+		{"localhost blocked", "https://localhost/hook", true},
+		{"loopback blocked", "https://127.0.0.1/hook", true},
+		{"metadata service blocked", "https://169.254.169.254/latest/meta-data/", true},
+		{"private IP blocked", "https://10.0.0.1/hook", true},
+		{"private IP blocked 172", "https://172.16.0.1/hook", true},
+		{"private IP blocked 192", "https://192.168.1.1/hook", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := svc.RegisterWebhook(tt.url, []EventType{EventFindingCreated}, "")
+			if (err != nil) != tt.wantErr {
+				t.Errorf("RegisterWebhook(%q) error = %v, wantErr %v", tt.url, err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestServiceGetWebhook(t *testing.T) {
 	svc := NewService()
 
-	webhook := svc.RegisterWebhook("https://example.com/hook", []EventType{EventFindingCreated}, "")
+	webhook, _ := svc.RegisterWebhook("https://example.com/hook", []EventType{EventFindingCreated}, "")
 
 	got, ok := svc.GetWebhook(webhook.ID)
 	if !ok {
@@ -51,8 +82,8 @@ func TestServiceGetWebhook(t *testing.T) {
 func TestServiceListWebhooks(t *testing.T) {
 	svc := NewService()
 
-	svc.RegisterWebhook("https://example.com/hook1", []EventType{EventFindingCreated}, "")
-	svc.RegisterWebhook("https://example.com/hook2", []EventType{EventScanCompleted}, "")
+	_, _ = svc.RegisterWebhook("https://example.com/hook1", []EventType{EventFindingCreated}, "")
+	_, _ = svc.RegisterWebhook("https://example.com/hook2", []EventType{EventScanCompleted}, "")
 
 	webhooks := svc.ListWebhooks()
 	if len(webhooks) != 2 {
@@ -63,7 +94,7 @@ func TestServiceListWebhooks(t *testing.T) {
 func TestServiceDisableWebhook(t *testing.T) {
 	svc := NewService()
 
-	webhook := svc.RegisterWebhook("https://example.com/hook", []EventType{EventFindingCreated}, "")
+	webhook, _ := svc.RegisterWebhook("https://example.com/hook", []EventType{EventFindingCreated}, "")
 
 	if !svc.DisableWebhook(webhook.ID) {
 		t.Error("expected DisableWebhook to return true")
@@ -82,7 +113,7 @@ func TestServiceDisableWebhook(t *testing.T) {
 func TestServiceDeleteWebhook(t *testing.T) {
 	svc := NewService()
 
-	webhook := svc.RegisterWebhook("https://example.com/hook", []EventType{EventFindingCreated}, "")
+	webhook, _ := svc.RegisterWebhook("https://example.com/hook", []EventType{EventFindingCreated}, "")
 
 	if !svc.DeleteWebhook(webhook.ID) {
 		t.Error("expected DeleteWebhook to return true")
@@ -120,7 +151,7 @@ func TestServiceEmit(t *testing.T) {
 	defer server.Close()
 
 	svc := NewService()
-	svc.RegisterWebhook(server.URL, []EventType{EventFindingCreated}, "")
+	svc.RegisterWebhookUnsafe(server.URL, []EventType{EventFindingCreated}, "")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -147,7 +178,7 @@ func TestServiceEmitWithSignature(t *testing.T) {
 	defer server.Close()
 
 	svc := NewService()
-	svc.RegisterWebhook(server.URL, []EventType{EventFindingCreated}, "mysecret")
+	svc.RegisterWebhookUnsafe(server.URL, []EventType{EventFindingCreated}, "mysecret")
 
 	ctx := context.Background()
 	svc.Emit(ctx, EventFindingCreated, map[string]interface{}{"test": true})
@@ -173,7 +204,7 @@ func TestServiceEmitFiltersByEventType(t *testing.T) {
 
 	svc := NewService()
 	// Only subscribe to ScanCompleted, not FindingCreated
-	svc.RegisterWebhook(server.URL, []EventType{EventScanCompleted}, "")
+	svc.RegisterWebhookUnsafe(server.URL, []EventType{EventScanCompleted}, "")
 
 	ctx := context.Background()
 	svc.Emit(ctx, EventFindingCreated, map[string]interface{}{"test": true})
@@ -201,7 +232,7 @@ func TestServiceDeliveries(t *testing.T) {
 	defer server.Close()
 
 	svc := NewService()
-	webhook := svc.RegisterWebhook(server.URL, []EventType{EventFindingCreated}, "")
+	webhook := svc.RegisterWebhookUnsafe(server.URL, []EventType{EventFindingCreated}, "")
 
 	ctx := context.Background()
 	svc.Emit(ctx, EventFindingCreated, map[string]interface{}{"test": true})

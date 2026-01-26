@@ -7,7 +7,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"net"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -79,14 +83,81 @@ func NewService() *Service {
 	}
 }
 
-// RegisterWebhook registers a new webhook
-func (s *Service) RegisterWebhook(url string, events []EventType, secret string) *Webhook {
+// RegisterWebhook registers a new webhook with SSRF validation
+func (s *Service) RegisterWebhook(webhookURL string, events []EventType, secret string) (*Webhook, error) {
+	// Validate URL to prevent SSRF attacks
+	if err := validateWebhookURL(webhookURL); err != nil {
+		return nil, fmt.Errorf("invalid webhook URL: %w", err)
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	webhook := &Webhook{
 		ID:        uuid.New().String(),
-		URL:       url,
+		URL:       webhookURL,
+		Events:    events,
+		Secret:    secret,
+		Enabled:   true,
+		CreatedAt: time.Now(),
+	}
+
+	s.webhooks[webhook.ID] = webhook
+	return webhook, nil
+}
+
+// validateWebhookURL validates that a webhook URL is safe (prevents SSRF)
+func validateWebhookURL(webhookURL string) error {
+	parsed, err := url.Parse(webhookURL)
+	if err != nil {
+		return fmt.Errorf("invalid URL format: %w", err)
+	}
+
+	// Require HTTPS for security
+	if parsed.Scheme != "https" {
+		return fmt.Errorf("HTTPS is required for webhook URLs")
+	}
+
+	// Get hostname without port
+	hostname := parsed.Hostname()
+	if hostname == "" {
+		return fmt.Errorf("hostname is required")
+	}
+
+	// Block localhost and loopback
+	if hostname == "localhost" || hostname == "127.0.0.1" || hostname == "::1" {
+		return fmt.Errorf("localhost URLs are not allowed")
+	}
+
+	// Block link-local addresses (metadata services like 169.254.169.254)
+	if strings.HasPrefix(hostname, "169.254.") {
+		return fmt.Errorf("link-local addresses are not allowed")
+	}
+
+	// Resolve hostname to check for internal IPs
+	ips, err := net.LookupIP(hostname)
+	if err != nil {
+		return fmt.Errorf("unable to resolve hostname: %w", err)
+	}
+
+	for _, ip := range ips {
+		if !isPublicIP(ip) {
+			return fmt.Errorf("webhook URL resolves to private/internal IP address")
+		}
+	}
+
+	return nil
+}
+
+// RegisterWebhookUnsafe registers a webhook without URL validation.
+// This is exported for testing but should NOT be used in production code.
+func (s *Service) RegisterWebhookUnsafe(webhookURL string, events []EventType, secret string) *Webhook {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	webhook := &Webhook{
+		ID:        uuid.New().String(),
+		URL:       webhookURL,
 		Events:    events,
 		Secret:    secret,
 		Enabled:   true,
@@ -95,6 +166,35 @@ func (s *Service) RegisterWebhook(url string, events []EventType, secret string)
 
 	s.webhooks[webhook.ID] = webhook
 	return webhook
+}
+
+// isPublicIP checks if an IP address is publicly routable
+func isPublicIP(ip net.IP) bool {
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+		return false
+	}
+
+	// Additional check for IPv4 private ranges
+	if ip4 := ip.To4(); ip4 != nil {
+		// 10.0.0.0/8
+		if ip4[0] == 10 {
+			return false
+		}
+		// 172.16.0.0/12
+		if ip4[0] == 172 && ip4[1] >= 16 && ip4[1] <= 31 {
+			return false
+		}
+		// 192.168.0.0/16
+		if ip4[0] == 192 && ip4[1] == 168 {
+			return false
+		}
+		// 169.254.0.0/16 (link-local)
+		if ip4[0] == 169 && ip4[1] == 254 {
+			return false
+		}
+	}
+
+	return true
 }
 
 // GetWebhook retrieves a webhook by ID
@@ -325,7 +425,11 @@ func (s *Service) Handler() http.Handler {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		webhook := s.RegisterWebhook(req.URL, req.Events, req.Secret)
+		webhook, err := s.RegisterWebhook(req.URL, req.Events, req.Secret)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		w.WriteHeader(http.StatusCreated)
 		_ = json.NewEncoder(w).Encode(webhook)
 	})

@@ -18,6 +18,15 @@ const (
 	NodeKindFunction NodeKind = "function"
 	NodeKindNetwork  NodeKind = "network"
 
+	// Kubernetes nodes
+	NodeKindPod                NodeKind = "pod"
+	NodeKindDeployment         NodeKind = "deployment"
+	NodeKindNamespace          NodeKind = "namespace"
+	NodeKindClusterRole        NodeKind = "cluster_role"
+	NodeKindClusterRoleBinding NodeKind = "cluster_role_binding"
+	NodeKindConfigMap          NodeKind = "configmap"
+	NodeKindPersistentVolume   NodeKind = "persistent_volume"
+
 	// SCM nodes
 	NodeKindRepository NodeKind = "repository"
 	NodeKindCIWorkflow NodeKind = "ci_workflow"
@@ -67,7 +76,18 @@ func (n *Node) IsIdentity() bool {
 // IsResource returns true if the node is a resource type
 func (n *Node) IsResource() bool {
 	switch n.Kind {
-	case NodeKindBucket, NodeKindInstance, NodeKindDatabase, NodeKindSecret, NodeKindFunction, NodeKindNetwork:
+	case NodeKindBucket, NodeKindInstance, NodeKindDatabase, NodeKindSecret, NodeKindFunction, NodeKindNetwork,
+		NodeKindPod, NodeKindDeployment, NodeKindConfigMap, NodeKindPersistentVolume:
+		return true
+	}
+	return false
+}
+
+// IsKubernetes returns true if the node is a Kubernetes type
+func (n *Node) IsKubernetes() bool {
+	switch n.Kind {
+	case NodeKindPod, NodeKindDeployment, NodeKindNamespace, NodeKindClusterRole,
+		NodeKindClusterRoleBinding, NodeKindConfigMap, NodeKindPersistentVolume:
 		return true
 	}
 	return false

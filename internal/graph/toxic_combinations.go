@@ -55,6 +55,13 @@ const (
 	RiskFactorLateralMove      RiskFactorType = "lateral_movement"
 )
 
+// sensitiveDataPatterns are common patterns indicating sensitive data in resource names
+var sensitiveDataPatterns = []string{
+	"backup", "log", "audit", "secret", "credential", "key",
+	"password", "config", "private", "internal", "pii", "phi",
+	"confidential", "restricted", "sensitive",
+}
+
 // RemediationStep describes how to fix part of a toxic combination
 type RemediationStep struct {
 	Priority  int    `json:"priority"`
@@ -159,6 +166,7 @@ func (e *ToxicCombinationEngine) Analyze(g *Graph) []*ToxicCombination {
 
 func (e *ToxicCombinationEngine) registerDefaultRules() {
 	e.rules = []*ToxicCombinationRule{
+		// Core cloud rules
 		e.rulePublicExposedWithVuln(),
 		e.rulePublicExposedWithSensitiveData(),
 		e.ruleOverprivilegedWithCrownJewels(),
@@ -169,6 +177,25 @@ func (e *ToxicCombinationEngine) registerDefaultRules() {
 		e.ruleAdminWithNoMFA(),
 		e.rulePublicDatabaseAccess(),
 		e.ruleServiceAccountKeyExposure(),
+		// AWS-specific rules
+		e.ruleIMDSv1WithSensitiveRole(),
+		e.ruleS3PublicBucketWithSensitiveData(),
+		e.ruleLambdaVPCSecretsAccess(),
+		// GCP-specific rules
+		e.ruleGCPServiceAccountKeyExposed(),
+		e.ruleGCPPublicGCSBucket(),
+		e.ruleGCPComputeDefaultSA(),
+		// Azure-specific rules
+		e.ruleAzureManagedIdentityOverprivileged(),
+		e.ruleAzurePublicStorageBlob(),
+		// Kubernetes rules
+		e.rulePrivilegedPodWithHostPath(),
+		e.ruleRBACWildcardSecrets(),
+		e.ruleServiceAccountClusterAdmin(),
+		e.rulePodServiceAccountTokenMount(),
+		// CI/CD supply chain rules
+		e.ruleGitHubActionsOIDCOverprivileged(),
+		e.ruleEKSNodeRoleECRPush(),
 	}
 }
 
@@ -972,4 +999,1076 @@ func containsPermission(perms []string, target string) bool {
 		}
 	}
 	return false
+}
+
+// Kubernetes Rules
+
+// Rule: Privileged pod with host path mount - container escape risk
+func (e *ToxicCombinationEngine) rulePrivilegedPodWithHostPath() *ToxicCombinationRule {
+	return &ToxicCombinationRule{
+		ID:          "TC-K8S-001",
+		Name:        "Privileged Pod with Host Path Mount",
+		Description: "Pod runs privileged with host filesystem mounted, enabling container escape",
+		Severity:    SeverityCritical,
+		Tags:        []string{"kubernetes", "container-escape", "privileged", "mitre-t1611"},
+		Detector: func(g *Graph, node *Node) *ToxicCombination {
+			if node.Kind != NodeKindPod {
+				return nil
+			}
+
+			isPrivileged, _ := node.Properties["privileged"].(bool)
+			hasHostPath, _ := node.Properties["host_path_volumes"].(bool)
+			runAsRoot, _ := node.Properties["run_as_root"].(bool)
+
+			if !isPrivileged || !hasHostPath {
+				return nil
+			}
+
+			score := 85.0
+			if runAsRoot {
+				score = 95.0
+			}
+
+			factors := []*RiskFactor{
+				{Type: RiskFactorMisconfiguration, NodeID: node.ID, Description: "Privileged security context", Severity: SeverityCritical},
+				{Type: RiskFactorMisconfiguration, NodeID: node.ID, Description: "Host filesystem mounted via hostPath", Severity: SeverityCritical},
+			}
+			if runAsRoot {
+				factors = append(factors, &RiskFactor{Type: RiskFactorMisconfiguration, NodeID: node.ID, Description: "Running as root user", Severity: SeverityHigh})
+			}
+
+			return &ToxicCombination{
+				ID:          fmt.Sprintf("TC-K8S-001-%s", node.ID),
+				Name:        "Privileged Container with Host Access",
+				Description: fmt.Sprintf("Pod %s runs privileged with hostPath mount - trivial container escape possible", node.Name),
+				Severity:    SeverityCritical,
+				Score:       score,
+				Factors:     factors,
+				Remediation: []*RemediationStep{
+					{Priority: 1, Action: "Remove privileged: true from security context", Resource: node.ID, Effort: "low"},
+					{Priority: 2, Action: "Replace hostPath volumes with PVC or ConfigMap", Resource: node.ID, Effort: "medium"},
+					{Priority: 3, Action: "Enable Pod Security Standards (restricted profile)", Resource: "namespace", Effort: "medium"},
+				},
+				AffectedAssets: []string{node.ID},
+				Tags:           []string{"kubernetes", "container-escape", "mitre-t1611"},
+			}
+		},
+	}
+}
+
+// Rule: RBAC wildcard verbs on secrets
+func (e *ToxicCombinationEngine) ruleRBACWildcardSecrets() *ToxicCombinationRule {
+	return &ToxicCombinationRule{
+		ID:          "TC-K8S-002",
+		Name:        "RBAC Wildcard on Secrets",
+		Description: "ClusterRole grants wildcard permissions on secrets resources",
+		Severity:    SeverityCritical,
+		Tags:        []string{"kubernetes", "rbac", "secrets", "over-privilege"},
+		Detector: func(g *Graph, node *Node) *ToxicCombination {
+			if node.Kind != NodeKindClusterRole {
+				return nil
+			}
+
+			// Check for wildcard verbs on secrets
+			rules, ok := node.Properties["rules"].([]any)
+			if !ok {
+				return nil
+			}
+
+			hasSecretWildcard := false
+			for _, r := range rules {
+				rule, ok := r.(map[string]any)
+				if !ok {
+					continue
+				}
+				resources, _ := rule["resources"].([]any)
+				verbs, _ := rule["verbs"].([]any)
+
+				hasSecrets := false
+				hasWildcardVerb := false
+				for _, res := range resources {
+					if res == "secrets" || res == "*" {
+						hasSecrets = true
+						break
+					}
+				}
+				for _, verb := range verbs {
+					if verb == "*" {
+						hasWildcardVerb = true
+						break
+					}
+				}
+				if hasSecrets && hasWildcardVerb {
+					hasSecretWildcard = true
+					break
+				}
+			}
+
+			if !hasSecretWildcard {
+				return nil
+			}
+
+			return &ToxicCombination{
+				ID:          fmt.Sprintf("TC-K8S-002-%s", node.ID),
+				Name:        "Overprivileged RBAC - Secret Access",
+				Description: fmt.Sprintf("ClusterRole %s grants wildcard (*) access to secrets - credential theft risk", node.Name),
+				Severity:    SeverityCritical,
+				Score:       90.0,
+				Factors: []*RiskFactor{
+					{Type: RiskFactorOverPrivilege, NodeID: node.ID, Description: "Wildcard verbs on secrets resource", Severity: SeverityCritical},
+					{Type: RiskFactorSensitiveData, NodeID: node.ID, Description: "Can access all secrets in cluster", Severity: SeverityCritical},
+				},
+				Remediation: []*RemediationStep{
+					{Priority: 1, Action: "Replace wildcard verbs with specific verbs (get, list)", Resource: node.ID, Effort: "low"},
+					{Priority: 2, Action: "Limit to specific secret names using resourceNames", Resource: node.ID, Effort: "medium"},
+					{Priority: 3, Action: "Use namespaced Role instead of ClusterRole", Resource: node.ID, Effort: "medium"},
+				},
+				AffectedAssets: []string{node.ID},
+				Tags:           []string{"kubernetes", "rbac", "secrets"},
+			}
+		},
+	}
+}
+
+// Rule: Service account with cluster-admin bound to exposed workload
+func (e *ToxicCombinationEngine) ruleServiceAccountClusterAdmin() *ToxicCombinationRule {
+	return &ToxicCombinationRule{
+		ID:          "TC-K8S-003",
+		Name:        "Service Account with Cluster-Admin",
+		Description: "Service account bound to cluster-admin role used by workload",
+		Severity:    SeverityCritical,
+		Tags:        []string{"kubernetes", "rbac", "cluster-admin", "over-privilege"},
+		Detector: func(g *Graph, node *Node) *ToxicCombination {
+			if node.Kind != NodeKindServiceAccount {
+				return nil
+			}
+
+			// Check if SA has cluster-admin binding
+			hasClusterAdmin := false
+			for _, edge := range g.GetOutEdges(node.ID) {
+				if edge.Kind == EdgeKindCanAssume {
+					target, ok := g.GetNode(edge.Target)
+					if ok && target.Kind == NodeKindClusterRole && target.Name == "cluster-admin" {
+						hasClusterAdmin = true
+						break
+					}
+				}
+			}
+
+			if !hasClusterAdmin {
+				return nil
+			}
+
+			// Find pods using this service account
+			var affectedPods []string
+			for _, inEdge := range g.GetInEdges(node.ID) {
+				source, ok := g.GetNode(inEdge.Source)
+				if ok && source.Kind == NodeKindPod {
+					affectedPods = append(affectedPods, source.ID)
+				}
+			}
+
+			return &ToxicCombination{
+				ID:          fmt.Sprintf("TC-K8S-003-%s", node.ID),
+				Name:        "Cluster-Admin Service Account",
+				Description: fmt.Sprintf("Service account %s has cluster-admin privileges - full cluster compromise if workload is breached", node.Name),
+				Severity:    SeverityCritical,
+				Score:       95.0,
+				Factors: []*RiskFactor{
+					{Type: RiskFactorOverPrivilege, NodeID: node.ID, Description: "Bound to cluster-admin role", Severity: SeverityCritical},
+					{Type: RiskFactorPrivEscalation, NodeID: node.ID, Description: "Can escalate to any privilege in cluster", Severity: SeverityCritical},
+				},
+				Remediation: []*RemediationStep{
+					{Priority: 1, Action: "Create dedicated Role with minimum required permissions", Resource: node.ID, Effort: "medium"},
+					{Priority: 2, Action: "Remove cluster-admin binding", Resource: node.ID, Effort: "low"},
+					{Priority: 3, Action: "Enable audit logging for this service account", Resource: node.ID, Effort: "low"},
+				},
+				AffectedAssets: append([]string{node.ID}, affectedPods...),
+				Tags:           []string{"kubernetes", "rbac", "cluster-admin"},
+			}
+		},
+	}
+}
+
+// Rule: Pod with automountServiceAccountToken and secrets access
+func (e *ToxicCombinationEngine) rulePodServiceAccountTokenMount() *ToxicCombinationRule {
+	return &ToxicCombinationRule{
+		ID:          "TC-K8S-004",
+		Name:        "Service Account Token Auto-Mount with Secrets Access",
+		Description: "Pod automounts SA token where SA has secrets read access",
+		Severity:    SeverityHigh,
+		Tags:        []string{"kubernetes", "service-account", "secrets", "credential-theft"},
+		Detector: func(g *Graph, node *Node) *ToxicCombination {
+			if node.Kind != NodeKindPod {
+				return nil
+			}
+
+			// Check if automountServiceAccountToken is enabled (default: true)
+			autoMount, ok := node.Properties["automount_service_account_token"].(bool)
+			if ok && !autoMount {
+				return nil // Explicitly disabled
+			}
+
+			// Find the service account
+			var saNode *Node
+			for _, edge := range g.GetOutEdges(node.ID) {
+				if edge.Kind == EdgeKindCanAssume {
+					target, ok := g.GetNode(edge.Target)
+					if ok && target.Kind == NodeKindServiceAccount {
+						saNode = target
+						break
+					}
+				}
+			}
+
+			if saNode == nil {
+				return nil
+			}
+
+			// Check if SA has secrets access
+			hasSecretsAccess := false
+			for _, edge := range g.GetOutEdges(saNode.ID) {
+				if edge.Kind == EdgeKindCanRead || edge.Kind == EdgeKindCanWrite {
+					target, ok := g.GetNode(edge.Target)
+					if ok && target.Kind == NodeKindSecret {
+						hasSecretsAccess = true
+						break
+					}
+				}
+			}
+
+			if !hasSecretsAccess {
+				return nil
+			}
+
+			return &ToxicCombination{
+				ID:          fmt.Sprintf("TC-K8S-004-%s", node.ID),
+				Name:        "Auto-Mounted Token with Secrets Access",
+				Description: fmt.Sprintf("Pod %s automounts SA token that has secrets access - credential theft via pod compromise", node.Name),
+				Severity:    SeverityHigh,
+				Score:       75.0,
+				Factors: []*RiskFactor{
+					{Type: RiskFactorMisconfiguration, NodeID: node.ID, Description: "automountServiceAccountToken not disabled", Severity: SeverityMedium},
+					{Type: RiskFactorSensitiveData, NodeID: saNode.ID, Description: "Service account can read secrets", Severity: SeverityHigh},
+				},
+				Remediation: []*RemediationStep{
+					{Priority: 1, Action: "Set automountServiceAccountToken: false in pod spec", Resource: node.ID, Effort: "low"},
+					{Priority: 2, Action: "Use projected service account tokens with audience binding", Resource: node.ID, Effort: "medium"},
+					{Priority: 3, Action: "Remove unnecessary secrets permissions from service account", Resource: saNode.ID, Effort: "medium"},
+				},
+				AffectedAssets: []string{node.ID, saNode.ID},
+				Tags:           []string{"kubernetes", "service-account", "secrets"},
+			}
+		},
+	}
+}
+
+// CI/CD Supply Chain Rules
+
+// Rule: GitHub Actions OIDC with overprivileged AWS role
+func (e *ToxicCombinationEngine) ruleGitHubActionsOIDCOverprivileged() *ToxicCombinationRule {
+	return &ToxicCombinationRule{
+		ID:          "TC-CICD-001",
+		Name:        "GitHub Actions OIDC with Admin Permissions",
+		Description: "GitHub workflow can assume AWS role with admin permissions",
+		Severity:    SeverityCritical,
+		Tags:        []string{"cicd", "github-actions", "oidc", "supply-chain"},
+		Detector: func(g *Graph, node *Node) *ToxicCombination {
+			if node.Kind != NodeKindRole || node.Provider != "aws" {
+				return nil
+			}
+
+			// Check if role trusts GitHub OIDC
+			trustPolicy, _ := node.Properties["trust_policy"].(string)
+			if !strings.Contains(trustPolicy, "token.actions.githubusercontent.com") {
+				return nil
+			}
+
+			// Check if role has admin permissions
+			hasAdmin := false
+			for _, edge := range g.GetOutEdges(node.ID) {
+				if edge.Kind == EdgeKindCanAdmin {
+					hasAdmin = true
+					break
+				}
+			}
+
+			if !hasAdmin {
+				return nil
+			}
+
+			// Check for weak subject conditions
+			hasWeakCondition := strings.Contains(trustPolicy, "repo:*") ||
+				!strings.Contains(trustPolicy, "StringEquals")
+
+			score := 80.0
+			if hasWeakCondition {
+				score = 95.0
+			}
+
+			factors := []*RiskFactor{
+				{Type: RiskFactorOverPrivilege, NodeID: node.ID, Description: "Role has admin-level permissions", Severity: SeverityCritical},
+				{Type: RiskFactorWeakAuth, NodeID: node.ID, Description: "Trusts external CI/CD provider (GitHub)", Severity: SeverityHigh},
+			}
+			if hasWeakCondition {
+				factors = append(factors, &RiskFactor{
+					Type: RiskFactorMisconfiguration, NodeID: node.ID,
+					Description: "Weak or missing OIDC subject conditions", Severity: SeverityCritical,
+				})
+			}
+
+			return &ToxicCombination{
+				ID:          fmt.Sprintf("TC-CICD-001-%s", node.ID),
+				Name:        "Overprivileged GitHub Actions Role",
+				Description: fmt.Sprintf("Role %s trusts GitHub Actions OIDC with admin permissions - supply chain attack vector", node.Name),
+				Severity:    SeverityCritical,
+				Score:       score,
+				Factors:     factors,
+				Remediation: []*RemediationStep{
+					{Priority: 1, Action: "Restrict OIDC subject condition to specific repo and branch", Resource: node.ID, Effort: "low"},
+					{Priority: 2, Action: "Apply least-privilege permissions to the role", Resource: node.ID, Effort: "medium"},
+					{Priority: 3, Action: "Add environment protection rules in GitHub", Resource: "github", Effort: "low"},
+					{Priority: 4, Action: "Enable CloudTrail logging for role assumption", Resource: node.ID, Effort: "low"},
+				},
+				AffectedAssets: []string{node.ID},
+				Tags:           []string{"cicd", "github-actions", "supply-chain", "mitre-t1195"},
+			}
+		},
+	}
+}
+
+// Rule: EKS node role with ECR push permissions (supply chain risk)
+func (e *ToxicCombinationEngine) ruleEKSNodeRoleECRPush() *ToxicCombinationRule {
+	return &ToxicCombinationRule{
+		ID:          "TC-CICD-002",
+		Name:        "EKS Node Role with ECR Push",
+		Description: "EKS worker node role can push to ECR - supply chain compromise risk",
+		Severity:    SeverityHigh,
+		Tags:        []string{"eks", "ecr", "supply-chain", "over-privilege"},
+		Detector: func(g *Graph, node *Node) *ToxicCombination {
+			if node.Kind != NodeKindRole || node.Provider != "aws" {
+				return nil
+			}
+
+			// Check if this is an EKS node role
+			roleName, _ := node.Properties["name"].(string)
+			isNodeRole := strings.Contains(strings.ToLower(roleName), "node") &&
+				(strings.Contains(strings.ToLower(roleName), "eks") ||
+					strings.Contains(strings.ToLower(roleName), "kubernetes"))
+
+			trustPolicy, _ := node.Properties["trust_policy"].(string)
+			trustsEC2 := strings.Contains(trustPolicy, "ec2.amazonaws.com")
+
+			if !isNodeRole && !trustsEC2 {
+				return nil
+			}
+
+			// Check for ECR push permissions
+			hasECRPush := false
+			perms := getNodePermissions(node)
+			for _, p := range perms {
+				if strings.Contains(p, "ecr:PutImage") ||
+					strings.Contains(p, "ecr:BatchCheckLayerAvailability") ||
+					strings.Contains(p, "ecr:InitiateLayerUpload") ||
+					strings.Contains(p, "ecr:*") {
+					hasECRPush = true
+					break
+				}
+			}
+
+			if !hasECRPush {
+				return nil
+			}
+
+			return &ToxicCombination{
+				ID:          fmt.Sprintf("TC-CICD-002-%s", node.ID),
+				Name:        "EKS Node with ECR Push Permissions",
+				Description: fmt.Sprintf("EKS node role %s can push images to ECR - compromised node could inject malicious images", node.Name),
+				Severity:    SeverityHigh,
+				Score:       75.0,
+				Factors: []*RiskFactor{
+					{Type: RiskFactorOverPrivilege, NodeID: node.ID, Description: "Node role has ECR push permissions", Severity: SeverityHigh},
+					{Type: RiskFactorLateralMove, NodeID: node.ID, Description: "Could inject malicious container images", Severity: SeverityHigh},
+				},
+				Remediation: []*RemediationStep{
+					{Priority: 1, Action: "Remove ECR push permissions from node role", Resource: node.ID, Effort: "low"},
+					{Priority: 2, Action: "Use dedicated CI/CD role for image pushing", Resource: node.ID, Effort: "medium"},
+					{Priority: 3, Action: "Enable ECR image scanning and signing", Resource: "ecr", Effort: "medium"},
+				},
+				AffectedAssets: []string{node.ID},
+				Tags:           []string{"eks", "ecr", "supply-chain"},
+			}
+		},
+	}
+}
+
+// AWS-Specific Rules
+
+// Rule: IMDSv1 enabled with sensitive IAM role - SSRF credential theft risk
+func (e *ToxicCombinationEngine) ruleIMDSv1WithSensitiveRole() *ToxicCombinationRule {
+	return &ToxicCombinationRule{
+		ID:          "TC-AWS-001",
+		Name:        "IMDSv1 Enabled with Sensitive Role",
+		Description: "EC2 instance with IMDSv1 (no hop limit) and privileged IAM role",
+		Severity:    SeverityCritical,
+		Tags:        []string{"aws", "imds", "ssrf", "credential-theft", "mitre-t1552"},
+		Detector: func(g *Graph, node *Node) *ToxicCombination {
+			if node.Kind != NodeKindInstance || node.Provider != "aws" {
+				return nil
+			}
+
+			// Check IMDS version - IMDSv2 requires HttpTokens=required
+			imdsV2Required, _ := node.Properties["imdsv2_required"].(bool)
+			httpTokens, _ := node.Properties["http_tokens"].(string)
+			if imdsV2Required || httpTokens == "required" {
+				return nil
+			}
+
+			// Check if instance has a sensitive role attached
+			hasSensitiveRole := false
+			var roleID string
+			for _, edge := range g.GetOutEdges(node.ID) {
+				if edge.Kind == EdgeKindCanAssume {
+					roleNode, ok := g.GetNode(edge.Target)
+					if !ok || roleNode.Kind != NodeKindRole {
+						continue
+					}
+					roleID = roleNode.ID
+
+					// Check if role has sensitive permissions
+					for _, roleEdge := range g.GetOutEdges(roleNode.ID) {
+						if roleEdge.Kind == EdgeKindCanAdmin ||
+							roleEdge.Kind == EdgeKindCanWrite {
+							hasSensitiveRole = true
+							break
+						}
+					}
+
+					// Also check for specific dangerous permissions
+					perms := getNodePermissions(roleNode)
+					for _, p := range perms {
+						if strings.Contains(p, "iam:") ||
+							strings.Contains(p, "sts:AssumeRole") ||
+							strings.Contains(p, "secretsmanager:") ||
+							strings.Contains(p, "ssm:GetParameter") ||
+							p == "*" {
+							hasSensitiveRole = true
+							break
+						}
+					}
+				}
+				if hasSensitiveRole {
+					break
+				}
+			}
+
+			if !hasSensitiveRole {
+				return nil
+			}
+
+			// Check if publicly exposed (increases severity)
+			isPublic := false
+			for _, edge := range g.GetInEdges(node.ID) {
+				if edge.Kind == EdgeKindExposedTo {
+					source, ok := g.GetNode(edge.Source)
+					if ok && source.Kind == NodeKindInternet {
+						isPublic = true
+						break
+					}
+				}
+			}
+
+			score := 85.0
+			if isPublic {
+				score = 95.0
+			}
+
+			factors := []*RiskFactor{
+				{Type: RiskFactorMisconfiguration, NodeID: node.ID, Description: "IMDSv1 enabled (HttpTokens not required)", Severity: SeverityCritical},
+				{Type: RiskFactorOverPrivilege, NodeID: roleID, Description: "Instance role has sensitive permissions", Severity: SeverityHigh},
+			}
+			if isPublic {
+				factors = append(factors, &RiskFactor{
+					Type: RiskFactorExposure, NodeID: node.ID,
+					Description: "Instance is publicly accessible", Severity: SeverityCritical,
+				})
+			}
+
+			return &ToxicCombination{
+				ID:          fmt.Sprintf("TC-AWS-001-%s", node.ID),
+				Name:        "SSRF-Vulnerable Instance with Privileged Role",
+				Description: fmt.Sprintf("Instance %s has IMDSv1 enabled with sensitive IAM role - SSRF attacks can steal credentials", node.Name),
+				Severity:    SeverityCritical,
+				Score:       score,
+				Factors:     factors,
+				Remediation: []*RemediationStep{
+					{Priority: 1, Action: "Enable IMDSv2 by setting HttpTokens=required", Resource: node.ID, Effort: "low", Automated: true},
+					{Priority: 2, Action: "Set HttpPutResponseHopLimit=1 to prevent container escapes", Resource: node.ID, Effort: "low", Automated: true},
+					{Priority: 3, Action: "Review and minimize instance role permissions", Resource: roleID, Effort: "medium"},
+				},
+				AffectedAssets: []string{node.ID, roleID},
+				Tags:           []string{"aws", "imds", "ssrf", "mitre-t1552"},
+			}
+		},
+	}
+}
+
+// Rule: S3 bucket publicly accessible with sensitive data
+func (e *ToxicCombinationEngine) ruleS3PublicBucketWithSensitiveData() *ToxicCombinationRule {
+	return &ToxicCombinationRule{
+		ID:          "TC-AWS-002",
+		Name:        "Public S3 Bucket with Sensitive Data",
+		Description: "S3 bucket is publicly accessible and contains sensitive data",
+		Severity:    SeverityCritical,
+		Tags:        []string{"aws", "s3", "data-exposure", "public-access"},
+		Detector: func(g *Graph, node *Node) *ToxicCombination {
+			if node.Kind != NodeKindBucket || node.Provider != "aws" {
+				return nil
+			}
+
+			// Check if bucket is public
+			isPublic, _ := node.Properties["public_access"].(bool)
+			publicACL, _ := node.Properties["public_acl"].(bool)
+			blockPublicAccess, _ := node.Properties["block_public_access"].(bool)
+
+			if !isPublic && !publicACL && blockPublicAccess {
+				return nil
+			}
+
+			// Check if bucket contains sensitive data
+			hasSensitiveData := false
+			dataClassification, _ := node.Properties["data_classification"].(string)
+			containsPII, _ := node.Properties["contains_pii"].(bool)
+			containsSecrets, _ := node.Properties["contains_secrets"].(bool)
+
+			if dataClassification == "confidential" || dataClassification == "restricted" ||
+				containsPII || containsSecrets {
+				hasSensitiveData = true
+			}
+
+			// Also check via graph edges for secrets that bucket can read
+			for _, edge := range g.GetOutEdges(node.ID) {
+				if edge.Kind == EdgeKindCanRead || edge.Kind == EdgeKindConnectsTo {
+					target, ok := g.GetNode(edge.Target)
+					if ok && target.Kind == NodeKindSecret {
+						hasSensitiveData = true
+						break
+					}
+				}
+			}
+
+			if !hasSensitiveData {
+				return nil
+			}
+
+			// Check encryption status
+			encrypted, _ := node.Properties["encrypted"].(bool)
+
+			score := 90.0
+			if !encrypted {
+				score = 98.0
+			}
+
+			factors := []*RiskFactor{
+				{Type: RiskFactorExposure, NodeID: node.ID, Description: "Bucket allows public access", Severity: SeverityCritical},
+				{Type: RiskFactorSensitiveData, NodeID: node.ID, Description: "Contains sensitive/classified data", Severity: SeverityCritical},
+			}
+			if !encrypted {
+				factors = append(factors, &RiskFactor{
+					Type: RiskFactorMisconfiguration, NodeID: node.ID,
+					Description: "Bucket is not encrypted", Severity: SeverityHigh,
+				})
+			}
+
+			return &ToxicCombination{
+				ID:          fmt.Sprintf("TC-AWS-002-%s", node.ID),
+				Name:        "Public Bucket with Sensitive Data",
+				Description: fmt.Sprintf("S3 bucket %s is publicly accessible and contains sensitive data - data breach risk", node.Name),
+				Severity:    SeverityCritical,
+				Score:       score,
+				Factors:     factors,
+				Remediation: []*RemediationStep{
+					{Priority: 1, Action: "Enable S3 Block Public Access at bucket level", Resource: node.ID, Effort: "low", Automated: true},
+					{Priority: 2, Action: "Review and remove public ACLs", Resource: node.ID, Effort: "low"},
+					{Priority: 3, Action: "Enable server-side encryption (SSE-S3 or SSE-KMS)", Resource: node.ID, Effort: "low", Automated: true},
+					{Priority: 4, Action: "Enable access logging and configure alerts", Resource: node.ID, Effort: "medium"},
+				},
+				AffectedAssets: []string{node.ID},
+				Tags:           []string{"aws", "s3", "data-exposure", "compliance"},
+			}
+		},
+	}
+}
+
+// Rule: Lambda in VPC with secrets access and no VPC endpoints
+func (e *ToxicCombinationEngine) ruleLambdaVPCSecretsAccess() *ToxicCombinationRule {
+	return &ToxicCombinationRule{
+		ID:          "TC-AWS-003",
+		Name:        "Lambda VPC with Secrets Access",
+		Description: "Lambda in VPC can access secrets and has internet egress",
+		Severity:    SeverityHigh,
+		Tags:        []string{"aws", "lambda", "secrets", "vpc", "data-exfiltration"},
+		Detector: func(g *Graph, node *Node) *ToxicCombination {
+			if node.Kind != NodeKindFunction || node.Provider != "aws" {
+				return nil
+			}
+
+			// Check if Lambda is in VPC
+			inVPC, _ := node.Properties["vpc_config"].(bool)
+			vpcID, hasVPC := node.Properties["vpc_id"].(string)
+			if !inVPC && !hasVPC {
+				return nil
+			}
+			if vpcID == "" && !inVPC {
+				return nil
+			}
+
+			// Check if Lambda has secrets access
+			hasSecretsAccess := false
+			var roleID string
+			for _, edge := range g.GetOutEdges(node.ID) {
+				if edge.Kind == EdgeKindCanAssume {
+					roleNode, ok := g.GetNode(edge.Target)
+					if !ok || roleNode.Kind != NodeKindRole {
+						continue
+					}
+					roleID = roleNode.ID
+
+					perms := getNodePermissions(roleNode)
+					for _, p := range perms {
+						if strings.Contains(p, "secretsmanager:GetSecretValue") ||
+							strings.Contains(p, "secretsmanager:*") ||
+							strings.Contains(p, "ssm:GetParameter") ||
+							strings.Contains(p, "ssm:GetParameters") {
+							hasSecretsAccess = true
+							break
+						}
+					}
+				}
+				if hasSecretsAccess {
+					break
+				}
+			}
+
+			if !hasSecretsAccess {
+				return nil
+			}
+
+			// Check for internet egress (NAT Gateway or Internet Gateway)
+			hasInternetEgress, _ := node.Properties["has_internet_egress"].(bool)
+			hasNATGateway, _ := node.Properties["has_nat_gateway"].(bool)
+
+			if !hasInternetEgress && !hasNATGateway {
+				return nil // No egress path, lower risk
+			}
+
+			return &ToxicCombination{
+				ID:          fmt.Sprintf("TC-AWS-003-%s", node.ID),
+				Name:        "Lambda with Secrets Access and Internet Egress",
+				Description: fmt.Sprintf("Lambda %s can read secrets and has internet egress - potential data exfiltration path", node.Name),
+				Severity:    SeverityHigh,
+				Score:       75.0,
+				Factors: []*RiskFactor{
+					{Type: RiskFactorSensitiveData, NodeID: roleID, Description: "Can access secrets (SecretsManager/SSM)", Severity: SeverityHigh},
+					{Type: RiskFactorExposure, NodeID: node.ID, Description: "Has internet egress via NAT/IGW", Severity: SeverityMedium},
+					{Type: RiskFactorLateralMove, NodeID: node.ID, Description: "Potential data exfiltration path", Severity: SeverityHigh},
+				},
+				Remediation: []*RemediationStep{
+					{Priority: 1, Action: "Use VPC endpoints for SecretsManager/SSM instead of NAT", Resource: node.ID, Effort: "medium"},
+					{Priority: 2, Action: "Restrict Lambda security group egress rules", Resource: node.ID, Effort: "low"},
+					{Priority: 3, Action: "Implement least-privilege for secrets access", Resource: roleID, Effort: "medium"},
+					{Priority: 4, Action: "Enable VPC Flow Logs for monitoring", Resource: vpcID, Effort: "low"},
+				},
+				AffectedAssets: []string{node.ID, roleID},
+				Tags:           []string{"aws", "lambda", "secrets", "exfiltration"},
+			}
+		},
+	}
+}
+
+// GCP-Specific Rules
+
+// Rule: GCP Service Account key exposed or downloadable
+func (e *ToxicCombinationEngine) ruleGCPServiceAccountKeyExposed() *ToxicCombinationRule {
+	return &ToxicCombinationRule{
+		ID:          "TC-GCP-001",
+		Name:        "GCP Service Account Key Exposed",
+		Description: "GCP service account has user-managed keys that may be exposed",
+		Severity:    SeverityCritical,
+		Tags:        []string{"gcp", "service-account", "credential-theft", "key-management"},
+		Detector: func(g *Graph, node *Node) *ToxicCombination {
+			if node.Kind != NodeKindServiceAccount || node.Provider != "gcp" {
+				return nil
+			}
+
+			// Check for user-managed keys
+			hasUserKeys, _ := node.Properties["has_user_managed_keys"].(bool)
+			keyCount, _ := node.Properties["key_count"].(int)
+			oldestKeyAge, _ := node.Properties["oldest_key_age_days"].(int)
+
+			if !hasUserKeys && keyCount == 0 {
+				return nil
+			}
+
+			// Check if SA has elevated permissions
+			hasElevatedPerms := false
+			for _, edge := range g.GetOutEdges(node.ID) {
+				if edge.Kind == EdgeKindCanAdmin || edge.Kind == EdgeKindCanWrite {
+					hasElevatedPerms = true
+					break
+				}
+			}
+
+			// Also check for dangerous IAM roles
+			roles, _ := node.Properties["roles"].([]any)
+			for _, r := range roles {
+				role, _ := r.(string)
+				if strings.Contains(role, "owner") ||
+					strings.Contains(role, "editor") ||
+					strings.Contains(role, "admin") {
+					hasElevatedPerms = true
+					break
+				}
+			}
+
+			if !hasElevatedPerms {
+				return nil
+			}
+
+			score := 85.0
+			if oldestKeyAge > 90 {
+				score = 95.0 // Old keys are higher risk
+			}
+
+			factors := []*RiskFactor{
+				{Type: RiskFactorWeakAuth, NodeID: node.ID, Description: "User-managed service account keys exist", Severity: SeverityCritical},
+				{Type: RiskFactorOverPrivilege, NodeID: node.ID, Description: "Service account has elevated permissions", Severity: SeverityHigh},
+			}
+			if oldestKeyAge > 90 {
+				factors = append(factors, &RiskFactor{
+					Type: RiskFactorMisconfiguration, NodeID: node.ID,
+					Description: fmt.Sprintf("Key not rotated in %d days", oldestKeyAge), Severity: SeverityHigh,
+				})
+			}
+
+			return &ToxicCombination{
+				ID:          fmt.Sprintf("TC-GCP-001-%s", node.ID),
+				Name:        "Privileged Service Account with User Keys",
+				Description: fmt.Sprintf("Service account %s has user-managed keys with elevated permissions - key theft enables account takeover", node.Name),
+				Severity:    SeverityCritical,
+				Score:       score,
+				Factors:     factors,
+				Remediation: []*RemediationStep{
+					{Priority: 1, Action: "Delete user-managed keys and use workload identity", Resource: node.ID, Effort: "medium"},
+					{Priority: 2, Action: "If keys required, rotate immediately and set 90-day expiry", Resource: node.ID, Effort: "low"},
+					{Priority: 3, Action: "Apply least-privilege IAM bindings", Resource: node.ID, Effort: "medium"},
+					{Priority: 4, Action: "Enable Cloud Audit Logs for service account usage", Resource: node.ID, Effort: "low"},
+				},
+				AffectedAssets: []string{node.ID},
+				Tags:           []string{"gcp", "service-account", "credential-theft"},
+			}
+		},
+	}
+}
+
+// Rule: GCP GCS bucket publicly accessible
+func (e *ToxicCombinationEngine) ruleGCPPublicGCSBucket() *ToxicCombinationRule {
+	return &ToxicCombinationRule{
+		ID:          "TC-GCP-002",
+		Name:        "Public GCS Bucket with Sensitive Data",
+		Description: "GCS bucket is publicly accessible and may contain sensitive data",
+		Severity:    SeverityCritical,
+		Tags:        []string{"gcp", "gcs", "storage", "data-exposure", "public-access"},
+		Detector: func(g *Graph, node *Node) *ToxicCombination {
+			if node.Kind != NodeKindBucket || node.Provider != "gcp" {
+				return nil
+			}
+
+			// Check if bucket is public
+			isPublic, _ := node.Properties["public_access"].(bool)
+			allUsers, _ := node.Properties["all_users_access"].(bool)
+			allAuthUsers, _ := node.Properties["all_authenticated_users_access"].(bool)
+
+			if !isPublic && !allUsers && !allAuthUsers {
+				return nil
+			}
+
+			// Check for sensitive data indicators
+			hasSensitiveData := false
+			dataClassification, _ := node.Properties["data_classification"].(string)
+			containsPII, _ := node.Properties["contains_pii"].(bool)
+
+			if dataClassification == "confidential" || dataClassification == "restricted" || containsPII {
+				hasSensitiveData = true
+			}
+
+			// Check bucket name for sensitive patterns
+			bucketName := strings.ToLower(node.Name)
+			for _, pattern := range sensitiveDataPatterns {
+				if strings.Contains(bucketName, pattern) {
+					hasSensitiveData = true
+					break
+				}
+			}
+
+			if !hasSensitiveData {
+				return nil
+			}
+
+			score := 90.0
+			if allUsers {
+				score = 98.0 // allUsers is worse than allAuthenticatedUsers
+			}
+
+			return &ToxicCombination{
+				ID:          fmt.Sprintf("TC-GCP-002-%s", node.ID),
+				Name:        "Public GCS Bucket with Sensitive Data",
+				Description: fmt.Sprintf("GCS bucket %s is publicly accessible and likely contains sensitive data", node.Name),
+				Severity:    SeverityCritical,
+				Score:       score,
+				Factors: []*RiskFactor{
+					{Type: RiskFactorExposure, NodeID: node.ID, Description: "Bucket allows public/anonymous access", Severity: SeverityCritical},
+					{Type: RiskFactorSensitiveData, NodeID: node.ID, Description: "Bucket name or content indicates sensitive data", Severity: SeverityCritical},
+				},
+				Remediation: []*RemediationStep{
+					{Priority: 1, Action: "Remove allUsers and allAuthenticatedUsers IAM bindings", Resource: node.ID, Effort: "low"},
+					{Priority: 2, Action: "Enable uniform bucket-level access", Resource: node.ID, Effort: "low"},
+					{Priority: 3, Action: "Enable organization policy to prevent public access", Resource: "organization", Effort: "medium"},
+					{Priority: 4, Action: "Enable Cloud Audit Logs and set up alerts", Resource: node.ID, Effort: "low"},
+				},
+				AffectedAssets: []string{node.ID},
+				Tags:           []string{"gcp", "gcs", "data-exposure", "compliance"},
+			}
+		},
+	}
+}
+
+// Rule: GCP Compute instance using default service account
+func (e *ToxicCombinationEngine) ruleGCPComputeDefaultSA() *ToxicCombinationRule {
+	return &ToxicCombinationRule{
+		ID:          "TC-GCP-003",
+		Name:        "Compute Instance with Default Service Account",
+		Description: "GCE instance uses the default compute service account with broad permissions",
+		Severity:    SeverityHigh,
+		Tags:        []string{"gcp", "compute", "service-account", "over-privilege"},
+		Detector: func(g *Graph, node *Node) *ToxicCombination {
+			if node.Kind != NodeKindInstance || node.Provider != "gcp" {
+				return nil
+			}
+
+			// Check if using default service account
+			saEmail, _ := node.Properties["service_account_email"].(string)
+			isDefault := strings.Contains(saEmail, "-compute@developer.gserviceaccount.com")
+
+			if !isDefault {
+				return nil
+			}
+
+			// Check scopes - default SA with cloud-platform scope is dangerous
+			scopes, _ := node.Properties["service_account_scopes"].([]any)
+			hasFullScope := false
+			for _, s := range scopes {
+				scope, _ := s.(string)
+				if strings.Contains(scope, "cloud-platform") || scope == "https://www.googleapis.com/auth/cloud-platform" {
+					hasFullScope = true
+					break
+				}
+			}
+
+			if !hasFullScope {
+				return nil
+			}
+
+			// Check if instance is externally accessible
+			isPublic := false
+			for _, edge := range g.GetInEdges(node.ID) {
+				if edge.Kind == EdgeKindExposedTo {
+					source, ok := g.GetNode(edge.Source)
+					if ok && source.Kind == NodeKindInternet {
+						isPublic = true
+						break
+					}
+				}
+			}
+
+			score := 75.0
+			if isPublic {
+				score = 90.0
+			}
+
+			factors := []*RiskFactor{
+				{Type: RiskFactorOverPrivilege, NodeID: node.ID, Description: "Uses default compute service account", Severity: SeverityHigh},
+				{Type: RiskFactorMisconfiguration, NodeID: node.ID, Description: "Has cloud-platform scope (full API access)", Severity: SeverityHigh},
+			}
+			if isPublic {
+				factors = append(factors, &RiskFactor{
+					Type: RiskFactorExposure, NodeID: node.ID,
+					Description: "Instance is publicly accessible", Severity: SeverityHigh,
+				})
+			}
+
+			return &ToxicCombination{
+				ID:          fmt.Sprintf("TC-GCP-003-%s", node.ID),
+				Name:        "Default SA with Full Cloud Access",
+				Description: fmt.Sprintf("Instance %s uses default service account with cloud-platform scope - compromise grants full project access", node.Name),
+				Severity:    SeverityHigh,
+				Score:       score,
+				Factors:     factors,
+				Remediation: []*RemediationStep{
+					{Priority: 1, Action: "Create dedicated service account with minimal permissions", Resource: node.ID, Effort: "medium"},
+					{Priority: 2, Action: "Restrict scopes to only required APIs", Resource: node.ID, Effort: "low"},
+					{Priority: 3, Action: "Disable default service account at project level", Resource: "project", Effort: "low"},
+				},
+				AffectedAssets: []string{node.ID},
+				Tags:           []string{"gcp", "compute", "service-account"},
+			}
+		},
+	}
+}
+
+// Azure-Specific Rules
+
+// Rule: Azure managed identity with overprivileged role assignments
+func (e *ToxicCombinationEngine) ruleAzureManagedIdentityOverprivileged() *ToxicCombinationRule {
+	return &ToxicCombinationRule{
+		ID:          "TC-AZURE-001",
+		Name:        "Overprivileged Managed Identity",
+		Description: "Azure managed identity has Owner or Contributor role at subscription scope",
+		Severity:    SeverityCritical,
+		Tags:        []string{"azure", "managed-identity", "rbac", "over-privilege"},
+		Detector: func(g *Graph, node *Node) *ToxicCombination {
+			if node.Kind != NodeKindServiceAccount || node.Provider != "azure" {
+				return nil
+			}
+
+			// Check if this is a managed identity
+			identityType, _ := node.Properties["identity_type"].(string)
+			if identityType != "SystemAssigned" && identityType != "UserAssigned" {
+				return nil
+			}
+
+			// Check role assignments
+			roleAssignments, _ := node.Properties["role_assignments"].([]any)
+			hasOverprivilegedRole := false
+			var dangerousRole string
+			var scope string
+
+			for _, ra := range roleAssignments {
+				assignment, _ := ra.(map[string]any)
+				role, _ := assignment["role_definition_name"].(string)
+				assignmentScope, _ := assignment["scope"].(string)
+
+				// Check for dangerous roles
+				if role == "Owner" || role == "Contributor" || role == "User Access Administrator" {
+					// Check if scope is subscription or management group level
+					if strings.HasPrefix(assignmentScope, "/subscriptions/") &&
+						!strings.Contains(assignmentScope, "/resourceGroups/") {
+						hasOverprivilegedRole = true
+						dangerousRole = role
+						scope = assignmentScope
+						break
+					}
+				}
+			}
+
+			if !hasOverprivilegedRole {
+				return nil
+			}
+
+			return &ToxicCombination{
+				ID:          fmt.Sprintf("TC-AZURE-001-%s", node.ID),
+				Name:        "Managed Identity with Subscription-Level Privileges",
+				Description: fmt.Sprintf("Managed identity %s has %s role at subscription scope - compromise grants full subscription access", node.Name, dangerousRole),
+				Severity:    SeverityCritical,
+				Score:       92.0,
+				Factors: []*RiskFactor{
+					{Type: RiskFactorOverPrivilege, NodeID: node.ID, Description: fmt.Sprintf("Has %s role at subscription level", dangerousRole), Severity: SeverityCritical},
+					{Type: RiskFactorPrivEscalation, NodeID: node.ID, Description: "Can escalate privileges across subscription", Severity: SeverityCritical},
+				},
+				Remediation: []*RemediationStep{
+					{Priority: 1, Action: "Scope role assignment to specific resource group", Resource: scope, Effort: "medium"},
+					{Priority: 2, Action: "Replace Owner/Contributor with specific roles (e.g., Storage Blob Data Contributor)", Resource: node.ID, Effort: "medium"},
+					{Priority: 3, Action: "Implement PIM for just-in-time access if elevated access is needed", Resource: node.ID, Effort: "high"},
+				},
+				AffectedAssets: []string{node.ID},
+				Tags:           []string{"azure", "managed-identity", "rbac"},
+			}
+		},
+	}
+}
+
+// Rule: Azure storage blob container with public access
+func (e *ToxicCombinationEngine) ruleAzurePublicStorageBlob() *ToxicCombinationRule {
+	return &ToxicCombinationRule{
+		ID:          "TC-AZURE-002",
+		Name:        "Public Azure Blob Container",
+		Description: "Azure blob container allows anonymous public access",
+		Severity:    SeverityCritical,
+		Tags:        []string{"azure", "storage", "blob", "data-exposure", "public-access"},
+		Detector: func(g *Graph, node *Node) *ToxicCombination {
+			if node.Kind != NodeKindBucket || node.Provider != "azure" {
+				return nil
+			}
+
+			// Check public access level
+			publicAccess, _ := node.Properties["public_access"].(string)
+			allowBlobPublicAccess, _ := node.Properties["allow_blob_public_access"].(bool)
+
+			// Public access can be "blob", "container", or "" (none)
+			if publicAccess == "" && !allowBlobPublicAccess {
+				return nil
+			}
+
+			isPublic := publicAccess == "blob" || publicAccess == "container" || allowBlobPublicAccess
+
+			if !isPublic {
+				return nil
+			}
+
+			// Check for sensitive data indicators
+			hasSensitiveData := false
+			dataClassification, _ := node.Properties["data_classification"].(string)
+			if dataClassification == "confidential" || dataClassification == "restricted" {
+				hasSensitiveData = true
+			}
+
+			// Check container name for sensitive patterns
+			containerName := strings.ToLower(node.Name)
+			for _, pattern := range sensitiveDataPatterns {
+				if strings.Contains(containerName, pattern) {
+					hasSensitiveData = true
+					break
+				}
+			}
+
+			if !hasSensitiveData {
+				return nil
+			}
+
+			score := 88.0
+			if publicAccess == "container" {
+				score = 95.0 // Container-level access is worse than blob-level
+			}
+
+			return &ToxicCombination{
+				ID:          fmt.Sprintf("TC-AZURE-002-%s", node.ID),
+				Name:        "Public Blob Container with Sensitive Data",
+				Description: fmt.Sprintf("Blob container %s allows public access and likely contains sensitive data", node.Name),
+				Severity:    SeverityCritical,
+				Score:       score,
+				Factors: []*RiskFactor{
+					{Type: RiskFactorExposure, NodeID: node.ID, Description: fmt.Sprintf("Container has public access level: %s", publicAccess), Severity: SeverityCritical},
+					{Type: RiskFactorSensitiveData, NodeID: node.ID, Description: "Container name or classification indicates sensitive data", Severity: SeverityCritical},
+				},
+				Remediation: []*RemediationStep{
+					{Priority: 1, Action: "Set public access level to 'None' on the container", Resource: node.ID, Effort: "low"},
+					{Priority: 2, Action: "Disable 'Allow Blob public access' on storage account", Resource: node.ID, Effort: "low"},
+					{Priority: 3, Action: "Use Azure Policy to enforce private access", Resource: "subscription", Effort: "medium"},
+					{Priority: 4, Action: "Enable diagnostic logging and alerts", Resource: node.ID, Effort: "low"},
+				},
+				AffectedAssets: []string{node.ID},
+				Tags:           []string{"azure", "storage", "data-exposure", "compliance"},
+			}
+		},
+	}
 }

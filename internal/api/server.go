@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -621,12 +622,59 @@ func (s *Server) executeQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate query is read-only (no DDL/DML)
+	if err := validateReadOnlyQuery(req.Query); err != nil {
+		s.error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	result, err := s.app.Snowflake.Query(r.Context(), req.Query)
 	if err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
+		s.error(w, http.StatusInternalServerError, "query execution failed")
 		return
 	}
 	s.json(w, http.StatusOK, result)
+}
+
+// validateReadOnlyQuery ensures the query is a read-only SELECT statement
+func validateReadOnlyQuery(query string) error {
+	// Normalize query for checking
+	normalized := strings.ToUpper(strings.TrimSpace(query))
+
+	// Must start with SELECT
+	if !strings.HasPrefix(normalized, "SELECT") {
+		return fmt.Errorf("only SELECT queries are allowed")
+	}
+
+	// Block dangerous keywords that could modify data or schema
+	dangerousKeywords := []string{
+		"INSERT", "UPDATE", "DELETE", "DROP", "TRUNCATE", "ALTER",
+		"CREATE", "REPLACE", "MERGE", "GRANT", "REVOKE", "EXECUTE",
+		"CALL", "COPY", "PUT", "GET", "REMOVE", "UNDROP",
+	}
+
+	for _, keyword := range dangerousKeywords {
+		// Check for keyword as a separate word (not part of column name)
+		if strings.Contains(" "+normalized+" ", " "+keyword+" ") {
+			return fmt.Errorf("query contains forbidden keyword: %s", keyword)
+		}
+	}
+
+	// Block comment-based injection attempts
+	if strings.Contains(query, "--") || strings.Contains(query, "/*") {
+		return fmt.Errorf("SQL comments are not allowed")
+	}
+
+	// Block multiple statements
+	if strings.Contains(query, ";") {
+		// Allow trailing semicolon but not multiple statements
+		trimmed := strings.TrimSuffix(strings.TrimSpace(query), ";")
+		if strings.Contains(trimmed, ";") {
+			return fmt.Errorf("multiple SQL statements are not allowed")
+		}
+	}
+
+	return nil
 }
 
 // Asset endpoints
@@ -1947,7 +1995,11 @@ func (s *Server) createWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hook := s.app.Webhooks.RegisterWebhook(req.URL, req.Events, req.Secret)
+	hook, err := s.app.Webhooks.RegisterWebhook(req.URL, req.Events, req.Secret)
+	if err != nil {
+		s.error(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	s.json(w, http.StatusCreated, map[string]interface{}{
 		"id":         hook.ID,
 		"url":        hook.URL,
@@ -2912,7 +2964,6 @@ func (s *Server) listToxicCombinations(w http.ResponseWriter, r *http.Request) {
 	}
 
 	engine := graph.NewToxicCombinationEngine()
-	engine.RegisterMultiCloudRules()
 	results := engine.Analyze(s.app.SecurityGraph)
 
 	// Filter by severity if requested
@@ -3285,7 +3336,6 @@ func (s *Server) visualizeToxicCombination(w http.ResponseWriter, r *http.Reques
 	}
 
 	engine := graph.NewToxicCombinationEngine()
-	engine.RegisterMultiCloudRules()
 	results := engine.Analyze(s.app.SecurityGraph)
 
 	var targetTC *graph.ToxicCombination

@@ -72,21 +72,44 @@ type PermissionSource struct {
 
 // EffectivePermissionsCalculator computes real permissions
 type EffectivePermissionsCalculator struct {
-	graph *Graph
-	cache sync.Map // principalID -> *EffectivePermissions
+	graph        *Graph
+	cache        sync.Map // principalID -> *cachedPermissions
+	cacheVersion uint64
+	mu           sync.RWMutex
+}
+
+type cachedPermissions struct {
+	permissions *EffectivePermissions
+	version     uint64
 }
 
 // NewEffectivePermissionsCalculator creates a new calculator
 func NewEffectivePermissionsCalculator(g *Graph) *EffectivePermissionsCalculator {
-	return &EffectivePermissionsCalculator{graph: g}
+	return &EffectivePermissionsCalculator{graph: g, cacheVersion: 1}
+}
+
+// InvalidateCache invalidates all cached permissions (call when graph changes)
+func (c *EffectivePermissionsCalculator) InvalidateCache() {
+	c.mu.Lock()
+	c.cacheVersion++
+	c.mu.Unlock()
+}
+
+// InvalidatePrincipal invalidates cache for a specific principal
+func (c *EffectivePermissionsCalculator) InvalidatePrincipal(principalID string) {
+	c.cache.Delete(principalID)
 }
 
 // Calculate computes effective permissions for a principal
 func (c *EffectivePermissionsCalculator) Calculate(principalID string) *EffectivePermissions {
-	// Check cache
+	// Check cache with version validation
+	c.mu.RLock()
+	currentVersion := c.cacheVersion
+	c.mu.RUnlock()
+
 	if cached, ok := c.cache.Load(principalID); ok {
-		if ep, ok := cached.(*EffectivePermissions); ok {
-			return ep
+		if cp, ok := cached.(*cachedPermissions); ok && cp.version == currentVersion {
+			return cp.permissions
 		}
 	}
 
@@ -113,8 +136,11 @@ func (c *EffectivePermissionsCalculator) Calculate(principalID string) *Effectiv
 	// Assess risk
 	ep.RiskAssessment = c.assessRisk(ep)
 
-	// Cache result
-	c.cache.Store(principalID, ep)
+	// Cache result with version
+	c.cache.Store(principalID, &cachedPermissions{
+		permissions: ep,
+		version:     currentVersion,
+	})
 
 	return ep
 }
@@ -433,17 +459,29 @@ func (c *EffectivePermissionsCalculator) applyServiceControlPolicies(
 	// Find all SCP nodes
 	for _, node := range c.graph.GetNodesByKind(NodeKindSCP) {
 		// Check if this SCP applies to the principal's account
-		if targets, ok := node.Properties["target_accounts"].([]string); ok {
-			applies := false
-			for _, target := range targets {
-				if target == accountID || target == "*" {
-					applies = true
-					break
+		applies := false
+		if targetsRaw, exists := node.Properties["target_accounts"]; exists {
+			switch targets := targetsRaw.(type) {
+			case []string:
+				for _, target := range targets {
+					if target == accountID || target == "*" {
+						applies = true
+						break
+					}
+				}
+			case []any:
+				for _, targetRaw := range targets {
+					if target, ok := targetRaw.(string); ok {
+						if target == accountID || target == "*" {
+							applies = true
+							break
+						}
+					}
 				}
 			}
-			if !applies {
-				continue
-			}
+		}
+		if !applies {
+			continue
 		}
 
 		// Get denied actions from SCP
