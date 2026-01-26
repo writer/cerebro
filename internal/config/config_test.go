@@ -19,8 +19,8 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.SnowflakeDatabase != "CEREBRO" {
 		t.Errorf("expected default database 'CEREBRO', got '%s'", cfg.SnowflakeDatabase)
 	}
-	if cfg.SnowflakeSchema != "RAW" {
-		t.Errorf("expected default schema 'RAW', got '%s'", cfg.SnowflakeSchema)
+	if cfg.SnowflakeSchema != "CEREBRO" {
+		t.Errorf("expected default schema 'CEREBRO', got '%s'", cfg.SnowflakeSchema)
 	}
 	if cfg.CedarPoliciesPath != "policies" {
 		t.Errorf("expected default policies path 'policies', got '%s'", cfg.CedarPoliciesPath)

@@ -213,7 +213,7 @@ app_environment = {
     "LOG_LEVEL": "info",
     "CEDAR_POLICIES_PATH": "/app/policies",
     "SNOWFLAKE_DATABASE": config.get("snowflakeDatabase") or "CEREBRO",
-    "SNOWFLAKE_SCHEMA": config.get("snowflakeSchema") or "RAW",
+    "SNOWFLAKE_SCHEMA": config.get("snowflakeSchema") or "CEREBRO",
     "JOB_REGION": aws.get_region().region,
 }
 

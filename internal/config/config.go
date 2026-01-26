@@ -38,7 +38,7 @@ func Load() *Config {
 		SnowflakePrivateKey: normalizePrivateKey(getEnv("SNOWFLAKE_PRIVATE_KEY", "")),
 		SnowflakeWarehouse:  getEnv("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH"),
 		SnowflakeDatabase:   getEnv("SNOWFLAKE_DATABASE", "CEREBRO"),
-		SnowflakeSchema:     getEnv("SNOWFLAKE_SCHEMA", "RAW"),
+		SnowflakeSchema:     getEnv("SNOWFLAKE_SCHEMA", "CEREBRO"),
 		SnowflakeRole:       getEnv("SNOWFLAKE_ROLE", ""),
 		CedarPoliciesPath:   getEnv("CEDAR_POLICIES_PATH", "policies"),
 
