@@ -150,8 +150,8 @@ func TestServiceEmit(t *testing.T) {
 	}))
 	defer server.Close()
 
-	svc := NewService()
-	svc.RegisterWebhookUnsafe(server.URL, []EventType{EventFindingCreated}, "")
+	svc := NewServiceForTesting()
+	_, _ = svc.RegisterWebhook(server.URL, []EventType{EventFindingCreated}, "")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -177,8 +177,8 @@ func TestServiceEmitWithSignature(t *testing.T) {
 	}))
 	defer server.Close()
 
-	svc := NewService()
-	svc.RegisterWebhookUnsafe(server.URL, []EventType{EventFindingCreated}, "mysecret")
+	svc := NewServiceForTesting()
+	_, _ = svc.RegisterWebhook(server.URL, []EventType{EventFindingCreated}, "mysecret")
 
 	ctx := context.Background()
 	svc.Emit(ctx, EventFindingCreated, map[string]interface{}{"test": true})
@@ -202,9 +202,9 @@ func TestServiceEmitFiltersByEventType(t *testing.T) {
 	}))
 	defer server.Close()
 
-	svc := NewService()
+	svc := NewServiceForTesting()
 	// Only subscribe to ScanCompleted, not FindingCreated
-	svc.RegisterWebhookUnsafe(server.URL, []EventType{EventScanCompleted}, "")
+	_, _ = svc.RegisterWebhook(server.URL, []EventType{EventScanCompleted}, "")
 
 	ctx := context.Background()
 	svc.Emit(ctx, EventFindingCreated, map[string]interface{}{"test": true})
@@ -231,8 +231,8 @@ func TestServiceDeliveries(t *testing.T) {
 	}))
 	defer server.Close()
 
-	svc := NewService()
-	webhook := svc.RegisterWebhookUnsafe(server.URL, []EventType{EventFindingCreated}, "")
+	svc := NewServiceForTesting()
+	webhook, _ := svc.RegisterWebhook(server.URL, []EventType{EventFindingCreated}, "")
 
 	ctx := context.Background()
 	svc.Emit(ctx, EventFindingCreated, map[string]interface{}{"test": true})
@@ -270,6 +270,63 @@ func TestVerifySignature(t *testing.T) {
 
 	if VerifySignature(payload, validSig, "wrongsecret") {
 		t.Error("expected wrong secret to fail verification")
+	}
+}
+
+func TestValidateWebhookURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		url     string
+		wantErr bool
+	}{
+		{"valid https", "https://example.com/webhook", false},
+		{"http not allowed", "http://example.com/webhook", true},
+		{"empty url", "", true},
+		{"localhost blocked", "http://localhost/webhook", true},
+		{"127.0.0.1 blocked", "http://127.0.0.1/webhook", true},
+		{"private 10.x blocked", "http://10.0.0.1/webhook", true},
+		{"private 192.168.x blocked", "http://192.168.1.1/webhook", true},
+		{"private 172.16.x blocked", "http://172.16.0.1/webhook", true},
+		{"metadata endpoint blocked", "http://169.254.169.254/webhook", true},
+		{"ftp scheme blocked", "ftp://example.com/webhook", true},
+		{"invalid url", "not-a-url", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateWebhookURL(tt.url)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateWebhookURL(%q) error = %v, wantErr %v", tt.url, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestRegisterWebhookSSRFProtection(t *testing.T) {
+	svc := NewService() // Use regular service (with validation)
+
+	// Should reject localhost
+	_, err := svc.RegisterWebhook("http://localhost/hook", []EventType{EventFindingCreated}, "")
+	if err == nil {
+		t.Error("expected error for localhost webhook")
+	}
+
+	// Should reject private IPs
+	_, err = svc.RegisterWebhook("http://10.0.0.1/hook", []EventType{EventFindingCreated}, "")
+	if err == nil {
+		t.Error("expected error for private IP webhook")
+	}
+
+	// Should reject invalid events
+	_, err = svc.RegisterWebhook("https://example.com/hook", []EventType{"invalid.event"}, "")
+	if err == nil {
+		t.Error("expected error for invalid event type")
+	}
+
+	// Should reject empty events
+	_, err = svc.RegisterWebhook("https://example.com/hook", []EventType{}, "")
+	if err == nil {
+		t.Error("expected error for empty events")
 	}
 }
 

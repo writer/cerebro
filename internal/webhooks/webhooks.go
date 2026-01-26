@@ -20,6 +20,95 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+// ErrInvalidWebhookURL is returned when a webhook URL fails validation
+var ErrInvalidWebhookURL = errors.New("invalid webhook URL")
+
+// ValidateWebhookURL checks if a URL is safe for webhook delivery.
+// It prevents SSRF by blocking:
+// - Non-HTTPS URLs (except localhost in development)
+// - Private IP ranges (10.x, 172.16-31.x, 192.168.x)
+// - Loopback addresses (127.x, ::1)
+// - Link-local addresses (169.254.x)
+// - Cloud metadata endpoints (169.254.169.254)
+func ValidateWebhookURL(rawURL string) error {
+	if rawURL == "" {
+		return fmt.Errorf("%w: empty URL", ErrInvalidWebhookURL)
+	}
+
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidWebhookURL, err)
+	}
+
+	// Require HTTPS for production webhooks
+	if parsed.Scheme != "https" {
+		return fmt.Errorf("%w: HTTPS is required for webhook URLs", ErrInvalidWebhookURL)
+	}
+
+	// Get the hostname (without port)
+	hostname := parsed.Hostname()
+	if hostname == "" {
+		return fmt.Errorf("%w: missing hostname", ErrInvalidWebhookURL)
+	}
+
+	// Check for localhost/loopback (block these in production)
+	lowHost := strings.ToLower(hostname)
+	if lowHost == "localhost" || lowHost == "127.0.0.1" || lowHost == "::1" {
+		return fmt.Errorf("%w: localhost not allowed", ErrInvalidWebhookURL)
+	}
+
+	// Resolve the hostname to check for private IPs
+	ips, err := net.LookupIP(hostname)
+	if err != nil {
+		// If DNS fails, check if it's an IP literal
+		ip := net.ParseIP(hostname)
+		if ip != nil {
+			ips = []net.IP{ip}
+		} else {
+			return fmt.Errorf("%w: cannot resolve hostname", ErrInvalidWebhookURL)
+		}
+	}
+
+	for _, ip := range ips {
+		if isPrivateOrReservedIP(ip) {
+			return fmt.Errorf("%w: private or reserved IP not allowed", ErrInvalidWebhookURL)
+		}
+	}
+
+	return nil
+}
+
+// isPrivateOrReservedIP checks if an IP is private, loopback, or reserved
+func isPrivateOrReservedIP(ip net.IP) bool {
+	// Check for loopback (127.x.x.x or ::1)
+	if ip.IsLoopback() {
+		return true
+	}
+
+	// Check for private networks
+	if ip.IsPrivate() {
+		return true
+	}
+
+	// Check for link-local (169.254.x.x or fe80::/10)
+	if ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+		return true
+	}
+
+	// Check for cloud metadata endpoint (169.254.169.254)
+	metadataIP := net.ParseIP("169.254.169.254")
+	if ip.Equal(metadataIP) {
+		return true
+	}
+
+	// Check for unspecified (0.0.0.0 or ::)
+	if ip.IsUnspecified() {
+		return true
+	}
+
+	return false
+}
+
 // EventType represents webhook event types
 type EventType string
 
@@ -76,6 +165,7 @@ type Service struct {
 	client              *http.Client
 	deliveryConcurrency int
 	mu                  sync.RWMutex
+	skipValidation      bool // For testing only - allows localhost URLs
 }
 
 func NewService() *Service {
@@ -95,11 +185,30 @@ func (s *Service) SetDeliveryConcurrency(n int) {
 	}
 }
 
-// RegisterWebhook registers a new webhook with SSRF validation
+// NewServiceForTesting creates a service that skips URL validation (for testing only)
+func NewServiceForTesting() *Service {
+	s := NewService()
+	s.skipValidation = true
+	return s
+}
+
+// RegisterWebhook registers a new webhook with URL validation to prevent SSRF
 func (s *Service) RegisterWebhook(webhookURL string, events []EventType, secret string) (*Webhook, error) {
-	// Validate URL to prevent SSRF attacks
-	if err := validateWebhookURL(webhookURL); err != nil {
-		return nil, fmt.Errorf("invalid webhook URL: %w", err)
+	// Validate URL to prevent SSRF attacks (skip in test mode)
+	if !s.skipValidation {
+		if err := ValidateWebhookURL(webhookURL); err != nil {
+			return nil, err
+		}
+	}
+
+	// Validate events
+	if len(events) == 0 {
+		return nil, errors.New("at least one event type is required")
+	}
+	for _, e := range events {
+		if !isValidEventType(e) {
+			return nil, fmt.Errorf("invalid event type: %s", e)
+		}
 	}
 
 	s.mu.Lock()
@@ -116,49 +225,6 @@ func (s *Service) RegisterWebhook(webhookURL string, events []EventType, secret 
 
 	s.webhooks[webhook.ID] = webhook
 	return webhook, nil
-}
-
-// validateWebhookURL validates that a webhook URL is safe (prevents SSRF)
-func validateWebhookURL(webhookURL string) error {
-	parsed, err := url.Parse(webhookURL)
-	if err != nil {
-		return fmt.Errorf("invalid URL format: %w", err)
-	}
-
-	// Require HTTPS for security
-	if parsed.Scheme != "https" {
-		return fmt.Errorf("HTTPS is required for webhook URLs")
-	}
-
-	// Get hostname without port
-	hostname := parsed.Hostname()
-	if hostname == "" {
-		return fmt.Errorf("hostname is required")
-	}
-
-	// Block localhost and loopback
-	if hostname == "localhost" || hostname == "127.0.0.1" || hostname == "::1" {
-		return fmt.Errorf("localhost URLs are not allowed")
-	}
-
-	// Block link-local addresses (metadata services like 169.254.169.254)
-	if strings.HasPrefix(hostname, "169.254.") {
-		return fmt.Errorf("link-local addresses are not allowed")
-	}
-
-	// Resolve hostname to check for internal IPs
-	ips, err := net.LookupIP(hostname)
-	if err != nil {
-		return fmt.Errorf("unable to resolve hostname: %w", err)
-	}
-
-	for _, ip := range ips {
-		if !isPublicIP(ip) {
-			return fmt.Errorf("webhook URL resolves to private/internal IP address")
-		}
-	}
-
-	return nil
 }
 
 // RegisterWebhookUnsafe registers a webhook without URL validation.
@@ -180,33 +246,16 @@ func (s *Service) RegisterWebhookUnsafe(webhookURL string, events []EventType, s
 	return webhook
 }
 
-// isPublicIP checks if an IP address is publicly routable
-func isPublicIP(ip net.IP) bool {
-	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+// isValidEventType checks if an event type is valid
+func isValidEventType(e EventType) bool {
+	switch e {
+	case EventFindingCreated, EventFindingResolved, EventFindingSuppressed,
+		EventScanCompleted, EventReviewStarted, EventReviewCompleted,
+		EventAttackPathFound, EventTicketCreated, EventCloudQuerySynced, EventGraphRebuilt:
+		return true
+	default:
 		return false
 	}
-
-	// Additional check for IPv4 private ranges
-	if ip4 := ip.To4(); ip4 != nil {
-		// 10.0.0.0/8
-		if ip4[0] == 10 {
-			return false
-		}
-		// 172.16.0.0/12
-		if ip4[0] == 172 && ip4[1] >= 16 && ip4[1] <= 31 {
-			return false
-		}
-		// 192.168.0.0/16
-		if ip4[0] == 192 && ip4[1] == 168 {
-			return false
-		}
-		// 169.254.0.0/16 (link-local)
-		if ip4[0] == 169 && ip4[1] == 254 {
-			return false
-		}
-	}
-
-	return true
 }
 
 // GetWebhook retrieves a webhook by ID
