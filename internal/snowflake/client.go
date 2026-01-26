@@ -212,7 +212,9 @@ func (c *Client) Query(ctx context.Context, query string, args ...interface{}) (
 
 		row := make(map[string]interface{})
 		for i, col := range columns {
-			row[col] = values[i]
+			// Normalize column names to lowercase for consistent access
+			// Snowflake returns uppercase column names by default
+			row[strings.ToLower(col)] = values[i]
 		}
 		result.Rows = append(result.Rows, row)
 	}
