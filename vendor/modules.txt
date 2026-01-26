@@ -131,15 +131,20 @@ github.com/99designs/go-keychain
 # github.com/99designs/keyring v1.2.2
 ## explicit; go 1.19
 github.com/99designs/keyring
-# github.com/Azure/azure-sdk-for-go/sdk/azcore v1.4.0
-## explicit; go 1.18
+# github.com/Azure/azure-sdk-for-go/sdk/azcore v1.20.0
+## explicit; go 1.23.0
 github.com/Azure/azure-sdk-for-go/sdk/azcore
+github.com/Azure/azure-sdk-for-go/sdk/azcore/arm
+github.com/Azure/azure-sdk-for-go/sdk/azcore/arm/internal/resource
+github.com/Azure/azure-sdk-for-go/sdk/azcore/arm/policy
+github.com/Azure/azure-sdk-for-go/sdk/azcore/arm/runtime
 github.com/Azure/azure-sdk-for-go/sdk/azcore/cloud
 github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/exported
 github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/log
 github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/pollers
 github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/pollers/async
 github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/pollers/body
+github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/pollers/fake
 github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/pollers/loc
 github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/pollers/op
 github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/shared
@@ -149,13 +154,37 @@ github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime
 github.com/Azure/azure-sdk-for-go/sdk/azcore/streaming
 github.com/Azure/azure-sdk-for-go/sdk/azcore/to
 github.com/Azure/azure-sdk-for-go/sdk/azcore/tracing
-# github.com/Azure/azure-sdk-for-go/sdk/internal v1.1.2
-## explicit; go 1.18
+# github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.13.1
+## explicit; go 1.23.0
+github.com/Azure/azure-sdk-for-go/sdk/azidentity
+github.com/Azure/azure-sdk-for-go/sdk/azidentity/internal
+# github.com/Azure/azure-sdk-for-go/sdk/internal v1.11.2
+## explicit; go 1.23.0
 github.com/Azure/azure-sdk-for-go/sdk/internal/diag
 github.com/Azure/azure-sdk-for-go/sdk/internal/errorinfo
+github.com/Azure/azure-sdk-for-go/sdk/internal/exported
 github.com/Azure/azure-sdk-for-go/sdk/internal/log
+github.com/Azure/azure-sdk-for-go/sdk/internal/poller
 github.com/Azure/azure-sdk-for-go/sdk/internal/temporal
 github.com/Azure/azure-sdk-for-go/sdk/internal/uuid
+# github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute v1.0.0
+## explicit; go 1.18
+github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute
+# github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/keyvault/armkeyvault v1.5.0
+## explicit; go 1.23.0
+github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/keyvault/armkeyvault
+# github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork v1.1.0
+## explicit; go 1.18
+github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork
+# github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armsubscriptions v1.3.0
+## explicit; go 1.18
+github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armsubscriptions
+# github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql v1.2.0
+## explicit; go 1.18
+github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql
+# github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage v1.8.1
+## explicit; go 1.23.0
+github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage
 # github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.0.0
 ## explicit; go 1.18
 github.com/Azure/azure-sdk-for-go/sdk/storage/azblob
@@ -171,6 +200,30 @@ github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/shared
 github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/pageblob
 github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/sas
 github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/service
+# github.com/AzureAD/microsoft-authentication-library-for-go v1.6.0
+## explicit; go 1.18
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/cache
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/confidential
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/errors
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/base
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/base/storage
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/exported
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/json
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/json/types/time
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/local
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops/accesstokens
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops/authority
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops/internal/comm
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops/internal/grant
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops/wstrust
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops/wstrust/defs
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/options
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/shared
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/version
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/managedidentity
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/public
 # github.com/BurntSushi/toml v1.4.0
 ## explicit; go 1.18
 github.com/BurntSushi/toml
@@ -295,6 +348,17 @@ github.com/aws/aws-sdk-go-v2/internal/ini
 github.com/aws/aws-sdk-go-v2/internal/v4a
 github.com/aws/aws-sdk-go-v2/internal/v4a/internal/crypto
 github.com/aws/aws-sdk-go-v2/internal/v4a/internal/v4
+# github.com/aws/aws-sdk-go-v2/service/apigateway v1.38.4
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/apigateway
+github.com/aws/aws-sdk-go-v2/service/apigateway/internal/customizations
+github.com/aws/aws-sdk-go-v2/service/apigateway/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/apigateway/types
+# github.com/aws/aws-sdk-go-v2/service/apigatewayv2 v1.33.5
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/apigatewayv2
+github.com/aws/aws-sdk-go-v2/service/apigatewayv2/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/apigatewayv2/types
 # github.com/aws/aws-sdk-go-v2/service/cloudtrail v1.55.5
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/cloudtrail
@@ -305,6 +369,11 @@ github.com/aws/aws-sdk-go-v2/service/cloudtrail/types
 github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs
 github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types
+# github.com/aws/aws-sdk-go-v2/service/configservice v1.61.0
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/configservice
+github.com/aws/aws-sdk-go-v2/service/configservice/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/configservice/types
 # github.com/aws/aws-sdk-go-v2/service/dynamodb v1.53.6
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/dynamodb
@@ -324,6 +393,11 @@ github.com/aws/aws-sdk-go-v2/service/ec2/types
 github.com/aws/aws-sdk-go-v2/service/ecr
 github.com/aws/aws-sdk-go-v2/service/ecr/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/ecr/types
+# github.com/aws/aws-sdk-go-v2/service/ecrpublic v1.38.9
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/ecrpublic
+github.com/aws/aws-sdk-go-v2/service/ecrpublic/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/ecrpublic/types
 # github.com/aws/aws-sdk-go-v2/service/ecs v1.70.1
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/ecs
@@ -336,11 +410,21 @@ github.com/aws/aws-sdk-go-v2/service/ecs/types
 github.com/aws/aws-sdk-go-v2/service/efs
 github.com/aws/aws-sdk-go-v2/service/efs/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/efs/types
+# github.com/aws/aws-sdk-go-v2/service/eks v1.77.0
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/eks
+github.com/aws/aws-sdk-go-v2/service/eks/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/eks/types
 # github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.54.6
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2
 github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types
+# github.com/aws/aws-sdk-go-v2/service/guardduty v1.73.0
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/guardduty
+github.com/aws/aws-sdk-go-v2/service/guardduty/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/guardduty/types
 # github.com/aws/aws-sdk-go-v2/service/iam v1.53.2
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/iam
@@ -390,11 +474,23 @@ github.com/aws/aws-sdk-go-v2/service/s3/internal/arn
 github.com/aws/aws-sdk-go-v2/service/s3/internal/customizations
 github.com/aws/aws-sdk-go-v2/service/s3/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/s3/types
+# github.com/aws/aws-sdk-go-v2/service/sagemaker v1.230.1
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/sagemaker
+github.com/aws/aws-sdk-go-v2/service/sagemaker/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/sagemaker/types
 # github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.41.1
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/secretsmanager
 github.com/aws/aws-sdk-go-v2/service/secretsmanager/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/secretsmanager/types
+# github.com/aws/aws-sdk-go-v2/service/securityhub v1.67.3
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/securityhub
+github.com/aws/aws-sdk-go-v2/service/securityhub/document
+github.com/aws/aws-sdk-go-v2/service/securityhub/internal/document
+github.com/aws/aws-sdk-go-v2/service/securityhub/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/securityhub/types
 # github.com/aws/aws-sdk-go-v2/service/sns v1.39.11
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/sns
@@ -565,8 +661,8 @@ github.com/goccy/go-json/internal/runtime
 # github.com/godbus/dbus v0.0.0-20190726142602-4481cbc300e2
 ## explicit; go 1.12
 github.com/godbus/dbus
-# github.com/golang-jwt/jwt/v5 v5.2.2
-## explicit; go 1.18
+# github.com/golang-jwt/jwt/v5 v5.3.0
+## explicit; go 1.21
 github.com/golang-jwt/jwt/v5
 # github.com/golang/snappy v1.0.0
 ## explicit
@@ -640,6 +736,10 @@ github.com/klauspost/compress/zstd/internal/xxhash
 # github.com/klauspost/cpuid/v2 v2.2.11
 ## explicit; go 1.22
 github.com/klauspost/cpuid/v2
+# github.com/kylelemons/godebug v1.1.0
+## explicit; go 1.11
+github.com/kylelemons/godebug/diff
+github.com/kylelemons/godebug/pretty
 # github.com/mattn/go-isatty v0.0.20
 ## explicit; go 1.15
 github.com/mattn/go-isatty
@@ -665,7 +765,7 @@ github.com/pierrec/lz4/v4/internal/lz4block
 github.com/pierrec/lz4/v4/internal/lz4errors
 github.com/pierrec/lz4/v4/internal/lz4stream
 github.com/pierrec/lz4/v4/internal/xxh32
-# github.com/pkg/browser v0.0.0-20210911075715-681adbf594b8
+# github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 ## explicit; go 1.14
 github.com/pkg/browser
 # github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10
@@ -805,6 +905,8 @@ golang.org/x/crypto/hkdf
 golang.org/x/crypto/internal/alias
 golang.org/x/crypto/internal/poly1305
 golang.org/x/crypto/ocsp
+golang.org/x/crypto/pkcs12
+golang.org/x/crypto/pkcs12/internal/rc2
 # golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546
 ## explicit; go 1.24.0
 golang.org/x/exp/constraints

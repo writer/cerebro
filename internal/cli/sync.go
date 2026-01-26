@@ -37,19 +37,21 @@ Examples:
 }
 
 var (
-	syncConfigPath   string
-	syncSource       string
-	syncEnsureTables bool
-	syncValidate     bool
-	syncScanAfter    bool
-	syncNative       bool
-	syncGCP          bool
-	syncGCPProject   string
-	syncGCPProjects  string // comma-separated list of projects
-	syncGCPOrg       string // organization ID for multi-project sync
-	syncMultiRegion  bool
-	syncUseAssetAPI  bool // use Cloud Asset Inventory API
-	syncSecurity     bool // sync security data (vulnerabilities, SCC findings)
+	syncConfigPath       string
+	syncSource           string
+	syncEnsureTables     bool
+	syncValidate         bool
+	syncScanAfter        bool
+	syncNative           bool
+	syncGCP              bool
+	syncGCPProject       string
+	syncGCPProjects      string // comma-separated list of projects
+	syncGCPOrg           string // organization ID for multi-project sync
+	syncMultiRegion      bool
+	syncUseAssetAPI      bool   // use Cloud Asset Inventory API
+	syncSecurity         bool   // sync security data (vulnerabilities, SCC findings)
+	syncAzure            bool   // sync Azure resources
+	syncAzureSubscription string // Azure subscription ID
 )
 
 func init() {
@@ -66,11 +68,18 @@ func init() {
 	syncCmd.Flags().BoolVar(&syncMultiRegion, "multi-region", false, "Scan all major AWS regions (us-east-1, us-west-2, eu-west-1, etc.)")
 	syncCmd.Flags().BoolVar(&syncUseAssetAPI, "asset-api", false, "Use GCP Cloud Asset Inventory API for efficient bulk fetching")
 	syncCmd.Flags().BoolVar(&syncSecurity, "security", false, "Sync security data (Container Analysis vulnerabilities, SCC findings, Artifact Registry)")
+	syncCmd.Flags().BoolVar(&syncAzure, "azure", false, "Sync Azure resources")
+	syncCmd.Flags().StringVar(&syncAzureSubscription, "azure-subscription", "", "Azure subscription ID (optional, will auto-discover if not set)")
 }
 
 func runSync(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	start := time.Now()
+
+	// Azure sync
+	if syncAzure {
+		return runAzureSync(ctx, start)
+	}
 
 	// GCP sync
 	if syncGCP {
@@ -278,6 +287,46 @@ func runGCPAssetAPISync(ctx context.Context, start time.Time, projects []string)
 	}
 
 	printSyncResults(results, start, "GCP (Asset API)")
+	return nil
+}
+
+func runAzureSync(ctx context.Context, start time.Time) error {
+	if syncAzureSubscription != "" {
+		Info("Starting Azure sync for subscription: %s", syncAzureSubscription)
+	} else {
+		Info("Starting Azure sync (auto-discovering subscriptions)...")
+	}
+
+	client, err := createSnowflakeClient()
+	if err != nil {
+		return fmt.Errorf("create snowflake client: %w", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	opts := []nativesync.AzureEngineOption{}
+	if syncAzureSubscription != "" {
+		opts = append(opts, nativesync.WithAzureSubscription(syncAzureSubscription))
+	}
+
+	syncer, err := nativesync.NewAzureSyncEngine(client, slog.Default(), opts...)
+	if err != nil {
+		return fmt.Errorf("create azure sync engine: %w", err)
+	}
+
+	results, err := syncer.SyncAll(ctx)
+	if err != nil {
+		return fmt.Errorf("sync failed: %w", err)
+	}
+
+	printSyncResults(results, start, "Azure")
+
+	if syncScanAfter {
+		Info("Triggering policy scan...")
+		if err := runPostSyncScan(ctx); err != nil {
+			Warning("Post-sync scan failed: %v", err)
+		}
+	}
+
 	return nil
 }
 

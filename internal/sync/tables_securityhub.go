@@ -1,0 +1,182 @@
+package sync
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/securityhub"
+	securityhubtypes "github.com/aws/aws-sdk-go-v2/service/securityhub/types"
+)
+
+func (e *SyncEngine) securityHubTable() TableSpec {
+	return TableSpec{
+		Name: "aws_securityhub_hubs",
+		Columns: []string{
+			"arn", "region", "account_id", "hub_arn", "subscribed_at",
+			"auto_enable_controls", "control_finding_generator",
+		},
+		Fetch: func(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+			client := securityhub.NewFromConfig(cfg)
+			var results []map[string]interface{}
+
+			hub, err := client.DescribeHub(ctx, &securityhub.DescribeHubInput{})
+			if err != nil {
+				// SecurityHub might not be enabled
+				return results, nil
+			}
+
+			arn := ptrToStr(hub.HubArn)
+			if arn == "" {
+				arn = fmt.Sprintf("arn:aws:securityhub:%s:%s:hub/default", region, e.accountID)
+			}
+
+			row := map[string]interface{}{
+				"_cq_id":                   arn,
+				"arn":                      arn,
+				"hub_arn":                  ptrToStr(hub.HubArn),
+				"region":                   region,
+				"account_id":               e.accountID,
+				"subscribed_at":            ptrToStr(hub.SubscribedAt),
+				"auto_enable_controls":     hub.AutoEnableControls,
+				"control_finding_generator": string(hub.ControlFindingGenerator),
+			}
+
+			results = append(results, row)
+			return results, nil
+		},
+	}
+}
+
+func (e *SyncEngine) securityHubFindingsTable() TableSpec {
+	return TableSpec{
+		Name: "aws_securityhub_findings",
+		Columns: []string{
+			"arn", "id", "region", "account_id", "title", "description",
+			"severity_label", "severity_normalized", "workflow_status",
+			"compliance_status", "product_arn", "generator_id", "types",
+			"created_at", "updated_at", "resources", "remediation",
+		},
+		Fetch: func(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+			client := securityhub.NewFromConfig(cfg)
+			var results []map[string]interface{}
+
+			// Get active findings
+			paginator := securityhub.NewGetFindingsPaginator(client, &securityhub.GetFindingsInput{
+				Filters: &securityhubtypes.AwsSecurityFindingFilters{
+					RecordState: []securityhubtypes.StringFilter{
+						{Value: aws.String("ACTIVE"), Comparison: securityhubtypes.StringFilterComparisonEquals},
+					},
+				},
+				MaxResults: aws.Int32(100),
+			})
+
+			for paginator.HasMorePages() {
+				page, err := paginator.NextPage(ctx)
+				if err != nil {
+					break
+				}
+
+				for _, f := range page.Findings {
+					arn := ptrToStr(f.Id)
+					if arn == "" {
+						continue
+					}
+
+					var severityLabel, severityNorm string
+					if f.Severity != nil {
+						severityLabel = string(f.Severity.Label)
+						if f.Severity.Normalized != nil {
+							severityNorm = fmt.Sprintf("%d", *f.Severity.Normalized)
+						}
+					}
+
+					var complianceStatus string
+					if f.Compliance != nil {
+						complianceStatus = string(f.Compliance.Status)
+					}
+
+					var workflowStatus string
+					if f.Workflow != nil {
+						workflowStatus = string(f.Workflow.Status)
+					}
+
+					row := map[string]interface{}{
+						"_cq_id":              arn,
+						"arn":                 arn,
+						"id":                  ptrToStr(f.Id),
+						"region":              ptrToStr(f.Region),
+						"account_id":          ptrToStr(f.AwsAccountId),
+						"title":               ptrToStr(f.Title),
+						"description":         ptrToStr(f.Description),
+						"severity_label":      severityLabel,
+						"severity_normalized": severityNorm,
+						"workflow_status":     workflowStatus,
+						"compliance_status":   complianceStatus,
+						"product_arn":         ptrToStr(f.ProductArn),
+						"generator_id":        ptrToStr(f.GeneratorId),
+						"types":               f.Types,
+						"created_at":          ptrToStr(f.CreatedAt),
+						"updated_at":          ptrToStr(f.UpdatedAt),
+						"resources":           f.Resources,
+						"remediation":         f.Remediation,
+					}
+
+					results = append(results, row)
+				}
+			}
+
+			return results, nil
+		},
+	}
+}
+
+func (e *SyncEngine) securityHubStandardsTable() TableSpec {
+	return TableSpec{
+		Name: "aws_securityhub_standards",
+		Columns: []string{
+			"arn", "standards_arn", "standards_subscription_arn", "region",
+			"account_id", "standards_status", "standards_status_reason",
+		},
+		Fetch: func(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+			client := securityhub.NewFromConfig(cfg)
+			var results []map[string]interface{}
+
+			paginator := securityhub.NewGetEnabledStandardsPaginator(client, &securityhub.GetEnabledStandardsInput{})
+
+			for paginator.HasMorePages() {
+				page, err := paginator.NextPage(ctx)
+				if err != nil {
+					break
+				}
+
+				for _, s := range page.StandardsSubscriptions {
+					arn := ptrToStr(s.StandardsSubscriptionArn)
+					if arn == "" {
+						continue
+					}
+
+					var statusReason string
+					if s.StandardsStatusReason != nil {
+						statusReason = string(s.StandardsStatusReason.StatusReasonCode)
+					}
+
+					row := map[string]interface{}{
+						"_cq_id":                     arn,
+						"arn":                        arn,
+						"standards_arn":              ptrToStr(s.StandardsArn),
+						"standards_subscription_arn": arn,
+						"region":                     region,
+						"account_id":                 e.accountID,
+						"standards_status":           string(s.StandardsStatus),
+						"standards_status_reason":    statusReason,
+					}
+
+					results = append(results, row)
+				}
+			}
+
+			return results, nil
+		},
+	}
+}

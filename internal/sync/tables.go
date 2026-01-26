@@ -56,25 +56,64 @@ func (e *SyncEngine) getAWSTables() []TableSpec {
 		e.ecsTaskDefinitionTable(),
 		// EC2
 		e.ec2InstanceTable(),
+		// VPC & Networking (from tables_vpc.go - more comprehensive)
 		e.ec2SecurityGroupTable(),
-		e.ec2VPCTable(),
+		e.ec2VpcTable(),
+		e.ec2NaclTable(),
+		e.ec2SubnetTable(),
+		e.ec2RouteTableTable(),
+		e.ec2InternetGatewayTable(),
+		e.ec2NatGatewayTable(),
+		e.ec2EbsVolumeTable(),
+		e.ec2EbsSnapshotTable(),
 		// IAM
 		e.iamRoleTable(),
 		e.iamUserTable(),
 		e.iamCredentialReportTable(),
 		// Storage
 		e.s3BucketTable(),
+		// ECR
 		e.ecrRepositoryTable(),
+		e.ecrImageTable(),
+		e.ecrPublicRepositoryTable(),
+		e.ecrLifecyclePolicyTable(),
 		// Compute
 		e.lambdaFunctionTable(),
-		// Security
+		// Security - GuardDuty
+		e.guarddutyDetectorTable(),
+		e.guarddutyFindingsTable(),
+		// Security - SecurityHub
+		e.securityHubTable(),
+		e.securityHubFindingsTable(),
+		e.securityHubStandardsTable(),
+		// Security - KMS & Secrets
 		e.kmsKeyTable(),
 		e.secretsManagerSecretTable(),
+		// Config
+		e.configRecorderTable(),
+		e.configRuleTable(),
+		e.configDeliveryChannelTable(),
+		e.configConformancePackTable(),
+		// EKS
+		e.eksClusterTable(),
+		e.eksNodegroupTable(),
+		e.eksFargateProfileTable(),
+		// API Gateway
+		e.apiGatewayRestApiTable(),
+		e.apiGatewayStageTable(),
+		e.apiGatewayV2ApiTable(),
+		e.apiGatewayV2StageTable(),
+		// SageMaker
+		e.sagemakerNotebookTable(),
+		e.sagemakerModelTable(),
+		e.sagemakerEndpointTable(),
+		e.sagemakerTrainingJobTable(),
+		e.sagemakerEndpointConfigTable(),
 		// Database
 		e.rdsInstanceTable(),
 		e.dynamoDBTableTable(),
 		e.redshiftClusterTable(),
-		// Networking
+		// Networking - ELB
 		e.elbv2LoadBalancerTable(),
 		e.elbv2TargetGroupTable(),
 		// Messaging

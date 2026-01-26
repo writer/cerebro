@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/ecr"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
@@ -14,14 +13,6 @@ func (e *SyncEngine) s3BucketTable() TableSpec {
 		Name:    "aws_s3_buckets",
 		Columns: []string{"name", "arn", "creation_date", "region", "account_id", "block_public_acls", "block_public_policy", "ignore_public_acls", "restrict_public_buckets", "versioning_status", "versioning_mfa_delete", "logging_target_bucket", "logging_target_prefix", "encryption", "tags"},
 		Fetch:   e.fetchS3Buckets,
-	}
-}
-
-func (e *SyncEngine) ecrRepositoryTable() TableSpec {
-	return TableSpec{
-		Name:    "aws_ecr_repositories",
-		Columns: []string{"arn", "account_id", "region", "repository_name", "name", "registry_id", "repository_uri", "image_tag_mutability", "image_scanning_configuration", "encryption_configuration", "created_at"},
-		Fetch:   e.fetchECRRepositories,
 	}
 }
 
@@ -87,39 +78,6 @@ func (e *SyncEngine) fetchS3Buckets(ctx context.Context, cfg aws.Config, region 
 		}
 
 		rows = append(rows, row)
-	}
-	return rows, nil
-}
-
-func (e *SyncEngine) fetchECRRepositories(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
-	client := ecr.NewFromConfig(cfg)
-	accountID := e.getAccountIDFromConfig(ctx, cfg)
-
-	var rows []map[string]interface{}
-	paginator := ecr.NewDescribeRepositoriesPaginator(client, &ecr.DescribeRepositoriesInput{})
-
-	for paginator.HasMorePages() {
-		page, err := paginator.NextPage(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, repo := range page.Repositories {
-			rows = append(rows, map[string]interface{}{
-				"_cq_id":                       aws.ToString(repo.RepositoryArn),
-				"arn":                          aws.ToString(repo.RepositoryArn),
-				"account_id":                   accountID,
-				"region":                       region,
-				"repository_name":              aws.ToString(repo.RepositoryName),
-				"name":                         aws.ToString(repo.RepositoryName),
-				"registry_id":                  aws.ToString(repo.RegistryId),
-				"repository_uri":               aws.ToString(repo.RepositoryUri),
-				"image_tag_mutability":         string(repo.ImageTagMutability),
-				"image_scanning_configuration": repo.ImageScanningConfiguration,
-				"encryption_configuration":     repo.EncryptionConfiguration,
-				"created_at":                   repo.CreatedAt,
-			})
-		}
 	}
 	return rows, nil
 }
