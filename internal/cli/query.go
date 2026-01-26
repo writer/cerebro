@@ -89,7 +89,7 @@ func runQuery(cmd *cobra.Command, args []string) error {
 		for i, row := range result.Rows {
 			vals := make([]string, len(result.Columns))
 			for j, col := range result.Columns {
-				vals[j] = fmt.Sprintf("%v", row[col])
+				vals[j] = fmt.Sprintf("%v", row[strings.ToLower(col)])
 			}
 			rows[i] = vals
 		}
@@ -103,7 +103,7 @@ func runQuery(cmd *cobra.Command, args []string) error {
 		for _, row := range result.Rows {
 			vals := make([]string, len(result.Columns))
 			for i, col := range result.Columns {
-				vals[i] = fmt.Sprintf("%v", row[col])
+				vals[i] = fmt.Sprintf("%v", row[strings.ToLower(col)])
 			}
 			tw.AddRow(vals...)
 		}
