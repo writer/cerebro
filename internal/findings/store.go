@@ -40,6 +40,7 @@ type FindingStore interface {
 	Upsert(ctx context.Context, pf policy.Finding) *Finding
 	Get(id string) (*Finding, bool)
 	List(filter FindingFilter) []*Finding
+	Count(filter FindingFilter) int
 	Resolve(id string) bool
 	Suppress(id string) bool
 	Stats() Stats
@@ -376,7 +377,42 @@ func (s *Store) List(filter FindingFilter) []*Finding {
 		}
 		result = append(result, f)
 	}
+
+	// Apply pagination if specified
+	if filter.Offset > 0 || filter.Limit > 0 {
+		if filter.Offset >= len(result) {
+			return []*Finding{}
+		}
+		end := len(result)
+		if filter.Limit > 0 && filter.Offset+filter.Limit < end {
+			end = filter.Offset + filter.Limit
+		}
+		result = result[filter.Offset:end]
+	}
+
 	return result
+}
+
+func (s *Store) Count(filter FindingFilter) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	statusFilter := normalizeStatus(filter.Status)
+
+	count := 0
+	for _, f := range s.findings {
+		if filter.Severity != "" && f.Severity != filter.Severity {
+			continue
+		}
+		if statusFilter != "" && normalizeStatus(f.Status) != statusFilter {
+			continue
+		}
+		if filter.PolicyID != "" && f.PolicyID != filter.PolicyID {
+			continue
+		}
+		count++
+	}
+	return count
 }
 
 func (s *Store) Resolve(id string) bool {
@@ -434,6 +470,8 @@ type FindingFilter struct {
 	Severity string
 	Status   string
 	PolicyID string
+	Limit    int
+	Offset   int
 }
 
 type Stats struct {

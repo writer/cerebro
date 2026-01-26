@@ -148,7 +148,34 @@ func (s *SlackNotifier) Send(ctx context.Context, event Event) error {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusTooManyRequests {
-		return fmt.Errorf("slack rate limited: %d", resp.StatusCode)
+		// Retry with exponential backoff
+		for attempt := 1; attempt <= 3; attempt++ {
+			backoff := time.Duration(attempt*attempt) * time.Second
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(backoff):
+			}
+
+			req, err = http.NewRequestWithContext(ctx, "POST", s.webhookURL, bytes.NewReader(body))
+			if err != nil {
+				return err
+			}
+			req.Header.Set("Content-Type", "application/json")
+
+			resp, err = s.client.Do(req)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = resp.Body.Close() }()
+
+			if resp.StatusCode != http.StatusTooManyRequests {
+				break
+			}
+		}
+		if resp.StatusCode == http.StatusTooManyRequests {
+			return fmt.Errorf("slack rate limited after retries: %d", resp.StatusCode)
+		}
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -253,7 +280,34 @@ func (p *PagerDutyNotifier) Send(ctx context.Context, event Event) error {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusTooManyRequests {
-		return fmt.Errorf("pagerduty rate limited: %d", resp.StatusCode)
+		// Retry with exponential backoff
+		for attempt := 1; attempt <= 3; attempt++ {
+			backoff := time.Duration(attempt*attempt) * time.Second
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(backoff):
+			}
+
+			req, err = http.NewRequestWithContext(ctx, "POST", "https://events.pagerduty.com/v2/enqueue", bytes.NewReader(body))
+			if err != nil {
+				return err
+			}
+			req.Header.Set("Content-Type", "application/json")
+
+			resp, err = p.client.Do(req)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = resp.Body.Close() }()
+
+			if resp.StatusCode != http.StatusTooManyRequests {
+				break
+			}
+		}
+		if resp.StatusCode == http.StatusTooManyRequests {
+			return fmt.Errorf("pagerduty rate limited after retries: %d", resp.StatusCode)
+		}
 	}
 
 	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {

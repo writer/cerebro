@@ -70,7 +70,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	fStats := application.Findings.Stats()
 	status["findings"] = map[string]interface{}{
 		"total":    fStats.Total,
-		"open":     fStats.ByStatus["open"],
+		"open":     fStats.ByStatus["OPEN"],
 		"critical": fStats.BySeverity["critical"],
 		"high":     fStats.BySeverity["high"],
 	}

@@ -137,6 +137,11 @@ func (fs *FileStore) List(filter FindingFilter) []*Finding {
 	return fs.store.List(filter)
 }
 
+// Count returns the total number of findings matching the filter
+func (fs *FileStore) Count(filter FindingFilter) int {
+	return fs.store.Count(filter)
+}
+
 // Resolve marks a finding as resolved
 func (fs *FileStore) Resolve(id string) bool {
 	result := fs.store.Resolve(id)

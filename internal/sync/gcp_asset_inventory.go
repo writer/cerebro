@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"google.golang.org/api/iterator"
 
 	"github.com/writerinternal/cerebro/internal/snowflake"
+	"golang.org/x/sync/errgroup"
 )
 
 // GCPAssetInventoryEngine uses Cloud Asset Inventory API for efficient bulk resource fetching
@@ -87,40 +89,44 @@ func (e *GCPAssetInventoryEngine) SyncAll(ctx context.Context) ([]SyncResult, er
 
 	// If we have multiple projects, sync each one
 	if len(e.projects) > 0 {
-		return e.syncMultipleProjects(ctx, client), nil
+		return e.syncMultipleProjects(ctx, client)
 	}
 
 	// Single scope sync
-	return e.syncScope(ctx, client, e.scope), nil
+	return e.syncScope(ctx, client, e.scope)
 }
 
-func (e *GCPAssetInventoryEngine) syncMultipleProjects(ctx context.Context, client *asset.Client) []SyncResult {
+func (e *GCPAssetInventoryEngine) syncMultipleProjects(ctx context.Context, client *asset.Client) ([]SyncResult, error) {
 	var allResults []SyncResult
 	var mu sync.Mutex
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, e.concurrency)
+	var errs []error
+	var group errgroup.Group
+	limit := e.concurrency
+	if limit <= 0 {
+		limit = 1
+	}
+	group.SetLimit(limit)
 
 	for _, project := range e.projects {
-		wg.Add(1)
-		go func(proj string) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
+		proj := project
+		group.Go(func() error {
 			scope := fmt.Sprintf("projects/%s", proj)
-			results := e.syncScope(ctx, client, scope)
-
+			results, err := e.syncScope(ctx, client, scope)
 			mu.Lock()
 			allResults = append(allResults, results...)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("sync project %s: %w", proj, err))
+			}
 			mu.Unlock()
-		}(project)
+			return nil
+		})
 	}
 
-	wg.Wait()
-	return allResults
+	_ = group.Wait()
+	return allResults, errors.Join(errs...)
 }
 
-func (e *GCPAssetInventoryEngine) syncScope(ctx context.Context, client *asset.Client, scope string) []SyncResult {
+func (e *GCPAssetInventoryEngine) syncScope(ctx context.Context, client *asset.Client, scope string) ([]SyncResult, error) {
 	var results []SyncResult
 	start := time.Now()
 
@@ -162,38 +168,50 @@ func (e *GCPAssetInventoryEngine) syncScope(ctx context.Context, client *asset.C
 	e.logger.Info("fetched assets", "total", totalAssets, "types", len(assetsByType), "duration", time.Since(start))
 
 	// Process each asset type in parallel
-	var wg sync.WaitGroup
 	var mu sync.Mutex
-	sem := make(chan struct{}, e.concurrency)
+	var errs []error
+	var group errgroup.Group
+	limit := e.concurrency
+	if limit <= 0 {
+		limit = 1
+	}
+	group.SetLimit(limit)
 
 	for assetType, assets := range assetsByType {
-		wg.Add(1)
-		go func(at string, a []*assetpb.ResourceSearchResult) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			result := e.syncAssetType(ctx, at, a)
+		at := assetType
+		assetBatch := assets
+		group.Go(func() error {
+			result, err := e.syncAssetType(ctx, at, assetBatch)
 			mu.Lock()
 			results = append(results, result)
+			if err != nil {
+				errs = append(errs, err)
+			}
 			mu.Unlock()
-		}(assetType, assets)
+			return nil
+		})
 	}
 
-	wg.Wait()
-	return results
+	_ = group.Wait()
+	return results, errors.Join(errs...)
 }
 
-func (e *GCPAssetInventoryEngine) syncAssetType(ctx context.Context, assetType string, assets []*assetpb.ResourceSearchResult) SyncResult {
+func (e *GCPAssetInventoryEngine) syncAssetType(ctx context.Context, assetType string, assets []*assetpb.ResourceSearchResult) (SyncResult, error) {
 	start := time.Now()
 	tableName, ok := GCPAssetTypes[assetType]
 	if !ok {
-		tableName = strings.ToLower(strings.ReplaceAll(assetType, ".", "_"))
-		tableName = strings.ReplaceAll(tableName, "/", "_")
+		replacer := strings.NewReplacer(".", "_", "/", "_", "-", "_")
+		tableName = strings.ToLower(replacer.Replace(assetType))
 	}
 
 	result := SyncResult{
 		Table: tableName,
+	}
+
+	if err := snowflake.ValidateTableName(tableName); err != nil {
+		result.Errors = 1
+		result.Duration = time.Since(start)
+		return result, fmt.Errorf("invalid table name %s: %w", tableName, err)
 	}
 
 	// Convert assets to rows
@@ -209,7 +227,7 @@ func (e *GCPAssetInventoryEngine) syncAssetType(ctx context.Context, assetType s
 		e.logger.Error("ensure table failed", "table", tableName, "error", err)
 		result.Errors = 1
 		result.Duration = time.Since(start)
-		return result
+		return result, fmt.Errorf("ensure table %s: %w", tableName, err)
 	}
 
 	// Upsert with change detection
@@ -219,7 +237,7 @@ func (e *GCPAssetInventoryEngine) syncAssetType(ctx context.Context, assetType s
 		e.logger.Error("upsert failed", "table", tableName, "error", err)
 		result.Errors = 1
 		result.Duration = time.Since(start)
-		return result
+		return result, fmt.Errorf("upsert %s: %w", tableName, err)
 	}
 
 	result.Synced = len(rows)
@@ -232,7 +250,7 @@ func (e *GCPAssetInventoryEngine) syncAssetType(ctx context.Context, assetType s
 		e.logger.Info("synced", "table", tableName, "count", len(rows))
 	}
 
-	return result
+	return result, nil
 }
 
 func (e *GCPAssetInventoryEngine) assetToRow(asset *assetpb.ResourceSearchResult) map[string]interface{} {
@@ -339,6 +357,15 @@ func (e *GCPAssetInventoryEngine) getColumnsForAssetType() []string {
 }
 
 func (e *GCPAssetInventoryEngine) ensureTable(ctx context.Context, table string, columns []string) error {
+	if err := snowflake.ValidateTableName(table); err != nil {
+		return fmt.Errorf("invalid table name: %w", err)
+	}
+
+	for _, col := range columns {
+		if err := snowflake.ValidateColumnName(col); err != nil {
+			return fmt.Errorf("invalid column name %q: %w", col, err)
+		}
+	}
 	colDefs := make([]string, len(columns))
 	for i, col := range columns {
 		colDefs[i] = fmt.Sprintf("%s VARIANT", strings.ToUpper(col))

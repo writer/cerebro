@@ -81,11 +81,6 @@ func extractAPIKey(r *http.Request) string {
 		return key
 	}
 
-	// Check query parameter (not recommended but supported)
-	if key := r.URL.Query().Get("api_key"); key != "" {
-		return key
-	}
-
 	return ""
 }
 
@@ -115,6 +110,21 @@ func GetAPIKey(ctx context.Context) string {
 	}
 	return ""
 }
+
+// MaxBodySize limits the size of request bodies to prevent denial of service
+func MaxBodySize(maxBytes int64) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Body != nil {
+				r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// DefaultMaxBodySize is 10MB
+const DefaultMaxBodySize = 10 * 1024 * 1024
 
 // CORS middleware
 func CORS(allowedOrigins []string) func(http.Handler) http.Handler {

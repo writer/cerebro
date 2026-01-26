@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/writerinternal/cerebro/internal/snowflake"
+	"golang.org/x/sync/errgroup"
 )
 
 // GCPSyncEngine orchestrates GCP resource syncing with change detection
@@ -61,35 +63,50 @@ func (e *GCPSyncEngine) SyncAll(ctx context.Context) ([]SyncResult, error) {
 
 	tables := e.getGCPTables()
 	results := make([]SyncResult, len(tables))
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, e.concurrency)
+	var mu sync.Mutex
+	var errs []error
+	var group errgroup.Group
+	limit := e.concurrency
+	if limit <= 0 {
+		limit = 1
+	}
+	group.SetLimit(limit)
 
 	for i, table := range tables {
-		wg.Add(1)
-		go func(idx int, t GCPTableSpec) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			result := e.syncTable(ctx, t)
+		idx := i
+		tableSpec := table
+		group.Go(func() error {
+			result, err := e.syncTable(ctx, tableSpec)
 			results[idx] = result
-		}(i, table)
+			if err != nil {
+				mu.Lock()
+				errs = append(errs, err)
+				mu.Unlock()
+			}
+			return nil
+		})
 	}
 
-	wg.Wait()
+	_ = group.Wait()
 
 	// Persist change history
 	if err := e.persistChangeHistory(ctx, results); err != nil {
 		e.logger.Warn("failed to persist change history", "error", err)
 	}
 
-	return results, nil
+	return results, errors.Join(errs...)
 }
 
-func (e *GCPSyncEngine) syncTable(ctx context.Context, table GCPTableSpec) SyncResult {
+func (e *GCPSyncEngine) syncTable(ctx context.Context, table GCPTableSpec) (SyncResult, error) {
 	start := time.Now()
 	result := SyncResult{
 		Table: table.Name,
+	}
+
+	if err := snowflake.ValidateTableName(table.Name); err != nil {
+		result.Errors = 1
+		result.Duration = time.Since(start)
+		return result, fmt.Errorf("invalid table name %s: %w", table.Name, err)
 	}
 
 	e.logger.Info("syncing", "table", table.Name)
@@ -98,7 +115,7 @@ func (e *GCPSyncEngine) syncTable(ctx context.Context, table GCPTableSpec) SyncR
 		e.logger.Error("ensure table failed", "table", table.Name, "error", err)
 		result.Errors = 1
 		result.Duration = time.Since(start)
-		return result
+		return result, fmt.Errorf("ensure table %s: %w", table.Name, err)
 	}
 
 	rows, err := table.Fetch(ctx, e.projectID)
@@ -106,7 +123,7 @@ func (e *GCPSyncEngine) syncTable(ctx context.Context, table GCPTableSpec) SyncR
 		e.logger.Error("fetch failed", "table", table.Name, "error", err)
 		result.Errors = 1
 		result.Duration = time.Since(start)
-		return result
+		return result, fmt.Errorf("fetch %s: %w", table.Name, err)
 	}
 
 	changes, err := e.upsertWithChanges(ctx, table.Name, rows)
@@ -114,7 +131,7 @@ func (e *GCPSyncEngine) syncTable(ctx context.Context, table GCPTableSpec) SyncR
 		e.logger.Error("upsert failed", "table", table.Name, "error", err)
 		result.Errors = 1
 		result.Duration = time.Since(start)
-		return result
+		return result, fmt.Errorf("upsert %s: %w", table.Name, err)
 	}
 
 	result.Synced = len(rows)
@@ -126,10 +143,20 @@ func (e *GCPSyncEngine) syncTable(ctx context.Context, table GCPTableSpec) SyncR
 	}
 
 	e.logger.Info("synced", "table", table.Name, "count", result.Synced)
-	return result
+	return result, nil
 }
 
 func (e *GCPSyncEngine) ensureTable(ctx context.Context, table string, columns []string) error {
+	if err := snowflake.ValidateTableName(table); err != nil {
+		return fmt.Errorf("invalid table name: %w", err)
+	}
+
+	for _, col := range columns {
+		if err := snowflake.ValidateColumnName(col); err != nil {
+			return fmt.Errorf("invalid column name %q: %w", col, err)
+		}
+	}
+
 	colDefs := make([]string, len(columns))
 	for i, col := range columns {
 		colDefs[i] = fmt.Sprintf("%s VARIANT", strings.ToUpper(col))
@@ -172,14 +199,18 @@ func (e *GCPSyncEngine) ensureTable(ctx context.Context, table string, columns [
 }
 
 func (e *GCPSyncEngine) getTableColumns(ctx context.Context, table string) ([]string, error) {
-	query := fmt.Sprintf(`
+	if err := snowflake.ValidateTableName(table); err != nil {
+		return nil, err
+	}
+
+	query := `
 		SELECT COLUMN_NAME 
 		FROM INFORMATION_SCHEMA.COLUMNS 
-		WHERE TABLE_NAME = '%s' 
+		WHERE TABLE_NAME = ?
 		AND TABLE_SCHEMA = CURRENT_SCHEMA()
-	`, strings.ToUpper(table))
+	`
 
-	result, err := e.sf.Query(ctx, query)
+	result, err := e.sf.Query(ctx, query, strings.ToUpper(table))
 	if err != nil {
 		return nil, err
 	}
@@ -195,6 +226,9 @@ func (e *GCPSyncEngine) getTableColumns(ctx context.Context, table string) ([]st
 
 func (e *GCPSyncEngine) upsertWithChanges(ctx context.Context, table string, rows []map[string]interface{}) (*ChangeSet, error) {
 	changes := &ChangeSet{}
+	if err := snowflake.ValidateTableName(table); err != nil {
+		return changes, fmt.Errorf("invalid table name %s: %w", table, err)
+	}
 
 	if len(rows) == 0 {
 		// Check for deletions even when no new rows
@@ -254,25 +288,20 @@ func (e *GCPSyncEngine) upsertWithChanges(ctx context.Context, table string, row
 		delete(row, "_cq_id")
 
 		cols := []string{"_CQ_ID", "_CQ_HASH"}
-		selects := []string{
-			fmt.Sprintf("'%s'", strings.ReplaceAll(id, "'", "''")),
-			fmt.Sprintf("'%s'", hash),
-		}
+		selects := []string{"?", "?"}
+		args := []interface{}{id, hash}
 
 		for k, v := range row {
 			cols = append(cols, strings.ToUpper(k))
 			jsonVal, _ := json.Marshal(v)
-			// Escape single quotes and backslashes for Snowflake SQL
-			escaped := string(jsonVal)
-			escaped = strings.ReplaceAll(escaped, "\\", "\\\\")
-			escaped = strings.ReplaceAll(escaped, "'", "''")
-			selects = append(selects, fmt.Sprintf("PARSE_JSON('%s')", escaped))
+			selects = append(selects, "PARSE_JSON(?)")
+			args = append(args, string(jsonVal))
 		}
 
 		query := fmt.Sprintf("INSERT INTO %s (%s) SELECT %s",
 			table, strings.Join(cols, ", "), strings.Join(selects, ", "))
 
-		if _, err := e.sf.Exec(ctx, query); err != nil {
+		if _, err := e.sf.Exec(ctx, query, args...); err != nil {
 			return changes, fmt.Errorf("insert row: %w", err)
 		}
 	}
@@ -282,6 +311,9 @@ func (e *GCPSyncEngine) upsertWithChanges(ctx context.Context, table string, row
 
 func (e *GCPSyncEngine) getExistingHashes(ctx context.Context, table string) map[string]string {
 	result := make(map[string]string)
+	if err := snowflake.ValidateTableName(table); err != nil {
+		return result
+	}
 
 	query := fmt.Sprintf("SELECT _CQ_ID, _CQ_HASH FROM %s", table)
 	rows, err := e.sf.Query(ctx, query)
@@ -366,15 +398,10 @@ func (e *GCPSyncEngine) persistChangeHistory(ctx context.Context, results []Sync
 
 func (e *GCPSyncEngine) insertChangeRecord(ctx context.Context, table, changeType, resourceID, provider string) {
 	id := fmt.Sprintf("%s-%s-%s-%d", table, changeType, resourceID, time.Now().UnixNano())
-	query := fmt.Sprintf(`INSERT INTO _sync_change_history (id, table_name, change_type, resource_id, provider) 
-		VALUES ('%s', '%s', '%s', '%s', '%s')`,
-		strings.ReplaceAll(id, "'", "''"),
-		table,
-		changeType,
-		strings.ReplaceAll(resourceID, "'", "''"),
-		provider)
+	query := `INSERT INTO _sync_change_history (id, table_name, change_type, resource_id, provider)
+		SELECT ?, ?, ?, ?, ?`
 
-	if _, err := e.sf.Exec(ctx, query); err != nil {
+	if _, err := e.sf.Exec(ctx, query, id, table, changeType, resourceID, provider); err != nil {
 		e.logger.Debug("failed to insert change record", "error", err)
 	}
 }

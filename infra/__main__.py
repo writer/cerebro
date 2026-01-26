@@ -141,6 +141,7 @@ secret_keys = [
 ]
 
 optional_secrets = [
+    "API_KEYS",
     "ANTHROPIC_API_KEY",
     "OPENAI_API_KEY",
     "SLACK_WEBHOOK_URL",

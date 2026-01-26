@@ -241,7 +241,42 @@ func (s *SnowflakeStore) List(filter FindingFilter) []*Finding {
 		}
 		result = append(result, f)
 	}
+
+	// Apply pagination if specified
+	if filter.Offset > 0 || filter.Limit > 0 {
+		if filter.Offset >= len(result) {
+			return []*Finding{}
+		}
+		end := len(result)
+		if filter.Limit > 0 && filter.Offset+filter.Limit < end {
+			end = filter.Offset + filter.Limit
+		}
+		result = result[filter.Offset:end]
+	}
+
 	return result
+}
+
+func (s *SnowflakeStore) Count(filter FindingFilter) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	statusFilter := normalizeStatus(filter.Status)
+
+	count := 0
+	for _, f := range s.cache {
+		if filter.Severity != "" && f.Severity != filter.Severity {
+			continue
+		}
+		if statusFilter != "" && normalizeStatus(f.Status) != statusFilter {
+			continue
+		}
+		if filter.PolicyID != "" && f.PolicyID != filter.PolicyID {
+			continue
+		}
+		count++
+	}
+	return count
 }
 
 func (s *SnowflakeStore) Resolve(id string) bool {

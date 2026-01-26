@@ -417,8 +417,11 @@ func getTableRowCounts(ctx context.Context) map[string]int64 {
 	// Check key tables
 	tables := []string{"aws_s3_buckets", "aws_ec2_instances", "aws_iam_users"}
 	for _, table := range tables {
+		if err := snowflake.ValidateTableNameStrict(table); err != nil {
+			continue
+		}
 		var count int64
-		row := client.DB().QueryRowContext(ctx, fmt.Sprintf("SELECT COUNT(*) FROM %s", table))
+		row := client.DB().QueryRowContext(ctx, fmt.Sprintf("SELECT COUNT(*) FROM %s", table)) //#nosec G201 -- table name validated above
 		if err := row.Scan(&count); err == nil {
 			counts[table] = count
 		}
@@ -455,12 +458,95 @@ func runPostSyncScan(ctx context.Context) error {
 		return fmt.Errorf("snowflake not configured")
 	}
 
-	// Trigger scan via the scheduler's scan function
 	fmt.Println("Scanning synced assets...")
-	// The actual scan would be triggered here
-	// For now, just report we would scan
-	fmt.Printf("Would scan %d policies against CloudQuery data\n", len(application.Policy.ListPolicies()))
 
+	// Get tables that have policies defined
+	policies := application.Policy.ListPolicies()
+	tableSet := make(map[string]struct{})
+	for _, p := range policies {
+		for _, table := range p.GetRequiredTables() {
+			tableSet[table] = struct{}{}
+		}
+	}
+
+	tables := make([]string, 0, len(tableSet))
+	for table := range tableSet {
+		tables = append(tables, table)
+	}
+
+	if len(tables) == 0 {
+		fmt.Println("No tables to scan")
+		return nil
+	}
+
+	fmt.Printf("Scanning %d tables with %d policies\n", len(tables), len(policies))
+
+	totalScanned := 0
+	totalViolations := 0
+	const batchSize = 1000
+
+	for _, table := range tables {
+		filter := snowflake.AssetFilter{Limit: batchSize}
+
+		// Use watermarks for incremental scanning if available
+		if application.ScanWatermarks != nil {
+			if wm := application.ScanWatermarks.GetWatermark(table); wm != nil {
+				filter.Since = wm.LastScanTime
+				fmt.Printf("  %s: incremental scan (since %s)\n", table, wm.LastScanTime.Format(time.RFC3339))
+			}
+		}
+
+		tableScanned := int64(0)
+		offset := 0
+		for {
+			filter.Offset = offset
+			assets, err := application.Snowflake.GetAssets(ctx, table, filter)
+			if err != nil {
+				Warning("Failed to fetch %s: %v", table, err)
+				break
+			}
+
+			if len(assets) == 0 {
+				break
+			}
+
+			result := application.Scanner.ScanAssets(ctx, assets)
+			totalScanned += int(result.Scanned)
+			totalViolations += int(result.Violations)
+			tableScanned += result.Scanned
+
+			// Persist findings
+			for _, f := range result.Findings {
+				application.Findings.Upsert(ctx, f)
+			}
+
+			if len(assets) < batchSize {
+				break
+			}
+			offset += batchSize
+		}
+
+		// Update watermark
+		if application.ScanWatermarks != nil && tableScanned > 0 {
+			application.ScanWatermarks.SetWatermark(table, time.Now().UTC(), tableScanned)
+		}
+
+		if tableScanned > 0 {
+			fmt.Printf("  %s: scanned %d assets\n", table, tableScanned)
+		}
+	}
+
+	// Persist watermarks
+	if application.ScanWatermarks != nil {
+		_ = application.ScanWatermarks.PersistWatermarks(ctx)
+	}
+
+	// Sync findings to persistent storage
+	if err := application.Findings.Sync(ctx); err != nil {
+		Warning("Failed to sync findings: %v", err)
+	}
+
+	fmt.Printf("\nPost-sync scan complete: %d assets scanned, %d violations found\n", totalScanned, totalViolations)
 	return nil
 }
 

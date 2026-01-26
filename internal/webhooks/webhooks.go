@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"golang.org/x/sync/errgroup"
 )
 
 // EventType represents webhook event types
@@ -33,6 +35,8 @@ const (
 	EventCloudQuerySynced  EventType = "cloudquery.synced"
 	EventGraphRebuilt      EventType = "graph.rebuilt"
 )
+
+const defaultDeliveryConcurrency = 5
 
 // Webhook represents a webhook configuration
 type Webhook struct {
@@ -67,10 +71,11 @@ type Delivery struct {
 
 // Service manages webhooks and event delivery
 type Service struct {
-	webhooks   map[string]*Webhook
-	deliveries []Delivery
-	client     *http.Client
-	mu         sync.RWMutex
+	webhooks            map[string]*Webhook
+	deliveries          []Delivery
+	client              *http.Client
+	deliveryConcurrency int
+	mu                  sync.RWMutex
 }
 
 func NewService() *Service {
@@ -80,6 +85,13 @@ func NewService() *Service {
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
+		deliveryConcurrency: defaultDeliveryConcurrency,
+	}
+}
+
+func (s *Service) SetDeliveryConcurrency(n int) {
+	if n > 0 {
+		s.deliveryConcurrency = n
 	}
 }
 
@@ -243,6 +255,10 @@ func (s *Service) DeleteWebhook(id string) bool {
 
 // Emit sends an event to all subscribed webhooks
 func (s *Service) Emit(ctx context.Context, eventType EventType, data map[string]interface{}) {
+	_ = s.EmitWithErrors(ctx, eventType, data)
+}
+
+func (s *Service) EmitWithErrors(ctx context.Context, eventType EventType, data map[string]interface{}) error {
 	event := Event{
 		ID:        uuid.New().String(),
 		Type:      eventType,
@@ -259,16 +275,27 @@ func (s *Service) Emit(ctx context.Context, eventType EventType, data map[string
 	}
 	s.mu.RUnlock()
 
-	// Deliver to all subscribed webhooks in parallel
-	var wg sync.WaitGroup
-	for _, webhook := range webhooks {
-		wg.Add(1)
-		go func(w *Webhook) {
-			defer wg.Done()
-			s.deliver(ctx, w, event)
-		}(webhook)
+	var group errgroup.Group
+	if s.deliveryConcurrency > 0 {
+		group.SetLimit(s.deliveryConcurrency)
 	}
-	wg.Wait()
+	var mu sync.Mutex
+	var errs []error
+
+	for _, webhook := range webhooks {
+		w := webhook
+		group.Go(func() error {
+			if err := s.deliver(ctx, w, event); err != nil {
+				mu.Lock()
+				errs = append(errs, err)
+				mu.Unlock()
+			}
+			return nil
+		})
+	}
+
+	_ = group.Wait()
+	return errors.Join(errs...)
 }
 
 func (s *Service) isSubscribed(webhook *Webhook, eventType EventType) bool {
@@ -280,17 +307,17 @@ func (s *Service) isSubscribed(webhook *Webhook, eventType EventType) bool {
 	return false
 }
 
-func (s *Service) deliver(ctx context.Context, webhook *Webhook, event Event) {
+func (s *Service) deliver(ctx context.Context, webhook *Webhook, event Event) error {
 	start := time.Now()
 
 	payload, err := json.Marshal(event)
 	if err != nil {
-		return
+		return err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", webhook.URL, bytes.NewReader(payload))
 	if err != nil {
-		return
+		return err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -314,14 +341,19 @@ func (s *Service) deliver(ctx context.Context, webhook *Webhook, event Event) {
 		DurationMs:  time.Since(start).Milliseconds(),
 	}
 
+	var deliveryErr error
 	if err != nil {
 		delivery.ResponseStatus = 0
 		delivery.ResponseBody = err.Error()
 		delivery.Success = false
+		deliveryErr = err
 	} else {
 		defer func() { _ = resp.Body.Close() }()
 		delivery.ResponseStatus = resp.StatusCode
 		delivery.Success = resp.StatusCode >= 200 && resp.StatusCode < 300
+		if !delivery.Success {
+			deliveryErr = fmt.Errorf("webhook %s returned status %d", webhook.ID, resp.StatusCode)
+		}
 	}
 
 	s.mu.Lock()
@@ -331,6 +363,8 @@ func (s *Service) deliver(ctx context.Context, webhook *Webhook, event Event) {
 		s.deliveries = s.deliveries[len(s.deliveries)-1000:]
 	}
 	s.mu.Unlock()
+
+	return deliveryErr
 }
 
 func (s *Service) sign(payload []byte, secret string) string {
@@ -359,8 +393,8 @@ func (s *Service) GetDeliveries(webhookID string, limit int) []Delivery {
 
 // Helper functions to emit common events
 
-func (s *Service) EmitFindingCreated(ctx context.Context, findingID, policyID, severity string, resource map[string]interface{}) {
-	s.Emit(ctx, EventFindingCreated, map[string]interface{}{
+func (s *Service) EmitFindingCreated(ctx context.Context, findingID, policyID, severity string, resource map[string]interface{}) error {
+	return s.EmitWithErrors(ctx, EventFindingCreated, map[string]interface{}{
 		"finding_id": findingID,
 		"policy_id":  policyID,
 		"severity":   severity,
@@ -368,22 +402,22 @@ func (s *Service) EmitFindingCreated(ctx context.Context, findingID, policyID, s
 	})
 }
 
-func (s *Service) EmitFindingResolved(ctx context.Context, findingID string) {
-	s.Emit(ctx, EventFindingResolved, map[string]interface{}{
+func (s *Service) EmitFindingResolved(ctx context.Context, findingID string) error {
+	return s.EmitWithErrors(ctx, EventFindingResolved, map[string]interface{}{
 		"finding_id": findingID,
 	})
 }
 
-func (s *Service) EmitScanCompleted(ctx context.Context, scanned, violations int64, duration time.Duration) {
-	s.Emit(ctx, EventScanCompleted, map[string]interface{}{
+func (s *Service) EmitScanCompleted(ctx context.Context, scanned, violations int64, duration time.Duration) error {
+	return s.EmitWithErrors(ctx, EventScanCompleted, map[string]interface{}{
 		"scanned":     scanned,
 		"violations":  violations,
 		"duration_ms": duration.Milliseconds(),
 	})
 }
 
-func (s *Service) EmitAttackPathFound(ctx context.Context, pathID, severity string, steps int) {
-	s.Emit(ctx, EventAttackPathFound, map[string]interface{}{
+func (s *Service) EmitAttackPathFound(ctx context.Context, pathID, severity string, steps int) error {
+	return s.EmitWithErrors(ctx, EventAttackPathFound, map[string]interface{}{
 		"path_id":  pathID,
 		"severity": severity,
 		"steps":    steps,

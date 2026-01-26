@@ -1,10 +1,17 @@
 package notifications
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
+	"math"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/writerinternal/cerebro/internal/findings"
 )
@@ -162,7 +169,7 @@ func (h *SlackCommandHandler) statsCommand() SlackResponse {
 					{Title: "High", Value: fmt.Sprintf("%d", stats.BySeverity["high"]), Short: true},
 					{Title: "Medium", Value: fmt.Sprintf("%d", stats.BySeverity["medium"]), Short: true},
 					{Title: "Low", Value: fmt.Sprintf("%d", stats.BySeverity["low"]), Short: true},
-					{Title: "Open", Value: fmt.Sprintf("%d", stats.ByStatus["open"]), Short: true},
+					{Title: "Open", Value: fmt.Sprintf("%d", stats.ByStatus["OPEN"]), Short: true},
 				},
 				Footer: "Cerebro Security",
 			},
@@ -209,28 +216,88 @@ func (h *SlackCommandHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if err := r.ParseForm(); err != nil {
+	// Read body for signature verification
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request", http.StatusBadRequest)
+		return
+	}
+
+	// Verify Slack signature if signing secret is configured
+	if h.signingSecret != "" {
+		if !h.verifySlackSignature(r.Header, body) {
+			http.Error(w, "Invalid signature", http.StatusUnauthorized)
+			return
+		}
+	}
+
+	// Parse form from body
+	formValues, err := parseFormBody(string(body))
+	if err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
 
 	cmd := SlackCommand{
-		Token:       r.FormValue("token"),
-		TeamID:      r.FormValue("team_id"),
-		ChannelID:   r.FormValue("channel_id"),
-		ChannelName: r.FormValue("channel_name"),
-		UserID:      r.FormValue("user_id"),
-		UserName:    r.FormValue("user_name"),
-		Command:     r.FormValue("command"),
-		Text:        r.FormValue("text"),
-		ResponseURL: r.FormValue("response_url"),
-		TriggerID:   r.FormValue("trigger_id"),
+		Token:       formValues["token"],
+		TeamID:      formValues["team_id"],
+		ChannelID:   formValues["channel_id"],
+		ChannelName: formValues["channel_name"],
+		UserID:      formValues["user_id"],
+		UserName:    formValues["user_name"],
+		Command:     formValues["command"],
+		Text:        formValues["text"],
+		ResponseURL: formValues["response_url"],
+		TriggerID:   formValues["trigger_id"],
 	}
 
 	response := h.HandleCommand(cmd)
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(response)
+}
+
+// verifySlackSignature verifies the Slack request signature
+func (h *SlackCommandHandler) verifySlackSignature(header http.Header, body []byte) bool {
+	timestamp := header.Get("X-Slack-Request-Timestamp")
+	signature := header.Get("X-Slack-Signature")
+
+	if timestamp == "" || signature == "" {
+		return false
+	}
+
+	// Check timestamp to prevent replay attacks (5 min window)
+	ts, err := strconv.ParseInt(timestamp, 10, 64)
+	if err != nil {
+		return false
+	}
+	if math.Abs(float64(time.Now().Unix()-ts)) > 300 {
+		return false
+	}
+
+	// Compute expected signature
+	sigBaseString := fmt.Sprintf("v0:%s:%s", timestamp, string(body))
+	mac := hmac.New(sha256.New, []byte(h.signingSecret))
+	mac.Write([]byte(sigBaseString))
+	expectedSig := "v0=" + hex.EncodeToString(mac.Sum(nil))
+
+	// Constant-time comparison
+	return hmac.Equal([]byte(signature), []byte(expectedSig))
+}
+
+// parseFormBody parses URL-encoded form data from a string
+func parseFormBody(body string) (map[string]string, error) {
+	values := make(map[string]string)
+	for _, pair := range strings.Split(body, "&") {
+		parts := strings.SplitN(pair, "=", 2)
+		if len(parts) == 2 {
+			// URL decode the value
+			key := parts[0]
+			value := strings.ReplaceAll(parts[1], "+", " ")
+			values[key] = value
+		}
+	}
+	return values, nil
 }
 
 // DailyDigest generates a daily summary for Slack

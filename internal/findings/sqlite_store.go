@@ -232,6 +232,17 @@ func (s *SQLiteStore) List(filter FindingFilter) []*Finding {
 		args = append(args, filter.PolicyID)
 	}
 
+	query += " ORDER BY first_seen DESC"
+
+	if filter.Limit > 0 {
+		query += " LIMIT ?"
+		args = append(args, filter.Limit)
+	}
+	if filter.Offset > 0 {
+		query += " OFFSET ?"
+		args = append(args, filter.Offset)
+	}
+
 	rows, err := s.db.QueryContext(context.Background(), query, args...)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to list findings: %v\n", err)
@@ -262,6 +273,34 @@ func (s *SQLiteStore) List(filter FindingFilter) []*Finding {
 	}
 
 	return result
+}
+
+func (s *SQLiteStore) Count(filter FindingFilter) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	query := "SELECT COUNT(*) FROM findings WHERE 1=1"
+	var args []interface{}
+
+	if filter.Severity != "" {
+		query += " AND severity = ?"
+		args = append(args, filter.Severity)
+	}
+	if filter.Status != "" {
+		query += " AND UPPER(status) = ?"
+		args = append(args, strings.ToUpper(filter.Status))
+	}
+	if filter.PolicyID != "" {
+		query += " AND policy_id = ?"
+		args = append(args, filter.PolicyID)
+	}
+
+	var count int
+	if err := s.db.QueryRowContext(context.Background(), query, args...).Scan(&count); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to count findings: %v\n", err)
+		return 0
+	}
+	return count
 }
 
 func (s *SQLiteStore) Resolve(id string) bool {

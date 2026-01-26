@@ -27,15 +27,6 @@ func TestExtractAPIKey(t *testing.T) {
 			expected: "header-key-456",
 		},
 		{
-			name: "Query parameter",
-			setup: func(r *http.Request) {
-				q := r.URL.Query()
-				q.Set("api_key", "query-key-789")
-				r.URL.RawQuery = q.Encode()
-			},
-			expected: "query-key-789",
-		},
-		{
 			name:     "No key",
 			setup:    func(r *http.Request) {},
 			expected: "",

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/writerinternal/cerebro/internal/agents"
 )
@@ -36,7 +37,7 @@ func NewAnthropicProvider(cfg AnthropicConfig) *AnthropicProvider {
 		apiKey:  cfg.APIKey,
 		model:   cfg.Model,
 		baseURL: cfg.BaseURL,
-		client:  &http.Client{},
+		client:  &http.Client{Timeout: 120 * time.Second},
 	}
 }
 

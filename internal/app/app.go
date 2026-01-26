@@ -234,9 +234,16 @@ type Config struct {
 	RateLimitEnabled  bool
 	RateLimitRequests int
 	RateLimitWindow   time.Duration
+
+	// API Authentication
+	APIAuthEnabled bool
+	APIKeys        map[string]string
 }
 
 func LoadConfig() *Config {
+	apiKeys := parseAPIKeys(getEnv("API_KEYS", ""))
+	apiAuthEnabled := getEnvBool("API_AUTH_ENABLED", len(apiKeys) > 0)
+
 	return &Config{
 		Port:                    getEnvInt("API_PORT", 8080),
 		LogLevel:                getEnv("LOG_LEVEL", "info"),
@@ -303,12 +310,17 @@ func LoadConfig() *Config {
 		RateLimitEnabled:        getEnvBool("RATE_LIMIT_ENABLED", false),
 		RateLimitRequests:       getEnvInt("RATE_LIMIT_REQUESTS", 1000),
 		RateLimitWindow:         getEnvDuration("RATE_LIMIT_WINDOW", time.Hour),
+		APIAuthEnabled:          apiAuthEnabled,
+		APIKeys:                 apiKeys,
 	}
 }
 
 // New creates and wires up the entire application
 func New(ctx context.Context) (*App, error) {
 	cfg := LoadConfig()
+	if cfg.APIAuthEnabled && len(cfg.APIKeys) == 0 {
+		return nil, fmt.Errorf("api auth enabled but no API_KEYS configured")
+	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: parseLogLevel(cfg.LogLevel),
@@ -416,8 +428,16 @@ func (a *App) initFindings() {
 		a.Logger.Info("using sqlite findings store", "path", dbPath)
 		return
 	}
-	// When Snowflake is available, use in-memory store with Snowflake sync
-	a.Findings = findings.NewStore()
+	// When Snowflake is available, create SnowflakeStore as primary
+	// This will be loaded from Snowflake in initSnowflakeFindings
+	snowflakeStore := findings.NewSnowflakeStore(
+		a.Snowflake.DB(),
+		a.Config.SnowflakeDatabase,
+		a.Config.SnowflakeSchema,
+	)
+	a.Findings = snowflakeStore
+	a.SnowflakeFindings = snowflakeStore
+	a.Logger.Info("using snowflake findings store")
 }
 
 func (a *App) initScanner() {
@@ -660,36 +680,80 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 
 	totalScanned := 0
 	totalViolations := 0
+	const batchSize = 1000
+	const maxWatermarkAge = 7 * 24 * time.Hour
 
 	for _, table := range tables {
-		assets, err := a.Snowflake.GetAssets(ctx, table, snowflake.AssetFilter{Limit: 1000})
-		if err != nil {
-			a.Logger.Warn("failed to fetch assets", "table", table, "error", err)
-			continue
+		// Build filter with incremental scanning support
+		filter := snowflake.AssetFilter{Limit: batchSize}
+
+		// Use watermarks for incremental scanning
+		if a.ScanWatermarks != nil {
+			if !a.ScanWatermarks.ShouldFullScan(table, maxWatermarkAge) {
+				if wm := a.ScanWatermarks.GetWatermark(table); wm != nil {
+					filter.Since = wm.LastScanTime
+					a.Logger.Debug("incremental scan", "table", table, "since", wm.LastScanTime)
+				}
+			}
 		}
 
-		result := a.Scanner.ScanAssets(ctx, assets)
-		totalScanned += int(result.Scanned)
-		totalViolations += int(result.Violations)
-
-		// Persist findings
-		for _, f := range result.Findings {
-			finding := a.Findings.Upsert(ctx, f)
-
-			// Send notification for new critical/high findings
-			if finding.FirstSeen.Equal(finding.LastSeen) && (f.Severity == "critical" || f.Severity == "high") {
-				_ = a.Notifications.Send(ctx, notifications.Event{
-					Type:     notifications.EventFindingCreated,
-					Severity: f.Severity,
-					Title:    fmt.Sprintf("New %s Finding: %s", f.Severity, f.PolicyName),
-					Message:  f.Description,
-					Data: map[string]interface{}{
-						"finding_id": f.ID,
-						"policy_id":  f.PolicyID,
-						"resource":   f.Resource,
-					},
-				})
+		// Paginate through all assets
+		tableScanned := int64(0)
+		offset := 0
+		for {
+			filter.Offset = offset
+			assets, err := a.Snowflake.GetAssets(ctx, table, filter)
+			if err != nil {
+				a.Logger.Warn("failed to fetch assets", "table", table, "offset", offset, "error", err)
+				break
 			}
+
+			if len(assets) == 0 {
+				break
+			}
+
+			result := a.Scanner.ScanAssets(ctx, assets)
+			totalScanned += int(result.Scanned)
+			totalViolations += int(result.Violations)
+			tableScanned += result.Scanned
+
+			// Persist findings
+			for _, f := range result.Findings {
+				finding := a.Findings.Upsert(ctx, f)
+
+				// Send notification for new critical/high findings
+				if finding.FirstSeen.Equal(finding.LastSeen) && (f.Severity == "critical" || f.Severity == "high") {
+					_ = a.Notifications.Send(ctx, notifications.Event{
+						Type:     notifications.EventFindingCreated,
+						Severity: f.Severity,
+						Title:    fmt.Sprintf("New %s Finding: %s", f.Severity, f.PolicyName),
+						Message:  f.Description,
+						Data: map[string]interface{}{
+							"finding_id": f.ID,
+							"policy_id":  f.PolicyID,
+							"resource":   f.Resource,
+						},
+					})
+				}
+			}
+
+			// If we got fewer than batchSize, we're done with this table
+			if len(assets) < batchSize {
+				break
+			}
+			offset += batchSize
+		}
+
+		// Update watermark after successful scan
+		if a.ScanWatermarks != nil && tableScanned > 0 {
+			a.ScanWatermarks.SetWatermark(table, time.Now().UTC(), tableScanned)
+		}
+	}
+
+	// Persist watermarks
+	if a.ScanWatermarks != nil {
+		if err := a.ScanWatermarks.PersistWatermarks(ctx); err != nil {
+			a.Logger.Warn("failed to persist scan watermarks", "error", err)
 		}
 	}
 
@@ -713,7 +777,9 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 	})
 
 	// Emit webhook
-	a.Webhooks.EmitScanCompleted(ctx, int64(totalScanned), int64(totalViolations), 0)
+	if err := a.Webhooks.EmitScanCompleted(ctx, int64(totalScanned), int64(totalViolations), 0); err != nil {
+		a.Logger.Warn("failed to emit scan completed webhook", "error", err)
+	}
 
 	return nil
 }
@@ -728,17 +794,12 @@ func (a *App) initRepositories() {
 }
 
 func (a *App) initSnowflakeFindings(ctx context.Context) {
-	if a.Snowflake == nil {
+	if a.Snowflake == nil || a.SnowflakeFindings == nil {
 		return
 	}
 
-	a.SnowflakeFindings = findings.NewSnowflakeStore(
-		a.Snowflake.DB(),
-		a.Config.SnowflakeDatabase,
-		a.Config.SnowflakeSchema,
-	)
-
 	// Load existing findings from Snowflake
+	// SnowflakeStore is already created in initFindings when Snowflake is available
 	if err := a.SnowflakeFindings.Load(ctx); err != nil {
 		a.Logger.Warn("failed to load findings from snowflake", "error", err)
 	} else {
@@ -860,6 +921,41 @@ func getEnvDuration(key string, fallback time.Duration) time.Duration {
 		}
 	}
 	return fallback
+}
+
+func parseAPIKeys(value string) map[string]string {
+	keys := make(map[string]string)
+	if value == "" {
+		return keys
+	}
+
+	for _, entry := range strings.Split(value, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+
+		parts := strings.SplitN(entry, ":", 2)
+		if len(parts) == 1 {
+			parts = strings.SplitN(entry, "=", 2)
+		}
+
+		key := strings.TrimSpace(parts[0])
+		if key == "" {
+			continue
+		}
+
+		userID := key
+		if len(parts) == 2 {
+			userID = strings.TrimSpace(parts[1])
+			if userID == "" {
+				userID = key
+			}
+		}
+		keys[key] = userID
+	}
+
+	return keys
 }
 
 func parseLogLevel(level string) slog.Level {
@@ -1096,11 +1192,13 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 		)
 
 		// Emit webhook event
-		a.Webhooks.Emit(ctx, webhooks.EventGraphRebuilt, map[string]interface{}{
+		if err := a.Webhooks.EmitWithErrors(ctx, webhooks.EventGraphRebuilt, map[string]interface{}{
 			"nodes":          meta.NodeCount,
 			"edges":          meta.EdgeCount,
 			"build_duration": meta.BuildDuration.String(),
-		})
+		}); err != nil {
+			a.Logger.Warn("failed to emit graph rebuilt webhook", "error", err)
+		}
 	}()
 }
 
@@ -1123,11 +1221,13 @@ func (a *App) RebuildSecurityGraph(ctx context.Context) error {
 	)
 
 	// Emit webhook event
-	a.Webhooks.Emit(ctx, webhooks.EventGraphRebuilt, map[string]interface{}{
+	if err := a.Webhooks.EmitWithErrors(ctx, webhooks.EventGraphRebuilt, map[string]interface{}{
 		"nodes":          meta.NodeCount,
 		"edges":          meta.EdgeCount,
 		"build_duration": time.Since(start).String(),
-	})
+	}); err != nil {
+		a.Logger.Warn("failed to emit graph rebuilt webhook", "error", err)
+	}
 
 	return nil
 }

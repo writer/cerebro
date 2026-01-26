@@ -121,6 +121,40 @@ func TestValidateTableName_Invalid(t *testing.T) {
 	}
 }
 
+func TestValidateColumnName_Valid(t *testing.T) {
+	validNames := []string{
+		"column",
+		"my_column",
+		"Column123",
+		"_internal",
+	}
+
+	for _, name := range validNames {
+		if err := ValidateColumnName(name); err != nil {
+			t.Errorf("ValidateColumnName(%q) = %v, want nil", name, err)
+		}
+	}
+}
+
+func TestValidateColumnName_Invalid(t *testing.T) {
+	invalidNames := []string{
+		"",
+		"column; DROP TABLE users",
+		"column--comment",
+		"column/*comment*/",
+		"column'quote",
+		"123_starts_with_number",
+		"column name with spaces",
+		"column OR 1=1",
+	}
+
+	for _, name := range invalidNames {
+		if err := ValidateColumnName(name); err == nil {
+			t.Errorf("ValidateColumnName(%q) = nil, want error", name)
+		}
+	}
+}
+
 func TestValidateTableNameStrict_KnownPrefixes(t *testing.T) {
 	knownPrefixes := []string{
 		"aws_iam_users",

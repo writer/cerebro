@@ -51,6 +51,16 @@ func ValidateTableName(table string) error {
 	return nil
 }
 
+// ValidateColumnName ensures a column name is safe for SQL queries.
+// Returns an error if the column name contains invalid characters or patterns.
+func ValidateColumnName(column string) error {
+	if err := ValidateTableName(column); err != nil {
+		return fmt.Errorf("column name invalid: %w", err)
+	}
+
+	return nil
+}
+
 // ValidateTableNameStrict validates and also checks against known prefixes.
 // Use this when the table should be a known CloudQuery or Cerebro table.
 func ValidateTableNameStrict(table string) error {

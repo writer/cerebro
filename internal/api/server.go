@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -59,6 +60,10 @@ func (s *Server) setupMiddleware() {
 	s.router.Use(middleware.Timeout(60 * time.Second))
 	s.router.Use(middleware.Compress(5))
 	s.router.Use(MetricsMiddleware)
+
+	if s.app.Config.APIAuthEnabled {
+		s.router.Use(APIKeyAuth(AuthConfig{Enabled: true, APIKeys: s.app.Config.APIKeys}))
+	}
 
 	// Add rate limiting if configured
 	if s.app.Config.RateLimitEnabled {
@@ -468,7 +473,7 @@ func (s *Server) adminHealth(w http.ResponseWriter, r *http.Request) {
 	stats := s.app.Findings.Stats()
 	health["findings"] = map[string]interface{}{
 		"total":    stats.Total,
-		"open":     stats.ByStatus["open"],
+		"open":     stats.ByStatus["OPEN"],
 		"critical": stats.BySeverity["critical"],
 		"high":     stats.BySeverity["high"],
 		"medium":   stats.BySeverity["medium"],
@@ -622,8 +627,8 @@ func (s *Server) executeQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate query is read-only (no DDL/DML)
-	if err := validateReadOnlyQuery(req.Query); err != nil {
+	// Validate query - only allow SELECT statements for safety
+	if err := validateQuery(req.Query); err != nil {
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -636,45 +641,95 @@ func (s *Server) executeQuery(w http.ResponseWriter, r *http.Request) {
 	s.json(w, http.StatusOK, result)
 }
 
-// validateReadOnlyQuery ensures the query is a read-only SELECT statement
-func validateReadOnlyQuery(query string) error {
-	// Normalize query for checking
-	normalized := strings.ToUpper(strings.TrimSpace(query))
+// validateQuery ensures only safe read-only queries are executed
+func validateQuery(query string) error {
+	// Normalize: remove comments, collapse whitespace
+	q := normalizeSQL(query)
+	q = strings.ToUpper(q)
 
-	// Must start with SELECT
-	if !strings.HasPrefix(normalized, "SELECT") {
+	// Must start with SELECT or WITH (for CTEs)
+	if !strings.HasPrefix(q, "SELECT") && !strings.HasPrefix(q, "WITH") {
 		return fmt.Errorf("only SELECT queries are allowed")
 	}
 
-	// Block dangerous keywords that could modify data or schema
-	dangerousKeywords := []string{
-		"INSERT", "UPDATE", "DELETE", "DROP", "TRUNCATE", "ALTER",
-		"CREATE", "REPLACE", "MERGE", "GRANT", "REVOKE", "EXECUTE",
-		"CALL", "COPY", "PUT", "GET", "REMOVE", "UNDROP",
+	// Block dangerous keywords with word boundary detection
+	// Use regex-like matching by checking for word boundaries
+	dangerous := []string{
+		"INSERT", "UPDATE", "DELETE", "DROP", "TRUNCATE",
+		"CREATE", "ALTER", "GRANT", "REVOKE", "EXECUTE",
+		"CALL", "MERGE", "COPY", "PUT", "GET", "EXEC",
 	}
-
-	for _, keyword := range dangerousKeywords {
-		// Check for keyword as a separate word (not part of column name)
-		if strings.Contains(" "+normalized+" ", " "+keyword+" ") {
-			return fmt.Errorf("query contains forbidden keyword: %s", keyword)
+	for _, kw := range dangerous {
+		if containsKeyword(q, kw) {
+			return fmt.Errorf("query contains forbidden keyword: %s", kw)
 		}
 	}
 
-	// Block comment-based injection attempts
-	if strings.Contains(query, "--") || strings.Contains(query, "/*") {
-		return fmt.Errorf("SQL comments are not allowed")
-	}
-
-	// Block multiple statements
-	if strings.Contains(query, ";") {
-		// Allow trailing semicolon but not multiple statements
-		trimmed := strings.TrimSuffix(strings.TrimSpace(query), ";")
-		if strings.Contains(trimmed, ";") {
-			return fmt.Errorf("multiple SQL statements are not allowed")
-		}
+	// Block semicolons which could allow statement chaining
+	if strings.Contains(q, ";") {
+		return fmt.Errorf("query contains forbidden character: semicolon")
 	}
 
 	return nil
+}
+
+// normalizeSQL removes SQL comments and normalizes whitespace
+func normalizeSQL(query string) string {
+	// Remove block comments /* ... */
+	for {
+		start := strings.Index(query, "/*")
+		if start == -1 {
+			break
+		}
+		end := strings.Index(query[start:], "*/")
+		if end == -1 {
+			query = query[:start]
+			break
+		}
+		query = query[:start] + " " + query[start+end+2:]
+	}
+
+	// Remove line comments -- ...
+	lines := strings.Split(query, "\n")
+	for i, line := range lines {
+		if idx := strings.Index(line, "--"); idx != -1 {
+			lines[i] = line[:idx]
+		}
+	}
+	query = strings.Join(lines, " ")
+
+	// Collapse all whitespace to single spaces
+	fields := strings.Fields(query)
+	return strings.Join(fields, " ")
+}
+
+// containsKeyword checks if a SQL keyword exists as a whole word
+func containsKeyword(sql, keyword string) bool {
+	idx := 0
+	for {
+		pos := strings.Index(sql[idx:], keyword)
+		if pos == -1 {
+			return false
+		}
+		pos += idx
+
+		// Check word boundary before
+		validBefore := pos == 0 || !isAlphaNum(sql[pos-1])
+		// Check word boundary after
+		validAfter := pos+len(keyword) >= len(sql) || !isAlphaNum(sql[pos+len(keyword)])
+
+		if validBefore && validAfter {
+			return true
+		}
+		idx = pos + 1
+		if idx >= len(sql) {
+			return false
+		}
+	}
+}
+
+func isAlphaNum(c byte) bool {
+	return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_'
 }
 
 // Asset endpoints
@@ -765,13 +820,25 @@ func (s *Server) evaluatePolicy(w http.ResponseWriter, r *http.Request) {
 // Finding endpoints
 
 func (s *Server) listFindings(w http.ResponseWriter, r *http.Request) {
+	pagination := ParsePagination(r, 100, 1000)
+
 	filter := findings.FindingFilter{
 		Severity: r.URL.Query().Get("severity"),
 		Status:   r.URL.Query().Get("status"),
 		PolicyID: r.URL.Query().Get("policy_id"),
+		Limit:    pagination.Limit,
+		Offset:   pagination.Offset,
 	}
+
+	total := s.app.Findings.Count(filter)
 	list := s.app.Findings.List(filter)
-	s.json(w, http.StatusOK, map[string]interface{}{"findings": list, "count": len(list)})
+	paginationResp := BuildPaginationResponse(int64(total), pagination, len(list))
+
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"findings":   list,
+		"count":      len(list),
+		"pagination": paginationResp,
+	})
 }
 
 func (s *Server) findingsStats(w http.ResponseWriter, r *http.Request) {
@@ -2050,9 +2117,11 @@ func (s *Server) testWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Send test event
-	s.app.Webhooks.Emit(r.Context(), "test", map[string]interface{}{
+	if err := s.app.Webhooks.EmitWithErrors(r.Context(), "test", map[string]interface{}{
 		"message": "Test webhook from Cerebro",
-	})
+	}); err != nil {
+		s.app.Logger.Warn("failed to emit test webhook", "error", err)
+	}
 	s.json(w, http.StatusOK, map[string]string{"status": "test event sent"})
 }
 
@@ -2538,6 +2607,13 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Require admin:users permission
+	userID := GetUserID(r.Context())
+	if !s.app.RBAC.HasPermission(r.Context(), userID, "admin:users") {
+		s.error(w, http.StatusForbidden, "permission denied: admin:users required")
+		return
+	}
+
 	var user auth.User
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
 		s.error(w, http.StatusBadRequest, "invalid user")
@@ -2571,7 +2647,15 @@ func (s *Server) assignRole(w http.ResponseWriter, r *http.Request) {
 		s.error(w, http.StatusServiceUnavailable, "rbac not initialized")
 		return
 	}
-	userID := chi.URLParam(r, "id")
+
+	// Require admin:roles permission
+	currentUserID := GetUserID(r.Context())
+	if !s.app.RBAC.HasPermission(r.Context(), currentUserID, "admin:roles") {
+		s.error(w, http.StatusForbidden, "permission denied: admin:roles required")
+		return
+	}
+
+	targetUserID := chi.URLParam(r, "id")
 
 	var req struct {
 		RoleID string `json:"role_id"`
@@ -2581,7 +2665,7 @@ func (s *Server) assignRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.app.RBAC.AssignRole(userID, req.RoleID); err != nil {
+	if err := s.app.RBAC.AssignRole(targetUserID, req.RoleID); err != nil {
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -2600,6 +2684,13 @@ func (s *Server) listTenants(w http.ResponseWriter, r *http.Request) {
 func (s *Server) createTenant(w http.ResponseWriter, r *http.Request) {
 	if s.app.RBAC == nil {
 		s.error(w, http.StatusServiceUnavailable, "rbac not initialized")
+		return
+	}
+
+	// Require admin:users permission for tenant management
+	userID := GetUserID(r.Context())
+	if !s.app.RBAC.HasPermission(r.Context(), userID, "admin:users") {
+		s.error(w, http.StatusForbidden, "permission denied: admin:users required")
 		return
 	}
 
@@ -2900,10 +2991,12 @@ func (s *Server) cloudQuerySyncWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Emit cloudquery synced event
-	s.app.Webhooks.Emit(r.Context(), webhooks.EventCloudQuerySynced, map[string]interface{}{
+	if err := s.app.Webhooks.EmitWithErrors(r.Context(), webhooks.EventCloudQuerySynced, map[string]interface{}{
 		"tables": payload.Tables,
 		"status": payload.Status,
-	})
+	}); err != nil {
+		s.app.Logger.Warn("failed to emit cloudquery webhook", "error", err)
+	}
 
 	// Check if any IAM tables were synced - if so, rebuild the graph
 	iamTables := []string{

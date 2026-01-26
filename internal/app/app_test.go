@@ -54,6 +54,21 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	}
 }
 
+func TestNew_APIAuthEnabledWithoutKeys(t *testing.T) {
+	os.Setenv("API_AUTH_ENABLED", "true")
+	os.Unsetenv("API_KEYS")
+	defer func() {
+		os.Unsetenv("API_AUTH_ENABLED")
+		os.Unsetenv("API_KEYS")
+	}()
+
+	ctx := context.Background()
+	_, err := New(ctx)
+	if err == nil {
+		t.Fatal("expected error when API auth enabled without API_KEYS")
+	}
+}
+
 func TestNew_WithoutSnowflake(t *testing.T) {
 	// Clear snowflake config to test initialization without it
 	os.Unsetenv("SNOWFLAKE_PRIVATE_KEY")

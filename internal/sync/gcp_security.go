@@ -290,38 +290,38 @@ func (s *GCPSecuritySync) upsertVulnerabilities(ctx context.Context, vulns []map
 	}
 
 	// Delete existing and insert new
-	deleteSQL := fmt.Sprintf("DELETE FROM GCP_CONTAINER_VULNERABILITIES WHERE PROJECT_ID = '%s'", s.projectID)
-	if _, err := s.sf.Query(ctx, deleteSQL); err != nil {
+	deleteSQL := "DELETE FROM GCP_CONTAINER_VULNERABILITIES WHERE PROJECT_ID = ?"
+	if _, err := s.sf.Exec(ctx, deleteSQL, s.projectID); err != nil {
 		s.logger.Warn("failed to delete existing vulnerabilities", "error", err)
 	}
 
 	// Insert records
-	for _, v := range vulns {
-		insertSQL := fmt.Sprintf(`
-		INSERT INTO GCP_CONTAINER_VULNERABILITIES 
-		(_CQ_ID, PROJECT_ID, NAME, RESOURCE_URI, NOTE_NAME, KIND, CREATE_TIME, UPDATE_TIME, 
-		 SEVERITY, CVSS_SCORE, CVSS_V3_SCORE, EFFECTIVE_SEVERITY, FIX_AVAILABLE, 
+	insertSQL := `
+		INSERT INTO GCP_CONTAINER_VULNERABILITIES
+		(_CQ_ID, PROJECT_ID, NAME, RESOURCE_URI, NOTE_NAME, KIND, CREATE_TIME, UPDATE_TIME,
+		 SEVERITY, CVSS_SCORE, CVSS_V3_SCORE, EFFECTIVE_SEVERITY, FIX_AVAILABLE,
 		 LONG_DESCRIPTION, SHORT_DESCRIPTION, CVE_ID, PACKAGE_ISSUE)
-		VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %v, %v, '%s', %v, '%s', '%s', '%s', '%s')`,
-			escapeSQL(toStr(v["_cq_id"])),
-			escapeSQL(toStr(v["project_id"])),
-			escapeSQL(toStr(v["name"])),
-			escapeSQL(toStr(v["resource_uri"])),
-			escapeSQL(toStr(v["note_name"])),
-			escapeSQL(toStr(v["kind"])),
-			escapeSQL(toStr(v["create_time"])),
-			escapeSQL(toStr(v["update_time"])),
-			escapeSQL(toStr(v["severity"])),
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	for _, v := range vulns {
+		if _, err := s.sf.Exec(ctx, insertSQL,
+			toStr(v["_cq_id"]),
+			toStr(v["project_id"]),
+			toStr(v["name"]),
+			toStr(v["resource_uri"]),
+			toStr(v["note_name"]),
+			toStr(v["kind"]),
+			toStr(v["create_time"]),
+			toStr(v["update_time"]),
+			toStr(v["severity"]),
 			v["cvss_score"],
 			v["cvss_v3_score"],
-			escapeSQL(toStr(v["effective_severity"])),
+			toStr(v["effective_severity"]),
 			v["fix_available"],
-			escapeSQL(toStr(v["long_description"])),
-			escapeSQL(toStr(v["short_description"])),
-			escapeSQL(toStr(v["cve_id"])),
-			escapeSQL(toStr(v["package_issue"])),
-		)
-		if _, err := s.sf.Query(ctx, insertSQL); err != nil {
+			toStr(v["long_description"]),
+			toStr(v["short_description"]),
+			toStr(v["cve_id"]),
+			toStr(v["package_issue"]),
+		); err != nil {
 			s.logger.Warn("failed to insert vulnerability", "error", err, "cve", v["cve_id"])
 		}
 	}
@@ -350,29 +350,29 @@ func (s *GCPSecuritySync) upsertDockerImages(ctx context.Context, images []map[s
 		return fmt.Errorf("failed to create images table: %w", err)
 	}
 
-	deleteSQL := fmt.Sprintf("DELETE FROM GCP_ARTIFACT_REGISTRY_IMAGES WHERE PROJECT_ID = '%s'", s.projectID)
-	if _, err := s.sf.Query(ctx, deleteSQL); err != nil {
+	deleteSQL := "DELETE FROM GCP_ARTIFACT_REGISTRY_IMAGES WHERE PROJECT_ID = ?"
+	if _, err := s.sf.Exec(ctx, deleteSQL, s.projectID); err != nil {
 		s.logger.Warn("failed to delete existing images", "error", err)
 	}
 
-	for _, img := range images {
-		insertSQL := fmt.Sprintf(`
-		INSERT INTO GCP_ARTIFACT_REGISTRY_IMAGES 
+	insertSQL := `
+		INSERT INTO GCP_ARTIFACT_REGISTRY_IMAGES
 		(_CQ_ID, PROJECT_ID, NAME, URI, TAGS, IMAGE_SIZE, UPLOAD_TIME, MEDIA_TYPE, BUILD_TIME, UPDATE_TIME, REPOSITORY)
-		VALUES ('%s', '%s', '%s', '%s', '%s', %v, '%s', '%s', '%s', '%s', '%s')`,
-			escapeSQL(toStr(img["_cq_id"])),
-			escapeSQL(toStr(img["project_id"])),
-			escapeSQL(toStr(img["name"])),
-			escapeSQL(toStr(img["uri"])),
-			escapeSQL(toStr(img["tags"])),
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	for _, img := range images {
+		if _, err := s.sf.Exec(ctx, insertSQL,
+			toStr(img["_cq_id"]),
+			toStr(img["project_id"]),
+			toStr(img["name"]),
+			toStr(img["uri"]),
+			toStr(img["tags"]),
 			img["image_size"],
-			escapeSQL(toStr(img["upload_time"])),
-			escapeSQL(toStr(img["media_type"])),
-			escapeSQL(toStr(img["build_time"])),
-			escapeSQL(toStr(img["update_time"])),
-			escapeSQL(toStr(img["repository"])),
-		)
-		if _, err := s.sf.Query(ctx, insertSQL); err != nil {
+			toStr(img["upload_time"]),
+			toStr(img["media_type"]),
+			toStr(img["build_time"]),
+			toStr(img["update_time"]),
+			toStr(img["repository"]),
+		); err != nil {
 			s.logger.Warn("failed to insert image", "error", err, "uri", img["uri"])
 		}
 	}
@@ -406,35 +406,35 @@ func (s *GCPSecuritySync) upsertSCCFindings(ctx context.Context, findings []map[
 		return fmt.Errorf("failed to create SCC findings table: %w", err)
 	}
 
-	deleteSQL := fmt.Sprintf("DELETE FROM GCP_SCC_FINDINGS WHERE PROJECT_ID = '%s'", s.projectID)
-	if _, err := s.sf.Query(ctx, deleteSQL); err != nil {
+	deleteSQL := "DELETE FROM GCP_SCC_FINDINGS WHERE PROJECT_ID = ?"
+	if _, err := s.sf.Exec(ctx, deleteSQL, s.projectID); err != nil {
 		s.logger.Warn("failed to delete existing SCC findings", "error", err)
 	}
 
-	for _, f := range findings {
-		insertSQL := fmt.Sprintf(`
-		INSERT INTO GCP_SCC_FINDINGS 
-		(_CQ_ID, PROJECT_ID, NAME, PARENT, RESOURCE_NAME, STATE, CATEGORY, EXTERNAL_URI, 
+	insertSQL := `
+		INSERT INTO GCP_SCC_FINDINGS
+		(_CQ_ID, PROJECT_ID, NAME, PARENT, RESOURCE_NAME, STATE, CATEGORY, EXTERNAL_URI,
 		 SEVERITY, FINDING_CLASS, MUTE, CREATE_TIME, EVENT_TIME, DESCRIPTION, INDICATOR, VULNERABILITY)
-		VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s')`,
-			escapeSQL(toStr(f["_cq_id"])),
-			escapeSQL(toStr(f["project_id"])),
-			escapeSQL(toStr(f["name"])),
-			escapeSQL(toStr(f["parent"])),
-			escapeSQL(toStr(f["resource_name"])),
-			escapeSQL(toStr(f["state"])),
-			escapeSQL(toStr(f["category"])),
-			escapeSQL(toStr(f["external_uri"])),
-			escapeSQL(toStr(f["severity"])),
-			escapeSQL(toStr(f["finding_class"])),
-			escapeSQL(toStr(f["mute"])),
-			escapeSQL(toStr(f["create_time"])),
-			escapeSQL(toStr(f["event_time"])),
-			escapeSQL(toStr(f["description"])),
-			escapeSQL(toStr(f["indicator"])),
-			escapeSQL(toStr(f["vulnerability"])),
-		)
-		if _, err := s.sf.Query(ctx, insertSQL); err != nil {
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	for _, f := range findings {
+		if _, err := s.sf.Exec(ctx, insertSQL,
+			toStr(f["_cq_id"]),
+			toStr(f["project_id"]),
+			toStr(f["name"]),
+			toStr(f["parent"]),
+			toStr(f["resource_name"]),
+			toStr(f["state"]),
+			toStr(f["category"]),
+			toStr(f["external_uri"]),
+			toStr(f["severity"]),
+			toStr(f["finding_class"]),
+			toStr(f["mute"]),
+			toStr(f["create_time"]),
+			toStr(f["event_time"]),
+			toStr(f["description"]),
+			toStr(f["indicator"]),
+			toStr(f["vulnerability"]),
+		); err != nil {
 			s.logger.Warn("failed to insert SCC finding", "error", err, "name", f["name"])
 		}
 	}

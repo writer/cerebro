@@ -2,8 +2,11 @@ package providers
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // Provider interface for custom data sources beyond CloudQuery
@@ -127,14 +130,24 @@ func (r *Registry) SyncAll(ctx context.Context, opts SyncOptions) ([]*SyncResult
 	r.mu.RUnlock()
 
 	results := make([]*SyncResult, len(providers))
-	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var errs []error
+	var group errgroup.Group
+	limit := opts.Concurrency
+	if limit <= 0 {
+		limit = 4
+	}
+	group.SetLimit(limit)
 
 	for i, p := range providers {
-		wg.Add(1)
-		go func(idx int, provider Provider) {
-			defer wg.Done()
+		idx := i
+		provider := p
+		group.Go(func() error {
 			result, err := provider.Sync(ctx, opts)
 			if err != nil {
+				mu.Lock()
+				errs = append(errs, err)
+				mu.Unlock()
 				// Capture partial result if available, otherwise create error result
 				if result != nil {
 					result.Errors = append(result.Errors, err.Error())
@@ -148,11 +161,12 @@ func (r *Registry) SyncAll(ctx context.Context, opts SyncOptions) ([]*SyncResult
 			} else {
 				results[idx] = result
 			}
-		}(i, p)
+			return nil
+		})
 	}
 
-	wg.Wait()
-	return results, nil
+	_ = group.Wait()
+	return results, errors.Join(errs...)
 }
 
 // BaseProvider provides common functionality for custom providers

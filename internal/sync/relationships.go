@@ -149,6 +149,9 @@ func (r *RelationshipExtractor) ensureTable(ctx context.Context) error {
 	if schema == "" {
 		schema = "RAW"
 	}
+	if err := snowflake.ValidateTableName(schema); err != nil {
+		return fmt.Errorf("invalid schema name: %w", err)
+	}
 	query := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s.RESOURCE_RELATIONSHIPS (
 		ID VARCHAR PRIMARY KEY,
 		SOURCE_ID VARCHAR NOT NULL,
@@ -168,11 +171,11 @@ func (r *RelationshipExtractor) cleanupStaleRelationships(ctx context.Context, c
 	if schema == "" {
 		schema = "RAW"
 	}
-	// Use Query instead of Exec with embedded timestamp to ensure proper execution
-	// Format time as Snowflake timestamp literal
-	cutoffStr := cutoff.Format("2006-01-02 15:04:05.000 -0700")
-	query := fmt.Sprintf(`DELETE FROM %s.RESOURCE_RELATIONSHIPS WHERE SYNC_TIME < '%s'`, schema, cutoffStr)
-	_, err := r.sf.Query(ctx, query)
+	if err := snowflake.ValidateTableName(schema); err != nil {
+		return fmt.Errorf("invalid schema name: %w", err)
+	}
+	query := fmt.Sprintf(`DELETE FROM %s.RESOURCE_RELATIONSHIPS WHERE SYNC_TIME < ?`, schema)
+	_, err := r.sf.Query(ctx, query, cutoff)
 	return err
 }
 
@@ -188,6 +191,9 @@ func (r *RelationshipExtractor) persistRelationships(ctx context.Context, rels [
 	if schema == "" {
 		schema = "RAW"
 	}
+	if err := snowflake.ValidateTableName(schema); err != nil {
+		return 0, fmt.Errorf("invalid schema name: %w", err)
+	}
 	tableName := fmt.Sprintf("%s.RESOURCE_RELATIONSHIPS", schema)
 
 	// Batch insert using MERGE - process in batches to avoid query size limits
@@ -202,21 +208,15 @@ func (r *RelationshipExtractor) persistRelationships(ctx context.Context, rels [
 		batch := rels[i:end]
 
 		values := make([]string, 0, len(batch))
+		args := make([]interface{}, 0, len(batch)*7)
 		for _, rel := range batch {
 			props := rel.Properties
 			if props == "" {
 				props = "{}"
 			}
 			id := buildRelationshipID(rel.SourceID, rel.RelType, rel.TargetID, props)
-			values = append(values, fmt.Sprintf("('%s', '%s', '%s', '%s', '%s', '%s', '%s')",
-				escapeSQL(id),
-				escapeSQL(rel.SourceID),
-				escapeSQL(rel.SourceType),
-				escapeSQL(rel.TargetID),
-				escapeSQL(rel.TargetType),
-				escapeSQL(rel.RelType),
-				escapeSQL(props),
-			))
+			values = append(values, "(?, ?, ?, ?, ?, ?, ?)")
+			args = append(args, id, rel.SourceID, rel.SourceType, rel.TargetID, rel.TargetType, rel.RelType, props)
 		}
 
 		// Use simple INSERT with fully qualified table name
@@ -226,7 +226,7 @@ func (r *RelationshipExtractor) persistRelationships(ctx context.Context, rels [
 			tableName, strings.Join(values, ", "))
 
 		// Use Query instead of Exec - Exec has issues with Snowflake commit behavior
-		_, err := r.sf.Query(ctx, query)
+		_, err := r.sf.Query(ctx, query, args...)
 		if err != nil {
 			r.logger.Error("failed to persist relationships batch", "error", err, "batch_start", i, "batch_size", len(batch))
 			return total, err
@@ -1001,10 +1001,6 @@ func encodeProperties(props map[string]interface{}) (string, error) {
 		return "{}", err
 	}
 	return string(encoded), nil
-}
-
-func escapeSQL(s string) string {
-	return strings.ReplaceAll(s, "'", "''")
 }
 
 func buildRelationshipID(sourceID, relType, targetID, props string) string {
