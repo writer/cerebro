@@ -865,6 +865,15 @@ func (a *App) validatePolicyCoverage(ctx context.Context) {
 func (a *App) Close() error {
 	var errs []error
 
+	// Sync findings store to persist any pending changes
+	if syncer, ok := a.Findings.(interface{ Sync(context.Context) error }); ok {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := syncer.Sync(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("findings sync: %w", err))
+		}
+	}
+
 	// Close Snowflake connection
 	if a.Snowflake != nil {
 		if err := a.Snowflake.Close(); err != nil {

@@ -374,22 +374,22 @@ func (s *SnowflakeStore) upsertFinding(ctx context.Context, f *Finding) error {
 	}
 
 	query := fmt.Sprintf(`
-		MERGE INTO %s.findings t
+		MERGE INTO %s.FINDINGS t
 		USING (SELECT ? as id) s
-		ON t.id = s.id
+		ON t.ID = s.id
 		WHEN MATCHED THEN UPDATE SET
-			last_seen = ?,
-			status = ?,
-			resource_data = PARSE_JSON(?),
-			description = ?,
-			remediation = ?,
-			metadata = PARSE_JSON(?),
-			resolved_at = ?,
-			_updated_at = CURRENT_TIMESTAMP()
+			LAST_SEEN = ?,
+			STATUS = ?,
+			RESOURCE_DATA = PARSE_JSON(?),
+			DESCRIPTION = ?,
+			REMEDIATION = ?,
+			METADATA = PARSE_JSON(?),
+			RESOLVED_AT = ?,
+			UPDATED_AT = CURRENT_TIMESTAMP()
 		WHEN NOT MATCHED THEN INSERT (
-			id, policy_id, policy_name, severity, status,
-			resource_id, resource_type, resource_data, description,
-			remediation, metadata, first_seen, last_seen, resolved_at
+			ID, POLICY_ID, POLICY_NAME, SEVERITY, STATUS,
+			RESOURCE_ID, RESOURCE_TYPE, RESOURCE_DATA, DESCRIPTION,
+			REMEDIATION, METADATA, FIRST_SEEN, LAST_SEEN, RESOLVED_AT
 		) VALUES (?, ?, ?, ?, ?, ?, ?, PARSE_JSON(?), ?, ?, PARSE_JSON(?), ?, ?, ?)
 	`, s.schema)
 
