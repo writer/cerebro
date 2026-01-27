@@ -8,18 +8,40 @@ import (
 // This enables validation that required tables exist before policy evaluation
 var ResourceToTableMapping = map[string][]string{
 	// S3
-	"aws::s3::bucket": {"aws_s3_buckets"},
+	"aws::s3::bucket":              {"aws_s3_buckets"},
+	"aws::s3::bucket_policy":       {"aws_s3_bucket_policies"},
+	"aws::s3::bucket_acl":          {"aws_s3_bucket_grants"},
+	"aws::s3::bucket_encryption":   {"aws_s3_bucket_encryption_rules"},
+	"aws::s3::bucket_versioning":   {"aws_s3_bucket_versionings"},
+	"aws::s3::bucket_logging":      {"aws_s3_bucket_loggings"},
+	"aws::s3::public_access_block": {"aws_s3_bucket_public_access_blocks"},
 
-	// EC2
+	// EC2 - Compute
 	"aws::ec2::instance":       {"aws_ec2_instances"},
 	"aws::ec2::security_group": {"aws_ec2_security_groups"},
 	"aws::ec2::vpc":            {"aws_ec2_vpcs"},
 	"aws::ec2::ebs_volume":     {"aws_ec2_ebs_volumes"},
 	"aws::ec2::ebs_snapshot":   {"aws_ec2_ebs_snapshots"},
-	"aws::ec2::ami":            {"aws_ec2_amis"},
+	"aws::ec2::ami":            {"aws_ec2_images"},
+	"aws::ec2::image":          {"aws_ec2_images"},
 	"aws::ec2::flow_log":       {"aws_ec2_flow_logs"},
 
-	// IAM
+	// EC2 - Network
+	"aws::ec2::eip":                     {"aws_ec2_eips"},
+	"aws::ec2::key_pair":                {"aws_ec2_key_pairs"},
+	"aws::ec2::launch_template":         {"aws_ec2_launch_templates"},
+	"aws::ec2::network_interface":       {"aws_ec2_network_interfaces"},
+	"aws::ec2::vpc_endpoint":            {"aws_ec2_vpc_endpoints"},
+	"aws::ec2::vpc_peering_connection":  {"aws_ec2_vpc_peering_connections"},
+	"aws::ec2::transit_gateway":         {"aws_ec2_transit_gateways"},
+	"aws::ec2::customer_gateway":        {"aws_ec2_customer_gateways"},
+	"aws::ec2::vpn_gateway":             {"aws_ec2_vpn_gateways"},
+	"aws::ec2::vpn_connection":          {"aws_ec2_vpn_connections"},
+	"aws::ec2::reserved_instance":       {"aws_ec2_reserved_instances"},
+	"aws::ec2::capacity_reservation":    {"aws_ec2_capacity_reservations"},
+	"aws::ec2::spot_instance_request":   {"aws_ec2_spot_instance_requests"},
+
+	// IAM - Core
 	"aws::iam::user":            {"aws_iam_users", "aws_iam_credential_reports"},
 	"aws::iam::role":            {"aws_iam_roles"},
 	"aws::iam::policy":          {"aws_iam_policies"},
@@ -27,12 +49,19 @@ var ResourceToTableMapping = map[string][]string{
 	"aws::iam::account":         {"aws_iam_accounts"},
 	"aws::iam::password_policy": {"aws_iam_password_policies"},
 
-	// IAM additional
+	// IAM - Extended
 	"aws::iam::access_key":              {"aws_iam_user_access_keys"},
 	"aws::iam::account_password_policy": {"aws_iam_password_policies"},
 	"aws::iam::account_summary":         {"aws_iam_accounts"},
 	"aws::iam::credential_report":       {"aws_iam_credential_reports"},
 	"aws::iam::saml_provider":           {"aws_iam_saml_identity_providers"},
+	"aws::iam::oidc_provider":           {"aws_iam_openid_connect_identity_providers"},
+	"aws::iam::instance_profile":        {"aws_iam_instance_profiles"},
+	"aws::iam::server_certificate":      {"aws_iam_server_certificates"},
+	"aws::iam::mfa_device":              {"aws_iam_mfa_devices"},
+	"aws::iam::role_policy":             {"aws_iam_role_policies"},
+	"aws::iam::user_policy":             {"aws_iam_user_policies"},
+	"aws::iam::group_policy":            {"aws_iam_group_policies"},
 
 	// Lambda
 	"aws::lambda::function": {"aws_lambda_functions"},
@@ -52,11 +81,11 @@ var ResourceToTableMapping = map[string][]string{
 	"aws::cloudwatch::log_group": {"aws_cloudwatch_log_groups"},
 
 	// Config
-	"aws::config::recorder":          {"aws_config_configuration_recorders"},
+	"aws::config::recorder":               {"aws_config_configuration_recorders"},
 	"aws::config::configuration_recorder": {"aws_config_configuration_recorders"},
-	"aws::config::rule":              {"aws_config_rules"},
-	"aws::config::delivery_channel":  {"aws_config_delivery_channels"},
-	"aws::config::conformance_pack":  {"aws_config_conformance_packs"},
+	"aws::config::rule":                   {"aws_config_rules"},
+	"aws::config::delivery_channel":       {"aws_config_delivery_channels"},
+	"aws::config::conformance_pack":       {"aws_config_conformance_packs"},
 
 	// GuardDuty
 	"aws::guardduty::detector": {"aws_guardduty_detectors"},
@@ -103,8 +132,8 @@ var ResourceToTableMapping = map[string][]string{
 	"aws::efs::mount_target": {"aws_efs_mount_targets"},
 
 	// Bedrock
-	"aws::bedrock::custom_model":                  {"aws_bedrock_custom_models"},
-	"aws::bedrock::provisioned_model_throughput":  {"aws_bedrock_provisioned_model_throughputs"},
+	"aws::bedrock::custom_model":                 {"aws_bedrock_custom_models"},
+	"aws::bedrock::provisioned_model_throughput": {"aws_bedrock_provisioned_model_throughputs"},
 
 	// CloudFront
 	"aws::cloudfront::distribution": {"aws_cloudfront_distributions"},
@@ -127,7 +156,10 @@ var ResourceToTableMapping = map[string][]string{
 	"aws::logs::log_group": {"aws_cloudwatch_log_groups"},
 
 	// WAF
-	"aws::wafv2::web_acl": {"aws_wafv2_web_acls"},
+	"aws::wafv2::web_acl":           {"aws_wafv2_web_acls"},
+	"aws::wafv2::ip_set":            {"aws_wafv2_ipsets"},
+	"aws::wafv2::rule_group":        {"aws_wafv2_rule_groups"},
+	"aws::wafv2::regex_pattern_set": {"aws_wafv2_regex_pattern_sets"},
 
 	// Secrets Manager
 	"aws::secretsmanager::secret": {"aws_secretsmanager_secrets"},
