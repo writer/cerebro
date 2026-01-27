@@ -137,6 +137,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/mwaa v1.39.18 // indirect
 	github.com/aws/aws-sdk-go-v2/service/neptune v1.43.9 // indirect
 	github.com/aws/aws-sdk-go-v2/service/organizations v1.50.1 // indirect
+	github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi v1.31.6 // indirect
 	github.com/aws/aws-sdk-go-v2/service/route53 v1.62.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sesv2 v1.59.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sfn v1.40.6 // indirect

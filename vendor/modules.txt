@@ -610,6 +610,11 @@ github.com/aws/aws-sdk-go-v2/service/rds/types
 github.com/aws/aws-sdk-go-v2/service/redshift
 github.com/aws/aws-sdk-go-v2/service/redshift/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/redshift/types
+# github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi v1.31.6
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi
+github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi/types
 # github.com/aws/aws-sdk-go-v2/service/route53 v1.62.1
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/route53

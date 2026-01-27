@@ -326,6 +326,9 @@ func (e *SyncEngine) getAWSTables() []TableSpec {
 		// Cloud Control (all supported AWS resource types)
 		e.cloudcontrolResourceTypeTable(),
 		e.cloudcontrolResourceTable(),
+
+		// Resource Groups Tagging API
+		e.resourceGroupTaggingResourceTable(),
 	}
 }
 
