@@ -240,6 +240,47 @@ var ResourceToTableMapping = map[string][]string{
 	"aws::organizations::policy":       {"aws_organizations_policies"},
 	"aws::organizations::ou":           {"aws_organizations_organizational_units"},
 
+	// CloudFormation
+	"aws::cloudformation::stack":          {"aws_cloudformation_stacks"},
+	"aws::cloudformation::stack_resource": {"aws_cloudformation_stack_resources"},
+
+	// Step Functions
+	"aws::sfn::state_machine": {"aws_sfn_state_machines"},
+	"aws::sfn::activity":      {"aws_sfn_activities"},
+
+	// Cognito
+	"aws::cognito::user_pool":         {"aws_cognito_user_pools"},
+	"aws::cognito::user_pool_client":  {"aws_cognito_user_pool_clients"},
+	"aws::cognito::identity_provider": {"aws_cognito_identity_providers"},
+
+	// SES
+	"aws::ses::identity":          {"aws_ses_identities"},
+	"aws::ses::configuration_set": {"aws_ses_configuration_sets"},
+
+	// MSK (Kafka)
+	"aws::msk::cluster":       {"aws_msk_clusters"},
+	"aws::msk::configuration": {"aws_msk_configurations"},
+
+	// Transfer Family
+	"aws::transfer::server": {"aws_transfer_servers"},
+	"aws::transfer::user":   {"aws_transfer_users"},
+
+	// FSx
+	"aws::fsx::file_system": {"aws_fsx_file_systems"},
+	"aws::fsx::volume":      {"aws_fsx_volumes"},
+	"aws::fsx::backup":      {"aws_fsx_backups"},
+
+	// DocumentDB
+	"aws::docdb::cluster":  {"aws_docdb_clusters"},
+	"aws::docdb::instance": {"aws_docdb_instances"},
+
+	// Neptune
+	"aws::neptune::cluster":  {"aws_neptune_clusters"},
+	"aws::neptune::instance": {"aws_neptune_instances"},
+
+	// MWAA (Airflow)
+	"aws::mwaa::environment": {"aws_mwaa_environments"},
+
 	// GCP
 	"gcp::compute::instance":        {"gcp_compute_instances"},
 	"gcp::compute::firewall":        {"gcp_compute_firewalls"},

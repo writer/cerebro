@@ -369,6 +369,8 @@ github.com/aws/aws-sdk-go-v2/service/apigateway/types
 github.com/aws/aws-sdk-go-v2/service/apigatewayv2
 github.com/aws/aws-sdk-go-v2/service/apigatewayv2/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/apigatewayv2/types
+# github.com/aws/aws-sdk-go-v2/service/appflow v1.51.8
+## explicit; go 1.23
 # github.com/aws/aws-sdk-go-v2/service/appsync v1.53.1
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/appsync
@@ -393,6 +395,11 @@ github.com/aws/aws-sdk-go-v2/service/bedrock/document
 github.com/aws/aws-sdk-go-v2/service/bedrock/internal/document
 github.com/aws/aws-sdk-go-v2/service/bedrock/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/bedrock/types
+# github.com/aws/aws-sdk-go-v2/service/cloudformation v1.71.5
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/cloudformation
+github.com/aws/aws-sdk-go-v2/service/cloudformation/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/cloudformation/types
 # github.com/aws/aws-sdk-go-v2/service/cloudfront v1.59.0
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/cloudfront
@@ -418,11 +425,25 @@ github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types
 github.com/aws/aws-sdk-go-v2/service/codebuild
 github.com/aws/aws-sdk-go-v2/service/codebuild/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/codebuild/types
+# github.com/aws/aws-sdk-go-v2/service/cognitoidentityprovider v1.57.19
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/cognitoidentityprovider
+github.com/aws/aws-sdk-go-v2/service/cognitoidentityprovider/document
+github.com/aws/aws-sdk-go-v2/service/cognitoidentityprovider/internal/document
+github.com/aws/aws-sdk-go-v2/service/cognitoidentityprovider/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/cognitoidentityprovider/types
 # github.com/aws/aws-sdk-go-v2/service/configservice v1.61.0
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/configservice
 github.com/aws/aws-sdk-go-v2/service/configservice/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/configservice/types
+# github.com/aws/aws-sdk-go-v2/service/dax v1.29.12
+## explicit; go 1.23
+# github.com/aws/aws-sdk-go-v2/service/docdb v1.48.9
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/docdb
+github.com/aws/aws-sdk-go-v2/service/docdb/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/docdb/types
 # github.com/aws/aws-sdk-go-v2/service/dynamodb v1.53.6
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/dynamodb
@@ -487,6 +508,11 @@ github.com/aws/aws-sdk-go-v2/service/eventbridge/types
 github.com/aws/aws-sdk-go-v2/service/firehose
 github.com/aws/aws-sdk-go-v2/service/firehose/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/firehose/types
+# github.com/aws/aws-sdk-go-v2/service/fsx v1.65.3
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/fsx
+github.com/aws/aws-sdk-go-v2/service/fsx/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/fsx/types
 # github.com/aws/aws-sdk-go-v2/service/glue v1.136.1
 ## explicit; go 1.23
 # github.com/aws/aws-sdk-go-v2/service/guardduty v1.73.0
@@ -521,6 +547,11 @@ github.com/aws/aws-sdk-go-v2/service/internal/presigned-url
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared/arn
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared/config
+# github.com/aws/aws-sdk-go-v2/service/kafka v1.46.7
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/kafka
+github.com/aws/aws-sdk-go-v2/service/kafka/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/kafka/types
 # github.com/aws/aws-sdk-go-v2/service/kinesis v1.42.10
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/kinesis
@@ -538,6 +569,20 @@ github.com/aws/aws-sdk-go-v2/service/lambda/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/lambda/types
 # github.com/aws/aws-sdk-go-v2/service/macie2 v1.50.9
 ## explicit; go 1.23
+# github.com/aws/aws-sdk-go-v2/service/memorydb v1.33.10
+## explicit; go 1.23
+# github.com/aws/aws-sdk-go-v2/service/mwaa v1.39.18
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/mwaa
+github.com/aws/aws-sdk-go-v2/service/mwaa/document
+github.com/aws/aws-sdk-go-v2/service/mwaa/internal/document
+github.com/aws/aws-sdk-go-v2/service/mwaa/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/mwaa/types
+# github.com/aws/aws-sdk-go-v2/service/neptune v1.43.9
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/neptune
+github.com/aws/aws-sdk-go-v2/service/neptune/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/neptune/types
 # github.com/aws/aws-sdk-go-v2/service/opensearch v1.57.1
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/opensearch
@@ -590,6 +635,16 @@ github.com/aws/aws-sdk-go-v2/service/securityhub/document
 github.com/aws/aws-sdk-go-v2/service/securityhub/internal/document
 github.com/aws/aws-sdk-go-v2/service/securityhub/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/securityhub/types
+# github.com/aws/aws-sdk-go-v2/service/sesv2 v1.59.1
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/sesv2
+github.com/aws/aws-sdk-go-v2/service/sesv2/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/sesv2/types
+# github.com/aws/aws-sdk-go-v2/service/sfn v1.40.6
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/sfn
+github.com/aws/aws-sdk-go-v2/service/sfn/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/sfn/types
 # github.com/aws/aws-sdk-go-v2/service/sns v1.39.11
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/sns
@@ -620,6 +675,11 @@ github.com/aws/aws-sdk-go-v2/service/ssooidc/types
 github.com/aws/aws-sdk-go-v2/service/sts
 github.com/aws/aws-sdk-go-v2/service/sts/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/sts/types
+# github.com/aws/aws-sdk-go-v2/service/transfer v1.68.6
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/transfer
+github.com/aws/aws-sdk-go-v2/service/transfer/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/transfer/types
 # github.com/aws/aws-sdk-go-v2/service/wafv2 v1.70.7
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/wafv2

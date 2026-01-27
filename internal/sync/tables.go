@@ -281,6 +281,47 @@ func (e *SyncEngine) getAWSTables() []TableSpec {
 		e.organizationsOrganizationTable(),
 		e.organizationsPolicyTable(),
 		e.organizationsOUTable(),
+
+		// CloudFormation
+		e.cloudformationStackTable(),
+		e.cloudformationStackResourceTable(),
+
+		// Step Functions
+		e.sfnStateMachineTable(),
+		e.sfnActivityTable(),
+
+		// Cognito
+		e.cognitoUserPoolTable(),
+		e.cognitoUserPoolClientTable(),
+		e.cognitoIdentityProviderTable(),
+
+		// SES
+		e.sesIdentityTable(),
+		e.sesConfigurationSetTable(),
+
+		// MSK (Kafka)
+		e.mskClusterTable(),
+		e.mskConfigurationTable(),
+
+		// Transfer Family
+		e.transferServerTable(),
+		e.transferUserTable(),
+
+		// FSx
+		e.fsxFileSystemTable(),
+		e.fsxVolumeTable(),
+		e.fsxBackupTable(),
+
+		// DocumentDB
+		e.docdbClusterTable(),
+		e.docdbInstanceTable(),
+
+		// Neptune
+		e.neptuneClusterTable(),
+		e.neptuneInstanceTable(),
+
+		// MWAA (Airflow)
+		e.mwaaEnvironmentTable(),
 	}
 }
 

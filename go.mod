@@ -108,14 +108,20 @@ require (
 	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.17 // indirect
 	github.com/aws/aws-sdk-go-v2/service/accessanalyzer v1.45.8 // indirect
 	github.com/aws/aws-sdk-go-v2/service/acm v1.37.19 // indirect
+	github.com/aws/aws-sdk-go-v2/service/appflow v1.51.8 // indirect
 	github.com/aws/aws-sdk-go-v2/service/athena v1.56.6 // indirect
 	github.com/aws/aws-sdk-go-v2/service/autoscaling v1.64.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/backup v1.54.6 // indirect
+	github.com/aws/aws-sdk-go-v2/service/cloudformation v1.71.5 // indirect
 	github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.53.1 // indirect
+	github.com/aws/aws-sdk-go-v2/service/cognitoidentityprovider v1.57.19 // indirect
+	github.com/aws/aws-sdk-go-v2/service/dax v1.29.12 // indirect
+	github.com/aws/aws-sdk-go-v2/service/docdb v1.48.9 // indirect
 	github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.31.2 // indirect
 	github.com/aws/aws-sdk-go-v2/service/emr v1.57.5 // indirect
 	github.com/aws/aws-sdk-go-v2/service/eventbridge v1.45.18 // indirect
 	github.com/aws/aws-sdk-go-v2/service/firehose v1.42.9 // indirect
+	github.com/aws/aws-sdk-go-v2/service/fsx v1.65.3 // indirect
 	github.com/aws/aws-sdk-go-v2/service/glue v1.136.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/inspector2 v1.46.2 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.4 // indirect
@@ -123,13 +129,20 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.11.17 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.17 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.17 // indirect
+	github.com/aws/aws-sdk-go-v2/service/kafka v1.46.7 // indirect
 	github.com/aws/aws-sdk-go-v2/service/kinesis v1.42.10 // indirect
 	github.com/aws/aws-sdk-go-v2/service/macie2 v1.50.9 // indirect
+	github.com/aws/aws-sdk-go-v2/service/memorydb v1.33.10 // indirect
+	github.com/aws/aws-sdk-go-v2/service/mwaa v1.39.18 // indirect
+	github.com/aws/aws-sdk-go-v2/service/neptune v1.43.9 // indirect
 	github.com/aws/aws-sdk-go-v2/service/organizations v1.50.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/route53 v1.62.1 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sesv2 v1.59.1 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sfn v1.40.6 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.67.8 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.20.5 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.23.4 // indirect
+	github.com/aws/aws-sdk-go-v2/service/transfer v1.68.6 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cncf/xds/go v0.0.0-20251022180443-0feb69152e9f // indirect

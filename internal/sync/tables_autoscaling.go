@@ -330,5 +330,3 @@ func (e *SyncEngine) autoscalingLifecycleHookTable() TableSpec {
 		},
 	}
 }
-
-
