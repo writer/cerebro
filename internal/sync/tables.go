@@ -322,6 +322,10 @@ func (e *SyncEngine) getAWSTables() []TableSpec {
 
 		// MWAA (Airflow)
 		e.mwaaEnvironmentTable(),
+
+		// Cloud Control (all supported AWS resource types)
+		e.cloudcontrolResourceTypeTable(),
+		e.cloudcontrolResourceTable(),
 	}
 }
 

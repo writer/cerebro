@@ -112,6 +112,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/athena v1.56.6 // indirect
 	github.com/aws/aws-sdk-go-v2/service/autoscaling v1.64.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/backup v1.54.6 // indirect
+	github.com/aws/aws-sdk-go-v2/service/cloudcontrol v1.29.9 // indirect
 	github.com/aws/aws-sdk-go-v2/service/cloudformation v1.71.5 // indirect
 	github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.53.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/cognitoidentityprovider v1.57.19 // indirect

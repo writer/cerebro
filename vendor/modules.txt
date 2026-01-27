@@ -395,6 +395,11 @@ github.com/aws/aws-sdk-go-v2/service/bedrock/document
 github.com/aws/aws-sdk-go-v2/service/bedrock/internal/document
 github.com/aws/aws-sdk-go-v2/service/bedrock/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/bedrock/types
+# github.com/aws/aws-sdk-go-v2/service/cloudcontrol v1.29.9
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/cloudcontrol
+github.com/aws/aws-sdk-go-v2/service/cloudcontrol/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/cloudcontrol/types
 # github.com/aws/aws-sdk-go-v2/service/cloudformation v1.71.5
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/cloudformation
