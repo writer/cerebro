@@ -1,0 +1,707 @@
+package sync
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+)
+
+// S3 Bucket Policies
+func (e *SyncEngine) s3BucketPolicyTable() TableSpec {
+	return TableSpec{
+		Name:    "aws_s3_bucket_policies",
+		Columns: []string{"arn", "account_id", "region", "bucket", "policy"},
+		Fetch:   e.fetchS3BucketPolicies,
+	}
+}
+
+func (e *SyncEngine) fetchS3BucketPolicies(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := s3.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	bucketsOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	if err != nil {
+		return nil, err
+	}
+
+	var rows []map[string]interface{}
+	for _, bucket := range bucketsOut.Buckets {
+		bucketName := aws.ToString(bucket.Name)
+
+		// Get bucket location to filter by region
+		locOut, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
+			Bucket: bucket.Name,
+		})
+		if err != nil {
+			continue
+		}
+		bucketRegion := string(locOut.LocationConstraint)
+		if bucketRegion == "" {
+			bucketRegion = "us-east-1"
+		}
+		if bucketRegion != region {
+			continue
+		}
+
+		policyOut, err := client.GetBucketPolicy(ctx, &s3.GetBucketPolicyInput{
+			Bucket: bucket.Name,
+		})
+		if err != nil {
+			continue // No policy
+		}
+
+		arn := fmt.Sprintf("arn:aws:s3:::%s/policy", bucketName)
+		rows = append(rows, map[string]interface{}{
+			"_cq_id":     arn,
+			"arn":        arn,
+			"account_id": accountID,
+			"region":     bucketRegion,
+			"bucket":     bucketName,
+			"policy":     aws.ToString(policyOut.Policy),
+		})
+	}
+	return rows, nil
+}
+
+// S3 Bucket ACLs / Grants
+func (e *SyncEngine) s3BucketGrantTable() TableSpec {
+	return TableSpec{
+		Name:    "aws_s3_bucket_grants",
+		Columns: []string{"arn", "account_id", "region", "bucket", "grantee_type", "grantee_id", "grantee_uri", "grantee_display_name", "permission"},
+		Fetch:   e.fetchS3BucketGrants,
+	}
+}
+
+func (e *SyncEngine) fetchS3BucketGrants(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := s3.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	bucketsOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	if err != nil {
+		return nil, err
+	}
+
+	var rows []map[string]interface{}
+	for _, bucket := range bucketsOut.Buckets {
+		bucketName := aws.ToString(bucket.Name)
+
+		locOut, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
+			Bucket: bucket.Name,
+		})
+		if err != nil {
+			continue
+		}
+		bucketRegion := string(locOut.LocationConstraint)
+		if bucketRegion == "" {
+			bucketRegion = "us-east-1"
+		}
+		if bucketRegion != region {
+			continue
+		}
+
+		aclOut, err := client.GetBucketAcl(ctx, &s3.GetBucketAclInput{
+			Bucket: bucket.Name,
+		})
+		if err != nil {
+			continue
+		}
+
+		for i, grant := range aclOut.Grants {
+			var granteeType, granteeID, granteeURI, granteeName string
+			if grant.Grantee != nil {
+				granteeType = string(grant.Grantee.Type)
+				granteeID = aws.ToString(grant.Grantee.ID)
+				granteeURI = aws.ToString(grant.Grantee.URI)
+				granteeName = aws.ToString(grant.Grantee.DisplayName)
+			}
+
+			arn := fmt.Sprintf("arn:aws:s3:::%s/acl/%d", bucketName, i)
+			rows = append(rows, map[string]interface{}{
+				"_cq_id":               arn,
+				"arn":                  arn,
+				"account_id":           accountID,
+				"region":               bucketRegion,
+				"bucket":               bucketName,
+				"grantee_type":         granteeType,
+				"grantee_id":           granteeID,
+				"grantee_uri":          granteeURI,
+				"grantee_display_name": granteeName,
+				"permission":           string(grant.Permission),
+			})
+		}
+	}
+	return rows, nil
+}
+
+// S3 Bucket Encryption Rules
+func (e *SyncEngine) s3BucketEncryptionTable() TableSpec {
+	return TableSpec{
+		Name:    "aws_s3_bucket_encryption_rules",
+		Columns: []string{"arn", "account_id", "region", "bucket", "sse_algorithm", "kms_master_key_id", "bucket_key_enabled"},
+		Fetch:   e.fetchS3BucketEncryption,
+	}
+}
+
+func (e *SyncEngine) fetchS3BucketEncryption(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := s3.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	bucketsOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	if err != nil {
+		return nil, err
+	}
+
+	var rows []map[string]interface{}
+	for _, bucket := range bucketsOut.Buckets {
+		bucketName := aws.ToString(bucket.Name)
+
+		locOut, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
+			Bucket: bucket.Name,
+		})
+		if err != nil {
+			continue
+		}
+		bucketRegion := string(locOut.LocationConstraint)
+		if bucketRegion == "" {
+			bucketRegion = "us-east-1"
+		}
+		if bucketRegion != region {
+			continue
+		}
+
+		encOut, err := client.GetBucketEncryption(ctx, &s3.GetBucketEncryptionInput{
+			Bucket: bucket.Name,
+		})
+		if err != nil {
+			continue // No encryption config
+		}
+
+		if encOut.ServerSideEncryptionConfiguration != nil {
+			for i, rule := range encOut.ServerSideEncryptionConfiguration.Rules {
+				var sseAlgo, kmsKeyID string
+				var bucketKeyEnabled bool
+				if rule.ApplyServerSideEncryptionByDefault != nil {
+					sseAlgo = string(rule.ApplyServerSideEncryptionByDefault.SSEAlgorithm)
+					kmsKeyID = aws.ToString(rule.ApplyServerSideEncryptionByDefault.KMSMasterKeyID)
+				}
+				if rule.BucketKeyEnabled != nil {
+					bucketKeyEnabled = *rule.BucketKeyEnabled
+				}
+
+				arn := fmt.Sprintf("arn:aws:s3:::%s/encryption/%d", bucketName, i)
+				rows = append(rows, map[string]interface{}{
+					"_cq_id":             arn,
+					"arn":                arn,
+					"account_id":         accountID,
+					"region":             bucketRegion,
+					"bucket":             bucketName,
+					"sse_algorithm":      sseAlgo,
+					"kms_master_key_id":  kmsKeyID,
+					"bucket_key_enabled": bucketKeyEnabled,
+				})
+			}
+		}
+	}
+	return rows, nil
+}
+
+// S3 Bucket Versioning
+func (e *SyncEngine) s3BucketVersioningTable() TableSpec {
+	return TableSpec{
+		Name:    "aws_s3_bucket_versionings",
+		Columns: []string{"arn", "account_id", "region", "bucket", "status", "mfa_delete"},
+		Fetch:   e.fetchS3BucketVersioning,
+	}
+}
+
+func (e *SyncEngine) fetchS3BucketVersioning(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := s3.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	bucketsOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	if err != nil {
+		return nil, err
+	}
+
+	var rows []map[string]interface{}
+	for _, bucket := range bucketsOut.Buckets {
+		bucketName := aws.ToString(bucket.Name)
+
+		locOut, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
+			Bucket: bucket.Name,
+		})
+		if err != nil {
+			continue
+		}
+		bucketRegion := string(locOut.LocationConstraint)
+		if bucketRegion == "" {
+			bucketRegion = "us-east-1"
+		}
+		if bucketRegion != region {
+			continue
+		}
+
+		verOut, err := client.GetBucketVersioning(ctx, &s3.GetBucketVersioningInput{
+			Bucket: bucket.Name,
+		})
+		if err != nil {
+			continue
+		}
+
+		arn := fmt.Sprintf("arn:aws:s3:::%s/versioning", bucketName)
+		rows = append(rows, map[string]interface{}{
+			"_cq_id":     arn,
+			"arn":        arn,
+			"account_id": accountID,
+			"region":     bucketRegion,
+			"bucket":     bucketName,
+			"status":     string(verOut.Status),
+			"mfa_delete": string(verOut.MFADelete),
+		})
+	}
+	return rows, nil
+}
+
+// S3 Bucket Logging
+func (e *SyncEngine) s3BucketLoggingTable() TableSpec {
+	return TableSpec{
+		Name:    "aws_s3_bucket_loggings",
+		Columns: []string{"arn", "account_id", "region", "bucket", "target_bucket", "target_prefix"},
+		Fetch:   e.fetchS3BucketLogging,
+	}
+}
+
+func (e *SyncEngine) fetchS3BucketLogging(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := s3.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	bucketsOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	if err != nil {
+		return nil, err
+	}
+
+	var rows []map[string]interface{}
+	for _, bucket := range bucketsOut.Buckets {
+		bucketName := aws.ToString(bucket.Name)
+
+		locOut, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
+			Bucket: bucket.Name,
+		})
+		if err != nil {
+			continue
+		}
+		bucketRegion := string(locOut.LocationConstraint)
+		if bucketRegion == "" {
+			bucketRegion = "us-east-1"
+		}
+		if bucketRegion != region {
+			continue
+		}
+
+		logOut, err := client.GetBucketLogging(ctx, &s3.GetBucketLoggingInput{
+			Bucket: bucket.Name,
+		})
+		if err != nil {
+			continue
+		}
+
+		var targetBucket, targetPrefix string
+		if logOut.LoggingEnabled != nil {
+			targetBucket = aws.ToString(logOut.LoggingEnabled.TargetBucket)
+			targetPrefix = aws.ToString(logOut.LoggingEnabled.TargetPrefix)
+		}
+
+		arn := fmt.Sprintf("arn:aws:s3:::%s/logging", bucketName)
+		rows = append(rows, map[string]interface{}{
+			"_cq_id":        arn,
+			"arn":           arn,
+			"account_id":    accountID,
+			"region":        bucketRegion,
+			"bucket":        bucketName,
+			"target_bucket": targetBucket,
+			"target_prefix": targetPrefix,
+		})
+	}
+	return rows, nil
+}
+
+// S3 Bucket Public Access Block
+func (e *SyncEngine) s3BucketPublicAccessBlockTable() TableSpec {
+	return TableSpec{
+		Name:    "aws_s3_bucket_public_access_blocks",
+		Columns: []string{"arn", "account_id", "region", "bucket", "block_public_acls", "ignore_public_acls", "block_public_policy", "restrict_public_buckets"},
+		Fetch:   e.fetchS3BucketPublicAccessBlock,
+	}
+}
+
+func (e *SyncEngine) fetchS3BucketPublicAccessBlock(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := s3.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	bucketsOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	if err != nil {
+		return nil, err
+	}
+
+	var rows []map[string]interface{}
+	for _, bucket := range bucketsOut.Buckets {
+		bucketName := aws.ToString(bucket.Name)
+
+		locOut, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
+			Bucket: bucket.Name,
+		})
+		if err != nil {
+			continue
+		}
+		bucketRegion := string(locOut.LocationConstraint)
+		if bucketRegion == "" {
+			bucketRegion = "us-east-1"
+		}
+		if bucketRegion != region {
+			continue
+		}
+
+		pabOut, err := client.GetPublicAccessBlock(ctx, &s3.GetPublicAccessBlockInput{
+			Bucket: bucket.Name,
+		})
+		if err != nil {
+			// No public access block config - record as all false
+			arn := fmt.Sprintf("arn:aws:s3:::%s/public-access-block", bucketName)
+			rows = append(rows, map[string]interface{}{
+				"_cq_id":                  arn,
+				"arn":                     arn,
+				"account_id":              accountID,
+				"region":                  bucketRegion,
+				"bucket":                  bucketName,
+				"block_public_acls":       false,
+				"ignore_public_acls":      false,
+				"block_public_policy":     false,
+				"restrict_public_buckets": false,
+			})
+			continue
+		}
+
+		cfg := pabOut.PublicAccessBlockConfiguration
+		arn := fmt.Sprintf("arn:aws:s3:::%s/public-access-block", bucketName)
+		rows = append(rows, map[string]interface{}{
+			"_cq_id":                  arn,
+			"arn":                     arn,
+			"account_id":              accountID,
+			"region":                  bucketRegion,
+			"bucket":                  bucketName,
+			"block_public_acls":       aws.ToBool(cfg.BlockPublicAcls),
+			"ignore_public_acls":      aws.ToBool(cfg.IgnorePublicAcls),
+			"block_public_policy":     aws.ToBool(cfg.BlockPublicPolicy),
+			"restrict_public_buckets": aws.ToBool(cfg.RestrictPublicBuckets),
+		})
+	}
+	return rows, nil
+}
+
+// S3 Bucket Lifecycle
+func (e *SyncEngine) s3BucketLifecycleTable() TableSpec {
+	return TableSpec{
+		Name:    "aws_s3_bucket_lifecycles",
+		Columns: []string{"arn", "account_id", "region", "bucket", "rule_id", "status", "prefix", "expiration_days", "expiration_date", "noncurrent_version_expiration_days", "abort_incomplete_multipart_upload_days", "transitions"},
+		Fetch:   e.fetchS3BucketLifecycle,
+	}
+}
+
+func (e *SyncEngine) fetchS3BucketLifecycle(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := s3.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	bucketsOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	if err != nil {
+		return nil, err
+	}
+
+	var rows []map[string]interface{}
+	for _, bucket := range bucketsOut.Buckets {
+		bucketName := aws.ToString(bucket.Name)
+
+		locOut, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
+			Bucket: bucket.Name,
+		})
+		if err != nil {
+			continue
+		}
+		bucketRegion := string(locOut.LocationConstraint)
+		if bucketRegion == "" {
+			bucketRegion = "us-east-1"
+		}
+		if bucketRegion != region {
+			continue
+		}
+
+		lcOut, err := client.GetBucketLifecycleConfiguration(ctx, &s3.GetBucketLifecycleConfigurationInput{
+			Bucket: bucket.Name,
+		})
+		if err != nil {
+			continue // No lifecycle config
+		}
+
+		for _, rule := range lcOut.Rules {
+			ruleID := aws.ToString(rule.ID)
+			arn := fmt.Sprintf("arn:aws:s3:::%s/lifecycle/%s", bucketName, ruleID)
+
+			var expDays, expDate interface{}
+			if rule.Expiration != nil {
+				if rule.Expiration.Days != nil {
+					expDays = *rule.Expiration.Days
+				}
+				expDate = rule.Expiration.Date
+			}
+
+			var ncvExpDays interface{}
+			if rule.NoncurrentVersionExpiration != nil && rule.NoncurrentVersionExpiration.NoncurrentDays != nil {
+				ncvExpDays = *rule.NoncurrentVersionExpiration.NoncurrentDays
+			}
+
+			var abortDays interface{}
+			if rule.AbortIncompleteMultipartUpload != nil && rule.AbortIncompleteMultipartUpload.DaysAfterInitiation != nil {
+				abortDays = *rule.AbortIncompleteMultipartUpload.DaysAfterInitiation
+			}
+
+			var transitions []map[string]interface{}
+			for _, t := range rule.Transitions {
+				trans := map[string]interface{}{
+					"storage_class": string(t.StorageClass),
+				}
+				if t.Days != nil {
+					trans["days"] = *t.Days
+				}
+				if t.Date != nil {
+					trans["date"] = t.Date
+				}
+				transitions = append(transitions, trans)
+			}
+
+			var prefix string
+			if rule.Filter != nil {
+				if rule.Filter.Prefix != nil {
+					prefix = *rule.Filter.Prefix
+				}
+			}
+
+			rows = append(rows, map[string]interface{}{
+				"_cq_id":                                 arn,
+				"arn":                                    arn,
+				"account_id":                             accountID,
+				"region":                                 bucketRegion,
+				"bucket":                                 bucketName,
+				"rule_id":                                ruleID,
+				"status":                                 string(rule.Status),
+				"prefix":                                 prefix,
+				"expiration_days":                        expDays,
+				"expiration_date":                        expDate,
+				"noncurrent_version_expiration_days":     ncvExpDays,
+				"abort_incomplete_multipart_upload_days": abortDays,
+				"transitions":                            transitions,
+			})
+		}
+	}
+	return rows, nil
+}
+
+// S3 Bucket Replication
+func (e *SyncEngine) s3BucketReplicationTable() TableSpec {
+	return TableSpec{
+		Name:    "aws_s3_bucket_replications",
+		Columns: []string{"arn", "account_id", "region", "bucket", "role", "rules"},
+		Fetch:   e.fetchS3BucketReplication,
+	}
+}
+
+func (e *SyncEngine) fetchS3BucketReplication(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := s3.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	bucketsOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	if err != nil {
+		return nil, err
+	}
+
+	var rows []map[string]interface{}
+	for _, bucket := range bucketsOut.Buckets {
+		bucketName := aws.ToString(bucket.Name)
+
+		locOut, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
+			Bucket: bucket.Name,
+		})
+		if err != nil {
+			continue
+		}
+		bucketRegion := string(locOut.LocationConstraint)
+		if bucketRegion == "" {
+			bucketRegion = "us-east-1"
+		}
+		if bucketRegion != region {
+			continue
+		}
+
+		repOut, err := client.GetBucketReplication(ctx, &s3.GetBucketReplicationInput{
+			Bucket: bucket.Name,
+		})
+		if err != nil {
+			continue // No replication config
+		}
+
+		if repOut.ReplicationConfiguration != nil {
+			arn := fmt.Sprintf("arn:aws:s3:::%s/replication", bucketName)
+			rows = append(rows, map[string]interface{}{
+				"_cq_id":     arn,
+				"arn":        arn,
+				"account_id": accountID,
+				"region":     bucketRegion,
+				"bucket":     bucketName,
+				"role":       aws.ToString(repOut.ReplicationConfiguration.Role),
+				"rules":      repOut.ReplicationConfiguration.Rules,
+			})
+		}
+	}
+	return rows, nil
+}
+
+// S3 Bucket CORS Rules
+func (e *SyncEngine) s3BucketCorsTable() TableSpec {
+	return TableSpec{
+		Name:    "aws_s3_bucket_cors_rules",
+		Columns: []string{"arn", "account_id", "region", "bucket", "allowed_headers", "allowed_methods", "allowed_origins", "expose_headers", "max_age_seconds"},
+		Fetch:   e.fetchS3BucketCors,
+	}
+}
+
+func (e *SyncEngine) fetchS3BucketCors(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := s3.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	bucketsOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	if err != nil {
+		return nil, err
+	}
+
+	var rows []map[string]interface{}
+	for _, bucket := range bucketsOut.Buckets {
+		bucketName := aws.ToString(bucket.Name)
+
+		locOut, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
+			Bucket: bucket.Name,
+		})
+		if err != nil {
+			continue
+		}
+		bucketRegion := string(locOut.LocationConstraint)
+		if bucketRegion == "" {
+			bucketRegion = "us-east-1"
+		}
+		if bucketRegion != region {
+			continue
+		}
+
+		corsOut, err := client.GetBucketCors(ctx, &s3.GetBucketCorsInput{
+			Bucket: bucket.Name,
+		})
+		if err != nil {
+			continue // No CORS config
+		}
+
+		for i, rule := range corsOut.CORSRules {
+			arn := fmt.Sprintf("arn:aws:s3:::%s/cors/%d", bucketName, i)
+			rows = append(rows, map[string]interface{}{
+				"_cq_id":          arn,
+				"arn":             arn,
+				"account_id":      accountID,
+				"region":          bucketRegion,
+				"bucket":          bucketName,
+				"allowed_headers": rule.AllowedHeaders,
+				"allowed_methods": rule.AllowedMethods,
+				"allowed_origins": rule.AllowedOrigins,
+				"expose_headers":  rule.ExposeHeaders,
+				"max_age_seconds": rule.MaxAgeSeconds,
+			})
+		}
+	}
+	return rows, nil
+}
+
+// S3 Bucket Website
+func (e *SyncEngine) s3BucketWebsiteTable() TableSpec {
+	return TableSpec{
+		Name:    "aws_s3_bucket_websites",
+		Columns: []string{"arn", "account_id", "region", "bucket", "index_document", "error_document", "redirect_all_requests_to"},
+		Fetch:   e.fetchS3BucketWebsite,
+	}
+}
+
+func (e *SyncEngine) fetchS3BucketWebsite(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := s3.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	bucketsOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	if err != nil {
+		return nil, err
+	}
+
+	var rows []map[string]interface{}
+	for _, bucket := range bucketsOut.Buckets {
+		bucketName := aws.ToString(bucket.Name)
+
+		locOut, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
+			Bucket: bucket.Name,
+		})
+		if err != nil {
+			continue
+		}
+		bucketRegion := string(locOut.LocationConstraint)
+		if bucketRegion == "" {
+			bucketRegion = "us-east-1"
+		}
+		if bucketRegion != region {
+			continue
+		}
+
+		webOut, err := client.GetBucketWebsite(ctx, &s3.GetBucketWebsiteInput{
+			Bucket: bucket.Name,
+		})
+		if err != nil {
+			continue // No website config
+		}
+
+		var indexDoc, errorDoc string
+		var redirectAll interface{}
+		if webOut.IndexDocument != nil {
+			indexDoc = aws.ToString(webOut.IndexDocument.Suffix)
+		}
+		if webOut.ErrorDocument != nil {
+			errorDoc = aws.ToString(webOut.ErrorDocument.Key)
+		}
+		if webOut.RedirectAllRequestsTo != nil {
+			redirectAll = map[string]string{
+				"host_name": aws.ToString(webOut.RedirectAllRequestsTo.HostName),
+				"protocol":  string(webOut.RedirectAllRequestsTo.Protocol),
+			}
+		}
+
+		arn := fmt.Sprintf("arn:aws:s3:::%s/website", bucketName)
+		rows = append(rows, map[string]interface{}{
+			"_cq_id":                    arn,
+			"arn":                       arn,
+			"account_id":                accountID,
+			"region":                    bucketRegion,
+			"bucket":                    bucketName,
+			"index_document":            indexDoc,
+			"error_document":            errorDoc,
+			"redirect_all_requests_to":  redirectAll,
+		})
+	}
+	return rows, nil
+}
+
+// Placeholder
+var _ = json.Marshal
+var _ types.BucketLocationConstraint
