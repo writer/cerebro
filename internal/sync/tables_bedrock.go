@@ -32,14 +32,14 @@ func (e *SyncEngine) bedrockCustomModelTable() TableSpec {
 					arn := ptrToStr(model.ModelArn)
 
 					row := map[string]interface{}{
-						"_cq_id":            arn,
-						"arn":               arn,
-						"model_arn":         arn,
-						"model_name":        ptrToStr(model.ModelName),
-						"region":            region,
-						"account_id":        e.accountID,
-						"base_model_arn":    ptrToStr(model.BaseModelArn),
-						"creation_time":     model.CreationTime,
+						"_cq_id":             arn,
+						"arn":                arn,
+						"model_arn":          arn,
+						"model_name":         ptrToStr(model.ModelName),
+						"region":             region,
+						"account_id":         e.accountID,
+						"base_model_arn":     ptrToStr(model.BaseModelArn),
+						"creation_time":      model.CreationTime,
 						"customization_type": string(model.CustomizationType),
 					}
 

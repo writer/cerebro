@@ -348,6 +348,16 @@ github.com/aws/aws-sdk-go-v2/internal/ini
 github.com/aws/aws-sdk-go-v2/internal/v4a
 github.com/aws/aws-sdk-go-v2/internal/v4a/internal/crypto
 github.com/aws/aws-sdk-go-v2/internal/v4a/internal/v4
+# github.com/aws/aws-sdk-go-v2/service/accessanalyzer v1.45.8
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/accessanalyzer
+github.com/aws/aws-sdk-go-v2/service/accessanalyzer/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/accessanalyzer/types
+# github.com/aws/aws-sdk-go-v2/service/acm v1.37.19
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/acm
+github.com/aws/aws-sdk-go-v2/service/acm/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/acm/types
 # github.com/aws/aws-sdk-go-v2/service/apigateway v1.38.4
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/apigateway
@@ -364,6 +374,18 @@ github.com/aws/aws-sdk-go-v2/service/apigatewayv2/types
 github.com/aws/aws-sdk-go-v2/service/appsync
 github.com/aws/aws-sdk-go-v2/service/appsync/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/appsync/types
+# github.com/aws/aws-sdk-go-v2/service/athena v1.56.6
+## explicit; go 1.23
+# github.com/aws/aws-sdk-go-v2/service/autoscaling v1.64.0
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/autoscaling
+github.com/aws/aws-sdk-go-v2/service/autoscaling/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/autoscaling/types
+# github.com/aws/aws-sdk-go-v2/service/backup v1.54.6
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/backup
+github.com/aws/aws-sdk-go-v2/service/backup/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/backup/types
 # github.com/aws/aws-sdk-go-v2/service/bedrock v1.53.1
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/bedrock
@@ -381,6 +403,11 @@ github.com/aws/aws-sdk-go-v2/service/cloudfront/types
 github.com/aws/aws-sdk-go-v2/service/cloudtrail
 github.com/aws/aws-sdk-go-v2/service/cloudtrail/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/cloudtrail/types
+# github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.53.1
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/cloudwatch
+github.com/aws/aws-sdk-go-v2/service/cloudwatch/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/cloudwatch/types
 # github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.63.1
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs
@@ -447,6 +474,21 @@ github.com/aws/aws-sdk-go-v2/service/elasticache/types
 github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2
 github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types
+# github.com/aws/aws-sdk-go-v2/service/emr v1.57.5
+## explicit; go 1.23
+# github.com/aws/aws-sdk-go-v2/service/eventbridge v1.45.18
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/eventbridge
+github.com/aws/aws-sdk-go-v2/service/eventbridge/internal/customizations
+github.com/aws/aws-sdk-go-v2/service/eventbridge/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/eventbridge/types
+# github.com/aws/aws-sdk-go-v2/service/firehose v1.42.9
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/firehose
+github.com/aws/aws-sdk-go-v2/service/firehose/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/firehose/types
+# github.com/aws/aws-sdk-go-v2/service/glue v1.136.1
+## explicit; go 1.23
 # github.com/aws/aws-sdk-go-v2/service/guardduty v1.73.0
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/guardduty
@@ -457,6 +499,11 @@ github.com/aws/aws-sdk-go-v2/service/guardduty/types
 github.com/aws/aws-sdk-go-v2/service/iam
 github.com/aws/aws-sdk-go-v2/service/iam/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/iam/types
+# github.com/aws/aws-sdk-go-v2/service/inspector2 v1.46.2
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/inspector2
+github.com/aws/aws-sdk-go-v2/service/inspector2/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/inspector2/types
 # github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.4
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding
@@ -474,6 +521,11 @@ github.com/aws/aws-sdk-go-v2/service/internal/presigned-url
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared/arn
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared/config
+# github.com/aws/aws-sdk-go-v2/service/kinesis v1.42.10
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/kinesis
+github.com/aws/aws-sdk-go-v2/service/kinesis/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/kinesis/types
 # github.com/aws/aws-sdk-go-v2/service/kms v1.49.5
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/kms
@@ -484,6 +536,8 @@ github.com/aws/aws-sdk-go-v2/service/kms/types
 github.com/aws/aws-sdk-go-v2/service/lambda
 github.com/aws/aws-sdk-go-v2/service/lambda/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/lambda/types
+# github.com/aws/aws-sdk-go-v2/service/macie2 v1.50.9
+## explicit; go 1.23
 # github.com/aws/aws-sdk-go-v2/service/opensearch v1.57.1
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/opensearch
@@ -491,6 +545,11 @@ github.com/aws/aws-sdk-go-v2/service/opensearch/document
 github.com/aws/aws-sdk-go-v2/service/opensearch/internal/document
 github.com/aws/aws-sdk-go-v2/service/opensearch/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/opensearch/types
+# github.com/aws/aws-sdk-go-v2/service/organizations v1.50.1
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/organizations
+github.com/aws/aws-sdk-go-v2/service/organizations/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/organizations/types
 # github.com/aws/aws-sdk-go-v2/service/rds v1.114.0
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/rds
@@ -501,6 +560,12 @@ github.com/aws/aws-sdk-go-v2/service/rds/types
 github.com/aws/aws-sdk-go-v2/service/redshift
 github.com/aws/aws-sdk-go-v2/service/redshift/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/redshift/types
+# github.com/aws/aws-sdk-go-v2/service/route53 v1.62.1
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/route53
+github.com/aws/aws-sdk-go-v2/service/route53/internal/customizations
+github.com/aws/aws-sdk-go-v2/service/route53/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/route53/types
 # github.com/aws/aws-sdk-go-v2/service/s3 v1.95.1
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/s3
@@ -535,6 +600,11 @@ github.com/aws/aws-sdk-go-v2/service/sns/types
 github.com/aws/aws-sdk-go-v2/service/sqs
 github.com/aws/aws-sdk-go-v2/service/sqs/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/sqs/types
+# github.com/aws/aws-sdk-go-v2/service/ssm v1.67.8
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/ssm
+github.com/aws/aws-sdk-go-v2/service/ssm/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/ssm/types
 # github.com/aws/aws-sdk-go-v2/service/sso v1.20.5
 ## explicit; go 1.20
 github.com/aws/aws-sdk-go-v2/service/sso
@@ -567,6 +637,7 @@ github.com/aws/smithy-go/document
 github.com/aws/smithy-go/document/internal/serde
 github.com/aws/smithy-go/document/json
 github.com/aws/smithy-go/encoding
+github.com/aws/smithy-go/encoding/cbor
 github.com/aws/smithy-go/encoding/httpbinding
 github.com/aws/smithy-go/encoding/json
 github.com/aws/smithy-go/encoding/xml

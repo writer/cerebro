@@ -223,6 +223,64 @@ func (e *SyncEngine) getAWSTables() []TableSpec {
 
 		// CloudFront
 		e.cloudfrontDistributionTable(),
+
+		// ACM (Certificate Manager)
+		e.acmCertificateTable(),
+
+		// Route53
+		e.route53HostedZoneTable(),
+		e.route53RecordSetTable(),
+		e.route53HealthCheckTable(),
+
+		// SSM (Systems Manager)
+		e.ssmParameterTable(),
+		e.ssmManagedInstanceTable(),
+		e.ssmPatchComplianceTable(),
+		e.ssmDocumentTable(),
+
+		// Inspector
+		e.inspectorFindingTable(),
+		e.inspectorCoverageTable(),
+
+		// Access Analyzer
+		e.accessAnalyzerAnalyzerTable(),
+		e.accessAnalyzerFindingTable(),
+
+		// Backup
+		e.backupVaultTable(),
+		e.backupPlanTable(),
+		e.backupProtectedResourceTable(),
+		e.backupRecoveryPointTable(),
+
+		// Auto Scaling
+		e.autoscalingGroupTable(),
+		e.autoscalingLaunchConfigTable(),
+		e.autoscalingPolicyTable(),
+		e.autoscalingScheduledActionTable(),
+		e.autoscalingLifecycleHookTable(),
+
+		// CloudWatch Extended
+		e.cloudwatchAlarmTable(),
+		e.cloudwatchCompositeAlarmTable(),
+		e.cloudwatchDashboardTable(),
+		e.cloudwatchMetricStreamTable(),
+
+		// EventBridge
+		e.eventbridgeEventBusTable(),
+		e.eventbridgeRuleTable(),
+		e.eventbridgeTargetTable(),
+		e.eventbridgeArchiveTable(),
+		e.eventbridgeApiDestinationTable(),
+
+		// Kinesis & Firehose
+		e.kinesisStreamTable(),
+		e.firehoseDeliveryStreamTable(),
+
+		// Organizations
+		e.organizationsAccountTable(),
+		e.organizationsOrganizationTable(),
+		e.organizationsPolicyTable(),
+		e.organizationsOUTable(),
 	}
 }
 

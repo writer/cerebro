@@ -27,19 +27,19 @@ var ResourceToTableMapping = map[string][]string{
 	"aws::ec2::flow_log":       {"aws_ec2_flow_logs"},
 
 	// EC2 - Network
-	"aws::ec2::eip":                     {"aws_ec2_eips"},
-	"aws::ec2::key_pair":                {"aws_ec2_key_pairs"},
-	"aws::ec2::launch_template":         {"aws_ec2_launch_templates"},
-	"aws::ec2::network_interface":       {"aws_ec2_network_interfaces"},
-	"aws::ec2::vpc_endpoint":            {"aws_ec2_vpc_endpoints"},
-	"aws::ec2::vpc_peering_connection":  {"aws_ec2_vpc_peering_connections"},
-	"aws::ec2::transit_gateway":         {"aws_ec2_transit_gateways"},
-	"aws::ec2::customer_gateway":        {"aws_ec2_customer_gateways"},
-	"aws::ec2::vpn_gateway":             {"aws_ec2_vpn_gateways"},
-	"aws::ec2::vpn_connection":          {"aws_ec2_vpn_connections"},
-	"aws::ec2::reserved_instance":       {"aws_ec2_reserved_instances"},
-	"aws::ec2::capacity_reservation":    {"aws_ec2_capacity_reservations"},
-	"aws::ec2::spot_instance_request":   {"aws_ec2_spot_instance_requests"},
+	"aws::ec2::eip":                    {"aws_ec2_eips"},
+	"aws::ec2::key_pair":               {"aws_ec2_key_pairs"},
+	"aws::ec2::launch_template":        {"aws_ec2_launch_templates"},
+	"aws::ec2::network_interface":      {"aws_ec2_network_interfaces"},
+	"aws::ec2::vpc_endpoint":           {"aws_ec2_vpc_endpoints"},
+	"aws::ec2::vpc_peering_connection": {"aws_ec2_vpc_peering_connections"},
+	"aws::ec2::transit_gateway":        {"aws_ec2_transit_gateways"},
+	"aws::ec2::customer_gateway":       {"aws_ec2_customer_gateways"},
+	"aws::ec2::vpn_gateway":            {"aws_ec2_vpn_gateways"},
+	"aws::ec2::vpn_connection":         {"aws_ec2_vpn_connections"},
+	"aws::ec2::reserved_instance":      {"aws_ec2_reserved_instances"},
+	"aws::ec2::capacity_reservation":   {"aws_ec2_capacity_reservations"},
+	"aws::ec2::spot_instance_request":  {"aws_ec2_spot_instance_requests"},
 
 	// IAM - Core
 	"aws::iam::user":            {"aws_iam_users", "aws_iam_credential_reports"},
@@ -183,6 +183,62 @@ var ResourceToTableMapping = map[string][]string{
 	// ECS
 	"aws::ecs::cluster":         {"aws_ecs_clusters"},
 	"aws::ecs::task_definition": {"aws_ecs_task_definitions"},
+
+	// ACM (Certificates)
+	"aws::acm::certificate": {"aws_acm_certificates"},
+
+	// Route53
+	"aws::route53::hosted_zone":  {"aws_route53_hosted_zones"},
+	"aws::route53::record_set":   {"aws_route53_record_sets"},
+	"aws::route53::health_check": {"aws_route53_health_checks"},
+
+	// SSM (Systems Manager)
+	"aws::ssm::parameter":        {"aws_ssm_parameters"},
+	"aws::ssm::managed_instance": {"aws_ssm_managed_instances"},
+	"aws::ssm::patch_compliance": {"aws_ssm_patch_compliance"},
+	"aws::ssm::document":         {"aws_ssm_documents"},
+
+	// Inspector
+	"aws::inspector2::finding":  {"aws_inspector2_findings"},
+	"aws::inspector2::coverage": {"aws_inspector2_coverage"},
+
+	// Access Analyzer
+	"aws::accessanalyzer::analyzer": {"aws_accessanalyzer_analyzers"},
+	"aws::accessanalyzer::finding":  {"aws_accessanalyzer_findings"},
+
+	// Backup
+	"aws::backup::vault":              {"aws_backup_vaults"},
+	"aws::backup::plan":               {"aws_backup_plans"},
+	"aws::backup::protected_resource": {"aws_backup_protected_resources"},
+	"aws::backup::recovery_point":     {"aws_backup_recovery_points"},
+
+	// Auto Scaling
+	"aws::autoscaling::group":            {"aws_autoscaling_groups"},
+	"aws::autoscaling::launch_config":    {"aws_autoscaling_launch_configurations"},
+	"aws::autoscaling::policy":           {"aws_autoscaling_policies"},
+	"aws::autoscaling::scheduled_action": {"aws_autoscaling_scheduled_actions"},
+	"aws::autoscaling::lifecycle_hook":   {"aws_autoscaling_lifecycle_hooks"},
+
+	// CloudWatch Extended
+	"aws::cloudwatch::dashboard":     {"aws_cloudwatch_dashboards"},
+	"aws::cloudwatch::metric_stream": {"aws_cloudwatch_metric_streams"},
+
+	// EventBridge
+	"aws::events::event_bus":       {"aws_eventbridge_event_buses"},
+	"aws::events::rule":            {"aws_eventbridge_rules"},
+	"aws::events::target":          {"aws_eventbridge_targets"},
+	"aws::events::archive":         {"aws_eventbridge_archives"},
+	"aws::events::api_destination": {"aws_eventbridge_api_destinations"},
+
+	// Kinesis & Firehose
+	"aws::kinesis::stream":           {"aws_kinesis_streams"},
+	"aws::firehose::delivery_stream": {"aws_firehose_delivery_streams"},
+
+	// Organizations
+	"aws::organizations::account":      {"aws_organizations_accounts"},
+	"aws::organizations::organization": {"aws_organizations_organization"},
+	"aws::organizations::policy":       {"aws_organizations_policies"},
+	"aws::organizations::ou":           {"aws_organizations_organizational_units"},
 
 	// GCP
 	"gcp::compute::instance":        {"gcp_compute_instances"},

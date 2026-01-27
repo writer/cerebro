@@ -161,20 +161,20 @@ func (e *SyncEngine) fetchElastiCacheSubnetGroups(ctx context.Context, cfg aws.C
 			var subnets []map[string]interface{}
 			for _, subnet := range sg.Subnets {
 				subnets = append(subnets, map[string]interface{}{
-					"subnet_identifier":       aws.ToString(subnet.SubnetIdentifier),
+					"subnet_identifier":        aws.ToString(subnet.SubnetIdentifier),
 					"subnet_availability_zone": aws.ToString(subnet.SubnetAvailabilityZone.Name),
 				})
 			}
 
 			rows = append(rows, map[string]interface{}{
-				"_cq_id":                        sgArn,
-				"arn":                           sgArn,
-				"account_id":                    accountID,
-				"region":                        region,
-				"cache_subnet_group_name":       sgName,
+				"_cq_id":                         sgArn,
+				"arn":                            sgArn,
+				"account_id":                     accountID,
+				"region":                         region,
+				"cache_subnet_group_name":        sgName,
 				"cache_subnet_group_description": aws.ToString(sg.CacheSubnetGroupDescription),
-				"vpc_id":                        aws.ToString(sg.VpcId),
-				"subnets":                       subnets,
+				"vpc_id":                         aws.ToString(sg.VpcId),
+				"subnets":                        subnets,
 			})
 		}
 	}

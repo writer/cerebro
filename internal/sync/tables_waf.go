@@ -257,15 +257,15 @@ func (e *SyncEngine) fetchWAFv2RegexPatternSets(ctx context.Context, cfg aws.Con
 			}
 
 			rows = append(rows, map[string]interface{}{
-				"_cq_id":                   rpsArn,
-				"arn":                      rpsArn,
-				"account_id":               accountID,
-				"region":                   region,
-				"id":                       aws.ToString(getOut.RegexPatternSet.Id),
-				"name":                     aws.ToString(getOut.RegexPatternSet.Name),
-				"description":              aws.ToString(getOut.RegexPatternSet.Description),
-				"scope":                    "REGIONAL",
-				"regular_expression_list":  patterns,
+				"_cq_id":                  rpsArn,
+				"arn":                     rpsArn,
+				"account_id":              accountID,
+				"region":                  region,
+				"id":                      aws.ToString(getOut.RegexPatternSet.Id),
+				"name":                    aws.ToString(getOut.RegexPatternSet.Name),
+				"description":             aws.ToString(getOut.RegexPatternSet.Description),
+				"scope":                   "REGIONAL",
+				"regular_expression_list": patterns,
 			})
 		}
 	}

@@ -689,14 +689,14 @@ func (e *SyncEngine) fetchS3BucketWebsite(ctx context.Context, cfg aws.Config, r
 
 		arn := fmt.Sprintf("arn:aws:s3:::%s/website", bucketName)
 		rows = append(rows, map[string]interface{}{
-			"_cq_id":                    arn,
-			"arn":                       arn,
-			"account_id":                accountID,
-			"region":                    bucketRegion,
-			"bucket":                    bucketName,
-			"index_document":            indexDoc,
-			"error_document":            errorDoc,
-			"redirect_all_requests_to":  redirectAll,
+			"_cq_id":                   arn,
+			"arn":                      arn,
+			"account_id":               accountID,
+			"region":                   bucketRegion,
+			"bucket":                   bucketName,
+			"index_document":           indexDoc,
+			"error_document":           errorDoc,
+			"redirect_all_requests_to": redirectAll,
 		})
 	}
 	return rows, nil
