@@ -16,9 +16,9 @@
 - `internal/identity/service_mapper.go` - CI/CD to cloud identity mapping (GitHub/GitLab OIDC)
 - `internal/snowflake/client.go` - Query returns `[]map[string]interface{}`
 - `internal/webhooks/webhooks.go` - Event emission (can add `sync.completed` event)
-- `internal/cloudquery/tables.go` - Schema definitions including `assume_role_policy_document`
+- `internal/sync` table definitions including `assume_role_policy_document`
 
-**Missing CloudQuery tables** (need to add to `tables.go`):
+**Missing asset tables** (need to add to table definitions):
 - `aws_iam_user_attached_policies` (user_arn, policy_arn)
 - `aws_iam_role_attached_policies` (role_arn, policy_arn)  
 - `aws_iam_role_policies` (role_name, policy_name, policy_document)
@@ -52,7 +52,7 @@ The Python codebase has a sophisticated IAM analysis system:
 
 ### What Go Has Now
 
-1. **Data Source**: Snowflake with CloudQuery tables (NOT our own schema)
+1. **Data Source**: Snowflake with asset tables
    - `aws_iam_users`, `aws_iam_roles`, `aws_iam_policies`
    - Policy documents stored as VARIANT (JSON) in `document` column
    - No pre-computed edges - must parse policies at query time
@@ -63,14 +63,14 @@ The Python codebase has a sophisticated IAM analysis system:
    - Not wired to any data source
 
 3. **No IAM Policy Parser**:
-   - CloudQuery stores raw policy JSON
+   - Asset tables store raw policy JSON
    - We need to parse `{"Statement": [{"Effect": "Allow", "Action": [...], "Resource": [...]}]}`
 
 ### The Gap
 
 | Component | Python | Go |
 |-----------|--------|-----|
-| IAM Edge Storage | PostgreSQL `iam_edges` table | None - must compute from CloudQuery |
+| IAM Edge Storage | PostgreSQL `iam_edges` table | None - must compute from asset tables |
 | Policy Parser | Inline in providers | None - need to build or use `liamg/iamgo` |
 | Graph Builder | Queries PostgreSQL | None - need to query Snowflake |
 | Identity Stitching | `IdentityCluster` table | None |
@@ -83,7 +83,7 @@ The Python codebase has a sophisticated IAM analysis system:
 ### Key Insight
 
 Python collects IAM data via boto3 and stores computed edges in PostgreSQL.
-Go has CloudQuery data in Snowflake but must **recompute edges from policy documents**.
+Go has asset data in Snowflake but must **recompute edges from policy documents**.
 
 This is actually an advantage - we query the source of truth (raw policies) rather than pre-computed edges that might be stale.
 
@@ -359,7 +359,7 @@ func (g *Graph) Metadata() GraphMetadata
 
 ## Layer 3: Graph Builder
 
-The builder populates the graph from Snowflake/CloudQuery data.
+The builder populates the graph from Snowflake asset data.
 
 ```go
 // internal/graph/builder.go
@@ -1020,7 +1020,7 @@ GET /api/v1/graph/stats
 ### Phase 1: Foundation (1 week)
 1. Create `internal/iampolicy/` package with AWS parser
 2. Create `internal/graph/` package (refactor from attackpath)
-3. Basic builder that creates nodes from CloudQuery tables
+3. Basic builder that creates nodes from asset tables
 
 ### Phase 2: Edges (1 week)
 1. Parse AWS IAM policies into edges
@@ -1109,7 +1109,7 @@ internal/graph/
 └── graph_test.go      # Tests with mock data
 ```
 
-### Phase 1: Exact CloudQuery Queries
+### Phase 1: Exact Asset Queries
 
 ```sql
 -- 1. Get all IAM users (nodes)
@@ -1485,7 +1485,7 @@ func TestBlastRadius(t *testing.T) {
 ## Design Decisions
 
 1. **ARN Pattern Matching**: Full wildcard parsing
-2. **Graph Rebuild**: On CloudQuery sync (webhook triggered)
+2. **Graph Rebuild**: On sync completion (webhook or scheduler)
 3. **Deny Statements**: Model everything - denies evaluated before allows
 4. **Cross-Account**: Full support for cross-account role assumption
 
@@ -1588,17 +1588,17 @@ func (b *Builder) FindMatchingNodes(pattern string) []*Node {
 
 ## Webhook-Triggered Graph Rebuild
 
-Rebuild graph when CloudQuery sync completes:
+Rebuild graph when native sync completes:
 
 ```go
-// internal/webhooks/cloudquery.go
+// internal/webhooks/sync.go
 
-type CloudQueryWebhook struct {
+type SyncWebhook struct {
     graphBuilder *graph.Builder
     logger       *slog.Logger
 }
 
-func (w *CloudQueryWebhook) HandleSyncComplete(c *gin.Context) {
+func (w *SyncWebhook) HandleSyncComplete(c *gin.Context) {
     var payload struct {
         SyncID    string    `json:"sync_id"`
         Status    string    `json:"status"`
@@ -1642,7 +1642,7 @@ func (w *CloudQueryWebhook) HandleSyncComplete(c *gin.Context) {
         ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
         defer cancel()
         
-        w.logger.Info("rebuilding security graph after CloudQuery sync",
+		w.logger.Info("rebuilding security graph after sync",
             "sync_id", payload.SyncID,
             "tables", payload.Tables)
         
@@ -1662,7 +1662,7 @@ func (w *CloudQueryWebhook) HandleSyncComplete(c *gin.Context) {
 func (s *Server) setupRoutes() {
     // ... existing routes ...
     
-    s.router.POST("/webhooks/cloudquery/sync", s.cloudQueryWebhook.HandleSyncComplete)
+    s.router.POST("/webhooks/sync", s.syncWebhook.HandleSyncComplete)
 }
 ```
 
@@ -2004,7 +2004,7 @@ type BlastRadiusResult struct {
 1. Create `internal/graph/arn.go` - full ARN parsing and wildcard matching
 2. Create `internal/iampolicy/` with `liamg/iamgo` wrapper
 3. Refactor `internal/attackpath/` -> `internal/graph/`
-4. Basic node builder from CloudQuery
+4. Basic node builder from asset tables
 
 ### Phase 2: Edges + Denies (1 week)  
 1. Parse Allow AND Deny statements into edges
@@ -2022,5 +2022,5 @@ type BlastRadiusResult struct {
 1. Blast radius with deny evaluation
 2. Cross-account blast radius
 3. Effective access query
-4. CloudQuery webhook for rebuild trigger
+4. Sync webhook for rebuild trigger
 5. API endpoints

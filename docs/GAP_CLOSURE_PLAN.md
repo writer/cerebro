@@ -246,7 +246,7 @@ func (p *NewProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResult, 
 
 ### Table Naming Convention
 
-Tables follow CloudQuery conventions:
+Tables follow asset table conventions:
 - `{provider}_{service}_{resource}` (e.g., `aws_s3_buckets`)
 - Custom tables: `{provider}_{entity}` (e.g., `okta_users`)
 

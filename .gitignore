@@ -27,9 +27,6 @@ go.work
 .DS_Store
 Thumbs.db
 
-# CloudQuery
-.cq/
-
 # Logs
 *.log
 

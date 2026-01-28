@@ -121,7 +121,6 @@ const (
 	EventReviewCompleted   EventType = "review.completed"
 	EventAttackPathFound   EventType = "attack_path.found"
 	EventTicketCreated     EventType = "ticket.created"
-	EventCloudQuerySynced  EventType = "cloudquery.synced"
 	EventGraphRebuilt      EventType = "graph.rebuilt"
 )
 
@@ -251,7 +250,7 @@ func isValidEventType(e EventType) bool {
 	switch e {
 	case EventFindingCreated, EventFindingResolved, EventFindingSuppressed,
 		EventScanCompleted, EventReviewStarted, EventReviewCompleted,
-		EventAttackPathFound, EventTicketCreated, EventCloudQuerySynced, EventGraphRebuilt:
+		EventAttackPathFound, EventTicketCreated, EventGraphRebuilt:
 		return true
 	default:
 		return false

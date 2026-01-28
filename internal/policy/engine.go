@@ -294,7 +294,7 @@ func (e *Engine) EvaluateAsset(ctx context.Context, asset map[string]interface{}
 	return findings, nil
 }
 
-// mapResourceToTable maps high-level resource types to specific CloudQuery tables
+// mapResourceToTable maps high-level resource types to specific asset tables
 // Uses the shared ResourceToTableMapping for consistency
 func mapResourceToTable(resourceType string) string {
 	// Direct table name references (e.g., already a table name)

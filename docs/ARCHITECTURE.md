@@ -2,7 +2,7 @@
 
 ## Overview
 
-Cerebro is a comprehensive security data platform for cloud and SaaS posture management. It combines data ingestion (CloudQuery), storage (Snowflake), policy evaluation (Cedar-style), and intelligent security analysis (AI agents) into a unified platform.
+Cerebro is a comprehensive security data platform for cloud and SaaS posture management. It combines data ingestion (native sync), storage (Snowflake), policy evaluation (Cedar-style), and intelligent security analysis (AI agents) into a unified platform.
 
 ## System Architecture
 
@@ -46,9 +46,9 @@ Cerebro is a comprehensive security data platform for cloud and SaaS posture man
            │                           │                           │
            ▼                           ▼                           ▼
     ┌─────────────┐           ┌─────────────────┐          ┌─────────────┐
-    │  Snowflake  │           │   CloudQuery    │          │  External   │
-    │  (Storage)  │◀──────────│  (Ingestion)    │          │  APIs       │
-    └─────────────┘           └─────────────────┘          └─────────────┘
+    │  Snowflake  │           │  Native Sync   │          │  External   │
+    │  (Storage)  │◀──────────│  (Ingestion)   │          │  APIs       │
+    └─────────────┘           └────────────────┘          └─────────────┘
            │                          │                           │
            │                          │                           │
     ┌──────┴──────┐           ┌───────┴────────┐          ┌───────┴───────┐
@@ -246,7 +246,7 @@ Pre-built compliance framework mappings.
 
 ### 1. Asset Ingestion Flow
 ```
-CloudQuery → Snowflake Tables → Cerebro API → Policy Evaluation
+Native Sync → Snowflake Tables → Cerebro API → Policy Evaluation
 ```
 
 ### 2. Scan Flow

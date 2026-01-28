@@ -24,6 +24,7 @@ type GCPAssetInventoryEngine struct {
 	concurrency int
 	scope       string // organization/ORG_ID, folder/FOLDER_ID, or project/PROJECT_ID
 	projects    []string
+	assetFilter map[string]struct{}
 }
 
 // GCPAssetOption configures the GCP Asset Inventory engine
@@ -39,6 +40,10 @@ func WithProjects(projects []string) GCPAssetOption {
 
 func WithAssetConcurrency(n int) GCPAssetOption {
 	return func(e *GCPAssetInventoryEngine) { e.concurrency = n }
+}
+
+func WithAssetTypeFilter(types []string) GCPAssetOption {
+	return func(e *GCPAssetInventoryEngine) { e.assetFilter = normalizeTableFilter(types) }
 }
 
 // NewGCPAssetInventoryEngine creates a new engine using Cloud Asset Inventory API
@@ -132,8 +137,14 @@ func (e *GCPAssetInventoryEngine) syncScope(ctx context.Context, client *asset.C
 
 	// Get all asset types we support
 	assetTypes := make([]string, 0, len(GCPAssetTypes))
-	for at := range GCPAssetTypes {
-		assetTypes = append(assetTypes, at)
+	for assetType, tableName := range GCPAssetTypes {
+		if len(e.assetFilter) > 0 && !matchesFilter(e.assetFilter, assetType, tableName) {
+			continue
+		}
+		assetTypes = append(assetTypes, assetType)
+	}
+	if len(assetTypes) == 0 {
+		return nil, fmt.Errorf("no GCP asset types matched filter: %s", strings.Join(filterNames(e.assetFilter), ", "))
 	}
 
 	e.logger.Info("fetching assets via Cloud Asset Inventory", "scope", scope, "types", len(assetTypes))

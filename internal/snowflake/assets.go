@@ -27,7 +27,7 @@ type AssetFilter struct {
 }
 
 func (c *Client) GetAssets(ctx context.Context, table string, filter AssetFilter) ([]map[string]interface{}, error) {
-	// Use strict validation to ensure table is a known CloudQuery/Cerebro table
+	// Use strict validation to ensure table is a known asset table
 	if err := ValidateTableNameStrict(table); err != nil {
 		return nil, fmt.Errorf("invalid table name: %w", err)
 	}
@@ -87,7 +87,7 @@ func (c *Client) GetAssets(ctx context.Context, table string, filter AssetFilter
 }
 
 func (c *Client) GetAssetByID(ctx context.Context, table, id string) (map[string]interface{}, error) {
-	// Use strict validation to ensure table is a known CloudQuery/Cerebro table
+	// Use strict validation to ensure table is a known asset table
 	if err := ValidateTableNameStrict(table); err != nil {
 		return nil, fmt.Errorf("invalid table name: %w", err)
 	}

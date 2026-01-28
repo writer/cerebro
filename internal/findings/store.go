@@ -280,7 +280,7 @@ func normalizeStatus(status string) string {
 func extractResourceID(resource map[string]interface{}) string {
 	// Priority order for resource ID extraction
 	idFields := []string{
-		"_cq_id",      // CloudQuery internal ID
+		"_cq_id",      // Sync internal ID
 		"arn",         // AWS ARN
 		"id",          // Generic ID
 		"name",        // Resource name
@@ -323,7 +323,7 @@ func extractResourceName(resource map[string]interface{}) string {
 
 // extractResourceType determines the resource type from the resource data
 func extractResourceType(resource map[string]interface{}) string {
-	// Try CloudQuery table name first
+	// Try table name first
 	if rt, ok := resource["_cq_table"].(string); ok && rt != "" {
 		return rt
 	}

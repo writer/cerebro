@@ -26,7 +26,7 @@ cerebro/
 │   ├── snowflake/        # Snowflake database client
 │   ├── ticketing/        # Jira, Linear integration
 │   └── webhooks/         # Webhook management
-├── config/               # CloudQuery configuration
+├── config/               # Optional configuration files
 └── policies/             # Security policy definitions
 ```
 
@@ -811,7 +811,7 @@ type CacheStats struct {
 
 ### `internal/providers`
 
-**Purpose:** Custom data providers for non-CloudQuery sources.
+**Purpose:** Custom data providers for non-native sources.
 
 **Provider Interface:**
 ```go
@@ -892,7 +892,7 @@ func NewOktaProvider() *OktaProvider
 **Commands:**
 ```bash
 cerebro serve                        # Start API server
-cerebro sync [--source <provider>]   # Sync data via CloudQuery
+cerebro sync                         # Sync data via native scanners
 cerebro policy list                  # List loaded policies
 cerebro policy validate              # Validate policy files
 cerebro policy test <id> <asset>     # Test policy against asset
@@ -903,7 +903,7 @@ cerebro bootstrap                    # Initialize database schema
 **Implementation Files:**
 - `root.go` - Root command and subcommand registration
 - `serve.go` - API server command
-- `sync.go` - CloudQuery sync command
+- `sync.go` - Native sync command
 - `policy.go` - Policy management commands
 - `query.go` - Direct query command
 - `bootstrap.go` - Database initialization

@@ -4,7 +4,7 @@ import (
 	"strings"
 )
 
-// ResourceToTableMapping maps Cedar resource types to CloudQuery table names
+// ResourceToTableMapping maps Cedar resource types to asset table names
 // This enables validation that required tables exist before policy evaluation
 var ResourceToTableMapping = map[string][]string{
 	// S3
@@ -302,7 +302,7 @@ var ResourceToTableMapping = map[string][]string{
 	"azure::ad::service_principal":    {"azure_ad_service_principals"},
 }
 
-// GetRequiredTables returns the CloudQuery tables needed to evaluate a policy
+// GetRequiredTables returns the asset tables needed to evaluate a policy
 func (p *Policy) GetRequiredTables() []string {
 	if tables, ok := ResourceToTableMapping[p.Resource]; ok {
 		return tables
@@ -317,7 +317,7 @@ func (p *Policy) GetRequiredTables() []string {
 	return nil
 }
 
-// GetAllRequiredTables returns all unique CloudQuery tables needed for a set of policies
+// GetAllRequiredTables returns all unique asset tables needed for a set of policies
 func GetAllRequiredTables(policies []*Policy) []string {
 	tableSet := make(map[string]bool)
 	for _, p := range policies {

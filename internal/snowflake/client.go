@@ -35,7 +35,7 @@ type ClientConfig struct {
 	Role string
 	// Database is the default database
 	Database string
-	// Schema is the default schema for CloudQuery assets (default: RAW)
+	// Schema is the default schema for asset tables (default: RAW)
 	Schema string
 	// AppSchema is the schema for Cerebro app tables (default: CEREBRO)
 	AppSchema string
@@ -157,7 +157,7 @@ func (c *Client) Database() string {
 	return c.database
 }
 
-// Schema returns the configured schema name (for CloudQuery assets).
+// Schema returns the configured schema name for asset tables.
 func (c *Client) Schema() string {
 	return c.schema
 }

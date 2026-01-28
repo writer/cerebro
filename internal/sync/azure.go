@@ -31,6 +31,7 @@ type AzureSyncEngine struct {
 	concurrency    int
 	subscriptionID string
 	credential     *azidentity.DefaultAzureCredential
+	tableFilter    map[string]struct{}
 }
 
 // AzureEngineOption configures the Azure sync engine
@@ -42,6 +43,10 @@ func WithAzureSubscription(subscriptionID string) AzureEngineOption {
 
 func WithAzureConcurrency(n int) AzureEngineOption {
 	return func(e *AzureSyncEngine) { e.concurrency = n }
+}
+
+func WithAzureTableFilter(tables []string) AzureEngineOption {
+	return func(e *AzureSyncEngine) { e.tableFilter = normalizeTableFilter(tables) }
 }
 
 func NewAzureSyncEngine(sf *snowflake.Client, logger *slog.Logger, opts ...AzureEngineOption) (*AzureSyncEngine, error) {
@@ -81,7 +86,10 @@ func (e *AzureSyncEngine) SyncAll(ctx context.Context) ([]SyncResult, error) {
 		e.logger.Info("discovered Azure subscription", "subscription_id", subID)
 	}
 
-	tables := e.getAzureTables()
+	tables := filterAzureTables(e.getAzureTables(), e.tableFilter)
+	if len(e.tableFilter) > 0 && len(tables) == 0 {
+		return nil, fmt.Errorf("no Azure tables matched filter: %s", strings.Join(filterNames(e.tableFilter), ", "))
+	}
 	results := make([]SyncResult, len(tables))
 	var mu sync.Mutex
 	var errs []error
@@ -227,8 +235,10 @@ func (e *AzureSyncEngine) upsertWithChanges(ctx context.Context, table string, r
 			changes.Removed = append(changes.Removed, id)
 		}
 		if len(changes.Removed) > 0 {
-			if _, err := e.sf.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table)); err != nil {
-				e.logger.Debug("delete failed", "error", err)
+			if _, err := e.sf.Exec(ctx, fmt.Sprintf("TRUNCATE TABLE %s", table)); err != nil {
+				if _, err := e.sf.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table)); err != nil {
+					e.logger.Debug("delete failed", "error", err)
+				}
 			}
 		}
 		return changes, nil
@@ -259,35 +269,33 @@ func (e *AzureSyncEngine) upsertWithChanges(ctx context.Context, table string, r
 		}
 	}
 
-	if _, err := e.sf.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table)); err != nil {
-		e.logger.Debug("delete failed", "error", err)
+	if _, err := e.sf.Exec(ctx, fmt.Sprintf("TRUNCATE TABLE %s", table)); err != nil {
+		if _, err := e.sf.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table)); err != nil {
+			e.logger.Debug("delete failed", "error", err)
+		}
 	}
 
+	insertRows := make([]map[string]interface{}, 0, len(rows))
 	for _, row := range rows {
 		id, ok := row["_cq_id"].(string)
 		if !ok {
 			continue
 		}
 		hash := e.hashRowContent(row)
-		delete(row, "_cq_id")
-
-		cols := []string{"_CQ_ID", "_CQ_HASH"}
-		selects := []string{"?", "?"}
-		args := []interface{}{id, hash}
-
+		newRow := make(map[string]interface{}, len(row)+1)
+		newRow["_cq_id"] = id
+		newRow["_cq_hash"] = hash
 		for k, v := range row {
-			cols = append(cols, strings.ToUpper(k))
-			jsonVal, _ := json.Marshal(v)
-			selects = append(selects, "PARSE_JSON(?)")
-			args = append(args, string(jsonVal))
+			if k == "_cq_id" || k == "_cq_hash" {
+				continue
+			}
+			newRow[k] = v
 		}
+		insertRows = append(insertRows, newRow)
+	}
 
-		query := fmt.Sprintf("INSERT INTO %s (%s) SELECT %s",
-			table, strings.Join(cols, ", "), strings.Join(selects, ", "))
-
-		if _, err := e.sf.Exec(ctx, query, args...); err != nil {
-			return changes, fmt.Errorf("insert row: %w", err)
-		}
+	if err := insertRowsBatch(ctx, e.sf, table, insertRows); err != nil {
+		return changes, fmt.Errorf("insert rows: %w", err)
 	}
 
 	return changes, nil

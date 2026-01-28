@@ -389,60 +389,21 @@ policies/
 
 ---
 
-## CloudQuery Configuration
+## Native Sync Configuration
 
-The `config/cloudquery.yml` file configures CloudQuery for data ingestion:
+Cerebro syncs data with native scanners configured via environment variables and CLI flags.
 
-```yaml
-kind: source
-spec:
-  name: aws
-  path: cloudquery/aws
-  version: "v22.0.0"
-  destinations: ["snowflake"]
-  tables:
-    - aws_s3_buckets
-    - aws_iam_users
-    - aws_iam_roles
-    - aws_iam_credential_reports
-    - aws_ec2_instances
-    - aws_ec2_security_groups
-    - aws_rds_instances
-    - aws_lambda_functions
+Examples:
 
----
-kind: source
-spec:
-  name: gcp
-  path: cloudquery/gcp
-  version: "v12.0.0"
-  destinations: ["snowflake"]
-  tables:
-    - gcp_storage_buckets
-    - gcp_compute_instances
-    - gcp_iam_service_accounts
+```bash
+# AWS (default)
+cerebro sync --region us-east-1
 
----
-kind: source
-spec:
-  name: azure
-  path: cloudquery/azure
-  version: "v12.0.0"
-  destinations: ["snowflake"]
-  tables:
-    - azure_storage_accounts
-    - azure_compute_virtual_machines
+# GCP
+cerebro sync --gcp --gcp-project my-project
 
----
-kind: destination
-spec:
-  name: snowflake
-  path: cloudquery/snowflake
-  version: "v5.0.0"
-  spec:
-    connection_string: "${SNOWFLAKE_CONNECTION_STRING}"
-    database: "${SNOWFLAKE_DATABASE}"
-    schema: "${SNOWFLAKE_SCHEMA}"
+# Azure
+cerebro sync --azure --azure-subscription <subscription-id>
 ```
 
 ---

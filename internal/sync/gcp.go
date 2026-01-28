@@ -23,6 +23,7 @@ type GCPSyncEngine struct {
 	logger      *slog.Logger
 	concurrency int
 	projectID   string
+	tableFilter map[string]struct{}
 }
 
 // GCPEngineOption configures the GCP sync engine
@@ -34,6 +35,10 @@ func WithGCPProject(projectID string) GCPEngineOption {
 
 func WithGCPConcurrency(n int) GCPEngineOption {
 	return func(e *GCPSyncEngine) { e.concurrency = n }
+}
+
+func WithGCPTableFilter(tables []string) GCPEngineOption {
+	return func(e *GCPSyncEngine) { e.tableFilter = normalizeTableFilter(tables) }
 }
 
 func NewGCPSyncEngine(sf *snowflake.Client, logger *slog.Logger, opts ...GCPEngineOption) *GCPSyncEngine {
@@ -61,7 +66,10 @@ func (e *GCPSyncEngine) SyncAll(ctx context.Context) ([]SyncResult, error) {
 		return nil, fmt.Errorf("GCP project ID not set")
 	}
 
-	tables := e.getGCPTables()
+	tables := filterGCPTables(e.getGCPTables(), e.tableFilter)
+	if len(e.tableFilter) > 0 && len(tables) == 0 {
+		return nil, fmt.Errorf("no GCP tables matched filter: %s", strings.Join(filterNames(e.tableFilter), ", "))
+	}
 	results := make([]SyncResult, len(tables))
 	var mu sync.Mutex
 	var errs []error
@@ -237,8 +245,10 @@ func (e *GCPSyncEngine) upsertWithChanges(ctx context.Context, table string, row
 			changes.Removed = append(changes.Removed, id)
 		}
 		if len(changes.Removed) > 0 {
-			if _, err := e.sf.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table)); err != nil {
-				e.logger.Debug("delete failed", "error", err)
+			if _, err := e.sf.Exec(ctx, fmt.Sprintf("TRUNCATE TABLE %s", table)); err != nil {
+				if _, err := e.sf.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table)); err != nil {
+					e.logger.Debug("delete failed", "error", err)
+				}
 			}
 		}
 		return changes, nil
@@ -274,36 +284,33 @@ func (e *GCPSyncEngine) upsertWithChanges(ctx context.Context, table string, row
 	}
 
 	// Delete all and reinsert (simple but effective)
-	if _, err := e.sf.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table)); err != nil {
-		e.logger.Debug("delete failed", "error", err)
+	if _, err := e.sf.Exec(ctx, fmt.Sprintf("TRUNCATE TABLE %s", table)); err != nil {
+		if _, err := e.sf.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table)); err != nil {
+			e.logger.Debug("delete failed", "error", err)
+		}
 	}
 
-	// Batch insert
+	insertRows := make([]map[string]interface{}, 0, len(rows))
 	for _, row := range rows {
 		id, ok := row["_cq_id"].(string)
 		if !ok {
 			continue
 		}
 		hash := e.hashRowContent(row)
-		delete(row, "_cq_id")
-
-		cols := []string{"_CQ_ID", "_CQ_HASH"}
-		selects := []string{"?", "?"}
-		args := []interface{}{id, hash}
-
+		newRow := make(map[string]interface{}, len(row)+1)
+		newRow["_cq_id"] = id
+		newRow["_cq_hash"] = hash
 		for k, v := range row {
-			cols = append(cols, strings.ToUpper(k))
-			jsonVal, _ := json.Marshal(v)
-			selects = append(selects, "PARSE_JSON(?)")
-			args = append(args, string(jsonVal))
+			if k == "_cq_id" || k == "_cq_hash" {
+				continue
+			}
+			newRow[k] = v
 		}
+		insertRows = append(insertRows, newRow)
+	}
 
-		query := fmt.Sprintf("INSERT INTO %s (%s) SELECT %s",
-			table, strings.Join(cols, ", "), strings.Join(selects, ", "))
-
-		if _, err := e.sf.Exec(ctx, query, args...); err != nil {
-			return changes, fmt.Errorf("insert row: %w", err)
-		}
+	if err := insertRowsBatch(ctx, e.sf, table, insertRows); err != nil {
+		return changes, fmt.Errorf("insert rows: %w", err)
 	}
 
 	return changes, nil

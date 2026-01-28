@@ -11,7 +11,7 @@ Cerebro is a comprehensive security platform that combines cloud asset discovery
 
 ## Features
 
-- **Cloud Asset Discovery** - Ingest configurations from AWS, GCP, Azure, and Kubernetes via CloudQuery
+- **Cloud Asset Discovery** - Ingest configurations from AWS, GCP, Azure, and Kubernetes via native scanners
 - **Policy Engine** - Cedar-style policies for security evaluation with custom condition support
 - **Parallel Scanning** - High-performance scanning with configurable worker pools
 - **Compliance Frameworks** - Pre-built mappings for SOC 2, CIS, PCI DSS, HIPAA, NIST 800-53
@@ -46,9 +46,9 @@ Cerebro is a comprehensive security platform that combines cloud asset discovery
         ┌─────────────────────────────┼─────────────────────────────┐
         ▼                             ▼                             ▼
   ┌───────────┐              ┌───────────────┐              ┌───────────┐
-  │ Snowflake │◀─────────────│  CloudQuery   │              │ External  │
-  │ (Storage) │              │ (Ingestion)   │              │   APIs    │
-  └───────────┘              └───────────────┘              └───────────┘
+  │ Snowflake │◀─────────────│  Native Sync │              │ External  │
+  │ (Storage) │              │ (Ingestion)  │              │   APIs    │
+  └───────────┘              └──────────────┘              └───────────┘
         │                           │                             │
   AWS/GCP/Azure              Cloud Providers             Jira/Slack/PD
   Kubernetes                  SaaS Apps                  Anthropic/OpenAI
@@ -62,7 +62,6 @@ Cerebro is a comprehensive security platform that combines cloud asset discovery
 
 - Go 1.23+
 - Snowflake account
-- CloudQuery (for data ingestion)
 
 ### Installation
 
@@ -129,9 +128,10 @@ cerebro agent run --resource arn:aws:s3:::my-bucket --aws-region us-east-1
 # Run distributed analysis (enqueue jobs to SQS)
 cerebro agent run --repo-url https://github.com/org/repo --distributed --wait
 
-# Sync cloud data via CloudQuery
+# Sync cloud data via native scanners
 cerebro sync
-cerebro sync --source aws
+cerebro sync --gcp --gcp-project my-project
+cerebro sync --azure
 
 # Policy management
 cerebro policy list
@@ -430,7 +430,7 @@ See [Configuration](docs/CONFIGURATION.md) for all options.
 | Language | Go 1.23+ |
 | API Framework | Chi |
 | Database | Snowflake |
-| Data Ingestion | CloudQuery |
+| Data Ingestion | Native scanners |
 | Policy Engine | Cedar-style JSON |
 | CLI | Cobra |
 | Metrics | Prometheus |

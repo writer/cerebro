@@ -29,7 +29,7 @@ fmt:
 	goimports -w $$(find . -name '*.go' -not -path './vendor/*')
 	gofmt -w $$(find . -name '*.go' -not -path './vendor/*')
 
-# Sync cloud assets via CloudQuery
+# Sync cloud assets via native scanners
 sync: build
 	./bin/cerebro sync
 
@@ -45,12 +45,8 @@ policy-validate: build
 query: build
 	./bin/cerebro query $(SQL)
 
-# Install CloudQuery CLI
-install-cloudquery:
-	brew install cloudquery/tap/cloudquery
-
 # Install all dependencies
-install-deps: install-cloudquery
+install-deps:
 	go mod download
 
 # Clean build artifacts

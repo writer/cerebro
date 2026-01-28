@@ -16,11 +16,10 @@ var (
 var rootCmd = &cobra.Command{
 	Use:   "cerebro",
 	Short: "Security data platform",
-	Long: `Cerebro - Security posture management powered by CloudQuery + Snowflake + Cedar
+	Long: `Cerebro - Security posture management powered by Snowflake + Cedar
 
-Cerebro scans cloud assets against security policies and reports findings.
-It integrates with Snowflake for data storage, CloudQuery for asset discovery,
-and Cedar for policy-as-code.
+Cerebro scans cloud assets with native collectors and evaluates them against security policies.
+It integrates with Snowflake for data storage and Cedar for policy-as-code.
 
 Get started:
   cerebro status              Check system health

@@ -9,7 +9,7 @@ import (
 // validTableNameRegex matches valid Snowflake identifiers
 var validTableNameRegex = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 
-// knownTablePrefixes are CloudQuery and Cerebro table prefixes
+// knownTablePrefixes are supported asset table prefixes
 var knownTablePrefixes = []string{
 	"aws_", "gcp_", "azure_", "k8s_", "okta_", "github_",
 	"snyk_", "crowdstrike_", "sentinelone_", "tenable_",
@@ -62,7 +62,7 @@ func ValidateColumnName(column string) error {
 }
 
 // ValidateTableNameStrict validates and also checks against known prefixes.
-// Use this when the table should be a known CloudQuery or Cerebro table.
+// Use this when the table should be a known asset table.
 func ValidateTableNameStrict(table string) error {
 	if err := ValidateTableName(table); err != nil {
 		return err
@@ -76,7 +76,7 @@ func ValidateTableNameStrict(table string) error {
 		}
 	}
 
-	return fmt.Errorf("unknown table prefix: %s (not a known CloudQuery/Cerebro table)", table)
+	return fmt.Errorf("unknown table prefix: %s (not a known asset table)", table)
 }
 
 // QuoteIdentifier safely quotes a Snowflake identifier

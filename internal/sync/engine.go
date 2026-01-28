@@ -28,6 +28,13 @@ type SyncEngine struct {
 	concurrency int
 	regions     []string
 	accountID   string
+	tableInit   sync.Map
+	tableFilter map[string]struct{}
+}
+
+type tableInitState struct {
+	once sync.Once
+	err  error
 }
 
 // EngineOption configures the sync engine
@@ -39,6 +46,10 @@ func WithConcurrency(n int) EngineOption {
 
 func WithRegions(regions []string) EngineOption {
 	return func(e *SyncEngine) { e.regions = regions }
+}
+
+func WithTableFilter(tables []string) EngineOption {
+	return func(e *SyncEngine) { e.tableFilter = normalizeTableFilter(tables) }
 }
 
 // DefaultAWSRegions returns commonly used AWS regions for multi-region scanning
@@ -59,8 +70,7 @@ func NewSyncEngine(sf *snowflake.Client, logger *slog.Logger, opts ...EngineOpti
 	e := &SyncEngine{
 		sf:          sf,
 		logger:      logger,
-		concurrency: 10,
-		regions:     []string{"us-east-1"}, // default to single region, use WithRegions(DefaultAWSRegions) for multi-region
+		concurrency: 20,
 	}
 	for _, opt := range opts {
 		opt(e)
@@ -76,11 +86,27 @@ func (e *SyncEngine) SyncAll(ctx context.Context) ([]SyncResult, error) {
 		return nil, fmt.Errorf("load AWS config: %w", err)
 	}
 
+	return e.SyncAllWithConfig(ctx, cfg)
+}
+
+// SyncAllWithConfig syncs all AWS resources with a preloaded AWS config
+func (e *SyncEngine) SyncAllWithConfig(ctx context.Context, cfg aws.Config) ([]SyncResult, error) {
 	// Get account ID
 	e.accountID = e.getAccountID(ctx, cfg)
 
+	if len(e.regions) == 0 {
+		region := cfg.Region
+		if region == "" {
+			region = "us-east-1"
+		}
+		e.regions = []string{region}
+	}
+
 	// Define all tables to sync
-	tables := e.getAWSTables()
+	tables := filterTableSpecs(e.getAWSTables(), e.tableFilter)
+	if len(e.tableFilter) > 0 && len(tables) == 0 {
+		return nil, fmt.Errorf("no AWS tables matched filter: %s", strings.Join(filterNames(e.tableFilter), ", "))
+	}
 
 	// Create work queue
 	type workItem struct {
@@ -148,7 +174,7 @@ func (e *SyncEngine) syncTable(ctx context.Context, cfg aws.Config, table TableS
 	regionalCfg.Region = region
 
 	// Ensure table exists with correct schema
-	if err := e.ensureTable(ctx, table.Name, table.Columns); err != nil {
+	if err := e.ensureTableOnce(ctx, table.Name, table.Columns); err != nil {
 		e.logger.Error("ensure table failed", "table", table.Name, "error", err)
 		result.Errors = 1
 		result.Duration = time.Since(start)
@@ -165,7 +191,7 @@ func (e *SyncEngine) syncTable(ctx context.Context, cfg aws.Config, table TableS
 	}
 
 	// Upsert with change detection
-	changes, err := e.upsertWithChanges(ctx, table.Name, rows)
+	changes, err := e.upsertWithChanges(ctx, table.Name, table.Columns, region, rows)
 	if err != nil {
 		e.logger.Error("upsert failed", "table", table.Name, "error", err)
 		result.Errors = 1
@@ -188,20 +214,51 @@ func (e *SyncEngine) syncTable(ctx context.Context, cfg aws.Config, table TableS
 	return result, nil
 }
 
+func isReservedColumn(name string) bool {
+	upper := strings.ToUpper(name)
+	switch upper {
+	case "_CQ_ID", "_CQ_SYNC_TIME", "_CQ_HASH":
+		return true
+	default:
+		return false
+	}
+}
+
+func hasColumn(columns []string, name string) bool {
+	upper := strings.ToUpper(name)
+	for _, column := range columns {
+		if strings.ToUpper(column) == upper {
+			return true
+		}
+	}
+	return false
+}
+
 func (e *SyncEngine) ensureTable(ctx context.Context, table string, columns []string) error {
 	if err := snowflake.ValidateTableName(table); err != nil {
 		return fmt.Errorf("invalid table name: %w", err)
 	}
 
 	for _, col := range columns {
+		if isReservedColumn(col) {
+			continue
+		}
 		if err := snowflake.ValidateColumnName(col); err != nil {
 			return fmt.Errorf("invalid column name %q: %w", col, err)
 		}
 	}
 
+	filteredCols := make([]string, 0, len(columns))
+	for _, col := range columns {
+		if isReservedColumn(col) {
+			continue
+		}
+		filteredCols = append(filteredCols, col)
+	}
+
 	// Create table if not exists
-	colDefs := make([]string, len(columns))
-	for i, col := range columns {
+	colDefs := make([]string, len(filteredCols))
+	for i, col := range filteredCols {
 		colDefs[i] = fmt.Sprintf("%s VARIANT", strings.ToUpper(col))
 	}
 
@@ -229,15 +286,15 @@ func (e *SyncEngine) ensureTable(ctx context.Context, table string, columns []st
 
 	// Add _CQ_HASH if missing
 	if !existingSet["_CQ_HASH"] {
-		if _, err := e.sf.Exec(ctx, fmt.Sprintf("ALTER TABLE %s ADD COLUMN _CQ_HASH VARCHAR", table)); err != nil {
+		if _, err := e.sf.Exec(ctx, fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS _CQ_HASH VARCHAR", table)); err != nil {
 			e.logger.Debug("failed to add _CQ_HASH column", "error", err)
 		}
 	}
 
-	for _, col := range columns {
+	for _, col := range filteredCols {
 		upperCol := strings.ToUpper(col)
 		if !existingSet[upperCol] {
-			alterQuery := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s VARIANT", table, upperCol)
+			alterQuery := fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS %s VARIANT", table, upperCol)
 			if _, err := e.sf.Exec(ctx, alterQuery); err != nil {
 				e.logger.Debug("failed to add column", "table", table, "column", upperCol, "error", err)
 			}
@@ -245,6 +302,15 @@ func (e *SyncEngine) ensureTable(ctx context.Context, table string, columns []st
 	}
 
 	return nil
+}
+
+func (e *SyncEngine) ensureTableOnce(ctx context.Context, table string, columns []string) error {
+	stateValue, _ := e.tableInit.LoadOrStore(table, &tableInitState{})
+	state := stateValue.(*tableInitState)
+	state.once.Do(func() {
+		state.err = e.ensureTable(ctx, table, columns)
+	})
+	return state.err
 }
 
 func (e *SyncEngine) getTableColumns(ctx context.Context, table string) ([]string, error) {
@@ -273,18 +339,37 @@ func (e *SyncEngine) getTableColumns(ctx context.Context, table string) ([]strin
 	return columns, nil
 }
 
-func (e *SyncEngine) upsertWithChanges(ctx context.Context, table string, rows []map[string]interface{}) (*ChangeSet, error) {
+func (e *SyncEngine) upsertWithChanges(ctx context.Context, table string, columns []string, region string, rows []map[string]interface{}) (*ChangeSet, error) {
 	changes := &ChangeSet{}
 	if err := snowflake.ValidateTableName(table); err != nil {
 		return changes, fmt.Errorf("invalid table name %s: %w", table, err)
 	}
 
+	hasRegion := hasColumn(columns, "region")
+
 	if len(rows) == 0 {
+		existing := e.getExistingHashes(ctx, table, region, hasRegion)
+		for id := range existing {
+			changes.Removed = append(changes.Removed, id)
+		}
+		if len(changes.Removed) > 0 {
+			if hasRegion {
+				if _, err := e.sf.Exec(ctx, fmt.Sprintf("DELETE FROM %s WHERE REGION = ?", table), region); err != nil {
+					e.logger.Debug("delete failed", "error", err)
+				}
+			} else {
+				if _, err := e.sf.Exec(ctx, fmt.Sprintf("TRUNCATE TABLE %s", table)); err != nil {
+					if _, err := e.sf.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table)); err != nil {
+						e.logger.Debug("delete failed", "error", err)
+					}
+				}
+			}
+		}
 		return changes, nil
 	}
 
 	// Get existing rows with their hashes
-	existing := e.getExistingHashes(ctx, table)
+	existing := e.getExistingHashes(ctx, table, region, hasRegion)
 
 	// Build new row map with hashes
 	newRows := make(map[string]string) // id -> hash
@@ -313,49 +398,57 @@ func (e *SyncEngine) upsertWithChanges(ctx context.Context, table string, rows [
 	}
 
 	// Delete and insert (simple strategy, could use MERGE for large tables)
-	if _, err := e.sf.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table)); err != nil {
-		e.logger.Debug("delete failed", "error", err)
+	if hasRegion {
+		if _, err := e.sf.Exec(ctx, fmt.Sprintf("DELETE FROM %s WHERE REGION = ?", table), region); err != nil {
+			e.logger.Debug("delete failed", "error", err)
+		}
+	} else {
+		if _, err := e.sf.Exec(ctx, fmt.Sprintf("TRUNCATE TABLE %s", table)); err != nil {
+			if _, err := e.sf.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table)); err != nil {
+				e.logger.Debug("delete failed", "error", err)
+			}
+		}
 	}
 
-	// Batch insert
+	insertRows := make([]map[string]interface{}, 0, len(rows))
 	for _, row := range rows {
 		id, ok := row["_cq_id"].(string)
 		if !ok {
 			continue
 		}
 		hash := hashRowContent(row)
-		delete(row, "_cq_id")
-
-		cols := []string{"_CQ_ID", "_CQ_HASH"}
-		selects := []string{"?", "?"}
-		args := []interface{}{id, hash}
-
+		newRow := make(map[string]interface{}, len(row)+1)
+		newRow["_cq_id"] = id
+		newRow["_cq_hash"] = hash
 		for k, v := range row {
-			cols = append(cols, strings.ToUpper(k))
-			jsonVal, _ := json.Marshal(v)
-			selects = append(selects, "PARSE_JSON(?)")
-			args = append(args, string(jsonVal))
+			if k == "_cq_id" || k == "_cq_hash" {
+				continue
+			}
+			newRow[k] = v
 		}
+		insertRows = append(insertRows, newRow)
+	}
 
-		query := fmt.Sprintf("INSERT INTO %s (%s) SELECT %s",
-			table, strings.Join(cols, ", "), strings.Join(selects, ", "))
-
-		if _, err := e.sf.Exec(ctx, query, args...); err != nil {
-			return changes, fmt.Errorf("insert row: %w", err)
-		}
+	if err := insertRowsBatch(ctx, e.sf, table, insertRows); err != nil {
+		return changes, fmt.Errorf("insert rows: %w", err)
 	}
 
 	return changes, nil
 }
 
-func (e *SyncEngine) getExistingHashes(ctx context.Context, table string) map[string]string {
+func (e *SyncEngine) getExistingHashes(ctx context.Context, table string, region string, hasRegion bool) map[string]string {
 	result := make(map[string]string)
 	if err := snowflake.ValidateTableName(table); err != nil {
 		return result
 	}
 
 	query := fmt.Sprintf("SELECT _CQ_ID, _CQ_HASH FROM %s", table)
-	rows, err := e.sf.Query(ctx, query)
+	args := []interface{}{}
+	if hasRegion {
+		query = fmt.Sprintf("%s WHERE REGION = ?", query)
+		args = append(args, region)
+	}
+	rows, err := e.sf.Query(ctx, query, args...)
 	if err != nil {
 		return result
 	}

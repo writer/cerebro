@@ -4,7 +4,7 @@
 
 ### High Priority
 - **Finding Store Persistence**: The in-memory store in `internal/findings/store.go` loses data on restart. Needs a persistent backend (SQLite/PostgreSQL) for dev/test environments.
-- **Policy/Table Mapping**: No validation exists between policies and required CloudQuery tables. Policies can fail silently if tables are missing.
+- **Policy/Table Mapping**: No validation exists between policies and required asset tables. Policies can fail silently if tables are missing.
 - **Hardcoded Secrets/Values**: Several potential hardcoded values or "TODO" placeholders in codebase need review (e.g., `internal/graph/effective_permissions.go` has a TODO about adding group/role denies).
 
 ### Medium Priority
@@ -24,7 +24,7 @@
 
 ## 3. Testing & Validation
 - **Integration Tests**: Lack of comprehensive integration tests for the full scan->policy->finding flow.
-- **Mocking**: More extensive mocking needed for CloudQuery and Snowflake dependencies to enable better unit testing.
+- **Mocking**: More extensive mocking needed for native sync and Snowflake dependencies to enable better unit testing.
 
 ## 4. Integrations & Providers
 

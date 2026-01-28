@@ -78,8 +78,7 @@ cerebro/
 ├── cmd/
 │   └── cerebro/
 │       └── main.go         # Application entrypoint
-├── config/
-│   └── cloudquery.yml      # CloudQuery sync configuration
+├── config/                 # Optional local configuration files
 ├── docs/                   # Documentation
 ├── internal/               # Private packages
 │   ├── agents/             # AI agent system

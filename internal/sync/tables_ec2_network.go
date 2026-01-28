@@ -448,7 +448,7 @@ func (e *SyncEngine) fetchEC2TransitGateways(ctx context.Context, cfg aws.Config
 func (e *SyncEngine) ec2ReservedInstanceTable() TableSpec {
 	return TableSpec{
 		Name:    "aws_ec2_reserved_instances",
-		Columns: []string{"arn", "account_id", "region", "reserved_instances_id", "instance_type", "instance_count", "state", "availability_zone", "duration", "start", "end", "fixed_price", "usage_price", "currency_code", "offering_type", "product_description", "tags"},
+		Columns: []string{"arn", "account_id", "region", "reserved_instances_id", "instance_type", "instance_count", "state", "availability_zone", "duration", "start_time", "end_time", "fixed_price", "usage_price", "currency_code", "offering_type", "product_description", "tags"},
 		Fetch:   e.fetchEC2ReservedInstances,
 	}
 }
@@ -478,8 +478,8 @@ func (e *SyncEngine) fetchEC2ReservedInstances(ctx context.Context, cfg aws.Conf
 			"state":                 string(ri.State),
 			"availability_zone":     aws.ToString(ri.AvailabilityZone),
 			"duration":              ri.Duration,
-			"start":                 ri.Start,
-			"end":                   ri.End,
+			"start_time":            ri.Start,
+			"end_time":              ri.End,
 			"fixed_price":           ri.FixedPrice,
 			"usage_price":           ri.UsagePrice,
 			"currency_code":         string(ri.CurrencyCode),

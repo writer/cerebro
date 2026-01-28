@@ -23,37 +23,68 @@ type GCPSecuritySync struct {
 	logger    *slog.Logger
 	projectID string
 	orgID     string
+	filter    map[string]struct{}
+}
+
+// GCPSecurityOption configures the GCP security sync
+type GCPSecurityOption func(*GCPSecuritySync)
+
+func WithGCPSecurityTableFilter(tables []string) GCPSecurityOption {
+	return func(s *GCPSecuritySync) { s.filter = normalizeTableFilter(tables) }
 }
 
 // NewGCPSecuritySync creates a new GCP security sync instance
-func NewGCPSecuritySync(sf *snowflake.Client, logger *slog.Logger, projectID, orgID string) *GCPSecuritySync {
-	return &GCPSecuritySync{
+func NewGCPSecuritySync(sf *snowflake.Client, logger *slog.Logger, projectID, orgID string, opts ...GCPSecurityOption) *GCPSecuritySync {
+	syncer := &GCPSecuritySync{
 		sf:        sf,
 		logger:    logger,
 		projectID: projectID,
 		orgID:     orgID,
 	}
+	for _, opt := range opts {
+		opt(syncer)
+	}
+	return syncer
 }
 
 // SyncAll syncs all GCP security data
 func (s *GCPSecuritySync) SyncAll(ctx context.Context) error {
+	if len(s.filter) > 0 {
+		s.logger.Info("filtering GCP security tables", "tables", strings.Join(filterNames(s.filter), ", "))
+	}
+
 	s.logger.Info("starting GCP security sync", "project", s.projectID)
 
+	matched := false
+
 	// Sync vulnerability occurrences from Container Analysis
-	if err := s.syncVulnerabilityOccurrences(ctx); err != nil {
-		s.logger.Warn("failed to sync vulnerability occurrences", "error", err)
+	if matchesFilter(s.filter, "gcp_container_vulnerabilities", "container_vulnerabilities", "vulnerabilities") {
+		matched = true
+		if err := s.syncVulnerabilityOccurrences(ctx); err != nil {
+			s.logger.Warn("failed to sync vulnerability occurrences", "error", err)
+		}
 	}
 
 	// Sync Artifact Registry docker images
-	if err := s.syncArtifactRegistryImages(ctx); err != nil {
-		s.logger.Warn("failed to sync artifact registry images", "error", err)
+	if matchesFilter(s.filter, "gcp_artifact_registry_images", "artifact_registry_images", "artifact_images") {
+		matched = true
+		if err := s.syncArtifactRegistryImages(ctx); err != nil {
+			s.logger.Warn("failed to sync artifact registry images", "error", err)
+		}
 	}
 
 	// Sync Security Command Center findings (if org ID provided)
-	if s.orgID != "" {
-		if err := s.syncSCCFindings(ctx); err != nil {
+	if matchesFilter(s.filter, "gcp_scc_findings", "scc_findings", "security_command_center_findings") {
+		matched = true
+		if s.orgID == "" {
+			s.logger.Warn("skipping SCC findings; org ID not set")
+		} else if err := s.syncSCCFindings(ctx); err != nil {
 			s.logger.Warn("failed to sync SCC findings", "error", err)
 		}
+	}
+
+	if len(s.filter) > 0 && !matched {
+		return fmt.Errorf("no GCP security tables matched filter: %s", strings.Join(filterNames(s.filter), ", "))
 	}
 
 	return nil

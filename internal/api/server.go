@@ -201,8 +201,6 @@ func (s *Server) setupRoutes() {
 			r.Delete("/{id}", s.deleteWebhook)
 			r.Get("/{id}/deliveries", s.getWebhookDeliveries)
 			r.Post("/test", s.testWebhook)
-			// CloudQuery sync webhook - trigger graph rebuild
-			r.Post("/cloudquery/sync", s.cloudQuerySyncWebhook)
 		})
 
 		// Audit log endpoints
@@ -285,15 +283,6 @@ func (s *Server) setupRoutes() {
 			r.Post("/users/{id}/roles", s.assignRole)
 			r.Get("/tenants", s.listTenants)
 			r.Post("/tenants", s.createTenant)
-		})
-
-		// CloudQuery table management endpoints
-		r.Route("/cloudquery", func(r chi.Router) {
-			r.Get("/tables", s.listCloudQueryTables)
-			r.Get("/inventory", s.getAssetInventory)
-			r.Get("/freshness/{table}", s.checkDataFreshness)
-			r.Get("/stats/{table}", s.getTableStats)
-			r.Post("/ensure-tables", s.ensureCloudQueryTables)
 		})
 
 		// Scan management endpoints
@@ -504,7 +493,7 @@ func (s *Server) adminHealth(w http.ResponseWriter, r *http.Request) {
 	s.json(w, http.StatusOK, health)
 }
 
-// Sync status - data freshness from CloudQuery
+// Sync status - data freshness from asset tables
 func (s *Server) syncStatus(w http.ResponseWriter, r *http.Request) {
 	if s.app.Snowflake == nil {
 		s.error(w, http.StatusServiceUnavailable, "snowflake not configured")
@@ -2743,108 +2732,6 @@ func (s *Server) ingestTelemetry(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// CloudQuery handlers
-
-func (s *Server) listCloudQueryTables(w http.ResponseWriter, r *http.Request) {
-	if s.app.Snowflake == nil {
-		s.error(w, http.StatusServiceUnavailable, "snowflake not initialized")
-		return
-	}
-
-	tables, err := s.app.Snowflake.ListAvailableTables(r.Context())
-	if err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	s.json(w, http.StatusOK, map[string]interface{}{
-		"tables": tables,
-		"count":  len(tables),
-	})
-}
-
-func (s *Server) getAssetInventory(w http.ResponseWriter, r *http.Request) {
-	if s.app.Snowflake == nil {
-		s.error(w, http.StatusServiceUnavailable, "snowflake not initialized")
-		return
-	}
-
-	tables, err := s.app.Snowflake.ListAvailableTables(r.Context())
-	if err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	inventory := make(map[string]int)
-	for _, table := range tables {
-		result, err := s.app.Snowflake.Query(r.Context(), "SELECT COUNT(*) as cnt FROM "+table)
-		if err == nil && len(result.Rows) > 0 {
-			if cnt, ok := result.Rows[0]["CNT"].(int64); ok {
-				inventory[table] = int(cnt)
-			}
-		}
-	}
-
-	s.json(w, http.StatusOK, inventory)
-}
-
-func (s *Server) checkDataFreshness(w http.ResponseWriter, r *http.Request) {
-	if s.app.Snowflake == nil {
-		s.error(w, http.StatusServiceUnavailable, "snowflake not initialized")
-		return
-	}
-
-	table := chi.URLParam(r, "table")
-	if table == "" {
-		s.error(w, http.StatusBadRequest, "table name required")
-		return
-	}
-
-	// Check when data was last synced by looking at _cq_sync_time
-	result, err := s.app.Snowflake.Query(r.Context(), "SELECT MAX(_cq_sync_time) as last_sync FROM "+table)
-	if err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	s.json(w, http.StatusOK, map[string]interface{}{
-		"table":     table,
-		"last_sync": result.Rows,
-	})
-}
-
-func (s *Server) getTableStats(w http.ResponseWriter, r *http.Request) {
-	if s.app.Snowflake == nil {
-		s.error(w, http.StatusServiceUnavailable, "snowflake not initialized")
-		return
-	}
-
-	table := chi.URLParam(r, "table")
-	if table == "" {
-		s.error(w, http.StatusBadRequest, "table name required")
-		return
-	}
-
-	result, err := s.app.Snowflake.Query(r.Context(), "SELECT COUNT(*) as count FROM "+table)
-	if err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	s.json(w, http.StatusOK, map[string]interface{}{
-		"table": table,
-		"stats": result.Rows,
-	})
-}
-
-func (s *Server) ensureCloudQueryTables(w http.ResponseWriter, r *http.Request) {
-	// Tables are now auto-created by the sync engine
-	s.json(w, http.StatusOK, map[string]interface{}{
-		"status":  "ok",
-		"message": "tables are auto-created by sync engine",
-	})
-}
-
 // Scan management handlers
 
 func (s *Server) getScanWatermarks(w http.ResponseWriter, r *http.Request) {
@@ -2973,66 +2860,6 @@ func (s *Server) rebuildGraph(w http.ResponseWriter, r *http.Request) {
 		"node_count":     meta.NodeCount,
 		"edge_count":     meta.EdgeCount,
 		"build_duration": meta.BuildDuration.String(),
-	})
-}
-
-// CloudQuery sync webhook handler - triggers graph rebuild when IAM data is synced
-func (s *Server) cloudQuerySyncWebhook(w http.ResponseWriter, r *http.Request) {
-	// Parse the webhook payload
-	var payload struct {
-		Tables []string `json:"tables"`
-		Status string   `json:"status"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		s.error(w, http.StatusBadRequest, "invalid payload")
-		return
-	}
-
-	// Emit cloudquery synced event
-	if err := s.app.Webhooks.EmitWithErrors(r.Context(), webhooks.EventCloudQuerySynced, map[string]interface{}{
-		"tables": payload.Tables,
-		"status": payload.Status,
-	}); err != nil {
-		s.app.Logger.Warn("failed to emit cloudquery webhook", "error", err)
-	}
-
-	// Check if any IAM tables were synced - if so, rebuild the graph
-	iamTables := []string{
-		"aws_iam_users", "aws_iam_roles", "aws_iam_groups",
-		"aws_iam_policies", "aws_iam_user_attached_policies",
-		"aws_iam_role_attached_policies", "aws_iam_user_policies",
-		"aws_iam_role_policies", "aws_iam_group_policies",
-		"aws_iam_user_groups",
-	}
-
-	shouldRebuild := false
-	for _, table := range payload.Tables {
-		for _, iamTable := range iamTables {
-			if table == iamTable {
-				shouldRebuild = true
-				break
-			}
-		}
-		if shouldRebuild {
-			break
-		}
-	}
-
-	if shouldRebuild && s.app.SecurityGraphBuilder != nil {
-		// Rebuild graph asynchronously
-		go func() {
-			ctx := context.Background()
-			if err := s.app.RebuildSecurityGraph(ctx); err != nil {
-				s.app.Logger.Error("failed to rebuild graph after cloudquery sync", "error", err)
-			}
-		}()
-	}
-
-	s.json(w, http.StatusOK, map[string]interface{}{
-		"received":       true,
-		"tables":         payload.Tables,
-		"rebuild_queued": shouldRebuild,
 	})
 }
 

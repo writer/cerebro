@@ -9,7 +9,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// Provider interface for custom data sources beyond CloudQuery
+// Provider interface for custom data sources beyond native scanners
 type Provider interface {
 	Name() string
 	Type() ProviderType

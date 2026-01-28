@@ -50,7 +50,7 @@ func (s *WatermarkStore) SetWatermark(table string, scanTime time.Time, rowsScan
 }
 
 // GetIncrementalQuery returns a SQL query for incremental scanning
-// Uses CloudQuery's _cq_sync_time column to filter new/updated rows
+// Uses the _cq_sync_time column to filter new/updated rows
 func GetIncrementalQuery(table string, lastScanTime *time.Time, limit int) string {
 	if lastScanTime == nil {
 		// Full scan

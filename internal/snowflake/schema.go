@@ -8,9 +8,7 @@ import (
 
 // Schema definitions for Cerebro tables in Snowflake
 const (
-	// Core tables created by CloudQuery are in RAW schema
-	// Cerebro-specific tables go in CEREBRO schema
-
+	// Asset tables live in the RAW schema; Cerebro tables go in CEREBRO.
 	SchemaName = "CEREBRO"
 )
 
