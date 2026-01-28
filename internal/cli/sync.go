@@ -41,6 +41,8 @@ var (
 	syncAzureSubscription string // Azure subscription ID
 	syncConcurrency       int
 	syncTable             string
+	syncOutput            string
+	syncValidate          bool
 )
 
 func init() {
@@ -57,6 +59,8 @@ func init() {
 	syncCmd.Flags().StringVar(&syncAzureSubscription, "azure-subscription", "", "Azure subscription ID (optional, will auto-discover if not set)")
 	syncCmd.Flags().IntVar(&syncConcurrency, "concurrency", 20, "Max concurrent table syncs for native engines")
 	syncCmd.Flags().StringVar(&syncTable, "table", "", "Sync only specific table(s), comma-separated (e.g., aws_iam_accounts)")
+	syncCmd.Flags().StringVarP(&syncOutput, "output", "o", "table", "Output format (table, json)")
+	syncCmd.Flags().BoolVar(&syncValidate, "validate", false, "Validate Snowflake tables without fetching resources")
 }
 
 func runSync(cmd *cobra.Command, args []string) error {
@@ -117,12 +121,22 @@ func runGCPSync(ctx context.Context, start time.Time, projectID string) error {
 		options = append(options, nativesync.WithGCPTableFilter(tableFilter))
 	}
 	syncer := nativesync.NewGCPSyncEngine(client, slog.Default(), options...)
+	if syncValidate {
+		results, err := syncer.ValidateTables(ctx)
+		if err != nil {
+			return fmt.Errorf("validation failed: %w", err)
+		}
+		return printSyncResults(results, start, "GCP (validate)")
+	}
+
 	results, err := syncer.SyncAll(ctx)
 	if err != nil {
 		return fmt.Errorf("sync failed: %w", err)
 	}
 
-	printSyncResults(results, start, "GCP")
+	if err := printSyncResults(results, start, "GCP"); err != nil {
+		return err
+	}
 
 	// Sync security data if requested
 	if syncSecurity {
@@ -194,6 +208,25 @@ func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []str
 	}
 	defer func() { _ = client.Close() }()
 
+	if syncValidate {
+		if len(projects) == 0 {
+			return fmt.Errorf("no GCP projects provided for validation")
+		}
+		options := []nativesync.GCPEngineOption{nativesync.WithGCPProject(projects[0])}
+		if syncConcurrency > 0 {
+			options = append(options, nativesync.WithGCPConcurrency(syncConcurrency))
+		}
+		if len(tableFilter) > 0 {
+			options = append(options, nativesync.WithGCPTableFilter(tableFilter))
+		}
+		syncer := nativesync.NewGCPSyncEngine(client, slog.Default(), options...)
+		results, err := syncer.ValidateTables(ctx)
+		if err != nil {
+			return fmt.Errorf("validation failed: %w", err)
+		}
+		return printSyncResults(results, start, "GCP (validate)")
+	}
+
 	var allResults []nativesync.SyncResult
 	for i, projectID := range projects {
 		Info("[%d/%d] Syncing project: %s", i+1, len(projects), projectID)
@@ -213,8 +246,7 @@ func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []str
 		allResults = append(allResults, results...)
 	}
 
-	printSyncResults(allResults, start, "GCP")
-	return nil
+	return printSyncResults(allResults, start, "GCP")
 }
 
 func runGCPAssetAPISync(ctx context.Context, start time.Time, projects []string) error {
@@ -238,13 +270,20 @@ func runGCPAssetAPISync(ctx context.Context, start time.Time, projects []string)
 		options = append(options, nativesync.WithAssetTypeFilter(tableFilter))
 	}
 	syncer := nativesync.NewGCPAssetInventoryEngine(client, slog.Default(), options...)
+	if syncValidate {
+		results, err := syncer.ValidateTables(ctx)
+		if err != nil {
+			return fmt.Errorf("validation failed: %w", err)
+		}
+		return printSyncResults(results, start, "GCP (Asset API) (validate)")
+	}
+
 	results, err := syncer.SyncAll(ctx)
 	if err != nil {
 		return fmt.Errorf("sync failed: %w", err)
 	}
 
-	printSyncResults(results, start, "GCP (Asset API)")
-	return nil
+	return printSyncResults(results, start, "GCP (Asset API)")
 }
 
 func runAzureSync(ctx context.Context, start time.Time) error {
@@ -280,12 +319,22 @@ func runAzureSync(ctx context.Context, start time.Time) error {
 		return fmt.Errorf("create azure sync engine: %w", err)
 	}
 
+	if syncValidate {
+		results, err := syncer.ValidateTables(ctx)
+		if err != nil {
+			return fmt.Errorf("validation failed: %w", err)
+		}
+		return printSyncResults(results, start, "Azure (validate)")
+	}
+
 	results, err := syncer.SyncAll(ctx)
 	if err != nil {
 		return fmt.Errorf("sync failed: %w", err)
 	}
 
-	printSyncResults(results, start, "Azure")
+	if err := printSyncResults(results, start, "Azure"); err != nil {
+		return err
+	}
 
 	if syncScanAfter {
 		Info("Triggering policy scan...")
@@ -345,12 +394,22 @@ func runNativeSync(ctx context.Context, start time.Time) error {
 	}
 
 	syncer := nativesync.NewSyncEngine(client, slog.Default(), opts...)
+	if syncValidate {
+		results, err := syncer.ValidateTablesWithConfig(ctx, awsCfg)
+		if err != nil {
+			return fmt.Errorf("validation failed: %w", err)
+		}
+		return printSyncResults(results, start, "AWS (validate)")
+	}
+
 	results, err := syncer.SyncAllWithConfig(ctx, awsCfg)
 	if err != nil {
 		return fmt.Errorf("sync failed: %w", err)
 	}
 
-	printSyncResults(results, start, "AWS")
+	if err := printSyncResults(results, start, "AWS"); err != nil {
+		return err
+	}
 
 	if len(tableFilter) == 0 {
 		// Extract resource relationships for graph building
@@ -425,7 +484,12 @@ func tableFilterMatches(filter map[string]struct{}, names ...string) bool {
 	return false
 }
 
-func printSyncResults(results []nativesync.SyncResult, start time.Time, provider string) {
+func printSyncResults(results []nativesync.SyncResult, start time.Time, provider string) error {
+	if syncOutput == FormatJSON {
+		summary := buildSyncSummary(results, start, provider)
+		return JSONOutput(summary)
+	}
+
 	fmt.Println()
 	fmt.Printf("%s Sync Results:\n", provider)
 	fmt.Println("─────────────────────────────────────────")
@@ -450,7 +514,12 @@ func printSyncResults(results []nativesync.SyncResult, start time.Time, provider
 			totalRemoved += len(r.Changes.Removed)
 		}
 
-		fmt.Printf("  %s %-30s %4d resources (%s)%s\n", status, r.Table, r.Synced, r.Duration.Round(time.Millisecond), changeInfo)
+		name := r.Table
+		if r.Region != "" {
+			name = fmt.Sprintf("%s (%s)", r.Table, r.Region)
+		}
+		errorInfo := fmt.Sprintf(", errors=%d", r.Errors)
+		fmt.Printf("  %s %-30s %4d resources (%s%s)%s\n", status, name, r.Synced, r.Duration.Round(time.Millisecond), errorInfo, changeInfo)
 		totalSynced += r.Synced
 		totalErrors += r.Errors
 	}
@@ -467,6 +536,71 @@ func printSyncResults(results []nativesync.SyncResult, start time.Time, provider
 	} else {
 		Success("Sync completed successfully")
 	}
+
+	return nil
+}
+
+type syncSummary struct {
+	Provider      string             `json:"provider"`
+	StartedAt     time.Time          `json:"started_at"`
+	Duration      string             `json:"duration"`
+	TotalSynced   int                `json:"total_synced"`
+	TotalErrors   int                `json:"total_errors"`
+	TotalAdded    int                `json:"total_added"`
+	TotalModified int                `json:"total_modified"`
+	TotalRemoved  int                `json:"total_removed"`
+	Results       []syncTableSummary `json:"results"`
+}
+
+type syncTableSummary struct {
+	Table    string           `json:"table"`
+	Region   string           `json:"region,omitempty"`
+	Synced   int              `json:"synced"`
+	Errors   int              `json:"errors"`
+	Error    string           `json:"error,omitempty"`
+	Duration string           `json:"duration"`
+	Changes  *syncChangeStats `json:"changes,omitempty"`
+}
+
+type syncChangeStats struct {
+	Added    int `json:"added"`
+	Modified int `json:"modified"`
+	Removed  int `json:"removed"`
+}
+
+func buildSyncSummary(results []nativesync.SyncResult, start time.Time, provider string) syncSummary {
+	summary := syncSummary{
+		Provider:  provider,
+		StartedAt: start,
+		Duration:  time.Since(start).String(),
+	}
+
+	for _, r := range results {
+		row := syncTableSummary{
+			Table:    r.Table,
+			Region:   r.Region,
+			Synced:   r.Synced,
+			Errors:   r.Errors,
+			Error:    r.Error,
+			Duration: r.Duration.String(),
+		}
+		if r.Changes != nil {
+			row.Changes = &syncChangeStats{
+				Added:    len(r.Changes.Added),
+				Modified: len(r.Changes.Modified),
+				Removed:  len(r.Changes.Removed),
+			}
+			summary.TotalAdded += row.Changes.Added
+			summary.TotalModified += row.Changes.Modified
+			summary.TotalRemoved += row.Changes.Removed
+		}
+
+		summary.Results = append(summary.Results, row)
+		summary.TotalSynced += r.Synced
+		summary.TotalErrors += r.Errors
+	}
+
+	return summary
 }
 
 func createSnowflakeClient() (*snowflake.Client, error) {

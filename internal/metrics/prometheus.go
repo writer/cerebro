@@ -36,6 +36,40 @@ var (
 		[]string{"status"},
 	)
 
+	// Sync metrics
+	SyncsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_syncs_total",
+			Help: "Total number of sync operations",
+		},
+		[]string{"provider", "table", "region", "status"},
+	)
+
+	SyncDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "cerebro_sync_duration_seconds",
+			Help:    "Duration of sync operations",
+			Buckets: prometheus.ExponentialBuckets(0.1, 2, 10),
+		},
+		[]string{"provider", "table", "region"},
+	)
+
+	SyncRows = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_sync_rows_total",
+			Help: "Total number of rows synced",
+		},
+		[]string{"provider", "table", "region"},
+	)
+
+	SyncErrors = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_sync_errors_total",
+			Help: "Total number of sync errors",
+		},
+		[]string{"provider", "table", "region"},
+	)
+
 	ScanDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "cerebro_scan_duration_seconds",
@@ -204,6 +238,11 @@ func Register() {
 			ScansTotal,
 			ScanDuration,
 			AssetsScanned,
+			// Syncs
+			SyncsTotal,
+			SyncDuration,
+			SyncRows,
+			SyncErrors,
 			// HTTP
 			HTTPRequestsTotal,
 			HTTPRequestDuration,
@@ -248,6 +287,21 @@ func RecordScanMetrics(table string, duration time.Duration, assetsCount int64, 
 	ScansTotal.WithLabelValues(status).Inc()
 	ScanDuration.WithLabelValues(table).Observe(duration.Seconds())
 	AssetsScanned.WithLabelValues(table).Add(float64(assetsCount))
+}
+
+// RecordSyncMetrics records metrics for a completed sync operation
+func RecordSyncMetrics(provider, table, region string, duration time.Duration, rows, errorCount int) {
+	status := "success"
+	if errorCount > 0 {
+		status = "error"
+	}
+	regionLabel := normalizeRegion(region)
+	SyncsTotal.WithLabelValues(provider, table, regionLabel, status).Inc()
+	SyncDuration.WithLabelValues(provider, table, regionLabel).Observe(duration.Seconds())
+	SyncRows.WithLabelValues(provider, table, regionLabel).Add(float64(rows))
+	if errorCount > 0 {
+		SyncErrors.WithLabelValues(provider, table, regionLabel).Add(float64(errorCount))
+	}
 }
 
 // RecordHTTPRequest records metrics for an HTTP request
@@ -298,4 +352,11 @@ func statusBucket(status int) string {
 	default:
 		return "1xx"
 	}
+}
+
+func normalizeRegion(region string) string {
+	if region == "" {
+		return "global"
+	}
+	return region
 }

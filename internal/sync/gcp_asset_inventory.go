@@ -13,6 +13,7 @@ import (
 	"cloud.google.com/go/asset/apiv1/assetpb"
 	"google.golang.org/api/iterator"
 
+	"github.com/writerinternal/cerebro/internal/metrics"
 	"github.com/writerinternal/cerebro/internal/snowflake"
 	"golang.org/x/sync/errgroup"
 )
@@ -99,6 +100,48 @@ func (e *GCPAssetInventoryEngine) SyncAll(ctx context.Context) ([]SyncResult, er
 
 	// Single scope sync
 	return e.syncScope(ctx, client, e.scope)
+}
+
+// ValidateTables ensures required Snowflake tables exist without fetching assets.
+func (e *GCPAssetInventoryEngine) ValidateTables(ctx context.Context) ([]SyncResult, error) {
+	assetTypes := make([]string, 0, len(GCPAssetTypes))
+	for assetType, tableName := range GCPAssetTypes {
+		if len(e.assetFilter) > 0 && !matchesFilter(e.assetFilter, assetType, tableName) {
+			continue
+		}
+		assetTypes = append(assetTypes, assetType)
+	}
+	if len(assetTypes) == 0 {
+		return nil, fmt.Errorf("no GCP asset types matched filter: %s", strings.Join(filterNames(e.assetFilter), ", "))
+	}
+
+	results := make([]SyncResult, len(assetTypes))
+	var mu sync.Mutex
+	var errs []error
+	var group errgroup.Group
+	limit := e.concurrency
+	if limit <= 0 {
+		limit = 1
+	}
+	group.SetLimit(limit)
+
+	for i, assetType := range assetTypes {
+		idx := i
+		at := assetType
+		group.Go(func() error {
+			result, err := e.validateAssetType(ctx, at)
+			mu.Lock()
+			results[idx] = result
+			if err != nil {
+				errs = append(errs, err)
+			}
+			mu.Unlock()
+			return nil
+		})
+	}
+
+	_ = group.Wait()
+	return results, errors.Join(errs...)
 }
 
 func (e *GCPAssetInventoryEngine) syncMultipleProjects(ctx context.Context, client *asset.Client) ([]SyncResult, error) {
@@ -218,11 +261,18 @@ func (e *GCPAssetInventoryEngine) syncAssetType(ctx context.Context, assetType s
 	result := SyncResult{
 		Table: tableName,
 	}
+	defer func() {
+		if result.Duration == 0 {
+			result.Duration = time.Since(start)
+		}
+		metrics.RecordSyncMetrics("gcp-asset", result.Table, result.Region, result.Duration, result.Synced, result.Errors)
+	}()
 
 	if err := snowflake.ValidateTableName(tableName); err != nil {
 		result.Errors = 1
+		result.Error = err.Error()
 		result.Duration = time.Since(start)
-		return result, fmt.Errorf("invalid table name %s: %w", tableName, err)
+		return result, fmt.Errorf("gcp asset %s: invalid table name: %w", tableName, err)
 	}
 
 	// Convert assets to rows
@@ -237,8 +287,9 @@ func (e *GCPAssetInventoryEngine) syncAssetType(ctx context.Context, assetType s
 	if err := e.ensureTable(ctx, tableName, columns); err != nil {
 		e.logger.Error("ensure table failed", "table", tableName, "error", err)
 		result.Errors = 1
+		result.Error = err.Error()
 		result.Duration = time.Since(start)
-		return result, fmt.Errorf("ensure table %s: %w", tableName, err)
+		return result, fmt.Errorf("gcp asset %s: ensure table: %w", tableName, err)
 	}
 
 	// Upsert with change detection
@@ -247,8 +298,9 @@ func (e *GCPAssetInventoryEngine) syncAssetType(ctx context.Context, assetType s
 	if err != nil {
 		e.logger.Error("upsert failed", "table", tableName, "error", err)
 		result.Errors = 1
+		result.Error = err.Error()
 		result.Duration = time.Since(start)
-		return result, fmt.Errorf("upsert %s: %w", tableName, err)
+		return result, fmt.Errorf("gcp asset %s: upsert: %w", tableName, err)
 	}
 
 	result.Synced = len(rows)
@@ -261,6 +313,44 @@ func (e *GCPAssetInventoryEngine) syncAssetType(ctx context.Context, assetType s
 		e.logger.Info("synced", "table", tableName, "count", len(rows))
 	}
 
+	return result, nil
+}
+
+func (e *GCPAssetInventoryEngine) validateAssetType(ctx context.Context, assetType string) (SyncResult, error) {
+	start := time.Now()
+	tableName, ok := GCPAssetTypes[assetType]
+	if !ok {
+		replacer := strings.NewReplacer(".", "_", "/", "_", "-", "_")
+		tableName = strings.ToLower(replacer.Replace(assetType))
+	}
+
+	result := SyncResult{
+		Table: tableName,
+	}
+	defer func() {
+		if result.Duration == 0 {
+			result.Duration = time.Since(start)
+		}
+		metrics.RecordSyncMetrics("gcp-asset", result.Table, result.Region, result.Duration, result.Synced, result.Errors)
+	}()
+
+	if err := snowflake.ValidateTableName(tableName); err != nil {
+		result.Errors = 1
+		result.Error = err.Error()
+		result.Duration = time.Since(start)
+		return result, fmt.Errorf("gcp asset %s: invalid table name: %w", tableName, err)
+	}
+
+	columns := e.getColumnsForAssetType()
+	if err := e.ensureTable(ctx, tableName, columns); err != nil {
+		e.logger.Error("ensure table failed", "table", tableName, "error", err)
+		result.Errors = 1
+		result.Error = err.Error()
+		result.Duration = time.Since(start)
+		return result, fmt.Errorf("gcp asset %s: ensure table: %w", tableName, err)
+	}
+
+	result.Duration = time.Since(start)
 	return result, nil
 }
 

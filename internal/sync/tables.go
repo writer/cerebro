@@ -22,6 +22,7 @@ type SyncResult struct {
 	Region   string
 	Synced   int
 	Errors   int
+	Error    string
 	Duration time.Duration
 	Changes  *ChangeSet
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/writerinternal/cerebro/internal/metrics"
 	"github.com/writerinternal/cerebro/internal/snowflake"
 )
 
@@ -156,17 +157,83 @@ func (e *SyncEngine) SyncAllWithConfig(ctx context.Context, cfg aws.Config) ([]S
 	return results, errors.Join(errs...)
 }
 
+// ValidateTablesWithConfig ensures required Snowflake tables exist without fetching cloud resources.
+func (e *SyncEngine) ValidateTablesWithConfig(ctx context.Context, cfg aws.Config) ([]SyncResult, error) {
+	// Get account ID to validate credentials
+	e.accountID = e.getAccountID(ctx, cfg)
+
+	if len(e.regions) == 0 {
+		region := cfg.Region
+		if region == "" {
+			region = "us-east-1"
+		}
+		e.regions = []string{region}
+	}
+
+	tables := filterTableSpecs(e.getAWSTables(), e.tableFilter)
+	if len(e.tableFilter) > 0 && len(tables) == 0 {
+		return nil, fmt.Errorf("no AWS tables matched filter: %s", strings.Join(filterNames(e.tableFilter), ", "))
+	}
+
+	type workItem struct {
+		table  TableSpec
+		region string
+	}
+
+	var work []workItem
+	for _, table := range tables {
+		for _, region := range e.regions {
+			work = append(work, workItem{table: table, region: region})
+		}
+	}
+
+	results := make([]SyncResult, len(work))
+	var mu sync.Mutex
+	var errs []error
+	var group errgroup.Group
+	limit := e.concurrency
+	if limit <= 0 {
+		limit = 1
+	}
+	group.SetLimit(limit)
+
+	for i, w := range work {
+		idx := i
+		item := w
+		group.Go(func() error {
+			result, err := e.validateTable(ctx, item.table, item.region)
+			results[idx] = result
+			if err != nil {
+				mu.Lock()
+				errs = append(errs, err)
+				mu.Unlock()
+			}
+			return nil
+		})
+	}
+
+	_ = group.Wait()
+	return results, errors.Join(errs...)
+}
+
 func (e *SyncEngine) syncTable(ctx context.Context, cfg aws.Config, table TableSpec, region string) (SyncResult, error) {
 	start := time.Now()
 	result := SyncResult{
 		Table:  table.Name,
 		Region: region,
 	}
+	defer func() {
+		if result.Duration == 0 {
+			result.Duration = time.Since(start)
+		}
+		metrics.RecordSyncMetrics("aws", result.Table, result.Region, result.Duration, result.Synced, result.Errors)
+	}()
 
 	if err := snowflake.ValidateTableName(table.Name); err != nil {
 		result.Errors = 1
+		result.Error = err.Error()
 		result.Duration = time.Since(start)
-		return result, fmt.Errorf("invalid table name %s: %w", table.Name, err)
+		return result, fmt.Errorf("aws %s (%s): invalid table name: %w", table.Name, region, err)
 	}
 
 	// Create regional config
@@ -177,8 +244,9 @@ func (e *SyncEngine) syncTable(ctx context.Context, cfg aws.Config, table TableS
 	if err := e.ensureTableOnce(ctx, table.Name, table.Columns); err != nil {
 		e.logger.Error("ensure table failed", "table", table.Name, "error", err)
 		result.Errors = 1
+		result.Error = err.Error()
 		result.Duration = time.Since(start)
-		return result, fmt.Errorf("ensure table %s: %w", table.Name, err)
+		return result, fmt.Errorf("aws %s (%s): ensure table: %w", table.Name, region, err)
 	}
 
 	// Fetch resources
@@ -186,8 +254,9 @@ func (e *SyncEngine) syncTable(ctx context.Context, cfg aws.Config, table TableS
 	if err != nil {
 		e.logger.Error("fetch failed", "table", table.Name, "region", region, "error", err)
 		result.Errors = 1
+		result.Error = err.Error()
 		result.Duration = time.Since(start)
-		return result, fmt.Errorf("fetch %s: %w", table.Name, err)
+		return result, fmt.Errorf("aws %s (%s): fetch: %w", table.Name, region, err)
 	}
 
 	// Upsert with change detection
@@ -195,8 +264,9 @@ func (e *SyncEngine) syncTable(ctx context.Context, cfg aws.Config, table TableS
 	if err != nil {
 		e.logger.Error("upsert failed", "table", table.Name, "error", err)
 		result.Errors = 1
+		result.Error = err.Error()
 		result.Duration = time.Since(start)
-		return result, fmt.Errorf("upsert %s: %w", table.Name, err)
+		return result, fmt.Errorf("aws %s (%s): upsert: %w", table.Name, region, err)
 	}
 
 	result.Synced = len(rows)
@@ -211,6 +281,38 @@ func (e *SyncEngine) syncTable(ctx context.Context, cfg aws.Config, table TableS
 			"changes", changes.Summary())
 	}
 
+	return result, nil
+}
+
+func (e *SyncEngine) validateTable(ctx context.Context, table TableSpec, region string) (SyncResult, error) {
+	start := time.Now()
+	result := SyncResult{
+		Table:  table.Name,
+		Region: region,
+	}
+	defer func() {
+		if result.Duration == 0 {
+			result.Duration = time.Since(start)
+		}
+		metrics.RecordSyncMetrics("aws", result.Table, result.Region, result.Duration, result.Synced, result.Errors)
+	}()
+
+	if err := snowflake.ValidateTableName(table.Name); err != nil {
+		result.Errors = 1
+		result.Error = err.Error()
+		result.Duration = time.Since(start)
+		return result, fmt.Errorf("aws %s (%s): invalid table name: %w", table.Name, region, err)
+	}
+
+	if err := e.ensureTableOnce(ctx, table.Name, table.Columns); err != nil {
+		e.logger.Error("ensure table failed", "table", table.Name, "error", err)
+		result.Errors = 1
+		result.Error = err.Error()
+		result.Duration = time.Since(start)
+		return result, fmt.Errorf("aws %s (%s): ensure table: %w", table.Name, region, err)
+	}
+
+	result.Duration = time.Since(start)
 	return result, nil
 }
 

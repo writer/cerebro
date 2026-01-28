@@ -20,6 +20,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armsubscriptions"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage"
+	"github.com/writerinternal/cerebro/internal/metrics"
 	"github.com/writerinternal/cerebro/internal/snowflake"
 	"golang.org/x/sync/errgroup"
 )
@@ -125,6 +126,50 @@ func (e *AzureSyncEngine) SyncAll(ctx context.Context) ([]SyncResult, error) {
 	return results, errors.Join(errs...)
 }
 
+// ValidateTables ensures required Snowflake tables exist without fetching Azure resources.
+func (e *AzureSyncEngine) ValidateTables(ctx context.Context) ([]SyncResult, error) {
+	if e.subscriptionID == "" {
+		subID, err := e.discoverSubscription(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("azure subscription ID not set and discovery failed: %w", err)
+		}
+		e.subscriptionID = subID
+		e.logger.Info("discovered Azure subscription", "subscription_id", subID)
+	}
+
+	tables := filterAzureTables(e.getAzureTables(), e.tableFilter)
+	if len(e.tableFilter) > 0 && len(tables) == 0 {
+		return nil, fmt.Errorf("no Azure tables matched filter: %s", strings.Join(filterNames(e.tableFilter), ", "))
+	}
+	results := make([]SyncResult, len(tables))
+	var mu sync.Mutex
+	var errs []error
+	var group errgroup.Group
+	limit := e.concurrency
+	if limit <= 0 {
+		limit = 1
+	}
+	group.SetLimit(limit)
+
+	for i, table := range tables {
+		idx := i
+		tableSpec := table
+		group.Go(func() error {
+			result, err := e.validateTable(ctx, tableSpec)
+			results[idx] = result
+			if err != nil {
+				mu.Lock()
+				errs = append(errs, err)
+				mu.Unlock()
+			}
+			return nil
+		})
+	}
+
+	_ = group.Wait()
+	return results, errors.Join(errs...)
+}
+
 func (e *AzureSyncEngine) discoverSubscription(ctx context.Context) (string, error) {
 	client, err := armsubscriptions.NewClient(e.credential, nil)
 	if err != nil {
@@ -152,11 +197,18 @@ func (e *AzureSyncEngine) syncTable(ctx context.Context, table AzureTableSpec) (
 	result := SyncResult{
 		Table: table.Name,
 	}
+	defer func() {
+		if result.Duration == 0 {
+			result.Duration = time.Since(start)
+		}
+		metrics.RecordSyncMetrics("azure", result.Table, result.Region, result.Duration, result.Synced, result.Errors)
+	}()
 
 	if err := snowflake.ValidateTableName(table.Name); err != nil {
 		result.Errors = 1
+		result.Error = err.Error()
 		result.Duration = time.Since(start)
-		return result, fmt.Errorf("invalid table name %s: %w", table.Name, err)
+		return result, fmt.Errorf("azure %s (subscription %s): invalid table name: %w", table.Name, e.subscriptionID, err)
 	}
 
 	e.logger.Info("syncing", "table", table.Name)
@@ -164,24 +216,27 @@ func (e *AzureSyncEngine) syncTable(ctx context.Context, table AzureTableSpec) (
 	if err := e.ensureTable(ctx, table.Name, table.Columns); err != nil {
 		e.logger.Error("ensure table failed", "table", table.Name, "error", err)
 		result.Errors = 1
+		result.Error = err.Error()
 		result.Duration = time.Since(start)
-		return result, fmt.Errorf("ensure table %s: %w", table.Name, err)
+		return result, fmt.Errorf("azure %s (subscription %s): ensure table: %w", table.Name, e.subscriptionID, err)
 	}
 
 	rows, err := table.Fetch(ctx, e.credential, e.subscriptionID)
 	if err != nil {
 		e.logger.Error("fetch failed", "table", table.Name, "error", err)
 		result.Errors = 1
+		result.Error = err.Error()
 		result.Duration = time.Since(start)
-		return result, fmt.Errorf("fetch %s: %w", table.Name, err)
+		return result, fmt.Errorf("azure %s (subscription %s): fetch: %w", table.Name, e.subscriptionID, err)
 	}
 
 	changes, err := e.upsertWithChanges(ctx, table.Name, rows)
 	if err != nil {
 		e.logger.Error("upsert failed", "table", table.Name, "error", err)
 		result.Errors = 1
+		result.Error = err.Error()
 		result.Duration = time.Since(start)
-		return result, fmt.Errorf("upsert %s: %w", table.Name, err)
+		return result, fmt.Errorf("azure %s (subscription %s): upsert: %w", table.Name, e.subscriptionID, err)
 	}
 
 	result.Synced = len(rows)
@@ -193,6 +248,37 @@ func (e *AzureSyncEngine) syncTable(ctx context.Context, table AzureTableSpec) (
 	}
 
 	e.logger.Info("synced", "table", table.Name, "count", result.Synced)
+	return result, nil
+}
+
+func (e *AzureSyncEngine) validateTable(ctx context.Context, table AzureTableSpec) (SyncResult, error) {
+	start := time.Now()
+	result := SyncResult{
+		Table: table.Name,
+	}
+	defer func() {
+		if result.Duration == 0 {
+			result.Duration = time.Since(start)
+		}
+		metrics.RecordSyncMetrics("azure", result.Table, result.Region, result.Duration, result.Synced, result.Errors)
+	}()
+
+	if err := snowflake.ValidateTableName(table.Name); err != nil {
+		result.Errors = 1
+		result.Error = err.Error()
+		result.Duration = time.Since(start)
+		return result, fmt.Errorf("azure %s (subscription %s): invalid table name: %w", table.Name, e.subscriptionID, err)
+	}
+
+	if err := e.ensureTable(ctx, table.Name, table.Columns); err != nil {
+		e.logger.Error("ensure table failed", "table", table.Name, "error", err)
+		result.Errors = 1
+		result.Error = err.Error()
+		result.Duration = time.Since(start)
+		return result, fmt.Errorf("azure %s (subscription %s): ensure table: %w", table.Name, e.subscriptionID, err)
+	}
+
+	result.Duration = time.Since(start)
 	return result, nil
 }
 

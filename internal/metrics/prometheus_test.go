@@ -48,6 +48,13 @@ func TestRecordScanMetrics(t *testing.T) {
 	RecordScanMetrics("aws_s3_buckets", 2*time.Second, 0, false)
 }
 
+func TestRecordSyncMetrics(t *testing.T) {
+	Register()
+
+	RecordSyncMetrics("aws", "aws_iam_accounts", "us-east-1", 3*time.Second, 5, 0)
+	RecordSyncMetrics("gcp", "gcp_compute_instances", "", 2*time.Second, 0, 1)
+}
+
 func TestRecordHTTPRequest(t *testing.T) {
 	Register()
 
