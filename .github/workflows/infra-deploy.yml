@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - 'infra/**'
+  push:
+    branches: [main]
+    paths:
+      - 'infra/**'
   workflow_dispatch:
     inputs:
       environment:
@@ -13,6 +17,7 @@ on:
         default: 'go-prod'
         type: choice
         options:
+          - sec-dev
           - go-prod
 
 env:
@@ -22,8 +27,9 @@ env:
   TAILSCALE_OAUTH_CLIENT_SECRET: ${{ secrets.TAILSCALE_OAUTH_CLIENT_SECRET }}
 
 jobs:
-  preview:
-    name: Preview
+  # PR: Pulumi up for sec-dev stack
+  deploy-sec-dev:
+    name: Deploy sec-dev
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     permissions:
@@ -45,10 +51,58 @@ jobs:
       - name: Install dependencies
         run: uv sync --directory infra
 
-      - name: Configure AWS credentials
+      - name: Configure AWS credentials (sec-dev)
         uses: writerInternal/aws-git-roles@v2
         with:
-          assume-role-arn: arn:aws:iam::073877318660:role/writer-aws-deployment-role
+          assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
+
+      - name: Authenticate with Pulumi Cloud
+        uses: pulumi/auth-actions@v1
+        with:
+          organization: writer-ai
+          requested-token-type: urn:pulumi:token-type:access_token:organization
+
+      - name: Set Infisical External ID
+        run: |
+          cd infra
+          uv run pulumi config set --stack sec-dev --secret cerebro:infisicalExternalId "${{ secrets.INFISICAL_EXTERNAL_ID }}"
+
+      - name: Pulumi Up (sec-dev)
+        uses: pulumi/actions@v5
+        with:
+          command: up
+          stack-name: sec-dev
+          work-dir: infra
+          comment-on-pr: true
+
+  # PR: Pulumi preview for go-prod stack in sec-prod account
+  preview-go-prod:
+    name: Preview go-prod
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "infra/pyproject.toml"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --directory infra
+
+      - name: Configure AWS credentials (sec-prod)
+        uses: writerInternal/aws-git-roles@v2
+        with:
+          assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
 
       - name: Authenticate with Pulumi Cloud
         uses: pulumi/auth-actions@v1
@@ -61,7 +115,7 @@ jobs:
           cd infra
           uv run pulumi config set --stack go-prod --secret cerebro:infisicalExternalId "${{ secrets.INFISICAL_EXTERNAL_ID }}"
 
-      - name: Pulumi Preview
+      - name: Pulumi Preview (go-prod)
         uses: pulumi/actions@v5
         with:
           command: preview
@@ -69,8 +123,56 @@ jobs:
           work-dir: infra
           comment-on-pr: true
 
-  deploy:
-    name: Deploy
+  # Main merge: Pulumi up for go-prod stack
+  deploy-go-prod:
+    name: Deploy go-prod
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: production
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "infra/pyproject.toml"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --directory infra
+
+      - name: Configure AWS credentials (sec-prod)
+        uses: writerInternal/aws-git-roles@v2
+        with:
+          assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
+
+      - name: Authenticate with Pulumi Cloud
+        uses: pulumi/auth-actions@v1
+        with:
+          organization: writer-ai
+          requested-token-type: urn:pulumi:token-type:access_token:organization
+
+      - name: Set Infisical External ID
+        run: |
+          cd infra
+          uv run pulumi config set --stack go-prod --secret cerebro:infisicalExternalId "${{ secrets.INFISICAL_EXTERNAL_ID }}"
+
+      - name: Pulumi Up (go-prod)
+        uses: pulumi/actions@v5
+        with:
+          command: up
+          stack-name: go-prod
+          work-dir: infra
+
+  # Manual deployment via workflow_dispatch
+  deploy-manual:
+    name: Manual Deploy
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch'
     environment: production
@@ -92,10 +194,17 @@ jobs:
       - name: Install dependencies
         run: uv sync --directory infra
 
-      - name: Configure AWS credentials
+      - name: Configure AWS credentials (sec-dev)
+        if: github.event.inputs.environment == 'sec-dev'
         uses: writerInternal/aws-git-roles@v2
         with:
-          assume-role-arn: arn:aws:iam::073877318660:role/writer-aws-deployment-role
+          assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
+
+      - name: Configure AWS credentials (sec-prod)
+        if: github.event.inputs.environment == 'go-prod'
+        uses: writerInternal/aws-git-roles@v2
+        with:
+          assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
 
       - name: Authenticate with Pulumi Cloud
         uses: pulumi/auth-actions@v1

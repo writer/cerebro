@@ -394,3 +394,85 @@ def create_vpc(
         "flow_log": flow_log,
         "flow_log_group": flow_log_group,
     }
+
+
+def use_existing_vpc(
+    name: str,
+    vpc_id: str,
+    public_subnet_ids: list[str],
+    private_subnet_ids: list[str],
+    alb_ingress_cidrs: list[str] = None,
+) -> dict:
+    """
+    Use an existing VPC and create only security groups.
+
+    Args:
+        name: Resource name prefix
+        vpc_id: Existing VPC ID
+        public_subnet_ids: Existing public subnet IDs
+        private_subnet_ids: Existing private subnet IDs
+        alb_ingress_cidrs: CIDRs allowed to access ALB (None = 0.0.0.0/0)
+
+    Returns:
+        Dict with vpc_id, subnet IDs, and new security group IDs
+    """
+    # Security Groups - created in the existing VPC
+    alb_sg = aws.ec2.SecurityGroup(
+        f"{name}-alb-sg",
+        vpc_id=vpc_id,
+        description="ALB security group",
+        ingress=[
+            aws.ec2.SecurityGroupIngressArgs(
+                protocol="tcp",
+                from_port=80,
+                to_port=80,
+                cidr_blocks=alb_ingress_cidrs or ["0.0.0.0/0"],
+            ),
+            aws.ec2.SecurityGroupIngressArgs(
+                protocol="tcp",
+                from_port=443,
+                to_port=443,
+                cidr_blocks=alb_ingress_cidrs or ["0.0.0.0/0"],
+            ),
+        ],
+        egress=[
+            aws.ec2.SecurityGroupEgressArgs(
+                protocol="-1",
+                from_port=0,
+                to_port=0,
+                cidr_blocks=["0.0.0.0/0"],
+            )
+        ],
+        tags={"Name": f"{name}-alb-sg"},
+    )
+
+    app_sg = aws.ec2.SecurityGroup(
+        f"{name}-app-sg",
+        vpc_id=vpc_id,
+        description="Application security group",
+        ingress=[
+            aws.ec2.SecurityGroupIngressArgs(
+                protocol="tcp",
+                from_port=8080,
+                to_port=8080,
+                security_groups=[alb_sg.id],
+            ),
+        ],
+        egress=[
+            aws.ec2.SecurityGroupEgressArgs(
+                protocol="-1",
+                from_port=0,
+                to_port=0,
+                cidr_blocks=["0.0.0.0/0"],
+            )
+        ],
+        tags={"Name": f"{name}-app-sg"},
+    )
+
+    return {
+        "vpc_id": vpc_id,
+        "public_subnet_ids": public_subnet_ids,
+        "private_subnet_ids": private_subnet_ids,
+        "alb_security_group_id": alb_sg.id,
+        "app_security_group_id": app_sg.id,
+    }

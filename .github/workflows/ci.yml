@@ -8,10 +8,15 @@ on:
 
 env:
   AWS_REGION: us-east-1
-  AWS_ACCOUNT_ID: "073877318660"
+  SEC_DEV_ACCOUNT_ID: "944130631940"
+  SEC_PROD_ACCOUNT_ID: "837279440628"
   ECR_REPOSITORY: cerebro
-  ECS_CLUSTER: cerebro-go-production-cluster
-  ECS_SERVICES: "cerebro-go-production-api cerebro-go-production-worker"
+  # sec-dev ECS config
+  SEC_DEV_ECS_CLUSTER: cerebro-sec-dev-cluster
+  SEC_DEV_ECS_SERVICES: "cerebro-sec-dev-api cerebro-sec-dev-worker"
+  # sec-prod ECS config
+  SEC_PROD_ECS_CLUSTER: cerebro-go-production-cluster
+  SEC_PROD_ECS_SERVICES: "cerebro-go-production-api cerebro-go-production-worker"
 
 jobs:
   test:
@@ -82,23 +87,22 @@ jobs:
       - name: Validate policies
         run: ./cerebro policy validate
 
-  build-and-push:
-    name: Build & Push Docker Image
+  # PR: Build and push to sec-dev ECR
+  build-and-push-sec-dev:
+    name: Build & Push to sec-dev ECR
     runs-on: ubuntu-latest
     needs: [test, lint, policy-validate]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'pull_request'
     permissions:
       id-token: write
       contents: read
-    outputs:
-      image_tag: ${{ steps.meta.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
+      - name: Configure AWS credentials (sec-dev)
         uses: writerInternal/aws-git-roles@v2
         with:
-          assume-role-arn: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/writer-aws-deployment-role
+          assume-role-arn: arn:aws:iam::${{ env.SEC_DEV_ACCOUNT_ID }}:role/writer-aws-deployment-role
 
       - name: Login to Amazon ECR
         id: login-ecr
@@ -129,26 +133,74 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  deploy:
-    name: Deploy to ECS
+  # Main merge: Build and push to sec-prod ECR
+  build-and-push-sec-prod:
+    name: Build & Push to sec-prod ECR
     runs-on: ubuntu-latest
-    needs: build-and-push
+    needs: [test, lint, policy-validate]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    environment: production
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (sec-prod)
+        uses: writerInternal/aws-git-roles@v2
+        with:
+          assume-role-arn: arn:aws:iam::${{ env.SEC_PROD_ACCOUNT_ID }}:role/writer-aws-deployment-role
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}
+          tags: |
+            type=sha,prefix=
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # PR: Deploy to sec-dev ECS
+  deploy-sec-dev:
+    name: Deploy to sec-dev ECS
+    runs-on: ubuntu-latest
+    needs: build-and-push-sec-dev
+    if: github.event_name == 'pull_request'
     permissions:
       id-token: write
       contents: read
     steps:
-      - name: Configure AWS credentials
+      - name: Configure AWS credentials (sec-dev)
         uses: writerInternal/aws-git-roles@v2
         with:
-          assume-role-arn: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/writer-aws-deployment-role
+          assume-role-arn: arn:aws:iam::${{ env.SEC_DEV_ACCOUNT_ID }}:role/writer-aws-deployment-role
 
       - name: Force new deployment
         run: |
-          for service in ${{ env.ECS_SERVICES }}; do
+          for service in ${{ env.SEC_DEV_ECS_SERVICES }}; do
             aws ecs update-service \
-              --cluster ${{ env.ECS_CLUSTER }} \
+              --cluster ${{ env.SEC_DEV_ECS_CLUSTER }} \
               --service $service \
               --force-new-deployment
           done
@@ -157,12 +209,63 @@ jobs:
         timeout-minutes: 15
         run: |
           echo "Waiting for ECS deployment to stabilize..."
-          for service in ${{ env.ECS_SERVICES }}; do
+          for service in ${{ env.SEC_DEV_ECS_SERVICES }}; do
             echo "Waiting for $service to stabilize..."
-            # Poll until new deployment is primary with desired count
             for i in {1..60}; do
               STATUS=$(aws ecs describe-services \
-                --cluster ${{ env.ECS_CLUSTER }} \
+                --cluster ${{ env.SEC_DEV_ECS_CLUSTER }} \
+                --services $service \
+                --query 'services[0].deployments[?status==`PRIMARY`] | [0].{running:runningCount,desired:desiredCount}' \
+                --output json)
+              RUNNING=$(echo $STATUS | jq -r '.running')
+              DESIRED=$(echo $STATUS | jq -r '.desired')
+              echo "Attempt $i ($service): $RUNNING/$DESIRED tasks running"
+              if [ "$RUNNING" = "$DESIRED" ] && [ "$RUNNING" != "0" ]; then
+                echo "Deployment complete for $service!"
+                break
+              fi
+              sleep 15
+            done
+            if [ "$RUNNING" != "$DESIRED" ] || [ "$RUNNING" = "0" ]; then
+              echo "Deployment did not stabilize in time for $service"
+              exit 1
+            fi
+          done
+
+  # Main merge: Deploy to sec-prod ECS
+  deploy-sec-prod:
+    name: Deploy to sec-prod ECS
+    runs-on: ubuntu-latest
+    needs: build-and-push-sec-prod
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: production
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Configure AWS credentials (sec-prod)
+        uses: writerInternal/aws-git-roles@v2
+        with:
+          assume-role-arn: arn:aws:iam::${{ env.SEC_PROD_ACCOUNT_ID }}:role/writer-aws-deployment-role
+
+      - name: Force new deployment
+        run: |
+          for service in ${{ env.SEC_PROD_ECS_SERVICES }}; do
+            aws ecs update-service \
+              --cluster ${{ env.SEC_PROD_ECS_CLUSTER }} \
+              --service $service \
+              --force-new-deployment
+          done
+
+      - name: Wait for deployment
+        timeout-minutes: 15
+        run: |
+          echo "Waiting for ECS deployment to stabilize..."
+          for service in ${{ env.SEC_PROD_ECS_SERVICES }}; do
+            echo "Waiting for $service to stabilize..."
+            for i in {1..60}; do
+              STATUS=$(aws ecs describe-services \
+                --cluster ${{ env.SEC_PROD_ECS_CLUSTER }} \
                 --services $service \
                 --query 'services[0].deployments[?status==`PRIMARY`] | [0].{running:runningCount,desired:desiredCount}' \
                 --output json)

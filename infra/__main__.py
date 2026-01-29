@@ -14,7 +14,7 @@ Deploys:
 import pulumi
 import pulumi_aws as aws
 
-from aws import compute, ecr, endpoints, infisical, jobs, kms, load_balancer, monitoring, networking, tailscale as ts, waf
+from aws import compute, ecr, infisical, jobs, kms, load_balancer, monitoring, networking, tailscale as ts, waf
 
 # Configuration
 config = pulumi.Config()
@@ -62,7 +62,6 @@ api_max_instances = _config_int("apiMaxInstances", 10)
 
 # Feature flags
 enable_waf = _config_bool("enableWaf", True)
-enable_vpc_endpoints = _config_bool("enableVpcEndpoints", True)
 # Environment-aware defaults: production gets more secure settings
 is_production = "prod" in environment.lower()
 enable_alb_access_logs = _config_bool("enableAlbAccessLogs", is_production)
@@ -86,6 +85,7 @@ external_secrets_prefix = config.get("externalSecretsPrefix") or f"cerebro-{envi
 # Tailscale subnet router for internal access
 enable_tailscale = _config_bool("enableTailscale", False)
 tailscale_hostname = config.get("tailscaleHostname") or f"cerebro-{environment}"
+tailscale_advertise_routes = config.get_object("tailscaleAdvertiseRoutes") or []
 
 # Distributed job workers
 enable_workers = _config_bool("enableWorkers", True)
@@ -94,6 +94,13 @@ worker_memory = _config_int("workerMemory", 1024)
 worker_min_instances = _config_int("workerMinInstances", 1)
 worker_max_instances = _config_int("workerMaxInstances", 10)
 worker_concurrency = _config_int("workerConcurrency", 4)
+
+# Existing VPC configuration (optional - if set, skips VPC creation)
+use_existing_vpc = _config_bool("useExistingVpc", False)
+existing_vpc_id = config.get("vpcId")
+existing_private_subnet_ids = config.get_object("privateSubnetIds") or []
+existing_public_subnet_ids = config.get_object("publicSubnetIds") or []
+existing_vpc_cidr = config.get("vpcCidr") or "10.0.0.0/16"
 
 # =============================================================================
 # KMS (must come before networking for flow logs encryption)
@@ -115,18 +122,30 @@ if enable_kms_log_encryption:
 # NETWORKING
 # =============================================================================
 
-vpc_cidr = "10.0.0.0/16"
-vpc_stack = networking.create_vpc(
-    name=f"cerebro-{environment}",
-    cidr_block=vpc_cidr,
-    availability_zones=2,
-    enable_nat_gateway=True,
-    nat_gateway_per_az=nat_gateway_per_az,
-    alb_ingress_cidrs=[vpc_cidr] if alb_internal else None,
-    enable_flow_logs=True,
-    flow_logs_retention_days=log_retention_days,
-    flow_logs_kms_key_arn=logs_kms_key["key_arn"] if logs_kms_key else None,
-)
+if use_existing_vpc and existing_vpc_id:
+    # Use existing VPC - only create security groups
+    vpc_cidr = existing_vpc_cidr
+    vpc_stack = networking.use_existing_vpc(
+        name=f"cerebro-{environment}",
+        vpc_id=existing_vpc_id,
+        public_subnet_ids=existing_public_subnet_ids,
+        private_subnet_ids=existing_private_subnet_ids,
+        alb_ingress_cidrs=[vpc_cidr] if alb_internal else None,
+    )
+else:
+    # Create new VPC with all networking components
+    vpc_cidr = "10.0.0.0/16"
+    vpc_stack = networking.create_vpc(
+        name=f"cerebro-{environment}",
+        cidr_block=vpc_cidr,
+        availability_zones=2,
+        enable_nat_gateway=True,
+        nat_gateway_per_az=nat_gateway_per_az,
+        alb_ingress_cidrs=[vpc_cidr] if alb_internal else None,
+        enable_flow_logs=True,
+        flow_logs_retention_days=log_retention_days,
+        flow_logs_kms_key_arn=logs_kms_key["key_arn"] if logs_kms_key else None,
+    )
 
 # =============================================================================
 # SECRETS
@@ -172,20 +191,6 @@ alb_stack = load_balancer.create_alb(
     enable_deletion_protection=enable_alb_deletion_protection,
     enable_access_logs=enable_alb_access_logs,
 )
-
-# =============================================================================
-# VPC ENDPOINTS (optional)
-# =============================================================================
-
-endpoints_stack = None
-if enable_vpc_endpoints:
-    endpoints_stack = endpoints.create_vpc_endpoints(
-        name=f"cerebro-{environment}",
-        vpc_id=vpc_stack["vpc_id"],
-        private_subnet_ids=vpc_stack["private_subnet_ids"],
-        route_table_ids=vpc_stack["private_route_table_ids"] + [vpc_stack["public_route_table_id"]],
-        fargate_security_group_id=vpc_stack["app_security_group_id"],
-    )
 
 # =============================================================================
 # DISTRIBUTED JOB QUEUE
@@ -374,11 +379,15 @@ if enable_tailscale:
     
     # Advertise only the private subnets (where ALB/ECS live)
     # Routes are auto-approved via ACL for tag:exitnode
+    # Configure via cerebro:tailscaleAdvertiseRoutes in stack config
+    if not tailscale_advertise_routes:
+        raise ValueError("cerebro:tailscaleAdvertiseRoutes must be configured when enableTailscale is true")
+    
     tailscale_stack = ts.create_tailscale_subnet_router(
         name=f"cerebro-{environment}",
         vpc_id=vpc_stack["vpc_id"],
         subnet_id=vpc_stack["private_subnet_ids"][0],
-        advertise_routes=["10.0.10.0/24", "10.0.11.0/24"],  # private subnets only
+        advertise_routes=tailscale_advertise_routes,
         tailscale_hostname=tailscale_hostname,
         auth_key_secret_arn=tailscale_auth_key_secret.arn,
         kms_key_arn=kms_key["key_arn"],
@@ -452,7 +461,7 @@ ecr_repository = ecr.create_ecr_repository(
     enable_immutable_tags=True,  # Tags are immutable except for 'latest'
     scan_on_push=True,
     lifecycle_policy_days=30,
-    kms_key_arn="arn:aws:kms:us-east-1:073877318660:key/454a4c79-083a-4bb3-af2a-09539082d416",
+    kms_key_arn=kms_key["key_arn"],
 )
 
 pulumi.export("ecr_repository_url", ecr_repository.repository_url)

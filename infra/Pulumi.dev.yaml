@@ -1,5 +1,0 @@
-encryptionsalt: v1:NhpQx7dWUiY=:v1:YZvHpc/uBI9FycUj:ON4zGtHdX15moH5LpZRrR2SyQ+LFPA==
-config:
-  cerebro:containerImage: 073877318660.dkr.ecr.us-east-1.amazonaws.com/cerebro:latest
-  cerebro:snowflakeConnectionString:
-    secure: v1:amRLjUfqCfEFlsWk:MCLSVI5CqBKsIV0sjYGKQAq/PDapL4zA1zRuFNoDyYDUzSNdWlzk+696LA==

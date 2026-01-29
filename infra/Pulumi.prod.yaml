@@ -1,4 +1,0 @@
-config:
-  cerebro:containerImage: 073877318660.dkr.ecr.us-east-1.amazonaws.com/cerebro:latest
-  cerebro:snowflakeConnectionString:
-    secure: AAABAIVqSSDayyQ7thQpf5CyewSZC3XTv3muS3SOQ7NZCIIEEY9qUW0/Ew==

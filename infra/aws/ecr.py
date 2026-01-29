@@ -53,8 +53,8 @@ def create_ecr_repository(
             scan_on_push=scan_on_push,
         ),
         encryption_configurations=encryption_configs,
+        force_delete=True,
         tags={"Name": name},
-        opts=pulumi.ResourceOptions(protect=True),
     )
 
     # Lifecycle policy to clean up untagged images
