@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/writerinternal/cerebro/internal/app"
+	"github.com/writerinternal/cerebro/internal/scanner"
 	"github.com/writerinternal/cerebro/internal/snowflake"
 	nativesync "github.com/writerinternal/cerebro/internal/sync"
 )
@@ -150,6 +151,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 				// Check if full scan is forced or needed (e.g. schema change, very old watermark)
 				// For now, simple logic: if watermark exists and we aren't forcing full scan
 				filter.Since = wm.LastScanTime
+				filter.SinceID = wm.LastScanID
 				fmt.Printf("  Incremental scan (since %s)\n", wm.LastScanTime.Format(time.RFC3339))
 			}
 		}
@@ -224,7 +226,11 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 		// Update watermark
 		if application.ScanWatermarks != nil {
-			application.ScanWatermarks.SetWatermark(table, time.Now().UTC(), scannedCount)
+			cursorTime, cursorID := scanner.ExtractScanCursor(assets)
+			if cursorTime.IsZero() {
+				cursorTime = time.Now().UTC()
+			}
+			application.ScanWatermarks.SetWatermark(table, cursorTime, cursorID, scannedCount)
 			// Persist watermarks (best effort)
 			go func() {
 				_ = application.ScanWatermarks.PersistWatermarks(ctx)

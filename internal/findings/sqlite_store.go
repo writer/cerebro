@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,6 +22,7 @@ type SQLiteStore struct {
 	db     *sql.DB
 	mu     sync.RWMutex
 	dbPath string
+	logger *slog.Logger
 }
 
 // NewSQLiteStore creates a SQLite-backed findings store
@@ -45,7 +47,13 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 	return &SQLiteStore{
 		db:     db,
 		dbPath: dbPath,
+		logger: slog.Default(),
 	}, nil
+}
+
+// SetLogger sets a custom logger for the store
+func (s *SQLiteStore) SetLogger(logger *slog.Logger) {
+	s.logger = logger
 }
 
 func initSchema(db *sql.DB) error {
@@ -89,8 +97,7 @@ func (s *SQLiteStore) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		// Fallback to in-memory behavior if DB fails? For now, log error and return
-		fmt.Fprintf(os.Stderr, "failed to begin transaction: %v\n", err)
+		s.logger.Error("failed to begin transaction", "error", err)
 		return nil
 	}
 	defer func() { _ = tx.Rollback() }()
@@ -126,17 +133,17 @@ func (s *SQLiteStore) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 		`, f.ID, f.PolicyID, f.PolicyName, f.Severity, f.Status, f.ResourceID, f.ResourceType, resourceData, f.Description, f.FirstSeen, f.LastSeen)
 
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to insert finding: %v\n", err)
+			s.logger.Error("failed to insert finding", "error", err, "finding_id", pf.ID)
 			return nil
 		}
 		if commitErr := tx.Commit(); commitErr != nil {
-			fmt.Fprintf(os.Stderr, "failed to commit insert: %v\n", commitErr)
+			s.logger.Error("failed to commit insert", "error", commitErr, "finding_id", pf.ID)
 			return nil
 		}
 		return f
 
 	} else if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to query finding: %v\n", err)
+		s.logger.Error("failed to query finding", "error", err, "finding_id", pf.ID)
 		return nil
 	}
 
@@ -155,11 +162,11 @@ func (s *SQLiteStore) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 	`, now, resourceData, status, resolvedAtVal, pf.ID)
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to update finding: %v\n", err)
+		s.logger.Error("failed to update finding", "error", err, "finding_id", pf.ID)
 		return nil
 	}
 	if err := tx.Commit(); err != nil {
-		fmt.Fprintf(os.Stderr, "failed to commit update: %v\n", err)
+		s.logger.Error("failed to commit update", "error", err, "finding_id", pf.ID)
 		return nil
 	}
 
@@ -195,7 +202,7 @@ func (s *SQLiteStore) Get(id string) (*Finding, bool) {
 		return nil, false
 	}
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to get finding: %v\n", err)
+		s.logger.Error("failed to get finding", "error", err, "finding_id", id)
 		return nil, false
 	}
 
@@ -245,7 +252,7 @@ func (s *SQLiteStore) List(filter FindingFilter) []*Finding {
 
 	rows, err := s.db.QueryContext(context.Background(), query, args...)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to list findings: %v\n", err)
+		s.logger.Error("failed to list findings", "error", err)
 		return []*Finding{}
 	}
 	defer func() { _ = rows.Close() }()

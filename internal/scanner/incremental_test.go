@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -16,7 +17,7 @@ func TestWatermarkStore(t *testing.T) {
 
 	// Set watermark
 	now := time.Now()
-	store.SetWatermark("aws_s3_buckets", now, 100)
+	store.SetWatermark("aws_s3_buckets", now, "id-1", 100)
 
 	wm = store.GetWatermark("aws_s3_buckets")
 	if wm == nil {
@@ -24,6 +25,9 @@ func TestWatermarkStore(t *testing.T) {
 	}
 	if wm.RowsScanned != 100 {
 		t.Errorf("got %d rows, want 100", wm.RowsScanned)
+	}
+	if wm.LastScanID != "id-1" {
+		t.Errorf("got %q id, want id-1", wm.LastScanID)
 	}
 }
 
@@ -36,13 +40,13 @@ func TestShouldFullScan(t *testing.T) {
 	}
 
 	// Fresh watermark - should not full scan
-	store.SetWatermark("aws_s3_buckets", time.Now(), 100)
+	store.SetWatermark("aws_s3_buckets", time.Now(), "id-1", 100)
 	if store.ShouldFullScan("aws_s3_buckets", 24*time.Hour) {
 		t.Error("expected incremental scan for fresh watermark")
 	}
 
 	// Old watermark - should full scan
-	store.SetWatermark("aws_ec2_instances", time.Now().Add(-48*time.Hour), 50)
+	store.SetWatermark("aws_ec2_instances", time.Now().Add(-48*time.Hour), "id-2", 50)
 	if !store.ShouldFullScan("aws_ec2_instances", 24*time.Hour) {
 		t.Error("expected full scan for old watermark")
 	}
@@ -50,7 +54,10 @@ func TestShouldFullScan(t *testing.T) {
 
 func TestGetIncrementalQuery(t *testing.T) {
 	// Full scan (no watermark)
-	query := GetIncrementalQuery("aws_s3_buckets", nil, 1000)
+	query, err := GetIncrementalQuery("aws_s3_buckets", nil, "", 1000)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	expected := "SELECT * FROM aws_s3_buckets LIMIT 1000"
 	if query != expected {
 		t.Errorf("got %q, want %q", query, expected)
@@ -58,12 +65,37 @@ func TestGetIncrementalQuery(t *testing.T) {
 
 	// Incremental scan
 	lastScan := time.Date(2026, 1, 13, 10, 0, 0, 0, time.UTC)
-	query = GetIncrementalQuery("aws_s3_buckets", &lastScan, 1000)
+	query, err = GetIncrementalQuery("aws_s3_buckets", &lastScan, "", 1000)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if query == expected {
 		t.Error("incremental query should differ from full scan")
 	}
 	if query == "" {
 		t.Error("query should not be empty")
+	}
+
+	query, err = GetIncrementalQuery("aws_s3_buckets", &lastScan, "asset-1", 1000)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(query, "_cq_id > 'asset-1'") {
+		t.Errorf("expected last_scan_id filter in query, got %q", query)
+	}
+
+	query, err = GetIncrementalQuery("aws_s3_buckets", &lastScan, "asset'1", 1000)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(query, "_cq_id > 'asset''1'") {
+		t.Errorf("expected escaped last_scan_id in query, got %q", query)
+	}
+
+	// Invalid table name - should return error
+	_, err = GetIncrementalQuery("table; DROP TABLE users", nil, "", 1000)
+	if err == nil {
+		t.Error("expected error for SQL injection attempt")
 	}
 }
 
@@ -78,8 +110,8 @@ func TestWatermarkStats(t *testing.T) {
 
 	// Add some watermarks
 	now := time.Now()
-	store.SetWatermark("aws_s3_buckets", now, 100)
-	store.SetWatermark("aws_ec2_instances", now.Add(-time.Hour), 200)
+	store.SetWatermark("aws_s3_buckets", now, "id-1", 100)
+	store.SetWatermark("aws_ec2_instances", now.Add(-time.Hour), "id-2", 200)
 
 	stats = store.Stats()
 	if stats.TablesWithWatermarks != 2 {

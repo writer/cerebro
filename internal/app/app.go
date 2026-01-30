@@ -694,12 +694,15 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 	for _, table := range tables {
 		// Build filter with incremental scanning support
 		filter := snowflake.AssetFilter{Limit: batchSize}
+		var cursorTime time.Time
+		var cursorID string
 
 		// Use watermarks for incremental scanning
 		if a.ScanWatermarks != nil {
 			if !a.ScanWatermarks.ShouldFullScan(table, maxWatermarkAge) {
 				if wm := a.ScanWatermarks.GetWatermark(table); wm != nil {
 					filter.Since = wm.LastScanTime
+					filter.SinceID = wm.LastScanID
 					a.Logger.Debug("incremental scan", "table", table, "since", wm.LastScanTime)
 				}
 			}
@@ -724,6 +727,12 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 			totalScanned += int(result.Scanned)
 			totalViolations += int(result.Violations)
 			tableScanned += result.Scanned
+
+			batchTime, batchID := scanner.ExtractScanCursor(assets)
+			if scanner.IsCursorAfter(batchTime, batchID, cursorTime, cursorID) {
+				cursorTime = batchTime
+				cursorID = batchID
+			}
 
 			// Persist findings
 			for _, f := range result.Findings {
@@ -754,7 +763,10 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 
 		// Update watermark after successful scan
 		if a.ScanWatermarks != nil && tableScanned > 0 {
-			a.ScanWatermarks.SetWatermark(table, time.Now().UTC(), tableScanned)
+			if cursorTime.IsZero() {
+				cursorTime = time.Now().UTC()
+			}
+			a.ScanWatermarks.SetWatermark(table, cursorTime, cursorID, tableScanned)
 		}
 	}
 

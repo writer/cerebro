@@ -24,6 +24,7 @@ type AssetFilter struct {
 	Limit    int
 	Offset   int
 	Since    time.Time
+	SinceID  string
 }
 
 func (c *Client) GetAssets(ctx context.Context, table string, filter AssetFilter) ([]map[string]interface{}, error) {
@@ -50,8 +51,13 @@ func (c *Client) GetAssets(ctx context.Context, table string, filter AssetFilter
 		args = append(args, filter.Region)
 	}
 	if !filter.Since.IsZero() {
-		conditions = append(conditions, "_cq_sync_time > ?")
-		args = append(args, filter.Since)
+		if filter.SinceID != "" {
+			conditions = append(conditions, "(_cq_sync_time > ? OR (_cq_sync_time = ? AND _cq_id > ?))")
+			args = append(args, filter.Since, filter.Since, filter.SinceID)
+		} else {
+			conditions = append(conditions, "_cq_sync_time > ?")
+			args = append(args, filter.Since)
+		}
 	}
 
 	if len(conditions) > 0 {
@@ -62,6 +68,10 @@ func (c *Client) GetAssets(ctx context.Context, table string, filter AssetFilter
 			}
 			query += cond
 		}
+	}
+
+	if !filter.Since.IsZero() {
+		query += " ORDER BY _cq_sync_time ASC, _cq_id ASC"
 	}
 
 	limit := filter.Limit

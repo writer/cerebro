@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/writerinternal/cerebro/internal/app"
+	"github.com/writerinternal/cerebro/internal/scanner"
 	"github.com/writerinternal/cerebro/internal/snowflake"
 	nativesync "github.com/writerinternal/cerebro/internal/sync"
 )
@@ -683,11 +684,14 @@ func runPostSyncScan(ctx context.Context, tableFilter []string) error {
 
 	for _, table := range tables {
 		filter := snowflake.AssetFilter{Limit: batchSize}
+		var cursorTime time.Time
+		var cursorID string
 
 		// Use watermarks for incremental scanning if available
 		if application.ScanWatermarks != nil {
 			if wm := application.ScanWatermarks.GetWatermark(table); wm != nil {
 				filter.Since = wm.LastScanTime
+				filter.SinceID = wm.LastScanID
 				fmt.Printf("  %s: incremental scan (since %s)\n", table, wm.LastScanTime.Format(time.RFC3339))
 			}
 		}
@@ -711,6 +715,12 @@ func runPostSyncScan(ctx context.Context, tableFilter []string) error {
 			totalViolations += int(result.Violations)
 			tableScanned += result.Scanned
 
+			batchTime, batchID := scanner.ExtractScanCursor(assets)
+			if scanner.IsCursorAfter(batchTime, batchID, cursorTime, cursorID) {
+				cursorTime = batchTime
+				cursorID = batchID
+			}
+
 			// Persist findings
 			for _, f := range result.Findings {
 				application.Findings.Upsert(ctx, f)
@@ -724,7 +734,10 @@ func runPostSyncScan(ctx context.Context, tableFilter []string) error {
 
 		// Update watermark
 		if application.ScanWatermarks != nil && tableScanned > 0 {
-			application.ScanWatermarks.SetWatermark(table, time.Now().UTC(), tableScanned)
+			if cursorTime.IsZero() {
+				cursorTime = time.Now().UTC()
+			}
+			application.ScanWatermarks.SetWatermark(table, cursorTime, cursorID, tableScanned)
 		}
 
 		if tableScanned > 0 {

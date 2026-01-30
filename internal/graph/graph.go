@@ -48,6 +48,7 @@ func (g *Graph) AddNode(node *Node) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.nodes[node.ID] = node
+	g.indexBuilt = false
 }
 
 // AddEdge adds an edge to the graph
@@ -56,6 +57,7 @@ func (g *Graph) AddEdge(edge *Edge) {
 	defer g.mu.Unlock()
 	g.outEdges[edge.Source] = append(g.outEdges[edge.Source], edge)
 	g.inEdges[edge.Target] = append(g.inEdges[edge.Target], edge)
+	g.indexBuilt = false
 }
 
 // GetNode retrieves a node by ID
@@ -172,6 +174,7 @@ func (g *Graph) Clear() {
 	g.nodes = make(map[string]*Node)
 	g.outEdges = make(map[string][]*Edge)
 	g.inEdges = make(map[string][]*Edge)
+	g.indexBuilt = false
 }
 
 // SetMetadata sets the graph metadata

@@ -459,6 +459,7 @@ func (e *GCPSyncEngine) persistChangeHistory(ctx context.Context, results []Sync
 	alterQueries := []string{
 		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS change_type VARCHAR",
 		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS provider VARCHAR",
+		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS sync_time TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP()",
 	}
 	for _, q := range alterQueries {
 		if _, err := e.sf.Exec(ctx, q); err != nil {
@@ -466,31 +467,32 @@ func (e *GCPSyncEngine) persistChangeHistory(ctx context.Context, results []Sync
 		}
 	}
 
+	syncTime := time.Now().UTC()
 	for _, r := range results {
 		if r.Changes == nil {
 			continue
 		}
 
 		for _, id := range r.Changes.Added {
-			e.insertChangeRecord(ctx, r.Table, "added", id, "gcp")
+			e.insertChangeRecord(ctx, r.Table, "added", id, "gcp", syncTime)
 		}
 		for _, id := range r.Changes.Modified {
-			e.insertChangeRecord(ctx, r.Table, "modified", id, "gcp")
+			e.insertChangeRecord(ctx, r.Table, "modified", id, "gcp", syncTime)
 		}
 		for _, id := range r.Changes.Removed {
-			e.insertChangeRecord(ctx, r.Table, "removed", id, "gcp")
+			e.insertChangeRecord(ctx, r.Table, "removed", id, "gcp", syncTime)
 		}
 	}
 
 	return nil
 }
 
-func (e *GCPSyncEngine) insertChangeRecord(ctx context.Context, table, changeType, resourceID, provider string) {
-	id := fmt.Sprintf("%s-%s-%s-%d", table, changeType, resourceID, time.Now().UnixNano())
-	query := `INSERT INTO _sync_change_history (id, table_name, change_type, resource_id, provider)
-		SELECT ?, ?, ?, ?, ?`
+func (e *GCPSyncEngine) insertChangeRecord(ctx context.Context, table, changeType, resourceID, provider string, syncTime time.Time) {
+	id := fmt.Sprintf("%s-%s-%s-%d", table, changeType, resourceID, syncTime.UnixNano())
+	query := `INSERT INTO _sync_change_history (id, table_name, change_type, resource_id, sync_time, provider)
+		SELECT ?, ?, ?, ?, ?, ?`
 
-	if _, err := e.sf.Exec(ctx, query, id, table, changeType, resourceID, provider); err != nil {
+	if _, err := e.sf.Exec(ctx, query, id, table, changeType, resourceID, syncTime, provider); err != nil {
 		e.logger.Debug("failed to insert change record", "error", err)
 	}
 }
