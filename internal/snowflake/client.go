@@ -195,29 +195,42 @@ func (c *Client) Query(ctx context.Context, query string, args ...interface{}) (
 		return nil, cerrors.Wrapf(opQuery, err, "failed to get columns")
 	}
 
+	// Pre-compute lowercase column names once
+	colCount := len(columns)
+	lowerColumns := make([]string, colCount)
+	for i, col := range columns {
+		lowerColumns[i] = strings.ToLower(col)
+	}
+
+	// Pre-allocate scan buffers (reused across rows)
+	values := make([]interface{}, colCount)
+	valuePtrs := make([]interface{}, colCount)
+	for i := range values {
+		valuePtrs[i] = &values[i]
+	}
+
+	// Pre-allocate result slice with reasonable capacity
 	result := &QueryResult{
 		Columns: columns,
-		Rows:    make([]map[string]interface{}, 0),
+		Rows:    make([]map[string]interface{}, 0, 64),
 	}
 
 	for rows.Next() {
-		values := make([]interface{}, len(columns))
-		valuePtrs := make([]interface{}, len(columns))
-		for i := range values {
-			valuePtrs[i] = &values[i]
-		}
-
 		if err := rows.Scan(valuePtrs...); err != nil {
 			return nil, cerrors.Wrapf(opQuery, err, "failed to scan row")
 		}
 
-		row := make(map[string]interface{})
-		for i, col := range columns {
-			// Normalize column names to lowercase for consistent access
-			// Snowflake returns uppercase column names by default
-			row[strings.ToLower(col)] = values[i]
+		// Create row map with pre-sized capacity
+		row := make(map[string]interface{}, colCount)
+		for i, col := range lowerColumns {
+			row[col] = values[i]
 		}
 		result.Rows = append(result.Rows, row)
+
+		// Reset values slice for next iteration (prevents data aliasing)
+		for i := range values {
+			values[i] = nil
+		}
 	}
 
 	if err := rows.Err(); err != nil {
