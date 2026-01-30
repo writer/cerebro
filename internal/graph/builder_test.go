@@ -33,7 +33,7 @@ func (m *mockDataSource) setResult(query string, result *QueryResult) {
 func TestBuilder_BuildWithMockData(t *testing.T) {
 	ctx := context.Background()
 	source := newMockDataSource()
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 
 	// Set up mock IAM users
 	source.setResult(`

@@ -196,7 +196,24 @@ jobs:
         with:
           assume-role-arn: arn:aws:iam::${{ env.SEC_DEV_ACCOUNT_ID }}:role/writer-aws-deployment-role
 
+      - name: Check sec-dev secrets
+        id: sec-dev-secrets
+        run: |
+          missing=0
+          for secret in SNOWFLAKE_PRIVATE_KEY SNOWFLAKE_ACCOUNT SNOWFLAKE_USER; do
+            if ! aws secretsmanager describe-secret --secret-id "cerebro-sec-dev/${secret}" >/dev/null 2>&1; then
+              echo "Missing secret: ${secret}"
+              missing=1
+            fi
+          done
+          if [ "$missing" -eq 0 ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Force new deployment
+        if: steps.sec-dev-secrets.outputs.present == 'true'
         run: |
           for service in ${{ env.SEC_DEV_ECS_SERVICES }}; do
             aws ecs update-service \
@@ -206,6 +223,7 @@ jobs:
           done
 
       - name: Wait for deployment
+        if: steps.sec-dev-secrets.outputs.present == 'true'
         timeout-minutes: 15
         run: |
           echo "Waiting for ECS deployment to stabilize..."
@@ -231,6 +249,10 @@ jobs:
               exit 1
             fi
           done
+
+      - name: Skip sec-dev deploy (missing secrets)
+        if: steps.sec-dev-secrets.outputs.present != 'true'
+        run: echo "Skipping sec-dev deploy because required secrets are missing."
 
   # Main merge: Deploy to sec-prod ECS
   deploy-sec-prod:

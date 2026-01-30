@@ -10,20 +10,25 @@ import (
 	"time"
 )
 
+// ErrorHandler is a callback function invoked when a task returns an error.
+// It receives the error and can be used for real-time error handling/logging.
+type ErrorHandler func(err error)
+
 // Pool manages a set of concurrent workers with error aggregation.
 type Pool struct {
-	workers   int
-	logger    *slog.Logger
-	wg        sync.WaitGroup
-	mu        sync.Mutex
-	errors    []error
-	results   []interface{}
-	ctx       context.Context
-	cancel    context.CancelFunc
-	started   bool
-	startTime time.Time
-	endTime   time.Time
-	sem       chan struct{} // semaphore to limit concurrent workers
+	workers      int
+	logger       *slog.Logger
+	wg           sync.WaitGroup
+	mu           sync.Mutex
+	errors       []error
+	results      []interface{}
+	ctx          context.Context
+	cancel       context.CancelFunc
+	started      bool
+	startTime    time.Time
+	endTime      time.Time
+	sem          chan struct{} // semaphore to limit concurrent workers
+	errorHandler ErrorHandler  // optional callback for real-time error handling
 }
 
 // NewPool creates a new worker pool.
@@ -45,6 +50,15 @@ func (p *Pool) Start(ctx context.Context) {
 	p.ctx, p.cancel = context.WithCancel(ctx)
 	p.started = true
 	p.startTime = time.Now()
+}
+
+// OnError sets a callback that will be invoked for each error as it occurs.
+// This allows real-time error handling without waiting for Wait() to complete.
+// The handler is called synchronously after updating the pool state.
+func (p *Pool) OnError(handler ErrorHandler) {
+	p.mu.Lock()
+	p.errorHandler = handler
+	p.mu.Unlock()
 }
 
 // Submit submits a task to be executed by the pool.
@@ -78,16 +92,22 @@ func (p *Pool) Submit(task func(ctx context.Context) (interface{}, error)) {
 
 		result, err := task(p.ctx)
 
+		var handler ErrorHandler
 		p.mu.Lock()
 		if err != nil {
 			p.errors = append(p.errors, err)
 			if p.logger != nil {
 				p.logger.Warn("worker task failed", "error", err)
 			}
+			handler = p.errorHandler
 		} else if result != nil {
 			p.results = append(p.results, result)
 		}
 		p.mu.Unlock()
+
+		if err != nil && handler != nil {
+			handler(err)
+		}
 	}()
 }
 
@@ -109,6 +129,13 @@ func (p *Pool) Results() []interface{} {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.results
+}
+
+// ErrorCount returns the current number of errors without copying the slice.
+func (p *Pool) ErrorCount() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.errors)
 }
 
 // Cancel cancels all pending work.

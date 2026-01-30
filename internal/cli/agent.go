@@ -5,7 +5,10 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -13,6 +16,13 @@ import (
 	"github.com/writerinternal/cerebro/internal/agents/providers"
 	"github.com/writerinternal/cerebro/internal/app"
 	"github.com/writerinternal/cerebro/internal/scm"
+)
+
+const (
+	// agentTurnTimeout is the maximum time allowed for a single agent turn (LLM call + tool execution)
+	agentTurnTimeout = 5 * time.Minute
+	// agentSessionTimeout is the maximum time for an entire agent session
+	agentSessionTimeout = 30 * time.Minute
 )
 
 var agentCmd = &cobra.Command{
@@ -28,7 +38,12 @@ func init() {
 }
 
 func runAgent(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
+	// Create context with session timeout and signal handling
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	ctx, sessionCancel := context.WithTimeout(ctx, agentSessionTimeout)
+	defer sessionCancel()
 
 	// 1. Initialize App (to get DB, Config, etc.)
 	application, err := app.New(ctx)
@@ -80,6 +95,14 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	reader := bufio.NewReader(os.Stdin)
 
 	for {
+		// Check if context is cancelled (timeout or signal)
+		select {
+		case <-ctx.Done():
+			fmt.Println("\nSession ended:", ctx.Err())
+			return nil
+		default:
+		}
+
 		fmt.Print("\n> ")
 		input, err := reader.ReadString('\n')
 		if err != nil {
@@ -101,9 +124,18 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		})
 
 		fmt.Println("Agent is thinking...")
-		err = runAgentLoop(ctx, provider, session, agent.Tools)
+
+		// Create turn-level timeout context
+		turnCtx, turnCancel := context.WithTimeout(ctx, agentTurnTimeout)
+		err = runAgentLoop(turnCtx, provider, session, agent.Tools)
+		turnCancel()
+
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
+			if turnCtx.Err() == context.DeadlineExceeded {
+				fmt.Println("Turn timed out. Please try a simpler request.")
+			} else {
+				fmt.Printf("Error: %v\n", err)
+			}
 		}
 	}
 
@@ -114,6 +146,11 @@ func runAgentLoop(ctx context.Context, provider agents.LLMProvider, session *age
 	maxTurns := 15 // Limit recursion depth
 
 	for i := 0; i < maxTurns; i++ {
+		// Check context before each turn
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
 		// Prepare messages including System prompt
 		messages := append([]agents.Message{{Role: "system", Content: session.GetSystemPrompt()}}, session.Messages...)
 
