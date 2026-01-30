@@ -18,6 +18,7 @@ func NewMermaidExporter(g *Graph) *MermaidExporter {
 // ExportAttackPath generates Mermaid flowchart for an attack path
 func (m *MermaidExporter) ExportAttackPath(path *ScoredAttackPath) string {
 	var sb strings.Builder
+	sb.Grow(2048) // Pre-allocate for typical attack path size
 
 	sb.WriteString("```mermaid\n")
 	sb.WriteString("flowchart LR\n")
@@ -35,8 +36,8 @@ func (m *MermaidExporter) ExportAttackPath(path *ScoredAttackPath) string {
 	// Entry point
 	if path.EntryPoint != nil {
 		entryID := sanitizeMermaidID(path.EntryPoint.ID)
-		sb.WriteString(fmt.Sprintf("    %s[\"🚪 %s\"]\n", entryID, escapeLabel(path.EntryPoint.Name)))
-		sb.WriteString(fmt.Sprintf("    class %s entryPoint\n", entryID))
+		fmt.Fprintf(&sb, "    %s[\"🚪 %s\"]\n", entryID, escapeLabel(path.EntryPoint.Name))
+		fmt.Fprintf(&sb, "    class %s entryPoint\n", entryID)
 		seenNodes[path.EntryPoint.ID] = true
 	}
 
@@ -52,8 +53,8 @@ func (m *MermaidExporter) ExportAttackPath(path *ScoredAttackPath) string {
 			if fromNode != nil {
 				fromLabel = fromNode.Name
 			}
-			sb.WriteString(fmt.Sprintf("    %s[\"%s\"]\n", fromID, escapeLabel(fromLabel)))
-			sb.WriteString(fmt.Sprintf("    class %s intermediate\n", fromID))
+			fmt.Fprintf(&sb, "    %s[\"%s\"]\n", fromID, escapeLabel(fromLabel))
+			fmt.Fprintf(&sb, "    class %s intermediate\n", fromID)
 			seenNodes[step.FromNode] = true
 		}
 
@@ -64,22 +65,22 @@ func (m *MermaidExporter) ExportAttackPath(path *ScoredAttackPath) string {
 			if toNode != nil {
 				toLabel = toNode.Name
 			}
-			sb.WriteString(fmt.Sprintf("    %s[\"%s\"]\n", toID, escapeLabel(toLabel)))
+			fmt.Fprintf(&sb, "    %s[\"%s\"]\n", toID, escapeLabel(toLabel))
 			seenNodes[step.ToNode] = true
 		}
 
 		// Add edge with technique
 		edgeLabel := step.Technique
 		if step.MITREAttackID != "" {
-			edgeLabel = fmt.Sprintf("%s\\n(%s)", step.Technique, step.MITREAttackID)
+			edgeLabel = step.Technique + "\\n(" + step.MITREAttackID + ")"
 		}
-		sb.WriteString(fmt.Sprintf("    %s -->|\"%s\"| %s\n", fromID, escapeLabel(edgeLabel), toID))
+		fmt.Fprintf(&sb, "    %s -->|\"%s\"| %s\n", fromID, escapeLabel(edgeLabel), toID)
 	}
 
 	// Target styling
 	if path.Target != nil {
 		targetID := sanitizeMermaidID(path.Target.ID)
-		sb.WriteString(fmt.Sprintf("    class %s target\n", targetID))
+		fmt.Fprintf(&sb, "    class %s target\n", targetID)
 	}
 
 	sb.WriteString("```\n")
@@ -89,10 +90,11 @@ func (m *MermaidExporter) ExportAttackPath(path *ScoredAttackPath) string {
 // ExportAttackPaths generates Mermaid for multiple attack paths
 func (m *MermaidExporter) ExportAttackPaths(result *SimulationResult, maxPaths int) string {
 	var sb strings.Builder
+	sb.Grow(4096) // Pre-allocate for multiple paths
 
 	sb.WriteString("# Attack Path Analysis\n\n")
-	sb.WriteString(fmt.Sprintf("**Total Paths:** %d | **Critical Paths:** %d | **Chokepoints:** %d\n\n",
-		result.TotalPaths, result.CriticalPaths, len(result.Chokepoints)))
+	fmt.Fprintf(&sb, "**Total Paths:** %d | **Critical Paths:** %d | **Chokepoints:** %d\n\n",
+		result.TotalPaths, result.CriticalPaths, len(result.Chokepoints))
 
 	pathCount := maxPaths
 	if pathCount > len(result.Paths) {
@@ -101,10 +103,10 @@ func (m *MermaidExporter) ExportAttackPaths(result *SimulationResult, maxPaths i
 
 	for i := 0; i < pathCount; i++ {
 		path := result.Paths[i]
-		sb.WriteString(fmt.Sprintf("## Attack Path #%d (Score: %.1f)\n\n", i+1, path.TotalScore))
+		fmt.Fprintf(&sb, "## Attack Path #%d (Score: %.1f)\n\n", i+1, path.TotalScore)
 
 		if path.EntryPoint != nil && path.Target != nil {
-			sb.WriteString(fmt.Sprintf("**Entry:** %s → **Target:** %s\n\n", path.EntryPoint.Name, path.Target.Name))
+			fmt.Fprintf(&sb, "**Entry:** %s → **Target:** %s\n\n", path.EntryPoint.Name, path.Target.Name)
 		}
 
 		sb.WriteString(m.ExportAttackPath(path))
@@ -117,6 +119,7 @@ func (m *MermaidExporter) ExportAttackPaths(result *SimulationResult, maxPaths i
 // ExportToxicCombination generates Mermaid for a toxic combination
 func (m *MermaidExporter) ExportToxicCombination(tc *ToxicCombination) string {
 	var sb strings.Builder
+	sb.Grow(2048) // Pre-allocate for typical toxic combination size
 
 	sb.WriteString("```mermaid\n")
 	sb.WriteString("flowchart TB\n")
@@ -131,49 +134,47 @@ func (m *MermaidExporter) ExportToxicCombination(tc *ToxicCombination) string {
 	// Central node for the toxic combination
 	tcID := sanitizeMermaidID(tc.ID)
 	severityEmoji := severityToEmoji(tc.Severity)
-	sb.WriteString(fmt.Sprintf("    %s{{\"⚠️ %s\\nScore: %.0f\"}}\n", tcID, escapeLabel(tc.Name), tc.Score))
-	sb.WriteString(fmt.Sprintf("    class %s %s\n", tcID, strings.ToLower(string(tc.Severity))))
+	fmt.Fprintf(&sb, "    %s{{\"⚠️ %s\\nScore: %.0f\"}}\n", tcID, escapeLabel(tc.Name), tc.Score)
+	fmt.Fprintf(&sb, "    class %s %s\n", tcID, strings.ToLower(string(tc.Severity)))
 
 	// Risk factors
 	for i, factor := range tc.Factors {
-		factorID := fmt.Sprintf("factor_%d", i)
 		factorEmoji := factorTypeToEmoji(factor.Type)
-		sb.WriteString(fmt.Sprintf("    %s[\"%s %s\"]\n", factorID, factorEmoji, escapeLabel(factor.Description)))
-		sb.WriteString(fmt.Sprintf("    class %s factor\n", factorID))
-		sb.WriteString(fmt.Sprintf("    %s --> %s\n", factorID, tcID))
+		fmt.Fprintf(&sb, "    factor_%d[\"%s %s\"]\n", i, factorEmoji, escapeLabel(factor.Description))
+		fmt.Fprintf(&sb, "    class factor_%d factor\n", i)
+		fmt.Fprintf(&sb, "    factor_%d --> %s\n", i, tcID)
 	}
 
 	// Attack path if present
 	if tc.AttackPath != nil && len(tc.AttackPath.Steps) > 0 {
 		sb.WriteString("\n    subgraph attack[\"🎯 Attack Path\"]\n")
 		for i, step := range tc.AttackPath.Steps {
-			fromID := sanitizeMermaidID(fmt.Sprintf("step_%d_from", i))
-			toID := sanitizeMermaidID(fmt.Sprintf("step_%d_to", i))
-			sb.WriteString(fmt.Sprintf("        %s[\"%s\"] -->|\"%s\"| %s[\"%s\"]\n",
+			fromID := sanitizeMermaidID("step_" + itoa(i) + "_from")
+			toID := sanitizeMermaidID("step_" + itoa(i) + "_to")
+			fmt.Fprintf(&sb, "        %s[\"%s\"] -->|\"%s\"| %s[\"%s\"]\n",
 				fromID, escapeLabel(step.FromNode),
 				escapeLabel(step.Technique),
-				toID, escapeLabel(step.ToNode)))
+				toID, escapeLabel(step.ToNode))
 		}
 		sb.WriteString("    end\n")
-		sb.WriteString(fmt.Sprintf("    %s -.-> attack\n", tcID))
+		fmt.Fprintf(&sb, "    %s -.-> attack\n", tcID)
 	}
 
 	// Remediation subgraph
 	if len(tc.Remediation) > 0 {
 		sb.WriteString("\n    subgraph remediation[\"🔧 Remediation\"]\n")
 		for i, step := range tc.Remediation {
-			remID := fmt.Sprintf("rem_%d", i)
-			sb.WriteString(fmt.Sprintf("        %s[\"P%d: %s\"]\n", remID, step.Priority, escapeLabel(step.Action)))
+			fmt.Fprintf(&sb, "        rem_%d[\"P%d: %s\"]\n", i, step.Priority, escapeLabel(step.Action))
 		}
 		sb.WriteString("    end\n")
-		sb.WriteString(fmt.Sprintf("    %s -.-> remediation\n", tcID))
+		fmt.Fprintf(&sb, "    %s -.-> remediation\n", tcID)
 	}
 
 	sb.WriteString("```\n")
 
 	// Add metadata
-	sb.WriteString(fmt.Sprintf("\n%s **Severity:** %s | **Score:** %.1f\n", severityEmoji, tc.Severity, tc.Score))
-	sb.WriteString(fmt.Sprintf("\n> %s\n", tc.Description))
+	fmt.Fprintf(&sb, "\n%s **Severity:** %s | **Score:** %.1f\n", severityEmoji, tc.Severity, tc.Score)
+	fmt.Fprintf(&sb, "\n> %s\n", tc.Description)
 
 	return sb.String()
 }
@@ -547,4 +548,12 @@ func truncate(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen-3] + "..."
+}
+
+// itoa converts an integer to a string efficiently for small numbers
+func itoa(i int) string {
+	if i < 10 {
+		return string(rune('0' + i))
+	}
+	return fmt.Sprintf("%d", i)
 }

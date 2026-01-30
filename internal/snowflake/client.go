@@ -17,6 +17,7 @@ import (
 
 const (
 	opNewClient  = cerrors.Op("snowflake.NewClient")
+	opParseKey   = cerrors.Op("snowflake.parsePrivateKey")
 	opPing       = cerrors.Op("snowflake.Ping")
 	opQuery      = cerrors.Op("snowflake.Query")
 	opListTables = cerrors.Op("snowflake.ListTables")
@@ -118,7 +119,7 @@ func NewClient(config ClientConfig) (*Client, error) {
 func parsePrivateKey(pemData string) (*rsa.PrivateKey, error) {
 	block, _ := pem.Decode([]byte(pemData))
 	if block == nil {
-		return nil, fmt.Errorf("failed to decode PEM block")
+		return nil, cerrors.E(opParseKey, cerrors.ErrInvalidInput, "failed to decode PEM block")
 	}
 
 	// Try PKCS8 first (most common for Snowflake)
@@ -126,7 +127,7 @@ func parsePrivateKey(pemData string) (*rsa.PrivateKey, error) {
 	if err == nil {
 		rsaKey, ok := key.(*rsa.PrivateKey)
 		if !ok {
-			return nil, fmt.Errorf("key is not an RSA private key")
+			return nil, cerrors.E(opParseKey, cerrors.ErrInvalidInput, "key is not an RSA private key")
 		}
 		return rsaKey, nil
 	}
@@ -134,7 +135,7 @@ func parsePrivateKey(pemData string) (*rsa.PrivateKey, error) {
 	// Fall back to PKCS1
 	rsaKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse private key: %w", err)
+		return nil, cerrors.Wrapf(opParseKey, err, "failed to parse private key")
 	}
 	return rsaKey, nil
 }
