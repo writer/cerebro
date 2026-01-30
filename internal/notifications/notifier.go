@@ -3,6 +3,9 @@ package notifications
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -137,6 +140,29 @@ func (s *SlackNotifier) Send(ctx context.Context, event Event) error {
 
 	color := s.severityColor(event.Severity)
 
+	fields := []map[string]interface{}{
+		{"title": "Type", "value": string(event.Type), "short": true},
+		{"title": "Severity", "value": event.Severity, "short": true},
+	}
+
+	// Add finding ID if available
+	if findingID, ok := event.Data["finding_id"].(string); ok && findingID != "" {
+		fields = append(fields, map[string]interface{}{
+			"title": "Finding ID",
+			"value": findingID,
+			"short": true,
+		})
+	}
+
+	// Add resource info if available
+	if resourceID, ok := event.Data["resource_id"].(string); ok && resourceID != "" {
+		fields = append(fields, map[string]interface{}{
+			"title": "Resource",
+			"value": resourceID,
+			"short": true,
+		})
+	}
+
 	payload := map[string]interface{}{
 		"attachments": []map[string]interface{}{
 			{
@@ -145,10 +171,7 @@ func (s *SlackNotifier) Send(ctx context.Context, event Event) error {
 				"text":   event.Message,
 				"footer": "Cerebro Security",
 				"ts":     event.Timestamp.Unix(),
-				"fields": []map[string]interface{}{
-					{"title": "Type", "value": string(event.Type), "short": true},
-					{"title": "Severity", "value": event.Severity, "short": true},
-				},
+				"fields": fields,
 			},
 		},
 	}
@@ -398,9 +421,16 @@ func (w *WebhookNotifier) Send(ctx context.Context, event Event) error {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Cerebro-Event", string(event.Type))
 
+	// Add HMAC signature for webhook authentication
 	if w.secret != "" {
-		// HMAC signature would go here
-		req.Header.Set("X-Cerebro-Secret", w.secret)
+		timestamp := strconv.FormatInt(time.Now().Unix(), 10)
+		signaturePayload := timestamp + "." + string(body)
+		mac := hmac.New(sha256.New, []byte(w.secret))
+		mac.Write([]byte(signaturePayload))
+		signature := hex.EncodeToString(mac.Sum(nil))
+
+		req.Header.Set("X-Cerebro-Timestamp", timestamp)
+		req.Header.Set("X-Cerebro-Signature", "sha256="+signature)
 	}
 
 	resp, err := w.client.Do(req)

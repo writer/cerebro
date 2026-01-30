@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -273,10 +274,11 @@ func TestWebhookNotifier_Send(t *testing.T) {
 }
 
 func TestWebhookNotifier_WithSecret(t *testing.T) {
-	var gotSecret string
+	var gotSignature, gotTimestamp string
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotSecret = r.Header.Get("X-Cerebro-Secret")
+		gotSignature = r.Header.Get("X-Cerebro-Signature")
+		gotTimestamp = r.Header.Get("X-Cerebro-Timestamp")
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
@@ -288,8 +290,14 @@ func TestWebhookNotifier_WithSecret(t *testing.T) {
 
 	n.Send(context.Background(), Event{Type: "test", Title: "Test"})
 
-	if gotSecret != "my-secret" {
-		t.Errorf("expected secret header, got %s", gotSecret)
+	if gotSignature == "" {
+		t.Error("expected signature header")
+	}
+	if gotTimestamp == "" {
+		t.Error("expected timestamp header")
+	}
+	if !strings.HasPrefix(gotSignature, "sha256=") {
+		t.Errorf("expected sha256= prefix in signature, got %s", gotSignature)
 	}
 }
 
