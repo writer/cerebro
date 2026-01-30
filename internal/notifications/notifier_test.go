@@ -25,7 +25,7 @@ func TestManager_NewManager(t *testing.T) {
 func TestManager_AddNotifier(t *testing.T) {
 	m := NewManager()
 
-	webhook := NewWebhookNotifier(WebhookConfig{URL: "http://example.com"})
+	webhook, _ := NewWebhookNotifier(WebhookConfig{URL: "http://example.com"})
 	m.AddNotifier(webhook)
 
 	names := m.ListNotifiers()
@@ -41,9 +41,12 @@ func TestManager_AddNotifier(t *testing.T) {
 func TestManager_ListNotifiers(t *testing.T) {
 	m := NewManager()
 
-	m.AddNotifier(NewSlackNotifier(SlackConfig{WebhookURL: "http://example.com"}))
-	m.AddNotifier(NewPagerDutyNotifier(PagerDutyConfig{RoutingKey: "key"}))
-	m.AddNotifier(NewWebhookNotifier(WebhookConfig{URL: "http://example.com"}))
+	slack, _ := NewSlackNotifier(SlackConfig{WebhookURL: "http://example.com"})
+	pd, _ := NewPagerDutyNotifier(PagerDutyConfig{RoutingKey: "key"})
+	webhook, _ := NewWebhookNotifier(WebhookConfig{URL: "http://example.com"})
+	m.AddNotifier(slack)
+	m.AddNotifier(pd)
+	m.AddNotifier(webhook)
 
 	names := m.ListNotifiers()
 	if len(names) != 3 {
@@ -105,7 +108,7 @@ func TestEventType_Constants(t *testing.T) {
 }
 
 func TestSlackNotifier_Name(t *testing.T) {
-	n := NewSlackNotifier(SlackConfig{WebhookURL: "http://example.com"})
+	n, _ := NewSlackNotifier(SlackConfig{WebhookURL: "http://example.com"})
 	if n.Name() != "slack" {
 		t.Errorf("expected 'slack', got %s", n.Name())
 	}
@@ -124,7 +127,7 @@ func TestSlackNotifier_Send(t *testing.T) {
 	}))
 	defer server.Close()
 
-	n := NewSlackNotifier(SlackConfig{
+	n, _ := NewSlackNotifier(SlackConfig{
 		WebhookURL: server.URL,
 		Channel:    "#test",
 	})
@@ -147,7 +150,7 @@ func TestSlackNotifier_Send(t *testing.T) {
 }
 
 func TestSlackNotifier_SeverityColor(t *testing.T) {
-	n := NewSlackNotifier(SlackConfig{WebhookURL: "http://example.com"})
+	n, _ := NewSlackNotifier(SlackConfig{WebhookURL: "http://example.com"})
 
 	tests := []struct {
 		severity string
@@ -169,14 +172,14 @@ func TestSlackNotifier_SeverityColor(t *testing.T) {
 }
 
 func TestPagerDutyNotifier_Name(t *testing.T) {
-	n := NewPagerDutyNotifier(PagerDutyConfig{RoutingKey: "key"})
+	n, _ := NewPagerDutyNotifier(PagerDutyConfig{RoutingKey: "key"})
 	if n.Name() != "pagerduty" {
 		t.Errorf("expected 'pagerduty', got %s", n.Name())
 	}
 }
 
 func TestPagerDutyNotifier_SkipsLowSeverity(t *testing.T) {
-	n := NewPagerDutyNotifier(PagerDutyConfig{RoutingKey: "key"})
+	n, _ := NewPagerDutyNotifier(PagerDutyConfig{RoutingKey: "key"})
 
 	event := Event{
 		Type:     EventFindingCreated,
@@ -221,7 +224,7 @@ func TestPagerDutyNotifier_Send(t *testing.T) {
 }
 
 func TestWebhookNotifier_Name(t *testing.T) {
-	n := NewWebhookNotifier(WebhookConfig{URL: "http://example.com"})
+	n, _ := NewWebhookNotifier(WebhookConfig{URL: "http://example.com"})
 	if n.Name() != "webhook" {
 		t.Errorf("expected 'webhook', got %s", n.Name())
 	}
@@ -248,7 +251,7 @@ func TestWebhookNotifier_Send(t *testing.T) {
 	}))
 	defer server.Close()
 
-	n := NewWebhookNotifier(WebhookConfig{
+	n, _ := NewWebhookNotifier(WebhookConfig{
 		URL: server.URL,
 	})
 
@@ -278,7 +281,7 @@ func TestWebhookNotifier_WithSecret(t *testing.T) {
 	}))
 	defer server.Close()
 
-	n := NewWebhookNotifier(WebhookConfig{
+	n, _ := NewWebhookNotifier(WebhookConfig{
 		URL:    server.URL,
 		Secret: "my-secret",
 	})
@@ -296,7 +299,7 @@ func TestWebhookNotifier_ErrorResponse(t *testing.T) {
 	}))
 	defer server.Close()
 
-	n := NewWebhookNotifier(WebhookConfig{URL: server.URL})
+	n, _ := NewWebhookNotifier(WebhookConfig{URL: server.URL})
 
 	err := n.Send(context.Background(), Event{Type: "test", Title: "Test"})
 	if err == nil {
@@ -314,7 +317,8 @@ func TestManager_Send(t *testing.T) {
 	defer server.Close()
 
 	m := NewManager()
-	m.AddNotifier(NewWebhookNotifier(WebhookConfig{URL: server.URL}))
+	webhook, _ := NewWebhookNotifier(WebhookConfig{URL: server.URL})
+	m.AddNotifier(webhook)
 
 	event := Event{
 		Type:    EventFindingCreated,
@@ -342,7 +346,8 @@ func TestManager_Send_SetsTimestamp(t *testing.T) {
 	defer server.Close()
 
 	m := NewManager()
-	m.AddNotifier(NewWebhookNotifier(WebhookConfig{URL: server.URL}))
+	webhook, _ := NewWebhookNotifier(WebhookConfig{URL: server.URL})
+	m.AddNotifier(webhook)
 
 	// Event without timestamp
 	event := Event{
@@ -354,5 +359,26 @@ func TestManager_Send_SetsTimestamp(t *testing.T) {
 
 	if receivedEvent.Timestamp.IsZero() {
 		t.Error("expected timestamp to be set automatically")
+	}
+}
+
+func TestSlackNotifier_ValidationError(t *testing.T) {
+	_, err := NewSlackNotifier(SlackConfig{WebhookURL: ""})
+	if err == nil {
+		t.Error("expected error for empty webhook URL")
+	}
+}
+
+func TestPagerDutyNotifier_ValidationError(t *testing.T) {
+	_, err := NewPagerDutyNotifier(PagerDutyConfig{RoutingKey: ""})
+	if err == nil {
+		t.Error("expected error for empty routing key")
+	}
+}
+
+func TestWebhookNotifier_ValidationError(t *testing.T) {
+	_, err := NewWebhookNotifier(WebhookConfig{URL: ""})
+	if err == nil {
+		t.Error("expected error for empty URL")
 	}
 }

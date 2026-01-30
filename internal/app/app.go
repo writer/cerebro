@@ -617,19 +617,27 @@ func (a *App) initNotifications() {
 	a.Notifications = notifications.NewManager()
 
 	if a.Config.SlackWebhookURL != "" {
-		slack := notifications.NewSlackNotifier(notifications.SlackConfig{
+		slack, err := notifications.NewSlackNotifier(notifications.SlackConfig{
 			WebhookURL: a.Config.SlackWebhookURL,
 		})
-		a.Notifications.AddNotifier(slack)
-		a.Logger.Info("slack notifications enabled")
+		if err != nil {
+			a.Logger.Error("failed to configure slack notifications", "error", err)
+		} else {
+			a.Notifications.AddNotifier(slack)
+			a.Logger.Info("slack notifications enabled")
+		}
 	}
 
 	if a.Config.PagerDutyKey != "" {
-		pd := notifications.NewPagerDutyNotifier(notifications.PagerDutyConfig{
+		pd, err := notifications.NewPagerDutyNotifier(notifications.PagerDutyConfig{
 			RoutingKey: a.Config.PagerDutyKey,
 		})
-		a.Notifications.AddNotifier(pd)
-		a.Logger.Info("pagerduty notifications enabled")
+		if err != nil {
+			a.Logger.Error("failed to configure pagerduty notifications", "error", err)
+		} else {
+			a.Notifications.AddNotifier(pd)
+			a.Logger.Info("pagerduty notifications enabled")
+		}
 	}
 }
 

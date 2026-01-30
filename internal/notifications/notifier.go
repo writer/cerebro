@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"golang.org/x/time/rate"
@@ -39,10 +41,11 @@ type Notifier interface {
 	Test(ctx context.Context) error
 }
 
-// Manager coordinates multiple notifiers
+// Manager coordinates multiple notifiers with thread-safe access
 type Manager struct {
 	notifiers []Notifier
 	client    *http.Client
+	mu        sync.RWMutex
 }
 
 func NewManager() *Manager {
@@ -55,6 +58,8 @@ func NewManager() *Manager {
 }
 
 func (m *Manager) AddNotifier(n Notifier) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.notifiers = append(m.notifiers, n)
 }
 
@@ -63,16 +68,29 @@ func (m *Manager) Send(ctx context.Context, event Event) error {
 		event.Timestamp = time.Now().UTC()
 	}
 
-	var lastErr error
-	for _, n := range m.notifiers {
+	// Take a snapshot of notifiers to avoid holding lock during sends
+	m.mu.RLock()
+	notifiers := make([]Notifier, len(m.notifiers))
+	copy(notifiers, m.notifiers)
+	m.mu.RUnlock()
+
+	var errs []error
+	for _, n := range notifiers {
 		if err := n.Send(ctx, event); err != nil {
-			lastErr = err
+			errs = append(errs, fmt.Errorf("%s: %w", n.Name(), err))
 		}
 	}
-	return lastErr
+
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+	return nil
 }
 
 func (m *Manager) ListNotifiers() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	names := make([]string, len(m.notifiers))
 	for i, n := range m.notifiers {
 		names[i] = n.Name()
@@ -93,7 +111,12 @@ type SlackConfig struct {
 	Channel    string
 }
 
-func NewSlackNotifier(cfg SlackConfig) *SlackNotifier {
+// NewSlackNotifier creates a Slack notifier with the given config.
+// Returns an error if the webhook URL is empty.
+func NewSlackNotifier(cfg SlackConfig) (*SlackNotifier, error) {
+	if cfg.WebhookURL == "" {
+		return nil, errors.New("slack webhook URL is required")
+	}
 	return &SlackNotifier{
 		webhookURL: cfg.WebhookURL,
 		channel:    cfg.Channel,
@@ -102,7 +125,7 @@ func NewSlackNotifier(cfg SlackConfig) *SlackNotifier {
 		},
 		// Limit to 1 request per second with burst of 5
 		limiter: rate.NewLimiter(rate.Limit(1), 5),
-	}
+	}, nil
 }
 
 func (s *SlackNotifier) Name() string { return "slack" }
@@ -134,7 +157,10 @@ func (s *SlackNotifier) Send(ctx context.Context, event Event) error {
 		payload["channel"] = s.channel
 	}
 
-	body, _ := json.Marshal(payload)
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal slack payload: %w", err)
+	}
 	req, err := http.NewRequestWithContext(ctx, "POST", s.webhookURL, bytes.NewReader(body))
 	if err != nil {
 		return err
@@ -219,17 +245,19 @@ type PagerDutyConfig struct {
 	RoutingKey string // Integration key from PagerDuty
 }
 
-func NewPagerDutyNotifier(cfg PagerDutyConfig) *PagerDutyNotifier {
-	// Default limiter if none provided, though usually initialized in struct
-	limiter := rate.NewLimiter(rate.Limit(2), 10)
-
+// NewPagerDutyNotifier creates a PagerDuty notifier with the given config.
+// Returns an error if the routing key is empty.
+func NewPagerDutyNotifier(cfg PagerDutyConfig) (*PagerDutyNotifier, error) {
+	if cfg.RoutingKey == "" {
+		return nil, errors.New("pagerduty routing key is required")
+	}
 	return &PagerDutyNotifier{
 		routingKey: cfg.RoutingKey,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
-		limiter: limiter,
-	}
+		limiter: rate.NewLimiter(rate.Limit(2), 10),
+	}, nil
 }
 
 func (p *PagerDutyNotifier) Name() string { return "pagerduty" }
@@ -266,7 +294,10 @@ func (p *PagerDutyNotifier) Send(ctx context.Context, event Event) error {
 		},
 	}
 
-	body, _ := json.Marshal(payload)
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal pagerduty payload: %w", err)
+	}
 	req, err := http.NewRequestWithContext(ctx, "POST", "https://events.pagerduty.com/v2/enqueue", bytes.NewReader(body))
 	if err != nil {
 		return err
@@ -338,20 +369,28 @@ type WebhookConfig struct {
 	Secret string
 }
 
-func NewWebhookNotifier(cfg WebhookConfig) *WebhookNotifier {
+// NewWebhookNotifier creates a webhook notifier with the given config.
+// Returns an error if the URL is empty.
+func NewWebhookNotifier(cfg WebhookConfig) (*WebhookNotifier, error) {
+	if cfg.URL == "" {
+		return nil, errors.New("webhook URL is required")
+	}
 	return &WebhookNotifier{
 		url:    cfg.URL,
 		secret: cfg.Secret,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
-	}
+	}, nil
 }
 
 func (w *WebhookNotifier) Name() string { return "webhook" }
 
 func (w *WebhookNotifier) Send(ctx context.Context, event Event) error {
-	body, _ := json.Marshal(event)
+	body, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("marshal webhook payload: %w", err)
+	}
 	req, err := http.NewRequestWithContext(ctx, "POST", w.url, bytes.NewReader(body))
 	if err != nil {
 		return err
