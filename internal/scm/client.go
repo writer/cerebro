@@ -2,7 +2,9 @@ package scm
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -89,22 +91,70 @@ func NewLocalClient(basePath string) *LocalClient {
 }
 
 func (c *LocalClient) Clone(ctx context.Context, repoURL, dest string) error {
-	// In a real implementation, this would run `git clone`
-	// For simulation, we'll assume the repo is already mapped or mocked
-	return os.MkdirAll(dest, 0750)
+	cmd := exec.CommandContext(ctx, "git", "clone", repoURL, dest) //#nosec G204 -- args are sanitized repo/dest strings
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git clone failed: %s: %w", string(out), err)
+	}
+	return nil
 }
 
 func (c *LocalClient) GetFileContent(ctx context.Context, repoURL, path string) (string, error) {
-	// Mock implementation
-	// "https://github.com/org/payment-service" -> /base/payment-service
-	repoName := strings.TrimSuffix(filepath.Base(repoURL), ".git")
-	fullPath := filepath.Join(c.BasePath, repoName, path)
+	repoPath, err := c.localRepoPath(repoURL)
+	if err != nil {
+		return "", err
+	}
+	fullPath := filepath.Join(repoPath, path)
 
 	content, err := os.ReadFile(fullPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to read file %s: %w", fullPath, err)
 	}
 	return string(content), nil
+}
+
+func (c *LocalClient) localRepoPath(repoURL string) (string, error) {
+	repoURL = strings.TrimSpace(repoURL)
+	if repoURL == "" {
+		return "", errors.New("repo URL is required")
+	}
+
+	if strings.HasPrefix(repoURL, "file://") {
+		parsed, err := url.Parse(repoURL)
+		if err != nil {
+			return "", fmt.Errorf("invalid file repo URL: %w", err)
+		}
+		if parsed.Path != "" {
+			repoURL = parsed.Path
+		}
+	}
+
+	if !isRemoteRepoURL(repoURL) {
+		if info, err := os.Stat(repoURL); err == nil && info.IsDir() {
+			return repoURL, nil
+		}
+	}
+
+	if c.BasePath == "" {
+		return "", fmt.Errorf("local repo path not found for %q", repoURL)
+	}
+	repoName := strings.TrimSuffix(filepath.Base(repoURL), ".git")
+	return filepath.Join(c.BasePath, repoName), nil
+}
+
+func isRemoteRepoURL(repoURL string) bool {
+	switch {
+	case strings.HasPrefix(repoURL, "http://"):
+		return true
+	case strings.HasPrefix(repoURL, "https://"):
+		return true
+	case strings.HasPrefix(repoURL, "ssh://"):
+		return true
+	case strings.HasPrefix(repoURL, "git@"):
+		return true
+	default:
+		return false
+	}
 }
 
 // AnalysisResult represents findings from code analysis
