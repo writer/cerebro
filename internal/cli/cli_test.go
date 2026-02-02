@@ -120,7 +120,9 @@ func TestVersionCommandOutput(t *testing.T) {
 	BuildDate = "2026-01-21"
 
 	output := captureStdout(t, func() {
-		versionCmd.Run(versionCmd, nil)
+		if err := versionCmd.RunE(versionCmd, nil); err != nil {
+			t.Fatalf("unexpected version error: %v", err)
+		}
 	})
 
 	if !strings.Contains(output, "cerebro 1.2.3") {

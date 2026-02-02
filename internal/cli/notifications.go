@@ -34,11 +34,13 @@ Example:
 var (
 	testMessage  string
 	testSeverity string
+	testOutput   string
 )
 
 func init() {
 	notificationsTestCmd.Flags().StringVar(&testMessage, "message", "Test notification from Cerebro CLI", "Custom message to send")
 	notificationsTestCmd.Flags().StringVar(&testSeverity, "severity", "info", "Severity level (info, low, medium, high, critical)")
+	notificationsTestCmd.Flags().StringVarP(&testOutput, "output", "o", "text", "Output format (text,json)")
 
 	notificationsCmd.AddCommand(notificationsTestCmd)
 }
@@ -53,11 +55,28 @@ func runNotificationsTest(cmd *cobra.Command, args []string) error {
 	defer func() { _ = application.Close() }()
 
 	if application.Notifications == nil {
+		if testOutput == FormatJSON {
+			if jsonErr := JSONOutput(map[string]interface{}{
+				"success":  false,
+				"error":    "no notification channels configured",
+				"channels": []string{},
+			}); jsonErr != nil {
+				return jsonErr
+			}
+			return fmt.Errorf("no notification channels configured")
+		}
 		return fmt.Errorf("no notification channels configured - set SLACK_WEBHOOK_URL, PAGERDUTY_ROUTING_KEY, or configure webhooks")
 	}
 
 	notifiers := application.Notifications.ListNotifiers()
 	if len(notifiers) == 0 {
+		if testOutput == FormatJSON {
+			return JSONOutput(map[string]interface{}{
+				"success":  false,
+				"error":    "no notification channels configured",
+				"channels": []string{},
+			})
+		}
 		Warning("No notification channels configured")
 		fmt.Println("\nTo configure notifications, set environment variables:")
 		fmt.Println("  SLACK_WEBHOOK_URL      - Slack incoming webhook URL")
@@ -65,7 +84,9 @@ func runNotificationsTest(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	Info("Testing %d notification channel(s)...", len(notifiers))
+	if testOutput != FormatJSON {
+		Info("Testing %d notification channel(s)...", len(notifiers))
+	}
 
 	event := notifications.Event{
 		Type:     "test",
@@ -74,16 +95,37 @@ func runNotificationsTest(cmd *cobra.Command, args []string) error {
 		Severity: testSeverity,
 	}
 
-	spinner := NewSpinner("Sending test notifications")
-	spinner.Start()
+	var spinner *Spinner
+	if testOutput != FormatJSON {
+		spinner = NewSpinner("Sending test notifications")
+		spinner.Start()
+	}
 
 	err = application.Notifications.Send(ctx, event)
 	if err != nil {
+		if testOutput == FormatJSON {
+			if jsonErr := JSONOutput(map[string]interface{}{
+				"success":  false,
+				"error":    err.Error(),
+				"channels": notifiers,
+			}); jsonErr != nil {
+				return jsonErr
+			}
+			return err
+		}
 		spinner.Stop(false, fmt.Sprintf("Some notifications failed: %v", err))
 		return err
 	}
-	spinner.Stop(true, fmt.Sprintf("Sent to %d channel(s): %v", len(notifiers), notifiers))
 
+	if testOutput == FormatJSON {
+		return JSONOutput(map[string]interface{}{
+			"success":  true,
+			"channels": notifiers,
+			"count":    len(notifiers),
+		})
+	}
+
+	spinner.Stop(true, fmt.Sprintf("Sent to %d channel(s): %v", len(notifiers), notifiers))
 	fmt.Println()
 	Success("All notification channels working")
 	return nil

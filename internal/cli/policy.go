@@ -49,12 +49,19 @@ var policyTestCmd = &cobra.Command{
 	RunE:  runPolicyTest,
 }
 
+var (
+	policyValidateOutput string
+	policyTestOutput     string
+)
+
 func init() {
 	policyCmd.AddCommand(policyListCmd)
 	policyCmd.AddCommand(policyValidateCmd)
 	policyCmd.AddCommand(policyTestCmd)
 
 	policyListCmd.Flags().StringVarP(&policyOutput, "output", "o", "table", "Output format (table,json,wide)")
+	policyValidateCmd.Flags().StringVarP(&policyValidateOutput, "output", "o", "text", "Output format (text,json)")
+	policyTestCmd.Flags().StringVarP(&policyTestOutput, "output", "o", "text", "Output format (text,json)")
 }
 
 func runPolicyList(cmd *cobra.Command, args []string) error {
@@ -107,6 +114,15 @@ func runPolicyValidate(cmd *cobra.Command, args []string) error {
 	engine := policy.NewEngine()
 
 	if err := engine.LoadPolicies(cfg.CedarPoliciesPath); err != nil {
+		if policyValidateOutput == FormatJSON {
+			if jsonErr := JSONOutput(map[string]interface{}{
+				"valid": false,
+				"error": err.Error(),
+			}); jsonErr != nil {
+				return jsonErr
+			}
+			return err
+		}
 		Error("Validation failed: %v", err)
 		return err
 	}
@@ -119,6 +135,14 @@ func runPolicyValidate(cmd *cobra.Command, args []string) error {
 		if count, ok := severityCounts[p.Severity]; ok {
 			severityCounts[p.Severity] = count + 1
 		}
+	}
+
+	if policyValidateOutput == FormatJSON {
+		return JSONOutput(map[string]interface{}{
+			"valid":           true,
+			"count":           len(policies),
+			"severity_counts": severityCounts,
+		})
 	}
 
 	Success("Validated %d policies", len(policies))
@@ -135,38 +159,73 @@ func runPolicyTest(cmd *cobra.Command, args []string) error {
 	cfg := config.Load()
 	engine := policy.NewEngine()
 
+	jsonError := func(err error, extra map[string]interface{}) error {
+		if policyTestOutput != FormatJSON {
+			return err
+		}
+		payload := map[string]interface{}{
+			"passed":    false,
+			"policy_id": policyID,
+			"asset":     assetFile,
+			"error":     err.Error(),
+		}
+		for k, v := range extra {
+			payload[k] = v
+		}
+		if jsonErr := JSONOutput(payload); jsonErr != nil {
+			return jsonErr
+		}
+		return err
+	}
+
 	if err := engine.LoadPolicies(cfg.CedarPoliciesPath); err != nil {
-		return fmt.Errorf("load policies: %w", err)
+		return jsonError(fmt.Errorf("load policies: %w", err), nil)
 	}
 
 	p, ok := engine.GetPolicy(policyID)
 	if !ok {
-		return fmt.Errorf("policy not found: %s", policyID)
+		return jsonError(fmt.Errorf("policy not found: %s", policyID), nil)
 	}
 
 	data, err := os.ReadFile(assetFile)
 	if err != nil {
-		return fmt.Errorf("read asset file: %w", err)
+		return jsonError(fmt.Errorf("read asset file: %w", err), map[string]interface{}{"policy": p.Name})
 	}
 
 	var asset map[string]interface{}
 	if parseErr := json.Unmarshal(data, &asset); parseErr != nil {
-		return fmt.Errorf("parse asset: %w", parseErr)
+		return jsonError(fmt.Errorf("parse asset: %w", parseErr), map[string]interface{}{"policy": p.Name})
 	}
 
-	findings, err := engine.EvaluateAsset(cmd.Context(), asset)
+	testFindings, err := engine.EvaluateAsset(cmd.Context(), asset)
 	if err != nil {
-		return fmt.Errorf("evaluate: %w", err)
+		return jsonError(fmt.Errorf("evaluate: %w", err), map[string]interface{}{"policy": p.Name})
+	}
+
+	passed := len(testFindings) == 0
+
+	if policyTestOutput == FormatJSON {
+		violations := make([]string, 0, len(testFindings))
+		for _, f := range testFindings {
+			violations = append(violations, f.Description)
+		}
+		return JSONOutput(map[string]interface{}{
+			"policy_id":  policyID,
+			"policy":     p.Name,
+			"asset":      assetFile,
+			"passed":     passed,
+			"violations": violations,
+		})
 	}
 
 	fmt.Printf("Policy: %s\n", p.Name)
 	fmt.Printf("Asset:  %s\n\n", assetFile)
 
-	if len(findings) == 0 {
+	if passed {
 		fmt.Println("Result: PASS (no violations)")
 	} else {
 		fmt.Println("Result: FAIL")
-		for _, f := range findings {
+		for _, f := range testFindings {
 			fmt.Printf("  - %s\n", f.Description)
 		}
 	}
