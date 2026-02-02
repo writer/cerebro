@@ -564,3 +564,244 @@ type FixSimulation struct {
 	RemainingCount int                 `json:"remaining_count"`
 	RiskReduction  float64             `json:"risk_reduction"` // 0-1
 }
+
+// KShortestPaths finds k shortest paths between two nodes using Yen's algorithm
+// This is useful for finding alternative attack paths that an adversary might use
+func (sim *AttackPathSimulator) KShortestPaths(entryID, targetID string, k, maxLen int) []*ScoredAttackPath {
+	if k <= 0 {
+		k = 5
+	}
+	if maxLen <= 0 {
+		maxLen = 10
+	}
+
+	entry, ok := sim.graph.GetNode(entryID)
+	if !ok {
+		return nil
+	}
+	target, ok := sim.graph.GetNode(targetID)
+	if !ok {
+		return nil
+	}
+
+	// Find the shortest path first using BFS (Dijkstra with unit weights)
+	firstPath := sim.findShortestPath(entry, target, maxLen)
+	if firstPath == nil {
+		return nil
+	}
+
+	result := []*ScoredAttackPath{firstPath}
+	candidates := &kPathHeap{}
+	heap.Init(candidates)
+
+	// Yen's algorithm: iteratively find k-1 more paths
+	for i := 1; i < k; i++ {
+		prevPath := result[i-1]
+
+		// For each node in the previous path (except the last), try deviating
+		for spurIdx := 0; spurIdx < len(prevPath.Steps); spurIdx++ {
+			var spurNodeID string
+			if spurIdx == 0 {
+				spurNodeID = entry.ID
+			} else {
+				spurNodeID = prevPath.Steps[spurIdx-1].ToNode
+			}
+
+			// Root path is the path from source to spur node
+			rootPath := make([]*AttackStep, spurIdx)
+			copy(rootPath, prevPath.Steps[:spurIdx])
+
+			// Temporarily remove edges that would lead to already-found paths
+			removedEdges := make(map[string][]*Edge)
+			for _, p := range result {
+				if len(p.Steps) > spurIdx && pathPrefixMatch(p.Steps, rootPath) {
+					edgeToRemove := p.Steps[spurIdx]
+					edges := sim.graph.GetOutEdges(spurNodeID)
+					for _, e := range edges {
+						if e.Target == edgeToRemove.ToNode {
+							removedEdges[spurNodeID] = append(removedEdges[spurNodeID], e)
+						}
+					}
+				}
+			}
+
+			// Find spur path from spur node to target, avoiding root path nodes
+			spurNode, _ := sim.graph.GetNode(spurNodeID)
+			avoidNodes := make(map[string]bool)
+			for _, step := range rootPath {
+				avoidNodes[step.ToNode] = true
+			}
+
+			spurPath := sim.findShortestPathAvoiding(spurNode, target, maxLen-len(rootPath), avoidNodes, removedEdges)
+			if spurPath != nil {
+				// Combine root and spur path
+				totalPath := &ScoredAttackPath{
+					ID:         fmt.Sprintf("%s->%s-k%d", entry.ID, target.ID, i),
+					EntryPoint: entry,
+					Target:     target,
+					Steps:      append(rootPath, spurPath.Steps...),
+					Length:     len(rootPath) + len(spurPath.Steps),
+				}
+				sim.scorePath(totalPath)
+
+				// Add to candidates if not already seen
+				pathKey := pathToKey(totalPath)
+				isDup := false
+				for _, existing := range result {
+					if pathToKey(existing) == pathKey {
+						isDup = true
+						break
+					}
+				}
+				for j := 0; j < candidates.Len(); j++ {
+					if pathToKey((*candidates)[j]) == pathKey {
+						isDup = true
+						break
+					}
+				}
+				if !isDup {
+					heap.Push(candidates, totalPath)
+				}
+			}
+		}
+
+		// Pop the best candidate path
+		if candidates.Len() == 0 {
+			break
+		}
+		result = append(result, heap.Pop(candidates).(*ScoredAttackPath))
+	}
+
+	// Score and rank
+	for i, path := range result {
+		path.Priority = i + 1
+	}
+
+	return result
+}
+
+// findShortestPath finds the shortest path using BFS
+func (sim *AttackPathSimulator) findShortestPath(entry, target *Node, maxLen int) *ScoredAttackPath {
+	return sim.findShortestPathAvoiding(entry, target, maxLen, nil, nil)
+}
+
+// findShortestPathAvoiding finds shortest path while avoiding certain nodes/edges
+func (sim *AttackPathSimulator) findShortestPathAvoiding(entry, target *Node, maxLen int, avoidNodes map[string]bool, avoidEdges map[string][]*Edge) *ScoredAttackPath {
+	type bfsState struct {
+		nodeID string
+		path   []*AttackStep
+	}
+
+	queue := []bfsState{{nodeID: entry.ID, path: nil}}
+	visited := map[string]bool{entry.ID: true}
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		if len(current.path) > maxLen {
+			continue
+		}
+
+		if current.nodeID == target.ID {
+			path := &ScoredAttackPath{
+				ID:         fmt.Sprintf("%s->%s", entry.ID, target.ID),
+				EntryPoint: entry,
+				Target:     target,
+				Steps:      current.path,
+				Length:     len(current.path),
+			}
+			sim.scorePath(path)
+			return path
+		}
+
+		for _, edge := range sim.graph.GetOutEdges(current.nodeID) {
+			if visited[edge.Target] {
+				continue
+			}
+			if edge.IsDeny() {
+				continue
+			}
+			if avoidNodes != nil && avoidNodes[edge.Target] {
+				continue
+			}
+
+			// Check if this edge should be avoided
+			skip := false
+			if avoidEdges != nil {
+				for _, avoidEdge := range avoidEdges[current.nodeID] {
+					if avoidEdge.Target == edge.Target {
+						skip = true
+						break
+					}
+				}
+			}
+			if skip {
+				continue
+			}
+
+			targetNode, ok := sim.graph.GetNode(edge.Target)
+			if !ok {
+				continue
+			}
+
+			newPath := make([]*AttackStep, len(current.path)+1)
+			copy(newPath, current.path)
+			newPath[len(current.path)] = &AttackStep{
+				Order:         len(current.path) + 1,
+				FromNode:      current.nodeID,
+				ToNode:        edge.Target,
+				Technique:     edgeToTechnique(edge.Kind),
+				EdgeKind:      edge.Kind,
+				Description:   fmt.Sprintf("Move from %s to %s via %s", current.nodeID, targetNode.Name, edge.Kind),
+				MITREAttackID: edgeToMITRE(edge.Kind),
+			}
+
+			visited[edge.Target] = true
+			queue = append(queue, bfsState{nodeID: edge.Target, path: newPath})
+		}
+	}
+
+	return nil
+}
+
+// pathPrefixMatch checks if path matches prefix
+func pathPrefixMatch(path, prefix []*AttackStep) bool {
+	if len(prefix) > len(path) {
+		return false
+	}
+	for i := range prefix {
+		if path[i].ToNode != prefix[i].ToNode {
+			return false
+		}
+	}
+	return true
+}
+
+// pathToKey generates a unique key for a path based on its nodes
+func pathToKey(path *ScoredAttackPath) string {
+	key := path.EntryPoint.ID
+	for _, step := range path.Steps {
+		key += "->" + step.ToNode
+	}
+	return key
+}
+
+// kPathHeap is a min-heap of paths ordered by length (for Yen's algorithm)
+type kPathHeap []*ScoredAttackPath
+
+func (h kPathHeap) Len() int           { return len(h) }
+func (h kPathHeap) Less(i, j int) bool { return h[i].Length < h[j].Length }
+func (h kPathHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+
+func (h *kPathHeap) Push(x interface{}) {
+	*h = append(*h, x.(*ScoredAttackPath))
+}
+
+func (h *kPathHeap) Pop() interface{} {
+	old := *h
+	n := len(old)
+	x := old[n-1]
+	*h = old[0 : n-1]
+	return x
+}

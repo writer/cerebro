@@ -455,6 +455,27 @@ func (w *WebhookNotifier) Test(ctx context.Context) error {
 	})
 }
 
+// VerifyWebhookSignature verifies an HMAC-SHA256 signature from X-Cerebro-Signature header.
+// The signature payload is "<timestamp>.<body>".
+func VerifyWebhookSignature(body []byte, signature, timestamp, secret string) bool {
+	if signature == "" || timestamp == "" || secret == "" {
+		return false
+	}
+
+	// Remove "sha256=" prefix if present
+	if len(signature) > 7 && signature[:7] == "sha256=" {
+		signature = signature[7:]
+	}
+
+	signaturePayload := timestamp + "." + string(body)
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(signaturePayload))
+	expected := hex.EncodeToString(mac.Sum(nil))
+
+	// Constant-time comparison to prevent timing attacks
+	return hmac.Equal([]byte(signature), []byte(expected))
+}
+
 // Ensure implementations satisfy interface
 var _ Notifier = (*SlackNotifier)(nil)
 var _ Notifier = (*PagerDutyNotifier)(nil)

@@ -224,12 +224,12 @@ jobs:
 
       - name: Wait for deployment
         if: steps.sec-dev-secrets.outputs.present == 'true'
-        timeout-minutes: 15
+        timeout-minutes: 30
         run: |
           echo "Waiting for ECS deployment to stabilize..."
           for service in ${{ env.SEC_DEV_ECS_SERVICES }}; do
             echo "Waiting for $service to stabilize..."
-            for i in {1..60}; do
+            for i in {1..120}; do
               STATUS=$(aws ecs describe-services \
                 --cluster ${{ env.SEC_DEV_ECS_CLUSTER }} \
                 --services $service \

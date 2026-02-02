@@ -2,7 +2,11 @@ package notifications
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -367,6 +371,93 @@ func TestManager_Send_SetsTimestamp(t *testing.T) {
 
 	if receivedEvent.Timestamp.IsZero() {
 		t.Error("expected timestamp to be set automatically")
+	}
+}
+
+func TestWebhookNotifier_HMACSignature(t *testing.T) {
+	var receivedSignature, receivedTimestamp string
+	var receivedBody []byte
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedSignature = r.Header.Get("X-Cerebro-Signature")
+		receivedTimestamp = r.Header.Get("X-Cerebro-Timestamp")
+		receivedBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	secret := "test-secret-key"
+	n, err := NewWebhookNotifier(WebhookConfig{URL: server.URL, Secret: secret})
+	if err != nil {
+		t.Fatalf("failed to create webhook notifier: %v", err)
+	}
+
+	event := Event{
+		Type:    EventFindingCreated,
+		Title:   "Test Finding",
+		Message: "A test finding",
+	}
+
+	err = n.Send(context.Background(), event)
+	if err != nil {
+		t.Fatalf("Send failed: %v", err)
+	}
+
+	if receivedSignature == "" {
+		t.Fatal("expected X-Cerebro-Signature header")
+	}
+	if receivedTimestamp == "" {
+		t.Fatal("expected X-Cerebro-Timestamp header")
+	}
+	if !strings.HasPrefix(receivedSignature, "sha256=") {
+		t.Errorf("expected signature to start with sha256=, got %s", receivedSignature)
+	}
+
+	if !VerifyWebhookSignature(receivedBody, receivedSignature, receivedTimestamp, secret) {
+		t.Error("signature verification failed")
+	}
+
+	if VerifyWebhookSignature(receivedBody, receivedSignature, receivedTimestamp, "wrong-secret") {
+		t.Error("signature should not verify with wrong secret")
+	}
+}
+
+func TestVerifyWebhookSignature(t *testing.T) {
+	body := []byte(`{"type":"test","title":"Test Event"}`)
+	secret := "my-webhook-secret"
+	timestamp := "1712345678"
+
+	signaturePayload := timestamp + "." + string(body)
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(signaturePayload))
+	validSig := "sha256=" + hex.EncodeToString(mac.Sum(nil))
+
+	tests := []struct {
+		name      string
+		body      []byte
+		signature string
+		timestamp string
+		secret    string
+		want      bool
+	}{
+		{"valid signature", body, validSig, timestamp, secret, true},
+		{"valid without prefix", body, validSig[7:], timestamp, secret, true},
+		{"wrong secret", body, validSig, timestamp, "wrong-secret", false},
+		{"wrong timestamp", body, validSig, "1712345679", secret, false},
+		{"tampered body", []byte("tampered"), validSig, timestamp, secret, false},
+		{"empty signature", body, "", timestamp, secret, false},
+		{"empty timestamp", body, validSig, "", secret, false},
+		{"empty secret", body, validSig, timestamp, "", false},
+		{"invalid signature", body, "sha256=invalid", timestamp, secret, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := VerifyWebhookSignature(tt.body, tt.signature, tt.timestamp, tt.secret)
+			if got != tt.want {
+				t.Errorf("VerifyWebhookSignature() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
