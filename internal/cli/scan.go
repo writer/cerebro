@@ -142,24 +142,50 @@ func runScan(cmd *cobra.Command, args []string) error {
 		fmt.Printf("\n%s Scanning %s...\n", color(colorCyan, "→"), table)
 
 		filter := snowflake.AssetFilter{Limit: scanLimit}
+		useCDC := false
+		var cdcCursor time.Time
+		var cdcIDs []string
 
-		// Use incremental scanning if available and not forced full scan
-		// Note: scanWatermarks is available in application but not currently exposed in CLI
-		// We'll check the watermark store directly
+		// Use incremental scanning via CDC events when available and not forced full scan
 		if !scanFull && application.ScanWatermarks != nil {
 			if wm := application.ScanWatermarks.GetWatermark(table); wm != nil {
-				// Check if full scan is forced or needed (e.g. schema change, very old watermark)
-				// For now, simple logic: if watermark exists and we aren't forcing full scan
 				filter.Since = wm.LastScanTime
 				filter.SinceID = wm.LastScanID
-				fmt.Printf("  Incremental scan (since %s)\n", wm.LastScanTime.Format(time.RFC3339))
+
+				cdcEvents, err := application.Snowflake.GetCDCEvents(ctx, table, wm.LastScanTime, scanLimit)
+				if err != nil {
+					Warning("Failed to query CDC events for %s, falling back to sync_time: %v", table, err)
+					fmt.Printf("  Incremental scan (since %s)\n", wm.LastScanTime.Format(time.RFC3339))
+				} else {
+					useCDC = true
+					fmt.Printf("  Incremental scan via CDC_EVENTS (since %s)\n", wm.LastScanTime.Format(time.RFC3339))
+					cdcIDs, cdcCursor = filterCDCEvents(cdcEvents)
+					if len(cdcEvents) == 0 {
+						fmt.Printf("  No CDC changes found\n")
+					}
+				}
 			}
 		}
 		if scanFull {
 			fmt.Printf("  Full scan (--full flag set)\n")
 		}
 
-		assets, err := application.Snowflake.GetAssets(ctx, table, filter)
+		var assets []map[string]interface{}
+		if useCDC && !scanFull {
+			if len(cdcIDs) == 0 {
+				if !cdcCursor.IsZero() && application.ScanWatermarks != nil {
+					application.ScanWatermarks.SetWatermark(table, cdcCursor, "", 0)
+					go func() {
+						_ = application.ScanWatermarks.PersistWatermarks(ctx)
+					}()
+				}
+				fmt.Printf("  No assets to scan for CDC changes\n")
+				continue
+			}
+			assets, err = application.Snowflake.GetAssetsByIDs(ctx, table, cdcIDs)
+		} else {
+			assets, err = application.Snowflake.GetAssets(ctx, table, filter)
+		}
 		if err != nil {
 			Warning("Failed to fetch %s: %v", table, err)
 			continue
@@ -227,6 +253,12 @@ func runScan(cmd *cobra.Command, args []string) error {
 		// Update watermark
 		if application.ScanWatermarks != nil {
 			cursorTime, cursorID := scanner.ExtractScanCursor(assets)
+			if useCDC && !scanFull && !cdcCursor.IsZero() {
+				if scanner.IsCursorAfter(cdcCursor, "", cursorTime, cursorID) {
+					cursorTime = cdcCursor
+					cursorID = ""
+				}
+			}
 			if cursorTime.IsZero() {
 				cursorTime = time.Now().UTC()
 			}
@@ -433,6 +465,46 @@ func toString(v interface{}) string {
 		return "false"
 	default:
 		return fmt.Sprintf("%v", v)
+	}
+}
+
+func filterCDCEvents(events []snowflake.CDCEvent) ([]string, time.Time) {
+	ids := make([]string, 0, len(events))
+	var maxTime time.Time
+	for _, event := range events {
+		if event.EventTime.After(maxTime) {
+			maxTime = event.EventTime
+		}
+		if isRemovalEvent(event.ChangeType) {
+			continue
+		}
+		if event.ResourceID != "" {
+			ids = append(ids, event.ResourceID)
+		}
+	}
+
+	return dedupeStrings(ids), maxTime
+}
+
+func dedupeStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
+}
+
+func isRemovalEvent(changeType string) bool {
+	switch strings.ToLower(changeType) {
+	case "remove", "removed", "delete", "deleted":
+		return true
+	default:
+		return false
 	}
 }
 

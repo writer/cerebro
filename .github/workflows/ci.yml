@@ -108,6 +108,18 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Check existing image tag
+        id: tag-check
+        shell: bash
+        run: |
+          short_sha=$(git rev-parse --short=7 HEAD)
+          echo "tag=${short_sha}" >> "$GITHUB_OUTPUT"
+          if aws ecr describe-images --repository-name "${ECR_REPOSITORY}" --image-ids imageTag="${short_sha}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -120,7 +132,7 @@ jobs:
         with:
           images: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}
           tags: |
-            type=sha,prefix=
+            type=sha,prefix=,format=short,enable=${{ steps.tag-check.outputs.exists != 'true' }}
             type=raw,value=latest
 
       - name: Build and push
@@ -156,6 +168,18 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Check existing image tag
+        id: tag-check
+        shell: bash
+        run: |
+          short_sha=$(git rev-parse --short=7 HEAD)
+          echo "tag=${short_sha}" >> "$GITHUB_OUTPUT"
+          if aws ecr describe-images --repository-name "${ECR_REPOSITORY}" --image-ids imageTag="${short_sha}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -168,7 +192,7 @@ jobs:
         with:
           images: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}
           tags: |
-            type=sha,prefix=
+            type=sha,prefix=,format=short,enable=${{ steps.tag-check.outputs.exists != 'true' }}
             type=raw,value=latest
 
       - name: Build and push

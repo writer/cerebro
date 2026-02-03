@@ -27,7 +27,9 @@ var syncCmd = &cobra.Command{
 Examples:
   cerebro sync                                    # Sync AWS (default)
   cerebro sync --gcp --gcp-project my-project    # Sync GCP
-  cerebro sync --azure                           # Sync Azure`,
+  cerebro sync --gcp --gcp-org 1234567890        # Sync all GCP projects in an org
+  cerebro sync --azure                           # Sync Azure
+  cerebro sync --scan-after                      # Scan after sync`,
 	RunE: runSync,
 }
 

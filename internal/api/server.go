@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -28,6 +29,7 @@ import (
 	"github.com/writerinternal/cerebro/internal/providers"
 	"github.com/writerinternal/cerebro/internal/remediation"
 	"github.com/writerinternal/cerebro/internal/runtime"
+	"github.com/writerinternal/cerebro/internal/scheduler"
 	"github.com/writerinternal/cerebro/internal/snowflake"
 	"github.com/writerinternal/cerebro/internal/threatintel"
 	"github.com/writerinternal/cerebro/internal/ticketing"
@@ -2165,7 +2167,14 @@ func (s *Server) listJobs(w http.ResponseWriter, r *http.Request) {
 func (s *Server) runJob(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	if err := s.app.Scheduler.RunNow(name); err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
+		switch {
+		case errors.Is(err, scheduler.ErrJobNotFound):
+			s.error(w, http.StatusNotFound, err.Error())
+		case errors.Is(err, scheduler.ErrJobAlreadyRunning):
+			s.error(w, http.StatusConflict, err.Error())
+		default:
+			s.error(w, http.StatusInternalServerError, err.Error())
+		}
 		return
 	}
 	s.json(w, http.StatusAccepted, map[string]string{"status": "job triggered"})

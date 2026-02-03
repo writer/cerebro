@@ -25,6 +25,7 @@ type SyncResult struct {
 	Error    string
 	Duration time.Duration
 	Changes  *ChangeSet
+	SyncTime time.Time
 }
 
 // ChangeSet tracks what changed during sync

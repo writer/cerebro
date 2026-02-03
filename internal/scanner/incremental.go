@@ -62,7 +62,9 @@ func GetIncrementalQuery(table string, lastScanTime *time.Time, lastScanID strin
 	if err := snowflake.ValidateTableName(table); err != nil {
 		return "", fmt.Errorf("invalid table name: %w", err)
 	}
-
+	if limit == 0 {
+		limit = 1000
+	}
 	if lastScanTime == nil {
 		// Full scan
 		return fmt.Sprintf("SELECT * FROM %s LIMIT %d", table, limit), nil

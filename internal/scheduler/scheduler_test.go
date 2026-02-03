@@ -2,6 +2,8 @@ package scheduler
 
 import (
 	"context"
+	"errors"
+	"io"
 	"log/slog"
 	"os"
 	"sync/atomic"
@@ -100,7 +102,7 @@ func TestScheduler_GetJob(t *testing.T) {
 
 	// Existing job
 	job, ok := s.GetJob("exists")
-	if !ok || job == nil {
+	if !ok || job.Name == "" {
 		t.Error("expected to get existing job")
 	}
 
@@ -120,6 +122,11 @@ func TestScheduler_RunNow(t *testing.T) {
 		return nil
 	})
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go s.Start(ctx)
+	time.Sleep(20 * time.Millisecond)
+
 	err := s.RunNow("test")
 	if err != nil {
 		t.Fatalf("RunNow failed: %v", err)
@@ -131,6 +138,8 @@ func TestScheduler_RunNow(t *testing.T) {
 	if called.Load() != 1 {
 		t.Errorf("expected handler to be called once, got %d", called.Load())
 	}
+
+	s.Stop()
 }
 
 func TestScheduler_Status(t *testing.T) {
@@ -250,5 +259,116 @@ func TestScheduler_DisabledJobNotRun(t *testing.T) {
 	// We can't easily test runDueJobs directly, but we verify the disabled state
 	if job.Enabled {
 		t.Error("job should be disabled")
+	}
+}
+
+func TestScheduler_PanicRecovery(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	s := NewScheduler(logger)
+
+	panicJob := func(ctx context.Context) error {
+		panic("test panic")
+	}
+
+	s.AddJob("panic-job", 1*time.Hour, panicJob)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go s.Start(ctx)
+	time.Sleep(20 * time.Millisecond)
+
+	// Run the job - should not crash the test
+	err := s.RunNow("panic-job")
+	if err != nil {
+		t.Fatalf("RunNow failed: %v", err)
+	}
+
+	// Wait for the job to complete (and recover from panic)
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify job state was reset after panic
+	job, ok := s.GetJob("panic-job")
+	if !ok {
+		t.Fatal("job not found after panic")
+	}
+	if job.Running {
+		t.Error("job should not be running after panic recovery")
+	}
+
+	s.Stop()
+}
+
+func TestScheduler_RunNowErrors(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	s := NewScheduler(logger)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go s.Start(ctx)
+	time.Sleep(20 * time.Millisecond)
+
+	// Test job not found
+	err := s.RunNow("non-existent")
+	if !errors.Is(err, ErrJobNotFound) {
+		t.Errorf("expected ErrJobNotFound, got %v", err)
+	}
+
+	// Add a job that takes time
+	s.AddJob("slow", 1*time.Hour, func(ctx context.Context) error {
+		time.Sleep(500 * time.Millisecond)
+		return nil
+	})
+
+	// Start the job
+	err = s.RunNow("slow")
+	if err != nil {
+		t.Fatalf("first RunNow failed: %v", err)
+	}
+
+	// Try to run again while running
+	time.Sleep(10 * time.Millisecond) // Give time for goroutine to start
+	err = s.RunNow("slow")
+	if !errors.Is(err, ErrJobAlreadyRunning) {
+		t.Errorf("expected ErrJobAlreadyRunning, got %v", err)
+	}
+
+	// Wait for job to complete
+	time.Sleep(600 * time.Millisecond)
+
+	s.Stop()
+}
+
+func TestScheduler_GracefulShutdown(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	s := NewScheduler(logger)
+
+	jobCompleted := make(chan bool, 1)
+	s.AddJob("long-running", 1*time.Hour, func(ctx context.Context) error {
+		time.Sleep(200 * time.Millisecond)
+		jobCompleted <- true
+		return nil
+	})
+
+	// Start scheduler
+	ctx := context.Background()
+	go s.Start(ctx)
+	time.Sleep(50 * time.Millisecond)
+
+	// Trigger the job
+	err := s.RunNow("long-running")
+	if err != nil {
+		t.Fatalf("RunNow failed: %v", err)
+	}
+
+	// Immediately stop - should wait for job to complete
+	time.Sleep(50 * time.Millisecond)
+	s.Stop()
+
+	// Verify job completed
+	select {
+	case <-jobCompleted:
+		// Success - job completed before Stop returned
+	case <-time.After(1 * time.Second):
+		t.Error("job should have completed before Stop returned")
 	}
 }

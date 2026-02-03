@@ -269,8 +269,14 @@ func (e *SyncEngine) syncTable(ctx context.Context, cfg aws.Config, table TableS
 		return result, fmt.Errorf("aws %s (%s): upsert: %w", table.Name, region, err)
 	}
 
+	syncTime := time.Now().UTC()
+	if err := e.emitCDCEvents(ctx, table.Name, region, changes, rows, syncTime); err != nil {
+		e.logger.Warn("failed to emit CDC events", "table", table.Name, "error", err)
+	}
+
 	result.Synced = len(rows)
 	result.Changes = changes
+	result.SyncTime = syncTime
 	result.Duration = time.Since(start)
 
 	if changes.HasChanges() {
@@ -334,6 +340,20 @@ func hasColumn(columns []string, name string) bool {
 		}
 	}
 	return false
+}
+
+func (e *SyncEngine) emitCDCEvents(ctx context.Context, table, region string, changes *ChangeSet, rows []map[string]interface{}, syncTime time.Time) error {
+	if changes == nil || !changes.HasChanges() {
+		return nil
+	}
+
+	lookup := buildRowLookup(rows)
+	events := buildCDCEventsFromChanges(table, "aws", region, e.accountID, changes, lookup, syncTime, hashRowContent)
+	if len(events) == 0 {
+		return nil
+	}
+
+	return e.sf.InsertCDCEvents(ctx, events)
 }
 
 func (e *SyncEngine) ensureTable(ctx context.Context, table string, columns []string) error {
@@ -584,20 +604,24 @@ func (e *SyncEngine) persistChangeHistory(ctx context.Context, results []SyncRes
 	}
 
 	// Insert changes
-	now := time.Now().UTC()
 	for _, r := range results {
 		if r.Changes == nil {
 			continue
 		}
 
+		syncTime := r.SyncTime
+		if syncTime.IsZero() {
+			syncTime = time.Now().UTC()
+		}
+
 		for _, id := range r.Changes.Added {
-			e.insertChangeRecord(ctx, r.Table, id, "add", r.Region, now)
+			e.insertChangeRecord(ctx, r.Table, id, "add", r.Region, syncTime)
 		}
 		for _, id := range r.Changes.Modified {
-			e.insertChangeRecord(ctx, r.Table, id, "modify", r.Region, now)
+			e.insertChangeRecord(ctx, r.Table, id, "modify", r.Region, syncTime)
 		}
 		for _, id := range r.Changes.Removed {
-			e.insertChangeRecord(ctx, r.Table, id, "remove", r.Region, now)
+			e.insertChangeRecord(ctx, r.Table, id, "remove", r.Region, syncTime)
 		}
 	}
 

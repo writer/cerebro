@@ -193,8 +193,14 @@ func (e *GCPSyncEngine) syncTable(ctx context.Context, table GCPTableSpec) (Sync
 		return result, fmt.Errorf("gcp %s (project %s): upsert: %w", table.Name, e.projectID, err)
 	}
 
+	syncTime := time.Now().UTC()
+	if err := e.emitCDCEvents(ctx, table.Name, changes, rows, syncTime); err != nil {
+		e.logger.Warn("failed to emit CDC events", "table", table.Name, "error", err)
+	}
+
 	result.Synced = len(rows)
 	result.Changes = changes
+	result.SyncTime = syncTime
 	result.Duration = time.Since(start)
 
 	if changes.HasChanges() {
@@ -234,6 +240,20 @@ func (e *GCPSyncEngine) validateTable(ctx context.Context, table GCPTableSpec) (
 
 	result.Duration = time.Since(start)
 	return result, nil
+}
+
+func (e *GCPSyncEngine) emitCDCEvents(ctx context.Context, table string, changes *ChangeSet, rows []map[string]interface{}, syncTime time.Time) error {
+	if changes == nil || !changes.HasChanges() {
+		return nil
+	}
+
+	lookup := buildRowLookup(rows)
+	events := buildCDCEventsFromChanges(table, "gcp", "", e.projectID, changes, lookup, syncTime, e.hashRowContent)
+	if len(events) == 0 {
+		return nil
+	}
+
+	return e.sf.InsertCDCEvents(ctx, events)
 }
 
 func (e *GCPSyncEngine) ensureTable(ctx context.Context, table string, columns []string) error {
@@ -467,10 +487,14 @@ func (e *GCPSyncEngine) persistChangeHistory(ctx context.Context, results []Sync
 		}
 	}
 
-	syncTime := time.Now().UTC()
 	for _, r := range results {
 		if r.Changes == nil {
 			continue
+		}
+
+		syncTime := r.SyncTime
+		if syncTime.IsZero() {
+			syncTime = time.Now().UTC()
 		}
 
 		for _, id := range r.Changes.Added {

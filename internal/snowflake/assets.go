@@ -3,6 +3,7 @@ package snowflake
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -93,6 +94,42 @@ func (c *Client) GetAssets(ctx context.Context, table string, filter AssetFilter
 	for i := range result.Rows {
 		result.Rows[i]["_cq_table"] = table
 	}
+	return result.Rows, nil
+}
+
+// GetAssetsByIDs returns assets matching the provided IDs.
+func (c *Client) GetAssetsByIDs(ctx context.Context, table string, ids []string) ([]map[string]interface{}, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	// Use strict validation to ensure table is a known CloudQuery/Cerebro table
+	if err := ValidateTableNameStrict(table); err != nil {
+		return nil, fmt.Errorf("invalid table name: %w", err)
+	}
+
+	tableRef, err := SafeTableRef(c.database, c.schema, table)
+	if err != nil {
+		return nil, err
+	}
+
+	placeholders := make([]string, len(ids))
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	query := fmt.Sprintf("SELECT * FROM %s WHERE _CQ_ID IN (%s)", tableRef, strings.Join(placeholders, ", "))
+	result, err := c.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range result.Rows {
+		result.Rows[i]["_cq_table"] = table
+	}
+
 	return result.Rows, nil
 }
 

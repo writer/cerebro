@@ -303,8 +303,14 @@ func (e *GCPAssetInventoryEngine) syncAssetType(ctx context.Context, assetType s
 		return result, fmt.Errorf("gcp asset %s: upsert: %w", tableName, err)
 	}
 
+	syncTime := time.Now().UTC()
+	if err := gcpEngine.emitCDCEvents(ctx, tableName, changes, rows, syncTime); err != nil {
+		e.logger.Warn("failed to emit CDC events", "table", tableName, "error", err)
+	}
+
 	result.Synced = len(rows)
 	result.Changes = changes
+	result.SyncTime = syncTime
 	result.Duration = time.Since(start)
 
 	if changes.HasChanges() {
