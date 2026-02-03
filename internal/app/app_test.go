@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"os"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -24,6 +25,18 @@ func TestLoadConfig(t *testing.T) {
 
 	if cfg.LogLevel != "debug" {
 		t.Errorf("expected log level debug, got %s", cfg.LogLevel)
+	}
+}
+
+func TestLoadConfigWebhookURLs(t *testing.T) {
+	os.Setenv("WEBHOOK_URLS", "https://example.com/hook1, https://example.com/hook2")
+	defer os.Unsetenv("WEBHOOK_URLS")
+
+	cfg := LoadConfig()
+
+	expected := []string{"https://example.com/hook1", "https://example.com/hook2"}
+	if !reflect.DeepEqual(cfg.WebhookURLs, expected) {
+		t.Fatalf("expected webhook URLs %v, got %v", expected, cfg.WebhookURLs)
 	}
 }
 
@@ -162,6 +175,39 @@ func TestNew_WithoutSnowflake(t *testing.T) {
 	}
 }
 
+func TestNew_WebhookURLs(t *testing.T) {
+	os.Setenv("WEBHOOK_URLS", "https://example.com/hook")
+	os.Unsetenv("SLACK_WEBHOOK_URL")
+	os.Unsetenv("PAGERDUTY_ROUTING_KEY")
+	defer func() {
+		os.Unsetenv("WEBHOOK_URLS")
+		os.Unsetenv("SLACK_WEBHOOK_URL")
+		os.Unsetenv("PAGERDUTY_ROUTING_KEY")
+	}()
+
+	ctx := context.Background()
+	app, err := New(ctx)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	defer app.Close()
+
+	hooks := app.Webhooks.ListWebhooks()
+	if len(hooks) != 1 {
+		t.Fatalf("expected 1 webhook, got %d", len(hooks))
+	}
+	if hooks[0].URL != "https://example.com/hook" {
+		t.Fatalf("expected webhook URL https://example.com/hook, got %s", hooks[0].URL)
+	}
+	if len(hooks[0].Events) == 0 {
+		t.Fatalf("expected webhook to have events configured")
+	}
+
+	if !containsString(app.Notifications.ListNotifiers(), "webhook") {
+		t.Fatalf("expected webhook notifier to be registered")
+	}
+}
+
 func TestNew_ServicesWired(t *testing.T) {
 	os.Unsetenv("SNOWFLAKE_PRIVATE_KEY")
 	os.Unsetenv("SNOWFLAKE_ACCOUNT")
@@ -203,6 +249,15 @@ func TestNew_ServicesWired(t *testing.T) {
 	if len(healthResults) == 0 {
 		t.Error("Health should have registered checks")
 	}
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 func TestApp_Close(t *testing.T) {

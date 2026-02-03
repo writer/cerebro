@@ -295,6 +295,7 @@ func LoadConfig() *Config {
 		Auth0ClientID:           getEnv("AUTH0_CLIENT_ID", ""),
 		Auth0ClientSecret:       getEnv("AUTH0_CLIENT_SECRET", ""),
 		CloudflareAPIToken:      getEnv("CLOUDFLARE_API_TOKEN", ""),
+		WebhookURLs:             splitCSV(getEnv("WEBHOOK_URLS", "")),
 		SlackWebhookURL:         getEnv("SLACK_WEBHOOK_URL", ""),
 		SlackSigningSecret:      getEnv("SLACK_SIGNING_SECRET", ""),
 		PagerDutyKey:            getEnv("PAGERDUTY_ROUTING_KEY", ""),
@@ -611,6 +612,18 @@ func (a *App) initProviders(ctx context.Context) {
 
 func (a *App) initWebhooks() {
 	a.Webhooks = webhooks.NewService()
+	if len(a.Config.WebhookURLs) == 0 {
+		return
+	}
+
+	for _, webhookURL := range a.Config.WebhookURLs {
+		webhook, err := a.Webhooks.RegisterWebhook(webhookURL, webhooks.DefaultEventTypes(), "")
+		if err != nil {
+			a.Logger.Error("failed to register webhook", "url", webhookURL, "error", err)
+			continue
+		}
+		a.Logger.Info("registered webhook", "id", webhook.ID, "url", webhook.URL)
+	}
 }
 
 func (a *App) initNotifications() {
@@ -638,6 +651,20 @@ func (a *App) initNotifications() {
 			a.Notifications.AddNotifier(pd)
 			a.Logger.Info("pagerduty notifications enabled")
 		}
+	}
+
+	for _, webhookURL := range a.Config.WebhookURLs {
+		if err := webhooks.ValidateWebhookURL(webhookURL); err != nil {
+			a.Logger.Error("invalid webhook URL", "url", webhookURL, "error", err)
+			continue
+		}
+		webhook, err := notifications.NewWebhookNotifier(notifications.WebhookConfig{URL: webhookURL})
+		if err != nil {
+			a.Logger.Error("failed to configure webhook notifications", "error", err)
+			continue
+		}
+		a.Notifications.AddNotifier(webhook)
+		a.Logger.Info("webhook notifications enabled", "url", webhookURL)
 	}
 }
 
@@ -1005,6 +1032,10 @@ func parseDuration(s string) (time.Duration, error) {
 }
 
 func splitTables(s string) []string {
+	return splitCSV(s)
+}
+
+func splitCSV(s string) []string {
 	var result []string
 	for _, t := range strings.Split(s, ",") {
 		t = strings.TrimSpace(t)

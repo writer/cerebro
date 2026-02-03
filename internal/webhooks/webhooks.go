@@ -124,6 +124,23 @@ const (
 	EventGraphRebuilt      EventType = "graph.rebuilt"
 )
 
+var defaultEventTypes = []EventType{
+	EventFindingCreated,
+	EventFindingResolved,
+	EventFindingSuppressed,
+	EventScanCompleted,
+	EventReviewStarted,
+	EventReviewCompleted,
+	EventAttackPathFound,
+	EventTicketCreated,
+	EventGraphRebuilt,
+}
+
+// DefaultEventTypes returns the list of webhook event types registered by default.
+func DefaultEventTypes() []EventType {
+	return append([]EventType(nil), defaultEventTypes...)
+}
+
 const defaultDeliveryConcurrency = 5
 
 // Webhook represents a webhook configuration
