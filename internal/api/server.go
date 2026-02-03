@@ -300,6 +300,7 @@ func (s *Server) setupRoutes() {
 		r.Route("/graph", func(r chi.Router) {
 			r.Get("/stats", s.graphStats)
 			r.Get("/blast-radius/{principalId}", s.blastRadius)
+			r.Get("/cascading-blast-radius/{principalId}", s.cascadingBlastRadius)
 			r.Get("/reverse-access/{resourceId}", s.reverseAccess)
 			r.Post("/rebuild", s.rebuildGraph)
 
@@ -2816,6 +2817,29 @@ func (s *Server) blastRadius(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result := graph.BlastRadius(s.app.SecurityGraph, principalID, maxDepth)
+	s.json(w, http.StatusOK, result)
+}
+
+func (s *Server) cascadingBlastRadius(w http.ResponseWriter, r *http.Request) {
+	if s.app.SecurityGraph == nil {
+		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		return
+	}
+
+	principalID := chi.URLParam(r, "principalId")
+	if principalID == "" {
+		s.error(w, http.StatusBadRequest, "principal ID required")
+		return
+	}
+
+	maxDepth := 6
+	if depthStr := r.URL.Query().Get("max_depth"); depthStr != "" {
+		if d, err := strconv.Atoi(depthStr); err == nil && d > 0 && d <= 10 {
+			maxDepth = d
+		}
+	}
+
+	result := graph.CascadingBlastRadius(s.app.SecurityGraph, principalID, maxDepth)
 	s.json(w, http.StatusOK, result)
 }
 

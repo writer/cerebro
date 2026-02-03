@@ -297,3 +297,303 @@ func TestBlastRadius_CrossAccountTracking(t *testing.T) {
 		t.Errorf("expected foreign account 222222222222, got %v", result.ForeignAccounts)
 	}
 }
+
+func TestCascadingBlastRadius(t *testing.T) {
+	g := New()
+
+	// Create a graph with sensitive data nodes
+	g.AddNode(&Node{
+		ID: "user:attacker", Kind: NodeKindUser, Name: "attacker", Account: "111111111111",
+	})
+	g.AddNode(&Node{
+		ID: "role:admin", Kind: NodeKindRole, Name: "admin", Account: "111111111111",
+	})
+	g.AddNode(&Node{
+		ID: "bucket:pii-data", Kind: NodeKindBucket, Name: "pii-data", Account: "111111111111",
+		Risk:       RiskCritical,
+		Properties: map[string]any{"contains_pii": true, "data_classification": "confidential"},
+	})
+	g.AddNode(&Node{
+		ID: "bucket:pci-data", Kind: NodeKindBucket, Name: "pci-data", Account: "111111111111",
+		Risk:       RiskCritical,
+		Properties: map[string]any{"contains_pci": true},
+	})
+	g.AddNode(&Node{
+		ID: "secret:db-credentials", Kind: NodeKindSecret, Name: "db-credentials", Account: "111111111111",
+		Risk: RiskHigh,
+	})
+	g.AddNode(&Node{
+		ID: "bucket:cross-account", Kind: NodeKindBucket, Name: "cross-account", Account: "222222222222",
+		Risk: RiskMedium,
+	})
+
+	// Create edges
+	g.AddEdge(&Edge{ID: "e1", Source: "user:attacker", Target: "role:admin", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "e2", Source: "role:admin", Target: "bucket:pii-data", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "e3", Source: "role:admin", Target: "bucket:pci-data", Kind: EdgeKindCanWrite, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "e4", Source: "role:admin", Target: "secret:db-credentials", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{
+		ID: "e5", Source: "role:admin", Target: "bucket:cross-account", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow,
+		Properties: map[string]any{"cross_account": true, "target_account": "222222222222"},
+	})
+
+	t.Run("cascading blast radius detects sensitive data", func(t *testing.T) {
+		result := CascadingBlastRadius(g, "user:attacker", 4)
+
+		if result.TotalImpact < 4 {
+			t.Errorf("expected at least 4 impacted nodes, got %d", result.TotalImpact)
+		}
+
+		if len(result.SensitiveDataHits) < 2 {
+			t.Errorf("expected at least 2 sensitive data hits (PII, PCI), got %d", len(result.SensitiveDataHits))
+		}
+
+		// Check for PII detection
+		foundPII := false
+		for _, hit := range result.SensitiveDataHits {
+			for _, dt := range hit.DataTypes {
+				if dt == "PII" {
+					foundPII = true
+					break
+				}
+			}
+		}
+		if !foundPII {
+			t.Error("expected PII to be detected in sensitive data hits")
+		}
+	})
+
+	t.Run("cascading blast radius tracks time to compromise", func(t *testing.T) {
+		result := CascadingBlastRadius(g, "user:attacker", 4)
+
+		// Depth 1 should have the admin role
+		if len(result.TimeToCompromise[1]) == 0 {
+			t.Error("expected nodes at depth 1 (admin role)")
+		}
+
+		// Depth 2 should have the resources
+		if len(result.TimeToCompromise[2]) < 3 {
+			t.Errorf("expected at least 3 nodes at depth 2, got %d", len(result.TimeToCompromise[2]))
+		}
+
+		// Check that time estimates are reasonable
+		for _, node := range result.TimeToCompromise[2] {
+			if node.EstimatedTimeMs <= 0 {
+				t.Errorf("expected positive time estimate, got %d", node.EstimatedTimeMs)
+			}
+		}
+	})
+
+	t.Run("cascading blast radius detects account boundaries", func(t *testing.T) {
+		result := CascadingBlastRadius(g, "user:attacker", 4)
+
+		if len(result.AccountBoundaries) == 0 {
+			t.Error("expected account boundary crossing to be detected")
+		}
+
+		found := false
+		for _, cross := range result.AccountBoundaries {
+			if cross.ToAccount == "222222222222" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Error("expected crossing to account 222222222222")
+		}
+	})
+
+	t.Run("cascading blast radius calculates impact score", func(t *testing.T) {
+		result := CascadingBlastRadius(g, "user:attacker", 4)
+
+		if result.ImpactScore <= 0 {
+			t.Error("expected positive impact score")
+		}
+
+		// With sensitive data and cross-account, score should be significant
+		if result.ImpactScore < 20 {
+			t.Errorf("expected impact score >= 20 with sensitive data, got %f", result.ImpactScore)
+		}
+	})
+
+	t.Run("cascading blast radius provides remediation suggestions", func(t *testing.T) {
+		result := CascadingBlastRadius(g, "user:attacker", 4)
+
+		if len(result.RemediationPaths) == 0 {
+			t.Error("expected remediation suggestions")
+		}
+	})
+
+	t.Run("cascading blast radius handles non-existent source", func(t *testing.T) {
+		result := CascadingBlastRadius(g, "user:nonexistent", 4)
+
+		if result.TotalImpact != 0 {
+			t.Errorf("expected 0 impact for non-existent source, got %d", result.TotalImpact)
+		}
+	})
+}
+
+func TestDetectSensitiveData(t *testing.T) {
+	t.Run("detects PII", func(t *testing.T) {
+		node := &Node{
+			ID:   "test",
+			Name: "user-data",
+			Properties: map[string]any{
+				"contains_pii": true,
+			},
+		}
+		result := detectSensitiveData(node)
+		if result == nil {
+			t.Fatal("expected sensitive data detection")
+		}
+		if !sliceContains(result.DataTypes, "PII") {
+			t.Error("expected PII in data types")
+		}
+		if !sliceContains(result.ComplianceImpact, "GDPR") {
+			t.Error("expected GDPR in compliance impact")
+		}
+	})
+
+	t.Run("detects PHI", func(t *testing.T) {
+		node := &Node{
+			ID:   "test",
+			Name: "health-records",
+			Properties: map[string]any{
+				"contains_phi": true,
+			},
+		}
+		result := detectSensitiveData(node)
+		if result == nil {
+			t.Fatal("expected sensitive data detection")
+		}
+		if !sliceContains(result.DataTypes, "PHI") {
+			t.Error("expected PHI in data types")
+		}
+		if !sliceContains(result.ComplianceImpact, "HIPAA") {
+			t.Error("expected HIPAA in compliance impact")
+		}
+	})
+
+	t.Run("detects PCI", func(t *testing.T) {
+		node := &Node{
+			ID:   "test",
+			Name: "payment-data",
+			Properties: map[string]any{
+				"contains_pci": true,
+			},
+		}
+		result := detectSensitiveData(node)
+		if result == nil {
+			t.Fatal("expected sensitive data detection")
+		}
+		if !sliceContains(result.DataTypes, "PCI") {
+			t.Error("expected PCI in data types")
+		}
+		if !sliceContains(result.ComplianceImpact, "PCI-DSS") {
+			t.Error("expected PCI-DSS in compliance impact")
+		}
+	})
+
+	t.Run("detects credentials by node kind", func(t *testing.T) {
+		node := &Node{
+			ID:         "test",
+			Kind:       NodeKindSecret,
+			Name:       "api-key",
+			Properties: map[string]any{},
+		}
+		result := detectSensitiveData(node)
+		if result == nil {
+			t.Fatal("expected sensitive data detection")
+		}
+		if !sliceContains(result.DataTypes, "credentials") {
+			t.Error("expected credentials in data types")
+		}
+	})
+
+	t.Run("detects sensitive by name pattern", func(t *testing.T) {
+		node := &Node{
+			ID:         "test",
+			Name:       "backup-password-store",
+			Properties: map[string]any{},
+		}
+		result := detectSensitiveData(node)
+		if result == nil {
+			t.Fatal("expected sensitive data detection")
+		}
+		if !sliceContains(result.DataTypes, "sensitive_by_name") {
+			t.Error("expected sensitive_by_name in data types")
+		}
+	})
+
+	t.Run("returns nil for non-sensitive nodes", func(t *testing.T) {
+		node := &Node{
+			ID:         "test",
+			Name:       "public-assets",
+			Properties: map[string]any{},
+		}
+		result := detectSensitiveData(node)
+		if result != nil {
+			t.Error("expected nil for non-sensitive node")
+		}
+	})
+}
+
+func TestEstimateCompromiseTime(t *testing.T) {
+	target := &Node{ID: "target", Risk: RiskMedium}
+
+	tests := []struct {
+		name         string
+		edgeKind     EdgeKind
+		crossAccount bool
+		criticalRisk bool
+		minTime      int64
+		maxTime      int64
+	}{
+		{"role assumption is fast", EdgeKindCanAssume, false, false, 4000, 6000},
+		{"read permission", EdgeKindCanRead, false, false, 25000, 35000},
+		{"write permission", EdgeKindCanWrite, false, false, 40000, 50000},
+		{"cross-account doubles time", EdgeKindCanAssume, true, false, 8000, 12000},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			edge := &Edge{Kind: tt.edgeKind}
+			if tt.crossAccount {
+				edge.Properties = map[string]any{"cross_account": true}
+			}
+			testTarget := target
+			if tt.criticalRisk {
+				testTarget = &Node{ID: "critical", Risk: RiskCritical}
+			}
+
+			time := estimateCompromiseTime(edge, testTarget)
+			if time < tt.minTime || time > tt.maxTime {
+				t.Errorf("expected time between %d and %d, got %d", tt.minTime, tt.maxTime, time)
+			}
+		})
+	}
+}
+
+func TestContainsIgnoreCase(t *testing.T) {
+	tests := []struct {
+		s, substr string
+		want      bool
+	}{
+		{"secret-key", "secret", true},
+		{"SECRET-KEY", "secret", true},
+		{"my-Secret-data", "secret", true},
+		{"public-data", "secret", false},
+		{"", "secret", false},
+		{"secret", "", true},
+		{"password", "PASSWORD", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.s+"_"+tt.substr, func(t *testing.T) {
+			got := containsIgnoreCase(tt.s, tt.substr)
+			if got != tt.want {
+				t.Errorf("containsIgnoreCase(%q, %q) = %v, want %v", tt.s, tt.substr, got, tt.want)
+			}
+		})
+	}
+}

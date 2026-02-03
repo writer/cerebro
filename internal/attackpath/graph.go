@@ -3,6 +3,7 @@ package attackpath
 import (
 	"context"
 	"sort"
+	"strconv"
 	"sync"
 )
 
@@ -381,7 +382,7 @@ func generateTitle(path *AttackPath) string {
 
 func generateDescription(path *AttackPath) string {
 	return "This attack path shows how an attacker could reach a high-value target through " +
-		string(rune(len(path.Steps))) + " steps"
+		strconv.Itoa(len(path.Steps)) + " steps"
 }
 
 func generateRemediation(path *AttackPath) []string {

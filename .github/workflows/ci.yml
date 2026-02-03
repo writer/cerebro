@@ -226,6 +226,32 @@ jobs:
         if: steps.sec-dev-secrets.outputs.present == 'true'
         timeout-minutes: 30
         run: |
+          log_service_debug() {
+            local service=$1
+            echo "Service status for $service:"
+            aws ecs describe-services \
+              --cluster ${{ env.SEC_DEV_ECS_CLUSTER }} \
+              --services "$service" \
+              --query 'services[0].{deployments:deployments,events:events[0:5]}' \
+              --output json
+            STOPPED_TASKS=$(aws ecs list-tasks \
+              --cluster ${{ env.SEC_DEV_ECS_CLUSTER }} \
+              --service-name "$service" \
+              --desired-status STOPPED \
+              --max-items 5 \
+              --query 'taskArns' \
+              --output text)
+            if [ -n "$STOPPED_TASKS" ] && [ "$STOPPED_TASKS" != "None" ]; then
+              aws ecs describe-tasks \
+                --cluster ${{ env.SEC_DEV_ECS_CLUSTER }} \
+                --tasks $STOPPED_TASKS \
+                --query 'tasks[].{task:taskArn,lastStatus:lastStatus,stopCode:stopCode,stoppedReason:stoppedReason,containers:containers[].{name:name,lastStatus:lastStatus,exitCode:exitCode,reason:reason}}' \
+                --output json
+            else
+              echo "No stopped tasks found for $service"
+            fi
+          }
+
           echo "Waiting for ECS deployment to stabilize..."
           for service in ${{ env.SEC_DEV_ECS_SERVICES }}; do
             echo "Waiting for $service to stabilize..."
@@ -242,10 +268,14 @@ jobs:
                 echo "Deployment complete for $service!"
                 break
               fi
+              if [ $((i % 10)) -eq 0 ]; then
+                log_service_debug "$service"
+              fi
               sleep 15
             done
             if [ "$RUNNING" != "$DESIRED" ] || [ "$RUNNING" = "0" ]; then
               echo "Deployment did not stabilize in time for $service"
+              log_service_debug "$service"
               exit 1
             fi
           done
@@ -280,12 +310,38 @@ jobs:
           done
 
       - name: Wait for deployment
-        timeout-minutes: 15
+        timeout-minutes: 30
         run: |
+          log_service_debug() {
+            local service=$1
+            echo "Service status for $service:"
+            aws ecs describe-services \
+              --cluster ${{ env.SEC_PROD_ECS_CLUSTER }} \
+              --services "$service" \
+              --query 'services[0].{deployments:deployments,events:events[0:5]}' \
+              --output json
+            STOPPED_TASKS=$(aws ecs list-tasks \
+              --cluster ${{ env.SEC_PROD_ECS_CLUSTER }} \
+              --service-name "$service" \
+              --desired-status STOPPED \
+              --max-items 5 \
+              --query 'taskArns' \
+              --output text)
+            if [ -n "$STOPPED_TASKS" ] && [ "$STOPPED_TASKS" != "None" ]; then
+              aws ecs describe-tasks \
+                --cluster ${{ env.SEC_PROD_ECS_CLUSTER }} \
+                --tasks $STOPPED_TASKS \
+                --query 'tasks[].{task:taskArn,lastStatus:lastStatus,stopCode:stopCode,stoppedReason:stoppedReason,containers:containers[].{name:name,lastStatus:lastStatus,exitCode:exitCode,reason:reason}}' \
+                --output json
+            else
+              echo "No stopped tasks found for $service"
+            fi
+          }
+
           echo "Waiting for ECS deployment to stabilize..."
           for service in ${{ env.SEC_PROD_ECS_SERVICES }}; do
             echo "Waiting for $service to stabilize..."
-            for i in {1..60}; do
+            for i in {1..120}; do
               STATUS=$(aws ecs describe-services \
                 --cluster ${{ env.SEC_PROD_ECS_CLUSTER }} \
                 --services $service \
@@ -298,10 +354,14 @@ jobs:
                 echo "Deployment complete for $service!"
                 break
               fi
+              if [ $((i % 10)) -eq 0 ]; then
+                log_service_debug "$service"
+              fi
               sleep 15
             done
             if [ "$RUNNING" != "$DESIRED" ] || [ "$RUNNING" = "0" ]; then
               echo "Deployment did not stabilize in time for $service"
+              log_service_debug "$service"
               exit 1
             fi
           done
