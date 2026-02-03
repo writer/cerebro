@@ -21,7 +21,6 @@ on:
           - go-prod
 
 env:
-  PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
   AWS_REGION: us-east-1
   TAILSCALE_OAUTH_CLIENT_ID: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}
   TAILSCALE_OAUTH_CLIENT_SECRET: ${{ secrets.TAILSCALE_OAUTH_CLIENT_SECRET }}
@@ -40,21 +39,35 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           cache-dependency-glob: "infra/pyproject.toml"
 
       - name: Set up Python
-        run: uv python install 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
 
       - name: Install dependencies
-        run: uv sync --directory infra
+        shell: bash
+        working-directory: infra
+        run: uv sync
 
       - name: Configure AWS credentials (sec-dev)
         uses: writerInternal/aws-git-roles@v2
         with:
           assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
+
+      - name: Fetch secrets from Infisical
+        uses: Infisical/secrets-action@v1.0.15
+        with:
+          method: "oidc"
+          identity-id: ${{ secrets.INFISICAL_IDENTITY_ID }}
+          oidc-audience: "https://github.com/WriterInternal"
+          project-slug: ${{ secrets.INFISICAL_PROJECT_SLUG }}
+          env-slug: ${{ secrets.INFISICAL_ENV_SLUG }}
+          export-type: env
 
       - name: Authenticate with Pulumi Cloud
         uses: pulumi/auth-actions@v1
@@ -63,16 +76,17 @@ jobs:
           requested-token-type: urn:pulumi:token-type:access_token:organization
 
       - name: Set Infisical External ID
-        run: |
-          cd infra
-          uv run pulumi config set --stack sec-dev --secret cerebro:infisicalExternalId "${{ secrets.INFISICAL_EXTERNAL_ID }}"
+        shell: bash
+        working-directory: infra
+        run: uv run pulumi config set --stack sec-dev --secret cerebro:infisicalExternalId "${{ secrets.INFISICAL_EXTERNAL_ID }}"
 
       - name: Pulumi Up (sec-dev)
-        uses: pulumi/actions@v5
+        uses: pulumi/actions@v6
         with:
           command: up
           stack-name: sec-dev
           work-dir: infra
+          diff: true
           comment-on-pr: true
 
   # PR: Pulumi preview for go-prod stack in sec-prod account
@@ -88,21 +102,35 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           cache-dependency-glob: "infra/pyproject.toml"
 
       - name: Set up Python
-        run: uv python install 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
 
       - name: Install dependencies
-        run: uv sync --directory infra
+        shell: bash
+        working-directory: infra
+        run: uv sync
 
       - name: Configure AWS credentials (sec-prod)
         uses: writerInternal/aws-git-roles@v2
         with:
           assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
+
+      - name: Fetch secrets from Infisical
+        uses: Infisical/secrets-action@v1.0.15
+        with:
+          method: "oidc"
+          identity-id: ${{ secrets.INFISICAL_IDENTITY_ID }}
+          oidc-audience: "https://github.com/WriterInternal"
+          project-slug: ${{ secrets.INFISICAL_PROJECT_SLUG }}
+          env-slug: ${{ secrets.INFISICAL_ENV_SLUG }}
+          export-type: env
 
       - name: Authenticate with Pulumi Cloud
         uses: pulumi/auth-actions@v1
@@ -111,16 +139,17 @@ jobs:
           requested-token-type: urn:pulumi:token-type:access_token:organization
 
       - name: Set Infisical External ID
-        run: |
-          cd infra
-          uv run pulumi config set --stack go-prod --secret cerebro:infisicalExternalId "${{ secrets.INFISICAL_EXTERNAL_ID }}"
+        shell: bash
+        working-directory: infra
+        run: uv run pulumi config set --stack go-prod --secret cerebro:infisicalExternalId "${{ secrets.INFISICAL_EXTERNAL_ID }}"
 
       - name: Pulumi Preview (go-prod)
-        uses: pulumi/actions@v5
+        uses: pulumi/actions@v6
         with:
           command: preview
           stack-name: go-prod
           work-dir: infra
+          diff: true
           comment-on-pr: true
 
   # Main merge: Pulumi up for go-prod stack
@@ -136,21 +165,35 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           cache-dependency-glob: "infra/pyproject.toml"
 
       - name: Set up Python
-        run: uv python install 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
 
       - name: Install dependencies
-        run: uv sync --directory infra
+        shell: bash
+        working-directory: infra
+        run: uv sync
 
       - name: Configure AWS credentials (sec-prod)
         uses: writerInternal/aws-git-roles@v2
         with:
           assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
+
+      - name: Fetch secrets from Infisical
+        uses: Infisical/secrets-action@v1.0.15
+        with:
+          method: "oidc"
+          identity-id: ${{ secrets.INFISICAL_IDENTITY_ID }}
+          oidc-audience: "https://github.com/WriterInternal"
+          project-slug: ${{ secrets.INFISICAL_PROJECT_SLUG }}
+          env-slug: ${{ secrets.INFISICAL_ENV_SLUG }}
+          export-type: env
 
       - name: Authenticate with Pulumi Cloud
         uses: pulumi/auth-actions@v1
@@ -159,16 +202,17 @@ jobs:
           requested-token-type: urn:pulumi:token-type:access_token:organization
 
       - name: Set Infisical External ID
-        run: |
-          cd infra
-          uv run pulumi config set --stack go-prod --secret cerebro:infisicalExternalId "${{ secrets.INFISICAL_EXTERNAL_ID }}"
+        shell: bash
+        working-directory: infra
+        run: uv run pulumi config set --stack go-prod --secret cerebro:infisicalExternalId "${{ secrets.INFISICAL_EXTERNAL_ID }}"
 
       - name: Pulumi Up (go-prod)
-        uses: pulumi/actions@v5
+        uses: pulumi/actions@v6
         with:
           command: up
           stack-name: go-prod
           work-dir: infra
+          diff: true
 
   # Manual deployment via workflow_dispatch
   deploy-manual:
@@ -183,16 +227,20 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           cache-dependency-glob: "infra/pyproject.toml"
 
       - name: Set up Python
-        run: uv python install 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
 
       - name: Install dependencies
-        run: uv sync --directory infra
+        shell: bash
+        working-directory: infra
+        run: uv sync
 
       - name: Configure AWS credentials (sec-dev)
         if: github.event.inputs.environment == 'sec-dev'
@@ -206,6 +254,16 @@ jobs:
         with:
           assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
 
+      - name: Fetch secrets from Infisical
+        uses: Infisical/secrets-action@v1.0.15
+        with:
+          method: "oidc"
+          identity-id: ${{ secrets.INFISICAL_IDENTITY_ID }}
+          oidc-audience: "https://github.com/WriterInternal"
+          project-slug: ${{ secrets.INFISICAL_PROJECT_SLUG }}
+          env-slug: ${{ secrets.INFISICAL_ENV_SLUG }}
+          export-type: env
+
       - name: Authenticate with Pulumi Cloud
         uses: pulumi/auth-actions@v1
         with:
@@ -213,13 +271,14 @@ jobs:
           requested-token-type: urn:pulumi:token-type:access_token:organization
 
       - name: Set Infisical External ID
-        run: |
-          cd infra
-          uv run pulumi config set --stack ${{ github.event.inputs.environment }} --secret cerebro:infisicalExternalId "${{ secrets.INFISICAL_EXTERNAL_ID }}"
+        shell: bash
+        working-directory: infra
+        run: uv run pulumi config set --stack ${{ github.event.inputs.environment }} --secret cerebro:infisicalExternalId "${{ secrets.INFISICAL_EXTERNAL_ID }}"
 
       - name: Pulumi Up
-        uses: pulumi/actions@v5
+        uses: pulumi/actions@v6
         with:
           command: up
           stack-name: ${{ github.event.inputs.environment }}
           work-dir: infra
+          diff: true
