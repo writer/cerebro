@@ -559,17 +559,18 @@ type nodeQuery struct {
 }
 
 func (b *Builder) buildAWSEdges(ctx context.Context) {
-	// Load IAM policy documents (needed for edge building)
-	policies, err := b.queryIfExists(ctx, "aws_iam_policies", `
-		SELECT arn, name, document FROM aws_iam_policies
+	// Load IAM policy documents via policy_versions (document lives there, not in aws_iam_policies)
+	policyVersions, err := b.queryIfExists(ctx, "aws_iam_policy_versions", `
+		SELECT policy_arn, document FROM aws_iam_policy_versions WHERE is_default_version = true
 	`)
 	if err != nil {
-		b.logger.Warn("failed to query IAM policies", "error", err)
-		return
+		b.logger.Warn("failed to query IAM policy versions", "error", err)
 	}
-	policyDocs := make(map[string]string, len(policies.Rows))
-	for _, p := range policies.Rows {
-		policyDocs[toString(p["arn"])] = toString(p["document"])
+	policyDocs := make(map[string]string)
+	if policyVersions != nil {
+		for _, p := range policyVersions.Rows {
+			policyDocs[toString(p["policy_arn"])] = toString(p["document"])
+		}
 	}
 
 	// Fire all edge sub-queries in parallel
@@ -1138,14 +1139,14 @@ func (b *Builder) buildGCPNodes(ctx context.Context) {
 		},
 		{
 			table: "gcp_cloudfunctions_functions",
-			query: `SELECT name, project_id, region, service_account_email, runtime FROM gcp_cloudfunctions_functions`,
+			query: `SELECT name, project_id, location, service_config, build_config FROM gcp_cloudfunctions_functions`,
 			parse: func(rows []map[string]any) []*Node {
 				nodes := make([]*Node, 0, len(rows))
 				for _, fn := range rows {
 					nodes = append(nodes, &Node{
 						ID: toString(fn["name"]), Kind: NodeKindFunction, Name: toString(fn["name"]),
-						Provider: "gcp", Account: toString(fn["project_id"]), Region: toString(fn["region"]),
-						Properties: map[string]any{"service_account": fn["service_account_email"], "runtime": fn["runtime"]},
+						Provider: "gcp", Account: toString(fn["project_id"]), Region: toString(fn["location"]),
+						Properties: map[string]any{"service_config": fn["service_config"], "build_config": fn["build_config"]},
 					})
 				}
 				return nodes
