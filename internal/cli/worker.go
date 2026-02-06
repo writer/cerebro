@@ -133,7 +133,11 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		application.Snowflake,
 		application.Findings,
 		application.Policy,
-		scm.NewGitHubClient(os.Getenv("GITHUB_TOKEN")),
+		scm.NewConfiguredClient(
+			application.Config.GitHubToken,
+			application.Config.GitLabToken,
+			application.Config.GitLabBaseURL,
+		),
 	)
 
 	// Create job registry and register handlers

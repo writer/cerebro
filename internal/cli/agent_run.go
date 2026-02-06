@@ -72,7 +72,11 @@ func runAgentFlow(cmd *cobra.Command, args []string) error {
 	}
 	defer func() { _ = application.Close() }()
 
-	scmClient := scm.NewGitHubClient(os.Getenv("GITHUB_TOKEN"))
+	scmClient := scm.NewConfiguredClient(
+		application.Config.GitHubToken,
+		application.Config.GitLabToken,
+		application.Config.GitLabBaseURL,
+	)
 	tools := agents.NewSecurityTools(application.Snowflake, application.Findings, application.Policy, scmClient)
 	useDistributed := agentRunDistributed || (application.Config.JobQueueURL != "" && application.Config.JobTableName != "")
 	if useDistributed {

@@ -476,10 +476,7 @@ func (a *App) initAgents() {
 	a.Agents = agents.NewAgentRegistry()
 
 	// Initialize SCM client
-	var scmClient scm.Client
-	if a.Config.GitHubToken != "" {
-		scmClient = scm.NewGitHubClient(a.Config.GitHubToken)
-	}
+	scmClient := scm.NewConfiguredClient(a.Config.GitHubToken, a.Config.GitLabToken, a.Config.GitLabBaseURL)
 
 	// Create security tools for agents
 	tools := agents.NewSecurityTools(a.Snowflake, a.Findings, a.Policy, scmClient)

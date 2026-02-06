@@ -64,8 +64,12 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		Model:  "claude-3-5-sonnet-20241022",
 	})
 
-	// 3. Initialize SCM (GitHub)
-	scmClient := scm.NewGitHubClient(os.Getenv("GITHUB_TOKEN"))
+	// 3. Initialize SCM
+	scmClient := scm.NewConfiguredClient(
+		application.Config.GitHubToken,
+		application.Config.GitLabToken,
+		application.Config.GitLabBaseURL,
+	)
 
 	// 4. Initialize Tools
 	tools := agents.NewSecurityTools(
