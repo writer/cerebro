@@ -137,3 +137,28 @@ func TestIsRemovalEvent(t *testing.T) {
 		}
 	}
 }
+
+func TestResourceToTable_DirectTableName(t *testing.T) {
+	if got := resourceToTable("aws_iam_roles"); got != "aws_iam_roles" {
+		t.Errorf("expected aws_iam_roles, got %q", got)
+	}
+}
+
+func TestResourceToTables_CompoundResource(t *testing.T) {
+	tables := resourceToTables("storage::bucket|storage::blob_container")
+	if len(tables) != 0 {
+		t.Errorf("expected 0 tables for unmapped 2-part resources, got %d: %v", len(tables), tables)
+	}
+
+	tables = resourceToTables("aws::s3::bucket|gcp::storage::bucket")
+	if len(tables) != 2 {
+		t.Errorf("expected 2 tables, got %d: %v", len(tables), tables)
+	}
+}
+
+func TestResourceToTables_SingleResource(t *testing.T) {
+	tables := resourceToTables("aws::s3::bucket")
+	if len(tables) != 1 || tables[0] != "aws_s3_buckets" {
+		t.Errorf("expected [aws_s3_buckets], got %v", tables)
+	}
+}

@@ -304,19 +304,35 @@ func (c *Client) ListTables(ctx context.Context) ([]string, error) {
 }
 
 // ListAvailableTables returns all tables in the configured schema as lowercase names.
-// This is used for policy validation and scanning to ensure consistent table name matching.
+// Uses information_schema for reliable column parsing instead of SHOW TABLES.
 func (c *Client) ListAvailableTables(ctx context.Context) ([]string, error) {
-	tables, err := c.ListTables(ctx)
+	query := fmt.Sprintf(
+		"SELECT table_name FROM %s.information_schema.tables WHERE table_schema = '%s'",
+		c.database, strings.ToUpper(c.schema),
+	)
+	result, err := c.Query(ctx, query)
 	if err != nil {
 		return nil, err
 	}
-
-	// Normalize to lowercase for consistent matching
-	result := make([]string, len(tables))
-	for i, t := range tables {
-		result[i] = strings.ToLower(t)
+	tables := make([]string, 0, len(result.Rows))
+	for _, row := range result.Rows {
+		if name, ok := row["table_name"].(string); ok {
+			tables = append(tables, strings.ToLower(name))
+		}
+		if name, ok := row["TABLE_NAME"].(string); ok && name != "" {
+			tables = append(tables, strings.ToLower(name))
+		}
 	}
-	return result, nil
+	// Deduplicate
+	seen := make(map[string]bool, len(tables))
+	deduped := tables[:0]
+	for _, t := range tables {
+		if !seen[t] {
+			seen[t] = true
+			deduped = append(deduped, t)
+		}
+	}
+	return deduped, nil
 }
 
 // WithTimeout returns a context with the specified timeout, suitable for database operations.

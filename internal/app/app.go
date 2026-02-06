@@ -931,16 +931,6 @@ func (a *App) validatePolicyCoverage(_ context.Context) {
 		return
 	}
 
-	// Log warnings for each policy that can't be fully evaluated
-	for _, gap := range gaps {
-		a.Logger.Warn("policy missing required tables - will silently skip",
-			"policy_id", gap.PolicyID,
-			"policy_name", gap.PolicyName,
-			"resource", gap.Resource,
-			"missing_tables", gap.MissingTables,
-		)
-	}
-
 	totalPolicies := len(a.Policy.ListPolicies())
 	coveredPolicies := totalPolicies - len(gaps)
 	a.Logger.Warn("policy coverage incomplete",

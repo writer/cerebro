@@ -97,16 +97,22 @@ func runScan(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Build set of available tables for filtering
+	availableSet := make(map[string]bool)
+	if application.AvailableTables != nil {
+		for _, t := range application.AvailableTables {
+			availableSet[strings.ToLower(t)] = true
+		}
+	}
+
 	// Determine tables to scan
 	var tables []string
 	if len(scanTables) > 0 {
 		tables = scanTables
 	} else {
-		// Get tables based on resource types in policies
 		tableSet := make(map[string]bool)
 		for _, p := range policies {
-			// Extract table name from resource pattern (e.g., "aws::s3::bucket" -> "aws_s3_buckets")
-			if t := resourceToTable(p.Resource); t != "" {
+			for _, t := range resourceToTables(p.Resource) {
 				tableSet[t] = true
 			}
 		}
@@ -115,8 +121,25 @@ func runScan(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Filter to only tables that actually exist in Snowflake
+	if len(availableSet) > 0 {
+		var valid []string
+		skipped := 0
+		for _, t := range tables {
+			if availableSet[strings.ToLower(t)] {
+				valid = append(valid, t)
+			} else {
+				skipped++
+			}
+		}
+		if skipped > 0 {
+			Info("Skipped %d tables not present in Snowflake", skipped)
+		}
+		tables = valid
+	}
+
 	if len(tables) == 0 {
-		Warning("No tables to scan - policies may not have table mappings")
+		Warning("No tables to scan - policies may not have table mappings or tables not synced")
 		return nil
 	}
 
@@ -280,66 +303,102 @@ func runScan(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func resourceToTable(resource string) string {
-	// Map resource patterns to Snowflake table names
-	mapping := map[string]string{
-		// AWS - synced by native engine
-		"aws::s3::bucket":             "aws_s3_buckets",
-		"aws::ec2::instance":          "aws_ec2_instances",
-		"aws::ec2::security_group":    "aws_ec2_security_groups",
-		"aws::ec2::vpc":               "aws_ec2_vpcs",
-		"aws::iam::user":              "aws_iam_users",
-		"aws::iam::role":              "aws_iam_roles",
-		"aws::iam::credential_report": "aws_iam_credential_reports",
-		"aws::lambda::function":       "aws_lambda_functions",
-		"aws::ecs::cluster":           "aws_ecs_clusters",
-		"aws::ecs::service":           "aws_ecs_services",
-		"aws::ecs::task_definition":   "aws_ecs_task_definitions",
-		"aws::ecr::repository":        "aws_ecr_repositories",
-		"aws::kms::key":               "aws_kms_keys",
-		"aws::secretsmanager::secret": "aws_secretsmanager_secrets",
-		"aws::rds::instance":          "aws_rds_instances",
-		"aws::rds::db_instance":       "aws_rds_instances",
-		"aws::dynamodb::table":        "aws_dynamodb_tables",
-		"aws::redshift::cluster":      "aws_redshift_clusters",
-		"aws::elbv2::load_balancer":   "aws_elbv2_load_balancers",
-		"aws::elbv2::target_group":    "aws_elbv2_target_groups",
-		"aws::sns::topic":             "aws_sns_topics",
-		"aws::efs::file_system":       "aws_efs_file_systems",
-		"aws::efs::mount_target":      "aws_efs_mount_targets",
-		"aws::cloudtrail::trail":      "aws_cloudtrail_trails",
-		"aws::sqs::queue":             "aws_sqs_queues",
-		"aws::logs::log_group":        "aws_cloudwatch_log_groups",
-		"aws::cloudwatch::log_group":  "aws_cloudwatch_log_groups",
-		// GCP - synced by native engine
-		"gcp::storage::bucket":          "gcp_storage_buckets",
-		"gcp::compute::instance":        "gcp_compute_instances",
-		"gcp::compute::firewall":        "gcp_compute_firewalls",
-		"gcp::compute::network":         "gcp_compute_networks",
-		"gcp::compute::subnetwork":      "gcp_compute_subnetworks",
-		"gcp::iam::service_account":     "gcp_iam_service_accounts",
-		"gcp::sql::database_instance":   "gcp_sql_instances",
-		"gcp::cloudfunctions::function": "gcp_cloudfunctions_functions",
-		"gcp::cloudrun::service":        "gcp_cloudrun_services",
-		"gcp::cloudrun::revision":       "gcp_cloudrun_revisions",
-		"gcp::pubsub::topic":            "gcp_pubsub_topics",
-		"gcp::container::cluster":       "gcp_container_clusters",
-		// Azure
-		"azure::storage::account":         "azure_storage_accounts",
-		"azure::compute::vm":              "azure_compute_virtual_machines",
-		"azure::compute::virtual_machine": "azure_compute_virtual_machines",
-	}
+var resourceTableMapping = map[string]string{
+	// AWS
+	"aws::s3::bucket":                     "aws_s3_buckets",
+	"aws::ec2::instance":                  "aws_ec2_instances",
+	"aws::ec2::security_group":            "aws_ec2_security_groups",
+	"aws::ec2::vpc":                       "aws_ec2_vpcs",
+	"aws::iam::user":                      "aws_iam_users",
+	"aws::iam::role":                      "aws_iam_roles",
+	"aws::iam::credential_report":         "aws_iam_credential_reports",
+	"aws::iam::account_password_policy":   "aws_iam_account_password_policies",
+	"aws::lambda::function":               "aws_lambda_functions",
+	"aws::ecs::cluster":                   "aws_ecs_clusters",
+	"aws::ecs::service":                   "aws_ecs_services",
+	"aws::ecs::task_definition":           "aws_ecs_task_definitions",
+	"aws::ecr::repository":                "aws_ecr_repositories",
+	"aws::kms::key":                       "aws_kms_keys",
+	"aws::secretsmanager::secret":         "aws_secretsmanager_secrets",
+	"aws::rds::instance":                  "aws_rds_instances",
+	"aws::rds::db_instance":               "aws_rds_db_instances",
+	"aws::dynamodb::table":                "aws_dynamodb_tables",
+	"aws::redshift::cluster":              "aws_redshift_clusters",
+	"aws::elbv2::load_balancer":           "aws_elbv2_load_balancers",
+	"aws::elbv2::target_group":            "aws_elbv2_target_groups",
+	"aws::sns::topic":                     "aws_sns_topics",
+	"aws::efs::file_system":               "aws_efs_file_systems",
+	"aws::efs::mount_target":              "aws_efs_mount_targets",
+	"aws::cloudtrail::trail":              "aws_cloudtrail_trails",
+	"aws::sqs::queue":                     "aws_sqs_queues",
+	"aws::logs::log_group":                "aws_cloudwatch_log_groups",
+	"aws::cloudwatch::log_group":          "aws_cloudwatch_log_groups",
+	"aws::eks::cluster":                   "aws_eks_clusters",
+	"aws::elasticache::cluster":           "aws_elasticache_clusters",
+	"aws::apigateway::method":             "aws_apigateway_rest_api_methods",
+	"aws::codebuild::project":             "aws_codebuild_projects",
+	"aws::sagemaker::training_job":        "aws_sagemaker_training_jobs",
+	"aws::bedrock::custom_model":          "aws_bedrock_custom_models",
+	"aws::appsync::graphql_api":           "aws_appsync_graphql_apis",
+	"aws::ec2::ebs_encryption_by_default": "aws_ec2_ebs_encryption_by_defaults",
+	"aws::sagemaker::model_package_group": "aws_sagemaker_model_package_groups",
+	"aws::ecr::public_repository":         "aws_ecr_public_repositories",
+	"aws::iam::account_summary":           "aws_iam_account_summaries",
+	// GCP
+	"gcp::storage::bucket":          "gcp_storage_buckets",
+	"gcp::compute::instance":        "gcp_compute_instances",
+	"gcp::compute::firewall":        "gcp_compute_firewalls",
+	"gcp::compute::network":         "gcp_compute_networks",
+	"gcp::compute::subnetwork":      "gcp_compute_subnetworks",
+	"gcp::iam::service_account":     "gcp_iam_service_accounts",
+	"gcp::sql::database_instance":   "gcp_sql_instances",
+	"gcp::cloudfunctions::function": "gcp_cloudfunctions_functions",
+	"gcp::cloudrun::service":        "gcp_cloudrun_services",
+	"gcp::cloudrun::revision":       "gcp_cloudrun_revisions",
+	"gcp::pubsub::topic":            "gcp_pubsub_topics",
+	"gcp::container::cluster":       "gcp_container_clusters",
+	"gcp::logging::project_sink":    "gcp_logging_project_sinks",
+	"gcp::dns::managed_zone":        "gcp_dns_managed_zones",
+	// Azure
+	"azure::storage::account":         "azure_storage_accounts",
+	"azure::compute::vm":              "azure_compute_virtual_machines",
+	"azure::compute::virtual_machine": "azure_compute_virtual_machines",
+	"azure::network::security_group":  "azure_network_security_groups",
+	"azure::sql::server":              "azure_sql_servers",
+	"azure::ad::user":                 "azure_ad_users",
+}
 
-	if table, ok := mapping[resource]; ok {
+// resourceToTables resolves a policy resource string (possibly pipe-separated)
+// into one or more Snowflake table names.
+func resourceToTables(resource string) []string {
+	parts := strings.Split(resource, "|")
+	seen := make(map[string]bool)
+	var tables []string
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if t := resourceToTable(part); t != "" && !seen[t] {
+			seen[t] = true
+			tables = append(tables, t)
+		}
+	}
+	return tables
+}
+
+func resourceToTable(resource string) string {
+	if table, ok := resourceTableMapping[resource]; ok {
 		return table
 	}
 
 	// Try to construct table name from resource pattern
-	// e.g., "aws::s3::bucket" -> "aws_s3_buckets"
 	parts := strings.Split(resource, "::")
 	if len(parts) >= 3 {
 		tableName := parts[0] + "_" + parts[1] + "_" + parts[2] + "s"
 		return strings.ToLower(tableName)
+	}
+
+	// Already looks like a table name (e.g. "aws_iam_roles")
+	if strings.Contains(resource, "_") && !strings.Contains(resource, "::") && !strings.Contains(resource, "|") {
+		return strings.ToLower(resource)
 	}
 
 	return ""
