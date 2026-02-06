@@ -2,18 +2,32 @@ package scanner
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"os/exec"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/ecr"
+	ecrtypes "github.com/aws/aws-sdk-go-v2/service/ecr/types"
 )
 
 // ContainerScanner scans container images for vulnerabilities
 type ContainerScanner struct {
 	registries map[string]RegistryClient
 	vulnDB     VulnerabilityDB
+	localScan  ImageScanner
 	client     *http.Client
+}
+
+type ImageScanner interface {
+	ScanImage(ctx context.Context, imageRef string) (*ContainerScanResult, error)
 }
 
 // RegistryClient interface for container registries
@@ -155,6 +169,10 @@ func (s *ContainerScanner) SetVulnDB(db VulnerabilityDB) {
 	s.vulnDB = db
 }
 
+func (s *ContainerScanner) SetFallbackScanner(scanner ImageScanner) {
+	s.localScan = scanner
+}
+
 // ScanImage scans a container image for vulnerabilities
 func (s *ContainerScanner) ScanImage(ctx context.Context, registry, repo, tag string) (*ContainerScanResult, error) {
 	client, ok := s.registries[registry]
@@ -171,8 +189,16 @@ func (s *ContainerScanner) ScanImage(ctx context.Context, registry, repo, tag st
 	// Get vulnerabilities from registry's native scanning
 	vulns, vulnErr := client.GetVulnerabilities(ctx, repo, tag)
 	if vulnErr != nil {
-		// Continue without native scan results but note the error
-		vulns = []ImageVulnerability{}
+		if s.localScan != nil {
+			imageRef := fmt.Sprintf("%s:%s", repo, tag)
+			localResult, scanErr := s.localScan.ScanImage(ctx, imageRef)
+			if scanErr != nil {
+				return nil, fmt.Errorf("local scan failed after registry error: %w", scanErr)
+			}
+			vulns = localResult.Vulnerabilities
+		} else {
+			vulns = []ImageVulnerability{}
+		}
 	}
 
 	// Enrich with KEV data
@@ -349,91 +375,485 @@ func containsSensitive(env string) bool {
 	return false
 }
 
+type ecrAPI interface {
+	DescribeRepositories(ctx context.Context, params *ecr.DescribeRepositoriesInput, optFns ...func(*ecr.Options)) (*ecr.DescribeRepositoriesOutput, error)
+	DescribeImages(ctx context.Context, params *ecr.DescribeImagesInput, optFns ...func(*ecr.Options)) (*ecr.DescribeImagesOutput, error)
+	BatchGetImage(ctx context.Context, params *ecr.BatchGetImageInput, optFns ...func(*ecr.Options)) (*ecr.BatchGetImageOutput, error)
+	DescribeImageScanFindings(ctx context.Context, params *ecr.DescribeImageScanFindingsInput, optFns ...func(*ecr.Options)) (*ecr.DescribeImageScanFindingsOutput, error)
+}
+
 // ECRClient implements RegistryClient for AWS ECR
 type ECRClient struct {
 	region    string
 	accountID string
+	client    ecrAPI
+	initOnce  sync.Once
+	initErr   error
 }
 
 func NewECRClient(region, accountID string) *ECRClient {
 	return &ECRClient{region: region, accountID: accountID}
 }
 
+func NewECRClientWithAPI(region, accountID string, api ecrAPI) *ECRClient {
+	return &ECRClient{region: region, accountID: accountID, client: api}
+}
+
 func (c *ECRClient) Name() string { return "ecr" }
 
 func (c *ECRClient) ListRepositories(ctx context.Context) ([]Repository, error) {
-	// Would use AWS SDK to list repositories
-	return nil, fmt.Errorf("ECR SDK integration required")
+	if err := c.ensureClient(ctx); err != nil {
+		return nil, err
+	}
+
+	var repos []Repository
+	input := &ecr.DescribeRepositoriesInput{}
+	if c.accountID != "" {
+		input.RegistryId = aws.String(c.accountID)
+	}
+
+	for {
+		out, err := c.client.DescribeRepositories(ctx, input)
+		if err != nil {
+			return nil, err
+		}
+		for _, repo := range out.Repositories {
+			repos = append(repos, Repository{
+				Name:      aws.ToString(repo.RepositoryName),
+				Registry:  "ecr",
+				URI:       aws.ToString(repo.RepositoryUri),
+				CreatedAt: aws.ToTime(repo.CreatedAt),
+			})
+		}
+		if out.NextToken == nil {
+			break
+		}
+		input.NextToken = out.NextToken
+	}
+
+	return repos, nil
 }
 
 func (c *ECRClient) ListTags(ctx context.Context, repo string) ([]ImageTag, error) {
-	return nil, fmt.Errorf("ECR SDK integration required")
+	if err := c.ensureClient(ctx); err != nil {
+		return nil, err
+	}
+
+	var tags []ImageTag
+	input := &ecr.DescribeImagesInput{
+		RepositoryName: aws.String(repo),
+		Filter: &ecrtypes.DescribeImagesFilter{
+			TagStatus: ecrtypes.TagStatusTagged,
+		},
+	}
+	if c.accountID != "" {
+		input.RegistryId = aws.String(c.accountID)
+	}
+
+	for {
+		out, err := c.client.DescribeImages(ctx, input)
+		if err != nil {
+			return nil, err
+		}
+		for _, detail := range out.ImageDetails {
+			for _, tag := range detail.ImageTags {
+				tags = append(tags, ImageTag{
+					Name:      tag,
+					Digest:    aws.ToString(detail.ImageDigest),
+					PushedAt:  aws.ToTime(detail.ImagePushedAt),
+					SizeBytes: aws.ToInt64(detail.ImageSizeInBytes),
+				})
+			}
+		}
+		if out.NextToken == nil {
+			break
+		}
+		input.NextToken = out.NextToken
+	}
+
+	return tags, nil
 }
 
 func (c *ECRClient) GetManifest(ctx context.Context, repo, tag string) (*ImageManifest, error) {
-	return nil, fmt.Errorf("ECR SDK integration required")
+	if err := c.ensureClient(ctx); err != nil {
+		return nil, err
+	}
+
+	input := &ecr.BatchGetImageInput{
+		RepositoryName: aws.String(repo),
+		ImageIds: []ecrtypes.ImageIdentifier{
+			{ImageTag: aws.String(tag)},
+		},
+	}
+	if c.accountID != "" {
+		input.RegistryId = aws.String(c.accountID)
+	}
+
+	out, err := c.client.BatchGetImage(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	if len(out.Images) == 0 {
+		return nil, fmt.Errorf("image not found")
+	}
+
+	img := out.Images[0]
+	manifest := &ImageManifest{
+		Digest:    aws.ToString(img.ImageId.ImageDigest),
+		MediaType: aws.ToString(img.ImageManifestMediaType),
+	}
+	if img.ImageManifest != nil {
+		_ = parseManifest([]byte(*img.ImageManifest), manifest)
+	}
+
+	return manifest, nil
 }
 
 func (c *ECRClient) GetVulnerabilities(ctx context.Context, repo, tag string) ([]ImageVulnerability, error) {
-	// Would use ECR DescribeImageScanFindings
-	return nil, fmt.Errorf("ECR SDK integration required")
+	if err := c.ensureClient(ctx); err != nil {
+		return nil, err
+	}
+
+	var vulns []ImageVulnerability
+	input := &ecr.DescribeImageScanFindingsInput{
+		RepositoryName: aws.String(repo),
+		ImageId:        &ecrtypes.ImageIdentifier{ImageTag: aws.String(tag)},
+	}
+	if c.accountID != "" {
+		input.RegistryId = aws.String(c.accountID)
+	}
+
+	for {
+		out, err := c.client.DescribeImageScanFindings(ctx, input)
+		if err != nil {
+			return nil, err
+		}
+		if out.ImageScanFindings != nil {
+			for _, finding := range out.ImageScanFindings.Findings {
+				vuln := ImageVulnerability{
+					ID:          aws.ToString(finding.Name),
+					CVE:         aws.ToString(finding.Name),
+					Severity:    strings.ToLower(string(finding.Severity)),
+					Description: aws.ToString(finding.Description),
+				}
+				if finding.Uri != nil {
+					vuln.References = []string{aws.ToString(finding.Uri)}
+				}
+				for _, attr := range finding.Attributes {
+					key := aws.ToString(attr.Key)
+					value := aws.ToString(attr.Value)
+					switch key {
+					case "package_name", "package":
+						vuln.Package = value
+					case "package_version", "installed_version":
+						vuln.InstalledVersion = value
+					case "fixed_version", "fix_version":
+						vuln.FixedVersion = value
+					}
+				}
+				vulns = append(vulns, vuln)
+			}
+		}
+		if out.NextToken == nil {
+			break
+		}
+		input.NextToken = out.NextToken
+	}
+
+	return vulns, nil
+}
+
+func (c *ECRClient) ensureClient(ctx context.Context) error {
+	if c.client != nil {
+		return nil
+	}
+	if c.region == "" {
+		return fmt.Errorf("region is required")
+	}
+	c.initOnce.Do(func() {
+		cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(c.region))
+		if err != nil {
+			c.initErr = err
+			return
+		}
+		c.client = ecr.NewFromConfig(cfg)
+	})
+	return c.initErr
 }
 
 // GCRClient implements RegistryClient for Google Container Registry
 type GCRClient struct {
-	projectID string
+	projectID    string
+	registryHost string
+	accessToken  string
+	client       *http.Client
 }
 
 func NewGCRClient(projectID string) *GCRClient {
-	return &GCRClient{projectID: projectID}
+	return &GCRClient{
+		projectID:    projectID,
+		registryHost: "gcr.io",
+		client:       &http.Client{Timeout: 60 * time.Second},
+	}
 }
 
 func (c *GCRClient) Name() string { return "gcr" }
 
 func (c *GCRClient) ListRepositories(ctx context.Context) ([]Repository, error) {
-	return nil, fmt.Errorf("GCR SDK integration required")
+	url := fmt.Sprintf("%s/v2/_catalog?n=1000", c.baseURL())
+	body, _, err := c.doRequest(ctx, http.MethodGet, url, "")
+	if err != nil {
+		return nil, err
+	}
+
+	var payload struct {
+		Repositories []string `json:"repositories"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+	}
+
+	repos := make([]Repository, 0, len(payload.Repositories))
+	prefix := c.projectID + "/"
+	for _, repo := range payload.Repositories {
+		name := strings.TrimPrefix(repo, prefix)
+		repos = append(repos, Repository{
+			Name:     name,
+			Registry: "gcr",
+			URI:      fmt.Sprintf("%s/%s", c.baseURL(), repo),
+		})
+	}
+	return repos, nil
 }
 
 func (c *GCRClient) ListTags(ctx context.Context, repo string) ([]ImageTag, error) {
-	return nil, fmt.Errorf("GCR SDK integration required")
+	fullRepo := c.qualifyRepo(repo)
+	url := fmt.Sprintf("%s/v2/%s/tags/list", c.baseURL(), fullRepo)
+	body, _, err := c.doRequest(ctx, http.MethodGet, url, "")
+	if err != nil {
+		return nil, err
+	}
+
+	var payload struct {
+		Tags []string `json:"tags"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+	}
+
+	tags := make([]ImageTag, 0, len(payload.Tags))
+	for _, tag := range payload.Tags {
+		tags = append(tags, ImageTag{Name: tag})
+	}
+	return tags, nil
 }
 
 func (c *GCRClient) GetManifest(ctx context.Context, repo, tag string) (*ImageManifest, error) {
-	return nil, fmt.Errorf("GCR SDK integration required")
+	fullRepo := c.qualifyRepo(repo)
+	url := fmt.Sprintf("%s/v2/%s/manifests/%s", c.baseURL(), fullRepo, tag)
+	body, headers, err := c.doRequest(ctx, http.MethodGet, url, "application/vnd.docker.distribution.manifest.v2+json")
+	if err != nil {
+		return nil, err
+	}
+
+	manifest := &ImageManifest{
+		Digest:    headers.Get("Docker-Content-Digest"),
+		MediaType: headers.Get("Content-Type"),
+	}
+	_ = parseManifest(body, manifest)
+	return manifest, nil
 }
 
 func (c *GCRClient) GetVulnerabilities(ctx context.Context, repo, tag string) ([]ImageVulnerability, error) {
-	// Would use Container Analysis API
-	return nil, fmt.Errorf("GCR SDK integration required")
+	return nil, fmt.Errorf("registry does not provide vulnerability scanning")
+}
+
+func (c *GCRClient) SetAccessToken(token string) {
+	c.accessToken = token
+}
+
+func (c *GCRClient) SetRegistryHost(host string) {
+	if host != "" {
+		c.registryHost = strings.TrimRight(host, "/")
+	}
+}
+
+func (c *GCRClient) baseURL() string {
+	if strings.HasPrefix(c.registryHost, "http://") || strings.HasPrefix(c.registryHost, "https://") {
+		return c.registryHost
+	}
+	return "https://" + c.registryHost
+}
+
+func (c *GCRClient) qualifyRepo(repo string) string {
+	if strings.HasPrefix(repo, c.projectID+"/") {
+		return repo
+	}
+	return c.projectID + "/" + repo
+}
+
+func (c *GCRClient) doRequest(ctx context.Context, method, url, accept string) ([]byte, http.Header, error) {
+	req, err := http.NewRequestWithContext(ctx, method, url, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	if accept != "" {
+		req.Header.Set("Accept", accept)
+	}
+	if c.accessToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.accessToken)
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, err
+	}
+	if resp.StatusCode >= 400 {
+		return nil, resp.Header, fmt.Errorf("registry API error %d: %s", resp.StatusCode, string(body))
+	}
+
+	return body, resp.Header, nil
 }
 
 // ACRClient implements RegistryClient for Azure Container Registry
 type ACRClient struct {
-	registryName   string
-	subscriptionID string
+	registryName    string
+	subscriptionID  string
+	username        string
+	password        string
+	client          *http.Client
+	baseURLOverride string
 }
 
 func NewACRClient(registryName, subscriptionID string) *ACRClient {
-	return &ACRClient{registryName: registryName, subscriptionID: subscriptionID}
+	return &ACRClient{
+		registryName:   registryName,
+		subscriptionID: subscriptionID,
+		client:         &http.Client{Timeout: 60 * time.Second},
+	}
 }
 
 func (c *ACRClient) Name() string { return "acr" }
 
 func (c *ACRClient) ListRepositories(ctx context.Context) ([]Repository, error) {
-	return nil, fmt.Errorf("ACR SDK integration required")
+	url := fmt.Sprintf("%s/v2/_catalog?n=1000", c.baseURL())
+	body, _, err := c.doRequest(ctx, http.MethodGet, url, "")
+	if err != nil {
+		return nil, err
+	}
+
+	var payload struct {
+		Repositories []string `json:"repositories"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+	}
+
+	repos := make([]Repository, 0, len(payload.Repositories))
+	for _, repo := range payload.Repositories {
+		repos = append(repos, Repository{
+			Name:     repo,
+			Registry: "acr",
+			URI:      fmt.Sprintf("%s/%s", c.baseURL(), repo),
+		})
+	}
+	return repos, nil
 }
 
 func (c *ACRClient) ListTags(ctx context.Context, repo string) ([]ImageTag, error) {
-	return nil, fmt.Errorf("ACR SDK integration required")
+	url := fmt.Sprintf("%s/v2/%s/tags/list", c.baseURL(), repo)
+	body, _, err := c.doRequest(ctx, http.MethodGet, url, "")
+	if err != nil {
+		return nil, err
+	}
+
+	var payload struct {
+		Tags []string `json:"tags"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+	}
+
+	tags := make([]ImageTag, 0, len(payload.Tags))
+	for _, tag := range payload.Tags {
+		tags = append(tags, ImageTag{Name: tag})
+	}
+	return tags, nil
 }
 
 func (c *ACRClient) GetManifest(ctx context.Context, repo, tag string) (*ImageManifest, error) {
-	return nil, fmt.Errorf("ACR SDK integration required")
+	url := fmt.Sprintf("%s/v2/%s/manifests/%s", c.baseURL(), repo, tag)
+	body, headers, err := c.doRequest(ctx, http.MethodGet, url, "application/vnd.docker.distribution.manifest.v2+json")
+	if err != nil {
+		return nil, err
+	}
+
+	manifest := &ImageManifest{
+		Digest:    headers.Get("Docker-Content-Digest"),
+		MediaType: headers.Get("Content-Type"),
+	}
+	_ = parseManifest(body, manifest)
+	return manifest, nil
 }
 
 func (c *ACRClient) GetVulnerabilities(ctx context.Context, repo, tag string) ([]ImageVulnerability, error) {
-	// Would use Defender for Cloud API
-	return nil, fmt.Errorf("ACR SDK integration required")
+	return nil, fmt.Errorf("registry does not provide vulnerability scanning")
+}
+
+func (c *ACRClient) SetCredentials(username, password string) {
+	c.username = username
+	c.password = password
+}
+
+func (c *ACRClient) SetBaseURL(url string) {
+	c.baseURLOverride = strings.TrimRight(url, "/")
+}
+
+func (c *ACRClient) baseURL() string {
+	if c.baseURLOverride != "" {
+		return c.baseURLOverride
+	}
+	return fmt.Sprintf("https://%s.azurecr.io", c.registryName)
+}
+
+func (c *ACRClient) doRequest(ctx context.Context, method, url, accept string) ([]byte, http.Header, error) {
+	req, err := http.NewRequestWithContext(ctx, method, url, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	if accept != "" {
+		req.Header.Set("Accept", accept)
+	}
+	if c.username != "" || c.password != "" {
+		credentials := base64.StdEncoding.EncodeToString([]byte(c.username + ":" + c.password))
+		req.Header.Set("Authorization", "Basic "+credentials)
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, err
+	}
+	if resp.StatusCode >= 400 {
+		return nil, resp.Header, fmt.Errorf("registry API error %d: %s", resp.StatusCode, string(body))
+	}
+
+	return body, resp.Header, nil
 }
 
 // TrivyScanner wraps Trivy for local scanning
@@ -442,14 +862,27 @@ type TrivyScanner struct {
 }
 
 func NewTrivyScanner(binaryPath string) *TrivyScanner {
+	if binaryPath == "" {
+		binaryPath = "trivy"
+	}
 	return &TrivyScanner{binaryPath: binaryPath}
 }
 
 // ScanImage uses Trivy to scan a container image
 func (s *TrivyScanner) ScanImage(ctx context.Context, imageRef string) (*ContainerScanResult, error) {
-	// Would execute trivy image --format json <imageRef>
-	// and parse the JSON output
-	return nil, fmt.Errorf("trivy binary execution not implemented")
+	cmd := exec.CommandContext(ctx, s.binaryPath, "image", "--format", "json", imageRef)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("trivy scan failed: %w: %s", err, string(output))
+	}
+
+	result, err := ParseTrivyOutput(output)
+	if err != nil {
+		return nil, err
+	}
+	result.Repository = imageRef
+	result.Tag = ""
+	return result, nil
 }
 
 // ParseTrivyOutput parses Trivy JSON output
@@ -502,4 +935,38 @@ func ParseTrivyOutput(data []byte) (*ContainerScanResult, error) {
 
 	result.Summary = summarizeVulnerabilities(result.Vulnerabilities)
 	return result, nil
+}
+
+type registryManifest struct {
+	MediaType string `json:"mediaType"`
+	Config    struct {
+		MediaType string `json:"mediaType"`
+		Digest    string `json:"digest"`
+	} `json:"config"`
+	Layers []struct {
+		MediaType string `json:"mediaType"`
+		Digest    string `json:"digest"`
+		Size      int64  `json:"size"`
+	} `json:"layers"`
+}
+
+func parseManifest(data []byte, manifest *ImageManifest) error {
+	var decoded registryManifest
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+
+	if decoded.MediaType != "" {
+		manifest.MediaType = decoded.MediaType
+	}
+	manifest.Config = ImageConfig{Labels: make(map[string]string)}
+	manifest.Layers = make([]Layer, 0, len(decoded.Layers))
+	for _, layer := range decoded.Layers {
+		manifest.Layers = append(manifest.Layers, Layer{
+			Digest:    layer.Digest,
+			MediaType: layer.MediaType,
+			Size:      layer.Size,
+		})
+	}
+	return nil
 }
