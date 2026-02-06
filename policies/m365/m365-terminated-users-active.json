@@ -1,0 +1,39 @@
+{
+  "id": "m365-terminated-users-active",
+  "name": "M365 Accounts Disabled on Termination",
+  "description": "Ensures Entra ID accounts are disabled when employees are terminated",
+  "severity": "HIGH",
+  "category": "m365",
+  "resource_type": "entra_user",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC1.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.1"
+      ]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "PS-4"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT u.id, u.user_principal_name, u.display_name, e.termination_date FROM entra_users u JOIN employees e ON u.mail = e.work_email WHERE e.status = 'terminated' AND u.account_enabled = true",
+  "remediation": "Disable M365/Entra ID accounts for terminated users within 24 hours. Automate offboarding workflows.",
+  "tags": [
+    "m365",
+    "entra",
+    "offboarding",
+    "identity",
+    "access-control"
+  ]
+}

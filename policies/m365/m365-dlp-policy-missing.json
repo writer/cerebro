@@ -1,0 +1,38 @@
+{
+  "id": "m365-dlp-policy-missing",
+  "name": "M365 DLP Policy Configured",
+  "description": "Ensures Data Loss Prevention policies are configured and reviewed",
+  "severity": "HIGH",
+  "category": "m365",
+  "resource_type": "policy_document",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.8.12"
+      ]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "SI-4"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT id, policy_type, status, last_approved_date FROM policy_documents WHERE policy_type = 'm365_dlp' AND (status != 'approved' OR last_approved_date < NOW() - INTERVAL '365 days')",
+  "remediation": "Enable Microsoft Purview DLP policies for sensitive data types and review them at least annually.",
+  "tags": [
+    "m365",
+    "dlp",
+    "data-protection",
+    "compliance",
+    "policy"
+  ]
+}

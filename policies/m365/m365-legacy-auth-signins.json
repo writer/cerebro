@@ -1,0 +1,39 @@
+{
+  "id": "m365-legacy-auth-signins",
+  "name": "M365 Legacy Authentication Sign-ins Detected",
+  "description": "Identifies sign-ins using legacy authentication protocols that should be blocked",
+  "severity": "HIGH",
+  "category": "m365",
+  "resource_type": "entra_sign_in",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC1.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.1"
+      ]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "IA-2",
+        "IA-5"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT id, user_principal_name, client_app_used, created_datetime, ip_address FROM entra_sign_ins WHERE client_app_used IN ('Exchange ActiveSync', 'Other clients', 'IMAP', 'POP', 'Authenticated SMTP')",
+  "remediation": "Block legacy authentication using Conditional Access policies and disable basic authentication protocols.",
+  "tags": [
+    "m365",
+    "entra",
+    "legacy-auth",
+    "identity",
+    "authentication"
+  ]
+}
