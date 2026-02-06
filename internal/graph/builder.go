@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // DataSource abstracts the data source for graph building
@@ -22,9 +25,11 @@ type QueryResult struct {
 
 // Builder constructs the security graph from data sources
 type Builder struct {
-	source DataSource
-	graph  *Graph
-	logger *slog.Logger
+	source          DataSource
+	graph           *Graph
+	logger          *slog.Logger
+	availableTables map[string]bool // populated tables, skips queries for missing ones
+	lastBuildTime   time.Time       // when the last successful build finished
 }
 
 // NewBuilder creates a new graph builder
@@ -39,36 +44,87 @@ func NewBuilder(source DataSource, logger *slog.Logger) *Builder {
 	}
 }
 
-// Build constructs the entire graph from the data source
+// discoverTables queries information_schema once to learn which tables exist with data.
+// If discovery fails or returns nothing, availableTables stays nil (optimistic: query everything).
+func (b *Builder) discoverTables(ctx context.Context) {
+	result, err := b.source.Query(ctx, `
+		SELECT table_name FROM information_schema.tables
+		WHERE table_schema = 'RAW' AND row_count > 0
+	`)
+	if err != nil || len(result.Rows) == 0 {
+		b.logger.Debug("table discovery unavailable, will query all tables")
+		return
+	}
+	b.availableTables = make(map[string]bool, len(result.Rows))
+	for _, row := range result.Rows {
+		name := strings.ToUpper(toString(row["table_name"]))
+		b.availableTables[name] = true
+	}
+	b.logger.Debug("discovered populated tables", "count", len(b.availableTables))
+}
+
+// hasTable returns true if the table exists and has rows (or if discovery was skipped).
+func (b *Builder) hasTable(name string) bool {
+	if b.availableTables == nil {
+		return true // discovery failed, be optimistic
+	}
+	return b.availableTables[strings.ToUpper(name)]
+}
+
+// queryIfExists runs the query only if the referenced table exists.
+func (b *Builder) queryIfExists(ctx context.Context, table, query string) (*QueryResult, error) {
+	if !b.hasTable(table) {
+		return &QueryResult{}, nil
+	}
+	return b.source.Query(ctx, query)
+}
+
+// Build constructs the entire graph from the data source.
+// Phase 1: discover populated tables (1 query)
+// Phase 2: load all nodes in parallel across providers
+// Phase 3: build index for O(1) lookups during edge building
+// Phase 4: build all edges in parallel across providers
+// Phase 5: build inferred edges (exposure, SCM, relationships)
 func (b *Builder) Build(ctx context.Context) error {
 	start := time.Now()
 	b.graph.Clear()
 
 	b.logger.Info("building security graph")
 
-	// Build AWS nodes and edges
-	b.buildAWSNodes(ctx)
-	b.buildAWSEdges(ctx)
+	// Phase 1: discover which tables have data (1 round-trip)
+	b.discoverTables(ctx)
 
-	// Build GCP nodes and edges
-	b.buildGCPNodes(ctx)
-	b.buildGCPEdges(ctx)
+	// Phase 2: load all nodes in parallel
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error { b.buildAWSNodes(gctx); return nil })
+	g.Go(func() error { b.buildGCPNodes(gctx); return nil })
+	g.Go(func() error { b.buildAzureNodes(gctx); return nil })
+	_ = g.Wait()
 
-	// Build Azure nodes and edges
-	b.buildAzureNodes(ctx)
-	b.buildAzureEdges(ctx)
-
-	// Add internet entry point
+	// Add internet entry point (needed before edge building)
 	b.addInternetNode()
 
-	// Build exposure edges
-	b.buildExposureEdges()
+	// Phase 3: build indexes so edge builders get O(1) lookups
+	b.graph.BuildIndex()
 
-	// Build Code-to-Cloud edges (inferred from tags)
+	b.logger.Info("graph nodes loaded",
+		"nodes", b.graph.NodeCount(),
+		"duration", time.Since(start))
+
+	// Phase 4: build provider edges in parallel
+	eg, ectx := errgroup.WithContext(ctx)
+	eg.Go(func() error { b.buildAWSEdges(ectx); return nil })
+	eg.Go(func() error { b.buildGCPEdges(ectx); return nil })
+	eg.Go(func() error { b.buildAzureEdges(ectx); return nil })
+	eg.Go(func() error { b.buildRelationshipEdges(ectx); return nil })
+	_ = eg.Wait()
+
+	// Phase 5: inferred edges (these iterate nodes, run sequentially)
+	b.buildExposureEdges()
 	b.buildSCMInference()
 
-	// Build edges from extracted relationships
-	b.buildRelationshipEdges(ctx)
+	// Rebuild index with edges included
+	b.graph.BuildIndex()
 
 	// Update metadata
 	b.graph.SetMetadata(Metadata{
@@ -83,7 +139,42 @@ func (b *Builder) Build(ctx context.Context) error {
 		"edges", b.graph.EdgeCount(),
 		"duration", time.Since(start))
 
+	b.lastBuildTime = time.Now()
 	return nil
+}
+
+// HasChanges checks whether any asset tables have been modified since the last
+// graph build by looking at MAX(_cq_sync_time). Returns true if changes are
+// detected or if the check fails (fail-open to ensure freshness).
+func (b *Builder) HasChanges(ctx context.Context) bool {
+	if b.lastBuildTime.IsZero() {
+		return true
+	}
+	result, err := b.source.Query(ctx, `
+		SELECT MAX(COALESCE(_cq_sync_time, '1970-01-01'::TIMESTAMP_TZ)) AS latest
+		FROM (
+			SELECT _cq_sync_time FROM RAW.AWS_IAM_ROLES
+			UNION ALL SELECT _cq_sync_time FROM RAW.AWS_S3_BUCKETS
+			UNION ALL SELECT _cq_sync_time FROM RAW.GCP_COMPUTE_INSTANCES
+		)
+	`)
+	if err != nil || len(result.Rows) == 0 {
+		return true // fail-open
+	}
+	if latest, ok := result.Rows[0]["latest"].(time.Time); ok {
+		return latest.After(b.lastBuildTime)
+	}
+	return true
+}
+
+// RebuildIfChanged rebuilds the graph only if data has changed since the last build.
+// Returns true if a rebuild was performed.
+func (b *Builder) RebuildIfChanged(ctx context.Context) (bool, error) {
+	if !b.HasChanges(ctx) {
+		b.logger.Info("graph rebuild skipped - no data changes detected")
+		return false, nil
+	}
+	return true, b.Build(ctx)
 }
 
 // Graph returns the built graph
@@ -92,7 +183,7 @@ func (b *Builder) Graph() *Graph {
 }
 
 func (b *Builder) buildRelationshipEdges(ctx context.Context) {
-	rels, err := b.source.Query(ctx, `
+	rels, err := b.queryIfExists(ctx, "resource_relationships", `
 		SELECT source_id, source_type, target_id, target_type, rel_type, properties
 		FROM resource_relationships
 	`)
@@ -261,325 +352,331 @@ func (b *Builder) addEdgeIfMissing(edge *Edge) {
 }
 
 func (b *Builder) buildAWSNodes(ctx context.Context) {
-	// IAM Users
-	users, err := b.source.Query(ctx, `
+	queries := []nodeQuery{
+		{
+			table: "aws_iam_users",
+			query: `
 		SELECT arn, user_name, account_id, password_last_used, tags
 		FROM aws_iam_users
-	`)
-	if err != nil {
-		b.logger.Warn("failed to query IAM users", "error", err)
-	} else {
-		for _, u := range users.Rows {
-			b.graph.AddNode(&Node{
-				ID:       toString(u["arn"]),
-				Kind:     NodeKindUser,
-				Name:     toString(u["user_name"]),
-				Provider: "aws",
-				Account:  toString(u["account_id"]),
-				Properties: map[string]any{
-					"last_login": u["password_last_used"],
-				},
-			})
-		}
-		b.logger.Debug("added IAM users", "count", len(users.Rows))
-	}
-
-	// IAM Roles
-	roles, err := b.source.Query(ctx, `
+	`,
+			parse: func(rows []map[string]any) []*Node {
+				nodes := make([]*Node, 0, len(rows))
+				for _, u := range rows {
+					nodes = append(nodes, &Node{
+						ID: toString(u["arn"]), Kind: NodeKindUser, Name: toString(u["user_name"]),
+						Provider: "aws", Account: toString(u["account_id"]),
+						Properties: map[string]any{"last_login": u["password_last_used"]},
+					})
+				}
+				return nodes
+			},
+		},
+		{
+			table: "aws_iam_roles",
+			query: `
 		SELECT arn, role_name, account_id, assume_role_policy_document, description
 		FROM aws_iam_roles
-	`)
-	if err != nil {
-		b.logger.Warn("failed to query IAM roles", "error", err)
-	} else {
-		for _, r := range roles.Rows {
-			b.graph.AddNode(&Node{
-				ID:       toString(r["arn"]),
-				Kind:     NodeKindRole,
-				Name:     toString(r["role_name"]),
-				Provider: "aws",
-				Account:  toString(r["account_id"]),
-				Properties: map[string]any{
-					"trust_policy": r["assume_role_policy_document"],
-					"description":  r["description"],
-				},
-			})
-		}
-		b.logger.Debug("added IAM roles", "count", len(roles.Rows))
-	}
-
-	// IAM Groups
-	groups, err := b.source.Query(ctx, `
+	`,
+			parse: func(rows []map[string]any) []*Node {
+				nodes := make([]*Node, 0, len(rows))
+				for _, r := range rows {
+					nodes = append(nodes, &Node{
+						ID: toString(r["arn"]), Kind: NodeKindRole, Name: toString(r["role_name"]),
+						Provider: "aws", Account: toString(r["account_id"]),
+						Properties: map[string]any{"trust_policy": r["assume_role_policy_document"], "description": r["description"]},
+					})
+				}
+				return nodes
+			},
+		},
+		{
+			table: "aws_iam_groups",
+			query: `
 		SELECT arn, group_name, account_id
 		FROM aws_iam_groups
-	`)
-	if err != nil {
-		b.logger.Warn("failed to query IAM groups", "error", err)
-	} else {
-		for _, g := range groups.Rows {
-			b.graph.AddNode(&Node{
-				ID:       toString(g["arn"]),
-				Kind:     NodeKindGroup,
-				Name:     toString(g["group_name"]),
-				Provider: "aws",
-				Account:  toString(g["account_id"]),
-			})
-		}
-		b.logger.Debug("added IAM groups", "count", len(groups.Rows))
-	}
-
-	// S3 Buckets
-	buckets, err := b.source.Query(ctx, `
+	`,
+			parse: func(rows []map[string]any) []*Node {
+				nodes := make([]*Node, 0, len(rows))
+				for _, g := range rows {
+					nodes = append(nodes, &Node{
+						ID: toString(g["arn"]), Kind: NodeKindGroup, Name: toString(g["group_name"]),
+						Provider: "aws", Account: toString(g["account_id"]),
+					})
+				}
+				return nodes
+			},
+		},
+		{
+			table: "aws_s3_buckets",
+			query: `
 		SELECT arn, name, account_id, region, block_public_acls, block_public_policy, versioning_status
 		FROM aws_s3_buckets
-	`)
-	if err != nil {
-		b.logger.Warn("failed to query S3 buckets", "error", err)
-	} else {
-		for _, bucket := range buckets.Rows {
-			isPublic := !toBool(bucket["block_public_acls"]) || !toBool(bucket["block_public_policy"])
-			risk := RiskNone
-			if isPublic {
-				risk = RiskHigh
-			}
-			b.graph.AddNode(&Node{
-				ID:       toString(bucket["arn"]),
-				Kind:     NodeKindBucket,
-				Name:     toString(bucket["name"]),
-				Provider: "aws",
-				Account:  toString(bucket["account_id"]),
-				Region:   toString(bucket["region"]),
-				Risk:     risk,
-				Properties: map[string]any{
-					"public":     isPublic,
-					"versioning": bucket["versioning_status"],
-				},
-			})
-		}
-		b.logger.Debug("added S3 buckets", "count", len(buckets.Rows))
-	}
-
-	// EC2 Instances
-	instances, err := b.source.Query(ctx, `
+	`,
+			parse: func(rows []map[string]any) []*Node {
+				nodes := make([]*Node, 0, len(rows))
+				for _, bucket := range rows {
+					isPublic := !toBool(bucket["block_public_acls"]) || !toBool(bucket["block_public_policy"])
+					risk := RiskNone
+					if isPublic {
+						risk = RiskHigh
+					}
+					nodes = append(nodes, &Node{
+						ID: toString(bucket["arn"]), Kind: NodeKindBucket, Name: toString(bucket["name"]),
+						Provider: "aws", Account: toString(bucket["account_id"]), Region: toString(bucket["region"]),
+						Risk: risk, Properties: map[string]any{"public": isPublic, "versioning": bucket["versioning_status"]},
+					})
+				}
+				return nodes
+			},
+		},
+		{
+			table: "aws_ec2_instances",
+			query: `
 		SELECT arn, instance_id, account_id, region, public_ip_address, iam_instance_profile
 		FROM aws_ec2_instances
-	`)
-	if err != nil {
-		b.logger.Warn("failed to query EC2 instances", "error", err)
-	} else {
-		for _, inst := range instances.Rows {
-			hasPublicIP := toString(inst["public_ip_address"]) != ""
-			risk := RiskNone
-			if hasPublicIP {
-				risk = RiskMedium
-			}
-			b.graph.AddNode(&Node{
-				ID:       toString(inst["arn"]),
-				Kind:     NodeKindInstance,
-				Name:     toString(inst["instance_id"]),
-				Provider: "aws",
-				Account:  toString(inst["account_id"]),
-				Region:   toString(inst["region"]),
-				Risk:     risk,
-				Properties: map[string]any{
-					"public_ip":            inst["public_ip_address"],
-					"iam_instance_profile": inst["iam_instance_profile"],
-				},
-			})
-		}
-		b.logger.Debug("added EC2 instances", "count", len(instances.Rows))
-	}
-
-	// RDS Instances
-	rdsInstances, err := b.source.Query(ctx, `
+	`,
+			parse: func(rows []map[string]any) []*Node {
+				nodes := make([]*Node, 0, len(rows))
+				for _, inst := range rows {
+					hasPublicIP := toString(inst["public_ip_address"]) != ""
+					risk := RiskNone
+					if hasPublicIP {
+						risk = RiskMedium
+					}
+					nodes = append(nodes, &Node{
+						ID: toString(inst["arn"]), Kind: NodeKindInstance, Name: toString(inst["instance_id"]),
+						Provider: "aws", Account: toString(inst["account_id"]), Region: toString(inst["region"]),
+						Risk: risk, Properties: map[string]any{"public_ip": inst["public_ip_address"], "iam_instance_profile": inst["iam_instance_profile"]},
+					})
+				}
+				return nodes
+			},
+		},
+		{
+			table: "aws_rds_instances",
+			query: `
 		SELECT arn, db_instance_identifier, account_id, region, publicly_accessible, storage_encrypted
 		FROM aws_rds_instances
-	`)
-	if err != nil {
-		b.logger.Warn("failed to query RDS instances", "error", err)
-	} else {
-		for _, db := range rdsInstances.Rows {
-			isPublic := toBool(db["publicly_accessible"])
-			risk := RiskNone
-			if isPublic {
-				risk = RiskCritical
-			}
-			b.graph.AddNode(&Node{
-				ID:       toString(db["arn"]),
-				Kind:     NodeKindDatabase,
-				Name:     toString(db["db_instance_identifier"]),
-				Provider: "aws",
-				Account:  toString(db["account_id"]),
-				Region:   toString(db["region"]),
-				Risk:     risk,
-				Properties: map[string]any{
-					"public":    isPublic,
-					"encrypted": db["storage_encrypted"],
-				},
-			})
-		}
-		b.logger.Debug("added RDS instances", "count", len(rdsInstances.Rows))
-	}
-
-	// Lambda Functions
-	lambdas, err := b.source.Query(ctx, `
+	`,
+			parse: func(rows []map[string]any) []*Node {
+				nodes := make([]*Node, 0, len(rows))
+				for _, db := range rows {
+					isPublic := toBool(db["publicly_accessible"])
+					risk := RiskNone
+					if isPublic {
+						risk = RiskCritical
+					}
+					nodes = append(nodes, &Node{
+						ID: toString(db["arn"]), Kind: NodeKindDatabase, Name: toString(db["db_instance_identifier"]),
+						Provider: "aws", Account: toString(db["account_id"]), Region: toString(db["region"]),
+						Risk: risk, Properties: map[string]any{"public": isPublic, "encrypted": db["storage_encrypted"]},
+					})
+				}
+				return nodes
+			},
+		},
+		{
+			table: "aws_lambda_functions",
+			query: `
 		SELECT arn, function_name, account_id, region, role
 		FROM aws_lambda_functions
-	`)
-	if err != nil {
-		b.logger.Warn("failed to query Lambda functions", "error", err)
-	} else {
-		for _, fn := range lambdas.Rows {
-			b.graph.AddNode(&Node{
-				ID:       toString(fn["arn"]),
-				Kind:     NodeKindFunction,
-				Name:     toString(fn["function_name"]),
-				Provider: "aws",
-				Account:  toString(fn["account_id"]),
-				Region:   toString(fn["region"]),
-				Properties: map[string]any{
-					"execution_role": fn["role"],
-				},
-			})
-		}
-		b.logger.Debug("added Lambda functions", "count", len(lambdas.Rows))
-	}
-
-	// Secrets Manager Secrets
-	secrets, err := b.source.Query(ctx, `
+	`,
+			parse: func(rows []map[string]any) []*Node {
+				nodes := make([]*Node, 0, len(rows))
+				for _, fn := range rows {
+					nodes = append(nodes, &Node{
+						ID: toString(fn["arn"]), Kind: NodeKindFunction, Name: toString(fn["function_name"]),
+						Provider: "aws", Account: toString(fn["account_id"]), Region: toString(fn["region"]),
+						Properties: map[string]any{"execution_role": fn["role"]},
+					})
+				}
+				return nodes
+			},
+		},
+		{
+			table: "aws_secretsmanager_secrets",
+			query: `
 		SELECT arn, name, account_id, region
 		FROM aws_secretsmanager_secrets
-	`)
-	if err != nil {
-		b.logger.Warn("failed to query Secrets Manager secrets", "error", err)
-	} else {
-		for _, s := range secrets.Rows {
-			b.graph.AddNode(&Node{
-				ID:       toString(s["arn"]),
-				Kind:     NodeKindSecret,
-				Name:     toString(s["name"]),
-				Provider: "aws",
-				Account:  toString(s["account_id"]),
-				Region:   toString(s["region"]),
-				Risk:     RiskHigh, // Secrets are inherently sensitive
-			})
-		}
-		b.logger.Debug("added Secrets Manager secrets", "count", len(secrets.Rows))
+	`,
+			parse: func(rows []map[string]any) []*Node {
+				nodes := make([]*Node, 0, len(rows))
+				for _, s := range rows {
+					nodes = append(nodes, &Node{
+						ID: toString(s["arn"]), Kind: NodeKindSecret, Name: toString(s["name"]),
+						Provider: "aws", Account: toString(s["account_id"]), Region: toString(s["region"]),
+						Risk: RiskHigh,
+					})
+				}
+				return nodes
+			},
+		},
 	}
 
+	b.runNodeQueries(ctx, queries)
+}
+
+// runNodeQueries fires all node queries in parallel and batch-adds the results.
+func (b *Builder) runNodeQueries(ctx context.Context, queries []nodeQuery) {
+	type result struct {
+		table string
+		nodes []*Node
+	}
+	var mu sync.Mutex
+	var results []result
+
+	eg, ectx := errgroup.WithContext(ctx)
+	for _, q := range queries {
+		q := q
+		eg.Go(func() error {
+			rows, err := b.queryIfExists(ectx, q.table, q.query)
+			if err != nil {
+				b.logger.Warn("failed to query "+q.table, "error", err)
+				return nil
+			}
+			if len(rows.Rows) == 0 {
+				return nil
+			}
+			parsed := q.parse(rows.Rows)
+			mu.Lock()
+			results = append(results, result{table: q.table, nodes: parsed})
+			mu.Unlock()
+			return nil
+		})
+	}
+	_ = eg.Wait()
+
+	for _, r := range results {
+		b.graph.AddNodesBatch(r.nodes)
+		b.logger.Debug("added "+r.table, "count", len(r.nodes))
+	}
+}
+
+type nodeQuery struct {
+	table string
+	query string
+	parse func(rows []map[string]any) []*Node
 }
 
 func (b *Builder) buildAWSEdges(ctx context.Context) {
-	// Get all IAM policies for lookup
-	policies, err := b.source.Query(ctx, `
+	// Load IAM policy documents (needed for edge building)
+	policies, err := b.queryIfExists(ctx, "aws_iam_policies", `
 		SELECT arn, name, document FROM aws_iam_policies
 	`)
 	if err != nil {
 		b.logger.Warn("failed to query IAM policies", "error", err)
 		return
 	}
-	policyDocs := make(map[string]string)
+	policyDocs := make(map[string]string, len(policies.Rows))
 	for _, p := range policies.Rows {
 		policyDocs[toString(p["arn"])] = toString(p["document"])
 	}
 
-	// User attached policies
-	userPolicies, err := b.source.Query(ctx, `
+	// Fire all edge sub-queries in parallel
+	eg, ectx := errgroup.WithContext(ctx)
+
+	// Attached policies (user + role)
+	eg.Go(func() error {
+		userPolicies, err := b.queryIfExists(ectx, "aws_iam_user_attached_policies", `
 		SELECT user_arn, policy_arn FROM aws_iam_user_attached_policies
 	`)
-	if err != nil {
-		b.logger.Warn("failed to query user attached policies", "error", err)
-	} else {
-		for _, up := range userPolicies.Rows {
-			userARN := toString(up["user_arn"])
-			policyARN := toString(up["policy_arn"])
-			doc := policyDocs[policyARN]
-			b.buildEdgesFromPolicy(userARN, doc, policyARN)
+		if err != nil {
+			b.logger.Warn("failed to query user attached policies", "error", err)
+			return nil
 		}
-	}
+		for _, up := range userPolicies.Rows {
+			b.buildEdgesFromPolicy(toString(up["user_arn"]), policyDocs[toString(up["policy_arn"])], toString(up["policy_arn"]))
+		}
+		return nil
+	})
 
-	// Role attached policies
-	rolePolicies, err := b.source.Query(ctx, `
+	eg.Go(func() error {
+		rolePolicies, err := b.queryIfExists(ectx, "aws_iam_role_attached_policies", `
 		SELECT role_arn, policy_arn FROM aws_iam_role_attached_policies
 	`)
-	if err != nil {
-		b.logger.Warn("failed to query role attached policies", "error", err)
-	} else {
-		for _, rp := range rolePolicies.Rows {
-			roleARN := toString(rp["role_arn"])
-			policyARN := toString(rp["policy_arn"])
-			doc := policyDocs[policyARN]
-			b.buildEdgesFromPolicy(roleARN, doc, policyARN)
+		if err != nil {
+			b.logger.Warn("failed to query role attached policies", "error", err)
+			return nil
 		}
-	}
+		for _, rp := range rolePolicies.Rows {
+			b.buildEdgesFromPolicy(toString(rp["role_arn"]), policyDocs[toString(rp["policy_arn"])], toString(rp["policy_arn"]))
+		}
+		return nil
+	})
 
-	// User inline policies
-	userInlinePolicies, err := b.source.Query(ctx, `
+	// Inline policies (user, role, group)
+	eg.Go(func() error {
+		rows, err := b.queryIfExists(ectx, "aws_iam_user_policies", `
 		SELECT user_arn, policy_name, policy_document FROM aws_iam_user_policies
 	`)
-	if err != nil {
-		b.logger.Warn("failed to query user inline policies", "error", err)
-	} else {
-		for _, p := range userInlinePolicies.Rows {
-			userARN := toString(p["user_arn"])
-			policyName := toString(p["policy_name"])
-			doc := toString(p["policy_document"])
-			b.buildEdgesFromPolicy(userARN, doc, "inline:"+policyName)
+		if err != nil {
+			b.logger.Warn("failed to query user inline policies", "error", err)
+			return nil
 		}
-		b.logger.Debug("processed user inline policies", "count", len(userInlinePolicies.Rows))
-	}
+		for _, p := range rows.Rows {
+			b.buildEdgesFromPolicy(toString(p["user_arn"]), toString(p["policy_document"]), "inline:"+toString(p["policy_name"]))
+		}
+		b.logger.Debug("processed user inline policies", "count", len(rows.Rows))
+		return nil
+	})
 
-	// Role inline policies
-	roleInlinePolicies, err := b.source.Query(ctx, `
+	eg.Go(func() error {
+		rows, err := b.queryIfExists(ectx, "aws_iam_role_policies", `
 		SELECT role_arn, policy_name, policy_document FROM aws_iam_role_policies
 	`)
-	if err != nil {
-		b.logger.Warn("failed to query role inline policies", "error", err)
-	} else {
-		for _, p := range roleInlinePolicies.Rows {
-			roleARN := toString(p["role_arn"])
-			policyName := toString(p["policy_name"])
-			doc := toString(p["policy_document"])
-			b.buildEdgesFromPolicy(roleARN, doc, "inline:"+policyName)
+		if err != nil {
+			b.logger.Warn("failed to query role inline policies", "error", err)
+			return nil
 		}
-		b.logger.Debug("processed role inline policies", "count", len(roleInlinePolicies.Rows))
-	}
+		for _, p := range rows.Rows {
+			b.buildEdgesFromPolicy(toString(p["role_arn"]), toString(p["policy_document"]), "inline:"+toString(p["policy_name"]))
+		}
+		b.logger.Debug("processed role inline policies", "count", len(rows.Rows))
+		return nil
+	})
 
-	// Group inline policies
-	groupInlinePolicies, err := b.source.Query(ctx, `
+	eg.Go(func() error {
+		rows, err := b.queryIfExists(ectx, "aws_iam_group_policies", `
 		SELECT group_arn, policy_name, policy_document FROM aws_iam_group_policies
 	`)
-	if err != nil {
-		b.logger.Warn("failed to query group inline policies", "error", err)
-	} else {
-		for _, p := range groupInlinePolicies.Rows {
-			groupARN := toString(p["group_arn"])
-			policyName := toString(p["policy_name"])
-			doc := toString(p["policy_document"])
-			b.buildEdgesFromPolicy(groupARN, doc, "inline:"+policyName)
+		if err != nil {
+			b.logger.Warn("failed to query group inline policies", "error", err)
+			return nil
 		}
-		b.logger.Debug("processed group inline policies", "count", len(groupInlinePolicies.Rows))
-	}
+		for _, p := range rows.Rows {
+			b.buildEdgesFromPolicy(toString(p["group_arn"]), toString(p["policy_document"]), "inline:"+toString(p["policy_name"]))
+		}
+		b.logger.Debug("processed group inline policies", "count", len(rows.Rows))
+		return nil
+	})
 
-	// Build group membership edges
-	if err := b.buildGroupMembershipEdges(ctx); err != nil {
-		b.logger.Warn("failed to build group membership edges", "error", err)
-	}
+	// Structural edges
+	eg.Go(func() error {
+		if err := b.buildGroupMembershipEdges(ectx); err != nil {
+			b.logger.Warn("failed to build group membership edges", "error", err)
+		}
+		return nil
+	})
+	eg.Go(func() error {
+		if err := b.buildTrustEdges(ectx); err != nil {
+			b.logger.Warn("failed to build trust edges", "error", err)
+		}
+		return nil
+	})
+	eg.Go(func() error {
+		if err := b.buildInstanceProfileEdges(ectx); err != nil {
+			b.logger.Warn("failed to build instance profile edges", "error", err)
+		}
+		return nil
+	})
+	eg.Go(func() error {
+		if err := b.buildLambdaRoleEdges(ectx); err != nil {
+			b.logger.Warn("failed to build lambda role edges", "error", err)
+		}
+		return nil
+	})
 
-	// Build role assumption edges from trust policies
-	if err := b.buildTrustEdges(ctx); err != nil {
-		b.logger.Warn("failed to build trust edges", "error", err)
-	}
-
-	// Build EC2 instance profile -> role edges
-	if err := b.buildInstanceProfileEdges(ctx); err != nil {
-		b.logger.Warn("failed to build instance profile edges", "error", err)
-	}
-
-	// Build Lambda execution role edges
-	if err := b.buildLambdaRoleEdges(ctx); err != nil {
-		b.logger.Warn("failed to build lambda role edges", "error", err)
-	}
+	_ = eg.Wait()
 }
 
 func (b *Builder) buildEdgesFromPolicy(principalARN, policyDoc, via string) {
@@ -623,7 +720,7 @@ func (b *Builder) buildEdgesFromPolicy(principalARN, policyDoc, via string) {
 }
 
 func (b *Builder) buildTrustEdges(ctx context.Context) error {
-	roles, err := b.source.Query(ctx, `
+	roles, err := b.queryIfExists(ctx, "aws_iam_roles", `
 		SELECT arn, account_id, assume_role_policy_document
 		FROM aws_iam_roles
 		WHERE assume_role_policy_document IS NOT NULL
@@ -665,7 +762,7 @@ func (b *Builder) buildTrustEdges(ctx context.Context) error {
 				})
 
 				// Also create edges from all principals in that account
-				for _, node := range b.graph.GetNodesByAccount(principalAccount) {
+				for _, node := range b.graph.GetNodesByAccountIndexed(principalAccount) {
 					if node.Kind == NodeKindUser || node.Kind == NodeKindRole {
 						b.graph.AddEdge(&Edge{
 							ID:     node.ID + "->assume->" + roleARN,
@@ -782,8 +879,7 @@ func toBool(v any) bool {
 }
 
 func (b *Builder) buildGroupMembershipEdges(ctx context.Context) error {
-	// Query user-group memberships
-	memberships, err := b.source.Query(ctx, `
+	memberships, err := b.queryIfExists(ctx, "aws_iam_user_groups", `
 		SELECT user_arn, group_arn FROM aws_iam_user_groups
 	`)
 	if err != nil {
@@ -811,8 +907,7 @@ func (b *Builder) buildGroupMembershipEdges(ctx context.Context) error {
 }
 
 func (b *Builder) buildInstanceProfileEdges(ctx context.Context) error {
-	// EC2 instances with instance profiles can assume the associated role
-	instances, err := b.source.Query(ctx, `
+	instances, err := b.queryIfExists(ctx, "aws_ec2_instances", `
 		SELECT arn, iam_instance_profile
 		FROM aws_ec2_instances
 		WHERE iam_instance_profile IS NOT NULL AND iam_instance_profile != ''
@@ -859,8 +954,7 @@ func (b *Builder) buildInstanceProfileEdges(ctx context.Context) error {
 }
 
 func (b *Builder) buildLambdaRoleEdges(ctx context.Context) error {
-	// Lambda functions can assume their execution role
-	lambdas, err := b.source.Query(ctx, `
+	lambdas, err := b.queryIfExists(ctx, "aws_lambda_functions", `
 		SELECT arn, role
 		FROM aws_lambda_functions
 		WHERE role IS NOT NULL
@@ -896,136 +990,90 @@ func (b *Builder) buildLambdaRoleEdges(ctx context.Context) error {
 // GCP Builder Methods
 
 func (b *Builder) buildGCPNodes(ctx context.Context) {
-	// GCP Service Accounts
-	serviceAccounts, err := b.source.Query(ctx, `
-		SELECT unique_id, email, project_id, display_name
-		FROM gcp_iam_service_accounts
-	`)
-	if err != nil {
-		b.logger.Debug("failed to query GCP service accounts", "error", err)
-	} else {
-		for _, sa := range serviceAccounts.Rows {
-			b.graph.AddNode(&Node{
-				ID:       toString(sa["unique_id"]),
-				Kind:     NodeKindServiceAccount,
-				Name:     toString(sa["email"]),
-				Provider: "gcp",
-				Account:  toString(sa["project_id"]),
-				Properties: map[string]any{
-					"email":        sa["email"],
-					"display_name": sa["display_name"],
-				},
-			})
-		}
-		b.logger.Debug("added GCP service accounts", "count", len(serviceAccounts.Rows))
+	queries := []nodeQuery{
+		{
+			table: "gcp_iam_service_accounts",
+			query: `SELECT unique_id, email, project_id, display_name FROM gcp_iam_service_accounts`,
+			parse: func(rows []map[string]any) []*Node {
+				nodes := make([]*Node, 0, len(rows))
+				for _, sa := range rows {
+					nodes = append(nodes, &Node{
+						ID: toString(sa["unique_id"]), Kind: NodeKindServiceAccount, Name: toString(sa["email"]),
+						Provider: "gcp", Account: toString(sa["project_id"]),
+						Properties: map[string]any{"email": sa["email"], "display_name": sa["display_name"]},
+					})
+				}
+				return nodes
+			},
+		},
+		{
+			table: "gcp_compute_instances",
+			query: `SELECT id, name, project_id, zone, status, service_accounts FROM gcp_compute_instances`,
+			parse: func(rows []map[string]any) []*Node {
+				nodes := make([]*Node, 0, len(rows))
+				for _, inst := range rows {
+					nodes = append(nodes, &Node{
+						ID: toString(inst["id"]), Kind: NodeKindInstance, Name: toString(inst["name"]),
+						Provider: "gcp", Account: toString(inst["project_id"]), Region: toString(inst["zone"]),
+						Properties: map[string]any{"status": inst["status"], "service_accounts": inst["service_accounts"]},
+					})
+				}
+				return nodes
+			},
+		},
+		{
+			table: "gcp_storage_buckets",
+			query: `SELECT id, name, project_id, location, iam_policy FROM gcp_storage_buckets`,
+			parse: func(rows []map[string]any) []*Node {
+				nodes := make([]*Node, 0, len(rows))
+				for _, bucket := range rows {
+					nodes = append(nodes, &Node{
+						ID: toString(bucket["id"]), Kind: NodeKindBucket, Name: toString(bucket["name"]),
+						Provider: "gcp", Account: toString(bucket["project_id"]), Region: toString(bucket["location"]),
+						Properties: map[string]any{"iam_policy": bucket["iam_policy"]},
+					})
+				}
+				return nodes
+			},
+		},
+		{
+			table: "gcp_sql_instances",
+			query: `SELECT name, project, region, database_version, ip_addresses FROM gcp_sql_instances`,
+			parse: func(rows []map[string]any) []*Node {
+				nodes := make([]*Node, 0, len(rows))
+				for _, db := range rows {
+					nodes = append(nodes, &Node{
+						ID: toString(db["name"]), Kind: NodeKindDatabase, Name: toString(db["name"]),
+						Provider: "gcp", Account: toString(db["project"]), Region: toString(db["region"]),
+						Properties: map[string]any{"database_version": db["database_version"], "ip_addresses": db["ip_addresses"]},
+					})
+				}
+				return nodes
+			},
+		},
+		{
+			table: "gcp_cloudfunctions_functions",
+			query: `SELECT name, project_id, region, service_account_email, runtime FROM gcp_cloudfunctions_functions`,
+			parse: func(rows []map[string]any) []*Node {
+				nodes := make([]*Node, 0, len(rows))
+				for _, fn := range rows {
+					nodes = append(nodes, &Node{
+						ID: toString(fn["name"]), Kind: NodeKindFunction, Name: toString(fn["name"]),
+						Provider: "gcp", Account: toString(fn["project_id"]), Region: toString(fn["region"]),
+						Properties: map[string]any{"service_account": fn["service_account_email"], "runtime": fn["runtime"]},
+					})
+				}
+				return nodes
+			},
+		},
 	}
 
-	// GCP Compute Instances
-	instances, err := b.source.Query(ctx, `
-		SELECT id, name, project_id, zone, status, service_accounts
-		FROM gcp_compute_instances
-	`)
-	if err != nil {
-		b.logger.Debug("failed to query GCP compute instances", "error", err)
-	} else {
-		for _, inst := range instances.Rows {
-			b.graph.AddNode(&Node{
-				ID:       toString(inst["id"]),
-				Kind:     NodeKindInstance,
-				Name:     toString(inst["name"]),
-				Provider: "gcp",
-				Account:  toString(inst["project_id"]),
-				Region:   toString(inst["zone"]),
-				Properties: map[string]any{
-					"status":           inst["status"],
-					"service_accounts": inst["service_accounts"],
-				},
-			})
-		}
-		b.logger.Debug("added GCP compute instances", "count", len(instances.Rows))
-	}
-
-	// GCP Storage Buckets
-	buckets, err := b.source.Query(ctx, `
-		SELECT id, name, project_id, location, iam_policy
-		FROM gcp_storage_buckets
-	`)
-	if err != nil {
-		b.logger.Debug("failed to query GCP storage buckets", "error", err)
-	} else {
-		for _, bucket := range buckets.Rows {
-			b.graph.AddNode(&Node{
-				ID:       toString(bucket["id"]),
-				Kind:     NodeKindBucket,
-				Name:     toString(bucket["name"]),
-				Provider: "gcp",
-				Account:  toString(bucket["project_id"]),
-				Region:   toString(bucket["location"]),
-				Properties: map[string]any{
-					"iam_policy": bucket["iam_policy"],
-				},
-			})
-		}
-		b.logger.Debug("added GCP storage buckets", "count", len(buckets.Rows))
-	}
-
-	// GCP Cloud SQL Instances
-	sqlInstances, err := b.source.Query(ctx, `
-		SELECT name, project, region, database_version, ip_addresses
-		FROM gcp_sql_instances
-	`)
-	if err != nil {
-		b.logger.Debug("failed to query GCP SQL instances", "error", err)
-	} else {
-		for _, db := range sqlInstances.Rows {
-			b.graph.AddNode(&Node{
-				ID:       toString(db["name"]),
-				Kind:     NodeKindDatabase,
-				Name:     toString(db["name"]),
-				Provider: "gcp",
-				Account:  toString(db["project"]),
-				Region:   toString(db["region"]),
-				Properties: map[string]any{
-					"database_version": db["database_version"],
-					"ip_addresses":     db["ip_addresses"],
-				},
-			})
-		}
-		b.logger.Debug("added GCP SQL instances", "count", len(sqlInstances.Rows))
-	}
-
-	// GCP Cloud Functions
-	functions, err := b.source.Query(ctx, `
-		SELECT name, project_id, region, service_account_email, runtime
-		FROM gcp_cloudfunctions_functions
-	`)
-	if err != nil {
-		b.logger.Debug("failed to query GCP Cloud Functions", "error", err)
-	} else {
-		for _, fn := range functions.Rows {
-			b.graph.AddNode(&Node{
-				ID:       toString(fn["name"]),
-				Kind:     NodeKindFunction,
-				Name:     toString(fn["name"]),
-				Provider: "gcp",
-				Account:  toString(fn["project_id"]),
-				Region:   toString(fn["region"]),
-				Properties: map[string]any{
-					"service_account": fn["service_account_email"],
-					"runtime":         fn["runtime"],
-				},
-			})
-		}
-		b.logger.Debug("added GCP Cloud Functions", "count", len(functions.Rows))
-	}
+	b.runNodeQueries(ctx, queries)
 }
 
 func (b *Builder) buildGCPEdges(ctx context.Context) {
-	// GCP IAM Bindings (project-level)
-	bindings, err := b.source.Query(ctx, `
-		SELECT project_id, role, members
-		FROM gcp_iam_policy_bindings
-	`)
+	bindings, err := b.queryIfExists(ctx, "gcp_iam_policy_bindings",
+		`SELECT project_id, role, members FROM gcp_iam_policy_bindings`)
 	if err != nil {
 		b.logger.Debug("failed to query GCP IAM bindings", "error", err)
 		return
@@ -1041,19 +1089,17 @@ func (b *Builder) buildGCPEdges(ctx context.Context) {
 		}
 
 		edgeKind := gcpRoleToEdgeKind(role)
+		projectID := toString(binding["project_id"])
+
+		// Use indexed lookup (O(1)) instead of full scan
+		projectNodes := b.graph.GetNodesByAccountIndexed(projectID)
 
 		for _, m := range memberList {
 			member := toString(m)
-			// Create edges for each resource the role grants access to
-			// GCP bindings are at project level, so we create edges to project resources
-			projectID := toString(binding["project_id"])
-
-			// Find all resources in this project
-			for _, node := range b.graph.GetNodesByAccount(projectID) {
+			for _, node := range projectNodes {
 				if node.Provider != "gcp" || !node.IsResource() {
 					continue
 				}
-
 				b.graph.AddEdge(&Edge{
 					ID:     member + "->" + node.ID + ":" + role,
 					Source: member,
@@ -1070,7 +1116,6 @@ func (b *Builder) buildGCPEdges(ctx context.Context) {
 	}
 	b.logger.Debug("processed GCP IAM bindings", "count", len(bindings.Rows))
 
-	// Build service account edges for compute instances
 	b.buildGCPServiceAccountEdges(ctx)
 }
 
@@ -1124,209 +1169,141 @@ func gcpRoleToEdgeKind(role string) EdgeKind {
 // Azure Builder Methods
 
 func (b *Builder) buildAzureNodes(ctx context.Context) {
-	// Azure Service Principals
-	servicePrincipals, err := b.source.Query(ctx, `
-		SELECT id, display_name, app_id, service_principal_type
-		FROM azure_ad_service_principals
-	`)
-	if err != nil {
-		b.logger.Debug("failed to query Azure service principals", "error", err)
-	} else {
-		for _, sp := range servicePrincipals.Rows {
-			b.graph.AddNode(&Node{
-				ID:       toString(sp["id"]),
-				Kind:     NodeKindServiceAccount,
-				Name:     toString(sp["display_name"]),
-				Provider: "azure",
-				Properties: map[string]any{
-					"app_id": sp["app_id"],
-					"type":   sp["service_principal_type"],
-				},
-			})
-		}
-		b.logger.Debug("added Azure service principals", "count", len(servicePrincipals.Rows))
+	queries := []nodeQuery{
+		{
+			table: "azure_ad_service_principals",
+			query: `SELECT id, display_name, app_id, service_principal_type FROM azure_ad_service_principals`,
+			parse: func(rows []map[string]any) []*Node {
+				nodes := make([]*Node, 0, len(rows))
+				for _, sp := range rows {
+					nodes = append(nodes, &Node{
+						ID: toString(sp["id"]), Kind: NodeKindServiceAccount, Name: toString(sp["display_name"]),
+						Provider: "azure", Properties: map[string]any{"app_id": sp["app_id"], "type": sp["service_principal_type"]},
+					})
+				}
+				return nodes
+			},
+		},
+		{
+			table: "azure_ad_users",
+			query: `SELECT id, user_principal_name, display_name, mail FROM azure_ad_users`,
+			parse: func(rows []map[string]any) []*Node {
+				nodes := make([]*Node, 0, len(rows))
+				for _, u := range rows {
+					nodes = append(nodes, &Node{
+						ID: toString(u["id"]), Kind: NodeKindUser, Name: toString(u["display_name"]),
+						Provider: "azure", Properties: map[string]any{"upn": u["user_principal_name"], "mail": u["mail"]},
+					})
+				}
+				return nodes
+			},
+		},
+		{
+			table: "azure_compute_virtual_machines",
+			query: `SELECT id, name, subscription_id, resource_group, location, identity FROM azure_compute_virtual_machines`,
+			parse: func(rows []map[string]any) []*Node {
+				nodes := make([]*Node, 0, len(rows))
+				for _, vm := range rows {
+					nodes = append(nodes, &Node{
+						ID: toString(vm["id"]), Kind: NodeKindInstance, Name: toString(vm["name"]),
+						Provider: "azure", Account: toString(vm["subscription_id"]), Region: toString(vm["location"]),
+						Properties: map[string]any{"resource_group": vm["resource_group"], "identity": vm["identity"]},
+					})
+				}
+				return nodes
+			},
+		},
+		{
+			table: "azure_storage_accounts",
+			query: `SELECT id, name, subscription_id, resource_group, location, allow_blob_public_access FROM azure_storage_accounts`,
+			parse: func(rows []map[string]any) []*Node {
+				nodes := make([]*Node, 0, len(rows))
+				for _, sa := range rows {
+					isPublic := toBool(sa["allow_blob_public_access"])
+					risk := RiskNone
+					if isPublic {
+						risk = RiskHigh
+					}
+					nodes = append(nodes, &Node{
+						ID: toString(sa["id"]), Kind: NodeKindBucket, Name: toString(sa["name"]),
+						Provider: "azure", Account: toString(sa["subscription_id"]), Region: toString(sa["location"]),
+						Risk: risk, Properties: map[string]any{"resource_group": sa["resource_group"], "public": isPublic},
+					})
+				}
+				return nodes
+			},
+		},
+		{
+			table: "azure_sql_databases",
+			query: `SELECT id, name, subscription_id, resource_group, location, server_name FROM azure_sql_databases`,
+			parse: func(rows []map[string]any) []*Node {
+				nodes := make([]*Node, 0, len(rows))
+				for _, db := range rows {
+					nodes = append(nodes, &Node{
+						ID: toString(db["id"]), Kind: NodeKindDatabase, Name: toString(db["name"]),
+						Provider: "azure", Account: toString(db["subscription_id"]), Region: toString(db["location"]),
+						Properties: map[string]any{"resource_group": db["resource_group"], "server": db["server_name"]},
+					})
+				}
+				return nodes
+			},
+		},
+		{
+			table: "azure_keyvault_vaults",
+			query: `SELECT id, name, subscription_id, resource_group, location FROM azure_keyvault_vaults`,
+			parse: func(rows []map[string]any) []*Node {
+				nodes := make([]*Node, 0, len(rows))
+				for _, kv := range rows {
+					nodes = append(nodes, &Node{
+						ID: toString(kv["id"]), Kind: NodeKindSecret, Name: toString(kv["name"]),
+						Provider: "azure", Account: toString(kv["subscription_id"]), Region: toString(kv["location"]),
+						Risk: RiskHigh, Properties: map[string]any{"resource_group": kv["resource_group"]},
+					})
+				}
+				return nodes
+			},
+		},
+		{
+			table: "azure_functions_apps",
+			query: `SELECT id, name, subscription_id, resource_group, location, identity FROM azure_functions_apps`,
+			parse: func(rows []map[string]any) []*Node {
+				nodes := make([]*Node, 0, len(rows))
+				for _, fn := range rows {
+					nodes = append(nodes, &Node{
+						ID: toString(fn["id"]), Kind: NodeKindFunction, Name: toString(fn["name"]),
+						Provider: "azure", Account: toString(fn["subscription_id"]), Region: toString(fn["location"]),
+						Properties: map[string]any{"resource_group": fn["resource_group"], "identity": fn["identity"]},
+					})
+				}
+				return nodes
+			},
+		},
 	}
 
-	// Azure Users
-	users, err := b.source.Query(ctx, `
-		SELECT id, user_principal_name, display_name, mail
-		FROM azure_ad_users
-	`)
-	if err != nil {
-		b.logger.Debug("failed to query Azure AD users", "error", err)
-	} else {
-		for _, u := range users.Rows {
-			b.graph.AddNode(&Node{
-				ID:       toString(u["id"]),
-				Kind:     NodeKindUser,
-				Name:     toString(u["display_name"]),
-				Provider: "azure",
-				Properties: map[string]any{
-					"upn":  u["user_principal_name"],
-					"mail": u["mail"],
-				},
-			})
-		}
-		b.logger.Debug("added Azure AD users", "count", len(users.Rows))
-	}
-
-	// Azure Virtual Machines
-	vms, err := b.source.Query(ctx, `
-		SELECT id, name, subscription_id, resource_group, location, identity
-		FROM azure_compute_virtual_machines
-	`)
-	if err != nil {
-		b.logger.Debug("failed to query Azure VMs", "error", err)
-	} else {
-		for _, vm := range vms.Rows {
-			b.graph.AddNode(&Node{
-				ID:       toString(vm["id"]),
-				Kind:     NodeKindInstance,
-				Name:     toString(vm["name"]),
-				Provider: "azure",
-				Account:  toString(vm["subscription_id"]),
-				Region:   toString(vm["location"]),
-				Properties: map[string]any{
-					"resource_group": vm["resource_group"],
-					"identity":       vm["identity"],
-				},
-			})
-		}
-		b.logger.Debug("added Azure VMs", "count", len(vms.Rows))
-	}
-
-	// Azure Storage Accounts
-	storageAccounts, err := b.source.Query(ctx, `
-		SELECT id, name, subscription_id, resource_group, location, allow_blob_public_access
-		FROM azure_storage_accounts
-	`)
-	if err != nil {
-		b.logger.Debug("failed to query Azure storage accounts", "error", err)
-	} else {
-		for _, sa := range storageAccounts.Rows {
-			isPublic := toBool(sa["allow_blob_public_access"])
-			risk := RiskNone
-			if isPublic {
-				risk = RiskHigh
-			}
-			b.graph.AddNode(&Node{
-				ID:       toString(sa["id"]),
-				Kind:     NodeKindBucket,
-				Name:     toString(sa["name"]),
-				Provider: "azure",
-				Account:  toString(sa["subscription_id"]),
-				Region:   toString(sa["location"]),
-				Risk:     risk,
-				Properties: map[string]any{
-					"resource_group": sa["resource_group"],
-					"public":         isPublic,
-				},
-			})
-		}
-		b.logger.Debug("added Azure storage accounts", "count", len(storageAccounts.Rows))
-	}
-
-	// Azure SQL Databases
-	sqlDatabases, err := b.source.Query(ctx, `
-		SELECT id, name, subscription_id, resource_group, location, server_name
-		FROM azure_sql_databases
-	`)
-	if err != nil {
-		b.logger.Debug("failed to query Azure SQL databases", "error", err)
-	} else {
-		for _, db := range sqlDatabases.Rows {
-			b.graph.AddNode(&Node{
-				ID:       toString(db["id"]),
-				Kind:     NodeKindDatabase,
-				Name:     toString(db["name"]),
-				Provider: "azure",
-				Account:  toString(db["subscription_id"]),
-				Region:   toString(db["location"]),
-				Properties: map[string]any{
-					"resource_group": db["resource_group"],
-					"server":         db["server_name"],
-				},
-			})
-		}
-		b.logger.Debug("added Azure SQL databases", "count", len(sqlDatabases.Rows))
-	}
-
-	// Azure Key Vaults (secrets)
-	keyVaults, err := b.source.Query(ctx, `
-		SELECT id, name, subscription_id, resource_group, location
-		FROM azure_keyvault_vaults
-	`)
-	if err != nil {
-		b.logger.Debug("failed to query Azure Key Vaults", "error", err)
-	} else {
-		for _, kv := range keyVaults.Rows {
-			b.graph.AddNode(&Node{
-				ID:       toString(kv["id"]),
-				Kind:     NodeKindSecret,
-				Name:     toString(kv["name"]),
-				Provider: "azure",
-				Account:  toString(kv["subscription_id"]),
-				Region:   toString(kv["location"]),
-				Risk:     RiskHigh,
-				Properties: map[string]any{
-					"resource_group": kv["resource_group"],
-				},
-			})
-		}
-		b.logger.Debug("added Azure Key Vaults", "count", len(keyVaults.Rows))
-	}
-
-	// Azure Functions
-	functions, err := b.source.Query(ctx, `
-		SELECT id, name, subscription_id, resource_group, location, identity
-		FROM azure_functions_apps
-	`)
-	if err != nil {
-		b.logger.Debug("failed to query Azure Functions", "error", err)
-	} else {
-		for _, fn := range functions.Rows {
-			b.graph.AddNode(&Node{
-				ID:       toString(fn["id"]),
-				Kind:     NodeKindFunction,
-				Name:     toString(fn["name"]),
-				Provider: "azure",
-				Account:  toString(fn["subscription_id"]),
-				Region:   toString(fn["location"]),
-				Properties: map[string]any{
-					"resource_group": fn["resource_group"],
-					"identity":       fn["identity"],
-				},
-			})
-		}
-		b.logger.Debug("added Azure Functions", "count", len(functions.Rows))
-	}
+	b.runNodeQueries(ctx, queries)
 }
 
 func (b *Builder) buildAzureEdges(ctx context.Context) {
-	// Azure Role Assignments
-	roleAssignments, err := b.source.Query(ctx, `
-		SELECT id, principal_id, role_definition_name, scope
-		FROM azure_authorization_role_assignments
-	`)
+	roleAssignments, err := b.queryIfExists(ctx, "azure_authorization_role_assignments",
+		`SELECT id, principal_id, role_definition_name, scope FROM azure_authorization_role_assignments`)
 	if err != nil {
 		b.logger.Debug("failed to query Azure role assignments", "error", err)
 		return
 	}
 
+	// Use indexed provider lookup instead of GetAllNodes scan
+	azureNodes := b.graph.GetNodesByKindIndexed(NodeKindBucket, NodeKindInstance, NodeKindDatabase, NodeKindSecret, NodeKindFunction)
+
 	for _, ra := range roleAssignments.Rows {
 		principalID := toString(ra["principal_id"])
 		roleName := toString(ra["role_definition_name"])
 		scope := toString(ra["scope"])
-
 		edgeKind := azureRoleToEdgeKind(roleName)
 
-		// Find resources that match this scope
-		for _, node := range b.graph.GetAllNodes() {
-			if node.Provider != "azure" || !node.IsResource() {
+		for _, node := range azureNodes {
+			if node.Provider != "azure" {
 				continue
 			}
-
-			// Check if node ID starts with scope (Azure scopes are hierarchical)
 			if contains(node.ID, scope) || scope == "/" {
 				b.graph.AddEdge(&Edge{
 					ID:     principalID + "->" + node.ID + ":" + roleName,
@@ -1344,7 +1321,6 @@ func (b *Builder) buildAzureEdges(ctx context.Context) {
 	}
 	b.logger.Debug("processed Azure role assignments", "count", len(roleAssignments.Rows))
 
-	// Build managed identity edges
 	b.buildAzureManagedIdentityEdges(ctx)
 }
 

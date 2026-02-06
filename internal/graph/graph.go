@@ -18,6 +18,7 @@ type Graph struct {
 	indexByAccount   map[string][]*Node
 	indexByRisk      map[RiskLevel][]*Node
 	indexByProvider  map[string][]*Node
+	indexByARNPrefix map[string][]*Node // "service:resourceType" -> nodes for fast ARN matching
 	crossAccountEdge []*Edge
 	internetNodes    []*Node // Pre-computed internet-facing nodes
 	crownJewels      []*Node // Pre-computed high-value targets
@@ -51,12 +52,39 @@ func (g *Graph) AddNode(node *Node) {
 	g.indexBuilt = false
 }
 
+// AddNodesBatch adds multiple nodes in a single lock acquisition
+func (g *Graph) AddNodesBatch(nodes []*Node) {
+	if len(nodes) == 0 {
+		return
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for _, node := range nodes {
+		g.nodes[node.ID] = node
+	}
+	g.indexBuilt = false
+}
+
 // AddEdge adds an edge to the graph
 func (g *Graph) AddEdge(edge *Edge) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.outEdges[edge.Source] = append(g.outEdges[edge.Source], edge)
 	g.inEdges[edge.Target] = append(g.inEdges[edge.Target], edge)
+	g.indexBuilt = false
+}
+
+// AddEdgesBatch adds multiple edges in a single lock acquisition
+func (g *Graph) AddEdgesBatch(edges []*Edge) {
+	if len(edges) == 0 {
+		return
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for _, edge := range edges {
+		g.outEdges[edge.Source] = append(g.outEdges[edge.Source], edge)
+		g.inEdges[edge.Target] = append(g.inEdges[edge.Target], edge)
+	}
 	g.indexBuilt = false
 }
 
@@ -202,6 +230,7 @@ func (g *Graph) BuildIndex() {
 	g.indexByAccount = make(map[string][]*Node)
 	g.indexByRisk = make(map[RiskLevel][]*Node)
 	g.indexByProvider = make(map[string][]*Node)
+	g.indexByARNPrefix = make(map[string][]*Node)
 	g.crossAccountEdge = nil
 	g.internetNodes = nil
 	g.crownJewels = nil
@@ -218,6 +247,14 @@ func (g *Graph) BuildIndex() {
 
 		if node.Provider != "" {
 			g.indexByProvider[node.Provider] = append(g.indexByProvider[node.Provider], node)
+		}
+
+		// Index resource nodes by ARN service:resourceType prefix
+		if node.IsResource() {
+			if parsed, err := ParseARN(node.ID); err == nil {
+				prefix := parsed.ResourcePrefix()
+				g.indexByARNPrefix[prefix] = append(g.indexByARNPrefix[prefix], node)
+			}
 		}
 
 		// Pre-compute internet-facing nodes
@@ -455,4 +492,15 @@ func (g *Graph) IsIndexBuilt() bool {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	return g.indexBuilt
+}
+
+// GetResourceNodesByARNPrefix returns resource nodes matching a service:resourceType prefix.
+// Returns nil if index is not built.
+func (g *Graph) GetResourceNodesByARNPrefix(prefix string) []*Node {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	if !g.indexBuilt {
+		return nil
+	}
+	return g.indexByARNPrefix[prefix]
 }

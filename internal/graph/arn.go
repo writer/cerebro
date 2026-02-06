@@ -46,6 +46,16 @@ func (a *ARN) String() string {
 	return fmt.Sprintf("arn:%s:%s:%s:%s:%s", a.Partition, a.Service, a.Region, a.Account, a.Resource)
 }
 
+// ResourcePrefix returns "service:resourceType" for indexing.
+// For resource "role/my-role" this returns "iam:role".
+func (a *ARN) ResourcePrefix() string {
+	resType := a.Resource
+	if i := strings.IndexAny(resType, "/:"); i > 0 {
+		resType = resType[:i]
+	}
+	return a.Service + ":" + resType
+}
+
 // MatchesPattern checks if this ARN matches a pattern ARN (with wildcards)
 func (a *ARN) MatchesPattern(pattern *ARN) bool {
 	return matchComponent(a.Partition, pattern.Partition) &&
@@ -118,7 +128,8 @@ func (m *ARNMatcher) MatchesAny(arn string) bool {
 	return false
 }
 
-// FindMatchingNodes returns all nodes whose IDs match the pattern
+// FindMatchingNodes returns all nodes whose IDs match the pattern.
+// Uses the ARN prefix index when available for O(bucket) instead of O(all nodes).
 func FindMatchingNodes(g *Graph, pattern string) []*Node {
 	patternARN, err := ParseARN(pattern)
 	if err != nil {
@@ -130,6 +141,26 @@ func FindMatchingNodes(g *Graph, pattern string) []*Node {
 		return g.GetNodesByKind(NodeKindBucket, NodeKindInstance, NodeKindDatabase, NodeKindSecret, NodeKindFunction)
 	}
 
+	// Use ARN prefix index if available and pattern has a concrete service + resource type
+	prefix := patternARN.ResourcePrefix()
+	if g.IsIndexBuilt() && patternARN.Service != "*" && !strings.Contains(prefix, "*") {
+		candidates := g.GetResourceNodesByARNPrefix(prefix)
+		if candidates != nil {
+			var matches []*Node
+			for _, node := range candidates {
+				nodeARN, err := ParseARN(node.ID)
+				if err != nil {
+					continue
+				}
+				if nodeARN.MatchesPattern(patternARN) {
+					matches = append(matches, node)
+				}
+			}
+			return matches
+		}
+	}
+
+	// Fallback: full scan
 	var matches []*Node
 	for _, node := range g.GetAllNodes() {
 		if !node.IsResource() {
