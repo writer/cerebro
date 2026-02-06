@@ -12,6 +12,8 @@ type mockDataSource struct {
 	results map[string]*QueryResult
 }
 
+var _ DataSource = (*mockDataSource)(nil)
+
 func newMockDataSource() *mockDataSource {
 	return &mockDataSource{
 		results: make(map[string]*QueryResult),

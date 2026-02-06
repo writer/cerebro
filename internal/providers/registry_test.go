@@ -13,6 +13,8 @@ type MockProvider struct {
 	testCalls int
 }
 
+var _ Provider = (*MockProvider)(nil)
+
 func NewMockProvider(name string, provType ProviderType) *MockProvider {
 	return &MockProvider{
 		BaseProvider: NewBaseProvider(name, provType),

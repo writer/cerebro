@@ -625,6 +625,8 @@ type mockDataFetcher struct {
 	err     error
 }
 
+var _ DataFetcher = (*mockDataFetcher)(nil)
+
 func (m *mockDataFetcher) FetchSample(ctx context.Context, target *ScanTarget, maxBytes int64) ([]DataSample, error) {
 	if m.err != nil {
 		return nil, m.err

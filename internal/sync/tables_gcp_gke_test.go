@@ -13,6 +13,8 @@ type fakeGKEClusterClient struct {
 	request  *containerpb.ListClustersRequest
 }
 
+var _ gkeClusterManagerClient = (*fakeGKEClusterClient)(nil)
+
 func (f *fakeGKEClusterClient) ListClusters(ctx context.Context, req *containerpb.ListClustersRequest) (*containerpb.ListClustersResponse, error) {
 	f.request = req
 	return f.response, f.err

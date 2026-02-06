@@ -12,6 +12,8 @@ type MockProvider struct {
 	tickets map[string]*Ticket
 }
 
+var _ Provider = (*MockProvider)(nil)
+
 func NewMockProvider(name string) *MockProvider {
 	return &MockProvider{
 		name:    name,

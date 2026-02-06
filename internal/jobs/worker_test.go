@@ -22,6 +22,8 @@ type MockQueue struct {
 	receiveCalls    int32
 }
 
+var _ Queue = (*MockQueue)(nil)
+
 func (m *MockQueue) Enqueue(ctx context.Context, msg JobMessage) error {
 	return m.EnqueueWithDelay(ctx, msg, 0)
 }
@@ -108,6 +110,8 @@ type MockStore struct {
 	claimResult  bool
 	extendLeases []string
 }
+
+var _ Store = (*MockStore)(nil)
 
 func NewMockStore() *MockStore {
 	return &MockStore{
