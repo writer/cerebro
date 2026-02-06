@@ -18,6 +18,30 @@ import (
 	"google.golang.org/api/iterator"
 )
 
+var gcpSupportedServices = []string{"storage", "compute", "iam", "resourcemanager"}
+
+var gcpStorageSupportedActions = []string{
+	"list-buckets",
+	"list-objects",
+	"get-bucket-attrs",
+	"get-bucket-iam",
+}
+
+var gcpComputeSupportedActions = []string{
+	"list-instances",
+	"get-instance",
+}
+
+var gcpIAMSupportedActions = []string{
+	"list-service-accounts",
+}
+
+var gcpResourceManagerSupportedActions = []string{
+	"list-projects",
+	"get-project",
+	"get-project-iam",
+}
+
 // gcpInspect executes read-only GCP commands to verify infrastructure state
 func (st *SecurityTools) gcpInspect(ctx context.Context, args json.RawMessage) (string, error) {
 	var params struct {
@@ -46,7 +70,7 @@ func (st *SecurityTools) gcpInspect(ctx context.Context, args json.RawMessage) (
 	case "resourcemanager":
 		return st.handleGCPResourceManager(ctx, params.Action, params.Params)
 	default:
-		return "", fmt.Errorf("unsupported service: %s", params.Service)
+		return "", UnsupportedServiceError("gcp", params.Service, gcpSupportedServices)
 	}
 }
 
@@ -117,7 +141,7 @@ func (st *SecurityTools) handleGCPStorage(ctx context.Context, projectID, action
 		}
 		return toJSON(iamPolicyToMap(policy))
 	default:
-		return "", fmt.Errorf("unsupported storage action: %s", action)
+		return "", UnsupportedActionError("storage", action, gcpStorageSupportedActions)
 	}
 }
 
@@ -205,7 +229,7 @@ func (st *SecurityTools) handleGCPCompute(ctx context.Context, projectID, action
 		}
 		return toJSON(instanceSummary(instance))
 	default:
-		return "", fmt.Errorf("unsupported compute action: %s", action)
+		return "", UnsupportedActionError("compute", action, gcpComputeSupportedActions)
 	}
 }
 
@@ -235,7 +259,7 @@ func (st *SecurityTools) handleGCPIAM(ctx context.Context, projectID, action str
 		}
 		return toJSON(sas)
 	default:
-		return "", fmt.Errorf("unsupported iam action: %s", action)
+		return "", UnsupportedActionError("iam", action, gcpIAMSupportedActions)
 	}
 }
 
@@ -300,7 +324,7 @@ func (st *SecurityTools) handleGCPResourceManager(ctx context.Context, action st
 		}
 		return toJSON(iamPolicyProtoToMap(policy))
 	default:
-		return "", fmt.Errorf("unsupported resourcemanager action: %s", action)
+		return "", UnsupportedActionError("resourcemanager", action, gcpResourceManagerSupportedActions)
 	}
 }
 

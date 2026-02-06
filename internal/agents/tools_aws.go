@@ -13,6 +13,44 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
+var awsSupportedServices = []string{"s3", "lambda", "ecs", "iam"}
+
+var s3SupportedActions = []string{
+	"list-buckets",
+	"list-objects",
+	"get-bucket-acl",
+	"get-bucket-policy",
+	"get-public-access-block",
+	"get-bucket-encryption",
+	"get-bucket-location",
+	"get-bucket-versioning",
+	"get-bucket-logging",
+	"get-bucket-policy-status",
+}
+
+var lambdaSupportedActions = []string{
+	"list-functions",
+	"get-function",
+	"get-function-configuration",
+	"get-policy",
+}
+
+var ecsSupportedActions = []string{
+	"list-clusters",
+	"list-services",
+	"describe-clusters",
+	"describe-services",
+	"describe-task-definition",
+}
+
+var iamSupportedActions = []string{
+	"list-roles",
+	"get-role",
+	"list-attached-role-policies",
+	"list-role-policies",
+	"get-policy",
+}
+
 // awsInspect executes read-only AWS commands to verify infrastructure state
 func (st *SecurityTools) awsInspect(ctx context.Context, args json.RawMessage) (string, error) {
 	var params struct {
@@ -22,6 +60,10 @@ func (st *SecurityTools) awsInspect(ctx context.Context, args json.RawMessage) (
 	}
 	if err := json.Unmarshal(args, &params); err != nil {
 		return "", err
+	}
+
+	if !containsString(awsSupportedServices, params.Service) {
+		return "", UnsupportedServiceError("aws", params.Service, awsSupportedServices)
 	}
 
 	// Load AWS config (uses environment variables or shared config profile)
@@ -41,7 +83,7 @@ func (st *SecurityTools) awsInspect(ctx context.Context, args json.RawMessage) (
 	case "iam":
 		return st.handleIAM(ctx, cfg, params.Action, params.Params)
 	default:
-		return "", fmt.Errorf("unsupported service: %s", params.Service)
+		return "", UnsupportedServiceError("aws", params.Service, awsSupportedServices)
 	}
 }
 
@@ -146,7 +188,7 @@ func (st *SecurityTools) handleS3(ctx context.Context, cfg aws.Config, action st
 		}
 		return toJSON(result)
 	default:
-		return "", fmt.Errorf("unsupported s3 action: %s", action)
+		return "", UnsupportedActionError("s3", action, s3SupportedActions)
 	}
 }
 
@@ -191,7 +233,7 @@ func (st *SecurityTools) handleLambda(ctx context.Context, cfg aws.Config, actio
 		}
 		return toJSON(result)
 	default:
-		return "", fmt.Errorf("unsupported lambda action: %s", action)
+		return "", UnsupportedActionError("lambda", action, lambdaSupportedActions)
 	}
 }
 
@@ -246,7 +288,7 @@ func (st *SecurityTools) handleECS(ctx context.Context, cfg aws.Config, action s
 		}
 		return toJSON(result.TaskDefinition)
 	default:
-		return "", fmt.Errorf("unsupported ecs action: %s", action)
+		return "", UnsupportedActionError("ecs", action, ecsSupportedActions)
 	}
 }
 
@@ -301,7 +343,7 @@ func (st *SecurityTools) handleIAM(ctx context.Context, cfg aws.Config, action s
 		}
 		return toJSON(result.Policy)
 	default:
-		return "", fmt.Errorf("unsupported iam action: %s", action)
+		return "", UnsupportedActionError("iam", action, iamSupportedActions)
 	}
 }
 

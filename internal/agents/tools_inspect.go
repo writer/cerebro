@@ -10,6 +10,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 )
 
+var inspectSupportedProviders = []string{"aws", "gcp"}
+var inspectGCPSupportedServices = []string{"storage", "compute", "resourcemanager"}
+
 type resourceDescriptor struct {
 	Provider     string
 	Service      string
@@ -84,7 +87,7 @@ func (st *SecurityTools) inspectCloudResource(ctx context.Context, args json.Raw
 	case "gcp":
 		return st.inspectGCPResource(ctx, descriptor)
 	default:
-		return "", fmt.Errorf("unsupported provider: %s", descriptor.Provider)
+		return "", UnsupportedProviderError(descriptor.Provider, inspectSupportedProviders)
 	}
 }
 
@@ -121,7 +124,7 @@ func (st *SecurityTools) runDirectInspection(ctx context.Context, params inspect
 		return st.gcpInspect(ctx, raw)
 	}
 
-	return "", fmt.Errorf("unsupported provider: %s", provider)
+	return "", UnsupportedProviderError(provider, inspectSupportedProviders)
 }
 
 func resolveResourceDescriptor(params inspectParams) (resourceDescriptor, error) {
@@ -197,6 +200,9 @@ func (st *SecurityTools) inspectAWSResource(ctx context.Context, desc resourceDe
 	if desc.Region != "" {
 		opts = append(opts, config.WithRegion(desc.Region))
 	}
+	if !containsString(awsSupportedServices, desc.Service) {
+		return "", UnsupportedServiceError("aws", desc.Service, awsSupportedServices)
+	}
 
 	cfg, err := config.LoadDefaultConfig(ctx, opts...)
 	if err != nil {
@@ -211,7 +217,7 @@ func (st *SecurityTools) inspectAWSResource(ctx context.Context, desc resourceDe
 		"region":        desc.Region,
 	}
 	checks := map[string]interface{}{}
-	errors := map[string]string{}
+	errorDetails := map[string]interface{}{}
 
 	runAWS := func(action string, params map[string]interface{}) {
 		if params == nil {
@@ -219,7 +225,7 @@ func (st *SecurityTools) inspectAWSResource(ctx context.Context, desc resourceDe
 		}
 		value, err := st.awsAction(ctx, cfg, desc.Service, action, params)
 		if err != nil {
-			errors[action] = err.Error()
+			errorDetails[action] = toolErrorValue(err)
 			return
 		}
 		checks[action] = value
@@ -243,7 +249,7 @@ func (st *SecurityTools) inspectAWSResource(ctx context.Context, desc resourceDe
 		switch desc.ResourceType {
 		case "service":
 			if desc.Cluster == "" {
-				errors["describe-services"] = "cluster name required for ECS service inspection"
+				errorDetails["describe-services"] = "cluster name required for ECS service inspection"
 				break
 			}
 			runAWS("describe-services", map[string]interface{}{
@@ -253,7 +259,7 @@ func (st *SecurityTools) inspectAWSResource(ctx context.Context, desc resourceDe
 		case "cluster", "":
 			runAWS("describe-clusters", map[string]interface{}{"Clusters": []string{desc.Identifier}})
 		default:
-			errors["inspect"] = fmt.Sprintf("unsupported ECS resource type: %s", desc.ResourceType)
+			errorDetails["inspect"] = UnsupportedResourceTypeError("ecs", desc.ResourceType, []string{"service", "cluster"}).AsMap()
 		}
 	case "iam":
 		switch desc.ResourceType {
@@ -265,21 +271,25 @@ func (st *SecurityTools) inspectAWSResource(ctx context.Context, desc resourceDe
 		case "policy":
 			runAWS("get-policy", map[string]interface{}{"PolicyArn": desc.Identifier})
 		default:
-			errors["inspect"] = fmt.Sprintf("unsupported IAM resource type: %s", desc.ResourceType)
+			errorDetails["inspect"] = UnsupportedResourceTypeError("iam", desc.ResourceType, []string{"role", "policy"}).AsMap()
 		}
 	default:
-		return "", fmt.Errorf("unsupported AWS service: %s", desc.Service)
+		return "", UnsupportedServiceError("aws", desc.Service, awsSupportedServices)
 	}
 
 	result["checks"] = checks
-	if len(errors) > 0 {
-		result["errors"] = errors
+	if len(errorDetails) > 0 {
+		result["errors"] = errorDetails
 	}
 
 	return toJSON(result)
 }
 
 func (st *SecurityTools) inspectGCPResource(ctx context.Context, desc resourceDescriptor) (string, error) {
+	if !containsString(inspectGCPSupportedServices, desc.Service) {
+		return "", UnsupportedServiceError("gcp", desc.Service, inspectGCPSupportedServices)
+	}
+
 	result := map[string]interface{}{
 		"provider":      "gcp",
 		"service":       desc.Service,
@@ -288,7 +298,7 @@ func (st *SecurityTools) inspectGCPResource(ctx context.Context, desc resourceDe
 		"project":       desc.Project,
 	}
 	checks := map[string]interface{}{}
-	errors := map[string]string{}
+	errorDetails := map[string]interface{}{}
 
 	runGCP := func(action string, params map[string]interface{}) {
 		if params == nil {
@@ -303,7 +313,7 @@ func (st *SecurityTools) inspectGCPResource(ctx context.Context, desc resourceDe
 		raw, _ := json.Marshal(payload)
 		value, err := st.gcpInspect(ctx, raw)
 		if err != nil {
-			errors[action] = err.Error()
+			errorDetails[action] = toolErrorValue(err)
 			return
 		}
 		checks[action] = decodeJSON(value)
@@ -332,12 +342,12 @@ func (st *SecurityTools) inspectGCPResource(ctx context.Context, desc resourceDe
 		runGCP("get-project", map[string]interface{}{"project": desc.Project})
 		runGCP("get-project-iam", map[string]interface{}{"project": desc.Project})
 	default:
-		return "", fmt.Errorf("unsupported GCP service: %s", desc.Service)
+		return "", UnsupportedServiceError("gcp", desc.Service, inspectGCPSupportedServices)
 	}
 
 	result["checks"] = checks
-	if len(errors) > 0 {
-		result["errors"] = errors
+	if len(errorDetails) > 0 {
+		result["errors"] = errorDetails
 	}
 	return toJSON(result)
 }
@@ -357,7 +367,7 @@ func (st *SecurityTools) awsAction(ctx context.Context, cfg aws.Config, service,
 	case "iam":
 		out, err = st.handleIAM(ctx, cfg, action, raw)
 	default:
-		return nil, fmt.Errorf("unsupported AWS service: %s", service)
+		return nil, UnsupportedServiceError("aws", service, awsSupportedServices)
 	}
 	if err != nil {
 		return nil, err

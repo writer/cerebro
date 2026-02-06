@@ -154,11 +154,12 @@ func RunCodeToCloudFlow(ctx context.Context, tools *SecurityTools, opts CodeToCl
 		case "gcp":
 			raw, err = tools.inspectGCPResource(ctx, desc)
 		default:
-			err = fmt.Errorf("unsupported provider: %s", desc.Provider)
+			err = UnsupportedProviderError(desc.Provider, inspectSupportedProviders)
 		}
 		if err != nil {
-			inspection.Error = err.Error()
-			report.Errors = append(report.Errors, err.Error())
+			toolErr := toolErrorOutput(err)
+			inspection.Error = toolErr
+			report.Errors = append(report.Errors, toolErr)
 			report.Failed++
 			report.Inspections = append(report.Inspections, inspection)
 			continue

@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -194,7 +195,12 @@ func runAgentLoop(ctx context.Context, provider agents.LLMProvider, session *age
 				// Execute tool
 				output, err := tool.Handler(ctx, tc.Arguments)
 				if err != nil {
-					output = fmt.Sprintf("Error executing tool: %v", err)
+					var toolErr *agents.ToolError
+					if errors.As(err, &toolErr) {
+						output = toolErr.JSON()
+					} else {
+						output = fmt.Sprintf("Error executing tool: %v", err)
+					}
 				}
 
 				// Truncate output if too long for display, but keep full for context

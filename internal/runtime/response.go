@@ -64,6 +64,16 @@ const (
 	ActionWebhook           ResponseActionType = "webhook"
 )
 
+var supportedResponseActions = []ResponseActionType{
+	ActionKillProcess,
+	ActionIsolateContainer,
+	ActionIsolateHost,
+	ActionBlockIP,
+	ActionBlockDomain,
+	ActionAlert,
+	ActionCreateTicket,
+}
+
 // PolicyScope limits where policy applies
 type PolicyScope struct {
 	Clusters   []string          `json:"clusters,omitempty"`
@@ -439,7 +449,7 @@ func (e *ResponseEngine) executeAction(ctx context.Context, action PolicyAction,
 		return nil
 
 	default:
-		return fmt.Errorf("unsupported action type: %s", action.Type)
+		return unsupportedResponseActionError(action.Type, supportedResponseActions)
 	}
 
 	return nil
