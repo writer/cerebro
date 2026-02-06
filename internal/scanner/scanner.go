@@ -2,14 +2,19 @@ package scanner
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/writerinternal/cerebro/internal/attackpath"
+	"github.com/writerinternal/cerebro/internal/cache"
 	"github.com/writerinternal/cerebro/internal/graph"
 	"github.com/writerinternal/cerebro/internal/policy"
 )
@@ -22,6 +27,9 @@ type Scanner struct {
 	workers          int
 	batchSize        int
 	logger           *slog.Logger
+	evalCache        *cache.PolicyCache // optional: caches asset hash -> skip
+	cacheHits        int64
+	cacheMisses      int64
 }
 
 type ScanConfig struct {
@@ -46,10 +54,37 @@ func NewScanner(engine *policy.Engine, cfg ScanConfig, logger *slog.Logger) *Sca
 	}
 }
 
+// SetCache enables evaluation caching. Cached assets whose content hash
+// hasn't changed will skip policy evaluation on subsequent scans.
+func (s *Scanner) SetCache(c *cache.PolicyCache) {
+	s.evalCache = c
+}
+
+// hashAsset produces a deterministic content hash of the asset properties,
+// excluding volatile metadata fields (_cq_sync_time, _cq_id, _cq_table).
+func hashAsset(asset map[string]interface{}) string {
+	keys := make([]string, 0, len(asset))
+	for k := range asset {
+		if k == "_cq_sync_time" || k == "_cq_id" || k == "_cq_table" {
+			continue
+		}
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	h := sha256.New()
+	for _, k := range keys {
+		v, _ := json.Marshal(asset[k])
+		h.Write([]byte(k))
+		h.Write(v)
+	}
+	return hex.EncodeToString(h.Sum(nil))[:16]
+}
+
 type ScanResult struct {
 	Findings   []policy.Finding
 	Scanned    int64
 	Violations int64
+	Skipped    int64 // assets skipped via cache
 	Duration   time.Duration
 	Errors     []string
 }
@@ -91,6 +126,22 @@ func (s *Scanner) ScanAssets(ctx context.Context, assets []map[string]interface{
 				default:
 				}
 
+				assetID := ""
+				if id, ok := asset["_cq_id"].(string); ok {
+					assetID = id
+				}
+
+				// Check content-hash cache: skip if asset unchanged since last scan
+				if s.evalCache != nil && assetID != "" {
+					h := hashAsset(asset)
+					if _, hit := s.evalCache.GetEvaluation(h, assetID); hit {
+						atomic.AddInt64(&scanned, 1)
+						atomic.AddInt64(&s.cacheHits, 1)
+						continue
+					}
+					atomic.AddInt64(&s.cacheMisses, 1)
+				}
+
 				findings, err := s.engine.EvaluateAsset(ctx, asset)
 				atomic.AddInt64(&scanned, 1)
 
@@ -100,6 +151,12 @@ func (s *Scanner) ScanAssets(ctx context.Context, assets []map[string]interface{
 					default:
 					}
 					continue
+				}
+
+				// Store result in cache
+				if s.evalCache != nil && assetID != "" {
+					h := hashAsset(asset)
+					s.evalCache.SetEvaluation(h, assetID, len(findings) > 0)
 				}
 
 				if len(findings) > 0 {
@@ -145,11 +202,16 @@ func (s *Scanner) ScanAssets(ctx context.Context, assets []map[string]interface{
 
 	result.Scanned = atomic.LoadInt64(&scanned)
 	result.Violations = atomic.LoadInt64(&violations)
+	result.Skipped = atomic.LoadInt64(&s.cacheHits)
 	result.Duration = time.Since(start)
 
+	hits := atomic.LoadInt64(&s.cacheHits)
+	misses := atomic.LoadInt64(&s.cacheMisses)
 	s.logger.Info("scan complete",
 		"scanned", result.Scanned,
 		"violations", result.Violations,
+		"cache_hits", hits,
+		"cache_misses", misses,
 		"duration_ms", result.Duration.Milliseconds(),
 	)
 

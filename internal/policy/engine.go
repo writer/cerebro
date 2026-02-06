@@ -36,6 +36,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -214,6 +215,62 @@ func (e *Engine) ListPolicies() []*Policy {
 		result = append(result, p)
 	}
 	return result
+}
+
+// ColumnsForTable returns the set of top-level asset columns referenced by
+// conditions in policies that apply to the given table. This is used for
+// column projection in Snowflake queries. Always includes metadata columns.
+func (e *Engine) ColumnsForTable(table string) []string {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	cols := map[string]struct{}{
+		"_cq_id":        {},
+		"_cq_sync_time": {},
+	}
+
+	lower := strings.ToLower(table)
+	for _, p := range e.policies {
+		policyTable := mapResourceToTable(p.Resource)
+		if policyTable != "" && policyTable != lower {
+			continue
+		}
+		for _, cond := range p.Conditions {
+			if field := extractConditionField(cond); field != "" {
+				top := strings.SplitN(field, ".", 2)[0]
+				cols[strings.ToLower(top)] = struct{}{}
+			}
+		}
+	}
+
+	result := make([]string, 0, len(cols))
+	for c := range cols {
+		result = append(result, c)
+	}
+	sort.Strings(result)
+	return result
+}
+
+func extractConditionField(condition string) string {
+	condition = strings.TrimSpace(condition)
+	for _, op := range []string{"==", "!=", ">=", "<=", ">", "<"} {
+		if parts := strings.SplitN(condition, op, 2); len(parts) == 2 {
+			return strings.TrimSpace(parts[0])
+		}
+	}
+	if strings.Contains(condition, " contains ") {
+		parts := strings.SplitN(condition, " contains ", 2)
+		if len(parts) == 2 {
+			return strings.TrimSpace(parts[0])
+		}
+	}
+	if strings.HasSuffix(condition, " not exists") {
+		return strings.TrimSpace(strings.TrimSuffix(condition, " not exists"))
+	}
+	if strings.HasSuffix(condition, " exists") {
+		return strings.TrimSpace(strings.TrimSuffix(condition, " exists"))
+	}
+	return ""
 }
 
 func (e *Engine) Evaluate(ctx context.Context, req *EvalRequest) (*EvalResponse, error) {

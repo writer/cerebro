@@ -26,6 +26,7 @@ type AssetFilter struct {
 	Offset   int
 	Since    time.Time
 	SinceID  string
+	Columns  []string // If set, only SELECT these columns instead of *
 }
 
 func (c *Client) GetAssets(ctx context.Context, table string, filter AssetFilter) ([]map[string]interface{}, error) {
@@ -38,7 +39,21 @@ func (c *Client) GetAssets(ctx context.Context, table string, filter AssetFilter
 	if err != nil {
 		return nil, err
 	}
-	query := "SELECT * FROM " + tableRef
+
+	selectClause := "*"
+	if len(filter.Columns) > 0 {
+		validated := make([]string, 0, len(filter.Columns))
+		for _, col := range filter.Columns {
+			if err := ValidateColumnName(col); err != nil {
+				continue
+			}
+			validated = append(validated, strings.ToUpper(col))
+		}
+		if len(validated) > 0 {
+			selectClause = strings.Join(validated, ", ")
+		}
+	}
+	query := "SELECT " + selectClause + " FROM " + tableRef
 
 	var conditions []string
 	var args []interface{}
@@ -193,4 +208,27 @@ func (c *Client) CountAssets(ctx context.Context, table string) (int64, error) {
 		}
 	}
 	return 0, nil
+}
+
+// DescribeColumns returns the column names for a table. Used for safe column projection.
+func (c *Client) DescribeColumns(ctx context.Context, table string) ([]string, error) {
+	if err := ValidateTableNameStrict(table); err != nil {
+		return nil, fmt.Errorf("invalid table name: %w", err)
+	}
+	tableRef, err := SafeTableRef(c.database, c.schema, table)
+	if err != nil {
+		return nil, err
+	}
+	result, err := c.Query(ctx, fmt.Sprintf("SELECT column_name FROM information_schema.columns WHERE table_name = '%s' AND table_schema = 'RAW'", strings.ToUpper(table)))
+	if err != nil {
+		return nil, err
+	}
+	cols := make([]string, 0, len(result.Rows))
+	for _, row := range result.Rows {
+		if name, ok := row["column_name"].(string); ok {
+			cols = append(cols, strings.ToLower(name))
+		}
+	}
+	_ = tableRef // validated but unused in the final query
+	return cols, nil
 }

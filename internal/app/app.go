@@ -463,6 +463,9 @@ func (a *App) initScanner() {
 		Workers:   10,
 		BatchSize: 100,
 	}, a.Logger)
+	if a.Cache != nil {
+		a.Scanner.SetCache(a.Cache)
+	}
 }
 
 func (a *App) initCache() {
