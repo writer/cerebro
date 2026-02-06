@@ -64,6 +64,8 @@ import (
 	"github.com/writerinternal/cerebro/internal/threatintel"
 	"github.com/writerinternal/cerebro/internal/ticketing"
 	"github.com/writerinternal/cerebro/internal/webhooks"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // App is the main application container that holds references to all initialized
@@ -118,6 +120,10 @@ type App struct {
 	// Security Graph
 	SecurityGraph        *graph.Graph
 	SecurityGraphBuilder *graph.Builder
+	graphReady           chan struct{} // closed when initial graph build completes
+
+	// Cached table list from Snowflake (shared by graph builder + policy coverage)
+	AvailableTables []string
 }
 
 // Config holds all application configuration
@@ -333,40 +339,50 @@ func New(ctx context.Context) (*App, error) {
 		Logger: logger,
 	}
 
-	// Initialize core services
+	// Phase 1: Snowflake + policies (everything else depends on these)
 	if err := app.initSnowflake(ctx); err != nil {
 		logger.Warn("snowflake initialization failed", "error", err)
 	}
-
 	app.initPolicy()
-	app.initFindings()
+
+	// Phase 2a: independent services in parallel (no cross-dependencies)
+	g, gctx := errgroup.WithContext(ctx)
+
+	g.Go(func() error { app.initCache(); return nil })
+	g.Go(func() error { app.initTicketing(); return nil })
+	g.Go(func() error { app.initIdentity(); return nil })
+	g.Go(func() error { app.initAttackPath(); return nil })
+	g.Go(func() error { app.initWebhooks(); return nil })
+	g.Go(func() error { app.initNotifications(); return nil })
+	g.Go(func() error { app.initRBAC(); return nil })
+	g.Go(func() error { app.initCompliance(); return nil })
+	g.Go(func() error { app.initHealth(); return nil })
+	g.Go(func() error { app.initLineage(); return nil })
+	g.Go(func() error { app.initRuntime(); return nil })
+	g.Go(func() error { app.initFindings(); return nil })
+	g.Go(func() error { app.initProviders(gctx); return nil })
+	g.Go(func() error { app.initScheduler(gctx); return nil })
+	g.Go(func() error { app.initRepositories(); return nil })
+	g.Go(func() error { app.initSnowflakeFindings(gctx); return nil })
+	g.Go(func() error { app.initScanWatermarks(gctx); return nil })
+	g.Go(func() error { app.initThreatIntel(gctx); return nil })
+	g.Go(func() error { app.initAvailableTables(gctx); return nil })
+
+	_ = g.Wait()
+
+	// Phase 2b: services that depend on Phase 2a outputs
+	// initRemediation reads Ticketing, Notifications, Findings
+	// initAgents reads Findings
+	g2, _ := errgroup.WithContext(ctx)
+	g2.Go(func() error { app.initRemediation(); return nil })
+	g2.Go(func() error { app.initAgents(); return nil })
+	_ = g2.Wait()
+
+	// Phase 3: depends on findings store being ready
 	app.initScanner()
-	app.initCache()
 
-	// Initialize feature services
-	app.initAgents()
-	app.initTicketing()
-	app.initIdentity()
-	app.initAttackPath()
-	app.initProviders(ctx)
-	app.initWebhooks()
-	app.initNotifications()
-	app.initScheduler(ctx)
-	app.initRepositories()
-	app.initSnowflakeFindings(ctx)
-	app.initScanWatermarks(ctx)
-
-	// Initialize new services
-	app.initRBAC()
-	app.initThreatIntel(ctx)
-	app.initCompliance()
-	app.initHealth()
-	app.initLineage()
-	app.initRemediation()
-	app.initRuntime()
+	// Phase 4: depends on AvailableTables being populated
 	app.initSecurityGraph(ctx)
-
-	// Validate policy coverage against available tables
 	app.validatePolicyCoverage(ctx)
 
 	logger.Info("application initialized",
@@ -704,7 +720,17 @@ func (a *App) initScheduler(_ context.Context) {
 		if a.SecurityGraphBuilder == nil {
 			return nil
 		}
-		return a.RebuildSecurityGraph(ctx)
+		if err := a.SecurityGraphBuilder.Build(ctx); err != nil {
+			return err
+		}
+		a.SecurityGraph = a.SecurityGraphBuilder.Graph()
+		meta := a.SecurityGraph.Metadata()
+		a.Logger.Info("security graph rebuilt",
+			"nodes", meta.NodeCount,
+			"edges", meta.EdgeCount,
+			"duration", meta.BuildDuration,
+		)
+		return nil
 	})
 	a.Logger.Info("scheduled graph rebuild enabled", "interval", graphInterval)
 }
@@ -768,7 +794,7 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 
 				// Send notification for new critical/high findings
 				if finding.FirstSeen.Equal(finding.LastSeen) && (f.Severity == "critical" || f.Severity == "high") {
-					_ = a.Notifications.Send(ctx, notifications.Event{
+					if err := a.Notifications.Send(ctx, notifications.Event{
 						Type:     notifications.EventFindingCreated,
 						Severity: f.Severity,
 						Title:    fmt.Sprintf("New %s Finding: %s", f.Severity, f.PolicyName),
@@ -778,7 +804,9 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 							"policy_id":  f.PolicyID,
 							"resource":   f.Resource,
 						},
-					})
+					}); err != nil {
+						a.Logger.Warn("failed to send finding notification", "finding_id", f.ID, "error", err)
+					}
 				}
 			}
 
@@ -813,7 +841,7 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 	}
 
 	// Send scan completed notification
-	_ = a.Notifications.Send(ctx, notifications.Event{
+	if err := a.Notifications.Send(ctx, notifications.Event{
 		Type:    notifications.EventScanCompleted,
 		Title:   "Scheduled Scan Completed",
 		Message: fmt.Sprintf("Scanned %d assets, found %d violations", totalScanned, totalViolations),
@@ -822,7 +850,9 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 			"violations": totalViolations,
 			"tables":     tables,
 		},
-	})
+	}); err != nil {
+		a.Logger.Warn("failed to send scan completed notification", "error", err)
+	}
 
 	// Emit webhook
 	if err := a.Webhooks.EmitScanCompleted(ctx, int64(totalScanned), int64(totalViolations), 0); err != nil {
@@ -856,34 +886,43 @@ func (a *App) initSnowflakeFindings(ctx context.Context) {
 }
 
 func (a *App) initScanWatermarks(ctx context.Context) {
-	var db interface{ Query(string) error }
 	if a.Snowflake != nil {
 		a.ScanWatermarks = scanner.NewWatermarkStore(a.Snowflake.DB())
-		// Load existing watermarks
 		if err := a.ScanWatermarks.LoadWatermarks(ctx); err != nil {
 			a.Logger.Warn("failed to load scan watermarks", "error", err)
 		}
 	} else {
 		a.ScanWatermarks = scanner.NewWatermarkStore(nil)
 	}
-	_ = db // unused but shows pattern
 	a.Logger.Info("scan watermarks initialized")
 }
 
+// initAvailableTables caches the Snowflake table list for reuse by graph builder and policy validation.
+func (a *App) initAvailableTables(ctx context.Context) {
+	if a.Snowflake == nil {
+		return
+	}
+	tables, err := a.Snowflake.ListAvailableTables(ctx)
+	if err != nil {
+		a.Logger.Warn("failed to list available tables", "error", err)
+		return
+	}
+	a.AvailableTables = tables
+}
+
 // validatePolicyCoverage checks that required tables exist for loaded policies
-func (a *App) validatePolicyCoverage(ctx context.Context) {
+func (a *App) validatePolicyCoverage(_ context.Context) {
 	if a.Snowflake == nil {
 		a.Logger.Warn("skipping policy coverage validation - Snowflake not configured")
 		return
 	}
 
-	availableTables, err := a.Snowflake.ListAvailableTables(ctx)
-	if err != nil {
-		a.Logger.Warn("failed to list available tables for policy validation", "error", err)
+	if a.AvailableTables == nil {
+		a.Logger.Warn("skipping policy coverage validation - table list not available")
 		return
 	}
 
-	gaps := a.Policy.ValidateTableCoverage(availableTables)
+	gaps := a.Policy.ValidateTableCoverage(a.AvailableTables)
 	if len(gaps) == 0 {
 		a.Logger.Info("all policies have required tables available")
 		return
@@ -1231,8 +1270,11 @@ func (a *App) initRuntime() {
 }
 
 func (a *App) initSecurityGraph(ctx context.Context) {
+	a.graphReady = make(chan struct{})
+
 	if a.Snowflake == nil {
 		a.Logger.Warn("security graph disabled - snowflake not configured")
+		close(a.graphReady)
 		return
 	}
 
@@ -1242,6 +1284,8 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 
 	// Build initial graph in background
 	go func() {
+		defer close(a.graphReady)
+
 		if err := a.SecurityGraphBuilder.Build(ctx); err != nil {
 			a.Logger.Error("failed to build security graph", "error", err)
 			return
@@ -1253,7 +1297,6 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 			"duration", meta.BuildDuration,
 		)
 
-		// Emit webhook event
 		if err := a.Webhooks.EmitWithErrors(ctx, webhooks.EventGraphRebuilt, map[string]interface{}{
 			"nodes":          meta.NodeCount,
 			"edges":          meta.EdgeCount,
@@ -1262,6 +1305,20 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 			a.Logger.Warn("failed to emit graph rebuilt webhook", "error", err)
 		}
 	}()
+}
+
+// WaitForGraph blocks until the initial graph build completes (or ctx is cancelled).
+// Returns true if the graph is ready and has nodes, false otherwise.
+func (a *App) WaitForGraph(ctx context.Context) bool {
+	if a.graphReady == nil {
+		return false
+	}
+	select {
+	case <-a.graphReady:
+		return a.SecurityGraph != nil && a.SecurityGraph.NodeCount() > 0
+	case <-ctx.Done():
+		return false
+	}
 }
 
 // RebuildSecurityGraph triggers a rebuild of the security graph

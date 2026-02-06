@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -86,17 +87,13 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	graphAvailable := false
 	if scanUseGraph {
-		spinner := NewSpinner("Building security graph for enhanced analysis")
+		spinner := NewSpinner("Waiting for security graph")
 		spinner.Start()
-		err := application.RebuildSecurityGraph(ctx)
-		if err != nil {
-			spinner.Stop(false, "Security graph build failed, falling back to profile-based analysis")
-			Warning("Graph error: %v", err)
-		} else if application.SecurityGraph != nil && application.SecurityGraph.NodeCount() > 0 {
-			spinner.Stop(true, fmt.Sprintf("Security graph built (%d nodes)", application.SecurityGraph.NodeCount()))
+		if application.WaitForGraph(ctx) {
+			spinner.Stop(true, fmt.Sprintf("Security graph ready (%d nodes)", application.SecurityGraph.NodeCount()))
 			graphAvailable = true
 		} else {
-			spinner.Stop(false, "Security graph is empty, falling back to profile-based analysis")
+			spinner.Stop(false, "Security graph not available, falling back to profile-based analysis")
 		}
 	}
 
@@ -132,142 +129,40 @@ func runScan(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Scan each table
+	// Scan tables concurrently
 	start := time.Now()
 	var totalScanned int64
 	var totalViolations int64
 	var allFindings []map[string]interface{}
+	var scanMu sync.Mutex
 
+	// Limit concurrent Snowflake queries to avoid overwhelming the warehouse
+	const maxConcurrentScans = 6
+	sem := make(chan struct{}, maxConcurrentScans)
+
+	var scanWg sync.WaitGroup
 	for _, table := range tables {
-		fmt.Printf("\n%s Scanning %s...\n", color(colorCyan, "→"), table)
+		table := table
+		scanWg.Add(1)
+		sem <- struct{}{} // acquire semaphore
+		go func() {
+			defer scanWg.Done()
+			defer func() { <-sem }() // release semaphore
 
-		filter := snowflake.AssetFilter{Limit: scanLimit}
-		useCDC := false
-		var cdcCursor time.Time
-		var cdcIDs []string
+			scanned, violations, fnds := scanOneTable(ctx, application, table, scanFull, scanLimit, scanToxicCombos, graphAvailable)
 
-		// Use incremental scanning via CDC events when available and not forced full scan
-		if !scanFull && application.ScanWatermarks != nil {
-			if wm := application.ScanWatermarks.GetWatermark(table); wm != nil {
-				filter.Since = wm.LastScanTime
-				filter.SinceID = wm.LastScanID
+			scanMu.Lock()
+			totalScanned += scanned
+			totalViolations += violations
+			allFindings = append(allFindings, fnds...)
+			scanMu.Unlock()
+		}()
+	}
+	scanWg.Wait()
 
-				cdcEvents, err := application.Snowflake.GetCDCEvents(ctx, table, wm.LastScanTime, scanLimit)
-				if err != nil {
-					Warning("Failed to query CDC events for %s, falling back to sync_time: %v", table, err)
-					fmt.Printf("  Incremental scan (since %s)\n", wm.LastScanTime.Format(time.RFC3339))
-				} else {
-					useCDC = true
-					fmt.Printf("  Incremental scan via CDC_EVENTS (since %s)\n", wm.LastScanTime.Format(time.RFC3339))
-					cdcIDs, cdcCursor = filterCDCEvents(cdcEvents)
-					if len(cdcEvents) == 0 {
-						fmt.Printf("  No CDC changes found\n")
-					}
-				}
-			}
-		}
-		if scanFull {
-			fmt.Printf("  Full scan (--full flag set)\n")
-		}
-
-		var assets []map[string]interface{}
-		if useCDC && !scanFull {
-			if len(cdcIDs) == 0 {
-				if !cdcCursor.IsZero() && application.ScanWatermarks != nil {
-					application.ScanWatermarks.SetWatermark(table, cdcCursor, "", 0)
-					go func() {
-						_ = application.ScanWatermarks.PersistWatermarks(ctx)
-					}()
-				}
-				fmt.Printf("  No assets to scan for CDC changes\n")
-				continue
-			}
-			assets, err = application.Snowflake.GetAssetsByIDs(ctx, table, cdcIDs)
-		} else {
-			assets, err = application.Snowflake.GetAssets(ctx, table, filter)
-		}
-		if err != nil {
-			Warning("Failed to fetch %s: %v", table, err)
-			continue
-		}
-
-		if len(assets) == 0 {
-			fmt.Printf("  No new assets found\n")
-			continue
-		}
-
-		var scannedCount, violationCount int64
-		var toxicCount int
-
-		// Standard policy scan
-		result := application.Scanner.ScanAssets(ctx, assets)
-		scannedCount = result.Scanned
-		violationCount = result.Violations
-
-		for _, f := range result.Findings {
-			application.Findings.Upsert(ctx, f)
-			allFindings = append(allFindings, map[string]interface{}{
-				"id":          f.ID,
-				"policy_id":   f.PolicyID,
-				"resource_id": f.ResourceID,
-				"severity":    f.Severity,
-			})
-		}
-
-		// Profile-based toxic combinations (only when graph analysis is not used)
-		if scanToxicCombos && !graphAvailable {
-			toxicFindings := application.Scanner.DetectToxicCombinations(ctx, assets)
-			toxicCount = len(toxicFindings)
-			violationCount += int64(toxicCount)
-
-			for _, f := range toxicFindings {
-				application.Findings.Upsert(ctx, f)
-				allFindings = append(allFindings, map[string]interface{}{
-					"id":          f.ID,
-					"policy_id":   f.PolicyID,
-					"resource_id": f.ResourceID,
-					"severity":    f.Severity,
-					"toxic_combo": true,
-					"graph_based": false,
-				})
-			}
-		}
-
-		if scanToxicCombos && toxicCount > 0 {
-			fmt.Printf("  Scanned: %d, Violations: %d (policy: %d, toxic: %s) (%s)\n",
-				scannedCount,
-				violationCount,
-				len(result.Findings),
-				color(colorRed, fmt.Sprintf("%d", toxicCount)),
-				result.Duration.Round(time.Millisecond))
-		} else {
-			fmt.Printf("  Scanned: %d, Violations: %d (%s)\n",
-				scannedCount,
-				violationCount,
-				result.Duration.Round(time.Millisecond))
-		}
-
-		totalScanned += scannedCount
-		totalViolations += violationCount
-
-		// Update watermark
-		if application.ScanWatermarks != nil {
-			cursorTime, cursorID := scanner.ExtractScanCursor(assets)
-			if useCDC && !scanFull && !cdcCursor.IsZero() {
-				if scanner.IsCursorAfter(cdcCursor, "", cursorTime, cursorID) {
-					cursorTime = cdcCursor
-					cursorID = ""
-				}
-			}
-			if cursorTime.IsZero() {
-				cursorTime = time.Now().UTC()
-			}
-			application.ScanWatermarks.SetWatermark(table, cursorTime, cursorID, scannedCount)
-			// Persist watermarks (best effort)
-			go func() {
-				_ = application.ScanWatermarks.PersistWatermarks(ctx)
-			}()
-		}
+	// Persist all watermarks once after all tables scanned
+	if application.ScanWatermarks != nil {
+		go func() { _ = application.ScanWatermarks.PersistWatermarks(ctx) }()
 	}
 
 	// Relationship-based toxic combination detection (SQL query approach)
@@ -497,6 +392,105 @@ func dedupeStrings(values []string) []string {
 		result = append(result, value)
 	}
 	return result
+}
+
+// scanOneTable fetches assets from one Snowflake table, evaluates policies, and returns results.
+func scanOneTable(ctx context.Context, application *app.App, table string, full bool, limit int, toxicCombos, graphAvailable bool) (scanned, violations int64, findings []map[string]interface{}) {
+	fmt.Printf("\n%s Scanning %s...\n", color(colorCyan, "→"), table)
+
+	filter := snowflake.AssetFilter{Limit: limit}
+	useCDC := false
+	var cdcCursor time.Time
+	var cdcIDs []string
+
+	if !full && application.ScanWatermarks != nil {
+		if wm := application.ScanWatermarks.GetWatermark(table); wm != nil {
+			filter.Since = wm.LastScanTime
+			filter.SinceID = wm.LastScanID
+
+			cdcEvents, err := application.Snowflake.GetCDCEvents(ctx, table, wm.LastScanTime, limit)
+			if err != nil {
+				Warning("Failed to query CDC events for %s, falling back to sync_time: %v", table, err)
+			} else {
+				useCDC = true
+				cdcIDs, cdcCursor = filterCDCEvents(cdcEvents)
+			}
+		}
+	}
+
+	var assets []map[string]interface{}
+	var err error
+	if useCDC && !full {
+		if len(cdcIDs) == 0 {
+			if !cdcCursor.IsZero() && application.ScanWatermarks != nil {
+				application.ScanWatermarks.SetWatermark(table, cdcCursor, "", 0)
+			}
+			fmt.Printf("  No assets to scan for CDC changes\n")
+			return 0, 0, nil
+		}
+		assets, err = application.Snowflake.GetAssetsByIDs(ctx, table, cdcIDs)
+	} else {
+		assets, err = application.Snowflake.GetAssets(ctx, table, filter)
+	}
+	if err != nil {
+		Warning("Failed to fetch %s: %v", table, err)
+		return 0, 0, nil
+	}
+
+	if len(assets) == 0 {
+		fmt.Printf("  No new assets found\n")
+		return 0, 0, nil
+	}
+
+	result := application.Scanner.ScanAssets(ctx, assets)
+	scanned = result.Scanned
+	violations = result.Violations
+
+	for _, f := range result.Findings {
+		application.Findings.Upsert(ctx, f)
+		findings = append(findings, map[string]interface{}{
+			"id":          f.ID,
+			"policy_id":   f.PolicyID,
+			"resource_id": f.ResourceID,
+			"severity":    f.Severity,
+		})
+	}
+
+	if toxicCombos && !graphAvailable {
+		toxicFindings := application.Scanner.DetectToxicCombinations(ctx, assets)
+		violations += int64(len(toxicFindings))
+		for _, f := range toxicFindings {
+			application.Findings.Upsert(ctx, f)
+			findings = append(findings, map[string]interface{}{
+				"id":          f.ID,
+				"policy_id":   f.PolicyID,
+				"resource_id": f.ResourceID,
+				"severity":    f.Severity,
+				"toxic_combo": true,
+				"graph_based": false,
+			})
+		}
+	}
+
+	fmt.Printf("  Scanned: %d, Violations: %d (%s)\n",
+		scanned, violations, result.Duration.Round(time.Millisecond))
+
+	// Update watermark
+	if application.ScanWatermarks != nil {
+		cursorTime, cursorID := scanner.ExtractScanCursor(assets)
+		if useCDC && !full && !cdcCursor.IsZero() {
+			if scanner.IsCursorAfter(cdcCursor, "", cursorTime, cursorID) {
+				cursorTime = cdcCursor
+				cursorID = ""
+			}
+		}
+		if cursorTime.IsZero() {
+			cursorTime = time.Now().UTC()
+		}
+		application.ScanWatermarks.SetWatermark(table, cursorTime, cursorID, scanned)
+	}
+
+	return scanned, violations, findings
 }
 
 func isRemovalEvent(changeType string) bool {
