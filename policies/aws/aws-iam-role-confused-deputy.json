@@ -6,7 +6,9 @@
   "resource": "aws::iam::role",
   "conditions": [
     "assume_role_policy_document.Statement.Principal.Service != null",
-    "assume_role_policy_document.Statement.Condition == null"
+    "assume_role_policy_document.Statement.Condition == null",
+    "path not contains '/aws-service-role/'",
+    "path not contains '/aws-reserved/sso.amazonaws.com/'"
   ],
   "severity": "medium",
   "remediation": "Add aws:SourceAccount or aws:SourceArn conditions to prevent confused deputy attacks.",

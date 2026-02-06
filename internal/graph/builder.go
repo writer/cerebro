@@ -840,12 +840,12 @@ func (b *Builder) addInternetNode() {
 }
 
 func (b *Builder) buildExposureEdges() {
+	count := 0
 	for _, node := range b.graph.GetAllNodes() {
 		if !node.IsResource() {
 			continue
 		}
-		isPublic, ok := node.Properties["public"].(bool)
-		if ok && isPublic {
+		if isNodePublic(node) {
 			b.graph.AddEdge(&Edge{
 				ID:     "internet->" + node.ID,
 				Source: "internet",
@@ -854,8 +854,35 @@ func (b *Builder) buildExposureEdges() {
 				Effect: EdgeEffectAllow,
 				Risk:   RiskHigh,
 			})
+			count++
 		}
 	}
+	b.logger.Debug("added internet exposure edges", "count", count)
+}
+
+func isNodePublic(node *Node) bool {
+	if isPublic, ok := node.Properties["public"].(bool); ok && isPublic {
+		return true
+	}
+	if pip := toString(node.Properties["public_ip"]); pip != "" {
+		return true
+	}
+	if iamPolicy := toString(node.Properties["iam_policy"]); iamPolicy != "" {
+		if strings.Contains(iamPolicy, "allUsers") || strings.Contains(iamPolicy, "allAuthenticatedUsers") {
+			return true
+		}
+	}
+	if ipAddrs := toString(node.Properties["ip_addresses"]); ipAddrs != "" {
+		if strings.Contains(ipAddrs, "0.0.0.0") {
+			return true
+		}
+	}
+	if ingress := toString(node.Properties["ingress"]); ingress != "" {
+		if strings.Contains(ingress, "INGRESS_TRAFFIC_ALL") {
+			return true
+		}
+	}
+	return false
 }
 
 func toString(v any) string {
@@ -868,12 +895,35 @@ func toString(v any) string {
 	return fmt.Sprintf("%v", v)
 }
 
+func extractGCPServiceAccountEmail(v any) string {
+	switch sa := v.(type) {
+	case []any:
+		if len(sa) > 0 {
+			if m, ok := sa[0].(map[string]any); ok {
+				return toString(m["email"])
+			}
+		}
+	case string:
+		if strings.Contains(sa, "email") {
+			return sa
+		}
+	}
+	return ""
+}
+
 func toBool(v any) bool {
 	if v == nil {
 		return false
 	}
-	if b, ok := v.(bool); ok {
+	switch b := v.(type) {
+	case bool:
 		return b
+	case string:
+		return strings.EqualFold(b, "true") || b == "1"
+	case float64:
+		return b != 0
+	case int:
+		return b != 0
 	}
 	return false
 }
@@ -1012,10 +1062,17 @@ func (b *Builder) buildGCPNodes(ctx context.Context) {
 			parse: func(rows []map[string]any) []*Node {
 				nodes := make([]*Node, 0, len(rows))
 				for _, inst := range rows {
+					saEmail := extractGCPServiceAccountEmail(inst["service_accounts"])
+					isDefaultSA := strings.HasSuffix(saEmail, "-compute@developer.gserviceaccount.com")
 					nodes = append(nodes, &Node{
 						ID: toString(inst["id"]), Kind: NodeKindInstance, Name: toString(inst["name"]),
 						Provider: "gcp", Account: toString(inst["project_id"]), Region: toString(inst["zone"]),
-						Properties: map[string]any{"status": inst["status"], "service_accounts": inst["service_accounts"]},
+						Properties: map[string]any{
+							"status":                inst["status"],
+							"service_accounts":      inst["service_accounts"],
+							"service_account_email": saEmail,
+							"uses_default_sa":       isDefaultSA,
+						},
 					})
 				}
 				return nodes
@@ -1023,14 +1080,29 @@ func (b *Builder) buildGCPNodes(ctx context.Context) {
 		},
 		{
 			table: "gcp_storage_buckets",
-			query: `SELECT id, name, project_id, location, iam_policy FROM gcp_storage_buckets`,
+			query: `SELECT name, project_id, location, iam_policy, public_access_prevention, uniform_bucket_level_access FROM gcp_storage_buckets`,
 			parse: func(rows []map[string]any) []*Node {
 				nodes := make([]*Node, 0, len(rows))
 				for _, bucket := range rows {
+					iamStr := toString(bucket["iam_policy"])
+					allUsers := strings.Contains(iamStr, "allUsers")
+					allAuthUsers := strings.Contains(iamStr, "allAuthenticatedUsers")
+					isPublic := allUsers || allAuthUsers
+					risk := RiskNone
+					if isPublic {
+						risk = RiskCritical
+					}
 					nodes = append(nodes, &Node{
-						ID: toString(bucket["id"]), Kind: NodeKindBucket, Name: toString(bucket["name"]),
+						ID: toString(bucket["name"]), Kind: NodeKindBucket, Name: toString(bucket["name"]),
 						Provider: "gcp", Account: toString(bucket["project_id"]), Region: toString(bucket["location"]),
-						Properties: map[string]any{"iam_policy": bucket["iam_policy"]},
+						Risk: risk, Properties: map[string]any{
+							"iam_policy":                     bucket["iam_policy"],
+							"public":                         isPublic,
+							"public_access":                  isPublic,
+							"all_users_access":               allUsers,
+							"all_authenticated_users_access": allAuthUsers,
+							"public_access_prevention":       bucket["public_access_prevention"],
+						},
 					})
 				}
 				return nodes
@@ -1038,14 +1110,27 @@ func (b *Builder) buildGCPNodes(ctx context.Context) {
 		},
 		{
 			table: "gcp_sql_instances",
-			query: `SELECT name, project, region, database_version, ip_addresses FROM gcp_sql_instances`,
+			query: `SELECT name, project_id, region, database_version, ip_addresses, settings FROM gcp_sql_instances`,
 			parse: func(rows []map[string]any) []*Node {
 				nodes := make([]*Node, 0, len(rows))
 				for _, db := range rows {
+					ipStr := toString(db["ip_addresses"])
+					hasPublicIP := strings.Contains(ipStr, "PRIMARY") && !strings.Contains(ipStr, "PRIVATE")
+					settingsStr := toString(db["settings"])
+					hasAuthNetworks := strings.Contains(settingsStr, "0.0.0.0/0")
+					isPublic := hasPublicIP || hasAuthNetworks
+					risk := RiskNone
+					if isPublic {
+						risk = RiskCritical
+					}
 					nodes = append(nodes, &Node{
 						ID: toString(db["name"]), Kind: NodeKindDatabase, Name: toString(db["name"]),
-						Provider: "gcp", Account: toString(db["project"]), Region: toString(db["region"]),
-						Properties: map[string]any{"database_version": db["database_version"], "ip_addresses": db["ip_addresses"]},
+						Provider: "gcp", Account: toString(db["project_id"]), Region: toString(db["region"]),
+						Risk: risk, Properties: map[string]any{
+							"database_version": db["database_version"],
+							"ip_addresses":     db["ip_addresses"],
+							"public":           isPublic,
+						},
 					})
 				}
 				return nodes
@@ -1061,6 +1146,21 @@ func (b *Builder) buildGCPNodes(ctx context.Context) {
 						ID: toString(fn["name"]), Kind: NodeKindFunction, Name: toString(fn["name"]),
 						Provider: "gcp", Account: toString(fn["project_id"]), Region: toString(fn["region"]),
 						Properties: map[string]any{"service_account": fn["service_account_email"], "runtime": fn["runtime"]},
+					})
+				}
+				return nodes
+			},
+		},
+		{
+			table: "gcp_cloudrun_services",
+			query: `SELECT name, project_id, location, ingress, uri FROM gcp_cloudrun_services`,
+			parse: func(rows []map[string]any) []*Node {
+				nodes := make([]*Node, 0, len(rows))
+				for _, svc := range rows {
+					nodes = append(nodes, &Node{
+						ID: toString(svc["name"]), Kind: NodeKindFunction, Name: toString(svc["name"]),
+						Provider: "gcp", Account: toString(svc["project_id"]), Region: toString(svc["location"]),
+						Properties: map[string]any{"ingress": svc["ingress"], "uri": svc["uri"]},
 					})
 				}
 				return nodes
@@ -1117,6 +1217,7 @@ func (b *Builder) buildGCPEdges(ctx context.Context) {
 	b.logger.Debug("processed GCP IAM bindings", "count", len(bindings.Rows))
 
 	b.buildGCPServiceAccountEdges(ctx)
+	b.buildGCPFirewallEdges(ctx)
 }
 
 func (b *Builder) buildGCPServiceAccountEdges(_ context.Context) {
@@ -1164,6 +1265,60 @@ func gcpRoleToEdgeKind(role string) EdgeKind {
 	default:
 		return EdgeKindCanRead
 	}
+}
+
+func (b *Builder) buildGCPFirewallEdges(ctx context.Context) {
+	firewalls, err := b.queryIfExists(ctx, "gcp_compute_firewalls",
+		`SELECT name, project_id, direction, source_ranges, allowed, target_tags, network FROM gcp_compute_firewalls`)
+	if err != nil {
+		b.logger.Debug("failed to query GCP firewalls", "error", err)
+		return
+	}
+
+	count := 0
+	for _, fw := range firewalls.Rows {
+		direction := toString(fw["direction"])
+		if direction != "INGRESS" && direction != "\"INGRESS\"" {
+			continue
+		}
+		sourceRanges := toString(fw["source_ranges"])
+		if !strings.Contains(sourceRanges, "0.0.0.0/0") {
+			continue
+		}
+
+		// This firewall allows internet ingress. Find matching instances by target_tags or all instances in the project.
+		projectID := toString(fw["project_id"])
+		targetTags := toString(fw["target_tags"])
+
+		for _, node := range b.graph.GetNodesByAccountIndexed(projectID) {
+			if node.Provider != "gcp" || node.Kind != NodeKindInstance {
+				continue
+			}
+			// If firewall has target_tags, only match instances with those tags
+			// For now, if no target_tags, it applies to all instances in the network
+			if targetTags != "" && targetTags != "[]" && targetTags != "null" {
+				// Check if instance has matching tags (simplified: check name containment)
+				// Full implementation would match instance tags against firewall target_tags
+				continue
+			}
+			node.Properties["public"] = true
+			b.graph.AddEdge(&Edge{
+				ID:     "internet->fw:" + toString(fw["name"]) + "->" + node.ID,
+				Source: "internet",
+				Target: node.ID,
+				Kind:   EdgeKindExposedTo,
+				Effect: EdgeEffectAllow,
+				Risk:   RiskHigh,
+				Properties: map[string]any{
+					"firewall":  fw["name"],
+					"allowed":   fw["allowed"],
+					"mechanism": "gcp_firewall",
+				},
+			})
+			count++
+		}
+	}
+	b.logger.Debug("added GCP firewall exposure edges", "count", count)
 }
 
 // Azure Builder Methods

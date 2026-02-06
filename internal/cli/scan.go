@@ -90,7 +90,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 		spinner := NewSpinner("Waiting for security graph")
 		spinner.Start()
 		if application.WaitForGraph(ctx) {
-			spinner.Stop(true, fmt.Sprintf("Security graph ready (%d nodes)", application.SecurityGraph.NodeCount()))
+			spinner.Stop(true, fmt.Sprintf("Security graph ready (%d nodes, %d edges)", application.SecurityGraph.NodeCount(), application.SecurityGraph.EdgeCount()))
 			graphAvailable = true
 		} else {
 			spinner.Stop(false, "Security graph not available, falling back to profile-based analysis")
@@ -225,12 +225,17 @@ func runScan(cmd *cobra.Command, args []string) error {
 			for _, f := range graphResult.ToxicCombinations {
 				application.Findings.Upsert(ctx, f)
 				allFindings = append(allFindings, map[string]interface{}{
-					"id":          f.ID,
-					"policy_id":   f.PolicyID,
-					"resource_id": f.ResourceID,
-					"severity":    f.Severity,
-					"toxic_combo": true,
-					"graph_based": true,
+					"id":              f.ID,
+					"policy_id":       f.PolicyID,
+					"title":           f.Title,
+					"description":     f.Description,
+					"resource_id":     f.ResourceID,
+					"resource_name":   f.ResourceName,
+					"severity":        f.Severity,
+					"risk_categories": f.RiskCategories,
+					"remediation":     f.Remediation,
+					"toxic_combo":     true,
+					"graph_based":     true,
 				})
 			}
 
@@ -252,6 +257,26 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	if graphAvailable {
 		fmt.Printf("\nGraph analysis: toxic combinations: %d, attack paths: %d\n", graphToxicCount, len(graphAttackPaths))
+		if graphToxicCount > 0 {
+			for _, f := range allFindings {
+				gb, _ := f["graph_based"].(bool)
+				tc, _ := f["toxic_combo"].(bool)
+				if gb && tc {
+					sev := toString(f["severity"])
+					sevColor := colorYellow
+					if sev == "critical" || sev == "CRITICAL" {
+						sevColor = colorRed
+					}
+					fmt.Printf("  %s %s: %s\n", color(sevColor, "["+strings.ToUpper(sev)+"]"), toString(f["title"]), toString(f["resource_id"]))
+				}
+			}
+		}
+		if len(graphAttackPaths) > 0 {
+			fmt.Println("\nAttack paths:")
+			for _, ap := range graphAttackPaths {
+				fmt.Printf("  %s -> %s (risk=%v)\n", toString(ap["entry_point"]), toString(ap["target"]), ap["risk_score"])
+			}
+		}
 	}
 
 	duration := time.Since(start)

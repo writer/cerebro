@@ -34,6 +34,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -396,6 +397,28 @@ func (e *Engine) checkAssetViolation(p *Policy, asset map[string]interface{}) st
 func evaluateCondition(condition string, asset map[string]interface{}) bool {
 	condition = strings.TrimSpace(condition)
 
+	// Handle OR (any sub-condition true -> true)
+	if strings.Contains(condition, " OR ") {
+		parts := strings.Split(condition, " OR ")
+		for _, part := range parts {
+			if evaluateCondition(strings.TrimSpace(part), asset) {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Handle AND (all sub-conditions true -> true)
+	if strings.Contains(condition, " AND ") {
+		parts := strings.Split(condition, " AND ")
+		for _, part := range parts {
+			if !evaluateCondition(strings.TrimSpace(part), asset) {
+				return false
+			}
+		}
+		return true
+	}
+
 	// Handle equality (==)
 	if parts := strings.SplitN(condition, "==", 2); len(parts) == 2 {
 		field := strings.TrimSpace(parts[0])
@@ -441,6 +464,33 @@ func evaluateCondition(condition string, asset map[string]interface{}) bool {
 		}
 	}
 
+	// Handle not contains
+	if strings.Contains(condition, " not contains ") {
+		parts := strings.SplitN(condition, " not contains ", 2)
+		if len(parts) == 2 {
+			field := strings.TrimSpace(parts[0])
+			substring := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
+			val := getNestedValue(asset, field)
+			if s, ok := val.(string); ok {
+				return !strings.Contains(s, substring)
+			}
+			return true // field missing or not a string -> doesn't contain
+		}
+	}
+
+	// Handle starts_with
+	if strings.Contains(condition, " starts_with ") {
+		parts := strings.SplitN(condition, " starts_with ", 2)
+		if len(parts) == 2 {
+			field := strings.TrimSpace(parts[0])
+			prefix := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
+			val := getNestedValue(asset, field)
+			if s, ok := val.(string); ok {
+				return strings.HasPrefix(s, prefix)
+			}
+		}
+	}
+
 	// Handle exists check
 	if strings.HasSuffix(condition, " exists") {
 		field := strings.TrimSpace(strings.TrimSuffix(condition, " exists"))
@@ -460,20 +510,80 @@ func evaluateCondition(condition string, asset map[string]interface{}) bool {
 
 // getNestedValue retrieves a value from nested maps using dot notation
 // e.g., "config.public_access.enabled" -> asset["config"]["public_access"]["enabled"]
+// Handles JSON strings and URL-encoded JSON strings from Snowflake VARIANT columns
 func getNestedValue(asset map[string]interface{}, path string) interface{} {
 	parts := strings.Split(path, ".")
 	var current interface{} = asset
 
 	for _, part := range parts {
-		if m, ok := current.(map[string]interface{}); ok {
-			// Case-insensitive field lookup (Snowflake returns uppercase keys)
-			current = getFieldCaseInsensitive(m, part)
-		} else {
+		switch v := current.(type) {
+		case map[string]interface{}:
+			current = getFieldCaseInsensitive(v, part)
+		case string:
+			parsed := tryParseJSON(v)
+			if parsed == nil {
+				return nil
+			}
+			current = parsed
+			// Re-process this part against the parsed value
+			if m, ok := current.(map[string]interface{}); ok {
+				current = getFieldCaseInsensitive(m, part)
+			} else if arr, ok := current.([]interface{}); ok {
+				// For arrays, find any element that has this field
+				var found interface{}
+				for _, elem := range arr {
+					if m, ok := elem.(map[string]interface{}); ok {
+						if val := getFieldCaseInsensitive(m, part); val != nil {
+							found = val
+							break
+						}
+					}
+				}
+				current = found
+			} else {
+				return nil
+			}
+		case []interface{}:
+			// For arrays, find any element that has this field
+			var found interface{}
+			for _, elem := range v {
+				if m, ok := elem.(map[string]interface{}); ok {
+					if val := getFieldCaseInsensitive(m, part); val != nil {
+						found = val
+						break
+					}
+				}
+			}
+			current = found
+		default:
 			return nil
 		}
 	}
 
 	return current
+}
+
+func tryParseJSON(s string) interface{} {
+	// Try URL-decoding first (Snowflake stores some values URL-encoded)
+	if strings.Contains(s, "%7B") || strings.Contains(s, "%22") {
+		decoded, err := url.QueryUnescape(s)
+		if err == nil {
+			s = decoded
+		}
+	}
+	// Remove surrounding quotes if present
+	s = strings.TrimSpace(s)
+	if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
+		s = s[1 : len(s)-1]
+	}
+	if len(s) == 0 || (s[0] != '{' && s[0] != '[') {
+		return nil
+	}
+	var result interface{}
+	if err := json.Unmarshal([]byte(s), &result); err != nil {
+		return nil
+	}
+	return result
 }
 
 // getFieldCaseInsensitive looks up a field in a map, trying exact match first, then case-insensitive

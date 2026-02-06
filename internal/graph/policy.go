@@ -2,6 +2,7 @@ package graph
 
 import (
 	"encoding/json"
+	"net/url"
 	"strings"
 )
 
@@ -34,6 +35,18 @@ type policyStatement struct {
 func ParseAWSPolicy(document string) ([]Statement, error) {
 	if document == "" {
 		return nil, nil
+	}
+
+	// URL-decode if needed (Snowflake stores some policies URL-encoded)
+	if strings.Contains(document, "%7B") || strings.Contains(document, "%22") {
+		if decoded, err := url.QueryUnescape(document); err == nil {
+			document = decoded
+		}
+	}
+	// Strip surrounding quotes
+	document = strings.TrimSpace(document)
+	if len(document) >= 2 && document[0] == '"' && document[len(document)-1] == '"' {
+		document = document[1 : len(document)-1]
 	}
 
 	var doc policyDocument
@@ -94,6 +107,17 @@ type TrustPrincipal struct {
 func ParseTrustPolicy(document string) ([]TrustPrincipal, error) {
 	if document == "" {
 		return nil, nil
+	}
+
+	// URL-decode if needed
+	if strings.Contains(document, "%7B") || strings.Contains(document, "%22") {
+		if decoded, err := url.QueryUnescape(document); err == nil {
+			document = decoded
+		}
+	}
+	document = strings.TrimSpace(document)
+	if len(document) >= 2 && document[0] == '"' && document[len(document)-1] == '"' {
+		document = document[1 : len(document)-1]
 	}
 
 	var policy struct {

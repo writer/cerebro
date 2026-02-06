@@ -49,6 +49,7 @@ var (
 	syncTable             string
 	syncOutput            string
 	syncValidate          bool
+	syncAWSProfiles       string // comma-separated AWS SSO profiles
 )
 
 func init() {
@@ -67,6 +68,7 @@ func init() {
 	syncCmd.Flags().StringVar(&syncTable, "table", "", "Sync only specific table(s), comma-separated (e.g., aws_iam_accounts)")
 	syncCmd.Flags().StringVarP(&syncOutput, "output", "o", "table", "Output format (table, json)")
 	syncCmd.Flags().BoolVar(&syncValidate, "validate", false, "Validate Snowflake tables without fetching resources")
+	syncCmd.Flags().StringVar(&syncAWSProfiles, "aws-profiles", "", "Comma-separated AWS SSO profile names to sync multiple accounts")
 }
 
 func runSync(cmd *cobra.Command, args []string) error {
@@ -101,6 +103,11 @@ func runSync(cmd *cobra.Command, args []string) error {
 			return runGCPAssetAPISync(ctx, start, []string{syncGCPProject})
 		}
 		return runGCPSync(ctx, start, syncGCPProject)
+	}
+
+	// Multi-account AWS sync via SSO profiles
+	if syncAWSProfiles != "" {
+		return runMultiAccountAWSSync(ctx, start)
 	}
 
 	return runNativeSync(ctx, start)
@@ -348,6 +355,83 @@ func runAzureSync(ctx context.Context, start time.Time) error {
 		if err := runPostSyncScan(ctx, tableFilter); err != nil {
 			Warning("Post-sync scan failed: %v", err)
 		}
+	}
+
+	return nil
+}
+
+func runMultiAccountAWSSync(ctx context.Context, start time.Time) error {
+	profiles := strings.Split(syncAWSProfiles, ",")
+	for i, p := range profiles {
+		profiles[i] = strings.TrimSpace(p)
+	}
+
+	Info("Starting multi-account AWS sync (%d profiles)...", len(profiles))
+	var totalResults []nativesync.SyncResult
+	var totalErrors int
+
+	for _, profile := range profiles {
+		Info("Syncing AWS profile: %s", profile)
+		profileStart := time.Now()
+
+		awsCfg, err := config.LoadDefaultConfig(ctx,
+			config.WithSharedConfigProfile(profile),
+		)
+		if err != nil {
+			Warning("Failed to load config for profile %s: %v", profile, err)
+			totalErrors++
+			continue
+		}
+
+		tableFilter := parseTableFilter(syncTable)
+		region := syncRegion
+		if region == "" {
+			region = awsCfg.Region
+		}
+		if region == "" {
+			region = "us-east-1"
+		}
+
+		sfClient, err := createSnowflakeClient()
+		if err != nil {
+			Warning("Failed to create Snowflake client for profile %s: %v", profile, err)
+			totalErrors++
+			continue
+		}
+
+		opts := []nativesync.EngineOption{}
+		if syncConcurrency > 0 {
+			opts = append(opts, nativesync.WithConcurrency(syncConcurrency))
+		}
+		if len(tableFilter) > 0 {
+			opts = append(opts, nativesync.WithTableFilter(tableFilter))
+		}
+		if syncMultiRegion {
+			opts = append(opts, nativesync.WithRegions(nativesync.DefaultAWSRegions))
+		} else {
+			opts = append(opts, nativesync.WithRegions([]string{region}))
+		}
+
+		syncer := nativesync.NewSyncEngine(sfClient, slog.Default(), opts...)
+		results, err := syncer.SyncAllWithConfig(ctx, awsCfg)
+		_ = sfClient.Close()
+
+		if err != nil {
+			Warning("Sync failed for profile %s: %v", profile, err)
+			totalErrors++
+			continue
+		}
+
+		totalResults = append(totalResults, results...)
+		Success("Profile %s synced in %s", profile, time.Since(profileStart).Round(time.Second))
+	}
+
+	if err := printSyncResults(totalResults, start, fmt.Sprintf("AWS (%d profiles)", len(profiles))); err != nil {
+		return err
+	}
+
+	if totalErrors > 0 {
+		Warning("%d profile(s) had errors", totalErrors)
 	}
 
 	return nil
