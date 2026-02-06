@@ -290,7 +290,9 @@ func (w *Worker) gracefulShutdown(_ context.Context) {
 	w.flushPendingDeletes(context.Background())
 
 	// Final metrics flush
-	_ = w.metrics.Flush(context.Background())
+	if err := w.metrics.Flush(context.Background()); err != nil {
+		w.logWarn("failed to flush final metrics", "error", err)
+	}
 
 }
 
@@ -385,7 +387,9 @@ func (w *Worker) processMessage(ctx context.Context, msg QueueMessage) {
 			"correlation_id", correlationID,
 		)
 		w.circuit.RecordFailure()
-		_ = w.idempotency.MarkFailed(ctx, idempotencyKey)
+		if markErr := w.idempotency.MarkFailed(ctx, idempotencyKey); markErr != nil {
+			w.logWarn("failed to mark idempotency as failed", "job_id", jobID, "error", markErr)
+		}
 		return
 	}
 	if !claimed {
@@ -394,8 +398,9 @@ func (w *Worker) processMessage(ctx context.Context, msg QueueMessage) {
 			"correlation_id", correlationID,
 		)
 		w.queueDelete(msg.ReceiptHandle)
-		// Mark as completed since another worker is handling it
-		_ = w.idempotency.MarkCompleted(ctx, idempotencyKey)
+		if markErr := w.idempotency.MarkCompleted(ctx, idempotencyKey); markErr != nil {
+			w.logWarn("failed to mark idempotency as completed", "job_id", jobID, "error", markErr)
+		}
 		return
 	}
 
@@ -446,12 +451,16 @@ func (w *Worker) processMessage(ctx context.Context, msg QueueMessage) {
 			"correlation_id", correlationID,
 		)
 		w.circuit.RecordFailure()
-		_ = w.idempotency.MarkFailed(ctx, idempotencyKey)
+		if markErr := w.idempotency.MarkFailed(ctx, idempotencyKey); markErr != nil {
+			w.logWarn("failed to mark idempotency as failed after completion error", "job_id", job.ID, "error", markErr)
+		}
 		return
 	}
 
 	// Mark idempotency as completed
-	_ = w.idempotency.MarkCompleted(ctx, idempotencyKey)
+	if markErr := w.idempotency.MarkCompleted(ctx, idempotencyKey); markErr != nil {
+		w.logWarn("failed to mark idempotency as completed", "job_id", job.ID, "error", markErr)
+	}
 
 	// Delete message (batched)
 	w.queueDelete(msg.ReceiptHandle)

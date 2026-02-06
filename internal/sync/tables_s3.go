@@ -2,7 +2,6 @@ package sync
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -702,6 +701,5 @@ func (e *SyncEngine) fetchS3BucketWebsite(ctx context.Context, cfg aws.Config, r
 	return rows, nil
 }
 
-// Placeholder
-var _ = json.Marshal
+// Ensure types package is used (required for type assertions in fetch functions)
 var _ types.BucketLocationConstraint

@@ -25,6 +25,7 @@ import (
 	"context"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -37,8 +38,11 @@ import (
 //
 // Thread-safe for concurrent event processing.
 type DetectionEngine struct {
-	rules        []DetectionRule // Active detection rules
-	suppressions map[string]bool // Rule IDs that are suppressed
+	rules          []DetectionRule  // Active detection rules
+	suppressions   map[string]bool  // Rule IDs that are suppressed
+	recentFindings []RuntimeFinding // Recent findings ring buffer
+	maxFindings    int              // Max findings to retain
+	mu             sync.RWMutex     // Protects recentFindings
 }
 
 // DetectionRule defines a runtime threat detection rule with conditions,
@@ -168,8 +172,10 @@ type RuntimeFinding struct {
 
 func NewDetectionEngine() *DetectionEngine {
 	engine := &DetectionEngine{
-		rules:        make([]DetectionRule, 0),
-		suppressions: make(map[string]bool),
+		rules:          make([]DetectionRule, 0),
+		suppressions:   make(map[string]bool),
+		recentFindings: make([]RuntimeFinding, 0),
+		maxFindings:    1000,
 	}
 	engine.loadDefaultRules()
 	return engine
@@ -465,7 +471,7 @@ func (e *DetectionEngine) loadDefaultRules() {
 	}
 }
 
-// ProcessEvent evaluates an event against all rules
+// ProcessEvent evaluates an event against all rules and stores resulting findings
 func (e *DetectionEngine) ProcessEvent(ctx context.Context, event *RuntimeEvent) []RuntimeFinding {
 	var findings []RuntimeFinding
 
@@ -494,7 +500,34 @@ func (e *DetectionEngine) ProcessEvent(ctx context.Context, event *RuntimeEvent)
 		}
 	}
 
+	if len(findings) > 0 {
+		e.storeFindings(findings)
+	}
+
 	return findings
+}
+
+// storeFindings appends findings to the in-memory ring buffer
+func (e *DetectionEngine) storeFindings(findings []RuntimeFinding) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.recentFindings = append(e.recentFindings, findings...)
+	if len(e.recentFindings) > e.maxFindings {
+		e.recentFindings = e.recentFindings[len(e.recentFindings)-e.maxFindings:]
+	}
+}
+
+// RecentFindings returns the most recent runtime findings, up to limit
+func (e *DetectionEngine) RecentFindings(limit int) []RuntimeFinding {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	if limit <= 0 || limit > len(e.recentFindings) {
+		limit = len(e.recentFindings)
+	}
+	start := len(e.recentFindings) - limit
+	result := make([]RuntimeFinding, limit)
+	copy(result, e.recentFindings[start:])
+	return result
 }
 
 func (e *DetectionEngine) matchesRule(event *RuntimeEvent, rule DetectionRule) bool {

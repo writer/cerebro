@@ -8,7 +8,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/writerinternal/cerebro/internal/config"
 	"github.com/writerinternal/cerebro/internal/policy"
 )
 
@@ -64,11 +63,20 @@ func init() {
 	policyTestCmd.Flags().StringVarP(&policyTestOutput, "output", "o", "text", "Output format (text,json)")
 }
 
+func policiesPath() string {
+	if path := os.Getenv("POLICIES_PATH"); path != "" {
+		return path
+	}
+	if path := os.Getenv("CEDAR_POLICIES_PATH"); path != "" {
+		return path
+	}
+	return "policies"
+}
+
 func runPolicyList(cmd *cobra.Command, args []string) error {
-	cfg := config.Load()
 	engine := policy.NewEngine()
 
-	if err := engine.LoadPolicies(cfg.CedarPoliciesPath); err != nil {
+	if err := engine.LoadPolicies(policiesPath()); err != nil {
 		return fmt.Errorf("load policies: %w", err)
 	}
 
@@ -110,10 +118,9 @@ func runPolicyList(cmd *cobra.Command, args []string) error {
 }
 
 func runPolicyValidate(cmd *cobra.Command, args []string) error {
-	cfg := config.Load()
 	engine := policy.NewEngine()
 
-	if err := engine.LoadPolicies(cfg.CedarPoliciesPath); err != nil {
+	if err := engine.LoadPolicies(policiesPath()); err != nil {
 		if policyValidateOutput == FormatJSON {
 			if jsonErr := JSONOutput(map[string]interface{}{
 				"valid": false,
@@ -156,7 +163,6 @@ func runPolicyTest(cmd *cobra.Command, args []string) error {
 	policyID := args[0]
 	assetFile := args[1]
 
-	cfg := config.Load()
 	engine := policy.NewEngine()
 
 	jsonError := func(err error, extra map[string]interface{}) error {
@@ -178,7 +184,7 @@ func runPolicyTest(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if err := engine.LoadPolicies(cfg.CedarPoliciesPath); err != nil {
+	if err := engine.LoadPolicies(policiesPath()); err != nil {
 		return jsonError(fmt.Errorf("load policies: %w", err), nil)
 	}
 

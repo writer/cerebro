@@ -3,7 +3,6 @@ package sync
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -775,6 +774,5 @@ func (e *SyncEngine) fetchEC2DhcpOptions(ctx context.Context, cfg aws.Config, re
 	return rows, nil
 }
 
-// Placeholder for compiler
-var _ = time.Now
+// Ensure types package is used (required for type assertions in fetch functions)
 var _ types.InstanceType

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -243,25 +244,6 @@ func (s *Service) RegisterWebhook(webhookURL string, events []EventType, secret 
 	return webhook, nil
 }
 
-// RegisterWebhookUnsafe registers a webhook without URL validation.
-// This is exported for testing but should NOT be used in production code.
-func (s *Service) RegisterWebhookUnsafe(webhookURL string, events []EventType, secret string) *Webhook {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	webhook := &Webhook{
-		ID:        uuid.New().String(),
-		URL:       webhookURL,
-		Events:    events,
-		Secret:    secret,
-		Enabled:   true,
-		CreatedAt: time.Now(),
-	}
-
-	s.webhooks[webhook.ID] = webhook
-	return webhook
-}
-
 // isValidEventType checks if an event type is valid
 func isValidEventType(e EventType) bool {
 	switch e {
@@ -318,9 +300,11 @@ func (s *Service) DeleteWebhook(id string) bool {
 	return false
 }
 
-// Emit sends an event to all subscribed webhooks
+// Emit sends an event to all subscribed webhooks. Errors are logged but not returned.
 func (s *Service) Emit(ctx context.Context, eventType EventType, data map[string]interface{}) {
-	_ = s.EmitWithErrors(ctx, eventType, data)
+	if err := s.EmitWithErrors(ctx, eventType, data); err != nil {
+		slog.Warn("webhook delivery errors", "event_type", string(eventType), "error", err.Error())
+	}
 }
 
 func (s *Service) EmitWithErrors(ctx context.Context, eventType EventType, data map[string]interface{}) error {

@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+
+	"github.com/writerinternal/cerebro/internal/auth"
 )
 
 // APIError represents a structured API error response
@@ -125,6 +127,73 @@ func MaxBodySize(maxBytes int64) func(http.Handler) http.Handler {
 
 // DefaultMaxBodySize is 10MB
 const DefaultMaxBodySize = 10 * 1024 * 1024
+
+// RBACMiddleware enforces role-based access control on API routes.
+// It maps HTTP method + path prefix to required permissions and checks
+// the authenticated user has the necessary role.
+func RBACMiddleware(rbac *auth.RBAC) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Skip RBAC for health/metrics/docs endpoints
+			if r.URL.Path == "/health" || r.URL.Path == "/ready" ||
+				r.URL.Path == "/metrics" || r.URL.Path == "/docs" ||
+				r.URL.Path == "/openapi.yaml" {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			userID := GetUserID(r.Context())
+			if userID == "" {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			requiredPerm := routePermission(r.Method, r.URL.Path)
+			if requiredPerm == "" {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			if !rbac.HasPermission(r.Context(), userID, requiredPerm) {
+				writeJSONError(w, http.StatusForbidden, "forbidden",
+					"insufficient permissions: requires "+requiredPerm)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// routePermission maps an HTTP method + path to the required RBAC permission.
+func routePermission(method, path string) string {
+	isWrite := method == "POST" || method == "PUT" || method == "DELETE" || method == "PATCH"
+
+	switch {
+	case strings.HasPrefix(path, "/api/v1/findings"):
+		if isWrite {
+			return "findings:write"
+		}
+		return "findings:read"
+	case strings.HasPrefix(path, "/api/v1/policies"):
+		if isWrite {
+			return "policies:write"
+		}
+		return "policies:read"
+	case strings.HasPrefix(path, "/api/v1/assets"),
+		strings.HasPrefix(path, "/api/v1/tables"),
+		strings.HasPrefix(path, "/api/v1/query"):
+		return "assets:read"
+	case strings.HasPrefix(path, "/api/v1/compliance"),
+		strings.HasPrefix(path, "/api/v1/reports"):
+		return "compliance:read"
+	case strings.HasPrefix(path, "/api/v1/rbac"),
+		strings.HasPrefix(path, "/api/v1/admin"):
+		return "admin:users"
+	default:
+		return ""
+	}
+}
 
 // CORS middleware
 func CORS(allowedOrigins []string) func(http.Handler) http.Handler {

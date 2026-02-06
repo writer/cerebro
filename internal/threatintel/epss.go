@@ -25,11 +25,13 @@ type EPSSScore struct {
 
 // EPSSClient fetches EPSS scores from the FIRST.org API
 type EPSSClient struct {
-	client   *http.Client
-	baseURL  string
-	cache    map[string]*EPSSScore
-	cacheTTL time.Duration
-	mu       sync.RWMutex
+	client    *http.Client
+	baseURL   string
+	cache     map[string]*EPSSScore
+	cacheTTL  time.Duration
+	cacheHits int64
+	cacheMiss int64
+	mu        sync.RWMutex
 }
 
 // EPSSResponse represents the API response from FIRST.org
@@ -67,10 +69,17 @@ func (c *EPSSClient) GetScore(ctx context.Context, cve string) (*EPSSScore, erro
 	if cached, ok := c.cache[cve]; ok {
 		if time.Since(cached.FetchedAt) < c.cacheTTL {
 			c.mu.RUnlock()
+			c.mu.Lock()
+			c.cacheHits++
+			c.mu.Unlock()
 			return cached, nil
 		}
 	}
 	c.mu.RUnlock()
+
+	c.mu.Lock()
+	c.cacheMiss++
+	c.mu.Unlock()
 
 	// Fetch from API
 	url := fmt.Sprintf("%s?cve=%s", c.baseURL, cve)
@@ -226,17 +235,23 @@ func (c *EPSSClient) parseScore(data struct {
 	}
 }
 
-// CacheStats returns cache statistics
+// CacheStats returns cache size and hit rate (0.0-1.0)
 func (c *EPSSClient) CacheStats() (size int, hitRate float64) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return len(c.cache), 0 // TODO: track hit rate
+	total := c.cacheHits + c.cacheMiss
+	if total > 0 {
+		hitRate = float64(c.cacheHits) / float64(total)
+	}
+	return len(c.cache), hitRate
 }
 
-// ClearCache removes all cached scores
+// ClearCache removes all cached scores and resets hit rate counters
 func (c *EPSSClient) ClearCache() {
 	c.mu.Lock()
 	c.cache = make(map[string]*EPSSScore)
+	c.cacheHits = 0
+	c.cacheMiss = 0
 	c.mu.Unlock()
 }
 

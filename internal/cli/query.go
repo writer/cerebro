@@ -9,7 +9,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/writerinternal/cerebro/internal/config"
 	"github.com/writerinternal/cerebro/internal/snowflake"
 )
 
@@ -41,21 +40,19 @@ func init() {
 }
 
 func runQuery(cmd *cobra.Command, args []string) error {
-	cfg := config.Load()
-
-	// Require key-pair auth
-	if cfg.SnowflakePrivateKey == "" || cfg.SnowflakeAccount == "" || cfg.SnowflakeUser == "" {
-		return fmt.Errorf("snowflake not configured: set SNOWFLAKE_PRIVATE_KEY, SNOWFLAKE_ACCOUNT, and SNOWFLAKE_USER")
+	dsnCfg := snowflake.DSNConfigFromEnv()
+	if missing := dsnCfg.MissingFields(); len(missing) > 0 {
+		return fmt.Errorf("snowflake not configured: set %s", strings.Join(missing, ", "))
 	}
 
 	client, err := snowflake.NewClient(snowflake.ClientConfig{
-		Account:    cfg.SnowflakeAccount,
-		User:       cfg.SnowflakeUser,
-		PrivateKey: cfg.SnowflakePrivateKey,
-		Database:   cfg.SnowflakeDatabase,
-		Schema:     cfg.SnowflakeSchema,
-		Warehouse:  cfg.SnowflakeWarehouse,
-		Role:       cfg.SnowflakeRole,
+		Account:    dsnCfg.Account,
+		User:       dsnCfg.User,
+		PrivateKey: dsnCfg.PrivateKey,
+		Database:   dsnCfg.Database,
+		Schema:     dsnCfg.Schema,
+		Warehouse:  dsnCfg.Warehouse,
+		Role:       dsnCfg.Role,
 	})
 	if err != nil {
 		return fmt.Errorf("connect to snowflake: %w", err)

@@ -22,7 +22,6 @@ import (
 	"github.com/writerinternal/cerebro/internal/findings"
 	"github.com/writerinternal/cerebro/internal/graph"
 	"github.com/writerinternal/cerebro/internal/identity"
-	"github.com/writerinternal/cerebro/internal/lineage"
 	"github.com/writerinternal/cerebro/internal/metrics"
 	"github.com/writerinternal/cerebro/internal/notifications"
 	"github.com/writerinternal/cerebro/internal/policy"
@@ -31,7 +30,6 @@ import (
 	"github.com/writerinternal/cerebro/internal/runtime"
 	"github.com/writerinternal/cerebro/internal/scheduler"
 	"github.com/writerinternal/cerebro/internal/snowflake"
-	"github.com/writerinternal/cerebro/internal/threatintel"
 	"github.com/writerinternal/cerebro/internal/ticketing"
 	"github.com/writerinternal/cerebro/internal/webhooks"
 )
@@ -60,10 +58,16 @@ func (s *Server) setupMiddleware() {
 	s.router.Use(middleware.Recoverer)
 	s.router.Use(middleware.Timeout(60 * time.Second))
 	s.router.Use(middleware.Compress(5))
+	s.router.Use(MaxBodySize(DefaultMaxBodySize))
 	s.router.Use(MetricsMiddleware)
 
 	if s.app.Config.APIAuthEnabled {
 		s.router.Use(APIKeyAuth(AuthConfig{Enabled: true, APIKeys: s.app.Config.APIKeys}))
+	}
+
+	// Enforce RBAC permissions when auth is enabled
+	if s.app.Config.APIAuthEnabled && s.app.RBAC != nil {
+		s.router.Use(RBACMiddleware(s.app.RBAC))
 	}
 
 	// Add rate limiting if configured
@@ -2244,8 +2248,7 @@ func (s *Server) slackCommands(w http.ResponseWriter, r *http.Request) {
 // Remediation endpoints
 
 func (s *Server) listRemediationRules(w http.ResponseWriter, r *http.Request) {
-	engine := remediation.NewEngine(s.app.Logger)
-	rules := engine.ListRules()
+	rules := s.app.Remediation.ListRules()
 	s.json(w, http.StatusOK, map[string]interface{}{
 		"rules": rules,
 		"count": len(rules),
@@ -2259,8 +2262,7 @@ func (s *Server) createRemediationRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	engine := remediation.NewEngine(s.app.Logger)
-	if err := engine.AddRule(rule); err != nil {
+	if err := s.app.Remediation.AddRule(rule); err != nil {
 		s.error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -2270,8 +2272,7 @@ func (s *Server) createRemediationRule(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getRemediationRule(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	engine := remediation.NewEngine(s.app.Logger)
-	rule, ok := engine.GetRule(id)
+	rule, ok := s.app.Remediation.GetRule(id)
 	if !ok {
 		s.error(w, http.StatusNotFound, "rule not found")
 		return
@@ -2281,8 +2282,7 @@ func (s *Server) getRemediationRule(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) enableRemediationRule(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	engine := remediation.NewEngine(s.app.Logger)
-	if err := engine.EnableRule(id); err != nil {
+	if err := s.app.Remediation.EnableRule(id); err != nil {
 		s.error(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -2291,8 +2291,7 @@ func (s *Server) enableRemediationRule(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) disableRemediationRule(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	engine := remediation.NewEngine(s.app.Logger)
-	if err := engine.DisableRule(id); err != nil {
+	if err := s.app.Remediation.DisableRule(id); err != nil {
 		s.error(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -2307,8 +2306,7 @@ func (s *Server) listRemediationExecutions(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	engine := remediation.NewEngine(s.app.Logger)
-	executions := engine.ListExecutions(limit)
+	executions := s.app.Remediation.ListExecutions(limit)
 	s.json(w, http.StatusOK, map[string]interface{}{
 		"executions": executions,
 		"count":      len(executions),
@@ -2317,8 +2315,7 @@ func (s *Server) listRemediationExecutions(w http.ResponseWriter, r *http.Reques
 
 func (s *Server) getRemediationExecution(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	engine := remediation.NewEngine(s.app.Logger)
-	execution, ok := engine.GetExecution(id)
+	execution, ok := s.app.Remediation.GetExecution(id)
 	if !ok {
 		s.error(w, http.StatusNotFound, "execution not found")
 		return
@@ -2332,12 +2329,12 @@ func (s *Server) approveExecution(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		ApproverID string `json:"approver_id"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.error(w, http.StatusBadRequest, "invalid request")
+		return
+	}
 
-	engine := remediation.NewEngine(s.app.Logger)
-	executor := remediation.NewExecutor(engine, s.app.Ticketing, s.app.Notifications, s.app.Findings)
-
-	if err := executor.Approve(r.Context(), id, req.ApproverID); err != nil {
+	if err := s.app.RemediationExecutor.Approve(r.Context(), id, req.ApproverID); err != nil {
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -2357,10 +2354,7 @@ func (s *Server) rejectExecution(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	engine := remediation.NewEngine(s.app.Logger)
-	executor := remediation.NewExecutor(engine, s.app.Ticketing, s.app.Notifications, s.app.Findings)
-
-	if err := executor.Reject(r.Context(), id, req.RejecterID, req.Reason); err != nil {
+	if err := s.app.RemediationExecutor.Reject(r.Context(), id, req.RejecterID, req.Reason); err != nil {
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -2481,8 +2475,18 @@ func (s *Server) ingestRuntimeEvent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listRuntimeFindings(w http.ResponseWriter, r *http.Request) {
-	// Would return recent runtime findings from store
-	s.json(w, http.StatusOK, []interface{}{})
+	limit := 100
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+
+	findings := s.app.RuntimeDetect.RecentFindings(limit)
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"findings": findings,
+		"count":    len(findings),
+	})
 }
 
 func (s *Server) listResponsePolicies(w http.ResponseWriter, r *http.Request) {
@@ -3355,11 +3359,3 @@ func (s *Server) visualizeReport(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(mermaid))
 }
-
-// Ensure imports are used
-var (
-	_ = auth.User{}
-	_ = lineage.AssetLineage{}
-	_ = runtime.RuntimeEvent{}
-	_ = threatintel.Feed{}
-)

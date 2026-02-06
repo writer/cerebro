@@ -2,7 +2,6 @@ package sync
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/wafv2"
@@ -272,6 +271,3 @@ func (e *SyncEngine) fetchWAFv2RegexPatternSets(ctx context.Context, cfg aws.Con
 
 	return rows, nil
 }
-
-// Placeholder
-var _ = fmt.Sprintf

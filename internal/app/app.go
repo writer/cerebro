@@ -105,14 +105,15 @@ type App struct {
 	ScanWatermarks *scanner.WatermarkStore
 
 	// New services
-	RBAC           *auth.RBAC
-	ThreatIntel    *threatintel.ThreatIntelService
-	Compliance     *compliance.ComplianceReport
-	Health         *health.Registry
-	Lineage        *lineage.LineageMapper
-	Remediation    *remediation.Engine
-	RuntimeDetect  *runtime.DetectionEngine
-	RuntimeRespond *runtime.ResponseEngine
+	RBAC                *auth.RBAC
+	ThreatIntel         *threatintel.ThreatIntelService
+	Compliance          *compliance.ComplianceReport
+	Health              *health.Registry
+	Lineage             *lineage.LineageMapper
+	Remediation         *remediation.Engine
+	RemediationExecutor *remediation.Executor
+	RuntimeDetect       *runtime.DetectionEngine
+	RuntimeRespond      *runtime.ResponseEngine
 
 	// Security Graph
 	SecurityGraph        *graph.Graph
@@ -1218,6 +1219,7 @@ func (a *App) initLineage() {
 
 func (a *App) initRemediation() {
 	a.Remediation = remediation.NewEngine(a.Logger)
+	a.RemediationExecutor = remediation.NewExecutor(a.Remediation, a.Ticketing, a.Notifications, a.Findings)
 	a.Logger.Info("remediation engine initialized", "rules", len(a.Remediation.ListRules()))
 }
 

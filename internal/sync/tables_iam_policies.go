@@ -2,7 +2,6 @@ package sync
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/url"
 	"time"
@@ -830,6 +829,5 @@ func (e *SyncEngine) fetchIAMUserGroups(ctx context.Context, cfg aws.Config, reg
 	return rows, nil
 }
 
-// Placeholder for compiler
-var _ = json.Marshal
+// Ensure types package is used (required for type assertions in fetch functions)
 var _ types.PolicyScopeType
