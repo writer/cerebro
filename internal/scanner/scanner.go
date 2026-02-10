@@ -28,8 +28,6 @@ type Scanner struct {
 	batchSize        int
 	logger           *slog.Logger
 	evalCache        *cache.PolicyCache // optional: caches asset hash -> skip
-	cacheHits        int64
-	cacheMisses      int64
 }
 
 type ScanConfig struct {
@@ -111,6 +109,7 @@ func (s *Scanner) ScanAssets(ctx context.Context, assets []map[string]interface{
 
 	var scanned int64
 	var violations int64
+	var skipped int64
 
 	// Start workers
 	var wg sync.WaitGroup
@@ -131,15 +130,23 @@ func (s *Scanner) ScanAssets(ctx context.Context, assets []map[string]interface{
 					assetID = id
 				}
 
-				// Check content-hash cache: skip if asset unchanged since last scan
+				// Compute content hash once for both cache lookup and store
+				var contentHash string
 				if s.evalCache != nil && assetID != "" {
-					h := hashAsset(asset)
-					if _, hit := s.evalCache.GetEvaluation(h, assetID); hit {
+					contentHash = hashAsset(asset)
+					if cached, hit := s.evalCache.GetEvaluation(contentHash, assetID); hit {
 						atomic.AddInt64(&scanned, 1)
-						atomic.AddInt64(&s.cacheHits, 1)
+						atomic.AddInt64(&skipped, 1)
+						if cachedFindings, ok := cached.([]policy.Finding); ok && len(cachedFindings) > 0 {
+							atomic.AddInt64(&violations, int64(len(cachedFindings)))
+							select {
+							case resultCh <- cachedFindings:
+							case <-ctx.Done():
+								return
+							}
+						}
 						continue
 					}
-					atomic.AddInt64(&s.cacheMisses, 1)
 				}
 
 				findings, err := s.engine.EvaluateAsset(ctx, asset)
@@ -153,10 +160,8 @@ func (s *Scanner) ScanAssets(ctx context.Context, assets []map[string]interface{
 					continue
 				}
 
-				// Store result in cache
 				if s.evalCache != nil && assetID != "" {
-					h := hashAsset(asset)
-					s.evalCache.SetEvaluation(h, assetID, len(findings) > 0)
+					s.evalCache.SetEvaluation(contentHash, assetID, findings)
 				}
 
 				if len(findings) > 0 {
@@ -202,16 +207,13 @@ func (s *Scanner) ScanAssets(ctx context.Context, assets []map[string]interface{
 
 	result.Scanned = atomic.LoadInt64(&scanned)
 	result.Violations = atomic.LoadInt64(&violations)
-	result.Skipped = atomic.LoadInt64(&s.cacheHits)
+	result.Skipped = atomic.LoadInt64(&skipped)
 	result.Duration = time.Since(start)
 
-	hits := atomic.LoadInt64(&s.cacheHits)
-	misses := atomic.LoadInt64(&s.cacheMisses)
 	s.logger.Info("scan complete",
 		"scanned", result.Scanned,
 		"violations", result.Violations,
-		"cache_hits", hits,
-		"cache_misses", misses,
+		"cache_skipped", result.Skipped,
 		"duration_ms", result.Duration.Milliseconds(),
 	)
 
@@ -349,6 +351,12 @@ func (s *Scanner) AnalyzeGraph(ctx context.Context, g *graph.Graph) *GraphAnalys
 				"affected_count": len(tc.AffectedAssets),
 				"affected_ids":   tc.AffectedAssets,
 			}
+			if node, ok := g.GetNode(finding.ResourceID); ok {
+				finding.ResourceName = node.Name
+			}
+		} else if tc.AttackPath != nil && tc.AttackPath.Target != nil {
+			finding.ResourceID = tc.AttackPath.Target.ID
+			finding.ResourceName = tc.AttackPath.Target.Name
 		}
 
 		for _, rf := range tc.Factors {

@@ -2,8 +2,10 @@ package graph
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -112,6 +114,7 @@ func (b *Builder) Build(ctx context.Context) error {
 		"duration", time.Since(start))
 
 	// Phase 4: build provider edges in parallel
+	edgeStart := time.Now()
 	eg, ectx := errgroup.WithContext(ctx)
 	eg.Go(func() error { b.buildAWSEdges(ectx); return nil })
 	eg.Go(func() error { b.buildGCPEdges(ectx); return nil })
@@ -119,9 +122,18 @@ func (b *Builder) Build(ctx context.Context) error {
 	eg.Go(func() error { b.buildRelationshipEdges(ectx); return nil })
 	_ = eg.Wait()
 
+	b.logger.Info("graph edges built",
+		"edges", b.graph.EdgeCount(),
+		"duration", time.Since(edgeStart))
+
 	// Phase 5: inferred edges (these iterate nodes, run sequentially)
+	inferStart := time.Now()
 	b.buildExposureEdges()
 	b.buildSCMInference()
+
+	b.logger.Info("graph inferred edges built",
+		"edges", b.graph.EdgeCount(),
+		"duration", time.Since(inferStart))
 
 	// Rebuild index with edges included
 	b.graph.BuildIndex()
@@ -193,8 +205,8 @@ func (b *Builder) buildRelationshipEdges(ctx context.Context) {
 	}
 
 	for _, row := range rels.Rows {
-		sourceID := toString(row["source_id"])
-		targetID := toString(row["target_id"])
+		sourceID := normalizeRelID(row["source_id"])
+		targetID := normalizeRelID(row["target_id"])
 		if sourceID == "" || targetID == "" {
 			continue
 		}
@@ -258,6 +270,87 @@ func (b *Builder) buildRelationshipEdges(ctx context.Context) {
 	}
 
 	b.logger.Debug("added relationship edges", "count", len(rels.Rows))
+}
+
+// normalizeRelID extracts a clean identifier from relationship source/target IDs.
+// Some relationship rows store JSON objects (e.g. {"arn": "arn:aws:iam::..."})
+// instead of plain strings; this extracts the ARN when possible.
+func normalizeRelID(raw any) string {
+	switch v := raw.(type) {
+	case nil:
+		return ""
+	case []byte:
+		return normalizeRelIDString(string(v))
+	case map[string]any:
+		if id := extractRelIDFromMap(v); id != "" {
+			return id
+		}
+		return normalizeRelIDString(fmt.Sprintf("%v", v))
+	case string:
+		return normalizeRelIDString(v)
+	default:
+		return normalizeRelIDString(fmt.Sprintf("%v", v))
+	}
+}
+
+func normalizeRelIDString(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if strings.HasPrefix(raw, "{") {
+		var parsed map[string]any
+		if err := json.Unmarshal([]byte(raw), &parsed); err == nil {
+			if id := extractRelIDFromMap(parsed); id != "" {
+				return id
+			}
+		}
+		if id := extractRelIDFromJSONString(raw); id != "" {
+			return id
+		}
+	}
+	if strings.HasPrefix(raw, "map[") {
+		if id := extractRelIDFromMapString(raw); id != "" {
+			return id
+		}
+	}
+	return raw
+}
+
+func extractRelIDFromMap(m map[string]any) string {
+	for _, key := range []string{"arn", "Arn", "ARN", "id", "Id", "ID", "resource_id", "resourceId"} {
+		if val, ok := m[key]; ok {
+			if id := strings.TrimSpace(toString(val)); id != "" {
+				return id
+			}
+		}
+	}
+	return ""
+}
+
+func extractRelIDFromJSONString(raw string) string {
+	for _, key := range []string{`"arn"`, `"Arn"`, `"ARN"`, `"id"`, `"Id"`, `"ID"`} {
+		if idx := strings.Index(raw, key); idx >= 0 {
+			rest := raw[idx+len(key):]
+			rest = strings.TrimLeft(rest, `: "`)
+			if end := strings.IndexByte(rest, '"'); end > 0 {
+				return rest[:end]
+			}
+		}
+	}
+	return ""
+}
+
+func extractRelIDFromMapString(raw string) string {
+	for _, key := range []string{"Arn:", "arn:", "ID:", "Id:", "id:"} {
+		if idx := strings.Index(raw, key); idx >= 0 {
+			rest := raw[idx+len(key):]
+			if fields := strings.Fields(rest); len(fields) > 0 {
+				return strings.Trim(fields[0], ",]")
+			}
+		}
+	}
+	return ""
 }
 
 func (b *Builder) ensureRelationshipNode(id, resourceType string) {
@@ -866,7 +959,10 @@ func isNodePublic(node *Node) bool {
 		return true
 	}
 	if pip := toString(node.Properties["public_ip"]); pip != "" {
-		return true
+		// Filter out placeholder / empty-like values
+		if isValidPublicIP(pip) {
+			return true
+		}
 	}
 	if iamPolicy := toString(node.Properties["iam_policy"]); iamPolicy != "" {
 		if strings.Contains(iamPolicy, "allUsers") || strings.Contains(iamPolicy, "allAuthenticatedUsers") {
@@ -874,7 +970,7 @@ func isNodePublic(node *Node) bool {
 		}
 	}
 	if ipAddrs := toString(node.Properties["ip_addresses"]); ipAddrs != "" {
-		if strings.Contains(ipAddrs, "0.0.0.0") {
+		if strings.Contains(ipAddrs, "0.0.0.0/0") {
 			return true
 		}
 	}
@@ -884,6 +980,12 @@ func isNodePublic(node *Node) bool {
 		}
 	}
 	return false
+}
+
+// isValidPublicIP returns true if the string is a valid, non-placeholder IP address.
+func isValidPublicIP(s string) bool {
+	s = strings.TrimSpace(s)
+	return s != "" && net.ParseIP(s) != nil
 }
 
 func toString(v any) string {
@@ -1116,10 +1218,13 @@ func (b *Builder) buildGCPNodes(ctx context.Context) {
 				nodes := make([]*Node, 0, len(rows))
 				for _, db := range rows {
 					ipStr := toString(db["ip_addresses"])
-					hasPublicIP := strings.Contains(ipStr, "PRIMARY") && !strings.Contains(ipStr, "PRIVATE")
+					// A Cloud SQL instance is publicly accessible if it has a PRIMARY
+					// IP type AND the settings authorize 0.0.0.0/0. Having both PRIMARY
+					// and PRIVATE addresses doesn't negate public exposure.
+					hasPublicIP := strings.Contains(ipStr, "PRIMARY")
 					settingsStr := toString(db["settings"])
-					hasAuthNetworks := strings.Contains(settingsStr, "0.0.0.0/0")
-					isPublic := hasPublicIP || hasAuthNetworks
+					hasOpenAuthNetwork := strings.Contains(settingsStr, "0.0.0.0/0")
+					isPublic := hasPublicIP && hasOpenAuthNetwork
 					risk := RiskNone
 					if isPublic {
 						risk = RiskCritical

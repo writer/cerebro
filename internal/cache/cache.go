@@ -135,17 +135,14 @@ func NewPolicyCache(capacity int, ttl time.Duration) *PolicyCache {
 	}
 }
 
-func (pc *PolicyCache) GetEvaluation(policyID, assetID string) (bool, bool) {
+func (pc *PolicyCache) GetEvaluation(policyID, assetID string) (interface{}, bool) {
 	key := policyID + ":" + assetID
-	if v, ok := pc.cache.Get(key); ok {
-		return v.(bool), true
-	}
-	return false, false
+	return pc.cache.Get(key)
 }
 
-func (pc *PolicyCache) SetEvaluation(policyID, assetID string, violated bool) {
+func (pc *PolicyCache) SetEvaluation(policyID, assetID string, result interface{}) {
 	key := policyID + ":" + assetID
-	pc.cache.Set(key, violated)
+	pc.cache.Set(key, result)
 }
 
 func (pc *PolicyCache) Stats() CacheStats {

@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"sort"
@@ -10,10 +11,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/robfig/cron/v3"
 	"github.com/spf13/cobra"
 
 	"github.com/writerinternal/cerebro/internal/snowflake"
+	nativesync "github.com/writerinternal/cerebro/internal/sync"
 )
 
 var syncScheduleCmd = &cobra.Command{
@@ -336,29 +339,62 @@ func runScheduleDaemon(cmd *cobra.Command, args []string) error {
 		Info("Waiting for schedules to be created...")
 	}
 
-	// Register all enabled schedules
-	for _, s := range schedules {
-		if !s.Enabled {
-			Info("Skipping disabled schedule: %s", s.Name)
-			continue
+	registerSchedules := func(schedules []SyncSchedule) int {
+		registered := 0
+		for _, s := range schedules {
+			if !s.Enabled {
+				Info("Skipping disabled schedule: %s", s.Name)
+				continue
+			}
+			schedule := s // capture for closure
+			_, err := cronScheduler.AddFunc(schedule.Cron, func() {
+				runScheduledSync(client, &schedule)
+			})
+			if err != nil {
+				Warning("Failed to register schedule %s: %v", schedule.Name, err)
+				continue
+			}
+			Info("Registered schedule: %s (%s) -> %s", schedule.Name, schedule.Cron, schedule.Provider)
+			registered++
 		}
-
-		schedule := s // capture for closure
-		_, err := cronScheduler.AddFunc(schedule.Cron, func() {
-			runScheduledSync(client, &schedule)
-		})
-		if err != nil {
-			Warning("Failed to register schedule %s: %v", schedule.Name, err)
-			continue
-		}
-		Info("Registered schedule: %s (%s) -> %s", schedule.Name, schedule.Cron, schedule.Provider)
+		return registered
 	}
+
+	registerSchedules(schedules)
+	activeSchedules := schedules
 
 	cronScheduler.Start()
 	Info("Scheduler running. Press Ctrl+C to stop.")
 
-	// Wait for shutdown signal
-	<-ctx.Done()
+	// Periodically reload schedules from the database
+	reloadTicker := time.NewTicker(60 * time.Second)
+	defer reloadTicker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			goto shutdown
+		case <-reloadTicker.C:
+			updated, err := listSchedules(ctx, client)
+			if err != nil {
+				Warning("Failed to reload schedules: %v", err)
+				continue
+			}
+			if schedulesEqual(activeSchedules, updated) {
+				continue
+			}
+			// Stop existing cron entries and re-register
+			cronCtx := cronScheduler.Stop()
+			<-cronCtx.Done()
+			cronScheduler = cron.New(cron.WithParser(parser))
+			count := registerSchedules(updated)
+			activeSchedules = updated
+			cronScheduler.Start()
+			Info("Reloaded schedules (%d active)", count)
+		}
+	}
+
+shutdown:
 
 	Info("Shutting down scheduler...")
 	cronCtx := cronScheduler.Stop()
@@ -386,7 +422,7 @@ func runScheduledSync(client *snowflake.Client, schedule *SyncSchedule) {
 	// Build sync command args based on provider
 	var syncErr error
 	for attempt := 1; attempt <= schedule.Retry; attempt++ {
-		syncErr = executeScheduledSync(ctx, schedule)
+		syncErr = executeScheduledSync(ctx, client, schedule)
 		if syncErr == nil {
 			break
 		}
@@ -416,13 +452,10 @@ func runScheduledSync(client *snowflake.Client, schedule *SyncSchedule) {
 	_ = saveSchedule(ctx, client, schedule)
 }
 
-func executeScheduledSync(ctx context.Context, schedule *SyncSchedule) error {
-	// This function executes the actual sync based on the schedule config
-	// We reuse the existing sync logic by calling the appropriate functions
-
+func executeScheduledSync(ctx context.Context, client *snowflake.Client, schedule *SyncSchedule) error {
 	switch schedule.Provider {
 	case "aws":
-		return executeAWSSync(ctx, schedule)
+		return executeAWSSync(ctx, client, schedule)
 	case "gcp":
 		return executeGCPSync(ctx, schedule)
 	case "azure":
@@ -432,31 +465,64 @@ func executeScheduledSync(ctx context.Context, schedule *SyncSchedule) error {
 	}
 }
 
-func executeAWSSync(ctx context.Context, schedule *SyncSchedule) error {
-	// Simplified AWS sync - in production, you'd call the actual sync engine
+func executeAWSSync(ctx context.Context, client *snowflake.Client, schedule *SyncSchedule) error {
 	Info("[%s] Executing AWS sync...", schedule.Name)
-	// The actual implementation would call nativesync.NewSyncEngine and run it
-	// For now, we just indicate success
-	return nil
+
+	awsCfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return fmt.Errorf("load AWS config: %w", err)
+	}
+
+	var opts []nativesync.EngineOption
+	if schedule.Table != "" {
+		tables := strings.Split(schedule.Table, ",")
+		for i, t := range tables {
+			tables[i] = strings.TrimSpace(t)
+		}
+		opts = append(opts, nativesync.WithTableFilter(tables))
+	}
+
+	syncer := nativesync.NewSyncEngine(client, slog.Default(), opts...)
+	_, err = syncer.SyncAllWithConfig(ctx, awsCfg)
+	return err
 }
 
 func executeGCPSync(ctx context.Context, schedule *SyncSchedule) error {
 	Info("[%s] Executing GCP sync...", schedule.Name)
-	return nil
+	return fmt.Errorf("scheduled GCP sync requires --gcp-project; configure the schedule table filter or use the CLI directly")
 }
 
 func executeAzureSync(ctx context.Context, schedule *SyncSchedule) error {
 	Info("[%s] Executing Azure sync...", schedule.Name)
-	return nil
+	return fmt.Errorf("scheduled Azure sync is not yet implemented; use the CLI directly")
 }
 
 func executeProviderSync(ctx context.Context, schedule *SyncSchedule) error {
-	Info("[%s] Executing %s provider sync...", schedule.Name, schedule.Provider)
-	// This would call the provider sync engine
-	return nil
+	return fmt.Errorf("scheduled sync for provider %q is not yet implemented", schedule.Provider)
 }
 
 // Database functions for schedule persistence
+
+// schedulesEqual returns true if two schedule lists have the same config-relevant fields.
+func schedulesEqual(a, b []SyncSchedule) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	m := make(map[string]SyncSchedule, len(a))
+	for _, s := range a {
+		m[s.Name] = s
+	}
+	for _, s := range b {
+		prev, ok := m[s.Name]
+		if !ok {
+			return false
+		}
+		if prev.Cron != s.Cron || prev.Provider != s.Provider || prev.Table != s.Table || prev.Enabled != s.Enabled || prev.Retry != s.Retry || prev.ScanAfter != s.ScanAfter {
+			return false
+		}
+	}
+	return true
+}
 
 func ensureScheduleTable(ctx context.Context, client *snowflake.Client) error {
 	query := `CREATE TABLE IF NOT EXISTS sync_schedules (

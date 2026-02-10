@@ -228,6 +228,28 @@ func TestBuilder_BuildWithMockData(t *testing.T) {
 	}
 }
 
+func TestNormalizeRelID(t *testing.T) {
+	arn := "arn:aws:iam::123456789012:role/TestRole"
+	tests := []struct {
+		name  string
+		input any
+		want  string
+	}{
+		{"plain", arn, arn},
+		{"json-string-lower", `{"arn":"` + arn + `"}`, arn},
+		{"json-string-upper", `{"Arn":"` + arn + `"}`, arn},
+		{"map-string", "map[Arn:" + arn + "]", arn},
+		{"map-value", map[string]any{"Arn": arn}, arn},
+		{"byte-json", []byte(`{"arn":"` + arn + `"}`), arn},
+	}
+
+	for _, tc := range tests {
+		if got := normalizeRelID(tc.input); got != tc.want {
+			t.Errorf("%s: normalizeRelID(%v) = %q, want %q", tc.name, tc.input, got, tc.want)
+		}
+	}
+}
+
 func TestBuilder_EmptyDataSource(t *testing.T) {
 	ctx := context.Background()
 	source := newMockDataSource()
@@ -316,5 +338,126 @@ func TestBuilder_PublicTrustPolicy(t *testing.T) {
 	}
 	if !foundPublicTrust {
 		t.Error("expected public trust edge from internet to PublicRole")
+	}
+}
+
+func TestIsValidPublicIP(t *testing.T) {
+	valid := []string{
+		"54.239.28.85",
+		"203.0.113.1",
+		"2001:0db8:85a3:0000:0000:8a2e:0370:7334",
+		"::1",
+		"0.0.0.0",
+	}
+	for _, ip := range valid {
+		if !isValidPublicIP(ip) {
+			t.Errorf("isValidPublicIP(%q) = false, want true", ip)
+		}
+	}
+
+	invalid := []string{
+		"",
+		"N/A",
+		"none",
+		"null",
+		"  ",
+		"not-an-ip",
+		"0 results",
+		"version 2",
+		"192.168.1.",
+		"abc.def.ghi.jkl",
+	}
+	for _, ip := range invalid {
+		if isValidPublicIP(ip) {
+			t.Errorf("isValidPublicIP(%q) = true, want false", ip)
+		}
+	}
+}
+
+func TestIsNodePublic(t *testing.T) {
+	tests := []struct {
+		name   string
+		node   *Node
+		public bool
+	}{
+		{
+			name:   "explicit public=true",
+			node:   &Node{ID: "db1", Kind: NodeKindDatabase, Properties: map[string]any{"public": true}},
+			public: true,
+		},
+		{
+			name:   "explicit public=false",
+			node:   &Node{ID: "db2", Kind: NodeKindDatabase, Properties: map[string]any{"public": false}},
+			public: false,
+		},
+		{
+			name:   "valid public_ip",
+			node:   &Node{ID: "i1", Kind: NodeKindInstance, Properties: map[string]any{"public_ip": "54.239.28.85"}},
+			public: true,
+		},
+		{
+			name:   "placeholder public_ip N/A",
+			node:   &Node{ID: "i2", Kind: NodeKindInstance, Properties: map[string]any{"public_ip": "N/A"}},
+			public: false,
+		},
+		{
+			name:   "empty public_ip",
+			node:   &Node{ID: "i3", Kind: NodeKindInstance, Properties: map[string]any{"public_ip": ""}},
+			public: false,
+		},
+		{
+			name:   "iam_policy allUsers",
+			node:   &Node{ID: "b1", Kind: NodeKindBucket, Properties: map[string]any{"iam_policy": `{"bindings":[{"members":["allUsers"]}]}`}},
+			public: true,
+		},
+		{
+			name:   "iam_policy allAuthenticatedUsers",
+			node:   &Node{ID: "b2", Kind: NodeKindBucket, Properties: map[string]any{"iam_policy": `{"bindings":[{"members":["allAuthenticatedUsers"]}]}`}},
+			public: true,
+		},
+		{
+			name:   "iam_policy private only",
+			node:   &Node{ID: "b3", Kind: NodeKindBucket, Properties: map[string]any{"iam_policy": `{"bindings":[{"members":["user:a@b.com"]}]}`}},
+			public: false,
+		},
+		{
+			name:   "ip_addresses 0.0.0.0/0",
+			node:   &Node{ID: "sg1", Kind: NodeKindNetwork, Properties: map[string]any{"ip_addresses": "[0.0.0.0/0]"}},
+			public: true,
+		},
+		{
+			name:   "ip_addresses private only",
+			node:   &Node{ID: "sg2", Kind: NodeKindNetwork, Properties: map[string]any{"ip_addresses": "[10.0.0.0/8]"}},
+			public: false,
+		},
+		{
+			name:   "ingress INGRESS_TRAFFIC_ALL",
+			node:   &Node{ID: "fn1", Kind: NodeKindFunction, Properties: map[string]any{"ingress": "INGRESS_TRAFFIC_ALL"}},
+			public: true,
+		},
+		{
+			name:   "ingress internal only",
+			node:   &Node{ID: "fn2", Kind: NodeKindFunction, Properties: map[string]any{"ingress": "INGRESS_TRAFFIC_INTERNAL_ONLY"}},
+			public: false,
+		},
+		{
+			name:   "no properties",
+			node:   &Node{ID: "x1", Kind: NodeKindInstance, Properties: map[string]any{}},
+			public: false,
+		},
+		{
+			name:   "nil properties",
+			node:   &Node{ID: "x2", Kind: NodeKindInstance},
+			public: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := isNodePublic(tc.node)
+			if got != tc.public {
+				t.Errorf("isNodePublic() = %v, want %v", got, tc.public)
+			}
+		})
 	}
 }

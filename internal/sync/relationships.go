@@ -210,13 +210,21 @@ func (r *RelationshipExtractor) persistRelationships(ctx context.Context, rels [
 		values := make([]string, 0, len(batch))
 		args := make([]interface{}, 0, len(batch)*7)
 		for _, rel := range batch {
+			sourceID := normalizeRelationshipID(rel.SourceID)
+			targetID := normalizeRelationshipID(rel.TargetID)
+			if sourceID == "" || targetID == "" {
+				continue
+			}
 			props := rel.Properties
 			if props == "" {
 				props = "{}"
 			}
-			id := buildRelationshipID(rel.SourceID, rel.RelType, rel.TargetID, props)
+			id := buildRelationshipID(sourceID, rel.RelType, targetID, props)
 			values = append(values, "(?, ?, ?, ?, ?, ?, ?)")
-			args = append(args, id, rel.SourceID, rel.SourceType, rel.TargetID, rel.TargetType, rel.RelType, props)
+			args = append(args, id, sourceID, rel.SourceType, targetID, rel.TargetType, rel.RelType, props)
+		}
+		if len(values) == 0 {
+			continue
 		}
 
 		// Use simple INSERT with fully qualified table name
@@ -231,7 +239,7 @@ func (r *RelationshipExtractor) persistRelationships(ctx context.Context, rels [
 			r.logger.Error("failed to persist relationships batch", "error", err, "batch_start", i, "batch_size", len(batch))
 			return total, err
 		}
-		total += len(batch)
+		total += len(values)
 	}
 
 	r.logger.Info("relationships persisted", "total", total)
@@ -915,6 +923,58 @@ func toString(v interface{}) string {
 		s = s[1 : len(s)-1]
 	}
 	return s
+}
+
+func normalizeRelationshipID(id string) string {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return ""
+	}
+	if len(id) >= 2 && id[0] == '"' && id[len(id)-1] == '"' {
+		id = id[1 : len(id)-1]
+	}
+	if strings.HasPrefix(id, "{") {
+		var parsed map[string]interface{}
+		if err := json.Unmarshal([]byte(id), &parsed); err == nil {
+			if val := getStringAny(parsed, "arn", "Arn", "ARN", "id", "Id", "ID", "resource_id", "resourceId"); val != "" {
+				return val
+			}
+		}
+		if val := extractRelIDFromJSONString(id); val != "" {
+			return val
+		}
+	}
+	if strings.HasPrefix(id, "map[") {
+		if val := extractRelIDFromMapString(id); val != "" {
+			return val
+		}
+	}
+	return id
+}
+
+func extractRelIDFromJSONString(raw string) string {
+	for _, key := range []string{`"arn"`, `"Arn"`, `"ARN"`, `"id"`, `"Id"`, `"ID"`} {
+		if idx := strings.Index(raw, key); idx >= 0 {
+			rest := raw[idx+len(key):]
+			rest = strings.TrimLeft(rest, `: "`)
+			if end := strings.IndexByte(rest, '"'); end > 0 {
+				return rest[:end]
+			}
+		}
+	}
+	return ""
+}
+
+func extractRelIDFromMapString(raw string) string {
+	for _, key := range []string{"Arn:", "arn:", "ID:", "Id:", "id:"} {
+		if idx := strings.Index(raw, key); idx >= 0 {
+			rest := raw[idx+len(key):]
+			if fields := strings.Fields(rest); len(fields) > 0 {
+				return strings.Trim(fields[0], ",]")
+			}
+		}
+	}
+	return ""
 }
 
 func getStringAny(m map[string]interface{}, keys ...string) string {

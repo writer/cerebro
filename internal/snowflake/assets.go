@@ -218,11 +218,17 @@ func (c *Client) DescribeColumns(ctx context.Context, table string) ([]string, e
 	if err := ValidateTableNameStrict(table); err != nil {
 		return nil, fmt.Errorf("invalid table name: %w", err)
 	}
-	tableRef, err := SafeTableRef(c.database, c.schema, table)
-	if err != nil {
-		return nil, err
+	if err := ValidateTableName(c.database); err != nil {
+		return nil, fmt.Errorf("invalid database name: %w", err)
 	}
-	result, err := c.Query(ctx, fmt.Sprintf("SELECT column_name FROM information_schema.columns WHERE table_name = '%s' AND table_schema = 'RAW'", strings.ToUpper(table)))
+	if err := ValidateTableName(c.schema); err != nil {
+		return nil, fmt.Errorf("invalid schema name: %w", err)
+	}
+	query := fmt.Sprintf(
+		"SELECT column_name FROM %s.information_schema.columns WHERE table_name = ? AND table_schema = ?",
+		strings.ToUpper(c.database),
+	)
+	result, err := c.Query(ctx, query, strings.ToUpper(table), strings.ToUpper(c.schema))
 	if err != nil {
 		return nil, err
 	}
@@ -232,6 +238,5 @@ func (c *Client) DescribeColumns(ctx context.Context, table string) ([]string, e
 			cols = append(cols, strings.ToLower(name))
 		}
 	}
-	_ = tableRef // validated but unused in the final query
 	return cols, nil
 }

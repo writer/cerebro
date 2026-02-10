@@ -651,7 +651,8 @@ func (e *ToxicCombinationEngine) ruleAdminWithNoMFA() *ToxicCombinationRule {
 				Remediation: []*RemediationStep{
 					{Priority: 1, Action: "Enable MFA", Resource: node.ID, Impact: "Prevents credential theft attacks", Effort: "low", Automated: true},
 				},
-				Tags: []string{"mfa", "authentication", "admin"},
+				AffectedAssets: []string{node.ID},
+				Tags:           []string{"mfa", "authentication", "admin"},
 			}
 		},
 	}

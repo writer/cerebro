@@ -306,33 +306,36 @@ func (c *Client) ListTables(ctx context.Context) ([]string, error) {
 // ListAvailableTables returns all tables in the configured schema as lowercase names.
 // Uses information_schema for reliable column parsing instead of SHOW TABLES.
 func (c *Client) ListAvailableTables(ctx context.Context) ([]string, error) {
+	if err := ValidateTableName(c.database); err != nil {
+		return nil, fmt.Errorf("invalid database name: %w", err)
+	}
 	query := fmt.Sprintf(
-		"SELECT table_name FROM %s.information_schema.tables WHERE table_schema = '%s'",
-		c.database, strings.ToUpper(c.schema),
+		"SELECT table_name FROM %s.information_schema.tables WHERE table_schema = ?",
+		strings.ToUpper(c.database),
 	)
-	result, err := c.Query(ctx, query)
+	result, err := c.Query(ctx, query, strings.ToUpper(c.schema))
 	if err != nil {
 		return nil, err
 	}
+	seen := make(map[string]bool, len(result.Rows))
 	tables := make([]string, 0, len(result.Rows))
 	for _, row := range result.Rows {
-		if name, ok := row["table_name"].(string); ok {
-			tables = append(tables, strings.ToLower(name))
+		// Query returns lowercase keys; check both for driver compatibility
+		name := ""
+		if n, ok := row["table_name"].(string); ok && n != "" {
+			name = n
+		} else if n, ok := row["TABLE_NAME"].(string); ok && n != "" {
+			name = n
 		}
-		if name, ok := row["TABLE_NAME"].(string); ok && name != "" {
-			tables = append(tables, strings.ToLower(name))
+		if name != "" {
+			lower := strings.ToLower(name)
+			if !seen[lower] {
+				seen[lower] = true
+				tables = append(tables, lower)
+			}
 		}
 	}
-	// Deduplicate
-	seen := make(map[string]bool, len(tables))
-	deduped := tables[:0]
-	for _, t := range tables {
-		if !seen[t] {
-			seen[t] = true
-			deduped = append(deduped, t)
-		}
-	}
-	return deduped, nil
+	return tables, nil
 }
 
 // WithTimeout returns a context with the specified timeout, suitable for database operations.

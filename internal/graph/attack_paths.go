@@ -67,28 +67,41 @@ type Chokepoint struct {
 }
 
 func (sim *AttackPathSimulator) identifyEntryPoints() {
+	seen := make(map[string]bool)
+	addEntry := func(node *Node) {
+		if node == nil {
+			return
+		}
+		if seen[node.ID] {
+			return
+		}
+		seen[node.ID] = true
+		sim.entryPoints = append(sim.entryPoints, node)
+	}
+
 	for _, node := range sim.graph.GetAllNodes() {
-		// Internet-exposed resources
-		if isExposedToInternet(sim.graph, node.ID) {
-			sim.entryPoints = append(sim.entryPoints, node)
+		// Internet node itself
+		if node.Kind == NodeKindInternet {
+			addEntry(node)
 			continue
 		}
 
-		// Internet node itself
-		if node.Kind == NodeKindInternet {
-			sim.entryPoints = append(sim.entryPoints, node)
-			continue
+		// Internet-exposed resources are entry points but may also be
+		// crown jewels (e.g. a public database). Don't `continue` here
+		// so identifyCrownJewels can also classify them.
+		if isExposedToInternet(sim.graph, node.ID) {
+			addEntry(node)
 		}
 
 		// Users (potential compromise via phishing)
 		if node.Kind == NodeKindUser {
-			sim.entryPoints = append(sim.entryPoints, node)
+			addEntry(node)
 		}
 
 		// Service accounts with access keys
 		if node.Kind == NodeKindServiceAccount {
 			if _, hasKeys := node.Properties["access_keys"]; hasKeys {
-				sim.entryPoints = append(sim.entryPoints, node)
+				addEntry(node)
 			}
 		}
 	}
@@ -380,6 +393,20 @@ func (sim *AttackPathSimulator) findChokepoints(paths []*ScoredAttackPath) []*Ch
 	nodeUpstream := make(map[string]map[string]bool)
 	nodeDownstream := make(map[string]map[string]bool)
 
+	// Check if all paths share the same entry point (e.g. Internet).
+	// When they do, include intermediate nodes AND shared entry points
+	// so that direct (1-hop) paths still produce chokepoints.
+	sharedEntry := ""
+	if len(paths) > 1 {
+		sharedEntry = paths[0].EntryPoint.ID
+		for _, p := range paths[1:] {
+			if p.EntryPoint.ID != sharedEntry {
+				sharedEntry = ""
+				break
+			}
+		}
+	}
+
 	for _, path := range paths {
 		pathNodes := make(map[string]bool)
 		for _, step := range path.Steps {
@@ -388,7 +415,14 @@ func (sim *AttackPathSimulator) findChokepoints(paths []*ScoredAttackPath) []*Ch
 		}
 
 		for nodeID := range pathNodes {
-			if nodeID == path.EntryPoint.ID || nodeID == path.Target.ID {
+			// Always skip the shared entry point itself (e.g. Internet)
+			if nodeID == sharedEntry {
+				continue
+			}
+			// For multi-hop paths, skip entry/target to find true intermediaries.
+			// For direct paths (length <= 1), include targets so they can be
+			// identified as convergence points reachable from the shared entry.
+			if path.Length > 1 && (nodeID == path.EntryPoint.ID || nodeID == path.Target.ID) {
 				continue
 			}
 			nodePathCount[nodeID]++

@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/writerinternal/cerebro/internal/app"
+	"github.com/writerinternal/cerebro/internal/policy"
 	"github.com/writerinternal/cerebro/internal/scanner"
 	"github.com/writerinternal/cerebro/internal/snowflake"
 	nativesync "github.com/writerinternal/cerebro/internal/sync"
@@ -183,10 +184,24 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 	scanWg.Wait()
 
-	// Persist all watermarks once after all tables scanned
+	// Start watermark persistence in the background while graph analysis runs.
+	// We wait for it before returning so the Snowflake pool isn't closed underneath it.
+	wmDone := make(chan struct{})
 	if application.ScanWatermarks != nil {
-		go func() { _ = application.ScanWatermarks.PersistWatermarks(ctx) }()
+		go func() {
+			defer close(wmDone)
+			wmCtx, wmCancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer wmCancel()
+			if err := application.ScanWatermarks.PersistWatermarks(wmCtx); err != nil {
+				Warning("Failed to persist watermarks: %v", err)
+			}
+		}()
+	} else {
+		close(wmDone)
 	}
+
+	// Track SQL toxic-combo risk categories per resource to avoid double-counting in graph analysis.
+	sqlToxicRiskSets := make(map[string][]map[string]bool)
 
 	// Relationship-based toxic combination detection (SQL query approach)
 	if scanToxicCombos && application.Snowflake != nil {
@@ -197,6 +212,42 @@ func runScan(cmd *cobra.Command, args []string) error {
 			// Count by severity
 			critCount, highCount := 0, 0
 			for _, f := range toxicFindings {
+				if rid := normalizeResourceID(toString(f["resource_id"])); rid != "" {
+					if risks := canonicalizeSQLRiskCategories(toString(f["risks"])); len(risks) > 0 {
+						sqlToxicRiskSets[rid] = append(sqlToxicRiskSets[rid], risks)
+					}
+				}
+				policyID := toString(f["policy_id"])
+				resourceID := toString(f["resource_id"])
+				resourceName := toString(f["resource_name"])
+				if application.Findings != nil && policyID != "" && resourceID != "" {
+					title := toString(f["title"])
+					if title == "" {
+						title = policyID
+					}
+					resource := map[string]interface{}{"id": resourceID}
+					if resourceName != "" {
+						resource["name"] = resourceName
+					}
+					if url := toString(f["url"]); url != "" {
+						resource["url"] = url
+					}
+					if sa := toString(f["service_account"]); sa != "" {
+						resource["service_account"] = sa
+					}
+					application.Findings.Upsert(ctx, policy.Finding{
+						ID:             fmt.Sprintf("%s:%s", policyID, resourceID),
+						PolicyID:       policyID,
+						PolicyName:     title,
+						Title:          title,
+						Severity:       strings.ToLower(toString(f["severity"])),
+						Description:    toString(f["description"]),
+						Resource:       resource,
+						ResourceID:     resourceID,
+						ResourceName:   resourceName,
+						RiskCategories: parseRiskCategories(toString(f["risks"])),
+					})
+				}
 				switch toString(f["severity"]) {
 				case "CRITICAL":
 					critCount++
@@ -221,9 +272,14 @@ func runScan(cmd *cobra.Command, args []string) error {
 	if scanToxicCombos && graphAvailable {
 		graphResult := application.Scanner.AnalyzeGraph(ctx, application.SecurityGraph)
 		if graphResult != nil {
-			graphToxicCount = len(graphResult.ToxicCombinations)
 			for _, f := range graphResult.ToxicCombinations {
+				resourceID := normalizeResourceID(f.ResourceID)
+				graphRiskSet := canonicalizeGraphRiskCategories(f.RiskCategories)
+				if shouldSkipGraphToxicCombination(resourceID, graphRiskSet, sqlToxicRiskSets) {
+					continue
+				}
 				application.Findings.Upsert(ctx, f)
+				graphToxicCount++
 				allFindings = append(allFindings, map[string]interface{}{
 					"id":              f.ID,
 					"policy_id":       f.PolicyID,
@@ -279,6 +335,19 @@ func runScan(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Downgrade severity for findings from known dev/test environments.
+	// This reduces alert fatigue without hiding the findings entirely.
+	for i, f := range allFindings {
+		if isDevResource(toString(f["resource_id"])) {
+			orig := strings.ToUpper(toString(f["severity"]))
+			if orig == "CRITICAL" || orig == "HIGH" {
+				allFindings[i]["severity"] = "LOW"
+				allFindings[i]["severity_original"] = orig
+				allFindings[i]["dev_environment"] = true
+			}
+		}
+	}
+
 	duration := time.Since(start)
 
 	if scanOutput == FormatJSON {
@@ -311,6 +380,13 @@ func runScan(cmd *cobra.Command, args []string) error {
 		return CSVOutput(headers, rows)
 	}
 
+	// Count by severity
+	sevCounts := map[string]int{"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
+	for _, f := range allFindings {
+		sev := strings.ToUpper(toString(f["severity"]))
+		sevCounts[sev]++
+	}
+
 	// Summary
 	fmt.Println()
 	fmt.Println(strings.Repeat("=", 50))
@@ -319,13 +395,208 @@ func runScan(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Assets scanned:  %d\n", totalScanned)
 	if totalViolations > 0 {
 		fmt.Printf("Violations:      %s\n", color(colorRed, fmt.Sprintf("%d", totalViolations)))
+		if sevCounts["CRITICAL"] > 0 {
+			fmt.Printf("  Critical:      %s\n", color(colorRed, fmt.Sprintf("%d", sevCounts["CRITICAL"])))
+		}
+		if sevCounts["HIGH"] > 0 {
+			fmt.Printf("  High:          %s\n", color(colorYellow, fmt.Sprintf("%d", sevCounts["HIGH"])))
+		}
+		if sevCounts["MEDIUM"] > 0 {
+			fmt.Printf("  Medium:        %d\n", sevCounts["MEDIUM"])
+		}
+		if sevCounts["LOW"] > 0 {
+			fmt.Printf("  Low:           %d\n", sevCounts["LOW"])
+		}
 	} else {
 		fmt.Printf("Violations:      %s\n", color(colorGreen, "0"))
 	}
 	fmt.Printf("Duration:        %s\n", duration.Round(time.Millisecond))
 	fmt.Printf("Policies:        %d\n", len(policies))
 
+	// Show top resources with the most findings (helps prioritize remediation)
+	if totalViolations > 0 {
+		resourceCounts := make(map[string]int)
+		resourceSev := make(map[string]string) // track highest severity per resource
+		resourceLabels := make(map[string]string)
+		for _, f := range allFindings {
+			rid := normalizeResourceID(toString(f["resource_id"]))
+			if rid == "" {
+				continue
+			}
+			resourceCounts[rid]++
+			sev := strings.ToUpper(toString(f["severity"]))
+			if prev, ok := resourceSev[rid]; !ok || sevRank(sev) > sevRank(prev) {
+				resourceSev[rid] = sev
+			}
+			if _, ok := resourceLabels[rid]; !ok {
+				if name := strings.TrimSpace(toString(f["resource_name"])); name != "" {
+					resourceLabels[rid] = name
+				} else {
+					resourceLabels[rid] = rid
+				}
+			}
+		}
+		// Show resources with 3+ findings
+		type resourceEntry struct {
+			id    string
+			count int
+			sev   string
+		}
+		var top []resourceEntry
+		for rid, cnt := range resourceCounts {
+			if cnt >= 3 {
+				top = append(top, resourceEntry{rid, cnt, resourceSev[rid]})
+			}
+		}
+		if len(top) > 0 {
+			// Sort by count descending
+			for i := 0; i < len(top); i++ {
+				for j := i + 1; j < len(top); j++ {
+					if top[j].count > top[i].count {
+						top[i], top[j] = top[j], top[i]
+					}
+				}
+			}
+			if len(top) > 10 {
+				top = top[:10]
+			}
+			fmt.Println("\nTop resources by finding count:")
+			for _, r := range top {
+				label := resourceLabels[r.id]
+				if label == "" {
+					label = r.id
+				}
+				if len(label) > 60 {
+					label = "..." + label[len(label)-57:]
+				}
+				dev := ""
+				if isDevResource(r.id) {
+					dev = " (dev)"
+				}
+				fmt.Printf("  %3d  [%s] %s%s\n", r.count, r.sev, label, dev)
+			}
+		}
+	}
+
+	// Wait for watermark persistence to finish before the pool closes
+	<-wmDone
+
 	return nil
+}
+
+func sevRank(sev string) int {
+	switch sev {
+	case "CRITICAL":
+		return 4
+	case "HIGH":
+		return 3
+	case "MEDIUM":
+		return 2
+	case "LOW":
+		return 1
+	default:
+		return 0
+	}
+}
+
+func parseRiskCategories(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	items := make([]string, 0, len(parts))
+	for _, part := range parts {
+		item := strings.TrimSpace(part)
+		if item != "" {
+			items = append(items, item)
+		}
+	}
+	return items
+}
+
+func canonicalizeSQLRiskCategories(raw string) map[string]bool {
+	return canonicalizeRiskCategories(parseRiskCategories(raw))
+}
+
+func canonicalizeGraphRiskCategories(categories []string) map[string]bool {
+	return canonicalizeRiskCategories(categories)
+}
+
+func canonicalizeRiskCategories(categories []string) map[string]bool {
+	if len(categories) == 0 {
+		return nil
+	}
+	canon := make(map[string]bool)
+	for _, category := range categories {
+		label := canonicalizeRiskLabel(category)
+		if label != "" {
+			canon[label] = true
+		}
+	}
+	if len(canon) == 0 {
+		return nil
+	}
+	return canon
+}
+
+func canonicalizeRiskLabel(label string) string {
+	label = strings.TrimSpace(label)
+	if label == "" {
+		return ""
+	}
+	label = strings.Trim(label, "\"")
+	label = strings.ToLower(label)
+	label = strings.ReplaceAll(label, "-", "_")
+	label = strings.ReplaceAll(label, " ", "_")
+	label = strings.ReplaceAll(label, "__", "_")
+	switch label {
+	case "external_exposure", "public_exposure", "public_access", "internet_exposure":
+		return "network_exposure"
+	case "unprotected_data", "data_exposure", "data_access":
+		return "sensitive_data"
+	case "unprotected_principal":
+		return "over_privilege"
+	case "no_authentication", "no_auth":
+		return "weak_authentication"
+	case "confused_deputy":
+		return "privilege_escalation"
+	}
+	return label
+}
+
+func shouldSkipGraphToxicCombination(resourceID string, graphRisks map[string]bool, sqlRiskSets map[string][]map[string]bool) bool {
+	if resourceID == "" || len(graphRisks) == 0 {
+		return false
+	}
+	sets := sqlRiskSets[resourceID]
+	if len(sets) == 0 {
+		return false
+	}
+	for _, sqlSet := range sets {
+		if riskSetSuperset(sqlSet, graphRisks) {
+			return true
+		}
+	}
+	return false
+}
+
+func riskSetSuperset(superset map[string]bool, subset map[string]bool) bool {
+	if len(subset) == 0 {
+		return false
+	}
+	for key := range subset {
+		if !superset[key] {
+			return false
+		}
+	}
+	return true
+}
+
+func normalizeResourceID(id string) string {
+	id = strings.TrimSpace(id)
+	id = strings.Trim(id, "\"")
+	return id
 }
 
 var resourceTableMapping = map[string]string{
@@ -417,7 +688,7 @@ func resourceToTable(resource string) string {
 	// Try to construct table name from resource pattern
 	parts := strings.Split(resource, "::")
 	if len(parts) >= 3 {
-		tableName := parts[0] + "_" + parts[1] + "_" + parts[2] + "s"
+		tableName := parts[0] + "_" + parts[1] + "_" + pluralize(parts[2])
 		return strings.ToLower(tableName)
 	}
 
@@ -427,6 +698,23 @@ func resourceToTable(resource string) string {
 	}
 
 	return ""
+}
+
+func pluralize(s string) string {
+	if s == "" {
+		return s
+	}
+	if strings.HasSuffix(s, "s") {
+		return s
+	}
+	if strings.HasSuffix(s, "y") && len(s) > 1 {
+		// policy -> policies, summary -> summaries
+		c := s[len(s)-2]
+		if c != 'a' && c != 'e' && c != 'i' && c != 'o' && c != 'u' {
+			return s[:len(s)-1] + "ies"
+		}
+	}
+	return s + "s"
 }
 
 // toString safely converts interface{} to string
@@ -575,6 +863,23 @@ func scanOneTable(ctx context.Context, application *app.App, table string, full 
 	}
 
 	return scanned, violations, findings
+}
+
+// devResourcePatterns identifies resources in development/test environments.
+var devResourcePatterns = []string{
+	"-dev-", "-dev/", "/dev/", "-staging-", "-staging/", "/staging/",
+	"-test-", "-test/", "/test/", "-sandbox-", "-sandbox/", "/sandbox/",
+	"writer-sa-dev", // GCP dev project
+}
+
+func isDevResource(resourceID string) bool {
+	lower := strings.ToLower(resourceID)
+	for _, p := range devResourcePatterns {
+		if strings.Contains(lower, p) {
+			return true
+		}
+	}
+	return false
 }
 
 func isRemovalEvent(changeType string) bool {
@@ -735,21 +1040,29 @@ FROM high_cloudrun_no_auth
 		return nil, fmt.Errorf("toxic combination query failed: %w", err)
 	}
 
-	findings := make([]map[string]interface{}, 0, len(result.Rows))
-	for _, row := range result.Rows {
-		findings = append(findings, map[string]interface{}{
-			"severity":        toString(row["SEVERITY"]),
-			"policy_id":       toString(row["POLICY_ID"]),
-			"title":           toString(row["TITLE"]),
-			"resource_id":     toString(row["RESOURCE_ID"]),
-			"resource_name":   toString(row["RESOURCE_NAME"]),
-			"url":             toString(row["URL"]),
-			"service_account": toString(row["SERVICE_ACCOUNT"]),
-			"description":     toString(row["DESCRIPTION"]),
-			"risks":           toString(row["RISKS"]),
-			"toxic_combo":     true,
-		})
-	}
+	return mapToxicCombinationRows(result.Rows), nil
+}
 
-	return findings, nil
+func mapToxicCombinationRows(rows []map[string]interface{}) []map[string]interface{} {
+	findings := make([]map[string]interface{}, 0, len(rows))
+	for _, row := range rows {
+		f := map[string]interface{}{
+			"severity":        toString(row["severity"]),
+			"policy_id":       toString(row["policy_id"]),
+			"title":           toString(row["title"]),
+			"resource_id":     toString(row["resource_id"]),
+			"resource_name":   toString(row["resource_name"]),
+			"url":             toString(row["url"]),
+			"service_account": toString(row["service_account"]),
+			"description":     toString(row["description"]),
+			"risks":           toString(row["risks"]),
+			"toxic_combo":     true,
+		}
+		// Skip rows where the query returned empty/NULL columns
+		if f["policy_id"] == "" && f["severity"] == "" {
+			continue
+		}
+		findings = append(findings, f)
+	}
+	return findings
 }

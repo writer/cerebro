@@ -70,14 +70,50 @@ func TestScannerWithCache(t *testing.T) {
 	if r1.Scanned != 2 {
 		t.Errorf("first scan: expected 2 scanned, got %d", r1.Scanned)
 	}
+	firstViolations := r1.Violations
 
-	// Second scan with same assets: should get cache hits
+	// Second scan with same assets: should get cache hits but still report findings
 	r2 := s.ScanAssets(context.Background(), assets)
 	if r2.Scanned != 2 {
 		t.Errorf("second scan: expected 2 scanned, got %d", r2.Scanned)
 	}
-	// Cache hits should be > 0
 	if r2.Skipped < 1 {
 		t.Logf("cache skipped: %d (may be 0 if cache key format doesn't match)", r2.Skipped)
+	}
+	// Violations must remain the same on cache hit -- findings must not be dropped
+	if r2.Violations != firstViolations {
+		t.Errorf("violations changed across cached scan: first=%d second=%d", firstViolations, r2.Violations)
+	}
+}
+
+func TestScannerCacheCountersArePerScan(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	engine := policy.NewEngine()
+	engine.AddPolicy(&policy.Policy{
+		ID:         "pub-check",
+		Effect:     "forbid",
+		Conditions: []string{"public == true"},
+		Severity:   "high",
+	})
+
+	c := cache.NewPolicyCache(1000, 5*time.Minute)
+	s := NewScanner(engine, ScanConfig{Workers: 1}, logger)
+	s.SetCache(c)
+
+	assets := []map[string]interface{}{
+		{"_cq_id": "1", "name": "bucket", "public": "true"},
+	}
+
+	// First scan populates the cache
+	_ = s.ScanAssets(context.Background(), assets)
+
+	// Second scan: 1 cache hit
+	r2 := s.ScanAssets(context.Background(), assets)
+	// Third scan: 1 cache hit
+	r3 := s.ScanAssets(context.Background(), assets)
+
+	// Skipped must reflect THIS scan only, not accumulate
+	if r2.Skipped != r3.Skipped {
+		t.Errorf("skipped should be per-scan: scan2=%d scan3=%d", r2.Skipped, r3.Skipped)
 	}
 }

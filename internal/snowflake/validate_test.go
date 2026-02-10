@@ -126,3 +126,38 @@ func TestSafeTableRef_Rejects(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateTableName_AcceptsValidDatabaseNames(t *testing.T) {
+	valid := []string{"CEREBRO", "my_database", "DB1", "_internal", "Production_DB_2"}
+	for _, name := range valid {
+		if err := ValidateTableName(name); err != nil {
+			t.Errorf("ValidateTableName(%q) = %v, want nil", name, err)
+		}
+	}
+}
+
+func TestValidateTableName_RejectsInvalidDatabaseNames(t *testing.T) {
+	invalid := []struct {
+		name   string
+		reason string
+	}{
+		{"", "empty"},
+		{"db; DROP DATABASE cerebro", "sql injection semicolon"},
+		{"db--comment", "sql comment"},
+		{"db' OR '1'='1", "sql injection quote"},
+		{"my database", "contains space"},
+		{"db.schema", "contains dot"},
+	}
+	for _, tc := range invalid {
+		if err := ValidateTableName(tc.name); err == nil {
+			t.Errorf("ValidateTableName(%q) should reject (%s)", tc.name, tc.reason)
+		}
+	}
+}
+
+func TestValidateTableName_Empty(t *testing.T) {
+	err := ValidateTableName("")
+	if err == nil {
+		t.Error("ValidateTableName('') should return error")
+	}
+}

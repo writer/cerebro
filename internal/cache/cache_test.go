@@ -72,15 +72,19 @@ func TestLRUUpdate(t *testing.T) {
 func TestPolicyCache(t *testing.T) {
 	pc := NewPolicyCache(100, time.Hour)
 
-	pc.SetEvaluation("policy-1", "asset-a", true)
-	pc.SetEvaluation("policy-1", "asset-b", false)
+	pc.SetEvaluation("policy-1", "asset-a", []string{"finding-1"})
+	pc.SetEvaluation("policy-1", "asset-b", []string{})
 
-	if violated, ok := pc.GetEvaluation("policy-1", "asset-a"); !ok || !violated {
-		t.Error("expected violation for asset-a")
+	if val, ok := pc.GetEvaluation("policy-1", "asset-a"); !ok {
+		t.Error("expected hit for asset-a")
+	} else if findings, ok := val.([]string); !ok || len(findings) != 1 {
+		t.Errorf("expected 1 finding for asset-a, got %v", val)
 	}
 
-	if violated, ok := pc.GetEvaluation("policy-1", "asset-b"); !ok || violated {
-		t.Error("expected no violation for asset-b")
+	if val, ok := pc.GetEvaluation("policy-1", "asset-b"); !ok {
+		t.Error("expected hit for asset-b")
+	} else if findings, ok := val.([]string); !ok || len(findings) != 0 {
+		t.Errorf("expected 0 findings for asset-b, got %v", val)
 	}
 
 	if _, ok := pc.GetEvaluation("policy-1", "asset-c"); ok {
