@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/apigateway"
@@ -51,6 +52,79 @@ func (e *SyncEngine) apiGatewayRestApiTable() TableSpec {
 					}
 
 					results = append(results, row)
+				}
+			}
+
+			return results, nil
+		},
+	}
+}
+
+func (e *SyncEngine) apiGatewayMethodTable() TableSpec {
+	return TableSpec{
+		Name: "aws_apigateway_rest_api_methods",
+		Columns: []string{
+			"arn", "rest_api_id", "resource_id", "resource_path", "http_method",
+			"authorization_type", "api_key_required", "authorizer_id",
+			"request_parameters", "request_models", "operation_name",
+			"region", "account_id",
+		},
+		Fetch: func(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+			client := apigateway.NewFromConfig(cfg)
+			var results []map[string]interface{}
+
+			apiPager := apigateway.NewGetRestApisPaginator(client, &apigateway.GetRestApisInput{})
+			for apiPager.HasMorePages() {
+				apiPage, err := apiPager.NextPage(ctx)
+				if err != nil {
+					return nil, fmt.Errorf("get rest apis: %w", err)
+				}
+
+				for _, api := range apiPage.Items {
+					apiID := ptrToStr(api.Id)
+					resPager := apigateway.NewGetResourcesPaginator(client, &apigateway.GetResourcesInput{
+						RestApiId: api.Id,
+						Embed:     []string{"methods"},
+					})
+
+					for resPager.HasMorePages() {
+						resPage, err := resPager.NextPage(ctx)
+						if err != nil {
+							return nil, fmt.Errorf("get resources for api %s: %w", apiID, err)
+						}
+
+						for _, resource := range resPage.Items {
+							if len(resource.ResourceMethods) == 0 {
+								continue
+							}
+
+							resourceID := ptrToStr(resource.Id)
+							resourcePath := ptrToStr(resource.Path)
+							for method, methodInfo := range resource.ResourceMethods {
+								methodName := strings.ToUpper(method)
+								arn := fmt.Sprintf("arn:aws:apigateway:%s::/restapis/%s/resources/%s/methods/%s", region, apiID, resourceID, methodName)
+
+								row := map[string]interface{}{
+									"_cq_id":             arn,
+									"arn":                arn,
+									"rest_api_id":        apiID,
+									"resource_id":        resourceID,
+									"resource_path":      resourcePath,
+									"http_method":        methodName,
+									"authorization_type": aws.ToString(methodInfo.AuthorizationType),
+									"api_key_required":   aws.ToBool(methodInfo.ApiKeyRequired),
+									"authorizer_id":      aws.ToString(methodInfo.AuthorizerId),
+									"request_parameters": methodInfo.RequestParameters,
+									"request_models":     methodInfo.RequestModels,
+									"operation_name":     aws.ToString(methodInfo.OperationName),
+									"region":             region,
+									"account_id":         e.accountID,
+								}
+
+								results = append(results, row)
+							}
+						}
+					}
 				}
 			}
 

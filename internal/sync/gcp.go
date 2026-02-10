@@ -532,8 +532,10 @@ func (e *GCPSyncEngine) getGCPTables() []GCPTableSpec {
 		e.gcpComputeSubnetworkTable(),
 		// Storage
 		e.gcpStorageBucketTable(),
+		e.gcpStorageObjectTable(),
 		// IAM
 		e.gcpIAMServiceAccountTable(),
+		e.gcpIAMPolicyTable(),
 		// Database
 		e.gcpSQLInstanceTable(),
 		// Serverless
@@ -544,5 +546,10 @@ func (e *GCPSyncEngine) getGCPTables() []GCPTableSpec {
 		e.gcpPubSubTopicTable(),
 		// Container
 		e.gcpGKEClusterTable(),
+		e.gcpGKENodePoolTable(),
+		// Logging
+		e.gcpLoggingSinkTable(),
+		// Security
+		e.gcpIdsEndpointTable(),
 	}
 }

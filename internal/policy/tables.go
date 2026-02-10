@@ -15,6 +15,7 @@ var ResourceToTableMapping = map[string][]string{
 	"aws::s3::bucket_versioning":   {"aws_s3_bucket_versionings"},
 	"aws::s3::bucket_logging":      {"aws_s3_bucket_loggings"},
 	"aws::s3::public_access_block": {"aws_s3_bucket_public_access_blocks"},
+	"aws::s3::object":              {"aws_s3_objects"},
 
 	// EC2 - Compute
 	"aws::ec2::instance":       {"aws_ec2_instances"},
@@ -52,6 +53,7 @@ var ResourceToTableMapping = map[string][]string{
 	// IAM - Extended
 	"aws::iam::access_key":              {"aws_iam_user_access_keys"},
 	"aws::iam::account_password_policy": {"aws_iam_password_policies"},
+	"aws_iam_account_password_policy":   {"aws_iam_password_policies"},
 	"aws::iam::account_summary":         {"aws_iam_accounts"},
 	"aws::iam::credential_report":       {"aws_iam_credential_reports"},
 	"aws::iam::saml_provider":           {"aws_iam_saml_identity_providers"},
@@ -69,6 +71,7 @@ var ResourceToTableMapping = map[string][]string{
 	// ELB
 	"aws::elbv2::load_balancer": {"aws_elbv2_load_balancers"},
 	"aws::elbv2::target_group":  {"aws_elbv2_target_groups"},
+	"aws::elbv2::listener":      {"aws_lb_listeners"},
 
 	// KMS
 	"aws::kms::key": {"aws_kms_keys"},
@@ -102,9 +105,10 @@ var ResourceToTableMapping = map[string][]string{
 	"aws::eks::fargate_profile": {"aws_eks_fargate_profiles"},
 
 	// SageMaker
-	"aws::sagemaker::notebook": {"aws_sagemaker_notebook_instances"},
-	"aws::sagemaker::model":    {"aws_sagemaker_models"},
-	"aws::sagemaker::endpoint": {"aws_sagemaker_endpoints"},
+	"aws::sagemaker::notebook":            {"aws_sagemaker_notebook_instances"},
+	"aws::sagemaker::model":               {"aws_sagemaker_models"},
+	"aws::sagemaker::endpoint":            {"aws_sagemaker_endpoints"},
+	"aws::sagemaker::model_package_group": {"aws_sagemaker_model_package_groups"},
 
 	// VPC / Networking
 	"aws::ec2::nacl":             {"aws_ec2_network_acls"},
@@ -143,8 +147,8 @@ var ResourceToTableMapping = map[string][]string{
 	"aws::codebuild::source_credential": {"aws_codebuild_source_credentials"},
 
 	// RDS (consolidated)
-	"aws::rds::instance":    {"aws_rds_db_instances"},
-	"aws::rds::db_instance": {"aws_rds_db_instances"},
+	"aws::rds::instance":    {"aws_rds_instances"},
+	"aws::rds::db_instance": {"aws_rds_instances"},
 	"aws::rds::cluster":     {"aws_rds_db_clusters"},
 	"aws::rds::db_snapshot": {"aws_rds_db_snapshots"},
 	"aws::rds::db_cluster":  {"aws_rds_db_clusters"},
@@ -286,35 +290,212 @@ var ResourceToTableMapping = map[string][]string{
 	"gcp::compute::firewall":        {"gcp_compute_firewalls"},
 	"gcp::iam::service_account":     {"gcp_iam_service_accounts"},
 	"gcp::storage::bucket":          {"gcp_storage_buckets"},
+	"gcp::storage::object":          {"gcp_storage_objects"},
+	"gcp::iam::policy":              {"gcp_iam_policies"},
+	"gcp::sql::database_instance":   {"gcp_sql_instances"},
 	"gcp::sql::instance":            {"gcp_sql_instances"},
 	"gcp::container::cluster":       {"gcp_container_clusters"},
+	"gcp::container::node_pool":     {"gcp_container_node_pools"},
+	"gcp::run::service":             {"gcp_cloudrun_services"},
 	"gcp::cloudrun::service":        {"gcp_cloudrun_services"},
 	"gcp::cloudrun::revision":       {"gcp_cloudrun_revisions"},
 	"gcp::cloudfunctions::function": {"gcp_cloudfunctions_functions"},
+	"gcp::logging::sink":            {"gcp_logging_sinks"},
+	"gcp::ids::endpoint":            {"gcp_ids_endpoints"},
+	"gcp_logging_sink":              {"gcp_logging_sinks"},
 
 	// Azure
 	"azure::compute::virtual_machine": {"azure_compute_virtual_machines"},
+	"azure::compute::vm":              {"azure_compute_virtual_machines"},
+	"azure::functionapp::function":    {"azure_functions_apps"},
+	"azure::web::function":            {"azure_functions_apps"},
 	"azure::storage::account":         {"azure_storage_accounts"},
 	"azure::storage::container":       {"azure_storage_containers"},
+	"azure::storage::blob":            {"azure_storage_blobs"},
 	"azure::sql::server":              {"azure_sql_servers"},
 	"azure::network::security_group":  {"azure_network_security_groups"},
-	"azure::ad::user":                 {"azure_ad_users"},
-	"azure::ad::service_principal":    {"azure_ad_service_principals"},
+	"azure::keyvault::key":            {"azure_keyvault_keys"},
+	"azure::ad::user":                 {"entra_users"},
+	"azure::ad::service_principal":    {"entra_service_principals"},
+	"azure::ad::authorization_policy": {"entra_authorization_policies"},
+
+	// Entra ID (legacy resource_type values)
+	"entra_user":                      {"entra_users"},
+	"entra_service_principal":         {"entra_service_principals"},
+	"entra_conditional_access_policy": {"entra_conditional_access_policies"},
+	"entra_risky_user":                {"entra_risky_users"},
+	"entra_role_assignment":           {"entra_role_assignments"},
+	"entra_app_role_assignment":       {"entra_app_role_assignments"},
+
+	// AWS legacy resource_type values
+	"aws_iam_policy":           {"aws_iam_policies"},
+	"aws_dynamodb_table":       {"aws_dynamodb_tables"},
+	"aws_lb_listener":          {"aws_lb_listeners"},
+	"aws_cloudwatch_log_group": {"aws_cloudwatch_log_groups"},
+
+	// GitHub
+	"github::repository":                  {"github_repositories"},
+	"github::repository_dependabot_alert": {"github_dependabot_alerts"},
+	"github::code_scanning_alert":         {"github_code_scanning_alerts"},
+	"github::secret_scanning_alert":       {"github_secret_scanning_alerts"},
+	"github::actions_workflow":            {"github_actions_workflows"},
+	"github::workflow":                    {"github_actions_workflows"},
+	"github::user":                        {"github_organization_members"},
+	"github_branch_protection":            {"github_branch_protections"},
+	"github_user":                         {"github_organization_members"},
+
+	// Okta
+	"okta::user":        {"okta_users"},
+	"okta::application": {"okta_applications"},
+	"okta::system_log":  {"okta_system_logs"},
+
+	// SentinelOne
+	"sentinelone::threat": {"sentinelone_threats"},
+
+	// GitLab
+	"gitlab::runner": {"gitlab_runners"},
+
+	// Tailscale
+	"tailscale_user":   {"tailscale_users"},
+	"tailscale_device": {"tailscale_devices"},
+
+	// Terraform
+	"terraform::workspace": {"terraform_workspaces"},
+
+	// Kubernetes
+	"k8s::cluster_role":        {"k8s_rbac_cluster_roles"},
+	"k8s::role":                {"k8s_rbac_roles"},
+	"k8s::namespace":           {"k8s_core_namespaces"},
+	"k8s::core::pod":           {"k8s_core_pods"},
+	"k8s::core::namespace":     {"k8s_core_namespaces"},
+	"k8s::core::service":       {"k8s_core_services"},
+	"k8s::core::node":          {"k8s_core_nodes"},
+	"k8s::networking::ingress": {"k8s_networking_ingresses"},
+	"k8s::rbac::cluster_role":  {"k8s_rbac_cluster_roles"},
+	"kubernetes::pod":          {"k8s_core_pods"},
+	"kubernetes::service": {
+		"k8s_core_services",
+	},
+	"kubernetes::deployment":  {"k8s_apps_deployments"},
+	"kubernetes::audit_event": {"k8s_audit_events"},
+
+	// GKE (maps to Kubernetes RBAC tables)
+	"gcp::gke::cluster_role":         {"k8s_rbac_cluster_roles"},
+	"gcp::gke::role":                 {"k8s_rbac_roles"},
+	"gcp::gke::cluster_role_binding": {"k8s_rbac_cluster_role_bindings"},
+
+	// Cross-provider resources
+	"compute::instance":       {"aws_ec2_instances", "gcp_compute_instances", "azure_compute_virtual_machines"},
+	"compute::ssh_key":        {"aws_ec2_key_pairs"},
+	"serverless::function":    {"aws_lambda_functions", "gcp_cloudfunctions_functions", "azure_functions_apps"},
+	"storage::bucket":         {"aws_s3_buckets", "gcp_storage_buckets"},
+	"storage::blob_container": {"azure_storage_containers"},
+	"database::instance":      {"aws_rds_instances", "gcp_sql_instances", "azure_sql_servers"},
+	"database::cluster":       {"aws_rds_db_clusters"},
+	"iam::user":               {"aws_iam_users", "aws_iam_credential_reports"},
+	"iam::service_account":    {"gcp_iam_service_accounts"},
+	"iam::role":               {"aws_iam_roles", "gcp_iam_roles"},
+	"iam::group":              {"aws_iam_groups"},
+	"network::vpc_peering":    {"aws_ec2_vpc_peering_connections"},
+	"network::vnet_peering":   {"azure_network_virtual_networks"},
+	"container::pod":          {"k8s_core_pods"},
+	"container::deployment":   {"k8s_apps_deployments"},
+	"container::image":        {"snyk_container_images"},
+	"ai::model":               {"ai_models"},
+	"ai::endpoint":            {"ai_models"},
+	"vendors":                 {"vendors"},
 }
 
 // GetRequiredTables returns the asset tables needed to evaluate a policy
 func (p *Policy) GetRequiredTables() []string {
-	if tables, ok := ResourceToTableMapping[p.Resource]; ok {
+	return resourceToTables(p.Resource)
+}
+
+func resourceToTables(resource string) []string {
+	resource = strings.TrimSpace(resource)
+	if resource == "" {
+		return nil
+	}
+
+	parts := strings.Split(resource, "|")
+	seen := make(map[string]bool)
+	var tables []string
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		for _, table := range resourceToTablesForType(part) {
+			if !seen[table] {
+				seen[table] = true
+				tables = append(tables, table)
+			}
+		}
+	}
+
+	if len(tables) == 0 {
+		return nil
+	}
+	return tables
+}
+
+func resourceToTablesForType(resource string) []string {
+	if tables, ok := ResourceToTableMapping[resource]; ok {
 		return tables
 	}
 
-	// Fallback: If it contains an underscore, treat it as a direct table name
-	// This supports policies that reference tables directly (e.g. "aws_s3_buckets")
-	if strings.Contains(p.Resource, "_") {
-		return []string{p.Resource}
+	if table := resourceToTable(resource); table != "" {
+		return []string{table}
 	}
 
 	return nil
+}
+
+func resourceToTable(resource string) string {
+	parts := strings.Split(resource, "::")
+	if len(parts) >= 3 {
+		tableName := parts[0] + "_" + parts[1] + "_" + pluralize(parts[2])
+		return strings.ToLower(tableName)
+	}
+	if len(parts) == 2 {
+		prefix := strings.ToLower(strings.TrimSpace(parts[0]))
+		if shouldFallbackTwoPart(prefix) {
+			tableName := prefix + "_" + pluralize(parts[1])
+			return strings.ToLower(tableName)
+		}
+	}
+
+	if strings.Contains(resource, "_") && !strings.Contains(resource, "::") && !strings.Contains(resource, "|") {
+		return strings.ToLower(resource)
+	}
+
+	return ""
+}
+
+func shouldFallbackTwoPart(prefix string) bool {
+	switch prefix {
+	case "aws", "gcp", "azure", "github", "gitlab", "okta", "sentinelone", "terraform",
+		"k8s", "kubernetes", "ai", "ml", "network", "vulnerability", "cross_provider":
+		return true
+	default:
+		return false
+	}
+}
+
+func pluralize(s string) string {
+	if s == "" {
+		return s
+	}
+	if strings.HasSuffix(s, "s") {
+		return s
+	}
+	if strings.HasSuffix(s, "y") && len(s) > 1 {
+		c := s[len(s)-2]
+		if c != 'a' && c != 'e' && c != 'i' && c != 'o' && c != 'u' {
+			return s[:len(s)-1] + "ies"
+		}
+	}
+	return s + "s"
 }
 
 // GetAllRequiredTables returns all unique asset tables needed for a set of policies

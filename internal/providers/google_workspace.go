@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"golang.org/x/oauth2/google"
@@ -144,6 +145,14 @@ func (g *GoogleWorkspaceProvider) Schema() []TableSchema {
 	}
 }
 
+func (g *GoogleWorkspaceProvider) schemaFor(name string) (TableSchema, error) {
+	schema, ok := schemaByName(g.Schema(), name)
+	if !ok {
+		return TableSchema{}, fmt.Errorf("schema not found: %s", name)
+	}
+	return schema, nil
+}
+
 func (g *GoogleWorkspaceProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResult, error) {
 	start := time.Now()
 	result := &SyncResult{
@@ -185,7 +194,11 @@ func (g *GoogleWorkspaceProvider) Sync(ctx context.Context, opts SyncOptions) (*
 }
 
 func (g *GoogleWorkspaceProvider) syncUsers(ctx context.Context) (*TableResult, error) {
+	schema, err := g.schemaFor("google_workspace_users")
 	result := &TableResult{Name: "google_workspace_users"}
+	if err != nil {
+		return result, err
+	}
 
 	users, err := g.listAll(ctx, "https://admin.googleapis.com/admin/directory/v1/users", map[string]string{
 		"domain":     g.domain,
@@ -196,13 +209,20 @@ func (g *GoogleWorkspaceProvider) syncUsers(ctx context.Context) (*TableResult, 
 		return result, err
 	}
 
-	result.Rows = int64(len(users))
-	result.Inserted = result.Rows
-	return result, nil
+	rows := make([]map[string]interface{}, 0, len(users))
+	for _, user := range users {
+		rows = append(rows, normalizeGoogleUser(user))
+	}
+
+	return g.syncTable(ctx, schema, rows)
 }
 
 func (g *GoogleWorkspaceProvider) syncGroups(ctx context.Context) (*TableResult, error) {
+	schema, err := g.schemaFor("google_workspace_groups")
 	result := &TableResult{Name: "google_workspace_groups"}
+	if err != nil {
+		return result, err
+	}
 
 	groups, err := g.listAll(ctx, "https://admin.googleapis.com/admin/directory/v1/groups", map[string]string{
 		"domain":     g.domain,
@@ -212,13 +232,20 @@ func (g *GoogleWorkspaceProvider) syncGroups(ctx context.Context) (*TableResult,
 		return result, err
 	}
 
-	result.Rows = int64(len(groups))
-	result.Inserted = result.Rows
-	return result, nil
+	rows := make([]map[string]interface{}, 0, len(groups))
+	for _, group := range groups {
+		rows = append(rows, normalizeGoogleGroup(group))
+	}
+
+	return g.syncTable(ctx, schema, rows)
 }
 
 func (g *GoogleWorkspaceProvider) syncDomains(ctx context.Context) (*TableResult, error) {
+	schema, err := g.schemaFor("google_workspace_domains")
 	result := &TableResult{Name: "google_workspace_domains"}
+	if err != nil {
+		return result, err
+	}
 
 	// Domains API doesn't paginate in the same way
 	body, err := g.request(ctx, "https://admin.googleapis.com/admin/directory/v1/customer/my_customer/domains")
@@ -233,9 +260,12 @@ func (g *GoogleWorkspaceProvider) syncDomains(ctx context.Context) (*TableResult
 		return result, err
 	}
 
-	result.Rows = int64(len(resp.Domains))
-	result.Inserted = result.Rows
-	return result, nil
+	rows := make([]map[string]interface{}, 0, len(resp.Domains))
+	for _, domain := range resp.Domains {
+		rows = append(rows, normalizeGoogleRow(domain))
+	}
+
+	return g.syncTable(ctx, schema, rows)
 }
 
 func (g *GoogleWorkspaceProvider) request(ctx context.Context, url string) ([]byte, error) {
@@ -301,6 +331,88 @@ func (g *GoogleWorkspaceProvider) listAll(ctx context.Context, baseURL string, p
 	}
 
 	return allItems, nil
+}
+
+func normalizeGoogleUser(user map[string]interface{}) map[string]interface{} {
+	normalized := normalizeGoogleRow(user)
+	return map[string]interface{}{
+		"id":                 normalized["id"],
+		"primary_email":      normalized["primary_email"],
+		"name":               getGoogleNestedString(normalized, "name", "full_name"),
+		"given_name":         getGoogleNestedString(normalized, "name", "given_name"),
+		"family_name":        getGoogleNestedString(normalized, "name", "family_name"),
+		"is_admin":           normalized["is_admin"],
+		"is_delegated_admin": normalized["is_delegated_admin"],
+		"suspended":          normalized["suspended"],
+		"archived":           normalized["archived"],
+		"is_enrolled_in_2sv": normalized["is_enrolled_in_2sv"],
+		"is_enforced_in_2sv": normalized["is_enforced_in_2sv"],
+		"creation_time":      normalized["creation_time"],
+		"last_login_time":    normalized["last_login_time"],
+		"org_unit_path":      normalized["org_unit_path"],
+	}
+}
+
+func normalizeGoogleGroup(group map[string]interface{}) map[string]interface{} {
+	normalized := normalizeGoogleRow(group)
+	return map[string]interface{}{
+		"id":                   normalized["id"],
+		"email":                normalized["email"],
+		"name":                 normalized["name"],
+		"description":          normalized["description"],
+		"direct_members_count": parseGoogleCount(normalized["direct_members_count"]),
+		"admin_created":        normalized["admin_created"],
+	}
+}
+
+func normalizeGoogleRow(row map[string]interface{}) map[string]interface{} {
+	normalized, ok := normalizeMapKeys(row).(map[string]interface{})
+	if !ok {
+		return map[string]interface{}{}
+	}
+	return normalized
+}
+
+func getGoogleNestedString(data map[string]interface{}, path ...string) string {
+	value := getGoogleNestedValue(data, path...)
+	switch typed := value.(type) {
+	case string:
+		return typed
+	case nil:
+		return ""
+	default:
+		return fmt.Sprint(typed)
+	}
+}
+
+func getGoogleNestedValue(data map[string]interface{}, path ...string) interface{} {
+	var current interface{} = data
+	for _, key := range path {
+		asMap, ok := current.(map[string]interface{})
+		if !ok {
+			return nil
+		}
+		current = asMap[key]
+	}
+	return current
+}
+
+func parseGoogleCount(value interface{}) interface{} {
+	if value == nil {
+		return nil
+	}
+	switch typed := value.(type) {
+	case string:
+		if typed == "" {
+			return nil
+		}
+		if count, err := strconv.Atoi(typed); err == nil {
+			return count
+		}
+		return typed
+	default:
+		return value
+	}
 }
 
 // MFA status helpers

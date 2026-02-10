@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"sort"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -13,6 +14,19 @@ func (e *SyncEngine) cloudtrailTrailTable() TableSpec {
 		Name:    "aws_cloudtrail_trails",
 		Columns: []string{"arn", "account_id", "region", "name", "s3_bucket_name", "s3_key_prefix", "sns_topic_name", "sns_topic_arn", "include_global_service_events", "is_multi_region_trail", "home_region", "trail_arn", "log_file_validation_enabled", "cloud_watch_logs_log_group_arn", "cloud_watch_logs_role_arn", "kms_key_id", "has_custom_event_selectors", "has_insight_selectors", "is_organization_trail", "is_logging", "latest_delivery_time", "latest_delivery_error", "tags"},
 		Fetch:   e.fetchCloudTrailTrails,
+	}
+}
+
+func (e *SyncEngine) cloudtrailEventSelectorTable() TableSpec {
+	return TableSpec{
+		Name: "aws_cloudtrail_event_selectors",
+		Columns: []string{
+			"arn", "trail_arn", "trail_name", "account_id", "region",
+			"event_selectors", "advanced_event_selectors", "read_write_types",
+			"include_management_events", "exclude_management_event_sources",
+			"has_management_events", "has_data_events", "data_resources",
+		},
+		Fetch: e.fetchCloudTrailEventSelectors,
 	}
 }
 
@@ -84,5 +98,96 @@ func (e *SyncEngine) fetchCloudTrailTrails(ctx context.Context, cfg aws.Config, 
 
 		rows = append(rows, row)
 	}
+	return rows, nil
+}
+
+func (e *SyncEngine) fetchCloudTrailEventSelectors(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := cloudtrail.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	listOut, err := client.DescribeTrails(ctx, &cloudtrail.DescribeTrailsInput{})
+	if err != nil {
+		return nil, err
+	}
+
+	var rows []map[string]interface{}
+	for _, trail := range listOut.TrailList {
+		if aws.ToString(trail.HomeRegion) != region {
+			continue
+		}
+
+		trailArn := aws.ToString(trail.TrailARN)
+		trailName := aws.ToString(trail.Name)
+
+		selectors, err := client.GetEventSelectors(ctx, &cloudtrail.GetEventSelectorsInput{
+			TrailName: trail.TrailARN,
+		})
+		if err != nil {
+			e.logger.Warn("failed to get cloudtrail event selectors", "trail", trailArn, "error", err)
+			continue
+		}
+
+		readWriteSet := make(map[string]struct{})
+		includeManagement := make([]bool, 0, len(selectors.EventSelectors))
+		var excludeManagementSources []string
+		var dataResources []interface{}
+		hasManagement := false
+		hasData := false
+
+		for _, selector := range selectors.EventSelectors {
+			if selector.ReadWriteType != "" {
+				readWriteSet[string(selector.ReadWriteType)] = struct{}{}
+			}
+			if selector.IncludeManagementEvents != nil {
+				includeManagement = append(includeManagement, *selector.IncludeManagementEvents)
+				if *selector.IncludeManagementEvents {
+					hasManagement = true
+				}
+			}
+			if len(selector.ExcludeManagementEventSources) > 0 {
+				excludeManagementSources = append(excludeManagementSources, selector.ExcludeManagementEventSources...)
+			}
+			if len(selector.DataResources) > 0 {
+				hasData = true
+				for _, resource := range selector.DataResources {
+					dataResources = append(dataResources, resource)
+				}
+			}
+		}
+
+		if len(selectors.AdvancedEventSelectors) > 0 {
+			hasData = true
+		}
+
+		readWriteTypes := make([]string, 0, len(readWriteSet))
+		for value := range readWriteSet {
+			readWriteTypes = append(readWriteTypes, value)
+		}
+		sort.Strings(readWriteTypes)
+		sort.Strings(excludeManagementSources)
+
+		row := map[string]interface{}{
+			"_cq_id":                           trailArn,
+			"arn":                              trailArn,
+			"trail_arn":                        trailArn,
+			"trail_name":                       trailName,
+			"account_id":                       accountID,
+			"region":                           region,
+			"event_selectors":                  selectors.EventSelectors,
+			"advanced_event_selectors":         selectors.AdvancedEventSelectors,
+			"read_write_types":                 readWriteTypes,
+			"include_management_events":        includeManagement,
+			"exclude_management_event_sources": excludeManagementSources,
+			"has_management_events":            hasManagement,
+			"has_data_events":                  hasData,
+		}
+
+		if len(dataResources) > 0 {
+			row["data_resources"] = dataResources
+		}
+
+		rows = append(rows, row)
+	}
+
 	return rows, nil
 }

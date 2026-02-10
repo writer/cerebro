@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/writerinternal/cerebro/internal/snowflake"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -175,6 +176,7 @@ type BaseProvider struct {
 	provType   ProviderType
 	config     map[string]interface{}
 	configured bool
+	snowflake  *snowflake.Client
 	mu         sync.RWMutex
 }
 

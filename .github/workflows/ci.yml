@@ -64,12 +64,7 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.4.0  # Supports Go 1.25
-
-      - name: Install staticcheck
-        run: go install honnef.co/go/tools/cmd/staticcheck@latest
-
-      - name: Run staticcheck
-        run: staticcheck ./...
+          # staticcheck is already enabled in .golangci.yml
 
   policy-validate:
     runs-on: ubuntu-latest

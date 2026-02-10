@@ -245,15 +245,40 @@ type AttackPathSummary struct {
 	EntryPoint     string   `json:"entry_point"`
 	Target         string   `json:"target"`
 	Steps          []string `json:"steps"`
+	Length         int      `json:"length"`
 	RiskScore      float64  `json:"risk_score"`
 	Exploitability float64  `json:"exploitability"`
 	Impact         float64  `json:"impact"`
+}
+
+// AttackPathStats summarizes attack path analysis.
+type AttackPathStats struct {
+	TotalPaths      int         `json:"total_paths"`
+	CriticalPaths   int         `json:"critical_paths"`
+	EntryPointCount int         `json:"entry_point_count"`
+	CrownJewelCount int         `json:"crown_jewel_count"`
+	MeanPathLength  float64     `json:"mean_path_length"`
+	ShortestPath    int         `json:"shortest_path"`
+	LengthCounts    map[int]int `json:"length_counts"`
+}
+
+// AttackPathChokepointSummary summarizes chokepoint impact for reporting.
+type AttackPathChokepointSummary struct {
+	NodeID             string  `json:"node_id"`
+	NodeName           string  `json:"node_name"`
+	PathsThrough       int     `json:"paths_through"`
+	BlockedPaths       int     `json:"blocked_paths"`
+	RemediationImpact  float64 `json:"remediation_impact"`
+	UpstreamEntryCount int     `json:"upstream_entry_count"`
+	DownstreamCount    int     `json:"downstream_target_count"`
 }
 
 // GraphAnalysisResult contains graph-based toxic combinations and attack paths
 type GraphAnalysisResult struct {
 	ToxicCombinations []policy.Finding
 	AttackPaths       []AttackPathSummary
+	AttackPathStats   AttackPathStats
+	Chokepoints       []AttackPathChokepointSummary
 }
 
 // AllFindings returns combined policy and toxic combination findings
@@ -391,6 +416,43 @@ func (s *Scanner) AnalyzeGraph(ctx context.Context, g *graph.Graph) *GraphAnalys
 		"critical_paths", simResult.CriticalPaths,
 		"chokepoints", len(simResult.Chokepoints))
 
+	lengthCounts := make(map[int]int)
+	for _, path := range simResult.Paths {
+		lengthCounts[path.Length]++
+	}
+
+	result.AttackPathStats = AttackPathStats{
+		TotalPaths:      simResult.TotalPaths,
+		CriticalPaths:   simResult.CriticalPaths,
+		EntryPointCount: simResult.EntryPointCount,
+		CrownJewelCount: simResult.CrownJewelCount,
+		MeanPathLength:  simResult.MeanPathLength,
+		ShortestPath:    simResult.ShortestPath,
+		LengthCounts:    lengthCounts,
+	}
+
+	const maxChokepoints = 5
+	for i, cp := range simResult.Chokepoints {
+		if i >= maxChokepoints {
+			break
+		}
+		nodeID := ""
+		name := ""
+		if cp.Node != nil {
+			nodeID = cp.Node.ID
+			name = cp.Node.Name
+		}
+		result.Chokepoints = append(result.Chokepoints, AttackPathChokepointSummary{
+			NodeID:             nodeID,
+			NodeName:           name,
+			PathsThrough:       cp.PathsThrough,
+			BlockedPaths:       cp.BlockedPaths,
+			RemediationImpact:  cp.RemediationImpact,
+			UpstreamEntryCount: len(cp.UpstreamEntries),
+			DownstreamCount:    len(cp.DownstreamTargets),
+		})
+	}
+
 	for _, path := range simResult.Paths {
 		if path.Priority > 10 {
 			continue
@@ -414,6 +476,7 @@ func (s *Scanner) AnalyzeGraph(ctx context.Context, g *graph.Graph) *GraphAnalys
 			EntryPoint:     entryName,
 			Target:         targetName,
 			Steps:          steps,
+			Length:         len(path.Steps),
 			RiskScore:      path.TotalScore,
 			Exploitability: path.Exploitability,
 			Impact:         path.Impact,

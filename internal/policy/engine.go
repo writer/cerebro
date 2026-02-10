@@ -232,9 +232,21 @@ func (e *Engine) ColumnsForTable(table string) []string {
 
 	lower := strings.ToLower(table)
 	for _, p := range e.policies {
-		policyTable := mapResourceToTable(p.Resource)
-		if policyTable != "" && policyTable != lower {
-			continue
+		if p.Resource != "" {
+			tables := resourceToTables(p.Resource)
+			if len(tables) == 0 {
+				continue
+			}
+			matches := false
+			for _, t := range tables {
+				if t == lower {
+					matches = true
+					break
+				}
+			}
+			if !matches {
+				continue
+			}
 		}
 		for _, cond := range p.Conditions {
 			if field := extractConditionField(cond); field != "" {
@@ -312,14 +324,18 @@ func (e *Engine) EvaluateAsset(ctx context.Context, asset map[string]interface{}
 	for _, p := range e.policies {
 		// Only apply policies whose resource type maps to this asset's table
 		if assetTable != "" && p.Resource != "" {
-			policyTable := mapResourceToTable(p.Resource)
-			// If policy has a specific resource type:
-			// - If it maps to a known table, only apply if table matches
-			// - If it doesn't map (unknown type), skip it for this asset
-			if policyTable == "" {
+			tables := resourceToTables(p.Resource)
+			if len(tables) == 0 {
 				continue // Unknown resource type - don't apply to all assets
 			}
-			if policyTable != assetTable {
+			matches := false
+			for _, t := range tables {
+				if t == assetTable {
+					matches = true
+					break
+				}
+			}
+			if !matches {
 				continue // Policy doesn't apply to this asset type
 			}
 		}
@@ -350,28 +366,6 @@ func (e *Engine) EvaluateAsset(ctx context.Context, asset map[string]interface{}
 	}
 
 	return findings, nil
-}
-
-// mapResourceToTable maps high-level resource types to specific asset tables
-// Uses the shared ResourceToTableMapping for consistency
-func mapResourceToTable(resourceType string) string {
-	// Direct table name references (e.g., already a table name)
-	if strings.Contains(resourceType, "_") {
-		return strings.ToLower(resourceType)
-	}
-
-	// Look up in the shared mapping (try exact match first)
-	if tables, ok := ResourceToTableMapping[resourceType]; ok && len(tables) > 0 {
-		return tables[0]
-	}
-
-	// Try lowercase (resource types in mapping are lowercase)
-	lowerResource := strings.ToLower(resourceType)
-	if tables, ok := ResourceToTableMapping[lowerResource]; ok && len(tables) > 0 {
-		return tables[0]
-	}
-
-	return ""
 }
 
 func (e *Engine) matchPolicy(p *Policy, req *EvalRequest) bool {

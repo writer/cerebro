@@ -575,6 +575,94 @@ func (e *SyncEngine) s3BucketCorsTable() TableSpec {
 	}
 }
 
+// S3 Object Inventory
+func (e *SyncEngine) s3ObjectTable() TableSpec {
+	return TableSpec{
+		Name:    "aws_s3_objects",
+		Columns: []string{"arn", "account_id", "region", "bucket", "key", "etag", "size", "storage_class", "last_modified", "owner", "restore_status"},
+		Fetch:   e.fetchS3Objects,
+	}
+}
+
+func (e *SyncEngine) fetchS3Objects(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := s3.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	bucketsOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	if err != nil {
+		return nil, err
+	}
+
+	var rows []map[string]interface{}
+	for _, bucket := range bucketsOut.Buckets {
+		bucketName := aws.ToString(bucket.Name)
+
+		locOut, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
+			Bucket: bucket.Name,
+		})
+		if err != nil {
+			continue
+		}
+		bucketRegion := string(locOut.LocationConstraint)
+		if bucketRegion == "" {
+			bucketRegion = "us-east-1"
+		}
+		if bucketRegion != region {
+			continue
+		}
+
+		bucketClient := s3.NewFromConfig(cfg, func(o *s3.Options) {
+			o.Region = bucketRegion
+		})
+
+		pager := s3.NewListObjectsV2Paginator(bucketClient, &s3.ListObjectsV2Input{
+			Bucket: bucket.Name,
+		})
+
+		for pager.HasMorePages() {
+			page, err := pager.NextPage(ctx)
+			if err != nil {
+				return nil, err
+			}
+
+			for _, obj := range page.Contents {
+				key := aws.ToString(obj.Key)
+				arn := fmt.Sprintf("arn:aws:s3:::%s/%s", bucketName, key)
+				row := map[string]interface{}{
+					"_cq_id":        arn,
+					"arn":           arn,
+					"account_id":    accountID,
+					"region":        bucketRegion,
+					"bucket":        bucketName,
+					"key":           key,
+					"etag":          aws.ToString(obj.ETag),
+					"size":          obj.Size,
+					"storage_class": string(obj.StorageClass),
+					"last_modified": obj.LastModified,
+				}
+
+				if obj.Owner != nil {
+					row["owner"] = map[string]interface{}{
+						"display_name": aws.ToString(obj.Owner.DisplayName),
+						"id":           aws.ToString(obj.Owner.ID),
+					}
+				}
+
+				if obj.RestoreStatus != nil {
+					row["restore_status"] = map[string]interface{}{
+						"is_restore_in_progress": aws.ToBool(obj.RestoreStatus.IsRestoreInProgress),
+						"restore_expiry_date":    obj.RestoreStatus.RestoreExpiryDate,
+					}
+				}
+
+				rows = append(rows, row)
+			}
+		}
+	}
+
+	return rows, nil
+}
+
 func (e *SyncEngine) fetchS3BucketCors(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
 	client := s3.NewFromConfig(cfg)
 	accountID := e.getAccountIDFromConfig(ctx, cfg)

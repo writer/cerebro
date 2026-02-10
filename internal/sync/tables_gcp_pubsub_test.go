@@ -15,8 +15,6 @@ type fakeTopicIterator struct {
 	index  int
 }
 
-var _ pubsubTopicIterator = (*fakeTopicIterator)(nil)
-
 func (f *fakeTopicIterator) Next() (*pubsubpb.Topic, error) {
 	if f.index >= len(f.topics) {
 		return nil, iterator.Done
@@ -30,8 +28,6 @@ type fakeStringIterator struct {
 	values []string
 	index  int
 }
-
-var _ pubsubStringIterator = (*fakeStringIterator)(nil)
 
 func (f *fakeStringIterator) Next() (string, error) {
 	if f.index >= len(f.values) {
@@ -49,8 +45,6 @@ type fakePubSubAdminClient struct {
 	project         string
 	requestedTopics []string
 }
-
-var _ pubsubTopicAdminClient = (*fakePubSubAdminClient)(nil)
 
 func (f *fakePubSubAdminClient) ListTopics(ctx context.Context, req *pubsubpb.ListTopicsRequest) pubsubTopicIterator {
 	f.project = req.Project

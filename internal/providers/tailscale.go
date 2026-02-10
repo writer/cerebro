@@ -123,6 +123,14 @@ func (t *TailscaleProvider) Schema() []TableSchema {
 	}
 }
 
+func (t *TailscaleProvider) schemaFor(name string) (TableSchema, error) {
+	schema, ok := schemaByName(t.Schema(), name)
+	if !ok {
+		return TableSchema{}, fmt.Errorf("schema not found: %s", name)
+	}
+	return schema, nil
+}
+
 func (t *TailscaleProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResult, error) {
 	start := time.Now()
 	result := &SyncResult{
@@ -173,7 +181,11 @@ func (t *TailscaleProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncRe
 }
 
 func (t *TailscaleProvider) syncDevices(ctx context.Context) (*TableResult, error) {
+	schema, err := t.schemaFor("tailscale_devices")
 	result := &TableResult{Name: "tailscale_devices"}
+	if err != nil {
+		return result, err
+	}
 
 	body, err := t.request(ctx, fmt.Sprintf("/tailnet/%s/devices", t.tailnet))
 	if err != nil {
@@ -187,13 +199,20 @@ func (t *TailscaleProvider) syncDevices(ctx context.Context) (*TableResult, erro
 		return result, err
 	}
 
-	result.Rows = int64(len(resp.Devices))
-	result.Inserted = result.Rows
-	return result, nil
+	rows := make([]map[string]interface{}, 0, len(resp.Devices))
+	for _, device := range resp.Devices {
+		rows = append(rows, normalizeTailscaleRow(device))
+	}
+
+	return t.syncTable(ctx, schema, rows)
 }
 
 func (t *TailscaleProvider) syncUsers(ctx context.Context) (*TableResult, error) {
+	schema, err := t.schemaFor("tailscale_users")
 	result := &TableResult{Name: "tailscale_users"}
+	if err != nil {
+		return result, err
+	}
 
 	body, err := t.request(ctx, fmt.Sprintf("/tailnet/%s/users", t.tailnet))
 	if err != nil {
@@ -207,13 +226,20 @@ func (t *TailscaleProvider) syncUsers(ctx context.Context) (*TableResult, error)
 		return result, err
 	}
 
-	result.Rows = int64(len(resp.Users))
-	result.Inserted = result.Rows
-	return result, nil
+	rows := make([]map[string]interface{}, 0, len(resp.Users))
+	for _, user := range resp.Users {
+		rows = append(rows, normalizeTailscaleRow(user))
+	}
+
+	return t.syncTable(ctx, schema, rows)
 }
 
 func (t *TailscaleProvider) syncACL(ctx context.Context) (*TableResult, error) {
+	schema, err := t.schemaFor("tailscale_acl")
 	result := &TableResult{Name: "tailscale_acl"}
+	if err != nil {
+		return result, err
+	}
 
 	body, err := t.request(ctx, fmt.Sprintf("/tailnet/%s/acl", t.tailnet))
 	if err != nil {
@@ -225,16 +251,28 @@ func (t *TailscaleProvider) syncACL(ctx context.Context) (*TableResult, error) {
 		return result, err
 	}
 
-	// Count ACL rules
+	rows := make([]map[string]interface{}, 0)
 	if acls, ok := acl["acls"].([]interface{}); ok {
-		result.Rows = int64(len(acls))
+		for index, entry := range acls {
+			entryMap, ok := entry.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			row := normalizeTailscaleRow(entryMap)
+			row["rule_index"] = index
+			rows = append(rows, row)
+		}
 	}
-	result.Inserted = result.Rows
-	return result, nil
+
+	return t.syncTable(ctx, schema, rows)
 }
 
 func (t *TailscaleProvider) syncKeys(ctx context.Context) (*TableResult, error) {
+	schema, err := t.schemaFor("tailscale_keys")
 	result := &TableResult{Name: "tailscale_keys"}
+	if err != nil {
+		return result, err
+	}
 
 	body, err := t.request(ctx, fmt.Sprintf("/tailnet/%s/keys", t.tailnet))
 	if err != nil {
@@ -248,9 +286,12 @@ func (t *TailscaleProvider) syncKeys(ctx context.Context) (*TableResult, error) 
 		return result, err
 	}
 
-	result.Rows = int64(len(resp.Keys))
-	result.Inserted = result.Rows
-	return result, nil
+	rows := make([]map[string]interface{}, 0, len(resp.Keys))
+	for _, key := range resp.Keys {
+		rows = append(rows, normalizeTailscaleRow(key))
+	}
+
+	return t.syncTable(ctx, schema, rows)
 }
 
 func (t *TailscaleProvider) request(ctx context.Context, path string) ([]byte, error) {
@@ -280,6 +321,14 @@ func (t *TailscaleProvider) request(ctx context.Context, path string) ([]byte, e
 	}
 
 	return body, nil
+}
+
+func normalizeTailscaleRow(row map[string]interface{}) map[string]interface{} {
+	normalized, ok := normalizeMapKeys(row).(map[string]interface{})
+	if !ok {
+		return map[string]interface{}{}
+	}
+	return normalized
 }
 
 // GetStaleDevices returns devices that haven't been seen recently

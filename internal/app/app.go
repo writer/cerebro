@@ -38,6 +38,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -162,6 +163,11 @@ type Config struct {
 	OktaDomain              string
 	OktaAPIToken            string
 
+	// Entra ID Provider
+	EntraTenantID     string
+	EntraClientID     string
+	EntraClientSecret string
+
 	// Azure Provider
 	AzureTenantID       string
 	AzureClientID       string
@@ -180,6 +186,16 @@ type Config struct {
 	// GitHub Provider
 	GitHubToken string
 	GitHubOrg   string
+
+	// Google Workspace Provider
+	GoogleWorkspaceDomain            string
+	GoogleWorkspaceAdminEmail        string
+	GoogleWorkspaceImpersonatorEmail string
+	GoogleWorkspaceCredentialsJSON   string
+
+	// Tailscale Provider
+	TailscaleAPIKey  string
+	TailscaleTailnet string
 
 	// SentinelOne Provider
 	SentinelOneAPIToken string
@@ -252,74 +268,83 @@ func LoadConfig() *Config {
 	apiAuthEnabled := getEnvBool("API_AUTH_ENABLED", len(apiKeys) > 0)
 
 	return &Config{
-		Port:                    getEnvInt("API_PORT", 8080),
-		LogLevel:                getEnv("LOG_LEVEL", "info"),
-		SnowflakeAccount:        getEnv("SNOWFLAKE_ACCOUNT", ""),
-		SnowflakeUser:           getEnv("SNOWFLAKE_USER", ""),
-		SnowflakePrivateKey:     normalizePrivateKey(getEnv("SNOWFLAKE_PRIVATE_KEY", "")),
-		SnowflakeDatabase:       getEnv("SNOWFLAKE_DATABASE", "CEREBRO"),
-		SnowflakeSchema:         getEnv("SNOWFLAKE_SCHEMA", "CEREBRO"),
-		SnowflakeWarehouse:      getEnv("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH"),
-		SnowflakeRole:           getEnv("SNOWFLAKE_ROLE", ""),
-		PoliciesPath:            getEnv("POLICIES_PATH", "policies"),
-		AnthropicAPIKey:         getEnv("ANTHROPIC_API_KEY", ""),
-		OpenAIAPIKey:            getEnv("OPENAI_API_KEY", ""),
-		JiraBaseURL:             getEnv("JIRA_BASE_URL", ""),
-		JiraEmail:               getEnv("JIRA_EMAIL", ""),
-		JiraAPIToken:            getEnv("JIRA_API_TOKEN", ""),
-		JiraProject:             getEnv("JIRA_PROJECT", "SEC"),
-		LinearAPIKey:            getEnv("LINEAR_API_KEY", ""),
-		LinearTeamID:            getEnv("LINEAR_TEAM_ID", ""),
-		CrowdStrikeClientID:     getEnv("CROWDSTRIKE_CLIENT_ID", ""),
-		CrowdStrikeClientSecret: getEnv("CROWDSTRIKE_CLIENT_SECRET", ""),
-		OktaDomain:              getEnv("OKTA_DOMAIN", ""),
-		OktaAPIToken:            getEnv("OKTA_API_TOKEN", ""),
-		AzureTenantID:           getEnv("AZURE_TENANT_ID", ""),
-		AzureClientID:           getEnv("AZURE_CLIENT_ID", ""),
-		AzureClientSecret:       getEnv("AZURE_CLIENT_SECRET", ""),
-		AzureSubscriptionID:     getEnv("AZURE_SUBSCRIPTION_ID", ""),
-		SnykAPIToken:            getEnv("SNYK_API_TOKEN", ""),
-		SnykOrgID:               getEnv("SNYK_ORG_ID", ""),
-		DatadogAPIKey:           getEnv("DATADOG_API_KEY", ""),
-		DatadogAppKey:           getEnv("DATADOG_APP_KEY", ""),
-		DatadogSite:             getEnv("DATADOG_SITE", "datadoghq.com"),
-		GitHubToken:             getEnv("GITHUB_TOKEN", ""),
-		GitHubOrg:               getEnv("GITHUB_ORG", ""),
-		SentinelOneAPIToken:     getEnv("SENTINELONE_API_TOKEN", ""),
-		SentinelOneBaseURL:      getEnv("SENTINELONE_BASE_URL", ""),
-		TenableAccessKey:        getEnv("TENABLE_ACCESS_KEY", ""),
-		TenableSecretKey:        getEnv("TENABLE_SECRET_KEY", ""),
-		QualysUsername:          getEnv("QUALYS_USERNAME", ""),
-		QualysPassword:          getEnv("QUALYS_PASSWORD", ""),
-		QualysPlatform:          getEnv("QUALYS_PLATFORM", "US1"),
-		SemgrepAPIToken:         getEnv("SEMGREP_API_TOKEN", ""),
-		GitLabToken:             getEnv("GITLAB_TOKEN", ""),
-		GitLabBaseURL:           getEnv("GITLAB_BASE_URL", "https://gitlab.com"),
-		TerraformCloudToken:     getEnv("TFC_TOKEN", ""),
-		SplunkURL:               getEnv("SPLUNK_URL", ""),
-		SplunkToken:             getEnv("SPLUNK_TOKEN", ""),
-		Auth0Domain:             getEnv("AUTH0_DOMAIN", ""),
-		Auth0ClientID:           getEnv("AUTH0_CLIENT_ID", ""),
-		Auth0ClientSecret:       getEnv("AUTH0_CLIENT_SECRET", ""),
-		CloudflareAPIToken:      getEnv("CLOUDFLARE_API_TOKEN", ""),
-		WebhookURLs:             splitCSV(getEnv("WEBHOOK_URLS", "")),
-		SlackWebhookURL:         getEnv("SLACK_WEBHOOK_URL", ""),
-		SlackSigningSecret:      getEnv("SLACK_SIGNING_SECRET", ""),
-		PagerDutyKey:            getEnv("PAGERDUTY_ROUTING_KEY", ""),
-		ScanInterval:            getEnv("SCAN_INTERVAL", ""),
-		ScanTables:              getEnv("SCAN_TABLES", ""),
-		JobQueueURL:             getEnv("JOB_QUEUE_URL", ""),
-		JobTableName:            getEnv("JOB_TABLE_NAME", ""),
-		JobRegion:               getEnv("JOB_REGION", getEnv("AWS_REGION", "")),
-		JobWorkerConcurrency:    getEnvInt("JOB_WORKER_CONCURRENCY", 4),
-		JobVisibilityTimeout:    getEnvDuration("JOB_VISIBILITY_TIMEOUT", 30*time.Second),
-		JobPollWait:             getEnvDuration("JOB_POLL_WAIT", 10*time.Second),
-		JobMaxAttempts:          getEnvInt("JOB_MAX_ATTEMPTS", 3),
-		RateLimitEnabled:        getEnvBool("RATE_LIMIT_ENABLED", false),
-		RateLimitRequests:       getEnvInt("RATE_LIMIT_REQUESTS", 1000),
-		RateLimitWindow:         getEnvDuration("RATE_LIMIT_WINDOW", time.Hour),
-		APIAuthEnabled:          apiAuthEnabled,
-		APIKeys:                 apiKeys,
+		Port:                             getEnvInt("API_PORT", 8080),
+		LogLevel:                         getEnv("LOG_LEVEL", "info"),
+		SnowflakeAccount:                 getEnv("SNOWFLAKE_ACCOUNT", ""),
+		SnowflakeUser:                    getEnv("SNOWFLAKE_USER", ""),
+		SnowflakePrivateKey:              normalizePrivateKey(getEnv("SNOWFLAKE_PRIVATE_KEY", "")),
+		SnowflakeDatabase:                getEnv("SNOWFLAKE_DATABASE", "CEREBRO"),
+		SnowflakeSchema:                  getEnv("SNOWFLAKE_SCHEMA", "CEREBRO"),
+		SnowflakeWarehouse:               getEnv("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH"),
+		SnowflakeRole:                    getEnv("SNOWFLAKE_ROLE", ""),
+		PoliciesPath:                     getEnv("POLICIES_PATH", "policies"),
+		AnthropicAPIKey:                  getEnv("ANTHROPIC_API_KEY", ""),
+		OpenAIAPIKey:                     getEnv("OPENAI_API_KEY", ""),
+		JiraBaseURL:                      getEnv("JIRA_BASE_URL", ""),
+		JiraEmail:                        getEnv("JIRA_EMAIL", ""),
+		JiraAPIToken:                     getEnv("JIRA_API_TOKEN", ""),
+		JiraProject:                      getEnv("JIRA_PROJECT", "SEC"),
+		LinearAPIKey:                     getEnv("LINEAR_API_KEY", ""),
+		LinearTeamID:                     getEnv("LINEAR_TEAM_ID", ""),
+		CrowdStrikeClientID:              getEnv("CROWDSTRIKE_CLIENT_ID", ""),
+		CrowdStrikeClientSecret:          getEnv("CROWDSTRIKE_CLIENT_SECRET", ""),
+		OktaDomain:                       getEnv("OKTA_DOMAIN", ""),
+		OktaAPIToken:                     getEnv("OKTA_API_TOKEN", ""),
+		EntraTenantID:                    getEnv("ENTRA_TENANT_ID", ""),
+		EntraClientID:                    getEnv("ENTRA_CLIENT_ID", ""),
+		EntraClientSecret:                getEnv("ENTRA_CLIENT_SECRET", ""),
+		AzureTenantID:                    getEnv("AZURE_TENANT_ID", ""),
+		AzureClientID:                    getEnv("AZURE_CLIENT_ID", ""),
+		AzureClientSecret:                getEnv("AZURE_CLIENT_SECRET", ""),
+		AzureSubscriptionID:              getEnv("AZURE_SUBSCRIPTION_ID", ""),
+		SnykAPIToken:                     getEnv("SNYK_API_TOKEN", ""),
+		SnykOrgID:                        getEnv("SNYK_ORG_ID", ""),
+		DatadogAPIKey:                    getEnv("DATADOG_API_KEY", ""),
+		DatadogAppKey:                    getEnv("DATADOG_APP_KEY", ""),
+		DatadogSite:                      getEnv("DATADOG_SITE", "datadoghq.com"),
+		GitHubToken:                      getEnv("GITHUB_TOKEN", ""),
+		GitHubOrg:                        getEnv("GITHUB_ORG", ""),
+		GoogleWorkspaceDomain:            getEnv("GOOGLE_WORKSPACE_DOMAIN", ""),
+		GoogleWorkspaceAdminEmail:        getEnv("GOOGLE_WORKSPACE_ADMIN_EMAIL", ""),
+		GoogleWorkspaceImpersonatorEmail: getEnv("GOOGLE_WORKSPACE_IMPERSONATOR_EMAIL", ""),
+		GoogleWorkspaceCredentialsJSON:   getEnv("GOOGLE_WORKSPACE_CREDENTIALS_JSON", ""),
+		TailscaleAPIKey:                  getEnv("TAILSCALE_API_KEY", ""),
+		TailscaleTailnet:                 getEnv("TAILSCALE_TAILNET", ""),
+		SentinelOneAPIToken:              getEnv("SENTINELONE_API_TOKEN", ""),
+		SentinelOneBaseURL:               getEnv("SENTINELONE_BASE_URL", ""),
+		TenableAccessKey:                 getEnv("TENABLE_ACCESS_KEY", ""),
+		TenableSecretKey:                 getEnv("TENABLE_SECRET_KEY", ""),
+		QualysUsername:                   getEnv("QUALYS_USERNAME", ""),
+		QualysPassword:                   getEnv("QUALYS_PASSWORD", ""),
+		QualysPlatform:                   getEnv("QUALYS_PLATFORM", "US1"),
+		SemgrepAPIToken:                  getEnv("SEMGREP_API_TOKEN", ""),
+		GitLabToken:                      getEnv("GITLAB_TOKEN", ""),
+		GitLabBaseURL:                    getEnv("GITLAB_BASE_URL", "https://gitlab.com"),
+		TerraformCloudToken:              getEnv("TFC_TOKEN", ""),
+		SplunkURL:                        getEnv("SPLUNK_URL", ""),
+		SplunkToken:                      getEnv("SPLUNK_TOKEN", ""),
+		Auth0Domain:                      getEnv("AUTH0_DOMAIN", ""),
+		Auth0ClientID:                    getEnv("AUTH0_CLIENT_ID", ""),
+		Auth0ClientSecret:                getEnv("AUTH0_CLIENT_SECRET", ""),
+		CloudflareAPIToken:               getEnv("CLOUDFLARE_API_TOKEN", ""),
+		WebhookURLs:                      splitCSV(getEnv("WEBHOOK_URLS", "")),
+		SlackWebhookURL:                  getEnv("SLACK_WEBHOOK_URL", ""),
+		SlackSigningSecret:               getEnv("SLACK_SIGNING_SECRET", ""),
+		PagerDutyKey:                     getEnv("PAGERDUTY_ROUTING_KEY", ""),
+		ScanInterval:                     getEnv("SCAN_INTERVAL", ""),
+		ScanTables:                       getEnv("SCAN_TABLES", ""),
+		JobQueueURL:                      getEnv("JOB_QUEUE_URL", ""),
+		JobTableName:                     getEnv("JOB_TABLE_NAME", ""),
+		JobRegion:                        getEnv("JOB_REGION", getEnv("AWS_REGION", "")),
+		JobWorkerConcurrency:             getEnvInt("JOB_WORKER_CONCURRENCY", 4),
+		JobVisibilityTimeout:             getEnvDuration("JOB_VISIBILITY_TIMEOUT", 30*time.Second),
+		JobPollWait:                      getEnvDuration("JOB_POLL_WAIT", 10*time.Second),
+		JobMaxAttempts:                   getEnvInt("JOB_MAX_ATTEMPTS", 3),
+		RateLimitEnabled:                 getEnvBool("RATE_LIMIT_ENABLED", false),
+		RateLimitRequests:                getEnvInt("RATE_LIMIT_REQUESTS", 1000),
+		RateLimitWindow:                  getEnvDuration("RATE_LIMIT_WINDOW", time.Hour),
+		APIAuthEnabled:                   apiAuthEnabled,
+		APIKeys:                          apiKeys,
 	}
 }
 
@@ -383,7 +408,12 @@ func New(ctx context.Context) (*App, error) {
 
 	// Phase 4: depends on AvailableTables being populated
 	app.initSecurityGraph(ctx)
-	app.validatePolicyCoverage(ctx)
+	if err := app.validatePolicyCoverage(ctx); err != nil {
+		logger.Warn("policy coverage validation failed", "error", err)
+		if os.Getenv("CI") != "" {
+			return nil, err
+		}
+	}
 
 	logger.Info("application initialized",
 		"snowflake", app.Snowflake != nil,
@@ -549,6 +579,9 @@ func (a *App) initProviders(ctx context.Context) {
 
 	// Helper to configure and register providers with error logging
 	registerProvider := func(name string, p providers.Provider, config map[string]interface{}) {
+		if setter, ok := p.(interface{ SetSnowflakeClient(*snowflake.Client) }); ok {
+			setter.SetSnowflakeClient(a.Snowflake)
+		}
 		if err := p.Configure(ctx, config); err != nil {
 			a.Logger.Warn("provider configuration failed, skipping registration",
 				"provider", name,
@@ -572,6 +605,15 @@ func (a *App) initProviders(ctx context.Context) {
 		registerProvider("okta", providers.NewOktaProvider(), map[string]interface{}{
 			"domain":    a.Config.OktaDomain,
 			"api_token": a.Config.OktaAPIToken,
+		})
+	}
+
+	// Register Entra ID if configured
+	if a.Config.EntraTenantID != "" && a.Config.EntraClientID != "" && a.Config.EntraClientSecret != "" {
+		registerProvider("entra_id", providers.NewEntraIDProvider(), map[string]interface{}{
+			"tenant_id":     a.Config.EntraTenantID,
+			"client_id":     a.Config.EntraClientID,
+			"client_secret": a.Config.EntraClientSecret,
 		})
 	}
 
@@ -607,6 +649,24 @@ func (a *App) initProviders(ctx context.Context) {
 		registerProvider("github", providers.NewGitHubProvider(), map[string]interface{}{
 			"token": a.Config.GitHubToken,
 			"org":   a.Config.GitHubOrg,
+		})
+	}
+
+	// Register Google Workspace if configured
+	if a.Config.GoogleWorkspaceCredentialsJSON != "" {
+		registerProvider("google_workspace", providers.NewGoogleWorkspaceProvider(), map[string]interface{}{
+			"domain":             a.Config.GoogleWorkspaceDomain,
+			"admin_email":        a.Config.GoogleWorkspaceAdminEmail,
+			"impersonator_email": a.Config.GoogleWorkspaceImpersonatorEmail,
+			"credentials_json":   a.Config.GoogleWorkspaceCredentialsJSON,
+		})
+	}
+
+	// Register Tailscale if configured
+	if a.Config.TailscaleAPIKey != "" && a.Config.TailscaleTailnet != "" {
+		registerProvider("tailscale", providers.NewTailscaleProvider(), map[string]interface{}{
+			"api_key": a.Config.TailscaleAPIKey,
+			"tailnet": a.Config.TailscaleTailnet,
 		})
 	}
 
@@ -828,7 +888,7 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 
 	// Persist watermarks
 	if a.ScanWatermarks != nil {
-		if err := a.ScanWatermarks.PersistWatermarks(ctx); err != nil {
+		if err := a.ScanWatermarks.PersistWatermarksWithRetry(ctx, scanner.DefaultWatermarkPersistOptions()); err != nil {
 			a.Logger.Warn("failed to persist scan watermarks", "error", err)
 		}
 	}
@@ -911,31 +971,76 @@ func (a *App) initAvailableTables(ctx context.Context) {
 }
 
 // validatePolicyCoverage checks that required tables exist for loaded policies
-func (a *App) validatePolicyCoverage(_ context.Context) {
+func (a *App) validatePolicyCoverage(_ context.Context) error {
 	if a.Snowflake == nil {
 		a.Logger.Warn("skipping policy coverage validation - Snowflake not configured")
-		return
+		return nil
 	}
 
 	if a.AvailableTables == nil {
 		a.Logger.Warn("skipping policy coverage validation - table list not available")
-		return
+		return nil
 	}
 
-	gaps := a.Policy.ValidateTableCoverage(a.AvailableTables)
-	if len(gaps) == 0 {
-		a.Logger.Info("all policies have required tables available")
-		return
+	report := a.Policy.CoverageReport(a.AvailableTables)
+	if report.TotalPolicies == 0 {
+		return nil
 	}
 
-	totalPolicies := len(a.Policy.ListPolicies())
-	coveredPolicies := totalPolicies - len(gaps)
-	a.Logger.Warn("policy coverage incomplete",
-		"total_policies", totalPolicies,
-		"covered_policies", coveredPolicies,
-		"uncovered_policies", len(gaps),
-		"coverage_percent", fmt.Sprintf("%.1f%%", float64(coveredPolicies)/float64(totalPolicies)*100),
-	)
+	if len(report.Gaps) == 0 && report.UnknownResourcePolicies == 0 {
+		a.Logger.Info("all policies have required tables available",
+			"coverage_percent", fmt.Sprintf("%.1f%%", report.CoveragePercent))
+	} else {
+		missingTables := topMissingTables(report.MissingTables, 5)
+		a.Logger.Warn("policy coverage incomplete",
+			"total_policies", report.TotalPolicies,
+			"covered_policies", report.CoveredPolicies,
+			"uncovered_policies", report.UncoveredPolicies,
+			"unknown_resource_policies", report.UnknownResourcePolicies,
+			"coverage_percent", fmt.Sprintf("%.1f%%", report.CoveragePercent),
+			"known_coverage_percent", fmt.Sprintf("%.1f%%", report.KnownCoveragePercent),
+			"missing_tables", missingTables,
+			"missing_by_provider", report.MissingByProvider,
+		)
+	}
+
+	threshold, ok, err := policy.CoverageThresholdFromEnv()
+	if err != nil {
+		a.Logger.Warn("invalid policy coverage threshold", "error", err)
+		return nil
+	}
+	if ok && report.CoveragePercent < threshold {
+		return fmt.Errorf("policy coverage %.1f%% below threshold %.1f%%", report.CoveragePercent, threshold)
+	}
+	return nil
+}
+
+func topMissingTables(counts map[string]int, limit int) []string {
+	if limit <= 0 || len(counts) == 0 {
+		return nil
+	}
+	type entry struct {
+		table string
+		count int
+	}
+	entries := make([]entry, 0, len(counts))
+	for table, count := range counts {
+		entries = append(entries, entry{table: table, count: count})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].count == entries[j].count {
+			return entries[i].table < entries[j].table
+		}
+		return entries[i].count > entries[j].count
+	})
+	if len(entries) > limit {
+		entries = entries[:limit]
+	}
+	result := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		result = append(result, fmt.Sprintf("%s (%d)", entry.table, entry.count))
+	}
+	return result
 }
 
 // Close cleanly shuts down all services
@@ -1095,7 +1200,7 @@ func defaultScanTables() []string {
 		"aws_ec2_ebs_snapshots",
 		"aws_ec2_amis",
 		// AWS RDS
-		"aws_rds_db_instances",
+		"aws_rds_instances",
 		"aws_rds_db_clusters",
 		// AWS Lambda
 		"aws_lambda_functions",
@@ -1181,12 +1286,32 @@ func (a *App) initThreatIntel(ctx context.Context) {
 
 	// Sync feeds in background
 	go func() {
-		if err := a.ThreatIntel.SyncAll(ctx); err != nil {
-			a.Logger.Warn("failed to sync threat intel feeds", "error", err)
-		} else {
+		const (
+			syncTimeout  = 2 * time.Minute
+			syncMaxAge   = 12 * time.Hour
+			syncAttempts = 3
+			syncBackoff  = 5 * time.Second
+		)
+		if !a.ThreatIntel.ShouldSync(syncMaxAge) {
 			stats := a.ThreatIntel.Stats()
-			a.Logger.Info("threat intel feeds synced", "indicators", stats["total_indicators"])
+			a.Logger.Info("threat intel feeds fresh", "last_updated", stats["last_updated"])
+			return
 		}
+
+		syncCtx, cancel := context.WithTimeout(context.Background(), syncTimeout)
+		defer cancel()
+
+		err := a.ThreatIntel.SyncAllWithRetry(syncCtx, threatintel.SyncOptions{
+			MaxAge:   syncMaxAge,
+			Attempts: syncAttempts,
+			Backoff:  syncBackoff,
+		})
+		if err != nil {
+			a.Logger.Warn("failed to sync threat intel feeds", "error", err)
+			return
+		}
+		stats := a.ThreatIntel.Stats()
+		a.Logger.Info("threat intel feeds synced", "indicators", stats["total_indicators"])
 	}()
 }
 

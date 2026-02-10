@@ -477,15 +477,19 @@ func (e *AzureSyncEngine) getAzureTables() []AzureTableSpec {
 	return []AzureTableSpec{
 		e.azureVirtualMachineTable(),
 		e.azureStorageAccountTable(),
+		e.azureStorageContainerTable(),
+		e.azureStorageBlobTable(),
 		e.azureNetworkSecurityGroupTable(),
 		e.azureVirtualNetworkTable(),
 		e.azureSQLServerTable(),
 		e.azureSQLDatabaseTable(),
 		e.azureKeyVaultTable(),
+		e.azureKeyVaultKeyTable(),
 		e.azureLoadBalancerTable(),
 		e.azurePublicIPTable(),
 		e.azureNetworkInterfaceTable(),
 		e.azureDiskTable(),
+		e.azureFunctionAppTable(),
 	}
 }
 

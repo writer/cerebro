@@ -21,9 +21,11 @@ type ScanWatermark struct {
 
 // WatermarkStore manages scan watermarks for incremental scanning
 type WatermarkStore struct {
-	watermarks map[string]*ScanWatermark
-	mu         sync.RWMutex
-	db         *sql.DB // Optional Snowflake persistence
+	watermarks  map[string]*ScanWatermark
+	mu          sync.RWMutex
+	db          *sql.DB // Optional Snowflake persistence
+	schemaMu    sync.Mutex
+	schemaReady bool
 }
 
 // NewWatermarkStore creates a new watermark store
@@ -100,6 +102,13 @@ type IncrementalScanConfig struct {
 	SkipStaleCheck bool          // Skip checking if data is stale
 }
 
+// WatermarkPersistOptions configures watermark persistence retries.
+type WatermarkPersistOptions struct {
+	Timeout  time.Duration // Timeout for a single persistence attempt
+	Attempts int           // Number of attempts before giving up
+	Backoff  time.Duration // Base backoff between attempts
+}
+
 // DefaultIncrementalConfig returns default incremental scan configuration
 func DefaultIncrementalConfig() IncrementalScanConfig {
 	return IncrementalScanConfig{
@@ -107,6 +116,15 @@ func DefaultIncrementalConfig() IncrementalScanConfig {
 		MaxAge:         7 * 24 * time.Hour, // 7 days
 		BatchSize:      1000,
 		SkipStaleCheck: false,
+	}
+}
+
+// DefaultWatermarkPersistOptions returns retry defaults for watermark persistence.
+func DefaultWatermarkPersistOptions() WatermarkPersistOptions {
+	return WatermarkPersistOptions{
+		Timeout:  2 * time.Minute,
+		Attempts: 3,
+		Backoff:  2 * time.Second,
 	}
 }
 
@@ -121,17 +139,17 @@ func (s *WatermarkStore) ShouldFullScan(table string, maxAge time.Duration) bool
 	return time.Since(wm.LastScanTime) > maxAge
 }
 
-// PersistWatermarks saves watermarks to Snowflake (if configured)
-func (s *WatermarkStore) PersistWatermarks(ctx context.Context) error {
+func (s *WatermarkStore) ensureWatermarkTable(ctx context.Context) error {
 	if s.db == nil {
 		return nil
 	}
+	s.schemaMu.Lock()
+	defer s.schemaMu.Unlock()
+	if s.schemaReady {
+		return nil
+	}
 
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	// Create watermarks table if needed
-	_, err := s.db.ExecContext(ctx, `
+	if _, err := s.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS cerebro_scan_watermarks (
 			table_name VARCHAR PRIMARY KEY,
 			last_scan_time TIMESTAMP_NTZ,
@@ -139,8 +157,7 @@ func (s *WatermarkStore) PersistWatermarks(ctx context.Context) error {
 			rows_scanned NUMBER,
 			updated_at TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
 		)
-	`)
-	if err != nil {
+	`); err != nil {
 		return fmt.Errorf("create watermarks table: %w", err)
 	}
 
@@ -148,26 +165,114 @@ func (s *WatermarkStore) PersistWatermarks(ctx context.Context) error {
 		return fmt.Errorf("ensure last_scan_id column: %w", err)
 	}
 
-	// Upsert each watermark
+	s.schemaReady = true
+	return nil
+}
+
+// PersistWatermarks saves watermarks to Snowflake (if configured)
+func (s *WatermarkStore) PersistWatermarks(ctx context.Context) error {
+	if s.db == nil {
+		return nil
+	}
+
+	if err := s.ensureWatermarkTable(ctx); err != nil {
+		return err
+	}
+
+	s.mu.RLock()
+	watermarks := make([]*ScanWatermark, 0, len(s.watermarks))
 	for _, wm := range s.watermarks {
-		_, err := s.db.ExecContext(ctx, `
+		watermarks = append(watermarks, wm)
+	}
+	s.mu.RUnlock()
+
+	if len(watermarks) == 0 {
+		return nil
+	}
+
+	const batchSize = 200
+	for i := 0; i < len(watermarks); i += batchSize {
+		end := i + batchSize
+		if end > len(watermarks) {
+			end = len(watermarks)
+		}
+		batch := watermarks[i:end]
+		values := make([]string, 0, len(batch))
+		args := make([]interface{}, 0, len(batch)*4)
+		for _, wm := range batch {
+			values = append(values, "(?, ?, ?, ?)")
+			args = append(args, wm.Table, wm.LastScanTime, wm.LastScanID, wm.RowsScanned)
+		}
+		merge := fmt.Sprintf(`
 			MERGE INTO cerebro_scan_watermarks t
-			USING (SELECT ? AS table_name, ? AS last_scan_time, ? AS last_scan_id, ? AS rows_scanned) s
+			USING (SELECT column1 AS table_name,
+			              column2 AS last_scan_time,
+			              column3 AS last_scan_id,
+			              column4 AS rows_scanned
+			       FROM VALUES %s) s
 			ON t.table_name = s.table_name
-			WHEN MATCHED THEN UPDATE SET 
+			WHEN MATCHED THEN UPDATE SET
 				last_scan_time = s.last_scan_time,
 				last_scan_id = s.last_scan_id,
 				rows_scanned = s.rows_scanned,
 				updated_at = CURRENT_TIMESTAMP()
 			WHEN NOT MATCHED THEN INSERT (table_name, last_scan_time, last_scan_id, rows_scanned)
-				VALUES (s.table_name, s.last_scan_time, s.last_scan_id, s.rows_scanned)
-		`, wm.Table, wm.LastScanTime, wm.LastScanID, wm.RowsScanned)
-		if err != nil {
-			return fmt.Errorf("upsert watermark %s: %w", wm.Table, err)
+			VALUES (s.table_name, s.last_scan_time, s.last_scan_id, s.rows_scanned)
+		`, strings.Join(values, ","))
+		if _, err := s.db.ExecContext(ctx, merge, args...); err != nil {
+			return fmt.Errorf("upsert watermarks: %w", err)
 		}
 	}
 
 	return nil
+}
+
+// PersistWatermarksWithRetry persists watermarks with retry/backoff and a detached timeout.
+func (s *WatermarkStore) PersistWatermarksWithRetry(ctx context.Context, opts WatermarkPersistOptions) error {
+	if s.db == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if opts.Timeout == 0 || opts.Attempts == 0 || opts.Backoff == 0 {
+		defaults := DefaultWatermarkPersistOptions()
+		if opts.Timeout == 0 {
+			opts.Timeout = defaults.Timeout
+		}
+		if opts.Attempts == 0 {
+			opts.Attempts = defaults.Attempts
+		}
+		if opts.Backoff == 0 {
+			opts.Backoff = defaults.Backoff
+		}
+	}
+	if opts.Attempts < 1 {
+		opts.Attempts = 1
+	}
+
+	var lastErr error
+	for attempt := 0; attempt < opts.Attempts; attempt++ {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		attemptCtx, cancel := withDetachedTimeout(ctx, opts.Timeout)
+		err := s.PersistWatermarks(attemptCtx)
+		cancel()
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		if attempt < opts.Attempts-1 {
+			if !sleepWithContext(ctx, opts.Backoff*time.Duration(attempt+1)) {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				return lastErr
+			}
+		}
+	}
+	return lastErr
 }
 
 // LoadWatermarks loads watermarks from Snowflake (if configured)
@@ -247,6 +352,38 @@ func (s *WatermarkStore) Stats() IncrementalStats {
 	}
 
 	return stats
+}
+
+func withDetachedTimeout(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	if timeout <= 0 {
+		return context.WithCancel(parent)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	go func() {
+		select {
+		case <-parent.Done():
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+	return ctx, cancel
+}
+
+func sleepWithContext(ctx context.Context, d time.Duration) bool {
+	if d <= 0 {
+		return true
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
 }
 
 // ExtractScanCursor returns the latest sync time and ID from a batch of assets.

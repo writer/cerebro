@@ -249,6 +249,14 @@ func (e *EntraIDProvider) Schema() []TableSchema {
 	}
 }
 
+func (e *EntraIDProvider) schemaFor(name string) (TableSchema, error) {
+	schema, ok := schemaByName(e.Schema(), name)
+	if !ok {
+		return TableSchema{}, fmt.Errorf("schema not found: %s", name)
+	}
+	return schema, nil
+}
+
 func (e *EntraIDProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResult, error) {
 	start := time.Now()
 	result := &SyncResult{
@@ -315,6 +323,15 @@ func (e *EntraIDProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResu
 	} else {
 		result.Tables = append(result.Tables, *roles)
 		result.TotalRows += roles.Rows
+	}
+
+	// Sync role assignments
+	roleAssignments, err := e.syncRoleAssignments(ctx)
+	if err != nil {
+		result.Errors = append(result.Errors, "role_assignments: "+err.Error())
+	} else {
+		result.Tables = append(result.Tables, *roleAssignments)
+		result.TotalRows += roleAssignments.Rows
 	}
 
 	// Sync audit logs (last 7 days)
@@ -390,86 +407,153 @@ func (e *EntraIDProvider) ensureToken(ctx context.Context) error {
 }
 
 func (e *EntraIDProvider) syncUsers(ctx context.Context) (*TableResult, error) {
+	schema, err := e.schemaFor("entra_users")
 	result := &TableResult{Name: "entra_users"}
+	if err != nil {
+		return result, err
+	}
 
 	users, err := e.listAll(ctx, "/v1.0/users?$select=id,userPrincipalName,displayName,givenName,surname,mail,jobTitle,department,officeLocation,accountEnabled,userType,createdDateTime,signInActivity,onPremisesSyncEnabled")
 	if err != nil {
 		return result, err
 	}
 
-	result.Rows = int64(len(users))
-	result.Inserted = result.Rows
-	return result, nil
+	rows := make([]map[string]interface{}, 0, len(users))
+	for _, user := range users {
+		row := normalizeEntraRow(user)
+		rows = append(rows, row)
+	}
+
+	return e.syncTable(ctx, schema, rows)
 }
 
 func (e *EntraIDProvider) syncGroups(ctx context.Context) (*TableResult, error) {
+	schema, err := e.schemaFor("entra_groups")
 	result := &TableResult{Name: "entra_groups"}
+	if err != nil {
+		return result, err
+	}
 
 	groups, err := e.listAll(ctx, "/v1.0/groups?$select=id,displayName,description,mail,mailEnabled,securityEnabled,groupTypes,membershipRule,createdDateTime")
 	if err != nil {
 		return result, err
 	}
 
-	result.Rows = int64(len(groups))
-	result.Inserted = result.Rows
-	return result, nil
+	rows := make([]map[string]interface{}, 0, len(groups))
+	for _, group := range groups {
+		rows = append(rows, normalizeEntraRow(group))
+	}
+
+	return e.syncTable(ctx, schema, rows)
 }
 
 func (e *EntraIDProvider) syncServicePrincipals(ctx context.Context) (*TableResult, error) {
+	schema, err := e.schemaFor("entra_service_principals")
 	result := &TableResult{Name: "entra_service_principals"}
+	if err != nil {
+		return result, err
+	}
 
 	sps, err := e.listAll(ctx, "/v1.0/servicePrincipals?$select=id,appId,displayName,servicePrincipalType,accountEnabled,appRoleAssignmentRequired,createdDateTime,tags")
 	if err != nil {
 		return result, err
 	}
 
-	result.Rows = int64(len(sps))
-	result.Inserted = result.Rows
-	return result, nil
+	rows := make([]map[string]interface{}, 0, len(sps))
+	for _, sp := range sps {
+		rows = append(rows, normalizeEntraRow(sp))
+	}
+
+	return e.syncTable(ctx, schema, rows)
 }
 
 func (e *EntraIDProvider) syncConditionalAccessPolicies(ctx context.Context) (*TableResult, error) {
+	schema, err := e.schemaFor("entra_conditional_access_policies")
 	result := &TableResult{Name: "entra_conditional_access_policies"}
+	if err != nil {
+		return result, err
+	}
 
 	policies, err := e.listAll(ctx, "/v1.0/identity/conditionalAccess/policies")
 	if err != nil {
 		return result, err
 	}
 
-	result.Rows = int64(len(policies))
-	result.Inserted = result.Rows
-	return result, nil
+	rows := make([]map[string]interface{}, 0, len(policies))
+	for _, policy := range policies {
+		rows = append(rows, normalizeEntraRow(policy))
+	}
+
+	return e.syncTable(ctx, schema, rows)
 }
 
 func (e *EntraIDProvider) syncRiskyUsers(ctx context.Context) (*TableResult, error) {
+	schema, err := e.schemaFor("entra_risky_users")
 	result := &TableResult{Name: "entra_risky_users"}
+	if err != nil {
+		return result, err
+	}
 
 	users, err := e.listAll(ctx, "/v1.0/identityProtection/riskyUsers?$filter=riskState ne 'dismissed' and riskState ne 'remediated'")
 	if err != nil {
 		// This may fail if Identity Protection is not licensed
-		return result, nil
+		return e.syncTable(ctx, schema, nil)
 	}
 
-	result.Rows = int64(len(users))
-	result.Inserted = result.Rows
-	return result, nil
+	rows := make([]map[string]interface{}, 0, len(users))
+	for _, user := range users {
+		rows = append(rows, normalizeEntraRow(user))
+	}
+
+	return e.syncTable(ctx, schema, rows)
 }
 
 func (e *EntraIDProvider) syncDirectoryRoles(ctx context.Context) (*TableResult, error) {
+	schema, err := e.schemaFor("entra_directory_roles")
 	result := &TableResult{Name: "entra_directory_roles"}
+	if err != nil {
+		return result, err
+	}
 
 	roles, err := e.listAll(ctx, "/v1.0/directoryRoles")
 	if err != nil {
 		return result, err
 	}
 
-	result.Rows = int64(len(roles))
-	result.Inserted = result.Rows
-	return result, nil
+	rows := make([]map[string]interface{}, 0, len(roles))
+	for _, role := range roles {
+		rows = append(rows, normalizeEntraRow(role))
+	}
+
+	return e.syncTable(ctx, schema, rows)
+}
+
+func (e *EntraIDProvider) syncRoleAssignments(ctx context.Context) (*TableResult, error) {
+	schema, err := e.schemaFor("entra_role_assignments")
+	result := &TableResult{Name: "entra_role_assignments"}
+	if err != nil {
+		return result, err
+	}
+
+	assignments, err := e.listAll(ctx, "/v1.0/roleManagement/directory/roleAssignments?$select=id,principalId,roleDefinitionId,directoryScopeId")
+	if err != nil {
+		return result, err
+	}
+
+	rows := make([]map[string]interface{}, 0, len(assignments))
+	for _, assignment := range assignments {
+		rows = append(rows, normalizeEntraRow(assignment))
+	}
+
+	return e.syncTable(ctx, schema, rows)
 }
 
 func (e *EntraIDProvider) syncAuditLogs(ctx context.Context) (*TableResult, error) {
+	schema, err := e.schemaFor("entra_audit_logs")
 	result := &TableResult{Name: "entra_audit_logs"}
+	if err != nil {
+		return result, err
+	}
 
 	// Get audit logs from last 7 days
 	sevenDaysAgo := time.Now().AddDate(0, 0, -7).Format("2006-01-02T15:04:05Z")
@@ -478,16 +562,23 @@ func (e *EntraIDProvider) syncAuditLogs(ctx context.Context) (*TableResult, erro
 	logs, err := e.listAll(ctx, path)
 	if err != nil {
 		// May fail if not licensed for audit logs
-		return result, nil
+		return e.syncTable(ctx, schema, nil)
 	}
 
-	result.Rows = int64(len(logs))
-	result.Inserted = result.Rows
-	return result, nil
+	rows := make([]map[string]interface{}, 0, len(logs))
+	for _, logEntry := range logs {
+		rows = append(rows, normalizeEntraRow(logEntry))
+	}
+
+	return e.syncTable(ctx, schema, rows)
 }
 
 func (e *EntraIDProvider) syncSignInLogs(ctx context.Context) (*TableResult, error) {
+	schema, err := e.schemaFor("entra_sign_ins")
 	result := &TableResult{Name: "entra_sign_ins"}
+	if err != nil {
+		return result, err
+	}
 
 	// Get sign-in logs from last 7 days
 	sevenDaysAgo := time.Now().AddDate(0, 0, -7).Format("2006-01-02T15:04:05Z")
@@ -496,12 +587,15 @@ func (e *EntraIDProvider) syncSignInLogs(ctx context.Context) (*TableResult, err
 	logs, err := e.listAll(ctx, path)
 	if err != nil {
 		// May fail if not licensed for sign-in logs
-		return result, nil
+		return e.syncTable(ctx, schema, nil)
 	}
 
-	result.Rows = int64(len(logs))
-	result.Inserted = result.Rows
-	return result, nil
+	rows := make([]map[string]interface{}, 0, len(logs))
+	for _, logEntry := range logs {
+		rows = append(rows, normalizeEntraRow(logEntry))
+	}
+
+	return e.syncTable(ctx, schema, rows)
 }
 
 func (e *EntraIDProvider) listAll(ctx context.Context, path string) ([]map[string]interface{}, error) {
@@ -569,6 +663,21 @@ func (e *EntraIDProvider) request(ctx context.Context, path string) ([]byte, err
 	}
 
 	return body, nil
+}
+
+func normalizeEntraRow(row map[string]interface{}) map[string]interface{} {
+	normalized, ok := normalizeMapKeys(row).(map[string]interface{})
+	if !ok {
+		return map[string]interface{}{}
+	}
+
+	if signInActivity, ok := normalized["sign_in_activity"].(map[string]interface{}); ok {
+		if lastSignIn, ok := signInActivity["last_sign_in_datetime"]; ok {
+			normalized["last_sign_in_datetime"] = lastSignIn
+		}
+	}
+
+	return normalized
 }
 
 // GetUsersWithoutMFA returns users without MFA registered

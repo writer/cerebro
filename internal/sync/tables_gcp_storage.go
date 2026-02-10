@@ -16,6 +16,18 @@ func (e *GCPSyncEngine) gcpStorageBucketTable() GCPTableSpec {
 	}
 }
 
+func (e *GCPSyncEngine) gcpStorageObjectTable() GCPTableSpec {
+	return GCPTableSpec{
+		Name: "gcp_storage_objects",
+		Columns: []string{
+			"project_id", "bucket", "name", "size", "storage_class", "created", "updated",
+			"etag", "kms_key_name", "content_type", "content_language", "crc32c", "md5",
+			"custom_time", "event_based_hold", "temporary_hold", "metadata", "owner", "self_link",
+		},
+		Fetch: e.fetchGCPStorageObjects,
+	}
+}
+
 func (e *GCPSyncEngine) fetchGCPStorageBuckets(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
 	client, err := storage.NewClient(ctx)
 	if err != nil {
@@ -152,6 +164,68 @@ func (e *GCPSyncEngine) fetchGCPStorageBuckets(ctx context.Context, projectID st
 		}
 
 		rows = append(rows, row)
+	}
+
+	return rows, nil
+}
+
+func (e *GCPSyncEngine) fetchGCPStorageObjects(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
+	client, err := storage.NewClient(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("create storage client: %w", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	rows := make([]map[string]interface{}, 0, 200)
+	bucketIt := client.Buckets(ctx, projectID)
+	for {
+		bucketAttrs, err := bucketIt.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("list buckets: %w", err)
+		}
+
+		objIt := client.Bucket(bucketAttrs.Name).Objects(ctx, nil)
+		for {
+			obj, err := objIt.Next()
+			if err == iterator.Done {
+				break
+			}
+			if err != nil {
+				return nil, fmt.Errorf("list objects for bucket %s: %w", bucketAttrs.Name, err)
+			}
+
+			selfLink := fmt.Sprintf("https://storage.googleapis.com/storage/v1/b/%s/o/%s", bucketAttrs.Name, obj.Name)
+			row := map[string]interface{}{
+				"_cq_id":           selfLink,
+				"project_id":       projectID,
+				"bucket":           bucketAttrs.Name,
+				"name":             obj.Name,
+				"size":             obj.Size,
+				"storage_class":    obj.StorageClass,
+				"created":          obj.Created,
+				"updated":          obj.Updated,
+				"etag":             obj.Etag,
+				"kms_key_name":     obj.KMSKeyName,
+				"content_type":     obj.ContentType,
+				"content_language": obj.ContentLanguage,
+				"crc32c":           obj.CRC32C,
+				"md5":              obj.MD5,
+				"custom_time":      obj.CustomTime,
+				"event_based_hold": obj.EventBasedHold,
+				"temporary_hold":   obj.TemporaryHold,
+				"metadata":         obj.Metadata,
+				"self_link":        selfLink,
+			}
+
+			if obj.Owner != "" {
+				row["owner"] = obj.Owner
+			}
+
+			rows = append(rows, row)
+		}
 	}
 
 	return rows, nil

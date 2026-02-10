@@ -95,6 +95,13 @@ const (
 	IndicatorTypeURL    IndicatorType = "url"
 )
 
+// SyncOptions configures threat intel synchronization behavior.
+type SyncOptions struct {
+	MaxAge   time.Duration // Skip sync if data is fresher than MaxAge
+	Attempts int           // Number of retry attempts
+	Backoff  time.Duration // Base backoff between attempts
+}
+
 // IndicatorStore stores indicators in memory with fast lookup
 type IndicatorStore struct {
 	byType map[IndicatorType]map[string]*Indicator
@@ -429,6 +436,68 @@ func (s *ThreatIntelService) Stats() map[string]interface{} {
 	}
 }
 
+// ShouldSync returns true if feeds should be refreshed based on maxAge.
+func (s *ThreatIntelService) ShouldSync(maxAge time.Duration) bool {
+	s.mu.RLock()
+	lastUpdated := s.lastUpdated
+	s.mu.RUnlock()
+	if lastUpdated.IsZero() {
+		return true
+	}
+	if maxAge <= 0 {
+		return true
+	}
+	return time.Since(lastUpdated) > maxAge
+}
+
+// SyncAllIfStale syncs all feeds only if the data is stale.
+func (s *ThreatIntelService) SyncAllIfStale(ctx context.Context, maxAge time.Duration) error {
+	if !s.ShouldSync(maxAge) {
+		return nil
+	}
+	return s.SyncAll(ctx)
+}
+
+// SyncAllWithRetry syncs feeds with retry/backoff and staleness checks.
+func (s *ThreatIntelService) SyncAllWithRetry(ctx context.Context, opts SyncOptions) error {
+	if opts.Attempts == 0 || opts.Backoff == 0 {
+		if opts.Attempts == 0 {
+			opts.Attempts = 3
+		}
+		if opts.Backoff == 0 {
+			opts.Backoff = 3 * time.Second
+		}
+	}
+	if opts.Attempts < 1 {
+		opts.Attempts = 1
+	}
+	if !s.ShouldSync(opts.MaxAge) {
+		return nil
+	}
+
+	var lastErr error
+	for attempt := 0; attempt < opts.Attempts; attempt++ {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if err := s.SyncAll(ctx); err != nil {
+			lastErr = err
+			if attempt < opts.Attempts-1 {
+				if !sleepWithContext(ctx, opts.Backoff*time.Duration(attempt+1)) {
+					if ctx.Err() != nil {
+						return ctx.Err()
+					}
+					return lastErr
+				}
+				continue
+			}
+			return lastErr
+		}
+		return nil
+	}
+	return lastErr
+}
+
 // SyncAll syncs all enabled feeds
 func (s *ThreatIntelService) SyncAll(ctx context.Context) error {
 	s.mu.RLock()
@@ -447,4 +516,18 @@ func (s *ThreatIntelService) SyncAll(ctx context.Context) error {
 		}
 	}
 	return lastErr
+}
+
+func sleepWithContext(ctx context.Context, d time.Duration) bool {
+	if d <= 0 {
+		return true
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
 }

@@ -22,15 +22,30 @@ import (
 var syncCmd = &cobra.Command{
 	Use:   "sync",
 	Short: "Sync cloud assets to Snowflake",
-	Long: `Sync cloud assets from AWS, GCP, or Azure to Snowflake using Cerebro's native scanners.
+	Long: `Sync cloud assets from AWS, GCP, Azure, or Kubernetes to Snowflake using Cerebro's native scanners.
 
 Examples:
   cerebro sync                                    # Sync AWS (default)
   cerebro sync --gcp --gcp-project my-project    # Sync GCP
   cerebro sync --gcp --gcp-org 1234567890        # Sync all GCP projects in an org
   cerebro sync --azure                           # Sync Azure
+  cerebro sync --k8s                             # Sync Kubernetes
   cerebro sync --scan-after                      # Scan after sync`,
 	RunE: runSync,
+}
+
+var syncBackfillRelationshipsCmd = &cobra.Command{
+	Use:   "backfill-relationships",
+	Short: "Normalize relationship IDs in Snowflake",
+	Long: `Normalize existing relationship IDs to remove JSON/map wrappers.
+
+This command re-computes relationship IDs from normalized source/target IDs and
+updates the RESOURCE_RELATIONSHIPS table in-place, removing duplicates.
+
+Examples:
+  cerebro sync backfill-relationships
+  cerebro sync backfill-relationships --batch-size 500`,
+	RunE: runBackfillRelationships,
 }
 
 var (
@@ -43,6 +58,10 @@ var (
 	syncRegion            string
 	syncUseAssetAPI       bool   // use Cloud Asset Inventory API
 	syncSecurity          bool   // sync security data (vulnerabilities, SCC findings)
+	syncK8s               bool   // sync Kubernetes resources
+	syncK8sKubeconfig     string // kubeconfig path
+	syncK8sContext        string // kubeconfig context
+	syncK8sNamespace      string // namespace to sync
 	syncAzure             bool   // sync Azure resources
 	syncAzureSubscription string // Azure subscription ID
 	syncConcurrency       int
@@ -50,6 +69,7 @@ var (
 	syncOutput            string
 	syncValidate          bool
 	syncAWSProfiles       string // comma-separated AWS SSO profiles
+	syncBackfillBatchSize int
 )
 
 func init() {
@@ -62,6 +82,10 @@ func init() {
 	syncCmd.Flags().StringVarP(&syncRegion, "region", "r", "", "AWS region to sync when --multi-region is false")
 	syncCmd.Flags().BoolVar(&syncUseAssetAPI, "asset-api", false, "Use GCP Cloud Asset Inventory API for efficient bulk fetching")
 	syncCmd.Flags().BoolVar(&syncSecurity, "security", false, "Sync security data (Container Analysis vulnerabilities, SCC findings, Artifact Registry)")
+	syncCmd.Flags().BoolVar(&syncK8s, "k8s", false, "Sync Kubernetes resources")
+	syncCmd.Flags().StringVar(&syncK8sKubeconfig, "kubeconfig", "", "Path to kubeconfig file (defaults to KUBECONFIG)")
+	syncCmd.Flags().StringVar(&syncK8sContext, "kube-context", "", "Kubernetes context name")
+	syncCmd.Flags().StringVar(&syncK8sNamespace, "k8s-namespace", "", "Kubernetes namespace to sync (defaults to all)")
 	syncCmd.Flags().BoolVar(&syncAzure, "azure", false, "Sync Azure resources")
 	syncCmd.Flags().StringVar(&syncAzureSubscription, "azure-subscription", "", "Azure subscription ID (optional, will auto-discover if not set)")
 	syncCmd.Flags().IntVar(&syncConcurrency, "concurrency", 20, "Max concurrent table syncs for native engines")
@@ -69,12 +93,20 @@ func init() {
 	syncCmd.Flags().StringVarP(&syncOutput, "output", "o", "table", "Output format (table, json)")
 	syncCmd.Flags().BoolVar(&syncValidate, "validate", false, "Validate Snowflake tables without fetching resources")
 	syncCmd.Flags().StringVar(&syncAWSProfiles, "aws-profiles", "", "Comma-separated AWS SSO profile names to sync multiple accounts")
+
+	syncBackfillRelationshipsCmd.Flags().IntVar(&syncBackfillBatchSize, "batch-size", 200, "Batch size for relationship ID updates")
+	syncCmd.AddCommand(syncBackfillRelationshipsCmd)
 }
 
 func runSync(cmd *cobra.Command, args []string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	start := time.Now()
+
+	// Kubernetes sync
+	if syncK8s {
+		return runK8sSync(ctx, start)
+	}
 
 	// Azure sync
 	if syncAzure {
@@ -111,6 +143,26 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	return runNativeSync(ctx, start)
+}
+
+func runBackfillRelationships(cmd *cobra.Command, args []string) error {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	client, err := createSnowflakeClient()
+	if err != nil {
+		return fmt.Errorf("create snowflake client: %w", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	extractor := nativesync.NewRelationshipExtractor(client, slog.Default())
+	stats, err := extractor.BackfillNormalizedRelationshipIDs(ctx, syncBackfillBatchSize)
+	if err != nil {
+		return fmt.Errorf("backfill relationship IDs: %w", err)
+	}
+
+	Success("Relationship ID backfill complete (scanned %d, updated %d, deleted %d, skipped %d)", stats.Scanned, stats.Updated, stats.Deleted, stats.Skipped)
+	return nil
 }
 
 func runGCPSync(ctx context.Context, start time.Time, projectID string) error {
@@ -298,6 +350,64 @@ func runGCPAssetAPISync(ctx context.Context, start time.Time, projects []string)
 	}
 
 	return printSyncResults(results, start, "GCP (Asset API)")
+}
+
+func runK8sSync(ctx context.Context, start time.Time) error {
+	Info("Starting Kubernetes sync...")
+	tableFilter := parseTableFilter(syncTable)
+	if len(tableFilter) > 0 {
+		Info("Filtering Kubernetes tables: %s", strings.Join(tableFilter, ", "))
+	}
+
+	client, err := createSnowflakeClient()
+	if err != nil {
+		return fmt.Errorf("create snowflake client: %w", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	opts := []nativesync.K8sEngineOption{}
+	if syncK8sKubeconfig != "" {
+		opts = append(opts, nativesync.WithK8sKubeconfig(syncK8sKubeconfig))
+	}
+	if syncK8sContext != "" {
+		opts = append(opts, nativesync.WithK8sContext(syncK8sContext))
+	}
+	if syncK8sNamespace != "" {
+		opts = append(opts, nativesync.WithK8sNamespace(syncK8sNamespace))
+	}
+	if syncConcurrency > 0 {
+		opts = append(opts, nativesync.WithK8sConcurrency(syncConcurrency))
+	}
+	if len(tableFilter) > 0 {
+		opts = append(opts, nativesync.WithK8sTableFilter(tableFilter))
+	}
+
+	syncer := nativesync.NewK8sSyncEngine(client, slog.Default(), opts...)
+	if syncValidate {
+		results, err := syncer.ValidateTables(ctx)
+		if err != nil {
+			return fmt.Errorf("validation failed: %w", err)
+		}
+		return printSyncResults(results, start, "Kubernetes (validate)")
+	}
+
+	results, err := syncer.SyncAll(ctx)
+	if err != nil {
+		return fmt.Errorf("sync failed: %w", err)
+	}
+
+	if err := printSyncResults(results, start, "Kubernetes"); err != nil {
+		return err
+	}
+
+	if syncScanAfter {
+		Info("Triggering policy scan...")
+		if err := runPostSyncScan(ctx, tableFilter); err != nil {
+			Warning("Post-sync scan failed: %v", err)
+		}
+	}
+
+	return nil
 }
 
 func runAzureSync(ctx context.Context, start time.Time) error {
@@ -833,7 +943,9 @@ func runPostSyncScan(ctx context.Context, tableFilter []string) error {
 
 	// Persist watermarks
 	if application.ScanWatermarks != nil {
-		_ = application.ScanWatermarks.PersistWatermarks(ctx)
+		if err := application.ScanWatermarks.PersistWatermarksWithRetry(ctx, scanner.DefaultWatermarkPersistOptions()); err != nil {
+			Warning("Failed to persist scan watermarks: %v", err)
+		}
 	}
 
 	// Sync findings to persistent storage

@@ -87,6 +87,43 @@ func (e *SyncEngine) organizationsOrganizationTable() TableSpec {
 	}
 }
 
+// Organizations Roots table
+func (e *SyncEngine) organizationsRootsTable() TableSpec {
+	return TableSpec{
+		Name: "aws_organizations_roots",
+		Columns: []string{
+			"_cq_hash", "arn", "id", "account_id", "name", "policy_types",
+		},
+		Fetch: func(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+			client := organizations.NewFromConfig(cfg)
+			accountID := e.getAccountIDFromConfig(ctx, cfg)
+			var results []map[string]interface{}
+
+			paginator := organizations.NewListRootsPaginator(client, &organizations.ListRootsInput{})
+			for paginator.HasMorePages() {
+				page, err := paginator.NextPage(ctx)
+				if err != nil {
+					return nil, err
+				}
+
+				for _, root := range page.Roots {
+					policyTypesJSON, _ := json.Marshal(root.PolicyTypes)
+					row := map[string]interface{}{
+						"arn":          aws.ToString(root.Arn),
+						"id":           aws.ToString(root.Id),
+						"account_id":   accountID,
+						"name":         aws.ToString(root.Name),
+						"policy_types": string(policyTypesJSON),
+					}
+					results = append(results, row)
+				}
+			}
+
+			return results, nil
+		},
+	}
+}
+
 // Organizations Policies table
 func (e *SyncEngine) organizationsPolicyTable() TableSpec {
 	return TableSpec{
@@ -147,6 +184,119 @@ func (e *SyncEngine) organizationsPolicyTable() TableSpec {
 	}
 }
 
+// Organizations Policy Targets table
+func (e *SyncEngine) organizationsPolicyTargetsTable() TableSpec {
+	return TableSpec{
+		Name: "aws_organizations_policy_targets",
+		Columns: []string{
+			"_cq_hash", "policy_id", "policy_arn", "policy_name", "policy_type",
+			"target_id", "target_arn", "target_name", "target_type", "account_id",
+		},
+		Fetch: func(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+			client := organizations.NewFromConfig(cfg)
+			accountID := e.getAccountIDFromConfig(ctx, cfg)
+			var results []map[string]interface{}
+
+			policyTypes := []organizations_types.PolicyType{
+				organizations_types.PolicyTypeServiceControlPolicy,
+				organizations_types.PolicyTypeTagPolicy,
+				organizations_types.PolicyTypeBackupPolicy,
+				organizations_types.PolicyTypeAiservicesOptOutPolicy,
+			}
+
+			for _, policyType := range policyTypes {
+				paginator := organizations.NewListPoliciesPaginator(client, &organizations.ListPoliciesInput{
+					Filter: policyType,
+				})
+				for paginator.HasMorePages() {
+					page, err := paginator.NextPage(ctx)
+					if err != nil {
+						break
+					}
+
+					for _, policy := range page.Policies {
+						policyID := aws.ToString(policy.Id)
+						if policyID == "" {
+							continue
+						}
+
+						targetPager := organizations.NewListTargetsForPolicyPaginator(client, &organizations.ListTargetsForPolicyInput{
+							PolicyId: policy.Id,
+						})
+						for targetPager.HasMorePages() {
+							targetPage, err := targetPager.NextPage(ctx)
+							if err != nil {
+								e.logger.Warn("failed to list policy targets", "policy", policyID, "error", err)
+								break
+							}
+
+							for _, target := range targetPage.Targets {
+								row := map[string]interface{}{
+									"policy_id":   policyID,
+									"policy_arn":  aws.ToString(policy.Arn),
+									"policy_name": aws.ToString(policy.Name),
+									"policy_type": string(policy.Type),
+									"target_id":   aws.ToString(target.TargetId),
+									"target_arn":  aws.ToString(target.Arn),
+									"target_name": aws.ToString(target.Name),
+									"target_type": string(target.Type),
+									"account_id":  accountID,
+								}
+								results = append(results, row)
+							}
+						}
+					}
+				}
+			}
+
+			return results, nil
+		},
+	}
+}
+
+// Organizations Delegated Administrators table
+func (e *SyncEngine) organizationsDelegatedAdministratorsTable() TableSpec {
+	return TableSpec{
+		Name: "aws_organizations_delegated_administrators",
+		Columns: []string{
+			"_cq_hash", "arn", "id", "account_id", "name", "email",
+			"joined_method", "joined_timestamp", "delegation_enabled_date",
+			"status", "state",
+		},
+		Fetch: func(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+			client := organizations.NewFromConfig(cfg)
+			accountID := e.getAccountIDFromConfig(ctx, cfg)
+			var results []map[string]interface{}
+
+			paginator := organizations.NewListDelegatedAdministratorsPaginator(client, &organizations.ListDelegatedAdministratorsInput{})
+			for paginator.HasMorePages() {
+				page, err := paginator.NextPage(ctx)
+				if err != nil {
+					return nil, err
+				}
+
+				for _, admin := range page.DelegatedAdministrators {
+					row := map[string]interface{}{
+						"arn":                     aws.ToString(admin.Arn),
+						"id":                      aws.ToString(admin.Id),
+						"account_id":              accountID,
+						"name":                    aws.ToString(admin.Name),
+						"email":                   aws.ToString(admin.Email),
+						"joined_method":           string(admin.JoinedMethod),
+						"joined_timestamp":        timeToString(admin.JoinedTimestamp),
+						"delegation_enabled_date": timeToString(admin.DelegationEnabledDate),
+						"status":                  string(admin.Status),
+						"state":                   string(admin.State),
+					}
+					results = append(results, row)
+				}
+			}
+
+			return results, nil
+		},
+	}
+}
+
 // Organizations OUs table
 func (e *SyncEngine) organizationsOUTable() TableSpec {
 	return TableSpec{
@@ -196,6 +346,60 @@ func (e *SyncEngine) organizationsOUTable() TableSpec {
 			// Start from each root
 			for _, root := range rootsOut.Roots {
 				getOUs(aws.ToString(root.Id))
+			}
+
+			return results, nil
+		},
+	}
+}
+
+// Organizations Account Parents table
+func (e *SyncEngine) organizationsAccountParentsTable() TableSpec {
+	return TableSpec{
+		Name: "aws_organizations_account_parents",
+		Columns: []string{
+			"_cq_hash", "account_id", "child_id", "child_type", "parent_id", "parent_type",
+		},
+		Fetch: func(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+			client := organizations.NewFromConfig(cfg)
+			accountID := e.getAccountIDFromConfig(ctx, cfg)
+			var results []map[string]interface{}
+
+			paginator := organizations.NewListAccountsPaginator(client, &organizations.ListAccountsInput{})
+			for paginator.HasMorePages() {
+				page, err := paginator.NextPage(ctx)
+				if err != nil {
+					return nil, err
+				}
+
+				for _, account := range page.Accounts {
+					childID := aws.ToString(account.Id)
+					if childID == "" {
+						continue
+					}
+
+					parentsPager := organizations.NewListParentsPaginator(client, &organizations.ListParentsInput{
+						ChildId: account.Id,
+					})
+					for parentsPager.HasMorePages() {
+						parentPage, err := parentsPager.NextPage(ctx)
+						if err != nil {
+							e.logger.Warn("failed to list account parents", "account", childID, "error", err)
+							break
+						}
+
+						for _, parent := range parentPage.Parents {
+							row := map[string]interface{}{
+								"account_id":  accountID,
+								"child_id":    childID,
+								"child_type":  string(organizations_types.ChildTypeAccount),
+								"parent_id":   aws.ToString(parent.Id),
+								"parent_type": string(parent.Type),
+							}
+							results = append(results, row)
+						}
+					}
+				}
 			}
 
 			return results, nil

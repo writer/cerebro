@@ -1,0 +1,188 @@
+package sync
+
+import (
+	"strings"
+	"testing"
+
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+)
+
+func TestK8sTables(t *testing.T) {
+	e := &K8sSyncEngine{}
+	tables := e.getK8sTables()
+
+	if len(tables) == 0 {
+		t.Fatal("getK8sTables should return at least one table")
+	}
+
+	found := false
+	for _, table := range tables {
+		if table.Name == "k8s_core_pods" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected k8s_core_pods table")
+	}
+}
+
+func TestWithK8sOptions(t *testing.T) {
+	e := &K8sSyncEngine{}
+	WithK8sKubeconfig("/tmp/kubeconfig")(e)
+	WithK8sContext("prod")(e)
+	WithK8sNamespace("kube-system")(e)
+	WithK8sConcurrency(5)(e)
+	WithK8sTableFilter([]string{"k8s_core_pods"})(e)
+
+	if e.kubeconfig != "/tmp/kubeconfig" {
+		t.Errorf("expected kubeconfig to be set, got %q", e.kubeconfig)
+	}
+	if e.kubeContext != "prod" {
+		t.Errorf("expected kubeContext to be set, got %q", e.kubeContext)
+	}
+	if e.namespace != "kube-system" {
+		t.Errorf("expected namespace to be set, got %q", e.namespace)
+	}
+	if e.concurrency != 5 {
+		t.Errorf("expected concurrency 5, got %d", e.concurrency)
+	}
+	if _, ok := e.tableFilter["k8s_core_pods"]; !ok {
+		t.Error("expected table filter to include k8s_core_pods")
+	}
+}
+
+func TestPodSpecToMap(t *testing.T) {
+	privileged := true
+	readOnly := true
+	runAsUser := int64(0)
+	runAsNonRoot := true
+	automount := false
+
+	spec := corev1.PodSpec{
+		HostNetwork:                  true,
+		HostPID:                      true,
+		ServiceAccountName:           "service-account",
+		AutomountServiceAccountToken: &automount,
+		SecurityContext: &corev1.PodSecurityContext{
+			RunAsNonRoot: &runAsNonRoot,
+		},
+		Containers: []corev1.Container{
+			{
+				Name:  "app",
+				Image: "nginx",
+				Resources: corev1.ResourceRequirements{
+					Limits: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("100m"),
+						corev1.ResourceMemory: resource.MustParse("128Mi"),
+					},
+				},
+				SecurityContext: &corev1.SecurityContext{
+					Privileged:             &privileged,
+					ReadOnlyRootFilesystem: &readOnly,
+					RunAsUser:              &runAsUser,
+					Capabilities: &corev1.Capabilities{
+						Drop: []corev1.Capability{"ALL"},
+					},
+				},
+				Env: []corev1.EnvVar{
+					{
+						Name:  "PASSWORD",
+						Value: "plain-text",
+					},
+					{
+						Name: "API_TOKEN",
+						ValueFrom: &corev1.EnvVarSource{
+							SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{Name: "secret"},
+								Key:                  "token",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	specMap := podSpecToMap(spec)
+	if specMap["host_network"] != true {
+		t.Error("expected host_network to be true")
+	}
+	if specMap["host_pid"] != true {
+		t.Error("expected host_pid to be true")
+	}
+	if specMap["service_account_name"] != "service-account" {
+		t.Error("expected service_account_name to be set")
+	}
+	if specMap["automount_service_account_token"] != false {
+		t.Error("expected automount_service_account_token to be false")
+	}
+
+	podSecurity, ok := specMap["security_context"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected pod security context map")
+	}
+	if podSecurity["run_as_non_root"] != true {
+		t.Error("expected run_as_non_root to be true")
+	}
+
+	containers, ok := specMap["containers"].([]map[string]interface{})
+	if !ok || len(containers) != 1 {
+		t.Fatalf("expected 1 container, got %v", specMap["containers"])
+	}
+
+	container := containers[0]
+	security, ok := container["security_context"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected container security context map")
+	}
+	if security["privileged"] != true {
+		t.Error("expected privileged to be true")
+	}
+	if security["read_only_root_filesystem"] != true {
+		t.Error("expected read_only_root_filesystem to be true")
+	}
+	if security["run_as_user"] != int64(0) {
+		t.Errorf("expected run_as_user to be 0, got %v", security["run_as_user"])
+	}
+
+	caps, ok := security["capabilities"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected capabilities map")
+	}
+	drop, ok := caps["drop"].(string)
+	if !ok || !strings.Contains(drop, "ALL") {
+		t.Errorf("expected capabilities drop to include ALL, got %v", caps["drop"])
+	}
+
+	resourcesMap, ok := container["resources"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected resources map")
+	}
+	limits, ok := resourcesMap["limits"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected limits map")
+	}
+	if limits["cpu"] != "100m" {
+		t.Errorf("expected cpu limit 100m, got %v", limits["cpu"])
+	}
+	if limits["memory"] != "128Mi" {
+		t.Errorf("expected memory limit 128Mi, got %v", limits["memory"])
+	}
+
+	env, ok := container["env"].([]map[string]interface{})
+	if !ok || len(env) != 2 {
+		t.Fatalf("expected 2 env entries, got %v", container["env"])
+	}
+	if env[0]["value_from"] != nil {
+		t.Error("expected first env value_from to be nil")
+	}
+	valueFrom, ok := env[1]["value_from"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected value_from map for secret env var")
+	}
+	if valueFrom["secret_key_ref"] == nil {
+		t.Error("expected secret_key_ref to be set")
+	}
+}

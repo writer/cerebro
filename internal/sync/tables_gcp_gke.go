@@ -43,6 +43,14 @@ func (e *GCPSyncEngine) gcpGKEClusterTable() GCPTableSpec {
 	}
 }
 
+func (e *GCPSyncEngine) gcpGKENodePoolTable() GCPTableSpec {
+	return GCPTableSpec{
+		Name:    "gcp_container_node_pools",
+		Columns: []string{"project_id", "cluster_name", "location", "name", "initial_node_count", "locations", "version", "status", "status_message", "config", "autoscaling", "management", "instance_group_urls", "max_pods_constraint", "upgrade_settings", "self_link"},
+		Fetch:   e.fetchGCPGKENodePools,
+	}
+}
+
 func (e *GCPSyncEngine) fetchGCPGKEClusters(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
 	client, err := newGKEClusterManagerClient(ctx)
 	if err != nil {
@@ -51,6 +59,89 @@ func (e *GCPSyncEngine) fetchGCPGKEClusters(ctx context.Context, projectID strin
 	defer func() { _ = client.Close() }()
 
 	return fetchGCPGKEClustersWithClient(ctx, projectID, client)
+}
+
+func (e *GCPSyncEngine) fetchGCPGKENodePools(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
+	client, err := newGKEClusterManagerClient(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("create container client: %w", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	return fetchGCPGKENodePoolsWithClient(ctx, projectID, client)
+}
+
+func fetchGCPGKENodePoolsWithClient(ctx context.Context, projectID string, client gkeClusterManagerClient) ([]map[string]interface{}, error) {
+	req := &containerpb.ListClustersRequest{
+		Parent: fmt.Sprintf("projects/%s/locations/-", projectID),
+	}
+
+	resp, err := client.ListClusters(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("list clusters: %w", err)
+	}
+
+	rows := make([]map[string]interface{}, 0, len(resp.Clusters))
+	for _, cluster := range resp.Clusters {
+		for _, np := range cluster.NodePools {
+			statusMessage := statusMessageFromConditions(np.Conditions)
+			selfLink := np.SelfLink
+			if selfLink == "" {
+				selfLink = fmt.Sprintf("https://container.googleapis.com/v1/projects/%s/locations/%s/clusters/%s/nodePools/%s",
+					projectID, cluster.Location, cluster.Name, np.Name)
+			}
+
+			row := map[string]interface{}{
+				"_cq_id":              selfLink,
+				"project_id":          projectID,
+				"cluster_name":        cluster.Name,
+				"location":            cluster.Location,
+				"name":                np.Name,
+				"initial_node_count":  np.InitialNodeCount,
+				"locations":           np.Locations,
+				"version":             np.Version,
+				"status":              np.Status.String(),
+				"status_message":      statusMessage,
+				"instance_group_urls": np.InstanceGroupUrls,
+				"self_link":           selfLink,
+			}
+
+			if np.Config != nil {
+				row["config"] = serializeNodeConfig(np.Config)
+			}
+			if np.Autoscaling != nil {
+				row["autoscaling"] = map[string]interface{}{
+					"enabled":              np.Autoscaling.Enabled,
+					"min_node_count":       np.Autoscaling.MinNodeCount,
+					"max_node_count":       np.Autoscaling.MaxNodeCount,
+					"total_min_node_count": np.Autoscaling.TotalMinNodeCount,
+					"total_max_node_count": np.Autoscaling.TotalMaxNodeCount,
+				}
+			}
+			if np.Management != nil {
+				row["management"] = map[string]interface{}{
+					"auto_upgrade": np.Management.AutoUpgrade,
+					"auto_repair":  np.Management.AutoRepair,
+				}
+			}
+			if np.MaxPodsConstraint != nil {
+				row["max_pods_constraint"] = map[string]interface{}{
+					"max_pods_per_node": np.MaxPodsConstraint.MaxPodsPerNode,
+				}
+			}
+			if np.UpgradeSettings != nil {
+				row["upgrade_settings"] = map[string]interface{}{
+					"strategy":        np.UpgradeSettings.Strategy.String(),
+					"max_surge":       np.UpgradeSettings.MaxSurge,
+					"max_unavailable": np.UpgradeSettings.MaxUnavailable,
+				}
+			}
+
+			rows = append(rows, row)
+		}
+	}
+
+	return rows, nil
 }
 
 func fetchGCPGKEClustersWithClient(ctx context.Context, projectID string, client gkeClusterManagerClient) ([]map[string]interface{}, error) {

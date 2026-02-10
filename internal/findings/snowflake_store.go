@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -345,70 +346,109 @@ func (s *SnowflakeStore) Sync(ctx context.Context) error {
 		return nil
 	}
 
+	findings := make([]*Finding, 0, len(dirtyIDs))
 	for _, id := range dirtyIDs {
 		s.mu.RLock()
 		f, ok := s.cache[id]
 		s.mu.RUnlock()
-		if !ok {
-			continue
+		if ok {
+			findings = append(findings, f)
+		}
+	}
+	if len(findings) == 0 {
+		return nil
+	}
+
+	const batchSize = 100
+	for i := 0; i < len(findings); i += batchSize {
+		end := i + batchSize
+		if end > len(findings) {
+			end = len(findings)
+		}
+		batch := findings[i:end]
+		values := make([]string, 0, len(batch))
+		args := make([]interface{}, 0, len(batch)*14)
+		for _, f := range batch {
+			resourceJSON, _ := json.Marshal(f.Resource)
+			metadataJSON, _ := buildFindingMetadata(f)
+			if len(metadataJSON) == 0 {
+				metadataJSON = []byte("{}")
+			}
+
+			var resolvedAt interface{}
+			if f.ResolvedAt != nil {
+				resolvedAt = *f.ResolvedAt
+			}
+
+			values = append(values, "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+			args = append(args,
+				f.ID,
+				f.PolicyID,
+				f.PolicyName,
+				f.Severity,
+				normalizeStatus(f.Status),
+				f.ResourceID,
+				f.ResourceType,
+				string(resourceJSON),
+				f.Description,
+				f.Remediation,
+				string(metadataJSON),
+				f.FirstSeen,
+				f.LastSeen,
+				resolvedAt,
+			)
 		}
 
-		if err := s.upsertFinding(ctx, f); err != nil {
-			return fmt.Errorf("sync finding %s: %w", id, err)
+		merge := fmt.Sprintf(`
+			MERGE INTO %s.FINDINGS t
+			USING (SELECT column1 AS id,
+			              column2 AS policy_id,
+			              column3 AS policy_name,
+			              column4 AS severity,
+			              column5 AS status,
+			              column6 AS resource_id,
+			              column7 AS resource_type,
+			              column8 AS resource_data,
+			              column9 AS description,
+			              column10 AS remediation,
+			              column11 AS metadata,
+			              column12 AS first_seen,
+			              column13 AS last_seen,
+			              column14 AS resolved_at
+			       FROM VALUES %s) s
+			ON t.ID = s.id
+			WHEN MATCHED THEN UPDATE SET
+				LAST_SEEN = s.last_seen,
+				STATUS = s.status,
+				RESOURCE_DATA = PARSE_JSON(s.resource_data),
+				DESCRIPTION = s.description,
+				REMEDIATION = s.remediation,
+				METADATA = PARSE_JSON(s.metadata),
+				RESOLVED_AT = s.resolved_at,
+				UPDATED_AT = CURRENT_TIMESTAMP()
+			WHEN NOT MATCHED THEN INSERT (
+				ID, POLICY_ID, POLICY_NAME, SEVERITY, STATUS,
+				RESOURCE_ID, RESOURCE_TYPE, RESOURCE_DATA, DESCRIPTION,
+				REMEDIATION, METADATA, FIRST_SEEN, LAST_SEEN, RESOLVED_AT
+			) VALUES (
+				s.id, s.policy_id, s.policy_name, s.severity, s.status,
+				s.resource_id, s.resource_type, PARSE_JSON(s.resource_data), s.description,
+				s.remediation, PARSE_JSON(s.metadata), s.first_seen, s.last_seen, s.resolved_at
+			)
+		`, s.schema, strings.Join(values, ","))
+		if _, err := s.db.ExecContext(ctx, merge, args...); err != nil {
+			return fmt.Errorf("sync findings batch: %w", err)
 		}
 
 		s.mu.Lock()
-		delete(s.dirty, id)
+		for _, f := range batch {
+			delete(s.dirty, f.ID)
+		}
 		s.mu.Unlock()
 	}
 
 	s.syncedAt = time.Now()
 	return nil
-}
-
-func (s *SnowflakeStore) upsertFinding(ctx context.Context, f *Finding) error {
-	resourceJSON, _ := json.Marshal(f.Resource)
-	metadataJSON, _ := buildFindingMetadata(f)
-	if len(metadataJSON) == 0 {
-		metadataJSON = []byte("{}")
-	}
-
-	query := fmt.Sprintf(`
-		MERGE INTO %s.FINDINGS t
-		USING (SELECT ? as id) s
-		ON t.ID = s.id
-		WHEN MATCHED THEN UPDATE SET
-			LAST_SEEN = ?,
-			STATUS = ?,
-			RESOURCE_DATA = PARSE_JSON(?),
-			DESCRIPTION = ?,
-			REMEDIATION = ?,
-			METADATA = PARSE_JSON(?),
-			RESOLVED_AT = ?,
-			UPDATED_AT = CURRENT_TIMESTAMP()
-		WHEN NOT MATCHED THEN INSERT (
-			ID, POLICY_ID, POLICY_NAME, SEVERITY, STATUS,
-			RESOURCE_ID, RESOURCE_TYPE, RESOURCE_DATA, DESCRIPTION,
-			REMEDIATION, METADATA, FIRST_SEEN, LAST_SEEN, RESOLVED_AT
-		) VALUES (?, ?, ?, ?, ?, ?, ?, PARSE_JSON(?), ?, ?, PARSE_JSON(?), ?, ?, ?)
-	`, s.schema)
-
-	var resolvedAt interface{}
-	if f.ResolvedAt != nil {
-		resolvedAt = *f.ResolvedAt
-	}
-
-	_, err := s.db.ExecContext(ctx, query,
-		// USING
-		f.ID,
-		// WHEN MATCHED
-		f.LastSeen, normalizeStatus(f.Status), string(resourceJSON), f.Description, f.Remediation, string(metadataJSON), resolvedAt,
-		// WHEN NOT MATCHED
-		f.ID, f.PolicyID, f.PolicyName, f.Severity, normalizeStatus(f.Status),
-		f.ResourceID, f.ResourceType, string(resourceJSON), f.Description,
-		f.Remediation, string(metadataJSON), f.FirstSeen, f.LastSeen, resolvedAt,
-	)
-	return err
 }
 
 // SyncedAt returns when the store was last synced

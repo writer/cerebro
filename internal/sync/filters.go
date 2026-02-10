@@ -90,3 +90,16 @@ func filterAzureTables(tables []AzureTableSpec, filter map[string]struct{}) []Az
 	}
 	return filtered
 }
+
+func filterK8sTables(tables []K8sTableSpec, filter map[string]struct{}) []K8sTableSpec {
+	if len(filter) == 0 {
+		return tables
+	}
+	filtered := make([]K8sTableSpec, 0, len(tables))
+	for _, table := range tables {
+		if matchesFilter(filter, table.Name) {
+			filtered = append(filtered, table)
+		}
+	}
+	return filtered
+}

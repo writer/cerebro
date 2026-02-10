@@ -133,3 +133,18 @@ func TestFilterAzureTables(t *testing.T) {
 		t.Fatalf("expected 1, got %d", len(filtered))
 	}
 }
+
+func TestFilterK8sTables(t *testing.T) {
+	tables := []K8sTableSpec{
+		{Name: "k8s_core_pods"},
+		{Name: "k8s_core_services"},
+	}
+	f := normalizeTableFilter([]string{"k8s_core_pods"})
+	filtered := filterK8sTables(tables, f)
+	if len(filtered) != 1 {
+		t.Fatalf("expected 1, got %d", len(filtered))
+	}
+	if filtered[0].Name != "k8s_core_pods" {
+		t.Errorf("unexpected: %s", filtered[0].Name)
+	}
+}

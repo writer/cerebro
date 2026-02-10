@@ -68,7 +68,7 @@ func TestValidateTableCoverage_Validation(t *testing.T) {
 	}
 }
 
-func TestMapResourceToTable(t *testing.T) {
+func TestResourceToTable(t *testing.T) {
 	tests := []struct {
 		resource string
 		want     string
@@ -81,9 +81,9 @@ func TestMapResourceToTable(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		got := mapResourceToTable(tt.resource)
+		got := resourceToTable(tt.resource)
 		if got != tt.want {
-			t.Errorf("mapResourceToTable(%q) = %q, want %q", tt.resource, got, tt.want)
+			t.Errorf("resourceToTable(%q) = %q, want %q", tt.resource, got, tt.want)
 		}
 	}
 }

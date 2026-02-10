@@ -16,6 +16,19 @@ func (e *SyncEngine) snsTopicTable() TableSpec {
 	}
 }
 
+func (e *SyncEngine) snsSubscriptionTable() TableSpec {
+	return TableSpec{
+		Name: "aws_sns_subscriptions",
+		Columns: []string{
+			"arn", "account_id", "region", "subscription_arn", "topic_arn",
+			"protocol", "endpoint", "owner", "pending_confirmation",
+			"confirmation_was_authenticated", "raw_message_delivery",
+			"delivery_policy", "filter_policy", "redrive_policy",
+		},
+		Fetch: e.fetchSNSSubscriptions,
+	}
+}
+
 func (e *SyncEngine) fetchSNSTopics(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
 	client := sns.NewFromConfig(cfg)
 	accountID := e.getAccountIDFromConfig(ctx, cfg)
@@ -98,6 +111,83 @@ func (e *SyncEngine) fetchSNSTopics(ctx context.Context, cfg aws.Config, region 
 			rows = append(rows, row)
 		}
 	}
+	return rows, nil
+}
+
+func (e *SyncEngine) fetchSNSSubscriptions(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := sns.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	var rows []map[string]interface{}
+	paginator := sns.NewListSubscriptionsPaginator(client, &sns.ListSubscriptionsInput{})
+
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, sub := range page.Subscriptions {
+			subscriptionArn := aws.ToString(sub.SubscriptionArn)
+			topicArn := aws.ToString(sub.TopicArn)
+			protocol := aws.ToString(sub.Protocol)
+			endpoint := aws.ToString(sub.Endpoint)
+
+			rowID := subscriptionArn
+			if rowID == "" || rowID == "PendingConfirmation" {
+				rowID = topicArn + ":" + protocol + ":" + endpoint
+			}
+
+			row := map[string]interface{}{
+				"_cq_id":           rowID,
+				"arn":              subscriptionArn,
+				"subscription_arn": subscriptionArn,
+				"topic_arn":        topicArn,
+				"protocol":         protocol,
+				"endpoint":         endpoint,
+				"account_id":       accountID,
+				"region":           region,
+			}
+
+			if subscriptionArn == "PendingConfirmation" {
+				row["pending_confirmation"] = true
+			}
+
+			if subscriptionArn != "" && subscriptionArn != "PendingConfirmation" {
+				attrs, err := client.GetSubscriptionAttributes(ctx, &sns.GetSubscriptionAttributesInput{
+					SubscriptionArn: aws.String(subscriptionArn),
+				})
+				if err == nil && attrs.Attributes != nil {
+					row["owner"] = attrs.Attributes["Owner"]
+					row["pending_confirmation"] = attrs.Attributes["PendingConfirmation"] == "true"
+					row["confirmation_was_authenticated"] = attrs.Attributes["ConfirmationWasAuthenticated"] == "true"
+					row["raw_message_delivery"] = attrs.Attributes["RawMessageDelivery"] == "true"
+
+					if deliveryPolicy := attrs.Attributes["DeliveryPolicy"]; deliveryPolicy != "" {
+						var policyObj interface{}
+						if json.Unmarshal([]byte(deliveryPolicy), &policyObj) == nil {
+							row["delivery_policy"] = policyObj
+						}
+					}
+					if filterPolicy := attrs.Attributes["FilterPolicy"]; filterPolicy != "" {
+						var policyObj interface{}
+						if json.Unmarshal([]byte(filterPolicy), &policyObj) == nil {
+							row["filter_policy"] = policyObj
+						}
+					}
+					if redrivePolicy := attrs.Attributes["RedrivePolicy"]; redrivePolicy != "" {
+						var policyObj interface{}
+						if json.Unmarshal([]byte(redrivePolicy), &policyObj) == nil {
+							row["redrive_policy"] = policyObj
+						}
+					}
+				}
+			}
+
+			rows = append(rows, row)
+		}
+	}
+
 	return rows, nil
 }
 

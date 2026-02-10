@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"reflect"
 	"testing"
 )
 
@@ -14,7 +15,15 @@ func TestResourceToTableMapping(t *testing.T) {
 		{"aws::iam::user", 2}, // users + credential_reports
 		{"aws::ec2::instance", 1},
 		{"gcp::storage::bucket", 1},
+		{"gcp::sql::database_instance", 1},
 		{"azure::compute::virtual_machine", 1},
+		{"azure::compute::vm", 1},
+		{"azure::functionapp::function", 1},
+		{"github::repository_dependabot_alert", 1},
+		{"github::user", 1},
+		{"k8s::role", 1},
+		{"k8s::namespace", 1},
+		{"compute::instance", 3},
 	}
 
 	for _, tt := range tests {
@@ -41,6 +50,77 @@ func TestPolicyGetRequiredTables(t *testing.T) {
 	}
 	if tables[0] != "aws_s3_buckets" {
 		t.Errorf("got %s, want aws_s3_buckets", tables[0])
+	}
+
+	// Pipe resources
+	p.Resource = "aws::s3::bucket|gcp::storage::bucket"
+	tables = p.GetRequiredTables()
+	want := []string{"aws_s3_buckets", "gcp_storage_buckets"}
+	if !reflect.DeepEqual(tables, want) {
+		t.Errorf("got %v, want %v", tables, want)
+	}
+
+	// Generic resource mapping
+	p.Resource = "compute::instance"
+	tables = p.GetRequiredTables()
+	want = []string{"aws_ec2_instances", "gcp_compute_instances", "azure_compute_virtual_machines"}
+	if !reflect.DeepEqual(tables, want) {
+		t.Errorf("got %v, want %v", tables, want)
+	}
+
+	// Explicit mapping
+	p.Resource = "gcp::sql::database_instance"
+	tables = p.GetRequiredTables()
+	want = []string{"gcp_sql_instances"}
+	if !reflect.DeepEqual(tables, want) {
+		t.Errorf("got %v, want %v", tables, want)
+	}
+
+	// Two-part fallback
+	p.Resource = "github::repository"
+	tables = p.GetRequiredTables()
+	want = []string{"github_repositories"}
+	if !reflect.DeepEqual(tables, want) {
+		t.Errorf("got %v, want %v", tables, want)
+	}
+
+	// Explicit override for GitHub alerts
+	p.Resource = "github::repository_dependabot_alert"
+	tables = p.GetRequiredTables()
+	want = []string{"github_dependabot_alerts"}
+	if !reflect.DeepEqual(tables, want) {
+		t.Errorf("got %v, want %v", tables, want)
+	}
+
+	// Kubernetes aliases
+	p.Resource = "k8s::namespace"
+	tables = p.GetRequiredTables()
+	want = []string{"k8s_core_namespaces"}
+	if !reflect.DeepEqual(tables, want) {
+		t.Errorf("got %v, want %v", tables, want)
+	}
+
+	p.Resource = "kubernetes::pod"
+	tables = p.GetRequiredTables()
+	want = []string{"k8s_core_pods"}
+	if !reflect.DeepEqual(tables, want) {
+		t.Errorf("got %v, want %v", tables, want)
+	}
+
+	// Heuristic mapping
+	p.Resource = "aws::elbv2::listener"
+	tables = p.GetRequiredTables()
+	want = []string{"aws_lb_listeners"}
+	if !reflect.DeepEqual(tables, want) {
+		t.Errorf("got %v, want %v", tables, want)
+	}
+
+	// Direct table name
+	p.Resource = "ai_models"
+	tables = p.GetRequiredTables()
+	want = []string{"ai_models"}
+	if !reflect.DeepEqual(tables, want) {
+		t.Errorf("got %v, want %v", tables, want)
 	}
 
 	// Unknown resource

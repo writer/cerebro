@@ -156,6 +156,78 @@ func (e *SyncEngine) sagemakerModelTable() TableSpec {
 	}
 }
 
+func (e *SyncEngine) sagemakerModelPackageGroupTable() TableSpec {
+	return TableSpec{
+		Name: "aws_sagemaker_model_package_groups",
+		Columns: []string{
+			"arn", "model_package_group_name", "region", "account_id", "status",
+			"description", "creation_time", "created_by", "tags",
+		},
+		Fetch: func(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+			client := sagemaker.NewFromConfig(cfg)
+			var results []map[string]interface{}
+
+			paginator := sagemaker.NewListModelPackageGroupsPaginator(client, &sagemaker.ListModelPackageGroupsInput{})
+
+			for paginator.HasMorePages() {
+				page, err := paginator.NextPage(ctx)
+				if err != nil {
+					return nil, fmt.Errorf("list model package groups: %w", err)
+				}
+
+				for _, group := range page.ModelPackageGroupSummaryList {
+					arn := ptrToStr(group.ModelPackageGroupArn)
+					name := ptrToStr(group.ModelPackageGroupName)
+
+					row := map[string]interface{}{
+						"_cq_id":                   arn,
+						"arn":                      arn,
+						"model_package_group_name": name,
+						"region":                   region,
+						"account_id":               e.accountID,
+						"status":                   string(group.ModelPackageGroupStatus),
+						"description":              ptrToStr(group.ModelPackageGroupDescription),
+						"creation_time":            group.CreationTime,
+					}
+
+					if name != "" {
+						detail, err := client.DescribeModelPackageGroup(ctx, &sagemaker.DescribeModelPackageGroupInput{
+							ModelPackageGroupName: aws.String(name),
+						})
+						if err == nil && detail != nil {
+							row["created_by"] = detail.CreatedBy
+							row["description"] = ptrToStr(detail.ModelPackageGroupDescription)
+							row["status"] = string(detail.ModelPackageGroupStatus)
+							row["creation_time"] = detail.CreationTime
+						}
+					}
+
+					if arn != "" {
+						tagsResp, _ := client.ListTags(ctx, &sagemaker.ListTagsInput{
+							ResourceArn: aws.String(arn),
+						})
+						if tagsResp != nil {
+							tags := make(map[string]string)
+							for _, tag := range tagsResp.Tags {
+								if tag.Key != nil && tag.Value != nil {
+									tags[*tag.Key] = *tag.Value
+								}
+							}
+							if len(tags) > 0 {
+								row["tags"] = tags
+							}
+						}
+					}
+
+					results = append(results, row)
+				}
+			}
+
+			return results, nil
+		},
+	}
+}
+
 func (e *SyncEngine) sagemakerEndpointTable() TableSpec {
 	return TableSpec{
 		Name: "aws_sagemaker_endpoints",

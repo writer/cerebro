@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -186,18 +188,20 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	// Start watermark persistence in the background while graph analysis runs.
 	// We wait for it before returning so the Snowflake pool isn't closed underneath it.
-	wmDone := make(chan struct{})
+	type watermarkResult struct {
+		attempted bool
+		err       error
+		duration  time.Duration
+	}
+	wmResultCh := make(chan watermarkResult, 1)
 	if application.ScanWatermarks != nil {
 		go func() {
-			defer close(wmDone)
-			wmCtx, wmCancel := context.WithTimeout(context.Background(), 60*time.Second)
-			defer wmCancel()
-			if err := application.ScanWatermarks.PersistWatermarks(wmCtx); err != nil {
-				Warning("Failed to persist watermarks: %v", err)
-			}
+			started := time.Now()
+			err := application.ScanWatermarks.PersistWatermarksWithRetry(ctx, scanner.DefaultWatermarkPersistOptions())
+			wmResultCh <- watermarkResult{attempted: true, err: err, duration: time.Since(started)}
 		}()
 	} else {
-		close(wmDone)
+		wmResultCh <- watermarkResult{}
 	}
 
 	// Track SQL toxic-combo risk categories per resource to avoid double-counting in graph analysis.
@@ -268,10 +272,14 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 
 	var graphAttackPaths []map[string]interface{}
+	var graphStats scanner.AttackPathStats
+	var graphChokepoints []scanner.AttackPathChokepointSummary
 	var graphToxicCount int
 	if scanToxicCombos && graphAvailable {
 		graphResult := application.Scanner.AnalyzeGraph(ctx, application.SecurityGraph)
 		if graphResult != nil {
+			graphStats = graphResult.AttackPathStats
+			graphChokepoints = graphResult.Chokepoints
 			for _, f := range graphResult.ToxicCombinations {
 				resourceID := normalizeResourceID(f.ResourceID)
 				graphRiskSet := canonicalizeGraphRiskCategories(f.RiskCategories)
@@ -301,6 +309,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 					"entry_point":    ap.EntryPoint,
 					"target":         ap.Target,
 					"steps":          ap.Steps,
+					"length":         ap.Length,
 					"risk_score":     ap.RiskScore,
 					"exploitability": ap.Exploitability,
 					"impact":         ap.Impact,
@@ -312,7 +321,34 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 
 	if graphAvailable {
-		fmt.Printf("\nGraph analysis: toxic combinations: %d, attack paths: %d\n", graphToxicCount, len(graphAttackPaths))
+		pathTotal := graphStats.TotalPaths
+		if pathTotal == 0 {
+			pathTotal = len(graphAttackPaths)
+		}
+		fmt.Printf("\nGraph analysis: toxic combinations: %d, attack paths: %d\n", graphToxicCount, pathTotal)
+		if graphStats.CriticalPaths > 0 {
+			fmt.Printf("  Critical paths: %d\n", graphStats.CriticalPaths)
+		}
+		if dist := formatPathLengthDistribution(graphStats.LengthCounts); dist != "" {
+			fmt.Printf("  Path lengths: %s\n", dist)
+		}
+		if len(graphChokepoints) > 0 && pathTotal > 0 {
+			fmt.Println("  Chokepoints:")
+			for _, cp := range graphChokepoints {
+				label := cp.NodeName
+				if label == "" {
+					label = cp.NodeID
+				}
+				if len(label) > 60 {
+					label = "..." + label[len(label)-57:]
+				}
+				dev := ""
+				if isDevResource(cp.NodeID) {
+					dev = " (dev)"
+				}
+				fmt.Printf("    %s blocks %d/%d paths (impact %.0f%%)%s\n", label, cp.BlockedPaths, pathTotal, cp.RemediationImpact*100, dev)
+			}
+		}
 		if graphToxicCount > 0 {
 			for _, f := range allFindings {
 				gb, _ := f["graph_based"].(bool)
@@ -330,7 +366,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 		if len(graphAttackPaths) > 0 {
 			fmt.Println("\nAttack paths:")
 			for _, ap := range graphAttackPaths {
-				fmt.Printf("  %s -> %s (risk=%v)\n", toString(ap["entry_point"]), toString(ap["target"]), ap["risk_score"])
+				fmt.Printf("  %s -> %s (%d hops, risk=%v)\n", toString(ap["entry_point"]), toString(ap["target"]), toInt(ap["length"]), ap["risk_score"])
 			}
 		}
 	}
@@ -350,16 +386,45 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	duration := time.Since(start)
 
+	var coverageReport *policy.CoverageReport
+	if application.AvailableTables != nil && application.Policy != nil {
+		report := application.Policy.CoverageReport(application.AvailableTables)
+		coverageReport = &report
+	}
+
+	toxicSummary := summarizeToxicCombos(allFindings)
+	wmResult := <-wmResultCh
+	var watermarkInfo map[string]interface{}
+	if wmResult.attempted {
+		watermarkInfo = map[string]interface{}{
+			"persisted": wmResult.err == nil,
+			"duration":  wmResult.duration.String(),
+		}
+		if wmResult.err != nil {
+			watermarkInfo["error"] = wmResult.err.Error()
+		}
+	}
+
 	if scanOutput == FormatJSON {
-		return JSONOutput(map[string]interface{}{
-			"scanned":            totalScanned,
-			"violations":         totalViolations,
-			"duration":           duration.String(),
-			"findings":           allFindings,
-			"graph_used":         graphAvailable,
-			"graph_toxic_count":  graphToxicCount,
-			"graph_attack_paths": graphAttackPaths,
-		})
+		payload := map[string]interface{}{
+			"scanned":                 totalScanned,
+			"violations":              totalViolations,
+			"duration":                duration.String(),
+			"findings":                allFindings,
+			"graph_used":              graphAvailable,
+			"graph_toxic_count":       graphToxicCount,
+			"graph_attack_paths":      graphAttackPaths,
+			"attack_path_stats":       graphStats,
+			"attack_path_chokepoints": graphChokepoints,
+			"toxic_combo_summary":     toxicSummary,
+		}
+		if coverageReport != nil {
+			payload["policy_coverage"] = coverageReport
+		}
+		if watermarkInfo != nil {
+			payload["watermarks"] = watermarkInfo
+		}
+		return JSONOutput(payload)
 	}
 
 	if scanOutput == FormatCSV {
@@ -412,6 +477,58 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Printf("Duration:        %s\n", duration.Round(time.Millisecond))
 	fmt.Printf("Policies:        %d\n", len(policies))
+	if coverageReport != nil && coverageReport.TotalPolicies > 0 {
+		fmt.Printf("Policy coverage: %.1f%% (%d/%d", coverageReport.CoveragePercent, coverageReport.CoveredPolicies, coverageReport.TotalPolicies)
+		if coverageReport.UnknownResourcePolicies > 0 {
+			fmt.Printf(", %d unknown", coverageReport.UnknownResourcePolicies)
+		}
+		if coverageReport.KnownCoveragePercent > 0 {
+			fmt.Printf(", %.1f%% known", coverageReport.KnownCoveragePercent)
+		}
+		fmt.Println(")")
+		if missing := topMissingTables(coverageReport.MissingTables, 5); len(missing) > 0 {
+			fmt.Printf("  Missing tables: %s\n", strings.Join(missing, ", "))
+		}
+	}
+	if wmResult.attempted {
+		if wmResult.err != nil {
+			fmt.Printf("Watermarks:      %s\n", color(colorYellow, "failed: "+truncateStr(wmResult.err.Error(), 120)))
+		} else {
+			fmt.Printf("Watermarks:      persisted (%s)\n", wmResult.duration.Round(time.Millisecond))
+		}
+	}
+	if toxicSummary.Total > 0 {
+		fmt.Printf("Toxic combos:    %d across %d resources\n", toxicSummary.Total, toxicSummary.ResourceCount)
+		if toxicSummary.SeverityCounts["CRITICAL"] > 0 {
+			fmt.Printf("  Critical:      %s\n", color(colorRed, fmt.Sprintf("%d", toxicSummary.SeverityCounts["CRITICAL"])))
+		}
+		if toxicSummary.SeverityCounts["HIGH"] > 0 {
+			fmt.Printf("  High:          %s\n", color(colorYellow, fmt.Sprintf("%d", toxicSummary.SeverityCounts["HIGH"])))
+		}
+		if toxicSummary.SeverityCounts["MEDIUM"] > 0 {
+			fmt.Printf("  Medium:        %d\n", toxicSummary.SeverityCounts["MEDIUM"])
+		}
+		if toxicSummary.SeverityCounts["LOW"] > 0 {
+			fmt.Printf("  Low:           %d\n", toxicSummary.SeverityCounts["LOW"])
+		}
+		if len(toxicSummary.TopResources) > 0 {
+			fmt.Println("  Top toxic resources:")
+			for _, r := range toxicSummary.TopResources {
+				label := r.ResourceName
+				if label == "" {
+					label = r.ResourceID
+				}
+				if len(label) > 60 {
+					label = "..." + label[len(label)-57:]
+				}
+				dev := ""
+				if r.DevEnvironment {
+					dev = " (dev)"
+				}
+				fmt.Printf("    %s: %d combos (max %s)%s\n", label, r.Count, r.HighestSeverity, dev)
+			}
+		}
+	}
 
 	// Show top resources with the most findings (helps prioritize remediation)
 	if totalViolations > 0 {
@@ -477,9 +594,6 @@ func runScan(cmd *cobra.Command, args []string) error {
 			}
 		}
 	}
-
-	// Wait for watermark persistence to finish before the pool closes
-	<-wmDone
 
 	return nil
 }
@@ -599,122 +713,194 @@ func normalizeResourceID(id string) string {
 	return id
 }
 
-var resourceTableMapping = map[string]string{
-	// AWS
-	"aws::s3::bucket":                     "aws_s3_buckets",
-	"aws::ec2::instance":                  "aws_ec2_instances",
-	"aws::ec2::security_group":            "aws_ec2_security_groups",
-	"aws::ec2::vpc":                       "aws_ec2_vpcs",
-	"aws::iam::user":                      "aws_iam_users",
-	"aws::iam::role":                      "aws_iam_roles",
-	"aws::iam::credential_report":         "aws_iam_credential_reports",
-	"aws::iam::account_password_policy":   "aws_iam_account_password_policies",
-	"aws::lambda::function":               "aws_lambda_functions",
-	"aws::ecs::cluster":                   "aws_ecs_clusters",
-	"aws::ecs::service":                   "aws_ecs_services",
-	"aws::ecs::task_definition":           "aws_ecs_task_definitions",
-	"aws::ecr::repository":                "aws_ecr_repositories",
-	"aws::kms::key":                       "aws_kms_keys",
-	"aws::secretsmanager::secret":         "aws_secretsmanager_secrets",
-	"aws::rds::instance":                  "aws_rds_instances",
-	"aws::rds::db_instance":               "aws_rds_db_instances",
-	"aws::dynamodb::table":                "aws_dynamodb_tables",
-	"aws::redshift::cluster":              "aws_redshift_clusters",
-	"aws::elbv2::load_balancer":           "aws_elbv2_load_balancers",
-	"aws::elbv2::target_group":            "aws_elbv2_target_groups",
-	"aws::sns::topic":                     "aws_sns_topics",
-	"aws::efs::file_system":               "aws_efs_file_systems",
-	"aws::efs::mount_target":              "aws_efs_mount_targets",
-	"aws::cloudtrail::trail":              "aws_cloudtrail_trails",
-	"aws::sqs::queue":                     "aws_sqs_queues",
-	"aws::logs::log_group":                "aws_cloudwatch_log_groups",
-	"aws::cloudwatch::log_group":          "aws_cloudwatch_log_groups",
-	"aws::eks::cluster":                   "aws_eks_clusters",
-	"aws::elasticache::cluster":           "aws_elasticache_clusters",
-	"aws::apigateway::method":             "aws_apigateway_rest_api_methods",
-	"aws::codebuild::project":             "aws_codebuild_projects",
-	"aws::sagemaker::training_job":        "aws_sagemaker_training_jobs",
-	"aws::bedrock::custom_model":          "aws_bedrock_custom_models",
-	"aws::appsync::graphql_api":           "aws_appsync_graphql_apis",
-	"aws::ec2::ebs_encryption_by_default": "aws_ec2_ebs_encryption_by_defaults",
-	"aws::sagemaker::model_package_group": "aws_sagemaker_model_package_groups",
-	"aws::ecr::public_repository":         "aws_ecr_public_repositories",
-	"aws::iam::account_summary":           "aws_iam_account_summaries",
-	// GCP
-	"gcp::storage::bucket":          "gcp_storage_buckets",
-	"gcp::compute::instance":        "gcp_compute_instances",
-	"gcp::compute::firewall":        "gcp_compute_firewalls",
-	"gcp::compute::network":         "gcp_compute_networks",
-	"gcp::compute::subnetwork":      "gcp_compute_subnetworks",
-	"gcp::iam::service_account":     "gcp_iam_service_accounts",
-	"gcp::sql::database_instance":   "gcp_sql_instances",
-	"gcp::cloudfunctions::function": "gcp_cloudfunctions_functions",
-	"gcp::cloudrun::service":        "gcp_cloudrun_services",
-	"gcp::cloudrun::revision":       "gcp_cloudrun_revisions",
-	"gcp::pubsub::topic":            "gcp_pubsub_topics",
-	"gcp::container::cluster":       "gcp_container_clusters",
-	"gcp::logging::project_sink":    "gcp_logging_project_sinks",
-	"gcp::dns::managed_zone":        "gcp_dns_managed_zones",
-	// Azure
-	"azure::storage::account":         "azure_storage_accounts",
-	"azure::compute::vm":              "azure_compute_virtual_machines",
-	"azure::compute::virtual_machine": "azure_compute_virtual_machines",
-	"azure::network::security_group":  "azure_network_security_groups",
-	"azure::sql::server":              "azure_sql_servers",
-	"azure::ad::user":                 "azure_ad_users",
+type toxicComboSummary struct {
+	Total          int                         `json:"total"`
+	ResourceCount  int                         `json:"resource_count"`
+	SeverityCounts map[string]int              `json:"severity_counts"`
+	TopResources   []toxicComboResourceSummary `json:"top_resources"`
+}
+
+type toxicComboResourceSummary struct {
+	ResourceID      string `json:"resource_id"`
+	ResourceName    string `json:"resource_name"`
+	Count           int    `json:"count"`
+	HighestSeverity string `json:"highest_severity"`
+	DevEnvironment  bool   `json:"dev_environment"`
+}
+
+func summarizeToxicCombos(findings []map[string]interface{}) toxicComboSummary {
+	summary := toxicComboSummary{
+		SeverityCounts: map[string]int{"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "UNKNOWN": 0},
+	}
+	unique := make(map[string]struct{})
+	resources := make(map[string]*toxicComboResourceSummary)
+	for _, f := range findings {
+		tc, _ := f["toxic_combo"].(bool)
+		if !tc {
+			continue
+		}
+		resourceID := normalizeResourceID(toString(f["resource_id"]))
+		if resourceID == "" {
+			continue
+		}
+		riskSig := riskSignature(extractRiskCategories(f), toString(f["policy_id"]))
+		if riskSig == "" {
+			riskSig = strings.ToLower(strings.TrimSpace(toString(f["title"])))
+		}
+		if riskSig == "" {
+			continue
+		}
+		key := resourceID + "|" + riskSig
+		if _, ok := unique[key]; ok {
+			continue
+		}
+		unique[key] = struct{}{}
+		summary.Total++
+
+		sev := strings.ToUpper(toString(f["severity"]))
+		if sev == "" {
+			sev = "UNKNOWN"
+		}
+		if _, ok := summary.SeverityCounts[sev]; ok {
+			summary.SeverityCounts[sev]++
+		} else {
+			summary.SeverityCounts["UNKNOWN"]++
+		}
+
+		resource := resources[resourceID]
+		if resource == nil {
+			resource = &toxicComboResourceSummary{
+				ResourceID:      resourceID,
+				ResourceName:    strings.TrimSpace(toString(f["resource_name"])),
+				HighestSeverity: sev,
+				DevEnvironment:  isDevResource(resourceID),
+			}
+			resources[resourceID] = resource
+		}
+		resource.Count++
+		if resource.ResourceName == "" {
+			resource.ResourceName = strings.TrimSpace(toString(f["resource_name"]))
+		}
+		if sevRank(sev) > sevRank(resource.HighestSeverity) {
+			resource.HighestSeverity = sev
+		}
+	}
+
+	summary.ResourceCount = len(resources)
+	if len(resources) == 0 {
+		return summary
+	}
+
+	top := make([]toxicComboResourceSummary, 0, len(resources))
+	for _, resource := range resources {
+		top = append(top, *resource)
+	}
+	sort.Slice(top, func(i, j int) bool {
+		if top[i].Count == top[j].Count {
+			return sevRank(top[i].HighestSeverity) > sevRank(top[j].HighestSeverity)
+		}
+		return top[i].Count > top[j].Count
+	})
+	if len(top) > 5 {
+		top = top[:5]
+	}
+	summary.TopResources = top
+	return summary
+}
+
+func extractRiskCategories(f map[string]interface{}) []string {
+	if raw := toString(f["risks"]); raw != "" {
+		return parseRiskCategories(raw)
+	}
+	if raw, ok := f["risk_categories"]; ok {
+		switch v := raw.(type) {
+		case []string:
+			return v
+		case []interface{}:
+			categories := make([]string, 0, len(v))
+			for _, item := range v {
+				if s := toString(item); s != "" {
+					categories = append(categories, s)
+				}
+			}
+			return categories
+		default:
+			if s := toString(raw); s != "" {
+				return parseRiskCategories(s)
+			}
+		}
+	}
+	return nil
+}
+
+func riskSignature(categories []string, fallback string) string {
+	canon := canonicalizeRiskCategories(categories)
+	if len(canon) == 0 {
+		return strings.ToLower(strings.TrimSpace(fallback))
+	}
+	keys := make([]string, 0, len(canon))
+	for key := range canon {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return strings.Join(keys, "|")
+}
+
+func formatPathLengthDistribution(counts map[int]int) string {
+	if len(counts) == 0 {
+		return ""
+	}
+	keys := make([]int, 0, len(counts))
+	for key := range counts {
+		keys = append(keys, key)
+	}
+	sort.Ints(keys)
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		label := "hops"
+		if key == 1 {
+			label = "hop"
+		}
+		parts = append(parts, fmt.Sprintf("%d %s: %d", key, label, counts[key]))
+	}
+	return strings.Join(parts, ", ")
+}
+
+func topMissingTables(counts map[string]int, limit int) []string {
+	if limit <= 0 || len(counts) == 0 {
+		return nil
+	}
+	type entry struct {
+		table string
+		count int
+	}
+	entries := make([]entry, 0, len(counts))
+	for table, count := range counts {
+		entries = append(entries, entry{table: table, count: count})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].count == entries[j].count {
+			return entries[i].table < entries[j].table
+		}
+		return entries[i].count > entries[j].count
+	})
+	if len(entries) > limit {
+		entries = entries[:limit]
+	}
+	results := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		results = append(results, fmt.Sprintf("%s (%d)", entry.table, entry.count))
+	}
+	return results
 }
 
 // resourceToTables resolves a policy resource string (possibly pipe-separated)
 // into one or more Snowflake table names.
 func resourceToTables(resource string) []string {
-	parts := strings.Split(resource, "|")
-	seen := make(map[string]bool)
-	var tables []string
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if t := resourceToTable(part); t != "" && !seen[t] {
-			seen[t] = true
-			tables = append(tables, t)
-		}
+	if strings.TrimSpace(resource) == "" {
+		return nil
 	}
-	return tables
-}
-
-func resourceToTable(resource string) string {
-	if table, ok := resourceTableMapping[resource]; ok {
-		return table
-	}
-
-	// Try to construct table name from resource pattern
-	parts := strings.Split(resource, "::")
-	if len(parts) >= 3 {
-		tableName := parts[0] + "_" + parts[1] + "_" + pluralize(parts[2])
-		return strings.ToLower(tableName)
-	}
-
-	// Already looks like a table name (e.g. "aws_iam_roles")
-	if strings.Contains(resource, "_") && !strings.Contains(resource, "::") && !strings.Contains(resource, "|") {
-		return strings.ToLower(resource)
-	}
-
-	return ""
-}
-
-func pluralize(s string) string {
-	if s == "" {
-		return s
-	}
-	if strings.HasSuffix(s, "s") {
-		return s
-	}
-	if strings.HasSuffix(s, "y") && len(s) > 1 {
-		// policy -> policies, summary -> summaries
-		c := s[len(s)-2]
-		if c != 'a' && c != 'e' && c != 'i' && c != 'o' && c != 'u' {
-			return s[:len(s)-1] + "ies"
-		}
-	}
-	return s + "s"
+	return (&policy.Policy{Resource: resource}).GetRequiredTables()
 }
 
 // toString safely converts interface{} to string
@@ -733,6 +919,29 @@ func toString(v interface{}) string {
 	default:
 		return fmt.Sprintf("%v", v)
 	}
+}
+
+func toInt(v interface{}) int {
+	if v == nil {
+		return 0
+	}
+	switch val := v.(type) {
+	case int:
+		return val
+	case int32:
+		return int(val)
+	case int64:
+		return int(val)
+	case float32:
+		return int(val)
+	case float64:
+		return int(val)
+	case string:
+		if parsed, err := strconv.Atoi(val); err == nil {
+			return parsed
+		}
+	}
+	return 0
 }
 
 func filterCDCEvents(events []snowflake.CDCEvent) ([]string, time.Time) {

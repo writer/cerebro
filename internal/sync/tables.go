@@ -68,6 +68,7 @@ func (e *SyncEngine) getAWSTables() []TableSpec {
 		e.ec2NatGatewayTable(),
 		e.ec2EbsVolumeTable(),
 		e.ec2EbsSnapshotTable(),
+		e.ec2RegionalConfigTable(),
 
 		// EC2 - Network & VPN
 		e.ec2ImageTable(),
@@ -124,6 +125,7 @@ func (e *SyncEngine) getAWSTables() []TableSpec {
 		e.s3BucketReplicationTable(),
 		e.s3BucketCorsTable(),
 		e.s3BucketWebsiteTable(),
+		e.s3ObjectTable(),
 
 		// ECR
 		e.ecrRepositoryTable(),
@@ -166,6 +168,7 @@ func (e *SyncEngine) getAWSTables() []TableSpec {
 
 		// API Gateway
 		e.apiGatewayRestApiTable(),
+		e.apiGatewayMethodTable(),
 		e.apiGatewayStageTable(),
 		e.apiGatewayV2ApiTable(),
 		e.apiGatewayV2StageTable(),
@@ -173,12 +176,15 @@ func (e *SyncEngine) getAWSTables() []TableSpec {
 		// SageMaker
 		e.sagemakerNotebookTable(),
 		e.sagemakerModelTable(),
+		e.sagemakerModelPackageGroupTable(),
 		e.sagemakerEndpointTable(),
 		e.sagemakerTrainingJobTable(),
 		e.sagemakerEndpointConfigTable(),
 
 		// Database - RDS
 		e.rdsInstanceTable(),
+		e.rdsClusterTable(),
+		e.rdsSnapshotTable(),
 
 		// Database - DynamoDB
 		e.dynamoDBTableTable(),
@@ -198,9 +204,12 @@ func (e *SyncEngine) getAWSTables() []TableSpec {
 		// Networking - ELB
 		e.elbv2LoadBalancerTable(),
 		e.elbv2TargetGroupTable(),
+		e.elbv2ListenerTable(),
+		e.elbv2ListenerActionTable(),
 
 		// Messaging
 		e.snsTopicTable(),
+		e.snsSubscriptionTable(),
 		e.sqsQueueTable(),
 
 		// Storage - EFS
@@ -209,6 +218,7 @@ func (e *SyncEngine) getAWSTables() []TableSpec {
 
 		// Logging
 		e.cloudtrailTrailTable(),
+		e.cloudtrailEventSelectorTable(),
 		e.cloudwatchLogGroupTable(),
 
 		// CodeBuild
@@ -281,9 +291,12 @@ func (e *SyncEngine) getAWSTables() []TableSpec {
 		// Organizations
 		e.organizationsAccountTable(),
 		e.organizationsOrganizationTable(),
+		e.organizationsRootsTable(),
 		e.organizationsPolicyTable(),
+		e.organizationsPolicyTargetsTable(),
+		e.organizationsDelegatedAdministratorsTable(),
 		e.organizationsOUTable(),
-
+		e.organizationsAccountParentsTable(),
 		// CloudFormation
 		e.cloudformationStackTable(),
 		e.cloudformationStackResourceTable(),

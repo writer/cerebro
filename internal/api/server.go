@@ -2771,23 +2771,19 @@ func (s *Server) getPolicyCoverage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check which policies can be evaluated
-	gaps := s.app.Policy.ValidateTableCoverage(availableTables)
-
-	// Calculate coverage stats
-	totalPolicies := len(s.app.Policy.ListPolicies())
-	coveredPolicies := totalPolicies - len(gaps)
-	coveragePercent := 0.0
-	if totalPolicies > 0 {
-		coveragePercent = float64(coveredPolicies) / float64(totalPolicies) * 100
-	}
+	report := s.app.Policy.CoverageReport(availableTables)
 
 	s.json(w, http.StatusOK, map[string]interface{}{
-		"total_policies":   totalPolicies,
-		"covered_policies": coveredPolicies,
-		"coverage_percent": coveragePercent,
-		"available_tables": len(availableTables),
-		"gaps":             gaps,
+		"total_policies":            report.TotalPolicies,
+		"covered_policies":          report.CoveredPolicies,
+		"uncovered_policies":        report.UncoveredPolicies,
+		"unknown_resource_policies": report.UnknownResourcePolicies,
+		"coverage_percent":          report.CoveragePercent,
+		"known_coverage_percent":    report.KnownCoveragePercent,
+		"available_tables":          len(availableTables),
+		"gaps":                      report.Gaps,
+		"missing_tables":            report.MissingTables,
+		"missing_by_provider":       report.MissingByProvider,
 	})
 }
 

@@ -55,6 +55,14 @@ type RelationshipExtractor struct {
 	logger *slog.Logger
 }
 
+// RelationshipBackfillStats summarizes normalization updates.
+type RelationshipBackfillStats struct {
+	Scanned int `json:"scanned"`
+	Updated int `json:"updated"`
+	Deleted int `json:"deleted"`
+	Skipped int `json:"skipped"`
+}
+
 // NewRelationshipExtractor creates a new extractor
 func NewRelationshipExtractor(sf *snowflake.Client, logger *slog.Logger) *RelationshipExtractor {
 	return &RelationshipExtractor{sf: sf, logger: logger}
@@ -141,6 +149,213 @@ func (r *RelationshipExtractor) ExtractAndPersist(ctx context.Context) (int, err
 		return totalRels, fmt.Errorf("relationship extraction encountered errors")
 	}
 	return totalRels, nil
+}
+
+// BackfillNormalizedRelationshipIDs normalizes IDs for existing relationships.
+func (r *RelationshipExtractor) BackfillNormalizedRelationshipIDs(ctx context.Context, batchSize int) (RelationshipBackfillStats, error) {
+	var stats RelationshipBackfillStats
+	if err := r.ensureTable(ctx); err != nil {
+		return stats, err
+	}
+	if batchSize <= 0 {
+		batchSize = 200
+	}
+
+	schema := r.sf.Schema()
+	if schema == "" {
+		schema = "RAW"
+	}
+	if err := snowflake.ValidateTableName(schema); err != nil {
+		return stats, fmt.Errorf("invalid schema name: %w", err)
+	}
+	if err := snowflake.ValidateTableName("RESOURCE_RELATIONSHIPS"); err != nil {
+		return stats, fmt.Errorf("invalid relationships table name: %w", err)
+	}
+	fullTable := fmt.Sprintf("%s.RESOURCE_RELATIONSHIPS", schema)
+
+	query := fmt.Sprintf(`SELECT ID, SOURCE_ID, SOURCE_TYPE, TARGET_ID, TARGET_TYPE, REL_TYPE, PROPERTIES, SYNC_TIME FROM %s`, fullTable)
+	result, err := r.sf.Query(ctx, query)
+	if err != nil {
+		return stats, err
+	}
+	stats.Scanned = result.Count
+
+	updates := make([]relationshipBackfillUpdate, 0, batchSize)
+	deleteIDs := make([]string, 0, batchSize)
+	seenNewIDs := make(map[string]struct{})
+
+	for _, row := range result.Rows {
+		oldID := toString(row["id"])
+		sourceRaw := toString(row["source_id"])
+		targetRaw := toString(row["target_id"])
+		sourceID := normalizeRelationshipID(sourceRaw)
+		targetID := normalizeRelationshipID(targetRaw)
+		relType := toString(row["rel_type"])
+		if sourceID == "" || targetID == "" || relType == "" {
+			stats.Skipped++
+			continue
+		}
+
+		props := formatRelationshipProperties(row["properties"])
+		newID := buildRelationshipID(sourceID, relType, targetID, props)
+		if newID == "" {
+			stats.Skipped++
+			continue
+		}
+
+		updateNeeded := sourceRaw != sourceID || targetRaw != targetID || oldID != newID
+		if !updateNeeded {
+			stats.Skipped++
+			continue
+		}
+		stats.Updated++
+
+		if oldID != "" && oldID != newID {
+			deleteIDs = append(deleteIDs, oldID)
+			stats.Deleted++
+		}
+
+		if _, ok := seenNewIDs[newID]; ok {
+			if len(updates) >= batchSize || len(deleteIDs) >= batchSize {
+				if err := r.applyRelationshipBackfillBatch(ctx, fullTable, updates, deleteIDs); err != nil {
+					return stats, err
+				}
+				updates = updates[:0]
+				deleteIDs = deleteIDs[:0]
+			}
+			continue
+		}
+		seenNewIDs[newID] = struct{}{}
+
+		updates = append(updates, relationshipBackfillUpdate{
+			OldID:      oldID,
+			NewID:      newID,
+			SourceID:   sourceID,
+			SourceType: toString(row["source_type"]),
+			TargetID:   targetID,
+			TargetType: toString(row["target_type"]),
+			RelType:    relType,
+			Properties: props,
+			SyncTime:   row["sync_time"],
+		})
+
+		if len(updates) >= batchSize || len(deleteIDs) >= batchSize {
+			if err := r.applyRelationshipBackfillBatch(ctx, fullTable, updates, deleteIDs); err != nil {
+				return stats, err
+			}
+			updates = updates[:0]
+			deleteIDs = deleteIDs[:0]
+		}
+	}
+
+	if len(updates) > 0 || len(deleteIDs) > 0 {
+		if err := r.applyRelationshipBackfillBatch(ctx, fullTable, updates, deleteIDs); err != nil {
+			return stats, err
+		}
+	}
+
+	return stats, nil
+}
+
+type relationshipBackfillUpdate struct {
+	OldID      string
+	NewID      string
+	SourceID   string
+	SourceType string
+	TargetID   string
+	TargetType string
+	RelType    string
+	Properties string
+	SyncTime   interface{}
+}
+
+func (r *RelationshipExtractor) applyRelationshipBackfillBatch(ctx context.Context, tableName string, updates []relationshipBackfillUpdate, deleteIDs []string) error {
+	if len(updates) > 0 {
+		values := make([]string, 0, len(updates))
+		args := make([]interface{}, 0, len(updates)*8)
+		for _, update := range updates {
+			values = append(values, "(?, ?, ?, ?, ?, ?, ?, ?)")
+			args = append(args,
+				update.NewID,
+				update.SourceID,
+				update.SourceType,
+				update.TargetID,
+				update.TargetType,
+				update.RelType,
+				update.Properties,
+				update.SyncTime,
+			)
+		}
+		merge := fmt.Sprintf(`MERGE INTO %s AS t
+USING (SELECT column1 AS id,
+              column2 AS source_id,
+              column3 AS source_type,
+              column4 AS target_id,
+              column5 AS target_type,
+              column6 AS rel_type,
+              column7 AS properties,
+              column8 AS sync_time
+       FROM VALUES %s) AS s
+ON t.ID = s.id
+WHEN MATCHED THEN UPDATE SET
+  SOURCE_ID = s.source_id,
+  SOURCE_TYPE = s.source_type,
+  TARGET_ID = s.target_id,
+  TARGET_TYPE = s.target_type,
+  REL_TYPE = s.rel_type,
+  PROPERTIES = TRY_PARSE_JSON(s.properties),
+  SYNC_TIME = COALESCE(s.sync_time, t.SYNC_TIME)
+WHEN NOT MATCHED THEN INSERT (ID, SOURCE_ID, SOURCE_TYPE, TARGET_ID, TARGET_TYPE, REL_TYPE, PROPERTIES, SYNC_TIME)
+VALUES (s.id, s.source_id, s.source_type, s.target_id, s.target_type, s.rel_type, TRY_PARSE_JSON(s.properties), s.sync_time)`, tableName, strings.Join(values, ","))
+		if _, err := r.sf.Exec(ctx, merge, args...); err != nil {
+			return err
+		}
+	}
+
+	if len(deleteIDs) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(deleteIDs))
+	unique := make([]string, 0, len(deleteIDs))
+	for _, id := range deleteIDs {
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+	if len(unique) == 0 {
+		return nil
+	}
+	placeholders := make([]string, 0, len(unique))
+	args := make([]interface{}, 0, len(unique))
+	for _, id := range unique {
+		placeholders = append(placeholders, "?")
+		args = append(args, id)
+	}
+	deleteQuery := fmt.Sprintf("DELETE FROM %s WHERE ID IN (%s)", tableName, strings.Join(placeholders, ","))
+	_, err := r.sf.Exec(ctx, deleteQuery, args...)
+	return err
+}
+
+func formatRelationshipProperties(value interface{}) string {
+	if value == nil {
+		return "{}"
+	}
+	if m := asMap(value); m != nil {
+		props, err := encodeProperties(m)
+		if err == nil && props != "" {
+			return props
+		}
+	}
+	props := strings.TrimSpace(toString(value))
+	if props == "" {
+		return "{}"
+	}
+	return props
 }
 
 func (r *RelationshipExtractor) ensureTable(ctx context.Context) error {

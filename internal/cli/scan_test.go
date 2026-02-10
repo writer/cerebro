@@ -7,7 +7,7 @@ import (
 	"github.com/writerinternal/cerebro/internal/snowflake"
 )
 
-func TestResourceToTable_KnownMappings(t *testing.T) {
+func TestResourceToTables_KnownMappings(t *testing.T) {
 	tests := []struct {
 		resource string
 		table    string
@@ -27,30 +27,37 @@ func TestResourceToTable_KnownMappings(t *testing.T) {
 		{"gcp::cloudrun::service", "gcp_cloudrun_services"},
 		{"azure::storage::account", "azure_storage_accounts"},
 		{"azure::compute::vm", "azure_compute_virtual_machines"},
+		{"github::repository", "github_repositories"},
+		{"github::repository_dependabot_alert", "github_dependabot_alerts"},
+		{"okta::user", "okta_users"},
+		{"k8s::namespace", "k8s_core_namespaces"},
+		{"kubernetes::pod", "k8s_core_pods"},
 	}
 
 	for _, tc := range tests {
-		got := resourceToTable(tc.resource)
-		if got != tc.table {
-			t.Errorf("resourceToTable(%q) = %q, want %q", tc.resource, got, tc.table)
+		got := resourceToTables(tc.resource)
+		if len(got) != 1 || got[0] != tc.table {
+			t.Errorf("resourceToTables(%q) = %v, want [%s]", tc.resource, got, tc.table)
 		}
 	}
 }
 
-func TestResourceToTable_FallbackConstruction(t *testing.T) {
-	// Unknown resource should construct table name from parts
-	got := resourceToTable("aws::sqs::queue")
-	if got != "aws_sqs_queues" {
-		t.Errorf("resourceToTable fallback = %q, want %q", got, "aws_sqs_queues")
+func TestResourceToTables_FallbackConstruction(t *testing.T) {
+	got := resourceToTables("aws::sqs::queue")
+	if len(got) != 1 || got[0] != "aws_sqs_queues" {
+		t.Errorf("resourceToTables fallback = %v, want [aws_sqs_queues]", got)
 	}
 }
 
-func TestResourceToTable_Empty(t *testing.T) {
-	if got := resourceToTable(""); got != "" {
-		t.Errorf("resourceToTable('') = %q, want empty", got)
+func TestResourceToTables_Empty(t *testing.T) {
+	if got := resourceToTables(""); len(got) != 0 {
+		t.Errorf("resourceToTables('') = %v, want empty", got)
 	}
-	if got := resourceToTable("invalid"); got != "" {
-		t.Errorf("resourceToTable('invalid') = %q, want empty", got)
+	if got := resourceToTables("invalid"); len(got) != 0 {
+		t.Errorf("resourceToTables('invalid') = %v, want empty", got)
+	}
+	if got := resourceToTables("unknown::resource"); len(got) != 0 {
+		t.Errorf("resourceToTables('unknown::resource') = %v, want empty", got)
 	}
 }
 
@@ -208,16 +215,23 @@ func TestIsRemovalEvent(t *testing.T) {
 	}
 }
 
-func TestResourceToTable_DirectTableName(t *testing.T) {
-	if got := resourceToTable("aws_iam_roles"); got != "aws_iam_roles" {
-		t.Errorf("expected aws_iam_roles, got %q", got)
+func TestResourceToTables_DirectTableName(t *testing.T) {
+	got := resourceToTables("aws_iam_roles")
+	if len(got) != 1 || got[0] != "aws_iam_roles" {
+		t.Errorf("expected [aws_iam_roles], got %v", got)
 	}
 }
 
 func TestResourceToTables_CompoundResource(t *testing.T) {
 	tables := resourceToTables("storage::bucket|storage::blob_container")
-	if len(tables) != 0 {
-		t.Errorf("expected 0 tables for unmapped 2-part resources, got %d: %v", len(tables), tables)
+	if len(tables) != 3 {
+		t.Errorf("expected 3 tables, got %d: %v", len(tables), tables)
+	}
+	want := []string{"aws_s3_buckets", "gcp_storage_buckets", "azure_storage_containers"}
+	for i, table := range want {
+		if tables[i] != table {
+			t.Errorf("expected %s at index %d, got %s", table, i, tables[i])
+		}
 	}
 
 	tables = resourceToTables("aws::s3::bucket|gcp::storage::bucket")
@@ -231,33 +245,23 @@ func TestResourceToTables_SingleResource(t *testing.T) {
 	if len(tables) != 1 || tables[0] != "aws_s3_buckets" {
 		t.Errorf("expected [aws_s3_buckets], got %v", tables)
 	}
-}
 
-func TestPluralize(t *testing.T) {
-	tests := []struct {
-		input, want string
-	}{
-		{"bucket", "buckets"},
-		{"instance", "instances"},
-		{"policy", "policies"},
-		{"summary", "summaries"},
-		{"key", "keys"},
-		{"buckets", "buckets"},
-		{"function", "functions"},
-		{"", ""},
+	tables = resourceToTables("compute::instance")
+	if len(tables) != 3 {
+		t.Fatalf("expected 3 tables, got %d: %v", len(tables), tables)
 	}
-	for _, tc := range tests {
-		got := pluralize(tc.input)
-		if got != tc.want {
-			t.Errorf("pluralize(%q) = %q, want %q", tc.input, got, tc.want)
+	want := []string{"aws_ec2_instances", "gcp_compute_instances", "azure_compute_virtual_machines"}
+	for i, table := range want {
+		if tables[i] != table {
+			t.Errorf("expected %s at index %d, got %s", table, i, tables[i])
 		}
 	}
 }
 
-func TestResourceToTable_FallbackPluralization(t *testing.T) {
-	got := resourceToTable("aws::iam::account_summary")
-	if got != "aws_iam_account_summaries" {
-		t.Errorf("resourceToTable fallback plural = %q, want %q", got, "aws_iam_account_summaries")
+func TestResourceToTables_MappedOverride(t *testing.T) {
+	got := resourceToTables("aws::iam::account_summary")
+	if len(got) != 1 || got[0] != "aws_iam_accounts" {
+		t.Errorf("resourceToTables mapped override = %v, want [aws_iam_accounts]", got)
 	}
 }
 
