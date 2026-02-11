@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/securityhub"
@@ -78,9 +79,25 @@ func (e *SyncEngine) securityHubFindingsTable() TableSpec {
 				}
 
 				for _, f := range page.Findings {
-					arn := ptrToStr(f.Id)
-					if arn == "" {
+					id := ptrToStr(f.Id)
+					if id == "" {
 						continue
+					}
+
+					productArn := ptrToStr(f.ProductArn)
+					arn := id
+					if productArn != "" && !strings.HasPrefix(id, "arn:") {
+						arn = fmt.Sprintf("%s/%s", productArn, id)
+					}
+
+					regionVal := ptrToStr(f.Region)
+					if regionVal == "" {
+						regionVal = region
+					}
+
+					accountID := ptrToStr(f.AwsAccountId)
+					if accountID == "" {
+						accountID = e.accountID
 					}
 
 					var severityLabel, severityNorm string
@@ -104,16 +121,16 @@ func (e *SyncEngine) securityHubFindingsTable() TableSpec {
 					row := map[string]interface{}{
 						"_cq_id":              arn,
 						"arn":                 arn,
-						"id":                  ptrToStr(f.Id),
-						"region":              ptrToStr(f.Region),
-						"account_id":          ptrToStr(f.AwsAccountId),
+						"id":                  id,
+						"region":              regionVal,
+						"account_id":          accountID,
 						"title":               ptrToStr(f.Title),
 						"description":         ptrToStr(f.Description),
 						"severity_label":      severityLabel,
 						"severity_normalized": severityNorm,
 						"workflow_status":     workflowStatus,
 						"compliance_status":   complianceStatus,
-						"product_arn":         ptrToStr(f.ProductArn),
+						"product_arn":         productArn,
 						"generator_id":        ptrToStr(f.GeneratorId),
 						"types":               f.Types,
 						"created_at":          ptrToStr(f.CreatedAt),
