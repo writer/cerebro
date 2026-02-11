@@ -86,12 +86,14 @@ func (c *Client) GetAssets(ctx context.Context, table string, filter AssetFilter
 		}
 	}
 
+	orderBy := ""
 	if !filter.Since.IsZero() {
-		query += " ORDER BY _cq_sync_time ASC, _cq_id ASC"
+		orderBy = " ORDER BY _cq_sync_time ASC, _cq_id ASC"
 	}
 
 	// Deduplicate: keep only the latest row per _cq_id (handles re-synced data)
 	query += " QUALIFY ROW_NUMBER() OVER (PARTITION BY _cq_id ORDER BY _cq_sync_time DESC) = 1"
+	query += orderBy
 
 	limit := filter.Limit
 	if limit == 0 {
