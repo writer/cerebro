@@ -4,11 +4,14 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/securityhub"
 	securityhubtypes "github.com/aws/aws-sdk-go-v2/service/securityhub/types"
 )
+
+const securityHubIncrementalLookback = 5 * time.Minute
 
 func (e *SyncEngine) securityHubTable() TableSpec {
 	return TableSpec{
@@ -62,20 +65,55 @@ func (e *SyncEngine) securityHubFindingsTable() TableSpec {
 			client := securityhub.NewFromConfig(cfg)
 			var results []map[string]interface{}
 
-			// Get active findings
-			paginator := securityhub.NewGetFindingsPaginator(client, &securityhub.GetFindingsInput{
-				Filters: &securityhubtypes.AwsSecurityFindingFilters{
-					RecordState: []securityhubtypes.StringFilter{
-						{Value: aws.String("ACTIVE"), Comparison: securityhubtypes.StringFilterComparisonEquals},
-					},
+			filters := &securityhubtypes.AwsSecurityFindingFilters{
+				RecordState: []securityhubtypes.StringFilter{
+					{Value: aws.String("ACTIVE"), Comparison: securityhubtypes.StringFilterComparisonEquals},
 				},
+			}
+
+			lastSync, err := e.latestTableSyncTime(ctx, "aws_securityhub_findings", region, true)
+			if err != nil {
+				e.logger.Debug("failed to load securityhub sync watermark", "error", err)
+			} else if !lastSync.IsZero() {
+				start := lastSync.Add(-securityHubIncrementalLookback).UTC()
+				filters.UpdatedAt = []securityhubtypes.DateFilter{
+					{Start: aws.String(start.Format(time.RFC3339))},
+				}
+				e.logger.Info("securityhub findings incremental sync", "region", region, "start", start.Format(time.RFC3339))
+			}
+
+			paginator := securityhub.NewGetFindingsPaginator(client, &securityhub.GetFindingsInput{
+				Filters:    filters,
 				MaxResults: aws.Int32(100),
 			})
 
+			pageNum := 0
 			for paginator.HasMorePages() {
-				page, err := paginator.NextPage(ctx)
-				if err != nil {
-					break
+				pageNum++
+				var page *securityhub.GetFindingsOutput
+				for attempt := 0; attempt <= awsPageRetryMax; attempt++ {
+					pageStart := time.Now()
+					page, err = paginator.NextPage(ctx)
+					pageDuration := time.Since(pageStart)
+					if err == nil {
+						logAWSPageDuration(e.logger, "securityhub", "GetFindings", pageNum, pageDuration, len(page.Findings))
+						break
+					}
+
+					if !isAWSRateLimitError(err) || attempt == awsPageRetryMax {
+						e.logger.Warn("failed to fetch securityhub findings", "page", pageNum, "error", err)
+						return results, nil
+					}
+
+					delay := awsRetryDelay(attempt)
+					e.logger.Warn("aws request throttled", "service", "securityhub", "operation", "GetFindings", "page", pageNum, "attempt", attempt+1, "delay", delay, "error", err)
+					if sleepErr := sleepWithContext(ctx, delay); sleepErr != nil {
+						return nil, sleepErr
+					}
+				}
+
+				if page == nil {
+					continue
 				}
 
 				for _, f := range page.Findings {

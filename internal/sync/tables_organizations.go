@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"encoding/json"
+	"errors"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/organizations"
@@ -26,7 +27,7 @@ func (e *SyncEngine) organizationsAccountTable() TableSpec {
 			for paginator.HasMorePages() {
 				page, err := paginator.NextPage(ctx)
 				if err != nil {
-					return nil, err
+					return e.handleOrganizationsError("aws_organizations_accounts", err, results)
 				}
 
 				for _, account := range page.Accounts {
@@ -64,7 +65,7 @@ func (e *SyncEngine) organizationsOrganizationTable() TableSpec {
 
 			out, err := client.DescribeOrganization(ctx, &organizations.DescribeOrganizationInput{})
 			if err != nil {
-				return nil, err
+				return e.handleOrganizationsError("aws_organizations_organization", err, results)
 			}
 
 			org := out.Organization
@@ -103,7 +104,7 @@ func (e *SyncEngine) organizationsRootsTable() TableSpec {
 			for paginator.HasMorePages() {
 				page, err := paginator.NextPage(ctx)
 				if err != nil {
-					return nil, err
+					return e.handleOrganizationsError("aws_organizations_roots", err, results)
 				}
 
 				for _, root := range page.Roots {
@@ -151,6 +152,9 @@ func (e *SyncEngine) organizationsPolicyTable() TableSpec {
 				for paginator.HasMorePages() {
 					page, err := paginator.NextPage(ctx)
 					if err != nil {
+						if isOrganizationsAccessDenied(err) {
+							return e.handleOrganizationsError("aws_organizations_policies", err, results)
+						}
 						break // Move to next policy type
 					}
 
@@ -211,6 +215,9 @@ func (e *SyncEngine) organizationsPolicyTargetsTable() TableSpec {
 				for paginator.HasMorePages() {
 					page, err := paginator.NextPage(ctx)
 					if err != nil {
+						if isOrganizationsAccessDenied(err) {
+							return e.handleOrganizationsError("aws_organizations_policy_targets", err, results)
+						}
 						break
 					}
 
@@ -226,6 +233,9 @@ func (e *SyncEngine) organizationsPolicyTargetsTable() TableSpec {
 						for targetPager.HasMorePages() {
 							targetPage, err := targetPager.NextPage(ctx)
 							if err != nil {
+								if isOrganizationsAccessDenied(err) {
+									return e.handleOrganizationsError("aws_organizations_policy_targets", err, results)
+								}
 								e.logger.Warn("failed to list policy targets", "policy", policyID, "error", err)
 								break
 							}
@@ -272,7 +282,7 @@ func (e *SyncEngine) organizationsDelegatedAdministratorsTable() TableSpec {
 			for paginator.HasMorePages() {
 				page, err := paginator.NextPage(ctx)
 				if err != nil {
-					return nil, err
+					return e.handleOrganizationsError("aws_organizations_delegated_administrators", err, results)
 				}
 
 				for _, admin := range page.DelegatedAdministrators {
@@ -312,18 +322,26 @@ func (e *SyncEngine) organizationsOUTable() TableSpec {
 			// First get roots
 			rootsOut, err := client.ListRoots(ctx, &organizations.ListRootsInput{})
 			if err != nil {
-				return nil, err
+				return e.handleOrganizationsError("aws_organizations_organizational_units", err, results)
 			}
 
+			var ouErr error
 			// Recursively get OUs
 			var getOUs func(parentID string)
 			getOUs = func(parentID string) {
+				if ouErr != nil {
+					return
+				}
 				paginator := organizations.NewListOrganizationalUnitsForParentPaginator(client, &organizations.ListOrganizationalUnitsForParentInput{
 					ParentId: aws.String(parentID),
 				})
 				for paginator.HasMorePages() {
 					page, err := paginator.NextPage(ctx)
 					if err != nil {
+						if isOrganizationsAccessDenied(err) {
+							ouErr = err
+							return
+						}
 						break
 					}
 
@@ -339,6 +357,9 @@ func (e *SyncEngine) organizationsOUTable() TableSpec {
 
 						// Recurse into child OUs
 						getOUs(aws.ToString(ou.Id))
+						if ouErr != nil {
+							return
+						}
 					}
 				}
 			}
@@ -346,6 +367,13 @@ func (e *SyncEngine) organizationsOUTable() TableSpec {
 			// Start from each root
 			for _, root := range rootsOut.Roots {
 				getOUs(aws.ToString(root.Id))
+				if ouErr != nil {
+					break
+				}
+			}
+
+			if ouErr != nil {
+				return e.handleOrganizationsError("aws_organizations_organizational_units", ouErr, results)
 			}
 
 			return results, nil
@@ -369,7 +397,7 @@ func (e *SyncEngine) organizationsAccountParentsTable() TableSpec {
 			for paginator.HasMorePages() {
 				page, err := paginator.NextPage(ctx)
 				if err != nil {
-					return nil, err
+					return e.handleOrganizationsError("aws_organizations_account_parents", err, results)
 				}
 
 				for _, account := range page.Accounts {
@@ -384,6 +412,9 @@ func (e *SyncEngine) organizationsAccountParentsTable() TableSpec {
 					for parentsPager.HasMorePages() {
 						parentPage, err := parentsPager.NextPage(ctx)
 						if err != nil {
+							if isOrganizationsAccessDenied(err) {
+								return e.handleOrganizationsError("aws_organizations_account_parents", err, results)
+							}
 							e.logger.Warn("failed to list account parents", "account", childID, "error", err)
 							break
 						}
@@ -405,4 +436,24 @@ func (e *SyncEngine) organizationsAccountParentsTable() TableSpec {
 			return results, nil
 		},
 	}
+}
+
+func (e *SyncEngine) handleOrganizationsError(table string, err error, results []map[string]interface{}) ([]map[string]interface{}, error) {
+	if err == nil {
+		return results, nil
+	}
+	if isOrganizationsAccessDenied(err) {
+		e.logger.Warn("organizations access denied, skipping table", "table", table, "error", err)
+		return results, nil
+	}
+	return nil, err
+}
+
+func isOrganizationsAccessDenied(err error) bool {
+	var accessDenied *organizations_types.AccessDeniedException
+	if errors.As(err, &accessDenied) {
+		return true
+	}
+	var notInUse *organizations_types.AWSOrganizationsNotInUseException
+	return errors.As(err, &notInUse)
 }

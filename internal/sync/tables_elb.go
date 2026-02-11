@@ -147,38 +147,66 @@ func (e *SyncEngine) fetchELBv2TargetGroups(ctx context.Context, cfg aws.Config,
 	return rows, nil
 }
 
+func (e *SyncEngine) listELBv2Listeners(ctx context.Context, client *elbv2.Client) ([]elbv2types.Listener, error) {
+	lbPager := elbv2.NewDescribeLoadBalancersPaginator(client, &elbv2.DescribeLoadBalancersInput{})
+	var listeners []elbv2types.Listener
+
+	for lbPager.HasMorePages() {
+		lbPage, err := lbPager.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, lb := range lbPage.LoadBalancers {
+			lbArn := aws.ToString(lb.LoadBalancerArn)
+			if lbArn == "" {
+				continue
+			}
+
+			listenerPager := elbv2.NewDescribeListenersPaginator(client, &elbv2.DescribeListenersInput{
+				LoadBalancerArn: aws.String(lbArn),
+			})
+			for listenerPager.HasMorePages() {
+				listenerPage, err := listenerPager.NextPage(ctx)
+				if err != nil {
+					return nil, err
+				}
+				listeners = append(listeners, listenerPage.Listeners...)
+			}
+		}
+	}
+
+	return listeners, nil
+}
+
 func (e *SyncEngine) fetchELBv2Listeners(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
 	client := elbv2.NewFromConfig(cfg)
 	accountID := e.getAccountIDFromConfig(ctx, cfg)
 
 	var rows []map[string]interface{}
-	listenerPager := elbv2.NewDescribeListenersPaginator(client, &elbv2.DescribeListenersInput{})
+	listeners, err := e.listELBv2Listeners(ctx, client)
+	if err != nil {
+		return nil, err
+	}
 
-	for listenerPager.HasMorePages() {
-		page, err := listenerPager.NextPage(ctx)
-		if err != nil {
-			return nil, err
+	for _, listener := range listeners {
+		arn := aws.ToString(listener.ListenerArn)
+		row := map[string]interface{}{
+			"_cq_id":            arn,
+			"arn":               arn,
+			"account_id":        accountID,
+			"region":            region,
+			"listener_arn":      arn,
+			"load_balancer_arn": aws.ToString(listener.LoadBalancerArn),
+			"port":              listener.Port,
+			"protocol":          string(listener.Protocol),
+			"ssl_policy":        aws.ToString(listener.SslPolicy),
+			"certificates":      listener.Certificates,
+			"alpn_policy":       listener.AlpnPolicy,
+			"default_actions":   listener.DefaultActions,
 		}
 
-		for _, listener := range page.Listeners {
-			arn := aws.ToString(listener.ListenerArn)
-			row := map[string]interface{}{
-				"_cq_id":            arn,
-				"arn":               arn,
-				"account_id":        accountID,
-				"region":            region,
-				"listener_arn":      arn,
-				"load_balancer_arn": aws.ToString(listener.LoadBalancerArn),
-				"port":              listener.Port,
-				"protocol":          string(listener.Protocol),
-				"ssl_policy":        aws.ToString(listener.SslPolicy),
-				"certificates":      listener.Certificates,
-				"alpn_policy":       listener.AlpnPolicy,
-				"default_actions":   listener.DefaultActions,
-			}
-
-			rows = append(rows, row)
-		}
+		rows = append(rows, row)
 	}
 
 	return rows, nil
@@ -189,68 +217,64 @@ func (e *SyncEngine) fetchELBv2ListenerActions(ctx context.Context, cfg aws.Conf
 	accountID := e.getAccountIDFromConfig(ctx, cfg)
 
 	var rows []map[string]interface{}
-	listenerPager := elbv2.NewDescribeListenersPaginator(client, &elbv2.DescribeListenersInput{})
+	listeners, err := e.listELBv2Listeners(ctx, client)
+	if err != nil {
+		return nil, err
+	}
 
-	for listenerPager.HasMorePages() {
-		page, err := listenerPager.NextPage(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, listener := range page.Listeners {
-			listenerArn := aws.ToString(listener.ListenerArn)
-			for i, action := range listener.DefaultActions {
-				row := map[string]interface{}{
-					"_cq_id":           fmt.Sprintf("%s/%d", listenerArn, i),
-					"listener_arn":     listenerArn,
-					"action_order":     action.Order,
-					"type":             string(action.Type),
-					"target_group_arn": selectActionTargetGroup(action),
-				}
-
-				if action.RedirectConfig != nil {
-					row["redirect_config"] = map[string]interface{}{
-						"protocol":    aws.ToString(action.RedirectConfig.Protocol),
-						"port":        aws.ToString(action.RedirectConfig.Port),
-						"host":        aws.ToString(action.RedirectConfig.Host),
-						"path":        aws.ToString(action.RedirectConfig.Path),
-						"query":       aws.ToString(action.RedirectConfig.Query),
-						"status_code": string(action.RedirectConfig.StatusCode),
-					}
-				}
-
-				if action.FixedResponseConfig != nil {
-					row["fixed_response_config"] = map[string]interface{}{
-						"content_type": aws.ToString(action.FixedResponseConfig.ContentType),
-						"message_body": aws.ToString(action.FixedResponseConfig.MessageBody),
-						"status_code":  aws.ToString(action.FixedResponseConfig.StatusCode),
-					}
-				}
-
-				if action.AuthenticateOidcConfig != nil {
-					row["authenticate_oidc_config"] = map[string]interface{}{
-						"authorization_endpoint": aws.ToString(action.AuthenticateOidcConfig.AuthorizationEndpoint),
-						"issuer":                 aws.ToString(action.AuthenticateOidcConfig.Issuer),
-						"token_endpoint":         aws.ToString(action.AuthenticateOidcConfig.TokenEndpoint),
-						"user_info_endpoint":     aws.ToString(action.AuthenticateOidcConfig.UserInfoEndpoint),
-						"scope":                  aws.ToString(action.AuthenticateOidcConfig.Scope),
-					}
-				}
-
-				if action.AuthenticateCognitoConfig != nil {
-					row["authenticate_cognito_config"] = map[string]interface{}{
-						"user_pool_arn":       aws.ToString(action.AuthenticateCognitoConfig.UserPoolArn),
-						"user_pool_client_id": aws.ToString(action.AuthenticateCognitoConfig.UserPoolClientId),
-						"user_pool_domain":    aws.ToString(action.AuthenticateCognitoConfig.UserPoolDomain),
-						"scope":               aws.ToString(action.AuthenticateCognitoConfig.Scope),
-					}
-				}
-
-				row["account_id"] = accountID
-				row["region"] = region
-
-				rows = append(rows, row)
+	for _, listener := range listeners {
+		listenerArn := aws.ToString(listener.ListenerArn)
+		for i, action := range listener.DefaultActions {
+			row := map[string]interface{}{
+				"_cq_id":           fmt.Sprintf("%s/%d", listenerArn, i),
+				"listener_arn":     listenerArn,
+				"action_order":     action.Order,
+				"type":             string(action.Type),
+				"target_group_arn": selectActionTargetGroup(action),
 			}
+
+			if action.RedirectConfig != nil {
+				row["redirect_config"] = map[string]interface{}{
+					"protocol":    aws.ToString(action.RedirectConfig.Protocol),
+					"port":        aws.ToString(action.RedirectConfig.Port),
+					"host":        aws.ToString(action.RedirectConfig.Host),
+					"path":        aws.ToString(action.RedirectConfig.Path),
+					"query":       aws.ToString(action.RedirectConfig.Query),
+					"status_code": string(action.RedirectConfig.StatusCode),
+				}
+			}
+
+			if action.FixedResponseConfig != nil {
+				row["fixed_response_config"] = map[string]interface{}{
+					"content_type": aws.ToString(action.FixedResponseConfig.ContentType),
+					"message_body": aws.ToString(action.FixedResponseConfig.MessageBody),
+					"status_code":  aws.ToString(action.FixedResponseConfig.StatusCode),
+				}
+			}
+
+			if action.AuthenticateOidcConfig != nil {
+				row["authenticate_oidc_config"] = map[string]interface{}{
+					"authorization_endpoint": aws.ToString(action.AuthenticateOidcConfig.AuthorizationEndpoint),
+					"issuer":                 aws.ToString(action.AuthenticateOidcConfig.Issuer),
+					"token_endpoint":         aws.ToString(action.AuthenticateOidcConfig.TokenEndpoint),
+					"user_info_endpoint":     aws.ToString(action.AuthenticateOidcConfig.UserInfoEndpoint),
+					"scope":                  aws.ToString(action.AuthenticateOidcConfig.Scope),
+				}
+			}
+
+			if action.AuthenticateCognitoConfig != nil {
+				row["authenticate_cognito_config"] = map[string]interface{}{
+					"user_pool_arn":       aws.ToString(action.AuthenticateCognitoConfig.UserPoolArn),
+					"user_pool_client_id": aws.ToString(action.AuthenticateCognitoConfig.UserPoolClientId),
+					"user_pool_domain":    aws.ToString(action.AuthenticateCognitoConfig.UserPoolDomain),
+					"scope":               aws.ToString(action.AuthenticateCognitoConfig.Scope),
+				}
+			}
+
+			row["account_id"] = accountID
+			row["region"] = region
+
+			rows = append(rows, row)
 		}
 	}
 

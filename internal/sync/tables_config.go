@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/configservice"
@@ -89,10 +90,33 @@ func (e *SyncEngine) configRuleTable() TableSpec {
 
 			paginator := configservice.NewDescribeConfigRulesPaginator(client, &configservice.DescribeConfigRulesInput{})
 
+			pageNum := 0
 			for paginator.HasMorePages() {
-				page, err := paginator.NextPage(ctx)
-				if err != nil {
-					return nil, fmt.Errorf("describe config rules: %w", err)
+				pageNum++
+				var page *configservice.DescribeConfigRulesOutput
+				var err error
+				for attempt := 0; attempt <= awsPageRetryMax; attempt++ {
+					pageStart := time.Now()
+					page, err = paginator.NextPage(ctx)
+					pageDuration := time.Since(pageStart)
+					if err == nil {
+						logAWSPageDuration(e.logger, "config", "DescribeConfigRules", pageNum, pageDuration, len(page.ConfigRules))
+						break
+					}
+
+					if !isAWSRateLimitError(err) || attempt == awsPageRetryMax {
+						return nil, fmt.Errorf("describe config rules: %w", err)
+					}
+
+					delay := awsRetryDelay(attempt)
+					e.logger.Warn("aws request throttled", "service", "config", "operation", "DescribeConfigRules", "page", pageNum, "attempt", attempt+1, "delay", delay, "error", err)
+					if sleepErr := sleepWithContext(ctx, delay); sleepErr != nil {
+						return nil, sleepErr
+					}
+				}
+
+				if page == nil {
+					continue
 				}
 
 				// Get compliance status for rules
@@ -105,10 +129,30 @@ func (e *SyncEngine) configRuleTable() TableSpec {
 						}
 					}
 
-					complianceResp, err := client.DescribeComplianceByConfigRule(ctx, &configservice.DescribeComplianceByConfigRuleInput{
-						ConfigRuleNames: ruleNames,
-					})
-					if err == nil {
+					var complianceResp *configservice.DescribeComplianceByConfigRuleOutput
+					for attempt := 0; attempt <= awsPageRetryMax; attempt++ {
+						complianceStart := time.Now()
+						complianceResp, err = client.DescribeComplianceByConfigRule(ctx, &configservice.DescribeComplianceByConfigRuleInput{
+							ConfigRuleNames: ruleNames,
+						})
+						complianceDuration := time.Since(complianceStart)
+						if err == nil {
+							logAWSPageDuration(e.logger, "config", "DescribeComplianceByConfigRule", pageNum, complianceDuration, len(complianceResp.ComplianceByConfigRules))
+							break
+						}
+
+						if !isAWSRateLimitError(err) || attempt == awsPageRetryMax {
+							e.logger.Warn("failed to fetch config rule compliance", "rules", len(ruleNames), "error", err)
+							break
+						}
+
+						delay := awsRetryDelay(attempt)
+						e.logger.Warn("aws request throttled", "service", "config", "operation", "DescribeComplianceByConfigRule", "page", pageNum, "attempt", attempt+1, "delay", delay, "error", err)
+						if sleepErr := sleepWithContext(ctx, delay); sleepErr != nil {
+							return nil, sleepErr
+						}
+					}
+					if err == nil && complianceResp != nil {
 						for _, c := range complianceResp.ComplianceByConfigRules {
 							if c.ConfigRuleName != nil && c.Compliance != nil {
 								complianceMap[*c.ConfigRuleName] = string(c.Compliance.ComplianceType)
