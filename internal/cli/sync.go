@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -15,7 +16,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/writerinternal/cerebro/internal/app"
-	"github.com/writerinternal/cerebro/internal/policy"
 	"github.com/writerinternal/cerebro/internal/scanner"
 	"github.com/writerinternal/cerebro/internal/snowflake"
 	nativesync "github.com/writerinternal/cerebro/internal/sync"
@@ -687,6 +687,66 @@ func tableFilterMatches(filter map[string]struct{}, names ...string) bool {
 	return false
 }
 
+func filterAvailableTables(tables, available []string) ([]string, int) {
+	if len(tables) == 0 || len(available) == 0 {
+		return tables, 0
+	}
+
+	availableSet := make(map[string]struct{}, len(available))
+	for _, table := range available {
+		availableSet[strings.ToLower(table)] = struct{}{}
+	}
+
+	filtered := make([]string, 0, len(tables))
+	skipped := 0
+	for _, table := range tables {
+		if _, ok := availableSet[strings.ToLower(table)]; ok {
+			filtered = append(filtered, table)
+		} else {
+			skipped++
+		}
+	}
+
+	return filtered, skipped
+}
+
+func scannableTablesFromAvailable(available []string) []string {
+	if len(available) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(available))
+	result := make([]string, 0, len(available))
+	for _, table := range available {
+		name := strings.ToLower(strings.TrimSpace(table))
+		if !isScannableTable(name) {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		result = append(result, name)
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	sort.Strings(result)
+	return result
+}
+
+func isScannableTable(table string) bool {
+	if table == "" {
+		return false
+	}
+	if strings.HasPrefix(table, "cerebro_") {
+		return false
+	}
+	if err := snowflake.ValidateTableNameStrict(table); err != nil {
+		return false
+	}
+	return true
+}
+
 func printSyncResults(results []nativesync.SyncResult, start time.Time, provider string) error {
 	if syncOutput == FormatJSON {
 		summary := buildSyncSummary(results, start, provider)
@@ -825,39 +885,6 @@ func createSnowflakeClient() (*snowflake.Client, error) {
 
 func runPostSyncScan(ctx context.Context, tableFilter []string) error {
 	filterSet := buildTableFilterSet(tableFilter)
-	if len(filterSet) > 0 {
-		cfg := app.LoadConfig()
-		engine := policy.NewEngine()
-		if err := engine.LoadPolicies(cfg.PoliciesPath); err == nil {
-			policies := engine.ListPolicies()
-			if len(policies) > 0 {
-				tableSet := make(map[string]struct{})
-				for _, p := range policies {
-					for _, table := range p.GetRequiredTables() {
-						tableSet[table] = struct{}{}
-					}
-				}
-				if len(tableSet) > 0 {
-					tables := make([]string, 0, len(tableSet))
-					for table := range tableSet {
-						tables = append(tables, table)
-					}
-					filtered := make([]string, 0, len(tables))
-					for _, table := range tables {
-						if tableFilterMatches(filterSet, table) {
-							filtered = append(filtered, table)
-						}
-					}
-					if len(filtered) == 0 {
-						fmt.Println("Scanning synced assets...")
-						fmt.Printf("Filtering scan tables: %s\n", strings.Join(tableFilter, ", "))
-						fmt.Println("No tables to scan for selected filter")
-						return nil
-					}
-				}
-			}
-		}
-	}
 
 	application, err := app.New(ctx)
 	if err != nil {
@@ -869,25 +896,20 @@ func runPostSyncScan(ctx context.Context, tableFilter []string) error {
 		return fmt.Errorf("snowflake not configured: set SNOWFLAKE_PRIVATE_KEY/ACCOUNT/USER or SNOWFLAKE_CONNECTION_STRING")
 	}
 
-	fmt.Println("Scanning synced assets...")
-	if len(filterSet) > 0 {
-		fmt.Printf("Filtering scan tables: %s\n", strings.Join(tableFilter, ", "))
-	}
-
-	// Get tables that have policies defined
-	policies := application.Policy.ListPolicies()
-	tableSet := make(map[string]struct{})
-	for _, p := range policies {
-		for _, table := range p.GetRequiredTables() {
-			tableSet[table] = struct{}{}
+	availableTables := application.AvailableTables
+	if application.Snowflake != nil {
+		if refreshed, err := application.Snowflake.ListAvailableTables(ctx); err == nil {
+			application.AvailableTables = refreshed
+			availableTables = refreshed
+		} else {
+			Warning("Failed to list available tables: %v", err)
 		}
 	}
 
-	tables := make([]string, 0, len(tableSet))
-	for table := range tableSet {
-		tables = append(tables, table)
+	tables := scannableTablesFromAvailable(availableTables)
+	if len(tables) == 0 {
+		tables = nativesync.SupportedTableNames()
 	}
-
 	if len(filterSet) > 0 {
 		filtered := make([]string, 0, len(tables))
 		for _, table := range tables {
@@ -895,11 +917,23 @@ func runPostSyncScan(ctx context.Context, tableFilter []string) error {
 				filtered = append(filtered, table)
 			}
 		}
-		tables = filtered
-		if len(tables) == 0 {
+		if len(filtered) == 0 {
+			fmt.Println("Scanning synced assets...")
+			fmt.Printf("Filtering scan tables: %s\n", strings.Join(tableFilter, ", "))
 			fmt.Println("No tables to scan for selected filter")
 			return nil
 		}
+		tables = filtered
+	}
+
+	tables, skipped := filterAvailableTables(tables, availableTables)
+	if skipped > 0 {
+		Info("Skipped %d tables not present in Snowflake", skipped)
+	}
+
+	fmt.Println("Scanning synced assets...")
+	if len(filterSet) > 0 {
+		fmt.Printf("Filtering scan tables: %s\n", strings.Join(tableFilter, ", "))
 	}
 
 	if len(tables) == 0 {
@@ -907,6 +941,7 @@ func runPostSyncScan(ctx context.Context, tableFilter []string) error {
 		return nil
 	}
 
+	policies := application.Policy.ListPolicies()
 	fmt.Printf("Scanning %d tables with %d policies\n", len(tables), len(policies))
 
 	tuning := application.ScanTuning()

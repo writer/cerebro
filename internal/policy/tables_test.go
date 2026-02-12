@@ -123,6 +123,14 @@ func TestPolicyGetRequiredTables(t *testing.T) {
 		t.Errorf("got %v, want %v", tables, want)
 	}
 
+	// Wildcard resource
+	p.Resource = "*"
+	tables = p.GetRequiredTables()
+	want = []string{"*"}
+	if !reflect.DeepEqual(tables, want) {
+		t.Errorf("got %v, want %v", tables, want)
+	}
+
 	// Unknown resource
 	p.Resource = "unknown::type"
 	tables = p.GetRequiredTables()

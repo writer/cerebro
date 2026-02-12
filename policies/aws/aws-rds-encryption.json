@@ -3,7 +3,7 @@
   "name": "RDS Encryption Enabled",
   "description": "RDS instances should have encryption at rest enabled",
   "effect": "forbid",
-  "resource": "*",
+  "resource": "aws::rds::instance",
   "conditions": [
     "storage_encrypted != true"
   ],

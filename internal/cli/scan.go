@@ -112,26 +112,30 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	// Build set of available tables for filtering
 	availableSet := make(map[string]bool)
-	if application.AvailableTables != nil {
-		for _, t := range application.AvailableTables {
-			availableSet[strings.ToLower(t)] = true
+	availableTables := application.AvailableTables
+	if application.Snowflake != nil {
+		if tables, err := application.Snowflake.ListAvailableTables(ctx); err == nil {
+			application.AvailableTables = tables
+			availableTables = tables
+		} else {
+			Warning("Failed to list available tables: %v", err)
 		}
+	}
+	for _, t := range availableTables {
+		availableSet[strings.ToLower(t)] = true
 	}
 
 	// Determine tables to scan
 	var tables []string
 	if len(scanTables) > 0 {
 		tables = scanTables
+	} else if len(availableTables) > 0 {
+		tables = scannableTablesFromAvailable(availableTables)
 	} else {
-		tableSet := make(map[string]bool)
-		for _, p := range policies {
-			for _, t := range resourceToTables(p.Resource) {
-				tableSet[t] = true
-			}
-		}
-		for t := range tableSet {
-			tables = append(tables, t)
-		}
+		tables = nativesync.SupportedTableNames()
+	}
+	if len(tables) == 0 {
+		tables = nativesync.SupportedTableNames()
 	}
 
 	// Filter to only tables that actually exist in Snowflake
@@ -812,15 +816,6 @@ func topMissingTables(counts map[string]int, limit int) []string {
 		results = append(results, fmt.Sprintf("%s (%d)", entry.table, entry.count))
 	}
 	return results
-}
-
-// resourceToTables resolves a policy resource string (possibly pipe-separated)
-// into one or more Snowflake table names.
-func resourceToTables(resource string) []string {
-	if strings.TrimSpace(resource) == "" {
-		return nil
-	}
-	return (&policy.Policy{Resource: resource}).GetRequiredTables()
 }
 
 // toString safely converts interface{} to string

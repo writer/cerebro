@@ -20,6 +20,14 @@ func (e *GCPSyncEngine) gcpLoggingSinkTable() GCPTableSpec {
 	}
 }
 
+func (e *GCPSyncEngine) gcpLoggingProjectSinkTable() GCPTableSpec {
+	return GCPTableSpec{
+		Name:    "gcp_logging_project_sinks",
+		Columns: []string{"project_id", "sink_count", "disabled"},
+		Fetch:   e.fetchGCPLoggingProjectSinks,
+	}
+}
+
 func (e *GCPSyncEngine) fetchGCPLoggingSinks(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
 	client, err := logadmin.NewClient(ctx, projectID)
 	if err != nil {
@@ -68,6 +76,36 @@ func (e *GCPSyncEngine) fetchGCPLoggingSinks(ctx context.Context, projectID stri
 	}
 
 	return rows, nil
+}
+
+func (e *GCPSyncEngine) fetchGCPLoggingProjectSinks(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
+	client, err := logadmin.NewClient(ctx, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("create logging client: %w", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	count := 0
+	it := client.Sinks(ctx)
+	for {
+		_, err := it.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("list sinks: %w", err)
+		}
+		count++
+	}
+
+	row := map[string]interface{}{
+		"_cq_id":     fmt.Sprintf("%s/logging-sinks", projectID),
+		"project_id": projectID,
+		"sink_count": count,
+		"disabled":   count == 0,
+	}
+
+	return []map[string]interface{}{row}, nil
 }
 
 func isPublicSinkDestination(ctx context.Context, destination string, storageClient *storage.Client, pubsubClients map[string]*pubsub.Client) (bool, bool) {

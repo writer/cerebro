@@ -28,6 +28,11 @@ type githubRepoInfo struct {
 	DefaultBranch string
 }
 
+type githubMembership struct {
+	Role  string
+	State string
+}
+
 type githubAPIError struct {
 	StatusCode int
 	Body       string
@@ -66,6 +71,18 @@ func (g *GitHubProvider) Test(ctx context.Context) error {
 
 func (g *GitHubProvider) Schema() []TableSchema {
 	return []TableSchema{
+		{
+			Name:        "github_organizations",
+			Description: "GitHub organizations",
+			Columns: []ColumnSchema{
+				{Name: "id", Type: "integer", Required: true},
+				{Name: "login", Type: "string"},
+				{Name: "name", Type: "string"},
+				{Name: "two_factor_requirement_enabled", Type: "boolean"},
+				{Name: "actions_permissions", Type: "json"},
+			},
+			PrimaryKey: []string{"id"},
+		},
 		{
 			Name:        "github_repositories",
 			Description: "GitHub repositories",
@@ -185,7 +202,9 @@ func (g *GitHubProvider) Schema() []TableSchema {
 			Columns: []ColumnSchema{
 				{Name: "id", Type: "integer", Required: true},
 				{Name: "login", Type: "string"},
+				{Name: "email", Type: "string"},
 				{Name: "role", Type: "string"},
+				{Name: "org_membership_state", Type: "string"},
 				{Name: "two_factor_enabled", Type: "boolean"},
 				{Name: "site_admin", Type: "boolean"},
 			},
@@ -230,6 +249,13 @@ func (g *GitHubProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResul
 		}
 		result.Tables = append(result.Tables, *table)
 		result.TotalRows += table.Rows
+	}
+
+	orgRows, err := g.fetchOrganization(ctx)
+	if err != nil {
+		result.Errors = append(result.Errors, "organizations: "+err.Error())
+	} else {
+		syncTable("github_organizations", orgRows)
 	}
 
 	repoRows, repos, err := g.fetchRepositories(ctx)
@@ -357,6 +383,49 @@ func (g *GitHubProvider) listAll(ctx context.Context, path string) ([]map[string
 		page++
 	}
 	return allItems, nil
+}
+
+func (g *GitHubProvider) fetchOrganization(ctx context.Context) ([]map[string]interface{}, error) {
+	path := fmt.Sprintf("/orgs/%s", g.org)
+	body, err := g.request(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+
+	var org map[string]interface{}
+	if err := json.Unmarshal(body, &org); err != nil {
+		return nil, err
+	}
+
+	normalized := normalizeGitHubMap(org)
+	actionsPermissions := map[string]interface{}{}
+	workflowPath := fmt.Sprintf("/orgs/%s/actions/permissions/workflow", g.org)
+	workflowBody, err := g.request(ctx, workflowPath)
+	if err == nil {
+		var workflow map[string]interface{}
+		if err := json.Unmarshal(workflowBody, &workflow); err != nil {
+			return nil, err
+		}
+		workflowNormalized := normalizeGitHubMap(workflow)
+		if value, ok := workflowNormalized["default_workflow_permissions"]; ok {
+			actionsPermissions["default_workflow_permissions"] = value
+		}
+		if value, ok := workflowNormalized["can_approve_pull_request_reviews"]; ok {
+			actionsPermissions["can_approve_pull_request_reviews"] = value
+		}
+	} else if !isGitHubIgnorable(err) {
+		return nil, err
+	}
+
+	row := map[string]interface{}{
+		"id":                             normalized["id"],
+		"login":                          normalized["login"],
+		"name":                           normalized["name"],
+		"two_factor_requirement_enabled": normalized["two_factor_requirement_enabled"],
+		"actions_permissions":            actionsPermissions,
+	}
+
+	return []map[string]interface{}{row}, nil
 }
 
 func (g *GitHubProvider) fetchRepositories(ctx context.Context) ([]map[string]interface{}, []githubRepoInfo, error) {
@@ -628,11 +697,17 @@ func (g *GitHubProvider) fetchOrgMembers(ctx context.Context) ([]map[string]inte
 		row := map[string]interface{}{
 			"id":         normalized["id"],
 			"login":      login,
+			"email":      normalized["email"],
 			"site_admin": normalized["site_admin"],
 		}
 		if login != "" {
-			if role, roleErr := g.fetchMembershipRole(ctx, login); roleErr == nil {
-				row["role"] = role
+			if membership, roleErr := g.fetchMembership(ctx, login); roleErr == nil {
+				if membership.Role != "" {
+					row["role"] = membership.Role
+				}
+				if membership.State != "" {
+					row["org_membership_state"] = membership.State
+				}
 			}
 			if len(disabled) > 0 {
 				row["two_factor_enabled"] = !disabled[login]
@@ -669,23 +744,23 @@ func (g *GitHubProvider) fetchTeams(ctx context.Context) ([]map[string]interface
 	return rows, nil
 }
 
-func (g *GitHubProvider) fetchMembershipRole(ctx context.Context, login string) (string, error) {
+func (g *GitHubProvider) fetchMembership(ctx context.Context, login string) (githubMembership, error) {
 	path := fmt.Sprintf("/orgs/%s/memberships/%s", g.org, login)
 	body, err := g.request(ctx, path)
 	if err != nil {
-		if isGitHubIgnorable(err) {
-			return "", err
-		}
-		return "", err
+		return githubMembership{}, err
 	}
 
 	var membership map[string]interface{}
 	if err := json.Unmarshal(body, &membership); err != nil {
-		return "", err
+		return githubMembership{}, err
 	}
 
 	normalized := normalizeGitHubMap(membership)
-	return asString(normalized["role"]), nil
+	return githubMembership{
+		Role:  asString(normalized["role"]),
+		State: asString(normalized["state"]),
+	}, nil
 }
 
 func buildRepoFullName(org string, repo githubRepoInfo) string {

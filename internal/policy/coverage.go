@@ -43,6 +43,10 @@ func (e *Engine) CoverageReport(availableTables []string) CoverageReport {
 			report.UnknownResourcePolicies++
 			continue
 		}
+		if hasWildcardTable(required) {
+			report.CoveredPolicies++
+			continue
+		}
 
 		var missing []string
 		for _, table := range required {

@@ -63,6 +63,7 @@ import (
 	"github.com/writerinternal/cerebro/internal/scheduler"
 	"github.com/writerinternal/cerebro/internal/scm"
 	"github.com/writerinternal/cerebro/internal/snowflake"
+	nativesync "github.com/writerinternal/cerebro/internal/sync"
 	"github.com/writerinternal/cerebro/internal/threatintel"
 	"github.com/writerinternal/cerebro/internal/ticketing"
 	"github.com/writerinternal/cerebro/internal/webhooks"
@@ -772,16 +773,20 @@ func (a *App) initScheduler(_ context.Context) {
 			return
 		}
 
-		tables := defaultScanTables()
-		if a.Config.ScanTables != "" {
-			tables = splitTables(a.Config.ScanTables)
-		}
-
 		a.Scheduler.AddJob("policy-scan", interval, func(ctx context.Context) error {
+			tables := a.resolveScanTables(ctx)
+			if len(tables) == 0 {
+				a.Logger.Info("no tables available for scheduled scan")
+				return nil
+			}
 			return a.runScheduledScan(ctx, tables)
 		})
 
-		a.Logger.Info("scheduled scanning enabled", "interval", interval, "tables", tables)
+		if a.Config.ScanTables != "" {
+			a.Logger.Info("scheduled scanning enabled", "interval", interval, "tables", splitTables(a.Config.ScanTables))
+		} else {
+			a.Logger.Info("scheduled scanning enabled", "interval", interval, "table_source", "available_tables")
+		}
 	}
 
 	// Add graph rebuild job - rebuild hourly by default
@@ -1350,125 +1355,102 @@ func splitCSV(s string) []string {
 
 // defaultScanTables returns the comprehensive list of tables to scan
 func defaultScanTables() []string {
-	return []string{
-		// AWS IAM
-		"aws_iam_users",
-		"aws_iam_roles",
-		"aws_iam_policies",
-		"aws_iam_groups",
-		"aws_iam_user_access_keys",
-		"aws_iam_password_policies",
-		"aws_iam_server_certificates",
-		"aws_iam_saml_identity_providers",
-		"aws_iam_accounts",
-		"aws_iam_credential_reports",
-		// AWS S3
-		"aws_s3_buckets",
-		// AWS EC2
-		"aws_ec2_instances",
-		"aws_ec2_security_groups",
-		"aws_ec2_vpcs",
-		"aws_ec2_subnets",
-		"aws_ec2_ebs_volumes",
-		"aws_ec2_ebs_snapshots",
-		"aws_ec2_amis",
-		"aws_ec2_images",
-		"aws_ec2_key_pairs",
-		"aws_ec2_network_acls",
-		"aws_ec2_regional_configs",
-		// AWS RDS
-		"aws_rds_instances",
-		"aws_rds_db_clusters",
-		"aws_rds_db_snapshots",
-		// AWS Lambda
-		"aws_lambda_functions",
-		// AWS ELB/ALB
-		"aws_elbv2_load_balancers",
-		"aws_elbv2_target_groups",
-		"aws_lb_listeners",
-		// AWS KMS
-		"aws_kms_keys",
-		// AWS CloudTrail
-		"aws_cloudtrail_trails",
-		// AWS CloudWatch
-		"aws_cloudwatch_alarms",
-		"aws_cloudwatch_log_groups",
-		// AWS Config
-		"aws_config_configuration_recorders",
-		// AWS GuardDuty
-		"aws_guardduty_detectors",
-		// AWS Access Analyzer
-		"aws_accessanalyzer_analyzers",
-		// AWS EKS
-		"aws_eks_clusters",
-		// AWS ECR
-		"aws_ecr_repositories",
-		"aws_ecr_public_repositories",
-		// AWS Secrets Manager
-		"aws_secretsmanager_secrets",
-		// AWS SNS/SQS
-		"aws_sns_topics",
-		"aws_sqs_queues",
-		// AWS VPC Flow Logs
-		"aws_ec2_flow_logs",
-		// AWS DynamoDB
-		"aws_dynamodb_tables",
-		// AWS Redshift
-		"aws_redshift_clusters",
-		// AWS ElastiCache
-		"aws_elasticache_clusters",
-		// AWS OpenSearch
-		"aws_opensearch_domains",
-		// AWS API Gateway
-		"aws_apigateway_rest_apis",
-		"aws_apigateway_rest_api_methods",
-		// AWS AppSync
-		"aws_appsync_graphql_apis",
-		// AWS CloudFront
-		"aws_cloudfront_distributions",
-		// AWS CodeBuild
-		"aws_codebuild_projects",
-		"aws_codebuild_source_credentials",
-		// AWS Bedrock
-		"aws_bedrock_custom_models",
-		"aws_bedrock_provisioned_model_throughputs",
-		// AWS ECS
-		"aws_ecs_clusters",
-		"aws_ecs_task_definitions",
-		"aws_ecs_services",
-		// AWS EFS
-		"aws_efs_mount_targets",
-		// AWS SageMaker
-		"aws_sagemaker_models",
-		"aws_sagemaker_model_package_groups",
-		// AWS SecurityHub
-		"aws_securityhub_hubs",
-		// GCP Compute
-		"gcp_compute_instances",
-		"gcp_compute_firewalls",
-		// GCP IAM
-		"gcp_iam_service_accounts",
-		"gcp_iam_roles",
-		// GCP Storage
-		"gcp_storage_buckets",
-		// GCP SQL
-		"gcp_sql_instances",
-		// GCP GKE
-		"gcp_container_clusters",
-		// Azure VMs
-		"azure_compute_virtual_machines",
-		// Azure Storage
-		"azure_storage_accounts",
-		"azure_storage_containers",
-		// Azure SQL
-		"azure_sql_servers",
-		"azure_sql_databases",
-		// Azure Network
-		"azure_network_security_groups",
-		// Azure Identity
-		"azure_ad_users",
-		"azure_ad_service_principals",
+	return nativesync.SupportedTableNames()
+}
+
+func (a *App) resolveScanTables(ctx context.Context) []string {
+	var tables []string
+	if a.Config.ScanTables != "" {
+		tables = splitTables(a.Config.ScanTables)
 	}
+
+	available := a.AvailableTables
+	if a.Snowflake != nil {
+		if refreshed, err := a.Snowflake.ListAvailableTables(ctx); err == nil {
+			a.AvailableTables = refreshed
+			available = refreshed
+		} else if ctx.Err() == nil {
+			a.Logger.Warn("failed to refresh available tables", "error", err)
+		}
+	}
+
+	if len(tables) == 0 && len(available) > 0 {
+		tables = scannableTablesFromAvailable(available)
+	}
+	if len(tables) == 0 {
+		tables = defaultScanTables()
+	}
+
+	filtered, skipped := filterTablesByAvailability(tables, available)
+	if len(available) > 0 {
+		if skipped > 0 {
+			a.Logger.Info("skipped tables not present in snowflake", "skipped", skipped)
+		}
+		return filtered
+	}
+
+	return tables
+}
+
+func scannableTablesFromAvailable(available []string) []string {
+	if len(available) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(available))
+	result := make([]string, 0, len(available))
+	for _, table := range available {
+		name := strings.ToLower(strings.TrimSpace(table))
+		if !isScannableTable(name) {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		result = append(result, name)
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	sort.Strings(result)
+	return result
+}
+
+func isScannableTable(table string) bool {
+	if table == "" {
+		return false
+	}
+	if strings.HasPrefix(table, "cerebro_") {
+		return false
+	}
+	if err := snowflake.ValidateTableNameStrict(table); err != nil {
+		return false
+	}
+	return true
+}
+
+func filterTablesByAvailability(tables, available []string) ([]string, int) {
+	if len(tables) == 0 || len(available) == 0 {
+		return tables, 0
+	}
+
+	availableSet := make(map[string]struct{}, len(available))
+	for _, table := range available {
+		availableSet[strings.ToLower(table)] = struct{}{}
+	}
+
+	filtered := make([]string, 0, len(tables))
+	skipped := 0
+	for _, table := range tables {
+		if _, ok := availableSet[strings.ToLower(table)]; ok {
+			filtered = append(filtered, table)
+		} else {
+			skipped++
+		}
+	}
+
+	return filtered, skipped
 }
 
 // New service initialization functions

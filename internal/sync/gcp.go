@@ -535,6 +535,7 @@ func (e *GCPSyncEngine) getGCPTables() []GCPTableSpec {
 		e.gcpStorageObjectTable(),
 		// IAM
 		e.gcpIAMServiceAccountTable(),
+		e.gcpIAMServiceAccountKeyTable(),
 		e.gcpIAMPolicyTable(),
 		// Database
 		e.gcpSQLInstanceTable(),
@@ -549,6 +550,7 @@ func (e *GCPSyncEngine) getGCPTables() []GCPTableSpec {
 		e.gcpGKENodePoolTable(),
 		// Logging
 		e.gcpLoggingSinkTable(),
+		e.gcpLoggingProjectSinkTable(),
 		// Security
 		e.gcpIdsEndpointTable(),
 	}

@@ -3,7 +3,7 @@
   "name": "CloudTrail Enabled",
   "description": "CloudTrail should be enabled in all regions",
   "effect": "forbid",
-  "resource": "*",
+  "resource": "aws::cloudtrail::trail",
   "conditions": [
     "is_multi_region_trail != true"
   ],

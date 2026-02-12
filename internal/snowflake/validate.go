@@ -15,7 +15,28 @@ var knownTablePrefixes = []string{
 	"snyk_", "crowdstrike_", "sentinelone_", "tenable_",
 	"datadog_", "qualys_", "semgrep_", "gitlab_", "cloudflare_",
 	"auth0_", "slack_", "splunk_", "terraform_",
+	"ai_", "ml_", "entra_", "m365_", "identity_", "hris_",
+	"mdm_", "jamf_", "intune_", "kandji_", "edr_",
+	"network_", "dns_", "firewall_", "container_", "vulnerability_",
+	"compliance_", "infrastructure_", "log_", "password_", "penetration_", "policy_",
+	"tls_", "user_", "cross_provider_", "telemetry_", "tailscale_",
+	"google_", "security_",
 	"cerebro_",
+}
+
+var knownTableNames = []string{
+	"backups",
+	"certificates",
+	"containers",
+	"databases",
+	"employees",
+	"endpoints",
+	"firewalls",
+	"secrets",
+	"servers",
+	"systems",
+	"vendors",
+	"vulnerabilities",
 }
 
 // ValidateTableName ensures a table name is safe for SQL queries.
@@ -72,6 +93,11 @@ func ValidateTableNameStrict(table string) error {
 	lower := strings.ToLower(table)
 	for _, prefix := range knownTablePrefixes {
 		if strings.HasPrefix(lower, prefix) {
+			return nil
+		}
+	}
+	for _, name := range knownTableNames {
+		if lower == name {
 			return nil
 		}
 	}

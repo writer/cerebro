@@ -20,7 +20,7 @@
     }
   ],
   "enabled": true,
-  "query": "SELECT g.id, g.login, g.email, e.termination_date FROM github_org_members g JOIN employees e ON g.email = e.work_email WHERE e.status = 'terminated' AND g.org_membership_state = 'active'",
+  "query": "SELECT g.id, g.login, g.email, e.termination_date FROM github_organization_members g JOIN employees e ON g.email = e.work_email WHERE e.status = 'terminated' AND g.org_membership_state = 'active'",
   "remediation": "Remove GitHub organization access for terminated employees within 24 hours of termination.",
   "tags": [
     "github",

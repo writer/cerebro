@@ -20,6 +20,25 @@ func (e *GCPSyncEngine) gcpIAMServiceAccountTable() GCPTableSpec {
 	}
 }
 
+func (e *GCPSyncEngine) gcpIAMServiceAccountKeyTable() GCPTableSpec {
+	return GCPTableSpec{
+		Name: "gcp_iam_service_account_keys",
+		Columns: []string{
+			"project_id",
+			"service_account_name",
+			"service_account_email",
+			"name",
+			"key_type",
+			"key_algorithm",
+			"key_origin",
+			"valid_after_time",
+			"valid_before_time",
+			"disabled",
+		},
+		Fetch: e.fetchGCPIAMServiceAccountKeys,
+	}
+}
+
 func (e *GCPSyncEngine) gcpIAMPolicyTable() GCPTableSpec {
 	return GCPTableSpec{
 		Name:    "gcp_iam_policies",
@@ -86,6 +105,65 @@ func (e *GCPSyncEngine) fetchGCPIAMServiceAccounts(ctx context.Context, projectI
 		}
 
 		rows = append(rows, row)
+	}
+
+	return rows, nil
+}
+
+func (e *GCPSyncEngine) fetchGCPIAMServiceAccountKeys(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
+	client, err := admin.NewIamClient(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("create IAM client: %w", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	rows := make([]map[string]interface{}, 0, 200)
+	req := &adminpb.ListServiceAccountsRequest{
+		Name: fmt.Sprintf("projects/%s", projectID),
+	}
+
+	it := client.ListServiceAccounts(ctx, req)
+	for {
+		sa, err := it.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("list service accounts: %w", err)
+		}
+
+		keysReq := &adminpb.ListServiceAccountKeysRequest{
+			Name: sa.Name,
+			KeyTypes: []adminpb.ListServiceAccountKeysRequest_KeyType{
+				adminpb.ListServiceAccountKeysRequest_USER_MANAGED,
+				adminpb.ListServiceAccountKeysRequest_SYSTEM_MANAGED,
+			},
+		}
+		keysResp, err := client.ListServiceAccountKeys(ctx, keysReq)
+		if err != nil || keysResp == nil {
+			continue
+		}
+
+		for _, key := range keysResp.Keys {
+			row := map[string]interface{}{
+				"_cq_id":                key.Name,
+				"project_id":            projectID,
+				"service_account_name":  sa.Name,
+				"service_account_email": sa.Email,
+				"name":                  key.Name,
+				"key_type":              key.KeyType.String(),
+				"key_algorithm":         key.KeyAlgorithm.String(),
+				"key_origin":            key.KeyOrigin.String(),
+				"disabled":              key.Disabled,
+			}
+			if key.ValidAfterTime != nil {
+				row["valid_after_time"] = key.ValidAfterTime.AsTime()
+			}
+			if key.ValidBeforeTime != nil {
+				row["valid_before_time"] = key.ValidBeforeTime.AsTime()
+			}
+			rows = append(rows, row)
+		}
 	}
 
 	return rows, nil

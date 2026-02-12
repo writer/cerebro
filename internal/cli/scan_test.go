@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/writerinternal/cerebro/internal/policy"
 	"github.com/writerinternal/cerebro/internal/scanner"
 	"github.com/writerinternal/cerebro/internal/snowflake"
 )
@@ -211,6 +213,13 @@ func TestIsRemovalEvent(t *testing.T) {
 			t.Errorf("isRemovalEvent(%q) = true, want false", r)
 		}
 	}
+}
+
+func resourceToTables(resource string) []string {
+	if strings.TrimSpace(resource) == "" {
+		return nil
+	}
+	return (&policy.Policy{Resource: resource}).GetRequiredTables()
 }
 
 func TestResourceToTables_DirectTableName(t *testing.T) {

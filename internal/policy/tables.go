@@ -326,6 +326,7 @@ var ResourceToTableMapping = map[string][]string{
 	"entra_risky_user":                {"entra_risky_users"},
 	"entra_role_assignment":           {"entra_role_assignments"},
 	"entra_app_role_assignment":       {"entra_app_role_assignments"},
+	"entra_sign_in":                   {"entra_sign_ins"},
 
 	// AWS legacy resource_type values
 	"aws_iam_policy":           {"aws_iam_policies"},
@@ -376,13 +377,46 @@ var ResourceToTableMapping = map[string][]string{
 	"kubernetes::service": {
 		"k8s_core_services",
 	},
-	"kubernetes::deployment":  {"k8s_apps_deployments"},
-	"kubernetes::audit_event": {"k8s_audit_events"},
+	"kubernetes::networking::ingress": {"k8s_networking_ingresses"},
+	"kubernetes::deployment":          {"k8s_apps_deployments"},
+	"kubernetes::audit_event":         {"k8s_audit_events"},
 
 	// GKE (maps to Kubernetes RBAC tables)
 	"gcp::gke::cluster_role":         {"k8s_rbac_cluster_roles"},
 	"gcp::gke::role":                 {"k8s_rbac_roles"},
 	"gcp::gke::cluster_role_binding": {"k8s_rbac_cluster_role_bindings"},
+
+	// Operational/compliance resources
+	"backup":                {"backups"},
+	"certificate":           {"certificates"},
+	"container":             {"containers"},
+	"container_image":       {"container_images"},
+	"database":              {"databases"},
+	"dns_zone":              {"dns_zones"},
+	"employee":              {"employees"},
+	"endpoint":              {"endpoints"},
+	"firewall":              {"firewalls"},
+	"firewall_rule":         {"firewall_rules"},
+	"intune_managed_device": {"intune_managed_devices"},
+	"jamf_computer":         {"jamf_computers"},
+	"jamf_mobile_device":    {"jamf_mobile_devices"},
+	"kandji_device":         {"kandji_devices"},
+	"log_retention":         {"log_retention_policies"},
+	"network_endpoint":      {"network_endpoints"},
+	"network_segment":       {"network_segments"},
+	"password_policy":       {"password_policies"},
+	"penetration_test":      {"penetration_tests"},
+	"policy_document":       {"policy_documents"},
+	"secret":                {"secrets"},
+	"sentinelone_agent":     {"sentinelone_agents"},
+	"server":                {"servers"},
+	"slack_user":            {"slack_users"},
+	"system":                {"systems"},
+	"tls_endpoint":          {"tls_endpoints"},
+	"user_account":          {"user_accounts"},
+	"vendor":                {"vendors"},
+	"vulnerability":         {"vulnerabilities"},
+	"vulnerability_scan":    {"vulnerability_scans"},
 
 	// Cross-provider resources
 	"compute::instance":       {"aws_ec2_instances", "gcp_compute_instances", "azure_compute_virtual_machines"},
@@ -416,6 +450,9 @@ func resourceToTables(resource string) []string {
 	if resource == "" {
 		return nil
 	}
+	if resource == "*" {
+		return []string{"*"}
+	}
 
 	parts := strings.Split(resource, "|")
 	seen := make(map[string]bool)
@@ -437,6 +474,15 @@ func resourceToTables(resource string) []string {
 		return nil
 	}
 	return tables
+}
+
+func hasWildcardTable(tables []string) bool {
+	for _, table := range tables {
+		if table == "*" {
+			return true
+		}
+	}
+	return false
 }
 
 func resourceToTablesForType(resource string) []string {
@@ -529,6 +575,9 @@ func (e *Engine) ValidateTableCoverage(availableTables []string) []PolicyCoverag
 		required := p.GetRequiredTables()
 		if len(required) == 0 {
 			continue // Unknown resource type
+		}
+		if hasWildcardTable(required) {
+			continue
 		}
 
 		var missing []string

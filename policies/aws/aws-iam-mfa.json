@@ -3,7 +3,7 @@
   "name": "IAM User MFA Enabled",
   "description": "IAM users should have MFA enabled for console access",
   "effect": "forbid",
-  "resource": "*",
+  "resource": "aws::iam::user",
   "conditions": [
     "mfa_active != true"
   ],

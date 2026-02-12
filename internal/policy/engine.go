@@ -237,11 +237,13 @@ func (e *Engine) ColumnsForTable(table string) []string {
 			if len(tables) == 0 {
 				continue
 			}
-			matches := false
-			for _, t := range tables {
-				if t == lower {
-					matches = true
-					break
+			matches := hasWildcardTable(tables)
+			if !matches {
+				for _, t := range tables {
+					if t == lower {
+						matches = true
+						break
+					}
 				}
 			}
 			if !matches {
@@ -328,11 +330,13 @@ func (e *Engine) EvaluateAsset(ctx context.Context, asset map[string]interface{}
 			if len(tables) == 0 {
 				continue // Unknown resource type - don't apply to all assets
 			}
-			matches := false
-			for _, t := range tables {
-				if t == assetTable {
-					matches = true
-					break
+			matches := hasWildcardTable(tables)
+			if !matches {
+				for _, t := range tables {
+					if t == assetTable {
+						matches = true
+						break
+					}
 				}
 			}
 			if !matches {

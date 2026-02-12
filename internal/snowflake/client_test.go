@@ -160,8 +160,10 @@ func TestValidateTableNameStrict_KnownPrefixes(t *testing.T) {
 		"aws_iam_users",
 		"gcp_compute_instances",
 		"azure_storage_accounts",
-		"cerebro_findings",
 		"okta_users",
+		"mdm_devices",
+		"backups",
+		"cerebro_findings",
 	}
 
 	for _, name := range knownPrefixes {

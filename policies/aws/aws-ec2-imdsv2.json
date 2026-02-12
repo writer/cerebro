@@ -3,7 +3,7 @@
   "name": "EC2 IMDSv2 Required",
   "description": "EC2 instances should require IMDSv2 to prevent SSRF attacks",
   "effect": "forbid",
-  "resource": "*",
+  "resource": "aws::ec2::instance",
   "conditions": [
     "metadata_options_http_tokens != required"
   ],
