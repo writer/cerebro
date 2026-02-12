@@ -58,6 +58,82 @@ func (e *SyncEngine) fetchIAMPolicies(ctx context.Context, cfg aws.Config, regio
 	return rows, nil
 }
 
+// IAM Policy Versions
+func (e *SyncEngine) iamPolicyVersionTable() TableSpec {
+	return TableSpec{
+		Name: "aws_iam_policy_versions",
+		Columns: []string{
+			"arn",
+			"account_id",
+			"policy_arn",
+			"policy_id",
+			"policy_name",
+			"path",
+			"version_id",
+			"is_default_version",
+			"create_date",
+			"document",
+		},
+		Fetch: e.fetchIAMPolicyVersions,
+	}
+}
+
+func (e *SyncEngine) fetchIAMPolicyVersions(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := iam.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	var rows []map[string]interface{}
+	paginator := iam.NewListPoliciesPaginator(client, &iam.ListPoliciesInput{
+		Scope:        types.PolicyScopeTypeAll,
+		OnlyAttached: true,
+	})
+
+	for paginator.HasMorePages() {
+		out, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, p := range out.Policies {
+			policyArn := aws.ToString(p.Arn)
+			versionID := aws.ToString(p.DefaultVersionId)
+			if policyArn == "" || versionID == "" {
+				continue
+			}
+
+			versionOut, err := client.GetPolicyVersion(ctx, &iam.GetPolicyVersionInput{
+				PolicyArn: aws.String(policyArn),
+				VersionId: aws.String(versionID),
+			})
+			if err != nil || versionOut.PolicyVersion == nil {
+				continue
+			}
+
+			document := aws.ToString(versionOut.PolicyVersion.Document)
+			if decoded, err := url.QueryUnescape(document); err == nil {
+				document = decoded
+			}
+
+			arn := fmt.Sprintf("%s:%s", policyArn, versionID)
+			rows = append(rows, map[string]interface{}{
+				"_cq_id":             arn,
+				"arn":                policyArn,
+				"account_id":         accountID,
+				"policy_arn":         policyArn,
+				"policy_id":          aws.ToString(p.PolicyId),
+				"policy_name":        aws.ToString(p.PolicyName),
+				"path":               aws.ToString(p.Path),
+				"version_id":         versionID,
+				"is_default_version": true,
+				"create_date":        versionOut.PolicyVersion.CreateDate,
+				"document":           document,
+			})
+		}
+	}
+
+	return rows, nil
+}
+
 // IAM Groups
 func (e *SyncEngine) iamGroupTable() TableSpec {
 	return TableSpec{
@@ -637,6 +713,63 @@ func (e *SyncEngine) fetchIAMRoleAttachedPolicies(ctx context.Context, cfg aws.C
 			}
 		}
 	}
+	return rows, nil
+}
+
+// IAM User Attached Policies
+func (e *SyncEngine) iamUserAttachedPolicyTable() TableSpec {
+	return TableSpec{
+		Name:    "aws_iam_user_attached_policies",
+		Columns: []string{"arn", "account_id", "user_name", "user_arn", "policy_name", "policy_arn"},
+		Fetch:   e.fetchIAMUserAttachedPolicies,
+	}
+}
+
+func (e *SyncEngine) fetchIAMUserAttachedPolicies(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := iam.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	// Get all users first
+	var users []types.User
+	userPaginator := iam.NewListUsersPaginator(client, &iam.ListUsersInput{})
+	for userPaginator.HasMorePages() {
+		out, err := userPaginator.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, out.Users...)
+	}
+
+	var rows []map[string]interface{}
+	for _, user := range users {
+		userName := aws.ToString(user.UserName)
+		userArn := aws.ToString(user.Arn)
+
+		policyPaginator := iam.NewListAttachedUserPoliciesPaginator(client, &iam.ListAttachedUserPoliciesInput{
+			UserName: user.UserName,
+		})
+		for policyPaginator.HasMorePages() {
+			out, err := policyPaginator.NextPage(ctx)
+			if err != nil {
+				break
+			}
+
+			for _, policy := range out.AttachedPolicies {
+				policyArn := aws.ToString(policy.PolicyArn)
+				arn := fmt.Sprintf("%s/attached/%s", userArn, aws.ToString(policy.PolicyName))
+				rows = append(rows, map[string]interface{}{
+					"_cq_id":      arn,
+					"arn":         arn,
+					"account_id":  accountID,
+					"user_name":   userName,
+					"user_arn":    userArn,
+					"policy_name": aws.ToString(policy.PolicyName),
+					"policy_arn":  policyArn,
+				})
+			}
+		}
+	}
+
 	return rows, nil
 }
 

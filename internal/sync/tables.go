@@ -95,6 +95,7 @@ func (e *SyncEngine) getAWSTables() []TableSpec {
 
 		// IAM - Extended
 		e.iamPolicyTable(),
+		e.iamPolicyVersionTable(),
 		e.iamGroupTable(),
 		e.iamUserAccessKeyTable(),
 		e.iamMfaDeviceTable(),
@@ -107,6 +108,7 @@ func (e *SyncEngine) getAWSTables() []TableSpec {
 		e.iamServerCertificateTable(),
 		e.iamRolePolicyTable(),
 		e.iamRoleAttachedPolicyTable(),
+		e.iamUserAttachedPolicyTable(),
 		e.iamUserPolicyTable(),
 		e.iamGroupPolicyTable(),
 		e.iamUserGroupTable(),
