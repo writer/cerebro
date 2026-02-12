@@ -669,7 +669,7 @@ func (b *Builder) buildAWSEdges(ctx context.Context) {
 	// Fire all edge sub-queries in parallel
 	eg, ectx := errgroup.WithContext(ctx)
 
-	// Attached policies (user + role)
+	// Attached policies (user + role + group)
 	eg.Go(func() error {
 		userPolicies, err := b.queryIfExists(ectx, "aws_iam_user_attached_policies", `
 		SELECT user_arn, policy_arn FROM aws_iam_user_attached_policies
@@ -694,6 +694,20 @@ func (b *Builder) buildAWSEdges(ctx context.Context) {
 		}
 		for _, rp := range rolePolicies.Rows {
 			b.buildEdgesFromPolicy(toString(rp["role_arn"]), policyDocs[toString(rp["policy_arn"])], toString(rp["policy_arn"]))
+		}
+		return nil
+	})
+
+	eg.Go(func() error {
+		groupPolicies, err := b.queryIfExists(ectx, "aws_iam_group_attached_policies", `
+		SELECT group_arn, policy_arn FROM aws_iam_group_attached_policies
+	`)
+		if err != nil {
+			b.logger.Warn("failed to query group attached policies", "error", err)
+			return nil
+		}
+		for _, gp := range groupPolicies.Rows {
+			b.buildEdgesFromPolicy(toString(gp["group_arn"]), policyDocs[toString(gp["policy_arn"])], toString(gp["policy_arn"]))
 		}
 		return nil
 	})

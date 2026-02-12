@@ -109,6 +109,7 @@ func (e *SyncEngine) getAWSTables() []TableSpec {
 		e.iamRolePolicyTable(),
 		e.iamRoleAttachedPolicyTable(),
 		e.iamUserAttachedPolicyTable(),
+		e.iamGroupAttachedPolicyTable(),
 		e.iamUserPolicyTable(),
 		e.iamGroupPolicyTable(),
 		e.iamUserGroupTable(),

@@ -773,6 +773,63 @@ func (e *SyncEngine) fetchIAMUserAttachedPolicies(ctx context.Context, cfg aws.C
 	return rows, nil
 }
 
+// IAM Group Attached Policies
+func (e *SyncEngine) iamGroupAttachedPolicyTable() TableSpec {
+	return TableSpec{
+		Name:    "aws_iam_group_attached_policies",
+		Columns: []string{"arn", "account_id", "group_name", "group_arn", "policy_name", "policy_arn"},
+		Fetch:   e.fetchIAMGroupAttachedPolicies,
+	}
+}
+
+func (e *SyncEngine) fetchIAMGroupAttachedPolicies(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := iam.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	// Get all groups first
+	var groups []types.Group
+	groupPaginator := iam.NewListGroupsPaginator(client, &iam.ListGroupsInput{})
+	for groupPaginator.HasMorePages() {
+		out, err := groupPaginator.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		groups = append(groups, out.Groups...)
+	}
+
+	var rows []map[string]interface{}
+	for _, group := range groups {
+		groupName := aws.ToString(group.GroupName)
+		groupArn := aws.ToString(group.Arn)
+
+		policyPaginator := iam.NewListAttachedGroupPoliciesPaginator(client, &iam.ListAttachedGroupPoliciesInput{
+			GroupName: group.GroupName,
+		})
+		for policyPaginator.HasMorePages() {
+			out, err := policyPaginator.NextPage(ctx)
+			if err != nil {
+				break
+			}
+
+			for _, policy := range out.AttachedPolicies {
+				policyArn := aws.ToString(policy.PolicyArn)
+				arn := fmt.Sprintf("%s/attached/%s", groupArn, aws.ToString(policy.PolicyName))
+				rows = append(rows, map[string]interface{}{
+					"_cq_id":      arn,
+					"arn":         arn,
+					"account_id":  accountID,
+					"group_name":  groupName,
+					"group_arn":   groupArn,
+					"policy_name": aws.ToString(policy.PolicyName),
+					"policy_arn":  policyArn,
+				})
+			}
+		}
+	}
+
+	return rows, nil
+}
+
 // IAM User Policies (inline)
 func (e *SyncEngine) iamUserPolicyTable() TableSpec {
 	return TableSpec{
