@@ -1356,6 +1356,12 @@ func defaultScanTables() []string {
 		"aws_iam_roles",
 		"aws_iam_policies",
 		"aws_iam_groups",
+		"aws_iam_user_access_keys",
+		"aws_iam_password_policies",
+		"aws_iam_server_certificates",
+		"aws_iam_saml_identity_providers",
+		"aws_iam_accounts",
+		"aws_iam_credential_reports",
 		// AWS S3
 		"aws_s3_buckets",
 		// AWS EC2
@@ -1366,14 +1372,20 @@ func defaultScanTables() []string {
 		"aws_ec2_ebs_volumes",
 		"aws_ec2_ebs_snapshots",
 		"aws_ec2_amis",
+		"aws_ec2_images",
+		"aws_ec2_key_pairs",
+		"aws_ec2_network_acls",
+		"aws_ec2_regional_configs",
 		// AWS RDS
 		"aws_rds_instances",
 		"aws_rds_db_clusters",
+		"aws_rds_db_snapshots",
 		// AWS Lambda
 		"aws_lambda_functions",
 		// AWS ELB/ALB
 		"aws_elbv2_load_balancers",
 		"aws_elbv2_target_groups",
+		"aws_lb_listeners",
 		// AWS KMS
 		"aws_kms_keys",
 		// AWS CloudTrail
@@ -1385,10 +1397,13 @@ func defaultScanTables() []string {
 		"aws_config_configuration_recorders",
 		// AWS GuardDuty
 		"aws_guardduty_detectors",
+		// AWS Access Analyzer
+		"aws_accessanalyzer_analyzers",
 		// AWS EKS
 		"aws_eks_clusters",
 		// AWS ECR
 		"aws_ecr_repositories",
+		"aws_ecr_public_repositories",
 		// AWS Secrets Manager
 		"aws_secretsmanager_secrets",
 		// AWS SNS/SQS
@@ -1406,13 +1421,28 @@ func defaultScanTables() []string {
 		"aws_opensearch_domains",
 		// AWS API Gateway
 		"aws_apigateway_rest_apis",
+		"aws_apigateway_rest_api_methods",
+		// AWS AppSync
+		"aws_appsync_graphql_apis",
 		// AWS CloudFront
 		"aws_cloudfront_distributions",
 		// AWS CodeBuild
 		"aws_codebuild_projects",
+		"aws_codebuild_source_credentials",
+		// AWS Bedrock
+		"aws_bedrock_custom_models",
+		"aws_bedrock_provisioned_model_throughputs",
 		// AWS ECS
 		"aws_ecs_clusters",
 		"aws_ecs_task_definitions",
+		"aws_ecs_services",
+		// AWS EFS
+		"aws_efs_mount_targets",
+		// AWS SageMaker
+		"aws_sagemaker_models",
+		"aws_sagemaker_model_package_groups",
+		// AWS SecurityHub
+		"aws_securityhub_hubs",
 		// GCP Compute
 		"gcp_compute_instances",
 		"gcp_compute_firewalls",
