@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/writerinternal/cerebro/internal/app"
+	"github.com/writerinternal/cerebro/internal/policy"
 	"github.com/writerinternal/cerebro/internal/scanner"
 	"github.com/writerinternal/cerebro/internal/snowflake"
 	nativesync "github.com/writerinternal/cerebro/internal/sync"
@@ -822,6 +824,41 @@ func createSnowflakeClient() (*snowflake.Client, error) {
 }
 
 func runPostSyncScan(ctx context.Context, tableFilter []string) error {
+	filterSet := buildTableFilterSet(tableFilter)
+	if len(filterSet) > 0 {
+		cfg := app.LoadConfig()
+		engine := policy.NewEngine()
+		if err := engine.LoadPolicies(cfg.PoliciesPath); err == nil {
+			policies := engine.ListPolicies()
+			if len(policies) > 0 {
+				tableSet := make(map[string]struct{})
+				for _, p := range policies {
+					for _, table := range p.GetRequiredTables() {
+						tableSet[table] = struct{}{}
+					}
+				}
+				if len(tableSet) > 0 {
+					tables := make([]string, 0, len(tableSet))
+					for table := range tableSet {
+						tables = append(tables, table)
+					}
+					filtered := make([]string, 0, len(tables))
+					for _, table := range tables {
+						if tableFilterMatches(filterSet, table) {
+							filtered = append(filtered, table)
+						}
+					}
+					if len(filtered) == 0 {
+						fmt.Println("Scanning synced assets...")
+						fmt.Printf("Filtering scan tables: %s\n", strings.Join(tableFilter, ", "))
+						fmt.Println("No tables to scan for selected filter")
+						return nil
+					}
+				}
+			}
+		}
+	}
+
 	application, err := app.New(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to initialize app: %w", err)
@@ -833,8 +870,6 @@ func runPostSyncScan(ctx context.Context, tableFilter []string) error {
 	}
 
 	fmt.Println("Scanning synced assets...")
-
-	filterSet := buildTableFilterSet(tableFilter)
 	if len(filterSet) > 0 {
 		fmt.Printf("Filtering scan tables: %s\n", strings.Join(tableFilter, ", "))
 	}
@@ -874,14 +909,26 @@ func runPostSyncScan(ctx context.Context, tableFilter []string) error {
 
 	fmt.Printf("Scanning %d tables with %d policies\n", len(tables), len(policies))
 
-	totalScanned := 0
-	totalViolations := 0
+	tuning := application.ScanTuning()
+	var tableProfiles []scanner.TableScanProfile
+	var totalScanned int64
+	var totalViolations int64
 	const batchSize = 1000
 
 	for _, table := range tables {
-		filter := snowflake.AssetFilter{Limit: batchSize}
+		tableProfile := scanner.TableScanProfile{Table: table}
+		tableStart := time.Now()
+		tableCtx := ctx
+		cancel := func() {}
+		if tuning.TableTimeout > 0 {
+			tableCtx, cancel = context.WithTimeout(ctx, tuning.TableTimeout)
+		}
+
+		columns := application.ScanColumnsForTable(tableCtx, table)
+		filter := snowflake.AssetFilter{Limit: batchSize, Columns: columns}
 		var cursorTime time.Time
 		var cursorID string
+		useCursorPaging := false
 
 		// Use watermarks for incremental scanning if available
 		if application.ScanWatermarks != nil {
@@ -889,15 +936,23 @@ func runPostSyncScan(ctx context.Context, tableFilter []string) error {
 				filter.Since = wm.LastScanTime
 				filter.SinceID = wm.LastScanID
 				fmt.Printf("  %s: incremental scan (since %s)\n", table, wm.LastScanTime.Format(time.RFC3339))
+				useCursorPaging = true
 			}
 		}
 
 		tableScanned := int64(0)
+		tableViolations := int64(0)
 		offset := 0
-		for {
-			filter.Offset = offset
-			assets, err := application.Snowflake.GetAssets(ctx, table, filter)
+		for tableCtx.Err() == nil {
+			if !useCursorPaging {
+				filter.Offset = offset
+			}
+			assets, attempts, err := scanner.WithRetryValue(tableCtx, tuning.RetryOptions, func() ([]map[string]interface{}, error) {
+				return application.Snowflake.GetAssets(tableCtx, table, filter)
+			})
+			tableProfile.RetryAttempts += retryCount(attempts)
 			if err != nil {
+				tableProfile.FetchErrors++
 				Warning("Failed to fetch %s: %v", table, err)
 				break
 			}
@@ -906,10 +961,14 @@ func runPostSyncScan(ctx context.Context, tableFilter []string) error {
 				break
 			}
 
-			result := application.Scanner.ScanAssets(ctx, assets)
-			totalScanned += int(result.Scanned)
-			totalViolations += int(result.Violations)
+			result := application.Scanner.ScanAssets(tableCtx, assets)
+			tableProfile.Batches++
+			tableProfile.CacheSkipped += result.Skipped
+			tableProfile.ScanErrors += len(result.Errors)
+			totalScanned += result.Scanned
+			totalViolations += result.Violations
 			tableScanned += result.Scanned
+			tableViolations += result.Violations
 
 			batchTime, batchID := scanner.ExtractScanCursor(assets)
 			if scanner.IsCursorAfter(batchTime, batchID, cursorTime, cursorID) {
@@ -917,16 +976,35 @@ func runPostSyncScan(ctx context.Context, tableFilter []string) error {
 				cursorID = batchID
 			}
 
+			if useCursorPaging {
+				if batchTime.IsZero() {
+					break
+				}
+				filter.Since = batchTime
+				filter.SinceID = batchID
+			} else {
+				offset += len(assets)
+			}
+
 			// Persist findings
 			for _, f := range result.Findings {
-				application.Findings.Upsert(ctx, f)
+				application.Findings.Upsert(tableCtx, f)
 			}
 
 			if len(assets) < batchSize {
 				break
 			}
-			offset += batchSize
 		}
+
+		if errors.Is(tableCtx.Err(), context.DeadlineExceeded) {
+			tableProfile.TimedOut = true
+			Warning("Table %s timed out after %s", table, tuning.TableTimeout)
+		}
+		tableProfile.Scanned = tableScanned
+		tableProfile.Violations = tableViolations
+		tableProfile.Duration = time.Since(tableStart)
+		cancel()
+		tableProfiles = append(tableProfiles, tableProfile)
 
 		// Update watermark
 		if application.ScanWatermarks != nil && tableScanned > 0 {
@@ -939,6 +1017,63 @@ func runPostSyncScan(ctx context.Context, tableFilter []string) error {
 		if tableScanned > 0 {
 			fmt.Printf("  %s: scanned %d assets\n", table, tableScanned)
 		}
+	}
+
+	printScanProfiling(tableProfiles, tuning.ProfileSlowThreshold)
+
+	sqlToxicRiskSets := make(map[string][]map[string]bool)
+	relationshipCount := 0
+	if application.Snowflake != nil {
+		toxicFindings, err := scanner.DetectRelationshipToxicCombinations(ctx, application.Snowflake)
+		if err != nil {
+			Warning("Failed to detect toxic combinations from relationships: %v", err)
+		} else {
+			relationshipCount = len(toxicFindings)
+			for _, f := range toxicFindings {
+				if rid := scanner.NormalizeResourceID(f.ResourceID); rid != "" {
+					if risks := scanner.CanonicalizeRiskCategories(scanner.ParseRiskCategories(f.Risks)); len(risks) > 0 {
+						sqlToxicRiskSets[rid] = append(sqlToxicRiskSets[rid], risks)
+					}
+				}
+				if application.Findings != nil && f.PolicyID != "" && f.ResourceID != "" {
+					application.Findings.Upsert(ctx, f.ToPolicyFinding())
+				}
+			}
+			totalViolations += int64(relationshipCount)
+		}
+	}
+
+	graphToxicCount := 0
+	graphPaths := 0
+	if application.SecurityGraph != nil {
+		graphCtx := ctx
+		cancel := func() {}
+		if tuning.GraphWaitTimeout > 0 {
+			graphCtx, cancel = context.WithTimeout(ctx, tuning.GraphWaitTimeout)
+		}
+		graphReady := application.WaitForGraph(graphCtx)
+		cancel()
+		if graphReady {
+			graphResult := application.Scanner.AnalyzeGraph(ctx, application.SecurityGraph)
+			if graphResult != nil {
+				graphPaths = graphResult.AttackPathStats.TotalPaths
+				for _, f := range graphResult.ToxicCombinations {
+					resourceID := scanner.NormalizeResourceID(f.ResourceID)
+					graphRiskSet := scanner.CanonicalizeRiskCategories(f.RiskCategories)
+					if scanner.ShouldSkipGraphToxicCombination(resourceID, graphRiskSet, sqlToxicRiskSets) {
+						continue
+					}
+					application.Findings.Upsert(ctx, f)
+					graphToxicCount++
+				}
+			}
+		}
+	}
+	if graphToxicCount > 0 {
+		totalViolations += int64(graphToxicCount)
+	}
+	if relationshipCount > 0 || graphToxicCount > 0 {
+		fmt.Printf("Toxic combinations: %d (relationship), %d (graph), attack paths: %d\n", relationshipCount, graphToxicCount, graphPaths)
 	}
 
 	// Persist watermarks

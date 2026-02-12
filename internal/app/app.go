@@ -34,6 +34,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -122,6 +123,7 @@ type App struct {
 	SecurityGraph        *graph.Graph
 	SecurityGraphBuilder *graph.Builder
 	graphReady           chan struct{} // closed when initial graph build completes
+	graphCancel          context.CancelFunc
 
 	// Cached table list from Snowflake (shared by graph builder + policy coverage)
 	AvailableTables []string
@@ -241,8 +243,15 @@ type Config struct {
 	PagerDutyKey       string
 
 	// Scheduler
-	ScanInterval string // e.g., "1h", "30m"
-	ScanTables   string // comma-separated list of tables to scan
+	ScanInterval            string // e.g., "1h", "30m"
+	ScanTables              string // comma-separated list of tables to scan
+	ScanTableTimeout        time.Duration
+	ScanMaxConcurrent       int
+	ScanMinConcurrent       int
+	ScanAdaptiveConcurrency bool
+	ScanRetryAttempts       int
+	ScanRetryBackoff        time.Duration
+	ScanRetryMaxBackoff     time.Duration
 
 	// Distributed jobs
 	JobQueueURL          string
@@ -333,6 +342,13 @@ func LoadConfig() *Config {
 		PagerDutyKey:                     getEnv("PAGERDUTY_ROUTING_KEY", ""),
 		ScanInterval:                     getEnv("SCAN_INTERVAL", ""),
 		ScanTables:                       getEnv("SCAN_TABLES", ""),
+		ScanTableTimeout:                 getEnvDuration("SCAN_TABLE_TIMEOUT", 30*time.Minute),
+		ScanMaxConcurrent:                getEnvInt("SCAN_MAX_CONCURRENCY", 6),
+		ScanMinConcurrent:                getEnvInt("SCAN_MIN_CONCURRENCY", 2),
+		ScanAdaptiveConcurrency:          getEnvBool("SCAN_ADAPTIVE_CONCURRENCY", true),
+		ScanRetryAttempts:                getEnvInt("SCAN_RETRY_ATTEMPTS", 3),
+		ScanRetryBackoff:                 getEnvDuration("SCAN_RETRY_BACKOFF", 2*time.Second),
+		ScanRetryMaxBackoff:              getEnvDuration("SCAN_RETRY_MAX_BACKOFF", 30*time.Second),
 		JobQueueURL:                      getEnv("JOB_QUEUE_URL", ""),
 		JobTableName:                     getEnv("JOB_TABLE_NAME", ""),
 		JobRegion:                        getEnv("JOB_REGION", getEnv("AWS_REGION", "")),
@@ -800,16 +816,33 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 		return fmt.Errorf("snowflake not configured")
 	}
 
-	totalScanned := 0
-	totalViolations := 0
+	scanStart := time.Now()
+
+	tuning := a.ScanTuning()
+	var tableProfiles []scanner.TableScanProfile
+	var totalScanned int64
+	var totalViolations int64
+	var relationshipCount int
+	var graphToxicCount int
+	var graphPaths int
 	const batchSize = 1000
 	const maxWatermarkAge = 7 * 24 * time.Hour
 
 	for _, table := range tables {
+		tableProfile := scanner.TableScanProfile{Table: table}
+		tableStart := time.Now()
+		tableCtx := ctx
+		cancel := func() {}
+		if tuning.TableTimeout > 0 {
+			tableCtx, cancel = context.WithTimeout(ctx, tuning.TableTimeout)
+		}
+
 		// Build filter with incremental scanning support
-		filter := snowflake.AssetFilter{Limit: batchSize}
+		columns := a.ScanColumnsForTable(tableCtx, table)
+		filter := snowflake.AssetFilter{Limit: batchSize, Columns: columns}
 		var cursorTime time.Time
 		var cursorID string
+		useCursorPaging := false
 
 		// Use watermarks for incremental scanning
 		if a.ScanWatermarks != nil {
@@ -818,17 +851,27 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 					filter.Since = wm.LastScanTime
 					filter.SinceID = wm.LastScanID
 					a.Logger.Debug("incremental scan", "table", table, "since", wm.LastScanTime)
+					useCursorPaging = true
 				}
 			}
 		}
 
 		// Paginate through all assets
 		tableScanned := int64(0)
+		tableViolations := int64(0)
 		offset := 0
-		for {
-			filter.Offset = offset
-			assets, err := a.Snowflake.GetAssets(ctx, table, filter)
+		for tableCtx.Err() == nil {
+			if !useCursorPaging {
+				filter.Offset = offset
+			}
+			assets, attempts, err := scanner.WithRetryValue(tableCtx, tuning.RetryOptions, func() ([]map[string]interface{}, error) {
+				return a.Snowflake.GetAssets(tableCtx, table, filter)
+			})
+			if attempts > 1 {
+				tableProfile.RetryAttempts += attempts - 1
+			}
 			if err != nil {
+				tableProfile.FetchErrors++
 				a.Logger.Warn("failed to fetch assets", "table", table, "offset", offset, "error", err)
 				break
 			}
@@ -837,10 +880,14 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 				break
 			}
 
-			result := a.Scanner.ScanAssets(ctx, assets)
-			totalScanned += int(result.Scanned)
-			totalViolations += int(result.Violations)
+			result := a.Scanner.ScanAssets(tableCtx, assets)
+			tableProfile.Batches++
+			tableProfile.CacheSkipped += result.Skipped
+			tableProfile.ScanErrors += len(result.Errors)
+			totalScanned += result.Scanned
+			totalViolations += result.Violations
 			tableScanned += result.Scanned
+			tableViolations += result.Violations
 
 			batchTime, batchID := scanner.ExtractScanCursor(assets)
 			if scanner.IsCursorAfter(batchTime, batchID, cursorTime, cursorID) {
@@ -848,13 +895,23 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 				cursorID = batchID
 			}
 
+			if useCursorPaging {
+				if batchTime.IsZero() {
+					break
+				}
+				filter.Since = batchTime
+				filter.SinceID = batchID
+			} else {
+				offset += len(assets)
+			}
+
 			// Persist findings
 			for _, f := range result.Findings {
-				finding := a.Findings.Upsert(ctx, f)
+				finding := a.Findings.Upsert(tableCtx, f)
 
 				// Send notification for new critical/high findings
 				if finding.FirstSeen.Equal(finding.LastSeen) && (f.Severity == "critical" || f.Severity == "high") {
-					if err := a.Notifications.Send(ctx, notifications.Event{
+					if err := a.Notifications.Send(tableCtx, notifications.Event{
 						Type:     notifications.EventFindingCreated,
 						Severity: f.Severity,
 						Title:    fmt.Sprintf("New %s Finding: %s", f.Severity, f.PolicyName),
@@ -874,8 +931,17 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 			if len(assets) < batchSize {
 				break
 			}
-			offset += batchSize
 		}
+
+		if errors.Is(tableCtx.Err(), context.DeadlineExceeded) {
+			tableProfile.TimedOut = true
+			a.Logger.Warn("table scan timed out", "table", table, "timeout", tuning.TableTimeout)
+		}
+		tableProfile.Scanned = tableScanned
+		tableProfile.Violations = tableViolations
+		tableProfile.Duration = time.Since(tableStart)
+		cancel()
+		tableProfiles = append(tableProfiles, tableProfile)
 
 		// Update watermark after successful scan
 		if a.ScanWatermarks != nil && tableScanned > 0 {
@@ -884,6 +950,93 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 			}
 			a.ScanWatermarks.SetWatermark(table, cursorTime, cursorID, tableScanned)
 		}
+	}
+
+	scanDuration := time.Since(scanStart)
+	profileSummary := scanner.SummarizeTableProfiles(tableProfiles, scanDuration)
+	slowTables := scanner.FilterSlowTables(tableProfiles, tuning.ProfileSlowThreshold)
+	if len(tableProfiles) > 0 {
+		sorted := scanner.SortTableProfilesByDuration(tableProfiles)
+		maxRows := 5
+		if len(sorted) < maxRows {
+			maxRows = len(sorted)
+		}
+		entries := make([]map[string]interface{}, 0, maxRows)
+		for i := 0; i < maxRows; i++ {
+			profile := sorted[i]
+			entries = append(entries, map[string]interface{}{
+				"table":          profile.Table,
+				"duration":       profile.Duration.String(),
+				"scanned":        profile.Scanned,
+				"violations":     profile.Violations,
+				"retry_attempts": profile.RetryAttempts,
+				"fetch_errors":   profile.FetchErrors,
+				"timed_out":      profile.TimedOut,
+			})
+		}
+		a.Logger.Info("scan profiling",
+			"total_scanned", profileSummary.TotalScanned,
+			"total_violations", profileSummary.TotalViolations,
+			"slow_threshold", tuning.ProfileSlowThreshold,
+			"slow_tables", len(slowTables),
+			"top_tables", entries,
+		)
+	}
+
+	sqlToxicRiskSets := make(map[string][]map[string]bool)
+	if a.Snowflake != nil {
+		toxicFindings, err := scanner.DetectRelationshipToxicCombinations(ctx, a.Snowflake)
+		if err != nil {
+			a.Logger.Warn("relationship toxic combo scan failed", "error", err)
+		} else {
+			relationshipCount = len(toxicFindings)
+			for _, f := range toxicFindings {
+				if rid := scanner.NormalizeResourceID(f.ResourceID); rid != "" {
+					if risks := scanner.CanonicalizeRiskCategories(scanner.ParseRiskCategories(f.Risks)); len(risks) > 0 {
+						sqlToxicRiskSets[rid] = append(sqlToxicRiskSets[rid], risks)
+					}
+				}
+				if a.Findings != nil && f.PolicyID != "" && f.ResourceID != "" {
+					a.Findings.Upsert(ctx, f.ToPolicyFinding())
+				}
+			}
+			totalViolations += int64(relationshipCount)
+		}
+	}
+
+	if a.SecurityGraph != nil {
+		graphCtx := ctx
+		cancel := func() {}
+		if tuning.GraphWaitTimeout > 0 {
+			graphCtx, cancel = context.WithTimeout(ctx, tuning.GraphWaitTimeout)
+		}
+		graphReady := a.WaitForGraph(graphCtx)
+		cancel()
+		if graphReady {
+			graphResult := a.Scanner.AnalyzeGraph(ctx, a.SecurityGraph)
+			if graphResult != nil {
+				graphPaths = graphResult.AttackPathStats.TotalPaths
+				for _, f := range graphResult.ToxicCombinations {
+					resourceID := scanner.NormalizeResourceID(f.ResourceID)
+					graphRiskSet := scanner.CanonicalizeRiskCategories(f.RiskCategories)
+					if scanner.ShouldSkipGraphToxicCombination(resourceID, graphRiskSet, sqlToxicRiskSets) {
+						continue
+					}
+					a.Findings.Upsert(ctx, f)
+					graphToxicCount++
+				}
+			}
+		}
+	}
+	if graphToxicCount > 0 {
+		totalViolations += int64(graphToxicCount)
+	}
+	if relationshipCount > 0 || graphToxicCount > 0 {
+		a.Logger.Info("toxic combination analysis complete",
+			"relationship_count", relationshipCount,
+			"graph_count", graphToxicCount,
+			"attack_paths", graphPaths,
+		)
 	}
 
 	// Persist watermarks
@@ -906,16 +1059,20 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 		Title:   "Scheduled Scan Completed",
 		Message: fmt.Sprintf("Scanned %d assets, found %d violations", totalScanned, totalViolations),
 		Data: map[string]interface{}{
-			"scanned":    totalScanned,
-			"violations": totalViolations,
-			"tables":     tables,
+			"scanned":                  totalScanned,
+			"violations":               totalViolations,
+			"tables":                   tables,
+			"relationship_toxic_count": relationshipCount,
+			"graph_toxic_count":        graphToxicCount,
+			"graph_attack_paths":       graphPaths,
+			"scan_duration":            scanDuration.String(),
 		},
 	}); err != nil {
 		a.Logger.Warn("failed to send scan completed notification", "error", err)
 	}
 
 	// Emit webhook
-	if err := a.Webhooks.EmitScanCompleted(ctx, int64(totalScanned), int64(totalViolations), 0); err != nil {
+	if err := a.Webhooks.EmitScanCompleted(ctx, totalScanned, totalViolations, 0); err != nil {
 		a.Logger.Warn("failed to emit scan completed webhook", "error", err)
 	}
 
@@ -1053,6 +1210,16 @@ func (a *App) Close() error {
 		defer cancel()
 		if err := syncer.Sync(ctx); err != nil {
 			errs = append(errs, fmt.Errorf("findings sync: %w", err))
+		}
+	}
+
+	if a.graphCancel != nil {
+		a.graphCancel()
+	}
+	if a.graphReady != nil {
+		select {
+		case <-a.graphReady:
+		case <-time.After(5 * time.Second):
 		}
 	}
 
@@ -1389,6 +1556,7 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 
 	if a.Snowflake == nil {
 		a.Logger.Warn("security graph disabled - snowflake not configured")
+		a.graphCancel = nil
 		close(a.graphReady)
 		return
 	}
@@ -1397,11 +1565,18 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 	a.SecurityGraphBuilder = graph.NewBuilder(source, a.Logger)
 	a.SecurityGraph = a.SecurityGraphBuilder.Graph()
 
+	graphCtx := ctx
+	if graphCtx == nil {
+		graphCtx = context.Background()
+	}
+	graphCtx, cancel := context.WithCancel(graphCtx)
+	a.graphCancel = cancel
+
 	// Build initial graph in background
 	go func() {
 		defer close(a.graphReady)
 
-		if err := a.SecurityGraphBuilder.Build(ctx); err != nil {
+		if err := a.SecurityGraphBuilder.Build(graphCtx); err != nil {
 			a.Logger.Error("failed to build security graph", "error", err)
 			return
 		}

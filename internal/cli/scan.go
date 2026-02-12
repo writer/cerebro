@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -88,11 +89,20 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	Info("Loaded %d policies", len(policies))
 
+	tuning := application.ScanTuning()
+
 	graphAvailable := false
 	if scanUseGraph {
 		spinner := NewSpinner("Waiting for security graph")
 		spinner.Start()
-		if application.WaitForGraph(ctx) {
+		graphCtx := ctx
+		cancel := func() {}
+		if tuning.GraphWaitTimeout > 0 {
+			graphCtx, cancel = context.WithTimeout(ctx, tuning.GraphWaitTimeout)
+		}
+		graphReady := application.WaitForGraph(graphCtx)
+		cancel()
+		if graphReady {
 			spinner.Stop(true, fmt.Sprintf("Security graph ready (%d nodes, %d edges)", application.SecurityGraph.NodeCount(), application.SecurityGraph.EdgeCount()))
 			graphAvailable = true
 		} else {
@@ -160,28 +170,35 @@ func runScan(cmd *cobra.Command, args []string) error {
 	var totalScanned int64
 	var totalViolations int64
 	var allFindings []map[string]interface{}
+	var tableProfiles []scanner.TableScanProfile
 	var scanMu sync.Mutex
 
 	// Limit concurrent Snowflake queries to avoid overwhelming the warehouse
-	const maxConcurrentScans = 6
-	sem := make(chan struct{}, maxConcurrentScans)
+	limiter := scanner.NewAdaptiveLimiter(tuning.MinConcurrent, tuning.MaxConcurrent, tuning.MaxConcurrent)
 
 	var scanWg sync.WaitGroup
 	for _, table := range tables {
 		table := table
 		scanWg.Add(1)
-		sem <- struct{}{} // acquire semaphore
 		go func() {
 			defer scanWg.Done()
-			defer func() { <-sem }() // release semaphore
+			if err := limiter.Acquire(ctx); err != nil {
+				return
+			}
+			defer limiter.Release()
 
-			scanned, violations, fnds := scanOneTable(ctx, application, table, scanFull, scanLimit, scanToxicCombos, graphAvailable)
+			scanned, violations, fnds, profile := scanOneTable(ctx, application, table, scanFull, scanLimit, scanToxicCombos, graphAvailable, tuning)
 
 			scanMu.Lock()
 			totalScanned += scanned
 			totalViolations += violations
 			allFindings = append(allFindings, fnds...)
+			tableProfiles = append(tableProfiles, profile)
 			scanMu.Unlock()
+
+			if tuning.AdaptiveConcurrency {
+				adjustAdaptiveConcurrency(limiter, tuning, profile)
+			}
 		}()
 	}
 	scanWg.Wait()
@@ -209,56 +226,28 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	// Relationship-based toxic combination detection (SQL query approach)
 	if scanToxicCombos && application.Snowflake != nil {
-		toxicFindings, err := detectToxicCombinationsFromRelationships(ctx, application.Snowflake)
+		toxicFindings, err := scanner.DetectRelationshipToxicCombinations(ctx, application.Snowflake)
 		if err != nil {
 			Warning("Failed to detect toxic combinations from relationships: %v", err)
 		} else if len(toxicFindings) > 0 {
 			// Count by severity
 			critCount, highCount := 0, 0
 			for _, f := range toxicFindings {
-				if rid := normalizeResourceID(toString(f["resource_id"])); rid != "" {
-					if risks := canonicalizeSQLRiskCategories(toString(f["risks"])); len(risks) > 0 {
+				if rid := normalizeResourceID(f.ResourceID); rid != "" {
+					if risks := canonicalizeSQLRiskCategories(f.Risks); len(risks) > 0 {
 						sqlToxicRiskSets[rid] = append(sqlToxicRiskSets[rid], risks)
 					}
 				}
-				policyID := toString(f["policy_id"])
-				resourceID := toString(f["resource_id"])
-				resourceName := toString(f["resource_name"])
-				if application.Findings != nil && policyID != "" && resourceID != "" {
-					title := toString(f["title"])
-					if title == "" {
-						title = policyID
-					}
-					resource := map[string]interface{}{"id": resourceID}
-					if resourceName != "" {
-						resource["name"] = resourceName
-					}
-					if url := toString(f["url"]); url != "" {
-						resource["url"] = url
-					}
-					if sa := toString(f["service_account"]); sa != "" {
-						resource["service_account"] = sa
-					}
-					application.Findings.Upsert(ctx, policy.Finding{
-						ID:             fmt.Sprintf("%s:%s", policyID, resourceID),
-						PolicyID:       policyID,
-						PolicyName:     title,
-						Title:          title,
-						Severity:       strings.ToLower(toString(f["severity"])),
-						Description:    toString(f["description"]),
-						Resource:       resource,
-						ResourceID:     resourceID,
-						ResourceName:   resourceName,
-						RiskCategories: parseRiskCategories(toString(f["risks"])),
-					})
+				if application.Findings != nil && f.PolicyID != "" && f.ResourceID != "" {
+					application.Findings.Upsert(ctx, f.ToPolicyFinding())
 				}
-				switch toString(f["severity"]) {
+				switch f.Severity {
 				case "CRITICAL":
 					critCount++
 				case "HIGH":
 					highCount++
 				}
-				allFindings = append(allFindings, f)
+				allFindings = append(allFindings, relationshipFindingToMap(f))
 			}
 			fmt.Printf("\n%s Toxic combinations detected:\n", color(colorRed, "⚠"))
 			if critCount > 0 {
@@ -385,6 +374,8 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 
 	duration := time.Since(start)
+	profileSummary := scanner.SummarizeTableProfiles(tableProfiles, duration)
+	slowTables := scanner.FilterSlowTables(tableProfiles, tuning.ProfileSlowThreshold)
 
 	var coverageReport *policy.CoverageReport
 	if application.AvailableTables != nil && application.Policy != nil {
@@ -418,6 +409,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 			"attack_path_chokepoints": graphChokepoints,
 			"toxic_combo_summary":     toxicSummary,
 		}
+		payload["scan_profile"] = scanProfilePayload(profileSummary, slowTables, tuning.ProfileSlowThreshold)
 		if coverageReport != nil {
 			payload["policy_coverage"] = coverageReport
 		}
@@ -443,6 +435,10 @@ func runScan(cmd *cobra.Command, args []string) error {
 			})
 		}
 		return CSVOutput(headers, rows)
+	}
+
+	if scanOutput == FormatTable {
+		printScanProfiling(tableProfiles, tuning.ProfileSlowThreshold)
 	}
 
 	// Count by severity
@@ -614,103 +610,27 @@ func sevRank(sev string) int {
 }
 
 func parseRiskCategories(raw string) []string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return nil
-	}
-	parts := strings.Split(raw, ",")
-	items := make([]string, 0, len(parts))
-	for _, part := range parts {
-		item := strings.TrimSpace(part)
-		if item != "" {
-			items = append(items, item)
-		}
-	}
-	return items
+	return scanner.ParseRiskCategories(raw)
 }
 
 func canonicalizeSQLRiskCategories(raw string) map[string]bool {
-	return canonicalizeRiskCategories(parseRiskCategories(raw))
+	return scanner.CanonicalizeRiskCategories(scanner.ParseRiskCategories(raw))
 }
 
 func canonicalizeGraphRiskCategories(categories []string) map[string]bool {
-	return canonicalizeRiskCategories(categories)
+	return scanner.CanonicalizeRiskCategories(categories)
 }
 
 func canonicalizeRiskCategories(categories []string) map[string]bool {
-	if len(categories) == 0 {
-		return nil
-	}
-	canon := make(map[string]bool)
-	for _, category := range categories {
-		label := canonicalizeRiskLabel(category)
-		if label != "" {
-			canon[label] = true
-		}
-	}
-	if len(canon) == 0 {
-		return nil
-	}
-	return canon
-}
-
-func canonicalizeRiskLabel(label string) string {
-	label = strings.TrimSpace(label)
-	if label == "" {
-		return ""
-	}
-	label = strings.Trim(label, "\"")
-	label = strings.ToLower(label)
-	label = strings.ReplaceAll(label, "-", "_")
-	label = strings.ReplaceAll(label, " ", "_")
-	label = strings.ReplaceAll(label, "__", "_")
-	switch label {
-	case "external_exposure", "public_exposure", "public_access", "internet_exposure":
-		return "network_exposure"
-	case "unprotected_data", "data_exposure", "data_access":
-		return "sensitive_data"
-	case "unprotected_principal":
-		return "over_privilege"
-	case "no_authentication", "no_auth":
-		return "weak_authentication"
-	case "confused_deputy":
-		return "privilege_escalation"
-	}
-	return label
+	return scanner.CanonicalizeRiskCategories(categories)
 }
 
 func shouldSkipGraphToxicCombination(resourceID string, graphRisks map[string]bool, sqlRiskSets map[string][]map[string]bool) bool {
-	if resourceID == "" || len(graphRisks) == 0 {
-		return false
-	}
-	sets := sqlRiskSets[resourceID]
-	if len(sets) == 0 {
-		return false
-	}
-	for _, sqlSet := range sets {
-		if riskSetSuperset(sqlSet, graphRisks) {
-			return true
-		}
-	}
-	return false
-}
-
-func riskSetSuperset(superset map[string]bool, subset map[string]bool) bool {
-	if len(subset) == 0 {
-		return false
-	}
-	for key := range subset {
-		if !superset[key] {
-			return false
-		}
-	}
-	return true
+	return scanner.ShouldSkipGraphToxicCombination(resourceID, graphRisks, sqlRiskSets)
 }
 
 func normalizeResourceID(id string) string {
-	id = strings.TrimSpace(id)
-	id = strings.Trim(id, "\"")
-	return id
+	return scanner.NormalizeResourceID(id)
 }
 
 type toxicComboSummary struct {
@@ -975,11 +895,162 @@ func dedupeStrings(values []string) []string {
 	return result
 }
 
+func retryCount(attempts int) int {
+	if attempts > 1 {
+		return attempts - 1
+	}
+	return 0
+}
+
+func relationshipFindingToMap(f scanner.RelationshipToxicFinding) map[string]interface{} {
+	return map[string]interface{}{
+		"severity":        f.Severity,
+		"policy_id":       f.PolicyID,
+		"title":           f.Title,
+		"resource_id":     f.ResourceID,
+		"resource_name":   f.ResourceName,
+		"url":             f.URL,
+		"service_account": f.ServiceAccount,
+		"description":     f.Description,
+		"risks":           f.Risks,
+		"toxic_combo":     true,
+	}
+}
+
+func adjustAdaptiveConcurrency(limiter *scanner.AdaptiveLimiter, tuning app.ScanTuning, profile scanner.TableScanProfile) {
+	limit := limiter.Limit()
+	newLimit := limit
+	slow := profile.TimedOut || profile.FetchErrors > 0 || profile.RetryAttempts > 0 || profile.Duration >= tuning.SlowTableThreshold
+	fast := !slow && profile.Duration > 0 && profile.Duration <= tuning.FastTableThreshold
+	if slow {
+		newLimit = limit - 1
+	} else if fast {
+		newLimit = limit + 1
+	}
+	if newLimit == limit {
+		return
+	}
+	adjusted := limiter.Adjust(newLimit)
+	if adjusted == limit {
+		return
+	}
+	Info("Adjusting scan concurrency: %d -> %d (table=%s, duration=%s, retries=%d, errors=%d)",
+		limit,
+		adjusted,
+		profile.Table,
+		profile.Duration.Round(time.Second),
+		profile.RetryAttempts,
+		profile.FetchErrors,
+	)
+}
+
+func printScanProfiling(profiles []scanner.TableScanProfile, slowThreshold time.Duration) {
+	if len(profiles) == 0 {
+		return
+	}
+	sorted := scanner.SortTableProfilesByDuration(profiles)
+	maxRows := 5
+	if len(sorted) < maxRows {
+		maxRows = len(sorted)
+	}
+	if maxRows == 0 {
+		return
+	}
+	fmt.Println("\nScan profiling:")
+	for i := 0; i < maxRows; i++ {
+		profile := sorted[i]
+		status := ""
+		if profile.TimedOut {
+			status = " (timeout)"
+		}
+		fmt.Printf("  %s: %s scanned=%d violations=%d retries=%d errors=%d%s\n",
+			profile.Table,
+			profile.Duration.Round(time.Second),
+			profile.Scanned,
+			profile.Violations,
+			profile.RetryAttempts,
+			profile.FetchErrors,
+			status,
+		)
+	}
+	slowTables := scanner.FilterSlowTables(profiles, slowThreshold)
+	if len(slowTables) > 0 {
+		names := make([]string, 0, len(slowTables))
+		for _, profile := range slowTables {
+			names = append(names, profile.Table)
+		}
+		fmt.Printf("  Slow tables (>%s): %s\n", slowThreshold, strings.Join(names, ", "))
+	}
+}
+
+func scanProfilePayload(summary scanner.ScanProfileSummary, slowTables []scanner.TableScanProfile, slowThreshold time.Duration) map[string]interface{} {
+	profiles := make([]map[string]interface{}, 0, len(summary.Tables))
+	for _, profile := range summary.Tables {
+		profiles = append(profiles, map[string]interface{}{
+			"table":          profile.Table,
+			"duration":       profile.Duration.String(),
+			"scanned":        profile.Scanned,
+			"violations":     profile.Violations,
+			"cache_skipped":  profile.CacheSkipped,
+			"batches":        profile.Batches,
+			"retry_attempts": profile.RetryAttempts,
+			"fetch_errors":   profile.FetchErrors,
+			"scan_errors":    profile.ScanErrors,
+			"timed_out":      profile.TimedOut,
+		})
+	}
+	slow := make([]map[string]interface{}, 0, len(slowTables))
+	for _, profile := range slowTables {
+		slow = append(slow, map[string]interface{}{
+			"table":     profile.Table,
+			"duration":  profile.Duration.String(),
+			"timed_out": profile.TimedOut,
+		})
+	}
+	return map[string]interface{}{
+		"total_scanned":    summary.TotalScanned,
+		"total_violations": summary.TotalViolations,
+		"total_skipped":    summary.TotalSkipped,
+		"total_duration":   summary.TotalDuration.String(),
+		"slow_threshold":   slowThreshold.String(),
+		"tables":           profiles,
+		"slow_tables":      slow,
+	}
+}
+
 // scanOneTable fetches assets from one Snowflake table, evaluates policies, and returns results.
-func scanOneTable(ctx context.Context, application *app.App, table string, full bool, limit int, toxicCombos, graphAvailable bool) (scanned, violations int64, findings []map[string]interface{}) {
+func scanOneTable(ctx context.Context, application *app.App, table string, full bool, limit int, toxicCombos, graphAvailable bool, tuning app.ScanTuning) (scanned, violations int64, findings []map[string]interface{}, profile scanner.TableScanProfile) {
 	fmt.Printf("\n%s Scanning %s...\n", color(colorCyan, "→"), table)
 
-	filter := snowflake.AssetFilter{Limit: limit}
+	profile = scanner.TableScanProfile{Table: table}
+	start := time.Now()
+
+	tableCtx := ctx
+	cancel := func() {}
+	if tuning.TableTimeout > 0 {
+		tableCtx, cancel = context.WithTimeout(ctx, tuning.TableTimeout)
+	}
+	defer cancel()
+	defer func() {
+		profile.Scanned = scanned
+		profile.Violations = violations
+		profile.Duration = time.Since(start)
+		if errors.Is(tableCtx.Err(), context.DeadlineExceeded) {
+			profile.TimedOut = true
+		}
+	}()
+
+	columns := application.ScanColumnsForTable(tableCtx, table)
+	limitActive := limit > 0
+	batchSize := scanner.DefaultIncrementalConfig().BatchSize
+	if limitActive && limit < batchSize {
+		batchSize = limit
+	}
+	if batchSize <= 0 {
+		batchSize = scanner.DefaultIncrementalConfig().BatchSize
+	}
+
+	filter := snowflake.AssetFilter{Limit: batchSize, Columns: columns}
 	useCDC := false
 	var cdcCursor time.Time
 	var cdcIDs []string
@@ -989,76 +1060,184 @@ func scanOneTable(ctx context.Context, application *app.App, table string, full 
 			filter.Since = wm.LastScanTime
 			filter.SinceID = wm.LastScanID
 
-			cdcEvents, err := application.Snowflake.GetCDCEvents(ctx, table, wm.LastScanTime, limit)
+			cdcEvents, attempts, err := scanner.WithRetryValue(tableCtx, tuning.RetryOptions, func() ([]snowflake.CDCEvent, error) {
+				return application.Snowflake.GetCDCEvents(tableCtx, table, wm.LastScanTime, batchSize)
+			})
+			profile.RetryAttempts += retryCount(attempts)
 			if err != nil {
+				profile.FetchErrors++
 				Warning("Failed to query CDC events for %s, falling back to sync_time: %v", table, err)
-			} else {
+			} else if len(cdcEvents) > 0 && len(cdcEvents) < batchSize {
 				useCDC = true
 				cdcIDs, cdcCursor = filterCDCEvents(cdcEvents)
 			}
 		}
 	}
 
-	var assets []map[string]interface{}
-	var err error
+	remaining := int64(limit)
+	var cursorTime time.Time
+	var cursorID string
+
 	if useCDC && !full {
 		if len(cdcIDs) == 0 {
 			if !cdcCursor.IsZero() && application.ScanWatermarks != nil {
 				application.ScanWatermarks.SetWatermark(table, cdcCursor, "", 0)
 			}
 			fmt.Printf("  No assets to scan for CDC changes\n")
-			return 0, 0, nil
+			return 0, 0, nil, profile
 		}
-		assets, err = application.Snowflake.GetAssetsByIDs(ctx, table, cdcIDs)
-	} else {
-		assets, err = application.Snowflake.GetAssets(ctx, table, filter)
-	}
-	if err != nil {
-		Warning("Failed to fetch %s: %v", table, err)
-		return 0, 0, nil
-	}
 
-	if len(assets) == 0 {
-		fmt.Printf("  No new assets found\n")
-		return 0, 0, nil
-	}
-
-	result := application.Scanner.ScanAssets(ctx, assets)
-	scanned = result.Scanned
-	violations = result.Violations
-
-	for _, f := range result.Findings {
-		application.Findings.Upsert(ctx, f)
-		findings = append(findings, map[string]interface{}{
-			"id":          f.ID,
-			"policy_id":   f.PolicyID,
-			"resource_id": f.ResourceID,
-			"severity":    f.Severity,
+		assets, attempts, err := scanner.WithRetryValue(tableCtx, tuning.RetryOptions, func() ([]map[string]interface{}, error) {
+			return application.Snowflake.GetAssetsByIDs(tableCtx, table, cdcIDs, columns)
 		})
-	}
+		profile.RetryAttempts += retryCount(attempts)
+		if err != nil {
+			profile.FetchErrors++
+			Warning("Failed to fetch %s: %v", table, err)
+			return 0, 0, nil, profile
+		}
+		if len(assets) == 0 {
+			fmt.Printf("  No new assets found\n")
+			return 0, 0, nil, profile
+		}
 
-	if toxicCombos && !graphAvailable {
-		toxicFindings := application.Scanner.DetectToxicCombinations(ctx, assets)
-		violations += int64(len(toxicFindings))
-		for _, f := range toxicFindings {
-			application.Findings.Upsert(ctx, f)
+		result := application.Scanner.ScanAssets(tableCtx, assets)
+		profile.Batches++
+		profile.CacheSkipped += result.Skipped
+		profile.ScanErrors += len(result.Errors)
+		scanned += result.Scanned
+		violations += result.Violations
+
+		for _, f := range result.Findings {
+			application.Findings.Upsert(tableCtx, f)
 			findings = append(findings, map[string]interface{}{
 				"id":          f.ID,
 				"policy_id":   f.PolicyID,
 				"resource_id": f.ResourceID,
 				"severity":    f.Severity,
-				"toxic_combo": true,
-				"graph_based": false,
 			})
+		}
+
+		if toxicCombos && !graphAvailable {
+			toxicFindings := application.Scanner.DetectToxicCombinations(tableCtx, assets)
+			violations += int64(len(toxicFindings))
+			for _, f := range toxicFindings {
+				application.Findings.Upsert(tableCtx, f)
+				findings = append(findings, map[string]interface{}{
+					"id":          f.ID,
+					"policy_id":   f.PolicyID,
+					"resource_id": f.ResourceID,
+					"severity":    f.Severity,
+					"toxic_combo": true,
+					"graph_based": false,
+				})
+			}
+		}
+
+		cursorTime, cursorID = scanner.ExtractScanCursor(assets)
+	} else {
+		offset := 0
+		useCursorPaging := !filter.Since.IsZero()
+		for !limitActive || remaining > 0 {
+			if tableCtx.Err() != nil {
+				break
+			}
+			if limitActive && remaining < int64(batchSize) {
+				filter.Limit = int(remaining)
+			} else {
+				filter.Limit = batchSize
+			}
+			if !useCursorPaging {
+				filter.Offset = offset
+			}
+
+			assets, attempts, err := scanner.WithRetryValue(tableCtx, tuning.RetryOptions, func() ([]map[string]interface{}, error) {
+				return application.Snowflake.GetAssets(tableCtx, table, filter)
+			})
+			profile.RetryAttempts += retryCount(attempts)
+			if err != nil {
+				profile.FetchErrors++
+				Warning("Failed to fetch %s: %v", table, err)
+				break
+			}
+			if len(assets) == 0 {
+				if scanned == 0 {
+					fmt.Printf("  No new assets found\n")
+				}
+				break
+			}
+
+			result := application.Scanner.ScanAssets(tableCtx, assets)
+			profile.Batches++
+			profile.CacheSkipped += result.Skipped
+			profile.ScanErrors += len(result.Errors)
+			scanned += result.Scanned
+			violations += result.Violations
+
+			for _, f := range result.Findings {
+				application.Findings.Upsert(tableCtx, f)
+				findings = append(findings, map[string]interface{}{
+					"id":          f.ID,
+					"policy_id":   f.PolicyID,
+					"resource_id": f.ResourceID,
+					"severity":    f.Severity,
+				})
+			}
+
+			if toxicCombos && !graphAvailable {
+				toxicFindings := application.Scanner.DetectToxicCombinations(tableCtx, assets)
+				violations += int64(len(toxicFindings))
+				for _, f := range toxicFindings {
+					application.Findings.Upsert(tableCtx, f)
+					findings = append(findings, map[string]interface{}{
+						"id":          f.ID,
+						"policy_id":   f.PolicyID,
+						"resource_id": f.ResourceID,
+						"severity":    f.Severity,
+						"toxic_combo": true,
+						"graph_based": false,
+					})
+				}
+			}
+
+			batchTime, batchID := scanner.ExtractScanCursor(assets)
+			if scanner.IsCursorAfter(batchTime, batchID, cursorTime, cursorID) {
+				cursorTime = batchTime
+				cursorID = batchID
+			}
+
+			if useCursorPaging {
+				if batchTime.IsZero() {
+					break
+				}
+				filter.Since = batchTime
+				filter.SinceID = batchID
+			} else {
+				offset += len(assets)
+			}
+
+			if limitActive {
+				remaining -= result.Scanned
+				if remaining <= 0 {
+					break
+				}
+			}
+			if len(assets) < filter.Limit {
+				break
+			}
 		}
 	}
 
-	fmt.Printf("  Scanned: %d, Violations: %d (%s)\n",
-		scanned, violations, result.Duration.Round(time.Millisecond))
+	if scanned > 0 {
+		fmt.Printf("  Scanned: %d, Violations: %d (%s)\n",
+			scanned, violations, time.Since(start).Round(time.Millisecond))
+	}
+	if errors.Is(tableCtx.Err(), context.DeadlineExceeded) {
+		profile.TimedOut = true
+		Warning("Table %s timed out after %s", table, tuning.TableTimeout)
+	}
 
-	// Update watermark
-	if application.ScanWatermarks != nil {
-		cursorTime, cursorID := scanner.ExtractScanCursor(assets)
+	if application.ScanWatermarks != nil && scanned > 0 {
 		if useCDC && !full && !cdcCursor.IsZero() {
 			if scanner.IsCursorAfter(cdcCursor, "", cursorTime, cursorID) {
 				cursorTime = cdcCursor
@@ -1071,7 +1250,7 @@ func scanOneTable(ctx context.Context, application *app.App, table string, full 
 		application.ScanWatermarks.SetWatermark(table, cursorTime, cursorID, scanned)
 	}
 
-	return scanned, violations, findings
+	return scanned, violations, findings, profile
 }
 
 // devResourcePatterns identifies resources in development/test environments.
@@ -1098,180 +1277,4 @@ func isRemovalEvent(changeType string) bool {
 	default:
 		return false
 	}
-}
-
-// detectToxicCombinationsFromRelationships queries the relationship table to detect toxic combinations
-func detectToxicCombinationsFromRelationships(ctx context.Context, sf *snowflake.Client) ([]map[string]interface{}, error) {
-	// Query for toxic combinations using relationship data
-	query := `
-WITH toxic_cloudrun_with_vuln AS (
-    -- CRITICAL: Cloud Run with default SA + public exposure + unpinned image (vulnerability risk)
-    SELECT 
-        s.NAME as resource_id,
-        REPLACE(s.NAME, '"', '') as clean_name,
-        REPLACE(s.URI, '"', '') as url,
-        r_sa.TARGET_ID as service_account,
-        TEMPLATE:containers[0]:image::VARCHAR as container_image,
-        CASE 
-            WHEN TEMPLATE:containers[0]:image::VARCHAR LIKE '%:latest%' 
-                 OR (TEMPLATE:containers[0]:image::VARCHAR NOT LIKE '%@sha256:%' 
-                     AND TEMPLATE:containers[0]:image::VARCHAR NOT LIKE '%:%') 
-            THEN TRUE ELSE FALSE 
-        END as unpinned_image
-    FROM GCP_CLOUDRUN_SERVICES s
-    JOIN RAW.RESOURCE_RELATIONSHIPS r_sa 
-        ON REPLACE(s.NAME, '"', '') = r_sa.SOURCE_ID 
-        AND r_sa.REL_TYPE = 'USES_DEFAULT_SA'
-    WHERE s.INGRESS = 'INGRESS_TRAFFIC_ALL'
-),
-toxic_buckets AS (
-    -- CRITICAL: Public buckets
-    SELECT 
-        b.NAME as resource_id,
-        REPLACE(b.NAME, '"', '') as clean_name,
-        REPLACE(b.SELF_LINK, '"', '') as url,
-        NULL as service_account,
-        NULL as container_image,
-        FALSE as unpinned_image
-    FROM GCP_STORAGE_BUCKETS b
-    WHERE b.IAM_POLICY LIKE '%allUsers%' OR b.IAM_POLICY LIKE '%allAuthenticatedUsers%'
-),
-high_iam_confused_deputy AS (
-    -- HIGH: IAM roles without confused deputy protection that trust AWS services
-    SELECT 
-        r.ARN as resource_id,
-        REPLACE(r.ARN, '"', '') as clean_name,
-        NULL as url,
-        NULL as service_account,
-        NULL as container_image,
-        FALSE as unpinned_image
-    FROM AWS_IAM_ROLES r
-    WHERE r.ASSUME_ROLE_POLICY_DOCUMENT NOT LIKE '%aws:SourceArn%'
-      AND r.ASSUME_ROLE_POLICY_DOCUMENT NOT LIKE '%aws:SourceAccount%'
-      AND r.ASSUME_ROLE_POLICY_DOCUMENT LIKE '%sts:AssumeRole%'
-      AND r.ASSUME_ROLE_POLICY_DOCUMENT LIKE '%Service%'
-),
-high_cloudrun_no_auth AS (
-    -- HIGH: Cloud Run services with no authentication (not using default SA)
-    SELECT 
-        s.NAME as resource_id,
-        REPLACE(s.NAME, '"', '') as clean_name,
-        REPLACE(s.URI, '"', '') as url,
-        NULL as service_account,
-        TEMPLATE:containers[0]:image::VARCHAR as container_image,
-        FALSE as unpinned_image
-    FROM GCP_CLOUDRUN_SERVICES s
-    WHERE s.INGRESS = 'INGRESS_TRAFFIC_ALL'
-      AND NOT EXISTS (
-          SELECT 1 FROM RAW.RESOURCE_RELATIONSHIPS r 
-          WHERE REPLACE(s.NAME, '"', '') = r.SOURCE_ID AND r.REL_TYPE = 'USES_DEFAULT_SA'
-      )
-)
--- CRITICAL: Cloud Run with default SA + public + unpinned image = vulnerability risk
-SELECT 
-    'CRITICAL' as severity,
-    'toxic-cloudrun-vuln-default-sa' as policy_id,
-    'Internet-facing Cloud Run with vulnerabilities and data access' as title,
-    clean_name as resource_name,
-    resource_id,
-    url,
-    service_account,
-    container_image,
-    'Cloud Run is public, uses default SA with data access, and runs unpinned image susceptible to supply chain attacks' as description,
-    'EXTERNAL_EXPOSURE, VULNERABILITY, UNPROTECTED_PRINCIPAL, UNPROTECTED_DATA' as risks
-FROM toxic_cloudrun_with_vuln
-WHERE unpinned_image = TRUE
-
-UNION ALL
-
--- CRITICAL: Cloud Run with default SA + public (no unpinned image)
-SELECT 
-    'CRITICAL' as severity,
-    'toxic-cloudrun-external-default-sa' as policy_id,
-    'Internet-facing Cloud Run with default SA and data access' as title,
-    clean_name as resource_name,
-    resource_id,
-    url,
-    service_account,
-    container_image,
-    'Cloud Run service is publicly accessible, uses default compute service account with broad permissions' as description,
-    'EXTERNAL_EXPOSURE, UNPROTECTED_PRINCIPAL, UNPROTECTED_DATA' as risks
-FROM toxic_cloudrun_with_vuln
-WHERE unpinned_image = FALSE
-
-UNION ALL
-
-SELECT 
-    'CRITICAL' as severity,
-    'toxic-bucket-public-data' as policy_id,
-    'Publicly readable bucket contains sensitive data' as title,
-    clean_name as resource_name,
-    resource_id,
-    url,
-    service_account,
-    container_image,
-    'Storage bucket is publicly accessible and may contain sensitive data' as description,
-    'EXTERNAL_EXPOSURE, UNPROTECTED_DATA' as risks
-FROM toxic_buckets
-
-UNION ALL
-
-SELECT 
-    'HIGH' as severity,
-    'iam-confused-deputy-risk' as policy_id,
-    'IAM role vulnerable to confused deputy attack' as title,
-    clean_name as resource_name,
-    resource_id,
-    url,
-    service_account,
-    container_image,
-    'IAM role trust policy allows AWS services to assume it without SourceArn/SourceAccount conditions' as description,
-    'CONFUSED_DEPUTY, PRIVILEGE_ESCALATION' as risks
-FROM high_iam_confused_deputy
-
-UNION ALL
-
-SELECT 
-    'HIGH' as severity,
-    'cloudrun-public-no-auth' as policy_id,
-    'Cloud Run service publicly accessible' as title,
-    clean_name as resource_name,
-    resource_id,
-    url,
-    service_account,
-    container_image,
-    'Cloud Run service is exposed to internet without IAM authentication' as description,
-    'EXTERNAL_EXPOSURE, NO_AUTHENTICATION' as risks
-FROM high_cloudrun_no_auth
-`
-	result, err := sf.Query(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("toxic combination query failed: %w", err)
-	}
-
-	return mapToxicCombinationRows(result.Rows), nil
-}
-
-func mapToxicCombinationRows(rows []map[string]interface{}) []map[string]interface{} {
-	findings := make([]map[string]interface{}, 0, len(rows))
-	for _, row := range rows {
-		f := map[string]interface{}{
-			"severity":        toString(row["severity"]),
-			"policy_id":       toString(row["policy_id"]),
-			"title":           toString(row["title"]),
-			"resource_id":     toString(row["resource_id"]),
-			"resource_name":   toString(row["resource_name"]),
-			"url":             toString(row["url"]),
-			"service_account": toString(row["service_account"]),
-			"description":     toString(row["description"]),
-			"risks":           toString(row["risks"]),
-			"toxic_combo":     true,
-		}
-		// Skip rows where the query returned empty/NULL columns
-		if f["policy_id"] == "" && f["severity"] == "" {
-			continue
-		}
-		findings = append(findings, f)
-	}
-	return findings
 }

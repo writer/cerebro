@@ -29,6 +29,23 @@ type AssetFilter struct {
 	Columns  []string // If set, only SELECT these columns instead of *
 }
 
+func selectClause(columns []string) string {
+	if len(columns) == 0 {
+		return "*"
+	}
+	validated := make([]string, 0, len(columns))
+	for _, col := range columns {
+		if err := ValidateColumnName(col); err != nil {
+			continue
+		}
+		validated = append(validated, strings.ToUpper(col))
+	}
+	if len(validated) == 0 {
+		return "*"
+	}
+	return strings.Join(validated, ", ")
+}
+
 func (c *Client) GetAssets(ctx context.Context, table string, filter AssetFilter) ([]map[string]interface{}, error) {
 	// Use strict validation to ensure table is a known asset table
 	if err := ValidateTableNameStrict(table); err != nil {
@@ -40,20 +57,7 @@ func (c *Client) GetAssets(ctx context.Context, table string, filter AssetFilter
 		return nil, err
 	}
 
-	selectClause := "*"
-	if len(filter.Columns) > 0 {
-		validated := make([]string, 0, len(filter.Columns))
-		for _, col := range filter.Columns {
-			if err := ValidateColumnName(col); err != nil {
-				continue
-			}
-			validated = append(validated, strings.ToUpper(col))
-		}
-		if len(validated) > 0 {
-			selectClause = strings.Join(validated, ", ")
-		}
-	}
-	query := "SELECT " + selectClause + " FROM " + tableRef
+	query := "SELECT " + selectClause(filter.Columns) + " FROM " + tableRef
 
 	var conditions []string
 	var args []interface{}
@@ -118,7 +122,7 @@ func (c *Client) GetAssets(ctx context.Context, table string, filter AssetFilter
 }
 
 // GetAssetsByIDs returns assets matching the provided IDs.
-func (c *Client) GetAssetsByIDs(ctx context.Context, table string, ids []string) ([]map[string]interface{}, error) {
+func (c *Client) GetAssetsByIDs(ctx context.Context, table string, ids []string, columns []string) ([]map[string]interface{}, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -140,7 +144,7 @@ func (c *Client) GetAssetsByIDs(ctx context.Context, table string, ids []string)
 		args[i] = id
 	}
 
-	query := fmt.Sprintf("SELECT * FROM %s WHERE _CQ_ID IN (%s)", tableRef, strings.Join(placeholders, ", "))
+	query := fmt.Sprintf("SELECT %s FROM %s WHERE _CQ_ID IN (%s)", selectClause(columns), tableRef, strings.Join(placeholders, ", "))
 	result, err := c.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err

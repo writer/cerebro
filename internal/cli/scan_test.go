@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/writerinternal/cerebro/internal/scanner"
 	"github.com/writerinternal/cerebro/internal/snowflake"
 )
 
@@ -125,19 +126,16 @@ func TestMapToxicCombinationRows(t *testing.T) {
 		},
 	}
 
-	findings := mapToxicCombinationRows(rows)
+	findings := scanner.MapRelationshipToxicRows(rows)
 	if len(findings) != 1 {
 		t.Fatalf("expected 1 finding, got %d", len(findings))
 	}
 	f := findings[0]
-	if f["policy_id"] != "toxic-bucket-public-data" {
-		t.Errorf("policy_id = %v", f["policy_id"])
+	if f.PolicyID != "toxic-bucket-public-data" {
+		t.Errorf("policy_id = %v", f.PolicyID)
 	}
-	if f["resource_id"] != "r1" {
-		t.Errorf("resource_id = %v", f["resource_id"])
-	}
-	if tc, ok := f["toxic_combo"].(bool); !ok || !tc {
-		t.Errorf("expected toxic_combo true, got %v", f["toxic_combo"])
+	if f.ResourceID != "r1" {
+		t.Errorf("resource_id = %v", f.ResourceID)
 	}
 }
 
