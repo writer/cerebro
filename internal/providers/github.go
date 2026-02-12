@@ -26,6 +26,7 @@ type githubRepoInfo struct {
 	Name          string
 	FullName      string
 	DefaultBranch string
+	Visibility    string
 }
 
 type githubMembership struct {
@@ -211,6 +212,36 @@ func (g *GitHubProvider) Schema() []TableSchema {
 			PrimaryKey: []string{"id"},
 		},
 		{
+			Name:        "github_runner_groups",
+			Description: "GitHub Actions runner groups",
+			Columns: []ColumnSchema{
+				{Name: "id", Type: "integer", Required: true},
+				{Name: "name", Type: "string"},
+				{Name: "visibility", Type: "string"},
+				{Name: "allows_public_repositories", Type: "boolean"},
+				{Name: "selected_repositories_count", Type: "integer"},
+				{Name: "default", Type: "boolean"},
+				{Name: "restricted_to_workflows", Type: "boolean"},
+			},
+			PrimaryKey: []string{"id"},
+		},
+		{
+			Name:        "github_runners",
+			Description: "GitHub self-hosted runners",
+			Columns: []ColumnSchema{
+				{Name: "id", Type: "integer", Required: true},
+				{Name: "name", Type: "string"},
+				{Name: "os", Type: "string"},
+				{Name: "status", Type: "string"},
+				{Name: "busy", Type: "boolean"},
+				{Name: "labels", Type: "array"},
+				{Name: "runner_group_id", Type: "integer"},
+				{Name: "runner_group_name", Type: "string"},
+				{Name: "runner_group", Type: "json"},
+			},
+			PrimaryKey: []string{"id"},
+		},
+		{
 			Name:        "github_teams",
 			Description: "GitHub organization teams",
 			Columns: []ColumnSchema{
@@ -320,6 +351,20 @@ func (g *GitHubProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResul
 		syncTable("github_organization_members", memberRows)
 	}
 
+	runnerGroupRows, runnerGroups, err := g.fetchRunnerGroups(ctx)
+	if err != nil {
+		result.Errors = append(result.Errors, "runner_groups: "+err.Error())
+	} else {
+		syncTable("github_runner_groups", runnerGroupRows)
+	}
+
+	runnerRows, err := g.fetchRunners(ctx, runnerGroups)
+	if err != nil {
+		result.Errors = append(result.Errors, "runners: "+err.Error())
+	} else {
+		syncTable("github_runners", runnerRows)
+	}
+
 	teamRows, err := g.fetchTeams(ctx)
 	if err != nil {
 		result.Errors = append(result.Errors, "teams: "+err.Error())
@@ -382,6 +427,46 @@ func (g *GitHubProvider) listAll(ctx context.Context, path string) ([]map[string
 		}
 		page++
 	}
+	return allItems, nil
+}
+
+func (g *GitHubProvider) listAllWithKey(ctx context.Context, path string, key string) ([]map[string]interface{}, error) {
+	page := 1
+	var allItems []map[string]interface{}
+	for {
+		paged := addQueryParams(path, map[string]string{
+			"per_page": "100",
+			"page":     strconv.Itoa(page),
+		})
+		body, err := g.request(ctx, paged)
+		if err != nil {
+			return nil, err
+		}
+
+		var payload map[string]interface{}
+		if err := json.Unmarshal(body, &payload); err != nil {
+			return nil, err
+		}
+
+		rawItems, ok := payload[key].([]interface{})
+		if !ok || len(rawItems) == 0 {
+			break
+		}
+
+		items := make([]map[string]interface{}, 0, len(rawItems))
+		for _, item := range rawItems {
+			if m, ok := item.(map[string]interface{}); ok {
+				items = append(items, m)
+			}
+		}
+
+		allItems = append(allItems, items...)
+		if len(items) < 100 {
+			break
+		}
+		page++
+	}
+
 	return allItems, nil
 }
 
@@ -460,12 +545,117 @@ func (g *GitHubProvider) fetchRepositories(ctx context.Context) ([]map[string]in
 			Name:          asString(normalized["name"]),
 			FullName:      asString(normalized["full_name"]),
 			DefaultBranch: asString(normalized["default_branch"]),
+			Visibility:    asString(normalized["visibility"]),
 		}
 		info.FullName = buildRepoFullName(g.org, info)
 		infos = append(infos, info)
 	}
 
 	return rows, infos, nil
+}
+
+func (g *GitHubProvider) fetchRunnerGroups(ctx context.Context) ([]map[string]interface{}, map[string]map[string]interface{}, error) {
+	path := fmt.Sprintf("/orgs/%s/actions/runner-groups", g.org)
+	groups, err := g.listAllWithKey(ctx, path, "runner_groups")
+	if err != nil {
+		if isGitHubIgnorable(err) {
+			return nil, map[string]map[string]interface{}{}, nil
+		}
+		return nil, nil, err
+	}
+
+	rows := make([]map[string]interface{}, 0, len(groups))
+	groupInfo := make(map[string]map[string]interface{}, len(groups))
+	for _, group := range groups {
+		normalized := normalizeGitHubMap(group)
+		groupID := asString(normalized["id"])
+		count := normalized["selected_repositories_count"]
+		visibility := asString(normalized["visibility"])
+		if count == nil && visibility == "selected" {
+			repoCount, countErr := g.fetchRunnerGroupRepositoryCount(ctx, groupID)
+			if countErr != nil {
+				if !isGitHubIgnorable(countErr) {
+					return nil, nil, countErr
+				}
+			} else {
+				count = repoCount
+			}
+		}
+
+		row := map[string]interface{}{
+			"id":                          normalized["id"],
+			"name":                        normalized["name"],
+			"visibility":                  normalized["visibility"],
+			"allows_public_repositories":  normalized["allows_public_repositories"],
+			"selected_repositories_count": count,
+			"default":                     normalized["default"],
+			"restricted_to_workflows":     normalized["restricted_to_workflows"],
+		}
+		rows = append(rows, row)
+
+		if groupID != "" {
+			groupInfo[groupID] = map[string]interface{}{
+				"id":                          normalized["id"],
+				"name":                        normalized["name"],
+				"visibility":                  normalized["visibility"],
+				"allows_public_repositories":  normalized["allows_public_repositories"],
+				"selected_repositories_count": count,
+				"default":                     normalized["default"],
+				"restricted_to_workflows":     normalized["restricted_to_workflows"],
+			}
+		}
+	}
+
+	return rows, groupInfo, nil
+}
+
+func (g *GitHubProvider) fetchRunnerGroupRepositoryCount(ctx context.Context, groupID string) (int, error) {
+	if groupID == "" {
+		return 0, nil
+	}
+
+	path := fmt.Sprintf("/orgs/%s/actions/runner-groups/%s/repositories", g.org, groupID)
+	repos, err := g.listAllWithKey(ctx, path, "repositories")
+	if err != nil {
+		return 0, err
+	}
+
+	return len(repos), nil
+}
+
+func (g *GitHubProvider) fetchRunners(ctx context.Context, runnerGroups map[string]map[string]interface{}) ([]map[string]interface{}, error) {
+	path := fmt.Sprintf("/orgs/%s/actions/runners", g.org)
+	runners, err := g.listAllWithKey(ctx, path, "runners")
+	if err != nil {
+		if isGitHubIgnorable(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	rows := make([]map[string]interface{}, 0, len(runners))
+	for _, runner := range runners {
+		normalized := normalizeGitHubMap(runner)
+		groupID := asString(normalized["runner_group_id"])
+		row := map[string]interface{}{
+			"id":                normalized["id"],
+			"name":              normalized["name"],
+			"os":                normalized["os"],
+			"status":            normalized["status"],
+			"busy":              normalized["busy"],
+			"labels":            normalized["labels"],
+			"runner_group_id":   normalized["runner_group_id"],
+			"runner_group_name": normalized["runner_group_name"],
+		}
+		if groupID != "" {
+			if group, ok := runnerGroups[groupID]; ok {
+				row["runner_group"] = group
+			}
+		}
+		rows = append(rows, row)
+	}
+
+	return rows, nil
 }
 
 func (g *GitHubProvider) fetchDependabotAlerts(ctx context.Context, repo githubRepoInfo) ([]map[string]interface{}, error) {
