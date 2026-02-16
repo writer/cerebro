@@ -3,10 +3,14 @@ package sync
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/guardduty"
+	guarddutytypes "github.com/aws/aws-sdk-go-v2/service/guardduty/types"
 )
+
+const guardDutyIncrementalLookback = 5 * time.Minute
 
 func (e *SyncEngine) guarddutyDetectorTable() TableSpec {
 	return TableSpec{
@@ -66,9 +70,24 @@ func (e *SyncEngine) guarddutyFindingsTable() TableSpec {
 			"title", "description", "severity", "type", "confidence",
 			"created_at", "updated_at", "resource", "service", "partition",
 		},
+		Mode: TableSyncModeIncremental,
 		Fetch: func(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
 			client := guardduty.NewFromConfig(cfg)
 			var results []map[string]interface{}
+			var partialErr error
+
+			var listInput *guardduty.ListFindingsInput
+			if start, ok := e.incrementalStartTime(ctx, "aws_guardduty_findings", region, true, guardDutyIncrementalLookback); ok {
+				e.logger.Info("guardduty findings incremental sync", "region", region, "start", start.Format(time.RFC3339))
+				listInput = &guardduty.ListFindingsInput{
+					FindingCriteria: &guarddutytypes.FindingCriteria{
+						Criterion: map[string]guarddutytypes.Condition{
+							"updatedAt":        {GreaterThanOrEqual: aws.Int64(start.UnixMilli())},
+							"service.archived": {Equals: []string{"false"}},
+						},
+					},
+				}
+			}
 
 			// List all detector IDs
 			listDetOutput, err := client.ListDetectors(ctx, &guardduty.ListDetectorsInput{})
@@ -78,15 +97,20 @@ func (e *SyncEngine) guarddutyFindingsTable() TableSpec {
 
 			for _, detectorID := range listDetOutput.DetectorIds {
 				// List findings for this detector
-				findingsPager := guardduty.NewListFindingsPaginator(client, &guardduty.ListFindingsInput{
-					DetectorId: aws.String(detectorID),
-				})
+				request := &guardduty.ListFindingsInput{DetectorId: aws.String(detectorID)}
+				if listInput != nil {
+					request.FindingCriteria = listInput.FindingCriteria
+				}
+				findingsPager := guardduty.NewListFindingsPaginator(client, request)
 
 				var findingIDs []string
 				for findingsPager.HasMorePages() {
 					page, err := findingsPager.NextPage(ctx)
 					if err != nil {
-						continue
+						if partialErr == nil {
+							partialErr = fmt.Errorf("list findings for detector %s: %w", detectorID, err)
+						}
+						break
 					}
 					findingIDs = append(findingIDs, page.FindingIds...)
 				}
@@ -107,6 +131,9 @@ func (e *SyncEngine) guarddutyFindingsTable() TableSpec {
 						FindingIds: findingIDs[i:end],
 					})
 					if err != nil {
+						if partialErr == nil {
+							partialErr = fmt.Errorf("get findings for detector %s: %w", detectorID, err)
+						}
 						continue
 					}
 
@@ -139,6 +166,13 @@ func (e *SyncEngine) guarddutyFindingsTable() TableSpec {
 						results = append(results, row)
 					}
 				}
+			}
+
+			if partialErr != nil {
+				if len(results) > 0 {
+					return results, newPartialFetchError(partialErr)
+				}
+				return nil, partialErr
 			}
 
 			return results, nil

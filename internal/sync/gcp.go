@@ -16,15 +16,18 @@ import (
 	"github.com/writerinternal/cerebro/internal/metrics"
 	"github.com/writerinternal/cerebro/internal/snowflake"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/time/rate"
 )
 
 // GCPSyncEngine orchestrates GCP resource syncing with change detection
 type GCPSyncEngine struct {
-	sf          *snowflake.Client
-	logger      *slog.Logger
-	concurrency int
-	projectID   string
-	tableFilter map[string]struct{}
+	sf           *snowflake.Client
+	logger       *slog.Logger
+	concurrency  int
+	projectID    string
+	tableFilter  map[string]struct{}
+	rateLimiter  *rate.Limiter
+	retryOptions retryOptions
 }
 
 // GCPEngineOption configures the GCP sync engine
@@ -50,6 +53,12 @@ func NewGCPSyncEngine(sf *snowflake.Client, logger *slog.Logger, opts ...GCPEngi
 	}
 	for _, opt := range opts {
 		opt(e)
+	}
+	if e.rateLimiter == nil {
+		e.rateLimiter = rate.NewLimiter(defaultGCPRateLimit, defaultGCPRateBurst)
+	}
+	if e.retryOptions.Attempts == 0 {
+		e.retryOptions = defaultGCPRetryOptions()
 	}
 	return e
 }
@@ -175,7 +184,7 @@ func (e *GCPSyncEngine) syncTable(ctx context.Context, table GCPTableSpec) (Sync
 		return result, fmt.Errorf("gcp %s (project %s): ensure table: %w", table.Name, e.projectID, err)
 	}
 
-	rows, err := table.Fetch(ctx, e.projectID)
+	rows, err := e.fetchWithRetry(ctx, table)
 	if err != nil {
 		e.logger.Error("fetch failed", "table", table.Name, "error", err)
 		result.Errors = 1

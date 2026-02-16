@@ -50,6 +50,9 @@ func normalizeAWSTableSpecs(tables []TableSpec) []TableSpec {
 
 func normalizeAWSTableSpec(table TableSpec) TableSpec {
 	table.Columns = ensureColumns(table.Columns, "account_id", "region")
+	if table.Scope == TableRegionScopeRegional && isGlobalTableName(table.Name) {
+		table.Scope = TableRegionScopeGlobal
+	}
 	if !hasColumn(table.Columns, "arn") && !hasColumn(table.Columns, "id") {
 		table.Columns = ensureColumns(table.Columns, "id")
 	}

@@ -71,6 +71,11 @@ var (
 	syncOutput            string
 	syncValidate          bool
 	syncAWSProfiles       string // comma-separated AWS SSO profiles
+	syncAWSOrg            bool
+	syncAWSOrgRole        string
+	syncAWSOrgInclude     string
+	syncAWSOrgExclude     string
+	syncAWSOrgConcurrency int
 	syncBackfillBatchSize int
 )
 
@@ -95,6 +100,11 @@ func init() {
 	syncCmd.Flags().StringVarP(&syncOutput, "output", "o", "table", "Output format (table, json)")
 	syncCmd.Flags().BoolVar(&syncValidate, "validate", false, "Validate Snowflake tables without fetching resources")
 	syncCmd.Flags().StringVar(&syncAWSProfiles, "aws-profiles", "", "Comma-separated AWS SSO profile names to sync multiple accounts")
+	syncCmd.Flags().BoolVar(&syncAWSOrg, "aws-org", false, "Sync all AWS organization accounts using assumed roles")
+	syncCmd.Flags().StringVar(&syncAWSOrgRole, "aws-org-role", "OrganizationAccountAccessRole", "IAM role name (or ARN template with {account_id}) to assume in member accounts")
+	syncCmd.Flags().StringVar(&syncAWSOrgInclude, "aws-org-include", "", "Comma-separated AWS account IDs to include when syncing org accounts")
+	syncCmd.Flags().StringVar(&syncAWSOrgExclude, "aws-org-exclude", "", "Comma-separated AWS account IDs to exclude when syncing org accounts")
+	syncCmd.Flags().IntVar(&syncAWSOrgConcurrency, "aws-org-concurrency", 4, "Max concurrent AWS organization account syncs")
 
 	syncBackfillRelationshipsCmd.Flags().IntVar(&syncBackfillBatchSize, "batch-size", 200, "Batch size for relationship ID updates")
 	syncCmd.AddCommand(syncBackfillRelationshipsCmd)
@@ -137,6 +147,14 @@ func runSync(cmd *cobra.Command, args []string) error {
 			return runGCPAssetAPISync(ctx, start, []string{syncGCPProject})
 		}
 		return runGCPSync(ctx, start, syncGCPProject)
+	}
+
+	// Multi-account AWS sync via SSO profiles
+	if syncAWSOrg {
+		if syncAWSProfiles != "" {
+			Warning("Ignoring --aws-profiles because --aws-org is set")
+		}
+		return runAWSOrgSync(ctx, start)
 	}
 
 	// Multi-account AWS sync via SSO profiles

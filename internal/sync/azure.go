@@ -23,6 +23,7 @@ import (
 	"github.com/writerinternal/cerebro/internal/metrics"
 	"github.com/writerinternal/cerebro/internal/snowflake"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/time/rate"
 )
 
 // AzureSyncEngine orchestrates Azure resource syncing with change detection
@@ -33,6 +34,8 @@ type AzureSyncEngine struct {
 	subscriptionID string
 	credential     *azidentity.DefaultAzureCredential
 	tableFilter    map[string]struct{}
+	rateLimiter    *rate.Limiter
+	retryOptions   retryOptions
 }
 
 // AzureEngineOption configures the Azure sync engine
@@ -64,6 +67,12 @@ func NewAzureSyncEngine(sf *snowflake.Client, logger *slog.Logger, opts ...Azure
 	}
 	for _, opt := range opts {
 		opt(e)
+	}
+	if e.rateLimiter == nil {
+		e.rateLimiter = rate.NewLimiter(defaultAzureRateLimit, defaultAzureRateBurst)
+	}
+	if e.retryOptions.Attempts == 0 {
+		e.retryOptions = defaultAzureRetryOptions()
 	}
 	return e, nil
 }
@@ -221,7 +230,7 @@ func (e *AzureSyncEngine) syncTable(ctx context.Context, table AzureTableSpec) (
 		return result, fmt.Errorf("azure %s (subscription %s): ensure table: %w", table.Name, e.subscriptionID, err)
 	}
 
-	rows, err := table.Fetch(ctx, e.credential, e.subscriptionID)
+	rows, err := e.fetchWithRetry(ctx, table)
 	if err != nil {
 		e.logger.Error("fetch failed", "table", table.Name, "error", err)
 		result.Errors = 1

@@ -58,3 +58,23 @@ func (e *SyncEngine) latestTableSyncTime(ctx context.Context, table string, regi
 		return time.Time{}, nil
 	}
 }
+
+func (e *SyncEngine) incrementalStartTime(ctx context.Context, table string, region string, hasRegion bool, lookback time.Duration) (time.Time, bool) {
+	lastSync, err := e.latestTableSyncTime(ctx, table, region, hasRegion)
+	if err != nil {
+		e.logger.Debug("failed to load incremental sync watermark", "table", table, "region", region, "error", err)
+		return time.Time{}, false
+	}
+	return deriveIncrementalStart(lastSync, lookback)
+}
+
+func deriveIncrementalStart(lastSync time.Time, lookback time.Duration) (time.Time, bool) {
+	if lastSync.IsZero() {
+		return time.Time{}, false
+	}
+	start := lastSync.UTC()
+	if lookback > 0 {
+		start = start.Add(-lookback)
+	}
+	return start, true
+}

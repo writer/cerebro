@@ -3,11 +3,14 @@ package sync
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/inspector2"
 	"github.com/aws/aws-sdk-go-v2/service/inspector2/types"
 )
+
+const inspectorIncrementalLookback = 5 * time.Minute
 
 // Inspector Findings table
 func (e *SyncEngine) inspectorFindingTable() TableSpec {
@@ -22,6 +25,7 @@ func (e *SyncEngine) inspectorFindingTable() TableSpec {
 			"remediation", "resources", "severity", "status", "title", "type",
 			"updated_at",
 		},
+		Mode: TableSyncModeIncremental,
 		Fetch: func(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
 			client := inspector2.NewFromConfig(cfg, func(o *inspector2.Options) {
 				o.Region = region
@@ -29,21 +33,33 @@ func (e *SyncEngine) inspectorFindingTable() TableSpec {
 			accountID := e.getAccountIDFromConfig(ctx, cfg)
 			var results []map[string]interface{}
 
-			paginator := inspector2.NewListFindingsPaginator(client, &inspector2.ListFindingsInput{
-				FilterCriteria: &types.FilterCriteria{
-					FindingStatus: []types.StringFilter{
-						{
-							Comparison: types.StringComparisonEquals,
-							Value:      aws.String("ACTIVE"),
-						},
+			filterCriteria := &types.FilterCriteria{
+				FindingStatus: []types.StringFilter{
+					{
+						Comparison: types.StringComparisonEquals,
+						Value:      aws.String("ACTIVE"),
 					},
 				},
-				MaxResults: aws.Int32(100),
+			}
+			if start, ok := e.incrementalStartTime(ctx, "aws_inspector2_findings", region, true, inspectorIncrementalLookback); ok {
+				startTime := start
+				filterCriteria.UpdatedAt = []types.DateFilter{
+					{StartInclusive: &startTime},
+				}
+				e.logger.Info("inspector findings incremental sync", "region", region, "start", start.Format(time.RFC3339))
+			}
+
+			paginator := inspector2.NewListFindingsPaginator(client, &inspector2.ListFindingsInput{
+				FilterCriteria: filterCriteria,
+				MaxResults:     aws.Int32(100),
 			})
 
 			for paginator.HasMorePages() {
 				page, err := paginator.NextPage(ctx)
 				if err != nil {
+					if len(results) > 0 {
+						return results, newPartialFetchError(err)
+					}
 					return nil, err
 				}
 

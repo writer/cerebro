@@ -61,6 +61,7 @@ func (e *SyncEngine) securityHubFindingsTable() TableSpec {
 			"compliance_status", "product_arn", "generator_id", "types",
 			"created_at", "updated_at", "resources", "remediation",
 		},
+		Mode: TableSyncModeIncremental,
 		Fetch: func(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
 			client := securityhub.NewFromConfig(cfg)
 			var results []map[string]interface{}
@@ -71,11 +72,7 @@ func (e *SyncEngine) securityHubFindingsTable() TableSpec {
 				},
 			}
 
-			lastSync, err := e.latestTableSyncTime(ctx, "aws_securityhub_findings", region, true)
-			if err != nil {
-				e.logger.Debug("failed to load securityhub sync watermark", "error", err)
-			} else if !lastSync.IsZero() {
-				start := lastSync.Add(-securityHubIncrementalLookback).UTC()
+			if start, ok := e.incrementalStartTime(ctx, "aws_securityhub_findings", region, true, securityHubIncrementalLookback); ok {
 				filters.UpdatedAt = []securityhubtypes.DateFilter{
 					{Start: aws.String(start.Format(time.RFC3339))},
 				}
@@ -91,6 +88,7 @@ func (e *SyncEngine) securityHubFindingsTable() TableSpec {
 			for paginator.HasMorePages() {
 				pageNum++
 				var page *securityhub.GetFindingsOutput
+				var err error
 				for attempt := 0; attempt <= awsPageRetryMax; attempt++ {
 					pageStart := time.Now()
 					page, err = paginator.NextPage(ctx)
@@ -102,7 +100,10 @@ func (e *SyncEngine) securityHubFindingsTable() TableSpec {
 
 					if !isAWSRateLimitError(err) || attempt == awsPageRetryMax {
 						e.logger.Warn("failed to fetch securityhub findings", "page", pageNum, "error", err)
-						return results, nil
+						if len(results) > 0 {
+							return results, newPartialFetchError(err)
+						}
+						return nil, err
 					}
 
 					delay := awsRetryDelay(attempt)

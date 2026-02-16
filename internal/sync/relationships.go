@@ -135,6 +135,14 @@ func (r *RelationshipExtractor) ExtractAndPersist(ctx context.Context) (int, err
 	}
 	totalRels += count
 
+	// Extract Azure relationships
+	count, err = r.extractAzureRelationships(ctx)
+	if err != nil {
+		hadErrors = true
+		r.logger.Warn("failed to extract Azure relationships", "error", err)
+	}
+	totalRels += count
+
 	// Cleanup stale relationships - use a safe window (1 minute) to avoid race conditions
 	// Only cleanup if extraction had no errors
 	if !hadErrors && totalRels > 0 {
@@ -468,6 +476,9 @@ func (r *RelationshipExtractor) extractEC2Relationships(ctx context.Context) (in
 
 	result, err := r.sf.Query(ctx, query)
 	if err != nil {
+		if isMissingRelationshipSourceError(err) {
+			return 0, nil
+		}
 		return 0, err
 	}
 
@@ -567,6 +578,9 @@ func (r *RelationshipExtractor) extractIAMRoleRelationships(ctx context.Context)
 
 	result, err := r.sf.Query(ctx, query)
 	if err != nil {
+		if isMissingRelationshipSourceError(err) {
+			return 0, nil
+		}
 		return 0, err
 	}
 
@@ -620,6 +634,9 @@ func (r *RelationshipExtractor) extractLambdaRelationships(ctx context.Context) 
 
 	result, err := r.sf.Query(ctx, query)
 	if err != nil {
+		if isMissingRelationshipSourceError(err) {
+			return 0, nil
+		}
 		return 0, err
 	}
 
@@ -683,6 +700,9 @@ func (r *RelationshipExtractor) extractSecurityGroupRelationships(ctx context.Co
 
 	result, err := r.sf.Query(ctx, query)
 	if err != nil {
+		if isMissingRelationshipSourceError(err) {
+			return 0, nil
+		}
 		return 0, err
 	}
 
@@ -753,6 +773,9 @@ func (r *RelationshipExtractor) extractS3Relationships(ctx context.Context) (int
 
 	result, err := r.sf.Query(ctx, query)
 	if err != nil {
+		if isMissingRelationshipSourceError(err) {
+			return 0, nil
+		}
 		return 0, err
 	}
 
@@ -806,6 +829,9 @@ func (r *RelationshipExtractor) extractECSRelationships(ctx context.Context) (in
 
 	result, err := r.sf.Query(ctx, query)
 	if err != nil {
+		if isMissingRelationshipSourceError(err) {
+			return 0, nil
+		}
 		return 0, err
 	}
 
@@ -1073,6 +1099,388 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 		}
 	}
 
+	// GCP Storage buckets - encryption and logging relationships
+	query = `SELECT NAME, LOGGING_LOG_BUCKET, ENCRYPTION_DEFAULT_KMS_KEY
+	         FROM GCP_STORAGE_BUCKETS WHERE NAME IS NOT NULL`
+
+	result, err = r.sf.Query(ctx, query)
+	if err == nil {
+		for _, row := range result.Rows {
+			bucketName := toString(row["NAME"])
+			if bucketName == "" {
+				continue
+			}
+			bucketID := fmt.Sprintf("projects/_/buckets/%s", bucketName)
+
+			if kmsKey := toString(row["ENCRYPTION_DEFAULT_KMS_KEY"]); kmsKey != "" {
+				rels = append(rels, Relationship{
+					SourceID:   bucketID,
+					SourceType: "gcp:storage:bucket",
+					TargetID:   kmsKey,
+					TargetType: "gcp:kms:key",
+					RelType:    RelEncryptedBy,
+				})
+			}
+
+			if logBucket := toString(row["LOGGING_LOG_BUCKET"]); logBucket != "" {
+				rels = append(rels, Relationship{
+					SourceID:   bucketID,
+					SourceType: "gcp:storage:bucket",
+					TargetID:   fmt.Sprintf("projects/_/buckets/%s", logBucket),
+					TargetType: "gcp:storage:bucket",
+					RelType:    RelLogsTo,
+				})
+			}
+		}
+	}
+
+	// GCP SQL instances - service account, network, and encryption relationships
+	query = `SELECT NAME, PROJECT_ID, SELF_LINK, SERVICE_ACCOUNT_EMAIL_ADDRESS, SETTINGS, DISK_ENCRYPTION_CONFIGURATION
+	         FROM GCP_SQL_INSTANCES WHERE NAME IS NOT NULL`
+
+	result, err = r.sf.Query(ctx, query)
+	if err == nil {
+		for _, row := range result.Rows {
+			instanceID := toString(row["SELF_LINK"])
+			name := toString(row["NAME"])
+			projectID := toString(row["PROJECT_ID"])
+			if instanceID == "" && projectID != "" && name != "" {
+				instanceID = fmt.Sprintf("projects/%s/instances/%s", projectID, name)
+			}
+			if instanceID == "" {
+				continue
+			}
+
+			if saEmail := toString(row["SERVICE_ACCOUNT_EMAIL_ADDRESS"]); saEmail != "" {
+				targetID := saEmail
+				if projectID != "" && !strings.Contains(saEmail, "/") {
+					targetID = fmt.Sprintf("projects/%s/serviceAccounts/%s", projectID, saEmail)
+				}
+				rels = append(rels, Relationship{
+					SourceID:   instanceID,
+					SourceType: "gcp:sql:instance",
+					TargetID:   targetID,
+					TargetType: "gcp:iam:service_account",
+					RelType:    RelHasRole,
+				})
+			}
+
+			if settings := asMap(row["SETTINGS"]); settings != nil {
+				if privateNetwork := getStringAny(settings, "private_network", "privateNetwork"); privateNetwork != "" {
+					rels = append(rels, Relationship{
+						SourceID:   instanceID,
+						SourceType: "gcp:sql:instance",
+						TargetID:   privateNetwork,
+						TargetType: "gcp:compute:network",
+						RelType:    RelInVPC,
+					})
+				}
+			}
+
+			if encConfig := asMap(row["DISK_ENCRYPTION_CONFIGURATION"]); encConfig != nil {
+				if kmsKey := getStringAny(encConfig, "kms_key_name", "kmsKeyName"); kmsKey != "" {
+					rels = append(rels, Relationship{
+						SourceID:   instanceID,
+						SourceType: "gcp:sql:instance",
+						TargetID:   kmsKey,
+						TargetType: "gcp:kms:key",
+						RelType:    RelEncryptedBy,
+					})
+				}
+			}
+		}
+	}
+
+	return r.persistRelationships(ctx, rels)
+}
+
+// extractAzureRelationships extracts Azure resource relationships.
+func (r *RelationshipExtractor) extractAzureRelationships(ctx context.Context) (int, error) {
+	var rels []Relationship
+
+	query := `SELECT ID, NETWORK_INTERFACES, AVAILABILITY_SET, OS_DISK, DATA_DISKS
+	          FROM AZURE_COMPUTE_VIRTUAL_MACHINES WHERE ID IS NOT NULL`
+
+	result, err := r.sf.Query(ctx, query)
+	if err != nil {
+		if !isMissingRelationshipSourceError(err) {
+			return 0, err
+		}
+	} else {
+		for _, row := range result.Rows {
+			vmID := toString(row["ID"])
+			if vmID == "" {
+				continue
+			}
+
+			if nicList := asSlice(row["NETWORK_INTERFACES"]); len(nicList) > 0 {
+				for _, nic := range nicList {
+					if nicID := extractReferenceID(nic); nicID != "" {
+						rels = append(rels, Relationship{
+							SourceID:   vmID,
+							SourceType: "azure:compute:virtual_machine",
+							TargetID:   nicID,
+							TargetType: "azure:network:interface",
+							RelType:    RelAttachedTo,
+						})
+					}
+				}
+			}
+
+			if availabilitySetID := normalizeRelationshipID(toString(row["AVAILABILITY_SET"])); availabilitySetID != "" {
+				rels = append(rels, Relationship{
+					SourceID:   vmID,
+					SourceType: "azure:compute:virtual_machine",
+					TargetID:   availabilitySetID,
+					TargetType: "azure:compute:availability_set",
+					RelType:    RelBelongsTo,
+				})
+			}
+
+			if osDiskID := extractManagedDiskID(row["OS_DISK"]); osDiskID != "" {
+				rels = append(rels, Relationship{
+					SourceID:   vmID,
+					SourceType: "azure:compute:virtual_machine",
+					TargetID:   osDiskID,
+					TargetType: "azure:compute:disk",
+					RelType:    RelAttachedTo,
+				})
+			}
+
+			if dataDisks := asSlice(row["DATA_DISKS"]); len(dataDisks) > 0 {
+				for _, disk := range dataDisks {
+					if diskID := extractManagedDiskID(disk); diskID != "" {
+						rels = append(rels, Relationship{
+							SourceID:   vmID,
+							SourceType: "azure:compute:virtual_machine",
+							TargetID:   diskID,
+							TargetType: "azure:compute:disk",
+							RelType:    RelAttachedTo,
+						})
+					}
+				}
+			}
+		}
+	}
+
+	query = `SELECT ID, NETWORK_SECURITY_GROUP, VIRTUAL_MACHINE, IP_CONFIGURATIONS
+	         FROM AZURE_NETWORK_INTERFACES WHERE ID IS NOT NULL`
+	result, err = r.sf.Query(ctx, query)
+	if err != nil {
+		if !isMissingRelationshipSourceError(err) {
+			return 0, err
+		}
+	} else {
+		for _, row := range result.Rows {
+			nicID := toString(row["ID"])
+			if nicID == "" {
+				continue
+			}
+
+			if vmID := normalizeRelationshipID(toString(row["VIRTUAL_MACHINE"])); vmID != "" {
+				rels = append(rels, Relationship{
+					SourceID:   nicID,
+					SourceType: "azure:network:interface",
+					TargetID:   vmID,
+					TargetType: "azure:compute:virtual_machine",
+					RelType:    RelAttachedTo,
+				})
+			}
+
+			if nsgID := normalizeRelationshipID(toString(row["NETWORK_SECURITY_GROUP"])); nsgID != "" {
+				rels = append(rels, Relationship{
+					SourceID:   nicID,
+					SourceType: "azure:network:interface",
+					TargetID:   nsgID,
+					TargetType: "azure:network:security_group",
+					RelType:    RelMemberOf,
+				})
+			}
+
+			if ipConfigs := asSlice(row["IP_CONFIGURATIONS"]); len(ipConfigs) > 0 {
+				for _, ipCfg := range ipConfigs {
+					if subnetID := extractSubnetReferenceID(ipCfg); subnetID != "" {
+						rels = append(rels, Relationship{
+							SourceID:   nicID,
+							SourceType: "azure:network:interface",
+							TargetID:   subnetID,
+							TargetType: "azure:network:subnet",
+							RelType:    RelInSubnet,
+						})
+					}
+				}
+			}
+		}
+	}
+
+	query = `SELECT ID, MANAGED_BY FROM AZURE_COMPUTE_DISKS WHERE ID IS NOT NULL`
+	result, err = r.sf.Query(ctx, query)
+	if err != nil {
+		if !isMissingRelationshipSourceError(err) {
+			return 0, err
+		}
+	} else {
+		for _, row := range result.Rows {
+			diskID := toString(row["ID"])
+			if diskID == "" {
+				continue
+			}
+			if managedBy := normalizeRelationshipID(toString(row["MANAGED_BY"])); managedBy != "" {
+				rels = append(rels, Relationship{
+					SourceID:   diskID,
+					SourceType: "azure:compute:disk",
+					TargetID:   managedBy,
+					TargetType: "azure:compute:virtual_machine",
+					RelType:    RelAttachedTo,
+				})
+			}
+		}
+	}
+
+	query = `SELECT ID, SERVER_NAME, RESOURCE_GROUP, SUBSCRIPTION_ID
+	         FROM AZURE_SQL_DATABASES WHERE ID IS NOT NULL`
+	result, err = r.sf.Query(ctx, query)
+	if err != nil {
+		if !isMissingRelationshipSourceError(err) {
+			return 0, err
+		}
+	} else {
+		for _, row := range result.Rows {
+			dbID := toString(row["ID"])
+			if dbID == "" {
+				continue
+			}
+
+			serverName := toString(row["SERVER_NAME"])
+			if serverName == "" {
+				serverName = azureIDSegment(dbID, "servers")
+			}
+			serverID := azureSQLServerID(toString(row["SUBSCRIPTION_ID"]), toString(row["RESOURCE_GROUP"]), serverName)
+			if serverID == "" {
+				continue
+			}
+
+			rels = append(rels, Relationship{
+				SourceID:   dbID,
+				SourceType: "azure:sql:database",
+				TargetID:   serverID,
+				TargetType: "azure:sql:server",
+				RelType:    RelBelongsTo,
+			})
+		}
+	}
+
+	query = `SELECT ID, ACCOUNT_NAME, RESOURCE_GROUP, SUBSCRIPTION_ID
+	         FROM AZURE_STORAGE_CONTAINERS WHERE ID IS NOT NULL`
+	result, err = r.sf.Query(ctx, query)
+	if err != nil {
+		if !isMissingRelationshipSourceError(err) {
+			return 0, err
+		}
+	} else {
+		for _, row := range result.Rows {
+			containerID := toString(row["ID"])
+			if containerID == "" {
+				continue
+			}
+
+			accountID := azureStorageAccountID(toString(row["SUBSCRIPTION_ID"]), toString(row["RESOURCE_GROUP"]), toString(row["ACCOUNT_NAME"]))
+			if accountID == "" {
+				continue
+			}
+
+			rels = append(rels, Relationship{
+				SourceID:   containerID,
+				SourceType: "azure:storage:container",
+				TargetID:   accountID,
+				TargetType: "azure:storage:account",
+				RelType:    RelBelongsTo,
+			})
+		}
+	}
+
+	query = `SELECT ID, ACCOUNT_NAME, CONTAINER_NAME, RESOURCE_GROUP, SUBSCRIPTION_ID
+	         FROM AZURE_STORAGE_BLOBS WHERE ID IS NOT NULL`
+	result, err = r.sf.Query(ctx, query)
+	if err != nil {
+		if !isMissingRelationshipSourceError(err) {
+			return 0, err
+		}
+	} else {
+		for _, row := range result.Rows {
+			blobID := toString(row["ID"])
+			if blobID == "" {
+				continue
+			}
+
+			containerID := azureStorageContainerID(
+				toString(row["SUBSCRIPTION_ID"]),
+				toString(row["RESOURCE_GROUP"]),
+				toString(row["ACCOUNT_NAME"]),
+				toString(row["CONTAINER_NAME"]),
+			)
+			if containerID == "" {
+				continue
+			}
+
+			rels = append(rels, Relationship{
+				SourceID:   blobID,
+				SourceType: "azure:storage:blob",
+				TargetID:   containerID,
+				TargetType: "azure:storage:container",
+				RelType:    RelBelongsTo,
+			})
+		}
+	}
+
+	vaultByURI := make(map[string]string)
+	query = `SELECT ID, VAULT_URI FROM AZURE_KEYVAULT_VAULTS WHERE ID IS NOT NULL`
+	result, err = r.sf.Query(ctx, query)
+	if err != nil {
+		if !isMissingRelationshipSourceError(err) {
+			return 0, err
+		}
+	} else {
+		for _, row := range result.Rows {
+			vaultID := toString(row["ID"])
+			vaultURI := normalizeVaultURI(toString(row["VAULT_URI"]))
+			if vaultID != "" && vaultURI != "" {
+				vaultByURI[vaultURI] = vaultID
+			}
+		}
+	}
+
+	query = `SELECT ID, VAULT_URI FROM AZURE_KEYVAULT_KEYS WHERE ID IS NOT NULL`
+	result, err = r.sf.Query(ctx, query)
+	if err != nil {
+		if !isMissingRelationshipSourceError(err) {
+			return 0, err
+		}
+	} else {
+		for _, row := range result.Rows {
+			keyID := toString(row["ID"])
+			if keyID == "" {
+				continue
+			}
+			vaultURI := normalizeVaultURI(toString(row["VAULT_URI"]))
+			if vaultURI == "" {
+				continue
+			}
+			targetID := vaultByURI[vaultURI]
+			if targetID == "" {
+				targetID = vaultURI
+			}
+
+			rels = append(rels, Relationship{
+				SourceID:   keyID,
+				SourceType: "azure:keyvault:key",
+				TargetID:   targetID,
+				TargetType: "azure:keyvault:vault",
+				RelType:    RelBelongsTo,
+			})
+		}
+	}
+
 	return r.persistRelationships(ctx, rels)
 }
 
@@ -1121,6 +1529,137 @@ func inferPrincipalType(principal string) string {
 		return "aws:service"
 	}
 	return "unknown"
+}
+
+func isMissingRelationshipSourceError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "does not exist") ||
+		strings.Contains(msg, "not authorized") ||
+		strings.Contains(msg, "invalid identifier")
+}
+
+func extractReferenceID(value interface{}) string {
+	if value == nil {
+		return ""
+	}
+	if ref := asMap(value); ref != nil {
+		if id := getStringAny(ref, "id", "Id", "ID", "resourceId", "resource_id"); id != "" {
+			return normalizeRelationshipID(id)
+		}
+		if properties := asMap(ref["properties"]); properties != nil {
+			if id := getStringAny(properties, "id", "Id", "ID", "resourceId", "resource_id"); id != "" {
+				return normalizeRelationshipID(id)
+			}
+		}
+		if properties := asMap(ref["Properties"]); properties != nil {
+			if id := getStringAny(properties, "id", "Id", "ID", "resourceId", "resource_id"); id != "" {
+				return normalizeRelationshipID(id)
+			}
+		}
+	}
+	return normalizeRelationshipID(toString(value))
+}
+
+func extractManagedDiskID(value interface{}) string {
+	if value == nil {
+		return ""
+	}
+	osDisk := asMap(value)
+	if osDisk == nil {
+		return ""
+	}
+	if managedDisk := asMap(osDisk["managedDisk"]); managedDisk != nil {
+		if id := getStringAny(managedDisk, "id", "Id", "ID"); id != "" {
+			return normalizeRelationshipID(id)
+		}
+	}
+	if managedDisk := asMap(osDisk["ManagedDisk"]); managedDisk != nil {
+		if id := getStringAny(managedDisk, "id", "Id", "ID"); id != "" {
+			return normalizeRelationshipID(id)
+		}
+	}
+	return ""
+}
+
+func extractSubnetReferenceID(value interface{}) string {
+	ipCfg := asMap(value)
+	if ipCfg == nil {
+		return ""
+	}
+	if subnet := asMap(ipCfg["subnet"]); subnet != nil {
+		if id := getStringAny(subnet, "id", "Id", "ID"); id != "" {
+			return normalizeRelationshipID(id)
+		}
+	}
+	if subnet := asMap(ipCfg["Subnet"]); subnet != nil {
+		if id := getStringAny(subnet, "id", "Id", "ID"); id != "" {
+			return normalizeRelationshipID(id)
+		}
+	}
+	if properties := asMap(ipCfg["properties"]); properties != nil {
+		if subnet := asMap(properties["subnet"]); subnet != nil {
+			if id := getStringAny(subnet, "id", "Id", "ID"); id != "" {
+				return normalizeRelationshipID(id)
+			}
+		}
+		if subnet := asMap(properties["Subnet"]); subnet != nil {
+			if id := getStringAny(subnet, "id", "Id", "ID"); id != "" {
+				return normalizeRelationshipID(id)
+			}
+		}
+	}
+	if properties := asMap(ipCfg["Properties"]); properties != nil {
+		if subnet := asMap(properties["subnet"]); subnet != nil {
+			if id := getStringAny(subnet, "id", "Id", "ID"); id != "" {
+				return normalizeRelationshipID(id)
+			}
+		}
+		if subnet := asMap(properties["Subnet"]); subnet != nil {
+			if id := getStringAny(subnet, "id", "Id", "ID"); id != "" {
+				return normalizeRelationshipID(id)
+			}
+		}
+	}
+	return ""
+}
+
+func azureIDSegment(resourceID, segment string) string {
+	parts := strings.Split(resourceID, "/")
+	for i, part := range parts {
+		if strings.EqualFold(part, segment) && i+1 < len(parts) {
+			return parts[i+1]
+		}
+	}
+	return ""
+}
+
+func azureSQLServerID(subscriptionID, resourceGroup, serverName string) string {
+	if subscriptionID == "" || resourceGroup == "" || serverName == "" {
+		return ""
+	}
+	return fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Sql/servers/%s", subscriptionID, resourceGroup, serverName)
+}
+
+func azureStorageAccountID(subscriptionID, resourceGroup, accountName string) string {
+	if subscriptionID == "" || resourceGroup == "" || accountName == "" {
+		return ""
+	}
+	return fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Storage/storageAccounts/%s", subscriptionID, resourceGroup, accountName)
+}
+
+func azureStorageContainerID(subscriptionID, resourceGroup, accountName, containerName string) string {
+	if subscriptionID == "" || resourceGroup == "" || accountName == "" || containerName == "" {
+		return ""
+	}
+	return fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Storage/storageAccounts/%s/blobServices/default/containers/%s", subscriptionID, resourceGroup, accountName, containerName)
+}
+
+func normalizeVaultURI(uri string) string {
+	uri = strings.TrimSpace(strings.ToLower(uri))
+	return strings.TrimSuffix(uri, "/")
 }
 
 func toString(v interface{}) string {

@@ -14,7 +14,23 @@ type TableSpec struct {
 	Name    string
 	Columns []string
 	Fetch   func(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error)
+	Mode    TableSyncMode
+	Scope   TableRegionScope
 }
+
+type TableSyncMode int
+
+const (
+	TableSyncModeFull TableSyncMode = iota
+	TableSyncModeIncremental
+)
+
+type TableRegionScope int
+
+const (
+	TableRegionScopeRegional TableRegionScope = iota
+	TableRegionScopeGlobal
+)
 
 // SyncResult holds results for a single table sync
 type SyncResult struct {
