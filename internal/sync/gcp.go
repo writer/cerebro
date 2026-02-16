@@ -184,6 +184,8 @@ func (e *GCPSyncEngine) syncTable(ctx context.Context, table GCPTableSpec) (Sync
 		return result, fmt.Errorf("gcp %s (project %s): fetch: %w", table.Name, e.projectID, err)
 	}
 
+	rows = normalizeRows(table.Name, table.Columns, rows, e.logger)
+
 	changes, err := e.upsertWithChanges(ctx, table.Name, rows)
 	if err != nil {
 		e.logger.Error("upsert failed", "table", table.Name, "error", err)

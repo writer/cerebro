@@ -230,6 +230,8 @@ func (e *AzureSyncEngine) syncTable(ctx context.Context, table AzureTableSpec) (
 		return result, fmt.Errorf("azure %s (subscription %s): fetch: %w", table.Name, e.subscriptionID, err)
 	}
 
+	rows = normalizeRows(table.Name, table.Columns, rows, e.logger)
+
 	changes, err := e.upsertWithChanges(ctx, table.Name, rows)
 	if err != nil {
 		e.logger.Error("upsert failed", "table", table.Name, "error", err)

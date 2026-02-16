@@ -51,7 +51,7 @@ func (c *ChangeSet) Summary() string {
 
 // getAWSTables returns all AWS table definitions
 func (e *SyncEngine) getAWSTables() []TableSpec {
-	return []TableSpec{
+	tables := []TableSpec{
 		// ECS
 		e.ecsClusterTable(),
 		e.ecsServiceTable(),
@@ -383,6 +383,8 @@ func (e *SyncEngine) getAWSTables() []TableSpec {
 		// Resource Groups Tagging API
 		e.resourceGroupTaggingResourceTable(),
 	}
+
+	return normalizeAWSTableSpecs(tables)
 }
 
 func (e *SyncEngine) getAccountIDFromConfig(ctx context.Context, cfg aws.Config) string {

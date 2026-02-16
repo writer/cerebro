@@ -259,6 +259,8 @@ func (e *SyncEngine) syncTable(ctx context.Context, cfg aws.Config, table TableS
 		return result, fmt.Errorf("aws %s (%s): fetch: %w", table.Name, region, err)
 	}
 
+	rows = e.normalizeAWSRows(table, region, rows)
+
 	// Upsert with change detection
 	changes, err := e.upsertWithChanges(ctx, table.Name, table.Columns, region, rows)
 	if err != nil {

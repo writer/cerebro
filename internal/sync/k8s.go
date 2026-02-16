@@ -211,6 +211,8 @@ func (e *K8sSyncEngine) syncTable(ctx context.Context, table K8sTableSpec, clien
 		return result, fmt.Errorf("k8s %s: fetch: %w", table.Name, err)
 	}
 
+	rows = normalizeRows(table.Name, table.Columns, rows, e.logger)
+
 	changes, err := e.upsertWithChanges(ctx, table.Name, rows)
 	if err != nil {
 		e.logger.Error("upsert failed", "table", table.Name, "error", err)
