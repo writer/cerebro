@@ -1,0 +1,269 @@
+package sync
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	assetapi "cloud.google.com/go/asset/apiv1"
+	"cloud.google.com/go/asset/apiv1/assetpb"
+	"google.golang.org/api/iterator"
+)
+
+func (e *GCPSyncEngine) gcpKMSKeyTable() GCPTableSpec {
+	return GCPTableSpec{
+		Name: "gcp_kms_keys",
+		Columns: []string{
+			"project_id",
+			"name",
+			"location",
+			"key_ring",
+			"purpose",
+			"protection_level",
+			"next_rotation_time",
+			"rotation_period",
+			"create_time",
+			"labels",
+			"primary",
+			"self_link",
+			"resource_data",
+		},
+		Fetch: e.fetchGCPKMSKeys,
+	}
+}
+
+func (e *GCPSyncEngine) gcpArtifactRegistryRepositoryTable() GCPTableSpec {
+	return GCPTableSpec{
+		Name: "gcp_artifact_registry_repositories",
+		Columns: []string{
+			"project_id",
+			"name",
+			"location",
+			"format",
+			"mode",
+			"description",
+			"kms_key_name",
+			"size_bytes",
+			"create_time",
+			"update_time",
+			"labels",
+			"self_link",
+			"resource_data",
+		},
+		Fetch: e.fetchGCPArtifactRegistryRepositories,
+	}
+}
+
+func (e *GCPSyncEngine) fetchGCPKMSKeys(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
+	resources, err := e.searchGCPResources(ctx, projectID, "cloudkms.googleapis.com/CryptoKey")
+	if err != nil {
+		return nil, err
+	}
+
+	rows := make([]map[string]interface{}, 0, len(resources))
+	for _, resource := range resources {
+		if resource == nil {
+			continue
+		}
+
+		selfLink := strings.TrimSpace(resource.Name)
+		if selfLink == "" {
+			continue
+		}
+
+		attrs := gcpAssetAttributes(resource)
+		row := map[string]interface{}{
+			"_cq_id":        selfLink,
+			"project_id":    projectID,
+			"name":          gcpResourceSegment(selfLink, "cryptoKeys"),
+			"location":      resource.Location,
+			"key_ring":      gcpResourceSegment(selfLink, "keyRings"),
+			"labels":        resource.Labels,
+			"self_link":     selfLink,
+			"resource_data": attrs,
+		}
+
+		if row["name"] == "" {
+			row["name"] = resource.DisplayName
+		}
+		if resource.CreateTime != nil {
+			row["create_time"] = resource.CreateTime.AsTime()
+		}
+		if purpose := gcpAssetString(attrs, "purpose"); purpose != "" {
+			row["purpose"] = purpose
+		}
+		if level := gcpAssetString(attrs, "versionTemplate.protectionLevel", "protectionLevel"); level != "" {
+			row["protection_level"] = level
+		}
+		if next := gcpAssetString(attrs, "nextRotationTime", "next_rotation_time"); next != "" {
+			row["next_rotation_time"] = next
+		}
+		if period := gcpAssetString(attrs, "rotationPeriod", "rotation_period"); period != "" {
+			row["rotation_period"] = period
+		}
+		if primary := gcpAssetValue(attrs, "primary"); primary != nil {
+			row["primary"] = primary
+		}
+
+		rows = append(rows, row)
+	}
+
+	return rows, nil
+}
+
+func (e *GCPSyncEngine) fetchGCPArtifactRegistryRepositories(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
+	resources, err := e.searchGCPResources(ctx, projectID, "artifactregistry.googleapis.com/Repository")
+	if err != nil {
+		return nil, err
+	}
+
+	rows := make([]map[string]interface{}, 0, len(resources))
+	for _, resource := range resources {
+		if resource == nil {
+			continue
+		}
+
+		selfLink := strings.TrimSpace(resource.Name)
+		if selfLink == "" {
+			continue
+		}
+
+		attrs := gcpAssetAttributes(resource)
+		row := map[string]interface{}{
+			"_cq_id":        selfLink,
+			"project_id":    projectID,
+			"name":          gcpResourceSegment(selfLink, "repositories"),
+			"location":      resource.Location,
+			"description":   firstNonEmpty(resource.Description, gcpAssetString(attrs, "description")),
+			"labels":        resource.Labels,
+			"self_link":     selfLink,
+			"resource_data": attrs,
+		}
+
+		if row["name"] == "" {
+			row["name"] = resource.DisplayName
+		}
+		if resource.CreateTime != nil {
+			row["create_time"] = resource.CreateTime.AsTime()
+		}
+		if resource.UpdateTime != nil {
+			row["update_time"] = resource.UpdateTime.AsTime()
+		}
+		if format := gcpAssetString(attrs, "format"); format != "" {
+			row["format"] = format
+		}
+		if mode := gcpAssetString(attrs, "mode"); mode != "" {
+			row["mode"] = mode
+		}
+		if kms := gcpAssetString(attrs, "kmsKeyName", "kms_key_name"); kms != "" {
+			row["kms_key_name"] = kms
+		}
+		if size := gcpAssetValue(attrs, "sizeBytes", "size_bytes"); size != nil {
+			row["size_bytes"] = size
+		}
+
+		rows = append(rows, row)
+	}
+
+	return rows, nil
+}
+
+func (e *GCPSyncEngine) searchGCPResources(ctx context.Context, projectID, assetType string) ([]*assetpb.ResourceSearchResult, error) {
+	client, err := assetapi.NewClient(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("create asset client: %w", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	req := &assetpb.SearchAllResourcesRequest{
+		Scope:      fmt.Sprintf("projects/%s", projectID),
+		AssetTypes: []string{assetType},
+		PageSize:   500,
+	}
+
+	it := client.SearchAllResources(ctx, req)
+	rows := make([]*assetpb.ResourceSearchResult, 0)
+	for {
+		resource, err := it.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("search resources for %s: %w", assetType, err)
+		}
+		rows = append(rows, resource)
+	}
+
+	return rows, nil
+}
+
+func gcpAssetAttributes(resource *assetpb.ResourceSearchResult) map[string]interface{} {
+	if resource == nil || resource.AdditionalAttributes == nil {
+		return map[string]interface{}{}
+	}
+	attrs := resource.AdditionalAttributes.AsMap()
+	if attrs == nil {
+		return map[string]interface{}{}
+	}
+	return attrs
+}
+
+func gcpAssetValue(attrs map[string]interface{}, keys ...string) interface{} {
+	for _, key := range keys {
+		if v, ok := attrs[key]; ok {
+			return v
+		}
+		if strings.Contains(key, ".") {
+			if v := gcpAssetNestedValue(attrs, strings.Split(key, ".")); v != nil {
+				return v
+			}
+		}
+	}
+	return nil
+}
+
+func gcpAssetString(attrs map[string]interface{}, keys ...string) string {
+	v := gcpAssetValue(attrs, keys...)
+	if v == nil {
+		return ""
+	}
+	return strings.TrimSpace(fmt.Sprintf("%v", v))
+}
+
+func gcpAssetNestedValue(attrs map[string]interface{}, path []string) interface{} {
+	if len(path) == 0 {
+		return nil
+	}
+	cur := interface{}(attrs)
+	for _, key := range path {
+		m, ok := cur.(map[string]interface{})
+		if !ok {
+			return nil
+		}
+		next, ok := m[key]
+		if !ok {
+			return nil
+		}
+		cur = next
+	}
+	return cur
+}
+
+func gcpResourceSegment(resourceName, segment string) string {
+	parts := strings.Split(resourceName, "/")
+	for i, part := range parts {
+		if part == segment && i+1 < len(parts) {
+			return parts[i+1]
+		}
+	}
+	return ""
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
