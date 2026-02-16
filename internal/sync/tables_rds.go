@@ -41,6 +41,74 @@ func (e *SyncEngine) rdsSnapshotTable() TableSpec {
 	}
 }
 
+func (e *SyncEngine) rdsClusterSnapshotTable() TableSpec {
+	return TableSpec{
+		Name: "aws_rds_db_cluster_snapshots",
+		Columns: []string{
+			"arn", "account_id", "region", "db_cluster_snapshot_identifier", "db_cluster_identifier",
+			"snapshot_type", "engine", "engine_version", "status", "snapshot_create_time",
+			"storage_encrypted", "kms_key_id", "tags",
+		},
+		Fetch: e.fetchRDSClusterSnapshots,
+	}
+}
+
+func (e *SyncEngine) rdsSubnetGroupTable() TableSpec {
+	return TableSpec{
+		Name:    "aws_rds_db_subnet_groups",
+		Columns: []string{"arn", "account_id", "region", "db_subnet_group_name", "db_subnet_group_description", "status", "vpc_id", "subnets", "supported_network_types"},
+		Fetch:   e.fetchRDSSubnetGroups,
+	}
+}
+
+func (e *SyncEngine) rdsParameterGroupTable() TableSpec {
+	return TableSpec{
+		Name:    "aws_rds_db_parameter_groups",
+		Columns: []string{"arn", "account_id", "region", "db_parameter_group_name", "db_parameter_group_family", "description"},
+		Fetch:   e.fetchRDSParameterGroups,
+	}
+}
+
+func (e *SyncEngine) rdsClusterParameterGroupTable() TableSpec {
+	return TableSpec{
+		Name:    "aws_rds_db_cluster_parameter_groups",
+		Columns: []string{"arn", "account_id", "region", "db_cluster_parameter_group_name", "db_parameter_group_family", "description"},
+		Fetch:   e.fetchRDSClusterParameterGroups,
+	}
+}
+
+func (e *SyncEngine) rdsOptionGroupTable() TableSpec {
+	return TableSpec{
+		Name:    "aws_rds_db_option_groups",
+		Columns: []string{"arn", "account_id", "region", "option_group_name", "engine_name", "major_engine_version", "description", "allows_vpc_and_non_vpc_instance_memberships", "vpc_id", "options"},
+		Fetch:   e.fetchRDSOptionGroups,
+	}
+}
+
+func (e *SyncEngine) rdsProxyTable() TableSpec {
+	return TableSpec{
+		Name: "aws_rds_db_proxies",
+		Columns: []string{
+			"arn", "account_id", "region", "db_proxy_name", "engine_family", "status", "role_arn",
+			"vpc_id", "vpc_security_group_ids", "vpc_subnet_ids", "require_tls", "idle_client_timeout",
+			"debug_logging", "endpoint", "auth", "created_date", "updated_date", "tags",
+		},
+		Fetch: e.fetchRDSProxies,
+	}
+}
+
+func (e *SyncEngine) rdsEventSubscriptionTable() TableSpec {
+	return TableSpec{
+		Name: "aws_rds_event_subscriptions",
+		Columns: []string{
+			"arn", "account_id", "region", "subscription_id", "customer_aws_id", "enabled",
+			"event_categories", "sns_topic_arn", "source_ids", "source_type", "status",
+			"subscription_creation_time",
+		},
+		Fetch: e.fetchRDSEventSubscriptions,
+	}
+}
+
 func (e *SyncEngine) fetchRDSInstances(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
 	client := rds.NewFromConfig(cfg)
 	accountID := e.getAccountIDFromConfig(ctx, cfg)
@@ -200,6 +268,279 @@ func (e *SyncEngine) fetchRDSSnapshots(ctx context.Context, cfg aws.Config, regi
 			}
 
 			rows = append(rows, row)
+		}
+	}
+
+	return rows, nil
+}
+
+func (e *SyncEngine) fetchRDSSubnetGroups(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := rds.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	paginator := rds.NewDescribeDBSubnetGroupsPaginator(client, &rds.DescribeDBSubnetGroupsInput{})
+	var rows []map[string]interface{}
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, group := range page.DBSubnetGroups {
+			arn := aws.ToString(group.DBSubnetGroupArn)
+			if arn == "" {
+				arn = aws.ToString(group.DBSubnetGroupName)
+			}
+
+			rows = append(rows, map[string]interface{}{
+				"_cq_id":                      arn,
+				"arn":                         arn,
+				"account_id":                  accountID,
+				"region":                      region,
+				"db_subnet_group_name":        aws.ToString(group.DBSubnetGroupName),
+				"db_subnet_group_description": aws.ToString(group.DBSubnetGroupDescription),
+				"status":                      aws.ToString(group.SubnetGroupStatus),
+				"vpc_id":                      aws.ToString(group.VpcId),
+				"subnets":                     group.Subnets,
+				"supported_network_types":     group.SupportedNetworkTypes,
+			})
+		}
+	}
+
+	return rows, nil
+}
+
+func (e *SyncEngine) fetchRDSParameterGroups(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := rds.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	paginator := rds.NewDescribeDBParameterGroupsPaginator(client, &rds.DescribeDBParameterGroupsInput{})
+	var rows []map[string]interface{}
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, group := range page.DBParameterGroups {
+			arn := aws.ToString(group.DBParameterGroupArn)
+			if arn == "" {
+				arn = aws.ToString(group.DBParameterGroupName)
+			}
+
+			rows = append(rows, map[string]interface{}{
+				"_cq_id":                    arn,
+				"arn":                       arn,
+				"account_id":                accountID,
+				"region":                    region,
+				"db_parameter_group_name":   aws.ToString(group.DBParameterGroupName),
+				"db_parameter_group_family": aws.ToString(group.DBParameterGroupFamily),
+				"description":               aws.ToString(group.Description),
+			})
+		}
+	}
+
+	return rows, nil
+}
+
+func (e *SyncEngine) fetchRDSOptionGroups(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := rds.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	paginator := rds.NewDescribeOptionGroupsPaginator(client, &rds.DescribeOptionGroupsInput{})
+	var rows []map[string]interface{}
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, group := range page.OptionGroupsList {
+			arn := aws.ToString(group.OptionGroupArn)
+			if arn == "" {
+				arn = aws.ToString(group.OptionGroupName)
+			}
+
+			rows = append(rows, map[string]interface{}{
+				"_cq_id":               arn,
+				"arn":                  arn,
+				"account_id":           accountID,
+				"region":               region,
+				"option_group_name":    aws.ToString(group.OptionGroupName),
+				"engine_name":          aws.ToString(group.EngineName),
+				"major_engine_version": aws.ToString(group.MajorEngineVersion),
+				"description":          aws.ToString(group.OptionGroupDescription),
+				"allows_vpc_and_non_vpc_instance_memberships": group.AllowsVpcAndNonVpcInstanceMemberships,
+				"vpc_id":  aws.ToString(group.VpcId),
+				"options": group.Options,
+			})
+		}
+	}
+
+	return rows, nil
+}
+
+func (e *SyncEngine) fetchRDSClusterSnapshots(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := rds.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	paginator := rds.NewDescribeDBClusterSnapshotsPaginator(client, &rds.DescribeDBClusterSnapshotsInput{})
+	var rows []map[string]interface{}
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, snapshot := range page.DBClusterSnapshots {
+			arn := aws.ToString(snapshot.DBClusterSnapshotArn)
+			if arn == "" {
+				arn = aws.ToString(snapshot.DBClusterSnapshotIdentifier)
+			}
+
+			rows = append(rows, map[string]interface{}{
+				"_cq_id":                         arn,
+				"arn":                            arn,
+				"account_id":                     accountID,
+				"region":                         region,
+				"db_cluster_snapshot_identifier": aws.ToString(snapshot.DBClusterSnapshotIdentifier),
+				"db_cluster_identifier":          aws.ToString(snapshot.DBClusterIdentifier),
+				"snapshot_type":                  aws.ToString(snapshot.SnapshotType),
+				"engine":                         aws.ToString(snapshot.Engine),
+				"engine_version":                 aws.ToString(snapshot.EngineVersion),
+				"status":                         aws.ToString(snapshot.Status),
+				"snapshot_create_time":           snapshot.SnapshotCreateTime,
+				"storage_encrypted":              aws.ToBool(snapshot.StorageEncrypted),
+				"kms_key_id":                     aws.ToString(snapshot.KmsKeyId),
+				"tags":                           snapshot.TagList,
+			})
+		}
+	}
+
+	return rows, nil
+}
+
+func (e *SyncEngine) fetchRDSClusterParameterGroups(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := rds.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	paginator := rds.NewDescribeDBClusterParameterGroupsPaginator(client, &rds.DescribeDBClusterParameterGroupsInput{})
+	var rows []map[string]interface{}
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, group := range page.DBClusterParameterGroups {
+			arn := aws.ToString(group.DBClusterParameterGroupArn)
+			if arn == "" {
+				arn = aws.ToString(group.DBClusterParameterGroupName)
+			}
+
+			rows = append(rows, map[string]interface{}{
+				"_cq_id":                          arn,
+				"arn":                             arn,
+				"account_id":                      accountID,
+				"region":                          region,
+				"db_cluster_parameter_group_name": aws.ToString(group.DBClusterParameterGroupName),
+				"db_parameter_group_family":       aws.ToString(group.DBParameterGroupFamily),
+				"description":                     aws.ToString(group.Description),
+			})
+		}
+	}
+
+	return rows, nil
+}
+
+func (e *SyncEngine) fetchRDSProxies(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := rds.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	paginator := rds.NewDescribeDBProxiesPaginator(client, &rds.DescribeDBProxiesInput{})
+	var rows []map[string]interface{}
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, proxy := range page.DBProxies {
+			arn := aws.ToString(proxy.DBProxyArn)
+			if arn == "" {
+				arn = aws.ToString(proxy.DBProxyName)
+			}
+
+			var tags interface{}
+			if arn != "" {
+				tagOut, err := client.ListTagsForResource(ctx, &rds.ListTagsForResourceInput{
+					ResourceName: aws.String(arn),
+				})
+				if err == nil {
+					tags = tagOut.TagList
+				}
+			}
+
+			rows = append(rows, map[string]interface{}{
+				"_cq_id":                 arn,
+				"arn":                    arn,
+				"account_id":             accountID,
+				"region":                 region,
+				"db_proxy_name":          aws.ToString(proxy.DBProxyName),
+				"engine_family":          aws.ToString(proxy.EngineFamily),
+				"status":                 string(proxy.Status),
+				"role_arn":               aws.ToString(proxy.RoleArn),
+				"vpc_id":                 aws.ToString(proxy.VpcId),
+				"vpc_security_group_ids": proxy.VpcSecurityGroupIds,
+				"vpc_subnet_ids":         proxy.VpcSubnetIds,
+				"require_tls":            aws.ToBool(proxy.RequireTLS),
+				"idle_client_timeout":    proxy.IdleClientTimeout,
+				"debug_logging":          aws.ToBool(proxy.DebugLogging),
+				"endpoint":               aws.ToString(proxy.Endpoint),
+				"auth":                   proxy.Auth,
+				"created_date":           proxy.CreatedDate,
+				"updated_date":           proxy.UpdatedDate,
+				"tags":                   tags,
+			})
+		}
+	}
+
+	return rows, nil
+}
+
+func (e *SyncEngine) fetchRDSEventSubscriptions(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := rds.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	paginator := rds.NewDescribeEventSubscriptionsPaginator(client, &rds.DescribeEventSubscriptionsInput{})
+	var rows []map[string]interface{}
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, subscription := range page.EventSubscriptionsList {
+			arn := aws.ToString(subscription.EventSubscriptionArn)
+			if arn == "" {
+				arn = aws.ToString(subscription.CustSubscriptionId)
+			}
+
+			rows = append(rows, map[string]interface{}{
+				"_cq_id":                     arn,
+				"arn":                        arn,
+				"account_id":                 accountID,
+				"region":                     region,
+				"subscription_id":            aws.ToString(subscription.CustSubscriptionId),
+				"customer_aws_id":            aws.ToString(subscription.CustomerAwsId),
+				"enabled":                    aws.ToBool(subscription.Enabled),
+				"event_categories":           subscription.EventCategoriesList,
+				"sns_topic_arn":              aws.ToString(subscription.SnsTopicArn),
+				"source_ids":                 subscription.SourceIdsList,
+				"source_type":                aws.ToString(subscription.SourceType),
+				"status":                     aws.ToString(subscription.Status),
+				"subscription_creation_time": aws.ToString(subscription.SubscriptionCreationTime),
+			})
 		}
 	}
 

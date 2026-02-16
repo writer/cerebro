@@ -643,6 +643,13 @@ github.com/aws/aws-sdk-go-v2/service/s3/internal/arn
 github.com/aws/aws-sdk-go-v2/service/s3/internal/customizations
 github.com/aws/aws-sdk-go-v2/service/s3/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/s3/types
+# github.com/aws/aws-sdk-go-v2/service/s3control v1.68.0
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/s3control
+github.com/aws/aws-sdk-go-v2/service/s3control/internal/customizations
+github.com/aws/aws-sdk-go-v2/service/s3control/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/s3control/internal/endpoints/s3
+github.com/aws/aws-sdk-go-v2/service/s3control/types
 # github.com/aws/aws-sdk-go-v2/service/sagemaker v1.230.1
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/sagemaker

@@ -418,6 +418,340 @@ func (e *SyncEngine) fetchIAMAccountSummary(ctx context.Context, cfg aws.Config,
 	}, nil
 }
 
+// IAM Account Aliases
+func (e *SyncEngine) iamAccountAliasTable() TableSpec {
+	return TableSpec{
+		Name:    "aws_iam_account_aliases",
+		Columns: []string{"arn", "account_id", "alias"},
+		Fetch:   e.fetchIAMAccountAliases,
+	}
+}
+
+func (e *SyncEngine) fetchIAMAccountAliases(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := iam.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	paginator := iam.NewListAccountAliasesPaginator(client, &iam.ListAccountAliasesInput{})
+	var rows []map[string]interface{}
+	for paginator.HasMorePages() {
+		out, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, alias := range out.AccountAliases {
+			arn := fmt.Sprintf("arn:aws:iam::%s:account-alias/%s", accountID, alias)
+			rows = append(rows, map[string]interface{}{
+				"_cq_id":     arn,
+				"arn":        arn,
+				"account_id": accountID,
+				"alias":      alias,
+			})
+		}
+	}
+
+	return rows, nil
+}
+
+// IAM User Login Profiles
+func (e *SyncEngine) iamUserLoginProfileTable() TableSpec {
+	return TableSpec{
+		Name:    "aws_iam_user_login_profiles",
+		Columns: []string{"arn", "account_id", "user_name", "create_date", "password_reset_required"},
+		Fetch:   e.fetchIAMUserLoginProfiles,
+	}
+}
+
+func (e *SyncEngine) fetchIAMUserLoginProfiles(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := iam.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	var users []string
+	userPaginator := iam.NewListUsersPaginator(client, &iam.ListUsersInput{})
+	for userPaginator.HasMorePages() {
+		out, err := userPaginator.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, u := range out.Users {
+			users = append(users, aws.ToString(u.UserName))
+		}
+	}
+
+	var rows []map[string]interface{}
+	for _, userName := range users {
+		profileOut, err := client.GetLoginProfile(ctx, &iam.GetLoginProfileInput{
+			UserName: aws.String(userName),
+		})
+		if err != nil || profileOut.LoginProfile == nil {
+			continue
+		}
+
+		profile := profileOut.LoginProfile
+		arn := fmt.Sprintf("arn:aws:iam::%s:user/%s/login-profile", accountID, userName)
+		rows = append(rows, map[string]interface{}{
+			"_cq_id":                  arn,
+			"arn":                     arn,
+			"account_id":              accountID,
+			"user_name":               aws.ToString(profile.UserName),
+			"create_date":             profile.CreateDate,
+			"password_reset_required": profile.PasswordResetRequired,
+		})
+	}
+
+	return rows, nil
+}
+
+// IAM Signing Certificates
+func (e *SyncEngine) iamSigningCertificateTable() TableSpec {
+	return TableSpec{
+		Name:    "aws_iam_signing_certificates",
+		Columns: []string{"arn", "account_id", "user_name", "certificate_id", "status", "upload_date", "certificate_body"},
+		Fetch:   e.fetchIAMSigningCertificates,
+	}
+}
+
+func (e *SyncEngine) fetchIAMSigningCertificates(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := iam.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	var users []types.User
+	userPaginator := iam.NewListUsersPaginator(client, &iam.ListUsersInput{})
+	for userPaginator.HasMorePages() {
+		out, err := userPaginator.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, out.Users...)
+	}
+
+	var rows []map[string]interface{}
+	for _, user := range users {
+		paginator := iam.NewListSigningCertificatesPaginator(client, &iam.ListSigningCertificatesInput{
+			UserName: user.UserName,
+		})
+		for paginator.HasMorePages() {
+			out, err := paginator.NextPage(ctx)
+			if err != nil {
+				break
+			}
+
+			for _, cert := range out.Certificates {
+				certID := aws.ToString(cert.CertificateId)
+				userName := aws.ToString(cert.UserName)
+				arn := fmt.Sprintf("arn:aws:iam::%s:user/%s/signing-certificate/%s", accountID, userName, certID)
+				rows = append(rows, map[string]interface{}{
+					"_cq_id":           arn,
+					"arn":              arn,
+					"account_id":       accountID,
+					"user_name":        userName,
+					"certificate_id":   certID,
+					"status":           string(cert.Status),
+					"upload_date":      cert.UploadDate,
+					"certificate_body": aws.ToString(cert.CertificateBody),
+				})
+			}
+		}
+	}
+
+	return rows, nil
+}
+
+// IAM SSH Public Keys
+func (e *SyncEngine) iamSSHPublicKeyTable() TableSpec {
+	return TableSpec{
+		Name:    "aws_iam_ssh_public_keys",
+		Columns: []string{"arn", "account_id", "user_name", "ssh_public_key_id", "status", "upload_date", "fingerprint", "ssh_public_key_body"},
+		Fetch:   e.fetchIAMSSHPublicKeys,
+	}
+}
+
+func (e *SyncEngine) fetchIAMSSHPublicKeys(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := iam.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	var users []types.User
+	userPaginator := iam.NewListUsersPaginator(client, &iam.ListUsersInput{})
+	for userPaginator.HasMorePages() {
+		out, err := userPaginator.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, out.Users...)
+	}
+
+	var rows []map[string]interface{}
+	for _, user := range users {
+		paginator := iam.NewListSSHPublicKeysPaginator(client, &iam.ListSSHPublicKeysInput{
+			UserName: user.UserName,
+		})
+		for paginator.HasMorePages() {
+			out, err := paginator.NextPage(ctx)
+			if err != nil {
+				break
+			}
+
+			for _, keySummary := range out.SSHPublicKeys {
+				keyID := aws.ToString(keySummary.SSHPublicKeyId)
+				userName := aws.ToString(keySummary.UserName)
+
+				keyOut, err := client.GetSSHPublicKey(ctx, &iam.GetSSHPublicKeyInput{
+					UserName:       keySummary.UserName,
+					SSHPublicKeyId: keySummary.SSHPublicKeyId,
+					Encoding:       types.EncodingTypeSsh,
+				})
+				if err != nil || keyOut.SSHPublicKey == nil {
+					continue
+				}
+
+				key := keyOut.SSHPublicKey
+				arn := fmt.Sprintf("arn:aws:iam::%s:user/%s/ssh-public-key/%s", accountID, userName, keyID)
+				rows = append(rows, map[string]interface{}{
+					"_cq_id":              arn,
+					"arn":                 arn,
+					"account_id":          accountID,
+					"user_name":           userName,
+					"ssh_public_key_id":   keyID,
+					"status":              string(key.Status),
+					"upload_date":         key.UploadDate,
+					"fingerprint":         aws.ToString(key.Fingerprint),
+					"ssh_public_key_body": aws.ToString(key.SSHPublicKeyBody),
+				})
+			}
+		}
+	}
+
+	return rows, nil
+}
+
+// IAM Service-Specific Credentials
+func (e *SyncEngine) iamServiceSpecificCredentialTable() TableSpec {
+	return TableSpec{
+		Name:    "aws_iam_service_specific_credentials",
+		Columns: []string{"arn", "account_id", "user_name", "service_name", "service_specific_credential_id", "service_user_name", "status", "create_date"},
+		Fetch:   e.fetchIAMServiceSpecificCredentials,
+	}
+}
+
+func (e *SyncEngine) fetchIAMServiceSpecificCredentials(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := iam.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	var users []types.User
+	userPaginator := iam.NewListUsersPaginator(client, &iam.ListUsersInput{})
+	for userPaginator.HasMorePages() {
+		out, err := userPaginator.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, out.Users...)
+	}
+
+	var rows []map[string]interface{}
+	for _, user := range users {
+		var marker *string
+		for {
+			out, err := client.ListServiceSpecificCredentials(ctx, &iam.ListServiceSpecificCredentialsInput{
+				UserName: user.UserName,
+				Marker:   marker,
+			})
+			if err != nil {
+				break
+			}
+
+			for _, cred := range out.ServiceSpecificCredentials {
+				credID := aws.ToString(cred.ServiceSpecificCredentialId)
+				userName := aws.ToString(cred.UserName)
+				arn := fmt.Sprintf("arn:aws:iam::%s:user/%s/service-specific-credential/%s", accountID, userName, credID)
+				rows = append(rows, map[string]interface{}{
+					"_cq_id":                         arn,
+					"arn":                            arn,
+					"account_id":                     accountID,
+					"user_name":                      userName,
+					"service_name":                   aws.ToString(cred.ServiceName),
+					"service_specific_credential_id": credID,
+					"service_user_name":              aws.ToString(cred.ServiceUserName),
+					"status":                         string(cred.Status),
+					"create_date":                    cred.CreateDate,
+				})
+			}
+
+			if !out.IsTruncated {
+				break
+			}
+			marker = out.Marker
+		}
+	}
+
+	return rows, nil
+}
+
+// IAM Access Advisor
+func (e *SyncEngine) iamAccessAdvisorTable() TableSpec {
+	return TableSpec{
+		Name:    "aws_iam_access_advisors",
+		Columns: []string{"arn", "account_id", "service_name", "service_namespace", "last_authenticated", "last_authenticated_entity", "last_authenticated_region", "total_authenticated_entities", "tracked_actions_last_accessed"},
+		Fetch:   e.fetchIAMAccessAdvisor,
+	}
+}
+
+func (e *SyncEngine) fetchIAMAccessAdvisor(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := iam.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	accountArn := fmt.Sprintf("arn:aws:iam::%s:root", accountID)
+	jobOut, err := client.GenerateServiceLastAccessedDetails(ctx, &iam.GenerateServiceLastAccessedDetailsInput{
+		Arn: aws.String(accountArn),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	jobID := aws.ToString(jobOut.JobId)
+	var details *iam.GetServiceLastAccessedDetailsOutput
+	for i := 0; i < 5; i++ {
+		out, err := client.GetServiceLastAccessedDetails(ctx, &iam.GetServiceLastAccessedDetailsInput{
+			JobId: aws.String(jobID),
+		})
+		if err != nil {
+			return nil, err
+		}
+		if out.JobStatus == types.JobStatusTypeCompleted {
+			details = out
+			break
+		}
+		if out.JobStatus == types.JobStatusTypeFailed {
+			return nil, fmt.Errorf("access advisor job failed")
+		}
+		time.Sleep(2 * time.Second)
+	}
+
+	if details == nil {
+		e.logger.Warn("iam access advisor report not ready", "job_id", jobID)
+		return nil, nil
+	}
+
+	rows := make([]map[string]interface{}, 0, len(details.ServicesLastAccessed))
+	for _, service := range details.ServicesLastAccessed {
+		serviceNamespace := aws.ToString(service.ServiceNamespace)
+		arn := fmt.Sprintf("%s/access-advisor/%s", accountArn, serviceNamespace)
+		rows = append(rows, map[string]interface{}{
+			"_cq_id":                        arn,
+			"arn":                           arn,
+			"account_id":                    accountID,
+			"service_name":                  aws.ToString(service.ServiceName),
+			"service_namespace":             serviceNamespace,
+			"last_authenticated":            service.LastAuthenticated,
+			"last_authenticated_entity":     aws.ToString(service.LastAuthenticatedEntity),
+			"last_authenticated_region":     aws.ToString(service.LastAuthenticatedRegion),
+			"total_authenticated_entities":  service.TotalAuthenticatedEntities,
+			"tracked_actions_last_accessed": service.TrackedActionsLastAccessed,
+		})
+	}
+
+	return rows, nil
+}
+
 // IAM Instance Profiles
 func (e *SyncEngine) iamInstanceProfileTable() TableSpec {
 	return TableSpec{

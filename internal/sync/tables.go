@@ -60,6 +60,7 @@ func (e *SyncEngine) getAWSTables() []TableSpec {
 		// EC2 - Core
 		e.ec2InstanceTable(),
 		e.ec2SecurityGroupTable(),
+		e.ec2SecurityGroupRuleTable(),
 		e.ec2VpcTable(),
 		e.ec2NaclTable(),
 		e.ec2SubnetTable(),
@@ -80,6 +81,12 @@ func (e *SyncEngine) getAWSTables() []TableSpec {
 		e.ec2VpcEndpointTable(),
 		e.ec2VpcPeeringConnectionTable(),
 		e.ec2TransitGatewayTable(),
+		e.ec2TransitGatewayAttachmentTable(),
+		e.ec2TransitGatewayRouteTableTable(),
+		e.ec2ManagedPrefixListTable(),
+		e.ec2ClientVpnEndpointTable(),
+		e.ec2DedicatedHostTable(),
+		e.ec2IpamTable(),
 		e.ec2ReservedInstanceTable(),
 		e.ec2CapacityReservationTable(),
 		e.ec2SpotInstanceRequestTable(),
@@ -102,6 +109,12 @@ func (e *SyncEngine) getAWSTables() []TableSpec {
 		e.iamVirtualMfaDeviceTable(),
 		e.iamPasswordPolicyTable(),
 		e.iamAccountSummaryTable(),
+		e.iamAccountAliasTable(),
+		e.iamUserLoginProfileTable(),
+		e.iamSigningCertificateTable(),
+		e.iamSSHPublicKeyTable(),
+		e.iamServiceSpecificCredentialTable(),
+		e.iamAccessAdvisorTable(),
 		e.iamInstanceProfileTable(),
 		e.iamSamlProviderTable(),
 		e.iamOidcProviderTable(),
@@ -124,6 +137,12 @@ func (e *SyncEngine) getAWSTables() []TableSpec {
 		e.s3BucketVersioningTable(),
 		e.s3BucketLoggingTable(),
 		e.s3BucketPublicAccessBlockTable(),
+		e.s3BucketOwnershipControlsTable(),
+		e.s3BucketPolicyStatusTable(),
+		e.s3BucketNotificationTable(),
+		e.s3BucketInventoryTable(),
+		e.s3BucketObjectLockTable(),
+		e.s3AccessPointTable(),
 		e.s3BucketLifecycleTable(),
 		e.s3BucketReplicationTable(),
 		e.s3BucketCorsTable(),
@@ -150,6 +169,11 @@ func (e *SyncEngine) getAWSTables() []TableSpec {
 
 		// Security - KMS & Secrets
 		e.kmsKeyTable(),
+		e.kmsAliasTable(),
+		e.kmsKeyPolicyTable(),
+		e.kmsGrantTable(),
+		e.kmsKeyRotationStatusTable(),
+		e.kmsCustomKeyStoreTable(),
 		e.secretsManagerSecretTable(),
 
 		// Security - WAF
@@ -188,6 +212,13 @@ func (e *SyncEngine) getAWSTables() []TableSpec {
 		e.rdsInstanceTable(),
 		e.rdsClusterTable(),
 		e.rdsSnapshotTable(),
+		e.rdsClusterSnapshotTable(),
+		e.rdsSubnetGroupTable(),
+		e.rdsParameterGroupTable(),
+		e.rdsClusterParameterGroupTable(),
+		e.rdsOptionGroupTable(),
+		e.rdsProxyTable(),
+		e.rdsEventSubscriptionTable(),
 
 		// Database - DynamoDB
 		e.dynamoDBTableTable(),
@@ -222,6 +253,10 @@ func (e *SyncEngine) getAWSTables() []TableSpec {
 		// Logging
 		e.cloudtrailTrailTable(),
 		e.cloudtrailEventSelectorTable(),
+		e.cloudtrailInsightSelectorTable(),
+		e.cloudtrailEventDataStoreTable(),
+		e.cloudtrailChannelTable(),
+		e.cloudtrailResourcePolicyTable(),
 		e.cloudwatchLogGroupTable(),
 
 		// CodeBuild

@@ -443,6 +443,347 @@ func (e *SyncEngine) fetchEC2TransitGateways(ctx context.Context, cfg aws.Config
 	return rows, nil
 }
 
+// EC2 Transit Gateway Attachments
+func (e *SyncEngine) ec2TransitGatewayAttachmentTable() TableSpec {
+	return TableSpec{
+		Name: "aws_ec2_transit_gateway_attachments",
+		Columns: []string{
+			"arn", "account_id", "region", "transit_gateway_attachment_id", "transit_gateway_id",
+			"transit_gateway_owner_id", "resource_id", "resource_owner_id", "resource_type", "state",
+			"association_state", "association_transit_gateway_route_table_id", "creation_time", "tags",
+		},
+		Fetch: e.fetchEC2TransitGatewayAttachments,
+	}
+}
+
+func (e *SyncEngine) fetchEC2TransitGatewayAttachments(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := ec2.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	paginator := ec2.NewDescribeTransitGatewayAttachmentsPaginator(client, &ec2.DescribeTransitGatewayAttachmentsInput{})
+	var rows []map[string]interface{}
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, attachment := range page.TransitGatewayAttachments {
+			attachmentID := aws.ToString(attachment.TransitGatewayAttachmentId)
+			arn := fmt.Sprintf("arn:aws:ec2:%s:%s:transit-gateway-attachment/%s", region, accountID, attachmentID)
+			associationState := ""
+			associationRouteTableID := ""
+			if attachment.Association != nil {
+				associationState = string(attachment.Association.State)
+				associationRouteTableID = aws.ToString(attachment.Association.TransitGatewayRouteTableId)
+			}
+
+			rows = append(rows, map[string]interface{}{
+				"_cq_id":                        arn,
+				"arn":                           arn,
+				"account_id":                    accountID,
+				"region":                        region,
+				"transit_gateway_attachment_id": attachmentID,
+				"transit_gateway_id":            aws.ToString(attachment.TransitGatewayId),
+				"transit_gateway_owner_id":      aws.ToString(attachment.TransitGatewayOwnerId),
+				"resource_id":                   aws.ToString(attachment.ResourceId),
+				"resource_owner_id":             aws.ToString(attachment.ResourceOwnerId),
+				"resource_type":                 string(attachment.ResourceType),
+				"state":                         string(attachment.State),
+				"association_state":             associationState,
+				"association_transit_gateway_route_table_id": associationRouteTableID,
+				"creation_time": attachment.CreationTime,
+				"tags":          attachment.Tags,
+			})
+		}
+	}
+
+	return rows, nil
+}
+
+// EC2 Transit Gateway Route Tables
+func (e *SyncEngine) ec2TransitGatewayRouteTableTable() TableSpec {
+	return TableSpec{
+		Name: "aws_ec2_transit_gateway_route_tables",
+		Columns: []string{
+			"arn", "account_id", "region", "transit_gateway_route_table_id", "transit_gateway_id",
+			"state", "default_association_route_table", "default_propagation_route_table", "creation_time", "tags",
+		},
+		Fetch: e.fetchEC2TransitGatewayRouteTables,
+	}
+}
+
+func (e *SyncEngine) fetchEC2TransitGatewayRouteTables(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := ec2.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	paginator := ec2.NewDescribeTransitGatewayRouteTablesPaginator(client, &ec2.DescribeTransitGatewayRouteTablesInput{})
+	var rows []map[string]interface{}
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, routeTable := range page.TransitGatewayRouteTables {
+			routeTableID := aws.ToString(routeTable.TransitGatewayRouteTableId)
+			arn := fmt.Sprintf("arn:aws:ec2:%s:%s:transit-gateway-route-table/%s", region, accountID, routeTableID)
+			rows = append(rows, map[string]interface{}{
+				"_cq_id":                          arn,
+				"arn":                             arn,
+				"account_id":                      accountID,
+				"region":                          region,
+				"transit_gateway_route_table_id":  routeTableID,
+				"transit_gateway_id":              aws.ToString(routeTable.TransitGatewayId),
+				"state":                           string(routeTable.State),
+				"default_association_route_table": aws.ToBool(routeTable.DefaultAssociationRouteTable),
+				"default_propagation_route_table": aws.ToBool(routeTable.DefaultPropagationRouteTable),
+				"creation_time":                   routeTable.CreationTime,
+				"tags":                            routeTable.Tags,
+			})
+		}
+	}
+
+	return rows, nil
+}
+
+// EC2 Managed Prefix Lists
+func (e *SyncEngine) ec2ManagedPrefixListTable() TableSpec {
+	return TableSpec{
+		Name: "aws_ec2_managed_prefix_lists",
+		Columns: []string{
+			"arn", "account_id", "region", "prefix_list_id", "prefix_list_name", "address_family",
+			"max_entries", "state", "state_message", "version", "owner_id", "tags",
+		},
+		Fetch: e.fetchEC2ManagedPrefixLists,
+	}
+}
+
+func (e *SyncEngine) fetchEC2ManagedPrefixLists(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := ec2.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	paginator := ec2.NewDescribeManagedPrefixListsPaginator(client, &ec2.DescribeManagedPrefixListsInput{})
+	var rows []map[string]interface{}
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, pl := range page.PrefixLists {
+			prefixListID := aws.ToString(pl.PrefixListId)
+			arn := aws.ToString(pl.PrefixListArn)
+			if arn == "" {
+				arn = fmt.Sprintf("arn:aws:ec2:%s:%s:prefix-list/%s", region, accountID, prefixListID)
+			}
+
+			rows = append(rows, map[string]interface{}{
+				"_cq_id":           arn,
+				"arn":              arn,
+				"account_id":       accountID,
+				"region":           region,
+				"prefix_list_id":   prefixListID,
+				"prefix_list_name": aws.ToString(pl.PrefixListName),
+				"address_family":   aws.ToString(pl.AddressFamily),
+				"max_entries":      pl.MaxEntries,
+				"state":            string(pl.State),
+				"state_message":    aws.ToString(pl.StateMessage),
+				"version":          pl.Version,
+				"owner_id":         aws.ToString(pl.OwnerId),
+				"tags":             pl.Tags,
+			})
+		}
+	}
+
+	return rows, nil
+}
+
+// EC2 Client VPN Endpoints
+func (e *SyncEngine) ec2ClientVpnEndpointTable() TableSpec {
+	return TableSpec{
+		Name: "aws_ec2_client_vpn_endpoints",
+		Columns: []string{
+			"arn", "account_id", "region", "client_vpn_endpoint_id", "description", "client_cidr_block",
+			"server_certificate_arn", "authentication_options", "connection_log_options", "dns_servers",
+			"split_tunnel", "vpc_id", "security_group_ids", "transport_protocol", "vpn_port",
+			"status_code", "status_message", "creation_time", "tags",
+		},
+		Fetch: e.fetchEC2ClientVpnEndpoints,
+	}
+}
+
+func (e *SyncEngine) fetchEC2ClientVpnEndpoints(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := ec2.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	paginator := ec2.NewDescribeClientVpnEndpointsPaginator(client, &ec2.DescribeClientVpnEndpointsInput{})
+	var rows []map[string]interface{}
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, endpoint := range page.ClientVpnEndpoints {
+			endpointID := aws.ToString(endpoint.ClientVpnEndpointId)
+			arn := fmt.Sprintf("arn:aws:ec2:%s:%s:client-vpn-endpoint/%s", region, accountID, endpointID)
+			statusCode := ""
+			statusMessage := ""
+			if endpoint.Status != nil {
+				statusCode = string(endpoint.Status.Code)
+				statusMessage = aws.ToString(endpoint.Status.Message)
+			}
+
+			rows = append(rows, map[string]interface{}{
+				"_cq_id":                 arn,
+				"arn":                    arn,
+				"account_id":             accountID,
+				"region":                 region,
+				"client_vpn_endpoint_id": endpointID,
+				"description":            aws.ToString(endpoint.Description),
+				"client_cidr_block":      aws.ToString(endpoint.ClientCidrBlock),
+				"server_certificate_arn": aws.ToString(endpoint.ServerCertificateArn),
+				"authentication_options": endpoint.AuthenticationOptions,
+				"connection_log_options": endpoint.ConnectionLogOptions,
+				"dns_servers":            endpoint.DnsServers,
+				"split_tunnel":           aws.ToBool(endpoint.SplitTunnel),
+				"vpc_id":                 aws.ToString(endpoint.VpcId),
+				"security_group_ids":     endpoint.SecurityGroupIds,
+				"transport_protocol":     string(endpoint.TransportProtocol),
+				"vpn_port":               endpoint.VpnPort,
+				"status_code":            statusCode,
+				"status_message":         statusMessage,
+				"creation_time":          endpoint.CreationTime,
+				"tags":                   endpoint.Tags,
+			})
+		}
+	}
+
+	return rows, nil
+}
+
+// EC2 Dedicated Hosts
+func (e *SyncEngine) ec2DedicatedHostTable() TableSpec {
+	return TableSpec{
+		Name: "aws_ec2_dedicated_hosts",
+		Columns: []string{
+			"arn", "account_id", "region", "host_id", "availability_zone", "state",
+			"auto_placement", "host_recovery", "allocation_time", "release_time",
+			"instance_family", "instance_type", "host_properties", "host_reservation_id", "tags",
+		},
+		Fetch: e.fetchEC2DedicatedHosts,
+	}
+}
+
+func (e *SyncEngine) fetchEC2DedicatedHosts(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := ec2.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	paginator := ec2.NewDescribeHostsPaginator(client, &ec2.DescribeHostsInput{})
+	var rows []map[string]interface{}
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, host := range page.Hosts {
+			hostID := aws.ToString(host.HostId)
+			arn := fmt.Sprintf("arn:aws:ec2:%s:%s:dedicated-host/%s", region, accountID, hostID)
+			instanceFamily := ""
+			instanceType := ""
+			if host.HostProperties != nil {
+				instanceFamily = aws.ToString(host.HostProperties.InstanceFamily)
+				instanceType = aws.ToString(host.HostProperties.InstanceType)
+			}
+			rows = append(rows, map[string]interface{}{
+				"_cq_id":              arn,
+				"arn":                 arn,
+				"account_id":          accountID,
+				"region":              region,
+				"host_id":             hostID,
+				"availability_zone":   aws.ToString(host.AvailabilityZone),
+				"state":               string(host.State),
+				"auto_placement":      string(host.AutoPlacement),
+				"host_recovery":       string(host.HostRecovery),
+				"allocation_time":     host.AllocationTime,
+				"release_time":        host.ReleaseTime,
+				"instance_family":     instanceFamily,
+				"instance_type":       instanceType,
+				"host_properties":     host.HostProperties,
+				"host_reservation_id": aws.ToString(host.HostReservationId),
+				"tags":                host.Tags,
+			})
+		}
+	}
+
+	return rows, nil
+}
+
+// EC2 IPAMs
+func (e *SyncEngine) ec2IpamTable() TableSpec {
+	return TableSpec{
+		Name: "aws_ec2_ipams",
+		Columns: []string{
+			"arn", "account_id", "region", "ipam_id", "ipam_region", "owner_id", "description",
+			"state", "state_message", "operating_regions", "private_default_scope_id", "public_default_scope_id",
+			"scope_count", "tier", "metered_account", "default_resource_discovery_id",
+			"default_resource_discovery_association_id", "resource_discovery_association_count",
+			"enable_private_gua", "tags",
+		},
+		Fetch: e.fetchEC2Ipams,
+	}
+}
+
+func (e *SyncEngine) fetchEC2Ipams(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := ec2.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	paginator := ec2.NewDescribeIpamsPaginator(client, &ec2.DescribeIpamsInput{})
+	var rows []map[string]interface{}
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, ipam := range page.Ipams {
+			ipamID := aws.ToString(ipam.IpamId)
+			arn := aws.ToString(ipam.IpamArn)
+			if arn == "" {
+				arn = fmt.Sprintf("arn:aws:ec2:%s:%s:ipam/%s", region, accountID, ipamID)
+			}
+
+			rows = append(rows, map[string]interface{}{
+				"_cq_id":                        arn,
+				"arn":                           arn,
+				"account_id":                    accountID,
+				"region":                        region,
+				"ipam_id":                       ipamID,
+				"ipam_region":                   aws.ToString(ipam.IpamRegion),
+				"owner_id":                      aws.ToString(ipam.OwnerId),
+				"description":                   aws.ToString(ipam.Description),
+				"state":                         string(ipam.State),
+				"state_message":                 aws.ToString(ipam.StateMessage),
+				"operating_regions":             ipam.OperatingRegions,
+				"private_default_scope_id":      aws.ToString(ipam.PrivateDefaultScopeId),
+				"public_default_scope_id":       aws.ToString(ipam.PublicDefaultScopeId),
+				"scope_count":                   ipam.ScopeCount,
+				"tier":                          string(ipam.Tier),
+				"metered_account":               string(ipam.MeteredAccount),
+				"default_resource_discovery_id": aws.ToString(ipam.DefaultResourceDiscoveryId),
+				"default_resource_discovery_association_id": aws.ToString(ipam.DefaultResourceDiscoveryAssociationId),
+				"resource_discovery_association_count":      ipam.ResourceDiscoveryAssociationCount,
+				"enable_private_gua":                        aws.ToBool(ipam.EnablePrivateGua),
+				"tags":                                      ipam.Tags,
+			})
+		}
+	}
+
+	return rows, nil
+}
+
 // EC2 Reserved Instances
 func (e *SyncEngine) ec2ReservedInstanceTable() TableSpec {
 	return TableSpec{

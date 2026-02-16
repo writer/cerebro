@@ -3,9 +3,11 @@ package sync
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 )
 
 func (e *SyncEngine) ec2SecurityGroupTable() TableSpec {
@@ -59,6 +61,122 @@ func (e *SyncEngine) ec2SecurityGroupTable() TableSpec {
 
 			return results, nil
 		},
+	}
+}
+
+func (e *SyncEngine) ec2SecurityGroupRuleTable() TableSpec {
+	return TableSpec{
+		Name: "aws_ec2_security_group_rules",
+		Columns: []string{
+			"arn", "account_id", "region", "security_group_id", "security_group_name",
+			"direction", "protocol", "from_port", "to_port",
+			"ip_ranges", "ipv6_ranges", "prefix_list_ids", "user_id_group_pairs",
+		},
+		Fetch: e.fetchEC2SecurityGroupRules,
+	}
+}
+
+func (e *SyncEngine) fetchEC2SecurityGroupRules(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := ec2.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	paginator := ec2.NewDescribeSecurityGroupsPaginator(client, &ec2.DescribeSecurityGroupsInput{})
+	var rows []map[string]interface{}
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("describe security groups: %w", err)
+		}
+
+		for _, sg := range page.SecurityGroups {
+			groupID := ptrToStr(sg.GroupId)
+			groupName := ptrToStr(sg.GroupName)
+
+			for _, perm := range sg.IpPermissions {
+				rows = append(rows, buildSecurityGroupRuleRow(accountID, region, groupID, groupName, "ingress", perm))
+			}
+			for _, perm := range sg.IpPermissionsEgress {
+				rows = append(rows, buildSecurityGroupRuleRow(accountID, region, groupID, groupName, "egress", perm))
+			}
+		}
+	}
+
+	return rows, nil
+}
+
+func buildSecurityGroupRuleRow(accountID, region, groupID, groupName, direction string, perm types.IpPermission) map[string]interface{} {
+	protocol := aws.ToString(perm.IpProtocol)
+
+	var fromPort interface{}
+	if perm.FromPort != nil {
+		fromPort = *perm.FromPort
+	}
+	var toPort interface{}
+	if perm.ToPort != nil {
+		toPort = *perm.ToPort
+	}
+
+	ipRangeKeys := make([]string, 0, len(perm.IpRanges))
+	for _, r := range perm.IpRanges {
+		ipRangeKeys = append(ipRangeKeys, fmt.Sprintf("%s|%s", aws.ToString(r.CidrIp), aws.ToString(r.Description)))
+	}
+	sort.Strings(ipRangeKeys)
+
+	ipv6RangeKeys := make([]string, 0, len(perm.Ipv6Ranges))
+	for _, r := range perm.Ipv6Ranges {
+		ipv6RangeKeys = append(ipv6RangeKeys, fmt.Sprintf("%s|%s", aws.ToString(r.CidrIpv6), aws.ToString(r.Description)))
+	}
+	sort.Strings(ipv6RangeKeys)
+
+	prefixListKeys := make([]string, 0, len(perm.PrefixListIds))
+	for _, p := range perm.PrefixListIds {
+		prefixListKeys = append(prefixListKeys, fmt.Sprintf("%s|%s", aws.ToString(p.PrefixListId), aws.ToString(p.Description)))
+	}
+	sort.Strings(prefixListKeys)
+
+	userGroupKeys := make([]string, 0, len(perm.UserIdGroupPairs))
+	for _, pair := range perm.UserIdGroupPairs {
+		userGroupKeys = append(userGroupKeys, fmt.Sprintf("%s|%s|%s|%s|%s|%s",
+			aws.ToString(pair.GroupId),
+			aws.ToString(pair.GroupName),
+			aws.ToString(pair.UserId),
+			aws.ToString(pair.VpcId),
+			aws.ToString(pair.VpcPeeringConnectionId),
+			aws.ToString(pair.Description),
+		))
+	}
+	sort.Strings(userGroupKeys)
+
+	idData := map[string]interface{}{
+		"security_group_id":   groupID,
+		"direction":           direction,
+		"protocol":            protocol,
+		"from_port":           fromPort,
+		"to_port":             toPort,
+		"ip_ranges":           ipRangeKeys,
+		"ipv6_ranges":         ipv6RangeKeys,
+		"prefix_list_ids":     prefixListKeys,
+		"user_id_group_pairs": userGroupKeys,
+	}
+
+	ruleHash := hashRowContent(idData)
+	arn := fmt.Sprintf("arn:aws:ec2:%s:%s:security-group-rule/%s/%s/%s", region, accountID, groupID, direction, ruleHash)
+
+	return map[string]interface{}{
+		"_cq_id":              arn,
+		"arn":                 arn,
+		"account_id":          accountID,
+		"region":              region,
+		"security_group_id":   groupID,
+		"security_group_name": groupName,
+		"direction":           direction,
+		"protocol":            protocol,
+		"from_port":           fromPort,
+		"to_port":             toPort,
+		"ip_ranges":           perm.IpRanges,
+		"ipv6_ranges":         perm.Ipv6Ranges,
+		"prefix_list_ids":     perm.PrefixListIds,
+		"user_id_group_pairs": perm.UserIdGroupPairs,
 	}
 }
 

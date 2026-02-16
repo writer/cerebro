@@ -7,6 +7,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/aws-sdk-go-v2/service/s3control"
 )
 
 // S3 Bucket Policies
@@ -398,6 +399,405 @@ func (e *SyncEngine) fetchS3BucketPublicAccessBlock(ctx context.Context, cfg aws
 			"restrict_public_buckets": aws.ToBool(cfg.RestrictPublicBuckets),
 		})
 	}
+	return rows, nil
+}
+
+// S3 Bucket Ownership Controls
+func (e *SyncEngine) s3BucketOwnershipControlsTable() TableSpec {
+	return TableSpec{
+		Name:    "aws_s3_bucket_ownership_controls",
+		Columns: []string{"arn", "account_id", "region", "bucket", "object_ownership", "rules"},
+		Fetch:   e.fetchS3BucketOwnershipControls,
+	}
+}
+
+func (e *SyncEngine) fetchS3BucketOwnershipControls(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := s3.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	bucketsOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	if err != nil {
+		return nil, err
+	}
+
+	var rows []map[string]interface{}
+	for _, bucket := range bucketsOut.Buckets {
+		bucketName := aws.ToString(bucket.Name)
+
+		locOut, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
+			Bucket: bucket.Name,
+		})
+		if err != nil {
+			continue
+		}
+		bucketRegion := string(locOut.LocationConstraint)
+		if bucketRegion == "" {
+			bucketRegion = "us-east-1"
+		}
+		if bucketRegion != region {
+			continue
+		}
+
+		var rules interface{}
+		objectOwnership := ""
+		ownershipOut, err := client.GetBucketOwnershipControls(ctx, &s3.GetBucketOwnershipControlsInput{
+			Bucket: bucket.Name,
+		})
+		if err == nil && ownershipOut.OwnershipControls != nil {
+			rules = ownershipOut.OwnershipControls.Rules
+			if len(ownershipOut.OwnershipControls.Rules) > 0 {
+				objectOwnership = string(ownershipOut.OwnershipControls.Rules[0].ObjectOwnership)
+			}
+		}
+
+		arn := fmt.Sprintf("arn:aws:s3:::%s/ownership-controls", bucketName)
+		rows = append(rows, map[string]interface{}{
+			"_cq_id":           arn,
+			"arn":              arn,
+			"account_id":       accountID,
+			"region":           bucketRegion,
+			"bucket":           bucketName,
+			"object_ownership": objectOwnership,
+			"rules":            rules,
+		})
+	}
+
+	return rows, nil
+}
+
+// S3 Bucket Policy Status
+func (e *SyncEngine) s3BucketPolicyStatusTable() TableSpec {
+	return TableSpec{
+		Name:    "aws_s3_bucket_policy_statuses",
+		Columns: []string{"arn", "account_id", "region", "bucket", "is_public"},
+		Fetch:   e.fetchS3BucketPolicyStatuses,
+	}
+}
+
+func (e *SyncEngine) fetchS3BucketPolicyStatuses(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := s3.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	bucketsOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	if err != nil {
+		return nil, err
+	}
+
+	var rows []map[string]interface{}
+	for _, bucket := range bucketsOut.Buckets {
+		bucketName := aws.ToString(bucket.Name)
+
+		locOut, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
+			Bucket: bucket.Name,
+		})
+		if err != nil {
+			continue
+		}
+		bucketRegion := string(locOut.LocationConstraint)
+		if bucketRegion == "" {
+			bucketRegion = "us-east-1"
+		}
+		if bucketRegion != region {
+			continue
+		}
+
+		isPublic := false
+		statusOut, err := client.GetBucketPolicyStatus(ctx, &s3.GetBucketPolicyStatusInput{
+			Bucket: bucket.Name,
+		})
+		if err == nil && statusOut.PolicyStatus != nil {
+			isPublic = aws.ToBool(statusOut.PolicyStatus.IsPublic)
+		}
+
+		arn := fmt.Sprintf("arn:aws:s3:::%s/policy-status", bucketName)
+		rows = append(rows, map[string]interface{}{
+			"_cq_id":     arn,
+			"arn":        arn,
+			"account_id": accountID,
+			"region":     bucketRegion,
+			"bucket":     bucketName,
+			"is_public":  isPublic,
+		})
+	}
+
+	return rows, nil
+}
+
+// S3 Bucket Notifications
+func (e *SyncEngine) s3BucketNotificationTable() TableSpec {
+	return TableSpec{
+		Name:    "aws_s3_bucket_notifications",
+		Columns: []string{"arn", "account_id", "region", "bucket", "topic_configurations", "queue_configurations", "lambda_function_configurations", "event_bridge_configuration"},
+		Fetch:   e.fetchS3BucketNotifications,
+	}
+}
+
+func (e *SyncEngine) fetchS3BucketNotifications(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := s3.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	bucketsOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	if err != nil {
+		return nil, err
+	}
+
+	var rows []map[string]interface{}
+	for _, bucket := range bucketsOut.Buckets {
+		bucketName := aws.ToString(bucket.Name)
+
+		locOut, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
+			Bucket: bucket.Name,
+		})
+		if err != nil {
+			continue
+		}
+		bucketRegion := string(locOut.LocationConstraint)
+		if bucketRegion == "" {
+			bucketRegion = "us-east-1"
+		}
+		if bucketRegion != region {
+			continue
+		}
+
+		conf, err := client.GetBucketNotificationConfiguration(ctx, &s3.GetBucketNotificationConfigurationInput{
+			Bucket: bucket.Name,
+		})
+		if err != nil {
+			continue
+		}
+
+		arn := fmt.Sprintf("arn:aws:s3:::%s/notification", bucketName)
+		rows = append(rows, map[string]interface{}{
+			"_cq_id":                         arn,
+			"arn":                            arn,
+			"account_id":                     accountID,
+			"region":                         bucketRegion,
+			"bucket":                         bucketName,
+			"topic_configurations":           conf.TopicConfigurations,
+			"queue_configurations":           conf.QueueConfigurations,
+			"lambda_function_configurations": conf.LambdaFunctionConfigurations,
+			"event_bridge_configuration":     conf.EventBridgeConfiguration,
+		})
+	}
+
+	return rows, nil
+}
+
+// S3 Bucket Inventory Configurations
+func (e *SyncEngine) s3BucketInventoryTable() TableSpec {
+	return TableSpec{
+		Name:    "aws_s3_bucket_inventory_configurations",
+		Columns: []string{"arn", "account_id", "region", "bucket", "inventory_id", "is_enabled", "included_object_versions", "optional_fields", "destination", "schedule", "filter"},
+		Fetch:   e.fetchS3BucketInventoryConfigurations,
+	}
+}
+
+func (e *SyncEngine) fetchS3BucketInventoryConfigurations(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := s3.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	bucketsOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	if err != nil {
+		return nil, err
+	}
+
+	var rows []map[string]interface{}
+	for _, bucket := range bucketsOut.Buckets {
+		bucketName := aws.ToString(bucket.Name)
+
+		locOut, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
+			Bucket: bucket.Name,
+		})
+		if err != nil {
+			continue
+		}
+		bucketRegion := string(locOut.LocationConstraint)
+		if bucketRegion == "" {
+			bucketRegion = "us-east-1"
+		}
+		if bucketRegion != region {
+			continue
+		}
+
+		var continuationToken *string
+		for {
+			out, err := client.ListBucketInventoryConfigurations(ctx, &s3.ListBucketInventoryConfigurationsInput{
+				Bucket:            bucket.Name,
+				ContinuationToken: continuationToken,
+			})
+			if err != nil {
+				break
+			}
+			for _, cfg := range out.InventoryConfigurationList {
+				inventoryID := aws.ToString(cfg.Id)
+				arn := fmt.Sprintf("arn:aws:s3:::%s/inventory/%s", bucketName, inventoryID)
+				rows = append(rows, map[string]interface{}{
+					"_cq_id":                   arn,
+					"arn":                      arn,
+					"account_id":               accountID,
+					"region":                   bucketRegion,
+					"bucket":                   bucketName,
+					"inventory_id":             inventoryID,
+					"is_enabled":               cfg.IsEnabled,
+					"included_object_versions": string(cfg.IncludedObjectVersions),
+					"optional_fields":          cfg.OptionalFields,
+					"destination":              cfg.Destination,
+					"schedule":                 cfg.Schedule,
+					"filter":                   cfg.Filter,
+				})
+			}
+
+			if !aws.ToBool(out.IsTruncated) {
+				break
+			}
+			continuationToken = out.NextContinuationToken
+		}
+	}
+
+	return rows, nil
+}
+
+// S3 Bucket Object Lock Configuration
+func (e *SyncEngine) s3BucketObjectLockTable() TableSpec {
+	return TableSpec{
+		Name:    "aws_s3_bucket_object_lock_configurations",
+		Columns: []string{"arn", "account_id", "region", "bucket", "object_lock_enabled", "rule"},
+		Fetch:   e.fetchS3BucketObjectLockConfigurations,
+	}
+}
+
+func (e *SyncEngine) fetchS3BucketObjectLockConfigurations(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := s3.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	bucketsOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	if err != nil {
+		return nil, err
+	}
+
+	var rows []map[string]interface{}
+	for _, bucket := range bucketsOut.Buckets {
+		bucketName := aws.ToString(bucket.Name)
+
+		locOut, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
+			Bucket: bucket.Name,
+		})
+		if err != nil {
+			continue
+		}
+		bucketRegion := string(locOut.LocationConstraint)
+		if bucketRegion == "" {
+			bucketRegion = "us-east-1"
+		}
+		if bucketRegion != region {
+			continue
+		}
+
+		lockOut, err := client.GetObjectLockConfiguration(ctx, &s3.GetObjectLockConfigurationInput{
+			Bucket: bucket.Name,
+		})
+		if err != nil || lockOut.ObjectLockConfiguration == nil {
+			continue
+		}
+
+		cfg := lockOut.ObjectLockConfiguration
+		arn := fmt.Sprintf("arn:aws:s3:::%s/object-lock", bucketName)
+		rows = append(rows, map[string]interface{}{
+			"_cq_id":              arn,
+			"arn":                 arn,
+			"account_id":          accountID,
+			"region":              bucketRegion,
+			"bucket":              bucketName,
+			"object_lock_enabled": string(cfg.ObjectLockEnabled),
+			"rule":                cfg.Rule,
+		})
+	}
+
+	return rows, nil
+}
+
+// S3 Access Points
+func (e *SyncEngine) s3AccessPointTable() TableSpec {
+	return TableSpec{
+		Name: "aws_s3_access_points",
+		Columns: []string{
+			"arn", "account_id", "region", "access_point_name", "access_point_arn", "bucket",
+			"bucket_account_id", "network_origin", "vpc_id", "public_access_block_configuration",
+			"creation_date", "alias",
+		},
+		Fetch: e.fetchS3AccessPoints,
+	}
+}
+
+func (e *SyncEngine) fetchS3AccessPoints(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+	if accountID == "" {
+		return nil, nil
+	}
+
+	client := s3control.NewFromConfig(cfg, func(o *s3control.Options) {
+		o.Region = region
+	})
+
+	paginator := s3control.NewListAccessPointsPaginator(client, &s3control.ListAccessPointsInput{
+		AccountId: aws.String(accountID),
+	})
+	var rows []map[string]interface{}
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, ap := range page.AccessPointList {
+			name := aws.ToString(ap.Name)
+			apArn := aws.ToString(ap.AccessPointArn)
+			if apArn == "" {
+				apArn = fmt.Sprintf("arn:aws:s3:%s:%s:accesspoint/%s", region, accountID, name)
+			}
+			networkOrigin := string(ap.NetworkOrigin)
+			vpcID := ""
+			if ap.VpcConfiguration != nil {
+				vpcID = aws.ToString(ap.VpcConfiguration.VpcId)
+			}
+
+			var publicAccessBlock interface{}
+			var creationDate interface{}
+			detail, err := client.GetAccessPoint(ctx, &s3control.GetAccessPointInput{
+				AccountId: aws.String(accountID),
+				Name:      ap.Name,
+			})
+			if err == nil {
+				if detail.PublicAccessBlockConfiguration != nil {
+					publicAccessBlock = detail.PublicAccessBlockConfiguration
+				}
+				creationDate = detail.CreationDate
+				if detail.VpcConfiguration != nil {
+					vpcID = aws.ToString(detail.VpcConfiguration.VpcId)
+				}
+				if detail.NetworkOrigin != "" {
+					networkOrigin = string(detail.NetworkOrigin)
+				}
+			}
+
+			rows = append(rows, map[string]interface{}{
+				"_cq_id":                            apArn,
+				"arn":                               apArn,
+				"account_id":                        accountID,
+				"region":                            region,
+				"access_point_name":                 name,
+				"access_point_arn":                  apArn,
+				"bucket":                            aws.ToString(ap.Bucket),
+				"bucket_account_id":                 aws.ToString(ap.BucketAccountId),
+				"network_origin":                    networkOrigin,
+				"vpc_id":                            vpcID,
+				"public_access_block_configuration": publicAccessBlock,
+				"creation_date":                     creationDate,
+				"alias":                             aws.ToString(ap.Alias),
+			})
+		}
+	}
+
 	return rows, nil
 }
 
