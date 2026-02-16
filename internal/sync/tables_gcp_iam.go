@@ -3,6 +3,8 @@ package sync
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
 
 	admin "cloud.google.com/go/iam/admin/apiv1"
 	"cloud.google.com/go/iam/admin/apiv1/adminpb"
@@ -42,8 +44,24 @@ func (e *GCPSyncEngine) gcpIAMServiceAccountKeyTable() GCPTableSpec {
 func (e *GCPSyncEngine) gcpIAMPolicyTable() GCPTableSpec {
 	return GCPTableSpec{
 		Name:    "gcp_iam_policies",
-		Columns: []string{"project_id", "version", "etag", "bindings"},
+		Columns: []string{"project_id", "version", "etag", "bindings", "audit_configs"},
 		Fetch:   e.fetchGCPIAMPolicies,
+	}
+}
+
+func (e *GCPSyncEngine) gcpIAMMemberTable() GCPTableSpec {
+	return GCPTableSpec{
+		Name: "gcp_iam_members",
+		Columns: []string{
+			"project_id",
+			"member",
+			"member_type",
+			"email",
+			"roles",
+			"has_admin_role",
+			"has_high_privilege",
+		},
+		Fetch: e.fetchGCPIAMMembers,
 	}
 }
 
@@ -192,15 +210,87 @@ func (e *GCPSyncEngine) fetchGCPIAMPolicies(ctx context.Context, projectID strin
 		})
 	}
 
+	auditConfigs := serializeAuditConfigs(policy.AuditConfigs)
+
 	row := map[string]interface{}{
-		"_cq_id":     fmt.Sprintf("%s/iam-policy", projectID),
-		"project_id": projectID,
-		"version":    policy.Version,
-		"etag":       string(policy.Etag),
-		"bindings":   bindings,
+		"_cq_id":        fmt.Sprintf("%s/iam-policy", projectID),
+		"project_id":    projectID,
+		"version":       policy.Version,
+		"etag":          string(policy.Etag),
+		"bindings":      bindings,
+		"audit_configs": auditConfigs,
 	}
 
 	return []map[string]interface{}{row}, nil
+}
+
+func (e *GCPSyncEngine) fetchGCPIAMMembers(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
+	client, err := resourcemanager.NewProjectsClient(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("create resource manager client: %w", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	policy, err := client.GetIamPolicy(ctx, &iampb.GetIamPolicyRequest{
+		Resource: fmt.Sprintf("projects/%s", projectID),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get iam policy: %w", err)
+	}
+
+	memberRoles := make(map[string]map[string]struct{})
+	for _, binding := range policy.Bindings {
+		for _, member := range binding.Members {
+			if member == "" {
+				continue
+			}
+			roles := memberRoles[member]
+			if roles == nil {
+				roles = make(map[string]struct{})
+				memberRoles[member] = roles
+			}
+			roles[binding.Role] = struct{}{}
+		}
+	}
+
+	rows := make([]map[string]interface{}, 0, len(memberRoles))
+	for member, roles := range memberRoles {
+		roleNames := make([]string, 0, len(roles))
+		for role := range roles {
+			roleNames = append(roleNames, role)
+		}
+		sort.Strings(roleNames)
+
+		roleEntries := make([]map[string]interface{}, 0, len(roleNames))
+		hasAdmin := false
+		hasHigh := false
+		for _, role := range roleNames {
+			roleEntries = append(roleEntries, map[string]interface{}{
+				"name": role,
+			})
+			if isGCPAdminRole(role) {
+				hasAdmin = true
+			}
+			if isGCPHighPrivilegeRole(role) {
+				hasHigh = true
+			}
+		}
+
+		memberType, email := parseGCPMember(member)
+		row := map[string]interface{}{
+			"_cq_id":             fmt.Sprintf("%s/%s", projectID, member),
+			"project_id":         projectID,
+			"member":             member,
+			"member_type":        memberType,
+			"email":              email,
+			"roles":              roleEntries,
+			"has_admin_role":     hasAdmin,
+			"has_high_privilege": hasHigh,
+		}
+		rows = append(rows, row)
+	}
+
+	return rows, nil
 }
 
 func serializePolicyCondition(condition *exprpb.Expr) map[string]interface{} {
@@ -213,4 +303,58 @@ func serializePolicyCondition(condition *exprpb.Expr) map[string]interface{} {
 		"expression":  condition.Expression,
 		"location":    condition.Location,
 	}
+}
+
+func serializeAuditConfigs(configs []*iampb.AuditConfig) []map[string]interface{} {
+	if len(configs) == 0 {
+		return nil
+	}
+	entries := make([]map[string]interface{}, 0, len(configs))
+	for _, config := range configs {
+		entries = append(entries, map[string]interface{}{
+			"service":           config.Service,
+			"audit_log_configs": serializeAuditLogConfigs(config.AuditLogConfigs),
+		})
+	}
+	return entries
+}
+
+func serializeAuditLogConfigs(configs []*iampb.AuditLogConfig) []map[string]interface{} {
+	if len(configs) == 0 {
+		return nil
+	}
+	entries := make([]map[string]interface{}, 0, len(configs))
+	for _, config := range configs {
+		entries = append(entries, map[string]interface{}{
+			"log_type":         config.LogType.String(),
+			"exempted_members": config.ExemptedMembers,
+		})
+	}
+	return entries
+}
+
+func parseGCPMember(member string) (string, string) {
+	parts := strings.SplitN(member, ":", 2)
+	if len(parts) != 2 {
+		return "", member
+	}
+	memberType := parts[0]
+	value := parts[1]
+	if strings.Contains(value, "@") {
+		return memberType, value
+	}
+	return memberType, ""
+}
+
+func isGCPAdminRole(role string) bool {
+	value := strings.ToLower(role)
+	return strings.Contains(value, "admin") || strings.Contains(value, "owner")
+}
+
+func isGCPHighPrivilegeRole(role string) bool {
+	value := strings.ToLower(role)
+	if strings.Contains(value, "editor") {
+		return true
+	}
+	return isGCPAdminRole(role)
 }

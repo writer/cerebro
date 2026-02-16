@@ -20,7 +20,11 @@ func (e *K8sSyncEngine) getK8sTables() []K8sTableSpec {
 		e.k8sServiceTable(),
 		e.k8sDeploymentTable(),
 		e.k8sIngressTable(),
+		e.k8sRoleTable(),
+		e.k8sRoleBindingTable(),
 		e.k8sClusterRoleTable(),
+		e.k8sClusterRoleBindingTable(),
+		e.k8sAuditEventTable(),
 	}
 }
 
@@ -356,6 +360,208 @@ func (e *K8sSyncEngine) k8sClusterRoleTable() K8sTableSpec {
 	}
 }
 
+func (e *K8sSyncEngine) k8sRoleTable() K8sTableSpec {
+	return K8sTableSpec{
+		Name: "k8s_rbac_roles",
+		Columns: []string{
+			"uid",
+			"name",
+			"namespace",
+			"cluster_name",
+			"rules",
+			"labels",
+			"annotations",
+		},
+		Fetch: func(ctx context.Context, client kubernetes.Interface, namespace, clusterName string) ([]map[string]interface{}, error) {
+			if namespace == "" {
+				namespace = metav1.NamespaceAll
+			}
+
+			roles, err := client.RbacV1().Roles(namespace).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+
+			clusterName = normalizeClusterName(clusterName)
+			rows := make([]map[string]interface{}, 0, len(roles.Items))
+			for _, role := range roles.Items {
+				row := map[string]interface{}{
+					"_cq_id":       buildNamespacedID(clusterName, role.Namespace, role.Name),
+					"uid":          string(role.UID),
+					"name":         role.Name,
+					"namespace":    role.Namespace,
+					"cluster_name": clusterName,
+					"rules":        serializePolicyRules(role.Rules),
+					"labels":       role.Labels,
+					"annotations":  role.Annotations,
+				}
+				rows = append(rows, row)
+			}
+
+			return rows, nil
+		},
+	}
+}
+
+func (e *K8sSyncEngine) k8sClusterRoleBindingTable() K8sTableSpec {
+	return K8sTableSpec{
+		Name: "k8s_rbac_cluster_role_bindings",
+		Columns: []string{
+			"uid",
+			"name",
+			"cluster_name",
+			"role_ref",
+			"subjects",
+			"labels",
+			"annotations",
+		},
+		Fetch: func(ctx context.Context, client kubernetes.Interface, _ string, clusterName string) ([]map[string]interface{}, error) {
+			bindings, err := client.RbacV1().ClusterRoleBindings().List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+
+			clusterName = normalizeClusterName(clusterName)
+			rows := make([]map[string]interface{}, 0, len(bindings.Items))
+			for _, binding := range bindings.Items {
+				row := map[string]interface{}{
+					"_cq_id":       buildClusterScopedID(clusterName, "clusterrolebinding", binding.Name),
+					"uid":          string(binding.UID),
+					"name":         binding.Name,
+					"cluster_name": clusterName,
+					"role_ref":     serializeRoleRef(binding.RoleRef),
+					"subjects":     serializeSubjects(binding.Subjects),
+					"labels":       binding.Labels,
+					"annotations":  binding.Annotations,
+				}
+				rows = append(rows, row)
+			}
+
+			return rows, nil
+		},
+	}
+}
+
+func (e *K8sSyncEngine) k8sRoleBindingTable() K8sTableSpec {
+	return K8sTableSpec{
+		Name: "k8s_rbac_role_bindings",
+		Columns: []string{
+			"uid",
+			"name",
+			"namespace",
+			"cluster_name",
+			"role_ref",
+			"subjects",
+			"labels",
+			"annotations",
+		},
+		Fetch: func(ctx context.Context, client kubernetes.Interface, namespace, clusterName string) ([]map[string]interface{}, error) {
+			if namespace == "" {
+				namespace = metav1.NamespaceAll
+			}
+
+			bindings, err := client.RbacV1().RoleBindings(namespace).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+
+			clusterName = normalizeClusterName(clusterName)
+			rows := make([]map[string]interface{}, 0, len(bindings.Items))
+			for _, binding := range bindings.Items {
+				row := map[string]interface{}{
+					"_cq_id":       buildNamespacedID(clusterName, binding.Namespace, binding.Name),
+					"uid":          string(binding.UID),
+					"name":         binding.Name,
+					"namespace":    binding.Namespace,
+					"cluster_name": clusterName,
+					"role_ref":     serializeRoleRef(binding.RoleRef),
+					"subjects":     serializeSubjects(binding.Subjects),
+					"labels":       binding.Labels,
+					"annotations":  binding.Annotations,
+				}
+				rows = append(rows, row)
+			}
+
+			return rows, nil
+		},
+	}
+}
+
+func (e *K8sSyncEngine) k8sAuditEventTable() K8sTableSpec {
+	return K8sTableSpec{
+		Name: "k8s_audit_events",
+		Columns: []string{
+			"uid",
+			"name",
+			"namespace",
+			"cluster_name",
+			"reason",
+			"message",
+			"type",
+			"action",
+			"verb",
+			"resource",
+			"event_time",
+			"first_timestamp",
+			"last_timestamp",
+			"count",
+			"involved_object",
+			"source",
+			"reporting_component",
+			"reporting_instance",
+			"related",
+			"series",
+			"annotations",
+			"labels",
+		},
+		Fetch: func(ctx context.Context, client kubernetes.Interface, namespace, clusterName string) ([]map[string]interface{}, error) {
+			if namespace == "" {
+				namespace = metav1.NamespaceAll
+			}
+
+			events, err := client.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+
+			clusterName = normalizeClusterName(clusterName)
+			rows := make([]map[string]interface{}, 0, len(events.Items))
+			for _, event := range events.Items {
+				verb := strings.ToLower(event.Action)
+				resource := strings.ToLower(event.InvolvedObject.Kind)
+				row := map[string]interface{}{
+					"_cq_id":              buildNamespacedID(clusterName, event.Namespace, event.Name),
+					"uid":                 string(event.UID),
+					"name":                event.Name,
+					"namespace":           event.Namespace,
+					"cluster_name":        clusterName,
+					"reason":              event.Reason,
+					"message":             event.Message,
+					"type":                event.Type,
+					"action":              event.Action,
+					"verb":                verb,
+					"resource":            resource,
+					"event_time":          event.EventTime,
+					"first_timestamp":     event.FirstTimestamp,
+					"last_timestamp":      event.LastTimestamp,
+					"count":               event.Count,
+					"involved_object":     serializeObjectReference(event.InvolvedObject),
+					"source":              serializeEventSource(event.Source),
+					"reporting_component": event.ReportingController,
+					"reporting_instance":  event.ReportingInstance,
+					"related":             serializeObjectReferencePtr(event.Related),
+					"series":              serializeEventSeries(event.Series),
+					"annotations":         event.Annotations,
+					"labels":              event.Labels,
+				}
+				rows = append(rows, row)
+			}
+
+			return rows, nil
+		},
+	}
+}
+
 func buildPodID(clusterName, namespace, name string) string {
 	clusterName = normalizeClusterName(clusterName)
 	parts := []string{clusterName}
@@ -484,6 +690,69 @@ func serializePolicyRules(rules []rbacv1.PolicyRule) []map[string]interface{} {
 		result = append(result, entry)
 	}
 	return result
+}
+
+func serializeRoleRef(ref rbacv1.RoleRef) map[string]interface{} {
+	return map[string]interface{}{
+		"api_group": ref.APIGroup,
+		"kind":      ref.Kind,
+		"name":      ref.Name,
+	}
+}
+
+func serializeSubjects(subjects []rbacv1.Subject) []map[string]interface{} {
+	if len(subjects) == 0 {
+		return nil
+	}
+	result := make([]map[string]interface{}, 0, len(subjects))
+	for _, subject := range subjects {
+		result = append(result, map[string]interface{}{
+			"api_group": subject.APIGroup,
+			"kind":      subject.Kind,
+			"name":      subject.Name,
+			"namespace": subject.Namespace,
+		})
+	}
+	return result
+}
+
+func serializeObjectReference(ref corev1.ObjectReference) map[string]interface{} {
+	return map[string]interface{}{
+		"api_version":      ref.APIVersion,
+		"kind":             ref.Kind,
+		"namespace":        ref.Namespace,
+		"name":             ref.Name,
+		"uid":              string(ref.UID),
+		"resource_version": ref.ResourceVersion,
+		"field_path":       ref.FieldPath,
+	}
+}
+
+func serializeObjectReferencePtr(ref *corev1.ObjectReference) map[string]interface{} {
+	if ref == nil {
+		return nil
+	}
+	return serializeObjectReference(*ref)
+}
+
+func serializeEventSource(source corev1.EventSource) map[string]interface{} {
+	if source.Component == "" && source.Host == "" {
+		return nil
+	}
+	return map[string]interface{}{
+		"component": source.Component,
+		"host":      source.Host,
+	}
+}
+
+func serializeEventSeries(series *corev1.EventSeries) map[string]interface{} {
+	if series == nil {
+		return nil
+	}
+	return map[string]interface{}{
+		"count":              series.Count,
+		"last_observed_time": series.LastObservedTime,
+	}
 }
 
 func ptrValue(value *string) string {

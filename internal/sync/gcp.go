@@ -537,6 +537,7 @@ func (e *GCPSyncEngine) getGCPTables() []GCPTableSpec {
 		e.gcpIAMServiceAccountTable(),
 		e.gcpIAMServiceAccountKeyTable(),
 		e.gcpIAMPolicyTable(),
+		e.gcpIAMMemberTable(),
 		// Database
 		e.gcpSQLInstanceTable(),
 		// Serverless

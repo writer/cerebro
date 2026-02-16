@@ -37,6 +37,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -394,12 +395,16 @@ func (e *Engine) checkAssetViolation(p *Policy, asset map[string]interface{}) st
 
 func evaluateCondition(condition string, asset map[string]interface{}) bool {
 	condition = strings.TrimSpace(condition)
+	if condition == "" {
+		return false
+	}
+
+	condition = trimOuterParens(condition)
 
 	// Handle OR (any sub-condition true -> true)
-	if strings.Contains(condition, " OR ") {
-		parts := strings.Split(condition, " OR ")
+	if parts := splitTopLevel(condition, " OR "); len(parts) > 1 {
 		for _, part := range parts {
-			if evaluateCondition(strings.TrimSpace(part), asset) {
+			if evaluateCondition(part, asset) {
 				return true
 			}
 		}
@@ -407,14 +412,45 @@ func evaluateCondition(condition string, asset map[string]interface{}) bool {
 	}
 
 	// Handle AND (all sub-conditions true -> true)
-	if strings.Contains(condition, " AND ") {
-		parts := strings.Split(condition, " AND ")
+	if parts := splitTopLevel(condition, " AND "); len(parts) > 1 {
 		for _, part := range parts {
-			if !evaluateCondition(strings.TrimSpace(part), asset) {
+			if !evaluateCondition(part, asset) {
 				return false
 			}
 		}
 		return true
+	}
+
+	if field, inner, negated, ok := parseAnyCondition(condition); ok {
+		match := anyValueMatches(getNestedValue(asset, field), inner)
+		if negated {
+			return !match
+		}
+		return match
+	}
+
+	if field, values, negated, ok := parseInCondition(condition); ok {
+		match := valueInList(getNestedValue(asset, field), values)
+		if negated {
+			return !match
+		}
+		return match
+	}
+
+	if field, pattern, negated, ok := parseMatchesCondition(condition); ok {
+		match := valueMatchesPattern(getNestedValue(asset, field), pattern)
+		if negated {
+			return !match
+		}
+		return match
+	}
+
+	if field, expected, negated, ok := parseContainsCondition(condition); ok {
+		match := evaluateContainsCondition(asset, field, expected)
+		if negated {
+			return !match
+		}
+		return match
 	}
 
 	// Handle equality (==)
@@ -449,33 +485,6 @@ func evaluateCondition(condition string, asset map[string]interface{}) bool {
 		return compareValues(val, expected, "<")
 	}
 
-	// Handle contains
-	if strings.Contains(condition, " contains ") {
-		parts := strings.SplitN(condition, " contains ", 2)
-		if len(parts) == 2 {
-			field := strings.TrimSpace(parts[0])
-			substring := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-			val := getNestedValue(asset, field)
-			if s, ok := val.(string); ok {
-				return strings.Contains(s, substring)
-			}
-		}
-	}
-
-	// Handle not contains
-	if strings.Contains(condition, " not contains ") {
-		parts := strings.SplitN(condition, " not contains ", 2)
-		if len(parts) == 2 {
-			field := strings.TrimSpace(parts[0])
-			substring := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-			val := getNestedValue(asset, field)
-			if s, ok := val.(string); ok {
-				return !strings.Contains(s, substring)
-			}
-			return true // field missing or not a string -> doesn't contain
-		}
-	}
-
 	// Handle starts_with
 	if strings.Contains(condition, " starts_with ") {
 		parts := strings.SplitN(condition, " starts_with ", 2)
@@ -506,11 +515,405 @@ func evaluateCondition(condition string, asset map[string]interface{}) bool {
 	return false
 }
 
+func splitTopLevel(condition string, delimiter string) []string {
+	return splitTopLevelInternal(condition, delimiter, false)
+}
+
+func splitTopLevelFold(condition string, delimiter string) []string {
+	return splitTopLevelInternal(condition, delimiter, true)
+}
+
+func splitTopLevelInternal(condition string, delimiter string, fold bool) []string {
+	if delimiter == "" {
+		return []string{condition}
+	}
+
+	var parts []string
+	depth := 0
+	inSingle := false
+	inDouble := false
+	start := 0
+	limit := len(condition) - len(delimiter)
+
+	for i := 0; i < len(condition); i++ {
+		char := condition[i]
+		switch char {
+		case '\'':
+			if !inDouble {
+				inSingle = !inSingle
+			}
+		case '"':
+			if !inSingle {
+				inDouble = !inDouble
+			}
+		case '(':
+			if !inSingle && !inDouble {
+				depth++
+			}
+		case ')':
+			if !inSingle && !inDouble && depth > 0 {
+				depth--
+			}
+		}
+
+		if depth != 0 || inSingle || inDouble {
+			continue
+		}
+		if i > limit {
+			continue
+		}
+		if matchDelimiter(condition, delimiter, i, fold) {
+			parts = append(parts, strings.TrimSpace(condition[start:i]))
+			i += len(delimiter) - 1
+			start = i + 1
+		}
+	}
+
+	parts = append(parts, strings.TrimSpace(condition[start:]))
+	return parts
+}
+
+func matchDelimiter(condition string, delimiter string, index int, fold bool) bool {
+	if index+len(delimiter) > len(condition) {
+		return false
+	}
+	segment := condition[index : index+len(delimiter)]
+	if fold {
+		return strings.EqualFold(segment, delimiter)
+	}
+	return segment == delimiter
+}
+
+func trimOuterParens(condition string) string {
+	for {
+		condition = strings.TrimSpace(condition)
+		if len(condition) < 2 || condition[0] != '(' || condition[len(condition)-1] != ')' {
+			return condition
+		}
+		if !isOuterParens(condition) {
+			return condition
+		}
+		condition = strings.TrimSpace(condition[1 : len(condition)-1])
+	}
+}
+
+func isOuterParens(condition string) bool {
+	depth := 0
+	inSingle := false
+	inDouble := false
+	for i := 0; i < len(condition); i++ {
+		char := condition[i]
+		switch char {
+		case '\'':
+			if !inDouble {
+				inSingle = !inSingle
+			}
+		case '"':
+			if !inSingle {
+				inDouble = !inDouble
+			}
+		case '(':
+			if !inSingle && !inDouble {
+				depth++
+			}
+		case ')':
+			if !inSingle && !inDouble {
+				depth--
+				if depth == 0 && i != len(condition)-1 {
+					return false
+				}
+				if depth < 0 {
+					return false
+				}
+			}
+		}
+	}
+	return depth == 0
+}
+
+func parseAnyCondition(condition string) (string, string, bool, bool) {
+	if parts := splitTopLevelFold(condition, " NOT ANY "); len(parts) == 2 {
+		field := strings.TrimSpace(parts[0])
+		inner := trimOuterParens(strings.TrimSpace(parts[1]))
+		return field, inner, true, field != "" && inner != ""
+	}
+	if parts := splitTopLevelFold(condition, " ANY "); len(parts) == 2 {
+		field := strings.TrimSpace(parts[0])
+		inner := trimOuterParens(strings.TrimSpace(parts[1]))
+		return field, inner, false, field != "" && inner != ""
+	}
+	return "", "", false, false
+}
+
+func parseInCondition(condition string) (string, []string, bool, bool) {
+	if parts := splitTopLevelFold(condition, " NOT IN "); len(parts) == 2 {
+		field := strings.TrimSpace(parts[0])
+		values := parseListValues(parts[1])
+		return field, values, true, field != "" && len(values) > 0
+	}
+	if parts := splitTopLevelFold(condition, " IN "); len(parts) == 2 {
+		field := strings.TrimSpace(parts[0])
+		values := parseListValues(parts[1])
+		return field, values, false, field != "" && len(values) > 0
+	}
+	return "", nil, false, false
+}
+
+func parseListValues(list string) []string {
+	list = strings.TrimSpace(list)
+	if list == "" {
+		return nil
+	}
+	if isOuterParens(list) {
+		list = trimOuterParens(list)
+	}
+	if list == "" {
+		return nil
+	}
+
+	parts := splitListTokens(list)
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		values = append(values, trimQuotes(trimmed))
+	}
+	return values
+}
+
+func splitListTokens(list string) []string {
+	var parts []string
+	start := 0
+	inSingle := false
+	inDouble := false
+	for i := 0; i < len(list); i++ {
+		switch list[i] {
+		case '\'':
+			if !inDouble {
+				inSingle = !inSingle
+			}
+		case '"':
+			if !inSingle {
+				inDouble = !inDouble
+			}
+		case ',':
+			if !inSingle && !inDouble {
+				parts = append(parts, strings.TrimSpace(list[start:i]))
+				start = i + 1
+			}
+		}
+	}
+	parts = append(parts, strings.TrimSpace(list[start:]))
+	return parts
+}
+
+func parseMatchesCondition(condition string) (string, string, bool, bool) {
+	if parts := splitTopLevelFold(condition, " NOT MATCHES "); len(parts) == 2 {
+		field := strings.TrimSpace(parts[0])
+		pattern := strings.TrimSpace(parts[1])
+		return field, pattern, true, field != "" && pattern != ""
+	}
+	if parts := splitTopLevelFold(condition, " MATCHES "); len(parts) == 2 {
+		field := strings.TrimSpace(parts[0])
+		pattern := strings.TrimSpace(parts[1])
+		return field, pattern, false, field != "" && pattern != ""
+	}
+	return "", "", false, false
+}
+
+func parseContainsCondition(condition string) (string, string, bool, bool) {
+	if parts := splitTopLevelFold(condition, " NOT CONTAINS "); len(parts) == 2 {
+		field := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+		return field, value, true, field != "" && value != ""
+	}
+	if parts := splitTopLevelFold(condition, " CONTAINS "); len(parts) == 2 {
+		field := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+		return field, value, false, field != "" && value != ""
+	}
+	return "", "", false, false
+}
+
+func evaluateContainsCondition(asset map[string]interface{}, field string, expected string) bool {
+	expected = strings.TrimSpace(expected)
+	if expected == "" {
+		return false
+	}
+
+	if !isQuoted(expected) && isOuterParens(expected) {
+		inner := trimOuterParens(expected)
+		return anyValueMatches(getNestedValue(asset, field), inner)
+	}
+
+	return valueContains(getNestedValue(asset, field), trimQuotes(expected))
+}
+
+func anyValueMatches(value interface{}, condition string) bool {
+	if value == nil {
+		return false
+	}
+
+	switch typed := value.(type) {
+	case []interface{}:
+		for _, item := range typed {
+			if anyValueMatches(item, condition) {
+				return true
+			}
+		}
+		return false
+	case map[string]interface{}:
+		return evaluateCondition(condition, typed)
+	case string:
+		parsed := tryParseJSON(typed)
+		if parsed != nil {
+			return anyValueMatches(parsed, condition)
+		}
+		return false
+	default:
+		return false
+	}
+}
+
+func valueInList(value interface{}, list []string) bool {
+	if value == nil {
+		return false
+	}
+
+	switch typed := value.(type) {
+	case []interface{}:
+		for _, item := range typed {
+			if valueInList(item, list) {
+				return true
+			}
+		}
+		return false
+	case []string:
+		for _, item := range typed {
+			if valueInList(item, list) {
+				return true
+			}
+		}
+		return false
+	default:
+		for _, expected := range list {
+			if compareValues(typed, expected, "==") {
+				return true
+			}
+		}
+		return false
+	}
+}
+
+func valueMatchesPattern(value interface{}, pattern string) bool {
+	pattern = trimQuotes(strings.TrimSpace(pattern))
+	if pattern == "" {
+		return false
+	}
+
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return false
+	}
+
+	return matchRegexValue(value, re)
+}
+
+func matchRegexValue(value interface{}, re *regexp.Regexp) bool {
+	if value == nil {
+		return false
+	}
+
+	switch typed := value.(type) {
+	case []interface{}:
+		for _, item := range typed {
+			if matchRegexValue(item, re) {
+				return true
+			}
+		}
+		return false
+	case []string:
+		for _, item := range typed {
+			if re.MatchString(item) {
+				return true
+			}
+		}
+		return false
+	case string:
+		return re.MatchString(typed)
+	case map[string]interface{}:
+		serialized, err := json.Marshal(typed)
+		if err != nil {
+			return false
+		}
+		return re.Match(serialized)
+	default:
+		return re.MatchString(fmt.Sprintf("%v", value))
+	}
+}
+
+func valueContains(value interface{}, substring string) bool {
+	if value == nil || substring == "" {
+		return false
+	}
+
+	switch typed := value.(type) {
+	case []interface{}:
+		for _, item := range typed {
+			if valueContains(item, substring) {
+				return true
+			}
+		}
+		return false
+	case []string:
+		for _, item := range typed {
+			if strings.Contains(item, substring) {
+				return true
+			}
+		}
+		return false
+	case string:
+		return strings.Contains(typed, substring)
+	case map[string]interface{}:
+		serialized, err := json.Marshal(typed)
+		if err != nil {
+			return false
+		}
+		return strings.Contains(string(serialized), substring)
+	default:
+		return strings.Contains(fmt.Sprintf("%v", value), substring)
+	}
+}
+
+func trimQuotes(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) >= 2 {
+		first := value[0]
+		last := value[len(value)-1]
+		if (first == '\'' && last == '\'') || (first == '"' && last == '"') {
+			return value[1 : len(value)-1]
+		}
+	}
+	return strings.Trim(value, "\"'")
+}
+
+func isQuoted(value string) bool {
+	value = strings.TrimSpace(value)
+	if len(value) < 2 {
+		return false
+	}
+	first := value[0]
+	last := value[len(value)-1]
+	return (first == '\'' && last == '\'') || (first == '"' && last == '"')
+}
+
 // getNestedValue retrieves a value from nested maps using dot notation
 // e.g., "config.public_access.enabled" -> asset["config"]["public_access"]["enabled"]
 // Handles JSON strings and URL-encoded JSON strings from Snowflake VARIANT columns
 func getNestedValue(asset map[string]interface{}, path string) interface{} {
-	parts := strings.Split(path, ".")
+	parts := splitPath(path)
 	var current interface{} = asset
 
 	for _, part := range parts {
@@ -559,6 +962,70 @@ func getNestedValue(asset map[string]interface{}, path string) interface{} {
 	}
 
 	return current
+}
+
+func splitPath(path string) []string {
+	if path == "" {
+		return nil
+	}
+
+	var parts []string
+	var buf strings.Builder
+	inBracket := false
+	inQuote := false
+	var quote byte
+
+	flush := func() {
+		if buf.Len() == 0 {
+			return
+		}
+		segment := strings.TrimSpace(buf.String())
+		if segment != "" {
+			parts = append(parts, segment)
+		}
+		buf.Reset()
+	}
+
+	for i := 0; i < len(path); i++ {
+		char := path[i]
+		if inBracket {
+			if inQuote {
+				if char == quote {
+					inQuote = false
+				} else {
+					buf.WriteByte(char)
+				}
+				continue
+			}
+
+			switch char {
+			case '\'', '"':
+				inQuote = true
+				quote = char
+			case ']':
+				flush()
+				inBracket = false
+			case '[':
+				continue
+			default:
+				buf.WriteByte(char)
+			}
+			continue
+		}
+
+		switch char {
+		case '.':
+			flush()
+		case '[':
+			flush()
+			inBracket = true
+		default:
+			buf.WriteByte(char)
+		}
+	}
+
+	flush()
+	return parts
 }
 
 func tryParseJSON(s string) interface{} {

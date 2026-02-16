@@ -40,6 +40,8 @@ func SupportedTableNames() []string {
 	addGCPTables((&GCPSyncEngine{}).getGCPTables())
 	addAzureTables((&AzureSyncEngine{}).getAzureTables())
 	addK8sTables((&K8sSyncEngine{}).getK8sTables())
+	add("gcp_container_vulnerabilities")
+	add("gcp_scc_findings")
 
 	for _, tableName := range GCPAssetTypes {
 		add(tableName)

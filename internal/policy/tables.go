@@ -306,6 +306,7 @@ var ResourceToTableMapping = map[string][]string{
 	"gcp::logging::sink":            {"gcp_logging_sinks"},
 	"gcp::logging::project_sink":    {"gcp_logging_project_sinks"},
 	"gcp::ids::endpoint":            {"gcp_ids_endpoints"},
+	"gcp::resourcemanager::project": {"gcp_iam_policies"},
 	"gcp_logging_sink":              {"gcp_logging_sinks"},
 
 	// Azure
@@ -368,26 +369,33 @@ var ResourceToTableMapping = map[string][]string{
 	"terraform::workspace": {"terraform_workspaces"},
 
 	// Kubernetes
-	"k8s::cluster_role":        {"k8s_rbac_cluster_roles"},
-	"k8s::role":                {"k8s_rbac_roles"},
-	"k8s::namespace":           {"k8s_core_namespaces"},
-	"k8s::core::pod":           {"k8s_core_pods"},
-	"k8s::core::namespace":     {"k8s_core_namespaces"},
-	"k8s::core::service":       {"k8s_core_services"},
-	"k8s::core::node":          {"k8s_core_nodes"},
-	"k8s::networking::ingress": {"k8s_networking_ingresses"},
-	"k8s::rbac::cluster_role":  {"k8s_rbac_cluster_roles"},
-	"kubernetes::pod":          {"k8s_core_pods"},
+	"k8s::cluster_role":               {"k8s_rbac_cluster_roles"},
+	"k8s::cluster_role_binding":       {"k8s_rbac_cluster_role_bindings"},
+	"k8s::role":                       {"k8s_rbac_roles"},
+	"k8s::role_binding":               {"k8s_rbac_role_bindings"},
+	"k8s::namespace":                  {"k8s_core_namespaces"},
+	"k8s::core::pod":                  {"k8s_core_pods"},
+	"k8s::core::namespace":            {"k8s_core_namespaces"},
+	"k8s::core::service":              {"k8s_core_services"},
+	"k8s::core::node":                 {"k8s_core_nodes"},
+	"k8s::networking::ingress":        {"k8s_networking_ingresses"},
+	"k8s::rbac::cluster_role":         {"k8s_rbac_cluster_roles"},
+	"k8s::rbac::cluster_role_binding": {"k8s_rbac_cluster_role_bindings"},
+	"k8s::rbac::role_binding":         {"k8s_rbac_role_bindings"},
+	"kubernetes::pod":                 {"k8s_core_pods"},
 	"kubernetes::service": {
 		"k8s_core_services",
 	},
-	"kubernetes::networking::ingress": {"k8s_networking_ingresses"},
-	"kubernetes::deployment":          {"k8s_apps_deployments"},
-	"kubernetes::audit_event":         {"k8s_audit_events"},
+	"kubernetes::networking::ingress":  {"k8s_networking_ingresses"},
+	"kubernetes::deployment":           {"k8s_apps_deployments"},
+	"kubernetes::role_binding":         {"k8s_rbac_role_bindings"},
+	"kubernetes::cluster_role_binding": {"k8s_rbac_cluster_role_bindings"},
+	"kubernetes::audit_event":          {"k8s_audit_events"},
 
 	// GKE (maps to Kubernetes RBAC tables)
 	"gcp::gke::cluster_role":         {"k8s_rbac_cluster_roles"},
 	"gcp::gke::role":                 {"k8s_rbac_roles"},
+	"gcp::gke::role_binding":         {"k8s_rbac_role_bindings"},
 	"gcp::gke::cluster_role_binding": {"k8s_rbac_cluster_role_bindings"},
 
 	// Operational/compliance resources
