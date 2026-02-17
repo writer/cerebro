@@ -533,7 +533,7 @@ func (s *Server) syncStatus(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if len(result.Rows) > 0 {
-			lastSync := parseLastSyncValue(result.Rows[0]["last_sync"])
+			lastSync := parseLastSyncRow(result.Rows[0])
 			if !lastSync.IsZero() {
 				status := "fresh"
 				if time.Since(lastSync) > staleThreshold {
@@ -582,6 +582,14 @@ func (s *Server) syncStatus(w http.ResponseWriter, r *http.Request) {
 		"stale_threshold": staleThreshold.String(),
 		"checked_at":      time.Now().UTC(),
 	})
+}
+
+func parseLastSyncRow(row map[string]interface{}) time.Time {
+	value, ok := queryRowValue(row, "last_sync")
+	if !ok {
+		return time.Time{}
+	}
+	return parseLastSyncValue(value)
 }
 
 func parseLastSyncValue(value interface{}) time.Time {

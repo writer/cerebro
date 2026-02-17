@@ -198,7 +198,10 @@ func (c *Client) CountAssets(ctx context.Context, table string) (int64, error) {
 	}
 
 	// Handle various numeric types that Snowflake may return
-	countVal := result.Rows[0]["count"]
+	countVal, ok := queryRowValue(result.Rows[0], "count")
+	if !ok {
+		return 0, nil
+	}
 	switch v := countVal.(type) {
 	case int64:
 		return v, nil
@@ -240,7 +243,7 @@ func (c *Client) DescribeColumns(ctx context.Context, table string) ([]string, e
 	}
 	cols := make([]string, 0, len(result.Rows))
 	for _, row := range result.Rows {
-		if name, ok := row["column_name"].(string); ok {
+		if name := queryRowString(row, "column_name"); name != "" {
 			cols = append(cols, strings.ToLower(name))
 		}
 	}

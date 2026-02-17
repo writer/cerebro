@@ -105,3 +105,29 @@ func TestCDCEventFromRow_LowercaseKeys(t *testing.T) {
 		t.Fatalf("unexpected event time: %v", event.EventTime)
 	}
 }
+
+func TestCDCEventFromRow_UppercaseKeys(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	row := map[string]interface{}{
+		"EVENT_ID":     "evt-999",
+		"TABLE_NAME":   "aws_iam_users",
+		"RESOURCE_ID":  "arn:aws:iam::123:user/test",
+		"CHANGE_TYPE":  "modified",
+		"PROVIDER":     "aws",
+		"REGION":       "us-east-1",
+		"ACCOUNT_ID":   "123",
+		"PAYLOAD_HASH": "hash-9",
+		"EVENT_TIME":   now,
+	}
+
+	event := cdcEventFromRow(row)
+	if event.EventID != "evt-999" {
+		t.Fatalf("unexpected event id: %q", event.EventID)
+	}
+	if event.ChangeType != "modified" {
+		t.Fatalf("unexpected change type: %q", event.ChangeType)
+	}
+	if !event.EventTime.Equal(now) {
+		t.Fatalf("unexpected event time: %v", event.EventTime)
+	}
+}

@@ -29,3 +29,28 @@ func TestParseLastSyncValue(t *testing.T) {
 		}
 	})
 }
+
+func TestParseLastSyncRow(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+
+	t.Run("lowercase key", func(t *testing.T) {
+		parsed := parseLastSyncRow(map[string]interface{}{"last_sync": now})
+		if !parsed.Equal(now) {
+			t.Fatalf("expected %s, got %s", now, parsed)
+		}
+	})
+
+	t.Run("uppercase key", func(t *testing.T) {
+		parsed := parseLastSyncRow(map[string]interface{}{"LAST_SYNC": now})
+		if !parsed.Equal(now) {
+			t.Fatalf("expected %s, got %s", now, parsed)
+		}
+	})
+
+	t.Run("missing key", func(t *testing.T) {
+		parsed := parseLastSyncRow(map[string]interface{}{"other": now})
+		if !parsed.IsZero() {
+			t.Fatalf("expected zero time, got %s", parsed)
+		}
+	})
+}

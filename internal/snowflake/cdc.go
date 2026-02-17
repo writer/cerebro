@@ -173,15 +173,15 @@ func (c *Client) GetCDCEvents(ctx context.Context, table string, since time.Time
 
 func cdcEventFromRow(row map[string]interface{}) CDCEvent {
 	return CDCEvent{
-		EventID:     toString(row["event_id"]),
-		TableName:   toString(row["table_name"]),
-		ResourceID:  toString(row["resource_id"]),
-		ChangeType:  toString(row["change_type"]),
-		Provider:    toString(row["provider"]),
-		Region:      toString(row["region"]),
-		AccountID:   toString(row["account_id"]),
-		PayloadHash: toString(row["payload_hash"]),
-		EventTime:   toTime(row["event_time"]),
+		EventID:     queryRowString(row, "event_id"),
+		TableName:   queryRowString(row, "table_name"),
+		ResourceID:  queryRowString(row, "resource_id"),
+		ChangeType:  queryRowString(row, "change_type"),
+		Provider:    queryRowString(row, "provider"),
+		Region:      queryRowString(row, "region"),
+		AccountID:   queryRowString(row, "account_id"),
+		PayloadHash: queryRowString(row, "payload_hash"),
+		EventTime:   queryRowTime(row, "event_time"),
 	}
 }
 

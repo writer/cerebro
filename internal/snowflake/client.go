@@ -320,10 +320,7 @@ func (c *Client) ListAvailableTables(ctx context.Context) ([]string, error) {
 	seen := make(map[string]bool, len(result.Rows))
 	tables := make([]string, 0, len(result.Rows))
 	for _, row := range result.Rows {
-		name := ""
-		if n, ok := row["table_name"].(string); ok && n != "" {
-			name = n
-		}
+		name := queryRowString(row, "table_name")
 		if name != "" {
 			lower := strings.ToLower(name)
 			if !seen[lower] {
