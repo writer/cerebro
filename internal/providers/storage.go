@@ -152,8 +152,10 @@ func getProviderTableColumns(ctx context.Context, sf providerSnowflakeClient, ta
 
 	columns := make([]string, 0, len(result.Rows))
 	for _, row := range result.Rows {
-		if col, ok := row["column_name"].(string); ok {
-			columns = append(columns, col)
+		if value, ok := lookupProviderValue(row, "column_name"); ok {
+			if col := providerStringValue(value); col != "" {
+				columns = append(columns, col)
+			}
 		}
 	}
 	return columns, nil
@@ -209,6 +211,20 @@ func lookupProviderValue(row map[string]interface{}, column string) (interface{}
 		}
 	}
 	return nil, false
+}
+
+func providerStringValue(value interface{}) string {
+	switch typed := value.(type) {
+	case string:
+		return typed
+	case []byte:
+		return string(typed)
+	default:
+		if value == nil {
+			return ""
+		}
+		return fmt.Sprintf("%v", value)
+	}
 }
 
 func buildProviderRowID(row map[string]interface{}, keys []string) (string, bool) {
