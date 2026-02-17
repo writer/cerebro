@@ -320,11 +320,8 @@ func (c *Client) ListAvailableTables(ctx context.Context) ([]string, error) {
 	seen := make(map[string]bool, len(result.Rows))
 	tables := make([]string, 0, len(result.Rows))
 	for _, row := range result.Rows {
-		// Query returns lowercase keys; check both for driver compatibility
 		name := ""
 		if n, ok := row["table_name"].(string); ok && n != "" {
-			name = n
-		} else if n, ok := row["TABLE_NAME"].(string); ok && n != "" {
 			name = n
 		}
 		if name != "" {

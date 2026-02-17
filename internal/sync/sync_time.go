@@ -28,7 +28,7 @@ func (e *SyncEngine) latestTableSyncTime(ctx context.Context, table string, regi
 		return time.Time{}, nil
 	}
 
-	syncValue := result.Rows[0]["SYNC_TIME"]
+	syncValue := queryRow(result.Rows[0], "sync_time")
 	if syncValue == nil {
 		return time.Time{}, nil
 	}

@@ -165,20 +165,24 @@ func (c *Client) GetCDCEvents(ctx context.Context, table string, since time.Time
 
 	events := make([]CDCEvent, 0, result.Count)
 	for _, row := range result.Rows {
-		events = append(events, CDCEvent{
-			EventID:     toString(row["EVENT_ID"]),
-			TableName:   toString(row["TABLE_NAME"]),
-			ResourceID:  toString(row["RESOURCE_ID"]),
-			ChangeType:  toString(row["CHANGE_TYPE"]),
-			Provider:    toString(row["PROVIDER"]),
-			Region:      toString(row["REGION"]),
-			AccountID:   toString(row["ACCOUNT_ID"]),
-			PayloadHash: toString(row["PAYLOAD_HASH"]),
-			EventTime:   toTime(row["EVENT_TIME"]),
-		})
+		events = append(events, cdcEventFromRow(row))
 	}
 
 	return events, nil
+}
+
+func cdcEventFromRow(row map[string]interface{}) CDCEvent {
+	return CDCEvent{
+		EventID:     toString(row["event_id"]),
+		TableName:   toString(row["table_name"]),
+		ResourceID:  toString(row["resource_id"]),
+		ChangeType:  toString(row["change_type"]),
+		Provider:    toString(row["provider"]),
+		Region:      toString(row["region"]),
+		AccountID:   toString(row["account_id"]),
+		PayloadHash: toString(row["payload_hash"]),
+		EventTime:   toTime(row["event_time"]),
+	}
 }
 
 // BuildCDCEventID builds a deterministic CDC event identifier.

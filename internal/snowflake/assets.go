@@ -198,7 +198,7 @@ func (c *Client) CountAssets(ctx context.Context, table string) (int64, error) {
 	}
 
 	// Handle various numeric types that Snowflake may return
-	countVal := result.Rows[0]["COUNT"]
+	countVal := result.Rows[0]["count"]
 	switch v := countVal.(type) {
 	case int64:
 		return v, nil

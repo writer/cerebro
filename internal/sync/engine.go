@@ -521,7 +521,7 @@ func (e *SyncEngine) getTableColumns(ctx context.Context, table string) ([]strin
 
 	var columns []string
 	for _, row := range result.Rows {
-		if col, ok := row["COLUMN_NAME"].(string); ok {
+		if col := queryRowString(row, "column_name"); col != "" {
 			columns = append(columns, col)
 		}
 	}
@@ -686,8 +686,8 @@ func (e *SyncEngine) getExistingHashes(ctx context.Context, table string, region
 	}
 
 	for _, row := range rows.Rows {
-		id, _ := row["_CQ_ID"].(string)
-		hash, _ := row["_CQ_HASH"].(string)
+		id := queryRowString(row, "_cq_id")
+		hash := queryRowString(row, "_cq_hash")
 		if id != "" {
 			result[id] = hash
 		}

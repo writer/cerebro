@@ -316,7 +316,7 @@ func (e *AzureSyncEngine) ensureTable(ctx context.Context, table string, columns
 		%s
 	)`, table, strings.Join(colDefs, ", "))
 
-	_, err := e.sf.Query(ctx, createQuery)
+	_, err := e.sf.Exec(ctx, createQuery)
 	return err
 }
 
@@ -409,8 +409,8 @@ func (e *AzureSyncEngine) getExistingHashes(ctx context.Context, table, scopeCol
 	}
 
 	for _, row := range rows.Rows {
-		id, _ := row["_CQ_ID"].(string)
-		hash, _ := row["_CQ_HASH"].(string)
+		id := queryRowString(row, "_cq_id")
+		hash := queryRowString(row, "_cq_hash")
 		if id != "" {
 			result[id] = hash
 		}

@@ -309,7 +309,7 @@ func (e *K8sSyncEngine) ensureTable(ctx context.Context, table string, columns [
         %s
     )`, table, strings.Join(colDefs, ", "))
 
-	if _, err := e.sf.Query(ctx, createQuery); err != nil {
+	if _, err := e.sf.Exec(ctx, createQuery); err != nil {
 		return err
 	}
 
@@ -326,7 +326,7 @@ func (e *K8sSyncEngine) ensureTable(ctx context.Context, table string, columns [
 	for _, col := range columns {
 		upperCol := strings.ToUpper(col)
 		if !existingSet[upperCol] {
-			alterQuery := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s VARIANT", table, upperCol)
+			alterQuery := fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS %s VARIANT", table, upperCol)
 			if _, err := e.sf.Exec(ctx, alterQuery); err != nil {
 				e.logger.Debug("failed to add column", "table", table, "column", upperCol, "error", err)
 			}
@@ -355,7 +355,7 @@ func (e *K8sSyncEngine) getTableColumns(ctx context.Context, table string) ([]st
 
 	var columns []string
 	for _, row := range result.Rows {
-		if col, ok := row["COLUMN_NAME"].(string); ok {
+		if col := queryRowString(row, "column_name"); col != "" {
 			columns = append(columns, col)
 		}
 	}
@@ -453,8 +453,8 @@ func (e *K8sSyncEngine) getExistingHashes(ctx context.Context, table string) map
 	}
 
 	for _, row := range rows.Rows {
-		id, _ := row["_CQ_ID"].(string)
-		hash, _ := row["_CQ_HASH"].(string)
+		id := queryRowString(row, "_cq_id")
+		hash := queryRowString(row, "_cq_hash")
 		if id != "" {
 			result[id] = hash
 		}

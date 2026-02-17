@@ -532,15 +532,8 @@ func (s *Server) syncStatus(w http.ResponseWriter, r *http.Request) {
 			continue // Table might not exist
 		}
 
-		if len(result.Rows) > 0 && result.Rows[0]["LAST_SYNC"] != nil {
-			var lastSync time.Time
-			switch v := result.Rows[0]["LAST_SYNC"].(type) {
-			case time.Time:
-				lastSync = v
-			case string:
-				lastSync, _ = time.Parse(time.RFC3339, v)
-			}
-
+		if len(result.Rows) > 0 {
+			lastSync := parseLastSyncValue(result.Rows[0]["last_sync"])
 			if !lastSync.IsZero() {
 				status := "fresh"
 				if time.Since(lastSync) > staleThreshold {
@@ -589,6 +582,30 @@ func (s *Server) syncStatus(w http.ResponseWriter, r *http.Request) {
 		"stale_threshold": staleThreshold.String(),
 		"checked_at":      time.Now().UTC(),
 	})
+}
+
+func parseLastSyncValue(value interface{}) time.Time {
+	switch typed := value.(type) {
+	case time.Time:
+		return typed
+	case *time.Time:
+		if typed == nil {
+			return time.Time{}
+		}
+		return *typed
+	case string:
+		if typed == "" {
+			return time.Time{}
+		}
+		if parsed, err := time.Parse(time.RFC3339Nano, typed); err == nil {
+			return parsed
+		}
+		if parsed, err := time.Parse(time.RFC3339, typed); err == nil {
+			return parsed
+		}
+	}
+
+	return time.Time{}
 }
 
 // Query endpoints

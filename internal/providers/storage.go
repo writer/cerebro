@@ -152,7 +152,7 @@ func getProviderTableColumns(ctx context.Context, sf providerSnowflakeClient, ta
 
 	columns := make([]string, 0, len(result.Rows))
 	for _, row := range result.Rows {
-		if col, ok := row["COLUMN_NAME"].(string); ok {
+		if col, ok := row["column_name"].(string); ok {
 			columns = append(columns, col)
 		}
 	}

@@ -76,3 +76,32 @@ func TestAsset_Fields(t *testing.T) {
 		t.Errorf("Properties.public = %v", a.Properties["public"])
 	}
 }
+
+func TestCDCEventFromRow_LowercaseKeys(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	row := map[string]interface{}{
+		"event_id":     "evt-123",
+		"table_name":   "k8s_core_service_accounts",
+		"resource_id":  "orbstack:kube-system:default",
+		"change_type":  "added",
+		"provider":     "k8s",
+		"region":       "orbstack",
+		"account_id":   "",
+		"payload_hash": "hash-1",
+		"event_time":   now,
+	}
+
+	event := cdcEventFromRow(row)
+	if event.EventID != "evt-123" {
+		t.Fatalf("unexpected event id: %q", event.EventID)
+	}
+	if event.TableName != "k8s_core_service_accounts" {
+		t.Fatalf("unexpected table name: %q", event.TableName)
+	}
+	if event.ChangeType != "added" {
+		t.Fatalf("unexpected change type: %q", event.ChangeType)
+	}
+	if !event.EventTime.Equal(now) {
+		t.Fatalf("unexpected event time: %v", event.EventTime)
+	}
+}

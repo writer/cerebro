@@ -52,8 +52,9 @@ const (
 
 // RelationshipExtractor extracts relationships from synced resources
 type RelationshipExtractor struct {
-	sf     *snowflake.Client
-	logger *slog.Logger
+	sf          *snowflake.Client
+	logger      *slog.Logger
+	runSyncTime time.Time
 }
 
 // RelationshipBackfillStats summarizes normalization updates.
@@ -76,7 +77,12 @@ func (r *RelationshipExtractor) ExtractAndPersist(ctx context.Context) (int, err
 		return 0, err
 	}
 
-	startedAt := time.Now()
+	runSyncTime := time.Now().UTC().Truncate(time.Millisecond)
+	r.runSyncTime = runSyncTime
+	defer func() {
+		r.runSyncTime = time.Time{}
+	}()
+
 	var totalRels int
 	var hadErrors bool
 
@@ -144,11 +150,10 @@ func (r *RelationshipExtractor) ExtractAndPersist(ctx context.Context) (int, err
 	}
 	totalRels += count
 
-	// Cleanup stale relationships - use a safe window (1 minute) to avoid race conditions
-	// Only cleanup if extraction had no errors
+	// Cleanup stale relationships from earlier runs.
+	// Only cleanup if extraction had no errors.
 	if !hadErrors && totalRels > 0 {
-		// Wait a moment to ensure all inserts have completed
-		if err := r.cleanupStaleRelationships(ctx, startedAt.Add(-time.Minute)); err != nil {
+		if err := r.cleanupStaleRelationships(ctx, runSyncTime); err != nil {
 			r.logger.Warn("failed to clean up stale relationships", "error", err)
 		}
 	}
@@ -194,18 +199,18 @@ func (r *RelationshipExtractor) BackfillNormalizedRelationshipIDs(ctx context.Co
 	seenNewIDs := make(map[string]struct{})
 
 	for _, row := range result.Rows {
-		oldID := toString(row["id"])
-		sourceRaw := toString(row["source_id"])
-		targetRaw := toString(row["target_id"])
+		oldID := toString(queryRow(row, "id"))
+		sourceRaw := toString(queryRow(row, "source_id"))
+		targetRaw := toString(queryRow(row, "target_id"))
 		sourceID := normalizeRelationshipID(sourceRaw)
 		targetID := normalizeRelationshipID(targetRaw)
-		relType := toString(row["rel_type"])
+		relType := toString(queryRow(row, "rel_type"))
 		if sourceID == "" || targetID == "" || relType == "" {
 			stats.Skipped++
 			continue
 		}
 
-		props := formatRelationshipProperties(row["properties"])
+		props := formatRelationshipProperties(queryRow(row, "properties"))
 		newID := buildRelationshipID(sourceID, relType, targetID, props)
 		if newID == "" {
 			stats.Skipped++
@@ -240,12 +245,12 @@ func (r *RelationshipExtractor) BackfillNormalizedRelationshipIDs(ctx context.Co
 			OldID:      oldID,
 			NewID:      newID,
 			SourceID:   sourceID,
-			SourceType: toString(row["source_type"]),
+			SourceType: toString(queryRow(row, "source_type")),
 			TargetID:   targetID,
-			TargetType: toString(row["target_type"]),
+			TargetType: toString(queryRow(row, "target_type")),
 			RelType:    relType,
 			Properties: props,
-			SyncTime:   row["sync_time"],
+			SyncTime:   queryRow(row, "sync_time"),
 		})
 
 		if len(updates) >= batchSize || len(deleteIDs) >= batchSize {
@@ -399,7 +404,7 @@ func (r *RelationshipExtractor) cleanupStaleRelationships(ctx context.Context, c
 		return fmt.Errorf("invalid schema name: %w", err)
 	}
 	query := fmt.Sprintf(`DELETE FROM %s.RESOURCE_RELATIONSHIPS WHERE SYNC_TIME < ?`, schema)
-	_, err := r.sf.Query(ctx, query, cutoff)
+	_, err := r.sf.Exec(ctx, query, cutoff.UTC())
 	return err
 }
 
@@ -420,9 +425,13 @@ func (r *RelationshipExtractor) persistRelationships(ctx context.Context, rels [
 	}
 	tableName := fmt.Sprintf("%s.RESOURCE_RELATIONSHIPS", schema)
 
-	// Batch insert using MERGE - process in batches to avoid query size limits
+	// Batch insert in chunks to avoid query size limits.
 	const batchSize = 100
 	total := 0
+	syncTime := r.runSyncTime
+	if syncTime.IsZero() {
+		syncTime = time.Now().UTC().Truncate(time.Millisecond)
+	}
 
 	for i := 0; i < len(rels); i += batchSize {
 		end := i + batchSize
@@ -432,7 +441,7 @@ func (r *RelationshipExtractor) persistRelationships(ctx context.Context, rels [
 		batch := rels[i:end]
 
 		values := make([]string, 0, len(batch))
-		args := make([]interface{}, 0, len(batch)*7)
+		args := make([]interface{}, 0, len(batch)*8)
 		for _, rel := range batch {
 			sourceID := normalizeRelationshipID(rel.SourceID)
 			targetID := normalizeRelationshipID(rel.TargetID)
@@ -444,8 +453,8 @@ func (r *RelationshipExtractor) persistRelationships(ctx context.Context, rels [
 				props = "{}"
 			}
 			id := buildRelationshipID(sourceID, rel.RelType, targetID, props)
-			values = append(values, "(?, ?, ?, ?, ?, ?, ?)")
-			args = append(args, id, sourceID, rel.SourceType, targetID, rel.TargetType, rel.RelType, props)
+			values = append(values, "(?, ?, ?, ?, ?, ?, ?, ?)")
+			args = append(args, id, sourceID, rel.SourceType, targetID, rel.TargetType, rel.RelType, props, syncTime)
 		}
 		if len(values) == 0 {
 			continue
@@ -453,7 +462,7 @@ func (r *RelationshipExtractor) persistRelationships(ctx context.Context, rels [
 
 		// Use simple INSERT with fully qualified table name
 		query := fmt.Sprintf(`INSERT INTO %s (ID, SOURCE_ID, SOURCE_TYPE, TARGET_ID, TARGET_TYPE, REL_TYPE, PROPERTIES, SYNC_TIME)
-			SELECT column1, column2, column3, column4, column5, column6, TRY_PARSE_JSON(column7), CURRENT_TIMESTAMP()
+			SELECT column1, column2, column3, column4, column5, column6, TRY_PARSE_JSON(column7), column8::TIMESTAMP_TZ
 			FROM VALUES %s`,
 			tableName, strings.Join(values, ", "))
 
@@ -485,15 +494,15 @@ func (r *RelationshipExtractor) extractEC2Relationships(ctx context.Context) (in
 
 	var rels []Relationship
 	for _, row := range result.Rows {
-		instanceARN := toString(row["ARN"])
+		instanceARN := toString(queryRow(row, "arn"))
 		if instanceARN == "" {
 			continue
 		}
-		accountID := toString(row["ACCOUNT_ID"])
-		region := toString(row["REGION"])
+		accountID := toString(queryRow(row, "account_id"))
+		region := toString(queryRow(row, "region"))
 
 		// VPC relationship
-		if vpcID := toString(row["VPC_ID"]); vpcID != "" {
+		if vpcID := toString(queryRow(row, "vpc_id")); vpcID != "" {
 			vpcARN := awsARNForResource("vpc", region, accountID, vpcID)
 			rels = append(rels, Relationship{
 				SourceID:   instanceARN,
@@ -505,7 +514,7 @@ func (r *RelationshipExtractor) extractEC2Relationships(ctx context.Context) (in
 		}
 
 		// Subnet relationship
-		if subnetID := toString(row["SUBNET_ID"]); subnetID != "" {
+		if subnetID := toString(queryRow(row, "subnet_id")); subnetID != "" {
 			subnetARN := awsARNForResource("subnet", region, accountID, subnetID)
 			rels = append(rels, Relationship{
 				SourceID:   instanceARN,
@@ -517,7 +526,7 @@ func (r *RelationshipExtractor) extractEC2Relationships(ctx context.Context) (in
 		}
 
 		// IAM instance profile relationship
-		if profile := row["IAM_INSTANCE_PROFILE"]; profile != nil {
+		if profile := queryRow(row, "iam_instance_profile"); profile != nil {
 			switch val := profile.(type) {
 			case map[string]interface{}:
 				if roleARN := toString(val["arn"]); roleARN != "" {
@@ -551,7 +560,7 @@ func (r *RelationshipExtractor) extractEC2Relationships(ctx context.Context) (in
 		}
 
 		// Security group relationships
-		if sgList := asSlice(row["SECURITY_GROUPS"]); len(sgList) > 0 {
+		if sgList := asSlice(queryRow(row, "security_groups")); len(sgList) > 0 {
 			for _, sg := range sgList {
 				if sgMap := asMap(sg); sgMap != nil {
 					if sgID := getStringAny(sgMap, "GroupId", "groupId", "group_id"); sgID != "" {
@@ -587,13 +596,13 @@ func (r *RelationshipExtractor) extractIAMRoleRelationships(ctx context.Context)
 
 	var rels []Relationship
 	for _, row := range result.Rows {
-		roleARN := toString(row["ARN"])
+		roleARN := toString(queryRow(row, "arn"))
 		if roleARN == "" {
 			continue
 		}
 
 		// Parse trust policy to extract who can assume the role
-		if trustPolicy := row["ASSUME_ROLE_POLICY_DOCUMENT"]; trustPolicy != nil {
+		if trustPolicy := queryRow(row, "assume_role_policy_document"); trustPolicy != nil {
 			policyDoc, err := parsePolicyDocument(trustPolicy)
 			if err != nil {
 				r.logger.Warn("failed to parse trust policy", "role", roleARN, "error", err)
@@ -643,14 +652,14 @@ func (r *RelationshipExtractor) extractLambdaRelationships(ctx context.Context) 
 
 	var rels []Relationship
 	for _, row := range result.Rows {
-		functionARN := toString(row["ARN"])
+		functionARN := toString(queryRow(row, "arn"))
 		if functionARN == "" {
 			continue
 		}
 		region, accountID := awsRegionAccountFromARN(functionARN)
 
 		// Execution role relationship
-		if roleARN := toString(row["ROLE"]); roleARN != "" {
+		if roleARN := toString(queryRow(row, "role")); roleARN != "" {
 			rels = append(rels, Relationship{
 				SourceID:   functionARN,
 				SourceType: "aws:lambda:function",
@@ -661,7 +670,7 @@ func (r *RelationshipExtractor) extractLambdaRelationships(ctx context.Context) 
 		}
 
 		// VPC relationships
-		if vpcConfig := asMap(row["VPC_CONFIG"]); vpcConfig != nil {
+		if vpcConfig := asMap(queryRow(row, "vpc_config")); vpcConfig != nil {
 			if vpcID := getStringAny(vpcConfig, "VpcId", "vpcId", "vpc_id"); vpcID != "" {
 				vpcARN := awsARNForResource("vpc", region, accountID, vpcID)
 				rels = append(rels, Relationship{
@@ -709,15 +718,15 @@ func (r *RelationshipExtractor) extractSecurityGroupRelationships(ctx context.Co
 
 	var rels []Relationship
 	for _, row := range result.Rows {
-		sgARN := toString(row["ARN"])
+		sgARN := toString(queryRow(row, "arn"))
 		if sgARN == "" {
 			continue
 		}
-		accountID := toString(row["ACCOUNT_ID"])
-		region := toString(row["REGION"])
+		accountID := toString(queryRow(row, "account_id"))
+		region := toString(queryRow(row, "region"))
 
 		// VPC relationship
-		if vpcID := toString(row["VPC_ID"]); vpcID != "" {
+		if vpcID := toString(queryRow(row, "vpc_id")); vpcID != "" {
 			vpcARN := awsARNForResource("vpc", region, accountID, vpcID)
 			rels = append(rels, Relationship{
 				SourceID:   sgARN,
@@ -729,7 +738,7 @@ func (r *RelationshipExtractor) extractSecurityGroupRelationships(ctx context.Co
 		}
 
 		// Check for internet exposure (0.0.0.0/0 ingress)
-		if permList := asSlice(row["IP_PERMISSIONS"]); len(permList) > 0 {
+		if permList := asSlice(queryRow(row, "ip_permissions")); len(permList) > 0 {
 			for _, perm := range permList {
 				permMap := asMap(perm)
 				if permMap == nil {
@@ -782,13 +791,13 @@ func (r *RelationshipExtractor) extractS3Relationships(ctx context.Context) (int
 
 	var rels []Relationship
 	for _, row := range result.Rows {
-		bucketARN := toString(row["ARN"])
+		bucketARN := toString(queryRow(row, "arn"))
 		if bucketARN == "" {
 			continue
 		}
 
 		// KMS encryption relationship - extract from ENCRYPTION column
-		if enc := row["ENCRYPTION"]; enc != nil {
+		if enc := queryRow(row, "encryption"); enc != nil {
 			encStr := toString(enc)
 			// Check if KMS encryption is configured
 			if strings.Contains(encStr, "aws:kms") || strings.Contains(encStr, "KMS") {
@@ -809,7 +818,7 @@ func (r *RelationshipExtractor) extractS3Relationships(ctx context.Context) (int
 		}
 
 		// Logging relationship
-		if targetBucket := toString(row["LOGGING_TARGET_BUCKET"]); targetBucket != "" {
+		if targetBucket := toString(queryRow(row, "logging_target_bucket")); targetBucket != "" {
 			rels = append(rels, Relationship{
 				SourceID:   bucketARN,
 				SourceType: "aws:s3:bucket",
@@ -838,10 +847,10 @@ func (r *RelationshipExtractor) extractECSRelationships(ctx context.Context) (in
 
 	var rels []Relationship
 	for _, row := range result.Rows {
-		serviceARN := toString(row["ARN"])
+		serviceARN := toString(queryRow(row, "arn"))
 
 		// Cluster relationship
-		if clusterARN := toString(row["CLUSTER_ARN"]); clusterARN != "" {
+		if clusterARN := toString(queryRow(row, "cluster_arn")); clusterARN != "" {
 			rels = append(rels, Relationship{
 				SourceID:   serviceARN,
 				SourceType: "aws:ecs:service",
@@ -852,7 +861,7 @@ func (r *RelationshipExtractor) extractECSRelationships(ctx context.Context) (in
 		}
 
 		// Task definition relationship
-		if taskDef := toString(row["TASK_DEFINITION"]); taskDef != "" {
+		if taskDef := toString(queryRow(row, "task_definition")); taskDef != "" {
 			rels = append(rels, Relationship{
 				SourceID:   serviceARN,
 				SourceType: "aws:ecs:service",
@@ -877,11 +886,11 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 	result, err := r.sf.Query(ctx, query)
 	if err == nil {
 		for _, row := range result.Rows {
-			instanceID := toString(row["ID"])
-			projectID := toString(row["PROJECT_ID"])
+			instanceID := toString(queryRow(row, "id"))
+			projectID := toString(queryRow(row, "project_id"))
 
 			// Service account relationships
-			if saList := asSlice(row["SERVICE_ACCOUNTS"]); len(saList) > 0 {
+			if saList := asSlice(queryRow(row, "service_accounts")); len(saList) > 0 {
 				for _, sa := range saList {
 					if saMap := asMap(sa); saMap != nil {
 						if email := getStringAny(saMap, "email", "Email"); email != "" {
@@ -898,7 +907,7 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 			}
 
 			// Network relationships
-			if nicList := asSlice(row["NETWORK_INTERFACES"]); len(nicList) > 0 {
+			if nicList := asSlice(queryRow(row, "network_interfaces")); len(nicList) > 0 {
 				for _, nic := range nicList {
 					if nicMap := asMap(nic); nicMap != nil {
 						if network := toString(nicMap["network"]); network != "" {
@@ -932,11 +941,11 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 	result, err = r.sf.Query(ctx, query)
 	if err == nil {
 		for _, row := range result.Rows {
-			funcName := toString(row["NAME"])
-			projectID := toString(row["PROJECT_ID"])
+			funcName := toString(queryRow(row, "name"))
+			projectID := toString(queryRow(row, "project_id"))
 
 			// Extract service account from SERVICE_CONFIG
-			if svcConfig := row["SERVICE_CONFIG"]; svcConfig != nil {
+			if svcConfig := queryRow(row, "service_config"); svcConfig != nil {
 				var configMap map[string]interface{}
 				configStr := toString(svcConfig)
 				if unmarshalErr := json.Unmarshal([]byte(configStr), &configMap); unmarshalErr == nil {
@@ -965,13 +974,13 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 	result, err = r.sf.Query(ctx, query)
 	if err == nil {
 		for _, row := range result.Rows {
-			svcName := toString(row["NAME"])
-			projectID := toString(row["PROJECT_ID"])
-			ingress := toString(row["INGRESS"])
-			uri := toString(row["URI"])
+			svcName := toString(queryRow(row, "name"))
+			projectID := toString(queryRow(row, "project_id"))
+			ingress := toString(queryRow(row, "ingress"))
+			uri := toString(queryRow(row, "uri"))
 
 			// Extract service account from TEMPLATE
-			if template := row["TEMPLATE"]; template != nil {
+			if template := queryRow(row, "template"); template != nil {
 				var templateMap map[string]interface{}
 				templateStr := toString(template)
 				if unmarshalErr := json.Unmarshal([]byte(templateStr), &templateMap); unmarshalErr == nil {
@@ -1032,10 +1041,10 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 	result, err = r.sf.Query(ctx, query)
 	if err == nil {
 		for _, row := range result.Rows {
-			revName := toString(row["NAME"])
-			projectID := toString(row["PROJECT_ID"])
-			serviceName := toString(row["SERVICE"])
-			saEmail := toString(row["SERVICE_ACCOUNT"])
+			revName := toString(queryRow(row, "name"))
+			projectID := toString(queryRow(row, "project_id"))
+			serviceName := toString(queryRow(row, "service"))
+			saEmail := toString(queryRow(row, "service_account"))
 
 			// Revision -> Service relationship
 			if serviceName != "" {
@@ -1080,7 +1089,7 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 			}
 
 			// Extract container image relationships
-			if containers := row["CONTAINERS"]; containers != nil {
+			if containers := queryRow(row, "containers"); containers != nil {
 				var containerList []map[string]interface{}
 				containerStr := toString(containers)
 				if err := json.Unmarshal([]byte(containerStr), &containerList); err == nil {
@@ -1107,13 +1116,13 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 	result, err = r.sf.Query(ctx, query)
 	if err == nil {
 		for _, row := range result.Rows {
-			bucketName := toString(row["NAME"])
+			bucketName := toString(queryRow(row, "name"))
 			if bucketName == "" {
 				continue
 			}
 			bucketID := fmt.Sprintf("projects/_/buckets/%s", bucketName)
 
-			if kmsKey := toString(row["ENCRYPTION_DEFAULT_KMS_KEY"]); kmsKey != "" {
+			if kmsKey := toString(queryRow(row, "encryption_default_kms_key")); kmsKey != "" {
 				rels = append(rels, Relationship{
 					SourceID:   bucketID,
 					SourceType: "gcp:storage:bucket",
@@ -1123,7 +1132,7 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 				})
 			}
 
-			if logBucket := toString(row["LOGGING_LOG_BUCKET"]); logBucket != "" {
+			if logBucket := toString(queryRow(row, "logging_log_bucket")); logBucket != "" {
 				rels = append(rels, Relationship{
 					SourceID:   bucketID,
 					SourceType: "gcp:storage:bucket",
@@ -1143,10 +1152,10 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 	result, err = r.sf.Query(ctx, query)
 	if err == nil {
 		for _, row := range result.Rows {
-			repositoryID := toString(row["SELF_LINK"])
+			repositoryID := toString(queryRow(row, "self_link"))
 			if repositoryID == "" {
-				projectID := toString(row["PROJECT_ID"])
-				repoName := toString(row["NAME"])
+				projectID := toString(queryRow(row, "project_id"))
+				repoName := toString(queryRow(row, "name"))
 				if projectID != "" && repoName != "" {
 					repositoryID = fmt.Sprintf("projects/%s/locations/-/repositories/%s", projectID, repoName)
 				}
@@ -1155,7 +1164,7 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 				continue
 			}
 
-			if kmsKey := toString(row["KMS_KEY_NAME"]); kmsKey != "" {
+			if kmsKey := toString(queryRow(row, "kms_key_name")); kmsKey != "" {
 				rels = append(rels, Relationship{
 					SourceID:   repositoryID,
 					SourceType: "gcp:artifactregistry:repository",
@@ -1175,12 +1184,12 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 	result, err = r.sf.Query(ctx, query)
 	if err == nil {
 		for _, row := range result.Rows {
-			policyID := toString(row["SELF_LINK"])
+			policyID := toString(queryRow(row, "self_link"))
 			if policyID == "" {
 				continue
 			}
 
-			if parent := toString(row["PARENT"]); parent != "" {
+			if parent := toString(queryRow(row, "parent")); parent != "" {
 				rels = append(rels, Relationship{
 					SourceID:   policyID,
 					SourceType: "gcp:orgpolicy:policy",
@@ -1190,7 +1199,7 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 				})
 			}
 
-			if constraint := toString(row["CONSTRAINT"]); constraint != "" {
+			if constraint := toString(queryRow(row, "constraint")); constraint != "" {
 				rels = append(rels, Relationship{
 					SourceID:   policyID,
 					SourceType: "gcp:orgpolicy:policy",
@@ -1209,9 +1218,9 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 	result, err = r.sf.Query(ctx, query)
 	if err == nil {
 		for _, row := range result.Rows {
-			instanceID := toString(row["SELF_LINK"])
-			name := toString(row["NAME"])
-			projectID := toString(row["PROJECT_ID"])
+			instanceID := toString(queryRow(row, "self_link"))
+			name := toString(queryRow(row, "name"))
+			projectID := toString(queryRow(row, "project_id"))
 			if instanceID == "" && projectID != "" && name != "" {
 				instanceID = fmt.Sprintf("projects/%s/instances/%s", projectID, name)
 			}
@@ -1219,7 +1228,7 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 				continue
 			}
 
-			if saEmail := toString(row["SERVICE_ACCOUNT_EMAIL_ADDRESS"]); saEmail != "" {
+			if saEmail := toString(queryRow(row, "service_account_email_address")); saEmail != "" {
 				targetID := saEmail
 				if projectID != "" && !strings.Contains(saEmail, "/") {
 					targetID = fmt.Sprintf("projects/%s/serviceAccounts/%s", projectID, saEmail)
@@ -1233,7 +1242,7 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 				})
 			}
 
-			if settings := asMap(row["SETTINGS"]); settings != nil {
+			if settings := asMap(queryRow(row, "settings")); settings != nil {
 				if privateNetwork := getStringAny(settings, "private_network", "privateNetwork"); privateNetwork != "" {
 					rels = append(rels, Relationship{
 						SourceID:   instanceID,
@@ -1245,7 +1254,7 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 				}
 			}
 
-			if encConfig := asMap(row["DISK_ENCRYPTION_CONFIGURATION"]); encConfig != nil {
+			if encConfig := asMap(queryRow(row, "disk_encryption_configuration")); encConfig != nil {
 				if kmsKey := getStringAny(encConfig, "kms_key_name", "kmsKeyName"); kmsKey != "" {
 					rels = append(rels, Relationship{
 						SourceID:   instanceID,
@@ -1302,17 +1311,17 @@ func (r *RelationshipExtractor) extractGCPAssetInventoryRelationships(ctx contex
 		}
 
 		for _, row := range result.Rows {
-			sourceID := normalizeRelationshipID(toString(row["_CQ_ID"]))
+			sourceID := normalizeRelationshipID(toString(queryRow(row, "_cq_id")))
 			if sourceID == "" {
 				continue
 			}
-			sourceType := gcpAssetNodeType(toString(row["ASSET_TYPE"]))
+			sourceType := gcpAssetNodeType(toString(queryRow(row, "asset_type")))
 			if sourceType == "" {
 				sourceType = "gcp:resource"
 			}
 
-			if parentID := normalizeRelationshipID(toString(row["PARENT_FULL_NAME"])); parentID != "" {
-				targetType := gcpAssetNodeType(toString(row["PARENT_ASSET_TYPE"]))
+			if parentID := normalizeRelationshipID(toString(queryRow(row, "parent_full_name"))); parentID != "" {
+				targetType := gcpAssetNodeType(toString(queryRow(row, "parent_asset_type")))
 				if targetType == "" {
 					targetType = "gcp:resource"
 				}
@@ -1325,7 +1334,7 @@ func (r *RelationshipExtractor) extractGCPAssetInventoryRelationships(ctx contex
 				})
 			}
 
-			if kmsKeys := asSlice(row["KMS_KEYS"]); len(kmsKeys) > 0 {
+			if kmsKeys := asSlice(queryRow(row, "kms_keys")); len(kmsKeys) > 0 {
 				for _, key := range kmsKeys {
 					kmsKeyID := extractGCPKMSKeyID(key)
 					if kmsKeyID == "" {
@@ -1341,7 +1350,7 @@ func (r *RelationshipExtractor) extractGCPAssetInventoryRelationships(ctx contex
 				}
 			}
 
-			if relationItems := asSlice(row["RELATIONSHIPS"]); len(relationItems) > 0 {
+			if relationItems := asSlice(queryRow(row, "relationships")); len(relationItems) > 0 {
 				for _, item := range relationItems {
 					relMap := asMap(item)
 					if relMap == nil {
@@ -1390,12 +1399,12 @@ func (r *RelationshipExtractor) extractAzureRelationships(ctx context.Context) (
 		}
 	} else {
 		for _, row := range result.Rows {
-			vmID := toString(row["ID"])
+			vmID := toString(queryRow(row, "id"))
 			if vmID == "" {
 				continue
 			}
 
-			if nicList := asSlice(row["NETWORK_INTERFACES"]); len(nicList) > 0 {
+			if nicList := asSlice(queryRow(row, "network_interfaces")); len(nicList) > 0 {
 				for _, nic := range nicList {
 					if nicID := extractReferenceID(nic); nicID != "" {
 						rels = append(rels, Relationship{
@@ -1409,7 +1418,7 @@ func (r *RelationshipExtractor) extractAzureRelationships(ctx context.Context) (
 				}
 			}
 
-			if availabilitySetID := normalizeRelationshipID(toString(row["AVAILABILITY_SET"])); availabilitySetID != "" {
+			if availabilitySetID := normalizeRelationshipID(toString(queryRow(row, "availability_set"))); availabilitySetID != "" {
 				rels = append(rels, Relationship{
 					SourceID:   vmID,
 					SourceType: "azure:compute:virtual_machine",
@@ -1419,7 +1428,7 @@ func (r *RelationshipExtractor) extractAzureRelationships(ctx context.Context) (
 				})
 			}
 
-			if osDiskID := extractManagedDiskID(row["OS_DISK"]); osDiskID != "" {
+			if osDiskID := extractManagedDiskID(queryRow(row, "os_disk")); osDiskID != "" {
 				rels = append(rels, Relationship{
 					SourceID:   vmID,
 					SourceType: "azure:compute:virtual_machine",
@@ -1429,7 +1438,7 @@ func (r *RelationshipExtractor) extractAzureRelationships(ctx context.Context) (
 				})
 			}
 
-			if dataDisks := asSlice(row["DATA_DISKS"]); len(dataDisks) > 0 {
+			if dataDisks := asSlice(queryRow(row, "data_disks")); len(dataDisks) > 0 {
 				for _, disk := range dataDisks {
 					if diskID := extractManagedDiskID(disk); diskID != "" {
 						rels = append(rels, Relationship{
@@ -1454,12 +1463,12 @@ func (r *RelationshipExtractor) extractAzureRelationships(ctx context.Context) (
 		}
 	} else {
 		for _, row := range result.Rows {
-			nicID := toString(row["ID"])
+			nicID := toString(queryRow(row, "id"))
 			if nicID == "" {
 				continue
 			}
 
-			if vmID := normalizeRelationshipID(toString(row["VIRTUAL_MACHINE"])); vmID != "" {
+			if vmID := normalizeRelationshipID(toString(queryRow(row, "virtual_machine"))); vmID != "" {
 				rels = append(rels, Relationship{
 					SourceID:   nicID,
 					SourceType: "azure:network:interface",
@@ -1469,7 +1478,7 @@ func (r *RelationshipExtractor) extractAzureRelationships(ctx context.Context) (
 				})
 			}
 
-			if nsgID := normalizeRelationshipID(toString(row["NETWORK_SECURITY_GROUP"])); nsgID != "" {
+			if nsgID := normalizeRelationshipID(toString(queryRow(row, "network_security_group"))); nsgID != "" {
 				rels = append(rels, Relationship{
 					SourceID:   nicID,
 					SourceType: "azure:network:interface",
@@ -1479,7 +1488,7 @@ func (r *RelationshipExtractor) extractAzureRelationships(ctx context.Context) (
 				})
 			}
 
-			if ipConfigs := asSlice(row["IP_CONFIGURATIONS"]); len(ipConfigs) > 0 {
+			if ipConfigs := asSlice(queryRow(row, "ip_configurations")); len(ipConfigs) > 0 {
 				for _, ipCfg := range ipConfigs {
 					if subnetID := extractSubnetReferenceID(ipCfg); subnetID != "" {
 						rels = append(rels, Relationship{
@@ -1503,11 +1512,11 @@ func (r *RelationshipExtractor) extractAzureRelationships(ctx context.Context) (
 		}
 	} else {
 		for _, row := range result.Rows {
-			diskID := toString(row["ID"])
+			diskID := toString(queryRow(row, "id"))
 			if diskID == "" {
 				continue
 			}
-			if managedBy := normalizeRelationshipID(toString(row["MANAGED_BY"])); managedBy != "" {
+			if managedBy := normalizeRelationshipID(toString(queryRow(row, "managed_by"))); managedBy != "" {
 				rels = append(rels, Relationship{
 					SourceID:   diskID,
 					SourceType: "azure:compute:disk",
@@ -1528,16 +1537,16 @@ func (r *RelationshipExtractor) extractAzureRelationships(ctx context.Context) (
 		}
 	} else {
 		for _, row := range result.Rows {
-			dbID := toString(row["ID"])
+			dbID := toString(queryRow(row, "id"))
 			if dbID == "" {
 				continue
 			}
 
-			serverName := toString(row["SERVER_NAME"])
+			serverName := toString(queryRow(row, "server_name"))
 			if serverName == "" {
 				serverName = azureIDSegment(dbID, "servers")
 			}
-			serverID := azureSQLServerID(toString(row["SUBSCRIPTION_ID"]), toString(row["RESOURCE_GROUP"]), serverName)
+			serverID := azureSQLServerID(toString(queryRow(row, "subscription_id")), toString(queryRow(row, "resource_group")), serverName)
 			if serverID == "" {
 				continue
 			}
@@ -1561,12 +1570,12 @@ func (r *RelationshipExtractor) extractAzureRelationships(ctx context.Context) (
 		}
 	} else {
 		for _, row := range result.Rows {
-			containerID := toString(row["ID"])
+			containerID := toString(queryRow(row, "id"))
 			if containerID == "" {
 				continue
 			}
 
-			accountID := azureStorageAccountID(toString(row["SUBSCRIPTION_ID"]), toString(row["RESOURCE_GROUP"]), toString(row["ACCOUNT_NAME"]))
+			accountID := azureStorageAccountID(toString(queryRow(row, "subscription_id")), toString(queryRow(row, "resource_group")), toString(queryRow(row, "account_name")))
 			if accountID == "" {
 				continue
 			}
@@ -1590,16 +1599,16 @@ func (r *RelationshipExtractor) extractAzureRelationships(ctx context.Context) (
 		}
 	} else {
 		for _, row := range result.Rows {
-			blobID := toString(row["ID"])
+			blobID := toString(queryRow(row, "id"))
 			if blobID == "" {
 				continue
 			}
 
 			containerID := azureStorageContainerID(
-				toString(row["SUBSCRIPTION_ID"]),
-				toString(row["RESOURCE_GROUP"]),
-				toString(row["ACCOUNT_NAME"]),
-				toString(row["CONTAINER_NAME"]),
+				toString(queryRow(row, "subscription_id")),
+				toString(queryRow(row, "resource_group")),
+				toString(queryRow(row, "account_name")),
+				toString(queryRow(row, "container_name")),
 			)
 			if containerID == "" {
 				continue
@@ -1624,8 +1633,8 @@ func (r *RelationshipExtractor) extractAzureRelationships(ctx context.Context) (
 		}
 	} else {
 		for _, row := range result.Rows {
-			vaultID := toString(row["ID"])
-			vaultURI := normalizeVaultURI(toString(row["VAULT_URI"]))
+			vaultID := toString(queryRow(row, "id"))
+			vaultURI := normalizeVaultURI(toString(queryRow(row, "vault_uri")))
 			if vaultID != "" && vaultURI != "" {
 				vaultByURI[vaultURI] = vaultID
 			}
@@ -1640,11 +1649,11 @@ func (r *RelationshipExtractor) extractAzureRelationships(ctx context.Context) (
 		}
 	} else {
 		for _, row := range result.Rows {
-			keyID := toString(row["ID"])
+			keyID := toString(queryRow(row, "id"))
 			if keyID == "" {
 				continue
 			}
-			vaultURI := normalizeVaultURI(toString(row["VAULT_URI"]))
+			vaultURI := normalizeVaultURI(toString(queryRow(row, "vault_uri")))
 			if vaultURI == "" {
 				continue
 			}
