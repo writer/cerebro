@@ -18,12 +18,14 @@ func (e *K8sSyncEngine) getK8sTables() []K8sTableSpec {
 		e.k8sNamespaceTable(),
 		e.k8sNodeTable(),
 		e.k8sServiceTable(),
+		e.k8sServiceAccountTable(),
 		e.k8sDeploymentTable(),
 		e.k8sIngressTable(),
 		e.k8sRoleTable(),
 		e.k8sRoleBindingTable(),
 		e.k8sClusterRoleTable(),
 		e.k8sClusterRoleBindingTable(),
+		e.k8sServiceAccountBindingTable(),
 		e.k8sAuditEventTable(),
 	}
 }
@@ -208,6 +210,53 @@ func (e *K8sSyncEngine) k8sServiceTable() K8sTableSpec {
 					"selector":              svc.Spec.Selector,
 					"labels":                svc.Labels,
 					"annotations":           svc.Annotations,
+				}
+				rows = append(rows, row)
+			}
+
+			return rows, nil
+		},
+	}
+}
+
+func (e *K8sSyncEngine) k8sServiceAccountTable() K8sTableSpec {
+	return K8sTableSpec{
+		Name: "k8s_core_service_accounts",
+		Columns: []string{
+			"uid",
+			"name",
+			"namespace",
+			"cluster_name",
+			"automount_service_account_token",
+			"secrets",
+			"image_pull_secrets",
+			"labels",
+			"annotations",
+		},
+		Fetch: func(ctx context.Context, client kubernetes.Interface, namespace, clusterName string) ([]map[string]interface{}, error) {
+			if namespace == "" {
+				namespace = metav1.NamespaceAll
+			}
+
+			serviceAccounts, err := client.CoreV1().ServiceAccounts(namespace).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+
+			clusterName = normalizeClusterName(clusterName)
+			rows := make([]map[string]interface{}, 0, len(serviceAccounts.Items))
+			for _, serviceAccount := range serviceAccounts.Items {
+				row := map[string]interface{}{
+					"_cq_id":                          buildNamespacedID(clusterName, serviceAccount.Namespace, serviceAccount.Name),
+					"uid":                             string(serviceAccount.UID),
+					"name":                            serviceAccount.Name,
+					"namespace":                       serviceAccount.Namespace,
+					"cluster_name":                    clusterName,
+					"automount_service_account_token": boolPtrValue(serviceAccount.AutomountServiceAccountToken),
+					"secrets":                         objectReferencesToNames(serviceAccount.Secrets),
+					"image_pull_secrets":              localObjectReferencesToNames(serviceAccount.ImagePullSecrets),
+					"labels":                          serviceAccount.Labels,
+					"annotations":                     serviceAccount.Annotations,
 				}
 				rows = append(rows, row)
 			}
@@ -487,6 +536,79 @@ func (e *K8sSyncEngine) k8sRoleBindingTable() K8sTableSpec {
 	}
 }
 
+func (e *K8sSyncEngine) k8sServiceAccountBindingTable() K8sTableSpec {
+	return K8sTableSpec{
+		Name: "k8s_rbac_service_account_bindings",
+		Columns: []string{
+			"cluster_name",
+			"binding_kind",
+			"binding_name",
+			"binding_namespace",
+			"service_account_name",
+			"service_account_namespace",
+			"role_ref_kind",
+			"role_ref_name",
+			"role_ref_api_group",
+		},
+		Fetch: func(ctx context.Context, client kubernetes.Interface, namespace, clusterName string) ([]map[string]interface{}, error) {
+			if namespace == "" {
+				namespace = metav1.NamespaceAll
+			}
+
+			clusterName = normalizeClusterName(clusterName)
+			rows := make([]map[string]interface{}, 0)
+
+			roleBindings, err := client.RbacV1().RoleBindings(namespace).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			for _, binding := range roleBindings.Items {
+				subjects := serviceAccountSubjects(binding.Subjects, binding.Namespace)
+				for _, subject := range subjects {
+					row := map[string]interface{}{
+						"_cq_id":                    buildServiceAccountBindingID(clusterName, "rolebinding", binding.Namespace, binding.Name, subject.Namespace, subject.Name),
+						"cluster_name":              clusterName,
+						"binding_kind":              "RoleBinding",
+						"binding_name":              binding.Name,
+						"binding_namespace":         binding.Namespace,
+						"service_account_name":      subject.Name,
+						"service_account_namespace": subject.Namespace,
+						"role_ref_kind":             binding.RoleRef.Kind,
+						"role_ref_name":             binding.RoleRef.Name,
+						"role_ref_api_group":        binding.RoleRef.APIGroup,
+					}
+					rows = append(rows, row)
+				}
+			}
+
+			clusterRoleBindings, err := client.RbacV1().ClusterRoleBindings().List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			for _, binding := range clusterRoleBindings.Items {
+				subjects := serviceAccountSubjects(binding.Subjects, "")
+				for _, subject := range subjects {
+					row := map[string]interface{}{
+						"_cq_id":                    buildServiceAccountBindingID(clusterName, "clusterrolebinding", "", binding.Name, subject.Namespace, subject.Name),
+						"cluster_name":              clusterName,
+						"binding_kind":              "ClusterRoleBinding",
+						"binding_name":              binding.Name,
+						"binding_namespace":         "",
+						"service_account_name":      subject.Name,
+						"service_account_namespace": subject.Namespace,
+						"role_ref_kind":             binding.RoleRef.Kind,
+						"role_ref_name":             binding.RoleRef.Name,
+						"role_ref_api_group":        binding.RoleRef.APIGroup,
+					}
+					rows = append(rows, row)
+				}
+			}
+
+			return rows, nil
+		},
+	}
+}
+
 func (e *K8sSyncEngine) k8sAuditEventTable() K8sTableSpec {
 	return K8sTableSpec{
 		Name: "k8s_audit_events",
@@ -594,6 +716,27 @@ func buildNamespacedID(clusterName, namespace, name string) string {
 	}
 	if name != "" {
 		parts = append(parts, name)
+	}
+	return strings.Join(parts, "/")
+}
+
+func buildServiceAccountBindingID(clusterName, bindingType, bindingNamespace, bindingName, subjectNamespace, subjectName string) string {
+	clusterName = normalizeClusterName(clusterName)
+	parts := []string{clusterName}
+	if bindingType != "" {
+		parts = append(parts, strings.ToLower(bindingType))
+	}
+	if bindingNamespace != "" {
+		parts = append(parts, bindingNamespace)
+	}
+	if bindingName != "" {
+		parts = append(parts, bindingName)
+	}
+	if subjectNamespace != "" {
+		parts = append(parts, subjectNamespace)
+	}
+	if subjectName != "" {
+		parts = append(parts, subjectName)
 	}
 	return strings.Join(parts, "/")
 }
@@ -713,6 +856,80 @@ func serializeSubjects(subjects []rbacv1.Subject) []map[string]interface{} {
 			"namespace": subject.Namespace,
 		})
 	}
+	return result
+}
+
+func serviceAccountSubjects(subjects []rbacv1.Subject, defaultNamespace string) []rbacv1.Subject {
+	if len(subjects) == 0 {
+		return nil
+	}
+	result := make([]rbacv1.Subject, 0, len(subjects))
+	for _, subject := range subjects {
+		if !strings.EqualFold(subject.Kind, "ServiceAccount") {
+			continue
+		}
+		namespace := strings.TrimSpace(subject.Namespace)
+		if namespace == "" {
+			namespace = strings.TrimSpace(defaultNamespace)
+		}
+		name := strings.TrimSpace(subject.Name)
+		if namespace == "" || name == "" {
+			continue
+		}
+		result = append(result, rbacv1.Subject{
+			Kind:      "ServiceAccount",
+			Name:      name,
+			Namespace: namespace,
+			APIGroup:  subject.APIGroup,
+		})
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Namespace == result[j].Namespace {
+			return result[i].Name < result[j].Name
+		}
+		return result[i].Namespace < result[j].Namespace
+	})
+	return result
+}
+
+func objectReferencesToNames(refs []corev1.ObjectReference) []string {
+	if len(refs) == 0 {
+		return nil
+	}
+	result := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		name := strings.TrimSpace(ref.Name)
+		if name == "" {
+			continue
+		}
+		result = append(result, name)
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	sort.Strings(result)
+	return result
+}
+
+func localObjectReferencesToNames(refs []corev1.LocalObjectReference) []string {
+	if len(refs) == 0 {
+		return nil
+	}
+	result := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		name := strings.TrimSpace(ref.Name)
+		if name == "" {
+			continue
+		}
+		result = append(result, name)
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	sort.Strings(result)
 	return result
 }
 

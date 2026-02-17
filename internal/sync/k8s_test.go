@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
@@ -25,6 +26,21 @@ func TestK8sTables(t *testing.T) {
 	}
 	if !found {
 		t.Error("expected k8s_core_pods table")
+	}
+
+	required := map[string]bool{
+		"k8s_core_service_accounts":         false,
+		"k8s_rbac_service_account_bindings": false,
+	}
+	for _, table := range tables {
+		if _, ok := required[table.Name]; ok {
+			required[table.Name] = true
+		}
+	}
+	for name, present := range required {
+		if !present {
+			t.Errorf("expected %s table", name)
+		}
 	}
 }
 
@@ -184,5 +200,34 @@ func TestPodSpecToMap(t *testing.T) {
 	}
 	if valueFrom["secret_key_ref"] == nil {
 		t.Error("expected secret_key_ref to be set")
+	}
+}
+
+func TestServiceAccountSubjects(t *testing.T) {
+	subjects := []rbacv1.Subject{
+		{Kind: "User", Name: "alice"},
+		{Kind: "ServiceAccount", Name: "sa-1", Namespace: "team-a"},
+		{Kind: "serviceaccount", Name: "sa-2"},
+		{Kind: "ServiceAccount", Name: "", Namespace: "team-a"},
+	}
+
+	result := serviceAccountSubjects(subjects, "default")
+	if len(result) != 2 {
+		t.Fatalf("expected 2 service account subjects, got %d", len(result))
+	}
+	if result[0].Namespace != "default" || result[0].Name != "sa-2" {
+		t.Fatalf("expected default/sa-2 first after sort, got %s/%s", result[0].Namespace, result[0].Name)
+	}
+	if result[1].Namespace != "team-a" || result[1].Name != "sa-1" {
+		t.Fatalf("expected team-a/sa-1 second after sort, got %s/%s", result[1].Namespace, result[1].Name)
+	}
+}
+
+func TestReferenceNameHelpers(t *testing.T) {
+	if got := objectReferencesToNames([]corev1.ObjectReference{{Name: "b"}, {Name: "a"}, {Name: ""}}); len(got) != 2 || got[0] != "a" || got[1] != "b" {
+		t.Fatalf("unexpected object reference names: %v", got)
+	}
+	if got := localObjectReferencesToNames([]corev1.LocalObjectReference{{Name: "pull-b"}, {Name: "pull-a"}, {Name: " "}}); len(got) != 2 || got[0] != "pull-a" || got[1] != "pull-b" {
+		t.Fatalf("unexpected local object reference names: %v", got)
 	}
 }
