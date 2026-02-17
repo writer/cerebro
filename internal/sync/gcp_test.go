@@ -97,3 +97,48 @@ func TestWithGCPConcurrency(t *testing.T) {
 		t.Errorf("WithGCPConcurrency did not set concurrency, got %d", e.concurrency)
 	}
 }
+
+func TestGCPScopeFilter(t *testing.T) {
+	rows := []map[string]interface{}{
+		{"project_id": "p2"},
+		{"project_id": "p1"},
+		{"project_id": "p1"},
+	}
+
+	column, values := gcpScopeFilter([]string{"project_id", "name"}, rows, "")
+	if column != "PROJECT_ID" {
+		t.Fatalf("expected PROJECT_ID column, got %q", column)
+	}
+	if len(values) != 2 || values[0] != "p1" || values[1] != "p2" {
+		t.Fatalf("unexpected values: %#v", values)
+	}
+}
+
+func TestGCPScopeFilterFallsBackToEngineProject(t *testing.T) {
+	column, values := gcpScopeFilter([]string{"project"}, nil, "project-123")
+	if column != "PROJECT" {
+		t.Fatalf("expected PROJECT column, got %q", column)
+	}
+	if len(values) != 1 || values[0] != "project-123" {
+		t.Fatalf("unexpected values: %#v", values)
+	}
+}
+
+func TestGCPScopeWhereClause(t *testing.T) {
+	where, args := gcpScopeWhereClause("PROJECT_ID", []string{"p1", "p2"})
+	if where != " WHERE PROJECT_ID IN (?,?)" {
+		t.Fatalf("unexpected where clause: %q", where)
+	}
+	if len(args) != 2 || args[0] != "p1" || args[1] != "p2" {
+		t.Fatalf("unexpected args: %#v", args)
+	}
+}
+
+func TestGCPProjectIDFromScope(t *testing.T) {
+	if got := gcpProjectIDFromScope("projects/test-project"); got != "test-project" {
+		t.Fatalf("expected project id, got %q", got)
+	}
+	if got := gcpProjectIDFromScope("organizations/123456789"); got != "" {
+		t.Fatalf("expected empty project id for org scope, got %q", got)
+	}
+}

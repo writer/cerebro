@@ -236,7 +236,7 @@ func (e *GCPAssetInventoryEngine) syncScope(ctx context.Context, client *asset.C
 		at := assetType
 		assetBatch := assets
 		group.Go(func() error {
-			result, err := e.syncAssetType(ctx, at, assetBatch)
+			result, err := e.syncAssetType(ctx, scope, at, assetBatch)
 			mu.Lock()
 			results = append(results, result)
 			if err != nil {
@@ -251,7 +251,7 @@ func (e *GCPAssetInventoryEngine) syncScope(ctx context.Context, client *asset.C
 	return results, errors.Join(errs...)
 }
 
-func (e *GCPAssetInventoryEngine) syncAssetType(ctx context.Context, assetType string, assets []*assetpb.ResourceSearchResult) (SyncResult, error) {
+func (e *GCPAssetInventoryEngine) syncAssetType(ctx context.Context, scope, assetType string, assets []*assetpb.ResourceSearchResult) (SyncResult, error) {
 	start := time.Now()
 	tableName, ok := GCPAssetTypes[assetType]
 	if !ok {
@@ -294,8 +294,8 @@ func (e *GCPAssetInventoryEngine) syncAssetType(ctx context.Context, assetType s
 	}
 
 	// Upsert with change detection
-	gcpEngine := &GCPSyncEngine{sf: e.sf, logger: e.logger}
-	changes, err := gcpEngine.upsertWithChanges(ctx, tableName, rows)
+	gcpEngine := &GCPSyncEngine{sf: e.sf, logger: e.logger, projectID: gcpProjectIDFromScope(scope)}
+	changes, err := gcpEngine.upsertWithChanges(ctx, tableName, columns, rows)
 	if err != nil {
 		e.logger.Error("upsert failed", "table", tableName, "error", err)
 		result.Errors = 1
@@ -488,6 +488,18 @@ func (e *GCPAssetInventoryEngine) ensureTable(ctx context.Context, table string,
 
 	_, err := e.sf.Exec(ctx, createQuery)
 	return err
+}
+
+func gcpProjectIDFromScope(scope string) string {
+	trimmed := strings.TrimSpace(scope)
+	if !strings.HasPrefix(trimmed, "projects/") {
+		return ""
+	}
+	parts := strings.Split(trimmed, "/")
+	if len(parts) < 2 {
+		return ""
+	}
+	return strings.TrimSpace(parts[1])
 }
 
 // ListOrganizationProjects lists all projects in an organization

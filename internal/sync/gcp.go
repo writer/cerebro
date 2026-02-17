@@ -195,7 +195,7 @@ func (e *GCPSyncEngine) syncTable(ctx context.Context, table GCPTableSpec) (Sync
 
 	rows = normalizeRows(table.Name, table.Columns, rows, e.logger)
 
-	changes, err := e.upsertWithChanges(ctx, table.Name, rows)
+	changes, err := e.upsertWithChanges(ctx, table.Name, table.Columns, rows)
 	if err != nil {
 		e.logger.Error("upsert failed", "table", table.Name, "error", err)
 		result.Errors = 1
@@ -345,30 +345,29 @@ func (e *GCPSyncEngine) getTableColumns(ctx context.Context, table string) ([]st
 	return columns, nil
 }
 
-func (e *GCPSyncEngine) upsertWithChanges(ctx context.Context, table string, rows []map[string]interface{}) (*ChangeSet, error) {
+func (e *GCPSyncEngine) upsertWithChanges(ctx context.Context, table string, columns []string, rows []map[string]interface{}) (*ChangeSet, error) {
 	changes := &ChangeSet{}
 	if err := snowflake.ValidateTableName(table); err != nil {
 		return changes, fmt.Errorf("invalid table name %s: %w", table, err)
 	}
+	scopeColumn, scopeValues := gcpScopeFilter(columns, rows, e.projectID)
 
 	if len(rows) == 0 {
 		// Check for deletions even when no new rows
-		existing := e.getExistingHashes(ctx, table)
+		existing := e.getExistingHashes(ctx, table, scopeColumn, scopeValues)
 		for id := range existing {
 			changes.Removed = append(changes.Removed, id)
 		}
 		if len(changes.Removed) > 0 {
-			if _, err := e.sf.Exec(ctx, fmt.Sprintf("TRUNCATE TABLE %s", table)); err != nil {
-				if _, err := e.sf.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table)); err != nil {
-					e.logger.Debug("delete failed", "error", err)
-				}
+			if err := e.deleteScopedRows(ctx, table, scopeColumn, scopeValues); err != nil {
+				e.logger.Debug("delete failed", "error", err)
 			}
 		}
 		return changes, nil
 	}
 
 	// Get existing rows with their hashes
-	existing := e.getExistingHashes(ctx, table)
+	existing := e.getExistingHashes(ctx, table, scopeColumn, scopeValues)
 
 	// Build new row map with hashes
 	newRows := make(map[string]string)
@@ -396,11 +395,9 @@ func (e *GCPSyncEngine) upsertWithChanges(ctx context.Context, table string, row
 		}
 	}
 
-	// Delete all and reinsert (simple but effective)
-	if _, err := e.sf.Exec(ctx, fmt.Sprintf("TRUNCATE TABLE %s", table)); err != nil {
-		if _, err := e.sf.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table)); err != nil {
-			e.logger.Debug("delete failed", "error", err)
-		}
+	// Delete scoped rows and reinsert
+	if err := e.deleteScopedRows(ctx, table, scopeColumn, scopeValues); err != nil {
+		e.logger.Debug("delete failed", "error", err)
 	}
 
 	insertRows := make([]map[string]interface{}, 0, len(rows))
@@ -429,14 +426,15 @@ func (e *GCPSyncEngine) upsertWithChanges(ctx context.Context, table string, row
 	return changes, nil
 }
 
-func (e *GCPSyncEngine) getExistingHashes(ctx context.Context, table string) map[string]string {
+func (e *GCPSyncEngine) getExistingHashes(ctx context.Context, table, scopeColumn string, scopeValues []string) map[string]string {
 	result := make(map[string]string)
 	if err := snowflake.ValidateTableName(table); err != nil {
 		return result
 	}
 
-	query := fmt.Sprintf("SELECT _CQ_ID, _CQ_HASH FROM %s", table)
-	rows, err := e.sf.Query(ctx, query)
+	whereClause, args := gcpScopeWhereClause(scopeColumn, scopeValues)
+	query := fmt.Sprintf("SELECT _CQ_ID, _CQ_HASH FROM %s%s", table, whereClause)
+	rows, err := e.sf.Query(ctx, query, args...)
 	if err != nil {
 		return result
 	}
@@ -450,6 +448,73 @@ func (e *GCPSyncEngine) getExistingHashes(ctx context.Context, table string) map
 	}
 
 	return result
+}
+
+func (e *GCPSyncEngine) deleteScopedRows(ctx context.Context, table, scopeColumn string, scopeValues []string) error {
+	whereClause, args := gcpScopeWhereClause(scopeColumn, scopeValues)
+	if whereClause == "" {
+		if _, err := e.sf.Exec(ctx, fmt.Sprintf("TRUNCATE TABLE %s", table)); err != nil {
+			if _, err := e.sf.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table)); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	query := fmt.Sprintf("DELETE FROM %s%s", table, whereClause)
+	_, err := e.sf.Exec(ctx, query, args...)
+	return err
+}
+
+func gcpScopeFilter(columns []string, rows []map[string]interface{}, projectID string) (string, []string) {
+	column := ""
+	switch {
+	case hasColumn(columns, "project_id"):
+		column = "PROJECT_ID"
+	case hasColumn(columns, "project"):
+		column = "PROJECT"
+	default:
+		return "", nil
+	}
+
+	values := make(map[string]struct{})
+	lookupKey := strings.ToLower(column)
+	for _, row := range rows {
+		if row == nil {
+			continue
+		}
+		raw, ok := row[lookupKey]
+		if !ok || raw == nil {
+			continue
+		}
+		if val := strings.TrimSpace(stringValue(raw)); val != "" {
+			values[val] = struct{}{}
+		}
+	}
+	if len(values) == 0 && strings.TrimSpace(projectID) != "" {
+		values[strings.TrimSpace(projectID)] = struct{}{}
+	}
+
+	out := make([]string, 0, len(values))
+	for val := range values {
+		out = append(out, val)
+	}
+	sort.Strings(out)
+	return column, out
+}
+
+func gcpScopeWhereClause(column string, values []string) (string, []interface{}) {
+	if column == "" || len(values) == 0 {
+		return "", nil
+	}
+
+	placeholders := strings.TrimRight(strings.Repeat("?,", len(values)), ",")
+	args := make([]interface{}, len(values))
+	for i, value := range values {
+		args[i] = value
+	}
+
+	return fmt.Sprintf(" WHERE %s IN (%s)", column, placeholders), args
 }
 
 func (e *GCPSyncEngine) hashRowContent(row map[string]interface{}) string {
