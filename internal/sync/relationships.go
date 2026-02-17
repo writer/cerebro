@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -1258,7 +1259,121 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 		}
 	}
 
+	assetRels, err := r.extractGCPAssetInventoryRelationships(ctx)
+	if err != nil {
+		if !isMissingRelationshipSourceError(err) {
+			return 0, err
+		}
+	} else {
+		rels = append(rels, assetRels...)
+	}
+
 	return r.persistRelationships(ctx, rels)
+}
+
+func (r *RelationshipExtractor) extractGCPAssetInventoryRelationships(ctx context.Context) ([]Relationship, error) {
+	tablesSet := make(map[string]struct{})
+	for _, table := range GCPAssetTypes {
+		tablesSet[table] = struct{}{}
+	}
+
+	tables := make([]string, 0, len(tablesSet))
+	for table := range tablesSet {
+		tables = append(tables, table)
+	}
+	sort.Strings(tables)
+
+	rels := make([]Relationship, 0)
+	for _, table := range tables {
+		if err := snowflake.ValidateTableName(table); err != nil {
+			continue
+		}
+
+		query := fmt.Sprintf(`SELECT _CQ_ID, ASSET_TYPE, PARENT_FULL_NAME, PARENT_ASSET_TYPE, KMS_KEYS, RELATIONSHIPS
+			FROM %s
+			WHERE _CQ_ID IS NOT NULL AND ASSET_TYPE IS NOT NULL`, table)
+
+		result, err := r.sf.Query(ctx, query)
+		if err != nil {
+			if isMissingRelationshipSourceError(err) {
+				continue
+			}
+			return nil, err
+		}
+
+		for _, row := range result.Rows {
+			sourceID := normalizeRelationshipID(toString(row["_CQ_ID"]))
+			if sourceID == "" {
+				continue
+			}
+			sourceType := gcpAssetNodeType(toString(row["ASSET_TYPE"]))
+			if sourceType == "" {
+				sourceType = "gcp:resource"
+			}
+
+			if parentID := normalizeRelationshipID(toString(row["PARENT_FULL_NAME"])); parentID != "" {
+				targetType := gcpAssetNodeType(toString(row["PARENT_ASSET_TYPE"]))
+				if targetType == "" {
+					targetType = "gcp:resource"
+				}
+				rels = append(rels, Relationship{
+					SourceID:   sourceID,
+					SourceType: sourceType,
+					TargetID:   parentID,
+					TargetType: targetType,
+					RelType:    RelBelongsTo,
+				})
+			}
+
+			if kmsKeys := asSlice(row["KMS_KEYS"]); len(kmsKeys) > 0 {
+				for _, key := range kmsKeys {
+					kmsKeyID := extractGCPKMSKeyID(key)
+					if kmsKeyID == "" {
+						continue
+					}
+					rels = append(rels, Relationship{
+						SourceID:   sourceID,
+						SourceType: sourceType,
+						TargetID:   kmsKeyID,
+						TargetType: "gcp:kms:key",
+						RelType:    RelEncryptedBy,
+					})
+				}
+			}
+
+			if relationItems := asSlice(row["RELATIONSHIPS"]); len(relationItems) > 0 {
+				for _, item := range relationItems {
+					relMap := asMap(item)
+					if relMap == nil {
+						continue
+					}
+					targetID := normalizeRelationshipID(getStringAny(relMap, "full_resource_name", "fullResourceName", "target", "target_id", "targetId"))
+					if targetID == "" {
+						continue
+					}
+
+					relType := normalizeGCPAssetRelationshipType(getStringAny(relMap, "type", "relationship_type", "relationshipType"))
+					if relType == "" {
+						relType = RelAttachedTo
+					}
+					targetType := gcpAssetNodeType(getStringAny(relMap, "asset_type", "assetType"))
+					if targetType == "" {
+						targetType = "gcp:resource"
+					}
+
+					rels = append(rels, Relationship{
+						SourceID:   sourceID,
+						SourceType: sourceType,
+						TargetID:   targetID,
+						TargetType: targetType,
+						RelType:    relType,
+					})
+				}
+			}
+		}
+	}
+
+	return rels, nil
 }
 
 // extractAzureRelationships extracts Azure resource relationships.
@@ -1727,6 +1842,62 @@ func azureStorageContainerID(subscriptionID, resourceGroup, accountName, contain
 func normalizeVaultURI(uri string) string {
 	uri = strings.TrimSpace(strings.ToLower(uri))
 	return strings.TrimSuffix(uri, "/")
+}
+
+func gcpAssetNodeType(assetType string) string {
+	assetType = strings.TrimSpace(strings.ToLower(assetType))
+	if assetType == "" {
+		return ""
+	}
+	parts := strings.Split(assetType, "/")
+	if len(parts) != 2 {
+		token := normalizeGCPAssetRelationshipType(assetType)
+		if token == "" {
+			return ""
+		}
+		return fmt.Sprintf("gcp:asset:%s", strings.ToLower(token))
+	}
+	service := strings.Split(parts[0], ".")[0]
+	resource := normalizeGCPAssetRelationshipType(parts[1])
+	if service == "" || resource == "" {
+		return ""
+	}
+	return fmt.Sprintf("gcp:%s:%s", service, strings.ToLower(resource))
+}
+
+func normalizeGCPAssetRelationshipType(relType string) string {
+	relType = strings.TrimSpace(relType)
+	if relType == "" {
+		return ""
+	}
+	b := strings.Builder{}
+	b.Grow(len(relType))
+	lastUnderscore := false
+	for _, ch := range relType {
+		if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') {
+			b.WriteRune(ch)
+			lastUnderscore = false
+			continue
+		}
+		if !lastUnderscore {
+			b.WriteRune('_')
+			lastUnderscore = true
+		}
+	}
+	out := strings.ToUpper(strings.Trim(b.String(), "_"))
+	return out
+}
+
+func extractGCPKMSKeyID(value interface{}) string {
+	if value == nil {
+		return ""
+	}
+	if keyMap := asMap(value); keyMap != nil {
+		if keyID := getStringAny(keyMap, "kms_key", "kmsKey", "name", "id"); keyID != "" {
+			return normalizeRelationshipID(keyID)
+		}
+	}
+	return normalizeRelationshipID(toString(value))
 }
 
 func toString(v interface{}) string {

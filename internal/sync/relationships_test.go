@@ -86,3 +86,27 @@ func TestIsMissingRelationshipSourceError(t *testing.T) {
 		}
 	}
 }
+
+func TestGCPAssetNodeType(t *testing.T) {
+	if got := gcpAssetNodeType("compute.googleapis.com/Instance"); got != "gcp:compute:instance" {
+		t.Fatalf("unexpected node type: %s", got)
+	}
+	if got := gcpAssetNodeType("invalid type"); got != "gcp:asset:invalid_type" {
+		t.Fatalf("unexpected fallback node type: %s", got)
+	}
+}
+
+func TestNormalizeGCPAssetRelationshipType(t *testing.T) {
+	if got := normalizeGCPAssetRelationshipType("instance-to.instance group"); got != "INSTANCE_TO_INSTANCE_GROUP" {
+		t.Fatalf("unexpected relationship type: %s", got)
+	}
+}
+
+func TestExtractGCPKMSKeyID(t *testing.T) {
+	if got := extractGCPKMSKeyID(map[string]interface{}{"kmsKey": "projects/p/locations/l/keyRings/r/cryptoKeys/k"}); got != "projects/p/locations/l/keyRings/r/cryptoKeys/k" {
+		t.Fatalf("unexpected key id: %s", got)
+	}
+	if got := extractGCPKMSKeyID("projects/p/locations/l/keyRings/r/cryptoKeys/k2"); got != "projects/p/locations/l/keyRings/r/cryptoKeys/k2" {
+		t.Fatalf("unexpected key id: %s", got)
+	}
+}
