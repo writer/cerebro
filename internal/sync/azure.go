@@ -241,7 +241,7 @@ func (e *AzureSyncEngine) syncTable(ctx context.Context, table AzureTableSpec) (
 
 	rows = normalizeRows(table.Name, table.Columns, rows, e.logger)
 
-	changes, err := e.upsertWithChanges(ctx, table.Name, rows)
+	changes, err := e.upsertWithChanges(ctx, table.Name, table.Columns, rows)
 	if err != nil {
 		e.logger.Error("upsert failed", "table", table.Name, "error", err)
 		result.Errors = 1
@@ -320,28 +320,27 @@ func (e *AzureSyncEngine) ensureTable(ctx context.Context, table string, columns
 	return err
 }
 
-func (e *AzureSyncEngine) upsertWithChanges(ctx context.Context, table string, rows []map[string]interface{}) (*ChangeSet, error) {
+func (e *AzureSyncEngine) upsertWithChanges(ctx context.Context, table string, columns []string, rows []map[string]interface{}) (*ChangeSet, error) {
 	changes := &ChangeSet{}
 	if err := snowflake.ValidateTableName(table); err != nil {
 		return changes, fmt.Errorf("invalid table name %s: %w", table, err)
 	}
+	scopeColumn, scopeValues := azureScopeFilter(columns, rows, e.subscriptionID)
 
 	if len(rows) == 0 {
-		existing := e.getExistingHashes(ctx, table)
+		existing := e.getExistingHashes(ctx, table, scopeColumn, scopeValues)
 		for id := range existing {
 			changes.Removed = append(changes.Removed, id)
 		}
 		if len(changes.Removed) > 0 {
-			if _, err := e.sf.Exec(ctx, fmt.Sprintf("TRUNCATE TABLE %s", table)); err != nil {
-				if _, err := e.sf.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table)); err != nil {
-					e.logger.Debug("delete failed", "error", err)
-				}
+			if err := e.deleteScopedRows(ctx, table, scopeColumn, scopeValues); err != nil {
+				e.logger.Debug("delete failed", "error", err)
 			}
 		}
 		return changes, nil
 	}
 
-	existing := e.getExistingHashes(ctx, table)
+	existing := e.getExistingHashes(ctx, table, scopeColumn, scopeValues)
 	newRows := make(map[string]string)
 	for _, row := range rows {
 		id, ok := row["_cq_id"].(string)
@@ -366,10 +365,8 @@ func (e *AzureSyncEngine) upsertWithChanges(ctx context.Context, table string, r
 		}
 	}
 
-	if _, err := e.sf.Exec(ctx, fmt.Sprintf("TRUNCATE TABLE %s", table)); err != nil {
-		if _, err := e.sf.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table)); err != nil {
-			e.logger.Debug("delete failed", "error", err)
-		}
+	if err := e.deleteScopedRows(ctx, table, scopeColumn, scopeValues); err != nil {
+		e.logger.Debug("delete failed", "error", err)
 	}
 
 	insertRows := make([]map[string]interface{}, 0, len(rows))
@@ -398,14 +395,15 @@ func (e *AzureSyncEngine) upsertWithChanges(ctx context.Context, table string, r
 	return changes, nil
 }
 
-func (e *AzureSyncEngine) getExistingHashes(ctx context.Context, table string) map[string]string {
+func (e *AzureSyncEngine) getExistingHashes(ctx context.Context, table, scopeColumn string, scopeValues []string) map[string]string {
 	result := make(map[string]string)
 	if err := snowflake.ValidateTableName(table); err != nil {
 		return result
 	}
 
-	query := fmt.Sprintf("SELECT _CQ_ID, _CQ_HASH FROM %s", table)
-	rows, err := e.sf.Query(ctx, query)
+	whereClause, args := azureScopeWhereClause(scopeColumn, scopeValues)
+	query := fmt.Sprintf("SELECT _CQ_ID, _CQ_HASH FROM %s%s", table, whereClause)
+	rows, err := e.sf.Query(ctx, query, args...)
 	if err != nil {
 		return result
 	}
@@ -419,6 +417,66 @@ func (e *AzureSyncEngine) getExistingHashes(ctx context.Context, table string) m
 	}
 
 	return result
+}
+
+func (e *AzureSyncEngine) deleteScopedRows(ctx context.Context, table, scopeColumn string, scopeValues []string) error {
+	whereClause, args := azureScopeWhereClause(scopeColumn, scopeValues)
+	if whereClause == "" {
+		if _, err := e.sf.Exec(ctx, fmt.Sprintf("TRUNCATE TABLE %s", table)); err != nil {
+			if _, err := e.sf.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table)); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	query := fmt.Sprintf("DELETE FROM %s%s", table, whereClause)
+	_, err := e.sf.Exec(ctx, query, args...)
+	return err
+}
+
+func azureScopeFilter(columns []string, rows []map[string]interface{}, subscriptionID string) (string, []string) {
+	if !hasColumn(columns, "subscription_id") {
+		return "", nil
+	}
+
+	values := make(map[string]struct{})
+	for _, row := range rows {
+		if row == nil {
+			continue
+		}
+		raw, ok := row["subscription_id"]
+		if !ok || raw == nil {
+			continue
+		}
+		if val := strings.TrimSpace(stringValue(raw)); val != "" {
+			values[val] = struct{}{}
+		}
+	}
+	if len(values) == 0 && strings.TrimSpace(subscriptionID) != "" {
+		values[strings.TrimSpace(subscriptionID)] = struct{}{}
+	}
+
+	out := make([]string, 0, len(values))
+	for val := range values {
+		out = append(out, val)
+	}
+	sort.Strings(out)
+	return "SUBSCRIPTION_ID", out
+}
+
+func azureScopeWhereClause(column string, values []string) (string, []interface{}) {
+	if column == "" || len(values) == 0 {
+		return "", nil
+	}
+
+	placeholders := strings.TrimRight(strings.Repeat("?,", len(values)), ",")
+	args := make([]interface{}, len(values))
+	for i, value := range values {
+		args[i] = value
+	}
+
+	return fmt.Sprintf(" WHERE %s IN (%s)", column, placeholders), args
 }
 
 func (e *AzureSyncEngine) hashRowContent(row map[string]interface{}) string {
