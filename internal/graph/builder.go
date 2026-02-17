@@ -59,7 +59,7 @@ func (b *Builder) discoverTables(ctx context.Context) {
 	}
 	b.availableTables = make(map[string]bool, len(result.Rows))
 	for _, row := range result.Rows {
-		name := strings.ToUpper(toString(row["table_name"]))
+		name := strings.ToUpper(queryRowString(row, "table_name"))
 		b.availableTables[name] = true
 	}
 	b.logger.Debug("discovered populated tables", "count", len(b.availableTables))
@@ -173,7 +173,7 @@ func (b *Builder) HasChanges(ctx context.Context) bool {
 	if err != nil || len(result.Rows) == 0 {
 		return true // fail-open
 	}
-	if latest, ok := result.Rows[0]["latest"].(time.Time); ok {
+	if latest, ok := queryRow(result.Rows[0], "latest").(time.Time); ok {
 		return latest.After(b.lastBuildTime)
 	}
 	return true
@@ -205,15 +205,15 @@ func (b *Builder) buildRelationshipEdges(ctx context.Context) {
 	}
 
 	for _, row := range rels.Rows {
-		sourceID := normalizeRelID(row["source_id"])
-		targetID := normalizeRelID(row["target_id"])
+		sourceID := normalizeRelID(queryRow(row, "source_id"))
+		targetID := normalizeRelID(queryRow(row, "target_id"))
 		if sourceID == "" || targetID == "" {
 			continue
 		}
 
-		sourceType := strings.ToLower(toString(row["source_type"]))
-		targetType := strings.ToLower(toString(row["target_type"]))
-		relType := strings.ToUpper(toString(row["rel_type"]))
+		sourceType := strings.ToLower(queryRowString(row, "source_type"))
+		targetType := strings.ToLower(queryRowString(row, "target_type"))
+		relType := strings.ToUpper(queryRowString(row, "rel_type"))
 
 		edgeSource := sourceID
 		edgeTarget := targetID
@@ -262,7 +262,7 @@ func (b *Builder) buildRelationshipEdges(ctx context.Context) {
 				"relationship_type": relType,
 			},
 		}
-		if props := row["properties"]; props != nil {
+		if props := queryRow(row, "properties"); props != nil {
 			edge.Properties["properties"] = props
 		}
 
