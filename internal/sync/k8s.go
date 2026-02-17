@@ -452,15 +452,7 @@ func (e *K8sSyncEngine) getExistingHashes(ctx context.Context, table string) map
 		return result
 	}
 
-	for _, row := range rows.Rows {
-		id := queryRowString(row, "_cq_id")
-		hash := queryRowString(row, "_cq_hash")
-		if id != "" {
-			result[id] = hash
-		}
-	}
-
-	return result
+	return decodeExistingHashes(rows.Rows)
 }
 
 func (e *K8sSyncEngine) hashRowContent(row map[string]interface{}) string {

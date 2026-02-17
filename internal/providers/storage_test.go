@@ -21,12 +21,14 @@ func (fakeSnowflakeResult) LastInsertId() (int64, error) { return 0, nil }
 func (fakeSnowflakeResult) RowsAffected() (int64, error) { return 0, nil }
 
 type fakeSnowflakeClient struct {
-	execErr    error
-	queryErr   error
-	queryReply *snowflake.QueryResult
+	execErr     error
+	queryErr    error
+	queryReply  *snowflake.QueryResult
+	execQueries []string
 }
 
 func (f *fakeSnowflakeClient) Exec(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+	f.execQueries = append(f.execQueries, query)
 	if f.execErr != nil {
 		return nil, f.execErr
 	}
@@ -110,5 +112,43 @@ func TestNoUppercaseQueryRowKeyAccessInProviderStorage(t *testing.T) {
 	}
 	if err := content.Close(); err != nil {
 		t.Fatalf("close storage.go: %v", err)
+	}
+}
+
+func TestEnsureProviderTable_UsesIdempotentAlter(t *testing.T) {
+	client := &fakeSnowflakeClient{queryReply: &snowflake.QueryResult{Rows: []map[string]interface{}{
+		{"column_name": "_CQ_ID"},
+	}}}
+
+	if err := ensureProviderTable(context.Background(), client, "okta_users", []string{"id"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	foundIDAlter := false
+	for _, query := range client.execQueries {
+		if strings.Contains(query, "ALTER TABLE okta_users ADD COLUMN IF NOT EXISTS ID VARIANT") {
+			foundIDAlter = true
+			break
+		}
+	}
+	if !foundIDAlter {
+		t.Fatalf("expected idempotent ID alter query, got %v", client.execQueries)
+	}
+}
+
+func TestEnsureProviderTable_SkipsExistingColumnsCaseInsensitive(t *testing.T) {
+	client := &fakeSnowflakeClient{queryReply: &snowflake.QueryResult{Rows: []map[string]interface{}{
+		{"COLUMN_NAME": "ID"},
+		{"column_name": "_CQ_HASH"},
+	}}}
+
+	if err := ensureProviderTable(context.Background(), client, "okta_users", []string{"id"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, query := range client.execQueries {
+		if strings.Contains(query, "ALTER TABLE okta_users ADD COLUMN IF NOT EXISTS ID VARIANT") {
+			t.Fatalf("did not expect alter for existing column, queries: %v", client.execQueries)
+		}
 	}
 }

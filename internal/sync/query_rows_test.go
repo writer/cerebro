@@ -31,3 +31,23 @@ func TestQueryRowHelpers_UppercaseMapCompatibility(t *testing.T) {
 		t.Fatalf("expected fallback to uppercase key, got %q", got)
 	}
 }
+
+func TestDecodeExistingHashes_CaseInsensitiveKeys(t *testing.T) {
+	rows := []map[string]interface{}{
+		{"_CQ_ID": "id-1", "_CQ_HASH": "hash-1"},
+		{"_cq_id": "id-2", "_cq_hash": "hash-2"},
+		{"_cq_id": "", "_cq_hash": "ignored"},
+		{"_cq_hash": "missing-id"},
+	}
+
+	decoded := decodeExistingHashes(rows)
+	if len(decoded) != 2 {
+		t.Fatalf("expected 2 decoded hashes, got %d", len(decoded))
+	}
+	if decoded["id-1"] != "hash-1" {
+		t.Fatalf("expected hash-1 for id-1, got %q", decoded["id-1"])
+	}
+	if decoded["id-2"] != "hash-2" {
+		t.Fatalf("expected hash-2 for id-2, got %q", decoded["id-2"])
+	}
+}

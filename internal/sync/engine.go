@@ -685,15 +685,7 @@ func (e *SyncEngine) getExistingHashes(ctx context.Context, table string, region
 		return result
 	}
 
-	for _, row := range rows.Rows {
-		id := queryRowString(row, "_cq_id")
-		hash := queryRowString(row, "_cq_hash")
-		if id != "" {
-			result[id] = hash
-		}
-	}
-
-	return result
+	return decodeExistingHashes(rows.Rows)
 }
 
 func (e *SyncEngine) deleteScopedRows(ctx context.Context, table string, region string, hasRegion bool, hasAccount bool, globalScope bool) error {

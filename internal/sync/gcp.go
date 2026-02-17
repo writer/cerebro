@@ -439,15 +439,7 @@ func (e *GCPSyncEngine) getExistingHashes(ctx context.Context, table, scopeColum
 		return result
 	}
 
-	for _, row := range rows.Rows {
-		id := queryRowString(row, "_cq_id")
-		hash := queryRowString(row, "_cq_hash")
-		if id != "" {
-			result[id] = hash
-		}
-	}
-
-	return result
+	return decodeExistingHashes(rows.Rows)
 }
 
 func (e *GCPSyncEngine) deleteScopedRows(ctx context.Context, table, scopeColumn string, scopeValues []string) error {

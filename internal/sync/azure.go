@@ -408,15 +408,7 @@ func (e *AzureSyncEngine) getExistingHashes(ctx context.Context, table, scopeCol
 		return result
 	}
 
-	for _, row := range rows.Rows {
-		id := queryRowString(row, "_cq_id")
-		hash := queryRowString(row, "_cq_hash")
-		if id != "" {
-			result[id] = hash
-		}
-	}
-
-	return result
+	return decodeExistingHashes(rows.Rows)
 }
 
 func (e *AzureSyncEngine) deleteScopedRows(ctx context.Context, table, scopeColumn string, scopeValues []string) error {

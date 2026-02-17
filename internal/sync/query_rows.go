@@ -40,3 +40,15 @@ func queryRow(row map[string]interface{}, key string) interface{} {
 	value, _ := queryRowValue(row, key)
 	return value
 }
+
+func decodeExistingHashes(rows []map[string]interface{}) map[string]string {
+	result := make(map[string]string, len(rows))
+	for _, row := range rows {
+		id := queryRowString(row, "_cq_id")
+		if id == "" {
+			continue
+		}
+		result[id] = queryRowString(row, "_cq_hash")
+	}
+	return result
+}
