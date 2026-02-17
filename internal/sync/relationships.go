@@ -1134,6 +1134,73 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 		}
 	}
 
+	// GCP Artifact Registry repositories - encryption relationships
+	query = `SELECT PROJECT_ID, NAME, SELF_LINK, KMS_KEY_NAME
+	         FROM GCP_ARTIFACT_REGISTRY_REPOSITORIES
+	         WHERE (SELF_LINK IS NOT NULL OR NAME IS NOT NULL)`
+
+	result, err = r.sf.Query(ctx, query)
+	if err == nil {
+		for _, row := range result.Rows {
+			repositoryID := toString(row["SELF_LINK"])
+			if repositoryID == "" {
+				projectID := toString(row["PROJECT_ID"])
+				repoName := toString(row["NAME"])
+				if projectID != "" && repoName != "" {
+					repositoryID = fmt.Sprintf("projects/%s/locations/-/repositories/%s", projectID, repoName)
+				}
+			}
+			if repositoryID == "" {
+				continue
+			}
+
+			if kmsKey := toString(row["KMS_KEY_NAME"]); kmsKey != "" {
+				rels = append(rels, Relationship{
+					SourceID:   repositoryID,
+					SourceType: "gcp:artifactregistry:repository",
+					TargetID:   kmsKey,
+					TargetType: "gcp:kms:key",
+					RelType:    RelEncryptedBy,
+				})
+			}
+		}
+	}
+
+	// GCP Org Policy relationships
+	query = `SELECT SELF_LINK, PARENT, CONSTRAINT
+	         FROM GCP_ORG_POLICIES
+	         WHERE SELF_LINK IS NOT NULL`
+
+	result, err = r.sf.Query(ctx, query)
+	if err == nil {
+		for _, row := range result.Rows {
+			policyID := toString(row["SELF_LINK"])
+			if policyID == "" {
+				continue
+			}
+
+			if parent := toString(row["PARENT"]); parent != "" {
+				rels = append(rels, Relationship{
+					SourceID:   policyID,
+					SourceType: "gcp:orgpolicy:policy",
+					TargetID:   parent,
+					TargetType: "gcp:resource",
+					RelType:    RelBelongsTo,
+				})
+			}
+
+			if constraint := toString(row["CONSTRAINT"]); constraint != "" {
+				rels = append(rels, Relationship{
+					SourceID:   policyID,
+					SourceType: "gcp:orgpolicy:policy",
+					TargetID:   constraint,
+					TargetType: "gcp:orgpolicy:constraint",
+					RelType:    RelProtects,
+				})
+			}
+		}
+	}
+
 	// GCP SQL instances - service account, network, and encryption relationships
 	query = `SELECT NAME, PROJECT_ID, SELF_LINK, SERVICE_ACCOUNT_EMAIL_ADDRESS, SETTINGS, DISK_ENCRYPTION_CONFIGURATION
 	         FROM GCP_SQL_INSTANCES WHERE NAME IS NOT NULL`

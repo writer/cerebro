@@ -567,6 +567,8 @@ func (e *GCPSyncEngine) getGCPTables() []GCPTableSpec {
 		// Logging
 		e.gcpLoggingSinkTable(),
 		e.gcpLoggingProjectSinkTable(),
+		// Governance
+		e.gcpOrgPolicyTable(),
 		// Security
 		e.gcpIdsEndpointTable(),
 	}

@@ -73,6 +73,7 @@ var GCPAssetTypes = map[string]string{
 	"pubsub.googleapis.com/Topic":            "gcp_pubsub_topics",
 	"container.googleapis.com/Cluster":       "gcp_container_clusters",
 	"cloudkms.googleapis.com/CryptoKey":      "gcp_kms_keys",
+	"orgpolicy.googleapis.com/Policy":        "gcp_org_policies",
 	"secretmanager.googleapis.com/Secret":    "gcp_secretmanager_secrets",
 	"bigquery.googleapis.com/Dataset":        "gcp_bigquery_datasets",
 	"bigquery.googleapis.com/Table":          "gcp_bigquery_tables",
