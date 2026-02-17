@@ -2,6 +2,7 @@ package sync
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -109,4 +110,53 @@ func TestExtractGCPKMSKeyID(t *testing.T) {
 	if got := extractGCPKMSKeyID("projects/p/locations/l/keyRings/r/cryptoKeys/k2"); got != "projects/p/locations/l/keyRings/r/cryptoKeys/k2" {
 		t.Fatalf("unexpected key id: %s", got)
 	}
+}
+
+func TestGCPAssetColumnExpression(t *testing.T) {
+	columns := map[string]struct{}{
+		"ASSET_TYPE": {},
+	}
+
+	if got := gcpAssetColumnExpression(columns, "asset_type"); got != "ASSET_TYPE" {
+		t.Fatalf("expected ASSET_TYPE, got %q", got)
+	}
+	if got := gcpAssetColumnExpression(columns, "parent_asset_type"); got != "NULL AS PARENT_ASSET_TYPE" {
+		t.Fatalf("expected NULL alias for missing column, got %q", got)
+	}
+}
+
+func TestBuildGCPAssetInventoryQuery(t *testing.T) {
+	t.Run("missing optional columns", func(t *testing.T) {
+		query := buildGCPAssetInventoryQuery("GCP_SAMPLE_TABLE", map[string]struct{}{"_CQ_ID": {}})
+		checks := []string{
+			"SELECT _CQ_ID, NULL AS ASSET_TYPE, NULL AS PARENT_FULL_NAME, NULL AS PARENT_ASSET_TYPE, NULL AS KMS_KEYS, NULL AS RELATIONSHIPS",
+			"FROM GCP_SAMPLE_TABLE",
+			"WHERE _CQ_ID IS NOT NULL",
+		}
+		for _, check := range checks {
+			if !strings.Contains(query, check) {
+				t.Fatalf("expected query to contain %q, got %q", check, query)
+			}
+		}
+	})
+
+	t.Run("all optional columns present", func(t *testing.T) {
+		query := buildGCPAssetInventoryQuery("GCP_SAMPLE_TABLE", map[string]struct{}{
+			"_CQ_ID":            {},
+			"ASSET_TYPE":        {},
+			"PARENT_FULL_NAME":  {},
+			"PARENT_ASSET_TYPE": {},
+			"KMS_KEYS":          {},
+			"RELATIONSHIPS":     {},
+		})
+		checks := []string{"ASSET_TYPE", "PARENT_FULL_NAME", "PARENT_ASSET_TYPE", "KMS_KEYS", "RELATIONSHIPS"}
+		for _, check := range checks {
+			if !strings.Contains(query, check) {
+				t.Fatalf("expected query to contain %q, got %q", check, query)
+			}
+		}
+		if strings.Contains(query, "NULL AS") {
+			t.Fatalf("did not expect NULL aliases when all columns exist, got %q", query)
+		}
+	})
 }

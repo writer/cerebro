@@ -883,8 +883,9 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 	query := `SELECT ID, PROJECT_ID, NETWORK_INTERFACES, SERVICE_ACCOUNTS
 	          FROM GCP_COMPUTE_INSTANCES WHERE ID IS NOT NULL`
 
-	result, err := r.sf.Query(ctx, query)
-	if err == nil {
+	if result, ok, err := r.queryRowsForTable(ctx, "GCP_COMPUTE_INSTANCES", query); err != nil {
+		return 0, err
+	} else if ok {
 		for _, row := range result.Rows {
 			instanceID := toString(queryRow(row, "id"))
 			projectID := toString(queryRow(row, "project_id"))
@@ -938,8 +939,9 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 	query = `SELECT NAME, PROJECT_ID, SERVICE_CONFIG
 	         FROM GCP_CLOUDFUNCTIONS_FUNCTIONS WHERE NAME IS NOT NULL`
 
-	result, err = r.sf.Query(ctx, query)
-	if err == nil {
+	if result, ok, err := r.queryRowsForTable(ctx, "GCP_CLOUDFUNCTIONS_FUNCTIONS", query); err != nil {
+		return 0, err
+	} else if ok {
 		for _, row := range result.Rows {
 			funcName := toString(queryRow(row, "name"))
 			projectID := toString(queryRow(row, "project_id"))
@@ -971,8 +973,9 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 	query = `SELECT NAME, PROJECT_ID, TEMPLATE, INGRESS, URI
 	         FROM GCP_CLOUDRUN_SERVICES WHERE NAME IS NOT NULL`
 
-	result, err = r.sf.Query(ctx, query)
-	if err == nil {
+	if result, ok, err := r.queryRowsForTable(ctx, "GCP_CLOUDRUN_SERVICES", query); err != nil {
+		return 0, err
+	} else if ok {
 		for _, row := range result.Rows {
 			svcName := toString(queryRow(row, "name"))
 			projectID := toString(queryRow(row, "project_id"))
@@ -1038,8 +1041,9 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 	query = `SELECT NAME, PROJECT_ID, SERVICE, SERVICE_ACCOUNT, CONTAINERS
 	         FROM GCP_CLOUDRUN_REVISIONS WHERE NAME IS NOT NULL`
 
-	result, err = r.sf.Query(ctx, query)
-	if err == nil {
+	if result, ok, err := r.queryRowsForTable(ctx, "GCP_CLOUDRUN_REVISIONS", query); err != nil {
+		return 0, err
+	} else if ok {
 		for _, row := range result.Rows {
 			revName := toString(queryRow(row, "name"))
 			projectID := toString(queryRow(row, "project_id"))
@@ -1113,8 +1117,9 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 	query = `SELECT NAME, LOGGING_LOG_BUCKET, ENCRYPTION_DEFAULT_KMS_KEY
 	         FROM GCP_STORAGE_BUCKETS WHERE NAME IS NOT NULL`
 
-	result, err = r.sf.Query(ctx, query)
-	if err == nil {
+	if result, ok, err := r.queryRowsForTable(ctx, "GCP_STORAGE_BUCKETS", query); err != nil {
+		return 0, err
+	} else if ok {
 		for _, row := range result.Rows {
 			bucketName := toString(queryRow(row, "name"))
 			if bucketName == "" {
@@ -1149,8 +1154,9 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 	         FROM GCP_ARTIFACT_REGISTRY_REPOSITORIES
 	         WHERE (SELF_LINK IS NOT NULL OR NAME IS NOT NULL)`
 
-	result, err = r.sf.Query(ctx, query)
-	if err == nil {
+	if result, ok, err := r.queryRowsForTable(ctx, "GCP_ARTIFACT_REGISTRY_REPOSITORIES", query); err != nil {
+		return 0, err
+	} else if ok {
 		for _, row := range result.Rows {
 			repositoryID := toString(queryRow(row, "self_link"))
 			if repositoryID == "" {
@@ -1181,8 +1187,9 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 	         FROM GCP_ORG_POLICIES
 	         WHERE SELF_LINK IS NOT NULL`
 
-	result, err = r.sf.Query(ctx, query)
-	if err == nil {
+	if result, ok, err := r.queryRowsForTable(ctx, "GCP_ORG_POLICIES", query); err != nil {
+		return 0, err
+	} else if ok {
 		for _, row := range result.Rows {
 			policyID := toString(queryRow(row, "self_link"))
 			if policyID == "" {
@@ -1215,8 +1222,9 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 	query = `SELECT NAME, PROJECT_ID, SELF_LINK, SERVICE_ACCOUNT_EMAIL_ADDRESS, SETTINGS, DISK_ENCRYPTION_CONFIGURATION
 	         FROM GCP_SQL_INSTANCES WHERE NAME IS NOT NULL`
 
-	result, err = r.sf.Query(ctx, query)
-	if err == nil {
+	if result, ok, err := r.queryRowsForTable(ctx, "GCP_SQL_INSTANCES", query); err != nil {
+		return 0, err
+	} else if ok {
 		for _, row := range result.Rows {
 			instanceID := toString(queryRow(row, "self_link"))
 			name := toString(queryRow(row, "name"))
@@ -1298,10 +1306,15 @@ func (r *RelationshipExtractor) extractGCPAssetInventoryRelationships(ctx contex
 			continue
 		}
 
-		query := fmt.Sprintf(`SELECT _CQ_ID, ASSET_TYPE, PARENT_FULL_NAME, PARENT_ASSET_TYPE, KMS_KEYS, RELATIONSHIPS
-			FROM %s
-			WHERE _CQ_ID IS NOT NULL AND ASSET_TYPE IS NOT NULL`, table)
+		columnSet, err := r.getTableColumnSet(ctx, table)
+		if err != nil {
+			return nil, err
+		}
+		if !hasTableColumn(columnSet, "_CQ_ID") {
+			continue
+		}
 
+		query := buildGCPAssetInventoryQuery(table, columnSet)
 		result, err := r.sf.Query(ctx, query)
 		if err != nil {
 			if isMissingRelationshipSourceError(err) {
@@ -1385,6 +1398,88 @@ func (r *RelationshipExtractor) extractGCPAssetInventoryRelationships(ctx contex
 	return rels, nil
 }
 
+func (r *RelationshipExtractor) getTableColumnSet(ctx context.Context, table string) (map[string]struct{}, error) {
+	if err := snowflake.ValidateTableName(table); err != nil {
+		return nil, fmt.Errorf("invalid table name %s: %w", table, err)
+	}
+
+	query := `
+		SELECT COLUMN_NAME
+		FROM INFORMATION_SCHEMA.COLUMNS
+		WHERE TABLE_SCHEMA = CURRENT_SCHEMA()
+		AND TABLE_NAME = ?
+	`
+
+	result, err := r.sf.Query(ctx, query, strings.ToUpper(table))
+	if err != nil {
+		return nil, err
+	}
+
+	columns := make(map[string]struct{}, len(result.Rows))
+	for _, row := range result.Rows {
+		name := strings.ToUpper(queryRowString(row, "column_name"))
+		if name == "" {
+			continue
+		}
+		columns[name] = struct{}{}
+	}
+
+	return columns, nil
+}
+
+func (r *RelationshipExtractor) queryRowsForTable(ctx context.Context, table, query string, args ...interface{}) (*snowflake.QueryResult, bool, error) {
+	columnSet, err := r.getTableColumnSet(ctx, table)
+	if err != nil {
+		return nil, false, err
+	}
+	if len(columnSet) == 0 {
+		return nil, false, nil
+	}
+
+	result, err := r.sf.Query(ctx, query, args...)
+	if err != nil {
+		if isMissingRelationshipSourceError(err) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+
+	return result, true, nil
+}
+
+func hasTableColumn(columns map[string]struct{}, column string) bool {
+	if len(columns) == 0 {
+		return false
+	}
+	_, ok := columns[strings.ToUpper(column)]
+	return ok
+}
+
+func gcpAssetColumnExpression(columns map[string]struct{}, column string) string {
+	upper := strings.ToUpper(column)
+	if hasTableColumn(columns, upper) {
+		return upper
+	}
+	return fmt.Sprintf("NULL AS %s", upper)
+}
+
+func buildGCPAssetInventoryQuery(table string, columns map[string]struct{}) string {
+	selectColumns := []string{
+		"_CQ_ID",
+		gcpAssetColumnExpression(columns, "asset_type"),
+		gcpAssetColumnExpression(columns, "parent_full_name"),
+		gcpAssetColumnExpression(columns, "parent_asset_type"),
+		gcpAssetColumnExpression(columns, "kms_keys"),
+		gcpAssetColumnExpression(columns, "relationships"),
+	}
+
+	return fmt.Sprintf(
+		"SELECT %s FROM %s WHERE _CQ_ID IS NOT NULL",
+		strings.Join(selectColumns, ", "),
+		table,
+	)
+}
+
 // extractAzureRelationships extracts Azure resource relationships.
 func (r *RelationshipExtractor) extractAzureRelationships(ctx context.Context) (int, error) {
 	var rels []Relationship
@@ -1392,12 +1487,9 @@ func (r *RelationshipExtractor) extractAzureRelationships(ctx context.Context) (
 	query := `SELECT ID, NETWORK_INTERFACES, AVAILABILITY_SET, OS_DISK, DATA_DISKS
 	          FROM AZURE_COMPUTE_VIRTUAL_MACHINES WHERE ID IS NOT NULL`
 
-	result, err := r.sf.Query(ctx, query)
-	if err != nil {
-		if !isMissingRelationshipSourceError(err) {
-			return 0, err
-		}
-	} else {
+	if result, ok, err := r.queryRowsForTable(ctx, "AZURE_COMPUTE_VIRTUAL_MACHINES", query); err != nil {
+		return 0, err
+	} else if ok {
 		for _, row := range result.Rows {
 			vmID := toString(queryRow(row, "id"))
 			if vmID == "" {
@@ -1456,12 +1548,9 @@ func (r *RelationshipExtractor) extractAzureRelationships(ctx context.Context) (
 
 	query = `SELECT ID, NETWORK_SECURITY_GROUP, VIRTUAL_MACHINE, IP_CONFIGURATIONS
 	         FROM AZURE_NETWORK_INTERFACES WHERE ID IS NOT NULL`
-	result, err = r.sf.Query(ctx, query)
-	if err != nil {
-		if !isMissingRelationshipSourceError(err) {
-			return 0, err
-		}
-	} else {
+	if result, ok, err := r.queryRowsForTable(ctx, "AZURE_NETWORK_INTERFACES", query); err != nil {
+		return 0, err
+	} else if ok {
 		for _, row := range result.Rows {
 			nicID := toString(queryRow(row, "id"))
 			if nicID == "" {
@@ -1505,12 +1594,9 @@ func (r *RelationshipExtractor) extractAzureRelationships(ctx context.Context) (
 	}
 
 	query = `SELECT ID, MANAGED_BY FROM AZURE_COMPUTE_DISKS WHERE ID IS NOT NULL`
-	result, err = r.sf.Query(ctx, query)
-	if err != nil {
-		if !isMissingRelationshipSourceError(err) {
-			return 0, err
-		}
-	} else {
+	if result, ok, err := r.queryRowsForTable(ctx, "AZURE_COMPUTE_DISKS", query); err != nil {
+		return 0, err
+	} else if ok {
 		for _, row := range result.Rows {
 			diskID := toString(queryRow(row, "id"))
 			if diskID == "" {
@@ -1530,12 +1616,9 @@ func (r *RelationshipExtractor) extractAzureRelationships(ctx context.Context) (
 
 	query = `SELECT ID, SERVER_NAME, RESOURCE_GROUP, SUBSCRIPTION_ID
 	         FROM AZURE_SQL_DATABASES WHERE ID IS NOT NULL`
-	result, err = r.sf.Query(ctx, query)
-	if err != nil {
-		if !isMissingRelationshipSourceError(err) {
-			return 0, err
-		}
-	} else {
+	if result, ok, err := r.queryRowsForTable(ctx, "AZURE_SQL_DATABASES", query); err != nil {
+		return 0, err
+	} else if ok {
 		for _, row := range result.Rows {
 			dbID := toString(queryRow(row, "id"))
 			if dbID == "" {
@@ -1563,12 +1646,9 @@ func (r *RelationshipExtractor) extractAzureRelationships(ctx context.Context) (
 
 	query = `SELECT ID, ACCOUNT_NAME, RESOURCE_GROUP, SUBSCRIPTION_ID
 	         FROM AZURE_STORAGE_CONTAINERS WHERE ID IS NOT NULL`
-	result, err = r.sf.Query(ctx, query)
-	if err != nil {
-		if !isMissingRelationshipSourceError(err) {
-			return 0, err
-		}
-	} else {
+	if result, ok, err := r.queryRowsForTable(ctx, "AZURE_STORAGE_CONTAINERS", query); err != nil {
+		return 0, err
+	} else if ok {
 		for _, row := range result.Rows {
 			containerID := toString(queryRow(row, "id"))
 			if containerID == "" {
@@ -1592,12 +1672,9 @@ func (r *RelationshipExtractor) extractAzureRelationships(ctx context.Context) (
 
 	query = `SELECT ID, ACCOUNT_NAME, CONTAINER_NAME, RESOURCE_GROUP, SUBSCRIPTION_ID
 	         FROM AZURE_STORAGE_BLOBS WHERE ID IS NOT NULL`
-	result, err = r.sf.Query(ctx, query)
-	if err != nil {
-		if !isMissingRelationshipSourceError(err) {
-			return 0, err
-		}
-	} else {
+	if result, ok, err := r.queryRowsForTable(ctx, "AZURE_STORAGE_BLOBS", query); err != nil {
+		return 0, err
+	} else if ok {
 		for _, row := range result.Rows {
 			blobID := toString(queryRow(row, "id"))
 			if blobID == "" {
@@ -1626,12 +1703,9 @@ func (r *RelationshipExtractor) extractAzureRelationships(ctx context.Context) (
 
 	vaultByURI := make(map[string]string)
 	query = `SELECT ID, VAULT_URI FROM AZURE_KEYVAULT_VAULTS WHERE ID IS NOT NULL`
-	result, err = r.sf.Query(ctx, query)
-	if err != nil {
-		if !isMissingRelationshipSourceError(err) {
-			return 0, err
-		}
-	} else {
+	if result, ok, err := r.queryRowsForTable(ctx, "AZURE_KEYVAULT_VAULTS", query); err != nil {
+		return 0, err
+	} else if ok {
 		for _, row := range result.Rows {
 			vaultID := toString(queryRow(row, "id"))
 			vaultURI := normalizeVaultURI(toString(queryRow(row, "vault_uri")))
@@ -1642,12 +1716,9 @@ func (r *RelationshipExtractor) extractAzureRelationships(ctx context.Context) (
 	}
 
 	query = `SELECT ID, VAULT_URI FROM AZURE_KEYVAULT_KEYS WHERE ID IS NOT NULL`
-	result, err = r.sf.Query(ctx, query)
-	if err != nil {
-		if !isMissingRelationshipSourceError(err) {
-			return 0, err
-		}
-	} else {
+	if result, ok, err := r.queryRowsForTable(ctx, "AZURE_KEYVAULT_KEYS", query); err != nil {
+		return 0, err
+	} else if ok {
 		for _, row := range result.Rows {
 			keyID := toString(queryRow(row, "id"))
 			if keyID == "" {
