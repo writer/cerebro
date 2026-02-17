@@ -54,6 +54,45 @@ func (e *GCPSyncEngine) gcpArtifactRegistryRepositoryTable() GCPTableSpec {
 	}
 }
 
+func (e *GCPSyncEngine) gcpArtifactRegistryPackageTable() GCPTableSpec {
+	return GCPTableSpec{
+		Name: "gcp_artifact_registry_packages",
+		Columns: []string{
+			"project_id",
+			"name",
+			"location",
+			"repository",
+			"create_time",
+			"update_time",
+			"annotations",
+			"tags",
+			"self_link",
+			"resource_data",
+		},
+		Fetch: e.fetchGCPArtifactRegistryPackages,
+	}
+}
+
+func (e *GCPSyncEngine) gcpArtifactRegistryVersionTable() GCPTableSpec {
+	return GCPTableSpec{
+		Name: "gcp_artifact_registry_versions",
+		Columns: []string{
+			"project_id",
+			"name",
+			"location",
+			"repository",
+			"package",
+			"create_time",
+			"update_time",
+			"related_tags",
+			"description",
+			"self_link",
+			"resource_data",
+		},
+		Fetch: e.fetchGCPArtifactRegistryVersions,
+	}
+}
+
 func (e *GCPSyncEngine) fetchGCPKMSKeys(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
 	resources, err := e.searchGCPResources(ctx, projectID, "cloudkms.googleapis.com/CryptoKey")
 	if err != nil {
@@ -160,6 +199,101 @@ func (e *GCPSyncEngine) fetchGCPArtifactRegistryRepositories(ctx context.Context
 		}
 		if size := gcpAssetValue(attrs, "sizeBytes", "size_bytes"); size != nil {
 			row["size_bytes"] = size
+		}
+
+		rows = append(rows, row)
+	}
+
+	return rows, nil
+}
+
+func (e *GCPSyncEngine) fetchGCPArtifactRegistryPackages(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
+	resources, err := e.searchGCPResources(ctx, projectID, "artifactregistry.googleapis.com/Package")
+	if err != nil {
+		return nil, err
+	}
+
+	rows := make([]map[string]interface{}, 0, len(resources))
+	for _, resource := range resources {
+		if resource == nil {
+			continue
+		}
+
+		selfLink := strings.TrimSpace(resource.Name)
+		if selfLink == "" {
+			continue
+		}
+
+		attrs := gcpAssetAttributes(resource)
+		name := gcpResourceSegment(selfLink, "packages")
+		row := map[string]interface{}{
+			"_cq_id":        selfLink,
+			"project_id":    projectID,
+			"name":          firstNonEmpty(name, resource.DisplayName),
+			"location":      resource.Location,
+			"repository":    gcpResourceSegment(selfLink, "repositories"),
+			"self_link":     selfLink,
+			"resource_data": attrs,
+		}
+
+		if resource.CreateTime != nil {
+			row["create_time"] = resource.CreateTime.AsTime()
+		}
+		if resource.UpdateTime != nil {
+			row["update_time"] = resource.UpdateTime.AsTime()
+		}
+		if annotations := gcpAssetValue(attrs, "annotations"); annotations != nil {
+			row["annotations"] = annotations
+		}
+		if tags := gcpAssetValue(attrs, "tags"); tags != nil {
+			row["tags"] = tags
+		}
+
+		rows = append(rows, row)
+	}
+
+	return rows, nil
+}
+
+func (e *GCPSyncEngine) fetchGCPArtifactRegistryVersions(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
+	resources, err := e.searchGCPResources(ctx, projectID, "artifactregistry.googleapis.com/Version")
+	if err != nil {
+		return nil, err
+	}
+
+	rows := make([]map[string]interface{}, 0, len(resources))
+	for _, resource := range resources {
+		if resource == nil {
+			continue
+		}
+
+		selfLink := strings.TrimSpace(resource.Name)
+		if selfLink == "" {
+			continue
+		}
+
+		attrs := gcpAssetAttributes(resource)
+		name := gcpResourceSegment(selfLink, "versions")
+		row := map[string]interface{}{
+			"_cq_id":        selfLink,
+			"project_id":    projectID,
+			"name":          firstNonEmpty(name, resource.DisplayName),
+			"location":      resource.Location,
+			"repository":    gcpResourceSegment(selfLink, "repositories"),
+			"package":       gcpResourceSegment(selfLink, "packages"),
+			"description":   firstNonEmpty(resource.Description, gcpAssetString(attrs, "description")),
+			"self_link":     selfLink,
+			"resource_data": attrs,
+		}
+
+		if resource.CreateTime != nil {
+			row["create_time"] = resource.CreateTime.AsTime()
+		}
+		if resource.UpdateTime != nil {
+			row["update_time"] = resource.UpdateTime.AsTime()
+		}
+		if relatedTags := gcpAssetValue(attrs, "relatedTags", "related_tags", "tags"); relatedTags != nil {
+			row["related_tags"] = relatedTags
 		}
 
 		rows = append(rows, row)

@@ -54,3 +54,32 @@ func TestFirstNonEmpty(t *testing.T) {
 		t.Fatalf("expected value, got %q", got)
 	}
 }
+
+func TestGCPArtifactRegistryResourceSegments(t *testing.T) {
+	resource := "//artifactregistry.googleapis.com/projects/p1/locations/us/repositories/repo-a/packages/pkg-a/versions/v1"
+	if got := gcpResourceSegment(resource, "repositories"); got != "repo-a" {
+		t.Fatalf("expected repository repo-a, got %q", got)
+	}
+	if got := gcpResourceSegment(resource, "packages"); got != "pkg-a" {
+		t.Fatalf("expected package pkg-a, got %q", got)
+	}
+	if got := gcpResourceSegment(resource, "versions"); got != "v1" {
+		t.Fatalf("expected version v1, got %q", got)
+	}
+}
+
+func TestGCPTablesIncludeArtifactRegistryDepth(t *testing.T) {
+	e := &GCPSyncEngine{}
+	tables := e.getGCPTables()
+
+	seen := make(map[string]bool, len(tables))
+	for _, table := range tables {
+		seen[table.Name] = true
+	}
+
+	for _, name := range []string{"gcp_artifact_registry_repositories", "gcp_artifact_registry_packages", "gcp_artifact_registry_versions"} {
+		if !seen[name] {
+			t.Fatalf("expected table %s in GCP table set", name)
+		}
+	}
+}

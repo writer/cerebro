@@ -629,6 +629,8 @@ func (e *GCPSyncEngine) getGCPTables() []GCPTableSpec {
 		e.gcpGKENodePoolTable(),
 		// Artifact Registry
 		e.gcpArtifactRegistryRepositoryTable(),
+		e.gcpArtifactRegistryPackageTable(),
+		e.gcpArtifactRegistryVersionTable(),
 		// Logging
 		e.gcpLoggingSinkTable(),
 		e.gcpLoggingProjectSinkTable(),
