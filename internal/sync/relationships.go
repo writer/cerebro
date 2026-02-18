@@ -2134,6 +2134,224 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 		}
 	}
 
+	// GCP Compute firewalls - network membership relationships
+	query = `SELECT _CQ_ID, SELF_LINK, NETWORK
+	         FROM GCP_COMPUTE_FIREWALLS
+	         WHERE (_CQ_ID IS NOT NULL OR SELF_LINK IS NOT NULL)`
+
+	if result, ok, err := r.queryRowsForTable(ctx, "GCP_COMPUTE_FIREWALLS", query); err != nil {
+		return 0, err
+	} else if ok {
+		for _, row := range result.Rows {
+			firewallID := normalizeRelationshipID(toString(queryRow(row, "_cq_id")))
+			if firewallID == "" {
+				firewallID = normalizeRelationshipID(toString(queryRow(row, "self_link")))
+			}
+			if firewallID == "" {
+				continue
+			}
+
+			if networkID := normalizeRelationshipID(toString(queryRow(row, "network"))); networkID != "" {
+				rels = append(rels, Relationship{
+					SourceID:   firewallID,
+					SourceType: "gcp:compute:firewall",
+					TargetID:   networkID,
+					TargetType: "gcp:compute:network",
+					RelType:    RelInVPC,
+				})
+			}
+		}
+	}
+
+	// GCP Compute networks - peering relationships
+	query = `SELECT _CQ_ID, SELF_LINK, PEERINGS
+	         FROM GCP_COMPUTE_NETWORKS
+	         WHERE (_CQ_ID IS NOT NULL OR SELF_LINK IS NOT NULL)`
+
+	if result, ok, err := r.queryRowsForTable(ctx, "GCP_COMPUTE_NETWORKS", query); err != nil {
+		return 0, err
+	} else if ok {
+		for _, row := range result.Rows {
+			networkID := normalizeRelationshipID(toString(queryRow(row, "_cq_id")))
+			if networkID == "" {
+				networkID = normalizeRelationshipID(toString(queryRow(row, "self_link")))
+			}
+			if networkID == "" {
+				continue
+			}
+
+			for _, peer := range asSlice(queryRow(row, "peerings")) {
+				peerMap := asMap(peer)
+				if peerMap == nil {
+					continue
+				}
+				peerNetworkID := normalizeRelationshipID(getStringAny(peerMap, "network", "Network"))
+				if peerNetworkID == "" || peerNetworkID == networkID {
+					continue
+				}
+				rels = append(rels, Relationship{
+					SourceID:   networkID,
+					SourceType: "gcp:compute:network",
+					TargetID:   peerNetworkID,
+					TargetType: "gcp:compute:network",
+					RelType:    RelRoutes,
+				})
+			}
+		}
+	}
+
+	// GCP Compute subnetworks - network membership relationships
+	query = `SELECT _CQ_ID, SELF_LINK, NETWORK
+	         FROM GCP_COMPUTE_SUBNETWORKS
+	         WHERE NETWORK IS NOT NULL AND (_CQ_ID IS NOT NULL OR SELF_LINK IS NOT NULL)`
+
+	if result, ok, err := r.queryRowsForTable(ctx, "GCP_COMPUTE_SUBNETWORKS", query); err != nil {
+		return 0, err
+	} else if ok {
+		for _, row := range result.Rows {
+			subnetworkID := normalizeRelationshipID(toString(queryRow(row, "_cq_id")))
+			if subnetworkID == "" {
+				subnetworkID = normalizeRelationshipID(toString(queryRow(row, "self_link")))
+			}
+			if subnetworkID == "" {
+				continue
+			}
+
+			if networkID := normalizeRelationshipID(toString(queryRow(row, "network"))); networkID != "" {
+				rels = append(rels, Relationship{
+					SourceID:   subnetworkID,
+					SourceType: "gcp:compute:subnetwork",
+					TargetID:   networkID,
+					TargetType: "gcp:compute:network",
+					RelType:    RelInVPC,
+				})
+			}
+		}
+	}
+
+	// GCP GKE clusters - network, service account, and encryption relationships
+	query = `SELECT _CQ_ID, SELF_LINK, PROJECT_ID, NAME, LOCATION, NETWORK, SUBNETWORK, NODE_CONFIG, DATABASE_ENCRYPTION
+	         FROM GCP_CONTAINER_CLUSTERS
+	         WHERE (_CQ_ID IS NOT NULL OR SELF_LINK IS NOT NULL OR NAME IS NOT NULL)`
+
+	if result, ok, err := r.queryRowsForTable(ctx, "GCP_CONTAINER_CLUSTERS", query); err != nil {
+		return 0, err
+	} else if ok {
+		for _, row := range result.Rows {
+			projectID := toString(queryRow(row, "project_id"))
+			clusterID := gcpClusterID(
+				toString(queryRow(row, "_cq_id")),
+				toString(queryRow(row, "self_link")),
+				projectID,
+				toString(queryRow(row, "location")),
+				toString(queryRow(row, "name")),
+			)
+			if clusterID == "" {
+				continue
+			}
+
+			if networkID := normalizeRelationshipID(toString(queryRow(row, "network"))); networkID != "" {
+				rels = append(rels, Relationship{
+					SourceID:   clusterID,
+					SourceType: "gcp:gke:cluster",
+					TargetID:   networkID,
+					TargetType: "gcp:compute:network",
+					RelType:    RelInVPC,
+				})
+			}
+
+			if subnetworkID := normalizeRelationshipID(toString(queryRow(row, "subnetwork"))); subnetworkID != "" {
+				rels = append(rels, Relationship{
+					SourceID:   clusterID,
+					SourceType: "gcp:gke:cluster",
+					TargetID:   subnetworkID,
+					TargetType: "gcp:compute:subnetwork",
+					RelType:    RelInSubnet,
+				})
+			}
+
+			if nodeConfig := asMap(queryRow(row, "node_config")); nodeConfig != nil {
+				if serviceAccount := getStringAny(nodeConfig, "service_account", "serviceAccount"); serviceAccount != "" {
+					targetID := serviceAccount
+					if projectID != "" && !strings.Contains(serviceAccount, "/") {
+						targetID = fmt.Sprintf("projects/%s/serviceAccounts/%s", projectID, serviceAccount)
+					}
+					rels = append(rels, Relationship{
+						SourceID:   clusterID,
+						SourceType: "gcp:gke:cluster",
+						TargetID:   targetID,
+						TargetType: "gcp:iam:service_account",
+						RelType:    RelHasRole,
+					})
+				}
+			}
+
+			if dbEnc := asMap(queryRow(row, "database_encryption")); dbEnc != nil {
+				if kmsKey := getStringAny(dbEnc, "key_name", "keyName"); kmsKey != "" {
+					rels = append(rels, Relationship{
+						SourceID:   clusterID,
+						SourceType: "gcp:gke:cluster",
+						TargetID:   kmsKey,
+						TargetType: "gcp:kms:key",
+						RelType:    RelEncryptedBy,
+					})
+				}
+			}
+		}
+	}
+
+	// GCP GKE node pools - cluster and service account relationships
+	query = `SELECT _CQ_ID, SELF_LINK, PROJECT_ID, LOCATION, CLUSTER_NAME, NAME, CONFIG
+	         FROM GCP_CONTAINER_NODE_POOLS
+	         WHERE (_CQ_ID IS NOT NULL OR SELF_LINK IS NOT NULL OR (PROJECT_ID IS NOT NULL AND CLUSTER_NAME IS NOT NULL AND NAME IS NOT NULL))`
+
+	if result, ok, err := r.queryRowsForTable(ctx, "GCP_CONTAINER_NODE_POOLS", query); err != nil {
+		return 0, err
+	} else if ok {
+		for _, row := range result.Rows {
+			projectID := toString(queryRow(row, "project_id"))
+			location := toString(queryRow(row, "location"))
+			clusterName := toString(queryRow(row, "cluster_name"))
+			nodePoolID := gcpNodePoolID(
+				toString(queryRow(row, "_cq_id")),
+				toString(queryRow(row, "self_link")),
+				projectID,
+				location,
+				clusterName,
+				toString(queryRow(row, "name")),
+			)
+			if nodePoolID == "" {
+				continue
+			}
+
+			if clusterID := gcpClusterID("", "", projectID, location, clusterName); clusterID != "" {
+				rels = append(rels, Relationship{
+					SourceID:   nodePoolID,
+					SourceType: "gcp:gke:node_pool",
+					TargetID:   clusterID,
+					TargetType: "gcp:gke:cluster",
+					RelType:    RelBelongsTo,
+				})
+			}
+
+			if config := asMap(queryRow(row, "config")); config != nil {
+				if serviceAccount := getStringAny(config, "service_account", "serviceAccount"); serviceAccount != "" {
+					targetID := serviceAccount
+					if projectID != "" && !strings.Contains(serviceAccount, "/") {
+						targetID = fmt.Sprintf("projects/%s/serviceAccounts/%s", projectID, serviceAccount)
+					}
+					rels = append(rels, Relationship{
+						SourceID:   nodePoolID,
+						SourceType: "gcp:gke:node_pool",
+						TargetID:   targetID,
+						TargetType: "gcp:iam:service_account",
+						RelType:    RelHasRole,
+					})
+				}
+			}
+		}
+	}
+
 	// GCP Cloud Functions - service account is in SERVICE_CONFIG
 	query = `SELECT NAME, PROJECT_ID, SERVICE_CONFIG
 	         FROM GCP_CLOUDFUNCTIONS_FUNCTIONS WHERE NAME IS NOT NULL`
@@ -3675,6 +3893,39 @@ func gcpIDSEndpointID(cqID, name string) string {
 		return id
 	}
 	return normalizeRelationshipID(name)
+}
+
+func gcpClusterID(cqID, selfLink, projectID, location, name string) string {
+	if id := normalizeRelationshipID(cqID); id != "" {
+		return id
+	}
+	if id := normalizeRelationshipID(selfLink); id != "" {
+		return id
+	}
+	projectID = normalizeRelationshipID(projectID)
+	location = normalizeRelationshipID(location)
+	name = normalizeRelationshipID(name)
+	if projectID == "" || location == "" || name == "" {
+		return ""
+	}
+	return fmt.Sprintf("projects/%s/locations/%s/clusters/%s", projectID, location, name)
+}
+
+func gcpNodePoolID(cqID, selfLink, projectID, location, clusterName, nodePoolName string) string {
+	if id := normalizeRelationshipID(cqID); id != "" {
+		return id
+	}
+	if id := normalizeRelationshipID(selfLink); id != "" {
+		return id
+	}
+	projectID = normalizeRelationshipID(projectID)
+	location = normalizeRelationshipID(location)
+	clusterName = normalizeRelationshipID(clusterName)
+	nodePoolName = normalizeRelationshipID(nodePoolName)
+	if projectID == "" || location == "" || clusterName == "" || nodePoolName == "" {
+		return ""
+	}
+	return fmt.Sprintf("projects/%s/locations/%s/clusters/%s/nodePools/%s", projectID, location, clusterName, nodePoolName)
 }
 
 func toString(v interface{}) string {

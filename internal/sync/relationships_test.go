@@ -325,6 +325,25 @@ func TestGCPStorageAndTopicIDHelpers(t *testing.T) {
 	}
 }
 
+func TestGCPGKEIDHelpers(t *testing.T) {
+	clusterPath := "projects/p/locations/us-central1/clusters/cluster-a"
+	nodePoolPath := clusterPath + "/nodePools/pool-a"
+
+	if got := gcpClusterID(clusterPath, "", "", "", ""); got != clusterPath {
+		t.Fatalf("unexpected cluster id from _cq_id: %s", got)
+	}
+	if got := gcpClusterID("", "", "p", "us-central1", "cluster-a"); got != clusterPath {
+		t.Fatalf("unexpected cluster fallback id: %s", got)
+	}
+
+	if got := gcpNodePoolID(nodePoolPath, "", "", "", "", ""); got != nodePoolPath {
+		t.Fatalf("unexpected node pool id from _cq_id: %s", got)
+	}
+	if got := gcpNodePoolID("", "", "p", "us-central1", "cluster-a", "pool-a"); got != nodePoolPath {
+		t.Fatalf("unexpected node pool fallback id: %s", got)
+	}
+}
+
 func TestGCPAssetColumnExpression(t *testing.T) {
 	columns := map[string]struct{}{
 		"ASSET_TYPE": {},
