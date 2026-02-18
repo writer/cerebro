@@ -72,6 +72,10 @@ func TestAzureResourceIDBuilders(t *testing.T) {
 	if containerID != "/subscriptions/sub-a/resourceGroups/rg-a/providers/Microsoft.Storage/storageAccounts/acct-a/blobServices/default/containers/container-a" {
 		t.Fatalf("unexpected container id: %s", containerID)
 	}
+
+	if parent := azureParentResourceID("/subscriptions/sub-a/resourceGroups/rg-a/providers/Microsoft.Network/networkInterfaces/nic-a/ipConfigurations/ipconfig-a", "ipConfigurations"); parent != "/subscriptions/sub-a/resourceGroups/rg-a/providers/Microsoft.Network/networkInterfaces/nic-a" {
+		t.Fatalf("unexpected parent id: %s", parent)
+	}
 }
 
 func TestAWSEKSClusterARN(t *testing.T) {
