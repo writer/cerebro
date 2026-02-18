@@ -234,6 +234,7 @@ func (e *SyncEngine) getAWSTables() []TableSpec {
 		e.rdsClusterParameterGroupTable(),
 		e.rdsOptionGroupTable(),
 		e.rdsProxyTable(),
+		e.rdsProxyEndpointTable(),
 		e.rdsEventSubscriptionTable(),
 
 		// Database - DynamoDB

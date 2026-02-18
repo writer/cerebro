@@ -9,9 +9,16 @@ import (
 
 func (e *SyncEngine) rdsInstanceTable() TableSpec {
 	return TableSpec{
-		Name:    "aws_rds_instances",
-		Columns: []string{"arn", "account_id", "region", "db_instance_identifier", "db_instance_class", "engine", "engine_version", "db_instance_status", "master_username", "endpoint_address", "endpoint_port", "allocated_storage", "storage_type", "storage_encrypted", "kms_key_id", "publicly_accessible", "vpc_security_groups", "db_subnet_group", "multi_az", "auto_minor_version_upgrade", "deletion_protection", "tags"},
-		Fetch:   e.fetchRDSInstances,
+		Name: "aws_rds_instances",
+		Columns: []string{
+			"arn", "account_id", "region", "db_instance_identifier", "db_cluster_identifier",
+			"db_instance_class", "engine", "engine_version", "db_instance_status", "master_username",
+			"endpoint_address", "endpoint_port", "allocated_storage", "storage_type",
+			"storage_encrypted", "kms_key_id", "publicly_accessible", "vpc_security_groups",
+			"db_subnet_group", "db_parameter_groups", "option_group_memberships", "associated_roles",
+			"multi_az", "auto_minor_version_upgrade", "deletion_protection", "tags",
+		},
+		Fetch: e.fetchRDSInstances,
 	}
 }
 
@@ -22,6 +29,7 @@ func (e *SyncEngine) rdsClusterTable() TableSpec {
 			"arn", "account_id", "region", "db_cluster_identifier", "engine", "engine_version", "status",
 			"database_name", "master_username", "endpoint", "reader_endpoint", "port",
 			"storage_encrypted", "kms_key_id", "iam_database_authentication_enabled",
+			"db_subnet_group", "vpc_security_groups", "db_cluster_members", "db_cluster_parameter_group", "associated_roles",
 			"backup_retention_period", "preferred_backup_window", "preferred_maintenance_window",
 			"multi_az", "deletion_protection", "tags",
 		},
@@ -97,6 +105,18 @@ func (e *SyncEngine) rdsProxyTable() TableSpec {
 	}
 }
 
+func (e *SyncEngine) rdsProxyEndpointTable() TableSpec {
+	return TableSpec{
+		Name: "aws_rds_db_proxy_endpoints",
+		Columns: []string{
+			"arn", "account_id", "region", "db_proxy_endpoint_name", "db_proxy_name", "status",
+			"endpoint", "target_role", "is_default", "vpc_id", "vpc_security_group_ids", "vpc_subnet_ids",
+			"created_date",
+		},
+		Fetch: e.fetchRDSProxyEndpoints,
+	}
+}
+
 func (e *SyncEngine) rdsEventSubscriptionTable() TableSpec {
 	return TableSpec{
 		Name: "aws_rds_event_subscriptions",
@@ -135,6 +155,7 @@ func (e *SyncEngine) fetchRDSInstances(ctx context.Context, cfg aws.Config, regi
 				"account_id":                 accountID,
 				"region":                     region,
 				"db_instance_identifier":     aws.ToString(db.DBInstanceIdentifier),
+				"db_cluster_identifier":      aws.ToString(db.DBClusterIdentifier),
 				"db_instance_class":          aws.ToString(db.DBInstanceClass),
 				"engine":                     aws.ToString(db.Engine),
 				"engine_version":             aws.ToString(db.EngineVersion),
@@ -149,6 +170,9 @@ func (e *SyncEngine) fetchRDSInstances(ctx context.Context, cfg aws.Config, regi
 				"publicly_accessible":        db.PubliclyAccessible,
 				"vpc_security_groups":        db.VpcSecurityGroups,
 				"db_subnet_group":            db.DBSubnetGroup,
+				"db_parameter_groups":        db.DBParameterGroups,
+				"option_group_memberships":   db.OptionGroupMemberships,
+				"associated_roles":           db.AssociatedRoles,
 				"multi_az":                   db.MultiAZ,
 				"auto_minor_version_upgrade": db.AutoMinorVersionUpgrade,
 				"deletion_protection":        db.DeletionProtection,
@@ -189,6 +213,11 @@ func (e *SyncEngine) fetchRDSClusters(ctx context.Context, cfg aws.Config, regio
 					"storage_encrypted":                   cluster.StorageEncrypted,
 					"kms_key_id":                          aws.ToString(cluster.KmsKeyId),
 					"iam_database_authentication_enabled": cluster.IAMDatabaseAuthenticationEnabled,
+					"db_subnet_group":                     aws.ToString(cluster.DBSubnetGroup),
+					"vpc_security_groups":                 cluster.VpcSecurityGroups,
+					"db_cluster_members":                  cluster.DBClusterMembers,
+					"db_cluster_parameter_group":          aws.ToString(cluster.DBClusterParameterGroup),
+					"associated_roles":                    cluster.AssociatedRoles,
 					"backup_retention_period":             cluster.BackupRetentionPeriod,
 					"preferred_backup_window":             aws.ToString(cluster.PreferredBackupWindow),
 					"preferred_maintenance_window":        aws.ToString(cluster.PreferredMaintenanceWindow),
@@ -501,6 +530,46 @@ func (e *SyncEngine) fetchRDSProxies(ctx context.Context, cfg aws.Config, region
 				"created_date":           proxy.CreatedDate,
 				"updated_date":           proxy.UpdatedDate,
 				"tags":                   tags,
+			})
+		}
+	}
+
+	return rows, nil
+}
+
+func (e *SyncEngine) fetchRDSProxyEndpoints(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
+	client := rds.NewFromConfig(cfg)
+	accountID := e.getAccountIDFromConfig(ctx, cfg)
+
+	paginator := rds.NewDescribeDBProxyEndpointsPaginator(client, &rds.DescribeDBProxyEndpointsInput{})
+	var rows []map[string]interface{}
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, endpoint := range page.DBProxyEndpoints {
+			arn := aws.ToString(endpoint.DBProxyEndpointArn)
+			if arn == "" {
+				arn = aws.ToString(endpoint.DBProxyEndpointName)
+			}
+
+			rows = append(rows, map[string]interface{}{
+				"_cq_id":                 arn,
+				"arn":                    arn,
+				"account_id":             accountID,
+				"region":                 region,
+				"db_proxy_endpoint_name": aws.ToString(endpoint.DBProxyEndpointName),
+				"db_proxy_name":          aws.ToString(endpoint.DBProxyName),
+				"status":                 string(endpoint.Status),
+				"endpoint":               aws.ToString(endpoint.Endpoint),
+				"target_role":            string(endpoint.TargetRole),
+				"is_default":             aws.ToBool(endpoint.IsDefault),
+				"vpc_id":                 aws.ToString(endpoint.VpcId),
+				"vpc_security_group_ids": endpoint.VpcSecurityGroupIds,
+				"vpc_subnet_ids":         endpoint.VpcSubnetIds,
+				"created_date":           endpoint.CreatedDate,
 			})
 		}
 	}

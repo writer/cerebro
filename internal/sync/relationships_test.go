@@ -85,6 +85,69 @@ func TestAWSEKSClusterARN(t *testing.T) {
 	}
 }
 
+func TestAWSRDSHelpers(t *testing.T) {
+	lookup := make(map[string]string)
+	recordRDSLookup(lookup, "us-east-1", "Db-Primary", "arn:aws:rds:us-east-1:123456789012:db:db-primary")
+
+	if got := lookupRDSResourceARN(lookup, "us-east-1", "db-primary"); got != "arn:aws:rds:us-east-1:123456789012:db:db-primary" {
+		t.Fatalf("unexpected region-scoped lookup result: %s", got)
+	}
+
+	if got := lookupRDSResourceARN(lookup, "us-west-2", "DB-PRIMARY"); got != "arn:aws:rds:us-east-1:123456789012:db:db-primary" {
+		t.Fatalf("unexpected fallback lookup result: %s", got)
+	}
+
+	if got := awsRDSARN("cluster", "us-east-1", "123456789012", "cluster-a"); got != "arn:aws:rds:us-east-1:123456789012:cluster:cluster-a" {
+		t.Fatalf("unexpected rds arn: %s", got)
+	}
+
+	if got := awsRDSARN("cluster", "", "", "cluster-a"); got != "cluster-a" {
+		t.Fatalf("expected identifier fallback when account/region missing, got %s", got)
+	}
+}
+
+func TestResolveRDSEventSourceTarget(t *testing.T) {
+	lookupBySourceType := map[string]map[string]string{
+		"db-instance":                make(map[string]string),
+		"db-option-group":            make(map[string]string),
+		"db-cluster-parameter-group": make(map[string]string),
+		"db-proxy":                   make(map[string]string),
+	}
+	recordRDSLookup(lookupBySourceType["db-instance"], "us-east-1", "db-primary", "arn:aws:rds:us-east-1:123456789012:db:db-primary")
+	recordRDSLookup(lookupBySourceType["db-option-group"], "us-east-1", "og-main", "arn:aws:rds:us-east-1:123456789012:og:og-main")
+	recordRDSLookup(lookupBySourceType["db-proxy"], "us-east-1", "proxy-main", "arn:aws:rds:us-east-1:123456789012:db-proxy:proxy-main")
+
+	targetID, targetType := resolveRDSEventSourceTarget("db-instance", "us-east-1", "123456789012", "DB-PRIMARY", lookupBySourceType)
+	if targetID != "arn:aws:rds:us-east-1:123456789012:db:db-primary" || targetType != "aws:rds:db_instance" {
+		t.Fatalf("unexpected resolved instance target: %s (%s)", targetID, targetType)
+	}
+
+	targetID, targetType = resolveRDSEventSourceTarget("db-cluster", "us-east-1", "123456789012", "cluster-a", lookupBySourceType)
+	if targetID != "arn:aws:rds:us-east-1:123456789012:cluster:cluster-a" || targetType != "aws:rds:db_cluster" {
+		t.Fatalf("unexpected cluster fallback target: %s (%s)", targetID, targetType)
+	}
+
+	targetID, targetType = resolveRDSEventSourceTarget("db-option-group", "us-east-1", "123456789012", "OG-MAIN", lookupBySourceType)
+	if targetID != "arn:aws:rds:us-east-1:123456789012:og:og-main" || targetType != "aws:rds:db_option_group" {
+		t.Fatalf("unexpected option group target: %s (%s)", targetID, targetType)
+	}
+
+	targetID, targetType = resolveRDSEventSourceTarget("db-cluster-parameter-group", "us-east-1", "123456789012", "cluster-pg-a", lookupBySourceType)
+	if targetID != "arn:aws:rds:us-east-1:123456789012:cluster-pg:cluster-pg-a" || targetType != "aws:rds:db_cluster_parameter_group" {
+		t.Fatalf("unexpected cluster parameter group fallback target: %s (%s)", targetID, targetType)
+	}
+
+	targetID, targetType = resolveRDSEventSourceTarget("db-proxy", "us-east-1", "123456789012", "proxy-main", lookupBySourceType)
+	if targetID != "arn:aws:rds:us-east-1:123456789012:db-proxy:proxy-main" || targetType != "aws:rds:db_proxy" {
+		t.Fatalf("unexpected proxy target: %s (%s)", targetID, targetType)
+	}
+
+	targetID, targetType = resolveRDSEventSourceTarget("unknown", "us-east-1", "123456789012", "x", lookupBySourceType)
+	if targetID != "" || targetType != "" {
+		t.Fatalf("expected unknown source type to be ignored, got %s (%s)", targetID, targetType)
+	}
+}
+
 func TestGetSliceAny(t *testing.T) {
 	value := map[string]interface{}{
 		"subnetIds": []interface{}{"subnet-1", "subnet-2"},
