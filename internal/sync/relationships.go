@@ -2352,6 +2352,288 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 		}
 	}
 
+	// GCP IAM service accounts - project ownership relationships
+	query = `SELECT _CQ_ID, PROJECT_ID, NAME, EMAIL
+	         FROM GCP_IAM_SERVICE_ACCOUNTS
+	         WHERE PROJECT_ID IS NOT NULL AND (_CQ_ID IS NOT NULL OR NAME IS NOT NULL OR EMAIL IS NOT NULL)`
+
+	if result, ok, err := r.queryRowsForTable(ctx, "GCP_IAM_SERVICE_ACCOUNTS", query); err != nil {
+		return 0, err
+	} else if ok {
+		for _, row := range result.Rows {
+			projectID := toString(queryRow(row, "project_id"))
+			if projectID == "" {
+				continue
+			}
+			serviceAccountID := gcpServiceAccountID(
+				toString(queryRow(row, "_cq_id")),
+				toString(queryRow(row, "name")),
+				projectID,
+				toString(queryRow(row, "email")),
+			)
+			if serviceAccountID == "" {
+				continue
+			}
+
+			rels = append(rels, Relationship{
+				SourceID:   serviceAccountID,
+				SourceType: "gcp:iam:service_account",
+				TargetID:   gcpProjectPath(projectID),
+				TargetType: "gcp:project",
+				RelType:    RelBelongsTo,
+			})
+		}
+	}
+
+	// GCP IAM service account keys - service account membership relationships
+	query = `SELECT _CQ_ID, NAME, PROJECT_ID, SERVICE_ACCOUNT_NAME, SERVICE_ACCOUNT_EMAIL
+	         FROM GCP_IAM_SERVICE_ACCOUNT_KEYS
+	         WHERE (_CQ_ID IS NOT NULL OR NAME IS NOT NULL) AND (SERVICE_ACCOUNT_NAME IS NOT NULL OR SERVICE_ACCOUNT_EMAIL IS NOT NULL)`
+
+	if result, ok, err := r.queryRowsForTable(ctx, "GCP_IAM_SERVICE_ACCOUNT_KEYS", query); err != nil {
+		return 0, err
+	} else if ok {
+		for _, row := range result.Rows {
+			keyID := normalizeRelationshipID(toString(queryRow(row, "_cq_id")))
+			if keyID == "" {
+				keyID = normalizeRelationshipID(toString(queryRow(row, "name")))
+			}
+			if keyID == "" {
+				continue
+			}
+
+			projectID := toString(queryRow(row, "project_id"))
+			serviceAccountID := gcpServiceAccountID(
+				"",
+				toString(queryRow(row, "service_account_name")),
+				projectID,
+				toString(queryRow(row, "service_account_email")),
+			)
+			if serviceAccountID == "" {
+				continue
+			}
+
+			rels = append(rels, Relationship{
+				SourceID:   keyID,
+				SourceType: "gcp:iam:service_account_key",
+				TargetID:   serviceAccountID,
+				TargetType: "gcp:iam:service_account",
+				RelType:    RelBelongsTo,
+			})
+		}
+	}
+
+	// GCP IAM policies - policy to project relationships
+	query = `SELECT _CQ_ID, PROJECT_ID
+	         FROM GCP_IAM_POLICIES
+	         WHERE PROJECT_ID IS NOT NULL`
+
+	if result, ok, err := r.queryRowsForTable(ctx, "GCP_IAM_POLICIES", query); err != nil {
+		return 0, err
+	} else if ok {
+		for _, row := range result.Rows {
+			projectID := toString(queryRow(row, "project_id"))
+			if projectID == "" {
+				continue
+			}
+			policyID := normalizeRelationshipID(toString(queryRow(row, "_cq_id")))
+			if policyID == "" {
+				policyID = fmt.Sprintf("%s/iam-policy", gcpProjectPath(projectID))
+			}
+
+			rels = append(rels, Relationship{
+				SourceID:   policyID,
+				SourceType: "gcp:iam:policy",
+				TargetID:   gcpProjectPath(projectID),
+				TargetType: "gcp:project",
+				RelType:    RelBelongsTo,
+			})
+		}
+	}
+
+	// GCP IAM members - principal role membership relationships
+	query = `SELECT PROJECT_ID, MEMBER, MEMBER_TYPE, EMAIL, ROLES
+	         FROM GCP_IAM_MEMBERS
+	         WHERE PROJECT_ID IS NOT NULL AND MEMBER IS NOT NULL`
+
+	if result, ok, err := r.queryRowsForTable(ctx, "GCP_IAM_MEMBERS", query); err != nil {
+		return 0, err
+	} else if ok {
+		for _, row := range result.Rows {
+			projectID := toString(queryRow(row, "project_id"))
+			if projectID == "" {
+				continue
+			}
+			principalID, principalType := gcpIAMPrincipal(
+				toString(queryRow(row, "member")),
+				toString(queryRow(row, "member_type")),
+				toString(queryRow(row, "email")),
+				projectID,
+			)
+			if principalID == "" {
+				continue
+			}
+
+			rels = append(rels, Relationship{
+				SourceID:   principalID,
+				SourceType: principalType,
+				TargetID:   gcpProjectPath(projectID),
+				TargetType: "gcp:project",
+				RelType:    RelBelongsTo,
+			})
+
+			for _, role := range asSlice(queryRow(row, "roles")) {
+				roleMap := asMap(role)
+				if roleMap == nil {
+					continue
+				}
+				roleName := normalizeRelationshipID(getStringAny(roleMap, "name", "Name"))
+				if roleName == "" {
+					continue
+				}
+				rels = append(rels, Relationship{
+					SourceID:   principalID,
+					SourceType: principalType,
+					TargetID:   roleName,
+					TargetType: "gcp:iam:role",
+					RelType:    RelHasPermission,
+				})
+			}
+		}
+	}
+
+	// GCP KMS keys - key ring and key version relationships
+	query = `SELECT _CQ_ID, SELF_LINK, KEY_RING, PRIMARY
+	         FROM GCP_KMS_KEYS
+	         WHERE (_CQ_ID IS NOT NULL OR SELF_LINK IS NOT NULL)`
+
+	if result, ok, err := r.queryRowsForTable(ctx, "GCP_KMS_KEYS", query); err != nil {
+		return 0, err
+	} else if ok {
+		for _, row := range result.Rows {
+			keyID := normalizeRelationshipID(toString(queryRow(row, "_cq_id")))
+			if keyID == "" {
+				keyID = normalizeRelationshipID(toString(queryRow(row, "self_link")))
+			}
+			if keyID == "" {
+				continue
+			}
+
+			if keyRingID := normalizeRelationshipID(toString(queryRow(row, "key_ring"))); keyRingID != "" {
+				rels = append(rels, Relationship{
+					SourceID:   keyID,
+					SourceType: "gcp:kms:key",
+					TargetID:   keyRingID,
+					TargetType: "gcp:kms:key_ring",
+					RelType:    RelBelongsTo,
+				})
+			}
+
+			if primary := asMap(queryRow(row, "primary")); primary != nil {
+				if versionID := normalizeRelationshipID(getStringAny(primary, "name", "Name")); versionID != "" {
+					rels = append(rels, Relationship{
+						SourceID:   keyID,
+						SourceType: "gcp:kms:key",
+						TargetID:   versionID,
+						TargetType: "gcp:kms:key_version",
+						RelType:    RelContains,
+					})
+				}
+			}
+		}
+	}
+
+	// GCP Logging sinks - destination and writer identity relationships
+	query = `SELECT _CQ_ID, PROJECT_ID, NAME, DESTINATION, WRITER_IDENTITY, DESTINATION_IAM_PERMISSIONS_PUBLIC
+	         FROM GCP_LOGGING_SINKS
+	         WHERE (_CQ_ID IS NOT NULL OR (PROJECT_ID IS NOT NULL AND NAME IS NOT NULL))`
+
+	if result, ok, err := r.queryRowsForTable(ctx, "GCP_LOGGING_SINKS", query); err != nil {
+		return 0, err
+	} else if ok {
+		for _, row := range result.Rows {
+			sinkID := gcpLoggingSinkID(
+				toString(queryRow(row, "_cq_id")),
+				toString(queryRow(row, "project_id")),
+				toString(queryRow(row, "name")),
+			)
+			if sinkID == "" {
+				continue
+			}
+
+			if destinationID, destinationType := gcpLoggingDestinationID(toString(queryRow(row, "destination"))); destinationID != "" {
+				rels = append(rels, Relationship{
+					SourceID:   sinkID,
+					SourceType: "gcp:logging:sink",
+					TargetID:   destinationID,
+					TargetType: destinationType,
+					RelType:    RelWritesTo,
+				})
+			}
+
+			if writerIdentity := toString(queryRow(row, "writer_identity")); writerIdentity != "" {
+				principalID, principalType := gcpIAMPrincipal(writerIdentity, "", "", toString(queryRow(row, "project_id")))
+				if principalID != "" {
+					rels = append(rels, Relationship{
+						SourceID:   sinkID,
+						SourceType: "gcp:logging:sink",
+						TargetID:   principalID,
+						TargetType: principalType,
+						RelType:    RelHasRole,
+					})
+				}
+			}
+
+			if publicDest, ok := queryRow(row, "destination_iam_permissions_public").(bool); ok && publicDest {
+				rels = append(rels, Relationship{
+					SourceID:   sinkID,
+					SourceType: "gcp:logging:sink",
+					TargetID:   "internet",
+					TargetType: "network:internet",
+					RelType:    RelExposedTo,
+				})
+			}
+		}
+	}
+
+	// GCP Logging project sinks summary - project ownership relationship
+	query = `SELECT _CQ_ID, PROJECT_ID, SINK_COUNT, DISABLED
+	         FROM GCP_LOGGING_PROJECT_SINKS
+	         WHERE PROJECT_ID IS NOT NULL`
+
+	if result, ok, err := r.queryRowsForTable(ctx, "GCP_LOGGING_PROJECT_SINKS", query); err != nil {
+		return 0, err
+	} else if ok {
+		for _, row := range result.Rows {
+			projectID := toString(queryRow(row, "project_id"))
+			if projectID == "" {
+				continue
+			}
+			summaryID := normalizeRelationshipID(toString(queryRow(row, "_cq_id")))
+			if summaryID == "" {
+				summaryID = fmt.Sprintf("%s/logging-sinks", gcpProjectPath(projectID))
+			}
+
+			props := map[string]interface{}{}
+			if sinkCount := queryRow(row, "sink_count"); sinkCount != nil {
+				props["sink_count"] = sinkCount
+			}
+			if disabled, ok := queryRow(row, "disabled").(bool); ok {
+				props["disabled"] = disabled
+			}
+
+			propJSON, _ := encodeProperties(props)
+			rels = append(rels, Relationship{
+				SourceID:   summaryID,
+				SourceType: "gcp:logging:project_sinks",
+				TargetID:   gcpProjectPath(projectID),
+				TargetType: "gcp:project",
+				RelType:    RelBelongsTo,
+				Properties: propJSON,
+			})
+		}
+	}
+
 	// GCP Cloud Functions - service account is in SERVICE_CONFIG
 	query = `SELECT NAME, PROJECT_ID, SERVICE_CONFIG
 	         FROM GCP_CLOUDFUNCTIONS_FUNCTIONS WHERE NAME IS NOT NULL`
@@ -3926,6 +4208,118 @@ func gcpNodePoolID(cqID, selfLink, projectID, location, clusterName, nodePoolNam
 		return ""
 	}
 	return fmt.Sprintf("projects/%s/locations/%s/clusters/%s/nodePools/%s", projectID, location, clusterName, nodePoolName)
+}
+
+func gcpProjectPath(projectID string) string {
+	projectID = normalizeRelationshipID(projectID)
+	if projectID == "" {
+		return ""
+	}
+	if strings.HasPrefix(projectID, "projects/") {
+		return projectID
+	}
+	return fmt.Sprintf("projects/%s", projectID)
+}
+
+func gcpServiceAccountID(cqID, name, projectID, email string) string {
+	if id := normalizeRelationshipID(cqID); id != "" {
+		return id
+	}
+	if id := normalizeRelationshipID(name); id != "" {
+		return id
+	}
+	projectID = normalizeRelationshipID(projectID)
+	email = normalizeRelationshipID(email)
+	if projectID == "" || email == "" {
+		return ""
+	}
+	return fmt.Sprintf("projects/%s/serviceAccounts/%s", projectID, email)
+}
+
+func gcpIAMPrincipal(member, memberType, email, projectID string) (string, string) {
+	member = normalizeRelationshipID(member)
+	memberType = strings.TrimSpace(strings.ToLower(memberType))
+	email = normalizeRelationshipID(email)
+
+	if strings.HasPrefix(member, "serviceAccount:") {
+		sa := normalizeRelationshipID(strings.TrimPrefix(member, "serviceAccount:"))
+		if sa == "" {
+			return "", ""
+		}
+		if strings.Contains(sa, "/") {
+			return sa, "gcp:iam:service_account"
+		}
+		if project := normalizeRelationshipID(projectID); project != "" {
+			return fmt.Sprintf("projects/%s/serviceAccounts/%s", project, sa), "gcp:iam:service_account"
+		}
+		return sa, "gcp:iam:service_account"
+	}
+
+	if member == "allUsers" || member == "allAuthenticatedUsers" {
+		return member, "gcp:iam:principal"
+	}
+
+	if memberType == "user" || strings.HasPrefix(member, "user:") {
+		if email == "" {
+			email = normalizeRelationshipID(strings.TrimPrefix(member, "user:"))
+		}
+		return email, "gcp:iam:user"
+	}
+
+	if memberType == "group" || strings.HasPrefix(member, "group:") {
+		if email == "" {
+			email = normalizeRelationshipID(strings.TrimPrefix(member, "group:"))
+		}
+		return email, "gcp:iam:group"
+	}
+
+	if memberType == "domain" || strings.HasPrefix(member, "domain:") {
+		domain := normalizeRelationshipID(strings.TrimPrefix(member, "domain:"))
+		return domain, "gcp:iam:domain"
+	}
+
+	if member == "" {
+		return "", ""
+	}
+	return member, "gcp:iam:principal"
+}
+
+func gcpLoggingSinkID(cqID, projectID, name string) string {
+	if id := normalizeRelationshipID(cqID); id != "" {
+		return id
+	}
+	project := gcpProjectPath(projectID)
+	name = normalizeRelationshipID(name)
+	if project == "" || name == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s/sinks/%s", project, name)
+}
+
+func gcpLoggingDestinationID(destination string) (string, string) {
+	destination = normalizeRelationshipID(destination)
+	if destination == "" {
+		return "", ""
+	}
+
+	if strings.HasPrefix(destination, "storage.googleapis.com/") {
+		bucket := strings.TrimSpace(strings.TrimPrefix(destination, "storage.googleapis.com/"))
+		if id := gcpStorageBucketID(bucket); id != "" {
+			return id, "gcp:storage:bucket"
+		}
+	}
+
+	if strings.HasPrefix(destination, "pubsub.googleapis.com/") {
+		id := normalizeRelationshipID(strings.TrimPrefix(destination, "pubsub.googleapis.com/"))
+		return id, "gcp:pubsub:topic"
+	}
+
+	if strings.HasPrefix(destination, "bigquery.googleapis.com/") {
+		id := normalizeRelationshipID(strings.TrimPrefix(destination, "bigquery.googleapis.com/"))
+		return id, "gcp:bigquery:dataset"
+	}
+
+	return destination, "gcp:resource"
 }
 
 func toString(v interface{}) string {

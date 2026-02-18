@@ -344,6 +344,42 @@ func TestGCPGKEIDHelpers(t *testing.T) {
 	}
 }
 
+func TestGCPIAMAndLoggingHelpers(t *testing.T) {
+	if got := gcpProjectPath("p"); got != "projects/p" {
+		t.Fatalf("unexpected project path: %s", got)
+	}
+	if got := gcpServiceAccountID("", "", "p", "sa@p.iam.gserviceaccount.com"); got != "projects/p/serviceAccounts/sa@p.iam.gserviceaccount.com" {
+		t.Fatalf("unexpected service account fallback id: %s", got)
+	}
+
+	if id, typ := gcpIAMPrincipal("serviceAccount:sa@p.iam.gserviceaccount.com", "", "", "p"); id != "projects/p/serviceAccounts/sa@p.iam.gserviceaccount.com" || typ != "gcp:iam:service_account" {
+		t.Fatalf("unexpected service account principal: %s (%s)", id, typ)
+	}
+	if id, typ := gcpIAMPrincipal("user:alice@example.com", "", "", ""); id != "alice@example.com" || typ != "gcp:iam:user" {
+		t.Fatalf("unexpected user principal: %s (%s)", id, typ)
+	}
+	if id, typ := gcpIAMPrincipal("group:eng@example.com", "", "", ""); id != "eng@example.com" || typ != "gcp:iam:group" {
+		t.Fatalf("unexpected group principal: %s (%s)", id, typ)
+	}
+	if id, typ := gcpIAMPrincipal("allUsers", "", "", ""); id != "allUsers" || typ != "gcp:iam:principal" {
+		t.Fatalf("unexpected public principal: %s (%s)", id, typ)
+	}
+
+	if got := gcpLoggingSinkID("", "p", "sink-a"); got != "projects/p/sinks/sink-a" {
+		t.Fatalf("unexpected sink id: %s", got)
+	}
+
+	if id, typ := gcpLoggingDestinationID("storage.googleapis.com/my-bucket"); id != "projects/_/buckets/my-bucket" || typ != "gcp:storage:bucket" {
+		t.Fatalf("unexpected storage destination: %s (%s)", id, typ)
+	}
+	if id, typ := gcpLoggingDestinationID("pubsub.googleapis.com/projects/p/topics/topic-a"); id != "projects/p/topics/topic-a" || typ != "gcp:pubsub:topic" {
+		t.Fatalf("unexpected pubsub destination: %s (%s)", id, typ)
+	}
+	if id, typ := gcpLoggingDestinationID("bigquery.googleapis.com/projects/p/datasets/ds"); id != "projects/p/datasets/ds" || typ != "gcp:bigquery:dataset" {
+		t.Fatalf("unexpected bigquery destination: %s (%s)", id, typ)
+	}
+}
+
 func TestGCPAssetColumnExpression(t *testing.T) {
 	columns := map[string]struct{}{
 		"ASSET_TYPE": {},
