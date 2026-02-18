@@ -2324,7 +2324,10 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 			if bucketName == "" {
 				continue
 			}
-			bucketID := fmt.Sprintf("projects/_/buckets/%s", bucketName)
+			bucketID := gcpStorageBucketID(bucketName)
+			if bucketID == "" {
+				continue
+			}
 
 			if kmsKey := toString(queryRow(row, "encryption_default_kms_key")); kmsKey != "" {
 				rels = append(rels, Relationship{
@@ -2337,12 +2340,126 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 			}
 
 			if logBucket := toString(queryRow(row, "logging_log_bucket")); logBucket != "" {
+				logBucketID := gcpStorageBucketID(logBucket)
+				if logBucketID == "" {
+					continue
+				}
 				rels = append(rels, Relationship{
 					SourceID:   bucketID,
 					SourceType: "gcp:storage:bucket",
-					TargetID:   fmt.Sprintf("projects/_/buckets/%s", logBucket),
+					TargetID:   logBucketID,
 					TargetType: "gcp:storage:bucket",
 					RelType:    RelLogsTo,
+				})
+			}
+		}
+	}
+
+	// GCP Storage objects - bucket membership and encryption relationships
+	query = `SELECT _CQ_ID, SELF_LINK, BUCKET, NAME, KMS_KEY_NAME
+	         FROM GCP_STORAGE_OBJECTS
+	         WHERE BUCKET IS NOT NULL AND (_CQ_ID IS NOT NULL OR SELF_LINK IS NOT NULL OR NAME IS NOT NULL)`
+
+	if result, ok, err := r.queryRowsForTable(ctx, "GCP_STORAGE_OBJECTS", query); err != nil {
+		return 0, err
+	} else if ok {
+		for _, row := range result.Rows {
+			objectID := gcpStorageObjectID(
+				toString(queryRow(row, "_cq_id")),
+				toString(queryRow(row, "self_link")),
+				toString(queryRow(row, "bucket")),
+				toString(queryRow(row, "name")),
+			)
+			if objectID == "" {
+				continue
+			}
+
+			if bucketID := gcpStorageBucketID(toString(queryRow(row, "bucket"))); bucketID != "" {
+				rels = append(rels, Relationship{
+					SourceID:   objectID,
+					SourceType: "gcp:storage:object",
+					TargetID:   bucketID,
+					TargetType: "gcp:storage:bucket",
+					RelType:    RelBelongsTo,
+				})
+			}
+
+			if kmsKey := toString(queryRow(row, "kms_key_name")); kmsKey != "" {
+				rels = append(rels, Relationship{
+					SourceID:   objectID,
+					SourceType: "gcp:storage:object",
+					TargetID:   kmsKey,
+					TargetType: "gcp:kms:key",
+					RelType:    RelEncryptedBy,
+				})
+			}
+		}
+	}
+
+	// GCP Pub/Sub topics - encryption relationships
+	query = `SELECT _CQ_ID, PROJECT_ID, NAME, KMS_KEY_NAME
+	         FROM GCP_PUBSUB_TOPICS
+	         WHERE (_CQ_ID IS NOT NULL OR (PROJECT_ID IS NOT NULL AND NAME IS NOT NULL))`
+
+	if result, ok, err := r.queryRowsForTable(ctx, "GCP_PUBSUB_TOPICS", query); err != nil {
+		return 0, err
+	} else if ok {
+		for _, row := range result.Rows {
+			topicID := gcpPubSubTopicID(
+				toString(queryRow(row, "_cq_id")),
+				toString(queryRow(row, "project_id")),
+				toString(queryRow(row, "name")),
+			)
+			if topicID == "" {
+				continue
+			}
+
+			if kmsKey := toString(queryRow(row, "kms_key_name")); kmsKey != "" {
+				rels = append(rels, Relationship{
+					SourceID:   topicID,
+					SourceType: "gcp:pubsub:topic",
+					TargetID:   kmsKey,
+					TargetType: "gcp:kms:key",
+					RelType:    RelEncryptedBy,
+				})
+			}
+		}
+	}
+
+	// GCP IDS endpoints - network and forwarding rule relationships
+	query = `SELECT _CQ_ID, NAME, NETWORK, ENDPOINT_FORWARDING_RULE
+	         FROM GCP_IDS_ENDPOINTS
+	         WHERE (_CQ_ID IS NOT NULL OR NAME IS NOT NULL)`
+
+	if result, ok, err := r.queryRowsForTable(ctx, "GCP_IDS_ENDPOINTS", query); err != nil {
+		return 0, err
+	} else if ok {
+		for _, row := range result.Rows {
+			endpointID := gcpIDSEndpointID(
+				toString(queryRow(row, "_cq_id")),
+				toString(queryRow(row, "name")),
+			)
+			if endpointID == "" {
+				continue
+			}
+
+			if networkID := normalizeRelationshipID(toString(queryRow(row, "network"))); networkID != "" {
+				rels = append(rels, Relationship{
+					SourceID:   endpointID,
+					SourceType: "gcp:ids:endpoint",
+					TargetID:   networkID,
+					TargetType: "gcp:compute:network",
+					RelType:    RelInVPC,
+				})
+			}
+
+			if forwardingRuleID := normalizeRelationshipID(toString(queryRow(row, "endpoint_forwarding_rule"))); forwardingRuleID != "" {
+				rels = append(rels, Relationship{
+					SourceID:   endpointID,
+					SourceType: "gcp:ids:endpoint",
+					TargetID:   forwardingRuleID,
+					TargetType: "gcp:compute:forwarding_rule",
+					RelType:    RelAttachedTo,
 				})
 			}
 		}
@@ -3509,6 +3626,51 @@ func gcpArtifactPackageIDFromImage(imageName string) string {
 }
 
 func gcpSCCFindingID(cqID, name string) string {
+	if id := normalizeRelationshipID(cqID); id != "" {
+		return id
+	}
+	return normalizeRelationshipID(name)
+}
+
+func gcpStorageBucketID(name string) string {
+	name = normalizeRelationshipID(name)
+	if name == "" {
+		return ""
+	}
+	if strings.HasPrefix(name, "projects/") {
+		return name
+	}
+	return fmt.Sprintf("projects/_/buckets/%s", name)
+}
+
+func gcpStorageObjectID(cqID, selfLink, bucket, name string) string {
+	if id := normalizeRelationshipID(cqID); id != "" {
+		return id
+	}
+	if id := normalizeRelationshipID(selfLink); id != "" {
+		return id
+	}
+	bucket = normalizeRelationshipID(bucket)
+	name = normalizeRelationshipID(name)
+	if bucket == "" || name == "" {
+		return ""
+	}
+	return fmt.Sprintf("projects/_/buckets/%s/objects/%s", bucket, name)
+}
+
+func gcpPubSubTopicID(cqID, projectID, name string) string {
+	if id := normalizeRelationshipID(cqID); id != "" {
+		return id
+	}
+	projectID = normalizeRelationshipID(projectID)
+	name = normalizeRelationshipID(name)
+	if projectID == "" || name == "" {
+		return ""
+	}
+	return fmt.Sprintf("projects/%s/topics/%s", projectID, name)
+}
+
+func gcpIDSEndpointID(cqID, name string) string {
 	if id := normalizeRelationshipID(cqID); id != "" {
 		return id
 	}

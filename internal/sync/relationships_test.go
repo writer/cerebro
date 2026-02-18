@@ -291,6 +291,40 @@ func TestGCPSCCFindingID(t *testing.T) {
 	}
 }
 
+func TestGCPStorageAndTopicIDHelpers(t *testing.T) {
+	if got := gcpStorageBucketID("bucket-a"); got != "projects/_/buckets/bucket-a" {
+		t.Fatalf("unexpected bucket id from name: %s", got)
+	}
+	if got := gcpStorageBucketID("projects/p/buckets/bucket-a"); got != "projects/p/buckets/bucket-a" {
+		t.Fatalf("unexpected bucket id from full path: %s", got)
+	}
+
+	if got := gcpStorageObjectID("obj-id", "", "", ""); got != "obj-id" {
+		t.Fatalf("unexpected object id from _cq_id: %s", got)
+	}
+	if got := gcpStorageObjectID("", "https://storage.googleapis.com/storage/v1/b/bucket-a/o/object-a", "", ""); got != "https://storage.googleapis.com/storage/v1/b/bucket-a/o/object-a" {
+		t.Fatalf("unexpected object id from self_link: %s", got)
+	}
+	if got := gcpStorageObjectID("", "", "bucket-a", "path/object-a"); got != "projects/_/buckets/bucket-a/objects/path/object-a" {
+		t.Fatalf("unexpected object id from bucket+name: %s", got)
+	}
+
+	if got := gcpPubSubTopicID("projects/p/topics/topic-a", "", ""); got != "projects/p/topics/topic-a" {
+		t.Fatalf("unexpected topic id from _cq_id: %s", got)
+	}
+	if got := gcpPubSubTopicID("", "p", "topic-a"); got != "projects/p/topics/topic-a" {
+		t.Fatalf("unexpected topic id from fallback fields: %s", got)
+	}
+
+	endpointName := "projects/p/locations/us-central1/endpoints/ep-a"
+	if got := gcpIDSEndpointID(endpointName, ""); got != endpointName {
+		t.Fatalf("unexpected endpoint id from _cq_id: %s", got)
+	}
+	if got := gcpIDSEndpointID("", endpointName); got != endpointName {
+		t.Fatalf("unexpected endpoint id from name fallback: %s", got)
+	}
+}
+
 func TestGCPAssetColumnExpression(t *testing.T) {
 	columns := map[string]struct{}{
 		"ASSET_TYPE": {},
