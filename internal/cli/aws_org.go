@@ -97,7 +97,7 @@ func runAWSOrgSync(ctx context.Context, start time.Time) error {
 				roleArn, arnErr := buildAWSOrgRoleARN(account.ID, syncAWSOrgRole, region)
 				if arnErr != nil {
 					mu.Lock()
-					errs = append(errs, arnErr)
+					errs = append(errs, fmt.Errorf("account %s: %w", account.ID, arnErr))
 					mu.Unlock()
 					Warning("Skipping account %s: %v", account.ID, arnErr)
 					return nil
@@ -106,7 +106,7 @@ func runAWSOrgSync(ctx context.Context, start time.Time) error {
 				assumedCfg, assumeErr := assumeRoleConfig(ctx, awsCfg, roleArn, fmt.Sprintf("cerebro-sync-%s", account.ID))
 				if assumeErr != nil {
 					mu.Lock()
-					errs = append(errs, assumeErr)
+					errs = append(errs, fmt.Errorf("account %s: %w", account.ID, assumeErr))
 					mu.Unlock()
 					Warning("Failed to assume role for account %s: %v", account.ID, assumeErr)
 					return nil
@@ -117,7 +117,7 @@ func runAWSOrgSync(ctx context.Context, start time.Time) error {
 			sfClient, err := createSnowflakeClient()
 			if err != nil {
 				mu.Lock()
-				errs = append(errs, err)
+				errs = append(errs, fmt.Errorf("account %s: create snowflake client: %w", account.ID, err))
 				mu.Unlock()
 				Warning("Failed to create Snowflake client for account %s: %v", account.ID, err)
 				return nil
@@ -126,17 +126,17 @@ func runAWSOrgSync(ctx context.Context, start time.Time) error {
 
 			syncer := nativesync.NewSyncEngine(sfClient, slog.Default(), opts...)
 			accountResults, syncErr := syncer.SyncAllWithConfig(ctx, accountCfg)
+			mu.Lock()
+			results = append(results, accountResults...)
+			mu.Unlock()
 			if syncErr != nil {
 				mu.Lock()
-				errs = append(errs, syncErr)
+				errs = append(errs, fmt.Errorf("account %s: %w", account.ID, syncErr))
 				mu.Unlock()
 				Warning("Sync failed for account %s: %v", account.ID, syncErr)
 				return nil
 			}
 
-			mu.Lock()
-			results = append(results, accountResults...)
-			mu.Unlock()
 			Success("Account %s synced in %s", account.ID, time.Since(accountStart).Round(time.Second))
 			return nil
 		})
@@ -144,12 +144,20 @@ func runAWSOrgSync(ctx context.Context, start time.Time) error {
 
 	_ = group.Wait()
 
+	if len(errs) > 0 {
+		if len(results) == 0 {
+			Warning("%d account(s) reported errors", len(errs))
+			return summarizeSyncRunErrors("AWS org sync", errs)
+		}
+	}
+
 	if err := printSyncResults(results, start, fmt.Sprintf("AWS Org (%d accounts)", len(accounts))); err != nil {
 		return err
 	}
 
 	if len(errs) > 0 {
 		Warning("%d account(s) reported errors", len(errs))
+		return summarizeSyncRunErrors("AWS org sync", errs)
 	}
 
 	return nil

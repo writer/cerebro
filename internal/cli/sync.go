@@ -216,11 +216,7 @@ func runGCPSync(ctx context.Context, start time.Time, projectID string) error {
 	}
 
 	results, err := syncer.SyncAll(ctx)
-	if err != nil {
-		return fmt.Errorf("sync failed: %w", err)
-	}
-
-	if err := printSyncResults(results, start, "GCP"); err != nil {
+	if err := handleSyncRunResults(results, start, "GCP", err); err != nil {
 		return err
 	}
 
@@ -314,6 +310,7 @@ func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []str
 	}
 
 	var allResults []nativesync.SyncResult
+	var syncErrs []error
 	for i, projectID := range projects {
 		Info("[%d/%d] Syncing project: %s", i+1, len(projects), projectID)
 		options := []nativesync.GCPEngineOption{nativesync.WithGCPProject(projectID)}
@@ -325,14 +322,31 @@ func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []str
 		}
 		syncer := nativesync.NewGCPSyncEngine(client, slog.Default(), options...)
 		results, err := syncer.SyncAll(ctx)
+		allResults = append(allResults, results...)
 		if err != nil {
 			Warning("Failed to sync project %s: %v", projectID, err)
+			syncErrs = append(syncErrs, fmt.Errorf("project %s: %w", projectID, err))
 			continue
 		}
-		allResults = append(allResults, results...)
 	}
 
-	return printSyncResults(allResults, start, "GCP")
+	if len(syncErrs) > 0 {
+		if len(allResults) == 0 {
+			Warning("%d project(s) had errors", len(syncErrs))
+			return summarizeSyncRunErrors("GCP multi-project sync", syncErrs)
+		}
+	}
+
+	if err := printSyncResults(allResults, start, "GCP"); err != nil {
+		return err
+	}
+
+	if len(syncErrs) > 0 {
+		Warning("%d project(s) had errors", len(syncErrs))
+		return summarizeSyncRunErrors("GCP multi-project sync", syncErrs)
+	}
+
+	return nil
 }
 
 func runGCPAssetAPISync(ctx context.Context, start time.Time, projects []string) error {
@@ -365,11 +379,7 @@ func runGCPAssetAPISync(ctx context.Context, start time.Time, projects []string)
 	}
 
 	results, err := syncer.SyncAll(ctx)
-	if err != nil {
-		return fmt.Errorf("sync failed: %w", err)
-	}
-
-	return printSyncResults(results, start, "GCP (Asset API)")
+	return handleSyncRunResults(results, start, "GCP (Asset API)", err)
 }
 
 func runK8sSync(ctx context.Context, start time.Time) error {
@@ -412,11 +422,7 @@ func runK8sSync(ctx context.Context, start time.Time) error {
 	}
 
 	results, err := syncer.SyncAll(ctx)
-	if err != nil {
-		return fmt.Errorf("sync failed: %w", err)
-	}
-
-	if err := printSyncResults(results, start, "Kubernetes"); err != nil {
+	if err := handleSyncRunResults(results, start, "Kubernetes", err); err != nil {
 		return err
 	}
 
@@ -472,11 +478,7 @@ func runAzureSync(ctx context.Context, start time.Time) error {
 	}
 
 	results, err := syncer.SyncAll(ctx)
-	if err != nil {
-		return fmt.Errorf("sync failed: %w", err)
-	}
-
-	if err := printSyncResults(results, start, "Azure"); err != nil {
+	if err := handleSyncRunResults(results, start, "Azure", err); err != nil {
 		return err
 	}
 
@@ -498,7 +500,7 @@ func runMultiAccountAWSSync(ctx context.Context, start time.Time) error {
 
 	Info("Starting multi-account AWS sync (%d profiles)...", len(profiles))
 	var totalResults []nativesync.SyncResult
-	var totalErrors int
+	var syncErrs []error
 
 	for _, profile := range profiles {
 		Info("Syncing AWS profile: %s", profile)
@@ -509,7 +511,7 @@ func runMultiAccountAWSSync(ctx context.Context, start time.Time) error {
 		)
 		if err != nil {
 			Warning("Failed to load config for profile %s: %v", profile, err)
-			totalErrors++
+			syncErrs = append(syncErrs, fmt.Errorf("profile %s: load config: %w", profile, err))
 			continue
 		}
 
@@ -525,7 +527,7 @@ func runMultiAccountAWSSync(ctx context.Context, start time.Time) error {
 		sfClient, err := createSnowflakeClient()
 		if err != nil {
 			Warning("Failed to create Snowflake client for profile %s: %v", profile, err)
-			totalErrors++
+			syncErrs = append(syncErrs, fmt.Errorf("profile %s: create snowflake client: %w", profile, err))
 			continue
 		}
 
@@ -545,25 +547,52 @@ func runMultiAccountAWSSync(ctx context.Context, start time.Time) error {
 		syncer := nativesync.NewSyncEngine(sfClient, slog.Default(), opts...)
 		results, err := syncer.SyncAllWithConfig(ctx, awsCfg)
 		_ = sfClient.Close()
+		totalResults = append(totalResults, results...)
 
 		if err != nil {
 			Warning("Sync failed for profile %s: %v", profile, err)
-			totalErrors++
+			syncErrs = append(syncErrs, fmt.Errorf("profile %s: %w", profile, err))
 			continue
 		}
 
-		totalResults = append(totalResults, results...)
 		Success("Profile %s synced in %s", profile, time.Since(profileStart).Round(time.Second))
+	}
+
+	if len(syncErrs) > 0 {
+		if len(totalResults) == 0 {
+			Warning("%d profile(s) had errors", len(syncErrs))
+			return summarizeSyncRunErrors("multi-account AWS sync", syncErrs)
+		}
 	}
 
 	if err := printSyncResults(totalResults, start, fmt.Sprintf("AWS (%d profiles)", len(profiles))); err != nil {
 		return err
 	}
 
-	if totalErrors > 0 {
-		Warning("%d profile(s) had errors", totalErrors)
+	if len(syncErrs) > 0 {
+		Warning("%d profile(s) had errors", len(syncErrs))
+		return summarizeSyncRunErrors("multi-account AWS sync", syncErrs)
 	}
 
+	return nil
+}
+
+func summarizeSyncRunErrors(scope string, errs []error) error {
+	if len(errs) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%s completed with %d error(s): %w", scope, len(errs), errors.Join(errs...))
+}
+
+func handleSyncRunResults(results []nativesync.SyncResult, start time.Time, provider string, syncErr error) error {
+	if len(results) > 0 || syncErr == nil {
+		if err := printSyncResults(results, start, provider); err != nil {
+			return err
+		}
+	}
+	if syncErr != nil {
+		return fmt.Errorf("sync failed: %w", syncErr)
+	}
 	return nil
 }
 
@@ -624,11 +653,7 @@ func runNativeSync(ctx context.Context, start time.Time) error {
 	}
 
 	results, err := syncer.SyncAllWithConfig(ctx, awsCfg)
-	if err != nil {
-		return fmt.Errorf("sync failed: %w", err)
-	}
-
-	if err := printSyncResults(results, start, "AWS"); err != nil {
+	if err := handleSyncRunResults(results, start, "AWS", err); err != nil {
 		return err
 	}
 
