@@ -74,6 +74,32 @@ func TestAzureResourceIDBuilders(t *testing.T) {
 	}
 }
 
+func TestAWSEKSClusterARN(t *testing.T) {
+	arn := awsEKSClusterARN("us-east-1", "123456789012", "cluster-a")
+	if arn != "arn:aws:eks:us-east-1:123456789012:cluster/cluster-a" {
+		t.Fatalf("unexpected eks cluster arn: %s", arn)
+	}
+
+	if arn := awsEKSClusterARN("", "123456789012", "cluster-a"); arn != "" {
+		t.Fatalf("expected empty arn when inputs are incomplete, got %s", arn)
+	}
+}
+
+func TestGetSliceAny(t *testing.T) {
+	value := map[string]interface{}{
+		"subnetIds": []interface{}{"subnet-1", "subnet-2"},
+	}
+
+	slice := getSliceAny(value, "SubnetIds", "subnetIds", "subnet_ids")
+	if len(slice) != 2 {
+		t.Fatalf("expected 2 subnets, got %d", len(slice))
+	}
+
+	if slice := getSliceAny(value, "missing"); slice != nil {
+		t.Fatalf("expected nil for missing keys")
+	}
+}
+
 func TestIsMissingRelationshipSourceError(t *testing.T) {
 	cases := []error{
 		errors.New("SQL compilation error: Object does not exist"),
