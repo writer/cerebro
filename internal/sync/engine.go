@@ -122,6 +122,8 @@ func (e *SyncEngine) SyncAllWithConfig(ctx context.Context, cfg aws.Config) ([]S
 		return nil, fmt.Errorf("no AWS tables matched filter: %s", strings.Join(filterNames(e.tableFilter), ", "))
 	}
 
+	backfillRequests := e.loadBackfillRequests(ctx)
+
 	// Create work queue
 	type workItem struct {
 		table  TableSpec
@@ -144,6 +146,15 @@ func (e *SyncEngine) SyncAllWithConfig(ctx context.Context, cfg aws.Config) ([]S
 		return []SyncResult{}, nil
 	}
 
+	if len(backfillRequests) > 0 {
+		sort.SliceStable(work, func(i, j int) bool {
+			left := hasBackfillRequest(backfillRequests, work[i].table.Name, work[i].region)
+			right := hasBackfillRequest(backfillRequests, work[j].table.Name, work[j].region)
+			return left && !right
+		})
+		e.logger.Info("prioritizing queued backfill work", "count", len(backfillRequests))
+	}
+
 	results := make([]SyncResult, len(work))
 	var mu sync.Mutex
 	var errs []error
@@ -159,6 +170,7 @@ func (e *SyncEngine) SyncAllWithConfig(ctx context.Context, cfg aws.Config) ([]S
 		idx := i
 		item := w
 		group.Go(func() error {
+			backfillReason, forceBackfill := backfillRequests[backfillRequestKey(item.table.Name, item.region)]
 			var serviceLimiter chan struct{}
 			if key, _ := serviceLimitForTable(item.table.Name); key != "" {
 				serviceLimiter = serviceLimiters[key]
@@ -167,7 +179,7 @@ func (e *SyncEngine) SyncAllWithConfig(ctx context.Context, cfg aws.Config) ([]S
 				serviceLimiter <- struct{}{}
 				defer func() { <-serviceLimiter }()
 			}
-			result, err := e.syncTable(ctx, cfg, item.table, item.region)
+			result, err := e.syncTable(ctx, cfg, item.table, item.region, forceBackfill, backfillReason)
 			results[idx] = result
 			if err != nil {
 				mu.Lock()
@@ -265,7 +277,7 @@ func (e *SyncEngine) ValidateTablesWithConfig(ctx context.Context, cfg aws.Confi
 	return results, errors.Join(errs...)
 }
 
-func (e *SyncEngine) syncTable(ctx context.Context, cfg aws.Config, table TableSpec, region string) (SyncResult, error) {
+func (e *SyncEngine) syncTable(ctx context.Context, cfg aws.Config, table TableSpec, region string, forceBackfill bool, backfillReason string) (SyncResult, error) {
 	start := time.Now()
 	result := SyncResult{
 		Table:  table.Name,
@@ -288,6 +300,14 @@ func (e *SyncEngine) syncTable(ctx context.Context, cfg aws.Config, table TableS
 	// Create regional config
 	regionalCfg := cfg.Copy()
 	regionalCfg.Region = region
+
+	if forceBackfill {
+		if backfillReason == "" {
+			backfillReason = "queued backfill request"
+		}
+		e.logger.Info("processing queued backfill request", "table", table.Name, "region", region, "reason", backfillReason)
+		ctx = withForceFullBackfill(ctx)
+	}
 
 	// Ensure table exists with correct schema
 	if err := e.ensureTableOnce(ctx, table.Name, table.Columns); err != nil {
@@ -776,7 +796,7 @@ func (e *SyncEngine) insertChangeRecord(ctx context.Context, table, resourceID, 
 	}
 }
 
-func (e *SyncEngine) recordBackfillRequest(ctx context.Context, table, region, reason string) error {
+func (e *SyncEngine) ensureBackfillQueueTable(ctx context.Context) error {
 	createQuery := `CREATE TABLE IF NOT EXISTS _sync_backfill_queue (
 		id VARCHAR PRIMARY KEY,
 		provider VARCHAR,
@@ -789,6 +809,54 @@ func (e *SyncEngine) recordBackfillRequest(ctx context.Context, table, region, r
 	)`
 	if _, err := e.sf.Exec(ctx, createQuery); err != nil {
 		return fmt.Errorf("create backfill queue: %w", err)
+	}
+	return nil
+}
+
+func backfillRequestKey(table, region string) string {
+	return strings.ToLower(strings.TrimSpace(table)) + "|" + strings.ToLower(strings.TrimSpace(region))
+}
+
+func hasBackfillRequest(backfills map[string]string, table, region string) bool {
+	if len(backfills) == 0 {
+		return false
+	}
+	_, ok := backfills[backfillRequestKey(table, region)]
+	return ok
+}
+
+func (e *SyncEngine) loadBackfillRequests(ctx context.Context) map[string]string {
+	if err := e.ensureBackfillQueueTable(ctx); err != nil {
+		e.logger.Warn("failed to initialize backfill queue", "error", err)
+		return nil
+	}
+
+	result, err := e.sf.Query(ctx,
+		"SELECT table_name, region, reason FROM _sync_backfill_queue WHERE provider = ? AND account_id = ?",
+		"aws",
+		e.accountID,
+	)
+	if err != nil {
+		e.logger.Warn("failed to load backfill requests", "error", err)
+		return nil
+	}
+
+	requests := make(map[string]string, len(result.Rows))
+	for _, row := range result.Rows {
+		tableName := queryRowString(row, "table_name")
+		region := queryRowString(row, "region")
+		if tableName == "" || region == "" {
+			continue
+		}
+		requests[backfillRequestKey(tableName, region)] = queryRowString(row, "reason")
+	}
+
+	return requests
+}
+
+func (e *SyncEngine) recordBackfillRequest(ctx context.Context, table, region, reason string) error {
+	if err := e.ensureBackfillQueueTable(ctx); err != nil {
+		return err
 	}
 
 	id := fmt.Sprintf("aws:%s:%s:%s", e.accountID, table, region)
@@ -810,18 +878,8 @@ func (e *SyncEngine) recordBackfillRequest(ctx context.Context, table, region, r
 }
 
 func (e *SyncEngine) clearBackfillRequest(ctx context.Context, table, region string) error {
-	createQuery := `CREATE TABLE IF NOT EXISTS _sync_backfill_queue (
-		id VARCHAR PRIMARY KEY,
-		provider VARCHAR,
-		table_name VARCHAR,
-		region VARCHAR,
-		account_id VARCHAR,
-		reason VARCHAR,
-		requested_at TIMESTAMP_TZ,
-		_cq_sync_time TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP()
-	)`
-	if _, err := e.sf.Exec(ctx, createQuery); err != nil {
-		return fmt.Errorf("create backfill queue: %w", err)
+	if err := e.ensureBackfillQueueTable(ctx); err != nil {
+		return err
 	}
 
 	id := fmt.Sprintf("aws:%s:%s:%s", e.accountID, table, region)

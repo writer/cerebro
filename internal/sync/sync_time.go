@@ -8,6 +8,23 @@ import (
 	"github.com/writerinternal/cerebro/internal/snowflake"
 )
 
+type forceFullBackfillContextKey struct{}
+
+func withForceFullBackfill(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, forceFullBackfillContextKey{}, true)
+}
+
+func shouldForceFullBackfill(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	value, ok := ctx.Value(forceFullBackfillContextKey{}).(bool)
+	return ok && value
+}
+
 func (e *SyncEngine) latestTableSyncTime(ctx context.Context, table string, region string, hasRegion bool) (time.Time, error) {
 	if err := snowflake.ValidateTableName(table); err != nil {
 		return time.Time{}, err
@@ -60,6 +77,10 @@ func (e *SyncEngine) latestTableSyncTime(ctx context.Context, table string, regi
 }
 
 func (e *SyncEngine) incrementalStartTime(ctx context.Context, table string, region string, hasRegion bool, lookback time.Duration) (time.Time, bool) {
+	if shouldForceFullBackfill(ctx) {
+		return time.Time{}, false
+	}
+
 	lastSync, err := e.latestTableSyncTime(ctx, table, region, hasRegion)
 	if err != nil {
 		e.logger.Debug("failed to load incremental sync watermark", "table", table, "region", region, "error", err)

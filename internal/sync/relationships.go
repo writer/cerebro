@@ -134,6 +134,14 @@ func (r *RelationshipExtractor) ExtractAndPersist(ctx context.Context) (int, err
 	}
 	totalRels += count
 
+	// Extract from RDS
+	count, err = r.extractRDSRelationships(ctx)
+	if err != nil {
+		hadErrors = true
+		r.logger.Warn("failed to extract RDS relationships", "error", err)
+	}
+	totalRels += count
+
 	// Extract from EKS
 	count, err = r.extractEKSRelationships(ctx)
 	if err != nil {
@@ -877,6 +885,207 @@ func (r *RelationshipExtractor) extractECSRelationships(ctx context.Context) (in
 				TargetType: "aws:ecs:task_definition",
 				RelType:    RelManagedBy,
 			})
+		}
+	}
+
+	return r.persistRelationships(ctx, rels)
+}
+
+func (r *RelationshipExtractor) extractRDSRelationships(ctx context.Context) (int, error) {
+	var rels []Relationship
+
+	query := `SELECT ARN, ACCOUNT_ID, REGION, KMS_KEY_ID, VPC_SECURITY_GROUPS, DB_SUBNET_GROUP
+	          FROM AWS_RDS_INSTANCES WHERE ARN IS NOT NULL`
+
+	if result, ok, err := r.queryRowsForTable(ctx, "AWS_RDS_INSTANCES", query); err != nil {
+		return 0, err
+	} else if ok {
+		for _, row := range result.Rows {
+			instanceARN := toString(queryRow(row, "arn"))
+			if instanceARN == "" {
+				continue
+			}
+
+			region := toString(queryRow(row, "region"))
+			accountID := toString(queryRow(row, "account_id"))
+			if region == "" || accountID == "" {
+				arnRegion, arnAccount := awsRegionAccountFromARN(instanceARN)
+				if region == "" {
+					region = arnRegion
+				}
+				if accountID == "" {
+					accountID = arnAccount
+				}
+			}
+
+			if kmsKeyID := toString(queryRow(row, "kms_key_id")); kmsKeyID != "" {
+				rels = append(rels, Relationship{
+					SourceID:   instanceARN,
+					SourceType: "aws:rds:db_instance",
+					TargetID:   kmsKeyID,
+					TargetType: "aws:kms:key",
+					RelType:    RelEncryptedBy,
+				})
+			}
+
+			for _, sg := range asSlice(queryRow(row, "vpc_security_groups")) {
+				sgMap := asMap(sg)
+				if sgMap == nil {
+					continue
+				}
+				sgID := getStringAny(sgMap, "VpcSecurityGroupId", "vpcSecurityGroupId", "groupId", "GroupId")
+				if sgID == "" {
+					continue
+				}
+				rels = append(rels, Relationship{
+					SourceID:   instanceARN,
+					SourceType: "aws:rds:db_instance",
+					TargetID:   awsARNForResource("security-group", region, accountID, sgID),
+					TargetType: "aws:ec2:security_group",
+					RelType:    RelMemberOf,
+				})
+			}
+
+			subnetGroup := asMap(queryRow(row, "db_subnet_group"))
+			if subnetGroup == nil {
+				continue
+			}
+
+			if subnetGroupARN := getStringAny(subnetGroup, "DBSubnetGroupArn", "dbSubnetGroupArn", "db_subnet_group_arn"); subnetGroupARN != "" {
+				rels = append(rels, Relationship{
+					SourceID:   instanceARN,
+					SourceType: "aws:rds:db_instance",
+					TargetID:   subnetGroupARN,
+					TargetType: "aws:rds:db_subnet_group",
+					RelType:    RelBelongsTo,
+				})
+			}
+
+			if vpcID := getStringAny(subnetGroup, "VpcId", "vpcId", "vpc_id"); vpcID != "" {
+				rels = append(rels, Relationship{
+					SourceID:   instanceARN,
+					SourceType: "aws:rds:db_instance",
+					TargetID:   awsARNForResource("vpc", region, accountID, vpcID),
+					TargetType: "aws:ec2:vpc",
+					RelType:    RelInVPC,
+				})
+			}
+
+			for _, subnet := range getSliceAny(subnetGroup, "Subnets", "subnets") {
+				subnetMap := asMap(subnet)
+				if subnetMap == nil {
+					continue
+				}
+				subnetID := getStringAny(subnetMap, "SubnetIdentifier", "subnetIdentifier", "subnet_id", "SubnetId", "subnetId")
+				if subnetID == "" {
+					continue
+				}
+				rels = append(rels, Relationship{
+					SourceID:   instanceARN,
+					SourceType: "aws:rds:db_instance",
+					TargetID:   awsARNForResource("subnet", region, accountID, subnetID),
+					TargetType: "aws:ec2:subnet",
+					RelType:    RelInSubnet,
+				})
+			}
+		}
+	}
+
+	query = `SELECT ARN, KMS_KEY_ID
+	         FROM AWS_RDS_DB_CLUSTERS WHERE ARN IS NOT NULL`
+
+	if result, ok, err := r.queryRowsForTable(ctx, "AWS_RDS_DB_CLUSTERS", query); err != nil {
+		return 0, err
+	} else if ok {
+		for _, row := range result.Rows {
+			clusterARN := toString(queryRow(row, "arn"))
+			if clusterARN == "" {
+				continue
+			}
+
+			if kmsKeyID := toString(queryRow(row, "kms_key_id")); kmsKeyID != "" {
+				rels = append(rels, Relationship{
+					SourceID:   clusterARN,
+					SourceType: "aws:rds:db_cluster",
+					TargetID:   kmsKeyID,
+					TargetType: "aws:kms:key",
+					RelType:    RelEncryptedBy,
+				})
+			}
+		}
+	}
+
+	query = `SELECT ARN, ACCOUNT_ID, REGION, ROLE_ARN, VPC_ID, VPC_SECURITY_GROUP_IDS, VPC_SUBNET_IDS
+	         FROM AWS_RDS_DB_PROXIES WHERE ARN IS NOT NULL`
+
+	if result, ok, err := r.queryRowsForTable(ctx, "AWS_RDS_DB_PROXIES", query); err != nil {
+		return 0, err
+	} else if ok {
+		for _, row := range result.Rows {
+			proxyARN := toString(queryRow(row, "arn"))
+			if proxyARN == "" {
+				continue
+			}
+
+			region := toString(queryRow(row, "region"))
+			accountID := toString(queryRow(row, "account_id"))
+			if region == "" || accountID == "" {
+				arnRegion, arnAccount := awsRegionAccountFromARN(proxyARN)
+				if region == "" {
+					region = arnRegion
+				}
+				if accountID == "" {
+					accountID = arnAccount
+				}
+			}
+
+			if roleARN := toString(queryRow(row, "role_arn")); roleARN != "" {
+				rels = append(rels, Relationship{
+					SourceID:   proxyARN,
+					SourceType: "aws:rds:db_proxy",
+					TargetID:   roleARN,
+					TargetType: "aws:iam:role",
+					RelType:    RelHasRole,
+				})
+			}
+
+			if vpcID := toString(queryRow(row, "vpc_id")); vpcID != "" {
+				rels = append(rels, Relationship{
+					SourceID:   proxyARN,
+					SourceType: "aws:rds:db_proxy",
+					TargetID:   awsARNForResource("vpc", region, accountID, vpcID),
+					TargetType: "aws:ec2:vpc",
+					RelType:    RelInVPC,
+				})
+			}
+
+			for _, sg := range asSlice(queryRow(row, "vpc_security_group_ids")) {
+				sgID := toString(sg)
+				if sgID == "" {
+					continue
+				}
+				rels = append(rels, Relationship{
+					SourceID:   proxyARN,
+					SourceType: "aws:rds:db_proxy",
+					TargetID:   awsARNForResource("security-group", region, accountID, sgID),
+					TargetType: "aws:ec2:security_group",
+					RelType:    RelMemberOf,
+				})
+			}
+
+			for _, subnet := range asSlice(queryRow(row, "vpc_subnet_ids")) {
+				subnetID := toString(subnet)
+				if subnetID == "" {
+					continue
+				}
+				rels = append(rels, Relationship{
+					SourceID:   proxyARN,
+					SourceType: "aws:rds:db_proxy",
+					TargetID:   awsARNForResource("subnet", region, accountID, subnetID),
+					TargetType: "aws:ec2:subnet",
+					RelType:    RelInSubnet,
+				})
+			}
 		}
 	}
 

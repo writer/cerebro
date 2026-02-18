@@ -174,3 +174,17 @@ func TestHashRowContent(t *testing.T) {
 
 	_ = e // use e to avoid unused variable
 }
+
+func TestBackfillRequestLookup(t *testing.T) {
+	requests := map[string]string{
+		backfillRequestKey("aws_securityhub_findings", "us-east-1"): "partial page",
+	}
+
+	if !hasBackfillRequest(requests, "AWS_SECURITYHUB_FINDINGS", "US-EAST-1") {
+		t.Fatalf("expected case-insensitive backfill lookup to match")
+	}
+
+	if hasBackfillRequest(requests, "aws_guardduty_findings", "us-east-1") {
+		t.Fatalf("did not expect unrelated table to match backfill request")
+	}
+}

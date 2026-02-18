@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"context"
 	"testing"
 	"time"
 )
@@ -34,6 +35,19 @@ func TestDeriveIncrementalStart(t *testing.T) {
 		expected := base.UTC()
 		if !start.Equal(expected) {
 			t.Fatalf("expected %s, got %s", expected, start)
+		}
+	})
+
+	t.Run("force full backfill context", func(t *testing.T) {
+		ctx := withForceFullBackfill(context.Background())
+		if !shouldForceFullBackfill(ctx) {
+			t.Fatalf("expected force-full-backfill marker")
+		}
+	})
+
+	t.Run("default context does not force full backfill", func(t *testing.T) {
+		if shouldForceFullBackfill(context.Background()) {
+			t.Fatalf("did not expect force-full-backfill marker")
 		}
 	})
 }
