@@ -14,6 +14,7 @@ import (
 // getK8sTables returns all Kubernetes table definitions.
 func (e *K8sSyncEngine) getK8sTables() []K8sTableSpec {
 	return []K8sTableSpec{
+		e.k8sClusterInventoryTable(),
 		e.k8sPodTable(),
 		e.k8sNamespaceTable(),
 		e.k8sNodeTable(),
@@ -26,7 +27,77 @@ func (e *K8sSyncEngine) getK8sTables() []K8sTableSpec {
 		e.k8sClusterRoleTable(),
 		e.k8sClusterRoleBindingTable(),
 		e.k8sServiceAccountBindingTable(),
+		e.k8sRBACRiskyBindingTable(),
 		e.k8sAuditEventTable(),
+	}
+}
+
+func (e *K8sSyncEngine) k8sClusterInventoryTable() K8sTableSpec {
+	return K8sTableSpec{
+		Name: "k8s_cluster_inventory",
+		Columns: []string{
+			"cluster_name",
+			"kubernetes_version",
+			"major",
+			"minor",
+			"platform",
+			"go_version",
+			"git_version",
+			"git_commit",
+			"git_tree_state",
+			"build_date",
+			"node_count",
+			"namespace_count",
+			"pod_count",
+			"service_count",
+		},
+		Fetch: func(ctx context.Context, client kubernetes.Interface, _ string, clusterName string) ([]map[string]interface{}, error) {
+			version, err := client.Discovery().ServerVersion()
+			if err != nil {
+				return nil, err
+			}
+
+			nodes, err := client.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+
+			namespaces, err := client.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+
+			pods, err := client.CoreV1().Pods(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+
+			services, err := client.CoreV1().Services(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+
+			clusterName = normalizeClusterName(clusterName)
+			row := map[string]interface{}{
+				"_cq_id":             buildClusterScopedID(clusterName, "cluster", "inventory"),
+				"cluster_name":       clusterName,
+				"kubernetes_version": version.String(),
+				"major":              version.Major,
+				"minor":              version.Minor,
+				"platform":           version.Platform,
+				"go_version":         version.GoVersion,
+				"git_version":        version.GitVersion,
+				"git_commit":         version.GitCommit,
+				"git_tree_state":     version.GitTreeState,
+				"build_date":         version.BuildDate,
+				"node_count":         len(nodes.Items),
+				"namespace_count":    len(namespaces.Items),
+				"pod_count":          len(pods.Items),
+				"service_count":      len(services.Items),
+			}
+
+			return []map[string]interface{}{row}, nil
+		},
 	}
 }
 
@@ -609,6 +680,133 @@ func (e *K8sSyncEngine) k8sServiceAccountBindingTable() K8sTableSpec {
 	}
 }
 
+func (e *K8sSyncEngine) k8sRBACRiskyBindingTable() K8sTableSpec {
+	return K8sTableSpec{
+		Name: "k8s_rbac_risky_bindings",
+		Columns: []string{
+			"cluster_name",
+			"binding_kind",
+			"binding_name",
+			"binding_namespace",
+			"role_ref_kind",
+			"role_ref_name",
+			"subject_kind",
+			"subject_name",
+			"subject_namespace",
+			"risk_level",
+			"risk_reasons",
+			"wildcard_verbs",
+			"wildcard_resources",
+		},
+		Fetch: func(ctx context.Context, client kubernetes.Interface, namespace, clusterName string) ([]map[string]interface{}, error) {
+			if namespace == "" {
+				namespace = metav1.NamespaceAll
+			}
+
+			roles, err := client.RbacV1().Roles(namespace).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+
+			clusterRoles, err := client.RbacV1().ClusterRoles().List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+
+			roleBindings, err := client.RbacV1().RoleBindings(namespace).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+
+			clusterRoleBindings, err := client.RbacV1().ClusterRoleBindings().List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+
+			clusterName = normalizeClusterName(clusterName)
+
+			roleRules := make(map[string][]rbacv1.PolicyRule, len(roles.Items))
+			for _, role := range roles.Items {
+				roleRules[k8sRoleRulesKey(role.Namespace, role.Name)] = role.Rules
+			}
+
+			clusterRoleRules := make(map[string][]rbacv1.PolicyRule, len(clusterRoles.Items))
+			for _, role := range clusterRoles.Items {
+				clusterRoleRules[strings.TrimSpace(role.Name)] = role.Rules
+			}
+
+			resolveRules := func(bindingNamespace string, roleRef rbacv1.RoleRef) []rbacv1.PolicyRule {
+				roleName := strings.TrimSpace(roleRef.Name)
+				if roleName == "" {
+					return nil
+				}
+
+				switch strings.ToLower(strings.TrimSpace(roleRef.Kind)) {
+				case "clusterrole":
+					return clusterRoleRules[roleName]
+				case "role":
+					return roleRules[k8sRoleRulesKey(bindingNamespace, roleName)]
+				default:
+					return nil
+				}
+			}
+
+			rows := make([]map[string]interface{}, 0)
+			appendRows := func(bindingKind, bindingNamespace, bindingName string, roleRef rbacv1.RoleRef, subjects []rbacv1.Subject) {
+				riskLevel, reasons, wildcardVerbs, wildcardResources := evaluateK8sRBACRisk(resolveRules(bindingNamespace, roleRef))
+				if riskLevel == "low" {
+					return
+				}
+
+				for _, subject := range subjects {
+					subjectName := strings.TrimSpace(subject.Name)
+					if subjectName == "" {
+						continue
+					}
+
+					subjectKind := normalizeK8sSubjectKind(subject.Kind)
+					subjectNamespace := strings.TrimSpace(subject.Namespace)
+					if subjectKind == "ServiceAccount" && subjectNamespace == "" {
+						subjectNamespace = strings.TrimSpace(bindingNamespace)
+					}
+
+					row := map[string]interface{}{
+						"_cq_id":             buildK8sRBACRiskBindingID(clusterName, bindingKind, bindingNamespace, bindingName, subjectKind, subjectNamespace, subjectName),
+						"cluster_name":       clusterName,
+						"binding_kind":       bindingKind,
+						"binding_name":       bindingName,
+						"binding_namespace":  bindingNamespace,
+						"role_ref_kind":      strings.TrimSpace(roleRef.Kind),
+						"role_ref_name":      strings.TrimSpace(roleRef.Name),
+						"subject_kind":       subjectKind,
+						"subject_name":       subjectName,
+						"subject_namespace":  subjectNamespace,
+						"risk_level":         riskLevel,
+						"risk_reasons":       reasons,
+						"wildcard_verbs":     wildcardVerbs,
+						"wildcard_resources": wildcardResources,
+					}
+					rows = append(rows, row)
+				}
+			}
+
+			for _, binding := range roleBindings.Items {
+				appendRows("RoleBinding", binding.Namespace, binding.Name, binding.RoleRef, binding.Subjects)
+			}
+
+			for _, binding := range clusterRoleBindings.Items {
+				appendRows("ClusterRoleBinding", "", binding.Name, binding.RoleRef, binding.Subjects)
+			}
+
+			sort.Slice(rows, func(i, j int) bool {
+				return toString(rows[i]["_cq_id"]) < toString(rows[j]["_cq_id"])
+			})
+
+			return rows, nil
+		},
+	}
+}
+
 func (e *K8sSyncEngine) k8sAuditEventTable() K8sTableSpec {
 	return K8sTableSpec{
 		Name: "k8s_audit_events",
@@ -739,6 +937,134 @@ func buildServiceAccountBindingID(clusterName, bindingType, bindingNamespace, bi
 		parts = append(parts, subjectName)
 	}
 	return strings.Join(parts, "/")
+}
+
+func buildK8sRBACRiskBindingID(clusterName, bindingKind, bindingNamespace, bindingName, subjectKind, subjectNamespace, subjectName string) string {
+	clusterName = normalizeClusterName(clusterName)
+	parts := []string{clusterName, "rbac-risk"}
+	if bindingKind != "" {
+		parts = append(parts, strings.ToLower(strings.TrimSpace(bindingKind)))
+	}
+	if bindingNamespace != "" {
+		parts = append(parts, strings.TrimSpace(bindingNamespace))
+	}
+	if bindingName != "" {
+		parts = append(parts, strings.TrimSpace(bindingName))
+	}
+	if subjectKind != "" {
+		parts = append(parts, strings.ToLower(strings.TrimSpace(subjectKind)))
+	}
+	if subjectNamespace != "" {
+		parts = append(parts, strings.TrimSpace(subjectNamespace))
+	}
+	if subjectName != "" {
+		parts = append(parts, strings.TrimSpace(subjectName))
+	}
+	return strings.Join(parts, "/")
+}
+
+func k8sRoleRulesKey(namespace, roleName string) string {
+	return strings.TrimSpace(namespace) + "/" + strings.TrimSpace(roleName)
+}
+
+func normalizeK8sSubjectKind(kind string) string {
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case "serviceaccount":
+		return "ServiceAccount"
+	case "user":
+		return "User"
+	case "group":
+		return "Group"
+	default:
+		return strings.TrimSpace(kind)
+	}
+}
+
+func evaluateK8sRBACRisk(rules []rbacv1.PolicyRule) (string, []string, bool, bool) {
+	if len(rules) == 0 {
+		return "low", nil, false, false
+	}
+
+	wildcardVerbs := false
+	wildcardResources := false
+	hasEscalationVerb := false
+	hasRBACWrite := false
+	hasSecretAccess := false
+	hasPodExec := false
+
+	for _, rule := range rules {
+		if containsAnyFold(rule.Verbs, "*") {
+			wildcardVerbs = true
+		}
+		if containsAnyFold(rule.Resources, "*") || containsAnyFold(rule.NonResourceURLs, "*") {
+			wildcardResources = true
+		}
+		if containsAnyFold(rule.Verbs, "bind", "escalate", "impersonate") {
+			hasEscalationVerb = true
+		}
+		if containsAnyFold(rule.Resources, "roles", "clusterroles", "rolebindings", "clusterrolebindings") &&
+			containsAnyFold(rule.Verbs, "create", "update", "patch", "delete", "bind", "escalate", "*") {
+			hasRBACWrite = true
+		}
+		if containsAnyFold(rule.Resources, "secrets", "serviceaccounts/token") &&
+			containsAnyFold(rule.Verbs, "get", "list", "watch", "create", "update", "patch", "delete", "*") {
+			hasSecretAccess = true
+		}
+		if containsAnyFold(rule.Resources, "pods/exec", "pods/attach", "pods/portforward") &&
+			containsAnyFold(rule.Verbs, "create", "get", "*") {
+			hasPodExec = true
+		}
+	}
+
+	riskLevel := "low"
+	if hasEscalationVerb || hasRBACWrite || (wildcardVerbs && wildcardResources) {
+		riskLevel = "high"
+	} else if wildcardVerbs || wildcardResources || hasSecretAccess || hasPodExec {
+		riskLevel = "medium"
+	}
+
+	if riskLevel == "low" {
+		return "low", nil, wildcardVerbs, wildcardResources
+	}
+
+	reasons := make([]string, 0, 6)
+	if wildcardVerbs {
+		reasons = append(reasons, "wildcard_verbs")
+	}
+	if wildcardResources {
+		reasons = append(reasons, "wildcard_resources")
+	}
+	if hasEscalationVerb {
+		reasons = append(reasons, "privilege_escalation_verbs")
+	}
+	if hasRBACWrite {
+		reasons = append(reasons, "rbac_write_access")
+	}
+	if hasSecretAccess {
+		reasons = append(reasons, "secret_access")
+	}
+	if hasPodExec {
+		reasons = append(reasons, "pod_exec_access")
+	}
+	sort.Strings(reasons)
+
+	return riskLevel, reasons, wildcardVerbs, wildcardResources
+}
+
+func containsAnyFold(values []string, targets ...string) bool {
+	if len(values) == 0 || len(targets) == 0 {
+		return false
+	}
+
+	for _, value := range values {
+		for _, target := range targets {
+			if strings.EqualFold(strings.TrimSpace(value), strings.TrimSpace(target)) {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 func podSpecToMap(spec corev1.PodSpec) map[string]interface{} {

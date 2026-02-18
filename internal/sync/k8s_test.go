@@ -29,8 +29,10 @@ func TestK8sTables(t *testing.T) {
 	}
 
 	required := map[string]bool{
+		"k8s_cluster_inventory":             false,
 		"k8s_core_service_accounts":         false,
 		"k8s_rbac_service_account_bindings": false,
+		"k8s_rbac_risky_bindings":           false,
 	}
 	for _, table := range tables {
 		if _, ok := required[table.Name]; ok {
@@ -229,5 +231,59 @@ func TestReferenceNameHelpers(t *testing.T) {
 	}
 	if got := localObjectReferencesToNames([]corev1.LocalObjectReference{{Name: "pull-b"}, {Name: "pull-a"}, {Name: " "}}); len(got) != 2 || got[0] != "pull-a" || got[1] != "pull-b" {
 		t.Fatalf("unexpected local object reference names: %v", got)
+	}
+}
+
+func TestEvaluateK8sRBACRisk(t *testing.T) {
+	rules := []rbacv1.PolicyRule{{
+		Verbs:     []string{"*"},
+		Resources: []string{"*"},
+	}}
+
+	risk, reasons, wildcardVerbs, wildcardResources := evaluateK8sRBACRisk(rules)
+	if risk != "high" {
+		t.Fatalf("expected high risk, got %s", risk)
+	}
+	if !wildcardVerbs || !wildcardResources {
+		t.Fatalf("expected wildcard flags to be true, got verbs=%v resources=%v", wildcardVerbs, wildcardResources)
+	}
+	if len(reasons) == 0 {
+		t.Fatal("expected non-empty risk reasons")
+	}
+
+	mediumRisk, mediumReasons, _, _ := evaluateK8sRBACRisk([]rbacv1.PolicyRule{{
+		Verbs:     []string{"get", "list"},
+		Resources: []string{"secrets"},
+	}})
+	if mediumRisk != "medium" {
+		t.Fatalf("expected medium risk, got %s", mediumRisk)
+	}
+	if len(mediumReasons) == 0 {
+		t.Fatal("expected medium risk reasons")
+	}
+
+	lowRisk, lowReasons, _, _ := evaluateK8sRBACRisk([]rbacv1.PolicyRule{{
+		Verbs:     []string{"get", "list"},
+		Resources: []string{"configmaps"},
+	}})
+	if lowRisk != "low" {
+		t.Fatalf("expected low risk, got %s", lowRisk)
+	}
+	if len(lowReasons) != 0 {
+		t.Fatalf("expected no low risk reasons, got %v", lowReasons)
+	}
+}
+
+func TestK8sRBACRiskBindingHelpers(t *testing.T) {
+	id := buildK8sRBACRiskBindingID("cluster-a", "RoleBinding", "team-a", "binding-a", "ServiceAccount", "team-a", "sa-a")
+	if id != "cluster-a/rbac-risk/rolebinding/team-a/binding-a/serviceaccount/team-a/sa-a" {
+		t.Fatalf("unexpected risk binding id: %s", id)
+	}
+
+	if kind := normalizeK8sSubjectKind("serviceaccount"); kind != "ServiceAccount" {
+		t.Fatalf("unexpected subject kind normalization: %s", kind)
+	}
+	if kind := normalizeK8sSubjectKind("User"); kind != "User" {
+		t.Fatalf("unexpected user subject kind normalization: %s", kind)
 	}
 }
