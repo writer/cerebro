@@ -242,6 +242,41 @@ func TestGCPArtifactRelationshipHelpers(t *testing.T) {
 	}
 }
 
+func TestGCPArtifactImageRelationshipHelpers(t *testing.T) {
+	imageName := "projects/p/locations/us-central1/repositories/repo-a/dockerImages/team/app@sha256:abcd"
+	imageURI := "us-central1-docker.pkg.dev/p/repo-a/team/app@sha256:abcd"
+
+	if got := gcpArtifactImageID(imageURI, "", ""); got != imageURI {
+		t.Fatalf("expected image id from uri, got %s", got)
+	}
+	if got := gcpArtifactImageID("", imageURI, ""); got != imageURI {
+		t.Fatalf("expected image id from _cq_id fallback, got %s", got)
+	}
+	if got := gcpArtifactImageID("", "", imageName); got != imageName {
+		t.Fatalf("expected image id from name fallback, got %s", got)
+	}
+
+	if got := gcpArtifactRepositoryID("projects/p/locations/us-central1/repositories/repo-a", ""); got != "projects/p/locations/us-central1/repositories/repo-a" {
+		t.Fatalf("unexpected repository id from repository column: %s", got)
+	}
+	if got := gcpArtifactRepositoryID("", imageName); got != "projects/p/locations/us-central1/repositories/repo-a" {
+		t.Fatalf("unexpected repository id from image name: %s", got)
+	}
+
+	if got := gcpArtifactPackageIDFromImage(imageName); got != "projects/p/locations/us-central1/repositories/repo-a/packages/team/app" {
+		t.Fatalf("unexpected package id from digest image: %s", got)
+	}
+	if got := gcpArtifactPackageIDFromImage("projects/p/locations/us-central1/repositories/repo-a/dockerImages/team/app:latest"); got != "projects/p/locations/us-central1/repositories/repo-a/packages/team/app" {
+		t.Fatalf("unexpected package id from tagged image: %s", got)
+	}
+	if got := gcpArtifactPackageIDFromImage("projects/p/locations/us-central1/repositories/repo-a/dockerImages/team/app"); got != "projects/p/locations/us-central1/repositories/repo-a/packages/team/app" {
+		t.Fatalf("unexpected package id from image without digest/tag: %s", got)
+	}
+	if got := gcpArtifactPackageIDFromImage("projects/p/locations/us-central1/repositories/repo-a"); got != "" {
+		t.Fatalf("expected empty package id for non-image input, got %s", got)
+	}
+}
+
 func TestGCPAssetColumnExpression(t *testing.T) {
 	columns := map[string]struct{}{
 		"ASSET_TYPE": {},

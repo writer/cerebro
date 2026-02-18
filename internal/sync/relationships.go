@@ -28,26 +28,27 @@ type Relationship struct {
 
 // RelationshipType constants
 const (
-	RelHasRole       = "HAS_ROLE"
-	RelMemberOf      = "MEMBER_OF"
-	RelAttachedTo    = "ATTACHED_TO"
-	RelBelongsTo     = "BELONGS_TO"
-	RelCanAccess     = "CAN_ACCESS"
-	RelExposedTo     = "EXPOSED_TO"
-	RelTrustedBy     = "TRUSTED_BY"
-	RelContains      = "CONTAINS"
-	RelProtects      = "PROTECTS"
-	RelEncryptedBy   = "ENCRYPTED_BY"
-	RelManagedBy     = "MANAGED_BY"
-	RelLogsTo        = "LOGS_TO"
-	RelReadsFrom     = "READS_FROM"
-	RelWritesTo      = "WRITES_TO"
-	RelInvokes       = "INVOKES"
-	RelRoutes        = "ROUTES"
-	RelInSubnet      = "IN_SUBNET"
-	RelInVPC         = "IN_VPC"
-	RelAssumableBy   = "ASSUMABLE_BY"
-	RelHasPermission = "HAS_PERMISSION"
+	RelHasRole          = "HAS_ROLE"
+	RelMemberOf         = "MEMBER_OF"
+	RelAttachedTo       = "ATTACHED_TO"
+	RelBelongsTo        = "BELONGS_TO"
+	RelCanAccess        = "CAN_ACCESS"
+	RelExposedTo        = "EXPOSED_TO"
+	RelTrustedBy        = "TRUSTED_BY"
+	RelContains         = "CONTAINS"
+	RelProtects         = "PROTECTS"
+	RelEncryptedBy      = "ENCRYPTED_BY"
+	RelManagedBy        = "MANAGED_BY"
+	RelLogsTo           = "LOGS_TO"
+	RelReadsFrom        = "READS_FROM"
+	RelWritesTo         = "WRITES_TO"
+	RelInvokes          = "INVOKES"
+	RelRoutes           = "ROUTES"
+	RelInSubnet         = "IN_SUBNET"
+	RelInVPC            = "IN_VPC"
+	RelAssumableBy      = "ASSUMABLE_BY"
+	RelHasPermission    = "HAS_PERMISSION"
+	RelHasVulnerability = "HAS_VULNERABILITY"
 )
 
 // RelationshipExtractor extracts relationships from synced resources
@@ -2470,6 +2471,88 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 		}
 	}
 
+	// GCP Artifact Registry images (security sync) - repository/package membership
+	query = `SELECT _CQ_ID, URI, NAME, REPOSITORY
+	         FROM GCP_ARTIFACT_REGISTRY_IMAGES
+	         WHERE (URI IS NOT NULL OR _CQ_ID IS NOT NULL OR NAME IS NOT NULL)`
+
+	if result, ok, err := r.queryRowsForTable(ctx, "GCP_ARTIFACT_REGISTRY_IMAGES", query); err != nil {
+		return 0, err
+	} else if ok {
+		for _, row := range result.Rows {
+			imageID := gcpArtifactImageID(
+				toString(queryRow(row, "uri")),
+				toString(queryRow(row, "_cq_id")),
+				toString(queryRow(row, "name")),
+			)
+			if imageID == "" {
+				continue
+			}
+
+			repositoryID := gcpArtifactRepositoryID(
+				toString(queryRow(row, "repository")),
+				toString(queryRow(row, "name")),
+			)
+			if repositoryID != "" {
+				rels = append(rels, Relationship{
+					SourceID:   imageID,
+					SourceType: "gcp:artifactregistry:image",
+					TargetID:   repositoryID,
+					TargetType: "gcp:artifactregistry:repository",
+					RelType:    RelBelongsTo,
+				})
+			}
+
+			if packageID := gcpArtifactPackageIDFromImage(toString(queryRow(row, "name"))); packageID != "" {
+				rels = append(rels, Relationship{
+					SourceID:   imageID,
+					SourceType: "gcp:artifactregistry:image",
+					TargetID:   packageID,
+					TargetType: "gcp:artifactregistry:package",
+					RelType:    RelBelongsTo,
+				})
+			}
+		}
+	}
+
+	// GCP vulnerability occurrences - image vulnerability relationships
+	query = `SELECT _CQ_ID, RESOURCE_URI, SEVERITY, CVE_ID, FIX_AVAILABLE
+	         FROM GCP_CONTAINER_VULNERABILITIES
+	         WHERE RESOURCE_URI IS NOT NULL AND _CQ_ID IS NOT NULL`
+
+	if result, ok, err := r.queryRowsForTable(ctx, "GCP_CONTAINER_VULNERABILITIES", query); err != nil {
+		return 0, err
+	} else if ok {
+		for _, row := range result.Rows {
+			imageID := gcpArtifactImageID(toString(queryRow(row, "resource_uri")), "", "")
+			vulnID := normalizeRelationshipID(toString(queryRow(row, "_cq_id")))
+			if imageID == "" || vulnID == "" {
+				continue
+			}
+
+			props := map[string]interface{}{}
+			if severity := toString(queryRow(row, "severity")); severity != "" {
+				props["severity"] = severity
+			}
+			if cve := toString(queryRow(row, "cve_id")); cve != "" {
+				props["cve_id"] = cve
+			}
+			if fixAvailable := queryRow(row, "fix_available"); fixAvailable != nil {
+				props["fix_available"] = fixAvailable
+			}
+
+			propJSON, _ := encodeProperties(props)
+			rels = append(rels, Relationship{
+				SourceID:   imageID,
+				SourceType: "gcp:artifactregistry:image",
+				TargetID:   vulnID,
+				TargetType: "gcp:container:vulnerability",
+				RelType:    RelHasVulnerability,
+				Properties: propJSON,
+			})
+		}
+	}
+
 	// GCP Org Policy relationships
 	query = `SELECT SELF_LINK, PARENT, CONSTRAINT
 	         FROM GCP_ORG_POLICIES
@@ -3332,6 +3415,56 @@ func gcpArtifactPackageIDFromVersion(versionID, projectID, repository, packageNa
 		return ""
 	}
 	return fmt.Sprintf("projects/%s/locations/-/repositories/%s/packages/%s", projectID, repository, packageName)
+}
+
+func gcpArtifactImageID(uri, cqID, name string) string {
+	if id := normalizeRelationshipID(uri); id != "" {
+		return id
+	}
+	if id := normalizeRelationshipID(cqID); id != "" {
+		return id
+	}
+	return normalizeRelationshipID(name)
+}
+
+func gcpArtifactRepositoryID(repository, imageName string) string {
+	if id := normalizeRelationshipID(repository); id != "" {
+		return id
+	}
+	imageName = normalizeRelationshipID(imageName)
+	if imageName == "" {
+		return ""
+	}
+	if idx := strings.Index(imageName, "/dockerImages/"); idx > 0 {
+		return imageName[:idx]
+	}
+	return ""
+}
+
+func gcpArtifactPackageIDFromImage(imageName string) string {
+	imageName = normalizeRelationshipID(imageName)
+	if imageName == "" {
+		return ""
+	}
+	idx := strings.Index(imageName, "/dockerImages/")
+	if idx <= 0 {
+		return ""
+	}
+
+	repoID := imageName[:idx]
+	imageRef := strings.TrimSpace(imageName[idx+len("/dockerImages/"):])
+	if imageRef == "" {
+		return ""
+	}
+	if suffixIdx := strings.IndexAny(imageRef, "@:"); suffixIdx > 0 {
+		imageRef = imageRef[:suffixIdx]
+	}
+	imageRef = strings.TrimSpace(imageRef)
+	if imageRef == "" {
+		return ""
+	}
+
+	return fmt.Sprintf("%s/packages/%s", repoID, imageRef)
 }
 
 func toString(v interface{}) string {
