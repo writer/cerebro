@@ -277,6 +277,20 @@ func TestGCPArtifactImageRelationshipHelpers(t *testing.T) {
 	}
 }
 
+func TestGCPSCCFindingID(t *testing.T) {
+	findingName := "organizations/123/sources/456/findings/finding-a"
+
+	if got := gcpSCCFindingID(findingName, ""); got != findingName {
+		t.Fatalf("expected id from _cq_id, got %s", got)
+	}
+	if got := gcpSCCFindingID("", findingName); got != findingName {
+		t.Fatalf("expected id from name fallback, got %s", got)
+	}
+	if got := gcpSCCFindingID("", ""); got != "" {
+		t.Fatalf("expected empty id when values are missing, got %s", got)
+	}
+}
+
 func TestGCPAssetColumnExpression(t *testing.T) {
 	columns := map[string]struct{}{
 		"ASSET_TYPE": {},

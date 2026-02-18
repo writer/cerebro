@@ -2553,6 +2553,47 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 		}
 	}
 
+	// GCP SCC findings - finding to affected resource relationships
+	query = `SELECT _CQ_ID, NAME, RESOURCE_NAME, CATEGORY, SEVERITY, STATE
+	         FROM GCP_SCC_FINDINGS
+	         WHERE RESOURCE_NAME IS NOT NULL AND (_CQ_ID IS NOT NULL OR NAME IS NOT NULL)`
+
+	if result, ok, err := r.queryRowsForTable(ctx, "GCP_SCC_FINDINGS", query); err != nil {
+		return 0, err
+	} else if ok {
+		for _, row := range result.Rows {
+			findingID := gcpSCCFindingID(
+				toString(queryRow(row, "_cq_id")),
+				toString(queryRow(row, "name")),
+			)
+			resourceID := normalizeRelationshipID(toString(queryRow(row, "resource_name")))
+			if findingID == "" || resourceID == "" {
+				continue
+			}
+
+			props := map[string]interface{}{}
+			if category := toString(queryRow(row, "category")); category != "" {
+				props["category"] = category
+			}
+			if severity := toString(queryRow(row, "severity")); severity != "" {
+				props["severity"] = severity
+			}
+			if state := toString(queryRow(row, "state")); state != "" {
+				props["state"] = state
+			}
+
+			propJSON, _ := encodeProperties(props)
+			rels = append(rels, Relationship{
+				SourceID:   findingID,
+				SourceType: "gcp:scc:finding",
+				TargetID:   resourceID,
+				TargetType: "gcp:resource",
+				RelType:    RelBelongsTo,
+				Properties: propJSON,
+			})
+		}
+	}
+
 	// GCP Org Policy relationships
 	query = `SELECT SELF_LINK, PARENT, CONSTRAINT
 	         FROM GCP_ORG_POLICIES
@@ -3465,6 +3506,13 @@ func gcpArtifactPackageIDFromImage(imageName string) string {
 	}
 
 	return fmt.Sprintf("%s/packages/%s", repoID, imageRef)
+}
+
+func gcpSCCFindingID(cqID, name string) string {
+	if id := normalizeRelationshipID(cqID); id != "" {
+		return id
+	}
+	return normalizeRelationshipID(name)
 }
 
 func toString(v interface{}) string {
