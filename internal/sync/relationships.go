@@ -2380,6 +2380,96 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 		}
 	}
 
+	// GCP Artifact Registry packages - repository membership relationships
+	query = `SELECT _CQ_ID, PROJECT_ID, NAME, SELF_LINK, REPOSITORY
+	         FROM GCP_ARTIFACT_REGISTRY_PACKAGES
+	         WHERE (_CQ_ID IS NOT NULL OR SELF_LINK IS NOT NULL)`
+
+	if result, ok, err := r.queryRowsForTable(ctx, "GCP_ARTIFACT_REGISTRY_PACKAGES", query); err != nil {
+		return 0, err
+	} else if ok {
+		for _, row := range result.Rows {
+			packageID := gcpArtifactPackageID(
+				toString(queryRow(row, "_cq_id")),
+				toString(queryRow(row, "self_link")),
+				toString(queryRow(row, "project_id")),
+				toString(queryRow(row, "repository")),
+				toString(queryRow(row, "name")),
+			)
+			if packageID == "" {
+				continue
+			}
+
+			repositoryID := gcpArtifactRepositoryIDFromPackage(
+				packageID,
+				toString(queryRow(row, "project_id")),
+				toString(queryRow(row, "repository")),
+			)
+			if repositoryID == "" {
+				continue
+			}
+
+			rels = append(rels, Relationship{
+				SourceID:   packageID,
+				SourceType: "gcp:artifactregistry:package",
+				TargetID:   repositoryID,
+				TargetType: "gcp:artifactregistry:repository",
+				RelType:    RelBelongsTo,
+			})
+		}
+	}
+
+	// GCP Artifact Registry versions - package membership relationships
+	query = `SELECT _CQ_ID, PROJECT_ID, NAME, SELF_LINK, REPOSITORY, PACKAGE AS PACKAGE_NAME
+	         FROM GCP_ARTIFACT_REGISTRY_VERSIONS
+	         WHERE (_CQ_ID IS NOT NULL OR SELF_LINK IS NOT NULL)`
+
+	if result, ok, err := r.queryRowsForTable(ctx, "GCP_ARTIFACT_REGISTRY_VERSIONS", query); err != nil {
+		return 0, err
+	} else if ok {
+		for _, row := range result.Rows {
+			projectID := toString(queryRow(row, "project_id"))
+			repository := toString(queryRow(row, "repository"))
+			packageName := toString(queryRow(row, "package_name"))
+
+			versionID := gcpArtifactVersionID(
+				toString(queryRow(row, "_cq_id")),
+				toString(queryRow(row, "self_link")),
+				projectID,
+				repository,
+				packageName,
+				toString(queryRow(row, "name")),
+			)
+			if versionID == "" {
+				continue
+			}
+
+			packageID := gcpArtifactPackageIDFromVersion(versionID, projectID, repository, packageName)
+			if packageID == "" {
+				continue
+			}
+			repositoryID := gcpArtifactRepositoryIDFromPackage(packageID, projectID, repository)
+
+			rels = append(rels, Relationship{
+				SourceID:   versionID,
+				SourceType: "gcp:artifactregistry:version",
+				TargetID:   packageID,
+				TargetType: "gcp:artifactregistry:package",
+				RelType:    RelBelongsTo,
+			})
+
+			if repositoryID != "" {
+				rels = append(rels, Relationship{
+					SourceID:   versionID,
+					SourceType: "gcp:artifactregistry:version",
+					TargetID:   repositoryID,
+					TargetType: "gcp:artifactregistry:repository",
+					RelType:    RelBelongsTo,
+				})
+			}
+		}
+	}
+
 	// GCP Org Policy relationships
 	query = `SELECT SELF_LINK, PARENT, CONSTRAINT
 	         FROM GCP_ORG_POLICIES
@@ -3180,6 +3270,68 @@ func extractGCPKMSKeyID(value interface{}) string {
 		}
 	}
 	return normalizeRelationshipID(toString(value))
+}
+
+func gcpArtifactPackageID(cqID, selfLink, projectID, repository, packageName string) string {
+	if id := normalizeRelationshipID(cqID); id != "" {
+		return id
+	}
+	if id := normalizeRelationshipID(selfLink); id != "" {
+		return id
+	}
+	projectID = strings.TrimSpace(projectID)
+	repository = strings.TrimSpace(repository)
+	packageName = strings.TrimSpace(packageName)
+	if projectID == "" || repository == "" || packageName == "" {
+		return ""
+	}
+	return fmt.Sprintf("projects/%s/locations/-/repositories/%s/packages/%s", projectID, repository, packageName)
+}
+
+func gcpArtifactVersionID(cqID, selfLink, projectID, repository, packageName, versionName string) string {
+	if id := normalizeRelationshipID(cqID); id != "" {
+		return id
+	}
+	if id := normalizeRelationshipID(selfLink); id != "" {
+		return id
+	}
+	projectID = strings.TrimSpace(projectID)
+	repository = strings.TrimSpace(repository)
+	packageName = strings.TrimSpace(packageName)
+	versionName = strings.TrimSpace(versionName)
+	if projectID == "" || repository == "" || packageName == "" || versionName == "" {
+		return ""
+	}
+	return fmt.Sprintf("projects/%s/locations/-/repositories/%s/packages/%s/versions/%s", projectID, repository, packageName, versionName)
+}
+
+func gcpArtifactRepositoryIDFromPackage(packageID, projectID, repository string) string {
+	if packageID = normalizeRelationshipID(packageID); packageID != "" {
+		if idx := strings.Index(packageID, "/packages/"); idx > 0 {
+			return packageID[:idx]
+		}
+	}
+	projectID = strings.TrimSpace(projectID)
+	repository = strings.TrimSpace(repository)
+	if projectID == "" || repository == "" {
+		return ""
+	}
+	return fmt.Sprintf("projects/%s/locations/-/repositories/%s", projectID, repository)
+}
+
+func gcpArtifactPackageIDFromVersion(versionID, projectID, repository, packageName string) string {
+	if versionID = normalizeRelationshipID(versionID); versionID != "" {
+		if idx := strings.Index(versionID, "/versions/"); idx > 0 {
+			return versionID[:idx]
+		}
+	}
+	projectID = strings.TrimSpace(projectID)
+	repository = strings.TrimSpace(repository)
+	packageName = strings.TrimSpace(packageName)
+	if projectID == "" || repository == "" || packageName == "" {
+		return ""
+	}
+	return fmt.Sprintf("projects/%s/locations/-/repositories/%s/packages/%s", projectID, repository, packageName)
 }
 
 func toString(v interface{}) string {

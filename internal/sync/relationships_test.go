@@ -201,6 +201,47 @@ func TestExtractGCPKMSKeyID(t *testing.T) {
 	}
 }
 
+func TestGCPArtifactRelationshipHelpers(t *testing.T) {
+	packageID := "projects/p/locations/us-central1/repositories/repo-a/packages/pkg-a"
+	versionID := packageID + "/versions/1.0.0"
+
+	if got := gcpArtifactPackageID(packageID, "", "", "", ""); got != packageID {
+		t.Fatalf("expected package id from _cq_id, got %s", got)
+	}
+
+	if got := gcpArtifactVersionID(versionID, "", "", "", "", ""); got != versionID {
+		t.Fatalf("expected version id from _cq_id, got %s", got)
+	}
+
+	if got := gcpArtifactRepositoryIDFromPackage(packageID, "", ""); got != "projects/p/locations/us-central1/repositories/repo-a" {
+		t.Fatalf("unexpected repository id: %s", got)
+	}
+
+	if got := gcpArtifactPackageIDFromVersion(versionID, "", "", ""); got != packageID {
+		t.Fatalf("unexpected package id from version: %s", got)
+	}
+
+	if got := gcpArtifactPackageID("", "", "p", "repo-a", "pkg-a"); got != "projects/p/locations/-/repositories/repo-a/packages/pkg-a" {
+		t.Fatalf("unexpected package fallback id: %s", got)
+	}
+
+	if got := gcpArtifactVersionID("", "", "p", "repo-a", "pkg-a", "1.0.0"); got != "projects/p/locations/-/repositories/repo-a/packages/pkg-a/versions/1.0.0" {
+		t.Fatalf("unexpected version fallback id: %s", got)
+	}
+
+	if got := gcpArtifactRepositoryIDFromPackage("", "p", "repo-a"); got != "projects/p/locations/-/repositories/repo-a" {
+		t.Fatalf("unexpected repository fallback id: %s", got)
+	}
+
+	if got := gcpArtifactPackageIDFromVersion("", "p", "repo-a", "pkg-a"); got != "projects/p/locations/-/repositories/repo-a/packages/pkg-a" {
+		t.Fatalf("unexpected package fallback from version: %s", got)
+	}
+
+	if got := gcpArtifactPackageID("", "", "", "", ""); got != "" {
+		t.Fatalf("expected empty id for missing package fields, got %s", got)
+	}
+}
+
 func TestGCPAssetColumnExpression(t *testing.T) {
 	columns := map[string]struct{}{
 		"ASSET_TYPE": {},
