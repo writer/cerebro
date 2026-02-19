@@ -7,6 +7,7 @@ import (
 
 	assetapi "cloud.google.com/go/asset/apiv1"
 	"cloud.google.com/go/asset/apiv1/assetpb"
+	"cloud.google.com/go/iam/apiv1/iampb"
 	"google.golang.org/api/iterator"
 )
 
@@ -47,6 +48,7 @@ func (e *GCPSyncEngine) gcpArtifactRegistryRepositoryTable() GCPTableSpec {
 			"create_time",
 			"update_time",
 			"labels",
+			"iam_policy",
 			"self_link",
 			"resource_data",
 		},
@@ -156,6 +158,11 @@ func (e *GCPSyncEngine) fetchGCPArtifactRegistryRepositories(ctx context.Context
 		return nil, err
 	}
 
+	iamPolicies, err := e.searchGCPIAMPolicies(ctx, projectID, "artifactregistry.googleapis.com/Repository")
+	if err != nil {
+		iamPolicies = nil
+	}
+
 	rows := make([]map[string]interface{}, 0, len(resources))
 	for _, resource := range resources {
 		if resource == nil {
@@ -199,6 +206,9 @@ func (e *GCPSyncEngine) fetchGCPArtifactRegistryRepositories(ctx context.Context
 		}
 		if size := gcpAssetValue(attrs, "sizeBytes", "size_bytes"); size != nil {
 			row["size_bytes"] = size
+		}
+		if policy, ok := iamPolicies[normalizeGCPAssetName(selfLink)]; ok {
+			row["iam_policy"] = policy
 		}
 
 		rows = append(rows, row)
@@ -329,6 +339,95 @@ func (e *GCPSyncEngine) searchGCPResources(ctx context.Context, projectID, asset
 	}
 
 	return rows, nil
+}
+
+func (e *GCPSyncEngine) searchGCPIAMPolicies(ctx context.Context, projectID, assetType string) (map[string]map[string]interface{}, error) {
+	client, err := assetapi.NewClient(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("create asset client: %w", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	req := &assetpb.SearchAllIamPoliciesRequest{
+		Scope:      fmt.Sprintf("projects/%s", projectID),
+		AssetTypes: []string{assetType},
+		PageSize:   500,
+	}
+
+	it := client.SearchAllIamPolicies(ctx, req)
+	rows := make(map[string]map[string]interface{})
+	for {
+		policyResult, err := it.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("search iam policies for %s: %w", assetType, err)
+		}
+
+		resourceName := normalizeGCPAssetName(policyResult.GetResource())
+		if resourceName == "" {
+			continue
+		}
+
+		policy := policyResult.GetPolicy()
+		if policy == nil {
+			continue
+		}
+
+		serialized := map[string]interface{}{
+			"bindings": serializeGCPIAMBindings(policy.GetBindings()),
+		}
+		if policy.GetVersion() != 0 {
+			serialized["version"] = policy.GetVersion()
+		}
+
+		rows[resourceName] = serialized
+	}
+
+	return rows, nil
+}
+
+func serializeGCPIAMBindings(bindings []*iampb.Binding) []map[string]interface{} {
+	if len(bindings) == 0 {
+		return nil
+	}
+
+	serialized := make([]map[string]interface{}, 0, len(bindings))
+	for _, binding := range bindings {
+		if binding == nil {
+			continue
+		}
+
+		members := append([]string(nil), binding.GetMembers()...)
+		entry := map[string]interface{}{
+			"role":          binding.GetRole(),
+			"members":       members,
+			"members_count": len(members),
+		}
+
+		if condition := binding.GetCondition(); condition != nil {
+			entry["condition"] = map[string]interface{}{
+				"title":       condition.GetTitle(),
+				"description": condition.GetDescription(),
+				"expression":  condition.GetExpression(),
+			}
+		}
+
+		serialized = append(serialized, entry)
+	}
+
+	if len(serialized) == 0 {
+		return nil
+	}
+
+	return serialized
+}
+
+func normalizeGCPAssetName(resourceName string) string {
+	resourceName = strings.TrimSpace(resourceName)
+	resourceName = strings.TrimPrefix(resourceName, "//")
+	return resourceName
 }
 
 func gcpAssetAttributes(resource *assetpb.ResourceSearchResult) map[string]interface{} {

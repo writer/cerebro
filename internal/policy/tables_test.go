@@ -16,6 +16,8 @@ func TestResourceToTableMapping(t *testing.T) {
 		{"aws::ec2::instance", 1},
 		{"gcp::storage::bucket", 1},
 		{"gcp::sql::database_instance", 1},
+		{"gcp::artifact_registry::repository", 1},
+		{"gcp::container_registry::registry", 1},
 		{"azure::compute::virtual_machine", 1},
 		{"azure::compute::vm", 1},
 		{"azure::functionapp::function", 1},
@@ -74,6 +76,13 @@ func TestPolicyGetRequiredTables(t *testing.T) {
 	p.Resource = "gcp::sql::database_instance"
 	tables = p.GetRequiredTables()
 	want = []string{"gcp_sql_instances"}
+	if !reflect.DeepEqual(tables, want) {
+		t.Errorf("got %v, want %v", tables, want)
+	}
+
+	p.Resource = "gcp::artifact_registry::repository"
+	tables = p.GetRequiredTables()
+	want = []string{"gcp_artifact_registry_repositories"}
 	if !reflect.DeepEqual(tables, want) {
 		t.Errorf("got %v, want %v", tables, want)
 	}
