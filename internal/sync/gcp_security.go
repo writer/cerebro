@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"time"
 
@@ -178,6 +179,12 @@ func (s *GCPSecuritySync) syncArtifactRegistryImages(ctx context.Context) error 
 		scanSignals = map[string]artifactImageScanSignal{}
 	}
 
+	vulnerabilitySignals, err := s.fetchArtifactRegistryImageVulnerabilitySignals(ctx)
+	if err != nil {
+		s.logger.Warn("failed to fetch artifact registry image vulnerability signals", "error", err)
+		vulnerabilitySignals = map[string]artifactImageVulnerabilitySignal{}
+	}
+
 	// List all repositories across common locations
 	locations := []string{"us", "us-central1", "us-east1", "us-west1", "europe-west1", "asia-east1"}
 
@@ -222,9 +229,15 @@ func (s *GCPSecuritySync) syncArtifactRegistryImages(ctx context.Context) error 
 				normalizedURI := normalizeArtifactImageURI(img.GetUri())
 				signal := secretSignals[normalizedURI]
 				scanSignal := scanSignals[normalizedURI]
+				vulnSignal := vulnerabilitySignals[normalizedURI]
 				scanStatus := strings.TrimSpace(scanSignal.ScanStatus)
 				if scanStatus == "" {
 					scanStatus = "UNSCANNED"
+				}
+
+				vulnerabilitiesJSON := "[]"
+				if len(vulnSignal.CVEIDs) > 0 {
+					vulnerabilitiesJSON = marshalJSON(vulnSignal.CVEIDs)
 				}
 
 				secretsJSON := "[]"
@@ -247,6 +260,9 @@ func (s *GCPSecuritySync) syncArtifactRegistryImages(ctx context.Context) error 
 					"registry_type":                 detectContainerRegistryType(img.GetUri()),
 					"scanned":                       scanSignal.Scanned,
 					"scan_status":                   scanStatus,
+					"vulnerabilities":               vulnerabilitiesJSON,
+					"has_vulnerabilities":           vulnSignal.HasVulnerabilities,
+					"has_openssl_vulnerability":     vulnSignal.HasOpenSSLVulnerability,
 					"secrets":                       secretsJSON,
 					"has_cloud_keys":                signal.HasCloudKeys,
 					"has_high_privilege_cloud_keys": signal.HasHighPrivilegeCloudKeys,
@@ -276,6 +292,12 @@ type artifactImageScanSignal struct {
 	Scanned    bool
 	ScanStatus string
 	UpdatedAt  time.Time
+}
+
+type artifactImageVulnerabilitySignal struct {
+	CVEIDs                  []string
+	HasVulnerabilities      bool
+	HasOpenSSLVulnerability bool
 }
 
 func (s *GCPSecuritySync) fetchArtifactRegistryImageSecretSignals(ctx context.Context) (map[string]artifactImageSecretSignal, error) {
@@ -394,6 +416,63 @@ func (s *GCPSecuritySync) fetchArtifactRegistryImageScanSignals(ctx context.Cont
 		if !ok || shouldReplaceScanSignal(existing, candidate) {
 			results[resourceURI] = candidate
 		}
+	}
+
+	return results, nil
+}
+
+func (s *GCPSecuritySync) fetchArtifactRegistryImageVulnerabilitySignals(ctx context.Context) (map[string]artifactImageVulnerabilitySignal, error) {
+	client, err := containeranalysis.NewClient(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create container analysis client: %w", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	req := &grafeaspb.ListOccurrencesRequest{
+		Parent: fmt.Sprintf("projects/%s", s.projectID),
+		Filter: `kind="VULNERABILITY"`,
+	}
+
+	grafeasClient := client.GetGrafeasClient()
+	it := grafeasClient.ListOccurrences(ctx, req)
+	results := make(map[string]artifactImageVulnerabilitySignal)
+
+	for {
+		occ, err := it.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("list vulnerability occurrences: %w", err)
+		}
+
+		vulnerability := occ.GetVulnerability()
+		if vulnerability == nil {
+			continue
+		}
+
+		resourceURI := normalizeArtifactImageURI(occ.GetResourceUri())
+		if resourceURI == "" || !looksLikeContainerImageURI(resourceURI) {
+			continue
+		}
+
+		signal := results[resourceURI]
+		signal.HasVulnerabilities = true
+
+		cveID := strings.ToUpper(strings.TrimSpace(extractCVEFromNote(occ.GetNoteName())))
+		if cveID != "" {
+			signal.CVEIDs = appendUniqueString(signal.CVEIDs, cveID)
+			if isOpenSSLCVE(cveID) {
+				signal.HasOpenSSLVulnerability = true
+			}
+		}
+
+		results[resourceURI] = signal
+	}
+
+	for resourceURI, signal := range results {
+		sort.Strings(signal.CVEIDs)
+		results[resourceURI] = signal
 	}
 
 	return results, nil
@@ -528,6 +607,20 @@ func detectContainerRegistryType(uri string) string {
 		return "artifact_registry"
 	}
 	return "unknown"
+}
+
+func appendUniqueString(values []string, value string) []string {
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
+}
+
+func isOpenSSLCVE(cveID string) bool {
+	cveID = strings.ToUpper(strings.TrimSpace(cveID))
+	return cveID == "CVE-2022-3602" || cveID == "CVE-2022-3786"
 }
 
 func normalizeArtifactImageURI(uri string) string {
@@ -692,6 +785,9 @@ func (s *GCPSecuritySync) upsertDockerImages(ctx context.Context, images []map[s
 		REGISTRY_TYPE VARCHAR,
 		SCANNED BOOLEAN,
 		SCAN_STATUS VARCHAR,
+		VULNERABILITIES VARCHAR,
+		HAS_VULNERABILITIES BOOLEAN,
+		HAS_OPENSSL_VULNERABILITY BOOLEAN,
 		SECRETS VARCHAR,
 		HAS_CLOUD_KEYS BOOLEAN,
 		HAS_HIGH_PRIVILEGE_CLOUD_KEYS BOOLEAN,
@@ -706,6 +802,9 @@ func (s *GCPSecuritySync) upsertDockerImages(ctx context.Context, images []map[s
 		"ALTER TABLE GCP_ARTIFACT_REGISTRY_IMAGES ADD COLUMN IF NOT EXISTS REGISTRY_TYPE VARCHAR",
 		"ALTER TABLE GCP_ARTIFACT_REGISTRY_IMAGES ADD COLUMN IF NOT EXISTS SCANNED BOOLEAN",
 		"ALTER TABLE GCP_ARTIFACT_REGISTRY_IMAGES ADD COLUMN IF NOT EXISTS SCAN_STATUS VARCHAR",
+		"ALTER TABLE GCP_ARTIFACT_REGISTRY_IMAGES ADD COLUMN IF NOT EXISTS VULNERABILITIES VARCHAR",
+		"ALTER TABLE GCP_ARTIFACT_REGISTRY_IMAGES ADD COLUMN IF NOT EXISTS HAS_VULNERABILITIES BOOLEAN",
+		"ALTER TABLE GCP_ARTIFACT_REGISTRY_IMAGES ADD COLUMN IF NOT EXISTS HAS_OPENSSL_VULNERABILITY BOOLEAN",
 		"ALTER TABLE GCP_ARTIFACT_REGISTRY_IMAGES ADD COLUMN IF NOT EXISTS SECRETS VARCHAR",
 		"ALTER TABLE GCP_ARTIFACT_REGISTRY_IMAGES ADD COLUMN IF NOT EXISTS HAS_CLOUD_KEYS BOOLEAN",
 		"ALTER TABLE GCP_ARTIFACT_REGISTRY_IMAGES ADD COLUMN IF NOT EXISTS HAS_HIGH_PRIVILEGE_CLOUD_KEYS BOOLEAN",
@@ -723,8 +822,8 @@ func (s *GCPSecuritySync) upsertDockerImages(ctx context.Context, images []map[s
 
 	insertSQL := `
 		INSERT INTO GCP_ARTIFACT_REGISTRY_IMAGES
-		(_CQ_ID, PROJECT_ID, NAME, URI, TAGS, IMAGE_SIZE, UPLOAD_TIME, MEDIA_TYPE, BUILD_TIME, UPDATE_TIME, REPOSITORY, REGISTRY_TYPE, SCANNED, SCAN_STATUS, SECRETS, HAS_CLOUD_KEYS, HAS_HIGH_PRIVILEGE_CLOUD_KEYS, HAS_CROSS_ACCOUNT_CLOUD_KEYS)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		(_CQ_ID, PROJECT_ID, NAME, URI, TAGS, IMAGE_SIZE, UPLOAD_TIME, MEDIA_TYPE, BUILD_TIME, UPDATE_TIME, REPOSITORY, REGISTRY_TYPE, SCANNED, SCAN_STATUS, VULNERABILITIES, HAS_VULNERABILITIES, HAS_OPENSSL_VULNERABILITY, SECRETS, HAS_CLOUD_KEYS, HAS_HIGH_PRIVILEGE_CLOUD_KEYS, HAS_CROSS_ACCOUNT_CLOUD_KEYS)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	for _, img := range images {
 		if _, err := s.sf.Exec(ctx, insertSQL,
 			toStr(img["_cq_id"]),
@@ -741,6 +840,9 @@ func (s *GCPSecuritySync) upsertDockerImages(ctx context.Context, images []map[s
 			toStr(img["registry_type"]),
 			img["scanned"],
 			toStr(img["scan_status"]),
+			toStr(img["vulnerabilities"]),
+			img["has_vulnerabilities"],
+			img["has_openssl_vulnerability"],
 			toStr(img["secrets"]),
 			img["has_cloud_keys"],
 			img["has_high_privilege_cloud_keys"],

@@ -115,3 +115,28 @@ func TestDetectContainerRegistryType(t *testing.T) {
 		t.Fatalf("expected unknown, got %q", got)
 	}
 }
+
+func TestIsOpenSSLCVE(t *testing.T) {
+	if !isOpenSSLCVE("CVE-2022-3602") {
+		t.Fatal("expected CVE-2022-3602 to be classified as OpenSSL CVE")
+	}
+	if !isOpenSSLCVE("cve-2022-3786") {
+		t.Fatal("expected CVE-2022-3786 to be classified as OpenSSL CVE")
+	}
+	if isOpenSSLCVE("CVE-2023-1234") {
+		t.Fatal("did not expect unrelated CVE to be classified as OpenSSL CVE")
+	}
+}
+
+func TestAppendUniqueString(t *testing.T) {
+	values := []string{"A", "B"}
+	values = appendUniqueString(values, "B")
+	values = appendUniqueString(values, "C")
+
+	if len(values) != 3 {
+		t.Fatalf("expected 3 unique values, got %d", len(values))
+	}
+	if values[2] != "C" {
+		t.Fatalf("expected appended unique value C, got %q", values[2])
+	}
+}
