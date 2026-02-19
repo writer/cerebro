@@ -4,9 +4,9 @@
   "name": "User/service accounts with the privileges to create pods",
   "description": "An identity can create pods in Kubernetes, which could be used for privilege escalation",
   "effect": "forbid",
-  "resource": "k8s::cluster_role|k8s::role",
+  "resource": "k8s::cluster_role|k8s::role|k8s::rbac::risky_binding",
   "conditions": [
-    "rules ANY (resources CONTAINS 'pods' AND verbs CONTAINS 'create')"
+    "risk_reasons CONTAINS 'pod_create_access' OR rules ANY (resources CONTAINS 'pods' AND verbs CONTAINS 'create')"
   ],
   "severity": "medium",
   "remediation": "Restrict pod creation privileges. Implement admission controllers to validate pod specs.",
