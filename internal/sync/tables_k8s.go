@@ -162,6 +162,10 @@ func (e *K8sSyncEngine) k8sNamespaceTable() K8sTableSpec {
 			"annotations",
 			"status_phase",
 			"status_conditions",
+			"network_policies",
+			"network_policy_count",
+			"network_policies_with_selector",
+			"network_policies_without_selector",
 		},
 		Fetch: func(ctx context.Context, client kubernetes.Interface, _ string, clusterName string) ([]map[string]interface{}, error) {
 			namespaces, err := client.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
@@ -169,18 +173,64 @@ func (e *K8sSyncEngine) k8sNamespaceTable() K8sTableSpec {
 				return nil, err
 			}
 
+			networkPolicies, err := client.NetworkingV1().NetworkPolicies(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+
+			networkPoliciesByNamespace := make(map[string][]map[string]interface{})
+			networkPoliciesWithSelector := make(map[string]int)
+			networkPoliciesWithoutSelector := make(map[string]int)
+			for _, policy := range networkPolicies.Items {
+				namespace := strings.TrimSpace(policy.Namespace)
+				if namespace == "" {
+					continue
+				}
+
+				hasSelector := len(policy.Spec.PodSelector.MatchLabels) > 0 || len(policy.Spec.PodSelector.MatchExpressions) > 0
+				if hasSelector {
+					networkPoliciesWithSelector[namespace]++
+				} else {
+					networkPoliciesWithoutSelector[namespace]++
+				}
+
+				networkPoliciesByNamespace[namespace] = append(networkPoliciesByNamespace[namespace], map[string]interface{}{
+					"name": policy.Name,
+					"spec": map[string]interface{}{
+						"pod_selector": map[string]interface{}{
+							"match_labels":      policy.Spec.PodSelector.MatchLabels,
+							"match_expressions": policy.Spec.PodSelector.MatchExpressions,
+						},
+						"policy_types": policy.Spec.PolicyTypes,
+						"ingress":      policy.Spec.Ingress,
+						"egress":       policy.Spec.Egress,
+					},
+				})
+			}
+
+			for namespace := range networkPoliciesByNamespace {
+				sort.Slice(networkPoliciesByNamespace[namespace], func(i, j int) bool {
+					return toString(networkPoliciesByNamespace[namespace][i]["name"]) < toString(networkPoliciesByNamespace[namespace][j]["name"])
+				})
+			}
+
 			clusterName = normalizeClusterName(clusterName)
 			rows := make([]map[string]interface{}, 0, len(namespaces.Items))
 			for _, ns := range namespaces.Items {
+				networkPolicies := networkPoliciesByNamespace[ns.Name]
 				row := map[string]interface{}{
-					"_cq_id":            buildClusterScopedID(clusterName, "namespace", ns.Name),
-					"uid":               string(ns.UID),
-					"name":              ns.Name,
-					"cluster_name":      clusterName,
-					"labels":            ns.Labels,
-					"annotations":       ns.Annotations,
-					"status_phase":      string(ns.Status.Phase),
-					"status_conditions": ns.Status.Conditions,
+					"_cq_id":                            buildClusterScopedID(clusterName, "namespace", ns.Name),
+					"uid":                               string(ns.UID),
+					"name":                              ns.Name,
+					"cluster_name":                      clusterName,
+					"labels":                            ns.Labels,
+					"annotations":                       ns.Annotations,
+					"status_phase":                      string(ns.Status.Phase),
+					"status_conditions":                 ns.Status.Conditions,
+					"network_policies":                  networkPolicies,
+					"network_policy_count":              len(networkPolicies),
+					"network_policies_with_selector":    networkPoliciesWithSelector[ns.Name],
+					"network_policies_without_selector": networkPoliciesWithoutSelector[ns.Name],
 				}
 				rows = append(rows, row)
 			}
@@ -405,6 +455,7 @@ func (e *K8sSyncEngine) k8sIngressTable() K8sTableSpec {
 			"ingress_class_name",
 			"rules",
 			"tls",
+			"wildcard_host",
 			"load_balancer",
 			"labels",
 			"annotations",
@@ -422,6 +473,15 @@ func (e *K8sSyncEngine) k8sIngressTable() K8sTableSpec {
 			clusterName = normalizeClusterName(clusterName)
 			rows := make([]map[string]interface{}, 0, len(ingresses.Items))
 			for _, ingress := range ingresses.Items {
+				wildcardHost := false
+				for _, rule := range ingress.Spec.Rules {
+					host := strings.TrimSpace(rule.Host)
+					if host == "*" || strings.HasPrefix(host, "*.") {
+						wildcardHost = true
+						break
+					}
+				}
+
 				row := map[string]interface{}{
 					"_cq_id":             buildNamespacedID(clusterName, ingress.Namespace, ingress.Name),
 					"uid":                string(ingress.UID),
@@ -431,6 +491,7 @@ func (e *K8sSyncEngine) k8sIngressTable() K8sTableSpec {
 					"ingress_class_name": ptrValue(ingress.Spec.IngressClassName),
 					"rules":              ingress.Spec.Rules,
 					"tls":                ingress.Spec.TLS,
+					"wildcard_host":      wildcardHost,
 					"load_balancer":      ingress.Status.LoadBalancer,
 					"labels":             ingress.Labels,
 					"annotations":        ingress.Annotations,
@@ -1068,6 +1129,56 @@ func containsAnyFold(values []string, targets ...string) bool {
 }
 
 func podSpecToMap(spec corev1.PodSpec) map[string]interface{} {
+	analysisContainers := make([]corev1.Container, 0, len(spec.Containers)+len(spec.InitContainers))
+	analysisContainers = append(analysisContainers, spec.Containers...)
+	analysisContainers = append(analysisContainers, spec.InitContainers...)
+
+	allowsPrivilegeEscalation := false
+	usesLatestImageTag := false
+	allImagesPinnedByDigest := len(analysisContainers) > 0
+	allContainersHaveLivenessProbe := len(analysisContainers) > 0
+	allContainersHaveReadinessProbe := len(analysisContainers) > 0
+	allContainersRuntimeDefaultSeccomp := len(analysisContainers) > 0
+
+	podSeccompType := ""
+	if spec.SecurityContext != nil && spec.SecurityContext.SeccompProfile != nil {
+		podSeccompType = string(spec.SecurityContext.SeccompProfile.Type)
+	}
+
+	for _, container := range analysisContainers {
+		if imageUsesLatestTag(container.Image) {
+			usesLatestImageTag = true
+		}
+		if !imagePinnedByDigest(container.Image) {
+			allImagesPinnedByDigest = false
+		}
+		if container.LivenessProbe == nil {
+			allContainersHaveLivenessProbe = false
+		}
+		if container.ReadinessProbe == nil {
+			allContainersHaveReadinessProbe = false
+		}
+		if containerAllowsPrivilegeEscalation(container.SecurityContext) {
+			allowsPrivilegeEscalation = true
+		}
+
+		effectiveSeccompType := podSeccompType
+		if container.SecurityContext != nil && container.SecurityContext.SeccompProfile != nil {
+			effectiveSeccompType = string(container.SecurityContext.SeccompProfile.Type)
+		}
+		if !strings.EqualFold(effectiveSeccompType, string(corev1.SeccompProfileTypeRuntimeDefault)) {
+			allContainersRuntimeDefaultSeccomp = false
+		}
+	}
+
+	usesHostPathVolume := false
+	for _, volume := range spec.Volumes {
+		if volume.HostPath != nil {
+			usesHostPathVolume = true
+			break
+		}
+	}
+
 	containers := make([]map[string]interface{}, 0, len(spec.Containers))
 	for _, container := range spec.Containers {
 		entry := map[string]interface{}{
@@ -1089,12 +1200,19 @@ func podSpecToMap(spec corev1.PodSpec) map[string]interface{} {
 	}
 
 	specMap := map[string]interface{}{
-		"containers":                      containers,
-		"host_network":                    spec.HostNetwork,
-		"host_pid":                        spec.HostPID,
-		"host_ipc":                        spec.HostIPC,
-		"service_account_name":            spec.ServiceAccountName,
-		"automount_service_account_token": boolPtrValue(spec.AutomountServiceAccountToken),
+		"containers":                             containers,
+		"host_network":                           spec.HostNetwork,
+		"host_pid":                               spec.HostPID,
+		"host_ipc":                               spec.HostIPC,
+		"service_account_name":                   spec.ServiceAccountName,
+		"automount_service_account_token":        boolPtrValue(spec.AutomountServiceAccountToken),
+		"uses_host_path_volume":                  usesHostPathVolume,
+		"allows_privilege_escalation":            allowsPrivilegeEscalation,
+		"uses_latest_image_tag":                  usesLatestImageTag,
+		"all_images_pinned_by_digest":            allImagesPinnedByDigest,
+		"all_containers_have_liveness_probe":     allContainersHaveLivenessProbe,
+		"all_containers_have_readiness_probe":    allContainersHaveReadinessProbe,
+		"all_containers_runtime_default_seccomp": allContainersRuntimeDefaultSeccomp,
 	}
 
 	if security := podSecurityContextToMap(spec.SecurityContext); security != nil {
@@ -1323,6 +1441,9 @@ func podSecurityContextToMap(ctx *corev1.PodSecurityContext) map[string]interfac
 	if ctx.RunAsUser != nil {
 		result["run_as_user"] = *ctx.RunAsUser
 	}
+	if ctx.SeccompProfile != nil {
+		result["seccomp_profile_type"] = string(ctx.SeccompProfile.Type)
+	}
 	if len(result) == 0 {
 		return nil
 	}
@@ -1342,6 +1463,12 @@ func containerSecurityContextToMap(ctx *corev1.SecurityContext) map[string]inter
 	}
 	if ctx.RunAsUser != nil {
 		result["run_as_user"] = *ctx.RunAsUser
+	}
+	if ctx.AllowPrivilegeEscalation != nil {
+		result["allow_privilege_escalation"] = *ctx.AllowPrivilegeEscalation
+	}
+	if ctx.SeccompProfile != nil {
+		result["seccomp_profile_type"] = string(ctx.SeccompProfile.Type)
 	}
 	if ctx.Capabilities != nil {
 		result["capabilities"] = capabilitiesToMap(ctx.Capabilities)
@@ -1426,4 +1553,47 @@ func boolPtrValue(value *bool) interface{} {
 		return nil
 	}
 	return *value
+}
+
+func containerAllowsPrivilegeEscalation(ctx *corev1.SecurityContext) bool {
+	if ctx == nil || ctx.AllowPrivilegeEscalation == nil {
+		return true
+	}
+	return *ctx.AllowPrivilegeEscalation
+}
+
+func imageUsesLatestTag(image string) bool {
+	image = strings.TrimSpace(image)
+	if image == "" {
+		return false
+	}
+	if strings.Contains(image, "@") {
+		return false
+	}
+
+	withoutDigest := image
+	if digestIndex := strings.Index(withoutDigest, "@"); digestIndex >= 0 {
+		withoutDigest = withoutDigest[:digestIndex]
+	}
+
+	tag := ""
+	lastColon := strings.LastIndex(withoutDigest, ":")
+	lastSlash := strings.LastIndex(withoutDigest, "/")
+	if lastColon > lastSlash {
+		tag = withoutDigest[lastColon+1:]
+	}
+
+	if tag == "" {
+		return true
+	}
+
+	return strings.EqualFold(tag, "latest")
+}
+
+func imagePinnedByDigest(image string) bool {
+	image = strings.TrimSpace(image)
+	if image == "" {
+		return false
+	}
+	return strings.Contains(strings.ToLower(image), "@sha256:")
 }

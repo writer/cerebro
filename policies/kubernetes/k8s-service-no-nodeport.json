@@ -1,0 +1,21 @@
+{
+  "id": "k8s-service-no-nodeport",
+  "name": "Kubernetes Service Avoids NodePort",
+  "description": "NodePort services expose ports on all nodes and should be avoided unless explicitly required.",
+  "effect": "forbid",
+  "resource": "k8s::core::service",
+  "conditions": [
+    "type == 'NodePort'"
+  ],
+  "severity": "medium",
+  "remediation": "Use ClusterIP with Ingress or an internal LoadBalancer instead of NodePort.",
+  "tags": [
+    "kubernetes",
+    "network",
+    "exposure"
+  ],
+  "risk_categories": [
+    "EXTERNAL_EXPOSURE",
+    "MISCONFIGURATION"
+  ]
+}

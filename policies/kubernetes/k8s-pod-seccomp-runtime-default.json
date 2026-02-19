@@ -1,0 +1,20 @@
+{
+  "id": "k8s-pod-seccomp-runtime-default",
+  "name": "Kubernetes Pod Uses RuntimeDefault Seccomp",
+  "description": "Pods should run with RuntimeDefault seccomp profiles for all containers.",
+  "effect": "forbid",
+  "resource": "kubernetes::pod",
+  "conditions": [
+    "spec.all_containers_runtime_default_seccomp != true"
+  ],
+  "severity": "medium",
+  "remediation": "Set seccompProfile.type: RuntimeDefault at pod or container level.",
+  "tags": [
+    "kubernetes",
+    "pod-security",
+    "seccomp"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ]
+}

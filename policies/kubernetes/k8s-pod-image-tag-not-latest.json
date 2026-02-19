@@ -1,0 +1,20 @@
+{
+  "id": "k8s-pod-image-tag-not-latest",
+  "name": "Kubernetes Pod Image Tag Is Not Latest",
+  "description": "Pods should not use latest or implicit image tags.",
+  "effect": "forbid",
+  "resource": "kubernetes::pod",
+  "conditions": [
+    "spec.uses_latest_image_tag == true"
+  ],
+  "severity": "medium",
+  "remediation": "Pin images to immutable, versioned tags and avoid latest.",
+  "tags": [
+    "kubernetes",
+    "supply-chain",
+    "image"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ]
+}

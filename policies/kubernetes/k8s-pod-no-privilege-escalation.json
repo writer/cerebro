@@ -1,0 +1,21 @@
+{
+  "id": "k8s-pod-no-privilege-escalation",
+  "name": "Kubernetes Pod Disallows Privilege Escalation",
+  "description": "Pods should explicitly disable privilege escalation for all containers.",
+  "effect": "forbid",
+  "resource": "kubernetes::pod",
+  "conditions": [
+    "spec.allows_privilege_escalation == true"
+  ],
+  "severity": "high",
+  "remediation": "Set allowPrivilegeEscalation: false on every container security context.",
+  "tags": [
+    "kubernetes",
+    "pod-security",
+    "privilege-escalation"
+  ],
+  "risk_categories": [
+    "PRIVILEGE_ESCALATION",
+    "MISCONFIGURATION"
+  ]
+}

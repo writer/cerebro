@@ -205,6 +205,87 @@ func TestPodSpecToMap(t *testing.T) {
 	}
 }
 
+func TestPodSpecToMapDerivedSignals(t *testing.T) {
+	t.Run("risky pod spec", func(t *testing.T) {
+		spec := corev1.PodSpec{
+			Containers: []corev1.Container{{
+				Name:  "app",
+				Image: "nginx:latest",
+			}},
+			Volumes: []corev1.Volume{{
+				Name: "host",
+				VolumeSource: corev1.VolumeSource{
+					HostPath: &corev1.HostPathVolumeSource{Path: "/var/run/docker.sock"},
+				},
+			}},
+		}
+
+		specMap := podSpecToMap(spec)
+		if specMap["uses_host_path_volume"] != true {
+			t.Error("expected uses_host_path_volume to be true")
+		}
+		if specMap["allows_privilege_escalation"] != true {
+			t.Error("expected allows_privilege_escalation to be true")
+		}
+		if specMap["uses_latest_image_tag"] != true {
+			t.Error("expected uses_latest_image_tag to be true")
+		}
+		if specMap["all_images_pinned_by_digest"] != false {
+			t.Error("expected all_images_pinned_by_digest to be false")
+		}
+		if specMap["all_containers_have_liveness_probe"] != false {
+			t.Error("expected all_containers_have_liveness_probe to be false")
+		}
+		if specMap["all_containers_have_readiness_probe"] != false {
+			t.Error("expected all_containers_have_readiness_probe to be false")
+		}
+		if specMap["all_containers_runtime_default_seccomp"] != false {
+			t.Error("expected all_containers_runtime_default_seccomp to be false")
+		}
+	})
+
+	t.Run("hardened pod spec", func(t *testing.T) {
+		allowPrivilegeEscalation := false
+		spec := corev1.PodSpec{
+			SecurityContext: &corev1.PodSecurityContext{
+				SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
+			},
+			Containers: []corev1.Container{{
+				Name:           "app",
+				Image:          "registry.example.com/app@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				LivenessProbe:  &corev1.Probe{},
+				ReadinessProbe: &corev1.Probe{},
+				SecurityContext: &corev1.SecurityContext{
+					AllowPrivilegeEscalation: &allowPrivilegeEscalation,
+				},
+			}},
+		}
+
+		specMap := podSpecToMap(spec)
+		if specMap["uses_host_path_volume"] != false {
+			t.Error("expected uses_host_path_volume to be false")
+		}
+		if specMap["allows_privilege_escalation"] != false {
+			t.Error("expected allows_privilege_escalation to be false")
+		}
+		if specMap["uses_latest_image_tag"] != false {
+			t.Error("expected uses_latest_image_tag to be false")
+		}
+		if specMap["all_images_pinned_by_digest"] != true {
+			t.Error("expected all_images_pinned_by_digest to be true")
+		}
+		if specMap["all_containers_have_liveness_probe"] != true {
+			t.Error("expected all_containers_have_liveness_probe to be true")
+		}
+		if specMap["all_containers_have_readiness_probe"] != true {
+			t.Error("expected all_containers_have_readiness_probe to be true")
+		}
+		if specMap["all_containers_runtime_default_seccomp"] != true {
+			t.Error("expected all_containers_runtime_default_seccomp to be true")
+		}
+	})
+}
+
 func TestServiceAccountSubjects(t *testing.T) {
 	subjects := []rbacv1.Subject{
 		{Kind: "User", Name: "alice"},

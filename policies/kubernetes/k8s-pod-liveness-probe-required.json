@@ -1,0 +1,20 @@
+{
+  "id": "k8s-pod-liveness-probe-required",
+  "name": "Kubernetes Pod Requires Liveness Probes",
+  "description": "All containers should define liveness probes for reliable health monitoring.",
+  "effect": "forbid",
+  "resource": "kubernetes::pod",
+  "conditions": [
+    "spec.all_containers_have_liveness_probe != true"
+  ],
+  "severity": "medium",
+  "remediation": "Define a livenessProbe for each container with appropriate thresholds and timing.",
+  "tags": [
+    "kubernetes",
+    "reliability",
+    "operations"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ]
+}

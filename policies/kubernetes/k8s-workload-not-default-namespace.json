@@ -1,0 +1,21 @@
+{
+  "id": "k8s-workload-not-default-namespace",
+  "name": "Kubernetes Workloads Avoid Default Namespace",
+  "description": "Application workloads should not run in the default namespace.",
+  "effect": "forbid",
+  "resource": "kubernetes::deployment",
+  "conditions": [
+    "namespace == 'default'"
+  ],
+  "severity": "low",
+  "remediation": "Deploy workloads into dedicated namespaces with scoped RBAC and network policies.",
+  "tags": [
+    "kubernetes",
+    "namespace",
+    "segmentation"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION",
+    "LATERAL_MOVEMENT"
+  ]
+}

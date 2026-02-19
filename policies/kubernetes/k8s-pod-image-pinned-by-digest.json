@@ -1,0 +1,20 @@
+{
+  "id": "k8s-pod-image-pinned-by-digest",
+  "name": "Kubernetes Pod Images Pinned by Digest",
+  "description": "Pod images should be pinned by digest to reduce supply chain drift.",
+  "effect": "forbid",
+  "resource": "kubernetes::pod",
+  "conditions": [
+    "spec.all_images_pinned_by_digest != true"
+  ],
+  "severity": "medium",
+  "remediation": "Reference images using immutable digests (for example image@sha256:...).",
+  "tags": [
+    "kubernetes",
+    "supply-chain",
+    "image"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ]
+}
