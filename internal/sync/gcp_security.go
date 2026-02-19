@@ -172,6 +172,12 @@ func (s *GCPSecuritySync) syncArtifactRegistryImages(ctx context.Context) error 
 		secretSignals = map[string]artifactImageSecretSignal{}
 	}
 
+	scanSignals, err := s.fetchArtifactRegistryImageScanSignals(ctx)
+	if err != nil {
+		s.logger.Warn("failed to fetch artifact registry image scan signals", "error", err)
+		scanSignals = map[string]artifactImageScanSignal{}
+	}
+
 	// List all repositories across common locations
 	locations := []string{"us", "us-central1", "us-east1", "us-west1", "europe-west1", "asia-east1"}
 
@@ -215,6 +221,11 @@ func (s *GCPSecuritySync) syncArtifactRegistryImages(ctx context.Context) error 
 
 				normalizedURI := normalizeArtifactImageURI(img.GetUri())
 				signal := secretSignals[normalizedURI]
+				scanSignal := scanSignals[normalizedURI]
+				scanStatus := strings.TrimSpace(scanSignal.ScanStatus)
+				if scanStatus == "" {
+					scanStatus = "UNSCANNED"
+				}
 
 				secretsJSON := "[]"
 				if len(signal.Secrets) > 0 {
@@ -233,6 +244,9 @@ func (s *GCPSecuritySync) syncArtifactRegistryImages(ctx context.Context) error 
 					"build_time":                    img.GetBuildTime().AsTime().Format(time.RFC3339),
 					"update_time":                   img.GetUpdateTime().AsTime().Format(time.RFC3339),
 					"repository":                    repo.GetName(),
+					"registry_type":                 detectContainerRegistryType(img.GetUri()),
+					"scanned":                       scanSignal.Scanned,
+					"scan_status":                   scanStatus,
 					"secrets":                       secretsJSON,
 					"has_cloud_keys":                signal.HasCloudKeys,
 					"has_high_privilege_cloud_keys": signal.HasHighPrivilegeCloudKeys,
@@ -256,6 +270,12 @@ type artifactImageSecretSignal struct {
 	HasCloudKeys              bool
 	HasHighPrivilegeCloudKeys bool
 	HasCrossAccountCloudKeys  bool
+}
+
+type artifactImageScanSignal struct {
+	Scanned    bool
+	ScanStatus string
+	UpdatedAt  time.Time
 }
 
 func (s *GCPSecuritySync) fetchArtifactRegistryImageSecretSignals(ctx context.Context) (map[string]artifactImageSecretSignal, error) {
@@ -324,6 +344,81 @@ func (s *GCPSecuritySync) fetchArtifactRegistryImageSecretSignals(ctx context.Co
 	}
 
 	return results, nil
+}
+
+func (s *GCPSecuritySync) fetchArtifactRegistryImageScanSignals(ctx context.Context) (map[string]artifactImageScanSignal, error) {
+	client, err := containeranalysis.NewClient(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create container analysis client: %w", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	req := &grafeaspb.ListOccurrencesRequest{
+		Parent: fmt.Sprintf("projects/%s", s.projectID),
+		Filter: `kind="DISCOVERY"`,
+	}
+
+	grafeasClient := client.GetGrafeasClient()
+	it := grafeasClient.ListOccurrences(ctx, req)
+	results := make(map[string]artifactImageScanSignal)
+
+	for {
+		occ, err := it.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("list discovery occurrences: %w", err)
+		}
+
+		discovery := occ.GetDiscovery()
+		if discovery == nil {
+			continue
+		}
+
+		resourceURI := normalizeArtifactImageURI(occ.GetResourceUri())
+		if resourceURI == "" || !looksLikeContainerImageURI(resourceURI) {
+			continue
+		}
+
+		scanned, scanStatus := classifyImageScanStatus(discovery.GetAnalysisStatus())
+		candidate := artifactImageScanSignal{
+			Scanned:    scanned,
+			ScanStatus: scanStatus,
+		}
+		if updateTime := occ.GetUpdateTime(); updateTime != nil {
+			candidate.UpdatedAt = updateTime.AsTime()
+		}
+
+		existing, ok := results[resourceURI]
+		if !ok || shouldReplaceScanSignal(existing, candidate) {
+			results[resourceURI] = candidate
+		}
+	}
+
+	return results, nil
+}
+
+func classifyImageScanStatus(status grafeaspb.DiscoveryOccurrence_AnalysisStatus) (scanned bool, scanStatus string) {
+	if status == grafeaspb.DiscoveryOccurrence_ANALYSIS_STATUS_UNSPECIFIED {
+		return false, "UNSCANNED"
+	}
+
+	return status == grafeaspb.DiscoveryOccurrence_FINISHED_SUCCESS || status == grafeaspb.DiscoveryOccurrence_COMPLETE,
+		status.String()
+}
+
+func shouldReplaceScanSignal(existing artifactImageScanSignal, candidate artifactImageScanSignal) bool {
+	if candidate.Scanned && !existing.Scanned {
+		return true
+	}
+	if !candidate.UpdatedAt.IsZero() && (existing.UpdatedAt.IsZero() || candidate.UpdatedAt.After(existing.UpdatedAt)) {
+		return true
+	}
+	if strings.TrimSpace(existing.ScanStatus) == "" && strings.TrimSpace(candidate.ScanStatus) != "" {
+		return true
+	}
+	return false
 }
 
 func classifyCloudKeySignals(secret *grafeaspb.SecretOccurrence) (isCloudKey bool, highPrivilege bool, crossAccount bool) {
@@ -419,6 +514,20 @@ func looksLikeContainerImageURI(uri string) bool {
 		return false
 	}
 	return strings.Contains(uri, "pkg.dev/") || strings.Contains(uri, "gcr.io/")
+}
+
+func detectContainerRegistryType(uri string) string {
+	uri = strings.ToLower(normalizeArtifactImageURI(uri))
+	if uri == "" {
+		return "unknown"
+	}
+	if strings.Contains(uri, "gcr.io/") {
+		return "gcr"
+	}
+	if strings.Contains(uri, "pkg.dev/") {
+		return "artifact_registry"
+	}
+	return "unknown"
 }
 
 func normalizeArtifactImageURI(uri string) string {
@@ -580,6 +689,9 @@ func (s *GCPSecuritySync) upsertDockerImages(ctx context.Context, images []map[s
 		BUILD_TIME VARCHAR,
 		UPDATE_TIME VARCHAR,
 		REPOSITORY VARCHAR,
+		REGISTRY_TYPE VARCHAR,
+		SCANNED BOOLEAN,
+		SCAN_STATUS VARCHAR,
 		SECRETS VARCHAR,
 		HAS_CLOUD_KEYS BOOLEAN,
 		HAS_HIGH_PRIVILEGE_CLOUD_KEYS BOOLEAN,
@@ -591,6 +703,9 @@ func (s *GCPSecuritySync) upsertDockerImages(ctx context.Context, images []map[s
 	}
 
 	for _, stmt := range []string{
+		"ALTER TABLE GCP_ARTIFACT_REGISTRY_IMAGES ADD COLUMN IF NOT EXISTS REGISTRY_TYPE VARCHAR",
+		"ALTER TABLE GCP_ARTIFACT_REGISTRY_IMAGES ADD COLUMN IF NOT EXISTS SCANNED BOOLEAN",
+		"ALTER TABLE GCP_ARTIFACT_REGISTRY_IMAGES ADD COLUMN IF NOT EXISTS SCAN_STATUS VARCHAR",
 		"ALTER TABLE GCP_ARTIFACT_REGISTRY_IMAGES ADD COLUMN IF NOT EXISTS SECRETS VARCHAR",
 		"ALTER TABLE GCP_ARTIFACT_REGISTRY_IMAGES ADD COLUMN IF NOT EXISTS HAS_CLOUD_KEYS BOOLEAN",
 		"ALTER TABLE GCP_ARTIFACT_REGISTRY_IMAGES ADD COLUMN IF NOT EXISTS HAS_HIGH_PRIVILEGE_CLOUD_KEYS BOOLEAN",
@@ -608,8 +723,8 @@ func (s *GCPSecuritySync) upsertDockerImages(ctx context.Context, images []map[s
 
 	insertSQL := `
 		INSERT INTO GCP_ARTIFACT_REGISTRY_IMAGES
-		(_CQ_ID, PROJECT_ID, NAME, URI, TAGS, IMAGE_SIZE, UPLOAD_TIME, MEDIA_TYPE, BUILD_TIME, UPDATE_TIME, REPOSITORY, SECRETS, HAS_CLOUD_KEYS, HAS_HIGH_PRIVILEGE_CLOUD_KEYS, HAS_CROSS_ACCOUNT_CLOUD_KEYS)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		(_CQ_ID, PROJECT_ID, NAME, URI, TAGS, IMAGE_SIZE, UPLOAD_TIME, MEDIA_TYPE, BUILD_TIME, UPDATE_TIME, REPOSITORY, REGISTRY_TYPE, SCANNED, SCAN_STATUS, SECRETS, HAS_CLOUD_KEYS, HAS_HIGH_PRIVILEGE_CLOUD_KEYS, HAS_CROSS_ACCOUNT_CLOUD_KEYS)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	for _, img := range images {
 		if _, err := s.sf.Exec(ctx, insertSQL,
 			toStr(img["_cq_id"]),
@@ -623,6 +738,9 @@ func (s *GCPSecuritySync) upsertDockerImages(ctx context.Context, images []map[s
 			toStr(img["build_time"]),
 			toStr(img["update_time"]),
 			toStr(img["repository"]),
+			toStr(img["registry_type"]),
+			img["scanned"],
+			toStr(img["scan_status"]),
 			toStr(img["secrets"]),
 			img["has_cloud_keys"],
 			img["has_high_privilege_cloud_keys"],

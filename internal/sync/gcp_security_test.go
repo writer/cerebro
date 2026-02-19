@@ -2,6 +2,7 @@ package sync
 
 import (
 	"testing"
+	"time"
 
 	grafeaspb "google.golang.org/genproto/googleapis/grafeas/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -71,5 +72,46 @@ func TestSerializeSecretStatuses(t *testing.T) {
 	}
 	if statuses[0]["message"] != "valid" {
 		t.Fatalf("expected message to be serialized, got %v", statuses[0]["message"])
+	}
+}
+
+func TestClassifyImageScanStatus(t *testing.T) {
+	if scanned, status := classifyImageScanStatus(grafeaspb.DiscoveryOccurrence_ANALYSIS_STATUS_UNSPECIFIED); scanned || status != "UNSCANNED" {
+		t.Fatalf("expected unspecified status to be unscanned, got scanned=%v status=%q", scanned, status)
+	}
+
+	scanned, status := classifyImageScanStatus(grafeaspb.DiscoveryOccurrence_FINISHED_SUCCESS)
+	if !scanned {
+		t.Fatalf("expected FINISHED_SUCCESS to be scanned")
+	}
+	if status == "UNSCANNED" {
+		t.Fatalf("expected concrete scan status for finished success")
+	}
+}
+
+func TestShouldReplaceScanSignal(t *testing.T) {
+	now := time.Now()
+	existing := artifactImageScanSignal{Scanned: false, ScanStatus: "UNSCANNED", UpdatedAt: now}
+	candidate := artifactImageScanSignal{Scanned: true, ScanStatus: "FINISHED_SUCCESS", UpdatedAt: now.Add(-time.Minute)}
+	if !shouldReplaceScanSignal(existing, candidate) {
+		t.Fatalf("expected scanned candidate to replace unscanned existing signal")
+	}
+
+	existing = artifactImageScanSignal{Scanned: true, ScanStatus: "FINISHED_SUCCESS", UpdatedAt: now}
+	candidate = artifactImageScanSignal{Scanned: false, ScanStatus: "SCANNING", UpdatedAt: now.Add(-time.Minute)}
+	if shouldReplaceScanSignal(existing, candidate) {
+		t.Fatalf("did not expect older unscanned candidate to replace scanned existing signal")
+	}
+}
+
+func TestDetectContainerRegistryType(t *testing.T) {
+	if got := detectContainerRegistryType("us.gcr.io/writer/app/image@sha256:abc"); got != "gcr" {
+		t.Fatalf("expected gcr, got %q", got)
+	}
+	if got := detectContainerRegistryType("us-docker.pkg.dev/writer/app/image@sha256:abc"); got != "artifact_registry" {
+		t.Fatalf("expected artifact_registry, got %q", got)
+	}
+	if got := detectContainerRegistryType("docker.io/library/nginx:latest"); got != "unknown" {
+		t.Fatalf("expected unknown, got %q", got)
 	}
 }

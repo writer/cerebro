@@ -4,10 +4,10 @@
   "name": "GCP container registry not scanned by Wiz contains an image that is used by a container",
   "description": "An unscanned container image from GCR is in use",
   "effect": "forbid",
-  "resource": "container::pod|container::deployment",
+  "resource": "container::image",
   "conditions": [
-    "image.registry_type == 'gcr'",
-    "image.scanned == false"
+    "registry_type == 'gcr'",
+    "scanned == false"
   ],
   "severity": "medium",
   "remediation": "Enable vulnerability scanning for all container registries. Review unscanned images.",
