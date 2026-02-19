@@ -6,7 +6,7 @@
   "effect": "forbid",
   "resource": "container::image",
   "conditions": [
-    "secrets ANY (type == 'cloud_key' AND cleartext == true AND grants_high_privilege == true)"
+    "has_high_privilege_cloud_keys == true OR secrets ANY (type == 'cloud_key' AND cleartext == true AND grants_high_privilege == true)"
   ],
   "severity": "critical",
   "remediation": "Rebuild image without embedded keys. Use secret injection at runtime. Rotate exposed keys.",

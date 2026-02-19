@@ -453,7 +453,7 @@ var ResourceToTableMapping = map[string][]string{
 	"network::vnet_peering":   {"azure_network_virtual_networks"},
 	"container::pod":          {"k8s_core_pods"},
 	"container::deployment":   {"k8s_apps_deployments"},
-	"container::image":        {"snyk_container_images"},
+	"container::image":        {"snyk_container_images", "gcp_artifact_registry_images"},
 	"ai::model":               {"ai_models"},
 	"ai::endpoint":            {"ai_models"},
 	"vendors":                 {"vendors"},

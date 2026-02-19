@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -165,6 +166,12 @@ func (s *GCPSecuritySync) syncArtifactRegistryImages(ctx context.Context) error 
 	}
 	defer func() { _ = client.Close() }()
 
+	secretSignals, err := s.fetchArtifactRegistryImageSecretSignals(ctx)
+	if err != nil {
+		s.logger.Warn("failed to fetch artifact registry secret signals", "error", err)
+		secretSignals = map[string]artifactImageSecretSignal{}
+	}
+
 	// List all repositories across common locations
 	locations := []string{"us", "us-central1", "us-east1", "us-west1", "europe-west1", "asia-east1"}
 
@@ -206,18 +213,30 @@ func (s *GCPSecuritySync) syncArtifactRegistryImages(ctx context.Context) error 
 					break
 				}
 
+				normalizedURI := normalizeArtifactImageURI(img.GetUri())
+				signal := secretSignals[normalizedURI]
+
+				secretsJSON := "[]"
+				if len(signal.Secrets) > 0 {
+					secretsJSON = marshalJSON(signal.Secrets)
+				}
+
 				images = append(images, map[string]interface{}{
-					"_cq_id":      img.GetUri(),
-					"project_id":  s.projectID,
-					"name":        img.GetName(),
-					"uri":         img.GetUri(),
-					"tags":        strings.Join(img.GetTags(), ","),
-					"image_size":  img.GetImageSizeBytes(),
-					"upload_time": img.GetUploadTime().AsTime().Format(time.RFC3339),
-					"media_type":  img.GetMediaType(),
-					"build_time":  img.GetBuildTime().AsTime().Format(time.RFC3339),
-					"update_time": img.GetUpdateTime().AsTime().Format(time.RFC3339),
-					"repository":  repo.GetName(),
+					"_cq_id":                        img.GetUri(),
+					"project_id":                    s.projectID,
+					"name":                          img.GetName(),
+					"uri":                           img.GetUri(),
+					"tags":                          strings.Join(img.GetTags(), ","),
+					"image_size":                    img.GetImageSizeBytes(),
+					"upload_time":                   img.GetUploadTime().AsTime().Format(time.RFC3339),
+					"media_type":                    img.GetMediaType(),
+					"build_time":                    img.GetBuildTime().AsTime().Format(time.RFC3339),
+					"update_time":                   img.GetUpdateTime().AsTime().Format(time.RFC3339),
+					"repository":                    repo.GetName(),
+					"secrets":                       secretsJSON,
+					"has_cloud_keys":                signal.HasCloudKeys,
+					"has_high_privilege_cloud_keys": signal.HasHighPrivilegeCloudKeys,
+					"has_cross_account_cloud_keys":  signal.HasCrossAccountCloudKeys,
 				})
 			}
 		}
@@ -230,6 +249,192 @@ func (s *GCPSecuritySync) syncArtifactRegistryImages(ctx context.Context) error 
 	}
 
 	return nil
+}
+
+type artifactImageSecretSignal struct {
+	Secrets                   []map[string]interface{}
+	HasCloudKeys              bool
+	HasHighPrivilegeCloudKeys bool
+	HasCrossAccountCloudKeys  bool
+}
+
+func (s *GCPSecuritySync) fetchArtifactRegistryImageSecretSignals(ctx context.Context) (map[string]artifactImageSecretSignal, error) {
+	client, err := containeranalysis.NewClient(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create container analysis client: %w", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	req := &grafeaspb.ListOccurrencesRequest{
+		Parent: fmt.Sprintf("projects/%s", s.projectID),
+		Filter: `kind="SECRET"`,
+	}
+
+	grafeasClient := client.GetGrafeasClient()
+	it := grafeasClient.ListOccurrences(ctx, req)
+	results := make(map[string]artifactImageSecretSignal)
+
+	for {
+		occ, err := it.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("list secret occurrences: %w", err)
+		}
+
+		secret := occ.GetSecret()
+		if secret == nil {
+			continue
+		}
+
+		resourceURI := normalizeArtifactImageURI(occ.GetResourceUri())
+		if resourceURI == "" || !looksLikeContainerImageURI(resourceURI) {
+			continue
+		}
+
+		isCloudKey, highPrivilege, crossAccount := classifyCloudKeySignals(secret)
+		entry := map[string]interface{}{
+			"kind":                  secret.GetKind().String(),
+			"type":                  "other",
+			"cleartext":             true,
+			"grants_high_privilege": false,
+			"cross_account_access":  false,
+		}
+		if isCloudKey {
+			entry["type"] = "cloud_key"
+			entry["grants_high_privilege"] = highPrivilege
+			entry["cross_account_access"] = crossAccount
+		}
+
+		statusRows := serializeSecretStatuses(secret.GetStatuses())
+		if len(statusRows) > 0 {
+			entry["statuses"] = statusRows
+		}
+		if data := secret.GetData(); data != nil && strings.TrimSpace(data.GetTypeUrl()) != "" {
+			entry["data_type_url"] = strings.TrimSpace(data.GetTypeUrl())
+		}
+
+		signal := results[resourceURI]
+		signal.Secrets = append(signal.Secrets, entry)
+		signal.HasCloudKeys = signal.HasCloudKeys || isCloudKey
+		signal.HasHighPrivilegeCloudKeys = signal.HasHighPrivilegeCloudKeys || (isCloudKey && highPrivilege)
+		signal.HasCrossAccountCloudKeys = signal.HasCrossAccountCloudKeys || (isCloudKey && crossAccount)
+		results[resourceURI] = signal
+	}
+
+	return results, nil
+}
+
+func classifyCloudKeySignals(secret *grafeaspb.SecretOccurrence) (isCloudKey bool, highPrivilege bool, crossAccount bool) {
+	if secret == nil || !isCloudSecretKind(secret.GetKind()) {
+		return false, false, false
+	}
+
+	validStatus, highFromStatus, crossFromStatus := classifySecretStatuses(secret.GetStatuses())
+	highPrivilege = highFromStatus || validStatus
+	return true, highPrivilege, crossFromStatus
+}
+
+func classifySecretStatuses(statuses []*grafeaspb.SecretStatus) (valid bool, highPrivilege bool, crossAccount bool) {
+	for _, status := range statuses {
+		if status == nil {
+			continue
+		}
+
+		if status.GetStatus() == grafeaspb.SecretStatus_VALID {
+			valid = true
+		}
+
+		high, cross := classifySecretStatusMessage(status.GetMessage())
+		highPrivilege = highPrivilege || high
+		crossAccount = crossAccount || cross
+	}
+
+	return valid, highPrivilege, crossAccount
+}
+
+func classifySecretStatusMessage(message string) (highPrivilege bool, crossAccount bool) {
+	message = strings.ToLower(strings.TrimSpace(message))
+	if message == "" {
+		return false, false
+	}
+
+	highIndicators := []string{"admin", "owner", "high privilege", "privileged", "full access", "write access", "elevated"}
+	for _, indicator := range highIndicators {
+		if strings.Contains(message, indicator) {
+			highPrivilege = true
+			break
+		}
+	}
+
+	crossIndicators := []string{"cross-account", "cross account", "cross-project", "cross project", "other project", "other subscription", "external account", "external project"}
+	for _, indicator := range crossIndicators {
+		if strings.Contains(message, indicator) {
+			crossAccount = true
+			break
+		}
+	}
+
+	return highPrivilege, crossAccount
+}
+
+func serializeSecretStatuses(statuses []*grafeaspb.SecretStatus) []map[string]interface{} {
+	rows := make([]map[string]interface{}, 0, len(statuses))
+	for _, status := range statuses {
+		if status == nil {
+			continue
+		}
+		row := map[string]interface{}{
+			"status": status.GetStatus().String(),
+		}
+		if message := strings.TrimSpace(status.GetMessage()); message != "" {
+			row["message"] = message
+		}
+		if updateTime := status.GetUpdateTime(); updateTime != nil {
+			row["update_time"] = updateTime.AsTime().Format(time.RFC3339)
+		}
+		rows = append(rows, row)
+	}
+	return rows
+}
+
+func isCloudSecretKind(kind grafeaspb.SecretKind) bool {
+	switch kind {
+	case grafeaspb.SecretKind_SECRET_KIND_GCP_SERVICE_ACCOUNT_KEY,
+		grafeaspb.SecretKind_SECRET_KIND_GCP_API_KEY,
+		grafeaspb.SecretKind_SECRET_KIND_GCP_OAUTH2_CLIENT_CREDENTIALS,
+		grafeaspb.SecretKind_SECRET_KIND_GCP_OAUTH2_ACCESS_TOKEN,
+		grafeaspb.SecretKind_SECRET_KIND_AZURE_ACCESS_TOKEN,
+		grafeaspb.SecretKind_SECRET_KIND_AZURE_IDENTITY_TOKEN:
+		return true
+	default:
+		return false
+	}
+}
+
+func looksLikeContainerImageURI(uri string) bool {
+	uri = strings.ToLower(strings.TrimSpace(uri))
+	if uri == "" {
+		return false
+	}
+	return strings.Contains(uri, "pkg.dev/") || strings.Contains(uri, "gcr.io/")
+}
+
+func normalizeArtifactImageURI(uri string) string {
+	uri = strings.TrimSpace(uri)
+	uri = strings.TrimPrefix(uri, "https://")
+	uri = strings.TrimPrefix(uri, "http://")
+	uri = strings.TrimSuffix(uri, "/")
+	return uri
+}
+
+func marshalJSON(v interface{}) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "[]"
+	}
+	return string(b)
 }
 
 // syncSCCFindings syncs findings from Security Command Center
@@ -374,11 +579,26 @@ func (s *GCPSecuritySync) upsertDockerImages(ctx context.Context, images []map[s
 		MEDIA_TYPE VARCHAR,
 		BUILD_TIME VARCHAR,
 		UPDATE_TIME VARCHAR,
-		REPOSITORY VARCHAR
+		REPOSITORY VARCHAR,
+		SECRETS VARCHAR,
+		HAS_CLOUD_KEYS BOOLEAN,
+		HAS_HIGH_PRIVILEGE_CLOUD_KEYS BOOLEAN,
+		HAS_CROSS_ACCOUNT_CLOUD_KEYS BOOLEAN
 	)`
 
 	if _, err := s.sf.Query(ctx, createSQL); err != nil {
 		return fmt.Errorf("failed to create images table: %w", err)
+	}
+
+	for _, stmt := range []string{
+		"ALTER TABLE GCP_ARTIFACT_REGISTRY_IMAGES ADD COLUMN IF NOT EXISTS SECRETS VARCHAR",
+		"ALTER TABLE GCP_ARTIFACT_REGISTRY_IMAGES ADD COLUMN IF NOT EXISTS HAS_CLOUD_KEYS BOOLEAN",
+		"ALTER TABLE GCP_ARTIFACT_REGISTRY_IMAGES ADD COLUMN IF NOT EXISTS HAS_HIGH_PRIVILEGE_CLOUD_KEYS BOOLEAN",
+		"ALTER TABLE GCP_ARTIFACT_REGISTRY_IMAGES ADD COLUMN IF NOT EXISTS HAS_CROSS_ACCOUNT_CLOUD_KEYS BOOLEAN",
+	} {
+		if _, err := s.sf.Exec(ctx, stmt); err != nil {
+			s.logger.Warn("failed to alter images table", "statement", stmt, "error", err)
+		}
 	}
 
 	deleteSQL := "DELETE FROM GCP_ARTIFACT_REGISTRY_IMAGES WHERE PROJECT_ID = ?"
@@ -388,8 +608,8 @@ func (s *GCPSecuritySync) upsertDockerImages(ctx context.Context, images []map[s
 
 	insertSQL := `
 		INSERT INTO GCP_ARTIFACT_REGISTRY_IMAGES
-		(_CQ_ID, PROJECT_ID, NAME, URI, TAGS, IMAGE_SIZE, UPLOAD_TIME, MEDIA_TYPE, BUILD_TIME, UPDATE_TIME, REPOSITORY)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		(_CQ_ID, PROJECT_ID, NAME, URI, TAGS, IMAGE_SIZE, UPLOAD_TIME, MEDIA_TYPE, BUILD_TIME, UPDATE_TIME, REPOSITORY, SECRETS, HAS_CLOUD_KEYS, HAS_HIGH_PRIVILEGE_CLOUD_KEYS, HAS_CROSS_ACCOUNT_CLOUD_KEYS)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	for _, img := range images {
 		if _, err := s.sf.Exec(ctx, insertSQL,
 			toStr(img["_cq_id"]),
@@ -403,6 +623,10 @@ func (s *GCPSecuritySync) upsertDockerImages(ctx context.Context, images []map[s
 			toStr(img["build_time"]),
 			toStr(img["update_time"]),
 			toStr(img["repository"]),
+			toStr(img["secrets"]),
+			img["has_cloud_keys"],
+			img["has_high_privilege_cloud_keys"],
+			img["has_cross_account_cloud_keys"],
 		); err != nil {
 			s.logger.Warn("failed to insert image", "error", err, "uri", img["uri"])
 		}

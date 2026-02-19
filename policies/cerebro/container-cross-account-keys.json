@@ -4,9 +4,9 @@
   "name": "Internal container using a container image with cleartext cloud keys granting permission to access resources in other subscriptions",
   "description": "A container uses an image with cleartext cross-account access keys",
   "effect": "forbid",
-  "resource": "container::pod|container::deployment",
+  "resource": "container::image",
   "conditions": [
-    "image.secrets ANY (type == 'cloud_key' AND cleartext == true AND cross_account_access == true)"
+    "has_cross_account_cloud_keys == true OR secrets ANY (type == 'cloud_key' AND cleartext == true AND cross_account_access == true)"
   ],
   "severity": "high",
   "remediation": "Rebuild image without embedded keys. Use IAM roles for cross-account access.",
