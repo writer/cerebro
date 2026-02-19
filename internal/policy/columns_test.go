@@ -1,29 +1,37 @@
 package policy
 
 import (
+	"reflect"
 	"testing"
 )
 
-func TestExtractConditionField(t *testing.T) {
+func TestExtractConditionFields(t *testing.T) {
 	tests := []struct {
 		condition string
-		field     string
+		fields    []string
 	}{
-		{"public == true", "public"},
-		{"encryption_enabled != false", "encryption_enabled"},
-		{"max_age > 90", "max_age"},
-		{"count < 10", "count"},
-		{"name contains \"prod\"", "name"},
-		{"tags.env exists", "tags.env"},
-		{"mfa not exists", "mfa"},
-		{"config.public_access.enabled == true", "config.public_access.enabled"},
-		{"", ""},
+		{
+			condition: "subject_kind IN ('User', 'ServiceAccount')",
+			fields:    []string{"subject_kind"},
+		},
+		{
+			condition: "risk_reasons CONTAINS 'secret_access'",
+			fields:    []string{"risk_reasons"},
+		},
+		{
+			condition: "(wildcard_verbs == true OR wildcard_resources == true)",
+			fields:    []string{"wildcard_verbs", "wildcard_resources"},
+		},
+		{
+			condition: "labels['pod-security.kubernetes.io/enforce'] == null",
+			fields:    []string{"labels['pod-security.kubernetes.io/enforce']"},
+		},
 	}
 
 	for _, tc := range tests {
-		got := extractConditionField(tc.condition)
-		if got != tc.field {
-			t.Errorf("extractConditionField(%q) = %q, want %q", tc.condition, got, tc.field)
+		got := extractConditionFields(tc.condition)
+		if !reflect.DeepEqual(got, tc.fields) {
+			t.Errorf("extractConditionFields(%q) = %v, want %v", tc.condition, got, tc.fields)
 		}
 	}
 }
@@ -96,6 +104,46 @@ func TestColumnsForTable_NestedField(t *testing.T) {
 	// Should extract top-level column "config", not the full path
 	if !colSet["config"] {
 		t.Error("missing top-level column 'config' for nested field")
+	}
+}
+
+func TestColumnsForTable_BracketAndOrConditions(t *testing.T) {
+	e := NewEngine()
+	e.AddPolicy(&Policy{
+		ID:       "p1",
+		Resource: "k8s::rbac::risky_binding",
+		Conditions: []string{
+			"subject_kind IN ('User', 'ServiceAccount')",
+			"(wildcard_verbs == true OR wildcard_resources == true)",
+			"risk_reasons CONTAINS 'secret_access'",
+		},
+		Severity: "low",
+	})
+	e.AddPolicy(&Policy{
+		ID:         "p2",
+		Resource:   "k8s::namespace",
+		Conditions: []string{"labels['pod-security.kubernetes.io/enforce'] == null"},
+		Severity:   "low",
+	})
+
+	rbacCols := e.ColumnsForTable("k8s_rbac_risky_bindings")
+	rbacSet := make(map[string]bool)
+	for _, c := range rbacCols {
+		rbacSet[c] = true
+	}
+	for _, want := range []string{"subject_kind", "wildcard_verbs", "wildcard_resources", "risk_reasons"} {
+		if !rbacSet[want] {
+			t.Errorf("missing column %q for risky binding table", want)
+		}
+	}
+
+	namespaceCols := e.ColumnsForTable("k8s_core_namespaces")
+	nsSet := make(map[string]bool)
+	for _, c := range namespaceCols {
+		nsSet[c] = true
+	}
+	if !nsSet["labels"] {
+		t.Error("missing top-level column 'labels' for bracket condition")
 	}
 }
 

@@ -1,0 +1,23 @@
+{
+  "id": "k8s-rbac-pod-create-privileges",
+  "name": "User/ServiceAccount Can Create Pods",
+  "description": "A user or service account has RBAC permissions to create pods, which can be abused for privilege escalation.",
+  "effect": "forbid",
+  "resource": "k8s::rbac::risky_binding",
+  "conditions": [
+    "subject_kind IN ('User', 'ServiceAccount')",
+    "risk_reasons CONTAINS 'pod_create_access'"
+  ],
+  "severity": "low",
+  "remediation": "Limit pod creation privileges to trusted automation identities and tightly scoped namespaces.",
+  "tags": [
+    "kubernetes",
+    "rbac",
+    "least-privilege",
+    "workload-security"
+  ],
+  "risk_categories": [
+    "PRIVILEGE_ESCALATION",
+    "LATERAL_MOVEMENT"
+  ]
+}

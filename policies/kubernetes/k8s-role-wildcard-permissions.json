@@ -1,0 +1,21 @@
+{
+  "id": "k8s-role-wildcard-permissions",
+  "name": "Kubernetes Role with Wildcard Permissions",
+  "description": "Role grants wildcard (*) permissions on resources, verbs, or API groups.",
+  "effect": "forbid",
+  "resource": "k8s::role",
+  "conditions": [
+    "rules ANY (resources CONTAINS '*' OR verbs CONTAINS '*' OR api_groups CONTAINS '*')"
+  ],
+  "severity": "low",
+  "remediation": "Replace wildcard role permissions with explicit resources, verbs, and API groups.",
+  "tags": [
+    "kubernetes",
+    "rbac",
+    "least-privilege"
+  ],
+  "risk_categories": [
+    "PRIVILEGE_ESCALATION",
+    "IDENTITY_RISK"
+  ]
+}

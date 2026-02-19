@@ -342,6 +342,20 @@ func TestEvaluateK8sRBACRisk(t *testing.T) {
 	if len(mediumReasons) == 0 {
 		t.Fatal("expected medium risk reasons")
 	}
+	if !containsString(mediumReasons, "secret_access") {
+		t.Fatalf("expected secret_access reason, got %v", mediumReasons)
+	}
+
+	podCreateRisk, podCreateReasons, _, _ := evaluateK8sRBACRisk([]rbacv1.PolicyRule{{
+		Verbs:     []string{"create"},
+		Resources: []string{"pods"},
+	}})
+	if podCreateRisk != "medium" {
+		t.Fatalf("expected medium risk for pod create, got %s", podCreateRisk)
+	}
+	if !containsString(podCreateReasons, "pod_create_access") {
+		t.Fatalf("expected pod_create_access reason, got %v", podCreateReasons)
+	}
 
 	lowRisk, lowReasons, _, _ := evaluateK8sRBACRisk([]rbacv1.PolicyRule{{
 		Verbs:     []string{"get", "list"},
@@ -367,4 +381,13 @@ func TestK8sRBACRiskBindingHelpers(t *testing.T) {
 	if kind := normalizeK8sSubjectKind("User"); kind != "User" {
 		t.Fatalf("unexpected user subject kind normalization: %s", kind)
 	}
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }

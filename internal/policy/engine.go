@@ -252,8 +252,11 @@ func (e *Engine) ColumnsForTable(table string) []string {
 			}
 		}
 		for _, cond := range p.Conditions {
-			if field := extractConditionField(cond); field != "" {
-				top := strings.SplitN(field, ".", 2)[0]
+			for _, field := range extractConditionFields(cond) {
+				top := topLevelConditionField(field)
+				if top == "" {
+					continue
+				}
 				cols[strings.ToLower(top)] = struct{}{}
 			}
 		}
@@ -267,26 +270,88 @@ func (e *Engine) ColumnsForTable(table string) []string {
 	return result
 }
 
-func extractConditionField(condition string) string {
+func extractConditionFields(condition string) []string {
 	condition = strings.TrimSpace(condition)
+	if condition == "" {
+		return nil
+	}
+
+	condition = trimOuterParens(condition)
+
+	if parts := splitTopLevel(condition, " OR "); len(parts) > 1 {
+		fields := make([]string, 0, len(parts))
+		for _, part := range parts {
+			fields = append(fields, extractConditionFields(part)...)
+		}
+		return fields
+	}
+
+	if parts := splitTopLevel(condition, " AND "); len(parts) > 1 {
+		fields := make([]string, 0, len(parts))
+		for _, part := range parts {
+			fields = append(fields, extractConditionFields(part)...)
+		}
+		return fields
+	}
+
+	if field, _, _, ok := parseAnyCondition(condition); ok {
+		return []string{strings.TrimSpace(field)}
+	}
+
+	if field, _, _, ok := parseInCondition(condition); ok {
+		return []string{strings.TrimSpace(field)}
+	}
+
+	if field, _, _, ok := parseMatchesCondition(condition); ok {
+		return []string{strings.TrimSpace(field)}
+	}
+
+	if field, _, _, ok := parseContainsCondition(condition); ok {
+		return []string{strings.TrimSpace(field)}
+	}
+
 	for _, op := range []string{"==", "!=", ">=", "<=", ">", "<"} {
 		if parts := strings.SplitN(condition, op, 2); len(parts) == 2 {
-			return strings.TrimSpace(parts[0])
+			return []string{strings.TrimSpace(parts[0])}
 		}
 	}
-	if strings.Contains(condition, " contains ") {
-		parts := strings.SplitN(condition, " contains ", 2)
+	if parts := splitTopLevelFold(condition, " starts_with "); len(parts) == 2 {
+		return []string{strings.TrimSpace(parts[0])}
+	}
+	if strings.Contains(strings.ToLower(condition), " contains ") {
+		parts := splitTopLevelFold(condition, " contains ")
 		if len(parts) == 2 {
-			return strings.TrimSpace(parts[0])
+			return []string{strings.TrimSpace(parts[0])}
 		}
 	}
-	if strings.HasSuffix(condition, " not exists") {
-		return strings.TrimSpace(strings.TrimSuffix(condition, " not exists"))
+	lower := strings.ToLower(condition)
+	if strings.HasSuffix(lower, " not exists") {
+		return []string{strings.TrimSpace(condition[:len(condition)-len(" not exists")])}
 	}
-	if strings.HasSuffix(condition, " exists") {
-		return strings.TrimSpace(strings.TrimSuffix(condition, " exists"))
+	if strings.HasSuffix(lower, " exists") {
+		return []string{strings.TrimSpace(condition[:len(condition)-len(" exists")])}
 	}
-	return ""
+
+	return nil
+}
+
+func topLevelConditionField(field string) string {
+	field = strings.TrimSpace(field)
+	if field == "" {
+		return ""
+	}
+
+	field = trimOuterParens(field)
+	if field == "" {
+		return ""
+	}
+
+	parts := splitPath(field)
+	if len(parts) == 0 {
+		return field
+	}
+
+	return parts[0]
 }
 
 func (e *Engine) Evaluate(ctx context.Context, req *EvalRequest) (*EvalResponse, error) {

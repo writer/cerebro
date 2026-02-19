@@ -1052,6 +1052,7 @@ func evaluateK8sRBACRisk(rules []rbacv1.PolicyRule) (string, []string, bool, boo
 	hasRBACWrite := false
 	hasSecretAccess := false
 	hasPodExec := false
+	hasPodCreate := false
 
 	for _, rule := range rules {
 		if containsAnyFold(rule.Verbs, "*") {
@@ -1075,12 +1076,16 @@ func evaluateK8sRBACRisk(rules []rbacv1.PolicyRule) (string, []string, bool, boo
 			containsAnyFold(rule.Verbs, "create", "get", "*") {
 			hasPodExec = true
 		}
+		if containsAnyFold(rule.Resources, "pods") &&
+			containsAnyFold(rule.Verbs, "create", "*") {
+			hasPodCreate = true
+		}
 	}
 
 	riskLevel := "low"
 	if hasEscalationVerb || hasRBACWrite || (wildcardVerbs && wildcardResources) {
 		riskLevel = "high"
-	} else if wildcardVerbs || wildcardResources || hasSecretAccess || hasPodExec {
+	} else if wildcardVerbs || wildcardResources || hasSecretAccess || hasPodExec || hasPodCreate {
 		riskLevel = "medium"
 	}
 
@@ -1088,7 +1093,7 @@ func evaluateK8sRBACRisk(rules []rbacv1.PolicyRule) (string, []string, bool, boo
 		return "low", nil, wildcardVerbs, wildcardResources
 	}
 
-	reasons := make([]string, 0, 6)
+	reasons := make([]string, 0, 7)
 	if wildcardVerbs {
 		reasons = append(reasons, "wildcard_verbs")
 	}
@@ -1106,6 +1111,9 @@ func evaluateK8sRBACRisk(rules []rbacv1.PolicyRule) (string, []string, bool, boo
 	}
 	if hasPodExec {
 		reasons = append(reasons, "pod_exec_access")
+	}
+	if hasPodCreate {
+		reasons = append(reasons, "pod_create_access")
 	}
 	sort.Strings(reasons)
 

@@ -1,0 +1,21 @@
+{
+  "id": "k8s-namespace-missing-pss-label",
+  "name": "Kubernetes Namespace Missing Pod Security Enforcement Label",
+  "description": "Namespace does not define pod-security.kubernetes.io/enforce, indicating Pod Security Standards are not explicitly enforced.",
+  "effect": "forbid",
+  "resource": "k8s::namespace",
+  "conditions": [
+    "name NOT IN ('kube-system', 'kube-public', 'kube-node-lease')",
+    "labels['pod-security.kubernetes.io/enforce'] == null"
+  ],
+  "severity": "low",
+  "remediation": "Set pod-security.kubernetes.io/enforce (for example baseline or restricted) on each application namespace.",
+  "tags": [
+    "kubernetes",
+    "pod-security-standards",
+    "namespace"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ]
+}
