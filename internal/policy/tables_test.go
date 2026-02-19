@@ -23,6 +23,8 @@ func TestResourceToTableMapping(t *testing.T) {
 		{"github::user", 1},
 		{"k8s::role", 1},
 		{"k8s::namespace", 1},
+		{"k8s::rbac::risky_binding", 1},
+		{"k8s::cluster::inventory", 1},
 		{"compute::instance", 3},
 	}
 
@@ -103,6 +105,20 @@ func TestPolicyGetRequiredTables(t *testing.T) {
 	p.Resource = "kubernetes::pod"
 	tables = p.GetRequiredTables()
 	want = []string{"k8s_core_pods"}
+	if !reflect.DeepEqual(tables, want) {
+		t.Errorf("got %v, want %v", tables, want)
+	}
+
+	p.Resource = "k8s::rbac::risky_binding"
+	tables = p.GetRequiredTables()
+	want = []string{"k8s_rbac_risky_bindings"}
+	if !reflect.DeepEqual(tables, want) {
+		t.Errorf("got %v, want %v", tables, want)
+	}
+
+	p.Resource = "k8s::cluster::inventory"
+	tables = p.GetRequiredTables()
+	want = []string{"k8s_cluster_inventory"}
 	if !reflect.DeepEqual(tables, want) {
 		t.Errorf("got %v, want %v", tables, want)
 	}

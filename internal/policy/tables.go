@@ -378,18 +378,22 @@ var ResourceToTableMapping = map[string][]string{
 	"k8s::core::namespace":            {"k8s_core_namespaces"},
 	"k8s::core::service":              {"k8s_core_services"},
 	"k8s::core::node":                 {"k8s_core_nodes"},
+	"k8s::cluster::inventory":         {"k8s_cluster_inventory"},
 	"k8s::networking::ingress":        {"k8s_networking_ingresses"},
 	"k8s::rbac::cluster_role":         {"k8s_rbac_cluster_roles"},
 	"k8s::rbac::cluster_role_binding": {"k8s_rbac_cluster_role_bindings"},
 	"k8s::rbac::role_binding":         {"k8s_rbac_role_bindings"},
+	"k8s::rbac::risky_binding":        {"k8s_rbac_risky_bindings"},
 	"kubernetes::pod":                 {"k8s_core_pods"},
 	"kubernetes::service": {
 		"k8s_core_services",
 	},
+	"kubernetes::cluster::inventory":   {"k8s_cluster_inventory"},
 	"kubernetes::networking::ingress":  {"k8s_networking_ingresses"},
 	"kubernetes::deployment":           {"k8s_apps_deployments"},
 	"kubernetes::role_binding":         {"k8s_rbac_role_bindings"},
 	"kubernetes::cluster_role_binding": {"k8s_rbac_cluster_role_bindings"},
+	"kubernetes::rbac::risky_binding":  {"k8s_rbac_risky_bindings"},
 	"kubernetes::audit_event":          {"k8s_audit_events"},
 
 	// GKE (maps to Kubernetes RBAC tables)

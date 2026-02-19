@@ -1,0 +1,22 @@
+{
+  "id": "k8s-rbac-high-risk-binding",
+  "name": "Kubernetes High-Risk RBAC Binding",
+  "description": "RBAC binding grants high-risk permissions that can enable privilege escalation or broad cluster takeover.",
+  "effect": "forbid",
+  "resource": "k8s::rbac::risky_binding",
+  "conditions": [
+    "risk_level == 'high'"
+  ],
+  "severity": "high",
+  "remediation": "Replace broad role bindings with least-privilege roles, remove wildcard verbs/resources, and tightly restrict cluster-admin access.",
+  "tags": [
+    "kubernetes",
+    "rbac",
+    "least-privilege",
+    "privilege-escalation"
+  ],
+  "risk_categories": [
+    "PRIVILEGE_ESCALATION",
+    "IDENTITY_RISK"
+  ]
+}
