@@ -151,6 +151,8 @@ type Finding struct {
 }
 
 func NewEngine() *Engine {
+	MustValidateStartupMappings()
+
 	return &Engine{
 		policies: make(map[string]*Policy),
 	}
