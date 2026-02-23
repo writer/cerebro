@@ -26,11 +26,11 @@
 - [x] Standardize error wrapping to include provider/table/region
 
 ## Phase 2: Coverage Audit (AWS → GCP → Azure)
-- [ ] Build AWS coverage matrix (service → table → primary keys → regions)
-- [ ] Compare against AWS service catalog; identify missing high-value resources
-- [ ] Add missing AWS tables (start with IAM, EC2, S3, KMS, RDS, CloudTrail)
-- [ ] Build GCP coverage matrix (Asset Inventory vs native APIs)
-- [ ] Build Azure coverage matrix (ARM + Graph)
+- [x] Build AWS coverage matrix (service → table → primary keys → regions)
+- [x] Compare against AWS service catalog; identify missing high-value resources
+- [x] Add missing AWS tables (start with IAM, EC2, S3, KMS, RDS, CloudTrail)
+- [x] Build GCP coverage matrix (Asset Inventory vs native APIs)
+- [x] Build Azure coverage matrix (ARM + Graph)
 
 ## Phase 3: Correctness & Schema Quality
 - [ ] Standardize primary keys (ARN/ID) and account/region columns
