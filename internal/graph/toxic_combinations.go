@@ -111,10 +111,17 @@ type ToxicCombinationEngine struct {
 	rules []*ToxicCombinationRule
 }
 
-// NewToxicCombinationEngine creates an engine with default rules
+// NewToxicCombinationEngine creates an engine with default rules.
+// It uses the global rule registry for automatic registration and validation.
 func NewToxicCombinationEngine() *ToxicCombinationEngine {
-	engine := &ToxicCombinationEngine{}
-	engine.registerDefaultRules()
+	// Use registry-based initialization which validates all rules
+	RegisterAllRules()
+	engine := &ToxicCombinationEngine{
+		rules: GlobalRegistry().GetEnabledRules(),
+	}
+	if len(engine.rules) == 0 {
+		engine.registerDefaultRules()
+	}
 	return engine
 }
 

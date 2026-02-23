@@ -1,7 +1,14 @@
 # Integration Improvements TODO
 
 ## Status
-- **Current focus:** Phase 4 (Scale & Resilience)
+- **Current focus:** Phase 5 (Quality & Freshness) + Scanner Improvements
+
+## Scanner Rule Registry (2026-02-23)
+- [x] Created auto-registration system for toxic combination rules (`rule_registry.go`)
+- [x] Added validation tests ensuring all rules are properly configured
+- [x] Implemented `ExpectedRules` list to prevent accidental rule removal
+- [x] Added MITRE ATT&CK and CIS control mappings for rules
+- [x] Created comprehensive test suite for rule validation (`rule_registry_test.go`)
 
 ## Platform Gap Audit (2026-02-23)
 
@@ -40,11 +47,11 @@
 - [x] Improve diff accuracy (hash inputs, deterministic field ordering)
 
 ## Phase 4: Scale & Resilience
-- [ ] Add AWS Organizations account discovery + per-account fan-out
-- [ ] Support multi-region scanning with region lists per service
-- [ ] Rate-limit/backoff strategy per provider API
-- [ ] Concurrency tuning (per-service defaults + caps)
-- [ ] Retry classification (throttle vs auth vs transient)
+- [x] Add AWS Organizations account discovery + per-account fan-out
+- [x] Support multi-region scanning with region lists per service
+- [x] Rate-limit/backoff strategy per provider API
+- [x] Concurrency tuning (per-service defaults + caps)
+- [x] Retry classification (throttle vs auth vs transient)
 
 ## Phase 5: Quality & Freshness
 - [ ] Incremental sync rules for large tables (delta windows)

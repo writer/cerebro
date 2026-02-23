@@ -68,6 +68,7 @@ var GCPAssetTypes = map[string]string{
 	"compute.googleapis.com/Subnetwork":      "gcp_compute_subnetworks",
 	"storage.googleapis.com/Bucket":          "gcp_storage_buckets",
 	"iam.googleapis.com/ServiceAccount":      "gcp_iam_service_accounts",
+	"iam.googleapis.com/Role":                "gcp_iam_roles",
 	"sqladmin.googleapis.com/Instance":       "gcp_sql_instances",
 	"cloudfunctions.googleapis.com/Function": "gcp_cloudfunctions_functions",
 	"pubsub.googleapis.com/Topic":            "gcp_pubsub_topics",

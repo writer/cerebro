@@ -505,7 +505,7 @@ func hasWildcardTable(tables []string) bool {
 }
 
 func resourceToTablesForType(resource string) []string {
-	if tables, ok := ResourceToTableMapping[resource]; ok {
+	if tables, ok := GlobalMappingRegistry().Get(resource); ok {
 		return tables
 	}
 
