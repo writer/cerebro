@@ -108,6 +108,14 @@ func (r *RBAC) loadDefaults() {
 		{ID: "findings:write", Resource: "findings", Action: "write"},
 		{ID: "policies:read", Resource: "policies", Action: "read"},
 		{ID: "policies:write", Resource: "policies", Action: "write"},
+		{ID: "agents:read", Resource: "agents", Action: "read"},
+		{ID: "agents:write", Resource: "agents", Action: "write"},
+		{ID: "tickets:read", Resource: "tickets", Action: "read"},
+		{ID: "tickets:write", Resource: "tickets", Action: "write"},
+		{ID: "runtime:read", Resource: "runtime", Action: "read"},
+		{ID: "runtime:write", Resource: "runtime", Action: "write"},
+		{ID: "graph:read", Resource: "graph", Action: "read"},
+		{ID: "graph:write", Resource: "graph", Action: "write"},
 		{ID: "assets:read", Resource: "assets", Action: "read"},
 		{ID: "compliance:read", Resource: "compliance", Action: "read"},
 		{ID: "compliance:export", Resource: "compliance", Action: "export"},
@@ -118,9 +126,9 @@ func (r *RBAC) loadDefaults() {
 		r.permissions[perms[i].ID] = &perms[i]
 	}
 
-	r.roles["admin"] = &Role{ID: "admin", Name: "Administrator", Permissions: []string{"findings:read", "findings:write", "policies:read", "policies:write", "assets:read", "compliance:read", "compliance:export", "admin:users", "admin:roles"}, IsSystem: true}
-	r.roles["analyst"] = &Role{ID: "analyst", Name: "Security Analyst", Permissions: []string{"findings:read", "findings:write", "policies:read", "assets:read", "compliance:read"}, IsSystem: true}
-	r.roles["viewer"] = &Role{ID: "viewer", Name: "Viewer", Permissions: []string{"findings:read", "policies:read", "assets:read", "compliance:read"}, IsSystem: true}
+	r.roles["admin"] = &Role{ID: "admin", Name: "Administrator", Permissions: []string{"findings:read", "findings:write", "policies:read", "policies:write", "agents:read", "agents:write", "tickets:read", "tickets:write", "runtime:read", "runtime:write", "graph:read", "graph:write", "assets:read", "compliance:read", "compliance:export", "admin:users", "admin:roles"}, IsSystem: true}
+	r.roles["analyst"] = &Role{ID: "analyst", Name: "Security Analyst", Permissions: []string{"findings:read", "findings:write", "policies:read", "agents:read", "agents:write", "tickets:read", "tickets:write", "runtime:read", "runtime:write", "graph:read", "graph:write", "assets:read", "compliance:read"}, IsSystem: true}
+	r.roles["viewer"] = &Role{ID: "viewer", Name: "Viewer", Permissions: []string{"findings:read", "policies:read", "agents:read", "tickets:read", "runtime:read", "graph:read", "assets:read", "compliance:read"}, IsSystem: true}
 }
 
 func (r *RBAC) HasPermission(ctx context.Context, userID, permID string) bool {

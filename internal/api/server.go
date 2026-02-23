@@ -37,15 +37,21 @@ import (
 
 // Server is the fully wired API server
 type Server struct {
-	app    *app.App
-	router *chi.Mux
+	app         *app.App
+	router      *chi.Mux
+	auditLogger auditLogWriter
+}
+
+type auditLogWriter interface {
+	Log(ctx context.Context, entry *snowflake.AuditEntry) error
 }
 
 // NewServer creates a new server with all services wired
 func NewServer(application *app.App) *Server {
 	s := &Server{
-		app:    application,
-		router: chi.NewRouter(),
+		app:         application,
+		router:      chi.NewRouter(),
+		auditLogger: application.AuditRepo,
 	}
 	s.setupMiddleware()
 	s.setupRoutes()
@@ -641,44 +647,36 @@ func (s *Server) executeQuery(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Query string `json:"query"`
-		Limit int    `json:"limit"`
+		Query          string `json:"query"`
+		Limit          int    `json:"limit"`
+		TimeoutSeconds int    `json:"timeout_seconds"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.error(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 
-	if req.Limit <= 0 {
-		req.Limit = 100
-	}
-	if req.Limit > 1000 {
-		req.Limit = 1000
-	}
-
-	// Validate query - only allow SELECT statements for safety
-	if err := validateQuery(req.Query); err != nil {
+	boundedQuery, boundedLimit, err := snowflake.BuildReadOnlyLimitedQuery(req.Query, req.Limit)
+	if err != nil {
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	result, err := s.app.Snowflake.Query(r.Context(), req.Query)
+	queryCtx, cancel := context.WithTimeout(r.Context(), snowflake.ClampReadOnlyQueryTimeout(req.TimeoutSeconds))
+	defer cancel()
+
+	result, err := s.app.Snowflake.Query(queryCtx, boundedQuery)
 	if err != nil {
 		s.error(w, http.StatusInternalServerError, "query execution failed")
 		return
 	}
 
-	if result != nil && result.Count > req.Limit {
-		result.Rows = result.Rows[:req.Limit]
+	if result != nil && result.Count > boundedLimit {
+		result.Rows = result.Rows[:boundedLimit]
 		result.Count = len(result.Rows)
 	}
 
 	s.json(w, http.StatusOK, result)
-}
-
-// validateQuery ensures only safe read-only queries are executed
-func validateQuery(query string) error {
-	return ValidateReadOnlyQuery(query)
 }
 
 // Asset endpoints
@@ -1567,6 +1565,44 @@ func pendingApprovalMessage(session *agents.Session) agents.Message {
 	}
 }
 
+func (s *Server) logToolApprovalDecision(ctx context.Context, r *http.Request, session *agents.Session, pendingCall pendingToolCall, decision string) {
+	if s.auditLogger == nil {
+		return
+	}
+
+	approverID := strings.TrimSpace(GetUserID(ctx))
+	if approverID == "" {
+		approverID = strings.TrimSpace(session.UserID)
+	}
+
+	details := map[string]interface{}{
+		"session_id":   session.ID,
+		"tool_call_id": pendingCall.ID,
+		"tool_name":    pendingCall.Name,
+		"decision":     decision,
+		"approver_id":  approverID,
+		"decided_at":   time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	if !pendingCall.CreatedAt.IsZero() {
+		details["requested_at"] = pendingCall.CreatedAt.UTC().Format(time.RFC3339Nano)
+	}
+
+	entry := &snowflake.AuditEntry{
+		Action:       "agent.tool_approval",
+		ActorID:      approverID,
+		ActorType:    "user",
+		ResourceType: "agent_session_tool_call",
+		ResourceID:   pendingCall.ID,
+		Details:      details,
+		IPAddress:    r.RemoteAddr,
+		UserAgent:    r.UserAgent(),
+	}
+
+	if err := s.auditLogger.Log(ctx, entry); err != nil && s.app.Logger != nil {
+		s.app.Logger.Warn("failed to persist tool approval audit log", "error", err, "session_id", session.ID, "tool_call_id", pendingCall.ID, "decision", decision)
+	}
+}
+
 func (s *Server) approveSessionToolCall(w http.ResponseWriter, r *http.Request) {
 	sessionID := chi.URLParam(r, "id")
 	session, ok := s.app.Agents.GetSession(sessionID)
@@ -1598,6 +1634,7 @@ func (s *Server) approveSessionToolCall(w http.ResponseWriter, r *http.Request) 
 			},
 		}
 		session.Messages = append(session.Messages, msg)
+		s.logToolApprovalDecision(r.Context(), r, session, pendingCall, "expired")
 		s.app.Agents.UpdateSession(session)
 		s.json(w, http.StatusBadRequest, msg)
 		return
@@ -1629,6 +1666,7 @@ func (s *Server) approveSessionToolCall(w http.ResponseWriter, r *http.Request) 
 			},
 		}
 		session.Messages = append(session.Messages, msg)
+		s.logToolApprovalDecision(r.Context(), r, session, pendingCall, "denied")
 		s.app.Agents.UpdateSession(session)
 		s.json(w, http.StatusOK, msg)
 		return
@@ -1639,6 +1677,8 @@ func (s *Server) approveSessionToolCall(w http.ResponseWriter, r *http.Request) 
 		s.error(w, http.StatusBadRequest, "pending tool not found on agent")
 		return
 	}
+
+	s.logToolApprovalDecision(r.Context(), r, session, pendingCall, "approved")
 
 	argsRaw, _ := json.Marshal(pendingCall.Arguments)
 	output, err := tool.Handler(r.Context(), argsRaw)
@@ -2834,6 +2874,10 @@ func (s *Server) listPermissions(w http.ResponseWriter, r *http.Request) {
 	s.json(w, http.StatusOK, []string{
 		"findings:read", "findings:write",
 		"policies:read", "policies:write",
+		"agents:read", "agents:write",
+		"tickets:read", "tickets:write",
+		"runtime:read", "runtime:write",
+		"graph:read", "graph:write",
 		"assets:read", "compliance:read", "compliance:export",
 		"admin:users", "admin:roles",
 	})

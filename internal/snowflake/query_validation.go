@@ -2,7 +2,16 @@ package snowflake
 
 import (
 	"errors"
+	"fmt"
 	"strings"
+	"time"
+)
+
+const (
+	DefaultReadOnlyQueryLimit   = 100
+	MaxReadOnlyQueryLimit       = 1000
+	DefaultReadOnlyQueryTimeout = 15 * time.Second
+	MaxReadOnlyQueryTimeout     = 60 * time.Second
 )
 
 var (
@@ -56,6 +65,42 @@ func ValidateReadOnlyQuery(query string) error {
 	}
 
 	return nil
+}
+
+// ClampReadOnlyQueryLimit bounds query limits to safe defaults.
+func ClampReadOnlyQueryLimit(limit int) int {
+	if limit <= 0 {
+		return DefaultReadOnlyQueryLimit
+	}
+	if limit > MaxReadOnlyQueryLimit {
+		return MaxReadOnlyQueryLimit
+	}
+	return limit
+}
+
+// ClampReadOnlyQueryTimeout bounds per-request query timeout in seconds.
+func ClampReadOnlyQueryTimeout(timeoutSeconds int) time.Duration {
+	if timeoutSeconds <= 0 {
+		return DefaultReadOnlyQueryTimeout
+	}
+	timeout := time.Duration(timeoutSeconds) * time.Second
+	if timeout > MaxReadOnlyQueryTimeout {
+		return MaxReadOnlyQueryTimeout
+	}
+	return timeout
+}
+
+// BuildReadOnlyLimitedQuery validates read-only SQL and enforces row-limit pushdown.
+func BuildReadOnlyLimitedQuery(query string, limit int) (string, int, error) {
+	if err := ValidateReadOnlyQuery(query); err != nil {
+		return "", 0, err
+	}
+
+	boundedLimit := ClampReadOnlyQueryLimit(limit)
+	trimmed := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(query), ";"))
+
+	boundedQuery := fmt.Sprintf("SELECT * FROM (%s) AS cerebro_readonly_query LIMIT %d", trimmed, boundedLimit)
+	return boundedQuery, boundedLimit, nil
 }
 
 func normalizeQuery(query string) string {

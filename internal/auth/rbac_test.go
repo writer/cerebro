@@ -108,6 +108,14 @@ func TestRBAC_HasPermission(t *testing.T) {
 		{"findings:read", true},
 		{"findings:write", true},
 		{"policies:read", true},
+		{"agents:read", true},
+		{"agents:write", true},
+		{"tickets:read", true},
+		{"tickets:write", true},
+		{"runtime:read", true},
+		{"runtime:write", true},
+		{"graph:read", true},
+		{"graph:write", true},
 		{"admin:users", false}, // analyst doesn't have admin permissions
 		{"admin:roles", false},
 	}

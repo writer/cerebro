@@ -31,6 +31,7 @@ import (
 	"github.com/writerinternal/cerebro/internal/runtime"
 	"github.com/writerinternal/cerebro/internal/scanner"
 	"github.com/writerinternal/cerebro/internal/scheduler"
+	"github.com/writerinternal/cerebro/internal/snowflake"
 	"github.com/writerinternal/cerebro/internal/threatintel"
 	"github.com/writerinternal/cerebro/internal/ticketing"
 	"github.com/writerinternal/cerebro/internal/webhooks"
@@ -126,6 +127,15 @@ func (p *scriptedAgentProvider) Complete(_ context.Context, _ []agents.Message, 
 
 func (p *scriptedAgentProvider) Stream(context.Context, []agents.Message, []agents.Tool) (<-chan agents.StreamEvent, error) {
 	return nil, nil
+}
+
+type captureAuditLogger struct {
+	entries []*snowflake.AuditEntry
+}
+
+func (l *captureAuditLogger) Log(_ context.Context, entry *snowflake.AuditEntry) error {
+	l.entries = append(l.entries, entry)
+	return nil
 }
 
 // --- Health / Readiness ---
@@ -441,6 +451,23 @@ func TestListPermissions(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
+
+	var perms []string
+	if err := json.Unmarshal(w.Body.Bytes(), &perms); err != nil {
+		t.Fatalf("decode permissions: %v", err)
+	}
+
+	permSet := make(map[string]struct{}, len(perms))
+	for _, p := range perms {
+		permSet[p] = struct{}{}
+	}
+
+	expected := []string{"agents:read", "agents:write", "tickets:read", "runtime:read", "graph:write"}
+	for _, perm := range expected {
+		if _, ok := permSet[perm]; !ok {
+			t.Fatalf("expected permission %s in response", perm)
+		}
+	}
 }
 
 // --- Threat Intel ---
@@ -601,7 +628,7 @@ func TestAuthMiddleware_RBACAgentReadWriteByRole(t *testing.T) {
 		t.Fatalf("expected viewer write to be forbidden, got %d", viewerWriteW.Code)
 	}
 
-	// Analyst has findings:write so request reaches handler (agent missing => 404).
+	// Analyst has agents:write so request reaches handler (agent missing => 404).
 	analystWriteReq := httptest.NewRequest("POST", "/api/v1/agents/sessions", strings.NewReader(`{"agent_id":"agent-1"}`))
 	analystWriteReq.Header.Set("Authorization", "Bearer analyst-key")
 	analystWriteReq.Header.Set("Content-Type", "application/json")
@@ -609,6 +636,92 @@ func TestAuthMiddleware_RBACAgentReadWriteByRole(t *testing.T) {
 	s.ServeHTTP(analystWriteW, analystWriteReq)
 	if analystWriteW.Code == http.StatusForbidden {
 		t.Fatalf("expected analyst write to pass RBAC, got %d", analystWriteW.Code)
+	}
+}
+
+func TestAuthMiddleware_RBACRouteMatrix(t *testing.T) {
+	a := newTestApp(t)
+	a.Config.APIAuthEnabled = true
+	a.Config.APIKeys = map[string]string{"viewer-key": "viewer-1", "analyst-key": "analyst-1", "admin-key": "admin-1"}
+
+	if err := a.RBAC.CreateUser(&auth.User{ID: "viewer-1", Email: "viewer@example.com", RoleIDs: []string{"viewer"}}); err != nil {
+		t.Fatalf("create viewer: %v", err)
+	}
+	if err := a.RBAC.CreateUser(&auth.User{ID: "analyst-1", Email: "analyst@example.com", RoleIDs: []string{"analyst"}}); err != nil {
+		t.Fatalf("create analyst: %v", err)
+	}
+	if err := a.RBAC.CreateUser(&auth.User{ID: "admin-1", Email: "admin@example.com", RoleIDs: []string{"admin"}}); err != nil {
+		t.Fatalf("create admin: %v", err)
+	}
+
+	s := NewServer(a)
+
+	type routeCase struct {
+		name             string
+		method           string
+		path             string
+		body             interface{}
+		viewerForbidden  bool
+		analystForbidden bool
+		adminForbidden   bool
+	}
+
+	cases := []routeCase{
+		{name: "agents read", method: http.MethodGet, path: "/api/v1/agents/", viewerForbidden: false, analystForbidden: false, adminForbidden: false},
+		{name: "agents write", method: http.MethodPost, path: "/api/v1/agents/sessions", body: map[string]string{"agent_id": "missing-agent"}, viewerForbidden: true, analystForbidden: false, adminForbidden: false},
+		{name: "tickets read", method: http.MethodGet, path: "/api/v1/tickets/", viewerForbidden: false, analystForbidden: false, adminForbidden: false},
+		{name: "tickets write", method: http.MethodPost, path: "/api/v1/tickets/", body: map[string]string{"title": "x", "description": "y"}, viewerForbidden: true, analystForbidden: false, adminForbidden: false},
+		{name: "runtime read", method: http.MethodGet, path: "/api/v1/runtime/detections", viewerForbidden: false, analystForbidden: false, adminForbidden: false},
+		{name: "runtime write", method: http.MethodPost, path: "/api/v1/runtime/events", body: map[string]interface{}{}, viewerForbidden: true, analystForbidden: false, adminForbidden: false},
+		{name: "graph read", method: http.MethodGet, path: "/api/v1/graph/stats", viewerForbidden: false, analystForbidden: false, adminForbidden: false},
+		{name: "graph write", method: http.MethodPost, path: "/api/v1/graph/rebuild", viewerForbidden: true, analystForbidden: false, adminForbidden: false},
+		{name: "providers admin only", method: http.MethodGet, path: "/api/v1/providers/", viewerForbidden: true, analystForbidden: true, adminForbidden: false},
+		{name: "scheduler admin only", method: http.MethodPost, path: "/api/v1/scheduler/jobs/test/run", viewerForbidden: true, analystForbidden: true, adminForbidden: false},
+		{name: "fallback read", method: http.MethodGet, path: "/api/v1/nonexistent", viewerForbidden: false, analystForbidden: false, adminForbidden: false},
+		{name: "fallback write", method: http.MethodPost, path: "/api/v1/nonexistent", body: map[string]interface{}{}, viewerForbidden: true, analystForbidden: true, adminForbidden: false},
+	}
+
+	doAuth := func(method, path, apiKey string, body interface{}) *httptest.ResponseRecorder {
+		var reader io.Reader
+		if body != nil {
+			b, err := json.Marshal(body)
+			if err != nil {
+				t.Fatalf("marshal body: %v", err)
+			}
+			reader = bytes.NewReader(b)
+		}
+
+		req := httptest.NewRequest(method, path, reader)
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+		if body != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, req)
+		return w
+	}
+
+	assertForbidden := func(tc routeCase, actor string, got int, wantForbidden bool) {
+		if wantForbidden && got != http.StatusForbidden {
+			t.Fatalf("%s (%s): expected 403, got %d", tc.name, actor, got)
+		}
+		if !wantForbidden && got == http.StatusForbidden {
+			t.Fatalf("%s (%s): expected non-403, got %d", tc.name, actor, got)
+		}
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			viewer := doAuth(tc.method, tc.path, "viewer-key", tc.body)
+			assertForbidden(tc, "viewer", viewer.Code, tc.viewerForbidden)
+
+			analyst := doAuth(tc.method, tc.path, "analyst-key", tc.body)
+			assertForbidden(tc, "analyst", analyst.Code, tc.analystForbidden)
+
+			admin := doAuth(tc.method, tc.path, "admin-key", tc.body)
+			assertForbidden(tc, "admin", admin.Code, tc.adminForbidden)
+		})
 	}
 }
 
@@ -804,6 +917,9 @@ func TestApproveSessionToolCallExecutesPendingTool(t *testing.T) {
 	}
 
 	s := NewServer(a)
+	auditLogs := &captureAuditLogger{}
+	s.auditLogger = auditLogs
+
 	w := do(t, s, "POST", "/api/v1/agents/sessions/"+session.ID+"/messages", map[string]string{"content": "run dangerous tool"})
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
@@ -836,6 +952,95 @@ func TestApproveSessionToolCallExecutesPendingTool(t *testing.T) {
 		if _, exists := updated.Context.Metadata["pending_tool_call"]; exists {
 			t.Fatal("expected pending tool call metadata to be cleared")
 		}
+	}
+
+	if len(auditLogs.entries) != 1 {
+		t.Fatalf("expected 1 audit entry, got %d", len(auditLogs.entries))
+	}
+	entry := auditLogs.entries[0]
+	if entry.Action != "agent.tool_approval" {
+		t.Fatalf("expected action agent.tool_approval, got %s", entry.Action)
+	}
+	if entry.ActorID != "user-1" {
+		t.Fatalf("expected actor user-1, got %s", entry.ActorID)
+	}
+	if entry.Details["decision"] != "approved" {
+		t.Fatalf("expected approved decision in details, got %#v", entry.Details["decision"])
+	}
+	if entry.Details["tool_call_id"] != "tool-1" {
+		t.Fatalf("expected tool_call_id tool-1, got %#v", entry.Details["tool_call_id"])
+	}
+}
+
+func TestApproveSessionToolCallDeniedRecordsAudit(t *testing.T) {
+	a := newTestApp(t)
+	called := false
+
+	provider := &scriptedAgentProvider{
+		responses: []*agents.Response{
+			{
+				Message: agents.Message{
+					Role: "assistant",
+					ToolCalls: []agents.ToolCall{{
+						ID:        "tool-1",
+						Name:      "dangerous_tool",
+						Arguments: json.RawMessage(`{"target":"asset-1"}`),
+					}},
+				},
+			},
+		},
+	}
+
+	a.Agents.RegisterAgent(&agents.Agent{
+		ID:       "agent-deny",
+		Name:     "Approval Agent",
+		Provider: provider,
+		Tools: []agents.Tool{{
+			Name:             "dangerous_tool",
+			RequiresApproval: true,
+			Handler: func(context.Context, json.RawMessage) (string, error) {
+				called = true
+				return `{"ok":true}`, nil
+			},
+		}},
+	})
+
+	session, err := a.Agents.CreateSession("agent-deny", "user-1", agents.SessionContext{})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	s := NewServer(a)
+	auditLogs := &captureAuditLogger{}
+	s.auditLogger = auditLogs
+
+	w := do(t, s, "POST", "/api/v1/agents/sessions/"+session.ID+"/messages", map[string]string{"content": "run dangerous tool"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	w = do(t, s, "POST", "/api/v1/agents/sessions/"+session.ID+"/approve", map[string]bool{"approve": false})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 when denying approval, got %d: %s", w.Code, w.Body.String())
+	}
+
+	if called {
+		t.Fatal("expected tool not to execute when approval is denied")
+	}
+
+	var msg agents.Message
+	if err := json.Unmarshal(w.Body.Bytes(), &msg); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if msg.Metadata["status"] != "approval_denied" {
+		t.Fatalf("expected approval_denied status, got %#v", msg.Metadata["status"])
+	}
+
+	if len(auditLogs.entries) != 1 {
+		t.Fatalf("expected 1 audit entry, got %d", len(auditLogs.entries))
+	}
+	if auditLogs.entries[0].Details["decision"] != "denied" {
+		t.Fatalf("expected denied decision, got %#v", auditLogs.entries[0].Details["decision"])
 	}
 }
 
@@ -878,6 +1083,9 @@ func TestApproveSessionToolCallExpiredPendingRequest(t *testing.T) {
 	}
 
 	s := NewServer(a)
+	auditLogs := &captureAuditLogger{}
+	s.auditLogger = auditLogs
+
 	w := do(t, s, "POST", "/api/v1/agents/sessions/"+session.ID+"/messages", map[string]string{"content": "run dangerous tool"})
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
@@ -920,6 +1128,13 @@ func TestApproveSessionToolCallExpiredPendingRequest(t *testing.T) {
 		if _, exists := updated.Context.Metadata["pending_tool_call"]; exists {
 			t.Fatal("expected pending tool metadata to be cleared after expiry")
 		}
+	}
+
+	if len(auditLogs.entries) != 1 {
+		t.Fatalf("expected 1 audit entry, got %d", len(auditLogs.entries))
+	}
+	if auditLogs.entries[0].Details["decision"] != "expired" {
+		t.Fatalf("expected expired decision, got %#v", auditLogs.entries[0].Details["decision"])
 	}
 }
 

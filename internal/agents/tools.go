@@ -169,6 +169,11 @@ func (st *SecurityTools) GetTools() []Tool {
 						"description": "Maximum number of results to return",
 						"default":     100,
 					},
+					"timeout_seconds": map[string]interface{}{
+						"type":        "integer",
+						"description": "Maximum query execution time in seconds (1-60, default 15)",
+						"default":     15,
+					},
 				},
 				"required": []string{"query"},
 			},
@@ -303,35 +308,33 @@ func (st *SecurityTools) GetTools() []Tool {
 
 func (st *SecurityTools) queryAssets(ctx context.Context, args json.RawMessage) (string, error) {
 	var params struct {
-		Query string `json:"query"`
-		Limit int    `json:"limit"`
+		Query          string `json:"query"`
+		Limit          int    `json:"limit"`
+		TimeoutSeconds int    `json:"timeout_seconds"`
 	}
 	if err := json.Unmarshal(args, &params); err != nil {
 		return "", err
 	}
 
-	if err := snowflake.ValidateReadOnlyQuery(params.Query); err != nil {
+	boundedQuery, boundedLimit, err := snowflake.BuildReadOnlyLimitedQuery(params.Query, params.Limit)
+	if err != nil {
 		return "", err
-	}
-
-	if params.Limit <= 0 {
-		params.Limit = 100
-	}
-	if params.Limit > 1000 {
-		params.Limit = 1000
 	}
 
 	if st.snowflake == nil {
 		return "", fmt.Errorf("snowflake not configured")
 	}
 
-	result, err := st.snowflake.Query(ctx, params.Query)
+	queryCtx, cancel := context.WithTimeout(ctx, snowflake.ClampReadOnlyQueryTimeout(params.TimeoutSeconds))
+	defer cancel()
+
+	result, err := st.snowflake.Query(queryCtx, boundedQuery)
 	if err != nil {
 		return "", err
 	}
 
-	if result != nil && result.Count > params.Limit {
-		result.Rows = result.Rows[:params.Limit]
+	if result != nil && result.Count > boundedLimit {
+		result.Rows = result.Rows[:boundedLimit]
 		result.Count = len(result.Rows)
 	}
 

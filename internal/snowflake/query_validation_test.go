@@ -2,7 +2,9 @@ package snowflake
 
 import (
 	"errors"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestValidateReadOnlyQuery(t *testing.T) {
@@ -34,6 +36,95 @@ func TestValidateReadOnlyQuery(t *testing.T) {
 
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("expected error %v, got %v", tt.wantErr, err)
+			}
+		})
+	}
+}
+
+func TestBuildReadOnlyLimitedQuery(t *testing.T) {
+	tests := []struct {
+		name          string
+		query         string
+		limit         int
+		wantErr       error
+		wantLimit     int
+		wantQueryPart string
+	}{
+		{
+			name:          "builds bounded query",
+			query:         "SELECT id FROM assets",
+			limit:         25,
+			wantLimit:     25,
+			wantQueryPart: "FROM (SELECT id FROM assets) AS cerebro_readonly_query LIMIT 25",
+		},
+		{
+			name:          "trims trailing semicolon",
+			query:         "SELECT * FROM findings;",
+			limit:         10,
+			wantLimit:     10,
+			wantQueryPart: "FROM (SELECT * FROM findings) AS cerebro_readonly_query LIMIT 10",
+		},
+		{
+			name:          "applies default limit",
+			query:         "SELECT * FROM findings",
+			limit:         0,
+			wantLimit:     DefaultReadOnlyQueryLimit,
+			wantQueryPart: "LIMIT 100",
+		},
+		{
+			name:          "clamps max limit",
+			query:         "SELECT * FROM findings",
+			limit:         99999,
+			wantLimit:     MaxReadOnlyQueryLimit,
+			wantQueryPart: "LIMIT 1000",
+		},
+		{
+			name:    "rejects unsafe query",
+			query:   "DROP TABLE findings",
+			limit:   10,
+			wantErr: ErrNonSelectQuery,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotQuery, gotLimit, err := BuildReadOnlyLimitedQuery(tt.query, tt.limit)
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("expected error %v, got %v", tt.wantErr, err)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+			if gotLimit != tt.wantLimit {
+				t.Fatalf("expected limit %d, got %d", tt.wantLimit, gotLimit)
+			}
+			if !strings.Contains(gotQuery, tt.wantQueryPart) {
+				t.Fatalf("expected query %q to contain %q", gotQuery, tt.wantQueryPart)
+			}
+		})
+	}
+}
+
+func TestClampReadOnlyQueryTimeout(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  int
+		expect time.Duration
+	}{
+		{name: "default when unset", input: 0, expect: DefaultReadOnlyQueryTimeout},
+		{name: "uses provided timeout", input: 5, expect: 5 * time.Second},
+		{name: "clamps max timeout", input: 999, expect: MaxReadOnlyQueryTimeout},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ClampReadOnlyQueryTimeout(tt.input)
+			if got != tt.expect {
+				t.Fatalf("ClampReadOnlyQueryTimeout(%d) = %v, want %v", tt.input, got, tt.expect)
 			}
 		})
 	}

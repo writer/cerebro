@@ -191,15 +191,32 @@ func routePermission(method, path string) string {
 			return "compliance:export"
 		}
 		return "compliance:read"
-	case strings.HasPrefix(path, "/api/v1/agents"),
-		strings.HasPrefix(path, "/api/v1/incidents"),
-		strings.HasPrefix(path, "/api/v1/tickets"),
-		strings.HasPrefix(path, "/api/v1/identity"),
+	case strings.HasPrefix(path, "/api/v1/agents"):
+		if isWrite {
+			return "agents:write"
+		}
+		return "agents:read"
+	case strings.HasPrefix(path, "/api/v1/tickets"):
+		if isWrite {
+			return "tickets:write"
+		}
+		return "tickets:read"
+	case strings.HasPrefix(path, "/api/v1/runtime"):
+		if isWrite {
+			return "runtime:write"
+		}
+		return "runtime:read"
+	case strings.HasPrefix(path, "/api/v1/graph"),
 		strings.HasPrefix(path, "/api/v1/attack-paths"),
+		strings.HasPrefix(path, "/api/v1/lineage"):
+		if isWrite {
+			return "graph:write"
+		}
+		return "graph:read"
+	case strings.HasPrefix(path, "/api/v1/incidents"),
+		strings.HasPrefix(path, "/api/v1/identity"),
 		strings.HasPrefix(path, "/api/v1/threatintel"),
-		strings.HasPrefix(path, "/api/v1/runtime"),
-		strings.HasPrefix(path, "/api/v1/lineage"),
-		strings.HasPrefix(path, "/api/v1/graph"):
+		strings.HasPrefix(path, "/api/v1/audit"):
 		if isWrite {
 			return "findings:write"
 		}

@@ -7,16 +7,16 @@
 
 ### Security / Access Control Gaps
 - [x] Close RBAC authorization gaps for unclassified API routes (fail closed for `/api/v1/*`, explicit mappings for agents/providers/scheduler/runtime/graph/etc.)
-- [ ] Split coarse RBAC permissions into dedicated domains (`agents:*`, `tickets:*`, `runtime:*`, `graph:*`) to reduce over-broad access grants
-- [ ] Add full auth+RBAC route matrix tests to ensure every route group has explicit permission expectations
+- [x] Split coarse RBAC permissions into dedicated domains (`agents:*`, `tickets:*`, `runtime:*`, `graph:*`) to reduce over-broad access grants
+- [x] Add full auth+RBAC route matrix tests to ensure every route group has explicit permission expectations
 
 ### Agent Safety / Operations Gaps
 - [x] Add pending-approval TTL/expiry and cleanup behavior for stalled agent tool approvals
-- [ ] Persist approval audit records (approver, timestamp, tool call id, decision)
+- [x] Persist approval audit records (approver, timestamp, tool call id, decision)
 
 ### Query Safety / Cost Control Gaps
-- [ ] Enforce Snowflake row-limit pushdown in SQL execution path (avoid unbounded warehouse reads before API-side truncation)
-- [ ] Add query budget guardrails (execution timeout/warehouse cost hints per request)
+- [x] Enforce Snowflake row-limit pushdown in SQL execution path (avoid unbounded warehouse reads before API-side truncation)
+- [x] Add query budget guardrails (execution timeout/warehouse cost hints per request)
 
 ## Phase 1: Baseline & Observability
 - [x] Add per-table metrics (duration, rows, errors) to sync output
