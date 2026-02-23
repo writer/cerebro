@@ -12,9 +12,11 @@ func TestLoadConfig(t *testing.T) {
 	// Set some env vars
 	os.Setenv("API_PORT", "9999")
 	os.Setenv("LOG_LEVEL", "debug")
+	os.Setenv("RBAC_STATE_FILE", "/tmp/rbac-state.json")
 	defer func() {
 		os.Unsetenv("API_PORT")
 		os.Unsetenv("LOG_LEVEL")
+		os.Unsetenv("RBAC_STATE_FILE")
 	}()
 
 	cfg := LoadConfig()
@@ -25,6 +27,10 @@ func TestLoadConfig(t *testing.T) {
 
 	if cfg.LogLevel != "debug" {
 		t.Errorf("expected log level debug, got %s", cfg.LogLevel)
+	}
+
+	if cfg.RBACStateFile != "/tmp/rbac-state.json" {
+		t.Errorf("expected RBAC state file to be set, got %s", cfg.RBACStateFile)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -143,6 +144,7 @@ func (s *Server) setupRoutes() {
 			r.Get("/{id}", s.getAgent)
 			r.Post("/sessions", s.createSession)
 			r.Get("/sessions/{id}", s.getSession)
+			r.Post("/sessions/{id}/approve", s.approveSessionToolCall)
 			r.Post("/sessions/{id}/messages", s.sendMessage)
 			r.Get("/sessions/{id}/messages", s.getMessages)
 		})
@@ -647,6 +649,13 @@ func (s *Server) executeQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.Limit <= 0 {
+		req.Limit = 100
+	}
+	if req.Limit > 1000 {
+		req.Limit = 1000
+	}
+
 	// Validate query - only allow SELECT statements for safety
 	if err := validateQuery(req.Query); err != nil {
 		s.error(w, http.StatusBadRequest, err.Error())
@@ -658,98 +667,18 @@ func (s *Server) executeQuery(w http.ResponseWriter, r *http.Request) {
 		s.error(w, http.StatusInternalServerError, "query execution failed")
 		return
 	}
+
+	if result != nil && result.Count > req.Limit {
+		result.Rows = result.Rows[:req.Limit]
+		result.Count = len(result.Rows)
+	}
+
 	s.json(w, http.StatusOK, result)
 }
 
 // validateQuery ensures only safe read-only queries are executed
 func validateQuery(query string) error {
-	// Normalize: remove comments, collapse whitespace
-	q := normalizeSQL(query)
-	q = strings.ToUpper(q)
-
-	// Must start with SELECT or WITH (for CTEs)
-	if !strings.HasPrefix(q, "SELECT") && !strings.HasPrefix(q, "WITH") {
-		return fmt.Errorf("only SELECT queries are allowed")
-	}
-
-	// Block dangerous keywords with word boundary detection
-	// Use regex-like matching by checking for word boundaries
-	dangerous := []string{
-		"INSERT", "UPDATE", "DELETE", "DROP", "TRUNCATE",
-		"CREATE", "ALTER", "GRANT", "REVOKE", "EXECUTE",
-		"CALL", "MERGE", "COPY", "PUT", "GET", "EXEC",
-	}
-	for _, kw := range dangerous {
-		if containsKeyword(q, kw) {
-			return fmt.Errorf("query contains forbidden keyword: %s", kw)
-		}
-	}
-
-	// Block semicolons which could allow statement chaining
-	if strings.Contains(q, ";") {
-		return fmt.Errorf("query contains forbidden character: semicolon")
-	}
-
-	return nil
-}
-
-// normalizeSQL removes SQL comments and normalizes whitespace
-func normalizeSQL(query string) string {
-	// Remove block comments /* ... */
-	for {
-		start := strings.Index(query, "/*")
-		if start == -1 {
-			break
-		}
-		end := strings.Index(query[start:], "*/")
-		if end == -1 {
-			query = query[:start]
-			break
-		}
-		query = query[:start] + " " + query[start+end+2:]
-	}
-
-	// Remove line comments -- ...
-	lines := strings.Split(query, "\n")
-	for i, line := range lines {
-		if idx := strings.Index(line, "--"); idx != -1 {
-			lines[i] = line[:idx]
-		}
-	}
-	query = strings.Join(lines, " ")
-
-	// Collapse all whitespace to single spaces
-	fields := strings.Fields(query)
-	return strings.Join(fields, " ")
-}
-
-// containsKeyword checks if a SQL keyword exists as a whole word
-func containsKeyword(sql, keyword string) bool {
-	idx := 0
-	for {
-		pos := strings.Index(sql[idx:], keyword)
-		if pos == -1 {
-			return false
-		}
-		pos += idx
-
-		// Check word boundary before
-		validBefore := pos == 0 || !isAlphaNum(sql[pos-1])
-		// Check word boundary after
-		validAfter := pos+len(keyword) >= len(sql) || !isAlphaNum(sql[pos+len(keyword)])
-
-		if validBefore && validAfter {
-			return true
-		}
-		idx = pos + 1
-		if idx >= len(sql) {
-			return false
-		}
-	}
-}
-
-func isAlphaNum(c byte) bool {
-	return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_'
+	return ValidateReadOnlyQuery(query)
 }
 
 // Asset endpoints
@@ -1464,8 +1393,13 @@ func (s *Server) sendMessage(w http.ResponseWriter, r *http.Request) {
 		s.error(w, http.StatusBadRequest, "invalid request")
 		return
 	}
+	if strings.TrimSpace(req.Content) == "" {
+		s.error(w, http.StatusBadRequest, "content is required")
+		return
+	}
 
 	// Add user message
+	session.Status = "active"
 	session.Messages = append(session.Messages, agents.Message{
 		Role:    "user",
 		Content: req.Content,
@@ -1484,22 +1418,272 @@ func (s *Server) sendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build messages with system prompt
-	messages := make([]agents.Message, 0, len(session.Messages)+1)
-	messages = append(messages, agents.Message{Role: "system", Content: "You are a security analyst assistant. Help investigate security findings and incidents. Use the available tools to query data and take actions."})
-	messages = append(messages, session.Messages...)
+	resp, err := s.runAgentSessionLoop(r.Context(), session, agent)
+	if err != nil {
+		s.error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.app.Agents.UpdateSession(session)
+	s.json(w, http.StatusOK, resp)
+}
 
-	// Call LLM
-	resp, err := agent.Provider.Complete(r.Context(), messages, agent.Tools)
+func (s *Server) runAgentSessionLoop(ctx context.Context, session *agents.Session, agent *agents.Agent) (agents.Message, error) {
+	const maxTurns = 15
+
+	for i := 0; i < maxTurns; i++ {
+		messages := make([]agents.Message, 0, len(session.Messages)+1)
+		messages = append(messages, agents.Message{Role: "system", Content: session.GetSystemPrompt()})
+		messages = append(messages, session.Messages...)
+
+		resp, err := agent.Provider.Complete(ctx, messages, agent.Tools)
+		if err != nil {
+			return agents.Message{}, err
+		}
+
+		session.Messages = append(session.Messages, resp.Message)
+		if len(resp.Message.ToolCalls) == 0 {
+			clearPendingToolCall(session)
+			session.Status = "active"
+			return resp.Message, nil
+		}
+
+		blocked := s.executeAgentToolCalls(ctx, session, agent.Tools, resp.Message.ToolCalls)
+		if blocked {
+			pending := pendingApprovalMessage(session)
+			session.Messages = append(session.Messages, pending)
+			return pending, nil
+		}
+	}
+
+	timeoutMessage := agents.Message{
+		Role:    "assistant",
+		Content: "I reached the maximum number of tool-execution turns for this request. Please narrow the scope and try again.",
+	}
+	session.Messages = append(session.Messages, timeoutMessage)
+	return timeoutMessage, nil
+}
+
+func (s *Server) executeAgentToolCalls(ctx context.Context, session *agents.Session, tools []agents.Tool, calls []agents.ToolCall) bool {
+	for _, tc := range calls {
+		tool := findAgentTool(tools, tc.Name)
+		if tool == nil {
+			session.Messages = append(session.Messages, agents.Message{
+				Role:    "tool",
+				Content: fmt.Sprintf("Error: Tool %s not found", tc.Name),
+				Name:    tc.ID,
+			})
+			continue
+		}
+
+		if tool.RequiresApproval {
+			session.Status = "pending_approval"
+			setPendingToolCall(session, tc)
+			session.Messages = append(session.Messages, agents.Message{
+				Role:    "tool",
+				Content: approvalRequiredToolOutput(tc.Name),
+				Name:    tc.ID,
+			})
+			return true
+		}
+
+		output, err := tool.Handler(ctx, tc.Arguments)
+		if err != nil {
+			var toolErr *agents.ToolError
+			if errors.As(err, &toolErr) {
+				output = toolErr.JSON()
+			} else {
+				output = fmt.Sprintf("Error executing tool: %v", err)
+			}
+		}
+
+		session.Messages = append(session.Messages, agents.Message{
+			Role:    "tool",
+			Content: output,
+			Name:    tc.ID,
+		})
+	}
+
+	clearPendingToolCall(session)
+	session.Status = "active"
+	return false
+}
+
+func findAgentTool(tools []agents.Tool, name string) *agents.Tool {
+	for i := range tools {
+		if tools[i].Name == name {
+			return &tools[i]
+		}
+	}
+	return nil
+}
+
+func approvalRequiredToolOutput(toolName string) string {
+	payload, _ := json.Marshal(map[string]string{
+		"error": fmt.Sprintf("tool %s requires approval before execution", toolName),
+		"code":  "approval_required",
+	})
+	return string(payload)
+}
+
+func setPendingToolCall(session *agents.Session, call agents.ToolCall) {
+	if session.Context.Metadata == nil {
+		session.Context.Metadata = map[string]interface{}{}
+	}
+
+	var args interface{} = map[string]interface{}{}
+	if len(call.Arguments) > 0 {
+		_ = json.Unmarshal(call.Arguments, &args)
+	}
+
+	session.Context.Metadata["pending_tool_call"] = map[string]interface{}{
+		"id":        call.ID,
+		"name":      call.Name,
+		"arguments": args,
+	}
+}
+
+func clearPendingToolCall(session *agents.Session) {
+	if session.Context.Metadata == nil {
+		return
+	}
+	delete(session.Context.Metadata, "pending_tool_call")
+}
+
+func pendingApprovalMessage(session *agents.Session) agents.Message {
+	metadata := map[string]interface{}{"status": "pending_approval"}
+	if session.Context.Metadata != nil {
+		if pending, ok := session.Context.Metadata["pending_tool_call"]; ok {
+			metadata["pending_tool_call"] = pending
+		}
+	}
+
+	return agents.Message{
+		Role:     "assistant",
+		Content:  "Tool execution is paused because this action requires approval.",
+		Metadata: metadata,
+	}
+}
+
+func (s *Server) approveSessionToolCall(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "id")
+	session, ok := s.app.Agents.GetSession(sessionID)
+	if !ok {
+		s.error(w, http.StatusNotFound, "session not found")
+		return
+	}
+
+	agent, ok := s.app.Agents.GetAgent(session.AgentID)
+	if !ok || agent.Provider == nil {
+		s.error(w, http.StatusBadRequest, "agent provider not configured")
+		return
+	}
+
+	pendingCall, ok := pendingToolCallFromSession(session)
+	if !ok {
+		s.error(w, http.StatusBadRequest, "no pending tool call requiring approval")
+		return
+	}
+
+	var req struct {
+		Approve *bool `json:"approve,omitempty"`
+	}
+	if r.Body != nil {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+			s.error(w, http.StatusBadRequest, "invalid request")
+			return
+		}
+	}
+
+	approved := true
+	if req.Approve != nil {
+		approved = *req.Approve
+	}
+
+	if !approved {
+		clearPendingToolCall(session)
+		session.Status = "active"
+		msg := agents.Message{
+			Role:    "assistant",
+			Content: fmt.Sprintf("Approval denied for tool %s. The tool was not executed.", pendingCall.Name),
+			Metadata: map[string]interface{}{
+				"status": "approval_denied",
+			},
+		}
+		session.Messages = append(session.Messages, msg)
+		s.app.Agents.UpdateSession(session)
+		s.json(w, http.StatusOK, msg)
+		return
+	}
+
+	tool := findAgentTool(agent.Tools, pendingCall.Name)
+	if tool == nil {
+		s.error(w, http.StatusBadRequest, "pending tool not found on agent")
+		return
+	}
+
+	argsRaw, _ := json.Marshal(pendingCall.Arguments)
+	output, err := tool.Handler(r.Context(), argsRaw)
+	if err != nil {
+		var toolErr *agents.ToolError
+		if errors.As(err, &toolErr) {
+			output = toolErr.JSON()
+		} else {
+			output = fmt.Sprintf("Error executing tool: %v", err)
+		}
+	}
+
+	session.Messages = append(session.Messages, agents.Message{
+		Role:    "tool",
+		Content: output,
+		Name:    pendingCall.ID,
+	})
+
+	clearPendingToolCall(session)
+	session.Status = "active"
+
+	resp, err := s.runAgentSessionLoop(r.Context(), session, agent)
 	if err != nil {
 		s.error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	session.Messages = append(session.Messages, resp.Message)
 	s.app.Agents.UpdateSession(session)
+	s.json(w, http.StatusOK, resp)
+}
 
-	s.json(w, http.StatusOK, resp.Message)
+type pendingToolCall struct {
+	ID        string
+	Name      string
+	Arguments interface{}
+}
+
+func pendingToolCallFromSession(session *agents.Session) (pendingToolCall, bool) {
+	if session.Context.Metadata == nil {
+		return pendingToolCall{}, false
+	}
+
+	raw, ok := session.Context.Metadata["pending_tool_call"]
+	if !ok {
+		return pendingToolCall{}, false
+	}
+
+	pendingMap, ok := raw.(map[string]interface{})
+	if !ok {
+		return pendingToolCall{}, false
+	}
+
+	id, _ := pendingMap["id"].(string)
+	name, _ := pendingMap["name"].(string)
+	if id == "" || name == "" {
+		return pendingToolCall{}, false
+	}
+
+	arguments, ok := pendingMap["arguments"]
+	if !ok {
+		arguments = map[string]interface{}{}
+	}
+
+	return pendingToolCall{ID: id, Name: name, Arguments: arguments}, true
 }
 
 func (s *Server) getMessages(w http.ResponseWriter, r *http.Request) {

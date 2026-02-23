@@ -110,6 +110,24 @@ func decodeJSON(t *testing.T, w *httptest.ResponseRecorder) map[string]interface
 	return out
 }
 
+type scriptedAgentProvider struct {
+	responses []*agents.Response
+	index     int
+}
+
+func (p *scriptedAgentProvider) Complete(_ context.Context, _ []agents.Message, _ []agents.Tool) (*agents.Response, error) {
+	if p.index >= len(p.responses) {
+		return &agents.Response{Message: agents.Message{Role: "assistant", Content: "done"}}, nil
+	}
+	resp := p.responses[p.index]
+	p.index++
+	return resp, nil
+}
+
+func (p *scriptedAgentProvider) Stream(context.Context, []agents.Message, []agents.Tool) (<-chan agents.StreamEvent, error) {
+	return nil, nil
+}
+
 // --- Health / Readiness ---
 
 func TestHealth(t *testing.T) {
@@ -555,6 +573,209 @@ func TestMaxBodySize_RejectsLargeBody(t *testing.T) {
 	s.ServeHTTP(w, req)
 	if w.Code == http.StatusOK || w.Code == http.StatusCreated {
 		t.Fatalf("expected rejection of 11MB body, got %d", w.Code)
+	}
+}
+
+func TestAgentSendMessageExecutesToolCalls(t *testing.T) {
+	a := newTestApp(t)
+	called := false
+
+	provider := &scriptedAgentProvider{
+		responses: []*agents.Response{
+			{
+				Message: agents.Message{
+					Role: "assistant",
+					ToolCalls: []agents.ToolCall{{
+						ID:        "tool-1",
+						Name:      "safe_tool",
+						Arguments: json.RawMessage(`{"target":"asset-1"}`),
+					}},
+				},
+			},
+			{Message: agents.Message{Role: "assistant", Content: "final response"}},
+		},
+	}
+
+	a.Agents.RegisterAgent(&agents.Agent{
+		ID:       "agent-1",
+		Name:     "Test Agent",
+		Provider: provider,
+		Tools: []agents.Tool{{
+			Name: "safe_tool",
+			Handler: func(context.Context, json.RawMessage) (string, error) {
+				called = true
+				return `{"ok":true}`, nil
+			},
+		}},
+	})
+
+	session, err := a.Agents.CreateSession("agent-1", "user-1", agents.SessionContext{})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	s := NewServer(a)
+	w := do(t, s, "POST", "/api/v1/agents/sessions/"+session.ID+"/messages", map[string]string{"content": "investigate"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var msg agents.Message
+	if err := json.Unmarshal(w.Body.Bytes(), &msg); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if msg.Content != "final response" {
+		t.Fatalf("expected final response, got %q", msg.Content)
+	}
+	if !called {
+		t.Fatal("expected tool handler to be called")
+	}
+
+	updated, ok := a.Agents.GetSession(session.ID)
+	if !ok {
+		t.Fatal("expected session to exist")
+	}
+	if len(updated.Messages) < 4 {
+		t.Fatalf("expected at least 4 messages in session, got %d", len(updated.Messages))
+	}
+}
+
+func TestAgentSendMessageBlocksRequiresApprovalTool(t *testing.T) {
+	a := newTestApp(t)
+	called := false
+
+	provider := &scriptedAgentProvider{
+		responses: []*agents.Response{
+			{
+				Message: agents.Message{
+					Role: "assistant",
+					ToolCalls: []agents.ToolCall{{
+						ID:        "tool-1",
+						Name:      "dangerous_tool",
+						Arguments: json.RawMessage(`{"target":"asset-1"}`),
+					}},
+				},
+			},
+		},
+	}
+
+	a.Agents.RegisterAgent(&agents.Agent{
+		ID:       "agent-2",
+		Name:     "Approval Agent",
+		Provider: provider,
+		Tools: []agents.Tool{{
+			Name:             "dangerous_tool",
+			RequiresApproval: true,
+			Handler: func(context.Context, json.RawMessage) (string, error) {
+				called = true
+				return `{"ok":true}`, nil
+			},
+		}},
+	})
+
+	session, err := a.Agents.CreateSession("agent-2", "user-1", agents.SessionContext{})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	s := NewServer(a)
+	w := do(t, s, "POST", "/api/v1/agents/sessions/"+session.ID+"/messages", map[string]string{"content": "run dangerous tool"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var msg agents.Message
+	if err := json.Unmarshal(w.Body.Bytes(), &msg); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if msg.Metadata["status"] != "pending_approval" {
+		t.Fatalf("expected pending_approval status, got %#v", msg.Metadata["status"])
+	}
+	if called {
+		t.Fatal("expected tool handler not to be called before approval")
+	}
+
+	updated, ok := a.Agents.GetSession(session.ID)
+	if !ok {
+		t.Fatal("expected session to exist")
+	}
+	if updated.Status != "pending_approval" {
+		t.Fatalf("expected session status pending_approval, got %s", updated.Status)
+	}
+}
+
+func TestApproveSessionToolCallExecutesPendingTool(t *testing.T) {
+	a := newTestApp(t)
+	called := false
+
+	provider := &scriptedAgentProvider{
+		responses: []*agents.Response{
+			{
+				Message: agents.Message{
+					Role: "assistant",
+					ToolCalls: []agents.ToolCall{{
+						ID:        "tool-1",
+						Name:      "dangerous_tool",
+						Arguments: json.RawMessage(`{"target":"asset-1"}`),
+					}},
+				},
+			},
+			{Message: agents.Message{Role: "assistant", Content: "tool approved and completed"}},
+		},
+	}
+
+	a.Agents.RegisterAgent(&agents.Agent{
+		ID:       "agent-3",
+		Name:     "Approval Agent",
+		Provider: provider,
+		Tools: []agents.Tool{{
+			Name:             "dangerous_tool",
+			RequiresApproval: true,
+			Handler: func(context.Context, json.RawMessage) (string, error) {
+				called = true
+				return `{"ok":true}`, nil
+			},
+		}},
+	})
+
+	session, err := a.Agents.CreateSession("agent-3", "user-1", agents.SessionContext{})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	s := NewServer(a)
+	w := do(t, s, "POST", "/api/v1/agents/sessions/"+session.ID+"/messages", map[string]string{"content": "run dangerous tool"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	w = do(t, s, "POST", "/api/v1/agents/sessions/"+session.ID+"/approve", map[string]bool{"approve": true})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 on approval, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var msg agents.Message
+	if err := json.Unmarshal(w.Body.Bytes(), &msg); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if msg.Content != "tool approved and completed" {
+		t.Fatalf("expected final assistant message after approval, got %q", msg.Content)
+	}
+	if !called {
+		t.Fatal("expected pending tool to be executed after approval")
+	}
+
+	updated, ok := a.Agents.GetSession(session.ID)
+	if !ok {
+		t.Fatal("expected session to exist")
+	}
+	if updated.Status != "active" {
+		t.Fatalf("expected session status active after approval, got %s", updated.Status)
+	}
+	if updated.Context.Metadata != nil {
+		if _, exists := updated.Context.Metadata["pending_tool_call"]; exists {
+			t.Fatal("expected pending tool call metadata to be cleared")
+		}
 	}
 }
 

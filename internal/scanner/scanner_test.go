@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/writerinternal/cerebro/internal/policy"
 )
@@ -104,5 +105,50 @@ func BenchmarkScanAssets(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		scanner.ScanAssets(context.Background(), assets)
+	}
+}
+
+func TestParseRotationTime(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+
+	tests := []struct {
+		name   string
+		value  string
+		valid  bool
+		assert func(time.Time) bool
+	}{
+		{name: "unix seconds", value: "1700000000", valid: true},
+		{name: "unix milliseconds", value: "1700000000000", valid: true},
+		{name: "rfc3339", value: now.Format(time.RFC3339), valid: true, assert: func(parsed time.Time) bool { return parsed.Equal(now) }},
+		{name: "iso date", value: "2024-01-02", valid: true},
+		{name: "invalid", value: "not-a-date", valid: false},
+		{name: "empty", value: "", valid: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parsed, ok := parseRotationTime(tt.value)
+			if ok != tt.valid {
+				t.Fatalf("expected valid=%v, got %v", tt.valid, ok)
+			}
+			if tt.assert != nil && ok && !tt.assert(parsed) {
+				t.Fatalf("unexpected parsed time: %v", parsed)
+			}
+		})
+	}
+}
+
+func TestIsKeyOld(t *testing.T) {
+	recent := time.Now().Add(-30 * 24 * time.Hour).UTC().Format(time.RFC3339)
+	old := time.Now().Add(-120 * 24 * time.Hour).UTC().Format(time.RFC3339)
+
+	if isKeyOld(recent) {
+		t.Fatal("expected recent key to not be old")
+	}
+	if !isKeyOld(old) {
+		t.Fatal("expected old key to be marked old")
+	}
+	if !isKeyOld("invalid") {
+		t.Fatal("expected invalid timestamp to be treated as old")
 	}
 }

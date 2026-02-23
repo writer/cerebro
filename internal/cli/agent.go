@@ -123,6 +123,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		}
 
 		// Add user message
+		session.Status = "active"
 		session.Messages = append(session.Messages, agents.Message{
 			Role:    "user",
 			Content: input,
@@ -132,7 +133,9 @@ func runAgent(cmd *cobra.Command, args []string) error {
 
 		// Create turn-level timeout context
 		turnCtx, turnCancel := context.WithTimeout(ctx, agentTurnTimeout)
-		err = runAgentLoop(turnCtx, provider, session, agent.Tools)
+		err = runAgentLoop(turnCtx, provider, session, agent.Tools, func(tool *agents.Tool, _ agents.ToolCall) bool {
+			return promptToolApproval(reader, tool.Name)
+		})
 		turnCancel()
 
 		if err != nil {
@@ -147,7 +150,13 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runAgentLoop(ctx context.Context, provider agents.LLMProvider, session *agents.Session, tools []agents.Tool) error {
+func runAgentLoop(
+	ctx context.Context,
+	provider agents.LLMProvider,
+	session *agents.Session,
+	tools []agents.Tool,
+	approver func(tool *agents.Tool, call agents.ToolCall) bool,
+) error {
 	maxTurns := 15 // Limit recursion depth
 
 	for i := 0; i < maxTurns; i++ {
@@ -196,6 +205,26 @@ func runAgentLoop(ctx context.Context, provider agents.LLMProvider, session *age
 					continue
 				}
 
+				if tool.RequiresApproval {
+					approved := false
+					if approver != nil {
+						approved = approver(tool, tc)
+					}
+
+					if !approved {
+						session.Status = "pending_approval"
+						output := fmt.Sprintf("{\"error\":\"tool %s requires approval before execution\",\"code\":\"approval_required\"}", tc.Name)
+						fmt.Printf("[Tool Approval Required] %s\n", tc.Name)
+						session.Messages = append(session.Messages, agents.Message{
+							Role:    "tool",
+							Content: output,
+							Name:    tc.ID,
+						})
+						continue
+					}
+					session.Status = "active"
+				}
+
 				// Execute tool
 				output, err := tool.Handler(ctx, tc.Arguments)
 				if err != nil {
@@ -229,4 +258,24 @@ func runAgentLoop(ctx context.Context, provider agents.LLMProvider, session *age
 		break
 	}
 	return nil
+}
+
+func promptToolApproval(reader *bufio.Reader, toolName string) bool {
+	for {
+		fmt.Printf("Approve tool %s? [y/N]: ", toolName)
+		input, err := reader.ReadString('\n')
+		if err != nil {
+			return false
+		}
+
+		normalized := strings.ToLower(strings.TrimSpace(input))
+		switch normalized {
+		case "y", "yes":
+			return true
+		case "", "n", "no":
+			return false
+		default:
+			fmt.Println("Please answer y or n.")
+		}
+	}
 }

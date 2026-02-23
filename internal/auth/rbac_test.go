@@ -2,6 +2,8 @@ package auth
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -163,5 +165,52 @@ func TestRBAC_ListTenants(t *testing.T) {
 	tenants := rbac.ListTenants()
 	if len(tenants) != 2 {
 		t.Errorf("expected 2 tenants, got %d", len(tenants))
+	}
+}
+
+func TestRBAC_PersistenceRoundTrip(t *testing.T) {
+	stateFile := filepath.Join(t.TempDir(), "rbac-state.json")
+
+	rbac, err := NewRBACWithStateFile(stateFile)
+	if err != nil {
+		t.Fatalf("NewRBACWithStateFile failed: %v", err)
+	}
+
+	user := &User{Email: "persist@example.com", Name: "Persist User"}
+	if err := rbac.CreateUser(user); err != nil {
+		t.Fatalf("CreateUser failed: %v", err)
+	}
+	if err := rbac.AssignRole(user.ID, "analyst"); err != nil {
+		t.Fatalf("AssignRole failed: %v", err)
+	}
+	if err := rbac.CreateTenant(&Tenant{Name: "Persist Tenant"}); err != nil {
+		t.Fatalf("CreateTenant failed: %v", err)
+	}
+
+	reloaded, err := NewRBACWithStateFile(stateFile)
+	if err != nil {
+		t.Fatalf("reload failed: %v", err)
+	}
+
+	loadedUser, ok := reloaded.GetUser(user.ID)
+	if !ok {
+		t.Fatal("expected persisted user to be loaded")
+	}
+	if len(loadedUser.RoleIDs) != 1 || loadedUser.RoleIDs[0] != "analyst" {
+		t.Fatalf("expected persisted role assignment, got %+v", loadedUser.RoleIDs)
+	}
+	if len(reloaded.ListTenants()) != 1 {
+		t.Fatalf("expected 1 tenant after reload, got %d", len(reloaded.ListTenants()))
+	}
+}
+
+func TestRBAC_NewWithStateFileInvalidJSON(t *testing.T) {
+	stateFile := filepath.Join(t.TempDir(), "rbac-state.json")
+	if err := os.WriteFile(stateFile, []byte("not-json"), 0o600); err != nil {
+		t.Fatalf("write invalid state file: %v", err)
+	}
+
+	if _, err := NewRBACWithStateFile(stateFile); err == nil {
+		t.Fatal("expected error for invalid persisted RBAC state")
 	}
 }

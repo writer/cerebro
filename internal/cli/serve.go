@@ -2,7 +2,11 @@ package cli
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -43,6 +47,19 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// Override port if specified via flag
 	if servePort > 0 {
 		application.Config.Port = servePort
+	}
+
+	if !application.Config.APIAuthEnabled {
+		allowInsecure := false
+		if raw := strings.TrimSpace(os.Getenv("ALLOW_INSECURE_API")); raw != "" {
+			allowInsecure, _ = strconv.ParseBool(raw)
+		}
+
+		if !allowInsecure {
+			return fmt.Errorf("api authentication is disabled; configure API_KEYS/API_AUTH_ENABLED=true or explicitly set ALLOW_INSECURE_API=true")
+		}
+
+		application.Logger.Warn("starting API server with authentication disabled")
 	}
 
 	// Start scheduler in background if configured

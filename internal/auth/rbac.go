@@ -42,6 +42,7 @@ type RBAC struct {
 	permissions map[string]*Permission // Permissions indexed by ID
 	users       map[string]*User       // Users indexed by ID
 	tenants     map[string]*Tenant     // Tenants indexed by ID
+	stateFile   string                 // Optional persisted state file
 	mu          sync.RWMutex           // Protects all maps
 }
 
@@ -151,7 +152,7 @@ func (r *RBAC) CreateUser(user *User) error {
 	}
 	user.CreatedAt = time.Now().UTC()
 	r.users[user.ID] = user
-	return nil
+	return r.persistLocked()
 }
 
 func (r *RBAC) GetUser(id string) (*User, bool) {
@@ -169,7 +170,7 @@ func (r *RBAC) AssignRole(userID, roleID string) error {
 		return fmt.Errorf("user not found")
 	}
 	user.RoleIDs = append(user.RoleIDs, roleID)
-	return nil
+	return r.persistLocked()
 }
 
 func (r *RBAC) ListRoles() []*Role {
@@ -190,7 +191,7 @@ func (r *RBAC) CreateTenant(t *Tenant) error {
 	}
 	t.CreatedAt = time.Now().UTC()
 	r.tenants[t.ID] = t
-	return nil
+	return r.persistLocked()
 }
 
 func (r *RBAC) GetTenant(id string) (*Tenant, bool) {

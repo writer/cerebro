@@ -13,6 +13,7 @@ func TestValidateReadOnlyQuery(t *testing.T) {
 		{"select with where", "SELECT id, name FROM users WHERE active = true", false},
 		{"select with join", "SELECT u.id, r.name FROM users u JOIN roles r ON u.role_id = r.id", false},
 		{"select with limit", "SELECT * FROM assets LIMIT 100", false},
+		{"with cte", "WITH recent AS (SELECT * FROM users) SELECT * FROM recent", false},
 		{"select with trailing semicolon", "SELECT * FROM users;", false},
 		{"lowercase select", "select * from users", false},
 		{"mixed case", "Select * From Users", false},

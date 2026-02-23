@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -699,20 +700,48 @@ func containsSecretPattern(s string) bool {
 }
 
 func isKeyOld(lastRotated string) bool {
-	// Simple check - if the string doesn't look recent, consider it old
-	// In production, parse the date and compare to 90 days
-	if lastRotated == "" || lastRotated == "N/A" {
+	rotatedAt, ok := parseRotationTime(lastRotated)
+	if !ok {
 		return true
 	}
-	// Check if it contains a year that's not current
-	currentYear := "2026"
-	if len(lastRotated) >= 4 && lastRotated[:4] != currentYear {
-		// Check if it's last year
-		if lastRotated[:4] < currentYear {
-			return true
+
+	const maxKeyAge = 90 * 24 * time.Hour
+	return time.Since(rotatedAt.UTC()) > maxKeyAge
+}
+
+func parseRotationTime(value string) (time.Time, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" || strings.EqualFold(value, "N/A") {
+		return time.Time{}, false
+	}
+
+	if unix, err := strconv.ParseInt(value, 10, 64); err == nil {
+		if unix > 1_000_000_000_000 {
+			unix = unix / 1000
+		}
+		if unix > 0 {
+			return time.Unix(unix, 0).UTC(), true
 		}
 	}
-	return false
+
+	layouts := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02",
+		"2006-01-02 15:04:05",
+		"2006-01-02 15:04:05 -0700",
+		"2006-01-02 15:04:05 -0700 MST",
+		"2006-01-02T15:04:05.000Z07:00",
+		"2006-01-02T15:04:05Z07:00",
+	}
+
+	for _, layout := range layouts {
+		if parsed, err := time.Parse(layout, value); err == nil {
+			return parsed.UTC(), true
+		}
+	}
+
+	return time.Time{}, false
 }
 
 // StreamScan scans assets as they're received (for large datasets)

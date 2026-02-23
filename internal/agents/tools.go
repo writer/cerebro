@@ -310,6 +310,17 @@ func (st *SecurityTools) queryAssets(ctx context.Context, args json.RawMessage) 
 		return "", err
 	}
 
+	if err := snowflake.ValidateReadOnlyQuery(params.Query); err != nil {
+		return "", err
+	}
+
+	if params.Limit <= 0 {
+		params.Limit = 100
+	}
+	if params.Limit > 1000 {
+		params.Limit = 1000
+	}
+
 	if st.snowflake == nil {
 		return "", fmt.Errorf("snowflake not configured")
 	}
@@ -317,6 +328,11 @@ func (st *SecurityTools) queryAssets(ctx context.Context, args json.RawMessage) 
 	result, err := st.snowflake.Query(ctx, params.Query)
 	if err != nil {
 		return "", err
+	}
+
+	if result != nil && result.Count > params.Limit {
+		result.Rows = result.Rows[:params.Limit]
+		result.Count = len(result.Rows)
 	}
 
 	output, _ := json.Marshal(result)

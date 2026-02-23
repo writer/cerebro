@@ -271,6 +271,7 @@ type Config struct {
 	// API Authentication
 	APIAuthEnabled bool
 	APIKeys        map[string]string
+	RBACStateFile  string
 }
 
 func LoadConfig() *Config {
@@ -362,6 +363,7 @@ func LoadConfig() *Config {
 		RateLimitWindow:                  getEnvDuration("RATE_LIMIT_WINDOW", time.Hour),
 		APIAuthEnabled:                   apiAuthEnabled,
 		APIKeys:                          apiKeys,
+		RBACStateFile:                    getEnv("RBAC_STATE_FILE", ""),
 	}
 }
 
@@ -1456,8 +1458,22 @@ func filterTablesByAvailability(tables, available []string) ([]string, int) {
 // New service initialization functions
 
 func (a *App) initRBAC() {
-	a.RBAC = auth.NewRBAC()
-	a.Logger.Info("rbac service initialized")
+	if a.Config.RBACStateFile == "" {
+		a.RBAC = auth.NewRBAC()
+		a.Logger.Info("rbac service initialized")
+		return
+	}
+
+	rbac, err := auth.NewRBACWithStateFile(a.Config.RBACStateFile)
+	if err != nil {
+		a.Logger.Warn("failed to load rbac state file; falling back to in-memory", "error", err, "path", a.Config.RBACStateFile)
+		a.RBAC = auth.NewRBAC()
+		a.Logger.Info("rbac service initialized")
+		return
+	}
+
+	a.RBAC = rbac
+	a.Logger.Info("rbac service initialized", "state_file", a.Config.RBACStateFile)
 }
 
 func (a *App) initThreatIntel(ctx context.Context) {
