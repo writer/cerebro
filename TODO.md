@@ -1,7 +1,7 @@
 # Integration Improvements TODO
 
 ## Status
-- **Current focus:** Phase 2 (Coverage Audit)
+- **Current focus:** Phase 4 (Scale & Resilience)
 
 ## Platform Gap Audit (2026-02-23)
 
@@ -33,11 +33,11 @@
 - [x] Build Azure coverage matrix (ARM + Graph)
 
 ## Phase 3: Correctness & Schema Quality
-- [ ] Standardize primary keys (ARN/ID) and account/region columns
-- [ ] Normalize timestamps and tag schemas across providers
-- [ ] Validate Snowflake schemas match fetch payloads
-- [ ] Add schema consistency tests (column presence + type checks)
-- [ ] Improve diff accuracy (hash inputs, deterministic field ordering)
+- [x] Standardize primary keys (ARN/ID) and account/region columns
+- [x] Normalize timestamps and tag schemas across providers
+- [x] Validate Snowflake schemas match fetch payloads
+- [x] Add schema consistency tests (column presence + type checks)
+- [x] Improve diff accuracy (hash inputs, deterministic field ordering)
 
 ## Phase 4: Scale & Resilience
 - [ ] Add AWS Organizations account discovery + per-account fan-out

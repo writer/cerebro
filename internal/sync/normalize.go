@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -107,17 +108,160 @@ func normalizeRows(tableName string, columns []string, rows []map[string]interfa
 
 func normalizeRowValues(row map[string]interface{}) {
 	for key, value := range row {
+		if isTimestampField(key) {
+			if normalized, ok := normalizeTimestampValue(value); ok {
+				row[key] = normalized
+				continue
+			}
+		}
+
 		if normalized, ok := normalizeTimeValue(value); ok {
 			row[key] = normalized
 			continue
 		}
 
-		if strings.EqualFold(key, "tags") {
+		if isTagSchemaField(key) {
 			if normalized, ok := normalizeTags(value); ok {
 				row[key] = normalized
 			}
 		}
 	}
+}
+
+func isTagSchemaField(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "tags", "labels", "resource_labels":
+		return true
+	default:
+		return false
+	}
+}
+
+func isTimestampField(key string) bool {
+	name := strings.ToLower(strings.TrimSpace(key))
+	if name == "" {
+		return false
+	}
+
+	if strings.HasSuffix(name, "_time") || strings.HasSuffix(name, "_timestamp") || strings.HasSuffix(name, "_at") {
+		return true
+	}
+
+	switch name {
+	case "created", "updated", "last_modified", "create_time", "update_time", "delete_time", "expire_time", "timestamp", "time":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeTimestampValue(value interface{}) (interface{}, bool) {
+	const maxSignedInt64 = int64(^uint64(0) >> 1)
+
+	if normalized, ok := normalizeTimeValue(value); ok {
+		return normalized, true
+	}
+
+	switch typed := value.(type) {
+	case string:
+		return normalizeTimestampString(typed)
+	case []byte:
+		return normalizeTimestampString(string(typed))
+	case json.Number:
+		if parsed, err := typed.Int64(); err == nil {
+			return normalizeTimestampEpoch(parsed)
+		}
+		if parsed, err := typed.Float64(); err == nil {
+			return normalizeTimestampEpoch(int64(parsed))
+		}
+	case int:
+		return normalizeTimestampEpoch(int64(typed))
+	case int8:
+		return normalizeTimestampEpoch(int64(typed))
+	case int16:
+		return normalizeTimestampEpoch(int64(typed))
+	case int32:
+		return normalizeTimestampEpoch(int64(typed))
+	case int64:
+		return normalizeTimestampEpoch(typed)
+	case uint:
+		if uint64(typed) > uint64(maxSignedInt64) {
+			return nil, false
+		}
+		return normalizeTimestampEpoch(int64(typed))
+	case uint8:
+		return normalizeTimestampEpoch(int64(typed))
+	case uint16:
+		return normalizeTimestampEpoch(int64(typed))
+	case uint32:
+		return normalizeTimestampEpoch(int64(typed))
+	case uint64:
+		if typed > uint64(maxSignedInt64) {
+			return nil, false
+		}
+		return normalizeTimestampEpoch(int64(typed))
+	case float32:
+		return normalizeTimestampEpoch(int64(typed))
+	case float64:
+		return normalizeTimestampEpoch(int64(typed))
+	}
+
+	return nil, false
+}
+
+func normalizeTimestampString(raw string) (interface{}, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", true
+	}
+
+	if digits, err := strconv.ParseInt(trimmed, 10, 64); err == nil {
+		return normalizeTimestampEpoch(digits)
+	}
+
+	layouts := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05.999999999Z07:00",
+		"2006-01-02 15:04:05Z07:00",
+		"2006-01-02 15:04:05.999999999",
+		"2006-01-02 15:04:05",
+		"2006-01-02",
+	}
+
+	for _, layout := range layouts {
+		if parsed, err := time.Parse(layout, trimmed); err == nil {
+			if parsed.IsZero() {
+				return "", true
+			}
+			return parsed.UTC().Format(time.RFC3339), true
+		}
+	}
+
+	return nil, false
+}
+
+func normalizeTimestampEpoch(value int64) (interface{}, bool) {
+	if value <= 0 {
+		return "", true
+	}
+
+	var parsed time.Time
+	switch {
+	case value >= 1_000_000_000_000_000_000:
+		parsed = time.Unix(0, value)
+	case value >= 1_000_000_000_000_000:
+		parsed = time.UnixMicro(value)
+	case value >= 1_000_000_000_000:
+		parsed = time.UnixMilli(value)
+	default:
+		parsed = time.Unix(value, 0)
+	}
+
+	if parsed.IsZero() {
+		return "", true
+	}
+	return parsed.UTC().Format(time.RFC3339), true
 }
 
 func normalizeTimeValue(value interface{}) (interface{}, bool) {
@@ -145,12 +289,22 @@ func normalizeTags(value interface{}) (interface{}, bool) {
 	switch typed := value.(type) {
 	case map[string]string:
 		return typed, true
+	case map[string]*string:
+		normalized := make(map[string]string, len(typed))
+		for key, entry := range typed {
+			normalized[key] = stringValue(entry)
+		}
+		return normalized, true
 	case map[string]interface{}:
 		return tagsFromMap(typed), true
 	case string:
 		if normalized, ok := normalizeTagsFromJSON(typed); ok {
 			return normalized, true
 		}
+	}
+
+	if normalized, ok := normalizeTagMap(value); ok {
+		return normalized, true
 	}
 
 	if normalized, ok := normalizeTagSlice(value); ok {
@@ -170,12 +324,41 @@ func normalizeTagsFromJSON(raw string) (interface{}, bool) {
 		return tags, true
 	}
 
+	var tagMap map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &tagMap); err == nil {
+		return tagsFromMap(tagMap), true
+	}
+
 	var tagList []map[string]interface{}
 	if err := json.Unmarshal([]byte(raw), &tagList); err == nil {
 		return tagsFromMapSlice(tagList), true
 	}
 
 	return nil, false
+}
+
+func normalizeTagMap(value interface{}) (interface{}, bool) {
+	rv := reflect.ValueOf(value)
+	if !rv.IsValid() {
+		return nil, false
+	}
+	if rv.Kind() == reflect.Ptr {
+		if rv.IsNil() {
+			return nil, false
+		}
+		rv = rv.Elem()
+	}
+	if rv.Kind() != reflect.Map {
+		return nil, false
+	}
+
+	normalized := make(map[string]string, rv.Len())
+	for _, key := range rv.MapKeys() {
+		entry := rv.MapIndex(key)
+		normalized[stringValue(key.Interface())] = stringValue(entry.Interface())
+	}
+
+	return normalized, true
 }
 
 func normalizeTagSlice(value interface{}) (interface{}, bool) {

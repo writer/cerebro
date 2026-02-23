@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -49,6 +50,73 @@ func TestNormalizeRowValuesTags(t *testing.T) {
 	}
 }
 
+func TestNormalizeRowValuesTimestampFormats(t *testing.T) {
+	row := map[string]interface{}{
+		"create_time": int64(1735689600),
+		"update_time": "2025-01-02 03:04:05",
+		"note":        "2025-01-02 03:04:05",
+	}
+
+	normalizeRowValues(row)
+
+	if row["create_time"] != "2025-01-01T00:00:00Z" {
+		t.Fatalf("expected epoch create_time to normalize, got %#v", row["create_time"])
+	}
+	if row["update_time"] != "2025-01-02T03:04:05Z" {
+		t.Fatalf("expected string update_time to normalize, got %#v", row["update_time"])
+	}
+	if row["note"] != "2025-01-02 03:04:05" {
+		t.Fatalf("expected non-time field to remain unchanged, got %#v", row["note"])
+	}
+}
+
+func TestNormalizeRowValuesLabels(t *testing.T) {
+	row := map[string]interface{}{
+		"labels": map[string]interface{}{
+			"env":  "prod",
+			"tier": 3,
+		},
+	}
+
+	normalizeRowValues(row)
+	labels, ok := row["labels"].(map[string]string)
+	if !ok {
+		t.Fatalf("expected labels to normalize to map[string]string, got %#v", row["labels"])
+	}
+	if labels["env"] != "prod" || labels["tier"] != "3" {
+		t.Fatalf("unexpected labels normalization result: %#v", labels)
+	}
+}
+
+func TestNormalizeRowsEnforcesSchema(t *testing.T) {
+	rows := []map[string]interface{}{
+		{
+			"_cq_id":      "project-a/logging-sinks",
+			"project_id":  "project-a",
+			"id":          "project-a/logging-sinks",
+			"labels":      `{"team":"platform"}`,
+			"create_time": int64(1735689600),
+			"unexpected":  "drop-me",
+		},
+	}
+
+	normalized := normalizeRows("gcp_logging_project_sinks", []string{"project_id", "id", "labels", "create_time"}, rows, nil)
+	if len(normalized) != 1 {
+		t.Fatalf("expected one normalized row, got %d", len(normalized))
+	}
+
+	row := normalized[0]
+	if _, ok := row["unexpected"]; ok {
+		t.Fatalf("expected unexpected column to be dropped, row=%#v", row)
+	}
+	if row["create_time"] != "2025-01-01T00:00:00Z" {
+		t.Fatalf("expected create_time normalization, got %#v", row["create_time"])
+	}
+	if labels, ok := row["labels"].(map[string]string); !ok || !reflect.DeepEqual(labels, map[string]string{"team": "platform"}) {
+		t.Fatalf("expected normalized labels map, got %#v", row["labels"])
+	}
+}
+
 func TestNormalizeAWSRowsDerivesCQID(t *testing.T) {
 	engine := &SyncEngine{accountID: "123456789012"}
 	table := TableSpec{
@@ -81,14 +149,7 @@ func TestNormalizeAWSRowsDerivesCQID(t *testing.T) {
 func TestAWSTableSchemaConsistency(t *testing.T) {
 	tables := (&SyncEngine{}).getAWSTables()
 	for _, table := range tables {
-		seen := make(map[string]struct{})
-		for _, column := range table.Columns {
-			name := strings.ToLower(column)
-			if _, exists := seen[name]; exists {
-				t.Fatalf("duplicate column %q in %s", name, table.Name)
-			}
-			seen[name] = struct{}{}
-		}
+		seen := assertUniqueColumns(t, table.Name, table.Columns)
 
 		if _, ok := seen["account_id"]; !ok {
 			t.Fatalf("missing account_id in %s", table.Name)
@@ -102,4 +163,55 @@ func TestAWSTableSchemaConsistency(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestProviderTableSchemaConsistency(t *testing.T) {
+	t.Run("gcp", func(t *testing.T) {
+		tables := (&GCPSyncEngine{}).getGCPTables()
+		for _, table := range tables {
+			assertUniqueColumns(t, table.Name, table.Columns)
+			if !hasColumn(table.Columns, "project_id") {
+				t.Fatalf("missing project_id in %s", table.Name)
+			}
+			if !hasColumn(table.Columns, "id") && !hasColumn(table.Columns, "name") {
+				t.Fatalf("missing id/name identity column in %s", table.Name)
+			}
+		}
+	})
+
+	t.Run("azure", func(t *testing.T) {
+		tables := (&AzureSyncEngine{}).getAzureTables()
+		for _, table := range tables {
+			assertUniqueColumns(t, table.Name, table.Columns)
+			if !hasColumn(table.Columns, "subscription_id") {
+				t.Fatalf("missing subscription_id in %s", table.Name)
+			}
+			if !hasColumn(table.Columns, "id") {
+				t.Fatalf("missing id in %s", table.Name)
+			}
+		}
+	})
+
+	t.Run("k8s", func(t *testing.T) {
+		tables := (&K8sSyncEngine{}).getK8sTables()
+		for _, table := range tables {
+			assertUniqueColumns(t, table.Name, table.Columns)
+			if !hasColumn(table.Columns, "cluster_name") {
+				t.Fatalf("missing cluster_name in %s", table.Name)
+			}
+		}
+	})
+}
+
+func assertUniqueColumns(t *testing.T, tableName string, columns []string) map[string]struct{} {
+	t.Helper()
+	seen := make(map[string]struct{}, len(columns))
+	for _, column := range columns {
+		name := strings.ToLower(column)
+		if _, exists := seen[name]; exists {
+			t.Fatalf("duplicate column %q in %s", name, tableName)
+		}
+		seen[name] = struct{}{}
+	}
+	return seen
 }

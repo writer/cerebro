@@ -23,7 +23,7 @@ func (e *GCPSyncEngine) gcpLoggingSinkTable() GCPTableSpec {
 func (e *GCPSyncEngine) gcpLoggingProjectSinkTable() GCPTableSpec {
 	return GCPTableSpec{
 		Name:    "gcp_logging_project_sinks",
-		Columns: []string{"project_id", "sink_count", "disabled"},
+		Columns: []string{"project_id", "id", "sink_count", "disabled"},
 		Fetch:   e.fetchGCPLoggingProjectSinks,
 	}
 }
@@ -101,6 +101,7 @@ func (e *GCPSyncEngine) fetchGCPLoggingProjectSinks(ctx context.Context, project
 	row := map[string]interface{}{
 		"_cq_id":     fmt.Sprintf("%s/logging-sinks", projectID),
 		"project_id": projectID,
+		"id":         fmt.Sprintf("%s/logging-sinks", projectID),
 		"sink_count": count,
 		"disabled":   count == 0,
 	}

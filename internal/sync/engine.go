@@ -2,9 +2,6 @@ package sync
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -904,23 +901,5 @@ func (e *SyncEngine) getAccountID(ctx context.Context, cfg aws.Config) string {
 
 // hashRowContent creates a consistent hash of row content
 func hashRowContent(row map[string]interface{}) string {
-	// Sort keys for consistent ordering
-	keys := make([]string, 0, len(row))
-	for k := range row {
-		if k != "_cq_id" && k != "_cq_hash" {
-			keys = append(keys, k)
-		}
-	}
-	sort.Strings(keys)
-
-	// Build deterministic JSON
-	parts := make([]string, 0, len(keys))
-	for _, k := range keys {
-		v, _ := json.Marshal(row[k])
-		parts = append(parts, fmt.Sprintf("%q:%s", k, string(v)))
-	}
-
-	data := "{" + strings.Join(parts, ",") + "}"
-	hash := sha256.Sum256([]byte(data))
-	return hex.EncodeToString(hash[:8]) // first 8 bytes = 16 hex chars
+	return hashRowContentWithMode(row, true)
 }

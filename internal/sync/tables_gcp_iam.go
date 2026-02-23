@@ -44,7 +44,7 @@ func (e *GCPSyncEngine) gcpIAMServiceAccountKeyTable() GCPTableSpec {
 func (e *GCPSyncEngine) gcpIAMPolicyTable() GCPTableSpec {
 	return GCPTableSpec{
 		Name:    "gcp_iam_policies",
-		Columns: []string{"project_id", "version", "etag", "bindings", "audit_configs"},
+		Columns: []string{"project_id", "id", "version", "etag", "bindings", "audit_configs"},
 		Fetch:   e.fetchGCPIAMPolicies,
 	}
 }
@@ -54,6 +54,7 @@ func (e *GCPSyncEngine) gcpIAMMemberTable() GCPTableSpec {
 		Name: "gcp_iam_members",
 		Columns: []string{
 			"project_id",
+			"id",
 			"member",
 			"member_type",
 			"email",
@@ -215,6 +216,7 @@ func (e *GCPSyncEngine) fetchGCPIAMPolicies(ctx context.Context, projectID strin
 	row := map[string]interface{}{
 		"_cq_id":        fmt.Sprintf("%s/iam-policy", projectID),
 		"project_id":    projectID,
+		"id":            fmt.Sprintf("%s/iam-policy", projectID),
 		"version":       policy.Version,
 		"etag":          string(policy.Etag),
 		"bindings":      bindings,
@@ -280,6 +282,7 @@ func (e *GCPSyncEngine) fetchGCPIAMMembers(ctx context.Context, projectID string
 		row := map[string]interface{}{
 			"_cq_id":             fmt.Sprintf("%s/%s", projectID, member),
 			"project_id":         projectID,
+			"id":                 fmt.Sprintf("%s/%s", projectID, member),
 			"member":             member,
 			"member_type":        memberType,
 			"email":              email,

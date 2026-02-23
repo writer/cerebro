@@ -2,9 +2,6 @@ package sync
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -510,23 +507,7 @@ func gcpScopeWhereClause(column string, values []string) (string, []interface{})
 }
 
 func (e *GCPSyncEngine) hashRowContent(row map[string]interface{}) string {
-	// Create deterministic JSON by sorting keys
-	keys := make([]string, 0, len(row))
-	for k := range row {
-		if k != "_cq_id" && k != "_cq_hash" {
-			keys = append(keys, k)
-		}
-	}
-	sort.Strings(keys)
-
-	h := sha256.New()
-	for _, k := range keys {
-		h.Write([]byte(k))
-		jsonVal, _ := json.Marshal(row[k])
-		h.Write(jsonVal)
-	}
-
-	return hex.EncodeToString(h.Sum(nil))
+	return hashRowContentWithMode(row, false)
 }
 
 func (e *GCPSyncEngine) persistChangeHistory(ctx context.Context, results []SyncResult) error {
