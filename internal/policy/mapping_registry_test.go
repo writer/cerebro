@@ -43,3 +43,20 @@ func TestResourceToTablesForType_UsesRegistry(t *testing.T) {
 		t.Fatalf("expected aws::iam::user to map to 2 tables, got %d", len(tables))
 	}
 }
+
+func TestMappingRegistry_OrphanNativeTables(t *testing.T) {
+	registry := NewMappingRegistry()
+	registry.MustRegister("aws::s3::bucket", []string{"aws_s3_buckets"})
+	registry.MustRegister("custom::resource", []string{"custom_table"})
+
+	orphans := registry.OrphanNativeTables([]string{
+		"aws_s3_buckets",
+		"aws_ec2_instances",
+		"custom_table",
+		"not_native_table",
+	})
+
+	if len(orphans) != 1 || orphans[0] != "aws_ec2_instances" {
+		t.Fatalf("expected aws_ec2_instances to be orphaned, got %v", orphans)
+	}
+}

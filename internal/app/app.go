@@ -1147,8 +1147,11 @@ func (a *App) validatePolicyCoverage(_ context.Context) error {
 	}
 
 	report := a.Policy.CoverageReport(a.AvailableTables)
+	orphanTables := policy.GlobalMappingRegistry().OrphanNativeTables(a.AvailableTables)
 	if report.TotalPolicies == 0 {
-		return nil
+		if len(orphanTables) == 0 {
+			return nil
+		}
 	}
 
 	if len(report.Gaps) == 0 && report.UnknownResourcePolicies == 0 {
@@ -1168,6 +1171,13 @@ func (a *App) validatePolicyCoverage(_ context.Context) error {
 		)
 	}
 
+	if len(orphanTables) > 0 {
+		a.Logger.Warn("detected orphan native tables without policy mappings",
+			"orphan_table_count", len(orphanTables),
+			"orphan_tables_sample", topStrings(orphanTables, 10),
+		)
+	}
+
 	threshold, ok, err := policy.CoverageThresholdFromEnv()
 	if err != nil {
 		a.Logger.Warn("invalid policy coverage threshold", "error", err)
@@ -1175,6 +1185,15 @@ func (a *App) validatePolicyCoverage(_ context.Context) error {
 	}
 	if ok && report.CoveragePercent < threshold {
 		return fmt.Errorf("policy coverage %.1f%% below threshold %.1f%%", report.CoveragePercent, threshold)
+	}
+
+	orphanThreshold, orphanThresholdSet, err := policy.OrphanTableThresholdFromEnv()
+	if err != nil {
+		a.Logger.Warn("invalid policy orphan-table threshold", "error", err)
+		return nil
+	}
+	if orphanThresholdSet && len(orphanTables) > orphanThreshold {
+		return fmt.Errorf("orphan native tables %d exceed threshold %d", len(orphanTables), orphanThreshold)
 	}
 	return nil
 }
@@ -1205,6 +1224,16 @@ func topMissingTables(counts map[string]int, limit int) []string {
 		result = append(result, fmt.Sprintf("%s (%d)", entry.table, entry.count))
 	}
 	return result
+}
+
+func topStrings(values []string, limit int) []string {
+	if limit <= 0 || len(values) == 0 {
+		return nil
+	}
+	if len(values) <= limit {
+		return append([]string(nil), values...)
+	}
+	return append([]string(nil), values[:limit]...)
 }
 
 // Close cleanly shuts down all services

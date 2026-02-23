@@ -59,3 +59,23 @@ func TestCoverageThresholdFromEnv(t *testing.T) {
 		t.Fatal("expected invalid threshold to return error")
 	}
 }
+
+func TestOrphanTableThresholdFromEnv(t *testing.T) {
+	t.Setenv("CEREBRO_POLICY_ORPHAN_TABLES_MAX", "12")
+	value, ok, err := OrphanTableThresholdFromEnv()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected orphan threshold to be set")
+	}
+	if value != 12 {
+		t.Fatalf("expected 12, got %d", value)
+	}
+
+	t.Setenv("CEREBRO_POLICY_ORPHAN_TABLES_MAX", "bad")
+	_, ok, err = OrphanTableThresholdFromEnv()
+	if err == nil || ok {
+		t.Fatal("expected invalid orphan threshold to return error")
+	}
+}

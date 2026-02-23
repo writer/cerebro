@@ -127,14 +127,7 @@ func (r *MappingRegistry) ValidateNativeTableMappings(availableTables []string) 
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	available := make(map[string]struct{}, len(availableTables))
-	for _, table := range availableTables {
-		trimmed := strings.ToLower(strings.TrimSpace(table))
-		if trimmed == "" {
-			continue
-		}
-		available[trimmed] = struct{}{}
-	}
+	available := normalizeTableSet(availableTables)
 
 	errs := make([]error, 0)
 	for resource, tables := range r.mappings {
@@ -151,6 +144,50 @@ func (r *MappingRegistry) ValidateNativeTableMappings(availableTables []string) 
 
 	sort.Slice(errs, func(i, j int) bool { return errs[i].Error() < errs[j].Error() })
 	return errs
+}
+
+// OrphanNativeTables returns native cloud tables that exist but have no policy mapping.
+func (r *MappingRegistry) OrphanNativeTables(availableTables []string) []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	available := normalizeTableSet(availableTables)
+	mappedNative := make(map[string]struct{})
+
+	for _, tables := range r.mappings {
+		for _, table := range tables {
+			name := strings.ToLower(strings.TrimSpace(table))
+			if isNativeCloudTable(name) {
+				mappedNative[name] = struct{}{}
+			}
+		}
+	}
+
+	orphans := make([]string, 0)
+	for table := range available {
+		if !isNativeCloudTable(table) {
+			continue
+		}
+		if _, ok := mappedNative[table]; ok {
+			continue
+		}
+		orphans = append(orphans, table)
+	}
+
+	sort.Strings(orphans)
+	return orphans
+}
+
+func normalizeTableSet(availableTables []string) map[string]struct{} {
+	available := make(map[string]struct{}, len(availableTables))
+	for _, table := range availableTables {
+		trimmed := strings.ToLower(strings.TrimSpace(table))
+		if trimmed == "" {
+			continue
+		}
+		available[trimmed] = struct{}{}
+	}
+	return available
 }
 
 func normalizeMapping(resource string, tables []string) (string, []string, error) {

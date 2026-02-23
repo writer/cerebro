@@ -7,6 +7,7 @@ import (
 )
 
 const coverageThresholdEnv = "CEREBRO_POLICY_COVERAGE_MIN"
+const orphanThresholdEnv = "CEREBRO_POLICY_ORPHAN_TABLES_MAX"
 
 // CoverageReport explains policy coverage against available tables.
 type CoverageReport struct {
@@ -89,6 +90,22 @@ func CoverageThresholdFromEnv() (float64, bool, error) {
 		return 0, false, nil
 	}
 	value, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return 0, false, err
+	}
+	if value < 0 {
+		value = 0
+	}
+	return value, true, nil
+}
+
+// OrphanTableThresholdFromEnv returns max allowed orphan native tables, if configured.
+func OrphanTableThresholdFromEnv() (int, bool, error) {
+	raw := strings.TrimSpace(os.Getenv(orphanThresholdEnv))
+	if raw == "" {
+		return 0, false, nil
+	}
+	value, err := strconv.Atoi(raw)
 	if err != nil {
 		return 0, false, err
 	}
