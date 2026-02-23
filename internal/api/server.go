@@ -1525,6 +1525,8 @@ func approvalRequiredToolOutput(toolName string) string {
 	return string(payload)
 }
 
+const pendingToolApprovalTTL = 30 * time.Minute
+
 func setPendingToolCall(session *agents.Session, call agents.ToolCall) {
 	if session.Context.Metadata == nil {
 		session.Context.Metadata = map[string]interface{}{}
@@ -1536,9 +1538,10 @@ func setPendingToolCall(session *agents.Session, call agents.ToolCall) {
 	}
 
 	session.Context.Metadata["pending_tool_call"] = map[string]interface{}{
-		"id":        call.ID,
-		"name":      call.Name,
-		"arguments": args,
+		"id":         call.ID,
+		"name":       call.Name,
+		"arguments":  args,
+		"created_at": time.Now().UTC().Format(time.RFC3339Nano),
 	}
 }
 
@@ -1581,6 +1584,22 @@ func (s *Server) approveSessionToolCall(w http.ResponseWriter, r *http.Request) 
 	pendingCall, ok := pendingToolCallFromSession(session)
 	if !ok {
 		s.error(w, http.StatusBadRequest, "no pending tool call requiring approval")
+		return
+	}
+
+	if !pendingCall.CreatedAt.IsZero() && time.Since(pendingCall.CreatedAt) > pendingToolApprovalTTL {
+		clearPendingToolCall(session)
+		session.Status = "active"
+		msg := agents.Message{
+			Role:    "assistant",
+			Content: fmt.Sprintf("Approval window expired for tool %s. Please re-run the request.", pendingCall.Name),
+			Metadata: map[string]interface{}{
+				"status": "approval_expired",
+			},
+		}
+		session.Messages = append(session.Messages, msg)
+		s.app.Agents.UpdateSession(session)
+		s.json(w, http.StatusBadRequest, msg)
 		return
 	}
 
@@ -1655,6 +1674,7 @@ type pendingToolCall struct {
 	ID        string
 	Name      string
 	Arguments interface{}
+	CreatedAt time.Time
 }
 
 func pendingToolCallFromSession(session *agents.Session) (pendingToolCall, bool) {
@@ -1683,7 +1703,14 @@ func pendingToolCallFromSession(session *agents.Session) (pendingToolCall, bool)
 		arguments = map[string]interface{}{}
 	}
 
-	return pendingToolCall{ID: id, Name: name, Arguments: arguments}, true
+	var createdAt time.Time
+	if createdRaw, ok := pendingMap["created_at"].(string); ok && strings.TrimSpace(createdRaw) != "" {
+		if parsed, err := time.Parse(time.RFC3339Nano, createdRaw); err == nil {
+			createdAt = parsed.UTC()
+		}
+	}
+
+	return pendingToolCall{ID: id, Name: name, Arguments: arguments, CreatedAt: createdAt}, true
 }
 
 func (s *Server) getMessages(w http.ResponseWriter, r *http.Request) {

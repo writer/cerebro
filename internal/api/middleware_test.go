@@ -141,3 +141,29 @@ func TestAPIKeyAuthDisabled(t *testing.T) {
 		t.Errorf("expected status 200 when auth disabled, got %d", w.Code)
 	}
 }
+
+func TestRoutePermissionCoverage(t *testing.T) {
+	tests := []struct {
+		name       string
+		method     string
+		path       string
+		expectedRB string
+	}{
+		{name: "agents read", method: http.MethodGet, path: "/api/v1/agents/", expectedRB: "findings:read"},
+		{name: "agents write", method: http.MethodPost, path: "/api/v1/agents/sessions", expectedRB: "findings:write"},
+		{name: "providers require admin", method: http.MethodGet, path: "/api/v1/providers/aws", expectedRB: "admin:users"},
+		{name: "compliance export", method: http.MethodGet, path: "/api/v1/compliance/frameworks/pci/export", expectedRB: "compliance:export"},
+		{name: "unknown api read is locked down", method: http.MethodGet, path: "/api/v1/unknown", expectedRB: "findings:read"},
+		{name: "unknown api write is admin", method: http.MethodPost, path: "/api/v1/unknown", expectedRB: "admin:users"},
+		{name: "non api route", method: http.MethodGet, path: "/health", expectedRB: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := routePermission(tt.method, tt.path)
+			if got != tt.expectedRB {
+				t.Fatalf("routePermission(%s, %s) = %q, want %q", tt.method, tt.path, got, tt.expectedRB)
+			}
+		})
+	}
+}

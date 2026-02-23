@@ -552,6 +552,66 @@ func TestAuthMiddleware_HealthBypassesAuth(t *testing.T) {
 	}
 }
 
+func TestAuthMiddleware_RBACProtectsAgentRoutes(t *testing.T) {
+	a := newTestApp(t)
+	a.Config.APIAuthEnabled = true
+	a.Config.APIKeys = map[string]string{"test-key": "user-1"}
+	s := NewServer(a)
+
+	req := httptest.NewRequest("GET", "/api/v1/agents/", nil)
+	req.Header.Set("Authorization", "Bearer test-key")
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for user without RBAC role, got %d", w.Code)
+	}
+}
+
+func TestAuthMiddleware_RBACAgentReadWriteByRole(t *testing.T) {
+	a := newTestApp(t)
+	a.Config.APIAuthEnabled = true
+	a.Config.APIKeys = map[string]string{"viewer-key": "viewer-1", "analyst-key": "analyst-1"}
+
+	if err := a.RBAC.CreateUser(&auth.User{ID: "viewer-1", Email: "viewer@example.com", RoleIDs: []string{"viewer"}}); err != nil {
+		t.Fatalf("create viewer: %v", err)
+	}
+	if err := a.RBAC.CreateUser(&auth.User{ID: "analyst-1", Email: "analyst@example.com", RoleIDs: []string{"analyst"}}); err != nil {
+		t.Fatalf("create analyst: %v", err)
+	}
+
+	s := NewServer(a)
+
+	// Viewer can read agents.
+	readReq := httptest.NewRequest("GET", "/api/v1/agents/", nil)
+	readReq.Header.Set("Authorization", "Bearer viewer-key")
+	readW := httptest.NewRecorder()
+	s.ServeHTTP(readW, readReq)
+	if readW.Code != http.StatusOK {
+		t.Fatalf("expected viewer read to succeed, got %d", readW.Code)
+	}
+
+	// Viewer cannot perform write operation on agent session endpoint.
+	viewerWriteReq := httptest.NewRequest("POST", "/api/v1/agents/sessions", strings.NewReader(`{"agent_id":"agent-1"}`))
+	viewerWriteReq.Header.Set("Authorization", "Bearer viewer-key")
+	viewerWriteReq.Header.Set("Content-Type", "application/json")
+	viewerWriteW := httptest.NewRecorder()
+	s.ServeHTTP(viewerWriteW, viewerWriteReq)
+	if viewerWriteW.Code != http.StatusForbidden {
+		t.Fatalf("expected viewer write to be forbidden, got %d", viewerWriteW.Code)
+	}
+
+	// Analyst has findings:write so request reaches handler (agent missing => 404).
+	analystWriteReq := httptest.NewRequest("POST", "/api/v1/agents/sessions", strings.NewReader(`{"agent_id":"agent-1"}`))
+	analystWriteReq.Header.Set("Authorization", "Bearer analyst-key")
+	analystWriteReq.Header.Set("Content-Type", "application/json")
+	analystWriteW := httptest.NewRecorder()
+	s.ServeHTTP(analystWriteW, analystWriteReq)
+	if analystWriteW.Code == http.StatusForbidden {
+		t.Fatalf("expected analyst write to pass RBAC, got %d", analystWriteW.Code)
+	}
+}
+
 // --- 404 for unknown routes ---
 
 func TestUnknownRoute(t *testing.T) {
@@ -775,6 +835,90 @@ func TestApproveSessionToolCallExecutesPendingTool(t *testing.T) {
 	if updated.Context.Metadata != nil {
 		if _, exists := updated.Context.Metadata["pending_tool_call"]; exists {
 			t.Fatal("expected pending tool call metadata to be cleared")
+		}
+	}
+}
+
+func TestApproveSessionToolCallExpiredPendingRequest(t *testing.T) {
+	a := newTestApp(t)
+	called := false
+
+	provider := &scriptedAgentProvider{
+		responses: []*agents.Response{
+			{
+				Message: agents.Message{
+					Role: "assistant",
+					ToolCalls: []agents.ToolCall{{
+						ID:        "tool-1",
+						Name:      "dangerous_tool",
+						Arguments: json.RawMessage(`{"target":"asset-1"}`),
+					}},
+				},
+			},
+		},
+	}
+
+	a.Agents.RegisterAgent(&agents.Agent{
+		ID:       "agent-expiry",
+		Name:     "Expiry Agent",
+		Provider: provider,
+		Tools: []agents.Tool{{
+			Name:             "dangerous_tool",
+			RequiresApproval: true,
+			Handler: func(context.Context, json.RawMessage) (string, error) {
+				called = true
+				return `{"ok":true}`, nil
+			},
+		}},
+	})
+
+	session, err := a.Agents.CreateSession("agent-expiry", "user-1", agents.SessionContext{})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	s := NewServer(a)
+	w := do(t, s, "POST", "/api/v1/agents/sessions/"+session.ID+"/messages", map[string]string{"content": "run dangerous tool"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	updated, ok := a.Agents.GetSession(session.ID)
+	if !ok {
+		t.Fatal("expected session to exist")
+	}
+	pending, ok := updated.Context.Metadata["pending_tool_call"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected pending_tool_call metadata")
+	}
+	pending["created_at"] = time.Now().Add(-2 * pendingToolApprovalTTL).UTC().Format(time.RFC3339Nano)
+
+	w = do(t, s, "POST", "/api/v1/agents/sessions/"+session.ID+"/approve", map[string]bool{"approve": true})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 on expired approval, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var msg agents.Message
+	if err := json.Unmarshal(w.Body.Bytes(), &msg); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if msg.Metadata["status"] != "approval_expired" {
+		t.Fatalf("expected approval_expired status, got %#v", msg.Metadata["status"])
+	}
+	if called {
+		t.Fatal("expected tool not to run when approval is expired")
+	}
+
+	updated, ok = a.Agents.GetSession(session.ID)
+	if !ok {
+		t.Fatal("expected session to exist")
+	}
+	if updated.Status != "active" {
+		t.Fatalf("expected active status after expiry handling, got %s", updated.Status)
+	}
+	if updated.Context.Metadata != nil {
+		if _, exists := updated.Context.Metadata["pending_tool_call"]; exists {
+			t.Fatal("expected pending tool metadata to be cleared after expiry")
 		}
 	}
 }

@@ -168,6 +168,7 @@ func RBACMiddleware(rbac *auth.RBAC) func(http.Handler) http.Handler {
 // routePermission maps an HTTP method + path to the required RBAC permission.
 func routePermission(method, path string) string {
 	isWrite := method == "POST" || method == "PUT" || method == "DELETE" || method == "PATCH"
+	isExport := strings.Contains(path, "/export")
 
 	switch {
 	case strings.HasPrefix(path, "/api/v1/findings"):
@@ -186,10 +187,39 @@ func routePermission(method, path string) string {
 		return "assets:read"
 	case strings.HasPrefix(path, "/api/v1/compliance"),
 		strings.HasPrefix(path, "/api/v1/reports"):
+		if isExport {
+			return "compliance:export"
+		}
 		return "compliance:read"
+	case strings.HasPrefix(path, "/api/v1/agents"),
+		strings.HasPrefix(path, "/api/v1/incidents"),
+		strings.HasPrefix(path, "/api/v1/tickets"),
+		strings.HasPrefix(path, "/api/v1/identity"),
+		strings.HasPrefix(path, "/api/v1/attack-paths"),
+		strings.HasPrefix(path, "/api/v1/threatintel"),
+		strings.HasPrefix(path, "/api/v1/runtime"),
+		strings.HasPrefix(path, "/api/v1/lineage"),
+		strings.HasPrefix(path, "/api/v1/graph"):
+		if isWrite {
+			return "findings:write"
+		}
+		return "findings:read"
+	case strings.HasPrefix(path, "/api/v1/providers"),
+		strings.HasPrefix(path, "/api/v1/webhooks"),
+		strings.HasPrefix(path, "/api/v1/scheduler"),
+		strings.HasPrefix(path, "/api/v1/notifications"),
+		strings.HasPrefix(path, "/api/v1/remediation"),
+		strings.HasPrefix(path, "/api/v1/scan"),
+		strings.HasPrefix(path, "/api/v1/telemetry"):
+		return "admin:users"
 	case strings.HasPrefix(path, "/api/v1/rbac"),
 		strings.HasPrefix(path, "/api/v1/admin"):
 		return "admin:users"
+	case strings.HasPrefix(path, "/api/v1"):
+		if isWrite {
+			return "admin:users"
+		}
+		return "findings:read"
 	default:
 		return ""
 	}
