@@ -2,6 +2,7 @@ name: Droid Code Review
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
 
 concurrency:
   group: droid-review-${{ github.event.pull_request.number }}
@@ -19,9 +20,14 @@ jobs:
     timeout-minutes: 15
     if: >-
       github.event.pull_request.draft == false &&
-      secrets.INFISICAL_IDENTITY_ID != '' &&
-      secrets.INFISICAL_PROJECT_SLUG != '' &&
-      secrets.INFISICAL_ENV_SLUG != ''
+      (
+        secrets.FACTORY_API_KEY != '' ||
+        (
+          secrets.INFISICAL_IDENTITY_ID != '' &&
+          secrets.INFISICAL_PROJECT_SLUG != '' &&
+          secrets.INFISICAL_ENV_SLUG != ''
+        )
+      )
 
     steps:
       - name: Checkout repository
@@ -85,6 +91,10 @@ jobs:
           rm -f files_all.json
 
       - name: Fetch secrets from Infisical
+        if: >-
+          secrets.INFISICAL_IDENTITY_ID != '' &&
+          secrets.INFISICAL_PROJECT_SLUG != '' &&
+          secrets.INFISICAL_ENV_SLUG != ''
         uses: Infisical/secrets-action@v1.0.15
         with:
           method: "oidc"
@@ -93,6 +103,21 @@ jobs:
           project-slug: ${{ secrets.INFISICAL_PROJECT_SLUG }}
           env-slug: ${{ secrets.INFISICAL_ENV_SLUG }}
           export-type: env
+
+      - name: Ensure Factory API key is available
+        env:
+          FACTORY_API_KEY_FALLBACK: ${{ secrets.FACTORY_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          EFFECTIVE_FACTORY_API_KEY="${FACTORY_API_KEY:-${FACTORY_API_KEY_FALLBACK:-}}"
+          if [ -z "$EFFECTIVE_FACTORY_API_KEY" ]; then
+            echo "FACTORY_API_KEY is required from Infisical or GitHub secrets."
+            exit 1
+          fi
+
+          echo "FACTORY_API_KEY=$EFFECTIVE_FACTORY_API_KEY" >> "$GITHUB_ENV"
+          echo "::add-mask::$EFFECTIVE_FACTORY_API_KEY"
 
       - name: Perform automated code review
         env:
