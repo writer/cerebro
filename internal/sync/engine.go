@@ -485,25 +485,18 @@ func (e *SyncEngine) ensureTable(ctx context.Context, table string, columns []st
 		return nil // table might not exist yet
 	}
 
-	existingSet := make(map[string]bool)
-	for _, col := range existingCols {
-		existingSet[strings.ToUpper(col)] = true
-	}
+	desiredCols := make([]string, 0, len(filteredCols)+1)
+	desiredCols = append(desiredCols, "_CQ_HASH")
+	desiredCols = append(desiredCols, filteredCols...)
 
-	// Add _CQ_HASH if missing
-	if !existingSet["_CQ_HASH"] {
-		if _, err := e.sf.Exec(ctx, fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS _CQ_HASH VARCHAR", table)); err != nil {
-			e.logger.Debug("failed to add _CQ_HASH column", "error", err)
+	for _, col := range columnsMissingFromSchema(existingCols, desiredCols) {
+		columnType := "VARIANT"
+		if col == "_CQ_HASH" {
+			columnType = "VARCHAR"
 		}
-	}
-
-	for _, col := range filteredCols {
-		upperCol := strings.ToUpper(col)
-		if !existingSet[upperCol] {
-			alterQuery := fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS %s VARIANT", table, upperCol)
-			if _, err := e.sf.Exec(ctx, alterQuery); err != nil {
-				e.logger.Debug("failed to add column", "table", table, "column", upperCol, "error", err)
-			}
+		alterQuery := fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS %s %s", table, col, columnType)
+		if _, err := e.sf.Exec(ctx, alterQuery); err != nil {
+			e.logger.Debug("failed to add column", "table", table, "column", col, "error", err)
 		}
 	}
 

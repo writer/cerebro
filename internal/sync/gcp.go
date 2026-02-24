@@ -298,18 +298,10 @@ func (e *GCPSyncEngine) ensureTable(ctx context.Context, table string, columns [
 		return nil // Table might be new
 	}
 
-	existingSet := make(map[string]bool)
-	for _, col := range existingCols {
-		existingSet[strings.ToUpper(col)] = true
-	}
-
-	for _, col := range columns {
-		upperCol := strings.ToUpper(col)
-		if !existingSet[upperCol] {
-			alterQuery := fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS %s VARIANT", table, upperCol)
-			if _, err := e.sf.Exec(ctx, alterQuery); err != nil {
-				e.logger.Debug("failed to add column", "table", table, "column", upperCol, "error", err)
-			}
+	for _, col := range columnsMissingFromSchema(existingCols, columns) {
+		alterQuery := fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS %s VARIANT", table, col)
+		if _, err := e.sf.Exec(ctx, alterQuery); err != nil {
+			e.logger.Debug("failed to add column", "table", table, "column", col, "error", err)
 		}
 	}
 

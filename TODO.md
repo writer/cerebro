@@ -171,7 +171,7 @@
 - [x] Change K8s ensure-table alter statements to `ADD COLUMN IF NOT EXISTS`
 - [x] Change GCP ensure-table alter statements to `ADD COLUMN IF NOT EXISTS`
 - [x] Use `Exec` for K8s/GCP table DDL (`CREATE TABLE`, `ALTER TABLE`)
-- [ ] Verify no repeated `column ... already exists` logs on consecutive sync runs
+- [x] Verify no repeated `column ... already exists` logs on consecutive sync runs *(covered by `TestColumnsMissingFromSchema_ConsecutiveRunNoOps` + `TestEnsureTableUsesIdempotentDDL`)*
 
 ### C. Diff / Change-Detection Correctness
 - [x] Fix AWS/native `getExistingHashes` row key access to lowercase (`_cq_id`, `_cq_hash`)
