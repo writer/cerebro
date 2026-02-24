@@ -9,6 +9,10 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/writerinternal/cerebro/internal/findings"
+	"github.com/writerinternal/cerebro/internal/policy"
+	"github.com/writerinternal/cerebro/internal/snowflake"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -349,6 +353,119 @@ func TestInitProviders_SkipsExpandedProvidersWithoutConfig(t *testing.T) {
 		if _, ok := app.Providers.Get(name); ok {
 			t.Errorf("did not expect provider %q to be registered", name)
 		}
+	}
+}
+
+func TestScanQueryPolicies_DedupAndSuppressionFlow(t *testing.T) {
+	originalExecuteReadOnlyQueryFn := executeReadOnlyQueryFn
+	t.Cleanup(func() {
+		executeReadOnlyQueryFn = originalExecuteReadOnlyQueryFn
+	})
+
+	executeReadOnlyQueryFn = func(context.Context, *snowflake.Client, string) (*snowflake.QueryResult, error) {
+		return &snowflake.QueryResult{Rows: []map[string]interface{}{
+			{"_cq_id": "asset-1", "_cq_table": "assets", "name": "Asset 1"},
+			{"id": "asset-1", "_cq_table": "assets", "name": "Asset 1 duplicate"},
+		}}, nil
+	}
+
+	engine := policy.NewEngine()
+	engine.AddPolicy(&policy.Policy{
+		ID:          "query-policy",
+		Name:        "Query Policy",
+		Description: "query finding",
+		Severity:    "high",
+		Query:       "SELECT _cq_id FROM assets",
+	})
+
+	store := findings.NewStore()
+	app := &App{
+		Config:          &Config{},
+		Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Policy:          engine,
+		Findings:        store,
+		Snowflake:       &snowflake.Client{},
+		AvailableTables: []string{"assets"},
+	}
+
+	first := app.ScanQueryPolicies(context.Background())
+	if first.Policies != 1 {
+		t.Fatalf("expected 1 query policy, got %d", first.Policies)
+	}
+	if len(first.Errors) != 0 {
+		t.Fatalf("expected no query policy errors, got %v", first.Errors)
+	}
+	if len(first.Findings) != 1 {
+		t.Fatalf("expected 1 deduplicated finding, got %d", len(first.Findings))
+	}
+
+	findingID := first.Findings[0].ID
+	app.Findings.Upsert(context.Background(), first.Findings[0])
+	if !store.Suppress(findingID) {
+		t.Fatalf("expected suppress to succeed for finding %s", findingID)
+	}
+
+	suppressed, ok := store.Get(findingID)
+	if !ok {
+		t.Fatalf("expected finding %s in store", findingID)
+	}
+	if suppressed.Status != "SUPPRESSED" {
+		t.Fatalf("expected suppressed status, got %s", suppressed.Status)
+	}
+
+	second := app.ScanQueryPolicies(context.Background())
+	if len(second.Findings) != 1 {
+		t.Fatalf("expected 1 deduplicated finding on second scan, got %d", len(second.Findings))
+	}
+	app.Findings.Upsert(context.Background(), second.Findings[0])
+
+	after, ok := store.Get(findingID)
+	if !ok {
+		t.Fatalf("expected finding %s after second scan", findingID)
+	}
+	if after.Status != "SUPPRESSED" {
+		t.Fatalf("expected suppressed finding to remain suppressed after rescan, got %s", after.Status)
+	}
+}
+
+func TestScanQueryPolicies_SkipsDisallowedTables(t *testing.T) {
+	originalExecuteReadOnlyQueryFn := executeReadOnlyQueryFn
+	t.Cleanup(func() {
+		executeReadOnlyQueryFn = originalExecuteReadOnlyQueryFn
+	})
+
+	queryCallCount := 0
+	executeReadOnlyQueryFn = func(context.Context, *snowflake.Client, string) (*snowflake.QueryResult, error) {
+		queryCallCount++
+		return &snowflake.QueryResult{}, nil
+	}
+
+	engine := policy.NewEngine()
+	engine.AddPolicy(&policy.Policy{
+		ID:          "query-policy",
+		Name:        "Query Policy",
+		Description: "query finding",
+		Severity:    "high",
+		Query:       "SELECT id FROM disallowed_table",
+	})
+
+	app := &App{
+		Config:          &Config{},
+		Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Policy:          engine,
+		Snowflake:       &snowflake.Client{},
+		AvailableTables: []string{"allowed_table"},
+	}
+
+	result := app.ScanQueryPolicies(context.Background())
+	if queryCallCount != 0 {
+		t.Fatalf("expected query execution to be skipped, got %d calls", queryCallCount)
+	}
+	if len(result.Findings) != 0 {
+		t.Fatalf("expected no findings for disallowed table, got %d", len(result.Findings))
+	}
+	if len(result.Errors) != 0 {
+		t.Fatalf("expected no errors for disallowed table skip, got %v", result.Errors)
 	}
 }
 

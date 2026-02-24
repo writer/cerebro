@@ -1023,6 +1023,8 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 	var tableProfiles []scanner.TableScanProfile
 	var totalScanned int64
 	var totalViolations int64
+	var queryPolicyFindingCount int
+	var queryPolicyErrorCount int
 	var relationshipCount int
 	var graphToxicCount int
 	var graphPaths int
@@ -1184,6 +1186,34 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 		)
 	}
 
+	queryPolicyResult := a.ScanQueryPolicies(ctx)
+	queryPolicyFindingCount = len(queryPolicyResult.Findings)
+	queryPolicyErrorCount = len(queryPolicyResult.Errors)
+	for _, errMsg := range queryPolicyResult.Errors {
+		a.Logger.Warn("query policy execution failed", "error", errMsg)
+	}
+	for _, f := range queryPolicyResult.Findings {
+		finding := a.Findings.Upsert(ctx, f)
+		if finding.FirstSeen.Equal(finding.LastSeen) && (f.Severity == "critical" || f.Severity == "high") {
+			if err := a.Notifications.Send(ctx, notifications.Event{
+				Type:     notifications.EventFindingCreated,
+				Severity: f.Severity,
+				Title:    fmt.Sprintf("New %s Finding: %s", f.Severity, f.PolicyName),
+				Message:  f.Description,
+				Data: map[string]interface{}{
+					"finding_id": f.ID,
+					"policy_id":  f.PolicyID,
+					"resource":   f.Resource,
+				},
+			}); err != nil {
+				a.Logger.Warn("failed to send query finding notification", "finding_id", f.ID, "error", err)
+			}
+		}
+	}
+	if queryPolicyFindingCount > 0 {
+		totalViolations += int64(queryPolicyFindingCount)
+	}
+
 	sqlToxicRiskSets := make(map[string][]map[string]bool)
 	if a.Snowflake != nil {
 		toxicFindings, err := scanner.DetectRelationshipToxicCombinations(ctx, a.Snowflake)
@@ -1263,6 +1293,8 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 			"scanned":                  totalScanned,
 			"violations":               totalViolations,
 			"tables":                   tables,
+			"query_policy_findings":    queryPolicyFindingCount,
+			"query_policy_errors":      queryPolicyErrorCount,
 			"relationship_toxic_count": relationshipCount,
 			"graph_toxic_count":        graphToxicCount,
 			"graph_attack_paths":       graphPaths,

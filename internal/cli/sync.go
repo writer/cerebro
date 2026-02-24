@@ -1097,6 +1097,23 @@ func runPostSyncScan(ctx context.Context, tableFilter []string) error {
 		}
 	}
 
+	queryPolicyResult := application.ScanQueryPolicies(ctx)
+	queryPolicyFindingCount := len(queryPolicyResult.Findings)
+	queryPolicyErrorCount := len(queryPolicyResult.Errors)
+	for _, errMsg := range queryPolicyResult.Errors {
+		Warning("Query policy execution failed: %s", errMsg)
+	}
+	for _, f := range queryPolicyResult.Findings {
+		application.Findings.Upsert(ctx, f)
+	}
+	if queryPolicyFindingCount > 0 {
+		totalViolations += int64(queryPolicyFindingCount)
+		fmt.Printf("Query-policy findings: %d\n", queryPolicyFindingCount)
+	}
+	if queryPolicyErrorCount > 0 {
+		fmt.Printf("Query-policy errors: %d\n", queryPolicyErrorCount)
+	}
+
 	printScanProfiling(tableProfiles, tuning.ProfileSlowThreshold)
 
 	sqlToxicRiskSets := make(map[string][]map[string]bool)

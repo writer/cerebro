@@ -207,6 +207,32 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 	scanWg.Wait()
 
+	queryPolicyResult := application.ScanQueryPolicies(ctx)
+	queryPolicyFindingCount := len(queryPolicyResult.Findings)
+	queryPolicyErrorCount := len(queryPolicyResult.Errors)
+	for _, errMsg := range queryPolicyResult.Errors {
+		Warning("Query policy execution failed: %s", errMsg)
+	}
+	if queryPolicyFindingCount > 0 {
+		for _, f := range queryPolicyResult.Findings {
+			application.Findings.Upsert(ctx, f)
+			allFindings = append(allFindings, map[string]interface{}{
+				"id":              f.ID,
+				"policy_id":       f.PolicyID,
+				"title":           f.Title,
+				"description":     f.Description,
+				"resource_id":     f.ResourceID,
+				"resource_name":   f.ResourceName,
+				"severity":        f.Severity,
+				"risk_categories": f.RiskCategories,
+				"remediation":     f.Remediation,
+				"query_policy":    true,
+			})
+		}
+		totalViolations += int64(queryPolicyFindingCount)
+		fmt.Printf("\nQuery-policy findings: %d\n", queryPolicyFindingCount)
+	}
+
 	// Start watermark persistence in the background while graph analysis runs.
 	// We wait for it before returning so the Snowflake pool isn't closed underneath it.
 	type watermarkResult struct {
@@ -406,6 +432,8 @@ func runScan(cmd *cobra.Command, args []string) error {
 			"violations":              totalViolations,
 			"duration":                duration.String(),
 			"findings":                allFindings,
+			"query_policy_findings":   queryPolicyFindingCount,
+			"query_policy_errors":     queryPolicyErrorCount,
 			"graph_used":              graphAvailable,
 			"graph_toxic_count":       graphToxicCount,
 			"graph_attack_paths":      graphAttackPaths,
@@ -496,6 +524,9 @@ func runScan(cmd *cobra.Command, args []string) error {
 		} else {
 			fmt.Printf("Watermarks:      persisted (%s)\n", wmResult.duration.Round(time.Millisecond))
 		}
+	}
+	if queryPolicyFindingCount > 0 || queryPolicyErrorCount > 0 {
+		fmt.Printf("Query policies:  %d findings, %d errors\n", queryPolicyFindingCount, queryPolicyErrorCount)
 	}
 	if toxicSummary.Total > 0 {
 		fmt.Printf("Toxic combos:    %d across %d resources\n", toxicSummary.Total, toxicSummary.ResourceCount)
