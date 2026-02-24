@@ -152,6 +152,21 @@ var (
 		},
 	)
 
+	PoliciesLoadedByType = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "cerebro_policies_loaded_by_type",
+			Help: "Number of policies loaded by type",
+		},
+		[]string{"type"},
+	)
+
+	QueryOnlyPoliciesLoaded = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "cerebro_query_only_policies_loaded",
+			Help: "Number of query-only policies loaded",
+		},
+	)
+
 	PolicyEvaluationsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "cerebro_policy_evaluations_total",
@@ -202,6 +217,22 @@ var (
 			Buckets: prometheus.ExponentialBuckets(1, 2, 10),
 		},
 		[]string{"job"},
+	)
+
+	ProviderCounts = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "cerebro_provider_count",
+			Help: "Provider counts by state",
+		},
+		[]string{"state"},
+	)
+
+	ComplianceExportsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_compliance_exports_total",
+			Help: "Total number of compliance export attempts",
+		},
+		[]string{"status"},
 	)
 
 	// Identity metrics
@@ -255,6 +286,8 @@ func Register() {
 			SnowflakeQueryDuration,
 			// Policies
 			PoliciesLoaded,
+			PoliciesLoadedByType,
+			QueryOnlyPoliciesLoaded,
 			PolicyEvaluationsTotal,
 			// Webhooks
 			WebhookDeliveriesTotal,
@@ -264,6 +297,8 @@ func Register() {
 			// Scheduler
 			SchedulerJobRuns,
 			SchedulerJobDuration,
+			ProviderCounts,
+			ComplianceExportsTotal,
 			// Identity
 			StaleAccessFindings,
 			// Build
@@ -318,6 +353,34 @@ func RecordSnowflakeQuery(duration time.Duration, success bool) {
 	}
 	SnowflakeQueriesTotal.WithLabelValues(status).Inc()
 	SnowflakeQueryDuration.Observe(duration.Seconds())
+}
+
+// SetPolicyLoadMetrics sets policy load gauges for total and type-specific counts.
+func SetPolicyLoadMetrics(totalPolicies, queryOnlyPolicies int) {
+	if queryOnlyPolicies > totalPolicies {
+		queryOnlyPolicies = totalPolicies
+	}
+
+	conditionPolicies := totalPolicies - queryOnlyPolicies
+	PoliciesLoaded.Set(float64(totalPolicies))
+	PoliciesLoadedByType.WithLabelValues("condition_resource").Set(float64(conditionPolicies))
+	PoliciesLoadedByType.WithLabelValues("query_only").Set(float64(queryOnlyPolicies))
+	QueryOnlyPoliciesLoaded.Set(float64(queryOnlyPolicies))
+}
+
+// SetProviderCountMetrics sets provider inventory gauges.
+func SetProviderCountMetrics(registeredProviders, implementedProviders int) {
+	ProviderCounts.WithLabelValues("registered").Set(float64(registeredProviders))
+	ProviderCounts.WithLabelValues("implemented").Set(float64(implementedProviders))
+}
+
+// RecordComplianceExport records an attempted compliance export.
+func RecordComplianceExport(success bool) {
+	status := "success"
+	if !success {
+		status = "error"
+	}
+	ComplianceExportsTotal.WithLabelValues(status).Inc()
 }
 
 // UpdateFindingsMetrics updates findings gauge metrics

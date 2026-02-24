@@ -1249,6 +1249,7 @@ func (s *Server) exportAuditPackage(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	framework := compliance.GetFramework(id)
 	if framework == nil {
+		metrics.RecordComplianceExport(false)
 		s.error(w, http.StatusNotFound, "framework not found")
 		return
 	}
@@ -1258,6 +1259,7 @@ func (s *Server) exportAuditPackage(w http.ResponseWriter, r *http.Request) {
 
 	zipBytes, err := compliance.RenderAuditPackageZIP(pkg)
 	if err != nil {
+		metrics.RecordComplianceExport(false)
 		s.error(w, http.StatusInternalServerError, fmt.Sprintf("failed to render audit package: %v", err))
 		return
 	}
@@ -1267,8 +1269,11 @@ func (s *Server) exportAuditPackage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(zipBytes); err != nil {
+		metrics.RecordComplianceExport(false)
 		s.app.Logger.Warn("failed to stream audit package", "error", err, "framework_id", framework.ID)
+		return
 	}
+	metrics.RecordComplianceExport(true)
 }
 
 // Agent endpoints

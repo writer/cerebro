@@ -50,3 +50,13 @@ func TestPublicProviderNames_ExcludesStubProviders(t *testing.T) {
 		t.Fatal("expected github in public provider names")
 	}
 }
+
+func TestImplementedProviderNames_ExcludesStubProviders(t *testing.T) {
+	names := ImplementedProviderNames()
+	if slices.Contains(names, "auth0") {
+		t.Fatal("did not expect stub provider auth0 in implemented provider names")
+	}
+	if !slices.Contains(names, "github") {
+		t.Fatal("expected github in implemented provider names")
+	}
+}

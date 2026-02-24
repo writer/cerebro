@@ -54,6 +54,7 @@ import (
 	"github.com/writerinternal/cerebro/internal/health"
 	"github.com/writerinternal/cerebro/internal/identity"
 	"github.com/writerinternal/cerebro/internal/lineage"
+	"github.com/writerinternal/cerebro/internal/metrics"
 	"github.com/writerinternal/cerebro/internal/notifications"
 	"github.com/writerinternal/cerebro/internal/policy"
 	"github.com/writerinternal/cerebro/internal/providers"
@@ -544,8 +545,10 @@ func (a *App) initPolicy() error {
 			return fmt.Errorf("policy initialization failed in explicit-mappings-only mode: %w", err)
 		}
 		a.Logger.Warn("failed to load policies", "error", err, "path", a.Config.PoliciesPath)
+		metrics.SetPolicyLoadMetrics(0, 0)
 		return nil
 	}
+	metrics.SetPolicyLoadMetrics(len(a.Policy.ListPolicies()), len(a.Policy.ListQueryPolicies()))
 	return nil
 }
 
@@ -898,6 +901,8 @@ func (a *App) initProviders(ctx context.Context) {
 		}
 		registerProvider("cloudtrail", providers.NewCloudTrailProvider(), cloudTrailConfig)
 	}
+
+	metrics.SetProviderCountMetrics(len(a.Providers.List()), len(providers.ImplementedProviderNames()))
 }
 
 func (a *App) initWebhooks() {

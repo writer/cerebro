@@ -139,8 +139,16 @@ func TestPolicyMetrics(t *testing.T) {
 	Register()
 
 	PoliciesLoaded.Set(150)
+	PoliciesLoadedByType.WithLabelValues("condition_resource").Set(120)
+	PoliciesLoadedByType.WithLabelValues("query_only").Set(30)
+	QueryOnlyPoliciesLoaded.Set(30)
 	PolicyEvaluationsTotal.WithLabelValues("s3-public-bucket", "fail").Inc()
 	PolicyEvaluationsTotal.WithLabelValues("s3-public-bucket", "pass").Add(10)
+}
+
+func TestSetPolicyLoadMetrics(t *testing.T) {
+	Register()
+	SetPolicyLoadMetrics(20, 5)
 }
 
 func TestWebhookMetrics(t *testing.T) {
@@ -164,6 +172,17 @@ func TestSchedulerMetrics(t *testing.T) {
 	SchedulerJobRuns.WithLabelValues("sync-feeds", "success").Inc()
 	SchedulerJobRuns.WithLabelValues("cleanup", "error").Inc()
 	SchedulerJobDuration.WithLabelValues("sync-feeds").Observe(30.0)
+}
+
+func TestSetProviderCountMetrics(t *testing.T) {
+	Register()
+	SetProviderCountMetrics(11, 22)
+}
+
+func TestRecordComplianceExport(t *testing.T) {
+	Register()
+	RecordComplianceExport(true)
+	RecordComplianceExport(false)
 }
 
 func TestIdentityMetrics(t *testing.T) {

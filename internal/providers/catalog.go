@@ -73,3 +73,15 @@ func PublicProviderNames() []string {
 	sort.Strings(names)
 	return names
 }
+
+// ImplementedProviderNames returns sorted provider names that are not marked stub/incomplete.
+func ImplementedProviderNames() []string {
+	names := make([]string, 0, len(providerMetadata))
+	for name, metadata := range providerMetadata {
+		if metadata.Maturity != ProviderMaturityStub {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
