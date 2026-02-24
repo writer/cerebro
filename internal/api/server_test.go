@@ -482,6 +482,48 @@ func TestGetAttackPath_NotFound(t *testing.T) {
 	}
 }
 
+func TestGetAttackPath_RespectsTargetsFilter(t *testing.T) {
+	s := newTestServer(t)
+
+	s.app.AttackPath.AddNode(&attackpath.Node{ID: "external", Type: attackpath.NodeTypeExternal, Name: "Internet", Risk: attackpath.RiskHigh})
+	s.app.AttackPath.AddNode(&attackpath.Node{ID: "role", Type: attackpath.NodeTypeRole, Name: "Compromised Role", Risk: attackpath.RiskHigh})
+	s.app.AttackPath.AddNode(&attackpath.Node{ID: "db", Type: attackpath.NodeTypeDatabase, Name: "Prod DB", Risk: attackpath.RiskCritical})
+
+	s.app.AttackPath.AddEdge(&attackpath.Edge{ID: "edge-1", Source: "external", Target: "role", Type: attackpath.EdgeTypeExposedTo, Risk: attackpath.RiskHigh})
+	s.app.AttackPath.AddEdge(&attackpath.Edge{ID: "edge-2", Source: "role", Target: "db", Type: attackpath.EdgeTypeHasAccess, Risk: attackpath.RiskCritical})
+
+	w := do(t, s, "GET", "/api/v1/attack-paths/external-db?targets=role", nil)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 when target is excluded, got %d: %s", w.Code, w.Body.String())
+	}
+
+	w = do(t, s, "GET", "/api/v1/attack-paths/external-db?targets=db", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 when target is included, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGetAttackPath_RespectsMaxDepth(t *testing.T) {
+	s := newTestServer(t)
+
+	s.app.AttackPath.AddNode(&attackpath.Node{ID: "external", Type: attackpath.NodeTypeExternal, Name: "Internet", Risk: attackpath.RiskHigh})
+	s.app.AttackPath.AddNode(&attackpath.Node{ID: "role", Type: attackpath.NodeTypeRole, Name: "Compromised Role", Risk: attackpath.RiskHigh})
+	s.app.AttackPath.AddNode(&attackpath.Node{ID: "db", Type: attackpath.NodeTypeDatabase, Name: "Prod DB", Risk: attackpath.RiskCritical})
+
+	s.app.AttackPath.AddEdge(&attackpath.Edge{ID: "edge-1", Source: "external", Target: "role", Type: attackpath.EdgeTypeExposedTo, Risk: attackpath.RiskHigh})
+	s.app.AttackPath.AddEdge(&attackpath.Edge{ID: "edge-2", Source: "role", Target: "db", Type: attackpath.EdgeTypeHasAccess, Risk: attackpath.RiskCritical})
+
+	w := do(t, s, "GET", "/api/v1/attack-paths/external-db?max_depth=1", nil)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 with insufficient max_depth, got %d: %s", w.Code, w.Body.String())
+	}
+
+	w = do(t, s, "GET", "/api/v1/attack-paths/external-db?max_depth=2", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 with sufficient max_depth, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 // --- Webhooks CRUD ---
 
 func TestWebhookCRUD(t *testing.T) {
