@@ -447,6 +447,73 @@ func TestCompliancePreAuditToExport_Smoke(t *testing.T) {
 	}
 }
 
+func TestSyncScanFindingsPreAuditExport_Smoke(t *testing.T) {
+	s := newTestServer(t)
+	s.app.Providers.Register(&staticProvider{name: "github", provider: providers.ProviderTypeSaaS})
+
+	syncResp := do(t, s, "POST", "/api/v1/providers/github/sync", map[string]interface{}{})
+	if syncResp.Code != http.StatusOK {
+		t.Fatalf("provider sync expected 200, got %d: %s", syncResp.Code, syncResp.Body.String())
+	}
+
+	s.app.Policy.AddPolicy(&policy.Policy{
+		ID:          "aws-iam-root-no-access-keys",
+		Name:        "Root access key found",
+		Description: "root access key should not exist",
+		Severity:    "critical",
+		Resource:    "aws::s3::bucket",
+		Conditions:  []string{"_cq_id exists"},
+	})
+
+	result := s.app.Scanner.ScanAssets(context.Background(), []map[string]interface{}{{
+		"_cq_id":    "asset-1",
+		"_cq_table": "aws_s3_buckets",
+		"name":      "bucket-1",
+	}})
+	if result.Violations == 0 || len(result.Findings) == 0 {
+		t.Fatalf("expected scan to produce findings, got violations=%d findings=%d", result.Violations, len(result.Findings))
+	}
+
+	for _, finding := range result.Findings {
+		s.app.Findings.Upsert(context.Background(), finding)
+	}
+
+	listResp := do(t, s, "GET", "/api/v1/findings/", nil)
+	if listResp.Code != http.StatusOK {
+		t.Fatalf("findings list expected 200, got %d: %s", listResp.Code, listResp.Body.String())
+	}
+	listBody := decodeJSON(t, listResp)
+	if count, ok := listBody["count"].(float64); !ok || count < 1 {
+		t.Fatalf("expected findings count >= 1, got %v", listBody["count"])
+	}
+
+	preAudit := do(t, s, "GET", "/api/v1/compliance/frameworks/cis-aws-1.5/pre-audit", nil)
+	if preAudit.Code != http.StatusOK {
+		t.Fatalf("pre-audit expected 200, got %d: %s", preAudit.Code, preAudit.Body.String())
+	}
+
+	export := do(t, s, "GET", "/api/v1/compliance/frameworks/cis-aws-1.5/export", nil)
+	if export.Code != http.StatusOK {
+		t.Fatalf("export expected 200, got %d: %s", export.Code, export.Body.String())
+	}
+
+	body := export.Body.Bytes()
+	zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		t.Fatalf("invalid zip payload: %v", err)
+	}
+
+	entries := map[string]bool{}
+	for _, file := range zr.File {
+		entries[file.Name] = true
+	}
+	for _, required := range []string{"manifest.json", "summary.json", "controls.json"} {
+		if !entries[required] {
+			t.Fatalf("missing export entry %q", required)
+		}
+	}
+}
+
 // --- Attack path ---
 
 func TestGetAttackPath_ReturnsPath(t *testing.T) {
