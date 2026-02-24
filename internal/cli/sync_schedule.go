@@ -92,6 +92,7 @@ var (
 
 	runScheduledGCPNativeSyncFn   = runScheduledGCPNativeSync
 	runScheduledGCPSecuritySyncFn = runScheduledGCPSecuritySync
+	listOrganizationProjectsFn    = nativesync.ListOrganizationProjects
 
 	newScheduleAppFn = app.New
 )
@@ -507,6 +508,7 @@ func executeGCPSync(ctx context.Context, client *snowflake.Client, schedule *Syn
 	nativeFilter, securityFilter := splitGCPScheduledTableFilters(spec.TableFilter)
 	runNativeSync := len(spec.TableFilter) == 0 || len(nativeFilter) > 0
 	runSecuritySync := len(spec.TableFilter) == 0 || len(securityFilter) > 0
+	requiresProjectScope := runNativeSync || gcpSecurityFiltersRequireProject(securityFilter)
 
 	projects := append([]string{}, spec.GCPProjects...)
 	projects = append(projects, parseTableFilter(firstNonEmptyEnv("CEREBRO_GCP_PROJECTS", "GCP_PROJECTS"))...)
@@ -519,16 +521,20 @@ func executeGCPSync(ctx context.Context, client *snowflake.Client, schedule *Syn
 	if orgID == "" {
 		orgID = firstNonEmptyEnv("CEREBRO_GCP_ORG", "GCP_ORG_ID")
 	}
-	if orgID != "" {
-		orgProjects, err := nativesync.ListOrganizationProjects(ctx, orgID)
+	if orgID != "" && requiresProjectScope {
+		orgProjects, err := listOrganizationProjectsFn(ctx, orgID)
 		if err != nil {
 			return fmt.Errorf("discover GCP projects for org %q: %w", orgID, err)
 		}
 		projects = uniqueNonEmpty(append(projects, orgProjects...))
 	}
 
+	if len(projects) == 0 && !requiresProjectScope {
+		projects = []string{""}
+	}
+
 	if len(projects) == 0 {
-		return fmt.Errorf("scheduled GCP sync requires project scope; set project=<id>/projects=<id|id2>/org=<id> in --table or configure CEREBRO_GCP_PROJECT, GCP_PROJECT, or GOOGLE_CLOUD_PROJECT")
+		return fmt.Errorf("scheduled GCP sync requires project scope for native and project-level security tables; set project=<id>/projects=<id|id2>/org=<id> in --table or configure CEREBRO_GCP_PROJECT, GCP_PROJECT, or GOOGLE_CLOUD_PROJECT")
 	}
 
 	Info("[%s] Executing GCP sync for %d project(s)...", schedule.Name, len(projects))
@@ -695,6 +701,25 @@ func splitGCPScheduledTableFilters(tables []string) (native []string, security [
 	}
 
 	return native, security
+}
+
+func gcpSecurityFiltersRequireProject(filters []string) bool {
+	if len(filters) == 0 {
+		return true
+	}
+
+	for _, filter := range filters {
+		normalized := strings.ToLower(strings.TrimSpace(filter))
+		if normalized == "" {
+			continue
+		}
+		if normalized == "gcp_scc_findings" || normalized == "scc_findings" || normalized == "security_command_center_findings" {
+			continue
+		}
+		return true
+	}
+
+	return false
 }
 
 func validScheduleProviders() []string {

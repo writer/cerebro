@@ -201,15 +201,47 @@ func TestSplitGCPScheduledTableFilters(t *testing.T) {
 	})
 }
 
+func TestGCPSecurityFiltersRequireProject(t *testing.T) {
+	tests := []struct {
+		name    string
+		filters []string
+		want    bool
+	}{
+		{name: "default security tables", filters: nil, want: true},
+		{name: "scc only", filters: []string{"gcp_scc_findings"}, want: false},
+		{name: "scc alias", filters: []string{"security_command_center_findings"}, want: false},
+		{name: "vulnerabilities", filters: []string{"gcp_container_vulnerabilities"}, want: true},
+		{name: "mixed security tables", filters: []string{"scc_findings", "artifact_images"}, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := gcpSecurityFiltersRequireProject(tt.filters); got != tt.want {
+				t.Fatalf("expected %v, got %v for filters %v", tt.want, got, tt.filters)
+			}
+		})
+	}
+}
+
 func TestExecuteGCPSync_FilterRouting(t *testing.T) {
 	originalNative := runScheduledGCPNativeSyncFn
 	originalSecurity := runScheduledGCPSecuritySyncFn
+	originalListOrgProjects := listOrganizationProjectsFn
 	t.Cleanup(func() {
 		runScheduledGCPNativeSyncFn = originalNative
 		runScheduledGCPSecuritySyncFn = originalSecurity
+		listOrganizationProjectsFn = originalListOrgProjects
 	})
 
 	t.Run("security-only filter skips native sync", func(t *testing.T) {
+		t.Setenv("CEREBRO_GCP_PROJECTS", "")
+		t.Setenv("GCP_PROJECTS", "")
+		t.Setenv("CEREBRO_GCP_PROJECT", "")
+		t.Setenv("GCP_PROJECT", "")
+		t.Setenv("GOOGLE_CLOUD_PROJECT", "")
+		t.Setenv("CEREBRO_GCP_ORG", "")
+		t.Setenv("GCP_ORG_ID", "")
+
 		nativeCalls := 0
 		securityCalls := 0
 		var securityFilters []string
@@ -248,7 +280,68 @@ func TestExecuteGCPSync_FilterRouting(t *testing.T) {
 		}
 	})
 
+	t.Run("scc-only org filter avoids project discovery", func(t *testing.T) {
+		t.Setenv("CEREBRO_GCP_PROJECTS", "")
+		t.Setenv("GCP_PROJECTS", "")
+		t.Setenv("CEREBRO_GCP_PROJECT", "")
+		t.Setenv("GCP_PROJECT", "")
+		t.Setenv("GOOGLE_CLOUD_PROJECT", "")
+		t.Setenv("CEREBRO_GCP_ORG", "")
+		t.Setenv("GCP_ORG_ID", "")
+
+		nativeCalls := 0
+		securityCalls := 0
+		listCalls := 0
+
+		runScheduledGCPNativeSyncFn = func(context.Context, *snowflake.Client, string, []string) error {
+			nativeCalls++
+			return nil
+		}
+		runScheduledGCPSecuritySyncFn = func(_ context.Context, _ *snowflake.Client, projectID, orgID string, tableFilter []string) error {
+			securityCalls++
+			if projectID != "" {
+				return fmt.Errorf("expected empty project id, got %q", projectID)
+			}
+			if orgID != "org-123" {
+				return fmt.Errorf("expected org-123, got %q", orgID)
+			}
+			if len(tableFilter) != 1 || tableFilter[0] != "gcp_scc_findings" {
+				return fmt.Errorf("unexpected security filter: %v", tableFilter)
+			}
+			return nil
+		}
+		listOrganizationProjectsFn = func(context.Context, string) ([]string, error) {
+			listCalls++
+			return nil, fmt.Errorf("unexpected org project discovery")
+		}
+
+		err := executeGCPSync(context.Background(), nil, &SyncSchedule{
+			Name:  "scc-org-only",
+			Table: "org=org-123,gcp_scc_findings",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if nativeCalls != 0 {
+			t.Fatalf("expected no native sync calls, got %d", nativeCalls)
+		}
+		if securityCalls != 1 {
+			t.Fatalf("expected one security sync call, got %d", securityCalls)
+		}
+		if listCalls != 0 {
+			t.Fatalf("expected no org project discovery calls, got %d", listCalls)
+		}
+	})
+
 	t.Run("mixed filter runs native and security with split filters", func(t *testing.T) {
+		t.Setenv("CEREBRO_GCP_PROJECTS", "")
+		t.Setenv("GCP_PROJECTS", "")
+		t.Setenv("CEREBRO_GCP_PROJECT", "")
+		t.Setenv("GCP_PROJECT", "")
+		t.Setenv("GOOGLE_CLOUD_PROJECT", "")
+		t.Setenv("CEREBRO_GCP_ORG", "")
+		t.Setenv("GCP_ORG_ID", "")
+
 		nativeCalls := 0
 		securityCalls := 0
 		var nativeFilters []string
