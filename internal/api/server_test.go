@@ -1059,6 +1059,47 @@ func TestAgentSendMessageExecutesToolCalls(t *testing.T) {
 	}
 }
 
+func TestAgentSendMessage_NoProviderConfiguredReturnsGuidance(t *testing.T) {
+	a := newTestApp(t)
+	a.Agents.RegisterAgent(&agents.Agent{
+		ID:   "agent-no-provider",
+		Name: "No Provider Agent",
+	})
+
+	session, err := a.Agents.CreateSession("agent-no-provider", "user-1", agents.SessionContext{})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	s := NewServer(a)
+	w := do(t, s, "POST", "/api/v1/agents/sessions/"+session.ID+"/messages", map[string]string{"content": "help me triage"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var msg agents.Message
+	if err := json.Unmarshal(w.Body.Bytes(), &msg); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !strings.Contains(msg.Content, "no LLM provider is configured") {
+		t.Fatalf("expected guidance about missing provider, got %q", msg.Content)
+	}
+}
+
+func TestNoPlaceholderMarkersInAPIServer(t *testing.T) {
+	content, err := os.ReadFile("server.go")
+	if err != nil {
+		t.Fatalf("read server.go: %v", err)
+	}
+
+	lower := strings.ToLower(string(content))
+	for _, marker := range []string{"placeholder response", "not implemented"} {
+		if strings.Contains(lower, marker) {
+			t.Fatalf("server.go contains placeholder marker %q", marker)
+		}
+	}
+}
+
 func TestAgentSendMessageBlocksRequiresApprovalTool(t *testing.T) {
 	a := newTestApp(t)
 	called := false

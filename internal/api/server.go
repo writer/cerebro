@@ -1376,7 +1376,7 @@ func (s *Server) sendMessage(w http.ResponseWriter, r *http.Request) {
 	// Get agent and generate response
 	agent, ok := s.app.Agents.GetAgent(session.AgentID)
 	if !ok || agent.Provider == nil {
-		// Return placeholder if no LLM configured
+		// Return guidance if no LLM provider is configured
 		session.Messages = append(session.Messages, agents.Message{
 			Role:    "assistant",
 			Content: "I understand you want help with: " + req.Content + ". However, no LLM provider is configured. Please set ANTHROPIC_API_KEY or OPENAI_API_KEY.",
