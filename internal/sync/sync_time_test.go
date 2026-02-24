@@ -2,8 +2,13 @@ package sync
 
 import (
 	"context"
+	"errors"
+	"io"
+	"log/slog"
 	"testing"
 	"time"
+
+	"github.com/writerinternal/cerebro/internal/snowflake"
 )
 
 func TestDeriveIncrementalStart(t *testing.T) {
@@ -50,4 +55,81 @@ func TestDeriveIncrementalStart(t *testing.T) {
 			t.Fatalf("did not expect force-full-backfill marker")
 		}
 	})
+}
+
+func TestIncrementalStartTime_UsesPersistedWatermarkForIncrementalTables(t *testing.T) {
+	original := queryLatestTableSyncTime
+	t.Cleanup(func() { queryLatestTableSyncTime = original })
+
+	persisted := time.Date(2026, 2, 24, 12, 30, 0, 0, time.UTC)
+	queryLatestTableSyncTime = func(_ context.Context, _ *snowflake.Client, _ string, _ string, _ bool) (time.Time, error) {
+		return persisted, nil
+	}
+
+	e := &SyncEngine{}
+
+	tests := []struct {
+		name     string
+		table    string
+		lookback time.Duration
+	}{
+		{name: "securityhub", table: "aws_securityhub_findings", lookback: securityHubIncrementalLookback},
+		{name: "guardduty", table: "aws_guardduty_findings", lookback: guardDutyIncrementalLookback},
+		{name: "inspector", table: "aws_inspector2_findings", lookback: inspectorIncrementalLookback},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			start, ok := e.incrementalStartTime(context.Background(), tt.table, "us-east-1", true, tt.lookback)
+			if !ok {
+				t.Fatalf("expected incremental start for %s", tt.table)
+			}
+			expected := persisted.Add(-tt.lookback)
+			if !start.Equal(expected) {
+				t.Fatalf("expected %s, got %s", expected, start)
+			}
+		})
+	}
+}
+
+func TestIncrementalStartTime_LookupErrorReturnsNoStart(t *testing.T) {
+	original := queryLatestTableSyncTime
+	t.Cleanup(func() { queryLatestTableSyncTime = original })
+
+	queryLatestTableSyncTime = func(_ context.Context, _ *snowflake.Client, _ string, _ string, _ bool) (time.Time, error) {
+		return time.Time{}, errors.New("lookup failed")
+	}
+
+	e := &SyncEngine{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	start, ok := e.incrementalStartTime(context.Background(), "aws_securityhub_findings", "us-east-1", true, securityHubIncrementalLookback)
+	if ok {
+		t.Fatalf("expected no incremental start when lookup fails")
+	}
+	if !start.IsZero() {
+		t.Fatalf("expected zero start time, got %s", start)
+	}
+}
+
+func TestIncrementalStartTime_ForceFullBackfillBypassesWatermarkLookup(t *testing.T) {
+	original := queryLatestTableSyncTime
+	t.Cleanup(func() { queryLatestTableSyncTime = original })
+
+	called := false
+	queryLatestTableSyncTime = func(_ context.Context, _ *snowflake.Client, _ string, _ string, _ bool) (time.Time, error) {
+		called = true
+		return time.Now().UTC(), nil
+	}
+
+	e := &SyncEngine{}
+	ctx := withForceFullBackfill(context.Background())
+	start, ok := e.incrementalStartTime(ctx, "aws_securityhub_findings", "us-east-1", true, securityHubIncrementalLookback)
+	if ok {
+		t.Fatalf("expected force-full-backfill to disable incremental start")
+	}
+	if !start.IsZero() {
+		t.Fatalf("expected zero start time, got %s", start)
+	}
+	if called {
+		t.Fatalf("expected watermark lookup to be skipped when forcing full backfill")
+	}
 }

@@ -184,7 +184,7 @@
 ### D. Incremental Watermark Correctness
 - [x] Fix latest sync watermark lookup to lowercase key (`sync_time`)
 - [x] Validate incremental start-time derivation still honors lookback
-- [ ] Validate incremental tables (SecurityHub/GuardDuty/Inspector2) can reuse persisted watermark
+- [x] Validate incremental tables (SecurityHub/GuardDuty/Inspector2) can reuse persisted watermark *(covered by `TestIncrementalStartTime_UsesPersistedWatermarkForIncrementalTables`)*
 
 ### E. Downstream Query Consumers (lowercase row-map keys)
 - [x] Fix `snowflake.CountAssets` count extraction key (`count`)

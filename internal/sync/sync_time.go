@@ -8,28 +8,7 @@ import (
 	"github.com/writerinternal/cerebro/internal/snowflake"
 )
 
-type forceFullBackfillContextKey struct{}
-
-func withForceFullBackfill(ctx context.Context) context.Context {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	return context.WithValue(ctx, forceFullBackfillContextKey{}, true)
-}
-
-func shouldForceFullBackfill(ctx context.Context) bool {
-	if ctx == nil {
-		return false
-	}
-	value, ok := ctx.Value(forceFullBackfillContextKey{}).(bool)
-	return ok && value
-}
-
-func (e *SyncEngine) latestTableSyncTime(ctx context.Context, table string, region string, hasRegion bool) (time.Time, error) {
-	if err := snowflake.ValidateTableName(table); err != nil {
-		return time.Time{}, err
-	}
-
+var queryLatestTableSyncTime = func(ctx context.Context, sf *snowflake.Client, table string, region string, hasRegion bool) (time.Time, error) {
 	query := fmt.Sprintf("SELECT MAX(_CQ_SYNC_TIME) AS SYNC_TIME FROM %s", table)
 	args := []interface{}{}
 	if hasRegion {
@@ -37,7 +16,7 @@ func (e *SyncEngine) latestTableSyncTime(ctx context.Context, table string, regi
 		args = append(args, region)
 	}
 
-	result, err := e.sf.Query(ctx, query, args...)
+	result, err := sf.Query(ctx, query, args...)
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -74,6 +53,31 @@ func (e *SyncEngine) latestTableSyncTime(ctx context.Context, table string, regi
 	default:
 		return time.Time{}, nil
 	}
+}
+
+type forceFullBackfillContextKey struct{}
+
+func withForceFullBackfill(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, forceFullBackfillContextKey{}, true)
+}
+
+func shouldForceFullBackfill(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	value, ok := ctx.Value(forceFullBackfillContextKey{}).(bool)
+	return ok && value
+}
+
+func (e *SyncEngine) latestTableSyncTime(ctx context.Context, table string, region string, hasRegion bool) (time.Time, error) {
+	if err := snowflake.ValidateTableName(table); err != nil {
+		return time.Time{}, err
+	}
+
+	return queryLatestTableSyncTime(ctx, e.sf, table, region, hasRegion)
 }
 
 func (e *SyncEngine) incrementalStartTime(ctx context.Context, table string, region string, hasRegion bool, lookback time.Duration) (time.Time, bool) {
