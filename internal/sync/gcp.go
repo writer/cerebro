@@ -352,9 +352,7 @@ func (e *GCPSyncEngine) upsertWithChanges(ctx context.Context, table string, col
 	if len(rows) == 0 {
 		// Check for deletions even when no new rows
 		existing := e.getExistingHashes(ctx, table, scopeColumn, scopeValues)
-		for id := range existing {
-			changes.Removed = append(changes.Removed, id)
-		}
+		changes = detectRowChanges(existing, map[string]string{}, false)
 		if len(changes.Removed) > 0 {
 			if err := e.deleteScopedRows(ctx, table, scopeColumn, scopeValues); err != nil {
 				e.logger.Debug("delete failed", "error", err)
@@ -367,30 +365,8 @@ func (e *GCPSyncEngine) upsertWithChanges(ctx context.Context, table string, col
 	existing := e.getExistingHashes(ctx, table, scopeColumn, scopeValues)
 
 	// Build new row map with hashes
-	newRows := make(map[string]string)
-	for _, row := range rows {
-		id, ok := row["_cq_id"].(string)
-		if !ok {
-			continue
-		}
-		hash := e.hashRowContent(row)
-		newRows[id] = hash
-	}
-
-	// Detect changes
-	for id, oldHash := range existing {
-		if newHash, exists := newRows[id]; !exists {
-			changes.Removed = append(changes.Removed, id)
-		} else if newHash != oldHash {
-			changes.Modified = append(changes.Modified, id)
-		}
-	}
-
-	for id := range newRows {
-		if _, exists := existing[id]; !exists {
-			changes.Added = append(changes.Added, id)
-		}
-	}
+	newRows := buildRowHashes(rows, e.hashRowContent)
+	changes = detectRowChanges(existing, newRows, false)
 
 	// Delete scoped rows and reinsert
 	if err := e.deleteScopedRows(ctx, table, scopeColumn, scopeValues); err != nil {

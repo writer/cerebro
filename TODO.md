@@ -178,8 +178,8 @@
 - [x] Fix GCP `getExistingHashes` row key access to lowercase (`_cq_id`, `_cq_hash`)
 - [x] Fix Azure `getExistingHashes` row key access to lowercase (`_cq_id`, `_cq_hash`)
 - [x] Fix K8s `getExistingHashes` row key access to lowercase (`_cq_id`, `_cq_hash`)
-- [ ] Validate second identical sync reports near-zero churn (no spurious re-added rows)
-- [ ] Validate deletions are detected when resources are removed from source
+- [x] Validate second identical sync reports near-zero churn (no spurious re-added rows) *(covered by `TestDetectRowChanges_NoChurnOnIdenticalRows`)*
+- [x] Validate deletions are detected when resources are removed from source *(covered by `TestDetectRowChanges_FullSyncDetectsDeletion`)*
 
 ### D. Incremental Watermark Correctness
 - [x] Fix latest sync watermark lookup to lowercase key (`sync_time`)

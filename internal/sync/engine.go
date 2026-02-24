@@ -560,9 +560,7 @@ func (e *SyncEngine) upsertWithChanges(ctx context.Context, table string, column
 			return changes, nil
 		}
 		existing := e.getExistingHashes(ctx, table, region, hasRegion, hasAccount, globalScope)
-		for id := range existing {
-			changes.Removed = append(changes.Removed, id)
-		}
+		changes = detectRowChanges(existing, map[string]string{}, false)
 		if len(changes.Removed) > 0 {
 			if err := e.deleteScopedRows(ctx, table, region, hasRegion, hasAccount, globalScope); err != nil {
 				e.logger.Debug("delete failed", "error", err)
@@ -575,40 +573,8 @@ func (e *SyncEngine) upsertWithChanges(ctx context.Context, table string, column
 	existing := e.getExistingHashes(ctx, table, region, hasRegion, hasAccount, globalScope)
 
 	// Build new row map with hashes
-	newRows := make(map[string]string) // id -> hash
-	for _, row := range rows {
-		id, ok := row["_cq_id"].(string)
-		if !ok {
-			continue
-		}
-		hash := hashRowContent(row)
-		newRows[id] = hash
-	}
-
-	// Detect changes
-	if incremental {
-		for id, newHash := range newRows {
-			if oldHash, exists := existing[id]; !exists {
-				changes.Added = append(changes.Added, id)
-			} else if newHash != oldHash {
-				changes.Modified = append(changes.Modified, id)
-			}
-		}
-	} else {
-		for id, oldHash := range existing {
-			if newHash, exists := newRows[id]; !exists {
-				changes.Removed = append(changes.Removed, id)
-			} else if newHash != oldHash {
-				changes.Modified = append(changes.Modified, id)
-			}
-		}
-
-		for id := range newRows {
-			if _, exists := existing[id]; !exists {
-				changes.Added = append(changes.Added, id)
-			}
-		}
-	}
+	newRows := buildRowHashes(rows, hashRowContent)
+	changes = detectRowChanges(existing, newRows, incremental)
 
 	// Delete and insert
 	if incremental {

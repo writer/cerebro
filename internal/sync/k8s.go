@@ -366,9 +366,7 @@ func (e *K8sSyncEngine) upsertWithChanges(ctx context.Context, table string, row
 
 	if len(rows) == 0 {
 		existing := e.getExistingHashes(ctx, table)
-		for id := range existing {
-			changes.Removed = append(changes.Removed, id)
-		}
+		changes = detectRowChanges(existing, map[string]string{}, false)
 		if len(changes.Removed) > 0 {
 			if _, err := e.sf.Exec(ctx, fmt.Sprintf("TRUNCATE TABLE %s", table)); err != nil {
 				if _, err := e.sf.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table)); err != nil {
@@ -380,29 +378,8 @@ func (e *K8sSyncEngine) upsertWithChanges(ctx context.Context, table string, row
 	}
 
 	existing := e.getExistingHashes(ctx, table)
-	newRows := make(map[string]string)
-	for _, row := range rows {
-		id, ok := row["_cq_id"].(string)
-		if !ok {
-			continue
-		}
-		hash := e.hashRowContent(row)
-		newRows[id] = hash
-	}
-
-	for id, oldHash := range existing {
-		if newHash, exists := newRows[id]; !exists {
-			changes.Removed = append(changes.Removed, id)
-		} else if newHash != oldHash {
-			changes.Modified = append(changes.Modified, id)
-		}
-	}
-
-	for id := range newRows {
-		if _, exists := existing[id]; !exists {
-			changes.Added = append(changes.Added, id)
-		}
-	}
+	newRows := buildRowHashes(rows, e.hashRowContent)
+	changes = detectRowChanges(existing, newRows, false)
 
 	if _, err := e.sf.Exec(ctx, fmt.Sprintf("TRUNCATE TABLE %s", table)); err != nil {
 		if _, err := e.sf.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table)); err != nil {
