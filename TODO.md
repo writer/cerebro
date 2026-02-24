@@ -105,15 +105,15 @@
   - [ ] add guardrail test to block new query-only policies from being introduced
 
 ### P0: Compliance Export Contract Fix
-- [ ] Align API and CLI contract for compliance export:
+- [x] Align API and CLI contract for compliance export:
   - either add real `cerebro compliance export`
-  - or remove CLI note from API and provide direct downloadable export via API
-- [ ] Implement audit package artifact format:
+  - or remove CLI note from API and provide direct downloadable export via API *(implemented: API now streams ZIP directly)*
+- [x] Implement audit package artifact format:
   - manifest metadata
   - control status/evidence payloads
   - optional finding excerpts per control
   - zip packaging + deterministic file naming
-- [ ] Add API + CLI tests for successful export and missing-framework/error paths
+- [x] Add export endpoint tests for successful export and missing-framework/error paths
 - [ ] Add one end-to-end smoke test: framework -> pre-audit -> export artifact generated
 
 ### P1: Provider Activation and Scheduled Sync Parity

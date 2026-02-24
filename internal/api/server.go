@@ -1253,52 +1253,22 @@ func (s *Server) exportAuditPackage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate manifest
-	manifest := map[string]interface{}{
-		"framework_id":   framework.ID,
-		"framework_name": framework.Name,
-		"version":        framework.Version,
-		"generated_at":   time.Now().UTC().Format(time.RFC3339),
-		"generated_by":   "cerebro",
+	generatedAt := time.Now().UTC()
+	pkg := compliance.BuildAuditPackage(framework, s.app.Findings.Stats().ByPolicy, generatedAt)
+
+	zipBytes, err := compliance.RenderAuditPackageZIP(pkg)
+	if err != nil {
+		s.error(w, http.StatusInternalServerError, fmt.Sprintf("failed to render audit package: %v", err))
+		return
 	}
 
-	// Gather evidence for each control
-	findingsStats := s.app.Findings.Stats()
-	controlEvidence := make([]map[string]interface{}, len(framework.Controls))
-
-	for i, ctrl := range framework.Controls {
-		status := "passing"
-		var relatedFindings []string
-
-		for _, policyID := range ctrl.PolicyIDs {
-			if count, ok := findingsStats.ByPolicy[policyID]; ok && count > 0 {
-				status = "failing"
-				relatedFindings = append(relatedFindings, policyID)
-			}
-		}
-
-		controlEvidence[i] = map[string]interface{}{
-			"control_id":  ctrl.ID,
-			"title":       ctrl.Title,
-			"description": ctrl.Description,
-			"status":      status,
-			"policies":    ctrl.PolicyIDs,
-			"findings":    relatedFindings,
-		}
+	filename := compliance.AuditPackageFilename(framework.ID, generatedAt)
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(zipBytes); err != nil {
+		s.app.Logger.Warn("failed to stream audit package", "error", err, "framework_id", framework.ID)
 	}
-
-	// In a real implementation, this would:
-	// 1. Query Snowflake for actual asset data
-	// 2. Bundle findings as JSON evidence
-	// 3. Create a ZIP file with manifest + evidence
-	// 4. Stream the ZIP to the client
-
-	// For now, return JSON that could be used to build the package
-	s.json(w, http.StatusOK, map[string]interface{}{
-		"manifest": manifest,
-		"controls": controlEvidence,
-		"note":     "Use CLI 'cerebro compliance export' to generate downloadable ZIP package",
-	})
 }
 
 // Agent endpoints

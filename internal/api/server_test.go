@@ -1,6 +1,7 @@
 package api
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -310,6 +311,70 @@ func TestListFindings_SeverityFilter(t *testing.T) {
 	body := decodeJSON(t, w)
 	if body["count"].(float64) != 1 {
 		t.Fatalf("expected 1 high finding, got %v", body["count"])
+	}
+}
+
+// --- Compliance exports ---
+
+func TestComplianceExportAuditPackage_ReturnsZip(t *testing.T) {
+	s := newTestServer(t)
+	s.app.Findings.Upsert(context.Background(), policy.Finding{
+		ID:         "f-export-1",
+		PolicyID:   "aws-iam-root-no-access-keys",
+		PolicyName: "Root access key found",
+		ResourceID: "aws-account-123",
+		Severity:   "critical",
+	})
+
+	w := do(t, s, "GET", "/api/v1/compliance/frameworks/cis-aws-1.5/export", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if got := w.Header().Get("Content-Type"); !strings.Contains(got, "application/zip") {
+		t.Fatalf("expected zip content-type, got %q", got)
+	}
+	if got := w.Header().Get("Content-Disposition"); !strings.Contains(got, "attachment;") || !strings.Contains(got, "cerebro-audit-cis-aws-1.5-") {
+		t.Fatalf("unexpected content-disposition: %q", got)
+	}
+
+	body := w.Body.Bytes()
+	zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		t.Fatalf("invalid zip payload: %v", err)
+	}
+
+	entries := map[string]*zip.File{}
+	for _, file := range zr.File {
+		entries[file.Name] = file
+	}
+	for _, required := range []string{"manifest.json", "summary.json", "controls.json"} {
+		if _, ok := entries[required]; !ok {
+			t.Fatalf("missing zip entry %q", required)
+		}
+	}
+
+	summaryRC, err := entries["summary.json"].Open()
+	if err != nil {
+		t.Fatalf("open summary entry: %v", err)
+	}
+	defer summaryRC.Close()
+
+	var summary struct {
+		FailingControls int `json:"failing_controls"`
+	}
+	if err := json.NewDecoder(summaryRC).Decode(&summary); err != nil {
+		t.Fatalf("decode summary: %v", err)
+	}
+	if summary.FailingControls == 0 {
+		t.Fatalf("expected at least one failing control, got %+v", summary)
+	}
+}
+
+func TestComplianceExportAuditPackage_FrameworkNotFound(t *testing.T) {
+	s := newTestServer(t)
+	w := do(t, s, "GET", "/api/v1/compliance/frameworks/does-not-exist/export", nil)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
 	}
 }
 
