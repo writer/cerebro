@@ -114,7 +114,7 @@
   - optional finding excerpts per control
   - zip packaging + deterministic file naming
 - [x] Add export endpoint tests for successful export and missing-framework/error paths
-- [ ] Add one end-to-end smoke test: framework -> pre-audit -> export artifact generated
+- [x] Add one end-to-end smoke test: framework -> pre-audit -> export artifact generated
 
 ### P1: Provider Activation and Scheduled Sync Parity
 

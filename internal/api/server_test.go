@@ -378,6 +378,50 @@ func TestComplianceExportAuditPackage_FrameworkNotFound(t *testing.T) {
 	}
 }
 
+func TestCompliancePreAuditToExport_Smoke(t *testing.T) {
+	s := newTestServer(t)
+	s.app.Findings.Upsert(context.Background(), policy.Finding{
+		ID:         "f-smoke-1",
+		PolicyID:   "aws-iam-root-no-access-keys",
+		PolicyName: "Root access key found",
+		ResourceID: "aws-account-999",
+		Severity:   "critical",
+	})
+
+	preAudit := do(t, s, "GET", "/api/v1/compliance/frameworks/cis-aws-1.5/pre-audit", nil)
+	if preAudit.Code != http.StatusOK {
+		t.Fatalf("pre-audit expected 200, got %d: %s", preAudit.Code, preAudit.Body.String())
+	}
+	preAuditBody := decodeJSON(t, preAudit)
+	if preAuditBody["framework_id"] != "cis-aws-1.5" {
+		t.Fatalf("unexpected framework_id: %v", preAuditBody["framework_id"])
+	}
+	if preAuditBody["estimated_outcome"] == nil {
+		t.Fatalf("expected estimated_outcome in pre-audit response")
+	}
+
+	export := do(t, s, "GET", "/api/v1/compliance/frameworks/cis-aws-1.5/export", nil)
+	if export.Code != http.StatusOK {
+		t.Fatalf("export expected 200, got %d: %s", export.Code, export.Body.String())
+	}
+
+	body := export.Body.Bytes()
+	zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		t.Fatalf("invalid zip payload: %v", err)
+	}
+
+	entries := map[string]bool{}
+	for _, file := range zr.File {
+		entries[file.Name] = true
+	}
+	for _, required := range []string{"manifest.json", "summary.json", "controls.json"} {
+		if !entries[required] {
+			t.Fatalf("missing export entry %q", required)
+		}
+	}
+}
+
 // --- Webhooks CRUD ---
 
 func TestWebhookCRUD(t *testing.T) {
