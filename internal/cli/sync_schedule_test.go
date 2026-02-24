@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -167,6 +168,121 @@ func TestRunScheduledSync_RetryAndStatus(t *testing.T) {
 		}
 		if !strings.HasPrefix(schedule.LastStatus, "failed:") {
 			t.Fatalf("expected failed status, got %q", schedule.LastStatus)
+		}
+	})
+}
+
+func TestSplitGCPScheduledTableFilters(t *testing.T) {
+	t.Run("empty", func(t *testing.T) {
+		native, security := splitGCPScheduledTableFilters(nil)
+		if native != nil || security != nil {
+			t.Fatalf("expected nil filters, got native=%v security=%v", native, security)
+		}
+	})
+
+	t.Run("mixed native and security aliases", func(t *testing.T) {
+		native, security := splitGCPScheduledTableFilters([]string{"gcp_compute_instances", "SCC_FINDINGS", "artifact_images"})
+		if len(native) != 1 || native[0] != "gcp_compute_instances" {
+			t.Fatalf("unexpected native filter: %v", native)
+		}
+		if len(security) != 2 || security[0] != "scc_findings" || security[1] != "artifact_images" {
+			t.Fatalf("unexpected security filter: %v", security)
+		}
+	})
+
+	t.Run("security only", func(t *testing.T) {
+		native, security := splitGCPScheduledTableFilters([]string{"gcp_scc_findings"})
+		if native != nil {
+			t.Fatalf("expected nil native filter, got %v", native)
+		}
+		if len(security) != 1 || security[0] != "gcp_scc_findings" {
+			t.Fatalf("unexpected security filter: %v", security)
+		}
+	})
+}
+
+func TestExecuteGCPSync_FilterRouting(t *testing.T) {
+	originalNative := runScheduledGCPNativeSyncFn
+	originalSecurity := runScheduledGCPSecuritySyncFn
+	t.Cleanup(func() {
+		runScheduledGCPNativeSyncFn = originalNative
+		runScheduledGCPSecuritySyncFn = originalSecurity
+	})
+
+	t.Run("security-only filter skips native sync", func(t *testing.T) {
+		nativeCalls := 0
+		securityCalls := 0
+		var securityFilters []string
+
+		runScheduledGCPNativeSyncFn = func(context.Context, *snowflake.Client, string, []string) error {
+			nativeCalls++
+			return nil
+		}
+		runScheduledGCPSecuritySyncFn = func(_ context.Context, _ *snowflake.Client, projectID, orgID string, tableFilter []string) error {
+			securityCalls++
+			if projectID != "proj-1" {
+				return fmt.Errorf("unexpected project id %q", projectID)
+			}
+			if orgID != "" {
+				return fmt.Errorf("unexpected org id %q", orgID)
+			}
+			securityFilters = append([]string(nil), tableFilter...)
+			return nil
+		}
+
+		err := executeGCPSync(context.Background(), nil, &SyncSchedule{
+			Name:  "security-only",
+			Table: "project=proj-1,gcp_scc_findings",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if nativeCalls != 0 {
+			t.Fatalf("expected no native sync calls, got %d", nativeCalls)
+		}
+		if securityCalls != 1 {
+			t.Fatalf("expected one security sync call, got %d", securityCalls)
+		}
+		if len(securityFilters) != 1 || securityFilters[0] != "gcp_scc_findings" {
+			t.Fatalf("unexpected security filter: %v", securityFilters)
+		}
+	})
+
+	t.Run("mixed filter runs native and security with split filters", func(t *testing.T) {
+		nativeCalls := 0
+		securityCalls := 0
+		var nativeFilters []string
+		var securityFilters []string
+
+		runScheduledGCPNativeSyncFn = func(_ context.Context, _ *snowflake.Client, _ string, tableFilter []string) error {
+			nativeCalls++
+			nativeFilters = append([]string(nil), tableFilter...)
+			return nil
+		}
+		runScheduledGCPSecuritySyncFn = func(_ context.Context, _ *snowflake.Client, _ string, _ string, tableFilter []string) error {
+			securityCalls++
+			securityFilters = append([]string(nil), tableFilter...)
+			return nil
+		}
+
+		err := executeGCPSync(context.Background(), nil, &SyncSchedule{
+			Name:  "mixed",
+			Table: "project=proj-1,gcp_compute_instances,gcp_scc_findings",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if nativeCalls != 1 {
+			t.Fatalf("expected one native sync call, got %d", nativeCalls)
+		}
+		if securityCalls != 1 {
+			t.Fatalf("expected one security sync call, got %d", securityCalls)
+		}
+		if len(nativeFilters) != 1 || nativeFilters[0] != "gcp_compute_instances" {
+			t.Fatalf("unexpected native filter: %v", nativeFilters)
+		}
+		if len(securityFilters) != 1 || securityFilters[0] != "gcp_scc_findings" {
+			t.Fatalf("unexpected security filter: %v", securityFilters)
 		}
 	})
 }

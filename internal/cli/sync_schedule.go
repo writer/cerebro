@@ -90,6 +90,9 @@ var (
 	executeAzureSyncFn    = executeAzureSync
 	executeProviderSyncFn = executeProviderSync
 
+	runScheduledGCPNativeSyncFn   = runScheduledGCPNativeSync
+	runScheduledGCPSecuritySyncFn = runScheduledGCPSecuritySync
+
 	newScheduleAppFn = app.New
 )
 
@@ -501,6 +504,9 @@ func executeAWSSync(ctx context.Context, client *snowflake.Client, schedule *Syn
 
 func executeGCPSync(ctx context.Context, client *snowflake.Client, schedule *SyncSchedule) error {
 	spec := parseScheduledSyncSpec(schedule.Table)
+	nativeFilter, securityFilter := splitGCPScheduledTableFilters(spec.TableFilter)
+	runNativeSync := len(spec.TableFilter) == 0 || len(nativeFilter) > 0
+	runSecuritySync := len(spec.TableFilter) == 0 || len(securityFilter) > 0
 
 	projects := append([]string{}, spec.GCPProjects...)
 	projects = append(projects, parseTableFilter(firstNonEmptyEnv("CEREBRO_GCP_PROJECTS", "GCP_PROJECTS"))...)
@@ -528,21 +534,49 @@ func executeGCPSync(ctx context.Context, client *snowflake.Client, schedule *Syn
 	Info("[%s] Executing GCP sync for %d project(s)...", schedule.Name, len(projects))
 	if len(spec.TableFilter) > 0 {
 		Info("[%s] Filtering GCP tables: %s", schedule.Name, strings.Join(spec.TableFilter, ", "))
+		if len(nativeFilter) > 0 {
+			Info("[%s] Native GCP table filter: %s", schedule.Name, strings.Join(nativeFilter, ", "))
+		}
+		if len(securityFilter) > 0 {
+			Info("[%s] GCP security table filter: %s", schedule.Name, strings.Join(securityFilter, ", "))
+		}
 	}
 
 	var errs []error
 	for _, projectID := range projects {
-		opts := []nativesync.GCPEngineOption{nativesync.WithGCPProject(projectID)}
-		if len(spec.TableFilter) > 0 {
-			opts = append(opts, nativesync.WithGCPTableFilter(spec.TableFilter))
+		if runNativeSync {
+			if err := runScheduledGCPNativeSyncFn(ctx, client, projectID, nativeFilter); err != nil {
+				errs = append(errs, fmt.Errorf("project %s native sync: %w", projectID, err))
+			}
 		}
-		syncer := nativesync.NewGCPSyncEngine(client, slog.Default(), opts...)
-		if _, err := syncer.SyncAll(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("project %s: %w", projectID, err))
+
+		if runSecuritySync {
+			if err := runScheduledGCPSecuritySyncFn(ctx, client, projectID, orgID, securityFilter); err != nil {
+				errs = append(errs, fmt.Errorf("project %s security sync: %w", projectID, err))
+			}
 		}
 	}
 
 	return summarizeSyncRunErrors("scheduled GCP sync", errs)
+}
+
+func runScheduledGCPNativeSync(ctx context.Context, client *snowflake.Client, projectID string, tableFilter []string) error {
+	opts := []nativesync.GCPEngineOption{nativesync.WithGCPProject(projectID)}
+	if len(tableFilter) > 0 {
+		opts = append(opts, nativesync.WithGCPTableFilter(tableFilter))
+	}
+	syncer := nativesync.NewGCPSyncEngine(client, slog.Default(), opts...)
+	_, err := syncer.SyncAll(ctx)
+	return err
+}
+
+func runScheduledGCPSecuritySync(ctx context.Context, client *snowflake.Client, projectID, orgID string, tableFilter []string) error {
+	secOpts := []nativesync.GCPSecurityOption{}
+	if len(tableFilter) > 0 {
+		secOpts = append(secOpts, nativesync.WithGCPSecurityTableFilter(tableFilter))
+	}
+	securitySyncer := nativesync.NewGCPSecuritySync(client, slog.Default(), projectID, orgID, secOpts...)
+	return securitySyncer.SyncAll(ctx)
 }
 
 func executeAzureSync(ctx context.Context, client *snowflake.Client, schedule *SyncSchedule) error {
@@ -620,6 +654,47 @@ type scheduledSyncSpec struct {
 	GCPProjects       []string
 	GCPOrg            string
 	AzureSubscription string
+}
+
+var gcpScheduledSecurityTableAliases = map[string]struct{}{
+	"gcp_container_vulnerabilities":    {},
+	"container_vulnerabilities":        {},
+	"vulnerabilities":                  {},
+	"gcp_artifact_registry_images":     {},
+	"artifact_registry_images":         {},
+	"artifact_images":                  {},
+	"gcp_scc_findings":                 {},
+	"scc_findings":                     {},
+	"security_command_center_findings": {},
+}
+
+func splitGCPScheduledTableFilters(tables []string) (native []string, security []string) {
+	if len(tables) == 0 {
+		return nil, nil
+	}
+
+	native = make([]string, 0, len(tables))
+	security = make([]string, 0, len(tables))
+	for _, table := range tables {
+		normalized := strings.ToLower(strings.TrimSpace(table))
+		if normalized == "" {
+			continue
+		}
+		if _, ok := gcpScheduledSecurityTableAliases[normalized]; ok {
+			security = append(security, normalized)
+			continue
+		}
+		native = append(native, normalized)
+	}
+
+	if len(native) == 0 {
+		native = nil
+	}
+	if len(security) == 0 {
+		security = nil
+	}
+
+	return native, security
 }
 
 func validScheduleProviders() []string {
