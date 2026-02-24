@@ -98,7 +98,7 @@
   - [x] implement bounded read-only SQL execution path for policy queries
   - [x] enforce table allowlist + timeout + row limit pushdown
   - [x] map query result rows to deterministic finding IDs (stable dedupe keys)
-  - [ ] add integration tests for query policy findings + dedup + suppression flow
+  - [x] add integration tests for query policy findings + dedup + suppression flow
 - [ ] If Option B (migration):
   - [ ] create migration checklist for all `99` query-only policies
   - [ ] convert high-impact categories first (endpoint/compliance/pci/m365)
@@ -165,51 +165,51 @@
 - [ ] Record baseline `resource_relationships` count and max `sync_time`
 
 ### B. Schema Evolution / Ensure-Table Idempotency
-- [ ] Fix K8s `getTableColumns` to read lowercase query result key (`column_name`)
-- [ ] Fix GCP `getTableColumns` to read lowercase query result key (`column_name`)
-- [ ] Fix AWS/native `getTableColumns` to read lowercase query result key (`column_name`)
-- [ ] Fix provider storage `getProviderTableColumns` to read lowercase query result key (`column_name`)
-- [ ] Change K8s ensure-table alter statements to `ADD COLUMN IF NOT EXISTS`
-- [ ] Change GCP ensure-table alter statements to `ADD COLUMN IF NOT EXISTS`
-- [ ] Use `Exec` for K8s/GCP table DDL (`CREATE TABLE`, `ALTER TABLE`)
+- [x] Fix K8s `getTableColumns` to read lowercase query result key (`column_name`)
+- [x] Fix GCP `getTableColumns` to read lowercase query result key (`column_name`)
+- [x] Fix AWS/native `getTableColumns` to read lowercase query result key (`column_name`)
+- [x] Fix provider storage `getProviderTableColumns` to read lowercase query result key (`column_name`)
+- [x] Change K8s ensure-table alter statements to `ADD COLUMN IF NOT EXISTS`
+- [x] Change GCP ensure-table alter statements to `ADD COLUMN IF NOT EXISTS`
+- [x] Use `Exec` for K8s/GCP table DDL (`CREATE TABLE`, `ALTER TABLE`)
 - [ ] Verify no repeated `column ... already exists` logs on consecutive sync runs
 
 ### C. Diff / Change-Detection Correctness
-- [ ] Fix AWS/native `getExistingHashes` row key access to lowercase (`_cq_id`, `_cq_hash`)
-- [ ] Fix GCP `getExistingHashes` row key access to lowercase (`_cq_id`, `_cq_hash`)
-- [ ] Fix Azure `getExistingHashes` row key access to lowercase (`_cq_id`, `_cq_hash`)
-- [ ] Fix K8s `getExistingHashes` row key access to lowercase (`_cq_id`, `_cq_hash`)
+- [x] Fix AWS/native `getExistingHashes` row key access to lowercase (`_cq_id`, `_cq_hash`)
+- [x] Fix GCP `getExistingHashes` row key access to lowercase (`_cq_id`, `_cq_hash`)
+- [x] Fix Azure `getExistingHashes` row key access to lowercase (`_cq_id`, `_cq_hash`)
+- [x] Fix K8s `getExistingHashes` row key access to lowercase (`_cq_id`, `_cq_hash`)
 - [ ] Validate second identical sync reports near-zero churn (no spurious re-added rows)
 - [ ] Validate deletions are detected when resources are removed from source
 
 ### D. Incremental Watermark Correctness
-- [ ] Fix latest sync watermark lookup to lowercase key (`sync_time`)
-- [ ] Validate incremental start-time derivation still honors lookback
+- [x] Fix latest sync watermark lookup to lowercase key (`sync_time`)
+- [x] Validate incremental start-time derivation still honors lookback
 - [ ] Validate incremental tables (SecurityHub/GuardDuty/Inspector2) can reuse persisted watermark
 
 ### E. Downstream Query Consumers (lowercase row-map keys)
-- [ ] Fix `snowflake.CountAssets` count extraction key (`count`)
-- [ ] Fix CDC event decoding in `snowflake/cdc.go` to lowercase keys
-- [ ] Fix API sync status last sync extraction key (`last_sync`)
-- [ ] Audit and update remaining query-row uppercase map lookups in sync/snowflake/api packages
+- [x] Fix `snowflake.CountAssets` count extraction key (`count`)
+- [x] Fix CDC event decoding in `snowflake/cdc.go` to lowercase keys
+- [x] Fix API sync status last sync extraction key (`last_sync`)
+- [x] Audit and update remaining query-row uppercase map lookups in sync/snowflake/api packages
 
 ### F. Relationship Extraction Parity
-- [ ] Replace uppercase row-key accesses in relationship extractors with lowercase-safe access
-- [ ] Verify extractor runs without missing-key regressions
+- [x] Replace uppercase row-key accesses in relationship extractors with lowercase-safe access
+- [x] Verify extractor runs without missing-key regressions
 - [ ] Verify `resource_relationships` receives fresh writes (recent `sync_time`)
 
 ### G. Regression Guardrails
-- [ ] Add helper for Snowflake row map retrieval with lowercase normalization fallback
-- [ ] Use helper in critical paths (sync engines + relationship extractor)
-- [ ] Add tests for ensure-table idempotency when columns already exist
-- [ ] Add tests for lowercase existing-hash row decoding
-- [ ] Add tests for CDC row decoding with lowercase keys
-- [ ] Add tests for sync-status `last_sync` parsing from lowercase query keys
-- [ ] Add static regression test for new uppercase query-row key usage in critical packages
+- [x] Add helper for Snowflake row map retrieval with lowercase normalization fallback
+- [x] Use helper in critical paths (sync engines + relationship extractor)
+- [x] Add tests for ensure-table idempotency when columns already exist
+- [x] Add tests for lowercase existing-hash row decoding
+- [x] Add tests for CDC row decoding with lowercase keys
+- [x] Add tests for sync-status `last_sync` parsing from lowercase query keys
+- [x] Add static regression test for new uppercase query-row key usage in critical packages
 
 ### H. Validation + Live Proof
-- [ ] Run `make test`
-- [ ] Run `make lint`
+- [x] Run `make test`
+- [x] Run `make lint`
 - [ ] Live sync run #1 for K8s service-account tables (capture stats)
 - [ ] Live sync run #2 for same tables (confirm no schema-noise, low churn)
 - [ ] Query `_sync_change_history` to validate realistic change mix
