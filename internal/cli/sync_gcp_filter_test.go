@@ -143,3 +143,23 @@ func TestRunGCPMultiProjectSync_SecurityOnlyFilterRequiresSecurityFlag(t *testin
 		t.Fatalf("expected security flag guidance error, got %v", err)
 	}
 }
+
+func TestRunGCPAssetAPISync_SecurityOnlyFilterRequiresSecurityFlag(t *testing.T) {
+	originalTable := syncTable
+	originalSecurity := syncSecurity
+	originalValidate := syncValidate
+	t.Cleanup(func() {
+		syncTable = originalTable
+		syncSecurity = originalSecurity
+		syncValidate = originalValidate
+	})
+
+	syncTable = "gcp_scc_findings"
+	syncSecurity = false
+	syncValidate = false
+
+	err := runGCPAssetAPISync(context.Background(), time.Now(), []string{"proj-1"})
+	if err == nil || !strings.Contains(err.Error(), "rerun with --security") {
+		t.Fatalf("expected security flag guidance error, got %v", err)
+	}
+}

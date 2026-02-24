@@ -403,8 +403,21 @@ func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []str
 func runGCPAssetAPISync(ctx context.Context, start time.Time, projects []string) error {
 	Info("Starting GCP sync via Cloud Asset Inventory API for %d projects...", len(projects))
 	tableFilter := parseTableFilter(syncTable)
+	nativeTableFilter, securityTableFilter, runNativeSync, runSecuritySync, err := resolveGCPTableFilters(tableFilter, syncSecurity)
+	if err != nil {
+		return err
+	}
 	if len(tableFilter) > 0 {
 		Info("Filtering GCP asset types: %s", strings.Join(tableFilter, ", "))
+		if len(nativeTableFilter) > 0 {
+			Info("Native GCP asset filter: %s", strings.Join(nativeTableFilter, ", "))
+		}
+		if len(securityTableFilter) > 0 {
+			Info("GCP security table filter: %s", strings.Join(securityTableFilter, ", "))
+		}
+	}
+	if len(securityTableFilter) > 0 && !syncSecurity {
+		Warning("Ignoring GCP security table filters without --security: %s", strings.Join(securityTableFilter, ", "))
 	}
 
 	client, err := createSnowflakeClient()
@@ -412,25 +425,58 @@ func runGCPAssetAPISync(ctx context.Context, start time.Time, projects []string)
 		return fmt.Errorf("create snowflake client: %w", err)
 	}
 	defer func() { _ = client.Close() }()
+	if syncValidate && !runNativeSync {
+		return fmt.Errorf("validation for GCP security-only table filters is not supported; include at least one native table")
+	}
 
-	options := []nativesync.GCPAssetOption{nativesync.WithProjects(projects)}
-	if syncConcurrency > 0 {
-		options = append(options, nativesync.WithAssetConcurrency(syncConcurrency))
-	}
-	if len(tableFilter) > 0 {
-		options = append(options, nativesync.WithAssetTypeFilter(tableFilter))
-	}
-	syncer := nativesync.NewGCPAssetInventoryEngine(client, slog.Default(), options...)
-	if syncValidate {
-		results, err := syncer.ValidateTables(ctx)
-		if err != nil {
-			return fmt.Errorf("validation failed: %w", err)
+	var syncErrs []error
+
+	if runNativeSync {
+		options := []nativesync.GCPAssetOption{nativesync.WithProjects(projects)}
+		if syncConcurrency > 0 {
+			options = append(options, nativesync.WithAssetConcurrency(syncConcurrency))
 		}
-		return printSyncResults(results, start, "GCP (Asset API) (validate)")
+		if len(nativeTableFilter) > 0 {
+			options = append(options, nativesync.WithAssetTypeFilter(nativeTableFilter))
+		}
+		syncer := nativesync.NewGCPAssetInventoryEngine(client, slog.Default(), options...)
+		if syncValidate {
+			results, err := syncer.ValidateTables(ctx)
+			if err != nil {
+				return fmt.Errorf("validation failed: %w", err)
+			}
+			return printSyncResults(results, start, "GCP (Asset API) (validate)")
+		}
+
+		results, err := syncer.SyncAll(ctx)
+		if runErr := handleSyncRunResults(results, start, "GCP (Asset API)", err); runErr != nil {
+			syncErrs = append(syncErrs, runErr)
+		}
+	} else {
+		Info("Skipping GCP asset sync because --table filter targets only security tables")
 	}
 
-	results, err := syncer.SyncAll(ctx)
-	return handleSyncRunResults(results, start, "GCP (Asset API)", err)
+	if runSecuritySync {
+		for i, projectID := range projects {
+			Info("[%d/%d] Syncing security tables for project: %s", i+1, len(projects), projectID)
+			secOptions := []nativesync.GCPSecurityOption{}
+			if len(securityTableFilter) > 0 {
+				secOptions = append(secOptions, nativesync.WithGCPSecurityTableFilter(securityTableFilter))
+			}
+			securitySyncer := nativesync.NewGCPSecuritySync(client, slog.Default(), projectID, syncGCPOrg, secOptions...)
+			if secErr := securitySyncer.SyncAll(ctx); secErr != nil {
+				Warning("Security sync failed for project %s: %v", projectID, secErr)
+				syncErrs = append(syncErrs, fmt.Errorf("project %s security sync: %w", projectID, secErr))
+			}
+		}
+		if len(projects) > 0 {
+			Success("GCP security data synced for %d project(s)", len(projects))
+		}
+	} else if syncSecurity && len(tableFilter) > 0 {
+		Info("Skipping GCP security sync because --table filter does not include security tables")
+	}
+
+	return summarizeSyncRunErrors("GCP asset API sync", syncErrs)
 }
 
 func runK8sSync(ctx context.Context, start time.Time) error {
