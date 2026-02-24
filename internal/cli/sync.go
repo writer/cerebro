@@ -188,9 +188,16 @@ func runBackfillRelationships(cmd *cobra.Command, args []string) error {
 func runGCPSync(ctx context.Context, start time.Time, projectID string) error {
 	Info("Starting GCP sync for project: %s", projectID)
 	tableFilter := parseTableFilter(syncTable)
+	nativeTableFilter, securityTableFilter := splitGCPScheduledTableFilters(tableFilter)
 	tableFilterSet := buildTableFilterSet(tableFilter)
 	if len(tableFilter) > 0 {
 		Info("Filtering GCP tables: %s", strings.Join(tableFilter, ", "))
+		if len(nativeTableFilter) > 0 {
+			Info("Native GCP table filter: %s", strings.Join(nativeTableFilter, ", "))
+		}
+		if len(securityTableFilter) > 0 {
+			Info("GCP security table filter: %s", strings.Join(securityTableFilter, ", "))
+		}
 	}
 
 	client, err := createSnowflakeClient()
@@ -199,38 +206,49 @@ func runGCPSync(ctx context.Context, start time.Time, projectID string) error {
 	}
 	defer func() { _ = client.Close() }()
 
-	options := []nativesync.GCPEngineOption{nativesync.WithGCPProject(projectID)}
-	if syncConcurrency > 0 {
-		options = append(options, nativesync.WithGCPConcurrency(syncConcurrency))
-	}
-	if len(tableFilter) > 0 {
-		options = append(options, nativesync.WithGCPTableFilter(tableFilter))
-	}
-	syncer := nativesync.NewGCPSyncEngine(client, slog.Default(), options...)
-	if syncValidate {
-		results, err := syncer.ValidateTables(ctx)
-		if err != nil {
-			return fmt.Errorf("validation failed: %w", err)
+	runNativeSync := len(tableFilter) == 0 || len(nativeTableFilter) > 0
+	if runNativeSync {
+		options := []nativesync.GCPEngineOption{nativesync.WithGCPProject(projectID)}
+		if syncConcurrency > 0 {
+			options = append(options, nativesync.WithGCPConcurrency(syncConcurrency))
 		}
-		return printSyncResults(results, start, "GCP (validate)")
+		if len(nativeTableFilter) > 0 {
+			options = append(options, nativesync.WithGCPTableFilter(nativeTableFilter))
+		}
+		syncer := nativesync.NewGCPSyncEngine(client, slog.Default(), options...)
+		if syncValidate {
+			results, err := syncer.ValidateTables(ctx)
+			if err != nil {
+				return fmt.Errorf("validation failed: %w", err)
+			}
+			return printSyncResults(results, start, "GCP (validate)")
+		}
+
+		results, err := syncer.SyncAll(ctx)
+		if err := handleSyncRunResults(results, start, "GCP", err); err != nil {
+			return err
+		}
+	} else {
+		if syncValidate {
+			return fmt.Errorf("validation for GCP security-only table filters is not supported; include at least one native table")
+		}
+		if !syncSecurity {
+			return fmt.Errorf("--table filter targets only GCP security tables; rerun with --security")
+		}
+		Info("Skipping native GCP sync because --table filter targets only security tables")
 	}
 
-	results, err := syncer.SyncAll(ctx)
-	if err := handleSyncRunResults(results, start, "GCP", err); err != nil {
-		return err
+	if len(securityTableFilter) > 0 && !syncSecurity {
+		Warning("Ignoring GCP security table filters without --security: %s", strings.Join(securityTableFilter, ", "))
 	}
 
 	// Sync security data if requested
 	if syncSecurity {
-		if len(tableFilterSet) == 0 || tableFilterMatches(tableFilterSet,
-			"gcp_container_vulnerabilities",
-			"gcp_artifact_registry_images",
-			"gcp_scc_findings",
-		) {
+		if len(tableFilter) == 0 || len(securityTableFilter) > 0 {
 			Info("Syncing GCP security data (Container Analysis, Artifact Registry, SCC)...")
 			secOptions := []nativesync.GCPSecurityOption{}
-			if len(tableFilterSet) > 0 {
-				secOptions = append(secOptions, nativesync.WithGCPSecurityTableFilter(tableFilter))
+			if len(securityTableFilter) > 0 {
+				secOptions = append(secOptions, nativesync.WithGCPSecurityTableFilter(securityTableFilter))
 			}
 			securitySyncer := nativesync.NewGCPSecuritySync(client, slog.Default(), projectID, syncGCPOrg, secOptions...)
 			if secErr := securitySyncer.SyncAll(ctx); secErr != nil {
@@ -239,7 +257,7 @@ func runGCPSync(ctx context.Context, start time.Time, projectID string) error {
 				Success("Security data synced successfully")
 			}
 		} else {
-			Info("Skipping GCP security sync because --table filter is set")
+			Info("Skipping GCP security sync because --table filter does not include security tables")
 		}
 	}
 
