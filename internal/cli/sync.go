@@ -188,7 +188,10 @@ func runBackfillRelationships(cmd *cobra.Command, args []string) error {
 func runGCPSync(ctx context.Context, start time.Time, projectID string) error {
 	Info("Starting GCP sync for project: %s", projectID)
 	tableFilter := parseTableFilter(syncTable)
-	nativeTableFilter, securityTableFilter := splitGCPScheduledTableFilters(tableFilter)
+	nativeTableFilter, securityTableFilter, runNativeSync, runSecuritySync, err := resolveGCPTableFilters(tableFilter, syncSecurity)
+	if err != nil {
+		return err
+	}
 	tableFilterSet := buildTableFilterSet(tableFilter)
 	if len(tableFilter) > 0 {
 		Info("Filtering GCP tables: %s", strings.Join(tableFilter, ", "))
@@ -206,7 +209,6 @@ func runGCPSync(ctx context.Context, start time.Time, projectID string) error {
 	}
 	defer func() { _ = client.Close() }()
 
-	runNativeSync := len(tableFilter) == 0 || len(nativeTableFilter) > 0
 	if runNativeSync {
 		options := []nativesync.GCPEngineOption{nativesync.WithGCPProject(projectID)}
 		if syncConcurrency > 0 {
@@ -232,9 +234,6 @@ func runGCPSync(ctx context.Context, start time.Time, projectID string) error {
 		if syncValidate {
 			return fmt.Errorf("validation for GCP security-only table filters is not supported; include at least one native table")
 		}
-		if !syncSecurity {
-			return fmt.Errorf("--table filter targets only GCP security tables; rerun with --security")
-		}
 		Info("Skipping native GCP sync because --table filter targets only security tables")
 	}
 
@@ -243,22 +242,20 @@ func runGCPSync(ctx context.Context, start time.Time, projectID string) error {
 	}
 
 	// Sync security data if requested
-	if syncSecurity {
-		if len(tableFilter) == 0 || len(securityTableFilter) > 0 {
-			Info("Syncing GCP security data (Container Analysis, Artifact Registry, SCC)...")
-			secOptions := []nativesync.GCPSecurityOption{}
-			if len(securityTableFilter) > 0 {
-				secOptions = append(secOptions, nativesync.WithGCPSecurityTableFilter(securityTableFilter))
-			}
-			securitySyncer := nativesync.NewGCPSecuritySync(client, slog.Default(), projectID, syncGCPOrg, secOptions...)
-			if secErr := securitySyncer.SyncAll(ctx); secErr != nil {
-				Warning("Security sync failed: %v", secErr)
-			} else {
-				Success("Security data synced successfully")
-			}
-		} else {
-			Info("Skipping GCP security sync because --table filter does not include security tables")
+	if runSecuritySync {
+		Info("Syncing GCP security data (Container Analysis, Artifact Registry, SCC)...")
+		secOptions := []nativesync.GCPSecurityOption{}
+		if len(securityTableFilter) > 0 {
+			secOptions = append(secOptions, nativesync.WithGCPSecurityTableFilter(securityTableFilter))
 		}
+		securitySyncer := nativesync.NewGCPSecuritySync(client, slog.Default(), projectID, syncGCPOrg, secOptions...)
+		if secErr := securitySyncer.SyncAll(ctx); secErr != nil {
+			Warning("Security sync failed: %v", secErr)
+		} else {
+			Success("Security data synced successfully")
+		}
+	} else if syncSecurity && len(tableFilter) > 0 {
+		Info("Skipping GCP security sync because --table filter does not include security tables")
 	}
 
 	if len(tableFilterSet) == 0 {
@@ -298,8 +295,21 @@ func runGCPOrgSync(ctx context.Context, start time.Time, orgID string) error {
 func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []string) error {
 	Info("Starting GCP multi-project sync for %d projects...", len(projects))
 	tableFilter := parseTableFilter(syncTable)
+	nativeTableFilter, securityTableFilter, runNativeSync, runSecuritySync, err := resolveGCPTableFilters(tableFilter, syncSecurity)
+	if err != nil {
+		return err
+	}
 	if len(tableFilter) > 0 {
 		Info("Filtering GCP tables: %s", strings.Join(tableFilter, ", "))
+		if len(nativeTableFilter) > 0 {
+			Info("Native GCP table filter: %s", strings.Join(nativeTableFilter, ", "))
+		}
+		if len(securityTableFilter) > 0 {
+			Info("GCP security table filter: %s", strings.Join(securityTableFilter, ", "))
+		}
+	}
+	if len(securityTableFilter) > 0 && !syncSecurity {
+		Warning("Ignoring GCP security table filters without --security: %s", strings.Join(securityTableFilter, ", "))
 	}
 
 	client, err := createSnowflakeClient()
@@ -309,6 +319,9 @@ func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []str
 	defer func() { _ = client.Close() }()
 
 	if syncValidate {
+		if !runNativeSync {
+			return fmt.Errorf("validation for GCP security-only table filters is not supported; include at least one native table")
+		}
 		if len(projects) == 0 {
 			return fmt.Errorf("no GCP projects provided for validation")
 		}
@@ -316,8 +329,8 @@ func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []str
 		if syncConcurrency > 0 {
 			options = append(options, nativesync.WithGCPConcurrency(syncConcurrency))
 		}
-		if len(tableFilter) > 0 {
-			options = append(options, nativesync.WithGCPTableFilter(tableFilter))
+		if len(nativeTableFilter) > 0 {
+			options = append(options, nativesync.WithGCPTableFilter(nativeTableFilter))
 		}
 		syncer := nativesync.NewGCPSyncEngine(client, slog.Default(), options...)
 		results, err := syncer.ValidateTables(ctx)
@@ -331,37 +344,57 @@ func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []str
 	var syncErrs []error
 	for i, projectID := range projects {
 		Info("[%d/%d] Syncing project: %s", i+1, len(projects), projectID)
-		options := []nativesync.GCPEngineOption{nativesync.WithGCPProject(projectID)}
-		if syncConcurrency > 0 {
-			options = append(options, nativesync.WithGCPConcurrency(syncConcurrency))
+
+		if runNativeSync {
+			options := []nativesync.GCPEngineOption{nativesync.WithGCPProject(projectID)}
+			if syncConcurrency > 0 {
+				options = append(options, nativesync.WithGCPConcurrency(syncConcurrency))
+			}
+			if len(nativeTableFilter) > 0 {
+				options = append(options, nativesync.WithGCPTableFilter(nativeTableFilter))
+			}
+			syncer := nativesync.NewGCPSyncEngine(client, slog.Default(), options...)
+			results, err := syncer.SyncAll(ctx)
+			allResults = append(allResults, results...)
+			if err != nil {
+				Warning("Failed to sync project %s: %v", projectID, err)
+				syncErrs = append(syncErrs, fmt.Errorf("project %s native sync: %w", projectID, err))
+			}
 		}
-		if len(tableFilter) > 0 {
-			options = append(options, nativesync.WithGCPTableFilter(tableFilter))
-		}
-		syncer := nativesync.NewGCPSyncEngine(client, slog.Default(), options...)
-		results, err := syncer.SyncAll(ctx)
-		allResults = append(allResults, results...)
-		if err != nil {
-			Warning("Failed to sync project %s: %v", projectID, err)
-			syncErrs = append(syncErrs, fmt.Errorf("project %s: %w", projectID, err))
-			continue
+
+		if runSecuritySync {
+			secOptions := []nativesync.GCPSecurityOption{}
+			if len(securityTableFilter) > 0 {
+				secOptions = append(secOptions, nativesync.WithGCPSecurityTableFilter(securityTableFilter))
+			}
+			securitySyncer := nativesync.NewGCPSecuritySync(client, slog.Default(), projectID, syncGCPOrg, secOptions...)
+			if secErr := securitySyncer.SyncAll(ctx); secErr != nil {
+				Warning("Security sync failed for project %s: %v", projectID, secErr)
+				syncErrs = append(syncErrs, fmt.Errorf("project %s security sync: %w", projectID, secErr))
+			}
 		}
 	}
 
-	if len(syncErrs) > 0 {
-		if len(allResults) == 0 {
+	if runNativeSync {
+		if len(syncErrs) > 0 && len(allResults) == 0 {
 			Warning("%d project(s) had errors", len(syncErrs))
 			return summarizeSyncRunErrors("GCP multi-project sync", syncErrs)
 		}
-	}
 
-	if err := printSyncResults(allResults, start, "GCP"); err != nil {
-		return err
+		if err := printSyncResults(allResults, start, "GCP"); err != nil {
+			return err
+		}
+	} else {
+		Info("Skipped native GCP sync because --table filter targets only security tables")
 	}
 
 	if len(syncErrs) > 0 {
 		Warning("%d project(s) had errors", len(syncErrs))
 		return summarizeSyncRunErrors("GCP multi-project sync", syncErrs)
+	}
+
+	if runSecuritySync {
+		Success("GCP security data synced for %d project(s)", len(projects))
 	}
 
 	return nil
@@ -746,6 +779,18 @@ func tableFilterMatches(filter map[string]struct{}, names ...string) bool {
 		}
 	}
 	return false
+}
+
+func resolveGCPTableFilters(tableFilter []string, securityEnabled bool) (native, security []string, runNative, runSecurity bool, err error) {
+	native, security = splitGCPScheduledTableFilters(tableFilter)
+	runNative = len(tableFilter) == 0 || len(native) > 0
+	runSecurity = securityEnabled && (len(tableFilter) == 0 || len(security) > 0)
+
+	if len(tableFilter) > 0 && len(native) == 0 && !securityEnabled {
+		err = fmt.Errorf("--table filter targets only GCP security tables; rerun with --security")
+	}
+
+	return native, security, runNative, runSecurity, err
 }
 
 func filterAvailableTables(tables, available []string) ([]string, int) {
