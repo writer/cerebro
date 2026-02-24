@@ -139,6 +139,31 @@ func (l *captureAuditLogger) Log(_ context.Context, entry *snowflake.AuditEntry)
 	return nil
 }
 
+type staticProvider struct {
+	name     string
+	provider providers.ProviderType
+}
+
+func (p *staticProvider) Name() string { return p.name }
+
+func (p *staticProvider) Type() providers.ProviderType { return p.provider }
+
+func (p *staticProvider) Configure(context.Context, map[string]interface{}) error { return nil }
+
+func (p *staticProvider) Sync(context.Context, providers.SyncOptions) (*providers.SyncResult, error) {
+	return &providers.SyncResult{Provider: p.name}, nil
+}
+
+func (p *staticProvider) Test(context.Context) error { return nil }
+
+func (p *staticProvider) Schema() []providers.TableSchema {
+	return []providers.TableSchema{{
+		Name:       "table",
+		Columns:    []providers.ColumnSchema{{Name: "id", Type: "string", Required: true}},
+		PrimaryKey: []string{"id"},
+	}}
+}
+
 // --- Health / Readiness ---
 
 func TestHealth(t *testing.T) {
@@ -576,6 +601,83 @@ func TestListProviders(t *testing.T) {
 	w := do(t, s, "GET", "/api/v1/providers/", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
+	}
+}
+
+func TestListProviders_HidesIncompleteByDefault(t *testing.T) {
+	a := newTestApp(t)
+	a.Providers.Register(&staticProvider{name: "okta", provider: providers.ProviderTypeSaaS})
+	a.Providers.Register(&staticProvider{name: "auth0", provider: providers.ProviderTypeSaaS})
+
+	s := NewServer(a)
+	w := do(t, s, "GET", "/api/v1/providers/", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	body := decodeJSON(t, w)
+	if body["count"].(float64) != 1 {
+		t.Fatalf("expected 1 visible provider, got %v", body["count"])
+	}
+	items := body["providers"].([]interface{})
+	if len(items) != 1 {
+		t.Fatalf("expected 1 provider entry, got %d", len(items))
+	}
+	provider := items[0].(map[string]interface{})
+	if provider["name"] != "okta" {
+		t.Fatalf("expected visible provider to be okta, got %v", provider["name"])
+	}
+}
+
+func TestListProviders_IncludeIncomplete(t *testing.T) {
+	a := newTestApp(t)
+	a.Providers.Register(&staticProvider{name: "okta", provider: providers.ProviderTypeSaaS})
+	a.Providers.Register(&staticProvider{name: "auth0", provider: providers.ProviderTypeSaaS})
+
+	s := NewServer(a)
+	w := do(t, s, "GET", "/api/v1/providers/?include_incomplete=true", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	body := decodeJSON(t, w)
+	if body["count"].(float64) != 2 {
+		t.Fatalf("expected 2 providers, got %v", body["count"])
+	}
+
+	items := body["providers"].([]interface{})
+	foundAuth0 := false
+	for _, item := range items {
+		provider := item.(map[string]interface{})
+		if provider["name"] == "auth0" {
+			foundAuth0 = true
+			if provider["maturity"] != string(providers.ProviderMaturityStub) {
+				t.Fatalf("expected auth0 maturity %q, got %v", providers.ProviderMaturityStub, provider["maturity"])
+			}
+		}
+	}
+	if !foundAuth0 {
+		t.Fatal("expected auth0 in provider list when include_incomplete=true")
+	}
+}
+
+func TestGetProvider_IncompleteHiddenByDefault(t *testing.T) {
+	a := newTestApp(t)
+	a.Providers.Register(&staticProvider{name: "auth0", provider: providers.ProviderTypeSaaS})
+	s := NewServer(a)
+
+	w := do(t, s, "GET", "/api/v1/providers/auth0", nil)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+
+	w = do(t, s, "GET", "/api/v1/providers/auth0?include_incomplete=true", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 with include_incomplete, got %d", w.Code)
+	}
+	body := decodeJSON(t, w)
+	if body["maturity"] != string(providers.ProviderMaturityStub) {
+		t.Fatalf("expected maturity %q, got %v", providers.ProviderMaturityStub, body["maturity"])
 	}
 }
 

@@ -2195,33 +2195,51 @@ func (s *Server) addEdge(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) listProviders(w http.ResponseWriter, r *http.Request) {
 	providerList := s.app.Providers.List()
-	result := make([]map[string]interface{}, len(providerList))
-	for i, p := range providerList {
-		result[i] = map[string]interface{}{
-			"name":   p.Name(),
-			"type":   p.Type(),
-			"tables": len(p.Schema()),
+	includeIncomplete := includeIncompleteProviders(r)
+	result := make([]map[string]interface{}, 0, len(providerList))
+	for _, p := range providerList {
+		metadata := providers.ProviderMetadataFor(p.Name())
+		if providers.IsProviderIncomplete(p.Name()) && !includeIncomplete {
+			continue
 		}
+		result = append(result, map[string]interface{}{
+			"name":     p.Name(),
+			"type":     p.Type(),
+			"tables":   len(p.Schema()),
+			"maturity": metadata.Maturity,
+		})
 	}
 	s.json(w, http.StatusOK, map[string]interface{}{"providers": result, "count": len(result)})
 }
 
 func (s *Server) getProvider(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
+	if providers.IsProviderIncomplete(name) && !includeIncompleteProviders(r) {
+		s.error(w, http.StatusNotFound, "provider not found")
+		return
+	}
+
 	p, ok := s.app.Providers.Get(name)
 	if !ok {
 		s.error(w, http.StatusNotFound, "provider not found")
 		return
 	}
+	metadata := providers.ProviderMetadataFor(name)
 	s.json(w, http.StatusOK, map[string]interface{}{
-		"name":   p.Name(),
-		"type":   p.Type(),
-		"schema": p.Schema(),
+		"name":     p.Name(),
+		"type":     p.Type(),
+		"schema":   p.Schema(),
+		"maturity": metadata.Maturity,
 	})
 }
 
 func (s *Server) configureProvider(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
+	if providers.IsProviderIncomplete(name) && !includeIncompleteProviders(r) {
+		s.error(w, http.StatusNotFound, "provider not found")
+		return
+	}
+
 	var config map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
 		s.error(w, http.StatusBadRequest, "invalid request")
@@ -2237,6 +2255,11 @@ func (s *Server) configureProvider(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) syncProvider(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
+	if providers.IsProviderIncomplete(name) && !includeIncompleteProviders(r) {
+		s.error(w, http.StatusNotFound, "provider not found")
+		return
+	}
+
 	p, ok := s.app.Providers.Get(name)
 	if !ok {
 		s.error(w, http.StatusNotFound, "provider not found")
@@ -2253,6 +2276,11 @@ func (s *Server) syncProvider(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getProviderSchema(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
+	if providers.IsProviderIncomplete(name) && !includeIncompleteProviders(r) {
+		s.error(w, http.StatusNotFound, "provider not found")
+		return
+	}
+
 	p, ok := s.app.Providers.Get(name)
 	if !ok {
 		s.error(w, http.StatusNotFound, "provider not found")
@@ -2263,6 +2291,11 @@ func (s *Server) getProviderSchema(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) testProvider(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
+	if providers.IsProviderIncomplete(name) && !includeIncompleteProviders(r) {
+		s.error(w, http.StatusNotFound, "provider not found")
+		return
+	}
+
 	p, ok := s.app.Providers.Get(name)
 	if !ok {
 		s.error(w, http.StatusNotFound, "provider not found")
@@ -2277,6 +2310,11 @@ func (s *Server) testProvider(w http.ResponseWriter, r *http.Request) {
 }
 
 // Helpers
+
+func includeIncompleteProviders(r *http.Request) bool {
+	include := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("include_incomplete")))
+	return include == "1" || include == "true" || include == "yes"
+}
 
 func (s *Server) json(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")

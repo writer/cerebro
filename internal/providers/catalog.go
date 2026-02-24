@@ -1,0 +1,61 @@
+package providers
+
+// ProviderMaturity indicates provider implementation maturity.
+type ProviderMaturity string
+
+const (
+	ProviderMaturityProductionReady ProviderMaturity = "production-ready"
+	ProviderMaturityBeta            ProviderMaturity = "beta"
+	ProviderMaturityStub            ProviderMaturity = "stub/incomplete"
+)
+
+// ProviderMetadata captures provider rollout metadata.
+type ProviderMetadata struct {
+	Name     string           `json:"name"`
+	Maturity ProviderMaturity `json:"maturity"`
+	Public   bool             `json:"public"`
+}
+
+var providerMetadata = map[string]ProviderMetadata{
+	"azure":            {Name: "azure", Maturity: ProviderMaturityProductionReady, Public: true},
+	"cloudflare":       {Name: "cloudflare", Maturity: ProviderMaturityProductionReady, Public: true},
+	"cloudtrail":       {Name: "cloudtrail", Maturity: ProviderMaturityBeta, Public: true},
+	"crowdstrike":      {Name: "crowdstrike", Maturity: ProviderMaturityProductionReady, Public: true},
+	"datadog":          {Name: "datadog", Maturity: ProviderMaturityProductionReady, Public: true},
+	"entra_id":         {Name: "entra_id", Maturity: ProviderMaturityProductionReady, Public: true},
+	"github":           {Name: "github", Maturity: ProviderMaturityProductionReady, Public: true},
+	"gitlab":           {Name: "gitlab", Maturity: ProviderMaturityProductionReady, Public: true},
+	"google_workspace": {Name: "google_workspace", Maturity: ProviderMaturityProductionReady, Public: true},
+	"intune":           {Name: "intune", Maturity: ProviderMaturityBeta, Public: true},
+	"jamf":             {Name: "jamf", Maturity: ProviderMaturityBeta, Public: true},
+	"kandji":           {Name: "kandji", Maturity: ProviderMaturityBeta, Public: true},
+	"okta":             {Name: "okta", Maturity: ProviderMaturityProductionReady, Public: true},
+	"qualys":           {Name: "qualys", Maturity: ProviderMaturityProductionReady, Public: true},
+	"rippling":         {Name: "rippling", Maturity: ProviderMaturityBeta, Public: true},
+	"salesforce":       {Name: "salesforce", Maturity: ProviderMaturityBeta, Public: true},
+	"sentinelone":      {Name: "sentinelone", Maturity: ProviderMaturityProductionReady, Public: true},
+	"slack":            {Name: "slack", Maturity: ProviderMaturityBeta, Public: true},
+	"snyk":             {Name: "snyk", Maturity: ProviderMaturityProductionReady, Public: true},
+	"tailscale":        {Name: "tailscale", Maturity: ProviderMaturityProductionReady, Public: true},
+	"tenable":          {Name: "tenable", Maturity: ProviderMaturityProductionReady, Public: true},
+	"vault":            {Name: "vault", Maturity: ProviderMaturityBeta, Public: true},
+
+	// Planned but not yet implemented providers.
+	"auth0":           {Name: "auth0", Maturity: ProviderMaturityStub, Public: false},
+	"semgrep":         {Name: "semgrep", Maturity: ProviderMaturityStub, Public: false},
+	"splunk":          {Name: "splunk", Maturity: ProviderMaturityStub, Public: false},
+	"terraform_cloud": {Name: "terraform_cloud", Maturity: ProviderMaturityStub, Public: false},
+}
+
+// ProviderMetadataFor returns metadata for a provider name.
+func ProviderMetadataFor(name string) ProviderMetadata {
+	if metadata, ok := providerMetadata[name]; ok {
+		return metadata
+	}
+	return ProviderMetadata{Name: name, Maturity: ProviderMaturityProductionReady, Public: true}
+}
+
+// IsProviderIncomplete returns true when a provider is marked as stub/incomplete.
+func IsProviderIncomplete(name string) bool {
+	return ProviderMetadataFor(name).Maturity == ProviderMaturityStub
+}

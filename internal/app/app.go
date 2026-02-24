@@ -671,6 +671,14 @@ func (a *App) initProviders(ctx context.Context) {
 
 	// Helper to configure and register providers with error logging
 	registerProvider := func(name string, p providers.Provider, config map[string]interface{}) {
+		metadata := providers.ProviderMetadataFor(name)
+		if providers.IsProviderIncomplete(name) {
+			a.Logger.Info("provider marked as incomplete, skipping registration",
+				"provider", name,
+				"maturity", metadata.Maturity)
+			return
+		}
+
 		if setter, ok := p.(interface{ SetSnowflakeClient(*snowflake.Client) }); ok {
 			setter.SetSnowflakeClient(a.Snowflake)
 		}
@@ -681,7 +689,7 @@ func (a *App) initProviders(ctx context.Context) {
 			return
 		}
 		a.Providers.Register(p)
-		a.Logger.Info("provider registered", "provider", name)
+		a.Logger.Info("provider registered", "provider", name, "maturity", metadata.Maturity)
 	}
 
 	firstNonEmpty := func(values ...string) string {

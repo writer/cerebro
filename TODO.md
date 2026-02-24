@@ -120,10 +120,12 @@
 
 #### 1) Provider registration parity
 - [x] Audit implemented provider constructors vs runtime registration list
-- [ ] Mark providers as `production-ready`, `beta`, or `stub/incomplete`
+- [x] Mark providers as `production-ready`, `beta`, or `stub/incomplete`
+- [x] Added provider maturity catalog and metadata (`internal/providers/catalog.go`) covering implemented + planned providers
 - [x] Register production-ready providers behind explicit config gates
   - [x] Added config-gated registration for `qualys`, `gitlab`, `cloudflare`, `salesforce`, `vault`, `slack`, `rippling`, `jamf`, `intune`, `kandji`, and `cloudtrail`
-- [ ] Hide or gate incomplete providers from public API listing where appropriate
+- [x] Hide or gate incomplete providers from public API listing where appropriate
+  - [x] `/api/v1/providers` now hides `stub/incomplete` providers by default unless `?include_incomplete=true`
 
 #### 2) Scheduled sync parity
 - [ ] Implement scheduled GCP sync path (project/scoping + table filter handling)
