@@ -11,11 +11,12 @@ import (
 
 // TableSpec defines a table to sync
 type TableSpec struct {
-	Name    string
-	Columns []string
-	Fetch   func(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error)
-	Mode    TableSyncMode
-	Scope   TableRegionScope
+	Name                string
+	Columns             []string
+	Fetch               func(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error)
+	Mode                TableSyncMode
+	Scope               TableRegionScope
+	IncrementalLookback time.Duration
 }
 
 type TableSyncMode int

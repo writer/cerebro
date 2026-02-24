@@ -54,9 +54,9 @@
 - [x] Retry classification (throttle vs auth vs transient)
 
 ## Phase 5: Quality & Freshness
-- [ ] Incremental sync rules for large tables (delta windows)
+- [x] Incremental sync rules for large tables (delta windows) *(table-level `IncrementalLookback` metadata + `TestAWSTableIncrementalLookbackCoverage`)*
 - [ ] Better deletion semantics for regional vs global tables
-- [ ] Relationship extraction parity with asset tables
+- [x] Relationship extraction parity with asset tables *(row-key normalization + fresh-write `sync_time` tests for `resource_relationships`)*
 - [ ] Backfill strategy for partial API responses
 
 ## Phase 6: Provider Expansion
