@@ -1,9 +1,15 @@
 package sync
 
 import (
+	"context"
 	"errors"
+	"io"
+	"log/slog"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/writerinternal/cerebro/internal/snowflake"
 )
 
 func TestExtractReferenceID(t *testing.T) {
@@ -278,6 +284,106 @@ func TestGCPArtifactImageRelationshipHelpers(t *testing.T) {
 	}
 	if got := gcpArtifactPackageIDFromImage("projects/p/locations/us-central1/repositories/repo-a"); got != "" {
 		t.Fatalf("expected empty package id for non-image input, got %s", got)
+	}
+}
+
+func TestPersistRelationships_UsesRunSyncTimeForFreshWrites(t *testing.T) {
+	originalSchema := relationshipSchemaName
+	originalBatch := relationshipQueryBatch
+	t.Cleanup(func() {
+		relationshipSchemaName = originalSchema
+		relationshipQueryBatch = originalBatch
+	})
+
+	relationshipSchemaName = func(_ *snowflake.Client) string { return "RAW" }
+	var capturedArgs []interface{}
+	relationshipQueryBatch = func(_ context.Context, _ *snowflake.Client, _ string, args ...interface{}) error {
+		capturedArgs = append([]interface{}(nil), args...)
+		return nil
+	}
+
+	runSyncTime := time.Date(2026, 2, 24, 16, 0, 0, 0, time.UTC)
+	rex := &RelationshipExtractor{
+		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+		runSyncTime: runSyncTime,
+	}
+
+	rels := []Relationship{{
+		SourceID:   "arn:aws:iam::123456789012:role/test-role",
+		SourceType: "aws:iam:role",
+		TargetID:   "arn:aws:iam::123456789012:policy/test-policy",
+		TargetType: "aws:iam:policy",
+		RelType:    RelAttachedTo,
+		Properties: "{}",
+	}}
+
+	total, err := rex.persistRelationships(context.Background(), rels)
+	if err != nil {
+		t.Fatalf("persist relationships: %v", err)
+	}
+	if total != 1 {
+		t.Fatalf("expected 1 persisted relationship, got %d", total)
+	}
+	if len(capturedArgs) != 8 {
+		t.Fatalf("expected 8 query args for one relationship, got %d", len(capturedArgs))
+	}
+
+	syncArg, ok := capturedArgs[7].(time.Time)
+	if !ok {
+		t.Fatalf("expected sync_time arg to be time.Time, got %T", capturedArgs[7])
+	}
+	if !syncArg.Equal(runSyncTime) {
+		t.Fatalf("expected sync_time %s, got %s", runSyncTime, syncArg)
+	}
+}
+
+func TestPersistRelationships_UsesCurrentTimeWhenRunSyncTimeMissing(t *testing.T) {
+	originalSchema := relationshipSchemaName
+	originalBatch := relationshipQueryBatch
+	originalNow := relationshipNowUTC
+	t.Cleanup(func() {
+		relationshipSchemaName = originalSchema
+		relationshipQueryBatch = originalBatch
+		relationshipNowUTC = originalNow
+	})
+
+	relationshipSchemaName = func(_ *snowflake.Client) string { return "RAW" }
+	fixedNow := time.Date(2026, 2, 24, 16, 5, 0, 0, time.UTC)
+	relationshipNowUTC = func() time.Time { return fixedNow }
+
+	var capturedArgs []interface{}
+	relationshipQueryBatch = func(_ context.Context, _ *snowflake.Client, _ string, args ...interface{}) error {
+		capturedArgs = append([]interface{}(nil), args...)
+		return nil
+	}
+
+	rex := &RelationshipExtractor{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	rels := []Relationship{{
+		SourceID:   "arn:aws:iam::123456789012:role/test-role",
+		SourceType: "aws:iam:role",
+		TargetID:   "arn:aws:iam::123456789012:policy/test-policy",
+		TargetType: "aws:iam:policy",
+		RelType:    RelAttachedTo,
+		Properties: "{}",
+	}}
+
+	total, err := rex.persistRelationships(context.Background(), rels)
+	if err != nil {
+		t.Fatalf("persist relationships: %v", err)
+	}
+	if total != 1 {
+		t.Fatalf("expected 1 persisted relationship, got %d", total)
+	}
+	if len(capturedArgs) != 8 {
+		t.Fatalf("expected 8 query args for one relationship, got %d", len(capturedArgs))
+	}
+
+	syncArg, ok := capturedArgs[7].(time.Time)
+	if !ok {
+		t.Fatalf("expected sync_time arg to be time.Time, got %T", capturedArgs[7])
+	}
+	if !syncArg.Equal(fixedNow) {
+		t.Fatalf("expected sync_time %s, got %s", fixedNow, syncArg)
 	}
 }
 

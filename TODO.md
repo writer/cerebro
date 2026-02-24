@@ -195,7 +195,7 @@
 ### F. Relationship Extraction Parity
 - [x] Replace uppercase row-key accesses in relationship extractors with lowercase-safe access
 - [x] Verify extractor runs without missing-key regressions
-- [ ] Verify `resource_relationships` receives fresh writes (recent `sync_time`)
+- [x] Verify `resource_relationships` receives fresh writes (recent `sync_time`) *(covered by `TestPersistRelationships_UsesRunSyncTimeForFreshWrites` + `TestPersistRelationships_UsesCurrentTimeWhenRunSyncTimeMissing`)*
 
 ### G. Regression Guardrails
 - [x] Add helper for Snowflake row map retrieval with lowercase normalization fallback

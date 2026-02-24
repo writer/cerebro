@@ -66,6 +66,25 @@ type RelationshipBackfillStats struct {
 	Skipped int `json:"skipped"`
 }
 
+var relationshipNowUTC = func() time.Time {
+	return time.Now().UTC().Truncate(time.Millisecond)
+}
+
+var relationshipSchemaName = func(sf *snowflake.Client) string {
+	if sf == nil {
+		return ""
+	}
+	return sf.Schema()
+}
+
+var relationshipQueryBatch = func(ctx context.Context, sf *snowflake.Client, query string, args ...interface{}) error {
+	if sf == nil {
+		return fmt.Errorf("snowflake client is nil")
+	}
+	_, err := sf.Query(ctx, query, args...)
+	return err
+}
+
 // NewRelationshipExtractor creates a new extractor
 func NewRelationshipExtractor(sf *snowflake.Client, logger *slog.Logger) *RelationshipExtractor {
 	return &RelationshipExtractor{sf: sf, logger: logger}
@@ -78,7 +97,7 @@ func (r *RelationshipExtractor) ExtractAndPersist(ctx context.Context) (int, err
 		return 0, err
 	}
 
-	runSyncTime := time.Now().UTC().Truncate(time.Millisecond)
+	runSyncTime := relationshipNowUTC()
 	r.runSyncTime = runSyncTime
 	defer func() {
 		r.runSyncTime = time.Time{}
@@ -192,7 +211,7 @@ func (r *RelationshipExtractor) BackfillNormalizedRelationshipIDs(ctx context.Co
 		batchSize = 200
 	}
 
-	schema := r.sf.Schema()
+	schema := relationshipSchemaName(r.sf)
 	if schema == "" {
 		schema = "RAW"
 	}
@@ -433,7 +452,7 @@ func (r *RelationshipExtractor) persistRelationships(ctx context.Context, rels [
 	r.logger.Info("persisting relationships", "count", len(rels))
 
 	// Get the schema for fully qualified table name
-	schema := r.sf.Schema()
+	schema := relationshipSchemaName(r.sf)
 	if schema == "" {
 		schema = "RAW"
 	}
@@ -447,7 +466,7 @@ func (r *RelationshipExtractor) persistRelationships(ctx context.Context, rels [
 	total := 0
 	syncTime := r.runSyncTime
 	if syncTime.IsZero() {
-		syncTime = time.Now().UTC().Truncate(time.Millisecond)
+		syncTime = relationshipNowUTC()
 	}
 
 	for i := 0; i < len(rels); i += batchSize {
@@ -484,7 +503,7 @@ func (r *RelationshipExtractor) persistRelationships(ctx context.Context, rels [
 			tableName, strings.Join(values, ", "))
 
 		// Use Query instead of Exec - Exec has issues with Snowflake commit behavior
-		_, err := r.sf.Query(ctx, query, args...)
+		err := relationshipQueryBatch(ctx, r.sf, query, args...)
 		if err != nil {
 			r.logger.Error("failed to persist relationships batch", "error", err, "batch_start", i, "batch_size", len(batch))
 			return total, err
