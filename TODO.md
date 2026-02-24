@@ -68,6 +68,87 @@
 ## Progress Log
 - 2026-01-28: Completed Phase 1 observability and validation improvements.
 
+## Deep Review Gap Closure (2026-02-24)
+
+### Baseline Snapshot (from deep review)
+- [ ] Record and commit a baseline snapshot in CI logs:
+  - policy files discovered: `545`
+  - executable condition/resource policies: `445`
+  - query-only policies: `99`
+  - duplicate policy IDs detected: `github-repo-branch-protection`
+  - compliance export API note points to missing CLI command (`cerebro compliance export`)
+
+### P0: Policy Engine Contract Integrity
+
+#### 1) Strict policy schema + loader hardening
+- [x] Define supported JSON types in `policies/` (executable policy vs metadata mapping files)
+- [x] Exclude non-policy metadata files (e.g. `policies/cerebro/control-mapping.json`) from executable policy loading
+- [x] Enforce required fields for executable policies at load time:
+  - `id`, `name`, `severity`, `description`
+  - either (`resource` + `conditions`) **or** `query` (not mixed)
+- [x] Normalize and validate severity values (`critical|high|medium|low`)
+- [x] Fail fast on duplicate policy IDs with explicit file path reporting
+- [x] Add unit tests for all invalid-shape cases and duplicate-ID rejection
+
+#### 2) Resolve query-only policy execution gap
+- [ ] Decision checkpoint: choose canonical model
+  - Option A: support query-based policy execution in scanner/runtime
+  - Option B: migrate query-only policies to executable condition/resource policies
+- [ ] If Option A (query execution):
+  - [ ] implement bounded read-only SQL execution path for policy queries
+  - [ ] enforce table allowlist + timeout + row limit pushdown
+  - [ ] map query result rows to deterministic finding IDs (stable dedupe keys)
+  - [ ] add integration tests for query policy findings + dedup + suppression flow
+- [ ] If Option B (migration):
+  - [ ] create migration checklist for all `99` query-only policies
+  - [ ] convert high-impact categories first (endpoint/compliance/pci/m365)
+  - [ ] add guardrail test to block new query-only policies from being introduced
+
+### P0: Compliance Export Contract Fix
+- [ ] Align API and CLI contract for compliance export:
+  - either add real `cerebro compliance export`
+  - or remove CLI note from API and provide direct downloadable export via API
+- [ ] Implement audit package artifact format:
+  - manifest metadata
+  - control status/evidence payloads
+  - optional finding excerpts per control
+  - zip packaging + deterministic file naming
+- [ ] Add API + CLI tests for successful export and missing-framework/error paths
+- [ ] Add one end-to-end smoke test: framework -> pre-audit -> export artifact generated
+
+### P1: Provider Activation and Scheduled Sync Parity
+
+#### 1) Provider registration parity
+- [ ] Audit implemented provider constructors vs runtime registration list
+- [ ] Mark providers as `production-ready`, `beta`, or `stub/incomplete`
+- [ ] Register production-ready providers behind explicit config gates
+- [ ] Hide or gate incomplete providers from public API listing where appropriate
+
+#### 2) Scheduled sync parity
+- [ ] Implement scheduled GCP sync path (project/scoping + table filter handling)
+- [ ] Implement scheduled Azure sync path (subscription scoping + table filter handling)
+- [ ] Define fallback behavior for non-native/custom providers in scheduler
+- [ ] Add integration tests for scheduler execution result per provider (`success/fail/retry`)
+
+### P1: API Surface Completeness (remove placeholders)
+- [ ] Replace `getAttackPath` placeholder response with real lookup and 404 behavior
+- [ ] Audit API handlers for placeholder notes/stub returns and track each one to closure
+- [ ] Add endpoint contract tests for previously stubbed handlers
+
+### P2: End-to-End Reliability Gates
+- [ ] Add CI scenario: `sync -> scan -> findings -> compliance pre-audit -> compliance export`
+- [ ] Add regression tests ensuring no duplicate policy IDs and no non-policy JSON loaded
+- [ ] Add metrics dashboard/checks for:
+  - loaded policy count by type
+  - query-only policy count (target trend to zero or fully executed)
+  - provider registration count vs implemented provider count
+  - compliance export success/failure rate
+
+### Execution Order
+- [ ] Milestone 1 (P0): policy loader/validation + query gap decision + compliance export contract fix
+- [ ] Milestone 2 (P1): provider activation + scheduled sync parity + API placeholder removal
+- [ ] Milestone 3 (P2): end-to-end CI gate + production metrics and regression protections
+
 ## Deep Follow-up: Snowflake Schema Idempotency + Row-Key Correctness
 
 ### A. Baseline Capture (before fixes)

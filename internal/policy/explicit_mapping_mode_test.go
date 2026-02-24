@@ -27,6 +27,7 @@ func TestEngineLoadPolicies_ExplicitMappingsOnlyFailsForUnmapped(t *testing.T) {
 	policyJSON := `{
 		"id": "test-unmapped",
 		"name": "Test Unmapped",
+		"description": "Policy for explicit mapping mode test",
 		"effect": "forbid",
 		"resource": "unknown::resource",
 		"conditions": ["enabled == true"],
@@ -54,6 +55,7 @@ func TestEngineLoadPolicies_ExplicitMappingsOnlyAllowsMapped(t *testing.T) {
 	policyJSON := `{
 		"id": "test-mapped",
 		"name": "Test Mapped",
+		"description": "Policy for explicit mapping mode test",
 		"effect": "forbid",
 		"resource": "aws::s3::bucket",
 		"conditions": ["public == true"],

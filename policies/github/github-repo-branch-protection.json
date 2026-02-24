@@ -1,5 +1,5 @@
 {
-  "id": "github-repo-branch-protection",
+  "id": "github-public-repo-branch-protection",
   "name": "GitHub Public Repository Without Branch Protection",
   "description": "Public repository does not have branch protection rules on the default branch",
   "effect": "forbid",

@@ -60,17 +60,18 @@ type Engine struct {
 // or generate violations ("forbid"). Conditions are evaluated against resource
 // attributes to determine if the policy matches.
 type Policy struct {
-	ID          string   `json:"id"`            // Unique policy identifier
-	Name        string   `json:"name"`          // Human-readable policy name
-	Description string   `json:"description"`   // Detailed description of policy intent
-	Effect      string   `json:"effect"`        // "permit" or "forbid"
-	Principal   string   `json:"principal"`     // Who the policy applies to (optional)
-	Action      string   `json:"action"`        // What action is being evaluated
-	Resource    string   `json:"resource"`      // Resource type pattern (e.g., "aws::s3::bucket")
-	Conditions  []string `json:"conditions"`    // Conditions that must be true for policy to match
-	Severity    string   `json:"severity"`      // critical, high, medium, low
-	Tags        []string `json:"tags"`          // Tags for categorization
-	Raw         string   `json:"raw,omitempty"` // Raw Cedar policy text (optional)
+	ID          string   `json:"id"`              // Unique policy identifier
+	Name        string   `json:"name"`            // Human-readable policy name
+	Description string   `json:"description"`     // Detailed description of policy intent
+	Query       string   `json:"query,omitempty"` // Optional SQL query-based policy definition
+	Effect      string   `json:"effect"`          // "permit" or "forbid"
+	Principal   string   `json:"principal"`       // Who the policy applies to (optional)
+	Action      string   `json:"action"`          // What action is being evaluated
+	Resource    string   `json:"resource"`        // Resource type pattern (e.g., "aws::s3::bucket")
+	Conditions  []string `json:"conditions"`      // Conditions that must be true for policy to match
+	Severity    string   `json:"severity"`        // critical, high, medium, low
+	Tags        []string `json:"tags"`            // Tags for categorization
+	Raw         string   `json:"raw,omitempty"`   // Raw Cedar policy text (optional)
 
 	// External control mapping
 	ControlID string `json:"control_id,omitempty"` // External control ID for reference
@@ -163,6 +164,7 @@ func (e *Engine) LoadPolicies(dir string) error {
 	defer e.mu.Unlock()
 
 	registry := NewComplianceRegistry()
+	seenPolicyFiles := make(map[string]string)
 
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -177,10 +179,23 @@ func (e *Engine) LoadPolicies(dir string) error {
 			return fmt.Errorf("read %s: %w", path, err)
 		}
 
+		if isPolicyMetadataFile(data) {
+			return nil
+		}
+
 		var policyDef Policy
 		if err := json.Unmarshal(data, &policyDef); err != nil {
 			return fmt.Errorf("parse %s: %w", path, err)
 		}
+
+		if err := validateLoadedPolicy(&policyDef, path); err != nil {
+			return err
+		}
+
+		if existingPath, exists := seenPolicyFiles[policyDef.ID]; exists {
+			return fmt.Errorf("duplicate policy id %q found in %s and %s", policyDef.ID, existingPath, path)
+		}
+		seenPolicyFiles[policyDef.ID] = path
 
 		if len(policyDef.Frameworks) == 0 {
 			policyDef.Frameworks = MapPolicyToFrameworks(&policyDef, registry)
@@ -218,6 +233,82 @@ func (e *Engine) LoadPolicies(dir string) error {
 	}
 
 	return fmt.Errorf("explicit mapping mode enabled with %d unmapped policy resources (sample: %s)", len(unmapped), strings.Join(sample, ", "))
+}
+
+func isPolicyMetadataFile(data []byte) bool {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return false
+	}
+
+	if _, ok := raw["controls"]; !ok {
+		return false
+	}
+
+	_, hasID := raw["id"]
+	_, hasResource := raw["resource"]
+	_, hasConditions := raw["conditions"]
+	_, hasQuery := raw["query"]
+
+	return !hasID && !hasResource && !hasConditions && !hasQuery
+}
+
+func validateLoadedPolicy(policyDef *Policy, path string) error {
+	policyDef.ID = strings.TrimSpace(policyDef.ID)
+	policyDef.Name = strings.TrimSpace(policyDef.Name)
+	policyDef.Description = strings.TrimSpace(policyDef.Description)
+	policyDef.Resource = strings.TrimSpace(policyDef.Resource)
+	policyDef.Query = strings.TrimSpace(policyDef.Query)
+	policyDef.Severity = normalizeSeverity(policyDef.Severity)
+
+	missing := make([]string, 0, 4)
+	if policyDef.ID == "" {
+		missing = append(missing, "id")
+	}
+	if policyDef.Name == "" {
+		missing = append(missing, "name")
+	}
+	if policyDef.Description == "" {
+		missing = append(missing, "description")
+	}
+	if policyDef.Severity == "" {
+		missing = append(missing, "severity")
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("invalid policy %s: missing required field(s): %s", path, strings.Join(missing, ", "))
+	}
+
+	if !isValidSeverity(policyDef.Severity) {
+		return fmt.Errorf("invalid policy %s (%s): unsupported severity %q (allowed: critical, high, medium, low)", path, policyDef.ID, policyDef.Severity)
+	}
+
+	hasQuery := policyDef.Query != ""
+	hasResource := policyDef.Resource != ""
+	hasConditions := len(policyDef.Conditions) > 0
+
+	switch {
+	case hasQuery && (hasResource || hasConditions):
+		return fmt.Errorf("invalid policy %s (%s): query policies cannot include resource or conditions", path, policyDef.ID)
+	case hasQuery:
+		return nil
+	case hasResource && hasConditions:
+		return nil
+	default:
+		return fmt.Errorf("invalid policy %s (%s): policy must define either query OR resource+conditions", path, policyDef.ID)
+	}
+}
+
+func normalizeSeverity(severity string) string {
+	return strings.ToLower(strings.TrimSpace(severity))
+}
+
+func isValidSeverity(severity string) bool {
+	switch severity {
+	case "critical", "high", "medium", "low":
+		return true
+	default:
+		return false
+	}
 }
 
 func (e *Engine) AddPolicy(p *Policy) {

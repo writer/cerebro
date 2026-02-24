@@ -15,6 +15,7 @@ func TestEngineLoadPolicies(t *testing.T) {
 		"name": "Test Policy",
 		"description": "Test description",
 		"effect": "forbid",
+		"resource": "aws::s3::bucket",
 		"conditions": ["public == true"],
 		"severity": "high",
 		"tags": ["test"]
