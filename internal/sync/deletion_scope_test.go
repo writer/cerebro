@@ -1,6 +1,10 @@
 package sync
 
-import "testing"
+import (
+	"context"
+	"strings"
+	"testing"
+)
 
 func TestScopeWhereClauseRegional(t *testing.T) {
 	e := &SyncEngine{accountID: "123456789012"}
@@ -35,5 +39,42 @@ func TestNormalizeAWSTableSpecSetsGlobalScope(t *testing.T) {
 	regional := normalizeAWSTableSpec(TableSpec{Name: "aws_ec2_instances", Columns: []string{"arn"}})
 	if regional.Scope != TableRegionScopeRegional {
 		t.Fatalf("expected regional scope for aws_ec2_instances")
+	}
+}
+
+func TestDeleteScopedRows_RefusesUnscopedDeleteForGlobalTable(t *testing.T) {
+	e := &SyncEngine{}
+	err := e.deleteScopedRows(context.Background(), "aws_iam_users", "", false, false, true)
+	if err == nil {
+		t.Fatalf("expected unscoped global delete to be refused")
+	}
+	if !strings.Contains(err.Error(), "refusing unscoped delete") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDeleteRowsByID_RefusesUnscopedDeleteForGlobalTable(t *testing.T) {
+	e := &SyncEngine{}
+	err := e.deleteRowsByID(context.Background(), "aws_iam_users", map[string]string{"id-1": "hash"}, "", false, false, true)
+	if err == nil {
+		t.Fatalf("expected unscoped delete-by-id to be refused")
+	}
+	if !strings.Contains(err.Error(), "refusing unscoped delete-by-id") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRequiresScopedDelete(t *testing.T) {
+	if requiresScopedDelete(false, false, false) {
+		t.Fatalf("did not expect scoped delete requirement for unscoped table")
+	}
+	if !requiresScopedDelete(true, false, false) {
+		t.Fatalf("expected regional table to require scoped delete")
+	}
+	if !requiresScopedDelete(false, true, false) {
+		t.Fatalf("expected account-scoped table to require scoped delete")
+	}
+	if !requiresScopedDelete(false, false, true) {
+		t.Fatalf("expected global-scope table to require scoped delete")
 	}
 }

@@ -55,7 +55,7 @@
 
 ## Phase 5: Quality & Freshness
 - [x] Incremental sync rules for large tables (delta windows) *(table-level `IncrementalLookback` metadata + `TestAWSTableIncrementalLookbackCoverage`)*
-- [ ] Better deletion semantics for regional vs global tables
+- [x] Better deletion semantics for regional vs global tables *(scoped-delete safety guardrails + `TestDeleteScopedRows_RefusesUnscopedDeleteForGlobalTable`/`TestDeleteRowsByID_RefusesUnscopedDeleteForGlobalTable`)*
 - [x] Relationship extraction parity with asset tables *(row-key normalization + fresh-write `sync_time` tests for `resource_relationships`)*
 - [ ] Backfill strategy for partial API responses
 

@@ -612,6 +612,9 @@ func (e *SyncEngine) deleteRowsByID(ctx context.Context, table string, ids map[s
 	}
 	scopeWhere, scopeArgs := e.scopeWhereClause(region, hasRegion, hasAccount, globalScope)
 	scopeCondition := strings.TrimPrefix(scopeWhere, " WHERE ")
+	if scopeCondition == "" && requiresScopedDelete(hasRegion, hasAccount, globalScope) {
+		return fmt.Errorf("refusing unscoped delete-by-id for table %s", table)
+	}
 
 	keys := make([]string, 0, len(ids))
 	for id := range ids {
@@ -667,6 +670,9 @@ func (e *SyncEngine) getExistingHashes(ctx context.Context, table string, region
 func (e *SyncEngine) deleteScopedRows(ctx context.Context, table string, region string, hasRegion bool, hasAccount bool, globalScope bool) error {
 	where, args := e.scopeWhereClause(region, hasRegion, hasAccount, globalScope)
 	if where == "" {
+		if requiresScopedDelete(hasRegion, hasAccount, globalScope) {
+			return fmt.Errorf("refusing unscoped delete for table %s", table)
+		}
 		if _, err := e.sf.Exec(ctx, fmt.Sprintf("TRUNCATE TABLE %s", table)); err != nil {
 			if _, err := e.sf.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table)); err != nil {
 				return err
@@ -698,6 +704,10 @@ func (e *SyncEngine) scopeWhereClause(region string, hasRegion bool, hasAccount 
 	}
 
 	return " WHERE " + strings.Join(clauses, " AND "), args
+}
+
+func requiresScopedDelete(hasRegion bool, hasAccount bool, globalScope bool) bool {
+	return hasAccount || hasRegion || globalScope
 }
 
 func (e *SyncEngine) persistChangeHistory(ctx context.Context, results []SyncResult) error {
