@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -291,6 +293,63 @@ func containsString(values []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func TestInitProviders_RegistersExpandedProviderSet(t *testing.T) {
+	app := &App{
+		Config: &Config{
+			QualysUsername:         "qualys-user",
+			QualysPassword:         "qualys-pass",
+			QualysPlatform:         "US1",
+			GitLabToken:            "gitlab-token",
+			GitLabBaseURL:          "https://gitlab.example.com",
+			CloudflareAPIToken:     "cloudflare-token",
+			SalesforceInstanceURL:  "https://example.my.salesforce.com",
+			SalesforceClientID:     "salesforce-client-id",
+			SalesforceClientSecret: "salesforce-client-secret",
+			SalesforceUsername:     "salesforce-user",
+			SalesforcePassword:     "salesforce-pass",
+			VaultAddress:           "https://vault.example.com",
+			VaultToken:             "vault-token",
+			SlackAPIToken:          "xoxb-token",
+			RipplingAPIURL:         "https://api.rippling.com",
+			RipplingAPIToken:       "rippling-token",
+			JamfBaseURL:            "https://example.jamfcloud.com",
+			JamfClientID:           "jamf-client-id",
+			JamfClientSecret:       "jamf-client-secret",
+			EntraTenantID:          "entra-tenant",
+			EntraClientID:          "entra-client-id",
+			EntraClientSecret:      "entra-client-secret",
+			KandjiAPIURL:           "https://api.kandji.io/api/v1",
+			KandjiAPIToken:         "kandji-token",
+		},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	app.initProviders(context.Background())
+
+	expectedProviders := []string{"qualys", "gitlab", "cloudflare", "salesforce", "vault", "slack", "rippling", "jamf", "intune", "kandji"}
+	for _, name := range expectedProviders {
+		if _, ok := app.Providers.Get(name); !ok {
+			t.Errorf("expected provider %q to be registered", name)
+		}
+	}
+}
+
+func TestInitProviders_SkipsExpandedProvidersWithoutConfig(t *testing.T) {
+	app := &App{
+		Config: &Config{},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	app.initProviders(context.Background())
+
+	notExpected := []string{"qualys", "gitlab", "cloudflare", "salesforce", "vault", "slack", "rippling", "jamf", "intune", "kandji", "cloudtrail"}
+	for _, name := range notExpected {
+		if _, ok := app.Providers.Get(name); ok {
+			t.Errorf("did not expect provider %q to be registered", name)
+		}
+	}
 }
 
 func TestApp_Close(t *testing.T) {

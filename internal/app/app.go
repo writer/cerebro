@@ -235,6 +235,45 @@ type Config struct {
 	// Cloudflare Provider
 	CloudflareAPIToken string
 
+	// Salesforce Provider
+	SalesforceInstanceURL   string
+	SalesforceClientID      string
+	SalesforceClientSecret  string
+	SalesforceUsername      string
+	SalesforcePassword      string
+	SalesforceSecurityToken string
+
+	// Vault Provider
+	VaultAddress   string
+	VaultToken     string
+	VaultNamespace string
+
+	// Slack Provider (data source sync)
+	SlackAPIToken string
+
+	// Rippling Provider
+	RipplingAPIURL   string
+	RipplingAPIToken string
+
+	// Jamf Provider
+	JamfBaseURL      string
+	JamfClientID     string
+	JamfClientSecret string
+
+	// Intune Provider
+	IntuneTenantID     string
+	IntuneClientID     string
+	IntuneClientSecret string
+
+	// Kandji Provider
+	KandjiAPIURL   string
+	KandjiAPIToken string
+
+	// CloudTrail Provider
+	CloudTrailRegion       string
+	CloudTrailTrailARN     string
+	CloudTrailLookbackDays int
+
 	// Webhooks
 	WebhookURLs []string
 
@@ -338,6 +377,29 @@ func LoadConfig() *Config {
 		Auth0ClientID:                    getEnv("AUTH0_CLIENT_ID", ""),
 		Auth0ClientSecret:                getEnv("AUTH0_CLIENT_SECRET", ""),
 		CloudflareAPIToken:               getEnv("CLOUDFLARE_API_TOKEN", ""),
+		SalesforceInstanceURL:            getEnv("SALESFORCE_INSTANCE_URL", ""),
+		SalesforceClientID:               getEnv("SALESFORCE_CLIENT_ID", ""),
+		SalesforceClientSecret:           getEnv("SALESFORCE_CLIENT_SECRET", ""),
+		SalesforceUsername:               getEnv("SALESFORCE_USERNAME", ""),
+		SalesforcePassword:               getEnv("SALESFORCE_PASSWORD", ""),
+		SalesforceSecurityToken:          getEnv("SALESFORCE_SECURITY_TOKEN", ""),
+		VaultAddress:                     getEnv("VAULT_ADDRESS", ""),
+		VaultToken:                       getEnv("VAULT_TOKEN", ""),
+		VaultNamespace:                   getEnv("VAULT_NAMESPACE", ""),
+		SlackAPIToken:                    getEnv("SLACK_API_TOKEN", ""),
+		RipplingAPIURL:                   getEnv("RIPPLING_API_URL", ""),
+		RipplingAPIToken:                 getEnv("RIPPLING_API_TOKEN", ""),
+		JamfBaseURL:                      getEnv("JAMF_BASE_URL", ""),
+		JamfClientID:                     getEnv("JAMF_CLIENT_ID", ""),
+		JamfClientSecret:                 getEnv("JAMF_CLIENT_SECRET", ""),
+		IntuneTenantID:                   getEnv("INTUNE_TENANT_ID", ""),
+		IntuneClientID:                   getEnv("INTUNE_CLIENT_ID", ""),
+		IntuneClientSecret:               getEnv("INTUNE_CLIENT_SECRET", ""),
+		KandjiAPIURL:                     getEnv("KANDJI_API_URL", ""),
+		KandjiAPIToken:                   getEnv("KANDJI_API_TOKEN", ""),
+		CloudTrailRegion:                 getEnv("CLOUDTRAIL_REGION", ""),
+		CloudTrailTrailARN:               getEnv("CLOUDTRAIL_TRAIL_ARN", ""),
+		CloudTrailLookbackDays:           getEnvInt("CLOUDTRAIL_LOOKBACK_DAYS", 7),
 		WebhookURLs:                      splitCSV(getEnv("WEBHOOK_URLS", "")),
 		SlackWebhookURL:                  getEnv("SLACK_WEBHOOK_URL", ""),
 		SlackSigningSecret:               getEnv("SLACK_SIGNING_SECRET", ""),
@@ -622,6 +684,15 @@ func (a *App) initProviders(ctx context.Context) {
 		a.Logger.Info("provider registered", "provider", name)
 	}
 
+	firstNonEmpty := func(values ...string) string {
+		for _, value := range values {
+			if value != "" {
+				return value
+			}
+		}
+		return ""
+	}
+
 	// Register CrowdStrike if configured
 	if a.Config.CrowdStrikeClientID != "" {
 		registerProvider("crowdstrike", providers.NewCrowdStrikeProvider(), map[string]interface{}{
@@ -714,6 +785,110 @@ func (a *App) initProviders(ctx context.Context) {
 			"access_key": a.Config.TenableAccessKey,
 			"secret_key": a.Config.TenableSecretKey,
 		})
+	}
+
+	// Register Qualys if configured
+	if a.Config.QualysUsername != "" && a.Config.QualysPassword != "" {
+		registerProvider("qualys", providers.NewQualysProvider(), map[string]interface{}{
+			"username": a.Config.QualysUsername,
+			"password": a.Config.QualysPassword,
+			"platform": a.Config.QualysPlatform,
+		})
+	}
+
+	// Register GitLab if configured
+	if a.Config.GitLabToken != "" {
+		registerProvider("gitlab", providers.NewGitLabProvider(), map[string]interface{}{
+			"token":    a.Config.GitLabToken,
+			"base_url": a.Config.GitLabBaseURL,
+		})
+	}
+
+	// Register Cloudflare if configured
+	if a.Config.CloudflareAPIToken != "" {
+		registerProvider("cloudflare", providers.NewCloudflareProvider(), map[string]interface{}{
+			"api_token": a.Config.CloudflareAPIToken,
+		})
+	}
+
+	// Register Salesforce if configured
+	if a.Config.SalesforceInstanceURL != "" && a.Config.SalesforceClientID != "" && a.Config.SalesforceClientSecret != "" && a.Config.SalesforceUsername != "" && a.Config.SalesforcePassword != "" {
+		registerProvider("salesforce", providers.NewSalesforceProvider(), map[string]interface{}{
+			"instance_url":   a.Config.SalesforceInstanceURL,
+			"client_id":      a.Config.SalesforceClientID,
+			"client_secret":  a.Config.SalesforceClientSecret,
+			"username":       a.Config.SalesforceUsername,
+			"password":       a.Config.SalesforcePassword,
+			"security_token": a.Config.SalesforceSecurityToken,
+		})
+	}
+
+	// Register Vault if configured
+	if a.Config.VaultAddress != "" && a.Config.VaultToken != "" {
+		registerProvider("vault", providers.NewVaultProvider(), map[string]interface{}{
+			"address":   a.Config.VaultAddress,
+			"token":     a.Config.VaultToken,
+			"namespace": a.Config.VaultNamespace,
+		})
+	}
+
+	// Register Slack provider if configured
+	if a.Config.SlackAPIToken != "" {
+		registerProvider("slack", providers.NewSlackProvider(), map[string]interface{}{
+			"token": a.Config.SlackAPIToken,
+		})
+	}
+
+	// Register Rippling if configured
+	if a.Config.RipplingAPIToken != "" {
+		registerProvider("rippling", providers.NewRipplingProvider(), map[string]interface{}{
+			"api_url":   a.Config.RipplingAPIURL,
+			"api_token": a.Config.RipplingAPIToken,
+		})
+	}
+
+	// Register Jamf if configured
+	if a.Config.JamfBaseURL != "" && a.Config.JamfClientID != "" && a.Config.JamfClientSecret != "" {
+		registerProvider("jamf", providers.NewJamfProvider(), map[string]interface{}{
+			"base_url":      a.Config.JamfBaseURL,
+			"client_id":     a.Config.JamfClientID,
+			"client_secret": a.Config.JamfClientSecret,
+		})
+	}
+
+	// Register Intune if configured (falls back to Entra credentials when dedicated Intune vars are unset)
+	intuneTenantID := firstNonEmpty(a.Config.IntuneTenantID, a.Config.EntraTenantID)
+	intuneClientID := firstNonEmpty(a.Config.IntuneClientID, a.Config.EntraClientID)
+	intuneClientSecret := firstNonEmpty(a.Config.IntuneClientSecret, a.Config.EntraClientSecret)
+	if intuneTenantID != "" && intuneClientID != "" && intuneClientSecret != "" {
+		registerProvider("intune", providers.NewIntuneProvider(), map[string]interface{}{
+			"tenant_id":     intuneTenantID,
+			"client_id":     intuneClientID,
+			"client_secret": intuneClientSecret,
+		})
+	}
+
+	// Register Kandji if configured
+	if a.Config.KandjiAPIToken != "" {
+		registerProvider("kandji", providers.NewKandjiProvider(), map[string]interface{}{
+			"api_url":   a.Config.KandjiAPIURL,
+			"api_token": a.Config.KandjiAPIToken,
+		})
+	}
+
+	// Register CloudTrail if explicitly configured
+	if a.Config.CloudTrailRegion != "" || a.Config.CloudTrailTrailARN != "" {
+		cloudTrailConfig := map[string]interface{}{}
+		if a.Config.CloudTrailRegion != "" {
+			cloudTrailConfig["region"] = a.Config.CloudTrailRegion
+		}
+		if a.Config.CloudTrailTrailARN != "" {
+			cloudTrailConfig["trail_arn"] = a.Config.CloudTrailTrailARN
+		}
+		if a.Config.CloudTrailLookbackDays > 0 {
+			cloudTrailConfig["lookback_days"] = a.Config.CloudTrailLookbackDays
+		}
+		registerProvider("cloudtrail", providers.NewCloudTrailProvider(), cloudTrailConfig)
 	}
 }
 

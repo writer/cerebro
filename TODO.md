@@ -119,9 +119,10 @@
 ### P1: Provider Activation and Scheduled Sync Parity
 
 #### 1) Provider registration parity
-- [ ] Audit implemented provider constructors vs runtime registration list
+- [x] Audit implemented provider constructors vs runtime registration list
 - [ ] Mark providers as `production-ready`, `beta`, or `stub/incomplete`
-- [ ] Register production-ready providers behind explicit config gates
+- [x] Register production-ready providers behind explicit config gates
+  - [x] Added config-gated registration for `qualys`, `gitlab`, `cloudflare`, `salesforce`, `vault`, `slack`, `rippling`, `jamf`, `intune`, `kandji`, and `cloudtrail`
 - [ ] Hide or gate incomplete providers from public API listing where appropriate
 
 #### 2) Scheduled sync parity
