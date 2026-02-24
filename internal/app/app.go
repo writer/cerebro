@@ -387,7 +387,9 @@ func New(ctx context.Context) (*App, error) {
 	if err := app.initSnowflake(ctx); err != nil {
 		logger.Warn("snowflake initialization failed", "error", err)
 	}
-	app.initPolicy()
+	if err := app.initPolicy(); err != nil {
+		return nil, err
+	}
 
 	// Phase 2a: independent services in parallel (no cross-dependencies)
 	g, gctx := errgroup.WithContext(ctx)
@@ -469,11 +471,20 @@ func (a *App) initSnowflake(ctx context.Context) error {
 	return nil
 }
 
-func (a *App) initPolicy() {
+func (a *App) initPolicy() error {
 	a.Policy = policy.NewEngine()
 	if err := a.Policy.LoadPolicies(a.Config.PoliciesPath); err != nil {
+		explicitOnly, explicitErr := policy.ExplicitMappingsOnlyFromEnv()
+		if explicitErr != nil {
+			return fmt.Errorf("invalid %s: %w", "CEREBRO_POLICY_EXPLICIT_MAPPINGS_ONLY", explicitErr)
+		}
+		if explicitOnly {
+			return fmt.Errorf("policy initialization failed in explicit-mappings-only mode: %w", err)
+		}
 		a.Logger.Warn("failed to load policies", "error", err, "path", a.Config.PoliciesPath)
+		return nil
 	}
+	return nil
 }
 
 func (a *App) initFindings() {

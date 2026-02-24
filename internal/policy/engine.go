@@ -164,7 +164,7 @@ func (e *Engine) LoadPolicies(dir string) error {
 
 	registry := NewComplianceRegistry()
 
-	return filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -195,6 +195,29 @@ func (e *Engine) LoadPolicies(dir string) error {
 		e.policies[policyDef.ID] = &policyDef
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+
+	explicitOnly, err := ExplicitMappingsOnlyFromEnv()
+	if err != nil {
+		return fmt.Errorf("parse %s: %w", explicitMappingsOnlyEnv, err)
+	}
+	if !explicitOnly {
+		return nil
+	}
+
+	unmapped := unmappedPolicyResources(e.policies)
+	if len(unmapped) == 0 {
+		return nil
+	}
+
+	sample := unmapped
+	if len(sample) > 10 {
+		sample = sample[:10]
+	}
+
+	return fmt.Errorf("explicit mapping mode enabled with %d unmapped policy resources (sample: %s)", len(unmapped), strings.Join(sample, ", "))
 }
 
 func (e *Engine) AddPolicy(p *Policy) {
@@ -217,6 +240,53 @@ func (e *Engine) ListPolicies() []*Policy {
 	result := make([]*Policy, 0, len(e.policies))
 	for _, p := range e.policies {
 		result = append(result, p)
+	}
+	return result
+}
+
+// UnmappedPolicyResources returns resource types used by loaded policies that
+// are not explicitly present in ResourceToTableMapping.
+func (e *Engine) UnmappedPolicyResources() []string {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	return unmappedPolicyResources(e.policies)
+}
+
+func unmappedPolicyResources(policies map[string]*Policy) []string {
+	registry := GlobalMappingRegistry()
+	missing := make(map[string]struct{})
+
+	for _, p := range policies {
+		for _, resource := range splitPolicyResourceParts(p.Resource) {
+			if _, ok := registry.Get(resource); !ok {
+				missing[resource] = struct{}{}
+			}
+		}
+	}
+
+	result := make([]string, 0, len(missing))
+	for resource := range missing {
+		result = append(result, resource)
+	}
+	sort.Strings(result)
+	return result
+}
+
+func splitPolicyResourceParts(resource string) []string {
+	resource = strings.TrimSpace(resource)
+	if resource == "" {
+		return nil
+	}
+
+	parts := strings.Split(resource, "|")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" || part == "*" {
+			continue
+		}
+		result = append(result, part)
 	}
 	return result
 }

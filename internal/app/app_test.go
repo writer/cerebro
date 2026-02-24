@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -254,6 +255,32 @@ func TestNew_ServicesWired(t *testing.T) {
 	healthResults := app.Health.RunAll(ctx)
 	if len(healthResults) == 0 {
 		t.Error("Health should have registered checks")
+	}
+}
+
+func TestNew_ExplicitMappingsOnlyFailsOnUnmappedPolicy(t *testing.T) {
+	t.Setenv("CEREBRO_POLICY_EXPLICIT_MAPPINGS_ONLY", "true")
+	t.Setenv("SNOWFLAKE_PRIVATE_KEY", "")
+	t.Setenv("SNOWFLAKE_ACCOUNT", "")
+	t.Setenv("SNOWFLAKE_USER", "")
+
+	policiesDir := t.TempDir()
+	policyJSON := `{
+		"id": "strict-unmapped",
+		"name": "Strict Unmapped",
+		"effect": "forbid",
+		"resource": "unknown::resource",
+		"conditions": ["enabled == true"],
+		"severity": "high"
+	}`
+	if err := os.WriteFile(filepath.Join(policiesDir, "strict.json"), []byte(policyJSON), 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("POLICIES_PATH", policiesDir)
+
+	_, err := New(context.Background())
+	if err == nil {
+		t.Fatal("expected app initialization to fail in explicit mappings-only mode")
 	}
 }
 

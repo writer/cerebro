@@ -79,3 +79,29 @@ func TestOrphanTableThresholdFromEnv(t *testing.T) {
 		t.Fatal("expected invalid orphan threshold to return error")
 	}
 }
+
+func TestExplicitMappingsOnlyFromEnv(t *testing.T) {
+	t.Setenv("CEREBRO_POLICY_EXPLICIT_MAPPINGS_ONLY", "true")
+	value, err := ExplicitMappingsOnlyFromEnv()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !value {
+		t.Fatal("expected explicit mappings mode to be enabled")
+	}
+
+	t.Setenv("CEREBRO_POLICY_EXPLICIT_MAPPINGS_ONLY", "false")
+	value, err = ExplicitMappingsOnlyFromEnv()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if value {
+		t.Fatal("expected explicit mappings mode to be disabled")
+	}
+
+	t.Setenv("CEREBRO_POLICY_EXPLICIT_MAPPINGS_ONLY", "not-a-bool")
+	_, err = ExplicitMappingsOnlyFromEnv()
+	if err == nil {
+		t.Fatal("expected invalid explicit mapping mode to return error")
+	}
+}

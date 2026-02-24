@@ -8,6 +8,7 @@ import (
 
 const coverageThresholdEnv = "CEREBRO_POLICY_COVERAGE_MIN"
 const orphanThresholdEnv = "CEREBRO_POLICY_ORPHAN_TABLES_MAX"
+const explicitMappingsOnlyEnv = "CEREBRO_POLICY_EXPLICIT_MAPPINGS_ONLY"
 
 // CoverageReport explains policy coverage against available tables.
 type CoverageReport struct {
@@ -113,6 +114,19 @@ func OrphanTableThresholdFromEnv() (int, bool, error) {
 		value = 0
 	}
 	return value, true, nil
+}
+
+// ExplicitMappingsOnlyFromEnv returns whether fallback table heuristics are disabled.
+func ExplicitMappingsOnlyFromEnv() (bool, error) {
+	raw := strings.TrimSpace(os.Getenv(explicitMappingsOnlyEnv))
+	if raw == "" {
+		return false, nil
+	}
+	value, err := strconv.ParseBool(raw)
+	if err != nil {
+		return false, err
+	}
+	return value, nil
 }
 
 func resourceProvider(resource string) string {
