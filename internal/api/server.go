@@ -2119,8 +2119,48 @@ func (s *Server) analyzeAttackPaths(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getAttackPath(w http.ResponseWriter, r *http.Request) {
-	// For now, return path from analysis
-	s.json(w, http.StatusOK, map[string]interface{}{"id": chi.URLParam(r, "id")})
+	pathID := chi.URLParam(r, "id")
+	if pathID == "" {
+		s.error(w, http.StatusBadRequest, "path ID required")
+		return
+	}
+
+	maxDepth := 10
+	if depthStr := r.URL.Query().Get("max_depth"); depthStr != "" {
+		if d, err := strconv.Atoi(depthStr); err == nil && d > 0 {
+			maxDepth = d
+		}
+	}
+
+	highValueTargets := make([]string, 0)
+	if rawTargets := strings.TrimSpace(r.URL.Query().Get("targets")); rawTargets != "" {
+		for _, target := range strings.Split(rawTargets, ",") {
+			target = strings.TrimSpace(target)
+			if target != "" {
+				highValueTargets = append(highValueTargets, target)
+			}
+		}
+	}
+
+	if len(highValueTargets) == 0 {
+		for _, node := range s.app.AttackPath.GetAllNodes() {
+			if node.Type != attackpath.NodeTypeExternal {
+				highValueTargets = append(highValueTargets, node.ID)
+			}
+		}
+	}
+
+	finder := attackpath.NewPathFinder(s.app.AttackPath, maxDepth)
+	finder.SetHighValueTargets(highValueTargets)
+
+	for _, path := range finder.FindPaths(r.Context()) {
+		if path.ID == pathID {
+			s.json(w, http.StatusOK, path)
+			return
+		}
+	}
+
+	s.error(w, http.StatusNotFound, "attack path not found")
 }
 
 func (s *Server) getGraph(w http.ResponseWriter, r *http.Request) {

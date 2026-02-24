@@ -131,7 +131,7 @@
 - [ ] Add integration tests for scheduler execution result per provider (`success/fail/retry`)
 
 ### P1: API Surface Completeness (remove placeholders)
-- [ ] Replace `getAttackPath` placeholder response with real lookup and 404 behavior
+- [x] Replace `getAttackPath` placeholder response with real lookup and 404 behavior
 - [ ] Audit API handlers for placeholder notes/stub returns and track each one to closure
 - [ ] Add endpoint contract tests for previously stubbed handlers
 

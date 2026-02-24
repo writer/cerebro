@@ -422,6 +422,41 @@ func TestCompliancePreAuditToExport_Smoke(t *testing.T) {
 	}
 }
 
+// --- Attack path ---
+
+func TestGetAttackPath_ReturnsPath(t *testing.T) {
+	s := newTestServer(t)
+
+	s.app.AttackPath.AddNode(&attackpath.Node{ID: "external", Type: attackpath.NodeTypeExternal, Name: "Internet", Risk: attackpath.RiskHigh})
+	s.app.AttackPath.AddNode(&attackpath.Node{ID: "role", Type: attackpath.NodeTypeRole, Name: "Compromised Role", Risk: attackpath.RiskHigh})
+	s.app.AttackPath.AddNode(&attackpath.Node{ID: "db", Type: attackpath.NodeTypeDatabase, Name: "Prod DB", Risk: attackpath.RiskCritical})
+
+	s.app.AttackPath.AddEdge(&attackpath.Edge{ID: "edge-1", Source: "external", Target: "role", Type: attackpath.EdgeTypeExposedTo, Risk: attackpath.RiskHigh})
+	s.app.AttackPath.AddEdge(&attackpath.Edge{ID: "edge-2", Source: "role", Target: "db", Type: attackpath.EdgeTypeHasAccess, Risk: attackpath.RiskCritical})
+
+	w := do(t, s, "GET", "/api/v1/attack-paths/external-db", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := decodeJSON(t, w)
+	if body["id"] != "external-db" {
+		t.Fatalf("expected path id external-db, got %v", body["id"])
+	}
+	steps, ok := body["steps"].([]interface{})
+	if !ok || len(steps) == 0 {
+		t.Fatalf("expected non-empty steps, got %v", body["steps"])
+	}
+}
+
+func TestGetAttackPath_NotFound(t *testing.T) {
+	s := newTestServer(t)
+	w := do(t, s, "GET", "/api/v1/attack-paths/nonexistent", nil)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
 // --- Webhooks CRUD ---
 
 func TestWebhookCRUD(t *testing.T) {
