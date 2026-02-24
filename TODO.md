@@ -71,12 +71,11 @@
 ## Deep Review Gap Closure (2026-02-24)
 
 ### Baseline Snapshot (from deep review)
-- [ ] Record and commit a baseline snapshot in CI logs:
-  - policy files discovered: `545`
-  - executable condition/resource policies: `445`
-  - query-only policies: `99`
-  - duplicate policy IDs detected: `github-repo-branch-protection`
-  - compliance export API note points to missing CLI command (`cerebro compliance export`)
+- [x] Record and commit a baseline snapshot in CI logs *(via `TestRepositoryPolicyInventorySnapshot`)*:
+  - total JSON policy files discovered
+  - executable condition/resource policy count
+  - query-only policy count
+  - mixed-shape policy count and duplicate policy ID count
 
 ### P0: Policy Engine Contract Integrity
 
