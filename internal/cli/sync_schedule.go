@@ -15,6 +15,8 @@ import (
 	"github.com/robfig/cron/v3"
 	"github.com/spf13/cobra"
 
+	"github.com/writerinternal/cerebro/internal/app"
+	providerregistry "github.com/writerinternal/cerebro/internal/providers"
 	"github.com/writerinternal/cerebro/internal/snowflake"
 	nativesync "github.com/writerinternal/cerebro/internal/sync"
 )
@@ -77,6 +79,18 @@ var (
 	scheduleScanAfter  bool
 	scheduleRetry      int
 	scheduleOutputJSON bool
+
+	executeScheduledSyncFn = executeScheduledSync
+	saveScheduleFn         = saveSchedule
+	scheduleSleepFn        = time.Sleep
+	scheduleNowFn          = time.Now
+
+	executeAWSSyncFn      = executeAWSSync
+	executeGCPSyncFn      = executeGCPSync
+	executeAzureSyncFn    = executeAzureSync
+	executeProviderSyncFn = executeProviderSync
+
+	newScheduleAppFn = app.New
 )
 
 func init() {
@@ -186,7 +200,7 @@ func runScheduleCreate(cmd *cobra.Command, args []string) error {
 	}
 
 	// Validate provider
-	validProviders := []string{"aws", "gcp", "azure", "sentinelone", "okta", "github", "crowdstrike", "snyk", "tenable", "datadog", "gitlab", "cloudflare"}
+	validProviders := validScheduleProviders()
 	providerValid := false
 	for _, p := range validProviders {
 		if strings.EqualFold(scheduleProvider, p) {
@@ -410,25 +424,25 @@ shutdown:
 
 func runScheduledSync(client *snowflake.Client, schedule *SyncSchedule) {
 	ctx := context.Background()
-	start := time.Now()
+	start := scheduleNowFn()
 
 	Info("[%s] Starting scheduled sync for %s", schedule.Name, schedule.Provider)
 
 	// Update last run time
 	schedule.LastRun = start
 	schedule.LastStatus = "running"
-	_ = saveSchedule(ctx, client, schedule)
+	_ = saveScheduleFn(ctx, client, schedule)
 
 	// Build sync command args based on provider
 	var syncErr error
 	for attempt := 1; attempt <= schedule.Retry; attempt++ {
-		syncErr = executeScheduledSync(ctx, client, schedule)
+		syncErr = executeScheduledSyncFn(ctx, client, schedule)
 		if syncErr == nil {
 			break
 		}
 		if attempt < schedule.Retry {
 			Warning("[%s] Attempt %d failed, retrying: %v", schedule.Name, attempt, syncErr)
-			time.Sleep(time.Duration(attempt*5) * time.Second)
+			scheduleSleepFn(time.Duration(attempt*5) * time.Second)
 		}
 	}
 
@@ -445,23 +459,23 @@ func runScheduledSync(client *snowflake.Client, schedule *SyncSchedule) {
 	// Calculate next run
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 	if cronSched, err := parser.Parse(schedule.Cron); err == nil {
-		schedule.NextRun = cronSched.Next(time.Now())
+		schedule.NextRun = cronSched.Next(scheduleNowFn())
 	}
 
-	schedule.UpdatedAt = time.Now().UTC()
-	_ = saveSchedule(ctx, client, schedule)
+	schedule.UpdatedAt = scheduleNowFn().UTC()
+	_ = saveScheduleFn(ctx, client, schedule)
 }
 
 func executeScheduledSync(ctx context.Context, client *snowflake.Client, schedule *SyncSchedule) error {
-	switch schedule.Provider {
+	switch strings.ToLower(strings.TrimSpace(schedule.Provider)) {
 	case "aws":
-		return executeAWSSync(ctx, client, schedule)
+		return executeAWSSyncFn(ctx, client, schedule)
 	case "gcp":
-		return executeGCPSync(ctx, schedule)
+		return executeGCPSyncFn(ctx, client, schedule)
 	case "azure":
-		return executeAzureSync(ctx, schedule)
+		return executeAzureSyncFn(ctx, client, schedule)
 	default:
-		return executeProviderSync(ctx, schedule)
+		return executeProviderSyncFn(ctx, client, schedule)
 	}
 }
 
@@ -473,13 +487,11 @@ func executeAWSSync(ctx context.Context, client *snowflake.Client, schedule *Syn
 		return fmt.Errorf("load AWS config: %w", err)
 	}
 
+	spec := parseScheduledSyncSpec(schedule.Table)
+
 	var opts []nativesync.EngineOption
-	if schedule.Table != "" {
-		tables := strings.Split(schedule.Table, ",")
-		for i, t := range tables {
-			tables[i] = strings.TrimSpace(t)
-		}
-		opts = append(opts, nativesync.WithTableFilter(tables))
+	if len(spec.TableFilter) > 0 {
+		opts = append(opts, nativesync.WithTableFilter(spec.TableFilter))
 	}
 
 	syncer := nativesync.NewSyncEngine(client, slog.Default(), opts...)
@@ -487,18 +499,247 @@ func executeAWSSync(ctx context.Context, client *snowflake.Client, schedule *Syn
 	return err
 }
 
-func executeGCPSync(ctx context.Context, schedule *SyncSchedule) error {
-	Info("[%s] Executing GCP sync...", schedule.Name)
-	return fmt.Errorf("scheduled GCP sync requires --gcp-project; configure the schedule table filter or use the CLI directly")
+func executeGCPSync(ctx context.Context, client *snowflake.Client, schedule *SyncSchedule) error {
+	spec := parseScheduledSyncSpec(schedule.Table)
+
+	projects := append([]string{}, spec.GCPProjects...)
+	projects = append(projects, parseTableFilter(firstNonEmptyEnv("CEREBRO_GCP_PROJECTS", "GCP_PROJECTS"))...)
+	if project := firstNonEmptyEnv("CEREBRO_GCP_PROJECT", "GCP_PROJECT", "GOOGLE_CLOUD_PROJECT"); project != "" {
+		projects = append(projects, project)
+	}
+	projects = uniqueNonEmpty(projects)
+
+	orgID := spec.GCPOrg
+	if orgID == "" {
+		orgID = firstNonEmptyEnv("CEREBRO_GCP_ORG", "GCP_ORG_ID")
+	}
+	if orgID != "" {
+		orgProjects, err := nativesync.ListOrganizationProjects(ctx, orgID)
+		if err != nil {
+			return fmt.Errorf("discover GCP projects for org %q: %w", orgID, err)
+		}
+		projects = uniqueNonEmpty(append(projects, orgProjects...))
+	}
+
+	if len(projects) == 0 {
+		return fmt.Errorf("scheduled GCP sync requires project scope; set project=<id>/projects=<id|id2>/org=<id> in --table or configure CEREBRO_GCP_PROJECT, GCP_PROJECT, or GOOGLE_CLOUD_PROJECT")
+	}
+
+	Info("[%s] Executing GCP sync for %d project(s)...", schedule.Name, len(projects))
+	if len(spec.TableFilter) > 0 {
+		Info("[%s] Filtering GCP tables: %s", schedule.Name, strings.Join(spec.TableFilter, ", "))
+	}
+
+	var errs []error
+	for _, projectID := range projects {
+		opts := []nativesync.GCPEngineOption{nativesync.WithGCPProject(projectID)}
+		if len(spec.TableFilter) > 0 {
+			opts = append(opts, nativesync.WithGCPTableFilter(spec.TableFilter))
+		}
+		syncer := nativesync.NewGCPSyncEngine(client, slog.Default(), opts...)
+		if _, err := syncer.SyncAll(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("project %s: %w", projectID, err))
+		}
+	}
+
+	return summarizeSyncRunErrors("scheduled GCP sync", errs)
 }
 
-func executeAzureSync(ctx context.Context, schedule *SyncSchedule) error {
-	Info("[%s] Executing Azure sync...", schedule.Name)
-	return fmt.Errorf("scheduled Azure sync is not yet implemented; use the CLI directly")
+func executeAzureSync(ctx context.Context, client *snowflake.Client, schedule *SyncSchedule) error {
+	spec := parseScheduledSyncSpec(schedule.Table)
+	subscriptionID := spec.AzureSubscription
+	if subscriptionID == "" {
+		subscriptionID = firstNonEmptyEnv("CEREBRO_AZURE_SUBSCRIPTION_ID", "AZURE_SUBSCRIPTION_ID")
+	}
+
+	if subscriptionID != "" {
+		Info("[%s] Executing Azure sync for subscription %s...", schedule.Name, subscriptionID)
+	} else {
+		Info("[%s] Executing Azure sync (auto-discovering subscription)...", schedule.Name)
+	}
+	if len(spec.TableFilter) > 0 {
+		Info("[%s] Filtering Azure tables: %s", schedule.Name, strings.Join(spec.TableFilter, ", "))
+	}
+
+	opts := []nativesync.AzureEngineOption{}
+	if subscriptionID != "" {
+		opts = append(opts, nativesync.WithAzureSubscription(subscriptionID))
+	}
+	if len(spec.TableFilter) > 0 {
+		opts = append(opts, nativesync.WithAzureTableFilter(spec.TableFilter))
+	}
+
+	syncer, err := nativesync.NewAzureSyncEngine(client, slog.Default(), opts...)
+	if err != nil {
+		return fmt.Errorf("create Azure sync engine: %w", err)
+	}
+	_, err = syncer.SyncAll(ctx)
+	return err
 }
 
-func executeProviderSync(ctx context.Context, schedule *SyncSchedule) error {
-	return fmt.Errorf("scheduled sync for provider %q is not yet implemented", schedule.Provider)
+func executeProviderSync(ctx context.Context, _ *snowflake.Client, schedule *SyncSchedule) error {
+	providerName := strings.ToLower(strings.TrimSpace(schedule.Provider))
+	Info("[%s] Executing provider sync for %s...", schedule.Name, providerName)
+
+	application, err := newScheduleAppFn(ctx)
+	if err != nil {
+		return fmt.Errorf("initialize app for provider sync: %w", err)
+	}
+	defer func() {
+		if closeErr := application.Close(); closeErr != nil {
+			Warning("[%s] Failed to close app after provider sync: %v", schedule.Name, closeErr)
+		}
+	}()
+
+	if application.Providers == nil {
+		return fmt.Errorf("provider registry unavailable")
+	}
+
+	p, ok := application.Providers.Get(providerName)
+	if !ok {
+		metadata := providerregistry.ProviderMetadataFor(providerName)
+		if providerregistry.IsProviderIncomplete(providerName) {
+			return fmt.Errorf("provider %q is marked %s and cannot be scheduled", providerName, metadata.Maturity)
+		}
+		return fmt.Errorf("provider %q is not configured or not registered", providerName)
+	}
+
+	spec := parseScheduledSyncSpec(schedule.Table)
+	opts := providerregistry.SyncOptions{FullSync: true, Tables: spec.TableFilter}
+
+	_, err = p.Sync(ctx, opts)
+	if err != nil {
+		return fmt.Errorf("provider %q sync failed: %w", providerName, err)
+	}
+
+	return nil
+}
+
+type scheduledSyncSpec struct {
+	TableFilter       []string
+	GCPProjects       []string
+	GCPOrg            string
+	AzureSubscription string
+}
+
+func validScheduleProviders() []string {
+	set := map[string]struct{}{
+		"aws":   {},
+		"gcp":   {},
+		"azure": {},
+	}
+	for _, name := range providerregistry.PublicProviderNames() {
+		set[name] = struct{}{}
+	}
+	providers := make([]string, 0, len(set))
+	for name := range set {
+		providers = append(providers, name)
+	}
+	sort.Strings(providers)
+	return providers
+}
+
+func parseScheduledSyncSpec(raw string) scheduledSyncSpec {
+	parts := parseTableFilter(raw)
+	spec := scheduledSyncSpec{TableFilter: make([]string, 0, len(parts))}
+
+	for _, part := range parts {
+		if value, ok := directiveValue(part, "project"); ok {
+			spec.GCPProjects = append(spec.GCPProjects, value)
+			continue
+		}
+		if value, ok := directiveValue(part, "projects"); ok {
+			spec.GCPProjects = append(spec.GCPProjects, splitDirectiveList(value)...)
+			continue
+		}
+		if value, ok := directiveValue(part, "org"); ok {
+			spec.GCPOrg = value
+			continue
+		}
+		if value, ok := directiveValue(part, "organization"); ok {
+			spec.GCPOrg = value
+			continue
+		}
+		if value, ok := directiveValue(part, "subscription"); ok {
+			spec.AzureSubscription = value
+			continue
+		}
+		spec.TableFilter = append(spec.TableFilter, part)
+	}
+
+	spec.GCPProjects = uniqueNonEmpty(spec.GCPProjects)
+	if len(spec.TableFilter) == 0 {
+		spec.TableFilter = nil
+	}
+
+	return spec
+}
+
+func directiveValue(raw, key string) (string, bool) {
+	trimmed := strings.TrimSpace(raw)
+	lower := strings.ToLower(trimmed)
+	for _, sep := range []string{"=", ":"} {
+		prefix := key + sep
+		if strings.HasPrefix(lower, prefix) {
+			value := strings.TrimSpace(trimmed[len(prefix):])
+			if value == "" {
+				return "", false
+			}
+			return value, true
+		}
+	}
+	return "", false
+}
+
+func splitDirectiveList(value string) []string {
+	parts := strings.FieldsFunc(value, func(r rune) bool {
+		return r == '|' || r == ';'
+	})
+	if len(parts) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		out = append(out, trimmed)
+	}
+	return out
+}
+
+func firstNonEmptyEnv(keys ...string) string {
+	for _, key := range keys {
+		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func uniqueNonEmpty(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		key := strings.ToLower(trimmed)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, trimmed)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // Database functions for schedule persistence

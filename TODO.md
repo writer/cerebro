@@ -128,10 +128,14 @@
   - [x] `/api/v1/providers` now hides `stub/incomplete` providers by default unless `?include_incomplete=true`
 
 #### 2) Scheduled sync parity
-- [ ] Implement scheduled GCP sync path (project/scoping + table filter handling)
-- [ ] Implement scheduled Azure sync path (subscription scoping + table filter handling)
-- [ ] Define fallback behavior for non-native/custom providers in scheduler
-- [ ] Add integration tests for scheduler execution result per provider (`success/fail/retry`)
+- [x] Implement scheduled GCP sync path (project/scoping + table filter handling)
+  - [x] Added schedule scope directives (`project=`, `projects=`, `org=`) and env fallbacks for project resolution
+- [x] Implement scheduled Azure sync path (subscription scoping + table filter handling)
+  - [x] Added schedule scope directive (`subscription=`) and env fallback to `AZURE_SUBSCRIPTION_ID`
+- [x] Define fallback behavior for non-native/custom providers in scheduler
+  - [x] Schedules now execute registered provider sync via app provider registry and maturity gating
+- [x] Add integration tests for scheduler execution result per provider (`success/fail/retry`)
+  - [x] Added scheduler route + retry/status tests in `internal/cli/sync_schedule_test.go`
 
 ### P1: API Surface Completeness (remove placeholders)
 - [x] Replace `getAttackPath` placeholder response with real lookup and 404 behavior

@@ -1,6 +1,9 @@
 package providers
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestProviderMetadataFor_KnownProvider(t *testing.T) {
 	metadata := ProviderMetadataFor("github")
@@ -35,5 +38,15 @@ func TestProviderMetadataFor_UnknownDefaultsToPublicProductionReady(t *testing.T
 	}
 	if IsProviderIncomplete("custom-provider") {
 		t.Fatal("did not expect unknown provider to be incomplete")
+	}
+}
+
+func TestPublicProviderNames_ExcludesStubProviders(t *testing.T) {
+	names := PublicProviderNames()
+	if slices.Contains(names, "auth0") {
+		t.Fatal("did not expect stub provider auth0 in public provider names")
+	}
+	if !slices.Contains(names, "github") {
+		t.Fatal("expected github in public provider names")
 	}
 }

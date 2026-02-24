@@ -1,5 +1,7 @@
 package providers
 
+import "sort"
+
 // ProviderMaturity indicates provider implementation maturity.
 type ProviderMaturity string
 
@@ -58,4 +60,16 @@ func ProviderMetadataFor(name string) ProviderMetadata {
 // IsProviderIncomplete returns true when a provider is marked as stub/incomplete.
 func IsProviderIncomplete(name string) bool {
 	return ProviderMetadataFor(name).Maturity == ProviderMaturityStub
+}
+
+// PublicProviderNames returns sorted provider names that are marked public.
+func PublicProviderNames() []string {
+	names := make([]string, 0, len(providerMetadata))
+	for name, metadata := range providerMetadata {
+		if metadata.Public {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
 }
