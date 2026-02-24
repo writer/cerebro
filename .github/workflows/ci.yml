@@ -85,7 +85,7 @@ jobs:
   # PR: Build and push to sec-dev ECR
   build-and-push-sec-dev:
     name: Build & Push to sec-dev ECR
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     needs: [test, lint, policy-validate]
     if: github.event_name == 'pull_request'
     permissions:
@@ -115,9 +115,6 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -143,7 +140,7 @@ jobs:
   # Main merge: Build and push to sec-prod ECR
   build-and-push-sec-prod:
     name: Build & Push to sec-prod ECR
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     needs: [test, lint, policy-validate]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
@@ -174,9 +171,6 @@ jobs:
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
