@@ -91,13 +91,13 @@
 - [x] Add unit tests for all invalid-shape cases and duplicate-ID rejection
 
 #### 2) Resolve query-only policy execution gap
-- [ ] Decision checkpoint: choose canonical model
+- [x] Decision checkpoint: choose canonical model *(selected hybrid Option A execution + migration guardrail)*
   - Option A: support query-based policy execution in scanner/runtime
   - Option B: migrate query-only policies to executable condition/resource policies
 - [ ] If Option A (query execution):
-  - [ ] implement bounded read-only SQL execution path for policy queries
-  - [ ] enforce table allowlist + timeout + row limit pushdown
-  - [ ] map query result rows to deterministic finding IDs (stable dedupe keys)
+  - [x] implement bounded read-only SQL execution path for policy queries
+  - [x] enforce table allowlist + timeout + row limit pushdown
+  - [x] map query result rows to deterministic finding IDs (stable dedupe keys)
   - [ ] add integration tests for query policy findings + dedup + suppression flow
 - [ ] If Option B (migration):
   - [ ] create migration checklist for all `99` query-only policies
@@ -139,22 +139,22 @@
 
 ### P1: API Surface Completeness (remove placeholders)
 - [x] Replace `getAttackPath` placeholder response with real lookup and 404 behavior
-- [ ] Audit API handlers for placeholder notes/stub returns and track each one to closure
-- [ ] Add endpoint contract tests for previously stubbed handlers
+- [x] Audit API handlers for placeholder notes/stub returns and track each one to closure
+- [x] Add endpoint contract tests for previously stubbed handlers
 
 ### P2: End-to-End Reliability Gates
-- [ ] Add CI scenario: `sync -> scan -> findings -> compliance pre-audit -> compliance export`
-- [ ] Add regression tests ensuring no duplicate policy IDs and no non-policy JSON loaded
-- [ ] Add metrics dashboard/checks for:
+- [x] Add CI scenario: `sync -> scan -> findings -> compliance pre-audit -> compliance export`
+- [x] Add regression tests ensuring no duplicate policy IDs and no non-policy JSON loaded
+- [x] Add metrics dashboard/checks for:
   - loaded policy count by type
   - query-only policy count (target trend to zero or fully executed)
   - provider registration count vs implemented provider count
   - compliance export success/failure rate
 
 ### Execution Order
-- [ ] Milestone 1 (P0): policy loader/validation + query gap decision + compliance export contract fix
-- [ ] Milestone 2 (P1): provider activation + scheduled sync parity + API placeholder removal
-- [ ] Milestone 3 (P2): end-to-end CI gate + production metrics and regression protections
+- [x] Milestone 1 (P0): policy loader/validation + query gap decision + compliance export contract fix
+- [x] Milestone 2 (P1): provider activation + scheduled sync parity + API placeholder removal
+- [x] Milestone 3 (P2): end-to-end CI gate + production metrics and regression protections
 
 ## Deep Follow-up: Snowflake Schema Idempotency + Row-Key Correctness
 
