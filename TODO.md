@@ -57,7 +57,7 @@
 - [x] Incremental sync rules for large tables (delta windows) *(table-level `IncrementalLookback` metadata + `TestAWSTableIncrementalLookbackCoverage`)*
 - [x] Better deletion semantics for regional vs global tables *(scoped-delete safety guardrails + `TestDeleteScopedRows_RefusesUnscopedDeleteForGlobalTable`/`TestDeleteRowsByID_RefusesUnscopedDeleteForGlobalTable`)*
 - [x] Relationship extraction parity with asset tables *(row-key normalization + fresh-write `sync_time` tests for `resource_relationships`)*
-- [ ] Backfill strategy for partial API responses
+- [x] Backfill strategy for partial API responses *(normalized queue keying + scope validation with `TestBackfillRequestsFromRows` and invalid-scope guards)*
 
 ## Phase 6: Provider Expansion
 - [ ] GCP: IAM, Compute, Storage, KMS, Org policy, SCC, Artifact Registry depth

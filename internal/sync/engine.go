@@ -780,7 +780,28 @@ func (e *SyncEngine) ensureBackfillQueueTable(ctx context.Context) error {
 }
 
 func backfillRequestKey(table, region string) string {
-	return strings.ToLower(strings.TrimSpace(table)) + "|" + strings.ToLower(strings.TrimSpace(region))
+	return normalizeBackfillScopeValue(table) + "|" + normalizeBackfillScopeValue(region)
+}
+
+func normalizeBackfillScopeValue(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
+}
+
+func backfillQueueID(accountID, table, region string) string {
+	return fmt.Sprintf("aws:%s:%s:%s", strings.TrimSpace(accountID), normalizeBackfillScopeValue(table), normalizeBackfillScopeValue(region))
+}
+
+func backfillRequestsFromRows(rows []map[string]interface{}) map[string]string {
+	requests := make(map[string]string, len(rows))
+	for _, row := range rows {
+		tableName := normalizeBackfillScopeValue(queryRowString(row, "table_name"))
+		region := normalizeBackfillScopeValue(queryRowString(row, "region"))
+		if tableName == "" || region == "" {
+			continue
+		}
+		requests[backfillRequestKey(tableName, region)] = strings.TrimSpace(queryRowString(row, "reason"))
+	}
+	return requests
 }
 
 func hasBackfillRequest(backfills map[string]string, table, region string) bool {
@@ -807,25 +828,22 @@ func (e *SyncEngine) loadBackfillRequests(ctx context.Context) map[string]string
 		return nil
 	}
 
-	requests := make(map[string]string, len(result.Rows))
-	for _, row := range result.Rows {
-		tableName := queryRowString(row, "table_name")
-		region := queryRowString(row, "region")
-		if tableName == "" || region == "" {
-			continue
-		}
-		requests[backfillRequestKey(tableName, region)] = queryRowString(row, "reason")
-	}
-
-	return requests
+	return backfillRequestsFromRows(result.Rows)
 }
 
 func (e *SyncEngine) recordBackfillRequest(ctx context.Context, table, region, reason string) error {
+	table = normalizeBackfillScopeValue(table)
+	region = normalizeBackfillScopeValue(region)
+	reason = strings.TrimSpace(reason)
+	if table == "" || region == "" {
+		return fmt.Errorf("invalid backfill scope: table=%q region=%q", table, region)
+	}
+
 	if err := e.ensureBackfillQueueTable(ctx); err != nil {
 		return err
 	}
 
-	id := fmt.Sprintf("aws:%s:%s:%s", e.accountID, table, region)
+	id := backfillQueueID(e.accountID, table, region)
 	mergeQuery := `MERGE INTO _sync_backfill_queue t
 		USING (SELECT ? AS id, ? AS provider, ? AS table_name, ? AS region, ? AS account_id, ? AS reason, CURRENT_TIMESTAMP() AS requested_at) s
 		ON t.id = s.id
@@ -844,11 +862,17 @@ func (e *SyncEngine) recordBackfillRequest(ctx context.Context, table, region, r
 }
 
 func (e *SyncEngine) clearBackfillRequest(ctx context.Context, table, region string) error {
+	table = normalizeBackfillScopeValue(table)
+	region = normalizeBackfillScopeValue(region)
+	if table == "" || region == "" {
+		return fmt.Errorf("invalid backfill scope: table=%q region=%q", table, region)
+	}
+
 	if err := e.ensureBackfillQueueTable(ctx); err != nil {
 		return err
 	}
 
-	id := fmt.Sprintf("aws:%s:%s:%s", e.accountID, table, region)
+	id := backfillQueueID(e.accountID, table, region)
 	_, err := e.sf.Exec(ctx, "DELETE FROM _sync_backfill_queue WHERE id = ?", id)
 	if err != nil {
 		return fmt.Errorf("delete backfill request: %w", err)

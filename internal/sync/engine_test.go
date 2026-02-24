@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"context"
 	"testing"
 )
 
@@ -186,5 +187,53 @@ func TestBackfillRequestLookup(t *testing.T) {
 
 	if hasBackfillRequest(requests, "aws_guardduty_findings", "us-east-1") {
 		t.Fatalf("did not expect unrelated table to match backfill request")
+	}
+}
+
+func TestBackfillRequestKeyNormalization(t *testing.T) {
+	key := backfillRequestKey(" AWS_SECURITYHUB_FINDINGS ", " US-EAST-1 ")
+	if key != "aws_securityhub_findings|us-east-1" {
+		t.Fatalf("unexpected key: %s", key)
+	}
+}
+
+func TestBackfillQueueIDNormalization(t *testing.T) {
+	id := backfillQueueID(" 123456789012 ", " AWS_GUARDDUTY_FINDINGS ", " US-EAST-1 ")
+	if id != "aws:123456789012:aws_guardduty_findings:us-east-1" {
+		t.Fatalf("unexpected id: %s", id)
+	}
+}
+
+func TestBackfillRequestsFromRows(t *testing.T) {
+	rows := []map[string]interface{}{
+		{"table_name": " AWS_SECURITYHUB_FINDINGS ", "region": " US-EAST-1 ", "reason": " partial page "},
+		{"table_name": "", "region": "us-west-2", "reason": "ignored"},
+		{"table_name": "aws_guardduty_findings", "region": "", "reason": "ignored"},
+	}
+
+	requests := backfillRequestsFromRows(rows)
+	if len(requests) != 1 {
+		t.Fatalf("expected 1 request, got %d", len(requests))
+	}
+
+	got := requests[backfillRequestKey("aws_securityhub_findings", "us-east-1")]
+	if got != "partial page" {
+		t.Fatalf("unexpected reason: %q", got)
+	}
+}
+
+func TestRecordBackfillRequestRejectsInvalidScope(t *testing.T) {
+	e := &SyncEngine{}
+	err := e.recordBackfillRequest(context.Background(), "", "us-east-1", "partial page")
+	if err == nil {
+		t.Fatalf("expected invalid scope error")
+	}
+}
+
+func TestClearBackfillRequestRejectsInvalidScope(t *testing.T) {
+	e := &SyncEngine{}
+	err := e.clearBackfillRequest(context.Background(), "aws_securityhub_findings", "")
+	if err == nil {
+		t.Fatalf("expected invalid scope error")
 	}
 }
