@@ -19,6 +19,7 @@ type ProviderMetadata struct {
 }
 
 var providerMetadata = map[string]ProviderMetadata{
+	"atlassian":        {Name: "atlassian", Maturity: ProviderMaturityBeta, Public: true},
 	"azure":            {Name: "azure", Maturity: ProviderMaturityProductionReady, Public: true},
 	"cloudflare":       {Name: "cloudflare", Maturity: ProviderMaturityProductionReady, Public: true},
 	"cloudtrail":       {Name: "cloudtrail", Maturity: ProviderMaturityBeta, Public: true},

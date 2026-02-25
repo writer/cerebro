@@ -792,6 +792,15 @@ func (a *App) initProviders(ctx context.Context) {
 		})
 	}
 
+	// Register Atlassian if configured (reuses Jira credentials)
+	if a.Config.JiraBaseURL != "" && a.Config.JiraEmail != "" && a.Config.JiraAPIToken != "" {
+		registerProvider("atlassian", providers.NewAtlassianProvider(), map[string]interface{}{
+			"base_url":  a.Config.JiraBaseURL,
+			"email":     a.Config.JiraEmail,
+			"api_token": a.Config.JiraAPIToken,
+		})
+	}
+
 	// Register Google Workspace if configured
 	if a.Config.GoogleWorkspaceCredentialsJSON != "" {
 		registerProvider("google_workspace", providers.NewGoogleWorkspaceProvider(), map[string]interface{}{
