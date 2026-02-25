@@ -16,15 +16,15 @@ func TestProviderMetadataFor_KnownProvider(t *testing.T) {
 }
 
 func TestProviderMetadataFor_StubProvider(t *testing.T) {
-	metadata := ProviderMetadataFor("jumpcloud")
+	metadata := ProviderMetadataFor("duo")
 	if metadata.Maturity != ProviderMaturityStub {
-		t.Fatalf("expected jumpcloud maturity %q, got %q", ProviderMaturityStub, metadata.Maturity)
+		t.Fatalf("expected duo maturity %q, got %q", ProviderMaturityStub, metadata.Maturity)
 	}
 	if metadata.Public {
-		t.Fatal("expected jumpcloud to be non-public")
+		t.Fatal("expected duo to be non-public")
 	}
-	if !IsProviderIncomplete("jumpcloud") {
-		t.Fatal("expected jumpcloud to be incomplete")
+	if !IsProviderIncomplete("duo") {
+		t.Fatal("expected duo to be incomplete")
 	}
 }
 
@@ -43,8 +43,11 @@ func TestProviderMetadataFor_UnknownDefaultsToPublicProductionReady(t *testing.T
 
 func TestPublicProviderNames_ExcludesStubProviders(t *testing.T) {
 	names := PublicProviderNames()
-	if slices.Contains(names, "jumpcloud") {
-		t.Fatal("did not expect stub provider jumpcloud in public provider names")
+	if slices.Contains(names, "duo") {
+		t.Fatal("did not expect stub provider duo in public provider names")
+	}
+	if !slices.Contains(names, "jumpcloud") {
+		t.Fatal("expected jumpcloud in public provider names")
 	}
 	if !slices.Contains(names, "onelogin") {
 		t.Fatal("expected onelogin in public provider names")
@@ -80,8 +83,11 @@ func TestPublicProviderNames_ExcludesStubProviders(t *testing.T) {
 
 func TestImplementedProviderNames_ExcludesStubProviders(t *testing.T) {
 	names := ImplementedProviderNames()
-	if slices.Contains(names, "jumpcloud") {
-		t.Fatal("did not expect stub provider jumpcloud in implemented provider names")
+	if slices.Contains(names, "duo") {
+		t.Fatal("did not expect stub provider duo in implemented provider names")
+	}
+	if !slices.Contains(names, "jumpcloud") {
+		t.Fatal("expected jumpcloud in implemented provider names")
 	}
 	if !slices.Contains(names, "onelogin") {
 		t.Fatal("expected onelogin in implemented provider names")

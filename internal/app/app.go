@@ -283,6 +283,11 @@ type Config struct {
 	OneLoginClientID     string
 	OneLoginClientSecret string
 
+	// JumpCloud Provider
+	JumpCloudURL      string
+	JumpCloudAPIToken string
+	JumpCloudOrgID    string
+
 	// GitLab Provider
 	GitLabToken   string
 	GitLabBaseURL string
@@ -475,6 +480,9 @@ func LoadConfig() *Config {
 		OneLoginURL:                      getEnv("ONELOGIN_URL", ""),
 		OneLoginClientID:                 getEnv("ONELOGIN_CLIENT_ID", ""),
 		OneLoginClientSecret:             getEnv("ONELOGIN_CLIENT_SECRET", ""),
+		JumpCloudURL:                     getEnv("JUMPCLOUD_URL", "https://console.jumpcloud.com"),
+		JumpCloudAPIToken:                getEnv("JUMPCLOUD_API_TOKEN", ""),
+		JumpCloudOrgID:                   getEnv("JUMPCLOUD_ORG_ID", ""),
 		GitLabToken:                      getEnv("GITLAB_TOKEN", ""),
 		GitLabBaseURL:                    getEnv("GITLAB_BASE_URL", "https://gitlab.com"),
 		TerraformCloudToken:              getEnv("TFC_TOKEN", ""),
@@ -1054,6 +1062,18 @@ func (a *App) initProviders(ctx context.Context) {
 			"client_id":     a.Config.OneLoginClientID,
 			"client_secret": a.Config.OneLoginClientSecret,
 		})
+	}
+
+	// Register JumpCloud if configured
+	if a.Config.JumpCloudAPIToken != "" {
+		jumpCloudConfig := map[string]interface{}{
+			"url":       a.Config.JumpCloudURL,
+			"api_token": a.Config.JumpCloudAPIToken,
+		}
+		if a.Config.JumpCloudOrgID != "" {
+			jumpCloudConfig["org_id"] = a.Config.JumpCloudOrgID
+		}
+		registerProvider("jumpcloud", providers.NewJumpCloudProvider(), jumpCloudConfig)
 	}
 
 	// Register GitLab if configured

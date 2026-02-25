@@ -716,7 +716,7 @@ func TestListProviders(t *testing.T) {
 func TestListProviders_HidesIncompleteByDefault(t *testing.T) {
 	a := newTestApp(t)
 	a.Providers.Register(&staticProvider{name: "okta", provider: providers.ProviderTypeSaaS})
-	a.Providers.Register(&staticProvider{name: "jumpcloud", provider: providers.ProviderTypeSaaS})
+	a.Providers.Register(&staticProvider{name: "duo", provider: providers.ProviderTypeSaaS})
 
 	s := NewServer(a)
 	w := do(t, s, "GET", "/api/v1/providers/", nil)
@@ -741,7 +741,7 @@ func TestListProviders_HidesIncompleteByDefault(t *testing.T) {
 func TestListProviders_IncludeIncomplete(t *testing.T) {
 	a := newTestApp(t)
 	a.Providers.Register(&staticProvider{name: "okta", provider: providers.ProviderTypeSaaS})
-	a.Providers.Register(&staticProvider{name: "jumpcloud", provider: providers.ProviderTypeSaaS})
+	a.Providers.Register(&staticProvider{name: "duo", provider: providers.ProviderTypeSaaS})
 
 	s := NewServer(a)
 	w := do(t, s, "GET", "/api/v1/providers/?include_incomplete=true", nil)
@@ -755,32 +755,32 @@ func TestListProviders_IncludeIncomplete(t *testing.T) {
 	}
 
 	items := body["providers"].([]interface{})
-	foundJumpCloud := false
+	foundDuo := false
 	for _, item := range items {
 		provider := item.(map[string]interface{})
-		if provider["name"] == "jumpcloud" {
-			foundJumpCloud = true
+		if provider["name"] == "duo" {
+			foundDuo = true
 			if provider["maturity"] != string(providers.ProviderMaturityStub) {
-				t.Fatalf("expected jumpcloud maturity %q, got %v", providers.ProviderMaturityStub, provider["maturity"])
+				t.Fatalf("expected duo maturity %q, got %v", providers.ProviderMaturityStub, provider["maturity"])
 			}
 		}
 	}
-	if !foundJumpCloud {
-		t.Fatal("expected jumpcloud in provider list when include_incomplete=true")
+	if !foundDuo {
+		t.Fatal("expected duo in provider list when include_incomplete=true")
 	}
 }
 
 func TestGetProvider_IncompleteHiddenByDefault(t *testing.T) {
 	a := newTestApp(t)
-	a.Providers.Register(&staticProvider{name: "jumpcloud", provider: providers.ProviderTypeSaaS})
+	a.Providers.Register(&staticProvider{name: "duo", provider: providers.ProviderTypeSaaS})
 	s := NewServer(a)
 
-	w := do(t, s, "GET", "/api/v1/providers/jumpcloud", nil)
+	w := do(t, s, "GET", "/api/v1/providers/duo", nil)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", w.Code)
 	}
 
-	w = do(t, s, "GET", "/api/v1/providers/jumpcloud?include_incomplete=true", nil)
+	w = do(t, s, "GET", "/api/v1/providers/duo?include_incomplete=true", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 with include_incomplete, got %d", w.Code)
 	}
