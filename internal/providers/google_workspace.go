@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"golang.org/x/oauth2/google"
@@ -56,6 +58,7 @@ func (g *GoogleWorkspaceProvider) Configure(ctx context.Context, config map[stri
 	conf, err := google.JWTConfigFromJSON(g.credentials,
 		"https://www.googleapis.com/auth/admin.directory.user.readonly",
 		"https://www.googleapis.com/auth/admin.directory.group.readonly",
+		"https://www.googleapis.com/auth/admin.directory.group.member.readonly",
 		"https://www.googleapis.com/auth/admin.directory.domain.readonly",
 	)
 	if err != nil {
@@ -178,6 +181,14 @@ func (g *GoogleWorkspaceProvider) Sync(ctx context.Context, opts SyncOptions) (*
 		result.TotalRows += groups.Rows
 	}
 
+	groupMembers, err := g.syncGroupMembers(ctx)
+	if err != nil {
+		result.Errors = append(result.Errors, "group_members: "+err.Error())
+	} else {
+		result.Tables = append(result.Tables, *groupMembers)
+		result.TotalRows += groupMembers.Rows
+	}
+
 	// Sync domains
 	domains, err := g.syncDomains(ctx)
 	if err != nil {
@@ -268,6 +279,75 @@ func (g *GoogleWorkspaceProvider) syncDomains(ctx context.Context) (*TableResult
 	return g.syncTable(ctx, schema, rows)
 }
 
+func (g *GoogleWorkspaceProvider) syncGroupMembers(ctx context.Context) (*TableResult, error) {
+	schema, err := g.schemaFor("google_workspace_group_members")
+	result := &TableResult{Name: "google_workspace_group_members"}
+	if err != nil {
+		return result, err
+	}
+
+	groups, err := g.listAll(ctx, "https://admin.googleapis.com/admin/directory/v1/groups", map[string]string{
+		"domain":     g.domain,
+		"maxResults": "200",
+	}, "groups")
+	if err != nil {
+		return result, err
+	}
+
+	rows := make([]map[string]interface{}, 0)
+	seen := make(map[string]struct{})
+
+	for _, rawGroup := range groups {
+		group := normalizeGoogleGroup(rawGroup)
+		groupID := providerStringValue(group["id"])
+		if groupID == "" {
+			groupID = providerStringValue(group["email"])
+		}
+		if groupID == "" {
+			continue
+		}
+
+		membersURL := fmt.Sprintf("https://admin.googleapis.com/admin/directory/v1/groups/%s/members", url.PathEscape(groupID))
+		members, memberErr := g.listAll(ctx, membersURL, map[string]string{
+			"maxResults": "200",
+		}, "members")
+		if memberErr != nil {
+			if isGoogleWorkspaceIgnorableError(memberErr) {
+				continue
+			}
+			return result, fmt.Errorf("list group members for %q: %w", groupID, memberErr)
+		}
+
+		for _, rawMember := range members {
+			member := normalizeGoogleRow(rawMember)
+			memberID := providerStringValue(member["id"])
+			if memberID == "" {
+				memberID = providerStringValue(member["email"])
+			}
+			if memberID == "" {
+				continue
+			}
+
+			id := groupID + "|" + memberID
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+
+			rows = append(rows, map[string]interface{}{
+				"id":       id,
+				"group_id": groupID,
+				"email":    member["email"],
+				"role":     member["role"],
+				"type":     member["type"],
+				"status":   member["status"],
+			})
+		}
+	}
+
+	return g.syncTable(ctx, schema, rows)
+}
+
 func (g *GoogleWorkspaceProvider) request(ctx context.Context, url string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -297,15 +377,20 @@ func (g *GoogleWorkspaceProvider) listAll(ctx context.Context, baseURL string, p
 	pageToken := ""
 
 	for {
-		url := baseURL + "?"
+		parsed, err := url.Parse(baseURL)
+		if err != nil {
+			return nil, err
+		}
+		query := parsed.Query()
 		for k, v := range params {
-			url += fmt.Sprintf("%s=%s&", k, v)
+			query.Set(k, v)
 		}
 		if pageToken != "" {
-			url += "pageToken=" + pageToken
+			query.Set("pageToken", pageToken)
 		}
+		parsed.RawQuery = query.Encode()
 
-		body, err := g.request(ctx, url)
+		body, err := g.request(ctx, parsed.String())
 		if err != nil {
 			return nil, err
 		}
@@ -331,6 +416,14 @@ func (g *GoogleWorkspaceProvider) listAll(ctx context.Context, baseURL string, p
 	}
 
 	return allItems, nil
+}
+
+func isGoogleWorkspaceIgnorableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, "API error 403") || strings.Contains(message, "API error 404")
 }
 
 func normalizeGoogleUser(user map[string]interface{}) map[string]interface{} {
