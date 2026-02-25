@@ -38,6 +38,21 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.25'
+          cache: false
+
+      - name: Restore Go module cache
+        id: go-mod-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/go/pkg/mod
+          key: go-mod-${{ runner.os }}-${{ hashFiles('go.sum') }}
+
+      - name: Restore Go build cache (shard)
+        id: go-build-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/go-build
+          key: go-build-${{ runner.os }}-shard-${{ matrix.shard_index }}-${{ hashFiles('go.sum') }}
 
       - name: Run tests
         shell: bash
@@ -58,6 +73,20 @@ jobs:
           files: ./coverage-${{ matrix.shard_index }}.out
           flags: shard-${{ matrix.shard_index }}
           fail_ci_if_error: false
+
+      - name: Save Go module cache
+        if: matrix.shard_index == 0 && steps.go-mod-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/go/pkg/mod
+          key: go-mod-${{ runner.os }}-${{ hashFiles('go.sum') }}
+
+      - name: Save Go build cache (shard)
+        if: steps.go-build-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/go-build
+          key: go-build-${{ runner.os }}-shard-${{ matrix.shard_index }}-${{ hashFiles('go.sum') }}
 
   test:
     name: test
