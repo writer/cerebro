@@ -980,6 +980,13 @@ func (a *App) initProviders(ctx context.Context) {
 		})
 	}
 
+	// Register Semgrep if configured
+	if a.Config.SemgrepAPIToken != "" {
+		registerProvider("semgrep", providers.NewSemgrepProvider(), map[string]interface{}{
+			"api_token": a.Config.SemgrepAPIToken,
+		})
+	}
+
 	// Register GitLab if configured
 	if a.Config.GitLabToken != "" {
 		registerProvider("gitlab", providers.NewGitLabProvider(), map[string]interface{}{

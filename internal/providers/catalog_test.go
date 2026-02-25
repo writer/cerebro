@@ -16,15 +16,15 @@ func TestProviderMetadataFor_KnownProvider(t *testing.T) {
 }
 
 func TestProviderMetadataFor_StubProvider(t *testing.T) {
-	metadata := ProviderMetadataFor("semgrep")
+	metadata := ProviderMetadataFor("servicenow")
 	if metadata.Maturity != ProviderMaturityStub {
-		t.Fatalf("expected semgrep maturity %q, got %q", ProviderMaturityStub, metadata.Maturity)
+		t.Fatalf("expected servicenow maturity %q, got %q", ProviderMaturityStub, metadata.Maturity)
 	}
 	if metadata.Public {
-		t.Fatal("expected semgrep to be non-public")
+		t.Fatal("expected servicenow to be non-public")
 	}
-	if !IsProviderIncomplete("semgrep") {
-		t.Fatal("expected semgrep to be incomplete")
+	if !IsProviderIncomplete("servicenow") {
+		t.Fatal("expected servicenow to be incomplete")
 	}
 }
 
@@ -43,11 +43,14 @@ func TestProviderMetadataFor_UnknownDefaultsToPublicProductionReady(t *testing.T
 
 func TestPublicProviderNames_ExcludesStubProviders(t *testing.T) {
 	names := PublicProviderNames()
-	if slices.Contains(names, "semgrep") {
-		t.Fatal("did not expect stub provider semgrep in public provider names")
+	if slices.Contains(names, "servicenow") {
+		t.Fatal("did not expect stub provider servicenow in public provider names")
 	}
 	if !slices.Contains(names, "auth0") {
 		t.Fatal("expected auth0 in public provider names")
+	}
+	if !slices.Contains(names, "semgrep") {
+		t.Fatal("expected semgrep in public provider names")
 	}
 	if !slices.Contains(names, "terraform_cloud") {
 		t.Fatal("expected terraform_cloud in public provider names")
@@ -65,11 +68,14 @@ func TestPublicProviderNames_ExcludesStubProviders(t *testing.T) {
 
 func TestImplementedProviderNames_ExcludesStubProviders(t *testing.T) {
 	names := ImplementedProviderNames()
-	if slices.Contains(names, "semgrep") {
-		t.Fatal("did not expect stub provider semgrep in implemented provider names")
+	if slices.Contains(names, "servicenow") {
+		t.Fatal("did not expect stub provider servicenow in implemented provider names")
 	}
 	if !slices.Contains(names, "auth0") {
 		t.Fatal("expected auth0 in implemented provider names")
+	}
+	if !slices.Contains(names, "semgrep") {
+		t.Fatal("expected semgrep in implemented provider names")
 	}
 	if !slices.Contains(names, "terraform_cloud") {
 		t.Fatal("expected terraform_cloud in implemented provider names")

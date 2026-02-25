@@ -42,6 +42,7 @@ var providerMetadata = map[string]ProviderMetadata{
 	"ramp":             {Name: "ramp", Maturity: ProviderMaturityBeta, Public: true},
 	"rippling":         {Name: "rippling", Maturity: ProviderMaturityBeta, Public: true},
 	"salesforce":       {Name: "salesforce", Maturity: ProviderMaturityBeta, Public: true},
+	"semgrep":          {Name: "semgrep", Maturity: ProviderMaturityBeta, Public: true},
 	"sentinelone":      {Name: "sentinelone", Maturity: ProviderMaturityProductionReady, Public: true},
 	"slack":            {Name: "slack", Maturity: ProviderMaturityBeta, Public: true},
 	"snyk":             {Name: "snyk", Maturity: ProviderMaturityProductionReady, Public: true},
@@ -56,7 +57,7 @@ var providerMetadata = map[string]ProviderMetadata{
 	"zoom":             {Name: "zoom", Maturity: ProviderMaturityBeta, Public: true},
 
 	// Planned but not yet implemented providers.
-	"semgrep": {Name: "semgrep", Maturity: ProviderMaturityStub, Public: false},
+	"servicenow": {Name: "servicenow", Maturity: ProviderMaturityStub, Public: false},
 }
 
 // ProviderMetadataFor returns metadata for a provider name.

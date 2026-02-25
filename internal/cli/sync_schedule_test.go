@@ -55,8 +55,11 @@ func TestValidScheduleProviders(t *testing.T) {
 	if !slices.Contains(providers, "splunk") {
 		t.Fatalf("expected splunk in valid providers: %v", providers)
 	}
-	if slices.Contains(providers, "semgrep") {
-		t.Fatalf("did not expect stub provider semgrep in valid providers: %v", providers)
+	if !slices.Contains(providers, "semgrep") {
+		t.Fatalf("expected semgrep in valid providers: %v", providers)
+	}
+	if slices.Contains(providers, "servicenow") {
+		t.Fatalf("did not expect stub provider servicenow in valid providers: %v", providers)
 	}
 }
 
