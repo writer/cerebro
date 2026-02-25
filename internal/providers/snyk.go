@@ -227,6 +227,9 @@ func (s *SnykProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResult,
 	for _, project := range projects {
 		issues, err := s.fetchProjectIssues(ctx, project.ID)
 		if err != nil {
+			if isSnykIgnorableError(err) {
+				continue
+			}
 			result.Errors = append(result.Errors, fmt.Sprintf("issues[%s]: %s", project.ID, err.Error()))
 			continue
 		}
@@ -926,4 +929,12 @@ func normalizeSnykMap(value map[string]interface{}) map[string]interface{} {
 		return map[string]interface{}{}
 	}
 	return normalized
+}
+
+func isSnykIgnorableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, "snyk API error 403") || strings.Contains(message, "snyk API error 404")
 }

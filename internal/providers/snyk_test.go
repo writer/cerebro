@@ -216,3 +216,64 @@ func TestSnykNextPagePathRejectsForeignHost(t *testing.T) {
 		t.Fatal("expected host validation error")
 	}
 }
+
+func TestSnykProviderSync_IgnoresPermissionDeniedIssues(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/rest/orgs/org-1/projects":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"data": []map[string]interface{}{
+					{"id": "proj-1", "attributes": map[string]interface{}{"name": "first"}},
+					{"id": "proj-2", "attributes": map[string]interface{}{"name": "second"}},
+				},
+			})
+		case "/v1/org/org-1/project/proj-1/aggregated-issues":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"issues": []map[string]interface{}{
+					{
+						"id":         "issue-1",
+						"issueType":  "package_vulnerability",
+						"pkgName":    "openssl",
+						"pkgVersion": "3.0.0",
+						"severity":   "high",
+						"title":      "Issue one",
+					},
+				},
+			})
+		case "/v1/org/org-1/project/proj-2/aggregated-issues":
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"error":"forbidden"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	provider := NewSnykProvider()
+	err := provider.Configure(context.Background(), map[string]interface{}{
+		"api_token": "token",
+		"org_id":    "org-1",
+		"base_url":  server.URL,
+	})
+	if err != nil {
+		t.Fatalf("configure failed: %v", err)
+	}
+
+	result, err := provider.Sync(context.Background(), SyncOptions{FullSync: true})
+	if err != nil {
+		t.Fatalf("sync failed: %v", err)
+	}
+	if len(result.Errors) != 0 {
+		t.Fatalf("unexpected sync errors: %v", result.Errors)
+	}
+
+	counts := map[string]int64{}
+	for _, table := range result.Tables {
+		counts[table.Name] = table.Rows
+	}
+	if counts["snyk_projects"] != 2 || counts["snyk_issues"] != 1 || counts["snyk_dependencies"] != 1 {
+		t.Fatalf("unexpected row counts: %+v", counts)
+	}
+}
