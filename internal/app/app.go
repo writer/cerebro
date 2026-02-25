@@ -182,6 +182,13 @@ type Config struct {
 	SnykAPIToken string
 	SnykOrgID    string
 
+	// Zoom Provider
+	ZoomAccountID    string
+	ZoomClientID     string
+	ZoomClientSecret string
+	ZoomAPIURL       string
+	ZoomTokenURL     string
+
 	// Wiz Provider
 	WizClientID     string
 	WizClientSecret string
@@ -357,6 +364,11 @@ func LoadConfig() *Config {
 		AzureSubscriptionID:              getEnv("AZURE_SUBSCRIPTION_ID", ""),
 		SnykAPIToken:                     getEnv("SNYK_API_TOKEN", ""),
 		SnykOrgID:                        getEnv("SNYK_ORG_ID", ""),
+		ZoomAccountID:                    getEnv("ZOOM_ACCOUNT_ID", ""),
+		ZoomClientID:                     getEnv("ZOOM_CLIENT_ID", ""),
+		ZoomClientSecret:                 getEnv("ZOOM_CLIENT_SECRET", ""),
+		ZoomAPIURL:                       getEnv("ZOOM_API_URL", "https://api.zoom.us/v2"),
+		ZoomTokenURL:                     getEnv("ZOOM_TOKEN_URL", "https://zoom.us/oauth/token"),
 		WizClientID:                      getEnv("WIZ_CLIENT_ID", ""),
 		WizClientSecret:                  getEnv("WIZ_CLIENT_SECRET", ""),
 		WizAPIURL:                        getEnv("WIZ_API_URL", ""),
@@ -756,6 +768,17 @@ func (a *App) initProviders(ctx context.Context) {
 		registerProvider("snyk", providers.NewSnykProvider(), map[string]interface{}{
 			"api_token": a.Config.SnykAPIToken,
 			"org_id":    a.Config.SnykOrgID,
+		})
+	}
+
+	// Register Zoom if configured
+	if a.Config.ZoomAccountID != "" && a.Config.ZoomClientID != "" && a.Config.ZoomClientSecret != "" {
+		registerProvider("zoom", providers.NewZoomProvider(), map[string]interface{}{
+			"account_id":    a.Config.ZoomAccountID,
+			"client_id":     a.Config.ZoomClientID,
+			"client_secret": a.Config.ZoomClientSecret,
+			"base_url":      a.Config.ZoomAPIURL,
+			"token_url":     a.Config.ZoomTokenURL,
 		})
 	}
 

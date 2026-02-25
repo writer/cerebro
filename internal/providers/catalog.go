@@ -43,6 +43,7 @@ var providerMetadata = map[string]ProviderMetadata{
 	"tenable":          {Name: "tenable", Maturity: ProviderMaturityProductionReady, Public: true},
 	"vault":            {Name: "vault", Maturity: ProviderMaturityBeta, Public: true},
 	"wiz":              {Name: "wiz", Maturity: ProviderMaturityBeta, Public: true},
+	"zoom":             {Name: "zoom", Maturity: ProviderMaturityBeta, Public: true},
 
 	// Planned but not yet implemented providers.
 	"auth0":           {Name: "auth0", Maturity: ProviderMaturityStub, Public: false},
