@@ -186,7 +186,11 @@ func runBackfillRelationships(cmd *cobra.Command, args []string) error {
 }
 
 func runGCPSync(ctx context.Context, start time.Time, projectID string) error {
-	Info("Starting GCP sync for project: %s", projectID)
+	if strings.TrimSpace(projectID) == "" {
+		Info("Starting GCP sync for organization scope")
+	} else {
+		Info("Starting GCP sync for project: %s", projectID)
+	}
 	tableFilter := parseTableFilter(syncTable)
 	nativeTableFilter, securityTableFilter, runNativeSync, runSecuritySync, err := resolveGCPTableFilters(tableFilter, syncSecurity)
 	if err != nil {
@@ -201,6 +205,9 @@ func runGCPSync(ctx context.Context, start time.Time, projectID string) error {
 		if len(securityTableFilter) > 0 {
 			Info("GCP security table filter: %s", strings.Join(securityTableFilter, ", "))
 		}
+	}
+	if syncValidate && !runNativeSync {
+		return fmt.Errorf("validation for GCP security-only table filters is not supported; include at least one native table")
 	}
 
 	client, err := createSnowflakeClient()
@@ -231,9 +238,6 @@ func runGCPSync(ctx context.Context, start time.Time, projectID string) error {
 			return err
 		}
 	} else {
-		if syncValidate {
-			return fmt.Errorf("validation for GCP security-only table filters is not supported; include at least one native table")
-		}
 		Info("Skipping native GCP sync because --table filter targets only security tables")
 	}
 
@@ -276,10 +280,25 @@ func runGCPSync(ctx context.Context, start time.Time, projectID string) error {
 }
 
 func runGCPOrgSync(ctx context.Context, start time.Time, orgID string) error {
+	tableFilter := parseTableFilter(syncTable)
+	_, securityTableFilter, runNativeSync, runSecuritySync, err := resolveGCPTableFilters(tableFilter, syncSecurity)
+	if err != nil {
+		return err
+	}
+
+	requiresProjectScope := runNativeSync || (runSecuritySync && gcpSecurityFiltersRequireProject(securityTableFilter))
+	if !requiresProjectScope {
+		Info("Skipping organization project discovery for SCC-only security table filters")
+		if syncUseAssetAPI {
+			Info("Skipping Cloud Asset Inventory API because selected filters are security-only")
+		}
+		return runGCPSync(ctx, start, "")
+	}
+
 	Info("Discovering projects in organization: %s", orgID)
 
 	// List all projects in the organization using Cloud Asset Inventory
-	projects, err := nativesync.ListOrganizationProjects(ctx, orgID)
+	projects, err := listOrganizationProjectsFn(ctx, orgID)
 	if err != nil {
 		return fmt.Errorf("list organization projects: %w", err)
 	}
@@ -311,6 +330,9 @@ func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []str
 	if len(securityTableFilter) > 0 && !syncSecurity {
 		Warning("Ignoring GCP security table filters without --security: %s", strings.Join(securityTableFilter, ", "))
 	}
+	if syncValidate && !runNativeSync {
+		return fmt.Errorf("validation for GCP security-only table filters is not supported; include at least one native table")
+	}
 
 	client, err := createSnowflakeClient()
 	if err != nil {
@@ -319,9 +341,6 @@ func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []str
 	defer func() { _ = client.Close() }()
 
 	if syncValidate {
-		if !runNativeSync {
-			return fmt.Errorf("validation for GCP security-only table filters is not supported; include at least one native table")
-		}
 		if len(projects) == 0 {
 			return fmt.Errorf("no GCP projects provided for validation")
 		}
@@ -419,15 +438,15 @@ func runGCPAssetAPISync(ctx context.Context, start time.Time, projects []string)
 	if len(securityTableFilter) > 0 && !syncSecurity {
 		Warning("Ignoring GCP security table filters without --security: %s", strings.Join(securityTableFilter, ", "))
 	}
+	if syncValidate && !runNativeSync {
+		return fmt.Errorf("validation for GCP security-only table filters is not supported; include at least one native table")
+	}
 
 	client, err := createSnowflakeClient()
 	if err != nil {
 		return fmt.Errorf("create snowflake client: %w", err)
 	}
 	defer func() { _ = client.Close() }()
-	if syncValidate && !runNativeSync {
-		return fmt.Errorf("validation for GCP security-only table filters is not supported; include at least one native table")
-	}
 
 	var syncErrs []error
 

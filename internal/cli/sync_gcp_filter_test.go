@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -161,5 +162,149 @@ func TestRunGCPAssetAPISync_SecurityOnlyFilterRequiresSecurityFlag(t *testing.T)
 	err := runGCPAssetAPISync(context.Background(), time.Now(), []string{"proj-1"})
 	if err == nil || !strings.Contains(err.Error(), "rerun with --security") {
 		t.Fatalf("expected security flag guidance error, got %v", err)
+	}
+}
+
+func TestRunGCPOrgSync_SecurityOnlySkipsProjectDiscovery(t *testing.T) {
+	originalTable := syncTable
+	originalSecurity := syncSecurity
+	originalValidate := syncValidate
+	originalUseAssetAPI := syncUseAssetAPI
+	originalListOrgProjects := listOrganizationProjectsFn
+	t.Cleanup(func() {
+		syncTable = originalTable
+		syncSecurity = originalSecurity
+		syncValidate = originalValidate
+		syncUseAssetAPI = originalUseAssetAPI
+		listOrganizationProjectsFn = originalListOrgProjects
+	})
+
+	t.Setenv("SNOWFLAKE_ACCOUNT", "")
+	t.Setenv("SNOWFLAKE_USER", "")
+	t.Setenv("SNOWFLAKE_PRIVATE_KEY", "")
+
+	syncTable = "gcp_scc_findings"
+	syncSecurity = true
+	syncValidate = false
+	syncUseAssetAPI = true
+
+	called := false
+	listOrganizationProjectsFn = func(context.Context, string) ([]string, error) {
+		called = true
+		return nil, errors.New("project listing should be skipped")
+	}
+
+	err := runGCPOrgSync(context.Background(), time.Now(), "1234567890")
+	if called {
+		t.Fatalf("expected organization project discovery to be skipped")
+	}
+	if err == nil || !strings.Contains(err.Error(), "snowflake not configured") {
+		t.Fatalf("expected snowflake configuration error, got %v", err)
+	}
+}
+
+func TestRunGCPOrgSync_ProjectDiscoveryRequired(t *testing.T) {
+	originalTable := syncTable
+	originalSecurity := syncSecurity
+	originalValidate := syncValidate
+	originalUseAssetAPI := syncUseAssetAPI
+	originalListOrgProjects := listOrganizationProjectsFn
+	t.Cleanup(func() {
+		syncTable = originalTable
+		syncSecurity = originalSecurity
+		syncValidate = originalValidate
+		syncUseAssetAPI = originalUseAssetAPI
+		listOrganizationProjectsFn = originalListOrgProjects
+	})
+
+	syncTable = "gcp_compute_instances"
+	syncSecurity = true
+	syncValidate = false
+	syncUseAssetAPI = false
+
+	called := false
+	listOrganizationProjectsFn = func(context.Context, string) ([]string, error) {
+		called = true
+		return nil, errors.New("listing failed")
+	}
+
+	err := runGCPOrgSync(context.Background(), time.Now(), "1234567890")
+	if !called {
+		t.Fatalf("expected organization project discovery to run")
+	}
+	if err == nil || !strings.Contains(err.Error(), "list organization projects: listing failed") {
+		t.Fatalf("expected organization project discovery error, got %v", err)
+	}
+}
+
+func TestRunGCPSync_ValidateSecurityOnlyFilterSkipsSnowflake(t *testing.T) {
+	originalTable := syncTable
+	originalSecurity := syncSecurity
+	originalValidate := syncValidate
+	t.Cleanup(func() {
+		syncTable = originalTable
+		syncSecurity = originalSecurity
+		syncValidate = originalValidate
+	})
+
+	t.Setenv("SNOWFLAKE_ACCOUNT", "")
+	t.Setenv("SNOWFLAKE_USER", "")
+	t.Setenv("SNOWFLAKE_PRIVATE_KEY", "")
+
+	syncTable = "gcp_scc_findings"
+	syncSecurity = true
+	syncValidate = true
+
+	err := runGCPSync(context.Background(), time.Now(), "proj-1")
+	if err == nil || !strings.Contains(err.Error(), "validation for GCP security-only table filters is not supported") {
+		t.Fatalf("expected validation guidance error, got %v", err)
+	}
+}
+
+func TestRunGCPMultiProjectSync_ValidateSecurityOnlyFilterSkipsSnowflake(t *testing.T) {
+	originalTable := syncTable
+	originalSecurity := syncSecurity
+	originalValidate := syncValidate
+	t.Cleanup(func() {
+		syncTable = originalTable
+		syncSecurity = originalSecurity
+		syncValidate = originalValidate
+	})
+
+	t.Setenv("SNOWFLAKE_ACCOUNT", "")
+	t.Setenv("SNOWFLAKE_USER", "")
+	t.Setenv("SNOWFLAKE_PRIVATE_KEY", "")
+
+	syncTable = "gcp_scc_findings"
+	syncSecurity = true
+	syncValidate = true
+
+	err := runGCPMultiProjectSync(context.Background(), time.Now(), []string{"proj-1"})
+	if err == nil || !strings.Contains(err.Error(), "validation for GCP security-only table filters is not supported") {
+		t.Fatalf("expected validation guidance error, got %v", err)
+	}
+}
+
+func TestRunGCPAssetAPISync_ValidateSecurityOnlyFilterSkipsSnowflake(t *testing.T) {
+	originalTable := syncTable
+	originalSecurity := syncSecurity
+	originalValidate := syncValidate
+	t.Cleanup(func() {
+		syncTable = originalTable
+		syncSecurity = originalSecurity
+		syncValidate = originalValidate
+	})
+
+	t.Setenv("SNOWFLAKE_ACCOUNT", "")
+	t.Setenv("SNOWFLAKE_USER", "")
+	t.Setenv("SNOWFLAKE_PRIVATE_KEY", "")
+
+	syncTable = "gcp_scc_findings"
+	syncSecurity = true
+	syncValidate = true
+
+	err := runGCPAssetAPISync(context.Background(), time.Now(), []string{"proj-1"})
+	if err == nil || !strings.Contains(err.Error(), "validation for GCP security-only table filters is not supported") {
+		t.Fatalf("expected validation guidance error, got %v", err)
 	}
 }
