@@ -43,6 +43,9 @@ func TestValidScheduleProviders(t *testing.T) {
 	if !slices.Contains(providers, "github") {
 		t.Fatalf("expected github in valid providers: %v", providers)
 	}
+	if !slices.Contains(providers, "wiz") {
+		t.Fatalf("expected wiz in valid providers: %v", providers)
+	}
 	if slices.Contains(providers, "auth0") {
 		t.Fatalf("did not expect stub provider auth0 in valid providers: %v", providers)
 	}
