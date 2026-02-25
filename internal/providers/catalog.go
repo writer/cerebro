@@ -21,7 +21,7 @@ type ProviderMetadata struct {
 var providerMetadata = map[string]ProviderMetadata{
 	"auth0":            {Name: "auth0", Maturity: ProviderMaturityBeta, Public: true},
 	"atlassian":        {Name: "atlassian", Maturity: ProviderMaturityBeta, Public: true},
-	"bamboohr":         {Name: "bamboohr", Maturity: ProviderMaturityStub, Public: false},
+	"bamboohr":         {Name: "bamboohr", Maturity: ProviderMaturityBeta, Public: true},
 	"azure":            {Name: "azure", Maturity: ProviderMaturityProductionReady, Public: true},
 	"cloudflare":       {Name: "cloudflare", Maturity: ProviderMaturityProductionReady, Public: true},
 	"cloudtrail":       {Name: "cloudtrail", Maturity: ProviderMaturityBeta, Public: true},
@@ -37,6 +37,7 @@ var providerMetadata = map[string]ProviderMetadata{
 	"jamf":             {Name: "jamf", Maturity: ProviderMaturityBeta, Public: true},
 	"kandji":           {Name: "kandji", Maturity: ProviderMaturityBeta, Public: true},
 	"kolide":           {Name: "kolide", Maturity: ProviderMaturityBeta, Public: true},
+	"onelogin":         {Name: "onelogin", Maturity: ProviderMaturityStub, Public: false},
 	"okta":             {Name: "okta", Maturity: ProviderMaturityProductionReady, Public: true},
 	"panther":          {Name: "panther", Maturity: ProviderMaturityBeta, Public: true},
 	"qualys":           {Name: "qualys", Maturity: ProviderMaturityProductionReady, Public: true},

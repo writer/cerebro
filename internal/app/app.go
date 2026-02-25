@@ -274,6 +274,10 @@ type Config struct {
 	WorkdayURL      string
 	WorkdayAPIToken string
 
+	// BambooHR Provider
+	BambooHRURL      string
+	BambooHRAPIToken string
+
 	// GitLab Provider
 	GitLabToken   string
 	GitLabBaseURL string
@@ -461,6 +465,8 @@ func LoadConfig() *Config {
 		ServiceNowPassword:               getEnv("SERVICENOW_PASSWORD", ""),
 		WorkdayURL:                       getEnv("WORKDAY_URL", ""),
 		WorkdayAPIToken:                  getEnv("WORKDAY_API_TOKEN", ""),
+		BambooHRURL:                      getEnv("BAMBOOHR_URL", ""),
+		BambooHRAPIToken:                 getEnv("BAMBOOHR_API_TOKEN", ""),
 		GitLabToken:                      getEnv("GITLAB_TOKEN", ""),
 		GitLabBaseURL:                    getEnv("GITLAB_BASE_URL", "https://gitlab.com"),
 		TerraformCloudToken:              getEnv("TFC_TOKEN", ""),
@@ -1022,6 +1028,14 @@ func (a *App) initProviders(ctx context.Context) {
 		registerProvider("workday", providers.NewWorkdayProvider(), map[string]interface{}{
 			"url":       a.Config.WorkdayURL,
 			"api_token": a.Config.WorkdayAPIToken,
+		})
+	}
+
+	// Register BambooHR if configured
+	if a.Config.BambooHRURL != "" && a.Config.BambooHRAPIToken != "" {
+		registerProvider("bamboohr", providers.NewBambooHRProvider(), map[string]interface{}{
+			"url":       a.Config.BambooHRURL,
+			"api_token": a.Config.BambooHRAPIToken,
 		})
 	}
 

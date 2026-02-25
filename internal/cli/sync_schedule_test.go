@@ -64,8 +64,11 @@ func TestValidScheduleProviders(t *testing.T) {
 	if !slices.Contains(providers, "workday") {
 		t.Fatalf("expected workday in valid providers: %v", providers)
 	}
-	if slices.Contains(providers, "bamboohr") {
-		t.Fatalf("did not expect stub provider bamboohr in valid providers: %v", providers)
+	if !slices.Contains(providers, "bamboohr") {
+		t.Fatalf("expected bamboohr in valid providers: %v", providers)
+	}
+	if slices.Contains(providers, "onelogin") {
+		t.Fatalf("did not expect stub provider onelogin in valid providers: %v", providers)
 	}
 }
 
