@@ -133,7 +133,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 		// Handle multi-project sync via explicit list
 		if syncGCPProjects != "" {
-			projects := normalizeProjectIDs(parseTableFilter(syncGCPProjects))
+			projects := normalizeProjectIDs(parseCommaSeparatedValues(syncGCPProjects))
 			if len(projects) == 0 {
 				return fmt.Errorf("--gcp-projects did not include any valid project IDs")
 			}
@@ -813,9 +813,19 @@ func runNativeSync(ctx context.Context, start time.Time) error {
 }
 
 func parseTableFilter(value string) []string {
+	values := parseCommaSeparatedValues(value)
+	if len(values) == 0 {
+		return nil
+	}
+
+	return values
+}
+
+func parseCommaSeparatedValues(value string) []string {
 	if value == "" {
 		return nil
 	}
+
 	parts := strings.Split(value, ",")
 	filtered := make([]string, 0, len(parts))
 	for _, part := range parts {
@@ -825,6 +835,10 @@ func parseTableFilter(value string) []string {
 		}
 		filtered = append(filtered, trimmed)
 	}
+	if len(filtered) == 0 {
+		return nil
+	}
+
 	return filtered
 }
 

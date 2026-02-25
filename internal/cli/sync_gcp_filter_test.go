@@ -128,6 +128,28 @@ func TestNormalizeProjectIDs(t *testing.T) {
 	}
 }
 
+func TestParseCommaSeparatedValues(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  []string
+	}{
+		{name: "empty", input: "", want: nil},
+		{name: "whitespace", input: " ,  , ", want: nil},
+		{name: "trim values", input: " proj-a , proj-b ", want: []string{"proj-a", "proj-b"}},
+		{name: "preserve case", input: "Project-A,project-b", want: []string{"Project-A", "project-b"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseCommaSeparatedValues(tt.input)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("unexpected parsed values: got %v want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRunGCPSync_SecurityOnlyFilterRequiresSecurityFlag(t *testing.T) {
 	originalTable := syncTable
 	originalSecurity := syncSecurity
