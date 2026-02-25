@@ -16,15 +16,15 @@ func TestProviderMetadataFor_KnownProvider(t *testing.T) {
 }
 
 func TestProviderMetadataFor_StubProvider(t *testing.T) {
-	metadata := ProviderMetadataFor("servicenow")
+	metadata := ProviderMetadataFor("workday")
 	if metadata.Maturity != ProviderMaturityStub {
-		t.Fatalf("expected servicenow maturity %q, got %q", ProviderMaturityStub, metadata.Maturity)
+		t.Fatalf("expected workday maturity %q, got %q", ProviderMaturityStub, metadata.Maturity)
 	}
 	if metadata.Public {
-		t.Fatal("expected servicenow to be non-public")
+		t.Fatal("expected workday to be non-public")
 	}
-	if !IsProviderIncomplete("servicenow") {
-		t.Fatal("expected servicenow to be incomplete")
+	if !IsProviderIncomplete("workday") {
+		t.Fatal("expected workday to be incomplete")
 	}
 }
 
@@ -43,8 +43,11 @@ func TestProviderMetadataFor_UnknownDefaultsToPublicProductionReady(t *testing.T
 
 func TestPublicProviderNames_ExcludesStubProviders(t *testing.T) {
 	names := PublicProviderNames()
-	if slices.Contains(names, "servicenow") {
-		t.Fatal("did not expect stub provider servicenow in public provider names")
+	if slices.Contains(names, "workday") {
+		t.Fatal("did not expect stub provider workday in public provider names")
+	}
+	if !slices.Contains(names, "servicenow") {
+		t.Fatal("expected servicenow in public provider names")
 	}
 	if !slices.Contains(names, "auth0") {
 		t.Fatal("expected auth0 in public provider names")
@@ -68,8 +71,11 @@ func TestPublicProviderNames_ExcludesStubProviders(t *testing.T) {
 
 func TestImplementedProviderNames_ExcludesStubProviders(t *testing.T) {
 	names := ImplementedProviderNames()
-	if slices.Contains(names, "servicenow") {
-		t.Fatal("did not expect stub provider servicenow in implemented provider names")
+	if slices.Contains(names, "workday") {
+		t.Fatal("did not expect stub provider workday in implemented provider names")
+	}
+	if !slices.Contains(names, "servicenow") {
+		t.Fatal("expected servicenow in implemented provider names")
 	}
 	if !slices.Contains(names, "auth0") {
 		t.Fatal("expected auth0 in implemented provider names")

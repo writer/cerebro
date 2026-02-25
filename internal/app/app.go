@@ -264,6 +264,12 @@ type Config struct {
 	// Semgrep Provider
 	SemgrepAPIToken string
 
+	// ServiceNow Provider
+	ServiceNowURL      string
+	ServiceNowAPIToken string
+	ServiceNowUsername string
+	ServiceNowPassword string
+
 	// GitLab Provider
 	GitLabToken   string
 	GitLabBaseURL string
@@ -445,6 +451,10 @@ func LoadConfig() *Config {
 		QualysPassword:                   getEnv("QUALYS_PASSWORD", ""),
 		QualysPlatform:                   getEnv("QUALYS_PLATFORM", "US1"),
 		SemgrepAPIToken:                  getEnv("SEMGREP_API_TOKEN", ""),
+		ServiceNowURL:                    getEnv("SERVICENOW_URL", ""),
+		ServiceNowAPIToken:               getEnv("SERVICENOW_API_TOKEN", ""),
+		ServiceNowUsername:               getEnv("SERVICENOW_USERNAME", ""),
+		ServiceNowPassword:               getEnv("SERVICENOW_PASSWORD", ""),
 		GitLabToken:                      getEnv("GITLAB_TOKEN", ""),
 		GitLabBaseURL:                    getEnv("GITLAB_BASE_URL", "https://gitlab.com"),
 		TerraformCloudToken:              getEnv("TFC_TOKEN", ""),
@@ -985,6 +995,20 @@ func (a *App) initProviders(ctx context.Context) {
 		registerProvider("semgrep", providers.NewSemgrepProvider(), map[string]interface{}{
 			"api_token": a.Config.SemgrepAPIToken,
 		})
+	}
+
+	// Register ServiceNow if configured
+	if a.Config.ServiceNowURL != "" && (a.Config.ServiceNowAPIToken != "" || (a.Config.ServiceNowUsername != "" && a.Config.ServiceNowPassword != "")) {
+		serviceNowConfig := map[string]interface{}{
+			"url": a.Config.ServiceNowURL,
+		}
+		if a.Config.ServiceNowAPIToken != "" {
+			serviceNowConfig["api_token"] = a.Config.ServiceNowAPIToken
+		} else {
+			serviceNowConfig["username"] = a.Config.ServiceNowUsername
+			serviceNowConfig["password"] = a.Config.ServiceNowPassword
+		}
+		registerProvider("servicenow", providers.NewServiceNowProvider(), serviceNowConfig)
 	}
 
 	// Register GitLab if configured
