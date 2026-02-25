@@ -19,8 +19,9 @@ import (
 )
 
 const (
-	azureManagementScope              = "https://management.azure.com/.default"
-	azureAKSManagedClustersAPIVersion = "2023-08-01"
+	azureManagementScope               = "https://management.azure.com/.default"
+	azureAKSManagedClustersAPIVersion  = "2023-08-01"
+	azureDefenderAssessmentsAPIVersion = "2020-01-01"
 )
 
 var azureManagementHTTPClient = &http.Client{Timeout: 30 * time.Second}
@@ -95,6 +96,35 @@ type azureRoleAssignmentProperties struct {
 	CreatedBy                  *string `json:"createdBy"`
 	UpdatedBy                  *string `json:"updatedBy"`
 	DelegatedManagedIdentityID *string `json:"delegatedManagedIdentityResourceId"`
+}
+
+type azureDefenderAssessmentListResponse struct {
+	Value    []azureDefenderAssessment `json:"value"`
+	NextLink string                    `json:"nextLink"`
+}
+
+type azureDefenderAssessment struct {
+	ID         *string                            `json:"id"`
+	Name       *string                            `json:"name"`
+	Type       *string                            `json:"type"`
+	Properties *azureDefenderAssessmentProperties `json:"properties"`
+}
+
+type azureDefenderAssessmentProperties struct {
+	DisplayName            *string                `json:"displayName"`
+	Description            *string                `json:"description"`
+	Status                 *azureDefenderStatus   `json:"status"`
+	ResourceDetails        map[string]interface{} `json:"resourceDetails"`
+	Metadata               map[string]interface{} `json:"metadata"`
+	AdditionalData         map[string]interface{} `json:"additionalData"`
+	Links                  map[string]interface{} `json:"links"`
+	RemediationDescription *string                `json:"remediationDescription"`
+}
+
+type azureDefenderStatus struct {
+	Code        *string `json:"code"`
+	Cause       *string `json:"cause"`
+	Description *string `json:"description"`
 }
 
 func (e *AzureSyncEngine) azureFunctionAppTable() AzureTableSpec {
@@ -301,6 +331,82 @@ func (e *AzureSyncEngine) azureRBACRoleAssignmentTable() AzureTableSpec {
 					row["delegated_managed_identity_id"] = ptrStr(assignment.Properties.DelegatedManagedIdentityID)
 					if assignment.Properties.CanDelegate != nil {
 						row["can_delegate"] = *assignment.Properties.CanDelegate
+					}
+				}
+
+				results = append(results, row)
+			}
+
+			return results, nil
+		},
+	}
+}
+
+func (e *AzureSyncEngine) azureDefenderAssessmentTable() AzureTableSpec {
+	return AzureTableSpec{
+		Name: "azure_defender_assessments",
+		Columns: []string{
+			"id",
+			"name",
+			"assessment_type",
+			"display_name",
+			"description",
+			"status_code",
+			"status_cause",
+			"status_description",
+			"resource_id",
+			"resource_source",
+			"severity",
+			"remediation_description",
+			"metadata",
+			"additional_data",
+			"links",
+			"subscription_id",
+		},
+		Fetch: func(ctx context.Context, cred *azidentity.DefaultAzureCredential, subscriptionID string) ([]map[string]interface{}, error) {
+			assessments, err := listAzureDefenderAssessments(ctx, cred, subscriptionID)
+			if err != nil {
+				return nil, err
+			}
+
+			results := make([]map[string]interface{}, 0, len(assessments))
+			for _, assessment := range assessments {
+				assessmentID := ptrStr(assessment.ID)
+				row := map[string]interface{}{
+					"_cq_id":          assessmentID,
+					"id":              assessmentID,
+					"name":            ptrStr(assessment.Name),
+					"assessment_type": ptrStr(assessment.Type),
+					"subscription_id": subscriptionID,
+				}
+
+				if assessment.Properties != nil {
+					row["display_name"] = ptrStr(assessment.Properties.DisplayName)
+					row["description"] = ptrStr(assessment.Properties.Description)
+					row["remediation_description"] = ptrStr(assessment.Properties.RemediationDescription)
+
+					if assessment.Properties.Status != nil {
+						row["status_code"] = ptrStr(assessment.Properties.Status.Code)
+						row["status_cause"] = ptrStr(assessment.Properties.Status.Cause)
+						row["status_description"] = ptrStr(assessment.Properties.Status.Description)
+					}
+
+					if len(assessment.Properties.ResourceDetails) > 0 {
+						row["resource_id"] = mapStringAnyFold(assessment.Properties.ResourceDetails, "id", "resourceId")
+						row["resource_source"] = mapStringAnyFold(assessment.Properties.ResourceDetails, "source")
+					}
+
+					if len(assessment.Properties.Metadata) > 0 {
+						row["metadata"] = assessment.Properties.Metadata
+						row["severity"] = mapStringAnyFold(assessment.Properties.Metadata, "severity")
+					}
+
+					if len(assessment.Properties.AdditionalData) > 0 {
+						row["additional_data"] = assessment.Properties.AdditionalData
+					}
+
+					if len(assessment.Properties.Links) > 0 {
+						row["links"] = assessment.Properties.Links
 					}
 				}
 
@@ -595,6 +701,27 @@ func listAzureRoleAssignments(ctx context.Context, cred *azidentity.DefaultAzure
 	return assignments, nil
 }
 
+func listAzureDefenderAssessments(ctx context.Context, cred *azidentity.DefaultAzureCredential, subscriptionID string) ([]azureDefenderAssessment, error) {
+	token, err := azureManagementToken(ctx, cred)
+	if err != nil {
+		return nil, err
+	}
+
+	nextURL := fmt.Sprintf("https://management.azure.com/subscriptions/%s/providers/Microsoft.Security/assessments?api-version=%s", subscriptionID, azureDefenderAssessmentsAPIVersion)
+	assessments := make([]azureDefenderAssessment, 0)
+	for nextURL != "" {
+		var page azureDefenderAssessmentListResponse
+		if err := fetchAzureManagementPage(ctx, token, nextURL, &page); err != nil {
+			return nil, fmt.Errorf("list defender assessments: %w", err)
+		}
+
+		assessments = append(assessments, page.Value...)
+		nextURL = strings.TrimSpace(page.NextLink)
+	}
+
+	return assessments, nil
+}
+
 func azureManagementToken(ctx context.Context, cred *azidentity.DefaultAzureCredential) (string, error) {
 	token, err := cred.GetToken(ctx, policy.TokenRequestOptions{Scopes: []string{azureManagementScope}})
 	if err != nil {
@@ -660,6 +787,26 @@ func serializeAKSAgentPools(pools []azureManagedClusterAgentPool) []map[string]i
 	}
 
 	return serialized
+}
+
+func mapStringAnyFold(values map[string]interface{}, keys ...string) string {
+	if len(values) == 0 || len(keys) == 0 {
+		return ""
+	}
+
+	for _, key := range keys {
+		for existingKey, value := range values {
+			if !strings.EqualFold(strings.TrimSpace(existingKey), strings.TrimSpace(key)) {
+				continue
+			}
+			resolved := strings.TrimSpace(toString(value))
+			if resolved != "" {
+				return resolved
+			}
+		}
+	}
+
+	return ""
 }
 
 func isFunctionApp(kind *string) bool {

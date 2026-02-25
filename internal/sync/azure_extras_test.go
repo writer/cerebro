@@ -38,7 +38,7 @@ func TestSerializeAKSAgentPoolsEmpty(t *testing.T) {
 	}
 }
 
-func TestAzureTablesIncludeAKSAndRBAC(t *testing.T) {
+func TestAzureTablesIncludeAKSAndRBACAndDefender(t *testing.T) {
 	tables := (&AzureSyncEngine{}).getAzureTables()
 	lookup := make(map[string]struct{}, len(tables))
 	for _, table := range tables {
@@ -50,6 +50,28 @@ func TestAzureTablesIncludeAKSAndRBAC(t *testing.T) {
 	}
 	if _, ok := lookup["azure_rbac_role_assignments"]; !ok {
 		t.Fatal("expected azure_rbac_role_assignments in Azure table set")
+	}
+	if _, ok := lookup["azure_defender_assessments"]; !ok {
+		t.Fatal("expected azure_defender_assessments in Azure table set")
+	}
+}
+
+func TestMapStringAnyFold(t *testing.T) {
+	values := map[string]interface{}{
+		"Source":     "Azure",
+		"resourceID": "/subscriptions/sub-a/resourceGroups/rg-a/providers/Microsoft.Compute/virtualMachines/vm-a",
+	}
+
+	if got := mapStringAnyFold(values, "source"); got != "Azure" {
+		t.Fatalf("unexpected source value: %q", got)
+	}
+
+	if got := mapStringAnyFold(values, "resourceId"); got != "/subscriptions/sub-a/resourceGroups/rg-a/providers/Microsoft.Compute/virtualMachines/vm-a" {
+		t.Fatalf("unexpected resource id: %q", got)
+	}
+
+	if got := mapStringAnyFold(values, "missing"); got != "" {
+		t.Fatalf("expected empty value for missing key, got %q", got)
 	}
 }
 

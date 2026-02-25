@@ -76,6 +76,7 @@ var ExpectedTables = []string{
 	"azure_compute_virtual_machines",
 	"azure_aks_clusters",
 	"azure_rbac_role_assignments",
+	"azure_defender_assessments",
 	"azure_storage_accounts",
 	"k8s_core_pods",
 	"k8s_rbac_roles",
