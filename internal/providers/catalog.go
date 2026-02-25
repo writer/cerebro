@@ -27,6 +27,7 @@ var providerMetadata = map[string]ProviderMetadata{
 	"datadog":          {Name: "datadog", Maturity: ProviderMaturityProductionReady, Public: true},
 	"entra_id":         {Name: "entra_id", Maturity: ProviderMaturityProductionReady, Public: true},
 	"figma":            {Name: "figma", Maturity: ProviderMaturityBeta, Public: true},
+	"gong":             {Name: "gong", Maturity: ProviderMaturityBeta, Public: true},
 	"github":           {Name: "github", Maturity: ProviderMaturityProductionReady, Public: true},
 	"gitlab":           {Name: "gitlab", Maturity: ProviderMaturityProductionReady, Public: true},
 	"google_workspace": {Name: "google_workspace", Maturity: ProviderMaturityProductionReady, Public: true},

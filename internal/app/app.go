@@ -221,6 +221,11 @@ type Config struct {
 	RampAPIURL       string
 	RampTokenURL     string
 
+	// Gong Provider
+	GongAccessKey    string
+	GongAccessSecret string
+	GongBaseURL      string
+
 	// Google Workspace Provider
 	GoogleWorkspaceDomain            string
 	GoogleWorkspaceAdminEmail        string
@@ -405,6 +410,9 @@ func LoadConfig() *Config {
 		RampClientSecret:                 getEnv("RAMP_CLIENT_SECRET", ""),
 		RampAPIURL:                       getEnv("RAMP_API_URL", "https://api.ramp.com/developer/v1"),
 		RampTokenURL:                     getEnv("RAMP_TOKEN_URL", "https://api.ramp.com/developer/v1/token"),
+		GongAccessKey:                    getEnv("GONG_ACCESS_KEY", ""),
+		GongAccessSecret:                 getEnv("GONG_ACCESS_SECRET", ""),
+		GongBaseURL:                      getEnv("GONG_BASE_URL", "https://api.gong.io"),
 		GoogleWorkspaceDomain:            getEnv("GOOGLE_WORKSPACE_DOMAIN", ""),
 		GoogleWorkspaceAdminEmail:        getEnv("GOOGLE_WORKSPACE_ADMIN_EMAIL", ""),
 		GoogleWorkspaceImpersonatorEmail: getEnv("GOOGLE_WORKSPACE_IMPERSONATOR_EMAIL", ""),
@@ -866,6 +874,15 @@ func (a *App) initProviders(ctx context.Context) {
 			"client_secret": a.Config.RampClientSecret,
 			"base_url":      a.Config.RampAPIURL,
 			"token_url":     a.Config.RampTokenURL,
+		})
+	}
+
+	// Register Gong if configured
+	if a.Config.GongAccessKey != "" && a.Config.GongAccessSecret != "" {
+		registerProvider("gong", providers.NewGongProvider(), map[string]interface{}{
+			"access_key":    a.Config.GongAccessKey,
+			"access_secret": a.Config.GongAccessSecret,
+			"base_url":      a.Config.GongBaseURL,
 		})
 	}
 
