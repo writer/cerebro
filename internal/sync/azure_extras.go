@@ -70,6 +70,33 @@ type azureManagedClusterAgentPool struct {
 	OrchestratorVersion *string `json:"orchestratorVersion"`
 }
 
+type azureRoleAssignmentListResponse struct {
+	Value    []azureRoleAssignment `json:"value"`
+	NextLink string                `json:"nextLink"`
+}
+
+type azureRoleAssignment struct {
+	ID         *string                        `json:"id"`
+	Name       *string                        `json:"name"`
+	Properties *azureRoleAssignmentProperties `json:"properties"`
+}
+
+type azureRoleAssignmentProperties struct {
+	Scope                      *string `json:"scope"`
+	RoleDefinitionID           *string `json:"roleDefinitionId"`
+	PrincipalID                *string `json:"principalId"`
+	PrincipalType              *string `json:"principalType"`
+	Condition                  *string `json:"condition"`
+	ConditionVersion           *string `json:"conditionVersion"`
+	Description                *string `json:"description"`
+	CanDelegate                *bool   `json:"canDelegate"`
+	CreatedOn                  *string `json:"createdOn"`
+	UpdatedOn                  *string `json:"updatedOn"`
+	CreatedBy                  *string `json:"createdBy"`
+	UpdatedBy                  *string `json:"updatedBy"`
+	DelegatedManagedIdentityID *string `json:"delegatedManagedIdentityResourceId"`
+}
+
 func (e *AzureSyncEngine) azureFunctionAppTable() AzureTableSpec {
 	return AzureTableSpec{
 		Name: "azure_functions_apps",
@@ -209,6 +236,71 @@ func (e *AzureSyncEngine) azureAKSClusterTable() AzureTableSpec {
 						row["network_plugin"] = ptrStr(cluster.Properties.NetworkProfile.NetworkPlugin)
 						row["network_policy"] = ptrStr(cluster.Properties.NetworkProfile.NetworkPolicy)
 						row["outbound_type"] = ptrStr(cluster.Properties.NetworkProfile.OutboundType)
+					}
+				}
+
+				results = append(results, row)
+			}
+
+			return results, nil
+		},
+	}
+}
+
+func (e *AzureSyncEngine) azureRBACRoleAssignmentTable() AzureTableSpec {
+	return AzureTableSpec{
+		Name: "azure_rbac_role_assignments",
+		Columns: []string{
+			"id",
+			"name",
+			"scope",
+			"resource_group",
+			"role_definition_id",
+			"principal_id",
+			"principal_type",
+			"condition",
+			"condition_version",
+			"description",
+			"can_delegate",
+			"created_on",
+			"updated_on",
+			"created_by",
+			"updated_by",
+			"delegated_managed_identity_id",
+			"subscription_id",
+		},
+		Fetch: func(ctx context.Context, cred *azidentity.DefaultAzureCredential, subscriptionID string) ([]map[string]interface{}, error) {
+			assignments, err := listAzureRoleAssignments(ctx, cred, subscriptionID)
+			if err != nil {
+				return nil, err
+			}
+
+			results := make([]map[string]interface{}, 0, len(assignments))
+			for _, assignment := range assignments {
+				assignmentID := ptrStr(assignment.ID)
+				row := map[string]interface{}{
+					"_cq_id":          assignmentID,
+					"id":              assignmentID,
+					"name":            ptrStr(assignment.Name),
+					"resource_group":  resourceGroupFromID(assignmentID),
+					"subscription_id": subscriptionID,
+				}
+
+				if assignment.Properties != nil {
+					row["scope"] = ptrStr(assignment.Properties.Scope)
+					row["role_definition_id"] = ptrStr(assignment.Properties.RoleDefinitionID)
+					row["principal_id"] = ptrStr(assignment.Properties.PrincipalID)
+					row["principal_type"] = ptrStr(assignment.Properties.PrincipalType)
+					row["condition"] = ptrStr(assignment.Properties.Condition)
+					row["condition_version"] = ptrStr(assignment.Properties.ConditionVersion)
+					row["description"] = ptrStr(assignment.Properties.Description)
+					row["created_on"] = ptrStr(assignment.Properties.CreatedOn)
+					row["updated_on"] = ptrStr(assignment.Properties.UpdatedOn)
+					row["created_by"] = ptrStr(assignment.Properties.CreatedBy)
+					row["updated_by"] = ptrStr(assignment.Properties.UpdatedBy)
+					row["delegated_managed_identity_id"] = ptrStr(assignment.Properties.DelegatedManagedIdentityID)
+					if assignment.Properties.CanDelegate != nil {
+						row["can_delegate"] = *assignment.Properties.CanDelegate
 					}
 				}
 
@@ -462,42 +554,17 @@ func (e *AzureSyncEngine) azureKeyVaultKeyTable() AzureTableSpec {
 }
 
 func listAzureManagedClusters(ctx context.Context, cred *azidentity.DefaultAzureCredential, subscriptionID string) ([]azureManagedCluster, error) {
-	token, err := cred.GetToken(ctx, policy.TokenRequestOptions{Scopes: []string{azureManagementScope}})
+	token, err := azureManagementToken(ctx, cred)
 	if err != nil {
-		return nil, fmt.Errorf("acquire Azure management token: %w", err)
+		return nil, err
 	}
 
 	nextURL := fmt.Sprintf("https://management.azure.com/subscriptions/%s/providers/Microsoft.ContainerService/managedClusters?api-version=%s", subscriptionID, azureAKSManagedClustersAPIVersion)
 	clusters := make([]azureManagedCluster, 0)
 	for nextURL != "" {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, nextURL, nil)
-		if err != nil {
-			return nil, fmt.Errorf("build AKS list request: %w", err)
-		}
-		req.Header.Set("Authorization", "Bearer "+token.Token)
-		req.Header.Set("Accept", "application/json")
-
-		resp, err := azureManagementHTTPClient.Do(req)
-		if err != nil {
-			return nil, fmt.Errorf("request AKS clusters: %w", err)
-		}
-
-		body, readErr := io.ReadAll(resp.Body)
-		closeErr := resp.Body.Close()
-		if readErr != nil {
-			return nil, fmt.Errorf("read AKS response body: %w", readErr)
-		}
-		if closeErr != nil {
-			return nil, fmt.Errorf("close AKS response body: %w", closeErr)
-		}
-
-		if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-			return nil, fmt.Errorf("list AKS clusters returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
-		}
-
 		var page azureManagedClusterListResponse
-		if err := json.Unmarshal(body, &page); err != nil {
-			return nil, fmt.Errorf("decode AKS clusters response: %w", err)
+		if err := fetchAzureManagementPage(ctx, token, nextURL, &page); err != nil {
+			return nil, fmt.Errorf("list AKS clusters: %w", err)
 		}
 
 		clusters = append(clusters, page.Value...)
@@ -505,6 +572,68 @@ func listAzureManagedClusters(ctx context.Context, cred *azidentity.DefaultAzure
 	}
 
 	return clusters, nil
+}
+
+func listAzureRoleAssignments(ctx context.Context, cred *azidentity.DefaultAzureCredential, subscriptionID string) ([]azureRoleAssignment, error) {
+	token, err := azureManagementToken(ctx, cred)
+	if err != nil {
+		return nil, err
+	}
+
+	nextURL := fmt.Sprintf("https://management.azure.com/subscriptions/%s/providers/Microsoft.Authorization/roleAssignments?api-version=2022-04-01", subscriptionID)
+	assignments := make([]azureRoleAssignment, 0)
+	for nextURL != "" {
+		var page azureRoleAssignmentListResponse
+		if err := fetchAzureManagementPage(ctx, token, nextURL, &page); err != nil {
+			return nil, fmt.Errorf("list role assignments: %w", err)
+		}
+
+		assignments = append(assignments, page.Value...)
+		nextURL = strings.TrimSpace(page.NextLink)
+	}
+
+	return assignments, nil
+}
+
+func azureManagementToken(ctx context.Context, cred *azidentity.DefaultAzureCredential) (string, error) {
+	token, err := cred.GetToken(ctx, policy.TokenRequestOptions{Scopes: []string{azureManagementScope}})
+	if err != nil {
+		return "", fmt.Errorf("acquire Azure management token: %w", err)
+	}
+	return token.Token, nil
+}
+
+func fetchAzureManagementPage(ctx context.Context, token, requestURL string, out interface{}) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
+	if err != nil {
+		return fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := azureManagementHTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("request management endpoint: %w", err)
+	}
+
+	body, readErr := io.ReadAll(resp.Body)
+	closeErr := resp.Body.Close()
+	if readErr != nil {
+		return fmt.Errorf("read response body: %w", readErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("close response body: %w", closeErr)
+	}
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	if err := json.Unmarshal(body, out); err != nil {
+		return fmt.Errorf("decode response: %w", err)
+	}
+
+	return nil
 }
 
 func serializeAKSAgentPools(pools []azureManagedClusterAgentPool) []map[string]interface{} {

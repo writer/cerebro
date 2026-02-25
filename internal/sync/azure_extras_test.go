@@ -38,6 +38,21 @@ func TestSerializeAKSAgentPoolsEmpty(t *testing.T) {
 	}
 }
 
+func TestAzureTablesIncludeAKSAndRBAC(t *testing.T) {
+	tables := (&AzureSyncEngine{}).getAzureTables()
+	lookup := make(map[string]struct{}, len(tables))
+	for _, table := range tables {
+		lookup[table.Name] = struct{}{}
+	}
+
+	if _, ok := lookup["azure_aks_clusters"]; !ok {
+		t.Fatal("expected azure_aks_clusters in Azure table set")
+	}
+	if _, ok := lookup["azure_rbac_role_assignments"]; !ok {
+		t.Fatal("expected azure_rbac_role_assignments in Azure table set")
+	}
+}
+
 func strPtr(value string) *string {
 	return &value
 }

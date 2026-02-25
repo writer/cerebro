@@ -497,6 +497,7 @@ func (e *AzureSyncEngine) getAzureTables() []AzureTableSpec {
 	return []AzureTableSpec{
 		e.azureVirtualMachineTable(),
 		e.azureAKSClusterTable(),
+		e.azureRBACRoleAssignmentTable(),
 		e.azureStorageAccountTable(),
 		e.azureStorageContainerTable(),
 		e.azureStorageBlobTable(),

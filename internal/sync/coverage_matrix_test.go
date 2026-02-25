@@ -197,4 +197,15 @@ func TestBuildAzureCoverageMatrix(t *testing.T) {
 	if !reflect.DeepEqual(aks.PrimaryKeys, []string{"id"}) {
 		t.Fatalf("unexpected AKS primary keys: %#v", aks.PrimaryKeys)
 	}
+
+	rbac, ok := lookup["azure_rbac_role_assignments"]
+	if !ok {
+		t.Fatal("expected azure_rbac_role_assignments entry")
+	}
+	if rbac.Service != "rbac" {
+		t.Fatalf("expected rbac service, got %q", rbac.Service)
+	}
+	if !reflect.DeepEqual(rbac.PrimaryKeys, []string{"id"}) {
+		t.Fatalf("unexpected RBAC primary keys: %#v", rbac.PrimaryKeys)
+	}
 }
