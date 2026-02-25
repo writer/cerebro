@@ -278,6 +278,11 @@ type Config struct {
 	BambooHRURL      string
 	BambooHRAPIToken string
 
+	// OneLogin Provider
+	OneLoginURL          string
+	OneLoginClientID     string
+	OneLoginClientSecret string
+
 	// GitLab Provider
 	GitLabToken   string
 	GitLabBaseURL string
@@ -467,6 +472,9 @@ func LoadConfig() *Config {
 		WorkdayAPIToken:                  getEnv("WORKDAY_API_TOKEN", ""),
 		BambooHRURL:                      getEnv("BAMBOOHR_URL", ""),
 		BambooHRAPIToken:                 getEnv("BAMBOOHR_API_TOKEN", ""),
+		OneLoginURL:                      getEnv("ONELOGIN_URL", ""),
+		OneLoginClientID:                 getEnv("ONELOGIN_CLIENT_ID", ""),
+		OneLoginClientSecret:             getEnv("ONELOGIN_CLIENT_SECRET", ""),
 		GitLabToken:                      getEnv("GITLAB_TOKEN", ""),
 		GitLabBaseURL:                    getEnv("GITLAB_BASE_URL", "https://gitlab.com"),
 		TerraformCloudToken:              getEnv("TFC_TOKEN", ""),
@@ -1036,6 +1044,15 @@ func (a *App) initProviders(ctx context.Context) {
 		registerProvider("bamboohr", providers.NewBambooHRProvider(), map[string]interface{}{
 			"url":       a.Config.BambooHRURL,
 			"api_token": a.Config.BambooHRAPIToken,
+		})
+	}
+
+	// Register OneLogin if configured
+	if a.Config.OneLoginURL != "" && a.Config.OneLoginClientID != "" && a.Config.OneLoginClientSecret != "" {
+		registerProvider("onelogin", providers.NewOneLoginProvider(), map[string]interface{}{
+			"url":           a.Config.OneLoginURL,
+			"client_id":     a.Config.OneLoginClientID,
+			"client_secret": a.Config.OneLoginClientSecret,
 		})
 	}
 

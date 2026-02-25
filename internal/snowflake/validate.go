@@ -14,7 +14,7 @@ var knownTablePrefixes = []string{
 	"aws_", "gcp_", "azure_", "k8s_", "okta_", "github_",
 	"snyk_", "crowdstrike_", "sentinelone_", "tenable_",
 	"datadog_", "qualys_", "semgrep_", "gitlab_", "cloudflare_",
-	"auth0_", "slack_", "splunk_", "terraform_", "servicenow_", "workday_", "bamboohr_",
+	"auth0_", "slack_", "splunk_", "terraform_", "servicenow_", "workday_", "bamboohr_", "onelogin_",
 	"ai_", "ml_", "entra_", "m365_", "identity_", "hris_",
 	"mdm_", "jamf_", "intune_", "kandji_", "edr_",
 	"network_", "dns_", "firewall_", "container_", "vulnerability_",

@@ -16,15 +16,15 @@ func TestProviderMetadataFor_KnownProvider(t *testing.T) {
 }
 
 func TestProviderMetadataFor_StubProvider(t *testing.T) {
-	metadata := ProviderMetadataFor("onelogin")
+	metadata := ProviderMetadataFor("jumpcloud")
 	if metadata.Maturity != ProviderMaturityStub {
-		t.Fatalf("expected onelogin maturity %q, got %q", ProviderMaturityStub, metadata.Maturity)
+		t.Fatalf("expected jumpcloud maturity %q, got %q", ProviderMaturityStub, metadata.Maturity)
 	}
 	if metadata.Public {
-		t.Fatal("expected onelogin to be non-public")
+		t.Fatal("expected jumpcloud to be non-public")
 	}
-	if !IsProviderIncomplete("onelogin") {
-		t.Fatal("expected onelogin to be incomplete")
+	if !IsProviderIncomplete("jumpcloud") {
+		t.Fatal("expected jumpcloud to be incomplete")
 	}
 }
 
@@ -43,8 +43,11 @@ func TestProviderMetadataFor_UnknownDefaultsToPublicProductionReady(t *testing.T
 
 func TestPublicProviderNames_ExcludesStubProviders(t *testing.T) {
 	names := PublicProviderNames()
-	if slices.Contains(names, "onelogin") {
-		t.Fatal("did not expect stub provider onelogin in public provider names")
+	if slices.Contains(names, "jumpcloud") {
+		t.Fatal("did not expect stub provider jumpcloud in public provider names")
+	}
+	if !slices.Contains(names, "onelogin") {
+		t.Fatal("expected onelogin in public provider names")
 	}
 	if !slices.Contains(names, "bamboohr") {
 		t.Fatal("expected bamboohr in public provider names")
@@ -77,8 +80,11 @@ func TestPublicProviderNames_ExcludesStubProviders(t *testing.T) {
 
 func TestImplementedProviderNames_ExcludesStubProviders(t *testing.T) {
 	names := ImplementedProviderNames()
-	if slices.Contains(names, "onelogin") {
-		t.Fatal("did not expect stub provider onelogin in implemented provider names")
+	if slices.Contains(names, "jumpcloud") {
+		t.Fatal("did not expect stub provider jumpcloud in implemented provider names")
+	}
+	if !slices.Contains(names, "onelogin") {
+		t.Fatal("expected onelogin in implemented provider names")
 	}
 	if !slices.Contains(names, "bamboohr") {
 		t.Fatal("expected bamboohr in implemented provider names")

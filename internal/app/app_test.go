@@ -345,6 +345,9 @@ func TestInitProviders_RegistersExpandedProviderSet(t *testing.T) {
 			WorkdayAPIToken:        "workday-token",
 			BambooHRURL:            "https://api.bamboohr.com/v1",
 			BambooHRAPIToken:       "bamboohr-token",
+			OneLoginURL:            "https://api.us.onelogin.com",
+			OneLoginClientID:       "onelogin-client-id",
+			OneLoginClientSecret:   "onelogin-client-secret",
 			SplunkURL:              "https://splunk.example.com",
 			SplunkToken:            "splunk-token",
 			CloudflareAPIToken:     "cloudflare-token",
@@ -375,7 +378,7 @@ func TestInitProviders_RegistersExpandedProviderSet(t *testing.T) {
 
 	app.initProviders(context.Background())
 
-	expectedProviders := []string{"qualys", "zoom", "wiz", "figma", "socket", "ramp", "gong", "vanta", "panther", "kolide", "gitlab", "auth0", "terraform_cloud", "semgrep", "servicenow", "workday", "bamboohr", "splunk", "cloudflare", "salesforce", "vault", "slack", "rippling", "jamf", "intune", "atlassian", "kandji"}
+	expectedProviders := []string{"qualys", "zoom", "wiz", "figma", "socket", "ramp", "gong", "vanta", "panther", "kolide", "gitlab", "auth0", "terraform_cloud", "semgrep", "servicenow", "workday", "bamboohr", "onelogin", "splunk", "cloudflare", "salesforce", "vault", "slack", "rippling", "jamf", "intune", "atlassian", "kandji"}
 	for _, name := range expectedProviders {
 		if _, ok := app.Providers.Get(name); !ok {
 			t.Errorf("expected provider %q to be registered", name)
@@ -391,7 +394,7 @@ func TestInitProviders_SkipsExpandedProvidersWithoutConfig(t *testing.T) {
 
 	app.initProviders(context.Background())
 
-	notExpected := []string{"qualys", "zoom", "wiz", "figma", "socket", "ramp", "gong", "vanta", "panther", "kolide", "gitlab", "auth0", "terraform_cloud", "semgrep", "servicenow", "workday", "bamboohr", "splunk", "cloudflare", "salesforce", "vault", "slack", "rippling", "jamf", "intune", "atlassian", "kandji", "cloudtrail"}
+	notExpected := []string{"qualys", "zoom", "wiz", "figma", "socket", "ramp", "gong", "vanta", "panther", "kolide", "gitlab", "auth0", "terraform_cloud", "semgrep", "servicenow", "workday", "bamboohr", "onelogin", "splunk", "cloudflare", "salesforce", "vault", "slack", "rippling", "jamf", "intune", "atlassian", "kandji", "cloudtrail"}
 	for _, name := range notExpected {
 		if _, ok := app.Providers.Get(name); ok {
 			t.Errorf("did not expect provider %q to be registered", name)
