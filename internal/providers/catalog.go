@@ -19,6 +19,7 @@ type ProviderMetadata struct {
 }
 
 var providerMetadata = map[string]ProviderMetadata{
+	"auth0":            {Name: "auth0", Maturity: ProviderMaturityBeta, Public: true},
 	"atlassian":        {Name: "atlassian", Maturity: ProviderMaturityBeta, Public: true},
 	"azure":            {Name: "azure", Maturity: ProviderMaturityProductionReady, Public: true},
 	"cloudflare":       {Name: "cloudflare", Maturity: ProviderMaturityProductionReady, Public: true},
@@ -53,7 +54,6 @@ var providerMetadata = map[string]ProviderMetadata{
 	"zoom":             {Name: "zoom", Maturity: ProviderMaturityBeta, Public: true},
 
 	// Planned but not yet implemented providers.
-	"auth0":           {Name: "auth0", Maturity: ProviderMaturityStub, Public: false},
 	"semgrep":         {Name: "semgrep", Maturity: ProviderMaturityStub, Public: false},
 	"splunk":          {Name: "splunk", Maturity: ProviderMaturityStub, Public: false},
 	"terraform_cloud": {Name: "terraform_cloud", Maturity: ProviderMaturityStub, Public: false},

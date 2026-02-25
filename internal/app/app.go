@@ -988,6 +988,15 @@ func (a *App) initProviders(ctx context.Context) {
 		})
 	}
 
+	// Register Auth0 if configured
+	if a.Config.Auth0Domain != "" && a.Config.Auth0ClientID != "" && a.Config.Auth0ClientSecret != "" {
+		registerProvider("auth0", providers.NewAuth0Provider(), map[string]interface{}{
+			"domain":        a.Config.Auth0Domain,
+			"client_id":     a.Config.Auth0ClientID,
+			"client_secret": a.Config.Auth0ClientSecret,
+		})
+	}
+
 	// Register Cloudflare if configured
 	if a.Config.CloudflareAPIToken != "" {
 		registerProvider("cloudflare", providers.NewCloudflareProvider(), map[string]interface{}{
