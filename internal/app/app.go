@@ -215,6 +215,12 @@ type Config struct {
 	SocketOrgSlug  string
 	SocketAPIURL   string
 
+	// Ramp Provider
+	RampClientID     string
+	RampClientSecret string
+	RampAPIURL       string
+	RampTokenURL     string
+
 	// Google Workspace Provider
 	GoogleWorkspaceDomain            string
 	GoogleWorkspaceAdminEmail        string
@@ -395,6 +401,10 @@ func LoadConfig() *Config {
 		SocketAPIToken:                   getEnv("SOCKET_API_TOKEN", ""),
 		SocketOrgSlug:                    getEnv("SOCKET_ORG", ""),
 		SocketAPIURL:                     getEnv("SOCKET_API_URL", "https://api.socket.dev/v0"),
+		RampClientID:                     getEnv("RAMP_CLIENT_ID", ""),
+		RampClientSecret:                 getEnv("RAMP_CLIENT_SECRET", ""),
+		RampAPIURL:                       getEnv("RAMP_API_URL", "https://api.ramp.com/developer/v1"),
+		RampTokenURL:                     getEnv("RAMP_TOKEN_URL", "https://api.ramp.com/developer/v1/token"),
 		GoogleWorkspaceDomain:            getEnv("GOOGLE_WORKSPACE_DOMAIN", ""),
 		GoogleWorkspaceAdminEmail:        getEnv("GOOGLE_WORKSPACE_ADMIN_EMAIL", ""),
 		GoogleWorkspaceImpersonatorEmail: getEnv("GOOGLE_WORKSPACE_IMPERSONATOR_EMAIL", ""),
@@ -846,6 +856,16 @@ func (a *App) initProviders(ctx context.Context) {
 			"api_token": a.Config.SocketAPIToken,
 			"org_slug":  a.Config.SocketOrgSlug,
 			"api_url":   a.Config.SocketAPIURL,
+		})
+	}
+
+	// Register Ramp if configured
+	if a.Config.RampClientID != "" && a.Config.RampClientSecret != "" {
+		registerProvider("ramp", providers.NewRampProvider(), map[string]interface{}{
+			"client_id":     a.Config.RampClientID,
+			"client_secret": a.Config.RampClientSecret,
+			"base_url":      a.Config.RampAPIURL,
+			"token_url":     a.Config.RampTokenURL,
 		})
 	}
 
