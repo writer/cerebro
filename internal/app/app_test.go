@@ -305,6 +305,9 @@ func TestInitProviders_RegistersExpandedProviderSet(t *testing.T) {
 			QualysUsername:         "qualys-user",
 			QualysPassword:         "qualys-pass",
 			QualysPlatform:         "US1",
+			WizClientID:            "wiz-client-id",
+			WizClientSecret:        "wiz-client-secret",
+			WizAPIURL:              "https://api.us1.app.wiz.io/graphql",
 			GitLabToken:            "gitlab-token",
 			GitLabBaseURL:          "https://gitlab.example.com",
 			CloudflareAPIToken:     "cloudflare-token",
@@ -332,7 +335,7 @@ func TestInitProviders_RegistersExpandedProviderSet(t *testing.T) {
 
 	app.initProviders(context.Background())
 
-	expectedProviders := []string{"qualys", "gitlab", "cloudflare", "salesforce", "vault", "slack", "rippling", "jamf", "intune", "kandji"}
+	expectedProviders := []string{"qualys", "wiz", "gitlab", "cloudflare", "salesforce", "vault", "slack", "rippling", "jamf", "intune", "kandji"}
 	for _, name := range expectedProviders {
 		if _, ok := app.Providers.Get(name); !ok {
 			t.Errorf("expected provider %q to be registered", name)
@@ -348,7 +351,7 @@ func TestInitProviders_SkipsExpandedProvidersWithoutConfig(t *testing.T) {
 
 	app.initProviders(context.Background())
 
-	notExpected := []string{"qualys", "gitlab", "cloudflare", "salesforce", "vault", "slack", "rippling", "jamf", "intune", "kandji", "cloudtrail"}
+	notExpected := []string{"qualys", "wiz", "gitlab", "cloudflare", "salesforce", "vault", "slack", "rippling", "jamf", "intune", "kandji", "cloudtrail"}
 	for _, name := range notExpected {
 		if _, ok := app.Providers.Get(name); ok {
 			t.Errorf("did not expect provider %q to be registered", name)

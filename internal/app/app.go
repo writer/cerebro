@@ -182,6 +182,13 @@ type Config struct {
 	SnykAPIToken string
 	SnykOrgID    string
 
+	// Wiz Provider
+	WizClientID     string
+	WizClientSecret string
+	WizAPIURL       string
+	WizTokenURL     string
+	WizAudience     string
+
 	// Datadog Provider
 	DatadogAPIKey string
 	DatadogAppKey string
@@ -350,6 +357,11 @@ func LoadConfig() *Config {
 		AzureSubscriptionID:              getEnv("AZURE_SUBSCRIPTION_ID", ""),
 		SnykAPIToken:                     getEnv("SNYK_API_TOKEN", ""),
 		SnykOrgID:                        getEnv("SNYK_ORG_ID", ""),
+		WizClientID:                      getEnv("WIZ_CLIENT_ID", ""),
+		WizClientSecret:                  getEnv("WIZ_CLIENT_SECRET", ""),
+		WizAPIURL:                        getEnv("WIZ_API_URL", ""),
+		WizTokenURL:                      getEnv("WIZ_TOKEN_URL", "https://auth.app.wiz.io/oauth/token"),
+		WizAudience:                      getEnv("WIZ_AUDIENCE", "wiz-api"),
 		DatadogAPIKey:                    getEnv("DATADOG_API_KEY", ""),
 		DatadogAppKey:                    getEnv("DATADOG_APP_KEY", ""),
 		DatadogSite:                      getEnv("DATADOG_SITE", "datadoghq.com"),
@@ -745,6 +757,22 @@ func (a *App) initProviders(ctx context.Context) {
 			"api_token": a.Config.SnykAPIToken,
 			"org_id":    a.Config.SnykOrgID,
 		})
+	}
+
+	// Register Wiz if configured
+	if a.Config.WizClientID != "" && a.Config.WizClientSecret != "" && a.Config.WizAPIURL != "" {
+		wizConfig := map[string]interface{}{
+			"client_id":     a.Config.WizClientID,
+			"client_secret": a.Config.WizClientSecret,
+			"api_url":       a.Config.WizAPIURL,
+		}
+		if a.Config.WizTokenURL != "" {
+			wizConfig["token_url"] = a.Config.WizTokenURL
+		}
+		if a.Config.WizAudience != "" {
+			wizConfig["audience"] = a.Config.WizAudience
+		}
+		registerProvider("wiz", providers.NewWizProvider(), wizConfig)
 	}
 
 	// Register Datadog if configured

@@ -2,6 +2,7 @@ package sync
 
 import (
 	"reflect"
+	"slices"
 	"testing"
 )
 
@@ -98,6 +99,32 @@ func TestTableRegistry_RejectsInvalidRegistration(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected missing provider registration to fail")
+	}
+}
+
+func TestExpectedTables_IncludeKubernetesInventoryAndRBACBaseline(t *testing.T) {
+	required := []string{
+		"k8s_cluster_inventory",
+		"k8s_core_pods",
+		"k8s_core_namespaces",
+		"k8s_core_nodes",
+		"k8s_core_services",
+		"k8s_core_service_accounts",
+		"k8s_apps_deployments",
+		"k8s_networking_ingresses",
+		"k8s_rbac_cluster_roles",
+		"k8s_rbac_roles",
+		"k8s_rbac_cluster_role_bindings",
+		"k8s_rbac_role_bindings",
+		"k8s_rbac_service_account_bindings",
+		"k8s_rbac_risky_bindings",
+		"k8s_audit_events",
+	}
+
+	for _, table := range required {
+		if !slices.Contains(ExpectedTables, table) {
+			t.Fatalf("expected %q in ExpectedTables baseline", table)
+		}
 	}
 }
 
