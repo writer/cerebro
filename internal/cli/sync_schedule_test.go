@@ -52,6 +52,9 @@ func TestValidScheduleProviders(t *testing.T) {
 	if !slices.Contains(providers, "terraform_cloud") {
 		t.Fatalf("expected terraform_cloud in valid providers: %v", providers)
 	}
+	if !slices.Contains(providers, "splunk") {
+		t.Fatalf("expected splunk in valid providers: %v", providers)
+	}
 	if slices.Contains(providers, "semgrep") {
 		t.Fatalf("did not expect stub provider semgrep in valid providers: %v", providers)
 	}

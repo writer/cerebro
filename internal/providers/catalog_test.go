@@ -52,6 +52,9 @@ func TestPublicProviderNames_ExcludesStubProviders(t *testing.T) {
 	if !slices.Contains(names, "terraform_cloud") {
 		t.Fatal("expected terraform_cloud in public provider names")
 	}
+	if !slices.Contains(names, "splunk") {
+		t.Fatal("expected splunk in public provider names")
+	}
 	if !slices.Contains(names, "github") {
 		t.Fatal("expected github in public provider names")
 	}
@@ -70,6 +73,9 @@ func TestImplementedProviderNames_ExcludesStubProviders(t *testing.T) {
 	}
 	if !slices.Contains(names, "terraform_cloud") {
 		t.Fatal("expected terraform_cloud in implemented provider names")
+	}
+	if !slices.Contains(names, "splunk") {
+		t.Fatal("expected splunk in implemented provider names")
 	}
 	if !slices.Contains(names, "github") {
 		t.Fatal("expected github in implemented provider names")

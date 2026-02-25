@@ -1004,6 +1004,14 @@ func (a *App) initProviders(ctx context.Context) {
 		})
 	}
 
+	// Register Splunk if configured
+	if a.Config.SplunkURL != "" && a.Config.SplunkToken != "" {
+		registerProvider("splunk", providers.NewSplunkProvider(), map[string]interface{}{
+			"url":   a.Config.SplunkURL,
+			"token": a.Config.SplunkToken,
+		})
+	}
+
 	// Register Cloudflare if configured
 	if a.Config.CloudflareAPIToken != "" {
 		registerProvider("cloudflare", providers.NewCloudflareProvider(), map[string]interface{}{
