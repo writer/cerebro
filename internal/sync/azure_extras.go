@@ -4,8 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
+	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appservice/armappservice"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/keyvault/armkeyvault"
@@ -13,6 +17,58 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 )
+
+const (
+	azureManagementScope              = "https://management.azure.com/.default"
+	azureAKSManagedClustersAPIVersion = "2023-08-01"
+)
+
+var azureManagementHTTPClient = &http.Client{Timeout: 30 * time.Second}
+
+type azureManagedClusterListResponse struct {
+	Value    []azureManagedCluster `json:"value"`
+	NextLink string                `json:"nextLink"`
+}
+
+type azureManagedCluster struct {
+	ID         *string                        `json:"id"`
+	Name       *string                        `json:"name"`
+	Location   *string                        `json:"location"`
+	Tags       map[string]string              `json:"tags"`
+	Identity   map[string]interface{}         `json:"identity"`
+	Properties *azureManagedClusterProperties `json:"properties"`
+}
+
+type azureManagedClusterProperties struct {
+	KubernetesVersion *string                        `json:"kubernetesVersion"`
+	DNSPrefix         *string                        `json:"dnsPrefix"`
+	ProvisioningState *string                        `json:"provisioningState"`
+	FQDN              *string                        `json:"fqdn"`
+	NodeResourceGroup *string                        `json:"nodeResourceGroup"`
+	APIServerAccess   *azureManagedClusterAPIAccess  `json:"apiServerAccessProfile"`
+	NetworkProfile    *azureManagedClusterNetwork    `json:"networkProfile"`
+	AgentPoolProfiles []azureManagedClusterAgentPool `json:"agentPoolProfiles"`
+}
+
+type azureManagedClusterAPIAccess struct {
+	EnablePrivateCluster *bool    `json:"enablePrivateCluster"`
+	AuthorizedIPRanges   []string `json:"authorizedIPRanges"`
+}
+
+type azureManagedClusterNetwork struct {
+	NetworkPlugin *string `json:"networkPlugin"`
+	NetworkPolicy *string `json:"networkPolicy"`
+	OutboundType  *string `json:"outboundType"`
+}
+
+type azureManagedClusterAgentPool struct {
+	Name                *string `json:"name"`
+	Count               *int32  `json:"count"`
+	VMSize              *string `json:"vmSize"`
+	Mode                *string `json:"mode"`
+	OSType              *string `json:"osType"`
+	OrchestratorVersion *string `json:"orchestratorVersion"`
+}
 
 func (e *AzureSyncEngine) azureFunctionAppTable() AzureTableSpec {
 	return AzureTableSpec{
@@ -77,6 +133,86 @@ func (e *AzureSyncEngine) azureFunctionAppTable() AzureTableSpec {
 
 					results = append(results, row)
 				}
+			}
+
+			return results, nil
+		},
+	}
+}
+
+func (e *AzureSyncEngine) azureAKSClusterTable() AzureTableSpec {
+	return AzureTableSpec{
+		Name: "azure_aks_clusters",
+		Columns: []string{
+			"id",
+			"name",
+			"location",
+			"resource_group",
+			"kubernetes_version",
+			"provisioning_state",
+			"dns_prefix",
+			"fqdn",
+			"node_resource_group",
+			"private_cluster_enabled",
+			"authorized_ip_ranges",
+			"network_plugin",
+			"network_policy",
+			"outbound_type",
+			"agent_pool_count",
+			"agent_pools",
+			"identity",
+			"tags",
+			"subscription_id",
+		},
+		Fetch: func(ctx context.Context, cred *azidentity.DefaultAzureCredential, subscriptionID string) ([]map[string]interface{}, error) {
+			clusters, err := listAzureManagedClusters(ctx, cred, subscriptionID)
+			if err != nil {
+				return nil, err
+			}
+
+			results := make([]map[string]interface{}, 0, len(clusters))
+			for _, cluster := range clusters {
+				clusterID := ptrStr(cluster.ID)
+				row := map[string]interface{}{
+					"_cq_id":          clusterID,
+					"id":              clusterID,
+					"name":            ptrStr(cluster.Name),
+					"location":        ptrStr(cluster.Location),
+					"resource_group":  resourceGroupFromID(clusterID),
+					"subscription_id": subscriptionID,
+					"tags":            cluster.Tags,
+				}
+
+				if len(cluster.Identity) > 0 {
+					row["identity"] = cluster.Identity
+				}
+
+				if cluster.Properties != nil {
+					row["kubernetes_version"] = ptrStr(cluster.Properties.KubernetesVersion)
+					row["provisioning_state"] = ptrStr(cluster.Properties.ProvisioningState)
+					row["dns_prefix"] = ptrStr(cluster.Properties.DNSPrefix)
+					row["fqdn"] = ptrStr(cluster.Properties.FQDN)
+					row["node_resource_group"] = ptrStr(cluster.Properties.NodeResourceGroup)
+					row["agent_pool_count"] = len(cluster.Properties.AgentPoolProfiles)
+					row["agent_pools"] = serializeAKSAgentPools(cluster.Properties.AgentPoolProfiles)
+
+					if cluster.Properties.APIServerAccess != nil {
+						if cluster.Properties.APIServerAccess.EnablePrivateCluster != nil {
+							row["private_cluster_enabled"] = *cluster.Properties.APIServerAccess.EnablePrivateCluster
+						}
+						if len(cluster.Properties.APIServerAccess.AuthorizedIPRanges) > 0 {
+							row["authorized_ip_ranges"] = cluster.Properties.APIServerAccess.AuthorizedIPRanges
+						}
+					}
+
+					if cluster.Properties.NetworkProfile != nil {
+						row["network_plugin"] = ptrStr(cluster.Properties.NetworkProfile.NetworkPlugin)
+						row["network_policy"] = ptrStr(cluster.Properties.NetworkProfile.NetworkPolicy)
+						row["outbound_type"] = ptrStr(cluster.Properties.NetworkProfile.OutboundType)
+					}
+				}
+
+				results = append(results, row)
 			}
 
 			return results, nil
@@ -323,6 +459,78 @@ func (e *AzureSyncEngine) azureKeyVaultKeyTable() AzureTableSpec {
 			return results, nil
 		},
 	}
+}
+
+func listAzureManagedClusters(ctx context.Context, cred *azidentity.DefaultAzureCredential, subscriptionID string) ([]azureManagedCluster, error) {
+	token, err := cred.GetToken(ctx, policy.TokenRequestOptions{Scopes: []string{azureManagementScope}})
+	if err != nil {
+		return nil, fmt.Errorf("acquire Azure management token: %w", err)
+	}
+
+	nextURL := fmt.Sprintf("https://management.azure.com/subscriptions/%s/providers/Microsoft.ContainerService/managedClusters?api-version=%s", subscriptionID, azureAKSManagedClustersAPIVersion)
+	clusters := make([]azureManagedCluster, 0)
+	for nextURL != "" {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, nextURL, nil)
+		if err != nil {
+			return nil, fmt.Errorf("build AKS list request: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+token.Token)
+		req.Header.Set("Accept", "application/json")
+
+		resp, err := azureManagementHTTPClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("request AKS clusters: %w", err)
+		}
+
+		body, readErr := io.ReadAll(resp.Body)
+		closeErr := resp.Body.Close()
+		if readErr != nil {
+			return nil, fmt.Errorf("read AKS response body: %w", readErr)
+		}
+		if closeErr != nil {
+			return nil, fmt.Errorf("close AKS response body: %w", closeErr)
+		}
+
+		if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+			return nil, fmt.Errorf("list AKS clusters returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		}
+
+		var page azureManagedClusterListResponse
+		if err := json.Unmarshal(body, &page); err != nil {
+			return nil, fmt.Errorf("decode AKS clusters response: %w", err)
+		}
+
+		clusters = append(clusters, page.Value...)
+		nextURL = strings.TrimSpace(page.NextLink)
+	}
+
+	return clusters, nil
+}
+
+func serializeAKSAgentPools(pools []azureManagedClusterAgentPool) []map[string]interface{} {
+	if len(pools) == 0 {
+		return nil
+	}
+
+	serialized := make([]map[string]interface{}, 0, len(pools))
+	for _, pool := range pools {
+		var count interface{}
+		if pool.Count != nil {
+			count = *pool.Count
+		}
+
+		entry := map[string]interface{}{
+			"name":                 ptrStr(pool.Name),
+			"count":                count,
+			"vm_size":              ptrStr(pool.VMSize),
+			"mode":                 ptrStr(pool.Mode),
+			"os_type":              ptrStr(pool.OSType),
+			"orchestrator_version": ptrStr(pool.OrchestratorVersion),
+		}
+		serialized = append(serialized, entry)
+	}
+
+	return serialized
 }
 
 func isFunctionApp(kind *string) bool {

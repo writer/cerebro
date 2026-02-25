@@ -496,6 +496,7 @@ func (e *AzureSyncEngine) insertChangeRecord(ctx context.Context, table, changeT
 func (e *AzureSyncEngine) getAzureTables() []AzureTableSpec {
 	return []AzureTableSpec{
 		e.azureVirtualMachineTable(),
+		e.azureAKSClusterTable(),
 		e.azureStorageAccountTable(),
 		e.azureStorageContainerTable(),
 		e.azureStorageBlobTable(),

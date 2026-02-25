@@ -186,4 +186,15 @@ func TestBuildAzureCoverageMatrix(t *testing.T) {
 	if _, ok := lookup["azure_functions_apps"]; !ok {
 		t.Fatal("expected azure_functions_apps entry")
 	}
+
+	aks, ok := lookup["azure_aks_clusters"]
+	if !ok {
+		t.Fatal("expected azure_aks_clusters entry")
+	}
+	if aks.Service != "aks" {
+		t.Fatalf("expected aks service, got %q", aks.Service)
+	}
+	if !reflect.DeepEqual(aks.PrimaryKeys, []string{"id"}) {
+		t.Fatalf("unexpected AKS primary keys: %#v", aks.PrimaryKeys)
+	}
 }

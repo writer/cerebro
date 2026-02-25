@@ -74,6 +74,7 @@ var ExpectedTables = []string{
 	"gcp_storage_buckets",
 	"gcp_iam_service_accounts",
 	"azure_compute_virtual_machines",
+	"azure_aks_clusters",
 	"azure_storage_accounts",
 	"k8s_core_pods",
 	"k8s_rbac_roles",
