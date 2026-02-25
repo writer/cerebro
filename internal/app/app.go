@@ -234,6 +234,10 @@ type Config struct {
 	PantherAPIToken string
 	PantherBaseURL  string
 
+	// Kolide Provider
+	KolideAPIToken string
+	KolideBaseURL  string
+
 	// Google Workspace Provider
 	GoogleWorkspaceDomain            string
 	GoogleWorkspaceAdminEmail        string
@@ -425,6 +429,8 @@ func LoadConfig() *Config {
 		VantaBaseURL:                     getEnv("VANTA_BASE_URL", "https://api.vanta.com"),
 		PantherAPIToken:                  getEnv("PANTHER_API_TOKEN", ""),
 		PantherBaseURL:                   getEnv("PANTHER_BASE_URL", "https://api.runpanther.io/public_api/v1"),
+		KolideAPIToken:                   getEnv("KOLIDE_API_TOKEN", ""),
+		KolideBaseURL:                    getEnv("KOLIDE_BASE_URL", "https://api.kolide.com/v1"),
 		GoogleWorkspaceDomain:            getEnv("GOOGLE_WORKSPACE_DOMAIN", ""),
 		GoogleWorkspaceAdminEmail:        getEnv("GOOGLE_WORKSPACE_ADMIN_EMAIL", ""),
 		GoogleWorkspaceImpersonatorEmail: getEnv("GOOGLE_WORKSPACE_IMPERSONATOR_EMAIL", ""),
@@ -911,6 +917,14 @@ func (a *App) initProviders(ctx context.Context) {
 		registerProvider("panther", providers.NewPantherProvider(), map[string]interface{}{
 			"api_token": a.Config.PantherAPIToken,
 			"base_url":  a.Config.PantherBaseURL,
+		})
+	}
+
+	// Register Kolide if configured
+	if a.Config.KolideAPIToken != "" {
+		registerProvider("kolide", providers.NewKolideProvider(), map[string]interface{}{
+			"api_token": a.Config.KolideAPIToken,
+			"base_url":  a.Config.KolideBaseURL,
 		})
 	}
 

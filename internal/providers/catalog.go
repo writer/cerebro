@@ -34,6 +34,7 @@ var providerMetadata = map[string]ProviderMetadata{
 	"intune":           {Name: "intune", Maturity: ProviderMaturityBeta, Public: true},
 	"jamf":             {Name: "jamf", Maturity: ProviderMaturityBeta, Public: true},
 	"kandji":           {Name: "kandji", Maturity: ProviderMaturityBeta, Public: true},
+	"kolide":           {Name: "kolide", Maturity: ProviderMaturityBeta, Public: true},
 	"okta":             {Name: "okta", Maturity: ProviderMaturityProductionReady, Public: true},
 	"panther":          {Name: "panther", Maturity: ProviderMaturityBeta, Public: true},
 	"qualys":           {Name: "qualys", Maturity: ProviderMaturityProductionReady, Public: true},

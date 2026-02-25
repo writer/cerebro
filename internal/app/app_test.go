@@ -330,6 +330,8 @@ func TestInitProviders_RegistersExpandedProviderSet(t *testing.T) {
 			VantaBaseURL:           "https://api.vanta.com",
 			PantherAPIToken:        "panther-token",
 			PantherBaseURL:         "https://api.runpanther.io/public_api/v1",
+			KolideAPIToken:         "kolide-token",
+			KolideBaseURL:          "https://api.kolide.com/v1",
 			GitLabToken:            "gitlab-token",
 			GitLabBaseURL:          "https://gitlab.example.com",
 			CloudflareAPIToken:     "cloudflare-token",
@@ -360,7 +362,7 @@ func TestInitProviders_RegistersExpandedProviderSet(t *testing.T) {
 
 	app.initProviders(context.Background())
 
-	expectedProviders := []string{"qualys", "zoom", "wiz", "figma", "socket", "ramp", "gong", "vanta", "panther", "gitlab", "cloudflare", "salesforce", "vault", "slack", "rippling", "jamf", "intune", "atlassian", "kandji"}
+	expectedProviders := []string{"qualys", "zoom", "wiz", "figma", "socket", "ramp", "gong", "vanta", "panther", "kolide", "gitlab", "cloudflare", "salesforce", "vault", "slack", "rippling", "jamf", "intune", "atlassian", "kandji"}
 	for _, name := range expectedProviders {
 		if _, ok := app.Providers.Get(name); !ok {
 			t.Errorf("expected provider %q to be registered", name)
@@ -376,7 +378,7 @@ func TestInitProviders_SkipsExpandedProvidersWithoutConfig(t *testing.T) {
 
 	app.initProviders(context.Background())
 
-	notExpected := []string{"qualys", "zoom", "wiz", "figma", "socket", "ramp", "gong", "vanta", "panther", "gitlab", "cloudflare", "salesforce", "vault", "slack", "rippling", "jamf", "intune", "atlassian", "kandji", "cloudtrail"}
+	notExpected := []string{"qualys", "zoom", "wiz", "figma", "socket", "ramp", "gong", "vanta", "panther", "kolide", "gitlab", "cloudflare", "salesforce", "vault", "slack", "rippling", "jamf", "intune", "atlassian", "kandji", "cloudtrail"}
 	for _, name := range notExpected {
 		if _, ok := app.Providers.Get(name); ok {
 			t.Errorf("did not expect provider %q to be registered", name)
