@@ -164,6 +164,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.25'
+          cache: false
 
       - name: Build linux/arm64 binary
         if: steps.image-changes.outputs.changed == 'true' && steps.tag-check.outputs.exists != 'true'
@@ -261,6 +262,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.25'
+          cache: false
 
       - name: Build linux/arm64 binary
         if: steps.image-changes.outputs.changed == 'true' && steps.tag-check.outputs.exists != 'true'
