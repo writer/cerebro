@@ -38,7 +38,7 @@ func TestSerializeAKSAgentPoolsEmpty(t *testing.T) {
 	}
 }
 
-func TestAzureTablesIncludeAKSAndRBACAndDefender(t *testing.T) {
+func TestAzureTablesIncludeAKSAndRBACPolicyAndDefender(t *testing.T) {
 	tables := (&AzureSyncEngine{}).getAzureTables()
 	lookup := make(map[string]struct{}, len(tables))
 	for _, table := range tables {
@@ -50,6 +50,9 @@ func TestAzureTablesIncludeAKSAndRBACAndDefender(t *testing.T) {
 	}
 	if _, ok := lookup["azure_rbac_role_assignments"]; !ok {
 		t.Fatal("expected azure_rbac_role_assignments in Azure table set")
+	}
+	if _, ok := lookup["azure_policy_assignments"]; !ok {
+		t.Fatal("expected azure_policy_assignments in Azure table set")
 	}
 	if _, ok := lookup["azure_defender_assessments"]; !ok {
 		t.Fatal("expected azure_defender_assessments in Azure table set")

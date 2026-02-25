@@ -209,6 +209,17 @@ func TestBuildAzureCoverageMatrix(t *testing.T) {
 		t.Fatalf("unexpected RBAC primary keys: %#v", rbac.PrimaryKeys)
 	}
 
+	policy, ok := lookup["azure_policy_assignments"]
+	if !ok {
+		t.Fatal("expected azure_policy_assignments entry")
+	}
+	if policy.Service != "policy" {
+		t.Fatalf("expected policy service, got %q", policy.Service)
+	}
+	if !reflect.DeepEqual(policy.PrimaryKeys, []string{"id"}) {
+		t.Fatalf("unexpected policy assignment primary keys: %#v", policy.PrimaryKeys)
+	}
+
 	defender, ok := lookup["azure_defender_assessments"]
 	if !ok {
 		t.Fatal("expected azure_defender_assessments entry")

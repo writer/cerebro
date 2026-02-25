@@ -21,6 +21,7 @@ import (
 const (
 	azureManagementScope               = "https://management.azure.com/.default"
 	azureAKSManagedClustersAPIVersion  = "2023-08-01"
+	azurePolicyAssignmentsAPIVersion   = "2022-06-01"
 	azureDefenderAssessmentsAPIVersion = "2020-01-01"
 )
 
@@ -96,6 +97,34 @@ type azureRoleAssignmentProperties struct {
 	CreatedBy                  *string `json:"createdBy"`
 	UpdatedBy                  *string `json:"updatedBy"`
 	DelegatedManagedIdentityID *string `json:"delegatedManagedIdentityResourceId"`
+}
+
+type azurePolicyAssignmentListResponse struct {
+	Value    []azurePolicyAssignment `json:"value"`
+	NextLink string                  `json:"nextLink"`
+}
+
+type azurePolicyAssignment struct {
+	ID         *string                          `json:"id"`
+	Name       *string                          `json:"name"`
+	Type       *string                          `json:"type"`
+	Location   *string                          `json:"location"`
+	Identity   map[string]interface{}           `json:"identity"`
+	Properties *azurePolicyAssignmentProperties `json:"properties"`
+}
+
+type azurePolicyAssignmentProperties struct {
+	DisplayName           *string                  `json:"displayName"`
+	Description           *string                  `json:"description"`
+	PolicyDefinitionID    *string                  `json:"policyDefinitionId"`
+	Scope                 *string                  `json:"scope"`
+	EnforcementMode       *string                  `json:"enforcementMode"`
+	NotScopes             []string                 `json:"notScopes"`
+	Metadata              map[string]interface{}   `json:"metadata"`
+	Parameters            map[string]interface{}   `json:"parameters"`
+	NonComplianceMessages []map[string]interface{} `json:"nonComplianceMessages"`
+	Overrides             []map[string]interface{} `json:"overrides"`
+	ResourceSelectors     []map[string]interface{} `json:"resourceSelectors"`
 }
 
 type azureDefenderAssessmentListResponse struct {
@@ -331,6 +360,86 @@ func (e *AzureSyncEngine) azureRBACRoleAssignmentTable() AzureTableSpec {
 					row["delegated_managed_identity_id"] = ptrStr(assignment.Properties.DelegatedManagedIdentityID)
 					if assignment.Properties.CanDelegate != nil {
 						row["can_delegate"] = *assignment.Properties.CanDelegate
+					}
+				}
+
+				results = append(results, row)
+			}
+
+			return results, nil
+		},
+	}
+}
+
+func (e *AzureSyncEngine) azurePolicyAssignmentTable() AzureTableSpec {
+	return AzureTableSpec{
+		Name: "azure_policy_assignments",
+		Columns: []string{
+			"id",
+			"name",
+			"assignment_type",
+			"location",
+			"display_name",
+			"description",
+			"scope",
+			"resource_group",
+			"policy_definition_id",
+			"enforcement_mode",
+			"not_scopes",
+			"identity",
+			"metadata",
+			"parameters",
+			"non_compliance_messages",
+			"overrides",
+			"resource_selectors",
+			"subscription_id",
+		},
+		Fetch: func(ctx context.Context, cred *azidentity.DefaultAzureCredential, subscriptionID string) ([]map[string]interface{}, error) {
+			assignments, err := listAzurePolicyAssignments(ctx, cred, subscriptionID)
+			if err != nil {
+				return nil, err
+			}
+
+			results := make([]map[string]interface{}, 0, len(assignments))
+			for _, assignment := range assignments {
+				assignmentID := ptrStr(assignment.ID)
+				row := map[string]interface{}{
+					"_cq_id":          assignmentID,
+					"id":              assignmentID,
+					"name":            ptrStr(assignment.Name),
+					"assignment_type": ptrStr(assignment.Type),
+					"location":        ptrStr(assignment.Location),
+					"resource_group":  resourceGroupFromID(assignmentID),
+					"subscription_id": subscriptionID,
+				}
+
+				if len(assignment.Identity) > 0 {
+					row["identity"] = assignment.Identity
+				}
+
+				if assignment.Properties != nil {
+					row["display_name"] = ptrStr(assignment.Properties.DisplayName)
+					row["description"] = ptrStr(assignment.Properties.Description)
+					row["scope"] = ptrStr(assignment.Properties.Scope)
+					row["policy_definition_id"] = ptrStr(assignment.Properties.PolicyDefinitionID)
+					row["enforcement_mode"] = ptrStr(assignment.Properties.EnforcementMode)
+					if len(assignment.Properties.NotScopes) > 0 {
+						row["not_scopes"] = assignment.Properties.NotScopes
+					}
+					if len(assignment.Properties.Metadata) > 0 {
+						row["metadata"] = assignment.Properties.Metadata
+					}
+					if len(assignment.Properties.Parameters) > 0 {
+						row["parameters"] = assignment.Properties.Parameters
+					}
+					if len(assignment.Properties.NonComplianceMessages) > 0 {
+						row["non_compliance_messages"] = assignment.Properties.NonComplianceMessages
+					}
+					if len(assignment.Properties.Overrides) > 0 {
+						row["overrides"] = assignment.Properties.Overrides
+					}
+					if len(assignment.Properties.ResourceSelectors) > 0 {
+						row["resource_selectors"] = assignment.Properties.ResourceSelectors
 					}
 				}
 
@@ -692,6 +801,27 @@ func listAzureRoleAssignments(ctx context.Context, cred *azidentity.DefaultAzure
 		var page azureRoleAssignmentListResponse
 		if err := fetchAzureManagementPage(ctx, token, nextURL, &page); err != nil {
 			return nil, fmt.Errorf("list role assignments: %w", err)
+		}
+
+		assignments = append(assignments, page.Value...)
+		nextURL = strings.TrimSpace(page.NextLink)
+	}
+
+	return assignments, nil
+}
+
+func listAzurePolicyAssignments(ctx context.Context, cred *azidentity.DefaultAzureCredential, subscriptionID string) ([]azurePolicyAssignment, error) {
+	token, err := azureManagementToken(ctx, cred)
+	if err != nil {
+		return nil, err
+	}
+
+	nextURL := fmt.Sprintf("https://management.azure.com/subscriptions/%s/providers/Microsoft.Authorization/policyAssignments?api-version=%s", subscriptionID, azurePolicyAssignmentsAPIVersion)
+	assignments := make([]azurePolicyAssignment, 0)
+	for nextURL != "" {
+		var page azurePolicyAssignmentListResponse
+		if err := fetchAzureManagementPage(ctx, token, nextURL, &page); err != nil {
+			return nil, fmt.Errorf("list policy assignments: %w", err)
 		}
 
 		assignments = append(assignments, page.Value...)
