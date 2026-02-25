@@ -45,6 +45,7 @@ var providerMetadata = map[string]ProviderMetadata{
 	"socket":           {Name: "socket", Maturity: ProviderMaturityBeta, Public: true},
 	"tailscale":        {Name: "tailscale", Maturity: ProviderMaturityProductionReady, Public: true},
 	"tenable":          {Name: "tenable", Maturity: ProviderMaturityProductionReady, Public: true},
+	"vanta":            {Name: "vanta", Maturity: ProviderMaturityBeta, Public: true},
 	"vault":            {Name: "vault", Maturity: ProviderMaturityBeta, Public: true},
 	"wiz":              {Name: "wiz", Maturity: ProviderMaturityBeta, Public: true},
 	"zoom":             {Name: "zoom", Maturity: ProviderMaturityBeta, Public: true},

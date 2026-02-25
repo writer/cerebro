@@ -226,6 +226,10 @@ type Config struct {
 	GongAccessSecret string
 	GongBaseURL      string
 
+	// Vanta Provider
+	VantaAPIToken string
+	VantaBaseURL  string
+
 	// Google Workspace Provider
 	GoogleWorkspaceDomain            string
 	GoogleWorkspaceAdminEmail        string
@@ -413,6 +417,8 @@ func LoadConfig() *Config {
 		GongAccessKey:                    getEnv("GONG_ACCESS_KEY", ""),
 		GongAccessSecret:                 getEnv("GONG_ACCESS_SECRET", ""),
 		GongBaseURL:                      getEnv("GONG_BASE_URL", "https://api.gong.io"),
+		VantaAPIToken:                    getEnv("VANTA_API_TOKEN", ""),
+		VantaBaseURL:                     getEnv("VANTA_BASE_URL", "https://api.vanta.com"),
 		GoogleWorkspaceDomain:            getEnv("GOOGLE_WORKSPACE_DOMAIN", ""),
 		GoogleWorkspaceAdminEmail:        getEnv("GOOGLE_WORKSPACE_ADMIN_EMAIL", ""),
 		GoogleWorkspaceImpersonatorEmail: getEnv("GOOGLE_WORKSPACE_IMPERSONATOR_EMAIL", ""),
@@ -883,6 +889,14 @@ func (a *App) initProviders(ctx context.Context) {
 			"access_key":    a.Config.GongAccessKey,
 			"access_secret": a.Config.GongAccessSecret,
 			"base_url":      a.Config.GongBaseURL,
+		})
+	}
+
+	// Register Vanta if configured
+	if a.Config.VantaAPIToken != "" {
+		registerProvider("vanta", providers.NewVantaProvider(), map[string]interface{}{
+			"api_token": a.Config.VantaAPIToken,
+			"base_url":  a.Config.VantaBaseURL,
 		})
 	}
 
