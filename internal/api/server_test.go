@@ -716,7 +716,7 @@ func TestListProviders(t *testing.T) {
 func TestListProviders_HidesIncompleteByDefault(t *testing.T) {
 	a := newTestApp(t)
 	a.Providers.Register(&staticProvider{name: "okta", provider: providers.ProviderTypeSaaS})
-	a.Providers.Register(&staticProvider{name: "workday", provider: providers.ProviderTypeSaaS})
+	a.Providers.Register(&staticProvider{name: "bamboohr", provider: providers.ProviderTypeSaaS})
 
 	s := NewServer(a)
 	w := do(t, s, "GET", "/api/v1/providers/", nil)
@@ -741,7 +741,7 @@ func TestListProviders_HidesIncompleteByDefault(t *testing.T) {
 func TestListProviders_IncludeIncomplete(t *testing.T) {
 	a := newTestApp(t)
 	a.Providers.Register(&staticProvider{name: "okta", provider: providers.ProviderTypeSaaS})
-	a.Providers.Register(&staticProvider{name: "workday", provider: providers.ProviderTypeSaaS})
+	a.Providers.Register(&staticProvider{name: "bamboohr", provider: providers.ProviderTypeSaaS})
 
 	s := NewServer(a)
 	w := do(t, s, "GET", "/api/v1/providers/?include_incomplete=true", nil)
@@ -755,32 +755,32 @@ func TestListProviders_IncludeIncomplete(t *testing.T) {
 	}
 
 	items := body["providers"].([]interface{})
-	foundWorkday := false
+	foundBambooHR := false
 	for _, item := range items {
 		provider := item.(map[string]interface{})
-		if provider["name"] == "workday" {
-			foundWorkday = true
+		if provider["name"] == "bamboohr" {
+			foundBambooHR = true
 			if provider["maturity"] != string(providers.ProviderMaturityStub) {
-				t.Fatalf("expected workday maturity %q, got %v", providers.ProviderMaturityStub, provider["maturity"])
+				t.Fatalf("expected bamboohr maturity %q, got %v", providers.ProviderMaturityStub, provider["maturity"])
 			}
 		}
 	}
-	if !foundWorkday {
-		t.Fatal("expected workday in provider list when include_incomplete=true")
+	if !foundBambooHR {
+		t.Fatal("expected bamboohr in provider list when include_incomplete=true")
 	}
 }
 
 func TestGetProvider_IncompleteHiddenByDefault(t *testing.T) {
 	a := newTestApp(t)
-	a.Providers.Register(&staticProvider{name: "workday", provider: providers.ProviderTypeSaaS})
+	a.Providers.Register(&staticProvider{name: "bamboohr", provider: providers.ProviderTypeSaaS})
 	s := NewServer(a)
 
-	w := do(t, s, "GET", "/api/v1/providers/workday", nil)
+	w := do(t, s, "GET", "/api/v1/providers/bamboohr", nil)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", w.Code)
 	}
 
-	w = do(t, s, "GET", "/api/v1/providers/workday?include_incomplete=true", nil)
+	w = do(t, s, "GET", "/api/v1/providers/bamboohr?include_incomplete=true", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 with include_incomplete, got %d", w.Code)
 	}

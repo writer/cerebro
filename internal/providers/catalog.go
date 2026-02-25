@@ -21,6 +21,7 @@ type ProviderMetadata struct {
 var providerMetadata = map[string]ProviderMetadata{
 	"auth0":            {Name: "auth0", Maturity: ProviderMaturityBeta, Public: true},
 	"atlassian":        {Name: "atlassian", Maturity: ProviderMaturityBeta, Public: true},
+	"bamboohr":         {Name: "bamboohr", Maturity: ProviderMaturityStub, Public: false},
 	"azure":            {Name: "azure", Maturity: ProviderMaturityProductionReady, Public: true},
 	"cloudflare":       {Name: "cloudflare", Maturity: ProviderMaturityProductionReady, Public: true},
 	"cloudtrail":       {Name: "cloudtrail", Maturity: ProviderMaturityBeta, Public: true},
@@ -55,10 +56,8 @@ var providerMetadata = map[string]ProviderMetadata{
 	"vanta":            {Name: "vanta", Maturity: ProviderMaturityBeta, Public: true},
 	"vault":            {Name: "vault", Maturity: ProviderMaturityBeta, Public: true},
 	"wiz":              {Name: "wiz", Maturity: ProviderMaturityBeta, Public: true},
+	"workday":          {Name: "workday", Maturity: ProviderMaturityBeta, Public: true},
 	"zoom":             {Name: "zoom", Maturity: ProviderMaturityBeta, Public: true},
-
-	// Planned but not yet implemented providers.
-	"workday": {Name: "workday", Maturity: ProviderMaturityStub, Public: false},
 }
 
 // ProviderMetadataFor returns metadata for a provider name.

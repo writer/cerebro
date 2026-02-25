@@ -270,6 +270,10 @@ type Config struct {
 	ServiceNowUsername string
 	ServiceNowPassword string
 
+	// Workday Provider
+	WorkdayURL      string
+	WorkdayAPIToken string
+
 	// GitLab Provider
 	GitLabToken   string
 	GitLabBaseURL string
@@ -455,6 +459,8 @@ func LoadConfig() *Config {
 		ServiceNowAPIToken:               getEnv("SERVICENOW_API_TOKEN", ""),
 		ServiceNowUsername:               getEnv("SERVICENOW_USERNAME", ""),
 		ServiceNowPassword:               getEnv("SERVICENOW_PASSWORD", ""),
+		WorkdayURL:                       getEnv("WORKDAY_URL", ""),
+		WorkdayAPIToken:                  getEnv("WORKDAY_API_TOKEN", ""),
 		GitLabToken:                      getEnv("GITLAB_TOKEN", ""),
 		GitLabBaseURL:                    getEnv("GITLAB_BASE_URL", "https://gitlab.com"),
 		TerraformCloudToken:              getEnv("TFC_TOKEN", ""),
@@ -1009,6 +1015,14 @@ func (a *App) initProviders(ctx context.Context) {
 			serviceNowConfig["password"] = a.Config.ServiceNowPassword
 		}
 		registerProvider("servicenow", providers.NewServiceNowProvider(), serviceNowConfig)
+	}
+
+	// Register Workday if configured
+	if a.Config.WorkdayURL != "" && a.Config.WorkdayAPIToken != "" {
+		registerProvider("workday", providers.NewWorkdayProvider(), map[string]interface{}{
+			"url":       a.Config.WorkdayURL,
+			"api_token": a.Config.WorkdayAPIToken,
+		})
 	}
 
 	// Register GitLab if configured

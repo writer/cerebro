@@ -16,15 +16,15 @@ func TestProviderMetadataFor_KnownProvider(t *testing.T) {
 }
 
 func TestProviderMetadataFor_StubProvider(t *testing.T) {
-	metadata := ProviderMetadataFor("workday")
+	metadata := ProviderMetadataFor("bamboohr")
 	if metadata.Maturity != ProviderMaturityStub {
-		t.Fatalf("expected workday maturity %q, got %q", ProviderMaturityStub, metadata.Maturity)
+		t.Fatalf("expected bamboohr maturity %q, got %q", ProviderMaturityStub, metadata.Maturity)
 	}
 	if metadata.Public {
-		t.Fatal("expected workday to be non-public")
+		t.Fatal("expected bamboohr to be non-public")
 	}
-	if !IsProviderIncomplete("workday") {
-		t.Fatal("expected workday to be incomplete")
+	if !IsProviderIncomplete("bamboohr") {
+		t.Fatal("expected bamboohr to be incomplete")
 	}
 }
 
@@ -43,11 +43,14 @@ func TestProviderMetadataFor_UnknownDefaultsToPublicProductionReady(t *testing.T
 
 func TestPublicProviderNames_ExcludesStubProviders(t *testing.T) {
 	names := PublicProviderNames()
-	if slices.Contains(names, "workday") {
-		t.Fatal("did not expect stub provider workday in public provider names")
+	if slices.Contains(names, "bamboohr") {
+		t.Fatal("did not expect stub provider bamboohr in public provider names")
 	}
 	if !slices.Contains(names, "servicenow") {
 		t.Fatal("expected servicenow in public provider names")
+	}
+	if !slices.Contains(names, "workday") {
+		t.Fatal("expected workday in public provider names")
 	}
 	if !slices.Contains(names, "auth0") {
 		t.Fatal("expected auth0 in public provider names")
@@ -71,11 +74,14 @@ func TestPublicProviderNames_ExcludesStubProviders(t *testing.T) {
 
 func TestImplementedProviderNames_ExcludesStubProviders(t *testing.T) {
 	names := ImplementedProviderNames()
-	if slices.Contains(names, "workday") {
-		t.Fatal("did not expect stub provider workday in implemented provider names")
+	if slices.Contains(names, "bamboohr") {
+		t.Fatal("did not expect stub provider bamboohr in implemented provider names")
 	}
 	if !slices.Contains(names, "servicenow") {
 		t.Fatal("expected servicenow in implemented provider names")
+	}
+	if !slices.Contains(names, "workday") {
+		t.Fatal("expected workday in implemented provider names")
 	}
 	if !slices.Contains(names, "auth0") {
 		t.Fatal("expected auth0 in implemented provider names")
