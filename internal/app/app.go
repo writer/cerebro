@@ -230,6 +230,10 @@ type Config struct {
 	VantaAPIToken string
 	VantaBaseURL  string
 
+	// Panther Provider
+	PantherAPIToken string
+	PantherBaseURL  string
+
 	// Google Workspace Provider
 	GoogleWorkspaceDomain            string
 	GoogleWorkspaceAdminEmail        string
@@ -419,6 +423,8 @@ func LoadConfig() *Config {
 		GongBaseURL:                      getEnv("GONG_BASE_URL", "https://api.gong.io"),
 		VantaAPIToken:                    getEnv("VANTA_API_TOKEN", ""),
 		VantaBaseURL:                     getEnv("VANTA_BASE_URL", "https://api.vanta.com"),
+		PantherAPIToken:                  getEnv("PANTHER_API_TOKEN", ""),
+		PantherBaseURL:                   getEnv("PANTHER_BASE_URL", "https://api.runpanther.io/public_api/v1"),
 		GoogleWorkspaceDomain:            getEnv("GOOGLE_WORKSPACE_DOMAIN", ""),
 		GoogleWorkspaceAdminEmail:        getEnv("GOOGLE_WORKSPACE_ADMIN_EMAIL", ""),
 		GoogleWorkspaceImpersonatorEmail: getEnv("GOOGLE_WORKSPACE_IMPERSONATOR_EMAIL", ""),
@@ -897,6 +903,14 @@ func (a *App) initProviders(ctx context.Context) {
 		registerProvider("vanta", providers.NewVantaProvider(), map[string]interface{}{
 			"api_token": a.Config.VantaAPIToken,
 			"base_url":  a.Config.VantaBaseURL,
+		})
+	}
+
+	// Register Panther if configured
+	if a.Config.PantherAPIToken != "" {
+		registerProvider("panther", providers.NewPantherProvider(), map[string]interface{}{
+			"api_token": a.Config.PantherAPIToken,
+			"base_url":  a.Config.PantherBaseURL,
 		})
 	}
 
