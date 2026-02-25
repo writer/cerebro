@@ -1,0 +1,11 @@
+FROM alpine:3.19
+
+COPY .dist/cerebro /usr/local/bin/cerebro
+COPY policies /app/policies
+
+WORKDIR /app
+
+EXPOSE 8080
+
+ENTRYPOINT ["/usr/local/bin/cerebro"]
+CMD ["serve"]
