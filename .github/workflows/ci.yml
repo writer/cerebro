@@ -107,7 +107,7 @@ jobs:
   # PR: Build and push to sec-dev ECR
   build-and-push-sec-dev:
     name: Build & Push to sec-dev ECR
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     permissions:
       id-token: write
@@ -170,7 +170,7 @@ jobs:
   # Main merge: Build and push to sec-prod ECR
   build-and-push-sec-prod:
     name: Build & Push to sec-prod ECR
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-latest
     needs: [test, lint, policy-validate]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
