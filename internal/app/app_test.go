@@ -337,6 +337,7 @@ func TestInitProviders_RegistersExpandedProviderSet(t *testing.T) {
 			Auth0Domain:            "tenant.auth0.com",
 			Auth0ClientID:          "auth0-client-id",
 			Auth0ClientSecret:      "auth0-client-secret",
+			TerraformCloudToken:    "terraform-cloud-token",
 			CloudflareAPIToken:     "cloudflare-token",
 			SalesforceInstanceURL:  "https://example.my.salesforce.com",
 			SalesforceClientID:     "salesforce-client-id",
@@ -365,7 +366,7 @@ func TestInitProviders_RegistersExpandedProviderSet(t *testing.T) {
 
 	app.initProviders(context.Background())
 
-	expectedProviders := []string{"qualys", "zoom", "wiz", "figma", "socket", "ramp", "gong", "vanta", "panther", "kolide", "gitlab", "auth0", "cloudflare", "salesforce", "vault", "slack", "rippling", "jamf", "intune", "atlassian", "kandji"}
+	expectedProviders := []string{"qualys", "zoom", "wiz", "figma", "socket", "ramp", "gong", "vanta", "panther", "kolide", "gitlab", "auth0", "terraform_cloud", "cloudflare", "salesforce", "vault", "slack", "rippling", "jamf", "intune", "atlassian", "kandji"}
 	for _, name := range expectedProviders {
 		if _, ok := app.Providers.Get(name); !ok {
 			t.Errorf("expected provider %q to be registered", name)
@@ -381,7 +382,7 @@ func TestInitProviders_SkipsExpandedProvidersWithoutConfig(t *testing.T) {
 
 	app.initProviders(context.Background())
 
-	notExpected := []string{"qualys", "zoom", "wiz", "figma", "socket", "ramp", "gong", "vanta", "panther", "kolide", "gitlab", "auth0", "cloudflare", "salesforce", "vault", "slack", "rippling", "jamf", "intune", "atlassian", "kandji", "cloudtrail"}
+	notExpected := []string{"qualys", "zoom", "wiz", "figma", "socket", "ramp", "gong", "vanta", "panther", "kolide", "gitlab", "auth0", "terraform_cloud", "cloudflare", "salesforce", "vault", "slack", "rippling", "jamf", "intune", "atlassian", "kandji", "cloudtrail"}
 	for _, name := range notExpected {
 		if _, ok := app.Providers.Get(name); ok {
 			t.Errorf("did not expect provider %q to be registered", name)

@@ -997,6 +997,13 @@ func (a *App) initProviders(ctx context.Context) {
 		})
 	}
 
+	// Register Terraform Cloud if configured
+	if a.Config.TerraformCloudToken != "" {
+		registerProvider("terraform_cloud", providers.NewTerraformCloudProvider(), map[string]interface{}{
+			"token": a.Config.TerraformCloudToken,
+		})
+	}
+
 	// Register Cloudflare if configured
 	if a.Config.CloudflareAPIToken != "" {
 		registerProvider("cloudflare", providers.NewCloudflareProvider(), map[string]interface{}{

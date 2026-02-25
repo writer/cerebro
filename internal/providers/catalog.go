@@ -48,15 +48,15 @@ var providerMetadata = map[string]ProviderMetadata{
 	"socket":           {Name: "socket", Maturity: ProviderMaturityBeta, Public: true},
 	"tailscale":        {Name: "tailscale", Maturity: ProviderMaturityProductionReady, Public: true},
 	"tenable":          {Name: "tenable", Maturity: ProviderMaturityProductionReady, Public: true},
+	"terraform_cloud":  {Name: "terraform_cloud", Maturity: ProviderMaturityBeta, Public: true},
 	"vanta":            {Name: "vanta", Maturity: ProviderMaturityBeta, Public: true},
 	"vault":            {Name: "vault", Maturity: ProviderMaturityBeta, Public: true},
 	"wiz":              {Name: "wiz", Maturity: ProviderMaturityBeta, Public: true},
 	"zoom":             {Name: "zoom", Maturity: ProviderMaturityBeta, Public: true},
 
 	// Planned but not yet implemented providers.
-	"semgrep":         {Name: "semgrep", Maturity: ProviderMaturityStub, Public: false},
-	"splunk":          {Name: "splunk", Maturity: ProviderMaturityStub, Public: false},
-	"terraform_cloud": {Name: "terraform_cloud", Maturity: ProviderMaturityStub, Public: false},
+	"semgrep": {Name: "semgrep", Maturity: ProviderMaturityStub, Public: false},
+	"splunk":  {Name: "splunk", Maturity: ProviderMaturityStub, Public: false},
 }
 
 // ProviderMetadataFor returns metadata for a provider name.
