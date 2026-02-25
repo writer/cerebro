@@ -38,7 +38,7 @@ func TestSerializeAKSAgentPoolsEmpty(t *testing.T) {
 	}
 }
 
-func TestAzureTablesIncludeAKSAndRBACPolicyAndDefender(t *testing.T) {
+func TestAzureTablesIncludeAKSAndRBACPolicyGraphAndDefender(t *testing.T) {
 	tables := (&AzureSyncEngine{}).getAzureTables()
 	lookup := make(map[string]struct{}, len(tables))
 	for _, table := range tables {
@@ -53,6 +53,9 @@ func TestAzureTablesIncludeAKSAndRBACPolicyAndDefender(t *testing.T) {
 	}
 	if _, ok := lookup["azure_policy_assignments"]; !ok {
 		t.Fatal("expected azure_policy_assignments in Azure table set")
+	}
+	if _, ok := lookup["azure_graph_service_principals"]; !ok {
+		t.Fatal("expected azure_graph_service_principals in Azure table set")
 	}
 	if _, ok := lookup["azure_defender_assessments"]; !ok {
 		t.Fatal("expected azure_defender_assessments in Azure table set")
@@ -76,6 +79,40 @@ func TestMapStringAnyFold(t *testing.T) {
 	if got := mapStringAnyFold(values, "missing"); got != "" {
 		t.Fatalf("expected empty value for missing key, got %q", got)
 	}
+}
+
+func TestIsAzureGraphPermissionError(t *testing.T) {
+	if !isAzureGraphPermissionError(assertError("status 403: Authorization_RequestDenied")) {
+		t.Fatal("expected authorization denied error to be treated as permission error")
+	}
+	if !isAzureGraphPermissionError(assertError("Insufficient privileges to complete the operation")) {
+		t.Fatal("expected insufficient privileges error to be treated as permission error")
+	}
+	if isAzureGraphPermissionError(assertError("timeout while listing resources")) {
+		t.Fatal("did not expect timeout to be treated as permission error")
+	}
+}
+
+func TestAzureScopedResourceID(t *testing.T) {
+	if got := azureScopedResourceID("sub-a", "sp-1"); got != "sub-a:sp-1" {
+		t.Fatalf("unexpected scoped id: %q", got)
+	}
+	if got := azureScopedResourceID("", "sp-1"); got != "sp-1" {
+		t.Fatalf("unexpected unscoped id: %q", got)
+	}
+	if got := azureScopedResourceID("sub-a", ""); got != "" {
+		t.Fatalf("expected empty id for empty resource id, got %q", got)
+	}
+}
+
+func assertError(message string) error {
+	return errString(message)
+}
+
+type errString string
+
+func (e errString) Error() string {
+	return string(e)
 }
 
 func strPtr(value string) *string {

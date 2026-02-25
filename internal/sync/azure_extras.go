@@ -20,12 +20,14 @@ import (
 
 const (
 	azureManagementScope               = "https://management.azure.com/.default"
+	azureGraphScope                    = "https://graph.microsoft.com/.default"
 	azureAKSManagedClustersAPIVersion  = "2023-08-01"
 	azurePolicyAssignmentsAPIVersion   = "2022-06-01"
 	azureDefenderAssessmentsAPIVersion = "2020-01-01"
 )
 
 var azureManagementHTTPClient = &http.Client{Timeout: 30 * time.Second}
+var azureGraphHTTPClient = &http.Client{Timeout: 30 * time.Second}
 
 type azureManagedClusterListResponse struct {
 	Value    []azureManagedCluster `json:"value"`
@@ -125,6 +127,23 @@ type azurePolicyAssignmentProperties struct {
 	NonComplianceMessages []map[string]interface{} `json:"nonComplianceMessages"`
 	Overrides             []map[string]interface{} `json:"overrides"`
 	ResourceSelectors     []map[string]interface{} `json:"resourceSelectors"`
+}
+
+type azureGraphServicePrincipalListResponse struct {
+	Value    []azureGraphServicePrincipal `json:"value"`
+	NextLink string                       `json:"@odata.nextLink"`
+}
+
+type azureGraphServicePrincipal struct {
+	ID                     *string  `json:"id"`
+	AppID                  *string  `json:"appId"`
+	DisplayName            *string  `json:"displayName"`
+	ServicePrincipalType   *string  `json:"servicePrincipalType"`
+	AccountEnabled         *bool    `json:"accountEnabled"`
+	AppOwnerOrganizationID *string  `json:"appOwnerOrganizationId"`
+	PublisherName          *string  `json:"publisherName"`
+	CreatedDateTime        *string  `json:"createdDateTime"`
+	Tags                   []string `json:"tags"`
 }
 
 type azureDefenderAssessmentListResponse struct {
@@ -441,6 +460,64 @@ func (e *AzureSyncEngine) azurePolicyAssignmentTable() AzureTableSpec {
 					if len(assignment.Properties.ResourceSelectors) > 0 {
 						row["resource_selectors"] = assignment.Properties.ResourceSelectors
 					}
+				}
+
+				results = append(results, row)
+			}
+
+			return results, nil
+		},
+	}
+}
+
+func (e *AzureSyncEngine) azureGraphServicePrincipalTable() AzureTableSpec {
+	return AzureTableSpec{
+		Name: "azure_graph_service_principals",
+		Columns: []string{
+			"id",
+			"app_id",
+			"display_name",
+			"service_principal_type",
+			"account_enabled",
+			"app_owner_organization_id",
+			"publisher_name",
+			"created_date_time",
+			"tags",
+			"subscription_id",
+		},
+		Fetch: func(ctx context.Context, cred *azidentity.DefaultAzureCredential, subscriptionID string) ([]map[string]interface{}, error) {
+			servicePrincipals, err := listAzureGraphServicePrincipals(ctx, cred)
+			if err != nil {
+				if isAzureGraphPermissionError(err) {
+					return []map[string]interface{}{}, nil
+				}
+				return nil, err
+			}
+
+			results := make([]map[string]interface{}, 0, len(servicePrincipals))
+			for _, principal := range servicePrincipals {
+				principalID := ptrStr(principal.ID)
+				if principalID == "" {
+					continue
+				}
+
+				row := map[string]interface{}{
+					"_cq_id":                    azureScopedResourceID(subscriptionID, principalID),
+					"id":                        principalID,
+					"app_id":                    ptrStr(principal.AppID),
+					"display_name":              ptrStr(principal.DisplayName),
+					"service_principal_type":    ptrStr(principal.ServicePrincipalType),
+					"app_owner_organization_id": ptrStr(principal.AppOwnerOrganizationID),
+					"publisher_name":            ptrStr(principal.PublisherName),
+					"created_date_time":         ptrStr(principal.CreatedDateTime),
+					"subscription_id":           subscriptionID,
+				}
+
+				if principal.AccountEnabled != nil {
+					row["account_enabled"] = *principal.AccountEnabled
+				}
+				if len(principal.Tags) > 0 {
+					row["tags"] = principal.Tags
 				}
 
 				results = append(results, row)
@@ -831,6 +908,27 @@ func listAzurePolicyAssignments(ctx context.Context, cred *azidentity.DefaultAzu
 	return assignments, nil
 }
 
+func listAzureGraphServicePrincipals(ctx context.Context, cred *azidentity.DefaultAzureCredential) ([]azureGraphServicePrincipal, error) {
+	token, err := azureGraphToken(ctx, cred)
+	if err != nil {
+		return nil, err
+	}
+
+	nextURL := "https://graph.microsoft.com/v1.0/servicePrincipals?$select=id,appId,displayName,servicePrincipalType,accountEnabled,appOwnerOrganizationId,publisherName,createdDateTime,tags"
+	servicePrincipals := make([]azureGraphServicePrincipal, 0)
+	for nextURL != "" {
+		var page azureGraphServicePrincipalListResponse
+		if err := fetchAzureGraphPage(ctx, token, nextURL, &page); err != nil {
+			return nil, fmt.Errorf("list graph service principals: %w", err)
+		}
+
+		servicePrincipals = append(servicePrincipals, page.Value...)
+		nextURL = strings.TrimSpace(page.NextLink)
+	}
+
+	return servicePrincipals, nil
+}
+
 func listAzureDefenderAssessments(ctx context.Context, cred *azidentity.DefaultAzureCredential, subscriptionID string) ([]azureDefenderAssessment, error) {
 	token, err := azureManagementToken(ctx, cred)
 	if err != nil {
@@ -860,6 +958,14 @@ func azureManagementToken(ctx context.Context, cred *azidentity.DefaultAzureCred
 	return token.Token, nil
 }
 
+func azureGraphToken(ctx context.Context, cred *azidentity.DefaultAzureCredential) (string, error) {
+	token, err := cred.GetToken(ctx, policy.TokenRequestOptions{Scopes: []string{azureGraphScope}})
+	if err != nil {
+		return "", fmt.Errorf("acquire Azure Graph token: %w", err)
+	}
+	return token.Token, nil
+}
+
 func fetchAzureManagementPage(ctx context.Context, token, requestURL string, out interface{}) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
 	if err != nil {
@@ -871,6 +977,39 @@ func fetchAzureManagementPage(ctx context.Context, token, requestURL string, out
 	resp, err := azureManagementHTTPClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("request management endpoint: %w", err)
+	}
+
+	body, readErr := io.ReadAll(resp.Body)
+	closeErr := resp.Body.Close()
+	if readErr != nil {
+		return fmt.Errorf("read response body: %w", readErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("close response body: %w", closeErr)
+	}
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	if err := json.Unmarshal(body, out); err != nil {
+		return fmt.Errorf("decode response: %w", err)
+	}
+
+	return nil
+}
+
+func fetchAzureGraphPage(ctx context.Context, token, requestURL string, out interface{}) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
+	if err != nil {
+		return fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := azureGraphHTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("request graph endpoint: %w", err)
 	}
 
 	body, readErr := io.ReadAll(resp.Body)
@@ -937,6 +1076,34 @@ func mapStringAnyFold(values map[string]interface{}, keys ...string) string {
 	}
 
 	return ""
+}
+
+func isAzureGraphPermissionError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "authorization_requestdenied") ||
+		strings.Contains(message, "insufficient privileges") ||
+		strings.Contains(message, "insufficientprivileges") ||
+		strings.Contains(message, "forbidden") ||
+		strings.Contains(message, "status 401") ||
+		strings.Contains(message, "status 403")
+}
+
+func azureScopedResourceID(subscriptionID, resourceID string) string {
+	resourceID = strings.TrimSpace(resourceID)
+	if resourceID == "" {
+		return ""
+	}
+
+	subscriptionID = strings.TrimSpace(subscriptionID)
+	if subscriptionID == "" {
+		return resourceID
+	}
+
+	return subscriptionID + ":" + resourceID
 }
 
 func isFunctionApp(kind *string) bool {

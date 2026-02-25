@@ -220,6 +220,20 @@ func TestBuildAzureCoverageMatrix(t *testing.T) {
 		t.Fatalf("unexpected policy assignment primary keys: %#v", policy.PrimaryKeys)
 	}
 
+	graphPrincipals, ok := lookup["azure_graph_service_principals"]
+	if !ok {
+		t.Fatal("expected azure_graph_service_principals entry")
+	}
+	if graphPrincipals.Service != "graph" {
+		t.Fatalf("expected graph service, got %q", graphPrincipals.Service)
+	}
+	if graphPrincipals.Source != "graph" {
+		t.Fatalf("expected graph source, got %q", graphPrincipals.Source)
+	}
+	if !reflect.DeepEqual(graphPrincipals.PrimaryKeys, []string{"id"}) {
+		t.Fatalf("unexpected graph principal primary keys: %#v", graphPrincipals.PrimaryKeys)
+	}
+
 	defender, ok := lookup["azure_defender_assessments"]
 	if !ok {
 		t.Fatal("expected azure_defender_assessments entry")

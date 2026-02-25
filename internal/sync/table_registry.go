@@ -77,6 +77,7 @@ var ExpectedTables = []string{
 	"azure_aks_clusters",
 	"azure_rbac_role_assignments",
 	"azure_policy_assignments",
+	"azure_graph_service_principals",
 	"azure_defender_assessments",
 	"azure_storage_accounts",
 	"k8s_core_pods",

@@ -196,7 +196,7 @@ func SummarizeGCPCoverageSources(entries []GCPCoverageEntry) GCPCoverageSummary 
 	return summary
 }
 
-// BuildAzureCoverageMatrix returns Azure table coverage metadata for ARM-based sync.
+// BuildAzureCoverageMatrix returns Azure table coverage metadata for ARM and Graph sync.
 func BuildAzureCoverageMatrix() []AzureCoverageEntry {
 	tables := (&AzureSyncEngine{}).getAzureTables()
 	entries := make([]AzureCoverageEntry, 0, len(tables))
@@ -206,7 +206,7 @@ func BuildAzureCoverageMatrix() []AzureCoverageEntry {
 			Service:     providerServiceFromTableName("azure", table.Name),
 			Table:       table.Name,
 			PrimaryKeys: providerPrimaryKeyColumns(table.Columns),
-			Source:      "arm",
+			Source:      azureSourceFromTableName(table.Name),
 		})
 	}
 
@@ -287,4 +287,12 @@ func awsScopeLabel(scope TableRegionScope) string {
 		return "global"
 	}
 	return "regional"
+}
+
+func azureSourceFromTableName(tableName string) string {
+	normalized := strings.ToLower(strings.TrimSpace(tableName))
+	if strings.HasPrefix(normalized, "azure_graph_") {
+		return "graph"
+	}
+	return "arm"
 }
