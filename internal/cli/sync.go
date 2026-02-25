@@ -133,20 +133,21 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 		// Handle multi-project sync via explicit list
 		if syncGCPProjects != "" {
-			projects := strings.Split(syncGCPProjects, ",")
-			for i, p := range projects {
-				projects[i] = strings.TrimSpace(p)
+			projects := normalizeProjectIDs(parseTableFilter(syncGCPProjects))
+			if len(projects) == 0 {
+				return fmt.Errorf("--gcp-projects did not include any valid project IDs")
 			}
 			return runGCPMultiProjectSync(ctx, start, projects)
 		}
 		// Handle single project sync
-		if syncGCPProject == "" {
+		projectID := strings.TrimSpace(syncGCPProject)
+		if projectID == "" {
 			return fmt.Errorf("--gcp-project, --gcp-projects, or --gcp-org is required with --gcp")
 		}
 		if syncUseAssetAPI {
-			return runGCPAssetAPISync(ctx, start, []string{syncGCPProject})
+			return runGCPAssetAPISync(ctx, start, []string{projectID})
 		}
-		return runGCPSync(ctx, start, syncGCPProject)
+		return runGCPSync(ctx, start, projectID)
 	}
 
 	// Multi-account AWS sync via SSO profiles
@@ -302,6 +303,10 @@ func runGCPOrgSync(ctx context.Context, start time.Time, orgID string) error {
 	if err != nil {
 		return fmt.Errorf("list organization projects: %w", err)
 	}
+	projects = normalizeProjectIDs(projects)
+	if len(projects) == 0 {
+		return fmt.Errorf("no projects found in organization: %s", orgID)
+	}
 
 	Info("Found %d projects in organization", len(projects))
 
@@ -312,6 +317,11 @@ func runGCPOrgSync(ctx context.Context, start time.Time, orgID string) error {
 }
 
 func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []string) error {
+	projects = normalizeProjectIDs(projects)
+	if len(projects) == 0 {
+		return fmt.Errorf("no GCP projects provided for sync")
+	}
+
 	Info("Starting GCP multi-project sync for %d projects...", len(projects))
 	tableFilter := parseTableFilter(syncTable)
 	nativeTableFilter, securityTableFilter, runNativeSync, runSecuritySync, err := resolveGCPTableFilters(tableFilter, syncSecurity)
@@ -420,6 +430,11 @@ func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []str
 }
 
 func runGCPAssetAPISync(ctx context.Context, start time.Time, projects []string) error {
+	projects = normalizeProjectIDs(projects)
+	if len(projects) == 0 {
+		return fmt.Errorf("no GCP projects provided for asset API sync")
+	}
+
 	Info("Starting GCP sync via Cloud Asset Inventory API for %d projects...", len(projects))
 	tableFilter := parseTableFilter(syncTable)
 	nativeTableFilter, securityTableFilter, runNativeSync, runSecuritySync, err := resolveGCPTableFilters(tableFilter, syncSecurity)
@@ -811,6 +826,32 @@ func parseTableFilter(value string) []string {
 		filtered = append(filtered, trimmed)
 	}
 	return filtered
+}
+
+func normalizeProjectIDs(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+
+	normalized := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		key := strings.ToLower(trimmed)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		normalized = append(normalized, trimmed)
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+
+	return normalized
 }
 
 func buildTableFilterSet(tables []string) map[string]struct{} {
