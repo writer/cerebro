@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -201,11 +202,16 @@ func (s *SnykProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResult,
 
 	projects := make([]snykProject, 0, len(projectPayloads))
 	projectRows := make([]map[string]interface{}, 0, len(projectPayloads))
+	seenProjectIDs := make(map[string]struct{}, len(projectPayloads))
 	for _, payload := range projectPayloads {
 		project := parseSnykProject(payload, s.orgID)
 		if project.ID == "" {
 			continue
 		}
+		if _, exists := seenProjectIDs[project.ID]; exists {
+			continue
+		}
+		seenProjectIDs[project.ID] = struct{}{}
 		projects = append(projects, project)
 		projectRows = append(projectRows, project.row())
 	}
@@ -276,36 +282,34 @@ func (s *SnykProvider) request(ctx context.Context, path string) ([]byte, error)
 }
 
 func (s *SnykProvider) fetchProjects(ctx context.Context) ([]map[string]interface{}, error) {
-	path := fmt.Sprintf("/rest/orgs/%s/projects?version=2024-01-04&limit=100", s.orgID)
-	body, err := s.request(ctx, path)
-	if err != nil {
-		return nil, err
-	}
+	nextPath := fmt.Sprintf("/rest/orgs/%s/projects?version=2024-01-04&limit=100", s.orgID)
+	allProjects := make([]map[string]interface{}, 0)
+	seenPaths := make(map[string]struct{})
 
-	var response struct {
-		Data []map[string]interface{} `json:"data"`
-	}
-	if err := json.Unmarshal(body, &response); err == nil {
-		if response.Data == nil {
-			return nil, nil
+	for nextPath != "" {
+		if _, exists := seenPaths[nextPath]; exists {
+			return nil, fmt.Errorf("snyk projects pagination loop detected at %q", nextPath)
 		}
-		return response.Data, nil
+		seenPaths[nextPath] = struct{}{}
+
+		body, err := s.request(ctx, nextPath)
+		if err != nil {
+			return nil, err
+		}
+
+		projects, nextLink, err := parseSnykProjectPage(body)
+		if err != nil {
+			return nil, err
+		}
+		allProjects = append(allProjects, projects...)
+
+		nextPath, err = snykNextPagePath(s.baseURL, nextLink)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	var generic map[string]interface{}
-	if err := json.Unmarshal(body, &generic); err != nil {
-		return nil, err
-	}
-
-	normalized := normalizeSnykMap(generic)
-	if data := snykMapSlice(normalized["data"]); len(data) > 0 {
-		return data, nil
-	}
-	if data := snykMapSlice(normalized["projects"]); len(data) > 0 {
-		return data, nil
-	}
-
-	return nil, nil
+	return allProjects, nil
 }
 
 func (s *SnykProvider) fetchProjectIssues(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
@@ -342,6 +346,73 @@ func parseSnykProject(payload map[string]interface{}, fallbackOrgID string) snyk
 			fallbackOrgID,
 		),
 	}
+}
+
+func parseSnykProjectPage(body []byte) ([]map[string]interface{}, string, error) {
+	var payload map[string]interface{}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, "", err
+	}
+
+	normalized := normalizeSnykMap(payload)
+	projects := snykMapSlice(normalized["data"])
+	if len(projects) == 0 {
+		projects = snykMapSlice(normalized["projects"])
+	}
+
+	nextLink := firstNonEmptyString(
+		getNestedString(normalized, "links", "next"),
+		asString(normalized["next"]),
+	)
+
+	return projects, nextLink, nil
+}
+
+func snykNextPagePath(baseURL, nextLink string) (string, error) {
+	nextLink = strings.TrimSpace(nextLink)
+	if nextLink == "" {
+		return "", nil
+	}
+	if strings.HasPrefix(nextLink, "/") {
+		return nextLink, nil
+	}
+
+	parsedNext, err := url.Parse(nextLink)
+	if err != nil {
+		return "", fmt.Errorf("invalid Snyk pagination link %q: %w", nextLink, err)
+	}
+
+	if parsedNext.Scheme == "" && parsedNext.Host == "" {
+		path := parsedNext.Path
+		if !strings.HasPrefix(path, "/") {
+			path = "/" + path
+		}
+		if parsedNext.RawQuery != "" {
+			path += "?" + parsedNext.RawQuery
+		}
+		return path, nil
+	}
+
+	parsedBase, err := url.Parse(baseURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid Snyk base URL %q: %w", baseURL, err)
+	}
+	if !strings.EqualFold(parsedBase.Host, parsedNext.Host) {
+		return "", fmt.Errorf("unexpected Snyk pagination host %q", parsedNext.Host)
+	}
+	if parsedNext.Scheme != "" && !strings.EqualFold(parsedBase.Scheme, parsedNext.Scheme) {
+		return "", fmt.Errorf("unexpected Snyk pagination scheme %q", parsedNext.Scheme)
+	}
+
+	path := parsedNext.Path
+	if path == "" {
+		path = "/"
+	}
+	if parsedNext.RawQuery != "" {
+		path += "?" + parsedNext.RawQuery
+	}
+
+	return path, nil
 }
 
 func (p snykProject) row() map[string]interface{} {

@@ -158,3 +158,61 @@ func TestExtractSnykIssuesGroupedPayload(t *testing.T) {
 		t.Fatalf("expected 2 issues, got %d", len(issues))
 	}
 }
+
+func TestSnykProviderFetchProjectsPagination(t *testing.T) {
+	t.Parallel()
+
+	baseURL := ""
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rest/orgs/org-1/projects" {
+			http.NotFound(w, r)
+			return
+		}
+
+		switch r.URL.Query().Get("starting_after") {
+		case "":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"data": []map[string]interface{}{{"id": "proj-1"}},
+				"links": map[string]interface{}{
+					"next": baseURL + "/rest/orgs/org-1/projects?version=2024-01-04&limit=100&starting_after=proj-1",
+				},
+			})
+		case "proj-1":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"data":  []map[string]interface{}{{"id": "proj-2"}},
+				"links": map[string]interface{}{"next": ""},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	baseURL = server.URL
+	defer server.Close()
+
+	provider := NewSnykProvider()
+	err := provider.Configure(context.Background(), map[string]interface{}{
+		"api_token": "token",
+		"org_id":    "org-1",
+		"base_url":  server.URL,
+	})
+	if err != nil {
+		t.Fatalf("configure failed: %v", err)
+	}
+
+	projects, err := provider.fetchProjects(context.Background())
+	if err != nil {
+		t.Fatalf("fetch projects failed: %v", err)
+	}
+	if len(projects) != 2 {
+		t.Fatalf("expected 2 projects, got %d", len(projects))
+	}
+}
+
+func TestSnykNextPagePathRejectsForeignHost(t *testing.T) {
+	t.Parallel()
+
+	_, err := snykNextPagePath("https://api.snyk.io", "https://evil.example.com/rest/orgs/org-1/projects?starting_after=abc")
+	if err == nil {
+		t.Fatal("expected host validation error")
+	}
+}
