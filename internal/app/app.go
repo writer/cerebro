@@ -210,6 +210,11 @@ type Config struct {
 	FigmaTeamID   string
 	FigmaBaseURL  string
 
+	// Socket Provider
+	SocketAPIToken string
+	SocketOrgSlug  string
+	SocketAPIURL   string
+
 	// Google Workspace Provider
 	GoogleWorkspaceDomain            string
 	GoogleWorkspaceAdminEmail        string
@@ -387,6 +392,9 @@ func LoadConfig() *Config {
 		FigmaAPIToken:                    getEnv("FIGMA_API_TOKEN", ""),
 		FigmaTeamID:                      getEnv("FIGMA_TEAM_ID", ""),
 		FigmaBaseURL:                     getEnv("FIGMA_BASE_URL", "https://api.figma.com"),
+		SocketAPIToken:                   getEnv("SOCKET_API_TOKEN", ""),
+		SocketOrgSlug:                    getEnv("SOCKET_ORG", ""),
+		SocketAPIURL:                     getEnv("SOCKET_API_URL", "https://api.socket.dev/v0"),
 		GoogleWorkspaceDomain:            getEnv("GOOGLE_WORKSPACE_DOMAIN", ""),
 		GoogleWorkspaceAdminEmail:        getEnv("GOOGLE_WORKSPACE_ADMIN_EMAIL", ""),
 		GoogleWorkspaceImpersonatorEmail: getEnv("GOOGLE_WORKSPACE_IMPERSONATOR_EMAIL", ""),
@@ -829,6 +837,15 @@ func (a *App) initProviders(ctx context.Context) {
 			"api_token": a.Config.FigmaAPIToken,
 			"team_id":   a.Config.FigmaTeamID,
 			"base_url":  a.Config.FigmaBaseURL,
+		})
+	}
+
+	// Register Socket if configured
+	if a.Config.SocketAPIToken != "" {
+		registerProvider("socket", providers.NewSocketProvider(), map[string]interface{}{
+			"api_token": a.Config.SocketAPIToken,
+			"org_slug":  a.Config.SocketOrgSlug,
+			"api_url":   a.Config.SocketAPIURL,
 		})
 	}
 
