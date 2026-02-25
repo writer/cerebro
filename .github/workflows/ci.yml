@@ -112,20 +112,43 @@ jobs:
     permissions:
       id-token: write
       contents: read
+    outputs:
+      image_changed: ${{ steps.image-changes.outputs.changed }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect image-affecting changes
+        id: image-changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          base_sha="${{ github.event.pull_request.base.sha }}"
+
+          changed_files=$(git diff --name-only "${base_sha}" HEAD -- \
+            Dockerfile .dockerignore go.mod go.sum api cmd internal policies)
+
+          if [ -n "${changed_files}" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Configure AWS credentials (sec-dev)
+        if: steps.image-changes.outputs.changed == 'true'
         uses: writerInternal/aws-git-roles@v2
         with:
           assume-role-arn: arn:aws:iam::${{ env.SEC_DEV_ACCOUNT_ID }}:role/writer-aws-deployment-role
 
       - name: Login to Amazon ECR
         id: login-ecr
+        if: steps.image-changes.outputs.changed == 'true'
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Check existing image tag
         id: tag-check
+        if: steps.image-changes.outputs.changed == 'true'
         shell: bash
         run: |
           short_sha=$(git rev-parse --short=7 HEAD)
@@ -137,11 +160,11 @@ jobs:
           fi
 
       - name: Set up Docker Buildx
-        if: steps.tag-check.outputs.exists != 'true'
+        if: steps.image-changes.outputs.changed == 'true' && steps.tag-check.outputs.exists != 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Extract metadata
-        if: steps.tag-check.outputs.exists != 'true'
+        if: steps.image-changes.outputs.changed == 'true' && steps.tag-check.outputs.exists != 'true'
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -151,7 +174,7 @@ jobs:
             type=raw,value=latest
 
       - name: Build and push
-        if: steps.tag-check.outputs.exists != 'true'
+        if: steps.image-changes.outputs.changed == 'true' && steps.tag-check.outputs.exists != 'true'
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -164,8 +187,12 @@ jobs:
           cache-to: type=gha,mode=max,scope=cerebro-linux-arm64
 
       - name: Skip build and push (image exists)
-        if: steps.tag-check.outputs.exists == 'true'
+        if: steps.image-changes.outputs.changed == 'true' && steps.tag-check.outputs.exists == 'true'
         run: echo "Image tag ${{ steps.tag-check.outputs.tag }} already exists; skipping Docker build."
+
+      - name: Skip build and push (no image-affecting changes)
+        if: steps.image-changes.outputs.changed != 'true'
+        run: echo "No image-affecting files changed; skipping Docker build."
 
   # Main merge: Build and push to sec-prod ECR
   build-and-push-sec-prod:
@@ -178,20 +205,47 @@ jobs:
       contents: read
     outputs:
       image_tag: ${{ steps.meta.outputs.version }}
+      image_changed: ${{ steps.image-changes.outputs.changed }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect image-affecting changes
+        id: image-changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          before_sha="${{ github.event.before }}"
+
+          if [ "${before_sha}" = "0000000000000000000000000000000000000000" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          changed_files=$(git diff --name-only "${before_sha}" HEAD -- \
+            Dockerfile .dockerignore go.mod go.sum api cmd internal policies)
+
+          if [ -n "${changed_files}" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Configure AWS credentials (sec-prod)
+        if: steps.image-changes.outputs.changed == 'true'
         uses: writerInternal/aws-git-roles@v2
         with:
           assume-role-arn: arn:aws:iam::${{ env.SEC_PROD_ACCOUNT_ID }}:role/writer-aws-deployment-role
 
       - name: Login to Amazon ECR
         id: login-ecr
+        if: steps.image-changes.outputs.changed == 'true'
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Check existing image tag
         id: tag-check
+        if: steps.image-changes.outputs.changed == 'true'
         shell: bash
         run: |
           short_sha=$(git rev-parse --short=7 HEAD)
@@ -203,11 +257,11 @@ jobs:
           fi
 
       - name: Set up Docker Buildx
-        if: steps.tag-check.outputs.exists != 'true'
+        if: steps.image-changes.outputs.changed == 'true' && steps.tag-check.outputs.exists != 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Extract metadata
-        if: steps.tag-check.outputs.exists != 'true'
+        if: steps.image-changes.outputs.changed == 'true' && steps.tag-check.outputs.exists != 'true'
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -217,7 +271,7 @@ jobs:
             type=raw,value=latest
 
       - name: Build and push
-        if: steps.tag-check.outputs.exists != 'true'
+        if: steps.image-changes.outputs.changed == 'true' && steps.tag-check.outputs.exists != 'true'
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -230,15 +284,19 @@ jobs:
           cache-to: type=gha,mode=max,scope=cerebro-linux-arm64
 
       - name: Skip build and push (image exists)
-        if: steps.tag-check.outputs.exists == 'true'
+        if: steps.image-changes.outputs.changed == 'true' && steps.tag-check.outputs.exists == 'true'
         run: echo "Image tag ${{ steps.tag-check.outputs.tag }} already exists; skipping Docker build."
+
+      - name: Skip build and push (no image-affecting changes)
+        if: steps.image-changes.outputs.changed != 'true'
+        run: echo "No image-affecting files changed; skipping Docker build."
 
   # PR: Deploy to sec-dev ECS
   deploy-sec-dev:
     name: Deploy to sec-dev ECS
     runs-on: ubuntu-latest
     needs: [test, lint, policy-validate, build-and-push-sec-dev]
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && needs.build-and-push-sec-dev.outputs.image_changed == 'true'
     permissions:
       id-token: write
       contents: read
@@ -341,7 +399,7 @@ jobs:
     name: Deploy to sec-prod ECS
     runs-on: ubuntu-latest
     needs: build-and-push-sec-prod
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.build-and-push-sec-prod.outputs.image_changed == 'true'
     environment: production
     permissions:
       id-token: write
