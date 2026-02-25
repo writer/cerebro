@@ -205,6 +205,11 @@ type Config struct {
 	GitHubToken string
 	GitHubOrg   string
 
+	// Figma Provider
+	FigmaAPIToken string
+	FigmaTeamID   string
+	FigmaBaseURL  string
+
 	// Google Workspace Provider
 	GoogleWorkspaceDomain            string
 	GoogleWorkspaceAdminEmail        string
@@ -379,6 +384,9 @@ func LoadConfig() *Config {
 		DatadogSite:                      getEnv("DATADOG_SITE", "datadoghq.com"),
 		GitHubToken:                      getEnv("GITHUB_TOKEN", ""),
 		GitHubOrg:                        getEnv("GITHUB_ORG", ""),
+		FigmaAPIToken:                    getEnv("FIGMA_API_TOKEN", ""),
+		FigmaTeamID:                      getEnv("FIGMA_TEAM_ID", ""),
+		FigmaBaseURL:                     getEnv("FIGMA_BASE_URL", "https://api.figma.com"),
 		GoogleWorkspaceDomain:            getEnv("GOOGLE_WORKSPACE_DOMAIN", ""),
 		GoogleWorkspaceAdminEmail:        getEnv("GOOGLE_WORKSPACE_ADMIN_EMAIL", ""),
 		GoogleWorkspaceImpersonatorEmail: getEnv("GOOGLE_WORKSPACE_IMPERSONATOR_EMAIL", ""),
@@ -812,6 +820,15 @@ func (a *App) initProviders(ctx context.Context) {
 		registerProvider("github", providers.NewGitHubProvider(), map[string]interface{}{
 			"token": a.Config.GitHubToken,
 			"org":   a.Config.GitHubOrg,
+		})
+	}
+
+	// Register Figma if configured
+	if a.Config.FigmaAPIToken != "" && a.Config.FigmaTeamID != "" {
+		registerProvider("figma", providers.NewFigmaProvider(), map[string]interface{}{
+			"api_token": a.Config.FigmaAPIToken,
+			"team_id":   a.Config.FigmaTeamID,
+			"base_url":  a.Config.FigmaBaseURL,
 		})
 	}
 

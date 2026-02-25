@@ -26,6 +26,7 @@ var providerMetadata = map[string]ProviderMetadata{
 	"crowdstrike":      {Name: "crowdstrike", Maturity: ProviderMaturityProductionReady, Public: true},
 	"datadog":          {Name: "datadog", Maturity: ProviderMaturityProductionReady, Public: true},
 	"entra_id":         {Name: "entra_id", Maturity: ProviderMaturityProductionReady, Public: true},
+	"figma":            {Name: "figma", Maturity: ProviderMaturityBeta, Public: true},
 	"github":           {Name: "github", Maturity: ProviderMaturityProductionReady, Public: true},
 	"gitlab":           {Name: "gitlab", Maturity: ProviderMaturityProductionReady, Public: true},
 	"google_workspace": {Name: "google_workspace", Maturity: ProviderMaturityProductionReady, Public: true},
