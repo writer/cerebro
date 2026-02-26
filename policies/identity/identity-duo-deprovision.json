@@ -1,0 +1,31 @@
+{
+  "id": "identity-duo-deprovision",
+  "name": "Duo Accounts Deprovisioned on Termination",
+  "description": "Ensures Duo access is revoked when personnel leave the company",
+  "severity": "HIGH",
+  "category": "identity",
+  "resource_type": "duo_user",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC1.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.1"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT d.id, d.username, d.email, e.termination_date FROM duo_users d JOIN employees e ON LOWER(d.email) = LOWER(e.work_email) WHERE e.status = 'terminated' AND LOWER(COALESCE(d.status, '')) = 'active'",
+  "remediation": "Disable or remove accounts for terminated employees within 24 hours. Automate offboarding workflows where possible.",
+  "tags": [
+    "duo",
+    "identity",
+    "offboarding",
+    "access-control"
+  ]
+}

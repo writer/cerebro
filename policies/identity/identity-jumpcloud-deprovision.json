@@ -1,0 +1,31 @@
+{
+  "id": "identity-jumpcloud-deprovision",
+  "name": "JumpCloud Accounts Deprovisioned on Termination",
+  "description": "Ensures JumpCloud access is revoked when personnel leave the company",
+  "severity": "HIGH",
+  "category": "identity",
+  "resource_type": "jumpcloud_user",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC1.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.1"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT j.id, j.username, j.email, e.termination_date FROM jumpcloud_users j JOIN employees e ON LOWER(j.email) = LOWER(e.work_email) WHERE e.status = 'terminated' AND COALESCE(j.suspended, false) = false AND COALESCE(j.activated, true) = true",
+  "remediation": "Disable or remove accounts for terminated employees within 24 hours. Automate offboarding workflows where possible.",
+  "tags": [
+    "jumpcloud",
+    "identity",
+    "offboarding",
+    "access-control"
+  ]
+}

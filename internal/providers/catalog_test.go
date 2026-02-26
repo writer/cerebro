@@ -17,8 +17,8 @@ func TestProviderMetadataFor_KnownProvider(t *testing.T) {
 
 func TestProviderMetadataFor_OracleIDCSProvider(t *testing.T) {
 	metadata := ProviderMetadataFor("oracle_idcs")
-	if metadata.Maturity != ProviderMaturityBeta {
-		t.Fatalf("expected oracle_idcs maturity %q, got %q", ProviderMaturityBeta, metadata.Maturity)
+	if metadata.Maturity != ProviderMaturityProductionReady {
+		t.Fatalf("expected oracle_idcs maturity %q, got %q", ProviderMaturityProductionReady, metadata.Maturity)
 	}
 	if !metadata.Public {
 		t.Fatal("expected oracle_idcs to be public")
@@ -30,8 +30,8 @@ func TestProviderMetadataFor_OracleIDCSProvider(t *testing.T) {
 
 func TestProviderMetadataFor_CyberArkProvider(t *testing.T) {
 	metadata := ProviderMetadataFor("cyberark")
-	if metadata.Maturity != ProviderMaturityBeta {
-		t.Fatalf("expected cyberark maturity %q, got %q", ProviderMaturityBeta, metadata.Maturity)
+	if metadata.Maturity != ProviderMaturityProductionReady {
+		t.Fatalf("expected cyberark maturity %q, got %q", ProviderMaturityProductionReady, metadata.Maturity)
 	}
 	if !metadata.Public {
 		t.Fatal("expected cyberark to be public")
@@ -43,8 +43,8 @@ func TestProviderMetadataFor_CyberArkProvider(t *testing.T) {
 
 func TestProviderMetadataFor_SailPointProvider(t *testing.T) {
 	metadata := ProviderMetadataFor("sailpoint")
-	if metadata.Maturity != ProviderMaturityBeta {
-		t.Fatalf("expected sailpoint maturity %q, got %q", ProviderMaturityBeta, metadata.Maturity)
+	if metadata.Maturity != ProviderMaturityProductionReady {
+		t.Fatalf("expected sailpoint maturity %q, got %q", ProviderMaturityProductionReady, metadata.Maturity)
 	}
 	if !metadata.Public {
 		t.Fatal("expected sailpoint to be public")
@@ -56,8 +56,8 @@ func TestProviderMetadataFor_SailPointProvider(t *testing.T) {
 
 func TestProviderMetadataFor_SaviyntProvider(t *testing.T) {
 	metadata := ProviderMetadataFor("saviynt")
-	if metadata.Maturity != ProviderMaturityBeta {
-		t.Fatalf("expected saviynt maturity %q, got %q", ProviderMaturityBeta, metadata.Maturity)
+	if metadata.Maturity != ProviderMaturityProductionReady {
+		t.Fatalf("expected saviynt maturity %q, got %q", ProviderMaturityProductionReady, metadata.Maturity)
 	}
 	if !metadata.Public {
 		t.Fatal("expected saviynt to be public")
@@ -69,8 +69,8 @@ func TestProviderMetadataFor_SaviyntProvider(t *testing.T) {
 
 func TestProviderMetadataFor_ForgeRockProvider(t *testing.T) {
 	metadata := ProviderMetadataFor("forgerock")
-	if metadata.Maturity != ProviderMaturityBeta {
-		t.Fatalf("expected forgerock maturity %q, got %q", ProviderMaturityBeta, metadata.Maturity)
+	if metadata.Maturity != ProviderMaturityProductionReady {
+		t.Fatalf("expected forgerock maturity %q, got %q", ProviderMaturityProductionReady, metadata.Maturity)
 	}
 	if !metadata.Public {
 		t.Fatal("expected forgerock to be public")

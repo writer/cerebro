@@ -1,0 +1,31 @@
+{
+  "id": "identity-sailpoint-deprovision",
+  "name": "SailPoint Accounts Deprovisioned on Termination",
+  "description": "Ensures SailPoint access is revoked when personnel leave the company",
+  "severity": "HIGH",
+  "category": "identity",
+  "resource_type": "sailpoint_user",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC1.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.1"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT s.id, s.username, s.email, e.termination_date FROM sailpoint_users s JOIN employees e ON LOWER(s.email) = LOWER(e.work_email) WHERE e.status = 'terminated' AND COALESCE(s.active, true) = true",
+  "remediation": "Disable or remove accounts for terminated employees within 24 hours. Automate offboarding workflows where possible.",
+  "tags": [
+    "sailpoint",
+    "identity",
+    "offboarding",
+    "access-control"
+  ]
+}

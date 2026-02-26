@@ -775,8 +775,8 @@ func TestListProviders_IncludeIncomplete(t *testing.T) {
 		provider := item.(map[string]interface{})
 		if provider["name"] == "oracle_idcs" {
 			foundOracleIDCS = true
-			if provider["maturity"] != string(providers.ProviderMaturityBeta) {
-				t.Fatalf("expected oracle_idcs maturity %q, got %v", providers.ProviderMaturityBeta, provider["maturity"])
+			if provider["maturity"] != string(providers.ProviderMaturityProductionReady) {
+				t.Fatalf("expected oracle_idcs maturity %q, got %v", providers.ProviderMaturityProductionReady, provider["maturity"])
 			}
 		}
 	}
@@ -795,8 +795,8 @@ func TestGetProvider_OracleIDCSVisibleByDefault(t *testing.T) {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
 	body := decodeJSON(t, w)
-	if body["maturity"] != string(providers.ProviderMaturityBeta) {
-		t.Fatalf("expected maturity %q, got %v", providers.ProviderMaturityBeta, body["maturity"])
+	if body["maturity"] != string(providers.ProviderMaturityProductionReady) {
+		t.Fatalf("expected maturity %q, got %v", providers.ProviderMaturityProductionReady, body["maturity"])
 	}
 
 	w = do(t, s, "GET", "/api/v1/providers/oracle_idcs?include_incomplete=true", nil)
@@ -804,8 +804,8 @@ func TestGetProvider_OracleIDCSVisibleByDefault(t *testing.T) {
 		t.Fatalf("expected 200 with include_incomplete, got %d", w.Code)
 	}
 	body = decodeJSON(t, w)
-	if body["maturity"] != string(providers.ProviderMaturityBeta) {
-		t.Fatalf("expected maturity %q, got %v", providers.ProviderMaturityBeta, body["maturity"])
+	if body["maturity"] != string(providers.ProviderMaturityProductionReady) {
+		t.Fatalf("expected maturity %q, got %v", providers.ProviderMaturityProductionReady, body["maturity"])
 	}
 }
 
