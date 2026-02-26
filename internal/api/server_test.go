@@ -716,7 +716,7 @@ func TestListProviders(t *testing.T) {
 func TestListProviders_HidesIncompleteByDefault(t *testing.T) {
 	a := newTestApp(t)
 	a.Providers.Register(&staticProvider{name: "okta", provider: providers.ProviderTypeSaaS})
-	a.Providers.Register(&staticProvider{name: "pingidentity", provider: providers.ProviderTypeSaaS})
+	a.Providers.Register(&staticProvider{name: "cyberark", provider: providers.ProviderTypeSaaS})
 
 	s := NewServer(a)
 	w := do(t, s, "GET", "/api/v1/providers/", nil)
@@ -741,7 +741,7 @@ func TestListProviders_HidesIncompleteByDefault(t *testing.T) {
 func TestListProviders_IncludeIncomplete(t *testing.T) {
 	a := newTestApp(t)
 	a.Providers.Register(&staticProvider{name: "okta", provider: providers.ProviderTypeSaaS})
-	a.Providers.Register(&staticProvider{name: "pingidentity", provider: providers.ProviderTypeSaaS})
+	a.Providers.Register(&staticProvider{name: "cyberark", provider: providers.ProviderTypeSaaS})
 
 	s := NewServer(a)
 	w := do(t, s, "GET", "/api/v1/providers/?include_incomplete=true", nil)
@@ -755,32 +755,32 @@ func TestListProviders_IncludeIncomplete(t *testing.T) {
 	}
 
 	items := body["providers"].([]interface{})
-	foundPingIdentity := false
+	foundCyberArk := false
 	for _, item := range items {
 		provider := item.(map[string]interface{})
-		if provider["name"] == "pingidentity" {
-			foundPingIdentity = true
+		if provider["name"] == "cyberark" {
+			foundCyberArk = true
 			if provider["maturity"] != string(providers.ProviderMaturityStub) {
-				t.Fatalf("expected pingidentity maturity %q, got %v", providers.ProviderMaturityStub, provider["maturity"])
+				t.Fatalf("expected cyberark maturity %q, got %v", providers.ProviderMaturityStub, provider["maturity"])
 			}
 		}
 	}
-	if !foundPingIdentity {
-		t.Fatal("expected pingidentity in provider list when include_incomplete=true")
+	if !foundCyberArk {
+		t.Fatal("expected cyberark in provider list when include_incomplete=true")
 	}
 }
 
 func TestGetProvider_IncompleteHiddenByDefault(t *testing.T) {
 	a := newTestApp(t)
-	a.Providers.Register(&staticProvider{name: "pingidentity", provider: providers.ProviderTypeSaaS})
+	a.Providers.Register(&staticProvider{name: "cyberark", provider: providers.ProviderTypeSaaS})
 	s := NewServer(a)
 
-	w := do(t, s, "GET", "/api/v1/providers/pingidentity", nil)
+	w := do(t, s, "GET", "/api/v1/providers/cyberark", nil)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", w.Code)
 	}
 
-	w = do(t, s, "GET", "/api/v1/providers/pingidentity?include_incomplete=true", nil)
+	w = do(t, s, "GET", "/api/v1/providers/cyberark?include_incomplete=true", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 with include_incomplete, got %d", w.Code)
 	}

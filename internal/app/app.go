@@ -293,6 +293,13 @@ type Config struct {
 	DuoIntegrationKey string
 	DuoSecretKey      string
 
+	// PingIdentity Provider
+	PingIdentityEnvironmentID string
+	PingIdentityClientID      string
+	PingIdentityClientSecret  string
+	PingIdentityAPIURL        string
+	PingIdentityAuthURL       string
+
 	// GitLab Provider
 	GitLabToken   string
 	GitLabBaseURL string
@@ -491,6 +498,11 @@ func LoadConfig() *Config {
 		DuoURL:                           getEnv("DUO_URL", getEnv("DUO_API_HOSTNAME", "")),
 		DuoIntegrationKey:                getEnv("DUO_INTEGRATION_KEY", getEnv("DUO_IKEY", "")),
 		DuoSecretKey:                     getEnv("DUO_SECRET_KEY", getEnv("DUO_SKEY", "")),
+		PingIdentityEnvironmentID:        getEnv("PINGIDENTITY_ENVIRONMENT_ID", getEnv("PINGONE_ENVIRONMENT_ID", "")),
+		PingIdentityClientID:             getEnv("PINGIDENTITY_CLIENT_ID", getEnv("PINGONE_CLIENT_ID", "")),
+		PingIdentityClientSecret:         getEnv("PINGIDENTITY_CLIENT_SECRET", getEnv("PINGONE_CLIENT_SECRET", "")),
+		PingIdentityAPIURL:               getEnv("PINGIDENTITY_API_URL", "https://api.pingone.com"),
+		PingIdentityAuthURL:              getEnv("PINGIDENTITY_AUTH_URL", "https://auth.pingone.com"),
 		GitLabToken:                      getEnv("GITLAB_TOKEN", ""),
 		GitLabBaseURL:                    getEnv("GITLAB_BASE_URL", "https://gitlab.com"),
 		TerraformCloudToken:              getEnv("TFC_TOKEN", ""),
@@ -1091,6 +1103,22 @@ func (a *App) initProviders(ctx context.Context) {
 			"integration_key": a.Config.DuoIntegrationKey,
 			"secret_key":      a.Config.DuoSecretKey,
 		})
+	}
+
+	// Register PingIdentity if configured
+	if a.Config.PingIdentityEnvironmentID != "" && a.Config.PingIdentityClientID != "" && a.Config.PingIdentityClientSecret != "" {
+		pingIdentityConfig := map[string]interface{}{
+			"environment_id": a.Config.PingIdentityEnvironmentID,
+			"client_id":      a.Config.PingIdentityClientID,
+			"client_secret":  a.Config.PingIdentityClientSecret,
+		}
+		if a.Config.PingIdentityAPIURL != "" {
+			pingIdentityConfig["api_url"] = a.Config.PingIdentityAPIURL
+		}
+		if a.Config.PingIdentityAuthURL != "" {
+			pingIdentityConfig["auth_url"] = a.Config.PingIdentityAuthURL
+		}
+		registerProvider("pingidentity", providers.NewPingIdentityProvider(), pingIdentityConfig)
 	}
 
 	// Register GitLab if configured

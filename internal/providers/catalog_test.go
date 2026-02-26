@@ -16,15 +16,15 @@ func TestProviderMetadataFor_KnownProvider(t *testing.T) {
 }
 
 func TestProviderMetadataFor_StubProvider(t *testing.T) {
-	metadata := ProviderMetadataFor("pingidentity")
+	metadata := ProviderMetadataFor("cyberark")
 	if metadata.Maturity != ProviderMaturityStub {
-		t.Fatalf("expected pingidentity maturity %q, got %q", ProviderMaturityStub, metadata.Maturity)
+		t.Fatalf("expected cyberark maturity %q, got %q", ProviderMaturityStub, metadata.Maturity)
 	}
 	if metadata.Public {
-		t.Fatal("expected pingidentity to be non-public")
+		t.Fatal("expected cyberark to be non-public")
 	}
-	if !IsProviderIncomplete("pingidentity") {
-		t.Fatal("expected pingidentity to be incomplete")
+	if !IsProviderIncomplete("cyberark") {
+		t.Fatal("expected cyberark to be incomplete")
 	}
 }
 
@@ -43,8 +43,11 @@ func TestProviderMetadataFor_UnknownDefaultsToPublicProductionReady(t *testing.T
 
 func TestPublicProviderNames_ExcludesStubProviders(t *testing.T) {
 	names := PublicProviderNames()
-	if slices.Contains(names, "pingidentity") {
-		t.Fatal("did not expect stub provider pingidentity in public provider names")
+	if slices.Contains(names, "cyberark") {
+		t.Fatal("did not expect stub provider cyberark in public provider names")
+	}
+	if !slices.Contains(names, "pingidentity") {
+		t.Fatal("expected pingidentity in public provider names")
 	}
 	if !slices.Contains(names, "duo") {
 		t.Fatal("expected duo in public provider names")
@@ -86,8 +89,11 @@ func TestPublicProviderNames_ExcludesStubProviders(t *testing.T) {
 
 func TestImplementedProviderNames_ExcludesStubProviders(t *testing.T) {
 	names := ImplementedProviderNames()
-	if slices.Contains(names, "pingidentity") {
-		t.Fatal("did not expect stub provider pingidentity in implemented provider names")
+	if slices.Contains(names, "cyberark") {
+		t.Fatal("did not expect stub provider cyberark in implemented provider names")
+	}
+	if !slices.Contains(names, "pingidentity") {
+		t.Fatal("expected pingidentity in implemented provider names")
 	}
 	if !slices.Contains(names, "duo") {
 		t.Fatal("expected duo in implemented provider names")
