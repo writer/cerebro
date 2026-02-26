@@ -288,6 +288,11 @@ type Config struct {
 	JumpCloudAPIToken string
 	JumpCloudOrgID    string
 
+	// Duo Provider
+	DuoURL            string
+	DuoIntegrationKey string
+	DuoSecretKey      string
+
 	// GitLab Provider
 	GitLabToken   string
 	GitLabBaseURL string
@@ -483,6 +488,9 @@ func LoadConfig() *Config {
 		JumpCloudURL:                     getEnv("JUMPCLOUD_URL", "https://console.jumpcloud.com"),
 		JumpCloudAPIToken:                getEnv("JUMPCLOUD_API_TOKEN", ""),
 		JumpCloudOrgID:                   getEnv("JUMPCLOUD_ORG_ID", ""),
+		DuoURL:                           getEnv("DUO_URL", getEnv("DUO_API_HOSTNAME", "")),
+		DuoIntegrationKey:                getEnv("DUO_INTEGRATION_KEY", getEnv("DUO_IKEY", "")),
+		DuoSecretKey:                     getEnv("DUO_SECRET_KEY", getEnv("DUO_SKEY", "")),
 		GitLabToken:                      getEnv("GITLAB_TOKEN", ""),
 		GitLabBaseURL:                    getEnv("GITLAB_BASE_URL", "https://gitlab.com"),
 		TerraformCloudToken:              getEnv("TFC_TOKEN", ""),
@@ -1074,6 +1082,15 @@ func (a *App) initProviders(ctx context.Context) {
 			jumpCloudConfig["org_id"] = a.Config.JumpCloudOrgID
 		}
 		registerProvider("jumpcloud", providers.NewJumpCloudProvider(), jumpCloudConfig)
+	}
+
+	// Register Duo if configured
+	if a.Config.DuoURL != "" && a.Config.DuoIntegrationKey != "" && a.Config.DuoSecretKey != "" {
+		registerProvider("duo", providers.NewDuoProvider(), map[string]interface{}{
+			"url":             a.Config.DuoURL,
+			"integration_key": a.Config.DuoIntegrationKey,
+			"secret_key":      a.Config.DuoSecretKey,
+		})
 	}
 
 	// Register GitLab if configured

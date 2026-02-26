@@ -73,8 +73,11 @@ func TestValidScheduleProviders(t *testing.T) {
 	if !slices.Contains(providers, "jumpcloud") {
 		t.Fatalf("expected jumpcloud in valid providers: %v", providers)
 	}
-	if slices.Contains(providers, "duo") {
-		t.Fatalf("did not expect stub provider duo in valid providers: %v", providers)
+	if !slices.Contains(providers, "duo") {
+		t.Fatalf("expected duo in valid providers: %v", providers)
+	}
+	if slices.Contains(providers, "pingidentity") {
+		t.Fatalf("did not expect stub provider pingidentity in valid providers: %v", providers)
 	}
 }
 
