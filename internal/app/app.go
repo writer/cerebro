@@ -316,6 +316,10 @@ type Config struct {
 	ForgeRockURL      string
 	ForgeRockAPIToken string
 
+	// Oracle IDCS Provider
+	OracleIDCSURL      string
+	OracleIDCSAPIToken string
+
 	// GitLab Provider
 	GitLabToken   string
 	GitLabBaseURL string
@@ -527,6 +531,8 @@ func LoadConfig() *Config {
 		SaviyntAPIToken:                  getEnv("SAVIYNT_API_TOKEN", ""),
 		ForgeRockURL:                     getEnv("FORGEROCK_URL", ""),
 		ForgeRockAPIToken:                getEnv("FORGEROCK_API_TOKEN", ""),
+		OracleIDCSURL:                    getEnv("ORACLE_IDCS_URL", ""),
+		OracleIDCSAPIToken:               getEnv("ORACLE_IDCS_API_TOKEN", ""),
 		GitLabToken:                      getEnv("GITLAB_TOKEN", ""),
 		GitLabBaseURL:                    getEnv("GITLAB_BASE_URL", "https://gitlab.com"),
 		TerraformCloudToken:              getEnv("TFC_TOKEN", ""),
@@ -1174,6 +1180,14 @@ func (a *App) initProviders(ctx context.Context) {
 		registerProvider("forgerock", providers.NewForgeRockProvider(), map[string]interface{}{
 			"url":       a.Config.ForgeRockURL,
 			"api_token": a.Config.ForgeRockAPIToken,
+		})
+	}
+
+	// Register Oracle IDCS if configured
+	if a.Config.OracleIDCSURL != "" && a.Config.OracleIDCSAPIToken != "" {
+		registerProvider("oracle_idcs", providers.NewOracleIDCSProvider(), map[string]interface{}{
+			"url":       a.Config.OracleIDCSURL,
+			"api_token": a.Config.OracleIDCSAPIToken,
 		})
 	}
 

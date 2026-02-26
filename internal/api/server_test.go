@@ -713,7 +713,7 @@ func TestListProviders(t *testing.T) {
 	}
 }
 
-func TestListProviders_HidesIncompleteByDefault(t *testing.T) {
+func TestListProviders_IncludesOracleIDCSByDefault(t *testing.T) {
 	a := newTestApp(t)
 	a.Providers.Register(&staticProvider{name: "okta", provider: providers.ProviderTypeSaaS})
 	a.Providers.Register(&staticProvider{name: "oracle_idcs", provider: providers.ProviderTypeIdentity})
@@ -725,16 +725,31 @@ func TestListProviders_HidesIncompleteByDefault(t *testing.T) {
 	}
 
 	body := decodeJSON(t, w)
-	if body["count"].(float64) != 1 {
-		t.Fatalf("expected 1 visible provider, got %v", body["count"])
+	if body["count"].(float64) != 2 {
+		t.Fatalf("expected 2 visible providers, got %v", body["count"])
 	}
 	items := body["providers"].([]interface{})
-	if len(items) != 1 {
-		t.Fatalf("expected 1 provider entry, got %d", len(items))
+	if len(items) != 2 {
+		t.Fatalf("expected 2 provider entries, got %d", len(items))
 	}
-	provider := items[0].(map[string]interface{})
-	if provider["name"] != "okta" {
-		t.Fatalf("expected visible provider to be okta, got %v", provider["name"])
+
+	foundOKTA := false
+	foundOracleIDCS := false
+	for _, item := range items {
+		provider := item.(map[string]interface{})
+		switch provider["name"] {
+		case "okta":
+			foundOKTA = true
+		case "oracle_idcs":
+			foundOracleIDCS = true
+		}
+	}
+
+	if !foundOKTA {
+		t.Fatal("expected okta in provider list")
+	}
+	if !foundOracleIDCS {
+		t.Fatal("expected oracle_idcs in provider list")
 	}
 }
 
@@ -755,38 +770,42 @@ func TestListProviders_IncludeIncomplete(t *testing.T) {
 	}
 
 	items := body["providers"].([]interface{})
-	foundSaviynt := false
+	foundOracleIDCS := false
 	for _, item := range items {
 		provider := item.(map[string]interface{})
 		if provider["name"] == "oracle_idcs" {
-			foundSaviynt = true
-			if provider["maturity"] != string(providers.ProviderMaturityStub) {
-				t.Fatalf("expected oracle_idcs maturity %q, got %v", providers.ProviderMaturityStub, provider["maturity"])
+			foundOracleIDCS = true
+			if provider["maturity"] != string(providers.ProviderMaturityBeta) {
+				t.Fatalf("expected oracle_idcs maturity %q, got %v", providers.ProviderMaturityBeta, provider["maturity"])
 			}
 		}
 	}
-	if !foundSaviynt {
+	if !foundOracleIDCS {
 		t.Fatal("expected oracle_idcs in provider list when include_incomplete=true")
 	}
 }
 
-func TestGetProvider_IncompleteHiddenByDefault(t *testing.T) {
+func TestGetProvider_OracleIDCSVisibleByDefault(t *testing.T) {
 	a := newTestApp(t)
 	a.Providers.Register(&staticProvider{name: "oracle_idcs", provider: providers.ProviderTypeIdentity})
 	s := NewServer(a)
 
 	w := do(t, s, "GET", "/api/v1/providers/oracle_idcs", nil)
-	if w.Code != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d", w.Code)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	body := decodeJSON(t, w)
+	if body["maturity"] != string(providers.ProviderMaturityBeta) {
+		t.Fatalf("expected maturity %q, got %v", providers.ProviderMaturityBeta, body["maturity"])
 	}
 
 	w = do(t, s, "GET", "/api/v1/providers/oracle_idcs?include_incomplete=true", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 with include_incomplete, got %d", w.Code)
 	}
-	body := decodeJSON(t, w)
-	if body["maturity"] != string(providers.ProviderMaturityStub) {
-		t.Fatalf("expected maturity %q, got %v", providers.ProviderMaturityStub, body["maturity"])
+	body = decodeJSON(t, w)
+	if body["maturity"] != string(providers.ProviderMaturityBeta) {
+		t.Fatalf("expected maturity %q, got %v", providers.ProviderMaturityBeta, body["maturity"])
 	}
 }
 

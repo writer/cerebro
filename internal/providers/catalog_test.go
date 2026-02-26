@@ -15,16 +15,16 @@ func TestProviderMetadataFor_KnownProvider(t *testing.T) {
 	}
 }
 
-func TestProviderMetadataFor_StubProvider(t *testing.T) {
+func TestProviderMetadataFor_OracleIDCSProvider(t *testing.T) {
 	metadata := ProviderMetadataFor("oracle_idcs")
-	if metadata.Maturity != ProviderMaturityStub {
-		t.Fatalf("expected oracle_idcs maturity %q, got %q", ProviderMaturityStub, metadata.Maturity)
+	if metadata.Maturity != ProviderMaturityBeta {
+		t.Fatalf("expected oracle_idcs maturity %q, got %q", ProviderMaturityBeta, metadata.Maturity)
 	}
-	if metadata.Public {
-		t.Fatal("expected oracle_idcs to be non-public")
+	if !metadata.Public {
+		t.Fatal("expected oracle_idcs to be public")
 	}
-	if !IsProviderIncomplete("oracle_idcs") {
-		t.Fatal("expected oracle_idcs to be incomplete")
+	if IsProviderIncomplete("oracle_idcs") {
+		t.Fatal("did not expect oracle_idcs to be incomplete")
 	}
 }
 
@@ -95,8 +95,8 @@ func TestProviderMetadataFor_UnknownDefaultsToPublicProductionReady(t *testing.T
 
 func TestPublicProviderNames_ExcludesStubProviders(t *testing.T) {
 	names := PublicProviderNames()
-	if slices.Contains(names, "oracle_idcs") {
-		t.Fatal("did not expect stub provider oracle_idcs in public provider names")
+	if !slices.Contains(names, "oracle_idcs") {
+		t.Fatal("expected oracle_idcs in public provider names")
 	}
 	if !slices.Contains(names, "cyberark") {
 		t.Fatal("expected cyberark in public provider names")
@@ -153,8 +153,8 @@ func TestPublicProviderNames_ExcludesStubProviders(t *testing.T) {
 
 func TestImplementedProviderNames_ExcludesStubProviders(t *testing.T) {
 	names := ImplementedProviderNames()
-	if slices.Contains(names, "oracle_idcs") {
-		t.Fatal("did not expect stub provider oracle_idcs in implemented provider names")
+	if !slices.Contains(names, "oracle_idcs") {
+		t.Fatal("expected oracle_idcs in implemented provider names")
 	}
 	if !slices.Contains(names, "cyberark") {
 		t.Fatal("expected cyberark in implemented provider names")

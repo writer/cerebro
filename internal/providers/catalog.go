@@ -41,7 +41,7 @@ var providerMetadata = map[string]ProviderMetadata{
 	"jumpcloud":        {Name: "jumpcloud", Maturity: ProviderMaturityBeta, Public: true},
 	"kandji":           {Name: "kandji", Maturity: ProviderMaturityBeta, Public: true},
 	"kolide":           {Name: "kolide", Maturity: ProviderMaturityBeta, Public: true},
-	"oracle_idcs":      {Name: "oracle_idcs", Maturity: ProviderMaturityStub, Public: false},
+	"oracle_idcs":      {Name: "oracle_idcs", Maturity: ProviderMaturityBeta, Public: true},
 	"onelogin":         {Name: "onelogin", Maturity: ProviderMaturityBeta, Public: true},
 	"okta":             {Name: "okta", Maturity: ProviderMaturityProductionReady, Public: true},
 	"panther":          {Name: "panther", Maturity: ProviderMaturityBeta, Public: true},

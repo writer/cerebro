@@ -91,8 +91,8 @@ func TestValidScheduleProviders(t *testing.T) {
 	if !slices.Contains(providers, "forgerock") {
 		t.Fatalf("expected forgerock in valid providers: %v", providers)
 	}
-	if slices.Contains(providers, "oracle_idcs") {
-		t.Fatalf("did not expect stub provider oracle_idcs in valid providers: %v", providers)
+	if !slices.Contains(providers, "oracle_idcs") {
+		t.Fatalf("expected oracle_idcs in valid providers: %v", providers)
 	}
 }
 
