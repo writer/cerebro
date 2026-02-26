@@ -16,15 +16,15 @@ func TestProviderMetadataFor_KnownProvider(t *testing.T) {
 }
 
 func TestProviderMetadataFor_StubProvider(t *testing.T) {
-	metadata := ProviderMetadataFor("sailpoint")
+	metadata := ProviderMetadataFor("saviynt")
 	if metadata.Maturity != ProviderMaturityStub {
-		t.Fatalf("expected sailpoint maturity %q, got %q", ProviderMaturityStub, metadata.Maturity)
+		t.Fatalf("expected saviynt maturity %q, got %q", ProviderMaturityStub, metadata.Maturity)
 	}
 	if metadata.Public {
-		t.Fatal("expected sailpoint to be non-public")
+		t.Fatal("expected saviynt to be non-public")
 	}
-	if !IsProviderIncomplete("sailpoint") {
-		t.Fatal("expected sailpoint to be incomplete")
+	if !IsProviderIncomplete("saviynt") {
+		t.Fatal("expected saviynt to be incomplete")
 	}
 }
 
@@ -38,6 +38,19 @@ func TestProviderMetadataFor_CyberArkProvider(t *testing.T) {
 	}
 	if IsProviderIncomplete("cyberark") {
 		t.Fatal("did not expect cyberark to be incomplete")
+	}
+}
+
+func TestProviderMetadataFor_SailPointProvider(t *testing.T) {
+	metadata := ProviderMetadataFor("sailpoint")
+	if metadata.Maturity != ProviderMaturityBeta {
+		t.Fatalf("expected sailpoint maturity %q, got %q", ProviderMaturityBeta, metadata.Maturity)
+	}
+	if !metadata.Public {
+		t.Fatal("expected sailpoint to be public")
+	}
+	if IsProviderIncomplete("sailpoint") {
+		t.Fatal("did not expect sailpoint to be incomplete")
 	}
 }
 
@@ -56,11 +69,14 @@ func TestProviderMetadataFor_UnknownDefaultsToPublicProductionReady(t *testing.T
 
 func TestPublicProviderNames_ExcludesStubProviders(t *testing.T) {
 	names := PublicProviderNames()
-	if slices.Contains(names, "sailpoint") {
-		t.Fatal("did not expect stub provider sailpoint in public provider names")
+	if slices.Contains(names, "saviynt") {
+		t.Fatal("did not expect stub provider saviynt in public provider names")
 	}
 	if !slices.Contains(names, "cyberark") {
 		t.Fatal("expected cyberark in public provider names")
+	}
+	if !slices.Contains(names, "sailpoint") {
+		t.Fatal("expected sailpoint in public provider names")
 	}
 	if !slices.Contains(names, "pingidentity") {
 		t.Fatal("expected pingidentity in public provider names")
@@ -105,11 +121,14 @@ func TestPublicProviderNames_ExcludesStubProviders(t *testing.T) {
 
 func TestImplementedProviderNames_ExcludesStubProviders(t *testing.T) {
 	names := ImplementedProviderNames()
-	if slices.Contains(names, "sailpoint") {
-		t.Fatal("did not expect stub provider sailpoint in implemented provider names")
+	if slices.Contains(names, "saviynt") {
+		t.Fatal("did not expect stub provider saviynt in implemented provider names")
 	}
 	if !slices.Contains(names, "cyberark") {
 		t.Fatal("expected cyberark in implemented provider names")
+	}
+	if !slices.Contains(names, "sailpoint") {
+		t.Fatal("expected sailpoint in implemented provider names")
 	}
 	if !slices.Contains(names, "pingidentity") {
 		t.Fatal("expected pingidentity in implemented provider names")

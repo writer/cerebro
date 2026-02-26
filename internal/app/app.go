@@ -304,6 +304,10 @@ type Config struct {
 	CyberArkURL      string
 	CyberArkAPIToken string
 
+	// SailPoint Provider
+	SailPointURL      string
+	SailPointAPIToken string
+
 	// GitLab Provider
 	GitLabToken   string
 	GitLabBaseURL string
@@ -509,6 +513,8 @@ func LoadConfig() *Config {
 		PingIdentityAuthURL:              getEnv("PINGIDENTITY_AUTH_URL", "https://auth.pingone.com"),
 		CyberArkURL:                      getEnv("CYBERARK_URL", ""),
 		CyberArkAPIToken:                 getEnv("CYBERARK_API_TOKEN", ""),
+		SailPointURL:                     getEnv("SAILPOINT_URL", ""),
+		SailPointAPIToken:                getEnv("SAILPOINT_API_TOKEN", ""),
 		GitLabToken:                      getEnv("GITLAB_TOKEN", ""),
 		GitLabBaseURL:                    getEnv("GITLAB_BASE_URL", "https://gitlab.com"),
 		TerraformCloudToken:              getEnv("TFC_TOKEN", ""),
@@ -1132,6 +1138,14 @@ func (a *App) initProviders(ctx context.Context) {
 		registerProvider("cyberark", providers.NewCyberArkProvider(), map[string]interface{}{
 			"url":       a.Config.CyberArkURL,
 			"api_token": a.Config.CyberArkAPIToken,
+		})
+	}
+
+	// Register SailPoint if configured
+	if a.Config.SailPointURL != "" && a.Config.SailPointAPIToken != "" {
+		registerProvider("sailpoint", providers.NewSailPointProvider(), map[string]interface{}{
+			"url":       a.Config.SailPointURL,
+			"api_token": a.Config.SailPointAPIToken,
 		})
 	}
 

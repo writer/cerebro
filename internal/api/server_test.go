@@ -716,7 +716,7 @@ func TestListProviders(t *testing.T) {
 func TestListProviders_HidesIncompleteByDefault(t *testing.T) {
 	a := newTestApp(t)
 	a.Providers.Register(&staticProvider{name: "okta", provider: providers.ProviderTypeSaaS})
-	a.Providers.Register(&staticProvider{name: "sailpoint", provider: providers.ProviderTypeSaaS})
+	a.Providers.Register(&staticProvider{name: "saviynt", provider: providers.ProviderTypeSaaS})
 
 	s := NewServer(a)
 	w := do(t, s, "GET", "/api/v1/providers/", nil)
@@ -741,7 +741,7 @@ func TestListProviders_HidesIncompleteByDefault(t *testing.T) {
 func TestListProviders_IncludeIncomplete(t *testing.T) {
 	a := newTestApp(t)
 	a.Providers.Register(&staticProvider{name: "okta", provider: providers.ProviderTypeSaaS})
-	a.Providers.Register(&staticProvider{name: "sailpoint", provider: providers.ProviderTypeSaaS})
+	a.Providers.Register(&staticProvider{name: "saviynt", provider: providers.ProviderTypeSaaS})
 
 	s := NewServer(a)
 	w := do(t, s, "GET", "/api/v1/providers/?include_incomplete=true", nil)
@@ -755,32 +755,32 @@ func TestListProviders_IncludeIncomplete(t *testing.T) {
 	}
 
 	items := body["providers"].([]interface{})
-	foundSailpoint := false
+	foundSaviynt := false
 	for _, item := range items {
 		provider := item.(map[string]interface{})
-		if provider["name"] == "sailpoint" {
-			foundSailpoint = true
+		if provider["name"] == "saviynt" {
+			foundSaviynt = true
 			if provider["maturity"] != string(providers.ProviderMaturityStub) {
-				t.Fatalf("expected sailpoint maturity %q, got %v", providers.ProviderMaturityStub, provider["maturity"])
+				t.Fatalf("expected saviynt maturity %q, got %v", providers.ProviderMaturityStub, provider["maturity"])
 			}
 		}
 	}
-	if !foundSailpoint {
-		t.Fatal("expected sailpoint in provider list when include_incomplete=true")
+	if !foundSaviynt {
+		t.Fatal("expected saviynt in provider list when include_incomplete=true")
 	}
 }
 
 func TestGetProvider_IncompleteHiddenByDefault(t *testing.T) {
 	a := newTestApp(t)
-	a.Providers.Register(&staticProvider{name: "sailpoint", provider: providers.ProviderTypeSaaS})
+	a.Providers.Register(&staticProvider{name: "saviynt", provider: providers.ProviderTypeSaaS})
 	s := NewServer(a)
 
-	w := do(t, s, "GET", "/api/v1/providers/sailpoint", nil)
+	w := do(t, s, "GET", "/api/v1/providers/saviynt", nil)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", w.Code)
 	}
 
-	w = do(t, s, "GET", "/api/v1/providers/sailpoint?include_incomplete=true", nil)
+	w = do(t, s, "GET", "/api/v1/providers/saviynt?include_incomplete=true", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 with include_incomplete, got %d", w.Code)
 	}

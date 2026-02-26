@@ -82,8 +82,11 @@ func TestValidScheduleProviders(t *testing.T) {
 	if !slices.Contains(providers, "cyberark") {
 		t.Fatalf("expected cyberark in valid providers: %v", providers)
 	}
-	if slices.Contains(providers, "sailpoint") {
-		t.Fatalf("did not expect stub provider sailpoint in valid providers: %v", providers)
+	if !slices.Contains(providers, "sailpoint") {
+		t.Fatalf("expected sailpoint in valid providers: %v", providers)
+	}
+	if slices.Contains(providers, "saviynt") {
+		t.Fatalf("did not expect stub provider saviynt in valid providers: %v", providers)
 	}
 }
 
