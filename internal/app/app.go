@@ -300,6 +300,10 @@ type Config struct {
 	PingIdentityAPIURL        string
 	PingIdentityAuthURL       string
 
+	// CyberArk Provider
+	CyberArkURL      string
+	CyberArkAPIToken string
+
 	// GitLab Provider
 	GitLabToken   string
 	GitLabBaseURL string
@@ -503,6 +507,8 @@ func LoadConfig() *Config {
 		PingIdentityClientSecret:         getEnv("PINGIDENTITY_CLIENT_SECRET", getEnv("PINGONE_CLIENT_SECRET", "")),
 		PingIdentityAPIURL:               getEnv("PINGIDENTITY_API_URL", "https://api.pingone.com"),
 		PingIdentityAuthURL:              getEnv("PINGIDENTITY_AUTH_URL", "https://auth.pingone.com"),
+		CyberArkURL:                      getEnv("CYBERARK_URL", ""),
+		CyberArkAPIToken:                 getEnv("CYBERARK_API_TOKEN", ""),
 		GitLabToken:                      getEnv("GITLAB_TOKEN", ""),
 		GitLabBaseURL:                    getEnv("GITLAB_BASE_URL", "https://gitlab.com"),
 		TerraformCloudToken:              getEnv("TFC_TOKEN", ""),
@@ -1119,6 +1125,14 @@ func (a *App) initProviders(ctx context.Context) {
 			pingIdentityConfig["auth_url"] = a.Config.PingIdentityAuthURL
 		}
 		registerProvider("pingidentity", providers.NewPingIdentityProvider(), pingIdentityConfig)
+	}
+
+	// Register CyberArk if configured
+	if a.Config.CyberArkURL != "" && a.Config.CyberArkAPIToken != "" {
+		registerProvider("cyberark", providers.NewCyberArkProvider(), map[string]interface{}{
+			"url":       a.Config.CyberArkURL,
+			"api_token": a.Config.CyberArkAPIToken,
+		})
 	}
 
 	// Register GitLab if configured
