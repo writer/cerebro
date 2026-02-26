@@ -716,7 +716,7 @@ func TestListProviders(t *testing.T) {
 func TestListProviders_HidesIncompleteByDefault(t *testing.T) {
 	a := newTestApp(t)
 	a.Providers.Register(&staticProvider{name: "okta", provider: providers.ProviderTypeSaaS})
-	a.Providers.Register(&staticProvider{name: "forgerock", provider: providers.ProviderTypeIdentity})
+	a.Providers.Register(&staticProvider{name: "oracle_idcs", provider: providers.ProviderTypeIdentity})
 
 	s := NewServer(a)
 	w := do(t, s, "GET", "/api/v1/providers/", nil)
@@ -741,7 +741,7 @@ func TestListProviders_HidesIncompleteByDefault(t *testing.T) {
 func TestListProviders_IncludeIncomplete(t *testing.T) {
 	a := newTestApp(t)
 	a.Providers.Register(&staticProvider{name: "okta", provider: providers.ProviderTypeSaaS})
-	a.Providers.Register(&staticProvider{name: "forgerock", provider: providers.ProviderTypeIdentity})
+	a.Providers.Register(&staticProvider{name: "oracle_idcs", provider: providers.ProviderTypeIdentity})
 
 	s := NewServer(a)
 	w := do(t, s, "GET", "/api/v1/providers/?include_incomplete=true", nil)
@@ -758,29 +758,29 @@ func TestListProviders_IncludeIncomplete(t *testing.T) {
 	foundSaviynt := false
 	for _, item := range items {
 		provider := item.(map[string]interface{})
-		if provider["name"] == "forgerock" {
+		if provider["name"] == "oracle_idcs" {
 			foundSaviynt = true
 			if provider["maturity"] != string(providers.ProviderMaturityStub) {
-				t.Fatalf("expected forgerock maturity %q, got %v", providers.ProviderMaturityStub, provider["maturity"])
+				t.Fatalf("expected oracle_idcs maturity %q, got %v", providers.ProviderMaturityStub, provider["maturity"])
 			}
 		}
 	}
 	if !foundSaviynt {
-		t.Fatal("expected forgerock in provider list when include_incomplete=true")
+		t.Fatal("expected oracle_idcs in provider list when include_incomplete=true")
 	}
 }
 
 func TestGetProvider_IncompleteHiddenByDefault(t *testing.T) {
 	a := newTestApp(t)
-	a.Providers.Register(&staticProvider{name: "forgerock", provider: providers.ProviderTypeIdentity})
+	a.Providers.Register(&staticProvider{name: "oracle_idcs", provider: providers.ProviderTypeIdentity})
 	s := NewServer(a)
 
-	w := do(t, s, "GET", "/api/v1/providers/forgerock", nil)
+	w := do(t, s, "GET", "/api/v1/providers/oracle_idcs", nil)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", w.Code)
 	}
 
-	w = do(t, s, "GET", "/api/v1/providers/forgerock?include_incomplete=true", nil)
+	w = do(t, s, "GET", "/api/v1/providers/oracle_idcs?include_incomplete=true", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 with include_incomplete, got %d", w.Code)
 	}

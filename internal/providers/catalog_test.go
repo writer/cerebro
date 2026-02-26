@@ -16,15 +16,15 @@ func TestProviderMetadataFor_KnownProvider(t *testing.T) {
 }
 
 func TestProviderMetadataFor_StubProvider(t *testing.T) {
-	metadata := ProviderMetadataFor("forgerock")
+	metadata := ProviderMetadataFor("oracle_idcs")
 	if metadata.Maturity != ProviderMaturityStub {
-		t.Fatalf("expected forgerock maturity %q, got %q", ProviderMaturityStub, metadata.Maturity)
+		t.Fatalf("expected oracle_idcs maturity %q, got %q", ProviderMaturityStub, metadata.Maturity)
 	}
 	if metadata.Public {
-		t.Fatal("expected forgerock to be non-public")
+		t.Fatal("expected oracle_idcs to be non-public")
 	}
-	if !IsProviderIncomplete("forgerock") {
-		t.Fatal("expected forgerock to be incomplete")
+	if !IsProviderIncomplete("oracle_idcs") {
+		t.Fatal("expected oracle_idcs to be incomplete")
 	}
 }
 
@@ -67,6 +67,19 @@ func TestProviderMetadataFor_SaviyntProvider(t *testing.T) {
 	}
 }
 
+func TestProviderMetadataFor_ForgeRockProvider(t *testing.T) {
+	metadata := ProviderMetadataFor("forgerock")
+	if metadata.Maturity != ProviderMaturityBeta {
+		t.Fatalf("expected forgerock maturity %q, got %q", ProviderMaturityBeta, metadata.Maturity)
+	}
+	if !metadata.Public {
+		t.Fatal("expected forgerock to be public")
+	}
+	if IsProviderIncomplete("forgerock") {
+		t.Fatal("did not expect forgerock to be incomplete")
+	}
+}
+
 func TestProviderMetadataFor_UnknownDefaultsToPublicProductionReady(t *testing.T) {
 	metadata := ProviderMetadataFor("custom-provider")
 	if metadata.Maturity != ProviderMaturityProductionReady {
@@ -82,8 +95,8 @@ func TestProviderMetadataFor_UnknownDefaultsToPublicProductionReady(t *testing.T
 
 func TestPublicProviderNames_ExcludesStubProviders(t *testing.T) {
 	names := PublicProviderNames()
-	if slices.Contains(names, "forgerock") {
-		t.Fatal("did not expect stub provider forgerock in public provider names")
+	if slices.Contains(names, "oracle_idcs") {
+		t.Fatal("did not expect stub provider oracle_idcs in public provider names")
 	}
 	if !slices.Contains(names, "cyberark") {
 		t.Fatal("expected cyberark in public provider names")
@@ -93,6 +106,9 @@ func TestPublicProviderNames_ExcludesStubProviders(t *testing.T) {
 	}
 	if !slices.Contains(names, "saviynt") {
 		t.Fatal("expected saviynt in public provider names")
+	}
+	if !slices.Contains(names, "forgerock") {
+		t.Fatal("expected forgerock in public provider names")
 	}
 	if !slices.Contains(names, "pingidentity") {
 		t.Fatal("expected pingidentity in public provider names")
@@ -137,8 +153,8 @@ func TestPublicProviderNames_ExcludesStubProviders(t *testing.T) {
 
 func TestImplementedProviderNames_ExcludesStubProviders(t *testing.T) {
 	names := ImplementedProviderNames()
-	if slices.Contains(names, "forgerock") {
-		t.Fatal("did not expect stub provider forgerock in implemented provider names")
+	if slices.Contains(names, "oracle_idcs") {
+		t.Fatal("did not expect stub provider oracle_idcs in implemented provider names")
 	}
 	if !slices.Contains(names, "cyberark") {
 		t.Fatal("expected cyberark in implemented provider names")
@@ -148,6 +164,9 @@ func TestImplementedProviderNames_ExcludesStubProviders(t *testing.T) {
 	}
 	if !slices.Contains(names, "saviynt") {
 		t.Fatal("expected saviynt in implemented provider names")
+	}
+	if !slices.Contains(names, "forgerock") {
+		t.Fatal("expected forgerock in implemented provider names")
 	}
 	if !slices.Contains(names, "pingidentity") {
 		t.Fatal("expected pingidentity in implemented provider names")

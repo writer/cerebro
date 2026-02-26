@@ -312,6 +312,10 @@ type Config struct {
 	SaviyntURL      string
 	SaviyntAPIToken string
 
+	// ForgeRock Provider
+	ForgeRockURL      string
+	ForgeRockAPIToken string
+
 	// GitLab Provider
 	GitLabToken   string
 	GitLabBaseURL string
@@ -521,6 +525,8 @@ func LoadConfig() *Config {
 		SailPointAPIToken:                getEnv("SAILPOINT_API_TOKEN", ""),
 		SaviyntURL:                       getEnv("SAVIYNT_URL", ""),
 		SaviyntAPIToken:                  getEnv("SAVIYNT_API_TOKEN", ""),
+		ForgeRockURL:                     getEnv("FORGEROCK_URL", ""),
+		ForgeRockAPIToken:                getEnv("FORGEROCK_API_TOKEN", ""),
 		GitLabToken:                      getEnv("GITLAB_TOKEN", ""),
 		GitLabBaseURL:                    getEnv("GITLAB_BASE_URL", "https://gitlab.com"),
 		TerraformCloudToken:              getEnv("TFC_TOKEN", ""),
@@ -1160,6 +1166,14 @@ func (a *App) initProviders(ctx context.Context) {
 		registerProvider("saviynt", providers.NewSaviyntProvider(), map[string]interface{}{
 			"url":       a.Config.SaviyntURL,
 			"api_token": a.Config.SaviyntAPIToken,
+		})
+	}
+
+	// Register ForgeRock if configured
+	if a.Config.ForgeRockURL != "" && a.Config.ForgeRockAPIToken != "" {
+		registerProvider("forgerock", providers.NewForgeRockProvider(), map[string]interface{}{
+			"url":       a.Config.ForgeRockURL,
+			"api_token": a.Config.ForgeRockAPIToken,
 		})
 	}
 
