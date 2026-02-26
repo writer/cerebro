@@ -308,6 +308,10 @@ type Config struct {
 	SailPointURL      string
 	SailPointAPIToken string
 
+	// Saviynt Provider
+	SaviyntURL      string
+	SaviyntAPIToken string
+
 	// GitLab Provider
 	GitLabToken   string
 	GitLabBaseURL string
@@ -515,6 +519,8 @@ func LoadConfig() *Config {
 		CyberArkAPIToken:                 getEnv("CYBERARK_API_TOKEN", ""),
 		SailPointURL:                     getEnv("SAILPOINT_URL", ""),
 		SailPointAPIToken:                getEnv("SAILPOINT_API_TOKEN", ""),
+		SaviyntURL:                       getEnv("SAVIYNT_URL", ""),
+		SaviyntAPIToken:                  getEnv("SAVIYNT_API_TOKEN", ""),
 		GitLabToken:                      getEnv("GITLAB_TOKEN", ""),
 		GitLabBaseURL:                    getEnv("GITLAB_BASE_URL", "https://gitlab.com"),
 		TerraformCloudToken:              getEnv("TFC_TOKEN", ""),
@@ -1146,6 +1152,14 @@ func (a *App) initProviders(ctx context.Context) {
 		registerProvider("sailpoint", providers.NewSailPointProvider(), map[string]interface{}{
 			"url":       a.Config.SailPointURL,
 			"api_token": a.Config.SailPointAPIToken,
+		})
+	}
+
+	// Register Saviynt if configured
+	if a.Config.SaviyntURL != "" && a.Config.SaviyntAPIToken != "" {
+		registerProvider("saviynt", providers.NewSaviyntProvider(), map[string]interface{}{
+			"url":       a.Config.SaviyntURL,
+			"api_token": a.Config.SaviyntAPIToken,
 		})
 	}
 

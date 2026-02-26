@@ -16,15 +16,15 @@ func TestProviderMetadataFor_KnownProvider(t *testing.T) {
 }
 
 func TestProviderMetadataFor_StubProvider(t *testing.T) {
-	metadata := ProviderMetadataFor("saviynt")
+	metadata := ProviderMetadataFor("forgerock")
 	if metadata.Maturity != ProviderMaturityStub {
-		t.Fatalf("expected saviynt maturity %q, got %q", ProviderMaturityStub, metadata.Maturity)
+		t.Fatalf("expected forgerock maturity %q, got %q", ProviderMaturityStub, metadata.Maturity)
 	}
 	if metadata.Public {
-		t.Fatal("expected saviynt to be non-public")
+		t.Fatal("expected forgerock to be non-public")
 	}
-	if !IsProviderIncomplete("saviynt") {
-		t.Fatal("expected saviynt to be incomplete")
+	if !IsProviderIncomplete("forgerock") {
+		t.Fatal("expected forgerock to be incomplete")
 	}
 }
 
@@ -54,6 +54,19 @@ func TestProviderMetadataFor_SailPointProvider(t *testing.T) {
 	}
 }
 
+func TestProviderMetadataFor_SaviyntProvider(t *testing.T) {
+	metadata := ProviderMetadataFor("saviynt")
+	if metadata.Maturity != ProviderMaturityBeta {
+		t.Fatalf("expected saviynt maturity %q, got %q", ProviderMaturityBeta, metadata.Maturity)
+	}
+	if !metadata.Public {
+		t.Fatal("expected saviynt to be public")
+	}
+	if IsProviderIncomplete("saviynt") {
+		t.Fatal("did not expect saviynt to be incomplete")
+	}
+}
+
 func TestProviderMetadataFor_UnknownDefaultsToPublicProductionReady(t *testing.T) {
 	metadata := ProviderMetadataFor("custom-provider")
 	if metadata.Maturity != ProviderMaturityProductionReady {
@@ -69,14 +82,17 @@ func TestProviderMetadataFor_UnknownDefaultsToPublicProductionReady(t *testing.T
 
 func TestPublicProviderNames_ExcludesStubProviders(t *testing.T) {
 	names := PublicProviderNames()
-	if slices.Contains(names, "saviynt") {
-		t.Fatal("did not expect stub provider saviynt in public provider names")
+	if slices.Contains(names, "forgerock") {
+		t.Fatal("did not expect stub provider forgerock in public provider names")
 	}
 	if !slices.Contains(names, "cyberark") {
 		t.Fatal("expected cyberark in public provider names")
 	}
 	if !slices.Contains(names, "sailpoint") {
 		t.Fatal("expected sailpoint in public provider names")
+	}
+	if !slices.Contains(names, "saviynt") {
+		t.Fatal("expected saviynt in public provider names")
 	}
 	if !slices.Contains(names, "pingidentity") {
 		t.Fatal("expected pingidentity in public provider names")
@@ -121,14 +137,17 @@ func TestPublicProviderNames_ExcludesStubProviders(t *testing.T) {
 
 func TestImplementedProviderNames_ExcludesStubProviders(t *testing.T) {
 	names := ImplementedProviderNames()
-	if slices.Contains(names, "saviynt") {
-		t.Fatal("did not expect stub provider saviynt in implemented provider names")
+	if slices.Contains(names, "forgerock") {
+		t.Fatal("did not expect stub provider forgerock in implemented provider names")
 	}
 	if !slices.Contains(names, "cyberark") {
 		t.Fatal("expected cyberark in implemented provider names")
 	}
 	if !slices.Contains(names, "sailpoint") {
 		t.Fatal("expected sailpoint in implemented provider names")
+	}
+	if !slices.Contains(names, "saviynt") {
+		t.Fatal("expected saviynt in implemented provider names")
 	}
 	if !slices.Contains(names, "pingidentity") {
 		t.Fatal("expected pingidentity in implemented provider names")
