@@ -158,7 +158,7 @@ jobs:
         run: docker build -f Dockerfile -t cerebro:ci .
 
       - name: Run Trivy image scan
-        uses: aquasecurity/trivy-action@0.31.0
+        uses: aquasecurity/trivy-action@0.34.0
         with:
           image-ref: cerebro:ci
           format: table
