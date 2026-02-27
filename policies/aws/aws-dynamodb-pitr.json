@@ -26,7 +26,7 @@
     }
   ],
   "enabled": true,
-  "query": "SELECT id, table_name, region FROM aws_dynamodb_tables WHERE point_in_time_recovery_enabled = false",
+  "query": "SELECT t._cq_id AS id, t.table_name, t.region FROM aws_dynamodb_tables t LEFT JOIN aws_dynamodb_table_continuous_backups b ON t.table_arn = b.table_arn WHERE b.table_arn IS NULL OR b.continuous_backups_status <> 'ENABLED' OR b.point_in_time_recovery_description NOT ILIKE '%\"PointInTimeRecoveryStatus\": \"ENABLED\"%'",
   "remediation": "Enable Point-in-Time Recovery on DynamoDB tables via AWS Console or CLI: aws dynamodb update-continuous-backups",
   "tags": [
     "aws",

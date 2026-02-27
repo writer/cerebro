@@ -26,7 +26,7 @@
     }
   ],
   "enabled": true,
-  "query": "SELECT id, log_group_name, retention_in_days FROM aws_cloudwatch_log_groups WHERE retention_in_days IS NULL OR retention_in_days < 365",
+  "query": "SELECT _cq_id AS id, log_group_name, retention_in_days FROM aws_cloudwatch_log_groups WHERE retention_in_days IS NULL OR retention_in_days < 365",
   "remediation": "Set log retention to 365 days or more. Configure via AWS Console or CLI: aws logs put-retention-policy",
   "tags": [
     "aws",

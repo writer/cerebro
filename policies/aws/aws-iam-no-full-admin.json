@@ -32,7 +32,7 @@
     }
   ],
   "enabled": true,
-  "query": "SELECT id, policy_name, arn FROM aws_iam_policies WHERE policy_document LIKE '%\"Action\": \"*\"%' AND policy_document LIKE '%\"Resource\": \"*\"%' AND policy_document LIKE '%\"Effect\": \"Allow\"%'",
+  "query": "SELECT p.id, p.policy_name, p.arn FROM aws_iam_policies p JOIN aws_iam_policy_default_versions v ON p.arn = v.policy_arn WHERE v.document_json ILIKE '%\"Action\": \"*\"%' AND v.document_json ILIKE '%\"Resource\": \"*\"%' AND v.document_json ILIKE '%\"Effect\": \"Allow\"%'",
   "remediation": "Review and restrict IAM policies. Replace full admin policies with least-privilege permissions specific to required actions and resources.",
   "tags": [
     "aws",

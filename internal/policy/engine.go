@@ -439,6 +439,8 @@ func extractConditionFields(condition string) []string {
 		return nil
 	}
 
+	condition = normalizeLogicalOperators(condition)
+
 	condition = trimOuterParens(condition)
 
 	if parts := splitTopLevel(condition, " OR "); len(parts) > 1 {
@@ -627,6 +629,8 @@ func evaluateCondition(condition string, asset map[string]interface{}) bool {
 		return false
 	}
 
+	condition = normalizeLogicalOperators(condition)
+
 	condition = trimOuterParens(condition)
 
 	// Handle OR (any sub-condition true -> true)
@@ -741,6 +745,49 @@ func evaluateCondition(condition string, asset map[string]interface{}) bool {
 	}
 
 	return false
+}
+
+func normalizeLogicalOperators(condition string) string {
+	if condition == "" {
+		return ""
+	}
+
+	var builder strings.Builder
+	builder.Grow(len(condition))
+	inSingle := false
+	inDouble := false
+
+	for i := 0; i < len(condition); i++ {
+		char := condition[i]
+		switch char {
+		case '\'':
+			if !inDouble {
+				inSingle = !inSingle
+			}
+		case '"':
+			if !inSingle {
+				inDouble = !inDouble
+			}
+		}
+
+		if !inSingle && !inDouble && i+1 < len(condition) {
+			next := condition[i+1]
+			if char == '|' && next == '|' {
+				builder.WriteString(" OR ")
+				i++
+				continue
+			}
+			if char == '&' && next == '&' {
+				builder.WriteString(" AND ")
+				i++
+				continue
+			}
+		}
+
+		builder.WriteByte(char)
+	}
+
+	return builder.String()
 }
 
 func splitTopLevel(condition string, delimiter string) []string {
