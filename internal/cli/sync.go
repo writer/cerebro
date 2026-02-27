@@ -2,17 +2,22 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sort"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials/processcreds"
 	"github.com/spf13/cobra"
 
 	"github.com/writerinternal/cerebro/internal/app"
@@ -51,32 +56,46 @@ Examples:
 }
 
 var (
-	syncScanAfter         bool
-	syncGCP               bool
-	syncGCPProject        string
-	syncGCPProjects       string // comma-separated list of projects
-	syncGCPOrg            string // organization ID for multi-project sync
-	syncMultiRegion       bool
-	syncRegion            string
-	syncUseAssetAPI       bool   // use Cloud Asset Inventory API
-	syncSecurity          bool   // sync security data (vulnerabilities, SCC findings)
-	syncK8s               bool   // sync Kubernetes resources
-	syncK8sKubeconfig     string // kubeconfig path
-	syncK8sContext        string // kubeconfig context
-	syncK8sNamespace      string // namespace to sync
-	syncAzure             bool   // sync Azure resources
-	syncAzureSubscription string // Azure subscription ID
-	syncConcurrency       int
-	syncTable             string
-	syncOutput            string
-	syncValidate          bool
-	syncAWSProfiles       string // comma-separated AWS SSO profiles
-	syncAWSOrg            bool
-	syncAWSOrgRole        string
-	syncAWSOrgInclude     string
-	syncAWSOrgExclude     string
-	syncAWSOrgConcurrency int
-	syncBackfillBatchSize int
+	syncScanAfter          bool
+	syncGCP                bool
+	syncGCPProject         string
+	syncGCPProjects        string // comma-separated list of projects
+	syncGCPOrg             string // organization ID for multi-project sync
+	syncMultiRegion        bool
+	syncRegion             string
+	syncUseAssetAPI        bool   // use Cloud Asset Inventory API
+	syncSecurity           bool   // sync security data (vulnerabilities, SCC findings)
+	syncK8s                bool   // sync Kubernetes resources
+	syncK8sKubeconfig      string // kubeconfig path
+	syncK8sContext         string // kubeconfig context
+	syncK8sNamespace       string // namespace to sync
+	syncAzure              bool   // sync Azure resources
+	syncAzureSubscription  string // Azure subscription ID
+	syncConcurrency        int
+	syncTable              string
+	syncOutput             string
+	syncValidate           bool
+	syncGCPCredentialsFile string
+	syncGCPImpersonateSA   string
+	syncGCPImpersonateDel  string
+	syncAWSProfile         string
+	syncAWSProfiles        string // comma-separated AWS SSO profiles
+	syncAWSConfigFile      string
+	syncAWSSharedCredsFile string
+	syncAWSCredentialProc  string
+	syncAWSWebIDTokenFile  string
+	syncAWSWebIDRoleARN    string
+	syncAWSRoleARN         string
+	syncAWSRoleSession     string
+	syncAWSRoleExternalID  string
+	syncAWSRoleMFASerial   string
+	syncAWSRoleMFAToken    string
+	syncAWSOrg             bool
+	syncAWSOrgRole         string
+	syncAWSOrgInclude      string
+	syncAWSOrgExclude      string
+	syncAWSOrgConcurrency  int
+	syncBackfillBatchSize  int
 )
 
 func init() {
@@ -99,7 +118,21 @@ func init() {
 	syncCmd.Flags().StringVar(&syncTable, "table", "", "Sync only specific table(s), comma-separated (e.g., aws_iam_accounts)")
 	syncCmd.Flags().StringVarP(&syncOutput, "output", "o", "table", "Output format (table, json)")
 	syncCmd.Flags().BoolVar(&syncValidate, "validate", false, "Validate Snowflake tables without fetching resources")
+	syncCmd.Flags().StringVar(&syncGCPCredentialsFile, "gcp-credentials-file", "", "Path to GCP credentials JSON file (service-account or external-account config)")
+	syncCmd.Flags().StringVar(&syncGCPImpersonateSA, "gcp-impersonate-service-account", "", "Service account email to impersonate for GCP API calls")
+	syncCmd.Flags().StringVar(&syncGCPImpersonateDel, "gcp-impersonate-delegates", "", "Comma-separated delegate service accounts for GCP impersonation chain")
+	syncCmd.Flags().StringVar(&syncAWSProfile, "aws-profile", "", "AWS shared config profile for single-account sync")
 	syncCmd.Flags().StringVar(&syncAWSProfiles, "aws-profiles", "", "Comma-separated AWS SSO profile names to sync multiple accounts")
+	syncCmd.Flags().StringVar(&syncAWSConfigFile, "aws-config-file", "", "Path to AWS shared config file")
+	syncCmd.Flags().StringVar(&syncAWSSharedCredsFile, "aws-shared-credentials-file", "", "Path to AWS shared credentials file")
+	syncCmd.Flags().StringVar(&syncAWSCredentialProc, "aws-credential-process", "", "Credential process command (for example IAM Roles Anywhere credential helper)")
+	syncCmd.Flags().StringVar(&syncAWSWebIDTokenFile, "aws-web-identity-token-file", "", "Path to OIDC token file for web identity auth")
+	syncCmd.Flags().StringVar(&syncAWSWebIDRoleARN, "aws-web-identity-role-arn", "", "Role ARN to use with --aws-web-identity-token-file")
+	syncCmd.Flags().StringVar(&syncAWSRoleARN, "aws-role-arn", "", "AWS role ARN to assume before syncing")
+	syncCmd.Flags().StringVar(&syncAWSRoleSession, "aws-role-session-name", "cerebro-sync", "Session name to use with --aws-role-arn")
+	syncCmd.Flags().StringVar(&syncAWSRoleExternalID, "aws-role-external-id", "", "External ID to use with --aws-role-arn")
+	syncCmd.Flags().StringVar(&syncAWSRoleMFASerial, "aws-role-mfa-serial", "", "MFA serial/ARN to use with --aws-role-arn")
+	syncCmd.Flags().StringVar(&syncAWSRoleMFAToken, "aws-role-mfa-token", "", "One-time MFA token code to use with --aws-role-arn")
 	syncCmd.Flags().BoolVar(&syncAWSOrg, "aws-org", false, "Sync all AWS organization accounts using assumed roles")
 	syncCmd.Flags().StringVar(&syncAWSOrgRole, "aws-org-role", "OrganizationAccountAccessRole", "IAM role name (or ARN template with {account_id}) to assume in member accounts")
 	syncCmd.Flags().StringVar(&syncAWSOrgInclude, "aws-org-include", "", "Comma-separated AWS account IDs to include when syncing org accounts")
@@ -127,6 +160,11 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 	// GCP sync
 	if syncGCP {
+		cleanup, err := applyGCPAuthOverrides()
+		if err != nil {
+			return err
+		}
+		defer cleanup()
 		// Handle multi-project sync via organization
 		if syncGCPOrg != "" {
 			return runGCPOrgSync(ctx, start, syncGCPOrg)
@@ -150,16 +188,34 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return runGCPSync(ctx, start, projectID)
 	}
 
+	awsCleanup, err := applyAWSAuthOverrides()
+	if err != nil {
+		return err
+	}
+	defer awsCleanup()
+
 	// Multi-account AWS sync via SSO profiles
 	if syncAWSOrg {
 		if syncAWSProfiles != "" {
 			Warning("Ignoring --aws-profiles because --aws-org is set")
+		}
+		if syncAWSRoleARN != "" {
+			Warning("Ignoring --aws-role-arn because --aws-org uses --aws-org-role per account")
+		}
+		if syncAWSRoleExternalID != "" {
+			Warning("Ignoring --aws-role-external-id because --aws-org is set")
+		}
+		if syncAWSRoleMFASerial != "" || syncAWSRoleMFAToken != "" {
+			Warning("Ignoring --aws-role-mfa-* because --aws-org uses --aws-org-role per account")
 		}
 		return runAWSOrgSync(ctx, start)
 	}
 
 	// Multi-account AWS sync via SSO profiles
 	if syncAWSProfiles != "" {
+		if syncAWSProfile != "" {
+			Warning("Ignoring --aws-profile because --aws-profiles is set")
+		}
 		return runMultiAccountAWSSync(ctx, start)
 	}
 
@@ -624,9 +680,9 @@ func runAzureSync(ctx context.Context, start time.Time) error {
 }
 
 func runMultiAccountAWSSync(ctx context.Context, start time.Time) error {
-	profiles := strings.Split(syncAWSProfiles, ",")
-	for i, p := range profiles {
-		profiles[i] = strings.TrimSpace(p)
+	profiles := parseCommaSeparatedValues(syncAWSProfiles)
+	if len(profiles) == 0 {
+		return fmt.Errorf("--aws-profiles did not include any valid profile names")
 	}
 
 	Info("Starting multi-account AWS sync (%d profiles)...", len(profiles))
@@ -637,12 +693,16 @@ func runMultiAccountAWSSync(ctx context.Context, start time.Time) error {
 		Info("Syncing AWS profile: %s", profile)
 		profileStart := time.Now()
 
-		awsCfg, err := config.LoadDefaultConfig(ctx,
-			config.WithSharedConfigProfile(profile),
-		)
+		awsCfg, err := loadAWSConfig(ctx, profile)
 		if err != nil {
 			Warning("Failed to load config for profile %s: %v", profile, err)
 			syncErrs = append(syncErrs, fmt.Errorf("profile %s: load config: %w", profile, err))
+			continue
+		}
+		awsCfg, err = applyAWSAssumeRoleOverride(ctx, awsCfg)
+		if err != nil {
+			Warning("Failed to assume role for profile %s: %v", profile, err)
+			syncErrs = append(syncErrs, fmt.Errorf("profile %s: %w", profile, err))
 			continue
 		}
 
@@ -728,9 +788,13 @@ func handleSyncRunResults(results []nativesync.SyncResult, start time.Time, prov
 }
 
 func runNativeSync(ctx context.Context, start time.Time) error {
-	awsCfg, err := config.LoadDefaultConfig(ctx)
+	awsCfg, err := loadAWSConfig(ctx, syncAWSProfile)
 	if err != nil {
 		return fmt.Errorf("load AWS config: %w", err)
+	}
+	awsCfg, err = applyAWSAssumeRoleOverride(ctx, awsCfg)
+	if err != nil {
+		return err
 	}
 
 	tableFilter := parseTableFilter(syncTable)
@@ -810,6 +874,257 @@ func runNativeSync(ctx context.Context, start time.Time) error {
 	}
 
 	return nil
+}
+
+func loadAWSConfig(ctx context.Context, profile string) (aws.Config, error) {
+	trimmed := strings.TrimSpace(profile)
+	loadOptions := make([]func(*config.LoadOptions) error, 0, 5)
+
+	if trimmed != "" {
+		loadOptions = append(loadOptions, config.WithSharedConfigProfile(trimmed))
+	}
+
+	configFile := strings.TrimSpace(syncAWSConfigFile)
+	if configFile != "" {
+		if err := validateReadableFile(configFile, "--aws-config-file"); err != nil {
+			return aws.Config{}, err
+		}
+		loadOptions = append(loadOptions, config.WithSharedConfigFiles([]string{configFile}))
+	}
+
+	credentialsFile := strings.TrimSpace(syncAWSSharedCredsFile)
+	if credentialsFile != "" {
+		if err := validateReadableFile(credentialsFile, "--aws-shared-credentials-file"); err != nil {
+			return aws.Config{}, err
+		}
+		loadOptions = append(loadOptions, config.WithSharedCredentialsFiles([]string{credentialsFile}))
+	}
+
+	credentialProcess := strings.TrimSpace(syncAWSCredentialProc)
+	if credentialProcess != "" && trimmed == "" {
+		loadOptions = append(loadOptions, config.WithCredentialsProvider(aws.NewCredentialsCache(processcreds.NewProvider(credentialProcess))))
+	}
+
+	return config.LoadDefaultConfig(ctx, loadOptions...)
+}
+
+type envSnapshot struct {
+	value   string
+	present bool
+}
+
+func applyAWSAuthOverrides() (func(), error) {
+	envSnapshots := make(map[string]envSnapshot)
+	cleanup := func() {
+		restoreEnvSnapshot(envSnapshots)
+	}
+
+	webIdentityToken := strings.TrimSpace(syncAWSWebIDTokenFile)
+	webIdentityRole := strings.TrimSpace(syncAWSWebIDRoleARN)
+	if webIdentityToken == "" && webIdentityRole == "" {
+		return cleanup, nil
+	}
+	if webIdentityToken == "" || webIdentityRole == "" {
+		return cleanup, fmt.Errorf("--aws-web-identity-token-file and --aws-web-identity-role-arn must be set together")
+	}
+	if err := validateReadableFile(webIdentityToken, "--aws-web-identity-token-file"); err != nil {
+		return cleanup, err
+	}
+
+	if err := setEnvWithSnapshot(envSnapshots, "AWS_WEB_IDENTITY_TOKEN_FILE", webIdentityToken); err != nil {
+		return cleanup, fmt.Errorf("set AWS_WEB_IDENTITY_TOKEN_FILE: %w", err)
+	}
+	if err := setEnvWithSnapshot(envSnapshots, "AWS_ROLE_ARN", webIdentityRole); err != nil {
+		return cleanup, fmt.Errorf("set AWS_ROLE_ARN: %w", err)
+	}
+
+	roleSession := strings.TrimSpace(syncAWSRoleSession)
+	if roleSession != "" {
+		if err := setEnvWithSnapshot(envSnapshots, "AWS_ROLE_SESSION_NAME", roleSession); err != nil {
+			return cleanup, fmt.Errorf("set AWS_ROLE_SESSION_NAME: %w", err)
+		}
+	}
+
+	return cleanup, nil
+}
+
+func applyAWSAssumeRoleOverride(ctx context.Context, cfg aws.Config) (aws.Config, error) {
+	roleARN := strings.TrimSpace(syncAWSRoleARN)
+	if roleARN == "" {
+		return cfg, nil
+	}
+
+	mfaSerial := strings.TrimSpace(syncAWSRoleMFASerial)
+	mfaToken := strings.TrimSpace(syncAWSRoleMFAToken)
+	if mfaToken != "" && mfaSerial == "" {
+		return cfg, fmt.Errorf("--aws-role-mfa-token requires --aws-role-mfa-serial")
+	}
+
+	assumedCfg, err := assumeRoleConfigWithExternalID(ctx, cfg, roleARN, strings.TrimSpace(syncAWSRoleSession), strings.TrimSpace(syncAWSRoleExternalID), mfaSerial, mfaToken)
+	if err != nil {
+		return cfg, fmt.Errorf("assume AWS role %q: %w", roleARN, err)
+	}
+
+	return assumedCfg, nil
+}
+
+func applyGCPAuthOverrides() (func(), error) {
+	envSnapshots := make(map[string]envSnapshot)
+	tempCredentialsFile := ""
+	cleanup := func() {
+		if tempCredentialsFile != "" {
+			_ = os.Remove(tempCredentialsFile)
+		}
+		restoreEnvSnapshot(envSnapshots)
+	}
+
+	credentialsFile := strings.TrimSpace(syncGCPCredentialsFile)
+	if credentialsFile != "" {
+		if err := validateReadableFile(credentialsFile, "--gcp-credentials-file"); err != nil {
+			return cleanup, err
+		}
+	}
+
+	impersonateServiceAccount := strings.TrimSpace(syncGCPImpersonateSA)
+	delegates := parseCommaSeparatedValues(syncGCPImpersonateDel)
+
+	if impersonateServiceAccount == "" {
+		if credentialsFile == "" {
+			return cleanup, nil
+		}
+
+		if err := setEnvWithSnapshot(envSnapshots, "GOOGLE_APPLICATION_CREDENTIALS", credentialsFile); err != nil {
+			return cleanup, fmt.Errorf("set GOOGLE_APPLICATION_CREDENTIALS: %w", err)
+		}
+		return cleanup, nil
+	}
+
+	sourcePath, err := resolveGCPSourceCredentialsPath(credentialsFile)
+	if err != nil {
+		return cleanup, err
+	}
+
+	sourceData, err := os.ReadFile(sourcePath)
+	if err != nil {
+		return cleanup, fmt.Errorf("read GCP source credentials %q: %w", sourcePath, err)
+	}
+
+	var sourceCredentials map[string]interface{}
+	if err := json.Unmarshal(sourceData, &sourceCredentials); err != nil {
+		return cleanup, fmt.Errorf("parse GCP source credentials %q: %w", sourcePath, err)
+	}
+	if len(sourceCredentials) == 0 {
+		return cleanup, fmt.Errorf("GCP source credentials %q are empty", sourcePath)
+	}
+
+	impersonationURL := fmt.Sprintf("https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/%s:generateAccessToken", url.PathEscape(impersonateServiceAccount))
+	payload := map[string]interface{}{
+		"type":                              "impersonated_service_account",
+		"service_account_impersonation_url": impersonationURL,
+		"source_credentials":                sourceCredentials,
+	}
+	if len(delegates) > 0 {
+		payload["delegates"] = delegates
+	}
+
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return cleanup, fmt.Errorf("marshal impersonated GCP credentials: %w", err)
+	}
+
+	tmpFile, err := os.CreateTemp("", "cerebro-gcp-impersonated-*.json")
+	if err != nil {
+		return cleanup, fmt.Errorf("create temporary GCP impersonation credentials file: %w", err)
+	}
+	tempCredentialsFile = tmpFile.Name()
+	if _, err := tmpFile.Write(encoded); err != nil {
+		_ = tmpFile.Close()
+		return cleanup, fmt.Errorf("write temporary GCP impersonation credentials file: %w", err)
+	}
+	if err := tmpFile.Chmod(0o600); err != nil {
+		_ = tmpFile.Close()
+		return cleanup, fmt.Errorf("set permissions on temporary GCP impersonation credentials file: %w", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		return cleanup, fmt.Errorf("close temporary GCP impersonation credentials file: %w", err)
+	}
+
+	if err := setEnvWithSnapshot(envSnapshots, "GOOGLE_APPLICATION_CREDENTIALS", tempCredentialsFile); err != nil {
+		cleanup()
+		return func() {}, fmt.Errorf("set GOOGLE_APPLICATION_CREDENTIALS: %w", err)
+	}
+
+	return cleanup, nil
+}
+
+func setEnvWithSnapshot(snapshots map[string]envSnapshot, key, value string) error {
+	if _, ok := snapshots[key]; !ok {
+		previous, present := os.LookupEnv(key)
+		snapshots[key] = envSnapshot{value: previous, present: present}
+	}
+	return os.Setenv(key, value)
+}
+
+func restoreEnvSnapshot(snapshots map[string]envSnapshot) {
+	for key, snapshot := range snapshots {
+		if snapshot.present {
+			_ = os.Setenv(key, snapshot.value)
+			continue
+		}
+		_ = os.Unsetenv(key)
+	}
+}
+
+func validateReadableFile(path, source string) error {
+	if strings.TrimSpace(path) == "" {
+		return fmt.Errorf("%s must not be empty", source)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("read %s %q: %w", source, path, err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("%s must point to a file: %q", source, path)
+	}
+
+	return nil
+}
+
+func resolveGCPSourceCredentialsPath(credentialsFile string) (string, error) {
+	if credentialsFile != "" {
+		return credentialsFile, nil
+	}
+
+	fromEnv := strings.TrimSpace(os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"))
+	if fromEnv != "" {
+		if err := validateReadableFile(fromEnv, "GOOGLE_APPLICATION_CREDENTIALS"); err != nil {
+			return "", err
+		}
+		return fromEnv, nil
+	}
+
+	defaultPath := defaultGCPApplicationDefaultCredentialsPath()
+	if defaultPath != "" {
+		if err := validateReadableFile(defaultPath, "application default credentials"); err == nil {
+			return defaultPath, nil
+		}
+	}
+
+	return "", fmt.Errorf("gcp impersonation requires source credentials; provide --gcp-credentials-file or set GOOGLE_APPLICATION_CREDENTIALS")
+}
+
+func defaultGCPApplicationDefaultCredentialsPath() string {
+	if appData := strings.TrimSpace(os.Getenv("APPDATA")); appData != "" {
+		return filepath.Join(appData, "gcloud", "application_default_credentials.json")
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(homeDir) == "" {
+		return ""
+	}
+
+	return filepath.Join(homeDir, ".config", "gcloud", "application_default_credentials.json")
 }
 
 func parseTableFilter(value string) []string {

@@ -1,0 +1,338 @@
+package cli
+
+import (
+	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+)
+
+func TestApplyGCPAuthOverrides(t *testing.T) {
+	originalFile := syncGCPCredentialsFile
+	originalImpersonateSA := syncGCPImpersonateSA
+	originalImpersonateDel := syncGCPImpersonateDel
+	t.Cleanup(func() {
+		syncGCPCredentialsFile = originalFile
+		syncGCPImpersonateSA = originalImpersonateSA
+		syncGCPImpersonateDel = originalImpersonateDel
+	})
+
+	t.Run("no credentials file", func(t *testing.T) {
+		t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "existing-path")
+		syncGCPCredentialsFile = ""
+		syncGCPImpersonateSA = ""
+		syncGCPImpersonateDel = ""
+
+		cleanup, err := applyGCPAuthOverrides()
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		cleanup()
+		if got := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"); got != "existing-path" {
+			t.Fatalf("expected GOOGLE_APPLICATION_CREDENTIALS to remain unchanged, got %q", got)
+		}
+	})
+
+	t.Run("missing credentials file", func(t *testing.T) {
+		syncGCPCredentialsFile = filepath.Join(t.TempDir(), "missing-creds.json")
+		syncGCPImpersonateSA = ""
+		syncGCPImpersonateDel = ""
+
+		_, err := applyGCPAuthOverrides()
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), "read --gcp-credentials-file") {
+			t.Fatalf("expected file read error, got %v", err)
+		}
+	})
+
+	t.Run("sets GOOGLE_APPLICATION_CREDENTIALS", func(t *testing.T) {
+		t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "previous-path")
+		credsPath := filepath.Join(t.TempDir(), "creds.json")
+		if err := os.WriteFile(credsPath, []byte(`{"type":"service_account"}`), 0o600); err != nil {
+			t.Fatalf("failed to write creds file: %v", err)
+		}
+
+		syncGCPCredentialsFile = credsPath
+		syncGCPImpersonateSA = ""
+		syncGCPImpersonateDel = ""
+
+		cleanup, err := applyGCPAuthOverrides()
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if got := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"); got != credsPath {
+			t.Fatalf("expected GOOGLE_APPLICATION_CREDENTIALS=%q, got %q", credsPath, got)
+		}
+
+		cleanup()
+		if got := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"); got != "previous-path" {
+			t.Fatalf("expected GOOGLE_APPLICATION_CREDENTIALS to be restored, got %q", got)
+		}
+	})
+
+	t.Run("impersonation creates temporary credentials and cleans up", func(t *testing.T) {
+		t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "existing-path")
+
+		sourceCredsPath := filepath.Join(t.TempDir(), "source-creds.json")
+		sourceCreds := `{"type":"authorized_user","client_id":"cid","client_secret":"secret","refresh_token":"refresh"}`
+		if err := os.WriteFile(sourceCredsPath, []byte(sourceCreds), 0o600); err != nil {
+			t.Fatalf("failed to write source creds file: %v", err)
+		}
+
+		syncGCPCredentialsFile = sourceCredsPath
+		syncGCPImpersonateSA = "svc-impersonated@example-project.iam.gserviceaccount.com"
+		syncGCPImpersonateDel = "delegate-1@project.iam.gserviceaccount.com, delegate-2@project.iam.gserviceaccount.com"
+
+		cleanup, err := applyGCPAuthOverrides()
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		tempPath := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")
+		if tempPath == "" || tempPath == sourceCredsPath {
+			t.Fatalf("expected GOOGLE_APPLICATION_CREDENTIALS to point to temporary impersonation file, got %q", tempPath)
+		}
+
+		contents, err := os.ReadFile(tempPath)
+		if err != nil {
+			t.Fatalf("failed to read temp impersonation file: %v", err)
+		}
+		var payload map[string]interface{}
+		if err := json.Unmarshal(contents, &payload); err != nil {
+			t.Fatalf("failed to parse temp impersonation file: %v", err)
+		}
+		if got := payload["type"]; got != "impersonated_service_account" {
+			t.Fatalf("expected impersonated_service_account type, got %v", got)
+		}
+		if _, ok := payload["source_credentials"]; !ok {
+			t.Fatalf("expected source_credentials in temp impersonation file")
+		}
+
+		cleanup()
+		if got := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"); got != "existing-path" {
+			t.Fatalf("expected GOOGLE_APPLICATION_CREDENTIALS to be restored, got %q", got)
+		}
+		if _, err := os.Stat(tempPath); !os.IsNotExist(err) {
+			t.Fatalf("expected temp impersonation file to be deleted, stat err=%v", err)
+		}
+	})
+
+	t.Run("impersonation requires source credentials", func(t *testing.T) {
+		t.Setenv("HOME", t.TempDir())
+		t.Setenv("APPDATA", t.TempDir())
+		t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "")
+		syncGCPCredentialsFile = ""
+		syncGCPImpersonateSA = "svc-impersonated@example-project.iam.gserviceaccount.com"
+		syncGCPImpersonateDel = ""
+
+		_, err := applyGCPAuthOverrides()
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), "gcp impersonation requires source credentials") {
+			t.Fatalf("expected missing source credentials error, got %v", err)
+		}
+	})
+}
+
+func TestApplyAWSAssumeRoleOverride(t *testing.T) {
+	originalRoleARN := syncAWSRoleARN
+	originalSession := syncAWSRoleSession
+	originalExternalID := syncAWSRoleExternalID
+	originalMFASerial := syncAWSRoleMFASerial
+	originalMFAToken := syncAWSRoleMFAToken
+	t.Cleanup(func() {
+		syncAWSRoleARN = originalRoleARN
+		syncAWSRoleSession = originalSession
+		syncAWSRoleExternalID = originalExternalID
+		syncAWSRoleMFASerial = originalMFASerial
+		syncAWSRoleMFAToken = originalMFAToken
+	})
+
+	t.Run("no role configured", func(t *testing.T) {
+		syncAWSRoleARN = ""
+		syncAWSRoleSession = ""
+		syncAWSRoleExternalID = ""
+		syncAWSRoleMFASerial = ""
+		syncAWSRoleMFAToken = ""
+
+		cfg := aws.Config{Region: "us-east-1"}
+		out, err := applyAWSAssumeRoleOverride(context.Background(), cfg)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if out.Region != cfg.Region {
+			t.Fatalf("expected region %q, got %q", cfg.Region, out.Region)
+		}
+		if out.Credentials != cfg.Credentials {
+			t.Fatalf("expected credentials to be unchanged")
+		}
+	})
+
+	t.Run("role configured", func(t *testing.T) {
+		syncAWSRoleARN = "arn:aws:iam::123456789012:role/CerebroReadOnly"
+		syncAWSRoleSession = "sync-session"
+		syncAWSRoleExternalID = "external-id"
+		syncAWSRoleMFASerial = ""
+		syncAWSRoleMFAToken = ""
+
+		cfg := aws.Config{Region: "us-east-1"}
+		out, err := applyAWSAssumeRoleOverride(context.Background(), cfg)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if out.Credentials == nil {
+			t.Fatal("expected assumed credentials provider to be configured")
+		}
+		if out.Region != cfg.Region {
+			t.Fatalf("expected region %q, got %q", cfg.Region, out.Region)
+		}
+	})
+
+	t.Run("mfa token requires serial", func(t *testing.T) {
+		syncAWSRoleARN = "arn:aws:iam::123456789012:role/CerebroReadOnly"
+		syncAWSRoleSession = "sync-session"
+		syncAWSRoleExternalID = ""
+		syncAWSRoleMFASerial = ""
+		syncAWSRoleMFAToken = "123456"
+
+		cfg := aws.Config{Region: "us-east-1"}
+		_, err := applyAWSAssumeRoleOverride(context.Background(), cfg)
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), "requires --aws-role-mfa-serial") {
+			t.Fatalf("expected MFA serial validation error, got %v", err)
+		}
+	})
+}
+
+func TestApplyAWSAuthOverrides(t *testing.T) {
+	originalWebIDToken := syncAWSWebIDTokenFile
+	originalWebIDRole := syncAWSWebIDRoleARN
+	originalSession := syncAWSRoleSession
+	t.Cleanup(func() {
+		syncAWSWebIDTokenFile = originalWebIDToken
+		syncAWSWebIDRoleARN = originalWebIDRole
+		syncAWSRoleSession = originalSession
+	})
+
+	t.Run("no web identity flags", func(t *testing.T) {
+		t.Setenv("AWS_WEB_IDENTITY_TOKEN_FILE", "existing-token")
+		t.Setenv("AWS_ROLE_ARN", "existing-role")
+
+		syncAWSWebIDTokenFile = ""
+		syncAWSWebIDRoleARN = ""
+		syncAWSRoleSession = ""
+
+		cleanup, err := applyAWSAuthOverrides()
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		cleanup()
+
+		if got := os.Getenv("AWS_WEB_IDENTITY_TOKEN_FILE"); got != "existing-token" {
+			t.Fatalf("expected token file env unchanged, got %q", got)
+		}
+	})
+
+	t.Run("requires token and role together", func(t *testing.T) {
+		syncAWSWebIDTokenFile = "/tmp/token"
+		syncAWSWebIDRoleARN = ""
+
+		_, err := applyAWSAuthOverrides()
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), "must be set together") {
+			t.Fatalf("expected paired-flag validation error, got %v", err)
+		}
+	})
+
+	t.Run("sets web identity env and restores", func(t *testing.T) {
+		t.Setenv("AWS_WEB_IDENTITY_TOKEN_FILE", "old-token")
+		t.Setenv("AWS_ROLE_ARN", "old-role")
+		t.Setenv("AWS_ROLE_SESSION_NAME", "old-session")
+
+		tokenPath := filepath.Join(t.TempDir(), "token.jwt")
+		if err := os.WriteFile(tokenPath, []byte("token"), 0o600); err != nil {
+			t.Fatalf("failed to write token file: %v", err)
+		}
+
+		syncAWSWebIDTokenFile = tokenPath
+		syncAWSWebIDRoleARN = "arn:aws:iam::123456789012:role/CerebroIRSA"
+		syncAWSRoleSession = "web-identity-session"
+
+		cleanup, err := applyAWSAuthOverrides()
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		if got := os.Getenv("AWS_WEB_IDENTITY_TOKEN_FILE"); got != tokenPath {
+			t.Fatalf("expected token env to be set, got %q", got)
+		}
+		if got := os.Getenv("AWS_ROLE_ARN"); got != syncAWSWebIDRoleARN {
+			t.Fatalf("expected role env to be set, got %q", got)
+		}
+		if got := os.Getenv("AWS_ROLE_SESSION_NAME"); got != syncAWSRoleSession {
+			t.Fatalf("expected role session env to be set, got %q", got)
+		}
+
+		cleanup()
+
+		if got := os.Getenv("AWS_WEB_IDENTITY_TOKEN_FILE"); got != "old-token" {
+			t.Fatalf("expected token env to be restored, got %q", got)
+		}
+		if got := os.Getenv("AWS_ROLE_ARN"); got != "old-role" {
+			t.Fatalf("expected role env to be restored, got %q", got)
+		}
+		if got := os.Getenv("AWS_ROLE_SESSION_NAME"); got != "old-session" {
+			t.Fatalf("expected session env to be restored, got %q", got)
+		}
+	})
+}
+
+func TestLoadAWSConfigValidatesFiles(t *testing.T) {
+	originalConfigFile := syncAWSConfigFile
+	originalCredsFile := syncAWSSharedCredsFile
+	originalCredentialProc := syncAWSCredentialProc
+	t.Cleanup(func() {
+		syncAWSConfigFile = originalConfigFile
+		syncAWSSharedCredsFile = originalCredsFile
+		syncAWSCredentialProc = originalCredentialProc
+	})
+
+	t.Run("missing config file", func(t *testing.T) {
+		syncAWSConfigFile = filepath.Join(t.TempDir(), "missing-config")
+		syncAWSSharedCredsFile = ""
+		syncAWSCredentialProc = ""
+
+		_, err := loadAWSConfig(context.Background(), "")
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), "--aws-config-file") {
+			t.Fatalf("expected config file validation error, got %v", err)
+		}
+	})
+
+	t.Run("missing shared credentials file", func(t *testing.T) {
+		syncAWSConfigFile = ""
+		syncAWSSharedCredsFile = filepath.Join(t.TempDir(), "missing-creds")
+		syncAWSCredentialProc = ""
+
+		_, err := loadAWSConfig(context.Background(), "")
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), "--aws-shared-credentials-file") {
+			t.Fatalf("expected shared credentials file validation error, got %v", err)
+		}
+	})
+}

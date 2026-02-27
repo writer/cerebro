@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/organizations"
 	orgtypes "github.com/aws/aws-sdk-go-v2/service/organizations/types"
@@ -28,7 +27,7 @@ type awsOrgAccount struct {
 }
 
 func runAWSOrgSync(ctx context.Context, start time.Time) error {
-	awsCfg, err := config.LoadDefaultConfig(ctx)
+	awsCfg, err := loadAWSConfig(ctx, syncAWSProfile)
 	if err != nil {
 		return fmt.Errorf("load AWS config: %w", err)
 	}
@@ -267,6 +266,10 @@ func awsPartitionForRegion(region string) string {
 }
 
 func assumeRoleConfig(ctx context.Context, cfg aws.Config, roleArn, sessionName string) (aws.Config, error) {
+	return assumeRoleConfigWithExternalID(ctx, cfg, roleArn, sessionName, "", "", "")
+}
+
+func assumeRoleConfigWithExternalID(ctx context.Context, cfg aws.Config, roleArn, sessionName, externalID, mfaSerial, mfaToken string) (aws.Config, error) {
 	if roleArn == "" {
 		return cfg, errors.New("role ARN is required")
 	}
@@ -277,6 +280,18 @@ func assumeRoleConfig(ctx context.Context, cfg aws.Config, roleArn, sessionName 
 	stsClient := sts.NewFromConfig(cfg)
 	provider := stscreds.NewAssumeRoleProvider(stsClient, roleArn, func(options *stscreds.AssumeRoleOptions) {
 		options.RoleSessionName = sessionName
+		if externalID != "" {
+			options.ExternalID = aws.String(externalID)
+		}
+		if mfaSerial != "" {
+			options.SerialNumber = aws.String(mfaSerial)
+			if mfaToken != "" {
+				token := mfaToken
+				options.TokenProvider = func() (string, error) {
+					return token, nil
+				}
+			}
+		}
 	})
 	assumed := cfg.Copy()
 	assumed.Credentials = aws.NewCredentialsCache(provider)
