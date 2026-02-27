@@ -174,3 +174,61 @@ func TestRoutePermissionCoverage(t *testing.T) {
 		})
 	}
 }
+
+func TestSecurityHeaders(t *testing.T) {
+	h := SecurityHeaders()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/test", nil)
+	req.Header.Set("X-Forwarded-Proto", "https")
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if got := w.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("expected X-Content-Type-Options nosniff, got %q", got)
+	}
+	if got := w.Header().Get("X-Frame-Options"); got != "DENY" {
+		t.Fatalf("expected X-Frame-Options DENY, got %q", got)
+	}
+	if got := w.Header().Get("Referrer-Policy"); got != "no-referrer" {
+		t.Fatalf("expected Referrer-Policy no-referrer, got %q", got)
+	}
+	if got := w.Header().Get("Strict-Transport-Security"); got == "" {
+		t.Fatal("expected Strict-Transport-Security header")
+	}
+}
+
+func TestCORSPreflight(t *testing.T) {
+	h := CORS([]string{"https://app.example.com"})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	t.Run("allowed origin", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodOptions, "/api/v1/test", nil)
+		req.Header.Set("Origin", "https://app.example.com")
+		w := httptest.NewRecorder()
+
+		h.ServeHTTP(w, req)
+
+		if w.Code != http.StatusNoContent {
+			t.Fatalf("expected 204, got %d", w.Code)
+		}
+		if got := w.Header().Get("Access-Control-Allow-Origin"); got != "https://app.example.com" {
+			t.Fatalf("expected allowed origin header, got %q", got)
+		}
+	})
+
+	t.Run("blocked origin", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodOptions, "/api/v1/test", nil)
+		req.Header.Set("Origin", "https://blocked.example.com")
+		w := httptest.NewRecorder()
+
+		h.ServeHTTP(w, req)
+
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("expected 403, got %d", w.Code)
+		}
+	})
+}

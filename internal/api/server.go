@@ -63,10 +63,24 @@ func (s *Server) setupMiddleware() {
 	s.router.Use(middleware.RealIP)
 	s.router.Use(middleware.Logger)
 	s.router.Use(middleware.Recoverer)
+	s.router.Use(SecurityHeaders())
 	s.router.Use(middleware.Timeout(60 * time.Second))
 	s.router.Use(middleware.Compress(5))
 	s.router.Use(MaxBodySize(DefaultMaxBodySize))
 	s.router.Use(MetricsMiddleware)
+
+	if len(s.app.Config.CORSAllowedOrigins) > 0 {
+		s.router.Use(CORS(s.app.Config.CORSAllowedOrigins))
+	}
+
+	// Apply rate limiting before authentication to throttle unauthorized brute-force traffic.
+	if s.app.Config.RateLimitEnabled {
+		s.router.Use(RateLimitMiddleware(RateLimitConfig{
+			RequestsPerWindow: s.app.Config.RateLimitRequests,
+			Window:            s.app.Config.RateLimitWindow,
+			Enabled:           true,
+		}))
+	}
 
 	if s.app.Config.APIAuthEnabled {
 		s.router.Use(APIKeyAuth(AuthConfig{Enabled: true, APIKeys: s.app.Config.APIKeys}))
@@ -75,15 +89,6 @@ func (s *Server) setupMiddleware() {
 	// Enforce RBAC permissions when auth is enabled
 	if s.app.Config.APIAuthEnabled && s.app.RBAC != nil {
 		s.router.Use(RBACMiddleware(s.app.RBAC))
-	}
-
-	// Add rate limiting if configured
-	if s.app.Config.RateLimitEnabled {
-		s.router.Use(RateLimitMiddleware(RateLimitConfig{
-			RequestsPerWindow: s.app.Config.RateLimitRequests,
-			Window:            s.app.Config.RateLimitWindow,
-			Enabled:           true,
-		}))
 	}
 }
 
@@ -2319,42 +2324,6 @@ func (s *Server) testProvider(w http.ResponseWriter, r *http.Request) {
 func includeIncompleteProviders(r *http.Request) bool {
 	include := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("include_incomplete")))
 	return include == "1" || include == "true" || include == "yes"
-}
-
-func (s *Server) json(w http.ResponseWriter, status int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(data)
-}
-
-func (s *Server) error(w http.ResponseWriter, status int, message string) {
-	code := httpStatusToCode(status)
-	s.json(w, status, APIError{Error: message, Code: code})
-}
-
-func httpStatusToCode(status int) string {
-	switch status {
-	case http.StatusBadRequest:
-		return "bad_request"
-	case http.StatusUnauthorized:
-		return "unauthorized"
-	case http.StatusForbidden:
-		return "forbidden"
-	case http.StatusNotFound:
-		return "not_found"
-	case http.StatusConflict:
-		return "conflict"
-	case http.StatusUnprocessableEntity:
-		return "validation_error"
-	case http.StatusTooManyRequests:
-		return "rate_limited"
-	case http.StatusInternalServerError:
-		return "internal_error"
-	case http.StatusServiceUnavailable:
-		return "service_unavailable"
-	default:
-		return "error"
-	}
 }
 
 // Webhook endpoints

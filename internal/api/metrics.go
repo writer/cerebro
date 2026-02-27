@@ -3,8 +3,10 @@ package api
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -126,11 +128,23 @@ func MetricsMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(wrapped, r)
 
 		duration := time.Since(start).Seconds()
-		path := normalizePath(r.URL.Path)
+		path := metricPath(r)
 
 		httpRequestsTotal.WithLabelValues(r.Method, path, strconv.Itoa(wrapped.statusCode)).Inc()
 		httpRequestDuration.WithLabelValues(r.Method, path).Observe(duration)
 	})
+}
+
+func metricPath(r *http.Request) string {
+	if rctx := chi.RouteContext(r.Context()); rctx != nil {
+		if pattern := rctx.RoutePattern(); pattern != "" {
+			return pattern
+		}
+		if len(rctx.RoutePatterns) > 0 {
+			return rctx.RoutePatterns[len(rctx.RoutePatterns)-1]
+		}
+	}
+	return normalizePath(r.URL.Path)
 }
 
 type responseWriter struct {
@@ -145,14 +159,12 @@ func (rw *responseWriter) WriteHeader(code int) {
 
 // normalizePath removes variable parts from paths for cardinality control
 func normalizePath(path string) string {
-	// Simple normalization - in production, use a more sophisticated approach
-	// that matches your route patterns
 	switch {
-	case len(path) > 20 && path[:14] == "/api/v1/assets":
+	case strings.HasPrefix(path, "/api/v1/assets/"):
 		return "/api/v1/assets/{table}"
-	case len(path) > 22 && path[:16] == "/api/v1/policies":
+	case strings.HasPrefix(path, "/api/v1/policies/"):
 		return "/api/v1/policies/{id}"
-	case len(path) > 22 && path[:16] == "/api/v1/findings":
+	case strings.HasPrefix(path, "/api/v1/findings/"):
 		return "/api/v1/findings/{id}"
 	default:
 		return path

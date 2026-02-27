@@ -187,6 +187,76 @@ func TestReady(t *testing.T) {
 	}
 }
 
+func TestSetupMiddleware_RateLimitBeforeAuth(t *testing.T) {
+	a := newTestApp(t)
+	a.Config.APIAuthEnabled = true
+	a.Config.APIKeys = map[string]string{"test-key": "user-1"}
+	a.Config.RateLimitEnabled = true
+	a.Config.RateLimitRequests = 1
+	a.Config.RateLimitWindow = time.Minute
+
+	s := NewServer(a)
+
+	req1 := httptest.NewRequest(http.MethodGet, "/api/v1/policies/", nil)
+	req1.RemoteAddr = "198.51.100.42:1234"
+	w1 := httptest.NewRecorder()
+	s.ServeHTTP(w1, req1)
+	if w1.Code != http.StatusUnauthorized {
+		t.Fatalf("first request expected 401, got %d", w1.Code)
+	}
+
+	req2 := httptest.NewRequest(http.MethodGet, "/api/v1/policies/", nil)
+	req2.RemoteAddr = "198.51.100.42:1234"
+	w2 := httptest.NewRecorder()
+	s.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusTooManyRequests {
+		t.Fatalf("second request expected 429, got %d", w2.Code)
+	}
+}
+
+func TestServer_ConfiguredCORSMiddleware(t *testing.T) {
+	a := newTestApp(t)
+	a.Config.CORSAllowedOrigins = []string{"https://app.example.com"}
+	s := NewServer(a)
+
+	allowedReq := httptest.NewRequest(http.MethodOptions, "/health", nil)
+	allowedReq.Header.Set("Origin", "https://app.example.com")
+	allowedResp := httptest.NewRecorder()
+	s.ServeHTTP(allowedResp, allowedReq)
+	if allowedResp.Code != http.StatusNoContent {
+		t.Fatalf("allowed origin expected 204, got %d", allowedResp.Code)
+	}
+
+	blockedReq := httptest.NewRequest(http.MethodOptions, "/health", nil)
+	blockedReq.Header.Set("Origin", "https://blocked.example.com")
+	blockedResp := httptest.NewRecorder()
+	s.ServeHTTP(blockedResp, blockedReq)
+	if blockedResp.Code != http.StatusForbidden {
+		t.Fatalf("blocked origin expected 403, got %d", blockedResp.Code)
+	}
+}
+
+func TestError_SanitizesInternalServerError(t *testing.T) {
+	s := newTestServer(t)
+	w := httptest.NewRecorder()
+
+	s.error(w, http.StatusInternalServerError, "sensitive backend details")
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", w.Code)
+	}
+	var body APIError
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Error != "internal server error" {
+		t.Fatalf("expected sanitized error, got %q", body.Error)
+	}
+	if body.Code != "internal_error" {
+		t.Fatalf("expected internal_error code, got %q", body.Code)
+	}
+}
+
 // --- Policies CRUD ---
 
 func TestListPolicies_Empty(t *testing.T) {

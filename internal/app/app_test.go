@@ -53,6 +53,18 @@ func TestLoadConfigWebhookURLs(t *testing.T) {
 	}
 }
 
+func TestLoadConfigCORSAllowedOrigins(t *testing.T) {
+	os.Setenv("API_CORS_ALLOWED_ORIGINS", "https://app.example.com, https://admin.example.com")
+	defer os.Unsetenv("API_CORS_ALLOWED_ORIGINS")
+
+	cfg := LoadConfig()
+
+	expected := []string{"https://app.example.com", "https://admin.example.com"}
+	if !reflect.DeepEqual(cfg.CORSAllowedOrigins, expected) {
+		t.Fatalf("expected CORS origins %v, got %v", expected, cfg.CORSAllowedOrigins)
+	}
+}
+
 func TestLoadConfig_Defaults(t *testing.T) {
 	// Clear any env vars that might affect defaults
 	os.Unsetenv("API_PORT")
@@ -683,15 +695,16 @@ func TestSplitTables(t *testing.T) {
 
 func TestConfig_Fields(t *testing.T) {
 	cfg := &Config{ //nolint:govet // false positive - all fields are tested below
-		Port:              8080,
-		LogLevel:          "info",
-		SnowflakeDatabase: "CEREBRO",
-		SnowflakeSchema:   "CEREBRO",
-		PoliciesPath:      "policies",
-		ScanInterval:      "1h",
-		RateLimitEnabled:  true,
-		RateLimitRequests: 1000,
-		RateLimitWindow:   time.Hour,
+		Port:               8080,
+		LogLevel:           "info",
+		SnowflakeDatabase:  "CEREBRO",
+		SnowflakeSchema:    "CEREBRO",
+		PoliciesPath:       "policies",
+		ScanInterval:       "1h",
+		RateLimitEnabled:   true,
+		RateLimitRequests:  1000,
+		RateLimitWindow:    time.Hour,
+		CORSAllowedOrigins: []string{"https://app.example.com"},
 	}
 
 	if cfg.Port != 8080 {
@@ -720,5 +733,8 @@ func TestConfig_Fields(t *testing.T) {
 	}
 	if cfg.RateLimitWindow != time.Hour {
 		t.Error("RateLimitWindow field incorrect")
+	}
+	if !reflect.DeepEqual(cfg.CORSAllowedOrigins, []string{"https://app.example.com"}) {
+		t.Error("CORSAllowedOrigins field incorrect")
 	}
 }

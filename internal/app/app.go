@@ -49,6 +49,7 @@ import (
 	"github.com/writerinternal/cerebro/internal/auth"
 	"github.com/writerinternal/cerebro/internal/cache"
 	"github.com/writerinternal/cerebro/internal/compliance"
+	"github.com/writerinternal/cerebro/internal/envutil"
 	"github.com/writerinternal/cerebro/internal/findings"
 	"github.com/writerinternal/cerebro/internal/graph"
 	"github.com/writerinternal/cerebro/internal/health"
@@ -407,9 +408,10 @@ type Config struct {
 	JobMaxAttempts       int
 
 	// Rate Limiting
-	RateLimitEnabled  bool
-	RateLimitRequests int
-	RateLimitWindow   time.Duration
+	RateLimitEnabled   bool
+	RateLimitRequests  int
+	RateLimitWindow    time.Duration
+	CORSAllowedOrigins []string
 
 	// API Authentication
 	APIAuthEnabled bool
@@ -588,6 +590,7 @@ func LoadConfig() *Config {
 		RateLimitEnabled:                 getEnvBool("RATE_LIMIT_ENABLED", false),
 		RateLimitRequests:                getEnvInt("RATE_LIMIT_REQUESTS", 1000),
 		RateLimitWindow:                  getEnvDuration("RATE_LIMIT_WINDOW", time.Hour),
+		CORSAllowedOrigins:               splitCSV(getEnv("API_CORS_ALLOWED_ORIGINS", "")),
 		APIAuthEnabled:                   apiAuthEnabled,
 		APIKeys:                          apiKeys,
 		RBACStateFile:                    getEnv("RBAC_STATE_FILE", ""),
@@ -1924,36 +1927,19 @@ func (a *App) Close() error {
 }
 
 func getEnv(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
+	return envutil.Get(key, fallback)
 }
 
 func getEnvInt(key string, fallback int) int {
-	if v := os.Getenv(key); v != "" {
-		var i int
-		if _, err := fmt.Sscanf(v, "%d", &i); err == nil {
-			return i
-		}
-	}
-	return fallback
+	return envutil.GetInt(key, fallback)
 }
 
 func getEnvBool(key string, fallback bool) bool {
-	if v := os.Getenv(key); v != "" {
-		return v == "true" || v == "1" || v == "yes"
-	}
-	return fallback
+	return envutil.GetBool(key, fallback)
 }
 
 func getEnvDuration(key string, fallback time.Duration) time.Duration {
-	if v := os.Getenv(key); v != "" {
-		if d, err := time.ParseDuration(v); err == nil {
-			return d
-		}
-	}
-	return fallback
+	return envutil.GetDuration(key, fallback)
 }
 
 func parseAPIKeys(value string) map[string]string {
@@ -2340,17 +2326,5 @@ func (a *App) RebuildSecurityGraph(ctx context.Context) error {
 // normalizePrivateKey cleans up PEM-encoded private key strings that may have
 // escaped newlines or extra whitespace from environment variable storage.
 func normalizePrivateKey(value string) string {
-	if value == "" {
-		return value
-	}
-	if strings.Contains(value, "\\n") {
-		value = strings.ReplaceAll(value, "\\n", "\n")
-	}
-	value = strings.ReplaceAll(value, "\r\n", "\n")
-	value = strings.ReplaceAll(value, "\r", "\n")
-	lines := strings.Split(value, "\n")
-	for i, line := range lines {
-		lines[i] = strings.TrimSpace(line)
-	}
-	return strings.TrimSpace(strings.Join(lines, "\n"))
+	return envutil.NormalizePrivateKey(value)
 }

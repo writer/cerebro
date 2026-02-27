@@ -369,6 +369,8 @@ def _create_task_definition(
             "name": "cerebro",
             "image": container_image,
             "essential": True,
+            "user": "10001",
+            "readonlyRootFilesystem": True,
             "portMappings": [{"containerPort": 8080, "protocol": "tcp"}],
             "logConfiguration": {
                 "logDriver": "awslogs",

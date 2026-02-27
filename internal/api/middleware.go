@@ -71,6 +71,23 @@ func APIKeyAuth(cfg AuthConfig) func(http.Handler) http.Handler {
 	}
 }
 
+// SecurityHeaders adds standard response headers to reduce common web attack surface.
+func SecurityHeaders() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			w.Header().Set("X-Frame-Options", "DENY")
+			w.Header().Set("Referrer-Policy", "no-referrer")
+
+			if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+				w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 func extractAPIKey(r *http.Request) string {
 	// Check Authorization header
 	auth := r.Header.Get("Authorization")
@@ -247,23 +264,44 @@ func CORS(allowedOrigins []string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
+			if origin == "" {
+				next.ServeHTTP(w, r)
+				return
+			}
 
 			allowed := false
+			allowAny := false
 			for _, o := range allowedOrigins {
-				if o == "*" || o == origin {
+				if o == "*" {
+					allowAny = true
+					allowed = true
+					break
+				}
+				if o == origin {
 					allowed = true
 					break
 				}
 			}
 
 			if allowed {
-				w.Header().Set("Access-Control-Allow-Origin", origin)
+				if allowAny {
+					w.Header().Set("Access-Control-Allow-Origin", "*")
+				} else {
+					w.Header().Set("Access-Control-Allow-Origin", origin)
+				}
+				w.Header().Add("Vary", "Origin")
+				w.Header().Add("Vary", "Access-Control-Request-Method")
+				w.Header().Add("Vary", "Access-Control-Request-Headers")
 				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key")
 				w.Header().Set("Access-Control-Max-Age", "86400")
 			}
 
 			if r.Method == "OPTIONS" {
+				if !allowed {
+					writeJSONError(w, http.StatusForbidden, "forbidden_origin", "origin not allowed")
+					return
+				}
 				w.WriteHeader(http.StatusNoContent)
 				return
 			}
