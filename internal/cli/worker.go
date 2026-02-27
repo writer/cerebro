@@ -2,9 +2,14 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
+	"sort"
+	"strings"
 	"syscall"
 	"time"
 
@@ -13,6 +18,7 @@ import (
 	"github.com/writerinternal/cerebro/internal/agents"
 	"github.com/writerinternal/cerebro/internal/app"
 	"github.com/writerinternal/cerebro/internal/jobs"
+	providerregistry "github.com/writerinternal/cerebro/internal/providers"
 	"github.com/writerinternal/cerebro/internal/scm"
 )
 
@@ -143,6 +149,7 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	// Create job registry and register handlers
 	registry := jobs.NewJobRegistry()
 	registry.Register(jobs.JobTypeInspectResource, jobs.NewInspectResourceHandler(tools))
+	registry.Register(jobs.JobTypeNativeSync, newNativeSyncJobHandler(application))
 
 	// Create metrics collector
 	metrics := jobs.NewMetrics(application.Logger, jobs.MetricsConfig{
@@ -181,4 +188,117 @@ func runWorker(cmd *cobra.Command, args []string) error {
 
 	Info("Worker started (queue=%s table=%s concurrency=%d health=:%d)", queueURL, tableName, concurrency, workerHealthPort)
 	return workerService.Start(ctx)
+}
+
+func newNativeSyncJobHandler(application *app.App) jobs.JobHandler {
+	return func(ctx context.Context, payload string) (string, error) {
+		var logger *slog.Logger
+		if application != nil {
+			logger = application.Logger
+		}
+
+		var req jobs.NativeSyncPayload
+		if err := json.Unmarshal([]byte(payload), &req); err != nil {
+			return "", fmt.Errorf("decode native sync payload: %w", err)
+		}
+
+		provider := strings.ToLower(strings.TrimSpace(req.Provider))
+		if !isNativeScheduleProvider(provider) {
+			return "", fmt.Errorf("unsupported native sync provider %q", req.Provider)
+		}
+
+		client, err := createSnowflakeClient()
+		if err != nil {
+			return "", fmt.Errorf("create snowflake client: %w", err)
+		}
+		defer func() { _ = client.Close() }()
+
+		schedule := &SyncSchedule{
+			Name:     req.ScheduleName,
+			Provider: provider,
+			Table:    req.Table,
+		}
+
+		switch provider {
+		case "aws":
+			err = executeAWSSync(ctx, client, schedule)
+		case "gcp":
+			err = executeGCPSync(ctx, client, schedule)
+		case "azure":
+			err = executeAzureSync(ctx, client, schedule)
+		}
+		if err != nil {
+			return "", err
+		}
+
+		syncedProviders, err := syncConfiguredProviderSources(ctx, application, logger)
+		if err != nil {
+			return "", err
+		}
+
+		if logger != nil {
+			logger.Info("native sync job completed", "provider", provider, "schedule", req.ScheduleName, "additional_provider_count", len(syncedProviders))
+		}
+
+		result, err := json.Marshal(map[string]interface{}{
+			"provider":             provider,
+			"table":                req.Table,
+			"schedule_name":        req.ScheduleName,
+			"additional_providers": syncedProviders,
+		})
+		if err != nil {
+			return "", err
+		}
+
+		return string(result), nil
+	}
+}
+
+func syncConfiguredProviderSources(ctx context.Context, application *app.App, logger *slog.Logger) ([]string, error) {
+	if application == nil || application.Providers == nil {
+		return nil, nil
+	}
+
+	providers := application.Providers.List()
+	if len(providers) == 0 {
+		return nil, nil
+	}
+
+	synced := make([]string, 0, len(providers))
+	errs := make([]error, 0)
+
+	for _, provider := range providers {
+		if provider == nil {
+			continue
+		}
+
+		name := strings.ToLower(strings.TrimSpace(provider.Name()))
+		if name == "" || isNativeScheduleProvider(name) {
+			continue
+		}
+
+		if logger != nil {
+			logger.Info("running configured provider sync", "provider", name)
+		}
+
+		result, err := provider.Sync(ctx, providerregistry.SyncOptions{FullSync: true})
+		if err != nil {
+			errs = append(errs, fmt.Errorf("%s sync failed: %w", name, err))
+			continue
+		}
+
+		if result != nil && len(result.Errors) > 0 {
+			errs = append(errs, fmt.Errorf("%s sync reported errors: %s", name, strings.Join(result.Errors, "; ")))
+			continue
+		}
+
+		synced = append(synced, name)
+	}
+
+	sort.Strings(synced)
+	if len(errs) > 0 {
+		return synced, errors.Join(errs...)
+	}
+
+	return synced, nil
 }

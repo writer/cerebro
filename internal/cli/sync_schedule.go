@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/writerinternal/cerebro/internal/app"
+	"github.com/writerinternal/cerebro/internal/jobs"
 	providerregistry "github.com/writerinternal/cerebro/internal/providers"
 	"github.com/writerinternal/cerebro/internal/snowflake"
 	nativesync "github.com/writerinternal/cerebro/internal/sync"
@@ -85,10 +86,11 @@ var (
 	scheduleSleepFn        = time.Sleep
 	scheduleNowFn          = time.Now
 
-	executeAWSSyncFn      = executeAWSSync
-	executeGCPSyncFn      = executeGCPSync
-	executeAzureSyncFn    = executeAzureSync
-	executeProviderSyncFn = executeProviderSync
+	executeAWSSyncFn             = executeAWSSync
+	executeGCPSyncFn             = executeGCPSync
+	executeAzureSyncFn           = executeAzureSync
+	executeProviderSyncFn        = executeProviderSync
+	enqueueScheduledNativeSyncFn = enqueueScheduledNativeSync
 
 	runScheduledGCPNativeSyncFn   = runScheduledGCPNativeSync
 	runScheduledGCPSecuritySyncFn = runScheduledGCPSecuritySync
@@ -471,7 +473,12 @@ func runScheduledSync(client *snowflake.Client, schedule *SyncSchedule) {
 }
 
 func executeScheduledSync(ctx context.Context, client *snowflake.Client, schedule *SyncSchedule) error {
-	switch strings.ToLower(strings.TrimSpace(schedule.Provider)) {
+	provider := strings.ToLower(strings.TrimSpace(schedule.Provider))
+	if isNativeScheduleProvider(provider) && nativeSyncWorkerConfigured() {
+		return enqueueScheduledNativeSyncFn(ctx, schedule)
+	}
+
+	switch provider {
 	case "aws":
 		return executeAWSSyncFn(ctx, client, schedule)
 	case "gcp":
@@ -480,6 +487,72 @@ func executeScheduledSync(ctx context.Context, client *snowflake.Client, schedul
 		return executeAzureSyncFn(ctx, client, schedule)
 	default:
 		return executeProviderSyncFn(ctx, client, schedule)
+	}
+}
+
+func isNativeScheduleProvider(provider string) bool {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "aws", "gcp", "azure":
+		return true
+	default:
+		return false
+	}
+}
+
+func nativeSyncWorkerConfigured() bool {
+	return firstNonEmptyEnv("JOB_QUEUE_URL") != "" && firstNonEmptyEnv("JOB_TABLE_NAME") != ""
+}
+
+func enqueueScheduledNativeSync(ctx context.Context, schedule *SyncSchedule) error {
+	queueURL := firstNonEmptyEnv("JOB_QUEUE_URL")
+	tableName := firstNonEmptyEnv("JOB_TABLE_NAME")
+	if queueURL == "" || tableName == "" {
+		return fmt.Errorf("JOB_QUEUE_URL and JOB_TABLE_NAME are required for worker native sync")
+	}
+
+	region := firstNonEmptyEnv("JOB_REGION", "AWS_REGION")
+	awsCfg, err := jobs.LoadAWSConfig(ctx, region)
+	if err != nil {
+		return fmt.Errorf("load worker queue AWS config: %w", err)
+	}
+
+	queue := jobs.NewSQSQueue(awsCfg, queueURL)
+	store := jobs.NewDynamoStore(awsCfg, tableName)
+	manager := jobs.NewManager(queue, store, slog.Default())
+
+	job, err := manager.EnqueueNativeSync(ctx, jobs.NativeSyncPayload{
+		Provider:     strings.ToLower(strings.TrimSpace(schedule.Provider)),
+		Table:        schedule.Table,
+		ScheduleName: schedule.Name,
+	}, jobs.EnqueueOptions{
+		GroupID:     schedule.Name,
+		MaxAttempts: 1,
+	})
+	if err != nil {
+		return fmt.Errorf("enqueue native sync job: %w", err)
+	}
+
+	Info("[%s] Native sync delegated to worker job %s", schedule.Name, job.ID)
+
+	results, err := manager.WaitForJobs(ctx, []string{job.ID}, 5*time.Second)
+	if err != nil {
+		return fmt.Errorf("wait for worker native sync job %s: %w", job.ID, err)
+	}
+	if len(results) == 0 || results[0] == nil {
+		return fmt.Errorf("worker native sync job %s returned no status", job.ID)
+	}
+
+	result := results[0]
+	switch result.Status {
+	case jobs.StatusSucceeded:
+		return nil
+	case jobs.StatusFailed:
+		if strings.TrimSpace(result.Error) != "" {
+			return fmt.Errorf("worker native sync failed: %s", result.Error)
+		}
+		return fmt.Errorf("worker native sync job %s failed", result.ID)
+	default:
+		return fmt.Errorf("worker native sync job %s finished with status %s", result.ID, result.Status)
 	}
 }
 

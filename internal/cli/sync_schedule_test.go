@@ -97,15 +97,20 @@ func TestValidScheduleProviders(t *testing.T) {
 }
 
 func TestExecuteScheduledSync_RoutesByProvider(t *testing.T) {
+	t.Setenv("JOB_QUEUE_URL", "")
+	t.Setenv("JOB_TABLE_NAME", "")
+
 	originalAWSSync := executeAWSSyncFn
 	originalGCPSync := executeGCPSyncFn
 	originalAzureSync := executeAzureSyncFn
 	originalProviderSync := executeProviderSyncFn
+	originalEnqueue := enqueueScheduledNativeSyncFn
 	t.Cleanup(func() {
 		executeAWSSyncFn = originalAWSSync
 		executeGCPSyncFn = originalGCPSync
 		executeAzureSyncFn = originalAzureSync
 		executeProviderSyncFn = originalProviderSync
+		enqueueScheduledNativeSyncFn = originalEnqueue
 	})
 
 	called := ""
@@ -123,6 +128,10 @@ func TestExecuteScheduledSync_RoutesByProvider(t *testing.T) {
 	}
 	executeProviderSyncFn = func(context.Context, *snowflake.Client, *SyncSchedule) error {
 		called = "provider"
+		return nil
+	}
+	enqueueScheduledNativeSyncFn = func(context.Context, *SyncSchedule) error {
+		called = "enqueue"
 		return nil
 	}
 
@@ -146,6 +155,61 @@ func TestExecuteScheduledSync_RoutesByProvider(t *testing.T) {
 		if called != tt.want {
 			t.Fatalf("provider %s: expected route %s, got %s", tt.provider, tt.want, called)
 		}
+	}
+}
+
+func TestExecuteScheduledSync_UsesWorkerForNativeProviders(t *testing.T) {
+	t.Setenv("JOB_QUEUE_URL", "https://sqs.us-east-1.amazonaws.com/123456789012/test")
+	t.Setenv("JOB_TABLE_NAME", "jobs")
+
+	originalAWSSync := executeAWSSyncFn
+	originalGCPSync := executeGCPSyncFn
+	originalAzureSync := executeAzureSyncFn
+	originalProviderSync := executeProviderSyncFn
+	originalEnqueue := enqueueScheduledNativeSyncFn
+	t.Cleanup(func() {
+		executeAWSSyncFn = originalAWSSync
+		executeGCPSyncFn = originalGCPSync
+		executeAzureSyncFn = originalAzureSync
+		executeProviderSyncFn = originalProviderSync
+		enqueueScheduledNativeSyncFn = originalEnqueue
+	})
+
+	directCalled := false
+	executeAWSSyncFn = func(context.Context, *snowflake.Client, *SyncSchedule) error {
+		directCalled = true
+		return nil
+	}
+
+	enqueueCalled := 0
+	enqueueScheduledNativeSyncFn = func(_ context.Context, schedule *SyncSchedule) error {
+		enqueueCalled++
+		if schedule.Provider != "aws" {
+			return fmt.Errorf("unexpected provider %q", schedule.Provider)
+		}
+		return nil
+	}
+
+	if err := executeScheduledSync(context.Background(), nil, &SyncSchedule{Provider: "aws"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if directCalled {
+		t.Fatalf("expected direct aws sync to be skipped when worker queue is configured")
+	}
+	if enqueueCalled != 1 {
+		t.Fatalf("expected one enqueue call, got %d", enqueueCalled)
+	}
+
+	providerCalled := 0
+	executeProviderSyncFn = func(context.Context, *snowflake.Client, *SyncSchedule) error {
+		providerCalled++
+		return nil
+	}
+	if err := executeScheduledSync(context.Background(), nil, &SyncSchedule{Provider: "okta"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if providerCalled != 1 {
+		t.Fatalf("expected provider sync call for non-native provider, got %d", providerCalled)
 	}
 }
 

@@ -19,6 +19,7 @@ type JobType string
 
 const (
 	JobTypeInspectResource JobType = "inspect_resource"
+	JobTypeNativeSync      JobType = "native_sync"
 )
 
 type Job struct {
@@ -73,6 +74,12 @@ type InspectOverrides struct {
 type InspectResourcePayload struct {
 	Resource  ResourceRef      `json:"resource"`
 	Overrides InspectOverrides `json:"overrides,omitempty"`
+}
+
+type NativeSyncPayload struct {
+	Provider     string `json:"provider"`
+	Table        string `json:"table,omitempty"`
+	ScheduleName string `json:"schedule_name,omitempty"`
 }
 
 type JobBatch struct {
