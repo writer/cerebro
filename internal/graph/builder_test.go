@@ -461,3 +461,93 @@ func TestIsNodePublic(t *testing.T) {
 		})
 	}
 }
+
+func TestBuilder_GCPIAMEdgesFromMembers(t *testing.T) {
+	ctx := context.Background()
+	source := newMockDataSource()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	source.setResult(`SELECT id, name, project_id, zone, status, service_accounts FROM gcp_compute_instances`, &QueryResult{
+		Rows: []map[string]any{{
+			"id":               "instance-1",
+			"name":             "instance-1",
+			"project_id":       "proj-1",
+			"zone":             "us-central1-a",
+			"status":           "RUNNING",
+			"service_accounts": []any{},
+		}},
+	})
+
+	source.setResult(`SELECT project_id, member, roles FROM gcp_iam_members`, &QueryResult{
+		Rows: []map[string]any{{
+			"project_id": "proj-1",
+			"member":     "user:alice@example.com",
+			"roles": []any{
+				map[string]any{"name": "roles/owner"},
+			},
+		}},
+	})
+
+	builder := NewBuilder(source, logger)
+	if err := builder.Build(ctx); err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	edges := builder.Graph().GetOutEdges("user:alice@example.com")
+	found := false
+	for _, edge := range edges {
+		if edge.Target == "instance-1" && edge.Kind == EdgeKindCanAdmin {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected admin edge from user:alice@example.com to instance-1")
+	}
+}
+
+func TestBuilder_GCPIAMEdgesFallbackToPolicies(t *testing.T) {
+	ctx := context.Background()
+	source := newMockDataSource()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	source.setResult(`SELECT id, name, project_id, zone, status, service_accounts FROM gcp_compute_instances`, &QueryResult{
+		Rows: []map[string]any{{
+			"id":               "instance-2",
+			"name":             "instance-2",
+			"project_id":       "proj-2",
+			"zone":             "us-central1-a",
+			"status":           "RUNNING",
+			"service_accounts": []any{},
+		}},
+	})
+
+	source.setResult(`SELECT project_id, bindings FROM gcp_iam_policies`, &QueryResult{
+		Rows: []map[string]any{{
+			"project_id": "proj-2",
+			"bindings": []any{
+				map[string]any{
+					"role":    "roles/viewer",
+					"members": []any{"user:bob@example.com"},
+				},
+			},
+		}},
+	})
+
+	builder := NewBuilder(source, logger)
+	if err := builder.Build(ctx); err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	edges := builder.Graph().GetOutEdges("user:bob@example.com")
+	found := false
+	for _, edge := range edges {
+		if edge.Target == "instance-2" && edge.Kind == EdgeKindCanRead {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected read edge from user:bob@example.com to instance-2")
+	}
+}

@@ -103,7 +103,7 @@ func (d *StaleAccessDetector) DetectUnusedAccessKeys(ctx context.Context, creden
 
 	for _, cred := range credentials {
 		// Check access key 1
-		if active, _ := cred["access_key_1_active"].(bool); active {
+		if extractBool(cred, "access_key_1_active") {
 			lastUsed := extractTime(cred, "access_key_1_last_used_date")
 			if lastUsed != nil {
 				daysSince := int(now.Sub(*lastUsed).Hours() / 24)
@@ -126,7 +126,7 @@ func (d *StaleAccessDetector) DetectUnusedAccessKeys(ctx context.Context, creden
 		}
 
 		// Check access key 2
-		if active, _ := cred["access_key_2_active"].(bool); active {
+		if extractBool(cred, "access_key_2_active") {
 			lastUsed := extractTime(cred, "access_key_2_last_used_date")
 			if lastUsed != nil {
 				daysSince := int(now.Sub(*lastUsed).Hours() / 24)
@@ -307,6 +307,20 @@ func extractString(m map[string]interface{}, keys ...string) string {
 		}
 	}
 	return ""
+}
+
+func extractBool(m map[string]interface{}, keys ...string) bool {
+	for _, key := range keys {
+		if val, ok := m[key]; ok {
+			switch typed := val.(type) {
+			case bool:
+				return typed
+			case string:
+				return typed == "true" || typed == "TRUE"
+			}
+		}
+	}
+	return false
 }
 
 func extractPrincipal(m map[string]interface{}) Principal {

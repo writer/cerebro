@@ -1292,30 +1292,40 @@ func (b *Builder) buildGCPNodes(ctx context.Context) {
 }
 
 func (b *Builder) buildGCPEdges(ctx context.Context) {
-	bindings, err := b.queryIfExists(ctx, "gcp_iam_policy_bindings",
-		`SELECT project_id, role, members FROM gcp_iam_policy_bindings`)
+	edgeCount := b.buildGCPEdgesFromMembers(ctx)
+	if edgeCount == 0 {
+		edgeCount = b.buildGCPEdgesFromPolicies(ctx)
+	}
+	b.logger.Debug("processed GCP IAM bindings", "count", edgeCount)
+
+	b.buildGCPServiceAccountEdges(ctx)
+	b.buildGCPFirewallEdges(ctx)
+}
+
+func (b *Builder) buildGCPEdgesFromMembers(ctx context.Context) int {
+	members, err := b.queryIfExists(ctx, "gcp_iam_members",
+		`SELECT project_id, member, roles FROM gcp_iam_members`)
 	if err != nil {
-		b.logger.Debug("failed to query GCP IAM bindings", "error", err)
-		return
+		b.logger.Debug("failed to query GCP IAM members", "error", err)
+		return 0
 	}
 
-	for _, binding := range bindings.Rows {
-		role := toString(binding["role"])
-		members := binding["members"]
-
-		memberList, ok := members.([]any)
-		if !ok {
+	count := 0
+	for _, row := range members.Rows {
+		projectID := toString(row["project_id"])
+		member := toString(row["member"])
+		if projectID == "" || member == "" {
 			continue
 		}
 
-		edgeKind := gcpRoleToEdgeKind(role)
-		projectID := toString(binding["project_id"])
+		roles := extractGCPRoleNames(row["roles"])
+		if len(roles) == 0 {
+			continue
+		}
 
-		// Use indexed lookup (O(1)) instead of full scan
 		projectNodes := b.graph.GetNodesByAccountIndexed(projectID)
-
-		for _, m := range memberList {
-			member := toString(m)
+		for _, role := range roles {
+			edgeKind := gcpRoleToEdgeKind(role)
 			for _, node := range projectNodes {
 				if node.Provider != "gcp" || !node.IsResource() {
 					continue
@@ -1331,13 +1341,133 @@ func (b *Builder) buildGCPEdges(ctx context.Context) {
 						"binding": "project",
 					},
 				})
+				count++
 			}
 		}
 	}
-	b.logger.Debug("processed GCP IAM bindings", "count", len(bindings.Rows))
 
-	b.buildGCPServiceAccountEdges(ctx)
-	b.buildGCPFirewallEdges(ctx)
+	return count
+}
+
+func (b *Builder) buildGCPEdgesFromPolicies(ctx context.Context) int {
+	policies, err := b.queryIfExists(ctx, "gcp_iam_policies",
+		`SELECT project_id, bindings FROM gcp_iam_policies`)
+	if err != nil {
+		b.logger.Debug("failed to query GCP IAM policies", "error", err)
+		return 0
+	}
+
+	count := 0
+	for _, policy := range policies.Rows {
+		projectID := toString(policy["project_id"])
+		if projectID == "" {
+			continue
+		}
+		projectNodes := b.graph.GetNodesByAccountIndexed(projectID)
+
+		bindings := toAnySlice(policy["bindings"])
+		for _, binding := range bindings {
+			bindingMap, ok := binding.(map[string]any)
+			if !ok {
+				continue
+			}
+			role := toString(bindingMap["role"])
+			if role == "" {
+				continue
+			}
+
+			members := toAnySlice(bindingMap["members"])
+			edgeKind := gcpRoleToEdgeKind(role)
+			for _, memberValue := range members {
+				member := toString(memberValue)
+				if member == "" {
+					continue
+				}
+				for _, node := range projectNodes {
+					if node.Provider != "gcp" || !node.IsResource() {
+						continue
+					}
+					b.graph.AddEdge(&Edge{
+						ID:     member + "->" + node.ID + ":" + role,
+						Source: member,
+						Target: node.ID,
+						Kind:   edgeKind,
+						Effect: EdgeEffectAllow,
+						Properties: map[string]any{
+							"role":    role,
+							"binding": "project",
+						},
+					})
+					count++
+				}
+			}
+		}
+	}
+
+	return count
+}
+
+func extractGCPRoleNames(v any) []string {
+	items := toAnySlice(v)
+	if len(items) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(items))
+	roles := make([]string, 0, len(items))
+	for _, item := range items {
+		var role string
+		switch typed := item.(type) {
+		case map[string]any:
+			role = strings.TrimSpace(toString(typed["name"]))
+		default:
+			role = strings.TrimSpace(toString(typed))
+		}
+		if role == "" {
+			continue
+		}
+		if _, ok := seen[role]; ok {
+			continue
+		}
+		seen[role] = struct{}{}
+		roles = append(roles, role)
+	}
+
+	return roles
+}
+
+func toAnySlice(v any) []any {
+	if v == nil {
+		return nil
+	}
+
+	switch values := v.(type) {
+	case []any:
+		return values
+	case []map[string]any:
+		out := make([]any, 0, len(values))
+		for _, value := range values {
+			out = append(out, value)
+		}
+		return out
+	case []string:
+		out := make([]any, 0, len(values))
+		for _, value := range values {
+			out = append(out, value)
+		}
+		return out
+	case string:
+		raw := strings.TrimSpace(values)
+		if raw == "" {
+			return nil
+		}
+		var parsed []any
+		if err := json.Unmarshal([]byte(raw), &parsed); err == nil {
+			return parsed
+		}
+	}
+
+	return nil
 }
 
 func (b *Builder) buildGCPServiceAccountEdges(_ context.Context) {
