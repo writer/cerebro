@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/writerinternal/cerebro/internal/providers"
 )
 
 // TableProvider identifies the provider that owns a table.
@@ -15,6 +17,7 @@ const (
 	TableProviderGCP        TableProvider = "gcp"
 	TableProviderAzure      TableProvider = "azure"
 	TableProviderKubernetes TableProvider = "k8s"
+	TableProviderExternal   TableProvider = "external"
 )
 
 // TableSource identifies where the table data comes from.
@@ -98,6 +101,15 @@ var ExpectedTables = []string{
 	"k8s_rbac_service_account_bindings",
 	"k8s_rbac_risky_bindings",
 	"k8s_audit_events",
+	"okta_users",
+	"okta_groups",
+	"okta_applications",
+	"sentinelone_agents",
+	"github_repositories",
+	"github_organizations",
+	"crowdstrike_hosts",
+	"entra_users",
+	"entra_groups",
 }
 
 // GlobalTableRegistry returns the singleton table registry.
@@ -127,6 +139,7 @@ func RegisterAllTables() {
 		registerK8sTables(registry, (&K8sSyncEngine{}).getK8sTables())
 		registerGCPSecurityTables(registry)
 		registerGCPAssetInventoryTables(registry)
+		registerExternalProviderTables(registry)
 
 		if missing := registry.VerifyExpectedTables(); len(missing) > 0 {
 			panic(fmt.Sprintf("missing expected table registrations: %s", strings.Join(missing, ", ")))
@@ -201,6 +214,24 @@ func registerGCPAssetInventoryTables(registry *TableRegistry) {
 			Columns:  []string{"_cq_id"},
 			Source:   TableSourceAssetInventory,
 		})
+	}
+}
+
+func registerExternalProviderTables(registry *TableRegistry) {
+	for _, tableName := range providers.AllProviderTableNames() {
+		err := registry.Register(TableRegistration{
+			Name:     tableName,
+			Provider: TableProviderExternal,
+			Columns:  []string{"_cq_id"},
+			Source:   TableSourceNative,
+		})
+		if err == nil {
+			continue
+		}
+		if strings.Contains(err.Error(), "already registered for provider") {
+			continue
+		}
+		panic(fmt.Sprintf("failed to register external provider table %q: %v", tableName, err))
 	}
 }
 
@@ -284,7 +315,7 @@ func normalizeTableRegistration(registration TableRegistration) (TableRegistrati
 
 func normalizeTableProvider(provider TableProvider) TableProvider {
 	switch TableProvider(strings.ToLower(strings.TrimSpace(string(provider)))) {
-	case TableProviderAWS, TableProviderGCP, TableProviderAzure, TableProviderKubernetes:
+	case TableProviderAWS, TableProviderGCP, TableProviderAzure, TableProviderKubernetes, TableProviderExternal:
 		return TableProvider(strings.ToLower(strings.TrimSpace(string(provider))))
 	default:
 		return ""
