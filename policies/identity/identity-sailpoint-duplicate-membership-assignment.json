@@ -1,0 +1,31 @@
+{
+  "id": "identity-sailpoint-duplicate-membership-assignment",
+  "name": "SailPoint Duplicate Membership Assignments",
+  "description": "Detects duplicate SailPoint group membership rows for the same member and group.",
+  "severity": "LOW",
+  "category": "identity",
+  "resource_type": "sailpoint_group_membership",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.17"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT m.group_id, m.user_id AS member_key, COUNT(*) AS membership_count FROM sailpoint_group_memberships m WHERE m.group_id IS NOT NULL AND m.user_id IS NOT NULL GROUP BY m.group_id, m.user_id HAVING COUNT(*) > 1",
+  "remediation": "Deduplicate repeated membership rows and validate provisioning idempotency in sync pipelines.",
+  "tags": [
+    "sailpoint",
+    "identity",
+    "groups",
+    "data-integrity"
+  ]
+}

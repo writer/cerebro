@@ -1,0 +1,31 @@
+{
+  "id": "identity-google-workspace-active-no-employee-record",
+  "name": "Google Workspace Active Accounts Without Employee Record",
+  "description": "Detects active Google Workspace accounts whose email does not match any employee record.",
+  "severity": "MEDIUM",
+  "category": "identity",
+  "resource_type": "google_workspace_user",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.17"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT u.id AS id, u.primary_email AS email FROM google_workspace_users u LEFT JOIN employees e ON LOWER(COALESCE(u.primary_email, '')) = LOWER(e.work_email) WHERE 1=1 AND COALESCE(TRIM(u.primary_email), '') != '' AND e.work_email IS NULL",
+  "remediation": "Review unmatched accounts, classify approved non-employee identities, and disable unknown access.",
+  "tags": [
+    "google-workspace",
+    "identity",
+    "joiner-mover-leaver",
+    "access-review"
+  ]
+}

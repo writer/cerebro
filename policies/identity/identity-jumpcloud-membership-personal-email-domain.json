@@ -1,0 +1,31 @@
+{
+  "id": "identity-jumpcloud-membership-personal-email-domain",
+  "name": "JumpCloud Memberships Using Personal Email Domains",
+  "description": "Detects JumpCloud group memberships tied to personal email domains.",
+  "severity": "MEDIUM",
+  "category": "identity",
+  "resource_type": "jumpcloud_group_membership",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.17"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT m.group_id, m.user_email AS email FROM jumpcloud_group_memberships m WHERE LOWER(COALESCE(m.user_email, '')) SIMILAR TO '%@(gmail|yahoo|hotmail|outlook)\\.com'",
+  "remediation": "Replace personal-domain group members with corporate identities or remove unauthorized access.",
+  "tags": [
+    "jumpcloud",
+    "identity",
+    "groups",
+    "governance"
+  ]
+}

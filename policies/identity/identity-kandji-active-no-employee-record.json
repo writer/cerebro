@@ -1,0 +1,31 @@
+{
+  "id": "identity-kandji-active-no-employee-record",
+  "name": "Kandji Active Accounts Without Employee Record",
+  "description": "Detects active Kandji accounts whose email does not match any employee record.",
+  "severity": "MEDIUM",
+  "category": "identity",
+  "resource_type": "kandji_user",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.17"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT u.user_id AS id, u.email AS email FROM kandji_users u LEFT JOIN employees e ON LOWER(COALESCE(u.email, '')) = LOWER(e.work_email) WHERE COALESCE(u.is_active, true) = true AND COALESCE(TRIM(u.email), '') != '' AND e.work_email IS NULL",
+  "remediation": "Review unmatched accounts, classify approved non-employee identities, and disable unknown access.",
+  "tags": [
+    "kandji",
+    "identity",
+    "joiner-mover-leaver",
+    "access-review"
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "id": "identity-auth0-stale-login-365d",
+  "name": "Auth0 Stale Active Accounts (365 days)",
+  "description": "Detects active Auth0 accounts with no login activity for at least 365 days.",
+  "severity": "HIGH",
+  "category": "identity",
+  "resource_type": "auth0_user",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.17"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT u.id AS id, u.name AS account_name, u.last_login AS last_login FROM auth0_users u WHERE COALESCE(u.blocked, false) = false AND (u.last_login IS NULL OR u.last_login < NOW() - INTERVAL '365 days')",
+  "remediation": "Disable long-dormant accounts and require formal approval before any reactivation.",
+  "tags": [
+    "auth0",
+    "identity",
+    "stale-accounts",
+    "access-review"
+  ]
+}
