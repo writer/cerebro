@@ -14,12 +14,14 @@ import (
 
 // SnowflakeStore persists findings to Snowflake with local cache
 type SnowflakeStore struct {
-	db       *sql.DB
-	schema   string
-	cache    map[string]*Finding
-	dirty    map[string]bool // tracks which findings need sync
-	mu       sync.RWMutex
-	syncedAt time.Time
+	db               *sql.DB
+	schema           string
+	cache            map[string]*Finding
+	dirty            map[string]bool // tracks which findings need sync
+	attestor         FindingAttestor
+	attestReobserved bool
+	mu               sync.RWMutex
+	syncedAt         time.Time
 }
 
 // NewSnowflakeStore creates a Snowflake-backed findings store
@@ -30,6 +32,13 @@ func NewSnowflakeStore(db *sql.DB, database, schema string) *SnowflakeStore {
 		cache:  make(map[string]*Finding),
 		dirty:  make(map[string]bool),
 	}
+}
+
+func (s *SnowflakeStore) SetAttestor(attestor FindingAttestor, attestReobserved bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.attestor = attestor
+	s.attestReobserved = attestReobserved
 }
 
 // Load fetches all findings from Snowflake into cache
@@ -98,6 +107,7 @@ func (s *SnowflakeStore) Upsert(ctx context.Context, pf policy.Finding) *Finding
 	now := time.Now()
 
 	if existing, ok := s.cache[pf.ID]; ok {
+		previousStatus := normalizeStatus(existing.Status)
 		existing.Status = normalizeStatus(existing.Status)
 		existing.LastSeen = now
 		if len(pf.Resource) > 0 {
@@ -151,12 +161,16 @@ func (s *SnowflakeStore) Upsert(ctx context.Context, pf policy.Finding) *Finding
 		if len(pf.MitreAttack) > 0 {
 			existing.MitreAttack = pf.MitreAttack
 		}
-		if normalizeStatus(existing.Status) == "RESOLVED" {
+		if previousStatus == "RESOLVED" {
 			existing.Status = "OPEN"
 			existing.ResolvedAt = nil
 			existing.StatusChangedAt = &now
 		}
 		EnrichFinding(existing)
+		eventType := upsertAttestationEvent(true, previousStatus, s.attestReobserved)
+		if eventType != "" {
+			_ = attestFindingEvent(ctx, s.attestor, existing, eventType, now)
+		}
 		s.dirty[pf.ID] = true
 		return existing
 	}
@@ -210,6 +224,7 @@ func (s *SnowflakeStore) Upsert(ctx context.Context, pf policy.Finding) *Finding
 	}
 	f.StatusChangedAt = &now
 	EnrichFinding(f)
+	_ = attestFindingEvent(ctx, s.attestor, f, upsertAttestationEvent(false, "", s.attestReobserved), now)
 
 	s.cache[pf.ID] = f
 	s.dirty[pf.ID] = true

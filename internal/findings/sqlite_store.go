@@ -19,10 +19,12 @@ import (
 
 // SQLiteStore provides SQLite-based persistence for findings
 type SQLiteStore struct {
-	db     *sql.DB
-	mu     sync.RWMutex
-	dbPath string
-	logger *slog.Logger
+	db               *sql.DB
+	mu               sync.RWMutex
+	dbPath           string
+	logger           *slog.Logger
+	attestor         FindingAttestor
+	attestReobserved bool
 }
 
 // NewSQLiteStore creates a SQLite-backed findings store
@@ -56,6 +58,13 @@ func (s *SQLiteStore) SetLogger(logger *slog.Logger) {
 	s.logger = logger
 }
 
+func (s *SQLiteStore) SetAttestor(attestor FindingAttestor, attestReobserved bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.attestor = attestor
+	s.attestReobserved = attestReobserved
+}
+
 func initSchema(db *sql.DB) error {
 	schema := `
 	CREATE TABLE IF NOT EXISTS findings (
@@ -68,6 +77,7 @@ func initSchema(db *sql.DB) error {
 		resource_type TEXT,
 		resource_data JSON,
 		description TEXT,
+		metadata JSON,
 		first_seen TIMESTAMP NOT NULL,
 		last_seen TIMESTAMP NOT NULL,
 		resolved_at TIMESTAMP
@@ -76,8 +86,16 @@ func initSchema(db *sql.DB) error {
 	CREATE INDEX IF NOT EXISTS idx_findings_severity ON findings(severity);
 	CREATE INDEX IF NOT EXISTS idx_findings_policy_id ON findings(policy_id);
 	`
-	_, err := db.ExecContext(context.Background(), schema)
-	return err
+	if _, err := db.ExecContext(context.Background(), schema); err != nil {
+		return err
+	}
+
+	_, err := db.ExecContext(context.Background(), "ALTER TABLE findings ADD COLUMN metadata JSON")
+	if err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+		return err
+	}
+
+	return nil
 }
 
 func (s *SQLiteStore) Upsert(ctx context.Context, pf policy.Finding) *Finding {
@@ -85,15 +103,6 @@ func (s *SQLiteStore) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 	defer s.mu.Unlock()
 
 	now := time.Now()
-	resourceData, _ := json.Marshal(pf.Resource)
-	resourceID := pf.ResourceID
-	if resourceID == "" {
-		resourceID = extractResourceID(pf.Resource)
-	}
-	resourceType := pf.ResourceType
-	if resourceType == "" {
-		resourceType = extractResourceType(pf.Resource)
-	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -102,35 +111,97 @@ func (s *SQLiteStore) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Check if exists
 	var existing Finding
 	var existingResourceData []byte
+	var existingMetadataData []byte
 	var resolvedAt sql.NullTime
 
-	err = tx.QueryRowContext(ctx, "SELECT id, first_seen, status, resource_data FROM findings WHERE id = ?", pf.ID).
-		Scan(&existing.ID, &existing.FirstSeen, &existing.Status, &existingResourceData)
+	err = tx.QueryRowContext(ctx, `
+		SELECT id, policy_id, policy_name, severity, status, resource_id, resource_type, resource_data, description, metadata, first_seen, last_seen, resolved_at
+		FROM findings
+		WHERE id = ?
+	`, pf.ID).Scan(
+		&existing.ID,
+		&existing.PolicyID,
+		&existing.PolicyName,
+		&existing.Severity,
+		&existing.Status,
+		&existing.ResourceID,
+		&existing.ResourceType,
+		&existingResourceData,
+		&existing.Description,
+		&existingMetadataData,
+		&existing.FirstSeen,
+		&existing.LastSeen,
+		&resolvedAt,
+	)
+
+	if err != nil && err != sql.ErrNoRows {
+		s.logger.Error("failed to query finding", "error", err, "finding_id", pf.ID)
+		return nil
+	}
 
 	if err == sql.ErrNoRows {
-		// Insert new
-		f := &Finding{
-			ID:           pf.ID,
-			PolicyID:     pf.PolicyID,
-			PolicyName:   pf.PolicyName,
-			Severity:     pf.Severity,
-			Status:       "OPEN",
-			ResourceID:   resourceID,
-			ResourceType: resourceType,
-			Resource:     pf.Resource,
-			Description:  pf.Description,
-			FirstSeen:    now,
-			LastSeen:     now,
+		resourceID := pf.ResourceID
+		if resourceID == "" {
+			resourceID = extractResourceID(pf.Resource)
 		}
+		resourceType := pf.ResourceType
+		if resourceType == "" {
+			resourceType = extractResourceType(pf.Resource)
+		}
+		resourceName := pf.ResourceName
+		if resourceName == "" {
+			resourceName = extractResourceName(pf.Resource)
+		}
+
+		frameworks := make([]string, 0, len(pf.Frameworks))
+		securityCategories := make([]string, 0)
+		for _, fm := range pf.Frameworks {
+			frameworks = append(frameworks, fm.Name)
+			for _, control := range fm.Controls {
+				securityCategories = append(securityCategories, fm.Name+":"+control)
+			}
+		}
+
+		f := &Finding{
+			ID:                 pf.ID,
+			IssueID:            pf.ID,
+			ControlID:          pf.ControlID,
+			PolicyID:           pf.PolicyID,
+			PolicyName:         pf.PolicyName,
+			Title:              pf.Title,
+			Severity:           pf.Severity,
+			Status:             "OPEN",
+			ResourceID:         resourceID,
+			ResourceName:       resourceName,
+			ResourceType:       resourceType,
+			Resource:           pf.Resource,
+			Description:        pf.Description,
+			Remediation:        pf.Remediation,
+			RiskCategories:     pf.RiskCategories,
+			SecurityFrameworks: frameworks,
+			SecurityCategories: securityCategories,
+			ComplianceMappings: pf.Frameworks,
+			MitreAttack:        pf.MitreAttack,
+			CreatedAt:          now,
+			UpdatedAt:          now,
+			FirstSeen:          now,
+			LastSeen:           now,
+		}
+		f.StatusChangedAt = &now
 		EnrichFinding(f)
+		if attestErr := attestFindingEvent(ctx, s.attestor, f, upsertAttestationEvent(false, "", s.attestReobserved), now); attestErr != nil {
+			s.logger.Warn("finding attestation append failed", "error", attestErr, "finding_id", f.ID)
+		}
+
+		resourceData, _ := json.Marshal(f.Resource)
+		metadataData, _ := buildFindingMetadata(f)
 
 		_, err = tx.ExecContext(ctx, `
-			INSERT INTO findings (id, policy_id, policy_name, severity, status, resource_id, resource_type, resource_data, description, first_seen, last_seen)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`, f.ID, f.PolicyID, f.PolicyName, f.Severity, f.Status, f.ResourceID, f.ResourceType, resourceData, f.Description, f.FirstSeen, f.LastSeen)
+			INSERT INTO findings (id, policy_id, policy_name, severity, status, resource_id, resource_type, resource_data, description, metadata, first_seen, last_seen)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, f.ID, f.PolicyID, f.PolicyName, f.Severity, f.Status, f.ResourceID, f.ResourceType, resourceData, f.Description, metadataData, f.FirstSeen, f.LastSeen)
 
 		if err != nil {
 			s.logger.Error("failed to insert finding", "error", err, "finding_id", pf.ID)
@@ -141,25 +212,114 @@ func (s *SQLiteStore) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 			return nil
 		}
 		return f
-
-	} else if err != nil {
-		s.logger.Error("failed to query finding", "error", err, "finding_id", pf.ID)
-		return nil
 	}
 
-	// Update existing
-	status := normalizeStatus(existing.Status)
-	resolvedAtVal := resolvedAt
-	if status == "RESOLVED" {
-		status = "OPEN"
-		resolvedAtVal = sql.NullTime{Valid: false}
+	if len(existingResourceData) > 0 {
+		_ = json.Unmarshal(existingResourceData, &existing.Resource)
 	}
+	applyFindingMetadata(&existing, existingMetadataData)
+	if resolvedAt.Valid {
+		t := resolvedAt.Time
+		existing.ResolvedAt = &t
+	}
+
+	previousStatus := normalizeStatus(existing.Status)
+	existing.Status = previousStatus
+	existing.LastSeen = now
+	existing.UpdatedAt = now
+
+	if pf.Description != "" {
+		existing.Description = pf.Description
+	}
+	if pf.Severity != "" {
+		existing.Severity = pf.Severity
+	}
+	if pf.ControlID != "" {
+		existing.ControlID = pf.ControlID
+	}
+	if pf.Title != "" {
+		existing.Title = pf.Title
+	}
+	if pf.Remediation != "" {
+		existing.Remediation = pf.Remediation
+	}
+	if pf.PolicyID != "" {
+		existing.PolicyID = pf.PolicyID
+	}
+	if pf.PolicyName != "" {
+		existing.PolicyName = pf.PolicyName
+	}
+	if len(pf.Resource) > 0 {
+		existing.Resource = pf.Resource
+	}
+	if pf.ResourceID != "" {
+		existing.ResourceID = pf.ResourceID
+	}
+	if pf.ResourceType != "" {
+		existing.ResourceType = pf.ResourceType
+	}
+	if pf.ResourceName != "" {
+		existing.ResourceName = pf.ResourceName
+	}
+	if len(pf.RiskCategories) > 0 {
+		existing.RiskCategories = pf.RiskCategories
+	}
+	if len(pf.Frameworks) > 0 {
+		totalControls := 0
+		for _, fm := range pf.Frameworks {
+			totalControls += len(fm.Controls)
+		}
+		frameworks := make([]string, 0, len(pf.Frameworks))
+		securityCategories := make([]string, 0, totalControls)
+		for _, fm := range pf.Frameworks {
+			frameworks = append(frameworks, fm.Name)
+			for _, control := range fm.Controls {
+				securityCategories = append(securityCategories, fm.Name+":"+control)
+			}
+		}
+		existing.SecurityFrameworks = frameworks
+		existing.SecurityCategories = securityCategories
+		existing.ComplianceMappings = pf.Frameworks
+	}
+	if len(pf.MitreAttack) > 0 {
+		existing.MitreAttack = pf.MitreAttack
+	}
+
+	if previousStatus == "RESOLVED" {
+		existing.Status = "OPEN"
+		existing.ResolvedAt = nil
+		existing.StatusChangedAt = &now
+	}
+
+	EnrichFinding(&existing)
+	eventType := upsertAttestationEvent(true, previousStatus, s.attestReobserved)
+	if eventType != "" {
+		if attestErr := attestFindingEvent(ctx, s.attestor, &existing, eventType, now); attestErr != nil {
+			s.logger.Warn("finding attestation append failed", "error", attestErr, "finding_id", existing.ID)
+		}
+	}
+
+	resourceData, _ := json.Marshal(existing.Resource)
+	metadataData, _ := buildFindingMetadata(&existing)
 
 	_, err = tx.ExecContext(ctx, `
-		UPDATE findings 
-		SET last_seen = ?, resource_data = ?, status = ?, resolved_at = ?
+		UPDATE findings
+		SET policy_id = ?, policy_name = ?, severity = ?, status = ?, resource_id = ?, resource_type = ?, resource_data = ?, description = ?, metadata = ?, last_seen = ?, resolved_at = ?
 		WHERE id = ?
-	`, now, resourceData, status, resolvedAtVal, pf.ID)
+	`,
+		existing.PolicyID,
+		existing.PolicyName,
+		existing.Severity,
+		existing.Status,
+		existing.ResourceID,
+		existing.ResourceType,
+		resourceData,
+		existing.Description,
+		metadataData,
+		now,
+		existing.ResolvedAt,
+		existing.ID,
+	)
 
 	if err != nil {
 		s.logger.Error("failed to update finding", "error", err, "finding_id", pf.ID)
@@ -170,20 +330,6 @@ func (s *SQLiteStore) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 		return nil
 	}
 
-	existing.LastSeen = now
-	existing.Resource = pf.Resource
-	existing.Status = status
-	if resolvedAtVal.Valid {
-		t := resolvedAtVal.Time
-		existing.ResolvedAt = &t
-	} else {
-		existing.ResolvedAt = nil
-	}
-	existing.PolicyName = pf.PolicyName
-	existing.Severity = pf.Severity
-	existing.Description = pf.Description
-	EnrichFinding(&existing)
-
 	return &existing
 }
 
@@ -193,10 +339,11 @@ func (s *SQLiteStore) Get(id string) (*Finding, bool) {
 
 	var f Finding
 	var resourceData []byte
+	var metadataData []byte
 	var resolvedAt sql.NullTime
 
-	err := s.db.QueryRowContext(context.Background(), "SELECT id, policy_id, policy_name, severity, status, resource_id, resource_type, resource_data, description, first_seen, last_seen, resolved_at FROM findings WHERE id = ?", id).
-		Scan(&f.ID, &f.PolicyID, &f.PolicyName, &f.Severity, &f.Status, &f.ResourceID, &f.ResourceType, &resourceData, &f.Description, &f.FirstSeen, &f.LastSeen, &resolvedAt)
+	err := s.db.QueryRowContext(context.Background(), "SELECT id, policy_id, policy_name, severity, status, resource_id, resource_type, resource_data, description, metadata, first_seen, last_seen, resolved_at FROM findings WHERE id = ?", id).
+		Scan(&f.ID, &f.PolicyID, &f.PolicyName, &f.Severity, &f.Status, &f.ResourceID, &f.ResourceType, &resourceData, &f.Description, &metadataData, &f.FirstSeen, &f.LastSeen, &resolvedAt)
 
 	if err == sql.ErrNoRows {
 		return nil, false
@@ -209,6 +356,7 @@ func (s *SQLiteStore) Get(id string) (*Finding, bool) {
 	if len(resourceData) > 0 {
 		_ = json.Unmarshal(resourceData, &f.Resource)
 	}
+	applyFindingMetadata(&f, metadataData)
 	if resolvedAt.Valid {
 		t := resolvedAt.Time
 		f.ResolvedAt = &t
@@ -223,7 +371,7 @@ func (s *SQLiteStore) List(filter FindingFilter) []*Finding {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	query := "SELECT id, policy_id, policy_name, severity, status, resource_id, resource_type, resource_data, description, first_seen, last_seen, resolved_at FROM findings WHERE 1=1"
+	query := "SELECT id, policy_id, policy_name, severity, status, resource_id, resource_type, resource_data, description, metadata, first_seen, last_seen, resolved_at FROM findings WHERE 1=1"
 	var args []interface{}
 
 	if filter.Severity != "" {
@@ -261,15 +409,17 @@ func (s *SQLiteStore) List(filter FindingFilter) []*Finding {
 	for rows.Next() {
 		var f Finding
 		var resourceData []byte
+		var metadataData []byte
 		var resolvedAt sql.NullTime
 
-		if err := rows.Scan(&f.ID, &f.PolicyID, &f.PolicyName, &f.Severity, &f.Status, &f.ResourceID, &f.ResourceType, &resourceData, &f.Description, &f.FirstSeen, &f.LastSeen, &resolvedAt); err != nil {
+		if err := rows.Scan(&f.ID, &f.PolicyID, &f.PolicyName, &f.Severity, &f.Status, &f.ResourceID, &f.ResourceType, &resourceData, &f.Description, &metadataData, &f.FirstSeen, &f.LastSeen, &resolvedAt); err != nil {
 			continue
 		}
 
 		if len(resourceData) > 0 {
 			_ = json.Unmarshal(resourceData, &f.Resource)
 		}
+		applyFindingMetadata(&f, metadataData)
 		if resolvedAt.Valid {
 			t := resolvedAt.Time
 			f.ResolvedAt = &t

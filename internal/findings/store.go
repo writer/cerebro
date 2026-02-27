@@ -131,14 +131,23 @@ type Evidence struct {
 }
 
 type Store struct {
-	findings map[string]*Finding
-	mu       sync.RWMutex
+	findings         map[string]*Finding
+	attestor         FindingAttestor
+	attestReobserved bool
+	mu               sync.RWMutex
 }
 
 func NewStore() *Store {
 	return &Store{
 		findings: make(map[string]*Finding),
 	}
+}
+
+func (s *Store) SetAttestor(attestor FindingAttestor, attestReobserved bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.attestor = attestor
+	s.attestReobserved = attestReobserved
 }
 
 func (s *Store) Upsert(ctx context.Context, pf policy.Finding) *Finding {
@@ -148,6 +157,7 @@ func (s *Store) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 	now := time.Now()
 
 	if existing, ok := s.findings[pf.ID]; ok {
+		previousStatus := normalizeStatus(existing.Status)
 		existing.Status = normalizeStatus(existing.Status)
 		existing.LastSeen = now
 		existing.UpdatedAt = now
@@ -204,12 +214,16 @@ func (s *Store) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 		}
 
 		// Reopen resolved findings if they recur
-		if normalizeStatus(existing.Status) == "RESOLVED" {
+		if previousStatus == "RESOLVED" {
 			existing.Status = "OPEN"
 			existing.ResolvedAt = nil
 			existing.StatusChangedAt = &now
 		}
 		EnrichFinding(existing)
+		eventType := upsertAttestationEvent(true, previousStatus, s.attestReobserved)
+		if eventType != "" {
+			_ = attestFindingEvent(ctx, s.attestor, existing, eventType, now)
+		}
 		return existing
 	}
 
@@ -265,6 +279,7 @@ func (s *Store) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 	f.StatusChangedAt = &now
 
 	EnrichFinding(f)
+	_ = attestFindingEvent(ctx, s.attestor, f, upsertAttestationEvent(false, "", s.attestReobserved), now)
 	s.findings[pf.ID] = f
 	return f
 }

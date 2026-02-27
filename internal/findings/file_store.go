@@ -127,6 +127,10 @@ func (fs *FileStore) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 	return f
 }
 
+func (fs *FileStore) SetAttestor(attestor FindingAttestor, attestReobserved bool) {
+	fs.store.SetAttestor(attestor, attestReobserved)
+}
+
 // Get retrieves a finding by ID
 func (fs *FileStore) Get(id string) (*Finding, bool) {
 	return fs.store.Get(id)

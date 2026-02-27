@@ -993,6 +993,12 @@ func applyAWSAuthOverrides() (func(), error) {
 		restoreEnvSnapshot(envSnapshots)
 	}
 
+	if profile := strings.TrimSpace(syncAWSProfile); profile != "" {
+		if err := setEnvWithSnapshot(envSnapshots, "AWS_PROFILE", profile); err != nil {
+			return cleanup, fmt.Errorf("set AWS_PROFILE: %w", err)
+		}
+	}
+
 	webIdentityToken := strings.TrimSpace(syncAWSWebIDTokenFile)
 	webIdentityRole := strings.TrimSpace(syncAWSWebIDRoleARN)
 	if webIdentityToken == "" && webIdentityRole == "" {
