@@ -20,6 +20,7 @@ func NewInspectResourceHandler(tools *agents.SecurityTools) JobHandler {
 			Provider:   data.Resource.Provider,
 			Service:    data.Resource.Service,
 			Identifier: data.Resource.Identifier,
+			Account:    data.Overrides.AWSAccount,
 			Region:     data.Overrides.AWSRegion,
 			Project:    data.Overrides.GCPProject,
 			Zone:       data.Overrides.GCPZone,

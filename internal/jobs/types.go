@@ -65,6 +65,7 @@ type ResourceRef struct {
 
 type InspectOverrides struct {
 	AWSRegion  string `json:"aws_region,omitempty"`
+	AWSAccount string `json:"aws_account,omitempty"`
 	GCPProject string `json:"gcp_project,omitempty"`
 	GCPZone    string `json:"gcp_zone,omitempty"`
 	Cluster    string `json:"cluster,omitempty"`

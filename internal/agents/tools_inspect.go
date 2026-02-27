@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
 var inspectSupportedProviders = []string{"aws", "gcp"}
@@ -19,6 +22,7 @@ type resourceDescriptor struct {
 	ResourceType string
 	Identifier   string
 	Region       string
+	Account      string
 	Project      string
 	Cluster      string
 	Zone         string
@@ -30,6 +34,7 @@ type inspectParams struct {
 	Provider   string                 `json:"provider"`
 	Service    string                 `json:"service"`
 	Identifier string                 `json:"identifier"`
+	Account    string                 `json:"account"`
 	Project    string                 `json:"project"`
 	Region     string                 `json:"region"`
 	Cluster    string                 `json:"cluster"`
@@ -43,6 +48,7 @@ type InspectCloudResourceParams struct {
 	Provider   string                 `json:"provider"`
 	Service    string                 `json:"service"`
 	Identifier string                 `json:"identifier"`
+	Account    string                 `json:"account"`
 	Project    string                 `json:"project"`
 	Region     string                 `json:"region"`
 	Cluster    string                 `json:"cluster"`
@@ -149,6 +155,7 @@ func resolveResourceDescriptor(params inspectParams) (resourceDescriptor, error)
 			desc.Provider = "aws"
 			desc.Service = arn.Service
 			desc.Region = arn.Region
+			desc.Account = arn.Account
 			desc.ResourceType = arn.ResourceType
 			desc.Identifier = arn.ResourceID
 			if arn.Service == "s3" && desc.ResourceType == "" {
@@ -186,6 +193,10 @@ func resolveResourceDescriptor(params inspectParams) (resourceDescriptor, error)
 		}
 	}
 
+	if desc.Account == "" && params.Account != "" {
+		desc.Account = params.Account
+	}
+
 	if desc.Provider == "" {
 		return resourceDescriptor{}, fmt.Errorf("unable to determine provider for resource")
 	}
@@ -207,6 +218,13 @@ func (st *SecurityTools) inspectAWSResource(ctx context.Context, desc resourceDe
 	cfg, err := config.LoadDefaultConfig(ctx, opts...)
 	if err != nil {
 		return "", fmt.Errorf("failed to load AWS config: %w", err)
+	}
+
+	if desc.Account != "" {
+		cfg, err = assumeRoleForAccount(ctx, cfg, desc.Account)
+		if err != nil {
+			return "", fmt.Errorf("cross-account assume role for %s: %w", desc.Account, err)
+		}
 	}
 
 	result := map[string]interface{}{
@@ -381,4 +399,36 @@ func decodeJSON(value string) interface{} {
 		return value
 	}
 	return out
+}
+
+func assumeRoleForAccount(ctx context.Context, cfg aws.Config, targetAccount string) (aws.Config, error) {
+	stsClient := sts.NewFromConfig(cfg)
+	identity, err := stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+	if err != nil {
+		return cfg, fmt.Errorf("get caller identity: %w", err)
+	}
+
+	if aws.ToString(identity.Account) == targetAccount {
+		return cfg, nil
+	}
+
+	partition := "aws"
+	if callerARN := aws.ToString(identity.Arn); callerARN != "" {
+		if parsed, parseErr := parseAWSArn(callerARN); parseErr == nil {
+			partition = parsed.Partition
+		}
+	}
+
+	scanRoleName := os.Getenv("CEREBRO_AWS_SCAN_ROLE_NAME")
+	if scanRoleName == "" {
+		scanRoleName = "cerebro-org-scan-role"
+	}
+
+	roleARN := fmt.Sprintf("arn:%s:iam::%s:role/%s", partition, targetAccount, scanRoleName)
+	provider := stscreds.NewAssumeRoleProvider(stsClient, roleARN, func(o *stscreds.AssumeRoleOptions) {
+		o.RoleSessionName = "cerebro-inspect"
+	})
+	assumed := cfg.Copy()
+	assumed.Credentials = aws.NewCredentialsCache(provider)
+	return assumed, nil
 }

@@ -277,6 +277,7 @@ def create_vpc(
         # IAM role for VPC Flow Logs
         flow_logs_role = aws.iam.Role(
             f"{name}-flow-logs-role",
+            name=f"{name}-flow-logs-role",
             assume_role_policy=json.dumps({
                 "Version": "2012-10-17",
                 "Statement": [{
