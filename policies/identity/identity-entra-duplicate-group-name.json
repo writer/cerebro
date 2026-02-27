@@ -1,0 +1,31 @@
+{
+  "id": "identity-entra-duplicate-group-name",
+  "name": "Entra Duplicate Group Names",
+  "description": "Detects duplicate group names in entra, which can cause ambiguous access assignment.",
+  "severity": "MEDIUM",
+  "category": "identity",
+  "resource_type": "entra_group",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.17"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT LOWER(TRIM(g.display_name)) AS group_name, COUNT(*) AS group_count FROM entra_groups g WHERE COALESCE(TRIM(g.display_name), '') != '' GROUP BY LOWER(TRIM(g.display_name)) HAVING COUNT(*) > 1",
+  "remediation": "Consolidate duplicate groups or rename to make ownership and access scope unambiguous.",
+  "tags": [
+    "entra",
+    "identity",
+    "groups",
+    "access-governance"
+  ]
+}

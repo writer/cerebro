@@ -1,0 +1,31 @@
+{
+  "id": "identity-atlassian-missing-email",
+  "name": "Atlassian Active Accounts Missing Email",
+  "description": "Detects active atlassian accounts missing an email address for identity matching and offboarding controls.",
+  "severity": "MEDIUM",
+  "category": "identity",
+  "resource_type": "atlassian_user",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.17"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT u.account_id AS id, u.display_name AS account_name FROM atlassian_users u WHERE COALESCE(u.active, true) = true AND COALESCE(TRIM(u.email_address), '') = ''",
+  "remediation": "Populate a valid corporate email on the account or disable the account until ownership can be verified.",
+  "tags": [
+    "atlassian",
+    "identity",
+    "data-quality",
+    "account-hygiene"
+  ]
+}

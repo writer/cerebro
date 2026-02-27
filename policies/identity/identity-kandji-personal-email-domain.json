@@ -1,0 +1,31 @@
+{
+  "id": "identity-kandji-personal-email-domain",
+  "name": "Kandji Accounts Using Personal Email Domains",
+  "description": "Detects active kandji accounts using personal email domains instead of corporate identity domains.",
+  "severity": "MEDIUM",
+  "category": "identity",
+  "resource_type": "kandji_user",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.17"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT u.user_id AS id, u.email AS email FROM kandji_users u WHERE COALESCE(u.is_active, true) = true AND LOWER(COALESCE(u.email, '')) SIMILAR TO '%@(gmail|yahoo|hotmail|outlook)\\\\.com'",
+  "remediation": "Migrate account identities to corporate domains and disable personal-domain access where not explicitly approved.",
+  "tags": [
+    "kandji",
+    "identity",
+    "account-hygiene",
+    "governance"
+  ]
+}

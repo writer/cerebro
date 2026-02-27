@@ -1,0 +1,31 @@
+{
+  "id": "identity-panther-missing-email",
+  "name": "Panther Active Accounts Missing Email",
+  "description": "Detects active panther accounts missing an email address for identity matching and offboarding controls.",
+  "severity": "MEDIUM",
+  "category": "identity",
+  "resource_type": "panther_user",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.17"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT u.id AS id, u.name AS account_name FROM panther_users u WHERE LOWER(COALESCE(u.status, '')) IN ('active','enabled','provisioned','onboarded') AND COALESCE(TRIM(u.email), '') = ''",
+  "remediation": "Populate a valid corporate email on the account or disable the account until ownership can be verified.",
+  "tags": [
+    "panther",
+    "identity",
+    "data-quality",
+    "account-hygiene"
+  ]
+}

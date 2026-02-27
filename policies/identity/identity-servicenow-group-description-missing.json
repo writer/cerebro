@@ -1,0 +1,31 @@
+{
+  "id": "identity-servicenow-group-description-missing",
+  "name": "Servicenow Groups Missing Description",
+  "description": "Detects servicenow groups missing descriptions required for access governance and reviews.",
+  "severity": "LOW",
+  "category": "identity",
+  "resource_type": "servicenow_group",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.17"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT g.id AS id, g.name AS group_name FROM servicenow_groups g WHERE COALESCE(TRIM(g.description), '') = ''",
+  "remediation": "Add business-owner and purpose descriptions to all groups to improve certification quality.",
+  "tags": [
+    "servicenow",
+    "identity",
+    "groups",
+    "governance"
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "id": "identity-atlassian-duplicate-group-name",
+  "name": "Atlassian Duplicate Group Names",
+  "description": "Detects duplicate group names in atlassian, which can cause ambiguous access assignment.",
+  "severity": "MEDIUM",
+  "category": "identity",
+  "resource_type": "atlassian_group",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.17"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT LOWER(TRIM(g.name)) AS group_name, COUNT(*) AS group_count FROM atlassian_groups g WHERE COALESCE(TRIM(g.name), '') != '' GROUP BY LOWER(TRIM(g.name)) HAVING COUNT(*) > 1",
+  "remediation": "Consolidate duplicate groups or rename to make ownership and access scope unambiguous.",
+  "tags": [
+    "atlassian",
+    "identity",
+    "groups",
+    "access-governance"
+  ]
+}

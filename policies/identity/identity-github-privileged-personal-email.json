@@ -1,0 +1,31 @@
+{
+  "id": "identity-github-privileged-personal-email",
+  "name": "Github Privileged Accounts on Personal Email Domains",
+  "description": "Detects privileged github accounts tied to personal email domains.",
+  "severity": "HIGH",
+  "category": "identity",
+  "resource_type": "github_organization_member",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.17"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT u.id AS id, u.email AS email FROM github_organization_members u WHERE 1=1 AND (COALESCE(u.site_admin, false) = true OR LOWER(COALESCE(u.role, '')) LIKE '%admin%' OR LOWER(COALESCE(u.role, '')) LIKE '%owner%' OR LOWER(COALESCE(u.role, '')) LIKE '%super%') AND LOWER(COALESCE(u.email, '')) SIMILAR TO '%@(gmail|yahoo|hotmail|outlook)\\\\.com'",
+  "remediation": "Migrate privileged accounts to corporate identity domains and remove personal-domain privileged access.",
+  "tags": [
+    "github",
+    "identity",
+    "privileged-access",
+    "governance"
+  ]
+}

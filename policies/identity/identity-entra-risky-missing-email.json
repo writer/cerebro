@@ -1,0 +1,31 @@
+{
+  "id": "identity-entra-risky-missing-email",
+  "name": "Entra Risky Active Accounts Missing Email",
+  "description": "Detects active entra_risky accounts missing an email address for identity matching and offboarding controls.",
+  "severity": "MEDIUM",
+  "category": "identity",
+  "resource_type": "entra_risky_user",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.17"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT u.id AS id, u.id AS account_name FROM entra_risky_users u WHERE 1=1 AND COALESCE(TRIM(u.user_principal_name), '') = ''",
+  "remediation": "Populate a valid corporate email on the account or disable the account until ownership can be verified.",
+  "tags": [
+    "entra_risky",
+    "identity",
+    "data-quality",
+    "account-hygiene"
+  ]
+}

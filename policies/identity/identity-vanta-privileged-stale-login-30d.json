@@ -1,0 +1,31 @@
+{
+  "id": "identity-vanta-privileged-stale-login-30d",
+  "name": "Vanta Privileged Accounts Stale (30 days)",
+  "description": "Detects privileged vanta accounts with stale login activity.",
+  "severity": "HIGH",
+  "category": "identity",
+  "resource_type": "vanta_user",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.17"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT u.id AS id, u.name AS account_name, u.last_login_at AS last_login FROM vanta_users u WHERE LOWER(COALESCE(u.status, '')) IN ('active','enabled','provisioned','onboarded') AND (LOWER(COALESCE(u.role, '')) LIKE '%admin%' OR LOWER(COALESCE(u.role, '')) LIKE '%owner%' OR LOWER(COALESCE(u.role, '')) LIKE '%super%') AND (u.last_login_at IS NULL OR u.last_login_at < NOW() - INTERVAL '30 days')",
+  "remediation": "Review privileged stale accounts immediately; remove excessive privileges or disable unused access.",
+  "tags": [
+    "vanta",
+    "identity",
+    "privileged-access",
+    "stale-accounts"
+  ]
+}

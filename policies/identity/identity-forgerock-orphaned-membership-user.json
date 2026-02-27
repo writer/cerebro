@@ -1,0 +1,31 @@
+{
+  "id": "identity-forgerock-orphaned-membership-user",
+  "name": "Forgerock Group Memberships With Missing Users",
+  "description": "Detects orphaned forgerock group memberships referencing users that no longer exist.",
+  "severity": "MEDIUM",
+  "category": "identity",
+  "resource_type": "forgerock_group_membership",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.17"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT m.group_id, m.user_id FROM forgerock_group_memberships m LEFT JOIN forgerock_users u ON m.user_id = u.id WHERE m.user_id IS NOT NULL AND u.id IS NULL",
+  "remediation": "Remove orphaned memberships and reconcile group assignments from authoritative identity sources.",
+  "tags": [
+    "forgerock",
+    "identity",
+    "groups",
+    "data-integrity"
+  ]
+}

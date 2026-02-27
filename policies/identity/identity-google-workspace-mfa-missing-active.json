@@ -1,0 +1,31 @@
+{
+  "id": "identity-google-workspace-mfa-missing-active",
+  "name": "Google Workspace Active Accounts Without MFA",
+  "description": "Detects active google_workspace accounts that do not meet MFA requirements.",
+  "severity": "HIGH",
+  "category": "identity",
+  "resource_type": "google_workspace_user",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.17"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT u.id AS id, u.name AS account_name FROM google_workspace_users u WHERE 1=1 AND (COALESCE(u.is_enrolled_in_2sv, false) = false OR COALESCE(u.is_enforced_in_2sv, false) = false)",
+  "remediation": "Require MFA enrollment and enforcement for all active accounts.",
+  "tags": [
+    "google_workspace",
+    "identity",
+    "mfa",
+    "authentication"
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "id": "identity-github-duplicate-email",
+  "name": "Github Duplicate Account Emails",
+  "description": "Detects duplicate active github accounts sharing the same email identity.",
+  "severity": "HIGH",
+  "category": "identity",
+  "resource_type": "github_organization_member",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.17"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT LOWER(TRIM(u.email)) AS email, COUNT(*) AS account_count FROM github_organization_members u WHERE 1=1 AND COALESCE(TRIM(u.email), '') != '' GROUP BY LOWER(TRIM(u.email)) HAVING COUNT(*) > 1",
+  "remediation": "Consolidate duplicate identities and remove unintended duplicate access paths.",
+  "tags": [
+    "github",
+    "identity",
+    "access-control",
+    "account-hygiene"
+  ]
+}

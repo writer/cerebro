@@ -1,0 +1,31 @@
+{
+  "id": "identity-servicenow-orphaned-membership-group",
+  "name": "Servicenow Memberships With Missing Groups",
+  "description": "Detects orphaned servicenow memberships referencing groups that no longer exist.",
+  "severity": "MEDIUM",
+  "category": "identity",
+  "resource_type": "servicenow_group_membership",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.17"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT m.group_id, m.user_id FROM servicenow_group_memberships m LEFT JOIN servicenow_groups g ON m.group_id = g.id WHERE m.group_id IS NOT NULL AND g.id IS NULL",
+  "remediation": "Remove orphaned memberships and reconcile all references to deleted or migrated groups.",
+  "tags": [
+    "servicenow",
+    "identity",
+    "groups",
+    "data-integrity"
+  ]
+}

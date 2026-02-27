@@ -1,0 +1,31 @@
+{
+  "id": "identity-pingidentity-empty-groups",
+  "name": "Pingidentity Empty Access Groups",
+  "description": "Detects empty groups in pingidentity that may indicate stale access governance artifacts.",
+  "severity": "LOW",
+  "category": "identity",
+  "resource_type": "pingidentity_group",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.17"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT g.id AS id, g.name AS group_name FROM pingidentity_groups g LEFT JOIN pingidentity_group_memberships m ON g.id = m.group_id WHERE m.group_id IS NULL",
+  "remediation": "Delete stale groups or document their future purpose and ownership before retaining them.",
+  "tags": [
+    "pingidentity",
+    "identity",
+    "groups",
+    "stale-configuration"
+  ]
+}

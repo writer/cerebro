@@ -1,0 +1,31 @@
+{
+  "id": "identity-okta-terminated-active-account",
+  "name": "Okta Terminated Accounts Still Active",
+  "description": "Detects terminated employees that still have active access in okta.",
+  "severity": "HIGH",
+  "category": "identity",
+  "resource_type": "okta_user",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.17"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT u.id AS id, u.email AS email, e.termination_date FROM okta_users u JOIN employees e ON LOWER(COALESCE(u.email, '')) = LOWER(e.work_email) WHERE e.status = 'terminated' AND LOWER(COALESCE(u.status, '')) IN ('active','enabled','provisioned','onboarded')",
+  "remediation": "Disable or remove provider access for terminated employees within 24 hours and verify all active sessions are revoked.",
+  "tags": [
+    "okta",
+    "identity",
+    "offboarding",
+    "access-control"
+  ]
+}

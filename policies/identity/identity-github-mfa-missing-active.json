@@ -1,0 +1,31 @@
+{
+  "id": "identity-github-mfa-missing-active",
+  "name": "Github Active Accounts Without MFA",
+  "description": "Detects active github accounts that do not meet MFA requirements.",
+  "severity": "HIGH",
+  "category": "identity",
+  "resource_type": "github_organization_member",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.17"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT u.id AS id, u.login AS account_name FROM github_organization_members u WHERE 1=1 AND COALESCE(u.two_factor_enabled, false) = false",
+  "remediation": "Require MFA enrollment and enforcement for all active accounts.",
+  "tags": [
+    "github",
+    "identity",
+    "mfa",
+    "authentication"
+  ]
+}

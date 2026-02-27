@@ -1,0 +1,31 @@
+{
+  "id": "identity-atlassian-terminated-active-account",
+  "name": "Atlassian Terminated Accounts Still Active",
+  "description": "Detects terminated employees that still have active access in atlassian.",
+  "severity": "HIGH",
+  "category": "identity",
+  "resource_type": "atlassian_user",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.17"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT u.account_id AS id, u.email_address AS email, e.termination_date FROM atlassian_users u JOIN employees e ON LOWER(COALESCE(u.email_address, '')) = LOWER(e.work_email) WHERE e.status = 'terminated' AND COALESCE(u.active, true) = true",
+  "remediation": "Disable or remove provider access for terminated employees within 24 hours and verify all active sessions are revoked.",
+  "tags": [
+    "atlassian",
+    "identity",
+    "offboarding",
+    "access-control"
+  ]
+}
