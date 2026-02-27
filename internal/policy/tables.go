@@ -354,9 +354,13 @@ var ResourceToTableMapping = map[string][]string{
 	"github_user":                         {"github_organization_members"},
 
 	// Okta
-	"okta::user":        {"okta_users"},
-	"okta::application": {"okta_applications"},
-	"okta::system_log":  {"okta_system_logs"},
+	"okta::user":             {"okta_users"},
+	"okta::group":            {"okta_groups"},
+	"okta::group_membership": {"okta_group_memberships"},
+	"okta::application":      {"okta_applications"},
+	"okta::app_assignment":   {"okta_app_assignments"},
+	"okta::admin_role":       {"okta_admin_roles"},
+	"okta::system_log":       {"okta_system_logs"},
 
 	// SentinelOne
 	"sentinelone::threat": {"sentinelone_threats"},

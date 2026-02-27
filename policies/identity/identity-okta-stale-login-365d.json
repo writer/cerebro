@@ -20,7 +20,7 @@
     }
   ],
   "enabled": true,
-  "query": "SELECT u.id AS id, u.login AS account_name, u.last_login AS last_login FROM okta_users u WHERE LOWER(COALESCE(u.status, '')) IN ('active','enabled','provisioned','onboarded') AND (u.last_login IS NULL OR u.last_login < NOW() - INTERVAL '365 days')",
+  "query": "SELECT u.id AS id, u.login AS account_name, u.last_login AS last_login FROM okta_users u WHERE LOWER(COALESCE(u.status, '')) IN ('active','enabled','provisioned','onboarded') AND (u.last_login IS NULL OR u.last_login < CURRENT_TIMESTAMP() - INTERVAL '365 days')",
   "remediation": "Disable long-dormant accounts and require formal approval before any reactivation.",
   "tags": [
     "okta",

@@ -1,0 +1,31 @@
+{
+  "id": "identity-okta-admin-plus-app-owner",
+  "name": "Okta Admin with App-Owner-Like Access",
+  "description": "Detects users who hold Okta admin roles and also have user app assignments that appear owner/admin scoped.",
+  "severity": "HIGH",
+  "category": "identity",
+  "resource_type": "okta_admin_role",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.8.2"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT DISTINCT r.user_id AS id, COALESCE(u.login, r.user_login, r.user_id) AS account_name, r.role_type, r.role_label, a.app_id, COALESCE(a.app_label, app.label, app.name) AS app_name FROM okta_admin_roles r JOIN okta_app_assignments a ON a.assignee_id = r.user_id LEFT JOIN okta_users u ON u.id = r.user_id LEFT JOIN okta_applications app ON app.id = a.app_id WHERE UPPER(COALESCE(a.assignee_type, '')) = 'USER' AND LOWER(COALESCE(u.status, 'active')) IN ('active','enabled','provisioned','onboarded') AND LOWER(COALESCE(a.status, 'active')) IN ('active', 'assigned') AND LOWER(COALESCE(a.app_label, app.label, app.name, '')) RLIKE '.*(owner|admin|administrator).*'",
+  "remediation": "Separate high-risk duty combinations by removing app-owner-like assignments from users who already hold Okta admin roles.",
+  "tags": [
+    "okta",
+    "identity",
+    "toxic-combination",
+    "segregation-of-duties"
+  ]
+}

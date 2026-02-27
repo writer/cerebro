@@ -11,12 +11,13 @@ const (
 	NodeKindServiceAccount NodeKind = "service_account"
 
 	// Resource nodes
-	NodeKindBucket   NodeKind = "bucket"
-	NodeKindInstance NodeKind = "instance"
-	NodeKindDatabase NodeKind = "database"
-	NodeKindSecret   NodeKind = "secret"
-	NodeKindFunction NodeKind = "function"
-	NodeKindNetwork  NodeKind = "network"
+	NodeKindBucket      NodeKind = "bucket"
+	NodeKindInstance    NodeKind = "instance"
+	NodeKindDatabase    NodeKind = "database"
+	NodeKindSecret      NodeKind = "secret"
+	NodeKindFunction    NodeKind = "function"
+	NodeKindNetwork     NodeKind = "network"
+	NodeKindApplication NodeKind = "application"
 
 	// Kubernetes nodes
 	NodeKindPod                NodeKind = "pod"
@@ -76,7 +77,7 @@ func (n *Node) IsIdentity() bool {
 // IsResource returns true if the node is a resource type
 func (n *Node) IsResource() bool {
 	switch n.Kind {
-	case NodeKindBucket, NodeKindInstance, NodeKindDatabase, NodeKindSecret, NodeKindFunction, NodeKindNetwork,
+	case NodeKindBucket, NodeKindInstance, NodeKindDatabase, NodeKindSecret, NodeKindFunction, NodeKindNetwork, NodeKindApplication,
 		NodeKindPod, NodeKindDeployment, NodeKindConfigMap, NodeKindPersistentVolume:
 		return true
 	}
