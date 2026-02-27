@@ -17,7 +17,7 @@ import (
 func (e *GCPSyncEngine) gcpIAMServiceAccountTable() GCPTableSpec {
 	return GCPTableSpec{
 		Name:    "gcp_iam_service_accounts",
-		Columns: []string{"project_id", "name", "email", "unique_id", "display_name", "description", "oauth2_client_id", "disabled", "keys"},
+		Columns: []string{"project_id", "name", "email", "unique_id", "display_name", "description", "oauth2_client_id", "disabled", "keys", "roles", "has_admin_role", "has_high_privilege"},
 		Fetch:   e.fetchGCPIAMServiceAccounts,
 	}
 }
@@ -73,6 +73,8 @@ func (e *GCPSyncEngine) fetchGCPIAMServiceAccounts(ctx context.Context, projectI
 	}
 	defer func() { _ = client.Close() }()
 
+	serviceAccountRoleMetadata := e.fetchGCPServiceAccountRoleMetadata(ctx, projectID)
+
 	rows := make([]map[string]interface{}, 0, 100)
 
 	req := &adminpb.ListServiceAccountsRequest{
@@ -90,15 +92,23 @@ func (e *GCPSyncEngine) fetchGCPIAMServiceAccounts(ctx context.Context, projectI
 		}
 
 		row := map[string]interface{}{
-			"_cq_id":           sa.Name,
-			"project_id":       projectID,
-			"name":             sa.Name,
-			"email":            sa.Email,
-			"unique_id":        sa.UniqueId,
-			"display_name":     sa.DisplayName,
-			"description":      sa.Description,
-			"oauth2_client_id": sa.Oauth2ClientId,
-			"disabled":         sa.Disabled,
+			"_cq_id":             sa.Name,
+			"project_id":         projectID,
+			"name":               sa.Name,
+			"email":              sa.Email,
+			"unique_id":          sa.UniqueId,
+			"display_name":       sa.DisplayName,
+			"description":        sa.Description,
+			"oauth2_client_id":   sa.Oauth2ClientId,
+			"disabled":           sa.Disabled,
+			"roles":              []string{},
+			"has_admin_role":     false,
+			"has_high_privilege": false,
+		}
+		if metadata, ok := serviceAccountRoleMetadata[strings.ToLower(sa.Email)]; ok {
+			row["roles"] = metadata.Roles
+			row["has_admin_role"] = metadata.HasAdminRole
+			row["has_high_privilege"] = metadata.HasHighPrivilege
 		}
 
 		// Get service account keys
@@ -127,6 +137,87 @@ func (e *GCPSyncEngine) fetchGCPIAMServiceAccounts(ctx context.Context, projectI
 	}
 
 	return rows, nil
+}
+
+type gcpServiceAccountRoleMetadata struct {
+	Roles            []string
+	HasAdminRole     bool
+	HasHighPrivilege bool
+}
+
+func (e *GCPSyncEngine) fetchGCPProjectIAMPolicy(ctx context.Context, projectID string) (*iampb.Policy, error) {
+	client, err := resourcemanager.NewProjectsClient(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("create resource manager client: %w", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	policy, err := client.GetIamPolicy(ctx, &iampb.GetIamPolicyRequest{
+		Resource: fmt.Sprintf("projects/%s", projectID),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get iam policy: %w", err)
+	}
+
+	return policy, nil
+}
+
+func (e *GCPSyncEngine) fetchGCPServiceAccountRoleMetadata(ctx context.Context, projectID string) map[string]gcpServiceAccountRoleMetadata {
+	policy, err := e.fetchGCPProjectIAMPolicy(ctx, projectID)
+	if err != nil {
+		return nil
+	}
+	return buildGCPServiceAccountRoleMetadata(policy)
+}
+
+func buildGCPServiceAccountRoleMetadata(policy *iampb.Policy) map[string]gcpServiceAccountRoleMetadata {
+	if policy == nil {
+		return nil
+	}
+
+	roleSets := make(map[string]map[string]struct{})
+	for _, binding := range policy.Bindings {
+		if binding == nil || binding.Role == "" {
+			continue
+		}
+		for _, member := range binding.Members {
+			memberType, email := parseGCPMember(member)
+			if !strings.EqualFold(memberType, "serviceAccount") || email == "" {
+				continue
+			}
+			key := strings.ToLower(email)
+			roles := roleSets[key]
+			if roles == nil {
+				roles = make(map[string]struct{})
+				roleSets[key] = roles
+			}
+			roles[binding.Role] = struct{}{}
+		}
+	}
+
+	metadata := make(map[string]gcpServiceAccountRoleMetadata, len(roleSets))
+	for email, roles := range roleSets {
+		roleNames := make([]string, 0, len(roles))
+		hasAdmin := false
+		hasHigh := false
+		for role := range roles {
+			roleNames = append(roleNames, role)
+			if isGCPAdminRole(role) {
+				hasAdmin = true
+			}
+			if isGCPHighPrivilegeRole(role) {
+				hasHigh = true
+			}
+		}
+		sort.Strings(roleNames)
+		metadata[email] = gcpServiceAccountRoleMetadata{
+			Roles:            roleNames,
+			HasAdminRole:     hasAdmin,
+			HasHighPrivilege: hasHigh,
+		}
+	}
+
+	return metadata
 }
 
 func (e *GCPSyncEngine) fetchGCPIAMServiceAccountKeys(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
@@ -189,17 +280,9 @@ func (e *GCPSyncEngine) fetchGCPIAMServiceAccountKeys(ctx context.Context, proje
 }
 
 func (e *GCPSyncEngine) fetchGCPIAMPolicies(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
-	client, err := resourcemanager.NewProjectsClient(ctx)
+	policy, err := e.fetchGCPProjectIAMPolicy(ctx, projectID)
 	if err != nil {
-		return nil, fmt.Errorf("create resource manager client: %w", err)
-	}
-	defer func() { _ = client.Close() }()
-
-	policy, err := client.GetIamPolicy(ctx, &iampb.GetIamPolicyRequest{
-		Resource: fmt.Sprintf("projects/%s", projectID),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("get iam policy: %w", err)
+		return nil, err
 	}
 
 	var bindings []map[string]interface{}
@@ -227,17 +310,9 @@ func (e *GCPSyncEngine) fetchGCPIAMPolicies(ctx context.Context, projectID strin
 }
 
 func (e *GCPSyncEngine) fetchGCPIAMMembers(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
-	client, err := resourcemanager.NewProjectsClient(ctx)
+	policy, err := e.fetchGCPProjectIAMPolicy(ctx, projectID)
 	if err != nil {
-		return nil, fmt.Errorf("create resource manager client: %w", err)
-	}
-	defer func() { _ = client.Close() }()
-
-	policy, err := client.GetIamPolicy(ctx, &iampb.GetIamPolicyRequest{
-		Resource: fmt.Sprintf("projects/%s", projectID),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("get iam policy: %w", err)
+		return nil, err
 	}
 
 	memberRoles := make(map[string]map[string]struct{})
