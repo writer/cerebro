@@ -877,6 +877,9 @@ func runNativeSync(ctx context.Context, start time.Time) error {
 }
 
 func loadAWSConfig(ctx context.Context, profile string) (aws.Config, error) {
+	cleanup := sanitizeAWSAuthEnv()
+	defer cleanup()
+
 	trimmed := strings.TrimSpace(profile)
 	loadOptions := make([]func(*config.LoadOptions) error, 0, 5)
 
@@ -906,6 +909,77 @@ func loadAWSConfig(ctx context.Context, profile string) (aws.Config, error) {
 	}
 
 	return config.LoadDefaultConfig(ctx, loadOptions...)
+}
+
+func sanitizeAWSAuthEnv() func() {
+	envSnapshots := make(map[string]envSnapshot)
+
+	keys := []string{
+		"AWS_ACCESS_KEY_ID",
+		"AWS_SECRET_ACCESS_KEY",
+		"AWS_SESSION_TOKEN",
+		"AWS_PROFILE",
+		"AWS_ROLE_ARN",
+		"AWS_WEB_IDENTITY_TOKEN_FILE",
+		"AWS_CONFIG_FILE",
+		"AWS_SHARED_CREDENTIALS_FILE",
+	}
+
+	removed := 0
+	for _, key := range keys {
+		value, present := os.LookupEnv(key)
+		if !present {
+			continue
+		}
+
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+
+		if !shouldSanitizeAWSEnvValue(key, trimmed) {
+			continue
+		}
+
+		envSnapshots[key] = envSnapshot{value: value, present: true}
+		_ = os.Unsetenv(key)
+		removed++
+	}
+
+	if removed > 0 {
+		Warning("Ignoring %d placeholder/invalid AWS auth env var(s) during config load", removed)
+	}
+
+	return func() {
+		restoreEnvSnapshot(envSnapshots)
+	}
+}
+
+func shouldSanitizeAWSEnvValue(key, value string) bool {
+	if looksLikePlaceholderValue(value) {
+		return true
+	}
+
+	switch key {
+	case "AWS_CONFIG_FILE", "AWS_SHARED_CREDENTIALS_FILE", "AWS_WEB_IDENTITY_TOKEN_FILE":
+		if _, err := os.Stat(value); err != nil {
+			return true
+		}
+	}
+
+	return false
+}
+
+func looksLikePlaceholderValue(value string) bool {
+	normalized := strings.ToUpper(strings.TrimSpace(value))
+	if normalized == "" {
+		return false
+	}
+
+	return strings.Contains(normalized, "PLACEHOLDER") ||
+		strings.Contains(normalized, "REPLACE_ME") ||
+		strings.Contains(normalized, "CHANGE_ME") ||
+		strings.Contains(normalized, "CHANGEME")
 }
 
 type envSnapshot struct {

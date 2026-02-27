@@ -336,3 +336,71 @@ func TestLoadAWSConfigValidatesFiles(t *testing.T) {
 		}
 	})
 }
+
+func TestLooksLikePlaceholderValue(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		want  bool
+	}{
+		{name: "placeholder prefix", value: "PLACEHOLDER_AWS_PROFILE", want: true},
+		{name: "replace me", value: "replace_me", want: true},
+		{name: "change me", value: "change_me", want: true},
+		{name: "regular value", value: "cerebro-prod", want: false},
+		{name: "empty value", value: "", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := looksLikePlaceholderValue(tt.value); got != tt.want {
+				t.Fatalf("looksLikePlaceholderValue(%q) = %v, want %v", tt.value, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSanitizeAWSAuthEnv(t *testing.T) {
+	validDir := t.TempDir()
+	validConfig := filepath.Join(validDir, "config")
+	validToken := filepath.Join(validDir, "token.jwt")
+	missingCreds := filepath.Join(validDir, "missing-credentials")
+
+	if err := os.WriteFile(validConfig, []byte("[default]\nregion = us-east-1\n"), 0o600); err != nil {
+		t.Fatalf("write valid config: %v", err)
+	}
+	if err := os.WriteFile(validToken, []byte("token"), 0o600); err != nil {
+		t.Fatalf("write valid token: %v", err)
+	}
+
+	t.Setenv("AWS_ACCESS_KEY_ID", "PLACEHOLDER_AWS_ACCESS_KEY_ID")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "PLACEHOLDER_AWS_SECRET_ACCESS_KEY")
+	t.Setenv("AWS_SESSION_TOKEN", "PLACEHOLDER_AWS_SESSION_TOKEN")
+	t.Setenv("AWS_PROFILE", "PLACEHOLDER_AWS_PROFILE")
+	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", missingCreds)
+	t.Setenv("AWS_CONFIG_FILE", validConfig)
+	t.Setenv("AWS_WEB_IDENTITY_TOKEN_FILE", validToken)
+
+	cleanup := sanitizeAWSAuthEnv()
+
+	for _, key := range []string{"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_PROFILE", "AWS_SHARED_CREDENTIALS_FILE"} {
+		if got := os.Getenv(key); got != "" {
+			t.Fatalf("expected %s to be unset, got %q", key, got)
+		}
+	}
+
+	if got := os.Getenv("AWS_CONFIG_FILE"); got != validConfig {
+		t.Fatalf("expected AWS_CONFIG_FILE to remain set, got %q", got)
+	}
+	if got := os.Getenv("AWS_WEB_IDENTITY_TOKEN_FILE"); got != validToken {
+		t.Fatalf("expected AWS_WEB_IDENTITY_TOKEN_FILE to remain set, got %q", got)
+	}
+
+	cleanup()
+
+	if got := os.Getenv("AWS_PROFILE"); got != "PLACEHOLDER_AWS_PROFILE" {
+		t.Fatalf("expected AWS_PROFILE to be restored, got %q", got)
+	}
+	if got := os.Getenv("AWS_SHARED_CREDENTIALS_FILE"); got != missingCreds {
+		t.Fatalf("expected AWS_SHARED_CREDENTIALS_FILE to be restored, got %q", got)
+	}
+}
