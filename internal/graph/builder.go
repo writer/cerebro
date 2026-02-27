@@ -1326,19 +1326,21 @@ func (b *Builder) buildGCPEdgesFromMembers(ctx context.Context) int {
 		projectNodes := b.graph.GetNodesByAccountIndexed(projectID)
 		for _, role := range roles {
 			edgeKind := gcpRoleToEdgeKind(role)
+			sourceID := b.resolveGCPPrincipalID(projectID, member)
 			for _, node := range projectNodes {
 				if node.Provider != "gcp" || !node.IsResource() {
 					continue
 				}
 				b.graph.AddEdge(&Edge{
-					ID:     member + "->" + node.ID + ":" + role,
-					Source: member,
+					ID:     sourceID + "->" + node.ID + ":" + role,
+					Source: sourceID,
 					Target: node.ID,
 					Kind:   edgeKind,
 					Effect: EdgeEffectAllow,
 					Properties: map[string]any{
 						"role":    role,
 						"binding": "project",
+						"member":  member,
 					},
 				})
 				count++
@@ -1383,19 +1385,21 @@ func (b *Builder) buildGCPEdgesFromPolicies(ctx context.Context) int {
 				if member == "" {
 					continue
 				}
+				sourceID := b.resolveGCPPrincipalID(projectID, member)
 				for _, node := range projectNodes {
 					if node.Provider != "gcp" || !node.IsResource() {
 						continue
 					}
 					b.graph.AddEdge(&Edge{
-						ID:     member + "->" + node.ID + ":" + role,
-						Source: member,
+						ID:     sourceID + "->" + node.ID + ":" + role,
+						Source: sourceID,
 						Target: node.ID,
 						Kind:   edgeKind,
 						Effect: EdgeEffectAllow,
 						Properties: map[string]any{
 							"role":    role,
 							"binding": "project",
+							"member":  member,
 						},
 					})
 					count++
@@ -1470,6 +1474,42 @@ func toAnySlice(v any) []any {
 	return nil
 }
 
+func (b *Builder) resolveGCPPrincipalID(projectID, member string) string {
+	member = strings.TrimSpace(member)
+	if member == "" {
+		return ""
+	}
+
+	parts := strings.SplitN(member, ":", 2)
+	if len(parts) != 2 {
+		return member
+	}
+	if strings.EqualFold(parts[0], "serviceaccount") {
+		return b.resolveGCPServiceAccountNodeID(projectID, parts[1])
+	}
+
+	return member
+}
+
+func (b *Builder) resolveGCPServiceAccountNodeID(projectID, email string) string {
+	email = strings.TrimSpace(email)
+	if email == "" {
+		return ""
+	}
+
+	projectNodes := b.graph.GetNodesByAccountIndexed(projectID)
+	for _, candidate := range projectNodes {
+		if candidate.Provider != "gcp" || candidate.Kind != NodeKindServiceAccount {
+			continue
+		}
+		if strings.EqualFold(toString(candidate.Properties["email"]), email) || strings.EqualFold(candidate.Name, email) {
+			return candidate.ID
+		}
+	}
+
+	return email
+}
+
 func (b *Builder) buildGCPServiceAccountEdges(_ context.Context) {
 	// Link compute instances to their service accounts
 	for _, node := range b.graph.GetAllNodes() {
@@ -1489,14 +1529,16 @@ func (b *Builder) buildGCPServiceAccountEdges(_ context.Context) {
 			}
 			saEmail := toString(saMap["email"])
 			if saEmail != "" {
+				targetID := b.resolveGCPServiceAccountNodeID(node.Account, saEmail)
 				b.graph.AddEdge(&Edge{
-					ID:     node.ID + "->runs_as->" + saEmail,
+					ID:     node.ID + "->runs_as->" + targetID,
 					Source: node.ID,
-					Target: saEmail,
+					Target: targetID,
 					Kind:   EdgeKindCanAssume,
 					Effect: EdgeEffectAllow,
 					Properties: map[string]any{
-						"mechanism": "instance_service_account",
+						"mechanism":             "instance_service_account",
+						"service_account_email": saEmail,
 					},
 				})
 			}

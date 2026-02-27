@@ -551,3 +551,101 @@ func TestBuilder_GCPIAMEdgesFallbackToPolicies(t *testing.T) {
 		t.Fatal("expected read edge from user:bob@example.com to instance-2")
 	}
 }
+
+func TestBuilder_GCPIAMServiceAccountMemberResolvesToNodeID(t *testing.T) {
+	ctx := context.Background()
+	source := newMockDataSource()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	source.setResult(`SELECT unique_id, email, project_id, display_name FROM gcp_iam_service_accounts`, &QueryResult{
+		Rows: []map[string]any{{
+			"unique_id":    "sa-uid-1",
+			"email":        "app-sa@proj-1.iam.gserviceaccount.com",
+			"project_id":   "proj-1",
+			"display_name": "app-sa",
+		}},
+	})
+
+	source.setResult(`SELECT id, name, project_id, zone, status, service_accounts FROM gcp_compute_instances`, &QueryResult{
+		Rows: []map[string]any{{
+			"id":               "instance-1",
+			"name":             "instance-1",
+			"project_id":       "proj-1",
+			"zone":             "us-central1-a",
+			"status":           "RUNNING",
+			"service_accounts": []any{},
+		}},
+	})
+
+	source.setResult(`SELECT project_id, member, roles FROM gcp_iam_members`, &QueryResult{
+		Rows: []map[string]any{{
+			"project_id": "proj-1",
+			"member":     "serviceAccount:app-sa@proj-1.iam.gserviceaccount.com",
+			"roles": []any{
+				map[string]any{"name": "roles/owner"},
+			},
+		}},
+	})
+
+	builder := NewBuilder(source, logger)
+	if err := builder.Build(ctx); err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	edges := builder.Graph().GetOutEdges("sa-uid-1")
+	found := false
+	for _, edge := range edges {
+		if edge.Target == "instance-1" && edge.Kind == EdgeKindCanAdmin {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected admin edge from sa-uid-1 to instance-1")
+	}
+}
+
+func TestBuilder_GCPInstanceServiceAccountEdgeResolvesToNodeID(t *testing.T) {
+	ctx := context.Background()
+	source := newMockDataSource()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	source.setResult(`SELECT unique_id, email, project_id, display_name FROM gcp_iam_service_accounts`, &QueryResult{
+		Rows: []map[string]any{{
+			"unique_id":    "sa-uid-3",
+			"email":        "runtime-sa@proj-3.iam.gserviceaccount.com",
+			"project_id":   "proj-3",
+			"display_name": "runtime-sa",
+		}},
+	})
+
+	source.setResult(`SELECT id, name, project_id, zone, status, service_accounts FROM gcp_compute_instances`, &QueryResult{
+		Rows: []map[string]any{{
+			"id":         "instance-3",
+			"name":       "instance-3",
+			"project_id": "proj-3",
+			"zone":       "us-central1-a",
+			"status":     "RUNNING",
+			"service_accounts": []any{
+				map[string]any{"email": "runtime-sa@proj-3.iam.gserviceaccount.com"},
+			},
+		}},
+	})
+
+	builder := NewBuilder(source, logger)
+	if err := builder.Build(ctx); err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	edges := builder.Graph().GetOutEdges("instance-3")
+	found := false
+	for _, edge := range edges {
+		if edge.Target == "sa-uid-3" && edge.Kind == EdgeKindCanAssume {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected instance-3 runs_as edge to sa-uid-3")
+	}
+}
