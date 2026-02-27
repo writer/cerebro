@@ -5,8 +5,7 @@
   "effect": "forbid",
   "resource": "gcp::iam::service_account",
   "conditions": [
-    "roles contains 'roles/owner'",
-    "roles contains 'roles/editor'"
+    "roles contains 'roles/owner' OR roles contains 'roles/editor'"
   ],
   "severity": "high",
   "remediation": "Replace Owner/Editor with more specific roles following least privilege principle.",
