@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -231,20 +230,31 @@ func newNativeSyncJobHandler(application *app.App) jobs.JobHandler {
 			return "", err
 		}
 
-		syncedProviders, err := syncConfiguredProviderSources(ctx, application, logger)
+		syncedProviders, failedProviders, err := syncConfiguredProviderSources(ctx, application, logger)
 		if err != nil {
 			return "", err
 		}
 
 		if logger != nil {
-			logger.Info("native sync job completed", "provider", provider, "schedule", req.ScheduleName, "additional_provider_count", len(syncedProviders))
+			if len(failedProviders) > 0 {
+				logger.Warn(
+					"native sync completed with additional provider sync failures",
+					"provider", provider,
+					"schedule", req.ScheduleName,
+					"additional_provider_count", len(syncedProviders),
+					"failed_provider_count", len(failedProviders),
+				)
+			} else {
+				logger.Info("native sync job completed", "provider", provider, "schedule", req.ScheduleName, "additional_provider_count", len(syncedProviders))
+			}
 		}
 
 		result, err := json.Marshal(map[string]interface{}{
-			"provider":             provider,
-			"table":                req.Table,
-			"schedule_name":        req.ScheduleName,
-			"additional_providers": syncedProviders,
+			"provider":                    provider,
+			"table":                       req.Table,
+			"schedule_name":               req.ScheduleName,
+			"additional_providers":        syncedProviders,
+			"failed_additional_providers": failedProviders,
 		})
 		if err != nil {
 			return "", err
@@ -254,20 +264,29 @@ func newNativeSyncJobHandler(application *app.App) jobs.JobHandler {
 	}
 }
 
-func syncConfiguredProviderSources(ctx context.Context, application *app.App, logger *slog.Logger) ([]string, error) {
+type providerSyncFailure struct {
+	Provider string `json:"provider"`
+	Error    string `json:"error"`
+}
+
+func syncConfiguredProviderSources(ctx context.Context, application *app.App, logger *slog.Logger) ([]string, []providerSyncFailure, error) {
 	if application == nil || application.Providers == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	providers := application.Providers.List()
 	if len(providers) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	synced := make([]string, 0, len(providers))
-	errs := make([]error, 0)
+	failed := make([]providerSyncFailure, 0)
 
 	for _, provider := range providers {
+		if err := ctx.Err(); err != nil {
+			return synced, failed, err
+		}
+
 		if provider == nil {
 			continue
 		}
@@ -283,12 +302,25 @@ func syncConfiguredProviderSources(ctx context.Context, application *app.App, lo
 
 		result, err := provider.Sync(ctx, providerregistry.SyncOptions{FullSync: true})
 		if err != nil {
-			errs = append(errs, fmt.Errorf("%s sync failed: %w", name, err))
+			failed = append(failed, providerSyncFailure{
+				Provider: name,
+				Error:    fmt.Sprintf("%s sync failed: %v", name, err),
+			})
+			if logger != nil {
+				logger.Warn("configured provider sync failed", "provider", name, "error", err)
+			}
 			continue
 		}
 
 		if result != nil && len(result.Errors) > 0 {
-			errs = append(errs, fmt.Errorf("%s sync reported errors: %s", name, strings.Join(result.Errors, "; ")))
+			message := fmt.Sprintf("%s sync reported errors: %s", name, strings.Join(result.Errors, "; "))
+			failed = append(failed, providerSyncFailure{
+				Provider: name,
+				Error:    message,
+			})
+			if logger != nil {
+				logger.Warn("configured provider sync reported errors", "provider", name, "errors", strings.Join(result.Errors, "; "))
+			}
 			continue
 		}
 
@@ -296,9 +328,9 @@ func syncConfiguredProviderSources(ctx context.Context, application *app.App, lo
 	}
 
 	sort.Strings(synced)
-	if len(errs) > 0 {
-		return synced, errors.Join(errs...)
-	}
+	sort.Slice(failed, func(i, j int) bool {
+		return failed[i].Provider < failed[j].Provider
+	})
 
-	return synced, nil
+	return synced, failed, nil
 }

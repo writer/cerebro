@@ -54,9 +54,12 @@ func TestSyncConfiguredProviderSources_SkipsNativeProviders(t *testing.T) {
 
 	application := &app.App{Providers: registry}
 
-	synced, err := syncConfiguredProviderSources(context.Background(), application, nil)
+	synced, failed, err := syncConfiguredProviderSources(context.Background(), application, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(failed) != 0 {
+		t.Fatalf("unexpected failed providers: %#v", failed)
 	}
 	if native.calls != 0 {
 		t.Fatalf("expected native provider to be skipped, got %d calls", native.calls)
@@ -69,7 +72,7 @@ func TestSyncConfiguredProviderSources_SkipsNativeProviders(t *testing.T) {
 	}
 }
 
-func TestSyncConfiguredProviderSources_AggregatesErrors(t *testing.T) {
+func TestSyncConfiguredProviderSources_CollectsErrorsWithoutFailing(t *testing.T) {
 	registry := providerregistry.NewRegistry()
 	failing := &testWorkerProvider{name: "github", err: errors.New("boom")}
 	success := &testWorkerProvider{name: "okta"}
@@ -78,12 +81,18 @@ func TestSyncConfiguredProviderSources_AggregatesErrors(t *testing.T) {
 
 	application := &app.App{Providers: registry}
 
-	synced, err := syncConfiguredProviderSources(context.Background(), application, nil)
-	if err == nil {
-		t.Fatal("expected error but got nil")
+	synced, failed, err := syncConfiguredProviderSources(context.Background(), application, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(err.Error(), "github sync failed") {
-		t.Fatalf("expected github sync failure in error, got %v", err)
+	if len(failed) != 1 {
+		t.Fatalf("expected one failed provider, got %#v", failed)
+	}
+	if failed[0].Provider != "github" {
+		t.Fatalf("expected github failed provider, got %#v", failed)
+	}
+	if !strings.Contains(failed[0].Error, "github sync failed") {
+		t.Fatalf("expected github sync failure message, got %q", failed[0].Error)
 	}
 	if failing.calls != 1 || success.calls != 1 {
 		t.Fatalf("expected both providers to be attempted, got failing=%d success=%d", failing.calls, success.calls)
