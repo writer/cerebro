@@ -109,6 +109,7 @@ func init() {
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(completionCmd)
 	rootCmd.AddCommand(serveCmd)
+	rootCmd.AddCommand(authCmd)
 	rootCmd.AddCommand(syncCmd)
 	rootCmd.AddCommand(policyCmd)
 	rootCmd.AddCommand(queryCmd)

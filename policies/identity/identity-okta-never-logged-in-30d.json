@@ -20,7 +20,7 @@
     }
   ],
   "enabled": true,
-  "query": "SELECT u.id AS id, u.login AS account_name, u.created AS created_at FROM okta_users u WHERE LOWER(COALESCE(u.status, '')) IN ('active','enabled','provisioned','onboarded') AND u.last_login IS NULL AND u.created < NOW() - INTERVAL '30 days'",
+  "query": "SELECT u.id AS id, u.login AS account_name, u.created AS created_at FROM okta_users u WHERE LOWER(COALESCE(u.status, '')) IN ('active','enabled','provisioned','onboarded') AND u.last_login IS NULL AND u.created < CURRENT_TIMESTAMP() - INTERVAL '30 days'",
   "remediation": "Remove or disable unused accounts and confirm provisioning flows are not creating unnecessary access.",
   "tags": [
     "okta",

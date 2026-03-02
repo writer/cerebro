@@ -8,10 +8,12 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/aws/smithy-go"
 	"github.com/google/uuid"
 )
 
@@ -486,18 +488,44 @@ func (w *Worker) runHeartbeat(ctx context.Context, receiptHandle, jobID string) 
 	defer ticker.Stop()
 
 	failures := 0
+	queueHeartbeatEnabled := true
+	requestTimeout := w.heartbeatRequestTimeout()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := w.queue.ExtendVisibility(ctx, receiptHandle, w.visibilityTimeout); err != nil {
+			// Always keep store lease alive to avoid duplicate claims even when queue heartbeat is degraded.
+			leaseCtx, leaseCancel := context.WithTimeout(ctx, requestTimeout)
+			if err := w.store.ExtendLease(leaseCtx, jobID, w.workerID, w.visibilityTimeout); err != nil {
+				if ctx.Err() == nil {
+					w.logError("lease extension failed", err, "job_id", jobID)
+				}
+			}
+			leaseCancel()
+
+			if !queueHeartbeatEnabled {
+				continue
+			}
+
+			hbCtx, hbCancel := context.WithTimeout(ctx, requestTimeout)
+			err := w.queue.ExtendVisibility(hbCtx, receiptHandle, w.visibilityTimeout)
+			hbCancel()
+			if err != nil {
 				if ctx.Err() == nil {
 					failures++
-					w.logError("heartbeat failed", err, "job_id", jobID, "failures", failures)
 					w.metrics.RecordHeartbeat(false)
+
+					if isTerminalVisibilityError(err) {
+						queueHeartbeatEnabled = false
+						w.logWarn("queue heartbeat disabled after terminal visibility error", "job_id", jobID, "failures", failures, "error", err)
+						continue
+					}
+
+					w.logError("heartbeat failed", err, "job_id", jobID, "failures", failures)
 				}
+
 				backoff := w.calculateHeartbeatBackoff(failures)
 				if backoff > 0 {
 					timer := time.NewTimer(backoff)
@@ -513,15 +541,56 @@ func (w *Worker) runHeartbeat(ctx context.Context, receiptHandle, jobID string) 
 
 			failures = 0
 			w.metrics.RecordHeartbeat(true)
+		}
+	}
+}
 
-			// Also extend DynamoDB lease
-			if err := w.store.ExtendLease(ctx, jobID, w.workerID, w.visibilityTimeout); err != nil {
-				if ctx.Err() == nil {
-					w.logError("lease extension failed", err, "job_id", jobID)
-				}
+func (w *Worker) heartbeatRequestTimeout() time.Duration {
+	timeout := w.heartbeatInterval / 2
+	if timeout <= 0 {
+		timeout = 5 * time.Second
+	}
+
+	if w.visibilityTimeout > 0 {
+		maxFromVisibility := w.visibilityTimeout / 2
+		if maxFromVisibility > 0 && timeout > maxFromVisibility {
+			timeout = maxFromVisibility
+		}
+	}
+
+	if timeout > 10*time.Second {
+		timeout = 10 * time.Second
+	}
+	if timeout < time.Second {
+		timeout = time.Second
+	}
+
+	return timeout
+}
+
+func isTerminalVisibilityError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) {
+		code := strings.ToLower(strings.TrimSpace(apiErr.ErrorCode()))
+		msg := strings.ToLower(strings.TrimSpace(apiErr.ErrorMessage()))
+		switch code {
+		case "receipthandleisinvalid", "aws.simplequeueservice.nonexistentqueue", "awssimplequeueservice.nonexistentqueue":
+			return true
+		case "invalidparametervalue":
+			if strings.Contains(msg, "receipthandle") || strings.Contains(msg, "message does not exist") || strings.Contains(msg, "not available for visibility timeout change") {
+				return true
 			}
 		}
 	}
+
+	normalized := strings.ToLower(err.Error())
+	return strings.Contains(normalized, "receipthandle is invalid") ||
+		strings.Contains(normalized, "message does not exist or is not available for visibility timeout change") ||
+		strings.Contains(normalized, "aws.simplequeueservice.nonexistentqueue")
 }
 
 func (w *Worker) handleJobFailure(ctx context.Context, job *Job, receiptHandle string, jobErr error, timedOut bool, idempotencyKey, correlationID string) {

@@ -98,6 +98,69 @@ func TestExtractOktaPolicyAppIDs(t *testing.T) {
 	}
 }
 
+func TestExtractOktaAppTarget(t *testing.T) {
+	tests := []struct {
+		name          string
+		input         interface{}
+		expectedID    string
+		expectedLabel string
+	}{
+		{
+			name: "target list with appinstance",
+			input: []interface{}{
+				map[string]interface{}{"type": "User", "id": "user-1"},
+				map[string]interface{}{"type": "AppInstance", "id": "app-1", "display_name": "Salesforce"},
+			},
+			expectedID:    "app-1",
+			expectedLabel: "Salesforce",
+		},
+		{
+			name:          "single app object",
+			input:         map[string]interface{}{"type": "application", "id": "app-2", "alternate_id": "jira"},
+			expectedID:    "app-2",
+			expectedLabel: "jira",
+		},
+		{
+			name:          "unsupported target type",
+			input:         []interface{}{map[string]interface{}{"type": "User", "id": "user-1"}},
+			expectedID:    "",
+			expectedLabel: "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			id, label := extractOktaAppTarget(tc.input)
+			if id != tc.expectedID || label != tc.expectedLabel {
+				t.Fatalf("extractOktaAppTarget() = (%q, %q), want (%q, %q)", id, label, tc.expectedID, tc.expectedLabel)
+			}
+		})
+	}
+}
+
+func TestNormalizeOktaLogExtractsTargetApp(t *testing.T) {
+	log := map[string]interface{}{
+		"uuid":      "evt-1",
+		"eventType": "user.authentication.sso",
+		"actor": map[string]interface{}{
+			"id":   "user-1",
+			"type": "User",
+		},
+		"target": []interface{}{
+			map[string]interface{}{"type": "User", "id": "user-1"},
+			map[string]interface{}{"type": "AppInstance", "id": "app-1", "displayName": "Salesforce"},
+		},
+	}
+
+	normalized := normalizeOktaLog(log)
+	if got := asString(normalized["target_app_id"]); got != "app-1" {
+		t.Fatalf("target_app_id = %q, want app-1", got)
+	}
+	if got := asString(normalized["target_app_label"]); got != "Salesforce" {
+		t.Fatalf("target_app_label = %q, want Salesforce", got)
+	}
+}
+
 func TestOktaRequestWithResponse_RetryOn429(t *testing.T) {
 	var calls int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

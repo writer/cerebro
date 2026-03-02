@@ -20,7 +20,7 @@
     }
   ],
   "enabled": true,
-  "query": "SELECT u.id AS id, u.email AS email FROM okta_users u WHERE LOWER(COALESCE(u.status, '')) IN ('active','enabled','provisioned','onboarded') AND (COALESCE(u.is_admin, false) = true) AND LOWER(COALESCE(u.email, '')) SIMILAR TO '%@(gmail|yahoo|hotmail|outlook)\\\\.com'",
+  "query": "SELECT u.id AS id, u.email AS email FROM okta_users u WHERE LOWER(COALESCE(u.status, '')) IN ('active','enabled','provisioned','onboarded') AND (COALESCE(u.is_admin, false) = true) AND LOWER(COALESCE(u.email, '')) RLIKE '.*@(gmail|yahoo|hotmail|outlook)\\\\.com$'",
   "remediation": "Migrate privileged accounts to corporate identity domains and remove personal-domain privileged access.",
   "tags": [
     "okta",

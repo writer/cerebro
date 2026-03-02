@@ -1,0 +1,77 @@
+name: GCP Auth Smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "15 7 * * *"
+
+jobs:
+  gcp-auth-smoke:
+    if: ${{ secrets.GCP_SMOKE_PROJECT_ID != '' && secrets.GCP_SMOKE_IMPERSONATE_SERVICE_ACCOUNT != '' && secrets.GCP_SMOKE_IMPERSONATE_DELEGATES != '' && (secrets.GCP_SMOKE_SOURCE_CREDENTIALS_JSON != '' || secrets.GCP_SMOKE_WORKLOAD_IDENTITY_PROVIDER != '') }}
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Authenticate to GCP (gcp-git-roles)
+        id: gcp-auth
+        if: ${{ secrets.GCP_SMOKE_WORKLOAD_IDENTITY_PROVIDER != '' }}
+        uses: WriterInternal/gcp-git-roles@v1
+        with:
+          workload-identity-provider: ${{ secrets.GCP_SMOKE_WORKLOAD_IDENTITY_PROVIDER }}
+          deployment-profile: ${{ secrets.GCP_SMOKE_DEPLOYMENT_PROFILE }}
+          project-id: ${{ secrets.GCP_SMOKE_PROJECT_ID }}
+
+      - name: Write source credentials file
+        id: source-json
+        if: ${{ secrets.GCP_SMOKE_SOURCE_CREDENTIALS_JSON != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/gcp-smoke-source.json" <<'JSON'
+          ${{ secrets.GCP_SMOKE_SOURCE_CREDENTIALS_JSON }}
+          JSON
+          chmod 600 "$RUNNER_TEMP/gcp-smoke-source.json"
+          echo "path=$RUNNER_TEMP/gcp-smoke-source.json" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve source credentials path
+        id: source-creds
+        shell: bash
+        env:
+          AUTH_CREDENTIALS_FILE_PATH: ${{ steps.gcp-auth.outputs.credentials_file_path }}
+          JSON_CREDENTIALS_FILE_PATH: ${{ steps.source-json.outputs.path }}
+        run: |
+          set -euo pipefail
+
+          selected=""
+          if [ -n "${AUTH_CREDENTIALS_FILE_PATH}" ] && [ -f "${AUTH_CREDENTIALS_FILE_PATH}" ]; then
+            selected="${AUTH_CREDENTIALS_FILE_PATH}"
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] && [ -f "${GOOGLE_APPLICATION_CREDENTIALS}" ]; then
+            selected="${GOOGLE_APPLICATION_CREDENTIALS}"
+          elif [ -n "${JSON_CREDENTIALS_FILE_PATH}" ] && [ -f "${JSON_CREDENTIALS_FILE_PATH}" ]; then
+            selected="${JSON_CREDENTIALS_FILE_PATH}"
+          fi
+
+          if [ -z "${selected}" ]; then
+            echo "No readable source credentials file found from gcp-git-roles or GCP_SMOKE_SOURCE_CREDENTIALS_JSON" >&2
+            exit 1
+          fi
+
+          echo "path=${selected}" >> "$GITHUB_OUTPUT"
+
+      - name: Run live GCP auth smoke test
+        env:
+          CEREBRO_LIVE_GCP_AUTH_SMOKE: "1"
+          CEREBRO_GCP_SMOKE_SOURCE_CREDENTIALS_FILE: ${{ steps.source-creds.outputs.path }}
+          CEREBRO_GCP_SMOKE_PROJECT: ${{ secrets.GCP_SMOKE_PROJECT_ID }}
+          CEREBRO_GCP_SMOKE_ORG: ${{ secrets.GCP_SMOKE_ORG_ID }}
+          CEREBRO_GCP_SMOKE_IMPERSONATE_SERVICE_ACCOUNT: ${{ secrets.GCP_SMOKE_IMPERSONATE_SERVICE_ACCOUNT }}
+          CEREBRO_GCP_SMOKE_IMPERSONATE_DELEGATES: ${{ secrets.GCP_SMOKE_IMPERSONATE_DELEGATES }}
+        run: go test ./internal/cli -run TestLiveGCPImpersonationDelegateChainSmoke -count=1 -v

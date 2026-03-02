@@ -15,19 +15,21 @@ import (
 // GCPAuthConfig holds all inputs needed to resolve GCP credentials.
 // Fields can be populated from CLI flags (direct sync) or env vars (scheduled sync).
 type GCPAuthConfig struct {
-	CredentialsFile       string
-	ImpersonateSA         string
-	ImpersonateDelegates  string
-	WIFAudience           string
+	CredentialsFile          string
+	ImpersonateSA            string
+	ImpersonateDelegates     string
+	ImpersonateTokenLifetime string
+	WIFAudience              string
 }
 
 // GCPAuthConfigFromEnv builds a GCPAuthConfig from environment variables.
 func GCPAuthConfigFromEnv() GCPAuthConfig {
 	return GCPAuthConfig{
-		CredentialsFile:      firstNonEmptyEnv("CEREBRO_GCP_CREDENTIALS_FILE"),
-		ImpersonateSA:        firstNonEmptyEnv("CEREBRO_GCP_IMPERSONATE_SERVICE_ACCOUNT"),
-		ImpersonateDelegates: firstNonEmptyEnv("CEREBRO_GCP_IMPERSONATE_DELEGATES"),
-		WIFAudience:          firstNonEmptyEnv("CEREBRO_GCP_WIF_AUDIENCE"),
+		CredentialsFile:          firstNonEmptyEnv("CEREBRO_GCP_CREDENTIALS_FILE"),
+		ImpersonateSA:            firstNonEmptyEnv("CEREBRO_GCP_IMPERSONATE_SERVICE_ACCOUNT"),
+		ImpersonateDelegates:     firstNonEmptyEnv("CEREBRO_GCP_IMPERSONATE_DELEGATES"),
+		ImpersonateTokenLifetime: firstNonEmptyEnv("CEREBRO_GCP_IMPERSONATE_TOKEN_LIFETIME_SECONDS"),
+		WIFAudience:              firstNonEmptyEnv("CEREBRO_GCP_WIF_AUDIENCE"),
 	}
 }
 
@@ -35,10 +37,11 @@ func GCPAuthConfigFromEnv() GCPAuthConfig {
 // back to env vars for WIF-specific settings that have no CLI flag.
 func GCPAuthConfigFromFlags() GCPAuthConfig {
 	return GCPAuthConfig{
-		CredentialsFile:      syncGCPCredentialsFile,
-		ImpersonateSA:        syncGCPImpersonateSA,
-		ImpersonateDelegates: syncGCPImpersonateDel,
-		WIFAudience:          firstNonEmptyEnv("CEREBRO_GCP_WIF_AUDIENCE"),
+		CredentialsFile:          syncGCPCredentialsFile,
+		ImpersonateSA:            syncGCPImpersonateSA,
+		ImpersonateDelegates:     syncGCPImpersonateDel,
+		ImpersonateTokenLifetime: syncGCPImpersonateTTL,
+		WIFAudience:              firstNonEmptyEnv("CEREBRO_GCP_WIF_AUDIENCE"),
 	}
 }
 
@@ -67,7 +70,20 @@ func ApplyGCPAuth(ctx context.Context, cfg GCPAuthConfig) (cleanup func(), err e
 	credentialsFile := strings.TrimSpace(cfg.CredentialsFile)
 	impersonateSA := strings.TrimSpace(cfg.ImpersonateSA)
 	delegates := parseCommaSeparatedValues(cfg.ImpersonateDelegates)
+	tokenLifetimeSeconds, err := parseBoundedPositiveIntDirective(cfg.ImpersonateTokenLifetime, "--gcp-impersonate-token-lifetime-seconds", 600, 43200)
+	if err != nil {
+		return cleanup, err
+	}
 	wifAudience := strings.TrimSpace(cfg.WIFAudience)
+
+	if impersonateSA == "" {
+		if len(delegates) > 0 {
+			return cleanup, fmt.Errorf("--gcp-impersonate-delegates requires --gcp-impersonate-service-account")
+		}
+		if tokenLifetimeSeconds > 0 {
+			return cleanup, fmt.Errorf("--gcp-impersonate-token-lifetime-seconds requires --gcp-impersonate-service-account")
+		}
+	}
 
 	// ------ case 1/2: explicit credentials file ------
 	if credentialsFile != "" {
@@ -83,7 +99,7 @@ func ApplyGCPAuth(ctx context.Context, cfg GCPAuthConfig) (cleanup func(), err e
 		}
 
 		// Impersonation with explicit source credentials.
-		tmpPath, err := writeImpersonationCredentials(credentialsFile, impersonateSA, delegates)
+		tmpPath, err := writeImpersonationCredentials(credentialsFile, impersonateSA, delegates, tokenLifetimeSeconds)
 		if err != nil {
 			return cleanup, err
 		}
@@ -121,7 +137,7 @@ func ApplyGCPAuth(ctx context.Context, cfg GCPAuthConfig) (cleanup func(), err e
 		if err != nil {
 			return cleanup, err
 		}
-		tmpPath, err := writeImpersonationCredentials(sourcePath, impersonateSA, delegates)
+		tmpPath, err := writeImpersonationCredentials(sourcePath, impersonateSA, delegates, tokenLifetimeSeconds)
 		if err != nil {
 			return cleanup, err
 		}
@@ -180,10 +196,10 @@ func ensureAWSEnvCredentials(ctx context.Context, snapshots map[string]envSnapsh
 // that the Google auth library reads to perform AWS-based WIF token exchange.
 func writeWIFExternalAccountCredentials(audience, impersonateSA string, delegates []string) (string, error) {
 	payload := map[string]interface{}{
-		"type":                           "external_account",
-		"audience":                       audience,
-		"subject_token_type":             "urn:ietf:params:aws:token-type:aws4_request",
-		"token_url":                      "https://sts.googleapis.com/v1/token",
+		"type":               "external_account",
+		"audience":           audience,
+		"subject_token_type": "urn:ietf:params:aws:token-type:aws4_request",
+		"token_url":          "https://sts.googleapis.com/v1/token",
 		"credential_source": map[string]interface{}{
 			"environment_id":                 "aws1",
 			"region_url":                     "http://169.254.169.254/latest/meta-data/placement/availability-zone",
@@ -209,7 +225,7 @@ func writeWIFExternalAccountCredentials(audience, impersonateSA string, delegate
 
 // writeImpersonationCredentials creates a temporary impersonated_service_account
 // JSON wrapping the given source credentials file.
-func writeImpersonationCredentials(sourcePath, impersonateSA string, delegates []string) (string, error) {
+func writeImpersonationCredentials(sourcePath, impersonateSA string, delegates []string, tokenLifetimeSeconds int) (string, error) {
 	sourceData, err := os.ReadFile(sourcePath)
 	if err != nil {
 		return "", fmt.Errorf("read GCP source credentials %q: %w", sourcePath, err)
@@ -231,6 +247,9 @@ func writeImpersonationCredentials(sourcePath, impersonateSA string, delegates [
 		"type":                              "impersonated_service_account",
 		"service_account_impersonation_url": impersonationURL,
 		"source_credentials":                sourceCreds,
+	}
+	if tokenLifetimeSeconds > 0 {
+		payload["token_lifetime_seconds"] = tokenLifetimeSeconds
 	}
 	if len(delegates) > 0 {
 		payload["delegates"] = delegates

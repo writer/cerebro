@@ -89,7 +89,7 @@ func (e *GCPAssetInventoryEngine) SyncAll(ctx context.Context) ([]SyncResult, er
 		return nil, fmt.Errorf("either scope or projects must be set")
 	}
 
-	client, err := asset.NewClient(ctx)
+	client, err := asset.NewClient(ctx, gcpClientOptionsFromContext(ctx)...)
 	if err != nil {
 		return nil, fmt.Errorf("create asset client: %w", err)
 	}
@@ -505,7 +505,7 @@ func gcpProjectIDFromScope(scope string) string {
 
 // ListOrganizationProjects lists all projects in an organization
 func ListOrganizationProjects(ctx context.Context, orgID string) ([]string, error) {
-	client, err := asset.NewClient(ctx)
+	client, err := asset.NewClient(ctx, gcpClientOptionsFromContext(ctx)...)
 	if err != nil {
 		return nil, fmt.Errorf("create asset client: %w", err)
 	}

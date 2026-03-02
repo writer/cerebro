@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -17,6 +19,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials/processcreds"
 	"github.com/spf13/cobra"
+	"google.golang.org/api/option"
 
 	"github.com/writerinternal/cerebro/internal/app"
 	"github.com/writerinternal/cerebro/internal/scanner"
@@ -55,10 +58,17 @@ Examples:
 
 var (
 	syncScanAfter          bool
+	syncPreflightOnly      bool
+	syncStrictExit         bool
 	syncGCP                bool
 	syncGCPProject         string
 	syncGCPProjects        string // comma-separated list of projects
+	syncScope              string
+	syncProjectsFile       string
+	syncProjectInclude     string
+	syncProjectExclude     string
 	syncGCPOrg             string // organization ID for multi-project sync
+	syncGCPProjectTimeout  string
 	syncMultiRegion        bool
 	syncRegion             string
 	syncUseAssetAPI        bool   // use Cloud Asset Inventory API
@@ -72,10 +82,14 @@ var (
 	syncConcurrency        int
 	syncTable              string
 	syncOutput             string
+	syncReportFile         string
 	syncValidate           bool
+	syncAuthMode           string
+	syncShowAuthChain      bool
 	syncGCPCredentialsFile string
 	syncGCPImpersonateSA   string
 	syncGCPImpersonateDel  string
+	syncGCPImpersonateTTL  string
 	syncAWSProfile         string
 	syncAWSProfiles        string // comma-separated AWS SSO profiles
 	syncAWSConfigFile      string
@@ -88,6 +102,10 @@ var (
 	syncAWSRoleExternalID  string
 	syncAWSRoleMFASerial   string
 	syncAWSRoleMFAToken    string
+	syncAWSRoleSourceID    string
+	syncAWSRoleDuration    string
+	syncAWSRoleTags        string
+	syncAWSRoleTransitive  string
 	syncAWSOrg             bool
 	syncAWSOrgRole         string
 	syncAWSOrgInclude      string
@@ -96,12 +114,27 @@ var (
 	syncBackfillBatchSize  int
 )
 
+const (
+	syncAuthModeAuto          = "auto"
+	syncAuthModeCredentials   = "credentials"
+	syncAuthModeImpersonation = "impersonation"
+	syncAuthModeWIF           = "wif"
+	syncAuthModeADC           = "adc"
+)
+
 func init() {
 	syncCmd.Flags().BoolVar(&syncScanAfter, "scan-after", false, "Run policy scan after successful sync")
+	syncCmd.Flags().BoolVar(&syncPreflightOnly, "preflight-only", false, "Run auth and API access checks without writing sync data")
+	syncCmd.Flags().BoolVar(&syncStrictExit, "strict-exit", false, "Return non-zero exit if any table reports errors")
 	syncCmd.Flags().BoolVar(&syncGCP, "gcp", false, "Sync GCP resources instead of AWS")
 	syncCmd.Flags().StringVar(&syncGCPProject, "gcp-project", "", "GCP project ID to sync (required with --gcp unless using --gcp-org)")
 	syncCmd.Flags().StringVar(&syncGCPProjects, "gcp-projects", "", "Comma-separated list of GCP project IDs to sync")
+	syncCmd.Flags().StringVar(&syncScope, "scope", "", "Provider scope selector: org:<id>, project:<id>, or projects-file:<path> (currently GCP)")
+	syncCmd.Flags().StringVar(&syncProjectsFile, "projects-file", "", "Path to newline/comma-delimited project IDs for multi-project GCP sync")
+	syncCmd.Flags().StringVar(&syncProjectInclude, "project-include", "", "Comma-separated project IDs to include after scope resolution")
+	syncCmd.Flags().StringVar(&syncProjectExclude, "project-exclude", "", "Comma-separated project IDs to exclude after scope resolution")
 	syncCmd.Flags().StringVar(&syncGCPOrg, "gcp-org", "", "GCP organization ID for multi-project sync (syncs all projects)")
+	syncCmd.Flags().StringVar(&syncGCPProjectTimeout, "gcp-project-timeout-seconds", "", "Per-project timeout in seconds for GCP multi-project sync (30-86400)")
 	syncCmd.Flags().BoolVar(&syncMultiRegion, "multi-region", false, "Scan all major AWS regions (us-east-1, us-west-2, eu-west-1, etc.)")
 	syncCmd.Flags().StringVarP(&syncRegion, "region", "r", "", "AWS region to sync when --multi-region is false")
 	syncCmd.Flags().BoolVar(&syncUseAssetAPI, "asset-api", false, "Use GCP Cloud Asset Inventory API for efficient bulk fetching")
@@ -115,10 +148,14 @@ func init() {
 	syncCmd.Flags().IntVar(&syncConcurrency, "concurrency", 20, "Max concurrent table syncs for native engines")
 	syncCmd.Flags().StringVar(&syncTable, "table", "", "Sync only specific table(s), comma-separated (e.g., aws_iam_accounts)")
 	syncCmd.Flags().StringVarP(&syncOutput, "output", "o", "table", "Output format (table, json)")
+	syncCmd.Flags().StringVar(&syncReportFile, "report-file", "", "Write sync/preflight JSON summary to a file path")
 	syncCmd.Flags().BoolVar(&syncValidate, "validate", false, "Validate Snowflake tables without fetching resources")
+	syncCmd.Flags().StringVar(&syncAuthMode, "auth-mode", "auto", "Auth mode: auto, credentials, impersonation, wif, adc")
+	syncCmd.Flags().BoolVar(&syncShowAuthChain, "show-auth-chain", false, "Print resolved authentication chain before execution")
 	syncCmd.Flags().StringVar(&syncGCPCredentialsFile, "gcp-credentials-file", "", "Path to GCP credentials JSON file (service-account or external-account config)")
 	syncCmd.Flags().StringVar(&syncGCPImpersonateSA, "gcp-impersonate-service-account", "", "Service account email to impersonate for GCP API calls")
 	syncCmd.Flags().StringVar(&syncGCPImpersonateDel, "gcp-impersonate-delegates", "", "Comma-separated delegate service accounts for GCP impersonation chain")
+	syncCmd.Flags().StringVar(&syncGCPImpersonateTTL, "gcp-impersonate-token-lifetime-seconds", "", "Access token lifetime in seconds for GCP impersonation (600-43200)")
 	syncCmd.Flags().StringVar(&syncAWSProfile, "aws-profile", "", "AWS shared config profile for single-account sync")
 	syncCmd.Flags().StringVar(&syncAWSProfiles, "aws-profiles", "", "Comma-separated AWS SSO profile names to sync multiple accounts")
 	syncCmd.Flags().StringVar(&syncAWSConfigFile, "aws-config-file", "", "Path to AWS shared config file")
@@ -131,6 +168,10 @@ func init() {
 	syncCmd.Flags().StringVar(&syncAWSRoleExternalID, "aws-role-external-id", "", "External ID to use with --aws-role-arn")
 	syncCmd.Flags().StringVar(&syncAWSRoleMFASerial, "aws-role-mfa-serial", "", "MFA serial/ARN to use with --aws-role-arn")
 	syncCmd.Flags().StringVar(&syncAWSRoleMFAToken, "aws-role-mfa-token", "", "One-time MFA token code to use with --aws-role-arn")
+	syncCmd.Flags().StringVar(&syncAWSRoleSourceID, "aws-role-source-identity", "", "Source identity to attach to --aws-role-arn sessions")
+	syncCmd.Flags().StringVar(&syncAWSRoleDuration, "aws-role-duration-seconds", "", "Duration in seconds for --aws-role-arn sessions (900-43200)")
+	syncCmd.Flags().StringVar(&syncAWSRoleTags, "aws-role-session-tags", "", "Comma-separated session tags (key=value) for --aws-role-arn")
+	syncCmd.Flags().StringVar(&syncAWSRoleTransitive, "aws-role-transitive-tag-keys", "", "Comma-separated transitive tag keys for --aws-role-session-tags")
 	syncCmd.Flags().BoolVar(&syncAWSOrg, "aws-org", false, "Sync all AWS organization accounts using assumed roles")
 	syncCmd.Flags().StringVar(&syncAWSOrgRole, "aws-org-role", "OrganizationAccountAccessRole", "IAM role name (or ARN template with {account_id}) to assume in member accounts")
 	syncCmd.Flags().StringVar(&syncAWSOrgInclude, "aws-org-include", "", "Comma-separated AWS account IDs to include when syncing org accounts")
@@ -146,44 +187,96 @@ func runSync(cmd *cobra.Command, args []string) error {
 	defer cancel()
 	start := time.Now()
 
+	if err := validateSyncOutputFormat(); err != nil {
+		return err
+	}
+
+	if err := applySyncScopeDirectives(); err != nil {
+		return err
+	}
+
 	// Kubernetes sync
 	if syncK8s {
+		if syncPreflightOnly {
+			return fmt.Errorf("--preflight-only is currently supported for AWS and GCP sync")
+		}
 		return runK8sSync(ctx, start)
 	}
 
 	// Azure sync
 	if syncAzure {
+		if syncPreflightOnly {
+			return fmt.Errorf("--preflight-only is currently supported for AWS and GCP sync")
+		}
 		return runAzureSync(ctx, start)
 	}
 
 	// GCP sync
 	if syncGCP {
+		if err := validateSyncAuthMode("gcp"); err != nil {
+			return err
+		}
+
+		if syncShowAuthChain {
+			Info("GCP auth chain: %s", describeCurrentGCPAuthChain())
+		}
+
+		if syncPreflightOnly {
+			return runGCPPreflightOnly(ctx, start)
+		}
+
 		cleanup, err := applyGCPAuthOverrides()
 		if err != nil {
 			return err
 		}
 		defer cleanup()
+
 		// Handle multi-project sync via organization
 		if syncGCPOrg != "" {
 			return runGCPOrgSync(ctx, start, syncGCPOrg)
 		}
-		// Handle multi-project sync via explicit list
-		if syncGCPProjects != "" {
-			projects := normalizeProjectIDs(parseCommaSeparatedValues(syncGCPProjects))
-			if len(projects) == 0 {
-				return fmt.Errorf("--gcp-projects did not include any valid project IDs")
+
+		projects, err := resolveExplicitGCPProjects()
+		if err != nil {
+			return err
+		}
+		if len(projects) > 0 {
+			if len(projects) == 1 && !syncUseAssetAPI {
+				return runGCPSync(ctx, start, projects[0])
+			}
+			if syncUseAssetAPI {
+				return runGCPAssetAPISync(ctx, start, projects)
 			}
 			return runGCPMultiProjectSync(ctx, start, projects)
 		}
+
+		// Handle multi-project sync via explicit list
 		// Handle single project sync
 		projectID := strings.TrimSpace(syncGCPProject)
 		if projectID == "" {
-			return fmt.Errorf("--gcp-project, --gcp-projects, or --gcp-org is required with --gcp")
+			return fmt.Errorf("--gcp-project, --gcp-projects, --projects-file, --scope, or --gcp-org is required with --gcp")
 		}
+		filteredProject := applyProjectFilters([]string{projectID}, parseCommaSeparatedValues(syncProjectInclude), parseCommaSeparatedValues(syncProjectExclude))
+		if len(filteredProject) == 0 {
+			return fmt.Errorf("selected project %q was filtered out by --project-include/--project-exclude", projectID)
+		}
+		projectID = filteredProject[0]
 		if syncUseAssetAPI {
 			return runGCPAssetAPISync(ctx, start, []string{projectID})
 		}
 		return runGCPSync(ctx, start, projectID)
+	}
+
+	if err := validateSyncAuthMode("aws"); err != nil {
+		return err
+	}
+
+	if syncShowAuthChain {
+		Info("AWS auth chain: %s", describeCurrentAWSAuthChain())
+	}
+
+	if syncPreflightOnly {
+		return runAWSPreflightOnly(ctx, start)
 	}
 
 	awsCleanup, err := applyAWSAuthOverrides()
@@ -197,15 +290,6 @@ func runSync(cmd *cobra.Command, args []string) error {
 		if syncAWSProfiles != "" {
 			Warning("Ignoring --aws-profiles because --aws-org is set")
 		}
-		if syncAWSRoleARN != "" {
-			Warning("Ignoring --aws-role-arn because --aws-org uses --aws-org-role per account")
-		}
-		if syncAWSRoleExternalID != "" {
-			Warning("Ignoring --aws-role-external-id because --aws-org is set")
-		}
-		if syncAWSRoleMFASerial != "" || syncAWSRoleMFAToken != "" {
-			Warning("Ignoring --aws-role-mfa-* because --aws-org uses --aws-org-role per account")
-		}
 		return runAWSOrgSync(ctx, start)
 	}
 
@@ -218,6 +302,646 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	return runNativeSync(ctx, start)
+}
+
+func validateSyncOutputFormat() error {
+	format := strings.ToLower(strings.TrimSpace(syncOutput))
+	if format == "" {
+		format = FormatTable
+	}
+	if format != FormatTable && format != FormatJSON {
+		return fmt.Errorf("--output must be one of: %s, %s", FormatTable, FormatJSON)
+	}
+	syncOutput = format
+	return nil
+}
+
+func applySyncScopeDirectives() error {
+	if !syncGCP {
+		if strings.TrimSpace(syncScope) != "" || strings.TrimSpace(syncProjectsFile) != "" || strings.TrimSpace(syncProjectInclude) != "" || strings.TrimSpace(syncProjectExclude) != "" {
+			return fmt.Errorf("--scope/--projects-file/--project-include/--project-exclude are currently supported only with --gcp")
+		}
+		return nil
+	}
+
+	scope := strings.TrimSpace(syncScope)
+	projectsFile := strings.TrimSpace(syncProjectsFile)
+	if scope == "" {
+		if projectsFile != "" && strings.TrimSpace(syncGCPOrg) != "" {
+			return fmt.Errorf("--projects-file cannot be combined with --gcp-org")
+		}
+		if projectsFile != "" && strings.TrimSpace(syncGCPProject) != "" {
+			return fmt.Errorf("--projects-file cannot be combined with --gcp-project")
+		}
+		return nil
+	}
+
+	if strings.TrimSpace(syncGCPProject) != "" || strings.TrimSpace(syncGCPProjects) != "" || strings.TrimSpace(syncGCPOrg) != "" || projectsFile != "" {
+		return fmt.Errorf("--scope cannot be combined with --gcp-project, --gcp-projects, --gcp-org, or --projects-file")
+	}
+
+	lowerScope := strings.ToLower(scope)
+	switch {
+	case strings.HasPrefix(lowerScope, "org:"):
+		value := strings.TrimSpace(scope[len("org:"):])
+		if value == "" {
+			return fmt.Errorf("--scope org:<id> requires an organization ID")
+		}
+		syncGCPOrg = value
+	case strings.HasPrefix(lowerScope, "project:"):
+		value := strings.TrimSpace(scope[len("project:"):])
+		if value == "" {
+			return fmt.Errorf("--scope project:<id> requires a project ID")
+		}
+		syncGCPProject = value
+	case strings.HasPrefix(lowerScope, "projects-file:"):
+		value := strings.TrimSpace(scope[len("projects-file:"):])
+		if value == "" {
+			return fmt.Errorf("--scope projects-file:<path> requires a file path")
+		}
+		syncProjectsFile = value
+	default:
+		return fmt.Errorf("--scope must use org:<id>, project:<id>, or projects-file:<path>")
+	}
+
+	return nil
+}
+
+func resolveExplicitGCPProjects() ([]string, error) {
+	projects := normalizeProjectIDs(parseCommaSeparatedValues(syncGCPProjects))
+	if path := strings.TrimSpace(syncProjectsFile); path != "" {
+		fileProjects, err := loadProjectIDsFromFile(path)
+		if err != nil {
+			return nil, err
+		}
+		projects = append(projects, fileProjects...)
+	}
+
+	projects = normalizeProjectIDs(projects)
+	projects = applyProjectFilters(projects, parseCommaSeparatedValues(syncProjectInclude), parseCommaSeparatedValues(syncProjectExclude))
+
+	if (strings.TrimSpace(syncGCPProjects) != "" || strings.TrimSpace(syncProjectsFile) != "") && len(projects) == 0 {
+		return nil, fmt.Errorf("--gcp-projects/--projects-file did not include any valid projects after filters")
+	}
+
+	return projects, nil
+}
+
+func loadProjectIDsFromFile(path string) ([]string, error) {
+	trimmedPath := strings.TrimSpace(path)
+	if trimmedPath == "" {
+		return nil, nil
+	}
+	if err := validateReadableFile(trimmedPath, "--projects-file"); err != nil {
+		return nil, err
+	}
+
+	file, err := os.Open(trimmedPath)
+	if err != nil {
+		return nil, fmt.Errorf("read --projects-file %q: %w", trimmedPath, err)
+	}
+	defer func() { _ = file.Close() }()
+
+	var projects []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if idx := strings.Index(line, "#"); idx >= 0 {
+			line = line[:idx]
+		}
+		parts := parseCommaSeparatedValues(line)
+		if len(parts) == 0 {
+			continue
+		}
+		projects = append(projects, parts...)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("scan --projects-file %q: %w", trimmedPath, err)
+	}
+
+	return normalizeProjectIDs(projects), nil
+}
+
+func applyProjectFilters(projects, include, exclude []string) []string {
+	projects = normalizeProjectIDs(projects)
+	if len(projects) == 0 {
+		return nil
+	}
+
+	includeSet := buildLowerStringSet(include)
+	excludeSet := buildLowerStringSet(exclude)
+	filtered := make([]string, 0, len(projects))
+	for _, project := range projects {
+		key := strings.ToLower(strings.TrimSpace(project))
+		if key == "" {
+			continue
+		}
+		if len(includeSet) > 0 {
+			if _, ok := includeSet[key]; !ok {
+				continue
+			}
+		}
+		if _, blocked := excludeSet[key]; blocked {
+			continue
+		}
+		filtered = append(filtered, project)
+	}
+
+	return filtered
+}
+
+func buildLowerStringSet(values []string) map[string]struct{} {
+	if len(values) == 0 {
+		return nil
+	}
+	set := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		trimmed := strings.ToLower(strings.TrimSpace(value))
+		if trimmed == "" {
+			continue
+		}
+		set[trimmed] = struct{}{}
+	}
+	if len(set) == 0 {
+		return nil
+	}
+	return set
+}
+
+func validateSyncAuthMode(provider string) error {
+	mode := strings.ToLower(strings.TrimSpace(syncAuthMode))
+	if mode == "" {
+		mode = syncAuthModeAuto
+	}
+	if mode != syncAuthModeAuto && mode != syncAuthModeCredentials && mode != syncAuthModeImpersonation && mode != syncAuthModeWIF && mode != syncAuthModeADC {
+		return fmt.Errorf("--auth-mode must be one of: %s, %s, %s, %s, %s", syncAuthModeAuto, syncAuthModeCredentials, syncAuthModeImpersonation, syncAuthModeWIF, syncAuthModeADC)
+	}
+	syncAuthMode = mode
+
+	if provider == "gcp" {
+		return validateGCPSyncAuthMode(mode)
+	}
+	return validateAWSSyncAuthMode(mode)
+}
+
+func validateGCPSyncAuthMode(mode string) error {
+	sourcePath := strings.TrimSpace(syncGCPCredentialsFile)
+	impersonationTarget := strings.TrimSpace(syncGCPImpersonateSA)
+
+	switch mode {
+	case syncAuthModeAuto:
+		return nil
+	case syncAuthModeADC:
+		if sourcePath != "" || impersonationTarget != "" {
+			return fmt.Errorf("--auth-mode=adc cannot be combined with --gcp-credentials-file or --gcp-impersonate-service-account")
+		}
+		return nil
+	case syncAuthModeCredentials:
+		if sourcePath == "" {
+			return fmt.Errorf("--auth-mode=credentials requires --gcp-credentials-file")
+		}
+		if impersonationTarget != "" {
+			return fmt.Errorf("--auth-mode=credentials cannot be combined with --gcp-impersonate-service-account")
+		}
+		return nil
+	case syncAuthModeImpersonation:
+		if impersonationTarget == "" {
+			return fmt.Errorf("--auth-mode=impersonation requires --gcp-impersonate-service-account")
+		}
+		return nil
+	case syncAuthModeWIF:
+		resolvedPath, err := resolveGCPSourceCredentialsPath(sourcePath)
+		if err != nil {
+			return fmt.Errorf("--auth-mode=wif requires a resolvable external account credentials file: %w", err)
+		}
+		raw, err := os.ReadFile(resolvedPath)
+		if err != nil {
+			return fmt.Errorf("read GCP credentials file %q: %w", resolvedPath, err)
+		}
+		credType, err := detectGCPCredentialsType(raw, resolvedPath)
+		if err != nil {
+			return fmt.Errorf("detect GCP credentials type for %q: %w", resolvedPath, err)
+		}
+		if credType != option.ExternalAccount {
+			return fmt.Errorf("--auth-mode=wif requires external-account credentials (got %q from %s)", credType, resolvedPath)
+		}
+		return nil
+	default:
+		return nil
+	}
+}
+
+func validateAWSSyncAuthMode(mode string) error {
+	switch mode {
+	case syncAuthModeAuto:
+		return nil
+	case syncAuthModeADC:
+		return fmt.Errorf("--auth-mode=adc is only supported with --gcp")
+	case syncAuthModeCredentials:
+		if strings.TrimSpace(syncAWSProfile) == "" && strings.TrimSpace(syncAWSProfiles) == "" && strings.TrimSpace(syncAWSConfigFile) == "" && strings.TrimSpace(syncAWSSharedCredsFile) == "" && strings.TrimSpace(syncAWSCredentialProc) == "" {
+			return fmt.Errorf("--auth-mode=credentials requires at least one explicit AWS credential source flag")
+		}
+		return nil
+	case syncAuthModeImpersonation:
+		if strings.TrimSpace(syncAWSRoleARN) == "" && !syncAWSOrg {
+			return fmt.Errorf("--auth-mode=impersonation requires --aws-role-arn or --aws-org")
+		}
+		return nil
+	case syncAuthModeWIF:
+		if strings.TrimSpace(syncAWSWebIDTokenFile) == "" || strings.TrimSpace(syncAWSWebIDRoleARN) == "" {
+			return fmt.Errorf("--auth-mode=wif requires both --aws-web-identity-token-file and --aws-web-identity-role-arn")
+		}
+		return nil
+	default:
+		return nil
+	}
+}
+
+func describeCurrentGCPAuthChain() string {
+	if target := strings.TrimSpace(syncGCPImpersonateSA); target != "" {
+		source := "default-application-credentials"
+		if path, err := resolveGCPSourceCredentialsPath(syncGCPCredentialsFile); err == nil {
+			source = describeGCPCredentialsPath(path)
+		}
+		delegates := parseCommaSeparatedValues(syncGCPImpersonateDel)
+		return fmt.Sprintf("impersonation: source=%s target=%s delegates=%d", source, target, len(delegates))
+	}
+
+	if path := strings.TrimSpace(syncGCPCredentialsFile); path != "" {
+		return fmt.Sprintf("credentials_file: %s", describeGCPCredentialsPath(path))
+	}
+
+	if path := strings.TrimSpace(os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")); path != "" {
+		return fmt.Sprintf("adc_env: %s", describeGCPCredentialsPath(path))
+	}
+
+	return "adc_default_chain"
+}
+
+func describeGCPCredentialsPath(path string) string {
+	trimmedPath := strings.TrimSpace(path)
+	if trimmedPath == "" {
+		return "<unset>"
+	}
+	raw, err := os.ReadFile(trimmedPath)
+	if err != nil {
+		return trimmedPath
+	}
+	credType, err := detectGCPCredentialsType(raw, trimmedPath)
+	if err != nil {
+		return trimmedPath
+	}
+	return fmt.Sprintf("%s (%s)", trimmedPath, credType)
+}
+
+func describeCurrentAWSAuthChain() string {
+	if role := strings.TrimSpace(syncAWSWebIDRoleARN); role != "" {
+		return fmt.Sprintf("web_identity: role=%s token_file=%s", role, strings.TrimSpace(syncAWSWebIDTokenFile))
+	}
+
+	if role := strings.TrimSpace(syncAWSRoleARN); role != "" {
+		base := "default"
+		if profile := strings.TrimSpace(syncAWSProfile); profile != "" {
+			base = fmt.Sprintf("profile:%s", profile)
+		}
+		if proc := strings.TrimSpace(syncAWSCredentialProc); proc != "" {
+			base = fmt.Sprintf("credential_process:%s", strings.Fields(proc)[0])
+		}
+		return fmt.Sprintf("assume_role: base=%s role=%s", base, role)
+	}
+
+	if proc := strings.TrimSpace(syncAWSCredentialProc); proc != "" {
+		parts := strings.Fields(proc)
+		execName := proc
+		if len(parts) > 0 {
+			execName = parts[0]
+		}
+		return fmt.Sprintf("credential_process: %s", execName)
+	}
+
+	if profile := strings.TrimSpace(syncAWSProfile); profile != "" {
+		return fmt.Sprintf("profile: %s", profile)
+	}
+
+	if profiles := parseCommaSeparatedValues(syncAWSProfiles); len(profiles) > 0 {
+		return fmt.Sprintf("multi_profile: %d profiles", len(profiles))
+	}
+
+	return "aws_default_chain"
+}
+
+type syncPreflightCheck struct {
+	Name   string `json:"name"`
+	Status string `json:"status"`
+	Detail string `json:"detail,omitempty"`
+}
+
+type syncPreflightReport struct {
+	Mode      string               `json:"mode"`
+	Provider  string               `json:"provider"`
+	AuthMode  string               `json:"auth_mode"`
+	AuthChain string               `json:"auth_chain,omitempty"`
+	StartedAt time.Time            `json:"started_at"`
+	Duration  string               `json:"duration"`
+	Success   bool                 `json:"success"`
+	Checks    []syncPreflightCheck `json:"checks"`
+}
+
+func runGCPPreflightOnly(ctx context.Context, start time.Time) error {
+	report := syncPreflightReport{
+		Mode:      "preflight",
+		Provider:  "gcp",
+		AuthMode:  syncAuthMode,
+		AuthChain: describeCurrentGCPAuthChain(),
+		StartedAt: start.UTC(),
+	}
+
+	checks := make([]syncPreflightCheck, 0, 16)
+	errs := make([]error, 0)
+	record := func(name, okDetail string, err error) {
+		if err != nil {
+			checks = append(checks, syncPreflightCheck{Name: name, Status: "failed", Detail: err.Error()})
+			errs = append(errs, err)
+			return
+		}
+		detail := strings.TrimSpace(okDetail)
+		if detail == "" {
+			detail = "ok"
+		}
+		checks = append(checks, syncPreflightCheck{Name: name, Status: "passed", Detail: detail})
+	}
+
+	spec := buildScheduledGCPSpecFromSyncFlags()
+	authCfg, err := applyScheduledGCPAuthFn(spec)
+	if err != nil {
+		record("auth.setup", "", err)
+		report.Checks = checks
+		report.Duration = time.Since(start).Round(time.Millisecond).String()
+		report.Success = false
+		if outputErr := printSyncPreflightReport(report); outputErr != nil {
+			return outputErr
+		}
+		return summarizeSyncRunErrors("GCP preflight", errs)
+	}
+	defer authCfg.Cleanup()
+	record("auth.setup", authCfg.Summary, nil)
+
+	if err := preflightScheduledGCPAuthFn(ctx, &SyncSchedule{Name: "sync-preflight-gcp", Provider: "gcp"}, spec, authCfg); err != nil {
+		record("auth.token", "", err)
+	} else {
+		record("auth.token", "access token acquired", nil)
+	}
+
+	tableFilter := parseTableFilter(syncTable)
+	_, securityFilter, runNativeSync, runSecuritySync, filterErr := resolveGCPTableFilters(tableFilter, syncSecurity)
+	if filterErr != nil {
+		record("table.filter", "", filterErr)
+	}
+
+	includeFilter := parseCommaSeparatedValues(syncProjectInclude)
+	excludeFilter := parseCommaSeparatedValues(syncProjectExclude)
+	requiresProjectProbe := filterErr == nil && (runNativeSync || (runSecuritySync && gcpSecurityFiltersRequireProject(securityFilter)))
+
+	selectedProjects := make([]string, 0)
+	if requiresProjectProbe {
+		orgID := strings.TrimSpace(syncGCPOrg)
+		if orgID != "" {
+			projects, listErr := listOrganizationProjectsFn(ctx, orgID)
+			if listErr != nil {
+				record("projects.discovery", "", fmt.Errorf("list organization projects: %w", listErr))
+			} else {
+				selectedProjects = applyProjectFilters(projects, includeFilter, excludeFilter)
+				if len(selectedProjects) == 0 {
+					record("projects.discovery", "", fmt.Errorf("organization %s resolved zero projects after filters", orgID))
+				} else {
+					record("projects.discovery", fmt.Sprintf("%d projects selected", len(selectedProjects)), nil)
+				}
+			}
+		} else {
+			explicitProjects, resolveErr := resolveExplicitGCPProjects()
+			if resolveErr != nil {
+				record("projects.selection", "", resolveErr)
+			} else if len(explicitProjects) > 0 {
+				selectedProjects = explicitProjects
+				record("projects.selection", fmt.Sprintf("%d projects selected", len(selectedProjects)), nil)
+			} else {
+				projectID := strings.TrimSpace(syncGCPProject)
+				if projectID == "" {
+					record("projects.selection", "", fmt.Errorf("missing project scope; set --gcp-project, --gcp-projects, --projects-file, --scope, or --gcp-org"))
+				} else {
+					selectedProjects = applyProjectFilters([]string{projectID}, includeFilter, excludeFilter)
+					if len(selectedProjects) == 0 {
+						record("projects.selection", "", fmt.Errorf("selected project %s was filtered out by include/exclude filters", projectID))
+					} else {
+						record("projects.selection", fmt.Sprintf("project %s selected", selectedProjects[0]), nil)
+					}
+				}
+			}
+		}
+	}
+
+	for _, projectID := range selectedProjects {
+		if err := preflightGCPProjectAccessFn(ctx, gcpProjectPreflightSpec{
+			ProjectID:      projectID,
+			OrgID:          strings.TrimSpace(syncGCPOrg),
+			RunNativeSync:  true,
+			RunSecurity:    false,
+			SecurityFilter: securityFilter,
+			ClientOptions:  authCfg.ClientOptions,
+		}); err != nil {
+			record(fmt.Sprintf("project.%s", projectID), "", fmt.Errorf("project %s native access: %w", projectID, err))
+			continue
+		}
+		record(fmt.Sprintf("project.%s", projectID), "cloud asset access confirmed", nil)
+	}
+
+	if filterErr == nil && runSecuritySync && gcpSecurityFilterIncludesSCC(securityFilter) {
+		if err := preflightGCPProjectAccessFn(ctx, gcpProjectPreflightSpec{
+			OrgID:          strings.TrimSpace(syncGCPOrg),
+			RunNativeSync:  false,
+			RunSecurity:    true,
+			SecurityFilter: securityFilter,
+			ClientOptions:  authCfg.ClientOptions,
+		}); err != nil {
+			record("org.scc", "", fmt.Errorf("security command center access: %w", err))
+		} else {
+			record("org.scc", "security command center access confirmed", nil)
+		}
+	}
+
+	report.Checks = checks
+	report.Duration = time.Since(start).Round(time.Millisecond).String()
+	report.Success = len(errs) == 0
+	if err := printSyncPreflightReport(report); err != nil {
+		return err
+	}
+	if len(errs) > 0 {
+		return summarizeSyncRunErrors("GCP preflight", errs)
+	}
+	return nil
+}
+
+func runAWSPreflightOnly(ctx context.Context, start time.Time) error {
+	report := syncPreflightReport{
+		Mode:      "preflight",
+		Provider:  "aws",
+		AuthMode:  syncAuthMode,
+		AuthChain: describeCurrentAWSAuthChain(),
+		StartedAt: start.UTC(),
+	}
+
+	checks := make([]syncPreflightCheck, 0, 16)
+	errs := make([]error, 0)
+	record := func(name, okDetail string, err error) {
+		if err != nil {
+			checks = append(checks, syncPreflightCheck{Name: name, Status: "failed", Detail: err.Error()})
+			errs = append(errs, err)
+			return
+		}
+		detail := strings.TrimSpace(okDetail)
+		if detail == "" {
+			detail = "ok"
+		}
+		checks = append(checks, syncPreflightCheck{Name: name, Status: "passed", Detail: detail})
+	}
+
+	profiles := []string{strings.TrimSpace(syncAWSProfile)}
+	if syncAWSProfiles != "" {
+		profiles = parseCommaSeparatedValues(syncAWSProfiles)
+		if len(profiles) == 0 {
+			record("profiles", "", fmt.Errorf("--aws-profiles did not include any valid profile names"))
+		}
+		if strings.TrimSpace(syncAWSProfile) != "" {
+			record("profiles", "", fmt.Errorf("--aws-profile cannot be combined with --aws-profiles"))
+		}
+	}
+	if len(profiles) == 0 {
+		profiles = []string{""}
+	}
+
+	for _, profile := range profiles {
+		spec := buildScheduledAWSSpecFromSyncFlags(profile)
+		profileLabel := strings.TrimSpace(profile)
+		if profileLabel == "" {
+			profileLabel = "default"
+		}
+
+		awsCfg, err := loadScheduledAWSConfigFn(ctx, spec)
+		if err != nil {
+			record(fmt.Sprintf("profile.%s.config", profileLabel), "", fmt.Errorf("load config: %w", err))
+			continue
+		}
+		record(fmt.Sprintf("profile.%s.config", profileLabel), "config loaded", nil)
+
+		schedule := &SyncSchedule{Name: fmt.Sprintf("sync-preflight-aws-%s", profileLabel), Provider: "aws"}
+		if err := preflightScheduledAWSAuthFn(ctx, schedule, spec, awsCfg); err != nil {
+			record(fmt.Sprintf("profile.%s.identity", profileLabel), "", err)
+			continue
+		}
+		record(fmt.Sprintf("profile.%s.identity", profileLabel), "caller identity confirmed", nil)
+
+		if syncAWSOrg {
+			includeSet := buildStringSet(parseTableFilter(syncAWSOrgInclude))
+			excludeSet := buildStringSet(parseTableFilter(syncAWSOrgExclude))
+			orgCfg := awsCfg.Copy()
+			if strings.TrimSpace(orgCfg.Region) == "" {
+				orgCfg.Region = "us-east-1"
+			}
+			accounts, err := listAWSOrgAccounts(ctx, orgCfg, includeSet, excludeSet)
+			if err != nil {
+				record(fmt.Sprintf("profile.%s.organizations", profileLabel), "", fmt.Errorf("list organization accounts: %w", err))
+				continue
+			}
+			if len(accounts) == 0 {
+				record(fmt.Sprintf("profile.%s.organizations", profileLabel), "", fmt.Errorf("no AWS organization accounts matched filters"))
+				continue
+			}
+			record(fmt.Sprintf("profile.%s.organizations", profileLabel), fmt.Sprintf("%d organization accounts accessible", len(accounts)), nil)
+		}
+	}
+
+	report.Checks = checks
+	report.Duration = time.Since(start).Round(time.Millisecond).String()
+	report.Success = len(errs) == 0
+	if err := printSyncPreflightReport(report); err != nil {
+		return err
+	}
+	if len(errs) > 0 {
+		return summarizeSyncRunErrors("AWS preflight", errs)
+	}
+	return nil
+}
+
+func buildScheduledGCPSpecFromSyncFlags() scheduledSyncSpec {
+	projects := normalizeProjectIDs(parseCommaSeparatedValues(syncGCPProjects))
+	return scheduledSyncSpec{
+		TableFilter:                  parseTableFilter(syncTable),
+		GCPProjects:                  projects,
+		GCPOrg:                       strings.TrimSpace(syncGCPOrg),
+		GCPCredentialsFile:           strings.TrimSpace(syncGCPCredentialsFile),
+		GCPImpersonateServiceAccount: strings.TrimSpace(syncGCPImpersonateSA),
+		GCPImpersonateDelegates:      parseCommaSeparatedValues(syncGCPImpersonateDel),
+		GCPImpersonateTokenLifetime:  strings.TrimSpace(syncGCPImpersonateTTL),
+	}
+}
+
+func buildScheduledAWSSpecFromSyncFlags(profile string) scheduledSyncSpec {
+	resolvedProfile := strings.TrimSpace(profile)
+	if resolvedProfile == "" {
+		resolvedProfile = strings.TrimSpace(syncAWSProfile)
+	}
+	return scheduledSyncSpec{
+		TableFilter:              parseTableFilter(syncTable),
+		AWSProfile:               resolvedProfile,
+		AWSConfigFile:            strings.TrimSpace(syncAWSConfigFile),
+		AWSSharedCredentialsFile: strings.TrimSpace(syncAWSSharedCredsFile),
+		AWSCredentialProcess:     strings.TrimSpace(syncAWSCredentialProc),
+		AWSWebIdentityTokenFile:  strings.TrimSpace(syncAWSWebIDTokenFile),
+		AWSWebIdentityRoleARN:    strings.TrimSpace(syncAWSWebIDRoleARN),
+		AWSRoleARN:               strings.TrimSpace(syncAWSRoleARN),
+		AWSRoleSession:           strings.TrimSpace(syncAWSRoleSession),
+		AWSRoleExternalID:        strings.TrimSpace(syncAWSRoleExternalID),
+		AWSRoleMFASerial:         strings.TrimSpace(syncAWSRoleMFASerial),
+		AWSRoleMFAToken:          strings.TrimSpace(syncAWSRoleMFAToken),
+		AWSRoleSourceIdentity:    strings.TrimSpace(syncAWSRoleSourceID),
+		AWSRoleDurationSeconds:   strings.TrimSpace(syncAWSRoleDuration),
+		AWSRoleSessionTags:       parseCommaSeparatedValues(syncAWSRoleTags),
+		AWSRoleTransitiveTagKeys: parseCommaSeparatedValues(syncAWSRoleTransitive),
+	}
+}
+
+func printSyncPreflightReport(report syncPreflightReport) error {
+	if err := writeSyncReport(report); err != nil {
+		return err
+	}
+
+	if syncOutput == FormatJSON {
+		return JSONOutput(report)
+	}
+
+	fmt.Println()
+	fmt.Printf("%s Preflight Results:\n", strings.ToUpper(report.Provider))
+	fmt.Println("─────────────────────────────────────────")
+	fmt.Printf("  Auth mode:  %s\n", report.AuthMode)
+	if strings.TrimSpace(report.AuthChain) != "" {
+		fmt.Printf("  Auth chain: %s\n", report.AuthChain)
+	}
+	fmt.Println()
+	for _, check := range report.Checks {
+		status := "✓"
+		if check.Status != "passed" {
+			status = "✗"
+		}
+		fmt.Printf("  %s %-30s %s\n", status, check.Name, check.Detail)
+	}
+	fmt.Println("─────────────────────────────────────────")
+	fmt.Printf("  Duration: %s\n", report.Duration)
+	if report.Success {
+		Success("Preflight completed successfully")
+	} else {
+		Warning("Preflight detected failures")
+	}
+	return nil
 }
 
 func runBackfillRelationships(cmd *cobra.Command, args []string) error {
@@ -272,6 +996,16 @@ func runGCPSync(ctx context.Context, start time.Time, projectID string) error {
 	defer func() { _ = client.Close() }()
 
 	if runNativeSync {
+		if err := preflightGCPProjectAccessFn(ctx, gcpProjectPreflightSpec{
+			ProjectID:      projectID,
+			OrgID:          syncGCPOrg,
+			RunNativeSync:  true,
+			RunSecurity:    false,
+			SecurityFilter: securityTableFilter,
+		}); err != nil {
+			return fmt.Errorf("project %s native preflight: %w", gcpProjectScopeLabel(projectID), err)
+		}
+
 		options := []nativesync.GCPEngineOption{nativesync.WithGCPProject(projectID)}
 		if syncConcurrency > 0 {
 			options = append(options, nativesync.WithGCPConcurrency(syncConcurrency))
@@ -302,16 +1036,30 @@ func runGCPSync(ctx context.Context, start time.Time, projectID string) error {
 
 	// Sync security data if requested
 	if runSecuritySync {
-		Info("Syncing GCP security data (Container Analysis, Artifact Registry, SCC)...")
-		secOptions := []nativesync.GCPSecurityOption{}
-		if len(securityTableFilter) > 0 {
-			secOptions = append(secOptions, nativesync.WithGCPSecurityTableFilter(securityTableFilter))
-		}
-		securitySyncer := nativesync.NewGCPSecuritySync(client, slog.Default(), projectID, syncGCPOrg, secOptions...)
-		if secErr := securitySyncer.SyncAll(ctx); secErr != nil {
-			Warning("Security sync failed: %v", secErr)
+		if err := preflightGCPProjectAccessFn(ctx, gcpProjectPreflightSpec{
+			ProjectID:      projectID,
+			OrgID:          syncGCPOrg,
+			RunNativeSync:  false,
+			RunSecurity:    true,
+			SecurityFilter: securityTableFilter,
+		}); err != nil {
+			if runNativeSync {
+				Warning("Security preflight failed: %v", err)
+			} else {
+				return fmt.Errorf("project %s security preflight: %w", gcpProjectScopeLabel(projectID), err)
+			}
 		} else {
-			Success("Security data synced successfully")
+			Info("Syncing GCP security data (Container Analysis, Artifact Registry, SCC)...")
+			secOptions := []nativesync.GCPSecurityOption{}
+			if len(securityTableFilter) > 0 {
+				secOptions = append(secOptions, nativesync.WithGCPSecurityTableFilter(securityTableFilter))
+			}
+			securitySyncer := nativesync.NewGCPSecuritySync(client, slog.Default(), projectID, syncGCPOrg, secOptions...)
+			if secErr := securitySyncer.SyncAll(ctx); secErr != nil {
+				Warning("Security sync failed: %v", secErr)
+			} else {
+				Success("Security data synced successfully")
+			}
 		}
 	} else if syncSecurity && len(tableFilter) > 0 {
 		Info("Skipping GCP security sync because --table filter does not include security tables")
@@ -358,7 +1106,11 @@ func runGCPOrgSync(ctx context.Context, start time.Time, orgID string) error {
 		return fmt.Errorf("list organization projects: %w", err)
 	}
 	projects = normalizeProjectIDs(projects)
+	projects = applyProjectFilters(projects, parseCommaSeparatedValues(syncProjectInclude), parseCommaSeparatedValues(syncProjectExclude))
 	if len(projects) == 0 {
+		if strings.TrimSpace(syncProjectInclude) != "" || strings.TrimSpace(syncProjectExclude) != "" {
+			return fmt.Errorf("no projects matched include/exclude filters for organization: %s", orgID)
+		}
 		return fmt.Errorf("no projects found in organization: %s", orgID)
 	}
 
@@ -374,6 +1126,13 @@ func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []str
 	projects = normalizeProjectIDs(projects)
 	if len(projects) == 0 {
 		return fmt.Errorf("no GCP projects provided for sync")
+	}
+
+	projectTimeout := defaultGCPProjectTimeout
+	if timeoutSeconds, err := parseBoundedPositiveIntDirective(syncGCPProjectTimeout, "--gcp-project-timeout-seconds", minGCPProjectTimeoutSeconds, maxGCPProjectTimeoutSeconds); err != nil {
+		return err
+	} else if timeoutSeconds > 0 {
+		projectTimeout = time.Duration(timeoutSeconds) * time.Second
 	}
 
 	Info("Starting GCP multi-project sync for %d projects...", len(projects))
@@ -428,7 +1187,26 @@ func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []str
 	for i, projectID := range projects {
 		Info("[%d/%d] Syncing project: %s", i+1, len(projects), projectID)
 
+		projectCtx, cancel := context.WithTimeout(ctx, projectTimeout)
+		nativeTimedOut := false
+
 		if runNativeSync {
+			if err := preflightGCPProjectAccessFn(projectCtx, gcpProjectPreflightSpec{
+				ProjectID:      projectID,
+				OrgID:          syncGCPOrg,
+				RunNativeSync:  true,
+				RunSecurity:    false,
+				SecurityFilter: securityTableFilter,
+			}); err != nil {
+				if errors.Is(err, context.DeadlineExceeded) || errors.Is(projectCtx.Err(), context.DeadlineExceeded) {
+					syncErrs = append(syncErrs, fmt.Errorf("project %s native preflight timed out after %s", projectID, projectTimeout.Round(time.Second)))
+				} else {
+					syncErrs = append(syncErrs, fmt.Errorf("project %s native preflight: %w", projectID, err))
+				}
+				cancel()
+				continue
+			}
+
 			options := []nativesync.GCPEngineOption{nativesync.WithGCPProject(projectID)}
 			if syncConcurrency > 0 {
 				options = append(options, nativesync.WithGCPConcurrency(syncConcurrency))
@@ -437,25 +1215,57 @@ func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []str
 				options = append(options, nativesync.WithGCPTableFilter(nativeTableFilter))
 			}
 			syncer := nativesync.NewGCPSyncEngine(client, slog.Default(), options...)
-			results, err := syncer.SyncAll(ctx)
+			results, err := syncer.SyncAll(projectCtx)
 			allResults = append(allResults, results...)
 			if err != nil {
 				Warning("Failed to sync project %s: %v", projectID, err)
-				syncErrs = append(syncErrs, fmt.Errorf("project %s native sync: %w", projectID, err))
+				if errors.Is(err, context.DeadlineExceeded) || errors.Is(projectCtx.Err(), context.DeadlineExceeded) {
+					nativeTimedOut = true
+					syncErrs = append(syncErrs, fmt.Errorf("project %s native sync timed out after %s", projectID, projectTimeout.Round(time.Second)))
+				} else {
+					syncErrs = append(syncErrs, fmt.Errorf("project %s native sync: %w", projectID, err))
+				}
 			}
 		}
 
+		if runNativeSync && (nativeTimedOut || projectCtx.Err() != nil) {
+			cancel()
+			continue
+		}
+
 		if runSecuritySync {
+			if err := preflightGCPProjectAccessFn(projectCtx, gcpProjectPreflightSpec{
+				ProjectID:      projectID,
+				OrgID:          syncGCPOrg,
+				RunNativeSync:  false,
+				RunSecurity:    true,
+				SecurityFilter: securityTableFilter,
+			}); err != nil {
+				if errors.Is(err, context.DeadlineExceeded) || errors.Is(projectCtx.Err(), context.DeadlineExceeded) {
+					syncErrs = append(syncErrs, fmt.Errorf("project %s security preflight timed out after %s", projectID, projectTimeout.Round(time.Second)))
+				} else {
+					syncErrs = append(syncErrs, fmt.Errorf("project %s security preflight: %w", projectID, err))
+				}
+				cancel()
+				continue
+			}
+
 			secOptions := []nativesync.GCPSecurityOption{}
 			if len(securityTableFilter) > 0 {
 				secOptions = append(secOptions, nativesync.WithGCPSecurityTableFilter(securityTableFilter))
 			}
 			securitySyncer := nativesync.NewGCPSecuritySync(client, slog.Default(), projectID, syncGCPOrg, secOptions...)
-			if secErr := securitySyncer.SyncAll(ctx); secErr != nil {
+			if secErr := securitySyncer.SyncAll(projectCtx); secErr != nil {
 				Warning("Security sync failed for project %s: %v", projectID, secErr)
-				syncErrs = append(syncErrs, fmt.Errorf("project %s security sync: %w", projectID, secErr))
+				if errors.Is(secErr, context.DeadlineExceeded) || errors.Is(projectCtx.Err(), context.DeadlineExceeded) {
+					syncErrs = append(syncErrs, fmt.Errorf("project %s security sync timed out after %s", projectID, projectTimeout.Round(time.Second)))
+				} else {
+					syncErrs = append(syncErrs, fmt.Errorf("project %s security sync: %w", projectID, secErr))
+				}
 			}
 		}
+
+		cancel()
 	}
 
 	if runNativeSync {
@@ -902,7 +1712,10 @@ func loadAWSConfig(ctx context.Context, profile string) (aws.Config, error) {
 	}
 
 	credentialProcess := strings.TrimSpace(syncAWSCredentialProc)
-	if credentialProcess != "" && trimmed == "" {
+	if credentialProcess != "" {
+		if err := validateAWSCredentialProcess(credentialProcess, "--aws-credential-process"); err != nil {
+			return aws.Config{}, err
+		}
 		loadOptions = append(loadOptions, config.WithCredentialsProvider(aws.NewCredentialsCache(processcreds.NewProvider(credentialProcess))))
 	}
 
@@ -1028,7 +1841,14 @@ func applyAWSAuthOverrides() (func(), error) {
 
 func applyAWSAssumeRoleOverride(ctx context.Context, cfg aws.Config) (aws.Config, error) {
 	roleARN := strings.TrimSpace(syncAWSRoleARN)
+	sourceIdentity := strings.TrimSpace(syncAWSRoleSourceID)
+	durationRaw := strings.TrimSpace(syncAWSRoleDuration)
+	roleTags := parseCommaSeparatedValues(syncAWSRoleTags)
+	transitiveTagKeys := parseCommaSeparatedValues(syncAWSRoleTransitive)
 	if roleARN == "" {
+		if durationRaw != "" || len(roleTags) > 0 || len(transitiveTagKeys) > 0 || sourceIdentity != "" {
+			return cfg, fmt.Errorf("--aws-role-duration-seconds/--aws-role-session-tags/--aws-role-transitive-tag-keys/--aws-role-source-identity require --aws-role-arn")
+		}
 		return cfg, nil
 	}
 
@@ -1038,7 +1858,29 @@ func applyAWSAssumeRoleOverride(ctx context.Context, cfg aws.Config) (aws.Config
 		return cfg, fmt.Errorf("--aws-role-mfa-token requires --aws-role-mfa-serial")
 	}
 
-	assumedCfg, err := assumeRoleConfigWithExternalID(ctx, cfg, roleARN, strings.TrimSpace(syncAWSRoleSession), strings.TrimSpace(syncAWSRoleExternalID), mfaSerial, mfaToken)
+	durationSeconds, err := parseBoundedPositiveIntDirective(syncAWSRoleDuration, "--aws-role-duration-seconds", 900, 43200)
+	if err != nil {
+		return cfg, err
+	}
+
+	tags, transitiveTagKeys, err := parseAWSSessionTagDirectives(roleTags, transitiveTagKeys)
+	if err != nil {
+		return cfg, err
+	}
+
+	assumedCfg, err := assumeRoleConfigWithScheduledOptions(
+		ctx,
+		cfg,
+		roleARN,
+		strings.TrimSpace(syncAWSRoleSession),
+		strings.TrimSpace(syncAWSRoleExternalID),
+		mfaSerial,
+		mfaToken,
+		sourceIdentity,
+		durationSeconds,
+		tags,
+		transitiveTagKeys,
+	)
 	if err != nil {
 		return cfg, fmt.Errorf("assume AWS role %q: %w", roleARN, err)
 	}
@@ -1082,6 +1924,69 @@ func validateReadableFile(path, source string) error {
 	}
 
 	return nil
+}
+
+func validateAWSCredentialProcess(command, source string) error {
+	trimmed := strings.TrimSpace(command)
+	if trimmed == "" {
+		return fmt.Errorf("%s must not be empty", source)
+	}
+
+	if strings.ContainsAny(trimmed, "\n\r|&;<>`") {
+		return fmt.Errorf("%s contains disallowed shell operators", source)
+	}
+
+	executable := firstCommandToken(trimmed)
+	if executable == "" {
+		return fmt.Errorf("%s must include an executable path", source)
+	}
+	if !filepath.IsAbs(executable) {
+		return fmt.Errorf("%s must use an absolute executable path", source)
+	}
+	if err := validateReadableFile(executable, fmt.Sprintf("%s executable", source)); err != nil {
+		return err
+	}
+
+	allowlist := parseCommaSeparatedValues(firstNonEmptyEnv("CEREBRO_AWS_CREDENTIAL_PROCESS_ALLOWLIST", "AWS_CREDENTIAL_PROCESS_ALLOWLIST"))
+	if len(allowlist) == 0 {
+		return nil
+	}
+
+	normalizedExecutable := filepath.Clean(executable)
+	for _, rawAllowed := range allowlist {
+		allowed := filepath.Clean(strings.TrimSpace(rawAllowed))
+		if allowed == "" {
+			continue
+		}
+		if normalizedExecutable == allowed || strings.HasPrefix(normalizedExecutable, allowed+string(os.PathSeparator)) {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("%s executable %q is not permitted by CEREBRO_AWS_CREDENTIAL_PROCESS_ALLOWLIST", source, executable)
+}
+
+func firstCommandToken(command string) string {
+	trimmed := strings.TrimSpace(command)
+	if trimmed == "" {
+		return ""
+	}
+
+	if trimmed[0] == '\'' || trimmed[0] == '"' {
+		quote := trimmed[0]
+		for i := 1; i < len(trimmed); i++ {
+			if trimmed[i] == quote {
+				return strings.TrimSpace(trimmed[1:i])
+			}
+		}
+		return ""
+	}
+
+	parts := strings.Fields(trimmed)
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(parts[0])
 }
 
 func resolveGCPSourceCredentialsPath(credentialsFile string) (string, error) {
@@ -1282,20 +2187,21 @@ func isScannableTable(table string) bool {
 }
 
 func printSyncResults(results []nativesync.SyncResult, start time.Time, provider string) error {
+	summary := buildSyncSummary(results, start, provider)
+	if err := writeSyncReport(summary); err != nil {
+		return err
+	}
+
 	if syncOutput == FormatJSON {
-		summary := buildSyncSummary(results, start, provider)
-		return JSONOutput(summary)
+		if err := JSONOutput(summary); err != nil {
+			return err
+		}
+		return strictSyncSummaryError(summary)
 	}
 
 	fmt.Println()
 	fmt.Printf("%s Sync Results:\n", provider)
 	fmt.Println("─────────────────────────────────────────")
-
-	totalSynced := 0
-	totalErrors := 0
-	totalAdded := 0
-	totalModified := 0
-	totalRemoved := 0
 
 	for _, r := range results {
 		status := "✓"
@@ -1306,9 +2212,6 @@ func printSyncResults(results []nativesync.SyncResult, start time.Time, provider
 		changeInfo := ""
 		if r.Changes != nil && r.Changes.HasChanges() {
 			changeInfo = fmt.Sprintf(" [%s]", r.Changes.Summary())
-			totalAdded += len(r.Changes.Added)
-			totalModified += len(r.Changes.Modified)
-			totalRemoved += len(r.Changes.Removed)
 		}
 
 		name := r.Table
@@ -1317,24 +2220,22 @@ func printSyncResults(results []nativesync.SyncResult, start time.Time, provider
 		}
 		errorInfo := fmt.Sprintf(", errors=%d", r.Errors)
 		fmt.Printf("  %s %-30s %4d resources (%s%s)%s\n", status, name, r.Synced, r.Duration.Round(time.Millisecond), errorInfo, changeInfo)
-		totalSynced += r.Synced
-		totalErrors += r.Errors
 	}
 
 	fmt.Println("─────────────────────────────────────────")
-	fmt.Printf("  Total: %d resources synced in %s\n", totalSynced, time.Since(start).Round(time.Second))
+	fmt.Printf("  Total: %d resources synced in %s\n", summary.TotalSynced, time.Since(start).Round(time.Second))
 
-	if totalAdded > 0 || totalModified > 0 || totalRemoved > 0 {
-		fmt.Printf("  Changes: +%d added, ~%d modified, -%d removed\n", totalAdded, totalModified, totalRemoved)
+	if summary.TotalAdded > 0 || summary.TotalModified > 0 || summary.TotalRemoved > 0 {
+		fmt.Printf("  Changes: +%d added, ~%d modified, -%d removed\n", summary.TotalAdded, summary.TotalModified, summary.TotalRemoved)
 	}
 
-	if totalErrors > 0 {
-		Warning("%d tables had errors", totalErrors)
+	if summary.TotalErrors > 0 {
+		Warning("%d tables had errors", summary.TotalErrors)
 	} else {
 		Success("Sync completed successfully")
 	}
 
-	return nil
+	return strictSyncSummaryError(summary)
 }
 
 type syncSummary struct {
@@ -1398,6 +2299,39 @@ func buildSyncSummary(results []nativesync.SyncResult, start time.Time, provider
 	}
 
 	return summary
+}
+
+func strictSyncSummaryError(summary syncSummary) error {
+	if !syncStrictExit || summary.TotalErrors == 0 {
+		return nil
+	}
+	return fmt.Errorf("strict-exit enabled: %d table errors reported", summary.TotalErrors)
+}
+
+func writeSyncReport(report interface{}) error {
+	path := strings.TrimSpace(syncReportFile)
+	if path == "" {
+		return nil
+	}
+
+	payload, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal sync report: %w", err)
+	}
+	payload = append(payload, '\n')
+
+	dir := filepath.Dir(path)
+	if dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("create report directory %q: %w", dir, err)
+		}
+	}
+
+	if err := os.WriteFile(path, payload, 0o600); err != nil {
+		return fmt.Errorf("write sync report %q: %w", path, err)
+	}
+	Info("Wrote sync report: %s", path)
+	return nil
 }
 
 func createSnowflakeClient() (*snowflake.Client, error) {

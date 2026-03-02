@@ -243,6 +243,7 @@ type Config struct {
 	GoogleWorkspaceDomain            string
 	GoogleWorkspaceAdminEmail        string
 	GoogleWorkspaceImpersonatorEmail string
+	GoogleWorkspaceCredentialsFile   string
 	GoogleWorkspaceCredentialsJSON   string
 
 	// Tailscale Provider
@@ -500,6 +501,7 @@ func LoadConfig() *Config {
 		GoogleWorkspaceDomain:              getEnv("GOOGLE_WORKSPACE_DOMAIN", ""),
 		GoogleWorkspaceAdminEmail:          getEnv("GOOGLE_WORKSPACE_ADMIN_EMAIL", ""),
 		GoogleWorkspaceImpersonatorEmail:   getEnv("GOOGLE_WORKSPACE_IMPERSONATOR_EMAIL", ""),
+		GoogleWorkspaceCredentialsFile:     getEnv("GOOGLE_WORKSPACE_CREDENTIALS_FILE", ""),
 		GoogleWorkspaceCredentialsJSON:     getEnv("GOOGLE_WORKSPACE_CREDENTIALS_JSON", ""),
 		TailscaleAPIKey:                    getEnv("TAILSCALE_API_KEY", ""),
 		TailscaleTailnet:                   getEnv("TAILSCALE_TAILNET", ""),
@@ -1097,11 +1099,12 @@ func (a *App) initProviders(ctx context.Context) {
 	}
 
 	// Register Google Workspace if configured
-	if a.Config.GoogleWorkspaceCredentialsJSON != "" {
+	if a.Config.GoogleWorkspaceCredentialsJSON != "" || a.Config.GoogleWorkspaceCredentialsFile != "" {
 		registerProvider("google_workspace", providers.NewGoogleWorkspaceProvider(), map[string]interface{}{
 			"domain":             a.Config.GoogleWorkspaceDomain,
 			"admin_email":        a.Config.GoogleWorkspaceAdminEmail,
 			"impersonator_email": a.Config.GoogleWorkspaceImpersonatorEmail,
+			"credentials_file":   a.Config.GoogleWorkspaceCredentialsFile,
 			"credentials_json":   a.Config.GoogleWorkspaceCredentialsJSON,
 		})
 	}

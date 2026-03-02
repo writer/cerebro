@@ -72,7 +72,12 @@ func (st *SecurityTools) GetTools() []Tool {
 				},
 				"required": []string{"service", "action"},
 			},
-			Handler: st.awsInspect,
+			Handler: func(ctx context.Context, args json.RawMessage) (string, error) {
+				if os.Getenv("CEREBRO_CLOUD_INSPECT_ENABLED") == "false" {
+					return "", fmt.Errorf("direct cloud inspection is disabled; submit an inspection job to the worker queue instead")
+				}
+				return st.awsInspect(ctx, args)
+			},
 		},
 		{
 			Name:        "gcp_inspect",
@@ -100,7 +105,12 @@ func (st *SecurityTools) GetTools() []Tool {
 				},
 				"required": []string{"service", "action", "project"},
 			},
-			Handler: st.gcpInspect,
+			Handler: func(ctx context.Context, args json.RawMessage) (string, error) {
+				if os.Getenv("CEREBRO_CLOUD_INSPECT_ENABLED") == "false" {
+					return "", fmt.Errorf("direct cloud inspection is disabled; submit an inspection job to the worker queue instead")
+				}
+				return st.gcpInspect(ctx, args)
+			},
 		},
 		{
 			Name:        "inspect_cloud_resource",
@@ -124,6 +134,10 @@ func (st *SecurityTools) GetTools() []Tool {
 					"identifier": map[string]interface{}{
 						"type":        "string",
 						"description": "Optional override for resource identifier",
+					},
+					"account": map[string]interface{}{
+						"type":        "string",
+						"description": "AWS account ID for cross-account inspection (used when resource identifier does not contain an account, e.g. s3://bucket)",
 					},
 					"project": map[string]interface{}{
 						"type":        "string",
@@ -152,7 +166,12 @@ func (st *SecurityTools) GetTools() []Tool {
 				},
 				"required": []string{"resource"},
 			},
-			Handler: st.inspectCloudResource,
+			Handler: func(ctx context.Context, args json.RawMessage) (string, error) {
+				if os.Getenv("CEREBRO_CLOUD_INSPECT_ENABLED") == "false" {
+					return "", fmt.Errorf("direct cloud inspection is disabled; submit an inspection job to the worker queue instead")
+				}
+				return st.inspectCloudResource(ctx, args)
+			},
 		},
 		{
 			Name:        "query_assets",

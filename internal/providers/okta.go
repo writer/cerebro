@@ -5,10 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
+	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -19,6 +23,11 @@ type OktaProvider struct {
 	apiToken string
 	client   *http.Client
 }
+
+const (
+	oktaFanoutWorkers    = 10
+	oktaProgressLogEvery = 50
+)
 
 func NewOktaProvider() *OktaProvider {
 	return &OktaProvider{
@@ -75,6 +84,17 @@ func (o *OktaProvider) Schema() []TableSchema {
 			PrimaryKey: []string{"id"},
 		},
 		{
+			Name:        "okta_group_memberships",
+			Description: "Okta group memberships",
+			Columns: []ColumnSchema{
+				{Name: "group_id", Type: "string", Required: true},
+				{Name: "user_id", Type: "string", Required: true},
+				{Name: "user_login", Type: "string"},
+				{Name: "user_email", Type: "string"},
+			},
+			PrimaryKey: []string{"group_id", "user_id"},
+		},
+		{
 			Name:        "okta_applications",
 			Description: "Okta applications",
 			Columns: []ColumnSchema{
@@ -87,6 +107,32 @@ func (o *OktaProvider) Schema() []TableSchema {
 				{Name: "created", Type: "timestamp"},
 			},
 			PrimaryKey: []string{"id"},
+		},
+		{
+			Name:        "okta_app_assignments",
+			Description: "Okta app assignments",
+			Columns: []ColumnSchema{
+				{Name: "app_id", Type: "string", Required: true},
+				{Name: "app_label", Type: "string"},
+				{Name: "assignee_id", Type: "string", Required: true},
+				{Name: "assignee_type", Type: "string", Required: true},
+				{Name: "status", Type: "string"},
+				{Name: "created", Type: "timestamp"},
+			},
+			PrimaryKey: []string{"app_id", "assignee_id", "assignee_type"},
+		},
+		{
+			Name:        "okta_admin_roles",
+			Description: "Okta admin role assignments",
+			Columns: []ColumnSchema{
+				{Name: "user_id", Type: "string", Required: true},
+				{Name: "user_login", Type: "string"},
+				{Name: "role_type", Type: "string", Required: true},
+				{Name: "role_label", Type: "string"},
+				{Name: "status", Type: "string"},
+				{Name: "created", Type: "timestamp"},
+			},
+			PrimaryKey: []string{"user_id", "role_type", "role_label"},
 		},
 		{
 			Name:        "okta_policy_passwords",
@@ -113,6 +159,8 @@ func (o *OktaProvider) Schema() []TableSchema {
 				{Name: "actor_type", Type: "string"},
 				{Name: "target_id", Type: "string"},
 				{Name: "target_type", Type: "string"},
+				{Name: "target_app_id", Type: "string"},
+				{Name: "target_app_label", Type: "string"},
 				{Name: "outcome", Type: "string"},
 				{Name: "published", Type: "timestamp"},
 			},
@@ -145,6 +193,15 @@ func (o *OktaProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResult,
 		result.TotalRows += users.Rows
 	}
 
+	// Sync admin role assignments
+	adminRoles, err := o.syncAdminRoles(ctx)
+	if err != nil {
+		result.Errors = append(result.Errors, "admin_roles: "+err.Error())
+	} else {
+		result.Tables = append(result.Tables, *adminRoles)
+		result.TotalRows += adminRoles.Rows
+	}
+
 	// Sync groups
 	groups, err := o.syncGroups(ctx)
 	if err != nil {
@@ -154,6 +211,15 @@ func (o *OktaProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResult,
 		result.TotalRows += groups.Rows
 	}
 
+	// Sync group memberships
+	groupMemberships, err := o.syncGroupMemberships(ctx)
+	if err != nil {
+		result.Errors = append(result.Errors, "group_memberships: "+err.Error())
+	} else {
+		result.Tables = append(result.Tables, *groupMemberships)
+		result.TotalRows += groupMemberships.Rows
+	}
+
 	// Sync applications
 	apps, err := o.syncApplications(ctx)
 	if err != nil {
@@ -161,6 +227,15 @@ func (o *OktaProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResult,
 	} else {
 		result.Tables = append(result.Tables, *apps)
 		result.TotalRows += apps.Rows
+	}
+
+	// Sync app assignments
+	appAssignments, err := o.syncAppAssignments(ctx)
+	if err != nil {
+		result.Errors = append(result.Errors, "app_assignments: "+err.Error())
+	} else {
+		result.Tables = append(result.Tables, *appAssignments)
+		result.TotalRows += appAssignments.Rows
 	}
 
 	// Sync password policies
@@ -213,8 +288,7 @@ func (o *OktaProvider) syncUsers(ctx context.Context) (*TableResult, error) {
 		ok       bool
 	}
 
-	const mfaWorkers = 10
-	workerCount := mfaWorkers
+	workerCount := oktaFanoutWorkers
 	if len(rows) < workerCount {
 		workerCount = len(rows)
 	}
@@ -326,6 +400,314 @@ func (o *OktaProvider) syncGroups(ctx context.Context) (*TableResult, error) {
 	for _, group := range groups {
 		rows = append(rows, normalizeOktaGroup(group))
 	}
+
+	return o.syncTable(ctx, schema, rows)
+}
+
+func oktaWorkerCount(total int) int {
+	if total <= 0 {
+		return 0
+	}
+	workers := oktaFanoutWorkers
+	if total < workers {
+		workers = total
+	}
+	if workers < 1 {
+		workers = 1
+	}
+	return workers
+}
+
+func logOktaFanoutProgress(scope string, processed, total int64) {
+	if total <= 0 {
+		return
+	}
+	if processed%oktaProgressLogEvery != 0 && processed != total {
+		return
+	}
+	slog.Info("okta sync progress", "scope", scope, "processed", processed, "total", total)
+}
+
+func (o *OktaProvider) syncGroupMemberships(ctx context.Context) (*TableResult, error) {
+	schema, err := o.schemaFor("okta_group_memberships")
+	result := &TableResult{Name: "okta_group_memberships"}
+	if err != nil {
+		return result, err
+	}
+
+	groups, err := o.requestAll(ctx, "/api/v1/groups?limit=200")
+	if err != nil {
+		return result, err
+	}
+
+	if len(groups) == 0 {
+		return o.syncTable(ctx, schema, nil)
+	}
+
+	type groupMembershipJob struct {
+		groupID string
+	}
+
+	jobs := make(chan groupMembershipJob, len(groups))
+	rows := make([]map[string]interface{}, 0, len(groups))
+	workerCount := oktaWorkerCount(len(groups))
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var processed int64
+	total := int64(len(groups))
+
+	for w := 0; w < workerCount; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for job := range jobs {
+				users, err := o.requestAll(ctx, fmt.Sprintf("/api/v1/groups/%s/users?limit=200", url.PathEscape(job.groupID)))
+				if err != nil {
+					slog.Warn("okta group membership sync failed", "group_id", job.groupID, "error", err)
+					current := atomic.AddInt64(&processed, 1)
+					logOktaFanoutProgress("group_memberships", current, total)
+					continue
+				}
+
+				groupRows := make([]map[string]interface{}, 0, len(users))
+				for _, user := range users {
+					normalized := normalizeOktaRow(user)
+					userID := asString(normalized["id"])
+					if userID == "" {
+						continue
+					}
+					groupRows = append(groupRows, map[string]interface{}{
+						"group_id":   job.groupID,
+						"user_id":    userID,
+						"user_login": getNestedString(normalized, "profile", "login"),
+						"user_email": getNestedString(normalized, "profile", "email"),
+					})
+				}
+
+				if len(groupRows) > 0 {
+					mu.Lock()
+					rows = append(rows, groupRows...)
+					mu.Unlock()
+				}
+
+				current := atomic.AddInt64(&processed, 1)
+				logOktaFanoutProgress("group_memberships", current, total)
+			}
+		}()
+	}
+
+	for _, group := range groups {
+		normalized := normalizeOktaRow(group)
+		groupID := asString(normalized["id"])
+		if groupID == "" {
+			continue
+		}
+		jobs <- groupMembershipJob{groupID: groupID}
+	}
+	close(jobs)
+	wg.Wait()
+
+	return o.syncTable(ctx, schema, rows)
+}
+
+func (o *OktaProvider) syncAppAssignments(ctx context.Context) (*TableResult, error) {
+	schema, err := o.schemaFor("okta_app_assignments")
+	result := &TableResult{Name: "okta_app_assignments"}
+	if err != nil {
+		return result, err
+	}
+
+	apps, err := o.requestAll(ctx, "/api/v1/apps?limit=200")
+	if err != nil {
+		return result, err
+	}
+
+	if len(apps) == 0 {
+		return o.syncTable(ctx, schema, nil)
+	}
+
+	type appAssignmentJob struct {
+		appID    string
+		appLabel string
+	}
+
+	jobs := make(chan appAssignmentJob, len(apps))
+	rows := make([]map[string]interface{}, 0, len(apps))
+	workerCount := oktaWorkerCount(len(apps))
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var processed int64
+	total := int64(len(apps))
+
+	for w := 0; w < workerCount; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for job := range jobs {
+				appRows := make([]map[string]interface{}, 0)
+
+				userAssignments, err := o.requestAll(ctx, fmt.Sprintf("/api/v1/apps/%s/users?limit=200", url.PathEscape(job.appID)))
+				if err != nil {
+					slog.Warn("okta app user assignment sync failed", "app_id", job.appID, "error", err)
+				} else {
+					for _, assignment := range userAssignments {
+						normalized := normalizeOktaRow(assignment)
+						assigneeID := asString(normalized["id"])
+						if assigneeID == "" {
+							continue
+						}
+						appRows = append(appRows, map[string]interface{}{
+							"app_id":        job.appID,
+							"app_label":     job.appLabel,
+							"assignee_id":   assigneeID,
+							"assignee_type": "USER",
+							"status":        asString(normalized["status"]),
+							"created":       firstNonEmptyString(asString(normalized["created"]), asString(normalized["last_updated"])),
+						})
+					}
+				}
+
+				groupAssignments, err := o.requestAll(ctx, fmt.Sprintf("/api/v1/apps/%s/groups?limit=200", url.PathEscape(job.appID)))
+				if err != nil {
+					slog.Warn("okta app group assignment sync failed", "app_id", job.appID, "error", err)
+				} else {
+					for _, assignment := range groupAssignments {
+						normalized := normalizeOktaRow(assignment)
+						assigneeID := asString(normalized["id"])
+						if assigneeID == "" {
+							continue
+						}
+						appRows = append(appRows, map[string]interface{}{
+							"app_id":        job.appID,
+							"app_label":     job.appLabel,
+							"assignee_id":   assigneeID,
+							"assignee_type": "GROUP",
+							"status":        asString(normalized["status"]),
+							"created":       firstNonEmptyString(asString(normalized["created"]), asString(normalized["last_updated"])),
+						})
+					}
+				}
+
+				if len(appRows) > 0 {
+					mu.Lock()
+					rows = append(rows, appRows...)
+					mu.Unlock()
+				}
+
+				current := atomic.AddInt64(&processed, 1)
+				logOktaFanoutProgress("app_assignments", current, total)
+			}
+		}()
+	}
+
+	for _, app := range apps {
+		normalized := normalizeOktaRow(app)
+		appID := asString(normalized["id"])
+		if appID == "" {
+			continue
+		}
+		jobs <- appAssignmentJob{
+			appID:    appID,
+			appLabel: asString(normalized["label"]),
+		}
+	}
+	close(jobs)
+	wg.Wait()
+
+	return o.syncTable(ctx, schema, rows)
+}
+
+func (o *OktaProvider) syncAdminRoles(ctx context.Context) (*TableResult, error) {
+	schema, err := o.schemaFor("okta_admin_roles")
+	result := &TableResult{Name: "okta_admin_roles"}
+	if err != nil {
+		return result, err
+	}
+
+	adminSet := o.fetchAdminUserSet(ctx)
+	if len(adminSet) == 0 {
+		return o.syncTable(ctx, schema, nil)
+	}
+
+	users, err := o.requestAll(ctx, "/api/v1/users?limit=200")
+	if err != nil {
+		return result, err
+	}
+
+	userLoginByID := make(map[string]string, len(users))
+	for _, user := range users {
+		normalized := normalizeOktaRow(user)
+		userID := asString(normalized["id"])
+		if userID == "" {
+			continue
+		}
+		userLoginByID[userID] = getNestedString(normalized, "profile", "login")
+	}
+
+	userIDs := make([]string, 0, len(adminSet))
+	for userID := range adminSet {
+		if userID == "" {
+			continue
+		}
+		userIDs = append(userIDs, userID)
+	}
+	sort.Strings(userIDs)
+
+	jobs := make(chan string, len(userIDs))
+	rows := make([]map[string]interface{}, 0, len(userIDs))
+	workerCount := oktaWorkerCount(len(userIDs))
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var processed int64
+	total := int64(len(userIDs))
+
+	for w := 0; w < workerCount; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for userID := range jobs {
+				roles, err := o.requestAll(ctx, fmt.Sprintf("/api/v1/users/%s/roles?limit=200", url.PathEscape(userID)))
+				if err != nil {
+					slog.Warn("okta admin role sync failed", "user_id", userID, "error", err)
+					current := atomic.AddInt64(&processed, 1)
+					logOktaFanoutProgress("admin_roles", current, total)
+					continue
+				}
+
+				roleRows := make([]map[string]interface{}, 0, len(roles))
+				for _, role := range roles {
+					normalized := normalizeOktaRow(role)
+					roleType := firstNonEmptyString(asString(normalized["type"]), asString(normalized["role_type"]))
+					if roleType == "" {
+						continue
+					}
+					roleRows = append(roleRows, map[string]interface{}{
+						"user_id":    userID,
+						"user_login": userLoginByID[userID],
+						"role_type":  roleType,
+						"role_label": firstNonEmptyString(asString(normalized["label"]), asString(normalized["display_name"]), asString(normalized["name"]), roleType),
+						"status":     asString(normalized["status"]),
+						"created":    firstNonEmptyString(asString(normalized["created"]), asString(normalized["last_updated"])),
+					})
+				}
+
+				if len(roleRows) > 0 {
+					mu.Lock()
+					rows = append(rows, roleRows...)
+					mu.Unlock()
+				}
+
+				current := atomic.AddInt64(&processed, 1)
+				logOktaFanoutProgress("admin_roles", current, total)
+			}
+		}()
+	}
+
+	for _, userID := range userIDs {
+		jobs <- userID
+	}
+	close(jobs)
+	wg.Wait()
 
 	return o.syncTable(ctx, schema, rows)
 }
@@ -552,22 +934,26 @@ func normalizeOktaLog(entry map[string]interface{}) map[string]interface{} {
 	normalized := normalizeOktaRow(entry)
 	actorID := getNestedString(normalized, "actor", "id")
 	actorType := getNestedString(normalized, "actor", "type")
-	targetID, targetType := extractOktaTarget(getNestedValue(normalized, "target"))
+	targetValue := getNestedValue(normalized, "target")
+	targetID, targetType := extractOktaTarget(targetValue)
+	targetAppID, targetAppLabel := extractOktaAppTarget(targetValue)
 	outcome := getNestedString(normalized, "outcome", "result")
 	if outcome == "" {
 		outcome = asString(normalized["outcome"])
 	}
 
 	return map[string]interface{}{
-		"uuid":        normalized["uuid"],
-		"event_type":  normalized["event_type"],
-		"severity":    normalized["severity"],
-		"actor_id":    actorID,
-		"actor_type":  actorType,
-		"target_id":   targetID,
-		"target_type": targetType,
-		"outcome":     outcome,
-		"published":   normalized["published"],
+		"uuid":             normalized["uuid"],
+		"event_type":       normalized["event_type"],
+		"severity":         normalized["severity"],
+		"actor_id":         actorID,
+		"actor_type":       actorType,
+		"target_id":        targetID,
+		"target_type":      targetType,
+		"target_app_id":    targetAppID,
+		"target_app_label": targetAppLabel,
+		"outcome":          outcome,
+		"published":        normalized["published"],
 	}
 }
 
@@ -597,6 +983,40 @@ func extractOktaTarget(value interface{}) (string, string) {
 		return asString(typed["id"]), asString(typed["type"])
 	}
 	return "", ""
+}
+
+func extractOktaAppTarget(value interface{}) (string, string) {
+	switch typed := value.(type) {
+	case []interface{}:
+		for _, entry := range typed {
+			target, ok := entry.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			targetType := strings.ToLower(strings.TrimSpace(asString(target["type"])))
+			if !isOktaAppTargetType(targetType) {
+				continue
+			}
+			return asString(target["id"]), firstNonEmptyString(asString(target["display_name"]), asString(target["alternate_id"]), asString(target["name"]))
+		}
+	case map[string]interface{}:
+		targetType := strings.ToLower(strings.TrimSpace(asString(typed["type"])))
+		if !isOktaAppTargetType(targetType) {
+			return "", ""
+		}
+		return asString(typed["id"]), firstNonEmptyString(asString(typed["display_name"]), asString(typed["alternate_id"]), asString(typed["name"]))
+	}
+
+	return "", ""
+}
+
+func isOktaAppTargetType(targetType string) bool {
+	switch strings.ToLower(strings.TrimSpace(targetType)) {
+	case "app", "application", "appinstance", "oauth2client", "oauth_client":
+		return true
+	default:
+		return false
+	}
 }
 
 func (o *OktaProvider) request(ctx context.Context, path string) ([]byte, error) {

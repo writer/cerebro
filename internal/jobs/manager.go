@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -148,4 +149,54 @@ func mapToSlice(results map[string]*Job, order []string) []*Job {
 		}
 	}
 	return jobs
+}
+
+func (m *Manager) EnqueueNativeSync(ctx context.Context, payload NativeSyncPayload, opts EnqueueOptions) (*Job, error) {
+	payload.Provider = strings.ToLower(strings.TrimSpace(payload.Provider))
+	if payload.Provider == "" {
+		return nil, fmt.Errorf("provider is required")
+	}
+	if opts.MaxAttempts <= 0 {
+		opts.MaxAttempts = 3
+	}
+
+	groupID := strings.TrimSpace(opts.GroupID)
+	if groupID == "" {
+		groupID = strings.TrimSpace(payload.ScheduleName)
+	}
+	if groupID == "" {
+		groupID = uuid.NewString()
+	}
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now().UTC()
+	job := &Job{
+		ID:          uuid.NewString(),
+		Type:        JobTypeNativeSync,
+		Status:      StatusQueued,
+		Payload:     string(payloadBytes),
+		Attempt:     0,
+		MaxAttempts: opts.MaxAttempts,
+		GroupID:     groupID,
+		CreatedAt:   now.Unix(),
+		UpdatedAt:   now.Unix(),
+	}
+
+	if err := m.store.CreateJob(ctx, job); err != nil {
+		return nil, err
+	}
+
+	if err := m.queue.Enqueue(ctx, JobMessage{JobID: job.ID, GroupID: groupID}); err != nil {
+		return nil, err
+	}
+
+	if m.logger != nil {
+		m.logger.Info("native sync job enqueued", "job_id", job.ID, "provider", payload.Provider, "group_id", groupID)
+	}
+
+	return job, nil
 }

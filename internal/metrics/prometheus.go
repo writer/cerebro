@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -219,6 +220,14 @@ var (
 		[]string{"job"},
 	)
 
+	ScheduledAuthPreflightTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_scheduled_auth_preflight_total",
+			Help: "Total number of scheduled sync auth preflight checks",
+		},
+		[]string{"provider", "auth_method", "status"},
+	)
+
 	ProviderCounts = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "cerebro_provider_count",
@@ -297,6 +306,7 @@ func Register() {
 			// Scheduler
 			SchedulerJobRuns,
 			SchedulerJobDuration,
+			ScheduledAuthPreflightTotal,
 			ProviderCounts,
 			ComplianceExportsTotal,
 			// Identity
@@ -381,6 +391,21 @@ func RecordComplianceExport(success bool) {
 		status = "error"
 	}
 	ComplianceExportsTotal.WithLabelValues(status).Inc()
+}
+
+// RecordScheduledAuthPreflight records scheduled sync auth preflight status by provider and auth mode.
+func RecordScheduledAuthPreflight(provider, authMethod string, success bool) {
+	status := "success"
+	if !success {
+		status = "error"
+	}
+	if strings.TrimSpace(provider) == "" {
+		provider = "unknown"
+	}
+	if strings.TrimSpace(authMethod) == "" {
+		authMethod = "unknown"
+	}
+	ScheduledAuthPreflightTotal.WithLabelValues(provider, authMethod, status).Inc()
 }
 
 // UpdateFindingsMetrics updates findings gauge metrics

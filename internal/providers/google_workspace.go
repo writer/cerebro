@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -35,23 +36,40 @@ func (g *GoogleWorkspaceProvider) Configure(ctx context.Context, config map[stri
 		return err
 	}
 
-	g.domain = g.GetConfigString("domain")
-	g.adminEmail = g.GetConfigString("admin_email")
-	g.impersonator = g.GetConfigString("impersonator_email")
+	g.domain = strings.TrimSpace(g.GetConfigString("domain"))
+	g.adminEmail = strings.TrimSpace(g.GetConfigString("admin_email"))
+	g.impersonator = strings.TrimSpace(g.GetConfigString("impersonator_email"))
+	g.credentials = nil
 
-	// Handle credentials - can be path or JSON string
-	if credsPath := g.GetConfigString("credentials_file"); credsPath != "" {
-		// Read from file path
-		// Note: actual implementation would read file
-		return fmt.Errorf("credentials_file not yet implemented - use credentials_json")
+	if g.domain == "" {
+		return fmt.Errorf("google workspace domain required")
 	}
 
-	if credsJSON := g.GetConfigString("credentials_json"); credsJSON != "" {
-		g.credentials = []byte(credsJSON)
+	// Handle credentials - can be path or JSON string
+	if credsPath := strings.TrimSpace(g.GetConfigString("credentials_file")); credsPath != "" {
+		credentials, err := os.ReadFile(credsPath)
+		if err != nil {
+			return fmt.Errorf("read google workspace credentials_file %q: %w", credsPath, err)
+		}
+		g.credentials = credentials
+	}
+
+	if len(g.credentials) == 0 {
+		if credsJSON := strings.TrimSpace(g.GetConfigString("credentials_json")); credsJSON != "" {
+			g.credentials = []byte(credsJSON)
+		}
 	}
 
 	if len(g.credentials) == 0 {
 		return fmt.Errorf("google workspace credentials required")
+	}
+
+	subject := g.impersonator
+	if subject == "" {
+		subject = g.adminEmail
+	}
+	if subject == "" {
+		return fmt.Errorf("google workspace domain-wide delegation requires impersonator_email or admin_email")
 	}
 
 	// Create OAuth2 client with domain-wide delegation
@@ -66,11 +84,7 @@ func (g *GoogleWorkspaceProvider) Configure(ctx context.Context, config map[stri
 	}
 
 	// Impersonate admin user for domain-wide access
-	if g.impersonator != "" {
-		conf.Subject = g.impersonator
-	} else if g.adminEmail != "" {
-		conf.Subject = g.adminEmail
-	}
+	conf.Subject = subject
 
 	g.client = conf.Client(ctx)
 	return nil

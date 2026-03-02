@@ -20,7 +20,7 @@
     }
   ],
   "enabled": true,
-  "query": "SELECT u.id AS id, u.login AS account_name, u.created AS created_at FROM okta_users u WHERE LOWER(COALESCE(u.status, '')) IN ('active','enabled','provisioned','onboarded') AND (COALESCE(u.is_admin, false) = true) AND u.created > NOW() - INTERVAL '7 days'",
+  "query": "SELECT u.id AS id, u.login AS account_name, u.created AS created_at FROM okta_users u WHERE LOWER(COALESCE(u.status, '')) IN ('active','enabled','provisioned','onboarded') AND (COALESCE(u.is_admin, false) = true) AND u.created > CURRENT_TIMESTAMP() - INTERVAL '7 days'",
   "remediation": "Confirm change tickets and owner approval for newly created privileged accounts.",
   "tags": [
     "okta",

@@ -15,10 +15,12 @@ func TestApplyGCPAuthOverrides(t *testing.T) {
 	originalFile := syncGCPCredentialsFile
 	originalImpersonateSA := syncGCPImpersonateSA
 	originalImpersonateDel := syncGCPImpersonateDel
+	originalImpersonateTTL := syncGCPImpersonateTTL
 	t.Cleanup(func() {
 		syncGCPCredentialsFile = originalFile
 		syncGCPImpersonateSA = originalImpersonateSA
 		syncGCPImpersonateDel = originalImpersonateDel
+		syncGCPImpersonateTTL = originalImpersonateTTL
 	})
 
 	t.Run("no credentials file", func(t *testing.T) {
@@ -26,6 +28,7 @@ func TestApplyGCPAuthOverrides(t *testing.T) {
 		syncGCPCredentialsFile = ""
 		syncGCPImpersonateSA = ""
 		syncGCPImpersonateDel = ""
+		syncGCPImpersonateTTL = ""
 
 		cleanup, err := applyGCPAuthOverrides()
 		if err != nil {
@@ -41,6 +44,7 @@ func TestApplyGCPAuthOverrides(t *testing.T) {
 		syncGCPCredentialsFile = filepath.Join(t.TempDir(), "missing-creds.json")
 		syncGCPImpersonateSA = ""
 		syncGCPImpersonateDel = ""
+		syncGCPImpersonateTTL = ""
 
 		_, err := applyGCPAuthOverrides()
 		if err == nil {
@@ -61,6 +65,7 @@ func TestApplyGCPAuthOverrides(t *testing.T) {
 		syncGCPCredentialsFile = credsPath
 		syncGCPImpersonateSA = ""
 		syncGCPImpersonateDel = ""
+		syncGCPImpersonateTTL = ""
 
 		cleanup, err := applyGCPAuthOverrides()
 		if err != nil {
@@ -88,6 +93,7 @@ func TestApplyGCPAuthOverrides(t *testing.T) {
 		syncGCPCredentialsFile = sourceCredsPath
 		syncGCPImpersonateSA = "svc-impersonated@example-project.iam.gserviceaccount.com"
 		syncGCPImpersonateDel = "delegate-1@project.iam.gserviceaccount.com, delegate-2@project.iam.gserviceaccount.com"
+		syncGCPImpersonateTTL = "2400"
 
 		cleanup, err := applyGCPAuthOverrides()
 		if err != nil {
@@ -113,6 +119,9 @@ func TestApplyGCPAuthOverrides(t *testing.T) {
 		if _, ok := payload["source_credentials"]; !ok {
 			t.Fatalf("expected source_credentials in temp impersonation file")
 		}
+		if got := payload["token_lifetime_seconds"]; got != float64(2400) {
+			t.Fatalf("expected token_lifetime_seconds=2400, got %v", got)
+		}
 
 		cleanup()
 		if got := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"); got != "existing-path" {
@@ -130,6 +139,7 @@ func TestApplyGCPAuthOverrides(t *testing.T) {
 		syncGCPCredentialsFile = ""
 		syncGCPImpersonateSA = "svc-impersonated@example-project.iam.gserviceaccount.com"
 		syncGCPImpersonateDel = ""
+		syncGCPImpersonateTTL = ""
 
 		_, err := applyGCPAuthOverrides()
 		if err == nil {
@@ -137,6 +147,36 @@ func TestApplyGCPAuthOverrides(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "gcp impersonation requires source credentials") {
 			t.Fatalf("expected missing source credentials error, got %v", err)
+		}
+	})
+
+	t.Run("token lifetime requires impersonation", func(t *testing.T) {
+		syncGCPCredentialsFile = ""
+		syncGCPImpersonateSA = ""
+		syncGCPImpersonateDel = ""
+		syncGCPImpersonateTTL = "2400"
+
+		_, err := applyGCPAuthOverrides()
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), "requires --gcp-impersonate-service-account") {
+			t.Fatalf("expected impersonation requirement error, got %v", err)
+		}
+	})
+
+	t.Run("delegates require impersonation", func(t *testing.T) {
+		syncGCPCredentialsFile = ""
+		syncGCPImpersonateSA = ""
+		syncGCPImpersonateDel = "delegate-1@project.iam.gserviceaccount.com"
+		syncGCPImpersonateTTL = ""
+
+		_, err := applyGCPAuthOverrides()
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), "requires --gcp-impersonate-service-account") {
+			t.Fatalf("expected impersonation requirement error, got %v", err)
 		}
 	})
 }
@@ -147,12 +187,20 @@ func TestApplyAWSAssumeRoleOverride(t *testing.T) {
 	originalExternalID := syncAWSRoleExternalID
 	originalMFASerial := syncAWSRoleMFASerial
 	originalMFAToken := syncAWSRoleMFAToken
+	originalSourceID := syncAWSRoleSourceID
+	originalDuration := syncAWSRoleDuration
+	originalTags := syncAWSRoleTags
+	originalTransitive := syncAWSRoleTransitive
 	t.Cleanup(func() {
 		syncAWSRoleARN = originalRoleARN
 		syncAWSRoleSession = originalSession
 		syncAWSRoleExternalID = originalExternalID
 		syncAWSRoleMFASerial = originalMFASerial
 		syncAWSRoleMFAToken = originalMFAToken
+		syncAWSRoleSourceID = originalSourceID
+		syncAWSRoleDuration = originalDuration
+		syncAWSRoleTags = originalTags
+		syncAWSRoleTransitive = originalTransitive
 	})
 
 	t.Run("no role configured", func(t *testing.T) {
@@ -161,6 +209,10 @@ func TestApplyAWSAssumeRoleOverride(t *testing.T) {
 		syncAWSRoleExternalID = ""
 		syncAWSRoleMFASerial = ""
 		syncAWSRoleMFAToken = ""
+		syncAWSRoleSourceID = ""
+		syncAWSRoleDuration = ""
+		syncAWSRoleTags = ""
+		syncAWSRoleTransitive = ""
 
 		cfg := aws.Config{Region: "us-east-1"}
 		out, err := applyAWSAssumeRoleOverride(context.Background(), cfg)
@@ -181,6 +233,10 @@ func TestApplyAWSAssumeRoleOverride(t *testing.T) {
 		syncAWSRoleExternalID = "external-id"
 		syncAWSRoleMFASerial = ""
 		syncAWSRoleMFAToken = ""
+		syncAWSRoleSourceID = "source-user@example.com"
+		syncAWSRoleDuration = "1800"
+		syncAWSRoleTags = "env=prod,owner=platform"
+		syncAWSRoleTransitive = "env"
 
 		cfg := aws.Config{Region: "us-east-1"}
 		out, err := applyAWSAssumeRoleOverride(context.Background(), cfg)
@@ -201,6 +257,10 @@ func TestApplyAWSAssumeRoleOverride(t *testing.T) {
 		syncAWSRoleExternalID = ""
 		syncAWSRoleMFASerial = ""
 		syncAWSRoleMFAToken = "123456"
+		syncAWSRoleSourceID = ""
+		syncAWSRoleDuration = ""
+		syncAWSRoleTags = ""
+		syncAWSRoleTransitive = ""
 
 		cfg := aws.Config{Region: "us-east-1"}
 		_, err := applyAWSAssumeRoleOverride(context.Background(), cfg)
@@ -209,6 +269,27 @@ func TestApplyAWSAssumeRoleOverride(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "requires --aws-role-mfa-serial") {
 			t.Fatalf("expected MFA serial validation error, got %v", err)
+		}
+	})
+
+	t.Run("duration requires role", func(t *testing.T) {
+		syncAWSRoleARN = ""
+		syncAWSRoleSession = ""
+		syncAWSRoleExternalID = ""
+		syncAWSRoleMFASerial = ""
+		syncAWSRoleMFAToken = ""
+		syncAWSRoleSourceID = ""
+		syncAWSRoleDuration = "1800"
+		syncAWSRoleTags = ""
+		syncAWSRoleTransitive = ""
+
+		cfg := aws.Config{Region: "us-east-1"}
+		_, err := applyAWSAssumeRoleOverride(context.Background(), cfg)
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), "require --aws-role-arn") {
+			t.Fatalf("expected role requirement validation error, got %v", err)
 		}
 	})
 }
@@ -333,6 +414,74 @@ func TestLoadAWSConfigValidatesFiles(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "--aws-shared-credentials-file") {
 			t.Fatalf("expected shared credentials file validation error, got %v", err)
+		}
+	})
+
+	t.Run("validates credential process even when profile is set", func(t *testing.T) {
+		syncAWSConfigFile = ""
+		syncAWSSharedCredsFile = ""
+		syncAWSCredentialProc = "credential-helper --profile prod"
+
+		_, err := loadAWSConfig(context.Background(), "prod")
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), "absolute executable path") {
+			t.Fatalf("expected credential process validation error, got %v", err)
+		}
+	})
+}
+
+func TestValidateAWSCredentialProcess(t *testing.T) {
+	helperPath := filepath.Join(t.TempDir(), "credential-helper")
+	if err := os.WriteFile(helperPath, []byte("#!/bin/sh\necho credentials\n"), 0o700); err != nil {
+		t.Fatalf("write helper: %v", err)
+	}
+
+	t.Run("requires absolute executable path", func(t *testing.T) {
+		err := validateAWSCredentialProcess("helper --profile prod", "--aws-credential-process")
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), "absolute executable path") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("rejects shell operators", func(t *testing.T) {
+		err := validateAWSCredentialProcess(helperPath+";echo hacked", "--aws-credential-process")
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), "disallowed shell operators") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("allows absolute path without allowlist", func(t *testing.T) {
+		t.Setenv("CEREBRO_AWS_CREDENTIAL_PROCESS_ALLOWLIST", "")
+		err := validateAWSCredentialProcess(helperPath+" --profile prod", "--aws-credential-process")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("enforces allowlist", func(t *testing.T) {
+		t.Setenv("CEREBRO_AWS_CREDENTIAL_PROCESS_ALLOWLIST", "/usr/local/bin")
+		err := validateAWSCredentialProcess(helperPath+" --profile prod", "--aws-credential-process")
+		if err == nil {
+			t.Fatal("expected allowlist error")
+		}
+		if !strings.Contains(err.Error(), "not permitted") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("allowlist accepts quoted path", func(t *testing.T) {
+		t.Setenv("CEREBRO_AWS_CREDENTIAL_PROCESS_ALLOWLIST", filepath.Dir(helperPath))
+		err := validateAWSCredentialProcess("\""+helperPath+"\" --profile prod", "--aws-credential-process")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 }
