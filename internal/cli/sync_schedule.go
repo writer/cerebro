@@ -1162,6 +1162,10 @@ func applyScheduledGCPAuth(spec scheduledSyncSpec) (*scheduledGCPAuthConfig, err
 	}
 
 	if impersonateServiceAccount == "" {
+		if len(delegates) > 0 {
+			authCfg.Cleanup()
+			return nil, fmt.Errorf("gcp_impersonate_delegates requires gcp_impersonate_service_account")
+		}
 		if tokenLifetimeSeconds > 0 {
 			authCfg.Cleanup()
 			return nil, fmt.Errorf("gcp_impersonate_token_lifetime_seconds requires gcp_impersonate_service_account")
@@ -1297,10 +1301,18 @@ func preflightScheduledGCPAuth(ctx context.Context, schedule *SyncSchedule, spec
 		principal = "default"
 	}
 
+	authMethod := "adc"
+	if strings.TrimSpace(spec.GCPImpersonateServiceAccount) != "" {
+		authMethod = "service_account_impersonation"
+	} else if authCfg != nil && strings.TrimSpace(authCfg.CredentialsFile) != "" {
+		authMethod = "credentials_file"
+	}
+
 	attrs := []any{
 		"event", "auth_preflight",
 		"schedule", schedule.Name,
 		"provider", "gcp",
+		"auth_method", authMethod,
 		"principal", principal,
 		"status", "success",
 	}
@@ -1313,11 +1325,11 @@ func preflightScheduledGCPAuth(ctx context.Context, schedule *SyncSchedule, spec
 	slog.Default().Info("scheduled_sync_audit", attrs...)
 
 	if token.Expiry.IsZero() {
-		Info("[%s] GCP auth preflight succeeded: principal=%s", schedule.Name, principal)
+		Info("[%s] GCP auth preflight succeeded: method=%s principal=%s", schedule.Name, authMethod, principal)
 		return nil
 	}
 
-	Info("[%s] GCP auth preflight succeeded: principal=%s token_expiry=%s", schedule.Name, principal, token.Expiry.UTC().Format(time.RFC3339))
+	Info("[%s] GCP auth preflight succeeded: method=%s principal=%s token_expiry=%s", schedule.Name, authMethod, principal, token.Expiry.UTC().Format(time.RFC3339))
 	return nil
 }
 

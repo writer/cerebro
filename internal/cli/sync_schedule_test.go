@@ -900,6 +900,34 @@ func TestApplyScheduledGCPAuth_TokenLifetimeRequiresImpersonation(t *testing.T) 
 	}
 }
 
+func TestApplyScheduledGCPAuth_DelegatesRequireImpersonation(t *testing.T) {
+	source, err := os.CreateTemp("", "scheduled-gcp-source-delegates-*.json")
+	if err != nil {
+		t.Fatalf("create temp credentials file: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Remove(source.Name())
+	})
+
+	if _, err := source.WriteString(`{"type":"service_account"}`); err != nil {
+		t.Fatalf("write source credentials: %v", err)
+	}
+	if err := source.Close(); err != nil {
+		t.Fatalf("close source credentials: %v", err)
+	}
+
+	_, err = applyScheduledGCPAuth(scheduledSyncSpec{
+		GCPCredentialsFile:      source.Name(),
+		GCPImpersonateDelegates: []string{"delegate-a@test.iam.gserviceaccount.com"},
+	})
+	if err == nil {
+		t.Fatal("expected delegates to require impersonation")
+	}
+	if !strings.Contains(err.Error(), "requires gcp_impersonate_service_account") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestParseAWSSessionTagDirectives(t *testing.T) {
 	tags, transitive, err := parseAWSSessionTagDirectives([]string{"env=prod", "owner=platform"}, []string{"env"})
 	if err != nil {

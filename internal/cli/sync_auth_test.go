@@ -164,6 +164,21 @@ func TestApplyGCPAuthOverrides(t *testing.T) {
 			t.Fatalf("expected impersonation requirement error, got %v", err)
 		}
 	})
+
+	t.Run("delegates require impersonation", func(t *testing.T) {
+		syncGCPCredentialsFile = ""
+		syncGCPImpersonateSA = ""
+		syncGCPImpersonateDel = "delegate-1@project.iam.gserviceaccount.com"
+		syncGCPImpersonateTTL = ""
+
+		_, err := applyGCPAuthOverrides()
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), "requires --gcp-impersonate-service-account") {
+			t.Fatalf("expected impersonation requirement error, got %v", err)
+		}
+	})
 }
 
 func TestApplyAWSAssumeRoleOverride(t *testing.T) {

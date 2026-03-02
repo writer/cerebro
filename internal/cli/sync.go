@@ -1134,6 +1134,9 @@ func applyGCPAuthOverrides() (func(), error) {
 	}
 
 	if impersonateServiceAccount == "" {
+		if len(delegates) > 0 {
+			return cleanup, fmt.Errorf("--gcp-impersonate-delegates requires --gcp-impersonate-service-account")
+		}
 		if tokenLifetimeSeconds > 0 {
 			return cleanup, fmt.Errorf("--gcp-impersonate-token-lifetime-seconds requires --gcp-impersonate-service-account")
 		}
