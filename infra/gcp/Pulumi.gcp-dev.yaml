@@ -1,0 +1,16 @@
+config:
+  gcp:project: writer-iam
+  gcp:region: us-central1
+  cerebro:trustedAwsAccountId: "944130631940"
+  cerebro:trustedAwsRoleArns:
+    - "arn:aws:iam::944130631940:role/cerebro-sec-dev-task-role"
+    - "arn:aws:iam::944130631940:role/cerebro-sec-dev-worker-task-role"
+  cerebro:scannerRoleProjects:
+    - writer-iam
+    - qordoba-devel
+    - qordoba-prod
+    - writer-networking
+    - writer-networking-nonprod
+    - writer-devops
+  cerebro:scannerRoles:
+    - "roles/compute.viewer"

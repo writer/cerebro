@@ -3,7 +3,7 @@ runtime:
   name: python
   options:
     toolchain: uv
-    virtualenv: .venv
+    virtualenv: ../.venv
 description: Infrastructure for Cerebro Security Platform (Go)
 
 config:

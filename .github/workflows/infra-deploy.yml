@@ -19,6 +19,8 @@ on:
         options:
           - sec-dev
           - go-prod
+          - gcp-dev
+          - gcp-prod
 
 env:
   AWS_REGION: us-east-1
@@ -26,6 +28,10 @@ env:
   TAILSCALE_OAUTH_CLIENT_SECRET: ${{ secrets.TAILSCALE_OAUTH_CLIENT_SECRET }}
 
 jobs:
+  # ===========================================================================
+  # AWS jobs
+  # ===========================================================================
+
   # PR: Pulumi up for sec-dev stack
   deploy-sec-dev:
     name: Deploy sec-dev
@@ -77,7 +83,7 @@ jobs:
 
       - name: Set Infisical External ID
         shell: bash
-        working-directory: infra
+        working-directory: infra/aws
         run: uv run pulumi config set --stack sec-dev --secret cerebro:infisicalExternalId "${{ secrets.INFISICAL_EXTERNAL_ID }}"
 
       - name: Pulumi Up (sec-dev)
@@ -85,7 +91,7 @@ jobs:
         with:
           command: up
           stack-name: sec-dev
-          work-dir: infra
+          work-dir: infra/aws
           diff: true
           comment-on-pr: true
 
@@ -140,7 +146,7 @@ jobs:
 
       - name: Set Infisical External ID
         shell: bash
-        working-directory: infra
+        working-directory: infra/aws
         run: uv run pulumi config set --stack go-prod --secret cerebro:infisicalExternalId "${{ secrets.INFISICAL_EXTERNAL_ID }}"
 
       - name: Pulumi Preview (go-prod)
@@ -148,7 +154,7 @@ jobs:
         with:
           command: preview
           stack-name: go-prod
-          work-dir: infra
+          work-dir: infra/aws
           diff: true
           comment-on-pr: true
 
@@ -203,7 +209,7 @@ jobs:
 
       - name: Set Infisical External ID
         shell: bash
-        working-directory: infra
+        working-directory: infra/aws
         run: uv run pulumi config set --stack go-prod --secret cerebro:infisicalExternalId "${{ secrets.INFISICAL_EXTERNAL_ID }}"
 
       - name: Pulumi Up (go-prod)
@@ -211,10 +217,160 @@ jobs:
         with:
           command: up
           stack-name: go-prod
-          work-dir: infra
+          work-dir: infra/aws
           diff: true
 
+  # ===========================================================================
+  # GCP jobs
+  # ===========================================================================
+
+  # PR: Pulumi up for gcp-dev stack
+  deploy-gcp-dev:
+    name: Deploy gcp-dev
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "infra/pyproject.toml"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        shell: bash
+        working-directory: infra
+        run: uv sync
+
+      - name: Authenticate to Google Cloud
+        uses: WriterInternal/gcp-git-roles@v1
+        with:
+          deployment-profile: infra-writer-iam
+
+      - name: Authenticate with Pulumi Cloud
+        uses: pulumi/auth-actions@v1
+        with:
+          organization: writer-ai
+          requested-token-type: urn:pulumi:token-type:access_token:organization
+
+      - name: Pulumi Up (gcp-dev)
+        uses: pulumi/actions@v6
+        with:
+          command: up
+          stack-name: gcp-dev
+          work-dir: infra/gcp
+          diff: true
+          comment-on-pr: true
+
+  # PR: Pulumi preview for gcp-prod stack
+  preview-gcp-prod:
+    name: Preview gcp-prod
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "infra/pyproject.toml"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        shell: bash
+        working-directory: infra
+        run: uv sync
+
+      - name: Authenticate to Google Cloud
+        uses: WriterInternal/gcp-git-roles@v1
+        with:
+          deployment-profile: infra-writer-iam
+
+      - name: Authenticate with Pulumi Cloud
+        uses: pulumi/auth-actions@v1
+        with:
+          organization: writer-ai
+          requested-token-type: urn:pulumi:token-type:access_token:organization
+
+      - name: Pulumi Preview (gcp-prod)
+        uses: pulumi/actions@v6
+        with:
+          command: preview
+          stack-name: gcp-prod
+          work-dir: infra/gcp
+          diff: true
+          comment-on-pr: true
+
+  # Main merge: Pulumi up for gcp-prod stack
+  deploy-gcp-prod:
+    name: Deploy gcp-prod
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: production
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "infra/pyproject.toml"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        shell: bash
+        working-directory: infra
+        run: uv sync
+
+      - name: Authenticate to Google Cloud
+        uses: WriterInternal/gcp-git-roles@v1
+        with:
+          deployment-profile: infra-writer-iam
+
+      - name: Authenticate with Pulumi Cloud
+        uses: pulumi/auth-actions@v1
+        with:
+          organization: writer-ai
+          requested-token-type: urn:pulumi:token-type:access_token:organization
+
+      - name: Pulumi Up (gcp-prod)
+        uses: pulumi/actions@v6
+        with:
+          command: up
+          stack-name: gcp-prod
+          work-dir: infra/gcp
+          diff: true
+
+  # ===========================================================================
   # Manual deployment via workflow_dispatch
+  # ===========================================================================
+
   deploy-manual:
     name: Manual Deploy
     runs-on: ubuntu-latest
@@ -254,7 +410,14 @@ jobs:
         with:
           assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
 
+      - name: Authenticate to Google Cloud
+        if: startsWith(github.event.inputs.environment, 'gcp-')
+        uses: WriterInternal/gcp-git-roles@v1
+        with:
+          deployment-profile: infra-writer-iam
+
       - name: Fetch secrets from Infisical
+        if: "!startsWith(github.event.inputs.environment, 'gcp-')"
         uses: Infisical/secrets-action@v1.0.15
         with:
           method: "oidc"
@@ -271,14 +434,25 @@ jobs:
           requested-token-type: urn:pulumi:token-type:access_token:organization
 
       - name: Set Infisical External ID
+        if: "!startsWith(github.event.inputs.environment, 'gcp-')"
         shell: bash
-        working-directory: infra
+        working-directory: infra/aws
         run: uv run pulumi config set --stack ${{ github.event.inputs.environment }} --secret cerebro:infisicalExternalId "${{ secrets.INFISICAL_EXTERNAL_ID }}"
 
-      - name: Pulumi Up
+      - name: Pulumi Up (AWS)
+        if: "!startsWith(github.event.inputs.environment, 'gcp-')"
         uses: pulumi/actions@v6
         with:
           command: up
           stack-name: ${{ github.event.inputs.environment }}
-          work-dir: infra
+          work-dir: infra/aws
+          diff: true
+
+      - name: Pulumi Up (GCP)
+        if: startsWith(github.event.inputs.environment, 'gcp-')
+        uses: pulumi/actions@v6
+        with:
+          command: up
+          stack-name: ${{ github.event.inputs.environment }}
+          work-dir: infra/gcp
           diff: true

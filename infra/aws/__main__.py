@@ -14,7 +14,16 @@ Deploys:
 import pulumi
 import pulumi_aws as aws
 
-from aws import compute, ecr, infisical, jobs, kms, load_balancer, monitoring, networking, tailscale as ts, waf
+import compute
+import ecr
+import infisical
+import jobs
+import kms
+import load_balancer
+import monitoring
+import networking
+import tailscale as ts
+import waf
 
 # Configuration
 config = pulumi.Config()
