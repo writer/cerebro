@@ -51,7 +51,7 @@ func (e *GCPSyncEngine) gcpPubSubTopicTable() GCPTableSpec {
 }
 
 func (e *GCPSyncEngine) fetchGCPPubSubTopics(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
-	client, err := pubsub.NewClient(ctx, projectID)
+	client, err := pubsub.NewClient(ctx, projectID, gcpClientOptionsFromContext(ctx)...)
 	if err != nil {
 		return nil, fmt.Errorf("create pubsub client: %w", err)
 	}

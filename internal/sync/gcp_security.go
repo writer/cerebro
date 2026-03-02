@@ -94,7 +94,7 @@ func (s *GCPSecuritySync) SyncAll(ctx context.Context) error {
 
 // syncVulnerabilityOccurrences syncs vulnerability data from Container Analysis API
 func (s *GCPSecuritySync) syncVulnerabilityOccurrences(ctx context.Context) error {
-	client, err := containeranalysis.NewClient(ctx)
+	client, err := containeranalysis.NewClient(ctx, gcpClientOptionsFromContext(ctx)...)
 	if err != nil {
 		return fmt.Errorf("failed to create container analysis client: %w", err)
 	}
@@ -161,7 +161,7 @@ func (s *GCPSecuritySync) syncVulnerabilityOccurrences(ctx context.Context) erro
 
 // syncArtifactRegistryImages syncs docker images from Artifact Registry
 func (s *GCPSecuritySync) syncArtifactRegistryImages(ctx context.Context) error {
-	client, err := artifactregistry.NewClient(ctx)
+	client, err := artifactregistry.NewClient(ctx, gcpClientOptionsFromContext(ctx)...)
 	if err != nil {
 		return fmt.Errorf("failed to create artifact registry client: %w", err)
 	}
@@ -301,7 +301,7 @@ type artifactImageVulnerabilitySignal struct {
 }
 
 func (s *GCPSecuritySync) fetchArtifactRegistryImageSecretSignals(ctx context.Context) (map[string]artifactImageSecretSignal, error) {
-	client, err := containeranalysis.NewClient(ctx)
+	client, err := containeranalysis.NewClient(ctx, gcpClientOptionsFromContext(ctx)...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create container analysis client: %w", err)
 	}
@@ -369,7 +369,7 @@ func (s *GCPSecuritySync) fetchArtifactRegistryImageSecretSignals(ctx context.Co
 }
 
 func (s *GCPSecuritySync) fetchArtifactRegistryImageScanSignals(ctx context.Context) (map[string]artifactImageScanSignal, error) {
-	client, err := containeranalysis.NewClient(ctx)
+	client, err := containeranalysis.NewClient(ctx, gcpClientOptionsFromContext(ctx)...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create container analysis client: %w", err)
 	}
@@ -422,7 +422,7 @@ func (s *GCPSecuritySync) fetchArtifactRegistryImageScanSignals(ctx context.Cont
 }
 
 func (s *GCPSecuritySync) fetchArtifactRegistryImageVulnerabilitySignals(ctx context.Context) (map[string]artifactImageVulnerabilitySignal, error) {
-	client, err := containeranalysis.NewClient(ctx)
+	client, err := containeranalysis.NewClient(ctx, gcpClientOptionsFromContext(ctx)...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create container analysis client: %w", err)
 	}
@@ -641,7 +641,7 @@ func marshalJSON(v interface{}) string {
 
 // syncSCCFindings syncs findings from Security Command Center
 func (s *GCPSecuritySync) syncSCCFindings(ctx context.Context) error {
-	client, err := securitycenter.NewClient(ctx)
+	client, err := securitycenter.NewClient(ctx, gcpClientOptionsFromContext(ctx)...)
 	if err != nil {
 		return fmt.Errorf("failed to create security center client: %w", err)
 	}

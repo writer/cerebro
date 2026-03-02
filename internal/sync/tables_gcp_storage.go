@@ -29,7 +29,7 @@ func (e *GCPSyncEngine) gcpStorageObjectTable() GCPTableSpec {
 }
 
 func (e *GCPSyncEngine) fetchGCPStorageBuckets(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
-	client, err := storage.NewClient(ctx)
+	client, err := storage.NewClient(ctx, gcpClientOptionsFromContext(ctx)...)
 	if err != nil {
 		return nil, fmt.Errorf("create storage client: %w", err)
 	}
@@ -170,7 +170,7 @@ func (e *GCPSyncEngine) fetchGCPStorageBuckets(ctx context.Context, projectID st
 }
 
 func (e *GCPSyncEngine) fetchGCPStorageObjects(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
-	client, err := storage.NewClient(ctx)
+	client, err := storage.NewClient(ctx, gcpClientOptionsFromContext(ctx)...)
 	if err != nil {
 		return nil, fmt.Errorf("create storage client: %w", err)
 	}

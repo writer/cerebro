@@ -39,7 +39,17 @@ func TestParseScheduledSyncSpec(t *testing.T) {
 }
 
 func TestParseScheduledSyncSpec_AuthDirectives(t *testing.T) {
-	spec := parseScheduledSyncSpec("aws_profile=prod,aws_web_identity_token_file=/tmp/oidc-token,aws_web_identity_role_arn=arn:aws:iam::123456789012:role/WebIdentityRole,aws_web_identity_role_session_name=web-session,aws_role_arn=arn:aws:iam::123456789012:role/SyncRole,aws_role_external_id=ext-123,aws_config_file=/tmp/config,aws_shared_credentials_file=/tmp/creds,aws_credential_process=/opt/bin/creds,aws_role_source_identity=cerebro-scheduler,aws_role_duration_seconds=1800,aws_role_session_tags=env=prod|owner=platform,aws_role_transitive_tag_keys=env,gcp_credentials_file=/tmp/gcp.json,gcp_impersonate_service_account=svc@test.iam.gserviceaccount.com,gcp_impersonate_delegates=delegate-a|delegate-b,gcp_impersonate_token_lifetime_seconds=2400,aws_iam_roles")
+	spec := parseScheduledSyncSpec("sync_timeout_seconds=1200,worker_wait_timeout_seconds=900,gcp_project_timeout_seconds=600,aws_profile=prod,aws_web_identity_token_file=/tmp/oidc-token,aws_web_identity_role_arn=arn:aws:iam::123456789012:role/WebIdentityRole,aws_web_identity_role_session_name=web-session,aws_role_arn=arn:aws:iam::123456789012:role/SyncRole,aws_role_external_id=ext-123,aws_config_file=/tmp/config,aws_shared_credentials_file=/tmp/creds,aws_credential_process=/opt/bin/creds,aws_role_source_identity=cerebro-scheduler,aws_role_duration_seconds=1800,aws_role_session_tags=env=prod|owner=platform,aws_role_transitive_tag_keys=env,gcp_credentials_file=/tmp/gcp.json,gcp_impersonate_service_account=svc@test.iam.gserviceaccount.com,gcp_impersonate_delegates=delegate-a|delegate-b,gcp_impersonate_token_lifetime_seconds=2400,aws_iam_roles")
+
+	if spec.SyncTimeoutSeconds != "1200" {
+		t.Fatalf("unexpected sync timeout directive: %q", spec.SyncTimeoutSeconds)
+	}
+	if spec.WorkerWaitTimeoutSeconds != "900" {
+		t.Fatalf("unexpected worker wait timeout directive: %q", spec.WorkerWaitTimeoutSeconds)
+	}
+	if spec.GCPProjectTimeoutSeconds != "600" {
+		t.Fatalf("unexpected gcp project timeout directive: %q", spec.GCPProjectTimeoutSeconds)
+	}
 
 	if spec.AWSProfile != "prod" {
 		t.Fatalf("expected aws profile prod, got %q", spec.AWSProfile)
@@ -459,6 +469,125 @@ func TestRunScheduledSync_RetryAndStatus(t *testing.T) {
 	})
 }
 
+func TestRunScheduledSync_RejectsInvalidTimeoutDirective(t *testing.T) {
+	originalExecute := executeScheduledSyncFn
+	originalSave := saveScheduleFn
+	t.Cleanup(func() {
+		executeScheduledSyncFn = originalExecute
+		saveScheduleFn = originalSave
+	})
+
+	executeCalls := 0
+	executeScheduledSyncFn = func(context.Context, *snowflake.Client, *SyncSchedule) error {
+		executeCalls++
+		return nil
+	}
+	saveScheduleFn = func(context.Context, *snowflake.Client, *SyncSchedule) error { return nil }
+
+	schedule := &SyncSchedule{Name: "invalid-timeout", Provider: "aws", Retry: 1, Table: "sync_timeout_seconds=5"}
+	runScheduledSync(nil, schedule)
+
+	if executeCalls != 0 {
+		t.Fatalf("expected sync execution to be skipped, got %d calls", executeCalls)
+	}
+	if !strings.HasPrefix(schedule.LastStatus, "failed:") || !strings.Contains(schedule.LastStatus, "sync_timeout_seconds") {
+		t.Fatalf("expected timeout directive validation failure status, got %q", schedule.LastStatus)
+	}
+}
+
+func TestRunScheduledSync_SkipsOverlappingRuns(t *testing.T) {
+	originalExecute := executeScheduledSyncFn
+	originalSave := saveScheduleFn
+	originalSleep := scheduleSleepFn
+	t.Cleanup(func() {
+		executeScheduledSyncFn = originalExecute
+		saveScheduleFn = originalSave
+		scheduleSleepFn = originalSleep
+		scheduledSyncInFlight.Delete("overlap-test")
+	})
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	finished := make(chan struct{})
+
+	executeScheduledSyncFn = func(context.Context, *snowflake.Client, *SyncSchedule) error {
+		select {
+		case <-started:
+		default:
+			close(started)
+		}
+		<-release
+		return nil
+	}
+	saveScheduleFn = func(context.Context, *snowflake.Client, *SyncSchedule) error { return nil }
+	scheduleSleepFn = func(time.Duration) {}
+
+	first := &SyncSchedule{Name: "overlap-test", Provider: "aws", Retry: 1}
+	go func() {
+		runScheduledSync(nil, first)
+		close(finished)
+	}()
+
+	<-started
+
+	second := &SyncSchedule{Name: "overlap-test", Provider: "aws", Retry: 1}
+	runScheduledSync(nil, second)
+
+	if second.LastStatus != "skipped: previous run still active" {
+		t.Fatalf("expected overlap skip status, got %q", second.LastStatus)
+	}
+
+	close(release)
+	<-finished
+}
+
+func TestExecuteGCPSync_InvalidProjectTimeoutDirective(t *testing.T) {
+	originalNative := runScheduledGCPNativeSyncFn
+	originalSecurity := runScheduledGCPSecuritySyncFn
+	originalApplyAuth := applyScheduledGCPAuthFn
+	originalPreflight := preflightScheduledGCPAuthFn
+	t.Cleanup(func() {
+		runScheduledGCPNativeSyncFn = originalNative
+		runScheduledGCPSecuritySyncFn = originalSecurity
+		applyScheduledGCPAuthFn = originalApplyAuth
+		preflightScheduledGCPAuthFn = originalPreflight
+	})
+
+	applyScheduledGCPAuthFn = func(scheduledSyncSpec) (*scheduledGCPAuthConfig, error) {
+		return &scheduledGCPAuthConfig{Cleanup: func() {}}, nil
+	}
+	preflightScheduledGCPAuthFn = func(context.Context, *SyncSchedule, scheduledSyncSpec, *scheduledGCPAuthConfig) error {
+		return nil
+	}
+	runScheduledGCPNativeSyncFn = func(context.Context, *snowflake.Client, string, []string) error { return nil }
+	runScheduledGCPSecuritySyncFn = func(context.Context, *snowflake.Client, string, string, []string) error { return nil }
+
+	err := executeGCPSync(context.Background(), nil, &SyncSchedule{
+		Name:  "invalid-project-timeout",
+		Table: "project=proj-1,gcp_project_timeout_seconds=10,gcp_compute_instances",
+	})
+	if err == nil {
+		t.Fatal("expected project timeout validation error")
+	}
+	if !strings.Contains(err.Error(), "gcp_project_timeout_seconds") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestEnqueueScheduledNativeSync_InvalidWorkerWaitTimeoutDirective(t *testing.T) {
+	err := enqueueScheduledNativeSync(context.Background(), &SyncSchedule{
+		Name:     "worker-wait-timeout",
+		Provider: "aws",
+		Table:    "worker_wait_timeout_seconds=10",
+	})
+	if err == nil {
+		t.Fatal("expected worker wait timeout validation error")
+	}
+	if !strings.Contains(err.Error(), "worker_wait_timeout_seconds") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestSplitGCPScheduledTableFilters(t *testing.T) {
 	t.Run("empty", func(t *testing.T) {
 		native, security := splitGCPScheduledTableFilters(nil)
@@ -525,23 +654,30 @@ func TestExecuteGCPSync_AppliesScheduledAuthDirectives(t *testing.T) {
 	applyCalled := false
 	preflightCalled := false
 
-	applyScheduledGCPAuthFn = func(spec scheduledSyncSpec) (func(), string, error) {
+	applyScheduledGCPAuthFn = func(spec scheduledSyncSpec) (*scheduledGCPAuthConfig, error) {
 		applyCalled = true
 		if spec.GCPCredentialsFile != "/tmp/gcp.json" {
-			return nil, "", fmt.Errorf("unexpected gcp credentials file %q", spec.GCPCredentialsFile)
+			return nil, fmt.Errorf("unexpected gcp credentials file %q", spec.GCPCredentialsFile)
 		}
 		if spec.GCPImpersonateServiceAccount != "svc@test.iam.gserviceaccount.com" {
-			return nil, "", fmt.Errorf("unexpected gcp impersonation service account %q", spec.GCPImpersonateServiceAccount)
+			return nil, fmt.Errorf("unexpected gcp impersonation service account %q", spec.GCPImpersonateServiceAccount)
 		}
 		if len(spec.GCPImpersonateDelegates) != 2 {
-			return nil, "", fmt.Errorf("unexpected gcp delegates %v", spec.GCPImpersonateDelegates)
+			return nil, fmt.Errorf("unexpected gcp delegates %v", spec.GCPImpersonateDelegates)
 		}
 		if spec.GCPImpersonateTokenLifetime != "2400" {
-			return nil, "", fmt.Errorf("unexpected gcp impersonate token lifetime %q", spec.GCPImpersonateTokenLifetime)
+			return nil, fmt.Errorf("unexpected gcp impersonate token lifetime %q", spec.GCPImpersonateTokenLifetime)
 		}
-		return func() {}, "impersonate_service_account=svc@test.iam.gserviceaccount.com delegates=2", nil
+		return &scheduledGCPAuthConfig{
+			Cleanup:         func() {},
+			Summary:         "impersonate_service_account=svc@test.iam.gserviceaccount.com delegates=2",
+			CredentialsFile: "/tmp/gcp.json",
+		}, nil
 	}
-	preflightScheduledGCPAuthFn = func(context.Context, *SyncSchedule, scheduledSyncSpec) error {
+	preflightScheduledGCPAuthFn = func(_ context.Context, _ *SyncSchedule, _ scheduledSyncSpec, cfg *scheduledGCPAuthConfig) error {
+		if cfg == nil || cfg.CredentialsFile != "/tmp/gcp.json" {
+			return fmt.Errorf("unexpected auth cfg: %#v", cfg)
+		}
 		preflightCalled = true
 		return nil
 	}
@@ -568,11 +704,6 @@ func TestExecuteGCPSync_AppliesScheduledAuthDirectives(t *testing.T) {
 }
 
 func TestApplyScheduledGCPAuth_WithCredentialsFile(t *testing.T) {
-	originalEnv := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")
-	t.Cleanup(func() {
-		_ = os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", originalEnv)
-	})
-
 	source, err := os.CreateTemp("", "scheduled-gcp-source-*.json")
 	if err != nil {
 		t.Fatalf("create temp credentials file: %v", err)
@@ -588,33 +719,33 @@ func TestApplyScheduledGCPAuth_WithCredentialsFile(t *testing.T) {
 		t.Fatalf("close temp credentials file: %v", err)
 	}
 
-	if err := os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "/tmp/original-gcp-credentials.json"); err != nil {
-		t.Fatalf("set env: %v", err)
-	}
-
-	cleanup, summary, err := applyScheduledGCPAuth(scheduledSyncSpec{GCPCredentialsFile: source.Name()})
+	cfg, err := applyScheduledGCPAuth(scheduledSyncSpec{GCPCredentialsFile: source.Name()})
 	if err != nil {
 		t.Fatalf("unexpected apply error: %v", err)
 	}
-	if !strings.Contains(summary, "credentials_file=") {
-		t.Fatalf("expected credentials file summary, got %q", summary)
+	if cfg == nil {
+		t.Fatal("expected auth config")
 	}
-	if got := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"); got != source.Name() {
-		t.Fatalf("expected GOOGLE_APPLICATION_CREDENTIALS to be set to source file, got %q", got)
+	if cfg.Cleanup == nil {
+		t.Fatal("expected cleanup func")
 	}
+	if cfg.CredentialsFile != source.Name() {
+		t.Fatalf("expected credentials file %q, got %q", source.Name(), cfg.CredentialsFile)
+	}
+	if len(cfg.ClientOptions) != 1 {
+		t.Fatalf("expected one client option, got %d", len(cfg.ClientOptions))
+	}
+	if !strings.Contains(cfg.Summary, "credentials_file=") {
+		t.Fatalf("expected credentials file summary, got %q", cfg.Summary)
+	}
+	cfg.Cleanup()
 
-	cleanup()
-	if got := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"); got != "/tmp/original-gcp-credentials.json" {
-		t.Fatalf("expected GOOGLE_APPLICATION_CREDENTIALS to be restored, got %q", got)
+	if _, statErr := os.Stat(source.Name()); statErr != nil {
+		t.Fatalf("expected source credentials file to remain, stat err=%v", statErr)
 	}
 }
 
 func TestApplyScheduledGCPAuth_WithImpersonation(t *testing.T) {
-	originalEnv := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")
-	t.Cleanup(func() {
-		_ = os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", originalEnv)
-	})
-
 	source, err := os.CreateTemp("", "scheduled-gcp-impersonation-source-*.json")
 	if err != nil {
 		t.Fatalf("create temp credentials file: %v", err)
@@ -630,7 +761,7 @@ func TestApplyScheduledGCPAuth_WithImpersonation(t *testing.T) {
 		t.Fatalf("close source credentials: %v", err)
 	}
 
-	cleanup, summary, err := applyScheduledGCPAuth(scheduledSyncSpec{
+	cfg, err := applyScheduledGCPAuth(scheduledSyncSpec{
 		GCPCredentialsFile:           source.Name(),
 		GCPImpersonateServiceAccount: "impersonated@test.iam.gserviceaccount.com",
 		GCPImpersonateDelegates:      []string{"delegate-a@test.iam.gserviceaccount.com", "delegate-b@test.iam.gserviceaccount.com"},
@@ -639,19 +770,25 @@ func TestApplyScheduledGCPAuth_WithImpersonation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected apply error: %v", err)
 	}
-	if !strings.Contains(summary, "impersonate_service_account=impersonated@test.iam.gserviceaccount.com") {
-		t.Fatalf("unexpected summary: %q", summary)
+	if cfg == nil {
+		t.Fatal("expected auth config")
 	}
-	if !strings.Contains(summary, "token_lifetime_seconds=2400") {
-		t.Fatalf("expected token lifetime in summary, got %q", summary)
+	if !strings.Contains(cfg.Summary, "impersonate_service_account=impersonated@test.iam.gserviceaccount.com") {
+		t.Fatalf("unexpected summary: %q", cfg.Summary)
+	}
+	if !strings.Contains(cfg.Summary, "token_lifetime_seconds=2400") {
+		t.Fatalf("expected token lifetime in summary, got %q", cfg.Summary)
 	}
 
-	impersonatedPath := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")
+	impersonatedPath := cfg.CredentialsFile
 	if impersonatedPath == "" {
-		t.Fatal("expected GOOGLE_APPLICATION_CREDENTIALS to be set")
+		t.Fatal("expected temporary impersonated credentials file path")
 	}
 	if impersonatedPath == source.Name() {
 		t.Fatalf("expected impersonated credentials file, got source file %q", impersonatedPath)
+	}
+	if len(cfg.ClientOptions) != 1 {
+		t.Fatalf("expected one client option, got %d", len(cfg.ClientOptions))
 	}
 
 	encoded, err := os.ReadFile(impersonatedPath)
@@ -673,14 +810,14 @@ func TestApplyScheduledGCPAuth_WithImpersonation(t *testing.T) {
 		t.Fatalf("unexpected token_lifetime_seconds payload: %v", got)
 	}
 
-	cleanup()
+	cfg.Cleanup()
 	if _, err := os.Stat(impersonatedPath); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("expected impersonated credentials file to be removed, stat err=%v", err)
 	}
 }
 
 func TestApplyScheduledGCPAuth_ImpersonationRequiresSourceCredentials(t *testing.T) {
-	_, _, err := applyScheduledGCPAuth(scheduledSyncSpec{
+	_, err := applyScheduledGCPAuth(scheduledSyncSpec{
 		GCPCredentialsFile:           "/tmp/definitely-missing-scheduled-gcp-credentials.json",
 		GCPImpersonateServiceAccount: "impersonated@test.iam.gserviceaccount.com",
 	})
@@ -708,7 +845,7 @@ func TestApplyScheduledGCPAuth_TokenLifetimeRequiresImpersonation(t *testing.T) 
 		t.Fatalf("close source credentials: %v", err)
 	}
 
-	_, _, err = applyScheduledGCPAuth(scheduledSyncSpec{
+	_, err = applyScheduledGCPAuth(scheduledSyncSpec{
 		GCPCredentialsFile:          source.Name(),
 		GCPImpersonateTokenLifetime: "2400",
 	})
@@ -806,10 +943,10 @@ func TestExecuteGCPSync_FilterRouting(t *testing.T) {
 		preflightScheduledGCPAuthFn = originalPreflight
 	})
 
-	applyScheduledGCPAuthFn = func(scheduledSyncSpec) (func(), string, error) {
-		return func() {}, "", nil
+	applyScheduledGCPAuthFn = func(scheduledSyncSpec) (*scheduledGCPAuthConfig, error) {
+		return &scheduledGCPAuthConfig{Cleanup: func() {}}, nil
 	}
-	preflightScheduledGCPAuthFn = func(context.Context, *SyncSchedule, scheduledSyncSpec) error {
+	preflightScheduledGCPAuthFn = func(context.Context, *SyncSchedule, scheduledSyncSpec, *scheduledGCPAuthConfig) error {
 		return nil
 	}
 

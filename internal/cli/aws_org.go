@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -11,7 +10,6 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/organizations"
 	orgtypes "github.com/aws/aws-sdk-go-v2/service/organizations/types"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
@@ -65,6 +63,28 @@ func runAWSOrgSync(ctx context.Context, start time.Time) error {
 		return fmt.Errorf("get management account ID: %w", err)
 	}
 
+	mfaSerial := strings.TrimSpace(syncAWSRoleMFASerial)
+	mfaToken := strings.TrimSpace(syncAWSRoleMFAToken)
+	if mfaToken != "" && mfaSerial == "" {
+		return fmt.Errorf("--aws-role-mfa-token requires --aws-role-mfa-serial")
+	}
+
+	durationSeconds, err := parseBoundedPositiveIntDirective(syncAWSRoleDuration, "--aws-role-duration-seconds", 900, 43200)
+	if err != nil {
+		return err
+	}
+
+	tags, transitiveTagKeys, err := parseAWSSessionTagDirectives(
+		parseCommaSeparatedValues(syncAWSRoleTags),
+		parseCommaSeparatedValues(syncAWSRoleTransitive),
+	)
+	if err != nil {
+		return err
+	}
+
+	externalID := strings.TrimSpace(syncAWSRoleExternalID)
+	sourceIdentity := strings.TrimSpace(syncAWSRoleSourceID)
+
 	if syncValidate {
 		return runAWSOrgValidation(ctx, start, awsCfg, region)
 	}
@@ -107,7 +127,19 @@ func runAWSOrgSync(ctx context.Context, start time.Time) error {
 					return nil
 				}
 
-				assumedCfg, assumeErr := assumeRoleConfig(ctx, awsCfg, roleArn, fmt.Sprintf("cerebro-sync-%s", account.ID))
+				assumedCfg, assumeErr := assumeRoleConfigWithScheduledOptions(
+					ctx,
+					awsCfg,
+					roleArn,
+					fmt.Sprintf("cerebro-sync-%s", account.ID),
+					externalID,
+					mfaSerial,
+					mfaToken,
+					sourceIdentity,
+					durationSeconds,
+					tags,
+					transitiveTagKeys,
+				)
 				if assumeErr != nil {
 					mu.Lock()
 					errs = append(errs, fmt.Errorf("account %s: %w", account.ID, assumeErr))
@@ -268,39 +300,6 @@ func awsPartitionForRegion(region string) string {
 		return "aws-cn"
 	}
 	return "aws"
-}
-
-func assumeRoleConfig(ctx context.Context, cfg aws.Config, roleArn, sessionName string) (aws.Config, error) {
-	return assumeRoleConfigWithExternalID(ctx, cfg, roleArn, sessionName, "", "", "")
-}
-
-func assumeRoleConfigWithExternalID(ctx context.Context, cfg aws.Config, roleArn, sessionName, externalID, mfaSerial, mfaToken string) (aws.Config, error) {
-	if roleArn == "" {
-		return cfg, errors.New("role ARN is required")
-	}
-	if sessionName == "" {
-		sessionName = "cerebro-sync"
-	}
-
-	stsClient := sts.NewFromConfig(cfg)
-	provider := stscreds.NewAssumeRoleProvider(stsClient, roleArn, func(options *stscreds.AssumeRoleOptions) {
-		options.RoleSessionName = sessionName
-		if externalID != "" {
-			options.ExternalID = aws.String(externalID)
-		}
-		if mfaSerial != "" {
-			options.SerialNumber = aws.String(mfaSerial)
-			if mfaToken != "" {
-				token := mfaToken
-				options.TokenProvider = func() (string, error) {
-					return token, nil
-				}
-			}
-		}
-	})
-	assumed := cfg.Copy()
-	assumed.Credentials = aws.NewCredentialsCache(provider)
-	return assumed, nil
 }
 
 func getAWSAccountID(ctx context.Context, cfg aws.Config) (string, error) {

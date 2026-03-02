@@ -61,6 +61,7 @@ var (
 	syncGCPProject         string
 	syncGCPProjects        string // comma-separated list of projects
 	syncGCPOrg             string // organization ID for multi-project sync
+	syncGCPProjectTimeout  string
 	syncMultiRegion        bool
 	syncRegion             string
 	syncUseAssetAPI        bool   // use Cloud Asset Inventory API
@@ -109,6 +110,7 @@ func init() {
 	syncCmd.Flags().StringVar(&syncGCPProject, "gcp-project", "", "GCP project ID to sync (required with --gcp unless using --gcp-org)")
 	syncCmd.Flags().StringVar(&syncGCPProjects, "gcp-projects", "", "Comma-separated list of GCP project IDs to sync")
 	syncCmd.Flags().StringVar(&syncGCPOrg, "gcp-org", "", "GCP organization ID for multi-project sync (syncs all projects)")
+	syncCmd.Flags().StringVar(&syncGCPProjectTimeout, "gcp-project-timeout-seconds", "", "Per-project timeout in seconds for GCP multi-project sync (30-86400)")
 	syncCmd.Flags().BoolVar(&syncMultiRegion, "multi-region", false, "Scan all major AWS regions (us-east-1, us-west-2, eu-west-1, etc.)")
 	syncCmd.Flags().StringVarP(&syncRegion, "region", "r", "", "AWS region to sync when --multi-region is false")
 	syncCmd.Flags().BoolVar(&syncUseAssetAPI, "asset-api", false, "Use GCP Cloud Asset Inventory API for efficient bulk fetching")
@@ -379,6 +381,13 @@ func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []str
 		return fmt.Errorf("no GCP projects provided for sync")
 	}
 
+	projectTimeout := defaultGCPProjectTimeout
+	if timeoutSeconds, err := parseBoundedPositiveIntDirective(syncGCPProjectTimeout, "--gcp-project-timeout-seconds", minGCPProjectTimeoutSeconds, maxGCPProjectTimeoutSeconds); err != nil {
+		return err
+	} else if timeoutSeconds > 0 {
+		projectTimeout = time.Duration(timeoutSeconds) * time.Second
+	}
+
 	Info("Starting GCP multi-project sync for %d projects...", len(projects))
 	tableFilter := parseTableFilter(syncTable)
 	nativeTableFilter, securityTableFilter, runNativeSync, runSecuritySync, err := resolveGCPTableFilters(tableFilter, syncSecurity)
@@ -431,6 +440,8 @@ func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []str
 	for i, projectID := range projects {
 		Info("[%d/%d] Syncing project: %s", i+1, len(projects), projectID)
 
+		projectCtx, cancel := context.WithTimeout(ctx, projectTimeout)
+
 		if runNativeSync {
 			options := []nativesync.GCPEngineOption{nativesync.WithGCPProject(projectID)}
 			if syncConcurrency > 0 {
@@ -440,11 +451,15 @@ func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []str
 				options = append(options, nativesync.WithGCPTableFilter(nativeTableFilter))
 			}
 			syncer := nativesync.NewGCPSyncEngine(client, slog.Default(), options...)
-			results, err := syncer.SyncAll(ctx)
+			results, err := syncer.SyncAll(projectCtx)
 			allResults = append(allResults, results...)
 			if err != nil {
 				Warning("Failed to sync project %s: %v", projectID, err)
-				syncErrs = append(syncErrs, fmt.Errorf("project %s native sync: %w", projectID, err))
+				if errors.Is(err, context.DeadlineExceeded) || errors.Is(projectCtx.Err(), context.DeadlineExceeded) {
+					syncErrs = append(syncErrs, fmt.Errorf("project %s native sync timed out after %s", projectID, projectTimeout.Round(time.Second)))
+				} else {
+					syncErrs = append(syncErrs, fmt.Errorf("project %s native sync: %w", projectID, err))
+				}
 			}
 		}
 
@@ -454,11 +469,17 @@ func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []str
 				secOptions = append(secOptions, nativesync.WithGCPSecurityTableFilter(securityTableFilter))
 			}
 			securitySyncer := nativesync.NewGCPSecuritySync(client, slog.Default(), projectID, syncGCPOrg, secOptions...)
-			if secErr := securitySyncer.SyncAll(ctx); secErr != nil {
+			if secErr := securitySyncer.SyncAll(projectCtx); secErr != nil {
 				Warning("Security sync failed for project %s: %v", projectID, secErr)
-				syncErrs = append(syncErrs, fmt.Errorf("project %s security sync: %w", projectID, secErr))
+				if errors.Is(secErr, context.DeadlineExceeded) || errors.Is(projectCtx.Err(), context.DeadlineExceeded) {
+					syncErrs = append(syncErrs, fmt.Errorf("project %s security sync timed out after %s", projectID, projectTimeout.Round(time.Second)))
+				} else {
+					syncErrs = append(syncErrs, fmt.Errorf("project %s security sync: %w", projectID, secErr))
+				}
 			}
 		}
+
+		cancel()
 	}
 
 	if runNativeSync {
@@ -906,6 +927,9 @@ func loadAWSConfig(ctx context.Context, profile string) (aws.Config, error) {
 
 	credentialProcess := strings.TrimSpace(syncAWSCredentialProc)
 	if credentialProcess != "" && trimmed == "" {
+		if err := validateAWSCredentialProcess(credentialProcess, "--aws-credential-process"); err != nil {
+			return aws.Config{}, err
+		}
 		loadOptions = append(loadOptions, config.WithCredentialsProvider(aws.NewCredentialsCache(processcreds.NewProvider(credentialProcess))))
 	}
 
@@ -1209,6 +1233,69 @@ func validateReadableFile(path, source string) error {
 	}
 
 	return nil
+}
+
+func validateAWSCredentialProcess(command, source string) error {
+	trimmed := strings.TrimSpace(command)
+	if trimmed == "" {
+		return fmt.Errorf("%s must not be empty", source)
+	}
+
+	if strings.ContainsAny(trimmed, "\n\r|&;<>`") {
+		return fmt.Errorf("%s contains disallowed shell operators", source)
+	}
+
+	executable := firstCommandToken(trimmed)
+	if executable == "" {
+		return fmt.Errorf("%s must include an executable path", source)
+	}
+	if !filepath.IsAbs(executable) {
+		return fmt.Errorf("%s must use an absolute executable path", source)
+	}
+	if err := validateReadableFile(executable, fmt.Sprintf("%s executable", source)); err != nil {
+		return err
+	}
+
+	allowlist := parseCommaSeparatedValues(firstNonEmptyEnv("CEREBRO_AWS_CREDENTIAL_PROCESS_ALLOWLIST", "AWS_CREDENTIAL_PROCESS_ALLOWLIST"))
+	if len(allowlist) == 0 {
+		return nil
+	}
+
+	normalizedExecutable := filepath.Clean(executable)
+	for _, rawAllowed := range allowlist {
+		allowed := filepath.Clean(strings.TrimSpace(rawAllowed))
+		if allowed == "" {
+			continue
+		}
+		if normalizedExecutable == allowed || strings.HasPrefix(normalizedExecutable, allowed+string(os.PathSeparator)) {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("%s executable %q is not permitted by CEREBRO_AWS_CREDENTIAL_PROCESS_ALLOWLIST", source, executable)
+}
+
+func firstCommandToken(command string) string {
+	trimmed := strings.TrimSpace(command)
+	if trimmed == "" {
+		return ""
+	}
+
+	if trimmed[0] == '\'' || trimmed[0] == '"' {
+		quote := trimmed[0]
+		for i := 1; i < len(trimmed); i++ {
+			if trimmed[i] == quote {
+				return strings.TrimSpace(trimmed[1:i])
+			}
+		}
+		return ""
+	}
+
+	parts := strings.Fields(trimmed)
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(parts[0])
 }
 
 func resolveGCPSourceCredentialsPath(credentialsFile string) (string, error) {

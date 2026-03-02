@@ -313,7 +313,7 @@ func (e *GCPSyncEngine) fetchGCPArtifactRegistryVersions(ctx context.Context, pr
 }
 
 func (e *GCPSyncEngine) searchGCPResources(ctx context.Context, projectID, assetType string) ([]*assetpb.ResourceSearchResult, error) {
-	client, err := assetapi.NewClient(ctx)
+	client, err := assetapi.NewClient(ctx, gcpClientOptionsFromContext(ctx)...)
 	if err != nil {
 		return nil, fmt.Errorf("create asset client: %w", err)
 	}
@@ -342,7 +342,7 @@ func (e *GCPSyncEngine) searchGCPResources(ctx context.Context, projectID, asset
 }
 
 func (e *GCPSyncEngine) searchGCPIAMPolicies(ctx context.Context, projectID, assetType string) (map[string]map[string]interface{}, error) {
-	client, err := assetapi.NewClient(ctx)
+	client, err := assetapi.NewClient(ctx, gcpClientOptionsFromContext(ctx)...)
 	if err != nil {
 		return nil, fmt.Errorf("create asset client: %w", err)
 	}

@@ -19,7 +19,7 @@ func (e *GCPSyncEngine) gcpIdsEndpointTable() GCPTableSpec {
 }
 
 func (e *GCPSyncEngine) fetchGCPIdsEndpoints(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
-	client, err := ids.NewClient(ctx)
+	client, err := ids.NewClient(ctx, gcpClientOptionsFromContext(ctx)...)
 	if err != nil {
 		return nil, fmt.Errorf("create ids client: %w", err)
 	}

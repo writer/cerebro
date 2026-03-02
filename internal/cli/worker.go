@@ -37,6 +37,9 @@ var (
 	workerDrainTimeout      string
 	workerPollWait          string
 	workerHealthPort        int
+
+	runNativeSyncForJobFn           = runNativeSyncForJob
+	syncConfiguredProviderSourcesFn = syncConfiguredProviderSources
 )
 
 func init() {
@@ -206,31 +209,18 @@ func newNativeSyncJobHandler(application *app.App) jobs.JobHandler {
 			return "", fmt.Errorf("unsupported native sync provider %q", req.Provider)
 		}
 
-		client, err := createSnowflakeClient()
-		if err != nil {
-			return "", fmt.Errorf("create snowflake client: %w", err)
-		}
-		defer func() { _ = client.Close() }()
-
 		schedule := &SyncSchedule{
 			Name:     req.ScheduleName,
 			Provider: provider,
 			Table:    req.Table,
 		}
 
-		switch provider {
-		case "aws":
-			err = executeAWSSync(ctx, client, schedule)
-		case "gcp":
-			err = executeGCPSync(ctx, client, schedule)
-		case "azure":
-			err = executeAzureSync(ctx, client, schedule)
-		}
+		err := runNativeSyncForJobFn(ctx, provider, schedule)
 		if err != nil {
 			return "", err
 		}
 
-		syncedProviders, failedProviders, err := syncConfiguredProviderSources(ctx, application, logger)
+		syncedProviders, failedProviders, err := syncConfiguredProviderSourcesFn(ctx, application, logger)
 		if err != nil {
 			return "", err
 		}
@@ -261,6 +251,25 @@ func newNativeSyncJobHandler(application *app.App) jobs.JobHandler {
 		}
 
 		return string(result), nil
+	}
+}
+
+func runNativeSyncForJob(ctx context.Context, provider string, schedule *SyncSchedule) error {
+	client, err := createSnowflakeClient()
+	if err != nil {
+		return fmt.Errorf("create snowflake client: %w", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	switch provider {
+	case "aws":
+		return executeAWSSync(ctx, client, schedule)
+	case "gcp":
+		return executeGCPSync(ctx, client, schedule)
+	case "azure":
+		return executeAzureSync(ctx, client, schedule)
+	default:
+		return fmt.Errorf("unsupported native sync provider %q", provider)
 	}
 }
 

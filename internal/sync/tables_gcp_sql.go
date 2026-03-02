@@ -16,7 +16,7 @@ func (e *GCPSyncEngine) gcpSQLInstanceTable() GCPTableSpec {
 }
 
 func (e *GCPSyncEngine) fetchGCPSQLInstances(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
-	service, err := sqladmin.NewService(ctx)
+	service, err := sqladmin.NewService(ctx, gcpClientOptionsFromContext(ctx)...)
 	if err != nil {
 		return nil, fmt.Errorf("create sqladmin service: %w", err)
 	}

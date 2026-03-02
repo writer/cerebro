@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -30,6 +31,7 @@ import (
 	"github.com/writerinternal/cerebro/internal/snowflake"
 	nativesync "github.com/writerinternal/cerebro/internal/sync"
 	"golang.org/x/oauth2/google"
+	"google.golang.org/api/option"
 )
 
 var syncScheduleCmd = &cobra.Command{
@@ -110,10 +112,23 @@ var (
 	preflightScheduledAWSAuthFn   = preflightScheduledAWSAuth
 	applyScheduledGCPAuthFn       = applyScheduledGCPAuth
 	preflightScheduledGCPAuthFn   = preflightScheduledGCPAuth
+	waitForScheduledJobsFn        = waitForScheduledJobs
 
 	newScheduleAppFn = app.New
 
-	scheduledGCPAuthMu sync.Mutex
+	scheduledSyncInFlight sync.Map
+)
+
+const (
+	defaultScheduledSyncTimeout    = 30 * time.Minute
+	defaultNativeWorkerWaitTimeout = 30 * time.Minute
+	defaultGCPProjectTimeout       = 10 * time.Minute
+	minScheduledTimeoutSeconds     = 30
+	maxScheduledTimeoutSeconds     = 86400
+	minWorkerWaitTimeoutSeconds    = 30
+	maxWorkerWaitTimeoutSeconds    = 86400
+	minGCPProjectTimeoutSeconds    = 30
+	maxGCPProjectTimeoutSeconds    = 86400
 )
 
 func init() {
@@ -446,24 +461,66 @@ shutdown:
 }
 
 func runScheduledSync(client *snowflake.Client, schedule *SyncSchedule) {
-	ctx := context.Background()
 	start := scheduleNowFn()
+	persistCtx := context.Background()
+	scheduleKey := strings.ToLower(strings.TrimSpace(schedule.Name))
+	if scheduleKey == "" {
+		scheduleKey = fmt.Sprintf("unnamed-%p", schedule)
+	}
+
+	if _, loaded := scheduledSyncInFlight.LoadOrStore(scheduleKey, struct{}{}); loaded {
+		schedule.LastRun = start
+		schedule.LastStatus = "skipped: previous run still active"
+		schedule.UpdatedAt = scheduleNowFn().UTC()
+		_ = saveScheduleFn(persistCtx, client, schedule)
+		Warning("[%s] Skipping scheduled sync: previous run is still active", schedule.Name)
+		slog.Default().Info("scheduled_sync_audit", "event", "skip_overlap", "schedule", schedule.Name, "provider", strings.ToLower(strings.TrimSpace(schedule.Provider)))
+		return
+	}
+	defer scheduledSyncInFlight.Delete(scheduleKey)
+
+	spec := parseScheduledSyncSpec(schedule.Table)
+	jobTimeout := defaultScheduledSyncTimeout
+	if timeoutSeconds, err := parseBoundedPositiveIntDirective(spec.SyncTimeoutSeconds, "sync_timeout_seconds", minScheduledTimeoutSeconds, maxScheduledTimeoutSeconds); err != nil {
+		schedule.LastRun = start
+		schedule.LastStatus = fmt.Sprintf("failed: %v", err)
+		schedule.UpdatedAt = scheduleNowFn().UTC()
+		_ = saveScheduleFn(persistCtx, client, schedule)
+		Warning("[%s] Scheduled sync configuration invalid: %v", schedule.Name, err)
+		slog.Default().Error("scheduled_sync_audit", "event", "config_error", "schedule", schedule.Name, "provider", strings.ToLower(strings.TrimSpace(schedule.Provider)), "error", err)
+		return
+	} else if timeoutSeconds > 0 {
+		jobTimeout = time.Duration(timeoutSeconds) * time.Second
+	}
+
+	runCtx, cancel := context.WithTimeout(context.Background(), jobTimeout)
+	defer cancel()
 
 	Info("[%s] Starting scheduled sync for %s", schedule.Name, schedule.Provider)
+	slog.Default().Info("scheduled_sync_audit", "event", "start", "schedule", schedule.Name, "provider", strings.ToLower(strings.TrimSpace(schedule.Provider)), "timeout_seconds", int(jobTimeout/time.Second))
 
 	// Update last run time
 	schedule.LastRun = start
 	schedule.LastStatus = "running"
-	_ = saveScheduleFn(ctx, client, schedule)
+	_ = saveScheduleFn(persistCtx, client, schedule)
 
 	// Build sync command args based on provider
 	var syncErr error
-	for attempt := 1; attempt <= schedule.Retry; attempt++ {
-		syncErr = executeScheduledSyncFn(ctx, client, schedule)
+	attemptLimit := schedule.Retry
+	if attemptLimit <= 0 {
+		attemptLimit = 1
+	}
+	attempts := 0
+	for attempt := 1; attempt <= attemptLimit; attempt++ {
+		attempts = attempt
+		syncErr = executeScheduledSyncFn(runCtx, client, schedule)
 		if syncErr == nil {
 			break
 		}
-		if attempt < schedule.Retry {
+		if errors.Is(syncErr, context.DeadlineExceeded) || errors.Is(runCtx.Err(), context.DeadlineExceeded) {
+			break
+		}
+		if attempt < attemptLimit {
 			Warning("[%s] Attempt %d failed, retrying: %v", schedule.Name, attempt, syncErr)
 			scheduleSleepFn(time.Duration(attempt*5) * time.Second)
 		}
@@ -472,8 +529,13 @@ func runScheduledSync(client *snowflake.Client, schedule *SyncSchedule) {
 	// Update status
 	duration := time.Since(start)
 	if syncErr != nil {
-		schedule.LastStatus = fmt.Sprintf("failed: %v", syncErr)
-		Warning("[%s] Sync failed after %d attempts: %v", schedule.Name, schedule.Retry, syncErr)
+		if errors.Is(syncErr, context.DeadlineExceeded) || errors.Is(runCtx.Err(), context.DeadlineExceeded) {
+			schedule.LastStatus = fmt.Sprintf("failed: timed out after %s", jobTimeout.Round(time.Second))
+			Warning("[%s] Sync timed out after %s", schedule.Name, jobTimeout.Round(time.Second))
+		} else {
+			schedule.LastStatus = fmt.Sprintf("failed: %v", syncErr)
+			Warning("[%s] Sync failed after %d attempts: %v", schedule.Name, attemptLimit, syncErr)
+		}
 	} else {
 		schedule.LastStatus = fmt.Sprintf("success (%s)", duration.Round(time.Second))
 		Success("[%s] Sync completed in %s", schedule.Name, duration.Round(time.Second))
@@ -486,7 +548,20 @@ func runScheduledSync(client *snowflake.Client, schedule *SyncSchedule) {
 	}
 
 	schedule.UpdatedAt = scheduleNowFn().UTC()
-	_ = saveScheduleFn(ctx, client, schedule)
+	_ = saveScheduleFn(persistCtx, client, schedule)
+
+	attrs := []any{
+		"event", "finish",
+		"schedule", schedule.Name,
+		"provider", strings.ToLower(strings.TrimSpace(schedule.Provider)),
+		"status", schedule.LastStatus,
+		"attempts", attempts,
+		"duration_ms", duration.Milliseconds(),
+	}
+	if syncErr != nil {
+		attrs = append(attrs, "error", syncErr.Error())
+	}
+	slog.Default().Info("scheduled_sync_audit", attrs...)
 }
 
 func executeScheduledSync(ctx context.Context, client *snowflake.Client, schedule *SyncSchedule) error {
@@ -521,6 +596,14 @@ func nativeSyncWorkerConfigured() bool {
 }
 
 func enqueueScheduledNativeSync(ctx context.Context, schedule *SyncSchedule) error {
+	spec := parseScheduledSyncSpec(schedule.Table)
+	waitTimeout := defaultNativeWorkerWaitTimeout
+	if timeoutSeconds, err := parseBoundedPositiveIntDirective(spec.WorkerWaitTimeoutSeconds, "worker_wait_timeout_seconds", minWorkerWaitTimeoutSeconds, maxWorkerWaitTimeoutSeconds); err != nil {
+		return err
+	} else if timeoutSeconds > 0 {
+		waitTimeout = time.Duration(timeoutSeconds) * time.Second
+	}
+
 	queueURL := firstNonEmptyEnv("JOB_QUEUE_URL")
 	tableName := firstNonEmptyEnv("JOB_TABLE_NAME")
 	if queueURL == "" || tableName == "" {
@@ -550,9 +633,16 @@ func enqueueScheduledNativeSync(ctx context.Context, schedule *SyncSchedule) err
 	}
 
 	Info("[%s] Native sync delegated to worker job %s", schedule.Name, job.ID)
+	slog.Default().Info("scheduled_sync_audit", "event", "delegated_to_worker", "schedule", schedule.Name, "provider", strings.ToLower(strings.TrimSpace(schedule.Provider)), "job_id", job.ID, "wait_timeout_seconds", int(waitTimeout/time.Second))
 
-	results, err := manager.WaitForJobs(ctx, []string{job.ID}, 5*time.Second)
+	waitCtx, cancel := context.WithTimeout(ctx, waitTimeout)
+	defer cancel()
+
+	results, err := waitForScheduledJobsFn(waitCtx, manager, []string{job.ID}, 5*time.Second)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(waitCtx.Err(), context.DeadlineExceeded) {
+			return fmt.Errorf("wait for worker native sync job %s timed out after %s", job.ID, waitTimeout.Round(time.Second))
+		}
 		return fmt.Errorf("wait for worker native sync job %s: %w", job.ID, err)
 	}
 	if len(results) == 0 || results[0] == nil {
@@ -582,6 +672,10 @@ func enqueueScheduledNativeSync(ctx context.Context, schedule *SyncSchedule) err
 	default:
 		return fmt.Errorf("worker native sync job %s finished with status %s", result.ID, result.Status)
 	}
+}
+
+func waitForScheduledJobs(ctx context.Context, manager *jobs.Manager, jobIDs []string, pollInterval time.Duration) ([]*jobs.Job, error) {
+	return manager.WaitForJobs(ctx, jobIDs, pollInterval)
 }
 
 type scheduledNativeSyncProviderFailure struct {
@@ -636,6 +730,27 @@ func executeAWSSync(ctx context.Context, client *snowflake.Client, schedule *Syn
 		Info("[%s] AWS auth override: role_transitive_tag_keys=%d", schedule.Name, len(spec.AWSRoleTransitiveTagKeys))
 	}
 
+	authMethod := "default"
+	switch {
+	case spec.AWSRoleARN != "":
+		authMethod = "assume_role"
+	case spec.AWSWebIdentityRoleARN != "":
+		authMethod = "web_identity"
+	case spec.AWSCredentialProcess != "":
+		authMethod = "credential_process"
+	case spec.AWSProfile != "":
+		authMethod = "profile"
+	}
+	slog.Default().Info("scheduled_sync_audit",
+		"event", "auth_override",
+		"schedule", schedule.Name,
+		"provider", "aws",
+		"auth_method", authMethod,
+		"profile", strings.TrimSpace(spec.AWSProfile),
+		"role_arn", strings.TrimSpace(spec.AWSRoleARN),
+		"web_identity_role_arn", strings.TrimSpace(spec.AWSWebIdentityRoleARN),
+	)
+
 	awsCfg, err := loadScheduledAWSConfigFn(ctx, spec)
 	if err != nil {
 		return fmt.Errorf("load AWS config: %w", err)
@@ -649,17 +764,36 @@ func executeAWSSync(ctx context.Context, client *snowflake.Client, schedule *Syn
 
 func executeGCPSync(ctx context.Context, client *snowflake.Client, schedule *SyncSchedule) error {
 	spec := parseScheduledSyncSpec(schedule.Table)
-	authCleanup, authSummary, err := applyScheduledGCPAuthFn(spec)
+	authConfig, err := applyScheduledGCPAuthFn(spec)
 	if err != nil {
 		return err
 	}
-	defer authCleanup()
-
-	if authSummary != "" {
-		Info("[%s] GCP auth override: %s", schedule.Name, authSummary)
+	if authConfig == nil {
+		authConfig = &scheduledGCPAuthConfig{Cleanup: func() {}}
 	}
-	if err := preflightScheduledGCPAuthFn(ctx, schedule, spec); err != nil {
+	if authConfig.Cleanup != nil {
+		defer authConfig.Cleanup()
+	}
+
+	if authConfig.Summary != "" {
+		Info("[%s] GCP auth override: %s", schedule.Name, authConfig.Summary)
+		slog.Default().Info("scheduled_sync_audit", "event", "auth_override", "schedule", schedule.Name, "provider", "gcp", "summary", authConfig.Summary)
+	}
+
+	syncCtx := ctx
+	if len(authConfig.ClientOptions) > 0 {
+		syncCtx = nativesync.WithGCPClientOptions(ctx, authConfig.ClientOptions...)
+	}
+
+	if err := preflightScheduledGCPAuthFn(syncCtx, schedule, spec, authConfig); err != nil {
 		return err
+	}
+
+	projectTimeout := defaultGCPProjectTimeout
+	if timeoutSeconds, err := parseBoundedPositiveIntDirective(spec.GCPProjectTimeoutSeconds, "gcp_project_timeout_seconds", minGCPProjectTimeoutSeconds, maxGCPProjectTimeoutSeconds); err != nil {
+		return err
+	} else if timeoutSeconds > 0 {
+		projectTimeout = time.Duration(timeoutSeconds) * time.Second
 	}
 
 	nativeFilter, securityFilter := splitGCPScheduledTableFilters(spec.TableFilter)
@@ -707,17 +841,29 @@ func executeGCPSync(ctx context.Context, client *snowflake.Client, schedule *Syn
 
 	var errs []error
 	for _, projectID := range projects {
+		projectCtx, cancel := context.WithTimeout(syncCtx, projectTimeout)
+
 		if runNativeSync {
-			if err := runScheduledGCPNativeSyncFn(ctx, client, projectID, nativeFilter); err != nil {
-				errs = append(errs, fmt.Errorf("project %s native sync: %w", projectID, err))
+			if err := runScheduledGCPNativeSyncFn(projectCtx, client, projectID, nativeFilter); err != nil {
+				if errors.Is(err, context.DeadlineExceeded) || errors.Is(projectCtx.Err(), context.DeadlineExceeded) {
+					errs = append(errs, fmt.Errorf("project %s native sync timed out after %s", projectID, projectTimeout.Round(time.Second)))
+				} else {
+					errs = append(errs, fmt.Errorf("project %s native sync: %w", projectID, err))
+				}
 			}
 		}
 
 		if runSecuritySync {
-			if err := runScheduledGCPSecuritySyncFn(ctx, client, projectID, orgID, securityFilter); err != nil {
-				errs = append(errs, fmt.Errorf("project %s security sync: %w", projectID, err))
+			if err := runScheduledGCPSecuritySyncFn(projectCtx, client, projectID, orgID, securityFilter); err != nil {
+				if errors.Is(err, context.DeadlineExceeded) || errors.Is(projectCtx.Err(), context.DeadlineExceeded) {
+					errs = append(errs, fmt.Errorf("project %s security sync timed out after %s", projectID, projectTimeout.Round(time.Second)))
+				} else {
+					errs = append(errs, fmt.Errorf("project %s security sync: %w", projectID, err))
+				}
 			}
 		}
+
+		cancel()
 	}
 
 	return summarizeSyncRunErrors("scheduled GCP sync", errs)
@@ -787,6 +933,9 @@ func loadScheduledAWSConfig(ctx context.Context, spec scheduledSyncSpec) (aws.Co
 	}
 
 	if credentialProcess := strings.TrimSpace(spec.AWSCredentialProcess); credentialProcess != "" && strings.TrimSpace(spec.AWSProfile) == "" {
+		if err := validateAWSCredentialProcess(credentialProcess, "aws_credential_process"); err != nil {
+			return aws.Config{}, err
+		}
 		loadOptions = append(loadOptions, config.WithCredentialsProvider(aws.NewCredentialsCache(processcreds.NewProvider(credentialProcess))))
 	}
 
@@ -960,37 +1109,40 @@ func preflightScheduledAWSAuth(ctx context.Context, schedule *SyncSchedule, _ sc
 		return fmt.Errorf("[%s] AWS auth preflight failed: %w", schedule.Name, err)
 	}
 
+	slog.Default().Info("scheduled_sync_audit",
+		"event", "auth_preflight",
+		"schedule", schedule.Name,
+		"provider", "aws",
+		"status", "success",
+		"account", aws.ToString(identity.Account),
+		"arn", aws.ToString(identity.Arn),
+	)
 	Info("[%s] AWS auth preflight succeeded: account=%s arn=%s", schedule.Name, aws.ToString(identity.Account), aws.ToString(identity.Arn))
 	return nil
 }
 
-func applyScheduledGCPAuth(spec scheduledSyncSpec) (func(), string, error) {
-	scheduledGCPAuthMu.Lock()
+type scheduledGCPAuthConfig struct {
+	Cleanup         func()
+	Summary         string
+	ClientOptions   []option.ClientOption
+	CredentialsFile string
+	CredentialsJSON []byte
+}
 
-	var released bool
-	releaseLock := func() {
-		if released {
-			return
-		}
-		released = true
-		scheduledGCPAuthMu.Unlock()
-	}
-
-	envSnapshots := make(map[string]envSnapshot)
+func applyScheduledGCPAuth(spec scheduledSyncSpec) (*scheduledGCPAuthConfig, error) {
+	authCfg := &scheduledGCPAuthConfig{Cleanup: func() {}}
 	tempCredentialsFile := ""
-	cleanup := func() {
+	authCfg.Cleanup = func() {
 		if tempCredentialsFile != "" {
 			_ = os.Remove(tempCredentialsFile)
 		}
-		restoreEnvSnapshot(envSnapshots)
-		releaseLock()
 	}
 
 	credentialsFile := strings.TrimSpace(spec.GCPCredentialsFile)
 	if credentialsFile != "" {
 		if err := validateReadableFile(credentialsFile, "gcp_credentials_file"); err != nil {
-			cleanup()
-			return func() {}, "", err
+			authCfg.Cleanup()
+			return nil, err
 		}
 	}
 
@@ -998,45 +1150,57 @@ func applyScheduledGCPAuth(spec scheduledSyncSpec) (func(), string, error) {
 	delegates := uniqueNonEmpty(spec.GCPImpersonateDelegates)
 	tokenLifetimeSeconds, err := parseBoundedPositiveIntDirective(spec.GCPImpersonateTokenLifetime, "gcp_impersonate_token_lifetime_seconds", 600, 43200)
 	if err != nil {
-		cleanup()
-		return func() {}, "", err
+		authCfg.Cleanup()
+		return nil, err
 	}
 
 	if impersonateServiceAccount == "" {
 		if tokenLifetimeSeconds > 0 {
-			cleanup()
-			return func() {}, "", fmt.Errorf("gcp_impersonate_token_lifetime_seconds requires gcp_impersonate_service_account")
+			authCfg.Cleanup()
+			return nil, fmt.Errorf("gcp_impersonate_token_lifetime_seconds requires gcp_impersonate_service_account")
 		}
 		if credentialsFile == "" {
-			return cleanup, "", nil
+			return authCfg, nil
 		}
-		if err := setEnvWithSnapshot(envSnapshots, "GOOGLE_APPLICATION_CREDENTIALS", credentialsFile); err != nil {
-			cleanup()
-			return func() {}, "", fmt.Errorf("set GOOGLE_APPLICATION_CREDENTIALS: %w", err)
+
+		credentialsData, readErr := os.ReadFile(credentialsFile)
+		if readErr != nil {
+			authCfg.Cleanup()
+			return nil, fmt.Errorf("read gcp_credentials_file %q: %w", credentialsFile, readErr)
 		}
-		return cleanup, fmt.Sprintf("credentials_file=%s", credentialsFile), nil
+		clientOpt, optionErr := gcpAuthOptionFromCredentialJSON(credentialsData, "gcp_credentials_file")
+		if optionErr != nil {
+			authCfg.Cleanup()
+			return nil, optionErr
+		}
+
+		authCfg.Summary = fmt.Sprintf("credentials_file=%s", credentialsFile)
+		authCfg.CredentialsFile = credentialsFile
+		authCfg.CredentialsJSON = credentialsData
+		authCfg.ClientOptions = []option.ClientOption{clientOpt}
+		return authCfg, nil
 	}
 
 	sourcePath, err := resolveGCPSourceCredentialsPath(credentialsFile)
 	if err != nil {
-		cleanup()
-		return func() {}, "", err
+		authCfg.Cleanup()
+		return nil, err
 	}
 
 	sourceData, err := os.ReadFile(sourcePath)
 	if err != nil {
-		cleanup()
-		return func() {}, "", fmt.Errorf("read GCP source credentials %q: %w", sourcePath, err)
+		authCfg.Cleanup()
+		return nil, fmt.Errorf("read GCP source credentials %q: %w", sourcePath, err)
 	}
 
 	var sourceCredentials map[string]interface{}
 	if err := json.Unmarshal(sourceData, &sourceCredentials); err != nil {
-		cleanup()
-		return func() {}, "", fmt.Errorf("parse GCP source credentials %q: %w", sourcePath, err)
+		authCfg.Cleanup()
+		return nil, fmt.Errorf("parse GCP source credentials %q: %w", sourcePath, err)
 	}
 	if len(sourceCredentials) == 0 {
-		cleanup()
-		return func() {}, "", fmt.Errorf("GCP source credentials %q are empty", sourcePath)
+		authCfg.Cleanup()
+		return nil, fmt.Errorf("GCP source credentials %q are empty", sourcePath)
 	}
 
 	impersonationURL := fmt.Sprintf("https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/%s:generateAccessToken", url.PathEscape(impersonateServiceAccount))
@@ -1054,45 +1218,64 @@ func applyScheduledGCPAuth(spec scheduledSyncSpec) (func(), string, error) {
 
 	encoded, err := json.Marshal(payload)
 	if err != nil {
-		cleanup()
-		return func() {}, "", fmt.Errorf("marshal impersonated GCP credentials: %w", err)
+		authCfg.Cleanup()
+		return nil, fmt.Errorf("marshal impersonated GCP credentials: %w", err)
 	}
 
 	tmpFile, err := os.CreateTemp("", "cerebro-scheduled-gcp-impersonated-*.json")
 	if err != nil {
-		cleanup()
-		return func() {}, "", fmt.Errorf("create temporary GCP impersonation credentials file: %w", err)
+		authCfg.Cleanup()
+		return nil, fmt.Errorf("create temporary GCP impersonation credentials file: %w", err)
 	}
 	tempCredentialsFile = tmpFile.Name()
 	if _, err := tmpFile.Write(encoded); err != nil {
 		_ = tmpFile.Close()
-		cleanup()
-		return func() {}, "", fmt.Errorf("write temporary GCP impersonation credentials file: %w", err)
+		authCfg.Cleanup()
+		return nil, fmt.Errorf("write temporary GCP impersonation credentials file: %w", err)
 	}
 	if err := tmpFile.Chmod(0o600); err != nil {
 		_ = tmpFile.Close()
-		cleanup()
-		return func() {}, "", fmt.Errorf("set permissions on temporary GCP impersonation credentials file: %w", err)
+		authCfg.Cleanup()
+		return nil, fmt.Errorf("set permissions on temporary GCP impersonation credentials file: %w", err)
 	}
 	if err := tmpFile.Close(); err != nil {
-		cleanup()
-		return func() {}, "", fmt.Errorf("close temporary GCP impersonation credentials file: %w", err)
+		authCfg.Cleanup()
+		return nil, fmt.Errorf("close temporary GCP impersonation credentials file: %w", err)
+	}
+	clientOpt, optionErr := gcpAuthOptionFromCredentialJSON(encoded, "gcp_impersonate_service_account")
+	if optionErr != nil {
+		authCfg.Cleanup()
+		return nil, optionErr
 	}
 
-	if err := setEnvWithSnapshot(envSnapshots, "GOOGLE_APPLICATION_CREDENTIALS", tempCredentialsFile); err != nil {
-		cleanup()
-		return func() {}, "", fmt.Errorf("set GOOGLE_APPLICATION_CREDENTIALS: %w", err)
-	}
-
-	summary := fmt.Sprintf("impersonate_service_account=%s delegates=%d", impersonateServiceAccount, len(delegates))
+	authCfg.CredentialsFile = tempCredentialsFile
+	authCfg.CredentialsJSON = encoded
+	authCfg.ClientOptions = []option.ClientOption{clientOpt}
+	authCfg.Summary = fmt.Sprintf("impersonate_service_account=%s delegates=%d", impersonateServiceAccount, len(delegates))
 	if tokenLifetimeSeconds > 0 {
-		summary = fmt.Sprintf("%s token_lifetime_seconds=%d", summary, tokenLifetimeSeconds)
+		authCfg.Summary = fmt.Sprintf("%s token_lifetime_seconds=%d", authCfg.Summary, tokenLifetimeSeconds)
 	}
-	return cleanup, summary, nil
+
+	return authCfg, nil
 }
 
-func preflightScheduledGCPAuth(ctx context.Context, schedule *SyncSchedule, spec scheduledSyncSpec) error {
-	credentials, err := google.FindDefaultCredentials(ctx, "https://www.googleapis.com/auth/cloud-platform")
+func preflightScheduledGCPAuth(ctx context.Context, schedule *SyncSchedule, spec scheduledSyncSpec, authCfg *scheduledGCPAuthConfig) error {
+	var (
+		credentials *google.Credentials
+		err         error
+	)
+
+	if authCfg != nil && len(authCfg.CredentialsJSON) > 0 {
+		credentials, err = google.CredentialsFromJSON(ctx, authCfg.CredentialsJSON, "https://www.googleapis.com/auth/cloud-platform")
+	} else if authCfg != nil && strings.TrimSpace(authCfg.CredentialsFile) != "" {
+		encoded, readErr := os.ReadFile(strings.TrimSpace(authCfg.CredentialsFile))
+		if readErr != nil {
+			return fmt.Errorf("[%s] GCP auth preflight failed: read credentials file %q: %w", schedule.Name, authCfg.CredentialsFile, readErr)
+		}
+		credentials, err = google.CredentialsFromJSON(ctx, encoded, "https://www.googleapis.com/auth/cloud-platform")
+	} else {
+		credentials, err = google.FindDefaultCredentials(ctx, "https://www.googleapis.com/auth/cloud-platform")
+	}
 	if err != nil {
 		return fmt.Errorf("[%s] GCP auth preflight failed: %w", schedule.Name, err)
 	}
@@ -1107,6 +1290,21 @@ func preflightScheduledGCPAuth(ctx context.Context, schedule *SyncSchedule, spec
 		principal = "default"
 	}
 
+	attrs := []any{
+		"event", "auth_preflight",
+		"schedule", schedule.Name,
+		"provider", "gcp",
+		"principal", principal,
+		"status", "success",
+	}
+	if authCfg != nil && strings.TrimSpace(authCfg.CredentialsFile) != "" {
+		attrs = append(attrs, "credentials_file", authCfg.CredentialsFile)
+	}
+	if !token.Expiry.IsZero() {
+		attrs = append(attrs, "token_expiry", token.Expiry.UTC().Format(time.RFC3339))
+	}
+	slog.Default().Info("scheduled_sync_audit", attrs...)
+
 	if token.Expiry.IsZero() {
 		Info("[%s] GCP auth preflight succeeded: principal=%s", schedule.Name, principal)
 		return nil
@@ -1114,6 +1312,36 @@ func preflightScheduledGCPAuth(ctx context.Context, schedule *SyncSchedule, spec
 
 	Info("[%s] GCP auth preflight succeeded: principal=%s token_expiry=%s", schedule.Name, principal, token.Expiry.UTC().Format(time.RFC3339))
 	return nil
+}
+
+func gcpAuthOptionFromCredentialJSON(raw []byte, source string) (option.ClientOption, error) {
+	credType, err := detectGCPCredentialsType(raw, source)
+	if err != nil {
+		return nil, err
+	}
+	return option.WithAuthCredentialsJSON(credType, raw), nil
+}
+
+func detectGCPCredentialsType(raw []byte, source string) (option.CredentialsType, error) {
+	var payload struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return "", fmt.Errorf("parse %s JSON credentials: %w", source, err)
+	}
+
+	switch strings.TrimSpace(payload.Type) {
+	case "service_account":
+		return option.ServiceAccount, nil
+	case "authorized_user":
+		return option.AuthorizedUser, nil
+	case "external_account", "external_account_authorized_user":
+		return option.ExternalAccount, nil
+	case "impersonated_service_account":
+		return option.ImpersonatedServiceAccount, nil
+	default:
+		return "", fmt.Errorf("%s has unsupported credentials type %q", source, payload.Type)
+	}
 }
 
 func runScheduledGCPNativeSync(ctx context.Context, client *snowflake.Client, projectID string, tableFilter []string) error {
@@ -1206,10 +1434,13 @@ func executeProviderSync(ctx context.Context, _ *snowflake.Client, schedule *Syn
 }
 
 type scheduledSyncSpec struct {
-	TableFilter       []string
-	GCPProjects       []string
-	GCPOrg            string
-	AzureSubscription string
+	TableFilter              []string
+	GCPProjects              []string
+	GCPOrg                   string
+	AzureSubscription        string
+	SyncTimeoutSeconds       string
+	WorkerWaitTimeoutSeconds string
+	GCPProjectTimeoutSeconds string
 
 	AWSProfile               string
 	AWSConfigFile            string
@@ -1316,6 +1547,18 @@ func parseScheduledSyncSpec(raw string) scheduledSyncSpec {
 	spec := scheduledSyncSpec{TableFilter: make([]string, 0, len(parts))}
 
 	for _, part := range parts {
+		if value, ok := directiveValue(part, "sync_timeout_seconds"); ok {
+			spec.SyncTimeoutSeconds = value
+			continue
+		}
+		if value, ok := directiveValue(part, "worker_wait_timeout_seconds"); ok {
+			spec.WorkerWaitTimeoutSeconds = value
+			continue
+		}
+		if value, ok := directiveValue(part, "gcp_project_timeout_seconds"); ok {
+			spec.GCPProjectTimeoutSeconds = value
+			continue
+		}
 		if value, ok := directiveValue(part, "project"); ok {
 			spec.GCPProjects = append(spec.GCPProjects, value)
 			continue

@@ -29,13 +29,13 @@ func (e *GCPSyncEngine) gcpLoggingProjectSinkTable() GCPTableSpec {
 }
 
 func (e *GCPSyncEngine) fetchGCPLoggingSinks(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
-	client, err := logadmin.NewClient(ctx, projectID)
+	client, err := logadmin.NewClient(ctx, projectID, gcpClientOptionsFromContext(ctx)...)
 	if err != nil {
 		return nil, fmt.Errorf("create logging client: %w", err)
 	}
 	defer func() { _ = client.Close() }()
 
-	storageClient, _ := storage.NewClient(ctx)
+	storageClient, _ := storage.NewClient(ctx, gcpClientOptionsFromContext(ctx)...)
 	if storageClient != nil {
 		defer func() { _ = storageClient.Close() }()
 	}
@@ -79,7 +79,7 @@ func (e *GCPSyncEngine) fetchGCPLoggingSinks(ctx context.Context, projectID stri
 }
 
 func (e *GCPSyncEngine) fetchGCPLoggingProjectSinks(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
-	client, err := logadmin.NewClient(ctx, projectID)
+	client, err := logadmin.NewClient(ctx, projectID, gcpClientOptionsFromContext(ctx)...)
 	if err != nil {
 		return nil, fmt.Errorf("create logging client: %w", err)
 	}
@@ -136,7 +136,7 @@ func isPublicSinkDestination(ctx context.Context, destination string, storageCli
 		topicID := parts[3]
 		client := pubsubClients[destProject]
 		if client == nil {
-			ps, err := pubsub.NewClient(ctx, destProject)
+			ps, err := pubsub.NewClient(ctx, destProject, gcpClientOptionsFromContext(ctx)...)
 			if err != nil {
 				return false, false
 			}

@@ -2,7 +2,9 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -100,4 +102,119 @@ func TestSyncConfiguredProviderSources_CollectsErrorsWithoutFailing(t *testing.T
 	if len(synced) != 1 || synced[0] != "okta" {
 		t.Fatalf("unexpected synced providers: %#v", synced)
 	}
+}
+
+func TestNewNativeSyncJobHandler_RoutesAndSerializesResult(t *testing.T) {
+	originalRunNative := runNativeSyncForJobFn
+	originalSyncProviders := syncConfiguredProviderSourcesFn
+	t.Cleanup(func() {
+		runNativeSyncForJobFn = originalRunNative
+		syncConfiguredProviderSourcesFn = originalSyncProviders
+	})
+
+	calledProvider := ""
+	calledSchedule := &SyncSchedule{}
+	runNativeSyncForJobFn = func(_ context.Context, provider string, schedule *SyncSchedule) error {
+		calledProvider = provider
+		calledSchedule = schedule
+		return nil
+	}
+	syncConfiguredProviderSourcesFn = func(context.Context, *app.App, *slog.Logger) ([]string, []providerSyncFailure, error) {
+		return []string{"okta"}, []providerSyncFailure{{Provider: "github", Error: "github sync failed: boom"}}, nil
+	}
+
+	handler := newNativeSyncJobHandler(nil)
+	result, err := handler(context.Background(), `{"provider":"AWS","table":"aws_iam_roles","schedule_name":"hourly"}`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if calledProvider != "aws" {
+		t.Fatalf("expected normalized provider aws, got %q", calledProvider)
+	}
+	if calledSchedule.Provider != "aws" || calledSchedule.Table != "aws_iam_roles" || calledSchedule.Name != "hourly" {
+		t.Fatalf("unexpected schedule routing payload: %#v", calledSchedule)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(result), &payload); err != nil {
+		t.Fatalf("parse result: %v", err)
+	}
+	if payload["provider"] != "aws" {
+		t.Fatalf("expected provider aws, got %#v", payload["provider"])
+	}
+	if payload["schedule_name"] != "hourly" {
+		t.Fatalf("expected schedule_name hourly, got %#v", payload["schedule_name"])
+	}
+	additional, ok := payload["additional_providers"].([]any)
+	if !ok || len(additional) != 1 || additional[0] != "okta" {
+		t.Fatalf("unexpected additional providers payload: %#v", payload["additional_providers"])
+	}
+	failed, ok := payload["failed_additional_providers"].([]any)
+	if !ok || len(failed) != 1 {
+		t.Fatalf("unexpected failed providers payload: %#v", payload["failed_additional_providers"])
+	}
+}
+
+func TestNewNativeSyncJobHandler_FailurePaths(t *testing.T) {
+	t.Run("invalid payload", func(t *testing.T) {
+		handler := newNativeSyncJobHandler(nil)
+		_, err := handler(context.Background(), `{not-json`)
+		if err == nil || !strings.Contains(err.Error(), "decode native sync payload") {
+			t.Fatalf("expected decode error, got %v", err)
+		}
+	})
+
+	t.Run("unsupported provider", func(t *testing.T) {
+		handler := newNativeSyncJobHandler(nil)
+		_, err := handler(context.Background(), `{"provider":"okta"}`)
+		if err == nil || !strings.Contains(err.Error(), "unsupported native sync provider") {
+			t.Fatalf("expected unsupported provider error, got %v", err)
+		}
+	})
+
+	t.Run("native sync error", func(t *testing.T) {
+		originalRunNative := runNativeSyncForJobFn
+		originalSyncProviders := syncConfiguredProviderSourcesFn
+		t.Cleanup(func() {
+			runNativeSyncForJobFn = originalRunNative
+			syncConfiguredProviderSourcesFn = originalSyncProviders
+		})
+
+		runNativeSyncForJobFn = func(context.Context, string, *SyncSchedule) error {
+			return errors.New("sync boom")
+		}
+		syncConfiguredProviderSourcesFn = func(context.Context, *app.App, *slog.Logger) ([]string, []providerSyncFailure, error) {
+			t.Fatal("expected additional provider sync to be skipped after native sync error")
+			return nil, nil, nil
+		}
+
+		handler := newNativeSyncJobHandler(nil)
+		_, err := handler(context.Background(), `{"provider":"gcp","schedule_name":"daily"}`)
+		if err == nil || !strings.Contains(err.Error(), "sync boom") {
+			t.Fatalf("expected native sync error, got %v", err)
+		}
+	})
+
+	t.Run("additional provider sync aggregation error", func(t *testing.T) {
+		originalRunNative := runNativeSyncForJobFn
+		originalSyncProviders := syncConfiguredProviderSourcesFn
+		t.Cleanup(func() {
+			runNativeSyncForJobFn = originalRunNative
+			syncConfiguredProviderSourcesFn = originalSyncProviders
+		})
+
+		runNativeSyncForJobFn = func(context.Context, string, *SyncSchedule) error {
+			return nil
+		}
+		syncConfiguredProviderSourcesFn = func(context.Context, *app.App, *slog.Logger) ([]string, []providerSyncFailure, error) {
+			return nil, nil, errors.New("provider registry unavailable")
+		}
+
+		handler := newNativeSyncJobHandler(nil)
+		_, err := handler(context.Background(), `{"provider":"azure","schedule_name":"nightly"}`)
+		if err == nil || !strings.Contains(err.Error(), "provider registry unavailable") {
+			t.Fatalf("expected additional provider error, got %v", err)
+		}
+	})
 }

@@ -403,6 +403,60 @@ func TestLoadAWSConfigValidatesFiles(t *testing.T) {
 	})
 }
 
+func TestValidateAWSCredentialProcess(t *testing.T) {
+	helperPath := filepath.Join(t.TempDir(), "credential-helper")
+	if err := os.WriteFile(helperPath, []byte("#!/bin/sh\necho credentials\n"), 0o700); err != nil {
+		t.Fatalf("write helper: %v", err)
+	}
+
+	t.Run("requires absolute executable path", func(t *testing.T) {
+		err := validateAWSCredentialProcess("helper --profile prod", "--aws-credential-process")
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), "absolute executable path") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("rejects shell operators", func(t *testing.T) {
+		err := validateAWSCredentialProcess(helperPath+";echo hacked", "--aws-credential-process")
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), "disallowed shell operators") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("allows absolute path without allowlist", func(t *testing.T) {
+		t.Setenv("CEREBRO_AWS_CREDENTIAL_PROCESS_ALLOWLIST", "")
+		err := validateAWSCredentialProcess(helperPath+" --profile prod", "--aws-credential-process")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("enforces allowlist", func(t *testing.T) {
+		t.Setenv("CEREBRO_AWS_CREDENTIAL_PROCESS_ALLOWLIST", "/usr/local/bin")
+		err := validateAWSCredentialProcess(helperPath+" --profile prod", "--aws-credential-process")
+		if err == nil {
+			t.Fatal("expected allowlist error")
+		}
+		if !strings.Contains(err.Error(), "not permitted") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("allowlist accepts quoted path", func(t *testing.T) {
+		t.Setenv("CEREBRO_AWS_CREDENTIAL_PROCESS_ALLOWLIST", filepath.Dir(helperPath))
+		err := validateAWSCredentialProcess("\""+helperPath+"\" --profile prod", "--aws-credential-process")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
 func TestLooksLikePlaceholderValue(t *testing.T) {
 	tests := []struct {
 		name  string
