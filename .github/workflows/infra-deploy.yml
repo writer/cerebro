@@ -65,16 +65,6 @@ jobs:
         with:
           assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
 
-      - name: Fetch secrets from Infisical
-        uses: Infisical/secrets-action@v1.0.15
-        with:
-          method: "oidc"
-          identity-id: ${{ secrets.INFISICAL_IDENTITY_ID }}
-          oidc-audience: "https://github.com/WriterInternal"
-          project-slug: ${{ secrets.INFISICAL_PROJECT_SLUG }}
-          env-slug: ${{ secrets.INFISICAL_ENV_SLUG }}
-          export-type: env
-
       - name: Authenticate with Pulumi Cloud
         uses: pulumi/auth-actions@v1
         with:
@@ -128,16 +118,6 @@ jobs:
         with:
           assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
 
-      - name: Fetch secrets from Infisical
-        uses: Infisical/secrets-action@v1.0.15
-        with:
-          method: "oidc"
-          identity-id: ${{ secrets.INFISICAL_IDENTITY_ID }}
-          oidc-audience: "https://github.com/WriterInternal"
-          project-slug: ${{ secrets.INFISICAL_PROJECT_SLUG }}
-          env-slug: ${{ secrets.INFISICAL_ENV_SLUG }}
-          export-type: env
-
       - name: Authenticate with Pulumi Cloud
         uses: pulumi/auth-actions@v1
         with:
@@ -190,16 +170,6 @@ jobs:
         uses: writerInternal/aws-git-roles@v2
         with:
           assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
-
-      - name: Fetch secrets from Infisical
-        uses: Infisical/secrets-action@v1.0.15
-        with:
-          method: "oidc"
-          identity-id: ${{ secrets.INFISICAL_IDENTITY_ID }}
-          oidc-audience: "https://github.com/WriterInternal"
-          project-slug: ${{ secrets.INFISICAL_PROJECT_SLUG }}
-          env-slug: ${{ secrets.INFISICAL_ENV_SLUG }}
-          export-type: env
 
       - name: Authenticate with Pulumi Cloud
         uses: pulumi/auth-actions@v1
@@ -415,17 +385,6 @@ jobs:
         uses: WriterInternal/gcp-git-roles@v1
         with:
           deployment-profile: infra-writer-iam
-
-      - name: Fetch secrets from Infisical
-        if: "!startsWith(github.event.inputs.environment, 'gcp-')"
-        uses: Infisical/secrets-action@v1.0.15
-        with:
-          method: "oidc"
-          identity-id: ${{ secrets.INFISICAL_IDENTITY_ID }}
-          oidc-audience: "https://github.com/WriterInternal"
-          project-slug: ${{ secrets.INFISICAL_PROJECT_SLUG }}
-          env-slug: ${{ secrets.INFISICAL_ENV_SLUG }}
-          export-type: env
 
       - name: Authenticate with Pulumi Cloud
         uses: pulumi/auth-actions@v1
