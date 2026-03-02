@@ -213,6 +213,7 @@ def _create_execution_role(
 
     role = aws.iam.Role(
         f"{name}-exec-role",
+        name=f"{name}-exec-role",
         assume_role_policy=json.dumps({
             "Version": "2012-10-17",
             "Statement": [{
@@ -273,6 +274,7 @@ def _create_task_role(
     """Create IAM task role for application."""
     role = aws.iam.Role(
         f"{name}-task-role",
+        name=f"{name}-task-role",
         assume_role_policy=json.dumps({
             "Version": "2012-10-17",
             "Statement": [{
@@ -294,6 +296,23 @@ def _create_task_role(
                 "Effect": "Allow",
                 "Action": ["cloudwatch:PutMetricData"],
                 "Resource": "*",
+            }],
+        }),
+    )
+
+    # Cross-account assume-role for AWS inspections via cerebro-org-scan-role
+    aws.iam.RolePolicy(
+        f"{name}-task-assume-role",
+        role=role.name,
+        policy=json.dumps({
+            "Version": "2012-10-17",
+            "Statement": [{
+                "Effect": "Allow",
+                "Action": [
+                    "sts:AssumeRole",
+                    "sts:TagSession",
+                ],
+                "Resource": "arn:aws:iam::*:role/cerebro-org-scan-role",
             }],
         }),
     )

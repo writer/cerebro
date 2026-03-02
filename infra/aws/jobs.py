@@ -244,6 +244,7 @@ def create_worker_service(
     # Worker execution role
     execution_role = aws.iam.Role(
         f"{name}-worker-exec-role",
+        name=f"{name}-worker-exec-role",
         assume_role_policy=json.dumps({
             "Version": "2012-10-17",
             "Statement": [{
@@ -291,6 +292,7 @@ def create_worker_service(
     # Worker task role with SQS + DynamoDB permissions
     task_role = aws.iam.Role(
         f"{name}-worker-task-role",
+        name=f"{name}-worker-task-role",
         assume_role_policy=json.dumps({
             "Version": "2012-10-17",
             "Statement": [{
@@ -358,55 +360,20 @@ def create_worker_service(
         }),
     )
 
-    # AWS inspection permissions (read-only for S3, IAM, Lambda, ECS, etc.)
+    # Cross-account assume-role for AWS inspections via cerebro-org-scan-role
     aws.iam.RolePolicy(
-        f"{name}-worker-inspect",
+        f"{name}-worker-assume-role",
         role=task_role.name,
         policy=json.dumps({
             "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Effect": "Allow",
-                    "Action": [
-                        "s3:GetBucket*",
-                        "s3:GetObject*",
-                        "s3:ListBucket",
-                        "s3:GetPublicAccessBlock",
-                        "s3:GetEncryptionConfiguration",
-                    ],
-                    "Resource": "*",
-                },
-                {
-                    "Effect": "Allow",
-                    "Action": [
-                        "iam:GetRole",
-                        "iam:GetPolicy",
-                        "iam:GetPolicyVersion",
-                        "iam:ListRolePolicies",
-                        "iam:ListAttachedRolePolicies",
-                        "iam:GetRolePolicy",
-                    ],
-                    "Resource": "*",
-                },
-                {
-                    "Effect": "Allow",
-                    "Action": [
-                        "lambda:GetFunction",
-                        "lambda:GetFunctionConfiguration",
-                        "lambda:GetPolicy",
-                    ],
-                    "Resource": "*",
-                },
-                {
-                    "Effect": "Allow",
-                    "Action": [
-                        "ecs:DescribeClusters",
-                        "ecs:DescribeServices",
-                        "ecs:DescribeTaskDefinition",
-                    ],
-                    "Resource": "*",
-                },
-            ],
+            "Statement": [{
+                "Effect": "Allow",
+                "Action": [
+                    "sts:AssumeRole",
+                    "sts:TagSession",
+                ],
+                "Resource": "arn:aws:iam::*:role/cerebro-org-scan-role",
+            }],
         }),
     )
 
