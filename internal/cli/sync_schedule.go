@@ -617,8 +617,14 @@ func executeAWSSync(ctx context.Context, client *snowflake.Client, schedule *Syn
 	if spec.AWSProfile != "" {
 		Info("[%s] AWS auth override: profile=%s", schedule.Name, spec.AWSProfile)
 	}
+	if spec.AWSWebIdentityRoleARN != "" {
+		Info("[%s] AWS auth override: web_identity_role_arn=%s", schedule.Name, spec.AWSWebIdentityRoleARN)
+	}
 	if spec.AWSRoleARN != "" {
 		Info("[%s] AWS auth override: role_arn=%s", schedule.Name, spec.AWSRoleARN)
+	}
+	if spec.AWSRoleSourceIdentity != "" {
+		Info("[%s] AWS auth override: role_source_identity=%s", schedule.Name, spec.AWSRoleSourceIdentity)
 	}
 	if strings.TrimSpace(spec.AWSRoleDurationSeconds) != "" {
 		Info("[%s] AWS auth override: role_duration_seconds=%s", schedule.Name, strings.TrimSpace(spec.AWSRoleDurationSeconds))
@@ -730,6 +736,37 @@ func runScheduledAWSNativeSync(ctx context.Context, client *snowflake.Client, aw
 
 func loadScheduledAWSConfig(ctx context.Context, spec scheduledSyncSpec) (aws.Config, error) {
 	loadOptions := make([]func(*config.LoadOptions) error, 0, 4)
+	envSnapshots := make(map[string]envSnapshot)
+	defer restoreEnvSnapshot(envSnapshots)
+	roleARN := strings.TrimSpace(spec.AWSRoleARN)
+	if roleARN == "" {
+		if strings.TrimSpace(spec.AWSRoleDurationSeconds) != "" || len(spec.AWSRoleSessionTags) > 0 || len(spec.AWSRoleTransitiveTagKeys) > 0 || strings.TrimSpace(spec.AWSRoleSourceIdentity) != "" {
+			return aws.Config{}, fmt.Errorf("aws_role_duration_seconds/aws_role_session_tags/aws_role_transitive_tag_keys/aws_role_source_identity require aws_role_arn")
+		}
+	}
+
+	webIdentityToken := strings.TrimSpace(spec.AWSWebIdentityTokenFile)
+	webIdentityRole := strings.TrimSpace(spec.AWSWebIdentityRoleARN)
+	webIdentitySession := strings.TrimSpace(spec.AWSWebIdentitySession)
+	if webIdentityToken != "" || webIdentityRole != "" {
+		if webIdentityToken == "" || webIdentityRole == "" {
+			return aws.Config{}, fmt.Errorf("aws_web_identity_token_file and aws_web_identity_role_arn must be set together")
+		}
+		if err := validateReadableFile(webIdentityToken, "aws_web_identity_token_file"); err != nil {
+			return aws.Config{}, err
+		}
+		if err := setEnvWithSnapshot(envSnapshots, "AWS_WEB_IDENTITY_TOKEN_FILE", webIdentityToken); err != nil {
+			return aws.Config{}, fmt.Errorf("set AWS_WEB_IDENTITY_TOKEN_FILE: %w", err)
+		}
+		if err := setEnvWithSnapshot(envSnapshots, "AWS_ROLE_ARN", webIdentityRole); err != nil {
+			return aws.Config{}, fmt.Errorf("set AWS_ROLE_ARN: %w", err)
+		}
+		if webIdentitySession != "" {
+			if err := setEnvWithSnapshot(envSnapshots, "AWS_ROLE_SESSION_NAME", webIdentitySession); err != nil {
+				return aws.Config{}, fmt.Errorf("set AWS_ROLE_SESSION_NAME: %w", err)
+			}
+		}
+	}
 
 	if profile := strings.TrimSpace(spec.AWSProfile); profile != "" {
 		loadOptions = append(loadOptions, config.WithSharedConfigProfile(profile))
@@ -758,11 +795,7 @@ func loadScheduledAWSConfig(ctx context.Context, spec scheduledSyncSpec) (aws.Co
 		return aws.Config{}, err
 	}
 
-	roleARN := strings.TrimSpace(spec.AWSRoleARN)
 	if roleARN == "" {
-		if strings.TrimSpace(spec.AWSRoleDurationSeconds) != "" || len(spec.AWSRoleSessionTags) > 0 || len(spec.AWSRoleTransitiveTagKeys) > 0 {
-			return aws.Config{}, fmt.Errorf("aws_role_duration_seconds/aws_role_session_tags/aws_role_transitive_tag_keys require aws_role_arn")
-		}
 		return cfg, nil
 	}
 
@@ -790,6 +823,7 @@ func loadScheduledAWSConfig(ctx context.Context, spec scheduledSyncSpec) (aws.Co
 		strings.TrimSpace(spec.AWSRoleExternalID),
 		mfaSerial,
 		mfaToken,
+		strings.TrimSpace(spec.AWSRoleSourceIdentity),
 		durationSeconds,
 		tags,
 		transitiveTagKeys,
@@ -809,6 +843,7 @@ func assumeRoleConfigWithScheduledOptions(
 	externalID,
 	mfaSerial,
 	mfaToken string,
+	sourceIdentity string,
 	durationSeconds int,
 	tags []ststypes.Tag,
 	transitiveTagKeys []string,
@@ -825,6 +860,9 @@ func assumeRoleConfigWithScheduledOptions(
 		options.RoleSessionName = sessionName
 		if externalID != "" {
 			options.ExternalID = aws.String(externalID)
+		}
+		if sourceIdentity != "" {
+			options.SourceIdentity = aws.String(sourceIdentity)
 		}
 		if mfaSerial != "" {
 			options.SerialNumber = aws.String(mfaSerial)
@@ -1177,11 +1215,15 @@ type scheduledSyncSpec struct {
 	AWSConfigFile            string
 	AWSSharedCredentialsFile string
 	AWSCredentialProcess     string
+	AWSWebIdentityTokenFile  string
+	AWSWebIdentityRoleARN    string
+	AWSWebIdentitySession    string
 	AWSRoleARN               string
 	AWSRoleSession           string
 	AWSRoleExternalID        string
 	AWSRoleMFASerial         string
 	AWSRoleMFAToken          string
+	AWSRoleSourceIdentity    string
 	AWSRoleDurationSeconds   string
 	AWSRoleSessionTags       []string
 	AWSRoleTransitiveTagKeys []string
@@ -1310,6 +1352,18 @@ func parseScheduledSyncSpec(raw string) scheduledSyncSpec {
 			spec.AWSCredentialProcess = value
 			continue
 		}
+		if value, ok := directiveValue(part, "aws_web_identity_token_file"); ok {
+			spec.AWSWebIdentityTokenFile = value
+			continue
+		}
+		if value, ok := directiveValue(part, "aws_web_identity_role_arn"); ok {
+			spec.AWSWebIdentityRoleARN = value
+			continue
+		}
+		if value, ok := directiveValue(part, "aws_web_identity_role_session_name"); ok {
+			spec.AWSWebIdentitySession = value
+			continue
+		}
 		if value, ok := directiveValue(part, "aws_role_arn"); ok {
 			spec.AWSRoleARN = value
 			continue
@@ -1328,6 +1382,10 @@ func parseScheduledSyncSpec(raw string) scheduledSyncSpec {
 		}
 		if value, ok := directiveValue(part, "aws_role_mfa_token"); ok {
 			spec.AWSRoleMFAToken = value
+			continue
+		}
+		if value, ok := directiveValue(part, "aws_role_source_identity"); ok {
+			spec.AWSRoleSourceIdentity = value
 			continue
 		}
 		if value, ok := directiveValue(part, "aws_role_duration_seconds"); ok {

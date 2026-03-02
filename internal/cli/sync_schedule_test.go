@@ -39,7 +39,7 @@ func TestParseScheduledSyncSpec(t *testing.T) {
 }
 
 func TestParseScheduledSyncSpec_AuthDirectives(t *testing.T) {
-	spec := parseScheduledSyncSpec("aws_profile=prod,aws_role_arn=arn:aws:iam::123456789012:role/SyncRole,aws_role_external_id=ext-123,aws_config_file=/tmp/config,aws_shared_credentials_file=/tmp/creds,aws_credential_process=/opt/bin/creds,aws_role_duration_seconds=1800,aws_role_session_tags=env=prod|owner=platform,aws_role_transitive_tag_keys=env,gcp_credentials_file=/tmp/gcp.json,gcp_impersonate_service_account=svc@test.iam.gserviceaccount.com,gcp_impersonate_delegates=delegate-a|delegate-b,gcp_impersonate_token_lifetime_seconds=2400,aws_iam_roles")
+	spec := parseScheduledSyncSpec("aws_profile=prod,aws_web_identity_token_file=/tmp/oidc-token,aws_web_identity_role_arn=arn:aws:iam::123456789012:role/WebIdentityRole,aws_web_identity_role_session_name=web-session,aws_role_arn=arn:aws:iam::123456789012:role/SyncRole,aws_role_external_id=ext-123,aws_config_file=/tmp/config,aws_shared_credentials_file=/tmp/creds,aws_credential_process=/opt/bin/creds,aws_role_source_identity=cerebro-scheduler,aws_role_duration_seconds=1800,aws_role_session_tags=env=prod|owner=platform,aws_role_transitive_tag_keys=env,gcp_credentials_file=/tmp/gcp.json,gcp_impersonate_service_account=svc@test.iam.gserviceaccount.com,gcp_impersonate_delegates=delegate-a|delegate-b,gcp_impersonate_token_lifetime_seconds=2400,aws_iam_roles")
 
 	if spec.AWSProfile != "prod" {
 		t.Fatalf("expected aws profile prod, got %q", spec.AWSProfile)
@@ -58,6 +58,18 @@ func TestParseScheduledSyncSpec_AuthDirectives(t *testing.T) {
 	}
 	if spec.AWSCredentialProcess != "/opt/bin/creds" {
 		t.Fatalf("unexpected aws credential process: %q", spec.AWSCredentialProcess)
+	}
+	if spec.AWSWebIdentityTokenFile != "/tmp/oidc-token" {
+		t.Fatalf("unexpected aws web identity token file: %q", spec.AWSWebIdentityTokenFile)
+	}
+	if spec.AWSWebIdentityRoleARN != "arn:aws:iam::123456789012:role/WebIdentityRole" {
+		t.Fatalf("unexpected aws web identity role arn: %q", spec.AWSWebIdentityRoleARN)
+	}
+	if spec.AWSWebIdentitySession != "web-session" {
+		t.Fatalf("unexpected aws web identity session: %q", spec.AWSWebIdentitySession)
+	}
+	if spec.AWSRoleSourceIdentity != "cerebro-scheduler" {
+		t.Fatalf("unexpected aws role source identity: %q", spec.AWSRoleSourceIdentity)
 	}
 	if spec.AWSRoleDurationSeconds != "1800" {
 		t.Fatalf("unexpected aws role duration: %q", spec.AWSRoleDurationSeconds)
@@ -282,8 +294,14 @@ func TestExecuteAWSSync_UsesScheduledAuthDirectives(t *testing.T) {
 		if spec.AWSProfile != "prod" {
 			return aws.Config{}, fmt.Errorf("expected aws profile prod, got %q", spec.AWSProfile)
 		}
+		if spec.AWSWebIdentityRoleARN != "arn:aws:iam::123456789012:role/WebIdentityRole" {
+			return aws.Config{}, fmt.Errorf("expected aws web identity role arn, got %q", spec.AWSWebIdentityRoleARN)
+		}
 		if spec.AWSRoleARN == "" {
 			return aws.Config{}, fmt.Errorf("expected aws role arn")
+		}
+		if spec.AWSRoleSourceIdentity != "cerebro-scheduler" {
+			return aws.Config{}, fmt.Errorf("expected aws role source identity, got %q", spec.AWSRoleSourceIdentity)
 		}
 		if spec.AWSRoleDurationSeconds != "1800" {
 			return aws.Config{}, fmt.Errorf("expected aws role duration 1800, got %q", spec.AWSRoleDurationSeconds)
@@ -307,7 +325,7 @@ func TestExecuteAWSSync_UsesScheduledAuthDirectives(t *testing.T) {
 
 	err := executeAWSSync(context.Background(), nil, &SyncSchedule{
 		Name:  "aws-auth",
-		Table: "aws_profile=prod,aws_role_arn=arn:aws:iam::123456789012:role/SyncRole,aws_role_duration_seconds=1800,aws_role_session_tags=env=prod,aws_iam_roles",
+		Table: "aws_profile=prod,aws_web_identity_token_file=/tmp/token,aws_web_identity_role_arn=arn:aws:iam::123456789012:role/WebIdentityRole,aws_role_arn=arn:aws:iam::123456789012:role/SyncRole,aws_role_source_identity=cerebro-scheduler,aws_role_duration_seconds=1800,aws_role_session_tags=env=prod,aws_iam_roles",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -737,6 +755,41 @@ func TestParseBoundedPositiveIntDirective(t *testing.T) {
 	if _, err := parseBoundedPositiveIntDirective("100", "aws_role_duration_seconds", 900, 43200); err == nil {
 		t.Fatal("expected bounds error")
 	}
+}
+
+func TestLoadScheduledAWSConfig_EnterpriseAuthValidation(t *testing.T) {
+	t.Run("web identity requires token and role together", func(t *testing.T) {
+		_, err := loadScheduledAWSConfig(context.Background(), scheduledSyncSpec{AWSWebIdentityTokenFile: "/tmp/token"})
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), "aws_web_identity_token_file and aws_web_identity_role_arn must be set together") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("web identity token file must be readable", func(t *testing.T) {
+		_, err := loadScheduledAWSConfig(context.Background(), scheduledSyncSpec{
+			AWSWebIdentityTokenFile: "/tmp/definitely-missing-web-identity-token",
+			AWSWebIdentityRoleARN:   "arn:aws:iam::123456789012:role/WebIdentityRole",
+		})
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), "aws_web_identity_token_file") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("source identity requires role arn", func(t *testing.T) {
+		_, err := loadScheduledAWSConfig(context.Background(), scheduledSyncSpec{AWSRoleSourceIdentity: "cerebro-scheduler"})
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), "aws_role_source_identity") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
 }
 
 func TestExecuteGCPSync_FilterRouting(t *testing.T) {

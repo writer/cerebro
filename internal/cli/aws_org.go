@@ -32,6 +32,11 @@ func runAWSOrgSync(ctx context.Context, start time.Time) error {
 		return fmt.Errorf("load AWS config: %w", err)
 	}
 
+	awsCfg, err = applyAWSAssumeRoleOverride(ctx, awsCfg)
+	if err != nil {
+		return err
+	}
+
 	region := syncRegion
 	if region == "" {
 		region = awsCfg.Region

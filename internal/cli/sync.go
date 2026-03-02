@@ -78,6 +78,7 @@ var (
 	syncGCPCredentialsFile string
 	syncGCPImpersonateSA   string
 	syncGCPImpersonateDel  string
+	syncGCPImpersonateTTL  string
 	syncAWSProfile         string
 	syncAWSProfiles        string // comma-separated AWS SSO profiles
 	syncAWSConfigFile      string
@@ -90,6 +91,10 @@ var (
 	syncAWSRoleExternalID  string
 	syncAWSRoleMFASerial   string
 	syncAWSRoleMFAToken    string
+	syncAWSRoleSourceID    string
+	syncAWSRoleDuration    string
+	syncAWSRoleTags        string
+	syncAWSRoleTransitive  string
 	syncAWSOrg             bool
 	syncAWSOrgRole         string
 	syncAWSOrgInclude      string
@@ -121,6 +126,7 @@ func init() {
 	syncCmd.Flags().StringVar(&syncGCPCredentialsFile, "gcp-credentials-file", "", "Path to GCP credentials JSON file (service-account or external-account config)")
 	syncCmd.Flags().StringVar(&syncGCPImpersonateSA, "gcp-impersonate-service-account", "", "Service account email to impersonate for GCP API calls")
 	syncCmd.Flags().StringVar(&syncGCPImpersonateDel, "gcp-impersonate-delegates", "", "Comma-separated delegate service accounts for GCP impersonation chain")
+	syncCmd.Flags().StringVar(&syncGCPImpersonateTTL, "gcp-impersonate-token-lifetime-seconds", "", "Access token lifetime in seconds for GCP impersonation (600-43200)")
 	syncCmd.Flags().StringVar(&syncAWSProfile, "aws-profile", "", "AWS shared config profile for single-account sync")
 	syncCmd.Flags().StringVar(&syncAWSProfiles, "aws-profiles", "", "Comma-separated AWS SSO profile names to sync multiple accounts")
 	syncCmd.Flags().StringVar(&syncAWSConfigFile, "aws-config-file", "", "Path to AWS shared config file")
@@ -133,6 +139,10 @@ func init() {
 	syncCmd.Flags().StringVar(&syncAWSRoleExternalID, "aws-role-external-id", "", "External ID to use with --aws-role-arn")
 	syncCmd.Flags().StringVar(&syncAWSRoleMFASerial, "aws-role-mfa-serial", "", "MFA serial/ARN to use with --aws-role-arn")
 	syncCmd.Flags().StringVar(&syncAWSRoleMFAToken, "aws-role-mfa-token", "", "One-time MFA token code to use with --aws-role-arn")
+	syncCmd.Flags().StringVar(&syncAWSRoleSourceID, "aws-role-source-identity", "", "Source identity to attach to --aws-role-arn sessions")
+	syncCmd.Flags().StringVar(&syncAWSRoleDuration, "aws-role-duration-seconds", "", "Duration in seconds for --aws-role-arn sessions (900-43200)")
+	syncCmd.Flags().StringVar(&syncAWSRoleTags, "aws-role-session-tags", "", "Comma-separated session tags (key=value) for --aws-role-arn")
+	syncCmd.Flags().StringVar(&syncAWSRoleTransitive, "aws-role-transitive-tag-keys", "", "Comma-separated transitive tag keys for --aws-role-session-tags")
 	syncCmd.Flags().BoolVar(&syncAWSOrg, "aws-org", false, "Sync all AWS organization accounts using assumed roles")
 	syncCmd.Flags().StringVar(&syncAWSOrgRole, "aws-org-role", "OrganizationAccountAccessRole", "IAM role name (or ARN template with {account_id}) to assume in member accounts")
 	syncCmd.Flags().StringVar(&syncAWSOrgInclude, "aws-org-include", "", "Comma-separated AWS account IDs to include when syncing org accounts")
@@ -198,15 +208,6 @@ func runSync(cmd *cobra.Command, args []string) error {
 	if syncAWSOrg {
 		if syncAWSProfiles != "" {
 			Warning("Ignoring --aws-profiles because --aws-org is set")
-		}
-		if syncAWSRoleARN != "" {
-			Warning("Ignoring --aws-role-arn because --aws-org uses --aws-org-role per account")
-		}
-		if syncAWSRoleExternalID != "" {
-			Warning("Ignoring --aws-role-external-id because --aws-org is set")
-		}
-		if syncAWSRoleMFASerial != "" || syncAWSRoleMFAToken != "" {
-			Warning("Ignoring --aws-role-mfa-* because --aws-org uses --aws-org-role per account")
 		}
 		return runAWSOrgSync(ctx, start)
 	}
@@ -1030,7 +1031,14 @@ func applyAWSAuthOverrides() (func(), error) {
 
 func applyAWSAssumeRoleOverride(ctx context.Context, cfg aws.Config) (aws.Config, error) {
 	roleARN := strings.TrimSpace(syncAWSRoleARN)
+	sourceIdentity := strings.TrimSpace(syncAWSRoleSourceID)
+	durationRaw := strings.TrimSpace(syncAWSRoleDuration)
+	roleTags := parseCommaSeparatedValues(syncAWSRoleTags)
+	transitiveTagKeys := parseCommaSeparatedValues(syncAWSRoleTransitive)
 	if roleARN == "" {
+		if durationRaw != "" || len(roleTags) > 0 || len(transitiveTagKeys) > 0 || sourceIdentity != "" {
+			return cfg, fmt.Errorf("--aws-role-duration-seconds/--aws-role-session-tags/--aws-role-transitive-tag-keys/--aws-role-source-identity require --aws-role-arn")
+		}
 		return cfg, nil
 	}
 
@@ -1040,7 +1048,29 @@ func applyAWSAssumeRoleOverride(ctx context.Context, cfg aws.Config) (aws.Config
 		return cfg, fmt.Errorf("--aws-role-mfa-token requires --aws-role-mfa-serial")
 	}
 
-	assumedCfg, err := assumeRoleConfigWithExternalID(ctx, cfg, roleARN, strings.TrimSpace(syncAWSRoleSession), strings.TrimSpace(syncAWSRoleExternalID), mfaSerial, mfaToken)
+	durationSeconds, err := parseBoundedPositiveIntDirective(syncAWSRoleDuration, "--aws-role-duration-seconds", 900, 43200)
+	if err != nil {
+		return cfg, err
+	}
+
+	tags, transitiveTagKeys, err := parseAWSSessionTagDirectives(roleTags, transitiveTagKeys)
+	if err != nil {
+		return cfg, err
+	}
+
+	assumedCfg, err := assumeRoleConfigWithScheduledOptions(
+		ctx,
+		cfg,
+		roleARN,
+		strings.TrimSpace(syncAWSRoleSession),
+		strings.TrimSpace(syncAWSRoleExternalID),
+		mfaSerial,
+		mfaToken,
+		sourceIdentity,
+		durationSeconds,
+		tags,
+		transitiveTagKeys,
+	)
 	if err != nil {
 		return cfg, fmt.Errorf("assume AWS role %q: %w", roleARN, err)
 	}
@@ -1067,8 +1097,15 @@ func applyGCPAuthOverrides() (func(), error) {
 
 	impersonateServiceAccount := strings.TrimSpace(syncGCPImpersonateSA)
 	delegates := parseCommaSeparatedValues(syncGCPImpersonateDel)
+	tokenLifetimeSeconds, err := parseBoundedPositiveIntDirective(syncGCPImpersonateTTL, "--gcp-impersonate-token-lifetime-seconds", 600, 43200)
+	if err != nil {
+		return cleanup, err
+	}
 
 	if impersonateServiceAccount == "" {
+		if tokenLifetimeSeconds > 0 {
+			return cleanup, fmt.Errorf("--gcp-impersonate-token-lifetime-seconds requires --gcp-impersonate-service-account")
+		}
 		if credentialsFile == "" {
 			return cleanup, nil
 		}
@@ -1102,6 +1139,9 @@ func applyGCPAuthOverrides() (func(), error) {
 		"type":                              "impersonated_service_account",
 		"service_account_impersonation_url": impersonationURL,
 		"source_credentials":                sourceCredentials,
+	}
+	if tokenLifetimeSeconds > 0 {
+		payload["token_lifetime_seconds"] = tokenLifetimeSeconds
 	}
 	if len(delegates) > 0 {
 		payload["delegates"] = delegates
