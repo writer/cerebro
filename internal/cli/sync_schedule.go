@@ -813,7 +813,7 @@ func executeGCPSync(ctx context.Context, client *snowflake.Client, schedule *Syn
 		orgID = firstNonEmptyEnv("CEREBRO_GCP_ORG", "GCP_ORG_ID")
 	}
 	if orgID != "" && requiresProjectScope {
-		orgProjects, err := listOrganizationProjectsFn(ctx, orgID)
+		orgProjects, err := listOrganizationProjectsFn(syncCtx, orgID)
 		if err != nil {
 			return fmt.Errorf("discover GCP projects for org %q: %w", orgID, err)
 		}
@@ -842,15 +842,22 @@ func executeGCPSync(ctx context.Context, client *snowflake.Client, schedule *Syn
 	var errs []error
 	for _, projectID := range projects {
 		projectCtx, cancel := context.WithTimeout(syncCtx, projectTimeout)
+		nativeTimedOut := false
 
 		if runNativeSync {
 			if err := runScheduledGCPNativeSyncFn(projectCtx, client, projectID, nativeFilter); err != nil {
 				if errors.Is(err, context.DeadlineExceeded) || errors.Is(projectCtx.Err(), context.DeadlineExceeded) {
+					nativeTimedOut = true
 					errs = append(errs, fmt.Errorf("project %s native sync timed out after %s", projectID, projectTimeout.Round(time.Second)))
 				} else {
 					errs = append(errs, fmt.Errorf("project %s native sync: %w", projectID, err))
 				}
 			}
+		}
+
+		if runNativeSync && (nativeTimedOut || projectCtx.Err() != nil) {
+			cancel()
+			continue
 		}
 
 		if runSecuritySync {
@@ -932,7 +939,7 @@ func loadScheduledAWSConfig(ctx context.Context, spec scheduledSyncSpec) (aws.Co
 		loadOptions = append(loadOptions, config.WithSharedCredentialsFiles([]string{credentialsFile}))
 	}
 
-	if credentialProcess := strings.TrimSpace(spec.AWSCredentialProcess); credentialProcess != "" && strings.TrimSpace(spec.AWSProfile) == "" {
+	if credentialProcess := strings.TrimSpace(spec.AWSCredentialProcess); credentialProcess != "" {
 		if err := validateAWSCredentialProcess(credentialProcess, "aws_credential_process"); err != nil {
 			return aws.Config{}, err
 		}

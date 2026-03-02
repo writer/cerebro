@@ -13,6 +13,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/writerinternal/cerebro/internal/snowflake"
+	"google.golang.org/api/option"
 )
 
 func TestParseScheduledSyncSpec(t *testing.T) {
@@ -574,6 +575,48 @@ func TestExecuteGCPSync_InvalidProjectTimeoutDirective(t *testing.T) {
 	}
 }
 
+func TestExecuteGCPSync_SkipsSecurityWhenNativeProjectTimesOut(t *testing.T) {
+	originalNative := runScheduledGCPNativeSyncFn
+	originalSecurity := runScheduledGCPSecuritySyncFn
+	originalApplyAuth := applyScheduledGCPAuthFn
+	originalPreflight := preflightScheduledGCPAuthFn
+	t.Cleanup(func() {
+		runScheduledGCPNativeSyncFn = originalNative
+		runScheduledGCPSecuritySyncFn = originalSecurity
+		applyScheduledGCPAuthFn = originalApplyAuth
+		preflightScheduledGCPAuthFn = originalPreflight
+	})
+
+	applyScheduledGCPAuthFn = func(scheduledSyncSpec) (*scheduledGCPAuthConfig, error) {
+		return &scheduledGCPAuthConfig{Cleanup: func() {}}, nil
+	}
+	preflightScheduledGCPAuthFn = func(context.Context, *SyncSchedule, scheduledSyncSpec, *scheduledGCPAuthConfig) error {
+		return nil
+	}
+	runScheduledGCPNativeSyncFn = func(context.Context, *snowflake.Client, string, []string) error {
+		return context.DeadlineExceeded
+	}
+	securityCalls := 0
+	runScheduledGCPSecuritySyncFn = func(context.Context, *snowflake.Client, string, string, []string) error {
+		securityCalls++
+		return nil
+	}
+
+	err := executeGCPSync(context.Background(), nil, &SyncSchedule{
+		Name:  "timeout-short-circuit",
+		Table: "project=proj-1,gcp_project_timeout_seconds=600,gcp_compute_instances,gcp_scc_findings",
+	})
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	if !strings.Contains(err.Error(), "native sync timed out") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if securityCalls != 0 {
+		t.Fatalf("expected security sync to be skipped after native timeout, got %d calls", securityCalls)
+	}
+}
+
 func TestEnqueueScheduledNativeSync_InvalidWorkerWaitTimeoutDirective(t *testing.T) {
 	err := enqueueScheduledNativeSync(context.Background(), &SyncSchedule{
 		Name:     "worker-wait-timeout",
@@ -927,6 +970,19 @@ func TestLoadScheduledAWSConfig_EnterpriseAuthValidation(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
+
+	t.Run("validates credential process even when profile is set", func(t *testing.T) {
+		_, err := loadScheduledAWSConfig(context.Background(), scheduledSyncSpec{
+			AWSProfile:           "prod",
+			AWSCredentialProcess: "credential-helper --profile prod",
+		})
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), "absolute executable path") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
 }
 
 func TestExecuteGCPSync_FilterRouting(t *testing.T) {
@@ -1095,4 +1151,70 @@ func TestExecuteGCPSync_FilterRouting(t *testing.T) {
 			t.Fatalf("unexpected security filter: %v", securityFilters)
 		}
 	})
+}
+
+func TestExecuteGCPSync_OrgDiscoveryUsesScheduledAuthContext(t *testing.T) {
+	originalNative := runScheduledGCPNativeSyncFn
+	originalSecurity := runScheduledGCPSecuritySyncFn
+	originalListOrgProjects := listOrganizationProjectsFn
+	originalApplyAuth := applyScheduledGCPAuthFn
+	originalPreflight := preflightScheduledGCPAuthFn
+	t.Cleanup(func() {
+		runScheduledGCPNativeSyncFn = originalNative
+		runScheduledGCPSecuritySyncFn = originalSecurity
+		listOrganizationProjectsFn = originalListOrgProjects
+		applyScheduledGCPAuthFn = originalApplyAuth
+		preflightScheduledGCPAuthFn = originalPreflight
+	})
+
+	baseCtx := context.Background()
+	preflightCalled := false
+	orgDiscoveryUsedAuthCtx := false
+
+	applyScheduledGCPAuthFn = func(scheduledSyncSpec) (*scheduledGCPAuthConfig, error) {
+		return &scheduledGCPAuthConfig{
+			Cleanup:       func() {},
+			ClientOptions: []option.ClientOption{option.WithUserAgent("cerebro-test")},
+		}, nil
+	}
+	preflightScheduledGCPAuthFn = func(ctx context.Context, _ *SyncSchedule, _ scheduledSyncSpec, _ *scheduledGCPAuthConfig) error {
+		preflightCalled = true
+		if ctx == baseCtx {
+			t.Fatal("expected preflight to receive auth-wrapped context")
+		}
+		return nil
+	}
+	listOrganizationProjectsFn = func(ctx context.Context, orgID string) ([]string, error) {
+		if orgID != "org-123" {
+			return nil, fmt.Errorf("unexpected org id %q", orgID)
+		}
+		orgDiscoveryUsedAuthCtx = ctx != baseCtx
+		return []string{"proj-1"}, nil
+	}
+
+	nativeCalls := 0
+	runScheduledGCPNativeSyncFn = func(context.Context, *snowflake.Client, string, []string) error {
+		nativeCalls++
+		return nil
+	}
+	runScheduledGCPSecuritySyncFn = func(context.Context, *snowflake.Client, string, string, []string) error {
+		return nil
+	}
+
+	err := executeGCPSync(baseCtx, nil, &SyncSchedule{
+		Name:  "org-auth",
+		Table: "org=org-123,gcp_compute_instances",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !preflightCalled {
+		t.Fatal("expected preflight to be called")
+	}
+	if !orgDiscoveryUsedAuthCtx {
+		t.Fatal("expected org project discovery to use auth-wrapped context")
+	}
+	if nativeCalls != 1 {
+		t.Fatalf("expected one native sync call, got %d", nativeCalls)
+	}
 }

@@ -401,6 +401,20 @@ func TestLoadAWSConfigValidatesFiles(t *testing.T) {
 			t.Fatalf("expected shared credentials file validation error, got %v", err)
 		}
 	})
+
+	t.Run("validates credential process even when profile is set", func(t *testing.T) {
+		syncAWSConfigFile = ""
+		syncAWSSharedCredsFile = ""
+		syncAWSCredentialProc = "credential-helper --profile prod"
+
+		_, err := loadAWSConfig(context.Background(), "prod")
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), "absolute executable path") {
+			t.Fatalf("expected credential process validation error, got %v", err)
+		}
+	})
 }
 
 func TestValidateAWSCredentialProcess(t *testing.T) {

@@ -441,6 +441,7 @@ func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []str
 		Info("[%d/%d] Syncing project: %s", i+1, len(projects), projectID)
 
 		projectCtx, cancel := context.WithTimeout(ctx, projectTimeout)
+		nativeTimedOut := false
 
 		if runNativeSync {
 			options := []nativesync.GCPEngineOption{nativesync.WithGCPProject(projectID)}
@@ -456,11 +457,17 @@ func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []str
 			if err != nil {
 				Warning("Failed to sync project %s: %v", projectID, err)
 				if errors.Is(err, context.DeadlineExceeded) || errors.Is(projectCtx.Err(), context.DeadlineExceeded) {
+					nativeTimedOut = true
 					syncErrs = append(syncErrs, fmt.Errorf("project %s native sync timed out after %s", projectID, projectTimeout.Round(time.Second)))
 				} else {
 					syncErrs = append(syncErrs, fmt.Errorf("project %s native sync: %w", projectID, err))
 				}
 			}
+		}
+
+		if runNativeSync && (nativeTimedOut || projectCtx.Err() != nil) {
+			cancel()
+			continue
 		}
 
 		if runSecuritySync {
@@ -926,7 +933,7 @@ func loadAWSConfig(ctx context.Context, profile string) (aws.Config, error) {
 	}
 
 	credentialProcess := strings.TrimSpace(syncAWSCredentialProc)
-	if credentialProcess != "" && trimmed == "" {
+	if credentialProcess != "" {
 		if err := validateAWSCredentialProcess(credentialProcess, "--aws-credential-process"); err != nil {
 			return aws.Config{}, err
 		}
