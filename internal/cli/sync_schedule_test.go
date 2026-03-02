@@ -547,17 +547,22 @@ func TestExecuteGCPSync_InvalidProjectTimeoutDirective(t *testing.T) {
 	originalSecurity := runScheduledGCPSecuritySyncFn
 	originalApplyAuth := applyScheduledGCPAuthFn
 	originalPreflight := preflightScheduledGCPAuthFn
+	originalProjectPreflight := preflightGCPProjectAccessFn
 	t.Cleanup(func() {
 		runScheduledGCPNativeSyncFn = originalNative
 		runScheduledGCPSecuritySyncFn = originalSecurity
 		applyScheduledGCPAuthFn = originalApplyAuth
 		preflightScheduledGCPAuthFn = originalPreflight
+		preflightGCPProjectAccessFn = originalProjectPreflight
 	})
 
 	applyScheduledGCPAuthFn = func(scheduledSyncSpec) (*scheduledGCPAuthConfig, error) {
 		return &scheduledGCPAuthConfig{Cleanup: func() {}}, nil
 	}
 	preflightScheduledGCPAuthFn = func(context.Context, *SyncSchedule, scheduledSyncSpec, *scheduledGCPAuthConfig) error {
+		return nil
+	}
+	preflightGCPProjectAccessFn = func(context.Context, gcpProjectPreflightSpec) error {
 		return nil
 	}
 	runScheduledGCPNativeSyncFn = func(context.Context, *snowflake.Client, string, []string) error { return nil }
@@ -580,17 +585,22 @@ func TestExecuteGCPSync_SkipsSecurityWhenNativeProjectTimesOut(t *testing.T) {
 	originalSecurity := runScheduledGCPSecuritySyncFn
 	originalApplyAuth := applyScheduledGCPAuthFn
 	originalPreflight := preflightScheduledGCPAuthFn
+	originalProjectPreflight := preflightGCPProjectAccessFn
 	t.Cleanup(func() {
 		runScheduledGCPNativeSyncFn = originalNative
 		runScheduledGCPSecuritySyncFn = originalSecurity
 		applyScheduledGCPAuthFn = originalApplyAuth
 		preflightScheduledGCPAuthFn = originalPreflight
+		preflightGCPProjectAccessFn = originalProjectPreflight
 	})
 
 	applyScheduledGCPAuthFn = func(scheduledSyncSpec) (*scheduledGCPAuthConfig, error) {
 		return &scheduledGCPAuthConfig{Cleanup: func() {}}, nil
 	}
 	preflightScheduledGCPAuthFn = func(context.Context, *SyncSchedule, scheduledSyncSpec, *scheduledGCPAuthConfig) error {
+		return nil
+	}
+	preflightGCPProjectAccessFn = func(context.Context, gcpProjectPreflightSpec) error {
 		return nil
 	}
 	runScheduledGCPNativeSyncFn = func(context.Context, *snowflake.Client, string, []string) error {
@@ -614,6 +624,59 @@ func TestExecuteGCPSync_SkipsSecurityWhenNativeProjectTimesOut(t *testing.T) {
 	}
 	if securityCalls != 0 {
 		t.Fatalf("expected security sync to be skipped after native timeout, got %d calls", securityCalls)
+	}
+}
+
+func TestExecuteGCPSync_PreflightFailureSkipsNativeAndSecurity(t *testing.T) {
+	originalNative := runScheduledGCPNativeSyncFn
+	originalSecurity := runScheduledGCPSecuritySyncFn
+	originalApplyAuth := applyScheduledGCPAuthFn
+	originalPreflight := preflightScheduledGCPAuthFn
+	originalProjectPreflight := preflightGCPProjectAccessFn
+	t.Cleanup(func() {
+		runScheduledGCPNativeSyncFn = originalNative
+		runScheduledGCPSecuritySyncFn = originalSecurity
+		applyScheduledGCPAuthFn = originalApplyAuth
+		preflightScheduledGCPAuthFn = originalPreflight
+		preflightGCPProjectAccessFn = originalProjectPreflight
+	})
+
+	applyScheduledGCPAuthFn = func(scheduledSyncSpec) (*scheduledGCPAuthConfig, error) {
+		return &scheduledGCPAuthConfig{Cleanup: func() {}}, nil
+	}
+	preflightScheduledGCPAuthFn = func(context.Context, *SyncSchedule, scheduledSyncSpec, *scheduledGCPAuthConfig) error {
+		return nil
+	}
+	preflightGCPProjectAccessFn = func(context.Context, gcpProjectPreflightSpec) error {
+		return fmt.Errorf("cloud asset denied")
+	}
+
+	nativeCalls := 0
+	securityCalls := 0
+	runScheduledGCPNativeSyncFn = func(context.Context, *snowflake.Client, string, []string) error {
+		nativeCalls++
+		return nil
+	}
+	runScheduledGCPSecuritySyncFn = func(context.Context, *snowflake.Client, string, string, []string) error {
+		securityCalls++
+		return nil
+	}
+
+	err := executeGCPSync(context.Background(), nil, &SyncSchedule{
+		Name:  "preflight-fail",
+		Table: "project=proj-1,gcp_compute_instances,gcp_scc_findings",
+	})
+	if err == nil {
+		t.Fatal("expected preflight error")
+	}
+	if !strings.Contains(err.Error(), "preflight") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if nativeCalls != 0 {
+		t.Fatalf("expected no native sync calls, got %d", nativeCalls)
+	}
+	if securityCalls != 0 {
+		t.Fatalf("expected no security sync calls, got %d", securityCalls)
 	}
 }
 
@@ -682,16 +745,76 @@ func TestGCPSecurityFiltersRequireProject(t *testing.T) {
 	}
 }
 
+func TestPreflightGCPProjectAccess_RequiresOrgForSCC(t *testing.T) {
+	err := preflightGCPProjectAccess(context.Background(), gcpProjectPreflightSpec{
+		ProjectID:      "proj-1",
+		RunNativeSync:  false,
+		RunSecurity:    true,
+		SecurityFilter: []string{"gcp_scc_findings"},
+	})
+	if err == nil {
+		t.Fatal("expected SCC org validation error")
+	}
+	if !strings.Contains(err.Error(), "gcp-org") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPreflightGCPProjectAccess_InvokesCloudAssetAndSCCProbes(t *testing.T) {
+	originalAssetProbe := probeGCPCloudAssetAccessFn
+	originalSCCProbe := probeGCPSCCAccessFn
+	t.Cleanup(func() {
+		probeGCPCloudAssetAccessFn = originalAssetProbe
+		probeGCPSCCAccessFn = originalSCCProbe
+	})
+
+	assetCalled := false
+	sccCalled := false
+	probeGCPCloudAssetAccessFn = func(_ context.Context, projectID string, _ []option.ClientOption) error {
+		assetCalled = true
+		if projectID != "proj-1" {
+			return fmt.Errorf("unexpected project id %q", projectID)
+		}
+		return nil
+	}
+	probeGCPSCCAccessFn = func(_ context.Context, orgID string, _ []option.ClientOption) error {
+		sccCalled = true
+		if orgID != "org-123" {
+			return fmt.Errorf("unexpected org id %q", orgID)
+		}
+		return nil
+	}
+
+	err := preflightGCPProjectAccess(context.Background(), gcpProjectPreflightSpec{
+		ProjectID:      "proj-1",
+		OrgID:          "org-123",
+		RunNativeSync:  true,
+		RunSecurity:    true,
+		SecurityFilter: []string{"gcp_scc_findings"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected preflight error: %v", err)
+	}
+	if !assetCalled {
+		t.Fatal("expected cloud asset probe to be called")
+	}
+	if !sccCalled {
+		t.Fatal("expected scc probe to be called")
+	}
+}
+
 func TestExecuteGCPSync_AppliesScheduledAuthDirectives(t *testing.T) {
 	originalNative := runScheduledGCPNativeSyncFn
 	originalSecurity := runScheduledGCPSecuritySyncFn
 	originalApplyAuth := applyScheduledGCPAuthFn
 	originalPreflight := preflightScheduledGCPAuthFn
+	originalProjectPreflight := preflightGCPProjectAccessFn
 	t.Cleanup(func() {
 		runScheduledGCPNativeSyncFn = originalNative
 		runScheduledGCPSecuritySyncFn = originalSecurity
 		applyScheduledGCPAuthFn = originalApplyAuth
 		preflightScheduledGCPAuthFn = originalPreflight
+		preflightGCPProjectAccessFn = originalProjectPreflight
 	})
 
 	applyCalled := false
@@ -722,6 +845,9 @@ func TestExecuteGCPSync_AppliesScheduledAuthDirectives(t *testing.T) {
 			return fmt.Errorf("unexpected auth cfg: %#v", cfg)
 		}
 		preflightCalled = true
+		return nil
+	}
+	preflightGCPProjectAccessFn = func(context.Context, gcpProjectPreflightSpec) error {
 		return nil
 	}
 	runScheduledGCPNativeSyncFn = func(context.Context, *snowflake.Client, string, []string) error {
@@ -1019,18 +1145,23 @@ func TestExecuteGCPSync_FilterRouting(t *testing.T) {
 	originalListOrgProjects := listOrganizationProjectsFn
 	originalApplyAuth := applyScheduledGCPAuthFn
 	originalPreflight := preflightScheduledGCPAuthFn
+	originalProjectPreflight := preflightGCPProjectAccessFn
 	t.Cleanup(func() {
 		runScheduledGCPNativeSyncFn = originalNative
 		runScheduledGCPSecuritySyncFn = originalSecurity
 		listOrganizationProjectsFn = originalListOrgProjects
 		applyScheduledGCPAuthFn = originalApplyAuth
 		preflightScheduledGCPAuthFn = originalPreflight
+		preflightGCPProjectAccessFn = originalProjectPreflight
 	})
 
 	applyScheduledGCPAuthFn = func(scheduledSyncSpec) (*scheduledGCPAuthConfig, error) {
 		return &scheduledGCPAuthConfig{Cleanup: func() {}}, nil
 	}
 	preflightScheduledGCPAuthFn = func(context.Context, *SyncSchedule, scheduledSyncSpec, *scheduledGCPAuthConfig) error {
+		return nil
+	}
+	preflightGCPProjectAccessFn = func(context.Context, gcpProjectPreflightSpec) error {
 		return nil
 	}
 
@@ -1187,12 +1318,14 @@ func TestExecuteGCPSync_OrgDiscoveryUsesScheduledAuthContext(t *testing.T) {
 	originalListOrgProjects := listOrganizationProjectsFn
 	originalApplyAuth := applyScheduledGCPAuthFn
 	originalPreflight := preflightScheduledGCPAuthFn
+	originalProjectPreflight := preflightGCPProjectAccessFn
 	t.Cleanup(func() {
 		runScheduledGCPNativeSyncFn = originalNative
 		runScheduledGCPSecuritySyncFn = originalSecurity
 		listOrganizationProjectsFn = originalListOrgProjects
 		applyScheduledGCPAuthFn = originalApplyAuth
 		preflightScheduledGCPAuthFn = originalPreflight
+		preflightGCPProjectAccessFn = originalProjectPreflight
 	})
 
 	baseCtx := context.Background()
@@ -1210,6 +1343,9 @@ func TestExecuteGCPSync_OrgDiscoveryUsesScheduledAuthContext(t *testing.T) {
 		if ctx == baseCtx {
 			t.Fatal("expected preflight to receive auth-wrapped context")
 		}
+		return nil
+	}
+	preflightGCPProjectAccessFn = func(context.Context, gcpProjectPreflightSpec) error {
 		return nil
 	}
 	listOrganizationProjectsFn = func(ctx context.Context, orgID string) ([]string, error) {

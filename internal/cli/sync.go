@@ -277,6 +277,16 @@ func runGCPSync(ctx context.Context, start time.Time, projectID string) error {
 	defer func() { _ = client.Close() }()
 
 	if runNativeSync {
+		if err := preflightGCPProjectAccessFn(ctx, gcpProjectPreflightSpec{
+			ProjectID:      projectID,
+			OrgID:          syncGCPOrg,
+			RunNativeSync:  true,
+			RunSecurity:    false,
+			SecurityFilter: securityTableFilter,
+		}); err != nil {
+			return fmt.Errorf("project %s native preflight: %w", gcpProjectScopeLabel(projectID), err)
+		}
+
 		options := []nativesync.GCPEngineOption{nativesync.WithGCPProject(projectID)}
 		if syncConcurrency > 0 {
 			options = append(options, nativesync.WithGCPConcurrency(syncConcurrency))
@@ -307,16 +317,30 @@ func runGCPSync(ctx context.Context, start time.Time, projectID string) error {
 
 	// Sync security data if requested
 	if runSecuritySync {
-		Info("Syncing GCP security data (Container Analysis, Artifact Registry, SCC)...")
-		secOptions := []nativesync.GCPSecurityOption{}
-		if len(securityTableFilter) > 0 {
-			secOptions = append(secOptions, nativesync.WithGCPSecurityTableFilter(securityTableFilter))
-		}
-		securitySyncer := nativesync.NewGCPSecuritySync(client, slog.Default(), projectID, syncGCPOrg, secOptions...)
-		if secErr := securitySyncer.SyncAll(ctx); secErr != nil {
-			Warning("Security sync failed: %v", secErr)
+		if err := preflightGCPProjectAccessFn(ctx, gcpProjectPreflightSpec{
+			ProjectID:      projectID,
+			OrgID:          syncGCPOrg,
+			RunNativeSync:  false,
+			RunSecurity:    true,
+			SecurityFilter: securityTableFilter,
+		}); err != nil {
+			if runNativeSync {
+				Warning("Security preflight failed: %v", err)
+			} else {
+				return fmt.Errorf("project %s security preflight: %w", gcpProjectScopeLabel(projectID), err)
+			}
 		} else {
-			Success("Security data synced successfully")
+			Info("Syncing GCP security data (Container Analysis, Artifact Registry, SCC)...")
+			secOptions := []nativesync.GCPSecurityOption{}
+			if len(securityTableFilter) > 0 {
+				secOptions = append(secOptions, nativesync.WithGCPSecurityTableFilter(securityTableFilter))
+			}
+			securitySyncer := nativesync.NewGCPSecuritySync(client, slog.Default(), projectID, syncGCPOrg, secOptions...)
+			if secErr := securitySyncer.SyncAll(ctx); secErr != nil {
+				Warning("Security sync failed: %v", secErr)
+			} else {
+				Success("Security data synced successfully")
+			}
 		}
 	} else if syncSecurity && len(tableFilter) > 0 {
 		Info("Skipping GCP security sync because --table filter does not include security tables")
@@ -444,6 +468,22 @@ func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []str
 		nativeTimedOut := false
 
 		if runNativeSync {
+			if err := preflightGCPProjectAccessFn(projectCtx, gcpProjectPreflightSpec{
+				ProjectID:      projectID,
+				OrgID:          syncGCPOrg,
+				RunNativeSync:  true,
+				RunSecurity:    false,
+				SecurityFilter: securityTableFilter,
+			}); err != nil {
+				if errors.Is(err, context.DeadlineExceeded) || errors.Is(projectCtx.Err(), context.DeadlineExceeded) {
+					syncErrs = append(syncErrs, fmt.Errorf("project %s native preflight timed out after %s", projectID, projectTimeout.Round(time.Second)))
+				} else {
+					syncErrs = append(syncErrs, fmt.Errorf("project %s native preflight: %w", projectID, err))
+				}
+				cancel()
+				continue
+			}
+
 			options := []nativesync.GCPEngineOption{nativesync.WithGCPProject(projectID)}
 			if syncConcurrency > 0 {
 				options = append(options, nativesync.WithGCPConcurrency(syncConcurrency))
@@ -471,6 +511,22 @@ func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []str
 		}
 
 		if runSecuritySync {
+			if err := preflightGCPProjectAccessFn(projectCtx, gcpProjectPreflightSpec{
+				ProjectID:      projectID,
+				OrgID:          syncGCPOrg,
+				RunNativeSync:  false,
+				RunSecurity:    true,
+				SecurityFilter: securityTableFilter,
+			}); err != nil {
+				if errors.Is(err, context.DeadlineExceeded) || errors.Is(projectCtx.Err(), context.DeadlineExceeded) {
+					syncErrs = append(syncErrs, fmt.Errorf("project %s security preflight timed out after %s", projectID, projectTimeout.Round(time.Second)))
+				} else {
+					syncErrs = append(syncErrs, fmt.Errorf("project %s security preflight: %w", projectID, err))
+				}
+				cancel()
+				continue
+			}
+
 			secOptions := []nativesync.GCPSecurityOption{}
 			if len(securityTableFilter) > 0 {
 				secOptions = append(secOptions, nativesync.WithGCPSecurityTableFilter(securityTableFilter))

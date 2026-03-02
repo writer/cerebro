@@ -174,6 +174,14 @@ func TestSchedulerMetrics(t *testing.T) {
 	SchedulerJobDuration.WithLabelValues("sync-feeds").Observe(30.0)
 }
 
+func TestRecordScheduledAuthPreflight(t *testing.T) {
+	Register()
+
+	RecordScheduledAuthPreflight("aws", "assume_role", true)
+	RecordScheduledAuthPreflight("gcp", "service_account_impersonation", false)
+	RecordScheduledAuthPreflight("", "", true)
+}
+
 func TestSetProviderCountMetrics(t *testing.T) {
 	Register()
 	SetProviderCountMetrics(11, 22)

@@ -16,6 +16,10 @@ import (
 	"syscall"
 	"time"
 
+	asset "cloud.google.com/go/asset/apiv1"
+	assetpb "cloud.google.com/go/asset/apiv1/assetpb"
+	securitycenter "cloud.google.com/go/securitycenter/apiv1"
+	securitycenterpb "cloud.google.com/go/securitycenter/apiv1/securitycenterpb"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials/processcreds"
@@ -27,10 +31,12 @@ import (
 
 	"github.com/writerinternal/cerebro/internal/app"
 	"github.com/writerinternal/cerebro/internal/jobs"
+	"github.com/writerinternal/cerebro/internal/metrics"
 	providerregistry "github.com/writerinternal/cerebro/internal/providers"
 	"github.com/writerinternal/cerebro/internal/snowflake"
 	nativesync "github.com/writerinternal/cerebro/internal/sync"
 	"golang.org/x/oauth2/google"
+	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
 
@@ -107,6 +113,9 @@ var (
 
 	runScheduledGCPNativeSyncFn   = runScheduledGCPNativeSync
 	runScheduledGCPSecuritySyncFn = runScheduledGCPSecuritySync
+	preflightGCPProjectAccessFn   = preflightGCPProjectAccess
+	probeGCPCloudAssetAccessFn    = probeGCPCloudAssetAccess
+	probeGCPSCCAccessFn           = probeGCPSCCAccess
 	listOrganizationProjectsFn    = nativesync.ListOrganizationProjects
 	loadScheduledAWSConfigFn      = loadScheduledAWSConfig
 	preflightScheduledAWSAuthFn   = preflightScheduledAWSAuth
@@ -730,17 +739,7 @@ func executeAWSSync(ctx context.Context, client *snowflake.Client, schedule *Syn
 		Info("[%s] AWS auth override: role_transitive_tag_keys=%d", schedule.Name, len(spec.AWSRoleTransitiveTagKeys))
 	}
 
-	authMethod := "default"
-	switch {
-	case spec.AWSRoleARN != "":
-		authMethod = "assume_role"
-	case spec.AWSWebIdentityRoleARN != "":
-		authMethod = "web_identity"
-	case spec.AWSCredentialProcess != "":
-		authMethod = "credential_process"
-	case spec.AWSProfile != "":
-		authMethod = "profile"
-	}
+	authMethod := scheduledAWSAuthMethod(spec)
 	slog.Default().Info("scheduled_sync_audit",
 		"event", "auth_override",
 		"schedule", schedule.Name,
@@ -843,14 +842,32 @@ func executeGCPSync(ctx context.Context, client *snowflake.Client, schedule *Syn
 	for _, projectID := range projects {
 		projectCtx, cancel := context.WithTimeout(syncCtx, projectTimeout)
 		nativeTimedOut := false
+		projectLabel := gcpProjectScopeLabel(projectID)
 
 		if runNativeSync {
+			if err := preflightGCPProjectAccessFn(projectCtx, gcpProjectPreflightSpec{
+				ProjectID:      projectID,
+				OrgID:          orgID,
+				RunNativeSync:  true,
+				RunSecurity:    false,
+				SecurityFilter: securityFilter,
+				ClientOptions:  authConfig.ClientOptions,
+			}); err != nil {
+				if errors.Is(err, context.DeadlineExceeded) || errors.Is(projectCtx.Err(), context.DeadlineExceeded) {
+					errs = append(errs, fmt.Errorf("project %s native preflight timed out after %s", projectLabel, projectTimeout.Round(time.Second)))
+				} else {
+					errs = append(errs, fmt.Errorf("project %s native preflight: %w", projectLabel, err))
+				}
+				cancel()
+				continue
+			}
+
 			if err := runScheduledGCPNativeSyncFn(projectCtx, client, projectID, nativeFilter); err != nil {
 				if errors.Is(err, context.DeadlineExceeded) || errors.Is(projectCtx.Err(), context.DeadlineExceeded) {
 					nativeTimedOut = true
-					errs = append(errs, fmt.Errorf("project %s native sync timed out after %s", projectID, projectTimeout.Round(time.Second)))
+					errs = append(errs, fmt.Errorf("project %s native sync timed out after %s", projectLabel, projectTimeout.Round(time.Second)))
 				} else {
-					errs = append(errs, fmt.Errorf("project %s native sync: %w", projectID, err))
+					errs = append(errs, fmt.Errorf("project %s native sync: %w", projectLabel, err))
 				}
 			}
 		}
@@ -861,11 +878,28 @@ func executeGCPSync(ctx context.Context, client *snowflake.Client, schedule *Syn
 		}
 
 		if runSecuritySync {
+			if err := preflightGCPProjectAccessFn(projectCtx, gcpProjectPreflightSpec{
+				ProjectID:      projectID,
+				OrgID:          orgID,
+				RunNativeSync:  false,
+				RunSecurity:    true,
+				SecurityFilter: securityFilter,
+				ClientOptions:  authConfig.ClientOptions,
+			}); err != nil {
+				if errors.Is(err, context.DeadlineExceeded) || errors.Is(projectCtx.Err(), context.DeadlineExceeded) {
+					errs = append(errs, fmt.Errorf("project %s security preflight timed out after %s", projectLabel, projectTimeout.Round(time.Second)))
+				} else {
+					errs = append(errs, fmt.Errorf("project %s security preflight: %w", projectLabel, err))
+				}
+				cancel()
+				continue
+			}
+
 			if err := runScheduledGCPSecuritySyncFn(projectCtx, client, projectID, orgID, securityFilter); err != nil {
 				if errors.Is(err, context.DeadlineExceeded) || errors.Is(projectCtx.Err(), context.DeadlineExceeded) {
-					errs = append(errs, fmt.Errorf("project %s security sync timed out after %s", projectID, projectTimeout.Round(time.Second)))
+					errs = append(errs, fmt.Errorf("project %s security sync timed out after %s", projectLabel, projectTimeout.Round(time.Second)))
 				} else {
-					errs = append(errs, fmt.Errorf("project %s security sync: %w", projectID, err))
+					errs = append(errs, fmt.Errorf("project %s security sync: %w", projectLabel, err))
 				}
 			}
 		}
@@ -1110,16 +1144,45 @@ func parseBoundedPositiveIntDirective(raw, name string, min, max int) (int, erro
 	return value, nil
 }
 
-func preflightScheduledAWSAuth(ctx context.Context, schedule *SyncSchedule, _ scheduledSyncSpec, awsCfg aws.Config) error {
+func scheduledAWSAuthMethod(spec scheduledSyncSpec) string {
+	switch {
+	case strings.TrimSpace(spec.AWSRoleARN) != "":
+		return "assume_role"
+	case strings.TrimSpace(spec.AWSWebIdentityRoleARN) != "":
+		return "web_identity"
+	case strings.TrimSpace(spec.AWSCredentialProcess) != "":
+		return "credential_process"
+	case strings.TrimSpace(spec.AWSProfile) != "":
+		return "profile"
+	default:
+		return "default"
+	}
+}
+
+func scheduledGCPAuthMethod(spec scheduledSyncSpec, authCfg *scheduledGCPAuthConfig) string {
+	if strings.TrimSpace(spec.GCPImpersonateServiceAccount) != "" {
+		return "service_account_impersonation"
+	}
+	if authCfg != nil && strings.TrimSpace(authCfg.CredentialsFile) != "" {
+		return "credentials_file"
+	}
+	return "adc"
+}
+
+func preflightScheduledAWSAuth(ctx context.Context, schedule *SyncSchedule, spec scheduledSyncSpec, awsCfg aws.Config) error {
+	authMethod := scheduledAWSAuthMethod(spec)
 	identity, err := sts.NewFromConfig(awsCfg).GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
 	if err != nil {
+		metrics.RecordScheduledAuthPreflight("aws", authMethod, false)
 		return fmt.Errorf("[%s] AWS auth preflight failed: %w", schedule.Name, err)
 	}
+	metrics.RecordScheduledAuthPreflight("aws", authMethod, true)
 
 	slog.Default().Info("scheduled_sync_audit",
 		"event", "auth_preflight",
 		"schedule", schedule.Name,
 		"provider", "aws",
+		"auth_method", authMethod,
 		"status", "success",
 		"account", aws.ToString(identity.Account),
 		"arn", aws.ToString(identity.Arn),
@@ -1271,6 +1334,12 @@ func applyScheduledGCPAuth(spec scheduledSyncSpec) (*scheduledGCPAuthConfig, err
 }
 
 func preflightScheduledGCPAuth(ctx context.Context, schedule *SyncSchedule, spec scheduledSyncSpec, authCfg *scheduledGCPAuthConfig) error {
+	authMethod := scheduledGCPAuthMethod(spec, authCfg)
+	recordFailure := func(format string, args ...interface{}) error {
+		metrics.RecordScheduledAuthPreflight("gcp", authMethod, false)
+		return fmt.Errorf(format, args...)
+	}
+
 	var (
 		credentials *google.Credentials
 		err         error
@@ -1281,31 +1350,25 @@ func preflightScheduledGCPAuth(ctx context.Context, schedule *SyncSchedule, spec
 	} else if authCfg != nil && strings.TrimSpace(authCfg.CredentialsFile) != "" {
 		encoded, readErr := os.ReadFile(strings.TrimSpace(authCfg.CredentialsFile))
 		if readErr != nil {
-			return fmt.Errorf("[%s] GCP auth preflight failed: read credentials file %q: %w", schedule.Name, authCfg.CredentialsFile, readErr)
+			return recordFailure("[%s] GCP auth preflight failed: read credentials file %q: %w", schedule.Name, authCfg.CredentialsFile, readErr)
 		}
 		credentials, err = google.CredentialsFromJSON(ctx, encoded, "https://www.googleapis.com/auth/cloud-platform")
 	} else {
 		credentials, err = google.FindDefaultCredentials(ctx, "https://www.googleapis.com/auth/cloud-platform")
 	}
 	if err != nil {
-		return fmt.Errorf("[%s] GCP auth preflight failed: %w", schedule.Name, err)
+		return recordFailure("[%s] GCP auth preflight failed: %w", schedule.Name, err)
 	}
 
 	token, err := credentials.TokenSource.Token()
 	if err != nil {
-		return fmt.Errorf("[%s] GCP auth preflight token retrieval failed: %w", schedule.Name, err)
+		return recordFailure("[%s] GCP auth preflight token retrieval failed: %w", schedule.Name, err)
 	}
+	metrics.RecordScheduledAuthPreflight("gcp", authMethod, true)
 
 	principal := strings.TrimSpace(spec.GCPImpersonateServiceAccount)
 	if principal == "" {
 		principal = "default"
-	}
-
-	authMethod := "adc"
-	if strings.TrimSpace(spec.GCPImpersonateServiceAccount) != "" {
-		authMethod = "service_account_impersonation"
-	} else if authCfg != nil && strings.TrimSpace(authCfg.CredentialsFile) != "" {
-		authMethod = "credentials_file"
 	}
 
 	attrs := []any{
@@ -1331,6 +1394,104 @@ func preflightScheduledGCPAuth(ctx context.Context, schedule *SyncSchedule, spec
 
 	Info("[%s] GCP auth preflight succeeded: method=%s principal=%s token_expiry=%s", schedule.Name, authMethod, principal, token.Expiry.UTC().Format(time.RFC3339))
 	return nil
+}
+
+type gcpProjectPreflightSpec struct {
+	ProjectID      string
+	OrgID          string
+	RunNativeSync  bool
+	RunSecurity    bool
+	SecurityFilter []string
+	ClientOptions  []option.ClientOption
+}
+
+func preflightGCPProjectAccess(ctx context.Context, spec gcpProjectPreflightSpec) error {
+	if spec.RunNativeSync {
+		projectID := strings.TrimSpace(spec.ProjectID)
+		if projectID == "" {
+			return fmt.Errorf("native GCP sync preflight requires project scope")
+		}
+		if err := probeGCPCloudAssetAccessFn(ctx, projectID, spec.ClientOptions); err != nil {
+			return fmt.Errorf("cloud asset preflight failed: %w", err)
+		}
+	}
+
+	if spec.RunSecurity && gcpSecurityFilterIncludesSCC(spec.SecurityFilter) {
+		orgID := strings.TrimSpace(spec.OrgID)
+		if orgID == "" {
+			return fmt.Errorf("security command center preflight requires gcp-org scope (org=<id> or CEREBRO_GCP_ORG/GCP_ORG_ID)")
+		}
+		if err := probeGCPSCCAccessFn(ctx, orgID, spec.ClientOptions); err != nil {
+			return fmt.Errorf("security command center preflight failed: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func gcpSecurityFilterIncludesSCC(filters []string) bool {
+	if len(filters) == 0 {
+		return true
+	}
+
+	for _, filter := range filters {
+		switch strings.ToLower(strings.TrimSpace(filter)) {
+		case "gcp_scc_findings", "scc_findings", "security_command_center_findings":
+			return true
+		}
+	}
+
+	return false
+}
+
+func probeGCPCloudAssetAccess(ctx context.Context, projectID string, clientOptions []option.ClientOption) error {
+	client, err := asset.NewClient(ctx, clientOptions...)
+	if err != nil {
+		return fmt.Errorf("create cloud asset client: %w", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	req := &assetpb.SearchAllResourcesRequest{
+		Scope:      fmt.Sprintf("projects/%s", projectID),
+		AssetTypes: []string{"cloudresourcemanager.googleapis.com/Project"},
+		PageSize:   1,
+	}
+
+	iter := client.SearchAllResources(ctx, req)
+	if _, err := iter.Next(); err != nil && err != iterator.Done {
+		return fmt.Errorf("search resources for projects/%s: %w", projectID, err)
+	}
+
+	return nil
+}
+
+func probeGCPSCCAccess(ctx context.Context, orgID string, clientOptions []option.ClientOption) error {
+	client, err := securitycenter.NewClient(ctx, clientOptions...)
+	if err != nil {
+		return fmt.Errorf("create security center client: %w", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	req := &securitycenterpb.ListFindingsRequest{
+		Parent:   fmt.Sprintf("organizations/%s/sources/-", orgID),
+		Filter:   `state="ACTIVE"`,
+		PageSize: 1,
+	}
+
+	iter := client.ListFindings(ctx, req)
+	if _, err := iter.Next(); err != nil && err != iterator.Done {
+		return fmt.Errorf("list findings for organizations/%s: %w", orgID, err)
+	}
+
+	return nil
+}
+
+func gcpProjectScopeLabel(projectID string) string {
+	trimmed := strings.TrimSpace(projectID)
+	if trimmed == "" {
+		return "organization_scope"
+	}
+	return trimmed
 }
 
 func gcpAuthOptionFromCredentialJSON(raw []byte, source string) (option.ClientOption, error) {
