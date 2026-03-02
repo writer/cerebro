@@ -2,16 +2,25 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"os/signal"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials/processcreds"
+	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
+	ststypes "github.com/aws/aws-sdk-go-v2/service/sts/types"
 	"github.com/robfig/cron/v3"
 	"github.com/spf13/cobra"
 
@@ -20,6 +29,7 @@ import (
 	providerregistry "github.com/writerinternal/cerebro/internal/providers"
 	"github.com/writerinternal/cerebro/internal/snowflake"
 	nativesync "github.com/writerinternal/cerebro/internal/sync"
+	"golang.org/x/oauth2/google"
 )
 
 var syncScheduleCmd = &cobra.Command{
@@ -91,12 +101,19 @@ var (
 	executeAzureSyncFn           = executeAzureSync
 	executeProviderSyncFn        = executeProviderSync
 	enqueueScheduledNativeSyncFn = enqueueScheduledNativeSync
+	runScheduledAWSNativeSyncFn  = runScheduledAWSNativeSync
 
 	runScheduledGCPNativeSyncFn   = runScheduledGCPNativeSync
 	runScheduledGCPSecuritySyncFn = runScheduledGCPSecuritySync
 	listOrganizationProjectsFn    = nativesync.ListOrganizationProjects
+	loadScheduledAWSConfigFn      = loadScheduledAWSConfig
+	preflightScheduledAWSAuthFn   = preflightScheduledAWSAuth
+	applyScheduledGCPAuthFn       = applyScheduledGCPAuth
+	preflightScheduledGCPAuthFn   = preflightScheduledGCPAuth
 
 	newScheduleAppFn = app.New
+
+	scheduledGCPAuthMu sync.Mutex
 )
 
 func init() {
@@ -545,6 +562,17 @@ func enqueueScheduledNativeSync(ctx context.Context, schedule *SyncSchedule) err
 	result := results[0]
 	switch result.Status {
 	case jobs.StatusSucceeded:
+		parsed, parseErr := parseScheduledNativeSyncJobResult(result.Result)
+		if parseErr != nil {
+			Warning("[%s] Worker native sync job %s succeeded but result payload could not be parsed: %v", schedule.Name, result.ID, parseErr)
+			return nil
+		}
+		if parsed != nil && len(parsed.FailedAdditionalProviders) > 0 {
+			Warning("[%s] Worker native sync completed with %d additional provider failure(s)", schedule.Name, len(parsed.FailedAdditionalProviders))
+			for _, failure := range parsed.FailedAdditionalProviders {
+				Warning("[%s] Additional provider sync failed: provider=%s error=%s", schedule.Name, failure.Provider, failure.Error)
+			}
+		}
 		return nil
 	case jobs.StatusFailed:
 		if strings.TrimSpace(result.Error) != "" {
@@ -556,28 +584,78 @@ func enqueueScheduledNativeSync(ctx context.Context, schedule *SyncSchedule) err
 	}
 }
 
+type scheduledNativeSyncProviderFailure struct {
+	Provider string `json:"provider"`
+	Error    string `json:"error"`
+}
+
+type scheduledNativeSyncJobResult struct {
+	Provider                  string                               `json:"provider"`
+	Table                     string                               `json:"table"`
+	ScheduleName              string                               `json:"schedule_name"`
+	AdditionalProviders       []string                             `json:"additional_providers"`
+	FailedAdditionalProviders []scheduledNativeSyncProviderFailure `json:"failed_additional_providers"`
+}
+
+func parseScheduledNativeSyncJobResult(raw string) (*scheduledNativeSyncJobResult, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+
+	var result scheduledNativeSyncJobResult
+	if err := json.Unmarshal([]byte(raw), &result); err != nil {
+		return nil, err
+	}
+
+	return &result, nil
+}
+
 func executeAWSSync(ctx context.Context, client *snowflake.Client, schedule *SyncSchedule) error {
 	Info("[%s] Executing AWS sync...", schedule.Name)
+	spec := parseScheduledSyncSpec(schedule.Table)
 
-	awsCfg, err := config.LoadDefaultConfig(ctx)
+	if spec.AWSProfile != "" {
+		Info("[%s] AWS auth override: profile=%s", schedule.Name, spec.AWSProfile)
+	}
+	if spec.AWSRoleARN != "" {
+		Info("[%s] AWS auth override: role_arn=%s", schedule.Name, spec.AWSRoleARN)
+	}
+	if strings.TrimSpace(spec.AWSRoleDurationSeconds) != "" {
+		Info("[%s] AWS auth override: role_duration_seconds=%s", schedule.Name, strings.TrimSpace(spec.AWSRoleDurationSeconds))
+	}
+	if len(spec.AWSRoleSessionTags) > 0 {
+		Info("[%s] AWS auth override: role_session_tags=%d", schedule.Name, len(spec.AWSRoleSessionTags))
+	}
+	if len(spec.AWSRoleTransitiveTagKeys) > 0 {
+		Info("[%s] AWS auth override: role_transitive_tag_keys=%d", schedule.Name, len(spec.AWSRoleTransitiveTagKeys))
+	}
+
+	awsCfg, err := loadScheduledAWSConfigFn(ctx, spec)
 	if err != nil {
 		return fmt.Errorf("load AWS config: %w", err)
 	}
-
-	spec := parseScheduledSyncSpec(schedule.Table)
-
-	var opts []nativesync.EngineOption
-	if len(spec.TableFilter) > 0 {
-		opts = append(opts, nativesync.WithTableFilter(spec.TableFilter))
+	if err := preflightScheduledAWSAuthFn(ctx, schedule, spec, awsCfg); err != nil {
+		return err
 	}
 
-	syncer := nativesync.NewSyncEngine(client, slog.Default(), opts...)
-	_, err = syncer.SyncAllWithConfig(ctx, awsCfg)
-	return err
+	return runScheduledAWSNativeSyncFn(ctx, client, awsCfg, spec.TableFilter)
 }
 
 func executeGCPSync(ctx context.Context, client *snowflake.Client, schedule *SyncSchedule) error {
 	spec := parseScheduledSyncSpec(schedule.Table)
+	authCleanup, authSummary, err := applyScheduledGCPAuthFn(spec)
+	if err != nil {
+		return err
+	}
+	defer authCleanup()
+
+	if authSummary != "" {
+		Info("[%s] GCP auth override: %s", schedule.Name, authSummary)
+	}
+	if err := preflightScheduledGCPAuthFn(ctx, schedule, spec); err != nil {
+		return err
+	}
+
 	nativeFilter, securityFilter := splitGCPScheduledTableFilters(spec.TableFilter)
 	runNativeSync := len(spec.TableFilter) == 0 || len(nativeFilter) > 0
 	runSecuritySync := len(spec.TableFilter) == 0 || len(securityFilter) > 0
@@ -637,6 +715,367 @@ func executeGCPSync(ctx context.Context, client *snowflake.Client, schedule *Syn
 	}
 
 	return summarizeSyncRunErrors("scheduled GCP sync", errs)
+}
+
+func runScheduledAWSNativeSync(ctx context.Context, client *snowflake.Client, awsCfg aws.Config, tableFilter []string) error {
+	var opts []nativesync.EngineOption
+	if len(tableFilter) > 0 {
+		opts = append(opts, nativesync.WithTableFilter(tableFilter))
+	}
+
+	syncer := nativesync.NewSyncEngine(client, slog.Default(), opts...)
+	_, err := syncer.SyncAllWithConfig(ctx, awsCfg)
+	return err
+}
+
+func loadScheduledAWSConfig(ctx context.Context, spec scheduledSyncSpec) (aws.Config, error) {
+	loadOptions := make([]func(*config.LoadOptions) error, 0, 4)
+
+	if profile := strings.TrimSpace(spec.AWSProfile); profile != "" {
+		loadOptions = append(loadOptions, config.WithSharedConfigProfile(profile))
+	}
+
+	if configFile := strings.TrimSpace(spec.AWSConfigFile); configFile != "" {
+		if err := validateReadableFile(configFile, "aws_config_file"); err != nil {
+			return aws.Config{}, err
+		}
+		loadOptions = append(loadOptions, config.WithSharedConfigFiles([]string{configFile}))
+	}
+
+	if credentialsFile := strings.TrimSpace(spec.AWSSharedCredentialsFile); credentialsFile != "" {
+		if err := validateReadableFile(credentialsFile, "aws_shared_credentials_file"); err != nil {
+			return aws.Config{}, err
+		}
+		loadOptions = append(loadOptions, config.WithSharedCredentialsFiles([]string{credentialsFile}))
+	}
+
+	if credentialProcess := strings.TrimSpace(spec.AWSCredentialProcess); credentialProcess != "" && strings.TrimSpace(spec.AWSProfile) == "" {
+		loadOptions = append(loadOptions, config.WithCredentialsProvider(aws.NewCredentialsCache(processcreds.NewProvider(credentialProcess))))
+	}
+
+	cfg, err := config.LoadDefaultConfig(ctx, loadOptions...)
+	if err != nil {
+		return aws.Config{}, err
+	}
+
+	roleARN := strings.TrimSpace(spec.AWSRoleARN)
+	if roleARN == "" {
+		if strings.TrimSpace(spec.AWSRoleDurationSeconds) != "" || len(spec.AWSRoleSessionTags) > 0 || len(spec.AWSRoleTransitiveTagKeys) > 0 {
+			return aws.Config{}, fmt.Errorf("aws_role_duration_seconds/aws_role_session_tags/aws_role_transitive_tag_keys require aws_role_arn")
+		}
+		return cfg, nil
+	}
+
+	mfaSerial := strings.TrimSpace(spec.AWSRoleMFASerial)
+	mfaToken := strings.TrimSpace(spec.AWSRoleMFAToken)
+	if mfaToken != "" && mfaSerial == "" {
+		return aws.Config{}, fmt.Errorf("aws_role_mfa_token requires aws_role_mfa_serial")
+	}
+
+	durationSeconds, err := parseBoundedPositiveIntDirective(spec.AWSRoleDurationSeconds, "aws_role_duration_seconds", 900, 43200)
+	if err != nil {
+		return aws.Config{}, err
+	}
+
+	tags, transitiveTagKeys, err := parseAWSSessionTagDirectives(spec.AWSRoleSessionTags, spec.AWSRoleTransitiveTagKeys)
+	if err != nil {
+		return aws.Config{}, err
+	}
+
+	assumedCfg, err := assumeRoleConfigWithScheduledOptions(
+		ctx,
+		cfg,
+		roleARN,
+		strings.TrimSpace(spec.AWSRoleSession),
+		strings.TrimSpace(spec.AWSRoleExternalID),
+		mfaSerial,
+		mfaToken,
+		durationSeconds,
+		tags,
+		transitiveTagKeys,
+	)
+	if err != nil {
+		return aws.Config{}, err
+	}
+
+	return assumedCfg, nil
+}
+
+func assumeRoleConfigWithScheduledOptions(
+	ctx context.Context,
+	cfg aws.Config,
+	roleArn,
+	sessionName,
+	externalID,
+	mfaSerial,
+	mfaToken string,
+	durationSeconds int,
+	tags []ststypes.Tag,
+	transitiveTagKeys []string,
+) (aws.Config, error) {
+	if roleArn == "" {
+		return cfg, fmt.Errorf("role ARN is required")
+	}
+	if sessionName == "" {
+		sessionName = "cerebro-sync"
+	}
+
+	stsClient := sts.NewFromConfig(cfg)
+	provider := stscreds.NewAssumeRoleProvider(stsClient, roleArn, func(options *stscreds.AssumeRoleOptions) {
+		options.RoleSessionName = sessionName
+		if externalID != "" {
+			options.ExternalID = aws.String(externalID)
+		}
+		if mfaSerial != "" {
+			options.SerialNumber = aws.String(mfaSerial)
+			if mfaToken != "" {
+				token := mfaToken
+				options.TokenProvider = func() (string, error) {
+					return token, nil
+				}
+			}
+		}
+		if durationSeconds > 0 {
+			options.Duration = time.Duration(durationSeconds) * time.Second
+		}
+		if len(tags) > 0 {
+			options.Tags = tags
+		}
+		if len(transitiveTagKeys) > 0 {
+			options.TransitiveTagKeys = transitiveTagKeys
+		}
+	})
+
+	assumed := cfg.Copy()
+	assumed.Credentials = aws.NewCredentialsCache(provider)
+	return assumed, nil
+}
+
+func parseAWSSessionTagDirectives(rawTags, rawTransitiveTagKeys []string) ([]ststypes.Tag, []string, error) {
+	if len(rawTags) == 0 && len(rawTransitiveTagKeys) == 0 {
+		return nil, nil, nil
+	}
+
+	tags := make([]ststypes.Tag, 0, len(rawTags))
+	keysSeen := map[string]struct{}{}
+	for _, rawTag := range rawTags {
+		trimmed := strings.TrimSpace(rawTag)
+		if trimmed == "" {
+			continue
+		}
+		parts := strings.SplitN(trimmed, "=", 2)
+		if len(parts) != 2 {
+			return nil, nil, fmt.Errorf("aws_role_session_tags entries must be key=value (got %q)", trimmed)
+		}
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+		if key == "" {
+			return nil, nil, fmt.Errorf("aws_role_session_tags entry %q has an empty key", trimmed)
+		}
+		if _, exists := keysSeen[strings.ToLower(key)]; exists {
+			return nil, nil, fmt.Errorf("aws_role_session_tags contains duplicate key %q", key)
+		}
+		keysSeen[strings.ToLower(key)] = struct{}{}
+		tags = append(tags, ststypes.Tag{Key: aws.String(key), Value: aws.String(value)})
+	}
+
+	transitiveTagKeys := make([]string, 0, len(rawTransitiveTagKeys))
+	for _, rawKey := range rawTransitiveTagKeys {
+		key := strings.TrimSpace(rawKey)
+		if key == "" {
+			continue
+		}
+		if _, exists := keysSeen[strings.ToLower(key)]; !exists {
+			return nil, nil, fmt.Errorf("aws_role_transitive_tag_keys includes %q without a corresponding aws_role_session_tags entry", key)
+		}
+		transitiveTagKeys = append(transitiveTagKeys, key)
+	}
+
+	if len(tags) == 0 {
+		tags = nil
+	}
+	if len(transitiveTagKeys) == 0 {
+		transitiveTagKeys = nil
+	}
+	return tags, transitiveTagKeys, nil
+}
+
+func parseBoundedPositiveIntDirective(raw, name string, min, max int) (int, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return 0, nil
+	}
+
+	value, err := strconv.Atoi(trimmed)
+	if err != nil {
+		return 0, fmt.Errorf("%s must be an integer: %w", name, err)
+	}
+	if value < min || value > max {
+		return 0, fmt.Errorf("%s must be between %d and %d seconds", name, min, max)
+	}
+	return value, nil
+}
+
+func preflightScheduledAWSAuth(ctx context.Context, schedule *SyncSchedule, _ scheduledSyncSpec, awsCfg aws.Config) error {
+	identity, err := sts.NewFromConfig(awsCfg).GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+	if err != nil {
+		return fmt.Errorf("[%s] AWS auth preflight failed: %w", schedule.Name, err)
+	}
+
+	Info("[%s] AWS auth preflight succeeded: account=%s arn=%s", schedule.Name, aws.ToString(identity.Account), aws.ToString(identity.Arn))
+	return nil
+}
+
+func applyScheduledGCPAuth(spec scheduledSyncSpec) (func(), string, error) {
+	scheduledGCPAuthMu.Lock()
+
+	var released bool
+	releaseLock := func() {
+		if released {
+			return
+		}
+		released = true
+		scheduledGCPAuthMu.Unlock()
+	}
+
+	envSnapshots := make(map[string]envSnapshot)
+	tempCredentialsFile := ""
+	cleanup := func() {
+		if tempCredentialsFile != "" {
+			_ = os.Remove(tempCredentialsFile)
+		}
+		restoreEnvSnapshot(envSnapshots)
+		releaseLock()
+	}
+
+	credentialsFile := strings.TrimSpace(spec.GCPCredentialsFile)
+	if credentialsFile != "" {
+		if err := validateReadableFile(credentialsFile, "gcp_credentials_file"); err != nil {
+			cleanup()
+			return func() {}, "", err
+		}
+	}
+
+	impersonateServiceAccount := strings.TrimSpace(spec.GCPImpersonateServiceAccount)
+	delegates := uniqueNonEmpty(spec.GCPImpersonateDelegates)
+	tokenLifetimeSeconds, err := parseBoundedPositiveIntDirective(spec.GCPImpersonateTokenLifetime, "gcp_impersonate_token_lifetime_seconds", 600, 43200)
+	if err != nil {
+		cleanup()
+		return func() {}, "", err
+	}
+
+	if impersonateServiceAccount == "" {
+		if tokenLifetimeSeconds > 0 {
+			cleanup()
+			return func() {}, "", fmt.Errorf("gcp_impersonate_token_lifetime_seconds requires gcp_impersonate_service_account")
+		}
+		if credentialsFile == "" {
+			return cleanup, "", nil
+		}
+		if err := setEnvWithSnapshot(envSnapshots, "GOOGLE_APPLICATION_CREDENTIALS", credentialsFile); err != nil {
+			cleanup()
+			return func() {}, "", fmt.Errorf("set GOOGLE_APPLICATION_CREDENTIALS: %w", err)
+		}
+		return cleanup, fmt.Sprintf("credentials_file=%s", credentialsFile), nil
+	}
+
+	sourcePath, err := resolveGCPSourceCredentialsPath(credentialsFile)
+	if err != nil {
+		cleanup()
+		return func() {}, "", err
+	}
+
+	sourceData, err := os.ReadFile(sourcePath)
+	if err != nil {
+		cleanup()
+		return func() {}, "", fmt.Errorf("read GCP source credentials %q: %w", sourcePath, err)
+	}
+
+	var sourceCredentials map[string]interface{}
+	if err := json.Unmarshal(sourceData, &sourceCredentials); err != nil {
+		cleanup()
+		return func() {}, "", fmt.Errorf("parse GCP source credentials %q: %w", sourcePath, err)
+	}
+	if len(sourceCredentials) == 0 {
+		cleanup()
+		return func() {}, "", fmt.Errorf("GCP source credentials %q are empty", sourcePath)
+	}
+
+	impersonationURL := fmt.Sprintf("https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/%s:generateAccessToken", url.PathEscape(impersonateServiceAccount))
+	payload := map[string]interface{}{
+		"type":                              "impersonated_service_account",
+		"service_account_impersonation_url": impersonationURL,
+		"source_credentials":                sourceCredentials,
+	}
+	if tokenLifetimeSeconds > 0 {
+		payload["token_lifetime_seconds"] = tokenLifetimeSeconds
+	}
+	if len(delegates) > 0 {
+		payload["delegates"] = delegates
+	}
+
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		cleanup()
+		return func() {}, "", fmt.Errorf("marshal impersonated GCP credentials: %w", err)
+	}
+
+	tmpFile, err := os.CreateTemp("", "cerebro-scheduled-gcp-impersonated-*.json")
+	if err != nil {
+		cleanup()
+		return func() {}, "", fmt.Errorf("create temporary GCP impersonation credentials file: %w", err)
+	}
+	tempCredentialsFile = tmpFile.Name()
+	if _, err := tmpFile.Write(encoded); err != nil {
+		_ = tmpFile.Close()
+		cleanup()
+		return func() {}, "", fmt.Errorf("write temporary GCP impersonation credentials file: %w", err)
+	}
+	if err := tmpFile.Chmod(0o600); err != nil {
+		_ = tmpFile.Close()
+		cleanup()
+		return func() {}, "", fmt.Errorf("set permissions on temporary GCP impersonation credentials file: %w", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		cleanup()
+		return func() {}, "", fmt.Errorf("close temporary GCP impersonation credentials file: %w", err)
+	}
+
+	if err := setEnvWithSnapshot(envSnapshots, "GOOGLE_APPLICATION_CREDENTIALS", tempCredentialsFile); err != nil {
+		cleanup()
+		return func() {}, "", fmt.Errorf("set GOOGLE_APPLICATION_CREDENTIALS: %w", err)
+	}
+
+	summary := fmt.Sprintf("impersonate_service_account=%s delegates=%d", impersonateServiceAccount, len(delegates))
+	if tokenLifetimeSeconds > 0 {
+		summary = fmt.Sprintf("%s token_lifetime_seconds=%d", summary, tokenLifetimeSeconds)
+	}
+	return cleanup, summary, nil
+}
+
+func preflightScheduledGCPAuth(ctx context.Context, schedule *SyncSchedule, spec scheduledSyncSpec) error {
+	credentials, err := google.FindDefaultCredentials(ctx, "https://www.googleapis.com/auth/cloud-platform")
+	if err != nil {
+		return fmt.Errorf("[%s] GCP auth preflight failed: %w", schedule.Name, err)
+	}
+
+	token, err := credentials.TokenSource.Token()
+	if err != nil {
+		return fmt.Errorf("[%s] GCP auth preflight token retrieval failed: %w", schedule.Name, err)
+	}
+
+	principal := strings.TrimSpace(spec.GCPImpersonateServiceAccount)
+	if principal == "" {
+		principal = "default"
+	}
+
+	if token.Expiry.IsZero() {
+		Info("[%s] GCP auth preflight succeeded: principal=%s", schedule.Name, principal)
+		return nil
+	}
+
+	Info("[%s] GCP auth preflight succeeded: principal=%s token_expiry=%s", schedule.Name, principal, token.Expiry.UTC().Format(time.RFC3339))
+	return nil
 }
 
 func runScheduledGCPNativeSync(ctx context.Context, client *snowflake.Client, projectID string, tableFilter []string) error {
@@ -733,6 +1172,24 @@ type scheduledSyncSpec struct {
 	GCPProjects       []string
 	GCPOrg            string
 	AzureSubscription string
+
+	AWSProfile               string
+	AWSConfigFile            string
+	AWSSharedCredentialsFile string
+	AWSCredentialProcess     string
+	AWSRoleARN               string
+	AWSRoleSession           string
+	AWSRoleExternalID        string
+	AWSRoleMFASerial         string
+	AWSRoleMFAToken          string
+	AWSRoleDurationSeconds   string
+	AWSRoleSessionTags       []string
+	AWSRoleTransitiveTagKeys []string
+
+	GCPCredentialsFile           string
+	GCPImpersonateServiceAccount string
+	GCPImpersonateDelegates      []string
+	GCPImpersonateTokenLifetime  string
 }
 
 var gcpScheduledSecurityTableAliases = map[string]struct{}{
@@ -837,10 +1294,76 @@ func parseScheduledSyncSpec(raw string) scheduledSyncSpec {
 			spec.AzureSubscription = value
 			continue
 		}
+		if value, ok := directiveValue(part, "aws_profile"); ok {
+			spec.AWSProfile = value
+			continue
+		}
+		if value, ok := directiveValue(part, "aws_config_file"); ok {
+			spec.AWSConfigFile = value
+			continue
+		}
+		if value, ok := directiveValue(part, "aws_shared_credentials_file"); ok {
+			spec.AWSSharedCredentialsFile = value
+			continue
+		}
+		if value, ok := directiveValue(part, "aws_credential_process"); ok {
+			spec.AWSCredentialProcess = value
+			continue
+		}
+		if value, ok := directiveValue(part, "aws_role_arn"); ok {
+			spec.AWSRoleARN = value
+			continue
+		}
+		if value, ok := directiveValue(part, "aws_role_session_name"); ok {
+			spec.AWSRoleSession = value
+			continue
+		}
+		if value, ok := directiveValue(part, "aws_role_external_id"); ok {
+			spec.AWSRoleExternalID = value
+			continue
+		}
+		if value, ok := directiveValue(part, "aws_role_mfa_serial"); ok {
+			spec.AWSRoleMFASerial = value
+			continue
+		}
+		if value, ok := directiveValue(part, "aws_role_mfa_token"); ok {
+			spec.AWSRoleMFAToken = value
+			continue
+		}
+		if value, ok := directiveValue(part, "aws_role_duration_seconds"); ok {
+			spec.AWSRoleDurationSeconds = value
+			continue
+		}
+		if value, ok := directiveValue(part, "aws_role_session_tags"); ok {
+			spec.AWSRoleSessionTags = append(spec.AWSRoleSessionTags, splitDirectiveList(value)...)
+			continue
+		}
+		if value, ok := directiveValue(part, "aws_role_transitive_tag_keys"); ok {
+			spec.AWSRoleTransitiveTagKeys = append(spec.AWSRoleTransitiveTagKeys, splitDirectiveList(value)...)
+			continue
+		}
+		if value, ok := directiveValue(part, "gcp_credentials_file"); ok {
+			spec.GCPCredentialsFile = value
+			continue
+		}
+		if value, ok := directiveValue(part, "gcp_impersonate_service_account"); ok {
+			spec.GCPImpersonateServiceAccount = value
+			continue
+		}
+		if value, ok := directiveValue(part, "gcp_impersonate_delegates"); ok {
+			spec.GCPImpersonateDelegates = append(spec.GCPImpersonateDelegates, splitDirectiveList(value)...)
+			continue
+		}
+		if value, ok := directiveValue(part, "gcp_impersonate_token_lifetime_seconds"); ok {
+			spec.GCPImpersonateTokenLifetime = value
+			continue
+		}
 		spec.TableFilter = append(spec.TableFilter, part)
 	}
 
 	spec.GCPProjects = uniqueNonEmpty(spec.GCPProjects)
+	spec.AWSRoleTransitiveTagKeys = uniqueNonEmpty(spec.AWSRoleTransitiveTagKeys)
+	spec.GCPImpersonateDelegates = uniqueNonEmpty(spec.GCPImpersonateDelegates)
 	if len(spec.TableFilter) == 0 {
 		spec.TableFilter = nil
 	}

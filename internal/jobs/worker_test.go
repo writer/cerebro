@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/aws/smithy-go"
 )
 
 // MockQueue implements Queue interface for testing
@@ -17,6 +20,8 @@ type MockQueue struct {
 	messages        []QueueMessage
 	deleted         []string
 	extendedHandles []string
+	extendErrors    []error
+	extendCalls     int
 	enqueuedMsgs    []JobMessage
 	receiveDelay    time.Duration
 	receiveCalls    int32
@@ -80,7 +85,13 @@ func (m *MockQueue) DeleteBatch(ctx context.Context, receiptHandles []string) (s
 func (m *MockQueue) ExtendVisibility(ctx context.Context, receiptHandle string, timeout time.Duration) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.extendCalls++
 	m.extendedHandles = append(m.extendedHandles, receiptHandle)
+	if len(m.extendErrors) > 0 {
+		err := m.extendErrors[0]
+		m.extendErrors = m.extendErrors[1:]
+		return err
+	}
 	return nil
 }
 
@@ -100,6 +111,27 @@ func (m *MockQueue) AddMessage(jobID string) {
 		ReceiptHandle: "receipt-" + jobID,
 		Body:          string(body),
 	})
+}
+
+type mockAPIError struct {
+	code string
+	msg  string
+}
+
+func (e mockAPIError) Error() string {
+	return fmt.Sprintf("%s: %s", e.code, e.msg)
+}
+
+func (e mockAPIError) ErrorCode() string {
+	return e.code
+}
+
+func (e mockAPIError) ErrorMessage() string {
+	return e.msg
+}
+
+func (e mockAPIError) ErrorFault() smithy.ErrorFault {
+	return smithy.FaultClient
 }
 
 // MockStore implements Store interface for testing
@@ -446,6 +478,81 @@ func TestPermanentError(t *testing.T) {
 	normalErr := errors.New("normal error")
 	if IsPermanent(normalErr) {
 		t.Error("Normal error should not be permanent")
+	}
+}
+
+func TestIsTerminalVisibilityError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "receipt handle invalid code",
+			err:  mockAPIError{code: "ReceiptHandleIsInvalid", msg: "invalid handle"},
+			want: true,
+		},
+		{
+			name: "invalid parameter value with receipt handle message",
+			err:  mockAPIError{code: "InvalidParameterValue", msg: "Value ... for parameter ReceiptHandle is invalid"},
+			want: true,
+		},
+		{
+			name: "wrapped non-existent queue code",
+			err:  fmt.Errorf("wrapped: %w", mockAPIError{code: "AWS.SimpleQueueService.NonExistentQueue", msg: "queue not found"}),
+			want: true,
+		},
+		{
+			name: "non terminal API error",
+			err:  mockAPIError{code: "ThrottlingException", msg: "slow down"},
+			want: false,
+		},
+		{
+			name: "plain string fallback",
+			err:  errors.New("message does not exist or is not available for visibility timeout change"),
+			want: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isTerminalVisibilityError(tc.err); got != tc.want {
+				t.Fatalf("isTerminalVisibilityError() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestRunHeartbeat_DisablesQueueVisibilityOnTerminalErrorButExtendsLease(t *testing.T) {
+	queue := &MockQueue{
+		extendErrors: []error{mockAPIError{code: "ReceiptHandleIsInvalid", msg: "invalid receipt"}},
+	}
+	store := NewMockStore()
+	worker := NewWorker(queue, store, NewJobRegistry(), WorkerOptions{
+		VisibilityTimeout: 3 * time.Second,
+		HeartbeatInterval: 20 * time.Millisecond,
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go worker.runHeartbeat(ctx, "receipt-1", "job-1")
+	time.Sleep(140 * time.Millisecond)
+	cancel()
+	time.Sleep(30 * time.Millisecond)
+
+	queue.mu.Lock()
+	extendCalls := queue.extendCalls
+	queue.mu.Unlock()
+
+	if extendCalls != 1 {
+		t.Fatalf("expected queue visibility extension to stop after terminal error, got %d calls", extendCalls)
+	}
+
+	store.mu.Lock()
+	leaseExtensions := len(store.extendLeases)
+	store.mu.Unlock()
+
+	if leaseExtensions == 0 {
+		t.Fatal("expected lease to keep extending even when queue visibility heartbeat is disabled")
 	}
 }
 
