@@ -504,6 +504,12 @@ func executeAWSSync(ctx context.Context, client *snowflake.Client, schedule *Syn
 }
 
 func executeGCPSync(ctx context.Context, client *snowflake.Client, schedule *SyncSchedule) error {
+	gcpCleanup, err := ApplyGCPAuth(ctx, GCPAuthConfigFromEnv())
+	if err != nil {
+		return fmt.Errorf("apply GCP auth overrides: %w", err)
+	}
+	defer gcpCleanup()
+
 	spec := parseScheduledSyncSpec(schedule.Table)
 	nativeFilter, securityFilter := splitGCPScheduledTableFilters(spec.TableFilter)
 	runNativeSync := len(spec.TableFilter) == 0 || len(nativeFilter) > 0

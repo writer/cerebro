@@ -46,7 +46,7 @@ func TestApplyGCPAuthOverrides(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error")
 		}
-		if !strings.Contains(err.Error(), "read --gcp-credentials-file") {
+		if !strings.Contains(err.Error(), "gcp credentials file") {
 			t.Fatalf("expected file read error, got %v", err)
 		}
 	})

@@ -48,3 +48,8 @@ config:
   cerebro:enableInfisicalSyncRole: true
   cerebro:useExternalSecrets: true
   cerebro:infisicalAssumeRolePrincipalArn: "arn:aws:iam::381492033652:root"
+
+  # GCP WIF - populate cerebro:gcpWifAudience from GCP stack output:
+  #   cd infra/gcp && pulumi stack output wif_audience --stack gcp-dev
+  cerebro:gcpWifAudience: "//iam.googleapis.com/projects/788018447969/locations/global/workloadIdentityPools/cerebro-aws-pool-dev/providers/cerebro-aws-provider-dev"
+  cerebro:gcpImpersonateServiceAccount: "cerebro-scanner-dev@writer-iam.iam.gserviceaccount.com"

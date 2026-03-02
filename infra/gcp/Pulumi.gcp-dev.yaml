@@ -1,6 +1,9 @@
 config:
   gcp:project: writer-iam
   gcp:region: us-central1
+  cerebro:wifPoolId: cerebro-aws-pool-dev
+  cerebro:wifProviderId: cerebro-aws-provider-dev
+  cerebro:scannerServiceAccountId: cerebro-scanner-dev
   cerebro:trustedAwsAccountId: "944130631940"
   cerebro:trustedAwsRoleArns:
     - "arn:aws:iam::944130631940:role/cerebro-sec-dev-task-role"

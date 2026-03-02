@@ -27,3 +27,8 @@ config:
   cerebro:natGatewayPerAz: true
   # cerebro:slackAlarmChannelId: "C09D3SK229H"
   # cerebro:slackWorkspaceId: "E07UFCSGMTM"
+
+  # GCP WIF - populate cerebro:gcpWifAudience from GCP stack output:
+  #   cd infra/gcp && pulumi stack output wif_audience --stack gcp-prod
+  cerebro:gcpWifAudience: ""
+  cerebro:gcpImpersonateServiceAccount: "cerebro-scanner-prod@writer-iam.iam.gserviceaccount.com"

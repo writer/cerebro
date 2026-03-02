@@ -2,8 +2,10 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -426,4 +428,109 @@ func TestExecuteGCPSync_FilterRouting(t *testing.T) {
 			t.Fatalf("unexpected security filter: %v", securityFilters)
 		}
 	})
+}
+
+func TestExecuteGCPSync_AppliesWIFAuth(t *testing.T) {
+	originalNative := runScheduledGCPNativeSyncFn
+	originalSecurity := runScheduledGCPSecuritySyncFn
+	t.Cleanup(func() {
+		runScheduledGCPNativeSyncFn = originalNative
+		runScheduledGCPSecuritySyncFn = originalSecurity
+	})
+
+	t.Setenv("CEREBRO_GCP_PROJECTS", "")
+	t.Setenv("GCP_PROJECTS", "")
+	t.Setenv("CEREBRO_GCP_PROJECT", "")
+	t.Setenv("GCP_PROJECT", "")
+	t.Setenv("GOOGLE_CLOUD_PROJECT", "")
+	t.Setenv("CEREBRO_GCP_ORG", "")
+	t.Setenv("GCP_ORG_ID", "")
+	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "")
+
+	t.Setenv("CEREBRO_GCP_WIF_AUDIENCE", "//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/prov")
+	t.Setenv("CEREBRO_GCP_IMPERSONATE_SERVICE_ACCOUNT", "scanner@proj.iam.gserviceaccount.com")
+	t.Setenv("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
+
+	var observedGAC string
+	runScheduledGCPNativeSyncFn = func(_ context.Context, _ *snowflake.Client, _ string, _ []string) error {
+		observedGAC = os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")
+		return nil
+	}
+	runScheduledGCPSecuritySyncFn = func(_ context.Context, _ *snowflake.Client, _, _ string, _ []string) error {
+		return nil
+	}
+
+	err := executeGCPSync(context.Background(), nil, &SyncSchedule{
+		Name:  "wif-test",
+		Table: "project=proj-1,gcp_compute_instances",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if observedGAC == "" {
+		t.Fatal("expected GOOGLE_APPLICATION_CREDENTIALS to be set during GCP sync")
+	}
+
+	if got := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"); got != "" {
+		t.Fatalf("expected GOOGLE_APPLICATION_CREDENTIALS restored to empty after cleanup, got %q", got)
+	}
+}
+
+func TestExecuteGCPSync_WIFCredsContent(t *testing.T) {
+	originalNative := runScheduledGCPNativeSyncFn
+	originalSecurity := runScheduledGCPSecuritySyncFn
+	t.Cleanup(func() {
+		runScheduledGCPNativeSyncFn = originalNative
+		runScheduledGCPSecuritySyncFn = originalSecurity
+	})
+
+	t.Setenv("CEREBRO_GCP_PROJECTS", "")
+	t.Setenv("GCP_PROJECTS", "")
+	t.Setenv("CEREBRO_GCP_PROJECT", "")
+	t.Setenv("GCP_PROJECT", "")
+	t.Setenv("GOOGLE_CLOUD_PROJECT", "")
+	t.Setenv("CEREBRO_GCP_ORG", "")
+	t.Setenv("GCP_ORG_ID", "")
+	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "")
+
+	t.Setenv("CEREBRO_GCP_WIF_AUDIENCE", "//iam.googleapis.com/test-audience")
+	t.Setenv("CEREBRO_GCP_IMPERSONATE_SERVICE_ACCOUNT", "scanner@proj.iam.gserviceaccount.com")
+	t.Setenv("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
+
+	var capturedPayload map[string]interface{}
+	runScheduledGCPNativeSyncFn = func(_ context.Context, _ *snowflake.Client, _ string, _ []string) error {
+		gac := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")
+		data, err := os.ReadFile(gac)
+		if err != nil {
+			return fmt.Errorf("read temp creds: %w", err)
+		}
+		return json.Unmarshal(data, &capturedPayload)
+	}
+	runScheduledGCPSecuritySyncFn = func(_ context.Context, _ *snowflake.Client, _, _ string, _ []string) error {
+		return nil
+	}
+
+	err := executeGCPSync(context.Background(), nil, &SyncSchedule{
+		Name:  "wif-content",
+		Table: "project=proj-1,gcp_compute_instances",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if capturedPayload == nil {
+		t.Fatal("expected to capture WIF credentials payload")
+	}
+	if capturedPayload["type"] != "external_account" {
+		t.Fatalf("expected external_account type, got %v", capturedPayload["type"])
+	}
+	if capturedPayload["audience"] != "//iam.googleapis.com/test-audience" {
+		t.Fatalf("unexpected audience: %v", capturedPayload["audience"])
+	}
+	impURL, _ := capturedPayload["service_account_impersonation_url"].(string)
+	if !strings.Contains(impURL, "scanner") {
+		t.Fatalf("expected impersonation URL with scanner SA, got %q", impURL)
+	}
 }

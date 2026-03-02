@@ -241,6 +241,14 @@ if config.get("jiraProject"):
 if config.get("linearTeamId"):
     app_environment["LINEAR_TEAM_ID"] = config.get("linearTeamId")
 
+# GCP WIF (optional - enables AWS->GCP federated auth for GCP scans)
+if config.get("gcpWifAudience"):
+    app_environment["CEREBRO_GCP_WIF_AUDIENCE"] = config.get("gcpWifAudience")
+if config.get("gcpImpersonateServiceAccount"):
+    app_environment["CEREBRO_GCP_IMPERSONATE_SERVICE_ACCOUNT"] = config.get("gcpImpersonateServiceAccount")
+if config.get("gcpImpersonateDelegates"):
+    app_environment["CEREBRO_GCP_IMPERSONATE_DELEGATES"] = config.get("gcpImpersonateDelegates")
+
 # Job queue config added to environment via Pulumi outputs
 # Note: These are Output objects, handled by compute module
 
