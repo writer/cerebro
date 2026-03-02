@@ -18,36 +18,59 @@ jobs:
   code-review:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    if: >-
-      github.event.pull_request.draft == false &&
-      (
-        secrets.FACTORY_API_KEY != '' ||
-        (
-          secrets.INFISICAL_IDENTITY_ID != '' &&
-          secrets.INFISICAL_PROJECT_SLUG != '' &&
-          secrets.INFISICAL_ENV_SLUG != ''
-        )
-      )
+    if: github.event.pull_request.draft == false
 
     steps:
+      - name: Check auth availability
+        id: auth_check
+        env:
+          INFISICAL_IDENTITY_ID: ${{ secrets.INFISICAL_IDENTITY_ID }}
+          INFISICAL_PROJECT_SLUG: ${{ secrets.INFISICAL_PROJECT_SLUG }}
+          INFISICAL_ENV_SLUG: ${{ secrets.INFISICAL_ENV_SLUG }}
+          FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
+        run: |
+          has_infisical=false
+          has_factory_key=false
+
+          if [ -n "$INFISICAL_IDENTITY_ID" ] && [ -n "$INFISICAL_PROJECT_SLUG" ] && [ -n "$INFISICAL_ENV_SLUG" ]; then
+            has_infisical=true
+          fi
+
+          if [ -n "$FACTORY_API_KEY" ]; then
+            has_factory_key=true
+          fi
+
+          should_run=false
+          if [ "$has_infisical" = "true" ] || [ "$has_factory_key" = "true" ]; then
+            should_run=true
+          fi
+
+          echo "has_infisical=$has_infisical" >> "$GITHUB_OUTPUT"
+          echo "has_factory_key=$has_factory_key" >> "$GITHUB_OUTPUT"
+          echo "should_run=$should_run" >> "$GITHUB_OUTPUT"
+
       - name: Checkout repository
+        if: steps.auth_check.outputs.should_run == 'true'
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Install Droid CLI
+        if: steps.auth_check.outputs.should_run == 'true'
         run: |
           curl -fsSL https://app.factory.ai/cli | sh
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           "$HOME/.local/bin/droid" --version
 
       - name: Configure git identity
+        if: steps.auth_check.outputs.should_run == 'true'
         run: |
           git config user.name "Droid Agent"
           git config user.email "droidagent@factory.ai"
 
       - name: Prepare review context
+        if: steps.auth_check.outputs.should_run == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -91,10 +114,7 @@ jobs:
           rm -f files_all.json
 
       - name: Fetch secrets from Infisical
-        if: >-
-          secrets.INFISICAL_IDENTITY_ID != '' &&
-          secrets.INFISICAL_PROJECT_SLUG != '' &&
-          secrets.INFISICAL_ENV_SLUG != ''
+        if: steps.auth_check.outputs.has_infisical == 'true'
         uses: Infisical/secrets-action@v1.0.15
         with:
           method: "oidc"
@@ -105,6 +125,7 @@ jobs:
           export-type: env
 
       - name: Ensure Factory API key is available
+        if: steps.auth_check.outputs.should_run == 'true'
         env:
           FACTORY_API_KEY_FALLBACK: ${{ secrets.FACTORY_API_KEY }}
         run: |
@@ -120,6 +141,7 @@ jobs:
           echo "::add-mask::$EFFECTIVE_FACTORY_API_KEY"
 
       - name: Perform automated code review
+        if: steps.auth_check.outputs.should_run == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -195,6 +217,7 @@ jobs:
           cat comments.json
 
       - name: Submit inline review comments
+        if: steps.auth_check.outputs.should_run == 'true'
         uses: actions/github-script@v7
         with:
           script: |
@@ -254,7 +277,7 @@ jobs:
             core.info(`Submitted review with ${comments.length} inline comments`);
 
       - name: Upload debug artifacts on failure
-        if: ${{ failure() }}
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: droid-review-debug-${{ github.run_id }}
