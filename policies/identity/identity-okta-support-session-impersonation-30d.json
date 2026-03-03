@@ -1,0 +1,31 @@
+{
+  "id": "identity-okta-support-session-impersonation-30d",
+  "name": "Okta Support Session Impersonation Events (30 days)",
+  "description": "Detects support impersonation grant/initiation events in Okta, aligned with public Panther detections.",
+  "severity": "HIGH",
+  "category": "identity",
+  "resource_type": "okta_system_log",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6.2"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.8.2"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT l.uuid AS id, l.actor_id, COALESCE(u.login, u.email, l.actor_id, l.actor_type, 'unknown') AS actor_name, l.target_id, l.target_type, l.event_type, l.outcome, l.published FROM okta_system_logs l LEFT JOIN okta_users u ON u.id = l.actor_id WHERE LOWER(COALESCE(l.event_type, '')) IN ('user.session.impersonation.grant', 'user.session.impersonation.initiate') AND LOWER(COALESCE(l.outcome, 'success')) IN ('success', 'allow', 'allowed') AND l.published >= CURRENT_TIMESTAMP() - INTERVAL '30 days'",
+  "remediation": "Verify support impersonation events are approved and time-bound; revoke unauthorized support sessions and rotate impacted credentials.",
+  "tags": [
+    "okta",
+    "identity",
+    "impersonation",
+    "privileged-access"
+  ]
+}
