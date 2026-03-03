@@ -1243,6 +1243,7 @@ func applyScheduledGCPAuth(spec scheduledSyncSpec) (*scheduledGCPAuthConfig, err
 			return authCfg, nil
 		}
 
+		// #nosec G304 -- path is from schedule spec/CLI config and validated before use
 		credentialsData, readErr := os.ReadFile(credentialsFile)
 		if readErr != nil {
 			authCfg.Cleanup()
@@ -1267,6 +1268,7 @@ func applyScheduledGCPAuth(spec scheduledSyncSpec) (*scheduledGCPAuthConfig, err
 		return nil, err
 	}
 
+	// #nosec G304 -- path is resolved from controlled credentials configuration
 	sourceData, err := os.ReadFile(sourcePath)
 	if err != nil {
 		authCfg.Cleanup()

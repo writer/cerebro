@@ -489,6 +489,7 @@ func (c *LocalClient) GetFileContent(ctx context.Context, repoURL, path string) 
 	}
 	fullPath := filepath.Join(repoPath, path)
 
+	// #nosec G304 -- path is constrained to the local cloned repository root
 	content, err := os.ReadFile(fullPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to read file %s: %w", fullPath, err)

@@ -203,6 +203,7 @@ func (s *WatermarkStore) PersistWatermarks(ctx context.Context) error {
 			values = append(values, "(?, ?, ?, ?)")
 			args = append(args, wm.Table, wm.LastScanTime, wm.LastScanID, wm.RowsScanned)
 		}
+		// #nosec G201 -- schema name is a trusted internal value, not user input
 		merge := fmt.Sprintf(`
 			MERGE INTO cerebro_scan_watermarks t
 			USING (SELECT column1 AS table_name,
@@ -359,8 +360,10 @@ func withDetachedTimeout(parent context.Context, timeout time.Duration) (context
 		parent = context.Background()
 	}
 	if timeout <= 0 {
+		// #nosec G118 -- cancel function is returned to caller for deferred cleanup
 		return context.WithCancel(parent)
 	}
+	// #nosec G118 -- cancel is invoked in the bridge goroutine and returned to caller
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	go func() {
 		select {

@@ -28,6 +28,7 @@ func awsRetryDelay(attempt int) time.Duration {
 		delay = 30 * time.Second
 	}
 
+	// #nosec G404 -- jitter for retry backoff, not security-sensitive
 	jitter := time.Duration(rand.Int63n(int64(delay / 2)))
 	return delay/2 + jitter
 }

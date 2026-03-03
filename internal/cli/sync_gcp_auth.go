@@ -226,6 +226,7 @@ func writeWIFExternalAccountCredentials(audience, impersonateSA string, delegate
 // writeImpersonationCredentials creates a temporary impersonated_service_account
 // JSON wrapping the given source credentials file.
 func writeImpersonationCredentials(sourcePath, impersonateSA string, delegates []string, tokenLifetimeSeconds int) (string, error) {
+	// #nosec G304 -- path is resolved from CLI credentials configuration
 	sourceData, err := os.ReadFile(sourcePath)
 	if err != nil {
 		return "", fmt.Errorf("read GCP source credentials %q: %w", sourcePath, err)

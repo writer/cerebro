@@ -396,6 +396,7 @@ func loadProjectIDsFromFile(path string) ([]string, error) {
 		return nil, err
 	}
 
+	// #nosec G304 -- path is from CLI flag and validated before use
 	file, err := os.Open(trimmedPath)
 	if err != nil {
 		return nil, fmt.Errorf("read --projects-file %q: %w", trimmedPath, err)
@@ -514,6 +515,7 @@ func validateGCPSyncAuthMode(mode string) error {
 		if err != nil {
 			return fmt.Errorf("--auth-mode=wif requires a resolvable external account credentials file: %w", err)
 		}
+		// #nosec G304 -- path is resolved from CLI configuration and validated before use
 		raw, err := os.ReadFile(resolvedPath)
 		if err != nil {
 			return fmt.Errorf("read GCP credentials file %q: %w", resolvedPath, err)
@@ -583,6 +585,7 @@ func describeGCPCredentialsPath(path string) string {
 	if trimmedPath == "" {
 		return "<unset>"
 	}
+	// #nosec G304 G703 -- path from CLI flag, validated
 	raw, err := os.ReadFile(trimmedPath)
 	if err != nil {
 		return trimmedPath
@@ -1915,6 +1918,7 @@ func validateReadableFile(path, source string) error {
 		return fmt.Errorf("%s must not be empty", source)
 	}
 
+	// #nosec G703 -- path is from CLI flag, validated before use
 	info, err := os.Stat(path)
 	if err != nil {
 		return fmt.Errorf("read %s %q: %w", source, path, err)
@@ -2322,7 +2326,7 @@ func writeSyncReport(report interface{}) error {
 
 	dir := filepath.Dir(path)
 	if dir != "" && dir != "." {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := os.MkdirAll(dir, 0o750); err != nil {
 			return fmt.Errorf("create report directory %q: %w", dir, err)
 		}
 	}

@@ -870,7 +870,7 @@ func NewTrivyScanner(binaryPath string) *TrivyScanner {
 
 // ScanImage uses Trivy to scan a container image
 func (s *TrivyScanner) ScanImage(ctx context.Context, imageRef string) (*ContainerScanResult, error) {
-	cmd := exec.CommandContext(ctx, s.binaryPath, "image", "--format", "json", imageRef)
+	cmd := exec.CommandContext(ctx, s.binaryPath, "image", "--format", "json", imageRef) // #nosec G204 -- binaryPath is configured trivy path, imageRef is from controlled inventory
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("trivy scan failed: %w: %s", err, string(output))

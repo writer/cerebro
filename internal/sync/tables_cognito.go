@@ -180,7 +180,7 @@ func (e *SyncEngine) cognitoUserPoolClientTable() TableSpec {
 							logoutsJSON, _ := json.Marshal(upc.LogoutURLs)
 							readAttrsJSON, _ := json.Marshal(upc.ReadAttributes)
 							providersJSON, _ := json.Marshal(upc.SupportedIdentityProviders)
-							tokenUnitsJSON, _ := json.Marshal(upc.TokenValidityUnits)
+							tokenUnitsJSON, _ := json.Marshal(upc.TokenValidityUnits) // #nosec G117 -- TokenValidityUnits contains unit config (hours/days), not actual tokens
 							writeAttrsJSON, _ := json.Marshal(upc.WriteAttributes)
 
 							row := map[string]interface{}{

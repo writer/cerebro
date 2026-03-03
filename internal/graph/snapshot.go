@@ -73,6 +73,7 @@ func (s *Snapshot) SaveToFile(path string) error {
 		return fmt.Errorf("create directory: %w", err)
 	}
 
+	// #nosec G304 -- path is controlled by internal snapshot configuration
 	f, err := os.Create(path)
 	if err != nil {
 		return fmt.Errorf("create file: %w", err)
@@ -92,6 +93,7 @@ func (s *Snapshot) SaveToFile(path string) error {
 
 // LoadSnapshotFromFile loads a snapshot from a compressed file
 func LoadSnapshotFromFile(path string) (*Snapshot, error) {
+	// #nosec G304 -- path is controlled by internal snapshot configuration
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open file: %w", err)

@@ -514,7 +514,7 @@ func (s *Service) Handler() http.Handler {
 			return
 		}
 		w.WriteHeader(http.StatusCreated)
-		_ = json.NewEncoder(w).Encode(webhook)
+		_ = json.NewEncoder(w).Encode(webhook) // #nosec G117 -- webhook secret is intentionally returned on creation for client use
 	})
 
 	mux.HandleFunc("DELETE /{id}", func(w http.ResponseWriter, r *http.Request) {
