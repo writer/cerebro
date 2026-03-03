@@ -1,7 +1,7 @@
 {
   "id": "identity-okta-policy-lifecycle-tampering-30d",
   "name": "Okta Policy Lifecycle Tampering (30 days)",
-  "description": "Detects successful Okta policy update or delete events that may weaken authentication and access controls.",
+  "description": "Detects successful Okta policy update, deactivate, or delete events that may weaken authentication and access controls.",
   "severity": "HIGH",
   "category": "identity",
   "resource_type": "okta_system_log",
@@ -20,7 +20,7 @@
     }
   ],
   "enabled": true,
-  "query": "SELECT l.uuid AS id, l.actor_id, COALESCE(actor.login, actor.email, l.actor_id, l.actor_type, 'unknown') AS actor_name, l.target_id, l.target_type, l.event_type, l.outcome, l.published FROM okta_system_logs l LEFT JOIN okta_users actor ON actor.id = l.actor_id WHERE LOWER(COALESCE(l.event_type, '')) IN ('policy.lifecycle.update', 'policy.lifecycle.delete') AND LOWER(COALESCE(l.outcome, 'success')) IN ('success', 'allow', 'allowed') AND l.published >= CURRENT_TIMESTAMP() - INTERVAL '30 days'",
+  "query": "SELECT l.uuid AS id, l.actor_id, COALESCE(actor.login, actor.email, l.actor_id, l.actor_type, 'unknown') AS actor_name, l.target_id, l.target_type, l.event_type, l.outcome, l.published FROM okta_system_logs l LEFT JOIN okta_users actor ON actor.id = l.actor_id WHERE LOWER(COALESCE(l.event_type, '')) IN ('policy.lifecycle.update', 'policy.lifecycle.deactivate', 'policy.lifecycle.delete') AND LOWER(COALESCE(l.outcome, 'success')) IN ('success', 'allow', 'allowed') AND l.published >= CURRENT_TIMESTAMP() - INTERVAL '30 days'",
   "remediation": "Validate policy changes against approved requests, revert unauthorized policy modifications, and rotate credentials for suspicious actors.",
   "tags": [
     "okta",

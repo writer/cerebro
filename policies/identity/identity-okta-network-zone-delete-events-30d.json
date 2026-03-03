@@ -1,0 +1,31 @@
+{
+  "id": "identity-okta-network-zone-delete-events-30d",
+  "name": "Okta Network Zone Deletion Events (30 days)",
+  "description": "Detects successful Okta network zone deletion events that can remove geo/IP-based access restrictions.",
+  "severity": "HIGH",
+  "category": "identity",
+  "resource_type": "okta_system_log",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6.2"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.8.9"
+      ]
+    }
+  ],
+  "enabled": true,
+  "query": "SELECT l.uuid AS id, l.actor_id, COALESCE(actor.login, actor.email, l.actor_id, l.actor_type, 'unknown') AS actor_name, l.target_id, l.target_type, l.event_type, l.outcome, l.published FROM okta_system_logs l LEFT JOIN okta_users actor ON actor.id = l.actor_id WHERE LOWER(COALESCE(l.event_type, '')) = 'zone.delete' AND LOWER(COALESCE(l.outcome, 'success')) IN ('success', 'allow', 'allowed') AND l.published >= CURRENT_TIMESTAMP() - INTERVAL '30 days'",
+  "remediation": "Restore unauthorized network zone deletions, validate zone allow/deny policies, and restrict network-zone administration to approved operators.",
+  "tags": [
+    "okta",
+    "identity",
+    "defense-evasion",
+    "network-zone"
+  ]
+}

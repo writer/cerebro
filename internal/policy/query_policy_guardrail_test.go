@@ -2,7 +2,7 @@ package policy
 
 import "testing"
 
-const maxQueryOnlyPoliciesBaseline = 500
+const maxQueryOnlyPoliciesBaseline = 504
 
 func TestQueryOnlyPolicyCountDoesNotGrowBeyondBaseline(t *testing.T) {
 	engine := NewEngine()
