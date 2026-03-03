@@ -409,6 +409,7 @@ func generateID(prefix string, m map[string]interface{}) string {
 }
 
 func itoa(i int) string {
+	// #nosec G115 -- i represents a 3-digit HTTP status code (100-599), well within rune range.
 	return string(rune('0'+i/100)) + string(rune('0'+(i/10)%10)) + string(rune('0'+i%10))
 }
 

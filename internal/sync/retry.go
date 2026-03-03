@@ -172,6 +172,7 @@ func applyRetryJitter(base time.Duration, jitter float64) time.Duration {
 	if jitter <= 0 {
 		return base
 	}
+	// #nosec G404 -- jitter for retry backoff, not security-sensitive
 	factor := 1 + ((rand.Float64()*2 - 1) * jitter)
 	if factor < 0 {
 		factor = 0

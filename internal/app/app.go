@@ -2205,6 +2205,7 @@ func (a *App) initThreatIntel(ctx context.Context) {
 	a.ThreatIntel = threatintel.NewThreatIntelService()
 
 	// Sync feeds in background
+	// #nosec G118 -- background threat intel sync is intentionally detached from request context
 	go func() {
 		const (
 			syncTimeout  = 2 * time.Minute

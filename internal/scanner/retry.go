@@ -90,6 +90,7 @@ func normalizeRetryOptions(opts RetryOptions) RetryOptions {
 	return opts
 }
 
+// #nosec G404 -- jitter for retry backoff, not security-sensitive
 var retryRand = rand.New(rand.NewSource(time.Now().UnixNano()))
 var retryRandMu sync.Mutex
 

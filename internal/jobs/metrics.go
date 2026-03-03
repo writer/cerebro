@@ -185,6 +185,7 @@ func (m *Metrics) Flush(ctx context.Context) error {
 
 // StartFlusher starts a background goroutine that flushes metrics periodically.
 func (m *Metrics) StartFlusher(ctx context.Context, interval time.Duration) {
+	// #nosec G118 -- flusher goroutine is intentionally long-lived, outlives request scope
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()

@@ -14,7 +14,16 @@ Deploys:
 import pulumi
 import pulumi_aws as aws
 
-from aws import compute, ecr, infisical, jobs, kms, load_balancer, monitoring, networking, tailscale as ts, waf
+import compute
+import ecr
+import infisical
+import jobs
+import kms
+import load_balancer
+import monitoring
+import networking
+import tailscale as ts
+import waf
 
 # Configuration
 config = pulumi.Config()
@@ -231,6 +240,14 @@ if config.get("jiraProject"):
     app_environment["JIRA_PROJECT"] = config.get("jiraProject")
 if config.get("linearTeamId"):
     app_environment["LINEAR_TEAM_ID"] = config.get("linearTeamId")
+
+# GCP WIF (optional - enables AWS->GCP federated auth for GCP scans)
+if config.get("gcpWifAudience"):
+    app_environment["CEREBRO_GCP_WIF_AUDIENCE"] = config.get("gcpWifAudience")
+if config.get("gcpImpersonateServiceAccount"):
+    app_environment["CEREBRO_GCP_IMPERSONATE_SERVICE_ACCOUNT"] = config.get("gcpImpersonateServiceAccount")
+if config.get("gcpImpersonateDelegates"):
+    app_environment["CEREBRO_GCP_IMPERSONATE_DELEGATES"] = config.get("gcpImpersonateDelegates")
 
 # Job queue config added to environment via Pulumi outputs
 # Note: These are Output objects, handled by compute module

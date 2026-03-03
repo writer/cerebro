@@ -906,7 +906,7 @@ func (s *Server) exportFindings(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=findings.%s", format))
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(data)
+	_, _ = w.Write(data) // #nosec G705 -- response content-type is application/json or text/csv, not HTML
 }
 
 func (s *Server) assignFinding(w http.ResponseWriter, r *http.Request) {
@@ -1273,7 +1273,7 @@ func (s *Server) exportAuditPackage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
 	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write(zipBytes); err != nil {
+	if _, err := w.Write(zipBytes); err != nil { // #nosec G705 -- response is application/zip binary, not HTML
 		metrics.RecordComplianceExport(false)
 		s.app.Logger.Warn("failed to stream audit package", "error", err, "framework_id", framework.ID)
 		return
@@ -3638,7 +3638,7 @@ func (s *Server) visualizeBlastRadius(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/markdown")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(mermaid))
+	_, _ = w.Write([]byte(mermaid)) // #nosec G705 -- response content-type is text/markdown, not HTML
 }
 
 func (s *Server) visualizeReport(w http.ResponseWriter, r *http.Request) {

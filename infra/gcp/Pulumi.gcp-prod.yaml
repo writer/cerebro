@@ -1,0 +1,19 @@
+config:
+  gcp:project: writer-iam
+  gcp:region: us-central1
+  cerebro:wifPoolId: cerebro-aws-pool-prod
+  cerebro:wifProviderId: cerebro-aws-provider-prod
+  cerebro:scannerServiceAccountId: cerebro-scanner-prod
+  cerebro:trustedAwsAccountId: "837279440628"
+  cerebro:trustedAwsRoleArns:
+    - "arn:aws:iam::837279440628:role/cerebro-go-production-task-role"
+    - "arn:aws:iam::837279440628:role/cerebro-go-production-worker-task-role"
+  cerebro:scannerRoleProjects:
+    - writer-iam
+    - qordoba-devel
+    - qordoba-prod
+    - writer-networking
+    - writer-networking-nonprod
+    - writer-devops
+  cerebro:scannerRoles:
+    - "roles/compute.viewer"

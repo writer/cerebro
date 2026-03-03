@@ -31,6 +31,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "pulumi" },
     { name = "pulumi-aws" },
+    { name = "pulumi-gcp" },
     { name = "pulumi-random" },
     { name = "pulumi-tailscale" },
 ]
@@ -39,6 +40,7 @@ dependencies = [
 requires-dist = [
     { name = "pulumi", specifier = ">=3.100.0" },
     { name = "pulumi-aws", specifier = ">=6.20.0" },
+    { name = "pulumi-gcp", specifier = ">=8.0.0" },
     { name = "pulumi-random", specifier = ">=4.16.0" },
     { name = "pulumi-tailscale", specifier = ">=0.17.0" },
 ]
@@ -203,6 +205,20 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/09/c1/2fec860deea1e8d393907167556ec20bfce10e5430f55c9f1bbc6e8ea43a/pulumi_aws-7.16.0.tar.gz", hash = "sha256:dd80a11865c1a9146d41633a45f5ef5c6af544c19eb573f785472ae630338c09", size = 8617783, upload-time = "2026-01-09T19:28:26.681Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/72/44/75bbdbca7b86d6f8c9e1b950bf5e906ca0b72f67eca15d9e2cc3a923ff3c/pulumi_aws-7.16.0-py3-none-any.whl", hash = "sha256:69944c4211c990be32a825d99139cfba7186b5ca27269f307dc24a7dd840ad5f", size = 11629591, upload-time = "2026-01-09T19:28:23.923Z" },
+]
+
+[[package]]
+name = "pulumi-gcp"
+version = "9.13.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "parver" },
+    { name = "pulumi" },
+    { name = "semver" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a3/de/ce99d58f8ab4ac9f916fec947c3f61dac649bea5d89fb4a906468af23f16/pulumi_gcp-9.13.0.tar.gz", hash = "sha256:52d6419446cfd84c206192d4d991a422606574939150dd88fb9ac6d0552c652a", size = 9531189, upload-time = "2026-02-25T14:26:10.26Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/dd/c7/ec4b53711a85dfefd831fe7de5d6f0c767ecb097b85cde0c14243e08e1fb/pulumi_gcp-9.13.0-py3-none-any.whl", hash = "sha256:e4ce7b1974f0746dead1a2d22bd2f4236021ef10731660aa25387efbce0efe62", size = 11734179, upload-time = "2026-02-25T14:26:07.742Z" },
 ]
 
 [[package]]

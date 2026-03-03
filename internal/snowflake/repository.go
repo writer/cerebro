@@ -46,6 +46,7 @@ func (r *FindingRepository) Upsert(ctx context.Context, f *FindingRecord) error 
 
 	// Using parameterized query with schema prefix
 	// nosemgrep: go.lang.security.audit.sqli.tainted-sql-string
+	// #nosec G202 -- schema name is a trusted internal value, not user input
 	query := `
 		MERGE INTO ` + r.schema + `.findings t
 		USING (SELECT ? as id) s
@@ -87,6 +88,7 @@ func (r *FindingRepository) Upsert(ctx context.Context, f *FindingRecord) error 
 
 func (r *FindingRepository) Get(ctx context.Context, id string) (*FindingRecord, error) {
 	// nosemgrep: go.lang.security.audit.sqli.tainted-sql-string
+	// #nosec G202 -- schema name is a trusted internal value, not user input
 	query := `
 		SELECT id, policy_id, policy_name, severity, status,
 			   resource_id, resource_type, resource_data, description,
@@ -119,6 +121,7 @@ func (r *FindingRepository) Get(ctx context.Context, id string) (*FindingRecord,
 
 func (r *FindingRepository) List(ctx context.Context, filter FindingFilter) ([]*FindingRecord, error) {
 	// nosemgrep: go.lang.security.audit.sqli.tainted-sql-string
+	// #nosec G202 -- schema name is a trusted internal value, not user input
 	query := `
 		SELECT id, policy_id, policy_name, severity, status,
 			   resource_id, resource_type, description, first_seen, last_seen
@@ -162,6 +165,7 @@ func (r *FindingRepository) List(ctx context.Context, filter FindingFilter) ([]*
 func (r *FindingRepository) UpdateStatus(ctx context.Context, id, status string) error {
 	normalized := strings.ToUpper(status)
 	// nolint:gosec // G201 - schema name is trusted internal value, not user input
+	// #nosec G201 -- schema name is a trusted internal value, not user input
 	query := fmt.Sprintf(`
 		UPDATE %s.findings 
 		SET status = ?, _updated_at = CURRENT_TIMESTAMP()
@@ -170,6 +174,7 @@ func (r *FindingRepository) UpdateStatus(ctx context.Context, id, status string)
 
 	if normalized == "RESOLVED" {
 		// nolint:gosec // G201 - schema name is trusted internal value
+		// #nosec G201 -- schema name is a trusted internal value, not user input
 		query = fmt.Sprintf(`
 			UPDATE %s.findings 
 			SET status = ?, resolved_at = CURRENT_TIMESTAMP(), _updated_at = CURRENT_TIMESTAMP()
@@ -182,6 +187,7 @@ func (r *FindingRepository) UpdateStatus(ctx context.Context, id, status string)
 }
 
 func (r *FindingRepository) Stats(ctx context.Context) (map[string]interface{}, error) {
+	// #nosec G201 -- schema name is a trusted internal value, not user input
 	query := fmt.Sprintf(`
 		SELECT 
 			COUNT(*) as total,
@@ -249,6 +255,7 @@ func (r *TicketRepository) Create(ctx context.Context, t *TicketRecord) error {
 
 	findingsJSON, _ := json.Marshal(t.FindingIDs)
 
+	// #nosec G201 -- schema name is a trusted internal value, not user input
 	query := fmt.Sprintf(`
 		INSERT INTO %s.tickets (
 			id, external_id, provider, title, description,
@@ -295,6 +302,7 @@ func (r *AuditRepository) Log(ctx context.Context, entry *AuditEntry) error {
 
 	detailsJSON, _ := json.Marshal(entry.Details)
 
+	// #nosec G201 -- schema name is a trusted internal value, not user input
 	query := fmt.Sprintf(`
 		INSERT INTO %s.audit_log (
 			id, action, actor_id, actor_type, resource_type,
@@ -315,6 +323,7 @@ func (r *AuditRepository) List(ctx context.Context, resourceType, resourceID str
 	}
 
 	// nosemgrep: go.lang.security.audit.sqli.tainted-sql-string
+	// #nosec G202 -- schema name is a trusted internal value, not user input
 	query := `
 		SELECT id, action, actor_id, actor_type, resource_type, resource_id, ip_address, timestamp
 		FROM ` + r.schema + `.audit_log

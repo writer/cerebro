@@ -553,6 +553,7 @@ func truncate(s string, maxLen int) string {
 // itoa converts an integer to a string efficiently for small numbers
 func itoa(i int) string {
 	if i < 10 {
+		// #nosec G115 -- i is a single digit (0-9), well within rune range.
 		return string(rune('0' + i))
 	}
 	return fmt.Sprintf("%d", i)

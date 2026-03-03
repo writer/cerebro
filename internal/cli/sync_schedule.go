@@ -762,6 +762,12 @@ func executeAWSSync(ctx context.Context, client *snowflake.Client, schedule *Syn
 }
 
 func executeGCPSync(ctx context.Context, client *snowflake.Client, schedule *SyncSchedule) error {
+	gcpCleanup, err := ApplyGCPAuth(ctx, GCPAuthConfigFromEnv())
+	if err != nil {
+		return fmt.Errorf("apply GCP auth overrides: %w", err)
+	}
+	defer gcpCleanup()
+
 	spec := parseScheduledSyncSpec(schedule.Table)
 	authConfig, err := applyScheduledGCPAuthFn(spec)
 	if err != nil {
@@ -1237,6 +1243,7 @@ func applyScheduledGCPAuth(spec scheduledSyncSpec) (*scheduledGCPAuthConfig, err
 			return authCfg, nil
 		}
 
+		// #nosec G304 -- path is from schedule spec/CLI config and validated before use
 		credentialsData, readErr := os.ReadFile(credentialsFile)
 		if readErr != nil {
 			authCfg.Cleanup()
@@ -1261,6 +1268,7 @@ func applyScheduledGCPAuth(spec scheduledSyncSpec) (*scheduledGCPAuthConfig, err
 		return nil, err
 	}
 
+	// #nosec G304 -- path is resolved from controlled credentials configuration
 	sourceData, err := os.ReadFile(sourcePath)
 	if err != nil {
 		authCfg.Cleanup()

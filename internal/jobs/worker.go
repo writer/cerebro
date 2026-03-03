@@ -684,6 +684,7 @@ func (w *Worker) handleJobFailure(ctx context.Context, job *Job, receiptHandle s
 // calculateBackoff returns the delay for the given attempt using exponential backoff.
 func (w *Worker) calculateBackoff(attempt int) time.Duration {
 	// Exponential backoff: base * 2^attempt
+	// #nosec G115 -- attempt is a small positive retry counter and never approaches shift overflow bounds.
 	delay := w.retryBaseDelay * time.Duration(1<<uint(attempt-1))
 	if delay > w.retryMaxDelay {
 		delay = w.retryMaxDelay
