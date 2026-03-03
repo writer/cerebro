@@ -23,6 +23,11 @@ jobs:
               return;
             }
 
+            if (/NOJIRA/i.test(title)) {
+              console.log('Bypass: NOJIRA found in PR title');
+              return;
+            }
+
             const labels = context.payload.pull_request.labels.map(l => l.name);
             if (labels.includes('no-jira')) {
               console.log('Bypass: no-jira label found');
@@ -56,7 +61,7 @@ jobs:
                 `Please update your PR title to include one:`,
                 `\`ACTION-1234: Fix playbook bug\``,
                 ``,
-                `If this PR intentionally has no ticket, add the \`no-jira\` label to silence this warning.`,
+                `If this PR intentionally has no ticket, include \`NOJIRA\` in the title or add the \`no-jira\` label.`,
                 ``,
                 `_This is a warning and does not block merging._`,
               ].join('\n'),
