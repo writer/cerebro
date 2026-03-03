@@ -16,22 +16,49 @@ env:
 
 jobs:
   gcp-auth-smoke:
-    if: ${{ env.GCP_SMOKE_PROJECT_ID != '' && env.GCP_SMOKE_IMPERSONATE_SERVICE_ACCOUNT != '' && env.GCP_SMOKE_IMPERSONATE_DELEGATES != '' && (env.GCP_SMOKE_SOURCE_CREDENTIALS_JSON != '' || env.GCP_SMOKE_WORKLOAD_IDENTITY_PROVIDER != '') }}
     runs-on: ubuntu-latest
     permissions:
       id-token: write
       contents: read
     steps:
+      - name: Check smoke configuration
+        id: precheck
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          missing=()
+          [ -z "${GCP_SMOKE_PROJECT_ID}" ] && missing+=("GCP_SMOKE_PROJECT_ID")
+          [ -z "${GCP_SMOKE_IMPERSONATE_SERVICE_ACCOUNT}" ] && missing+=("GCP_SMOKE_IMPERSONATE_SERVICE_ACCOUNT")
+          [ -z "${GCP_SMOKE_IMPERSONATE_DELEGATES}" ] && missing+=("GCP_SMOKE_IMPERSONATE_DELEGATES")
+          if [ -z "${GCP_SMOKE_SOURCE_CREDENTIALS_JSON}" ] && [ -z "${GCP_SMOKE_WORKLOAD_IDENTITY_PROVIDER}" ]; then
+            missing+=("GCP_SMOKE_SOURCE_CREDENTIALS_JSON|GCP_SMOKE_WORKLOAD_IDENTITY_PROVIDER")
+          fi
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "reason=missing required smoke secrets: ${missing[*]}" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "reason=all required secrets available" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip smoke test (configuration missing)
+        if: ${{ steps.precheck.outputs.enabled != 'true' }}
+        run: echo "${{ steps.precheck.outputs.reason }}"
+
       - uses: actions/checkout@v4
+        if: ${{ steps.precheck.outputs.enabled == 'true' }}
 
       - name: Set up Go
+        if: ${{ steps.precheck.outputs.enabled == 'true' }}
         uses: actions/setup-go@v5
         with:
           go-version: "1.25"
 
       - name: Authenticate to GCP (gcp-git-roles)
         id: gcp-auth
-        if: ${{ env.GCP_SMOKE_WORKLOAD_IDENTITY_PROVIDER != '' }}
+        if: ${{ steps.precheck.outputs.enabled == 'true' && env.GCP_SMOKE_WORKLOAD_IDENTITY_PROVIDER != '' }}
         uses: WriterInternal/gcp-git-roles@v1
         with:
           workload-identity-provider: ${{ env.GCP_SMOKE_WORKLOAD_IDENTITY_PROVIDER }}
@@ -40,7 +67,7 @@ jobs:
 
       - name: Write source credentials file
         id: source-json
-        if: ${{ env.GCP_SMOKE_SOURCE_CREDENTIALS_JSON != '' }}
+        if: ${{ steps.precheck.outputs.enabled == 'true' && env.GCP_SMOKE_SOURCE_CREDENTIALS_JSON != '' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -50,6 +77,7 @@ jobs:
 
       - name: Resolve source credentials path
         id: source-creds
+        if: ${{ steps.precheck.outputs.enabled == 'true' }}
         shell: bash
         env:
           AUTH_CREDENTIALS_FILE_PATH: ${{ steps.gcp-auth.outputs.credentials_file_path }}
@@ -74,6 +102,7 @@ jobs:
           echo "path=${selected}" >> "$GITHUB_OUTPUT"
 
       - name: Run live GCP auth smoke test
+        if: ${{ steps.precheck.outputs.enabled == 'true' }}
         env:
           CEREBRO_LIVE_GCP_AUTH_SMOKE: "1"
           CEREBRO_GCP_SMOKE_SOURCE_CREDENTIALS_FILE: ${{ steps.source-creds.outputs.path }}
