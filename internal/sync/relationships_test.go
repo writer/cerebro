@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -184,6 +185,67 @@ func TestIsMissingRelationshipSourceError(t *testing.T) {
 		if !isMissingRelationshipSourceError(err) {
 			t.Fatalf("expected missing-source classification for %q", err.Error())
 		}
+	}
+}
+
+func TestAppendOktaGroupMembershipRelationships(t *testing.T) {
+	t.Parallel()
+
+	rels := appendOktaGroupMembershipRelationships(nil, []map[string]interface{}{
+		{"group_id": "group-1", "user_id": "user-1"},
+		{"group_id": "", "user_id": "user-2"},
+	})
+
+	if len(rels) != 1 {
+		t.Fatalf("expected 1 relationship, got %d", len(rels))
+	}
+	if rels[0].SourceID != "user-1" || rels[0].TargetID != "group-1" || rels[0].RelType != RelMemberOf {
+		t.Fatalf("unexpected relationship: %+v", rels[0])
+	}
+}
+
+func TestAppendOktaAppAssignmentRelationships(t *testing.T) {
+	t.Parallel()
+
+	rels := appendOktaAppAssignmentRelationships(nil, []map[string]interface{}{
+		{"app_id": "app-1", "assignee_id": "user-1", "assignee_type": "USER"},
+		{"app_id": "app-2", "assignee_id": "group-1", "assignee_type": "GROUP"},
+		{"app_id": "app-3", "assignee_id": "other-1", "assignee_type": "ROLE"},
+	})
+
+	if len(rels) != 2 {
+		t.Fatalf("expected 2 relationships, got %d", len(rels))
+	}
+
+	if rels[0].SourceType != "okta:user" || rels[0].TargetType != "okta:application" || rels[0].RelType != RelCanAccess {
+		t.Fatalf("unexpected user assignment relationship: %+v", rels[0])
+	}
+	if rels[1].SourceType != "okta:group" || rels[1].TargetType != "okta:application" || rels[1].RelType != RelCanAccess {
+		t.Fatalf("unexpected group assignment relationship: %+v", rels[1])
+	}
+}
+
+func TestAppendOktaAdminRoleRelationships(t *testing.T) {
+	t.Parallel()
+
+	rels := appendOktaAdminRoleRelationships(nil, []map[string]interface{}{
+		{"user_id": "user-1", "role_type": "SUPER_ADMIN", "role_label": "Super Admin"},
+		{"user_id": "user-2", "role_type": "", "role_label": "Missing"},
+	})
+
+	if len(rels) != 1 {
+		t.Fatalf("expected 1 relationship, got %d", len(rels))
+	}
+	if rels[0].SourceID != "user-1" || rels[0].TargetID != "okta_admin_role:super_admin" || rels[0].RelType != RelHasRole {
+		t.Fatalf("unexpected relationship: %+v", rels[0])
+	}
+
+	props := map[string]interface{}{}
+	if err := json.Unmarshal([]byte(rels[0].Properties), &props); err != nil {
+		t.Fatalf("failed to parse relationship properties: %v", err)
+	}
+	if props["role_type"] != "SUPER_ADMIN" || props["role_label"] != "Super Admin" {
+		t.Fatalf("unexpected relationship properties: %+v", props)
 	}
 }
 
