@@ -85,6 +85,133 @@ func TestToString(t *testing.T) {
 	}
 }
 
+func TestSeverityPreservation_DevEnvironment(t *testing.T) {
+	findings := []map[string]interface{}{
+		{"severity": "CRITICAL", "resource_id": "arn:aws:s3:::-dev-bucket", "policy_id": "p1"},
+		{"severity": "HIGH", "resource_id": "arn:aws:s3:::-dev-service", "policy_id": "p2"},
+		{"severity": "MEDIUM", "resource_id": "arn:aws:s3:::-dev-db", "policy_id": "p3"},
+		{"severity": "LOW", "resource_id": "arn:aws:s3:::prod-bucket", "policy_id": "p4"},
+	}
+
+	// Simulate the annotation logic (same as in scan command)
+	for i, f := range findings {
+		if isDevResource(toString(f["resource_id"])) {
+			findings[i]["environment_context"] = "development"
+			orig := strings.ToUpper(toString(f["severity"]))
+			if orig == "CRITICAL" || orig == "HIGH" {
+				findings[i]["triage_priority"] = "LOW"
+				findings[i]["triage_score"] = triageScoreForDevSeverity(orig)
+				findings[i]["dev_environment"] = true
+			}
+		}
+	}
+
+	// Canonical severity must be preserved
+	if findings[0]["severity"] != "CRITICAL" {
+		t.Errorf("expected CRITICAL severity preserved, got %v", findings[0]["severity"])
+	}
+	if findings[1]["severity"] != "HIGH" {
+		t.Errorf("expected HIGH severity preserved, got %v", findings[1]["severity"])
+	}
+	// Triage metadata must be added
+	if findings[0]["triage_priority"] != "LOW" {
+		t.Errorf("expected triage_priority LOW, got %v", findings[0]["triage_priority"])
+	}
+	if findings[0]["environment_context"] != "development" {
+		t.Errorf("expected environment_context development, got %v", findings[0]["environment_context"])
+	}
+	// triage_score: CRITICAL dev = 15, HIGH dev = 10
+	if findings[0]["triage_score"] != 15 {
+		t.Errorf("expected triage_score 15 for CRITICAL dev, got %v", findings[0]["triage_score"])
+	}
+	if findings[1]["triage_score"] != 10 {
+		t.Errorf("expected triage_score 10 for HIGH dev, got %v", findings[1]["triage_score"])
+	}
+	// MEDIUM dev should have environment_context but no triage_score
+	if _, ok := findings[2]["triage_score"]; ok {
+		t.Error("MEDIUM dev finding should not have triage_score")
+	}
+	if findings[2]["environment_context"] != "development" {
+		t.Errorf("MEDIUM dev should have environment_context, got %v", findings[2]["environment_context"])
+	}
+	// Non-dev resources should not have triage fields
+	if _, ok := findings[3]["environment_context"]; ok {
+		t.Error("prod resource should not have environment_context")
+	}
+}
+
+func TestTriageScoreForDevSeverity(t *testing.T) {
+	if got := triageScoreForDevSeverity("CRITICAL"); got != 15 {
+		t.Errorf("CRITICAL = %d, want 15", got)
+	}
+	if got := triageScoreForDevSeverity("HIGH"); got != 10 {
+		t.Errorf("HIGH = %d, want 10", got)
+	}
+	if got := triageScoreForDevSeverity("MEDIUM"); got != 5 {
+		t.Errorf("MEDIUM = %d, want 5", got)
+	}
+}
+
+func TestToxicWatermark_NotAdvancedWithoutDataCursor(t *testing.T) {
+	// Simulates the call-site logic: if MaxSyncTime is zero, watermark must not be set.
+	wm := scanner.NewWatermarkStore(nil)
+	original := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	wm.SetWatermark("_toxic_relationships", original, "old-id", 5)
+
+	// Simulate a toxic result with no data (empty query result → zero cursor)
+	result := &scanner.ToxicDetectionResult{
+		MaxSyncTime: time.Time{},
+		MaxCursorID: "",
+	}
+
+	// Replicate call-site logic: only advance if data cursor is present
+	if !result.MaxSyncTime.IsZero() {
+		wm.SetWatermark("_toxic_relationships", result.MaxSyncTime, result.MaxCursorID, 0)
+	}
+
+	// Watermark must remain at original value
+	got := wm.GetWatermark("_toxic_relationships")
+	if got == nil {
+		t.Fatal("watermark should still exist")
+	}
+	if !got.LastScanTime.Equal(original) {
+		t.Errorf("watermark advanced from %v to %v", original, got.LastScanTime)
+	}
+	if got.LastScanID != "old-id" {
+		t.Errorf("cursor id changed from old-id to %q", got.LastScanID)
+	}
+}
+
+func TestToxicWatermark_AdvancesToDataCursor(t *testing.T) {
+	wm := scanner.NewWatermarkStore(nil)
+
+	dataCursor := time.Date(2026, 3, 15, 10, 30, 0, 0, time.UTC)
+	result := &scanner.ToxicDetectionResult{
+		Findings:    []scanner.RelationshipToxicFinding{{PolicyID: "p1", Severity: "HIGH", ResourceID: "r1"}},
+		MaxSyncTime: dataCursor,
+		MaxCursorID: "r1",
+	}
+
+	// Replicate call-site logic
+	if !result.MaxSyncTime.IsZero() {
+		wm.SetWatermark("_toxic_relationships", result.MaxSyncTime, result.MaxCursorID, int64(len(result.Findings)))
+	}
+
+	got := wm.GetWatermark("_toxic_relationships")
+	if got == nil {
+		t.Fatal("watermark should be set")
+	}
+	if !got.LastScanTime.Equal(dataCursor) {
+		t.Errorf("expected watermark at %v, got %v", dataCursor, got.LastScanTime)
+	}
+	if got.LastScanID != "r1" {
+		t.Errorf("expected cursor id r1, got %q", got.LastScanID)
+	}
+	if got.RowsScanned != 1 {
+		t.Errorf("expected 1 row, got %d", got.RowsScanned)
+	}
+}
+
 func TestFilterCDCEvents(t *testing.T) {
 	now := time.Now().UTC()
 	events := []snowflake.CDCEvent{

@@ -33,6 +33,8 @@ type ImageScanner interface {
 // RegistryClient interface for container registries
 type RegistryClient interface {
 	Name() string
+	RegistryHost() string
+	QualifyImageRef(repo, tag string) string
 	ListRepositories(ctx context.Context) ([]Repository, error)
 	ListTags(ctx context.Context, repo string) ([]ImageTag, error)
 	GetManifest(ctx context.Context, repo, tag string) (*ImageManifest, error)
@@ -190,7 +192,7 @@ func (s *ContainerScanner) ScanImage(ctx context.Context, registry, repo, tag st
 	vulns, vulnErr := client.GetVulnerabilities(ctx, repo, tag)
 	if vulnErr != nil {
 		if s.localScan != nil {
-			imageRef := fmt.Sprintf("%s:%s", repo, tag)
+			imageRef := client.QualifyImageRef(repo, tag)
 			localResult, scanErr := s.localScan.ScanImage(ctx, imageRef)
 			if scanErr != nil {
 				return nil, fmt.Errorf("local scan failed after registry error: %w", scanErr)
@@ -401,6 +403,21 @@ func NewECRClientWithAPI(region, accountID string, api ecrAPI) *ECRClient {
 
 func (c *ECRClient) Name() string { return "ecr" }
 
+func (c *ECRClient) RegistryHost() string {
+	if c.accountID != "" && c.region != "" {
+		return fmt.Sprintf("%s.dkr.ecr.%s.amazonaws.com", c.accountID, c.region)
+	}
+	return ""
+}
+
+func (c *ECRClient) QualifyImageRef(repo, tag string) string {
+	host := c.RegistryHost()
+	if host == "" {
+		return fmt.Sprintf("%s:%s", repo, tag)
+	}
+	return fmt.Sprintf("%s/%s:%s", host, repo, tag)
+}
+
 func (c *ECRClient) ListRepositories(ctx context.Context) ([]Repository, error) {
 	if err := c.ensureClient(ctx); err != nil {
 		return nil, err
@@ -599,6 +616,13 @@ func NewGCRClient(projectID string) *GCRClient {
 
 func (c *GCRClient) Name() string { return "gcr" }
 
+func (c *GCRClient) RegistryHost() string { return stripURLScheme(c.registryHost) }
+
+func (c *GCRClient) QualifyImageRef(repo, tag string) string {
+	fullRepo := c.qualifyRepo(repo)
+	return fmt.Sprintf("%s/%s:%s", c.RegistryHost(), fullRepo, tag)
+}
+
 func (c *GCRClient) ListRepositories(ctx context.Context) ([]Repository, error) {
 	url := fmt.Sprintf("%s/v2/_catalog?n=1000", c.baseURL())
 	body, _, err := c.doRequest(ctx, http.MethodGet, url, "")
@@ -742,6 +766,18 @@ func NewACRClient(registryName, subscriptionID string) *ACRClient {
 }
 
 func (c *ACRClient) Name() string { return "acr" }
+
+func (c *ACRClient) RegistryHost() string {
+	if c.baseURLOverride != "" {
+		return stripURLScheme(c.baseURLOverride)
+	}
+	return fmt.Sprintf("%s.azurecr.io", c.registryName)
+}
+
+func (c *ACRClient) QualifyImageRef(repo, tag string) string {
+	host := c.RegistryHost()
+	return fmt.Sprintf("%s/%s:%s", host, repo, tag)
+}
 
 func (c *ACRClient) ListRepositories(ctx context.Context) ([]Repository, error) {
 	url := fmt.Sprintf("%s/v2/_catalog?n=1000", c.baseURL())
@@ -969,4 +1005,12 @@ func parseManifest(data []byte, manifest *ImageManifest) error {
 		})
 	}
 	return nil
+}
+
+// stripURLScheme removes http:// or https:// prefixes from a host string,
+// returning a bare host suitable for use in container image references.
+func stripURLScheme(host string) string {
+	host = strings.TrimPrefix(host, "https://")
+	host = strings.TrimPrefix(host, "http://")
+	return host
 }
