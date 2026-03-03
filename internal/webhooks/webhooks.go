@@ -502,7 +502,7 @@ func (s *Service) Handler() http.Handler {
 		var req struct {
 			URL    string      `json:"url"`
 			Events []EventType `json:"events"`
-			Secret string      `json:"secret"`
+			Secret string      `json:"secret"` // #nosec G117 -- explicit webhook signing secret field
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)

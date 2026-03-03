@@ -119,3 +119,53 @@ User ──membership──▶ Group ──assignment──▶ Application
 
 System Logs: actor_id ──event──▶ target_app_id  (actual usage overlay)
 ```
+
+---
+
+# Architecture + Validation Stabilization (2026-03-03)
+
+## Validation + auth reliability
+- [x] Pin Go toolchain/CI to `go1.25.7` to clear reachable stdlib govulncheck finding (`GO-2026-4337`).
+- [x] Add fast built-artifact security scan path (`make security-scan-built`) using Trivy image scanning.
+- [x] Complete AWS SSO refresh for scan profiles and verify `cerebro sync --preflight-only` passes.
+- [x] Complete GCP ADC refresh and verify GCP preflight passes.
+- [x] Make built-artifact scanning (`make security-scan`) the default local path; keep source-wide `gosec` only as explicit opt-in via `make security-scan-source`.
+
+## Maintainability backlog from latest review
+1. API handler decomposition (`internal/api/server.go`)
+- [ ] Split handlers by domain (findings/agents/graph/incidents/compliance) into dedicated files.
+- [x] Extract graph visualization handlers into `internal/api/handlers_graph_visualization.go`.
+- [x] Extract agent session/approval handlers into `internal/api/handlers_agents.go`.
+- [x] Extract incident response handlers into `internal/api/handlers_incident_response.go`.
+- [x] Extract ticketing handlers into `internal/api/handlers_ticketing.go`.
+- [x] Extract graph access review handlers into `internal/api/handlers_graph_access_reviews.go`.
+- [x] Extract identity access-review CRUD handlers into `internal/api/handlers_identity_reviews.go`.
+- [x] Extract provider handlers + include-incomplete helper into `internal/api/handlers_providers.go`.
+
+2. Relationship/graph decomposition
+- [ ] Split `internal/sync/relationships.go` by provider/domain.
+- [x] Extract Okta relationship extraction into `internal/sync/relationships_okta.go`.
+- [ ] Split `internal/graph/builder.go` by provider/domain.
+- [ ] Split `internal/attackpath/toxic_combinations.go` by category/domain.
+
+3. Config structure cleanup
+- [ ] Refactor `app.Config` and `LoadConfig()` into nested provider-aware structs.
+- [ ] Evaluate optional config file support (YAML/TOML) layered over env vars.
+
+4. Provider initialization simplification
+- [ ] Replace repetitive `initProviders()` registration with a table-driven/declarative registry.
+
+5. Provider test coverage
+- [ ] Add tests for providers currently missing `_test.go` coverage (azure/cloudflare/cloudtrail/crowdstrike/datadog/entra_id/github/gitlab/intune/jamf/rippling/salesforce/slack/tailscale/tenable/vault).
+
+6. Agent session durability
+- [ ] Persist `AgentRegistry` sessions beyond process memory (Snowflake or DynamoDB-backed store).
+
+7. Agent memory relevance
+- [ ] Implement semantic/query-aware retrieval in `Memory.Search()` (query is currently ignored).
+
+8. Config-loading duplication
+- [ ] Reconcile `internal/config/config.go` and `internal/app/app.go` into one canonical config-loading path.
+
+9. Repository hygiene
+- [ ] Remove or justify the top-level empty `cerebro/` directory.

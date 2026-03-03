@@ -193,8 +193,7 @@ func runPolicyTest(cmd *cobra.Command, args []string) error {
 		return jsonError(fmt.Errorf("policy not found: %s", policyID), nil)
 	}
 
-	// #nosec G304 -- path is from CLI argument and validated by command usage
-	data, err := os.ReadFile(assetFile)
+	data, err := os.ReadFile(assetFile) // #nosec G304 -- asset path is explicitly provided by the caller for policy testing
 	if err != nil {
 		return jsonError(fmt.Errorf("read asset file: %w", err), map[string]interface{}{"policy": p.Name})
 	}

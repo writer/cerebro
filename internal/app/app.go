@@ -2219,7 +2219,7 @@ func (a *App) initThreatIntel(ctx context.Context) {
 			return
 		}
 
-		syncCtx, cancel := context.WithTimeout(context.Background(), syncTimeout)
+		syncCtx, cancel := context.WithTimeout(ctx, syncTimeout)
 		defer cancel()
 
 		err := a.ThreatIntel.SyncAllWithRetry(syncCtx, threatintel.SyncOptions{

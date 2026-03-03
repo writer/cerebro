@@ -169,7 +169,7 @@ func scanRepositoryForResources(root, repoURL string) (*RepoAnalysis, error) {
 			return nil
 		}
 
-		file, err := os.Open(path) //#nosec G304 G122 -- path is from controlled filepath.WalkDir
+		file, err := os.Open(path) //#nosec G304,G122 -- path is from controlled filepath.WalkDir
 		if err != nil {
 			return nil
 		}

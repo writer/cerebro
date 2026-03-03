@@ -870,7 +870,18 @@ func NewTrivyScanner(binaryPath string) *TrivyScanner {
 
 // ScanImage uses Trivy to scan a container image
 func (s *TrivyScanner) ScanImage(ctx context.Context, imageRef string) (*ContainerScanResult, error) {
-	cmd := exec.CommandContext(ctx, s.binaryPath, "image", "--format", "json", imageRef) // #nosec G204 -- binaryPath is configured trivy path, imageRef is from controlled inventory
+	if strings.TrimSpace(s.binaryPath) == "" {
+		return nil, fmt.Errorf("trivy binary path is required")
+	}
+	imageRef = strings.TrimSpace(imageRef)
+	if imageRef == "" {
+		return nil, fmt.Errorf("image reference is required")
+	}
+	if strings.ContainsAny(imageRef, " \t\r\n") {
+		return nil, fmt.Errorf("image reference must not contain whitespace")
+	}
+
+	cmd := exec.CommandContext(ctx, s.binaryPath, "image", "--format", "json", imageRef) // #nosec G204 -- fixed binary/arguments, no shell interpolation
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("trivy scan failed: %w: %s", err, string(output))

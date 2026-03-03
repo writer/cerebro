@@ -334,6 +334,5 @@ func (c *Client) ListAvailableTables(ctx context.Context) ([]string, error) {
 
 // WithTimeout returns a context with the specified timeout, suitable for database operations.
 func WithTimeout(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
-	// #nosec G118 -- cancel function is returned to caller for deferred cleanup
-	return context.WithTimeout(ctx, timeout)
+	return context.WithTimeout(ctx, timeout) // #nosec G118 -- caller receives and owns cancel function lifecycle
 }

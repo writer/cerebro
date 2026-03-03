@@ -43,8 +43,7 @@ func (s *SnowflakeStore) SetAttestor(attestor FindingAttestor, attestReobserved 
 
 // Load fetches all findings from Snowflake into cache
 func (s *SnowflakeStore) Load(ctx context.Context) error {
-	// #nosec G201 -- schema name is a trusted internal value, not user input
-	query := fmt.Sprintf(`
+	query := fmt.Sprintf(` // #nosec G201 -- schema is internal trusted config, values remain parameterized
 		SELECT id, policy_id, policy_name, severity, status,
 			   resource_id, resource_type, resource_data, description,
 			   remediation, metadata,
@@ -415,8 +414,7 @@ func (s *SnowflakeStore) Sync(ctx context.Context) error {
 			)
 		}
 
-		// #nosec G201 -- schema name is a trusted internal value, not user input
-		merge := fmt.Sprintf(`
+		merge := fmt.Sprintf(` // #nosec G201 -- schema is internal trusted config, row data remains parameterized
 			MERGE INTO %s.FINDINGS t
 			USING (SELECT column1 AS id,
 			              column2 AS policy_id,

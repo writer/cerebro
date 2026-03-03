@@ -762,12 +762,6 @@ func executeAWSSync(ctx context.Context, client *snowflake.Client, schedule *Syn
 }
 
 func executeGCPSync(ctx context.Context, client *snowflake.Client, schedule *SyncSchedule) error {
-	gcpCleanup, err := ApplyGCPAuth(ctx, GCPAuthConfigFromEnv())
-	if err != nil {
-		return fmt.Errorf("apply GCP auth overrides: %w", err)
-	}
-	defer gcpCleanup()
-
 	spec := parseScheduledSyncSpec(schedule.Table)
 	authConfig, err := applyScheduledGCPAuthFn(spec)
 	if err != nil {
@@ -1243,8 +1237,7 @@ func applyScheduledGCPAuth(spec scheduledSyncSpec) (*scheduledGCPAuthConfig, err
 			return authCfg, nil
 		}
 
-		// #nosec G304 -- path is from schedule spec/CLI config and validated before use
-		credentialsData, readErr := os.ReadFile(credentialsFile)
+		credentialsData, readErr := os.ReadFile(credentialsFile) // #nosec G304 -- credentials file path is validated by validateReadableFile
 		if readErr != nil {
 			authCfg.Cleanup()
 			return nil, fmt.Errorf("read gcp_credentials_file %q: %w", credentialsFile, readErr)
@@ -1268,8 +1261,7 @@ func applyScheduledGCPAuth(spec scheduledSyncSpec) (*scheduledGCPAuthConfig, err
 		return nil, err
 	}
 
-	// #nosec G304 -- path is resolved from controlled credentials configuration
-	sourceData, err := os.ReadFile(sourcePath)
+	sourceData, err := os.ReadFile(sourcePath) // #nosec G304 -- sourcePath is resolved/validated before read
 	if err != nil {
 		authCfg.Cleanup()
 		return nil, fmt.Errorf("read GCP source credentials %q: %w", sourcePath, err)

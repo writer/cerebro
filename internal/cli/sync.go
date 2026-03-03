@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -396,8 +397,7 @@ func loadProjectIDsFromFile(path string) ([]string, error) {
 		return nil, err
 	}
 
-	// #nosec G304 -- path is from CLI flag and validated before use
-	file, err := os.Open(trimmedPath)
+	file, err := os.Open(trimmedPath) // #nosec G304,G703 -- path is validated by validateReadableFile
 	if err != nil {
 		return nil, fmt.Errorf("read --projects-file %q: %w", trimmedPath, err)
 	}
@@ -515,8 +515,7 @@ func validateGCPSyncAuthMode(mode string) error {
 		if err != nil {
 			return fmt.Errorf("--auth-mode=wif requires a resolvable external account credentials file: %w", err)
 		}
-		// #nosec G304 -- path is resolved from CLI configuration and validated before use
-		raw, err := os.ReadFile(resolvedPath)
+		raw, err := os.ReadFile(resolvedPath) // #nosec G304,G703 -- resolved path is validated before read
 		if err != nil {
 			return fmt.Errorf("read GCP credentials file %q: %w", resolvedPath, err)
 		}
@@ -585,8 +584,7 @@ func describeGCPCredentialsPath(path string) string {
 	if trimmedPath == "" {
 		return "<unset>"
 	}
-	// #nosec G304 G703 -- path from CLI flag, validated
-	raw, err := os.ReadFile(trimmedPath)
+	raw, err := os.ReadFile(trimmedPath) // #nosec G304,G703 -- path is from explicit credentials config/ADC locations
 	if err != nil {
 		return trimmedPath
 	}
@@ -1892,7 +1890,105 @@ func applyAWSAssumeRoleOverride(ctx context.Context, cfg aws.Config) (aws.Config
 }
 
 func applyGCPAuthOverrides() (func(), error) {
-	return ApplyGCPAuth(context.Background(), GCPAuthConfigFromFlags())
+	envSnapshots := make(map[string]envSnapshot)
+	tempCredentialsFile := ""
+	cleanup := func() {
+		if tempCredentialsFile != "" {
+			_ = os.Remove(tempCredentialsFile)
+		}
+		restoreEnvSnapshot(envSnapshots)
+	}
+
+	credentialsFile := strings.TrimSpace(syncGCPCredentialsFile)
+	if credentialsFile != "" {
+		if err := validateReadableFile(credentialsFile, "--gcp-credentials-file"); err != nil {
+			return cleanup, err
+		}
+	}
+
+	impersonateServiceAccount := strings.TrimSpace(syncGCPImpersonateSA)
+	delegates := parseCommaSeparatedValues(syncGCPImpersonateDel)
+	tokenLifetimeSeconds, err := parseBoundedPositiveIntDirective(syncGCPImpersonateTTL, "--gcp-impersonate-token-lifetime-seconds", 600, 43200)
+	if err != nil {
+		return cleanup, err
+	}
+
+	if impersonateServiceAccount == "" {
+		if len(delegates) > 0 {
+			return cleanup, fmt.Errorf("--gcp-impersonate-delegates requires --gcp-impersonate-service-account")
+		}
+		if tokenLifetimeSeconds > 0 {
+			return cleanup, fmt.Errorf("--gcp-impersonate-token-lifetime-seconds requires --gcp-impersonate-service-account")
+		}
+		if credentialsFile == "" {
+			return cleanup, nil
+		}
+
+		if err := setEnvWithSnapshot(envSnapshots, "GOOGLE_APPLICATION_CREDENTIALS", credentialsFile); err != nil {
+			return cleanup, fmt.Errorf("set GOOGLE_APPLICATION_CREDENTIALS: %w", err)
+		}
+		return cleanup, nil
+	}
+
+	sourcePath, err := resolveGCPSourceCredentialsPath(credentialsFile)
+	if err != nil {
+		return cleanup, err
+	}
+
+	sourceData, err := os.ReadFile(sourcePath) // #nosec G304,G703 -- sourcePath is validated by resolveGCPSourceCredentialsPath
+	if err != nil {
+		return cleanup, fmt.Errorf("read GCP source credentials %q: %w", sourcePath, err)
+	}
+
+	var sourceCredentials map[string]interface{}
+	if err := json.Unmarshal(sourceData, &sourceCredentials); err != nil {
+		return cleanup, fmt.Errorf("parse GCP source credentials %q: %w", sourcePath, err)
+	}
+	if len(sourceCredentials) == 0 {
+		return cleanup, fmt.Errorf("GCP source credentials %q are empty", sourcePath)
+	}
+
+	impersonationURL := fmt.Sprintf("https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/%s:generateAccessToken", url.PathEscape(impersonateServiceAccount))
+	payload := map[string]interface{}{
+		"type":                              "impersonated_service_account",
+		"service_account_impersonation_url": impersonationURL,
+		"source_credentials":                sourceCredentials,
+	}
+	if tokenLifetimeSeconds > 0 {
+		payload["token_lifetime_seconds"] = tokenLifetimeSeconds
+	}
+	if len(delegates) > 0 {
+		payload["delegates"] = delegates
+	}
+
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return cleanup, fmt.Errorf("marshal impersonated GCP credentials: %w", err)
+	}
+
+	tmpFile, err := os.CreateTemp("", "cerebro-gcp-impersonated-*.json")
+	if err != nil {
+		return cleanup, fmt.Errorf("create temporary GCP impersonation credentials file: %w", err)
+	}
+	tempCredentialsFile = tmpFile.Name()
+	if _, err := tmpFile.Write(encoded); err != nil {
+		_ = tmpFile.Close()
+		return cleanup, fmt.Errorf("write temporary GCP impersonation credentials file: %w", err)
+	}
+	if err := tmpFile.Chmod(0o600); err != nil {
+		_ = tmpFile.Close()
+		return cleanup, fmt.Errorf("set permissions on temporary GCP impersonation credentials file: %w", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		return cleanup, fmt.Errorf("close temporary GCP impersonation credentials file: %w", err)
+	}
+
+	if err := setEnvWithSnapshot(envSnapshots, "GOOGLE_APPLICATION_CREDENTIALS", tempCredentialsFile); err != nil {
+		cleanup()
+		return func() {}, fmt.Errorf("set GOOGLE_APPLICATION_CREDENTIALS: %w", err)
+	}
+
+	return cleanup, nil
 }
 
 func setEnvWithSnapshot(snapshots map[string]envSnapshot, key, value string) error {
@@ -1918,8 +2014,7 @@ func validateReadableFile(path, source string) error {
 		return fmt.Errorf("%s must not be empty", source)
 	}
 
-	// #nosec G703 -- path is from CLI flag, validated before use
-	info, err := os.Stat(path)
+	info, err := os.Stat(path) // #nosec G304,G703 -- this helper validates caller-provided file paths before use
 	if err != nil {
 		return fmt.Errorf("read %s %q: %w", source, path, err)
 	}

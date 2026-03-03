@@ -63,8 +63,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	// Start scheduler in background if configured
-	// #nosec G118 -- cancel is invoked in server cleanup during shutdown
-	schedulerCtx, schedulerCancel := context.WithCancel(ctx)
+	schedulerCtx, schedulerCancel := context.WithCancel(ctx) // #nosec G118 -- schedulerCancel is invoked via server cleanup on shutdown
 	if application.Config.ScanInterval != "" {
 		go application.Scheduler.Start(schedulerCtx)
 	}

@@ -2,9 +2,10 @@ package sync
 
 import (
 	"context"
+	crand "crypto/rand"
+	"encoding/binary"
 	"errors"
 	"log/slog"
-	"math/rand"
 	"strings"
 	"time"
 
@@ -28,9 +29,21 @@ func awsRetryDelay(attempt int) time.Duration {
 		delay = 30 * time.Second
 	}
 
-	// #nosec G404 -- jitter for retry backoff, not security-sensitive
-	jitter := time.Duration(rand.Int63n(int64(delay / 2)))
+	jitter := time.Duration(randomInt63n(int64(delay / 2)))
 	return delay/2 + jitter
+}
+
+func randomInt63n(max int64) int64 {
+	if max <= 0 {
+		return 0
+	}
+
+	var b [8]byte
+	if _, err := crand.Read(b[:]); err != nil {
+		return 0
+	}
+
+	return int64(binary.BigEndian.Uint64(b[:]) % uint64(max))
 }
 
 func isAWSRateLimitError(err error) bool {

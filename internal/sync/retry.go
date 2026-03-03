@@ -2,9 +2,10 @@ package sync
 
 import (
 	"context"
+	crand "crypto/rand"
+	"encoding/binary"
 	"errors"
 	"log/slog"
-	"math/rand"
 	"net"
 	"strings"
 	"time"
@@ -172,12 +173,20 @@ func applyRetryJitter(base time.Duration, jitter float64) time.Duration {
 	if jitter <= 0 {
 		return base
 	}
-	// #nosec G404 -- jitter for retry backoff, not security-sensitive
-	factor := 1 + ((rand.Float64()*2 - 1) * jitter)
+	factor := 1 + ((cryptoRandomFloat64()*2 - 1) * jitter)
 	if factor < 0 {
 		factor = 0
 	}
 	return time.Duration(float64(base) * factor)
+}
+
+func cryptoRandomFloat64() float64 {
+	var b [8]byte
+	if _, err := crand.Read(b[:]); err != nil {
+		return 0.5
+	}
+	v := binary.BigEndian.Uint64(b[:]) >> 11
+	return float64(v) / (1 << 53)
 }
 
 func classifyAWSError(err error) retryClass {

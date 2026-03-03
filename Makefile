@@ -1,4 +1,4 @@
-.PHONY: build run test sync clean dev serve policy-list docker-build
+.PHONY: build run test sync clean dev serve policy-list docker-build trivy-db security-scan security-scan-built security-scan-source
 
 # Version info
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -7,6 +7,11 @@ DATE    ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 LDFLAGS := -ldflags "-X github.com/writerinternal/cerebro/internal/cli.Version=$(VERSION) \
                      -X github.com/writerinternal/cerebro/internal/cli.Commit=$(COMMIT) \
                      -X github.com/writerinternal/cerebro/internal/cli.BuildDate=$(DATE)"
+
+TRIVY_IMAGE ?= aquasec/trivy:0.34.0
+TRIVY_CACHE_DIR ?= $(HOME)/.cache/trivy
+SECURITY_SCAN_IMAGE ?= cerebro:ci
+GO_BIN ?= $(shell go env GOPATH)/bin
 
 # Build the cerebro binary
 build:
@@ -60,6 +65,36 @@ dev:
 # Docker build
 docker-build:
 	docker build -t cerebro:latest .
+
+# Download/update Trivy vulnerability database cache
+trivy-db:
+	mkdir -p "$(TRIVY_CACHE_DIR)"
+	docker run --rm \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v "$(TRIVY_CACHE_DIR):/root/.cache" \
+		$(TRIVY_IMAGE) image --download-db-only
+
+# Fast local security check on built artifact (avoids heavy source-wide static analysis)
+security-scan: security-scan-built
+
+security-scan-built: trivy-db
+	docker build -f Dockerfile -t $(SECURITY_SCAN_IMAGE) .
+	docker run --rm \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v "$(TRIVY_CACHE_DIR):/root/.cache" \
+		$(TRIVY_IMAGE) image \
+		--security-checks vuln \
+		--format table \
+		--exit-code 1 \
+		--ignore-unfixed \
+		--vuln-type os,library \
+		--severity CRITICAL,HIGH \
+		$(SECURITY_SCAN_IMAGE)
+
+# Optional heavier source scan (kept explicit to avoid default local laptop instability)
+security-scan-source:
+	$(GO_BIN)/govulncheck ./...
+	$(GO_BIN)/gosec -severity medium -confidence medium -exclude-generated ./...
 
 # Docker run
 docker-run:

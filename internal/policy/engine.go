@@ -174,7 +174,7 @@ func (e *Engine) LoadPolicies(dir string) error {
 			return nil
 		}
 
-		data, err := os.ReadFile(path) // #nosec G122 G304 -- filepath.WalkDir on controlled policy directory
+		data, err := os.ReadFile(path) // #nosec G304,G122 -- path is discovered via filepath.Walk under configured policy directory
 		if err != nil {
 			return fmt.Errorf("read %s: %w", path, err)
 		}

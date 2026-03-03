@@ -487,12 +487,32 @@ func (c *LocalClient) GetFileContent(ctx context.Context, repoURL, path string) 
 	if err != nil {
 		return "", err
 	}
-	fullPath := filepath.Join(repoPath, path)
 
-	// #nosec G304 -- path is constrained to the local cloned repository root
-	content, err := os.ReadFile(fullPath)
+	cleanPath := filepath.Clean(strings.TrimSpace(path))
+	if cleanPath == "" || cleanPath == "." {
+		return "", errors.New("path is required")
+	}
+	if filepath.IsAbs(cleanPath) || cleanPath == ".." || strings.HasPrefix(cleanPath, ".."+string(os.PathSeparator)) {
+		return "", errors.New("path must stay within repository")
+	}
+
+	repoAbs, err := filepath.Abs(repoPath)
 	if err != nil {
-		return "", fmt.Errorf("failed to read file %s: %w", fullPath, err)
+		return "", fmt.Errorf("failed to resolve repo path: %w", err)
+	}
+
+	fullPath := filepath.Join(repoAbs, cleanPath)
+	fullAbs, err := filepath.Abs(fullPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve file path: %w", err)
+	}
+	if fullAbs != repoAbs && !strings.HasPrefix(fullAbs, repoAbs+string(os.PathSeparator)) {
+		return "", errors.New("path escapes repository")
+	}
+
+	content, err := os.ReadFile(fullAbs) // #nosec G304 -- fullAbs is constrained to repoAbs above
+	if err != nil {
+		return "", fmt.Errorf("failed to read file %s: %w", fullAbs, err)
 	}
 	return string(content), nil
 }
