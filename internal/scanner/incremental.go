@@ -203,13 +203,14 @@ func (s *WatermarkStore) PersistWatermarks(ctx context.Context) error {
 			values = append(values, "(?, ?, ?, ?)")
 			args = append(args, wm.Table, wm.LastScanTime, wm.LastScanID, wm.RowsScanned)
 		}
-		merge := fmt.Sprintf(` // #nosec G201 -- table name is static and values are parameterized
+		// #nosec G202 -- target table is static and VALUES placeholders are generated internally.
+		merge := `
 			MERGE INTO cerebro_scan_watermarks t
 			USING (SELECT column1 AS table_name,
 			              column2 AS last_scan_time,
 			              column3 AS last_scan_id,
 			              column4 AS rows_scanned
-			       FROM VALUES %s) s
+			       FROM VALUES ` + strings.Join(values, ",") + `) s
 			ON t.table_name = s.table_name
 			WHEN MATCHED THEN UPDATE SET
 				last_scan_time = s.last_scan_time,
@@ -218,7 +219,7 @@ func (s *WatermarkStore) PersistWatermarks(ctx context.Context) error {
 				updated_at = CURRENT_TIMESTAMP()
 			WHEN NOT MATCHED THEN INSERT (table_name, last_scan_time, last_scan_id, rows_scanned)
 			VALUES (s.table_name, s.last_scan_time, s.last_scan_id, s.rows_scanned)
-		`, strings.Join(values, ","))
+		`
 		if _, err := s.db.ExecContext(ctx, merge, args...); err != nil {
 			return fmt.Errorf("upsert watermarks: %w", err)
 		}

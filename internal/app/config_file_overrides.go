@@ -3,6 +3,7 @@ package app
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,7 +38,7 @@ func lookupConfigFileValue(key string) (string, bool) {
 }
 
 func loadConfigFileValuesCached(path string) (map[string]string, error) {
-	absPath, err := filepath.Abs(path)
+	trustedRoot, relPath, absPath, err := resolveTrustedConfigPath(path)
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +51,7 @@ func loadConfigFileValuesCached(path string) (map[string]string, error) {
 	}
 	configFileCacheMu.RUnlock()
 
-	values, err := loadConfigFileValues(absPath)
+	values, err := loadConfigFileValues(trustedRoot, relPath, absPath)
 	if err != nil {
 		return nil, err
 	}
@@ -63,14 +64,76 @@ func loadConfigFileValuesCached(path string) (map[string]string, error) {
 	return values, nil
 }
 
-func loadConfigFileValues(path string) (map[string]string, error) {
-	data, err := os.ReadFile(path)
+func trustedConfigRoot() (string, error) {
+	root := strings.TrimSpace(os.Getenv("CEREBRO_CONFIG_ROOT"))
+	if root == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return "", err
+		}
+		root = cwd
+	}
+
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Clean(absRoot), nil
+}
+
+func resolveTrustedConfigPath(path string) (trustedRoot, relativePath, absolutePath string, err error) {
+	trustedRoot, err = trustedConfigRoot()
+	if err != nil {
+		return "", "", "", err
+	}
+
+	candidate := strings.TrimSpace(path)
+	if candidate == "" {
+		return "", "", "", fmt.Errorf("config file path is required")
+	}
+
+	candidate = filepath.Clean(candidate)
+	if !filepath.IsAbs(candidate) {
+		candidate = filepath.Join(trustedRoot, candidate)
+	}
+
+	absPath, err := filepath.Abs(candidate)
+	if err != nil {
+		return "", "", "", err
+	}
+	absPath = filepath.Clean(absPath)
+
+	relPath, err := filepath.Rel(trustedRoot, absPath)
+	if err != nil {
+		return "", "", "", err
+	}
+	if relPath == ".." || strings.HasPrefix(relPath, ".."+string(filepath.Separator)) {
+		return "", "", "", fmt.Errorf("config path %q escapes trusted root %q", absPath, trustedRoot)
+	}
+
+	return trustedRoot, relPath, absPath, nil
+}
+
+func loadConfigFileValues(trustedRoot, relativePath, absolutePath string) (map[string]string, error) {
+	root, err := os.OpenRoot(trustedRoot)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = root.Close() }()
+
+	file, err := root.Open(relativePath)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = file.Close() }()
+
+	data, err := io.ReadAll(file)
 	if err != nil {
 		return nil, err
 	}
 
 	raw := make(map[string]any)
-	switch strings.ToLower(filepath.Ext(path)) {
+	switch strings.ToLower(filepath.Ext(absolutePath)) {
 	case ".yaml", ".yml":
 		if err := yaml.Unmarshal(data, &raw); err != nil {
 			return nil, err
@@ -84,7 +147,7 @@ func loadConfigFileValues(path string) (map[string]string, error) {
 			return nil, err
 		}
 	default:
-		return nil, fmt.Errorf("unsupported config file extension: %s", filepath.Ext(path))
+		return nil, fmt.Errorf("unsupported config file extension: %s", filepath.Ext(absolutePath))
 	}
 
 	flattened := make(map[string]string)

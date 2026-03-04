@@ -1,0 +1,62 @@
+name: Security Source Scan
+
+on:
+  schedule:
+    - cron: '30 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gosec-source-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.7'
+
+      - name: Install gosec
+        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+
+      - name: Run gosec (JSON report)
+        shell: bash
+        run: |
+          set -euo pipefail
+          $(go env GOPATH)/bin/gosec -severity medium -confidence medium -exclude-generated -fmt=json -out gosec-report.json ./... || true
+
+      - name: Fail on HIGH findings
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import sys
+
+          with open('gosec-report.json', 'r', encoding='utf-8') as f:
+              data = json.load(f)
+
+          issues = data.get('Issues') or []
+          high = [i for i in issues if str(i.get('severity', '')).upper() == 'HIGH']
+
+          print(f"Total gosec findings: {len(issues)}")
+          print(f"HIGH findings: {len(high)}")
+          for finding in high:
+              print(
+                  f"- {finding.get('rule_id')} {finding.get('file')}:{finding.get('line')} "
+                  f"{finding.get('details', '').strip()}"
+              )
+
+          if high:
+              sys.exit(1)
+          PY
+
+      - name: Upload gosec report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gosec-report
+          path: gosec-report.json

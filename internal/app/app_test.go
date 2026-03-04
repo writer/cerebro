@@ -55,6 +55,7 @@ snowflake:
 	}
 
 	t.Setenv("CEREBRO_CONFIG_FILE", configPath)
+	t.Setenv("CEREBRO_CONFIG_ROOT", filepath.Dir(configPath))
 	t.Setenv("API_PORT", "")
 	t.Setenv("LOG_LEVEL", "")
 	t.Setenv("SNOWFLAKE_DATABASE", "")
@@ -82,6 +83,7 @@ LOG_LEVEL = "warn"
 	}
 
 	t.Setenv("CEREBRO_CONFIG_FILE", configPath)
+	t.Setenv("CEREBRO_CONFIG_ROOT", filepath.Dir(configPath))
 	t.Setenv("API_PORT", "9292")
 	t.Setenv("LOG_LEVEL", "error")
 

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/writerinternal/cerebro/internal/policy"
+	"github.com/writerinternal/cerebro/internal/snowflake"
 )
 
 // SnowflakeStore persists findings to Snowflake with local cache
@@ -43,16 +44,22 @@ func (s *SnowflakeStore) SetAttestor(attestor FindingAttestor, attestReobserved 
 
 // Load fetches all findings from Snowflake into cache
 func (s *SnowflakeStore) Load(ctx context.Context) error {
-	query := fmt.Sprintf(` // #nosec G201 -- schema is internal trusted config, values remain parameterized
+	findingsTable, err := snowflake.SafeQualifiedTableRef(s.schema, "findings")
+	if err != nil {
+		return fmt.Errorf("invalid findings table reference: %w", err)
+	}
+
+	// #nosec G202 -- findingsTable is validated via SafeQualifiedTableRef.
+	query := `
 		SELECT id, policy_id, policy_name, severity, status,
 			   resource_id, resource_type, resource_data, description,
 			   remediation, metadata,
 			   first_seen, last_seen, resolved_at, suppressed_at
-		FROM %s.findings
+		FROM ` + findingsTable + `
 		WHERE UPPER(status) != 'RESOLVED' OR resolved_at > DATEADD(day, -30, CURRENT_TIMESTAMP())
 		ORDER BY last_seen DESC
 		LIMIT 10000
-	`, s.schema)
+	`
 
 	rows, err := s.db.QueryContext(ctx, query)
 	if err != nil {
@@ -374,6 +381,11 @@ func (s *SnowflakeStore) Sync(ctx context.Context) error {
 		return nil
 	}
 
+	findingsTable, err := snowflake.SafeQualifiedTableRef(s.schema, "findings")
+	if err != nil {
+		return fmt.Errorf("invalid findings table reference: %w", err)
+	}
+
 	const batchSize = 100
 	for i := 0; i < len(findings); i += batchSize {
 		end := i + batchSize
@@ -414,8 +426,9 @@ func (s *SnowflakeStore) Sync(ctx context.Context) error {
 			)
 		}
 
-		merge := fmt.Sprintf(` // #nosec G201 -- schema is internal trusted config, row data remains parameterized
-			MERGE INTO %s.FINDINGS t
+		// #nosec G202 -- findingsTable is validated and VALUES placeholders are generated internally.
+		merge := `
+			MERGE INTO ` + findingsTable + ` t
 			USING (SELECT column1 AS id,
 			              column2 AS policy_id,
 			              column3 AS policy_name,
@@ -430,7 +443,7 @@ func (s *SnowflakeStore) Sync(ctx context.Context) error {
 			              column12 AS first_seen,
 			              column13 AS last_seen,
 			              column14 AS resolved_at
-			       FROM VALUES %s) s
+			       FROM VALUES ` + strings.Join(values, ",") + `) s
 			ON t.ID = s.id
 			WHEN MATCHED THEN UPDATE SET
 				LAST_SEEN = s.last_seen,
@@ -450,7 +463,7 @@ func (s *SnowflakeStore) Sync(ctx context.Context) error {
 				s.resource_id, s.resource_type, PARSE_JSON(s.resource_data), s.description,
 				s.remediation, PARSE_JSON(s.metadata), s.first_seen, s.last_seen, s.resolved_at
 			)
-		`, s.schema, strings.Join(values, ","))
+		`
 		if _, err := s.db.ExecContext(ctx, merge, args...); err != nil {
 			return fmt.Errorf("sync findings batch: %w", err)
 		}

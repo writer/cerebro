@@ -512,9 +512,9 @@ func (sim *AttackPathSimulator) markVisited(visited []uint64, nodeID string) {
 		return
 	}
 	word := index / 64
-	bit := uint(index % 64)
+	bit := index % 64
 	if word >= 0 && word < len(visited) {
-		visited[word] |= 1 << bit
+		visited[word] |= uint64(1) << bit
 	}
 }
 
@@ -524,11 +524,11 @@ func (sim *AttackPathSimulator) isVisited(visited []uint64, nodeID string) bool 
 		return false
 	}
 	word := index / 64
-	bit := uint(index % 64)
+	bit := index % 64
 	if word < 0 || word >= len(visited) {
 		return false
 	}
-	return visited[word]&(1<<bit) != 0
+	return visited[word]&(uint64(1)<<bit) != 0
 }
 
 func cloneVisitedBits(visited []uint64) []uint64 {

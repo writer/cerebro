@@ -3,9 +3,9 @@ package sync
 import (
 	"context"
 	crand "crypto/rand"
-	"encoding/binary"
 	"errors"
 	"log/slog"
+	"math/big"
 	"strings"
 	"time"
 
@@ -38,12 +38,12 @@ func randomInt63n(max int64) int64 {
 		return 0
 	}
 
-	var b [8]byte
-	if _, err := crand.Read(b[:]); err != nil {
+	n, err := crand.Int(crand.Reader, big.NewInt(max))
+	if err != nil {
 		return 0
 	}
 
-	return int64(binary.BigEndian.Uint64(b[:]) % uint64(max))
+	return n.Int64()
 }
 
 func isAWSRateLimitError(err error) bool {
