@@ -201,6 +201,12 @@ func (a *App) Close() error {
 		}
 	}
 
+	if a.Webhooks != nil {
+		if err := a.Webhooks.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("webhooks: %w", err))
+		}
+	}
+
 	// Stop scheduler if running
 	if a.Scheduler != nil {
 		a.Scheduler.Stop()

@@ -37,6 +37,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/writerinternal/cerebro/internal/agents"
@@ -374,6 +375,18 @@ type Config struct {
 	// Webhooks
 	WebhookURLs []string
 
+	// NATS JetStream event publishing
+	NATSJetStreamEnabled        bool
+	NATSJetStreamURLs           []string
+	NATSJetStreamStream         string
+	NATSJetStreamSubjectPrefix  string
+	NATSJetStreamSource         string
+	NATSJetStreamOutboxPath     string
+	NATSJetStreamPublishTimeout time.Duration
+	NATSJetStreamRetryAttempts  int
+	NATSJetStreamRetryBackoff   time.Duration
+	NATSJetStreamFlushInterval  time.Duration
+
 	// Notifications
 	SlackWebhookURL    string
 	SlackSigningSecret string
@@ -572,6 +585,16 @@ func LoadConfig() *Config {
 		CloudTrailTrailARN:                 getEnv("CLOUDTRAIL_TRAIL_ARN", ""),
 		CloudTrailLookbackDays:             getEnvInt("CLOUDTRAIL_LOOKBACK_DAYS", 7),
 		WebhookURLs:                        splitCSV(getEnv("WEBHOOK_URLS", "")),
+		NATSJetStreamEnabled:               getEnvBool("NATS_JETSTREAM_ENABLED", false),
+		NATSJetStreamURLs:                  splitCSV(getEnv("NATS_URLS", "nats://127.0.0.1:4222")),
+		NATSJetStreamStream:                getEnv("NATS_JETSTREAM_STREAM", "CEREBRO_EVENTS"),
+		NATSJetStreamSubjectPrefix:         getEnv("NATS_JETSTREAM_SUBJECT_PREFIX", "cerebro.events"),
+		NATSJetStreamSource:                getEnv("NATS_JETSTREAM_SOURCE", "cerebro"),
+		NATSJetStreamOutboxPath:            getEnv("NATS_JETSTREAM_OUTBOX_PATH", filepath.Join(findings.DefaultFilePath(), "jetstream-outbox.jsonl")),
+		NATSJetStreamPublishTimeout:        getEnvDuration("NATS_JETSTREAM_PUBLISH_TIMEOUT", 3*time.Second),
+		NATSJetStreamRetryAttempts:         getEnvInt("NATS_JETSTREAM_RETRY_ATTEMPTS", 3),
+		NATSJetStreamRetryBackoff:          getEnvDuration("NATS_JETSTREAM_RETRY_BACKOFF", 500*time.Millisecond),
+		NATSJetStreamFlushInterval:         getEnvDuration("NATS_JETSTREAM_FLUSH_INTERVAL", 10*time.Second),
 		SlackWebhookURL:                    getEnv("SLACK_WEBHOOK_URL", ""),
 		SlackSigningSecret:                 getEnv("SLACK_SIGNING_SECRET", ""),
 		PagerDutyKey:                       getEnv("PAGERDUTY_ROUTING_KEY", ""),

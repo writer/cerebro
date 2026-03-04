@@ -9,6 +9,7 @@ import (
 
 	"github.com/writerinternal/cerebro/internal/auth"
 	"github.com/writerinternal/cerebro/internal/runtime"
+	"github.com/writerinternal/cerebro/internal/webhooks"
 )
 
 func (s *Server) listThreatFeeds(w http.ResponseWriter, r *http.Request) {
@@ -28,6 +29,14 @@ func (s *Server) syncThreatFeed(w http.ResponseWriter, r *http.Request) {
 	if err := s.app.ThreatIntel.SyncFeed(r.Context(), id); err != nil {
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
+	}
+	if s.app.Webhooks != nil {
+		if err := s.app.Webhooks.EmitWithErrors(r.Context(), webhooks.EventThreatIntelSynced, map[string]interface{}{
+			"feed_id":      id,
+			"triggered_by": GetUserID(r.Context()),
+		}); err != nil {
+			s.app.Logger.Warn("failed to emit threat intel sync event", "feed_id", id, "error", err)
+		}
 	}
 	s.json(w, http.StatusOK, map[string]string{"status": "synced"})
 }
@@ -112,6 +121,15 @@ func (s *Server) ingestRuntimeEvent(w http.ResponseWriter, r *http.Request) {
 	if s.app.RuntimeRespond != nil {
 		for _, f := range findings {
 			_, _ = s.app.RuntimeRespond.ProcessFinding(r.Context(), &f)
+		}
+	}
+
+	if s.app.Webhooks != nil {
+		if err := s.app.Webhooks.EmitWithErrors(r.Context(), webhooks.EventRuntimeIngested, map[string]interface{}{
+			"source":   "runtime_event",
+			"findings": len(findings),
+		}); err != nil {
+			s.app.Logger.Warn("failed to emit runtime ingest event", "error", err)
 		}
 	}
 
@@ -278,6 +296,16 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if s.app.Webhooks != nil {
+		if err := s.app.Webhooks.EmitWithErrors(r.Context(), webhooks.EventRbacUserCreated, map[string]interface{}{
+			"user_id":    user.ID,
+			"tenant_id":  user.TenantID,
+			"created_by": userID,
+		}); err != nil {
+			s.app.Logger.Warn("failed to emit RBAC user event", "user_id", user.ID, "error", err)
+		}
+	}
+
 	s.json(w, http.StatusCreated, user)
 }
 
@@ -323,6 +351,16 @@ func (s *Server) assignRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if s.app.Webhooks != nil {
+		if err := s.app.Webhooks.EmitWithErrors(r.Context(), webhooks.EventRbacRoleAssigned, map[string]interface{}{
+			"target_user_id": targetUserID,
+			"role_id":        req.RoleID,
+			"assigned_by":    currentUserID,
+		}); err != nil {
+			s.app.Logger.Warn("failed to emit RBAC role assignment event", "target_user_id", targetUserID, "role_id", req.RoleID, "error", err)
+		}
+	}
+
 	s.json(w, http.StatusOK, map[string]string{"status": "assigned"})
 }
 
@@ -358,6 +396,15 @@ func (s *Server) createTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if s.app.Webhooks != nil {
+		if err := s.app.Webhooks.EmitWithErrors(r.Context(), webhooks.EventRbacTenantCreated, map[string]interface{}{
+			"tenant_id":  tenant.ID,
+			"created_by": userID,
+		}); err != nil {
+			s.app.Logger.Warn("failed to emit RBAC tenant event", "tenant_id", tenant.ID, "error", err)
+		}
+	}
+
 	s.json(w, http.StatusCreated, tenant)
 }
 
@@ -388,6 +435,18 @@ func (s *Server) ingestTelemetry(w http.ResponseWriter, r *http.Request) {
 					_, _ = s.app.RuntimeRespond.ProcessFinding(r.Context(), &f)
 				}
 			}
+		}
+	}
+
+	if s.app.Webhooks != nil {
+		if err := s.app.Webhooks.EmitWithErrors(r.Context(), webhooks.EventRuntimeIngested, map[string]interface{}{
+			"source":           "telemetry",
+			"events_processed": len(payload.Events),
+			"findings":         totalFindings,
+			"node":             payload.Node,
+			"cluster":          payload.Cluster,
+		}); err != nil {
+			s.app.Logger.Warn("failed to emit telemetry ingest event", "error", err)
 		}
 	}
 

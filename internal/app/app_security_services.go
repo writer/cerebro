@@ -65,6 +65,14 @@ func (a *App) initThreatIntel(ctx context.Context) {
 			return
 		}
 		stats := a.ThreatIntel.Stats()
+		if a.Webhooks != nil {
+			if err := a.Webhooks.EmitWithErrors(syncCtx, webhooks.EventThreatIntelSynced, map[string]interface{}{
+				"feed_count":       stats["feed_count"],
+				"total_indicators": stats["total_indicators"],
+			}); err != nil {
+				a.Logger.Warn("failed to emit threat intel synced event", "error", err)
+			}
+		}
 		a.Logger.Info("threat intel feeds synced", "indicators", stats["total_indicators"])
 	}()
 }

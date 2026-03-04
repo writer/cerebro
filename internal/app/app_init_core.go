@@ -11,6 +11,7 @@ import (
 	agentproviders "github.com/writerinternal/cerebro/internal/agents/providers"
 	"github.com/writerinternal/cerebro/internal/attackpath"
 	"github.com/writerinternal/cerebro/internal/cache"
+	"github.com/writerinternal/cerebro/internal/events"
 	"github.com/writerinternal/cerebro/internal/findings"
 	"github.com/writerinternal/cerebro/internal/identity"
 	"github.com/writerinternal/cerebro/internal/metrics"
@@ -249,6 +250,8 @@ func (a *App) initAttackPath() {
 
 func (a *App) initWebhooks() {
 	a.Webhooks = webhooks.NewService()
+	a.initJetStreamEventPublisher()
+
 	if len(a.Config.WebhookURLs) == 0 {
 		return
 	}
@@ -261,6 +264,35 @@ func (a *App) initWebhooks() {
 		}
 		a.Logger.Info("registered webhook", "id", webhook.ID, "url", webhook.URL)
 	}
+}
+
+func (a *App) initJetStreamEventPublisher() {
+	if !a.Config.NATSJetStreamEnabled {
+		return
+	}
+
+	publisher, err := events.NewJetStreamPublisher(events.JetStreamConfig{
+		URLs:           a.Config.NATSJetStreamURLs,
+		Stream:         a.Config.NATSJetStreamStream,
+		SubjectPrefix:  a.Config.NATSJetStreamSubjectPrefix,
+		Source:         a.Config.NATSJetStreamSource,
+		OutboxPath:     a.Config.NATSJetStreamOutboxPath,
+		PublishTimeout: a.Config.NATSJetStreamPublishTimeout,
+		RetryAttempts:  a.Config.NATSJetStreamRetryAttempts,
+		RetryBackoff:   a.Config.NATSJetStreamRetryBackoff,
+		FlushInterval:  a.Config.NATSJetStreamFlushInterval,
+	}, a.Logger)
+	if err != nil {
+		a.Logger.Warn("failed to initialize jetstream event publisher", "error", err)
+		return
+	}
+
+	a.Webhooks.SetEventPublisher(publisher)
+	a.Logger.Info("jetstream event publishing enabled",
+		"stream", a.Config.NATSJetStreamStream,
+		"subject_prefix", a.Config.NATSJetStreamSubjectPrefix,
+		"urls", len(a.Config.NATSJetStreamURLs),
+	)
 }
 
 func (a *App) initNotifications() {

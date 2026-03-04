@@ -11,6 +11,7 @@ import (
 	"github.com/writerinternal/cerebro/internal/notifications"
 	"github.com/writerinternal/cerebro/internal/remediation"
 	"github.com/writerinternal/cerebro/internal/scheduler"
+	"github.com/writerinternal/cerebro/internal/webhooks"
 )
 
 func (s *Server) schedulerStatus(w http.ResponseWriter, r *http.Request) {
@@ -48,6 +49,14 @@ func (s *Server) runJob(w http.ResponseWriter, r *http.Request) {
 			s.error(w, http.StatusInternalServerError, err.Error())
 		}
 		return
+	}
+	if s.app.Webhooks != nil {
+		if err := s.app.Webhooks.EmitWithErrors(r.Context(), webhooks.EventSchedulerJobRun, map[string]interface{}{
+			"job_name":     name,
+			"triggered_by": GetUserID(r.Context()),
+		}); err != nil {
+			s.app.Logger.Warn("failed to emit scheduler job event", "job", name, "error", err)
+		}
 	}
 	s.json(w, http.StatusAccepted, map[string]string{"status": "job triggered"})
 }
@@ -133,6 +142,16 @@ func (s *Server) createRemediationRule(w http.ResponseWriter, r *http.Request) {
 	if err := s.app.Remediation.AddRule(rule); err != nil {
 		s.error(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+
+	if s.app.Webhooks != nil {
+		if err := s.app.Webhooks.EmitWithErrors(r.Context(), webhooks.EventRemediationRule, map[string]interface{}{
+			"rule_id":    rule.ID,
+			"rule_name":  rule.Name,
+			"created_by": GetUserID(r.Context()),
+		}); err != nil {
+			s.app.Logger.Warn("failed to emit remediation rule event", "rule_id", rule.ID, "error", err)
+		}
 	}
 
 	s.json(w, http.StatusCreated, rule)

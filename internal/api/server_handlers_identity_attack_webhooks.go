@@ -246,6 +246,15 @@ func (s *Server) createWebhook(w http.ResponseWriter, r *http.Request) {
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}
+
+	if err := s.app.Webhooks.EmitWithErrors(r.Context(), webhooks.EventWebhookCreated, map[string]interface{}{
+		"webhook_id": hook.ID,
+		"events":     hook.Events,
+		"created_by": GetUserID(r.Context()),
+	}); err != nil {
+		s.app.Logger.Warn("failed to emit webhook created event", "webhook_id", hook.ID, "error", err)
+	}
+
 	s.json(w, http.StatusCreated, map[string]interface{}{
 		"id":         hook.ID,
 		"url":        hook.URL,
