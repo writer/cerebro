@@ -77,7 +77,7 @@ func resolveLocalScanDataset() (*localScanDataset, error) {
 }
 
 func loadLocalFixtureTables(path string) (map[string][]map[string]interface{}, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 G703 -- path from CLI flag/env var, not untrusted input
 	if err != nil {
 		return nil, fmt.Errorf("read local fixture %q: %w", path, err)
 	}
@@ -119,7 +119,7 @@ func loadSnapshotTables(dir string) (map[string][]map[string]interface{}, error)
 		}
 
 		path := filepath.Join(dir, name)
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(path) // #nosec G304 G703 -- dir from CLI flag/env var, name from os.ReadDir entries
 		if err != nil {
 			return nil, fmt.Errorf("read snapshot file %q: %w", path, err)
 		}

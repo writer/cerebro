@@ -46,7 +46,7 @@ func (o *fileOutbox) enqueue(record outboxRecord) error {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
-	if err := os.MkdirAll(filepath.Dir(o.path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(o.path), 0o755); err != nil { // #nosec G301 -- outbox dir under app-controlled path, needs 0755 for sibling processes
 		return fmt.Errorf("create outbox dir: %w", err)
 	}
 
@@ -131,7 +131,7 @@ func (o *fileOutbox) rewrite(records [][]byte) error {
 	buf = append(buf, '\n')
 
 	tmpPath := o.path + ".tmp"
-	if err := os.WriteFile(tmpPath, buf, 0o600); err != nil {
+	if err := os.WriteFile(tmpPath, buf, 0o600); err != nil { // #nosec G703 -- path derived from o.path set at construction, not user input
 		return fmt.Errorf("write outbox temp file: %w", err)
 	}
 	if err := os.Rename(tmpPath, o.path); err != nil {
