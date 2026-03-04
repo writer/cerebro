@@ -175,6 +175,8 @@ optional_secrets = [
     "SLACK_WEBHOOK_URL",
     "JIRA_API_TOKEN",
     "LINEAR_API_KEY",
+    "KANDJI_API_TOKEN",
+    "KANDJI_API_URL",
 ]
 for key in optional_secrets:
     if config.get_bool(f"enable{key.replace('_', ' ').title().replace(' ', '')}"):

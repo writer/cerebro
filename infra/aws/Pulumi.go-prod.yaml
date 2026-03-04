@@ -18,6 +18,8 @@ config:
   cerebro:tailscaleAdvertiseRoutes:
     - "10.20.0.0/18"
     - "10.20.128.0/18"
+  cerebro:enableKandjiApiToken: true
+  cerebro:enableKandjiApiUrl: true
   cerebro:enableInfisicalSyncRole: true
   cerebro:useExternalSecrets: true
   cerebro:infisicalAssumeRolePrincipalArn: "arn:aws:iam::381492033652:root"
