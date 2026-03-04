@@ -193,6 +193,62 @@ var (
 		},
 	)
 
+	JetStreamPublishTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_jetstream_publish_total",
+			Help: "Total number of JetStream publish attempts",
+		},
+		[]string{"stream", "result"},
+	)
+
+	JetStreamOutboxFlushTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_jetstream_outbox_flush_total",
+			Help: "Total number of JetStream outbox flush operations",
+		},
+		[]string{"stream", "result"},
+	)
+
+	JetStreamOutboxDepth = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "cerebro_jetstream_outbox_depth",
+			Help: "Current number of queued records in the JetStream outbox",
+		},
+		[]string{"stream"},
+	)
+
+	JetStreamOutboxOldestAge = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "cerebro_jetstream_outbox_oldest_age_seconds",
+			Help: "Age in seconds of the oldest queued outbox record",
+		},
+		[]string{"stream"},
+	)
+
+	JetStreamPublisherReady = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "cerebro_jetstream_publisher_ready",
+			Help: "JetStream publisher readiness (1 ready, 0 not ready)",
+		},
+		[]string{"stream"},
+	)
+
+	JetStreamOutboxBackpressureLevel = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "cerebro_jetstream_outbox_backpressure_level",
+			Help: "JetStream outbox backpressure level (0 normal, 1 warning, 2 critical, 3 unknown)",
+		},
+		[]string{"stream"},
+	)
+
+	JetStreamBackpressureAlertsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_jetstream_backpressure_alerts_total",
+			Help: "Number of JetStream outbox backpressure alert transitions",
+		},
+		[]string{"stream", "level"},
+	)
+
 	// Notification metrics
 	NotificationsSent = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -301,6 +357,13 @@ func Register() {
 			// Webhooks
 			WebhookDeliveriesTotal,
 			WebhookDeliveryDuration,
+			JetStreamPublishTotal,
+			JetStreamOutboxFlushTotal,
+			JetStreamOutboxDepth,
+			JetStreamOutboxOldestAge,
+			JetStreamPublisherReady,
+			JetStreamOutboxBackpressureLevel,
+			JetStreamBackpressureAlertsTotal,
 			// Notifications
 			NotificationsSent,
 			// Scheduler
@@ -406,6 +469,93 @@ func RecordScheduledAuthPreflight(provider, authMethod string, success bool) {
 		authMethod = "unknown"
 	}
 	ScheduledAuthPreflightTotal.WithLabelValues(provider, authMethod, status).Inc()
+}
+
+func RecordJetStreamPublish(stream, result string) {
+	if strings.TrimSpace(stream) == "" {
+		stream = "unknown"
+	}
+	if strings.TrimSpace(result) == "" {
+		result = "unknown"
+	}
+	JetStreamPublishTotal.WithLabelValues(stream, result).Inc()
+}
+
+func RecordJetStreamOutboxFlush(stream, result string, count int) {
+	if count <= 0 {
+		return
+	}
+	if strings.TrimSpace(stream) == "" {
+		stream = "unknown"
+	}
+	if strings.TrimSpace(result) == "" {
+		result = "unknown"
+	}
+	JetStreamOutboxFlushTotal.WithLabelValues(stream, result).Add(float64(count))
+}
+
+func SetJetStreamOutboxDepth(stream string, depth int) {
+	if strings.TrimSpace(stream) == "" {
+		stream = "unknown"
+	}
+	if depth < 0 {
+		depth = 0
+	}
+	JetStreamOutboxDepth.WithLabelValues(stream).Set(float64(depth))
+}
+
+func SetJetStreamOutboxOldestAge(stream string, age time.Duration) {
+	if strings.TrimSpace(stream) == "" {
+		stream = "unknown"
+	}
+	if age < 0 {
+		age = 0
+	}
+	JetStreamOutboxOldestAge.WithLabelValues(stream).Set(age.Seconds())
+}
+
+func SetJetStreamPublisherReady(stream string, ready bool) {
+	if strings.TrimSpace(stream) == "" {
+		stream = "unknown"
+	}
+	if ready {
+		JetStreamPublisherReady.WithLabelValues(stream).Set(1)
+		return
+	}
+	JetStreamPublisherReady.WithLabelValues(stream).Set(0)
+}
+
+func SetJetStreamOutboxBackpressureLevel(stream, level string) {
+	if strings.TrimSpace(stream) == "" {
+		stream = "unknown"
+	}
+
+	value := 0.0
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "normal":
+		value = 0
+	case "warning":
+		value = 1
+	case "critical":
+		value = 2
+	case "unknown":
+		value = 3
+	default:
+		value = 3
+	}
+
+	JetStreamOutboxBackpressureLevel.WithLabelValues(stream).Set(value)
+}
+
+func RecordJetStreamBackpressureAlert(stream, level string) {
+	if strings.TrimSpace(stream) == "" {
+		stream = "unknown"
+	}
+	level = strings.ToLower(strings.TrimSpace(level))
+	if level == "" {
+		level = "unknown"
+	}
+	JetStreamBackpressureAlertsTotal.WithLabelValues(stream, level).Inc()
 }
 
 // UpdateFindingsMetrics updates findings gauge metrics
