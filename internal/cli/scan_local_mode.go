@@ -334,12 +334,7 @@ func scanOneLocalTable(ctx context.Context, application *app.App, table string, 
 
 	for _, f := range result.Findings {
 		application.Findings.Upsert(tableCtx, f)
-		findings = append(findings, map[string]interface{}{
-			"id":          f.ID,
-			"policy_id":   f.PolicyID,
-			"resource_id": f.ResourceID,
-			"severity":    f.Severity,
-		})
+		findings = append(findings, policyFindingToMap(f, findingSourcePolicy, nil))
 	}
 
 	if toxicCombos && !graphAvailable {
@@ -347,14 +342,10 @@ func scanOneLocalTable(ctx context.Context, application *app.App, table string, 
 		violations += int64(len(toxicFindings))
 		for _, f := range toxicFindings {
 			application.Findings.Upsert(tableCtx, f)
-			findings = append(findings, map[string]interface{}{
-				"id":          f.ID,
-				"policy_id":   f.PolicyID,
-				"resource_id": f.ResourceID,
-				"severity":    f.Severity,
+			findings = append(findings, policyFindingToMap(f, findingSourceToxicCombo, map[string]interface{}{
 				"toxic_combo": true,
 				"graph_based": false,
-			})
+			}))
 		}
 	}
 

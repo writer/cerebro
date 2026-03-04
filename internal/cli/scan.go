@@ -51,6 +51,16 @@ var (
 	scanSnapshotDir          string
 )
 
+const (
+	findingSourcePolicy             = "policy"
+	findingSourceQueryPolicy        = "query_policy"
+	findingSourceToxicCombo         = "toxic_combo"
+	findingSourceToxicComboGraph    = "toxic_combo_graph"
+	findingSourceToxicRelationship  = "toxic_combo_relationship"
+	defaultSummaryTopLimit          = 5
+	defaultRemediationPolicyIDLimit = 3
+)
+
 func init() {
 	scanCmd.Flags().StringSliceVarP(&scanTables, "table", "t", nil, "Tables to scan (can specify multiple: -t table1 -t table2)")
 	scanCmd.Flags().IntVarP(&scanLimit, "limit", "l", 500, "Maximum assets to scan per table")
@@ -268,18 +278,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 		if queryPolicyFindingCount > 0 {
 			for _, f := range queryPolicyResult.Findings {
 				application.Findings.Upsert(ctx, f)
-				allFindings = append(allFindings, map[string]interface{}{
-					"id":              f.ID,
-					"policy_id":       f.PolicyID,
-					"title":           f.Title,
-					"description":     f.Description,
-					"resource_id":     f.ResourceID,
-					"resource_name":   f.ResourceName,
-					"severity":        f.Severity,
-					"risk_categories": f.RiskCategories,
-					"remediation":     f.Remediation,
-					"query_policy":    true,
-				})
+				allFindings = append(allFindings, policyFindingToMap(f, findingSourceQueryPolicy, map[string]interface{}{"query_policy": true}))
 			}
 			totalViolations += int64(queryPolicyFindingCount)
 			fmt.Printf("\nQuery-policy findings: %d\n", queryPolicyFindingCount)
@@ -368,19 +367,10 @@ func runScan(cmd *cobra.Command, args []string) error {
 				}
 				application.Findings.Upsert(ctx, f)
 				graphToxicCount++
-				allFindings = append(allFindings, map[string]interface{}{
-					"id":              f.ID,
-					"policy_id":       f.PolicyID,
-					"title":           f.Title,
-					"description":     f.Description,
-					"resource_id":     f.ResourceID,
-					"resource_name":   f.ResourceName,
-					"severity":        f.Severity,
-					"risk_categories": f.RiskCategories,
-					"remediation":     f.Remediation,
-					"toxic_combo":     true,
-					"graph_based":     true,
-				})
+				allFindings = append(allFindings, policyFindingToMap(f, findingSourceToxicComboGraph, map[string]interface{}{
+					"toxic_combo": true,
+					"graph_based": true,
+				}))
 			}
 
 			for _, ap := range graphResult.AttackPaths {
@@ -476,6 +466,8 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 
 	toxicSummary := summarizeToxicCombos(allFindings)
+	policyHotspots := summarizePolicyHotspots(allFindings, defaultSummaryTopLimit)
+	remediationActions := summarizeRemediationActions(allFindings, defaultSummaryTopLimit)
 	wmResult := <-wmResultCh
 	var watermarkInfo map[string]interface{}
 	if wmResult.attempted {
@@ -502,6 +494,8 @@ func runScan(cmd *cobra.Command, args []string) error {
 			"attack_path_stats":       graphStats,
 			"attack_path_chokepoints": graphChokepoints,
 			"toxic_combo_summary":     toxicSummary,
+			"policy_hotspots":         policyHotspots,
+			"remediation_actions":     remediationActions,
 		}
 		payload["scan_profile"] = scanProfilePayload(profileSummary, slowTables, tuning.ProfileSlowThreshold)
 		if coverageReport != nil {
@@ -524,7 +518,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 				toString(f["title"]),
 				toString(f["resource_id"]),
 				toString(f["resource_name"]),
-				toString(f["risks"]),
+				findingRiskString(f),
 				toString(f["toxic_combo"]),
 			})
 		}
@@ -621,6 +615,49 @@ func runScan(cmd *cobra.Command, args []string) error {
 				fmt.Printf("    %s: %d combos (max %s)%s\n", label, r.Count, r.HighestSeverity, dev)
 			}
 		}
+	}
+
+	if len(policyHotspots) > 0 {
+		fmt.Println("\nPolicy hotspots:")
+		for _, hotspot := range policyHotspots {
+			policyLabel := hotspot.PolicyID
+			if hotspot.PolicyName != "" && !strings.EqualFold(hotspot.PolicyName, hotspot.PolicyID) {
+				policyLabel = fmt.Sprintf("%s (%s)", hotspot.PolicyID, truncateStr(hotspot.PolicyName, 42))
+			}
+			example := ""
+			if hotspot.SampleResource != "" {
+				example = fmt.Sprintf(", e.g. %s", truncateStr(hotspot.SampleResource, 48))
+			}
+			fmt.Printf("  %s %s: %d findings across %d resources%s\n",
+				severityLabel(hotspot.HighestSeverity),
+				policyLabel,
+				hotspot.Count,
+				hotspot.ResourceCount,
+				example,
+			)
+		}
+	}
+
+	if len(remediationActions) > 0 {
+		fmt.Println("\nPriority remediation actions:")
+		for _, remediation := range remediationActions {
+			policyHint := ""
+			if len(remediation.PolicyIDs) > 0 {
+				policyHint = fmt.Sprintf(" [policies: %s]", strings.Join(remediation.PolicyIDs, ", "))
+			}
+			example := ""
+			if remediation.ExampleResource != "" {
+				example = fmt.Sprintf(" (e.g. %s)", truncateStr(remediation.ExampleResource, 40))
+			}
+			fmt.Printf("  %s x%d %s%s%s\n",
+				severityLabel(remediation.HighestSeverity),
+				remediation.Count,
+				truncateStr(remediation.Remediation, 96),
+				policyHint,
+				example,
+			)
+		}
+		fmt.Println("Next step:       cerebro findings list --severity critical,high --output table")
 	}
 
 	// Show top resources with the most findings (helps prioritize remediation)
@@ -743,6 +780,281 @@ type toxicComboResourceSummary struct {
 	Count           int    `json:"count"`
 	HighestSeverity string `json:"highest_severity"`
 	DevEnvironment  bool   `json:"dev_environment"`
+}
+
+type policyHotspotSummary struct {
+	PolicyID        string `json:"policy_id"`
+	PolicyName      string `json:"policy_name,omitempty"`
+	Title           string `json:"title,omitempty"`
+	Count           int    `json:"count"`
+	HighestSeverity string `json:"highest_severity"`
+	ResourceCount   int    `json:"resource_count"`
+	SampleResource  string `json:"sample_resource,omitempty"`
+}
+
+type remediationActionSummary struct {
+	Remediation     string   `json:"remediation"`
+	Count           int      `json:"count"`
+	HighestSeverity string   `json:"highest_severity"`
+	PolicyIDs       []string `json:"policy_ids,omitempty"`
+	ExampleResource string   `json:"example_resource,omitempty"`
+}
+
+func summarizePolicyHotspots(findings []map[string]interface{}, limit int) []policyHotspotSummary {
+	if limit <= 0 || len(findings) == 0 {
+		return nil
+	}
+
+	type aggregate struct {
+		summary     policyHotspotSummary
+		resourceSet map[string]struct{}
+	}
+
+	aggregates := make(map[string]*aggregate)
+	for _, finding := range findings {
+		policyID := strings.TrimSpace(toString(finding["policy_id"]))
+		if policyID == "" {
+			continue
+		}
+
+		agg := aggregates[policyID]
+		if agg == nil {
+			title := strings.TrimSpace(toString(finding["title"]))
+			if title == "" {
+				title = policyID
+			}
+			agg = &aggregate{
+				summary: policyHotspotSummary{
+					PolicyID:        policyID,
+					PolicyName:      strings.TrimSpace(toString(finding["policy_name"])),
+					Title:           title,
+					HighestSeverity: strings.ToUpper(strings.TrimSpace(toString(finding["severity"]))),
+				},
+				resourceSet: make(map[string]struct{}),
+			}
+			aggregates[policyID] = agg
+		}
+
+		agg.summary.Count++
+		severity := strings.ToUpper(strings.TrimSpace(toString(finding["severity"])))
+		if sevRank(severity) > sevRank(agg.summary.HighestSeverity) {
+			agg.summary.HighestSeverity = severity
+		}
+		if agg.summary.PolicyName == "" {
+			agg.summary.PolicyName = strings.TrimSpace(toString(finding["policy_name"]))
+		}
+
+		resourceID := normalizeResourceID(toString(finding["resource_id"]))
+		if resourceID != "" {
+			agg.resourceSet[resourceID] = struct{}{}
+			if agg.summary.SampleResource == "" {
+				resourceName := strings.TrimSpace(toString(finding["resource_name"]))
+				if resourceName == "" {
+					resourceName = resourceID
+				}
+				agg.summary.SampleResource = resourceName
+			}
+		}
+	}
+
+	if len(aggregates) == 0 {
+		return nil
+	}
+
+	summary := make([]policyHotspotSummary, 0, len(aggregates))
+	for _, agg := range aggregates {
+		agg.summary.ResourceCount = len(agg.resourceSet)
+		summary = append(summary, agg.summary)
+	}
+
+	sort.Slice(summary, func(i, j int) bool {
+		if summary[i].Count == summary[j].Count {
+			if sevRank(summary[i].HighestSeverity) == sevRank(summary[j].HighestSeverity) {
+				return summary[i].PolicyID < summary[j].PolicyID
+			}
+			return sevRank(summary[i].HighestSeverity) > sevRank(summary[j].HighestSeverity)
+		}
+		return summary[i].Count > summary[j].Count
+	})
+
+	if len(summary) > limit {
+		summary = summary[:limit]
+	}
+
+	return summary
+}
+
+func summarizeRemediationActions(findings []map[string]interface{}, limit int) []remediationActionSummary {
+	if limit <= 0 || len(findings) == 0 {
+		return nil
+	}
+
+	type aggregate struct {
+		summary   remediationActionSummary
+		policySet map[string]struct{}
+	}
+
+	aggregates := make(map[string]*aggregate)
+	for _, finding := range findings {
+		remediation := strings.TrimSpace(toString(finding["remediation"]))
+		if remediation == "" {
+			continue
+		}
+
+		key := strings.ToLower(remediation)
+		agg := aggregates[key]
+		if agg == nil {
+			agg = &aggregate{
+				summary: remediationActionSummary{
+					Remediation:     remediation,
+					HighestSeverity: strings.ToUpper(strings.TrimSpace(toString(finding["severity"]))),
+				},
+				policySet: make(map[string]struct{}),
+			}
+			aggregates[key] = agg
+		}
+
+		agg.summary.Count++
+		severity := strings.ToUpper(strings.TrimSpace(toString(finding["severity"])))
+		if sevRank(severity) > sevRank(agg.summary.HighestSeverity) {
+			agg.summary.HighestSeverity = severity
+		}
+
+		if policyID := strings.TrimSpace(toString(finding["policy_id"])); policyID != "" {
+			agg.policySet[policyID] = struct{}{}
+		}
+
+		if agg.summary.ExampleResource == "" {
+			resourceLabel := strings.TrimSpace(toString(finding["resource_name"]))
+			if resourceLabel == "" {
+				resourceLabel = normalizeResourceID(toString(finding["resource_id"]))
+			}
+			agg.summary.ExampleResource = resourceLabel
+		}
+	}
+
+	if len(aggregates) == 0 {
+		return nil
+	}
+
+	summary := make([]remediationActionSummary, 0, len(aggregates))
+	for _, agg := range aggregates {
+		policyIDs := make([]string, 0, len(agg.policySet))
+		for policyID := range agg.policySet {
+			policyIDs = append(policyIDs, policyID)
+		}
+		sort.Strings(policyIDs)
+		if len(policyIDs) > defaultRemediationPolicyIDLimit {
+			policyIDs = policyIDs[:defaultRemediationPolicyIDLimit]
+		}
+		agg.summary.PolicyIDs = policyIDs
+		summary = append(summary, agg.summary)
+	}
+
+	sort.Slice(summary, func(i, j int) bool {
+		if summary[i].Count == summary[j].Count {
+			if sevRank(summary[i].HighestSeverity) == sevRank(summary[j].HighestSeverity) {
+				return summary[i].Remediation < summary[j].Remediation
+			}
+			return sevRank(summary[i].HighestSeverity) > sevRank(summary[j].HighestSeverity)
+		}
+		return summary[i].Count > summary[j].Count
+	})
+
+	if len(summary) > limit {
+		summary = summary[:limit]
+	}
+
+	return summary
+}
+
+func policyFindingToMap(f policy.Finding, source string, extras map[string]interface{}) map[string]interface{} {
+	finding := map[string]interface{}{
+		"id":              strings.TrimSpace(f.ID),
+		"policy_id":       strings.TrimSpace(f.PolicyID),
+		"policy_name":     strings.TrimSpace(f.PolicyName),
+		"title":           strings.TrimSpace(f.Title),
+		"description":     strings.TrimSpace(f.Description),
+		"severity":        strings.TrimSpace(f.Severity),
+		"resource_type":   strings.TrimSpace(f.ResourceType),
+		"resource_id":     strings.TrimSpace(f.ResourceID),
+		"resource_name":   strings.TrimSpace(f.ResourceName),
+		"risk_categories": f.RiskCategories,
+		"remediation":     strings.TrimSpace(f.Remediation),
+		"control_id":      strings.TrimSpace(f.ControlID),
+		"source":          strings.TrimSpace(source),
+	}
+	if len(f.Frameworks) > 0 {
+		finding["frameworks"] = f.Frameworks
+	}
+	if len(f.MitreAttack) > 0 {
+		finding["mitre_attack"] = f.MitreAttack
+	}
+	for key, value := range extras {
+		finding[key] = value
+	}
+	return compactMap(finding)
+}
+
+func compactMap(input map[string]interface{}) map[string]interface{} {
+	if len(input) == 0 {
+		return map[string]interface{}{}
+	}
+
+	output := make(map[string]interface{}, len(input))
+	for key, value := range input {
+		switch v := value.(type) {
+		case nil:
+			continue
+		case string:
+			if strings.TrimSpace(v) == "" {
+				continue
+			}
+		case []string:
+			if len(v) == 0 {
+				continue
+			}
+		case []interface{}:
+			if len(v) == 0 {
+				continue
+			}
+		}
+		output[key] = value
+	}
+
+	return output
+}
+
+func findingRiskString(finding map[string]interface{}) string {
+	if risks := strings.TrimSpace(toString(finding["risks"])); risks != "" {
+		return risks
+	}
+	categories := extractRiskCategories(finding)
+	if len(categories) == 0 {
+		return ""
+	}
+	return strings.Join(categories, ", ")
+}
+
+func severityLabel(severity string) string {
+	sev := strings.ToUpper(strings.TrimSpace(severity))
+	if sev == "" {
+		sev = "UNKNOWN"
+	}
+	var colorCode string
+	switch sev {
+	case "CRITICAL":
+		colorCode = colorRed
+	case "HIGH":
+		colorCode = colorYellow
+	case "MEDIUM":
+		colorCode = colorBlue
+	case "LOW":
+		colorCode = colorGray
+	default:
+		colorCode = colorCyan
+	}
+	return color(colorCode, "["+sev+"]")
 }
 
 func summarizeToxicCombos(findings []map[string]interface{}) toxicComboSummary {
@@ -1002,6 +1314,7 @@ func relationshipFindingToMap(f scanner.RelationshipToxicFinding) map[string]int
 		"description":     f.Description,
 		"risks":           f.Risks,
 		"toxic_combo":     true,
+		"source":          findingSourceToxicRelationship,
 	}
 }
 
@@ -1198,12 +1511,7 @@ func scanOneTable(ctx context.Context, application *app.App, table string, full 
 
 		for _, f := range result.Findings {
 			application.Findings.Upsert(tableCtx, f)
-			findings = append(findings, map[string]interface{}{
-				"id":          f.ID,
-				"policy_id":   f.PolicyID,
-				"resource_id": f.ResourceID,
-				"severity":    f.Severity,
-			})
+			findings = append(findings, policyFindingToMap(f, findingSourcePolicy, nil))
 		}
 
 		if toxicCombos && !graphAvailable {
@@ -1211,14 +1519,10 @@ func scanOneTable(ctx context.Context, application *app.App, table string, full 
 			violations += int64(len(toxicFindings))
 			for _, f := range toxicFindings {
 				application.Findings.Upsert(tableCtx, f)
-				findings = append(findings, map[string]interface{}{
-					"id":          f.ID,
-					"policy_id":   f.PolicyID,
-					"resource_id": f.ResourceID,
-					"severity":    f.Severity,
+				findings = append(findings, policyFindingToMap(f, findingSourceToxicCombo, map[string]interface{}{
 					"toxic_combo": true,
 					"graph_based": false,
-				})
+				}))
 			}
 		}
 
@@ -1259,12 +1563,7 @@ func scanOneTable(ctx context.Context, application *app.App, table string, full 
 
 			for _, f := range result.Findings {
 				application.Findings.Upsert(tableCtx, f)
-				findings = append(findings, map[string]interface{}{
-					"id":          f.ID,
-					"policy_id":   f.PolicyID,
-					"resource_id": f.ResourceID,
-					"severity":    f.Severity,
-				})
+				findings = append(findings, policyFindingToMap(f, findingSourcePolicy, nil))
 			}
 
 			if toxicCombos && !graphAvailable {
@@ -1272,14 +1571,10 @@ func scanOneTable(ctx context.Context, application *app.App, table string, full 
 				violations += int64(len(toxicFindings))
 				for _, f := range toxicFindings {
 					application.Findings.Upsert(tableCtx, f)
-					findings = append(findings, map[string]interface{}{
-						"id":          f.ID,
-						"policy_id":   f.PolicyID,
-						"resource_id": f.ResourceID,
-						"severity":    f.Severity,
+					findings = append(findings, policyFindingToMap(f, findingSourceToxicCombo, map[string]interface{}{
 						"toxic_combo": true,
 						"graph_based": false,
-					})
+					}))
 				}
 			}
 
