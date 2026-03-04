@@ -325,7 +325,7 @@ func (o *fileOutbox) writeRecordsLocked(records []outboxRecord) error {
 		return nil
 	}
 
-	if err := os.MkdirAll(filepath.Dir(o.path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(o.path), 0o750); err != nil {
 		return fmt.Errorf("create outbox dir: %w", err)
 	}
 
@@ -342,7 +342,7 @@ func (o *fileOutbox) writeRecordsLocked(records []outboxRecord) error {
 	buf = append(buf, '\n')
 
 	tmpPath := o.path + ".tmp"
-	if err := os.WriteFile(tmpPath, buf, 0o600); err != nil {
+	if err := os.WriteFile(tmpPath, buf, 0o600); err != nil { // #nosec G703 -- path derived from o.path set at construction, not user input
 		return fmt.Errorf("write outbox temp file: %w", err)
 	}
 	if err := os.Rename(tmpPath, o.path); err != nil {
@@ -361,7 +361,7 @@ func (o *fileOutbox) quarantineLocked(record outboxDLQRecord) error {
 		record.QuarantinedAt = time.Now().UTC()
 	}
 
-	if err := os.MkdirAll(filepath.Dir(o.config.DLQPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(o.config.DLQPath), 0o750); err != nil {
 		return fmt.Errorf("create outbox dlq dir: %w", err)
 	}
 

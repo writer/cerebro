@@ -18,15 +18,17 @@ type Asset struct {
 }
 
 type AssetFilter struct {
-	Provider string
-	Type     string
-	Account  string
-	Region   string
-	Limit    int
-	Offset   int
-	Since    time.Time
-	SinceID  string
-	Columns  []string // If set, only SELECT these columns instead of *
+	Provider       string
+	Type           string
+	Account        string
+	Region         string
+	Limit          int
+	Offset         int // Deprecated: use cursor fields instead
+	Since          time.Time
+	SinceID        string
+	Columns        []string  // If set, only SELECT these columns instead of *
+	CursorSyncTime time.Time // Keyset cursor: sync time of last seen row
+	CursorID       string    // Keyset cursor: _cq_id of last seen row
 }
 
 func selectClause(columns []string) string {
@@ -79,6 +81,15 @@ func (c *Client) GetAssets(ctx context.Context, table string, filter AssetFilter
 			args = append(args, filter.Since)
 		}
 	}
+	if !filter.CursorSyncTime.IsZero() {
+		if filter.CursorID != "" {
+			conditions = append(conditions, "(_cq_sync_time > ? OR (_cq_sync_time = ? AND _cq_id > ?))")
+			args = append(args, filter.CursorSyncTime, filter.CursorSyncTime, filter.CursorID)
+		} else {
+			conditions = append(conditions, "_cq_sync_time > ?")
+			args = append(args, filter.CursorSyncTime)
+		}
+	}
 
 	if len(conditions) > 0 {
 		query += " WHERE "
@@ -90,10 +101,8 @@ func (c *Client) GetAssets(ctx context.Context, table string, filter AssetFilter
 		}
 	}
 
-	orderBy := ""
-	if !filter.Since.IsZero() {
-		orderBy = " ORDER BY _cq_sync_time ASC, _cq_id ASC"
-	}
+	// Always use stable ordering for deterministic pagination.
+	orderBy := " ORDER BY _cq_sync_time ASC, _cq_id ASC"
 
 	// Deduplicate: keep only the latest row per _cq_id (handles re-synced data)
 	query += " QUALIFY ROW_NUMBER() OVER (PARTITION BY _cq_id ORDER BY _cq_sync_time DESC) = 1"
@@ -105,7 +114,7 @@ func (c *Client) GetAssets(ctx context.Context, table string, filter AssetFilter
 	}
 	query += fmt.Sprintf(" LIMIT %d", limit)
 
-	if filter.Offset > 0 {
+	if filter.Offset > 0 && filter.Since.IsZero() && filter.CursorSyncTime.IsZero() {
 		query += fmt.Sprintf(" OFFSET %d", filter.Offset)
 	}
 

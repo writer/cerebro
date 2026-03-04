@@ -25,7 +25,13 @@ type CDCEvent struct {
 }
 
 // EnsureCDCEventsTable creates the CDC_EVENTS table if it does not exist.
+// Uses mutex + flag so transient failures don't permanently poison the cache.
 func (c *Client) EnsureCDCEventsTable(ctx context.Context) error {
+	c.cdcSchemaMu.Lock()
+	defer c.cdcSchemaMu.Unlock()
+	if c.cdcSchemaReady {
+		return nil
+	}
 	query := `CREATE TABLE IF NOT EXISTS CDC_EVENTS (
         event_id VARCHAR PRIMARY KEY,
         table_name VARCHAR,
@@ -39,8 +45,11 @@ func (c *Client) EnsureCDCEventsTable(ctx context.Context) error {
         event_time TIMESTAMP_TZ,
         ingested_at TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP()
     )`
-	_, err := c.Exec(ctx, query)
-	return err
+	if _, err := c.Exec(ctx, query); err != nil {
+		return err
+	}
+	c.cdcSchemaReady = true
+	return nil
 }
 
 // InsertCDCEvents writes CDC events idempotently to CDC_EVENTS.
@@ -51,6 +60,23 @@ func (c *Client) InsertCDCEvents(ctx context.Context, events []CDCEvent) error {
 	if err := c.EnsureCDCEventsTable(ctx); err != nil {
 		return err
 	}
+
+	const batchSize = 500
+	for i := 0; i < len(events); i += batchSize {
+		end := i + batchSize
+		if end > len(events) {
+			end = len(events)
+		}
+		if err := c.insertCDCEventBatch(ctx, events[i:end]); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *Client) insertCDCEventBatch(ctx context.Context, events []CDCEvent) error {
+	rows := make([]string, 0, len(events))
 
 	for _, event := range events {
 		eventTime := event.EventTime
@@ -69,44 +95,8 @@ func (c *Client) InsertCDCEvents(ctx context.Context, events []CDCEvent) error {
 			payloadValue = fmt.Sprintf("PARSE_JSON('%s')", escaped)
 		}
 
-		query := fmt.Sprintf(`
-            MERGE INTO CDC_EVENTS t
-            USING (
-                SELECT %s AS event_id,
-                    %s AS table_name,
-                    %s AS resource_id,
-                    %s AS change_type,
-                    %s AS provider,
-                    %s AS region,
-                    %s AS account_id,
-                    %s AS payload,
-                    %s AS payload_hash,
-                    TO_TIMESTAMP_TZ('%s') AS event_time
-            ) s
-            ON t.event_id = s.event_id
-            WHEN NOT MATCHED THEN INSERT (
-                event_id,
-                table_name,
-                resource_id,
-                change_type,
-                provider,
-                region,
-                account_id,
-                payload,
-                payload_hash,
-                event_time
-            ) VALUES (
-                s.event_id,
-                s.table_name,
-                s.resource_id,
-                s.change_type,
-                s.provider,
-                s.region,
-                s.account_id,
-                s.payload,
-                s.payload_hash,
-                s.event_time
-            )`,
+		row := fmt.Sprintf(
+			"SELECT %s AS event_id, %s AS table_name, %s AS resource_id, %s AS change_type, %s AS provider, %s AS region, %s AS account_id, %s AS payload, %s AS payload_hash, TO_TIMESTAMP_TZ('%s') AS event_time",
 			sqlStringOrNull(eventID),
 			sqlStringOrNull(event.TableName),
 			sqlStringOrNull(event.ResourceID),
@@ -118,13 +108,22 @@ func (c *Client) InsertCDCEvents(ctx context.Context, events []CDCEvent) error {
 			sqlStringOrNull(event.PayloadHash),
 			escapeSnowflakeString(eventTime.UTC().Format(time.RFC3339Nano)),
 		)
-
-		if _, err := c.Exec(ctx, query); err != nil {
-			return err
-		}
+		rows = append(rows, row)
 	}
 
-	return nil
+	source := strings.Join(rows, " UNION ALL ")
+	query := fmt.Sprintf(`
+        MERGE INTO CDC_EVENTS t
+        USING (%s) s
+        ON t.event_id = s.event_id
+        WHEN NOT MATCHED THEN INSERT (
+            event_id, table_name, resource_id, change_type, provider, region, account_id, payload, payload_hash, event_time
+        ) VALUES (
+            s.event_id, s.table_name, s.resource_id, s.change_type, s.provider, s.region, s.account_id, s.payload, s.payload_hash, s.event_time
+        )`, source)
+
+	_, err := c.Exec(ctx, query)
+	return err
 }
 
 // GetCDCEvents returns CDC events for a table since the provided time.

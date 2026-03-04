@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -32,6 +33,12 @@ type stubRegistry struct {
 }
 
 func (s *stubRegistry) Name() string { return s.name }
+
+func (s *stubRegistry) RegistryHost() string { return "stub.registry.io" }
+
+func (s *stubRegistry) QualifyImageRef(repo, tag string) string {
+	return fmt.Sprintf("%s/%s:%s", s.RegistryHost(), repo, tag)
+}
 
 func (s *stubRegistry) ListRepositories(context.Context) ([]Repository, error) {
 	return nil, nil
@@ -61,6 +68,20 @@ type stubImageScanner struct {
 }
 
 func (s *stubImageScanner) ScanImage(context.Context, string) (*ContainerScanResult, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.result, nil
+}
+
+type captureRefImageScanner struct {
+	result  *ContainerScanResult
+	err     error
+	lastRef string
+}
+
+func (s *captureRefImageScanner) ScanImage(_ context.Context, imageRef string) (*ContainerScanResult, error) {
+	s.lastRef = imageRef
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -197,6 +218,15 @@ func TestECRClientSuccess(t *testing.T) {
 	}
 }
 
+func TestECRClient_QualifyImageRef(t *testing.T) {
+	client := NewECRClientWithAPI("us-west-2", "123456789012", &stubECR{})
+	ref := client.QualifyImageRef("myapp", "latest")
+	expected := "123456789012.dkr.ecr.us-west-2.amazonaws.com/myapp:latest"
+	if ref != expected {
+		t.Errorf("got %q, want %q", ref, expected)
+	}
+}
+
 func TestECRClientListRepositoriesError(t *testing.T) {
 	stub := &stubECR{
 		describeRepositoriesFn: func(_ *ecr.DescribeRepositoriesInput) (*ecr.DescribeRepositoriesOutput, error) {
@@ -235,6 +265,37 @@ func TestContainerScannerFallback(t *testing.T) {
 	}
 	if result.Summary.High != 1 {
 		t.Fatalf("expected high summary count, got %d", result.Summary.High)
+	}
+}
+
+func TestContainerScannerFallback_UsesQualifiedRef(t *testing.T) {
+	registry := &stubRegistry{
+		name: "stub",
+		manifest: &ImageManifest{
+			Digest: "sha256:abc",
+			Config: ImageConfig{OS: "linux", Architecture: "amd64"},
+		},
+		vulnErr: errors.New("registry down"),
+	}
+
+	local := &captureRefImageScanner{
+		result: &ContainerScanResult{
+			Vulnerabilities: []ImageVulnerability{{CVE: "CVE-1", Severity: "high"}},
+		},
+	}
+
+	scanner := NewContainerScanner()
+	scanner.RegisterRegistry(registry)
+	scanner.SetFallbackScanner(local)
+
+	_, err := scanner.ScanImage(context.Background(), "stub", "repo", "latest")
+	if err != nil {
+		t.Fatalf("ScanImage: %v", err)
+	}
+
+	expected := "stub.registry.io/repo:latest"
+	if local.lastRef != expected {
+		t.Errorf("fallback got ref %q, want %q", local.lastRef, expected)
 	}
 }
 
@@ -302,6 +363,52 @@ func TestGCRClientSuccess(t *testing.T) {
 	}
 	if manifest.Digest != "sha256:gcr" {
 		t.Fatalf("unexpected digest: %s", manifest.Digest)
+	}
+}
+
+func TestGCRClient_QualifyImageRef(t *testing.T) {
+	client := NewGCRClient("my-project")
+	ref := client.QualifyImageRef("myapp", "v1.0")
+	expected := "gcr.io/my-project/myapp:v1.0"
+	if ref != expected {
+		t.Errorf("got %q, want %q", ref, expected)
+	}
+}
+
+func TestGCRClient_QualifyImageRef_AlreadyQualified(t *testing.T) {
+	client := NewGCRClient("my-project")
+	ref := client.QualifyImageRef("my-project/myapp", "v1.0")
+	expected := "gcr.io/my-project/myapp:v1.0"
+	if ref != expected {
+		t.Errorf("got %q, want %q", ref, expected)
+	}
+}
+
+func TestGCRClient_QualifyImageRef_HTTPSHost(t *testing.T) {
+	client := NewGCRClient("my-project")
+	client.SetRegistryHost("https://gcr.io")
+	ref := client.QualifyImageRef("myapp", "v1.0")
+	expected := "gcr.io/my-project/myapp:v1.0"
+	if ref != expected {
+		t.Errorf("got %q, want %q", ref, expected)
+	}
+}
+
+func TestGCRClient_QualifyImageRef_HTTPHost(t *testing.T) {
+	client := NewGCRClient("my-project")
+	client.SetRegistryHost("http://localhost:5000")
+	ref := client.QualifyImageRef("myapp", "latest")
+	expected := "localhost:5000/my-project/myapp:latest"
+	if ref != expected {
+		t.Errorf("got %q, want %q", ref, expected)
+	}
+}
+
+func TestGCRClient_RegistryHost_StripsScheme(t *testing.T) {
+	client := NewGCRClient("proj")
+	client.SetRegistryHost("https://us-docker.pkg.dev")
+	if got := client.RegistryHost(); got != "us-docker.pkg.dev" {
+		t.Errorf("RegistryHost() = %q, want %q", got, "us-docker.pkg.dev")
 	}
 }
 
@@ -388,6 +495,25 @@ func TestACRClientSuccess(t *testing.T) {
 	}
 	if manifest.Digest != "sha256:acr" {
 		t.Fatalf("unexpected digest: %s", manifest.Digest)
+	}
+}
+
+func TestACRClient_QualifyImageRef(t *testing.T) {
+	client := NewACRClient("myregistry", "sub-123")
+	ref := client.QualifyImageRef("myapp", "latest")
+	expected := "myregistry.azurecr.io/myapp:latest"
+	if ref != expected {
+		t.Errorf("got %q, want %q", ref, expected)
+	}
+}
+
+func TestACRClient_QualifyImageRef_BaseURLOverride(t *testing.T) {
+	client := NewACRClient("myregistry", "sub-123")
+	client.SetBaseURL("https://custom.registry.io")
+	ref := client.QualifyImageRef("myapp", "latest")
+	expected := "custom.registry.io/myapp:latest"
+	if ref != expected {
+		t.Errorf("got %q, want %q", ref, expected)
 	}
 }
 

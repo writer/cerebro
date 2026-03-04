@@ -1107,12 +1107,18 @@ func runPostSyncScan(ctx context.Context, tableFilter []string) error {
 	sqlToxicRiskSets := make(map[string][]map[string]bool)
 	relationshipCount := 0
 	if application.Snowflake != nil {
-		toxicFindings, err := scanner.DetectRelationshipToxicCombinations(ctx, application.Snowflake)
+		var toxicCursor *scanner.ToxicScanCursor
+		if application.ScanWatermarks != nil {
+			if wm := application.ScanWatermarks.GetWatermark("_toxic_relationships"); wm != nil {
+				toxicCursor = &scanner.ToxicScanCursor{SinceTime: wm.LastScanTime, SinceID: wm.LastScanID}
+			}
+		}
+		toxicResult, err := scanner.DetectRelationshipToxicCombinations(ctx, application.Snowflake, toxicCursor)
 		if err != nil {
 			Warning("Failed to detect toxic combinations from relationships: %v", err)
 		} else {
-			relationshipCount = len(toxicFindings)
-			for _, f := range toxicFindings {
+			relationshipCount = len(toxicResult.Findings)
+			for _, f := range toxicResult.Findings {
 				if rid := scanner.NormalizeResourceID(f.ResourceID); rid != "" {
 					if risks := scanner.CanonicalizeRiskCategories(scanner.ParseRiskCategories(f.Risks)); len(risks) > 0 {
 						sqlToxicRiskSets[rid] = append(sqlToxicRiskSets[rid], risks)
@@ -1123,6 +1129,9 @@ func runPostSyncScan(ctx context.Context, tableFilter []string) error {
 				}
 			}
 			totalViolations += int64(relationshipCount)
+		}
+		if err == nil && application.ScanWatermarks != nil && !toxicResult.MaxSyncTime.IsZero() {
+			application.ScanWatermarks.SetWatermark("_toxic_relationships", toxicResult.MaxSyncTime, toxicResult.MaxCursorID, int64(relationshipCount))
 		}
 	}
 

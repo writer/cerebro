@@ -8,6 +8,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	sf "github.com/snowflakedb/gosnowflake"
@@ -51,6 +52,9 @@ type Client struct {
 	schema    string
 	appSchema string
 	warehouse string
+
+	cdcSchemaMu    sync.Mutex
+	cdcSchemaReady bool
 }
 
 // QueryResult holds query results in a structured format.

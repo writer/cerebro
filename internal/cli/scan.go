@@ -285,37 +285,24 @@ func runScan(cmd *cobra.Command, args []string) error {
 			fmt.Printf("\nQuery-policy findings: %d\n", queryPolicyFindingCount)
 		}
 	}
-
-	// Start watermark persistence in the background while graph analysis runs.
-	// We wait for it before returning so the Snowflake pool isn't closed underneath it.
-	type watermarkResult struct {
-		attempted bool
-		err       error
-		duration  time.Duration
-	}
-	wmResultCh := make(chan watermarkResult, 1)
-	if !localMode && application.ScanWatermarks != nil {
-		go func() {
-			started := time.Now()
-			err := application.ScanWatermarks.PersistWatermarksWithRetry(ctx, scanner.DefaultWatermarkPersistOptions())
-			wmResultCh <- watermarkResult{attempted: true, err: err, duration: time.Since(started)}
-		}()
-	} else {
-		wmResultCh <- watermarkResult{}
-	}
-
 	// Track SQL toxic-combo risk categories per resource to avoid double-counting in graph analysis.
 	sqlToxicRiskSets := make(map[string][]map[string]bool)
 
 	// Relationship-based toxic combination detection (SQL query approach)
 	if !localMode && scanToxicCombos && application.Snowflake != nil {
-		toxicFindings, err := scanner.DetectRelationshipToxicCombinations(ctx, application.Snowflake)
+		var toxicCursor *scanner.ToxicScanCursor
+		if application.ScanWatermarks != nil {
+			if wm := application.ScanWatermarks.GetWatermark("_toxic_relationships"); wm != nil {
+				toxicCursor = &scanner.ToxicScanCursor{SinceTime: wm.LastScanTime, SinceID: wm.LastScanID}
+			}
+		}
+		toxicResult, err := scanner.DetectRelationshipToxicCombinations(ctx, application.Snowflake, toxicCursor)
 		if err != nil {
 			Warning("Failed to detect toxic combinations from relationships: %v", err)
-		} else if len(toxicFindings) > 0 {
+		} else if len(toxicResult.Findings) > 0 {
 			// Count by severity
 			critCount, highCount := 0, 0
-			for _, f := range toxicFindings {
+			for _, f := range toxicResult.Findings {
 				if rid := normalizeResourceID(f.ResourceID); rid != "" {
 					if risks := canonicalizeSQLRiskCategories(f.Risks); len(risks) > 0 {
 						sqlToxicRiskSets[rid] = append(sqlToxicRiskSets[rid], risks)
@@ -339,8 +326,29 @@ func runScan(cmd *cobra.Command, args []string) error {
 			if highCount > 0 {
 				fmt.Printf("  %s HIGH findings\n", color(colorYellow, fmt.Sprintf("%d", highCount)))
 			}
-			totalViolations += int64(len(toxicFindings))
+			totalViolations += int64(len(toxicResult.Findings))
 		}
+		if err == nil && application.ScanWatermarks != nil && !toxicResult.MaxSyncTime.IsZero() {
+			application.ScanWatermarks.SetWatermark("_toxic_relationships", toxicResult.MaxSyncTime, toxicResult.MaxCursorID, int64(len(toxicResult.Findings)))
+		}
+	}
+
+	// Persist all watermarks (including toxic) in background while graph analysis runs.
+	// Launched after toxic watermark is set so it is included in persistence.
+	type watermarkResult struct {
+		attempted bool
+		err       error
+		duration  time.Duration
+	}
+	wmResultCh := make(chan watermarkResult, 1)
+	if !localMode && application.ScanWatermarks != nil {
+		go func() {
+			started := time.Now()
+			err := application.ScanWatermarks.PersistWatermarksWithRetry(ctx, scanner.DefaultWatermarkPersistOptions())
+			wmResultCh <- watermarkResult{attempted: true, err: err, duration: time.Since(started)}
+		}()
+	} else {
+		wmResultCh <- watermarkResult{}
 	}
 
 	var graphAttackPaths []map[string]interface{}
@@ -443,14 +451,15 @@ func runScan(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Downgrade severity for findings from known dev/test environments.
-	// This reduces alert fatigue without hiding the findings entirely.
+	// Annotate findings from known dev/test environments with triage metadata.
+	// The canonical severity is preserved; only triage fields are added.
 	for i, f := range allFindings {
 		if isDevResource(toString(f["resource_id"])) {
+			allFindings[i]["environment_context"] = "development"
 			orig := strings.ToUpper(toString(f["severity"]))
 			if orig == "CRITICAL" || orig == "HIGH" {
-				allFindings[i]["severity"] = "LOW"
-				allFindings[i]["severity_original"] = orig
+				allFindings[i]["triage_priority"] = "LOW"
+				allFindings[i]["triage_score"] = triageScoreForDevSeverity(orig)
 				allFindings[i]["dev_environment"] = true
 			}
 		}
@@ -1215,8 +1224,6 @@ func scanOneTable(ctx context.Context, application *app.App, table string, full 
 
 		cursorTime, cursorID = scanner.ExtractScanCursor(assets)
 	} else {
-		offset := 0
-		useCursorPaging := !filter.Since.IsZero()
 		for !limitActive || remaining > 0 {
 			if tableCtx.Err() != nil {
 				break
@@ -1225,9 +1232,6 @@ func scanOneTable(ctx context.Context, application *app.App, table string, full 
 				filter.Limit = int(remaining)
 			} else {
 				filter.Limit = batchSize
-			}
-			if !useCursorPaging {
-				filter.Offset = offset
 			}
 
 			assets, attempts, err := scanner.WithRetryValue(tableCtx, tuning.RetryOptions, func() ([]map[string]interface{}, error) {
@@ -1285,14 +1289,19 @@ func scanOneTable(ctx context.Context, application *app.App, table string, full 
 				cursorID = batchID
 			}
 
-			if useCursorPaging {
+			// Advance cursor for next batch (keyset pagination)
+			if !filter.Since.IsZero() {
 				if batchTime.IsZero() {
 					break
 				}
 				filter.Since = batchTime
 				filter.SinceID = batchID
 			} else {
-				offset += len(assets)
+				if batchTime.IsZero() {
+					break
+				}
+				filter.CursorSyncTime = batchTime
+				filter.CursorID = batchID
 			}
 
 			if limitActive {
@@ -1347,6 +1356,19 @@ func isDevResource(resourceID string) bool {
 		}
 	}
 	return false
+}
+
+// triageScoreForDevSeverity returns a numeric triage score (0-100) for
+// dev/test environment findings. Lower score = lower operational priority.
+func triageScoreForDevSeverity(severity string) int {
+	switch severity {
+	case "CRITICAL":
+		return 15
+	case "HIGH":
+		return 10
+	default:
+		return 5
+	}
 }
 
 func isRemovalEvent(changeType string) bool {
