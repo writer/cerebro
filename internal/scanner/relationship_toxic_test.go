@@ -78,6 +78,21 @@ func TestToxicSinceFilter_DifferentAliases(t *testing.T) {
 	}
 }
 
+func TestToxicSinceFilterColumn_CustomColumn(t *testing.T) {
+	ts := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	c := &ToxicScanCursor{SinceTime: ts}
+
+	got := toxicSinceFilterColumn("r_sa", "sync_time", c)
+	if !strings.Contains(got, "r_sa.sync_time > '") {
+		t.Fatalf("expected custom sync_time column, got %q", got)
+	}
+
+	gotNoAlias := toxicSinceFilterColumn("", "sync_time", c)
+	if !strings.Contains(gotNoAlias, "AND sync_time > '") {
+		t.Fatalf("expected unqualified sync_time column, got %q", gotNoAlias)
+	}
+}
+
 func TestToxicSinceFilter_BoundaryPreservation(t *testing.T) {
 	// With SinceID: CTE must keep rows at exact SinceTime (>=),
 	// final keyset WHERE then eliminates already-seen IDs.

@@ -22,6 +22,9 @@ func TestValidateReadOnlyQuery(t *testing.T) {
 		{name: "block comment rejected", query: "SELECT /* test */ * FROM users", wantErr: ErrSQLInjection},
 		{name: "statement chaining rejected", query: "SELECT * FROM users; DROP TABLE users;", wantErr: ErrSQLInjection},
 		{name: "forbidden keyword rejected", query: "WITH x AS (SELECT * FROM users) DELETE FROM users", wantErr: ErrSQLInjection},
+		{name: "keyword in string literal allowed", query: "SELECT * FROM okta_system_logs WHERE event_type = 'policy.rule.delete'", wantErr: nil},
+		{name: "keyword in quoted identifier allowed", query: "SELECT \"grant\" FROM permissions", wantErr: nil},
+		{name: "keyword in escaped string literal allowed", query: "SELECT * FROM logs WHERE message = 'it''s safe to update'", wantErr: nil},
 	}
 
 	for _, tt := range tests {
@@ -65,6 +68,13 @@ func TestBuildReadOnlyLimitedQuery(t *testing.T) {
 			wantQueryPart: "FROM (SELECT * FROM findings) AS cerebro_readonly_query LIMIT 10",
 		},
 		{
+			name:          "normalizes now function",
+			query:         "SELECT id FROM sentinelone_agents WHERE last_active_date < NOW() - INTERVAL '7 days'",
+			limit:         50,
+			wantLimit:     50,
+			wantQueryPart: "CURRENT_TIMESTAMP() - INTERVAL '7 days'",
+		},
+		{
 			name:          "applies default limit",
 			query:         "SELECT * FROM findings",
 			limit:         0,
@@ -106,6 +116,33 @@ func TestBuildReadOnlyLimitedQuery(t *testing.T) {
 				t.Fatalf("expected query %q to contain %q", gotQuery, tt.wantQueryPart)
 			}
 		})
+	}
+}
+
+func TestNormalizeReadOnlyDialect(t *testing.T) {
+	input := "SELECT NOW(), 'NOW() in string', \"NOW\", now ( ) FROM dual"
+	normalized := normalizeReadOnlyDialect(input)
+
+	if strings.Count(normalized, "CURRENT_TIMESTAMP()") != 2 {
+		t.Fatalf("expected two NOW() replacements, got %q", normalized)
+	}
+	if !strings.Contains(normalized, "'NOW() in string'") {
+		t.Fatalf("expected single-quoted literal to remain untouched, got %q", normalized)
+	}
+	if !strings.Contains(normalized, "\"NOW\"") {
+		t.Fatalf("expected double-quoted identifier to remain untouched, got %q", normalized)
+	}
+}
+
+func TestStripQuotedLiterals(t *testing.T) {
+	query := "SELECT * FROM logs WHERE event_type = 'policy.rule.delete' AND \"grant\" = 'ok'"
+	stripped := stripQuotedLiterals(query)
+
+	if strings.Contains(strings.ToUpper(stripped), "DELETE") {
+		t.Fatalf("expected DELETE in string literal to be stripped, got %q", stripped)
+	}
+	if strings.Contains(strings.ToUpper(stripped), "GRANT\"") {
+		t.Fatalf("expected quoted identifier content to be stripped, got %q", stripped)
 	}
 }
 

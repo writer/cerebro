@@ -26,7 +26,7 @@
     }
   ],
   "enabled": true,
-  "query": "SELECT id, computer_name, os_name, last_active_date FROM sentinelone_agents WHERE is_active = false OR last_active_date < NOW() - INTERVAL '7 days'",
+  "query": "SELECT id, computer_name, os_name, last_active_date FROM sentinelone_agents WHERE is_active = false OR last_active_date < DATEADD(day, -7, CURRENT_TIMESTAMP())",
   "remediation": "Investigate stale SentinelOne agents. Reinstall agent or remove device from inventory if no longer in use.",
   "tags": [
     "endpoint",
