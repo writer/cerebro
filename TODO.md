@@ -133,7 +133,7 @@ System Logs: actor_id ──event──▶ target_app_id  (actual usage overlay)
 
 ## Maintainability backlog from latest review
 1. API handler decomposition (`internal/api/server.go`)
-- [ ] Split handlers by domain (findings/agents/graph/incidents/compliance) into dedicated files.
+- [x] Split handlers by domain (findings/agents/graph/incidents/compliance) into dedicated files.
 - [x] Extract graph visualization handlers into `internal/api/handlers_graph_visualization.go`.
 - [x] Extract agent session/approval handlers into `internal/api/handlers_agents.go`.
 - [x] Extract incident response handlers into `internal/api/handlers_incident_response.go`.
@@ -141,6 +141,7 @@ System Logs: actor_id ──event──▶ target_app_id  (actual usage overlay)
 - [x] Extract graph access review handlers into `internal/api/handlers_graph_access_reviews.go`.
 - [x] Extract identity access-review CRUD handlers into `internal/api/handlers_identity_reviews.go`.
 - [x] Extract provider handlers + include-incomplete helper into `internal/api/handlers_providers.go`.
+- [x] Extract findings/compliance/reporting handlers into `internal/api/handlers_findings_compliance.go`.
 
 2. Relationship/graph decomposition
 - [x] Split `internal/sync/relationships.go` by provider/domain.
@@ -151,11 +152,11 @@ System Logs: actor_id ──event──▶ target_app_id  (actual usage overlay)
 - [x] Extract AWS builder methods into `internal/graph/builder_aws.go`.
 - [x] Extract GCP builder methods into `internal/graph/builder_gcp.go`.
 - [x] Extract Azure/Okta builder methods into `internal/graph/builder_azure_okta.go`.
-- [ ] Split `internal/attackpath/toxic_combinations.go` by category/domain.
+- [x] Split `internal/attackpath/toxic.go` pattern catalog by category/domain (`toxic_patterns_network_data.go`, `toxic_patterns_identity.go`, `toxic_patterns_container.go`).
 
 3. Config structure cleanup
 - [x] Refactor `app.Config` and `LoadConfig()` into nested provider-aware structs.
-- [ ] Evaluate optional config file support (YAML/TOML) layered over env vars.
+- [x] Add optional config file support (YAML/TOML/JSON) layered under env vars via `CEREBRO_CONFIG_FILE`.
 
 4. Provider initialization simplification
 - [x] Replace repetitive `initProviders()` registration with a table-driven/declarative registry.
