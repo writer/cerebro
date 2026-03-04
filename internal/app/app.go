@@ -382,10 +382,26 @@ type Config struct {
 	NATSJetStreamSubjectPrefix  string
 	NATSJetStreamSource         string
 	NATSJetStreamOutboxPath     string
+	NATSJetStreamOutboxDLQPath  string
+	NATSJetStreamOutboxMaxAge   time.Duration
+	NATSJetStreamOutboxMaxItems int
+	NATSJetStreamOutboxMaxRetry int
 	NATSJetStreamPublishTimeout time.Duration
 	NATSJetStreamRetryAttempts  int
 	NATSJetStreamRetryBackoff   time.Duration
 	NATSJetStreamFlushInterval  time.Duration
+	NATSJetStreamConnectTimeout time.Duration
+	NATSJetStreamAuthMode       string
+	NATSJetStreamUsername       string
+	NATSJetStreamPassword       string
+	NATSJetStreamNKeySeed       string
+	NATSJetStreamUserJWT        string
+	NATSJetStreamTLSEnabled     bool
+	NATSJetStreamTLSCAFile      string
+	NATSJetStreamTLSCertFile    string
+	NATSJetStreamTLSKeyFile     string
+	NATSJetStreamTLSServerName  string
+	NATSJetStreamTLSInsecure    bool
 
 	// Notifications
 	SlackWebhookURL    string
@@ -591,10 +607,26 @@ func LoadConfig() *Config {
 		NATSJetStreamSubjectPrefix:         getEnv("NATS_JETSTREAM_SUBJECT_PREFIX", "cerebro.events"),
 		NATSJetStreamSource:                getEnv("NATS_JETSTREAM_SOURCE", "cerebro"),
 		NATSJetStreamOutboxPath:            getEnv("NATS_JETSTREAM_OUTBOX_PATH", filepath.Join(findings.DefaultFilePath(), "jetstream-outbox.jsonl")),
+		NATSJetStreamOutboxDLQPath:         getEnv("NATS_JETSTREAM_OUTBOX_DLQ_PATH", ""),
+		NATSJetStreamOutboxMaxAge:          getEnvDuration("NATS_JETSTREAM_OUTBOX_MAX_AGE", 7*24*time.Hour),
+		NATSJetStreamOutboxMaxItems:        getEnvInt("NATS_JETSTREAM_OUTBOX_MAX_ITEMS", 10000),
+		NATSJetStreamOutboxMaxRetry:        getEnvInt("NATS_JETSTREAM_OUTBOX_MAX_RETRY", 10),
 		NATSJetStreamPublishTimeout:        getEnvDuration("NATS_JETSTREAM_PUBLISH_TIMEOUT", 3*time.Second),
 		NATSJetStreamRetryAttempts:         getEnvInt("NATS_JETSTREAM_RETRY_ATTEMPTS", 3),
 		NATSJetStreamRetryBackoff:          getEnvDuration("NATS_JETSTREAM_RETRY_BACKOFF", 500*time.Millisecond),
 		NATSJetStreamFlushInterval:         getEnvDuration("NATS_JETSTREAM_FLUSH_INTERVAL", 10*time.Second),
+		NATSJetStreamConnectTimeout:        getEnvDuration("NATS_JETSTREAM_CONNECT_TIMEOUT", 5*time.Second),
+		NATSJetStreamAuthMode:              getEnv("NATS_JETSTREAM_AUTH_MODE", "none"),
+		NATSJetStreamUsername:              getEnv("NATS_JETSTREAM_USERNAME", ""),
+		NATSJetStreamPassword:              getEnv("NATS_JETSTREAM_PASSWORD", ""),
+		NATSJetStreamNKeySeed:              getEnv("NATS_JETSTREAM_NKEY_SEED", ""),
+		NATSJetStreamUserJWT:               getEnv("NATS_JETSTREAM_USER_JWT", ""),
+		NATSJetStreamTLSEnabled:            getEnvBool("NATS_JETSTREAM_TLS_ENABLED", false),
+		NATSJetStreamTLSCAFile:             getEnv("NATS_JETSTREAM_TLS_CA_FILE", ""),
+		NATSJetStreamTLSCertFile:           getEnv("NATS_JETSTREAM_TLS_CERT_FILE", ""),
+		NATSJetStreamTLSKeyFile:            getEnv("NATS_JETSTREAM_TLS_KEY_FILE", ""),
+		NATSJetStreamTLSServerName:         getEnv("NATS_JETSTREAM_TLS_SERVER_NAME", ""),
+		NATSJetStreamTLSInsecure:           getEnvBool("NATS_JETSTREAM_TLS_INSECURE_SKIP_VERIFY", false),
 		SlackWebhookURL:                    getEnv("SLACK_WEBHOOK_URL", ""),
 		SlackSigningSecret:                 getEnv("SLACK_SIGNING_SECRET", ""),
 		PagerDutyKey:                       getEnv("PAGERDUTY_ROUTING_KEY", ""),

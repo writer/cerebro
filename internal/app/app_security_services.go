@@ -125,6 +125,19 @@ func (a *App) initHealth() {
 		return nil
 	}))
 
+	a.Health.Register("event_publisher", health.PingCheck("event_publisher", func(ctx context.Context) error {
+		if !a.Config.NATSJetStreamEnabled {
+			return nil
+		}
+		if a.Webhooks == nil {
+			return fmt.Errorf("webhook service not initialized")
+		}
+		if err := a.Webhooks.EventPublisherReady(ctx); err != nil {
+			return fmt.Errorf("jetstream publisher not ready: %w", err)
+		}
+		return nil
+	}))
+
 	a.Logger.Info("health service initialized")
 }
 

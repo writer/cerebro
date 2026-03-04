@@ -188,6 +188,16 @@ type EventPublisher interface {
 	Close() error
 }
 
+// EventPublisherReadiness can be implemented by publishers that expose readiness checks.
+type EventPublisherReadiness interface {
+	Ready(ctx context.Context) error
+}
+
+// EventPublisherStatusReporter can be implemented by publishers that expose runtime status.
+type EventPublisherStatusReporter interface {
+	Status(ctx context.Context) map[string]interface{}
+}
+
 // Delivery represents a webhook delivery attempt
 type Delivery struct {
 	ID             string    `json:"id"`
@@ -232,6 +242,54 @@ func (s *Service) SetEventPublisher(publisher EventPublisher) {
 		_ = s.eventPublisher.Close()
 	}
 	s.eventPublisher = publisher
+}
+
+// EventPublisherReady checks publisher readiness when supported.
+func (s *Service) EventPublisherReady(ctx context.Context) error {
+	s.mu.RLock()
+	publisher := s.eventPublisher
+	s.mu.RUnlock()
+
+	if publisher == nil {
+		return errors.New("event publisher is not configured")
+	}
+
+	readiness, ok := publisher.(EventPublisherReadiness)
+	if !ok {
+		return nil
+	}
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	return readiness.Ready(ctx)
+}
+
+// EventPublisherStatus returns publisher runtime status when supported.
+func (s *Service) EventPublisherStatus(ctx context.Context) map[string]interface{} {
+	s.mu.RLock()
+	publisher := s.eventPublisher
+	s.mu.RUnlock()
+
+	if publisher == nil {
+		return map[string]interface{}{"configured": false, "ready": false}
+	}
+
+	statusReporter, ok := publisher.(EventPublisherStatusReporter)
+	if !ok {
+		return map[string]interface{}{"configured": true, "ready": true}
+	}
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	status := statusReporter.Status(ctx)
+	if status == nil {
+		status = map[string]interface{}{}
+	}
+	status["configured"] = true
+	return status
 }
 
 // Close releases service resources.

@@ -2,19 +2,27 @@ package events
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nkeys"
 
+	"github.com/writerinternal/cerebro/internal/metrics"
 	"github.com/writerinternal/cerebro/internal/webhooks"
 )
 
@@ -28,6 +36,20 @@ const (
 	defaultPublishRetries         = 3
 	defaultPublishRetryBackoff    = 500 * time.Millisecond
 	defaultFlushInterval          = 10 * time.Second
+	defaultConnectTimeout         = 5 * time.Second
+
+	defaultOutboxMaxRecords  = 10_000
+	defaultOutboxMaxAge      = 7 * 24 * time.Hour
+	defaultOutboxMaxAttempts = 10
+
+	defaultJetStreamAuthMode = "none"
+	authModeUserPass         = "userpass"
+	authModeNKey             = "nkey"
+	authModeJWT              = "jwt"
+
+	cloudEventSpecVersion  = "1.0"
+	cloudEventSchemaV1     = "v1"
+	cloudEventSchemaPrefix = "urn:cerebro:events"
 )
 
 type CloudEvent struct {
@@ -37,6 +59,10 @@ type CloudEvent struct {
 	Type            string                 `json:"type"`
 	Subject         string                 `json:"subject,omitempty"`
 	Time            time.Time              `json:"time"`
+	DataSchema      string                 `json:"dataschema"`
+	SchemaVersion   string                 `json:"schema_version"`
+	TenantID        string                 `json:"tenant_id"`
+	TraceParent     string                 `json:"traceparent"`
 	DataContentType string                 `json:"datacontenttype"`
 	Data            map[string]interface{} `json:"data,omitempty"`
 }
@@ -51,6 +77,25 @@ type JetStreamConfig struct {
 	RetryAttempts  int
 	RetryBackoff   time.Duration
 	FlushInterval  time.Duration
+	ConnectTimeout time.Duration
+
+	AuthMode string
+	Username string
+	Password string
+	NKeySeed string
+	UserJWT  string
+
+	TLSEnabled            bool
+	TLSCAFile             string
+	TLSCertFile           string
+	TLSKeyFile            string
+	TLSServerName         string
+	TLSInsecureSkipVerify bool
+
+	OutboxDLQPath     string
+	OutboxMaxRecords  int
+	OutboxMaxAge      time.Duration
+	OutboxMaxAttempts int
 }
 
 type Publisher struct {
@@ -62,22 +107,39 @@ type Publisher struct {
 	stopCh   chan struct{}
 	stopOnce sync.Once
 	wg       sync.WaitGroup
+
+	publishedTotal     atomic.Uint64
+	queuedTotal        atomic.Uint64
+	flushFailuresTotal atomic.Uint64
+	quarantinedTotal   atomic.Uint64
+
+	statusMu      sync.RWMutex
+	lastError     string
+	lastPublishAt time.Time
+	lastFlushAt   time.Time
 }
 
 var _ webhooks.EventPublisher = (*Publisher)(nil)
+var _ webhooks.EventPublisherReadiness = (*Publisher)(nil)
+var _ webhooks.EventPublisherStatusReporter = (*Publisher)(nil)
 
 func NewJetStreamPublisher(cfg JetStreamConfig, logger *slog.Logger) (*Publisher, error) {
 	config := cfg.withDefaults()
+	if err := config.validate(); err != nil {
+		return nil, err
+	}
+
 	if logger == nil {
 		logger = slog.Default()
 	}
 
 	url := strings.Join(config.URLs, ",")
-	nc, err := nats.Connect(url,
-		nats.Name("cerebro-jetstream-publisher"),
-		nats.MaxReconnects(-1),
-		nats.ReconnectWait(time.Second),
-	)
+	natsOptions, err := config.natsOptions()
+	if err != nil {
+		return nil, err
+	}
+
+	nc, err := nats.Connect(url, natsOptions...)
 	if err != nil {
 		return nil, fmt.Errorf("connect to nats: %w", err)
 	}
@@ -93,7 +155,12 @@ func NewJetStreamPublisher(cfg JetStreamConfig, logger *slog.Logger) (*Publisher
 		config: config,
 		nc:     nc,
 		js:     js,
-		outbox: newFileOutbox(config.OutboxPath),
+		outbox: newFileOutbox(config.OutboxPath, outboxConfig{
+			MaxRecords:  config.OutboxMaxRecords,
+			MaxAge:      config.OutboxMaxAge,
+			MaxAttempts: config.OutboxMaxAttempts,
+			DLQPath:     config.OutboxDLQPath,
+		}),
 		stopCh: make(chan struct{}),
 	}
 
@@ -105,6 +172,7 @@ func NewJetStreamPublisher(cfg JetStreamConfig, logger *slog.Logger) (*Publisher
 	if err := publisher.flushOutbox(context.Background()); err != nil {
 		logger.Warn("failed to flush jetstream outbox during startup", "error", err)
 	}
+	publisher.refreshOperationalMetrics()
 
 	publisher.wg.Add(1)
 	go publisher.flushLoop()
@@ -124,13 +192,25 @@ func (p *Publisher) Publish(ctx context.Context, event webhooks.Event) error {
 		return fmt.Errorf("marshal cloud event: %w", err)
 	}
 
-	if err := p.publishWithRetry(ctx, subject, payload); err == nil {
+	if err := p.publishWithRetry(ctx, subject, payload, ce.ID); err == nil {
+		p.publishedTotal.Add(1)
+		p.setLastPublish(time.Now().UTC())
+		p.clearLastError()
+		metrics.RecordJetStreamPublish(p.config.Stream, "published")
+		p.refreshOperationalMetrics()
 		return nil
 	} else {
-		record := outboxRecord{Subject: subject, Payload: payload}
+		record := outboxRecord{Subject: subject, Payload: payload, MessageID: ce.ID}
 		if queueErr := p.outbox.enqueue(record); queueErr != nil {
+			p.setLastError(errors.Join(err, queueErr))
+			metrics.RecordJetStreamPublish(p.config.Stream, "failed")
+			p.refreshOperationalMetrics()
 			return errors.Join(err, fmt.Errorf("enqueue event in outbox: %w", queueErr))
 		}
+		p.queuedTotal.Add(1)
+		p.setLastError(err)
+		metrics.RecordJetStreamPublish(p.config.Stream, "queued")
+		p.refreshOperationalMetrics()
 		p.logger.Warn("jetstream publish failed, queued event in outbox",
 			"subject", subject,
 			"event_type", string(event.Type),
@@ -153,6 +233,7 @@ func (p *Publisher) Close() error {
 		}
 
 		if p.nc != nil {
+			metrics.SetJetStreamPublisherReady(p.config.Stream, false)
 			if err := p.nc.Drain(); err != nil {
 				closeErr = errors.Join(closeErr, fmt.Errorf("drain nats connection: %w", err))
 			}
@@ -182,19 +263,37 @@ func (p *Publisher) flushLoop() {
 }
 
 func (p *Publisher) flushOutbox(ctx context.Context) error {
-	published, err := p.outbox.flush(func(record outboxRecord) error {
-		return p.publishWithRetry(ctx, record.Subject, record.Payload)
+	result, err := p.outbox.flush(func(record outboxRecord) error {
+		return p.publishWithRetry(ctx, record.Subject, record.Payload, record.MessageID)
 	})
-	if published > 0 {
-		p.logger.Info("flushed jetstream outbox", "published", published)
+
+	if result.Published > 0 {
+		p.publishedTotal.Add(uint64(result.Published))
+		p.setLastPublish(time.Now().UTC())
+		metrics.RecordJetStreamOutboxFlush(p.config.Stream, "published", result.Published)
+		p.logger.Info("flushed jetstream outbox", "published", result.Published)
 	}
+	if result.Quarantined > 0 {
+		p.quarantinedTotal.Add(uint64(result.Quarantined))
+		metrics.RecordJetStreamOutboxFlush(p.config.Stream, "quarantined", result.Quarantined)
+		p.logger.Warn("quarantined poisoned outbox records", "count", result.Quarantined)
+	}
+
+	p.setLastFlush(time.Now().UTC())
+	p.refreshOperationalMetrics()
+
 	if err != nil {
+		p.flushFailuresTotal.Add(1)
+		p.setLastError(err)
+		metrics.RecordJetStreamOutboxFlush(p.config.Stream, "error", 1)
+		p.refreshOperationalMetrics()
 		return fmt.Errorf("flush outbox: %w", err)
 	}
+	p.clearLastError()
 	return nil
 }
 
-func (p *Publisher) publishWithRetry(ctx context.Context, subject string, payload []byte) error {
+func (p *Publisher) publishWithRetry(ctx context.Context, subject string, payload []byte, messageID string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -207,7 +306,12 @@ func (p *Publisher) publishWithRetry(ctx context.Context, subject string, payloa
 			publishCtx, cancel = context.WithTimeout(ctx, p.config.PublishTimeout)
 		}
 
-		_, lastErr = p.js.Publish(subject, payload, nats.Context(publishCtx))
+		opts := []nats.PubOpt{nats.Context(publishCtx)}
+		if strings.TrimSpace(messageID) != "" {
+			opts = append(opts, nats.MsgId(strings.TrimSpace(messageID)))
+		}
+
+		_, lastErr = p.js.Publish(subject, payload, opts...)
 		cancel()
 		if lastErr == nil {
 			return nil
@@ -272,6 +376,87 @@ func (p *Publisher) ensureStream() error {
 	return nil
 }
 
+func (p *Publisher) Ready(ctx context.Context) error {
+	if ctx != nil {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+	}
+
+	stats, err := p.outbox.stats()
+	if err != nil {
+		metrics.SetJetStreamPublisherReady(p.config.Stream, false)
+		return fmt.Errorf("read outbox stats: %w", err)
+	}
+	p.recordOutboxMetrics(stats)
+
+	if p.nc == nil || !p.nc.IsConnected() {
+		metrics.SetJetStreamPublisherReady(p.config.Stream, false)
+		return errors.New("nats connection is not connected")
+	}
+	if p.config.OutboxMaxRecords > 0 && stats.Depth >= p.config.OutboxMaxRecords {
+		metrics.SetJetStreamPublisherReady(p.config.Stream, false)
+		return fmt.Errorf("outbox depth %d reached configured limit %d", stats.Depth, p.config.OutboxMaxRecords)
+	}
+	if p.config.OutboxMaxAge > 0 && stats.Depth > 0 && stats.OldestAge > p.config.OutboxMaxAge {
+		metrics.SetJetStreamPublisherReady(p.config.Stream, false)
+		return fmt.Errorf("oldest outbox record age %s exceeded limit %s", stats.OldestAge, p.config.OutboxMaxAge)
+	}
+
+	metrics.SetJetStreamPublisherReady(p.config.Stream, true)
+	return nil
+}
+
+func (p *Publisher) Status(ctx context.Context) map[string]interface{} {
+	stats, statsErr := p.outbox.stats()
+	if statsErr == nil {
+		p.recordOutboxMetrics(stats)
+	}
+
+	readyErr := p.Ready(ctx)
+
+	p.statusMu.RLock()
+	lastError := p.lastError
+	lastPublishAt := p.lastPublishAt
+	lastFlushAt := p.lastFlushAt
+	p.statusMu.RUnlock()
+
+	status := map[string]interface{}{
+		"enabled":                   true,
+		"stream":                    p.config.Stream,
+		"subject_prefix":            p.config.SubjectPrefix,
+		"connected":                 p.nc != nil && p.nc.IsConnected(),
+		"ready":                     readyErr == nil,
+		"outbox_depth":              stats.Depth,
+		"outbox_oldest_age_seconds": stats.OldestAge.Seconds(),
+		"published_total":           p.publishedTotal.Load(),
+		"queued_total":              p.queuedTotal.Load(),
+		"flush_failures_total":      p.flushFailuresTotal.Load(),
+		"quarantined_total":         p.quarantinedTotal.Load(),
+	}
+
+	if !lastPublishAt.IsZero() {
+		status["last_publish_at"] = lastPublishAt
+	}
+	if !lastFlushAt.IsZero() {
+		status["last_flush_at"] = lastFlushAt
+	}
+
+	if readyErr != nil {
+		status["message"] = readyErr.Error()
+	}
+	if statsErr != nil {
+		status["outbox_error"] = statsErr.Error()
+	}
+	if strings.TrimSpace(lastError) != "" {
+		status["last_error"] = lastError
+	}
+
+	return status
+}
+
 func containsSubject(subjects []string, wanted string) bool {
 	for _, subject := range subjects {
 		if subject == wanted {
@@ -306,18 +491,45 @@ func cloudEventFromWebhook(source string, event webhooks.Event) CloudEvent {
 		eventSource = defaultJetStreamSource
 	}
 
-	dataCopy := make(map[string]interface{}, len(event.Data))
+	eventType := strings.TrimSpace(string(event.Type))
+	if eventType == "" {
+		eventType = "unknown"
+	}
+
+	dataCopy := make(map[string]interface{}, len(event.Data)+3)
 	for key, value := range event.Data {
 		dataCopy[key] = value
 	}
 
+	tenantID := dataValueString(dataCopy, "tenant_id", "tenantId", "tenant")
+	if tenantID == "" {
+		tenantID = "unknown"
+	}
+
+	traceParent := dataValueString(dataCopy, "traceparent", "trace_parent", "traceParent")
+	if traceParent == "" {
+		traceParent = generateTraceParent()
+	}
+
+	if _, ok := dataCopy["tenant_id"]; !ok {
+		dataCopy["tenant_id"] = tenantID
+	}
+	if _, ok := dataCopy["traceparent"]; !ok {
+		dataCopy["traceparent"] = traceParent
+	}
+	dataCopy["schema_version"] = cloudEventSchemaV1
+
 	return CloudEvent{
-		SpecVersion:     "1.0",
+		SpecVersion:     cloudEventSpecVersion,
 		ID:              eventID,
 		Source:          eventSource,
-		Type:            string(event.Type),
-		Subject:         string(event.Type),
+		Type:            eventType,
+		Subject:         eventType,
 		Time:            eventTime,
+		DataSchema:      cloudEventSchemaFor(eventType),
+		SchemaVersion:   cloudEventSchemaV1,
+		TenantID:        tenantID,
+		TraceParent:     traceParent,
 		DataContentType: "application/json",
 		Data:            dataCopy,
 	}
@@ -358,9 +570,294 @@ func (c JetStreamConfig) withDefaults() JetStreamConfig {
 		config.FlushInterval = defaultFlushInterval
 	}
 
+	if config.ConnectTimeout <= 0 {
+		config.ConnectTimeout = defaultConnectTimeout
+	}
+
+	config.AuthMode = strings.ToLower(strings.TrimSpace(config.AuthMode))
+	if config.AuthMode == "" {
+		config.AuthMode = defaultJetStreamAuthMode
+	}
+
+	if config.OutboxMaxRecords <= 0 {
+		config.OutboxMaxRecords = defaultOutboxMaxRecords
+	}
+	if config.OutboxMaxAge <= 0 {
+		config.OutboxMaxAge = defaultOutboxMaxAge
+	}
+	if config.OutboxMaxAttempts <= 0 {
+		config.OutboxMaxAttempts = defaultOutboxMaxAttempts
+	}
+
 	if strings.TrimSpace(config.OutboxPath) == "" {
 		config.OutboxPath = filepath.Join(os.TempDir(), defaultOutboxFileName)
 	}
+	if strings.TrimSpace(config.OutboxDLQPath) == "" {
+		config.OutboxDLQPath = config.OutboxPath + ".dlq.jsonl"
+	}
+
+	if !config.TLSEnabled && (strings.TrimSpace(config.TLSCAFile) != "" || strings.TrimSpace(config.TLSCertFile) != "" || strings.TrimSpace(config.TLSKeyFile) != "") {
+		config.TLSEnabled = true
+	}
+	if !config.TLSEnabled {
+		for _, rawURL := range config.URLs {
+			parsed, err := url.Parse(rawURL)
+			if err == nil && strings.EqualFold(parsed.Scheme, "tls") {
+				config.TLSEnabled = true
+				break
+			}
+		}
+	}
 
 	return config
+}
+
+func (c JetStreamConfig) validate() error {
+	if len(c.URLs) == 0 {
+		return errors.New("jetstream requires at least one URL")
+	}
+
+	for _, rawURL := range c.URLs {
+		parsed, err := url.Parse(strings.TrimSpace(rawURL))
+		if err != nil {
+			return fmt.Errorf("invalid nats URL %q: %w", rawURL, err)
+		}
+		if strings.TrimSpace(parsed.Scheme) == "" || strings.TrimSpace(parsed.Host) == "" {
+			return fmt.Errorf("invalid nats URL %q", rawURL)
+		}
+	}
+
+	switch c.AuthMode {
+	case defaultJetStreamAuthMode:
+	case authModeUserPass:
+		if strings.TrimSpace(c.Username) == "" || strings.TrimSpace(c.Password) == "" {
+			return errors.New("auth mode userpass requires username and password")
+		}
+	case authModeNKey:
+		if strings.TrimSpace(c.NKeySeed) == "" {
+			return errors.New("auth mode nkey requires nkey seed")
+		}
+	case authModeJWT:
+		if strings.TrimSpace(c.UserJWT) == "" || strings.TrimSpace(c.NKeySeed) == "" {
+			return errors.New("auth mode jwt requires user jwt and nkey seed")
+		}
+	default:
+		return fmt.Errorf("unsupported jetstream auth mode: %s", c.AuthMode)
+	}
+
+	certFile := strings.TrimSpace(c.TLSCertFile)
+	keyFile := strings.TrimSpace(c.TLSKeyFile)
+	if (certFile == "") != (keyFile == "") {
+		return errors.New("tls cert and key files must be provided together")
+	}
+
+	for _, filePath := range []string{strings.TrimSpace(c.TLSCAFile), certFile, keyFile} {
+		if filePath == "" {
+			continue
+		}
+		if _, err := os.Stat(filePath); err != nil {
+			return fmt.Errorf("tls file %q: %w", filePath, err)
+		}
+	}
+
+	return nil
+}
+
+func (c JetStreamConfig) natsOptions() ([]nats.Option, error) {
+	options := []nats.Option{
+		nats.Name("cerebro-jetstream-publisher"),
+		nats.MaxReconnects(-1),
+		nats.ReconnectWait(time.Second),
+	}
+	if c.ConnectTimeout > 0 {
+		options = append(options, nats.Timeout(c.ConnectTimeout))
+	}
+
+	authOptions, err := c.authOptions()
+	if err != nil {
+		return nil, err
+	}
+	options = append(options, authOptions...)
+
+	if c.TLSEnabled {
+		tlsConfig, err := c.tlsConfig()
+		if err != nil {
+			return nil, err
+		}
+		options = append(options, nats.Secure(tlsConfig))
+	}
+
+	return options, nil
+}
+
+func (c JetStreamConfig) authOptions() ([]nats.Option, error) {
+	switch c.AuthMode {
+	case defaultJetStreamAuthMode:
+		return nil, nil
+	case authModeUserPass:
+		return []nats.Option{nats.UserInfo(c.Username, c.Password)}, nil
+	case authModeNKey:
+		publicKey, signer, err := signerFromSeed(c.NKeySeed)
+		if err != nil {
+			return nil, err
+		}
+		return []nats.Option{nats.Nkey(publicKey, signer)}, nil
+	case authModeJWT:
+		_, signer, err := signerFromSeed(c.NKeySeed)
+		if err != nil {
+			return nil, err
+		}
+		jwt := strings.TrimSpace(c.UserJWT)
+		return []nats.Option{nats.UserJWT(func() (string, error) { return jwt, nil }, signer)}, nil
+	default:
+		return nil, fmt.Errorf("unsupported jetstream auth mode: %s", c.AuthMode)
+	}
+}
+
+func signerFromSeed(seed string) (string, func([]byte) ([]byte, error), error) {
+	kp, err := nkeys.FromSeed([]byte(strings.TrimSpace(seed)))
+	if err != nil {
+		return "", nil, fmt.Errorf("parse nkey seed: %w", err)
+	}
+
+	publicKey, err := kp.PublicKey()
+	if err != nil {
+		return "", nil, fmt.Errorf("derive nkey public key: %w", err)
+	}
+
+	signer := func(nonce []byte) ([]byte, error) {
+		return kp.Sign(nonce)
+	}
+
+	return publicKey, signer, nil
+}
+
+func (c JetStreamConfig) tlsConfig() (*tls.Config, error) {
+	tlsConfig := &tls.Config{
+		MinVersion:         tls.VersionTLS12,
+		InsecureSkipVerify: c.TLSInsecureSkipVerify,
+	}
+	if serverName := strings.TrimSpace(c.TLSServerName); serverName != "" {
+		tlsConfig.ServerName = serverName
+	}
+
+	if caFile := strings.TrimSpace(c.TLSCAFile); caFile != "" {
+		caPEM, err := os.ReadFile(caFile)
+		if err != nil {
+			return nil, fmt.Errorf("read tls ca file: %w", err)
+		}
+		pool := x509.NewCertPool()
+		if ok := pool.AppendCertsFromPEM(caPEM); !ok {
+			return nil, fmt.Errorf("load tls ca certs from %q", caFile)
+		}
+		tlsConfig.RootCAs = pool
+	}
+
+	certFile := strings.TrimSpace(c.TLSCertFile)
+	keyFile := strings.TrimSpace(c.TLSKeyFile)
+	if certFile != "" && keyFile != "" {
+		certificate, err := tls.LoadX509KeyPair(certFile, keyFile)
+		if err != nil {
+			return nil, fmt.Errorf("load tls client certificate: %w", err)
+		}
+		tlsConfig.Certificates = []tls.Certificate{certificate}
+	}
+
+	return tlsConfig, nil
+}
+
+func (p *Publisher) refreshOperationalMetrics() {
+	stats, err := p.outbox.stats()
+	if err != nil {
+		p.setLastError(err)
+		metrics.SetJetStreamPublisherReady(p.config.Stream, false)
+		return
+	}
+	p.recordOutboxMetrics(stats)
+
+	ready := p.nc != nil && p.nc.IsConnected()
+	if ready && p.config.OutboxMaxRecords > 0 && stats.Depth >= p.config.OutboxMaxRecords {
+		ready = false
+	}
+	if ready && p.config.OutboxMaxAge > 0 && stats.Depth > 0 && stats.OldestAge > p.config.OutboxMaxAge {
+		ready = false
+	}
+
+	metrics.SetJetStreamPublisherReady(p.config.Stream, ready)
+}
+
+func (p *Publisher) recordOutboxMetrics(stats outboxStats) {
+	metrics.SetJetStreamOutboxDepth(p.config.Stream, stats.Depth)
+	metrics.SetJetStreamOutboxOldestAge(p.config.Stream, stats.OldestAge)
+}
+
+func (p *Publisher) setLastError(err error) {
+	if err == nil {
+		return
+	}
+	p.statusMu.Lock()
+	p.lastError = err.Error()
+	p.statusMu.Unlock()
+}
+
+func (p *Publisher) clearLastError() {
+	p.statusMu.Lock()
+	p.lastError = ""
+	p.statusMu.Unlock()
+}
+
+func (p *Publisher) setLastPublish(at time.Time) {
+	p.statusMu.Lock()
+	p.lastPublishAt = at
+	p.statusMu.Unlock()
+}
+
+func (p *Publisher) setLastFlush(at time.Time) {
+	p.statusMu.Lock()
+	p.lastFlushAt = at
+	p.statusMu.Unlock()
+}
+
+func cloudEventSchemaFor(eventType string) string {
+	normalized := strings.ToLower(strings.TrimSpace(eventType))
+	if normalized == "" {
+		normalized = "unknown"
+	}
+	normalized = strings.ReplaceAll(normalized, " ", "-")
+	return fmt.Sprintf("%s/%s/%s", cloudEventSchemaPrefix, normalized, cloudEventSchemaV1)
+}
+
+func dataValueString(data map[string]interface{}, keys ...string) string {
+	for _, key := range keys {
+		if value, ok := data[key]; ok {
+			switch typed := value.(type) {
+			case string:
+				if trimmed := strings.TrimSpace(typed); trimmed != "" {
+					return trimmed
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func generateTraceParent() string {
+	traceID := make([]byte, 16)
+	spanID := make([]byte, 8)
+	if _, err := rand.Read(traceID); err != nil {
+		fallback := strings.ReplaceAll(uuid.NewString(), "-", "")
+		if len(fallback) < 32 {
+			fallback = fallback + strings.Repeat("0", 32-len(fallback))
+		}
+		return fmt.Sprintf("00-%s-%s-01", fallback[:32], fallback[16:32])
+	}
+	if _, err := rand.Read(spanID); err != nil {
+		fallback := strings.ReplaceAll(uuid.NewString(), "-", "")
+		if len(fallback) < 16 {
+			fallback = fallback + strings.Repeat("0", 16-len(fallback))
+		}
+		return fmt.Sprintf("00-%s-%s-01", hex.EncodeToString(traceID), fallback[:16])
+	}
+
+	return fmt.Sprintf("00-%s-%s-01", hex.EncodeToString(traceID), hex.EncodeToString(spanID))
 }
