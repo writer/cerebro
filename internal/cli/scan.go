@@ -31,7 +31,9 @@ Examples:
   cerebro scan                           # Scan all tables
   cerebro scan --table aws_s3_buckets    # Scan specific table
   cerebro scan --limit 1000              # Limit assets per table
-  cerebro scan --dry-run                 # Show what would be scanned`,
+  cerebro scan --dry-run                 # Show what would be scanned
+  cerebro scan --preflight               # Validate scan prerequisites
+  cerebro scan --local-fixture fixture.json  # Run local scan from fixture data`,
 	RunE: runScan,
 }
 
@@ -44,6 +46,9 @@ var (
 	scanToxicCombos          bool
 	scanUseGraph             bool
 	scanExtractRelationships bool
+	scanPreflight            bool
+	scanLocalFixture         string
+	scanSnapshotDir          string
 )
 
 func init() {
@@ -55,6 +60,9 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanToxicCombos, "toxic-combos", true, "Detect toxic combinations of risk factors")
 	scanCmd.Flags().BoolVar(&scanUseGraph, "graph", true, "Use security graph for enhanced analysis (attack paths, blast radius)")
 	scanCmd.Flags().BoolVar(&scanExtractRelationships, "extract-relationships", false, "Extract resource relationships before scanning")
+	scanCmd.Flags().BoolVar(&scanPreflight, "preflight", false, "Validate scan prerequisites and exit")
+	scanCmd.Flags().StringVar(&scanLocalFixture, "local-fixture", "", "Path to local scan fixture JSON (table->assets) for scanning without Snowflake")
+	scanCmd.Flags().StringVar(&scanSnapshotDir, "snapshot-dir", "", "Directory containing provider snapshot JSON files (<table>.json) for local scan mode")
 }
 
 func runScan(cmd *cobra.Command, args []string) error {
@@ -67,19 +75,38 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 	defer func() { _ = application.Close() }()
 
-	if application.Snowflake == nil {
-		return fmt.Errorf("snowflake not configured: set SNOWFLAKE_PRIVATE_KEY, SNOWFLAKE_ACCOUNT, and SNOWFLAKE_USER")
+	localDataset, err := resolveLocalScanDataset()
+	if err != nil {
+		return err
+	}
+
+	if scanPreflight {
+		return runScanPreflight(application, localDataset)
+	}
+
+	localMode := localDataset != nil && len(localDataset.Tables) > 0
+	if application.Snowflake == nil && !localMode {
+		preflight := evaluateScanPreflight(application, nil)
+		return fmt.Errorf("scan preflight failed: %s (run 'cerebro scan --preflight' for details)", preflight.Message)
+	}
+
+	if localMode {
+		Info("Local scan mode enabled (%d tables from %s)", len(localDataset.Tables), localDataset.Source)
 	}
 
 	// Extract relationships if requested
 	if scanExtractRelationships {
-		Info("Extracting resource relationships from synced data...")
-		relExtractor := nativesync.NewRelationshipExtractor(application.Snowflake, application.Logger)
-		relCount, err := relExtractor.ExtractAndPersist(ctx)
-		if err != nil {
-			Warning("Relationship extraction had errors: %v", err)
+		if application.Snowflake == nil {
+			Warning("Skipping relationship extraction in local scan mode (Snowflake not configured)")
+		} else {
+			Info("Extracting resource relationships from synced data...")
+			relExtractor := nativesync.NewRelationshipExtractor(application.Snowflake, application.Logger)
+			relCount, err := relExtractor.ExtractAndPersist(ctx)
+			if err != nil {
+				Warning("Relationship extraction had errors: %v", err)
+			}
+			Info("Extracted %d relationships", relCount)
 		}
-		Info("Extracted %d relationships", relCount)
 	}
 
 	policies := application.Policy.ListPolicies()
@@ -92,7 +119,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 	tuning := application.ScanTuning()
 
 	graphAvailable := false
-	if scanUseGraph {
+	if scanUseGraph && !localMode {
 		spinner := NewSpinner("Waiting for security graph")
 		spinner.Start()
 		graphCtx := ctx
@@ -113,7 +140,10 @@ func runScan(cmd *cobra.Command, args []string) error {
 	// Build set of available tables for filtering
 	availableSet := make(map[string]bool)
 	availableTables := application.AvailableTables
-	if application.Snowflake != nil {
+	if localMode {
+		availableTables = sortedDatasetTables(localDataset)
+		application.AvailableTables = append([]string(nil), availableTables...)
+	} else if application.Snowflake != nil {
 		if tables, err := application.Snowflake.ListAvailableTables(ctx); err == nil {
 			application.AvailableTables = tables
 			availableTables = tables
@@ -131,10 +161,13 @@ func runScan(cmd *cobra.Command, args []string) error {
 		tables = scanTables
 	} else if len(availableTables) > 0 {
 		tables = scannableTablesFromAvailable(availableTables)
+		if localMode && len(tables) == 0 {
+			tables = append([]string(nil), availableTables...)
+		}
 	} else {
 		tables = nativesync.SupportedTableNames()
 	}
-	if len(tables) == 0 {
+	if len(tables) == 0 && !localMode {
 		tables = nativesync.SupportedTableNames()
 	}
 
@@ -150,13 +183,21 @@ func runScan(cmd *cobra.Command, args []string) error {
 			}
 		}
 		if skipped > 0 {
-			Info("Skipped %d tables not present in Snowflake", skipped)
+			if localMode {
+				Info("Skipped %d tables not present in local dataset", skipped)
+			} else {
+				Info("Skipped %d tables not present in Snowflake", skipped)
+			}
 		}
 		tables = valid
 	}
 
 	if len(tables) == 0 {
-		Warning("No tables to scan - policies may not have table mappings or tables not synced")
+		if localMode {
+			Warning("No tables to scan in local dataset")
+		} else {
+			Warning("No tables to scan - policies may not have table mappings or tables not synced")
+		}
 		return nil
 	}
 
@@ -177,7 +218,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 	var tableProfiles []scanner.TableScanProfile
 	var scanMu sync.Mutex
 
-	// Limit concurrent Snowflake queries to avoid overwhelming the warehouse
+	// Limit concurrent table scans to avoid overwhelming resources
 	limiter := scanner.NewAdaptiveLimiter(tuning.MinConcurrent, tuning.MaxConcurrent, tuning.MaxConcurrent)
 
 	var scanWg sync.WaitGroup
@@ -191,7 +232,15 @@ func runScan(cmd *cobra.Command, args []string) error {
 			}
 			defer limiter.Release()
 
-			scanned, violations, fnds, profile := scanOneTable(ctx, application, table, scanFull, scanLimit, scanToxicCombos, graphAvailable, tuning)
+			var scanned, violations int64
+			var fnds []map[string]interface{}
+			var profile scanner.TableScanProfile
+			if localMode {
+				assets := localDataset.Tables[strings.ToLower(table)]
+				scanned, violations, fnds, profile = scanOneLocalTable(ctx, application, table, assets, scanLimit, scanToxicCombos, graphAvailable, tuning)
+			} else {
+				scanned, violations, fnds, profile = scanOneTable(ctx, application, table, scanFull, scanLimit, scanToxicCombos, graphAvailable, tuning)
+			}
 
 			scanMu.Lock()
 			totalScanned += scanned
@@ -207,30 +256,34 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 	scanWg.Wait()
 
-	queryPolicyResult := application.ScanQueryPolicies(ctx)
-	queryPolicyFindingCount := len(queryPolicyResult.Findings)
-	queryPolicyErrorCount := len(queryPolicyResult.Errors)
-	for _, errMsg := range queryPolicyResult.Errors {
-		Warning("Query policy execution failed: %s", errMsg)
-	}
-	if queryPolicyFindingCount > 0 {
-		for _, f := range queryPolicyResult.Findings {
-			application.Findings.Upsert(ctx, f)
-			allFindings = append(allFindings, map[string]interface{}{
-				"id":              f.ID,
-				"policy_id":       f.PolicyID,
-				"title":           f.Title,
-				"description":     f.Description,
-				"resource_id":     f.ResourceID,
-				"resource_name":   f.ResourceName,
-				"severity":        f.Severity,
-				"risk_categories": f.RiskCategories,
-				"remediation":     f.Remediation,
-				"query_policy":    true,
-			})
+	queryPolicyFindingCount := 0
+	queryPolicyErrorCount := 0
+	if !localMode {
+		queryPolicyResult := application.ScanQueryPolicies(ctx)
+		queryPolicyFindingCount = len(queryPolicyResult.Findings)
+		queryPolicyErrorCount = len(queryPolicyResult.Errors)
+		for _, errMsg := range queryPolicyResult.Errors {
+			Warning("Query policy execution failed: %s", errMsg)
 		}
-		totalViolations += int64(queryPolicyFindingCount)
-		fmt.Printf("\nQuery-policy findings: %d\n", queryPolicyFindingCount)
+		if queryPolicyFindingCount > 0 {
+			for _, f := range queryPolicyResult.Findings {
+				application.Findings.Upsert(ctx, f)
+				allFindings = append(allFindings, map[string]interface{}{
+					"id":              f.ID,
+					"policy_id":       f.PolicyID,
+					"title":           f.Title,
+					"description":     f.Description,
+					"resource_id":     f.ResourceID,
+					"resource_name":   f.ResourceName,
+					"severity":        f.Severity,
+					"risk_categories": f.RiskCategories,
+					"remediation":     f.Remediation,
+					"query_policy":    true,
+				})
+			}
+			totalViolations += int64(queryPolicyFindingCount)
+			fmt.Printf("\nQuery-policy findings: %d\n", queryPolicyFindingCount)
+		}
 	}
 
 	// Start watermark persistence in the background while graph analysis runs.
@@ -241,7 +294,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 		duration  time.Duration
 	}
 	wmResultCh := make(chan watermarkResult, 1)
-	if application.ScanWatermarks != nil {
+	if !localMode && application.ScanWatermarks != nil {
 		go func() {
 			started := time.Now()
 			err := application.ScanWatermarks.PersistWatermarksWithRetry(ctx, scanner.DefaultWatermarkPersistOptions())
@@ -255,7 +308,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 	sqlToxicRiskSets := make(map[string][]map[string]bool)
 
 	// Relationship-based toxic combination detection (SQL query approach)
-	if scanToxicCombos && application.Snowflake != nil {
+	if !localMode && scanToxicCombos && application.Snowflake != nil {
 		toxicFindings, err := scanner.DetectRelationshipToxicCombinations(ctx, application.Snowflake)
 		if err != nil {
 			Warning("Failed to detect toxic combinations from relationships: %v", err)

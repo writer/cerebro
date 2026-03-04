@@ -151,6 +151,42 @@ jobs:
           go mod vendor
           git diff --exit-code -- go.mod go.sum vendor/modules.txt vendor
 
+  scan-smoke-local:
+    name: scan-smoke-local
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.7'
+
+      - name: Build
+        run: go build -o cerebro ./cmd/cerebro
+
+      - name: Scan preflight (local dataset)
+        env:
+          LOG_LEVEL: error
+        run: ./cerebro scan --preflight --local-fixture internal/cli/testdata/scan_smoke_fixture.json --output json
+
+      - name: Local scan smoke
+        shell: bash
+        env:
+          LOG_LEVEL: error
+        run: |
+          set -euo pipefail
+          output="$(./cerebro scan --local-fixture internal/cli/testdata/scan_smoke_fixture.json --output json --graph=false --toxic-combos=false)"
+          echo "$output" | tail -n 1 > /tmp/scan-result.json
+          python3 - <<'PY'
+import json
+from pathlib import Path
+
+payload = json.loads(Path('/tmp/scan-result.json').read_text())
+if payload.get('scanned', 0) <= 0:
+    raise SystemExit('expected scanned > 0 in local smoke scan')
+PY
+
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -457,7 +493,7 @@ jobs:
   promote-sec-prod-image:
     name: Promote sec-prod image tag
     runs-on: ubuntu-latest
-    needs: [test, coverage-threshold, vendor-check, lint, gosec, govulncheck, trivy, policy-validate, build-and-push-sec-prod]
+    needs: [test, coverage-threshold, vendor-check, scan-smoke-local, lint, gosec, govulncheck, trivy, policy-validate, build-and-push-sec-prod]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.build-and-push-sec-prod.outputs.image_changed == 'true'
     permissions:
       id-token: write
@@ -495,7 +531,7 @@ jobs:
   deploy-sec-dev:
     name: Deploy to sec-dev ECS
     runs-on: ubuntu-latest
-    needs: [test, coverage-threshold, vendor-check, lint, gosec, govulncheck, trivy, policy-validate, build-and-push-sec-dev]
+    needs: [test, coverage-threshold, vendor-check, scan-smoke-local, lint, gosec, govulncheck, trivy, policy-validate, build-and-push-sec-dev]
     if: github.event_name == 'pull_request' && needs.build-and-push-sec-dev.outputs.image_changed == 'true' && needs.build-and-push-sec-dev.outputs.sec_dev_secrets_present == 'true'
     permissions:
       id-token: write
