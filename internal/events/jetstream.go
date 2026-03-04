@@ -857,7 +857,7 @@ func (c JetStreamConfig) tlsConfig() (*tls.Config, error) {
 	}
 
 	if caFile := strings.TrimSpace(c.TLSCAFile); caFile != "" {
-		caPEM, err := os.ReadFile(caFile)
+		caPEM, err := os.ReadFile(caFile) // #nosec G304 -- TLS CA path is explicit operator configuration
 		if err != nil {
 			return nil, fmt.Errorf("read tls ca file: %w", err)
 		}
