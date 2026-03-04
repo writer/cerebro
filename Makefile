@@ -1,4 +1,4 @@
-.PHONY: build run test sync clean dev serve policy-list docker-build trivy-db security-scan security-scan-built security-scan-source
+.PHONY: build run test sync clean dev serve policy-list docker-build trivy-db security-scan security-scan-built security-scan-source vendor vendor-check
 
 # Version info
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -53,6 +53,17 @@ query: build
 # Install all dependencies
 install-deps:
 	go mod download
+
+# Sync vendored dependencies
+vendor:
+	go mod tidy
+	go mod vendor
+
+# Verify vendored dependencies are in sync
+vendor-check:
+	go mod tidy
+	go mod vendor
+	git diff --exit-code -- go.mod go.sum vendor/modules.txt vendor
 
 # Clean build artifacts
 clean:
