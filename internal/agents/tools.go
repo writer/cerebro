@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/writerinternal/cerebro/internal/findings"
 	"github.com/writerinternal/cerebro/internal/policy"
@@ -26,6 +27,16 @@ func NewSecurityTools(sf *snowflake.Client, fs findings.FindingStore, pe *policy
 		findings:  fs,
 		policies:  pe,
 		scm:       sc,
+	}
+}
+
+func cloudInspectEnabled() bool {
+	raw := strings.ToLower(strings.TrimSpace(os.Getenv("CEREBRO_CLOUD_INSPECT_ENABLED")))
+	switch raw {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -73,8 +84,8 @@ func (st *SecurityTools) GetTools() []Tool {
 				"required": []string{"service", "action"},
 			},
 			Handler: func(ctx context.Context, args json.RawMessage) (string, error) {
-				if os.Getenv("CEREBRO_CLOUD_INSPECT_ENABLED") == "false" {
-					return "", fmt.Errorf("direct cloud inspection is disabled; submit an inspection job to the worker queue instead")
+				if !cloudInspectEnabled() {
+					return "", fmt.Errorf("direct cloud inspection is disabled by default; set CEREBRO_CLOUD_INSPECT_ENABLED=true to enable")
 				}
 				return st.awsInspect(ctx, args)
 			},
@@ -106,8 +117,8 @@ func (st *SecurityTools) GetTools() []Tool {
 				"required": []string{"service", "action", "project"},
 			},
 			Handler: func(ctx context.Context, args json.RawMessage) (string, error) {
-				if os.Getenv("CEREBRO_CLOUD_INSPECT_ENABLED") == "false" {
-					return "", fmt.Errorf("direct cloud inspection is disabled; submit an inspection job to the worker queue instead")
+				if !cloudInspectEnabled() {
+					return "", fmt.Errorf("direct cloud inspection is disabled by default; set CEREBRO_CLOUD_INSPECT_ENABLED=true to enable")
 				}
 				return st.gcpInspect(ctx, args)
 			},
@@ -167,8 +178,8 @@ func (st *SecurityTools) GetTools() []Tool {
 				"required": []string{"resource"},
 			},
 			Handler: func(ctx context.Context, args json.RawMessage) (string, error) {
-				if os.Getenv("CEREBRO_CLOUD_INSPECT_ENABLED") == "false" {
-					return "", fmt.Errorf("direct cloud inspection is disabled; submit an inspection job to the worker queue instead")
+				if !cloudInspectEnabled() {
+					return "", fmt.Errorf("direct cloud inspection is disabled by default; set CEREBRO_CLOUD_INSPECT_ENABLED=true to enable")
 				}
 				return st.inspectCloudResource(ctx, args)
 			},

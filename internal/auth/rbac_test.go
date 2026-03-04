@@ -130,6 +130,60 @@ func TestRBAC_HasPermission(t *testing.T) {
 	}
 }
 
+func TestRBAC_HasPermission_EmptyUserIDDenied(t *testing.T) {
+	rbac := NewRBAC()
+	if got := rbac.HasPermission(context.Background(), "", "findings:read"); got {
+		t.Fatal("expected empty user ID to be denied")
+	}
+}
+
+func TestRBAC_HasPermission_DeniesCrossTenantRole(t *testing.T) {
+	rbac := NewRBAC()
+	rbac.roles["tenant-a-role"] = &Role{
+		ID:          "tenant-a-role",
+		Name:        "Tenant A Analyst",
+		Permissions: []string{"findings:read"},
+		TenantID:    "tenant-a",
+	}
+
+	user := &User{
+		Email:    "tenant-b@example.com",
+		Name:     "Tenant B User",
+		TenantID: "tenant-b",
+		RoleIDs:  []string{"tenant-a-role"},
+	}
+	if err := rbac.CreateUser(user); err != nil {
+		t.Fatalf("CreateUser failed: %v", err)
+	}
+
+	if got := rbac.HasPermission(context.Background(), user.ID, "findings:read"); got {
+		t.Fatal("expected permission denial for cross-tenant role")
+	}
+}
+
+func TestRBAC_AssignRole_DeniesCrossTenantRole(t *testing.T) {
+	rbac := NewRBAC()
+	rbac.roles["tenant-a-role"] = &Role{
+		ID:          "tenant-a-role",
+		Name:        "Tenant A Analyst",
+		Permissions: []string{"findings:read"},
+		TenantID:    "tenant-a",
+	}
+
+	user := &User{
+		Email:    "tenant-b@example.com",
+		Name:     "Tenant B User",
+		TenantID: "tenant-b",
+	}
+	if err := rbac.CreateUser(user); err != nil {
+		t.Fatalf("CreateUser failed: %v", err)
+	}
+
+	if err := rbac.AssignRole(user.ID, "tenant-a-role"); err == nil {
+		t.Fatal("expected role tenant mismatch error")
+	}
+}
+
 func TestRBAC_CreateTenant(t *testing.T) {
 	rbac := NewRBAC()
 

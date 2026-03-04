@@ -3,12 +3,17 @@ package agents
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 )
 
 type mockSessionStore struct {
 	sessions map[string]*Session
+}
+
+type failingSessionStore struct {
+	saveErr error
 }
 
 func newMockSessionStore() *mockSessionStore {
@@ -28,6 +33,14 @@ func (m *mockSessionStore) Get(_ context.Context, id string) (*Session, error) {
 	}
 	copy := *session
 	return &copy, nil
+}
+
+func (f *failingSessionStore) Save(_ context.Context, _ *Session) error {
+	return f.saveErr
+}
+
+func (f *failingSessionStore) Get(_ context.Context, _ string) (*Session, error) {
+	return nil, nil
 }
 
 func TestNewMemory(t *testing.T) {
@@ -239,7 +252,9 @@ func TestAgentRegistry_UpdateSession(t *testing.T) {
 	time.Sleep(time.Millisecond)
 
 	session.Status = "completed"
-	r.UpdateSession(session)
+	if err := r.UpdateSession(session); err != nil {
+		t.Fatalf("unexpected update error: %v", err)
+	}
 
 	got, _ := r.GetSession(session.ID)
 	if got.Status != "completed" {
@@ -273,10 +288,46 @@ func TestAgentRegistry_PersistsAndHydratesSessions(t *testing.T) {
 	}
 
 	hydrated.Status = "completed"
-	r.UpdateSession(hydrated)
+	if err := r.UpdateSession(hydrated); err != nil {
+		t.Fatalf("update session failed: %v", err)
+	}
 
 	if store.sessions[session.ID].Status != "completed" {
 		t.Fatalf("expected persisted session status to be updated")
+	}
+}
+
+func TestAgentRegistry_CreateSession_ReturnsErrorOnPersistFailure(t *testing.T) {
+	r := NewAgentRegistry()
+	r.SetSessionStore(&failingSessionStore{saveErr: errors.New("snowflake down")})
+	r.RegisterAgent(&Agent{ID: "agent-1", Name: "Test Agent"})
+
+	_, err := r.CreateSession("agent-1", "user-123", SessionContext{})
+	if err == nil {
+		t.Fatal("expected create session to fail when persistence fails")
+	}
+	if len(r.sessions) != 0 {
+		t.Fatal("expected failed persisted session not to remain in registry")
+	}
+}
+
+func TestAgentRegistry_UpdateSession_ReturnsErrorOnPersistFailure(t *testing.T) {
+	r := NewAgentRegistry()
+	r.RegisterAgent(&Agent{ID: "agent-1", Name: "Test Agent"})
+
+	store := newMockSessionStore()
+	r.SetSessionStore(store)
+
+	session, err := r.CreateSession("agent-1", "user-123", SessionContext{})
+	if err != nil {
+		t.Fatalf("failed creating session: %v", err)
+	}
+
+	r.SetSessionStore(&failingSessionStore{saveErr: errors.New("snowflake down")})
+
+	session.Status = "completed"
+	if err := r.UpdateSession(session); err == nil {
+		t.Fatal("expected update session to fail when persistence fails")
 	}
 }
 
@@ -319,6 +370,24 @@ func TestToolCall(t *testing.T) {
 	}
 	if string(tc.Arguments) != `{"query":"test"}` {
 		t.Error("expected arguments to match")
+	}
+}
+
+func TestToolValidateExecutionRequiresApproval(t *testing.T) {
+	tool := &Tool{
+		Name:             "dangerous",
+		RequiresApproval: true,
+		Handler: func(context.Context, json.RawMessage) (string, error) {
+			return "ok", nil
+		},
+	}
+
+	if err := tool.ValidateExecution(false); err == nil {
+		t.Fatal("expected approval_required error when tool is not approved")
+	}
+
+	if err := tool.ValidateExecution(true); err != nil {
+		t.Fatalf("expected approved tool to validate, got %v", err)
 	}
 }
 

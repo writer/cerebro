@@ -123,7 +123,10 @@ func (s *Server) sendMessage(w http.ResponseWriter, r *http.Request) {
 			Role:    "assistant",
 			Content: "I understand you want help with: " + req.Content + ". However, no LLM provider is configured. Please set ANTHROPIC_API_KEY or OPENAI_API_KEY.",
 		})
-		s.app.Agents.UpdateSession(session)
+		if err := s.app.Agents.UpdateSession(session); err != nil {
+			s.error(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		s.json(w, http.StatusOK, session.Messages[len(session.Messages)-1])
 		return
 	}
@@ -133,7 +136,10 @@ func (s *Server) sendMessage(w http.ResponseWriter, r *http.Request) {
 		s.error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	s.app.Agents.UpdateSession(session)
+	if err := s.app.Agents.UpdateSession(session); err != nil {
+		s.error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	s.json(w, http.StatusOK, resp)
 }
 
@@ -169,7 +175,10 @@ func (s *Server) approveSessionToolCall(w http.ResponseWriter, r *http.Request) 
 		}
 		session.Messages = append(session.Messages, msg)
 		s.logToolApprovalDecision(r.Context(), r, session, pendingCall, "expired")
-		s.app.Agents.UpdateSession(session)
+		if err := s.app.Agents.UpdateSession(session); err != nil {
+			s.error(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		s.json(w, http.StatusBadRequest, msg)
 		return
 	}
@@ -201,7 +210,10 @@ func (s *Server) approveSessionToolCall(w http.ResponseWriter, r *http.Request) 
 		}
 		session.Messages = append(session.Messages, msg)
 		s.logToolApprovalDecision(r.Context(), r, session, pendingCall, "denied")
-		s.app.Agents.UpdateSession(session)
+		if err := s.app.Agents.UpdateSession(session); err != nil {
+			s.error(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		s.json(w, http.StatusOK, msg)
 		return
 	}
@@ -209,6 +221,14 @@ func (s *Server) approveSessionToolCall(w http.ResponseWriter, r *http.Request) 
 	tool := findAgentTool(agent.Tools, pendingCall.Name)
 	if tool == nil {
 		s.error(w, http.StatusBadRequest, "pending tool not found on agent")
+		return
+	}
+	if !tool.RequiresApproval {
+		s.error(w, http.StatusBadRequest, "pending tool does not require approval")
+		return
+	}
+	if err := tool.ValidateExecution(true); err != nil {
+		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -240,7 +260,10 @@ func (s *Server) approveSessionToolCall(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	s.app.Agents.UpdateSession(session)
+	if err := s.app.Agents.UpdateSession(session); err != nil {
+		s.error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	s.json(w, http.StatusOK, resp)
 }
 

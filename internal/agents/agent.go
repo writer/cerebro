@@ -70,6 +70,22 @@ type Tool struct {
 	RequiresApproval bool                   `json:"requires_approval"`
 }
 
+func (t *Tool) ValidateExecution(approved bool) error {
+	if t == nil {
+		return fmt.Errorf("tool not found")
+	}
+	if t.RequiresApproval && !approved {
+		return &ToolError{
+			Message: fmt.Sprintf("tool %s requires approval before execution", t.Name),
+			Code:    "approval_required",
+		}
+	}
+	if t.Handler == nil {
+		return fmt.Errorf("tool %s is not executable", t.Name)
+	}
+	return nil
+}
+
 type ToolHandler func(ctx context.Context, args json.RawMessage) (string, error)
 
 // Session represents an investigation session
@@ -290,7 +306,10 @@ func (r *AgentRegistry) CreateSession(agentID, userID string, ctx SessionContext
 
 	r.sessions[session.ID] = session
 	if r.sessionStore != nil {
-		_ = r.sessionStore.Save(context.Background(), session)
+		if err := r.sessionStore.Save(context.Background(), session); err != nil {
+			delete(r.sessions, session.ID)
+			return nil, fmt.Errorf("persist session: %w", err)
+		}
 	}
 	return session, nil
 }
@@ -317,14 +336,17 @@ func (r *AgentRegistry) GetSession(id string) (*Session, bool) {
 	return nil, false
 }
 
-func (r *AgentRegistry) UpdateSession(session *Session) {
+func (r *AgentRegistry) UpdateSession(session *Session) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	session.UpdatedAt = time.Now()
 	r.sessions[session.ID] = session
 	if r.sessionStore != nil {
-		_ = r.sessionStore.Save(context.Background(), session)
+		if err := r.sessionStore.Save(context.Background(), session); err != nil {
+			return fmt.Errorf("persist session: %w", err)
+		}
 	}
+	return nil
 }
 
 // GetSystemPrompt generates the system prompt for the session

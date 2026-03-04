@@ -1623,5 +1623,51 @@ func TestApproveSessionToolCallExpiredPendingRequest(t *testing.T) {
 	}
 }
 
+func TestApproveSessionToolCallRejectsNonApprovalTool(t *testing.T) {
+	a := newTestApp(t)
+	called := false
+
+	a.Agents.RegisterAgent(&agents.Agent{
+		ID:       "agent-non-approval",
+		Name:     "Non Approval Agent",
+		Provider: &scriptedAgentProvider{},
+		Tools: []agents.Tool{{
+			Name:             "safe_tool",
+			RequiresApproval: false,
+			Handler: func(context.Context, json.RawMessage) (string, error) {
+				called = true
+				return `{"ok":true}`, nil
+			},
+		}},
+	})
+
+	session, err := a.Agents.CreateSession("agent-non-approval", "user-1", agents.SessionContext{})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	session.Status = "pending_approval"
+	session.Context.Metadata = map[string]interface{}{
+		"pending_tool_call": map[string]interface{}{
+			"id":         "tool-1",
+			"name":       "safe_tool",
+			"arguments":  map[string]interface{}{},
+			"created_at": time.Now().UTC().Format(time.RFC3339Nano),
+		},
+	}
+	if err := a.Agents.UpdateSession(session); err != nil {
+		t.Fatalf("update session: %v", err)
+	}
+
+	s := NewServer(a)
+	w := do(t, s, "POST", "/api/v1/agents/sessions/"+session.ID+"/approve", map[string]bool{"approve": true})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for non-approval tool, got %d: %s", w.Code, w.Body.String())
+	}
+	if called {
+		t.Fatal("expected handler not to execute for non-approval tool in approval endpoint")
+	}
+}
+
 // suppress unused import warnings
 var _ = os.DevNull

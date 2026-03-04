@@ -27,6 +27,7 @@ package auth
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -132,15 +133,23 @@ func (r *RBAC) loadDefaults() {
 }
 
 func (r *RBAC) HasPermission(ctx context.Context, userID, permID string) bool {
+	if strings.TrimSpace(userID) == "" || strings.TrimSpace(permID) == "" {
+		return false
+	}
+
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	user, ok := r.users[userID]
 	if !ok {
 		return false
 	}
+
 	for _, roleID := range user.RoleIDs {
 		role, ok := r.roles[roleID]
 		if !ok {
+			continue
+		}
+		if role.TenantID != "" && role.TenantID != user.TenantID {
 			continue
 		}
 		for _, p := range role.Permissions {
@@ -176,6 +185,13 @@ func (r *RBAC) AssignRole(userID, roleID string) error {
 	user, ok := r.users[userID]
 	if !ok {
 		return fmt.Errorf("user not found")
+	}
+	role, ok := r.roles[roleID]
+	if !ok {
+		return fmt.Errorf("role not found")
+	}
+	if role.TenantID != "" && role.TenantID != user.TenantID {
+		return fmt.Errorf("role tenant mismatch")
 	}
 	user.RoleIDs = append(user.RoleIDs, roleID)
 	return r.persistLocked()

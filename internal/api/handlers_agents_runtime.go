@@ -61,15 +61,29 @@ func (s *Server) executeAgentToolCalls(ctx context.Context, session *agents.Sess
 			continue
 		}
 
-		if tool.RequiresApproval {
-			session.Status = "pending_approval"
-			setPendingToolCall(session, tc)
+		if err := tool.ValidateExecution(false); err != nil {
+			var toolErr *agents.ToolError
+			if errors.As(err, &toolErr) && toolErr.Code == "approval_required" {
+				session.Status = "pending_approval"
+				setPendingToolCall(session, tc)
+				session.Messages = append(session.Messages, agents.Message{
+					Role:    "tool",
+					Content: approvalRequiredToolOutput(tc.Name),
+					Name:    tc.ID,
+				})
+				return true
+			}
+
+			output := fmt.Sprintf("Error executing tool: %v", err)
+			if errors.As(err, &toolErr) {
+				output = toolErr.JSON()
+			}
 			session.Messages = append(session.Messages, agents.Message{
 				Role:    "tool",
-				Content: approvalRequiredToolOutput(tc.Name),
+				Content: output,
 				Name:    tc.ID,
 			})
-			return true
+			continue
 		}
 
 		output, err := tool.Handler(ctx, tc.Arguments)
