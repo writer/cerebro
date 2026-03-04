@@ -32,6 +32,7 @@ type Server struct {
 	app         *app.App
 	router      *chi.Mux
 	auditLogger auditLogWriter
+	rateLimiter *RateLimiter
 }
 
 type auditLogWriter interface {
@@ -57,6 +58,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) Run() error {
 	addr := fmt.Sprintf(":%d", s.app.Config.Port)
 	s.app.Logger.Info("starting server", "addr", addr)
+	defer func() {
+		if s.rateLimiter != nil {
+			s.rateLimiter.Close()
+		}
+	}()
 
 	srv := &http.Server{
 		Addr:         addr,

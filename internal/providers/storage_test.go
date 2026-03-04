@@ -57,28 +57,6 @@ func TestEnsureProviderTable_PropagatesColumnError(t *testing.T) {
 	}
 }
 
-func TestGetProviderTableColumns_UppercaseKeyFallback(t *testing.T) {
-	client := &fakeSnowflakeClient{queryReply: &snowflake.QueryResult{Rows: []map[string]interface{}{
-		{"COLUMN_NAME": "ID"},
-		{"column_name": []byte("display_name")},
-	}}}
-
-	columns, err := getProviderTableColumns(context.Background(), client, "okta_users")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if len(columns) != 2 {
-		t.Fatalf("expected 2 columns, got %d", len(columns))
-	}
-	if columns[0] != "ID" {
-		t.Fatalf("expected first column ID, got %q", columns[0])
-	}
-	if columns[1] != "display_name" {
-		t.Fatalf("expected second column display_name, got %q", columns[1])
-	}
-}
-
 func TestNoUppercaseQueryRowKeyAccessInProviderStorage(t *testing.T) {
 	_, currentFile, _, ok := runtime.Caller(0)
 	if !ok {

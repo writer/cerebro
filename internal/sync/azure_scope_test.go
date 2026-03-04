@@ -29,7 +29,7 @@ func TestAzureScopeFilterFallsBackToEngineSubscription(t *testing.T) {
 }
 
 func TestAzureScopeWhereClause(t *testing.T) {
-	where, args := azureScopeWhereClause("SUBSCRIPTION_ID", []string{"sub-1", "sub-2"})
+	where, args := scopedWhereClause("SUBSCRIPTION_ID", []string{"sub-1", "sub-2"})
 	if where != " WHERE SUBSCRIPTION_ID IN (?,?)" {
 		t.Fatalf("unexpected where clause: %q", where)
 	}

@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path"
 
@@ -69,7 +70,7 @@ func fetchGCPPubSubTopicsWithAdmin(ctx context.Context, projectID string, adminC
 	})
 	for {
 		topic, err := it.Next()
-		if err == iterator.Done {
+		if errors.Is(err, iterator.Done) {
 			break
 		}
 		if err != nil {
@@ -136,7 +137,7 @@ func fetchGCPPubSubTopicsWithAdmin(ctx context.Context, projectID string, adminC
 		})
 		for {
 			subscription, err := subIt.Next()
-			if err == iterator.Done {
+			if errors.Is(err, iterator.Done) {
 				break
 			}
 			if err != nil {

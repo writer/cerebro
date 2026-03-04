@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -57,7 +58,7 @@ func (e *GCPSyncEngine) fetchGCPCloudRunServices(ctx context.Context, projectID 
 	it := client.ListServices(ctx, req)
 	for {
 		svc, err := it.Next()
-		if err == iterator.Done {
+		if errors.Is(err, iterator.Done) {
 			break
 		}
 		if err != nil {
@@ -238,7 +239,7 @@ func (e *GCPSyncEngine) fetchGCPCloudRunRevisions(ctx context.Context, projectID
 	it := client.ListRevisions(ctx, req)
 	for {
 		rev, err := it.Next()
-		if err == iterator.Done {
+		if errors.Is(err, iterator.Done) {
 			break
 		}
 		if err != nil {

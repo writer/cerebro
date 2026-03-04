@@ -125,7 +125,7 @@ func TestGCPScopeFilterFallsBackToEngineProject(t *testing.T) {
 }
 
 func TestGCPScopeWhereClause(t *testing.T) {
-	where, args := gcpScopeWhereClause("PROJECT_ID", []string{"p1", "p2"})
+	where, args := scopedWhereClause("PROJECT_ID", []string{"p1", "p2"})
 	if where != " WHERE PROJECT_ID IN (?,?)" {
 		t.Fatalf("unexpected where clause: %q", where)
 	}

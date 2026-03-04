@@ -510,7 +510,7 @@ func probeGCPCloudAssetAccess(ctx context.Context, projectID string, clientOptio
 	}
 
 	iter := client.SearchAllResources(ctx, req)
-	if _, err := iter.Next(); err != nil && err != iterator.Done {
+	if _, err := iter.Next(); err != nil && !errors.Is(err, iterator.Done) {
 		return fmt.Errorf("search resources for projects/%s: %w", projectID, err)
 	}
 
@@ -531,7 +531,7 @@ func probeGCPSCCAccess(ctx context.Context, orgID string, clientOptions []option
 	}
 
 	iter := client.ListFindings(ctx, req)
-	if _, err := iter.Next(); err != nil && err != iterator.Done {
+	if _, err := iter.Next(); err != nil && !errors.Is(err, iterator.Done) {
 		return fmt.Errorf("list findings for organizations/%s: %w", orgID, err)
 	}
 

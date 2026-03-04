@@ -12,6 +12,7 @@ import (
 
 	"github.com/writerinternal/cerebro/internal/metrics"
 	"github.com/writerinternal/cerebro/internal/snowflake"
+	"github.com/writerinternal/cerebro/internal/snowflake/tableops"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/time/rate"
 )
@@ -265,162 +266,16 @@ func (e *GCPSyncEngine) emitCDCEvents(ctx context.Context, table string, changes
 }
 
 func (e *GCPSyncEngine) ensureTable(ctx context.Context, table string, columns []string) error {
-	if err := snowflake.ValidateTableName(table); err != nil {
-		return fmt.Errorf("invalid table name: %w", err)
-	}
-
-	for _, col := range columns {
-		if err := snowflake.ValidateColumnName(col); err != nil {
-			return fmt.Errorf("invalid column name %q: %w", col, err)
-		}
-	}
-
-	colDefs := make([]string, len(columns))
-	for i, col := range columns {
-		colDefs[i] = fmt.Sprintf("%s VARIANT", strings.ToUpper(col))
-	}
-
-	createQuery := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
-		_CQ_ID VARCHAR PRIMARY KEY,
-		_CQ_SYNC_TIME TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP(),
-		_CQ_HASH VARCHAR,
-		%s
-	)`, table, strings.Join(colDefs, ", "))
-
-	_, err := e.sf.Exec(ctx, createQuery)
-	if err != nil {
-		return err
-	}
-
-	// Schema evolution: add missing columns
-	existingCols, err := e.getTableColumns(ctx, table)
-	if err != nil {
-		return nil // Table might be new
-	}
-
-	for _, col := range columnsMissingFromSchema(existingCols, columns) {
-		alterQuery := fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS %s VARIANT", table, col)
-		if _, err := e.sf.Exec(ctx, alterQuery); err != nil {
-			e.logger.Debug("failed to add column", "table", table, "column", col, "error", err)
-		}
-	}
-
-	return nil
-}
-
-func (e *GCPSyncEngine) getTableColumns(ctx context.Context, table string) ([]string, error) {
-	if err := snowflake.ValidateTableName(table); err != nil {
-		return nil, err
-	}
-
-	query := `
-		SELECT COLUMN_NAME 
-		FROM INFORMATION_SCHEMA.COLUMNS 
-		WHERE TABLE_NAME = ?
-		AND TABLE_SCHEMA = CURRENT_SCHEMA()
-	`
-
-	result, err := e.sf.Query(ctx, query, strings.ToUpper(table))
-	if err != nil {
-		return nil, err
-	}
-
-	var columns []string
-	for _, row := range result.Rows {
-		if col := queryRowString(row, "column_name"); col != "" {
-			columns = append(columns, col)
-		}
-	}
-	return columns, nil
+	return tableops.EnsureVariantTable(ctx, e.sf, table, columns, tableops.EnsureVariantTableOptions{
+		AddMissingColumns:     true,
+		IgnoreLookupError:     true,
+		IgnoreAddColumnErrors: true,
+	})
 }
 
 func (e *GCPSyncEngine) upsertWithChanges(ctx context.Context, table string, columns []string, rows []map[string]interface{}) (*ChangeSet, error) {
-	changes := &ChangeSet{}
-	if err := snowflake.ValidateTableName(table); err != nil {
-		return changes, fmt.Errorf("invalid table name %s: %w", table, err)
-	}
 	scopeColumn, scopeValues := gcpScopeFilter(columns, rows, e.projectID)
-
-	if len(rows) == 0 {
-		// Check for deletions even when no new rows
-		existing := e.getExistingHashes(ctx, table, scopeColumn, scopeValues)
-		changes = detectRowChanges(existing, map[string]string{}, false)
-		if len(changes.Removed) > 0 {
-			if err := e.deleteScopedRows(ctx, table, scopeColumn, scopeValues); err != nil {
-				e.logger.Debug("delete failed", "error", err)
-			}
-		}
-		return changes, nil
-	}
-
-	// Get existing rows with their hashes
-	existing := e.getExistingHashes(ctx, table, scopeColumn, scopeValues)
-
-	// Build new row map with hashes
-	newRows := buildRowHashes(rows, e.hashRowContent)
-	changes = detectRowChanges(existing, newRows, false)
-
-	// Delete scoped rows and reinsert
-	if err := e.deleteScopedRows(ctx, table, scopeColumn, scopeValues); err != nil {
-		e.logger.Debug("delete failed", "error", err)
-	}
-
-	insertRows := make([]map[string]interface{}, 0, len(rows))
-	for _, row := range rows {
-		id, ok := row["_cq_id"].(string)
-		if !ok {
-			continue
-		}
-		hash := e.hashRowContent(row)
-		newRow := make(map[string]interface{}, len(row)+1)
-		newRow["_cq_id"] = id
-		newRow["_cq_hash"] = hash
-		for k, v := range row {
-			if k == "_cq_id" || k == "_cq_hash" {
-				continue
-			}
-			newRow[k] = v
-		}
-		insertRows = append(insertRows, newRow)
-	}
-
-	if err := insertRowsBatch(ctx, e.sf, table, insertRows); err != nil {
-		return changes, fmt.Errorf("insert rows: %w", err)
-	}
-
-	return changes, nil
-}
-
-func (e *GCPSyncEngine) getExistingHashes(ctx context.Context, table, scopeColumn string, scopeValues []string) map[string]string {
-	result := make(map[string]string)
-	if err := snowflake.ValidateTableName(table); err != nil {
-		return result
-	}
-
-	whereClause, args := gcpScopeWhereClause(scopeColumn, scopeValues)
-	query := fmt.Sprintf("SELECT _CQ_ID, _CQ_HASH FROM %s%s", table, whereClause)
-	rows, err := e.sf.Query(ctx, query, args...)
-	if err != nil {
-		return result
-	}
-
-	return decodeExistingHashes(rows.Rows)
-}
-
-func (e *GCPSyncEngine) deleteScopedRows(ctx context.Context, table, scopeColumn string, scopeValues []string) error {
-	whereClause, args := gcpScopeWhereClause(scopeColumn, scopeValues)
-	if whereClause == "" {
-		if _, err := e.sf.Exec(ctx, fmt.Sprintf("TRUNCATE TABLE %s", table)); err != nil {
-			if _, err := e.sf.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table)); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-
-	query := fmt.Sprintf("DELETE FROM %s%s", table, whereClause)
-	_, err := e.sf.Exec(ctx, query, args...)
-	return err
+	return upsertScopedRowsWithChanges(ctx, e.sf, e.logger, table, rows, scopeColumn, scopeValues, e.hashRowContent)
 }
 
 func gcpScopeFilter(columns []string, rows []map[string]interface{}, projectID string) (string, []string) {
@@ -460,82 +315,12 @@ func gcpScopeFilter(columns []string, rows []map[string]interface{}, projectID s
 	return column, out
 }
 
-func gcpScopeWhereClause(column string, values []string) (string, []interface{}) {
-	if column == "" || len(values) == 0 {
-		return "", nil
-	}
-
-	placeholders := strings.TrimRight(strings.Repeat("?,", len(values)), ",")
-	args := make([]interface{}, len(values))
-	for i, value := range values {
-		args[i] = value
-	}
-
-	return fmt.Sprintf(" WHERE %s IN (%s)", column, placeholders), args
-}
-
 func (e *GCPSyncEngine) hashRowContent(row map[string]interface{}) string {
 	return hashRowContentWithMode(row, false)
 }
 
 func (e *GCPSyncEngine) persistChangeHistory(ctx context.Context, results []SyncResult) error {
-	createQuery := `CREATE TABLE IF NOT EXISTS _sync_change_history (
-		id VARCHAR PRIMARY KEY,
-		table_name VARCHAR,
-		change_type VARCHAR,
-		resource_id VARCHAR,
-		sync_time TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP(),
-		provider VARCHAR
-	)`
-
-	if _, err := e.sf.Exec(ctx, createQuery); err != nil {
-		return err
-	}
-
-	// Ensure all columns exist (for tables created by older versions)
-	alterQueries := []string{
-		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS change_type VARCHAR",
-		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS provider VARCHAR",
-		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS sync_time TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP()",
-	}
-	for _, q := range alterQueries {
-		if _, err := e.sf.Exec(ctx, q); err != nil {
-			e.logger.Debug("failed to ensure change history column", "query", q, "error", err)
-		}
-	}
-
-	for _, r := range results {
-		if r.Changes == nil {
-			continue
-		}
-
-		syncTime := r.SyncTime
-		if syncTime.IsZero() {
-			syncTime = time.Now().UTC()
-		}
-
-		for _, id := range r.Changes.Added {
-			e.insertChangeRecord(ctx, r.Table, "added", id, "gcp", syncTime)
-		}
-		for _, id := range r.Changes.Modified {
-			e.insertChangeRecord(ctx, r.Table, "modified", id, "gcp", syncTime)
-		}
-		for _, id := range r.Changes.Removed {
-			e.insertChangeRecord(ctx, r.Table, "removed", id, "gcp", syncTime)
-		}
-	}
-
-	return nil
-}
-
-func (e *GCPSyncEngine) insertChangeRecord(ctx context.Context, table, changeType, resourceID, provider string, syncTime time.Time) {
-	id := fmt.Sprintf("%s-%s-%s-%d", table, changeType, resourceID, syncTime.UnixNano())
-	query := `INSERT INTO _sync_change_history (id, table_name, change_type, resource_id, sync_time, provider)
-		SELECT ?, ?, ?, ?, ?, ?`
-
-	if _, err := e.sf.Exec(ctx, query, id, table, changeType, resourceID, syncTime, provider); err != nil {
-		e.logger.Debug("failed to insert change record", "error", err)
-	}
+	return persistProviderChangeHistory(ctx, e.sf, e.logger, "gcp", results)
 }
 
 // getGCPTables returns all GCP table definitions

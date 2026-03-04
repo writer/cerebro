@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -51,7 +52,7 @@ func (e *GCPSyncEngine) fetchGCPLoggingSinks(ctx context.Context, projectID stri
 	it := client.Sinks(ctx)
 	for {
 		sink, err := it.Next()
-		if err == iterator.Done {
+		if errors.Is(err, iterator.Done) {
 			break
 		}
 		if err != nil {
@@ -89,7 +90,7 @@ func (e *GCPSyncEngine) fetchGCPLoggingProjectSinks(ctx context.Context, project
 	it := client.Sinks(ctx)
 	for {
 		_, err := it.Next()
-		if err == iterator.Done {
+		if errors.Is(err, iterator.Done) {
 			break
 		}
 		if err != nil {

@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/writerinternal/cerebro/internal/snowflake"
+	"github.com/writerinternal/cerebro/internal/snowflake/tableops"
 )
 
 const providerInsertBatchSize = 200
@@ -72,93 +73,16 @@ func schemaColumnNames(columns []ColumnSchema) []string {
 }
 
 func ensureProviderTable(ctx context.Context, sf providerSnowflakeClient, table string, columns []string) error {
-	if err := snowflake.ValidateTableName(table); err != nil {
-		return fmt.Errorf("invalid table name: %w", err)
+	err := tableops.EnsureVariantTable(ctx, sf, table, columns, tableops.EnsureVariantTableOptions{
+		AddMissingColumns: true,
+	})
+	if err == nil {
+		return nil
 	}
-
-	filtered := make([]string, 0, len(columns))
-	for _, col := range columns {
-		if isProviderReservedColumn(col) {
-			continue
-		}
-		if err := snowflake.ValidateColumnName(col); err != nil {
-			return fmt.Errorf("invalid column name %q: %w", col, err)
-		}
-		filtered = append(filtered, col)
-	}
-
-	colDefs := make([]string, len(filtered))
-	for i, col := range filtered {
-		colDefs[i] = fmt.Sprintf("%s VARIANT", strings.ToUpper(col))
-	}
-
-	createQuery := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
-		_CQ_ID VARCHAR PRIMARY KEY,
-		_CQ_SYNC_TIME TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP(),
-		_CQ_HASH VARCHAR,
-		%s
-	)`, table, strings.Join(colDefs, ", "))
-
-	if _, err := sf.Exec(ctx, createQuery); err != nil {
-		return fmt.Errorf("create table: %w", err)
-	}
-
-	existingCols, err := getProviderTableColumns(ctx, sf, table)
-	if err != nil {
+	if strings.Contains(err.Error(), "get table columns") {
 		return fmt.Errorf("get existing columns: %w", err)
 	}
-
-	existingSet := make(map[string]bool)
-	for _, col := range existingCols {
-		existingSet[strings.ToUpper(col)] = true
-	}
-
-	if !existingSet["_CQ_HASH"] {
-		if _, err := sf.Exec(ctx, fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS _CQ_HASH VARCHAR", table)); err != nil {
-			return fmt.Errorf("add _CQ_HASH column: %w", err)
-		}
-	}
-
-	for _, col := range filtered {
-		upper := strings.ToUpper(col)
-		if existingSet[upper] {
-			continue
-		}
-		alterQuery := fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS %s VARIANT", table, upper)
-		if _, err := sf.Exec(ctx, alterQuery); err != nil {
-			return fmt.Errorf("add column %s: %w", col, err)
-		}
-	}
-
-	return nil
-}
-
-func getProviderTableColumns(ctx context.Context, sf providerSnowflakeClient, table string) ([]string, error) {
-	if err := snowflake.ValidateTableName(table); err != nil {
-		return nil, err
-	}
-
-	query := `
-		SELECT COLUMN_NAME
-		FROM INFORMATION_SCHEMA.COLUMNS
-		WHERE TABLE_NAME = ?
-		AND TABLE_SCHEMA = CURRENT_SCHEMA()
-	`
-
-	result, err := sf.Query(ctx, query, strings.ToUpper(table))
-	if err != nil {
-		return nil, err
-	}
-
-	columns := make([]string, 0, len(result.Rows))
-	for _, row := range result.Rows {
-		if value, ok := lookupProviderValue(row, "column_name"); ok {
-			if col := providerStringValue(value); col != "" {
-				columns = append(columns, col)
-			}
-		}
-	}
-	return columns, nil
+	return err
 }
 
 func truncateProviderTable(ctx context.Context, sf providerSnowflakeClient, table string) error {
@@ -283,86 +207,7 @@ func formatProviderIDValue(value interface{}) string {
 }
 
 func insertProviderRows(ctx context.Context, sf providerSnowflakeClient, table string, rows []map[string]interface{}) error {
-	if len(rows) == 0 {
-		return nil
-	}
-
-	if err := snowflake.ValidateTableName(table); err != nil {
-		return fmt.Errorf("invalid table name: %w", err)
-	}
-
-	columnSet := make(map[string]struct{})
-	for _, row := range rows {
-		for key := range row {
-			if isProviderReservedColumn(key) {
-				continue
-			}
-			columnSet[strings.ToUpper(key)] = struct{}{}
-		}
-	}
-
-	columns := make([]string, 0, len(columnSet))
-	for col := range columnSet {
-		columns = append(columns, col)
-	}
-	sort.Strings(columns)
-
-	allColumns := append([]string{"_CQ_ID", "_CQ_HASH"}, columns...)
-
-	for _, col := range allColumns {
-		if err := snowflake.ValidateColumnName(col); err != nil {
-			return fmt.Errorf("invalid column name %q: %w", col, err)
-		}
-	}
-
-	for start := 0; start < len(rows); start += providerInsertBatchSize {
-		end := start + providerInsertBatchSize
-		if end > len(rows) {
-			end = len(rows)
-		}
-
-		batch := rows[start:end]
-		selects := make([]string, 0, len(batch))
-		args := make([]interface{}, 0, len(batch)*len(allColumns))
-
-		for _, row := range batch {
-			id, _ := row["_cq_id"].(string)
-			hash, _ := row["_cq_hash"].(string)
-			if id == "" {
-				continue
-			}
-
-			rowUpper := make(map[string]interface{}, len(row))
-			for key, value := range row {
-				rowUpper[strings.ToUpper(key)] = value
-			}
-
-			selectParts := make([]string, 0, len(allColumns))
-			selectParts = append(selectParts, "?", "?")
-			args = append(args, id, hash)
-
-			for _, col := range columns {
-				jsonVal, _ := json.Marshal(rowUpper[col])
-				selectParts = append(selectParts, "PARSE_JSON(?)")
-				args = append(args, string(jsonVal))
-			}
-
-			selects = append(selects, "SELECT "+strings.Join(selectParts, ", "))
-		}
-
-		if len(selects) == 0 {
-			continue
-		}
-
-		query := fmt.Sprintf("INSERT INTO %s (%s) %s",
-			table, strings.Join(allColumns, ", "), strings.Join(selects, " UNION ALL "))
-
-		if _, err := sf.Exec(ctx, query, args...); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return tableops.InsertVariantRowsBatch(ctx, sf, table, rows, nil, providerInsertBatchSize)
 }
 
 func hashProviderRow(row map[string]interface{}) string {

@@ -132,23 +132,25 @@ func (e *ToxicCombinationEngine) Analyze(g *Graph) []*ToxicCombination {
 	var wg sync.WaitGroup
 
 	nodes := g.GetAllNodes()
+	index := buildToxicCombinationNodeIndex(nodes)
 	sem := make(chan struct{}, 32)
 
-	for _, node := range nodes {
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(n *Node) {
-			defer wg.Done()
-			defer func() { <-sem }()
+	for _, rule := range e.rules {
+		candidateNodes := index.candidatesForRule(rule.ID)
+		for _, node := range candidateNodes {
+			wg.Add(1)
+			sem <- struct{}{}
+			go func(r *ToxicCombinationRule, n *Node) {
+				defer wg.Done()
+				defer func() { <-sem }()
 
-			for _, rule := range e.rules {
-				if tc := rule.Detector(g, n); tc != nil {
+				if tc := r.Detector(g, n); tc != nil {
 					mu.Lock()
 					results = append(results, tc)
 					mu.Unlock()
 				}
-			}
-		}(node)
+			}(rule, node)
+		}
 	}
 
 	wg.Wait()
@@ -169,6 +171,110 @@ func (e *ToxicCombinationEngine) Analyze(g *Graph) []*ToxicCombination {
 	}
 
 	return deduped
+}
+
+type toxicCombinationNodeIndex struct {
+	all            []*Node
+	resources      []*Node
+	identities     []*Node
+	byKind         map[NodeKind][]*Node
+	byProvider     map[string][]*Node
+	byKindProvider map[NodeKind]map[string][]*Node
+}
+
+func buildToxicCombinationNodeIndex(nodes []*Node) toxicCombinationNodeIndex {
+	index := toxicCombinationNodeIndex{
+		all:            nodes,
+		byKind:         make(map[NodeKind][]*Node),
+		byProvider:     make(map[string][]*Node),
+		byKindProvider: make(map[NodeKind]map[string][]*Node),
+	}
+
+	for _, node := range nodes {
+		if node == nil {
+			continue
+		}
+
+		if node.IsResource() {
+			index.resources = append(index.resources, node)
+		}
+		if node.IsIdentity() {
+			index.identities = append(index.identities, node)
+		}
+
+		index.byKind[node.Kind] = append(index.byKind[node.Kind], node)
+
+		provider := strings.TrimSpace(node.Provider)
+		if provider != "" {
+			index.byProvider[provider] = append(index.byProvider[provider], node)
+			if index.byKindProvider[node.Kind] == nil {
+				index.byKindProvider[node.Kind] = make(map[string][]*Node)
+			}
+			index.byKindProvider[node.Kind][provider] = append(index.byKindProvider[node.Kind][provider], node)
+		}
+	}
+
+	return index
+}
+
+func (i toxicCombinationNodeIndex) candidatesForRule(ruleID string) []*Node {
+	switch ruleID {
+	case "TC001", "TC002":
+		return i.resources
+	case "TC003", "TC004", "TC005":
+		return i.identities
+	case "TC006":
+		return appendNodeSlices(i.byKind[NodeKindInstance], i.byKind[NodeKindFunction])
+	case "TC007":
+		return i.byKind[NodeKindSecret]
+	case "TC008":
+		return i.byKind[NodeKindUser]
+	case "TC009":
+		return i.byKind[NodeKindDatabase]
+	case "TC010":
+		return i.byKind[NodeKindServiceAccount]
+	case "TC-AWS-001":
+		return i.byKindProvider[NodeKindInstance]["aws"]
+	case "TC-AWS-002":
+		return i.byKindProvider[NodeKindBucket]["aws"]
+	case "TC-AWS-003":
+		return i.byKindProvider[NodeKindFunction]["aws"]
+	case "TC-GCP-001":
+		return i.byKindProvider[NodeKindServiceAccount]["gcp"]
+	case "TC-GCP-002":
+		return i.byKindProvider[NodeKindBucket]["gcp"]
+	case "TC-GCP-003":
+		return i.byKindProvider[NodeKindInstance]["gcp"]
+	case "TC-AZURE-001":
+		return i.byKindProvider[NodeKindServiceAccount]["azure"]
+	case "TC-AZURE-002":
+		return i.byKindProvider[NodeKindBucket]["azure"]
+	case "TC-K8S-001", "TC-K8S-004":
+		return i.byKind[NodeKindPod]
+	case "TC-K8S-002":
+		return i.byKind[NodeKindClusterRole]
+	case "TC-K8S-003":
+		return i.byKind[NodeKindServiceAccount]
+	case "TC-CICD-001", "TC-CICD-002":
+		return i.byKindProvider[NodeKindRole]["aws"]
+	default:
+		return i.all
+	}
+}
+
+func appendNodeSlices(slices ...[]*Node) []*Node {
+	total := 0
+	for _, items := range slices {
+		total += len(items)
+	}
+	if total == 0 {
+		return nil
+	}
+	out := make([]*Node, 0, total)
+	for _, items := range slices {
+		out = append(out, items...)
+	}
+	return out
 }
 
 func (e *ToxicCombinationEngine) registerDefaultRules() {

@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -164,7 +165,7 @@ func (s *Server) assignFinding(w http.ResponseWriter, r *http.Request) {
 
 	mgr := findings.NewIssueManager(s.app.Findings)
 	if err := mgr.Assign(id, req.Assignee); err != nil {
-		if err == findings.ErrIssueNotFound {
+		if errors.Is(err, findings.ErrIssueNotFound) {
 			s.error(w, http.StatusNotFound, "finding not found")
 		} else {
 			s.error(w, http.StatusInternalServerError, err.Error())
@@ -186,7 +187,7 @@ func (s *Server) setFindingDueDate(w http.ResponseWriter, r *http.Request) {
 
 	mgr := findings.NewIssueManager(s.app.Findings)
 	if err := mgr.SetDueDate(id, req.DueAt); err != nil {
-		if err == findings.ErrIssueNotFound {
+		if errors.Is(err, findings.ErrIssueNotFound) {
 			s.error(w, http.StatusNotFound, "finding not found")
 		} else {
 			s.error(w, http.StatusInternalServerError, err.Error())
@@ -208,7 +209,7 @@ func (s *Server) addFindingNote(w http.ResponseWriter, r *http.Request) {
 
 	mgr := findings.NewIssueManager(s.app.Findings)
 	if err := mgr.AddNote(id, req.Note); err != nil {
-		if err == findings.ErrIssueNotFound {
+		if errors.Is(err, findings.ErrIssueNotFound) {
 			s.error(w, http.StatusNotFound, "finding not found")
 		} else {
 			s.error(w, http.StatusInternalServerError, err.Error())
@@ -232,7 +233,7 @@ func (s *Server) linkFindingTicket(w http.ResponseWriter, r *http.Request) {
 
 	mgr := findings.NewIssueManager(s.app.Findings)
 	if err := mgr.LinkTicket(id, req.URL, req.Name, req.ExternalID); err != nil {
-		if err == findings.ErrIssueNotFound {
+		if errors.Is(err, findings.ErrIssueNotFound) {
 			s.error(w, http.StatusNotFound, "finding not found")
 		} else {
 			s.error(w, http.StatusInternalServerError, err.Error())

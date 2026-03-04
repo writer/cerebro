@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -329,7 +330,7 @@ func (e *GCPSyncEngine) searchGCPResources(ctx context.Context, projectID, asset
 	rows := make([]*assetpb.ResourceSearchResult, 0)
 	for {
 		resource, err := it.Next()
-		if err == iterator.Done {
+		if errors.Is(err, iterator.Done) {
 			break
 		}
 		if err != nil {
@@ -358,7 +359,7 @@ func (e *GCPSyncEngine) searchGCPIAMPolicies(ctx context.Context, projectID, ass
 	rows := make(map[string]map[string]interface{})
 	for {
 		policyResult, err := it.Next()
-		if err == iterator.Done {
+		if errors.Is(err, iterator.Done) {
 			break
 		}
 		if err != nil {

@@ -12,6 +12,7 @@ func TestRateLimiterAllow(t *testing.T) {
 		RequestsPerWindow: 5,
 		Window:            time.Minute,
 	})
+	t.Cleanup(rl.Close)
 
 	key := "test-key"
 
@@ -41,6 +42,7 @@ func TestRateLimiterWindowReset(t *testing.T) {
 		RequestsPerWindow: 2,
 		Window:            50 * time.Millisecond,
 	})
+	t.Cleanup(rl.Close)
 
 	key := "test-key"
 
@@ -70,6 +72,7 @@ func TestRateLimiterDifferentKeys(t *testing.T) {
 		RequestsPerWindow: 1,
 		Window:            time.Minute,
 	})
+	t.Cleanup(rl.Close)
 
 	// First key
 	allowed1, _, _ := rl.Allow("key1")
@@ -94,11 +97,17 @@ func TestRateLimitMiddleware(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	middleware := RateLimitMiddleware(RateLimitConfig{
+	rl := NewRateLimiter(RateLimitConfig{
 		RequestsPerWindow: 2,
 		Window:            time.Minute,
 		Enabled:           true,
 	})
+	t.Cleanup(rl.Close)
+	middleware := RateLimitMiddlewareWithLimiter(RateLimitConfig{
+		RequestsPerWindow: 2,
+		Window:            time.Minute,
+		Enabled:           true,
+	}, rl)
 
 	wrapped := middleware(handler)
 
@@ -166,11 +175,17 @@ func TestRateLimitMiddlewareSkipsHealthEndpoints(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	middleware := RateLimitMiddleware(RateLimitConfig{
+	rl := NewRateLimiter(RateLimitConfig{
 		RequestsPerWindow: 1,
 		Window:            time.Minute,
 		Enabled:           true,
 	})
+	t.Cleanup(rl.Close)
+	middleware := RateLimitMiddlewareWithLimiter(RateLimitConfig{
+		RequestsPerWindow: 1,
+		Window:            time.Minute,
+		Enabled:           true,
+	}, rl)
 
 	wrapped := middleware(handler)
 

@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -114,7 +115,7 @@ func (s *GCPSecuritySync) syncVulnerabilityOccurrences(ctx context.Context) erro
 	it := grafeasClient.ListOccurrences(ctx, req)
 	for {
 		occ, err := it.Next()
-		if err == iterator.Done {
+		if errors.Is(err, iterator.Done) {
 			break
 		}
 		if err != nil {
@@ -197,7 +198,7 @@ func (s *GCPSecuritySync) syncArtifactRegistryImages(ctx context.Context) error 
 		repoIt := client.ListRepositories(ctx, repoReq)
 		for {
 			repo, err := repoIt.Next()
-			if err == iterator.Done {
+			if errors.Is(err, iterator.Done) {
 				break
 			}
 			if err != nil {
@@ -218,7 +219,7 @@ func (s *GCPSecuritySync) syncArtifactRegistryImages(ctx context.Context) error 
 			imgIt := client.ListDockerImages(ctx, imgReq)
 			for {
 				img, err := imgIt.Next()
-				if err == iterator.Done {
+				if errors.Is(err, iterator.Done) {
 					break
 				}
 				if err != nil {
@@ -318,7 +319,7 @@ func (s *GCPSecuritySync) fetchArtifactRegistryImageSecretSignals(ctx context.Co
 
 	for {
 		occ, err := it.Next()
-		if err == iterator.Done {
+		if errors.Is(err, iterator.Done) {
 			break
 		}
 		if err != nil {
@@ -386,7 +387,7 @@ func (s *GCPSecuritySync) fetchArtifactRegistryImageScanSignals(ctx context.Cont
 
 	for {
 		occ, err := it.Next()
-		if err == iterator.Done {
+		if errors.Is(err, iterator.Done) {
 			break
 		}
 		if err != nil {
@@ -439,7 +440,7 @@ func (s *GCPSecuritySync) fetchArtifactRegistryImageVulnerabilitySignals(ctx con
 
 	for {
 		occ, err := it.Next()
-		if err == iterator.Done {
+		if errors.Is(err, iterator.Done) {
 			break
 		}
 		if err != nil {
@@ -661,7 +662,7 @@ func (s *GCPSecuritySync) syncSCCFindings(ctx context.Context) error {
 	it := client.ListFindings(ctx, req)
 	for {
 		resp, err := it.Next()
-		if err == iterator.Done {
+		if errors.Is(err, iterator.Done) {
 			break
 		}
 		if err != nil {

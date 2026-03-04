@@ -1,6 +1,6 @@
-FROM alpine:3.19
+FROM alpine:3.20
 
-RUN addgroup -S cerebro && adduser -S -G cerebro -u 10001 cerebro
+RUN apk add --no-cache curl && addgroup -S cerebro && adduser -S -G cerebro -u 10001 cerebro
 
 COPY .dist/cerebro /usr/local/bin/cerebro
 COPY policies /app/policies

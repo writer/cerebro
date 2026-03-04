@@ -19,6 +19,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage"
 	"github.com/writerinternal/cerebro/internal/metrics"
 	"github.com/writerinternal/cerebro/internal/snowflake"
+	"github.com/writerinternal/cerebro/internal/snowflake/tableops"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/time/rate"
 )
@@ -291,114 +292,14 @@ func (e *AzureSyncEngine) validateTable(ctx context.Context, table AzureTableSpe
 }
 
 func (e *AzureSyncEngine) ensureTable(ctx context.Context, table string, columns []string) error {
-	if err := snowflake.ValidateTableName(table); err != nil {
-		return fmt.Errorf("invalid table name: %w", err)
-	}
-
-	for _, col := range columns {
-		if err := snowflake.ValidateColumnName(col); err != nil {
-			return fmt.Errorf("invalid column name %q: %w", col, err)
-		}
-	}
-
-	colDefs := make([]string, len(columns))
-	for i, col := range columns {
-		colDefs[i] = fmt.Sprintf("%s VARIANT", strings.ToUpper(col))
-	}
-
-	createQuery := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
-		_CQ_ID VARCHAR PRIMARY KEY,
-		_CQ_SYNC_TIME TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP(),
-		_CQ_HASH VARCHAR,
-		%s
-	)`, table, strings.Join(colDefs, ", "))
-
-	_, err := e.sf.Exec(ctx, createQuery)
-	return err
+	return tableops.EnsureVariantTable(ctx, e.sf, table, columns, tableops.EnsureVariantTableOptions{
+		AddMissingColumns: false,
+	})
 }
 
 func (e *AzureSyncEngine) upsertWithChanges(ctx context.Context, table string, columns []string, rows []map[string]interface{}) (*ChangeSet, error) {
-	changes := &ChangeSet{}
-	if err := snowflake.ValidateTableName(table); err != nil {
-		return changes, fmt.Errorf("invalid table name %s: %w", table, err)
-	}
 	scopeColumn, scopeValues := azureScopeFilter(columns, rows, e.subscriptionID)
-
-	if len(rows) == 0 {
-		existing := e.getExistingHashes(ctx, table, scopeColumn, scopeValues)
-		changes = detectRowChanges(existing, map[string]string{}, false)
-		if len(changes.Removed) > 0 {
-			if err := e.deleteScopedRows(ctx, table, scopeColumn, scopeValues); err != nil {
-				e.logger.Debug("delete failed", "error", err)
-			}
-		}
-		return changes, nil
-	}
-
-	existing := e.getExistingHashes(ctx, table, scopeColumn, scopeValues)
-	newRows := buildRowHashes(rows, e.hashRowContent)
-	changes = detectRowChanges(existing, newRows, false)
-
-	if err := e.deleteScopedRows(ctx, table, scopeColumn, scopeValues); err != nil {
-		e.logger.Debug("delete failed", "error", err)
-	}
-
-	insertRows := make([]map[string]interface{}, 0, len(rows))
-	for _, row := range rows {
-		id, ok := row["_cq_id"].(string)
-		if !ok {
-			continue
-		}
-		hash := e.hashRowContent(row)
-		newRow := make(map[string]interface{}, len(row)+1)
-		newRow["_cq_id"] = id
-		newRow["_cq_hash"] = hash
-		for k, v := range row {
-			if k == "_cq_id" || k == "_cq_hash" {
-				continue
-			}
-			newRow[k] = v
-		}
-		insertRows = append(insertRows, newRow)
-	}
-
-	if err := insertRowsBatch(ctx, e.sf, table, insertRows); err != nil {
-		return changes, fmt.Errorf("insert rows: %w", err)
-	}
-
-	return changes, nil
-}
-
-func (e *AzureSyncEngine) getExistingHashes(ctx context.Context, table, scopeColumn string, scopeValues []string) map[string]string {
-	result := make(map[string]string)
-	if err := snowflake.ValidateTableName(table); err != nil {
-		return result
-	}
-
-	whereClause, args := azureScopeWhereClause(scopeColumn, scopeValues)
-	query := fmt.Sprintf("SELECT _CQ_ID, _CQ_HASH FROM %s%s", table, whereClause)
-	rows, err := e.sf.Query(ctx, query, args...)
-	if err != nil {
-		return result
-	}
-
-	return decodeExistingHashes(rows.Rows)
-}
-
-func (e *AzureSyncEngine) deleteScopedRows(ctx context.Context, table, scopeColumn string, scopeValues []string) error {
-	whereClause, args := azureScopeWhereClause(scopeColumn, scopeValues)
-	if whereClause == "" {
-		if _, err := e.sf.Exec(ctx, fmt.Sprintf("TRUNCATE TABLE %s", table)); err != nil {
-			if _, err := e.sf.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table)); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-
-	query := fmt.Sprintf("DELETE FROM %s%s", table, whereClause)
-	_, err := e.sf.Exec(ctx, query, args...)
-	return err
+	return upsertScopedRowsWithChanges(ctx, e.sf, e.logger, table, rows, scopeColumn, scopeValues, e.hashRowContent)
 }
 
 func azureScopeFilter(columns []string, rows []map[string]interface{}, subscriptionID string) (string, []string) {
@@ -431,65 +332,12 @@ func azureScopeFilter(columns []string, rows []map[string]interface{}, subscript
 	return "SUBSCRIPTION_ID", out
 }
 
-func azureScopeWhereClause(column string, values []string) (string, []interface{}) {
-	if column == "" || len(values) == 0 {
-		return "", nil
-	}
-
-	placeholders := strings.TrimRight(strings.Repeat("?,", len(values)), ",")
-	args := make([]interface{}, len(values))
-	for i, value := range values {
-		args[i] = value
-	}
-
-	return fmt.Sprintf(" WHERE %s IN (%s)", column, placeholders), args
-}
-
 func (e *AzureSyncEngine) hashRowContent(row map[string]interface{}) string {
 	return hashRowContentWithMode(row, false)
 }
 
 func (e *AzureSyncEngine) persistChangeHistory(ctx context.Context, results []SyncResult) error {
-	createQuery := `CREATE TABLE IF NOT EXISTS _sync_change_history (
-		id VARCHAR PRIMARY KEY,
-		table_name VARCHAR,
-		change_type VARCHAR,
-		resource_id VARCHAR,
-		sync_time TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP(),
-		provider VARCHAR
-	)`
-
-	if _, err := e.sf.Exec(ctx, createQuery); err != nil {
-		return err
-	}
-
-	for _, r := range results {
-		if r.Changes == nil {
-			continue
-		}
-
-		for _, id := range r.Changes.Added {
-			e.insertChangeRecord(ctx, r.Table, "added", id)
-		}
-		for _, id := range r.Changes.Modified {
-			e.insertChangeRecord(ctx, r.Table, "modified", id)
-		}
-		for _, id := range r.Changes.Removed {
-			e.insertChangeRecord(ctx, r.Table, "removed", id)
-		}
-	}
-
-	return nil
-}
-
-func (e *AzureSyncEngine) insertChangeRecord(ctx context.Context, table, changeType, resourceID string) {
-	id := fmt.Sprintf("%s-%s-%s-%d", table, changeType, resourceID, time.Now().UnixNano())
-	query := `INSERT INTO _sync_change_history (id, table_name, change_type, resource_id, provider)
-		SELECT ?, ?, ?, ?, 'azure'`
-
-	if _, err := e.sf.Exec(ctx, query, id, table, changeType, resourceID); err != nil {
-		e.logger.Debug("failed to insert change record", "error", err)
-	}
+	return persistProviderChangeHistory(ctx, e.sf, e.logger, "azure", results)
 }
 
 // getAzureTables returns all Azure table definitions

@@ -38,7 +38,7 @@ func ValidateWebhookURL(rawURL string) error {
 
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrInvalidWebhookURL, err)
+		return fmt.Errorf("%w: %w", ErrInvalidWebhookURL, err)
 	}
 
 	// Require HTTPS for production webhooks
@@ -59,7 +59,11 @@ func ValidateWebhookURL(rawURL string) error {
 	}
 
 	// Resolve the hostname to check for private IPs
-	ips, err := net.LookupIP(hostname)
+	addrRecords, err := net.DefaultResolver.LookupIPAddr(context.Background(), hostname)
+	ips := make([]net.IP, 0, len(addrRecords))
+	for _, record := range addrRecords {
+		ips = append(ips, record.IP)
+	}
 	if err != nil {
 		// If DNS fails, check if it's an IP literal
 		ip := net.ParseIP(hostname)

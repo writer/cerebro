@@ -14,6 +14,9 @@ type RateLimiter struct {
 	buckets    map[string]*bucket
 	mu         sync.RWMutex
 	cleanupInt time.Duration
+	stopCh     chan struct{}
+	doneCh     chan struct{}
+	closeOnce  sync.Once
 }
 
 type bucket struct {
@@ -42,6 +45,8 @@ func NewRateLimiter(cfg RateLimitConfig) *RateLimiter {
 		window:     cfg.Window,
 		buckets:    make(map[string]*bucket),
 		cleanupInt: cfg.Window * 2,
+		stopCh:     make(chan struct{}),
+		doneCh:     make(chan struct{}),
 	}
 
 	// Start cleanup goroutine
@@ -87,29 +92,56 @@ func (rl *RateLimiter) Allow(key string) (bool, int, time.Time) {
 // cleanup removes old buckets periodically
 func (rl *RateLimiter) cleanup() {
 	ticker := time.NewTicker(rl.cleanupInt)
-	defer ticker.Stop()
+	defer func() {
+		ticker.Stop()
+		close(rl.doneCh)
+	}()
 
-	for range ticker.C {
-		rl.mu.Lock()
-		now := time.Now()
-		for key, b := range rl.buckets {
-			if now.Sub(b.lastReset) > rl.window*2 {
-				delete(rl.buckets, key)
+	for {
+		select {
+		case <-ticker.C:
+			rl.mu.Lock()
+			now := time.Now()
+			for key, b := range rl.buckets {
+				if now.Sub(b.lastReset) > rl.window*2 {
+					delete(rl.buckets, key)
+				}
 			}
+			rl.mu.Unlock()
+		case <-rl.stopCh:
+			return
 		}
-		rl.mu.Unlock()
 	}
+}
+
+// Close stops background cleanup goroutines.
+func (rl *RateLimiter) Close() {
+	if rl == nil {
+		return
+	}
+
+	rl.closeOnce.Do(func() {
+		close(rl.stopCh)
+		<-rl.doneCh
+	})
 }
 
 // RateLimitMiddleware creates middleware that rate limits requests
 func RateLimitMiddleware(cfg RateLimitConfig) func(http.Handler) http.Handler {
+	return RateLimitMiddlewareWithLimiter(cfg, nil)
+}
+
+// RateLimitMiddlewareWithLimiter creates middleware using a caller-managed limiter instance.
+func RateLimitMiddlewareWithLimiter(cfg RateLimitConfig, rl *RateLimiter) func(http.Handler) http.Handler {
 	if !cfg.Enabled {
 		return func(next http.Handler) http.Handler {
 			return next
 		}
 	}
 
-	rl := NewRateLimiter(cfg)
+	if rl == nil {
+		rl = NewRateLimiter(cfg)
+	}
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

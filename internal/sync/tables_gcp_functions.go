@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	functions "cloud.google.com/go/functions/apiv2"
@@ -34,7 +35,7 @@ func (e *GCPSyncEngine) fetchGCPCloudFunctions(ctx context.Context, projectID st
 	it := client.ListFunctions(ctx, req)
 	for {
 		fn, err := it.Next()
-		if err == iterator.Done {
+		if errors.Is(err, iterator.Done) {
 			break
 		}
 		if err != nil {

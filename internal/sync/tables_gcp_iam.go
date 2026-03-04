@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -84,7 +85,7 @@ func (e *GCPSyncEngine) fetchGCPIAMServiceAccounts(ctx context.Context, projectI
 	it := client.ListServiceAccounts(ctx, req)
 	for {
 		sa, err := it.Next()
-		if err == iterator.Done {
+		if errors.Is(err, iterator.Done) {
 			break
 		}
 		if err != nil {
@@ -235,7 +236,7 @@ func (e *GCPSyncEngine) fetchGCPIAMServiceAccountKeys(ctx context.Context, proje
 	it := client.ListServiceAccounts(ctx, req)
 	for {
 		sa, err := it.Next()
-		if err == iterator.Done {
+		if errors.Is(err, iterator.Done) {
 			break
 		}
 		if err != nil {

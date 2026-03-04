@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	compute "cloud.google.com/go/compute/apiv1"
@@ -34,7 +35,7 @@ func (e *GCPSyncEngine) fetchGCPComputeInstances(ctx context.Context, projectID 
 	it := client.AggregatedList(ctx, req)
 	for {
 		resp, err := it.Next()
-		if err == iterator.Done {
+		if errors.Is(err, iterator.Done) {
 			break
 		}
 		if err != nil {

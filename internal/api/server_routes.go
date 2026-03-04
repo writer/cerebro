@@ -24,11 +24,16 @@ func (s *Server) setupMiddleware() {
 
 	// Apply rate limiting before authentication to throttle unauthorized brute-force traffic.
 	if s.app.Config.RateLimitEnabled {
-		s.router.Use(RateLimitMiddleware(RateLimitConfig{
+		s.rateLimiter = NewRateLimiter(RateLimitConfig{
 			RequestsPerWindow: s.app.Config.RateLimitRequests,
 			Window:            s.app.Config.RateLimitWindow,
 			Enabled:           true,
-		}))
+		})
+		s.router.Use(RateLimitMiddlewareWithLimiter(RateLimitConfig{
+			RequestsPerWindow: s.app.Config.RateLimitRequests,
+			Window:            s.app.Config.RateLimitWindow,
+			Enabled:           true,
+		}, s.rateLimiter))
 	}
 
 	if s.app.Config.APIAuthEnabled {

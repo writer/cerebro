@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -350,7 +351,7 @@ func (p *AnthropicProvider) Stream(ctx context.Context, messages []agents.Messag
 			}
 
 			event, err := reader.Next()
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				events <- agents.StreamEvent{Done: true}
 				return
 			}

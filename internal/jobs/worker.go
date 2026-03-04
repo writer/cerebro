@@ -27,12 +27,12 @@ var (
 
 // PermanentError wraps an error to indicate it should not be retried.
 func PermanentError(err error) error {
-	return fmt.Errorf("%w: %v", ErrPermanent, err)
+	return fmt.Errorf("%w: %w", ErrPermanent, err)
 }
 
 // RetryableError wraps an error to indicate it can be retried.
 func RetryableError(err error) error {
-	return fmt.Errorf("%w: %v", ErrRetryable, err)
+	return fmt.Errorf("%w: %w", ErrRetryable, err)
 }
 
 // IsPermanent checks if an error is marked as permanent (should not retry).

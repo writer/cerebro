@@ -8,6 +8,13 @@ linters:
   enable:
     - errcheck
     - staticcheck
+    - govet
+    - ineffassign
+    - unused
+    - bodyclose
+    - noctx
+    - errorlint
+    - misspell
 
 formatters:
   enable:

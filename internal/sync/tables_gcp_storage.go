@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"cloud.google.com/go/storage"
@@ -40,7 +41,7 @@ func (e *GCPSyncEngine) fetchGCPStorageBuckets(ctx context.Context, projectID st
 	it := client.Buckets(ctx, projectID)
 	for {
 		attrs, err := it.Next()
-		if err == iterator.Done {
+		if errors.Is(err, iterator.Done) {
 			break
 		}
 		if err != nil {
@@ -180,7 +181,7 @@ func (e *GCPSyncEngine) fetchGCPStorageObjects(ctx context.Context, projectID st
 	bucketIt := client.Buckets(ctx, projectID)
 	for {
 		bucketAttrs, err := bucketIt.Next()
-		if err == iterator.Done {
+		if errors.Is(err, iterator.Done) {
 			break
 		}
 		if err != nil {
@@ -190,7 +191,7 @@ func (e *GCPSyncEngine) fetchGCPStorageObjects(ctx context.Context, projectID st
 		objIt := client.Bucket(bucketAttrs.Name).Objects(ctx, nil)
 		for {
 			obj, err := objIt.Next()
-			if err == iterator.Done {
+			if errors.Is(err, iterator.Done) {
 				break
 			}
 			if err != nil {

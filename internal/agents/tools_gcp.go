@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	compute "cloud.google.com/go/compute/apiv1"
@@ -87,7 +88,7 @@ func (st *SecurityTools) handleGCPStorage(ctx context.Context, projectID, action
 		var buckets []string
 		for {
 			b, err := it.Next()
-			if err == iterator.Done {
+			if errors.Is(err, iterator.Done) {
 				break
 			}
 			if err != nil {
@@ -107,7 +108,7 @@ func (st *SecurityTools) handleGCPStorage(ctx context.Context, projectID, action
 		var objects []string
 		for {
 			o, err := it.Next()
-			if err == iterator.Done {
+			if errors.Is(err, iterator.Done) {
 				break
 			}
 			if err != nil {
@@ -170,7 +171,7 @@ func (st *SecurityTools) handleGCPCompute(ctx context.Context, projectID, action
 			var instances []string
 			for {
 				i, err := it.Next()
-				if err == iterator.Done {
+				if errors.Is(err, iterator.Done) {
 					break
 				}
 				if err != nil {
@@ -188,7 +189,7 @@ func (st *SecurityTools) handleGCPCompute(ctx context.Context, projectID, action
 			var instances []string
 			for {
 				pair, err := it.Next()
-				if err == iterator.Done {
+				if errors.Is(err, iterator.Done) {
 					break
 				}
 				if err != nil {
@@ -249,7 +250,7 @@ func (st *SecurityTools) handleGCPIAM(ctx context.Context, projectID, action str
 		var sas []string
 		for {
 			sa, err := it.Next()
-			if err == iterator.Done {
+			if errors.Is(err, iterator.Done) {
 				break
 			}
 			if err != nil {
@@ -278,7 +279,7 @@ func (st *SecurityTools) handleGCPResourceManager(ctx context.Context, action st
 		var projects []string
 		for {
 			p, err := it.Next()
-			if err == iterator.Done {
+			if errors.Is(err, iterator.Done) {
 				break
 			}
 			if err != nil {
