@@ -176,13 +176,32 @@ jobs:
           LOG_LEVEL: error
         run: |
           set -euo pipefail
-          output="$(./cerebro scan --local-fixture internal/cli/testdata/scan_smoke_fixture.json --output json --graph=false --toxic-combos=false)"
-          echo "$output" | tail -n 1 > /tmp/scan-result.json
+          ./cerebro scan --local-fixture internal/cli/testdata/scan_smoke_fixture.json --output json --graph=false --toxic-combos=false > /tmp/scan-output.txt
           python3 - <<'PY'
-          import json
+          import json, sys
           from pathlib import Path
 
-          payload = json.loads(Path('/tmp/scan-result.json').read_text())
+          raw = Path('/tmp/scan-output.txt').read_text()
+
+          # Try full output as JSON first (clean case).
+          try:
+              payload = json.loads(raw)
+          except json.JSONDecodeError:
+              # Output has non-JSON preamble (log lines). Find the first '{' that
+              # starts the JSON object and parse from there.
+              payload = None
+              idx = raw.find('{')
+              if idx >= 0:
+                  try:
+                      payload = json.loads(raw[idx:])
+                  except json.JSONDecodeError:
+                      pass
+              if payload is None:
+                  print('ERROR: no valid JSON found in scan output', file=sys.stderr)
+                  print('--- first 2000 chars ---', file=sys.stderr)
+                  print(raw[:2000], file=sys.stderr)
+                  sys.exit(1)
+
           if payload.get('scanned', 0) <= 0:
               raise SystemExit('expected scanned > 0 in local smoke scan')
           PY
