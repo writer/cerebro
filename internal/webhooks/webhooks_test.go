@@ -335,6 +335,8 @@ type mockEventPublisher struct {
 	publishCalls int32
 	closeCalls   int32
 	publishErr   error
+	readyErr     error
+	status       map[string]interface{}
 }
 
 func (m *mockEventPublisher) Publish(ctx context.Context, event Event) error {
@@ -345,6 +347,14 @@ func (m *mockEventPublisher) Publish(ctx context.Context, event Event) error {
 func (m *mockEventPublisher) Close() error {
 	atomic.AddInt32(&m.closeCalls, 1)
 	return nil
+}
+
+func (m *mockEventPublisher) Ready(context.Context) error {
+	return m.readyErr
+}
+
+func (m *mockEventPublisher) Status(context.Context) map[string]interface{} {
+	return m.status
 }
 
 func TestServiceEmitPublishesToEventPublisher(t *testing.T) {
@@ -381,6 +391,42 @@ func TestServiceCloseClosesEventPublisher(t *testing.T) {
 
 	if got := atomic.LoadInt32(&publisher.closeCalls); got != 1 {
 		t.Fatalf("expected 1 close call, got %d", got)
+	}
+}
+
+func TestServiceEventPublisherReady(t *testing.T) {
+	svc := NewService()
+	if err := svc.EventPublisherReady(context.Background()); err == nil {
+		t.Fatal("expected readiness error when publisher not configured")
+	}
+
+	publisher := &mockEventPublisher{}
+	svc.SetEventPublisher(publisher)
+	if err := svc.EventPublisherReady(context.Background()); err != nil {
+		t.Fatalf("unexpected readiness error: %v", err)
+	}
+
+	publisher.readyErr = errors.New("not ready")
+	if err := svc.EventPublisherReady(context.Background()); err == nil {
+		t.Fatal("expected readiness error from publisher")
+	}
+}
+
+func TestServiceEventPublisherStatus(t *testing.T) {
+	svc := NewService()
+	status := svc.EventPublisherStatus(context.Background())
+	if configured, ok := status["configured"].(bool); !ok || configured {
+		t.Fatalf("expected configured=false, got %#v", status)
+	}
+
+	publisher := &mockEventPublisher{status: map[string]interface{}{"ready": true, "stream": "TEST"}}
+	svc.SetEventPublisher(publisher)
+	status = svc.EventPublisherStatus(context.Background())
+	if configured, ok := status["configured"].(bool); !ok || !configured {
+		t.Fatalf("expected configured=true, got %#v", status)
+	}
+	if status["stream"] != "TEST" {
+		t.Fatalf("expected stream TEST, got %#v", status["stream"])
 	}
 }
 

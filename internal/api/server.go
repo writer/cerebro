@@ -200,5 +200,9 @@ func (s *Server) adminHealth(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if s.app.Webhooks != nil {
+		health["event_publisher"] = s.app.Webhooks.EventPublisherStatus(r.Context())
+	}
+
 	s.json(w, http.StatusOK, health)
 }
