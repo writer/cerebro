@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -157,25 +159,77 @@ func (m *Memory) Search(query string, limit int) []MemoryEntry {
 	defer m.mu.RUnlock()
 
 	now := time.Now()
-	var valid []MemoryEntry
+	if limit <= 0 {
+		limit = 10
+	}
+
+	query = strings.TrimSpace(strings.ToLower(query))
+	tokens := strings.Fields(query)
+
+	type scoredEntry struct {
+		entry MemoryEntry
+		score float64
+	}
+
+	scored := make([]scoredEntry, 0, len(m.entries))
 
 	for _, e := range m.entries {
-		if e.ExpiresAt.After(now) {
-			valid = append(valid, e)
+		if !e.ExpiresAt.After(now) {
+			continue
 		}
+
+		score := e.Relevance
+		ageHours := now.Sub(e.CreatedAt).Hours()
+		if ageHours < 0 {
+			ageHours = 0
+		}
+		score += 1.0 / (1.0 + ageHours/24.0)
+
+		if query != "" {
+			content := strings.ToLower(e.Content)
+			entryType := strings.ToLower(e.Type)
+
+			if strings.Contains(content, query) {
+				score += 2.0
+			}
+			for _, token := range tokens {
+				if strings.Contains(content, token) {
+					score += 1.0
+				}
+				if entryType == token {
+					score += 0.5
+				}
+			}
+		}
+
+		scored = append(scored, scoredEntry{entry: e, score: score})
 	}
 
-	if len(valid) > limit {
-		valid = valid[len(valid)-limit:]
+	sort.SliceStable(scored, func(i, j int) bool {
+		if scored[i].score == scored[j].score {
+			return scored[i].entry.CreatedAt.After(scored[j].entry.CreatedAt)
+		}
+		return scored[i].score > scored[j].score
+	})
+
+	if len(scored) > limit {
+		scored = scored[:limit]
 	}
-	return valid
+
+	results := make([]MemoryEntry, 0, len(scored))
+	for _, item := range scored {
+		results = append(results, item.entry)
+	}
+
+	return results
 }
 
 // AgentRegistry manages available agents
 type AgentRegistry struct {
-	agents   map[string]*Agent
-	sessions map[string]*Session
-	mu       sync.RWMutex
+	agents       map[string]*Agent
+	sessions     map[string]*Session
+	sessionStore SessionStore
+	mu           sync.RWMutex
 }
 
 func NewAgentRegistry() *AgentRegistry {
@@ -183,6 +237,12 @@ func NewAgentRegistry() *AgentRegistry {
 		agents:   make(map[string]*Agent),
 		sessions: make(map[string]*Session),
 	}
+}
+
+func (r *AgentRegistry) SetSessionStore(store SessionStore) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.sessionStore = store
 }
 
 func (r *AgentRegistry) RegisterAgent(agent *Agent) {
@@ -229,14 +289,32 @@ func (r *AgentRegistry) CreateSession(agentID, userID string, ctx SessionContext
 	}
 
 	r.sessions[session.ID] = session
+	if r.sessionStore != nil {
+		_ = r.sessionStore.Save(context.Background(), session)
+	}
 	return session, nil
 }
 
 func (r *AgentRegistry) GetSession(id string) (*Session, bool) {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
 	s, ok := r.sessions[id]
-	return s, ok
+	store := r.sessionStore
+	r.mu.RUnlock()
+	if ok {
+		return s, true
+	}
+
+	if store != nil {
+		persisted, err := store.Get(context.Background(), id)
+		if err == nil && persisted != nil {
+			r.mu.Lock()
+			r.sessions[id] = persisted
+			r.mu.Unlock()
+			return persisted, true
+		}
+	}
+
+	return nil, false
 }
 
 func (r *AgentRegistry) UpdateSession(session *Session) {
@@ -244,6 +322,9 @@ func (r *AgentRegistry) UpdateSession(session *Session) {
 	defer r.mu.Unlock()
 	session.UpdatedAt = time.Now()
 	r.sessions[session.ID] = session
+	if r.sessionStore != nil {
+		_ = r.sessionStore.Save(context.Background(), session)
+	}
 }
 
 // GetSystemPrompt generates the system prompt for the session

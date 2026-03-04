@@ -1901,7 +1901,7 @@ func applyGCPAuthOverrides() (func(), error) {
 
 	credentialsFile := strings.TrimSpace(syncGCPCredentialsFile)
 	if credentialsFile != "" {
-		if err := validateReadableFile(credentialsFile, "--gcp-credentials-file"); err != nil {
+		if err := validateReadableFile(credentialsFile, "gcp credentials file"); err != nil {
 			return cleanup, err
 		}
 	}

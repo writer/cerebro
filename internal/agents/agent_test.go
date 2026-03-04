@@ -7,6 +7,29 @@ import (
 	"time"
 )
 
+type mockSessionStore struct {
+	sessions map[string]*Session
+}
+
+func newMockSessionStore() *mockSessionStore {
+	return &mockSessionStore{sessions: make(map[string]*Session)}
+}
+
+func (m *mockSessionStore) Save(_ context.Context, session *Session) error {
+	copy := *session
+	m.sessions[session.ID] = &copy
+	return nil
+}
+
+func (m *mockSessionStore) Get(_ context.Context, id string) (*Session, error) {
+	session, ok := m.sessions[id]
+	if !ok {
+		return nil, nil
+	}
+	copy := *session
+	return &copy, nil
+}
+
 func TestNewMemory(t *testing.T) {
 	m := NewMemory(100)
 	if m == nil {
@@ -80,6 +103,21 @@ func TestMemory_Search_Limit(t *testing.T) {
 	entries := m.Search("", 2)
 	if len(entries) != 2 {
 		t.Errorf("expected 2 entries with limit, got %d", len(entries))
+	}
+}
+
+func TestMemory_Search_QueryAwareRanking(t *testing.T) {
+	m := NewMemory(10)
+
+	m.Add("jira triage note", "observation", 0.2, time.Hour)
+	m.Add("aws admin role can assume prod", "fact", 0.9, time.Hour)
+
+	entries := m.Search("aws admin", 1)
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].Content != "aws admin role can assume prod" {
+		t.Fatalf("expected query-relevant entry, got %q", entries[0].Content)
 	}
 }
 
@@ -209,6 +247,36 @@ func TestAgentRegistry_UpdateSession(t *testing.T) {
 	}
 	if !got.UpdatedAt.After(originalUpdated) {
 		t.Error("expected UpdatedAt to be updated")
+	}
+}
+
+func TestAgentRegistry_PersistsAndHydratesSessions(t *testing.T) {
+	r := NewAgentRegistry()
+	store := newMockSessionStore()
+	r.SetSessionStore(store)
+	r.RegisterAgent(&Agent{ID: "agent-1", Name: "Test Agent"})
+
+	session, err := r.CreateSession("agent-1", "user-123", SessionContext{})
+	if err != nil {
+		t.Fatalf("failed creating session: %v", err)
+	}
+
+	if _, ok := store.sessions[session.ID]; !ok {
+		t.Fatalf("expected session to be persisted to session store")
+	}
+
+	delete(r.sessions, session.ID)
+
+	hydrated, ok := r.GetSession(session.ID)
+	if !ok || hydrated == nil {
+		t.Fatalf("expected session to be hydrated from persistent store")
+	}
+
+	hydrated.Status = "completed"
+	r.UpdateSession(hydrated)
+
+	if store.sessions[session.ID].Status != "completed" {
+		t.Fatalf("expected persisted session status to be updated")
 	}
 }
 

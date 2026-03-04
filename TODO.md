@@ -143,29 +143,34 @@ System Logs: actor_id ──event──▶ target_app_id  (actual usage overlay)
 - [x] Extract provider handlers + include-incomplete helper into `internal/api/handlers_providers.go`.
 
 2. Relationship/graph decomposition
-- [ ] Split `internal/sync/relationships.go` by provider/domain.
+- [x] Split `internal/sync/relationships.go` by provider/domain.
 - [x] Extract Okta relationship extraction into `internal/sync/relationships_okta.go`.
-- [ ] Split `internal/graph/builder.go` by provider/domain.
+- [x] Extract Azure relationship extraction into `internal/sync/relationships_azure.go`.
+- [x] Extract GCP relationship extraction into `internal/sync/relationships_gcp.go`.
+- [x] Split `internal/graph/builder.go` by provider/domain.
+- [x] Extract AWS builder methods into `internal/graph/builder_aws.go`.
+- [x] Extract GCP builder methods into `internal/graph/builder_gcp.go`.
+- [x] Extract Azure/Okta builder methods into `internal/graph/builder_azure_okta.go`.
 - [ ] Split `internal/attackpath/toxic_combinations.go` by category/domain.
 
 3. Config structure cleanup
-- [ ] Refactor `app.Config` and `LoadConfig()` into nested provider-aware structs.
+- [x] Refactor `app.Config` and `LoadConfig()` into nested provider-aware structs.
 - [ ] Evaluate optional config file support (YAML/TOML) layered over env vars.
 
 4. Provider initialization simplification
-- [ ] Replace repetitive `initProviders()` registration with a table-driven/declarative registry.
+- [x] Replace repetitive `initProviders()` registration with a table-driven/declarative registry.
 
 5. Provider test coverage
-- [ ] Add tests for providers currently missing `_test.go` coverage (azure/cloudflare/cloudtrail/crowdstrike/datadog/entra_id/github/gitlab/intune/jamf/rippling/salesforce/slack/tailscale/tenable/vault).
+- [x] Add tests for providers currently missing `_test.go` coverage (azure/cloudflare/cloudtrail/crowdstrike/datadog/entra_id/github/gitlab/intune/jamf/rippling/salesforce/slack/tailscale/tenable/vault).
 
 6. Agent session durability
-- [ ] Persist `AgentRegistry` sessions beyond process memory (Snowflake or DynamoDB-backed store).
+- [x] Persist `AgentRegistry` sessions beyond process memory (Snowflake or DynamoDB-backed store).
 
 7. Agent memory relevance
-- [ ] Implement semantic/query-aware retrieval in `Memory.Search()` (query is currently ignored).
+- [x] Implement semantic/query-aware retrieval in `Memory.Search()` (query is currently ignored).
 
 8. Config-loading duplication
-- [ ] Reconcile `internal/config/config.go` and `internal/app/app.go` into one canonical config-loading path.
+- [x] Reconcile `internal/config/config.go` and `internal/app/app.go` into one canonical config-loading path.
 
 9. Repository hygiene
 - [ ] Remove or justify the top-level empty `cerebro/` directory.

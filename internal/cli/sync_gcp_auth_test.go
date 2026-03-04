@@ -95,7 +95,7 @@ func TestApplyGCPAuth_WIFMode(t *testing.T) {
 	t.Setenv("AWS_REGION", "us-east-1")
 
 	cleanup, err := ApplyGCPAuth(context.Background(), GCPAuthConfig{
-		WIFAudience:  "//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/prov",
+		WIFAudience:   "//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/prov",
 		ImpersonateSA: "scanner@proj.iam.gserviceaccount.com",
 	})
 	if err != nil {
@@ -182,7 +182,7 @@ func TestApplyGCPAuth_WIFEnvRestore(t *testing.T) {
 	t.Setenv("AWS_SESSION_TOKEN", "ORIGINAL_TOKEN")
 
 	cleanup, err := ApplyGCPAuth(context.Background(), GCPAuthConfig{
-		WIFAudience:  "//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/prov",
+		WIFAudience:   "//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/prov",
 		ImpersonateSA: "sa@proj.iam.gserviceaccount.com",
 	})
 	if err != nil {

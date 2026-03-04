@@ -1200,15 +1200,20 @@ type scheduledGCPAuthConfig struct {
 }
 
 func applyScheduledGCPAuth(spec scheduledSyncSpec) (*scheduledGCPAuthConfig, error) {
-	authCfg := &scheduledGCPAuthConfig{Cleanup: func() {}}
+	authCfg := &scheduledGCPAuthConfig{}
+	envSnapshots := make(map[string]envSnapshot)
 	tempCredentialsFile := ""
 	authCfg.Cleanup = func() {
 		if tempCredentialsFile != "" {
 			_ = os.Remove(tempCredentialsFile)
 		}
+		restoreEnvSnapshot(envSnapshots)
 	}
 
 	credentialsFile := strings.TrimSpace(spec.GCPCredentialsFile)
+	if credentialsFile == "" {
+		credentialsFile = firstNonEmptyEnv("CEREBRO_GCP_CREDENTIALS_FILE")
+	}
 	if credentialsFile != "" {
 		if err := validateReadableFile(credentialsFile, "gcp_credentials_file"); err != nil {
 			authCfg.Cleanup()
@@ -1217,12 +1222,26 @@ func applyScheduledGCPAuth(spec scheduledSyncSpec) (*scheduledGCPAuthConfig, err
 	}
 
 	impersonateServiceAccount := strings.TrimSpace(spec.GCPImpersonateServiceAccount)
+	if impersonateServiceAccount == "" {
+		impersonateServiceAccount = firstNonEmptyEnv("CEREBRO_GCP_IMPERSONATE_SERVICE_ACCOUNT")
+	}
+
 	delegates := uniqueNonEmpty(spec.GCPImpersonateDelegates)
-	tokenLifetimeSeconds, err := parseBoundedPositiveIntDirective(spec.GCPImpersonateTokenLifetime, "gcp_impersonate_token_lifetime_seconds", 600, 43200)
+	if len(delegates) == 0 {
+		delegates = uniqueNonEmpty(parseCommaSeparatedValues(firstNonEmptyEnv("CEREBRO_GCP_IMPERSONATE_DELEGATES")))
+	}
+
+	tokenLifetimeDirective := strings.TrimSpace(spec.GCPImpersonateTokenLifetime)
+	if tokenLifetimeDirective == "" {
+		tokenLifetimeDirective = firstNonEmptyEnv("CEREBRO_GCP_IMPERSONATE_TOKEN_LIFETIME_SECONDS")
+	}
+	tokenLifetimeSeconds, err := parseBoundedPositiveIntDirective(tokenLifetimeDirective, "gcp_impersonate_token_lifetime_seconds", 600, 43200)
 	if err != nil {
 		authCfg.Cleanup()
 		return nil, err
 	}
+
+	wifAudience := strings.TrimSpace(firstNonEmptyEnv("CEREBRO_GCP_WIF_AUDIENCE"))
 
 	if impersonateServiceAccount == "" {
 		if len(delegates) > 0 {
@@ -1233,6 +1252,48 @@ func applyScheduledGCPAuth(spec scheduledSyncSpec) (*scheduledGCPAuthConfig, err
 			authCfg.Cleanup()
 			return nil, fmt.Errorf("gcp_impersonate_token_lifetime_seconds requires gcp_impersonate_service_account")
 		}
+	}
+
+	if credentialsFile == "" && wifAudience != "" {
+		if err := ensureAWSEnvCredentials(context.Background(), envSnapshots); err != nil {
+			authCfg.Cleanup()
+			return nil, fmt.Errorf("resolve AWS credentials for gcp_wif_audience: %w", err)
+		}
+
+		tempCredentialsFile, err = writeWIFExternalAccountCredentials(wifAudience, impersonateServiceAccount, delegates)
+		if err != nil {
+			authCfg.Cleanup()
+			return nil, err
+		}
+
+		if err := setEnvWithSnapshot(envSnapshots, "GOOGLE_APPLICATION_CREDENTIALS", tempCredentialsFile); err != nil {
+			authCfg.Cleanup()
+			return nil, fmt.Errorf("set GOOGLE_APPLICATION_CREDENTIALS: %w", err)
+		}
+
+		encoded, readErr := os.ReadFile(tempCredentialsFile)
+		if readErr != nil {
+			authCfg.Cleanup()
+			return nil, fmt.Errorf("read temporary WIF credentials file %q: %w", tempCredentialsFile, readErr)
+		}
+
+		clientOpt, optionErr := gcpAuthOptionFromCredentialJSON(encoded, "gcp_wif_audience")
+		if optionErr != nil {
+			authCfg.Cleanup()
+			return nil, optionErr
+		}
+
+		authCfg.CredentialsFile = tempCredentialsFile
+		authCfg.CredentialsJSON = encoded
+		authCfg.ClientOptions = []option.ClientOption{clientOpt}
+		authCfg.Summary = fmt.Sprintf("wif_audience=%s", wifAudience)
+		if impersonateServiceAccount != "" {
+			authCfg.Summary = fmt.Sprintf("%s impersonate_service_account=%s delegates=%d", authCfg.Summary, impersonateServiceAccount, len(delegates))
+		}
+		return authCfg, nil
+	}
+
+	if impersonateServiceAccount == "" {
 		if credentialsFile == "" {
 			return authCfg, nil
 		}
