@@ -144,6 +144,8 @@ var _ webhooks.EventPublisher = (*Publisher)(nil)
 var _ webhooks.EventPublisherReadiness = (*Publisher)(nil)
 var _ webhooks.EventPublisherStatusReporter = (*Publisher)(nil)
 
+var errJetStreamUnavailable = errors.New("jetstream connection unavailable")
+
 func NewJetStreamPublisher(cfg JetStreamConfig, logger *slog.Logger) (*Publisher, error) {
 	config := cfg.withDefaults()
 	if err := config.validate(); err != nil {
@@ -213,6 +215,10 @@ func (p *Publisher) Publish(ctx context.Context, event webhooks.Event) error {
 		return fmt.Errorf("marshal cloud event: %w", err)
 	}
 
+	if !p.canPublishLive() {
+		return p.queueOutboxEvent(subject, event, ce.ID, payload, errJetStreamUnavailable)
+	}
+
 	if err := p.publishWithRetry(ctx, subject, payload, ce.ID); err == nil {
 		p.publishedTotal.Add(1)
 		p.setLastPublish(time.Now().UTC())
@@ -220,26 +226,9 @@ func (p *Publisher) Publish(ctx context.Context, event webhooks.Event) error {
 		metrics.RecordJetStreamPublish(p.config.Stream, "published")
 		p.refreshOperationalMetrics()
 		return nil
-	} else {
-		record := outboxRecord{Subject: subject, Payload: payload, MessageID: ce.ID}
-		if queueErr := p.outbox.enqueue(record); queueErr != nil {
-			p.setLastError(errors.Join(err, queueErr))
-			metrics.RecordJetStreamPublish(p.config.Stream, "failed")
-			p.refreshOperationalMetrics()
-			return errors.Join(err, fmt.Errorf("enqueue event in outbox: %w", queueErr))
-		}
-		p.queuedTotal.Add(1)
-		p.setLastError(err)
-		metrics.RecordJetStreamPublish(p.config.Stream, "queued")
-		p.refreshOperationalMetrics()
-		p.logger.Warn("jetstream publish failed, queued event in outbox",
-			"subject", subject,
-			"event_type", string(event.Type),
-			"event_id", event.ID,
-			"error", err,
-		)
-		return nil
 	}
+
+	return p.queueOutboxEvent(subject, event, ce.ID, payload, err)
 }
 
 func (p *Publisher) Close() error {
@@ -276,11 +265,42 @@ func (p *Publisher) flushLoop() {
 		case <-p.stopCh:
 			return
 		case <-ticker.C:
+			if !p.canPublishLive() {
+				p.refreshOperationalMetrics()
+				continue
+			}
 			if err := p.flushOutbox(context.Background()); err != nil {
 				p.logger.Warn("failed to flush jetstream outbox", "error", err)
 			}
 		}
 	}
+}
+
+func (p *Publisher) queueOutboxEvent(subject string, event webhooks.Event, messageID string, payload []byte, publishErr error) error {
+	record := outboxRecord{Subject: subject, Payload: payload, MessageID: messageID}
+	if queueErr := p.outbox.enqueue(record); queueErr != nil {
+		p.setLastError(errors.Join(publishErr, queueErr))
+		metrics.RecordJetStreamPublish(p.config.Stream, "failed")
+		p.refreshOperationalMetrics()
+		if publishErr == nil {
+			return fmt.Errorf("enqueue event in outbox: %w", queueErr)
+		}
+		return errors.Join(publishErr, fmt.Errorf("enqueue event in outbox: %w", queueErr))
+	}
+
+	p.queuedTotal.Add(1)
+	if publishErr != nil {
+		p.setLastError(publishErr)
+	}
+	metrics.RecordJetStreamPublish(p.config.Stream, "queued")
+	p.refreshOperationalMetrics()
+	p.logger.Warn("jetstream publish failed, queued event in outbox",
+		"subject", subject,
+		"event_type", string(event.Type),
+		"event_id", event.ID,
+		"error", publishErr,
+	)
+	return nil
 }
 
 func (p *Publisher) flushOutbox(ctx context.Context) error {
@@ -338,6 +358,17 @@ func (p *Publisher) publishWithRetry(ctx context.Context, subject string, payloa
 			return nil
 		}
 
+		if shouldEnsureJetStreamStream(lastErr) {
+			if ensureErr := p.ensureStream(); ensureErr == nil {
+				_, lastErr = p.js.Publish(subject, payload, opts...)
+				if lastErr == nil {
+					return nil
+				}
+			} else {
+				lastErr = errors.Join(lastErr, fmt.Errorf("ensure jetstream stream: %w", ensureErr))
+			}
+		}
+
 		if attempt < p.config.RetryAttempts {
 			if err := waitForRetry(ctx, p.config.RetryBackoff); err != nil {
 				return lastErr
@@ -346,6 +377,16 @@ func (p *Publisher) publishWithRetry(ctx context.Context, subject string, payloa
 	}
 
 	return lastErr
+}
+
+func shouldEnsureJetStreamStream(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	return errors.Is(err, nats.ErrNoStreamResponse) ||
+		errors.Is(err, nats.ErrStreamNotFound) ||
+		errors.Is(err, nats.ErrNoResponders)
 }
 
 func waitForRetry(ctx context.Context, backoff time.Duration) error {
@@ -838,6 +879,10 @@ func (c JetStreamConfig) tlsConfig() (*tls.Config, error) {
 	}
 
 	return tlsConfig, nil
+}
+
+func (p *Publisher) canPublishLive() bool {
+	return p.nc != nil && p.nc.IsConnected()
 }
 
 func (p *Publisher) refreshOperationalMetrics() {

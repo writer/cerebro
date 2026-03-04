@@ -1,10 +1,15 @@
 package events
 
 import (
+	"context"
+	"errors"
+	"log/slog"
+	"path/filepath"
 	"regexp"
 	"testing"
 	"time"
 
+	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nkeys"
 
 	"github.com/writerinternal/cerebro/internal/webhooks"
@@ -166,5 +171,83 @@ func TestJetStreamConfigEvaluateOutboxBackpressure(t *testing.T) {
 	}
 	if state.Reason == "" {
 		t.Fatal("expected critical reason")
+	}
+}
+
+func TestPublishQueuesImmediatelyWhenDisconnected(t *testing.T) {
+	outboxPath := filepath.Join(t.TempDir(), "outbox.jsonl")
+	cfg := JetStreamConfig{
+		Stream:                "TEST_EVENTS",
+		SubjectPrefix:         "cerebro.events",
+		OutboxPath:            outboxPath,
+		OutboxDLQPath:         outboxPath + ".dlq.jsonl",
+		OutboxMaxRecords:      10,
+		OutboxWarnPercent:     70,
+		OutboxCriticalPercent: 90,
+		OutboxWarnAge:         time.Minute,
+		OutboxCriticalAge:     2 * time.Minute,
+	}.withDefaults()
+
+	publisher := &Publisher{
+		logger: slog.Default(),
+		config: cfg,
+		outbox: newFileOutbox(cfg.OutboxPath, outboxConfig{
+			MaxRecords:  cfg.OutboxMaxRecords,
+			MaxAge:      cfg.OutboxMaxAge,
+			MaxAttempts: cfg.OutboxMaxAttempts,
+			DLQPath:     cfg.OutboxDLQPath,
+		}),
+	}
+
+	start := time.Now()
+	err := publisher.Publish(context.Background(), webhooks.Event{
+		Type:      webhooks.EventRuntimeIngested,
+		Timestamp: time.Now().UTC(),
+		Data: map[string]interface{}{
+			"source": "dogfood",
+		},
+	})
+	duration := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if duration > time.Second {
+		t.Fatalf("expected fast outbox fallback when disconnected, took %s", duration)
+	}
+
+	stats, err := publisher.outbox.stats()
+	if err != nil {
+		t.Fatalf("outbox stats: %v", err)
+	}
+	if stats.Depth != 1 {
+		t.Fatalf("expected outbox depth 1, got %d", stats.Depth)
+	}
+
+	status := publisher.Status(context.Background())
+	if ready, ok := status["ready"].(bool); !ok || ready {
+		t.Fatalf("expected publisher ready=false while disconnected, got %#v", status["ready"])
+	}
+}
+
+func TestShouldEnsureJetStreamStream(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "no stream response", err: nats.ErrNoStreamResponse, want: true},
+		{name: "stream not found", err: nats.ErrStreamNotFound, want: true},
+		{name: "no responders", err: nats.ErrNoResponders, want: true},
+		{name: "generic error", err: errors.New("boom"), want: false},
+		{name: "nil", err: nil, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldEnsureJetStreamStream(tt.err); got != tt.want {
+				t.Fatalf("shouldEnsureJetStreamStream(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
 	}
 }
