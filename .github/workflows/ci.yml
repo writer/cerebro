@@ -189,7 +189,7 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -202,7 +202,7 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.4.0  # Supports Go 1.25
-          args: ./cmd/... ./internal/... ./api/...
+          args: --timeout=15m ./cmd/... ./internal/... ./api/...
 
   gosec:
     runs-on: ubuntu-latest
