@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"strings"
 
 	"github.com/writerinternal/cerebro/internal/metrics"
 	"github.com/writerinternal/cerebro/internal/providers"
@@ -22,6 +23,10 @@ func (a *App) initProviders(ctx context.Context) {
 }
 
 func (a *App) registerConfiguredProviders(ctx context.Context) {
+	if a.Config != nil {
+		a.Config.RefreshProviderAwareConfig()
+	}
+
 	registerProvider := func(name string, p providers.Provider, config map[string]interface{}) {
 		metadata := providers.ProviderMetadataFor(name)
 		if providers.IsProviderIncomplete(name) {
@@ -48,8 +53,50 @@ func (a *App) registerConfiguredProviders(ctx context.Context) {
 		if !registration.enabled(a.Config) {
 			continue
 		}
-		registerProvider(registration.name, registration.constructor(), registration.buildConfig(a.Config))
+		providerConfig := registration.buildConfig(a.Config)
+		var providerValues map[string]string
+		if a.Config != nil {
+			providerValues = a.Config.ProviderValues(registration.name)
+		}
+		providerConfig = mergeProviderAwareConfig(providerConfig, providerValues)
+		registerProvider(registration.name, registration.constructor(), providerConfig)
 	}
+}
+
+func mergeProviderAwareConfig(base map[string]interface{}, providerValues map[string]string) map[string]interface{} {
+	if len(base) == 0 && len(providerValues) == 0 {
+		return nil
+	}
+
+	out := make(map[string]interface{}, len(base))
+	for key, value := range base {
+		out[key] = value
+	}
+
+	for key, value := range providerValues {
+		if strings.TrimSpace(value) == "" {
+			continue
+		}
+		current, exists := out[key]
+		if !exists {
+			continue
+		}
+		if isEmptyProviderConfigValue(current) {
+			out[key] = value
+		}
+	}
+
+	return out
+}
+
+func isEmptyProviderConfigValue(value interface{}) bool {
+	switch typed := value.(type) {
+	case nil:
+		return true
+	case string:
+		return strings.TrimSpace(typed) == ""
+	}
+	return false
 }
 
 func providerRegistrations() []providerRegistration {

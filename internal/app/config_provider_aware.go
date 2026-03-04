@@ -39,7 +39,7 @@ func (c *Config) BuildProviderAwareConfig() ProviderAwareConfig {
 	add(out.Cloud, "azure", map[string]string{"tenant_id": c.AzureTenantID, "client_id": c.AzureClientID, "client_secret": c.AzureClientSecret, "subscription_id": c.AzureSubscriptionID})
 
 	add(out.Security, "snyk", map[string]string{"api_token": c.SnykAPIToken, "org_id": c.SnykOrgID})
-	add(out.SaaS, "zoom", map[string]string{"account_id": c.ZoomAccountID, "client_id": c.ZoomClientID, "client_secret": c.ZoomClientSecret, "api_url": c.ZoomAPIURL, "token_url": c.ZoomTokenURL})
+	add(out.SaaS, "zoom", map[string]string{"account_id": c.ZoomAccountID, "client_id": c.ZoomClientID, "client_secret": c.ZoomClientSecret, "base_url": c.ZoomAPIURL, "token_url": c.ZoomTokenURL})
 	add(out.Security, "wiz", map[string]string{"client_id": c.WizClientID, "client_secret": c.WizClientSecret, "api_url": c.WizAPIURL, "token_url": c.WizTokenURL, "audience": c.WizAudience})
 	add(out.Security, "datadog", map[string]string{"api_key": c.DatadogAPIKey, "app_key": c.DatadogAppKey, "site": c.DatadogSite})
 
@@ -47,7 +47,7 @@ func (c *Config) BuildProviderAwareConfig() ProviderAwareConfig {
 	add(out.SaaS, "gitlab", map[string]string{"token": c.GitLabToken, "base_url": c.GitLabBaseURL})
 	add(out.SaaS, "figma", map[string]string{"api_token": c.FigmaAPIToken, "team_id": c.FigmaTeamID, "base_url": c.FigmaBaseURL})
 	add(out.SaaS, "socket", map[string]string{"api_token": c.SocketAPIToken, "org_slug": c.SocketOrgSlug, "api_url": c.SocketAPIURL})
-	add(out.SaaS, "ramp", map[string]string{"client_id": c.RampClientID, "client_secret": c.RampClientSecret, "api_url": c.RampAPIURL, "token_url": c.RampTokenURL})
+	add(out.SaaS, "ramp", map[string]string{"client_id": c.RampClientID, "client_secret": c.RampClientSecret, "base_url": c.RampAPIURL, "token_url": c.RampTokenURL})
 	add(out.SaaS, "gong", map[string]string{"access_key": c.GongAccessKey, "access_secret": c.GongAccessSecret, "base_url": c.GongBaseURL})
 	add(out.SaaS, "vanta", map[string]string{"api_token": c.VantaAPIToken, "base_url": c.VantaBaseURL})
 	add(out.Security, "panther", map[string]string{"api_token": c.PantherAPIToken, "base_url": c.PantherBaseURL})
@@ -76,12 +76,13 @@ func (c *Config) BuildProviderAwareConfig() ProviderAwareConfig {
 	add(out.Identity, "oracle_idcs", map[string]string{"url": c.OracleIDCSURL, "api_token": c.OracleIDCSAPIToken})
 
 	add(out.SaaS, "terraform_cloud", map[string]string{"token": c.TerraformCloudToken})
+	add(out.Identity, "auth0", map[string]string{"domain": c.Auth0Domain, "client_id": c.Auth0ClientID, "client_secret": c.Auth0ClientSecret})
 	add(out.Security, "splunk", map[string]string{"url": c.SplunkURL, "token": c.SplunkToken})
 	add(out.Network, "cloudflare", map[string]string{"api_token": c.CloudflareAPIToken})
 	add(out.SaaS, "salesforce", map[string]string{"instance_url": c.SalesforceInstanceURL, "client_id": c.SalesforceClientID, "client_secret": c.SalesforceClientSecret, "username": c.SalesforceUsername, "password": c.SalesforcePassword, "security_token": c.SalesforceSecurityToken})
 	add(out.Security, "vault", map[string]string{"address": c.VaultAddress, "token": c.VaultToken, "namespace": c.VaultNamespace})
 
-	add(out.SaaS, "slack", map[string]string{"api_token": c.SlackAPIToken})
+	add(out.SaaS, "slack", map[string]string{"token": c.SlackAPIToken})
 	add(out.Identity, "rippling", map[string]string{"api_url": c.RipplingAPIURL, "api_token": c.RipplingAPIToken})
 	add(out.Endpoint, "jamf", map[string]string{"base_url": c.JamfBaseURL, "client_id": c.JamfClientID, "client_secret": c.JamfClientSecret})
 	add(out.Identity, "intune", map[string]string{"tenant_id": firstNonEmpty(c.IntuneTenantID, c.EntraTenantID), "client_id": firstNonEmpty(c.IntuneClientID, c.EntraClientID), "client_secret": firstNonEmpty(c.IntuneClientSecret, c.EntraClientSecret)})
@@ -89,4 +90,43 @@ func (c *Config) BuildProviderAwareConfig() ProviderAwareConfig {
 	add(out.Cloud, "cloudtrail", map[string]string{"region": c.CloudTrailRegion, "trail_arn": c.CloudTrailTrailARN})
 
 	return out
+}
+
+func (c *Config) RefreshProviderAwareConfig() {
+	if c == nil {
+		return
+	}
+	c.Providers = c.BuildProviderAwareConfig()
+}
+
+func (c *Config) ProviderValues(name string) map[string]string {
+	if c == nil || name == "" {
+		return nil
+	}
+
+	providers := c.Providers
+	if len(providers.Identity) == 0 && len(providers.Cloud) == 0 && len(providers.SaaS) == 0 && len(providers.Endpoint) == 0 && len(providers.Network) == 0 && len(providers.Security) == 0 {
+		providers = c.BuildProviderAwareConfig()
+	}
+
+	buckets := []map[string]map[string]string{
+		providers.Identity,
+		providers.Cloud,
+		providers.SaaS,
+		providers.Endpoint,
+		providers.Network,
+		providers.Security,
+	}
+
+	for _, bucket := range buckets {
+		if values, ok := bucket[name]; ok {
+			out := make(map[string]string, len(values))
+			for key, value := range values {
+				out[key] = value
+			}
+			return out
+		}
+	}
+
+	return nil
 }

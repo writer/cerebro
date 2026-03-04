@@ -365,6 +365,62 @@ func containsString(values []string, target string) bool {
 	return false
 }
 
+func TestConfigProviderValues_DerivesProviderAwareFields(t *testing.T) {
+	cfg := &Config{
+		ZoomAccountID:      "acct",
+		ZoomClientID:       "client",
+		ZoomClientSecret:   "secret",
+		ZoomAPIURL:         "https://api.zoom.us/v2",
+		ZoomTokenURL:       "https://zoom.us/oauth/token",
+		SlackAPIToken:      "xoxb-token",
+		Auth0Domain:        "tenant.auth0.com",
+		Auth0ClientID:      "auth0-client",
+		Auth0ClientSecret:  "auth0-secret",
+		EntraTenantID:      "entra-tenant",
+		EntraClientID:      "entra-client",
+		EntraClientSecret:  "entra-secret",
+		IntuneTenantID:     "",
+		IntuneClientID:     "",
+		IntuneClientSecret: "",
+	}
+
+	zoom := cfg.ProviderValues("zoom")
+	if zoom["base_url"] != cfg.ZoomAPIURL {
+		t.Fatalf("expected zoom base_url %q, got %q", cfg.ZoomAPIURL, zoom["base_url"])
+	}
+	if _, ok := zoom["api_url"]; ok {
+		t.Fatalf("expected zoom provider values to avoid api_url key alias")
+	}
+
+	slack := cfg.ProviderValues("slack")
+	if slack["token"] != cfg.SlackAPIToken {
+		t.Fatalf("expected slack token %q, got %q", cfg.SlackAPIToken, slack["token"])
+	}
+
+	auth0 := cfg.ProviderValues("auth0")
+	if auth0["domain"] != cfg.Auth0Domain || auth0["client_id"] != cfg.Auth0ClientID {
+		t.Fatalf("expected auth0 provider values to include configured credentials")
+	}
+
+	intune := cfg.ProviderValues("intune")
+	if intune["tenant_id"] != cfg.EntraTenantID || intune["client_id"] != cfg.EntraClientID || intune["client_secret"] != cfg.EntraClientSecret {
+		t.Fatalf("expected intune provider values to inherit Entra fallback credentials")
+	}
+}
+
+func TestMergeProviderAwareConfig_FillsEmptyMatchingKeysOnly(t *testing.T) {
+	base := map[string]interface{}{"token": "", "url": "https://example"}
+	provider := map[string]string{"token": "secret-token", "api_token": "should-not-be-added"}
+
+	merged := mergeProviderAwareConfig(base, provider)
+	if merged["token"] != "secret-token" {
+		t.Fatalf("expected token to be backfilled from provider-aware config")
+	}
+	if _, ok := merged["api_token"]; ok {
+		t.Fatalf("expected unknown provider-aware keys to be ignored when not present in base config")
+	}
+}
+
 func TestInitProviders_RegistersExpandedProviderSet(t *testing.T) {
 	app := &App{
 		Config: &Config{

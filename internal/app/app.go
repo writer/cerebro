@@ -616,7 +616,7 @@ func LoadConfig() *Config {
 		RBACStateFile:                      getEnv("RBAC_STATE_FILE", ""),
 	}
 
-	cfg.Providers = cfg.BuildProviderAwareConfig()
+	cfg.RefreshProviderAwareConfig()
 	return cfg
 }
 
