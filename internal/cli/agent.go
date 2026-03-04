@@ -205,8 +205,9 @@ func runAgentLoop(
 					continue
 				}
 
+				approved := true
 				if tool.RequiresApproval {
-					approved := false
+					approved = false
 					if approver != nil {
 						approved = approver(tool, tc)
 					}
@@ -223,6 +224,20 @@ func runAgentLoop(
 						continue
 					}
 					session.Status = "active"
+				}
+
+				if err := tool.ValidateExecution(approved); err != nil {
+					var toolErr *agents.ToolError
+					output := fmt.Sprintf("Error executing tool: %v", err)
+					if errors.As(err, &toolErr) {
+						output = toolErr.JSON()
+					}
+					session.Messages = append(session.Messages, agents.Message{
+						Role:    "tool",
+						Content: output,
+						Name:    tc.ID,
+					})
+					continue
 				}
 
 				// Execute tool

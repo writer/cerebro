@@ -51,7 +51,7 @@ func main() {
 			return nil
 		}
 
-		data, err := os.ReadFile(path) // #nosec G122 G304 -- filepath.WalkDir on controlled policy directory
+		data, err := os.ReadFile(path) // #nosec G304,G122 -- path is enumerated via filepath.Walk under operator-supplied directory
 		if err != nil {
 			log.Printf("Error reading %s: %v", path, err)
 			return nil
@@ -87,7 +87,7 @@ func main() {
 			return nil
 		}
 
-		if err := os.WriteFile(path, output, 0600); err != nil { // #nosec G122 -- filepath.WalkDir on controlled policy directory
+		if err := os.WriteFile(path, output, 0600); err != nil { // #nosec G122 -- path is enumerated via filepath.Walk under operator-supplied directory
 			log.Printf("Error writing %s: %v", path, err)
 			return nil
 		}

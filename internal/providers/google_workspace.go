@@ -47,8 +47,7 @@ func (g *GoogleWorkspaceProvider) Configure(ctx context.Context, config map[stri
 
 	// Handle credentials - can be path or JSON string
 	if credsPath := strings.TrimSpace(g.GetConfigString("credentials_file")); credsPath != "" {
-		// #nosec G304 -- path is from provider configuration controlled by operator
-		credentials, err := os.ReadFile(credsPath)
+		credentials, err := os.ReadFile(credsPath) // #nosec G304 -- credentials_file is explicit operator configuration
 		if err != nil {
 			return fmt.Errorf("read google workspace credentials_file %q: %w", credsPath, err)
 		}

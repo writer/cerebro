@@ -131,3 +131,37 @@ func SafeTableRef(database, schema, table string) (string, error) {
 		strings.ToUpper(schema),
 		strings.ToUpper(table)), nil
 }
+
+// ValidateQualifiedSchemaRef validates a DATABASE.SCHEMA reference and returns
+// a normalized uppercase value for SQL identifier usage.
+func ValidateQualifiedSchemaRef(schemaRef string) (string, error) {
+	parts := strings.Split(strings.TrimSpace(schemaRef), ".")
+	if len(parts) != 2 {
+		return "", fmt.Errorf("invalid schema reference %q: expected DATABASE.SCHEMA", schemaRef)
+	}
+
+	database := strings.TrimSpace(parts[0])
+	schema := strings.TrimSpace(parts[1])
+	if err := ValidateTableName(database); err != nil {
+		return "", fmt.Errorf("invalid database name: %w", err)
+	}
+	if err := ValidateTableName(schema); err != nil {
+		return "", fmt.Errorf("invalid schema name: %w", err)
+	}
+
+	return strings.ToUpper(database) + "." + strings.ToUpper(schema), nil
+}
+
+// SafeQualifiedTableRef validates a DATABASE.SCHEMA reference plus table name
+// and returns a normalized uppercase fully-qualified table reference.
+func SafeQualifiedTableRef(schemaRef, table string) (string, error) {
+	normalizedSchema, err := ValidateQualifiedSchemaRef(schemaRef)
+	if err != nil {
+		return "", err
+	}
+	if err := ValidateTableName(table); err != nil {
+		return "", fmt.Errorf("invalid table name: %w", err)
+	}
+
+	return normalizedSchema + "." + strings.ToUpper(table), nil
+}

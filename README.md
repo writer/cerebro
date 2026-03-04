@@ -97,6 +97,18 @@ export JIRA_BASE_URL="https://company.atlassian.net"
 export JIRA_API_TOKEN="..."
 ```
 
+### Local mode (no Snowflake)
+
+For local development, you can run Cerebro without Snowflake credentials:
+
+```bash
+unset SNOWFLAKE_PRIVATE_KEY SNOWFLAKE_ACCOUNT SNOWFLAKE_USER
+export CEREBRO_DB_PATH=.cerebro/cerebro.db
+make serve
+```
+
+In local mode, findings are persisted to SQLite. Snowflake-backed capabilities (for example direct data-lake query endpoints and security graph population) are reduced or unavailable.
+
 ### Running
 
 ```bash

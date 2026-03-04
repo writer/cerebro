@@ -3,7 +3,7 @@ package providers
 import (
 	"context"
 	"crypto/hmac"
-	"crypto/sha1" // #nosec G505 -- required by Duo API HMAC-SHA1 signing protocol
+	"crypto/sha1" // #nosec G505 -- Duo Admin API signing requires HMAC-SHA1
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"

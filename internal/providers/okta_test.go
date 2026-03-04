@@ -2,8 +2,10 @@ package providers
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"reflect"
 	"sync/atomic"
 	"testing"
@@ -193,4 +195,162 @@ func TestOktaRequestWithResponse_RetryOn429(t *testing.T) {
 	if got := atomic.LoadInt32(&calls); got != 2 {
 		t.Fatalf("requestWithResponse() calls = %d, want 2", got)
 	}
+}
+
+func TestOktaSyncGroupMemberships(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "SSWS token" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"error": "unauthorized"})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/groups":
+			_ = json.NewEncoder(w).Encode([]map[string]interface{}{{"id": "group-1"}})
+		case "/api/v1/groups/group-1/users":
+			_ = json.NewEncoder(w).Encode([]map[string]interface{}{{
+				"id": "user-1",
+				"profile": map[string]interface{}{
+					"login": "alice@example.com",
+					"email": "alice@example.com",
+				},
+			}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	provider := newTLSTestOktaProvider(t, server)
+	table, err := provider.syncGroupMemberships(context.Background())
+	if err != nil {
+		t.Fatalf("syncGroupMemberships failed: %v", err)
+	}
+	if table.Rows != 1 {
+		t.Fatalf("syncGroupMemberships rows = %d, want 1", table.Rows)
+	}
+	if table.Inserted != 1 {
+		t.Fatalf("syncGroupMemberships inserted = %d, want 1", table.Inserted)
+	}
+}
+
+func TestOktaSyncAppAssignments(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "SSWS token" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"error": "unauthorized"})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/apps":
+			_ = json.NewEncoder(w).Encode([]map[string]interface{}{{
+				"id":    "app-1",
+				"label": "Admin Console",
+			}})
+		case "/api/v1/apps/app-1/users":
+			_ = json.NewEncoder(w).Encode([]map[string]interface{}{{
+				"id":      "user-1",
+				"status":  "ACTIVE",
+				"created": "2026-02-01T00:00:00Z",
+			}})
+		case "/api/v1/apps/app-1/groups":
+			_ = json.NewEncoder(w).Encode([]map[string]interface{}{{
+				"id":          "group-1",
+				"status":      "ASSIGNED",
+				"lastUpdated": "2026-02-02T00:00:00Z",
+			}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	provider := newTLSTestOktaProvider(t, server)
+	table, err := provider.syncAppAssignments(context.Background())
+	if err != nil {
+		t.Fatalf("syncAppAssignments failed: %v", err)
+	}
+	if table.Rows != 2 {
+		t.Fatalf("syncAppAssignments rows = %d, want 2", table.Rows)
+	}
+	if table.Inserted != 2 {
+		t.Fatalf("syncAppAssignments inserted = %d, want 2", table.Inserted)
+	}
+}
+
+func TestOktaSyncAdminRoles(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "SSWS token" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"error": "unauthorized"})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/iam/assignees/users":
+			_ = json.NewEncoder(w).Encode([]map[string]interface{}{{
+				"user": map[string]interface{}{"id": "user-1"},
+			}})
+		case "/api/v1/users":
+			_ = json.NewEncoder(w).Encode([]map[string]interface{}{{
+				"id": "user-1",
+				"profile": map[string]interface{}{
+					"login": "alice@example.com",
+				},
+			}})
+		case "/api/v1/users/user-1/roles":
+			_ = json.NewEncoder(w).Encode([]map[string]interface{}{{
+				"type":    "SUPER_ADMIN",
+				"label":   "Super Admin",
+				"status":  "ACTIVE",
+				"created": "2026-02-03T00:00:00Z",
+			}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	provider := newTLSTestOktaProvider(t, server)
+	table, err := provider.syncAdminRoles(context.Background())
+	if err != nil {
+		t.Fatalf("syncAdminRoles failed: %v", err)
+	}
+	if table.Rows != 1 {
+		t.Fatalf("syncAdminRoles rows = %d, want 1", table.Rows)
+	}
+	if table.Inserted != 1 {
+		t.Fatalf("syncAdminRoles inserted = %d, want 1", table.Inserted)
+	}
+}
+
+func newTLSTestOktaProvider(t *testing.T, server *httptest.Server) *OktaProvider {
+	t.Helper()
+
+	parsed, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("parse test server url: %v", err)
+	}
+
+	provider := NewOktaProvider()
+	if err := provider.Configure(context.Background(), map[string]interface{}{
+		"domain":    parsed.Host,
+		"api_token": "token",
+	}); err != nil {
+		t.Fatalf("configure failed: %v", err)
+	}
+	provider.client = server.Client()
+
+	return provider
 }

@@ -41,6 +41,62 @@ func TestLoadConfig(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_ConfigFileFallback(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "cerebro.yaml")
+	configBody := `
+api:
+  port: 9191
+log_level: warn
+snowflake:
+  database: FILE_DB
+`
+	if err := os.WriteFile(configPath, []byte(configBody), 0o600); err != nil {
+		t.Fatalf("write config file: %v", err)
+	}
+
+	t.Setenv("CEREBRO_CONFIG_FILE", configPath)
+	t.Setenv("CEREBRO_CONFIG_ROOT", filepath.Dir(configPath))
+	t.Setenv("API_PORT", "")
+	t.Setenv("LOG_LEVEL", "")
+	t.Setenv("SNOWFLAKE_DATABASE", "")
+
+	cfg := LoadConfig()
+
+	if cfg.Port != 9191 {
+		t.Fatalf("expected API_PORT from config file, got %d", cfg.Port)
+	}
+	if cfg.LogLevel != "warn" {
+		t.Fatalf("expected LOG_LEVEL from config file, got %q", cfg.LogLevel)
+	}
+	if cfg.SnowflakeDatabase != "FILE_DB" {
+		t.Fatalf("expected SNOWFLAKE_DATABASE from config file, got %q", cfg.SnowflakeDatabase)
+	}
+}
+
+func TestLoadConfig_ConfigFileRespectsEnvOverride(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "cerebro.toml")
+	configBody := `API_PORT = 9191
+LOG_LEVEL = "warn"
+`
+	if err := os.WriteFile(configPath, []byte(configBody), 0o600); err != nil {
+		t.Fatalf("write config file: %v", err)
+	}
+
+	t.Setenv("CEREBRO_CONFIG_FILE", configPath)
+	t.Setenv("CEREBRO_CONFIG_ROOT", filepath.Dir(configPath))
+	t.Setenv("API_PORT", "9292")
+	t.Setenv("LOG_LEVEL", "error")
+
+	cfg := LoadConfig()
+
+	if cfg.Port != 9292 {
+		t.Fatalf("expected env API_PORT to override config file, got %d", cfg.Port)
+	}
+	if cfg.LogLevel != "error" {
+		t.Fatalf("expected env LOG_LEVEL to override config file, got %q", cfg.LogLevel)
+	}
+}
+
 func TestLoadConfigWebhookURLs(t *testing.T) {
 	os.Setenv("WEBHOOK_URLS", "https://example.com/hook1, https://example.com/hook2")
 	defer os.Unsetenv("WEBHOOK_URLS")
@@ -309,6 +365,62 @@ func containsString(values []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func TestConfigProviderValues_DerivesProviderAwareFields(t *testing.T) {
+	cfg := &Config{
+		ZoomAccountID:      "acct",
+		ZoomClientID:       "client",
+		ZoomClientSecret:   "secret",
+		ZoomAPIURL:         "https://api.zoom.us/v2",
+		ZoomTokenURL:       "https://zoom.us/oauth/token",
+		SlackAPIToken:      "xoxb-token",
+		Auth0Domain:        "tenant.auth0.com",
+		Auth0ClientID:      "auth0-client",
+		Auth0ClientSecret:  "auth0-secret",
+		EntraTenantID:      "entra-tenant",
+		EntraClientID:      "entra-client",
+		EntraClientSecret:  "entra-secret",
+		IntuneTenantID:     "",
+		IntuneClientID:     "",
+		IntuneClientSecret: "",
+	}
+
+	zoom := cfg.ProviderValues("zoom")
+	if zoom["base_url"] != cfg.ZoomAPIURL {
+		t.Fatalf("expected zoom base_url %q, got %q", cfg.ZoomAPIURL, zoom["base_url"])
+	}
+	if _, ok := zoom["api_url"]; ok {
+		t.Fatalf("expected zoom provider values to avoid api_url key alias")
+	}
+
+	slack := cfg.ProviderValues("slack")
+	if slack["token"] != cfg.SlackAPIToken {
+		t.Fatalf("expected slack token %q, got %q", cfg.SlackAPIToken, slack["token"])
+	}
+
+	auth0 := cfg.ProviderValues("auth0")
+	if auth0["domain"] != cfg.Auth0Domain || auth0["client_id"] != cfg.Auth0ClientID {
+		t.Fatalf("expected auth0 provider values to include configured credentials")
+	}
+
+	intune := cfg.ProviderValues("intune")
+	if intune["tenant_id"] != cfg.EntraTenantID || intune["client_id"] != cfg.EntraClientID || intune["client_secret"] != cfg.EntraClientSecret {
+		t.Fatalf("expected intune provider values to inherit Entra fallback credentials")
+	}
+}
+
+func TestMergeProviderAwareConfig_FillsEmptyMatchingKeysOnly(t *testing.T) {
+	base := map[string]interface{}{"token": "", "url": "https://example"}
+	provider := map[string]string{"token": "secret-token", "api_token": "should-not-be-added"}
+
+	merged := mergeProviderAwareConfig(base, provider)
+	if merged["token"] != "secret-token" {
+		t.Fatalf("expected token to be backfilled from provider-aware config")
+	}
+	if _, ok := merged["api_token"]; ok {
+		t.Fatalf("expected unknown provider-aware keys to be ignored when not present in base config")
+	}
 }
 
 func TestInitProviders_RegistersExpandedProviderSet(t *testing.T) {

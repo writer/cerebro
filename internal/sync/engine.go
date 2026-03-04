@@ -18,6 +18,7 @@ import (
 
 	"github.com/writerinternal/cerebro/internal/metrics"
 	"github.com/writerinternal/cerebro/internal/snowflake"
+	"github.com/writerinternal/cerebro/internal/snowflake/tableops"
 )
 
 // SyncEngine orchestrates cloud resource syncing
@@ -34,8 +35,8 @@ type SyncEngine struct {
 }
 
 type tableInitState struct {
-	once sync.Once
-	err  error
+	mu    sync.Mutex
+	ready bool
 }
 
 // EngineOption configures the sync engine
@@ -406,16 +407,6 @@ func (e *SyncEngine) validateTable(ctx context.Context, table TableSpec, region 
 	return result, nil
 }
 
-func isReservedColumn(name string) bool {
-	upper := strings.ToUpper(name)
-	switch upper {
-	case "_CQ_ID", "_CQ_SYNC_TIME", "_CQ_HASH":
-		return true
-	default:
-		return false
-	}
-}
-
 func hasColumn(columns []string, name string) bool {
 	upper := strings.ToUpper(name)
 	for _, column := range columns {
@@ -441,101 +432,30 @@ func (e *SyncEngine) emitCDCEvents(ctx context.Context, table, region string, ch
 }
 
 func (e *SyncEngine) ensureTable(ctx context.Context, table string, columns []string) error {
-	if err := snowflake.ValidateTableName(table); err != nil {
-		return fmt.Errorf("invalid table name: %w", err)
-	}
-
-	for _, col := range columns {
-		if isReservedColumn(col) {
-			continue
-		}
-		if err := snowflake.ValidateColumnName(col); err != nil {
-			return fmt.Errorf("invalid column name %q: %w", col, err)
-		}
-	}
-
-	filteredCols := make([]string, 0, len(columns))
-	for _, col := range columns {
-		if isReservedColumn(col) {
-			continue
-		}
-		filteredCols = append(filteredCols, col)
-	}
-
-	// Create table if not exists
-	colDefs := make([]string, len(filteredCols))
-	for i, col := range filteredCols {
-		colDefs[i] = fmt.Sprintf("%s VARIANT", strings.ToUpper(col))
-	}
-
-	createQuery := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
-		_CQ_ID VARCHAR PRIMARY KEY,
-		_CQ_SYNC_TIME TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP(),
-		_CQ_HASH VARCHAR,
-		%s
-	)`, table, strings.Join(colDefs, ", "))
-
-	if _, err := e.sf.Exec(ctx, createQuery); err != nil {
-		return fmt.Errorf("create table: %w", err)
-	}
-
-	// Add missing columns
-	existingCols, err := e.getTableColumns(ctx, table)
-	if err != nil {
-		return nil // table might not exist yet
-	}
-
-	desiredCols := make([]string, 0, len(filteredCols)+1)
-	desiredCols = append(desiredCols, "_CQ_HASH")
-	desiredCols = append(desiredCols, filteredCols...)
-
-	for _, col := range columnsMissingFromSchema(existingCols, desiredCols) {
-		columnType := "VARIANT"
-		if col == "_CQ_HASH" {
-			columnType = "VARCHAR"
-		}
-		alterQuery := fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS %s %s", table, col, columnType)
-		if _, err := e.sf.Exec(ctx, alterQuery); err != nil {
-			e.logger.Debug("failed to add column", "table", table, "column", col, "error", err)
-		}
-	}
-
-	return nil
+	return tableops.EnsureVariantTable(ctx, e.sf, table, columns, tableops.EnsureVariantTableOptions{
+		AddMissingColumns:     true,
+		IgnoreLookupError:     true,
+		IgnoreAddColumnErrors: true,
+	})
 }
 
 func (e *SyncEngine) ensureTableOnce(ctx context.Context, table string, columns []string) error {
 	stateValue, _ := e.tableInit.LoadOrStore(table, &tableInitState{})
 	state := stateValue.(*tableInitState)
-	state.once.Do(func() {
-		state.err = e.ensureTable(ctx, table, columns)
-	})
-	return state.err
-}
 
-func (e *SyncEngine) getTableColumns(ctx context.Context, table string) ([]string, error) {
-	if err := snowflake.ValidateTableName(table); err != nil {
-		return nil, err
+	state.mu.Lock()
+	defer state.mu.Unlock()
+
+	if state.ready {
+		return nil
 	}
 
-	query := `
-		SELECT COLUMN_NAME 
-		FROM INFORMATION_SCHEMA.COLUMNS 
-		WHERE TABLE_NAME = ?
-		AND TABLE_SCHEMA = CURRENT_SCHEMA()
-	`
-
-	result, err := e.sf.Query(ctx, query, strings.ToUpper(table))
-	if err != nil {
-		return nil, err
+	if err := e.ensureTable(ctx, table, columns); err != nil {
+		return err
 	}
 
-	var columns []string
-	for _, row := range result.Rows {
-		if col := queryRowString(row, "column_name"); col != "" {
-			columns = append(columns, col)
-		}
-	}
-	return columns, nil
+	state.ready = true
+	return nil
 }
 
 func (e *SyncEngine) upsertWithChanges(ctx context.Context, table string, columns []string, region string, rows []map[string]interface{}, incremental bool, scope TableRegionScope) (*ChangeSet, error) {

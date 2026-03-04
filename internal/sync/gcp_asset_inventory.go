@@ -208,7 +208,7 @@ func (e *GCPAssetInventoryEngine) syncScope(ctx context.Context, client *asset.C
 	it := client.SearchAllResources(ctx, req)
 	for {
 		result, err := it.Next()
-		if err == iterator.Done {
+		if errors.Is(err, iterator.Done) {
 			break
 		}
 		if err != nil {
@@ -522,7 +522,7 @@ func ListOrganizationProjects(ctx context.Context, orgID string) ([]string, erro
 	it := client.SearchAllResources(ctx, req)
 	for {
 		result, err := it.Next()
-		if err == iterator.Done {
+		if errors.Is(err, iterator.Done) {
 			break
 		}
 		if err != nil {

@@ -44,9 +44,8 @@ type FindingRecord struct {
 func (r *FindingRepository) Upsert(ctx context.Context, f *FindingRecord) error {
 	resourceJSON, _ := json.Marshal(f.ResourceData)
 
-	// Using parameterized query with schema prefix
-	// nosemgrep: go.lang.security.audit.sqli.tainted-sql-string
-	// #nosec G202 -- schema name is a trusted internal value, not user input
+	// Using parameterized query with schema prefix.
+	// #nosec G202 -- schema is internal trusted configuration, values remain parameterized
 	query := `
 		MERGE INTO ` + r.schema + `.findings t
 		USING (SELECT ? as id) s
@@ -87,8 +86,7 @@ func (r *FindingRepository) Upsert(ctx context.Context, f *FindingRecord) error 
 }
 
 func (r *FindingRepository) Get(ctx context.Context, id string) (*FindingRecord, error) {
-	// nosemgrep: go.lang.security.audit.sqli.tainted-sql-string
-	// #nosec G202 -- schema name is a trusted internal value, not user input
+	// #nosec G202 -- schema is internal trusted configuration, id is parameterized
 	query := `
 		SELECT id, policy_id, policy_name, severity, status,
 			   resource_id, resource_type, resource_data, description,
@@ -120,8 +118,7 @@ func (r *FindingRepository) Get(ctx context.Context, id string) (*FindingRecord,
 }
 
 func (r *FindingRepository) List(ctx context.Context, filter FindingFilter) ([]*FindingRecord, error) {
-	// nosemgrep: go.lang.security.audit.sqli.tainted-sql-string
-	// #nosec G202 -- schema name is a trusted internal value, not user input
+	// #nosec G202 -- schema is internal trusted configuration, filters remain parameterized
 	query := `
 		SELECT id, policy_id, policy_name, severity, status,
 			   resource_id, resource_type, description, first_seen, last_seen
@@ -164,31 +161,39 @@ func (r *FindingRepository) List(ctx context.Context, filter FindingFilter) ([]*
 
 func (r *FindingRepository) UpdateStatus(ctx context.Context, id, status string) error {
 	normalized := strings.ToUpper(status)
-	// nolint:gosec // G201 - schema name is trusted internal value, not user input
-	// #nosec G201 -- schema name is a trusted internal value, not user input
-	query := fmt.Sprintf(`
-		UPDATE %s.findings 
-		SET status = ?, _updated_at = CURRENT_TIMESTAMP()
-		WHERE id = ?
-	`, r.schema)
-
-	if normalized == "RESOLVED" {
-		// nolint:gosec // G201 - schema name is trusted internal value
-		// #nosec G201 -- schema name is a trusted internal value, not user input
-		query = fmt.Sprintf(`
-			UPDATE %s.findings 
-			SET status = ?, resolved_at = CURRENT_TIMESTAMP(), _updated_at = CURRENT_TIMESTAMP()
-			WHERE id = ?
-		`, r.schema)
+	findingsTable, err := SafeQualifiedTableRef(r.schema, "findings")
+	if err != nil {
+		return fmt.Errorf("invalid findings table reference: %w", err)
 	}
 
-	_, err := r.client.db.ExecContext(ctx, query, normalized, id)
+	// #nosec G202 -- findingsTable is validated via SafeQualifiedTableRef.
+	query := `
+		UPDATE ` + findingsTable + `
+		SET status = ?, _updated_at = CURRENT_TIMESTAMP()
+		WHERE id = ?
+	`
+
+	if normalized == "RESOLVED" {
+		// #nosec G202 -- findingsTable is validated via SafeQualifiedTableRef.
+		query = `
+			UPDATE ` + findingsTable + `
+			SET status = ?, resolved_at = CURRENT_TIMESTAMP(), _updated_at = CURRENT_TIMESTAMP()
+			WHERE id = ?
+		`
+	}
+
+	_, err = r.client.db.ExecContext(ctx, query, normalized, id)
 	return err
 }
 
 func (r *FindingRepository) Stats(ctx context.Context) (map[string]interface{}, error) {
-	// #nosec G201 -- schema name is a trusted internal value, not user input
-	query := fmt.Sprintf(`
+	findingsTable, err := SafeQualifiedTableRef(r.schema, "findings")
+	if err != nil {
+		return nil, fmt.Errorf("invalid findings table reference: %w", err)
+	}
+
+	// #nosec G202 -- findingsTable is validated via SafeQualifiedTableRef.
+	query := `
 		SELECT 
 			COUNT(*) as total,
 			COUNT(CASE WHEN UPPER(status) = 'OPEN' THEN 1 END) as open,
@@ -198,8 +203,8 @@ func (r *FindingRepository) Stats(ctx context.Context) (map[string]interface{}, 
 			COUNT(CASE WHEN severity = 'high' THEN 1 END) as high,
 			COUNT(CASE WHEN severity = 'medium' THEN 1 END) as medium,
 			COUNT(CASE WHEN severity = 'low' THEN 1 END) as low
-		FROM %s.findings
-	`, r.schema)
+		FROM ` + findingsTable + `
+	`
 
 	row := r.client.db.QueryRowContext(ctx, query)
 
@@ -254,16 +259,20 @@ func (r *TicketRepository) Create(ctx context.Context, t *TicketRecord) error {
 	}
 
 	findingsJSON, _ := json.Marshal(t.FindingIDs)
+	ticketsTable, err := SafeQualifiedTableRef(r.schema, "tickets")
+	if err != nil {
+		return fmt.Errorf("invalid tickets table reference: %w", err)
+	}
 
-	// #nosec G201 -- schema name is a trusted internal value, not user input
-	query := fmt.Sprintf(`
-		INSERT INTO %s.tickets (
+	// #nosec G202 -- ticketsTable is validated via SafeQualifiedTableRef.
+	query := `
+		INSERT INTO ` + ticketsTable + ` (
 			id, external_id, provider, title, description,
 			priority, status, type, external_url, finding_ids
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, PARSE_JSON(?))
-	`, r.schema)
+	`
 
-	_, err := r.client.db.ExecContext(ctx, query,
+	_, err = r.client.db.ExecContext(ctx, query,
 		t.ID, t.ExternalID, t.Provider, t.Title, t.Description,
 		t.Priority, t.Status, t.Type, t.ExternalURL, string(findingsJSON),
 	)
@@ -301,16 +310,20 @@ func (r *AuditRepository) Log(ctx context.Context, entry *AuditEntry) error {
 	}
 
 	detailsJSON, _ := json.Marshal(entry.Details)
+	auditTable, err := SafeQualifiedTableRef(r.schema, "audit_log")
+	if err != nil {
+		return fmt.Errorf("invalid audit_log table reference: %w", err)
+	}
 
-	// #nosec G201 -- schema name is a trusted internal value, not user input
-	query := fmt.Sprintf(`
-		INSERT INTO %s.audit_log (
+	// #nosec G202 -- auditTable is validated via SafeQualifiedTableRef.
+	query := `
+		INSERT INTO ` + auditTable + ` (
 			id, action, actor_id, actor_type, resource_type,
 			resource_id, details, ip_address, user_agent
 		) VALUES (?, ?, ?, ?, ?, ?, PARSE_JSON(?), ?, ?)
-	`, r.schema)
+	`
 
-	_, err := r.client.db.ExecContext(ctx, query,
+	_, err = r.client.db.ExecContext(ctx, query,
 		entry.ID, entry.Action, entry.ActorID, entry.ActorType, entry.ResourceType,
 		entry.ResourceID, string(detailsJSON), entry.IPAddress, entry.UserAgent,
 	)
@@ -322,8 +335,7 @@ func (r *AuditRepository) List(ctx context.Context, resourceType, resourceID str
 		limit = 100
 	}
 
-	// nosemgrep: go.lang.security.audit.sqli.tainted-sql-string
-	// #nosec G202 -- schema name is a trusted internal value, not user input
+	// #nosec G202 -- schema is internal trusted configuration, filters remain parameterized
 	query := `
 		SELECT id, action, actor_id, actor_type, resource_type, resource_id, ip_address, timestamp
 		FROM ` + r.schema + `.audit_log
@@ -340,7 +352,8 @@ func (r *AuditRepository) List(ctx context.Context, resourceType, resourceID str
 		args = append(args, resourceID)
 	}
 
-	query += fmt.Sprintf(" ORDER BY timestamp DESC LIMIT %d", limit)
+	query += " ORDER BY timestamp DESC LIMIT ?"
+	args = append(args, limit)
 
 	rows, err := r.client.db.QueryContext(ctx, query, args...)
 	if err != nil {

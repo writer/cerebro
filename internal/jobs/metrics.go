@@ -195,8 +195,8 @@ func (m *Metrics) StartFlusher(ctx context.Context, interval time.Duration) {
 			case <-ctx.Done():
 				// Final flush on shutdown
 				flushCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
 				_ = m.Flush(flushCtx)
-				cancel()
 				return
 			case <-ticker.C:
 				_ = m.Flush(ctx)

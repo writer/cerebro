@@ -2,11 +2,11 @@ package scanner
 
 import (
 	"context"
+	crand "crypto/rand"
+	"encoding/binary"
 	"errors"
-	"math/rand"
 	"net"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -90,22 +90,25 @@ func normalizeRetryOptions(opts RetryOptions) RetryOptions {
 	return opts
 }
 
-// #nosec G404 -- jitter for retry backoff, not security-sensitive
-var retryRand = rand.New(rand.NewSource(time.Now().UnixNano()))
-var retryRandMu sync.Mutex
-
 func applyJitter(base time.Duration, jitter float64) time.Duration {
 	if jitter <= 0 {
 		return base
 	}
-	retryRandMu.Lock()
-	val := retryRand.Float64()
-	retryRandMu.Unlock()
+	val := cryptoRandomFloat64()
 	factor := 1 + ((val*2 - 1) * jitter)
 	if factor < 0 {
 		factor = 0
 	}
 	return time.Duration(float64(base) * factor)
+}
+
+func cryptoRandomFloat64() float64 {
+	var b [8]byte
+	if _, err := crand.Read(b[:]); err != nil {
+		return 0.5
+	}
+	v := binary.BigEndian.Uint64(b[:]) >> 11
+	return float64(v) / (1 << 53)
 }
 
 func isRetryableScanError(err error) bool {

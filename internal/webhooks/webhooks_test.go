@@ -3,6 +3,7 @@ package webhooks
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -327,6 +328,59 @@ func TestRegisterWebhookSSRFProtection(t *testing.T) {
 	_, err = svc.RegisterWebhook("https://example.com/hook", []EventType{}, "")
 	if err == nil {
 		t.Error("expected error for empty events")
+	}
+}
+
+type mockEventPublisher struct {
+	publishCalls int32
+	closeCalls   int32
+	publishErr   error
+}
+
+func (m *mockEventPublisher) Publish(ctx context.Context, event Event) error {
+	atomic.AddInt32(&m.publishCalls, 1)
+	return m.publishErr
+}
+
+func (m *mockEventPublisher) Close() error {
+	atomic.AddInt32(&m.closeCalls, 1)
+	return nil
+}
+
+func TestServiceEmitPublishesToEventPublisher(t *testing.T) {
+	svc := NewService()
+	publisher := &mockEventPublisher{}
+	svc.SetEventPublisher(publisher)
+
+	svc.Emit(context.Background(), EventFindingCreated, map[string]interface{}{"finding_id": "f-1"})
+
+	if got := atomic.LoadInt32(&publisher.publishCalls); got != 1 {
+		t.Fatalf("expected 1 publish call, got %d", got)
+	}
+}
+
+func TestServiceEmitWithErrorsReturnsPublisherError(t *testing.T) {
+	svc := NewService()
+	publisher := &mockEventPublisher{publishErr: errors.New("publish failed")}
+	svc.SetEventPublisher(publisher)
+
+	err := svc.EmitWithErrors(context.Background(), EventFindingCreated, map[string]interface{}{"finding_id": "f-1"})
+	if err == nil {
+		t.Fatal("expected publisher error")
+	}
+}
+
+func TestServiceCloseClosesEventPublisher(t *testing.T) {
+	svc := NewService()
+	publisher := &mockEventPublisher{}
+	svc.SetEventPublisher(publisher)
+
+	if err := svc.Close(); err != nil {
+		t.Fatalf("unexpected close error: %v", err)
+	}
+
+	if got := atomic.LoadInt32(&publisher.closeCalls); got != 1 {
+		t.Fatalf("expected 1 close call, got %d", got)
 	}
 }
 

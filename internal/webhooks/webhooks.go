@@ -38,7 +38,7 @@ func ValidateWebhookURL(rawURL string) error {
 
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrInvalidWebhookURL, err)
+		return fmt.Errorf("%w: %w", ErrInvalidWebhookURL, err)
 	}
 
 	// Require HTTPS for production webhooks
@@ -59,7 +59,11 @@ func ValidateWebhookURL(rawURL string) error {
 	}
 
 	// Resolve the hostname to check for private IPs
-	ips, err := net.LookupIP(hostname)
+	addrRecords, err := net.DefaultResolver.LookupIPAddr(context.Background(), hostname)
+	ips := make([]net.IP, 0, len(addrRecords))
+	for _, record := range addrRecords {
+		ips = append(ips, record.IP)
+	}
 	if err != nil {
 		// If DNS fails, check if it's an IP literal
 		ip := net.ParseIP(hostname)
@@ -118,11 +122,19 @@ const (
 	EventFindingResolved   EventType = "finding.resolved"
 	EventFindingSuppressed EventType = "finding.suppressed"
 	EventScanCompleted     EventType = "scan.completed"
+	EventSchedulerJobRun   EventType = "scheduler.job.run"
 	EventReviewStarted     EventType = "review.started"
 	EventReviewCompleted   EventType = "review.completed"
 	EventAttackPathFound   EventType = "attack_path.found"
 	EventTicketCreated     EventType = "ticket.created"
 	EventGraphRebuilt      EventType = "graph.rebuilt"
+	EventThreatIntelSynced EventType = "threatintel.feed.synced"
+	EventRuntimeIngested   EventType = "runtime.ingested"
+	EventRbacUserCreated   EventType = "rbac.user.created"
+	EventRbacRoleAssigned  EventType = "rbac.role.assigned"
+	EventRbacTenantCreated EventType = "rbac.tenant.created"
+	EventWebhookCreated    EventType = "webhook.created"
+	EventRemediationRule   EventType = "remediation.rule.created"
 )
 
 var defaultEventTypes = []EventType{
@@ -130,11 +142,19 @@ var defaultEventTypes = []EventType{
 	EventFindingResolved,
 	EventFindingSuppressed,
 	EventScanCompleted,
+	EventSchedulerJobRun,
 	EventReviewStarted,
 	EventReviewCompleted,
 	EventAttackPathFound,
 	EventTicketCreated,
 	EventGraphRebuilt,
+	EventThreatIntelSynced,
+	EventRuntimeIngested,
+	EventRbacUserCreated,
+	EventRbacRoleAssigned,
+	EventRbacTenantCreated,
+	EventWebhookCreated,
+	EventRemediationRule,
 }
 
 // DefaultEventTypes returns the list of webhook event types registered by default.
@@ -162,6 +182,12 @@ type Event struct {
 	Data      map[string]interface{} `json:"data"`
 }
 
+// EventPublisher can publish webhook events to external systems (for example JetStream).
+type EventPublisher interface {
+	Publish(ctx context.Context, event Event) error
+	Close() error
+}
+
 // Delivery represents a webhook delivery attempt
 type Delivery struct {
 	ID             string    `json:"id"`
@@ -181,6 +207,7 @@ type Service struct {
 	deliveries          []Delivery
 	client              *http.Client
 	deliveryConcurrency int
+	eventPublisher      EventPublisher
 	mu                  sync.RWMutex
 	skipValidation      bool // For testing only - allows localhost URLs
 }
@@ -194,6 +221,30 @@ func NewService() *Service {
 		},
 		deliveryConcurrency: defaultDeliveryConcurrency,
 	}
+}
+
+// SetEventPublisher sets an optional publisher used for all emitted events.
+func (s *Service) SetEventPublisher(publisher EventPublisher) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.eventPublisher != nil {
+		_ = s.eventPublisher.Close()
+	}
+	s.eventPublisher = publisher
+}
+
+// Close releases service resources.
+func (s *Service) Close() error {
+	s.mu.Lock()
+	publisher := s.eventPublisher
+	s.eventPublisher = nil
+	s.mu.Unlock()
+
+	if publisher == nil {
+		return nil
+	}
+	return publisher.Close()
 }
 
 func (s *Service) SetDeliveryConcurrency(n int) {
@@ -248,8 +299,11 @@ func (s *Service) RegisterWebhook(webhookURL string, events []EventType, secret 
 func isValidEventType(e EventType) bool {
 	switch e {
 	case EventFindingCreated, EventFindingResolved, EventFindingSuppressed,
-		EventScanCompleted, EventReviewStarted, EventReviewCompleted,
-		EventAttackPathFound, EventTicketCreated, EventGraphRebuilt:
+		EventScanCompleted, EventSchedulerJobRun, EventReviewStarted, EventReviewCompleted,
+		EventAttackPathFound, EventTicketCreated, EventGraphRebuilt,
+		EventThreatIntelSynced, EventRuntimeIngested, EventRbacUserCreated,
+		EventRbacRoleAssigned, EventRbacTenantCreated, EventWebhookCreated,
+		EventRemediationRule:
 		return true
 	default:
 		return false
@@ -316,6 +370,7 @@ func (s *Service) EmitWithErrors(ctx context.Context, eventType EventType, data 
 	}
 
 	s.mu.RLock()
+	publisher := s.eventPublisher
 	webhooks := make([]*Webhook, 0)
 	for _, w := range s.webhooks {
 		if w.Enabled && s.isSubscribed(w, eventType) {
@@ -324,12 +379,18 @@ func (s *Service) EmitWithErrors(ctx context.Context, eventType EventType, data 
 	}
 	s.mu.RUnlock()
 
+	var errs []error
+	if publisher != nil {
+		if err := publisher.Publish(ctx, event); err != nil {
+			errs = append(errs, fmt.Errorf("event publisher: %w", err))
+		}
+	}
+
 	var group errgroup.Group
 	if s.deliveryConcurrency > 0 {
 		group.SetLimit(s.deliveryConcurrency)
 	}
 	var mu sync.Mutex
-	var errs []error
 
 	for _, webhook := range webhooks {
 		w := webhook
@@ -502,7 +563,7 @@ func (s *Service) Handler() http.Handler {
 		var req struct {
 			URL    string      `json:"url"`
 			Events []EventType `json:"events"`
-			Secret string      `json:"secret"`
+			Secret string      `json:"secret"` // #nosec G117 -- explicit webhook signing secret field
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)

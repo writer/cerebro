@@ -13,14 +13,22 @@ type AttackPathSimulator struct {
 	entryPoints    []*Node
 	crownJewels    []*Node
 	exploitability map[string]float64 // node ID -> exploitability score
+	nodeIndex      map[string]int
+	visitedWords   int
 }
 
 // NewAttackPathSimulator creates a new simulator
 func NewAttackPathSimulator(g *Graph) *AttackPathSimulator {
+	allNodes := g.GetAllNodes()
 	sim := &AttackPathSimulator{
 		graph:          g,
 		exploitability: make(map[string]float64),
+		nodeIndex:      make(map[string]int, len(allNodes)),
 	}
+	for idx, node := range allNodes {
+		sim.nodeIndex[node.ID] = idx
+	}
+	sim.visitedWords = (len(allNodes) + 63) / 64
 	sim.identifyEntryPoints()
 	sim.identifyCrownJewels()
 	sim.calculateExploitability()
@@ -261,10 +269,10 @@ func (sim *AttackPathSimulator) findAttackPaths(entry, target *Node, maxLen int)
 	// We want paths that are actually exploitable
 
 	initial := &pathState{
-		nodeID:  entry.ID,
-		path:    nil,
-		visited: map[string]bool{entry.ID: true},
-		cost:    0,
+		nodeID:      entry.ID,
+		path:        nil,
+		visitedBits: sim.newVisitedBits(entry.ID),
+		cost:        0,
 	}
 
 	// Priority queue (min-heap by cost, but we want high exploitability so invert)
@@ -297,7 +305,7 @@ func (sim *AttackPathSimulator) findAttackPaths(entry, target *Node, maxLen int)
 
 		// Explore outbound edges
 		for _, edge := range sim.graph.GetOutEdges(current.nodeID) {
-			if current.visited[edge.Target] {
+			if sim.isVisited(current.visitedBits, edge.Target) {
 				continue
 			}
 			if edge.IsDeny() {
@@ -315,11 +323,8 @@ func (sim *AttackPathSimulator) findAttackPaths(entry, target *Node, maxLen int)
 				stepCost = 0.1
 			}
 
-			newVisited := make(map[string]bool)
-			for k, v := range current.visited {
-				newVisited[k] = v
-			}
-			newVisited[edge.Target] = true
+			newVisited := cloneVisitedBits(current.visitedBits)
+			sim.markVisited(newVisited, edge.Target)
 
 			newStep := &AttackStep{
 				Order:         len(current.path) + 1,
@@ -335,10 +340,10 @@ func (sim *AttackPathSimulator) findAttackPaths(entry, target *Node, maxLen int)
 			newPath = append(newPath, newStep)
 
 			heap.Push(pq, &pathState{
-				nodeID:  edge.Target,
-				path:    newPath,
-				visited: newVisited,
-				cost:    current.cost + stepCost,
+				nodeID:      edge.Target,
+				path:        newPath,
+				visitedBits: newVisited,
+				cost:        current.cost + stepCost,
 			})
 		}
 	}
@@ -489,10 +494,47 @@ func (sim *AttackPathSimulator) findChokepoints(paths []*ScoredAttackPath) []*Ch
 
 // pathState is used for pathfinding algorithms
 type pathState struct {
-	nodeID  string
-	path    []*AttackStep
-	visited map[string]bool
-	cost    float64
+	nodeID      string
+	path        []*AttackStep
+	visitedBits []uint64
+	cost        float64
+}
+
+func (sim *AttackPathSimulator) newVisitedBits(nodeID string) []uint64 {
+	visited := make([]uint64, sim.visitedWords)
+	sim.markVisited(visited, nodeID)
+	return visited
+}
+
+func (sim *AttackPathSimulator) markVisited(visited []uint64, nodeID string) {
+	index, ok := sim.nodeIndex[nodeID]
+	if !ok {
+		return
+	}
+	word := index / 64
+	bit := index % 64
+	if word >= 0 && word < len(visited) {
+		visited[word] |= uint64(1) << bit
+	}
+}
+
+func (sim *AttackPathSimulator) isVisited(visited []uint64, nodeID string) bool {
+	index, ok := sim.nodeIndex[nodeID]
+	if !ok {
+		return false
+	}
+	word := index / 64
+	bit := index % 64
+	if word < 0 || word >= len(visited) {
+		return false
+	}
+	return visited[word]&(uint64(1)<<bit) != 0
+}
+
+func cloneVisitedBits(visited []uint64) []uint64 {
+	cloned := make([]uint64, len(visited))
+	copy(cloned, visited)
+	return cloned
 }
 
 // Priority queue implementation for pathfinding

@@ -27,12 +27,12 @@ var (
 
 // PermanentError wraps an error to indicate it should not be retried.
 func PermanentError(err error) error {
-	return fmt.Errorf("%w: %v", ErrPermanent, err)
+	return fmt.Errorf("%w: %w", ErrPermanent, err)
 }
 
 // RetryableError wraps an error to indicate it can be retried.
 func RetryableError(err error) error {
-	return fmt.Errorf("%w: %v", ErrRetryable, err)
+	return fmt.Errorf("%w: %w", ErrRetryable, err)
 }
 
 // IsPermanent checks if an error is marked as permanent (should not retry).
@@ -683,9 +683,17 @@ func (w *Worker) handleJobFailure(ctx context.Context, job *Job, receiptHandle s
 
 // calculateBackoff returns the delay for the given attempt using exponential backoff.
 func (w *Worker) calculateBackoff(attempt int) time.Duration {
+	if attempt <= 1 {
+		attempt = 1
+	}
+
+	shift := attempt - 1
+	if shift > 30 {
+		shift = 30
+	}
+
 	// Exponential backoff: base * 2^attempt
-	// #nosec G115 -- attempt is a small positive retry counter and never approaches shift overflow bounds.
-	delay := w.retryBaseDelay * time.Duration(1<<uint(attempt-1))
+	delay := w.retryBaseDelay * time.Duration(1<<uint(shift))
 	if delay > w.retryMaxDelay {
 		delay = w.retryMaxDelay
 	}

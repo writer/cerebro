@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -33,7 +34,7 @@ func (e *GCPSyncEngine) fetchGCPIdsEndpoints(ctx context.Context, projectID stri
 	rows := make([]map[string]interface{}, 0, 50)
 	for {
 		endpoint, err := it.Next()
-		if err == iterator.Done {
+		if errors.Is(err, iterator.Done) {
 			break
 		}
 		if err != nil {

@@ -99,8 +99,7 @@ func (s *Scheduler) Start(ctx context.Context) {
 		s.mu.Unlock()
 		return
 	}
-	// #nosec G118 -- cancel stored in struct field, called in Stop()
-	s.ctx, s.cancel = context.WithCancel(ctx)
+	s.ctx, s.cancel = context.WithCancel(ctx) // #nosec G118 -- cancel is stored and invoked by Stop()
 	s.running = true
 	jobCount := len(s.jobs)
 	s.mu.Unlock()

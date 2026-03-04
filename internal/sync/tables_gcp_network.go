@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	compute "cloud.google.com/go/compute/apiv1"
@@ -49,7 +50,7 @@ func (e *GCPSyncEngine) fetchGCPComputeFirewalls(ctx context.Context, projectID 
 	it := client.List(ctx, req)
 	for {
 		fw, err := it.Next()
-		if err == iterator.Done {
+		if errors.Is(err, iterator.Done) {
 			break
 		}
 		if err != nil {
@@ -132,7 +133,7 @@ func (e *GCPSyncEngine) fetchGCPComputeNetworks(ctx context.Context, projectID s
 	it := client.List(ctx, req)
 	for {
 		net, err := it.Next()
-		if err == iterator.Done {
+		if errors.Is(err, iterator.Done) {
 			break
 		}
 		if err != nil {
@@ -200,7 +201,7 @@ func (e *GCPSyncEngine) fetchGCPComputeSubnetworks(ctx context.Context, projectI
 	it := client.AggregatedList(ctx, req)
 	for {
 		resp, err := it.Next()
-		if err == iterator.Done {
+		if errors.Is(err, iterator.Done) {
 			break
 		}
 		if err != nil {
