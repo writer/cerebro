@@ -41,6 +41,60 @@ func TestLoadConfig(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_ConfigFileFallback(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "cerebro.yaml")
+	configBody := `
+api:
+  port: 9191
+log_level: warn
+snowflake:
+  database: FILE_DB
+`
+	if err := os.WriteFile(configPath, []byte(configBody), 0o600); err != nil {
+		t.Fatalf("write config file: %v", err)
+	}
+
+	t.Setenv("CEREBRO_CONFIG_FILE", configPath)
+	t.Setenv("API_PORT", "")
+	t.Setenv("LOG_LEVEL", "")
+	t.Setenv("SNOWFLAKE_DATABASE", "")
+
+	cfg := LoadConfig()
+
+	if cfg.Port != 9191 {
+		t.Fatalf("expected API_PORT from config file, got %d", cfg.Port)
+	}
+	if cfg.LogLevel != "warn" {
+		t.Fatalf("expected LOG_LEVEL from config file, got %q", cfg.LogLevel)
+	}
+	if cfg.SnowflakeDatabase != "FILE_DB" {
+		t.Fatalf("expected SNOWFLAKE_DATABASE from config file, got %q", cfg.SnowflakeDatabase)
+	}
+}
+
+func TestLoadConfig_ConfigFileRespectsEnvOverride(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "cerebro.toml")
+	configBody := `API_PORT = 9191
+LOG_LEVEL = "warn"
+`
+	if err := os.WriteFile(configPath, []byte(configBody), 0o600); err != nil {
+		t.Fatalf("write config file: %v", err)
+	}
+
+	t.Setenv("CEREBRO_CONFIG_FILE", configPath)
+	t.Setenv("API_PORT", "9292")
+	t.Setenv("LOG_LEVEL", "error")
+
+	cfg := LoadConfig()
+
+	if cfg.Port != 9292 {
+		t.Fatalf("expected env API_PORT to override config file, got %d", cfg.Port)
+	}
+	if cfg.LogLevel != "error" {
+		t.Fatalf("expected env LOG_LEVEL to override config file, got %q", cfg.LogLevel)
+	}
+}
+
 func TestLoadConfigWebhookURLs(t *testing.T) {
 	os.Setenv("WEBHOOK_URLS", "https://example.com/hook1, https://example.com/hook2")
 	defer os.Unsetenv("WEBHOOK_URLS")

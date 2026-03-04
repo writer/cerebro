@@ -40,6 +40,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1531,19 +1532,45 @@ func (a *App) Close() error {
 }
 
 func getEnv(key, fallback string) string {
-	return envutil.Get(key, fallback)
+	if value := strings.TrimSpace(envutil.Get(key, "")); value != "" {
+		return value
+	}
+	if value, ok := lookupConfigFileValue(key); ok {
+		return value
+	}
+	return fallback
 }
 
 func getEnvInt(key string, fallback int) int {
-	return envutil.GetInt(key, fallback)
+	value := strings.TrimSpace(getEnv(key, ""))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
 }
 
 func getEnvBool(key string, fallback bool) bool {
-	return envutil.GetBool(key, fallback)
+	value := strings.ToLower(strings.TrimSpace(getEnv(key, "")))
+	if value == "" {
+		return fallback
+	}
+	return value == "true" || value == "1" || value == "yes"
 }
 
 func getEnvDuration(key string, fallback time.Duration) time.Duration {
-	return envutil.GetDuration(key, fallback)
+	value := strings.TrimSpace(getEnv(key, ""))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := time.ParseDuration(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
 }
 
 func parseAPIKeys(value string) map[string]string {

@@ -173,4 +173,4 @@ System Logs: actor_id ──event──▶ target_app_id  (actual usage overlay)
 - [x] Reconcile `internal/config/config.go` and `internal/app/app.go` into one canonical config-loading path.
 
 9. Repository hygiene
-- [ ] Remove or justify the top-level empty `cerebro/` directory.
+- [x] Remove or justify the top-level empty `cerebro/` directory (verified top-level `cerebro` path is an ignored local binary, not an empty directory).
