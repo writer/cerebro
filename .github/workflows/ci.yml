@@ -179,13 +179,13 @@ jobs:
           output="$(./cerebro scan --local-fixture internal/cli/testdata/scan_smoke_fixture.json --output json --graph=false --toxic-combos=false)"
           echo "$output" | tail -n 1 > /tmp/scan-result.json
           python3 - <<'PY'
-import json
-from pathlib import Path
+          import json
+          from pathlib import Path
 
-payload = json.loads(Path('/tmp/scan-result.json').read_text())
-if payload.get('scanned', 0) <= 0:
-    raise SystemExit('expected scanned > 0 in local smoke scan')
-PY
+          payload = json.loads(Path('/tmp/scan-result.json').read_text())
+          if payload.get('scanned', 0) <= 0:
+              raise SystemExit('expected scanned > 0 in local smoke scan')
+          PY
 
   lint:
     runs-on: ubuntu-latest
