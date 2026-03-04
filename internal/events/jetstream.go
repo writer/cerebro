@@ -42,6 +42,11 @@ const (
 	defaultOutboxMaxAge      = 7 * 24 * time.Hour
 	defaultOutboxMaxAttempts = 10
 
+	defaultOutboxWarnPercent     = 70
+	defaultOutboxCriticalPercent = 90
+	defaultOutboxWarnAge         = time.Hour
+	defaultOutboxCriticalAge     = 6 * time.Hour
+
 	defaultJetStreamAuthMode = "none"
 	authModeUserPass         = "userpass"
 	authModeNKey             = "nkey"
@@ -50,6 +55,11 @@ const (
 	cloudEventSpecVersion  = "1.0"
 	cloudEventSchemaV1     = "v1"
 	cloudEventSchemaPrefix = "urn:cerebro:events"
+
+	backpressureLevelNormal   = "normal"
+	backpressureLevelWarning  = "warning"
+	backpressureLevelCritical = "critical"
+	backpressureLevelUnknown  = "unknown"
 )
 
 type CloudEvent struct {
@@ -92,10 +102,14 @@ type JetStreamConfig struct {
 	TLSServerName         string
 	TLSInsecureSkipVerify bool
 
-	OutboxDLQPath     string
-	OutboxMaxRecords  int
-	OutboxMaxAge      time.Duration
-	OutboxMaxAttempts int
+	OutboxDLQPath         string
+	OutboxMaxRecords      int
+	OutboxMaxAge          time.Duration
+	OutboxMaxAttempts     int
+	OutboxWarnPercent     int
+	OutboxCriticalPercent int
+	OutboxWarnAge         time.Duration
+	OutboxCriticalAge     time.Duration
 }
 
 type Publisher struct {
@@ -113,10 +127,17 @@ type Publisher struct {
 	flushFailuresTotal atomic.Uint64
 	quarantinedTotal   atomic.Uint64
 
-	statusMu      sync.RWMutex
-	lastError     string
-	lastPublishAt time.Time
-	lastFlushAt   time.Time
+	statusMu               sync.RWMutex
+	lastError              string
+	lastPublishAt          time.Time
+	lastFlushAt            time.Time
+	lastBackpressureLevel  string
+	lastBackpressureReason string
+}
+
+type outboxBackpressureState struct {
+	Level  string
+	Reason string
 }
 
 var _ webhooks.EventPublisher = (*Publisher)(nil)
@@ -405,6 +426,12 @@ func (p *Publisher) Ready(ctx context.Context) error {
 		return fmt.Errorf("oldest outbox record age %s exceeded limit %s", stats.OldestAge, p.config.OutboxMaxAge)
 	}
 
+	backpressure := p.config.evaluateOutboxBackpressure(stats)
+	if backpressure.Level == backpressureLevelCritical {
+		metrics.SetJetStreamPublisherReady(p.config.Stream, false)
+		return fmt.Errorf("jetstream outbox backpressure critical: %s", backpressure.Reason)
+	}
+
 	metrics.SetJetStreamPublisherReady(p.config.Stream, true)
 	return nil
 }
@@ -421,7 +448,19 @@ func (p *Publisher) Status(ctx context.Context) map[string]interface{} {
 	lastError := p.lastError
 	lastPublishAt := p.lastPublishAt
 	lastFlushAt := p.lastFlushAt
+	lastBackpressureLevel := p.lastBackpressureLevel
+	lastBackpressureReason := p.lastBackpressureReason
 	p.statusMu.RUnlock()
+
+	backpressure := p.config.evaluateOutboxBackpressure(stats)
+	if statsErr != nil {
+		backpressure = outboxBackpressureState{Level: backpressureLevelUnknown, Reason: statsErr.Error()}
+	} else if lastBackpressureLevel != "" {
+		backpressure.Level = lastBackpressureLevel
+		if strings.TrimSpace(lastBackpressureReason) != "" {
+			backpressure.Reason = lastBackpressureReason
+		}
+	}
 
 	status := map[string]interface{}{
 		"enabled":                   true,
@@ -435,6 +474,10 @@ func (p *Publisher) Status(ctx context.Context) map[string]interface{} {
 		"queued_total":              p.queuedTotal.Load(),
 		"flush_failures_total":      p.flushFailuresTotal.Load(),
 		"quarantined_total":         p.quarantinedTotal.Load(),
+		"backpressure_level":        backpressure.Level,
+	}
+	if strings.TrimSpace(backpressure.Reason) != "" {
+		status["backpressure_reason"] = backpressure.Reason
 	}
 
 	if !lastPublishAt.IsZero() {
@@ -588,6 +631,18 @@ func (c JetStreamConfig) withDefaults() JetStreamConfig {
 	if config.OutboxMaxAttempts <= 0 {
 		config.OutboxMaxAttempts = defaultOutboxMaxAttempts
 	}
+	if config.OutboxWarnPercent <= 0 {
+		config.OutboxWarnPercent = defaultOutboxWarnPercent
+	}
+	if config.OutboxCriticalPercent <= 0 {
+		config.OutboxCriticalPercent = defaultOutboxCriticalPercent
+	}
+	if config.OutboxWarnAge <= 0 {
+		config.OutboxWarnAge = defaultOutboxWarnAge
+	}
+	if config.OutboxCriticalAge <= 0 {
+		config.OutboxCriticalAge = defaultOutboxCriticalAge
+	}
 
 	if strings.TrimSpace(config.OutboxPath) == "" {
 		config.OutboxPath = filepath.Join(os.TempDir(), defaultOutboxFileName)
@@ -658,6 +713,25 @@ func (c JetStreamConfig) validate() error {
 		if _, err := os.Stat(filePath); err != nil {
 			return fmt.Errorf("tls file %q: %w", filePath, err)
 		}
+	}
+
+	if c.OutboxWarnPercent <= 0 || c.OutboxWarnPercent > 100 {
+		return fmt.Errorf("outbox warn percent must be between 1 and 100, got %d", c.OutboxWarnPercent)
+	}
+	if c.OutboxCriticalPercent <= 0 || c.OutboxCriticalPercent > 100 {
+		return fmt.Errorf("outbox critical percent must be between 1 and 100, got %d", c.OutboxCriticalPercent)
+	}
+	if c.OutboxWarnPercent > c.OutboxCriticalPercent {
+		return fmt.Errorf("outbox warn percent %d cannot exceed critical percent %d", c.OutboxWarnPercent, c.OutboxCriticalPercent)
+	}
+	if c.OutboxWarnAge <= 0 {
+		return fmt.Errorf("outbox warn age must be > 0, got %s", c.OutboxWarnAge)
+	}
+	if c.OutboxCriticalAge <= 0 {
+		return fmt.Errorf("outbox critical age must be > 0, got %s", c.OutboxCriticalAge)
+	}
+	if c.OutboxWarnAge > c.OutboxCriticalAge {
+		return fmt.Errorf("outbox warn age %s cannot exceed critical age %s", c.OutboxWarnAge, c.OutboxCriticalAge)
 	}
 
 	return nil
@@ -771,15 +845,25 @@ func (p *Publisher) refreshOperationalMetrics() {
 	if err != nil {
 		p.setLastError(err)
 		metrics.SetJetStreamPublisherReady(p.config.Stream, false)
+		metrics.SetJetStreamOutboxBackpressureLevel(p.config.Stream, backpressureLevelUnknown)
+		p.setBackpressureState(outboxBackpressureState{Level: backpressureLevelUnknown, Reason: err.Error()})
 		return
 	}
 	p.recordOutboxMetrics(stats)
+
+	backpressure := p.config.evaluateOutboxBackpressure(stats)
+	previous := p.setBackpressureState(backpressure)
+	p.recordBackpressureTransition(previous, backpressure, stats)
+	metrics.SetJetStreamOutboxBackpressureLevel(p.config.Stream, backpressure.Level)
 
 	ready := p.nc != nil && p.nc.IsConnected()
 	if ready && p.config.OutboxMaxRecords > 0 && stats.Depth >= p.config.OutboxMaxRecords {
 		ready = false
 	}
 	if ready && p.config.OutboxMaxAge > 0 && stats.Depth > 0 && stats.OldestAge > p.config.OutboxMaxAge {
+		ready = false
+	}
+	if ready && backpressure.Level == backpressureLevelCritical {
 		ready = false
 	}
 
@@ -816,6 +900,76 @@ func (p *Publisher) setLastFlush(at time.Time) {
 	p.statusMu.Lock()
 	p.lastFlushAt = at
 	p.statusMu.Unlock()
+}
+
+func (p *Publisher) setBackpressureState(state outboxBackpressureState) string {
+	p.statusMu.Lock()
+	previous := p.lastBackpressureLevel
+	p.lastBackpressureLevel = state.Level
+	p.lastBackpressureReason = state.Reason
+	p.statusMu.Unlock()
+	return previous
+}
+
+func (p *Publisher) recordBackpressureTransition(previous string, current outboxBackpressureState, stats outboxStats) {
+	prev := strings.TrimSpace(previous)
+	if prev == "" {
+		prev = backpressureLevelNormal
+	}
+	if prev == current.Level {
+		return
+	}
+
+	switch current.Level {
+	case backpressureLevelWarning, backpressureLevelCritical:
+		metrics.RecordJetStreamBackpressureAlert(p.config.Stream, current.Level)
+		p.logger.Warn("jetstream outbox backpressure",
+			"level", current.Level,
+			"reason", current.Reason,
+			"depth", stats.Depth,
+			"oldest_age", stats.OldestAge.String(),
+		)
+	case backpressureLevelNormal:
+		if prev == backpressureLevelWarning || prev == backpressureLevelCritical {
+			metrics.RecordJetStreamBackpressureAlert(p.config.Stream, "recovered")
+			p.logger.Info("jetstream outbox backpressure recovered",
+				"previous_level", prev,
+				"depth", stats.Depth,
+				"oldest_age", stats.OldestAge.String(),
+			)
+		}
+	}
+}
+
+func (c JetStreamConfig) evaluateOutboxBackpressure(stats outboxStats) outboxBackpressureState {
+	depthRatio := 0.0
+	if c.OutboxMaxRecords > 0 {
+		depthRatio = (float64(stats.Depth) / float64(c.OutboxMaxRecords)) * 100
+	}
+
+	criticalReasons := make([]string, 0, 2)
+	if c.OutboxCriticalPercent > 0 && c.OutboxMaxRecords > 0 && depthRatio >= float64(c.OutboxCriticalPercent) {
+		criticalReasons = append(criticalReasons, fmt.Sprintf("depth %.1f%% >= %d%%", depthRatio, c.OutboxCriticalPercent))
+	}
+	if c.OutboxCriticalAge > 0 && stats.Depth > 0 && stats.OldestAge >= c.OutboxCriticalAge {
+		criticalReasons = append(criticalReasons, fmt.Sprintf("oldest_age %s >= %s", stats.OldestAge.Truncate(time.Second), c.OutboxCriticalAge))
+	}
+	if len(criticalReasons) > 0 {
+		return outboxBackpressureState{Level: backpressureLevelCritical, Reason: strings.Join(criticalReasons, ", ")}
+	}
+
+	warningReasons := make([]string, 0, 2)
+	if c.OutboxWarnPercent > 0 && c.OutboxMaxRecords > 0 && depthRatio >= float64(c.OutboxWarnPercent) {
+		warningReasons = append(warningReasons, fmt.Sprintf("depth %.1f%% >= %d%%", depthRatio, c.OutboxWarnPercent))
+	}
+	if c.OutboxWarnAge > 0 && stats.Depth > 0 && stats.OldestAge >= c.OutboxWarnAge {
+		warningReasons = append(warningReasons, fmt.Sprintf("oldest_age %s >= %s", stats.OldestAge.Truncate(time.Second), c.OutboxWarnAge))
+	}
+	if len(warningReasons) > 0 {
+		return outboxBackpressureState{Level: backpressureLevelWarning, Reason: strings.Join(warningReasons, ", ")}
+	}
+
+	return outboxBackpressureState{Level: backpressureLevelNormal}
 }
 
 func cloudEventSchemaFor(eventType string) string {

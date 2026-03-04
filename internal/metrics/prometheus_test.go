@@ -228,4 +228,10 @@ func TestJetStreamMetrics(t *testing.T) {
 	SetJetStreamOutboxOldestAge("CEREBRO_EVENTS", 2*time.Second)
 	SetJetStreamPublisherReady("CEREBRO_EVENTS", true)
 	SetJetStreamPublisherReady("CEREBRO_EVENTS", false)
+	SetJetStreamOutboxBackpressureLevel("CEREBRO_EVENTS", "warning")
+	SetJetStreamOutboxBackpressureLevel("CEREBRO_EVENTS", "critical")
+	SetJetStreamOutboxBackpressureLevel("CEREBRO_EVENTS", "unknown")
+	RecordJetStreamBackpressureAlert("CEREBRO_EVENTS", "warning")
+	RecordJetStreamBackpressureAlert("CEREBRO_EVENTS", "critical")
+	RecordJetStreamBackpressureAlert("CEREBRO_EVENTS", "recovered")
 }

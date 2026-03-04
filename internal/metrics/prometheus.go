@@ -233,6 +233,22 @@ var (
 		[]string{"stream"},
 	)
 
+	JetStreamOutboxBackpressureLevel = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "cerebro_jetstream_outbox_backpressure_level",
+			Help: "JetStream outbox backpressure level (0 normal, 1 warning, 2 critical, 3 unknown)",
+		},
+		[]string{"stream"},
+	)
+
+	JetStreamBackpressureAlertsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_jetstream_backpressure_alerts_total",
+			Help: "Number of JetStream outbox backpressure alert transitions",
+		},
+		[]string{"stream", "level"},
+	)
+
 	// Notification metrics
 	NotificationsSent = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -346,6 +362,8 @@ func Register() {
 			JetStreamOutboxDepth,
 			JetStreamOutboxOldestAge,
 			JetStreamPublisherReady,
+			JetStreamOutboxBackpressureLevel,
+			JetStreamBackpressureAlertsTotal,
 			// Notifications
 			NotificationsSent,
 			// Scheduler
@@ -505,6 +523,39 @@ func SetJetStreamPublisherReady(stream string, ready bool) {
 		return
 	}
 	JetStreamPublisherReady.WithLabelValues(stream).Set(0)
+}
+
+func SetJetStreamOutboxBackpressureLevel(stream, level string) {
+	if strings.TrimSpace(stream) == "" {
+		stream = "unknown"
+	}
+
+	value := 0.0
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "normal":
+		value = 0
+	case "warning":
+		value = 1
+	case "critical":
+		value = 2
+	case "unknown":
+		value = 3
+	default:
+		value = 3
+	}
+
+	JetStreamOutboxBackpressureLevel.WithLabelValues(stream).Set(value)
+}
+
+func RecordJetStreamBackpressureAlert(stream, level string) {
+	if strings.TrimSpace(stream) == "" {
+		stream = "unknown"
+	}
+	level = strings.ToLower(strings.TrimSpace(level))
+	if level == "" {
+		level = "unknown"
+	}
+	JetStreamBackpressureAlertsTotal.WithLabelValues(stream, level).Inc()
 }
 
 // UpdateFindingsMetrics updates findings gauge metrics

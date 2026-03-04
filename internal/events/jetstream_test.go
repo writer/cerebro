@@ -124,3 +124,47 @@ func TestJetStreamConfigNKeyAuthOption(t *testing.T) {
 		t.Fatal("expected nats options error for invalid nkey seed")
 	}
 }
+
+func TestJetStreamConfigValidateBackpressureThresholds(t *testing.T) {
+	cfg := JetStreamConfig{
+		URLs:                  []string{"nats://127.0.0.1:4222"},
+		OutboxWarnPercent:     95,
+		OutboxCriticalPercent: 90,
+	}
+	cfg = cfg.withDefaults()
+
+	if err := cfg.validate(); err == nil {
+		t.Fatal("expected validate to fail when warn percent exceeds critical percent")
+	}
+}
+
+func TestJetStreamConfigEvaluateOutboxBackpressure(t *testing.T) {
+	cfg := JetStreamConfig{
+		OutboxMaxRecords:      100,
+		OutboxWarnPercent:     70,
+		OutboxCriticalPercent: 90,
+		OutboxWarnAge:         time.Minute,
+		OutboxCriticalAge:     2 * time.Minute,
+	}.withDefaults()
+
+	state := cfg.evaluateOutboxBackpressure(outboxStats{Depth: 20, OldestAge: 10 * time.Second})
+	if state.Level != backpressureLevelNormal {
+		t.Fatalf("expected normal backpressure, got %s", state.Level)
+	}
+
+	state = cfg.evaluateOutboxBackpressure(outboxStats{Depth: 75, OldestAge: 10 * time.Second})
+	if state.Level != backpressureLevelWarning {
+		t.Fatalf("expected warning backpressure, got %s", state.Level)
+	}
+	if state.Reason == "" {
+		t.Fatal("expected warning reason")
+	}
+
+	state = cfg.evaluateOutboxBackpressure(outboxStats{Depth: 20, OldestAge: 3 * time.Minute})
+	if state.Level != backpressureLevelCritical {
+		t.Fatalf("expected critical backpressure from age, got %s", state.Level)
+	}
+	if state.Reason == "" {
+		t.Fatal("expected critical reason")
+	}
+}

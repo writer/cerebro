@@ -376,32 +376,36 @@ type Config struct {
 	WebhookURLs []string
 
 	// NATS JetStream event publishing
-	NATSJetStreamEnabled        bool
-	NATSJetStreamURLs           []string
-	NATSJetStreamStream         string
-	NATSJetStreamSubjectPrefix  string
-	NATSJetStreamSource         string
-	NATSJetStreamOutboxPath     string
-	NATSJetStreamOutboxDLQPath  string
-	NATSJetStreamOutboxMaxAge   time.Duration
-	NATSJetStreamOutboxMaxItems int
-	NATSJetStreamOutboxMaxRetry int
-	NATSJetStreamPublishTimeout time.Duration
-	NATSJetStreamRetryAttempts  int
-	NATSJetStreamRetryBackoff   time.Duration
-	NATSJetStreamFlushInterval  time.Duration
-	NATSJetStreamConnectTimeout time.Duration
-	NATSJetStreamAuthMode       string
-	NATSJetStreamUsername       string
-	NATSJetStreamPassword       string
-	NATSJetStreamNKeySeed       string
-	NATSJetStreamUserJWT        string
-	NATSJetStreamTLSEnabled     bool
-	NATSJetStreamTLSCAFile      string
-	NATSJetStreamTLSCertFile    string
-	NATSJetStreamTLSKeyFile     string
-	NATSJetStreamTLSServerName  string
-	NATSJetStreamTLSInsecure    bool
+	NATSJetStreamEnabled               bool
+	NATSJetStreamURLs                  []string
+	NATSJetStreamStream                string
+	NATSJetStreamSubjectPrefix         string
+	NATSJetStreamSource                string
+	NATSJetStreamOutboxPath            string
+	NATSJetStreamOutboxDLQPath         string
+	NATSJetStreamOutboxMaxAge          time.Duration
+	NATSJetStreamOutboxMaxItems        int
+	NATSJetStreamOutboxMaxRetry        int
+	NATSJetStreamOutboxWarnPercent     int
+	NATSJetStreamOutboxCriticalPercent int
+	NATSJetStreamOutboxWarnAge         time.Duration
+	NATSJetStreamOutboxCriticalAge     time.Duration
+	NATSJetStreamPublishTimeout        time.Duration
+	NATSJetStreamRetryAttempts         int
+	NATSJetStreamRetryBackoff          time.Duration
+	NATSJetStreamFlushInterval         time.Duration
+	NATSJetStreamConnectTimeout        time.Duration
+	NATSJetStreamAuthMode              string
+	NATSJetStreamUsername              string
+	NATSJetStreamPassword              string
+	NATSJetStreamNKeySeed              string
+	NATSJetStreamUserJWT               string
+	NATSJetStreamTLSEnabled            bool
+	NATSJetStreamTLSCAFile             string
+	NATSJetStreamTLSCertFile           string
+	NATSJetStreamTLSKeyFile            string
+	NATSJetStreamTLSServerName         string
+	NATSJetStreamTLSInsecure           bool
 
 	// Notifications
 	SlackWebhookURL    string
@@ -611,6 +615,10 @@ func LoadConfig() *Config {
 		NATSJetStreamOutboxMaxAge:          getEnvDuration("NATS_JETSTREAM_OUTBOX_MAX_AGE", 7*24*time.Hour),
 		NATSJetStreamOutboxMaxItems:        getEnvInt("NATS_JETSTREAM_OUTBOX_MAX_ITEMS", 10000),
 		NATSJetStreamOutboxMaxRetry:        getEnvInt("NATS_JETSTREAM_OUTBOX_MAX_RETRY", 10),
+		NATSJetStreamOutboxWarnPercent:     getEnvInt("NATS_JETSTREAM_OUTBOX_WARN_PERCENT", 70),
+		NATSJetStreamOutboxCriticalPercent: getEnvInt("NATS_JETSTREAM_OUTBOX_CRITICAL_PERCENT", 90),
+		NATSJetStreamOutboxWarnAge:         getEnvDuration("NATS_JETSTREAM_OUTBOX_WARN_AGE", time.Hour),
+		NATSJetStreamOutboxCriticalAge:     getEnvDuration("NATS_JETSTREAM_OUTBOX_CRITICAL_AGE", 6*time.Hour),
 		NATSJetStreamPublishTimeout:        getEnvDuration("NATS_JETSTREAM_PUBLISH_TIMEOUT", 3*time.Second),
 		NATSJetStreamRetryAttempts:         getEnvInt("NATS_JETSTREAM_RETRY_ATTEMPTS", 3),
 		NATSJetStreamRetryBackoff:          getEnvDuration("NATS_JETSTREAM_RETRY_BACKOFF", 500*time.Millisecond),
