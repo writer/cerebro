@@ -12,6 +12,9 @@ TRIVY_IMAGE ?= aquasec/trivy:0.34.0
 TRIVY_CACHE_DIR ?= $(HOME)/.cache/trivy
 SECURITY_SCAN_IMAGE ?= cerebro:ci
 GO_BIN ?= $(shell go env GOPATH)/bin
+GOFLAGS ?= -mod=vendor
+
+export GOFLAGS
 
 # Build the cerebro binary
 build:
