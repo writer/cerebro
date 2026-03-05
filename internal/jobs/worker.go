@@ -735,7 +735,7 @@ func (w *Worker) calculateBackoff(attempt int) time.Duration {
 	}
 
 	// Exponential backoff: base * 2^attempt
-	delay := w.retryBaseDelay * time.Duration(1<<uint(shift))
+	delay := w.retryBaseDelay * time.Duration(1<<shift)
 	if delay > w.retryMaxDelay {
 		delay = w.retryMaxDelay
 	}
