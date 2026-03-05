@@ -22,6 +22,7 @@ go.work
 .vscode/
 *.swp
 *.swo
+.factory/
 
 # OS
 .DS_Store
