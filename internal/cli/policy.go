@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/writerinternal/cerebro/internal/policy"
+	"github.com/writer/cerebro/internal/policy"
 )
 
 var policyOutput string

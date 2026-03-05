@@ -8,10 +8,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/writerinternal/cerebro/internal/notifications"
-	"github.com/writerinternal/cerebro/internal/remediation"
-	"github.com/writerinternal/cerebro/internal/scheduler"
-	"github.com/writerinternal/cerebro/internal/webhooks"
+	"github.com/writer/cerebro/internal/notifications"
+	"github.com/writer/cerebro/internal/remediation"
+	"github.com/writer/cerebro/internal/scheduler"
+	"github.com/writer/cerebro/internal/webhooks"
 )
 
 func (s *Server) schedulerStatus(w http.ResponseWriter, r *http.Request) {

@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/writerinternal/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/snowflake"
 	"golang.org/x/sync/errgroup"
 )
 

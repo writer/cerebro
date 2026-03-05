@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/writerinternal/cerebro/internal/policy"
+	"github.com/writer/cerebro/internal/policy"
 )
 
 func TestStoreUpsert(t *testing.T) {

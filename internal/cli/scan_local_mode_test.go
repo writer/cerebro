@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/writerinternal/cerebro/internal/app"
+	"github.com/writer/cerebro/internal/app"
 )
 
 func TestResolveLocalScanDataset_FromFixture(t *testing.T) {

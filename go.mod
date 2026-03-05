@@ -1,4 +1,4 @@
-module github.com/writerinternal/cerebro
+module github.com/writer/cerebro
 
 go 1.25.0
 

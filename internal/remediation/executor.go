@@ -9,9 +9,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/writerinternal/cerebro/internal/findings"
-	"github.com/writerinternal/cerebro/internal/notifications"
-	"github.com/writerinternal/cerebro/internal/ticketing"
+	"github.com/writer/cerebro/internal/findings"
+	"github.com/writer/cerebro/internal/notifications"
+	"github.com/writer/cerebro/internal/ticketing"
 )
 
 // Executor runs remediation actions

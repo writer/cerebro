@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/writerinternal/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/snowflake"
 )
 
 // Relationship represents a connection between two cloud resources

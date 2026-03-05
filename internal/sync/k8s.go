@@ -15,9 +15,9 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"github.com/writerinternal/cerebro/internal/metrics"
-	"github.com/writerinternal/cerebro/internal/snowflake"
-	"github.com/writerinternal/cerebro/internal/snowflake/tableops"
+	"github.com/writer/cerebro/internal/metrics"
+	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/snowflake/tableops"
 )
 
 // K8sEngineOption configures the Kubernetes sync engine.

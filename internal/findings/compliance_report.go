@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/writerinternal/cerebro/internal/policy"
+	"github.com/writer/cerebro/internal/policy"
 )
 
 // ComplianceReport summarizes findings by compliance framework

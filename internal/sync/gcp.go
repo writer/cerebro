@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/writerinternal/cerebro/internal/metrics"
-	"github.com/writerinternal/cerebro/internal/snowflake"
-	"github.com/writerinternal/cerebro/internal/snowflake/tableops"
+	"github.com/writer/cerebro/internal/metrics"
+	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/snowflake/tableops"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/time/rate"
 )

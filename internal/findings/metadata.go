@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/writerinternal/cerebro/internal/policy"
+	"github.com/writer/cerebro/internal/policy"
 )
 
 type findingMetadata struct {

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	nativesync "github.com/writerinternal/cerebro/internal/sync"
+	nativesync "github.com/writer/cerebro/internal/sync"
 )
 
 type syncPreflightCheck struct {

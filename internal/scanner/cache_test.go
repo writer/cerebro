@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/writerinternal/cerebro/internal/cache"
-	"github.com/writerinternal/cerebro/internal/policy"
+	"github.com/writer/cerebro/internal/cache"
+	"github.com/writer/cerebro/internal/policy"
 )
 
 func TestHashAsset_Deterministic(t *testing.T) {

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	nativesync "github.com/writerinternal/cerebro/internal/sync"
+	nativesync "github.com/writer/cerebro/internal/sync"
 )
 
 func TestSummarizeSyncRunErrors(t *testing.T) {

@@ -12,7 +12,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nkeys"
 
-	"github.com/writerinternal/cerebro/internal/webhooks"
+	"github.com/writer/cerebro/internal/webhooks"
 )
 
 func TestCloudEventFromWebhook(t *testing.T) {

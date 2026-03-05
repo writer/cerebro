@@ -10,8 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/writerinternal/cerebro/internal/app"
-	"github.com/writerinternal/cerebro/internal/findings"
+	"github.com/writer/cerebro/internal/app"
+	"github.com/writer/cerebro/internal/findings"
 )
 
 var findingsCmd = &cobra.Command{

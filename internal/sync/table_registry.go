@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/writerinternal/cerebro/internal/providers"
+	"github.com/writer/cerebro/internal/providers"
 )
 
 // TableProvider identifies the provider that owns a table.

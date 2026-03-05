@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/writerinternal/cerebro/internal/agents"
+	"github.com/writer/cerebro/internal/agents"
 )
 
 func TestNewAnthropicProvider_Defaults(t *testing.T) {

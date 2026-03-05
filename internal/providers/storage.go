@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/writerinternal/cerebro/internal/snowflake"
-	"github.com/writerinternal/cerebro/internal/snowflake/tableops"
+	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/snowflake/tableops"
 )
 
 const providerInsertBatchSize = 200

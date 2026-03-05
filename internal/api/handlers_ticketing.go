@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/writerinternal/cerebro/internal/ticketing"
+	"github.com/writer/cerebro/internal/ticketing"
 )
 
 // Ticketing endpoints

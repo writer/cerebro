@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/writerinternal/cerebro/internal/app"
-	"github.com/writerinternal/cerebro/internal/notifications"
+	"github.com/writer/cerebro/internal/app"
+	"github.com/writer/cerebro/internal/notifications"
 )
 
 var notificationsCmd = &cobra.Command{
