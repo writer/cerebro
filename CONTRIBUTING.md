@@ -6,6 +6,10 @@ Thanks for contributing.
 
 1. Install Go `1.25.x`.
 2. Clone the repository.
+   ```bash
+   git clone https://github.com/writer/cerebro.git
+   cd cerebro
+   ```
 3. Run:
 
 ```bash
