@@ -21,6 +21,7 @@ func TestPreviouslyUntestedProviders_BasicCoverage(t *testing.T) {
 		{name: "jamf", constructor: func() Provider { return NewJamfProvider() }},
 		{name: "qualys", constructor: func() Provider { return NewQualysProvider() }},
 		{name: "rippling", constructor: func() Provider { return NewRipplingProvider() }},
+		{name: "s3", constructor: func() Provider { return NewS3Provider() }},
 		{name: "salesforce", constructor: func() Provider { return NewSalesforceProvider() }},
 		{name: "slack", constructor: func() Provider { return NewSlackProvider() }},
 		{name: "tailscale", constructor: func() Provider { return NewTailscaleProvider() }},

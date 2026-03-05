@@ -381,6 +381,11 @@ func TestConfigProviderValues_DerivesProviderAwareFields(t *testing.T) {
 		EntraTenantID:      "entra-tenant",
 		EntraClientID:      "entra-client",
 		EntraClientSecret:  "entra-secret",
+		S3InputBucket:      "cerebro-inputs",
+		S3InputPrefix:      "audit/",
+		S3InputRegion:      "us-west-2",
+		S3InputFormat:      "jsonl",
+		S3InputMaxObjects:  250,
 		IntuneTenantID:     "",
 		IntuneClientID:     "",
 		IntuneClientSecret: "",
@@ -407,6 +412,14 @@ func TestConfigProviderValues_DerivesProviderAwareFields(t *testing.T) {
 	intune := cfg.ProviderValues("intune")
 	if intune["tenant_id"] != cfg.EntraTenantID || intune["client_id"] != cfg.EntraClientID || intune["client_secret"] != cfg.EntraClientSecret {
 		t.Fatalf("expected intune provider values to inherit Entra fallback credentials")
+	}
+
+	s3 := cfg.ProviderValues("s3")
+	if s3["bucket"] != cfg.S3InputBucket || s3["prefix"] != cfg.S3InputPrefix || s3["region"] != cfg.S3InputRegion {
+		t.Fatalf("expected s3 provider values to include bucket/prefix/region")
+	}
+	if s3["max_objects"] != "250" {
+		t.Fatalf("expected s3 max_objects 250, got %q", s3["max_objects"])
 	}
 }
 
@@ -517,13 +530,18 @@ func TestInitProviders_RegistersExpandedProviderSet(t *testing.T) {
 			JiraAPIToken:              "jira-token",
 			KandjiAPIURL:              "https://api.kandji.io/api/v1",
 			KandjiAPIToken:            "kandji-token",
+			S3InputBucket:             "cerebro-inputs",
+			S3InputPrefix:             "security/",
+			S3InputRegion:             "us-west-2",
+			S3InputFormat:             "jsonl",
+			S3InputMaxObjects:         250,
 		},
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
 	app.initProviders(context.Background())
 
-	expectedProviders := []string{"qualys", "zoom", "wiz", "figma", "socket", "ramp", "gong", "vanta", "panther", "kolide", "gitlab", "auth0", "terraform_cloud", "semgrep", "servicenow", "workday", "bamboohr", "onelogin", "jumpcloud", "duo", "pingidentity", "cyberark", "sailpoint", "saviynt", "forgerock", "oracle_idcs", "splunk", "cloudflare", "salesforce", "vault", "slack", "rippling", "jamf", "intune", "atlassian", "kandji"}
+	expectedProviders := []string{"qualys", "zoom", "wiz", "figma", "socket", "ramp", "gong", "vanta", "panther", "kolide", "gitlab", "auth0", "terraform_cloud", "semgrep", "servicenow", "workday", "bamboohr", "onelogin", "jumpcloud", "duo", "pingidentity", "cyberark", "sailpoint", "saviynt", "forgerock", "oracle_idcs", "splunk", "cloudflare", "salesforce", "vault", "slack", "rippling", "jamf", "intune", "atlassian", "kandji", "s3"}
 	for _, name := range expectedProviders {
 		if _, ok := app.Providers.Get(name); !ok {
 			t.Errorf("expected provider %q to be registered", name)
@@ -539,7 +557,7 @@ func TestInitProviders_SkipsExpandedProvidersWithoutConfig(t *testing.T) {
 
 	app.initProviders(context.Background())
 
-	notExpected := []string{"qualys", "zoom", "wiz", "figma", "socket", "ramp", "gong", "vanta", "panther", "kolide", "gitlab", "auth0", "terraform_cloud", "semgrep", "servicenow", "workday", "bamboohr", "onelogin", "jumpcloud", "duo", "pingidentity", "cyberark", "sailpoint", "saviynt", "forgerock", "oracle_idcs", "splunk", "cloudflare", "salesforce", "vault", "slack", "rippling", "jamf", "intune", "atlassian", "kandji", "cloudtrail"}
+	notExpected := []string{"qualys", "zoom", "wiz", "figma", "socket", "ramp", "gong", "vanta", "panther", "kolide", "gitlab", "auth0", "terraform_cloud", "semgrep", "servicenow", "workday", "bamboohr", "onelogin", "jumpcloud", "duo", "pingidentity", "cyberark", "sailpoint", "saviynt", "forgerock", "oracle_idcs", "splunk", "cloudflare", "salesforce", "vault", "slack", "rippling", "jamf", "intune", "atlassian", "kandji", "s3", "cloudtrail"}
 	for _, name := range notExpected {
 		if _, ok := app.Providers.Get(name); ok {
 			t.Errorf("did not expect provider %q to be registered", name)

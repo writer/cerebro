@@ -167,6 +167,9 @@ func TestValidScheduleProviders(t *testing.T) {
 	if !slices.Contains(providers, "oracle_idcs") {
 		t.Fatalf("expected oracle_idcs in valid providers: %v", providers)
 	}
+	if !slices.Contains(providers, "s3") {
+		t.Fatalf("expected s3 in valid providers: %v", providers)
+	}
 }
 
 func TestExecuteScheduledSync_RoutesByProvider(t *testing.T) {

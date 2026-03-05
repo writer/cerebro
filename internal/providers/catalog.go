@@ -50,6 +50,7 @@ var providerMetadata = map[string]ProviderMetadata{
 	"ramp":             {Name: "ramp", Maturity: ProviderMaturityBeta, Public: true},
 	"rippling":         {Name: "rippling", Maturity: ProviderMaturityBeta, Public: true},
 	"salesforce":       {Name: "salesforce", Maturity: ProviderMaturityBeta, Public: true},
+	"s3":               {Name: "s3", Maturity: ProviderMaturityBeta, Public: true},
 	"semgrep":          {Name: "semgrep", Maturity: ProviderMaturityBeta, Public: true},
 	"servicenow":       {Name: "servicenow", Maturity: ProviderMaturityBeta, Public: true},
 	"sentinelone":      {Name: "sentinelone", Maturity: ProviderMaturityProductionReady, Public: true},
