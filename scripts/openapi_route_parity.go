@@ -11,6 +11,7 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -86,7 +87,7 @@ func main() {
 	if err != nil {
 		fatalf("encode openapi: %v", err)
 	}
-	if err := os.WriteFile(openAPIPath, out, 0o644); err != nil {
+	if err := os.WriteFile(openAPIPath, out, 0o600); err != nil {
 		fatalf("write openapi: %v", err)
 	}
 
@@ -234,7 +235,7 @@ func normalizePath(path string) string {
 }
 
 func loadOpenAPINode(openAPIPath string) (*yaml.Node, *yaml.Node, error) {
-	data, err := os.ReadFile(openAPIPath)
+	data, err := os.ReadFile(filepath.Clean(openAPIPath))
 	if err != nil {
 		return nil, nil, err
 	}
