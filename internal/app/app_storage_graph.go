@@ -81,12 +81,32 @@ func (a *App) validatePolicyCoverage(_ context.Context) error {
 		}
 	}
 
+	threshold, coverageThresholdSet, err := policy.CoverageThresholdFromEnv()
+	if err != nil {
+		a.Logger.Warn("invalid policy coverage threshold", "error", err)
+		return nil
+	}
+	coverageBelowThreshold := coverageThresholdSet && report.CoveragePercent < threshold
+
+	orphanThreshold, orphanThresholdSet, err := policy.OrphanTableThresholdFromEnv()
+	if err != nil {
+		a.Logger.Warn("invalid policy orphan-table threshold", "error", err)
+		return nil
+	}
+	orphanAboveThreshold := orphanThresholdSet && len(orphanTables) > orphanThreshold
+
 	if len(report.Gaps) == 0 && report.UnknownResourcePolicies == 0 {
 		a.Logger.Info("all policies have required tables available",
 			"coverage_percent", fmt.Sprintf("%.1f%%", report.CoveragePercent))
 	} else {
 		missingTables := topMissingTables(report.MissingTables, 5)
-		a.Logger.Warn("policy coverage incomplete",
+		logCoverage := a.Logger.Info
+		msg := "policy coverage summary"
+		if coverageBelowThreshold {
+			logCoverage = a.Logger.Warn
+			msg = "policy coverage incomplete"
+		}
+		logCoverage(msg,
 			"total_policies", report.TotalPolicies,
 			"covered_policies", report.CoveredPolicies,
 			"uncovered_policies", report.UncoveredPolicies,
@@ -95,31 +115,25 @@ func (a *App) validatePolicyCoverage(_ context.Context) error {
 			"known_coverage_percent", fmt.Sprintf("%.1f%%", report.KnownCoveragePercent),
 			"missing_tables", missingTables,
 			"missing_by_provider", report.MissingByProvider,
+			"threshold_applied", coverageThresholdSet,
 		)
 	}
 
 	if len(orphanTables) > 0 {
-		a.Logger.Warn("detected orphan native tables without policy mappings",
+		logOrphans := a.Logger.Info
+		if orphanAboveThreshold {
+			logOrphans = a.Logger.Warn
+		}
+		logOrphans("native table mapping coverage summary",
 			"orphan_table_count", len(orphanTables),
 			"orphan_tables_sample", topStrings(orphanTables, 10),
+			"threshold_applied", orphanThresholdSet,
 		)
 	}
-
-	threshold, ok, err := policy.CoverageThresholdFromEnv()
-	if err != nil {
-		a.Logger.Warn("invalid policy coverage threshold", "error", err)
-		return nil
-	}
-	if ok && report.CoveragePercent < threshold {
+	if coverageBelowThreshold {
 		return fmt.Errorf("policy coverage %.1f%% below threshold %.1f%%", report.CoveragePercent, threshold)
 	}
-
-	orphanThreshold, orphanThresholdSet, err := policy.OrphanTableThresholdFromEnv()
-	if err != nil {
-		a.Logger.Warn("invalid policy orphan-table threshold", "error", err)
-		return nil
-	}
-	if orphanThresholdSet && len(orphanTables) > orphanThreshold {
+	if orphanAboveThreshold {
 		return fmt.Errorf("orphan native tables %d exceed threshold %d", len(orphanTables), orphanThreshold)
 	}
 	return nil

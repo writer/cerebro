@@ -36,10 +36,15 @@ func (e *Engine) CoverageReport(availableTables []string) CoverageReport {
 
 	tableSet := make(map[string]bool)
 	for _, t := range availableTables {
-		tableSet[t] = true
+		normalized := strings.ToLower(strings.TrimSpace(t))
+		if normalized == "" {
+			continue
+		}
+		tableSet[normalized] = true
 	}
 
 	for _, p := range e.policies {
+		isQueryPolicy := strings.TrimSpace(p.Query) != ""
 		required := p.GetRequiredTables()
 		if len(required) == 0 {
 			required = ExtractQueryTableReferences(p.Query)
@@ -54,16 +59,30 @@ func (e *Engine) CoverageReport(availableTables []string) CoverageReport {
 		}
 
 		var missing []string
+		availableCount := 0
 		for _, table := range required {
-			if !tableSet[table] {
-				missing = append(missing, table)
-				report.MissingTables[table]++
+			normalized := strings.ToLower(strings.TrimSpace(table))
+			if tableSet[normalized] {
+				availableCount++
+				continue
 			}
+			missing = append(missing, normalized)
 		}
 
-		if len(missing) == 0 {
+		covered := false
+		if isQueryPolicy {
+			covered = len(missing) == 0
+		} else {
+			covered = availableCount > 0
+		}
+
+		if covered {
 			report.CoveredPolicies++
 			continue
+		}
+
+		for _, table := range missing {
+			report.MissingTables[table]++
 		}
 
 		report.Gaps = append(report.Gaps, PolicyCoverageGap{
@@ -72,7 +91,15 @@ func (e *Engine) CoverageReport(availableTables []string) CoverageReport {
 			Resource:      p.Resource,
 			MissingTables: missing,
 		})
-		report.MissingByProvider[resourceProvider(p.Resource)]++
+
+		provider := resourceProvider(p.Resource)
+		if provider == "unknown" && isQueryPolicy {
+			for _, table := range missing {
+				report.MissingByProvider[tableProvider(table)]++
+			}
+		} else {
+			report.MissingByProvider[provider]++
+		}
 	}
 
 	report.UncoveredPolicies = report.TotalPolicies - report.CoveredPolicies - report.UnknownResourcePolicies
@@ -147,4 +174,29 @@ func resourceProvider(resource string) string {
 		return "custom"
 	}
 	return "unknown"
+}
+
+func tableProvider(table string) string {
+	table = strings.ToLower(strings.TrimSpace(table))
+	if table == "" {
+		return "unknown"
+	}
+
+	prefixes := []string{
+		"google_workspace_",
+		"terraform_cloud_",
+		"oracle_idcs_",
+		"cloudtrail_",
+	}
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(table, prefix) {
+			return strings.TrimSuffix(prefix, "_")
+		}
+	}
+
+	if idx := strings.IndexByte(table, '_'); idx > 0 {
+		return table[:idx]
+	}
+
+	return table
 }
