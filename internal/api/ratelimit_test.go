@@ -215,7 +215,8 @@ func TestRateLimitMiddlewareSkipsHealthEndpoints(t *testing.T) {
 	}
 }
 
-func TestGetClientKey(t *testing.T) {
+func TestGetClientKey_NoTrustedProxies(t *testing.T) {
+	// Without trusted proxies configured, forwarded headers are ignored.
 	tests := []struct {
 		name     string
 		headers  map[string]string
@@ -223,40 +224,28 @@ func TestGetClientKey(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "remote address host:port",
-			headers:  map[string]string{"X-API-Key": "my-api-key"},
-			addr:     "192.168.1.1:1234",
-			expected: "ip:192.168.1.1",
+			name:     "RemoteAddr used even when XFF present",
+			headers:  map[string]string{"X-Forwarded-For": "1.2.3.4"},
+			addr:     "203.0.113.9:8443",
+			expected: "ip:203.0.113.9",
 		},
 		{
-			name:     "remote address plain ip",
-			headers:  map[string]string{"Authorization": "Bearer token123"},
+			name:     "RemoteAddr plain ip",
+			headers:  map[string]string{},
 			addr:     "10.0.0.7",
 			expected: "ip:10.0.0.7",
 		},
 		{
-			name:     "fallback x-forwarded-for",
-			headers:  map[string]string{"X-Forwarded-For": "1.2.3.4"},
-			addr:     "invalid",
-			expected: "ip:1.2.3.4",
-		},
-		{
-			name:     "X-Real-IP header",
-			headers:  map[string]string{"X-Real-IP": "5.6.7.8"},
-			addr:     "invalid",
-			expected: "ip:5.6.7.8",
-		},
-		{
-			name:     "RemoteAddr fallback",
+			name:     "RemoteAddr host:port",
 			headers:  map[string]string{},
 			addr:     "192.168.1.1:1234",
 			expected: "ip:192.168.1.1",
 		},
 		{
-			name:     "remote addr takes precedence",
-			headers:  map[string]string{"X-API-Key": "key", "X-Forwarded-For": "1.2.3.4"},
-			addr:     "203.0.113.9:8443",
-			expected: "ip:203.0.113.9",
+			name:     "invalid RemoteAddr returns unknown",
+			headers:  map[string]string{"X-Forwarded-For": "1.2.3.4"},
+			addr:     "invalid",
+			expected: "ip:unknown",
 		},
 	}
 
@@ -272,7 +261,94 @@ func TestGetClientKey(t *testing.T) {
 
 			got := getClientKey(req)
 			if got != tt.expected {
-				t.Errorf("expected '%s', got '%s'", tt.expected, got)
+				t.Errorf("expected %q, got %q", tt.expected, got)
+			}
+		})
+	}
+}
+
+func TestGetClientKey_TrustedProxy(t *testing.T) {
+	trusted := parseTrustedProxyCIDRs([]string{"10.0.0.0/8", "172.16.0.0/12"})
+
+	tests := []struct {
+		name     string
+		headers  map[string]string
+		addr     string
+		expected string
+	}{
+		{
+			name:     "trusted proxy honours XFF",
+			headers:  map[string]string{"X-Forwarded-For": "1.2.3.4"},
+			addr:     "10.0.0.1:9090",
+			expected: "ip:1.2.3.4",
+		},
+		{
+			name:     "trusted proxy multi-hop XFF uses leftmost",
+			headers:  map[string]string{"X-Forwarded-For": "5.6.7.8, 10.0.0.2"},
+			addr:     "10.0.0.1:9090",
+			expected: "ip:5.6.7.8",
+		},
+		{
+			name:     "trusted proxy honours X-Real-IP when no XFF",
+			headers:  map[string]string{"X-Real-IP": "9.8.7.6"},
+			addr:     "172.16.0.5:8080",
+			expected: "ip:9.8.7.6",
+		},
+		{
+			name:     "trusted proxy falls back to RemoteAddr when no forwarded headers",
+			headers:  map[string]string{},
+			addr:     "10.0.0.1:9090",
+			expected: "ip:10.0.0.1",
+		},
+		{
+			name:     "untrusted remote ignores XFF",
+			headers:  map[string]string{"X-Forwarded-For": "1.2.3.4"},
+			addr:     "203.0.113.50:4321",
+			expected: "ip:203.0.113.50",
+		},
+		{
+			name:     "trusted proxy with malformed XFF falls to RemoteAddr",
+			headers:  map[string]string{"X-Forwarded-For": "not-an-ip"},
+			addr:     "10.0.0.1:9090",
+			expected: "ip:10.0.0.1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/", nil)
+			for k, v := range tt.headers {
+				req.Header.Set(k, v)
+			}
+			if tt.addr != "" {
+				req.RemoteAddr = tt.addr
+			}
+
+			got := getClientKeyTrusted(req, trusted)
+			if got != tt.expected {
+				t.Errorf("expected %q, got %q", tt.expected, got)
+			}
+		})
+	}
+}
+
+func TestParseTrustedProxyCIDRs(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  []string
+		expect int
+	}{
+		{"nil input", nil, 0},
+		{"empty strings", []string{"", " "}, 0},
+		{"valid CIDR", []string{"10.0.0.0/8"}, 1},
+		{"bare IP becomes /32", []string{"192.168.1.1"}, 1},
+		{"mixed valid and invalid", []string{"10.0.0.0/8", "garbage", "172.16.0.0/12"}, 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			nets := parseTrustedProxyCIDRs(tt.input)
+			if len(nets) != tt.expect {
+				t.Errorf("expected %d nets, got %d", tt.expect, len(nets))
 			}
 		})
 	}

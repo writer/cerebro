@@ -439,19 +439,21 @@ type Config struct {
 	FindingAttestationAttestReobserved bool
 
 	// Distributed jobs
-	JobQueueURL          string
-	JobTableName         string
-	JobRegion            string
-	JobWorkerConcurrency int
-	JobVisibilityTimeout time.Duration
-	JobPollWait          time.Duration
-	JobMaxAttempts       int
+	JobQueueURL              string
+	JobTableName             string
+	JobRegion                string
+	JobWorkerConcurrency     int
+	JobVisibilityTimeout     time.Duration
+	JobPollWait              time.Duration
+	JobMaxAttempts           int
+	JobIdempotencyTableName  string
 
 	// Rate Limiting
-	RateLimitEnabled   bool
-	RateLimitRequests  int
-	RateLimitWindow    time.Duration
-	CORSAllowedOrigins []string
+	RateLimitEnabled        bool
+	RateLimitRequests       int
+	RateLimitWindow         time.Duration
+	RateLimitTrustedProxies []string
+	CORSAllowedOrigins      []string
 
 	// API Authentication
 	APIAuthEnabled bool
@@ -672,9 +674,11 @@ func LoadConfig() *Config {
 		JobVisibilityTimeout:               getEnvDuration("JOB_VISIBILITY_TIMEOUT", 30*time.Second),
 		JobPollWait:                        getEnvDuration("JOB_POLL_WAIT", 10*time.Second),
 		JobMaxAttempts:                     getEnvInt("JOB_MAX_ATTEMPTS", 3),
+		JobIdempotencyTableName:            getEnv("JOB_IDEMPOTENCY_TABLE_NAME", ""),
 		RateLimitEnabled:                   getEnvBool("RATE_LIMIT_ENABLED", false),
 		RateLimitRequests:                  getEnvInt("RATE_LIMIT_REQUESTS", 1000),
 		RateLimitWindow:                    getEnvDuration("RATE_LIMIT_WINDOW", time.Hour),
+		RateLimitTrustedProxies:            splitCSV(getEnv("RATE_LIMIT_TRUSTED_PROXIES", "")),
 		CORSAllowedOrigins:                 splitCSV(getEnv("API_CORS_ALLOWED_ORIGINS", "")),
 		APIAuthEnabled:                     apiAuthEnabled,
 		APIKeys:                            apiKeys,

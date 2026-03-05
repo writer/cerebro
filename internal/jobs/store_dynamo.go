@@ -25,7 +25,10 @@ type Store interface {
 	RetryJobOwned(ctx context.Context, jobID, workerID string, attempt int, message string) error
 }
 
-var ErrJobLeaseLost = errors.New("job lease lost")
+var (
+	ErrJobLeaseLost = errors.New("job lease lost")
+	ErrJobNotFound  = errors.New("job not found")
+)
 
 type DynamoStore struct {
 	client *dynamodb.Client
@@ -72,7 +75,7 @@ func (s *DynamoStore) GetJob(ctx context.Context, jobID string) (*Job, error) {
 		return nil, err
 	}
 	if len(resp.Item) == 0 {
-		return nil, fmt.Errorf("job not found")
+		return nil, ErrJobNotFound
 	}
 
 	var job Job

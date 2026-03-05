@@ -33,6 +33,12 @@ type RateLimitConfig struct {
 	Window            time.Duration
 	MaxBuckets        int
 	Enabled           bool
+	// TrustedProxyCIDRs lists CIDR ranges whose RemoteAddr is considered a
+	// trusted reverse proxy. Forwarded headers (X-Forwarded-For, X-Real-IP)
+	// are only honoured when the direct peer is within one of these ranges.
+	// When empty the limiter keys exclusively on RemoteAddr to prevent
+	// spoofed-header bypass.
+	TrustedProxyCIDRs []string
 }
 
 const (
@@ -166,6 +172,8 @@ func RateLimitMiddlewareWithLimiter(cfg RateLimitConfig, rl *RateLimiter) func(h
 		rl = NewRateLimiter(cfg)
 	}
 
+	trustedNets := parseTrustedProxyCIDRs(cfg.TrustedProxyCIDRs)
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Skip rate limiting for health endpoints
@@ -175,7 +183,7 @@ func RateLimitMiddlewareWithLimiter(cfg RateLimitConfig, rl *RateLimiter) func(h
 			}
 
 			// Use API key or IP as rate limit key
-			key := getClientKey(r)
+			key := getClientKeyTrusted(r, trustedNets)
 
 			allowed, remaining, reset := rl.Allow(key)
 
@@ -195,29 +203,86 @@ func RateLimitMiddlewareWithLimiter(cfg RateLimitConfig, rl *RateLimiter) func(h
 	}
 }
 
-// getClientKey extracts the rate limit key from the request
+// getClientKey extracts the rate limit key from the request.
+// Kept for backward compatibility; uses no trusted-proxy list so it always
+// falls back to RemoteAddr (safe default).
 func getClientKey(r *http.Request) string {
-	if ip := canonicalClientIP(r); ip != "" {
+	return getClientKeyTrusted(r, nil)
+}
+
+// getClientKeyTrusted returns the rate-limit key, honouring forwarded headers
+// only when the direct peer (RemoteAddr) is within a trusted CIDR.
+func getClientKeyTrusted(r *http.Request, trustedNets []*net.IPNet) string {
+	if ip := canonicalClientIP(r, trustedNets); ip != "" {
 		return "ip:" + ip
 	}
 	return "ip:unknown"
 }
 
-func canonicalClientIP(r *http.Request) string {
+func canonicalClientIP(r *http.Request, trustedNets []*net.IPNet) string {
 	if r == nil {
 		return ""
 	}
 
-	if ip := normalizeIP(r.RemoteAddr); ip != "" {
-		return ip
+	remoteIP := normalizeIP(r.RemoteAddr)
+
+	// Only trust forwarded headers when the direct peer is a known proxy.
+	if remoteIP != "" && isTrustedProxy(remoteIP, trustedNets) {
+		if ip := normalizeIP(r.Header.Get("X-Forwarded-For")); ip != "" {
+			return ip
+		}
+		if ip := normalizeIP(r.Header.Get("X-Real-IP")); ip != "" {
+			return ip
+		}
 	}
-	if ip := normalizeIP(r.Header.Get("X-Real-IP")); ip != "" {
-		return ip
-	}
-	if ip := normalizeIP(r.Header.Get("X-Forwarded-For")); ip != "" {
-		return ip
+
+	if remoteIP != "" {
+		return remoteIP
 	}
 	return ""
+}
+
+// parseTrustedProxyCIDRs parses CIDR strings, silently skipping malformed entries.
+func parseTrustedProxyCIDRs(cidrs []string) []*net.IPNet {
+	var nets []*net.IPNet
+	for _, cidr := range cidrs {
+		cidr = strings.TrimSpace(cidr)
+		if cidr == "" {
+			continue
+		}
+		// Allow bare IPs (e.g. "10.0.0.1") by appending /32 or /128.
+		if !strings.Contains(cidr, "/") {
+			if ip := net.ParseIP(cidr); ip != nil {
+				if ip.To4() != nil {
+					cidr += "/32"
+				} else {
+					cidr += "/128"
+				}
+			}
+		}
+		_, ipNet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			continue
+		}
+		nets = append(nets, ipNet)
+	}
+	return nets
+}
+
+func isTrustedProxy(ip string, trustedNets []*net.IPNet) bool {
+	if len(trustedNets) == 0 {
+		return false
+	}
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return false
+	}
+	for _, n := range trustedNets {
+		if n.Contains(parsed) {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeIP(value string) string {

@@ -47,11 +47,7 @@ func upsertScopedRowsWithChanges(
 	newRows := buildRowHashes(rows, hashFn)
 	changes = detectRowChanges(existing, newRows, false)
 
-	if err := deleteRowsByIDByScope(ctx, sf, table, newRows, scopeColumn, scopeValues); err != nil {
-		return changes, fmt.Errorf("delete rows by id before replace: %w", err)
-	}
-
-	insertRows := make([]map[string]interface{}, 0, len(rows))
+	mergeRows := make([]map[string]interface{}, 0, len(rows))
 	for _, row := range rows {
 		id, ok := row["_cq_id"].(string)
 		if !ok {
@@ -67,11 +63,12 @@ func upsertScopedRowsWithChanges(
 			}
 			newRow[key] = value
 		}
-		insertRows = append(insertRows, newRow)
+		mergeRows = append(mergeRows, newRow)
 	}
 
-	if err := insertRowsBatch(ctx, sf, table, insertRows); err != nil {
-		return changes, fmt.Errorf("insert rows: %w", err)
+	// Atomic upsert via MERGE - no delete-before-insert window.
+	if err := mergeRowsBatch(ctx, sf, table, mergeRows); err != nil {
+		return changes, fmt.Errorf("merge rows: %w", err)
 	}
 
 	if len(changes.Removed) > 0 {
