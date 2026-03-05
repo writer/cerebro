@@ -67,7 +67,7 @@ Cerebro is a comprehensive security platform that combines cloud asset discovery
 
 ```bash
 # Clone repository
-git clone https://github.com/writerinternal/cerebro.git
+git clone https://github.com/writer/cerebro.git
 cd cerebro
 
 # Install dependencies

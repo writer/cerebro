@@ -17,8 +17,8 @@ info:
 servers:
   - url: http://localhost:8080
     description: Local development
-  - url: https://cerebro.internal.company.com
-    description: Production
+  - url: https://api.example.com
+    description: Production (replace with your deployment URL)
 
 security:
   - ApiKeyAuth: []
