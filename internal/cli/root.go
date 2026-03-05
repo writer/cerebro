@@ -27,7 +27,7 @@ Get started:
   cerebro findings list       View security findings
   cerebro policy list         List loaded policies
 
-Documentation: https://github.com/WriterInternal/cerebro`,
+Documentation: https://github.com/writer/cerebro`,
 	SilenceUsage: true,
 }
 

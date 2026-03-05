@@ -22,6 +22,7 @@ go.work
 .vscode/
 *.swp
 *.swo
+.factory/
 
 # OS
 .DS_Store
@@ -29,6 +30,7 @@ Thumbs.db
 
 # Logs
 *.log
+cloudquery.log
 
 infra/__pycache__/*
 infra/aws/__pycache__/*

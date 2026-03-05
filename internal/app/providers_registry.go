@@ -519,6 +519,20 @@ func providerRegistrations() []providerRegistration {
 			},
 		},
 		{
+			name:        "s3",
+			constructor: func() providers.Provider { return providers.NewS3Provider() },
+			enabled:     func(c *Config) bool { return c.S3InputBucket != "" },
+			buildConfig: func(c *Config) map[string]interface{} {
+				return map[string]interface{}{
+					"bucket":      c.S3InputBucket,
+					"prefix":      c.S3InputPrefix,
+					"region":      c.S3InputRegion,
+					"format":      c.S3InputFormat,
+					"max_objects": c.S3InputMaxObjects,
+				}
+			},
+		},
+		{
 			name:        "cloudtrail",
 			constructor: func() providers.Provider { return providers.NewCloudTrailProvider() },
 			enabled:     func(c *Config) bool { return c.CloudTrailRegion != "" || c.CloudTrailTrailARN != "" },

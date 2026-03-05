@@ -5,7 +5,7 @@
 Cerebro is a comprehensive security platform that combines cloud asset discovery, policy evaluation, compliance reporting, AI-powered investigation, and automated remediation workflows.
 
 [![Go Version](https://img.shields.io/badge/Go-1.23+-00ADD8?style=flat&logo=go)](https://go.dev/)
-[![License](https://img.shields.io/badge/License-Proprietary-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 ---
 
@@ -67,7 +67,7 @@ Cerebro is a comprehensive security platform that combines cloud asset discovery
 
 ```bash
 # Clone repository
-git clone https://github.com/writerinternal/cerebro.git
+git clone https://github.com/writer/cerebro.git
 cd cerebro
 
 # Install dependencies
@@ -452,4 +452,4 @@ See [Configuration](docs/CONFIGURATION.md) for all options.
 
 ## License
 
-Proprietary - Writer Internal
+Apache 2.0

@@ -12,13 +12,14 @@ info:
   contact:
     name: Security Team
   license:
-    name: Proprietary
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
 
 servers:
   - url: http://localhost:8080
     description: Local development
-  - url: https://cerebro.internal.company.com
-    description: Production
+  - url: https://api.example.com
+    description: Production (replace with your deployment URL)
 
 security:
   - ApiKeyAuth: []

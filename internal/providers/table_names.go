@@ -35,6 +35,7 @@ func AllProviderTableNames() []string {
 		NewQualysProvider(),
 		NewRampProvider(),
 		NewRipplingProvider(),
+		NewS3Provider(),
 		NewSailPointProvider(),
 		NewSalesforceProvider(),
 		NewSaviyntProvider(),
