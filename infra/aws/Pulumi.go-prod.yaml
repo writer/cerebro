@@ -1,0 +1,36 @@
+config:
+  aws:region: us-east-1
+  cerebro:environment: go-production
+  cerebro:containerImage: 837279440628.dkr.ecr.us-east-1.amazonaws.com/cerebro:latest
+  
+  # Use existing VPC (sec-prod account)
+  cerebro:useExistingVpc: true
+  cerebro:vpcId: vpc-0bec76c1fba4b8ad2
+  cerebro:vpcCidr: "10.20.0.0/16"
+  cerebro:privateSubnetIds:
+    - subnet-0b278f102292ec822
+    - subnet-065db524200fdd173
+  cerebro:publicSubnetIds:
+    - subnet-0dee23b7f11d39069
+    - subnet-06c3659db5372e941
+  
+  cerebro:enableTailscale: true
+  cerebro:tailscaleAdvertiseRoutes:
+    - "10.20.0.0/18"
+    - "10.20.128.0/18"
+  cerebro:enableKandjiApiToken: true
+  cerebro:enableKandjiApiUrl: true
+  cerebro:enableInfisicalSyncRole: true
+  cerebro:useExternalSecrets: true
+  cerebro:infisicalAssumeRolePrincipalArn: "arn:aws:iam::381492033652:root"
+  cerebro:enableAlbAccessLogs: true
+  cerebro:enableAlbDeletionProtection: true
+  cerebro:enableKmsLogEncryption: true
+  cerebro:natGatewayPerAz: true
+  # cerebro:slackAlarmChannelId: "C09D3SK229H"
+  # cerebro:slackWorkspaceId: "E07UFCSGMTM"
+
+  # GCP WIF - populate cerebro:gcpWifAudience from GCP stack output:
+  #   cd infra/gcp && pulumi stack output wif_audience --stack gcp-prod
+  cerebro:gcpWifAudience: ""
+  cerebro:gcpImpersonateServiceAccount: "cerebro-scanner-prod@writer-iam.iam.gserviceaccount.com"
