@@ -68,6 +68,9 @@ type Worker struct {
 	shuttingDown  atomic.Bool
 	stopReceiving atomic.Bool // Stop receiving new messages first
 
+	jobsMu     sync.Mutex
+	jobsCancel context.CancelFunc
+
 	// Pending deletes for batching
 	deleteMu       sync.Mutex
 	pendingDeletes []string
@@ -175,12 +178,18 @@ func NewWorker(queue Queue, store Store, registry *JobRegistry, opts WorkerOptio
 
 // Start begins processing jobs. Blocks until context is canceled or Shutdown is called.
 func (w *Worker) Start(ctx context.Context) error {
-	runCtx, runCancel := context.WithCancel(ctx)
-	w.setRunCancel(runCancel)
+	// receiveCtx controls the poll loop; canceled immediately on shutdown.
+	receiveCtx, receiveCancel := context.WithCancel(ctx)
+	w.setRunCancel(receiveCancel)
 	defer func() {
-		runCancel()
+		receiveCancel()
 		w.setRunCancel(nil)
 	}()
+
+	// jobsCtx stays alive during drain so in-flight jobs can finish.
+	jobsCtx, jobsCancel := context.WithCancel(context.Background())
+	w.setJobsCancel(jobsCancel)
+	defer jobsCancel()
 
 	w.logInfo("worker starting",
 		"worker_id", w.workerID,
@@ -190,10 +199,10 @@ func (w *Worker) Start(ctx context.Context) error {
 	)
 
 	// Start metrics flusher
-	w.metrics.StartFlusher(runCtx, 60*time.Second)
+	w.metrics.StartFlusher(receiveCtx, 60*time.Second)
 
 	// Start batch delete flusher
-	go w.batchDeleteFlusher(runCtx)
+	go w.batchDeleteFlusher(receiveCtx)
 
 	// Semaphore for concurrency control
 	sem := make(chan struct{}, w.concurrency)
@@ -201,15 +210,15 @@ func (w *Worker) Start(ctx context.Context) error {
 	for {
 		// Check for shutdown - stop receiving first, then drain
 		select {
-		case <-runCtx.Done():
+		case <-receiveCtx.Done():
 			w.stopReceiving.Store(true)
-			w.gracefulShutdown(ctx)
+			w.gracefulShutdown()
 			return nil
 		default:
 		}
 
 		if w.shuttingDown.Load() || w.stopReceiving.Load() {
-			w.gracefulShutdown(ctx)
+			w.gracefulShutdown()
 			return nil
 		}
 
@@ -222,11 +231,11 @@ func (w *Worker) Start(ctx context.Context) error {
 
 		// Receive messages - use shorter poll when near shutdown
 		pollTime := w.pollWait
-		messages, err := w.queue.Receive(runCtx, w.concurrency, pollTime, w.visibilityTimeout)
+		messages, err := w.queue.Receive(receiveCtx, w.concurrency, pollTime, w.visibilityTimeout)
 		if err != nil {
-			if runCtx.Err() != nil {
+			if receiveCtx.Err() != nil {
 				w.stopReceiving.Store(true)
-				w.gracefulShutdown(ctx)
+				w.gracefulShutdown()
 				return nil
 			}
 			w.logError("receive failed", err)
@@ -242,35 +251,34 @@ func (w *Worker) Start(ctx context.Context) error {
 		w.lastActivity.Store(time.Now().Unix())
 		w.logDebug("received messages", "count", len(messages))
 
-		// Process messages concurrently
+		// Process messages concurrently using jobsCtx so in-flight
+		// work survives receive-loop cancellation during drain.
 		for _, msg := range messages {
 			if w.stopReceiving.Load() {
-				// Don't start new jobs during shutdown
 				break
 			}
 
-			// Acquire semaphore slot
 			select {
 			case sem <- struct{}{}:
-			case <-runCtx.Done():
+			case <-receiveCtx.Done():
 				w.stopReceiving.Store(true)
-				w.gracefulShutdown(ctx)
+				w.gracefulShutdown()
 				return nil
 			}
 
 			w.inFlightJobs.Add(1)
 			go func(m QueueMessage) {
 				defer func() {
-					<-sem // Release semaphore
+					<-sem
 					w.inFlightJobs.Done()
 				}()
-				w.processMessage(runCtx, m)
+				w.processMessage(jobsCtx, m)
 			}(msg)
 		}
 	}
 }
 
-func (w *Worker) gracefulShutdown(_ context.Context) {
+func (w *Worker) gracefulShutdown() {
 	w.shuttingDown.Store(true)
 	w.healthy.Store(false)
 	w.logInfo("initiating graceful shutdown", "drain_timeout", w.drainTimeout)
@@ -285,7 +293,15 @@ func (w *Worker) gracefulShutdown(_ context.Context) {
 	case <-done:
 		w.logInfo("all in-flight jobs completed")
 	case <-time.After(w.drainTimeout):
-		w.logWarn("drain timeout exceeded, some jobs may not have completed")
+		w.logWarn("drain timeout exceeded, canceling remaining jobs")
+		w.cancelJobsContext()
+		// Brief grace period for jobs to react to cancellation.
+		t := time.NewTimer(5 * time.Second)
+		select {
+		case <-done:
+		case <-t.C:
+		}
+		t.Stop()
 	}
 
 	// Flush any pending deletes
@@ -295,7 +311,6 @@ func (w *Worker) gracefulShutdown(_ context.Context) {
 	if err := w.metrics.Flush(context.Background()); err != nil {
 		w.logWarn("failed to flush final metrics", "error", err)
 	}
-
 }
 
 // Shutdown signals the worker to stop processing new jobs.
@@ -408,12 +423,27 @@ func (w *Worker) processMessage(ctx context.Context, msg QueueMessage) {
 		return
 	}
 	if !claimed {
-		w.logDebug("job already claimed",
+		w.logDebug("job not claimed, checking state",
 			"job_id", jobID,
 			"correlation_id", correlationID,
 		)
 		if markErr := w.idempotency.MarkFailed(ctx, idempotencyKey); markErr != nil {
 			w.logWarn("failed to clear idempotency lock for unclaimed job", "job_id", jobID, "error", markErr)
+		}
+		// Determine whether the SQS message is stale so it does not loop.
+		existing, getErr := w.store.GetJob(ctx, jobID)
+		if getErr != nil {
+			if errors.Is(getErr, ErrJobNotFound) {
+				w.logInfo("deleting message for non-existent job",
+					"job_id", jobID, "correlation_id", correlationID)
+				w.queueDelete(msg.ReceiptHandle)
+			} else {
+				w.logWarn("could not inspect unclaimed job", "job_id", jobID, "error", getErr)
+			}
+		} else if existing.Status.Terminal() {
+			w.logInfo("deleting message for terminal job",
+				"job_id", jobID, "status", existing.Status, "correlation_id", correlationID)
+			w.queueDelete(msg.ReceiptHandle)
 		}
 		return
 	}
@@ -766,6 +796,21 @@ func (w *Worker) cancelRunContext() {
 	w.runMu.Lock()
 	cancel := w.runCancel
 	w.runMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+}
+
+func (w *Worker) setJobsCancel(cancel context.CancelFunc) {
+	w.jobsMu.Lock()
+	defer w.jobsMu.Unlock()
+	w.jobsCancel = cancel
+}
+
+func (w *Worker) cancelJobsContext() {
+	w.jobsMu.Lock()
+	cancel := w.jobsCancel
+	w.jobsMu.Unlock()
 	if cancel != nil {
 		cancel()
 	}

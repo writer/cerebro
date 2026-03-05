@@ -497,16 +497,8 @@ func (e *SyncEngine) upsertWithChanges(ctx context.Context, table string, column
 	newRows := buildRowHashes(rows, hashRowContent)
 	changes = detectRowChanges(existing, newRows, incremental)
 
-	// Replace IDs that are present in this snapshot.
-	if incremental {
-		if err := e.deleteRowsByID(ctx, table, newRows, region, hasRegion, hasAccount, globalScope); err != nil {
-			return changes, fmt.Errorf("delete rows by id: %w", err)
-		}
-	} else if err := e.deleteRowsByID(ctx, table, newRows, region, hasRegion, hasAccount, globalScope); err != nil {
-		return changes, fmt.Errorf("delete rows by id before replace: %w", err)
-	}
-
-	insertRows := make([]map[string]interface{}, 0, len(rows))
+	// Build row set for atomic upsert.
+	mergeRows := make([]map[string]interface{}, 0, len(rows))
 	for _, row := range rows {
 		id, ok := row["_cq_id"].(string)
 		if !ok {
@@ -522,11 +514,12 @@ func (e *SyncEngine) upsertWithChanges(ctx context.Context, table string, column
 			}
 			newRow[k] = v
 		}
-		insertRows = append(insertRows, newRow)
+		mergeRows = append(mergeRows, newRow)
 	}
 
-	if err := insertRowsBatch(ctx, e.sf, table, insertRows); err != nil {
-		return changes, fmt.Errorf("insert rows: %w", err)
+	// Atomic upsert via MERGE - no delete-before-insert window.
+	if err := mergeRowsBatch(ctx, e.sf, table, mergeRows); err != nil {
+		return changes, fmt.Errorf("merge rows: %w", err)
 	}
 
 	// For full snapshots, remove rows that disappeared from source.

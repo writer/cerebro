@@ -9,7 +9,6 @@ import (
 
 func (s *Server) setupMiddleware() {
 	s.router.Use(middleware.RequestID)
-	s.router.Use(middleware.RealIP)
 	s.router.Use(middleware.Logger)
 	s.router.Use(middleware.Recoverer)
 	s.router.Use(SecurityHeaders())
@@ -22,19 +21,23 @@ func (s *Server) setupMiddleware() {
 		s.router.Use(CORS(s.app.Config.CORSAllowedOrigins))
 	}
 
-	// Apply rate limiting before authentication to throttle unauthorized brute-force traffic.
+	// Rate limiting must run BEFORE RealIP so that it sees the original
+	// socket peer in RemoteAddr.  RealIP rewrites RemoteAddr from
+	// forwarded headers, which an untrusted client could spoof.
 	if s.app.Config.RateLimitEnabled {
-		s.rateLimiter = NewRateLimiter(RateLimitConfig{
+		rlCfg := RateLimitConfig{
 			RequestsPerWindow: s.app.Config.RateLimitRequests,
 			Window:            s.app.Config.RateLimitWindow,
 			Enabled:           true,
-		})
-		s.router.Use(RateLimitMiddlewareWithLimiter(RateLimitConfig{
-			RequestsPerWindow: s.app.Config.RateLimitRequests,
-			Window:            s.app.Config.RateLimitWindow,
-			Enabled:           true,
-		}, s.rateLimiter))
+			TrustedProxyCIDRs: s.app.Config.RateLimitTrustedProxies,
+		}
+		s.rateLimiter = NewRateLimiter(rlCfg)
+		s.router.Use(RateLimitMiddlewareWithLimiter(rlCfg, s.rateLimiter))
 	}
+
+	// RealIP applied after rate limiting so downstream handlers still see
+	// the client IP derived from forwarded headers when available.
+	s.router.Use(middleware.RealIP)
 
 	if s.app.Config.APIAuthEnabled {
 		s.router.Use(APIKeyAuth(AuthConfig{Enabled: true, APIKeys: s.app.Config.APIKeys}))

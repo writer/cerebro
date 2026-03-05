@@ -58,10 +58,9 @@ func (b *BaseProvider) syncTable(ctx context.Context, schema TableSchema, rows [
 	}
 
 	newIDs := providerRowIDSet(prepared)
-	if err := deleteProviderRowsByID(ctx, sf, schema.Name, newIDs); err != nil {
-		return result, err
-	}
-	if err := insertProviderRows(ctx, sf, schema.Name, prepared); err != nil {
+
+	// Atomic upsert via MERGE - no delete-before-insert window.
+	if err := mergeProviderRows(ctx, sf, schema.Name, prepared); err != nil {
 		return result, err
 	}
 
@@ -299,6 +298,10 @@ func formatProviderIDValue(value interface{}) string {
 
 func insertProviderRows(ctx context.Context, sf providerSnowflakeClient, table string, rows []map[string]interface{}) error {
 	return tableops.InsertVariantRowsBatch(ctx, sf, table, rows, nil, providerInsertBatchSize)
+}
+
+func mergeProviderRows(ctx context.Context, sf providerSnowflakeClient, table string, rows []map[string]interface{}) error {
+	return tableops.MergeVariantRowsBatch(ctx, sf, table, rows, nil, providerInsertBatchSize)
 }
 
 func hashProviderRow(row map[string]interface{}) string {

@@ -166,7 +166,7 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		Timeout:          30 * time.Second,
 	})
 
-	workerService := jobs.NewWorker(queue, store, registry, jobs.WorkerOptions{
+	workerOpts := jobs.WorkerOptions{
 		Concurrency:       concurrency,
 		VisibilityTimeout: visibilityTimeout,
 		JobTimeout:        jobTimeout,
@@ -175,7 +175,17 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		Logger:            application.Logger,
 		Metrics:           metrics,
 		CircuitBreaker:    circuit,
-	})
+	}
+
+	idempotencyTable := application.Config.JobIdempotencyTableName
+	if idempotencyTable != "" {
+		workerOpts.Idempotency = jobs.NewDynamoIdempotencyStore(awsCfg, idempotencyTable)
+		application.Logger.Info("idempotency store enabled", "table", idempotencyTable)
+	} else {
+		application.Logger.Warn("no JOB_IDEMPOTENCY_TABLE_NAME configured; running without idempotency protection")
+	}
+
+	workerService := jobs.NewWorker(queue, store, registry, workerOpts)
 
 	// Start health check server
 	healthServer := jobs.NewHealthServer(workerService, fmt.Sprintf(":%d", workerHealthPort), application.Logger)

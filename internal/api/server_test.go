@@ -214,6 +214,85 @@ func TestSetupMiddleware_RateLimitBeforeAuth(t *testing.T) {
 	}
 }
 
+func TestRateLimitSpoofedXFF_UntrustedRemote(t *testing.T) {
+	// An untrusted client sends spoofed X-Forwarded-For to appear as
+	// different IPs per request. Without the ordering fix (RealIP before
+	// rate limiting) each request would get a different bucket and never
+	// be throttled. After the fix the limiter keys on RemoteAddr so the
+	// same socket peer is correctly rate-limited.
+	a := newTestApp(t)
+	a.Config.RateLimitEnabled = true
+	a.Config.RateLimitRequests = 1
+	a.Config.RateLimitWindow = time.Minute
+	// No trusted proxies configured -- forwarded headers must be ignored.
+
+	s := NewServer(a)
+
+	// First request: spoofed XFF, should consume the one allowed request.
+	req1 := httptest.NewRequest(http.MethodGet, "/api/v1/policies/", nil)
+	req1.RemoteAddr = "203.0.113.50:9999"
+	req1.Header.Set("X-Forwarded-For", "10.10.10.1")
+	w1 := httptest.NewRecorder()
+	s.ServeHTTP(w1, req1)
+	// Expect 200 (policies list, not rate limited yet).
+	if w1.Code == http.StatusTooManyRequests {
+		t.Fatalf("first request should not be rate limited, got %d", w1.Code)
+	}
+
+	// Second request: same RemoteAddr, different spoofed XFF.
+	// Must be rejected because the limiter keys on RemoteAddr, not XFF.
+	req2 := httptest.NewRequest(http.MethodGet, "/api/v1/policies/", nil)
+	req2.RemoteAddr = "203.0.113.50:9999"
+	req2.Header.Set("X-Forwarded-For", "10.10.10.2")
+	w2 := httptest.NewRecorder()
+	s.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusTooManyRequests {
+		t.Fatalf("second request expected 429 (rate limited), got %d", w2.Code)
+	}
+}
+
+func TestRateLimitTrustedProxy_HonoursXFF(t *testing.T) {
+	// When the direct peer IS a trusted proxy, the limiter should honour
+	// X-Forwarded-For and rate-limit by the real client IP.
+	a := newTestApp(t)
+	a.Config.RateLimitEnabled = true
+	a.Config.RateLimitRequests = 1
+	a.Config.RateLimitWindow = time.Minute
+	a.Config.RateLimitTrustedProxies = []string{"10.0.0.0/8"}
+
+	s := NewServer(a)
+
+	// Request 1 from client A through the trusted proxy.
+	req1 := httptest.NewRequest(http.MethodGet, "/api/v1/policies/", nil)
+	req1.RemoteAddr = "10.0.0.1:8080" // trusted proxy
+	req1.Header.Set("X-Forwarded-For", "198.51.100.1")
+	w1 := httptest.NewRecorder()
+	s.ServeHTTP(w1, req1)
+	if w1.Code == http.StatusTooManyRequests {
+		t.Fatalf("first request should not be rate limited, got %d", w1.Code)
+	}
+
+	// Request 2 from client A (same XFF) through same trusted proxy => rate limited.
+	req2 := httptest.NewRequest(http.MethodGet, "/api/v1/policies/", nil)
+	req2.RemoteAddr = "10.0.0.1:8080"
+	req2.Header.Set("X-Forwarded-For", "198.51.100.1")
+	w2 := httptest.NewRecorder()
+	s.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusTooManyRequests {
+		t.Fatalf("second request from same XFF client expected 429, got %d", w2.Code)
+	}
+
+	// Request 3 from client B (different XFF) through same trusted proxy => allowed.
+	req3 := httptest.NewRequest(http.MethodGet, "/api/v1/policies/", nil)
+	req3.RemoteAddr = "10.0.0.1:8080"
+	req3.Header.Set("X-Forwarded-For", "198.51.100.2")
+	w3 := httptest.NewRecorder()
+	s.ServeHTTP(w3, req3)
+	if w3.Code == http.StatusTooManyRequests {
+		t.Fatalf("request from different XFF client should not be rate limited, got %d", w3.Code)
+	}
+}
+
 func TestServer_ConfiguredCORSMiddleware(t *testing.T) {
 	a := newTestApp(t)
 	a.Config.CORSAllowedOrigins = []string{"https://app.example.com"}

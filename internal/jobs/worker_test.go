@@ -164,7 +164,7 @@ func (m *MockStore) GetJob(ctx context.Context, jobID string) (*Job, error) {
 	if job, ok := m.jobs[jobID]; ok {
 		return job, nil
 	}
-	return nil, errors.New("job not found")
+	return nil, ErrJobNotFound
 }
 
 func (m *MockStore) ClaimJob(ctx context.Context, jobID, workerID string, lease time.Duration) (*Job, bool, error) {
@@ -847,5 +847,201 @@ func TestStopReceivingBeforeDrain(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Error("Worker did not shutdown")
+	}
+}
+
+func TestGracefulShutdownDrainsInflightJobs(t *testing.T) {
+	queue := &MockQueue{}
+	store := NewMockStore()
+	registry := NewJobRegistry()
+
+	jobStarted := make(chan struct{})
+	jobDone := make(chan struct{})
+
+	registry.Register(JobTypeInspectResource, func(ctx context.Context, payload string) (string, error) {
+		close(jobStarted)
+		// Simulate work that takes some time; should NOT be canceled early.
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(500 * time.Millisecond):
+			close(jobDone)
+			return "ok", nil
+		}
+	})
+
+	store.AddJob(&Job{
+		ID:          "drain-job",
+		Type:        JobTypeInspectResource,
+		Status:      StatusQueued,
+		Payload:     "{}",
+		MaxAttempts: 1,
+	})
+	queue.AddMessage("drain-job")
+
+	worker := NewWorker(queue, store, registry, WorkerOptions{
+		Concurrency:  1,
+		DrainTimeout: 5 * time.Second,
+		PollWait:     50 * time.Millisecond,
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() { errCh <- worker.Start(ctx) }()
+
+	// Wait for the job to begin executing.
+	select {
+	case <-jobStarted:
+	case <-time.After(3 * time.Second):
+		t.Fatal("job did not start in time")
+	}
+
+	// Trigger shutdown while the job is still running.
+	cancel()
+
+	// The job should finish within drain timeout, not get canceled.
+	select {
+	case <-jobDone:
+	case <-time.After(3 * time.Second):
+		t.Fatal("in-flight job was not allowed to drain")
+	}
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("unexpected error from Start: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("Start did not return after drain")
+	}
+
+	store.mu.Lock()
+	job := store.jobs["drain-job"]
+	store.mu.Unlock()
+	if job.Status != StatusSucceeded {
+		t.Errorf("expected job status succeeded, got %s", job.Status)
+	}
+}
+
+func TestUnclaimedTerminalJobDeletesMessage(t *testing.T) {
+	queue := &MockQueue{}
+	store := NewMockStore()
+	registry := NewJobRegistry()
+	registry.Register(JobTypeInspectResource, func(ctx context.Context, payload string) (string, error) {
+		return "ok", nil
+	})
+
+	// Job already completed
+	store.AddJob(&Job{
+		ID:          "terminal-job",
+		Type:        JobTypeInspectResource,
+		Status:      StatusSucceeded,
+		WorkerID:    "other-worker",
+		Attempt:     1,
+		MaxAttempts: 3,
+	})
+
+	worker := NewWorker(queue, store, registry, WorkerOptions{Concurrency: 1})
+
+	body, _ := json.Marshal(JobMessage{JobID: "terminal-job"})
+	msg := QueueMessage{
+		ID:            "msg-terminal",
+		ReceiptHandle: "receipt-terminal",
+		Body:          string(body),
+	}
+	worker.processMessage(context.Background(), msg)
+
+	// Flush pending deletes
+	worker.flushPendingDeletes(context.Background())
+
+	queue.mu.Lock()
+	defer queue.mu.Unlock()
+	found := false
+	for _, h := range queue.deleted {
+		if h == "receipt-terminal" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected message for terminal job to be deleted")
+	}
+}
+
+func TestUnclaimedNotFoundJobDeletesMessage(t *testing.T) {
+	queue := &MockQueue{}
+	store := NewMockStore()
+	registry := NewJobRegistry()
+
+	// No job in store at all
+	worker := NewWorker(queue, store, registry, WorkerOptions{Concurrency: 1})
+
+	body, _ := json.Marshal(JobMessage{JobID: "missing-job"})
+	msg := QueueMessage{
+		ID:            "msg-missing",
+		ReceiptHandle: "receipt-missing",
+		Body:          string(body),
+	}
+	worker.processMessage(context.Background(), msg)
+
+	worker.flushPendingDeletes(context.Background())
+
+	queue.mu.Lock()
+	defer queue.mu.Unlock()
+	found := false
+	for _, h := range queue.deleted {
+		if h == "receipt-missing" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected message for non-existent job to be deleted")
+	}
+}
+
+func TestUnclaimedActiveJobLeavesMessage(t *testing.T) {
+	queue := &MockQueue{}
+	store := NewMockStore()
+	registry := NewJobRegistry()
+	registry.Register(JobTypeInspectResource, func(ctx context.Context, payload string) (string, error) {
+		return "ok", nil
+	})
+
+	// Job is actively running by another worker
+	store.AddJob(&Job{
+		ID:       "active-job",
+		Type:     JobTypeInspectResource,
+		Status:   StatusRunning,
+		WorkerID: "other-worker",
+		Attempt:  1,
+	})
+
+	worker := NewWorker(queue, store, registry, WorkerOptions{Concurrency: 1})
+
+	body, _ := json.Marshal(JobMessage{JobID: "active-job"})
+	msg := QueueMessage{
+		ID:            "msg-active",
+		ReceiptHandle: "receipt-active",
+		Body:          string(body),
+	}
+	worker.processMessage(context.Background(), msg)
+
+	worker.flushPendingDeletes(context.Background())
+
+	queue.mu.Lock()
+	defer queue.mu.Unlock()
+	for _, h := range queue.deleted {
+		if h == "receipt-active" {
+			t.Error("message for actively running job should NOT be deleted")
+		}
+	}
+}
+
+func TestErrJobNotFoundSentinel(t *testing.T) {
+	store := NewMockStore()
+	_, err := store.GetJob(context.Background(), "nonexistent")
+	if !errors.Is(err, ErrJobNotFound) {
+		t.Errorf("expected ErrJobNotFound, got %v", err)
 	}
 }
