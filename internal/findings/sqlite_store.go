@@ -368,6 +368,95 @@ func (s *SQLiteStore) Get(id string) (*Finding, bool) {
 	return &f, true
 }
 
+func (s *SQLiteStore) Update(id string, mutate func(*Finding) error) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var f Finding
+	var resourceData []byte
+	var metadataData []byte
+	var resolvedAt sql.NullTime
+
+	err = tx.QueryRowContext(context.Background(), `
+		SELECT id, policy_id, policy_name, severity, status, resource_id, resource_type, resource_data, description, metadata, first_seen, last_seen, resolved_at
+		FROM findings
+		WHERE id = ?
+	`, id).Scan(
+		&f.ID,
+		&f.PolicyID,
+		&f.PolicyName,
+		&f.Severity,
+		&f.Status,
+		&f.ResourceID,
+		&f.ResourceType,
+		&resourceData,
+		&f.Description,
+		&metadataData,
+		&f.FirstSeen,
+		&f.LastSeen,
+		&resolvedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrIssueNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("query finding: %w", err)
+	}
+
+	if len(resourceData) > 0 {
+		_ = json.Unmarshal(resourceData, &f.Resource)
+	}
+	applyFindingMetadata(&f, metadataData)
+	if resolvedAt.Valid {
+		t := resolvedAt.Time
+		f.ResolvedAt = &t
+	}
+	f.Status = normalizeStatus(f.Status)
+
+	if err := mutate(&f); err != nil {
+		return err
+	}
+
+	f.Status = normalizeStatus(f.Status)
+	EnrichFinding(&f)
+
+	resourceData, _ = json.Marshal(f.Resource)
+	metadataData, _ = buildFindingMetadata(&f)
+
+	_, err = tx.ExecContext(context.Background(), `
+		UPDATE findings
+		SET policy_id = ?, policy_name = ?, severity = ?, status = ?, resource_id = ?, resource_type = ?, resource_data = ?, description = ?, metadata = ?, last_seen = ?, resolved_at = ?
+		WHERE id = ?
+	`,
+		f.PolicyID,
+		f.PolicyName,
+		f.Severity,
+		f.Status,
+		f.ResourceID,
+		f.ResourceType,
+		resourceData,
+		f.Description,
+		metadataData,
+		f.LastSeen,
+		f.ResolvedAt,
+		f.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("update finding: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit update: %w", err)
+	}
+	return nil
+}
+
 func (s *SQLiteStore) List(filter FindingFilter) []*Finding {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

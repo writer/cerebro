@@ -245,6 +245,23 @@ func (s *SnowflakeStore) Get(id string) (*Finding, bool) {
 	return f, ok
 }
 
+func (s *SnowflakeStore) Update(id string, mutate func(*Finding) error) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	f, ok := s.cache[id]
+	if !ok {
+		return ErrIssueNotFound
+	}
+	if err := mutate(f); err != nil {
+		return err
+	}
+	f.Status = normalizeStatus(f.Status)
+	EnrichFinding(f)
+	s.dirty[id] = true
+	return nil
+}
+
 func (s *SnowflakeStore) List(filter FindingFilter) []*Finding {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
