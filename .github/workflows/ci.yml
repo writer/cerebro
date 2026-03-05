@@ -261,14 +261,17 @@ jobs:
         run: docker build -f Dockerfile -t cerebro:ci .
 
       - name: Run Trivy image scan
-        uses: aquasecurity/trivy-action@0.34.0
-        with:
-          image-ref: cerebro:ci
-          format: table
-          exit-code: '1'
-          ignore-unfixed: true
-          vuln-type: os,library
-          severity: CRITICAL,HIGH
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "${HOME}/.cache/trivy:/root/.cache/trivy" \
+            aquasec/trivy:0.69.1 image \
+            --format table \
+            --exit-code 1 \
+            --ignore-unfixed \
+            --vuln-type os,library \
+            --severity CRITICAL,HIGH \
+            cerebro:ci
 
   policy-validate:
     runs-on: ubuntu-latest
