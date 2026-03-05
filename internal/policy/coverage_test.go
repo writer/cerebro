@@ -40,6 +40,39 @@ func TestCoverageReport(t *testing.T) {
 	}
 }
 
+func TestCoverageReport_QueryPolicyFallback(t *testing.T) {
+	engine := NewEngine()
+	engine.policies = map[string]*Policy{
+		"qp-covered": {
+			ID:    "qp-covered",
+			Name:  "Query Covered",
+			Query: "SELECT id FROM okta_system_logs",
+		},
+		"qp-missing": {
+			ID:    "qp-missing",
+			Name:  "Query Missing",
+			Query: "SELECT id FROM custom_events",
+		},
+	}
+
+	report := engine.CoverageReport([]string{"okta_system_logs"})
+	if report.TotalPolicies != 2 {
+		t.Fatalf("expected 2 policies, got %d", report.TotalPolicies)
+	}
+	if report.CoveredPolicies != 1 {
+		t.Fatalf("expected 1 covered query policy, got %d", report.CoveredPolicies)
+	}
+	if report.UncoveredPolicies != 1 {
+		t.Fatalf("expected 1 uncovered query policy, got %d", report.UncoveredPolicies)
+	}
+	if report.UnknownResourcePolicies != 0 {
+		t.Fatalf("expected 0 unknown query policies, got %d", report.UnknownResourcePolicies)
+	}
+	if report.MissingTables["custom_events"] != 1 {
+		t.Fatalf("expected custom_events to be missing once, got %d", report.MissingTables["custom_events"])
+	}
+}
+
 func TestCoverageThresholdFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_POLICY_COVERAGE_MIN", "82.5")
 	value, ok, err := CoverageThresholdFromEnv()

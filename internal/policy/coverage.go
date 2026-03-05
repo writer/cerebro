@@ -42,6 +42,9 @@ func (e *Engine) CoverageReport(availableTables []string) CoverageReport {
 	for _, p := range e.policies {
 		required := p.GetRequiredTables()
 		if len(required) == 0 {
+			required = ExtractQueryTableReferences(p.Query)
+		}
+		if len(required) == 0 {
 			report.UnknownResourcePolicies++
 			continue
 		}
