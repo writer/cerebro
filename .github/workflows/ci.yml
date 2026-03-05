@@ -247,7 +247,10 @@ jobs:
           if [ ${#selected[@]} -eq 0 ]; then
             exit 0
           fi
-          $(go env GOPATH)/bin/gosec -severity medium -confidence medium -exclude-generated "${selected[@]}"
+          for pkg in "${selected[@]}"; do
+            echo "Scanning ${pkg}"
+            $(go env GOPATH)/bin/gosec -quiet -severity medium -confidence medium -exclude-generated "${pkg}"
+          done
 
   gosec:
     name: gosec
