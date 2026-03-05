@@ -10,6 +10,18 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  AWS_REGION: us-east-1
+  SEC_DEV_ACCOUNT_ID: "944130631940"
+  SEC_PROD_ACCOUNT_ID: "837279440628"
+  ECR_REPOSITORY: cerebro
+  # sec-dev ECS config
+  SEC_DEV_ECS_CLUSTER: cerebro-sec-dev-cluster
+  SEC_DEV_ECS_SERVICES: "cerebro-sec-dev-api cerebro-sec-dev-worker"
+  # sec-prod ECS config
+  SEC_PROD_ECS_CLUSTER: cerebro-go-production-cluster
+  SEC_PROD_ECS_SERVICES: "cerebro-go-production-api cerebro-go-production-worker"
+
 jobs:
   test-shards:
     name: Test shard ${{ matrix.shard_index }}
@@ -171,9 +183,12 @@ jobs:
 
           raw = Path('/tmp/scan-output.txt').read_text()
 
+          # Try full output as JSON first (clean case).
           try:
               payload = json.loads(raw)
           except json.JSONDecodeError:
+              # Output has non-JSON preamble (log lines). Find the first '{' that
+              # starts the JSON object and parse from there.
               payload = None
               idx = raw.find('{')
               if idx >= 0:
@@ -205,7 +220,7 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.4.0
+          version: v2.4.0  # Supports Go 1.25
           args: --timeout=15m ./cmd/... ./internal/... ./api/...
 
   gosec:
@@ -282,3 +297,414 @@ jobs:
 
       - name: Validate policies
         run: ./cerebro policy validate
+
+  # PR: Build and push to sec-dev ECR
+  build-and-push-sec-dev:
+    name: Build & Push to sec-dev ECR
+    runs-on: ubuntu-24.04-arm
+    if: github.event_name == 'pull_request'
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      image_changed: ${{ steps.image-changes.outputs.changed }}
+      sec_dev_secrets_present: ${{ steps.sec-dev-secrets.outputs.present }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect image-affecting changes
+        id: image-changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          base_sha="${{ github.event.pull_request.base.sha }}"
+
+          changed_files=$(git diff --name-only "${base_sha}" HEAD -- \
+            Dockerfile Dockerfile.runtime .dockerignore go.mod go.sum api cmd internal policies)
+
+          if [ -n "${changed_files}" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure AWS credentials (sec-dev)
+        if: steps.image-changes.outputs.changed == 'true'
+        uses: writerInternal/aws-git-roles@v2
+        with:
+          assume-role-arn: arn:aws:iam::${{ env.SEC_DEV_ACCOUNT_ID }}:role/writer-aws-deployment-role
+
+      - name: Check sec-dev secrets (pre-build gate)
+        id: sec-dev-secrets
+        if: steps.image-changes.outputs.changed == 'true'
+        shell: bash
+        run: |
+          missing=0
+          for secret in SNOWFLAKE_PRIVATE_KEY SNOWFLAKE_ACCOUNT SNOWFLAKE_USER; do
+            if ! aws secretsmanager describe-secret --secret-id "cerebro-sec-dev/${secret}" >/dev/null 2>&1; then
+              echo "Missing secret: ${secret}"
+              missing=1
+            fi
+          done
+          if [ "$missing" -eq 0 ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        if: steps.image-changes.outputs.changed == 'true' && steps.sec-dev-secrets.outputs.present == 'true'
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Check existing image tag
+        id: tag-check
+        if: steps.image-changes.outputs.changed == 'true' && steps.sec-dev-secrets.outputs.present == 'true'
+        shell: bash
+        run: |
+          short_sha=$(git rev-parse --short=7 HEAD)
+          echo "tag=${short_sha}" >> "$GITHUB_OUTPUT"
+          if aws ecr describe-images --repository-name "${ECR_REPOSITORY}" --image-ids imageTag="${short_sha}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Go (arm64 image build)
+        if: steps.image-changes.outputs.changed == 'true' && steps.sec-dev-secrets.outputs.present == 'true' && steps.tag-check.outputs.exists != 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.7'
+          cache: false
+
+      - name: Build linux/arm64 binary
+        if: steps.image-changes.outputs.changed == 'true' && steps.sec-dev-secrets.outputs.present == 'true' && steps.tag-check.outputs.exists != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .dist
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
+            go build -buildvcs=false -trimpath -ldflags="-s -w" -o .dist/cerebro ./cmd/cerebro
+
+      - name: Build and push image
+        if: steps.image-changes.outputs.changed == 'true' && steps.sec-dev-secrets.outputs.present == 'true' && steps.tag-check.outputs.exists != 'true'
+        shell: bash
+        env:
+          IMAGE_SHA: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.tag-check.outputs.tag }}
+          IMAGE_LATEST: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+        run: |
+          set -euo pipefail
+          docker build -f Dockerfile.runtime -t "${IMAGE_SHA}" .
+          docker tag "${IMAGE_SHA}" "${IMAGE_LATEST}"
+          docker push "${IMAGE_SHA}"
+          docker push "${IMAGE_LATEST}"
+
+      - name: Skip build and push (image exists)
+        if: steps.image-changes.outputs.changed == 'true' && steps.sec-dev-secrets.outputs.present == 'true' && steps.tag-check.outputs.exists == 'true'
+        run: echo "Image tag ${{ steps.tag-check.outputs.tag }} already exists; skipping Docker build."
+
+      - name: Skip build and push (no image-affecting changes)
+        if: steps.image-changes.outputs.changed != 'true'
+        run: echo "No image-affecting files changed; skipping Docker build."
+
+      - name: Skip build and push (sec-dev secrets missing)
+        if: steps.image-changes.outputs.changed == 'true' && steps.sec-dev-secrets.outputs.present != 'true'
+        run: echo "Skipping sec-dev image build because required sec-dev secrets are missing."
+
+  # Main merge: Build and push to sec-prod ECR
+  build-and-push-sec-prod:
+    name: Build & Push to sec-prod ECR
+    runs-on: ubuntu-24.04-arm
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      image_tag: ${{ steps.tag-check.outputs.tag }}
+      image_changed: ${{ steps.image-changes.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect image-affecting changes
+        id: image-changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          before_sha="${{ github.event.before }}"
+
+          if [ "${before_sha}" = "0000000000000000000000000000000000000000" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          changed_files=$(git diff --name-only "${before_sha}" HEAD -- \
+            Dockerfile Dockerfile.runtime .dockerignore go.mod go.sum api cmd internal policies)
+
+          if [ -n "${changed_files}" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure AWS credentials (sec-prod)
+        if: steps.image-changes.outputs.changed == 'true'
+        uses: writerInternal/aws-git-roles@v2
+        with:
+          assume-role-arn: arn:aws:iam::${{ env.SEC_PROD_ACCOUNT_ID }}:role/writer-aws-deployment-role
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        if: steps.image-changes.outputs.changed == 'true'
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Check existing image tag
+        id: tag-check
+        if: steps.image-changes.outputs.changed == 'true'
+        shell: bash
+        run: |
+          short_sha=$(git rev-parse --short=7 HEAD)
+          echo "tag=${short_sha}" >> "$GITHUB_OUTPUT"
+          if aws ecr describe-images --repository-name "${ECR_REPOSITORY}" --image-ids imageTag="${short_sha}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Go (arm64 image build)
+        if: steps.image-changes.outputs.changed == 'true' && steps.tag-check.outputs.exists != 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.7'
+          cache: false
+
+      - name: Build linux/arm64 binary
+        if: steps.image-changes.outputs.changed == 'true' && steps.tag-check.outputs.exists != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .dist
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
+            go build -buildvcs=false -trimpath -ldflags="-s -w" -o .dist/cerebro ./cmd/cerebro
+
+      - name: Build and push image
+        if: steps.image-changes.outputs.changed == 'true' && steps.tag-check.outputs.exists != 'true'
+        shell: bash
+        env:
+          IMAGE_SHA: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.tag-check.outputs.tag }}
+        run: |
+          set -euo pipefail
+          docker build -f Dockerfile.runtime -t "${IMAGE_SHA}" .
+          docker push "${IMAGE_SHA}"
+
+      - name: Skip build and push (image exists)
+        if: steps.image-changes.outputs.changed == 'true' && steps.tag-check.outputs.exists == 'true'
+        run: echo "Image tag ${{ steps.tag-check.outputs.tag }} already exists; skipping Docker build."
+
+      - name: Skip build and push (no image-affecting changes)
+        if: steps.image-changes.outputs.changed != 'true'
+        run: echo "No image-affecting files changed; skipping Docker build."
+
+  # Main merge: Promote sec-prod image tag after validators pass
+  promote-sec-prod-image:
+    name: Promote sec-prod image tag
+    runs-on: ubuntu-latest
+    needs: [test, coverage-threshold, vendor-check, scan-smoke-local, lint, gosec, govulncheck, trivy, policy-validate, build-and-push-sec-prod]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.build-and-push-sec-prod.outputs.image_changed == 'true'
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Configure AWS credentials (sec-prod)
+        uses: writerInternal/aws-git-roles@v2
+        with:
+          assume-role-arn: arn:aws:iam::${{ env.SEC_PROD_ACCOUNT_ID }}:role/writer-aws-deployment-role
+
+      - name: Promote image to latest
+        shell: bash
+        run: |
+          set -euo pipefail
+          short_sha="${{ needs.build-and-push-sec-prod.outputs.image_tag }}"
+          if [ -z "${short_sha}" ]; then
+            echo "Missing image tag output from build-and-push-sec-prod"
+            exit 1
+          fi
+
+          manifest=$(aws ecr batch-get-image \
+            --repository-name "${ECR_REPOSITORY}" \
+            --image-ids imageTag="${short_sha}" \
+            --query 'images[0].imageManifest' \
+            --output text)
+
+          aws ecr put-image \
+            --repository-name "${ECR_REPOSITORY}" \
+            --image-tag latest \
+            --image-manifest "${manifest}" >/dev/null
+
+          echo "Promoted ${short_sha} to latest"
+
+  # PR: Deploy to sec-dev ECS
+  deploy-sec-dev:
+    name: Deploy to sec-dev ECS
+    runs-on: ubuntu-latest
+    needs: [test, coverage-threshold, vendor-check, scan-smoke-local, lint, gosec, govulncheck, trivy, policy-validate, build-and-push-sec-dev]
+    if: github.event_name == 'pull_request' && needs.build-and-push-sec-dev.outputs.image_changed == 'true' && needs.build-and-push-sec-dev.outputs.sec_dev_secrets_present == 'true'
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Configure AWS credentials (sec-dev)
+        uses: writerInternal/aws-git-roles@v2
+        with:
+          assume-role-arn: arn:aws:iam::${{ env.SEC_DEV_ACCOUNT_ID }}:role/writer-aws-deployment-role
+
+      - name: Force new deployment
+        run: |
+          for service in ${{ env.SEC_DEV_ECS_SERVICES }}; do
+            aws ecs update-service \
+              --cluster ${{ env.SEC_DEV_ECS_CLUSTER }} \
+              --service $service \
+              --force-new-deployment
+          done
+
+      - name: Wait for deployment
+        timeout-minutes: 30
+        run: |
+          log_service_debug() {
+            local service=$1
+            echo "Service status for $service:"
+            aws ecs describe-services \
+              --cluster ${{ env.SEC_DEV_ECS_CLUSTER }} \
+              --services "$service" \
+              --query 'services[0].{deployments:deployments,events:events[0:5]}' \
+              --output json
+            STOPPED_TASKS=$(aws ecs list-tasks \
+              --cluster ${{ env.SEC_DEV_ECS_CLUSTER }} \
+              --service-name "$service" \
+              --desired-status STOPPED \
+              --max-items 5 \
+              --query 'taskArns' \
+              --output text)
+            if [ -n "$STOPPED_TASKS" ] && [ "$STOPPED_TASKS" != "None" ]; then
+              aws ecs describe-tasks \
+                --cluster ${{ env.SEC_DEV_ECS_CLUSTER }} \
+                --tasks $STOPPED_TASKS \
+                --query 'tasks[].{task:taskArn,lastStatus:lastStatus,stopCode:stopCode,stoppedReason:stoppedReason,containers:containers[].{name:name,lastStatus:lastStatus,exitCode:exitCode,reason:reason}}' \
+                --output json
+            else
+              echo "No stopped tasks found for $service"
+            fi
+          }
+
+          echo "Waiting for ECS deployment to stabilize..."
+          for service in ${{ env.SEC_DEV_ECS_SERVICES }}; do
+            echo "Waiting for $service to stabilize..."
+            for i in {1..120}; do
+              STATUS=$(aws ecs describe-services \
+                --cluster ${{ env.SEC_DEV_ECS_CLUSTER }} \
+                --services $service \
+                --query 'services[0].deployments[?status==`PRIMARY`] | [0].{running:runningCount,desired:desiredCount}' \
+                --output json)
+              RUNNING=$(echo $STATUS | jq -r '.running')
+              DESIRED=$(echo $STATUS | jq -r '.desired')
+              echo "Attempt $i ($service): $RUNNING/$DESIRED tasks running"
+              if [ "$RUNNING" = "$DESIRED" ] && [ "$RUNNING" != "0" ]; then
+                echo "Deployment complete for $service!"
+                break
+              fi
+              if [ $((i % 10)) -eq 0 ]; then
+                log_service_debug "$service"
+              fi
+              sleep 15
+            done
+            if [ "$RUNNING" != "$DESIRED" ] || [ "$RUNNING" = "0" ]; then
+              echo "Deployment did not stabilize in time for $service"
+              log_service_debug "$service"
+              exit 1
+            fi
+          done
+
+  # Main merge: Deploy to sec-prod ECS
+  deploy-sec-prod:
+    name: Deploy to sec-prod ECS
+    runs-on: ubuntu-latest
+    needs: promote-sec-prod-image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.promote-sec-prod-image.result == 'success'
+    environment: production
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Configure AWS credentials (sec-prod)
+        uses: writerInternal/aws-git-roles@v2
+        with:
+          assume-role-arn: arn:aws:iam::${{ env.SEC_PROD_ACCOUNT_ID }}:role/writer-aws-deployment-role
+
+      - name: Force new deployment
+        run: |
+          for service in ${{ env.SEC_PROD_ECS_SERVICES }}; do
+            aws ecs update-service \
+              --cluster ${{ env.SEC_PROD_ECS_CLUSTER }} \
+              --service $service \
+              --force-new-deployment
+          done
+
+      - name: Wait for deployment
+        timeout-minutes: 30
+        run: |
+          log_service_debug() {
+            local service=$1
+            echo "Service status for $service:"
+            aws ecs describe-services \
+              --cluster ${{ env.SEC_PROD_ECS_CLUSTER }} \
+              --services "$service" \
+              --query 'services[0].{deployments:deployments,events:events[0:5]}' \
+              --output json
+            STOPPED_TASKS=$(aws ecs list-tasks \
+              --cluster ${{ env.SEC_PROD_ECS_CLUSTER }} \
+              --service-name "$service" \
+              --desired-status STOPPED \
+              --max-items 5 \
+              --query 'taskArns' \
+              --output text)
+            if [ -n "$STOPPED_TASKS" ] && [ "$STOPPED_TASKS" != "None" ]; then
+              aws ecs describe-tasks \
+                --cluster ${{ env.SEC_PROD_ECS_CLUSTER }} \
+                --tasks $STOPPED_TASKS \
+                --query 'tasks[].{task:taskArn,lastStatus:lastStatus,stopCode:stopCode,stoppedReason:stoppedReason,containers:containers[].{name:name,lastStatus:lastStatus,exitCode:exitCode,reason:reason}}' \
+                --output json
+            else
+              echo "No stopped tasks found for $service"
+            fi
+          }
+
+          echo "Waiting for ECS deployment to stabilize..."
+          for service in ${{ env.SEC_PROD_ECS_SERVICES }}; do
+            echo "Waiting for $service to stabilize..."
+            for i in {1..120}; do
+              STATUS=$(aws ecs describe-services \
+                --cluster ${{ env.SEC_PROD_ECS_CLUSTER }} \
+                --services $service \
+                --query 'services[0].deployments[?status==`PRIMARY`] | [0].{running:runningCount,desired:desiredCount}' \
+                --output json)
+              RUNNING=$(echo $STATUS | jq -r '.running')
+              DESIRED=$(echo $STATUS | jq -r '.desired')
+              echo "Attempt $i ($service): $RUNNING/$DESIRED tasks running"
+              if [ "$RUNNING" = "$DESIRED" ] && [ "$RUNNING" != "0" ]; then
+                echo "Deployment complete for $service!"
+                break
+              fi
+              if [ $((i % 10)) -eq 0 ]; then
+                log_service_debug "$service"
+              fi
+              sleep 15
+            done
+            if [ "$RUNNING" != "$DESIRED" ] || [ "$RUNNING" = "0" ]; then
+              echo "Deployment did not stabilize in time for $service"
+              log_service_debug "$service"
+              exit 1
+            fi
+          done
