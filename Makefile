@@ -1,4 +1,4 @@
-.PHONY: build run test sync clean dev serve policy-list docker-build trivy-db security-scan security-scan-built security-scan-source vendor vendor-check
+.PHONY: build run test sync clean dev serve policy-list docker-build trivy-db security-scan security-scan-built security-scan-source vendor vendor-check oss-audit
 
 # Version info
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -109,6 +109,9 @@ security-scan-built: trivy-db
 security-scan-source:
 	$(GO_BIN)/govulncheck ./...
 	$(GO_BIN)/gosec -severity medium -confidence medium -exclude-generated ./...
+
+oss-audit:
+	python3 scripts/oss_audit.py
 
 # Docker run
 docker-run:
