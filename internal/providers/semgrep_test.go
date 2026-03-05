@@ -51,7 +51,7 @@ func TestSemgrepProviderSync_TableParity(t *testing.T) {
 					{
 						"id":              "proj-1",
 						"name":            "repo-one",
-						"repository_name": "github.com/writerinternal/repo-one",
+						"repository_name": "github.com/writer/repo-one",
 						"branch":          "main",
 						"last_scan_at":    "2026-02-25T12:00:00Z",
 						"archived":        false,
@@ -65,7 +65,7 @@ func TestSemgrepProviderSync_TableParity(t *testing.T) {
 					{
 						"id":              "proj-2",
 						"name":            "repo-two",
-						"repository_name": "github.com/writerinternal/repo-two",
+						"repository_name": "github.com/writer/repo-two",
 						"branch":          "develop",
 						"last_scan_at":    "2026-02-25T13:00:00Z",
 						"archived":        false,
