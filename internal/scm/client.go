@@ -181,7 +181,7 @@ func (c *GitLabClient) defaultBranch(ctx context.Context, projectPath string) (s
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		body, readErr := io.ReadAll(resp.Body)
 		if readErr != nil {
-			return "", fmt.Errorf("gitlab project lookup failed: %d (body unreadable: %v)", resp.StatusCode, readErr)
+			return "", fmt.Errorf("gitlab project lookup failed: %d (body unreadable: %w)", resp.StatusCode, readErr)
 		}
 		return "", fmt.Errorf("gitlab project lookup failed: %d %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
