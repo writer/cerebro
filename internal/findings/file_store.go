@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/writerinternal/cerebro/internal/policy"
+	"github.com/writer/cerebro/internal/policy"
 )
 
 // FileStore provides file-based persistence for findings

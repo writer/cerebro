@@ -5,7 +5,7 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/writerinternal/cerebro/internal/graph"
+	"github.com/writer/cerebro/internal/graph"
 )
 
 // Visualization endpoints (Mermaid)

@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/writerinternal/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/snowflake"
 )
 
 // SnowflakeSource adapts the Snowflake client to the DataSource interface

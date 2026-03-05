@@ -15,7 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"golang.org/x/sync/errgroup"
 
-	nativesync "github.com/writerinternal/cerebro/internal/sync"
+	nativesync "github.com/writer/cerebro/internal/sync"
 )
 
 type awsOrgAccount struct {

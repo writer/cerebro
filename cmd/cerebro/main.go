@@ -1,6 +1,6 @@
 package main
 
-import "github.com/writerinternal/cerebro/internal/cli"
+import "github.com/writer/cerebro/internal/cli"
 
 func main() {
 	cli.Execute()

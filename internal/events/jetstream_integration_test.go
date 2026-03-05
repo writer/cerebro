@@ -15,7 +15,7 @@ import (
 
 	"github.com/nats-io/nats.go"
 
-	"github.com/writerinternal/cerebro/internal/webhooks"
+	"github.com/writer/cerebro/internal/webhooks"
 )
 
 func TestJetStreamPublisherIntegration_DedupAndCloudEventContract(t *testing.T) {

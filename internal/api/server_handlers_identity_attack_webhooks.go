@@ -9,10 +9,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/writerinternal/cerebro/internal/attackpath"
-	"github.com/writerinternal/cerebro/internal/identity"
-	"github.com/writerinternal/cerebro/internal/snowflake"
-	"github.com/writerinternal/cerebro/internal/webhooks"
+	"github.com/writer/cerebro/internal/attackpath"
+	"github.com/writer/cerebro/internal/identity"
+	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/webhooks"
 )
 
 func (s *Server) detectStaleAccess(w http.ResponseWriter, r *http.Request) {

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/writerinternal/cerebro/internal/agents"
-	"github.com/writerinternal/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/agents"
+	"github.com/writer/cerebro/internal/snowflake"
 )
 
 func (s *Server) runAgentSessionLoop(ctx context.Context, session *agents.Session, agent *agents.Agent) (agents.Message, error) {

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/writerinternal/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/snowflake"
 )
 
 var queryLatestTableSyncTime = func(ctx context.Context, sf *snowflake.Client, table string, region string, hasRegion bool) (time.Time, error) {

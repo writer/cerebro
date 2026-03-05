@@ -8,9 +8,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/writerinternal/cerebro/internal/app"
-	"github.com/writerinternal/cerebro/internal/metrics"
-	"github.com/writerinternal/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/app"
+	"github.com/writer/cerebro/internal/metrics"
+	"github.com/writer/cerebro/internal/snowflake"
 )
 
 // Server is the fully wired API server

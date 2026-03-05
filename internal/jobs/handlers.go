@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/writerinternal/cerebro/internal/agents"
+	"github.com/writer/cerebro/internal/agents"
 )
 
 // NewInspectResourceHandler creates a handler for InspectResource jobs.

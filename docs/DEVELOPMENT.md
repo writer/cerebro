@@ -12,7 +12,7 @@
 ### Clone and Setup
 
 ```bash
-git clone https://github.com/writerinternal/cerebro.git
+git clone https://github.com/writer/cerebro.git
 cd cerebro
 
 # Install dependencies
@@ -298,7 +298,7 @@ package providers
 
 import (
     "context"
-    "github.com/writerinternal/cerebro/internal/agents"
+    "github.com/writer/cerebro/internal/agents"
 )
 
 type NewLLMConfig struct {

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/writerinternal/cerebro/internal/agents"
+	"github.com/writer/cerebro/internal/agents"
 )
 
 // Agent endpoints

@@ -9,10 +9,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/writerinternal/cerebro/internal/agents"
-	"github.com/writerinternal/cerebro/internal/app"
-	"github.com/writerinternal/cerebro/internal/jobs"
-	"github.com/writerinternal/cerebro/internal/scm"
+	"github.com/writer/cerebro/internal/agents"
+	"github.com/writer/cerebro/internal/app"
+	"github.com/writer/cerebro/internal/jobs"
+	"github.com/writer/cerebro/internal/scm"
 )
 
 var agentRunCmd = &cobra.Command{

@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/writerinternal/cerebro/internal/providers"
+	"github.com/writer/cerebro/internal/providers"
 )
 
 // Provider endpoints

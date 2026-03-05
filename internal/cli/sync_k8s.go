@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	nativesync "github.com/writerinternal/cerebro/internal/sync"
+	nativesync "github.com/writer/cerebro/internal/sync"
 )
 
 func runK8sSync(ctx context.Context, start time.Time) error {

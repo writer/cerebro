@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/writerinternal/cerebro/internal/notifications"
-	"github.com/writerinternal/cerebro/internal/scanner"
-	"github.com/writerinternal/cerebro/internal/scheduler"
-	"github.com/writerinternal/cerebro/internal/snowflake"
-	nativesync "github.com/writerinternal/cerebro/internal/sync"
+	"github.com/writer/cerebro/internal/notifications"
+	"github.com/writer/cerebro/internal/scanner"
+	"github.com/writer/cerebro/internal/scheduler"
+	"github.com/writer/cerebro/internal/snowflake"
+	nativesync "github.com/writer/cerebro/internal/sync"
 )
 
 func (a *App) initScheduler(_ context.Context) {

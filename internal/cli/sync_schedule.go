@@ -18,11 +18,11 @@ import (
 	"github.com/robfig/cron/v3"
 	"github.com/spf13/cobra"
 
-	"github.com/writerinternal/cerebro/internal/app"
-	"github.com/writerinternal/cerebro/internal/jobs"
-	providerregistry "github.com/writerinternal/cerebro/internal/providers"
-	"github.com/writerinternal/cerebro/internal/snowflake"
-	nativesync "github.com/writerinternal/cerebro/internal/sync"
+	"github.com/writer/cerebro/internal/app"
+	"github.com/writer/cerebro/internal/jobs"
+	providerregistry "github.com/writer/cerebro/internal/providers"
+	"github.com/writer/cerebro/internal/snowflake"
+	nativesync "github.com/writer/cerebro/internal/sync"
 )
 
 var syncScheduleCmd = &cobra.Command{

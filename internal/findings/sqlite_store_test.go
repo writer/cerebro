@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/writerinternal/cerebro/internal/policy"
+	"github.com/writer/cerebro/internal/policy"
 )
 
 func TestSQLiteStore(t *testing.T) {

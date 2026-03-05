@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/writerinternal/cerebro/internal/graph"
+	"github.com/writer/cerebro/internal/graph"
 )
 
 func (s *Server) graphStats(w http.ResponseWriter, r *http.Request) {

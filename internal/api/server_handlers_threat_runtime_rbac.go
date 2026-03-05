@@ -7,9 +7,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/writerinternal/cerebro/internal/auth"
-	"github.com/writerinternal/cerebro/internal/runtime"
-	"github.com/writerinternal/cerebro/internal/webhooks"
+	"github.com/writer/cerebro/internal/auth"
+	"github.com/writer/cerebro/internal/runtime"
+	"github.com/writer/cerebro/internal/webhooks"
 )
 
 func (s *Server) listThreatFeeds(w http.ResponseWriter, r *http.Request) {

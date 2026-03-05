@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/writerinternal/cerebro/internal/agents"
+	"github.com/writer/cerebro/internal/agents"
 )
 
 // OpenAIProvider implements LLMProvider for OpenAI/GPT models

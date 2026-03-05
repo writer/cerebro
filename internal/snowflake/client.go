@@ -13,7 +13,7 @@ import (
 
 	sf "github.com/snowflakedb/gosnowflake"
 
-	"github.com/writerinternal/cerebro/internal/cerrors"
+	"github.com/writer/cerebro/internal/cerrors"
 )
 
 const (

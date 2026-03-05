@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/writerinternal/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/snowflake"
 )
 
 type fakeSnowflakeResult struct{}

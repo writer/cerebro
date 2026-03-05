@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/writerinternal/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/snowflake"
 )
 
 func TestDeriveIncrementalStart(t *testing.T) {

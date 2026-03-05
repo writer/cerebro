@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/writerinternal/cerebro/internal/app"
-	"github.com/writerinternal/cerebro/internal/scanner"
+	"github.com/writer/cerebro/internal/app"
+	"github.com/writer/cerebro/internal/scanner"
 )
 
 type localScanDataset struct {

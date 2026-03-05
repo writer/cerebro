@@ -6,9 +6,9 @@ import (
 	"sort"
 	"time"
 
-	"github.com/writerinternal/cerebro/internal/policy"
-	"github.com/writerinternal/cerebro/internal/scanner"
-	"github.com/writerinternal/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/policy"
+	"github.com/writer/cerebro/internal/scanner"
+	"github.com/writer/cerebro/internal/snowflake"
 )
 
 func (a *App) initRepositories() {
