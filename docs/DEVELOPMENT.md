@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Go 1.23+
+- Go 1.25+
 - Docker & Docker Compose (optional)
 - Snowflake account (for full functionality)
 - Make
@@ -51,6 +51,12 @@ go test -v ./internal/policy/...
 
 # With race detection
 go test -race ./...
+
+# Verify OpenAPI parity with registered routes
+make openapi-check
+
+# Auto-add placeholder path/method entries for new routes
+make openapi-sync
 ```
 
 ### Building
@@ -635,7 +641,7 @@ jobs:
       
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.25.7'
       
       - name: Install dependencies
         run: go mod download
@@ -665,7 +671,7 @@ jobs:
       
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.25.7'
       
       - name: Build
         run: make build
@@ -683,7 +689,7 @@ jobs:
 **Error:** `failed to connect: authentication error`
 
 **Solution:**
-1. Verify connection string format
+1. Verify `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, and `SNOWFLAKE_PRIVATE_KEY` are set
 2. Check account name includes region (e.g., `myaccount.us-east-1`)
 3. Ensure user has required grants
 

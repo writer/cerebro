@@ -37,7 +37,7 @@ type ClientConfig struct {
 	Role string
 	// Database is the default database
 	Database string
-	// Schema is the default schema for asset tables (default: RAW)
+	// Schema is the default schema for asset tables (default: CEREBRO)
 	Schema string
 	// AppSchema is the schema for Cerebro app tables (default: CEREBRO)
 	AppSchema string
