@@ -149,6 +149,9 @@ func TestPublicProviderNames_ExcludesStubProviders(t *testing.T) {
 	if !slices.Contains(names, "wiz") {
 		t.Fatal("expected wiz in public provider names")
 	}
+	if !slices.Contains(names, "s3") {
+		t.Fatal("expected s3 in public provider names")
+	}
 }
 
 func TestImplementedProviderNames_ExcludesStubProviders(t *testing.T) {
@@ -206,5 +209,8 @@ func TestImplementedProviderNames_ExcludesStubProviders(t *testing.T) {
 	}
 	if !slices.Contains(names, "wiz") {
 		t.Fatal("expected wiz in implemented provider names")
+	}
+	if !slices.Contains(names, "s3") {
+		t.Fatal("expected s3 in implemented provider names")
 	}
 }

@@ -367,6 +367,13 @@ type Config struct {
 	KandjiAPIURL   string
 	KandjiAPIToken string
 
+	// S3 Input Provider
+	S3InputBucket     string
+	S3InputPrefix     string
+	S3InputRegion     string
+	S3InputFormat     string
+	S3InputMaxObjects int
+
 	// CloudTrail Provider
 	CloudTrailRegion       string
 	CloudTrailTrailARN     string
@@ -601,6 +608,11 @@ func LoadConfig() *Config {
 		IntuneClientSecret:                 getEnv("INTUNE_CLIENT_SECRET", ""),
 		KandjiAPIURL:                       getEnv("KANDJI_API_URL", ""),
 		KandjiAPIToken:                     getEnv("KANDJI_API_TOKEN", ""),
+		S3InputBucket:                      getEnv("S3_INPUT_BUCKET", ""),
+		S3InputPrefix:                      getEnv("S3_INPUT_PREFIX", ""),
+		S3InputRegion:                      getEnv("S3_INPUT_REGION", getEnv("AWS_REGION", "us-east-1")),
+		S3InputFormat:                      getEnv("S3_INPUT_FORMAT", "auto"),
+		S3InputMaxObjects:                  getEnvInt("S3_INPUT_MAX_OBJECTS", 200),
 		CloudTrailRegion:                   getEnv("CLOUDTRAIL_REGION", ""),
 		CloudTrailTrailARN:                 getEnv("CLOUDTRAIL_TRAIL_ARN", ""),
 		CloudTrailLookbackDays:             getEnvInt("CLOUDTRAIL_LOOKBACK_DAYS", 7),

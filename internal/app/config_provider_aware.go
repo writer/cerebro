@@ -1,5 +1,7 @@
 package app
 
+import "strconv"
+
 // ProviderAwareConfig is a nested provider-centric view derived from Config's
 // flat env-backed fields. It keeps compatibility while offering grouped access.
 type ProviderAwareConfig struct {
@@ -87,6 +89,13 @@ func (c *Config) BuildProviderAwareConfig() ProviderAwareConfig {
 	add(out.Endpoint, "jamf", map[string]string{"base_url": c.JamfBaseURL, "client_id": c.JamfClientID, "client_secret": c.JamfClientSecret})
 	add(out.Identity, "intune", map[string]string{"tenant_id": firstNonEmpty(c.IntuneTenantID, c.EntraTenantID), "client_id": firstNonEmpty(c.IntuneClientID, c.EntraClientID), "client_secret": firstNonEmpty(c.IntuneClientSecret, c.EntraClientSecret)})
 	add(out.Endpoint, "kandji", map[string]string{"api_url": c.KandjiAPIURL, "api_token": c.KandjiAPIToken})
+
+	s3Values := map[string]string{"bucket": c.S3InputBucket, "prefix": c.S3InputPrefix, "region": c.S3InputRegion, "format": c.S3InputFormat}
+	if c.S3InputMaxObjects > 0 {
+		s3Values["max_objects"] = strconv.Itoa(c.S3InputMaxObjects)
+	}
+	add(out.Cloud, "s3", s3Values)
+
 	add(out.Cloud, "cloudtrail", map[string]string{"region": c.CloudTrailRegion, "trail_arn": c.CloudTrailTrailARN})
 
 	return out
