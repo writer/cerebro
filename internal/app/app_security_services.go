@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -61,7 +62,11 @@ func (a *App) initThreatIntel(ctx context.Context) {
 			Backoff:  syncBackoff,
 		})
 		if err != nil {
-			a.Logger.Warn("failed to sync threat intel feeds", "error", err)
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || syncCtx.Err() != nil {
+				a.Logger.Debug("threat intel sync canceled", "error", err)
+			} else {
+				a.Logger.Warn("failed to sync threat intel feeds", "error", err)
+			}
 			return
 		}
 		stats := a.ThreatIntel.Stats()

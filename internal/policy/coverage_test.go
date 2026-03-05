@@ -40,6 +40,107 @@ func TestCoverageReport(t *testing.T) {
 	}
 }
 
+func TestCoverageReport_QueryPolicyFallback(t *testing.T) {
+	engine := NewEngine()
+	engine.policies = map[string]*Policy{
+		"qp-covered": {
+			ID:    "qp-covered",
+			Name:  "Query Covered",
+			Query: "SELECT id FROM okta_system_logs",
+		},
+		"qp-missing": {
+			ID:    "qp-missing",
+			Name:  "Query Missing",
+			Query: "SELECT id FROM custom_events",
+		},
+	}
+
+	report := engine.CoverageReport([]string{"okta_system_logs"})
+	if report.TotalPolicies != 2 {
+		t.Fatalf("expected 2 policies, got %d", report.TotalPolicies)
+	}
+	if report.CoveredPolicies != 1 {
+		t.Fatalf("expected 1 covered query policy, got %d", report.CoveredPolicies)
+	}
+	if report.UncoveredPolicies != 1 {
+		t.Fatalf("expected 1 uncovered query policy, got %d", report.UncoveredPolicies)
+	}
+	if report.UnknownResourcePolicies != 0 {
+		t.Fatalf("expected 0 unknown query policies, got %d", report.UnknownResourcePolicies)
+	}
+	if report.MissingTables["custom_events"] != 1 {
+		t.Fatalf("expected custom_events to be missing once, got %d", report.MissingTables["custom_events"])
+	}
+}
+
+func TestCoverageReport_ResourcePolicyCoveredByAnyMappedTable(t *testing.T) {
+	engine := NewEngine()
+	engine.policies = map[string]*Policy{
+		"p1": {
+			ID:       "p1",
+			Name:     "Compute policy",
+			Resource: "compute::instance",
+		},
+	}
+
+	report := engine.CoverageReport([]string{"aws_ec2_instances"})
+	if report.CoveredPolicies != 1 {
+		t.Fatalf("expected compute policy to be covered when one mapped table is present, got %d", report.CoveredPolicies)
+	}
+	if report.UncoveredPolicies != 0 {
+		t.Fatalf("expected no uncovered policies, got %d", report.UncoveredPolicies)
+	}
+	if len(report.MissingTables) != 0 {
+		t.Fatalf("expected no missing tables to be counted for covered policy, got %v", report.MissingTables)
+	}
+}
+
+func TestCoverageReport_QueryPolicyRequiresAllReferencedTables(t *testing.T) {
+	engine := NewEngine()
+	engine.policies = map[string]*Policy{
+		"qp-join": {
+			ID:    "qp-join",
+			Name:  "Joined query policy",
+			Query: "SELECT l.id FROM okta_system_logs l JOIN employees e ON e.email = l.actor_email",
+		},
+	}
+
+	report := engine.CoverageReport([]string{"okta_system_logs"})
+	if report.CoveredPolicies != 0 {
+		t.Fatalf("expected query policy to be uncovered when join table is missing, got %d covered", report.CoveredPolicies)
+	}
+	if report.UncoveredPolicies != 1 {
+		t.Fatalf("expected 1 uncovered query policy, got %d", report.UncoveredPolicies)
+	}
+	if report.MissingTables["employees"] != 1 {
+		t.Fatalf("expected employees to be missing once, got %d", report.MissingTables["employees"])
+	}
+	if report.MissingByProvider["employees"] != 1 {
+		t.Fatalf("expected missing provider bucket for employees, got %v", report.MissingByProvider)
+	}
+}
+
+func TestTableProvider(t *testing.T) {
+	tests := []struct {
+		name  string
+		table string
+		want  string
+	}{
+		{name: "aws", table: "aws_ec2_instances", want: "aws"},
+		{name: "google workspace", table: "google_workspace_users", want: "google_workspace"},
+		{name: "terraform cloud", table: "terraform_cloud_workspaces", want: "terraform_cloud"},
+		{name: "single token", table: "employees", want: "employees"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tableProvider(tt.table); got != tt.want {
+				t.Fatalf("tableProvider(%q) = %q, want %q", tt.table, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestCoverageThresholdFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_POLICY_COVERAGE_MIN", "82.5")
 	value, ok, err := CoverageThresholdFromEnv()

@@ -43,7 +43,7 @@ func DetectRelationshipToxicCombinations(ctx context.Context, sf *snowflake.Clie
 	svcFilter := toxicSinceFilter("s", cursor)
 	bucketFilter := toxicSinceFilter("b", cursor)
 	iamFilter := toxicSinceFilter("r", cursor)
-	relFilter := toxicSinceFilter("", cursor)
+	relFilter := toxicSinceFilterColumn("", "sync_time", cursor)
 	keysetWhere := toxicKeysetWhere(cursor)
 	query := fmt.Sprintf(`
 WITH changed_rel_sources AS (
@@ -64,7 +64,7 @@ toxic_cloudrun_with_vuln AS (
                      AND TEMPLATE:containers[0]:image::VARCHAR NOT LIKE '%%:%%') 
             THEN TRUE ELSE FALSE 
         END as unpinned_image,
-        GREATEST(s._cq_sync_time, r_sa._cq_sync_time) as _row_sync_time
+        GREATEST(s._cq_sync_time, r_sa.sync_time) as _row_sync_time
     FROM GCP_CLOUDRUN_SERVICES s
     JOIN RAW.RESOURCE_RELATIONSHIPS r_sa 
         ON REPLACE(s.NAME, '"', '') = r_sa.SOURCE_ID 
@@ -186,12 +186,19 @@ CROSS JOIN toxic_cursor c%s
 // at exactly SinceTime survive into all_toxic where toxicKeysetWhere applies
 // the precise keyset predicate. When SinceID is empty the operator is strict >.
 func toxicSinceFilter(alias string, cursor *ToxicScanCursor) string {
+	return toxicSinceFilterColumn(alias, "_cq_sync_time", cursor)
+}
+
+func toxicSinceFilterColumn(alias, column string, cursor *ToxicScanCursor) string {
 	if cursor == nil || cursor.SinceTime.IsZero() {
 		return ""
 	}
-	col := "_cq_sync_time"
+	if strings.TrimSpace(column) == "" {
+		column = "_cq_sync_time"
+	}
+	col := column
 	if alias != "" {
-		col = alias + "._cq_sync_time"
+		col = alias + "." + column
 	}
 	ts := cursor.SinceTime.UTC().Format(time.RFC3339Nano)
 	op := ">"

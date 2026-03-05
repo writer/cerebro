@@ -268,6 +268,105 @@ func TestMapToxicCombinationRows(t *testing.T) {
 	}
 }
 
+func TestPolicyFindingToMapIncludesActionableFields(t *testing.T) {
+	finding := policy.Finding{
+		ID:             "f-1",
+		PolicyID:       "aws-s3-public-read",
+		PolicyName:     "S3 bucket public read",
+		Title:          "Public bucket",
+		Description:    "Bucket is publicly readable",
+		Severity:       "HIGH",
+		ResourceType:   "aws::s3::bucket",
+		ResourceID:     "arn:aws:s3:::example",
+		ResourceName:   "example",
+		RiskCategories: []string{"network_exposure"},
+		Remediation:    "Disable public access block",
+		ControlID:      "CIS-3.1",
+	}
+
+	mapped := policyFindingToMap(finding, findingSourcePolicy, map[string]interface{}{"toxic_combo": true})
+
+	if mapped["policy_id"] != finding.PolicyID {
+		t.Fatalf("expected policy_id %q, got %v", finding.PolicyID, mapped["policy_id"])
+	}
+	if mapped["title"] != finding.Title {
+		t.Fatalf("expected title %q, got %v", finding.Title, mapped["title"])
+	}
+	if mapped["remediation"] != finding.Remediation {
+		t.Fatalf("expected remediation %q, got %v", finding.Remediation, mapped["remediation"])
+	}
+	if mapped["source"] != findingSourcePolicy {
+		t.Fatalf("expected source %q, got %v", findingSourcePolicy, mapped["source"])
+	}
+	if mapped["toxic_combo"] != true {
+		t.Fatalf("expected toxic_combo=true, got %v", mapped["toxic_combo"])
+	}
+	if _, ok := mapped["risk_categories"].([]string); !ok {
+		t.Fatalf("expected risk_categories to be []string, got %T", mapped["risk_categories"])
+	}
+}
+
+func TestSummarizePolicyHotspots(t *testing.T) {
+	findings := []map[string]interface{}{
+		{"policy_id": "p1", "policy_name": "Policy One", "title": "Public bucket", "severity": "HIGH", "resource_id": "r1", "resource_name": "bucket-1"},
+		{"policy_id": "p1", "title": "Public bucket", "severity": "CRITICAL", "resource_id": "r2", "resource_name": "bucket-2"},
+		{"policy_id": "p1", "title": "Public bucket", "severity": "MEDIUM", "resource_id": "r2", "resource_name": "bucket-2"},
+		{"policy_id": "p2", "title": "Weak key", "severity": "CRITICAL", "resource_id": "r3", "resource_name": "kms-key"},
+	}
+
+	summary := summarizePolicyHotspots(findings, 5)
+	if len(summary) != 2 {
+		t.Fatalf("expected 2 hotspot entries, got %d", len(summary))
+	}
+
+	if summary[0].PolicyID != "p1" {
+		t.Fatalf("expected first hotspot to be p1, got %s", summary[0].PolicyID)
+	}
+	if summary[0].Count != 3 {
+		t.Fatalf("expected p1 count=3, got %d", summary[0].Count)
+	}
+	if summary[0].ResourceCount != 2 {
+		t.Fatalf("expected p1 resource_count=2, got %d", summary[0].ResourceCount)
+	}
+	if summary[0].HighestSeverity != "CRITICAL" {
+		t.Fatalf("expected p1 highest severity CRITICAL, got %s", summary[0].HighestSeverity)
+	}
+}
+
+func TestSummarizeRemediationActions(t *testing.T) {
+	findings := []map[string]interface{}{
+		{"policy_id": "p1", "severity": "HIGH", "remediation": "Rotate compromised keys", "resource_name": "key-a"},
+		{"policy_id": "p2", "severity": "CRITICAL", "remediation": "rotate compromised keys", "resource_name": "key-b"},
+		{"policy_id": "p3", "severity": "MEDIUM", "remediation": "Enable encryption at rest", "resource_name": "bucket-a"},
+	}
+
+	summary := summarizeRemediationActions(findings, 5)
+	if len(summary) != 2 {
+		t.Fatalf("expected 2 remediation entries, got %d", len(summary))
+	}
+
+	if summary[0].Count != 2 {
+		t.Fatalf("expected first remediation count=2, got %d", summary[0].Count)
+	}
+	if summary[0].HighestSeverity != "CRITICAL" {
+		t.Fatalf("expected highest severity CRITICAL, got %s", summary[0].HighestSeverity)
+	}
+	if len(summary[0].PolicyIDs) != 2 || summary[0].PolicyIDs[0] != "p1" || summary[0].PolicyIDs[1] != "p2" {
+		t.Fatalf("expected policy IDs [p1 p2], got %v", summary[0].PolicyIDs)
+	}
+}
+
+func TestFindingRiskString(t *testing.T) {
+	if got := findingRiskString(map[string]interface{}{"risks": "NETWORK_EXPOSURE"}); got != "NETWORK_EXPOSURE" {
+		t.Fatalf("expected risks field to be returned, got %q", got)
+	}
+
+	withCategories := map[string]interface{}{"risk_categories": []string{"network_exposure", "sensitive_data"}}
+	if got := findingRiskString(withCategories); got != "network_exposure, sensitive_data" {
+		t.Fatalf("expected joined categories, got %q", got)
+	}
+}
+
 func TestCanonicalizeSQLRiskCategories(t *testing.T) {
 	risks := canonicalizeSQLRiskCategories("EXTERNAL_EXPOSURE, UNPROTECTED_DATA, CONFUSED_DEPUTY")
 	if !risks["network_exposure"] {

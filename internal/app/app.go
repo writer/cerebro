@@ -717,7 +717,7 @@ func New(ctx context.Context) (*App, error) {
 	g.Go(func() error { app.initRepositories(); return nil })
 	g.Go(func() error { app.initSnowflakeFindings(gctx); return nil })
 	g.Go(func() error { app.initScanWatermarks(gctx); return nil })
-	g.Go(func() error { app.initThreatIntel(gctx); return nil })
+	g.Go(func() error { app.initThreatIntel(ctx); return nil })
 	g.Go(func() error { app.initAvailableTables(gctx); return nil })
 
 	_ = g.Wait()
