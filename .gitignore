@@ -29,6 +29,7 @@ Thumbs.db
 
 # Logs
 *.log
+cloudquery.log
 
 infra/__pycache__/*
 infra/aws/__pycache__/*
