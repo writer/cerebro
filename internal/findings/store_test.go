@@ -2,6 +2,7 @@ package findings
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -324,6 +325,126 @@ func TestStats_Fields(t *testing.T) {
 	}
 	if stats.ByPolicy["p1"] != 6 {
 		t.Error("ByPolicy field incorrect")
+	}
+}
+
+func TestNewStore_BackwardCompatible(t *testing.T) {
+	store := NewStore()
+	if store.Len() != 0 {
+		t.Errorf("expected empty store, got %d", store.Len())
+	}
+
+	// Should accept unlimited findings without eviction
+	for i := 0; i < 100; i++ {
+		store.Upsert(context.Background(), policy.Finding{
+			ID:       fmt.Sprintf("f-%d", i),
+			PolicyID: "p1",
+			Severity: "high",
+		})
+	}
+	if store.Len() != 100 {
+		t.Errorf("expected 100 findings, got %d", store.Len())
+	}
+}
+
+func TestStoreWithMaxFindings(t *testing.T) {
+	store := NewStoreWithConfig(StoreConfig{MaxFindings: 5})
+
+	// Add 5 findings — all should fit
+	for i := 0; i < 5; i++ {
+		store.Upsert(context.Background(), policy.Finding{
+			ID:       fmt.Sprintf("f-%d", i),
+			PolicyID: "p1",
+			Severity: "high",
+		})
+	}
+	if store.Len() != 5 {
+		t.Errorf("expected 5 findings, got %d", store.Len())
+	}
+
+	// Resolve f-0 and f-1 so they become eviction candidates
+	store.Resolve("f-0")
+	store.Resolve("f-1")
+
+	// Add a 6th finding — should evict one resolved finding
+	store.Upsert(context.Background(), policy.Finding{
+		ID:       "f-5",
+		PolicyID: "p1",
+		Severity: "high",
+	})
+	if store.Len() != 5 {
+		t.Errorf("expected 5 findings after eviction, got %d", store.Len())
+	}
+
+	// The oldest resolved finding should have been evicted
+	if _, ok := store.Get("f-0"); ok {
+		t.Error("expected f-0 to be evicted")
+	}
+	// f-1 should still be present (only one needed to be evicted)
+	if _, ok := store.Get("f-1"); !ok {
+		t.Error("expected f-1 to still be present")
+	}
+	// f-5 must be present
+	if _, ok := store.Get("f-5"); !ok {
+		t.Error("expected f-5 to be present")
+	}
+}
+
+func TestStoreCleanup(t *testing.T) {
+	store := NewStore()
+
+	store.Upsert(context.Background(), policy.Finding{ID: "f1", PolicyID: "p1", Severity: "high"})
+	store.Upsert(context.Background(), policy.Finding{ID: "f2", PolicyID: "p1", Severity: "high"})
+	store.Upsert(context.Background(), policy.Finding{ID: "f3", PolicyID: "p1", Severity: "high"})
+
+	// Resolve f1 and f2
+	store.Resolve("f1")
+	store.Resolve("f2")
+
+	// Manually backdate LastSeen on f1 so it's older than maxAge
+	func() {
+		store.mu.Lock()
+		defer store.mu.Unlock()
+		old := time.Now().Add(-2 * time.Hour)
+		store.findings["f1"].LastSeen = old
+	}()
+
+	// Cleanup with 1h maxAge should remove f1 but not f2
+	removed := store.Cleanup(1 * time.Hour)
+	if removed != 1 {
+		t.Errorf("expected 1 removed, got %d", removed)
+	}
+	if _, ok := store.Get("f1"); ok {
+		t.Error("expected f1 to be cleaned up")
+	}
+	if _, ok := store.Get("f2"); !ok {
+		t.Error("expected f2 to still be present")
+	}
+	if _, ok := store.Get("f3"); !ok {
+		t.Error("expected f3 to still be present")
+	}
+}
+
+func TestStoreLen(t *testing.T) {
+	store := NewStore()
+	if store.Len() != 0 {
+		t.Errorf("expected 0, got %d", store.Len())
+	}
+
+	store.Upsert(context.Background(), policy.Finding{ID: "f1", PolicyID: "p1"})
+	if store.Len() != 1 {
+		t.Errorf("expected 1, got %d", store.Len())
+	}
+
+	store.Upsert(context.Background(), policy.Finding{ID: "f2", PolicyID: "p1"})
+	if store.Len() != 2 {
+		t.Errorf("expected 2, got %d", store.Len())
+	}
+
+	// Upserting an existing finding should not increase count
+	store.Upsert(context.Background(), policy.Finding{ID: "f1", PolicyID: "p1"})
+	if store.Len() != 2 {
+		t.Errorf("expected 2 after re-upsert, got %d", store.Len())
 	}
 }
 
