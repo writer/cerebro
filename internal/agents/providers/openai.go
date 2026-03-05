@@ -142,7 +142,10 @@ func (p *OpenAIProvider) Complete(ctx context.Context, messages []agents.Message
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return nil, fmt.Errorf("API error %d (body unreadable: %w)", resp.StatusCode, readErr)
+		}
 		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -237,7 +240,11 @@ func (p *OpenAIProvider) Stream(ctx context.Context, messages []agents.Message, 
 		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
+			body, readErr := io.ReadAll(resp.Body)
+			if readErr != nil {
+				events <- agents.StreamEvent{Error: fmt.Errorf("API error %d (body unreadable: %w)", resp.StatusCode, readErr), Done: true}
+				return
+			}
 			events <- agents.StreamEvent{Error: fmt.Errorf("API error %d: %s", resp.StatusCode, string(body)), Done: true}
 			return
 		}

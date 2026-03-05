@@ -179,7 +179,10 @@ func (c *GitLabClient) defaultBranch(ctx context.Context, projectPath string) (s
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		body, _ := io.ReadAll(resp.Body)
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return "", fmt.Errorf("gitlab project lookup failed: %d (body unreadable: %w)", resp.StatusCode, readErr)
+		}
 		return "", fmt.Errorf("gitlab project lookup failed: %d %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
@@ -210,7 +213,10 @@ func (c *GitLabClient) rawFile(ctx context.Context, projectPath, filePath, ref s
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("read response body: %w", err)
+	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return "", fmt.Errorf("gitlab file lookup failed: %d %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}

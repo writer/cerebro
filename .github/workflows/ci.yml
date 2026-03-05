@@ -211,8 +211,15 @@ jobs:
           version: v2.4.0
           args: --timeout=15m ./cmd/... ./internal/... ./api/...
 
-  gosec:
+  gosec-shards:
+    name: gosec shard ${{ matrix.shard_index }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard_index: [0, 1, 2, 3]
+        shard_total: [4]
     steps:
       - uses: actions/checkout@v4
 
@@ -220,12 +227,43 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.25.7'
+          cache: false
 
       - name: Install gosec
-        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+        run: go install github.com/securego/gosec/v2/cmd/gosec@v2.24.7
 
-      - name: Run gosec
-        run: $(go env GOPATH)/bin/gosec -severity medium -confidence medium -exclude-generated ./...
+      - name: Run gosec shard
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t all_packages < <(go list -f '{{.Dir}}' ./...)
+          selected=()
+          for i in "${!all_packages[@]}"; do
+            if (( i % ${{ matrix.shard_total }} == ${{ matrix.shard_index }} )); then
+              selected+=("${all_packages[$i]}")
+            fi
+          done
+          echo "Running gosec shard ${{ matrix.shard_index }} with ${#selected[@]} packages"
+          if [ ${#selected[@]} -eq 0 ]; then
+            exit 0
+          fi
+          for pkg in "${selected[@]}"; do
+            echo "Scanning ${pkg}"
+            $(go env GOPATH)/bin/gosec -quiet -severity medium -confidence medium -exclude-generated "${pkg}"
+          done
+
+  gosec:
+    name: gosec
+    runs-on: ubuntu-latest
+    needs: [gosec-shards]
+    if: ${{ always() }}
+    steps:
+      - name: Ensure all gosec shards passed
+        run: |
+          if [ "${{ needs.gosec-shards.result }}" != "success" ]; then
+            echo "One or more gosec shards failed."
+            exit 1
+          fi
 
   govulncheck:
     runs-on: ubuntu-latest
@@ -261,14 +299,17 @@ jobs:
         run: docker build -f Dockerfile -t cerebro:ci .
 
       - name: Run Trivy image scan
-        uses: aquasecurity/trivy-action@0.34.0
-        with:
-          image-ref: cerebro:ci
-          format: table
-          exit-code: '1'
-          ignore-unfixed: true
-          vuln-type: os,library
-          severity: CRITICAL,HIGH
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "${HOME}/.cache/trivy:/root/.cache/trivy" \
+            aquasec/trivy:0.69.1 image \
+            --format table \
+            --exit-code 1 \
+            --ignore-unfixed \
+            --vuln-type os,library \
+            --severity CRITICAL,HIGH \
+            cerebro:ci
 
   policy-validate:
     runs-on: ubuntu-latest
