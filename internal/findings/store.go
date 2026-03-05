@@ -27,6 +27,7 @@ package findings
 
 import (
 	"context"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -137,11 +138,12 @@ type StoreConfig struct {
 }
 
 type Store struct {
-	findings         map[string]*Finding
-	attestor         FindingAttestor
-	attestReobserved bool
-	maxFindings      int
-	mu               sync.RWMutex
+	findings          map[string]*Finding
+	attestor          FindingAttestor
+	attestReobserved  bool
+	maxFindings       int
+	resolvedRetention time.Duration
+	mu                sync.RWMutex
 }
 
 // NewStore creates an unlimited in-memory store (backward compatible).
@@ -154,8 +156,9 @@ func NewStore() *Store {
 // NewStoreWithConfig creates an in-memory store with capacity limits.
 func NewStoreWithConfig(cfg StoreConfig) *Store {
 	return &Store{
-		findings:    make(map[string]*Finding),
-		maxFindings: cfg.MaxFindings,
+		findings:          make(map[string]*Finding),
+		maxFindings:       cfg.MaxFindings,
+		resolvedRetention: cfg.ResolvedRetention,
 	}
 }
 
@@ -171,6 +174,9 @@ func (s *Store) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 	defer s.mu.Unlock()
 
 	now := time.Now()
+	if s.resolvedRetention > 0 {
+		_ = s.cleanupResolvedBeforeLocked(now.Add(-s.resolvedRetention))
+	}
 
 	if existing, ok := s.findings[pf.ID]; ok {
 		previousStatus := normalizeStatus(existing.Status)
@@ -299,7 +305,7 @@ func (s *Store) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 	s.findings[pf.ID] = f
 
 	if s.maxFindings > 0 && len(s.findings) > s.maxFindings {
-		s.evictResolved()
+		s.evictToCapacity()
 	}
 
 	return f
@@ -517,49 +523,52 @@ type Stats struct {
 	ByPolicy   map[string]int `json:"by_policy"`
 }
 
-// evictResolved removes the oldest resolved findings to bring the store back
-// under its capacity limit. Must be called with s.mu held.
-func (s *Store) evictResolved() {
+// evictToCapacity removes findings until the store is within its configured
+// capacity. Eviction prefers RESOLVED, then SUPPRESSED, then all other
+// statuses, oldest LastSeen first. Must be called with s.mu held.
+func (s *Store) evictToCapacity() {
 	excess := len(s.findings) - s.maxFindings
 	if excess <= 0 {
 		return
 	}
 
-	// Collect resolved findings sorted by LastSeen (oldest first)
+	// Collect candidates sorted by status priority and LastSeen (oldest first)
 	type entry struct {
-		id       string
-		lastSeen time.Time
+		id             string
+		lastSeen       time.Time
+		statusPriority int
 	}
-	var resolved []entry
+	candidates := make([]entry, 0, len(s.findings))
 	for id, f := range s.findings {
-		if normalizeStatus(f.Status) == "RESOLVED" {
-			resolved = append(resolved, entry{id: id, lastSeen: f.LastSeen})
+		priority := 2
+		switch normalizeStatus(f.Status) {
+		case "RESOLVED":
+			priority = 0
+		case "SUPPRESSED":
+			priority = 1
 		}
+		candidates = append(candidates, entry{id: id, lastSeen: f.LastSeen, statusPriority: priority})
 	}
 
-	// Sort oldest first
-	for i := 0; i < len(resolved); i++ {
-		for j := i + 1; j < len(resolved); j++ {
-			if resolved[j].lastSeen.Before(resolved[i].lastSeen) {
-				resolved[i], resolved[j] = resolved[j], resolved[i]
-			}
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].statusPriority != candidates[j].statusPriority {
+			return candidates[i].statusPriority < candidates[j].statusPriority
 		}
-	}
+		if candidates[i].lastSeen.Equal(candidates[j].lastSeen) {
+			return candidates[i].id < candidates[j].id
+		}
+		return candidates[i].lastSeen.Before(candidates[j].lastSeen)
+	})
 
-	// Remove oldest resolved until within capacity or no more resolved to remove
-	for i := 0; i < len(resolved) && excess > 0; i++ {
-		delete(s.findings, resolved[i].id)
+	for i := 0; i < len(candidates) && excess > 0; i++ {
+		delete(s.findings, candidates[i].id)
 		excess--
 	}
 }
 
-// Cleanup removes resolved findings older than maxAge. Returns the number of
-// findings removed. This mirrors the FileStore.Cleanup pattern.
-func (s *Store) Cleanup(maxAge time.Duration) int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	cutoff := time.Now().Add(-maxAge)
+// cleanupResolvedBeforeLocked removes resolved findings older than cutoff.
+// Must be called with s.mu held.
+func (s *Store) cleanupResolvedBeforeLocked(cutoff time.Time) int {
 	removed := 0
 	for id, f := range s.findings {
 		if normalizeStatus(f.Status) == "RESOLVED" && f.LastSeen.Before(cutoff) {
@@ -568,6 +577,15 @@ func (s *Store) Cleanup(maxAge time.Duration) int {
 		}
 	}
 	return removed
+}
+
+// Cleanup removes resolved findings older than maxAge. Returns the number of
+// findings removed. This mirrors the FileStore.Cleanup pattern.
+func (s *Store) Cleanup(maxAge time.Duration) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.cleanupResolvedBeforeLocked(time.Now().Add(-maxAge))
 }
 
 // Len returns the number of findings in the store.

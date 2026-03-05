@@ -390,6 +390,50 @@ func TestStoreWithMaxFindings(t *testing.T) {
 	}
 }
 
+func TestStoreWithMaxFindings_HardCapWhenAllOpen(t *testing.T) {
+	store := NewStoreWithConfig(StoreConfig{MaxFindings: 2})
+
+	store.Upsert(context.Background(), policy.Finding{ID: "f-0", PolicyID: "p1", Severity: "high"})
+	store.Upsert(context.Background(), policy.Finding{ID: "f-1", PolicyID: "p1", Severity: "high"})
+	store.Upsert(context.Background(), policy.Finding{ID: "f-2", PolicyID: "p1", Severity: "high"})
+
+	if store.Len() != 2 {
+		t.Fatalf("expected hard cap of 2 findings, got %d", store.Len())
+	}
+
+	if _, ok := store.Get("f-0"); ok {
+		t.Error("expected oldest open finding f-0 to be evicted")
+	}
+	if _, ok := store.Get("f-1"); !ok {
+		t.Error("expected f-1 to remain in store")
+	}
+	if _, ok := store.Get("f-2"); !ok {
+		t.Error("expected newest finding f-2 to remain in store")
+	}
+}
+
+func TestStoreWithResolvedRetention(t *testing.T) {
+	store := NewStoreWithConfig(StoreConfig{ResolvedRetention: time.Hour})
+
+	store.Upsert(context.Background(), policy.Finding{ID: "f-old", PolicyID: "p1", Severity: "high"})
+	store.Resolve("f-old")
+
+	func() {
+		store.mu.Lock()
+		defer store.mu.Unlock()
+		store.findings["f-old"].LastSeen = time.Now().Add(-2 * time.Hour)
+	}()
+
+	store.Upsert(context.Background(), policy.Finding{ID: "f-new", PolicyID: "p1", Severity: "high"})
+
+	if _, ok := store.Get("f-old"); ok {
+		t.Error("expected old resolved finding to be removed by retention cleanup")
+	}
+	if _, ok := store.Get("f-new"); !ok {
+		t.Error("expected new finding to be present")
+	}
+}
+
 func TestStoreCleanup(t *testing.T) {
 	store := NewStore()
 
