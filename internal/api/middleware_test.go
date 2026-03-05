@@ -158,6 +158,7 @@ func TestRoutePermissionCoverage(t *testing.T) {
 		{name: "graph read", method: http.MethodGet, path: "/api/v1/graph/stats", expectedRB: "graph:read"},
 		{name: "graph write", method: http.MethodPost, path: "/api/v1/graph/rebuild", expectedRB: "graph:write"},
 		{name: "incident route uses findings", method: http.MethodGet, path: "/api/v1/incidents/playbooks", expectedRB: "findings:read"},
+		{name: "audit routes require admin", method: http.MethodGet, path: "/api/v1/audit", expectedRB: "admin:users"},
 		{name: "providers require admin", method: http.MethodGet, path: "/api/v1/providers/aws", expectedRB: "admin:users"},
 		{name: "compliance export", method: http.MethodGet, path: "/api/v1/compliance/frameworks/pci/export", expectedRB: "compliance:export"},
 		{name: "unknown api read is locked down", method: http.MethodGet, path: "/api/v1/unknown", expectedRB: "findings:read"},

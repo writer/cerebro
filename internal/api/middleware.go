@@ -232,12 +232,13 @@ func routePermission(method, path string) string {
 		return "graph:read"
 	case strings.HasPrefix(path, "/api/v1/incidents"),
 		strings.HasPrefix(path, "/api/v1/identity"),
-		strings.HasPrefix(path, "/api/v1/threatintel"),
-		strings.HasPrefix(path, "/api/v1/audit"):
+		strings.HasPrefix(path, "/api/v1/threatintel"):
 		if isWrite {
 			return "findings:write"
 		}
 		return "findings:read"
+	case strings.HasPrefix(path, "/api/v1/audit"):
+		return "admin:users"
 	case strings.HasPrefix(path, "/api/v1/providers"),
 		strings.HasPrefix(path, "/api/v1/webhooks"),
 		strings.HasPrefix(path, "/api/v1/scheduler"),

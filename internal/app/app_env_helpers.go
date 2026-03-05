@@ -1,6 +1,8 @@
 package app
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -73,17 +75,22 @@ func parseAPIKeys(value string) map[string]string {
 			continue
 		}
 
-		userID := key
+		userID := ""
 		if len(parts) == 2 {
 			userID = strings.TrimSpace(parts[1])
-			if userID == "" {
-				userID = key
-			}
+		}
+		if userID == "" {
+			userID = defaultAPIUserID(key)
 		}
 		keys[key] = userID
 	}
 
 	return keys
+}
+
+func defaultAPIUserID(key string) string {
+	sum := sha256.Sum256([]byte(key))
+	return "api-key-" + hex.EncodeToString(sum[:8])
 }
 
 func parseLogLevel(level string) slog.Level {

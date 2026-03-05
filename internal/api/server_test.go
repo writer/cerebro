@@ -1119,6 +1119,7 @@ func TestAuthMiddleware_RBACRouteMatrix(t *testing.T) {
 		{name: "runtime write", method: http.MethodPost, path: "/api/v1/runtime/events", body: map[string]interface{}{}, viewerForbidden: true, analystForbidden: false, adminForbidden: false},
 		{name: "graph read", method: http.MethodGet, path: "/api/v1/graph/stats", viewerForbidden: false, analystForbidden: false, adminForbidden: false},
 		{name: "graph write", method: http.MethodPost, path: "/api/v1/graph/rebuild", viewerForbidden: true, analystForbidden: false, adminForbidden: false},
+		{name: "audit admin only", method: http.MethodGet, path: "/api/v1/audit", viewerForbidden: true, analystForbidden: true, adminForbidden: false},
 		{name: "providers admin only", method: http.MethodGet, path: "/api/v1/providers/", viewerForbidden: true, analystForbidden: true, adminForbidden: false},
 		{name: "scheduler admin only", method: http.MethodPost, path: "/api/v1/scheduler/jobs/test/run", viewerForbidden: true, analystForbidden: true, adminForbidden: false},
 		{name: "fallback read", method: http.MethodGet, path: "/api/v1/nonexistent", viewerForbidden: false, analystForbidden: false, adminForbidden: false},
@@ -1166,6 +1167,97 @@ func TestAuthMiddleware_RBACRouteMatrix(t *testing.T) {
 			admin := doAuth(tc.method, tc.path, "admin-key", tc.body)
 			assertForbidden(tc, "admin", admin.Code, tc.adminForbidden)
 		})
+	}
+}
+
+func TestAgentSessionOwnershipEnforcedWhenAuthenticated(t *testing.T) {
+	a := newTestApp(t)
+	a.Config.APIAuthEnabled = true
+	a.Config.APIKeys = map[string]string{"alice-key": "alice-1", "bob-key": "bob-1"}
+
+	if err := a.RBAC.CreateUser(&auth.User{ID: "alice-1", Email: "alice@example.com", RoleIDs: []string{"analyst"}}); err != nil {
+		t.Fatalf("create alice user: %v", err)
+	}
+	if err := a.RBAC.CreateUser(&auth.User{ID: "bob-1", Email: "bob@example.com", RoleIDs: []string{"analyst"}}); err != nil {
+		t.Fatalf("create bob user: %v", err)
+	}
+
+	a.Agents.RegisterAgent(&agents.Agent{
+		ID:   "agent-ownership",
+		Name: "Ownership Agent",
+	})
+
+	s := NewServer(a)
+
+	doAuth := func(method, path, apiKey string, body interface{}) *httptest.ResponseRecorder {
+		var reader io.Reader
+		if body != nil {
+			b, err := json.Marshal(body)
+			if err != nil {
+				t.Fatalf("marshal body: %v", err)
+			}
+			reader = bytes.NewReader(b)
+		}
+
+		req := httptest.NewRequest(method, path, reader)
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+		if body != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, req)
+		return w
+	}
+
+	// Cannot spoof another user's identity when creating sessions.
+	spoofedCreate := doAuth(http.MethodPost, "/api/v1/agents/sessions", "alice-key", map[string]string{
+		"agent_id": "agent-ownership",
+		"user_id":  "bob-1",
+	})
+	if spoofedCreate.Code != http.StatusForbidden {
+		t.Fatalf("expected spoofed create to be forbidden, got %d", spoofedCreate.Code)
+	}
+
+	create := doAuth(http.MethodPost, "/api/v1/agents/sessions", "alice-key", map[string]string{
+		"agent_id": "agent-ownership",
+		"user_id":  "alice-1",
+	})
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected session create to succeed, got %d: %s", create.Code, create.Body.String())
+	}
+
+	var session agents.Session
+	if err := json.Unmarshal(create.Body.Bytes(), &session); err != nil {
+		t.Fatalf("decode session: %v", err)
+	}
+	if session.UserID != "alice-1" {
+		t.Fatalf("expected session user alice-1, got %s", session.UserID)
+	}
+
+	bobRead := doAuth(http.MethodGet, "/api/v1/agents/sessions/"+session.ID, "bob-key", nil)
+	if bobRead.Code != http.StatusForbidden {
+		t.Fatalf("expected bob read to be forbidden, got %d", bobRead.Code)
+	}
+
+	bobMessages := doAuth(http.MethodGet, "/api/v1/agents/sessions/"+session.ID+"/messages", "bob-key", nil)
+	if bobMessages.Code != http.StatusForbidden {
+		t.Fatalf("expected bob message read to be forbidden, got %d", bobMessages.Code)
+	}
+
+	bobSend := doAuth(http.MethodPost, "/api/v1/agents/sessions/"+session.ID+"/messages", "bob-key", map[string]string{
+		"content": "hi",
+	})
+	if bobSend.Code != http.StatusForbidden {
+		t.Fatalf("expected bob send to be forbidden, got %d", bobSend.Code)
+	}
+}
+
+func TestListAuditLogsRejectsNonPositiveLimit(t *testing.T) {
+	s := newTestServer(t)
+	w := do(t, s, "GET", "/api/v1/audit?limit=-1", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid limit, got %d", w.Code)
 	}
 }
 
