@@ -308,6 +308,16 @@ jobs:
             exit 1
           fi
 
+          for public_path in /metrics /docs /openapi.yaml; do
+            public_status=$(curl -sS -o "/tmp/api-auth-smoke-public-$(echo "$public_path" | tr '/.' '__').json" -w "%{http_code}" \
+              "http://127.0.0.1:${API_PORT}${public_path}")
+            if [ "$public_status" -ne "200" ]; then
+              echo "expected 200 for public endpoint ${public_path}, got $public_status"
+              cat /tmp/cerebro-api-auth-smoke.log || true
+              exit 1
+            fi
+          done
+
   api-auth-rbac-smoke:
     name: api-auth-rbac-smoke
     runs-on: ubuntu-latest

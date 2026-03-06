@@ -101,6 +101,24 @@ func TestAPIKeyAuth(t *testing.T) {
 			apiKey:     "",
 			wantStatus: http.StatusOK,
 		},
+		{
+			name:       "Metrics endpoint - no auth required",
+			path:       "/metrics",
+			apiKey:     "",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "Docs endpoint - no auth required",
+			path:       "/docs",
+			apiKey:     "",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "OpenAPI endpoint - no auth required",
+			path:       "/openapi.yaml",
+			apiKey:     "",
+			wantStatus: http.StatusOK,
+		},
 	}
 
 	for _, tt := range tests {

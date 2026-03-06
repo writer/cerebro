@@ -46,8 +46,7 @@ func APIKeyAuth(cfg AuthConfig) func(http.Handler) http.Handler {
 				return
 			}
 
-			// Skip auth for health endpoints
-			if r.URL.Path == "/health" || r.URL.Path == "/ready" {
+			if isPublicEndpoint(r.URL.Path) {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -151,10 +150,7 @@ const DefaultMaxBodySize = 10 * 1024 * 1024
 func RBACMiddleware(rbac *auth.RBAC) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Skip RBAC for health/metrics/docs endpoints
-			if r.URL.Path == "/health" || r.URL.Path == "/ready" ||
-				r.URL.Path == "/metrics" || r.URL.Path == "/docs" ||
-				r.URL.Path == "/openapi.yaml" {
+			if isPublicEndpoint(r.URL.Path) {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -180,6 +176,12 @@ func RBACMiddleware(rbac *auth.RBAC) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+func isPublicEndpoint(path string) bool {
+	return path == "/health" || path == "/ready" ||
+		path == "/metrics" || path == "/docs" ||
+		path == "/openapi.yaml"
 }
 
 // routePermission maps an HTTP method + path to the required RBAC permission.
