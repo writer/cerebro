@@ -225,6 +225,44 @@ func TestRateLimitMiddlewareSkipsPublicEndpoints(t *testing.T) {
 	}
 }
 
+func TestRateLimitMiddleware_UsesRemoteIPWithoutPort(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	rl := NewRateLimiter(RateLimitConfig{
+		RequestsPerWindow: 1,
+		Window:            time.Minute,
+		Enabled:           true,
+	})
+	t.Cleanup(rl.Close)
+	middleware := RateLimitMiddlewareWithLimiter(RateLimitConfig{
+		RequestsPerWindow: 1,
+		Window:            time.Minute,
+		Enabled:           true,
+	}, rl)
+
+	wrapped := middleware(handler)
+
+	// Requests from the same client IP but different source ports must share
+	// one bucket so opening new connections cannot bypass limits.
+	req := httptest.NewRequest("GET", "/api/v1/test", nil)
+	req.RemoteAddr = "192.168.1.1:10001"
+	w := httptest.NewRecorder()
+	wrapped.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("first request: expected 200, got %d", w.Code)
+	}
+
+	req2 := httptest.NewRequest("GET", "/api/v1/test", nil)
+	req2.RemoteAddr = "192.168.1.1:10002"
+	w2 := httptest.NewRecorder()
+	wrapped.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusTooManyRequests {
+		t.Fatalf("second request from same IP with different port: expected 429, got %d", w2.Code)
+	}
+}
+
 func TestGetClientKey_NoTrustedProxies(t *testing.T) {
 	// Without trusted proxies configured, forwarded headers are ignored.
 	tests := []struct {
@@ -282,6 +320,12 @@ func TestGetClientKey_NoTrustedProxies(t *testing.T) {
 			headers:  map[string]string{},
 			addr:     "192.168.1.1:1234",
 			expected: "ip:192.168.1.1",
+		},
+		{
+			name:     "RemoteAddr IPv6 host:port",
+			headers:  map[string]string{},
+			addr:     "[2001:db8::1]:1234",
+			expected: "ip:2001:db8::1",
 		},
 		{
 			name:     "invalid RemoteAddr returns unknown",
