@@ -17,13 +17,16 @@ func TestAdaptiveLimiter_BoundsAcquireAdjustAndRelease(t *testing.T) {
 	if err := limiter.Acquire(context.Background()); err != nil {
 		t.Fatalf("acquire should succeed: %v", err)
 	}
-	limiter.Release()
 
+	// Token is now drained; acquire with a canceled context must return the
+	// context error because there are no tokens available.
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if err := limiter.Acquire(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected canceled acquire error, got %v", err)
 	}
+
+	limiter.Release()
 
 	if got := limiter.Adjust(10); got != 1 {
 		t.Fatalf("expected adjust to clamp max=1, got %d", got)
