@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/auth"
@@ -22,11 +23,41 @@ func TestExtractAPIKey(t *testing.T) {
 			expected: "test-key-123",
 		},
 		{
+			name: "Bearer token (case-insensitive scheme)",
+			setup: func(r *http.Request) {
+				r.Header.Set("Authorization", "bearer test-key-123")
+			},
+			expected: "test-key-123",
+		},
+		{
+			name: "Bearer token (extra whitespace)",
+			setup: func(r *http.Request) {
+				r.Header.Set("Authorization", "  Bearer   spaced-key  ")
+			},
+			expected: "spaced-key",
+		},
+		{
 			name: "X-API-Key header",
 			setup: func(r *http.Request) {
 				r.Header.Set("X-API-Key", "header-key-456")
 			},
 			expected: "header-key-456",
+		},
+		{
+			name: "Malformed Authorization does not fall back",
+			setup: func(r *http.Request) {
+				r.Header.Set("Authorization", "Token malformed")
+				r.Header.Set("X-API-Key", "header-key-456")
+			},
+			expected: "",
+		},
+		{
+			name: "Conflicting headers rejected",
+			setup: func(r *http.Request) {
+				r.Header.Set("Authorization", "Bearer auth-key")
+				r.Header.Set("X-API-Key", "header-key-456")
+			},
+			expected: "",
 		},
 		{
 			name:     "No key",
@@ -144,7 +175,7 @@ func TestAPIKeyAuthDisabled(t *testing.T) {
 	}
 }
 
-func TestAPIKeyAuth_FallsBackToXAPIKeyWhenAuthorizationIsMalformed(t *testing.T) {
+func TestAPIKeyAuth_RejectsMalformedAuthorizationEvenWithXAPIKey(t *testing.T) {
 	cfg := AuthConfig{
 		Enabled: true,
 		APIKeys: map[string]string{
@@ -165,11 +196,67 @@ func TestAPIKeyAuth_FallsBackToXAPIKeyWhenAuthorizationIsMalformed(t *testing.T)
 
 	w := httptest.NewRecorder()
 	middleware.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+	if body := w.Body.String(); body == "" || !strings.Contains(body, "invalid_authorization_header") {
+		t.Fatalf("expected invalid_authorization_header body, got %q", body)
+	}
+}
+
+func TestAPIKeyAuth_RejectsConflictingCredentials(t *testing.T) {
+	cfg := AuthConfig{
+		Enabled: true,
+		APIKeys: map[string]string{
+			"valid-key": "user-1",
+		},
+	}
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	middleware := APIKeyAuth(cfg)(handler)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/test", nil)
+	req.Header.Set("Authorization", "Bearer valid-key")
+	req.Header.Set("X-API-Key", "different-key")
+
+	w := httptest.NewRecorder()
+	middleware.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+	if body := w.Body.String(); body == "" || !strings.Contains(body, "conflicting_api_credentials") {
+		t.Fatalf("expected conflicting_api_credentials body, got %q", body)
+	}
+}
+
+func TestAPIKeyAuth_AllowsMatchingCredentialsFromBothHeaders(t *testing.T) {
+	cfg := AuthConfig{
+		Enabled: true,
+		APIKeys: map[string]string{
+			"valid-key": "user-1",
+		},
+	}
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(GetUserID(r.Context())))
+	})
+
+	middleware := APIKeyAuth(cfg)(handler)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/test", nil)
+	req.Header.Set("Authorization", "Bearer valid-key")
+	req.Header.Set("X-API-Key", "valid-key")
+
+	w := httptest.NewRecorder()
+	middleware.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
 	if got := w.Body.String(); got != "user-1" {
-		t.Fatalf("expected user-1 from X-API-Key fallback, got %q", got)
+		t.Fatalf("expected user-1, got %q", got)
 	}
 }
 
