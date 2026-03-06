@@ -183,7 +183,45 @@ func (a *App) initAgents() {
 	scmClient := scm.NewConfiguredClient(a.Config.GitHubToken, a.Config.GitLabToken, a.Config.GitLabBaseURL)
 
 	// Create security tools for agents
-	tools := agents.NewSecurityTools(a.Snowflake, a.Findings, a.Policy, scmClient)
+	toolset := agents.NewSecurityTools(a.Snowflake, a.Findings, a.Policy, scmClient)
+	agentTools := toolset.GetTools()
+
+	remoteToolsCfg := agents.RemoteToolProviderConfig{
+		Enabled:               a.Config.AgentRemoteToolsEnabled,
+		URLs:                  a.Config.NATSJetStreamURLs,
+		ManifestSubject:       a.Config.AgentRemoteToolsManifestSubject,
+		RequestPrefix:         a.Config.AgentRemoteToolsRequestPrefix,
+		DiscoverTimeout:       a.Config.AgentRemoteToolsDiscoverTimeout,
+		RequestTimeout:        a.Config.AgentRemoteToolsRequestTimeout,
+		MaxTools:              a.Config.AgentRemoteToolsMaxTools,
+		ConnectTimeout:        a.Config.NATSJetStreamConnectTimeout,
+		AuthMode:              a.Config.NATSJetStreamAuthMode,
+		Username:              a.Config.NATSJetStreamUsername,
+		Password:              a.Config.NATSJetStreamPassword,
+		NKeySeed:              a.Config.NATSJetStreamNKeySeed,
+		UserJWT:               a.Config.NATSJetStreamUserJWT,
+		TLSEnabled:            a.Config.NATSJetStreamTLSEnabled,
+		TLSCAFile:             a.Config.NATSJetStreamTLSCAFile,
+		TLSCertFile:           a.Config.NATSJetStreamTLSCertFile,
+		TLSKeyFile:            a.Config.NATSJetStreamTLSKeyFile,
+		TLSServerName:         a.Config.NATSJetStreamTLSServerName,
+		TLSInsecureSkipVerify: a.Config.NATSJetStreamTLSInsecure,
+	}
+
+	remoteProvider, err := agents.NewRemoteToolProvider(remoteToolsCfg, a.Logger)
+	if err != nil {
+		a.Logger.Warn("failed to initialize remote tool provider", "error", err)
+	} else if remoteProvider != nil {
+		remoteTools, err := remoteProvider.DiscoverTools(context.Background())
+		if err != nil {
+			a.Logger.Warn("failed to discover remote tools", "error", err)
+			_ = remoteProvider.Close()
+		} else {
+			agentTools = agents.MergeTools(agentTools, remoteTools)
+			a.RemoteTools = remoteProvider
+			a.Logger.Info("registered remote tools for agents", "count", len(remoteTools))
+		}
+	}
 
 	// Register Anthropic-based agent if configured
 	if a.Config.AnthropicAPIKey != "" {
@@ -195,7 +233,7 @@ func (a *App) initAgents() {
 			Name:        "Security Analyst",
 			Description: "AI-powered security analyst for investigating findings and incidents",
 			Provider:    provider,
-			Tools:       tools.GetTools(),
+			Tools:       agentTools,
 			Memory:      agents.NewMemory(100),
 		})
 	}
@@ -210,7 +248,7 @@ func (a *App) initAgents() {
 			Name:        "Incident Responder",
 			Description: "AI-powered incident responder for triage and remediation",
 			Provider:    provider,
-			Tools:       tools.GetTools(),
+			Tools:       agentTools,
 			Memory:      agents.NewMemory(100),
 		})
 	}

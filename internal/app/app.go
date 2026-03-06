@@ -93,6 +93,7 @@ type App struct {
 	Providers     *providers.Registry
 	Webhooks      *webhooks.Service
 	TapConsumer   *events.Consumer
+	RemoteTools   *agents.RemoteToolProvider
 	Notifications *notifications.Manager
 	Scheduler     *scheduler.Scheduler
 
@@ -427,6 +428,14 @@ type Config struct {
 	NATSConsumerAckWait      time.Duration
 	NATSConsumerFetchTimeout time.Duration
 
+	// Remote tool proxy for AI agents (Ensemble tools via NATS request/reply)
+	AgentRemoteToolsEnabled         bool
+	AgentRemoteToolsManifestSubject string
+	AgentRemoteToolsRequestPrefix   string
+	AgentRemoteToolsDiscoverTimeout time.Duration
+	AgentRemoteToolsRequestTimeout  time.Duration
+	AgentRemoteToolsMaxTools        int
+
 	// Notifications
 	SlackWebhookURL    string
 	SlackSigningSecret string
@@ -670,6 +679,12 @@ func LoadConfig() *Config {
 		NATSConsumerBatchSize:              getEnvInt("NATS_CONSUMER_BATCH_SIZE", 50),
 		NATSConsumerAckWait:                getEnvDuration("NATS_CONSUMER_ACK_WAIT", 30*time.Second),
 		NATSConsumerFetchTimeout:           getEnvDuration("NATS_CONSUMER_FETCH_TIMEOUT", 2*time.Second),
+		AgentRemoteToolsEnabled:            getEnvBool("AGENT_REMOTE_TOOLS_ENABLED", false),
+		AgentRemoteToolsManifestSubject:    getEnv("AGENT_REMOTE_TOOLS_MANIFEST_SUBJECT", "ensemble.tools.manifest"),
+		AgentRemoteToolsRequestPrefix:      getEnv("AGENT_REMOTE_TOOLS_REQUEST_PREFIX", "ensemble.tools.request"),
+		AgentRemoteToolsDiscoverTimeout:    getEnvDuration("AGENT_REMOTE_TOOLS_DISCOVER_TIMEOUT", 5*time.Second),
+		AgentRemoteToolsRequestTimeout:     getEnvDuration("AGENT_REMOTE_TOOLS_REQUEST_TIMEOUT", 30*time.Second),
+		AgentRemoteToolsMaxTools:           getEnvInt("AGENT_REMOTE_TOOLS_MAX_TOOLS", 200),
 		SlackWebhookURL:                    getEnv("SLACK_WEBHOOK_URL", ""),
 		SlackSigningSecret:                 getEnv("SLACK_SIGNING_SECRET", ""),
 		PagerDutyKey:                       getEnv("PAGERDUTY_ROUTING_KEY", ""),

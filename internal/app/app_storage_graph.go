@@ -214,6 +214,12 @@ func (a *App) Close() error {
 		}
 	}
 
+	if a.RemoteTools != nil {
+		if err := a.RemoteTools.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("remote tool provider: %w", err))
+		}
+	}
+
 	// Close findings store if it implements io.Closer (e.g., SQLiteStore)
 	if closer, ok := a.Findings.(interface{ Close() error }); ok {
 		if err := closer.Close(); err != nil {
