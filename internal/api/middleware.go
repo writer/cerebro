@@ -99,14 +99,6 @@ func SecurityHeaders() func(http.Handler) http.Handler {
 	}
 }
 
-func extractAPIKey(r *http.Request) string {
-	key, err := extractAPIKeyStrict(r)
-	if err != nil {
-		return ""
-	}
-	return key
-}
-
 var (
 	errMalformedAuthorizationHeader = errors.New("malformed authorization header")
 	errConflictingAPICredentials    = errors.New("conflicting api credentials")
