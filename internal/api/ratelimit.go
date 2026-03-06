@@ -145,8 +145,8 @@ func RateLimitMiddlewareWithLimiter(cfg RateLimitConfig, rl *RateLimiter) func(h
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Skip rate limiting for health endpoints
-			if r.URL.Path == "/health" || r.URL.Path == "/ready" || r.URL.Path == "/metrics" {
+			// Skip rate limiting for public endpoints.
+			if isPublicEndpoint(r.URL.Path) {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -174,12 +174,10 @@ func RateLimitMiddlewareWithLimiter(cfg RateLimitConfig, rl *RateLimiter) func(h
 
 // getClientKey extracts the rate limit key from the request
 func getClientKey(r *http.Request) string {
-	// Prefer API key if present
-	if key := r.Header.Get("X-API-Key"); key != "" {
+	// Canonicalize API key extraction across Authorization and X-API-Key
+	// so the same key always maps to the same rate limit bucket.
+	if key, err := extractAPIKeyStrict(r); err == nil && key != "" {
 		return "apikey:" + key
-	}
-	if auth := r.Header.Get("Authorization"); auth != "" {
-		return "auth:" + auth
 	}
 
 	// Fall back to IP address
