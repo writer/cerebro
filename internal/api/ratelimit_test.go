@@ -171,7 +171,7 @@ func TestRateLimitMiddlewareDisabled(t *testing.T) {
 	}
 }
 
-func TestRateLimitMiddlewareSkipsHealthEndpoints(t *testing.T) {
+func TestRateLimitMiddlewareSkipsPublicEndpoints(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -190,28 +190,38 @@ func TestRateLimitMiddlewareSkipsHealthEndpoints(t *testing.T) {
 
 	wrapped := middleware(handler)
 
-	// Health endpoint should always work
-	for i := 0; i < 5; i++ {
-		req := httptest.NewRequest("GET", "/health", nil)
-		w := httptest.NewRecorder()
+	publicPaths := []string{"/health", "/ready", "/metrics", "/docs", "/openapi.yaml"}
+	for _, path := range publicPaths {
+		for i := 0; i < 5; i++ {
+			req := httptest.NewRequest("GET", path, nil)
+			w := httptest.NewRecorder()
 
-		wrapped.ServeHTTP(w, req)
+			wrapped.ServeHTTP(w, req)
 
-		if w.Code != http.StatusOK {
-			t.Errorf("/health request %d: expected 200, got %d", i+1, w.Code)
+			if w.Code != http.StatusOK {
+				t.Errorf("%s request %d: expected 200, got %d", path, i+1, w.Code)
+			}
+			if got := w.Header().Get("X-RateLimit-Limit"); got != "" {
+				t.Errorf("%s request %d: expected no rate limit headers for bypassed endpoint, got X-RateLimit-Limit=%q", path, i+1, got)
+			}
 		}
 	}
 
-	// Same for /ready
-	for i := 0; i < 5; i++ {
-		req := httptest.NewRequest("GET", "/ready", nil)
-		w := httptest.NewRecorder()
+	// Public endpoint traffic should not consume API route quota.
+	req := httptest.NewRequest("GET", "/api/v1/test", nil)
+	req.RemoteAddr = "192.168.1.1:1234"
+	w := httptest.NewRecorder()
+	wrapped.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("first protected route request: expected 200, got %d", w.Code)
+	}
 
-		wrapped.ServeHTTP(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Errorf("/ready request %d: expected 200, got %d", i+1, w.Code)
-		}
+	req2 := httptest.NewRequest("GET", "/api/v1/test", nil)
+	req2.RemoteAddr = "192.168.1.1:1234"
+	w2 := httptest.NewRecorder()
+	wrapped.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusTooManyRequests {
+		t.Fatalf("second protected route request: expected 429, got %d", w2.Code)
 	}
 }
 
@@ -223,6 +233,38 @@ func TestGetClientKey_NoTrustedProxies(t *testing.T) {
 		addr     string
 		expected string
 	}{
+		{
+			name:     "X-API-Key header",
+			headers:  map[string]string{"X-API-Key": "my-api-key"},
+			expected: "apikey:my-api-key",
+		},
+		{
+			name:     "Authorization header",
+			headers:  map[string]string{"Authorization": "Bearer token123"},
+			expected: "apikey:token123",
+		},
+		{
+			name:     "Authorization header with extra spaces",
+			headers:  map[string]string{"Authorization": "   Bearer   token123   "},
+			expected: "apikey:token123",
+		},
+		{
+			name:     "matching Authorization and X-API-Key canonicalize to one key",
+			headers:  map[string]string{"Authorization": "Bearer key", "X-API-Key": "key"},
+			expected: "apikey:key",
+		},
+		{
+			name:     "malformed Authorization falls back to IP key",
+			headers:  map[string]string{"Authorization": "Token token123", "X-Forwarded-For": "1.2.3.4"},
+			addr:     "203.0.113.9:8443",
+			expected: "ip:203.0.113.9",
+		},
+		{
+			name:     "conflicting API credentials fall back to IP key",
+			headers:  map[string]string{"Authorization": "Bearer token123", "X-API-Key": "other"},
+			addr:     "192.168.1.1:1234",
+			expected: "ip:192.168.1.1",
+		},
 		{
 			name:     "RemoteAddr used even when XFF present",
 			headers:  map[string]string{"X-Forwarded-For": "1.2.3.4"},

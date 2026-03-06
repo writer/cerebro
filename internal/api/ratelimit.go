@@ -176,8 +176,8 @@ func RateLimitMiddlewareWithLimiter(cfg RateLimitConfig, rl *RateLimiter) func(h
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Skip rate limiting for health endpoints
-			if r.URL.Path == "/health" || r.URL.Path == "/ready" || r.URL.Path == "/metrics" {
+			// Skip rate limiting for public endpoints.
+			if isPublicEndpoint(r.URL.Path) {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -213,6 +213,12 @@ func getClientKey(r *http.Request) string {
 // getClientKeyTrusted returns the rate-limit key, honouring forwarded headers
 // only when the direct peer (RemoteAddr) is within a trusted CIDR.
 func getClientKeyTrusted(r *http.Request, trustedNets []*net.IPNet) string {
+	// Canonicalize API key extraction across Authorization and X-API-Key
+	// so the same key always maps to the same rate limit bucket.
+	if key, err := extractAPIKeyStrict(r); err == nil && key != "" {
+		return "apikey:" + key
+	}
+
 	if ip := canonicalClientIP(r, trustedNets); ip != "" {
 		return "ip:" + ip
 	}
