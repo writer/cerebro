@@ -20,10 +20,12 @@ func TestLoadConfig(t *testing.T) {
 	os.Setenv("API_PORT", "9999")
 	os.Setenv("LOG_LEVEL", "debug")
 	os.Setenv("RBAC_STATE_FILE", "/tmp/rbac-state.json")
+	os.Setenv("SECURITY_DIGEST_INTERVAL", "24h")
 	defer func() {
 		os.Unsetenv("API_PORT")
 		os.Unsetenv("LOG_LEVEL")
 		os.Unsetenv("RBAC_STATE_FILE")
+		os.Unsetenv("SECURITY_DIGEST_INTERVAL")
 	}()
 
 	cfg := LoadConfig()
@@ -38,6 +40,10 @@ func TestLoadConfig(t *testing.T) {
 
 	if cfg.RBACStateFile != "/tmp/rbac-state.json" {
 		t.Errorf("expected RBAC state file to be set, got %s", cfg.RBACStateFile)
+	}
+
+	if cfg.SecurityDigestInterval != "24h" {
+		t.Errorf("expected security digest interval 24h, got %s", cfg.SecurityDigestInterval)
 	}
 }
 
@@ -824,16 +830,17 @@ func TestSplitTables(t *testing.T) {
 
 func TestConfig_Fields(t *testing.T) {
 	cfg := &Config{ //nolint:govet // false positive - all fields are tested below
-		Port:               8080,
-		LogLevel:           "info",
-		SnowflakeDatabase:  "CEREBRO",
-		SnowflakeSchema:    "CEREBRO",
-		PoliciesPath:       "policies",
-		ScanInterval:       "1h",
-		RateLimitEnabled:   true,
-		RateLimitRequests:  1000,
-		RateLimitWindow:    time.Hour,
-		CORSAllowedOrigins: []string{"https://app.example.com"},
+		Port:                   8080,
+		LogLevel:               "info",
+		SnowflakeDatabase:      "CEREBRO",
+		SnowflakeSchema:        "CEREBRO",
+		PoliciesPath:           "policies",
+		ScanInterval:           "1h",
+		SecurityDigestInterval: "24h",
+		RateLimitEnabled:       true,
+		RateLimitRequests:      1000,
+		RateLimitWindow:        time.Hour,
+		CORSAllowedOrigins:     []string{"https://app.example.com"},
 	}
 
 	if cfg.Port != 8080 {
@@ -853,6 +860,9 @@ func TestConfig_Fields(t *testing.T) {
 	}
 	if cfg.ScanInterval != "1h" {
 		t.Error("ScanInterval field incorrect")
+	}
+	if cfg.SecurityDigestInterval != "24h" {
+		t.Error("SecurityDigestInterval field incorrect")
 	}
 	if cfg.RateLimitEnabled != true {
 		t.Error("RateLimitEnabled field incorrect")
