@@ -14,26 +14,11 @@ func TestPublicEndpoints_RemainAccessibleWhenAPIAuthEnabled(t *testing.T) {
 
 	s := NewServer(a)
 
-	cases := []struct {
-		path       string
-		wantStatus int
-	}{
-		{path: "/health", wantStatus: http.StatusOK},
-		{path: "/ready", wantStatus: http.StatusOK},
-		{path: "/metrics", wantStatus: http.StatusOK},
-		{path: "/docs", wantStatus: http.StatusOK},
-		// openapi.yaml is served from a relative file path in tests and may 404,
-		// but auth middleware must not block it.
-		{path: "/openapi.yaml", wantStatus: 0},
-	}
-
-	for _, tc := range cases {
-		w := do(t, s, http.MethodGet, tc.path, nil)
-		if tc.wantStatus != 0 && w.Code != tc.wantStatus {
-			t.Fatalf("expected %d for public endpoint %s, got %d", tc.wantStatus, tc.path, w.Code)
-		}
-		if w.Code == http.StatusUnauthorized {
-			t.Fatalf("expected auth bypass for public endpoint %s, got 401", tc.path)
+	publicPaths := []string{"/health", "/ready", "/metrics", "/docs", "/openapi.yaml"}
+	for _, path := range publicPaths {
+		w := do(t, s, http.MethodGet, path, nil)
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200 for public endpoint %s, got %d", path, w.Code)
 		}
 	}
 
