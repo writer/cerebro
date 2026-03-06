@@ -90,6 +90,12 @@ func (s *Server) setupRoutes() {
 			r.Post("/{id}/tickets", s.linkFindingTicket)
 		})
 
+		// Business entity analytics endpoints
+		r.Route("/entities", func(r chi.Router) {
+			r.Get("/{id}/cohort", s.getEntityCohort)
+			r.Get("/{id}/outlier-score", s.getEntityOutlierScore)
+		})
+
 		// Reporting endpoints
 		r.Route("/reports", func(r chi.Router) {
 			r.Get("/executive-summary", s.executiveSummary)
@@ -158,6 +164,7 @@ func (s *Server) setupRoutes() {
 			r.Post("/graph/nodes", s.addNode)
 			r.Post("/graph/edges", s.addEdge)
 		})
+		r.Post("/impact-analysis", s.impactAnalysis)
 
 		// Provider endpoints
 		r.Route("/providers", func(r chi.Router) {
