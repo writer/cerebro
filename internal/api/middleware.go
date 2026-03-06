@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -52,7 +53,18 @@ func APIKeyAuth(cfg AuthConfig) func(http.Handler) http.Handler {
 				return
 			}
 
-			apiKey := extractAPIKey(r)
+			apiKey, err := extractAPIKeyStrict(r)
+			if err != nil {
+				switch {
+				case errors.Is(err, errMalformedAuthorizationHeader):
+					writeJSONError(w, http.StatusUnauthorized, "invalid_authorization_header", "Authorization header must use the format 'Bearer <token>'")
+				case errors.Is(err, errConflictingAPICredentials):
+					writeJSONError(w, http.StatusUnauthorized, "conflicting_api_credentials", "Authorization and X-API-Key credentials must match when both are provided")
+				default:
+					writeJSONError(w, http.StatusUnauthorized, "invalid_api_key", "API key is invalid or expired")
+				}
+				return
+			}
 			if apiKey == "" {
 				writeJSONError(w, http.StatusUnauthorized, "missing_api_key", "API key is required")
 				return
@@ -89,18 +101,54 @@ func SecurityHeaders() func(http.Handler) http.Handler {
 }
 
 func extractAPIKey(r *http.Request) string {
-	// Check Authorization header
-	auth := r.Header.Get("Authorization")
-	if strings.HasPrefix(auth, "Bearer ") {
-		return strings.TrimPrefix(auth, "Bearer ")
+	key, err := extractAPIKeyStrict(r)
+	if err != nil {
+		return ""
+	}
+	return key
+}
+
+var (
+	errMalformedAuthorizationHeader = errors.New("malformed authorization header")
+	errConflictingAPICredentials    = errors.New("conflicting api credentials")
+)
+
+func extractAPIKeyStrict(r *http.Request) (string, error) {
+	authKey, hasAuth, err := bearerTokenFromAuthorization(r.Header.Get("Authorization"))
+	if err != nil {
+		return "", err
 	}
 
-	// Check X-API-Key header
-	if key := r.Header.Get("X-API-Key"); key != "" {
-		return key
+	headerKey := strings.TrimSpace(r.Header.Get("X-API-Key"))
+	hasHeaderKey := headerKey != ""
+
+	if hasAuth && hasHeaderKey {
+		if subtle.ConstantTimeCompare([]byte(authKey), []byte(headerKey)) != 1 {
+			return "", errConflictingAPICredentials
+		}
+		return authKey, nil
+	}
+	if hasAuth {
+		return authKey, nil
+	}
+	if hasHeaderKey {
+		return headerKey, nil
+	}
+	return "", nil
+}
+
+func bearerTokenFromAuthorization(raw string) (string, bool, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", false, nil
 	}
 
-	return ""
+	parts := strings.Fields(raw)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || strings.TrimSpace(parts[1]) == "" {
+		return "", false, errMalformedAuthorizationHeader
+	}
+
+	return parts[1], true, nil
 }
 
 func validateAPIKey(keys map[string]string, key string) (string, bool) {
