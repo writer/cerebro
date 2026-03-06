@@ -331,7 +331,7 @@ func (r *AuditRepository) Log(ctx context.Context, entry *AuditEntry) error {
 }
 
 func (r *AuditRepository) List(ctx context.Context, resourceType, resourceID string, limit int) ([]*AuditEntry, error) {
-	if limit == 0 {
+	if limit <= 0 {
 		limit = 100
 	}
 

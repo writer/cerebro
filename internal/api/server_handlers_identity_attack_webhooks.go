@@ -323,10 +323,7 @@ func (s *Server) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 
 	resourceType := r.URL.Query().Get("resource_type")
 	resourceID := r.URL.Query().Get("resource_id")
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	if limit == 0 {
-		limit = 100
-	}
+	limit := queryPositiveInt(r, "limit", 100)
 
 	logs, err := s.app.AuditRepo.List(r.Context(), resourceType, resourceID, limit)
 	if err != nil {

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -193,10 +192,7 @@ func (s *Server) listAssets(w http.ResponseWriter, r *http.Request) {
 	}
 
 	table := chi.URLParam(r, "table")
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	if limit == 0 {
-		limit = 100
-	}
+	limit := queryPositiveInt(r, "limit", 100)
 
 	assets, err := s.app.Snowflake.GetAssets(r.Context(), table, snowflake.AssetFilter{
 		Limit:   limit,
