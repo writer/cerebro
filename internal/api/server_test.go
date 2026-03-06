@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"testing"
 
@@ -1285,7 +1287,13 @@ func TestAgentSendMessage_NoProviderConfiguredReturnsGuidance(t *testing.T) {
 }
 
 func TestNoPlaceholderMarkersInAPIServer(t *testing.T) {
-	content, err := os.ReadFile("server.go")
+	_, thisFile, _, ok := goruntime.Caller(0)
+	if !ok {
+		t.Fatal("resolve test file path: runtime caller unavailable")
+	}
+
+	serverPath := filepath.Join(filepath.Dir(thisFile), "server.go")
+	content, err := os.ReadFile(serverPath)
 	if err != nil {
 		t.Fatalf("read server.go: %v", err)
 	}
