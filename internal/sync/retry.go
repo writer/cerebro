@@ -155,7 +155,13 @@ func defaultRetryDelay(class retryClass, attempt int, opts retryOptions) time.Du
 	if attempt < 1 {
 		attempt = 1
 	}
-	delay := opts.BaseDelay * time.Duration(1<<uint(attempt-1))
+
+	shift := attempt - 1
+	if shift > 30 {
+		shift = 30
+	}
+
+	delay := opts.BaseDelay * (time.Duration(1) << shift)
 	if delay > opts.MaxDelay {
 		delay = opts.MaxDelay
 	}

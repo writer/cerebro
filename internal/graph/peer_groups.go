@@ -79,7 +79,7 @@ func NewMinHashIndex() *MinHashIndex {
 	const goldenRatio uint64 = 0x9E3779B97F4A7C15
 	const initSeed uint64 = 0x6A09E667BB67AE85
 	for i := range idx.hashSeeds {
-		idx.hashSeeds[i] = uint64(i)*goldenRatio + initSeed //nolint:gosec
+		idx.hashSeeds[i] = uint64(i)*goldenRatio + initSeed // #nosec G115 -- i is bounded by numHashFunctions (128).
 	}
 
 	for i := range idx.bands {

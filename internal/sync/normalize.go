@@ -188,7 +188,7 @@ func normalizeTimestampValue(value interface{}) (interface{}, bool) {
 		if uint64(typed) > uint64(maxSignedInt64) {
 			return nil, false
 		}
-		return normalizeTimestampEpoch(int64(typed))
+		return normalizeTimestampEpoch(int64(typed)) // #nosec G115 -- guarded above to int64 max.
 	case uint8:
 		return normalizeTimestampEpoch(int64(typed))
 	case uint16:
