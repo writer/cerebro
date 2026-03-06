@@ -4,9 +4,9 @@ import (
 	"context"
 	"strings"
 
-	"github.com/writer/cerebro/internal/metrics"
-	"github.com/writer/cerebro/internal/providers"
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/evalops/cerebro/internal/metrics"
+	"github.com/evalops/cerebro/internal/providers"
+	"github.com/evalops/cerebro/internal/snowflake"
 )
 
 type providerRegistration struct {

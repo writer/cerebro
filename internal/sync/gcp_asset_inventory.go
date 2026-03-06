@@ -13,8 +13,8 @@ import (
 	"cloud.google.com/go/asset/apiv1/assetpb"
 	"google.golang.org/api/iterator"
 
-	"github.com/writer/cerebro/internal/metrics"
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/evalops/cerebro/internal/metrics"
+	"github.com/evalops/cerebro/internal/snowflake"
 	"golang.org/x/sync/errgroup"
 )
 

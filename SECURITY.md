@@ -11,7 +11,7 @@ Please do **not** open public issues for suspected vulnerabilities.
 Use one of the following:
 
 1. GitHub Security Advisories (preferred):
-   - Create a private advisory at: https://github.com/writer/cerebro/security/advisories/new
+   - Create a private advisory at: https://github.com/evalops/cerebro/security/advisories/new
 2. If advisories are unavailable, contact maintainers privately and include:
    - impact summary
    - reproduction steps

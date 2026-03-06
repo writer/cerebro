@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/writer/cerebro/internal/findings"
-	"github.com/writer/cerebro/internal/policy"
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/evalops/cerebro/internal/findings"
+	"github.com/evalops/cerebro/internal/policy"
+	"github.com/evalops/cerebro/internal/snowflake"
 )
 
 func TestLoadConfig(t *testing.T) {

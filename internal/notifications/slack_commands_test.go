@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/writer/cerebro/internal/findings"
-	"github.com/writer/cerebro/internal/policy"
+	"github.com/evalops/cerebro/internal/findings"
+	"github.com/evalops/cerebro/internal/policy"
 )
 
 type mockFindingStore struct{}

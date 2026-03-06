@@ -12,7 +12,7 @@
 ### Clone and Setup
 
 ```bash
-git clone https://github.com/writer/cerebro.git
+git clone https://github.com/evalops/cerebro.git
 cd cerebro
 
 # Install dependencies
@@ -310,7 +310,7 @@ package providers
 
 import (
     "context"
-    "github.com/writer/cerebro/internal/agents"
+    "github.com/evalops/cerebro/internal/agents"
 )
 
 type NewLLMConfig struct {
@@ -450,7 +450,7 @@ Run the verification script to ensure Code, AWS, and GCP access are configured:
 
 ```bash
 # Verify GitHub access
-gh repo view writer/cerebro >/dev/null && echo "GitHub OK"
+gh repo view evalops/cerebro >/dev/null && echo "GitHub OK"
 
 # Verify AWS access
 aws sts get-caller-identity --profile cerebro-prod >/dev/null && echo "AWS OK"

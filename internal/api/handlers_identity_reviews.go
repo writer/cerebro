@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/writer/cerebro/internal/identity"
+	"github.com/evalops/cerebro/internal/identity"
 )
 
 // Identity/Access Review endpoints

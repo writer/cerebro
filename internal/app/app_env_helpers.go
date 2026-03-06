@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/writer/cerebro/internal/envutil"
+	"github.com/evalops/cerebro/internal/envutil"
 )
 
 func getEnv(key, fallback string) string {

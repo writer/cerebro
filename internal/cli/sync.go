@@ -17,10 +17,10 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/api/option"
 
-	"github.com/writer/cerebro/internal/app"
-	"github.com/writer/cerebro/internal/scanner"
-	"github.com/writer/cerebro/internal/snowflake"
-	nativesync "github.com/writer/cerebro/internal/sync"
+	"github.com/evalops/cerebro/internal/app"
+	"github.com/evalops/cerebro/internal/scanner"
+	"github.com/evalops/cerebro/internal/snowflake"
+	nativesync "github.com/evalops/cerebro/internal/sync"
 )
 
 var syncCmd = &cobra.Command{

@@ -7,10 +7,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/writer/cerebro/internal/findings"
-	"github.com/writer/cerebro/internal/policy"
-	"github.com/writer/cerebro/internal/scm"
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/evalops/cerebro/internal/findings"
+	"github.com/evalops/cerebro/internal/policy"
+	"github.com/evalops/cerebro/internal/scm"
+	"github.com/evalops/cerebro/internal/snowflake"
 )
 
 // SecurityTools provides investigation tools for agents

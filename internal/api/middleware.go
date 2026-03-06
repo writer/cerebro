@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/writer/cerebro/internal/auth"
+	"github.com/evalops/cerebro/internal/auth"
 )
 
 // APIError represents a structured API error response

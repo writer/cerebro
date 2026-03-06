@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/writer/cerebro/internal/policy"
-	"github.com/writer/cerebro/internal/scanner"
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/evalops/cerebro/internal/policy"
+	"github.com/evalops/cerebro/internal/scanner"
+	"github.com/evalops/cerebro/internal/snowflake"
 )
 
 func TestResourceToTables_KnownMappings(t *testing.T) {

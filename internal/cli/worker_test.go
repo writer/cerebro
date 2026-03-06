@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/writer/cerebro/internal/app"
-	providerregistry "github.com/writer/cerebro/internal/providers"
+	"github.com/evalops/cerebro/internal/app"
+	providerregistry "github.com/evalops/cerebro/internal/providers"
 )
 
 type testWorkerProvider struct {

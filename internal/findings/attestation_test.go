@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/writer/cerebro/internal/policy"
+	"github.com/evalops/cerebro/internal/policy"
 )
 
 func TestParseEd25519PrivateKey(t *testing.T) {

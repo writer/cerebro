@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/writer/cerebro/internal/events"
-	"github.com/writer/cerebro/internal/graph"
+	"github.com/evalops/cerebro/internal/events"
+	"github.com/evalops/cerebro/internal/graph"
 )
 
 func TestParseTapType(t *testing.T) {

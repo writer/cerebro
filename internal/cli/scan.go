@@ -13,11 +13,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/writer/cerebro/internal/app"
-	"github.com/writer/cerebro/internal/policy"
-	"github.com/writer/cerebro/internal/scanner"
-	"github.com/writer/cerebro/internal/snowflake"
-	nativesync "github.com/writer/cerebro/internal/sync"
+	"github.com/evalops/cerebro/internal/app"
+	"github.com/evalops/cerebro/internal/policy"
+	"github.com/evalops/cerebro/internal/scanner"
+	"github.com/evalops/cerebro/internal/snowflake"
+	nativesync "github.com/evalops/cerebro/internal/sync"
 )
 
 var scanCmd = &cobra.Command{
@@ -947,7 +947,7 @@ func scanOneTable(ctx context.Context, application *app.App, table string, full 
 var devResourcePatterns = []string{
 	"-dev-", "-dev/", "/dev/", "-staging-", "-staging/", "/staging/",
 	"-test-", "-test/", "/test/", "-sandbox-", "-sandbox/", "/sandbox/",
-	"writer-sa-dev", // GCP dev project
+	"-dev.", // GCP dev project suffix
 }
 
 func isDevResource(resourceID string) bool {

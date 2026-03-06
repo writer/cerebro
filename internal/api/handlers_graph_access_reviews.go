@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/writer/cerebro/internal/graph"
+	"github.com/evalops/cerebro/internal/graph"
 )
 
 // Graph-based Access Review endpoints

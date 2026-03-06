@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/writer/cerebro/internal/agents"
+	"github.com/evalops/cerebro/internal/agents"
 )
 
 type scriptedProvider struct {

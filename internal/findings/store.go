@@ -32,7 +32,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/writer/cerebro/internal/policy"
+	"github.com/evalops/cerebro/internal/policy"
 )
 
 // FindingStore defines the interface for findings persistence backends.

@@ -14,10 +14,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/writer/cerebro/internal/attackpath"
-	"github.com/writer/cerebro/internal/cache"
-	"github.com/writer/cerebro/internal/graph"
-	"github.com/writer/cerebro/internal/policy"
+	"github.com/evalops/cerebro/internal/attackpath"
+	"github.com/evalops/cerebro/internal/cache"
+	"github.com/evalops/cerebro/internal/graph"
+	"github.com/evalops/cerebro/internal/policy"
 )
 
 // Scanner performs parallel policy evaluation across assets

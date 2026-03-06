@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	apicontract "github.com/writer/cerebro/api"
+	apicontract "github.com/evalops/cerebro/api"
 	"gopkg.in/yaml.v3"
 )
 

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/writer/cerebro/internal/policy"
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/evalops/cerebro/internal/policy"
+	"github.com/evalops/cerebro/internal/snowflake"
 )
 
 type RelationshipToxicFinding struct {

@@ -11,7 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials/processcreds"
-	nativesync "github.com/writer/cerebro/internal/sync"
+	nativesync "github.com/evalops/cerebro/internal/sync"
 )
 
 func runAWSPreflightOnly(ctx context.Context, start time.Time) error {

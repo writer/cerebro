@@ -10,10 +10,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/writer/cerebro/internal/compliance"
-	"github.com/writer/cerebro/internal/findings"
-	"github.com/writer/cerebro/internal/metrics"
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/evalops/cerebro/internal/compliance"
+	"github.com/evalops/cerebro/internal/findings"
+	"github.com/evalops/cerebro/internal/metrics"
+	"github.com/evalops/cerebro/internal/snowflake"
 )
 
 func (s *Server) listFindings(w http.ResponseWriter, r *http.Request) {

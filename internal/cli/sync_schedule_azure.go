@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/writer/cerebro/internal/snowflake"
-	nativesync "github.com/writer/cerebro/internal/sync"
+	"github.com/evalops/cerebro/internal/snowflake"
+	nativesync "github.com/evalops/cerebro/internal/sync"
 )
 
 func executeAzureSync(ctx context.Context, client *snowflake.Client, schedule *SyncSchedule) error {

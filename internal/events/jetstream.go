@@ -22,8 +22,8 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nkeys"
 
-	"github.com/writer/cerebro/internal/metrics"
-	"github.com/writer/cerebro/internal/webhooks"
+	"github.com/evalops/cerebro/internal/metrics"
+	"github.com/evalops/cerebro/internal/webhooks"
 )
 
 const (

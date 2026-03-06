@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/evalops/cerebro/internal/snowflake"
 )
 
 const DefaultInsertBatchSize = 200

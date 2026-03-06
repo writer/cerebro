@@ -15,7 +15,7 @@ import (
 	containeranalysis "cloud.google.com/go/containeranalysis/apiv1"
 	securitycenter "cloud.google.com/go/securitycenter/apiv1"
 	"cloud.google.com/go/securitycenter/apiv1/securitycenterpb"
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/evalops/cerebro/internal/snowflake"
 	"google.golang.org/api/iterator"
 	grafeaspb "google.golang.org/genproto/googleapis/grafeas/v1"
 )

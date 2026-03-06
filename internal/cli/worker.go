@@ -14,11 +14,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/writer/cerebro/internal/agents"
-	"github.com/writer/cerebro/internal/app"
-	"github.com/writer/cerebro/internal/jobs"
-	providerregistry "github.com/writer/cerebro/internal/providers"
-	"github.com/writer/cerebro/internal/scm"
+	"github.com/evalops/cerebro/internal/agents"
+	"github.com/evalops/cerebro/internal/app"
+	"github.com/evalops/cerebro/internal/jobs"
+	providerregistry "github.com/evalops/cerebro/internal/providers"
+	"github.com/evalops/cerebro/internal/scm"
 )
 
 var workerCmd = &cobra.Command{

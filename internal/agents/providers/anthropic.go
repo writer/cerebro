@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/writer/cerebro/internal/agents"
+	"github.com/evalops/cerebro/internal/agents"
 )
 
 // AnthropicProvider implements LLMProvider for Claude

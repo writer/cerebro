@@ -3,7 +3,7 @@ package config
 import (
 	"time"
 
-	"github.com/writer/cerebro/internal/app"
+	"github.com/evalops/cerebro/internal/app"
 )
 
 type Config struct {

@@ -15,7 +15,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/writer/cerebro/internal/policy"
+	"github.com/evalops/cerebro/internal/policy"
 )
 
 // SQLiteStore provides SQLite-based persistence for findings

@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/evalops/cerebro/internal/snowflake"
 )
 
 var queryCmd = &cobra.Command{

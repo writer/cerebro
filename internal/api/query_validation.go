@@ -1,6 +1,6 @@
 package api
 
-import "github.com/writer/cerebro/internal/snowflake"
+import "github.com/evalops/cerebro/internal/snowflake"
 
 var (
 	ErrEmptyQuery     = snowflake.ErrEmptyQuery

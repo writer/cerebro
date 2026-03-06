@@ -1,4 +1,4 @@
-module github.com/writer/cerebro
+module github.com/evalops/cerebro
 
 go 1.25.0
 

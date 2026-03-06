@@ -13,9 +13,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	ststypes "github.com/aws/aws-sdk-go-v2/service/sts/types"
-	"github.com/writer/cerebro/internal/metrics"
-	"github.com/writer/cerebro/internal/snowflake"
-	nativesync "github.com/writer/cerebro/internal/sync"
+	"github.com/evalops/cerebro/internal/metrics"
+	"github.com/evalops/cerebro/internal/snowflake"
+	nativesync "github.com/evalops/cerebro/internal/sync"
 )
 
 func executeAWSSync(ctx context.Context, client *snowflake.Client, schedule *SyncSchedule) error {

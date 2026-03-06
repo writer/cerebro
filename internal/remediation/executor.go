@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/writer/cerebro/internal/findings"
-	"github.com/writer/cerebro/internal/notifications"
-	"github.com/writer/cerebro/internal/ticketing"
-	"github.com/writer/cerebro/internal/webhooks"
+	"github.com/evalops/cerebro/internal/findings"
+	"github.com/evalops/cerebro/internal/notifications"
+	"github.com/evalops/cerebro/internal/ticketing"
+	"github.com/evalops/cerebro/internal/webhooks"
 )
 
 // Executor runs remediation actions

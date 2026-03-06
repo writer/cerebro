@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	nativesync "github.com/writer/cerebro/internal/sync"
+	nativesync "github.com/evalops/cerebro/internal/sync"
 )
 
 func runGCPPreflightOnly(ctx context.Context, start time.Time) error {

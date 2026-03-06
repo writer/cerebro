@@ -24,7 +24,7 @@ const (
 	AttestationEvidenceType            = "attestation_chain"
 	attestationPayloadTypeInToto       = "application/vnd.in-toto+json"
 	attestationInTotoStatementType     = "https://in-toto.io/Statement/v1"
-	attestationFindingPredicateType    = "https://github.com/writer/cerebro/attestation/finding/v1"
+	attestationFindingPredicateType    = "https://github.com/evalops/cerebro/attestation/finding/v1"
 	attestationStatementSchema         = "cerebro.finding_attestation.v1"
 	attestationUploadKind              = "cerebro.dsse.attestation.v1"
 	defaultAttestationHTTPTimeout      = 3 * time.Second

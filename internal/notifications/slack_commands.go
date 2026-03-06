@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/writer/cerebro/internal/findings"
+	"github.com/evalops/cerebro/internal/findings"
 )
 
 // SlackCommandHandler handles Slack slash commands

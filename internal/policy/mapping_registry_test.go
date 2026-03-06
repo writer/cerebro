@@ -3,7 +3,7 @@ package policy
 import (
 	"testing"
 
-	nativesync "github.com/writer/cerebro/internal/sync"
+	nativesync "github.com/evalops/cerebro/internal/sync"
 )
 
 func TestGlobalMappingRegistry_LoadsAllMappings(t *testing.T) {

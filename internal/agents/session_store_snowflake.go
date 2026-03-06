@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/evalops/cerebro/internal/snowflake"
 )
 
 type SnowflakeSessionStore struct {

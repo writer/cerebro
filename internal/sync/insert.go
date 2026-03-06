@@ -3,8 +3,8 @@ package sync
 import (
 	"context"
 
-	"github.com/writer/cerebro/internal/snowflake"
-	"github.com/writer/cerebro/internal/snowflake/tableops"
+	"github.com/evalops/cerebro/internal/snowflake"
+	"github.com/evalops/cerebro/internal/snowflake/tableops"
 )
 
 const insertBatchSize = tableops.DefaultInsertBatchSize

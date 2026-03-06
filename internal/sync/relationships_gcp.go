@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/evalops/cerebro/internal/snowflake"
 )
 
 func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (int, error) {

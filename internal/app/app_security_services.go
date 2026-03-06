@@ -6,14 +6,14 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/writer/cerebro/internal/auth"
-	"github.com/writer/cerebro/internal/graph"
-	"github.com/writer/cerebro/internal/health"
-	"github.com/writer/cerebro/internal/lineage"
-	"github.com/writer/cerebro/internal/remediation"
-	"github.com/writer/cerebro/internal/runtime"
-	"github.com/writer/cerebro/internal/threatintel"
-	"github.com/writer/cerebro/internal/webhooks"
+	"github.com/evalops/cerebro/internal/auth"
+	"github.com/evalops/cerebro/internal/graph"
+	"github.com/evalops/cerebro/internal/health"
+	"github.com/evalops/cerebro/internal/lineage"
+	"github.com/evalops/cerebro/internal/remediation"
+	"github.com/evalops/cerebro/internal/runtime"
+	"github.com/evalops/cerebro/internal/threatintel"
+	"github.com/evalops/cerebro/internal/webhooks"
 )
 
 func (a *App) initRBAC() {

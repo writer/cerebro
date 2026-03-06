@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/writer/cerebro/internal/app"
+	"github.com/evalops/cerebro/internal/app"
 )
 
 var bootstrapCmd = &cobra.Command{

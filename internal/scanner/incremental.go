@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/evalops/cerebro/internal/snowflake"
 )
 
 // ScanWatermark tracks the last scan time for each table

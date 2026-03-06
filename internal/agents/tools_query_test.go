@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/evalops/cerebro/internal/snowflake"
 )
 
 func TestQueryAssetsRejectsUnsafeQuery(t *testing.T) {

@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/writer/cerebro/internal/findings"
-	"github.com/writer/cerebro/internal/notifications"
-	"github.com/writer/cerebro/internal/policy"
+	"github.com/evalops/cerebro/internal/findings"
+	"github.com/evalops/cerebro/internal/notifications"
+	"github.com/evalops/cerebro/internal/policy"
 )
 
 func TestInitScheduler_AddsSecurityDigestJob(t *testing.T) {

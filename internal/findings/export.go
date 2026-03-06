@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/writer/cerebro/internal/policy"
+	"github.com/evalops/cerebro/internal/policy"
 )
 
 // CSVExporter exports findings in CSV format

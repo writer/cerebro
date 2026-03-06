@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/writer/cerebro/internal/agents"
+	"github.com/evalops/cerebro/internal/agents"
 )
 
 // Incident response endpoints

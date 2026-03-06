@@ -23,7 +23,7 @@ builds:
       - goos: windows
         goarch: arm64
     ldflags:
-      - -s -w -X github.com/writer/cerebro/internal/cli.Version={{.Version}} -X github.com/writer/cerebro/internal/cli.Commit={{.Commit}} -X github.com/writer/cerebro/internal/cli.BuildDate={{.Date}}
+      - -s -w -X github.com/evalops/cerebro/internal/cli.Version={{.Version}} -X github.com/evalops/cerebro/internal/cli.Commit={{.Commit}} -X github.com/evalops/cerebro/internal/cli.BuildDate={{.Date}}
 
   - id: policy-enhancer
     main: ./cmd/policy-enhancer

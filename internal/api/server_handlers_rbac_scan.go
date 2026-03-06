@@ -6,8 +6,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/writer/cerebro/internal/auth"
-	"github.com/writer/cerebro/internal/webhooks"
+	"github.com/evalops/cerebro/internal/auth"
+	"github.com/evalops/cerebro/internal/webhooks"
 )
 
 func (s *Server) listRoles(w http.ResponseWriter, r *http.Request) {

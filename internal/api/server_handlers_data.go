@@ -9,8 +9,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/writer/cerebro/internal/policy"
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/evalops/cerebro/internal/policy"
+	"github.com/evalops/cerebro/internal/snowflake"
 )
 
 func (s *Server) syncStatus(w http.ResponseWriter, r *http.Request) {

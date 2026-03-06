@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/writer/cerebro/internal/auth"
+	"github.com/evalops/cerebro/internal/auth"
 )
 
 func TestExtractAPIKey(t *testing.T) {

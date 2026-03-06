@@ -17,9 +17,9 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armsubscriptions"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage"
-	"github.com/writer/cerebro/internal/metrics"
-	"github.com/writer/cerebro/internal/snowflake"
-	"github.com/writer/cerebro/internal/snowflake/tableops"
+	"github.com/evalops/cerebro/internal/metrics"
+	"github.com/evalops/cerebro/internal/snowflake"
+	"github.com/evalops/cerebro/internal/snowflake/tableops"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/time/rate"
 )

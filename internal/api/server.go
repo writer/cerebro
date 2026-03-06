@@ -8,10 +8,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	apicontract "github.com/writer/cerebro/api"
-	"github.com/writer/cerebro/internal/app"
-	"github.com/writer/cerebro/internal/metrics"
-	"github.com/writer/cerebro/internal/snowflake"
+	apicontract "github.com/evalops/cerebro/api"
+	"github.com/evalops/cerebro/internal/app"
+	"github.com/evalops/cerebro/internal/metrics"
+	"github.com/evalops/cerebro/internal/snowflake"
 )
 
 // Server is the fully wired API server

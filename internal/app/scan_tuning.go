@@ -3,7 +3,7 @@ package app
 import (
 	"time"
 
-	"github.com/writer/cerebro/internal/scanner"
+	"github.com/evalops/cerebro/internal/scanner"
 )
 
 type ScanTuning struct {
