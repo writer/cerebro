@@ -112,13 +112,65 @@ jobs:
       - name: Enforce minimum coverage
         shell: bash
         env:
-          MIN_COVERAGE: "40"
+          MIN_COVERAGE: "41.0"
         run: |
           set -euo pipefail
-          go test -coverprofile=coverage.out ./...
+          mapfile -t all_packages < <(go list ./...)
+          selected=()
+          for pkg in "${all_packages[@]}"; do
+            pkg_tests="$(go test -run '^$' -list . "$pkg" 2>/dev/null || true)"
+            if printf '%s\n' "$pkg_tests" | grep -q '^Test'; then
+              selected+=("$pkg")
+            fi
+          done
+          if [ ${#selected[@]} -eq 0 ]; then
+            echo "No packages with tests found."
+            exit 1
+          fi
+          go test -coverprofile=coverage.out "${selected[@]}" | tee coverage-summary.txt
           total=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub("%","",$3); print $3}')
           echo "Total coverage: ${total}%"
           awk -v total="$total" -v min="$MIN_COVERAGE" 'BEGIN { exit ((total + 0) < (min + 0)) }'
+          python3 - <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+
+          required = {
+              "github.com/writer/cerebro/internal/api": 40.0,
+              "github.com/writer/cerebro/internal/app": 47.0,
+              "github.com/writer/cerebro/internal/cache": 82.0,
+              "github.com/writer/cerebro/internal/graph": 62.0,
+              "github.com/writer/cerebro/internal/policy": 72.0,
+              "github.com/writer/cerebro/internal/scanner": 44.0,
+              "github.com/writer/cerebro/internal/scheduler": 71.5,
+          }
+
+          pattern = re.compile(r"^ok\s+(\S+)\s+.*coverage:\s+([0-9.]+)% of statements$")
+          observed = {}
+          for line in Path("coverage-summary.txt").read_text().splitlines():
+              m = pattern.match(line.strip())
+              if not m:
+                  continue
+              observed[m.group(1)] = float(m.group(2))
+
+          failures = []
+          for pkg, minimum in required.items():
+              value = observed.get(pkg)
+              if value is None:
+                  failures.append(f"{pkg}: missing coverage output")
+                  continue
+              if value < minimum:
+                  failures.append(f"{pkg}: {value:.1f}% < {minimum:.1f}%")
+
+          if failures:
+              print("Package coverage threshold failures:")
+              for failure in failures:
+                  print(f"- {failure}")
+              sys.exit(1)
+
+          print("Package-level coverage thresholds passed.")
+          PY
 
   vendor-check:
     name: vendor-check
@@ -138,6 +190,214 @@ jobs:
           go mod tidy
           go mod vendor
           git diff --exit-code -- go.mod go.sum vendor/modules.txt vendor
+
+  openapi-route-parity:
+    name: openapi-route-parity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.7'
+
+      - name: Verify OpenAPI matches registered routes
+        run: go run ./scripts/openapi_route_parity.go
+
+      - name: Ensure generated OpenAPI placeholders are removed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -n "x-cerebro-generated" api/openapi.yaml; then
+            echo "OpenAPI still contains generated placeholders. Replace with real operation docs."
+            exit 1
+          fi
+
+  config-docs-drift:
+    name: config-docs-drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.7'
+
+      - name: Regenerate config docs
+        run: go run ./scripts/generate_config_docs/main.go
+
+      - name: Verify generated config docs are committed
+        run: git diff --exit-code -- docs/CONFIG_ENV_VARS.md
+
+  api-auth-smoke:
+    name: api-auth-smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.7'
+
+      - name: Build
+        run: go build -o cerebro ./cmd/cerebro
+
+      - name: API auth end-to-end smoke
+        shell: bash
+        env:
+          LOG_LEVEL: error
+          API_PORT: "18080"
+          API_AUTH_ENABLED: "true"
+          API_KEYS: "smoke-key:smoke-admin"
+          RBAC_STATE_FILE: "/tmp/cerebro-rbac-smoke.json"
+        run: |
+          set -euo pipefail
+          cat > "$RBAC_STATE_FILE" <<'JSON'
+          {
+            "users": {
+              "smoke-admin": {
+                "id": "smoke-admin",
+                "email": "smoke-admin@example.com",
+                "name": "Smoke Admin",
+                "role_ids": ["admin"]
+              }
+            }
+          }
+          JSON
+
+          ./cerebro serve > /tmp/cerebro-api-auth-smoke.log 2>&1 &
+          server_pid=$!
+          cleanup() {
+            kill "$server_pid" >/dev/null 2>&1 || true
+            wait "$server_pid" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          for i in $(seq 1 45); do
+            if curl -fsS "http://127.0.0.1:${API_PORT}/health" >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS "http://127.0.0.1:${API_PORT}/health" >/dev/null
+
+          unauth_status=$(curl -sS -o /tmp/api-auth-smoke-unauth.json -w "%{http_code}" \
+            "http://127.0.0.1:${API_PORT}/api/v1/policies/")
+          if [ "$unauth_status" != "401" ]; then
+            echo "expected 401 for unauthenticated request, got $unauth_status"
+            cat /tmp/cerebro-api-auth-smoke.log || true
+            exit 1
+          fi
+
+          auth_status=$(curl -sS -H "Authorization: Bearer smoke-key" -o /tmp/api-auth-smoke-auth.json -w "%{http_code}" \
+            "http://127.0.0.1:${API_PORT}/api/v1/policies/")
+          if [ "$auth_status" -ne "200" ]; then
+            echo "expected 200 for authenticated request, got $auth_status"
+            cat /tmp/cerebro-api-auth-smoke.log || true
+            exit 1
+          fi
+
+          xkey_status=$(curl -sS -H "X-API-Key: smoke-key" -o /tmp/api-auth-smoke-xkey.json -w "%{http_code}" \
+            "http://127.0.0.1:${API_PORT}/api/v1/policies/")
+          if [ "$xkey_status" -ne "200" ]; then
+            echo "expected 200 for X-API-Key request, got $xkey_status"
+            cat /tmp/cerebro-api-auth-smoke.log || true
+            exit 1
+          fi
+
+  api-auth-rbac-smoke:
+    name: api-auth-rbac-smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.7'
+
+      - name: Build
+        run: go build -o cerebro ./cmd/cerebro
+
+      - name: RBAC role matrix smoke
+        shell: bash
+        env:
+          LOG_LEVEL: error
+          API_PORT: "18081"
+          API_AUTH_ENABLED: "true"
+          API_KEYS: "viewer-key:viewer-1,analyst-key:analyst-1,admin-key:admin-1"
+          RBAC_STATE_FILE: "/tmp/cerebro-rbac-role-smoke.json"
+        run: |
+          set -euo pipefail
+          cat > "$RBAC_STATE_FILE" <<'JSON'
+          {
+            "users": {
+              "viewer-1": {
+                "id": "viewer-1",
+                "email": "viewer@example.com",
+                "name": "Viewer",
+                "role_ids": ["viewer"]
+              },
+              "analyst-1": {
+                "id": "analyst-1",
+                "email": "analyst@example.com",
+                "name": "Analyst",
+                "role_ids": ["analyst"]
+              },
+              "admin-1": {
+                "id": "admin-1",
+                "email": "admin@example.com",
+                "name": "Admin",
+                "role_ids": ["admin"]
+              }
+            }
+          }
+          JSON
+
+          ./cerebro serve > /tmp/cerebro-api-auth-rbac-smoke.log 2>&1 &
+          server_pid=$!
+          cleanup() {
+            kill "$server_pid" >/dev/null 2>&1 || true
+            wait "$server_pid" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          for i in $(seq 1 45); do
+            if curl -fsS "http://127.0.0.1:${API_PORT}/health" >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS "http://127.0.0.1:${API_PORT}/health" >/dev/null
+
+          endpoint="http://127.0.0.1:${API_PORT}/api/v1/agents/sessions"
+          payload='{"agent_id":"missing-agent"}'
+
+          viewer_status=$(curl -sS -H "Authorization: Bearer viewer-key" -H "Content-Type: application/json" \
+            -d "$payload" -o /tmp/api-auth-rbac-viewer.json -w "%{http_code}" "$endpoint")
+          analyst_status=$(curl -sS -H "Authorization: Bearer analyst-key" -H "Content-Type: application/json" \
+            -d "$payload" -o /tmp/api-auth-rbac-analyst.json -w "%{http_code}" "$endpoint")
+          admin_status=$(curl -sS -H "Authorization: Bearer admin-key" -H "Content-Type: application/json" \
+            -d "$payload" -o /tmp/api-auth-rbac-admin.json -w "%{http_code}" "$endpoint")
+
+          if [ "$viewer_status" != "403" ]; then
+            echo "expected viewer to receive 403, got $viewer_status"
+            cat /tmp/cerebro-api-auth-rbac-smoke.log || true
+            exit 1
+          fi
+          if [ "$analyst_status" = "403" ]; then
+            echo "expected analyst to pass RBAC (non-403), got $analyst_status"
+            cat /tmp/cerebro-api-auth-rbac-smoke.log || true
+            exit 1
+          fi
+          if [ "$admin_status" = "403" ]; then
+            echo "expected admin to pass RBAC (non-403), got $admin_status"
+            cat /tmp/cerebro-api-auth-rbac-smoke.log || true
+            exit 1
+          fi
 
   scan-smoke-local:
     name: scan-smoke-local

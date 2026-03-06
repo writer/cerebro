@@ -1,4 +1,4 @@
-.PHONY: build run test sync clean dev serve policy-list docker-build trivy-db security-scan security-scan-built security-scan-source vendor vendor-check oss-audit
+.PHONY: build run test sync clean dev serve policy-list docker-build trivy-db security-scan security-scan-built security-scan-source vendor vendor-check oss-audit openapi-check openapi-sync config-docs config-docs-check
 
 # Version info
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -112,6 +112,22 @@ security-scan-source:
 
 oss-audit:
 	python3 scripts/oss_audit.py
+
+openapi-check:
+	go run ./scripts/openapi_route_parity.go
+	@if grep -n "x-cerebro-generated" api/openapi.yaml; then \
+		echo "OpenAPI contains generated placeholders (x-cerebro-generated). Replace with real operation docs."; \
+		exit 1; \
+	fi
+
+openapi-sync:
+	go run ./scripts/openapi_route_parity.go --write
+
+config-docs:
+	go run ./scripts/generate_config_docs/main.go
+
+config-docs-check: config-docs
+	git diff --exit-code -- docs/CONFIG_ENV_VARS.md
 
 # Docker run
 docker-run:

@@ -4,7 +4,7 @@
 
 Cerebro is a comprehensive security platform that combines cloud asset discovery, policy evaluation, compliance reporting, AI-powered investigation, and automated remediation workflows.
 
-[![Go Version](https://img.shields.io/badge/Go-1.23+-00ADD8?style=flat&logo=go)](https://go.dev/)
+[![Go Version](https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 ---
@@ -60,7 +60,7 @@ Cerebro is a comprehensive security platform that combines cloud asset discovery
 
 ### Prerequisites
 
-- Go 1.23+
+- Go 1.25+
 - Snowflake account
 
 ### Installation
@@ -83,8 +83,11 @@ make build
 # Copy environment template
 cp .env.example .env
 
-# Required: Snowflake connection
-export SNOWFLAKE_CONNECTION_STRING="user:pass@account/CEREBRO/CEREBRO"
+# Required: Snowflake key-pair auth
+export SNOWFLAKE_ACCOUNT="myaccount.us-east-1"
+export SNOWFLAKE_USER="CEREBRO_APP"
+export SNOWFLAKE_PRIVATE_KEY="<paste-pem-private-key>"
+export SNOWFLAKE_WAREHOUSE="COMPUTE_WH"
 
 # Optional: AI agents
 export ANTHROPIC_API_KEY="sk-ant-..."
@@ -419,10 +422,21 @@ See [Development Guide](docs/DEVELOPMENT.md) for detailed instructions.
 |----------|-------------|---------|
 | `API_PORT` | Server port | `8080` |
 | `LOG_LEVEL` | Log verbosity | `info` |
-| `SNOWFLAKE_CONNECTION_STRING` | Snowflake DSN | - |
+| `SNOWFLAKE_ACCOUNT` | Snowflake account identifier | - |
+| `SNOWFLAKE_USER` | Snowflake service user | - |
+| `SNOWFLAKE_PRIVATE_KEY` | Snowflake PEM private key | - |
+| `SNOWFLAKE_DATABASE` | Snowflake database | `CEREBRO` |
+| `SNOWFLAKE_SCHEMA` | Snowflake schema | `CEREBRO` |
+| `SNOWFLAKE_WAREHOUSE` | Snowflake warehouse | `COMPUTE_WH` |
 | `POLICIES_PATH` | Policy directory | `policies` |
 | `ANTHROPIC_API_KEY` | Claude API key | - |
 | `OPENAI_API_KEY` | OpenAI API key | - |
+| `API_AUTH_ENABLED` | Require API key auth | `false`* |
+| `API_KEYS` | Comma-separated API keys | - |
+| `API_CORS_ALLOWED_ORIGINS` | CORS allow-list | - |
+| `RATE_LIMIT_ENABLED` | Enable API rate limiting | `false` |
+| `RATE_LIMIT_REQUESTS` | Requests per rate limit window | `1000` |
+| `RATE_LIMIT_WINDOW` | Rate limit duration window | `1h` |
 | `JIRA_BASE_URL` | Jira instance | - |
 | `SLACK_WEBHOOK_URL` | Slack webhook | - |
 | `SCAN_INTERVAL` | Scan frequency | - |
@@ -430,6 +444,8 @@ See [Development Guide](docs/DEVELOPMENT.md) for detailed instructions.
 | `JOB_TABLE_NAME` | DynamoDB table for job state | - |
 | `JOB_REGION` | AWS region for job infrastructure | - |
 | `JOB_WORKER_CONCURRENCY` | Concurrent jobs per worker | `4` |
+
+`*` When `API_KEYS` is set, API auth auto-enables unless explicitly overridden.
 
 See [Configuration](docs/CONFIGURATION.md) for all options.
 
@@ -439,7 +455,7 @@ See [Configuration](docs/CONFIGURATION.md) for all options.
 
 | Component | Technology |
 |-----------|------------|
-| Language | Go 1.23+ |
+| Language | Go 1.25+ |
 | API Framework | Chi |
 | Database | Snowflake |
 | Data Ingestion | Native scanners |

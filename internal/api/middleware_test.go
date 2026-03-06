@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/writer/cerebro/internal/auth"
 )
 
 func TestExtractAPIKey(t *testing.T) {
@@ -139,6 +141,50 @@ func TestAPIKeyAuthDisabled(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Errorf("expected status 200 when auth disabled, got %d", w.Code)
+	}
+}
+
+func TestAPIKeyAuth_FallsBackToXAPIKeyWhenAuthorizationIsMalformed(t *testing.T) {
+	cfg := AuthConfig{
+		Enabled: true,
+		APIKeys: map[string]string{
+			"valid-key": "user-1",
+		},
+	}
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(GetUserID(r.Context())))
+	})
+
+	middleware := APIKeyAuth(cfg)(handler)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/test", nil)
+	req.Header.Set("Authorization", "Token malformed")
+	req.Header.Set("X-API-Key", "valid-key")
+
+	w := httptest.NewRecorder()
+	middleware.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if got := w.Body.String(); got != "user-1" {
+		t.Fatalf("expected user-1 from X-API-Key fallback, got %q", got)
+	}
+}
+
+func TestRBACMiddleware_PassesThroughWithoutAuthenticatedUser(t *testing.T) {
+	rbac := auth.NewRBAC()
+	m := RBACMiddleware(rbac)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents/sessions", nil)
+	w := httptest.NewRecorder()
+	m.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected pass-through without user context, got %d", w.Code)
 	}
 }
 

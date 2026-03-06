@@ -924,7 +924,7 @@ func runPostSyncScan(ctx context.Context, tableFilter []string) error {
 	defer func() { _ = application.Close() }()
 
 	if application.Snowflake == nil {
-		return fmt.Errorf("snowflake not configured: set SNOWFLAKE_PRIVATE_KEY/ACCOUNT/USER or SNOWFLAKE_CONNECTION_STRING")
+		return fmt.Errorf("snowflake not configured: set SNOWFLAKE_PRIVATE_KEY, SNOWFLAKE_ACCOUNT, and SNOWFLAKE_USER")
 	}
 
 	availableTables := application.AvailableTables

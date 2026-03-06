@@ -115,22 +115,64 @@ func (s *Server) swaggerUI(w http.ResponseWriter, r *http.Request) {
 	html := `<!DOCTYPE html>
 <html>
 <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Cerebro API Documentation</title>
-  <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+  <style>
+    body {
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      max-width: 900px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+      line-height: 1.5;
+      color: #0f172a;
+      background: #f8fafc;
+    }
+    .panel {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1rem;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    }
+    code {
+      background: #f1f5f9;
+      border-radius: 6px;
+      padding: 0.15rem 0.35rem;
+    }
+    a {
+      color: #0f4c81;
+    }
+    h1, h2 {
+      margin-top: 0;
+    }
+    ul {
+      padding-left: 1.1rem;
+    }
+  </style>
 </head>
 <body>
-  <div id="swagger-ui"></div>
-  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
-  <script>
-    window.onload = function() {
-      SwaggerUIBundle({
-        url: "/openapi.yaml",
-        dom_id: '#swagger-ui',
-        presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
-        layout: "BaseLayout"
-      });
-    }
-  </script>
+  <h1>Cerebro API Docs</h1>
+  <div class="panel">
+    <p>
+      Download the OpenAPI contract directly at
+      <a href="/openapi.yaml"><code>/openapi.yaml</code></a>.
+    </p>
+    <p>
+      This page is intentionally self-hosted and does not depend on external CDNs.
+    </p>
+  </div>
+  <div class="panel">
+    <h2>Quick Links</h2>
+    <ul>
+      <li><a href="/health"><code>/health</code></a></li>
+      <li><a href="/ready"><code>/ready</code></a></li>
+      <li><a href="/metrics"><code>/metrics</code></a></li>
+      <li><a href="/api/v1/tables"><code>/api/v1/tables</code></a></li>
+      <li><a href="/api/v1/findings"><code>/api/v1/findings</code></a></li>
+    </ul>
+  </div>
 </body>
 </html>`
 	w.Header().Set("Content-Type", "text/html")

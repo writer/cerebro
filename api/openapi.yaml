@@ -1,56 +1,70 @@
 openapi: 3.0.3
 info:
   title: Cerebro API
-  description: |
-    Cerebro is a cloud security posture management (CSPM) platform that provides:
+  description: 'Cerebro is a cloud security posture management (CSPM) platform that
+    provides:
+
     - Policy-based security scanning across AWS, GCP, Azure, and Kubernetes
+
     - Identity and access governance
+
     - Compliance frameworks and audit reporting
+
     - Attack path analysis
+
     - Agent-based investigation
+
+    '
   version: 2.0.0
   contact:
     name: Security Team
   license:
     name: Apache-2.0
     url: https://www.apache.org/licenses/LICENSE-2.0.html
-
 servers:
-  - url: http://localhost:8080
-    description: Local development
-  - url: https://api.example.com
-    description: Production (replace with your deployment URL)
-
+- url: http://localhost:8080
+  description: Local development
+- url: https://api.example.com
+  description: Production (replace with your deployment URL)
 security:
-  - ApiKeyAuth: []
-  - BearerAuth: []
-
+- ApiKeyAuth: []
+- BearerAuth: []
 tags:
-  - name: Health
-    description: Health and readiness endpoints
-  - name: Assets
-    description: Cloud asset inventory
-  - name: Policies
-    description: Security policy management
-  - name: Findings
-    description: Security findings and violations
-  - name: Compliance
-    description: Compliance frameworks and reporting
-  - name: Identity
-    description: Identity governance and access reviews
-  - name: Agents
-    description: AI-powered investigation agents
-  - name: Tickets
-    description: Ticketing integration (Jira, Linear)
-  - name: Webhooks
-    description: Webhook management
-  - name: Admin
-    description: Administrative endpoints
-
+- name: Health
+  description: Health and readiness endpoints
+- name: Assets
+  description: Cloud asset inventory
+- name: Policies
+  description: Security policy management
+- name: Findings
+  description: Security findings and violations
+- name: Compliance
+  description: Compliance frameworks and reporting
+- name: Identity
+  description: Identity governance and access reviews
+- name: Agents
+  description: AI-powered investigation agents
+- name: Tickets
+  description: Ticketing integration (Jira, Linear)
+- name: Webhooks
+  description: Webhook management
+- name: Admin
+  description: Administrative endpoints
+- name: Undocumented
+  description: Auto-generated placeholders pending endpoint-level contract documentation
+- name: Graph
+  description: Security graph and risk intelligence endpoints
+- name: Runtime
+  description: Runtime detection and response endpoints
+- name: RBAC
+  description: Role-based access control and tenancy endpoints
+- name: ThreatIntel
+  description: Threat intelligence feed management and indicator lookups
 paths:
   /health:
     get:
-      tags: [Health]
+      tags:
+      - Health
       summary: Health check
       security: []
       responses:
@@ -60,10 +74,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HealthResponse'
-
   /ready:
     get:
-      tags: [Health]
+      tags:
+      - Health
       summary: Readiness check
       security: []
       responses:
@@ -73,10 +87,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ReadyResponse'
-
   /metrics:
     get:
-      tags: [Health]
+      tags:
+      - Health
       summary: Prometheus metrics
       security: []
       responses:
@@ -86,10 +100,10 @@ paths:
             text/plain:
               schema:
                 type: string
-
   /api/v1/tables:
     get:
-      tags: [Assets]
+      tags:
+      - Assets
       summary: List available tables
       responses:
         '200':
@@ -98,10 +112,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TablesResponse'
-
   /api/v1/query:
     post:
-      tags: [Assets]
+      tags:
+      - Assets
       summary: Execute SQL query
       requestBody:
         required: true
@@ -116,20 +130,20 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/QueryResponse'
-
   /api/v1/assets/{table}:
     get:
-      tags: [Assets]
+      tags:
+      - Assets
       summary: List assets from a table
       parameters:
-        - name: table
-          in: path
-          required: true
-          schema:
-            type: string
-          example: aws_s3_buckets
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/Offset'
+      - name: table
+        in: path
+        required: true
+        schema:
+          type: string
+        example: aws_s3_buckets
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Offset'
       responses:
         '200':
           description: List of assets
@@ -137,22 +151,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AssetsResponse'
-
   /api/v1/assets/{table}/{id}:
     get:
-      tags: [Assets]
+      tags:
+      - Assets
       summary: Get a specific asset
       parameters:
-        - name: table
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
+      - name: table
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
       responses:
         '200':
           description: Asset details
@@ -160,10 +174,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Asset'
-
   /api/v1/policies:
     get:
-      tags: [Policies]
+      tags:
+      - Policies
       summary: List all policies
       responses:
         '200':
@@ -173,7 +187,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/PoliciesResponse'
     post:
-      tags: [Policies]
+      tags:
+      - Policies
       summary: Create a new policy
       requestBody:
         required: true
@@ -188,17 +203,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Policy'
-
   /api/v1/policies/{id}:
     get:
-      tags: [Policies]
+      tags:
+      - Policies
       summary: Get a specific policy
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
       responses:
         '200':
           description: Policy details
@@ -206,10 +221,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Policy'
-
   /api/v1/policies/evaluate:
     post:
-      tags: [Policies]
+      tags:
+      - Policies
       summary: Evaluate policies against an asset
       requestBody:
         required: true
@@ -224,28 +239,35 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/EvaluateResponse'
-
   /api/v1/findings:
     get:
-      tags: [Findings]
+      tags:
+      - Findings
       summary: List findings
       parameters:
-        - name: severity
-          in: query
-          schema:
-            type: string
-            enum: [critical, high, medium, low]
-        - name: status
-          in: query
-          schema:
-            type: string
-            enum: [open, resolved, suppressed]
-        - name: policy_id
-          in: query
-          schema:
-            type: string
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/Offset'
+      - name: severity
+        in: query
+        schema:
+          type: string
+          enum:
+          - critical
+          - high
+          - medium
+          - low
+      - name: status
+        in: query
+        schema:
+          type: string
+          enum:
+          - open
+          - resolved
+          - suppressed
+      - name: policy_id
+        in: query
+        schema:
+          type: string
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Offset'
       responses:
         '200':
           description: List of findings
@@ -253,10 +275,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/FindingsResponse'
-
   /api/v1/findings/stats:
     get:
-      tags: [Findings]
+      tags:
+      - Findings
       summary: Get findings statistics
       responses:
         '200':
@@ -265,17 +287,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/FindingsStats'
-
   /api/v1/findings/{id}:
     get:
-      tags: [Findings]
+      tags:
+      - Findings
       summary: Get a specific finding
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
       responses:
         '200':
           description: Finding details
@@ -283,10 +305,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Finding'
-
   /api/v1/findings/scan:
     post:
-      tags: [Findings]
+      tags:
+      - Findings
       summary: Trigger a security scan
       requestBody:
         content:
@@ -305,17 +327,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ScanResponse'
-
   /api/v1/findings/{id}/resolve:
     post:
-      tags: [Findings]
+      tags:
+      - Findings
       summary: Resolve a finding
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
       requestBody:
         content:
           application/json:
@@ -327,17 +349,17 @@ paths:
       responses:
         '200':
           description: Finding resolved
-
   /api/v1/findings/{id}/suppress:
     post:
-      tags: [Findings]
+      tags:
+      - Findings
       summary: Suppress a finding
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
       requestBody:
         content:
           application/json:
@@ -352,10 +374,10 @@ paths:
       responses:
         '200':
           description: Finding suppressed
-
   /api/v1/compliance/frameworks:
     get:
-      tags: [Compliance]
+      tags:
+      - Compliance
       summary: List compliance frameworks
       responses:
         '200':
@@ -364,18 +386,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/FrameworksResponse'
-
   /api/v1/compliance/frameworks/{id}:
     get:
-      tags: [Compliance]
+      tags:
+      - Compliance
       summary: Get a compliance framework
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-          example: soc2-type2
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        example: soc2-type2
       responses:
         '200':
           description: Framework details
@@ -383,17 +405,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Framework'
-
   /api/v1/compliance/frameworks/{id}/report:
     get:
-      tags: [Compliance]
+      tags:
+      - Compliance
       summary: Generate compliance report
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
       responses:
         '200':
           description: Compliance report
@@ -401,17 +423,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ComplianceReport'
-
   /api/v1/compliance/frameworks/{id}/pre-audit:
     get:
-      tags: [Compliance]
+      tags:
+      - Compliance
       summary: Pre-audit health check
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
       responses:
         '200':
           description: Pre-audit assessment
@@ -419,17 +441,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PreAuditReport'
-
   /api/v1/compliance/frameworks/{id}/export:
     get:
-      tags: [Compliance]
+      tags:
+      - Compliance
       summary: Export audit package
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
       responses:
         '200':
           description: Audit package data
@@ -437,10 +459,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AuditPackage'
-
   /api/v1/identity/stale-access:
     get:
-      tags: [Identity]
+      tags:
+      - Identity
       summary: Detect stale access
       responses:
         '200':
@@ -449,10 +471,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StaleAccessResponse'
-
   /api/v1/identity/report:
     get:
-      tags: [Identity]
+      tags:
+      - Identity
       summary: Generate identity report
       responses:
         '200':
@@ -461,10 +483,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/IdentityReport'
-
   /api/v1/identity/reviews:
     get:
-      tags: [Identity]
+      tags:
+      - Identity
       summary: List access reviews
       responses:
         '200':
@@ -474,7 +496,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/ReviewsResponse'
     post:
-      tags: [Identity]
+      tags:
+      - Identity
       summary: Create access review
       requestBody:
         required: true
@@ -489,10 +512,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AccessReview'
-
   /api/v1/agents:
     get:
-      tags: [Agents]
+      tags:
+      - Agents
       summary: List available agents
       responses:
         '200':
@@ -501,10 +524,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AgentsResponse'
-
   /api/v1/agents/sessions:
     post:
-      tags: [Agents]
+      tags:
+      - Agents
       summary: Create agent session
       requestBody:
         required: true
@@ -519,17 +542,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AgentSession'
-
   /api/v1/agents/sessions/{id}/messages:
     get:
-      tags: [Agents]
+      tags:
+      - Agents
       summary: Get session messages
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
       responses:
         '200':
           description: Session messages
@@ -538,21 +561,23 @@ paths:
               schema:
                 $ref: '#/components/schemas/MessagesResponse'
     post:
-      tags: [Agents]
+      tags:
+      - Agents
       summary: Send message to agent
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [content]
+              required:
+              - content
               properties:
                 content:
                   type: string
@@ -563,10 +588,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Message'
-
   /api/v1/webhooks:
     get:
-      tags: [Webhooks]
+      tags:
+      - Webhooks
       summary: List webhooks
       responses:
         '200':
@@ -576,7 +601,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/WebhooksResponse'
     post:
-      tags: [Webhooks]
+      tags:
+      - Webhooks
       summary: Create webhook
       requestBody:
         required: true
@@ -591,17 +617,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Webhook'
-
   /api/v1/webhooks/{id}:
     get:
-      tags: [Webhooks]
+      tags:
+      - Webhooks
       summary: Get webhook
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
       responses:
         '200':
           description: Webhook details
@@ -610,21 +636,22 @@ paths:
               schema:
                 $ref: '#/components/schemas/Webhook'
     delete:
-      tags: [Webhooks]
+      tags:
+      - Webhooks
       summary: Delete webhook
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
       responses:
         '204':
           description: Webhook deleted
-
   /api/v1/admin/health:
     get:
-      tags: [Admin]
+      tags:
+      - Admin
       summary: System health dashboard
       responses:
         '200':
@@ -633,10 +660,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AdminHealth'
-
   /api/v1/admin/sync/status:
     get:
-      tags: [Admin]
+      tags:
+      - Admin
       summary: Data sync status
       responses:
         '200':
@@ -645,10 +672,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SyncStatus'
-
   /api/v1/scheduler/status:
     get:
-      tags: [Admin]
+      tags:
+      - Admin
       summary: Scheduler status
       responses:
         '200':
@@ -657,10 +684,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SchedulerStatus'
-
   /api/v1/scheduler/jobs:
     get:
-      tags: [Admin]
+      tags:
+      - Admin
       summary: List scheduled jobs
       responses:
         '200':
@@ -669,7 +696,1995 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/JobsResponse'
-
+  /api/v1/agents/sessions/{id}:
+    get:
+      tags:
+      - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/agents/sessions/{id}/approve:
+    post:
+      tags:
+      - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/agents/{id}:
+    get:
+      tags:
+      - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/attack-paths:
+    get:
+      tags:
+      - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/attack-paths/analyze:
+    post:
+      tags:
+      - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/attack-paths/graph:
+    get:
+      tags:
+      - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/attack-paths/graph/edges:
+    post:
+      tags:
+      - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/attack-paths/graph/nodes:
+    post:
+      tags:
+      - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/attack-paths/{id}:
+    get:
+      tags:
+      - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/audit:
+    get:
+      tags:
+      - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/findings/export:
+    get:
+      tags:
+      - Findings
+      summary: Export findings
+      description: Export findings in CSV or JSON format with optional filters.
+      responses:
+        '200':
+          description: Exported findings file
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+            application/json:
+              schema:
+                type: string
+                format: binary
+        '500':
+          description: Export failure
+          content: &id001
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+      parameters:
+      - name: severity
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Filter by severity
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Filter by status
+      - name: policy_id
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Filter by policy ID
+      - name: format
+        in: query
+        required: false
+        schema:
+          type: string
+          default: csv
+          enum:
+          - csv
+          - json
+        description: Export format
+      - name: pretty
+        in: query
+        required: false
+        schema:
+          type: string
+          default: 'false'
+          enum:
+          - 'true'
+          - 'false'
+        description: Pretty-print JSON output
+  /api/v1/findings/{id}/assign:
+    put:
+      tags:
+      - Findings
+      summary: Assign finding
+      description: Assign a finding to an owner.
+      responses:
+        '200':
+          description: Assignment updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FindingActionResponse'
+        '400':
+          description: Invalid request
+          content: *id001
+        '404':
+          description: Finding not found
+          content: *id001
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Finding ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FindingAssignRequest'
+  /api/v1/findings/{id}/due:
+    put:
+      tags:
+      - Findings
+      summary: Set finding due date
+      description: Set due date metadata for a finding.
+      responses:
+        '200':
+          description: Due date updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FindingActionResponse'
+        '400':
+          description: Invalid request
+          content: *id001
+        '404':
+          description: Finding not found
+          content: *id001
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Finding ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FindingDueDateRequest'
+  /api/v1/findings/{id}/notes:
+    post:
+      tags:
+      - Findings
+      summary: Add finding note
+      description: Append an analyst note to a finding.
+      responses:
+        '200':
+          description: Note added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FindingActionResponse'
+        '400':
+          description: Invalid request
+          content: *id001
+        '404':
+          description: Finding not found
+          content: *id001
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Finding ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FindingNoteRequest'
+  /api/v1/findings/{id}/tickets:
+    post:
+      tags:
+      - Findings
+      summary: Link ticket
+      description: Attach a ticket reference to a finding.
+      responses:
+        '200':
+          description: Ticket linked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FindingActionResponse'
+        '400':
+          description: Invalid request
+          content: *id001
+        '404':
+          description: Finding not found
+          content: *id001
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Finding ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FindingTicketLinkRequest'
+  /api/v1/graph/access-reviews:
+    get:
+      tags:
+      - Graph
+      summary: List graph access reviews
+      description: List graph-based access reviews.
+      responses:
+        '200':
+          description: Graph access reviews
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphAccessReviewsResponse'
+        '503':
+          description: Graph unavailable
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    post:
+      tags:
+      - Graph
+      summary: Create graph access review
+      description: Create a graph-based access review run.
+      responses:
+        '201':
+          description: Graph access review created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphAccessReviewResponse'
+        '400':
+          description: Invalid request
+          content: *id001
+        '503':
+          description: Graph unavailable
+          content: *id001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+  /api/v1/graph/access-reviews/{id}:
+    get:
+      tags:
+      - Graph
+      summary: Get graph access review
+      description: Get a graph-based access review by ID.
+      responses:
+        '200':
+          description: Graph access review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphAccessReviewResponse'
+        '404':
+          description: Not found
+          content: *id001
+        '503':
+          description: Graph unavailable
+          content: *id001
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Access review ID
+  /api/v1/graph/access-reviews/{id}/items/{itemId}/decide:
+    post:
+      tags:
+      - Graph
+      summary: Record graph access-review decision
+      description: Record a decision for a graph access-review item.
+      responses:
+        '200':
+          description: Decision recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FindingActionResponse'
+        '400':
+          description: Invalid request
+          content: *id001
+        '404':
+          description: Not found
+          content: *id001
+        '503':
+          description: Graph unavailable
+          content: *id001
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Access review ID
+      - name: itemId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Review item ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+  /api/v1/graph/access-reviews/{id}/start:
+    post:
+      tags:
+      - Graph
+      summary: Start graph access review
+      description: Start executing a pending graph access review.
+      responses:
+        '200':
+          description: Graph access review started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FindingActionResponse'
+        '404':
+          description: Not found
+          content: *id001
+        '503':
+          description: Graph unavailable
+          content: *id001
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Access review ID
+  /api/v1/graph/attack-paths:
+    get:
+      tags:
+      - Graph
+      summary: List scored attack paths
+      description: Simulate attack paths and return scored results.
+      responses:
+        '200':
+          description: Attack path simulation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttackPathSimulationResponse'
+        '503':
+          description: Graph unavailable
+          content: *id001
+      parameters:
+      - name: max_depth
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 6
+        description: Traversal depth (1-10)
+      - name: threshold
+        in: query
+        required: false
+        schema:
+          type: number
+          default: 0
+        description: Minimum path score
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 50
+        description: Maximum result size
+  /api/v1/graph/attack-paths/{id}/simulate-fix:
+    get:
+      tags:
+      - Graph
+      summary: Simulate attack path fix
+      description: Simulate remediation impact for a target node.
+      responses:
+        '200':
+          description: Fix simulation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttackPathFixSimulationResponse'
+        '400':
+          description: Invalid node ID
+          content: *id001
+        '503':
+          description: Graph unavailable
+          content: *id001
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Node identifier
+  /api/v1/graph/blast-radius/{principalId}:
+    get:
+      tags:
+      - Graph
+      summary: Calculate blast radius
+      description: Return reachable resources from a principal.
+      responses:
+        '200':
+          description: Blast radius result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphBlastRadiusResponse'
+        '400':
+          description: Invalid principal ID
+          content: *id001
+        '503':
+          description: Graph unavailable
+          content: *id001
+      parameters:
+      - name: principalId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Principal identifier
+      - name: max_depth
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 3
+        description: Traversal depth (1-10)
+  /api/v1/graph/cascading-blast-radius/{principalId}:
+    get:
+      tags:
+      - Graph
+      summary: Calculate cascading blast radius
+      description: Return transitive blast radius analysis.
+      responses:
+        '200':
+          description: Cascading blast radius result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphBlastRadiusResponse'
+        '400':
+          description: Invalid principal ID
+          content: *id001
+        '503':
+          description: Graph unavailable
+          content: *id001
+      parameters:
+      - name: principalId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Principal identifier
+      - name: max_depth
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 6
+        description: Traversal depth (1-10)
+  /api/v1/graph/chokepoints:
+    get:
+      tags:
+      - Graph
+      summary: List chokepoints
+      description: Return highest-value chokepoints across simulated attack paths.
+      responses:
+        '200':
+          description: Chokepoints
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChokepointsResponse'
+        '503':
+          description: Graph unavailable
+          content: *id001
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 20
+        description: Maximum result size
+  /api/v1/graph/compare-permissions:
+    get:
+      tags:
+      - Graph
+      summary: Compare permissions
+      description: Compare effective permissions between two principals.
+      responses:
+        '200':
+          description: Permission comparison
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionComparisonResponse'
+        '400':
+          description: principal1/principal2 required
+          content: *id001
+        '503':
+          description: Graph unavailable
+          content: *id001
+      parameters:
+      - name: principal1
+        in: query
+        required: false
+        schema:
+          type: string
+        description: First principal identifier
+      - name: principal2
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Second principal identifier
+  /api/v1/graph/effective-permissions/{principalId}:
+    get:
+      tags:
+      - Graph
+      summary: Get effective permissions
+      description: Resolve effective permissions for a principal.
+      responses:
+        '200':
+          description: Effective permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EffectivePermissionsResponse'
+        '400':
+          description: Invalid principal ID
+          content: *id001
+        '503':
+          description: Graph unavailable
+          content: *id001
+      parameters:
+      - name: principalId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Principal identifier
+  /api/v1/graph/peer-groups:
+    get:
+      tags:
+      - Graph
+      summary: Analyze peer groups
+      description: Compute peer groups and privilege creep outliers.
+      responses:
+        '200':
+          description: Peer group analysis
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PeerGroupsResponse'
+        '503':
+          description: Graph unavailable
+          content: *id001
+      parameters:
+      - name: min_similarity
+        in: query
+        required: false
+        schema:
+          type: number
+          default: 0.7
+        description: Minimum similarity threshold
+      - name: min_group_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 2
+        description: Minimum peer-group size
+  /api/v1/graph/privilege-escalation/{principalId}:
+    get:
+      tags:
+      - Graph
+      summary: Detect privilege escalation
+      description: Detect privilege escalation risks for a principal.
+      responses:
+        '200':
+          description: Privilege escalation risks
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PrivilegeEscalationResponse'
+        '400':
+          description: Invalid principal ID
+          content: *id001
+        '503':
+          description: Graph unavailable
+          content: *id001
+      parameters:
+      - name: principalId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Principal identifier
+  /api/v1/graph/rebuild:
+    post:
+      tags:
+      - Graph
+      summary: Rebuild graph
+      description: Trigger a full security graph rebuild.
+      responses:
+        '200':
+          description: Graph rebuilt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphRebuildResponse'
+        '503':
+          description: Graph unavailable
+          content: *id001
+        '500':
+          description: Rebuild failed
+          content: *id001
+  /api/v1/graph/reverse-access/{resourceId}:
+    get:
+      tags:
+      - Graph
+      summary: Get reverse access
+      description: Return principals that can reach a resource.
+      responses:
+        '200':
+          description: Reverse access result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphReverseAccessResponse'
+        '400':
+          description: Invalid resource ID
+          content: *id001
+        '503':
+          description: Graph unavailable
+          content: *id001
+      parameters:
+      - name: resourceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Resource identifier
+      - name: max_depth
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 3
+        description: Traversal depth (1-10)
+  /api/v1/graph/risk-report:
+    get:
+      tags:
+      - Graph
+      summary: Get risk report
+      description: Run graph risk analysis across the current graph snapshot.
+      responses:
+        '200':
+          description: Risk report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphRiskReportResponse'
+        '503':
+          description: Graph unavailable
+          content: *id001
+  /api/v1/graph/stats:
+    get:
+      tags:
+      - Graph
+      summary: Get graph statistics
+      description: Return graph build metadata and cardinality.
+      responses:
+        '200':
+          description: Graph stats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphStatsResponse'
+        '503':
+          description: Graph unavailable
+          content: *id001
+  /api/v1/graph/toxic-combinations:
+    get:
+      tags:
+      - Graph
+      summary: List toxic combinations
+      description: List toxic risk combinations detected in the graph.
+      responses:
+        '200':
+          description: Toxic combinations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToxicCombinationsResponse'
+        '503':
+          description: Graph unavailable
+          content: *id001
+      parameters:
+      - name: severity
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Filter by severity
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 50
+        description: Maximum result size
+  /api/v1/graph/visualize/attack-path/{id}:
+    get:
+      tags:
+      - Graph
+      summary: Visualize attack path
+      description: Render graph visualization payload for an attack path.
+      responses:
+        '200':
+          description: Visualization payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphVisualizationResponse'
+        '503':
+          description: Graph unavailable
+          content: *id001
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Attack path ID
+  /api/v1/graph/visualize/blast-radius/{principalId}:
+    get:
+      tags:
+      - Graph
+      summary: Visualize blast radius
+      description: Render graph visualization payload for blast radius.
+      responses:
+        '200':
+          description: Visualization payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphVisualizationResponse'
+        '503':
+          description: Graph unavailable
+          content: *id001
+      parameters:
+      - name: principalId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Principal identifier
+  /api/v1/graph/visualize/report:
+    get:
+      tags:
+      - Graph
+      summary: Visualize graph report
+      description: Render aggregate graph visualization report payload.
+      responses:
+        '200':
+          description: Visualization payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphVisualizationResponse'
+        '503':
+          description: Graph unavailable
+          content: *id001
+  /api/v1/graph/visualize/toxic-combination/{id}:
+    get:
+      tags:
+      - Graph
+      summary: Visualize toxic combination
+      description: Render graph visualization payload for a toxic combination.
+      responses:
+        '200':
+          description: Visualization payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphVisualizationResponse'
+        '503':
+          description: Graph unavailable
+          content: *id001
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Toxic combination ID
+  /api/v1/identity/reviews/{id}:
+    get:
+      tags:
+      - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/identity/reviews/{id}/items:
+    get:
+      tags:
+      - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+    post:
+      tags:
+      - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/identity/reviews/{id}/items/{itemId}/decide:
+    post:
+      tags:
+      - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/identity/reviews/{id}/start:
+    post:
+      tags:
+      - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/incidents:
+    post:
+      tags:
+      - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/incidents/playbooks:
+    get:
+      tags:
+      - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/incidents/playbooks/{id}:
+    get:
+      tags:
+      - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/lineage/by-commit/{sha}:
+    get:
+      tags:
+      - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/lineage/by-image/{digest}:
+    get:
+      tags:
+      - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/lineage/drift/{assetId}:
+    post:
+      tags:
+      - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/lineage/{assetId}:
+    get:
+      tags:
+      - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/notifications:
+    get:
+      tags:
+      - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/notifications/digest:
+    get:
+      tags:
+      - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/notifications/test:
+    post:
+      tags:
+      - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/providers:
+    get:
+      tags:
+      - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/providers/{name}:
+    get:
+      tags:
+      - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/providers/{name}/configure:
+    post:
+      tags:
+      - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/providers/{name}/schema:
+    get:
+      tags:
+      - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/providers/{name}/sync:
+    post:
+      tags:
+      - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/providers/{name}/test:
+    post:
+      tags:
+      - Admin
+      summary: Test provider connectivity
+      description: Run a provider-specific connectivity/authentication test.
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Provider name
+      - name: include_incomplete
+        in: query
+        required: false
+        schema:
+          type: boolean
+        description: Include providers marked as incomplete
+      responses:
+        '200':
+          description: Provider test result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderTestResponse'
+        '404':
+          description: Provider not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/rbac/permissions:
+    get:
+      tags:
+      - RBAC
+      summary: List permissions
+      description: List permission identifiers available for assignment.
+      responses:
+        '200':
+          description: Permission list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+  /api/v1/rbac/roles:
+    get:
+      tags:
+      - RBAC
+      summary: List roles
+      description: List RBAC roles.
+      responses:
+        '200':
+          description: Role list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+        '503':
+          description: RBAC unavailable
+          content: *id001
+  /api/v1/rbac/tenants:
+    get:
+      tags:
+      - RBAC
+      summary: List tenants
+      description: List RBAC tenants.
+      responses:
+        '200':
+          description: Tenant list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RBACTenant'
+        '503':
+          description: RBAC unavailable
+          content: *id001
+    post:
+      tags:
+      - RBAC
+      summary: Create tenant
+      description: Create a RBAC tenant.
+      responses:
+        '201':
+          description: Tenant created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RBACTenant'
+        '400':
+          description: Invalid tenant payload
+          content: *id001
+        '403':
+          description: Permission denied
+          content: *id001
+        '503':
+          description: RBAC unavailable
+          content: *id001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RBACTenantCreateRequest'
+  /api/v1/rbac/users:
+    post:
+      tags:
+      - RBAC
+      summary: Create user
+      description: Create a RBAC user record.
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RBACUser'
+        '400':
+          description: Invalid user payload
+          content: *id001
+        '403':
+          description: Permission denied
+          content: *id001
+        '503':
+          description: RBAC unavailable
+          content: *id001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RBACUserCreateRequest'
+  /api/v1/rbac/users/{id}:
+    get:
+      tags:
+      - RBAC
+      summary: Get user
+      description: Get a RBAC user by ID.
+      responses:
+        '200':
+          description: User
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RBACUser'
+        '404':
+          description: User not found
+          content: *id001
+        '503':
+          description: RBAC unavailable
+          content: *id001
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: User ID
+  /api/v1/rbac/users/{id}/roles:
+    post:
+      tags:
+      - RBAC
+      summary: Assign role
+      description: Assign a role to a RBAC user.
+      responses:
+        '200':
+          description: Role assigned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FindingActionResponse'
+        '400':
+          description: Invalid role assignment request
+          content: *id001
+        '403':
+          description: Permission denied
+          content: *id001
+        '503':
+          description: RBAC unavailable
+          content: *id001
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: User ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RBACAssignRoleRequest'
+  /api/v1/remediation/executions:
+    get:
+      tags:
+      - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/remediation/executions/{id}:
+    get:
+      tags:
+      - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/remediation/executions/{id}/approve:
+    post:
+      tags:
+      - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/remediation/executions/{id}/reject:
+    post:
+      tags:
+      - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/remediation/rules:
+    get:
+      tags:
+      - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+    post:
+      tags:
+      - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/remediation/rules/{id}:
+    get:
+      tags:
+      - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/remediation/rules/{id}/disable:
+    post:
+      tags:
+      - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/remediation/rules/{id}/enable:
+    post:
+      tags:
+      - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/reports/compliance/{framework}:
+    get:
+      tags:
+      - Compliance
+      summary: Framework compliance report
+      description: Generate a findings-based compliance report for a framework label.
+      parameters:
+      - name: framework
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Framework identifier or label
+      responses:
+        '200':
+          description: Framework compliance report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FrameworkComplianceReportResponse'
+  /api/v1/reports/executive-summary:
+    get:
+      tags:
+      - Compliance
+      summary: Executive summary
+      description: Return a high-level risk and findings summary for executive reporting.
+      responses:
+        '200':
+          description: Executive summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutiveSummaryResponse'
+  /api/v1/reports/risk-summary:
+    get:
+      tags:
+      - Compliance
+      summary: Risk category summary
+      description: Return open findings aggregated by risk category and severity.
+      responses:
+        '200':
+          description: Risk summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RiskSummaryResponse'
+  /api/v1/runtime/detections:
+    get:
+      tags:
+      - Runtime
+      summary: List detection rules
+      description: List runtime detection rules.
+      responses:
+        '200':
+          description: Detection rules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+        '503':
+          description: Runtime detection unavailable
+          content: *id001
+  /api/v1/runtime/events:
+    post:
+      tags:
+      - Runtime
+      summary: Ingest runtime event
+      description: Ingest a runtime event and evaluate detection/response policies.
+      responses:
+        '200':
+          description: Runtime event processed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeIngestResponse'
+        '400':
+          description: Invalid runtime event
+          content: *id001
+        '503':
+          description: Runtime detection unavailable
+          content: *id001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuntimeEventIngestRequest'
+  /api/v1/runtime/findings:
+    get:
+      tags:
+      - Runtime
+      summary: List runtime findings
+      description: List recent runtime findings.
+      responses:
+        '200':
+          description: Runtime findings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeFindingsResponse'
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 100
+        description: Maximum result size
+  /api/v1/runtime/responses:
+    get:
+      tags:
+      - Runtime
+      summary: List response policies
+      description: List runtime response policies.
+      responses:
+        '200':
+          description: Response policies
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+        '503':
+          description: Runtime response unavailable
+          content: *id001
+  /api/v1/runtime/responses/{id}/disable:
+    post:
+      tags:
+      - Runtime
+      summary: Disable response policy
+      description: Disable a runtime response policy by ID.
+      responses:
+        '200':
+          description: Policy disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FindingActionResponse'
+        '400':
+          description: Invalid policy ID
+          content: *id001
+        '503':
+          description: Runtime response unavailable
+          content: *id001
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Policy ID
+  /api/v1/runtime/responses/{id}/enable:
+    post:
+      tags:
+      - Runtime
+      summary: Enable response policy
+      description: Enable a runtime response policy by ID.
+      responses:
+        '200':
+          description: Policy enabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FindingActionResponse'
+        '400':
+          description: Invalid policy ID
+          content: *id001
+        '503':
+          description: Runtime response unavailable
+          content: *id001
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Policy ID
+  /api/v1/scan/coverage:
+    get:
+      tags:
+      - Admin
+      summary: Policy coverage report
+      description: Report policy coverage against currently available source tables.
+      responses:
+        '200':
+          description: Policy coverage report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanCoverageResponse'
+        '503':
+          description: Snowflake unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Failed to compute coverage report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/scan/watermarks:
+    get:
+      tags:
+      - Admin
+      summary: Scan watermark stats
+      description: Return incremental-scan watermark statistics.
+      responses:
+        '200':
+          description: Scan watermark stats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanWatermarkStatsResponse'
+        '503':
+          description: Scan watermark store unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/scheduler/jobs/{name}/disable:
+    post:
+      tags:
+      - Admin
+      summary: Disable scheduler job
+      description: Trigger a scheduler job control action by name.
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Scheduler job name
+      responses:
+        '200':
+          description: Scheduler action accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SchedulerJobActionResponse'
+  /api/v1/scheduler/jobs/{name}/enable:
+    post:
+      tags:
+      - Admin
+      summary: Enable scheduler job
+      description: Trigger a scheduler job control action by name.
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Scheduler job name
+      responses:
+        '200':
+          description: Scheduler action accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SchedulerJobActionResponse'
+  /api/v1/scheduler/jobs/{name}/run:
+    post:
+      tags:
+      - Admin
+      summary: Run scheduler job now
+      description: Trigger a scheduler job control action by name.
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Scheduler job name
+      responses:
+        '202':
+          description: Scheduler action accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SchedulerJobActionResponse'
+        '404':
+          description: Scheduler job not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Scheduler job already running
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Failed to trigger scheduler job
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Scheduler is not running
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/slack/commands:
+    post:
+      tags:
+      - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/telemetry/ingest:
+    post:
+      tags:
+      - Runtime
+      summary: Ingest telemetry batch
+      description: Ingest a telemetry batch and process each runtime event through
+        detection/response.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TelemetryIngestRequest'
+      responses:
+        '200':
+          description: Telemetry batch processed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TelemetryIngestResponse'
+        '400':
+          description: Invalid telemetry payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/threatintel/feeds:
+    get:
+      tags:
+      - ThreatIntel
+      summary: List threat intel feeds
+      description: List configured threat-intel feeds and latest sync metadata.
+      responses:
+        '200':
+          description: Threat intel feeds
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ThreatIntelFeed'
+        '503':
+          description: Threat intel service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/threatintel/feeds/{id}/sync:
+    post:
+      tags:
+      - ThreatIntel
+      summary: Sync threat intel feed
+      description: Trigger an immediate synchronization for a feed.
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Feed identifier
+      responses:
+        '200':
+          description: Feed synchronized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+        '400':
+          description: Invalid feed ID or sync failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Threat intel service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/threatintel/lookup/cve/{cve}:
+    get:
+      tags:
+      - ThreatIntel
+      summary: Lookup CVE indicator
+      description: Lookup a CVE and whether it is marked as known exploited.
+      parameters:
+      - name: cve
+        in: path
+        required: true
+        schema:
+          type: string
+        description: CVE identifier
+      responses:
+        '200':
+          description: CVE lookup result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThreatIntelLookupCVEResponse'
+        '503':
+          description: Threat intel service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/threatintel/lookup/domain/{domain}:
+    get:
+      tags:
+      - ThreatIntel
+      summary: Lookup domain indicator
+      description: Lookup a domain in threat-intel indicators.
+      parameters:
+      - name: domain
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Domain name
+      responses:
+        '200':
+          description: Domain lookup result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThreatIntelLookupDomainResponse'
+        '503':
+          description: Threat intel service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/threatintel/lookup/ip/{ip}:
+    get:
+      tags:
+      - ThreatIntel
+      summary: Lookup IP indicator
+      description: Lookup an IP address in threat-intel indicators.
+      parameters:
+      - name: ip
+        in: path
+        required: true
+        schema:
+          type: string
+        description: IP address
+      responses:
+        '200':
+          description: IP lookup result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThreatIntelLookupIPResponse'
+        '503':
+          description: Threat intel service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/threatintel/stats:
+    get:
+      tags:
+      - ThreatIntel
+      summary: Threat intel stats
+      description: Return current threat-intel indicator and feed statistics.
+      responses:
+        '200':
+          description: Threat intel stats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThreatIntelStatsResponse'
+        '503':
+          description: Threat intel service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/tickets:
+    get:
+      tags:
+      - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+    post:
+      tags:
+      - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/tickets/{id}:
+    get:
+      tags:
+      - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+    put:
+      tags:
+      - Undocumented
+      summary: PUT endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/tickets/{id}/close:
+    post:
+      tags:
+      - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/tickets/{id}/comments:
+    post:
+      tags:
+      - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/webhooks/test:
+    post:
+      tags:
+      - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /api/v1/webhooks/{id}/deliveries:
+    get:
+      tags:
+      - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync
+        with server routes.
+      responses:
+        '200':
+          description: OK
+  /docs:
+    get:
+      tags:
+      - Health
+      summary: Get docs landing page
+      description: Return the embedded API documentation landing page.
+      responses:
+        '200':
+          description: Docs HTML
+          content:
+            text/html:
+              schema:
+                type: string
+      security: []
+  /openapi.yaml:
+    get:
+      tags:
+      - Health
+      summary: Get OpenAPI spec
+      description: Return the OpenAPI YAML contract for this API.
+      responses:
+        '200':
+          description: OpenAPI YAML
+          content:
+            application/yaml:
+              schema:
+                type: string
+      security: []
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -679,7 +2694,6 @@ components:
     BearerAuth:
       type: http
       scheme: bearer
-
   parameters:
     Limit:
       name: limit
@@ -694,7 +2708,6 @@ components:
       schema:
         type: integer
         default: 0
-
   schemas:
     HealthResponse:
       type: object
@@ -705,7 +2718,6 @@ components:
         timestamp:
           type: string
           format: date-time
-
     ReadyResponse:
       type: object
       properties:
@@ -715,7 +2727,6 @@ components:
           type: object
           additionalProperties:
             type: string
-
     TablesResponse:
       type: object
       properties:
@@ -725,17 +2736,16 @@ components:
             type: string
         count:
           type: integer
-
     QueryRequest:
       type: object
-      required: [query]
+      required:
+      - query
       properties:
         query:
           type: string
-          example: "SELECT * FROM aws_s3_buckets LIMIT 10"
+          example: SELECT * FROM aws_s3_buckets LIMIT 10
         limit:
           type: integer
-
     QueryResponse:
       type: object
       properties:
@@ -749,7 +2759,6 @@ components:
             type: object
         count:
           type: integer
-
     AssetsResponse:
       type: object
       properties:
@@ -761,11 +2770,9 @@ components:
           type: integer
         pagination:
           $ref: '#/components/schemas/Pagination'
-
     Asset:
       type: object
       additionalProperties: true
-
     Policy:
       type: object
       properties:
@@ -777,7 +2784,9 @@ components:
           type: string
         effect:
           type: string
-          enum: [permit, forbid]
+          enum:
+          - permit
+          - forbid
         resource:
           type: string
         conditions:
@@ -786,12 +2795,15 @@ components:
             type: string
         severity:
           type: string
-          enum: [critical, high, medium, low]
+          enum:
+          - critical
+          - high
+          - medium
+          - low
         tags:
           type: array
           items:
             type: string
-
     PoliciesResponse:
       type: object
       properties:
@@ -801,7 +2813,6 @@ components:
             $ref: '#/components/schemas/Policy'
         count:
           type: integer
-
     EvaluateRequest:
       type: object
       properties:
@@ -811,7 +2822,6 @@ components:
           type: array
           items:
             type: string
-
     EvaluateResponse:
       type: object
       properties:
@@ -819,7 +2829,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Finding'
-
     Finding:
       type: object
       properties:
@@ -842,7 +2851,6 @@ components:
         created_at:
           type: string
           format: date-time
-
     FindingsResponse:
       type: object
       properties:
@@ -854,7 +2862,6 @@ components:
           type: integer
         pagination:
           $ref: '#/components/schemas/Pagination'
-
     FindingsStats:
       type: object
       properties:
@@ -872,7 +2879,6 @@ components:
           type: object
           additionalProperties:
             type: integer
-
     ScanResponse:
       type: object
       properties:
@@ -884,7 +2890,6 @@ components:
           type: integer
         duration_ms:
           type: integer
-
     Framework:
       type: object
       properties:
@@ -900,7 +2905,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Control'
-
     Control:
       type: object
       properties:
@@ -914,7 +2918,6 @@ components:
           type: array
           items:
             type: string
-
     FrameworksResponse:
       type: object
       properties:
@@ -924,7 +2927,6 @@ components:
             $ref: '#/components/schemas/Framework'
         count:
           type: integer
-
     ComplianceReport:
       type: object
       properties:
@@ -941,7 +2943,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ControlStatus'
-
     ComplianceSummary:
       type: object
       properties:
@@ -953,7 +2954,6 @@ components:
           type: integer
         compliance_score:
           type: number
-
     ControlStatus:
       type: object
       properties:
@@ -961,8 +2961,10 @@ components:
           type: string
         status:
           type: string
-          enum: [passing, failing, unknown]
-
+          enum:
+          - passing
+          - failing
+          - unknown
     PreAuditReport:
       type: object
       properties:
@@ -980,7 +2982,6 @@ components:
           type: array
           items:
             type: string
-
     AuditPackage:
       type: object
       properties:
@@ -990,7 +2991,6 @@ components:
           type: array
           items:
             type: object
-
     StaleAccessResponse:
       type: object
       properties:
@@ -1002,7 +3002,6 @@ components:
           type: integer
         summary:
           type: object
-
     StaleAccessFinding:
       type: object
       properties:
@@ -1025,7 +3024,6 @@ components:
           type: string
         remediation:
           type: string
-
     IdentityReport:
       type: object
       properties:
@@ -1046,7 +3044,6 @@ components:
           type: array
           items:
             type: string
-
     AccessReview:
       type: object
       properties:
@@ -1059,7 +3056,6 @@ components:
         created_at:
           type: string
           format: date-time
-
     ReviewsResponse:
       type: object
       properties:
@@ -1069,21 +3065,24 @@ components:
             $ref: '#/components/schemas/AccessReview'
         count:
           type: integer
-
     CreateReviewRequest:
       type: object
-      required: [name, type]
+      required:
+      - name
+      - type
       properties:
         name:
           type: string
         type:
           type: string
-          enum: [user_access, service_account, privileged]
+          enum:
+          - user_access
+          - service_account
+          - privileged
         reviewers:
           type: array
           items:
             type: string
-
     AgentsResponse:
       type: object
       properties:
@@ -1098,7 +3097,6 @@ components:
                 type: string
               description:
                 type: string
-
     AgentSession:
       type: object
       properties:
@@ -1109,10 +3107,10 @@ components:
         created_at:
           type: string
           format: date-time
-
     CreateSessionRequest:
       type: object
-      required: [agent_id]
+      required:
+      - agent_id
       properties:
         agent_id:
           type: string
@@ -1124,16 +3122,17 @@ components:
             type: string
         context:
           type: object
-
     Message:
       type: object
       properties:
         role:
           type: string
-          enum: [user, assistant, system]
+          enum:
+          - user
+          - assistant
+          - system
         content:
           type: string
-
     MessagesResponse:
       type: object
       properties:
@@ -1141,7 +3140,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Message'
-
     Webhook:
       type: object
       properties:
@@ -1158,7 +3156,6 @@ components:
         created_at:
           type: string
           format: date-time
-
     WebhooksResponse:
       type: object
       properties:
@@ -1168,10 +3165,11 @@ components:
             $ref: '#/components/schemas/Webhook'
         count:
           type: integer
-
     CreateWebhookRequest:
       type: object
-      required: [url, events]
+      required:
+      - url
+      - events
       properties:
         url:
           type: string
@@ -1182,7 +3180,6 @@ components:
             type: string
         secret:
           type: string
-
     AdminHealth:
       type: object
       properties:
@@ -1204,7 +3201,6 @@ components:
           type: object
         agents:
           type: object
-
     SyncStatus:
       type: object
       properties:
@@ -1225,7 +3221,6 @@ components:
         checked_at:
           type: string
           format: date-time
-
     SchedulerStatus:
       type: object
       properties:
@@ -1233,7 +3228,6 @@ components:
           type: boolean
         jobs_count:
           type: integer
-
     JobsResponse:
       type: object
       properties:
@@ -1254,7 +3248,6 @@ components:
                 format: date-time
               enabled:
                 type: boolean
-
     Pagination:
       type: object
       properties:
@@ -1266,7 +3259,6 @@ components:
           type: integer
         has_more:
           type: boolean
-
     Error:
       type: object
       properties:
@@ -1276,3 +3268,584 @@ components:
           type: string
         details:
           type: object
+      required:
+      - error
+    FindingAssignRequest:
+      type: object
+      required:
+      - assignee
+      properties:
+        assignee:
+          type: string
+    FindingDueDateRequest:
+      type: object
+      required:
+      - due_at
+      properties:
+        due_at:
+          type: string
+          format: date-time
+    FindingNoteRequest:
+      type: object
+      required:
+      - note
+      properties:
+        note:
+          type: string
+    FindingTicketLinkRequest:
+      type: object
+      required:
+      - url
+      properties:
+        url:
+          type: string
+          format: uri
+        name:
+          type: string
+        external_id:
+          type: string
+    FindingActionResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        assignee:
+          type: string
+      required:
+      - status
+    GraphStatsResponse:
+      type: object
+      properties:
+        built_at:
+          type: string
+          format: date-time
+        node_count:
+          type: integer
+        edge_count:
+          type: integer
+        providers:
+          type: array
+          items:
+            type: string
+        accounts:
+          type: array
+          items:
+            type: string
+        build_duration:
+          type: string
+    GraphBlastRadiusResponse:
+      type: object
+      additionalProperties: true
+    GraphReverseAccessResponse:
+      type: object
+      additionalProperties: true
+    GraphRebuildResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        built_at:
+          type: string
+          format: date-time
+        node_count:
+          type: integer
+        edge_count:
+          type: integer
+        build_duration:
+          type: string
+    GraphRiskReportResponse:
+      type: object
+      additionalProperties: true
+    ToxicCombinationsResponse:
+      type: object
+      properties:
+        total:
+          type: integer
+        results:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    AttackPathSimulationResponse:
+      type: object
+      additionalProperties: true
+    AttackPathFixSimulationResponse:
+      type: object
+      additionalProperties: true
+    ChokepointsResponse:
+      type: object
+      properties:
+        total:
+          type: integer
+        chokepoints:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    PrivilegeEscalationResponse:
+      type: object
+      properties:
+        principal_id:
+          type: string
+        risk_count:
+          type: integer
+        risks:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    PeerGroupsResponse:
+      type: object
+      additionalProperties: true
+    EffectivePermissionsResponse:
+      type: object
+      additionalProperties: true
+    PermissionComparisonResponse:
+      type: object
+      additionalProperties: true
+    GraphAccessReviewResponse:
+      type: object
+      additionalProperties: true
+    GraphAccessReviewsResponse:
+      type: object
+      additionalProperties: true
+    GraphVisualizationResponse:
+      type: object
+      additionalProperties: true
+    RuntimeEventIngestRequest:
+      type: object
+      additionalProperties: true
+    RuntimeIngestResponse:
+      type: object
+      properties:
+        processed:
+          type: boolean
+        findings:
+          type: integer
+    RuntimeFindingsResponse:
+      type: object
+      properties:
+        findings:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        count:
+          type: integer
+    RBACUserCreateRequest:
+      type: object
+      additionalProperties: true
+    RBACUser:
+      type: object
+      additionalProperties: true
+    RBACAssignRoleRequest:
+      type: object
+      required:
+      - role_id
+      properties:
+        role_id:
+          type: string
+    RBACTenantCreateRequest:
+      type: object
+      additionalProperties: true
+    RBACTenant:
+      type: object
+      additionalProperties: true
+    StatusResponse:
+      type: object
+      required:
+      - status
+      properties:
+        status:
+          type: string
+    ProviderTestResponse:
+      type: object
+      required:
+      - status
+      properties:
+        status:
+          type: string
+          enum:
+          - success
+          - failed
+        error:
+          type: string
+    SeverityBreakdown:
+      type: object
+      required:
+      - critical
+      - high
+      - medium
+      - low
+      properties:
+        critical:
+          type: integer
+        high:
+          type: integer
+        medium:
+          type: integer
+        low:
+          type: integer
+    ExecutiveSummaryResponse:
+      type: object
+      required:
+      - total_findings
+      - open_findings
+      - resolved_findings
+      - suppressed_findings
+      - risk_score
+      - by_severity
+      - top_risks
+      properties:
+        total_findings:
+          type: integer
+        open_findings:
+          type: integer
+        resolved_findings:
+          type: integer
+        suppressed_findings:
+          type: integer
+        risk_score:
+          type: integer
+        by_severity:
+          $ref: '#/components/schemas/SeverityBreakdown'
+        top_risks:
+          type: array
+          items:
+            type: string
+    RiskSummaryItem:
+      type: object
+      required:
+      - category
+      - count
+      - critical
+      - high
+      - medium
+      - low
+      properties:
+        category:
+          type: string
+        count:
+          type: integer
+        critical:
+          type: integer
+        high:
+          type: integer
+        medium:
+          type: integer
+        low:
+          type: integer
+    RiskSummaryResponse:
+      type: object
+      required:
+      - risks
+      - count
+      properties:
+        risks:
+          type: array
+          items:
+            $ref: '#/components/schemas/RiskSummaryItem'
+        count:
+          type: integer
+    FrameworkComplianceControlStatus:
+      type: object
+      required:
+      - control_id
+      - status
+      - findings
+      properties:
+        control_id:
+          type: string
+        control_name:
+          type: string
+        status:
+          type: string
+        findings:
+          type: integer
+        max_severity:
+          type: string
+        policy_ids:
+          type: array
+          items:
+            type: string
+    FrameworkComplianceReportResponse:
+      type: object
+      required:
+      - framework
+      - total_controls
+      - assessed_controls
+      - passing_controls
+      - failing_controls
+      - not_assessed_controls
+      - coverage_percent
+      - compliance_percent
+      - control_status
+      - findings_by_control
+      properties:
+        framework:
+          type: string
+        total_controls:
+          type: integer
+        assessed_controls:
+          type: integer
+        passing_controls:
+          type: integer
+        failing_controls:
+          type: integer
+        not_assessed_controls:
+          type: integer
+        coverage_percent:
+          type: number
+        compliance_percent:
+          type: number
+        control_status:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/FrameworkComplianceControlStatus'
+        findings_by_control:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+    PolicyCoverageGap:
+      type: object
+      required:
+      - policy_id
+      - policy_name
+      - resource
+      - missing_tables
+      properties:
+        policy_id:
+          type: string
+        policy_name:
+          type: string
+        resource:
+          type: string
+        missing_tables:
+          type: array
+          items:
+            type: string
+    ScanCoverageResponse:
+      type: object
+      required:
+      - total_policies
+      - covered_policies
+      - uncovered_policies
+      - unknown_resource_policies
+      - coverage_percent
+      - known_coverage_percent
+      - available_tables
+      - gaps
+      - missing_tables
+      - missing_by_provider
+      properties:
+        total_policies:
+          type: integer
+        covered_policies:
+          type: integer
+        uncovered_policies:
+          type: integer
+        unknown_resource_policies:
+          type: integer
+        coverage_percent:
+          type: number
+        known_coverage_percent:
+          type: number
+        available_tables:
+          type: integer
+        gaps:
+          type: array
+          items:
+            $ref: '#/components/schemas/PolicyCoverageGap'
+        missing_tables:
+          type: object
+          additionalProperties:
+            type: integer
+        missing_by_provider:
+          type: object
+          additionalProperties:
+            type: integer
+    ScanWatermarkStatsResponse:
+      type: object
+      required:
+      - tables_with_watermarks
+      - total_rows_scanned
+      - table_stats
+      properties:
+        tables_with_watermarks:
+          type: integer
+        total_rows_scanned:
+          type: integer
+        oldest_watermark:
+          type: string
+          format: date-time
+        newest_watermark:
+          type: string
+          format: date-time
+        table_stats:
+          type: object
+          additionalProperties:
+            type: integer
+    SchedulerJobActionResponse:
+      type: object
+      required:
+      - status
+      properties:
+        status:
+          type: string
+    TelemetryIngestRequest:
+      type: object
+      required:
+      - events
+      properties:
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuntimeEventIngestRequest'
+        node:
+          type: string
+        cluster:
+          type: string
+        agent_version:
+          type: string
+    TelemetryIngestResponse:
+      type: object
+      required:
+      - processed
+      - findings
+      properties:
+        processed:
+          type: integer
+        findings:
+          type: integer
+    ThreatIntelFeed:
+      type: object
+      required:
+      - id
+      - name
+      - description
+      - type
+      - url
+      - format
+      - enabled
+      - last_sync
+      - indicator_count
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        type:
+          type: string
+        url:
+          type: string
+        format:
+          type: string
+        enabled:
+          type: boolean
+        last_sync:
+          type: string
+          format: date-time
+        indicator_count:
+          type: integer
+    ThreatIndicator:
+      type: object
+      required:
+      - id
+      - type
+      - value
+      - source
+      - severity
+      - confidence
+      - first_seen
+      - last_seen
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        value:
+          type: string
+        source:
+          type: string
+        severity:
+          type: string
+        confidence:
+          type: integer
+        first_seen:
+          type: string
+          format: date-time
+        last_seen:
+          type: string
+          format: date-time
+        description:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+    ThreatIntelStatsResponse:
+      type: object
+      required:
+      - total_indicators
+      - by_type
+      - feeds_count
+      - last_updated
+      properties:
+        total_indicators:
+          type: integer
+        by_type:
+          type: object
+          additionalProperties:
+            type: integer
+        feeds_count:
+          type: integer
+        last_updated:
+          type: string
+          format: date-time
+    ThreatIntelLookupIPResponse:
+      type: object
+      required:
+      - found
+      - ip
+      properties:
+        found:
+          type: boolean
+        ip:
+          type: string
+        indicator:
+          $ref: '#/components/schemas/ThreatIndicator'
+    ThreatIntelLookupDomainResponse:
+      type: object
+      required:
+      - found
+      - domain
+      properties:
+        found:
+          type: boolean
+        domain:
+          type: string
+        indicator:
+          $ref: '#/components/schemas/ThreatIndicator'
+    ThreatIntelLookupCVEResponse:
+      type: object
+      required:
+      - found
+      - cve
+      - is_kev
+      properties:
+        found:
+          type: boolean
+        cve:
+          type: string
+        is_kev:
+          type: boolean
+        indicator:
+          $ref: '#/components/schemas/ThreatIndicator'

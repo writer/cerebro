@@ -38,6 +38,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/writer/cerebro/internal/agents"
@@ -702,48 +704,65 @@ func New(ctx context.Context) (*App, error) {
 	}
 
 	// Phase 1: Snowflake + policies (everything else depends on these)
-	if err := app.initSnowflake(ctx); err != nil {
+	if err := runInitErrorStep("snowflake", func() error { return app.initSnowflake(ctx) }); err != nil {
 		logger.Warn("snowflake initialization failed", "error", err)
 	}
-	if err := app.initPolicy(); err != nil {
+	if err := runInitErrorStep("policy", app.initPolicy); err != nil {
 		return nil, err
 	}
 
 	// Phase 2a: independent services in parallel (no cross-dependencies)
 	g, gctx := errgroup.WithContext(ctx)
 
-	g.Go(func() error { app.initCache(); return nil })
-	g.Go(func() error { app.initTicketing(); return nil })
-	g.Go(func() error { app.initIdentity(); return nil })
-	g.Go(func() error { app.initAttackPath(); return nil })
-	g.Go(func() error { app.initWebhooks(); return nil })
-	g.Go(func() error { app.initNotifications(); return nil })
-	g.Go(func() error { app.initRBAC(); return nil })
-	g.Go(func() error { app.initCompliance(); return nil })
-	g.Go(func() error { app.initHealth(); return nil })
-	g.Go(func() error { app.initLineage(); return nil })
-	g.Go(func() error { app.initRuntime(); return nil })
-	g.Go(func() error { app.initFindings(); return nil })
-	g.Go(func() error { app.initProviders(gctx); return nil })
-	g.Go(func() error { app.initScheduler(gctx); return nil })
-	g.Go(func() error { app.initRepositories(); return nil })
-	g.Go(func() error { app.initSnowflakeFindings(gctx); return nil })
-	g.Go(func() error { app.initScanWatermarks(gctx); return nil })
-	g.Go(func() error { app.initThreatIntel(ctx); return nil })
-	g.Go(func() error { app.initAvailableTables(gctx); return nil })
+	g.Go(func() error { return runInitStep("cache", app.initCache) })
+	g.Go(func() error { return runInitStep("ticketing", app.initTicketing) })
+	g.Go(func() error { return runInitStep("identity", app.initIdentity) })
+	g.Go(func() error { return runInitStep("attackpath", app.initAttackPath) })
+	g.Go(func() error { return runInitStep("webhooks", app.initWebhooks) })
+	g.Go(func() error { return runInitStep("notifications", app.initNotifications) })
+	g.Go(func() error { return runInitStep("rbac", app.initRBAC) })
+	g.Go(func() error { return runInitStep("compliance", app.initCompliance) })
+	g.Go(func() error { return runInitStep("health", app.initHealth) })
+	g.Go(func() error { return runInitStep("lineage", app.initLineage) })
+	g.Go(func() error { return runInitStep("runtime", app.initRuntime) })
+	g.Go(func() error { return runInitStep("findings", app.initFindings) })
+	g.Go(func() error {
+		return runInitStep("providers", func() { app.initProviders(gctx) })
+	})
+	g.Go(func() error {
+		return runInitStep("scheduler", func() { app.initScheduler(gctx) })
+	})
+	g.Go(func() error { return runInitStep("repositories", app.initRepositories) })
+	g.Go(func() error {
+		return runInitStep("snowflake_findings", func() { app.initSnowflakeFindings(gctx) })
+	})
+	g.Go(func() error {
+		return runInitStep("scan_watermarks", func() { app.initScanWatermarks(gctx) })
+	})
+	g.Go(func() error { return runInitStep("threatintel", func() { app.initThreatIntel(ctx) }) })
+	g.Go(func() error {
+		return runInitStep("available_tables", func() { app.initAvailableTables(gctx) })
+	})
 
-	_ = g.Wait()
+	if err := g.Wait(); err != nil {
+		return nil, fmt.Errorf("phase 2a init failed: %w", err)
+	}
 
 	// Phase 2b: services that depend on Phase 2a outputs
 	// initRemediation reads Ticketing, Notifications, Findings
 	// initAgents reads Findings
 	g2, _ := errgroup.WithContext(ctx)
-	g2.Go(func() error { app.initRemediation(); return nil })
-	g2.Go(func() error { app.initAgents(); return nil })
-	_ = g2.Wait()
+	g2.Go(func() error { return runInitStep("remediation", app.initRemediation) })
+	g2.Go(func() error { return runInitStep("agents", app.initAgents) })
+	if err := g2.Wait(); err != nil {
+		return nil, fmt.Errorf("phase 2b init failed: %w", err)
+	}
 
 	// Phase 3: depends on findings store being ready
 	app.initScanner()
+	if err := app.validateRequiredServices(); err != nil {
+		return nil, err
+	}
 
 	// Phase 4: depends on AvailableTables being populated
 	app.initSecurityGraph(ctx)
@@ -760,4 +779,60 @@ func New(ctx context.Context) (*App, error) {
 	)
 
 	return app, nil
+}
+
+func runInitStep(name string, fn func()) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("%s init panic: %v", name, r)
+		}
+	}()
+	fn()
+	return nil
+}
+
+func runInitErrorStep(name string, fn func() error) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("%s init panic: %v", name, r)
+		}
+	}()
+	return fn()
+}
+
+func (a *App) validateRequiredServices() error {
+	required := map[string]bool{
+		"policy_engine":   a.Policy != nil,
+		"findings_store":  a.Findings != nil,
+		"scanner":         a.Scanner != nil,
+		"cache":           a.Cache != nil,
+		"agent_registry":  a.Agents != nil,
+		"ticketing":       a.Ticketing != nil,
+		"identity":        a.Identity != nil,
+		"attackpath":      a.AttackPath != nil,
+		"providers":       a.Providers != nil,
+		"webhooks":        a.Webhooks != nil,
+		"notifications":   a.Notifications != nil,
+		"scheduler":       a.Scheduler != nil,
+		"rbac":            a.RBAC != nil,
+		"threatintel":     a.ThreatIntel != nil,
+		"health":          a.Health != nil,
+		"lineage":         a.Lineage != nil,
+		"remediation":     a.Remediation != nil,
+		"runtime_detect":  a.RuntimeDetect != nil,
+		"runtime_respond": a.RuntimeRespond != nil,
+	}
+
+	var missing []string
+	for service, initialized := range required {
+		if initialized {
+			continue
+		}
+		missing = append(missing, service)
+	}
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		return fmt.Errorf("required services not initialized: %s", strings.Join(missing, ", "))
+	}
+	return nil
 }

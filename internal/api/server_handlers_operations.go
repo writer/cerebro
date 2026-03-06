@@ -45,6 +45,8 @@ func (s *Server) runJob(w http.ResponseWriter, r *http.Request) {
 			s.error(w, http.StatusNotFound, err.Error())
 		case errors.Is(err, scheduler.ErrJobAlreadyRunning):
 			s.error(w, http.StatusConflict, err.Error())
+		case errors.Is(err, scheduler.ErrSchedulerStopped):
+			s.error(w, http.StatusServiceUnavailable, err.Error())
 		default:
 			s.error(w, http.StatusInternalServerError, err.Error())
 		}
