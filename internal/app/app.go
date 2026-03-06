@@ -423,6 +423,7 @@ type Config struct {
 
 	// Scheduler
 	ScanInterval            string // e.g., "1h", "30m"
+	SecurityDigestInterval  string // e.g., "24h", "168h"
 	ScanTables              string // comma-separated list of tables to scan
 	ScanTableTimeout        time.Duration
 	ScanMaxConcurrent       int
@@ -655,6 +656,7 @@ func LoadConfig() *Config {
 		SlackSigningSecret:                 getEnv("SLACK_SIGNING_SECRET", ""),
 		PagerDutyKey:                       getEnv("PAGERDUTY_ROUTING_KEY", ""),
 		ScanInterval:                       getEnv("SCAN_INTERVAL", ""),
+		SecurityDigestInterval:             getEnv("SECURITY_DIGEST_INTERVAL", ""),
 		ScanTables:                         getEnv("SCAN_TABLES", ""),
 		ScanTableTimeout:                   getEnvDuration("SCAN_TABLE_TIMEOUT", 30*time.Minute),
 		ScanMaxConcurrent:                  getEnvInt("SCAN_MAX_CONCURRENCY", 6),
