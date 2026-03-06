@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	apicontract "github.com/writer/cerebro/api"
 	"github.com/writer/cerebro/internal/app"
 	"github.com/writer/cerebro/internal/metrics"
 	"github.com/writer/cerebro/internal/snowflake"
@@ -108,7 +109,8 @@ func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) openAPISpec(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/yaml")
-	http.ServeFile(w, r, "api/openapi.yaml")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(apicontract.OpenAPIYAML)
 }
 
 func (s *Server) swaggerUI(w http.ResponseWriter, r *http.Request) {
