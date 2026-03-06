@@ -159,6 +159,17 @@ func (rw *responseWriter) WriteHeader(code int) {
 
 // normalizePath removes variable parts from paths for cardinality control
 func normalizePath(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "/"
+	}
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	if len(path) > 1 {
+		path = strings.TrimRight(path, "/")
+	}
+
 	switch {
 	case strings.HasPrefix(path, "/api/v1/assets/"):
 		return "/api/v1/assets/{table}"
@@ -166,6 +177,12 @@ func normalizePath(path string) string {
 		return "/api/v1/policies/{id}"
 	case strings.HasPrefix(path, "/api/v1/findings/"):
 		return "/api/v1/findings/{id}"
+	case strings.HasPrefix(path, "/api/v1/"):
+		parts := strings.Split(strings.Trim(path, "/"), "/")
+		if len(parts) >= 4 {
+			return "/" + strings.Join(parts[:3], "/") + "/{subpath}"
+		}
+		return path
 	default:
 		return path
 	}
