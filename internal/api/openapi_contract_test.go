@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strconv"
 	"strings"
 	"testing"
 
+	apicontract "github.com/writer/cerebro/api"
 	"gopkg.in/yaml.v3"
 )
 
@@ -135,13 +135,8 @@ func TestOpenAPIContract_CriticalRoutes(t *testing.T) {
 func loadOpenAPISpec(t *testing.T) map[string]interface{} {
 	t.Helper()
 
-	data, err := os.ReadFile("../../api/openapi.yaml")
-	if err != nil {
-		t.Fatalf("read openapi: %v", err)
-	}
-
 	var out map[string]interface{}
-	if err := yaml.Unmarshal(data, &out); err != nil {
+	if err := yaml.Unmarshal(apicontract.OpenAPIYAML, &out); err != nil {
 		t.Fatalf("parse openapi: %v", err)
 	}
 	return out
