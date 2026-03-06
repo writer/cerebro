@@ -224,6 +224,44 @@ func TestRateLimitMiddlewareSkipsPublicEndpoints(t *testing.T) {
 	}
 }
 
+func TestRateLimitMiddleware_UsesRemoteIPWithoutPort(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	rl := NewRateLimiter(RateLimitConfig{
+		RequestsPerWindow: 1,
+		Window:            time.Minute,
+		Enabled:           true,
+	})
+	t.Cleanup(rl.Close)
+	middleware := RateLimitMiddlewareWithLimiter(RateLimitConfig{
+		RequestsPerWindow: 1,
+		Window:            time.Minute,
+		Enabled:           true,
+	}, rl)
+
+	wrapped := middleware(handler)
+
+	// Requests from the same client IP but different source ports must share
+	// one bucket so opening new connections cannot bypass limits.
+	req := httptest.NewRequest("GET", "/api/v1/test", nil)
+	req.RemoteAddr = "192.168.1.1:10001"
+	w := httptest.NewRecorder()
+	wrapped.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("first request: expected 200, got %d", w.Code)
+	}
+
+	req2 := httptest.NewRequest("GET", "/api/v1/test", nil)
+	req2.RemoteAddr = "192.168.1.1:10002"
+	w2 := httptest.NewRecorder()
+	wrapped.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusTooManyRequests {
+		t.Fatalf("second request from same IP with different port: expected 429, got %d", w2.Code)
+	}
+}
+
 func TestGetClientKey(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -252,6 +290,11 @@ func TestGetClientKey(t *testing.T) {
 			expected: "ip:1.2.3.4",
 		},
 		{
+			name:     "X-Forwarded-For uses first IP",
+			headers:  map[string]string{"X-Forwarded-For": "1.2.3.4, 5.6.7.8"},
+			expected: "ip:1.2.3.4",
+		},
+		{
 			name:     "X-Real-IP header",
 			headers:  map[string]string{"X-Real-IP": "5.6.7.8"},
 			expected: "ip:5.6.7.8",
@@ -260,7 +303,19 @@ func TestGetClientKey(t *testing.T) {
 			name:     "RemoteAddr fallback",
 			headers:  map[string]string{},
 			addr:     "192.168.1.1:1234",
-			expected: "ip:192.168.1.1:1234",
+			expected: "ip:192.168.1.1",
+		},
+		{
+			name:     "RemoteAddr fallback keeps host when no port",
+			headers:  map[string]string{},
+			addr:     "192.168.1.1",
+			expected: "ip:192.168.1.1",
+		},
+		{
+			name:     "RemoteAddr fallback supports IPv6 host:port",
+			headers:  map[string]string{},
+			addr:     "[2001:db8::1]:1234",
+			expected: "ip:2001:db8::1",
 		},
 		{
 			name:     "X-API-Key takes precedence",
@@ -281,7 +336,7 @@ func TestGetClientKey(t *testing.T) {
 			name:     "conflicting API credentials fall back to IP key",
 			headers:  map[string]string{"Authorization": "Bearer token123", "X-API-Key": "other"},
 			addr:     "192.168.1.1:1234",
-			expected: "ip:192.168.1.1:1234",
+			expected: "ip:192.168.1.1",
 		},
 	}
 

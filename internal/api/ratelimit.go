@@ -1,8 +1,10 @@
 package api
 
 import (
+	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -180,14 +182,39 @@ func getClientKey(r *http.Request) string {
 		return "apikey:" + key
 	}
 
-	// Fall back to IP address
-	if ip := r.Header.Get("X-Forwarded-For"); ip != "" {
+	// Fall back to client IP address.
+	if ip := forwardedClientIP(r.Header.Get("X-Forwarded-For")); ip != "" {
 		return "ip:" + ip
 	}
-	if ip := r.Header.Get("X-Real-IP"); ip != "" {
+	if ip := strings.TrimSpace(r.Header.Get("X-Real-IP")); ip != "" {
 		return "ip:" + ip
 	}
-	return "ip:" + r.RemoteAddr
+	if ip := remoteAddrHost(r.RemoteAddr); ip != "" {
+		return "ip:" + ip
+	}
+	return "ip:unknown"
+}
+
+func forwardedClientIP(xff string) string {
+	for _, raw := range strings.Split(xff, ",") {
+		if ip := strings.TrimSpace(raw); ip != "" {
+			return ip
+		}
+	}
+	return ""
+}
+
+func remoteAddrHost(remoteAddr string) string {
+	remoteAddr = strings.TrimSpace(remoteAddr)
+	if remoteAddr == "" {
+		return ""
+	}
+
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		return remoteAddr
+	}
+	return host
 }
 
 // Pagination helpers
