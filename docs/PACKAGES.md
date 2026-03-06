@@ -53,11 +53,13 @@ type App struct {
 }
 
 type Config struct {
-    Port                      int
-    LogLevel                  string
-    SnowflakeConnectionString string
-    PoliciesPath              string
-    AnthropicAPIKey           string
+    Port                int
+    LogLevel            string
+    SnowflakeAccount    string
+    SnowflakeUser       string
+    SnowflakePrivateKey string
+    PoliciesPath        string
+    AnthropicAPIKey     string
     // ... other config
 }
 ```

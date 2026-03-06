@@ -166,7 +166,9 @@ curl http://localhost:8080/api/v1/admin/sync/status
 
 ```bash
 # Required
-export SNOWFLAKE_CONNECTION_STRING="user:pass@account/db/schema"
+export SNOWFLAKE_ACCOUNT="myaccount.us-east-1"
+export SNOWFLAKE_USER="CEREBRO_APP"
+export SNOWFLAKE_PRIVATE_KEY="<pem-private-key>"
 
 # Optional
 export API_PORT=8080

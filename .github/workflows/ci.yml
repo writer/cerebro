@@ -112,13 +112,65 @@ jobs:
       - name: Enforce minimum coverage
         shell: bash
         env:
-          MIN_COVERAGE: "40"
+          MIN_COVERAGE: "40.5"
         run: |
           set -euo pipefail
-          go test -coverprofile=coverage.out ./...
+          mapfile -t all_packages < <(go list ./...)
+          selected=()
+          for pkg in "${all_packages[@]}"; do
+            pkg_tests="$(go test -run '^$' -list . "$pkg" 2>/dev/null || true)"
+            if printf '%s\n' "$pkg_tests" | grep -q '^Test'; then
+              selected+=("$pkg")
+            fi
+          done
+          if [ ${#selected[@]} -eq 0 ]; then
+            echo "No packages with tests found."
+            exit 1
+          fi
+          go test -coverprofile=coverage.out "${selected[@]}" | tee coverage-summary.txt
           total=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub("%","",$3); print $3}')
           echo "Total coverage: ${total}%"
           awk -v total="$total" -v min="$MIN_COVERAGE" 'BEGIN { exit ((total + 0) < (min + 0)) }'
+          python3 - <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+
+          required = {
+              "github.com/writer/cerebro/internal/api": 35.0,
+              "github.com/writer/cerebro/internal/app": 45.0,
+              "github.com/writer/cerebro/internal/cache": 80.0,
+              "github.com/writer/cerebro/internal/graph": 60.0,
+              "github.com/writer/cerebro/internal/policy": 70.0,
+              "github.com/writer/cerebro/internal/scanner": 35.0,
+              "github.com/writer/cerebro/internal/scheduler": 70.0,
+          }
+
+          pattern = re.compile(r"^ok\s+(\S+)\s+.*coverage:\s+([0-9.]+)% of statements$")
+          observed = {}
+          for line in Path("coverage-summary.txt").read_text().splitlines():
+              m = pattern.match(line.strip())
+              if not m:
+                  continue
+              observed[m.group(1)] = float(m.group(2))
+
+          failures = []
+          for pkg, minimum in required.items():
+              value = observed.get(pkg)
+              if value is None:
+                  failures.append(f"{pkg}: missing coverage output")
+                  continue
+              if value < minimum:
+                  failures.append(f"{pkg}: {value:.1f}% < {minimum:.1f}%")
+
+          if failures:
+              print("Package coverage threshold failures:")
+              for failure in failures:
+                  print(f"- {failure}")
+              sys.exit(1)
+
+          print("Package-level coverage thresholds passed.")
+          PY
 
   vendor-check:
     name: vendor-check
@@ -138,6 +190,20 @@ jobs:
           go mod tidy
           go mod vendor
           git diff --exit-code -- go.mod go.sum vendor/modules.txt vendor
+
+  openapi-route-parity:
+    name: openapi-route-parity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.7'
+
+      - name: Verify OpenAPI matches registered routes
+        run: go run ./scripts/openapi_route_parity.go
 
   scan-smoke-local:
     name: scan-smoke-local

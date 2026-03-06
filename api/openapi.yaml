@@ -14,17 +14,14 @@ info:
   license:
     name: Apache-2.0
     url: https://www.apache.org/licenses/LICENSE-2.0.html
-
 servers:
   - url: http://localhost:8080
     description: Local development
   - url: https://api.example.com
     description: Production (replace with your deployment URL)
-
 security:
   - ApiKeyAuth: []
   - BearerAuth: []
-
 tags:
   - name: Health
     description: Health and readiness endpoints
@@ -46,7 +43,8 @@ tags:
     description: Webhook management
   - name: Admin
     description: Administrative endpoints
-
+  - name: Undocumented
+    description: Auto-generated placeholders pending endpoint-level contract documentation
 paths:
   /health:
     get:
@@ -60,7 +58,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HealthResponse'
-
   /ready:
     get:
       tags: [Health]
@@ -73,7 +70,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ReadyResponse'
-
   /metrics:
     get:
       tags: [Health]
@@ -86,7 +82,6 @@ paths:
             text/plain:
               schema:
                 type: string
-
   /api/v1/tables:
     get:
       tags: [Assets]
@@ -98,7 +93,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TablesResponse'
-
   /api/v1/query:
     post:
       tags: [Assets]
@@ -116,7 +110,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/QueryResponse'
-
   /api/v1/assets/{table}:
     get:
       tags: [Assets]
@@ -137,7 +130,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AssetsResponse'
-
   /api/v1/assets/{table}/{id}:
     get:
       tags: [Assets]
@@ -160,7 +152,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Asset'
-
   /api/v1/policies:
     get:
       tags: [Policies]
@@ -188,7 +179,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Policy'
-
   /api/v1/policies/{id}:
     get:
       tags: [Policies]
@@ -206,7 +196,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Policy'
-
   /api/v1/policies/evaluate:
     post:
       tags: [Policies]
@@ -224,7 +213,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/EvaluateResponse'
-
   /api/v1/findings:
     get:
       tags: [Findings]
@@ -253,7 +241,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/FindingsResponse'
-
   /api/v1/findings/stats:
     get:
       tags: [Findings]
@@ -265,7 +252,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/FindingsStats'
-
   /api/v1/findings/{id}:
     get:
       tags: [Findings]
@@ -283,7 +269,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Finding'
-
   /api/v1/findings/scan:
     post:
       tags: [Findings]
@@ -305,7 +290,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ScanResponse'
-
   /api/v1/findings/{id}/resolve:
     post:
       tags: [Findings]
@@ -327,7 +311,6 @@ paths:
       responses:
         '200':
           description: Finding resolved
-
   /api/v1/findings/{id}/suppress:
     post:
       tags: [Findings]
@@ -352,7 +335,6 @@ paths:
       responses:
         '200':
           description: Finding suppressed
-
   /api/v1/compliance/frameworks:
     get:
       tags: [Compliance]
@@ -364,7 +346,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/FrameworksResponse'
-
   /api/v1/compliance/frameworks/{id}:
     get:
       tags: [Compliance]
@@ -383,7 +364,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Framework'
-
   /api/v1/compliance/frameworks/{id}/report:
     get:
       tags: [Compliance]
@@ -401,7 +381,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ComplianceReport'
-
   /api/v1/compliance/frameworks/{id}/pre-audit:
     get:
       tags: [Compliance]
@@ -419,7 +398,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PreAuditReport'
-
   /api/v1/compliance/frameworks/{id}/export:
     get:
       tags: [Compliance]
@@ -437,7 +415,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AuditPackage'
-
   /api/v1/identity/stale-access:
     get:
       tags: [Identity]
@@ -449,7 +426,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StaleAccessResponse'
-
   /api/v1/identity/report:
     get:
       tags: [Identity]
@@ -461,7 +437,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/IdentityReport'
-
   /api/v1/identity/reviews:
     get:
       tags: [Identity]
@@ -489,7 +464,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AccessReview'
-
   /api/v1/agents:
     get:
       tags: [Agents]
@@ -501,7 +475,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AgentsResponse'
-
   /api/v1/agents/sessions:
     post:
       tags: [Agents]
@@ -519,7 +492,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AgentSession'
-
   /api/v1/agents/sessions/{id}/messages:
     get:
       tags: [Agents]
@@ -563,7 +535,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Message'
-
   /api/v1/webhooks:
     get:
       tags: [Webhooks]
@@ -591,7 +562,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Webhook'
-
   /api/v1/webhooks/{id}:
     get:
       tags: [Webhooks]
@@ -621,7 +591,6 @@ paths:
       responses:
         '204':
           description: Webhook deleted
-
   /api/v1/admin/health:
     get:
       tags: [Admin]
@@ -633,7 +602,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AdminHealth'
-
   /api/v1/admin/sync/status:
     get:
       tags: [Admin]
@@ -645,7 +613,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SyncStatus'
-
   /api/v1/scheduler/status:
     get:
       tags: [Admin]
@@ -657,7 +624,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SchedulerStatus'
-
   /api/v1/scheduler/jobs:
     get:
       tags: [Admin]
@@ -669,7 +635,1070 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/JobsResponse'
-
+  /api/v1/agents/sessions/{id}:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/agents/sessions/{id}/approve:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/agents/{id}:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/attack-paths:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/attack-paths/analyze:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/attack-paths/graph:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/attack-paths/graph/edges:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/attack-paths/graph/nodes:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/attack-paths/{id}:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/audit:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/findings/export:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/findings/{id}/assign:
+    put:
+      tags:
+        - Undocumented
+      summary: PUT endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/findings/{id}/due:
+    put:
+      tags:
+        - Undocumented
+      summary: PUT endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/findings/{id}/notes:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/findings/{id}/tickets:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/graph/access-reviews:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/graph/access-reviews/{id}:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/graph/access-reviews/{id}/items/{itemId}/decide:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/graph/access-reviews/{id}/start:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/graph/attack-paths:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/graph/attack-paths/{id}/simulate-fix:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/graph/blast-radius/{principalId}:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/graph/cascading-blast-radius/{principalId}:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/graph/chokepoints:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/graph/compare-permissions:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/graph/effective-permissions/{principalId}:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/graph/peer-groups:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/graph/privilege-escalation/{principalId}:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/graph/rebuild:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/graph/reverse-access/{resourceId}:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/graph/risk-report:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/graph/stats:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/graph/toxic-combinations:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/graph/visualize/attack-path/{id}:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/graph/visualize/blast-radius/{principalId}:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/graph/visualize/report:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/graph/visualize/toxic-combination/{id}:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/identity/reviews/{id}:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/identity/reviews/{id}/items:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/identity/reviews/{id}/items/{itemId}/decide:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/identity/reviews/{id}/start:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/incidents:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/incidents/playbooks:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/incidents/playbooks/{id}:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/lineage/by-commit/{sha}:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/lineage/by-image/{digest}:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/lineage/drift/{assetId}:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/lineage/{assetId}:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/notifications:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/notifications/digest:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/notifications/test:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/providers:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/providers/{name}:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/providers/{name}/configure:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/providers/{name}/schema:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/providers/{name}/sync:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/providers/{name}/test:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/rbac/permissions:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/rbac/roles:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/rbac/tenants:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/rbac/users:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/rbac/users/{id}:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/rbac/users/{id}/roles:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/remediation/executions:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/remediation/executions/{id}:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/remediation/executions/{id}/approve:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/remediation/executions/{id}/reject:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/remediation/rules:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/remediation/rules/{id}:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/remediation/rules/{id}/disable:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/remediation/rules/{id}/enable:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/reports/compliance/{framework}:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/reports/executive-summary:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/reports/risk-summary:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/runtime/detections:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/runtime/events:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/runtime/findings:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/runtime/responses:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/runtime/responses/{id}/disable:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/runtime/responses/{id}/enable:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/scan/coverage:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/scan/watermarks:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/scheduler/jobs/{name}/disable:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/scheduler/jobs/{name}/enable:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/scheduler/jobs/{name}/run:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/slack/commands:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/telemetry/ingest:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/threatintel/feeds:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/threatintel/feeds/{id}/sync:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/threatintel/lookup/cve/{cve}:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/threatintel/lookup/domain/{domain}:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/threatintel/lookup/ip/{ip}:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/threatintel/stats:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/tickets:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/tickets/{id}:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+    put:
+      tags:
+        - Undocumented
+      summary: PUT endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/tickets/{id}/close:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/tickets/{id}/comments:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/webhooks/test:
+    post:
+      tags:
+        - Undocumented
+      summary: POST endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /api/v1/webhooks/{id}/deliveries:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /docs:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
+  /openapi.yaml:
+    get:
+      tags:
+        - Undocumented
+      summary: GET endpoint (placeholder)
+      description: Auto-generated placeholder to keep OpenAPI route coverage in sync with server routes.
+      x-cerebro-generated: "true"
+      responses:
+        "200":
+          description: OK
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -679,7 +1708,6 @@ components:
     BearerAuth:
       type: http
       scheme: bearer
-
   parameters:
     Limit:
       name: limit
@@ -694,7 +1722,6 @@ components:
       schema:
         type: integer
         default: 0
-
   schemas:
     HealthResponse:
       type: object
@@ -705,7 +1732,6 @@ components:
         timestamp:
           type: string
           format: date-time
-
     ReadyResponse:
       type: object
       properties:
@@ -715,7 +1741,6 @@ components:
           type: object
           additionalProperties:
             type: string
-
     TablesResponse:
       type: object
       properties:
@@ -725,7 +1750,6 @@ components:
             type: string
         count:
           type: integer
-
     QueryRequest:
       type: object
       required: [query]
@@ -735,7 +1759,6 @@ components:
           example: "SELECT * FROM aws_s3_buckets LIMIT 10"
         limit:
           type: integer
-
     QueryResponse:
       type: object
       properties:
@@ -749,7 +1772,6 @@ components:
             type: object
         count:
           type: integer
-
     AssetsResponse:
       type: object
       properties:
@@ -761,11 +1783,9 @@ components:
           type: integer
         pagination:
           $ref: '#/components/schemas/Pagination'
-
     Asset:
       type: object
       additionalProperties: true
-
     Policy:
       type: object
       properties:
@@ -791,7 +1811,6 @@ components:
           type: array
           items:
             type: string
-
     PoliciesResponse:
       type: object
       properties:
@@ -801,7 +1820,6 @@ components:
             $ref: '#/components/schemas/Policy'
         count:
           type: integer
-
     EvaluateRequest:
       type: object
       properties:
@@ -811,7 +1829,6 @@ components:
           type: array
           items:
             type: string
-
     EvaluateResponse:
       type: object
       properties:
@@ -819,7 +1836,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Finding'
-
     Finding:
       type: object
       properties:
@@ -842,7 +1858,6 @@ components:
         created_at:
           type: string
           format: date-time
-
     FindingsResponse:
       type: object
       properties:
@@ -854,7 +1869,6 @@ components:
           type: integer
         pagination:
           $ref: '#/components/schemas/Pagination'
-
     FindingsStats:
       type: object
       properties:
@@ -872,7 +1886,6 @@ components:
           type: object
           additionalProperties:
             type: integer
-
     ScanResponse:
       type: object
       properties:
@@ -884,7 +1897,6 @@ components:
           type: integer
         duration_ms:
           type: integer
-
     Framework:
       type: object
       properties:
@@ -900,7 +1912,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Control'
-
     Control:
       type: object
       properties:
@@ -914,7 +1925,6 @@ components:
           type: array
           items:
             type: string
-
     FrameworksResponse:
       type: object
       properties:
@@ -924,7 +1934,6 @@ components:
             $ref: '#/components/schemas/Framework'
         count:
           type: integer
-
     ComplianceReport:
       type: object
       properties:
@@ -941,7 +1950,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ControlStatus'
-
     ComplianceSummary:
       type: object
       properties:
@@ -953,7 +1961,6 @@ components:
           type: integer
         compliance_score:
           type: number
-
     ControlStatus:
       type: object
       properties:
@@ -962,7 +1969,6 @@ components:
         status:
           type: string
           enum: [passing, failing, unknown]
-
     PreAuditReport:
       type: object
       properties:
@@ -980,7 +1986,6 @@ components:
           type: array
           items:
             type: string
-
     AuditPackage:
       type: object
       properties:
@@ -990,7 +1995,6 @@ components:
           type: array
           items:
             type: object
-
     StaleAccessResponse:
       type: object
       properties:
@@ -1002,7 +2006,6 @@ components:
           type: integer
         summary:
           type: object
-
     StaleAccessFinding:
       type: object
       properties:
@@ -1025,7 +2028,6 @@ components:
           type: string
         remediation:
           type: string
-
     IdentityReport:
       type: object
       properties:
@@ -1046,7 +2048,6 @@ components:
           type: array
           items:
             type: string
-
     AccessReview:
       type: object
       properties:
@@ -1059,7 +2060,6 @@ components:
         created_at:
           type: string
           format: date-time
-
     ReviewsResponse:
       type: object
       properties:
@@ -1069,7 +2069,6 @@ components:
             $ref: '#/components/schemas/AccessReview'
         count:
           type: integer
-
     CreateReviewRequest:
       type: object
       required: [name, type]
@@ -1083,7 +2082,6 @@ components:
           type: array
           items:
             type: string
-
     AgentsResponse:
       type: object
       properties:
@@ -1098,7 +2096,6 @@ components:
                 type: string
               description:
                 type: string
-
     AgentSession:
       type: object
       properties:
@@ -1109,7 +2106,6 @@ components:
         created_at:
           type: string
           format: date-time
-
     CreateSessionRequest:
       type: object
       required: [agent_id]
@@ -1124,7 +2120,6 @@ components:
             type: string
         context:
           type: object
-
     Message:
       type: object
       properties:
@@ -1133,7 +2128,6 @@ components:
           enum: [user, assistant, system]
         content:
           type: string
-
     MessagesResponse:
       type: object
       properties:
@@ -1141,7 +2135,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Message'
-
     Webhook:
       type: object
       properties:
@@ -1158,7 +2151,6 @@ components:
         created_at:
           type: string
           format: date-time
-
     WebhooksResponse:
       type: object
       properties:
@@ -1168,7 +2160,6 @@ components:
             $ref: '#/components/schemas/Webhook'
         count:
           type: integer
-
     CreateWebhookRequest:
       type: object
       required: [url, events]
@@ -1182,7 +2173,6 @@ components:
             type: string
         secret:
           type: string
-
     AdminHealth:
       type: object
       properties:
@@ -1204,7 +2194,6 @@ components:
           type: object
         agents:
           type: object
-
     SyncStatus:
       type: object
       properties:
@@ -1225,7 +2214,6 @@ components:
         checked_at:
           type: string
           format: date-time
-
     SchedulerStatus:
       type: object
       properties:
@@ -1233,7 +2221,6 @@ components:
           type: boolean
         jobs_count:
           type: integer
-
     JobsResponse:
       type: object
       properties:
@@ -1254,7 +2241,6 @@ components:
                 format: date-time
               enabled:
                 type: boolean
-
     Pagination:
       type: object
       properties:
@@ -1266,7 +2252,6 @@ components:
           type: integer
         has_more:
           type: boolean
-
     Error:
       type: object
       properties:

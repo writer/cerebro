@@ -23,21 +23,31 @@ Cerebro is configured entirely through environment variables, following the 12-f
 
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
-| `SNOWFLAKE_CONNECTION_STRING` | Snowflake DSN | - | Yes* |
+| `SNOWFLAKE_ACCOUNT` | Snowflake account identifier (for example `myaccount.us-east-1`) | - | Yes* |
+| `SNOWFLAKE_USER` | Snowflake service user | - | Yes* |
+| `SNOWFLAKE_PRIVATE_KEY` | PEM-encoded private key (RSA) | - | Yes* |
+| `SNOWFLAKE_ROLE` | Snowflake role | - | No |
 | `SNOWFLAKE_DATABASE` | Database name | `CEREBRO` | No |
 | `SNOWFLAKE_SCHEMA` | Schema name | `CEREBRO` | No |
 | `SNOWFLAKE_WAREHOUSE` | Compute warehouse | `COMPUTE_WH` | No |
 
 *Required for full functionality. Cerebro will start without Snowflake but with degraded capabilities.
 
-**Connection String Format:**
+**Key-Pair Authentication Notes:**
 ```
-<username>:<password>@<account>/<database>/<schema>?warehouse=<warehouse>&role=<role>
+- `SNOWFLAKE_PRIVATE_KEY` supports escaped newlines (`\n`) and multiline PEM values.
+- Use a dedicated least-privilege role/user for Cerebro.
 ```
 
 **Example:**
 ```bash
-export SNOWFLAKE_CONNECTION_STRING="myuser:mypassword@myaccount.us-east-1/CEREBRO/CEREBRO?warehouse=COMPUTE_WH&role=CEREBRO_ROLE"
+export SNOWFLAKE_ACCOUNT="myaccount.us-east-1"
+export SNOWFLAKE_USER="CEREBRO_APP"
+export SNOWFLAKE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+export SNOWFLAKE_ROLE="CEREBRO_ROLE"
+export SNOWFLAKE_DATABASE="CEREBRO"
+export SNOWFLAKE_SCHEMA="CEREBRO"
+export SNOWFLAKE_WAREHOUSE="COMPUTE_WH"
 ```
 
 ### Policy Configuration
@@ -161,7 +171,9 @@ export SCAN_TABLES="aws_s3_buckets,aws_iam_users,gcp_storage_buckets"
 
 ```bash
 # Required
-export SNOWFLAKE_CONNECTION_STRING="user:pass@account/CEREBRO/CEREBRO"
+export SNOWFLAKE_ACCOUNT="myaccount.us-east-1"
+export SNOWFLAKE_USER="CEREBRO_APP"
+export SNOWFLAKE_PRIVATE_KEY="<pem-private-key>"
 
 # Recommended
 export API_PORT="8080"
@@ -177,7 +189,10 @@ export API_PORT="8080"
 export LOG_LEVEL="info"
 
 # Snowflake
-export SNOWFLAKE_CONNECTION_STRING="cerebrouser:$SF_PASSWORD@myaccount.us-east-1/CEREBRO/CEREBRO?warehouse=COMPUTE_WH&role=CEREBRO_ROLE"
+export SNOWFLAKE_ACCOUNT="myaccount.us-east-1"
+export SNOWFLAKE_USER="CEREBRO_APP"
+export SNOWFLAKE_PRIVATE_KEY="$SNOWFLAKE_PRIVATE_KEY"
+export SNOWFLAKE_ROLE="CEREBRO_ROLE"
 export SNOWFLAKE_DATABASE="CEREBRO"
 export SNOWFLAKE_SCHEMA="CEREBRO"
 export SNOWFLAKE_WAREHOUSE="COMPUTE_WH"
@@ -216,8 +231,10 @@ export LOG_LEVEL="debug"
 export API_PORT="8080"
 export POLICIES_PATH="./policies"
 
-# Optional: Use local Snowflake trial
-export SNOWFLAKE_CONNECTION_STRING="..."
+# Optional: Snowflake key-pair (leave unset to run in local SQLite mode)
+# export SNOWFLAKE_ACCOUNT="myaccount.us-east-1"
+# export SNOWFLAKE_USER="CEREBRO_APP"
+# export SNOWFLAKE_PRIVATE_KEY="<pem-private-key>"
 
 # Optional: Enable AI for testing
 export ANTHROPIC_API_KEY="sk-ant-..."
@@ -236,7 +253,13 @@ services:
     environment:
       - API_PORT=8080
       - LOG_LEVEL=info
-      - SNOWFLAKE_CONNECTION_STRING=${SNOWFLAKE_CONNECTION_STRING}
+      - SNOWFLAKE_ACCOUNT=${SNOWFLAKE_ACCOUNT}
+      - SNOWFLAKE_USER=${SNOWFLAKE_USER}
+      - SNOWFLAKE_PRIVATE_KEY=${SNOWFLAKE_PRIVATE_KEY}
+      - SNOWFLAKE_ROLE=${SNOWFLAKE_ROLE}
+      - SNOWFLAKE_DATABASE=${SNOWFLAKE_DATABASE:-CEREBRO}
+      - SNOWFLAKE_SCHEMA=${SNOWFLAKE_SCHEMA:-CEREBRO}
+      - SNOWFLAKE_WAREHOUSE=${SNOWFLAKE_WAREHOUSE:-COMPUTE_WH}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
       - SCAN_INTERVAL=1h
@@ -271,7 +294,10 @@ metadata:
   name: cerebro-secrets
 type: Opaque
 stringData:
-  SNOWFLAKE_CONNECTION_STRING: "user:pass@account/db/schema"
+  SNOWFLAKE_ACCOUNT: "myaccount.us-east-1"
+  SNOWFLAKE_USER: "CEREBRO_APP"
+  SNOWFLAKE_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+  SNOWFLAKE_ROLE: "CEREBRO_ROLE"
   ANTHROPIC_API_KEY: "sk-ant-..."
   JIRA_API_TOKEN: "..."
   SLACK_WEBHOOK_URL: "https://hooks.slack.com/..."
@@ -414,7 +440,7 @@ Cerebro uses presence-based feature flags. Features are enabled when their confi
 
 | Feature | Enabled When |
 |---------|--------------|
-| Snowflake queries | `SNOWFLAKE_CONNECTION_STRING` is set |
+| Snowflake queries | `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, and `SNOWFLAKE_PRIVATE_KEY` are set |
 | AI Agents (Claude) | `ANTHROPIC_API_KEY` is set |
 | AI Agents (GPT) | `OPENAI_API_KEY` is set |
 | Jira ticketing | `JIRA_BASE_URL` and `JIRA_API_TOKEN` are set |
