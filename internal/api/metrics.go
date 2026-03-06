@@ -15,7 +15,7 @@ import (
 var (
 	httpRequestsTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "cerebro_http_requests_total",
+			Name: "cerebro_api_http_requests_total",
 			Help: "Total number of HTTP requests",
 		},
 		[]string{"method", "path", "status"},
@@ -23,7 +23,7 @@ var (
 
 	httpRequestDuration = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "cerebro_http_request_duration_seconds",
+			Name:    "cerebro_api_http_request_duration_seconds",
 			Help:    "HTTP request duration in seconds",
 			Buckets: prometheus.DefBuckets,
 		},
@@ -55,7 +55,7 @@ var (
 
 	scanDuration = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "cerebro_scan_duration_seconds",
+			Name:    "cerebro_api_scan_duration_seconds",
 			Help:    "Scan duration in seconds",
 			Buckets: []float64{0.1, 0.5, 1, 2, 5, 10, 30, 60, 120},
 		},
@@ -64,7 +64,7 @@ var (
 
 	policyEvaluationsTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "cerebro_policy_evaluations_total",
+			Name: "cerebro_api_policy_evaluations_total",
 			Help: "Total number of policy evaluations",
 		},
 		[]string{"policy", "result"},
@@ -72,7 +72,7 @@ var (
 
 	snowflakeQueriesTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "cerebro_snowflake_queries_total",
+			Name: "cerebro_api_snowflake_queries_total",
 			Help: "Total number of Snowflake queries",
 		},
 		[]string{"status"},
@@ -80,7 +80,7 @@ var (
 
 	snowflakeQueryDuration = promauto.NewHistogram(
 		prometheus.HistogramOpts{
-			Name:    "cerebro_snowflake_query_duration_seconds",
+			Name:    "cerebro_api_snowflake_query_duration_seconds",
 			Help:    "Snowflake query duration in seconds",
 			Buckets: []float64{0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
 		},
@@ -96,7 +96,7 @@ var (
 
 	webhookDeliveriesTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "cerebro_webhook_deliveries_total",
+			Name: "cerebro_api_webhook_deliveries_total",
 			Help: "Total number of webhook deliveries",
 		},
 		[]string{"event_type", "success"},
