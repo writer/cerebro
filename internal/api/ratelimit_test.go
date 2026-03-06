@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -139,8 +140,56 @@ func TestRateLimitMiddleware(t *testing.T) {
 	if w.Code != http.StatusTooManyRequests {
 		t.Errorf("expected 429, got %d", w.Code)
 	}
-	if w.Header().Get("Retry-After") == "" {
+	retryAfter := w.Header().Get("Retry-After")
+	if retryAfter == "" {
 		t.Error("missing Retry-After header")
+	} else if parsed, err := strconv.Atoi(retryAfter); err != nil || parsed < 1 {
+		t.Errorf("expected Retry-After >= 1, got %q", retryAfter)
+	}
+}
+
+func TestRateLimitMiddleware_RetryAfterMinimumOneSecond(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	rl := NewRateLimiter(RateLimitConfig{
+		RequestsPerWindow: 1,
+		Window:            50 * time.Millisecond,
+		Enabled:           true,
+	})
+	t.Cleanup(rl.Close)
+	middleware := RateLimitMiddlewareWithLimiter(RateLimitConfig{
+		RequestsPerWindow: 1,
+		Window:            50 * time.Millisecond,
+		Enabled:           true,
+	}, rl)
+
+	wrapped := middleware(handler)
+
+	req1 := httptest.NewRequest("GET", "/api/v1/test", nil)
+	req1.RemoteAddr = "192.168.1.1:1234"
+	w1 := httptest.NewRecorder()
+	wrapped.ServeHTTP(w1, req1)
+	if w1.Code != http.StatusOK {
+		t.Fatalf("first request: expected 200, got %d", w1.Code)
+	}
+
+	req2 := httptest.NewRequest("GET", "/api/v1/test", nil)
+	req2.RemoteAddr = "192.168.1.1:1234"
+	w2 := httptest.NewRecorder()
+	wrapped.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusTooManyRequests {
+		t.Fatalf("second request: expected 429, got %d", w2.Code)
+	}
+
+	retryAfter := w2.Header().Get("Retry-After")
+	parsed, err := strconv.Atoi(retryAfter)
+	if err != nil {
+		t.Fatalf("expected numeric Retry-After header, got %q", retryAfter)
+	}
+	if parsed < 1 {
+		t.Fatalf("expected Retry-After >= 1, got %d", parsed)
 	}
 }
 

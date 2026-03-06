@@ -101,6 +101,7 @@ func TestEventType_Constants(t *testing.T) {
 		EventFindingResolved,
 		EventScanCompleted,
 		EventScanFailed,
+		EventSecurityDigest,
 		EventAttackPathFound,
 		EventReviewRequired,
 	}

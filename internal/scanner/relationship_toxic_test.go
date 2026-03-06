@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -247,7 +248,7 @@ func TestExtractToxicCursor_SameTimeDifferentIDs(t *testing.T) {
 // --- DetectRelationshipToxicCombinations nil-SF tests ---
 
 func TestToxicDetectionResult_NilSF(t *testing.T) {
-	result, err := DetectRelationshipToxicCombinations(nil, nil, nil)
+	result, err := DetectRelationshipToxicCombinations(context.Background(), nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -266,7 +267,7 @@ func TestToxicDetectionResult_NilSF(t *testing.T) {
 }
 
 func TestToxicDetectionResult_NilSF_NoWatermarkAdvance(t *testing.T) {
-	result, _ := DetectRelationshipToxicCombinations(nil, nil, nil)
+	result, _ := DetectRelationshipToxicCombinations(context.Background(), nil, nil)
 	if !result.MaxSyncTime.IsZero() {
 		t.Fatal("zero-result scan must not produce a data cursor")
 	}
@@ -277,7 +278,7 @@ func TestToxicDetectionResult_NilSF_WithCursor(t *testing.T) {
 		SinceTime: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		SinceID:   "prev-resource",
 	}
-	result, err := DetectRelationshipToxicCombinations(nil, nil, cursor)
+	result, err := DetectRelationshipToxicCombinations(context.Background(), nil, cursor)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

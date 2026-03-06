@@ -440,6 +440,7 @@ See [Development Guide](docs/DEVELOPMENT.md) for detailed instructions.
 | `JIRA_BASE_URL` | Jira instance | - |
 | `SLACK_WEBHOOK_URL` | Slack webhook | - |
 | `SCAN_INTERVAL` | Scan frequency | - |
+| `SECURITY_DIGEST_INTERVAL` | Security digest frequency | - |
 | `JOB_QUEUE_URL` | SQS queue URL for distributed jobs | - |
 | `JOB_TABLE_NAME` | DynamoDB table for job state | - |
 | `JOB_REGION` | AWS region for job infrastructure | - |

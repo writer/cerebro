@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/notifications"
 	"github.com/writer/cerebro/internal/scanner"
 	"github.com/writer/cerebro/internal/scheduler"
@@ -39,6 +40,19 @@ func (a *App) initScheduler(_ context.Context) {
 			a.Logger.Info("scheduled scanning enabled", "interval", interval, "tables", splitTables(a.Config.ScanTables))
 		} else {
 			a.Logger.Info("scheduled scanning enabled", "interval", interval, "table_source", "available_tables")
+		}
+	}
+
+	// Add security digest job if interval configured
+	if a.Config.SecurityDigestInterval != "" {
+		interval, err := parseDuration(a.Config.SecurityDigestInterval)
+		if err != nil {
+			a.Logger.Warn("invalid security digest interval", "value", a.Config.SecurityDigestInterval, "error", err)
+		} else {
+			a.Scheduler.AddJob("security-digest", interval, func(ctx context.Context) error {
+				return a.sendSecurityDigest(ctx)
+			})
+			a.Logger.Info("scheduled security digest enabled", "interval", interval)
 		}
 	}
 
@@ -376,6 +390,78 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 	}
 
 	return nil
+}
+
+func (a *App) sendSecurityDigest(ctx context.Context) error {
+	if a.Findings == nil || a.Notifications == nil {
+		return nil
+	}
+
+	openTotal := a.Findings.Count(findings.FindingFilter{Status: "open"})
+	criticalOpen := a.Findings.Count(findings.FindingFilter{Severity: "critical", Status: "open"})
+	highOpen := a.Findings.Count(findings.FindingFilter{Severity: "high", Status: "open"})
+	mediumOpen := a.Findings.Count(findings.FindingFilter{Severity: "medium", Status: "open"})
+	lowOpen := a.Findings.Count(findings.FindingFilter{Severity: "low", Status: "open"})
+
+	highlights := append([]string{},
+		formatDigestHighlights(a.Findings.List(findings.FindingFilter{Severity: "critical", Status: "open"}), "critical", 3)...,
+	)
+	highlights = append(highlights, formatDigestHighlights(a.Findings.List(findings.FindingFilter{Severity: "high", Status: "open"}), "high", 3)...)
+
+	message := fmt.Sprintf(
+		"Open findings: %d (critical: %d, high: %d, medium: %d, low: %d)",
+		openTotal,
+		criticalOpen,
+		highOpen,
+		mediumOpen,
+		lowOpen,
+	)
+	if len(highlights) > 0 {
+		message = fmt.Sprintf("%s. Top priorities: %s", message, strings.Join(highlights, "; "))
+	}
+
+	return a.Notifications.Send(ctx, notifications.Event{
+		Type:     notifications.EventSecurityDigest,
+		Severity: "info",
+		Title:    "Scheduled Security Digest",
+		Message:  message,
+		Data: map[string]interface{}{
+			"open_total": openTotal,
+			"critical":   criticalOpen,
+			"high":       highOpen,
+			"medium":     mediumOpen,
+			"low":        lowOpen,
+			"highlights": highlights,
+		},
+	})
+}
+
+func formatDigestHighlights(list []*findings.Finding, severity string, limit int) []string {
+	if len(list) == 0 || limit <= 0 {
+		return nil
+	}
+
+	entries := make([]string, 0, len(list))
+	for _, finding := range list {
+		title := strings.TrimSpace(finding.PolicyName)
+		if title == "" {
+			title = strings.TrimSpace(finding.PolicyID)
+		}
+		if title == "" {
+			title = finding.ID
+		}
+		entries = append(entries, fmt.Sprintf("%s (%s)", title, finding.ID))
+	}
+	sort.Strings(entries)
+	if len(entries) > limit {
+		entries = entries[:limit]
+	}
+
+	result := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		result = append(result, fmt.Sprintf("%s: %s", severity, entry))
+	}
+	return result
 }
 
 func parseDuration(s string) (time.Duration, error) {

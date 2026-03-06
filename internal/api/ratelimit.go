@@ -1,6 +1,7 @@
 package api
 
 import (
+	"math"
 	"net"
 	"net/http"
 	"strconv"
@@ -164,7 +165,7 @@ func RateLimitMiddlewareWithLimiter(cfg RateLimitConfig, rl *RateLimiter) func(h
 			w.Header().Set("X-RateLimit-Reset", strconv.FormatInt(reset.Unix(), 10))
 
 			if !allowed {
-				w.Header().Set("Retry-After", strconv.FormatInt(int64(time.Until(reset).Seconds()), 10))
+				w.Header().Set("Retry-After", strconv.FormatInt(retryAfterSeconds(reset), 10))
 				writeJSONError(w, http.StatusTooManyRequests, "rate_limited", "Rate limit exceeded. Try again later.")
 				return
 			}
@@ -172,6 +173,14 @@ func RateLimitMiddlewareWithLimiter(cfg RateLimitConfig, rl *RateLimiter) func(h
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+func retryAfterSeconds(reset time.Time) int64 {
+	seconds := int64(math.Ceil(time.Until(reset).Seconds()))
+	if seconds < 1 {
+		return 1
+	}
+	return seconds
 }
 
 // getClientKey extracts the rate limit key from the request
