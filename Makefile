@@ -105,9 +105,12 @@ security-scan-built: trivy-db
 		--severity CRITICAL,HIGH \
 		$(SECURITY_SCAN_IMAGE)
 
-# Optional heavier source scan (kept explicit to avoid default local laptop instability)
-security-scan-source:
-	$(GO_BIN)/govulncheck ./...
+# Optional heavier security scan (kept explicit to avoid default local laptop instability)
+security-scan-source: build
+	go build -o bin/policy-enhancer ./cmd/policy-enhancer
+	# govulncheck source mode can fail on this dependency graph; binary mode is deterministic.
+	$(GO_BIN)/govulncheck -mode binary ./bin/cerebro
+	$(GO_BIN)/govulncheck -mode binary ./bin/policy-enhancer
 	$(GO_BIN)/gosec -severity medium -confidence medium -exclude-generated ./...
 
 oss-audit:
