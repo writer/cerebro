@@ -28,6 +28,8 @@ type Job struct {
 	NextRun  time.Time
 	Running  bool
 	Enabled  bool
+
+	removeRequested bool
 }
 
 // Scheduler manages periodic jobs
@@ -67,7 +69,15 @@ func (s *Scheduler) AddJob(name string, interval time.Duration, handler func(ctx
 func (s *Scheduler) RemoveJob(name string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	delete(s.jobs, name)
+	job, ok := s.jobs[name]
+	if !ok {
+		return
+	}
+	job.Enabled = false
+	job.removeRequested = true
+	if !job.Running {
+		delete(s.jobs, name)
+	}
 }
 
 // EnableJob enables a job
@@ -169,10 +179,14 @@ func (s *Scheduler) runDueJobs() {
 		s.mu.RLock()
 		jobCtx := s.ctx
 		ctxActive := s.running && jobCtx != nil && jobCtx.Err() == nil
+		removed := job.removeRequested
 		s.mu.RUnlock()
-		if !ctxActive {
+		if !ctxActive || removed {
 			s.mu.Lock()
 			job.Running = false
+			if job.removeRequested {
+				delete(s.jobs, job.Name)
+			}
 			s.mu.Unlock()
 			continue
 		}
@@ -193,9 +207,14 @@ func (s *Scheduler) runJob(ctx context.Context, job *Job) {
 		if r := recover(); r != nil {
 			s.mu.Lock()
 			job.LastRun = start
-			job.NextRun = time.Now().Add(job.Interval)
 			job.Running = false
-			s.mu.Unlock()
+			if job.removeRequested {
+				delete(s.jobs, job.Name)
+				s.mu.Unlock()
+			} else {
+				job.NextRun = time.Now().Add(job.Interval)
+				s.mu.Unlock()
+			}
 			s.logger.Error("job panicked", "job", job.Name, "panic", fmt.Sprintf("%v", r), "stack", string(debug.Stack()))
 		}
 	}()
@@ -204,9 +223,14 @@ func (s *Scheduler) runJob(ctx context.Context, job *Job) {
 
 	s.mu.Lock()
 	job.LastRun = start
-	job.NextRun = time.Now().Add(job.Interval)
 	job.Running = false
-	s.mu.Unlock()
+	if job.removeRequested {
+		delete(s.jobs, job.Name)
+		s.mu.Unlock()
+	} else {
+		job.NextRun = time.Now().Add(job.Interval)
+		s.mu.Unlock()
+	}
 
 	if err != nil {
 		s.logger.Error("job failed", "job", job.Name, "error", err, "duration", time.Since(start))

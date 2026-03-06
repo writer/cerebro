@@ -40,6 +40,7 @@ import (
 type FindingStore interface {
 	Upsert(ctx context.Context, pf policy.Finding) *Finding
 	Get(id string) (*Finding, bool)
+	Update(id string, mutate func(*Finding) error) error
 	List(filter FindingFilter) []*Finding
 	Count(filter FindingFilter) int
 	Resolve(id string) bool
@@ -398,6 +399,22 @@ func (s *Store) Get(id string) (*Finding, bool) {
 	defer s.mu.RUnlock()
 	f, ok := s.findings[id]
 	return f, ok
+}
+
+func (s *Store) Update(id string, mutate func(*Finding) error) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	f, ok := s.findings[id]
+	if !ok {
+		return ErrIssueNotFound
+	}
+	if err := mutate(f); err != nil {
+		return err
+	}
+	f.Status = normalizeStatus(f.Status)
+	EnrichFinding(f)
+	return nil
 }
 
 func (s *Store) List(filter FindingFilter) []*Finding {

@@ -685,36 +685,9 @@ func evaluateCondition(condition string, asset map[string]interface{}) bool {
 		return match
 	}
 
-	// Handle equality (==)
-	if parts := strings.SplitN(condition, "==", 2); len(parts) == 2 {
-		field := strings.TrimSpace(parts[0])
-		expected := strings.TrimSpace(parts[1])
+	if field, expected, operator, ok := parseComparisonCondition(condition); ok {
 		val := getNestedValue(asset, field)
-		return compareValues(val, expected, "==")
-	}
-
-	// Handle inequality (!=)
-	if parts := strings.SplitN(condition, "!=", 2); len(parts) == 2 {
-		field := strings.TrimSpace(parts[0])
-		expected := strings.TrimSpace(parts[1])
-		val := getNestedValue(asset, field)
-		return compareValues(val, expected, "!=")
-	}
-
-	// Handle greater than (>)
-	if parts := strings.SplitN(condition, ">", 2); len(parts) == 2 && !strings.Contains(parts[0], "<") {
-		field := strings.TrimSpace(parts[0])
-		expected := strings.TrimSpace(parts[1])
-		val := getNestedValue(asset, field)
-		return compareValues(val, expected, ">")
-	}
-
-	// Handle less than (<)
-	if parts := strings.SplitN(condition, "<", 2); len(parts) == 2 && !strings.Contains(parts[0], ">") {
-		field := strings.TrimSpace(parts[0])
-		expected := strings.TrimSpace(parts[1])
-		val := getNestedValue(asset, field)
-		return compareValues(val, expected, "<")
+		return compareValues(val, expected, operator)
 	}
 
 	// Handle starts_with
@@ -730,21 +703,35 @@ func evaluateCondition(condition string, asset map[string]interface{}) bool {
 		}
 	}
 
+	// Handle not exists check
+	lower := strings.ToLower(condition)
+	if strings.HasSuffix(lower, " not exists") {
+		field := strings.TrimSpace(condition[:len(condition)-len(" not exists")])
+		val := getNestedValue(asset, field)
+		return val == nil
+	}
 	// Handle exists check
-	if strings.HasSuffix(condition, " exists") {
-		field := strings.TrimSpace(strings.TrimSuffix(condition, " exists"))
+	if strings.HasSuffix(lower, " exists") {
+		field := strings.TrimSpace(condition[:len(condition)-len(" exists")])
 		val := getNestedValue(asset, field)
 		return val != nil
 	}
 
-	// Handle not exists check
-	if strings.HasSuffix(condition, " not exists") {
-		field := strings.TrimSpace(strings.TrimSuffix(condition, " not exists"))
-		val := getNestedValue(asset, field)
-		return val == nil
-	}
-
 	return false
+}
+
+func parseComparisonCondition(condition string) (string, string, string, bool) {
+	for _, operator := range []string{">=", "<=", "==", "!=", ">", "<"} {
+		if parts := splitTopLevel(condition, operator); len(parts) == 2 {
+			field := strings.TrimSpace(parts[0])
+			expected := strings.TrimSpace(parts[1])
+			if field == "" || expected == "" {
+				return "", "", "", false
+			}
+			return field, expected, operator, true
+		}
+	}
+	return "", "", "", false
 }
 
 func normalizeLogicalOperators(condition string) string {
@@ -1379,6 +1366,10 @@ func compareValues(val interface{}, expected string, operator string) bool {
 				return f == ef
 			case "!=":
 				return f != ef
+			case ">=":
+				return f >= ef
+			case "<=":
+				return f <= ef
 			case ">":
 				return f > ef
 			case "<":

@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -222,35 +223,40 @@ func TestGetClientKey(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "X-API-Key header",
+			name:     "remote address host:port",
 			headers:  map[string]string{"X-API-Key": "my-api-key"},
-			expected: "apikey:my-api-key",
+			addr:     "192.168.1.1:1234",
+			expected: "ip:192.168.1.1",
 		},
 		{
-			name:     "Authorization header",
+			name:     "remote address plain ip",
 			headers:  map[string]string{"Authorization": "Bearer token123"},
-			expected: "auth:Bearer token123",
+			addr:     "10.0.0.7",
+			expected: "ip:10.0.0.7",
 		},
 		{
-			name:     "X-Forwarded-For header",
+			name:     "fallback x-forwarded-for",
 			headers:  map[string]string{"X-Forwarded-For": "1.2.3.4"},
+			addr:     "invalid",
 			expected: "ip:1.2.3.4",
 		},
 		{
 			name:     "X-Real-IP header",
 			headers:  map[string]string{"X-Real-IP": "5.6.7.8"},
+			addr:     "invalid",
 			expected: "ip:5.6.7.8",
 		},
 		{
 			name:     "RemoteAddr fallback",
 			headers:  map[string]string{},
 			addr:     "192.168.1.1:1234",
-			expected: "ip:192.168.1.1:1234",
+			expected: "ip:192.168.1.1",
 		},
 		{
-			name:     "X-API-Key takes precedence",
+			name:     "remote addr takes precedence",
 			headers:  map[string]string{"X-API-Key": "key", "X-Forwarded-For": "1.2.3.4"},
-			expected: "apikey:key",
+			addr:     "203.0.113.9:8443",
+			expected: "ip:203.0.113.9",
 		},
 	}
 
@@ -269,6 +275,29 @@ func TestGetClientKey(t *testing.T) {
 				t.Errorf("expected '%s', got '%s'", tt.expected, got)
 			}
 		})
+	}
+}
+
+func TestRateLimiterEnforcesBucketCap(t *testing.T) {
+	rl := NewRateLimiter(RateLimitConfig{
+		RequestsPerWindow: 2,
+		Window:            time.Minute,
+		MaxBuckets:        3,
+	})
+	t.Cleanup(rl.Close)
+
+	for i := 0; i < 10; i++ {
+		key := "ip:198.51.100." + strconv.Itoa(i)
+		_, _, _ = rl.Allow(key)
+	}
+
+	rl.mu.RLock()
+	defer rl.mu.RUnlock()
+	if len(rl.buckets) > 3 {
+		t.Fatalf("expected bucket count to be capped at 3, got %d", len(rl.buckets))
+	}
+	if _, ok := rl.buckets[overflowRateLimitBucketKey]; !ok {
+		t.Fatalf("expected overflow bucket %q to exist", overflowRateLimitBucketKey)
 	}
 }
 

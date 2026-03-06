@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -65,6 +66,10 @@ func (s *Server) configureProvider(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.app.Providers.Configure(r.Context(), name, config); err != nil {
+		if errors.Is(err, providers.ErrProviderNotFound) {
+			s.error(w, http.StatusNotFound, "provider not found")
+			return
+		}
 		s.error(w, http.StatusInternalServerError, err.Error())
 		return
 	}

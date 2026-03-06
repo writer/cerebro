@@ -409,6 +409,14 @@ func TestListFindings_SeverityFilter(t *testing.T) {
 	}
 }
 
+func TestExportFindings_InvalidFormat(t *testing.T) {
+	s := newTestServer(t)
+	w := do(t, s, "GET", "/api/v1/findings/export?format=xml", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 // --- Compliance exports ---
 
 func TestComplianceExportAuditPackage_ReturnsZip(t *testing.T) {
@@ -517,6 +525,80 @@ func TestCompliancePreAuditToExport_Smoke(t *testing.T) {
 	}
 }
 
+func TestComplianceReportAndExport_IgnoreResolvedFindings(t *testing.T) {
+	s := newTestServer(t)
+	s.app.Findings.Upsert(context.Background(), policy.Finding{
+		ID:         "f-resolved-1",
+		PolicyID:   "aws-iam-root-no-access-keys",
+		PolicyName: "Root access key found",
+		ResourceID: "aws-account-111",
+		Severity:   "critical",
+	})
+	if !s.app.Findings.Resolve("f-resolved-1") {
+		t.Fatal("expected finding resolve to succeed")
+	}
+
+	preAudit := do(t, s, "GET", "/api/v1/compliance/frameworks/cis-aws-1.5/pre-audit", nil)
+	if preAudit.Code != http.StatusOK {
+		t.Fatalf("pre-audit expected 200, got %d: %s", preAudit.Code, preAudit.Body.String())
+	}
+	preAuditBody := decodeJSON(t, preAudit)
+	if preAuditBody["estimated_outcome"] != "PASS" {
+		t.Fatalf("expected PASS outcome, got %v", preAuditBody["estimated_outcome"])
+	}
+	summary, ok := preAuditBody["summary"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected summary map, got %T", preAuditBody["summary"])
+	}
+	if failing, ok := summary["failing"].(float64); !ok || failing != 0 {
+		t.Fatalf("expected failing=0, got %v", summary["failing"])
+	}
+
+	report := do(t, s, "GET", "/api/v1/compliance/frameworks/cis-aws-1.5/report", nil)
+	if report.Code != http.StatusOK {
+		t.Fatalf("report expected 200, got %d: %s", report.Code, report.Body.String())
+	}
+	reportBody := decodeJSON(t, report)
+	if got, ok := reportBody["total_findings"].(float64); !ok || got != 0 {
+		t.Fatalf("expected total_findings=0, got %v", reportBody["total_findings"])
+	}
+
+	export := do(t, s, "GET", "/api/v1/compliance/frameworks/cis-aws-1.5/export", nil)
+	if export.Code != http.StatusOK {
+		t.Fatalf("export expected 200, got %d: %s", export.Code, export.Body.String())
+	}
+
+	body := export.Body.Bytes()
+	zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		t.Fatalf("invalid zip payload: %v", err)
+	}
+
+	entries := map[string]*zip.File{}
+	for _, file := range zr.File {
+		entries[file.Name] = file
+	}
+	summaryFile, ok := entries["summary.json"]
+	if !ok {
+		t.Fatalf("missing summary.json entry")
+	}
+	summaryRC, err := summaryFile.Open()
+	if err != nil {
+		t.Fatalf("open summary entry: %v", err)
+	}
+	defer summaryRC.Close()
+
+	var exportSummary struct {
+		FailingControls int `json:"failing_controls"`
+	}
+	if err := json.NewDecoder(summaryRC).Decode(&exportSummary); err != nil {
+		t.Fatalf("decode summary: %v", err)
+	}
+	if exportSummary.FailingControls != 0 {
+		t.Fatalf("expected no failing controls, got %+v", exportSummary)
+	}
+}
+
 func TestSyncScanFindingsPreAuditExport_Smoke(t *testing.T) {
 	s := newTestServer(t)
 	s.app.Providers.Register(&staticProvider{name: "github", provider: providers.ProviderTypeSaaS})
@@ -581,6 +663,14 @@ func TestSyncScanFindingsPreAuditExport_Smoke(t *testing.T) {
 		if !entries[required] {
 			t.Fatalf("missing export entry %q", required)
 		}
+	}
+}
+
+func TestGenerateAuditRecommendations_ZeroTotal(t *testing.T) {
+	s := newTestServer(t)
+	recs := s.generateAuditRecommendations(1, 0, 0)
+	if len(recs) == 0 {
+		t.Fatal("expected recommendations")
 	}
 }
 
@@ -879,6 +969,14 @@ func TestGetProvider_OracleIDCSVisibleByDefault(t *testing.T) {
 	}
 }
 
+func TestConfigureProvider_NotFound(t *testing.T) {
+	s := newTestServer(t)
+	w := do(t, s, "POST", "/api/v1/providers/missing/configure", map[string]interface{}{"token": "x"})
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
 // --- RBAC ---
 
 func TestListRoles(t *testing.T) {
@@ -1119,6 +1217,7 @@ func TestAuthMiddleware_RBACRouteMatrix(t *testing.T) {
 		{name: "runtime write", method: http.MethodPost, path: "/api/v1/runtime/events", body: map[string]interface{}{}, viewerForbidden: true, analystForbidden: false, adminForbidden: false},
 		{name: "graph read", method: http.MethodGet, path: "/api/v1/graph/stats", viewerForbidden: false, analystForbidden: false, adminForbidden: false},
 		{name: "graph write", method: http.MethodPost, path: "/api/v1/graph/rebuild", viewerForbidden: true, analystForbidden: false, adminForbidden: false},
+		{name: "audit admin only", method: http.MethodGet, path: "/api/v1/audit", viewerForbidden: true, analystForbidden: true, adminForbidden: false},
 		{name: "providers admin only", method: http.MethodGet, path: "/api/v1/providers/", viewerForbidden: true, analystForbidden: true, adminForbidden: false},
 		{name: "scheduler admin only", method: http.MethodPost, path: "/api/v1/scheduler/jobs/test/run", viewerForbidden: true, analystForbidden: true, adminForbidden: false},
 		{name: "fallback read", method: http.MethodGet, path: "/api/v1/nonexistent", viewerForbidden: false, analystForbidden: false, adminForbidden: false},
@@ -1166,6 +1265,97 @@ func TestAuthMiddleware_RBACRouteMatrix(t *testing.T) {
 			admin := doAuth(tc.method, tc.path, "admin-key", tc.body)
 			assertForbidden(tc, "admin", admin.Code, tc.adminForbidden)
 		})
+	}
+}
+
+func TestAgentSessionOwnershipEnforcedWhenAuthenticated(t *testing.T) {
+	a := newTestApp(t)
+	a.Config.APIAuthEnabled = true
+	a.Config.APIKeys = map[string]string{"alice-key": "alice-1", "bob-key": "bob-1"}
+
+	if err := a.RBAC.CreateUser(&auth.User{ID: "alice-1", Email: "alice@example.com", RoleIDs: []string{"analyst"}}); err != nil {
+		t.Fatalf("create alice user: %v", err)
+	}
+	if err := a.RBAC.CreateUser(&auth.User{ID: "bob-1", Email: "bob@example.com", RoleIDs: []string{"analyst"}}); err != nil {
+		t.Fatalf("create bob user: %v", err)
+	}
+
+	a.Agents.RegisterAgent(&agents.Agent{
+		ID:   "agent-ownership",
+		Name: "Ownership Agent",
+	})
+
+	s := NewServer(a)
+
+	doAuth := func(method, path, apiKey string, body interface{}) *httptest.ResponseRecorder {
+		var reader io.Reader
+		if body != nil {
+			b, err := json.Marshal(body)
+			if err != nil {
+				t.Fatalf("marshal body: %v", err)
+			}
+			reader = bytes.NewReader(b)
+		}
+
+		req := httptest.NewRequest(method, path, reader)
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+		if body != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, req)
+		return w
+	}
+
+	// Cannot spoof another user's identity when creating sessions.
+	spoofedCreate := doAuth(http.MethodPost, "/api/v1/agents/sessions", "alice-key", map[string]string{
+		"agent_id": "agent-ownership",
+		"user_id":  "bob-1",
+	})
+	if spoofedCreate.Code != http.StatusForbidden {
+		t.Fatalf("expected spoofed create to be forbidden, got %d", spoofedCreate.Code)
+	}
+
+	create := doAuth(http.MethodPost, "/api/v1/agents/sessions", "alice-key", map[string]string{
+		"agent_id": "agent-ownership",
+		"user_id":  "alice-1",
+	})
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected session create to succeed, got %d: %s", create.Code, create.Body.String())
+	}
+
+	var session agents.Session
+	if err := json.Unmarshal(create.Body.Bytes(), &session); err != nil {
+		t.Fatalf("decode session: %v", err)
+	}
+	if session.UserID != "alice-1" {
+		t.Fatalf("expected session user alice-1, got %s", session.UserID)
+	}
+
+	bobRead := doAuth(http.MethodGet, "/api/v1/agents/sessions/"+session.ID, "bob-key", nil)
+	if bobRead.Code != http.StatusForbidden {
+		t.Fatalf("expected bob read to be forbidden, got %d", bobRead.Code)
+	}
+
+	bobMessages := doAuth(http.MethodGet, "/api/v1/agents/sessions/"+session.ID+"/messages", "bob-key", nil)
+	if bobMessages.Code != http.StatusForbidden {
+		t.Fatalf("expected bob message read to be forbidden, got %d", bobMessages.Code)
+	}
+
+	bobSend := doAuth(http.MethodPost, "/api/v1/agents/sessions/"+session.ID+"/messages", "bob-key", map[string]string{
+		"content": "hi",
+	})
+	if bobSend.Code != http.StatusForbidden {
+		t.Fatalf("expected bob send to be forbidden, got %d", bobSend.Code)
+	}
+}
+
+func TestListAuditLogsRejectsNonPositiveLimit(t *testing.T) {
+	s := newTestServer(t)
+	w := do(t, s, "GET", "/api/v1/audit?limit=-1", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid limit, got %d", w.Code)
 	}
 }
 

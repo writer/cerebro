@@ -62,6 +62,50 @@ func TestScheduler_RemoveJob(t *testing.T) {
 	}
 }
 
+func TestScheduler_RemoveJobWhileRunning(t *testing.T) {
+	s := NewScheduler(testLogger())
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	s.AddJob("test", time.Hour, func(ctx context.Context) error {
+		close(started)
+		<-release
+		return nil
+	})
+
+	s.mu.Lock()
+	s.running = true
+	s.ctx = context.Background()
+	s.mu.Unlock()
+
+	if err := s.RunNow("test"); err != nil {
+		t.Fatalf("run now failed: %v", err)
+	}
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("job did not start")
+	}
+
+	s.RemoveJob("test")
+	if job, ok := s.GetJob("test"); !ok || !job.Running {
+		t.Fatalf("expected running job to remain until completion")
+	}
+
+	close(release)
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if _, ok := s.GetJob("test"); !ok {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	t.Fatal("expected job to be removed after in-flight completion")
+}
+
 func TestScheduler_EnableDisableJob(t *testing.T) {
 	s := NewScheduler(testLogger())
 

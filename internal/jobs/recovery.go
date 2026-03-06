@@ -454,7 +454,11 @@ func (c *DLQConsumer) calculateHeartbeatBackoff(failures int) time.Duration {
 		return 0
 	}
 
-	backoff := time.Second * time.Duration(1<<uint(failures-1))
+	shift := failures - 1
+	if shift > 30 {
+		shift = 30
+	}
+	backoff := time.Second * time.Duration(1<<shift)
 	maxBackoff := c.visibilityTimeout / 2
 	if maxBackoff > 0 && backoff > maxBackoff {
 		backoff = maxBackoff

@@ -78,6 +78,8 @@ type Registry struct {
 	mu        sync.RWMutex
 }
 
+var ErrProviderNotFound = errors.New("provider not found")
+
 func NewRegistry() *Registry {
 	return &Registry{
 		providers: make(map[string]Provider),
@@ -114,7 +116,7 @@ func (r *Registry) Configure(ctx context.Context, name string, config map[string
 	provider, ok := r.providers[name]
 	if !ok {
 		r.mu.Unlock()
-		return nil
+		return ErrProviderNotFound
 	}
 	r.configs[name] = config
 	r.mu.Unlock()

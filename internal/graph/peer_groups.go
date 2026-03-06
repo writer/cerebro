@@ -78,8 +78,10 @@ func NewMinHashIndex() *MinHashIndex {
 	// Generate deterministic hash seeds using golden ratio constant
 	const goldenRatio uint64 = 0x9E3779B97F4A7C15
 	const initSeed uint64 = 0x6A09E667BB67AE85
+	seed := initSeed
 	for i := range idx.hashSeeds {
-		idx.hashSeeds[i] = uint64(i)*goldenRatio + initSeed //nolint:gosec
+		idx.hashSeeds[i] = seed
+		seed += goldenRatio
 	}
 
 	for i := range idx.bands {

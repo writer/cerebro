@@ -472,32 +472,38 @@ func (e *SyncEngine) upsertWithChanges(ctx context.Context, table string, column
 		if incremental {
 			return changes, nil
 		}
-		existing := e.getExistingHashes(ctx, table, region, hasRegion, hasAccount, globalScope)
+		existing, err := e.getExistingHashes(ctx, table, region, hasRegion, hasAccount, globalScope)
+		if err != nil {
+			return changes, fmt.Errorf("get existing hashes: %w", err)
+		}
 		changes = detectRowChanges(existing, map[string]string{}, false)
 		if len(changes.Removed) > 0 {
 			if err := e.deleteScopedRows(ctx, table, region, hasRegion, hasAccount, globalScope); err != nil {
-				e.logger.Debug("delete failed", "error", err)
+				return changes, fmt.Errorf("delete scoped rows: %w", err)
 			}
 		}
 		return changes, nil
 	}
 
+	rows = dedupeRowsByID(rows)
+
 	// Get existing rows with their hashes
-	existing := e.getExistingHashes(ctx, table, region, hasRegion, hasAccount, globalScope)
+	existing, err := e.getExistingHashes(ctx, table, region, hasRegion, hasAccount, globalScope)
+	if err != nil {
+		return changes, fmt.Errorf("get existing hashes: %w", err)
+	}
 
 	// Build new row map with hashes
 	newRows := buildRowHashes(rows, hashRowContent)
 	changes = detectRowChanges(existing, newRows, incremental)
 
-	// Delete and insert
+	// Replace IDs that are present in this snapshot.
 	if incremental {
 		if err := e.deleteRowsByID(ctx, table, newRows, region, hasRegion, hasAccount, globalScope); err != nil {
-			e.logger.Debug("delete by id failed", "table", table, "error", err)
+			return changes, fmt.Errorf("delete rows by id: %w", err)
 		}
-	} else {
-		if err := e.deleteScopedRows(ctx, table, region, hasRegion, hasAccount, globalScope); err != nil {
-			e.logger.Debug("delete failed", "error", err)
-		}
+	} else if err := e.deleteRowsByID(ctx, table, newRows, region, hasRegion, hasAccount, globalScope); err != nil {
+		return changes, fmt.Errorf("delete rows by id before replace: %w", err)
 	}
 
 	insertRows := make([]map[string]interface{}, 0, len(rows))
@@ -521,6 +527,17 @@ func (e *SyncEngine) upsertWithChanges(ctx context.Context, table string, column
 
 	if err := insertRowsBatch(ctx, e.sf, table, insertRows); err != nil {
 		return changes, fmt.Errorf("insert rows: %w", err)
+	}
+
+	// For full snapshots, remove rows that disappeared from source.
+	if !incremental && len(changes.Removed) > 0 {
+		removedIDs := make(map[string]string, len(changes.Removed))
+		for _, id := range changes.Removed {
+			removedIDs[id] = ""
+		}
+		if err := e.deleteRowsByID(ctx, table, removedIDs, region, hasRegion, hasAccount, globalScope); err != nil {
+			return changes, fmt.Errorf("delete removed rows: %w", err)
+		}
 	}
 
 	return changes, nil
@@ -571,20 +588,20 @@ func (e *SyncEngine) deleteRowsByID(ctx context.Context, table string, ids map[s
 	return nil
 }
 
-func (e *SyncEngine) getExistingHashes(ctx context.Context, table string, region string, hasRegion bool, hasAccount bool, globalScope bool) map[string]string {
+func (e *SyncEngine) getExistingHashes(ctx context.Context, table string, region string, hasRegion bool, hasAccount bool, globalScope bool) (map[string]string, error) {
 	result := make(map[string]string)
 	if err := snowflake.ValidateTableName(table); err != nil {
-		return result
+		return result, err
 	}
 
 	where, args := e.scopeWhereClause(region, hasRegion, hasAccount, globalScope)
 	query := fmt.Sprintf("SELECT _CQ_ID, _CQ_HASH FROM %s%s", table, where)
 	rows, err := e.sf.Query(ctx, query, args...)
 	if err != nil {
-		return result
+		return result, err
 	}
 
-	return decodeExistingHashes(rows.Rows)
+	return decodeExistingHashes(rows.Rows), nil
 }
 
 func (e *SyncEngine) deleteScopedRows(ctx context.Context, table string, region string, hasRegion bool, hasAccount bool, globalScope bool) error {
@@ -639,12 +656,24 @@ func (e *SyncEngine) persistChangeHistory(ctx context.Context, results []SyncRes
 		operation VARCHAR,
 		region VARCHAR,
 		account_id VARCHAR,
+		provider VARCHAR,
 		timestamp TIMESTAMP_TZ,
 		_cq_sync_time TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP()
 	)`
 
 	if _, err := e.sf.Exec(ctx, createQuery); err != nil {
 		return fmt.Errorf("create change history table: %w", err)
+	}
+	for _, query := range []string{
+		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS operation VARCHAR",
+		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS region VARCHAR",
+		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS account_id VARCHAR",
+		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS provider VARCHAR",
+		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS timestamp TIMESTAMP_TZ",
+	} {
+		if _, err := e.sf.Exec(ctx, query); err != nil {
+			e.logger.Debug("failed to ensure change history column", "query", query, "error", err)
+		}
 	}
 
 	// Insert changes
@@ -674,10 +703,10 @@ func (e *SyncEngine) persistChangeHistory(ctx context.Context, results []SyncRes
 
 func (e *SyncEngine) insertChangeRecord(ctx context.Context, table, resourceID, op, region string, ts time.Time) {
 	id := fmt.Sprintf("%s-%s-%s-%d", table, resourceID, op, ts.UnixNano())
-	query := `INSERT INTO _sync_change_history (id, table_name, resource_id, operation, region, account_id, timestamp)
-		SELECT ?, ?, ?, ?, ?, ?, ?`
+	query := `INSERT INTO _sync_change_history (id, table_name, resource_id, operation, region, account_id, provider, timestamp)
+		SELECT ?, ?, ?, ?, ?, ?, ?, ?`
 
-	if _, err := e.sf.Exec(ctx, query, id, table, resourceID, op, region, e.accountID, ts); err != nil {
+	if _, err := e.sf.Exec(ctx, query, id, table, resourceID, op, region, e.accountID, "aws", ts); err != nil {
 		e.logger.Debug("failed to insert change record", "error", err)
 	}
 }

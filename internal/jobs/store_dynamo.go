@@ -20,7 +20,12 @@ type Store interface {
 	CompleteJob(ctx context.Context, jobID, result string) error
 	FailJob(ctx context.Context, jobID, message string) error
 	RetryJob(ctx context.Context, jobID, message string) error
+	CompleteJobOwned(ctx context.Context, jobID, workerID string, attempt int, result string) error
+	FailJobOwned(ctx context.Context, jobID, workerID string, attempt int, message string) error
+	RetryJobOwned(ctx context.Context, jobID, workerID string, attempt int, message string) error
 }
+
+var ErrJobLeaseLost = errors.New("job lease lost")
 
 type DynamoStore struct {
 	client *dynamodb.Client
@@ -155,7 +160,7 @@ func (s *DynamoStore) ExtendLease(ctx context.Context, jobID, workerID string, l
 	if err != nil {
 		var conditional *types.ConditionalCheckFailedException
 		if errors.As(err, &conditional) {
-			return fmt.Errorf("job not owned by this worker or not running")
+			return ErrJobLeaseLost
 		}
 		return err
 	}
@@ -186,6 +191,40 @@ func (s *DynamoStore) CompleteJob(ctx context.Context, jobID, result string) err
 	return err
 }
 
+func (s *DynamoStore) CompleteJobOwned(ctx context.Context, jobID, workerID string, attempt int, result string) error {
+	now := time.Now().UTC().Unix()
+	_, err := s.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String(s.table),
+		Key: map[string]types.AttributeValue{
+			"job_id": &types.AttributeValueMemberS{Value: jobID},
+		},
+		UpdateExpression:    aws.String("SET #status = :status, #result = :result, #error = :error, updated_at = :now, lease_expires_at = :zero"),
+		ConditionExpression: aws.String("#status = :running AND worker_id = :worker AND attempt = :attempt"),
+		ExpressionAttributeNames: map[string]string{
+			"#status": "status",
+			"#result": "result",
+			"#error":  "error",
+		},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":status":  &types.AttributeValueMemberS{Value: string(StatusSucceeded)},
+			":running": &types.AttributeValueMemberS{Value: string(StatusRunning)},
+			":worker":  &types.AttributeValueMemberS{Value: workerID},
+			":attempt": &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", attempt)},
+			":result":  &types.AttributeValueMemberS{Value: result},
+			":error":   &types.AttributeValueMemberS{Value: ""},
+			":now":     &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", now)},
+			":zero":    &types.AttributeValueMemberN{Value: "0"},
+		},
+	})
+	if err != nil {
+		var conditional *types.ConditionalCheckFailedException
+		if errors.As(err, &conditional) {
+			return ErrJobLeaseLost
+		}
+	}
+	return err
+}
+
 func (s *DynamoStore) FailJob(ctx context.Context, jobID, message string) error {
 	now := time.Now().UTC().Unix()
 	_, err := s.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
@@ -205,6 +244,38 @@ func (s *DynamoStore) FailJob(ctx context.Context, jobID, message string) error 
 			":zero":   &types.AttributeValueMemberN{Value: "0"},
 		},
 	})
+	return err
+}
+
+func (s *DynamoStore) FailJobOwned(ctx context.Context, jobID, workerID string, attempt int, message string) error {
+	now := time.Now().UTC().Unix()
+	_, err := s.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String(s.table),
+		Key: map[string]types.AttributeValue{
+			"job_id": &types.AttributeValueMemberS{Value: jobID},
+		},
+		UpdateExpression:    aws.String("SET #status = :status, #error = :error, updated_at = :now, lease_expires_at = :zero"),
+		ConditionExpression: aws.String("#status = :running AND worker_id = :worker AND attempt = :attempt"),
+		ExpressionAttributeNames: map[string]string{
+			"#status": "status",
+			"#error":  "error",
+		},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":status":  &types.AttributeValueMemberS{Value: string(StatusFailed)},
+			":running": &types.AttributeValueMemberS{Value: string(StatusRunning)},
+			":worker":  &types.AttributeValueMemberS{Value: workerID},
+			":attempt": &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", attempt)},
+			":error":   &types.AttributeValueMemberS{Value: message},
+			":now":     &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", now)},
+			":zero":    &types.AttributeValueMemberN{Value: "0"},
+		},
+	})
+	if err != nil {
+		var conditional *types.ConditionalCheckFailedException
+		if errors.As(err, &conditional) {
+			return ErrJobLeaseLost
+		}
+	}
 	return err
 }
 
@@ -228,5 +299,38 @@ func (s *DynamoStore) RetryJob(ctx context.Context, jobID, message string) error
 			":worker": &types.AttributeValueMemberS{Value: ""},
 		},
 	})
+	return err
+}
+
+func (s *DynamoStore) RetryJobOwned(ctx context.Context, jobID, workerID string, attempt int, message string) error {
+	now := time.Now().UTC().Unix()
+	_, err := s.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String(s.table),
+		Key: map[string]types.AttributeValue{
+			"job_id": &types.AttributeValueMemberS{Value: jobID},
+		},
+		UpdateExpression:    aws.String("SET #status = :status, #error = :error, updated_at = :now, lease_expires_at = :zero, worker_id = :next_worker"),
+		ConditionExpression: aws.String("#status = :running AND worker_id = :worker AND attempt = :attempt"),
+		ExpressionAttributeNames: map[string]string{
+			"#status": "status",
+			"#error":  "error",
+		},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":status":      &types.AttributeValueMemberS{Value: string(StatusQueued)},
+			":running":     &types.AttributeValueMemberS{Value: string(StatusRunning)},
+			":worker":      &types.AttributeValueMemberS{Value: workerID},
+			":attempt":     &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", attempt)},
+			":error":       &types.AttributeValueMemberS{Value: message},
+			":now":         &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", now)},
+			":zero":        &types.AttributeValueMemberN{Value: "0"},
+			":next_worker": &types.AttributeValueMemberS{Value: ""},
+		},
+	})
+	if err != nil {
+		var conditional *types.ConditionalCheckFailedException
+		if errors.As(err, &conditional) {
+			return ErrJobLeaseLost
+		}
+	}
 	return err
 }

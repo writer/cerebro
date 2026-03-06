@@ -1,8 +1,10 @@
 package api
 
 import (
+	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -11,6 +13,7 @@ import (
 type RateLimiter struct {
 	rate       int           // requests per window
 	window     time.Duration // time window
+	maxBuckets int
 	buckets    map[string]*bucket
 	mu         sync.RWMutex
 	cleanupInt time.Duration
@@ -28,8 +31,14 @@ type bucket struct {
 type RateLimitConfig struct {
 	RequestsPerWindow int
 	Window            time.Duration
+	MaxBuckets        int
 	Enabled           bool
 }
+
+const (
+	defaultRateLimitMaxBuckets = 10000
+	overflowRateLimitBucketKey = "bucket:overflow"
+)
 
 // NewRateLimiter creates a new rate limiter
 func NewRateLimiter(cfg RateLimitConfig) *RateLimiter {
@@ -39,10 +48,14 @@ func NewRateLimiter(cfg RateLimitConfig) *RateLimiter {
 	if cfg.Window == 0 {
 		cfg.Window = time.Hour
 	}
+	if cfg.MaxBuckets <= 0 {
+		cfg.MaxBuckets = defaultRateLimitMaxBuckets
+	}
 
 	rl := &RateLimiter{
 		rate:       cfg.RequestsPerWindow,
 		window:     cfg.Window,
+		maxBuckets: cfg.MaxBuckets,
 		buckets:    make(map[string]*bucket),
 		cleanupInt: cfg.Window * 2,
 		stopCh:     make(chan struct{}),
@@ -64,13 +77,23 @@ func (rl *RateLimiter) Allow(key string) (bool, int, time.Time) {
 	b, ok := rl.buckets[key]
 
 	if !ok {
-		// New bucket
-		b = &bucket{
-			tokens:    rl.rate - 1,
-			lastReset: now,
+		overflowThreshold := rl.maxBuckets - 1
+		if overflowThreshold < 1 {
+			overflowThreshold = 1
 		}
-		rl.buckets[key] = b
-		return true, b.tokens, now.Add(rl.window)
+		if len(rl.buckets) >= overflowThreshold {
+			key = overflowRateLimitBucketKey
+			b, ok = rl.buckets[key]
+		}
+		// New bucket
+		if !ok {
+			b = &bucket{
+				tokens:    rl.rate - 1,
+				lastReset: now,
+			}
+			rl.buckets[key] = b
+			return true, b.tokens, now.Add(rl.window)
+		}
 	}
 
 	// Check if window has passed
@@ -174,22 +197,51 @@ func RateLimitMiddlewareWithLimiter(cfg RateLimitConfig, rl *RateLimiter) func(h
 
 // getClientKey extracts the rate limit key from the request
 func getClientKey(r *http.Request) string {
-	// Prefer API key if present
-	if key := r.Header.Get("X-API-Key"); key != "" {
-		return "apikey:" + key
+	if ip := canonicalClientIP(r); ip != "" {
+		return "ip:" + ip
 	}
-	if auth := r.Header.Get("Authorization"); auth != "" {
-		return "auth:" + auth
+	return "ip:unknown"
+}
+
+func canonicalClientIP(r *http.Request) string {
+	if r == nil {
+		return ""
 	}
 
-	// Fall back to IP address
-	if ip := r.Header.Get("X-Forwarded-For"); ip != "" {
-		return "ip:" + ip
+	if ip := normalizeIP(r.RemoteAddr); ip != "" {
+		return ip
 	}
-	if ip := r.Header.Get("X-Real-IP"); ip != "" {
-		return "ip:" + ip
+	if ip := normalizeIP(r.Header.Get("X-Real-IP")); ip != "" {
+		return ip
 	}
-	return "ip:" + r.RemoteAddr
+	if ip := normalizeIP(r.Header.Get("X-Forwarded-For")); ip != "" {
+		return ip
+	}
+	return ""
+}
+
+func normalizeIP(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+
+	if idx := strings.Index(trimmed, ","); idx >= 0 {
+		trimmed = strings.TrimSpace(trimmed[:idx])
+	}
+	if trimmed == "" {
+		return ""
+	}
+
+	if host, _, err := net.SplitHostPort(trimmed); err == nil {
+		trimmed = host
+	}
+
+	ip := net.ParseIP(trimmed)
+	if ip == nil {
+		return ""
+	}
+	return ip.String()
 }
 
 // Pagination helpers

@@ -136,6 +136,16 @@ func (fs *FileStore) Get(id string) (*Finding, bool) {
 	return fs.store.Get(id)
 }
 
+func (fs *FileStore) Update(id string, mutate func(*Finding) error) error {
+	if err := fs.store.Update(id, mutate); err != nil {
+		return err
+	}
+	fs.mu.Lock()
+	fs.dirty = true
+	fs.mu.Unlock()
+	return nil
+}
+
 // List returns findings matching the filter
 func (fs *FileStore) List(filter FindingFilter) []*Finding {
 	return fs.store.List(filter)

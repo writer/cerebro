@@ -316,16 +316,24 @@ func (s *Server) testWebhook(w http.ResponseWriter, r *http.Request) {
 // Audit log endpoints
 
 func (s *Server) listAuditLogs(w http.ResponseWriter, r *http.Request) {
+	resourceType := r.URL.Query().Get("resource_type")
+	resourceID := r.URL.Query().Get("resource_id")
+	limit := 100
+	if rawLimit := strings.TrimSpace(r.URL.Query().Get("limit")); rawLimit != "" {
+		parsedLimit, err := strconv.Atoi(rawLimit)
+		if err != nil || parsedLimit <= 0 {
+			s.error(w, http.StatusBadRequest, "limit must be a positive integer")
+			return
+		}
+		if parsedLimit > 1000 {
+			parsedLimit = 1000
+		}
+		limit = parsedLimit
+	}
+
 	if s.app.AuditRepo == nil {
 		s.json(w, http.StatusOK, map[string]interface{}{"logs": []interface{}{}, "message": "snowflake not configured"})
 		return
-	}
-
-	resourceType := r.URL.Query().Get("resource_type")
-	resourceID := r.URL.Query().Get("resource_id")
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	if limit == 0 {
-		limit = 100
 	}
 
 	logs, err := s.app.AuditRepo.List(r.Context(), resourceType, resourceID, limit)

@@ -26,22 +26,29 @@ func upsertScopedRowsWithChanges(
 	}
 
 	if len(rows) == 0 {
-		existing := getExistingHashesByScope(ctx, sf, table, scopeColumn, scopeValues)
+		existing, err := getExistingHashesByScope(ctx, sf, table, scopeColumn, scopeValues)
+		if err != nil {
+			return changes, fmt.Errorf("get existing hashes: %w", err)
+		}
 		changes = detectRowChanges(existing, map[string]string{}, false)
 		if len(changes.Removed) > 0 {
 			if err := deleteScopedRowsByScope(ctx, sf, table, scopeColumn, scopeValues); err != nil {
-				logger.Debug("delete failed", "table", table, "error", err)
+				return changes, fmt.Errorf("delete scoped rows: %w", err)
 			}
 		}
 		return changes, nil
 	}
 
-	existing := getExistingHashesByScope(ctx, sf, table, scopeColumn, scopeValues)
+	rows = dedupeRowsByID(rows)
+	existing, err := getExistingHashesByScope(ctx, sf, table, scopeColumn, scopeValues)
+	if err != nil {
+		return changes, fmt.Errorf("get existing hashes: %w", err)
+	}
 	newRows := buildRowHashes(rows, hashFn)
 	changes = detectRowChanges(existing, newRows, false)
 
-	if err := deleteScopedRowsByScope(ctx, sf, table, scopeColumn, scopeValues); err != nil {
-		logger.Debug("delete failed", "table", table, "error", err)
+	if err := deleteRowsByIDByScope(ctx, sf, table, newRows, scopeColumn, scopeValues); err != nil {
+		return changes, fmt.Errorf("delete rows by id before replace: %w", err)
 	}
 
 	insertRows := make([]map[string]interface{}, 0, len(rows))
@@ -67,23 +74,80 @@ func upsertScopedRowsWithChanges(
 		return changes, fmt.Errorf("insert rows: %w", err)
 	}
 
+	if len(changes.Removed) > 0 {
+		removed := make(map[string]string, len(changes.Removed))
+		for _, id := range changes.Removed {
+			removed[id] = ""
+		}
+		if err := deleteRowsByIDByScope(ctx, sf, table, removed, scopeColumn, scopeValues); err != nil {
+			return changes, fmt.Errorf("delete removed rows: %w", err)
+		}
+	}
+
 	return changes, nil
 }
 
-func getExistingHashesByScope(ctx context.Context, sf *snowflake.Client, table, scopeColumn string, scopeValues []string) map[string]string {
+func getExistingHashesByScope(ctx context.Context, sf *snowflake.Client, table, scopeColumn string, scopeValues []string) (map[string]string, error) {
 	result := make(map[string]string)
 	if err := snowflake.ValidateTableName(table); err != nil {
-		return result
+		return result, err
 	}
 
 	whereClause, args := scopedWhereClause(scopeColumn, scopeValues)
 	query := fmt.Sprintf("SELECT _CQ_ID, _CQ_HASH FROM %s%s", table, whereClause)
 	rows, err := sf.Query(ctx, query, args...)
 	if err != nil {
-		return result
+		return result, err
 	}
 
-	return decodeExistingHashes(rows.Rows)
+	return decodeExistingHashes(rows.Rows), nil
+}
+
+func deleteRowsByIDByScope(ctx context.Context, sf *snowflake.Client, table string, ids map[string]string, scopeColumn string, scopeValues []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+
+	keys := make([]string, 0, len(ids))
+	for id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		keys = append(keys, id)
+	}
+	if len(keys) == 0 {
+		return nil
+	}
+
+	scopeWhere, scopeArgs := scopedWhereClause(scopeColumn, scopeValues)
+	scopeCondition := strings.TrimPrefix(scopeWhere, " WHERE ")
+
+	for start := 0; start < len(keys); start += insertBatchSize {
+		end := start + insertBatchSize
+		if end > len(keys) {
+			end = len(keys)
+		}
+
+		batch := keys[start:end]
+		placeholders := strings.TrimRight(strings.Repeat("?,", len(batch)), ",")
+		args := make([]interface{}, 0, len(batch)+len(scopeArgs))
+		for _, id := range batch {
+			args = append(args, id)
+		}
+
+		query := fmt.Sprintf("DELETE FROM %s WHERE _CQ_ID IN (%s)", table, placeholders)
+		if scopeCondition != "" {
+			query = fmt.Sprintf("%s AND %s", query, scopeCondition)
+			args = append(args, scopeArgs...)
+		}
+
+		if _, err := sf.Exec(ctx, query, args...); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func deleteScopedRowsByScope(ctx context.Context, sf *snowflake.Client, table, scopeColumn string, scopeValues []string) error {
@@ -120,10 +184,13 @@ func persistProviderChangeHistory(ctx context.Context, sf *snowflake.Client, log
 	createQuery := `CREATE TABLE IF NOT EXISTS _sync_change_history (
 		id VARCHAR PRIMARY KEY,
 		table_name VARCHAR,
-		change_type VARCHAR,
 		resource_id VARCHAR,
-		sync_time TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP(),
-		provider VARCHAR
+		operation VARCHAR,
+		region VARCHAR,
+		account_id VARCHAR,
+		provider VARCHAR,
+		timestamp TIMESTAMP_TZ,
+		_cq_sync_time TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP()
 	)`
 
 	if _, err := sf.Exec(ctx, createQuery); err != nil {
@@ -131,9 +198,11 @@ func persistProviderChangeHistory(ctx context.Context, sf *snowflake.Client, log
 	}
 
 	alterQueries := []string{
-		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS change_type VARCHAR",
+		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS operation VARCHAR",
+		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS region VARCHAR",
+		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS account_id VARCHAR",
 		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS provider VARCHAR",
-		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS sync_time TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP()",
+		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS timestamp TIMESTAMP_TZ",
 	}
 	for _, query := range alterQueries {
 		if _, err := sf.Exec(ctx, query); err != nil {
@@ -151,20 +220,20 @@ func persistProviderChangeHistory(ctx context.Context, sf *snowflake.Client, log
 			syncTime = time.Now().UTC()
 		}
 
-		insertProviderChangeRecord(ctx, sf, logger, provider, result.Table, "added", result.Changes.Added, syncTime)
-		insertProviderChangeRecord(ctx, sf, logger, provider, result.Table, "modified", result.Changes.Modified, syncTime)
-		insertProviderChangeRecord(ctx, sf, logger, provider, result.Table, "removed", result.Changes.Removed, syncTime)
+		insertProviderChangeRecord(ctx, sf, logger, provider, result.Table, "add", result.Region, result.Changes.Added, syncTime)
+		insertProviderChangeRecord(ctx, sf, logger, provider, result.Table, "modify", result.Region, result.Changes.Modified, syncTime)
+		insertProviderChangeRecord(ctx, sf, logger, provider, result.Table, "remove", result.Region, result.Changes.Removed, syncTime)
 	}
 
 	return nil
 }
 
-func insertProviderChangeRecord(ctx context.Context, sf *snowflake.Client, logger *slog.Logger, provider, table, changeType string, resourceIDs []string, syncTime time.Time) {
+func insertProviderChangeRecord(ctx context.Context, sf *snowflake.Client, logger *slog.Logger, provider, table, operation, region string, resourceIDs []string, syncTime time.Time) {
 	for _, resourceID := range resourceIDs {
-		id := fmt.Sprintf("%s-%s-%s-%d", table, changeType, resourceID, syncTime.UnixNano())
-		query := `INSERT INTO _sync_change_history (id, table_name, change_type, resource_id, sync_time, provider)
-			SELECT ?, ?, ?, ?, ?, ?`
-		if _, err := sf.Exec(ctx, query, id, table, changeType, resourceID, syncTime, provider); err != nil {
+		id := fmt.Sprintf("%s-%s-%s-%d", table, operation, resourceID, syncTime.UnixNano())
+		query := `INSERT INTO _sync_change_history (id, table_name, resource_id, operation, region, account_id, provider, timestamp)
+			SELECT ?, ?, ?, ?, ?, ?, ?, ?`
+		if _, err := sf.Exec(ctx, query, id, table, resourceID, operation, region, "", provider, syncTime); err != nil {
 			logger.Debug("failed to insert change record", "provider", provider, "table", table, "error", err)
 		}
 	}

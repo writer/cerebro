@@ -207,10 +207,36 @@ func (m *MockStore) CompleteJob(ctx context.Context, jobID, result string) error
 	return nil
 }
 
+func (m *MockStore) CompleteJobOwned(ctx context.Context, jobID, workerID string, attempt int, result string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if job, ok := m.jobs[jobID]; ok {
+		if job.WorkerID != workerID || job.Attempt != attempt || job.Status != StatusRunning {
+			return ErrJobLeaseLost
+		}
+		job.Status = StatusSucceeded
+		job.Result = result
+	}
+	return nil
+}
+
 func (m *MockStore) FailJob(ctx context.Context, jobID, message string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if job, ok := m.jobs[jobID]; ok {
+		job.Status = StatusFailed
+		job.Error = message
+	}
+	return nil
+}
+
+func (m *MockStore) FailJobOwned(ctx context.Context, jobID, workerID string, attempt int, message string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if job, ok := m.jobs[jobID]; ok {
+		if job.WorkerID != workerID || job.Attempt != attempt || job.Status != StatusRunning {
+			return ErrJobLeaseLost
+		}
 		job.Status = StatusFailed
 		job.Error = message
 	}
@@ -222,6 +248,20 @@ func (m *MockStore) RetryJob(ctx context.Context, jobID, message string) error {
 	defer m.mu.Unlock()
 	if job, ok := m.jobs[jobID]; ok {
 		job.Status = StatusQueued
+		job.Error = message
+	}
+	return nil
+}
+
+func (m *MockStore) RetryJobOwned(ctx context.Context, jobID, workerID string, attempt int, message string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if job, ok := m.jobs[jobID]; ok {
+		if job.WorkerID != workerID || job.Attempt != attempt || job.Status != StatusRunning {
+			return ErrJobLeaseLost
+		}
+		job.Status = StatusQueued
+		job.WorkerID = ""
 		job.Error = message
 	}
 	return nil
@@ -534,7 +574,7 @@ func TestRunHeartbeat_DisablesQueueVisibilityOnTerminalErrorButExtendsLease(t *t
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
-	go worker.runHeartbeat(ctx, "receipt-1", "job-1")
+	go worker.runHeartbeat(ctx, "receipt-1", "job-1", nil)
 	time.Sleep(140 * time.Millisecond)
 	cancel()
 	time.Sleep(30 * time.Millisecond)

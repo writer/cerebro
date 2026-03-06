@@ -331,8 +331,11 @@ func (r *AuditRepository) Log(ctx context.Context, entry *AuditEntry) error {
 }
 
 func (r *AuditRepository) List(ctx context.Context, resourceType, resourceID string, limit int) ([]*AuditEntry, error) {
-	if limit == 0 {
+	if limit <= 0 {
 		limit = 100
+	}
+	if limit > 1000 {
+		limit = 1000
 	}
 
 	// #nosec G202 -- schema is internal trusted configuration, filters remain parameterized

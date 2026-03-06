@@ -341,26 +341,31 @@ func (p *Publisher) publishWithRetry(ctx context.Context, subject string, payloa
 
 	var lastErr error
 	for attempt := 1; attempt <= p.config.RetryAttempts; attempt++ {
-		publishCtx := ctx
-		cancel := func() {}
-		if p.config.PublishTimeout > 0 {
-			publishCtx, cancel = context.WithTimeout(ctx, p.config.PublishTimeout)
+		publishOnce := func() error {
+			publishCtx := ctx
+			cancel := func() {}
+			if p.config.PublishTimeout > 0 {
+				publishCtx, cancel = context.WithTimeout(ctx, p.config.PublishTimeout)
+			}
+			defer cancel()
+
+			opts := []nats.PubOpt{nats.Context(publishCtx)}
+			if strings.TrimSpace(messageID) != "" {
+				opts = append(opts, nats.MsgId(strings.TrimSpace(messageID)))
+			}
+
+			_, err := p.js.Publish(subject, payload, opts...)
+			return err
 		}
 
-		opts := []nats.PubOpt{nats.Context(publishCtx)}
-		if strings.TrimSpace(messageID) != "" {
-			opts = append(opts, nats.MsgId(strings.TrimSpace(messageID)))
-		}
-
-		_, lastErr = p.js.Publish(subject, payload, opts...)
-		cancel()
+		lastErr = publishOnce()
 		if lastErr == nil {
 			return nil
 		}
 
 		if shouldEnsureJetStreamStream(lastErr) {
 			if ensureErr := p.ensureStream(); ensureErr == nil {
-				_, lastErr = p.js.Publish(subject, payload, opts...)
+				lastErr = publishOnce()
 				if lastErr == nil {
 					return nil
 				}

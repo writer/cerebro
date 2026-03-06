@@ -252,7 +252,7 @@ func (w *Worker) Start(ctx context.Context) error {
 			// Acquire semaphore slot
 			select {
 			case sem <- struct{}{}:
-			case <-ctx.Done():
+			case <-runCtx.Done():
 				w.stopReceiving.Store(true)
 				w.gracefulShutdown(ctx)
 				return nil
@@ -264,7 +264,7 @@ func (w *Worker) Start(ctx context.Context) error {
 					<-sem // Release semaphore
 					w.inFlightJobs.Done()
 				}()
-				w.processMessage(ctx, m)
+				w.processMessage(runCtx, m)
 			}(msg)
 		}
 	}
@@ -372,12 +372,25 @@ func (w *Worker) processMessage(ctx context.Context, msg QueueMessage) {
 		)
 		// Continue anyway - idempotency is a safety net, not a blocker
 	} else if !canProcess {
-		w.logDebug("message already processed (idempotency)",
+		processed, processedErr := w.idempotency.IsProcessed(ctx, idempotencyKey)
+		if processedErr != nil {
+			w.logWarn("failed to inspect idempotency status", "job_id", jobID, "error", processedErr)
+		}
+		if processed {
+			w.logDebug("message already completed (idempotency)",
+				"job_id", jobID,
+				"correlation_id", correlationID,
+				"message_id", msg.ID,
+			)
+			w.queueDelete(msg.ReceiptHandle)
+			return
+		}
+
+		w.logDebug("message already processing elsewhere; leaving message in queue",
 			"job_id", jobID,
 			"correlation_id", correlationID,
 			"message_id", msg.ID,
 		)
-		w.queueDelete(msg.ReceiptHandle)
 		return
 	}
 
@@ -399,9 +412,8 @@ func (w *Worker) processMessage(ctx context.Context, msg QueueMessage) {
 			"job_id", jobID,
 			"correlation_id", correlationID,
 		)
-		w.queueDelete(msg.ReceiptHandle)
-		if markErr := w.idempotency.MarkCompleted(ctx, idempotencyKey); markErr != nil {
-			w.logWarn("failed to mark idempotency as completed", "job_id", jobID, "error", markErr)
+		if markErr := w.idempotency.MarkFailed(ctx, idempotencyKey); markErr != nil {
+			w.logWarn("failed to clear idempotency lock for unclaimed job", "job_id", jobID, "error", markErr)
 		}
 		return
 	}
@@ -428,9 +440,9 @@ func (w *Worker) processMessage(ctx context.Context, msg QueueMessage) {
 	defer jobCancel()
 
 	// Start heartbeat
-	heartbeatCtx, heartbeatCancel := context.WithCancel(ctx)
+	heartbeatCtx, heartbeatCancel := context.WithCancel(jobCtx)
 	defer heartbeatCancel()
-	go w.runHeartbeat(heartbeatCtx, msg.ReceiptHandle, job.ID)
+	go w.runHeartbeat(heartbeatCtx, msg.ReceiptHandle, job.ID, jobCancel)
 
 	// Execute job
 	result, execErr := w.executeJob(jobCtx, job)
@@ -447,7 +459,15 @@ func (w *Worker) processMessage(ctx context.Context, msg QueueMessage) {
 	}
 
 	// Mark job complete
-	if err := w.store.CompleteJob(ctx, job.ID, result); err != nil {
+	if err := w.store.CompleteJobOwned(ctx, job.ID, w.workerID, job.Attempt, result); err != nil {
+		if errors.Is(err, ErrJobLeaseLost) {
+			w.logWarn("lost job lease before completion; skipping terminal update",
+				"job_id", job.ID,
+				"correlation_id", correlationID,
+			)
+			_ = w.idempotency.MarkFailed(ctx, idempotencyKey)
+			return
+		}
 		w.logError("failed to complete job", err,
 			"job_id", job.ID,
 			"correlation_id", correlationID,
@@ -483,7 +503,7 @@ func (w *Worker) executeJob(ctx context.Context, job *Job) (string, error) {
 	return w.registry.Execute(ctx, job)
 }
 
-func (w *Worker) runHeartbeat(ctx context.Context, receiptHandle, jobID string) {
+func (w *Worker) runHeartbeat(ctx context.Context, receiptHandle, jobID string, onLeaseLost context.CancelFunc) {
 	ticker := time.NewTicker(w.heartbeatInterval)
 	defer ticker.Stop()
 
@@ -500,6 +520,14 @@ func (w *Worker) runHeartbeat(ctx context.Context, receiptHandle, jobID string) 
 			leaseCtx, leaseCancel := context.WithTimeout(ctx, requestTimeout)
 			if err := w.store.ExtendLease(leaseCtx, jobID, w.workerID, w.visibilityTimeout); err != nil {
 				if ctx.Err() == nil {
+					if errors.Is(err, ErrJobLeaseLost) {
+						w.logWarn("job lease lost; canceling in-flight execution", "job_id", jobID)
+						if onLeaseLost != nil {
+							onLeaseLost()
+						}
+						leaseCancel()
+						return
+					}
 					w.logError("lease extension failed", err, "job_id", jobID)
 				}
 			}
@@ -612,7 +640,12 @@ func (w *Worker) handleJobFailure(ctx context.Context, job *Job, receiptHandle s
 
 	// Permanent errors - delete message and mark failed (no DLQ needed for app-level permanent errors)
 	if isPermanent {
-		if err := w.store.FailJob(ctx, job.ID, errMsg); err != nil {
+		if err := w.store.FailJobOwned(ctx, job.ID, w.workerID, job.Attempt, errMsg); err != nil {
+			if errors.Is(err, ErrJobLeaseLost) {
+				w.logWarn("lost job lease before permanent failure update", "job_id", job.ID, "correlation_id", correlationID)
+				_ = w.idempotency.MarkFailed(ctx, idempotencyKey)
+				return
+			}
 			w.logError("failed to mark job failed", err,
 				"job_id", job.ID,
 				"correlation_id", correlationID,
@@ -632,13 +665,18 @@ func (w *Worker) handleJobFailure(ctx context.Context, job *Job, receiptHandle s
 	// Max retries exceeded - mark failed in DB but DON'T delete message
 	// Let SQS move it to DLQ after visibility timeout expires
 	if job.Attempt >= job.MaxAttempts {
-		if err := w.store.FailJob(ctx, job.ID, errMsg); err != nil {
+		if err := w.store.FailJobOwned(ctx, job.ID, w.workerID, job.Attempt, errMsg); err != nil {
+			if errors.Is(err, ErrJobLeaseLost) {
+				w.logWarn("lost job lease before exhausted-retry update", "job_id", job.ID, "correlation_id", correlationID)
+				_ = w.idempotency.MarkFailed(ctx, idempotencyKey)
+				return
+			}
 			w.logError("failed to mark job failed", err,
 				"job_id", job.ID,
 				"correlation_id", correlationID,
 			)
 		}
-		_ = w.idempotency.MarkCompleted(ctx, idempotencyKey)
+		_ = w.idempotency.MarkFailed(ctx, idempotencyKey)
 		// Don't delete - let SQS redrive to DLQ
 		w.logWarn("job exhausted retries, will move to DLQ",
 			"job_id", job.ID,
@@ -652,7 +690,11 @@ func (w *Worker) handleJobFailure(ctx context.Context, job *Job, receiptHandle s
 	// Calculate delay and extend visibility so message reappears after delay
 	_ = w.idempotency.MarkFailed(ctx, idempotencyKey)
 
-	if err := w.store.RetryJob(ctx, job.ID, errMsg); err != nil {
+	if err := w.store.RetryJobOwned(ctx, job.ID, w.workerID, job.Attempt, errMsg); err != nil {
+		if errors.Is(err, ErrJobLeaseLost) {
+			w.logWarn("lost job lease before retry update", "job_id", job.ID, "correlation_id", correlationID)
+			return
+		}
 		w.logError("failed to mark job for retry", err,
 			"job_id", job.ID,
 			"correlation_id", correlationID,
@@ -693,7 +735,7 @@ func (w *Worker) calculateBackoff(attempt int) time.Duration {
 	}
 
 	// Exponential backoff: base * 2^attempt
-	delay := w.retryBaseDelay * time.Duration(1<<uint(shift))
+	delay := w.retryBaseDelay * time.Duration(1<<shift)
 	if delay > w.retryMaxDelay {
 		delay = w.retryMaxDelay
 	}

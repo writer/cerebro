@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -122,7 +123,7 @@ func (s *Server) exportFindings(w http.ResponseWriter, r *http.Request) {
 		findings.EnrichFinding(f)
 	}
 
-	format := r.URL.Query().Get("format")
+	format := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))
 	if format == "" {
 		format = "csv"
 	}
@@ -136,10 +137,13 @@ func (s *Server) exportFindings(w http.ResponseWriter, r *http.Request) {
 		exporter := findings.NewJSONExporter(r.URL.Query().Get("pretty") == "true")
 		data, err = exporter.Export(list)
 		contentType = "application/json"
-	default:
+	case "csv":
 		exporter := findings.NewCSVExporter()
 		data, err = exporter.Export(list)
 		contentType = "text/csv"
+	default:
+		s.error(w, http.StatusBadRequest, "invalid format, expected csv or json")
+		return
 	}
 
 	if err != nil {
@@ -290,7 +294,7 @@ func (s *Server) generateComplianceReport(w http.ResponseWriter, r *http.Request
 	}
 
 	// Generate report based on current findings
-	findingsStats := s.app.Findings.Stats()
+	openFindingsByPolicy := s.openFindingsByPolicy()
 
 	report := compliance.ComplianceReport{
 		FrameworkID:   framework.ID,
@@ -318,7 +322,7 @@ func (s *Server) generateComplianceReport(w http.ResponseWriter, r *http.Request
 		failCount := 0
 		var evidence []Evidence
 		for _, policyID := range ctrl.PolicyIDs {
-			if count, ok := findingsStats.ByPolicy[policyID]; ok {
+			if count, ok := openFindingsByPolicy[policyID]; ok {
 				failCount += count
 			}
 			// Get sample findings for evidence (limit to 5 per policy)
@@ -401,7 +405,7 @@ func (s *Server) preAuditCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	findingsStats := s.app.Findings.Stats()
+	openFindingsByPolicy := s.openFindingsByPolicy()
 
 	type ControlCheck struct {
 		ControlID   string   `json:"control_id"`
@@ -423,7 +427,7 @@ func (s *Server) preAuditCheck(w http.ResponseWriter, r *http.Request) {
 		}
 
 		for _, policyID := range ctrl.PolicyIDs {
-			if count, ok := findingsStats.ByPolicy[policyID]; ok && count > 0 {
+			if count, ok := openFindingsByPolicy[policyID]; ok && count > 0 {
 				check.Status = "failing"
 				check.Issues = append(check.Issues, fmt.Sprintf("%d findings for policy %s", count, policyID))
 				check.Findings = append(check.Findings, policyID)
@@ -448,7 +452,7 @@ func (s *Server) preAuditCheck(w http.ResponseWriter, r *http.Request) {
 	if failing > 0 {
 		outcome = fmt.Sprintf("PASS WITH %d EXCEPTIONS", failing)
 	}
-	if float64(failing)/float64(len(framework.Controls)) > 0.2 {
+	if len(framework.Controls) > 0 && float64(failing)/float64(len(framework.Controls)) > 0.2 {
 		outcome = "AT RISK - RECOMMEND POSTPONING"
 	}
 
@@ -486,11 +490,22 @@ func (s *Server) generateAuditRecommendations(failing, atRisk, total int) []stri
 	if failing == 0 && atRisk == 0 {
 		recs = append(recs, "All controls passing - ready for audit")
 	}
-	if float64(failing)/float64(total) > 0.1 {
+	if total > 0 && float64(failing)/float64(total) > 0.1 {
 		recs = append(recs, "Consider postponing audit until critical issues are resolved")
 	}
 
 	return recs
+}
+
+func (s *Server) openFindingsByPolicy() map[string]int {
+	counts := make(map[string]int)
+	for _, finding := range s.app.Findings.List(findings.FindingFilter{Status: "OPEN"}) {
+		if finding.PolicyID == "" {
+			continue
+		}
+		counts[finding.PolicyID]++
+	}
+	return counts
 }
 
 // Export audit package with evidence
@@ -504,7 +519,7 @@ func (s *Server) exportAuditPackage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	generatedAt := time.Now().UTC()
-	pkg := compliance.BuildAuditPackage(framework, s.app.Findings.Stats().ByPolicy, generatedAt)
+	pkg := compliance.BuildAuditPackage(framework, s.openFindingsByPolicy(), generatedAt)
 
 	zipBytes, err := compliance.RenderAuditPackageZIP(pkg)
 	if err != nil {
