@@ -1,4 +1,4 @@
-.PHONY: build run test sync clean dev serve policy-list docker-build trivy-db security-scan security-scan-built security-scan-source vendor vendor-check oss-audit openapi-check openapi-sync config-docs config-docs-check
+.PHONY: build run test sync clean dev serve policy-list docker-build trivy-db security-scan security-scan-built security-scan-source vendor vendor-check oss-audit openapi-check openapi-sync config-docs config-docs-check platform-up platform-down platform-logs platform-smoke
 
 # Version info
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -143,6 +143,21 @@ config-docs-check: config-docs
 # Docker run
 docker-run:
 	docker run -p 8080:8080 -v $(PWD)/policies:/app/policies cerebro:latest serve
+
+platform-up:
+	docker compose -f docker-compose.platform.yml up -d --build
+
+platform-down:
+	docker compose -f docker-compose.platform.yml down -v
+
+platform-logs:
+	docker compose -f docker-compose.platform.yml logs -f
+
+platform-smoke:
+	docker compose -f docker-compose.platform.yml ps
+	curl -fsS http://localhost:8222/healthz >/dev/null
+	curl -fsS http://localhost:8080/health >/dev/null
+	@echo "platform smoke checks passed"
 
 # Full local setup
 setup: install-deps build

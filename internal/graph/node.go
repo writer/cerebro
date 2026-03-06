@@ -38,6 +38,17 @@ const (
 	// Policy nodes
 	NodeKindSCP                NodeKind = "scp"                 // Service Control Policy
 	NodeKindPermissionBoundary NodeKind = "permission_boundary" // AWS Permission Boundary
+
+	// Business entities
+	NodeKindCustomer     NodeKind = "customer"
+	NodeKindContact      NodeKind = "contact"
+	NodeKindCompany      NodeKind = "company"
+	NodeKindDeal         NodeKind = "deal"
+	NodeKindOpportunity  NodeKind = "opportunity"
+	NodeKindSubscription NodeKind = "subscription"
+	NodeKindInvoice      NodeKind = "invoice"
+	NodeKindTicket       NodeKind = "ticket"
+	NodeKindLead         NodeKind = "lead"
 )
 
 // RiskLevel represents the risk level of a node or edge
@@ -89,6 +100,17 @@ func (n *Node) IsKubernetes() bool {
 	switch n.Kind {
 	case NodeKindPod, NodeKindDeployment, NodeKindNamespace, NodeKindClusterRole,
 		NodeKindClusterRoleBinding, NodeKindConfigMap, NodeKindPersistentVolume:
+		return true
+	}
+	return false
+}
+
+// IsBusinessEntity returns true if the node is a business domain entity.
+func (n *Node) IsBusinessEntity() bool {
+	switch n.Kind {
+	case NodeKindCustomer, NodeKindContact, NodeKindCompany, NodeKindDeal,
+		NodeKindOpportunity, NodeKindSubscription, NodeKindInvoice,
+		NodeKindTicket, NodeKindLead:
 		return true
 	}
 	return false

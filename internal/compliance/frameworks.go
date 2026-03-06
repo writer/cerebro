@@ -642,6 +642,107 @@ var CISAzurev15 = Framework{
 }
 
 // =============================================================================
+// Business Compliance Frameworks
+// =============================================================================
+
+var SLAComplianceV1 = Framework{
+	ID:          "sla-compliance-v1",
+	Name:        "Service Level Agreement Compliance",
+	Version:     "1.0",
+	Description: "Operational SLA control framework for customer response, uptime, and resolution commitments.",
+	Controls: []Control{
+		{
+			ID:          "SLA-1",
+			Title:       "Response Time SLA",
+			Description: "Critical tickets should meet contractual response windows.",
+			Severity:    SeverityHigh,
+			PolicyIDs:   []string{"zendesk-sla-breach"},
+		},
+		{
+			ID:          "SLA-2",
+			Title:       "Uptime SLA",
+			Description: "Enterprise uptime must remain above contracted targets.",
+			Severity:    SeverityCritical,
+			PolicyIDs:   []string{"uptime-breach-enterprise"},
+		},
+		{
+			ID:          "SLA-3",
+			Title:       "Resolution Time SLA",
+			Description: "Incident resolution should meet contracted resolution windows.",
+			Severity:    SeverityHigh,
+			PolicyIDs:   []string{"resolution-time-breach"},
+		},
+	},
+}
+
+var RevOpsHygieneV1 = Framework{
+	ID:          "revops-hygiene-v1",
+	Name:        "Revenue Operations Hygiene",
+	Version:     "1.0",
+	Description: "Business pipeline and forecasting control framework for revenue operations.",
+	Controls: []Control{
+		{
+			ID:          "REV-1",
+			Title:       "Pipeline Hygiene",
+			Description: "Open opportunities should stay active with timely progression signals.",
+			Severity:    SeverityHigh,
+			PolicyIDs:   []string{"hubspot-stale-deal", "hubspot-no-next-step", "sf-close-date-slip"},
+		},
+		{
+			ID:          "REV-2",
+			Title:       "Discount Governance",
+			Description: "Discounting should remain within approved guardrails.",
+			Severity:    SeverityMedium,
+			PolicyIDs:   []string{"hubspot-excessive-discount"},
+		},
+		{
+			ID:          "REV-3",
+			Title:       "Forecast Accuracy",
+			Description: "Enterprise opportunities should not remain stale in open stages.",
+			Severity:    SeverityHigh,
+			PolicyIDs:   []string{"sf-stale-enterprise-opp"},
+		},
+		{
+			ID:          "REV-4",
+			Title:       "Payment Health",
+			Description: "Recurring payment failure streaks should trigger intervention.",
+			Severity:    SeverityCritical,
+			PolicyIDs:   []string{"stripe-payment-failure-streak"},
+		},
+	},
+}
+
+var FinancialControlsV1 = Framework{
+	ID:          "financial-controls-v1",
+	Name:        "Financial Controls",
+	Version:     "1.0",
+	Description: "Financial governance framework for authorization, revenue recognition, and duty segregation.",
+	Controls: []Control{
+		{
+			ID:          "FIN-1",
+			Title:       "Refund Authorization",
+			Description: "Large refunds should require explicit approval.",
+			Severity:    SeverityHigh,
+			PolicyIDs:   []string{"stripe-large-refund"},
+		},
+		{
+			ID:          "FIN-2",
+			Title:       "Revenue Recognition",
+			Description: "Contractual and billing records should remain aligned.",
+			Severity:    SeverityHigh,
+			PolicyIDs:   []string{"contract-billing-mismatch"},
+		},
+		{
+			ID:          "FIN-3",
+			Title:       "Separation of Duties",
+			Description: "Approvers and executors should remain distinct for sensitive finance actions.",
+			Severity:    SeverityCritical,
+			PolicyIDs:   []string{"same-user-approve-execute"},
+		},
+	},
+}
+
+// =============================================================================
 // Framework Registry
 // =============================================================================
 
@@ -654,6 +755,9 @@ func GetFrameworks() []Framework {
 		SOC2,
 		CISGCPv13,
 		CISAzurev15,
+		SLAComplianceV1,
+		RevOpsHygieneV1,
+		FinancialControlsV1,
 	}
 }
 

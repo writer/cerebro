@@ -22,6 +22,17 @@ const (
 
 	// Asset -> Code
 	EdgeKindDeployedFrom EdgeKind = "deployed_from"
+
+	// Business relationships
+	EdgeKindOwns         EdgeKind = "owns"
+	EdgeKindSubscribedTo EdgeKind = "subscribed_to"
+	EdgeKindBilledBy     EdgeKind = "billed_by"
+	EdgeKindWorksAt      EdgeKind = "works_at"
+	EdgeKindManagedBy    EdgeKind = "managed_by"
+	EdgeKindAssignedTo   EdgeKind = "assigned_to"
+	EdgeKindRenews       EdgeKind = "renews"
+	EdgeKindEscalatedTo  EdgeKind = "escalated_to"
+	EdgeKindRefers       EdgeKind = "refers"
 )
 
 // EdgeEffect represents whether an edge allows or denies access
@@ -53,6 +64,14 @@ func (e *Edge) IsDeny() bool {
 func (e *Edge) IsCrossAccount() bool {
 	if ca, ok := e.Properties["cross_account"].(bool); ok {
 		return ca
+	}
+	return false
+}
+
+// IsCrossSystem returns true when an edge links entities from different systems.
+func (e *Edge) IsCrossSystem() bool {
+	if cs, ok := e.Properties["cross_system"].(bool); ok {
+		return cs
 	}
 	return false
 }

@@ -5,8 +5,8 @@ import "testing"
 func TestGetFrameworks(t *testing.T) {
 	frameworks := GetFrameworks()
 
-	if len(frameworks) != 6 {
-		t.Errorf("expected 6 frameworks, got %d", len(frameworks))
+	if len(frameworks) != 9 {
+		t.Errorf("expected 9 frameworks, got %d", len(frameworks))
 	}
 
 	ids := make(map[string]bool)
@@ -14,7 +14,17 @@ func TestGetFrameworks(t *testing.T) {
 		ids[f.ID] = true
 	}
 
-	expected := []string{"cis-aws-1.5", "pci-dss-4.0", "hipaa-security", "soc2-type2", "cis-gcp-1.3", "cis-azure-1.5"}
+	expected := []string{
+		"cis-aws-1.5",
+		"pci-dss-4.0",
+		"hipaa-security",
+		"soc2-type2",
+		"cis-gcp-1.3",
+		"cis-azure-1.5",
+		"sla-compliance-v1",
+		"revops-hygiene-v1",
+		"financial-controls-v1",
+	}
 	for _, id := range expected {
 		if !ids[id] {
 			t.Errorf("missing framework: %s", id)
@@ -34,6 +44,9 @@ func TestGetFramework(t *testing.T) {
 		{"soc2-type2", false, "SOC 2 Type II"},
 		{"cis-gcp-1.3", false, "CIS Google Cloud Platform Benchmark"},
 		{"cis-azure-1.5", false, "CIS Microsoft Azure Foundations Benchmark"},
+		{"sla-compliance-v1", false, "Service Level Agreement Compliance"},
+		{"revops-hygiene-v1", false, "Revenue Operations Hygiene"},
+		{"financial-controls-v1", false, "Financial Controls"},
 		{"nonexistent", true, ""},
 	}
 
@@ -148,8 +161,8 @@ func TestSOC2Controls(t *testing.T) {
 
 func TestGetFrameworkIDs(t *testing.T) {
 	ids := GetFrameworkIDs()
-	if len(ids) != 6 {
-		t.Errorf("expected 6 framework IDs, got %d", len(ids))
+	if len(ids) != 9 {
+		t.Errorf("expected 9 framework IDs, got %d", len(ids))
 	}
 }
 

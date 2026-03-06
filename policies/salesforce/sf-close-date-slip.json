@@ -1,0 +1,13 @@
+{
+  "id": "sf-close-date-slip",
+  "name": "Close Date Pushed More Than Twice",
+  "description": "Flags opportunities with repeated close-date slips while still open.",
+  "effect": "forbid",
+  "resource": "salesforce::opportunity",
+  "conditions": [
+    "close_date_push_count > 2",
+    "StageName != 'Closed Won'"
+  ],
+  "severity": "medium",
+  "tags": ["forecasting", "pipeline-hygiene", "salesforce"]
+}
