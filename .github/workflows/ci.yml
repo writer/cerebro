@@ -202,8 +202,16 @@ jobs:
         with:
           go-version: '1.25.7'
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: Verify OpenAPI matches registered routes
         run: go run ./scripts/openapi_route_parity.go
+
+      - name: Lint OpenAPI contract
+        run: npx --yes @stoplight/spectral-cli@6 lint --ruleset .spectral.yaml api/openapi.yaml
 
       - name: Ensure generated OpenAPI placeholders are removed
         shell: bash
@@ -211,6 +219,10 @@ jobs:
           set -euo pipefail
           if grep -n "x-cerebro-generated" api/openapi.yaml; then
             echo "OpenAPI still contains generated placeholders. Replace with real operation docs."
+            exit 1
+          fi
+          if grep -n "Undocumented" api/openapi.yaml; then
+            echo "OpenAPI still contains undocumented placeholder tags."
             exit 1
           fi
 
