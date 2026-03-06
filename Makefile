@@ -119,9 +119,17 @@ openapi-check:
 		echo "OpenAPI contains generated placeholders (x-cerebro-generated). Replace with real operation docs."; \
 		exit 1; \
 	fi
+	@if grep -n "Undocumented" api/openapi.yaml; then \
+		echo "OpenAPI contains undocumented operation tags. Replace with endpoint contracts."; \
+		exit 1; \
+	fi
+	$(MAKE) openapi-lint
 
 openapi-sync:
 	go run ./scripts/openapi_route_parity.go --write
+
+openapi-lint:
+	npx --yes @stoplight/spectral-cli@6 lint --ruleset .spectral.yaml api/openapi.yaml
 
 config-docs:
 	go run ./scripts/generate_config_docs/main.go
