@@ -1,0 +1,12 @@
+{
+  "id": "contract-billing-mismatch",
+  "name": "Contract and Billing Mismatch",
+  "description": "Flags records where contractual and billed amounts are inconsistent.",
+  "effect": "forbid",
+  "resource": "billing::contract",
+  "conditions": [
+    "contract_amount != billed_amount"
+  ],
+  "severity": "high",
+  "tags": ["financial-controls", "revops", "billing"]
+}

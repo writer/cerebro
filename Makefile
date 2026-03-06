@@ -157,6 +157,8 @@ platform-smoke:
 	docker compose -f docker-compose.platform.yml ps
 	curl -fsS http://localhost:8222/healthz >/dev/null
 	curl -fsS http://localhost:8080/health >/dev/null
+	curl -fsS http://localhost:8081/health >/dev/null || curl -fsS http://localhost:8081/healthz >/dev/null
+	curl -fsS http://localhost:3999/health >/dev/null || curl -fsS http://localhost:3999/healthz >/dev/null
 	@echo "platform smoke checks passed"
 
 # Full local setup

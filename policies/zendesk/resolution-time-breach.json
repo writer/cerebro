@@ -1,0 +1,13 @@
+{
+  "id": "resolution-time-breach",
+  "name": "Zendesk Resolution Time SLA Breach",
+  "description": "Flags tickets that breached resolution-time commitments while still unresolved.",
+  "effect": "forbid",
+  "resource": "zendesk::ticket",
+  "conditions": [
+    "resolution_sla_breached == true",
+    "status != 'closed'"
+  ],
+  "severity": "high",
+  "tags": ["sla", "support", "zendesk"]
+}
