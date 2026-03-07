@@ -15,17 +15,26 @@ import (
 )
 
 type fakeS3Client struct {
-	listOutputs []*s3.ListObjectsV2Output
-	listErr     error
-	listCalls   int
-	getOutputs  map[string]*s3.GetObjectOutput
-	getErrors   map[string]error
-	headErr     error
+	listOutputs  []*s3.ListObjectsV2Output
+	listByPrefix map[string]*s3.ListObjectsV2Output
+	listErr      error
+	listCalls    int
+	getOutputs   map[string]*s3.GetObjectOutput
+	getBodyFn    map[string]func() *s3.GetObjectOutput
+	getErrors    map[string]error
+	headErr      error
 }
 
-func (f *fakeS3Client) ListObjectsV2(_ context.Context, _ *s3.ListObjectsV2Input, _ ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
+func (f *fakeS3Client) ListObjectsV2(_ context.Context, input *s3.ListObjectsV2Input, _ ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
 	if f.listErr != nil {
 		return nil, f.listErr
+	}
+	if f.listByPrefix != nil {
+		prefix := aws.ToString(input.Prefix)
+		if output, ok := f.listByPrefix[prefix]; ok {
+			return output, nil
+		}
+		return &s3.ListObjectsV2Output{}, nil
 	}
 	if f.listCalls >= len(f.listOutputs) {
 		return &s3.ListObjectsV2Output{}, nil
@@ -39,6 +48,11 @@ func (f *fakeS3Client) GetObject(_ context.Context, input *s3.GetObjectInput, _ 
 	key := aws.ToString(input.Key)
 	if err, ok := f.getErrors[key]; ok && err != nil {
 		return nil, err
+	}
+	if f.getBodyFn != nil {
+		if fn, ok := f.getBodyFn[key]; ok {
+			return fn(), nil
+		}
 	}
 	output, ok := f.getOutputs[key]
 	if !ok {

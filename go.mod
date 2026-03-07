@@ -1,8 +1,8 @@
 module github.com/writer/cerebro
 
-go 1.25.0
+go 1.26.0
 
-toolchain go1.25.7
+toolchain go1.26.1
 
 require (
 	cloud.google.com/go/artifactregistry v1.19.0

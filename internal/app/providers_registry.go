@@ -61,6 +61,28 @@ func (a *App) registerConfiguredProviders(ctx context.Context) {
 		providerConfig = mergeProviderAwareConfig(providerConfig, providerValues)
 		registerProvider(registration.name, registration.constructor(), providerConfig)
 	}
+
+	a.registerS3Sources(ctx, registerProvider)
+}
+
+func (a *App) registerS3Sources(ctx context.Context, registerProvider func(string, providers.Provider, map[string]interface{})) {
+	if a.Config == nil {
+		return
+	}
+	for _, src := range a.Config.S3Sources {
+		cfg := map[string]interface{}{
+			"bucket":                 src.Bucket,
+			"prefixes":               src.Prefixes,
+			"region":                 src.Region,
+			"format":                 src.Format,
+			"role_arn":               src.RoleARN,
+			"external_id":            src.ExternalID,
+			"max_objects":            src.MaxObjects,
+			"max_records_per_object": src.MaxRecordsPerObject,
+		}
+		p := providers.NewS3SourceProvider(src.Name)
+		registerProvider(p.Name(), p, cfg)
+	}
 }
 
 func mergeProviderAwareConfig(base map[string]interface{}, providerValues map[string]string) map[string]interface{} {
