@@ -2,7 +2,7 @@ module github.com/evalops/cerebro
 
 go 1.25.0
 
-toolchain go1.25.7
+toolchain go1.25.8
 
 require (
 	cloud.google.com/go/artifactregistry v1.19.0
