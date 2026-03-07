@@ -72,12 +72,12 @@ func (a *App) registerS3Sources(ctx context.Context, registerProvider func(strin
 	for _, src := range a.Config.S3Sources {
 		cfg := map[string]interface{}{
 			"bucket":                 src.Bucket,
-			"prefixes":              src.Prefixes,
-			"region":                src.Region,
-			"format":                src.Format,
-			"role_arn":              src.RoleARN,
-			"external_id":          src.ExternalID,
-			"max_objects":           src.MaxObjects,
+			"prefixes":               src.Prefixes,
+			"region":                 src.Region,
+			"format":                 src.Format,
+			"role_arn":               src.RoleARN,
+			"external_id":            src.ExternalID,
+			"max_objects":            src.MaxObjects,
 			"max_records_per_object": src.MaxRecordsPerObject,
 		}
 		p := providers.NewS3SourceProvider(src.Name)

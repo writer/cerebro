@@ -397,14 +397,14 @@ func parseS3SourcePrefixes(value interface{}) []string {
 
 // S3SourceConfig holds the configuration for a single named S3 source.
 type S3SourceConfig struct {
-	Name               string
-	Bucket             string
-	Prefixes           []string
-	Region             string
-	Format             string
-	RoleARN            string
-	ExternalID         string
-	MaxObjects         int
+	Name                string
+	Bucket              string
+	Prefixes            []string
+	Region              string
+	Format              string
+	RoleARN             string
+	ExternalID          string
+	MaxObjects          int
 	MaxRecordsPerObject int
 }
 
