@@ -1,4 +1,4 @@
-.PHONY: build run test sync clean dev serve policy-list docker-build trivy-db security-scan security-scan-built security-scan-source vendor vendor-check oss-audit openapi-check openapi-sync config-docs config-docs-check platform-up platform-down platform-logs platform-smoke
+.PHONY: build run test sync clean dev serve policy-list docker-build trivy-db security-scan security-scan-built security-scan-source vendor vendor-check oss-audit openapi-check openapi-sync config-docs config-docs-check platform-up platform-down platform-logs platform-smoke hooks
 
 # Version info
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -161,6 +161,11 @@ platform-smoke:
 	curl -fsS http://localhost:3999/health >/dev/null || curl -fsS http://localhost:3999/healthz >/dev/null
 	@echo "platform smoke checks passed"
 
+# Install git hooks
+hooks:
+	git config core.hooksPath .githooks
+	@echo "Git hooks installed (.githooks/)"
+
 # Full local setup
-setup: install-deps build
+setup: install-deps build hooks
 	@echo "Cerebro ready. Run 'make serve' to start the API."
