@@ -220,7 +220,7 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.4.0  # Supports Go 1.25
+          version: v2.10.1  # Supports Go 1.26
           args: --timeout=15m ./cmd/... ./internal/... ./api/...
 
   gosec:
