@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/evalops/cerebro/internal/ticketing"
+	"github.com/go-chi/chi/v5"
 )
 
 // Ticketing endpoints

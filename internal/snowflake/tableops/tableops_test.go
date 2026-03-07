@@ -112,8 +112,8 @@ func TestMergeVariantRowsBatch_InvalidTable(t *testing.T) {
 func TestMergeVariantRowsBatch_FirstRowSkippedAliasesCorrect(t *testing.T) {
 	client := &fakeExecClient{}
 	rows := []map[string]interface{}{
-		{"_cq_id": "", "_cq_hash": "skip-me", "col": "bad"},    // empty ID, skipped
-		{"_cq_id": "id-2", "_cq_hash": "h2", "col": "good"},   // first emitted row
+		{"_cq_id": "", "_cq_hash": "skip-me", "col": "bad"}, // empty ID, skipped
+		{"_cq_id": "id-2", "_cq_hash": "h2", "col": "good"}, // first emitted row
 		{"_cq_id": "id-3", "_cq_hash": "h3", "col": "also-ok"},
 	}
 	err := MergeVariantRowsBatch(context.Background(), client, "test_table", rows, nil, 100)

@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/evalops/cerebro/internal/graph"
+	"github.com/go-chi/chi/v5"
 )
 
 // Graph-based Access Review endpoints

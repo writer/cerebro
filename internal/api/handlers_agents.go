@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/evalops/cerebro/internal/agents"
+	"github.com/go-chi/chi/v5"
 )
 
 // Agent endpoints

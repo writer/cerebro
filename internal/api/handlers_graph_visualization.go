@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/evalops/cerebro/internal/graph"
+	"github.com/go-chi/chi/v5"
 )
 
 // Visualization endpoints (Mermaid)

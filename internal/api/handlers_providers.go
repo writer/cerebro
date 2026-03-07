@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/evalops/cerebro/internal/providers"
+	"github.com/go-chi/chi/v5"
 )
 
 // Provider endpoints
