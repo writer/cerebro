@@ -380,6 +380,15 @@ func (g *Graph) Clear() {
 	g.markGraphChangedLocked()
 }
 
+// ClearEdges removes all edges while preserving nodes.
+func (g *Graph) ClearEdges() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.outEdges = make(map[string][]*Edge)
+	g.inEdges = make(map[string][]*Edge)
+	g.markGraphChangedLocked()
+}
+
 // SetMetadata sets the graph metadata
 func (g *Graph) SetMetadata(m Metadata) {
 	g.mu.Lock()

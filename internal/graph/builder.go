@@ -32,6 +32,7 @@ type Builder struct {
 	logger          *slog.Logger
 	availableTables map[string]bool // populated tables, skips queries for missing ones
 	lastBuildTime   time.Time       // when the last successful build finished
+	lastMutation    GraphMutationSummary
 }
 
 // NewBuilder creates a new graph builder
@@ -174,29 +175,34 @@ func (b *Builder) Build(ctx context.Context) error {
 		"edges", b.graph.EdgeCount(),
 		"duration", time.Since(start))
 
-	b.lastBuildTime = time.Now()
+	finishedAt := time.Now().UTC()
+	b.lastBuildTime = finishedAt
+	b.lastMutation = GraphMutationSummary{
+		Mode:      GraphMutationModeFullRebuild,
+		Since:     start,
+		Until:     finishedAt,
+		NodeCount: b.graph.NodeCount(),
+		EdgeCount: b.graph.EdgeCount(),
+		Duration:  time.Since(start),
+	}
 	return nil
 }
 
 // HasChanges checks whether any asset tables have been modified since the last
-// graph build by looking at MAX(_cq_sync_time). Returns true if changes are
-// detected or if the check fails (fail-open to ensure freshness).
+// graph build by looking at MAX(event_time) from CDC_EVENTS. Returns true if
+// changes are detected or if the check fails (fail-open to ensure freshness).
 func (b *Builder) HasChanges(ctx context.Context) bool {
 	if b.lastBuildTime.IsZero() {
 		return true
 	}
 	result, err := b.source.Query(ctx, `
-		SELECT MAX(COALESCE(_cq_sync_time, '1970-01-01'::TIMESTAMP_TZ)) AS latest
-		FROM (
-			SELECT _cq_sync_time FROM RAW.AWS_IAM_ROLES
-			UNION ALL SELECT _cq_sync_time FROM RAW.AWS_S3_BUCKETS
-			UNION ALL SELECT _cq_sync_time FROM RAW.GCP_COMPUTE_INSTANCES
-		)
+		SELECT MAX(event_time) AS latest
+		FROM CDC_EVENTS
 	`)
 	if err != nil || len(result.Rows) == 0 {
 		return true // fail-open
 	}
-	if latest, ok := queryRow(result.Rows[0], "latest").(time.Time); ok {
+	if latest, ok := queryRow(result.Rows[0], "latest").(time.Time); ok && !latest.IsZero() {
 		return latest.After(b.lastBuildTime)
 	}
 	return true
@@ -215,6 +221,11 @@ func (b *Builder) RebuildIfChanged(ctx context.Context) (bool, error) {
 // Graph returns the built graph
 func (b *Builder) Graph() *Graph {
 	return b.graph
+}
+
+// LastMutation returns metadata for the most recent graph update operation.
+func (b *Builder) LastMutation() GraphMutationSummary {
+	return b.lastMutation
 }
 
 func (b *Builder) buildRelationshipEdges(ctx context.Context) {

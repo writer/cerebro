@@ -215,13 +215,8 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 			"duration", meta.BuildDuration,
 		)
 
-		if err := a.Webhooks.EmitWithErrors(ctx, webhooks.EventGraphRebuilt, map[string]interface{}{
-			"nodes":          meta.NodeCount,
-			"edges":          meta.EdgeCount,
-			"build_duration": meta.BuildDuration.String(),
-		}); err != nil {
-			a.Logger.Warn("failed to emit graph rebuilt webhook", "error", err)
-		}
+		a.emitGraphRebuiltEvent(ctx, meta, meta.BuildDuration)
+		a.emitGraphMutationEvent(ctx, a.SecurityGraphBuilder.LastMutation(), "startup")
 	}()
 }
 
@@ -259,16 +254,34 @@ func (a *App) RebuildSecurityGraph(ctx context.Context) error {
 		"duration", time.Since(start),
 	)
 
-	// Emit webhook event
+	duration := time.Since(start)
+	a.emitGraphRebuiltEvent(ctx, meta, duration)
+	a.emitGraphMutationEvent(ctx, a.SecurityGraphBuilder.LastMutation(), "manual_rebuild")
+
+	return nil
+}
+
+func (a *App) emitGraphRebuiltEvent(ctx context.Context, meta graph.Metadata, duration time.Duration) {
+	if a.Webhooks == nil {
+		return
+	}
 	if err := a.Webhooks.EmitWithErrors(ctx, webhooks.EventGraphRebuilt, map[string]interface{}{
 		"nodes":          meta.NodeCount,
 		"edges":          meta.EdgeCount,
-		"build_duration": time.Since(start).String(),
+		"build_duration": duration.String(),
+		"duration_ms":    duration.Milliseconds(),
 	}); err != nil {
 		a.Logger.Warn("failed to emit graph rebuilt webhook", "error", err)
 	}
+}
 
-	return nil
+func (a *App) emitGraphMutationEvent(ctx context.Context, summary graph.GraphMutationSummary, trigger string) {
+	if a.Webhooks == nil {
+		return
+	}
+	if err := a.Webhooks.EmitWithErrors(ctx, webhooks.EventGraphMutated, summary.Payload(trigger)); err != nil {
+		a.Logger.Warn("failed to emit graph mutation event", "error", err)
+	}
 }
 
 // normalizePrivateKey cleans up PEM-encoded private key strings that may have

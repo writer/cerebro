@@ -130,6 +130,7 @@ const (
 	EventAttackPathFound   EventType = "attack_path.found"
 	EventTicketCreated     EventType = "ticket.created"
 	EventGraphRebuilt      EventType = "graph.rebuilt"
+	EventGraphMutated      EventType = "graph.mutated"
 	EventThreatIntelSynced EventType = "threatintel.feed.synced"
 	EventRuntimeIngested   EventType = "runtime.ingested"
 	EventRbacUserCreated   EventType = "rbac.user.created"
@@ -160,6 +161,7 @@ var defaultEventTypes = []EventType{
 	EventAttackPathFound,
 	EventTicketCreated,
 	EventGraphRebuilt,
+	EventGraphMutated,
 	EventThreatIntelSynced,
 	EventRuntimeIngested,
 	EventRbacUserCreated,
@@ -386,7 +388,7 @@ func isValidEventType(e EventType) bool {
 	switch e {
 	case EventFindingCreated, EventFindingResolved, EventFindingSuppressed,
 		EventScanCompleted, EventSchedulerJobRun, EventReviewStarted, EventReviewCompleted,
-		EventAttackPathFound, EventTicketCreated, EventGraphRebuilt,
+		EventAttackPathFound, EventTicketCreated, EventGraphRebuilt, EventGraphMutated,
 		EventThreatIntelSynced, EventRuntimeIngested, EventRbacUserCreated,
 		EventRbacRoleAssigned, EventRbacTenantCreated, EventWebhookCreated,
 		EventRemediationRule, EventSignalCreated, EventSignalResolved, EventSignalEscalated,

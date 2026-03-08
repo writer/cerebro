@@ -68,16 +68,47 @@ func (a *App) initScheduler(_ context.Context) {
 		if a.SecurityGraphBuilder == nil {
 			return nil
 		}
-		if err := a.SecurityGraphBuilder.Build(ctx); err != nil {
-			return err
+
+		if !a.SecurityGraphBuilder.HasChanges(ctx) {
+			a.Logger.Info("security graph rebuild skipped - no data changes detected")
+			return nil
 		}
+
+		summary, err := a.SecurityGraphBuilder.ApplyChanges(ctx, time.Time{})
+		if err != nil {
+			a.Logger.Warn("incremental graph apply failed, falling back to full rebuild", "error", err)
+			if err := a.SecurityGraphBuilder.Build(ctx); err != nil {
+				return err
+			}
+			a.SecurityGraph = a.SecurityGraphBuilder.Graph()
+			meta := a.SecurityGraph.Metadata()
+			a.Logger.Info("security graph rebuilt",
+				"nodes", meta.NodeCount,
+				"edges", meta.EdgeCount,
+				"duration", meta.BuildDuration,
+			)
+			a.emitGraphRebuiltEvent(ctx, meta, meta.BuildDuration)
+			a.emitGraphMutationEvent(ctx, a.SecurityGraphBuilder.LastMutation(), "scheduler_full_rebuild")
+			return nil
+		}
+
+		if summary.EventsProcessed == 0 {
+			a.Logger.Info("security graph rebuild skipped - no CDC events found")
+			return nil
+		}
+
 		a.SecurityGraph = a.SecurityGraphBuilder.Graph()
 		meta := a.SecurityGraph.Metadata()
-		a.Logger.Info("security graph rebuilt",
+		a.Logger.Info("security graph incrementally updated",
+			"events", summary.EventsProcessed,
+			"nodes_added", summary.NodesAdded,
+			"nodes_updated", summary.NodesUpdated,
+			"nodes_removed", summary.NodesRemoved,
 			"nodes", meta.NodeCount,
 			"edges", meta.EdgeCount,
-			"duration", meta.BuildDuration,
+			"duration", summary.Duration,
 		)
+		a.emitGraphMutationEvent(ctx, summary, "scheduler_incremental")
 		return nil
 	})
 	a.Logger.Info("scheduled graph rebuild enabled", "interval", graphInterval)
