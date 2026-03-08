@@ -631,6 +631,8 @@ make policy-validate # Validate policies
 
 ## CI/CD
 
+Dependency/toolchain updates are automated via [`.github/dependabot.yml`](../.github/dependabot.yml) for `gomod`, Docker base images, and GitHub Actions.
+
 ### GitHub Actions Example
 
 ```yaml

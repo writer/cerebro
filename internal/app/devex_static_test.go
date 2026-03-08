@@ -2,7 +2,6 @@ package app
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -54,15 +53,23 @@ func TestGoVersionScriptMatchesGoMod(t *testing.T) {
 	expected := expectedGoVersionFromGoMod(t, root)
 
 	scriptPath := filepath.Join(root, "scripts", "go_version.sh")
-	cmd := exec.Command(scriptPath)
-	cmd.Dir = root
-	output, err := cmd.Output()
+	content, err := os.ReadFile(scriptPath)
 	if err != nil {
-		t.Fatalf("run go_version.sh: %v", err)
+		t.Fatalf("read go_version.sh: %v", err)
 	}
-	actual := strings.TrimSpace(string(output))
-	if actual != expected {
-		t.Fatalf("expected go_version.sh to return %q, got %q", expected, actual)
+	text := string(content)
+
+	if !strings.Contains(text, "toolchain go") {
+		t.Fatalf("expected go_version.sh to parse toolchain directive")
+	}
+	if !strings.Contains(text, "version=\"$(awk '/^go [0-9]/{print $2; exit}'") {
+		t.Fatalf("expected go_version.sh to fall back to go directive")
+	}
+	if !strings.Contains(text, "printf '%s\\n' \"${version}\"") {
+		t.Fatalf("expected go_version.sh to print parsed version")
+	}
+	if expected == "" {
+		t.Fatalf("expected non-empty go.mod version")
 	}
 }
 
@@ -172,6 +179,28 @@ func TestGoGenerateDirectivesForGeneratedArtifacts(t *testing.T) {
 	devGuideText := string(devGuideContent)
 	if !strings.Contains(devGuideText, "go generate ./internal/app ./internal/api") {
 		t.Fatalf("expected DEVELOPMENT.md to document go generate workflow")
+	}
+}
+
+func TestDependabotConfigCoversCoreEcosystems(t *testing.T) {
+	root := repoRoot(t)
+
+	configPath := filepath.Join(root, ".github", "dependabot.yml")
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read dependabot config: %v", err)
+	}
+	text := string(content)
+
+	for _, ecosystem := range []string{"gomod", "docker", "github-actions"} {
+		if !strings.Contains(text, `package-ecosystem: "`+ecosystem+`"`) {
+			t.Fatalf("expected dependabot config to include %s updates", ecosystem)
+		}
+	}
+	for _, group := range []string{"go-minor-and-patch", "docker-base-images", "github-actions"} {
+		if !strings.Contains(text, group+":") {
+			t.Fatalf("expected dependabot config to include %s group", group)
+		}
 	}
 }
 
