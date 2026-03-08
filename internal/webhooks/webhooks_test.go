@@ -412,6 +412,16 @@ func TestServiceEventPublisherReady(t *testing.T) {
 	}
 }
 
+func TestServiceEventPublisherReadyRequiresContext(t *testing.T) {
+	svc := NewService()
+	publisher := &mockEventPublisher{}
+	svc.SetEventPublisher(publisher)
+
+	if err := svc.EventPublisherReady(nil); err == nil {
+		t.Fatal("expected readiness error when context is nil")
+	}
+}
+
 func TestServiceEventPublisherStatus(t *testing.T) {
 	svc := NewService()
 	status := svc.EventPublisherStatus(context.Background())
@@ -427,6 +437,20 @@ func TestServiceEventPublisherStatus(t *testing.T) {
 	}
 	if status["stream"] != "TEST" {
 		t.Fatalf("expected stream TEST, got %#v", status["stream"])
+	}
+}
+
+func TestServiceEventPublisherStatusRequiresContext(t *testing.T) {
+	svc := NewService()
+	publisher := &mockEventPublisher{status: map[string]interface{}{"ready": true}}
+	svc.SetEventPublisher(publisher)
+
+	status := svc.EventPublisherStatus(nil)
+	if ready, ok := status["ready"].(bool); !ok || ready {
+		t.Fatalf("expected ready=false when context is nil, got %#v", status)
+	}
+	if status["error"] == nil {
+		t.Fatalf("expected context error status, got %#v", status)
 	}
 }
 

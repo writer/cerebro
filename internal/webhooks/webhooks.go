@@ -59,7 +59,9 @@ func ValidateWebhookURL(rawURL string) error {
 	}
 
 	// Resolve the hostname to check for private IPs
-	addrRecords, err := net.DefaultResolver.LookupIPAddr(context.Background(), hostname)
+	dnsCtx, cancel := context.WithTimeout(context.Background(), webhookDNSLookupTimeout)
+	defer cancel()
+	addrRecords, err := net.DefaultResolver.LookupIPAddr(dnsCtx, hostname)
 	ips := make([]net.IP, 0, len(addrRecords))
 	for _, record := range addrRecords {
 		ips = append(ips, record.IP)
@@ -181,7 +183,10 @@ func DefaultEventTypes() []EventType {
 	return append([]EventType(nil), defaultEventTypes...)
 }
 
-const defaultDeliveryConcurrency = 5
+const (
+	defaultDeliveryConcurrency = 5
+	webhookDNSLookupTimeout    = 5 * time.Second
+)
 
 // Webhook represents a webhook configuration
 type Webhook struct {
@@ -279,7 +284,7 @@ func (s *Service) EventPublisherReady(ctx context.Context) error {
 	}
 
 	if ctx == nil {
-		ctx = context.Background()
+		return errors.New("context is required")
 	}
 
 	return readiness.Ready(ctx)
@@ -301,7 +306,11 @@ func (s *Service) EventPublisherStatus(ctx context.Context) map[string]interface
 	}
 
 	if ctx == nil {
-		ctx = context.Background()
+		return map[string]interface{}{
+			"configured": true,
+			"ready":      false,
+			"error":      "context is required",
+		}
 	}
 	status := statusReporter.Status(ctx)
 	if status == nil {

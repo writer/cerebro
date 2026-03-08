@@ -305,12 +305,16 @@ func (w *Worker) gracefulShutdown() {
 	}
 
 	// Flush any pending deletes
-	w.flushPendingDeletes(context.Background())
+	flushCtx, flushCancel := context.WithTimeout(context.Background(), w.shutdownIOTimeout())
+	w.flushPendingDeletes(flushCtx)
+	flushCancel()
 
 	// Final metrics flush
-	if err := w.metrics.Flush(context.Background()); err != nil {
+	metricsCtx, metricsCancel := context.WithTimeout(context.Background(), w.shutdownIOTimeout())
+	if err := w.metrics.Flush(metricsCtx); err != nil {
 		w.logWarn("failed to flush final metrics", "error", err)
 	}
+	metricsCancel()
 }
 
 // Shutdown signals the worker to stop processing new jobs.
@@ -824,7 +828,9 @@ func (w *Worker) queueDelete(receiptHandle string) {
 	w.deleteMu.Unlock()
 
 	if shouldFlush {
-		w.flushPendingDeletes(context.Background())
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		w.flushPendingDeletes(ctx)
+		cancel()
 	}
 }
 
@@ -848,6 +854,17 @@ func (w *Worker) flushPendingDeletes(ctx context.Context) {
 		w.metrics.RecordMessagesDeleteFailed(len(failedHandles))
 	}
 	w.metrics.RecordMessagesDeleted(succeeded)
+}
+
+func (w *Worker) shutdownIOTimeout() time.Duration {
+	timeout := w.drainTimeout
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+	if timeout > 30*time.Second {
+		timeout = 30 * time.Second
+	}
+	return timeout
 }
 
 // batchDeleteFlusher periodically flushes pending deletes.
