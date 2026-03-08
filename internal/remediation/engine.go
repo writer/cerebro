@@ -370,7 +370,8 @@ func (e *Engine) loadDefaultRules() {
 				{
 					Type: ActionEscalateToOwner,
 					Config: map[string]string{
-						"tool": "slack_dm_owner",
+						"tool":      "slack.send_message",
+						"task_tool": "hubspot.create_task",
 					},
 					RequiresApproval: false,
 				},
@@ -404,7 +405,8 @@ func (e *Engine) loadDefaultRules() {
 				{
 					Type: ActionUpdateCRMField,
 					Config: map[string]string{
-						"tool": "hubspot_update_field",
+						"tool":          "hubspot.update_contact",
+						"fallback_tool": "salesforce.update_record",
 					},
 					RequiresApproval: true,
 				},

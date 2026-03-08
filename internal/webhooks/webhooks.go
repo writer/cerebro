@@ -120,27 +120,29 @@ func isPrivateOrReservedIP(ip net.IP) bool {
 type EventType string
 
 const (
-	EventFindingCreated    EventType = "finding.created"
-	EventFindingResolved   EventType = "finding.resolved"
-	EventFindingSuppressed EventType = "finding.suppressed"
-	EventScanCompleted     EventType = "scan.completed"
-	EventSchedulerJobRun   EventType = "scheduler.job.run"
-	EventReviewStarted     EventType = "review.started"
-	EventReviewCompleted   EventType = "review.completed"
-	EventAttackPathFound   EventType = "attack_path.found"
-	EventTicketCreated     EventType = "ticket.created"
-	EventGraphRebuilt      EventType = "graph.rebuilt"
-	EventGraphMutated      EventType = "graph.mutated"
-	EventThreatIntelSynced EventType = "threatintel.feed.synced"
-	EventRuntimeIngested   EventType = "runtime.ingested"
-	EventRbacUserCreated   EventType = "rbac.user.created"
-	EventRbacRoleAssigned  EventType = "rbac.role.assigned"
-	EventRbacTenantCreated EventType = "rbac.tenant.created"
-	EventWebhookCreated    EventType = "webhook.created"
-	EventRemediationRule   EventType = "remediation.rule.created"
-	EventSignalCreated     EventType = "signal.created"
-	EventSignalResolved    EventType = "signal.resolved"
-	EventSignalEscalated   EventType = "signal.escalated"
+	EventFindingCreated             EventType = "finding.created"
+	EventFindingResolved            EventType = "finding.resolved"
+	EventFindingSuppressed          EventType = "finding.suppressed"
+	EventScanCompleted              EventType = "scan.completed"
+	EventSchedulerJobRun            EventType = "scheduler.job.run"
+	EventReviewStarted              EventType = "review.started"
+	EventReviewCompleted            EventType = "review.completed"
+	EventAttackPathFound            EventType = "attack_path.found"
+	EventTicketCreated              EventType = "ticket.created"
+	EventGraphRebuilt               EventType = "graph.rebuilt"
+	EventGraphMutated               EventType = "graph.mutated"
+	EventThreatIntelSynced          EventType = "threatintel.feed.synced"
+	EventRuntimeIngested            EventType = "runtime.ingested"
+	EventRbacUserCreated            EventType = "rbac.user.created"
+	EventRbacRoleAssigned           EventType = "rbac.role.assigned"
+	EventRbacTenantCreated          EventType = "rbac.tenant.created"
+	EventWebhookCreated             EventType = "webhook.created"
+	EventRemediationRule            EventType = "remediation.rule.created"
+	EventRemediationActionCompleted EventType = "remediation.action.completed"
+	EventRemediationActionFailed    EventType = "remediation.action.failed"
+	EventSignalCreated              EventType = "signal.created"
+	EventSignalResolved             EventType = "signal.resolved"
+	EventSignalEscalated            EventType = "signal.escalated"
 
 	EventRiskScoreChanged         EventType = "risk_score.changed"
 	EventToxicCombinationDetected EventType = "toxic_combination.detected"
@@ -169,6 +171,8 @@ var defaultEventTypes = []EventType{
 	EventRbacTenantCreated,
 	EventWebhookCreated,
 	EventRemediationRule,
+	EventRemediationActionCompleted,
+	EventRemediationActionFailed,
 	EventSignalCreated,
 	EventSignalResolved,
 	EventSignalEscalated,
@@ -406,7 +410,8 @@ func isValidEventType(e EventType) bool {
 		EventAttackPathFound, EventTicketCreated, EventGraphRebuilt, EventGraphMutated,
 		EventThreatIntelSynced, EventRuntimeIngested, EventRbacUserCreated,
 		EventRbacRoleAssigned, EventRbacTenantCreated, EventWebhookCreated,
-		EventRemediationRule, EventSignalCreated, EventSignalResolved, EventSignalEscalated,
+		EventRemediationRule, EventRemediationActionCompleted, EventRemediationActionFailed,
+		EventSignalCreated, EventSignalResolved, EventSignalEscalated,
 		EventRiskScoreChanged, EventToxicCombinationDetected, EventToxicCombinationResolved,
 		EventApprovalRequested, EventCohortOutlierDetected, EventComplianceScoreChanged:
 		return true

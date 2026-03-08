@@ -97,3 +97,65 @@ func TestExecutor_RemoteActionFailsWithoutRemoteCaller(t *testing.T) {
 		t.Fatalf("status = %s, want %s", execution.Status, ExecutionFailed)
 	}
 }
+
+func TestExecutor_SendCustomerCommRequiresApprovalByDefault(t *testing.T) {
+	engine := NewEngine(testutil.Logger())
+	rule := Rule{
+		ID:      "send-customer-comm",
+		Name:    "Send Customer Communication",
+		Enabled: true,
+		Trigger: Trigger{
+			Type: TriggerManual,
+		},
+		Actions: []Action{
+			{
+				Type: ActionSendCustomerComm,
+			},
+		},
+	}
+	if err := engine.AddRule(rule); err != nil {
+		t.Fatalf("add rule: %v", err)
+	}
+
+	executions, err := engine.Evaluate(context.Background(), Event{
+		Type: TriggerManual,
+		Data: map[string]any{
+			"finding_id": "finding-2",
+		},
+	})
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	if len(executions) == 0 {
+		t.Fatal("expected execution")
+	}
+	execution := executions[0]
+
+	caller := &fakeRemoteCaller{
+		responses: map[string][]fakeRemoteCallResult{
+			"slack.send_message": {{output: `{"ok":true}`}},
+		},
+	}
+	executor := NewExecutor(engine, nil, nil, nil, nil)
+	executor.SetRemoteCaller(caller)
+
+	if err := executor.Execute(context.Background(), execution); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if execution.Status != ExecutionApproval {
+		t.Fatalf("status = %s, want %s", execution.Status, ExecutionApproval)
+	}
+	if len(caller.calls) != 0 {
+		t.Fatalf("expected no remote calls before approval, got %v", caller.calls)
+	}
+
+	if err := executor.Approve(context.Background(), execution.ID, "manager@example.com"); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if execution.Status != ExecutionCompleted {
+		t.Fatalf("status = %s, want %s", execution.Status, ExecutionCompleted)
+	}
+	if len(caller.calls) == 0 {
+		t.Fatal("expected remote call after approval")
+	}
+}
