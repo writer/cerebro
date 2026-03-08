@@ -176,6 +176,14 @@ var (
 		[]string{"policy_id", "result"},
 	)
 
+	PolicyQueryTruncatedTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_policy_query_truncated_total",
+			Help: "Total number of query policy scans where row limit truncation was detected",
+		},
+		[]string{"policy_id"},
+	)
+
 	// Webhook metrics
 	WebhookDeliveriesTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -354,6 +362,7 @@ func Register() {
 			PoliciesLoadedByType,
 			QueryOnlyPoliciesLoaded,
 			PolicyEvaluationsTotal,
+			PolicyQueryTruncatedTotal,
 			// Webhooks
 			WebhookDeliveriesTotal,
 			WebhookDeliveryDuration,
@@ -442,6 +451,14 @@ func SetPolicyLoadMetrics(totalPolicies, queryOnlyPolicies int) {
 	PoliciesLoadedByType.WithLabelValues("condition_resource").Set(float64(conditionPolicies))
 	PoliciesLoadedByType.WithLabelValues("query_only").Set(float64(queryOnlyPolicies))
 	QueryOnlyPoliciesLoaded.Set(float64(queryOnlyPolicies))
+}
+
+func RecordPolicyQueryTruncation(policyID string) {
+	policyID = strings.TrimSpace(policyID)
+	if policyID == "" {
+		policyID = "unknown"
+	}
+	PolicyQueryTruncatedTotal.WithLabelValues(policyID).Inc()
 }
 
 // SetProviderCountMetrics sets provider inventory gauges.

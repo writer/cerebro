@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 )
 
 func TestRegister(t *testing.T) {
@@ -180,6 +183,19 @@ func TestSetPolicyLoadMetrics(t *testing.T) {
 	SetPolicyLoadMetrics(20, 5)
 }
 
+func TestRecordPolicyQueryTruncation(t *testing.T) {
+	Register()
+	policyID := "query-policy-truncation-test"
+
+	before := counterValue(t, PolicyQueryTruncatedTotal, policyID)
+	RecordPolicyQueryTruncation(policyID)
+	after := counterValue(t, PolicyQueryTruncatedTotal, policyID)
+
+	if after != before+1 {
+		t.Fatalf("expected truncation counter to increase by 1, got before=%v after=%v", before, after)
+	}
+}
+
 func TestWebhookMetrics(t *testing.T) {
 	Register()
 
@@ -263,4 +279,17 @@ func TestJetStreamMetrics(t *testing.T) {
 	RecordJetStreamBackpressureAlert("CEREBRO_EVENTS", "warning")
 	RecordJetStreamBackpressureAlert("CEREBRO_EVENTS", "critical")
 	RecordJetStreamBackpressureAlert("CEREBRO_EVENTS", "recovered")
+}
+
+func counterValue(t *testing.T, vec *prometheus.CounterVec, labels ...string) float64 {
+	t.Helper()
+	counter, err := vec.GetMetricWithLabelValues(labels...)
+	if err != nil {
+		t.Fatalf("get metric with labels %v: %v", labels, err)
+	}
+	var metric dto.Metric
+	if err := counter.Write(&metric); err != nil {
+		t.Fatalf("write metric: %v", err)
+	}
+	return metric.GetCounter().GetValue()
 }

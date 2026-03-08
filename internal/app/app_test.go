@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -124,6 +125,16 @@ func TestLoadConfigCORSAllowedOrigins(t *testing.T) {
 	expected := []string{"https://app.example.com", "https://admin.example.com"}
 	if !reflect.DeepEqual(cfg.CORSAllowedOrigins, expected) {
 		t.Fatalf("expected CORS origins %v, got %v", expected, cfg.CORSAllowedOrigins)
+	}
+}
+
+func TestLoadConfigQueryPolicyRowLimit(t *testing.T) {
+	os.Setenv("QUERY_POLICY_ROW_LIMIT", "321")
+	defer os.Unsetenv("QUERY_POLICY_ROW_LIMIT")
+
+	cfg := LoadConfig()
+	if cfg.QueryPolicyRowLimit != 321 {
+		t.Fatalf("expected query policy row limit 321, got %d", cfg.QueryPolicyRowLimit)
 	}
 }
 
@@ -692,6 +703,68 @@ func TestScanQueryPolicies_SkipsDisallowedTables(t *testing.T) {
 	}
 	if len(result.Errors) != 0 {
 		t.Fatalf("expected no errors for disallowed table skip, got %v", result.Errors)
+	}
+}
+
+func TestScanQueryPolicies_AddsTruncationMetaFinding(t *testing.T) {
+	originalExecuteReadOnlyQueryFn := executeReadOnlyQueryFn
+	t.Cleanup(func() {
+		executeReadOnlyQueryFn = originalExecuteReadOnlyQueryFn
+	})
+
+	observedQuery := ""
+	executeReadOnlyQueryFn = func(_ context.Context, _ *snowflake.Client, query string) (*snowflake.QueryResult, error) {
+		observedQuery = query
+		return &snowflake.QueryResult{Rows: []map[string]interface{}{
+			{"_cq_id": "asset-1", "_cq_table": "assets", "name": "Asset 1"},
+			{"_cq_id": "asset-2", "_cq_table": "assets", "name": "Asset 2"},
+		}}, nil
+	}
+
+	engine := policy.NewEngine()
+	engine.AddPolicy(&policy.Policy{
+		ID:          "query-policy",
+		Name:        "Query Policy",
+		Description: "query finding",
+		Severity:    "high",
+		Query:       "SELECT _cq_id FROM assets",
+	})
+
+	app := &App{
+		Config:          &Config{QueryPolicyRowLimit: 2},
+		Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Policy:          engine,
+		Snowflake:       &snowflake.Client{},
+		AvailableTables: []string{"assets"},
+	}
+
+	result := app.ScanQueryPolicies(context.Background())
+	if result.Policies != 1 {
+		t.Fatalf("expected 1 query policy, got %d", result.Policies)
+	}
+	if len(result.Errors) != 0 {
+		t.Fatalf("expected no query policy errors, got %v", result.Errors)
+	}
+	if len(result.Findings) != 3 {
+		t.Fatalf("expected 2 row findings plus 1 truncation meta finding, got %d", len(result.Findings))
+	}
+
+	metaID := "query-policy:query-result-limit"
+	var meta *policy.Finding
+	for i := range result.Findings {
+		if result.Findings[i].ID == metaID {
+			meta = &result.Findings[i]
+			break
+		}
+	}
+	if meta == nil {
+		t.Fatalf("expected truncation meta finding %q", metaID)
+	}
+	if meta.ResourceType != "query_policy_scan" {
+		t.Fatalf("expected meta resource type query_policy_scan, got %q", meta.ResourceType)
+	}
+	if observedQuery == "" || !strings.Contains(observedQuery, "LIMIT 2") {
+		t.Fatalf("expected bounded query to include LIMIT 2, got %q", observedQuery)
 	}
 }
 

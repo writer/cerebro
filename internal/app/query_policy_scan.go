@@ -6,12 +6,16 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/evalops/cerebro/internal/metrics"
 	"github.com/evalops/cerebro/internal/policy"
 	"github.com/evalops/cerebro/internal/scanner"
 	"github.com/evalops/cerebro/internal/snowflake"
 )
 
-const queryPolicyRowLimit = snowflake.MaxReadOnlyQueryLimit
+const (
+	queryPolicyDefaultRowLimit = snowflake.MaxReadOnlyQueryLimit
+	queryPolicyMetaFindingID   = "query-result-limit"
+)
 
 var executeReadOnlyQueryFn = func(ctx context.Context, client *snowflake.Client, query string) (*snowflake.QueryResult, error) {
 	return client.Query(ctx, query)
@@ -48,6 +52,9 @@ func (a *App) ScanQueryPolicies(ctx context.Context) QueryPolicyScanResult {
 	}
 
 	tuning := a.ScanTuning()
+	rowLimit := a.queryPolicyRowLimit()
+	truncatedPolicies := make(map[string]int)
+
 	findings, errs := a.Policy.EvaluateQueryPolicies(ctx, func(runCtx context.Context, queryPolicy *policy.Policy) ([]map[string]interface{}, error) {
 		references := policy.ExtractQueryTableReferences(queryPolicy.Query)
 		if len(references) == 0 {
@@ -60,7 +67,7 @@ func (a *App) ScanQueryPolicies(ctx context.Context) QueryPolicyScanResult {
 			}
 		}
 
-		boundedQuery, boundedLimit, err := snowflake.BuildReadOnlyLimitedQuery(queryPolicy.Query, queryPolicyRowLimit)
+		boundedQuery, boundedLimit, err := snowflake.BuildReadOnlyLimitedQuery(queryPolicy.Query, rowLimit)
 		if err != nil {
 			return nil, fmt.Errorf("invalid read-only query: %w", err)
 		}
@@ -86,11 +93,29 @@ func (a *App) ScanQueryPolicies(ctx context.Context) QueryPolicyScanResult {
 		if len(rows) > boundedLimit {
 			rows = rows[:boundedLimit]
 		}
+		if len(rows) >= boundedLimit {
+			truncatedPolicies[queryPolicy.ID] = len(rows)
+			metrics.RecordPolicyQueryTruncation(queryPolicy.ID)
+			logger.Warn("query policy results hit row limit; findings may be truncated",
+				"policy_id", queryPolicy.ID,
+				"row_count", len(rows),
+				"row_limit", boundedLimit,
+			)
+		}
 
 		return rows, nil
 	})
 
 	result.Findings = findings
+	if len(truncatedPolicies) > 0 {
+		for _, queryPolicy := range queryPolicies {
+			rowCount, ok := truncatedPolicies[queryPolicy.ID]
+			if !ok {
+				continue
+			}
+			result.Findings = append(result.Findings, queryPolicyTruncationMetaFinding(queryPolicy, rowCount, rowLimit))
+		}
+	}
 	if len(errs) > 0 {
 		result.Errors = make([]string, 0, len(errs))
 		for _, err := range errs {
@@ -105,6 +130,40 @@ func (a *App) ScanQueryPolicies(ctx context.Context) QueryPolicyScanResult {
 	)
 
 	return result
+}
+
+func queryPolicyTruncationMetaFinding(queryPolicy *policy.Policy, rowCount, rowLimit int) policy.Finding {
+	description := fmt.Sprintf(
+		"Policy %s returned %d rows and reached the query row limit (%d). Results may be truncated; refine the query or increase QUERY_POLICY_ROW_LIMIT.",
+		queryPolicy.ID,
+		rowCount,
+		rowLimit,
+	)
+	return policy.Finding{
+		ID:             fmt.Sprintf("%s:%s", queryPolicy.ID, queryPolicyMetaFindingID),
+		PolicyID:       queryPolicy.ID,
+		PolicyName:     queryPolicy.Name,
+		Title:          "Query policy row limit reached",
+		Severity:       queryPolicy.Severity,
+		Resource:       map[string]interface{}{"policy_id": queryPolicy.ID, "rows_returned": rowCount, "row_limit": rowLimit},
+		Description:    description,
+		Remediation:    "Refine the query with tighter filters or increase QUERY_POLICY_ROW_LIMIT.",
+		ControlID:      queryPolicy.ControlID,
+		RiskCategories: queryPolicy.RiskCategories,
+		ResourceType:   "query_policy_scan",
+		ResourceID:     queryPolicy.ID,
+		ResourceName:   queryPolicy.Name,
+		Frameworks:     queryPolicy.Frameworks,
+		MitreAttack:    queryPolicy.MitreAttack,
+	}
+}
+
+func (a *App) queryPolicyRowLimit() int {
+	rowLimit := queryPolicyDefaultRowLimit
+	if a != nil && a.Config != nil && a.Config.QueryPolicyRowLimit > 0 {
+		rowLimit = a.Config.QueryPolicyRowLimit
+	}
+	return snowflake.ClampReadOnlyQueryLimit(rowLimit)
 }
 
 func (a *App) queryPolicyAllowlist(ctx context.Context) map[string]struct{} {

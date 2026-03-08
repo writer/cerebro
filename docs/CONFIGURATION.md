@@ -58,6 +58,7 @@ export SNOWFLAKE_WAREHOUSE="COMPUTE_WH"
 |----------|-------------|---------|----------|
 | `POLICIES_PATH` | Path to policy files | `policies` | No |
 | `CEDAR_POLICIES_PATH` | Alias for POLICIES_PATH | `policies` | No |
+| `QUERY_POLICY_ROW_LIMIT` | Max rows processed per query policy scan | `1000` | No |
 
 ### LLM Providers (AI Agents)
 
@@ -203,6 +204,7 @@ export SNOWFLAKE_WAREHOUSE="COMPUTE_WH"
 
 # Policies
 export POLICIES_PATH="/app/policies"
+export QUERY_POLICY_ROW_LIMIT="1000"
 
 # AI Agents
 export ANTHROPIC_API_KEY="sk-ant-..."
@@ -234,6 +236,7 @@ export RATE_LIMIT_WINDOW="1h"
 export LOG_LEVEL="debug"
 export API_PORT="8080"
 export POLICIES_PATH="./policies"
+export QUERY_POLICY_ROW_LIMIT="1000"
 
 # Optional: Snowflake key-pair (leave unset to run in local SQLite mode)
 # export SNOWFLAKE_ACCOUNT="myaccount.us-east-1"
@@ -285,6 +288,7 @@ data:
   SNOWFLAKE_DATABASE: "CEREBRO"
   SNOWFLAKE_SCHEMA: "CEREBRO"
   POLICIES_PATH: "/app/policies"
+  QUERY_POLICY_ROW_LIMIT: "1000"
   SCAN_INTERVAL: "1h"
   RATE_LIMIT_ENABLED: "true"
   RATE_LIMIT_REQUESTS: "1000"
