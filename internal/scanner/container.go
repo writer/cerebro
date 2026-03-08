@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os/exec"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -153,6 +155,8 @@ type CVEInfo struct {
 	Exploitable bool      `json:"exploitable"`
 	InKEV       bool      `json:"in_kev"`
 }
+
+var manifestParseFailures atomic.Int64
 
 func NewContainerScanner() *ContainerScanner {
 	return &ContainerScanner{
@@ -520,7 +524,17 @@ func (c *ECRClient) GetManifest(ctx context.Context, repo, tag string) (*ImageMa
 		MediaType: aws.ToString(img.ImageManifestMediaType),
 	}
 	if img.ImageManifest != nil {
-		_ = parseManifest([]byte(*img.ImageManifest), manifest)
+		if err := parseManifest([]byte(*img.ImageManifest), manifest); err != nil {
+			slog.Warn("failed to parse image manifest",
+				"registry", "ecr",
+				"repository", repo,
+				"tag", tag,
+				"digest", manifest.Digest,
+				"manifest_size", len(*img.ImageManifest),
+				"error", err,
+			)
+			return nil, fmt.Errorf("parse manifest: %w", err)
+		}
 	}
 
 	return manifest, nil
@@ -684,7 +698,17 @@ func (c *GCRClient) GetManifest(ctx context.Context, repo, tag string) (*ImageMa
 		Digest:    headers.Get("Docker-Content-Digest"),
 		MediaType: headers.Get("Content-Type"),
 	}
-	_ = parseManifest(body, manifest)
+	if err := parseManifest(body, manifest); err != nil {
+		slog.Warn("failed to parse image manifest",
+			"registry", "gcr",
+			"repository", repo,
+			"tag", tag,
+			"digest", manifest.Digest,
+			"manifest_size", len(body),
+			"error", err,
+		)
+		return nil, fmt.Errorf("parse manifest: %w", err)
+	}
 	return manifest, nil
 }
 
@@ -836,7 +860,17 @@ func (c *ACRClient) GetManifest(ctx context.Context, repo, tag string) (*ImageMa
 		Digest:    headers.Get("Docker-Content-Digest"),
 		MediaType: headers.Get("Content-Type"),
 	}
-	_ = parseManifest(body, manifest)
+	if err := parseManifest(body, manifest); err != nil {
+		slog.Warn("failed to parse image manifest",
+			"registry", "acr",
+			"repository", repo,
+			"tag", tag,
+			"digest", manifest.Digest,
+			"manifest_size", len(body),
+			"error", err,
+		)
+		return nil, fmt.Errorf("parse manifest: %w", err)
+	}
 	return manifest, nil
 }
 
@@ -1000,6 +1034,7 @@ type registryManifest struct {
 func parseManifest(data []byte, manifest *ImageManifest) error {
 	var decoded registryManifest
 	if err := json.Unmarshal(data, &decoded); err != nil {
+		manifestParseFailures.Add(1)
 		return err
 	}
 
@@ -1016,6 +1051,11 @@ func parseManifest(data []byte, manifest *ImageManifest) error {
 		})
 	}
 	return nil
+}
+
+// ManifestParseFailures returns total manifest parse failures observed.
+func ManifestParseFailures() int64 {
+	return manifestParseFailures.Load()
 }
 
 // stripURLScheme removes http:// or https:// prefixes from a host string,

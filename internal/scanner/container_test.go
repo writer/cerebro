@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -218,6 +219,34 @@ func TestECRClientSuccess(t *testing.T) {
 	}
 }
 
+func TestECRClientGetManifest_ParseError(t *testing.T) {
+	manifestParseFailures.Store(0)
+
+	stub := &stubECR{
+		batchGetImageFn: func(_ *ecr.BatchGetImageInput) (*ecr.BatchGetImageOutput, error) {
+			invalidManifest := "{invalid-json"
+			return &ecr.BatchGetImageOutput{
+				Images: []ecrtypes.Image{{
+					ImageId:       &ecrtypes.ImageIdentifier{ImageDigest: aws.String("sha256:bad")},
+					ImageManifest: &invalidManifest,
+				}},
+			}, nil
+		},
+	}
+
+	client := NewECRClientWithAPI("us-west-2", "", stub)
+	_, err := client.GetManifest(context.Background(), "repo", "latest")
+	if err == nil {
+		t.Fatal("expected parse manifest error")
+	}
+	if !strings.Contains(err.Error(), "parse manifest") {
+		t.Fatalf("expected parse manifest context, got %v", err)
+	}
+	if got := ManifestParseFailures(); got != 1 {
+		t.Fatalf("expected 1 manifest parse failure, got %d", got)
+	}
+}
+
 func TestECRClient_QualifyImageRef(t *testing.T) {
 	client := NewECRClientWithAPI("us-west-2", "123456789012", &stubECR{})
 	ref := client.QualifyImageRef("myapp", "latest")
@@ -366,6 +395,43 @@ func TestGCRClientSuccess(t *testing.T) {
 	}
 }
 
+func TestGCRClientGetManifest_ParseError(t *testing.T) {
+	manifestParseFailures.Store(0)
+	token := "token"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+token {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		switch r.URL.Path {
+		case "/v2/project/repo/manifests/latest":
+			w.Header().Set("Docker-Content-Digest", "sha256:gcr")
+			w.Header().Set("Content-Type", "application/vnd.docker.distribution.manifest.v2+json")
+			_, _ = w.Write([]byte("{invalid-json"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client := NewGCRClient("project")
+	client.SetAccessToken(token)
+	client.SetRegistryHost(server.URL)
+	client.client = server.Client()
+
+	_, err := client.GetManifest(context.Background(), "repo", "latest")
+	if err == nil {
+		t.Fatal("expected parse manifest error")
+	}
+	if !strings.Contains(err.Error(), "parse manifest") {
+		t.Fatalf("expected parse manifest context, got %v", err)
+	}
+	if got := ManifestParseFailures(); got != 1 {
+		t.Fatalf("expected 1 manifest parse failure, got %d", got)
+	}
+}
+
 func TestGCRClient_QualifyImageRef(t *testing.T) {
 	client := NewGCRClient("my-project")
 	ref := client.QualifyImageRef("myapp", "v1.0")
@@ -495,6 +561,45 @@ func TestACRClientSuccess(t *testing.T) {
 	}
 	if manifest.Digest != "sha256:acr" {
 		t.Fatalf("unexpected digest: %s", manifest.Digest)
+	}
+}
+
+func TestACRClientGetManifest_ParseError(t *testing.T) {
+	manifestParseFailures.Store(0)
+	username := "user"
+	password := "pass"
+	expectedAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte(username+":"+password))
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != expectedAuth {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		switch r.URL.Path {
+		case "/v2/repo/manifests/latest":
+			w.Header().Set("Docker-Content-Digest", "sha256:acr")
+			w.Header().Set("Content-Type", "application/vnd.docker.distribution.manifest.v2+json")
+			_, _ = w.Write([]byte("{invalid-json"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client := NewACRClient("registry", "")
+	client.SetCredentials(username, password)
+	client.SetBaseURL(server.URL)
+	client.client = server.Client()
+
+	_, err := client.GetManifest(context.Background(), "repo", "latest")
+	if err == nil {
+		t.Fatal("expected parse manifest error")
+	}
+	if !strings.Contains(err.Error(), "parse manifest") {
+		t.Fatalf("expected parse manifest context, got %v", err)
+	}
+	if got := ManifestParseFailures(); got != 1 {
+		t.Fatalf("expected 1 manifest parse failure, got %d", got)
 	}
 }
 
