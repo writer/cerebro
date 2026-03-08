@@ -17,6 +17,7 @@ type RiskEngine struct {
 	cachedReport    *SecurityReport
 	riskProfile     RiskProfile
 	entityScores    map[string]float64
+	customerHealth  map[string]CustomerRelationshipHealth
 	onScoreChange   func(RiskScoreChangedEvent)
 	mu              sync.RWMutex
 }
@@ -29,26 +30,28 @@ func NewRiskEngine(g *Graph) *RiskEngine {
 		permissionsCalc: NewEffectivePermissionsCalculator(g),
 		riskProfile:     DefaultRiskProfile("default"),
 		entityScores:    make(map[string]float64),
+		customerHealth:  make(map[string]CustomerRelationshipHealth),
 	}
 }
 
 // PostureReport is the comprehensive security + business posture analysis.
 type PostureReport struct {
-	GeneratedAt       time.Time               `json:"generated_at"`
-	GraphStats        *GraphStats             `json:"graph_stats"`
-	RiskScore         float64                 `json:"risk_score"` // 0-100, overall security posture
-	RiskLevel         RiskLevel               `json:"risk_level"`
-	OrgHealth         *OrgHealthScore         `json:"org_health,omitempty"`
-	ToxicCombinations []*ToxicCombination     `json:"toxic_combinations"`
-	AttackPaths       *SimulationResult       `json:"attack_paths"`
-	Chokepoints       []*Chokepoint           `json:"chokepoints"`
-	TopRisks          []*RankedRisk           `json:"top_risks"`
-	RemediationPlan   *RemediationPlan        `json:"remediation_plan"`
-	TrendAnalysis     *TrendAnalysis          `json:"trend_analysis,omitempty"`
-	ComplianceGaps    []*ComplianceGap        `json:"compliance_gaps,omitempty"`
-	RiskProfile       string                  `json:"risk_profile,omitempty"`
-	EntityRisks       map[string]EntityRisk   `json:"entity_risks,omitempty"`
-	RiskScoreChanges  []RiskScoreChangedEvent `json:"risk_score_changes,omitempty"`
+	GeneratedAt       time.Time                    `json:"generated_at"`
+	GraphStats        *GraphStats                  `json:"graph_stats"`
+	RiskScore         float64                      `json:"risk_score"` // 0-100, overall security posture
+	RiskLevel         RiskLevel                    `json:"risk_level"`
+	OrgHealth         *OrgHealthScore              `json:"org_health,omitempty"`
+	CustomerHealth    []CustomerRelationshipHealth `json:"customer_health,omitempty"`
+	ToxicCombinations []*ToxicCombination          `json:"toxic_combinations"`
+	AttackPaths       *SimulationResult            `json:"attack_paths"`
+	Chokepoints       []*Chokepoint                `json:"chokepoints"`
+	TopRisks          []*RankedRisk                `json:"top_risks"`
+	RemediationPlan   *RemediationPlan             `json:"remediation_plan"`
+	TrendAnalysis     *TrendAnalysis               `json:"trend_analysis,omitempty"`
+	ComplianceGaps    []*ComplianceGap             `json:"compliance_gaps,omitempty"`
+	RiskProfile       string                       `json:"risk_profile,omitempty"`
+	EntityRisks       map[string]EntityRisk        `json:"entity_risks,omitempty"`
+	RiskScoreChanges  []RiskScoreChangedEvent      `json:"risk_score_changes,omitempty"`
 }
 
 // SecurityReport is kept as an alias for backward compatibility.
@@ -152,6 +155,11 @@ func (r *RiskEngine) Analyze() *SecurityReport {
 	report.GraphStats = r.calculateGraphStats()
 	orgHealth := ComputeOrgHealthScore(r.graph)
 	report.OrgHealth = &orgHealth
+	report.CustomerHealth = ComputeCustomerRelationshipHealth(r.graph)
+	r.customerHealth = make(map[string]CustomerRelationshipHealth, len(report.CustomerHealth))
+	for _, health := range report.CustomerHealth {
+		r.customerHealth[health.CustomerID] = health
+	}
 
 	// Toxic combinations
 	report.ToxicCombinations = r.toxicEngine.Analyze(r.graph)

@@ -116,6 +116,39 @@ func buildOrgTopologyPolicyAssets(g *graph.Graph, orgHealth graph.OrgHealthScore
 		})
 	}
 
+	customerHealth := graph.ComputeCustomerRelationshipHealth(g)
+	for _, health := range customerHealth {
+		customerID := strings.TrimSpace(health.CustomerID)
+		if customerID == "" {
+			continue
+		}
+
+		customerName := customerID
+		if customer, ok := g.GetNode(customerID); ok && customer != nil && strings.TrimSpace(customer.Name) != "" {
+			customerName = customer.Name
+		}
+
+		assets = append(assets, map[string]interface{}{
+			"_cq_table":             orgTopologyCustomerRelationshipsTable,
+			"_cq_id":                fmt.Sprintf("org-customer-health:%s", customerID),
+			"resource_id":           customerID,
+			"resource_name":         customerName,
+			"customer_id":           customerID,
+			"touchpoint_count":      health.TouchpointCount,
+			"role_diversity":        health.RoleDiversity,
+			"interaction_frequency": health.InteractionFrequency,
+			"internal_cohesion":     health.InternalCohesion,
+			"recency_score":         health.RecencyScore,
+			"touchpoint_trend":      health.TouchpointTrend,
+			"frequency_trend":       health.FrequencyTrend,
+			"cohort_percentile":     health.CohortPercentile,
+			"ideal_gap":             health.IdealGap,
+			"health_score":          health.HealthScore,
+			"churn_risk":            graph.ChurnRiskFromTopology(g, customerID),
+			"renewal_days":          customerRenewalDays(g, customerID),
+		})
+	}
+
 	decayByPerson := make(map[string]int)
 	for _, alert := range orgHealth.DecayAlerts {
 		source, sourceOK := g.GetNode(alert.SourceID)

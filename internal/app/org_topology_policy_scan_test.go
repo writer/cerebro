@@ -69,6 +69,17 @@ func TestScanOrgTopologyPolicies_ProducesFindingsFromGraphSignals(t *testing.T) 
 			"tenure_years > 2",
 		},
 	})
+	addOrgTestPolicy(t, engine, &policy.Policy{
+		ID:          "org-customer-relationship-health-low",
+		Name:        "Customer Relationship Structural Health Low",
+		Description: "customer relationship topology health is weak",
+		Severity:    "high",
+		Resource:    "org::customer_relationship",
+		Conditions: []string{
+			"health_score < 60",
+			"touchpoint_count < 2",
+		},
+	})
 
 	app := &App{
 		Policy:        engine,
@@ -97,6 +108,7 @@ func TestScanOrgTopologyPolicies_ProducesFindingsFromGraphSignals(t *testing.T) 
 		"org-relationship-decay-customer",
 		"org-bottleneck-critical",
 		"org-tenure-risk",
+		"org-customer-relationship-health-low",
 	}
 	for _, policyID := range wantPolicies {
 		if !slices.Contains(policyIDs, policyID) {

@@ -36,6 +36,7 @@ func DefaultRiskProfiles() map[string]RiskProfile {
 				"stripe":   1,
 				"support":  1,
 				"crm":      1,
+				"topology": 1,
 				"github":   1,
 				"ensemble": 1,
 			},
@@ -48,6 +49,7 @@ func DefaultRiskProfiles() map[string]RiskProfile {
 				"stripe":   0.7,
 				"support":  0.8,
 				"crm":      0.8,
+				"topology": 0.9,
 				"github":   1.2,
 				"ensemble": 0.8,
 			},
@@ -60,6 +62,7 @@ func DefaultRiskProfiles() map[string]RiskProfile {
 				"stripe":   2.4,
 				"support":  1.4,
 				"crm":      2.2,
+				"topology": 1.7,
 				"github":   0.8,
 				"ensemble": 1.3,
 			},
@@ -72,6 +75,7 @@ func DefaultRiskProfiles() map[string]RiskProfile {
 				"stripe":   1.6,
 				"support":  2.1,
 				"crm":      1.8,
+				"topology": 2.4,
 				"github":   0.9,
 				"ensemble": 1.8,
 			},
@@ -174,6 +178,7 @@ func (r *RiskEngine) scoreEntity(node *Node, previous float64) EntityRisk {
 	stripe := r.scoreStripeSignals(node)
 	support := r.scoreSupportSignals(node)
 	crm := r.scoreCRMSignals(node)
+	topology := r.scoreCustomerTopology(node)
 	github := r.scoreGitHubSignals(node)
 	ensemble := r.scoreEnsembleSignals(node)
 	security := r.scoreEntitySecuritySignals(node)
@@ -193,6 +198,7 @@ func (r *RiskEngine) scoreEntity(node *Node, previous float64) EntityRisk {
 		{source: "stripe", typeID: "revenue_risk", title: "Billing instability", score: stripe, reason: "Payment failures, chargebacks, or past_due state detected", metric: "billing_failures", remedy: "Resolve payment failures and review account billing controls"},
 		{source: "support", typeID: "sla_breach", title: "Support pressure", score: support, reason: "P1 ticket velocity / backlog indicates SLA risk", metric: "p1_ticket_pressure", remedy: "Staff critical support cases and execute SLA escalation path"},
 		{source: "crm", typeID: "pipeline_risk", title: "Pipeline stagnation", score: crm, reason: "Stale opportunities/deals or low engagement", metric: "crm_staleness", remedy: "Advance next-step commitments and refresh champion coverage"},
+		{source: "topology", typeID: "churn_signal", title: "Relationship topology decay", score: topology, reason: "Relationship structure resembles churn-prone customer topology", metric: "customer_topology_health", remedy: "Add touchpoints, sponsor coverage, and restore interaction cadence"},
 		{source: "github", typeID: "operational_risk", title: "Engineering drag", score: github, reason: "Deploy cadence drop or incident PR spikes detected", metric: "deploy_health", remedy: "Stabilize delivery and reduce incident-driven changes"},
 		{source: "ensemble", typeID: "churn_signal", title: "Investigation churn signal", score: ensemble, reason: "High investigation volume suggests customer health volatility", metric: "investigation_frequency", remedy: "Run focused customer risk review and ownership escalation"},
 	}
@@ -340,6 +346,38 @@ func (r *RiskEngine) scoreCRMSignals(node *Node) float64 {
 			score += math.Min(float64(days-21), 25)
 		}
 	}
+	return clampScore(score)
+}
+
+func (r *RiskEngine) scoreCustomerTopology(node *Node) float64 {
+	if node == nil {
+		return 0
+	}
+	if node.Kind != NodeKindCustomer && node.Kind != NodeKindCompany {
+		return 0
+	}
+
+	health, ok := r.customerHealth[node.ID]
+	if !ok {
+		return 0
+	}
+
+	score := 100 - clampScore(health.HealthScore)
+	if health.TouchpointCount < 2 {
+		score += 15
+	}
+	if health.TouchpointTrend == "declining" {
+		score += 10
+	}
+	if health.FrequencyTrend == "decreasing" {
+		score += 10
+	}
+
+	churnSimilarity := ChurnRiskFromTopology(r.graph, node.ID)
+	if churnSimilarity > 0 {
+		score += churnSimilarity * 35
+	}
+
 	return clampScore(score)
 }
 

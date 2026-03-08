@@ -2,6 +2,7 @@ package graph
 
 import (
 	"testing"
+	"time"
 )
 
 func createTestGraphForRiskEngine() *Graph {
@@ -315,6 +316,62 @@ func TestRiskEngine_ScoreEntity_BusinessSignals(t *testing.T) {
 	}
 	if len(entity.Factors) == 0 {
 		t.Fatal("expected entity risk factors")
+	}
+}
+
+func TestRiskEngine_IncludesCustomerTopologyHealth(t *testing.T) {
+	now := time.Date(2026, 3, 8, 18, 0, 0, 0, time.UTC)
+	prevNow := orgHealthNowUTC
+	orgHealthNowUTC = func() time.Time { return now }
+	t.Cleanup(func() { orgHealthNowUTC = prevNow })
+
+	g := New()
+	g.AddNode(&Node{
+		ID:   "cust-1",
+		Kind: NodeKindCustomer,
+		Name: "Acme",
+		Properties: map[string]any{
+			"renewal_days": 45,
+		},
+	})
+	g.AddNode(&Node{ID: "person:owner", Kind: NodeKindPerson, Name: "Owner", Properties: map[string]any{"title": "Account Owner"}})
+	g.AddEdge(&Edge{
+		ID:     "owner-customer",
+		Source: "person:owner",
+		Target: "cust-1",
+		Kind:   EdgeKindManagedBy,
+		Properties: map[string]any{
+			"role":               "account_owner",
+			"frequency":          1,
+			"strength":           0.1,
+			"previous_frequency": 5,
+			"previous_strength":  0.8,
+			"last_seen":          now.Add(-120 * 24 * time.Hour),
+		},
+	})
+
+	engine := NewRiskEngine(g)
+	report := engine.Analyze()
+	if len(report.CustomerHealth) == 0 {
+		t.Fatal("expected customer topology health metrics in report")
+	}
+
+	entity := engine.ScoreEntity("cust-1")
+	if entity == nil {
+		t.Fatal("expected customer entity score")
+	}
+
+	foundTopology := false
+	for _, factor := range entity.Factors {
+		if factor.Source == "topology" {
+			foundTopology = true
+			if factor.Score <= 0 {
+				t.Fatalf("expected positive topology factor score, got %.2f", factor.Score)
+			}
+		}
+	}
+	if !foundTopology {
+		t.Fatalf("expected topology factor in entity score, got %+v", entity.Factors)
 	}
 }
 
