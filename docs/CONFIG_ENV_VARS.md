@@ -1,6 +1,6 @@
 # Generated Config Environment Variables
 
-Generated from `internal/app/app.go` (`LoadConfig`) via `go run ./scripts/generate_config_docs/main.go`.
+Generated from `internal/app/app_config.go` (`LoadConfig`) via `go run ./scripts/generate_config_docs/main.go`.
 
 Total variables: **252**
 

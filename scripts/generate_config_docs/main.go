@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	sourcePath = "internal/app/app.go"
+	sourceDir  = "internal/app"
 	outputPath = "docs/CONFIG_ENV_VARS.md"
 )
 
@@ -35,23 +35,49 @@ type envDoc struct {
 
 func main() {
 	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, sourcePath, nil, parser.ParseComments)
+	pkgs, err := parser.ParseDir(fset, sourceDir, nil, parser.ParseComments)
 	if err != nil {
-		fatalf("parse %s: %v", sourcePath, err)
+		fatalf("parse %s: %v", sourceDir, err)
+	}
+	if len(pkgs) == 0 {
+		fatalf("no packages found in %s", sourceDir)
 	}
 
-	loadConfig := findFunc(file, "LoadConfig")
+	loadConfig, loadConfigSource := findFuncAcrossPackage(fset, pkgs, "LoadConfig")
 	if loadConfig == nil || loadConfig.Body == nil {
-		fatalf("LoadConfig not found in %s", sourcePath)
+		fatalf("LoadConfig not found in %s", sourceDir)
 	}
 
 	docs := collectEnvDocs(fset, loadConfig)
 	annotateConfigFields(loadConfig, docs)
 
-	rendered := renderMarkdown(docs)
+	rendered := renderMarkdown(loadConfigSource, docs)
 	if err := os.WriteFile(outputPath, []byte(rendered), 0o644); err != nil {
 		fatalf("write %s: %v", outputPath, err)
 	}
+}
+
+func findFuncAcrossPackage(fset *token.FileSet, pkgs map[string]*ast.Package, name string) (*ast.FuncDecl, string) {
+	var (
+		match       *ast.FuncDecl
+		matchSource string
+	)
+	for _, pkg := range pkgs {
+		for _, file := range pkg.Files {
+			fn := findFunc(file, name)
+			if fn == nil {
+				continue
+			}
+			pos := fset.Position(fn.Pos())
+			match = fn
+			matchSource = pos.Filename
+			break
+		}
+		if match != nil {
+			break
+		}
+	}
+	return match, matchSource
 }
 
 func findFunc(file *ast.File, name string) *ast.FuncDecl {
@@ -209,7 +235,7 @@ func ensureDoc(docs map[string]*envDoc, envVar string) *envDoc {
 	return doc
 }
 
-func renderMarkdown(docs map[string]*envDoc) string {
+func renderMarkdown(loadConfigSource string, docs map[string]*envDoc) string {
 	var names []string
 	for env := range docs {
 		names = append(names, env)
@@ -218,7 +244,9 @@ func renderMarkdown(docs map[string]*envDoc) string {
 
 	var b strings.Builder
 	b.WriteString("# Generated Config Environment Variables\n\n")
-	b.WriteString("Generated from `internal/app/app.go` (`LoadConfig`) via `go run ./scripts/generate_config_docs/main.go`.\n\n")
+	b.WriteString("Generated from `")
+	b.WriteString(loadConfigSource)
+	b.WriteString("` (`LoadConfig`) via `go run ./scripts/generate_config_docs/main.go`.\n\n")
 	fmt.Fprintf(&b, "Total variables: **%d**\n\n", len(names))
 	b.WriteString("| Variable | Reader(s) | Default(s) | Config Field(s) |\n")
 	b.WriteString("|---|---|---|---|\n")
