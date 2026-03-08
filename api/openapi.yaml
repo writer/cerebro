@@ -4597,6 +4597,39 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/org/onboarding/{id}/plan:
+    get:
+      tags:
+        - Org
+      summary: Generate a personalized onboarding plan from peer cohort behavior
+      description: Build repository, introduction, system access, channel, project, and customer context recommendations for a person using similar-role peers and predecessor signals.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Person node ID.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Personalized onboarding plan
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '404':
+          description: Person or onboarding plan not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Security graph is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/org/meeting-insights:
     get:
       tags:

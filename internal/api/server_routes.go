@@ -352,6 +352,7 @@ func (s *Server) setupRoutes() {
 			r.Get("/information-flow", s.orgInformationFlow)
 			r.Get("/clock-speed", s.orgClockSpeed)
 			r.Get("/recommended-connections", s.orgRecommendedConnections)
+			r.Get("/onboarding/{id}/plan", s.orgOnboardingPlan)
 			r.Get("/meeting-insights", s.orgMeetingInsights)
 			r.Get("/meetings/{id}/analysis", s.orgMeetingAnalysis)
 		})
