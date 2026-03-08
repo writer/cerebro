@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/evalops/cerebro/internal/agents"
@@ -23,6 +24,13 @@ func TestCerebroToolsApprovalFlags(t *testing.T) {
 		t.Fatal("expected cerebro.simulate tool")
 	}
 	if simulate.RequiresApproval {
+		t.Fatal("simulate should not require approval with current config")
+	}
+	scenarioSimulate := findCerebroTool(tools, "simulate")
+	if scenarioSimulate == nil {
+		t.Fatal("expected simulate tool")
+	}
+	if scenarioSimulate.RequiresApproval {
 		t.Fatal("simulate should not require approval with current config")
 	}
 
@@ -143,6 +151,74 @@ func TestCerebroAccessReviewTool(t *testing.T) {
 	}
 	if payload["created_by"] != "ensemble-test" {
 		t.Fatalf("expected created_by ensemble-test, got %#v", payload["created_by"])
+	}
+}
+
+func TestCerebroScenarioSimulateTool(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{ID: "user:alice", Kind: graph.NodeKindUser, Name: "Alice"})
+	g.AddNode(&graph.Node{ID: "svc:payments", Kind: graph.NodeKindApplication, Name: "Payments"})
+	g.AddNode(&graph.Node{ID: "customer:acme", Kind: graph.NodeKindCustomer, Name: "Acme", Properties: map[string]any{"arr": 500000.0}})
+	g.AddEdge(&graph.Edge{ID: "alice-svc", Source: "user:alice", Target: "svc:payments", Kind: graph.EdgeKindCanAdmin, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "svc-customer", Source: "svc:payments", Target: "customer:acme", Kind: graph.EdgeKindOwns, Effect: graph.EdgeEffectAllow})
+	g.BuildIndex()
+
+	application := &App{SecurityGraph: g}
+	tool := findCerebroTool(application.cerebroTools(), "simulate")
+	if tool == nil {
+		t.Fatal("expected scenario simulate tool")
+	}
+
+	result, err := tool.Handler(context.Background(), json.RawMessage(`{
+		"scenario":"customer_churn",
+		"target":"customer:acme",
+		"parameters":{"include_cascade":true,"depth":3},
+		"requester":"user@company.com",
+		"context":"slack_channel:C04ABC123"
+	}`))
+	if err != nil {
+		t.Fatalf("tool returned error: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(result), &payload); err != nil {
+		t.Fatalf("decode tool payload: %v", err)
+	}
+	if payload["scenario"] != "customer_churn" {
+		t.Fatalf("expected scenario customer_churn, got %#v", payload["scenario"])
+	}
+	if payload["target"] != "customer:acme" {
+		t.Fatalf("expected target customer:acme, got %#v", payload["target"])
+	}
+	if strings.TrimSpace(stringValue(payload["recommendation"])) == "" {
+		t.Fatalf("expected recommendation, got %#v", payload["recommendation"])
+	}
+
+	before, ok := payload["before"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected before map, got %#v", payload["before"])
+	}
+	if _, ok := before["risk_score"]; !ok {
+		t.Fatalf("expected before.risk_score, got %#v", before)
+	}
+	if _, ok := before["affected_entities"]; !ok {
+		t.Fatalf("expected before.affected_entities, got %#v", before)
+	}
+}
+
+func TestCerebroScenarioSimulateTool_UnsupportedScenario(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{ID: "customer:acme", Kind: graph.NodeKindCustomer, Name: "Acme"})
+
+	application := &App{SecurityGraph: g}
+	tool := findCerebroTool(application.cerebroTools(), "simulate")
+	if tool == nil {
+		t.Fatal("expected scenario simulate tool")
+	}
+
+	_, err := tool.Handler(context.Background(), json.RawMessage(`{"scenario":"unknown","target":"customer:acme"}`))
+	if err == nil {
+		t.Fatal("expected unsupported scenario error")
 	}
 }
 

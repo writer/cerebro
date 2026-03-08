@@ -24,6 +24,32 @@ func (a *App) cerebroTools() []agents.Tool {
 
 	return []agents.Tool{
 		{
+			Name:             "simulate",
+			Description:      "Run high-level scenario simulations (customer_churn, access_removal, team_change, service_disruption, vendor_exit, role_change)",
+			RequiresApproval: requiresSimApproval,
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"scenario": map[string]any{
+						"type": "string",
+						"enum": []string{"customer_churn", "access_removal", "team_change", "service_disruption", "vendor_exit", "role_change"},
+					},
+					"target": map[string]any{
+						"type":        "string",
+						"description": "Primary node identifier to simulate against",
+					},
+					"parameters": map[string]any{
+						"type":        "object",
+						"description": "Scenario-specific parameters (for example to_team, from_team, new_role)",
+					},
+					"requester": map[string]any{"type": "string"},
+					"context":   map[string]any{"type": "string"},
+				},
+				"required": []string{"scenario", "target"},
+			},
+			Handler: a.toolCerebroScenarioSimulate,
+		},
+		{
 			Name:             "cerebro.simulate",
 			Description:      "Run a hypothetical graph simulation for proposed node/edge mutations",
 			RequiresApproval: requiresSimApproval,
@@ -173,6 +199,253 @@ func (a *App) toolCerebroSimulate(_ context.Context, args json.RawMessage) (stri
 		return "", err
 	}
 	return marshalToolResponse(result)
+}
+
+func (a *App) toolCerebroScenarioSimulate(_ context.Context, args json.RawMessage) (string, error) {
+	g, err := a.requireSecurityGraph()
+	if err != nil {
+		return "", err
+	}
+
+	var req struct {
+		Scenario   string         `json:"scenario"`
+		Target     string         `json:"target"`
+		Parameters map[string]any `json:"parameters"`
+		Requester  string         `json:"requester"`
+		Context    string         `json:"context"`
+	}
+	if err := decodeToolArgs(args, &req); err != nil {
+		return "", err
+	}
+
+	req.Scenario = strings.ToLower(strings.TrimSpace(req.Scenario))
+	req.Target = strings.TrimSpace(req.Target)
+	if req.Scenario == "" {
+		return "", fmt.Errorf("scenario is required")
+	}
+	if req.Target == "" {
+		return "", fmt.Errorf("target is required")
+	}
+	if _, ok := g.GetNode(req.Target); !ok {
+		return "", fmt.Errorf("target not found: %s", req.Target)
+	}
+
+	delta, err := buildScenarioSimulationDelta(g, req.Scenario, req.Target, req.Parameters)
+	if err != nil {
+		return "", err
+	}
+
+	result, err := g.Simulate(delta)
+	if err != nil {
+		return "", err
+	}
+
+	response := map[string]any{
+		"scenario": req.Scenario,
+		"target":   req.Target,
+		"before": map[string]any{
+			"risk_score":         result.Before.RiskScore,
+			"affected_entities":  simulationAffectedEntityCount(result.Before),
+			"affected_customers": len(result.Before.AffectedCustomers),
+		},
+		"after": map[string]any{
+			"risk_score":         result.After.RiskScore,
+			"affected_entities":  simulationAffectedEntityCount(result.After),
+			"affected_customers": len(result.After.AffectedCustomers),
+		},
+		"delta": map[string]any{
+			"risk_delta":               result.Delta.RiskScoreDelta,
+			"new_findings":             simulationNewFindings(result),
+			"affected_teams":           simulationAffectedTeams(result, req.Scenario, req.Parameters),
+			"estimated_revenue_impact": simulationRevenueImpact(result),
+			"attack_paths_created":     len(result.Delta.AttackPathsCreated),
+			"attack_paths_blocked":     len(result.Delta.AttackPathsBlocked),
+			"toxic_combos_added":       len(result.Delta.ToxicCombosAdded),
+			"toxic_combos_removed":     len(result.Delta.ToxicCombosRemoved),
+		},
+		"recommendation": simulationRecommendation(result),
+	}
+	if strings.TrimSpace(req.Requester) != "" {
+		response["requester"] = strings.TrimSpace(req.Requester)
+	}
+	if strings.TrimSpace(req.Context) != "" {
+		response["context"] = strings.TrimSpace(req.Context)
+	}
+	if len(req.Parameters) > 0 {
+		response["parameters"] = req.Parameters
+	}
+
+	return marshalToolResponse(response)
+}
+
+func buildScenarioSimulationDelta(g *graph.Graph, scenario string, target string, parameters map[string]any) (graph.GraphDelta, error) {
+	switch scenario {
+	case "customer_churn", "access_removal", "service_disruption", "vendor_exit":
+		return graph.GraphDelta{
+			Nodes: []graph.NodeMutation{
+				{Action: "remove", ID: target},
+			},
+		}, nil
+	case "team_change":
+		toTeam := strings.TrimSpace(stringValue(parameters["to_team"]))
+		if toTeam == "" {
+			return graph.GraphDelta{}, fmt.Errorf("team_change requires parameters.to_team")
+		}
+		if _, ok := g.GetNode(toTeam); !ok {
+			return graph.GraphDelta{}, fmt.Errorf("to_team not found: %s", toTeam)
+		}
+
+		fromTeam := strings.TrimSpace(stringValue(parameters["from_team"]))
+		edges := make([]graph.EdgeMutation, 0)
+		for _, edge := range g.GetOutEdges(target) {
+			if edge == nil || edge.Kind != graph.EdgeKindMemberOf {
+				continue
+			}
+			if fromTeam != "" && edge.Target != fromTeam {
+				continue
+			}
+			edges = append(edges, graph.EdgeMutation{
+				Action: "remove",
+				Source: target,
+				Target: edge.Target,
+				Kind:   graph.EdgeKindMemberOf,
+			})
+		}
+		edges = append(edges, graph.EdgeMutation{
+			Action: "add",
+			Edge: &graph.Edge{
+				ID:     fmt.Sprintf("simulate:%s:member_of:%s", target, toTeam),
+				Source: target,
+				Target: toTeam,
+				Kind:   graph.EdgeKindMemberOf,
+				Effect: graph.EdgeEffectAllow,
+				Risk:   graph.RiskNone,
+			},
+		})
+		return graph.GraphDelta{Edges: edges}, nil
+	case "role_change":
+		newRole := strings.TrimSpace(stringValue(parameters["new_role"]))
+		if newRole == "" {
+			return graph.GraphDelta{}, fmt.Errorf("role_change requires parameters.new_role")
+		}
+		return graph.GraphDelta{
+			Nodes: []graph.NodeMutation{
+				{
+					Action: "modify",
+					ID:     target,
+					Properties: map[string]any{
+						"role": newRole,
+					},
+				},
+			},
+		}, nil
+	default:
+		return graph.GraphDelta{}, fmt.Errorf("unsupported scenario %q", scenario)
+	}
+}
+
+func simulationAffectedEntityCount(snapshot graph.GraphSimulationSnapshot) int {
+	seen := make(map[string]struct{})
+	for _, customer := range snapshot.AffectedCustomers {
+		if customer == nil || strings.TrimSpace(customer.ID) == "" {
+			continue
+		}
+		seen[customer.ID] = struct{}{}
+	}
+	for _, path := range snapshot.AttackPaths {
+		if path == nil {
+			continue
+		}
+		if path.EntryPoint != nil && strings.TrimSpace(path.EntryPoint.ID) != "" {
+			seen[path.EntryPoint.ID] = struct{}{}
+		}
+		if path.Target != nil && strings.TrimSpace(path.Target.ID) != "" {
+			seen[path.Target.ID] = struct{}{}
+		}
+	}
+	return len(seen)
+}
+
+func simulationNewFindings(result *graph.GraphSimulationResult) []string {
+	if result == nil {
+		return nil
+	}
+	findingsSet := make(map[string]struct{})
+	for _, combo := range result.Delta.ToxicCombosAdded {
+		if combo == nil {
+			continue
+		}
+		name := strings.TrimSpace(combo.Name)
+		if name == "" {
+			name = strings.TrimSpace(combo.ID)
+		}
+		if name == "" {
+			continue
+		}
+		findingsSet[name] = struct{}{}
+	}
+	out := make([]string, 0, len(findingsSet))
+	for finding := range findingsSet {
+		out = append(out, finding)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func simulationAffectedTeams(result *graph.GraphSimulationResult, scenario string, parameters map[string]any) []string {
+	teams := make(map[string]struct{})
+	if result != nil {
+		for _, customer := range result.After.AffectedCustomers {
+			if customer == nil {
+				continue
+			}
+			for _, key := range []string{"team", "department", "owner_team", "team_id"} {
+				value := strings.TrimSpace(stringValue(customer.Properties[key]))
+				if value == "" {
+					continue
+				}
+				teams[value] = struct{}{}
+			}
+		}
+	}
+	if scenario == "team_change" {
+		if fromTeam := strings.TrimSpace(stringValue(parameters["from_team"])); fromTeam != "" {
+			teams[fromTeam] = struct{}{}
+		}
+		if toTeam := strings.TrimSpace(stringValue(parameters["to_team"])); toTeam != "" {
+			teams[toTeam] = struct{}{}
+		}
+	}
+	out := make([]string, 0, len(teams))
+	for team := range teams {
+		out = append(out, team)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func simulationRevenueImpact(result *graph.GraphSimulationResult) float64 {
+	if result == nil {
+		return 0
+	}
+	delta := result.After.AffectedARR - result.Before.AffectedARR
+	if delta < 0 {
+		return 0
+	}
+	return delta
+}
+
+func simulationRecommendation(result *graph.GraphSimulationResult) string {
+	if result == nil {
+		return "unknown"
+	}
+	if result.Delta.RiskScoreDelta >= 0.25 || len(result.Delta.ToxicCombosAdded) > 0 {
+		return "needs_approval"
+	}
+	if result.Delta.RiskScoreDelta >= 0.10 || len(result.Delta.AttackPathsCreated) > 0 {
+		return "review_recommended"
+	}
+	return "safe_to_proceed"
 }
 
 func (a *App) toolCerebroBlastRadius(_ context.Context, args json.RawMessage) (string, error) {
