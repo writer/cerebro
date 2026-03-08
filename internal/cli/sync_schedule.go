@@ -718,6 +718,38 @@ func executeProviderSync(ctx context.Context, _ *snowflake.Client, schedule *Syn
 	providerName := strings.ToLower(strings.TrimSpace(schedule.Provider))
 	Info("[%s] Executing provider sync for %s...", schedule.Name, providerName)
 
+	spec := parseScheduledSyncSpec(schedule.Table)
+	mode, err := loadCLIExecutionMode()
+	if err != nil {
+		return err
+	}
+
+	if len(spec.TableFilter) == 0 && mode != cliExecutionModeDirect {
+		apiClient, err := newCLIAPIClient()
+		if err != nil {
+			if mode == cliExecutionModeAPI {
+				return err
+			}
+			Warning("[%s] API client configuration invalid; using direct mode: %v", schedule.Name, err)
+		} else {
+			result, err := apiClient.SyncProvider(ctx, providerName)
+			if err == nil {
+				if result != nil && len(result.Errors) > 0 {
+					return fmt.Errorf("provider %q sync reported errors: %s", providerName, strings.Join(result.Errors, "; "))
+				}
+				return nil
+			}
+			if mode == cliExecutionModeAPI || !shouldFallbackToDirect(mode, err) {
+				return fmt.Errorf("provider %q sync via api failed: %w", providerName, err)
+			}
+			Warning("[%s] API unavailable; using direct mode for provider sync: %v", schedule.Name, err)
+		}
+	}
+
+	if len(spec.TableFilter) > 0 && mode == cliExecutionModeAPI {
+		return fmt.Errorf("provider %q table-filtered sync is not supported in api mode", providerName)
+	}
+
 	application, err := newScheduleAppFn(ctx)
 	if err != nil {
 		return fmt.Errorf("initialize app for provider sync: %w", err)
@@ -741,7 +773,6 @@ func executeProviderSync(ctx context.Context, _ *snowflake.Client, schedule *Syn
 		return fmt.Errorf("provider %q is not configured or not registered", providerName)
 	}
 
-	spec := parseScheduledSyncSpec(schedule.Table)
 	opts := providerregistry.SyncOptions{FullSync: true, Tables: spec.TableFilter}
 
 	_, err = p.Sync(ctx, opts)

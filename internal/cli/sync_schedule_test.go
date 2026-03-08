@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"slices"
 	"strings"
@@ -12,6 +14,8 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/evalops/cerebro/internal/app"
+	providerregistry "github.com/evalops/cerebro/internal/providers"
 	"github.com/evalops/cerebro/internal/snowflake"
 	"google.golang.org/api/option"
 )
@@ -286,6 +290,100 @@ func TestExecuteScheduledSync_UsesWorkerForNativeProviders(t *testing.T) {
 	}
 	if providerCalled != 1 {
 		t.Fatalf("expected provider sync call for non-native provider, got %d", providerCalled)
+	}
+}
+
+func TestExecuteProviderSync_APIModeSkipsDirectInitialization(t *testing.T) {
+	originalNewScheduleApp := newScheduleAppFn
+	t.Cleanup(func() {
+		newScheduleAppFn = originalNewScheduleApp
+	})
+
+	calledNewApp := false
+	newScheduleAppFn = func(context.Context) (*app.App, error) {
+		calledNewApp = true
+		return nil, fmt.Errorf("should not initialize app in api mode")
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v1/providers/okta/sync" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"provider":"okta","errors":[]}`))
+	}))
+	defer server.Close()
+
+	t.Setenv(envCLIExecutionMode, string(cliExecutionModeAPI))
+	t.Setenv(envCLIAPIURL, server.URL)
+
+	err := executeProviderSync(context.Background(), nil, &SyncSchedule{Name: "nightly-okta", Provider: "okta"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if calledNewApp {
+		t.Fatal("expected direct app initialization to be skipped in api mode")
+	}
+}
+
+func TestExecuteProviderSync_AutoModeFallbacksToDirectOnTransportError(t *testing.T) {
+	originalNewScheduleApp := newScheduleAppFn
+	t.Cleanup(func() {
+		newScheduleAppFn = originalNewScheduleApp
+	})
+
+	provider := &testWorkerProvider{name: "okta"}
+	registry := providerregistry.NewRegistry()
+	registry.Register(provider)
+
+	newScheduleAppFn = func(context.Context) (*app.App, error) {
+		return &app.App{Providers: registry}, nil
+	}
+
+	t.Setenv(envCLIExecutionMode, string(cliExecutionModeAuto))
+	t.Setenv(envCLIAPIURL, "http://127.0.0.1:1")
+
+	err := executeProviderSync(context.Background(), nil, &SyncSchedule{Name: "nightly-okta", Provider: "okta"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if provider.calls != 1 {
+		t.Fatalf("expected direct fallback sync call, got %d", provider.calls)
+	}
+}
+
+func TestExecuteProviderSync_AutoModeDoesNotFallbackOnUnauthorized(t *testing.T) {
+	originalNewScheduleApp := newScheduleAppFn
+	t.Cleanup(func() {
+		newScheduleAppFn = originalNewScheduleApp
+	})
+
+	calledNewApp := false
+	newScheduleAppFn = func(context.Context) (*app.App, error) {
+		calledNewApp = true
+		return nil, fmt.Errorf("should not initialize app on unauthorized api response")
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"unauthorized","code":"unauthorized"}`))
+	}))
+	defer server.Close()
+
+	t.Setenv(envCLIExecutionMode, string(cliExecutionModeAuto))
+	t.Setenv(envCLIAPIURL, server.URL)
+
+	err := executeProviderSync(context.Background(), nil, &SyncSchedule{Name: "nightly-okta", Provider: "okta"})
+	if err == nil {
+		t.Fatal("expected unauthorized api error")
+	}
+	if !strings.Contains(err.Error(), "sync via api failed") {
+		t.Fatalf("expected api failure context, got %v", err)
+	}
+	if calledNewApp {
+		t.Fatal("did not expect direct fallback on unauthorized api response")
 	}
 }
 
