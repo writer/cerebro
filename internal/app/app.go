@@ -69,8 +69,6 @@ import (
 	"github.com/evalops/cerebro/internal/threatintel"
 	"github.com/evalops/cerebro/internal/ticketing"
 	"github.com/evalops/cerebro/internal/webhooks"
-
-	"golang.org/x/sync/errgroup"
 )
 
 type retentionCleaner interface {
@@ -807,80 +805,8 @@ func NewWithConfig(ctx context.Context, cfg *Config) (*App, error) {
 	app.secretsLoader = envSecretsLoader{}
 	app.setAPIKeys(cfg.APIKeys)
 
-	if err := runInitErrorStep("telemetry", func() error { return app.initTelemetry(ctx) }); err != nil {
-		logger.Warn("telemetry initialization failed", "error", err)
-	}
-
-	// Phase 1: Snowflake + policies (everything else depends on these)
-	if err := runInitErrorStep("snowflake", func() error { return app.initSnowflake(ctx) }); err != nil {
-		logger.Warn("snowflake initialization failed", "error", err)
-	}
-	if err := runInitErrorStep("policy", app.initPolicy); err != nil {
+	if err := app.initialize(ctx); err != nil {
 		return nil, err
-	}
-
-	// Phase 2a: independent services in parallel (no cross-dependencies)
-	g, gctx := errgroup.WithContext(ctx)
-
-	g.Go(func() error { return runInitStep("cache", app.initCache) })
-	g.Go(func() error { return runInitStep("ticketing", app.initTicketing) })
-	g.Go(func() error { return runInitStep("identity", app.initIdentity) })
-	g.Go(func() error { return runInitStep("attackpath", app.initAttackPath) })
-	g.Go(func() error { return runInitStep("webhooks", app.initWebhooks) })
-	g.Go(func() error { return runInitStep("notifications", app.initNotifications) })
-	g.Go(func() error { return runInitStep("rbac", app.initRBAC) })
-	g.Go(func() error { return runInitStep("compliance", app.initCompliance) })
-	g.Go(func() error { return runInitStep("health", app.initHealth) })
-	g.Go(func() error { return runInitStep("lineage", app.initLineage) })
-	g.Go(func() error { return runInitStep("runtime", app.initRuntime) })
-	g.Go(func() error { return runInitStep("findings", app.initFindings) })
-	g.Go(func() error {
-		return runInitStep("providers", func() { app.initProviders(gctx) })
-	})
-	g.Go(func() error {
-		return runInitStep("scheduler", func() { app.initScheduler(gctx) })
-	})
-	g.Go(func() error { return runInitStep("repositories", app.initRepositories) })
-	g.Go(func() error {
-		return runInitStep("snowflake_findings", func() { app.initSnowflakeFindings(gctx) })
-	})
-	g.Go(func() error {
-		return runInitStep("scan_watermarks", func() { app.initScanWatermarks(gctx) })
-	})
-	g.Go(func() error { return runInitStep("threatintel", func() { app.initThreatIntel(ctx) }) })
-	g.Go(func() error {
-		return runInitStep("available_tables", func() { app.initAvailableTables(gctx) })
-	})
-
-	if err := g.Wait(); err != nil {
-		return nil, fmt.Errorf("phase 2a init failed: %w", err)
-	}
-
-	// Phase 2b: services that depend on Phase 2a outputs
-	// initRemediation reads Ticketing, Notifications, Findings
-	// initAgents reads Findings
-	g2, _ := errgroup.WithContext(ctx)
-	g2.Go(func() error { return runInitStep("remediation", app.initRemediation) })
-	g2.Go(func() error { return runInitStep("agents", app.initAgents) })
-	if err := g2.Wait(); err != nil {
-		return nil, fmt.Errorf("phase 2b init failed: %w", err)
-	}
-	app.startEventRemediation(ctx)
-
-	// Phase 3: depends on findings store being ready
-	app.initScanner()
-	if err := app.validateRequiredServices(); err != nil {
-		return nil, err
-	}
-
-	// Phase 4: depends on AvailableTables being populated
-	app.initSecurityGraph(ctx)
-	app.initTapGraphConsumer(ctx)
-	if err := app.validatePolicyCoverage(ctx); err != nil {
-		logger.Warn("policy coverage validation failed", "error", err)
-		if os.Getenv("CI") != "" {
-			return nil, err
-		}
 	}
 
 	logger.Info("application initialized",
