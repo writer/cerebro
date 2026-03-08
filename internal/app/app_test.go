@@ -107,6 +107,15 @@ func TestLoadConfigTracing(t *testing.T) {
 	}
 }
 
+func TestLoadConfigSecretsReloadInterval(t *testing.T) {
+	t.Setenv("CEREBRO_SECRETS_RELOAD_INTERVAL", "90s")
+
+	cfg := LoadConfig()
+	if cfg.SecretsReloadInterval != 90*time.Second {
+		t.Fatalf("expected secrets reload interval 90s, got %v", cfg.SecretsReloadInterval)
+	}
+}
+
 func TestLoadConfig_ConfigFileFallback(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "cerebro.yaml")
 	configBody := `
@@ -344,7 +353,7 @@ func TestNew_WithoutSnowflake(t *testing.T) {
 }
 
 func TestNew_WebhookURLs(t *testing.T) {
-	os.Setenv("WEBHOOK_URLS", "https://example.com/hook")
+	os.Setenv("WEBHOOK_URLS", "https://1.1.1.1/hook")
 	os.Unsetenv("SLACK_WEBHOOK_URL")
 	os.Unsetenv("PAGERDUTY_ROUTING_KEY")
 	defer func() {
@@ -364,8 +373,8 @@ func TestNew_WebhookURLs(t *testing.T) {
 	if len(hooks) != 1 {
 		t.Fatalf("expected 1 webhook, got %d", len(hooks))
 	}
-	if hooks[0].URL != "https://example.com/hook" {
-		t.Fatalf("expected webhook URL https://example.com/hook, got %s", hooks[0].URL)
+	if hooks[0].URL != "https://1.1.1.1/hook" {
+		t.Fatalf("expected webhook URL https://1.1.1.1/hook, got %s", hooks[0].URL)
 	}
 	if len(hooks[0].Events) == 0 {
 		t.Fatalf("expected webhook to have events configured")

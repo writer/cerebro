@@ -35,8 +35,9 @@ const (
 )
 
 type AuthConfig struct {
-	APIKeys map[string]string // key -> user_id mapping
-	Enabled bool
+	APIKeys        map[string]string        // key -> user_id mapping
+	APIKeyProvider func() map[string]string // optional dynamic key source
+	Enabled        bool
 }
 
 func APIKeyAuth(cfg AuthConfig) func(http.Handler) http.Handler {
@@ -69,7 +70,15 @@ func APIKeyAuth(cfg AuthConfig) func(http.Handler) http.Handler {
 				return
 			}
 
-			userID, valid := validateAPIKey(cfg.APIKeys, apiKey)
+			keys := cfg.APIKeys
+			if cfg.APIKeyProvider != nil {
+				dynamicKeys := cfg.APIKeyProvider()
+				if len(dynamicKeys) > 0 || len(keys) == 0 {
+					keys = dynamicKeys
+				}
+			}
+
+			userID, valid := validateAPIKey(keys, apiKey)
 			if !valid {
 				writeJSONError(w, http.StatusUnauthorized, "invalid_api_key", "API key is invalid or expired")
 				return

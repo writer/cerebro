@@ -176,6 +176,56 @@ func TestAPIKeyAuth(t *testing.T) {
 	}
 }
 
+func TestAPIKeyAuth_DynamicAPIKeyProvider(t *testing.T) {
+	currentKeys := map[string]string{
+		"old-key": "user-old",
+	}
+
+	cfg := AuthConfig{
+		Enabled: true,
+		APIKeyProvider: func() map[string]string {
+			cloned := make(map[string]string, len(currentKeys))
+			for key, value := range currentKeys {
+				cloned[key] = value
+			}
+			return cloned
+		},
+	}
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(GetUserID(r.Context())))
+	})
+	middleware := APIKeyAuth(cfg)(handler)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/test", nil)
+	req.Header.Set("Authorization", "Bearer old-key")
+	w := httptest.NewRecorder()
+	middleware.ServeHTTP(w, req)
+	if w.Code != http.StatusOK || w.Body.String() != "user-old" {
+		t.Fatalf("expected old key to authenticate before rotation, status=%d body=%q", w.Code, w.Body.String())
+	}
+
+	currentKeys = map[string]string{
+		"new-key": "user-new",
+	}
+
+	reqOld := httptest.NewRequest(http.MethodGet, "/api/v1/test", nil)
+	reqOld.Header.Set("Authorization", "Bearer old-key")
+	wOld := httptest.NewRecorder()
+	middleware.ServeHTTP(wOld, reqOld)
+	if wOld.Code != http.StatusUnauthorized {
+		t.Fatalf("expected rotated-out key to fail auth, got status=%d", wOld.Code)
+	}
+
+	reqNew := httptest.NewRequest(http.MethodGet, "/api/v1/test", nil)
+	reqNew.Header.Set("Authorization", "Bearer new-key")
+	wNew := httptest.NewRecorder()
+	middleware.ServeHTTP(wNew, reqNew)
+	if wNew.Code != http.StatusOK || wNew.Body.String() != "user-new" {
+		t.Fatalf("expected new key to authenticate after rotation, status=%d body=%q", wNew.Code, wNew.Body.String())
+	}
+}
+
 func TestAPIKeyAuthDisabled(t *testing.T) {
 	cfg := AuthConfig{
 		Enabled: false,

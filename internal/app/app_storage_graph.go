@@ -14,6 +14,12 @@ import (
 var appShutdownTimeout = 30 * time.Second
 
 func (a *App) initRepositories() {
+	a.FindingsRepo = nil
+	a.TicketsRepo = nil
+	a.AuditRepo = nil
+	a.PolicyHistoryRepo = nil
+	a.RetentionRepo = nil
+
 	if a.Snowflake == nil {
 		return
 	}
@@ -210,6 +216,8 @@ func (a *App) Close() error {
 			}
 		}
 	}
+
+	a.stopSecretsReloader()
 
 	// Close Snowflake connection
 	if a.Snowflake != nil {

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"reflect"
 	"strings"
 
 	"github.com/evalops/cerebro/internal/metrics"
@@ -17,14 +18,24 @@ type providerRegistration struct {
 }
 
 func (a *App) initProviders(ctx context.Context) {
-	a.Providers = providers.NewRegistry()
-	a.registerConfiguredProviders(ctx)
+	a.Providers = a.buildProviders(ctx, a.Config)
 	metrics.SetProviderCountMetrics(len(a.Providers.List()), len(providers.ImplementedProviderNames()))
 }
 
-func (a *App) registerConfiguredProviders(ctx context.Context) {
-	if a.Config != nil {
-		a.Config.RefreshProviderAwareConfig()
+func (a *App) rebuildProviders(ctx context.Context, cfg *Config) {
+	a.Providers = a.buildProviders(ctx, cfg)
+	metrics.SetProviderCountMetrics(len(a.Providers.List()), len(providers.ImplementedProviderNames()))
+}
+
+func (a *App) buildProviders(ctx context.Context, cfg *Config) *providers.Registry {
+	registry := providers.NewRegistry()
+	a.registerConfiguredProviders(ctx, cfg, registry)
+	return registry
+}
+
+func (a *App) registerConfiguredProviders(ctx context.Context, cfg *Config, registry *providers.Registry) {
+	if cfg != nil {
+		cfg.RefreshProviderAwareConfig()
 	}
 
 	registerProvider := func(name string, p providers.Provider, config map[string]interface{}) {
@@ -45,22 +56,44 @@ func (a *App) registerConfiguredProviders(ctx context.Context) {
 				"error", err)
 			return
 		}
-		a.Providers.Register(p)
+		registry.Register(p)
 		a.Logger.Info("provider registered", "provider", name, "maturity", metadata.Maturity)
 	}
 
 	for _, registration := range providerRegistrations() {
-		if !registration.enabled(a.Config) {
+		if !registration.enabled(cfg) {
 			continue
 		}
-		providerConfig := registration.buildConfig(a.Config)
+		providerConfig := registration.buildConfig(cfg)
 		var providerValues map[string]string
-		if a.Config != nil {
-			providerValues = a.Config.ProviderValues(registration.name)
+		if cfg != nil {
+			providerValues = cfg.ProviderValues(registration.name)
 		}
 		providerConfig = mergeProviderAwareConfig(providerConfig, providerValues)
 		registerProvider(registration.name, registration.constructor(), providerConfig)
 	}
+}
+
+func providerConfigsChanged(current, next *Config) bool {
+	return !reflect.DeepEqual(providerConfigsSnapshot(current), providerConfigsSnapshot(next))
+}
+
+func providerConfigsSnapshot(cfg *Config) map[string]map[string]interface{} {
+	snapshot := make(map[string]map[string]interface{})
+	if cfg == nil {
+		return snapshot
+	}
+	cfg.RefreshProviderAwareConfig()
+	for _, registration := range providerRegistrations() {
+		if !registration.enabled(cfg) {
+			continue
+		}
+		providerConfig := registration.buildConfig(cfg)
+		providerValues := cfg.ProviderValues(registration.name)
+		providerConfig = mergeProviderAwareConfig(providerConfig, providerValues)
+		snapshot[registration.name] = providerConfig
+	}
+	return snapshot
 }
 
 func mergeProviderAwareConfig(base map[string]interface{}, providerValues map[string]string) map[string]interface{} {

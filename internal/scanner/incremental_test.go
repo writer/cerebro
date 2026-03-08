@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"database/sql"
 	"strings"
 	"testing"
 	"time"
@@ -133,5 +134,20 @@ func TestDefaultIncrementalConfig(t *testing.T) {
 	}
 	if cfg.MaxAge != 7*24*time.Hour {
 		t.Errorf("MaxAge should be 7 days, got %v", cfg.MaxAge)
+	}
+}
+
+func TestWatermarkStoreSetDBResetsSchemaState(t *testing.T) {
+	store := NewWatermarkStore(nil)
+	store.schemaReady = true
+
+	db := &sql.DB{}
+	store.SetDB(db)
+
+	if store.db != db {
+		t.Fatal("expected watermark store db handle to be updated")
+	}
+	if store.schemaReady {
+		t.Fatal("expected schema readiness to be reset after db update")
 	}
 }

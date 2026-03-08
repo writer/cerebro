@@ -43,7 +43,11 @@ func (s *Server) setupMiddleware() {
 	s.router.Use(middleware.RealIP)
 
 	if s.app.Config.APIAuthEnabled {
-		s.router.Use(APIKeyAuth(AuthConfig{Enabled: true, APIKeys: s.app.Config.APIKeys}))
+		s.router.Use(APIKeyAuth(AuthConfig{
+			Enabled:        true,
+			APIKeys:        s.app.Config.APIKeys,
+			APIKeyProvider: s.app.APIKeysSnapshot,
+		}))
 	}
 
 	// Enforce RBAC permissions when auth is enabled

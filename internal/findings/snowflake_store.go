@@ -42,6 +42,16 @@ func (s *SnowflakeStore) SetAttestor(attestor FindingAttestor, attestReobserved 
 	s.attestReobserved = attestReobserved
 }
 
+// SetConnection updates the Snowflake database handle and schema used by the store.
+func (s *SnowflakeStore) SetConnection(db *sql.DB, database, schema string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.db = db
+	if strings.TrimSpace(database) != "" && strings.TrimSpace(schema) != "" {
+		s.schema = fmt.Sprintf("%s.%s", database, schema)
+	}
+}
+
 // Load fetches all findings from Snowflake into cache
 func (s *SnowflakeStore) Load(ctx context.Context) error {
 	findingsTable, err := snowflake.SafeQualifiedTableRef(s.schema, "findings")

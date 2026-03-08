@@ -42,6 +42,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/evalops/cerebro/internal/agents"
@@ -139,6 +141,11 @@ type App struct {
 	graphReady           chan struct{} // closed when initial graph build completes
 	graphCancel          context.CancelFunc
 	traceShutdown        func(context.Context) error
+	secretsReloadCancel  context.CancelFunc
+	secretsReloadWG      sync.WaitGroup
+	reloadMu             sync.Mutex
+	apiKeys              atomic.Value // map[string]string
+	secretsLoader        secretsLoader
 
 	// Cached table list from Snowflake (shared by graph builder + policy coverage)
 	AvailableTables []string
@@ -508,9 +515,10 @@ type Config struct {
 	CORSAllowedOrigins      []string
 
 	// API Authentication
-	APIAuthEnabled bool
-	APIKeys        map[string]string
-	RBACStateFile  string
+	APIAuthEnabled        bool
+	APIKeys               map[string]string
+	SecretsReloadInterval time.Duration
+	RBACStateFile         string
 
 	// Nested provider-aware view (derived from flat env-backed fields)
 	Providers ProviderAwareConfig
@@ -762,6 +770,7 @@ func LoadConfig() *Config {
 		CORSAllowedOrigins:                 splitCSV(getEnv("API_CORS_ALLOWED_ORIGINS", "")),
 		APIAuthEnabled:                     apiAuthEnabled,
 		APIKeys:                            apiKeys,
+		SecretsReloadInterval:              getEnvDuration("CEREBRO_SECRETS_RELOAD_INTERVAL", 0),
 		RBACStateFile:                      getEnv("RBAC_STATE_FILE", ""),
 	}
 
@@ -784,6 +793,8 @@ func New(ctx context.Context) (*App, error) {
 		Config: cfg,
 		Logger: logger,
 	}
+	app.secretsLoader = envSecretsLoader{}
+	app.setAPIKeys(cfg.APIKeys)
 
 	if err := runInitErrorStep("telemetry", func() error { return app.initTelemetry(ctx) }); err != nil {
 		logger.Warn("telemetry initialization failed", "error", err)
@@ -865,6 +876,7 @@ func New(ctx context.Context) (*App, error) {
 		"snowflake", app.Snowflake != nil,
 		"policies", len(app.Policy.ListPolicies()),
 	)
+	app.startSecretsReloader(ctx)
 
 	return app, nil
 }

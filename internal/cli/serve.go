@@ -25,7 +25,8 @@ var serveCmd = &cobra.Command{
 	Long: `Start the Cerebro API server with graceful shutdown support.
 
 The server will handle SIGINT and SIGTERM signals gracefully, allowing
-in-flight requests to complete before shutting down.
+in-flight requests to complete before shutting down. Send SIGHUP to
+reload API keys, provider credentials, and Snowflake credentials without restart.
 
 Examples:
   cerebro serve                 # Start on default port (API_PORT env or 8080)
@@ -48,6 +49,23 @@ func runServe(cmd *cobra.Command, args []string) error {
 	if servePort > 0 {
 		application.Config.Port = servePort
 	}
+
+	reloadSigCh := make(chan os.Signal, 1)
+	signal.Notify(reloadSigCh, syscall.SIGHUP)
+	defer signal.Stop(reloadSigCh)
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-reloadSigCh:
+				if err := application.ReloadSecrets(context.Background()); err != nil {
+					application.Logger.Warn("failed to reload secrets on SIGHUP", "error", err)
+				}
+			}
+		}
+	}()
 
 	if !application.Config.APIAuthEnabled {
 		allowInsecure := false
