@@ -238,7 +238,7 @@ func TestRateLimitMiddlewareSkipsPublicEndpoints(t *testing.T) {
 
 	wrapped := middleware(handler)
 
-	publicPaths := []string{"/health", "/ready", "/metrics", "/docs", "/openapi.yaml"}
+	publicPaths := []string{"/health", "/ready", "/docs", "/openapi.yaml"}
 	for _, path := range publicPaths {
 		for i := 0; i < 5; i++ {
 			req := httptest.NewRequest("GET", path, nil)
@@ -253,6 +253,25 @@ func TestRateLimitMiddlewareSkipsPublicEndpoints(t *testing.T) {
 				t.Errorf("%s request %d: expected no rate limit headers for bypassed endpoint, got X-RateLimit-Limit=%q", path, i+1, got)
 			}
 		}
+	}
+
+	metricsReq1 := httptest.NewRequest("GET", "/metrics", nil)
+	metricsReq1.RemoteAddr = "192.168.1.200:1111"
+	metricsW1 := httptest.NewRecorder()
+	wrapped.ServeHTTP(metricsW1, metricsReq1)
+	if metricsW1.Code != http.StatusOK {
+		t.Fatalf("/metrics first request: expected 200, got %d", metricsW1.Code)
+	}
+	if metricsW1.Header().Get("X-RateLimit-Limit") == "" {
+		t.Fatal("expected /metrics to include rate limit headers")
+	}
+
+	metricsReq2 := httptest.NewRequest("GET", "/metrics", nil)
+	metricsReq2.RemoteAddr = "192.168.1.200:1111"
+	metricsW2 := httptest.NewRecorder()
+	wrapped.ServeHTTP(metricsW2, metricsReq2)
+	if metricsW2.Code != http.StatusTooManyRequests {
+		t.Fatalf("/metrics second request: expected 429, got %d", metricsW2.Code)
 	}
 
 	// Public endpoint traffic should not consume API route quota.

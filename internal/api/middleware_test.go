@@ -136,10 +136,10 @@ func TestAPIKeyAuth(t *testing.T) {
 			wantStatus: http.StatusOK,
 		},
 		{
-			name:       "Metrics endpoint - no auth required",
+			name:       "Metrics endpoint requires auth",
 			path:       "/metrics",
 			apiKey:     "",
-			wantStatus: http.StatusOK,
+			wantStatus: http.StatusUnauthorized,
 		},
 		{
 			name:       "Docs endpoint - no auth required",

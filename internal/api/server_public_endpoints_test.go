@@ -14,12 +14,17 @@ func TestPublicEndpoints_RemainAccessibleWhenAPIAuthEnabled(t *testing.T) {
 
 	s := NewServer(a)
 
-	publicPaths := []string{"/health", "/ready", "/metrics", "/docs", "/openapi.yaml"}
+	publicPaths := []string{"/health", "/ready", "/docs", "/openapi.yaml"}
 	for _, path := range publicPaths {
 		w := do(t, s, http.MethodGet, path, nil)
 		if w.Code != http.StatusOK {
 			t.Fatalf("expected 200 for public endpoint %s, got %d", path, w.Code)
 		}
+	}
+
+	metrics := do(t, s, http.MethodGet, "/metrics", nil)
+	if metrics.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for /metrics when auth is enabled, got %d", metrics.Code)
 	}
 
 	protected := do(t, s, http.MethodGet, "/api/v1/policies/", nil)

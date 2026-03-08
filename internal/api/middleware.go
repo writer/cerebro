@@ -220,7 +220,7 @@ func RBACMiddleware(rbac *auth.RBAC) func(http.Handler) http.Handler {
 
 func isPublicEndpoint(path string) bool {
 	return path == "/health" || path == "/ready" ||
-		path == "/metrics" || path == "/docs" ||
+		path == "/docs" ||
 		path == "/openapi.yaml"
 }
 
