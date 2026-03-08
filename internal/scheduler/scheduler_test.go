@@ -225,10 +225,13 @@ func TestScheduler_StartStop(t *testing.T) {
 
 func TestJob_Fields(t *testing.T) {
 	job := &Job{
-		Name:     "test",
-		Interval: 1 * time.Hour,
-		Enabled:  true,
-		Running:  false,
+		Name:           "test",
+		Interval:       1 * time.Hour,
+		Enabled:        true,
+		Running:        false,
+		MaxRetries:     3,
+		InitialBackoff: 5 * time.Second,
+		MaxBackoff:     1 * time.Minute,
 	}
 
 	if job.Name != "test" {
@@ -246,16 +249,28 @@ func TestJob_Fields(t *testing.T) {
 	if job.Running {
 		t.Error("running field should be false")
 	}
+	if job.MaxRetries != 3 {
+		t.Error("max retries field incorrect")
+	}
+	if job.InitialBackoff != 5*time.Second {
+		t.Error("initial backoff field incorrect")
+	}
+	if job.MaxBackoff != 1*time.Minute {
+		t.Error("max backoff field incorrect")
+	}
 }
 
 func TestJobStatus_Fields(t *testing.T) {
 	now := time.Now()
 	js := JobStatus{
-		Name:     "test",
-		Interval: "1h0m0s",
-		NextRun:  now,
-		Running:  false,
-		Enabled:  true,
+		Name:       "test",
+		Interval:   "1h0m0s",
+		NextRun:    now,
+		Running:    false,
+		Enabled:    true,
+		RetryCount: 1,
+		MaxRetries: 3,
+		LastError:  "boom",
 	}
 
 	if js.Name != "test" {
@@ -276,6 +291,147 @@ func TestJobStatus_Fields(t *testing.T) {
 
 	if !js.Enabled {
 		t.Error("enabled field incorrect")
+	}
+	if js.RetryCount != 1 {
+		t.Error("retry count field incorrect")
+	}
+	if js.MaxRetries != 3 {
+		t.Error("max retries field incorrect")
+	}
+	if js.LastError != "boom" {
+		t.Error("last error field incorrect")
+	}
+}
+
+func TestScheduler_AddJobDefaultRetryOptions(t *testing.T) {
+	s := NewScheduler(testutil.Logger())
+	s.AddJob("retry-defaults", time.Hour, func(ctx context.Context) error { return nil })
+
+	job, ok := s.GetJob("retry-defaults")
+	if !ok {
+		t.Fatal("expected job to exist")
+	}
+	if job.MaxRetries != defaultJobMaxRetries {
+		t.Fatalf("max retries = %d, want %d", job.MaxRetries, defaultJobMaxRetries)
+	}
+	if job.InitialBackoff != defaultJobInitialBackoff {
+		t.Fatalf("initial backoff = %s, want %s", job.InitialBackoff, defaultJobInitialBackoff)
+	}
+	if job.MaxBackoff != defaultJobMaxRetryBackoff {
+		t.Fatalf("max backoff = %s, want %s", job.MaxBackoff, defaultJobMaxRetryBackoff)
+	}
+}
+
+func TestScheduler_RetrySchedulesBackoffAndResetsOnSuccess(t *testing.T) {
+	origJitter := retryJitterFunc
+	retryJitterFunc = func(time.Duration) time.Duration { return 0 }
+	t.Cleanup(func() { retryJitterFunc = origJitter })
+
+	s := NewScheduler(testutil.Logger())
+	s.AddJobWithOptions("retry-job", time.Hour, func(ctx context.Context) error { return nil }, JobOptions{
+		MaxRetries:     2,
+		InitialBackoff: 10 * time.Millisecond,
+		MaxBackoff:     50 * time.Millisecond,
+	})
+
+	// Replace handler with deterministic attempt counter.
+	var attempts atomic.Int32
+	s.mu.Lock()
+	job := s.jobs["retry-job"]
+	job.Handler = func(ctx context.Context) error {
+		if attempts.Add(1) == 1 {
+			return errors.New("transient")
+		}
+		return nil
+	}
+	job.Running = true
+	s.mu.Unlock()
+
+	s.runJob(testutil.Context(t), job)
+
+	got, ok := s.GetJob("retry-job")
+	if !ok {
+		t.Fatal("expected job to exist")
+	}
+	if got.RetryCount != 1 {
+		t.Fatalf("retry count after first failure = %d, want 1", got.RetryCount)
+	}
+	if got.LastError == "" {
+		t.Fatal("expected last error to be populated after failure")
+	}
+	if got.NextRun.Sub(time.Now()) >= got.Interval {
+		t.Fatalf("expected retry next run before normal interval; next=%s interval=%s", got.NextRun, got.Interval)
+	}
+
+	s.mu.Lock()
+	job = s.jobs["retry-job"]
+	job.Running = true
+	s.mu.Unlock()
+	s.runJob(testutil.Context(t), job)
+
+	got, ok = s.GetJob("retry-job")
+	if !ok {
+		t.Fatal("expected job to exist")
+	}
+	if got.RetryCount != 0 {
+		t.Fatalf("retry count after success = %d, want 0", got.RetryCount)
+	}
+	if got.LastError != "" {
+		t.Fatalf("last error after success = %q, want empty", got.LastError)
+	}
+	if got.NextRun.Sub(time.Now()) < 30*time.Minute {
+		t.Fatalf("expected successful run to restore normal interval scheduling, next in %s", got.NextRun.Sub(time.Now()))
+	}
+}
+
+func TestScheduler_RetryStopsAfterMaxRetries(t *testing.T) {
+	origJitter := retryJitterFunc
+	retryJitterFunc = func(time.Duration) time.Duration { return 0 }
+	t.Cleanup(func() { retryJitterFunc = origJitter })
+
+	s := NewScheduler(testutil.Logger())
+	s.AddJobWithOptions("always-fail", time.Hour, func(ctx context.Context) error {
+		return errors.New("persistent")
+	}, JobOptions{
+		MaxRetries:     2,
+		InitialBackoff: 5 * time.Millisecond,
+		MaxBackoff:     10 * time.Millisecond,
+	})
+
+	s.mu.Lock()
+	job := s.jobs["always-fail"]
+	s.mu.Unlock()
+
+	for i := 0; i < 3; i++ {
+		s.mu.Lock()
+		job.Running = true
+		s.mu.Unlock()
+		s.runJob(testutil.Context(t), job)
+	}
+
+	got, ok := s.GetJob("always-fail")
+	if !ok {
+		t.Fatal("expected job to exist")
+	}
+	if got.RetryCount != 0 {
+		t.Fatalf("retry count after max retries exhausted = %d, want 0", got.RetryCount)
+	}
+	if got.LastError == "" {
+		t.Fatal("expected last error to remain populated after terminal failure")
+	}
+	if got.NextRun.Sub(time.Now()) < 30*time.Minute {
+		t.Fatalf("expected terminal failure to defer to normal interval, next in %s", got.NextRun.Sub(time.Now()))
+	}
+}
+
+func TestCalculateRetryDelayCapsAtMaxBackoff(t *testing.T) {
+	origJitter := retryJitterFunc
+	retryJitterFunc = func(time.Duration) time.Duration { return 0 }
+	t.Cleanup(func() { retryJitterFunc = origJitter })
+
+	delay := calculateRetryDelay(10*time.Millisecond, 25*time.Millisecond, 5)
+	if delay != 25*time.Millisecond {
+		t.Fatalf("delay = %s, want capped delay %s", delay, 25*time.Millisecond)
 	}
 }
 
