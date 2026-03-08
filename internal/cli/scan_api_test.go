@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -166,5 +167,92 @@ func TestScanSupportsAPIMode(t *testing.T) {
 	ok, reason = scanSupportsAPIMode(true)
 	if ok || !strings.Contains(reason, "local dataset mode") {
 		t.Fatalf("expected local-mode incompatibility, got ok=%v reason=%q", ok, reason)
+	}
+}
+
+func TestResolveAPIScanTables_UsesAPITablesWhenFlagsEmpty(t *testing.T) {
+	state := snapshotScanCLIState()
+	t.Cleanup(func() { restoreScanCLIState(state) })
+
+	requested := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requested = true
+		if r.Method != http.MethodGet {
+			t.Fatalf("expected GET, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v1/tables" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"tables": []string{"AWS_S3_BUCKETS", "cerebro_internal", "aws_iam_users"},
+		})
+	}))
+	defer server.Close()
+
+	t.Setenv(envCLIAPIURL, server.URL)
+	scanTables = nil
+
+	tables, err := resolveAPIScanTables(context.Background())
+	if err != nil {
+		t.Fatalf("resolveAPIScanTables failed: %v", err)
+	}
+	if !requested {
+		t.Fatal("expected API /tables endpoint to be called")
+	}
+
+	expected := []string{"aws_iam_users", "aws_s3_buckets"}
+	if !reflect.DeepEqual(tables, expected) {
+		t.Fatalf("expected tables %v, got %v", expected, tables)
+	}
+}
+
+func TestResolveAPIScanTables_UsesExplicitTablesWithoutAPI(t *testing.T) {
+	state := snapshotScanCLIState()
+	t.Cleanup(func() { restoreScanCLIState(state) })
+
+	scanTables = []string{"aws_s3_buckets", "aws_iam_users"}
+	t.Setenv(envCLIAPIURL, "http://127.0.0.1:1")
+
+	tables, err := resolveAPIScanTables(context.Background())
+	if err != nil {
+		t.Fatalf("resolveAPIScanTables failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(tables, scanTables) {
+		t.Fatalf("expected explicit tables %v, got %v", scanTables, tables)
+	}
+}
+
+func TestRunScanViaAPIFromFlags_EmptyTableSetJSONOutput(t *testing.T) {
+	state := snapshotScanCLIState()
+	t.Cleanup(func() { restoreScanCLIState(state) })
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/tables" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"tables": []string{}})
+	}))
+	defer server.Close()
+
+	t.Setenv(envCLIAPIURL, server.URL)
+	scanTables = nil
+	scanOutput = FormatJSON
+
+	output := captureStdout(t, func() {
+		if err := runScanViaAPIFromFlags(context.Background()); err != nil {
+			t.Fatalf("runScanViaAPIFromFlags failed: %v", err)
+		}
+	})
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(output), &payload); err != nil {
+		t.Fatalf("decode output json: %v (output=%s)", err, output)
+	}
+	if payload["scanned"] != float64(0) {
+		t.Fatalf("expected scanned=0, got %#v", payload["scanned"])
+	}
+	if payload["violations"] != float64(0) {
+		t.Fatalf("expected violations=0, got %#v", payload["violations"])
 	}
 }

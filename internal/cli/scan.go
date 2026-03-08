@@ -82,24 +82,41 @@ func runScan(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	localDataset, err := resolveLocalScanDataset()
+	if err != nil {
+		return err
+	}
+	localMode := localDataset != nil && len(localDataset.Tables) > 0
+	apiCompatible, apiReason := scanSupportsAPIMode(localMode)
+	apiFallbackToDirect := false
+
+	if !scanPreflight && mode != cliExecutionModeDirect {
+		if !apiCompatible {
+			if mode == cliExecutionModeAPI {
+				return fmt.Errorf("scan via api is not supported for this invocation: %s", apiReason)
+			}
+			Warning("API scan mode skipped; using direct mode: %s", apiReason)
+		} else if apiErr := runScanViaAPIFromFlags(ctx); apiErr == nil {
+			return nil
+		} else if mode == cliExecutionModeAPI || !shouldFallbackToDirect(mode, apiErr) {
+			return fmt.Errorf("scan via api failed: %w", apiErr)
+		} else {
+			Warning("API unavailable; using direct mode: %v", apiErr)
+			apiFallbackToDirect = true
+		}
+	}
+
 	application, err := app.New(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to initialize: %w", err)
 	}
 	defer func() { _ = application.Close() }()
 
-	localDataset, err := resolveLocalScanDataset()
-	if err != nil {
-		return err
-	}
-
 	if scanPreflight {
 		return runScanPreflight(application, localDataset)
 	}
 
-	localMode := localDataset != nil && len(localDataset.Tables) > 0
-	apiCompatible, apiReason := scanSupportsAPIMode(localMode)
-	if application.Snowflake == nil && !localMode && (mode == cliExecutionModeDirect || !apiCompatible) {
+	if application.Snowflake == nil && !localMode && (mode == cliExecutionModeDirect || !apiCompatible || apiFallbackToDirect) {
 		preflight := evaluateScanPreflight(application, nil)
 		return fmt.Errorf("scan preflight failed: %s (run 'cerebro scan --preflight' for details)", preflight.Message)
 	}
@@ -206,27 +223,6 @@ func runScan(cmd *cobra.Command, args []string) error {
 			Warning("No tables to scan - policies may not have table mappings or tables not synced")
 		}
 		return nil
-	}
-
-	if mode != cliExecutionModeDirect {
-		if !apiCompatible {
-			if mode == cliExecutionModeAPI {
-				return fmt.Errorf("scan via api is not supported for this invocation: %s", apiReason)
-			}
-			Warning("API scan mode skipped; using direct mode: %s", apiReason)
-		} else {
-			err := runScanViaAPI(ctx, tables)
-			if err == nil {
-				return nil
-			}
-			if mode == cliExecutionModeAPI || !shouldFallbackToDirect(mode, err) {
-				return fmt.Errorf("scan via api failed: %w", err)
-			}
-			if application.Snowflake == nil && !localMode {
-				return fmt.Errorf("scan via api failed and direct fallback is unavailable: %w", err)
-			}
-			Warning("API unavailable; using direct mode: %v", err)
-		}
 	}
 
 	policies := application.Policy.ListPolicies()
@@ -779,6 +775,50 @@ func scanSupportsAPIMode(localMode bool) (bool, string) {
 		return false, "--graph currently requires direct execution"
 	}
 	return true, ""
+}
+
+func runScanViaAPIFromFlags(ctx context.Context) error {
+	tables, err := resolveAPIScanTables(ctx)
+	if err != nil {
+		return err
+	}
+	if len(tables) == 0 {
+		if scanOutput == FormatJSON {
+			return JSONOutput(map[string]interface{}{
+				"scanned":    0,
+				"violations": 0,
+				"duration":   "0s",
+				"findings":   []map[string]interface{}{},
+				"tables":     []apiScanTableResult{},
+				"mode":       "api",
+			})
+		}
+		Warning("No tables to scan via API")
+		return nil
+	}
+	return runScanViaAPI(ctx, tables)
+}
+
+func resolveAPIScanTables(ctx context.Context) ([]string, error) {
+	if len(scanTables) > 0 {
+		return append([]string(nil), scanTables...), nil
+	}
+
+	apiClient, err := newCLIAPIClient()
+	if err != nil {
+		return nil, err
+	}
+
+	availableTables, err := apiClient.ListTables(ctx, 0, 0)
+	if err != nil {
+		return nil, fmt.Errorf("list tables via api: %w", err)
+	}
+
+	tables := scannableTablesFromAvailable(availableTables)
+	if len(tables) == 0 {
+		tables = append([]string(nil), availableTables...)
+	}
+	return tables, nil
 }
 
 func runScanViaAPI(ctx context.Context, tables []string) error {
