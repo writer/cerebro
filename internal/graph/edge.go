@@ -7,8 +7,10 @@ type EdgeKind string
 
 const (
 	// Identity -> Identity
-	EdgeKindCanAssume EdgeKind = "can_assume"
-	EdgeKindMemberOf  EdgeKind = "member_of"
+	EdgeKindCanAssume  EdgeKind = "can_assume"
+	EdgeKindMemberOf   EdgeKind = "member_of"
+	EdgeKindResolvesTo EdgeKind = "resolves_to"
+	EdgeKindReportsTo  EdgeKind = "reports_to"
 
 	// Identity -> Resource (permissions)
 	EdgeKindCanRead   EdgeKind = "can_read"
@@ -38,6 +40,7 @@ const (
 	EdgeKindEscalatedTo    EdgeKind = "escalated_to"
 	EdgeKindRefers         EdgeKind = "refers"
 	EdgeKindInteractedWith EdgeKind = "interacted_with"
+	EdgeKindLocatedIn      EdgeKind = "located_in"
 )
 
 // EdgeEffect represents whether an edge allows or denies access

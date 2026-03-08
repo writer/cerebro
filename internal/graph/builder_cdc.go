@@ -191,6 +191,11 @@ func (b *Builder) rebuildEdges(ctx context.Context) error {
 		return err
 	}
 
+	b.buildUnifiedPersonGraph(ctx)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	b.buildExposureEdges()
 	if err := ctx.Err(); err != nil {
 		return err

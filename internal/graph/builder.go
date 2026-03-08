@@ -144,6 +144,12 @@ func (b *Builder) Build(ctx context.Context) error {
 		"edges", b.graph.EdgeCount(),
 		"duration", time.Since(edgeStart))
 
+	// Build unified person graph overlay (person nodes + projected edges).
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	b.buildUnifiedPersonGraph(ctx)
+
 	// Phase 5: inferred edges (these iterate nodes, run sequentially)
 	inferStart := time.Now()
 	if err := ctx.Err(); err != nil {

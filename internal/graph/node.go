@@ -11,6 +11,7 @@ const (
 
 	// Identity nodes
 	NodeKindUser           NodeKind = "user"
+	NodeKindPerson         NodeKind = "person"
 	NodeKindRole           NodeKind = "role"
 	NodeKindGroup          NodeKind = "group"
 	NodeKindServiceAccount NodeKind = "service_account"
@@ -55,6 +56,8 @@ const (
 	NodeKindTicket       NodeKind = "ticket"
 	NodeKindLead         NodeKind = "lead"
 	NodeKindActivity     NodeKind = "activity"
+	NodeKindDepartment   NodeKind = "department"
+	NodeKindLocation     NodeKind = "location"
 )
 
 // RiskLevel represents the risk level of a node or edge
@@ -90,7 +93,7 @@ type Node struct {
 // IsIdentity returns true if the node is an identity type
 func (n *Node) IsIdentity() bool {
 	switch n.Kind {
-	case NodeKindUser, NodeKindRole, NodeKindGroup, NodeKindServiceAccount:
+	case NodeKindUser, NodeKindPerson, NodeKindRole, NodeKindGroup, NodeKindServiceAccount:
 		return true
 	}
 	return false
@@ -121,7 +124,7 @@ func (n *Node) IsBusinessEntity() bool {
 	switch n.Kind {
 	case NodeKindCustomer, NodeKindContact, NodeKindCompany, NodeKindDeal,
 		NodeKindOpportunity, NodeKindSubscription, NodeKindInvoice,
-		NodeKindTicket, NodeKindLead:
+		NodeKindTicket, NodeKindLead, NodeKindDepartment, NodeKindLocation:
 		return true
 	}
 	return false
