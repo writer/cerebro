@@ -96,6 +96,14 @@ func TestOpenAPIContract_CriticalRoutes(t *testing.T) {
 			expectedStatus: http.StatusServiceUnavailable,
 		},
 		{
+			name:           "sync gcp asset unavailable contract",
+			method:         http.MethodPost,
+			pathTemplate:   "/api/v1/sync/gcp-asset",
+			requestPath:    "/api/v1/sync/gcp-asset",
+			body:           map[string]interface{}{"projects": []string{"my-project"}, "tables": []string{"gcp_compute_instances"}},
+			expectedStatus: http.StatusServiceUnavailable,
+		},
+		{
 			name:           "threat intel stats response contract",
 			method:         http.MethodGet,
 			pathTemplate:   "/api/v1/threatintel/stats",

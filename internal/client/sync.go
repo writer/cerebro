@@ -157,6 +157,52 @@ func (c *Client) RunGCPSync(ctx context.Context, req GCPSyncRequest) (*SyncRunRe
 	return &resp, nil
 }
 
+type GCPAssetSyncRequest struct {
+	Projects    []string
+	Concurrency int
+	Tables      []string
+	Validate    bool
+}
+
+func (c *Client) RunGCPAssetSync(ctx context.Context, req GCPAssetSyncRequest) (*SyncRunResponse, error) {
+	var reqBody map[string]interface{}
+	if len(req.Projects) > 0 {
+		projects := make([]string, 0, len(req.Projects))
+		for _, project := range req.Projects {
+			if trimmed := strings.TrimSpace(project); trimmed != "" {
+				projects = append(projects, trimmed)
+			}
+		}
+		if len(projects) > 0 {
+			reqBody = map[string]interface{}{"projects": projects}
+		}
+	}
+	if req.Concurrency > 0 {
+		if reqBody == nil {
+			reqBody = make(map[string]interface{}, 1)
+		}
+		reqBody["concurrency"] = req.Concurrency
+	}
+	if len(req.Tables) > 0 {
+		if reqBody == nil {
+			reqBody = make(map[string]interface{}, 1)
+		}
+		reqBody["tables"] = req.Tables
+	}
+	if req.Validate {
+		if reqBody == nil {
+			reqBody = make(map[string]interface{}, 1)
+		}
+		reqBody["validate"] = true
+	}
+
+	var resp SyncRunResponse
+	if err := c.doJSON(ctx, http.MethodPost, "/api/v1/sync/gcp-asset", nil, reqBody, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 type K8sSyncRequest struct {
 	Kubeconfig  string
 	Context     string

@@ -296,6 +296,7 @@ func (s *Server) setupRoutes() {
 			r.Post("/backfill-relationships", s.backfillRelationshipIDs)
 			r.Post("/azure", s.syncAzure)
 			r.Post("/gcp", s.syncGCP)
+			r.Post("/gcp-asset", s.syncGCPAsset)
 			r.Post("/k8s", s.syncK8s)
 		})
 

@@ -403,6 +403,99 @@ func (s *Server) syncGCP(w http.ResponseWriter, r *http.Request) {
 	s.json(w, http.StatusOK, resp)
 }
 
+type gcpAssetSyncRequest struct {
+	Projects    []string `json:"projects"`
+	Concurrency int      `json:"concurrency"`
+	Tables      []string `json:"tables"`
+	Validate    bool     `json:"validate"`
+}
+
+var runGCPAssetSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req gcpAssetSyncRequest) ([]nativesync.SyncResult, error) {
+	if len(req.Projects) == 0 {
+		return nil, fmt.Errorf("projects are required")
+	}
+
+	opts := []nativesync.GCPAssetOption{nativesync.WithProjects(req.Projects)}
+	if req.Concurrency > 0 {
+		opts = append(opts, nativesync.WithAssetConcurrency(req.Concurrency))
+	}
+	if len(req.Tables) > 0 {
+		opts = append(opts, nativesync.WithAssetTypeFilter(req.Tables))
+	}
+
+	syncer := nativesync.NewGCPAssetInventoryEngine(client, slog.Default(), opts...)
+	if req.Validate {
+		results, err := syncer.ValidateTables(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("validation failed: %w", err)
+		}
+		return results, nil
+	}
+
+	results, err := syncer.SyncAll(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("sync failed: %w", err)
+	}
+	return results, nil
+}
+
+func (s *Server) syncGCPAsset(w http.ResponseWriter, r *http.Request) {
+	var req gcpAssetSyncRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+		s.error(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	req.Projects = normalizeSyncProjects(req.Projects)
+	req.Tables = normalizeSyncTables(req.Tables)
+	if len(req.Projects) == 0 {
+		s.error(w, http.StatusBadRequest, "projects are required")
+		return
+	}
+
+	if s.app.Snowflake == nil {
+		s.error(w, http.StatusServiceUnavailable, "snowflake not configured")
+		return
+	}
+
+	results, err := runGCPAssetSyncWithOptions(r.Context(), s.app.Snowflake, req)
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
+
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"provider": "gcp_asset",
+		"validate": req.Validate,
+		"results":  results,
+	})
+}
+
+func normalizeSyncProjects(raw []string) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+
+	normalized := make([]string, 0, len(raw))
+	seen := make(map[string]struct{}, len(raw))
+	for _, project := range raw {
+		name := strings.TrimSpace(project)
+		if name == "" {
+			continue
+		}
+		key := strings.ToLower(name)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		normalized = append(normalized, name)
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
+}
+
 func normalizeSyncTables(raw []string) []string {
 	if len(raw) == 0 {
 		return nil

@@ -957,6 +957,51 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/sync/gcp-asset:
+    post:
+      tags:
+        - Admin
+      summary: Run GCP Cloud Asset Inventory sync
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                projects:
+                  type: array
+                  items:
+                    type: string
+                concurrency:
+                  type: integer
+                  minimum: 1
+                tables:
+                  type: array
+                  items:
+                    type: string
+                validate:
+                  type: boolean
+              required:
+                - projects
+      responses:
+        '200':
+          description: GCP asset sync run complete
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncRunResponse'
+        '400':
+          description: Invalid GCP asset sync request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: GCP asset sync unavailable because Snowflake is not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/sync/k8s:
     post:
       tags:
