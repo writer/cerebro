@@ -285,14 +285,19 @@ func runNativeSync(ctx context.Context, start time.Time) error {
 	}
 
 	if len(tableFilter) == 0 {
-		// Extract resource relationships for graph building
-		Info("Extracting resource relationships...")
-		relExtractor := nativesync.NewRelationshipExtractor(client, slog.Default())
-		relCount, err := relExtractor.ExtractAndPersist(ctx)
-		if err != nil {
-			Warning("Relationship extraction failed: %v", err)
+		allowed, reason := nativesync.CanExtractRelationships(results, nil)
+		if !allowed {
+			Info("Skipping relationship extraction: %s", reason)
 		} else {
-			Info("Extracted %d relationships", relCount)
+			// Extract resource relationships for graph building.
+			Info("Extracting resource relationships...")
+			relExtractor := nativesync.NewRelationshipExtractor(client, slog.Default())
+			relCount, err := relExtractor.ExtractAndPersist(ctx)
+			if err != nil {
+				Warning("Relationship extraction failed: %v", err)
+			} else {
+				Info("Extracted %d relationships", relCount)
+			}
 		}
 	} else {
 		Info("Skipping relationship extraction because --table filter is set")
