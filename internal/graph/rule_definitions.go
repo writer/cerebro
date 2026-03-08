@@ -122,6 +122,43 @@ func RegisterAllRules() {
 			Enabled:  true,
 		})
 
+		reg.MustRegister(engine.ruleLambdaPublicInlinePolicyDynamoTrigger(), RuleMetadata{
+			ID:       "TC-AWS-004",
+			Name:     "Public Lambda with Inline Policy and DynamoDB Trigger",
+			Category: RuleCategoryAWS,
+			Provider: "aws",
+			MITREIDs: []string{"T1195.002"},
+			Enabled:  true,
+		})
+
+		reg.MustRegister(engine.rulePublicRDSUnencryptedHighBlastRadius(), RuleMetadata{
+			ID:          "TC-AWS-005",
+			Name:        "Public Unencrypted RDS with High Blast Radius",
+			Category:    RuleCategoryAWS,
+			Provider:    "aws",
+			MITREIDs:    []string{"T1530"},
+			CISControls: []string{"CIS-AWS-2.3.2"},
+			Enabled:     true,
+		})
+
+		reg.MustRegister(engine.ruleCrossAccountTransitiveTrustChain(), RuleMetadata{
+			ID:       "TC-AWS-006",
+			Name:     "Transitive Cross-Account Trust Chain",
+			Category: RuleCategoryAWS,
+			Provider: "aws",
+			MITREIDs: []string{"T1078.004"},
+			Enabled:  true,
+		})
+
+		reg.MustRegister(engine.ruleExposedComputeWithKeyedAdminIdentity(), RuleMetadata{
+			ID:       "TC-AWS-007",
+			Name:     "Exposed Compute with Keyed Admin Identity",
+			Category: RuleCategoryAWS,
+			Provider: "aws",
+			MITREIDs: []string{"T1552.001"},
+			Enabled:  true,
+		})
+
 		// GCP-specific rules
 		reg.MustRegister(engine.ruleGCPServiceAccountKeyExposed(), RuleMetadata{
 			ID:          "TC-GCP-001",
@@ -151,6 +188,15 @@ func RegisterAllRules() {
 			MITREIDs:    []string{"T1078.004"},
 			CISControls: []string{"CIS-GCP-4.1"},
 			Enabled:     true,
+		})
+
+		reg.MustRegister(engine.ruleGCPDefaultSAProjectWidePermissions(), RuleMetadata{
+			ID:       "TC-GCP-004",
+			Name:     "Default Compute SA with Project-Wide Permissions",
+			Category: RuleCategoryGCP,
+			Provider: "gcp",
+			MITREIDs: []string{"T1078.004"},
+			Enabled:  true,
 		})
 
 		// Azure-specific rules

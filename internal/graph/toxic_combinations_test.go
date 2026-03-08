@@ -330,6 +330,46 @@ func TestToxicCombination_IMDSv2Required_NoDetection(t *testing.T) {
 	}
 }
 
+func TestToxicCombination_IMDSv1MissingProperties_Detected(t *testing.T) {
+	engine := NewToxicCombinationEngine()
+	g := New()
+
+	// Missing IMDS properties should default to unsafe (IMDSv1-like).
+	g.AddNode(&Node{
+		ID:       "instance-1",
+		Kind:     NodeKindInstance,
+		Name:     "legacy-instance",
+		Provider: "aws",
+	})
+
+	g.AddNode(&Node{
+		ID:       "role-1",
+		Kind:     NodeKindRole,
+		Name:     "legacy-role",
+		Provider: "aws",
+		Properties: map[string]any{
+			"actions": []any{"iam:PassRole"},
+		},
+	})
+	g.AddNode(&Node{
+		ID:       "secret-1",
+		Kind:     NodeKindSecret,
+		Name:     "secret",
+		Provider: "aws",
+	})
+
+	g.AddEdge(&Edge{ID: "instance-role", Source: "instance-1", Target: "role-1", Kind: EdgeKindCanAssume})
+	g.AddEdge(&Edge{ID: "role-secret", Source: "role-1", Target: "secret-1", Kind: EdgeKindCanAdmin})
+
+	results := engine.Analyze(g)
+	for _, tc := range results {
+		if tc.ID == "TC-AWS-001-instance-1" {
+			return
+		}
+	}
+	t.Fatal("expected TC-AWS-001 to be detected when IMDSv2 properties are missing")
+}
+
 func TestToxicCombination_S3PublicBucketWithSensitiveData(t *testing.T) {
 	engine := NewToxicCombinationEngine()
 	g := New()
@@ -446,6 +486,187 @@ func TestToxicCombination_LambdaVPCSecretsAccess(t *testing.T) {
 	if !found {
 		t.Error("expected to find TC-AWS-003 toxic combination")
 	}
+}
+
+func TestToxicCombination_LambdaPublicInlinePolicyDynamoTrigger(t *testing.T) {
+	engine := NewToxicCombinationEngine()
+	g := New()
+
+	g.AddNode(&Node{
+		ID:       "lambda-1",
+		Kind:     NodeKindFunction,
+		Name:     "public-updater",
+		Provider: "aws",
+		Properties: map[string]any{
+			"function_url":      "https://abcde.lambda-url.us-east-1.on.aws/",
+			"has_inline_policy": true,
+		},
+	})
+	g.AddNode(&Node{
+		ID:       "role-1",
+		Kind:     NodeKindRole,
+		Name:     "lambda-role",
+		Provider: "aws",
+		Properties: map[string]any{
+			"actions": []any{"dynamodb:PutItem"},
+		},
+	})
+	g.AddNode(&Node{
+		ID:       "db-1",
+		Kind:     NodeKindDatabase,
+		Name:     "orders-dynamodb-table",
+		Provider: "aws",
+		Properties: map[string]any{
+			"engine": "dynamodb",
+		},
+		Risk: RiskHigh,
+	})
+
+	g.AddEdge(&Edge{ID: "lambda-role", Source: "lambda-1", Target: "role-1", Kind: EdgeKindCanAssume})
+	g.AddEdge(&Edge{ID: "role-db-write", Source: "role-1", Target: "db-1", Kind: EdgeKindCanWrite})
+	g.AddEdge(&Edge{
+		ID:     "lambda-db-trigger",
+		Source: "lambda-1",
+		Target: "db-1",
+		Kind:   EdgeKindConnectsTo,
+		Properties: map[string]any{
+			"event_source": "dynamodb_stream",
+		},
+	})
+
+	results := engine.Analyze(g)
+
+	for _, tc := range results {
+		if tc.ID == "TC-AWS-004-lambda-1" {
+			if tc.Severity != SeverityCritical {
+				t.Fatalf("expected critical severity, got %s", tc.Severity)
+			}
+			return
+		}
+	}
+	t.Fatal("expected TC-AWS-004 toxic combination")
+}
+
+func TestToxicCombination_PublicRDSUnencryptedHighBlastRadius(t *testing.T) {
+	engine := NewToxicCombinationEngine()
+	g := New()
+
+	g.AddNode(&Node{
+		ID:       "db-1",
+		Kind:     NodeKindDatabase,
+		Name:     "customer-rds",
+		Provider: "aws",
+		Properties: map[string]any{
+			"publicly_accessible": true,
+			"encrypted":           false,
+		},
+	})
+
+	for i := 0; i < 5; i++ {
+		userID := "user-" + string(rune('a'+i))
+		g.AddNode(&Node{
+			ID:       userID,
+			Kind:     NodeKindUser,
+			Name:     userID,
+			Provider: "aws",
+			Account:  "111111111111",
+		})
+		g.AddEdge(&Edge{
+			ID:     "edge-" + userID,
+			Source: userID,
+			Target: "db-1",
+			Kind:   EdgeKindCanRead,
+		})
+	}
+
+	results := engine.Analyze(g)
+	for _, tc := range results {
+		if tc.ID == "TC-AWS-005-db-1" {
+			if tc.Score < 89 {
+				t.Fatalf("expected elevated score for broad blast radius, got %.2f", tc.Score)
+			}
+			return
+		}
+	}
+	t.Fatal("expected TC-AWS-005 toxic combination")
+}
+
+func TestToxicCombination_AWSTransitiveCrossAccountTrustChain(t *testing.T) {
+	engine := NewToxicCombinationEngine()
+	g := New()
+
+	g.AddNode(&Node{ID: "role-a", Kind: NodeKindRole, Name: "role-a", Provider: "aws", Account: "111111111111"})
+	g.AddNode(&Node{ID: "role-b", Kind: NodeKindRole, Name: "role-b", Provider: "aws", Account: "222222222222"})
+	g.AddNode(&Node{ID: "role-c", Kind: NodeKindRole, Name: "role-c", Provider: "aws", Account: "333333333333"})
+	g.AddNode(&Node{ID: "db-1", Kind: NodeKindDatabase, Name: "sensitive-db", Provider: "aws", Account: "333333333333", Risk: RiskCritical})
+
+	g.AddEdge(&Edge{
+		ID:     "a-b",
+		Source: "role-a",
+		Target: "role-b",
+		Kind:   EdgeKindCanAssume,
+		Properties: map[string]any{
+			"cross_account": true,
+		},
+	})
+	g.AddEdge(&Edge{
+		ID:     "b-c",
+		Source: "role-b",
+		Target: "role-c",
+		Kind:   EdgeKindCanAssume,
+		Properties: map[string]any{
+			"cross_account": true,
+		},
+	})
+	g.AddEdge(&Edge{
+		ID:     "c-db",
+		Source: "role-c",
+		Target: "db-1",
+		Kind:   EdgeKindCanAdmin,
+	})
+
+	results := engine.Analyze(g)
+	for _, tc := range results {
+		if tc.ID == "TC-AWS-006-role-a" {
+			if tc.Severity != SeverityCritical {
+				t.Fatalf("expected critical severity, got %s", tc.Severity)
+			}
+			return
+		}
+	}
+	t.Fatal("expected TC-AWS-006 toxic combination")
+}
+
+func TestToxicCombination_ExposedComputeWithKeyedAdminIdentity(t *testing.T) {
+	engine := NewToxicCombinationEngine()
+	g := New()
+
+	g.AddNode(&Node{ID: "internet", Kind: NodeKindInternet, Name: "internet"})
+	g.AddNode(&Node{ID: "instance-1", Kind: NodeKindInstance, Name: "web", Provider: "aws"})
+	g.AddNode(&Node{
+		ID:       "sa-1",
+		Kind:     NodeKindServiceAccount,
+		Name:     "legacy-access-sa",
+		Provider: "aws",
+		Properties: map[string]any{
+			"access_keys": []any{"AKIAEXAMPLE"},
+			"actions":     []any{"iam:*"},
+		},
+	})
+
+	g.AddEdge(&Edge{ID: "internet-instance", Source: "internet", Target: "instance-1", Kind: EdgeKindExposedTo})
+	g.AddEdge(&Edge{ID: "instance-sa", Source: "instance-1", Target: "sa-1", Kind: EdgeKindCanAssume})
+
+	results := engine.Analyze(g)
+	for _, tc := range results {
+		if tc.ID == "TC-AWS-007-instance-1" {
+			if tc.Severity != SeverityCritical {
+				t.Fatalf("expected critical severity, got %s", tc.Severity)
+			}
+			return
+		}
+	}
+	t.Fatal("expected TC-AWS-007 toxic combination")
 }
 
 func TestToxicCombination_EKSNodeRoleECRPush(t *testing.T) {
@@ -737,6 +958,45 @@ func TestToxicCombination_GCPComputeDefaultSA(t *testing.T) {
 	if !found {
 		t.Error("expected to find TC-GCP-003 toxic combination")
 	}
+}
+
+func TestToxicCombination_GCPDefaultSAProjectWidePermissions(t *testing.T) {
+	engine := NewToxicCombinationEngine()
+	g := New()
+
+	g.AddNode(&Node{
+		ID:       "sa-1",
+		Kind:     NodeKindServiceAccount,
+		Name:     "123456789-compute@developer.gserviceaccount.com",
+		Provider: "gcp",
+		Properties: map[string]any{
+			"roles": []any{"roles/editor"},
+		},
+	})
+	g.AddNode(&Node{
+		ID:       "instance-1",
+		Kind:     NodeKindInstance,
+		Name:     "app-server",
+		Provider: "gcp",
+	})
+	g.AddEdge(&Edge{
+		ID:     "instance-sa",
+		Source: "instance-1",
+		Target: "sa-1",
+		Kind:   EdgeKindCanAssume,
+	})
+
+	results := engine.Analyze(g)
+
+	for _, tc := range results {
+		if tc.ID == "TC-GCP-004-sa-1" {
+			if tc.Severity != SeverityHigh && tc.Severity != SeverityCritical {
+				t.Fatalf("expected high or critical severity, got %s", tc.Severity)
+			}
+			return
+		}
+	}
+	t.Fatal("expected TC-GCP-004 toxic combination")
 }
 
 // Azure Tests

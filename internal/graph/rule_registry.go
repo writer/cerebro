@@ -291,9 +291,9 @@ var ExpectedRules = []string{
 	// Core rules
 	"TC001", "TC002", "TC003", "TC004", "TC005", "TC006", "TC007", "TC008", "TC009", "TC010",
 	// AWS rules
-	"TC-AWS-001", "TC-AWS-002", "TC-AWS-003",
+	"TC-AWS-001", "TC-AWS-002", "TC-AWS-003", "TC-AWS-004", "TC-AWS-005", "TC-AWS-006", "TC-AWS-007",
 	// GCP rules
-	"TC-GCP-001", "TC-GCP-002", "TC-GCP-003",
+	"TC-GCP-001", "TC-GCP-002", "TC-GCP-003", "TC-GCP-004",
 	// Azure rules
 	"TC-AZURE-001", "TC-AZURE-002",
 	// Kubernetes rules
