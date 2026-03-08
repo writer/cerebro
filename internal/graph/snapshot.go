@@ -201,6 +201,73 @@ func (s *SnapshotStore) List() ([]SnapshotInfo, error) {
 	return infos, nil
 }
 
+// DiffByTime loads snapshots nearest to the provided timestamps and computes a structural diff.
+func (s *SnapshotStore) DiffByTime(t1, t2 time.Time) (*GraphDiff, error) {
+	if t1.IsZero() || t2.IsZero() {
+		return nil, fmt.Errorf("both timestamps are required")
+	}
+	from := t1
+	to := t2
+	if from.After(to) {
+		from, to = to, from
+	}
+
+	before, err := s.loadClosestSnapshotAt(from)
+	if err != nil {
+		return nil, err
+	}
+	after, err := s.loadClosestSnapshotAt(to)
+	if err != nil {
+		return nil, err
+	}
+
+	return DiffSnapshots(before, after), nil
+}
+
+func (s *SnapshotStore) loadClosestSnapshotAt(ts time.Time) (*Snapshot, error) {
+	files, err := filepath.Glob(filepath.Join(s.basePath, "graph-*.json.gz"))
+	if err != nil {
+		return nil, fmt.Errorf("glob snapshots: %w", err)
+	}
+	if len(files) == 0 {
+		return nil, fmt.Errorf("no snapshots found")
+	}
+
+	var closestBefore *Snapshot
+	var closestAfter *Snapshot
+	for _, file := range files {
+		snapshot, err := LoadSnapshotFromFile(file)
+		if err != nil {
+			continue
+		}
+		if snapshot.CreatedAt.IsZero() {
+			info, statErr := os.Stat(file)
+			if statErr == nil {
+				snapshot.CreatedAt = info.ModTime()
+			}
+		}
+
+		switch {
+		case !snapshot.CreatedAt.After(ts):
+			if closestBefore == nil || snapshot.CreatedAt.After(closestBefore.CreatedAt) {
+				closestBefore = snapshot
+			}
+		default:
+			if closestAfter == nil || snapshot.CreatedAt.Before(closestAfter.CreatedAt) {
+				closestAfter = snapshot
+			}
+		}
+	}
+
+	if closestBefore != nil {
+		return closestBefore, nil
+	}
+	if closestAfter != nil {
+		return closestAfter, nil
+	}
+	return nil, fmt.Errorf("no readable snapshots found")
+}
+
 func (s *SnapshotStore) cleanup() error {
 	files, err := filepath.Glob(filepath.Join(s.basePath, "graph-*.json.gz"))
 	if err != nil {
