@@ -36,9 +36,11 @@ type AzureSyncRequest struct {
 }
 
 type SyncRunResponse struct {
-	Provider string                  `json:"provider"`
-	Validate bool                    `json:"validate"`
-	Results  []nativesync.SyncResult `json:"results"`
+	Provider                   string                  `json:"provider"`
+	Validate                   bool                    `json:"validate"`
+	Results                    []nativesync.SyncResult `json:"results"`
+	RelationshipsExtracted     int64                   `json:"relationships_extracted,omitempty"`
+	RelationshipsSkippedReason string                  `json:"relationships_skipped_reason,omitempty"`
 }
 
 func (c *Client) RunAzureSync(ctx context.Context, req AzureSyncRequest) (*SyncRunResponse, error) {
@@ -67,6 +69,51 @@ func (c *Client) RunAzureSync(ctx context.Context, req AzureSyncRequest) (*SyncR
 
 	var resp SyncRunResponse
 	if err := c.doJSON(ctx, http.MethodPost, "/api/v1/sync/azure", nil, reqBody, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+type AWSSyncRequest struct {
+	Region      string
+	MultiRegion bool
+	Concurrency int
+	Tables      []string
+	Validate    bool
+}
+
+func (c *Client) RunAWSSync(ctx context.Context, req AWSSyncRequest) (*SyncRunResponse, error) {
+	var reqBody map[string]interface{}
+	if region := strings.TrimSpace(req.Region); region != "" {
+		reqBody = map[string]interface{}{"region": region}
+	}
+	if req.MultiRegion {
+		if reqBody == nil {
+			reqBody = make(map[string]interface{}, 1)
+		}
+		reqBody["multi_region"] = true
+	}
+	if req.Concurrency > 0 {
+		if reqBody == nil {
+			reqBody = make(map[string]interface{}, 1)
+		}
+		reqBody["concurrency"] = req.Concurrency
+	}
+	if len(req.Tables) > 0 {
+		if reqBody == nil {
+			reqBody = make(map[string]interface{}, 1)
+		}
+		reqBody["tables"] = req.Tables
+	}
+	if req.Validate {
+		if reqBody == nil {
+			reqBody = make(map[string]interface{}, 1)
+		}
+		reqBody["validate"] = true
+	}
+
+	var resp SyncRunResponse
+	if err := c.doJSON(ctx, http.MethodPost, "/api/v1/sync/aws", nil, reqBody, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil

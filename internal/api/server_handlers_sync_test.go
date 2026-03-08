@@ -171,3 +171,81 @@ func TestSyncK8s_UsesRequestOptions(t *testing.T) {
 		t.Fatalf("expected provider in response body, got %s", w.Body.String())
 	}
 }
+
+func TestSyncAWS_RequiresSnowflake(t *testing.T) {
+	s := newTestServer(t)
+
+	w := do(t, s, http.MethodPost, "/api/v1/sync/aws", map[string]interface{}{
+		"region":      "us-west-2",
+		"concurrency": 4,
+		"tables":      []string{"aws_iam_users"},
+	})
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestSyncAWS_InvalidRequest(t *testing.T) {
+	s := newTestServer(t)
+
+	w := do(t, s, http.MethodPost, "/api/v1/sync/aws", "not-json")
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid request, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestSyncAWS_UsesRequestOptions(t *testing.T) {
+	s := newTestServer(t)
+	s.app.Snowflake = &snowflake.Client{}
+
+	originalRun := runAWSSyncWithOptions
+	t.Cleanup(func() { runAWSSyncWithOptions = originalRun })
+
+	called := false
+	runAWSSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req awsSyncRequest) (*awsSyncOutcome, error) {
+		called = true
+		if client != s.app.Snowflake {
+			t.Fatalf("expected server snowflake client to be passed through")
+		}
+		if req.Region != "us-west-2" {
+			t.Fatalf("expected region us-west-2, got %q", req.Region)
+		}
+		if !req.MultiRegion {
+			t.Fatal("expected multi_region=true")
+		}
+		if req.Concurrency != 6 {
+			t.Fatalf("expected concurrency 6, got %d", req.Concurrency)
+		}
+		if len(req.Tables) != 2 || req.Tables[0] != "aws_iam_users" || req.Tables[1] != "aws_s3_buckets" {
+			t.Fatalf("unexpected table filter: %#v", req.Tables)
+		}
+		if !req.Validate {
+			t.Fatal("expected validate=true")
+		}
+		return &awsSyncOutcome{
+			Results:                    []nativesync.SyncResult{{Table: "aws_iam_users", Synced: 4}},
+			RelationshipsExtracted:     11,
+			RelationshipsSkippedReason: "test reason",
+		}, nil
+	}
+
+	w := do(t, s, http.MethodPost, "/api/v1/sync/aws", map[string]interface{}{
+		"region":       " us-west-2 ",
+		"multi_region": true,
+		"concurrency":  6,
+		"tables":       []string{"AWS_IAM_USERS", "aws_iam_users", " aws_s3_buckets "},
+		"validate":     true,
+	})
+	if !called {
+		t.Fatal("expected sync runner to be called")
+	}
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"provider":"aws"`) {
+		t.Fatalf("expected provider in response body, got %s", w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"relationships_extracted":11`) {
+		t.Fatalf("expected relationships count in response body, got %s", w.Body.String())
+	}
+}

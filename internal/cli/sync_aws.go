@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials/processcreds"
+	apiclient "github.com/evalops/cerebro/internal/client"
 	nativesync "github.com/evalops/cerebro/internal/sync"
 )
 
@@ -220,6 +221,106 @@ func runMultiAccountAWSSync(ctx context.Context, start time.Time) error {
 }
 
 func runNativeSync(ctx context.Context, start time.Time) error {
+	tableFilter := parseTableFilter(syncTable)
+
+	mode, err := loadCLIExecutionMode()
+	if err != nil {
+		return err
+	}
+
+	supportsAPI, apiReason := syncSupportsAWSAPIMode()
+	if mode != cliExecutionModeDirect && supportsAPI {
+		apiClient, err := newCLIAPIClient()
+		if err != nil {
+			if mode == cliExecutionModeAPI {
+				return err
+			}
+			Warning("API client configuration invalid; using direct mode: %v", err)
+		} else {
+			resp, err := apiClient.RunAWSSync(ctx, apiclient.AWSSyncRequest{
+				Region:      strings.TrimSpace(syncRegion),
+				MultiRegion: syncMultiRegion,
+				Concurrency: syncConcurrency,
+				Tables:      tableFilter,
+				Validate:    syncValidate,
+			})
+			if err == nil {
+				provider := "AWS"
+				if syncValidate || (resp != nil && resp.Validate) {
+					provider = "AWS (validate)"
+				}
+
+				var results []nativesync.SyncResult
+				if resp != nil {
+					results = resp.Results
+				}
+				if err := printSyncResults(results, start, provider); err != nil {
+					return err
+				}
+
+				if !syncValidate {
+					if len(tableFilter) > 0 {
+						Info("Skipping relationship extraction because --table filter is set")
+					} else if resp != nil {
+						if reason := strings.TrimSpace(resp.RelationshipsSkippedReason); reason != "" {
+							Info("Skipping relationship extraction: %s", reason)
+						} else {
+							Info("Extracted %d relationships", resp.RelationshipsExtracted)
+						}
+					}
+				}
+
+				if syncScanAfter && !syncValidate {
+					Info("Triggering policy scan...")
+					if err := runPostSyncScan(ctx, tableFilter); err != nil {
+						Warning("Post-sync scan failed: %v", err)
+					}
+				}
+
+				return nil
+			}
+			if mode == cliExecutionModeAPI || !shouldFallbackToDirect(mode, err) {
+				return fmt.Errorf("aws sync via api failed: %w", err)
+			}
+			Warning("API unavailable; using direct mode: %v", err)
+		}
+	}
+
+	if mode == cliExecutionModeAPI && !supportsAPI {
+		return fmt.Errorf("aws sync API mode unsupported: %s", apiReason)
+	}
+	if mode != cliExecutionModeDirect && !supportsAPI {
+		Warning("API sync mode skipped; using direct mode: %s", apiReason)
+	}
+
+	return runNativeSyncDirectFn(ctx, start)
+}
+
+func syncSupportsAWSAPIMode() (bool, string) {
+	if strings.TrimSpace(syncAWSProfile) != "" {
+		return false, "--aws-profile requires direct mode"
+	}
+	if strings.TrimSpace(syncAWSConfigFile) != "" {
+		return false, "--aws-config-file requires direct mode"
+	}
+	if strings.TrimSpace(syncAWSSharedCredsFile) != "" {
+		return false, "--aws-shared-credentials-file requires direct mode"
+	}
+	if strings.TrimSpace(syncAWSCredentialProc) != "" {
+		return false, "--aws-credential-process requires direct mode"
+	}
+	if strings.TrimSpace(syncAWSWebIDTokenFile) != "" || strings.TrimSpace(syncAWSWebIDRoleARN) != "" {
+		return false, "--aws-web-identity-* flags require direct mode"
+	}
+	if strings.TrimSpace(syncAWSRoleARN) != "" || strings.TrimSpace(syncAWSRoleExternalID) != "" || strings.TrimSpace(syncAWSRoleMFASerial) != "" || strings.TrimSpace(syncAWSRoleMFAToken) != "" || strings.TrimSpace(syncAWSRoleSourceID) != "" || strings.TrimSpace(syncAWSRoleDuration) != "" || strings.TrimSpace(syncAWSRoleTags) != "" || strings.TrimSpace(syncAWSRoleTransitive) != "" {
+		return false, "--aws-role-* flags require direct mode"
+	}
+	return true, ""
+}
+
+var runNativeSyncDirectFn = runNativeSyncDirect
+
+func runNativeSyncDirect(ctx context.Context, start time.Time) error {
 	awsCfg, err := loadAWSConfig(ctx, syncAWSProfile)
 	if err != nil {
 		return fmt.Errorf("load AWS config: %w", err)

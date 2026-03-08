@@ -292,6 +292,7 @@ func (s *Server) setupRoutes() {
 
 		// Sync management endpoints
 		r.Route("/sync", func(r chi.Router) {
+			r.Post("/aws", s.syncAWS)
 			r.Post("/backfill-relationships", s.backfillRelationshipIDs)
 			r.Post("/azure", s.syncAzure)
 			r.Post("/k8s", s.syncK8s)

@@ -797,6 +797,49 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SyncStatus'
+  /api/v1/sync/aws:
+    post:
+      tags:
+        - Admin
+      summary: Run AWS native sync
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                region:
+                  type: string
+                multi_region:
+                  type: boolean
+                concurrency:
+                  type: integer
+                  minimum: 1
+                tables:
+                  type: array
+                  items:
+                    type: string
+                validate:
+                  type: boolean
+      responses:
+        '200':
+          description: AWS sync run complete
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncRunResponse'
+        '400':
+          description: Invalid AWS sync request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: AWS sync unavailable because Snowflake is not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/sync/backfill-relationships:
     post:
       tags:
@@ -4959,6 +5002,10 @@ components:
           type: string
         validate:
           type: boolean
+        relationships_extracted:
+          type: integer
+        relationships_skipped_reason:
+          type: string
         results:
           type: array
           items:

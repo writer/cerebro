@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/evalops/cerebro/internal/snowflake"
 	nativesync "github.com/evalops/cerebro/internal/sync"
 )
@@ -184,6 +185,124 @@ func (s *Server) syncK8s(w http.ResponseWriter, r *http.Request) {
 		"validate": req.Validate,
 		"results":  results,
 	})
+}
+
+type awsSyncRequest struct {
+	Region      string   `json:"region"`
+	MultiRegion bool     `json:"multi_region"`
+	Concurrency int      `json:"concurrency"`
+	Tables      []string `json:"tables"`
+	Validate    bool     `json:"validate"`
+}
+
+type awsSyncOutcome struct {
+	Results                    []nativesync.SyncResult
+	RelationshipsExtracted     int64
+	RelationshipsSkippedReason string
+}
+
+var runAWSSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req awsSyncRequest) (*awsSyncOutcome, error) {
+	loadOptions := make([]func(*config.LoadOptions) error, 0, 1)
+	if req.Region != "" {
+		loadOptions = append(loadOptions, config.WithRegion(req.Region))
+	}
+	awsCfg, err := config.LoadDefaultConfig(ctx, loadOptions...)
+	if err != nil {
+		return nil, fmt.Errorf("load AWS config: %w", err)
+	}
+
+	opts := []nativesync.EngineOption{}
+	if req.Concurrency > 0 {
+		opts = append(opts, nativesync.WithConcurrency(req.Concurrency))
+	}
+	if len(req.Tables) > 0 {
+		opts = append(opts, nativesync.WithTableFilter(req.Tables))
+	}
+	if req.MultiRegion {
+		opts = append(opts, nativesync.WithRegions(nativesync.DefaultAWSRegions))
+	} else {
+		region := req.Region
+		if region == "" {
+			region = awsCfg.Region
+		}
+		if region == "" {
+			region = "us-east-1"
+		}
+		opts = append(opts, nativesync.WithRegions([]string{region}))
+	}
+
+	syncer := nativesync.NewSyncEngine(client, slog.Default(), opts...)
+	if req.Validate {
+		results, err := syncer.ValidateTablesWithConfig(ctx, awsCfg)
+		if err != nil {
+			return nil, fmt.Errorf("validation failed: %w", err)
+		}
+		return &awsSyncOutcome{Results: results}, nil
+	}
+
+	results, err := syncer.SyncAllWithConfig(ctx, awsCfg)
+	if err != nil {
+		return nil, fmt.Errorf("sync failed: %w", err)
+	}
+
+	outcome := &awsSyncOutcome{Results: results}
+	if len(req.Tables) > 0 {
+		outcome.RelationshipsSkippedReason = "table filter is set"
+		return outcome, nil
+	}
+
+	allowed, reason := nativesync.CanExtractRelationships(results, nil)
+	if !allowed {
+		outcome.RelationshipsSkippedReason = reason
+		return outcome, nil
+	}
+
+	extractor := nativesync.NewRelationshipExtractor(client, slog.Default())
+	relCount, err := extractor.ExtractAndPersist(ctx)
+	if err != nil {
+		outcome.RelationshipsSkippedReason = fmt.Sprintf("relationship extraction failed: %v", err)
+		return outcome, nil
+	}
+	outcome.RelationshipsExtracted = int64(relCount)
+
+	return outcome, nil
+}
+
+func (s *Server) syncAWS(w http.ResponseWriter, r *http.Request) {
+	var req awsSyncRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+		s.error(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	req.Region = strings.TrimSpace(req.Region)
+	req.Tables = normalizeSyncTables(req.Tables)
+
+	if s.app.Snowflake == nil {
+		s.error(w, http.StatusServiceUnavailable, "snowflake not configured")
+		return
+	}
+
+	outcome, err := runAWSSyncWithOptions(r.Context(), s.app.Snowflake, req)
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
+	if outcome == nil {
+		outcome = &awsSyncOutcome{}
+	}
+
+	resp := map[string]interface{}{
+		"provider":                "aws",
+		"validate":                req.Validate,
+		"results":                 outcome.Results,
+		"relationships_extracted": outcome.RelationshipsExtracted,
+	}
+	if outcome.RelationshipsSkippedReason != "" {
+		resp["relationships_skipped_reason"] = outcome.RelationshipsSkippedReason
+	}
+
+	s.json(w, http.StatusOK, resp)
 }
 
 func normalizeSyncTables(raw []string) []string {

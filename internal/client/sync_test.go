@@ -199,6 +199,121 @@ func TestRunAzureSync_EmptyRequestBodyForDefaultBehavior(t *testing.T) {
 	}
 }
 
+func TestRunAWSSync_SendsRequestAndParsesResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v1/sync/aws" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+
+		var req map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if req["region"] != "us-west-2" {
+			t.Fatalf("expected region us-west-2, got %#v", req["region"])
+		}
+		if req["multi_region"] != true {
+			t.Fatalf("expected multi_region=true, got %#v", req["multi_region"])
+		}
+		if req["concurrency"] != float64(11) {
+			t.Fatalf("expected concurrency=11, got %#v", req["concurrency"])
+		}
+		if req["validate"] != true {
+			t.Fatalf("expected validate=true, got %#v", req["validate"])
+		}
+		tables, ok := req["tables"].([]interface{})
+		if !ok || len(tables) != 2 || tables[0] != "aws_iam_users" || tables[1] != "aws_s3_buckets" {
+			t.Fatalf("unexpected tables payload: %#v", req["tables"])
+		}
+
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"provider":                     "aws",
+			"validate":                     true,
+			"relationships_extracted":      14,
+			"relationships_skipped_reason": "",
+			"results": []map[string]interface{}{
+				{
+					"table":    "aws_iam_users",
+					"synced":   7,
+					"errors":   0,
+					"duration": float64(3000000000),
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	c, err := New(Config{
+		BaseURL: server.URL,
+		APIKey:  "test-key",
+	})
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	resp, err := c.RunAWSSync(context.Background(), AWSSyncRequest{
+		Region:      " us-west-2 ",
+		MultiRegion: true,
+		Concurrency: 11,
+		Tables:      []string{"aws_iam_users", "aws_s3_buckets"},
+		Validate:    true,
+	})
+	if err != nil {
+		t.Fatalf("RunAWSSync returned error: %v", err)
+	}
+	if resp.Provider != "aws" || !resp.Validate || len(resp.Results) != 1 {
+		t.Fatalf("unexpected response: %+v", resp)
+	}
+	if resp.Results[0].Table != "aws_iam_users" || resp.Results[0].Synced != 7 {
+		t.Fatalf("unexpected first result: %+v", resp.Results[0])
+	}
+	if resp.RelationshipsExtracted != 14 {
+		t.Fatalf("unexpected relationship count: %d", resp.RelationshipsExtracted)
+	}
+}
+
+func TestRunAWSSync_EmptyRequestBodyForDefaultBehavior(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/sync/aws" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+
+		var req map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if len(req) != 0 {
+			t.Fatalf("expected empty request body, got %#v", req)
+		}
+
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"provider": "aws",
+			"validate": false,
+			"results":  []map[string]interface{}{},
+		})
+	}))
+	defer server.Close()
+
+	c, err := New(Config{
+		BaseURL: server.URL,
+		APIKey:  "test-key",
+	})
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	resp, err := c.RunAWSSync(context.Background(), AWSSyncRequest{})
+	if err != nil {
+		t.Fatalf("RunAWSSync returned error: %v", err)
+	}
+	if resp.Provider != "aws" || resp.Validate {
+		t.Fatalf("unexpected response: %+v", resp)
+	}
+}
+
 func TestRunK8sSync_SendsRequestAndParsesResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
