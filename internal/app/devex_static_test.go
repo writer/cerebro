@@ -298,6 +298,36 @@ func TestCICoverageThresholdsIncludeSyncProvidersAndJobs(t *testing.T) {
 	}
 }
 
+func TestSharedTestutilHelpersAreDefinedAndAdopted(t *testing.T) {
+	root := repoRoot(t)
+
+	helperPath := filepath.Join(root, "internal", "testutil", "testutil.go")
+	helperContent, err := os.ReadFile(helperPath)
+	if err != nil {
+		t.Fatalf("read testutil helper file: %v", err)
+	}
+	helperText := string(helperContent)
+	for _, fn := range []string{"func Logger()", "func Context(t *testing.T)"} {
+		if !strings.Contains(helperText, fn) {
+			t.Fatalf("expected internal/testutil/testutil.go to define %s", fn)
+		}
+	}
+
+	adoptionFiles := []string{
+		filepath.Join(root, "internal", "remediation", "engine_test.go"),
+		filepath.Join(root, "internal", "scheduler", "scheduler_test.go"),
+	}
+	for _, file := range adoptionFiles {
+		content, readErr := os.ReadFile(file)
+		if readErr != nil {
+			t.Fatalf("read adoption file %s: %v", file, readErr)
+		}
+		if !strings.Contains(string(content), "testutil.Logger()") {
+			t.Fatalf("expected %s to use testutil.Logger()", file)
+		}
+	}
+}
+
 func expectedGoVersionFromGoMod(t *testing.T, root string) string {
 	t.Helper()
 

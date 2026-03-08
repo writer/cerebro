@@ -3,20 +3,15 @@ package scheduler
 import (
 	"context"
 	"errors"
-	"io"
-	"log/slog"
-	"os"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/evalops/cerebro/internal/testutil"
 )
 
-func testLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-}
-
 func TestScheduler_NewScheduler(t *testing.T) {
-	s := NewScheduler(testLogger())
+	s := NewScheduler(testutil.Logger())
 	if s == nil {
 		t.Fatal("NewScheduler returned nil")
 	}
@@ -27,7 +22,7 @@ func TestScheduler_NewScheduler(t *testing.T) {
 }
 
 func TestScheduler_AddJob(t *testing.T) {
-	s := NewScheduler(testLogger())
+	s := NewScheduler(testutil.Logger())
 
 	handler := func(ctx context.Context) error { return nil }
 	s.AddJob("test", 1*time.Hour, handler)
@@ -51,7 +46,7 @@ func TestScheduler_AddJob(t *testing.T) {
 }
 
 func TestScheduler_RemoveJob(t *testing.T) {
-	s := NewScheduler(testLogger())
+	s := NewScheduler(testutil.Logger())
 
 	s.AddJob("test", 1*time.Hour, func(ctx context.Context) error { return nil })
 	s.RemoveJob("test")
@@ -63,7 +58,7 @@ func TestScheduler_RemoveJob(t *testing.T) {
 }
 
 func TestScheduler_RemoveJobWhileRunning(t *testing.T) {
-	s := NewScheduler(testLogger())
+	s := NewScheduler(testutil.Logger())
 
 	started := make(chan struct{})
 	release := make(chan struct{})
@@ -75,7 +70,7 @@ func TestScheduler_RemoveJobWhileRunning(t *testing.T) {
 
 	s.mu.Lock()
 	s.running = true
-	s.ctx = context.Background()
+	s.ctx = testutil.Context(t)
 	s.mu.Unlock()
 
 	if err := s.RunNow("test"); err != nil {
@@ -107,7 +102,7 @@ func TestScheduler_RemoveJobWhileRunning(t *testing.T) {
 }
 
 func TestScheduler_EnableDisableJob(t *testing.T) {
-	s := NewScheduler(testLogger())
+	s := NewScheduler(testutil.Logger())
 
 	s.AddJob("test", 1*time.Hour, func(ctx context.Context) error { return nil })
 
@@ -127,7 +122,7 @@ func TestScheduler_EnableDisableJob(t *testing.T) {
 }
 
 func TestScheduler_ListJobs(t *testing.T) {
-	s := NewScheduler(testLogger())
+	s := NewScheduler(testutil.Logger())
 
 	s.AddJob("job1", 1*time.Hour, func(ctx context.Context) error { return nil })
 	s.AddJob("job2", 2*time.Hour, func(ctx context.Context) error { return nil })
@@ -140,7 +135,7 @@ func TestScheduler_ListJobs(t *testing.T) {
 }
 
 func TestScheduler_GetJob(t *testing.T) {
-	s := NewScheduler(testLogger())
+	s := NewScheduler(testutil.Logger())
 
 	s.AddJob("exists", 1*time.Hour, func(ctx context.Context) error { return nil })
 
@@ -158,7 +153,7 @@ func TestScheduler_GetJob(t *testing.T) {
 }
 
 func TestScheduler_RunNow(t *testing.T) {
-	s := NewScheduler(testLogger())
+	s := NewScheduler(testutil.Logger())
 
 	var called atomic.Int32
 	s.AddJob("test", 1*time.Hour, func(ctx context.Context) error {
@@ -166,7 +161,7 @@ func TestScheduler_RunNow(t *testing.T) {
 		return nil
 	})
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(testutil.Context(t))
 	defer cancel()
 	go s.Start(ctx)
 	time.Sleep(20 * time.Millisecond)
@@ -187,7 +182,7 @@ func TestScheduler_RunNow(t *testing.T) {
 }
 
 func TestScheduler_Status(t *testing.T) {
-	s := NewScheduler(testLogger())
+	s := NewScheduler(testutil.Logger())
 
 	s.AddJob("job1", 1*time.Hour, func(ctx context.Context) error { return nil })
 	s.AddJob("job2", 2*time.Hour, func(ctx context.Context) error { return nil })
@@ -204,9 +199,9 @@ func TestScheduler_Status(t *testing.T) {
 }
 
 func TestScheduler_StartStop(t *testing.T) {
-	s := NewScheduler(testLogger())
+	s := NewScheduler(testutil.Logger())
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(testutil.Context(t))
 	defer cancel()
 
 	// Start in goroutine
@@ -285,7 +280,7 @@ func TestJobStatus_Fields(t *testing.T) {
 }
 
 func TestScheduler_DisabledJobNotRun(t *testing.T) {
-	s := NewScheduler(testLogger())
+	s := NewScheduler(testutil.Logger())
 
 	var called atomic.Int32
 	s.AddJob("disabled", 1*time.Millisecond, func(ctx context.Context) error {
@@ -307,7 +302,7 @@ func TestScheduler_DisabledJobNotRun(t *testing.T) {
 }
 
 func TestScheduler_PanicRecovery(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := testutil.Logger()
 	s := NewScheduler(logger)
 
 	panicJob := func(ctx context.Context) error {
@@ -316,7 +311,7 @@ func TestScheduler_PanicRecovery(t *testing.T) {
 
 	s.AddJob("panic-job", 1*time.Hour, panicJob)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(testutil.Context(t))
 	defer cancel()
 	go s.Start(ctx)
 	time.Sleep(20 * time.Millisecond)
@@ -343,10 +338,10 @@ func TestScheduler_PanicRecovery(t *testing.T) {
 }
 
 func TestScheduler_RunNowErrors(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := testutil.Logger()
 	s := NewScheduler(logger)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(testutil.Context(t))
 	defer cancel()
 	go s.Start(ctx)
 	time.Sleep(20 * time.Millisecond)
@@ -383,7 +378,7 @@ func TestScheduler_RunNowErrors(t *testing.T) {
 }
 
 func TestScheduler_GracefulShutdown(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := testutil.Logger()
 	s := NewScheduler(logger)
 
 	jobCompleted := make(chan bool, 1)
@@ -418,7 +413,7 @@ func TestScheduler_GracefulShutdown(t *testing.T) {
 }
 
 func TestScheduler_RunDueJobs_NoopWhenStopped(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := testutil.Logger()
 	s := NewScheduler(logger)
 
 	var called atomic.Int32
@@ -441,7 +436,7 @@ func TestScheduler_RunDueJobs_NoopWhenStopped(t *testing.T) {
 }
 
 func TestScheduler_RunDueJobs_ExecutesDueJobs(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := testutil.Logger()
 	s := NewScheduler(logger)
 
 	done := make(chan struct{}, 1)
@@ -455,7 +450,7 @@ func TestScheduler_RunDueJobs_ExecutesDueJobs(t *testing.T) {
 
 	s.mu.Lock()
 	s.running = true
-	s.ctx = context.Background()
+	s.ctx = testutil.Context(t)
 	s.jobs["due"].NextRun = time.Now().Add(-time.Second)
 	s.mu.Unlock()
 
@@ -482,7 +477,7 @@ func TestScheduler_RunDueJobs_ExecutesDueJobs(t *testing.T) {
 }
 
 func TestScheduler_RunDueJobs_RemovedJobNotExecuted(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := testutil.Logger()
 	s := NewScheduler(logger)
 
 	var called atomic.Int32
@@ -493,7 +488,7 @@ func TestScheduler_RunDueJobs_RemovedJobNotExecuted(t *testing.T) {
 
 	s.mu.Lock()
 	s.running = true
-	s.ctx = context.Background()
+	s.ctx = testutil.Context(t)
 	job := s.jobs["remove-me"]
 	job.NextRun = time.Now().Add(-time.Second)
 	job.removeRequested = true

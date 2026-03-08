@@ -2,17 +2,13 @@ package remediation
 
 import (
 	"context"
-	"log/slog"
-	"os"
 	"testing"
+
+	"github.com/evalops/cerebro/internal/testutil"
 )
 
-func testLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-}
-
 func TestEngine_NewEngine(t *testing.T) {
-	engine := NewEngine(testLogger())
+	engine := NewEngine(testutil.Logger())
 
 	if engine == nil {
 		t.Fatal("NewEngine returned nil")
@@ -25,7 +21,7 @@ func TestEngine_NewEngine(t *testing.T) {
 }
 
 func TestEngine_ListRules(t *testing.T) {
-	engine := NewEngine(testLogger())
+	engine := NewEngine(testutil.Logger())
 	rules := engine.ListRules()
 
 	// Verify default rules exist
@@ -49,7 +45,7 @@ func TestEngine_ListRules(t *testing.T) {
 }
 
 func TestEngine_GetRule(t *testing.T) {
-	engine := NewEngine(testLogger())
+	engine := NewEngine(testutil.Logger())
 
 	// Get existing rule
 	rule, ok := engine.GetRule("auto-ticket-critical")
@@ -73,7 +69,7 @@ func TestEngine_GetRule(t *testing.T) {
 }
 
 func TestEngine_EnableDisableRule(t *testing.T) {
-	engine := NewEngine(testLogger())
+	engine := NewEngine(testutil.Logger())
 
 	// Disable rule
 	err := engine.DisableRule("auto-ticket-critical")
@@ -105,7 +101,7 @@ func TestEngine_EnableDisableRule(t *testing.T) {
 }
 
 func TestEngine_AddRule(t *testing.T) {
-	engine := NewEngine(testLogger())
+	engine := NewEngine(testutil.Logger())
 
 	rule := Rule{
 		ID:          "test-rule",
@@ -141,7 +137,7 @@ func TestEngine_AddRule(t *testing.T) {
 }
 
 func TestEngine_RuleWithActions(t *testing.T) {
-	engine := NewEngine(testLogger())
+	engine := NewEngine(testutil.Logger())
 
 	rule := Rule{
 		ID:      "multi-action",
@@ -170,7 +166,7 @@ func TestEngine_RuleWithActions(t *testing.T) {
 }
 
 func TestEngine_Evaluate(t *testing.T) {
-	engine := NewEngine(testLogger())
+	engine := NewEngine(testutil.Logger())
 
 	tests := []struct {
 		name      string
@@ -224,7 +220,7 @@ func TestEngine_Evaluate(t *testing.T) {
 }
 
 func TestEngine_EvaluateCreatesExecution(t *testing.T) {
-	engine := NewEngine(testLogger())
+	engine := NewEngine(testutil.Logger())
 
 	event := Event{
 		Type:      TriggerFindingCreated,
@@ -256,7 +252,7 @@ func TestEngine_EvaluateCreatesExecution(t *testing.T) {
 }
 
 func TestEngine_GetExecution(t *testing.T) {
-	engine := NewEngine(testLogger())
+	engine := NewEngine(testutil.Logger())
 
 	event := Event{
 		Type:      TriggerFindingCreated,
@@ -289,7 +285,7 @@ func TestEngine_GetExecution(t *testing.T) {
 }
 
 func TestEngine_ListExecutions(t *testing.T) {
-	engine := NewEngine(testLogger())
+	engine := NewEngine(testutil.Logger())
 
 	// Create multiple executions via Evaluate
 	for i := 0; i < 5; i++ {
@@ -364,7 +360,7 @@ func TestActionType(t *testing.T) {
 }
 
 func TestEngine_EvaluateSignalRuleWithConditions(t *testing.T) {
-	engine := NewEngine(testLogger())
+	engine := NewEngine(testutil.Logger())
 
 	event := Event{
 		Type:       TriggerSignalCreated,

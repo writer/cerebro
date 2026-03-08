@@ -4,10 +4,12 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/evalops/cerebro/internal/testutil"
 )
 
 func TestExecutor_ApproveBypassesApprovalGate(t *testing.T) {
-	engine := NewEngine(testLogger())
+	engine := NewEngine(testutil.Logger())
 	rule := Rule{
 		ID:      "approval-test",
 		Name:    "Approval Test",
@@ -56,7 +58,7 @@ func TestExecutor_ApproveBypassesApprovalGate(t *testing.T) {
 }
 
 func TestExecutor_RemoteActionFailsWithoutRemoteCaller(t *testing.T) {
-	engine := NewEngine(testLogger())
+	engine := NewEngine(testutil.Logger())
 	rule := Rule{
 		ID:      "remote-action-test",
 		Name:    "Remote Action Test",

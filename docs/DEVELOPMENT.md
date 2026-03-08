@@ -66,6 +66,9 @@ make config-docs-check
 
 # Run go:generate directives for generated artifacts
 go generate ./internal/app ./internal/api
+
+# Reuse shared test helpers (logger/context)
+go test ./internal/testutil
 ```
 
 ### Building
