@@ -57,6 +57,11 @@ type RelationshipExtractor struct {
 	runSyncTime time.Time
 }
 
+type relationshipExtractionStep struct {
+	name string
+	fn   func(context.Context) (int, error)
+}
+
 // RelationshipBackfillStats summarizes normalization updates.
 type RelationshipBackfillStats struct {
 	Scanned int `json:"scanned"`
@@ -67,6 +72,30 @@ type RelationshipBackfillStats struct {
 
 var relationshipNowUTC = func() time.Time {
 	return time.Now().UTC().Truncate(time.Millisecond)
+}
+
+var relationshipEnsureTable = func(r *RelationshipExtractor, ctx context.Context) error {
+	return r.ensureTable(ctx)
+}
+
+var relationshipCleanupStale = func(r *RelationshipExtractor, ctx context.Context, runSyncTime time.Time) error {
+	return r.cleanupStaleRelationships(ctx, runSyncTime)
+}
+
+var relationshipExtractionSteps = func(r *RelationshipExtractor) []relationshipExtractionStep {
+	return []relationshipExtractionStep{
+		{name: "EC2", fn: r.extractEC2Relationships},
+		{name: "IAM role", fn: r.extractIAMRoleRelationships},
+		{name: "Lambda", fn: r.extractLambdaRelationships},
+		{name: "Security Group", fn: r.extractSecurityGroupRelationships},
+		{name: "S3", fn: r.extractS3Relationships},
+		{name: "ECS", fn: r.extractECSRelationships},
+		{name: "RDS", fn: r.extractRDSRelationships},
+		{name: "EKS", fn: r.extractEKSRelationships},
+		{name: "GCP", fn: r.extractGCPRelationships},
+		{name: "Azure", fn: r.extractAzureRelationships},
+		{name: "Okta", fn: r.extractOktaRelationships},
+	}
 }
 
 var relationshipSchemaName = func(sf *snowflake.Client) string {
@@ -92,7 +121,7 @@ func NewRelationshipExtractor(sf *snowflake.Client, logger *slog.Logger) *Relati
 // ExtractAndPersist queries synced tables and extracts relationships
 func (r *RelationshipExtractor) ExtractAndPersist(ctx context.Context) (int, error) {
 	// Ensure relationships table exists
-	if err := r.ensureTable(ctx); err != nil {
+	if err := relationshipEnsureTable(r, ctx); err != nil {
 		return 0, err
 	}
 
@@ -105,98 +134,20 @@ func (r *RelationshipExtractor) ExtractAndPersist(ctx context.Context) (int, err
 	var totalRels int
 	var hadErrors bool
 
-	// Extract from EC2 instances
-	count, err := r.extractEC2Relationships(ctx)
-	if err != nil {
-		hadErrors = true
-		r.logger.Warn("failed to extract EC2 relationships", "error", err)
+	for _, step := range relationshipExtractionSteps(r) {
+		count, err := step.fn(ctx)
+		if err != nil {
+			hadErrors = true
+			r.logger.Warn("failed to extract relationships", "extractor", step.name, "error", err)
+		}
+		totalRels += count
 	}
-	totalRels += count
 
-	// Extract from IAM roles
-	count, err = r.extractIAMRoleRelationships(ctx)
-	if err != nil {
-		hadErrors = true
-		r.logger.Warn("failed to extract IAM role relationships", "error", err)
-	}
-	totalRels += count
-
-	// Extract from Lambda functions
-	count, err = r.extractLambdaRelationships(ctx)
-	if err != nil {
-		hadErrors = true
-		r.logger.Warn("failed to extract Lambda relationships", "error", err)
-	}
-	totalRels += count
-
-	// Extract from Security Groups
-	count, err = r.extractSecurityGroupRelationships(ctx)
-	if err != nil {
-		hadErrors = true
-		r.logger.Warn("failed to extract Security Group relationships", "error", err)
-	}
-	totalRels += count
-
-	// Extract from S3 buckets
-	count, err = r.extractS3Relationships(ctx)
-	if err != nil {
-		hadErrors = true
-		r.logger.Warn("failed to extract S3 relationships", "error", err)
-	}
-	totalRels += count
-
-	// Extract from ECS
-	count, err = r.extractECSRelationships(ctx)
-	if err != nil {
-		hadErrors = true
-		r.logger.Warn("failed to extract ECS relationships", "error", err)
-	}
-	totalRels += count
-
-	// Extract from RDS
-	count, err = r.extractRDSRelationships(ctx)
-	if err != nil {
-		hadErrors = true
-		r.logger.Warn("failed to extract RDS relationships", "error", err)
-	}
-	totalRels += count
-
-	// Extract from EKS
-	count, err = r.extractEKSRelationships(ctx)
-	if err != nil {
-		hadErrors = true
-		r.logger.Warn("failed to extract EKS relationships", "error", err)
-	}
-	totalRels += count
-
-	// Extract GCP relationships
-	count, err = r.extractGCPRelationships(ctx)
-	if err != nil {
-		hadErrors = true
-		r.logger.Warn("failed to extract GCP relationships", "error", err)
-	}
-	totalRels += count
-
-	// Extract Azure relationships
-	count, err = r.extractAzureRelationships(ctx)
-	if err != nil {
-		hadErrors = true
-		r.logger.Warn("failed to extract Azure relationships", "error", err)
-	}
-	totalRels += count
-
-	// Extract Okta relationships
-	count, err = r.extractOktaRelationships(ctx)
-	if err != nil {
-		hadErrors = true
-		r.logger.Warn("failed to extract Okta relationships", "error", err)
-	}
-	totalRels += count
-
-	// Cleanup stale relationships from earlier runs.
-	// Only cleanup if extraction had no errors.
-	if !hadErrors && totalRels > 0 {
-		if err := r.cleanupStaleRelationships(ctx, runSyncTime); err != nil {
+	// Cleanup stale relationships from earlier runs when at least one extractor
+	// persisted relationships in this run. This prevents stale/orphaned edges
+	// from persisting when a subset of extractors fails.
+	if totalRels > 0 {
+		if err := relationshipCleanupStale(r, ctx, runSyncTime); err != nil {
 			r.logger.Warn("failed to clean up stale relationships", "error", err)
 		}
 	}
