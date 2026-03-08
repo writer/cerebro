@@ -1,6 +1,11 @@
 package app
 
 import (
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -201,6 +206,74 @@ func TestDependabotConfigCoversCoreEcosystems(t *testing.T) {
 		if !strings.Contains(text, group+":") {
 			t.Fatalf("expected dependabot config to include %s group", group)
 		}
+	}
+}
+
+func TestNoLogPrintCallsInAppCode(t *testing.T) {
+	root := repoRoot(t)
+	roots := []string{
+		filepath.Join(root, "cmd"),
+		filepath.Join(root, "internal"),
+	}
+	printCalls := map[string]struct{}{
+		"Print":   {},
+		"Printf":  {},
+		"Println": {},
+	}
+
+	fset := token.NewFileSet()
+	violations := make([]string, 0)
+	for _, scanRoot := range roots {
+		err := filepath.WalkDir(scanRoot, func(path string, d fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if d.IsDir() {
+				return nil
+			}
+			if filepath.Ext(path) != ".go" {
+				return nil
+			}
+
+			file, err := parser.ParseFile(fset, path, nil, 0)
+			if err != nil {
+				return err
+			}
+
+			ast.Inspect(file, func(n ast.Node) bool {
+				call, ok := n.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				sel, ok := call.Fun.(*ast.SelectorExpr)
+				if !ok || sel.Sel == nil {
+					return true
+				}
+				pkg, ok := sel.X.(*ast.Ident)
+				if !ok || pkg.Name != "log" {
+					return true
+				}
+				if _, ok := printCalls[sel.Sel.Name]; !ok {
+					return true
+				}
+
+				relPath, relErr := filepath.Rel(root, path)
+				if relErr != nil {
+					relPath = path
+				}
+				pos := fset.Position(call.Pos())
+				violations = append(violations, fmt.Sprintf("%s:%d uses log.%s", relPath, pos.Line, sel.Sel.Name))
+				return true
+			})
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("scan %s: %v", scanRoot, err)
+		}
+	}
+
+	if len(violations) > 0 {
+		t.Fatalf("found disallowed log.Print* calls:\n%s", strings.Join(violations, "\n"))
 	}
 }
 
