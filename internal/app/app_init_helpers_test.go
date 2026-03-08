@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -88,5 +89,27 @@ func TestRunInitTasksConcurrently_PropagatesTaskPanic(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "panic-task init panic") {
 		t.Fatalf("expected task name in error, got: %v", err)
+	}
+}
+
+func TestValidateRequiredServices_ReturnsSortedMissingList(t *testing.T) {
+	a := &App{}
+
+	err := a.validateRequiredServices()
+	if err == nil {
+		t.Fatal("expected validation error when required services are missing")
+	}
+
+	const prefix = "required services not initialized: "
+	if !strings.HasPrefix(err.Error(), prefix) {
+		t.Fatalf("unexpected error prefix: %v", err)
+	}
+
+	missing := strings.Split(strings.TrimPrefix(err.Error(), prefix), ", ")
+	if len(missing) == 0 {
+		t.Fatalf("expected missing services in error: %v", err)
+	}
+	if !sort.StringsAreSorted(missing) {
+		t.Fatalf("expected sorted missing services, got: %v", missing)
 	}
 }
