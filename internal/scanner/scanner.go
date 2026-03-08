@@ -78,7 +78,40 @@ func hashAsset(asset map[string]interface{}) string {
 		h.Write([]byte(k))
 		h.Write(v)
 	}
-	return hex.EncodeToString(h.Sum(nil))[:16]
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func policyCacheFingerprint(policies []*policy.Policy) string {
+	if len(policies) == 0 {
+		return "none"
+	}
+
+	sorted := make([]*policy.Policy, 0, len(policies))
+	sorted = append(sorted, policies...)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].ID < sorted[j].ID
+	})
+
+	h := sha256.New()
+	for _, p := range sorted {
+		if p == nil {
+			continue
+		}
+		// Include core evaluation inputs so policy updates invalidate cache keys.
+		h.Write([]byte(p.ID))
+		h.Write([]byte{0})
+		h.Write([]byte(p.Effect))
+		h.Write([]byte{0})
+		h.Write([]byte(p.Resource))
+		h.Write([]byte{0})
+		h.Write([]byte(strings.Join(p.Conditions, "&&")))
+		h.Write([]byte{0})
+		h.Write([]byte(p.Query))
+		h.Write([]byte{0})
+		h.Write([]byte(p.Severity))
+		h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 type ScanResult struct {
@@ -117,6 +150,10 @@ func (s *Scanner) ScanAssets(ctx context.Context, assets []map[string]interface{
 	var skipped int64
 	var cacheHits int64
 	var cacheMisses int64
+	cachePolicyKey := evalCacheNamespace
+	if s.evalCache != nil {
+		cachePolicyKey = evalCacheNamespace + ":" + policyCacheFingerprint(s.engine.ListPolicies())
+	}
 
 	// Start workers
 	var wg sync.WaitGroup
@@ -142,7 +179,7 @@ func (s *Scanner) ScanAssets(ctx context.Context, assets []map[string]interface{
 				if s.evalCache != nil && assetID != "" {
 					contentHash = hashAsset(asset)
 					cacheAssetID := assetID + ":" + contentHash
-					if cached, hit := s.evalCache.GetEvaluation(evalCacheNamespace, cacheAssetID); hit {
+					if cached, hit := s.evalCache.GetEvaluation(cachePolicyKey, cacheAssetID); hit {
 						atomic.AddInt64(&scanned, 1)
 						atomic.AddInt64(&skipped, 1)
 						atomic.AddInt64(&cacheHits, 1)
@@ -172,7 +209,7 @@ func (s *Scanner) ScanAssets(ctx context.Context, assets []map[string]interface{
 
 				if s.evalCache != nil && assetID != "" {
 					cacheAssetID := assetID + ":" + contentHash
-					s.evalCache.SetEvaluation(evalCacheNamespace, cacheAssetID, findings)
+					s.evalCache.SetEvaluation(cachePolicyKey, cacheAssetID, findings)
 				}
 
 				if len(findings) > 0 {

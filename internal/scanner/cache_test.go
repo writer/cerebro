@@ -22,6 +22,9 @@ func TestHashAsset_Deterministic(t *testing.T) {
 	if h1 != h2 {
 		t.Error("same asset should produce same hash")
 	}
+	if len(h1) != 64 {
+		t.Errorf("expected full SHA256 hex length (64), got %d", len(h1))
+	}
 }
 
 func TestHashAsset_ExcludesMetadata(t *testing.T) {
@@ -133,5 +136,45 @@ func TestScannerCacheCountersArePerScan(t *testing.T) {
 	}
 	if r2.CacheMisses != r3.CacheMisses {
 		t.Errorf("cache misses should be per-scan: scan2=%d scan3=%d", r2.CacheMisses, r3.CacheMisses)
+	}
+}
+
+func TestScannerCacheInvalidatesWhenPoliciesChange(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	engine := policy.NewEngine()
+	engine.AddPolicy(&policy.Policy{
+		ID:         "pub-check",
+		Effect:     "forbid",
+		Conditions: []string{"public == true"},
+		Severity:   "high",
+	})
+
+	c := cache.NewPolicyCache(1000, 5*time.Minute)
+	s := NewScanner(engine, ScanConfig{Workers: 1}, logger)
+	s.SetCache(c)
+
+	assets := []map[string]interface{}{
+		{"_cq_id": "1", "name": "bucket", "public": "true"},
+	}
+
+	_ = s.ScanAssets(context.Background(), assets)
+	r2 := s.ScanAssets(context.Background(), assets)
+	if r2.CacheHits != 1 {
+		t.Fatalf("expected cache hit before policy change, got %d", r2.CacheHits)
+	}
+
+	engine.AddPolicy(&policy.Policy{
+		ID:         "name-check",
+		Effect:     "forbid",
+		Conditions: []string{"name == 'bucket'"},
+		Severity:   "medium",
+	})
+
+	r3 := s.ScanAssets(context.Background(), assets)
+	if r3.CacheMisses != 1 {
+		t.Fatalf("expected cache miss after policy change, got %d", r3.CacheMisses)
+	}
+	if r3.CacheHits != 0 {
+		t.Fatalf("expected zero cache hits immediately after policy change, got %d", r3.CacheHits)
 	}
 }
