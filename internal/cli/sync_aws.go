@@ -238,6 +238,7 @@ func runNativeSync(ctx context.Context, start time.Time) error {
 			Warning("API client configuration invalid; using direct mode: %v", err)
 		} else {
 			resp, err := apiClient.RunAWSSync(ctx, apiclient.AWSSyncRequest{
+				Profile:     strings.TrimSpace(syncAWSProfile),
 				Region:      strings.TrimSpace(syncRegion),
 				MultiRegion: syncMultiRegion,
 				Concurrency: syncConcurrency,
@@ -297,9 +298,6 @@ func runNativeSync(ctx context.Context, start time.Time) error {
 }
 
 func syncSupportsAWSAPIMode() (bool, string) {
-	if strings.TrimSpace(syncAWSProfile) != "" {
-		return false, "--aws-profile requires direct mode"
-	}
 	if strings.TrimSpace(syncAWSConfigFile) != "" {
 		return false, "--aws-config-file requires direct mode"
 	}

@@ -207,6 +207,9 @@ func TestSyncAWS_UsesRequestOptions(t *testing.T) {
 		if client != s.app.Snowflake {
 			t.Fatalf("expected server snowflake client to be passed through")
 		}
+		if req.Profile != "prod-profile" {
+			t.Fatalf("expected profile prod-profile, got %q", req.Profile)
+		}
 		if req.Region != "us-west-2" {
 			t.Fatalf("expected region us-west-2, got %q", req.Region)
 		}
@@ -230,6 +233,7 @@ func TestSyncAWS_UsesRequestOptions(t *testing.T) {
 	}
 
 	w := do(t, s, http.MethodPost, "/api/v1/sync/aws", map[string]interface{}{
+		"profile":      " prod-profile ",
 		"region":       " us-west-2 ",
 		"multi_region": true,
 		"concurrency":  6,

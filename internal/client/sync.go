@@ -75,6 +75,7 @@ func (c *Client) RunAzureSync(ctx context.Context, req AzureSyncRequest) (*SyncR
 }
 
 type AWSSyncRequest struct {
+	Profile     string
 	Region      string
 	MultiRegion bool
 	Concurrency int
@@ -84,8 +85,15 @@ type AWSSyncRequest struct {
 
 func (c *Client) RunAWSSync(ctx context.Context, req AWSSyncRequest) (*SyncRunResponse, error) {
 	var reqBody map[string]interface{}
+	if profile := strings.TrimSpace(req.Profile); profile != "" {
+		reqBody = map[string]interface{}{"profile": profile}
+	}
 	if region := strings.TrimSpace(req.Region); region != "" {
-		reqBody = map[string]interface{}{"region": region}
+		if reqBody == nil {
+			reqBody = map[string]interface{}{"region": region}
+		} else {
+			reqBody["region"] = region
+		}
 	}
 	if req.MultiRegion {
 		if reqBody == nil {

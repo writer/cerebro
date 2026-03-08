@@ -808,6 +808,8 @@ paths:
             schema:
               type: object
               properties:
+                profile:
+                  type: string
                 region:
                   type: string
                 multi_region:

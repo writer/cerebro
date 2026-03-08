@@ -212,6 +212,9 @@ func TestRunAWSSync_SendsRequestAndParsesResponse(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			t.Fatalf("decode request body: %v", err)
 		}
+		if req["profile"] != "prod-profile" {
+			t.Fatalf("expected profile prod-profile, got %#v", req["profile"])
+		}
 		if req["region"] != "us-west-2" {
 			t.Fatalf("expected region us-west-2, got %#v", req["region"])
 		}
@@ -255,6 +258,7 @@ func TestRunAWSSync_SendsRequestAndParsesResponse(t *testing.T) {
 	}
 
 	resp, err := c.RunAWSSync(context.Background(), AWSSyncRequest{
+		Profile:     " prod-profile ",
 		Region:      " us-west-2 ",
 		MultiRegion: true,
 		Concurrency: 11,

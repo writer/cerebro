@@ -109,6 +109,9 @@ func TestRunNativeSync_APIModeSuccess(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
+		if req["profile"] != "prod-profile" {
+			t.Fatalf("expected profile=prod-profile, got %#v", req["profile"])
+		}
 		if req["region"] != "us-west-2" {
 			t.Fatalf("expected region=us-west-2, got %#v", req["region"])
 		}
@@ -146,7 +149,7 @@ func TestRunNativeSync_APIModeSuccess(t *testing.T) {
 	syncScanAfter = false
 	syncOutput = FormatTable
 	syncStrictExit = false
-	syncAWSProfile = ""
+	syncAWSProfile = "prod-profile"
 	syncAWSConfigFile = ""
 	syncAWSSharedCredsFile = ""
 	syncAWSCredentialProc = ""
@@ -239,7 +242,7 @@ func TestRunNativeSync_APIModeIncompatibleFlagsError(t *testing.T) {
 	}
 
 	t.Setenv(envCLIExecutionMode, string(cliExecutionModeAPI))
-	syncAWSProfile = "dev-profile"
+	syncAWSConfigFile = "/tmp/aws-config"
 
 	err := runNativeSync(context.Background(), time.Now())
 	if err == nil {
@@ -261,7 +264,7 @@ func TestRunNativeSync_AutoModeIncompatibleFlagsFallbackToDirect(t *testing.T) {
 	}
 
 	t.Setenv(envCLIExecutionMode, string(cliExecutionModeAuto))
-	syncAWSProfile = "dev-profile"
+	syncAWSConfigFile = "/tmp/aws-config"
 
 	if err := runNativeSync(context.Background(), time.Now()); err != nil {
 		t.Fatalf("expected direct fallback success, got error: %v", err)

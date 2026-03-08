@@ -188,6 +188,7 @@ func (s *Server) syncK8s(w http.ResponseWriter, r *http.Request) {
 }
 
 type awsSyncRequest struct {
+	Profile     string   `json:"profile"`
 	Region      string   `json:"region"`
 	MultiRegion bool     `json:"multi_region"`
 	Concurrency int      `json:"concurrency"`
@@ -202,7 +203,10 @@ type awsSyncOutcome struct {
 }
 
 var runAWSSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req awsSyncRequest) (*awsSyncOutcome, error) {
-	loadOptions := make([]func(*config.LoadOptions) error, 0, 1)
+	loadOptions := make([]func(*config.LoadOptions) error, 0, 2)
+	if req.Profile != "" {
+		loadOptions = append(loadOptions, config.WithSharedConfigProfile(req.Profile))
+	}
 	if req.Region != "" {
 		loadOptions = append(loadOptions, config.WithRegion(req.Region))
 	}
@@ -275,6 +279,7 @@ func (s *Server) syncAWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	req.Profile = strings.TrimSpace(req.Profile)
 	req.Region = strings.TrimSpace(req.Region)
 	req.Tables = normalizeSyncTables(req.Tables)
 
