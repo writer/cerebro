@@ -48,19 +48,39 @@ var policyTestCmd = &cobra.Command{
 	RunE:  runPolicyTest,
 }
 
+var policyDiffCmd = &cobra.Command{
+	Use:   "diff [policy-id] [candidate-file]",
+	Short: "Preview semantic and behavioral impact of a policy change",
+	Long: `Diff a candidate policy against the currently loaded version.
+
+Optionally provide --assets with a JSON object/array to run a dry-run impact
+analysis without persisting any findings.
+
+Examples:
+  cerebro policy diff aws-s3-no-public ./candidate.json
+  cerebro policy diff aws-s3-no-public ./candidate.json --assets ./assets.json --output json`,
+	Args: cobra.ExactArgs(2),
+	RunE: runPolicyDiff,
+}
+
 var (
 	policyValidateOutput string
 	policyTestOutput     string
+	policyDiffOutput     string
+	policyDiffAssetFile  string
 )
 
 func init() {
 	policyCmd.AddCommand(policyListCmd)
 	policyCmd.AddCommand(policyValidateCmd)
 	policyCmd.AddCommand(policyTestCmd)
+	policyCmd.AddCommand(policyDiffCmd)
 
 	policyListCmd.Flags().StringVarP(&policyOutput, "output", "o", "table", "Output format (table,json,wide)")
 	policyValidateCmd.Flags().StringVarP(&policyValidateOutput, "output", "o", "text", "Output format (text,json)")
 	policyTestCmd.Flags().StringVarP(&policyTestOutput, "output", "o", "text", "Output format (text,json)")
+	policyDiffCmd.Flags().StringVarP(&policyDiffOutput, "output", "o", "text", "Output format (text,json)")
+	policyDiffCmd.Flags().StringVar(&policyDiffAssetFile, "assets", "", "Optional JSON asset fixture (object or array) for dry-run impact preview")
 }
 
 func policiesPath() string {
@@ -237,4 +257,102 @@ func runPolicyTest(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+func runPolicyDiff(cmd *cobra.Command, args []string) error {
+	policyID := strings.TrimSpace(args[0])
+	candidatePath := strings.TrimSpace(args[1])
+	if policyID == "" {
+		return fmt.Errorf("policy id is required")
+	}
+	if candidatePath == "" {
+		return fmt.Errorf("candidate file is required")
+	}
+
+	engine := policy.NewEngine()
+	if err := engine.LoadPolicies(policiesPath()); err != nil {
+		return fmt.Errorf("load policies: %w", err)
+	}
+
+	current, ok := engine.GetPolicy(policyID)
+	if !ok {
+		return fmt.Errorf("policy not found: %s", policyID)
+	}
+
+	data, err := os.ReadFile(candidatePath) // #nosec G304 -- candidate policy path is explicitly provided by caller
+	if err != nil {
+		return fmt.Errorf("read candidate policy: %w", err)
+	}
+	var candidate policy.Policy
+	if err := json.Unmarshal(data, &candidate); err != nil {
+		return fmt.Errorf("parse candidate policy: %w", err)
+	}
+	candidate.ID = policyID
+
+	diff := policy.DiffPolicies(current, &candidate)
+	response := map[string]interface{}{
+		"policy_id":      policyID,
+		"candidate_file": candidatePath,
+		"changed":        diff.Changed,
+		"diff":           diff,
+	}
+
+	if assetsPath := strings.TrimSpace(policyDiffAssetFile); assetsPath != "" {
+		assets, err := loadPolicyDiffAssets(assetsPath)
+		if err != nil {
+			return err
+		}
+		impact, err := engine.DryRunPolicyChange(cmd.Context(), current, &candidate, assets)
+		if err != nil {
+			return err
+		}
+		response["assets_file"] = assetsPath
+		response["impact"] = impact
+	}
+
+	if policyDiffOutput == FormatJSON {
+		return JSONOutput(response)
+	}
+
+	fmt.Printf("Policy: %s\n", policyID)
+	fmt.Printf("Candidate: %s\n", candidatePath)
+	if !diff.Changed {
+		fmt.Println("Diff: no semantic changes")
+	} else {
+		fmt.Printf("Diff: %d changed fields\n", len(diff.FieldDiffs))
+		for _, field := range diff.FieldDiffs {
+			fmt.Printf("  - %s\n", field.Field)
+		}
+	}
+
+	if impactAny, ok := response["impact"]; ok {
+		impact := impactAny.(*policy.PolicyDryRunImpact)
+		fmt.Println("\nDry-run impact:")
+		fmt.Printf("  Assets:         %d\n", impact.AssetCount)
+		fmt.Printf("  Matches before: %d\n", impact.BeforeMatches)
+		fmt.Printf("  Matches after:  %d\n", impact.AfterMatches)
+		fmt.Printf("  Added findings: %d\n", len(impact.AddedFindingIDs))
+		fmt.Printf("  Removed findings: %d\n", len(impact.RemovedFindingIDs))
+	}
+
+	return nil
+}
+
+func loadPolicyDiffAssets(path string) ([]map[string]interface{}, error) {
+	data, err := os.ReadFile(path) // #nosec G304 -- path is explicitly provided by caller
+	if err != nil {
+		return nil, fmt.Errorf("read assets file: %w", err)
+	}
+
+	var list []map[string]interface{}
+	if err := json.Unmarshal(data, &list); err == nil {
+		return list, nil
+	}
+
+	var single map[string]interface{}
+	if err := json.Unmarshal(data, &single); err == nil {
+		return []map[string]interface{}{single}, nil
+	}
+
+	return nil, fmt.Errorf("assets file must contain a JSON object or array")
 }

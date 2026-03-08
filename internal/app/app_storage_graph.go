@@ -20,6 +20,7 @@ func (a *App) initRepositories() {
 	a.FindingsRepo = snowflake.NewFindingRepository(a.Snowflake)
 	a.TicketsRepo = snowflake.NewTicketRepository(a.Snowflake)
 	a.AuditRepo = snowflake.NewAuditRepository(a.Snowflake)
+	a.PolicyHistoryRepo = snowflake.NewPolicyHistoryRepository(a.Snowflake)
 }
 
 func (a *App) initSnowflakeFindings(ctx context.Context) {

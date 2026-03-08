@@ -528,6 +528,125 @@ func TestPolicyUpdateAndDelete(t *testing.T) {
 	}
 }
 
+func TestPolicyVersionsAndRollback(t *testing.T) {
+	s := newTestServer(t)
+
+	create := do(t, s, "POST", "/api/v1/policies/", policy.Policy{
+		ID:          "policy-history",
+		Name:        "V1",
+		Description: "version 1",
+		Effect:      "forbid",
+		Resource:    "aws::s3::bucket",
+		Conditions:  []string{"public == true"},
+		Severity:    "high",
+	})
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", create.Code, create.Body.String())
+	}
+
+	update := do(t, s, "PUT", "/api/v1/policies/policy-history", policy.Policy{
+		Name:        "V2",
+		Description: "version 2",
+		Effect:      "forbid",
+		Resource:    "aws::s3::bucket",
+		Conditions:  []string{"public == false"},
+		Severity:    "critical",
+	})
+	if update.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", update.Code, update.Body.String())
+	}
+
+	versionsResp := do(t, s, "GET", "/api/v1/policies/policy-history/versions", nil)
+	if versionsResp.Code != http.StatusOK {
+		t.Fatalf("expected 200 for versions, got %d: %s", versionsResp.Code, versionsResp.Body.String())
+	}
+	versionsBody := decodeJSON(t, versionsResp)
+	versions, ok := versionsBody["versions"].([]interface{})
+	if !ok {
+		t.Fatalf("expected versions array, got %T", versionsBody["versions"])
+	}
+	if len(versions) != 2 {
+		t.Fatalf("expected 2 versions, got %d", len(versions))
+	}
+
+	rollback := do(t, s, "POST", "/api/v1/policies/policy-history/rollback", map[string]interface{}{"version": 1})
+	if rollback.Code != http.StatusOK {
+		t.Fatalf("expected 200 on rollback, got %d: %s", rollback.Code, rollback.Body.String())
+	}
+	rollbackBody := decodeJSON(t, rollback)
+	if rollbackBody["version"].(float64) != 3 {
+		t.Fatalf("expected rollback to create version 3, got %v", rollbackBody["version"])
+	}
+	if rollbackBody["pinned_version"].(float64) != 1 {
+		t.Fatalf("expected pinned_version 1, got %v", rollbackBody["pinned_version"])
+	}
+	if rollbackBody["name"] != "V1" {
+		t.Fatalf("expected rollback content from version 1, got %v", rollbackBody["name"])
+	}
+}
+
+func TestPolicyDryRun_DoesNotPersistChanges(t *testing.T) {
+	s := newTestServer(t)
+
+	create := do(t, s, "POST", "/api/v1/policies/", policy.Policy{
+		ID:          "policy-dry-run-api",
+		Name:        "Current",
+		Description: "current",
+		Effect:      "forbid",
+		Resource:    "aws::s3::bucket",
+		Conditions:  []string{"public == true"},
+		Severity:    "high",
+	})
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", create.Code, create.Body.String())
+	}
+
+	dryRun := do(t, s, "POST", "/api/v1/policies/policy-dry-run-api/dry-run", map[string]interface{}{
+		"policy": map[string]interface{}{
+			"name":        "Candidate",
+			"description": "candidate",
+			"effect":      "forbid",
+			"resource":    "aws::s3::bucket",
+			"conditions":  []string{"public == false"},
+			"severity":    "high",
+		},
+		"assets": []map[string]interface{}{
+			{"_cq_id": "bucket-a", "_cq_table": "aws_s3_buckets", "public": "true"},
+			{"_cq_id": "bucket-b", "_cq_table": "aws_s3_buckets", "public": "false"},
+		},
+	})
+	if dryRun.Code != http.StatusOK {
+		t.Fatalf("expected 200 for dry-run, got %d: %s", dryRun.Code, dryRun.Body.String())
+	}
+	dryRunBody := decodeJSON(t, dryRun)
+	if dryRunBody["dry_run"] != true {
+		t.Fatalf("expected dry_run=true, got %v", dryRunBody["dry_run"])
+	}
+	impact, ok := dryRunBody["impact"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected impact object, got %T", dryRunBody["impact"])
+	}
+	if impact["before_matches"].(float64) != 1 {
+		t.Fatalf("expected before_matches=1, got %v", impact["before_matches"])
+	}
+	if impact["after_matches"].(float64) != 1 {
+		t.Fatalf("expected after_matches=1, got %v", impact["after_matches"])
+	}
+
+	get := do(t, s, "GET", "/api/v1/policies/policy-dry-run-api", nil)
+	if get.Code != http.StatusOK {
+		t.Fatalf("expected 200 on policy get, got %d", get.Code)
+	}
+	body := decodeJSON(t, get)
+	if body["name"] != "Current" {
+		t.Fatalf("expected persisted policy name to remain Current, got %v", body["name"])
+	}
+	conditions, ok := body["conditions"].([]interface{})
+	if !ok || len(conditions) != 1 || conditions[0] != "public == true" {
+		t.Fatalf("expected original conditions to remain, got %v", body["conditions"])
+	}
+}
+
 func TestGetPolicy_NotFound(t *testing.T) {
 	s := newTestServer(t)
 	w := do(t, s, "GET", "/api/v1/policies/nonexistent", nil)

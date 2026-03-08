@@ -260,6 +260,26 @@ func (s *Server) getPolicy(w http.ResponseWriter, r *http.Request) {
 	s.json(w, http.StatusOK, p)
 }
 
+func (s *Server) listPolicyVersions(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(chi.URLParam(r, "id"))
+	if id == "" {
+		s.error(w, http.StatusBadRequest, "policy id required")
+		return
+	}
+
+	versions := s.app.Policy.ListPolicyVersions(id)
+	if len(versions) == 0 {
+		s.error(w, http.StatusNotFound, "policy not found")
+		return
+	}
+
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"policy_id": id,
+		"versions":  versions,
+		"count":     len(versions),
+	})
+}
+
 func (s *Server) createPolicy(w http.ResponseWriter, r *http.Request) {
 	var p policy.Policy
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
@@ -267,7 +287,17 @@ func (s *Server) createPolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.app.Policy.AddPolicy(&p)
-	s.json(w, http.StatusCreated, p)
+
+	persisted, ok := s.app.Policy.GetPolicy(strings.TrimSpace(p.ID))
+	if !ok {
+		s.error(w, http.StatusInternalServerError, "failed to persist policy")
+		return
+	}
+	if err := s.persistPolicyHistory(r.Context(), persisted.ID); err != nil {
+		s.app.Logger.Warn("failed to persist policy history", "policy_id", persisted.ID, "error", err)
+	}
+
+	s.json(w, http.StatusCreated, persisted)
 }
 
 func (s *Server) updatePolicy(w http.ResponseWriter, r *http.Request) {
@@ -292,7 +322,17 @@ func (s *Server) updatePolicy(w http.ResponseWriter, r *http.Request) {
 		s.error(w, http.StatusNotFound, "policy not found")
 		return
 	}
-	s.json(w, http.StatusOK, p)
+
+	updated, ok := s.app.Policy.GetPolicy(id)
+	if !ok {
+		s.error(w, http.StatusInternalServerError, "failed to load updated policy")
+		return
+	}
+	if err := s.persistPolicyHistory(r.Context(), id); err != nil {
+		s.app.Logger.Warn("failed to persist policy history", "policy_id", id, "error", err)
+	}
+
+	s.json(w, http.StatusOK, updated)
 }
 
 func (s *Server) deletePolicy(w http.ResponseWriter, r *http.Request) {
@@ -305,7 +345,189 @@ func (s *Server) deletePolicy(w http.ResponseWriter, r *http.Request) {
 		s.error(w, http.StatusNotFound, "policy not found")
 		return
 	}
+	if err := s.persistPolicyHistory(r.Context(), id); err != nil {
+		s.app.Logger.Warn("failed to persist policy history", "policy_id", id, "error", err)
+	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+type policyRollbackRequest struct {
+	Version int `json:"version"`
+}
+
+func (s *Server) rollbackPolicy(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(chi.URLParam(r, "id"))
+	if id == "" {
+		s.error(w, http.StatusBadRequest, "policy id required")
+		return
+	}
+
+	var req policyRollbackRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.error(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	if req.Version <= 0 {
+		s.error(w, http.StatusBadRequest, "version must be positive")
+		return
+	}
+
+	rolledBack, err := s.app.Policy.RollbackPolicy(id, req.Version)
+	if err != nil {
+		s.error(w, http.StatusNotFound, err.Error())
+		return
+	}
+	if err := s.persistPolicyHistory(r.Context(), id); err != nil {
+		s.app.Logger.Warn("failed to persist policy history", "policy_id", id, "error", err)
+	}
+
+	s.json(w, http.StatusOK, rolledBack)
+}
+
+type policyDryRunRequest struct {
+	Policy     policy.Policy            `json:"policy"`
+	Assets     []map[string]interface{} `json:"assets"`
+	AssetLimit int                      `json:"asset_limit,omitempty"`
+}
+
+func (s *Server) dryRunPolicyChange(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(chi.URLParam(r, "id"))
+	if id == "" {
+		s.error(w, http.StatusBadRequest, "policy id required")
+		return
+	}
+
+	current, ok := s.app.Policy.GetPolicy(id)
+	if !ok {
+		s.error(w, http.StatusNotFound, "policy not found")
+		return
+	}
+
+	var req policyDryRunRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.error(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	candidate := req.Policy
+	candidate.ID = id
+	candidate.Version = current.Version
+	candidate.LastModified = current.LastModified
+
+	assets := req.Assets
+	assetSource := "request"
+	if len(assets) == 0 {
+		fetched, err := s.loadPolicyDryRunAssets(r.Context(), current, &candidate, req.AssetLimit)
+		if err != nil {
+			s.errorFromErr(w, err)
+			return
+		}
+		assets = fetched
+		if len(assets) == 0 {
+			assetSource = "none"
+		} else {
+			assetSource = "snowflake"
+		}
+	}
+
+	diff := policy.DiffPolicies(current, &candidate)
+	impact, err := s.app.Policy.DryRunPolicyChange(r.Context(), current, &candidate, assets)
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
+
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"dry_run":      true,
+		"policy_id":    id,
+		"asset_source": assetSource,
+		"diff":         diff,
+		"impact":       impact,
+	})
+}
+
+func (s *Server) persistPolicyHistory(ctx context.Context, policyID string) error {
+	if s.app.PolicyHistoryRepo == nil {
+		return nil
+	}
+
+	events := s.app.Policy.ListPolicyVersions(policyID)
+	for _, event := range events {
+		content, err := json.Marshal(event.Content)
+		if err != nil {
+			return fmt.Errorf("marshal policy history content: %w", err)
+		}
+
+		var pinnedVersion *int
+		if event.Content != nil && event.Content.PinnedVersion > 0 {
+			pinned := event.Content.PinnedVersion
+			pinnedVersion = &pinned
+		}
+
+		if err := s.app.PolicyHistoryRepo.Upsert(ctx, &snowflake.PolicyHistoryRecord{
+			PolicyID:      event.PolicyID,
+			Version:       event.Version,
+			Content:       content,
+			ChangeType:    string(event.EventType),
+			PinnedVersion: pinnedVersion,
+			EffectiveFrom: event.EffectiveFrom,
+			EffectiveTo:   event.EffectiveTo,
+		}); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *Server) loadPolicyDryRunAssets(ctx context.Context, current, candidate *policy.Policy, limit int) ([]map[string]interface{}, error) {
+	if s.app.Snowflake == nil {
+		return nil, nil
+	}
+
+	if limit <= 0 {
+		limit = 200
+	}
+	if limit > 2000 {
+		limit = 2000
+	}
+
+	tables := make(map[string]struct{})
+	addTables := func(policyDef *policy.Policy) {
+		if policyDef == nil {
+			return
+		}
+		for _, table := range policyDef.GetRequiredTables() {
+			table = strings.ToLower(strings.TrimSpace(table))
+			if table == "" || table == "*" {
+				continue
+			}
+			tables[table] = struct{}{}
+		}
+	}
+	addTables(current)
+	addTables(candidate)
+
+	if len(tables) == 0 {
+		return nil, nil
+	}
+
+	assets := make([]map[string]interface{}, 0, limit*len(tables))
+	for table := range tables {
+		rows, err := s.app.Snowflake.GetAssets(ctx, table, snowflake.AssetFilter{Limit: limit})
+		if err != nil {
+			s.app.Logger.Warn("dry-run asset load failed", "table", table, "error", err)
+			continue
+		}
+		for _, row := range rows {
+			if _, hasTable := row["_cq_table"]; !hasTable {
+				row["_cq_table"] = table
+			}
+			assets = append(assets, row)
+		}
+	}
+
+	return assets, nil
 }
 
 func (s *Server) evaluatePolicy(w http.ResponseWriter, r *http.Request) {

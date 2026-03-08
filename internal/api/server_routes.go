@@ -73,8 +73,11 @@ func (s *Server) setupRoutes() {
 		r.Route("/policies", func(r chi.Router) {
 			r.Get("/", s.listPolicies)
 			r.Get("/{id}", s.getPolicy)
+			r.Get("/{id}/versions", s.listPolicyVersions)
 			r.Post("/", s.createPolicy)
 			r.Put("/{id}", s.updatePolicy)
+			r.Post("/{id}/rollback", s.rollbackPolicy)
+			r.Post("/{id}/dry-run", s.dryRunPolicyChange)
 			r.Delete("/{id}", s.deletePolicy)
 			r.Post("/evaluate", s.evaluatePolicy)
 		})

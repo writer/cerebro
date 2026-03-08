@@ -377,3 +377,154 @@ func (r *AuditRepository) List(ctx context.Context, resourceType, resourceID str
 	}
 	return entries, nil
 }
+
+// PolicyHistoryRepository handles policy version history persistence.
+type PolicyHistoryRepository struct {
+	client *Client
+	schema string
+}
+
+func NewPolicyHistoryRepository(client *Client) *PolicyHistoryRepository {
+	return &PolicyHistoryRepository{
+		client: client,
+		schema: fmt.Sprintf("%s.%s", client.Database(), client.AppSchema()),
+	}
+}
+
+type PolicyHistoryRecord struct {
+	PolicyID      string          `json:"policy_id"`
+	Version       int             `json:"version"`
+	Content       json.RawMessage `json:"content"`
+	ChangeType    string          `json:"change_type,omitempty"`
+	PinnedVersion *int            `json:"pinned_version,omitempty"`
+	EffectiveFrom time.Time       `json:"effective_from"`
+	EffectiveTo   *time.Time      `json:"effective_to,omitempty"`
+}
+
+func (r *PolicyHistoryRepository) Upsert(ctx context.Context, record *PolicyHistoryRecord) error {
+	if record == nil {
+		return fmt.Errorf("policy history record is required")
+	}
+	if strings.TrimSpace(record.PolicyID) == "" {
+		return fmt.Errorf("policy id is required")
+	}
+	if record.Version <= 0 {
+		return fmt.Errorf("policy version must be positive")
+	}
+
+	policyHistoryTable, err := SafeQualifiedTableRef(r.schema, "policy_history")
+	if err != nil {
+		return fmt.Errorf("invalid policy_history table reference: %w", err)
+	}
+
+	content := record.Content
+	if len(content) == 0 {
+		content = []byte("{}")
+	}
+
+	effectiveFrom := record.EffectiveFrom.UTC()
+	if effectiveFrom.IsZero() {
+		effectiveFrom = time.Now().UTC()
+	}
+
+	var effectiveTo interface{}
+	if record.EffectiveTo != nil {
+		effectiveTo = record.EffectiveTo.UTC()
+	}
+
+	var pinnedVersion interface{}
+	if record.PinnedVersion != nil {
+		pinnedVersion = *record.PinnedVersion
+	}
+
+	// #nosec G202 -- policyHistoryTable is validated via SafeQualifiedTableRef.
+	query := `
+		MERGE INTO ` + policyHistoryTable + ` t
+		USING (SELECT ? AS policy_id, ? AS version) s
+		ON t.policy_id = s.policy_id AND t.version = s.version
+		WHEN MATCHED THEN UPDATE SET
+			content = PARSE_JSON(?),
+			change_type = ?,
+			pinned_version = ?,
+			effective_from = ?,
+			effective_to = ?
+		WHEN NOT MATCHED THEN INSERT (
+			policy_id, version, content, change_type, pinned_version, effective_from, effective_to
+		) VALUES (?, ?, PARSE_JSON(?), ?, ?, ?, ?)
+	`
+
+	_, err = r.client.db.ExecContext(ctx, query,
+		record.PolicyID, record.Version,
+		string(content), record.ChangeType, pinnedVersion, effectiveFrom, effectiveTo,
+		record.PolicyID, record.Version, string(content), record.ChangeType, pinnedVersion, effectiveFrom, effectiveTo,
+	)
+	return err
+}
+
+func (r *PolicyHistoryRepository) List(ctx context.Context, policyID string, limit int) ([]*PolicyHistoryRecord, error) {
+	policyID = strings.TrimSpace(policyID)
+	if policyID == "" {
+		return nil, fmt.Errorf("policy id is required")
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+
+	policyHistoryTable, err := SafeQualifiedTableRef(r.schema, "policy_history")
+	if err != nil {
+		return nil, fmt.Errorf("invalid policy_history table reference: %w", err)
+	}
+
+	// #nosec G202 -- policyHistoryTable is validated via SafeQualifiedTableRef.
+	query := `
+		SELECT policy_id, version, content, change_type, pinned_version, effective_from, effective_to
+		FROM ` + policyHistoryTable + `
+		WHERE policy_id = ?
+		ORDER BY version DESC
+		LIMIT ?
+	`
+
+	rows, err := r.client.db.QueryContext(ctx, query, policyID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	result := make([]*PolicyHistoryRecord, 0, limit)
+	for rows.Next() {
+		record := &PolicyHistoryRecord{}
+		var content []byte
+		var changeType sql.NullString
+		var pinned sql.NullInt64
+		var effectiveTo sql.NullTime
+		if err := rows.Scan(
+			&record.PolicyID,
+			&record.Version,
+			&content,
+			&changeType,
+			&pinned,
+			&record.EffectiveFrom,
+			&effectiveTo,
+		); err != nil {
+			return nil, err
+		}
+		record.Content = content
+		if changeType.Valid {
+			record.ChangeType = changeType.String
+		}
+		if pinned.Valid {
+			pinnedVal := int(pinned.Int64)
+			record.PinnedVersion = &pinnedVal
+		}
+		if effectiveTo.Valid {
+			ts := effectiveTo.Time
+			record.EffectiveTo = &ts
+		}
+		result = append(result, record)
+	}
+
+	return result, rows.Err()
+}

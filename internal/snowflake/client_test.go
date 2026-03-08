@@ -57,6 +57,7 @@ func TestTableDDLs(t *testing.T) {
 		"tickets",
 		"access_reviews",
 		"review_items",
+		"policy_history",
 	}
 
 	for _, table := range expectedTables {
