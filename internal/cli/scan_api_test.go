@@ -172,6 +172,13 @@ func TestScanSupportsAPIMode(t *testing.T) {
 	}
 	scanDryRun = false
 
+	scanFull = true
+	ok, reason = scanSupportsAPIMode(false)
+	if !ok {
+		t.Fatalf("expected --full to remain api-compatible, got false: %s", reason)
+	}
+	scanFull = false
+
 	scanToxicCombos = true
 	ok, reason = scanSupportsAPIMode(false)
 	if ok || !strings.Contains(reason, "--toxic-combos") {

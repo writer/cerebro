@@ -762,9 +762,6 @@ func scanSupportsAPIMode(localMode bool) (bool, string) {
 	if scanExtractRelationships {
 		return false, "--extract-relationships requires direct execution"
 	}
-	if scanFull {
-		return false, "--full requires direct execution"
-	}
 	if scanToxicCombos {
 		return false, "--toxic-combos currently requires direct execution"
 	}
