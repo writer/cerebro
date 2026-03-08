@@ -28,15 +28,16 @@ const (
 	EdgeKindProvisionedAs  EdgeKind = "provisioned_as"
 
 	// Business relationships
-	EdgeKindOwns         EdgeKind = "owns"
-	EdgeKindSubscribedTo EdgeKind = "subscribed_to"
-	EdgeKindBilledBy     EdgeKind = "billed_by"
-	EdgeKindWorksAt      EdgeKind = "works_at"
-	EdgeKindManagedBy    EdgeKind = "managed_by"
-	EdgeKindAssignedTo   EdgeKind = "assigned_to"
-	EdgeKindRenews       EdgeKind = "renews"
-	EdgeKindEscalatedTo  EdgeKind = "escalated_to"
-	EdgeKindRefers       EdgeKind = "refers"
+	EdgeKindOwns           EdgeKind = "owns"
+	EdgeKindSubscribedTo   EdgeKind = "subscribed_to"
+	EdgeKindBilledBy       EdgeKind = "billed_by"
+	EdgeKindWorksAt        EdgeKind = "works_at"
+	EdgeKindManagedBy      EdgeKind = "managed_by"
+	EdgeKindAssignedTo     EdgeKind = "assigned_to"
+	EdgeKindRenews         EdgeKind = "renews"
+	EdgeKindEscalatedTo    EdgeKind = "escalated_to"
+	EdgeKindRefers         EdgeKind = "refers"
+	EdgeKindInteractedWith EdgeKind = "interacted_with"
 )
 
 // EdgeEffect represents whether an edge allows or denies access

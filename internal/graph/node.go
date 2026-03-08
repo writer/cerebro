@@ -54,6 +54,7 @@ const (
 	NodeKindInvoice      NodeKind = "invoice"
 	NodeKindTicket       NodeKind = "ticket"
 	NodeKindLead         NodeKind = "lead"
+	NodeKindActivity     NodeKind = "activity"
 )
 
 // RiskLevel represents the risk level of a node or edge

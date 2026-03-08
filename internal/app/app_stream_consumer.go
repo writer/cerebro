@@ -71,6 +71,9 @@ func (a *App) handleTapCloudEvent(_ context.Context, evt events.CloudEvent) erro
 	if system == "" {
 		return nil
 	}
+	if isTapActivityType(evt.Type) {
+		return a.handleTapActivityEvent(system, entityType, evt)
+	}
 
 	entityID := strings.TrimSpace(anyToString(evt.Data["entity_id"]))
 	if entityID == "" {
@@ -156,11 +159,168 @@ func parseTapType(eventType string) (system string, entityType string, action st
 	if len(parts) < 5 {
 		return "", "", ""
 	}
+	if len(parts) >= 5 && strings.EqualFold(parts[2], "activity") {
+		// ensemble.tap.activity.<source>.<type>
+		return strings.ToLower(parts[3]), strings.ToLower(parts[4]), strings.ToLower(parts[len(parts)-1])
+	}
 	// ensemble.tap.<system>.<entity>.<action>
 	system = strings.ToLower(parts[2])
 	entityType = strings.ToLower(parts[3])
 	action = strings.ToLower(parts[len(parts)-1])
 	return system, entityType, action
+}
+
+func isTapActivityType(eventType string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(eventType)), "ensemble.tap.activity.")
+}
+
+func (a *App) handleTapActivityEvent(source, activityType string, evt events.CloudEvent) error {
+	if a.SecurityGraph == nil {
+		a.SecurityGraph = graph.New()
+	}
+
+	actorID, actorName := parseTapActivityActor(evt.Data["actor"])
+	if actorID == "" {
+		actorID = strings.TrimSpace(anyToString(firstPresent(evt.Data, "actor_email", "actor_id", "user_email", "user_id")))
+	}
+	if actorID == "" {
+		return nil
+	}
+	actorNodeID := actorID
+	if !strings.Contains(actorNodeID, ":") {
+		actorNodeID = "person:" + strings.ToLower(actorNodeID)
+	}
+
+	targetNodeID, targetKind, targetName := parseTapActivityTarget(evt.Data["target"], source)
+	if targetNodeID == "" {
+		targetID := strings.TrimSpace(anyToString(firstPresent(evt.Data, "entity_id", "target_id", "id")))
+		if targetID != "" {
+			targetNodeID = fmt.Sprintf("%s:entity:%s", source, targetID)
+			targetKind = graph.NodeKindCompany
+			targetName = targetID
+		}
+	}
+	if targetNodeID == "" {
+		return nil
+	}
+
+	occurredAt := evt.Time.UTC()
+	if ts, ok := parseTimeValue(firstPresent(evt.Data, "timestamp", "event_time", "occurred_at")); ok {
+		occurredAt = ts.UTC()
+	}
+	action := strings.TrimSpace(anyToString(evt.Data["action"]))
+	if action == "" {
+		action = activityType
+	}
+
+	activityID := strings.TrimSpace(evt.ID)
+	if activityID == "" {
+		activityID = fmt.Sprintf("%d", occurredAt.UnixNano())
+	}
+	activityNodeID := fmt.Sprintf("activity:%s:%s:%s", source, activityType, activityID)
+	metadata := mapFromAny(evt.Data["metadata"])
+
+	a.SecurityGraph.AddNode(&graph.Node{
+		ID:       actorNodeID,
+		Kind:     graph.NodeKindUser,
+		Name:     coalesceString(actorName, actorID),
+		Provider: source,
+		Risk:     graph.RiskNone,
+		Properties: map[string]any{
+			"email": actorID,
+		},
+	})
+
+	a.SecurityGraph.AddNode(&graph.Node{
+		ID:         targetNodeID,
+		Kind:       targetKind,
+		Name:       coalesceString(targetName, targetNodeID),
+		Provider:   source,
+		Risk:       graph.RiskNone,
+		Properties: map[string]any{"source_system": source},
+	})
+
+	a.SecurityGraph.AddNode(&graph.Node{
+		ID:       activityNodeID,
+		Kind:     graph.NodeKindActivity,
+		Name:     coalesceString(action, activityType),
+		Provider: source,
+		Risk:     graph.RiskNone,
+		Properties: map[string]any{
+			"source_system": source,
+			"event_type":    evt.Type,
+			"activity_type": activityType,
+			"action":        action,
+			"timestamp":     occurredAt.Format(time.RFC3339),
+			"metadata":      metadata,
+		},
+	})
+
+	a.SecurityGraph.AddEdge(&graph.Edge{
+		ID:     fmt.Sprintf("%s->%s:%s", actorNodeID, activityNodeID, graph.EdgeKindInteractedWith),
+		Source: actorNodeID,
+		Target: activityNodeID,
+		Kind:   graph.EdgeKindInteractedWith,
+		Effect: graph.EdgeEffectAllow,
+		Risk:   graph.RiskNone,
+		Properties: map[string]any{
+			"source_system": source,
+		},
+	})
+	a.SecurityGraph.AddEdge(&graph.Edge{
+		ID:     fmt.Sprintf("%s->%s:%s", activityNodeID, targetNodeID, graph.EdgeKindInteractedWith),
+		Source: activityNodeID,
+		Target: targetNodeID,
+		Kind:   graph.EdgeKindInteractedWith,
+		Effect: graph.EdgeEffectAllow,
+		Risk:   graph.RiskNone,
+		Properties: map[string]any{
+			"source_system": source,
+		},
+	})
+
+	return nil
+}
+
+func parseTapActivityActor(raw any) (id string, name string) {
+	switch actor := raw.(type) {
+	case string:
+		return strings.TrimSpace(actor), ""
+	case map[string]any:
+		id = strings.TrimSpace(anyToString(firstPresent(actor, "email", "id", "user_id", "actor_id")))
+		name = strings.TrimSpace(anyToString(firstPresent(actor, "name", "display_name", "full_name")))
+		return id, name
+	default:
+		return "", ""
+	}
+}
+
+func parseTapActivityTarget(raw any, defaultSystem string) (nodeID string, kind graph.NodeKind, name string) {
+	switch target := raw.(type) {
+	case string:
+		targetID := strings.TrimSpace(target)
+		if targetID == "" {
+			return "", "", ""
+		}
+		return fmt.Sprintf("%s:entity:%s", defaultSystem, targetID), graph.NodeKindCompany, targetID
+	case map[string]any:
+		targetID := strings.TrimSpace(anyToString(firstPresent(target, "id", "entity_id", "target_id")))
+		if targetID == "" {
+			return "", "", ""
+		}
+		targetType := strings.ToLower(strings.TrimSpace(anyToString(firstPresent(target, "type", "entity_type", "kind"))))
+		if targetType == "" {
+			targetType = "entity"
+		}
+		system := strings.ToLower(strings.TrimSpace(anyToString(firstPresent(target, "system", "source"))))
+		if system == "" {
+			system = defaultSystem
+		}
+		name := strings.TrimSpace(anyToString(firstPresent(target, "name", "display_name", "title")))
+		return fmt.Sprintf("%s:%s:%s", system, targetType, targetID), mapBusinessEntityKind(targetType), name
+	default:
+		return "", "", ""
+	}
 }
 
 func mapBusinessEntityKind(entityType string) graph.NodeKind {

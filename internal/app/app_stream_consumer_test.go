@@ -14,6 +14,11 @@ func TestParseTapType(t *testing.T) {
 	if system != "stripe" || entity != "customer" || action != "created" {
 		t.Fatalf("unexpected parse result: system=%q entity=%q action=%q", system, entity, action)
 	}
+
+	system, entity, action = parseTapType("ensemble.tap.activity.gong.call_completed")
+	if system != "gong" || entity != "call_completed" || action != "call_completed" {
+		t.Fatalf("unexpected activity parse result: system=%q entity=%q action=%q", system, entity, action)
+	}
 }
 
 func TestDeriveComputedFields(t *testing.T) {
@@ -133,5 +138,60 @@ func TestHandleTapCloudEvent_AccumulatesCloseDatePushCount(t *testing.T) {
 	}
 	if got := toInt(node.Properties["close_date_push_count"]); got != 2 {
 		t.Fatalf("close_date_push_count = %d, want 2", got)
+	}
+}
+
+func TestHandleTapCloudEvent_ActivitySubjectCreatesNodesAndEdges(t *testing.T) {
+	a := &App{SecurityGraph: graph.New()}
+	evt := events.CloudEvent{
+		ID:   "evt-activity-1",
+		Type: "ensemble.tap.activity.gong.call_completed",
+		Time: time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC),
+		Data: map[string]interface{}{
+			"actor": map[string]interface{}{
+				"email": "alice@example.com",
+				"name":  "Alice",
+			},
+			"target": map[string]interface{}{
+				"id":   "deal-123",
+				"type": "deal",
+				"name": "Enterprise Renewal",
+			},
+			"action": "call_completed",
+			"metadata": map[string]interface{}{
+				"duration_seconds": 1800,
+			},
+		},
+	}
+
+	if err := a.handleTapCloudEvent(context.Background(), evt); err != nil {
+		t.Fatalf("handleTapCloudEvent failed: %v", err)
+	}
+
+	actorNodeID := "person:alice@example.com"
+	if node, ok := a.SecurityGraph.GetNode(actorNodeID); !ok || node.Kind != graph.NodeKindUser {
+		t.Fatalf("expected actor node %q with kind user", actorNodeID)
+	}
+
+	targetNodeID := "gong:deal:deal-123"
+	if node, ok := a.SecurityGraph.GetNode(targetNodeID); !ok || node.Kind != graph.NodeKindDeal {
+		t.Fatalf("expected target node %q with kind deal", targetNodeID)
+	}
+
+	activityNodeID := "activity:gong:call_completed:evt-activity-1"
+	activityNode, ok := a.SecurityGraph.GetNode(activityNodeID)
+	if !ok {
+		t.Fatalf("expected activity node %q to be created", activityNodeID)
+	}
+	if activityNode.Kind != graph.NodeKindActivity {
+		t.Fatalf("expected activity node kind %q, got %q", graph.NodeKindActivity, activityNode.Kind)
+	}
+	if got := activityNode.Properties["action"]; got != "call_completed" {
+		t.Fatalf("expected activity action call_completed, got %v", got)
+	}
+
+	actorEdges := a.SecurityGraph.GetOutEdges(actorNodeID)
+	if len(actorEdges) == 0 || actorEdges[0].Kind != graph.EdgeKindInteractedWith {
+		t.Fatalf("expected actor interacted_with edge, got %#v", actorEdges)
 	}
 }
