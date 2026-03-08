@@ -147,6 +147,25 @@ func (g *GitHubProvider) Schema() []TableSchema {
 			PrimaryKey: []string{"id"},
 		},
 		{
+			Name:        "github_commits",
+			Description: "GitHub commit activity",
+			Columns: []ColumnSchema{
+				{Name: "id", Type: "string", Required: true},
+				{Name: "sha", Type: "string", Required: true},
+				{Name: "repository", Type: "string", Required: true},
+				{Name: "author_login", Type: "string"},
+				{Name: "author_email", Type: "string"},
+				{Name: "committer_login", Type: "string"},
+				{Name: "committer_email", Type: "string"},
+				{Name: "message", Type: "string"},
+				{Name: "files_changed", Type: "integer"},
+				{Name: "additions", Type: "integer"},
+				{Name: "deletions", Type: "integer"},
+				{Name: "committed_at", Type: "timestamp"},
+			},
+			PrimaryKey: []string{"repository", "sha"},
+		},
+		{
 			Name:        "github_dependabot_alerts",
 			Description: "GitHub Dependabot vulnerability alerts",
 			Columns: []ColumnSchema{
@@ -344,6 +363,7 @@ func (g *GitHubProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResul
 	var branchRows []map[string]interface{}
 	var pullRequestRows []map[string]interface{}
 	var pullRequestReviewRows []map[string]interface{}
+	var commitRows []map[string]interface{}
 	pullRequestSince := time.Now().AddDate(0, 0, -githubPullRequestLookbackDays)
 	for _, repo := range repos {
 		rows, depErr := g.fetchDependabotAlerts(ctx, repo)
@@ -388,6 +408,13 @@ func (g *GitHubProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResul
 			pullRequestRows = append(pullRequestRows, prRows...)
 			pullRequestReviewRows = append(pullRequestReviewRows, reviewRows...)
 		}
+
+		rows, commitErr := g.fetchCommits(ctx, repo, pullRequestSince)
+		if commitErr != nil {
+			result.Errors = append(result.Errors, "commits: "+commitErr.Error())
+		} else {
+			commitRows = append(commitRows, rows...)
+		}
 	}
 
 	syncTable("github_dependabot_alerts", dependabotRows)
@@ -397,6 +424,7 @@ func (g *GitHubProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResul
 	syncTable("github_branch_protections", branchRows)
 	syncTable("github_pull_requests", pullRequestRows)
 	syncTable("github_pull_request_reviews", pullRequestReviewRows)
+	syncTable("github_commits", commitRows)
 
 	memberRows, err := g.fetchOrgMembers(ctx)
 	if err != nil {
@@ -1051,6 +1079,106 @@ func (g *GitHubProvider) fetchPullRequestReviews(ctx context.Context, repo githu
 	}
 
 	return rows, nil
+}
+
+func (g *GitHubProvider) fetchCommits(ctx context.Context, repo githubRepoInfo, since time.Time) ([]map[string]interface{}, error) {
+	if repo.Name == "" {
+		return nil, nil
+	}
+
+	path := fmt.Sprintf("/repos/%s/%s/commits", g.org, repo.Name)
+	page := 1
+	var rows []map[string]interface{}
+
+	for {
+		params := map[string]string{
+			"per_page": "100",
+			"page":     strconv.Itoa(page),
+		}
+		if !since.IsZero() {
+			params["since"] = since.UTC().Format(time.RFC3339)
+		}
+
+		paged := addQueryParams(path, params)
+		body, err := g.request(ctx, paged)
+		if err != nil {
+			if isGitHubIgnorable(err) {
+				return nil, nil
+			}
+			return nil, err
+		}
+
+		var commits []map[string]interface{}
+		if err := json.Unmarshal(body, &commits); err != nil {
+			return nil, err
+		}
+		if len(commits) == 0 {
+			break
+		}
+
+		for _, commit := range commits {
+			normalized := normalizeGitHubMap(commit)
+			sha := asString(normalized["sha"])
+			if sha == "" {
+				continue
+			}
+
+			row, err := g.fetchCommitDetails(ctx, repo, sha)
+			if err != nil {
+				if isGitHubIgnorable(err) {
+					continue
+				}
+				return nil, err
+			}
+			rows = append(rows, row)
+		}
+
+		if len(commits) < 100 {
+			break
+		}
+		page++
+	}
+
+	return rows, nil
+}
+
+func (g *GitHubProvider) fetchCommitDetails(ctx context.Context, repo githubRepoInfo, sha string) (map[string]interface{}, error) {
+	path := fmt.Sprintf("/repos/%s/%s/commits/%s", g.org, repo.Name, sha)
+	body, err := g.request(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+
+	var commit map[string]interface{}
+	if err := json.Unmarshal(body, &commit); err != nil {
+		return nil, err
+	}
+
+	normalized := normalizeGitHubMap(commit)
+	filesChanged := 0
+	if files, ok := getNestedValue(normalized, "files").([]interface{}); ok {
+		filesChanged = len(files)
+	}
+
+	row := map[string]interface{}{
+		"id":              firstNonEmptyString(asString(normalized["node_id"]), sha),
+		"sha":             sha,
+		"repository":      buildRepoFullName(g.org, repo),
+		"author_login":    getNestedString(normalized, "author", "login"),
+		"author_email":    getNestedString(normalized, "commit", "author", "email"),
+		"committer_login": getNestedString(normalized, "committer", "login"),
+		"committer_email": getNestedString(normalized, "commit", "committer", "email"),
+		"message":         getNestedString(normalized, "commit", "message"),
+		"files_changed":   filesChanged,
+		"additions":       getNestedValue(normalized, "stats", "additions"),
+		"deletions":       getNestedValue(normalized, "stats", "deletions"),
+		"committed_at": firstNonEmptyString(
+			getNestedString(normalized, "commit", "author", "date"),
+			getNestedString(normalized, "commit", "committer", "date"),
+		),
+	}
+
+	return row, nil
 }
 
 func (g *GitHubProvider) fetchOrgMembers(ctx context.Context) ([]map[string]interface{}, error) {
