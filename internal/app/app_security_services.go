@@ -143,6 +143,18 @@ func (a *App) initHealth() {
 		return nil
 	}))
 
+	a.Health.Register("providers", health.PingCheck("providers", func(ctx context.Context) error {
+		if a.Providers == nil {
+			return fmt.Errorf("provider registry not initialized")
+		}
+		for _, provider := range a.Providers.List() {
+			if err := provider.Test(ctx); err != nil {
+				return fmt.Errorf("provider %s test failed: %w", provider.Name(), err)
+			}
+		}
+		return nil
+	}))
+
 	a.Logger.Info("health service initialized")
 }
 

@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"runtime"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	apicontract "github.com/evalops/cerebro/api"
 	"github.com/evalops/cerebro/internal/app"
+	"github.com/evalops/cerebro/internal/health"
 	"github.com/evalops/cerebro/internal/metrics"
 	"github.com/evalops/cerebro/internal/snowflake"
 )
@@ -25,6 +27,8 @@ type Server struct {
 type auditLogWriter interface {
 	Log(ctx context.Context, entry *snowflake.AuditEntry) error
 }
+
+var runtimeNumGoroutine = runtime.NumGoroutine
 
 // NewServer creates a new server with all services wired
 func NewServer(application *app.App) *Server {
@@ -64,42 +68,96 @@ func (s *Server) Run() error {
 // Health endpoints
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
-	s.json(w, http.StatusOK, map[string]interface{}{
-		"status":    "healthy",
+	liveness := health.NewRegistry()
+	liveness.Register("goroutines", health.ThresholdCheck(
+		"goroutines",
+		func() (float64, error) { return float64(runtimeNumGoroutine()), nil },
+		10000,
+		20000,
+	))
+
+	status, checks := runHealthChecks(r.Context(), liveness)
+
+	s.json(w, healthHTTPStatus(status), map[string]interface{}{
+		"status":    status,
 		"timestamp": time.Now().UTC(),
+		"checks":    formatHealthChecks(checks),
 	})
 }
 
 func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
-	checks := map[string]string{}
-	ready := true
+	status := health.StatusUnknown
+	checks := map[string]health.CheckResult{}
 
-	if s.app.Snowflake != nil {
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-		defer cancel()
-		if err := s.app.Snowflake.Ping(ctx); err != nil {
-			checks["snowflake"] = "unhealthy: " + err.Error()
-			ready = false
-		} else {
-			checks["snowflake"] = "healthy"
-		}
-	} else {
-		checks["snowflake"] = "not configured"
+	if s.app.Health != nil {
+		status, checks = runHealthChecks(r.Context(), s.app.Health)
 	}
 
-	checks["policies"] = fmt.Sprintf("%d loaded", len(s.app.Policy.ListPolicies()))
-	checks["agents"] = fmt.Sprintf("%d registered", len(s.app.Agents.ListAgents()))
-	checks["providers"] = fmt.Sprintf("%d registered", len(s.app.Providers.List()))
-
-	status := http.StatusOK
-	if !ready {
-		status = http.StatusServiceUnavailable
-	}
-
-	s.json(w, status, map[string]interface{}{
-		"ready":  ready,
-		"checks": checks,
+	s.json(w, healthHTTPStatus(status), map[string]interface{}{
+		"status":    status,
+		"ready":     status == health.StatusHealthy,
+		"timestamp": time.Now().UTC(),
+		"checks":    formatHealthChecks(checks),
 	})
+}
+
+func runHealthChecks(ctx context.Context, registry *health.Registry) (health.Status, map[string]health.CheckResult) {
+	if registry == nil {
+		return health.StatusUnknown, map[string]health.CheckResult{}
+	}
+
+	checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	results := registry.RunAll(checkCtx)
+	return overallHealthStatus(results), results
+}
+
+func overallHealthStatus(results map[string]health.CheckResult) health.Status {
+	if len(results) == 0 {
+		return health.StatusHealthy
+	}
+
+	hasDegraded := false
+	hasUnknown := false
+	for _, result := range results {
+		switch result.Status {
+		case health.StatusUnhealthy:
+			return health.StatusUnhealthy
+		case health.StatusDegraded:
+			hasDegraded = true
+		case health.StatusUnknown:
+			hasUnknown = true
+		}
+	}
+
+	if hasDegraded {
+		return health.StatusDegraded
+	}
+	if hasUnknown {
+		return health.StatusUnknown
+	}
+	return health.StatusHealthy
+}
+
+func healthHTTPStatus(status health.Status) int {
+	if status == health.StatusHealthy {
+		return http.StatusOK
+	}
+	return http.StatusServiceUnavailable
+}
+
+func formatHealthChecks(checks map[string]health.CheckResult) map[string]map[string]interface{} {
+	out := make(map[string]map[string]interface{}, len(checks))
+	for name, result := range checks {
+		out[name] = map[string]interface{}{
+			"name":       result.Name,
+			"status":     result.Status,
+			"message":    result.Message,
+			"latency_ms": result.Latency.Milliseconds(),
+			"timestamp":  result.Timestamp,
+		}
+	}
+	return out
 }
 
 func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {

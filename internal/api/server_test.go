@@ -180,12 +180,55 @@ func TestHealth(t *testing.T) {
 	}
 }
 
+func TestHealth_DegradedReturns503(t *testing.T) {
+	prev := runtimeNumGoroutine
+	runtimeNumGoroutine = func() int { return 15000 }
+	defer func() { runtimeNumGoroutine = prev }()
+
+	s := newTestServer(t)
+	w := do(t, s, "GET", "/health", nil)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", w.Code)
+	}
+	body := decodeJSON(t, w)
+	if body["status"] != "degraded" {
+		t.Fatalf("expected degraded status, got %v", body["status"])
+	}
+}
+
 func TestReady(t *testing.T) {
 	s := newTestServer(t)
 	w := do(t, s, "GET", "/ready", nil)
-	// Ready may return 503 when Snowflake is nil; that's expected in unit tests
-	if w.Code != http.StatusOK && w.Code != http.StatusServiceUnavailable {
-		t.Fatalf("expected 200 or 503, got %d", w.Code)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	body := decodeJSON(t, w)
+	if body["status"] != "healthy" {
+		t.Fatalf("expected healthy status, got %v", body["status"])
+	}
+}
+
+func TestReady_UnhealthyReturns503(t *testing.T) {
+	a := newTestApp(t)
+	a.Health.Register("dependency", func(ctx context.Context) health.CheckResult {
+		return health.CheckResult{
+			Name:    "dependency",
+			Status:  health.StatusUnhealthy,
+			Message: "dependency unavailable",
+		}
+	})
+
+	s := NewServer(a)
+	w := do(t, s, "GET", "/ready", nil)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", w.Code)
+	}
+	body := decodeJSON(t, w)
+	if body["status"] != "unhealthy" {
+		t.Fatalf("expected unhealthy status, got %v", body["status"])
+	}
+	if body["ready"] != false {
+		t.Fatalf("expected ready=false, got %v", body["ready"])
 	}
 }
 
