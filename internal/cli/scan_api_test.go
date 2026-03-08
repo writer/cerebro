@@ -59,7 +59,6 @@ func TestRunScanViaAPI_AggregatesJSONOutput(t *testing.T) {
 	t.Cleanup(func() { restoreScanCLIState(state) })
 
 	expectedTables := []string{"aws_s3_buckets", "aws_iam_roles"}
-	requestIndex := 0
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -73,22 +72,35 @@ func TestRunScanViaAPI_AggregatesJSONOutput(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
-		if req["table"] != expectedTables[requestIndex] {
-			t.Fatalf("expected table %q, got %#v", expectedTables[requestIndex], req["table"])
+		rawTables, ok := req["tables"].([]interface{})
+		if !ok {
+			t.Fatalf("expected tables array, got %#v", req["tables"])
+		}
+		if len(rawTables) != len(expectedTables) {
+			t.Fatalf("expected %d tables, got %#v", len(expectedTables), rawTables)
+		}
+		for i, expected := range expectedTables {
+			if rawTables[i] != expected {
+				t.Fatalf("expected table %q at index %d, got %#v", expected, i, rawTables[i])
+			}
 		}
 		if req["limit"] != float64(25) {
 			t.Fatalf("expected limit=25, got %#v", req["limit"])
 		}
 
 		response := map[string]interface{}{
-			"scanned":    requestIndex + 1,
-			"violations": 1,
-			"duration":   "5ms",
+			"scanned":    3,
+			"violations": 2,
+			"duration":   "12ms",
 			"findings": []map[string]interface{}{
-				{"severity": "HIGH", "policy_id": "policy-1", "resource_id": expectedTables[requestIndex]},
+				{"severity": "HIGH", "policy_id": "policy-1", "resource_id": expectedTables[0]},
+				{"severity": "LOW", "policy_id": "policy-2", "resource_id": expectedTables[1]},
+			},
+			"tables": []map[string]interface{}{
+				{"table": expectedTables[0], "scanned": 1, "violations": 1, "duration": "5ms"},
+				{"table": expectedTables[1], "scanned": 2, "violations": 1, "duration": "7ms"},
 			},
 		}
-		requestIndex++
 		_ = json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
@@ -119,6 +131,10 @@ func TestRunScanViaAPI_AggregatesJSONOutput(t *testing.T) {
 	findings, ok := payload["findings"].([]interface{})
 	if !ok || len(findings) != 2 {
 		t.Fatalf("expected two findings, got %#v", payload["findings"])
+	}
+	tables, ok := payload["tables"].([]interface{})
+	if !ok || len(tables) != 2 {
+		t.Fatalf("expected two table summaries, got %#v", payload["tables"])
 	}
 }
 

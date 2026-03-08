@@ -16,6 +16,21 @@ import (
 	"github.com/evalops/cerebro/internal/snowflake"
 )
 
+var errScanFindingsMissingTables = errors.New("scan request missing tables")
+
+type scanFindingsRequest struct {
+	Table  string   `json:"table"`
+	Tables []string `json:"tables"`
+	Limit  int      `json:"limit"`
+}
+
+type scanFindingsTableResult struct {
+	Table      string `json:"table"`
+	Scanned    int64  `json:"scanned"`
+	Violations int64  `json:"violations"`
+	Duration   string `json:"duration"`
+}
+
 func (s *Server) listFindings(w http.ResponseWriter, r *http.Request) {
 	store := s.findingsStoreForRequest(r.Context())
 	pagination := ParsePagination(r, 100, 1000)
@@ -111,43 +126,101 @@ func (s *Server) deleteFinding(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) scanFindings(w http.ResponseWriter, r *http.Request) {
+	req, tables, err := decodeScanFindingsRequest(r)
+	if err != nil {
+		if errors.Is(err, errScanFindingsMissingTables) {
+			s.error(w, http.StatusBadRequest, "table or tables required")
+			return
+		}
+		s.error(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
 	store := s.findingsStoreForRequest(r.Context())
 	if s.app.Snowflake == nil {
 		s.error(w, http.StatusServiceUnavailable, "snowflake not configured")
 		return
 	}
 
-	var req struct {
-		Table string `json:"table"`
-		Limit int    `json:"limit"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.error(w, http.StatusBadRequest, "invalid request")
-		return
-	}
-	if req.Limit == 0 {
-		req.Limit = 100
-	}
+	start := time.Now()
+	totalScanned := int64(0)
+	totalViolations := int64(0)
+	allFindings := make([]interface{}, 0)
+	tableResults := make([]scanFindingsTableResult, 0, len(tables))
 
-	assets, err := s.app.Snowflake.GetAssets(r.Context(), req.Table, snowflake.AssetFilter{Limit: req.Limit})
-	if err != nil {
-		s.errorFromErr(w, err)
-		return
-	}
+	for _, table := range tables {
+		tableStart := time.Now()
+		assets, err := s.app.Snowflake.GetAssets(r.Context(), table, snowflake.AssetFilter{Limit: req.Limit})
+		if err != nil {
+			s.errorFromErr(w, err)
+			return
+		}
 
-	result := s.app.Scanner.ScanAssets(r.Context(), assets)
+		result := s.app.Scanner.ScanAssets(r.Context(), assets)
 
-	// Persist findings
-	for _, f := range result.Findings {
-		store.Upsert(r.Context(), f)
+		for _, f := range result.Findings {
+			store.Upsert(r.Context(), f)
+			allFindings = append(allFindings, f)
+		}
+
+		totalScanned += result.Scanned
+		totalViolations += result.Violations
+		tableResults = append(tableResults, scanFindingsTableResult{
+			Table:      table,
+			Scanned:    result.Scanned,
+			Violations: result.Violations,
+			Duration:   time.Since(tableStart).String(),
+		})
 	}
 
 	s.json(w, http.StatusOK, map[string]interface{}{
-		"scanned":    result.Scanned,
-		"violations": result.Violations,
-		"duration":   result.Duration.String(),
-		"findings":   result.Findings,
+		"scanned":    totalScanned,
+		"violations": totalViolations,
+		"duration":   time.Since(start).String(),
+		"findings":   allFindings,
+		"tables":     tableResults,
 	})
+}
+
+func decodeScanFindingsRequest(r *http.Request) (scanFindingsRequest, []string, error) {
+	var req scanFindingsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return scanFindingsRequest{}, nil, err
+	}
+
+	if req.Limit <= 0 {
+		req.Limit = 100
+	}
+
+	tables := normalizeScanRequestTables(req.Table, req.Tables)
+	if len(tables) == 0 {
+		return scanFindingsRequest{}, nil, errScanFindingsMissingTables
+	}
+
+	return req, tables, nil
+}
+
+func normalizeScanRequestTables(table string, tables []string) []string {
+	rawTables := append([]string(nil), tables...)
+	if strings.TrimSpace(table) != "" {
+		rawTables = append(rawTables, table)
+	}
+
+	normalized := make([]string, 0, len(rawTables))
+	seen := make(map[string]struct{}, len(rawTables))
+	for _, tableName := range rawTables {
+		candidate := strings.TrimSpace(strings.ToLower(tableName))
+		if candidate == "" {
+			continue
+		}
+		if _, exists := seen[candidate]; exists {
+			continue
+		}
+		seen[candidate] = struct{}{}
+		normalized = append(normalized, candidate)
+	}
+
+	return normalized
 }
 
 func (s *Server) resolveFinding(w http.ResponseWriter, r *http.Request) {

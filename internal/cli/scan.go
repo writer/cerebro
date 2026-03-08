@@ -841,33 +841,39 @@ func runScanViaAPI(ctx context.Context, tables []string) error {
 	}
 
 	start := time.Now()
-	var totalScanned int64
-	var totalViolations int64
-	allFindings := make([]map[string]interface{}, 0)
-	tableResults := make([]apiScanTableResult, 0, len(tables))
+	resp, err := apiClient.ScanFindingsTables(ctx, tables, scanLimit)
+	if err != nil {
+		return fmt.Errorf("scan tables via api: %w", err)
+	}
 
-	for _, table := range tables {
-		resp, err := apiClient.ScanFindings(ctx, table, scanLimit)
-		if err != nil {
-			return fmt.Errorf("scan table %q via api: %w", table, err)
-		}
-		totalScanned += resp.Scanned
-		totalViolations += resp.Violations
-		allFindings = append(allFindings, resp.Findings...)
+	totalScanned := resp.Scanned
+	totalViolations := resp.Violations
+	allFindings := append([]map[string]interface{}(nil), resp.Findings...)
+	tableResults := make([]apiScanTableResult, 0, len(resp.Tables))
+	for _, table := range resp.Tables {
 		tableResults = append(tableResults, apiScanTableResult{
-			Table:      table,
-			Scanned:    resp.Scanned,
-			Violations: resp.Violations,
-			Duration:   resp.Duration,
+			Table:      table.Table,
+			Scanned:    table.Scanned,
+			Violations: table.Violations,
+			Duration:   table.Duration,
 		})
+	}
 
-		if scanOutput == FormatTable {
-			fmt.Printf("\n%s Scanning %s via API...\n", color(colorCyan, "→"), table)
-			fmt.Printf("Scanned %d assets, found %d violations\n", resp.Scanned, resp.Violations)
+	if scanOutput == FormatTable {
+		if len(tableResults) == 0 {
+			fmt.Printf("\n%s Scanning %d table(s) via API...\n", color(colorCyan, "→"), len(tables))
+			fmt.Printf("Scanned %d assets, found %d violations\n", totalScanned, totalViolations)
+		}
+		for _, result := range tableResults {
+			fmt.Printf("\n%s Scanning %s via API...\n", color(colorCyan, "→"), result.Table)
+			fmt.Printf("Scanned %d assets, found %d violations\n", result.Scanned, result.Violations)
 		}
 	}
 
 	duration := time.Since(start)
+	if parsedDuration, parseErr := time.ParseDuration(strings.TrimSpace(resp.Duration)); parseErr == nil && parsedDuration > 0 {
+		duration = parsedDuration
+	}
 
 	if scanOutput == FormatJSON {
 		return JSONOutput(map[string]interface{}{
