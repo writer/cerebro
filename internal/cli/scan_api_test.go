@@ -139,7 +139,6 @@ func TestScanSupportsAPIMode(t *testing.T) {
 	state := snapshotScanCLIState()
 	t.Cleanup(func() { restoreScanCLIState(state) })
 
-	scanDryRun = false
 	scanExtractRelationships = false
 	scanFull = false
 	scanToxicCombos = false
@@ -149,6 +148,13 @@ func TestScanSupportsAPIMode(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected api compatibility, got false: %s", reason)
 	}
+
+	scanDryRun = true
+	ok, reason = scanSupportsAPIMode(false)
+	if !ok {
+		t.Fatalf("expected dry-run to remain api-compatible, got false: %s", reason)
+	}
+	scanDryRun = false
 
 	scanToxicCombos = true
 	ok, reason = scanSupportsAPIMode(false)
@@ -254,5 +260,51 @@ func TestRunScanViaAPIFromFlags_EmptyTableSetJSONOutput(t *testing.T) {
 	}
 	if payload["violations"] != float64(0) {
 		t.Fatalf("expected violations=0, got %#v", payload["violations"])
+	}
+}
+
+func TestRunScanViaAPIFromFlags_DryRunUsesAPIPolicyCount(t *testing.T) {
+	state := snapshotScanCLIState()
+	t.Cleanup(func() { restoreScanCLIState(state) })
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/tables":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"tables": []string{"aws_s3_buckets"}})
+		case "/api/v1/policies/":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"policies": []map[string]interface{}{
+					{"id": "policy-1", "name": "Policy 1", "severity": "high", "resource": "aws::s3::bucket"},
+					{"id": "policy-2", "name": "Policy 2", "severity": "medium", "resource": "aws::s3::bucket"},
+				},
+			})
+		case "/api/v1/findings/scan":
+			t.Fatal("did not expect scan endpoint call in dry-run mode")
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	t.Setenv(envCLIAPIURL, server.URL)
+	scanTables = nil
+	scanDryRun = true
+	scanLimit = 123
+	scanOutput = FormatTable
+
+	output := captureStdout(t, func() {
+		if err := runScanViaAPIFromFlags(context.Background()); err != nil {
+			t.Fatalf("runScanViaAPIFromFlags failed: %v", err)
+		}
+	})
+
+	if !strings.Contains(output, "Dry run - would scan") {
+		t.Fatalf("expected dry-run banner in output, got %q", output)
+	}
+	if !strings.Contains(output, "aws_s3_buckets (up to 123 assets)") {
+		t.Fatalf("expected table listing in output, got %q", output)
+	}
+	if !strings.Contains(output, "Using 2 policies") {
+		t.Fatalf("expected policy count in output, got %q", output)
 	}
 }

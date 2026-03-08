@@ -759,9 +759,6 @@ func scanSupportsAPIMode(localMode bool) (bool, string) {
 	if localMode {
 		return false, "local dataset mode requires direct execution"
 	}
-	if scanDryRun {
-		return false, "--dry-run requires direct execution"
-	}
 	if scanExtractRelationships {
 		return false, "--extract-relationships requires direct execution"
 	}
@@ -794,6 +791,22 @@ func runScanViaAPIFromFlags(ctx context.Context) error {
 			})
 		}
 		Warning("No tables to scan via API")
+		return nil
+	}
+	if scanDryRun {
+		apiClient, err := newCLIAPIClient()
+		if err != nil {
+			return err
+		}
+		policies, err := apiClient.ListPolicies(ctx, 0, 0)
+		if err != nil {
+			return fmt.Errorf("list policies via api: %w", err)
+		}
+		fmt.Println(bold("\nDry run - would scan:"))
+		for _, table := range tables {
+			fmt.Printf("  - %s (up to %d assets)\n", table, scanLimit)
+		}
+		fmt.Printf("\nUsing %d policies\n", len(policies))
 		return nil
 	}
 	return runScanViaAPI(ctx, tables)
