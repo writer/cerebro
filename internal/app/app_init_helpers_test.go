@@ -5,6 +5,8 @@ import (
 	"io"
 	"log/slog"
 	"path/filepath"
+	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/evalops/cerebro/internal/policy"
@@ -51,5 +53,40 @@ func TestInitPhase3_InitializesScannerAndDSPM(t *testing.T) {
 	}
 	if a.DSPM == nil {
 		t.Fatal("expected DSPM scanner to be initialized")
+	}
+}
+
+func TestRunInitTasksConcurrently_RunsAllTasks(t *testing.T) {
+	var called atomic.Int32
+	tasks := []concurrentInitTask{
+		{name: "task-1", run: func(context.Context) { called.Add(1) }},
+		{name: "task-2", run: func(context.Context) { called.Add(1) }},
+		{name: "task-3", run: func(context.Context) { called.Add(1) }},
+	}
+
+	if err := runInitTasksConcurrently(context.Background(), tasks); err != nil {
+		t.Fatalf("runInitTasksConcurrently returned error: %v", err)
+	}
+	if called.Load() != int32(len(tasks)) {
+		t.Fatalf("expected %d task runs, got %d", len(tasks), called.Load())
+	}
+}
+
+func TestRunInitTasksConcurrently_PropagatesTaskPanic(t *testing.T) {
+	tasks := []concurrentInitTask{
+		{
+			name: "panic-task",
+			run: func(context.Context) {
+				panic("boom")
+			},
+		},
+	}
+
+	err := runInitTasksConcurrently(context.Background(), tasks)
+	if err == nil {
+		t.Fatal("expected panic-wrapped init error")
+	}
+	if !strings.Contains(err.Error(), "panic-task init panic") {
+		t.Fatalf("expected task name in error, got: %v", err)
 	}
 }

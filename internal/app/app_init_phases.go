@@ -8,6 +8,11 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+type concurrentInitTask struct {
+	name string
+	run  func(context.Context)
+}
+
 func (a *App) initialize(ctx context.Context) error {
 	if err := runInitErrorStep("telemetry", func() error { return a.initTelemetry(ctx) }); err != nil {
 		a.Logger.Warn("telemetry initialization failed", "error", err)
@@ -49,49 +54,37 @@ func (a *App) initPhase1(ctx context.Context) error {
 }
 
 func (a *App) initPhase2a(ctx context.Context) error {
-	g, gctx := errgroup.WithContext(ctx)
-
-	g.Go(func() error { return runInitStep("cache", a.initCache) })
-	g.Go(func() error { return runInitStep("ticketing", a.initTicketing) })
-	g.Go(func() error { return runInitStep("identity", a.initIdentity) })
-	g.Go(func() error { return runInitStep("attackpath", a.initAttackPath) })
-	g.Go(func() error { return runInitStep("webhooks", a.initWebhooks) })
-	g.Go(func() error { return runInitStep("notifications", a.initNotifications) })
-	g.Go(func() error { return runInitStep("rbac", a.initRBAC) })
-	g.Go(func() error { return runInitStep("compliance", a.initCompliance) })
-	g.Go(func() error { return runInitStep("health", a.initHealth) })
-	g.Go(func() error { return runInitStep("lineage", a.initLineage) })
-	g.Go(func() error { return runInitStep("runtime", a.initRuntime) })
-	g.Go(func() error { return runInitStep("findings", a.initFindings) })
-	g.Go(func() error {
-		return runInitStep("providers", func() { a.initProviders(gctx) })
-	})
-	g.Go(func() error {
-		return runInitStep("scheduler", func() { a.initScheduler(gctx) })
-	})
-	g.Go(func() error { return runInitStep("repositories", a.initRepositories) })
-	g.Go(func() error {
-		return runInitStep("snowflake_findings", func() { a.initSnowflakeFindings(gctx) })
-	})
-	g.Go(func() error {
-		return runInitStep("scan_watermarks", func() { a.initScanWatermarks(gctx) })
-	})
-	g.Go(func() error { return runInitStep("threatintel", func() { a.initThreatIntel(ctx) }) })
-	g.Go(func() error {
-		return runInitStep("available_tables", func() { a.initAvailableTables(gctx) })
-	})
-
-	if err := g.Wait(); err != nil {
+	if err := runInitTasksConcurrently(ctx, []concurrentInitTask{
+		{name: "cache", run: func(context.Context) { a.initCache() }},
+		{name: "ticketing", run: func(context.Context) { a.initTicketing() }},
+		{name: "identity", run: func(context.Context) { a.initIdentity() }},
+		{name: "attackpath", run: func(context.Context) { a.initAttackPath() }},
+		{name: "webhooks", run: func(context.Context) { a.initWebhooks() }},
+		{name: "notifications", run: func(context.Context) { a.initNotifications() }},
+		{name: "rbac", run: func(context.Context) { a.initRBAC() }},
+		{name: "compliance", run: func(context.Context) { a.initCompliance() }},
+		{name: "health", run: func(context.Context) { a.initHealth() }},
+		{name: "lineage", run: func(context.Context) { a.initLineage() }},
+		{name: "runtime", run: func(context.Context) { a.initRuntime() }},
+		{name: "findings", run: func(context.Context) { a.initFindings() }},
+		{name: "providers", run: func(taskCtx context.Context) { a.initProviders(taskCtx) }},
+		{name: "scheduler", run: func(taskCtx context.Context) { a.initScheduler(taskCtx) }},
+		{name: "repositories", run: func(context.Context) { a.initRepositories() }},
+		{name: "snowflake_findings", run: func(taskCtx context.Context) { a.initSnowflakeFindings(taskCtx) }},
+		{name: "scan_watermarks", run: func(taskCtx context.Context) { a.initScanWatermarks(taskCtx) }},
+		{name: "threatintel", run: func(context.Context) { a.initThreatIntel(ctx) }},
+		{name: "available_tables", run: func(taskCtx context.Context) { a.initAvailableTables(taskCtx) }},
+	}); err != nil {
 		return fmt.Errorf("phase 2a init failed: %w", err)
 	}
 	return nil
 }
 
 func (a *App) initPhase2b(ctx context.Context) error {
-	g, _ := errgroup.WithContext(ctx)
-	g.Go(func() error { return runInitStep("remediation", a.initRemediation) })
-	g.Go(func() error { return runInitStep("agents", a.initAgents) })
-	if err := g.Wait(); err != nil {
+	if err := runInitTasksConcurrently(ctx, []concurrentInitTask{
+		{name: "remediation", run: func(context.Context) { a.initRemediation() }},
+		{name: "agents", run: func(context.Context) { a.initAgents() }},
+	}); err != nil {
 		return fmt.Errorf("phase 2b init failed: %w", err)
 	}
 	a.startEventRemediation(ctx)
@@ -106,4 +99,21 @@ func (a *App) initPhase4(ctx context.Context) error {
 	a.initSecurityGraph(ctx)
 	a.initTapGraphConsumer(ctx)
 	return a.validatePolicyCoverage(ctx)
+}
+
+func runInitTasksConcurrently(ctx context.Context, tasks []concurrentInitTask) error {
+	if len(tasks) == 0 {
+		return nil
+	}
+
+	g, gctx := errgroup.WithContext(ctx)
+	for _, task := range tasks {
+		task := task
+		g.Go(func() error {
+			return runInitStep(task.name, func() {
+				task.run(gctx)
+			})
+		})
+	}
+	return g.Wait()
 }
