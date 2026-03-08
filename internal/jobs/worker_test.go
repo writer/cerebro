@@ -273,6 +273,28 @@ func (m *MockStore) AddJob(job *Job) {
 	m.jobs[job.ID] = job
 }
 
+func waitForCondition(t *testing.T, timeout time.Duration, description string, condition func() bool) {
+	t.Helper()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	ticker := time.NewTicker(5 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		if condition() {
+			return
+		}
+
+		select {
+		case <-timer.C:
+			t.Fatalf("timed out waiting for %s", description)
+		case <-ticker.C:
+		}
+	}
+}
+
 func TestWorkerGracefulShutdown(t *testing.T) {
 	queue := &MockQueue{receiveDelay: 100 * time.Millisecond}
 	store := NewMockStore()
@@ -292,8 +314,9 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 		errCh <- worker.Start(ctx)
 	}()
 
-	// Let worker start
-	time.Sleep(50 * time.Millisecond)
+	waitForCondition(t, time.Second, "worker receive loop to start", func() bool {
+		return atomic.LoadInt32(&queue.receiveCalls) > 0
+	})
 
 	// Trigger shutdown
 	cancel()
@@ -326,8 +349,9 @@ func TestWorkerShutdownSignal(t *testing.T) {
 		errCh <- worker.Start(ctx)
 	}()
 
-	// Let worker start
-	time.Sleep(50 * time.Millisecond)
+	waitForCondition(t, time.Second, "worker receive loop to start", func() bool {
+		return atomic.LoadInt32(&queue.receiveCalls) > 0
+	})
 
 	// Trigger shutdown via method
 	worker.Shutdown()
@@ -423,8 +447,10 @@ func TestCircuitBreaker(t *testing.T) {
 		t.Error("Should reject request when open")
 	}
 
-	// Wait for timeout
-	time.Sleep(150 * time.Millisecond)
+	// Advance failure time to force timeout transition deterministically.
+	cb.mu.Lock()
+	cb.lastFailureTime = time.Now().Add(-2 * cb.timeout)
+	cb.mu.Unlock()
 
 	// Should be half-open and allow request
 	if !cb.Allow() {
@@ -496,8 +522,7 @@ func TestBatchDelete(t *testing.T) {
 		worker.queueDelete("handle-" + string(rune('a'+i)))
 	}
 
-	// First 10 should have been flushed
-	time.Sleep(10 * time.Millisecond)
+	// Flush remaining batch.
 	worker.flushPendingDeletes(context.Background())
 
 	queue.mu.Lock()
@@ -574,10 +599,26 @@ func TestRunHeartbeat_DisablesQueueVisibilityOnTerminalErrorButExtendsLease(t *t
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
-	go worker.runHeartbeat(ctx, "receipt-1", "job-1", nil)
-	time.Sleep(140 * time.Millisecond)
+	done := make(chan struct{})
+	go func() {
+		worker.runHeartbeat(ctx, "receipt-1", "job-1", nil)
+		close(done)
+	}()
+
+	waitForCondition(t, time.Second, "multiple lease heartbeats", func() bool {
+		store.mu.Lock()
+		leaseExtensions := len(store.extendLeases)
+		store.mu.Unlock()
+		return leaseExtensions >= 3
+	})
+
 	cancel()
-	time.Sleep(30 * time.Millisecond)
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("heartbeat goroutine did not stop after cancel")
+	}
 
 	queue.mu.Lock()
 	extendCalls := queue.extendCalls
@@ -832,8 +873,9 @@ func TestStopReceivingBeforeDrain(t *testing.T) {
 		errCh <- worker.Start(ctx)
 	}()
 
-	// Let worker start
-	time.Sleep(30 * time.Millisecond)
+	waitForCondition(t, time.Second, "worker receive loop to start", func() bool {
+		return atomic.LoadInt32(&queue.receiveCalls) > 0
+	})
 
 	// Cancel context
 	cancel()

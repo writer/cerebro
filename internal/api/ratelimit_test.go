@@ -56,8 +56,15 @@ func TestRateLimiterWindowReset(t *testing.T) {
 		t.Error("should be rate limited")
 	}
 
-	// Wait for window to reset
-	time.Sleep(60 * time.Millisecond)
+	// Force bucket into an expired window without sleeping.
+	rl.mu.Lock()
+	b, ok := rl.buckets[key]
+	if !ok {
+		rl.mu.Unlock()
+		t.Fatal("expected bucket to exist")
+	}
+	b.lastReset = time.Now().Add(-rl.window)
+	rl.mu.Unlock()
 
 	allowed, remaining, _ := rl.Allow(key)
 	if !allowed {
