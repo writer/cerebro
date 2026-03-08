@@ -72,6 +72,14 @@ func TestOpenAPIContract_CriticalRoutes(t *testing.T) {
 			expectedStatus: http.StatusServiceUnavailable,
 		},
 		{
+			name:           "sync aws org unavailable contract",
+			method:         http.MethodPost,
+			pathTemplate:   "/api/v1/sync/aws-org",
+			requestPath:    "/api/v1/sync/aws-org",
+			body:           map[string]interface{}{"org_role": "OrganizationAccountAccessRole", "include_accounts": []string{"111111111111"}},
+			expectedStatus: http.StatusServiceUnavailable,
+		},
+		{
 			name:           "sync azure unavailable contract",
 			method:         http.MethodPost,
 			pathTemplate:   "/api/v1/sync/azure",

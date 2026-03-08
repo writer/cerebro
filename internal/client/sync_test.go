@@ -318,6 +318,142 @@ func TestRunAWSSync_EmptyRequestBodyForDefaultBehavior(t *testing.T) {
 	}
 }
 
+func TestRunAWSOrgSync_SendsRequestAndParsesResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v1/sync/aws-org" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+
+		var req map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if req["profile"] != "prod-profile" {
+			t.Fatalf("expected profile prod-profile, got %#v", req["profile"])
+		}
+		if req["region"] != "us-west-2" {
+			t.Fatalf("expected region us-west-2, got %#v", req["region"])
+		}
+		if req["multi_region"] != true {
+			t.Fatalf("expected multi_region=true, got %#v", req["multi_region"])
+		}
+		if req["concurrency"] != float64(9) {
+			t.Fatalf("expected concurrency=9, got %#v", req["concurrency"])
+		}
+		if req["validate"] != true {
+			t.Fatalf("expected validate=true, got %#v", req["validate"])
+		}
+		if req["org_role"] != "OrganizationAccountAccessRole" {
+			t.Fatalf("expected org_role OrganizationAccountAccessRole, got %#v", req["org_role"])
+		}
+		if req["account_concurrency"] != float64(3) {
+			t.Fatalf("expected account_concurrency=3, got %#v", req["account_concurrency"])
+		}
+		includeAccounts, ok := req["include_accounts"].([]interface{})
+		if !ok || len(includeAccounts) != 2 || includeAccounts[0] != "111111111111" || includeAccounts[1] != "222222222222" {
+			t.Fatalf("unexpected include_accounts payload: %#v", req["include_accounts"])
+		}
+		excludeAccounts, ok := req["exclude_accounts"].([]interface{})
+		if !ok || len(excludeAccounts) != 1 || excludeAccounts[0] != "333333333333" {
+			t.Fatalf("unexpected exclude_accounts payload: %#v", req["exclude_accounts"])
+		}
+		tables, ok := req["tables"].([]interface{})
+		if !ok || len(tables) != 2 || tables[0] != "aws_iam_users" || tables[1] != "aws_s3_buckets" {
+			t.Fatalf("unexpected tables payload: %#v", req["tables"])
+		}
+
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"provider": "aws_org",
+			"validate": true,
+			"results": []map[string]interface{}{
+				{
+					"table":    "aws_iam_users",
+					"synced":   12,
+					"errors":   0,
+					"duration": float64(1000000000),
+				},
+			},
+			"account_errors": []string{"account 333333333333: access denied"},
+		})
+	}))
+	defer server.Close()
+
+	c, err := New(Config{
+		BaseURL: server.URL,
+		APIKey:  "test-key",
+	})
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	resp, err := c.RunAWSOrgSync(context.Background(), AWSOrgSyncRequest{
+		Profile:            " prod-profile ",
+		Region:             " us-west-2 ",
+		MultiRegion:        true,
+		Concurrency:        9,
+		Tables:             []string{"aws_iam_users", "aws_s3_buckets"},
+		Validate:           true,
+		OrgRole:            " OrganizationAccountAccessRole ",
+		IncludeAccounts:    []string{" 111111111111 ", "222222222222"},
+		ExcludeAccounts:    []string{"333333333333"},
+		AccountConcurrency: 3,
+	})
+	if err != nil {
+		t.Fatalf("RunAWSOrgSync returned error: %v", err)
+	}
+	if resp.Provider != "aws_org" || !resp.Validate || len(resp.Results) != 1 {
+		t.Fatalf("unexpected response: %+v", resp)
+	}
+	if resp.Results[0].Table != "aws_iam_users" || resp.Results[0].Synced != 12 {
+		t.Fatalf("unexpected first result: %+v", resp.Results[0])
+	}
+	if len(resp.AccountErrors) != 1 || resp.AccountErrors[0] != "account 333333333333: access denied" {
+		t.Fatalf("unexpected account errors: %#v", resp.AccountErrors)
+	}
+}
+
+func TestRunAWSOrgSync_EmptyRequestBodyForDefaultBehavior(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/sync/aws-org" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+
+		var req map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if len(req) != 0 {
+			t.Fatalf("expected empty request body, got %#v", req)
+		}
+
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"provider": "aws_org",
+			"validate": false,
+			"results":  []map[string]interface{}{},
+		})
+	}))
+	defer server.Close()
+
+	c, err := New(Config{
+		BaseURL: server.URL,
+		APIKey:  "test-key",
+	})
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	resp, err := c.RunAWSOrgSync(context.Background(), AWSOrgSyncRequest{})
+	if err != nil {
+		t.Fatalf("RunAWSOrgSync returned error: %v", err)
+	}
+	if resp.Provider != "aws_org" || resp.Validate {
+		t.Fatalf("unexpected response: %+v", resp)
+	}
+}
+
 func TestRunK8sSync_SendsRequestAndParsesResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

@@ -842,6 +842,64 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/sync/aws-org:
+    post:
+      tags:
+        - Admin
+      summary: Run AWS organization sync
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                profile:
+                  type: string
+                region:
+                  type: string
+                multi_region:
+                  type: boolean
+                concurrency:
+                  type: integer
+                  minimum: 1
+                tables:
+                  type: array
+                  items:
+                    type: string
+                validate:
+                  type: boolean
+                org_role:
+                  type: string
+                include_accounts:
+                  type: array
+                  items:
+                    type: string
+                exclude_accounts:
+                  type: array
+                  items:
+                    type: string
+                account_concurrency:
+                  type: integer
+                  minimum: 1
+      responses:
+        '200':
+          description: AWS organization sync run complete
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncRunResponse'
+        '400':
+          description: Invalid AWS organization sync request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: AWS organization sync unavailable because Snowflake is not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/sync/backfill-relationships:
     post:
       tags:
@@ -5092,6 +5150,10 @@ components:
           type: string
         validate:
           type: boolean
+        account_errors:
+          type: array
+          items:
+            type: string
         relationships_extracted:
           type: integer
         relationships_skipped_reason:

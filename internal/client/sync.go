@@ -39,6 +39,7 @@ type SyncRunResponse struct {
 	Provider                   string                  `json:"provider"`
 	Validate                   bool                    `json:"validate"`
 	Results                    []nativesync.SyncResult `json:"results"`
+	AccountErrors              []string                `json:"account_errors,omitempty"`
 	RelationshipsExtracted     int64                   `json:"relationships_extracted,omitempty"`
 	RelationshipsSkippedReason string                  `json:"relationships_skipped_reason,omitempty"`
 }
@@ -122,6 +123,103 @@ func (c *Client) RunAWSSync(ctx context.Context, req AWSSyncRequest) (*SyncRunRe
 
 	var resp SyncRunResponse
 	if err := c.doJSON(ctx, http.MethodPost, "/api/v1/sync/aws", nil, reqBody, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+type AWSOrgSyncRequest struct {
+	Profile            string
+	Region             string
+	MultiRegion        bool
+	Concurrency        int
+	Tables             []string
+	Validate           bool
+	OrgRole            string
+	IncludeAccounts    []string
+	ExcludeAccounts    []string
+	AccountConcurrency int
+}
+
+func (c *Client) RunAWSOrgSync(ctx context.Context, req AWSOrgSyncRequest) (*SyncRunResponse, error) {
+	var reqBody map[string]interface{}
+	if profile := strings.TrimSpace(req.Profile); profile != "" {
+		reqBody = map[string]interface{}{"profile": profile}
+	}
+	if region := strings.TrimSpace(req.Region); region != "" {
+		if reqBody == nil {
+			reqBody = map[string]interface{}{"region": region}
+		} else {
+			reqBody["region"] = region
+		}
+	}
+	if req.MultiRegion {
+		if reqBody == nil {
+			reqBody = make(map[string]interface{}, 1)
+		}
+		reqBody["multi_region"] = true
+	}
+	if req.Concurrency > 0 {
+		if reqBody == nil {
+			reqBody = make(map[string]interface{}, 1)
+		}
+		reqBody["concurrency"] = req.Concurrency
+	}
+	if len(req.Tables) > 0 {
+		if reqBody == nil {
+			reqBody = make(map[string]interface{}, 1)
+		}
+		reqBody["tables"] = req.Tables
+	}
+	if req.Validate {
+		if reqBody == nil {
+			reqBody = make(map[string]interface{}, 1)
+		}
+		reqBody["validate"] = true
+	}
+	if orgRole := strings.TrimSpace(req.OrgRole); orgRole != "" {
+		if reqBody == nil {
+			reqBody = make(map[string]interface{}, 1)
+		}
+		reqBody["org_role"] = orgRole
+	}
+	if len(req.IncludeAccounts) > 0 {
+		accounts := make([]string, 0, len(req.IncludeAccounts))
+		for _, accountID := range req.IncludeAccounts {
+			if trimmed := strings.TrimSpace(accountID); trimmed != "" {
+				accounts = append(accounts, trimmed)
+			}
+		}
+		if len(accounts) > 0 {
+			if reqBody == nil {
+				reqBody = make(map[string]interface{}, 1)
+			}
+			reqBody["include_accounts"] = accounts
+		}
+	}
+	if len(req.ExcludeAccounts) > 0 {
+		accounts := make([]string, 0, len(req.ExcludeAccounts))
+		for _, accountID := range req.ExcludeAccounts {
+			if trimmed := strings.TrimSpace(accountID); trimmed != "" {
+				accounts = append(accounts, trimmed)
+			}
+		}
+		if len(accounts) > 0 {
+			if reqBody == nil {
+				reqBody = make(map[string]interface{}, 1)
+			}
+			reqBody["exclude_accounts"] = accounts
+		}
+	}
+	if req.AccountConcurrency > 0 {
+		if reqBody == nil {
+			reqBody = make(map[string]interface{}, 1)
+		}
+		reqBody["account_concurrency"] = req.AccountConcurrency
+	}
+
+	var resp SyncRunResponse
+	if err := c.doJSON(ctx, http.MethodPost, "/api/v1/sync/aws-org", nil, reqBody, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil

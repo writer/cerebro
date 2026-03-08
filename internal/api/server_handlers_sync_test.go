@@ -254,6 +254,101 @@ func TestSyncAWS_UsesRequestOptions(t *testing.T) {
 	}
 }
 
+func TestSyncAWSOrg_RequiresSnowflake(t *testing.T) {
+	s := newTestServer(t)
+
+	w := do(t, s, http.MethodPost, "/api/v1/sync/aws-org", map[string]interface{}{
+		"org_role": "OrganizationAccountAccessRole",
+	})
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestSyncAWSOrg_InvalidRequest(t *testing.T) {
+	s := newTestServer(t)
+
+	w := do(t, s, http.MethodPost, "/api/v1/sync/aws-org", "not-json")
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid request, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestSyncAWSOrg_UsesRequestOptions(t *testing.T) {
+	s := newTestServer(t)
+	s.app.Snowflake = &snowflake.Client{}
+
+	originalRun := runAWSOrgSyncWithOptions
+	t.Cleanup(func() { runAWSOrgSyncWithOptions = originalRun })
+
+	called := false
+	runAWSOrgSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req awsOrgSyncRequest) (*awsOrgSyncOutcome, error) {
+		called = true
+		if client != s.app.Snowflake {
+			t.Fatalf("expected server snowflake client to be passed through")
+		}
+		if req.Profile != "prod-profile" {
+			t.Fatalf("expected profile prod-profile, got %q", req.Profile)
+		}
+		if req.Region != "us-west-2" {
+			t.Fatalf("expected region us-west-2, got %q", req.Region)
+		}
+		if !req.MultiRegion {
+			t.Fatal("expected multi_region=true")
+		}
+		if req.Concurrency != 6 {
+			t.Fatalf("expected concurrency 6, got %d", req.Concurrency)
+		}
+		if req.OrgRole != "OrganizationAccountAccessRole" {
+			t.Fatalf("expected org role OrganizationAccountAccessRole, got %q", req.OrgRole)
+		}
+		if req.AccountConcurrency != 3 {
+			t.Fatalf("expected account concurrency 3, got %d", req.AccountConcurrency)
+		}
+		if len(req.IncludeAccounts) != 2 || req.IncludeAccounts[0] != "111111111111" || req.IncludeAccounts[1] != "222222222222" {
+			t.Fatalf("unexpected include account filter: %#v", req.IncludeAccounts)
+		}
+		if len(req.ExcludeAccounts) != 1 || req.ExcludeAccounts[0] != "333333333333" {
+			t.Fatalf("unexpected exclude account filter: %#v", req.ExcludeAccounts)
+		}
+		if len(req.Tables) != 2 || req.Tables[0] != "aws_iam_users" || req.Tables[1] != "aws_s3_buckets" {
+			t.Fatalf("unexpected table filter: %#v", req.Tables)
+		}
+		if !req.Validate {
+			t.Fatal("expected validate=true")
+		}
+		return &awsOrgSyncOutcome{
+			Results:       []nativesync.SyncResult{{Table: "aws_iam_users", Synced: 4}},
+			AccountErrors: []string{"account 999999999999: access denied"},
+		}, nil
+	}
+
+	w := do(t, s, http.MethodPost, "/api/v1/sync/aws-org", map[string]interface{}{
+		"profile":             " prod-profile ",
+		"region":              " us-west-2 ",
+		"multi_region":        true,
+		"concurrency":         6,
+		"tables":              []string{"AWS_IAM_USERS", "aws_iam_users", " aws_s3_buckets "},
+		"validate":            true,
+		"org_role":            " OrganizationAccountAccessRole ",
+		"include_accounts":    []string{" 111111111111 ", "111111111111", "222222222222"},
+		"exclude_accounts":    []string{"333333333333", "333333333333"},
+		"account_concurrency": 3,
+	})
+	if !called {
+		t.Fatal("expected sync runner to be called")
+	}
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"provider":"aws_org"`) {
+		t.Fatalf("expected provider in response body, got %s", w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"account_errors":["account 999999999999: access denied"]`) {
+		t.Fatalf("expected account errors in response body, got %s", w.Body.String())
+	}
+}
+
 func TestSyncGCP_RequiresSnowflake(t *testing.T) {
 	s := newTestServer(t)
 

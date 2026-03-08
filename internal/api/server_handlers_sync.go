@@ -8,11 +8,19 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
+	"sync"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
+	"github.com/aws/aws-sdk-go-v2/service/organizations"
+	orgtypes "github.com/aws/aws-sdk-go-v2/service/organizations/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/evalops/cerebro/internal/snowflake"
 	nativesync "github.com/evalops/cerebro/internal/sync"
+	"golang.org/x/sync/errgroup"
 )
 
 func (s *Server) backfillRelationshipIDs(w http.ResponseWriter, r *http.Request) {
@@ -310,6 +318,290 @@ func (s *Server) syncAWS(w http.ResponseWriter, r *http.Request) {
 	s.json(w, http.StatusOK, resp)
 }
 
+type awsOrgSyncRequest struct {
+	Profile            string   `json:"profile"`
+	Region             string   `json:"region"`
+	MultiRegion        bool     `json:"multi_region"`
+	Concurrency        int      `json:"concurrency"`
+	Tables             []string `json:"tables"`
+	Validate           bool     `json:"validate"`
+	OrgRole            string   `json:"org_role"`
+	IncludeAccounts    []string `json:"include_accounts"`
+	ExcludeAccounts    []string `json:"exclude_accounts"`
+	AccountConcurrency int      `json:"account_concurrency"`
+}
+
+type awsOrgSyncOutcome struct {
+	Results       []nativesync.SyncResult
+	AccountErrors []string
+}
+
+var runAWSOrgSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req awsOrgSyncRequest) (*awsOrgSyncOutcome, error) {
+	loadOptions := make([]func(*config.LoadOptions) error, 0, 2)
+	if req.Profile != "" {
+		loadOptions = append(loadOptions, config.WithSharedConfigProfile(req.Profile))
+	}
+	if req.Region != "" {
+		loadOptions = append(loadOptions, config.WithRegion(req.Region))
+	}
+	awsCfg, err := config.LoadDefaultConfig(ctx, loadOptions...)
+	if err != nil {
+		return nil, fmt.Errorf("load AWS config: %w", err)
+	}
+
+	region := req.Region
+	if region == "" {
+		region = awsCfg.Region
+	}
+	if region == "" {
+		region = "us-east-1"
+	}
+
+	orgCfg := awsCfg.Copy()
+	if strings.TrimSpace(orgCfg.Region) == "" {
+		orgCfg.Region = "us-east-1"
+	}
+	includeSet := buildSyncStringSet(req.IncludeAccounts)
+	excludeSet := buildSyncStringSet(req.ExcludeAccounts)
+	accountIDs, err := listAWSOrgSyncAccountIDs(ctx, orgCfg, includeSet, excludeSet)
+	if err != nil {
+		return nil, fmt.Errorf("list organization accounts: %w", err)
+	}
+	if len(accountIDs) == 0 {
+		return nil, fmt.Errorf("no AWS organization accounts matched filters")
+	}
+
+	if req.Validate {
+		options := buildAWSEngineOptionsForRequest(region, req)
+		syncer := nativesync.NewSyncEngine(client, slog.Default(), options...)
+		results, err := syncer.ValidateTablesWithConfig(ctx, awsCfg)
+		if err != nil {
+			return nil, fmt.Errorf("validation failed: %w", err)
+		}
+		return &awsOrgSyncOutcome{Results: results}, nil
+	}
+
+	managementAccountID, err := getAWSOrgSyncManagementAccountID(ctx, awsCfg)
+	if err != nil {
+		return nil, fmt.Errorf("get management account ID: %w", err)
+	}
+
+	accountConcurrency := req.AccountConcurrency
+	if accountConcurrency <= 0 {
+		accountConcurrency = 4
+	}
+
+	options := buildAWSEngineOptionsForRequest(region, req)
+	results := make([]nativesync.SyncResult, 0, len(accountIDs))
+	accountErrors := make([]string, 0)
+	var mu sync.Mutex
+	var group errgroup.Group
+	group.SetLimit(accountConcurrency)
+
+	for _, accountID := range accountIDs {
+		accountID := accountID
+		group.Go(func() error {
+			accountCfg := awsCfg
+			if accountID != managementAccountID {
+				roleArn, err := buildAWSOrgSyncRoleARN(accountID, req.OrgRole, region)
+				if err != nil {
+					mu.Lock()
+					accountErrors = append(accountErrors, fmt.Sprintf("account %s: %v", accountID, err))
+					mu.Unlock()
+					return nil
+				}
+
+				assumedCfg, err := assumeAWSOrgAccountConfig(ctx, awsCfg, roleArn, fmt.Sprintf("cerebro-sync-%s", accountID))
+				if err != nil {
+					mu.Lock()
+					accountErrors = append(accountErrors, fmt.Sprintf("account %s: %v", accountID, err))
+					mu.Unlock()
+					return nil
+				}
+				accountCfg = assumedCfg
+			}
+
+			syncer := nativesync.NewSyncEngine(client, slog.Default(), options...)
+			accountResults, syncErr := syncer.SyncAllWithConfig(ctx, accountCfg)
+
+			mu.Lock()
+			results = append(results, accountResults...)
+			if syncErr != nil {
+				accountErrors = append(accountErrors, fmt.Sprintf("account %s: %v", accountID, syncErr))
+			}
+			mu.Unlock()
+			return nil
+		})
+	}
+	_ = group.Wait()
+	sort.Strings(accountErrors)
+
+	return &awsOrgSyncOutcome{
+		Results:       results,
+		AccountErrors: accountErrors,
+	}, nil
+}
+
+func (s *Server) syncAWSOrg(w http.ResponseWriter, r *http.Request) {
+	var req awsOrgSyncRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+		s.error(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	req.Profile = strings.TrimSpace(req.Profile)
+	req.Region = strings.TrimSpace(req.Region)
+	req.Tables = normalizeSyncTables(req.Tables)
+	req.OrgRole = strings.TrimSpace(req.OrgRole)
+	if req.OrgRole == "" {
+		req.OrgRole = "OrganizationAccountAccessRole"
+	}
+	req.IncludeAccounts = normalizeSyncAccountIDs(req.IncludeAccounts)
+	req.ExcludeAccounts = normalizeSyncAccountIDs(req.ExcludeAccounts)
+	if req.AccountConcurrency <= 0 {
+		req.AccountConcurrency = 4
+	}
+
+	if s.app.Snowflake == nil {
+		s.error(w, http.StatusServiceUnavailable, "snowflake not configured")
+		return
+	}
+
+	outcome, err := runAWSOrgSyncWithOptions(r.Context(), s.app.Snowflake, req)
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
+	if outcome == nil {
+		outcome = &awsOrgSyncOutcome{}
+	}
+
+	resp := map[string]interface{}{
+		"provider": "aws_org",
+		"validate": req.Validate,
+		"results":  outcome.Results,
+	}
+	if len(outcome.AccountErrors) > 0 {
+		resp["account_errors"] = outcome.AccountErrors
+	}
+
+	s.json(w, http.StatusOK, resp)
+}
+
+func buildAWSEngineOptionsForRequest(region string, req awsOrgSyncRequest) []nativesync.EngineOption {
+	options := make([]nativesync.EngineOption, 0, 3)
+	if req.Concurrency > 0 {
+		options = append(options, nativesync.WithConcurrency(req.Concurrency))
+	}
+	if len(req.Tables) > 0 {
+		options = append(options, nativesync.WithTableFilter(req.Tables))
+	}
+	if req.MultiRegion {
+		options = append(options, nativesync.WithRegions(nativesync.DefaultAWSRegions))
+	} else {
+		options = append(options, nativesync.WithRegions([]string{region}))
+	}
+	return options
+}
+
+func buildSyncStringSet(values []string) map[string]struct{} {
+	if len(values) == 0 {
+		return nil
+	}
+	set := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		set[trimmed] = struct{}{}
+	}
+	if len(set) == 0 {
+		return nil
+	}
+	return set
+}
+
+func listAWSOrgSyncAccountIDs(ctx context.Context, cfg aws.Config, include, exclude map[string]struct{}) ([]string, error) {
+	client := organizations.NewFromConfig(cfg)
+	pager := organizations.NewListAccountsPaginator(client, &organizations.ListAccountsInput{})
+	accountIDs := make([]string, 0)
+
+	for pager.HasMorePages() {
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, account := range page.Accounts {
+			if account.Status != orgtypes.AccountStatusActive {
+				continue
+			}
+			id := strings.TrimSpace(aws.ToString(account.Id))
+			if id == "" {
+				continue
+			}
+			if len(include) > 0 {
+				if _, ok := include[id]; !ok {
+					continue
+				}
+			}
+			if _, ok := exclude[id]; ok {
+				continue
+			}
+			accountIDs = append(accountIDs, id)
+		}
+	}
+
+	sort.Strings(accountIDs)
+	return accountIDs, nil
+}
+
+func getAWSOrgSyncManagementAccountID(ctx context.Context, cfg aws.Config) (string, error) {
+	client := sts.NewFromConfig(cfg)
+	resp, err := client.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(aws.ToString(resp.Account)), nil
+}
+
+func buildAWSOrgSyncRoleARN(accountID, roleName, region string) (string, error) {
+	if roleName == "" {
+		return "", fmt.Errorf("aws org role name is required")
+	}
+	if strings.Contains(roleName, "{account_id}") {
+		return strings.ReplaceAll(roleName, "{account_id}", accountID), nil
+	}
+	if strings.HasPrefix(roleName, "arn:") {
+		return roleName, nil
+	}
+	partition := awsOrgPartitionForRegion(region)
+	return fmt.Sprintf("arn:%s:iam::%s:role/%s", partition, accountID, roleName), nil
+}
+
+func awsOrgPartitionForRegion(region string) string {
+	if strings.HasPrefix(region, "us-gov-") {
+		return "aws-us-gov"
+	}
+	if strings.HasPrefix(region, "cn-") {
+		return "aws-cn"
+	}
+	return "aws"
+}
+
+func assumeAWSOrgAccountConfig(ctx context.Context, baseCfg aws.Config, roleARN, sessionName string) (aws.Config, error) {
+	assumedCfg := baseCfg.Copy()
+	stsClient := sts.NewFromConfig(baseCfg)
+	assumeProvider := stscreds.NewAssumeRoleProvider(stsClient, roleARN, func(options *stscreds.AssumeRoleOptions) {
+		options.RoleSessionName = sessionName
+	})
+	assumedCfg.Credentials = aws.NewCredentialsCache(assumeProvider)
+	if _, err := assumedCfg.Credentials.Retrieve(ctx); err != nil {
+		return baseCfg, err
+	}
+	return assumedCfg, nil
+}
+
 type gcpSyncRequest struct {
 	Project     string   `json:"project"`
 	Concurrency int      `json:"concurrency"`
@@ -494,6 +786,31 @@ func normalizeSyncProjects(raw []string) []string {
 		}
 		seen[key] = struct{}{}
 		normalized = append(normalized, name)
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
+}
+
+func normalizeSyncAccountIDs(raw []string) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+
+	normalized := make([]string, 0, len(raw))
+	seen := make(map[string]struct{}, len(raw))
+	for _, accountID := range raw {
+		id := strings.TrimSpace(accountID)
+		if id == "" {
+			continue
+		}
+		key := strings.ToLower(id)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		normalized = append(normalized, id)
 	}
 	if len(normalized) == 0 {
 		return nil
