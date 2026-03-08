@@ -4342,6 +4342,61 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/graph/recommend-team:
+    post:
+      tags:
+        - Graph
+      summary: Recommend a graph-informed team for a project
+      description: Rank people by system knowledge, collaboration fit, bridge potential, availability, and bus-factor impact.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - target_systems
+              properties:
+                target_systems:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: string
+                domains:
+                  type: array
+                  items:
+                    type: string
+                team_size:
+                  type: integer
+                  minimum: 1
+                constraints:
+                  type: object
+                  properties:
+                    max_bus_factor_impact:
+                      type: integer
+                      minimum: 0
+                    prefer_existing_collaboration:
+                      type: boolean
+      responses:
+        '200':
+          description: Team recommendation with candidate ranking, team analysis, and alternatives
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Security graph is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/graph/evaluate-change:
     post:
       tags:

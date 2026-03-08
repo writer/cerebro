@@ -311,6 +311,7 @@ func (s *Server) setupRoutes() {
 			r.Get("/diff", s.graphDiff)
 			r.Get("/stats", s.graphStats)
 			r.Get("/who-knows", s.whoKnows)
+			r.Post("/recommend-team", s.recommendTeam)
 			r.Get("/blast-radius/{principalId}", s.blastRadius)
 			r.Get("/cascading-blast-radius/{principalId}", s.cascadingBlastRadius)
 			r.Get("/reverse-access/{resourceId}", s.reverseAccess)
