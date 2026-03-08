@@ -38,6 +38,7 @@ type PostureReport struct {
 	GraphStats        *GraphStats             `json:"graph_stats"`
 	RiskScore         float64                 `json:"risk_score"` // 0-100, overall security posture
 	RiskLevel         RiskLevel               `json:"risk_level"`
+	OrgHealth         *OrgHealthScore         `json:"org_health,omitempty"`
 	ToxicCombinations []*ToxicCombination     `json:"toxic_combinations"`
 	AttackPaths       *SimulationResult       `json:"attack_paths"`
 	Chokepoints       []*Chokepoint           `json:"chokepoints"`
@@ -149,6 +150,8 @@ func (r *RiskEngine) Analyze() *SecurityReport {
 
 	// Graph statistics
 	report.GraphStats = r.calculateGraphStats()
+	orgHealth := ComputeOrgHealthScore(r.graph)
+	report.OrgHealth = &orgHealth
 
 	// Toxic combinations
 	report.ToxicCombinations = r.toxicEngine.Analyze(r.graph)
