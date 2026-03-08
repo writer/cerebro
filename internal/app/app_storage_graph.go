@@ -11,6 +11,8 @@ import (
 	"github.com/evalops/cerebro/internal/snowflake"
 )
 
+var appShutdownTimeout = 30 * time.Second
+
 func (a *App) initRepositories() {
 	if a.Snowflake == nil {
 		return
@@ -182,11 +184,12 @@ func topStrings(values []string, limit int) []string {
 func (a *App) Close() error {
 	var errs []error
 
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), appShutdownTimeout)
+	defer shutdownCancel()
+
 	// Sync findings store to persist any pending changes
 	if syncer, ok := a.Findings.(interface{ Sync(context.Context) error }); ok {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		if err := syncer.Sync(ctx); err != nil {
+		if err := syncer.Sync(shutdownCtx); err != nil {
 			errs = append(errs, fmt.Errorf("findings sync: %w", err))
 		}
 	}
@@ -195,9 +198,14 @@ func (a *App) Close() error {
 		a.graphCancel()
 	}
 	if a.graphReady != nil {
+		graphWaitCtx, graphWaitCancel := context.WithTimeout(context.Background(), appShutdownTimeout)
+		defer graphWaitCancel()
 		select {
 		case <-a.graphReady:
-		case <-time.After(5 * time.Second):
+		case <-graphWaitCtx.Done():
+			if a.Logger != nil {
+				a.Logger.Warn("timed out waiting for security graph shutdown", "timeout", appShutdownTimeout, "error", graphWaitCtx.Err())
+			}
 		}
 	}
 

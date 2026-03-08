@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -101,5 +102,58 @@ func TestWaitForGraph_ContextCanceled(t *testing.T) {
 
 	if a.WaitForGraph(ctx) {
 		t.Fatal("expected WaitForGraph to return false on context cancellation")
+	}
+}
+
+func TestClose_CancelsGraphBuilderBeforeWaiting(t *testing.T) {
+	graphReady := make(chan struct{})
+	cancelCalled := make(chan struct{})
+
+	a := &App{
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		graphCancel: func() {
+			close(cancelCalled)
+			close(graphReady)
+		},
+		graphReady: graphReady,
+	}
+
+	if err := a.Close(); err != nil {
+		t.Fatalf("Close() returned error: %v", err)
+	}
+
+	select {
+	case <-cancelCalled:
+	default:
+		t.Fatal("expected graph cancel to be called before close returned")
+	}
+}
+
+func TestClose_LogsWarningWhenGraphShutdownTimesOut(t *testing.T) {
+	oldTimeout := appShutdownTimeout
+	appShutdownTimeout = 20 * time.Millisecond
+	t.Cleanup(func() {
+		appShutdownTimeout = oldTimeout
+	})
+
+	var logs bytes.Buffer
+	a := &App{
+		Logger: slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn})),
+		graphCancel: func() {
+			// Intentionally leave graphReady open to force timeout path.
+		},
+		graphReady: make(chan struct{}),
+	}
+
+	start := time.Now()
+	if err := a.Close(); err != nil {
+		t.Fatalf("Close() returned error: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("Close() took too long waiting on graph shutdown: %s", elapsed)
+	}
+
+	if !strings.Contains(logs.String(), "timed out waiting for security graph shutdown") {
+		t.Fatalf("expected graph shutdown timeout warning, got logs: %s", logs.String())
 	}
 }

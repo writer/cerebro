@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"testing"
@@ -225,6 +226,20 @@ func TestBuilder_BuildWithMockData(t *testing.T) {
 	}
 	if !foundTrustEdge {
 		t.Error("expected trust edge from alice to AdminRole")
+	}
+}
+
+func TestBuilder_BuildReturnsContextErrorWhenCanceled(t *testing.T) {
+	source := newMockDataSource()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	builder := NewBuilder(source, logger)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := builder.Build(ctx)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
 	}
 }
 

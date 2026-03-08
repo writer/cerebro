@@ -88,6 +88,13 @@ func (b *Builder) queryIfExists(ctx context.Context, table, query string) (*Quer
 // Phase 4: build all edges in parallel across providers
 // Phase 5: build inferred edges (exposure, SCM, relationships)
 func (b *Builder) Build(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	start := time.Now()
 	b.graph.Clear()
 
@@ -95,6 +102,9 @@ func (b *Builder) Build(ctx context.Context) error {
 
 	// Phase 1: discover which tables have data (1 round-trip)
 	b.discoverTables(ctx)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 
 	// Phase 2: load all nodes in parallel
 	g, gctx := errgroup.WithContext(ctx)
@@ -103,6 +113,9 @@ func (b *Builder) Build(ctx context.Context) error {
 	g.Go(func() error { b.buildAzureNodes(gctx); return nil })
 	g.Go(func() error { b.buildOktaNodes(gctx); return nil })
 	_ = g.Wait()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 
 	// Add internet entry point (needed before edge building)
 	b.addInternetNode()
@@ -122,6 +135,9 @@ func (b *Builder) Build(ctx context.Context) error {
 	eg.Go(func() error { b.buildAzureEdges(ectx); return nil })
 	eg.Go(func() error { b.buildRelationshipEdges(ectx); return nil })
 	_ = eg.Wait()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 
 	b.logger.Info("graph edges built",
 		"edges", b.graph.EdgeCount(),
@@ -129,7 +145,13 @@ func (b *Builder) Build(ctx context.Context) error {
 
 	// Phase 5: inferred edges (these iterate nodes, run sequentially)
 	inferStart := time.Now()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	b.buildExposureEdges()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	b.buildSCMInference()
 
 	b.logger.Info("graph inferred edges built",
