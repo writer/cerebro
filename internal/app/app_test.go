@@ -245,6 +245,45 @@ func TestNew_APIAuthEnabledWithoutKeys(t *testing.T) {
 	}
 }
 
+func TestNewWithConfig_APIAuthEnabledWithoutKeys(t *testing.T) {
+	cfg := &Config{
+		APIAuthEnabled: true,
+		PoliciesPath:   "policies",
+	}
+
+	_, err := NewWithConfig(context.Background(), cfg)
+	if err == nil {
+		t.Fatal("expected error when API auth enabled without API_KEYS")
+	}
+}
+
+func TestNewWithConfig_UsesProvidedPoliciesPath(t *testing.T) {
+	t.Setenv("CEDAR_POLICIES_PATH", filepath.Join(t.TempDir(), "missing-policies"))
+
+	cfg := LoadConfig()
+	policiesPath := "policies"
+	if _, err := os.Stat(policiesPath); err != nil {
+		policiesPath = filepath.Join("..", "..", "policies")
+	}
+	cfg.PoliciesPath = policiesPath
+	cfg.APIAuthEnabled = false
+	cfg.APIKeys = nil
+
+	app, err := NewWithConfig(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("NewWithConfig() failed: %v", err)
+	}
+	defer func() {
+		if closeErr := app.Close(); closeErr != nil {
+			t.Fatalf("Close() failed: %v", closeErr)
+		}
+	}()
+
+	if app.Config.PoliciesPath != policiesPath {
+		t.Fatalf("expected policies path %q, got %q", policiesPath, app.Config.PoliciesPath)
+	}
+}
+
 func TestNew_WithoutSnowflake(t *testing.T) {
 	// Clear snowflake config to test initialization without it
 	t.Setenv("SNOWFLAKE_PRIVATE_KEY", "")

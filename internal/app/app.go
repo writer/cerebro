@@ -778,9 +778,20 @@ func LoadConfig() *Config {
 	return cfg
 }
 
-// New creates and wires up the entire application
+// New creates and wires up the entire application using environment-backed config.
 func New(ctx context.Context) (*App, error) {
-	cfg := LoadConfig()
+	return NewWithConfig(ctx, LoadConfig())
+}
+
+// NewWithConfig creates and wires up the entire application from an explicit config.
+// This enables deterministic integration tests and gradual container decomposition
+// without relying on process-wide environment mutation.
+func NewWithConfig(ctx context.Context, cfg *Config) (*App, error) {
+	if cfg == nil {
+		cfg = LoadConfig()
+	}
+	cfg.RefreshProviderAwareConfig()
+
 	if cfg.APIAuthEnabled && len(cfg.APIKeys) == 0 {
 		return nil, fmt.Errorf("api auth enabled but no API_KEYS configured")
 	}
