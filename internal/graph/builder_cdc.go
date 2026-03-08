@@ -195,6 +195,10 @@ func (b *Builder) rebuildEdges(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	b.buildPersonInteractionEdges(ctx)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 
 	b.buildExposureEdges()
 	if err := ctx.Err(); err != nil {

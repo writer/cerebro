@@ -149,6 +149,7 @@ func (b *Builder) Build(ctx context.Context) error {
 		return err
 	}
 	b.buildUnifiedPersonGraph(ctx)
+	b.buildPersonInteractionEdges(ctx)
 
 	// Phase 5: inferred edges (these iterate nodes, run sequentially)
 	inferStart := time.Now()
