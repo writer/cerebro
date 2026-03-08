@@ -39,6 +39,8 @@ type githubAPIError struct {
 	Body       string
 }
 
+const githubPullRequestLookbackDays = 180
+
 func (e *githubAPIError) Error() string {
 	return fmt.Sprintf("github API error %d: %s", e.StatusCode, e.Body)
 }
@@ -102,6 +104,45 @@ func (g *GitHubProvider) Schema() []TableSchema {
 				{Name: "created_at", Type: "timestamp"},
 				{Name: "updated_at", Type: "timestamp"},
 				{Name: "pushed_at", Type: "timestamp"},
+			},
+			PrimaryKey: []string{"id"},
+		},
+		{
+			Name:        "github_pull_requests",
+			Description: "GitHub pull requests",
+			Columns: []ColumnSchema{
+				{Name: "id", Type: "integer", Required: true},
+				{Name: "number", Type: "integer", Required: true},
+				{Name: "repository", Type: "string", Required: true},
+				{Name: "author_login", Type: "string"},
+				{Name: "title", Type: "string"},
+				{Name: "state", Type: "string"},
+				{Name: "draft", Type: "boolean"},
+				{Name: "created_at", Type: "timestamp"},
+				{Name: "updated_at", Type: "timestamp"},
+				{Name: "merged_at", Type: "timestamp"},
+				{Name: "closed_at", Type: "timestamp"},
+				{Name: "merged_by_login", Type: "string"},
+				{Name: "additions", Type: "integer"},
+				{Name: "deletions", Type: "integer"},
+				{Name: "changed_files", Type: "integer"},
+				{Name: "review_comments", Type: "integer"},
+				{Name: "commits", Type: "integer"},
+			},
+			PrimaryKey: []string{"id"},
+		},
+		{
+			Name:        "github_pull_request_reviews",
+			Description: "GitHub pull request reviews",
+			Columns: []ColumnSchema{
+				{Name: "id", Type: "integer", Required: true},
+				{Name: "pull_request_id", Type: "integer", Required: true},
+				{Name: "repository", Type: "string", Required: true},
+				{Name: "reviewer_login", Type: "string"},
+				{Name: "author_login", Type: "string"},
+				{Name: "state", Type: "string"},
+				{Name: "submitted_at", Type: "timestamp"},
+				{Name: "body", Type: "string"},
 			},
 			PrimaryKey: []string{"id"},
 		},
@@ -301,6 +342,9 @@ func (g *GitHubProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResul
 	var secretRows []map[string]interface{}
 	var workflowRows []map[string]interface{}
 	var branchRows []map[string]interface{}
+	var pullRequestRows []map[string]interface{}
+	var pullRequestReviewRows []map[string]interface{}
+	pullRequestSince := time.Now().AddDate(0, 0, -githubPullRequestLookbackDays)
 	for _, repo := range repos {
 		rows, depErr := g.fetchDependabotAlerts(ctx, repo)
 		if depErr != nil {
@@ -336,6 +380,14 @@ func (g *GitHubProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResul
 		} else {
 			branchRows = append(branchRows, rows...)
 		}
+
+		prRows, reviewRows, pullErr := g.fetchPullRequests(ctx, repo, pullRequestSince)
+		if pullErr != nil {
+			result.Errors = append(result.Errors, "pull_requests: "+pullErr.Error())
+		} else {
+			pullRequestRows = append(pullRequestRows, prRows...)
+			pullRequestReviewRows = append(pullRequestReviewRows, reviewRows...)
+		}
 	}
 
 	syncTable("github_dependabot_alerts", dependabotRows)
@@ -343,6 +395,8 @@ func (g *GitHubProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResul
 	syncTable("github_secret_scanning_alerts", secretRows)
 	syncTable("github_actions_workflows", workflowRows)
 	syncTable("github_branch_protections", branchRows)
+	syncTable("github_pull_requests", pullRequestRows)
+	syncTable("github_pull_request_reviews", pullRequestReviewRows)
 
 	memberRows, err := g.fetchOrgMembers(ctx)
 	if err != nil {
@@ -860,6 +914,145 @@ func (g *GitHubProvider) fetchBranchProtections(ctx context.Context, repo github
 	return []map[string]interface{}{row}, nil
 }
 
+func (g *GitHubProvider) fetchPullRequests(ctx context.Context, repo githubRepoInfo, since time.Time) ([]map[string]interface{}, []map[string]interface{}, error) {
+	if repo.Name == "" {
+		return nil, nil, nil
+	}
+
+	path := fmt.Sprintf("/repos/%s/%s/pulls", g.org, repo.Name)
+	page := 1
+	var pullRequestRows []map[string]interface{}
+	var reviewRows []map[string]interface{}
+
+	for {
+		paged := addQueryParams(path, map[string]string{
+			"state":     "all",
+			"sort":      "updated",
+			"direction": "desc",
+			"per_page":  "100",
+			"page":      strconv.Itoa(page),
+		})
+
+		body, err := g.request(ctx, paged)
+		if err != nil {
+			if isGitHubIgnorable(err) {
+				return nil, nil, nil
+			}
+			return nil, nil, err
+		}
+
+		var pulls []map[string]interface{}
+		if err := json.Unmarshal(body, &pulls); err != nil {
+			return nil, nil, err
+		}
+		if len(pulls) == 0 {
+			break
+		}
+
+		stopPagination := false
+		for _, pull := range pulls {
+			normalized := normalizeGitHubMap(pull)
+			updatedAt := parseGitHubTime(asString(normalized["updated_at"]))
+			if !since.IsZero() && !updatedAt.IsZero() && updatedAt.Before(since) {
+				stopPagination = true
+				break
+			}
+
+			number, ok := asInt(normalized["number"])
+			if !ok {
+				continue
+			}
+
+			detailRow, err := g.fetchPullRequestDetails(ctx, repo, number)
+			if err != nil {
+				if isGitHubIgnorable(err) {
+					continue
+				}
+				return nil, nil, err
+			}
+			pullRequestRows = append(pullRequestRows, detailRow)
+
+			reviews, err := g.fetchPullRequestReviews(ctx, repo, number, detailRow["id"], asString(detailRow["author_login"]))
+			if err != nil {
+				return nil, nil, err
+			}
+			reviewRows = append(reviewRows, reviews...)
+		}
+
+		if stopPagination || len(pulls) < 100 {
+			break
+		}
+		page++
+	}
+
+	return pullRequestRows, reviewRows, nil
+}
+
+func (g *GitHubProvider) fetchPullRequestDetails(ctx context.Context, repo githubRepoInfo, number int) (map[string]interface{}, error) {
+	path := fmt.Sprintf("/repos/%s/%s/pulls/%d", g.org, repo.Name, number)
+	body, err := g.request(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+
+	var pull map[string]interface{}
+	if err := json.Unmarshal(body, &pull); err != nil {
+		return nil, err
+	}
+
+	normalized := normalizeGitHubMap(pull)
+	row := map[string]interface{}{
+		"id":              normalized["id"],
+		"number":          normalized["number"],
+		"repository":      buildRepoFullName(g.org, repo),
+		"author_login":    getNestedString(normalized, "user", "login"),
+		"title":           normalized["title"],
+		"state":           normalized["state"],
+		"draft":           normalized["draft"],
+		"created_at":      normalized["created_at"],
+		"updated_at":      normalized["updated_at"],
+		"merged_at":       normalized["merged_at"],
+		"closed_at":       normalized["closed_at"],
+		"merged_by_login": getNestedString(normalized, "merged_by", "login"),
+		"additions":       normalized["additions"],
+		"deletions":       normalized["deletions"],
+		"changed_files":   normalized["changed_files"],
+		"review_comments": normalized["review_comments"],
+		"commits":         normalized["commits"],
+	}
+
+	return row, nil
+}
+
+func (g *GitHubProvider) fetchPullRequestReviews(ctx context.Context, repo githubRepoInfo, number int, pullRequestID interface{}, authorLogin string) ([]map[string]interface{}, error) {
+	path := fmt.Sprintf("/repos/%s/%s/pulls/%d/reviews", g.org, repo.Name, number)
+	reviews, err := g.listAll(ctx, path)
+	if err != nil {
+		if isGitHubIgnorable(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	rows := make([]map[string]interface{}, 0, len(reviews))
+	for _, review := range reviews {
+		normalized := normalizeGitHubMap(review)
+		row := map[string]interface{}{
+			"id":              normalized["id"],
+			"pull_request_id": pullRequestID,
+			"repository":      buildRepoFullName(g.org, repo),
+			"reviewer_login":  getNestedString(normalized, "user", "login"),
+			"author_login":    authorLogin,
+			"state":           strings.ToLower(asString(normalized["state"])),
+			"submitted_at":    normalized["submitted_at"],
+			"body":            normalized["body"],
+		}
+		rows = append(rows, row)
+	}
+
+	return rows, nil
+}
+
 func (g *GitHubProvider) fetchOrgMembers(ctx context.Context) ([]map[string]interface{}, error) {
 	members, err := g.listAll(ctx, fmt.Sprintf("/orgs/%s/members", g.org))
 	if err != nil {
@@ -1063,6 +1256,39 @@ func asFloat(value interface{}) (float64, bool) {
 	default:
 		return 0, false
 	}
+}
+
+func asInt(value interface{}) (int, bool) {
+	switch typed := value.(type) {
+	case int:
+		return typed, true
+	case int64:
+		return int(typed), true
+	case float64:
+		return int(typed), true
+	case float32:
+		return int(typed), true
+	case json.Number:
+		parsed, err := typed.Int64()
+		return int(parsed), err == nil
+	case string:
+		parsed, err := strconv.Atoi(typed)
+		return parsed, err == nil
+	default:
+		return 0, false
+	}
+}
+
+func parseGitHubTime(value string) time.Time {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return time.Time{}
+	}
+	return parsed
 }
 
 func isGitHubIgnorable(err error) bool {
