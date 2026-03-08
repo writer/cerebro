@@ -4281,6 +4281,65 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/graph/who-knows:
+    get:
+      tags:
+        - Graph
+      summary: Rank experts for a topic, customer, or system
+      description: Return a ranked list of people who are most likely to have relevant knowledge, with availability-aware routing.
+      parameters:
+        - name: topic
+          in: query
+          required: false
+          description: Free-text topic lookup (for example payment-service).
+          schema:
+            type: string
+        - name: customer
+          in: query
+          required: false
+          description: Customer identifier or name to route expertise for.
+          schema:
+            type: string
+        - name: system
+          in: query
+          required: false
+          description: System identifier or name to route expertise for.
+          schema:
+            type: string
+        - name: available
+          in: query
+          required: false
+          description: When true, only return currently available experts.
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of ranked candidates to return.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 25
+      responses:
+        '200':
+          description: Ranked knowledge candidates
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Missing required query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Security graph is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/graph/evaluate-change:
     post:
       tags:
