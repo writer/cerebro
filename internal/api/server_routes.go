@@ -295,6 +295,7 @@ func (s *Server) setupRoutes() {
 			r.Get("/cascading-blast-radius/{principalId}", s.cascadingBlastRadius)
 			r.Get("/reverse-access/{resourceId}", s.reverseAccess)
 			r.Post("/rebuild", s.rebuildGraph)
+			r.Post("/simulate", s.simulateGraph)
 
 			// Risk Intelligence endpoints
 			r.Get("/risk-report", s.riskReport)
