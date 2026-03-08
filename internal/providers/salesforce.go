@@ -27,7 +27,7 @@ type SalesforceProvider struct {
 func NewSalesforceProvider() *SalesforceProvider {
 	return &SalesforceProvider{
 		BaseProvider: NewBaseProvider("salesforce", ProviderTypeSaaS),
-		client:       &http.Client{Timeout: 60 * time.Second},
+		client:       newProviderHTTPClient(60 * time.Second),
 	}
 }
 

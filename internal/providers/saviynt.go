@@ -28,7 +28,7 @@ type SaviyntProvider struct {
 func NewSaviyntProvider() *SaviyntProvider {
 	return &SaviyntProvider{
 		BaseProvider: NewBaseProvider("saviynt", ProviderTypeIdentity),
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

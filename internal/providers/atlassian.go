@@ -24,7 +24,7 @@ type AtlassianProvider struct {
 func NewAtlassianProvider() *AtlassianProvider {
 	return &AtlassianProvider{
 		BaseProvider: NewBaseProvider("atlassian", ProviderTypeSaaS),
-		client:       &http.Client{Timeout: 60 * time.Second},
+		client:       newProviderHTTPClient(60 * time.Second),
 	}
 }
 

@@ -22,7 +22,7 @@ func NewTenableProvider() *TenableProvider {
 	return &TenableProvider{
 		BaseProvider: NewBaseProvider("tenable", ProviderTypeSaaS),
 		baseURL:      "https://cloud.tenable.com",
-		client:       &http.Client{Timeout: 60 * time.Second},
+		client:       newProviderHTTPClient(60 * time.Second),
 	}
 }
 

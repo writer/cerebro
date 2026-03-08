@@ -28,7 +28,7 @@ type OracleIDCSProvider struct {
 func NewOracleIDCSProvider() *OracleIDCSProvider {
 	return &OracleIDCSProvider{
 		BaseProvider: NewBaseProvider("oracle_idcs", ProviderTypeIdentity),
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

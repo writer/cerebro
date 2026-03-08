@@ -38,7 +38,7 @@ type DuoProvider struct {
 func NewDuoProvider() *DuoProvider {
 	return &DuoProvider{
 		BaseProvider: NewBaseProvider("duo", ProviderTypeIdentity),
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 		now:          time.Now,
 	}
 }

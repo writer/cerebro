@@ -34,7 +34,7 @@ func NewRampProvider() *RampProvider {
 		BaseProvider: NewBaseProvider("ramp", ProviderTypeSaaS),
 		baseURL:      rampDefaultAPIURL,
 		tokenURL:     rampDefaultTokenURL,
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

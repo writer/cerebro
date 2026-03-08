@@ -22,7 +22,7 @@ type KandjiProvider struct {
 func NewKandjiProvider() *KandjiProvider {
 	return &KandjiProvider{
 		BaseProvider: NewBaseProvider("kandji", ProviderTypeEndpoint),
-		client:       &http.Client{Timeout: 60 * time.Second},
+		client:       newProviderHTTPClient(60 * time.Second),
 	}
 }
 

@@ -47,7 +47,7 @@ func NewGitHubProvider() *GitHubProvider {
 	return &GitHubProvider{
 		BaseProvider: NewBaseProvider("github", ProviderTypeSaaS),
 		baseURL:      "https://api.github.com",
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 
