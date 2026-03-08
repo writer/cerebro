@@ -3,6 +3,9 @@ package client
 import (
 	"context"
 	"net/http"
+	"strings"
+
+	nativesync "github.com/evalops/cerebro/internal/sync"
 )
 
 type RelationshipBackfillStats struct {
@@ -20,6 +23,50 @@ func (c *Client) BackfillRelationshipIDs(ctx context.Context, batchSize int) (*R
 
 	var resp RelationshipBackfillStats
 	if err := c.doJSON(ctx, http.MethodPost, "/api/v1/sync/backfill-relationships", nil, reqBody, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+type AzureSyncRequest struct {
+	Subscription string
+	Concurrency  int
+	Tables       []string
+	Validate     bool
+}
+
+type SyncRunResponse struct {
+	Provider string                  `json:"provider"`
+	Validate bool                    `json:"validate"`
+	Results  []nativesync.SyncResult `json:"results"`
+}
+
+func (c *Client) RunAzureSync(ctx context.Context, req AzureSyncRequest) (*SyncRunResponse, error) {
+	var reqBody map[string]interface{}
+	if sub := strings.TrimSpace(req.Subscription); sub != "" {
+		reqBody = map[string]interface{}{"subscription": sub}
+	}
+	if req.Concurrency > 0 {
+		if reqBody == nil {
+			reqBody = make(map[string]interface{}, 1)
+		}
+		reqBody["concurrency"] = req.Concurrency
+	}
+	if len(req.Tables) > 0 {
+		if reqBody == nil {
+			reqBody = make(map[string]interface{}, 1)
+		}
+		reqBody["tables"] = req.Tables
+	}
+	if req.Validate {
+		if reqBody == nil {
+			reqBody = make(map[string]interface{}, 1)
+		}
+		reqBody["validate"] = true
+	}
+
+	var resp SyncRunResponse
+	if err := c.doJSON(ctx, http.MethodPost, "/api/v1/sync/azure", nil, reqBody, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil

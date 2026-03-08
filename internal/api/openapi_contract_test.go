@@ -64,6 +64,14 @@ func TestOpenAPIContract_CriticalRoutes(t *testing.T) {
 			expectedStatus: http.StatusServiceUnavailable,
 		},
 		{
+			name:           "sync azure unavailable contract",
+			method:         http.MethodPost,
+			pathTemplate:   "/api/v1/sync/azure",
+			requestPath:    "/api/v1/sync/azure",
+			body:           map[string]interface{}{"concurrency": 5, "tables": []string{"azure_vm_instances"}},
+			expectedStatus: http.StatusServiceUnavailable,
+		},
+		{
 			name:           "threat intel stats response contract",
 			method:         http.MethodGet,
 			pathTemplate:   "/api/v1/threatintel/stats",

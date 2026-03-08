@@ -293,6 +293,7 @@ func (s *Server) setupRoutes() {
 		// Sync management endpoints
 		r.Route("/sync", func(r chi.Router) {
 			r.Post("/backfill-relationships", s.backfillRelationshipIDs)
+			r.Post("/azure", s.syncAzure)
 		})
 
 		// Telemetry ingestion (for agents)

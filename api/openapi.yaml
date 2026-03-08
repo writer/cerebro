@@ -830,6 +830,47 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/sync/azure:
+    post:
+      tags:
+        - Admin
+      summary: Run Azure native sync
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                subscription:
+                  type: string
+                concurrency:
+                  type: integer
+                  minimum: 1
+                tables:
+                  type: array
+                  items:
+                    type: string
+                validate:
+                  type: boolean
+      responses:
+        '200':
+          description: Azure sync run complete
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncRunResponse'
+        '400':
+          description: Invalid Azure sync request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Azure sync unavailable because Snowflake is not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/scheduler/status:
     get:
       tags:
@@ -4862,6 +4903,64 @@ components:
           type: integer
         skipped:
           type: integer
+    SyncRunResponse:
+      type: object
+      required:
+        - provider
+        - validate
+        - results
+      properties:
+        provider:
+          type: string
+        validate:
+          type: boolean
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncTableResult'
+    SyncTableResult:
+      type: object
+      required:
+        - table
+        - synced
+        - errors
+        - duration
+      properties:
+        table:
+          type: string
+        region:
+          type: string
+        synced:
+          type: integer
+        errors:
+          type: integer
+        error:
+          type: string
+        duration:
+          type: integer
+          description: Duration in nanoseconds.
+        sync_time:
+          type: string
+          format: date-time
+        generation_id:
+          type: string
+        backfill_pending:
+          type: boolean
+        changes:
+          type: object
+          properties:
+            added:
+              type: array
+              items:
+                type: string
+            removed:
+              type: array
+              items:
+                type: string
+            modified:
+              type: array
+              items:
+                type: string
     SchedulerStatus:
       type: object
       properties:
