@@ -4673,38 +4673,14 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - target_systems
-              properties:
-                target_systems:
-                  type: array
-                  minItems: 1
-                  items:
-                    type: string
-                domains:
-                  type: array
-                  items:
-                    type: string
-                team_size:
-                  type: integer
-                  minimum: 1
-                constraints:
-                  type: object
-                  properties:
-                    max_bus_factor_impact:
-                      type: integer
-                      minimum: 0
-                    prefer_existing_collaboration:
-                      type: boolean
+              $ref: '#/components/schemas/TeamRecommendationRequest'
       responses:
         '200':
           description: Team recommendation with candidate ranking, team analysis, and alternatives
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: true
+                $ref: '#/components/schemas/TeamRecommendationResult'
         '400':
           description: Invalid request body
           content:
@@ -5020,8 +4996,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: true
+                $ref: '#/components/schemas/MeetingInsightsReport'
         '503':
           description: Security graph is not initialized
           content:
@@ -5047,8 +5022,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: true
+                $ref: '#/components/schemas/MeetingAnalysis'
         '404':
           description: Meeting analysis not found
           content:
@@ -6745,3 +6719,289 @@ components:
           type: boolean
         indicator:
           $ref: '#/components/schemas/ThreatIndicator'
+    MeetingMissingParticipant:
+      type: object
+      required:
+        - person_id
+        - reason
+        - confidence
+      properties:
+        person_id:
+          type: string
+        reason:
+          type: string
+        confidence:
+          type: number
+    MeetingInsight:
+      type: object
+      required:
+        - meeting_id
+        - duration_minutes
+      properties:
+        meeting_id:
+          type: string
+        missing_people:
+          type: array
+          items:
+            $ref: '#/components/schemas/MeetingMissingParticipant'
+        unnecessary_people:
+          type: array
+          items:
+            type: string
+        topic_systems:
+          type: array
+          items:
+            type: string
+        duration_minutes:
+          type: integer
+        attendees:
+          type: array
+          items:
+            type: string
+    RedundantMeetingPair:
+      type: object
+      required:
+        - meeting_a
+        - meeting_b
+        - attendee_overlap
+        - topic_overlap
+        - combined_duration
+        - recommendation
+      properties:
+        meeting_a:
+          type: string
+        meeting_b:
+          type: string
+        attendee_overlap:
+          type: number
+        topic_overlap:
+          type: number
+        combined_duration:
+          type: integer
+        recommendation:
+          type: string
+    FragileBridge:
+      type: object
+      required:
+        - meeting_id
+        - team_a
+        - team_b
+        - alternative_paths
+        - risk
+      properties:
+        meeting_id:
+          type: string
+        team_a:
+          type: string
+        team_b:
+          type: string
+        alternative_paths:
+          type: integer
+        risk:
+          type: string
+    MeetingOptimizationMetrics:
+      type: object
+      required:
+        - zero_topic_participant_pct
+        - fragile_bridge_meetings
+        - recoverable_hours
+      properties:
+        total_meeting_hours_per_person:
+          type: object
+          additionalProperties:
+            type: number
+        zero_topic_participant_pct:
+          type: number
+        fragile_bridge_meetings:
+          type: integer
+        recoverable_hours:
+          type: number
+    MeetingInsightsReport:
+      type: object
+      required:
+        - metrics
+      properties:
+        meetings:
+          type: array
+          items:
+            $ref: '#/components/schemas/MeetingInsight'
+        redundant_meetings:
+          type: array
+          items:
+            $ref: '#/components/schemas/RedundantMeetingPair'
+        fragile_bridges:
+          type: array
+          items:
+            $ref: '#/components/schemas/FragileBridge'
+        metrics:
+          $ref: '#/components/schemas/MeetingOptimizationMetrics'
+    MeetingAnalysis:
+      type: object
+      required:
+        - meeting
+      properties:
+        meeting:
+          $ref: '#/components/schemas/MeetingInsight'
+        redundant_with:
+          type: array
+          items:
+            $ref: '#/components/schemas/RedundantMeetingPair'
+        fragile_bridges:
+          type: array
+          items:
+            $ref: '#/components/schemas/FragileBridge'
+    TeamRecommendationConstraints:
+      type: object
+      properties:
+        max_bus_factor_impact:
+          type: integer
+          minimum: 0
+        prefer_existing_collaboration:
+          type: boolean
+    TeamRecommendationRequest:
+      type: object
+      required:
+        - target_systems
+      properties:
+        target_systems:
+          type: array
+          minItems: 1
+          items:
+            type: string
+        domains:
+          type: array
+          items:
+            type: string
+        team_size:
+          type: integer
+          minimum: 1
+        constraints:
+          $ref: '#/components/schemas/TeamRecommendationConstraints'
+    TeamCandidatePerson:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        department:
+          type: string
+    TeamCandidate:
+      type: object
+      required:
+        - person
+        - knowledge_score
+        - collaboration_score
+        - bridge_score
+        - availability_score
+        - bus_factor_impact
+        - overall_fit
+      properties:
+        person:
+          $ref: '#/components/schemas/TeamCandidatePerson'
+        knowledge_score:
+          type: number
+        collaboration_score:
+          type: number
+        bridge_score:
+          type: number
+        availability_score:
+          type: number
+        bus_factor_impact:
+          type: integer
+        overall_fit:
+          type: number
+        rationale:
+          type: string
+    TeamImpact:
+      type: object
+      required:
+        - target_id
+        - before
+        - after
+        - delta
+        - risk
+      properties:
+        target_id:
+          type: string
+        before:
+          type: integer
+        after:
+          type: integer
+        delta:
+          type: integer
+        risk:
+          type: string
+    TeamAnalysis:
+      type: object
+      required:
+        - knowledge_coverage
+        - internal_cohesion
+        - external_bridges
+        - knowledge_overlap
+      properties:
+        knowledge_coverage:
+          type: number
+        internal_cohesion:
+          type: number
+        external_bridges:
+          type: integer
+        knowledge_overlap:
+          type: number
+        gaps_identified:
+          type: array
+          items:
+            type: string
+        bus_factor_impacts:
+          type: array
+          items:
+            $ref: '#/components/schemas/TeamImpact'
+    TeamAlternative:
+      type: object
+      required:
+        - recommended
+        - alternative
+        - risk
+        - tradeoff
+      properties:
+        recommended:
+          type: string
+        alternative:
+          type: string
+        risk:
+          type: string
+        tradeoff:
+          type: string
+    TeamRecommendationResult:
+      type: object
+      required:
+        - target_systems
+        - team_size
+        - analysis
+      properties:
+        target_systems:
+          type: array
+          items:
+            type: string
+        domains:
+          type: array
+          items:
+            type: string
+        team_size:
+          type: integer
+        candidates:
+          type: array
+          items:
+            $ref: '#/components/schemas/TeamCandidate'
+        recommended_team:
+          type: array
+          items:
+            $ref: '#/components/schemas/TeamCandidate'
+        analysis:
+          $ref: '#/components/schemas/TeamAnalysis'
+        alternatives:
+          type: array
+          items:
+            $ref: '#/components/schemas/TeamAlternative'

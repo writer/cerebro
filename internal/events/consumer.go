@@ -159,6 +159,20 @@ func (c *Consumer) Close() error {
 
 func (c *Consumer) run() {
 	defer c.wg.Done()
+	runCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cancelBridgeDone := make(chan struct{})
+	go func() {
+		defer close(cancelBridgeDone)
+		<-c.stopCh
+		cancel()
+	}()
+	defer func() {
+		cancel()
+		<-cancelBridgeDone
+	}()
+
 	for {
 		select {
 		case <-c.stopCh:
@@ -183,7 +197,7 @@ func (c *Consumer) run() {
 				_ = msg.Ack()
 				continue
 			}
-			if err := c.handler(context.Background(), evt); err != nil {
+			if err := c.handler(runCtx, evt); err != nil {
 				c.logger.Warn("tap consumer handler failed; message requeued", "error", err, "event_type", evt.Type)
 				_ = msg.Nak()
 				continue

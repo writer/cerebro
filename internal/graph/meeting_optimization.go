@@ -118,34 +118,40 @@ func AnalyzeMeetingByID(g *Graph, meetingID string) *MeetingAnalysis {
 		return nil
 	}
 
-	report := AnalyzeMeetingInsights(g, "")
-	var insight *MeetingInsight
-	for idx := range report.Meetings {
-		if report.Meetings[idx].MeetingID == meetingID {
-			meetingCopy := report.Meetings[idx]
-			insight = &meetingCopy
+	records := collectMeetingRecords(g)
+	if len(records) == 0 {
+		return nil
+	}
+	var target meetingRecord
+	found := false
+	for _, record := range records {
+		if record.ID == meetingID {
+			target = record
+			found = true
 			break
 		}
 	}
-	if insight == nil {
+	if !found {
 		return nil
 	}
 
-	redundant := make([]RedundantMeetingPair, 0)
-	for _, pair := range report.RedundantMeetings {
-		if pair.MeetingA == meetingID || pair.MeetingB == meetingID {
-			redundant = append(redundant, pair)
+	insight := analyzeMeetingRecord(g, target)
+	topicsByMeeting := make(map[string][]string, len(records))
+	topicsByMeeting[target.ID] = append([]string(nil), insight.TopicSystems...)
+	for _, record := range records {
+		if record.ID == target.ID {
+			continue
 		}
-	}
-	fragile := make([]FragileBridge, 0)
-	for _, bridge := range report.FragileBridges {
-		if bridge.MeetingID == meetingID {
-			fragile = append(fragile, bridge)
-		}
+		topicsByMeeting[record.ID] = inferMeetingTopicSystems(g, record.AttendeeIDs)
 	}
 
+	redundant := detectRedundantMeetingsForMeeting(records, topicsByMeeting, target.ID)
+	membersByTeam, namesByTeam := departmentMembersByID(g)
+	departments := departmentsByPerson(g)
+	fragile := fragileMeetingBridgesForRecord(g, target, membersByTeam, namesByTeam, departments)
+
 	return &MeetingAnalysis{
-		Meeting:        *insight,
+		Meeting:        insight,
 		RedundantWith:  redundant,
 		FragileBridges: fragile,
 	}
@@ -446,6 +452,68 @@ func detectRedundantMeetings(records []meetingRecord, insights []MeetingInsight)
 	return pairs
 }
 
+func detectRedundantMeetingsForMeeting(
+	records []meetingRecord,
+	topicsByMeeting map[string][]string,
+	meetingID string,
+) []RedundantMeetingPair {
+	if len(records) == 0 || strings.TrimSpace(meetingID) == "" {
+		return nil
+	}
+
+	recordByID := make(map[string]meetingRecord, len(records))
+	for _, record := range records {
+		recordByID[record.ID] = record
+	}
+	target, ok := recordByID[meetingID]
+	if !ok {
+		return nil
+	}
+
+	meetingIDs := make([]string, 0, len(recordByID)-1)
+	for id := range recordByID {
+		if id == meetingID {
+			continue
+		}
+		meetingIDs = append(meetingIDs, id)
+	}
+	sort.Strings(meetingIDs)
+
+	pairs := make([]RedundantMeetingPair, 0)
+	for _, otherID := range meetingIDs {
+		other := recordByID[otherID]
+		attendeeOverlap := overlapRatio(target.AttendeeIDs, other.AttendeeIDs)
+		topicOverlap := overlapRatio(topicsByMeeting[meetingID], topicsByMeeting[otherID])
+		if attendeeOverlap < 0.70 || topicOverlap < 0.50 {
+			continue
+		}
+		meetingA := meetingID
+		meetingB := otherID
+		if meetingB < meetingA {
+			meetingA, meetingB = meetingB, meetingA
+		}
+		pairs = append(pairs, RedundantMeetingPair{
+			MeetingA:         meetingA,
+			MeetingB:         meetingB,
+			AttendeeOverlap:  attendeeOverlap,
+			TopicOverlap:     topicOverlap,
+			CombinedDuration: target.DurationMin + other.DurationMin,
+			Recommendation:   "Combine into single recurring sync",
+		})
+	}
+
+	sort.Slice(pairs, func(i, j int) bool {
+		if pairs[i].CombinedDuration == pairs[j].CombinedDuration {
+			if pairs[i].MeetingA == pairs[j].MeetingA {
+				return pairs[i].MeetingB < pairs[j].MeetingB
+			}
+			return pairs[i].MeetingA < pairs[j].MeetingA
+		}
+		return pairs[i].CombinedDuration > pairs[j].CombinedDuration
+	})
+	return pairs
+}
+
 func detectFragileMeetingBridges(g *Graph, records []meetingRecord) []FragileBridge {
 	if g == nil || len(records) == 0 {
 		return nil
@@ -455,54 +523,7 @@ func detectFragileMeetingBridges(g *Graph, records []meetingRecord) []FragileBri
 
 	fragile := make([]FragileBridge, 0)
 	for _, record := range records {
-		attendeesSet := make(map[string]struct{}, len(record.AttendeeIDs))
-		for _, attendee := range record.AttendeeIDs {
-			attendeesSet[attendee] = struct{}{}
-		}
-
-		attendeeTeams := make(map[string]map[string]struct{})
-		for _, attendee := range record.AttendeeIDs {
-			for teamID := range departments[attendee] {
-				if _, exists := attendeeTeams[teamID]; !exists {
-					attendeeTeams[teamID] = make(map[string]struct{})
-				}
-				attendeeTeams[teamID][attendee] = struct{}{}
-			}
-		}
-		teamIDs := make([]string, 0, len(attendeeTeams))
-		for teamID := range attendeeTeams {
-			teamIDs = append(teamIDs, teamID)
-		}
-		sort.Strings(teamIDs)
-		if len(teamIDs) < 2 {
-			continue
-		}
-
-		for i := 0; i < len(teamIDs); i++ {
-			for j := i + 1; j < len(teamIDs); j++ {
-				teamA := teamIDs[i]
-				teamB := teamIDs[j]
-				totalInteractions := interactionEdgesBetweenMemberSets(g, membersByTeam[teamA], membersByTeam[teamB])
-				if totalInteractions == 0 {
-					continue
-				}
-				meetingInteractions := interactionEdgesBetweenMemberSets(g, attendeeTeams[teamA], attendeeTeams[teamB])
-				alternative := totalInteractions - meetingInteractions
-				if alternative < 0 {
-					alternative = 0
-				}
-				if alternative > 0 {
-					continue
-				}
-				fragile = append(fragile, FragileBridge{
-					MeetingID:        record.ID,
-					TeamA:            firstNonEmpty(namesByTeam[teamA], teamA),
-					TeamB:            firstNonEmpty(namesByTeam[teamB], teamB),
-					AlternativePaths: alternative,
-					Risk:             "Only communication channel between teams represented in this meeting",
-				})
-			}
-		}
+		fragile = append(fragile, fragileMeetingBridgesForRecord(g, record, membersByTeam, namesByTeam, departments)...)
 	}
 
 	sort.Slice(fragile, func(i, j int) bool {
@@ -514,6 +535,64 @@ func detectFragileMeetingBridges(g *Graph, records []meetingRecord) []FragileBri
 		}
 		return fragile[i].MeetingID < fragile[j].MeetingID
 	})
+	return fragile
+}
+
+func fragileMeetingBridgesForRecord(
+	g *Graph,
+	record meetingRecord,
+	membersByTeam map[string]map[string]struct{},
+	namesByTeam map[string]string,
+	departments map[string]map[string]struct{},
+) []FragileBridge {
+	if g == nil || strings.TrimSpace(record.ID) == "" || len(record.AttendeeIDs) == 0 {
+		return nil
+	}
+
+	attendeeTeams := make(map[string]map[string]struct{})
+	for _, attendee := range record.AttendeeIDs {
+		for teamID := range departments[attendee] {
+			if _, exists := attendeeTeams[teamID]; !exists {
+				attendeeTeams[teamID] = make(map[string]struct{})
+			}
+			attendeeTeams[teamID][attendee] = struct{}{}
+		}
+	}
+	teamIDs := make([]string, 0, len(attendeeTeams))
+	for teamID := range attendeeTeams {
+		teamIDs = append(teamIDs, teamID)
+	}
+	sort.Strings(teamIDs)
+	if len(teamIDs) < 2 {
+		return nil
+	}
+
+	fragile := make([]FragileBridge, 0)
+	for i := 0; i < len(teamIDs); i++ {
+		for j := i + 1; j < len(teamIDs); j++ {
+			teamA := teamIDs[i]
+			teamB := teamIDs[j]
+			totalInteractions := interactionEdgesBetweenMemberSets(g, membersByTeam[teamA], membersByTeam[teamB])
+			if totalInteractions == 0 {
+				continue
+			}
+			meetingInteractions := interactionEdgesBetweenMemberSets(g, attendeeTeams[teamA], attendeeTeams[teamB])
+			alternative := totalInteractions - meetingInteractions
+			if alternative < 0 {
+				alternative = 0
+			}
+			if alternative > 0 {
+				continue
+			}
+			fragile = append(fragile, FragileBridge{
+				MeetingID:        record.ID,
+				TeamA:            firstNonEmpty(namesByTeam[teamA], teamA),
+				TeamB:            firstNonEmpty(namesByTeam[teamB], teamB),
+				AlternativePaths: alternative,
+				Risk:             "Only communication channel between teams represented in this meeting",
+			})
+		}
+	}
 	return fragile
 }
 

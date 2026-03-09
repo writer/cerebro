@@ -20,16 +20,25 @@ type TeamRecommendationConstraints struct {
 	PreferExistingCollaboration bool `json:"prefer_existing_collaboration,omitempty"`
 }
 
+// TeamCandidatePerson is a minimal public profile for one candidate.
+type TeamCandidatePerson struct {
+	ID         string `json:"id"`
+	Name       string `json:"name,omitempty"`
+	Department string `json:"department,omitempty"`
+}
+
 // TeamCandidate contains score components for one recommended person.
 type TeamCandidate struct {
-	Person             *Node   `json:"person,omitempty"`
-	KnowledgeScore     float64 `json:"knowledge_score"`
-	CollaborationScore float64 `json:"collaboration_score"`
-	BridgeScore        float64 `json:"bridge_score"`
-	AvailabilityScore  float64 `json:"availability_score"`
-	BusFactorImpact    int     `json:"bus_factor_impact"`
-	OverallFit         float64 `json:"overall_fit"`
-	Rationale          string  `json:"rationale,omitempty"`
+	Person             *TeamCandidatePerson `json:"person,omitempty"`
+	KnowledgeScore     float64              `json:"knowledge_score"`
+	CollaborationScore float64              `json:"collaboration_score"`
+	BridgeScore        float64              `json:"bridge_score"`
+	AvailabilityScore  float64              `json:"availability_score"`
+	BusFactorImpact    int                  `json:"bus_factor_impact"`
+	OverallFit         float64              `json:"overall_fit"`
+	Rationale          string               `json:"rationale,omitempty"`
+
+	node *Node `json:"-"`
 }
 
 // TeamImpact captures bus-factor movement when pulling recommended members.
@@ -109,8 +118,16 @@ func RecommendTeam(g *Graph, req TeamRecommendationRequest) TeamRecommendationRe
 
 	selected = recomputeCollaborationAndFit(g, selected, req.Constraints)
 	sort.Slice(selected, func(i, j int) bool {
+		leftID := ""
+		if selected[i].Person != nil {
+			leftID = selected[i].Person.ID
+		}
+		rightID := ""
+		if selected[j].Person != nil {
+			rightID = selected[j].Person.ID
+		}
 		if selected[i].OverallFit == selected[j].OverallFit {
-			return selected[i].Person.ID < selected[j].Person.ID
+			return leftID < rightID
 		}
 		return selected[i].OverallFit > selected[j].OverallFit
 	})
@@ -144,13 +161,19 @@ func scoreTeamCandidates(g *Graph, targetSystems, domains []string, constraints 
 			continue
 		}
 
+		profile := teamCandidatePersonFromNode(person)
+		if profile == nil {
+			continue
+		}
+
 		candidate := TeamCandidate{
-			Person:             person,
+			Person:             profile,
 			KnowledgeScore:     knowledge,
 			BridgeScore:        bridge,
 			AvailabilityScore:  availability,
 			BusFactorImpact:    busImpact,
 			CollaborationScore: 0,
+			node:               person,
 		}
 		candidate.OverallFit = candidateOverallFit(candidate, constraints.PreferExistingCollaboration)
 		candidate.Rationale = candidateRationale(candidate)
@@ -158,9 +181,17 @@ func scoreTeamCandidates(g *Graph, targetSystems, domains []string, constraints 
 	}
 
 	sort.Slice(candidates, func(i, j int) bool {
+		leftID := ""
+		if candidates[i].Person != nil {
+			leftID = candidates[i].Person.ID
+		}
+		rightID := ""
+		if candidates[j].Person != nil {
+			rightID = candidates[j].Person.ID
+		}
 		if candidates[i].OverallFit == candidates[j].OverallFit {
 			if candidates[i].KnowledgeScore == candidates[j].KnowledgeScore {
-				return candidates[i].Person.ID < candidates[j].Person.ID
+				return leftID < rightID
 			}
 			return candidates[i].KnowledgeScore > candidates[j].KnowledgeScore
 		}
@@ -281,10 +312,10 @@ func analyzeRecommendedTeam(g *Graph, team []TeamCandidate, targetSystems, domai
 	for _, domain := range domains {
 		hasDomain := false
 		for _, candidate := range team {
-			if candidate.Person == nil {
+			if candidate.node == nil {
 				continue
 			}
-			if candidateBridgeScore(candidate.Person, []string{domain}) > 0 {
+			if candidateBridgeScore(candidate.node, []string{domain}) > 0 {
 				hasDomain = true
 				break
 			}
@@ -596,6 +627,18 @@ func candidateRationale(candidate TeamCandidate) string {
 		reason = append(reason, "bus_factor_impact="+intToString(candidate.BusFactorImpact))
 	}
 	return strings.Join(reason, ", ")
+}
+
+func teamCandidatePersonFromNode(node *Node) *TeamCandidatePerson {
+	if node == nil || strings.TrimSpace(node.ID) == "" {
+		return nil
+	}
+	person := &TeamCandidatePerson{
+		ID:   node.ID,
+		Name: strings.TrimSpace(node.Name),
+	}
+	person.Department = readString(node.Properties, "department", "team", "organization")
+	return person
 }
 
 func teamBusFactorImpacts(g *Graph, memberSet map[string]struct{}, targetSystems []string) []TeamImpact {
