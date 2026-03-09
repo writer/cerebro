@@ -28,6 +28,7 @@ def create_ecs_cluster(
     job_queue_arn: pulumi.Output[str] = None,
     job_table_name: pulumi.Output[str] = None,
     log_group_kms_key_id: pulumi.Output[str] = None,
+    s3_source_iam_configs: list[dict] = None,
     fargate_base: int = 1,
     fargate_weight: int = 1,
     fargate_spot_base: int = 0,
@@ -66,7 +67,7 @@ def create_ecs_cluster(
 
     # IAM roles
     execution_role = _create_execution_role(name, kms_key_id, external_secrets_prefix)
-    task_role = _create_task_role(name, kms_key_id, job_queue_arn)
+    task_role = _create_task_role(name, kms_key_id, job_queue_arn, s3_source_iam_configs)
 
     # CloudWatch log group with optional KMS encryption
     log_group = aws.cloudwatch.LogGroup(
@@ -270,6 +271,7 @@ def _create_task_role(
     name: str,
     kms_key_id: pulumi.Output[str],
     job_queue_arn: pulumi.Output[str] = None,
+    s3_source_iam_configs: list[dict] = None,
 ) -> aws.iam.Role:
     """Create IAM task role for application."""
     role = aws.iam.Role(
@@ -336,6 +338,53 @@ def _create_task_role(
                     }],
                 })
             ),
+        )
+
+    if s3_source_iam_configs:
+        bucket_arns = []
+        object_arns = []
+        role_arns = []
+        for cfg in s3_source_iam_configs:
+            bucket_arn = cfg["bucket_arn"]
+            bucket_arns.append(bucket_arn)
+            prefixes = cfg.get("prefixes") or []
+            if prefixes:
+                for prefix in prefixes:
+                    object_arns.append(f"{bucket_arn}/{prefix}*")
+            else:
+                object_arns.append(f"{bucket_arn}/*")
+            if cfg.get("role_arn"):
+                role_arns.append(cfg["role_arn"])
+
+        statements = [
+            {
+                "Sid": "ListS3SourceBuckets",
+                "Effect": "Allow",
+                "Action": ["s3:ListBucket"],
+                "Resource": bucket_arns,
+            },
+            {
+                "Sid": "ReadS3SourceObjects",
+                "Effect": "Allow",
+                "Action": ["s3:GetObject"],
+                "Resource": object_arns,
+            },
+        ]
+        if role_arns:
+            statements.append({
+                "Sid": "AssumeS3SourceRoles",
+                "Effect": "Allow",
+                "Action": ["sts:AssumeRole"],
+                "Resource": role_arns,
+            })
+
+        aws.iam.RolePolicy(
+            f"{name}-task-s3-sources",
+            role=role.name,
+            policy=json.dumps({
+                "Version": "2012-10-17",
+                "Statement": statements,
+            }),
         )
 
     return role
