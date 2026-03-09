@@ -308,6 +308,70 @@ func TestHandleTapCloudEvent_InteractionSubjectAggregatesAcrossEvents(t *testing
 	}
 }
 
+func TestHandleTapCloudEvent_SchemaEventRegistersRuntimeKinds(t *testing.T) {
+	a := &App{SecurityGraph: graph.New()}
+	evt := events.CloudEvent{
+		Type: "ensemble.tap.schema.workday.updated",
+		Time: time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC),
+		Data: map[string]any{
+			"integration": "workday",
+			"entity_types": []any{
+				map[string]any{
+					"kind":       "tap_test_employee_v1",
+					"categories": []any{"identity", "business"},
+					"properties": map[string]any{
+						"title":      "string",
+						"department": map[string]any{"type": "string"},
+					},
+					"relationships": []any{
+						map[string]any{"kind": "reports_to"},
+					},
+				},
+				map[string]any{
+					"kind": "tap_test_service_v1",
+				},
+			},
+			"edge_types": []any{"tap_test_reports_line_v1"},
+		},
+	}
+
+	if err := a.handleTapCloudEvent(context.Background(), evt); err != nil {
+		t.Fatalf("schema event failed: %v", err)
+	}
+
+	if !graph.IsNodeKindInCategory(graph.NodeKind("tap_test_employee_v1"), graph.NodeCategoryIdentity) {
+		t.Fatal("expected dynamic employee kind to be identity")
+	}
+	if !graph.IsNodeKindInCategory(graph.NodeKind("tap_test_employee_v1"), graph.NodeCategoryBusiness) {
+		t.Fatal("expected dynamic employee kind to be business")
+	}
+	if !graph.IsNodeKindInCategory(graph.NodeKind("tap_test_service_v1"), graph.NodeCategoryResource) {
+		t.Fatal("expected inferred service kind to be resource")
+	}
+	if !graph.GlobalSchemaRegistry().IsEdgeKindRegistered(graph.EdgeKind("tap_test_reports_line_v1")) {
+		t.Fatal("expected dynamic edge kind to be registered")
+	}
+}
+
+func TestIsTapSchemaEventType(t *testing.T) {
+	cases := []struct {
+		eventType string
+		want      bool
+	}{
+		{eventType: "ensemble.tap.schema.workday.updated", want: true},
+		{eventType: "ensemble.tap.integration.schema.updated", want: true},
+		{eventType: "ensemble.tap.salesforce.schema.updated", want: true},
+		{eventType: "ensemble.tap.salesforce.contact.updated", want: false},
+		{eventType: "ensemble.tap.interaction.slack.message", want: false},
+	}
+
+	for _, tc := range cases {
+		if got := isTapSchemaEventType(tc.eventType); got != tc.want {
+			t.Fatalf("isTapSchemaEventType(%q) = %v, want %v", tc.eventType, got, tc.want)
+		}
+	}
+}
+
 func findInteractionEdge(g *graph.Graph, left, right string) *graph.Edge {
 	for _, edge := range g.GetOutEdges(left) {
 		if edge.Kind == graph.EdgeKindInteractedWith && edge.Target == right {

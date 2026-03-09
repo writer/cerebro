@@ -72,6 +72,9 @@ func (a *App) handleTapCloudEvent(_ context.Context, evt events.CloudEvent) erro
 	if !strings.HasPrefix(strings.ToLower(eventType), "ensemble.tap.") {
 		return nil
 	}
+	if isTapSchemaEventType(eventType) {
+		return a.handleTapSchemaEvent(eventType, evt)
+	}
 	if isTapInteractionType(eventType) {
 		return a.handleTapInteractionEvent(eventType, evt)
 	}
@@ -177,6 +180,276 @@ func parseTapType(eventType string) (system string, entityType string, action st
 	entityType = strings.ToLower(parts[3])
 	action = strings.ToLower(parts[len(parts)-1])
 	return system, entityType, action
+}
+
+type tapSchemaEntityDefinition struct {
+	Kind          string
+	Categories    []graph.NodeKindCategory
+	Properties    map[string]string
+	Relationships []graph.EdgeKind
+	Description   string
+}
+
+func isTapSchemaEventType(eventType string) bool {
+	lower := strings.ToLower(strings.TrimSpace(eventType))
+	switch {
+	case strings.HasPrefix(lower, "ensemble.tap.schema."),
+		strings.HasPrefix(lower, "ensemble.tap.integration.schema."),
+		strings.Contains(lower, ".schema.updated"),
+		strings.Contains(lower, ".schema.created"),
+		strings.Contains(lower, ".schema.connected"):
+		return true
+	default:
+		return false
+	}
+}
+
+func (a *App) handleTapSchemaEvent(eventType string, evt events.CloudEvent) error {
+	integration := parseTapSchemaIntegration(eventType, evt.Data)
+	entities := parseTapSchemaEntities(evt.Data)
+	if len(entities) == 0 {
+		return nil
+	}
+
+	registeredNodeKinds := 0
+	edgeKinds := make(map[graph.EdgeKind]struct{})
+	for _, edgeKind := range parseTapSchemaRelationships(firstPresent(evt.Data, "edge_types", "relationship_types")) {
+		edgeKinds[edgeKind] = struct{}{}
+	}
+
+	for _, entity := range entities {
+		definition := graph.NodeKindDefinition{
+			Kind:          graph.NodeKind(entity.Kind),
+			Categories:    entity.Categories,
+			Properties:    entity.Properties,
+			Relationships: entity.Relationships,
+			Description:   entity.Description,
+		}
+		if _, err := graph.RegisterNodeKindDefinition(definition); err != nil {
+			if a.Logger != nil {
+				a.Logger.Warn("failed to register tap schema node kind",
+					"integration", integration,
+					"kind", entity.Kind,
+					"error", err,
+				)
+			}
+			continue
+		}
+		registeredNodeKinds++
+		for _, relationship := range entity.Relationships {
+			edgeKinds[relationship] = struct{}{}
+		}
+	}
+
+	registeredEdgeKinds := 0
+	for edgeKind := range edgeKinds {
+		if _, err := graph.RegisterEdgeKindDefinition(graph.EdgeKindDefinition{Kind: edgeKind}); err != nil {
+			if a.Logger != nil {
+				a.Logger.Warn("failed to register tap schema edge kind",
+					"integration", integration,
+					"kind", edgeKind,
+					"error", err,
+				)
+			}
+			continue
+		}
+		registeredEdgeKinds++
+	}
+
+	if a.Logger != nil {
+		a.Logger.Info("registered tap integration schema",
+			"integration", integration,
+			"node_kinds", registeredNodeKinds,
+			"edge_kinds", registeredEdgeKinds,
+		)
+	}
+	return nil
+}
+
+func parseTapSchemaIntegration(eventType string, data map[string]any) string {
+	integration := strings.ToLower(strings.TrimSpace(anyToString(firstPresent(data, "integration", "source_system", "system", "provider", "integration_name"))))
+	if integration != "" {
+		return integration
+	}
+
+	parts := strings.Split(strings.TrimSpace(eventType), ".")
+	if len(parts) >= 5 {
+		// ensemble.tap.schema.<integration>.<action>
+		if strings.EqualFold(parts[2], "schema") {
+			return strings.ToLower(strings.TrimSpace(parts[3]))
+		}
+		// ensemble.tap.<integration>.schema.<action>
+		if strings.EqualFold(parts[3], "schema") {
+			return strings.ToLower(strings.TrimSpace(parts[2]))
+		}
+	}
+	return ""
+}
+
+func parseTapSchemaEntities(data map[string]any) []tapSchemaEntityDefinition {
+	raw := firstPresent(data, "entity_types", "entities", "node_kinds")
+	items := make([]any, 0)
+	switch typed := raw.(type) {
+	case []any:
+		items = append(items, typed...)
+	case []map[string]any:
+		for _, item := range typed {
+			items = append(items, item)
+		}
+	}
+
+	out := make([]tapSchemaEntityDefinition, 0, len(items))
+	for _, item := range items {
+		entity := mapFromAny(item)
+		if len(entity) == 0 {
+			continue
+		}
+		kind := strings.ToLower(strings.TrimSpace(anyToString(firstPresent(entity, "kind", "entity_type", "type", "name"))))
+		if kind == "" {
+			continue
+		}
+
+		definition := tapSchemaEntityDefinition{
+			Kind:          kind,
+			Categories:    parseTapSchemaCategories(firstPresent(entity, "categories", "category"), kind),
+			Properties:    parseTapSchemaProperties(firstPresent(entity, "properties", "fields", "schema")),
+			Relationships: parseTapSchemaRelationships(firstPresent(entity, "relationships", "edges", "relation_types")),
+			Description:   strings.TrimSpace(anyToString(firstPresent(entity, "description", "summary"))),
+		}
+		out = append(out, definition)
+	}
+	return out
+}
+
+func parseTapSchemaCategories(raw any, kind string) []graph.NodeKindCategory {
+	values := make([]graph.NodeKindCategory, 0)
+	switch typed := raw.(type) {
+	case string:
+		for _, part := range strings.Split(typed, ",") {
+			category := strings.ToLower(strings.TrimSpace(part))
+			if category != "" {
+				values = append(values, graph.NodeKindCategory(category))
+			}
+		}
+	case []any:
+		for _, item := range typed {
+			category := strings.ToLower(strings.TrimSpace(anyToString(item)))
+			if category != "" {
+				values = append(values, graph.NodeKindCategory(category))
+			}
+		}
+	}
+	if len(values) == 0 {
+		return inferTapSchemaCategories(kind)
+	}
+
+	unique := make(map[graph.NodeKindCategory]struct{}, len(values))
+	for _, category := range values {
+		switch category {
+		case graph.NodeCategoryIdentity, graph.NodeCategoryResource, graph.NodeCategoryBusiness, graph.NodeCategoryKubernetes:
+			unique[category] = struct{}{}
+		}
+	}
+	if len(unique) == 0 {
+		return inferTapSchemaCategories(kind)
+	}
+
+	out := make([]graph.NodeKindCategory, 0, len(unique))
+	for category := range unique {
+		out = append(out, category)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
+func inferTapSchemaCategories(kind string) []graph.NodeKindCategory {
+	kind = strings.ToLower(strings.TrimSpace(kind))
+	switch {
+	case strings.Contains(kind, "user"),
+		strings.Contains(kind, "person"),
+		strings.Contains(kind, "employee"),
+		strings.Contains(kind, "contact"),
+		strings.Contains(kind, "member"),
+		strings.Contains(kind, "identity"):
+		return []graph.NodeKindCategory{graph.NodeCategoryIdentity, graph.NodeCategoryBusiness}
+	case strings.Contains(kind, "pod"),
+		strings.Contains(kind, "cluster"),
+		strings.Contains(kind, "namespace"),
+		strings.Contains(kind, "k8s"):
+		return []graph.NodeKindCategory{graph.NodeCategoryResource, graph.NodeCategoryKubernetes}
+	case strings.Contains(kind, "bucket"),
+		strings.Contains(kind, "database"),
+		strings.Contains(kind, "instance"),
+		strings.Contains(kind, "secret"),
+		strings.Contains(kind, "function"),
+		strings.Contains(kind, "application"),
+		strings.Contains(kind, "service"):
+		return []graph.NodeKindCategory{graph.NodeCategoryResource}
+	default:
+		return []graph.NodeKindCategory{graph.NodeCategoryBusiness}
+	}
+}
+
+func parseTapSchemaProperties(raw any) map[string]string {
+	properties := make(map[string]string)
+	for key, value := range mapFromAny(raw) {
+		trimmedKey := strings.TrimSpace(key)
+		if trimmedKey == "" {
+			continue
+		}
+
+		valueType := strings.TrimSpace(anyToString(value))
+		if nested := mapFromAny(value); len(nested) > 0 {
+			valueType = strings.TrimSpace(anyToString(firstPresent(nested, "type", "kind", "data_type")))
+		}
+		if valueType == "" {
+			valueType = "any"
+		}
+		properties[trimmedKey] = strings.ToLower(valueType)
+	}
+	return properties
+}
+
+func parseTapSchemaRelationships(raw any) []graph.EdgeKind {
+	values := make([]graph.EdgeKind, 0)
+	switch typed := raw.(type) {
+	case []any:
+		for _, item := range typed {
+			switch relationship := item.(type) {
+			case string:
+				kind := strings.ToLower(strings.TrimSpace(relationship))
+				if kind != "" {
+					values = append(values, graph.EdgeKind(kind))
+				}
+			case map[string]any:
+				kind := strings.ToLower(strings.TrimSpace(anyToString(firstPresent(relationship, "kind", "type", "edge_kind", "relationship"))))
+				if kind != "" {
+					values = append(values, graph.EdgeKind(kind))
+				}
+			}
+		}
+	case []string:
+		for _, item := range typed {
+			kind := strings.ToLower(strings.TrimSpace(item))
+			if kind != "" {
+				values = append(values, graph.EdgeKind(kind))
+			}
+		}
+	}
+
+	if len(values) == 0 {
+		return nil
+	}
+	unique := make(map[graph.EdgeKind]struct{}, len(values))
+	for _, value := range values {
+		unique[value] = struct{}{}
+	}
+	out := make([]graph.EdgeKind, 0, len(unique))
+	for value := range unique {
+		out = append(out, value)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
 }
 
 func isTapActivityType(eventType string) bool {
