@@ -217,6 +217,17 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 			"edges", meta.EdgeCount,
 			"duration", meta.BuildDuration,
 		)
+		if a.Config != nil && a.Config.GraphMigrateLegacyActivityOnStart {
+			migration := graph.MigrateLegacyActivityNodes(a.SecurityGraph, graph.LegacyActivityMigrationOptions{Now: time.Now().UTC()})
+			if migration.Migrated > 0 || migration.Scanned > 0 {
+				a.Logger.Info("migrated legacy activity nodes",
+					"scanned", migration.Scanned,
+					"migrated", migration.Migrated,
+					"marked_for_review", migration.MarkedForReview,
+					"migrated_by_kind", migration.MigratedByKind,
+				)
+			}
+		}
 
 		a.emitGraphRebuiltEvent(ctx, meta, meta.BuildDuration)
 		a.emitGraphMutationEvent(ctx, a.SecurityGraphBuilder.LastMutation(), "startup")

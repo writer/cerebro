@@ -241,8 +241,8 @@ func TestHandleTapCloudEvent_ActivitySubjectCreatesNodesAndEdges(t *testing.T) {
 	}
 
 	actorNodeID := "person:alice@example.com"
-	if node, ok := a.SecurityGraph.GetNode(actorNodeID); !ok || node.Kind != graph.NodeKindUser {
-		t.Fatalf("expected actor node %q with kind user", actorNodeID)
+	if node, ok := a.SecurityGraph.GetNode(actorNodeID); !ok || node.Kind != graph.NodeKindPerson {
+		t.Fatalf("expected actor node %q with kind person", actorNodeID)
 	}
 
 	targetNodeID := "gong:deal:deal-123"
@@ -250,21 +250,57 @@ func TestHandleTapCloudEvent_ActivitySubjectCreatesNodesAndEdges(t *testing.T) {
 		t.Fatalf("expected target node %q with kind deal", targetNodeID)
 	}
 
-	activityNodeID := "activity:gong:call_completed:evt-activity-1"
+	activityNodeID := "action:gong:call_completed:evt-activity-1"
 	activityNode, ok := a.SecurityGraph.GetNode(activityNodeID)
 	if !ok {
 		t.Fatalf("expected activity node %q to be created", activityNodeID)
 	}
-	if activityNode.Kind != graph.NodeKindActivity {
-		t.Fatalf("expected activity node kind %q, got %q", graph.NodeKindActivity, activityNode.Kind)
+	if activityNode.Kind != graph.NodeKindAction {
+		t.Fatalf("expected activity node kind %q, got %q", graph.NodeKindAction, activityNode.Kind)
 	}
-	if got := activityNode.Properties["action"]; got != "call_completed" {
-		t.Fatalf("expected activity action call_completed, got %v", got)
+	if got := activityNode.Properties["action_type"]; got != "call_completed" {
+		t.Fatalf("expected activity action_type call_completed, got %v", got)
 	}
 
 	actorEdges := a.SecurityGraph.GetOutEdges(actorNodeID)
 	if len(actorEdges) == 0 || actorEdges[0].Kind != graph.EdgeKindInteractedWith {
 		t.Fatalf("expected actor interacted_with edge, got %#v", actorEdges)
+	}
+	activityEdges := a.SecurityGraph.GetOutEdges(activityNodeID)
+	if len(activityEdges) == 0 || activityEdges[0].Kind != graph.EdgeKindTargets {
+		t.Fatalf("expected action targets edge, got %#v", activityEdges)
+	}
+}
+
+func TestHandleTapCloudEvent_UnknownActivitySourceFallsBackToGenericActivity(t *testing.T) {
+	a := &App{SecurityGraph: graph.New()}
+	evt := events.CloudEvent{
+		ID:   "evt-activity-unknown-1",
+		Type: "ensemble.tap.activity.custom.audit_ping",
+		Time: time.Date(2026, 3, 8, 12, 10, 0, 0, time.UTC),
+		Data: map[string]interface{}{
+			"actor": map[string]interface{}{
+				"email": "ops@example.com",
+			},
+			"target": map[string]interface{}{
+				"id":   "entity-1",
+				"type": "entity",
+			},
+			"action": "audit_ping",
+		},
+	}
+
+	if err := a.handleTapCloudEvent(context.Background(), evt); err != nil {
+		t.Fatalf("handleTapCloudEvent failed: %v", err)
+	}
+
+	activityNodeID := "activity:custom:audit_ping:evt-activity-unknown-1"
+	node, ok := a.SecurityGraph.GetNode(activityNodeID)
+	if !ok {
+		t.Fatalf("expected fallback activity node %q", activityNodeID)
+	}
+	if node.Kind != graph.NodeKindActivity {
+		t.Fatalf("expected fallback node kind %q, got %q", graph.NodeKindActivity, node.Kind)
 	}
 }
 

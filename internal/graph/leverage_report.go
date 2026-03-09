@@ -71,6 +71,23 @@ type GraphTemporalLeverage struct {
 	ActivityCoveragePercent float64          `json:"activity_coverage_percent"`
 }
 
+// GraphOntologySLOPoint captures one daily ontology quality sample.
+type GraphOntologySLOPoint struct {
+	Date                         string  `json:"date"`
+	CanonicalKindCoveragePercent float64 `json:"canonical_kind_coverage_percent"`
+	FallbackActivityPercent      float64 `json:"fallback_activity_percent"`
+	SchemaValidWritePercent      float64 `json:"schema_valid_write_percent"`
+	Samples                      int     `json:"samples"`
+}
+
+// GraphOntologySLO summarizes ontology quality SLOs and short-term trend.
+type GraphOntologySLO struct {
+	CanonicalKindCoveragePercent float64                 `json:"canonical_kind_coverage_percent"`
+	FallbackActivityPercent      float64                 `json:"fallback_activity_percent"`
+	SchemaValidWritePercent      float64                 `json:"schema_valid_write_percent"`
+	Trend                        []GraphOntologySLOPoint `json:"trend,omitempty"`
+}
+
 // GraphClosedLoopLeverage summarizes decision-to-outcome closure maturity.
 type GraphClosedLoopLeverage struct {
 	DecisionNodes                int     `json:"decision_nodes"`
@@ -101,6 +118,10 @@ type GraphActuationReadiness struct {
 	AutomatedActions         int     `json:"automated_actions"`
 	ActionsWithTargets       int     `json:"actions_with_targets"`
 	ActionsLinkedToDecisions int     `json:"actions_linked_to_decisions"`
+	ActionsWithOutcomes      int     `json:"actions_with_outcomes"`
+	OutcomeCompletionRate    float64 `json:"outcome_completion_rate_percent"`
+	MedianOutcomeLatencyHrs  float64 `json:"median_outcome_latency_hours"`
+	StaleActionsNoOutcome    int     `json:"stale_actions_without_outcome"`
 	ActuationCoveragePercent float64 `json:"actuation_coverage_percent"`
 }
 
@@ -120,6 +141,7 @@ type GraphLeverageReport struct {
 	Quality         GraphQualityReport            `json:"quality"`
 	Identity        IdentityCalibrationReport     `json:"identity"`
 	Ingestion       GraphIngestionCoverage        `json:"ingestion"`
+	Ontology        GraphOntologySLO              `json:"ontology"`
 	Temporal        GraphTemporalLeverage         `json:"temporal"`
 	ClosedLoop      GraphClosedLoopLeverage       `json:"closed_loop"`
 	Predictive      GraphPredictiveReadiness      `json:"predictive"`
@@ -175,6 +197,7 @@ func BuildGraphLeverageReport(g *Graph, opts GraphLeverageReportOptions) GraphLe
 		IncludeQueue:     true,
 	})
 	report.Ingestion = buildGraphIngestionCoverage(g)
+	report.Ontology = buildGraphOntologySLO(g, now, 7)
 	report.Temporal = buildGraphTemporalLeverage(g, now, staleAfter, recentWindow)
 	report.ClosedLoop = buildGraphClosedLoopLeverage(g, now, decisionSLA)
 	report.Predictive = buildGraphPredictiveReadiness(g)
@@ -183,7 +206,7 @@ func BuildGraphLeverageReport(g *Graph, opts GraphLeverageReportOptions) GraphLe
 		TemporalCapable: true,
 		Templates:       DefaultGraphQueryTemplates(),
 	}
-	report.Actuation = buildGraphActuationReadiness(g)
+	report.Actuation = buildGraphActuationReadiness(g, now, decisionSLA)
 	report.Recommendations = buildGraphLeverageRecommendations(report)
 
 	identityScore := report.Identity.PrecisionPercent / 100
@@ -195,15 +218,18 @@ func BuildGraphLeverageReport(g *Graph, opts GraphLeverageReportOptions) GraphLe
 		queryScore = math.Min(1, float64(report.Query.TemplateCount)/8)
 	}
 	// Weights prioritize foundational graph trust first (quality + identity + ingestion +
-	// freshness), then operational closure and actionability dimensions.
-	report.Summary.LeverageScore = 100 * (0.22*(report.Quality.Summary.MaturityScore/100) +
-		0.14*clampUnit(identityScore) +
-		0.14*clampUnit(report.Ingestion.CoveragePercent/100) +
-		0.14*clampUnit(report.Temporal.Freshness.FreshnessPercent/100) +
-		0.12*clampUnit(report.ClosedLoop.ClosureRatePercent/100) +
-		0.10*clampUnit(report.Predictive.ReadinessScore/100) +
-		0.07*clampUnit(queryScore) +
-		0.07*clampUnit(report.Actuation.ActuationCoveragePercent/100))
+	// ontology conformance + freshness), then operational closure and actionability dimensions.
+	report.Summary.LeverageScore = 100 * (0.20*(report.Quality.Summary.MaturityScore/100) +
+		0.13*clampUnit(identityScore) +
+		0.12*clampUnit(report.Ingestion.CoveragePercent/100) +
+		0.12*clampUnit(report.Ontology.CanonicalKindCoveragePercent/100) +
+		0.11*clampUnit(report.Ontology.SchemaValidWritePercent/100) +
+		0.11*clampUnit(report.Temporal.Freshness.FreshnessPercent/100) +
+		0.09*clampUnit(report.ClosedLoop.ClosureRatePercent/100) +
+		0.06*clampUnit(report.Predictive.ReadinessScore/100) +
+		0.03*clampUnit(queryScore) +
+		0.02*clampUnit(report.Actuation.ActuationCoveragePercent/100) +
+		0.01*clampUnit(report.Actuation.OutcomeCompletionRate/100))
 	report.Summary.LeverageScore = math.Round(report.Summary.LeverageScore*10) / 10
 	report.Summary.Grade = graphQualityGrade(report.Summary.LeverageScore)
 	report.Summary.CriticalGaps = countLeveragePriority(report.Recommendations, "high")
@@ -295,6 +321,157 @@ func buildGraphIngestionCoverage(g *Graph) GraphIngestionCoverage {
 	}
 	coverage.CoveragePercent = math.Round(coverage.CoveragePercent*10) / 10
 	return coverage
+}
+
+func buildGraphOntologySLO(g *Graph, now time.Time, trendDays int) GraphOntologySLO {
+	slo := GraphOntologySLO{}
+	if g == nil {
+		return slo
+	}
+
+	nodes := g.GetAllNodes()
+	activityNodes := 0
+	canonicalNodes := 0
+	for _, node := range nodes {
+		if node == nil {
+			continue
+		}
+		source := strings.ToLower(strings.TrimSpace(identityAnyToString(node.Properties["source_system"])))
+		if source == "" {
+			source = strings.ToLower(strings.TrimSpace(node.Provider))
+		}
+		if !containsString(leverageExpectedSources, source) {
+			continue
+		}
+		if node.Kind == NodeKindActivity {
+			activityNodes++
+			continue
+		}
+		canonicalNodes++
+	}
+
+	totalOperational := activityNodes + canonicalNodes
+	if totalOperational > 0 {
+		slo.CanonicalKindCoveragePercent = (float64(canonicalNodes) / float64(totalOperational)) * 100
+		slo.FallbackActivityPercent = (float64(activityNodes) / float64(totalOperational)) * 100
+	} else {
+		slo.CanonicalKindCoveragePercent = 100
+		slo.FallbackActivityPercent = 0
+	}
+	slo.CanonicalKindCoveragePercent = math.Round(slo.CanonicalKindCoveragePercent*10) / 10
+	slo.FallbackActivityPercent = math.Round(slo.FallbackActivityPercent*10) / 10
+
+	totalEntities := len(nodes)
+	invalidEntities := 0
+	for _, node := range nodes {
+		if node == nil {
+			continue
+		}
+		if len(ValidateNodeAgainstSchema(node)) > 0 {
+			invalidEntities++
+		}
+	}
+	for _, edges := range g.GetAllEdges() {
+		for _, edge := range edges {
+			if edge == nil {
+				continue
+			}
+			totalEntities++
+			source, _ := g.GetNode(edge.Source)
+			target, _ := g.GetNode(edge.Target)
+			if len(ValidateEdgeAgainstSchema(edge, source, target)) > 0 {
+				invalidEntities++
+			}
+		}
+	}
+	if totalEntities > 0 {
+		slo.SchemaValidWritePercent = (float64(totalEntities-invalidEntities) / float64(totalEntities)) * 100
+	} else {
+		slo.SchemaValidWritePercent = 100
+	}
+	slo.SchemaValidWritePercent = math.Round(slo.SchemaValidWritePercent*10) / 10
+
+	if trendDays <= 0 {
+		return slo
+	}
+
+	dayStart := now.UTC().Truncate(24 * time.Hour)
+	for i := trendDays - 1; i >= 0; i-- {
+		windowStart := dayStart.Add(-time.Duration(i) * 24 * time.Hour)
+		windowEnd := windowStart.Add(24 * time.Hour)
+
+		point := GraphOntologySLOPoint{
+			Date: windowStart.Format("2006-01-02"),
+		}
+
+		dayActivity := 0
+		dayCanonical := 0
+		daySamples := 0
+		dayInvalid := 0
+		for _, node := range nodes {
+			if node == nil {
+				continue
+			}
+			observedAt, ok := graphObservedAt(node)
+			if !ok || observedAt.Before(windowStart) || !observedAt.Before(windowEnd) {
+				continue
+			}
+			source := strings.ToLower(strings.TrimSpace(identityAnyToString(node.Properties["source_system"])))
+			if source == "" {
+				source = strings.ToLower(strings.TrimSpace(node.Provider))
+			}
+			if !containsString(leverageExpectedSources, source) {
+				continue
+			}
+			daySamples++
+			if node.Kind == NodeKindActivity {
+				dayActivity++
+			} else {
+				dayCanonical++
+			}
+			if len(ValidateNodeAgainstSchema(node)) > 0 {
+				dayInvalid++
+			}
+		}
+
+		for _, edges := range g.GetAllEdges() {
+			for _, edge := range edges {
+				if edge == nil {
+					continue
+				}
+				observedAt, ok := temporalPropertyTime(edge.Properties, "observed_at")
+				if !ok || observedAt.Before(windowStart) || !observedAt.Before(windowEnd) {
+					continue
+				}
+				daySamples++
+				source, _ := g.GetNode(edge.Source)
+				target, _ := g.GetNode(edge.Target)
+				if len(ValidateEdgeAgainstSchema(edge, source, target)) > 0 {
+					dayInvalid++
+				}
+			}
+		}
+
+		if total := dayActivity + dayCanonical; total > 0 {
+			point.CanonicalKindCoveragePercent = (float64(dayCanonical) / float64(total)) * 100
+			point.FallbackActivityPercent = (float64(dayActivity) / float64(total)) * 100
+		} else {
+			point.CanonicalKindCoveragePercent = 100
+			point.FallbackActivityPercent = 0
+		}
+		if daySamples > 0 {
+			point.SchemaValidWritePercent = (float64(daySamples-dayInvalid) / float64(daySamples)) * 100
+		} else {
+			point.SchemaValidWritePercent = 100
+		}
+		point.CanonicalKindCoveragePercent = math.Round(point.CanonicalKindCoveragePercent*10) / 10
+		point.FallbackActivityPercent = math.Round(point.FallbackActivityPercent*10) / 10
+		point.SchemaValidWritePercent = math.Round(point.SchemaValidWritePercent*10) / 10
+		point.Samples = daySamples
+		slo.Trend = append(slo.Trend, point)
+	}
+
+	return slo
 }
 
 func buildGraphTemporalLeverage(g *Graph, now time.Time, staleAfter, recentWindow time.Duration) GraphTemporalLeverage {
@@ -430,13 +607,46 @@ func buildGraphPredictiveReadiness(g *Graph) GraphPredictiveReadiness {
 	return out
 }
 
-func buildGraphActuationReadiness(g *Graph) GraphActuationReadiness {
+func buildGraphActuationReadiness(g *Graph, now time.Time, outcomeSLA time.Duration) GraphActuationReadiness {
 	out := GraphActuationReadiness{}
 	if g == nil {
 		return out
 	}
+	if outcomeSLA <= 0 {
+		outcomeSLA = defaultLeverageDecisionSLA
+	}
 	actions := g.GetNodesByKind(NodeKindAction)
 	out.ActionNodes = len(actions)
+
+	decisionOutcomeAt := make(map[string]time.Time)
+	for _, outcome := range g.GetNodesByKind(NodeKindOutcome) {
+		if outcome == nil {
+			continue
+		}
+		outcomeObserved, ok := graphObservedAt(outcome)
+		if !ok {
+			outcomeObserved = outcome.UpdatedAt
+		}
+		if outcomeObserved.IsZero() {
+			continue
+		}
+		for _, edge := range g.GetOutEdges(outcome.ID) {
+			if edge == nil || edge.Kind != EdgeKindEvaluates {
+				continue
+			}
+			decisionID := edge.Target
+			if decisionID == "" {
+				continue
+			}
+			existing, ok := decisionOutcomeAt[decisionID]
+			if !ok || outcomeObserved.Before(existing) {
+				decisionOutcomeAt[decisionID] = outcomeObserved
+			}
+		}
+	}
+
+	latenciesHours := make([]float64, 0, len(actions))
+	staleCutoff := now.Add(-outcomeSLA)
 	for _, action := range actions {
 		if action == nil {
 			continue
@@ -464,7 +674,48 @@ func buildGraphActuationReadiness(g *Graph) GraphActuationReadiness {
 		if hasDecision {
 			out.ActionsLinkedToDecisions++
 		}
+
+		actionObserved, ok := graphObservedAt(action)
+		if !ok {
+			actionObserved = action.UpdatedAt
+		}
+
+		linkedDecisionIDs := make([]string, 0, 2)
+		for _, edge := range g.GetInEdges(action.ID) {
+			if edge == nil || edge.Kind != EdgeKindExecutedBy {
+				continue
+			}
+			linkedDecisionIDs = append(linkedDecisionIDs, edge.Source)
+		}
+
+		earliestOutcome := time.Time{}
+		for _, decisionID := range linkedDecisionIDs {
+			outcomeAt, ok := decisionOutcomeAt[decisionID]
+			if !ok || outcomeAt.IsZero() {
+				continue
+			}
+			if earliestOutcome.IsZero() || outcomeAt.Before(earliestOutcome) {
+				earliestOutcome = outcomeAt
+			}
+		}
+		if !earliestOutcome.IsZero() {
+			out.ActionsWithOutcomes++
+			if !actionObserved.IsZero() && !earliestOutcome.Before(actionObserved) {
+				latenciesHours = append(latenciesHours, earliestOutcome.Sub(actionObserved).Hours())
+			}
+			continue
+		}
+		if !actionObserved.IsZero() && actionObserved.Before(staleCutoff) {
+			out.StaleActionsNoOutcome++
+		}
 	}
+	if out.ActionNodes > 0 {
+		out.OutcomeCompletionRate = (float64(out.ActionsWithOutcomes) / float64(out.ActionNodes)) * 100
+	} else {
+		out.OutcomeCompletionRate = 100
+	}
+	out.OutcomeCompletionRate = math.Round(out.OutcomeCompletionRate*10) / 10
+	out.MedianOutcomeLatencyHrs = math.Round(medianFloat64(latenciesHours)*10) / 10
 
 	decisions := g.GetNodesByKind(NodeKindDecision)
 	if len(decisions) > 0 {
@@ -510,6 +761,20 @@ func buildGraphLeverageRecommendations(report GraphLeverageReport) []GraphLevera
 	if report.Ingestion.CoveragePercent < 70 {
 		add("high", "ingestion_breadth", "Expand event ingestion breadth", "Critical source coverage is below target, leaving significant context off-graph.", "Add declarative mappings for missing systems and enforce source onboarding SLOs.")
 	}
+	if report.Ontology.FallbackActivityPercent > 10 {
+		priority := "medium"
+		if report.Ontology.FallbackActivityPercent > 25 {
+			priority = "high"
+		}
+		add(priority, "ontology_fallback", "Reduce generic activity fallback", "A high share of event nodes still uses generic activity kind, reducing semantic query precision.", "Route known event types to canonical ontology kinds and reserve activity for unstructured fallback only.")
+	}
+	if report.Ontology.SchemaValidWritePercent < 98 {
+		priority := "medium"
+		if report.Ontology.SchemaValidWritePercent < 90 {
+			priority = "high"
+		}
+		add(priority, "ontology_conformance", "Increase schema-valid write rate", "Schema-invalid writes reduce confidence in graph-derived recommendations and automation.", "Enable strict ingest validation, dead-letter invalid writes, and close top validation issue classes.")
+	}
 	if report.Temporal.Freshness.FreshnessPercent < 80 {
 		add("medium", "temporal_freshness", "Improve real-time graph freshness", "Stale graph data will degrade insight confidence and incident-time accuracy.", "Reduce sync lag for high-churn domains and enforce observed_at on all writes.")
 	}
@@ -521,6 +786,13 @@ func buildGraphLeverageRecommendations(report GraphLeverageReport) []GraphLevera
 	}
 	if report.Actuation.ActuationCoveragePercent < 50 {
 		add("medium", "actuation", "Increase recommendation actuation coverage", "Too few decisions are linked to executable actions.", "Create action nodes for accepted recommendations and track execution state.")
+	}
+	if report.Actuation.OutcomeCompletionRate < 60 {
+		priority := "medium"
+		if report.Actuation.OutcomeCompletionRate < 35 || report.Actuation.StaleActionsNoOutcome > 0 {
+			priority = "high"
+		}
+		add(priority, "action_outcomes", "Close action-to-outcome loop", "Many action nodes do not have linked outcomes, limiting operational feedback quality.", "Write outcomes for completed actions and enforce stale-action follow-up SLAs.")
 	}
 	if len(recommendations) == 0 {
 		add("low", "steady_state", "Maintain leverage baseline", "Identity, ingestion, temporal, and closed-loop leverage metrics are healthy.", "Continue enforcing quality and leverage guardrails in CI and write-back flows.")
@@ -547,4 +819,17 @@ func countLeveragePriority(recommendations []GraphLeverageRecommendation, priori
 		}
 	}
 	return count
+}
+
+func medianFloat64(values []float64) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+	sorted := append([]float64(nil), values...)
+	sort.Float64s(sorted)
+	mid := len(sorted) / 2
+	if len(sorted)%2 == 1 {
+		return sorted[mid]
+	}
+	return (sorted[mid-1] + sorted[mid]) / 2
 }

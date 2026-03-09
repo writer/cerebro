@@ -111,6 +111,26 @@ func TestSchemaRegistry_IntelligenceSpineBuiltins(t *testing.T) {
 			t.Fatalf("expected incident relationship %q, got %#v", relationship, incidentDef.Relationships)
 		}
 	}
+
+	evidenceDef, ok := defByKind[NodeKindEvidence]
+	if !ok {
+		t.Fatal("expected evidence definition")
+	}
+	for _, relationship := range []EdgeKind{EdgeKindTargets, EdgeKindBasedOn} {
+		if !containsEdgeKind(evidenceDef.Relationships, relationship) {
+			t.Fatalf("expected evidence relationship %q, got %#v", relationship, evidenceDef.Relationships)
+		}
+	}
+
+	actionDef, ok := defByKind[NodeKindAction]
+	if !ok {
+		t.Fatal("expected action definition")
+	}
+	for _, relationship := range []EdgeKind{EdgeKindTargets, EdgeKindEvaluates, EdgeKindBasedOn, EdgeKindInteractedWith} {
+		if !containsEdgeKind(actionDef.Relationships, relationship) {
+			t.Fatalf("expected action relationship %q, got %#v", relationship, actionDef.Relationships)
+		}
+	}
 }
 
 func TestSchemaRegistry_RegisterDynamicNodeKind(t *testing.T) {

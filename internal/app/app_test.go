@@ -79,6 +79,22 @@ func TestLoadConfigGraphSchemaValidationMode(t *testing.T) {
 	}
 }
 
+func TestLoadConfigGraphEventMapperControls(t *testing.T) {
+	t.Setenv("GRAPH_EVENT_MAPPER_VALIDATION_MODE", "warn")
+	t.Setenv("GRAPH_EVENT_MAPPER_DEAD_LETTER_PATH", "/tmp/test-graph-mapper.dlq.jsonl")
+	t.Setenv("GRAPH_MIGRATE_LEGACY_ACTIVITY_ON_START", "true")
+	cfg := LoadConfig()
+	if cfg.GraphEventMapperValidationMode != "warn" {
+		t.Fatalf("expected graph event mapper validation mode warn, got %q", cfg.GraphEventMapperValidationMode)
+	}
+	if cfg.GraphEventMapperDeadLetterPath != "/tmp/test-graph-mapper.dlq.jsonl" {
+		t.Fatalf("expected graph event mapper dead-letter path to be set, got %q", cfg.GraphEventMapperDeadLetterPath)
+	}
+	if !cfg.GraphMigrateLegacyActivityOnStart {
+		t.Fatal("expected graph legacy activity migration on start to be enabled")
+	}
+}
+
 func TestLoadConfigRetention(t *testing.T) {
 	t.Setenv("CEREBRO_AUDIT_RETENTION_DAYS", "45")
 	t.Setenv("CEREBRO_SESSION_RETENTION_DAYS", "21")

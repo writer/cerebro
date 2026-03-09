@@ -2,7 +2,7 @@
 
 Generated from `internal/app/app_config.go` (`LoadConfig`) via `go run ./scripts/generate_config_docs/main.go`.
 
-Total variables: **268**
+Total variables: **271**
 
 | Variable | Reader(s) | Default(s) | Config Field(s) |
 |---|---|---|---|
@@ -97,6 +97,9 @@ Total variables: **268**
 | `GRAPH_CROSS_TENANT_REQUIRE_SIGNED_INGEST` | `getEnvBool` | `false` | `GraphCrossTenantRequireSignedIngest` |
 | `GRAPH_CROSS_TENANT_SIGNATURE_MAX_SKEW` | `getEnvDuration` | `5 * time.Minute` | `GraphCrossTenantSignatureSkew` |
 | `GRAPH_CROSS_TENANT_SIGNING_KEY` | `getEnv` | `""` | `GraphCrossTenantSigningKey` |
+| `GRAPH_EVENT_MAPPER_DEAD_LETTER_PATH` | `getEnv` | `filepath.Join(findings.DefaultFilePath(), "graph-event-mapper.dlq.jsonl")` | `GraphEventMapperDeadLetterPath` |
+| `GRAPH_EVENT_MAPPER_VALIDATION_MODE` | `getEnv` | `"enforce"` | `GraphEventMapperValidationMode` |
+| `GRAPH_MIGRATE_LEGACY_ACTIVITY_ON_START` | `getEnvBool` | `false` | `GraphMigrateLegacyActivityOnStart` |
 | `GRAPH_SCHEMA_VALIDATION_MODE` | `getEnv` | `"warn"` | `GraphSchemaValidationMode` |
 | `INTUNE_CLIENT_ID` | `getEnv` | `""` | `IntuneClientID` |
 | `INTUNE_CLIENT_SECRET` | `getEnv` | `""` | `IntuneClientSecret` |

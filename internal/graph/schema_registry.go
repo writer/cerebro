@@ -1409,7 +1409,7 @@ var builtInNodeKinds = []NodeKindDefinition{
 			"confidence":      "number",
 		},
 		RequiredProperties: []string{"evidence_type", "source_system", "observed_at", "valid_from"},
-		Relationships:      []EdgeKind{EdgeKindTargets},
+		Relationships:      []EdgeKind{EdgeKindTargets, EdgeKindBasedOn},
 	},
 	{
 		Kind:       NodeKindAction,
@@ -1427,7 +1427,7 @@ var builtInNodeKinds = []NodeKindDefinition{
 			"confidence":      "number",
 		},
 		RequiredProperties: []string{"action_type", "status", "observed_at", "valid_from"},
-		Relationships:      []EdgeKind{EdgeKindTargets, EdgeKindEvaluates},
+		Relationships:      []EdgeKind{EdgeKindTargets, EdgeKindEvaluates, EdgeKindBasedOn, EdgeKindInteractedWith},
 	},
 	{Kind: NodeKindDepartment, Categories: []NodeKindCategory{NodeCategoryBusiness}},
 	{Kind: NodeKindLocation, Categories: []NodeKindCategory{NodeCategoryBusiness}},

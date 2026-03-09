@@ -35,6 +35,12 @@ mappings:
   - name: incident_timeline_event
     source: ensemble.tap.incident.timeline.*
     nodes:
+      - id: 'service:{{data.service}}'
+        kind: service
+        name: '{{data.service}}'
+        provider: incident
+        properties:
+          service_id: '{{data.service}}'
       - id: 'incident:{{data.incident_id}}'
         kind: incident
         name: 'Incident {{data.incident_id}}'
@@ -181,6 +187,9 @@ mappings:
         provider: jira
         properties:
           action_type: issue_transition
+          status: '{{data.to_status}}'
+          performed_at: '{{data.performed_at}}'
+          actor_id: '{{resolve(data.actor_email)}}'
           actor_email: '{{data.actor_email}}'
     edges:
       - source: 'action:jira:{{data.issue_key}}:{{data.transition_id}}'
@@ -238,6 +247,12 @@ mappings:
   - name: calendar_meeting_recorded
     source: ensemble.tap.calendar.meeting.recorded
     nodes:
+      - id: 'service:{{data.service}}'
+        kind: service
+        name: '{{data.service}}'
+        provider: calendar
+        properties:
+          service_id: '{{data.service}}'
       - id: 'meeting:{{data.meeting_id}}'
         kind: meeting
         name: '{{data.title}}'

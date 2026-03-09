@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -22,6 +23,22 @@ var defaultMappingsYAML []byte
 var templatePattern = regexp.MustCompile(`{{\s*([^{}]+)\s*}}`)
 
 type IdentityResolver func(raw string, evt events.CloudEvent) string
+
+// MapperValidationMode controls mapper behavior when schema validation fails.
+type MapperValidationMode string
+
+const (
+	// MapperValidationEnforce rejects invalid writes and dead-letters them.
+	MapperValidationEnforce MapperValidationMode = "enforce"
+	// MapperValidationWarn keeps historical behavior and allows invalid writes.
+	MapperValidationWarn MapperValidationMode = "warn"
+)
+
+// MapperOptions controls declarative mapper runtime behavior.
+type MapperOptions struct {
+	ValidationMode MapperValidationMode `json:"validation_mode,omitempty"`
+	DeadLetterPath string               `json:"dead_letter_path,omitempty"`
+}
 
 type MappingConfig struct {
 	Mappings []EventMapping `json:"mappings" yaml:"mappings"`
@@ -57,11 +74,33 @@ type ApplyResult struct {
 	MappingNames  []string `json:"mapping_names,omitempty"`
 	NodesUpserted []string `json:"nodes_upserted,omitempty"`
 	EdgesUpserted []string `json:"edges_upserted,omitempty"`
+	NodesRejected int      `json:"nodes_rejected,omitempty"`
+	EdgesRejected int      `json:"edges_rejected,omitempty"`
+	DeadLettered  int      `json:"dead_lettered,omitempty"`
+}
+
+// MapperStats captures mapper counters since process start.
+type MapperStats struct {
+	EventsProcessed    int64          `json:"events_processed"`
+	EventsMatched      int64          `json:"events_matched"`
+	NodesUpserted      int64          `json:"nodes_upserted"`
+	EdgesUpserted      int64          `json:"edges_upserted"`
+	NodesRejected      int64          `json:"nodes_rejected"`
+	EdgesRejected      int64          `json:"edges_rejected"`
+	DeadLettered       int64          `json:"dead_lettered"`
+	DeadLetterFailures int64          `json:"dead_letter_failures"`
+	NodeRejectByCode   map[string]int `json:"node_reject_by_code,omitempty"`
+	EdgeRejectByCode   map[string]int `json:"edge_reject_by_code,omitempty"`
 }
 
 type Mapper struct {
-	config   MappingConfig
-	resolver IdentityResolver
+	config     MappingConfig
+	resolver   IdentityResolver
+	options    MapperOptions
+	deadLetter DeadLetterSink
+
+	statsMu sync.Mutex
+	stats   MapperStats
 }
 
 func LoadDefaultConfig() (MappingConfig, error) {
@@ -103,24 +142,74 @@ func ParseConfig(payload []byte) (MappingConfig, error) {
 }
 
 func NewMapper(config MappingConfig, resolver IdentityResolver) (*Mapper, error) {
+	return NewMapperWithOptions(config, resolver, MapperOptions{
+		ValidationMode: MapperValidationEnforce,
+	})
+}
+
+func NewMapperWithOptions(config MappingConfig, resolver IdentityResolver, opts MapperOptions) (*Mapper, error) {
 	if len(config.Mappings) == 0 {
 		return nil, fmt.Errorf("mapper requires at least one mapping")
 	}
+	options := normalizeMapperOptions(opts)
+	var deadLetter DeadLetterSink
+	if options.DeadLetterPath != "" {
+		sink, err := NewFileDeadLetterSink(options.DeadLetterPath)
+		if err != nil {
+			return nil, err
+		}
+		deadLetter = sink
+	}
 	return &Mapper{
-		config:   config,
-		resolver: resolver,
+		config:     config,
+		resolver:   resolver,
+		options:    options,
+		deadLetter: deadLetter,
+		stats: MapperStats{
+			NodeRejectByCode: make(map[string]int),
+			EdgeRejectByCode: make(map[string]int),
+		},
 	}, nil
 }
 
+// Stats returns a copy of mapper runtime counters.
+func (m *Mapper) Stats() MapperStats {
+	if m == nil {
+		return MapperStats{}
+	}
+	m.statsMu.Lock()
+	defer m.statsMu.Unlock()
+	return MapperStats{
+		EventsProcessed:    m.stats.EventsProcessed,
+		EventsMatched:      m.stats.EventsMatched,
+		NodesUpserted:      m.stats.NodesUpserted,
+		EdgesUpserted:      m.stats.EdgesUpserted,
+		NodesRejected:      m.stats.NodesRejected,
+		EdgesRejected:      m.stats.EdgesRejected,
+		DeadLettered:       m.stats.DeadLettered,
+		DeadLetterFailures: m.stats.DeadLetterFailures,
+		NodeRejectByCode:   cloneIntMap(m.stats.NodeRejectByCode),
+		EdgeRejectByCode:   cloneIntMap(m.stats.EdgeRejectByCode),
+	}
+}
+
 func (m *Mapper) Apply(g *graph.Graph, evt events.CloudEvent) (ApplyResult, error) {
+	if m == nil {
+		return ApplyResult{}, fmt.Errorf("mapper is required")
+	}
 	if g == nil {
 		return ApplyResult{}, fmt.Errorf("graph is required")
 	}
+	m.incrementProcessed()
 
 	context := eventContext(evt)
 	matchedNames := make([]string, 0)
 	nodesUpserted := make([]string, 0)
 	edgesUpserted := make([]string, 0)
+	nodesRejected := 0
+	edgesRejected := 0
+	deadLettered := 0
+	stagedNodes := make(map[string]*graph.Node)
 
 	for _, mapping := range m.config.Mappings {
 		if !mappingMatchesSource(mapping.Source, evt.Type) {
@@ -147,16 +236,34 @@ func (m *Mapper) Apply(g *graph.Graph, evt events.CloudEvent) (ApplyResult, erro
 			}
 			properties := m.renderProperties(nodeDef.Properties, context, evt)
 			ensureTemporalAndProvenance(properties, evt)
-
-			g.AddNode(&graph.Node{
+			node := &graph.Node{
 				ID:         nodeID,
 				Kind:       nodeKind,
 				Name:       nodeName,
 				Provider:   provider,
 				Properties: properties,
 				Risk:       parseRiskLevel(nodeDef.Risk),
-			})
+			}
+			nodeIssues := graph.ValidateNodeAgainstSchema(node)
+			if len(nodeIssues) > 0 && m.shouldEnforceValidation() {
+				nodesRejected++
+				m.incrementNodeRejected(nodeIssues)
+				if m.writeDeadLetter(buildDeadLetterRecord(evt, mapping.Name, "node", node.ID, string(node.Kind), map[string]any{
+					"id":         node.ID,
+					"kind":       node.Kind,
+					"name":       node.Name,
+					"provider":   node.Provider,
+					"properties": node.Properties,
+				}, nodeIssues)) {
+					deadLettered++
+				}
+				continue
+			}
+
+			g.AddNode(node)
+			stagedNodes[node.ID] = node
 			nodesUpserted = append(nodesUpserted, nodeID)
+			m.incrementNodeUpserted()
 		}
 
 		for _, edgeDef := range mapping.Edges {
@@ -177,7 +284,7 @@ func (m *Mapper) Apply(g *graph.Graph, evt events.CloudEvent) (ApplyResult, erro
 			if edgeID == "" {
 				edgeID = fmt.Sprintf("%s:%s->%s", kind, source, target)
 			}
-			g.AddEdge(&graph.Edge{
+			edge := &graph.Edge{
 				ID:         edgeID,
 				Source:     source,
 				Target:     target,
@@ -185,20 +292,54 @@ func (m *Mapper) Apply(g *graph.Graph, evt events.CloudEvent) (ApplyResult, erro
 				Effect:     effect,
 				Properties: properties,
 				Risk:       graph.RiskNone,
-			})
+			}
+			edgeIssues := graph.ValidateEdgeAgainstSchema(edge, lookupValidationNode(g, stagedNodes, source), lookupValidationNode(g, stagedNodes, target))
+			if len(edgeIssues) > 0 && m.shouldEnforceValidation() {
+				edgesRejected++
+				m.incrementEdgeRejected(edgeIssues)
+				if m.writeDeadLetter(buildDeadLetterRecord(evt, mapping.Name, "edge", edge.ID, string(edge.Kind), map[string]any{
+					"id":         edge.ID,
+					"source":     edge.Source,
+					"target":     edge.Target,
+					"kind":       edge.Kind,
+					"effect":     edge.Effect,
+					"properties": edge.Properties,
+				}, edgeIssues)) {
+					deadLettered++
+				}
+				continue
+			}
+
+			g.AddEdge(edge)
 			edgesUpserted = append(edgesUpserted, edgeID)
+			m.incrementEdgeUpserted()
 		}
 	}
 
 	sort.Strings(matchedNames)
 	sort.Strings(nodesUpserted)
 	sort.Strings(edgesUpserted)
+	m.incrementMatched(len(matchedNames) > 0)
 	return ApplyResult{
 		Matched:       len(matchedNames) > 0,
 		MappingNames:  matchedNames,
 		NodesUpserted: nodesUpserted,
 		EdgesUpserted: edgesUpserted,
+		NodesRejected: nodesRejected,
+		EdgesRejected: edgesRejected,
+		DeadLettered:  deadLettered,
 	}, nil
+}
+
+func lookupValidationNode(g *graph.Graph, staged map[string]*graph.Node, nodeID string) *graph.Node {
+	if node := staged[nodeID]; node != nil {
+		return node
+	}
+	if g == nil {
+		return nil
+	}
+	node, _ := g.GetNode(nodeID)
+	return node
 }
 
 func (m *Mapper) renderProperties(raw map[string]any, context map[string]any, evt events.CloudEvent) map[string]any {
@@ -400,4 +541,95 @@ func firstNonEmptyString(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func normalizeMapperOptions(options MapperOptions) MapperOptions {
+	mode := MapperValidationMode(strings.ToLower(strings.TrimSpace(string(options.ValidationMode))))
+	switch mode {
+	case MapperValidationWarn:
+		options.ValidationMode = MapperValidationWarn
+	default:
+		options.ValidationMode = MapperValidationEnforce
+	}
+	options.DeadLetterPath = strings.TrimSpace(options.DeadLetterPath)
+	return options
+}
+
+func (m *Mapper) shouldEnforceValidation() bool {
+	if m == nil {
+		return true
+	}
+	return m.options.ValidationMode == MapperValidationEnforce
+}
+
+func (m *Mapper) incrementProcessed() {
+	m.statsMu.Lock()
+	defer m.statsMu.Unlock()
+	m.stats.EventsProcessed++
+}
+
+func (m *Mapper) incrementMatched(matched bool) {
+	if !matched {
+		return
+	}
+	m.statsMu.Lock()
+	defer m.statsMu.Unlock()
+	m.stats.EventsMatched++
+}
+
+func (m *Mapper) incrementNodeUpserted() {
+	m.statsMu.Lock()
+	defer m.statsMu.Unlock()
+	m.stats.NodesUpserted++
+}
+
+func (m *Mapper) incrementEdgeUpserted() {
+	m.statsMu.Lock()
+	defer m.statsMu.Unlock()
+	m.stats.EdgesUpserted++
+}
+
+func (m *Mapper) incrementNodeRejected(issues []graph.SchemaValidationIssue) {
+	m.statsMu.Lock()
+	defer m.statsMu.Unlock()
+	m.stats.NodesRejected++
+	for _, issue := range issues {
+		m.stats.NodeRejectByCode[string(issue.Code)]++
+	}
+}
+
+func (m *Mapper) incrementEdgeRejected(issues []graph.SchemaValidationIssue) {
+	m.statsMu.Lock()
+	defer m.statsMu.Unlock()
+	m.stats.EdgesRejected++
+	for _, issue := range issues {
+		m.stats.EdgeRejectByCode[string(issue.Code)]++
+	}
+}
+
+func (m *Mapper) writeDeadLetter(record DeadLetterRecord) bool {
+	if m == nil || m.deadLetter == nil {
+		return false
+	}
+	if err := m.deadLetter.WriteDeadLetter(record); err != nil {
+		m.statsMu.Lock()
+		m.stats.DeadLetterFailures++
+		m.statsMu.Unlock()
+		return false
+	}
+	m.statsMu.Lock()
+	m.stats.DeadLettered++
+	m.statsMu.Unlock()
+	return true
+}
+
+func cloneIntMap(values map[string]int) map[string]int {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make(map[string]int, len(values))
+	for key, value := range values {
+		out[key] = value
+	}
+	return out
 }

@@ -5,6 +5,42 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 6 - Ingestion Hardening + Activity Migration + Ontology SLOs (2026-03-09)
+
+### Review findings
+- [x] Gap: declarative mapper lacked strict ontology rejection controls and per-write dead-letter persistence.
+- [x] Gap: legacy `activity` nodes persisted in historical graphs with no one-time canonical migration flow.
+- [x] Gap: runtime fallback for `ensemble.tap.activity.*` overused generic `activity` kind for known domains.
+- [x] Gap: leverage reporting lacked explicit ontology SLOs and trend samples for canonical coverage and schema-valid writes.
+- [x] Gap: mapper regressions across TAP domains relied on ad-hoc tests instead of fixture-driven contracts.
+- [x] Gap: actuation readiness lacked action-to-outcome completion/latency/staleness metrics.
+
+### Execution plan
+- [x] Strict mapper validation + dead-letter + counters:
+  - [x] Add `MapperValidationMode` (`enforce`/`warn`) and enforce-mode defaults.
+  - [x] Add JSONL dead-letter sink for rejected node/edge writes.
+  - [x] Add mapper runtime stats and rejection counters by schema issue code.
+  - [x] Wire app config/env controls:
+    - [x] `GRAPH_EVENT_MAPPER_VALIDATION_MODE`
+    - [x] `GRAPH_EVENT_MAPPER_DEAD_LETTER_PATH`
+- [x] Historical activity migration:
+  - [x] Add graph migrator to rewrite legacy `activity` nodes to canonical kinds when inferable.
+  - [x] Fallback uncertain records to `action` with explicit review tags.
+  - [x] Add optional startup toggle `GRAPH_MIGRATE_LEGACY_ACTIVITY_ON_START`.
+- [x] Runtime fallback canonicalization:
+  - [x] Route known activity sources/types to canonical kinds (`action`, `meeting`, `document`, etc.).
+  - [x] Keep generic `activity` only for unknown/unstructured sources.
+  - [x] Use `targets` edge semantics from canonical activity nodes to target entities.
+- [x] Leverage ontology SLOs + trends:
+  - [x] Add ontology section to leverage report with canonical coverage, fallback share, schema-valid write percent, and daily trend samples.
+  - [x] Add ontology-aware recommendations for fallback overuse and schema conformance drift.
+- [x] Contract fixtures:
+  - [x] Add fixture file `internal/graphingest/testdata/mapper_contracts.json`.
+  - [x] Add fixture-driven contract test covering TAP source families (github, incident, slack, jira, ci, calendar, docs, support, sales).
+- [x] Action efficacy:
+  - [x] Add actuation metrics for `actions_with_outcomes`, completion rate, median outcome latency, and stale actions without outcomes.
+  - [x] Add recommendation logic for poor action-to-outcome closure.
+
 ## Deep Review Cycle 5 - Residual Activity Mapper Canonicalization (2026-03-09)
 
 ### Review findings

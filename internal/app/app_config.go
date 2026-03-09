@@ -398,6 +398,9 @@ type Config struct {
 	GraphCrossTenantMinTenants          int
 	GraphCrossTenantMinSupport          int
 	GraphSchemaValidationMode           string
+	GraphEventMapperValidationMode      string
+	GraphEventMapperDeadLetterPath      string
+	GraphMigrateLegacyActivityOnStart   bool
 
 	// Nested provider-aware view (derived from flat env-backed fields)
 	Providers ProviderAwareConfig
@@ -667,6 +670,9 @@ func LoadConfig() *Config {
 		GraphCrossTenantMinTenants:          getEnvInt("GRAPH_CROSS_TENANT_MIN_TENANTS", 2),
 		GraphCrossTenantMinSupport:          getEnvInt("GRAPH_CROSS_TENANT_MIN_SUPPORT", 2),
 		GraphSchemaValidationMode:           getEnv("GRAPH_SCHEMA_VALIDATION_MODE", "warn"),
+		GraphEventMapperValidationMode:      getEnv("GRAPH_EVENT_MAPPER_VALIDATION_MODE", "enforce"),
+		GraphEventMapperDeadLetterPath:      getEnv("GRAPH_EVENT_MAPPER_DEAD_LETTER_PATH", filepath.Join(findings.DefaultFilePath(), "graph-event-mapper.dlq.jsonl")),
+		GraphMigrateLegacyActivityOnStart:   getEnvBool("GRAPH_MIGRATE_LEGACY_ACTIVITY_ON_START", false),
 	}
 
 	cfg.RefreshProviderAwareConfig()

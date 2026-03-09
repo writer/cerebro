@@ -1,6 +1,8 @@
 package graphingest
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -397,6 +399,109 @@ func TestMapperApply_SalesCallLoggedUsesActionKind(t *testing.T) {
 	}
 	if actionNode.Kind != graph.NodeKindAction {
 		t.Fatalf("expected sales action node kind %q, got %q", graph.NodeKindAction, actionNode.Kind)
+	}
+}
+
+func TestMapperApply_EnforceValidationRejectsInvalidWritesToDeadLetter(t *testing.T) {
+	config := MappingConfig{
+		Mappings: []EventMapping{
+			{
+				Name:   "invalid_kind",
+				Source: "ensemble.tap.test.invalid",
+				Nodes: []NodeMapping{
+					{
+						ID:       "test:entity:1",
+						Kind:     "nonexistent_kind",
+						Name:     "Invalid",
+						Provider: "test",
+					},
+				},
+			},
+		},
+	}
+	dlqPath := filepath.Join(t.TempDir(), "mapper.dlq.jsonl")
+	mapper, err := NewMapperWithOptions(config, nil, MapperOptions{
+		ValidationMode: MapperValidationEnforce,
+		DeadLetterPath: dlqPath,
+	})
+	if err != nil {
+		t.Fatalf("new mapper with options failed: %v", err)
+	}
+
+	g := graph.New()
+	result, err := mapper.Apply(g, events.CloudEvent{
+		ID:     "evt-invalid-1",
+		Type:   "ensemble.tap.test.invalid",
+		Time:   time.Date(2026, 3, 9, 21, 0, 0, 0, time.UTC),
+		Source: "urn:ensemble:tap",
+		Data:   map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("mapper apply failed: %v", err)
+	}
+	if !result.Matched {
+		t.Fatalf("expected mapping match, got %#v", result)
+	}
+	if result.NodesRejected != 1 || result.DeadLettered != 1 {
+		t.Fatalf("expected one rejected/dead-lettered node, got %#v", result)
+	}
+	if _, ok := g.GetNode("test:entity:1"); ok {
+		t.Fatal("expected invalid node to be rejected")
+	}
+	stats := mapper.Stats()
+	if stats.NodesRejected != 1 || stats.DeadLettered != 1 {
+		t.Fatalf("unexpected mapper stats: %#v", stats)
+	}
+	payload, err := os.ReadFile(dlqPath)
+	if err != nil {
+		t.Fatalf("read dead-letter file failed: %v", err)
+	}
+	if !strings.Contains(string(payload), "nonexistent_kind") {
+		t.Fatalf("expected dead-letter payload to mention invalid kind, got %s", string(payload))
+	}
+}
+
+func TestMapperApply_WarnValidationAllowsInvalidWrites(t *testing.T) {
+	config := MappingConfig{
+		Mappings: []EventMapping{
+			{
+				Name:   "warn_invalid_kind",
+				Source: "ensemble.tap.test.invalid.warn",
+				Nodes: []NodeMapping{
+					{
+						ID:       "test:entity:warn",
+						Kind:     "nonexistent_kind",
+						Name:     "Invalid But Allowed",
+						Provider: "test",
+					},
+				},
+			},
+		},
+	}
+	mapper, err := NewMapperWithOptions(config, nil, MapperOptions{
+		ValidationMode: MapperValidationWarn,
+	})
+	if err != nil {
+		t.Fatalf("new mapper with options failed: %v", err)
+	}
+
+	g := graph.New()
+	result, err := mapper.Apply(g, events.CloudEvent{
+		ID:     "evt-invalid-warn-1",
+		Type:   "ensemble.tap.test.invalid.warn",
+		Time:   time.Date(2026, 3, 9, 21, 5, 0, 0, time.UTC),
+		Source: "urn:ensemble:tap",
+		Data:   map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("mapper apply failed: %v", err)
+	}
+	if result.NodesRejected != 0 {
+		t.Fatalf("expected warn mode not to reject writes, got %#v", result)
+	}
+	node, ok := g.GetNode("test:entity:warn")
+	if !ok || node == nil {
+		t.Fatalf("expected invalid node to be written in warn mode, got %#v", node)
 	}
 }
 

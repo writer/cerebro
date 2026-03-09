@@ -134,11 +134,13 @@ MCP adapter strategy:
 ## Unified Leverage Surface
 - `GET /api/v1/graph/intelligence/leverage` and `cerebro.graph_leverage_report` provide one combined operating view across:
   - ontology/quality maturity
+  - ontology SLOs (`canonical_kind_coverage_percent`, `fallback_activity_percent`, `schema_valid_write_percent`) with trend samples
   - ingestion source breadth and gaps
   - identity linkage and review calibration
   - temporal freshness and recent activity coverage
   - closed-loop decision/outcome execution
   - predictive readiness and actuation readiness
+  - action efficacy (`actions_with_outcomes`, `outcome_completion_rate_percent`, `median_outcome_latency_hours`, `stale_actions_without_outcome`)
 - The leverage report includes prioritized recommendations so teams can sequence high-impact remediation work.
 
 ## Query Template Surface

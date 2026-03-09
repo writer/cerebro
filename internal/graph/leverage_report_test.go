@@ -91,6 +91,15 @@ func TestBuildGraphLeverageReport(t *testing.T) {
 	if report.Ingestion.CoveragePercent <= 0 {
 		t.Fatalf("expected ingestion coverage > 0, got %#v", report.Ingestion)
 	}
+	if report.Ontology.CanonicalKindCoveragePercent <= 0 {
+		t.Fatalf("expected ontology canonical coverage > 0, got %#v", report.Ontology)
+	}
+	if report.Ontology.SchemaValidWritePercent <= 0 {
+		t.Fatalf("expected ontology schema valid write percent > 0, got %#v", report.Ontology)
+	}
+	if len(report.Ontology.Trend) == 0 {
+		t.Fatalf("expected ontology trend points, got %#v", report.Ontology)
+	}
 	if report.Identity.PrecisionPercent <= 0 {
 		t.Fatalf("expected identity precision > 0, got %#v", report.Identity)
 	}
@@ -102,6 +111,12 @@ func TestBuildGraphLeverageReport(t *testing.T) {
 	}
 	if report.Actuation.ActionNodes != 1 {
 		t.Fatalf("expected one action node, got %#v", report.Actuation)
+	}
+	if report.Actuation.ActionsWithOutcomes != 1 {
+		t.Fatalf("expected one action with outcomes, got %#v", report.Actuation)
+	}
+	if report.Actuation.OutcomeCompletionRate <= 0 {
+		t.Fatalf("expected positive outcome completion rate, got %#v", report.Actuation)
 	}
 	if len(report.Recommendations) == 0 {
 		t.Fatalf("expected recommendations, got %#v", report)
