@@ -86,6 +86,9 @@ func (s *Server) setupRoutes() {
 			r.Delete("/{id}", s.deletePolicy)
 			r.Post("/evaluate", s.evaluatePolicy)
 		})
+		r.Route("/policy", func(r chi.Router) {
+			r.Post("/evaluate", s.evaluatePolicy)
+		})
 
 		// Finding endpoints
 		r.Route("/findings", func(r chi.Router) {

@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/evalops/cerebro/internal/graph"
 	"github.com/evalops/cerebro/internal/policy"
 	"github.com/evalops/cerebro/internal/snowflake"
 )
@@ -531,18 +533,209 @@ func (s *Server) loadPolicyDryRunAssets(ctx context.Context, current, candidate 
 }
 
 func (s *Server) evaluatePolicy(w http.ResponseWriter, r *http.Request) {
-	var req policy.EvalRequest
+	var req struct {
+		policy.EvalRequest
+		ProposedChange *graphEvaluateChangeRequest `json:"proposed_change,omitempty"`
+	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.error(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 
-	resp, err := s.app.Policy.Evaluate(r.Context(), &req)
+	policyResp, err := s.app.Policy.Evaluate(r.Context(), &req.EvalRequest)
 	if err != nil {
 		s.errorFromErr(w, err)
 		return
 	}
-	s.json(w, http.StatusOK, resp)
+
+	decision := strings.ToLower(strings.TrimSpace(policyResp.Decision))
+	if decision == "" {
+		decision = "allow"
+	}
+	if decision == "needs_approval" {
+		decision = "require_approval"
+	}
+	matched := append([]string(nil), policyResp.Matched...)
+	reasons := append([]string(nil), policyResp.Reasons...)
+
+	var propagationResult *graph.PropagationResult
+	if decision != "deny" && req.ProposedChange != nil {
+		if s.app.SecurityGraph == nil {
+			s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+			return
+		}
+
+		delta := graph.GraphDelta{
+			Nodes: append([]graph.NodeMutation(nil), req.ProposedChange.Nodes...),
+			Edges: append([]graph.EdgeMutation(nil), req.ProposedChange.Edges...),
+		}
+		if len(req.ProposedChange.Mutations) > 0 {
+			parsed, parseErr := parseGraphMutations(req.ProposedChange.Mutations)
+			if parseErr != nil {
+				s.error(w, http.StatusBadRequest, parseErr.Error())
+				return
+			}
+			delta.Nodes = append(delta.Nodes, parsed.Nodes...)
+			delta.Edges = append(delta.Edges, parsed.Edges...)
+		}
+
+		if len(delta.Nodes) > 0 || len(delta.Edges) > 0 {
+			options := make([]graph.PropagationOption, 0, 1)
+			if req.ProposedChange.ApprovalARRThreshold != nil {
+				options = append(options, graph.WithApprovalARRThreshold(*req.ProposedChange.ApprovalARRThreshold))
+			}
+
+			proposal := &graph.ChangeProposal{
+				ID:     strings.TrimSpace(req.ProposedChange.ID),
+				Source: strings.TrimSpace(req.ProposedChange.Source),
+				Reason: strings.TrimSpace(req.ProposedChange.Reason),
+				Delta:  delta,
+			}
+			engine := graph.NewPropagationEngine(s.app.SecurityGraph, options...)
+			propagationResult, err = engine.Evaluate(proposal)
+			if err != nil {
+				s.error(w, http.StatusBadRequest, err.Error())
+				return
+			}
+
+			switch propagationResult.Decision {
+			case graph.DecisionBlocked:
+				decision = "deny"
+				reasons = append(reasons, propagationResult.BlockReasons...)
+			case graph.DecisionNeedsApproval:
+				decision = "require_approval"
+				reasons = append(reasons, propagationResult.ApprovalReasons...)
+			}
+		}
+	}
+
+	remediationSteps := policyEvaluationRemediationSteps(decision, matched, reasons, propagationResult)
+	response := map[string]any{
+		"decision":          decision,
+		"requires_approval": decision == "require_approval",
+		"matched":           matched,
+		"reasons":           dedupeAndSortStrings(reasons),
+		"remediation_steps": remediationSteps,
+		"policy_evaluation": policyResp,
+	}
+	if propagationResult != nil {
+		response["propagation"] = propagationResult
+	}
+
+	s.logPolicyEvaluationDecision(r.Context(), r, &req.EvalRequest, decision, matched, reasons, remediationSteps)
+	s.json(w, http.StatusOK, response)
+}
+
+func (s *Server) logPolicyEvaluationDecision(ctx context.Context, r *http.Request, req *policy.EvalRequest, decision string, matched []string, reasons []string, remediation []string) {
+	if req == nil || auditLoggerIsNil(s.auditLogger) {
+		return
+	}
+
+	actorID := strings.TrimSpace(GetUserID(ctx))
+	if actorID == "" {
+		for _, key := range []string{"id", "user_id", "email"} {
+			value := strings.TrimSpace(stringValue(req.Principal[key]))
+			if value != "" {
+				actorID = value
+				break
+			}
+		}
+	}
+	if actorID == "" {
+		actorID = "api"
+	}
+
+	resourceType := strings.TrimSpace(stringValue(req.Resource["type"]))
+	if resourceType == "" {
+		resourceType = "policy_enforcement"
+	}
+	resourceID := strings.TrimSpace(stringValue(req.Resource["id"]))
+
+	entry := &snowflake.AuditEntry{
+		Action:       "policy.evaluate",
+		ActorID:      actorID,
+		ActorType:    "user",
+		ResourceType: resourceType,
+		ResourceID:   resourceID,
+		Details: map[string]any{
+			"decision":          decision,
+			"requires_approval": decision == "require_approval",
+			"action":            strings.TrimSpace(req.Action),
+			"matched":           dedupeAndSortStrings(matched),
+			"reasons":           dedupeAndSortStrings(reasons),
+			"remediation_steps": dedupeAndSortStrings(remediation),
+			"evaluated_at":      time.Now().UTC().Format(time.RFC3339Nano),
+		},
+		IPAddress: r.RemoteAddr,
+		UserAgent: r.UserAgent(),
+	}
+
+	if err := s.auditLogger.Log(ctx, entry); err != nil && s.app != nil && s.app.Logger != nil {
+		s.app.Logger.Warn("failed to persist policy evaluation audit log", "error", err, "decision", decision, "action", req.Action)
+	}
+}
+
+func auditLoggerIsNil(logger auditLogWriter) bool {
+	if logger == nil {
+		return true
+	}
+	value := reflect.ValueOf(logger)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
+	}
+}
+
+func policyEvaluationRemediationSteps(decision string, matched []string, reasons []string, propagation *graph.PropagationResult) []string {
+	steps := make([]string, 0, 6)
+	if decision == "deny" {
+		if len(matched) > 0 {
+			steps = append(steps, "Review matched policy requirements and update action context before retrying")
+		}
+		steps = append(steps, "Apply least-privilege scope or required controls, then re-run evaluation")
+	}
+	if decision == "require_approval" {
+		steps = append(steps, "Submit this action for manual approval with business justification")
+		steps = append(steps, "Attach impact analysis and mitigation plan to the approval request")
+	}
+	if propagation != nil {
+		if propagation.AffectedARR > 0 {
+			steps = append(steps, fmt.Sprintf("Validate customer impact (affected ARR %.0f) and stage rollout safely", propagation.AffectedARR))
+		}
+		if len(propagation.SLARisk) > 0 {
+			steps = append(steps, "Coordinate with service owners for SLA-risked systems before execution")
+		}
+		if propagation.AttackPathsCreated > 0 || propagation.ToxicCombosIntroduced > 0 {
+			steps = append(steps, "Adjust proposed change to avoid introducing new attack paths or toxic combinations")
+		}
+	}
+	if len(steps) == 0 && len(reasons) > 0 {
+		steps = append(steps, "Address listed evaluation reasons and re-submit for policy check")
+	}
+	if len(steps) == 0 {
+		steps = append(steps, "No remediation required")
+	}
+	return dedupeAndSortStrings(steps)
+}
+
+func dedupeAndSortStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // Finding endpoints

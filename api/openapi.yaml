@@ -278,7 +278,7 @@ paths:
     post:
       tags:
         - Policies
-      summary: Evaluate policies against an asset
+      summary: Evaluate a proposed action against policy and propagation controls
       requestBody:
         required: true
         content:
@@ -287,11 +287,54 @@ paths:
               $ref: '#/components/schemas/EvaluateRequest'
       responses:
         '200':
-          description: Evaluation results
+          description: Evaluation decision
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/EvaluateResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Security graph unavailable for propagation evaluation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/policy/evaluate:
+    post:
+      tags:
+        - Policies
+      summary: Evaluate a proposed action against policy and propagation controls
+      description: Alias endpoint for synchronous pre-action policy enforcement decisions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluateRequest'
+      responses:
+        '200':
+          description: Evaluation decision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluateResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Security graph unavailable for propagation evaluation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/findings:
     get:
       tags:
@@ -4947,19 +4990,51 @@ components:
     EvaluateRequest:
       type: object
       properties:
-        asset:
+        principal:
           type: object
-        policy_ids:
-          type: array
-          items:
-            type: string
+          additionalProperties: true
+        action:
+          type: string
+        resource:
+          type: object
+          additionalProperties: true
+        context:
+          type: object
+          additionalProperties: true
+        proposed_change:
+          type: object
+          additionalProperties: true
+      required:
+        - action
     EvaluateResponse:
       type: object
       properties:
-        findings:
+        decision:
+          type: string
+          enum:
+            - allow
+            - deny
+            - require_approval
+        requires_approval:
+          type: boolean
+        matched:
           type: array
           items:
-            $ref: '#/components/schemas/Finding'
+            type: string
+        reasons:
+          type: array
+          items:
+            type: string
+        remediation_steps:
+          type: array
+          items:
+            type: string
+        policy_evaluation:
+          type: object
+          additionalProperties: true
+        propagation:
+          type: object
+          additionalProperties: true
     Finding:
       type: object
       properties:
