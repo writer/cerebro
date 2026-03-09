@@ -1,7 +1,8 @@
 mappings:
-  # Mapper outputs should prefer specific operational kinds (for example pull_request,
-  # incident, deployment_run, meeting, document, communication_thread) over generic
-  # activity nodes so downstream graph intelligence can reason by ontology type.
+  # Mapper outputs should prefer specific operational and closed-loop kinds (for example
+  # pull_request, incident, deployment_run, meeting, document, communication_thread,
+  # action, evidence) over generic activity nodes so downstream graph intelligence can
+  # reason by ontology type.
   - name: github_pr_merged
     source: ensemble.tap.github.pull_request.merged
     nodes:
@@ -143,12 +144,15 @@ mappings:
           thread_id: '{{data.thread_ts}}'
           channel_id: '{{data.channel_id}}'
           channel_name: '{{data.channel_name}}'
-      - id: 'activity:slack_message:{{data.channel_id}}:{{data.message_ts}}'
-        kind: activity
+      - id: 'action:slack_message:{{data.channel_id}}:{{data.message_ts}}'
+        kind: action
         name: '{{data.text}}'
         provider: slack
         properties:
-          activity_type: slack_message
+          action_type: slack_message
+          status: posted
+          performed_at: '{{data.message_ts}}'
+          actor_id: '{{resolve(data.author_email)}}'
           thread_ts: '{{data.thread_ts}}'
           author_email: '{{data.author_email}}'
     edges:
@@ -156,7 +160,7 @@ mappings:
         target: 'thread:slack:{{data.channel_id}}:{{data.thread_ts}}'
         kind: interacted_with
         effect: allow
-      - source: 'activity:slack_message:{{data.channel_id}}:{{data.message_ts}}'
+      - source: 'action:slack_message:{{data.channel_id}}:{{data.message_ts}}'
         target: 'thread:slack:{{data.channel_id}}:{{data.thread_ts}}'
         kind: targets
         effect: allow
@@ -289,15 +293,18 @@ mappings:
         properties:
           status: '{{data.status}}'
           priority: '{{data.priority}}'
-      - id: 'activity:support_update:{{data.ticket_id}}:{{data.update_id}}'
-        kind: activity
+      - id: 'action:support_update:{{data.ticket_id}}:{{data.update_id}}'
+        kind: action
         name: 'Support update {{data.status}}'
         provider: support
         properties:
-          activity_type: support_ticket_update
+          action_type: support_ticket_update
+          status: updated
+          performed_at: '{{data.updated_at}}'
+          actor_id: '{{resolve(data.agent_email)}}'
           update_type: '{{data.update_type}}'
     edges:
-      - source: 'activity:support_update:{{data.ticket_id}}:{{data.update_id}}'
+      - source: 'action:support_update:{{data.ticket_id}}:{{data.update_id}}'
         target: 'ticket:support:{{data.ticket_id}}'
         kind: targets
         effect: allow
@@ -314,19 +321,22 @@ mappings:
         provider: sales
         properties:
           email: '{{data.contact_email}}'
-      - id: 'activity:sales_call:{{data.call_id}}'
-        kind: activity
+      - id: 'action:sales_call:{{data.call_id}}'
+        kind: action
         name: '{{data.summary}}'
         provider: sales
         properties:
-          activity_type: sales_call
+          action_type: sales_call
+          status: logged
+          performed_at: '{{data.logged_at}}'
+          actor_id: '{{resolve(data.rep_email)}}'
           call_duration_minutes: '{{data.duration_minutes}}'
     edges:
       - source: '{{resolve(data.rep_email)}}'
         target: 'contact:{{data.contact_id}}'
         kind: interacted_with
         effect: allow
-      - source: 'activity:sales_call:{{data.call_id}}'
+      - source: 'action:sales_call:{{data.call_id}}'
         target: 'contact:{{data.contact_id}}'
         kind: targets
         effect: allow

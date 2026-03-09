@@ -65,6 +65,7 @@ API handlers, tool writeback handlers, and graph actuation flows should all norm
 `internal/graphingest/mappings.yaml` should follow these rules:
 
 - Prefer specific ontology kinds when the domain has stable semantics.
+- Reserve generic `activity` only for unknown/unstructured fallback ingestion paths.
 - Keep ID shape deterministic and source-scoped (`pull_request:{repo}:{number}`, `meeting:{id}`, etc.).
 - Use `{{resolve(...)}}` for identity references whenever available.
 - Avoid source-specific edge names when a canonical edge kind already exists.
@@ -109,4 +110,3 @@ Before merging ontology changes, confirm:
 - Query templates and intelligence outputs still operate on canonical kinds.
 - OpenAPI/tool contracts remain backward compatible where required.
 - Docs and tests are updated alongside code.
-

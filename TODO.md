@@ -5,6 +5,24 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 5 - Residual Activity Mapper Canonicalization (2026-03-09)
+
+### Review findings
+- [x] Gap: declarative TAP mappings still emitted generic `activity` nodes for Slack message, support ticket update, and sales call events.
+- [x] Gap: mapper tests did not pin canonical kind output for those domains, allowing regression back to ambiguous kinds.
+- [x] Gap: ontology architecture doc did not explicitly state that generic `activity` should be fallback-only.
+
+### Execution plan
+- [x] Migrate residual declarative mappings away from `activity`:
+  - [x] `slack_thread_message`: convert per-message node to `action`.
+  - [x] `support_ticket_updated`: convert update node to `action`.
+  - [x] `sales_call_logged`: convert call node to `action`.
+- [x] Extend mapper tests for canonical-kind enforcement:
+  - [x] Assert support update writes `action:support_update:*` as `NodeKindAction`.
+  - [x] Add Slack mapping test for `action:slack_message:*` output.
+  - [x] Add sales call mapping test for `action:sales_call:*` output.
+- [x] Update ontology architecture guidance to mark `activity` as fallback-only for unknown/unstructured ingestion paths.
+
 ## Deep Review Cycle 4 - Ontology Depth + Metadata Consistency + Architecture Docs (2026-03-09)
 
 ### Review findings
