@@ -195,12 +195,12 @@ func (r *RiskEngine) IngestAnonymizedPatternSamples(samples []AnonymizedPatternS
 
 // CrossTenantPatterns returns anonymized pattern aggregates for recommendation matching.
 func (r *RiskEngine) CrossTenantPatterns(minTenants int) []CrossTenantPattern {
-	if minTenants <= 0 {
-		minTenants = 1
-	}
-
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+	cfg := r.crossTenantPrivacyConfigLocked()
+	if minTenants < cfg.MinTenantCount {
+		minTenants = cfg.MinTenantCount
+	}
 
 	if len(r.patternLibrary) == 0 {
 		return nil
@@ -215,6 +215,9 @@ func (r *RiskEngine) CrossTenantPatterns(minTenants int) []CrossTenantPattern {
 	for _, aggregate := range r.patternLibrary {
 		tenantCount := len(aggregate.tenantSet)
 		if tenantCount < minTenants {
+			continue
+		}
+		if aggregate.Occurrences < cfg.MinPatternSupport {
 			continue
 		}
 		total := totalByFingerprint[aggregate.Fingerprint]

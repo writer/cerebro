@@ -20,13 +20,15 @@ import (
 
 // Server is the fully wired API server
 type Server struct {
-	app              *app.App
-	router           *chi.Mux
-	auditLogger      auditLogWriter
-	rateLimiter      *RateLimiter
-	riskEngineMu     sync.Mutex
-	riskEngine       *graph.RiskEngine
-	riskEngineSource *graph.Graph
+	app                 *app.App
+	router              *chi.Mux
+	auditLogger         auditLogWriter
+	rateLimiter         *RateLimiter
+	riskEngineMu        sync.Mutex
+	riskEngine          *graph.RiskEngine
+	riskEngineSource    *graph.Graph
+	crossTenantReplayMu sync.Mutex
+	crossTenantReplay   map[string]time.Time
 }
 
 type auditLogWriter interface {
@@ -38,9 +40,10 @@ var runtimeNumGoroutine = runtime.NumGoroutine
 // NewServer creates a new server with all services wired
 func NewServer(application *app.App) *Server {
 	s := &Server{
-		app:         application,
-		router:      chi.NewRouter(),
-		auditLogger: application.AuditRepo,
+		app:               application,
+		router:            chi.NewRouter(),
+		auditLogger:       application.AuditRepo,
+		crossTenantReplay: make(map[string]time.Time),
 	}
 	s.setupMiddleware()
 	s.setupRoutes()

@@ -39,20 +39,22 @@ func TestAppServiceGroupAccessors(t *testing.T) {
 	rbac := auth.NewRBAC()
 	securityGraph := graph.New()
 	findingsRepo := &snowflake.FindingRepository{}
+	riskEngineStateRepo := &snowflake.RiskEngineStateRepository{}
 	snowflakeStore := &findings.SnowflakeStore{}
 	retention := noopRetentionCleaner{}
 
 	application := &App{
-		Policy:            policyEngine,
-		Findings:          store,
-		ScanWatermarks:    watermarks,
-		Providers:         providersRegistry,
-		Scheduler:         schedulerSvc,
-		RBAC:              rbac,
-		SecurityGraph:     securityGraph,
-		FindingsRepo:      findingsRepo,
-		SnowflakeFindings: snowflakeStore,
-		RetentionRepo:     retention,
+		Policy:              policyEngine,
+		Findings:            store,
+		ScanWatermarks:      watermarks,
+		Providers:           providersRegistry,
+		Scheduler:           schedulerSvc,
+		RBAC:                rbac,
+		SecurityGraph:       securityGraph,
+		FindingsRepo:        findingsRepo,
+		RiskEngineStateRepo: riskEngineStateRepo,
+		SnowflakeFindings:   snowflakeStore,
+		RetentionRepo:       retention,
 	}
 
 	core := application.CoreServices()
@@ -85,6 +87,9 @@ func TestAppServiceGroupAccessors(t *testing.T) {
 	storage := application.StorageServices()
 	if storage.FindingsRepo != findingsRepo {
 		t.Fatal("storage services should expose findings repository")
+	}
+	if storage.RiskEngineStateRepo != riskEngineStateRepo {
+		t.Fatal("storage services should expose risk engine state repository")
 	}
 	if storage.SnowflakeFindings != snowflakeStore {
 		t.Fatal("storage services should expose Snowflake findings store")

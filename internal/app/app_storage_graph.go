@@ -18,6 +18,7 @@ func (a *App) initRepositories() {
 	a.TicketsRepo = nil
 	a.AuditRepo = nil
 	a.PolicyHistoryRepo = nil
+	a.RiskEngineStateRepo = nil
 	a.RetentionRepo = nil
 
 	if a.Snowflake == nil {
@@ -27,6 +28,7 @@ func (a *App) initRepositories() {
 	a.TicketsRepo = snowflake.NewTicketRepository(a.Snowflake)
 	a.AuditRepo = snowflake.NewAuditRepository(a.Snowflake)
 	a.PolicyHistoryRepo = snowflake.NewPolicyHistoryRepository(a.Snowflake)
+	a.RiskEngineStateRepo = snowflake.NewRiskEngineStateRepository(a.Snowflake)
 	a.RetentionRepo = snowflake.NewRetentionRepository(a.Snowflake)
 }
 

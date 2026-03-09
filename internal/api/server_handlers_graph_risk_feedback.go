@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/evalops/cerebro/internal/graph"
+	"github.com/evalops/cerebro/internal/metrics"
 )
 
 type recordOutcomeRequest struct {
@@ -64,9 +65,12 @@ func (s *Server) recordGraphOutcome(w http.ResponseWriter, r *http.Request) {
 		Metadata:   req.Metadata,
 	})
 	if err != nil {
+		metrics.RecordGraphOutcome("error")
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	metrics.RecordGraphOutcome("recorded")
+	s.persistRiskEngineState(r.Context(), engine)
 
 	s.json(w, http.StatusOK, map[string]any{
 		"recorded": recorded,

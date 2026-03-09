@@ -86,6 +86,12 @@ func TestRiskEngineOutcomeFeedback_TracksOutcomesAndSignals(t *testing.T) {
 	if len(report.SignalWeightAdjustments) == 0 {
 		t.Fatalf("expected signal weight recommendations, got %+v", report)
 	}
+	if report.Backtest.Samples == 0 {
+		t.Fatalf("expected backtest samples, got %+v", report.Backtest)
+	}
+	if len(report.Calibration) == 0 {
+		t.Fatalf("expected calibration buckets, got %+v", report.Calibration)
+	}
 }
 
 func TestBuildSeverityAdjustmentsAndRetirementSuggestions(t *testing.T) {

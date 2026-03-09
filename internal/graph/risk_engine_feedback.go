@@ -87,6 +87,35 @@ type SignalWeightRecommendation struct {
 	Rationale       string  `json:"rationale"`
 }
 
+// CalibrationBucket summarizes observed outcomes for a predicted-probability range.
+type CalibrationBucket struct {
+	LowerBound   float64 `json:"lower_bound"`
+	UpperBound   float64 `json:"upper_bound"`
+	Samples      int     `json:"samples"`
+	OutcomeRate  float64 `json:"outcome_rate"`
+	AvgPredicted float64 `json:"avg_predicted"`
+	Gap          float64 `json:"gap"`
+}
+
+// OutcomeBacktest summarizes aggregate quality for observed risk predictions.
+type OutcomeBacktest struct {
+	Samples       int     `json:"samples"`
+	BrierScore    float64 `json:"brier_score"`
+	PrecisionAt50 float64 `json:"precision_at_50"`
+	RecallAt50    float64 `json:"recall_at_50"`
+}
+
+// SignalDrift captures directional quality drift between baseline and recent windows.
+type SignalDrift struct {
+	Signal          string  `json:"signal"`
+	RecentHitRate   float64 `json:"recent_hit_rate"`
+	BaselineHitRate float64 `json:"baseline_hit_rate"`
+	Delta           float64 `json:"delta"`
+	Status          string  `json:"status"`
+	RecentSamples   int     `json:"recent_samples"`
+	BaselineSamples int     `json:"baseline_samples"`
+}
+
 // OutcomeFeedbackReport summarizes rule effectiveness and tuning recommendations.
 type OutcomeFeedbackReport struct {
 	GeneratedAt             time.Time                      `json:"generated_at"`
@@ -94,6 +123,10 @@ type OutcomeFeedbackReport struct {
 	OutcomeCount            int                            `json:"outcome_count"`
 	RuleSignalCount         int                            `json:"rule_signal_count"`
 	Profile                 string                         `json:"profile"`
+	Backtest                OutcomeBacktest                `json:"backtest"`
+	Calibration             []CalibrationBucket            `json:"calibration,omitempty"`
+	SignalDrift             []SignalDrift                  `json:"signal_drift,omitempty"`
+	RulePromotions          []RulePromotionEvent           `json:"rule_promotions,omitempty"`
 	RuleEffectiveness       []RuleEffectiveness            `json:"rule_effectiveness,omitempty"`
 	SeverityAdjustments     []SeverityAdjustmentSuggestion `json:"severity_adjustments,omitempty"`
 	RetirementSuggestions   []RuleRetirementSuggestion     `json:"retirement_suggestions,omitempty"`
@@ -220,6 +253,7 @@ func (r *RiskEngine) OutcomeFeedback(window time.Duration, profileName string) O
 		}
 		factorSignals = append(factorSignals, signal)
 	}
+	rulePromotions := append([]RulePromotionEvent(nil), r.rulePromotions...)
 	profile := r.riskProfile
 	r.mu.RUnlock()
 
@@ -235,6 +269,8 @@ func (r *RiskEngine) OutcomeFeedback(window time.Duration, profileName string) O
 	severityAdjustments := buildSeverityAdjustments(ruleEffectiveness)
 	retirementSuggestions := buildRetirementSuggestions(ruleEffectiveness)
 	signalAdjustments := buildSignalWeightRecommendations(factorSignals, outcomes, profile, defaultOutcomeLeadWindow)
+	backtest, calibration := buildOutcomeCalibration(ruleSignals, outcomes, defaultOutcomeLeadWindow)
+	drift := detectSignalDrift(factorSignals, outcomes, defaultOutcomeLeadWindow, cutoff, now)
 
 	return OutcomeFeedbackReport{
 		GeneratedAt:             now,
@@ -242,6 +278,10 @@ func (r *RiskEngine) OutcomeFeedback(window time.Duration, profileName string) O
 		OutcomeCount:            len(outcomes),
 		RuleSignalCount:         len(ruleSignals),
 		Profile:                 profile.Name,
+		Backtest:                backtest,
+		Calibration:             calibration,
+		SignalDrift:             drift,
+		RulePromotions:          rulePromotions,
 		RuleEffectiveness:       ruleEffectiveness,
 		SeverityAdjustments:     severityAdjustments,
 		RetirementSuggestions:   retirementSuggestions,
@@ -314,6 +354,9 @@ func (r *RiskEngine) trimSignalsLocked() {
 	}
 	if len(r.outcomeEvents) > r.signalLimit {
 		r.outcomeEvents = append([]OutcomeEvent(nil), r.outcomeEvents[len(r.outcomeEvents)-r.signalLimit:]...)
+	}
+	if len(r.rulePromotions) > r.signalLimit {
+		r.rulePromotions = append([]RulePromotionEvent(nil), r.rulePromotions[len(r.rulePromotions)-r.signalLimit:]...)
 	}
 }
 
@@ -667,6 +710,190 @@ func indexOutcomesByEntity(outcomes []OutcomeEvent) map[string][]OutcomeEvent {
 		})
 	}
 	return index
+}
+
+func buildOutcomeCalibration(observations []RuleObservation, outcomes []OutcomeEvent, leadWindow time.Duration) (OutcomeBacktest, []CalibrationBucket) {
+	if leadWindow <= 0 {
+		leadWindow = defaultOutcomeLeadWindow
+	}
+	if len(observations) == 0 {
+		return OutcomeBacktest{}, nil
+	}
+	outcomesByEntity := indexOutcomesByEntity(outcomes)
+
+	type predictionSample struct {
+		predicted float64
+		actual    float64
+	}
+	samples := make([]predictionSample, 0, len(observations))
+	for _, observation := range observations {
+		if len(observation.EntityIDs) == 0 {
+			continue
+		}
+		predicted := clampUnitInterval(observation.Score / 100.0)
+		actual := 0.0
+		if _, ok := matchOutcomeForObservation(observation, outcomesByEntity, leadWindow); ok {
+			actual = 1.0
+		}
+		samples = append(samples, predictionSample{
+			predicted: predicted,
+			actual:    actual,
+		})
+	}
+	if len(samples) == 0 {
+		return OutcomeBacktest{}, nil
+	}
+
+	type bucketAccumulator struct {
+		samples      int
+		predictedSum float64
+		actualSum    float64
+	}
+
+	const bucketCount = 5
+	accumulators := make([]bucketAccumulator, bucketCount)
+	brierSum := 0.0
+	predictedPositives := 0
+	actualPositives := 0
+	truePositives := 0
+	for _, sample := range samples {
+		idx := int(sample.predicted * bucketCount)
+		if idx >= bucketCount {
+			idx = bucketCount - 1
+		}
+		accumulators[idx].samples++
+		accumulators[idx].predictedSum += sample.predicted
+		accumulators[idx].actualSum += sample.actual
+
+		err := sample.predicted - sample.actual
+		brierSum += err * err
+		if sample.predicted >= 0.5 {
+			predictedPositives++
+			if sample.actual >= 0.5 {
+				truePositives++
+			}
+		}
+		if sample.actual >= 0.5 {
+			actualPositives++
+		}
+	}
+
+	buckets := make([]CalibrationBucket, 0, bucketCount)
+	for idx := 0; idx < bucketCount; idx++ {
+		lower := float64(idx) / bucketCount
+		upper := float64(idx+1) / bucketCount
+		aggregate := accumulators[idx]
+		if aggregate.samples == 0 {
+			continue
+		}
+		avgPredicted := aggregate.predictedSum / float64(aggregate.samples)
+		outcomeRate := aggregate.actualSum / float64(aggregate.samples)
+		buckets = append(buckets, CalibrationBucket{
+			LowerBound:   lower,
+			UpperBound:   upper,
+			Samples:      aggregate.samples,
+			OutcomeRate:  outcomeRate,
+			AvgPredicted: avgPredicted,
+			Gap:          outcomeRate - avgPredicted,
+		})
+	}
+
+	backtest := OutcomeBacktest{
+		Samples:    len(samples),
+		BrierScore: brierSum / float64(len(samples)),
+	}
+	if predictedPositives > 0 {
+		backtest.PrecisionAt50 = float64(truePositives) / float64(predictedPositives)
+	}
+	if actualPositives > 0 {
+		backtest.RecallAt50 = float64(truePositives) / float64(actualPositives)
+	}
+	return backtest, buckets
+}
+
+func detectSignalDrift(
+	factors []FactorObservation,
+	outcomes []OutcomeEvent,
+	leadWindow time.Duration,
+	windowStart time.Time,
+	windowEnd time.Time,
+) []SignalDrift {
+	if leadWindow <= 0 {
+		leadWindow = defaultOutcomeLeadWindow
+	}
+	if len(factors) == 0 || !windowEnd.After(windowStart) {
+		return nil
+	}
+	outcomesByEntity := indexOutcomesByEntity(outcomes)
+	midpoint := windowStart.Add(windowEnd.Sub(windowStart) / 2)
+
+	type aggregate struct {
+		recentSamples   int
+		recentHits      int
+		baselineSamples int
+		baselineHits    int
+	}
+	bySignal := make(map[string]*aggregate)
+	for _, factor := range factors {
+		signal := normalizeSignalFamily(factor.Signal)
+		if signal == "" {
+			continue
+		}
+		entry := bySignal[signal]
+		if entry == nil {
+			entry = &aggregate{}
+			bySignal[signal] = entry
+		}
+
+		hit := hasOutcomeInWindow(factor.EntityID, factor.ObservedAt, outcomesByEntity, leadWindow)
+		if factor.ObservedAt.Before(midpoint) {
+			entry.baselineSamples++
+			if hit {
+				entry.baselineHits++
+			}
+			continue
+		}
+		entry.recentSamples++
+		if hit {
+			entry.recentHits++
+		}
+	}
+
+	drift := make([]SignalDrift, 0, len(bySignal))
+	for signal, aggregate := range bySignal {
+		if aggregate.baselineSamples < 3 || aggregate.recentSamples < 3 {
+			continue
+		}
+		baselineRate := float64(aggregate.baselineHits) / float64(aggregate.baselineSamples)
+		recentRate := float64(aggregate.recentHits) / float64(aggregate.recentSamples)
+		delta := recentRate - baselineRate
+		status := "stable"
+		switch {
+		case delta <= -0.20:
+			status = "degrading"
+		case delta >= 0.20:
+			status = "improving"
+		}
+		drift = append(drift, SignalDrift{
+			Signal:          signal,
+			RecentHitRate:   recentRate,
+			BaselineHitRate: baselineRate,
+			Delta:           delta,
+			Status:          status,
+			RecentSamples:   aggregate.recentSamples,
+			BaselineSamples: aggregate.baselineSamples,
+		})
+	}
+
+	sort.Slice(drift, func(i, j int) bool {
+		iAbs := math.Abs(drift[i].Delta)
+		jAbs := math.Abs(drift[j].Delta)
+		if iAbs == jAbs {
+			return drift[i].Signal < drift[j].Signal
+		}
+		return iAbs > jAbs
+	})
+	return drift
 }
 
 func inferSignalFamily(risk *RankedRisk) string {

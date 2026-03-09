@@ -42,6 +42,35 @@ func TestLoadConfig(t *testing.T) {
 	}
 }
 
+func TestLoadConfigCrossTenantIngestControls(t *testing.T) {
+	t.Setenv("GRAPH_CROSS_TENANT_REQUIRE_SIGNED_INGEST", "true")
+	t.Setenv("GRAPH_CROSS_TENANT_SIGNING_KEY", "test-signing-key")
+	t.Setenv("GRAPH_CROSS_TENANT_SIGNATURE_MAX_SKEW", "7m")
+	t.Setenv("GRAPH_CROSS_TENANT_REPLAY_TTL", "2h")
+	t.Setenv("GRAPH_CROSS_TENANT_MIN_TENANTS", "4")
+	t.Setenv("GRAPH_CROSS_TENANT_MIN_SUPPORT", "5")
+
+	cfg := LoadConfig()
+	if !cfg.GraphCrossTenantRequireSignedIngest {
+		t.Fatal("expected signed ingest requirement to be enabled")
+	}
+	if cfg.GraphCrossTenantSigningKey != "test-signing-key" {
+		t.Fatalf("expected graph signing key to be set, got %q", cfg.GraphCrossTenantSigningKey)
+	}
+	if cfg.GraphCrossTenantSignatureSkew != 7*time.Minute {
+		t.Fatalf("expected signature skew 7m, got %v", cfg.GraphCrossTenantSignatureSkew)
+	}
+	if cfg.GraphCrossTenantReplayTTL != 2*time.Hour {
+		t.Fatalf("expected replay ttl 2h, got %v", cfg.GraphCrossTenantReplayTTL)
+	}
+	if cfg.GraphCrossTenantMinTenants != 4 {
+		t.Fatalf("expected min tenants 4, got %d", cfg.GraphCrossTenantMinTenants)
+	}
+	if cfg.GraphCrossTenantMinSupport != 5 {
+		t.Fatalf("expected min support 5, got %d", cfg.GraphCrossTenantMinSupport)
+	}
+}
+
 func TestLoadConfigRetention(t *testing.T) {
 	t.Setenv("CEREBRO_AUDIT_RETENTION_DAYS", "45")
 	t.Setenv("CEREBRO_SESSION_RETENTION_DAYS", "21")

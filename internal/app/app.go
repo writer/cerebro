@@ -107,11 +107,12 @@ type App struct {
 	Scheduler     *scheduler.Scheduler
 
 	// Repositories (for Snowflake persistence)
-	FindingsRepo      *snowflake.FindingRepository
-	TicketsRepo       *snowflake.TicketRepository
-	AuditRepo         *snowflake.AuditRepository
-	PolicyHistoryRepo *snowflake.PolicyHistoryRepository
-	RetentionRepo     retentionCleaner
+	FindingsRepo        *snowflake.FindingRepository
+	TicketsRepo         *snowflake.TicketRepository
+	AuditRepo           *snowflake.AuditRepository
+	PolicyHistoryRepo   *snowflake.PolicyHistoryRepository
+	RiskEngineStateRepo *snowflake.RiskEngineStateRepository
+	RetentionRepo       retentionCleaner
 
 	// Snowflake-backed stores (when available)
 	SnowflakeFindings *findings.SnowflakeStore

@@ -2,13 +2,16 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/evalops/cerebro/internal/graph"
+	"github.com/evalops/cerebro/internal/metrics"
 )
 
 type crossTenantBuildRequest struct {
@@ -67,17 +70,40 @@ func (s *Server) ingestCrossTenantPatternSamples(w http.ResponseWriter, r *http.
 		return
 	}
 
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		metrics.RecordGraphCrossTenantIngest("read_error", 0)
+		s.error(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := s.verifyCrossTenantIngestAuth(r, body); err != nil {
+		metrics.RecordGraphCrossTenantIngest("auth_failed", 0)
+		status := http.StatusUnauthorized
+		message := err.Error()
+		var authErr crossTenantAuthError
+		if errors.As(err, &authErr) {
+			status = authErr.status
+			message = authErr.message
+		}
+		s.error(w, status, message)
+		return
+	}
+
 	var req crossTenantIngestRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.Unmarshal(body, &req); err != nil {
+		metrics.RecordGraphCrossTenantIngest("decode_error", 0)
 		s.error(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	if len(req.Samples) == 0 {
+		metrics.RecordGraphCrossTenantIngest("empty_samples", 0)
 		s.error(w, http.StatusBadRequest, "samples is required")
 		return
 	}
 
 	summary := engine.IngestAnonymizedPatternSamples(req.Samples)
+	s.persistRiskEngineState(r.Context(), engine)
+	metrics.RecordGraphCrossTenantIngest("accepted", summary.Received)
 	s.json(w, http.StatusOK, summary)
 }
 
@@ -103,6 +129,7 @@ func (s *Server) listCrossTenantPatterns(w http.ResponseWriter, r *http.Request)
 	}
 
 	patterns := engine.CrossTenantPatterns(minTenants)
+	metrics.RecordGraphCrossTenantPatterns(len(patterns))
 	s.json(w, http.StatusOK, map[string]any{
 		"count":    len(patterns),
 		"patterns": patterns,
@@ -140,6 +167,7 @@ func (s *Server) matchCrossTenantPatterns(w http.ResponseWriter, r *http.Request
 	}
 
 	matches := engine.MatchCrossTenantPatterns(minProbability, limit)
+	metrics.RecordGraphCrossTenantMatches(len(matches))
 	s.json(w, http.StatusOK, map[string]any{
 		"count":   len(matches),
 		"matches": matches,

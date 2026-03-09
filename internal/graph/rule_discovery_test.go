@@ -80,6 +80,9 @@ func TestRiskEngineDiscoverRulesAndApprovalFlow(t *testing.T) {
 	if approved.Status != RuleCandidateStatusApproved || !approved.Activated {
 		t.Fatalf("expected approved+activated candidate, got %+v", approved)
 	}
+	if approved.PromotionStatus == "" {
+		t.Fatalf("expected promotion status to be populated, got %+v", approved)
+	}
 
 	approvedList := engine.ListDiscoveredRules(RuleCandidateStatusApproved)
 	if len(approvedList) == 0 {

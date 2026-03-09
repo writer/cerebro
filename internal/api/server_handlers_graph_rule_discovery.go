@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/evalops/cerebro/internal/graph"
+	"github.com/evalops/cerebro/internal/metrics"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -32,6 +33,10 @@ func (s *Server) runGraphRuleDiscovery(w http.ResponseWriter, r *http.Request) {
 	}
 
 	candidates := engine.DiscoverRules(req)
+	for _, candidate := range candidates {
+		metrics.RecordGraphRuleDiscoveryCandidate(candidate.Type, candidate.Status)
+	}
+	s.persistRiskEngineState(r.Context(), engine)
 	s.json(w, http.StatusOK, map[string]any{
 		"count":      len(candidates),
 		"candidates": candidates,
@@ -89,6 +94,8 @@ func (s *Server) decideGraphRuleDiscoveryCandidate(w http.ResponseWriter, r *htt
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	metrics.RecordGraphRuleDecision(updated.Type, updated.Status)
+	s.persistRiskEngineState(r.Context(), engine)
 
 	s.json(w, http.StatusOK, map[string]any{
 		"candidate": updated,

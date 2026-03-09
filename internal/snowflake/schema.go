@@ -174,6 +174,13 @@ var TableDDLs = map[string]string{
 			errors ARRAY
 		)`,
 
+	"risk_engine_state": `
+		CREATE TABLE IF NOT EXISTS %s.risk_engine_state (
+			graph_id VARCHAR(128) PRIMARY KEY,
+			snapshot VARIANT,
+			updated_at TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
+		)`,
+
 	"policy_history": `
 		CREATE TABLE IF NOT EXISTS %s.policy_history (
 			policy_id VARCHAR(128) NOT NULL,

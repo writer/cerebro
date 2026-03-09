@@ -130,6 +130,7 @@ func (s *Server) riskReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	report := engine.Analyze()
+	s.persistRiskEngineState(r.Context(), engine)
 	s.json(w, http.StatusOK, report)
 }
 

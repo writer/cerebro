@@ -56,6 +56,9 @@ type DiscoveredRuleCandidate struct {
 	ReviewedBy        string         `json:"reviewed_by,omitempty"`
 	ReviewedAt        *time.Time     `json:"reviewed_at,omitempty"`
 	ReviewNotes       string         `json:"review_notes,omitempty"`
+	PromotionStatus   string         `json:"promotion_status,omitempty"`
+	PromotionDetails  string         `json:"promotion_details,omitempty"`
+	PromotedAt        *time.Time     `json:"promoted_at,omitempty"`
 }
 
 // DiscoverRules generates candidate toxic-combination and policy rules from outcome feedback.
@@ -129,6 +132,9 @@ func (r *RiskEngine) DiscoverRules(req RuleDiscoveryRequest) []DiscoveredRuleCan
 			candidate.ReviewedBy = existing.ReviewedBy
 			candidate.ReviewedAt = existing.ReviewedAt
 			candidate.ReviewNotes = existing.ReviewNotes
+			candidate.PromotionStatus = existing.PromotionStatus
+			candidate.PromotionDetails = existing.PromotionDetails
+			candidate.PromotedAt = existing.PromotedAt
 			candidate.ProposedAt = existing.ProposedAt
 		}
 		if candidate.ProposedAt.IsZero() {
@@ -201,9 +207,13 @@ func (r *RiskEngine) DecideDiscoveredRule(id string, decision RuleDecisionReques
 	if decision.Approve {
 		candidate.Status = RuleCandidateStatusApproved
 		candidate.Activated = true
+		r.applyDiscoveredRulePromotionLocked(&candidate, now)
 	} else {
 		candidate.Status = RuleCandidateStatusRejected
 		candidate.Activated = false
+		candidate.PromotionStatus = "rejected"
+		candidate.PromotionDetails = "candidate rejected during human review"
+		candidate.PromotedAt = nil
 	}
 	candidate.UpdatedAt = now
 	r.discoveredRules[id] = candidate
@@ -327,4 +337,71 @@ func buildDiscoveryPrompt(signalFamily string, windowDays int, precision, recall
 		precision,
 		recall,
 	)
+}
+
+func (r *RiskEngine) applyDiscoveredRulePromotionLocked(candidate *DiscoveredRuleCandidate, promotedAt time.Time) {
+	if candidate == nil {
+		return
+	}
+
+	status := "approved_noop"
+	details := "candidate approved; no automatic activation step available"
+	ruleType := strings.TrimSpace(strings.ToLower(candidate.Type))
+	switch ruleType {
+	case RuleCandidateTypePolicy:
+		signal := normalizeSignalFamily(stringFromAny(candidate.Definition["signal_family"]))
+		weight, ok := floatFromAny(candidate.Definition["suggested_weight"])
+		if !ok || weight <= 0 || signal == "" {
+			status = "approved_manual_review"
+			details = "policy candidate approved but missing suggested_weight/signal_family fields"
+			break
+		}
+		if r.riskProfile.Weights == nil {
+			r.riskProfile.Weights = make(map[string]float64)
+		}
+		before := r.riskProfile.Weight(signal)
+		r.riskProfile.Weights[signal] = weight
+		status = "applied_profile_weight"
+		details = fmt.Sprintf("updated risk profile %q weight for %s from %.2f to %.2f", r.riskProfile.Name, signal, before, weight)
+	case RuleCandidateTypeToxicCombination:
+		status = "queued_manual_rule_rollout"
+		details = "toxic combination candidate approved; requires detector code registration before runtime activation"
+	}
+
+	candidate.PromotionStatus = status
+	candidate.PromotionDetails = details
+	candidate.PromotedAt = &promotedAt
+	r.rulePromotions = append(r.rulePromotions, RulePromotionEvent{
+		CandidateID: candidate.ID,
+		RuleType:    candidate.Type,
+		Status:      status,
+		Details:     details,
+		AppliedAt:   promotedAt,
+	})
+}
+
+func stringFromAny(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	default:
+		return ""
+	}
+}
+
+func floatFromAny(value any) (float64, bool) {
+	switch typed := value.(type) {
+	case float64:
+		return typed, true
+	case float32:
+		return float64(typed), true
+	case int:
+		return float64(typed), true
+	case int32:
+		return float64(typed), true
+	case int64:
+		return float64(typed), true
+	default:
+		return 0, false
+	}
 }

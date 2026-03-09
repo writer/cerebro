@@ -317,6 +317,68 @@ var (
 		[]string{"type"},
 	)
 
+	GraphOutcomeEventsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_graph_outcome_events_total",
+			Help: "Total number of graph outcome events by status",
+		},
+		[]string{"status"},
+	)
+
+	GraphRuleDiscoveryCandidatesTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_graph_rule_discovery_candidates_total",
+			Help: "Total number of graph rule discovery candidates by type and status",
+		},
+		[]string{"type", "status"},
+	)
+
+	GraphRuleDecisionsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_graph_rule_decisions_total",
+			Help: "Total number of graph rule review decisions by type and resulting status",
+		},
+		[]string{"type", "status"},
+	)
+
+	GraphCrossTenantIngestRequestsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_graph_cross_tenant_ingest_requests_total",
+			Help: "Total number of cross-tenant ingest requests by result",
+		},
+		[]string{"result"},
+	)
+
+	GraphCrossTenantIngestSamplesTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_graph_cross_tenant_ingest_samples_total",
+			Help: "Total number of cross-tenant ingest samples by result",
+		},
+		[]string{"result"},
+	)
+
+	GraphCrossTenantPatterns = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "cerebro_graph_cross_tenant_patterns",
+			Help: "Current number of cross-tenant aggregate patterns returned by API",
+		},
+	)
+
+	GraphCrossTenantMatches = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "cerebro_graph_cross_tenant_matches",
+			Help: "Current number of cross-tenant matches returned by API",
+		},
+	)
+
+	GraphStatePersistenceTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_graph_state_persistence_total",
+			Help: "Total number of risk-engine state persistence operations by result",
+		},
+		[]string{"result"},
+	)
+
 	// Build info
 	BuildInfo = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -383,6 +445,15 @@ func Register() {
 			ComplianceExportsTotal,
 			// Identity
 			StaleAccessFindings,
+			// Graph intelligence
+			GraphOutcomeEventsTotal,
+			GraphRuleDiscoveryCandidatesTotal,
+			GraphRuleDecisionsTotal,
+			GraphCrossTenantIngestRequestsTotal,
+			GraphCrossTenantIngestSamplesTotal,
+			GraphCrossTenantPatterns,
+			GraphCrossTenantMatches,
+			GraphStatePersistenceTotal,
 			// Build
 			BuildInfo,
 		)
@@ -489,6 +560,71 @@ func RecordScheduledAuthPreflight(provider, authMethod string, success bool) {
 		authMethod = "unknown"
 	}
 	ScheduledAuthPreflightTotal.WithLabelValues(provider, authMethod, status).Inc()
+}
+
+func RecordGraphOutcome(status string) {
+	status = strings.TrimSpace(status)
+	if status == "" {
+		status = "unknown"
+	}
+	GraphOutcomeEventsTotal.WithLabelValues(status).Inc()
+}
+
+func RecordGraphRuleDiscoveryCandidate(ruleType, status string) {
+	ruleType = strings.TrimSpace(strings.ToLower(ruleType))
+	if ruleType == "" {
+		ruleType = "unknown"
+	}
+	status = strings.TrimSpace(strings.ToLower(status))
+	if status == "" {
+		status = "unknown"
+	}
+	GraphRuleDiscoveryCandidatesTotal.WithLabelValues(ruleType, status).Inc()
+}
+
+func RecordGraphRuleDecision(ruleType, status string) {
+	ruleType = strings.TrimSpace(strings.ToLower(ruleType))
+	if ruleType == "" {
+		ruleType = "unknown"
+	}
+	status = strings.TrimSpace(strings.ToLower(status))
+	if status == "" {
+		status = "unknown"
+	}
+	GraphRuleDecisionsTotal.WithLabelValues(ruleType, status).Inc()
+}
+
+func RecordGraphCrossTenantIngest(result string, samples int) {
+	result = strings.TrimSpace(strings.ToLower(result))
+	if result == "" {
+		result = "unknown"
+	}
+	GraphCrossTenantIngestRequestsTotal.WithLabelValues(result).Inc()
+	if samples > 0 {
+		GraphCrossTenantIngestSamplesTotal.WithLabelValues(result).Add(float64(samples))
+	}
+}
+
+func RecordGraphCrossTenantPatterns(count int) {
+	if count < 0 {
+		count = 0
+	}
+	GraphCrossTenantPatterns.Set(float64(count))
+}
+
+func RecordGraphCrossTenantMatches(count int) {
+	if count < 0 {
+		count = 0
+	}
+	GraphCrossTenantMatches.Set(float64(count))
+}
+
+func RecordGraphStatePersistence(result string) {
+	result = strings.TrimSpace(strings.ToLower(result))
+	if result == "" {
+		result = "unknown"
+	}
+	GraphStatePersistenceTotal.WithLabelValues(result).Inc()
 }
 
 func RecordJetStreamPublish(stream, result string) {
