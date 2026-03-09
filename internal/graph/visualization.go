@@ -185,7 +185,7 @@ func (m *MermaidExporter) ExportSecurityReport(report *SecurityReport) string {
 
 	// Header
 	sb.WriteString("# Security Report\n\n")
-	sb.WriteString(fmt.Sprintf("**Generated:** %s\n\n", report.GeneratedAt.Format("2006-01-02 15:04:05")))
+	fmt.Fprintf(&sb, "**Generated:** %s\n\n", report.GeneratedAt.Format("2006-01-02 15:04:05"))
 
 	// Risk Score Overview
 	sb.WriteString("## Risk Overview\n\n")
@@ -207,9 +207,9 @@ func (m *MermaidExporter) ExportSecurityReport(report *SecurityReport) string {
 			mediumCount++
 		}
 	}
-	sb.WriteString(fmt.Sprintf("    \"Critical\" : %d\n", criticalCount))
-	sb.WriteString(fmt.Sprintf("    \"High\" : %d\n", highCount))
-	sb.WriteString(fmt.Sprintf("    \"Medium\" : %d\n", mediumCount))
+	fmt.Fprintf(&sb, "    \"Critical\" : %d\n", criticalCount)
+	fmt.Fprintf(&sb, "    \"High\" : %d\n", highCount)
+	fmt.Fprintf(&sb, "    \"Medium\" : %d\n", mediumCount)
 	sb.WriteString("```\n\n")
 
 	// Overall Risk Gauge
@@ -217,8 +217,8 @@ func (m *MermaidExporter) ExportSecurityReport(report *SecurityReport) string {
 	sb.WriteString("%%{init: {'theme': 'base', 'themeVariables': { 'pie1': '#f03e3e', 'pie2': '#40c057'}}}%%\n")
 	sb.WriteString("pie showData\n")
 	sb.WriteString("    title Overall Risk Score\n")
-	sb.WriteString(fmt.Sprintf("    \"Risk (%.0f)\" : %.0f\n", report.RiskScore, report.RiskScore))
-	sb.WriteString(fmt.Sprintf("    \"Safe\" : %.0f\n", 100-report.RiskScore))
+	fmt.Fprintf(&sb, "    \"Risk (%.0f)\" : %.0f\n", report.RiskScore, report.RiskScore)
+	fmt.Fprintf(&sb, "    \"Safe\" : %.0f\n", 100-report.RiskScore)
 	sb.WriteString("```\n\n")
 
 	// Graph Stats
@@ -227,14 +227,14 @@ func (m *MermaidExporter) ExportSecurityReport(report *SecurityReport) string {
 		sb.WriteString("```mermaid\n")
 		sb.WriteString("mindmap\n")
 		sb.WriteString("    root((Security Graph))\n")
-		sb.WriteString(fmt.Sprintf("        Nodes: %d\n", report.GraphStats.TotalNodes))
-		sb.WriteString(fmt.Sprintf("            Identities: %d\n", report.GraphStats.IdentityCount))
-		sb.WriteString(fmt.Sprintf("            Resources: %d\n", report.GraphStats.ResourceCount))
-		sb.WriteString(fmt.Sprintf("        Edges: %d\n", report.GraphStats.TotalEdges))
-		sb.WriteString(fmt.Sprintf("            Cross-Account: %d\n", report.GraphStats.CrossAccountEdges))
+		fmt.Fprintf(&sb, "        Nodes: %d\n", report.GraphStats.TotalNodes)
+		fmt.Fprintf(&sb, "            Identities: %d\n", report.GraphStats.IdentityCount)
+		fmt.Fprintf(&sb, "            Resources: %d\n", report.GraphStats.ResourceCount)
+		fmt.Fprintf(&sb, "        Edges: %d\n", report.GraphStats.TotalEdges)
+		fmt.Fprintf(&sb, "            Cross-Account: %d\n", report.GraphStats.CrossAccountEdges)
 		sb.WriteString("        Risk Indicators\n")
-		sb.WriteString(fmt.Sprintf("            Public Exposures: %d\n", report.GraphStats.PublicExposures))
-		sb.WriteString(fmt.Sprintf("            Critical Resources: %d\n", report.GraphStats.CriticalResources))
+		fmt.Fprintf(&sb, "            Public Exposures: %d\n", report.GraphStats.PublicExposures)
+		fmt.Fprintf(&sb, "            Critical Resources: %d\n", report.GraphStats.CriticalResources)
 		sb.WriteString("```\n\n")
 	}
 
@@ -247,7 +247,7 @@ func (m *MermaidExporter) ExportSecurityReport(report *SecurityReport) string {
 		}
 		for i := 0; i < maxTC; i++ {
 			tc := report.ToxicCombinations[i]
-			sb.WriteString(fmt.Sprintf("### %d. %s\n\n", i+1, tc.Name))
+			fmt.Fprintf(&sb, "### %d. %s\n\n", i+1, tc.Name)
 			sb.WriteString(m.ExportToxicCombination(tc))
 			sb.WriteString("\n---\n\n")
 		}
@@ -273,9 +273,9 @@ func (m *MermaidExporter) ExportSecurityReport(report *SecurityReport) string {
 		for i := 0; i < maxCP; i++ {
 			cp := report.Chokepoints[i]
 			cpID := sanitizeMermaidID(cp.Node.ID)
-			sb.WriteString(fmt.Sprintf("    %s{{\"%s\\nBlocks %d paths\"}}\n",
-				cpID, escapeLabel(cp.Node.Name), cp.BlockedPaths))
-			sb.WriteString(fmt.Sprintf("    class %s chokepoint\n", cpID))
+			fmt.Fprintf(&sb, "    %s{{\"%s\\nBlocks %d paths\"}}\n",
+				cpID, escapeLabel(cp.Node.Name), cp.BlockedPaths)
+			fmt.Fprintf(&sb, "    class %s chokepoint\n", cpID)
 		}
 		sb.WriteString("```\n\n")
 	}
@@ -295,7 +295,7 @@ func (m *MermaidExporter) ExportSecurityReport(report *SecurityReport) string {
 				if i >= 3 {
 					break
 				}
-				sb.WriteString(fmt.Sprintf("    %s :a%d, 0, 1\n", escapeLabel(truncate(qw.Action, 30)), i))
+				fmt.Fprintf(&sb, "    %s :a%d, 0, 1\n", escapeLabel(truncate(qw.Action, 30)), i)
 			}
 		}
 
@@ -305,7 +305,7 @@ func (m *MermaidExporter) ExportSecurityReport(report *SecurityReport) string {
 				if i >= 3 {
 					break
 				}
-				sb.WriteString(fmt.Sprintf("    %s :b%d, 1, 4\n", escapeLabel(truncate(sf.Action, 30)), i))
+				fmt.Fprintf(&sb, "    %s :b%d, 1, 4\n", escapeLabel(truncate(sf.Action, 30)), i)
 			}
 		}
 		sb.WriteString("```\n\n")
@@ -330,8 +330,8 @@ func (m *MermaidExporter) ExportBlastRadius(result *BlastRadiusResult) string {
 
 	// Source node
 	sourceID := sanitizeMermaidID(result.PrincipalID)
-	sb.WriteString(fmt.Sprintf("    %s((\"🎯 %s\"))\n", sourceID, escapeLabel(result.PrincipalName)))
-	sb.WriteString(fmt.Sprintf("    class %s source\n\n", sourceID))
+	fmt.Fprintf(&sb, "    %s((\"🎯 %s\"))\n", sourceID, escapeLabel(result.PrincipalName))
+	fmt.Fprintf(&sb, "    class %s source\n\n", sourceID)
 
 	// Group by depth
 	byDepth := make(map[int][]*ReachableNode)
@@ -348,15 +348,15 @@ func (m *MermaidExporter) ExportBlastRadius(result *BlastRadiusResult) string {
 			continue
 		}
 
-		sb.WriteString(fmt.Sprintf("    subgraph dist%d[\"Distance %d\"]\n", depth, depth))
+		fmt.Fprintf(&sb, "    subgraph dist%d[\"Distance %d\"]\n", depth, depth)
 		for _, rn := range nodes {
 			if nodeCount >= maxNodes {
 				break
 			}
 			nodeID := sanitizeMermaidID(rn.Node.ID)
 			emoji := nodeKindToEmoji(rn.Node.Kind)
-			sb.WriteString(fmt.Sprintf("        %s[\"%s %s\"]\n", nodeID, emoji, escapeLabel(rn.Node.Name)))
-			sb.WriteString(fmt.Sprintf("        class %s %s\n", nodeID, strings.ToLower(string(rn.Node.Risk))))
+			fmt.Fprintf(&sb, "        %s[\"%s %s\"]\n", nodeID, emoji, escapeLabel(rn.Node.Name))
+			fmt.Fprintf(&sb, "        class %s %s\n", nodeID, strings.ToLower(string(rn.Node.Risk)))
 			nodeCount++
 		}
 		sb.WriteString("    end\n\n")
@@ -369,14 +369,14 @@ func (m *MermaidExporter) ExportBlastRadius(result *BlastRadiusResult) string {
 		}
 		nodeID := sanitizeMermaidID(rn.Node.ID)
 		edgeLabel := string(rn.EdgeKind)
-		sb.WriteString(fmt.Sprintf("    %s -->|\"%s\"| %s\n", sourceID, edgeLabel, nodeID))
+		fmt.Fprintf(&sb, "    %s -->|\"%s\"| %s\n", sourceID, edgeLabel, nodeID)
 	}
 
 	sb.WriteString("```\n")
 
 	// Summary
-	sb.WriteString(fmt.Sprintf("\n**Blast Radius:** %d reachable nodes | ", result.TotalCount))
-	sb.WriteString(fmt.Sprintf("**Critical:** %d | **High:** %d\n", result.RiskSummary.Critical, result.RiskSummary.High))
+	fmt.Fprintf(&sb, "\n**Blast Radius:** %d reachable nodes | ", result.TotalCount)
+	fmt.Fprintf(&sb, "**Critical:** %d | **High:** %d\n", result.RiskSummary.Critical, result.RiskSummary.High)
 
 	return sb.String()
 }
@@ -400,9 +400,9 @@ func (m *MermaidExporter) ExportChokepoints(chokepoints []*Chokepoint) string {
 		}
 
 		cpID := sanitizeMermaidID(cp.Node.ID)
-		sb.WriteString(fmt.Sprintf("    %s{{\"%s\\n🛑 %d paths\\n%.0f%% impact\"}}\n",
-			cpID, escapeLabel(cp.Node.Name), cp.PathsThrough, cp.RemediationImpact*100))
-		sb.WriteString(fmt.Sprintf("    class %s chokepoint\n", cpID))
+		fmt.Fprintf(&sb, "    %s{{\"%s\\n🛑 %d paths\\n%.0f%% impact\"}}\n",
+			cpID, escapeLabel(cp.Node.Name), cp.PathsThrough, cp.RemediationImpact*100)
+		fmt.Fprintf(&sb, "    class %s chokepoint\n", cpID)
 
 		// Show some upstream entries
 		for j, entry := range cp.UpstreamEntries {
@@ -410,8 +410,8 @@ func (m *MermaidExporter) ExportChokepoints(chokepoints []*Chokepoint) string {
 				break
 			}
 			entryID := sanitizeMermaidID(entry)
-			sb.WriteString(fmt.Sprintf("    %s([%s]) --> %s\n", entryID, escapeLabel(entry), cpID))
-			sb.WriteString(fmt.Sprintf("    class %s entry\n", entryID))
+			fmt.Fprintf(&sb, "    %s([%s]) --> %s\n", entryID, escapeLabel(entry), cpID)
+			fmt.Fprintf(&sb, "    class %s entry\n", entryID)
 		}
 
 		// Show some downstream targets
@@ -420,8 +420,8 @@ func (m *MermaidExporter) ExportChokepoints(chokepoints []*Chokepoint) string {
 				break
 			}
 			targetID := sanitizeMermaidID(target)
-			sb.WriteString(fmt.Sprintf("    %s --> %s([%s])\n", cpID, targetID, escapeLabel(target)))
-			sb.WriteString(fmt.Sprintf("    class %s target\n", targetID))
+			fmt.Fprintf(&sb, "    %s --> %s([%s])\n", cpID, targetID, escapeLabel(target))
+			fmt.Fprintf(&sb, "    class %s target\n", targetID)
 		}
 
 		sb.WriteString("\n")
@@ -436,8 +436,8 @@ func (m *MermaidExporter) ExportChokepoints(chokepoints []*Chokepoint) string {
 		if i >= 10 {
 			break
 		}
-		sb.WriteString(fmt.Sprintf("| %d | %s | %d | %.0f%% |\n",
-			i+1, cp.Node.Name, cp.BlockedPaths, cp.RemediationImpact*100))
+		fmt.Fprintf(&sb, "| %d | %s | %d | %.0f%% |\n",
+			i+1, cp.Node.Name, cp.BlockedPaths, cp.RemediationImpact*100)
 	}
 
 	return sb.String()
