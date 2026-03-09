@@ -33,13 +33,13 @@ Status: executed end-to-end via PR workflow
 - [x] Update contracts/docs:
   - [x] OpenAPI route documentation
   - [x] `docs/GRAPH_INTELLIGENCE_LAYER.md` with quality interface/tool notes
-- [ ] Validate and ship:
+- [x] Validate and ship:
   - [x] `gofmt` changed files
   - [x] targeted tests for graph/api/app
   - [x] `make openapi-check`
   - [x] `go test ./... -count=1`
   - [x] gosec + golangci-lint
-  - [ ] push + verify CI green
+  - [x] push + verify CI green
 
 ## Phase 0 - Ground rules and acceptance criteria
 - [x] Every new node/edge written by new APIs/tools includes provenance and temporal metadata (`source_system`, `source_event_id`, `observed_at`, `valid_from`, optional `valid_to`, `confidence`).
