@@ -71,23 +71,30 @@ const (
 	RiskNone     RiskLevel = "none"
 )
 
+// PropertySnapshot captures one point-in-time value for a node property.
+type PropertySnapshot struct {
+	Timestamp time.Time `json:"timestamp"`
+	Value     any       `json:"value"`
+}
+
 // Node represents an entity in the security graph
 type Node struct {
-	ID                 string            `json:"id"`
-	Kind               NodeKind          `json:"kind"`
-	Name               string            `json:"name"`
-	Provider           string            `json:"provider"`
-	Account            string            `json:"account"`
-	Region             string            `json:"region,omitempty"`
-	Properties         map[string]any    `json:"properties,omitempty"`
-	Tags               map[string]string `json:"tags,omitempty"`
-	Risk               RiskLevel         `json:"risk"`
-	Findings           []string          `json:"findings,omitempty"`
-	CreatedAt          time.Time         `json:"created_at"`
-	UpdatedAt          time.Time         `json:"updated_at"`
-	DeletedAt          *time.Time        `json:"deleted_at,omitempty"`
-	Version            int               `json:"version"`
-	PreviousProperties map[string]any    `json:"previous_properties,omitempty"`
+	ID                 string                        `json:"id"`
+	Kind               NodeKind                      `json:"kind"`
+	Name               string                        `json:"name"`
+	Provider           string                        `json:"provider"`
+	Account            string                        `json:"account"`
+	Region             string                        `json:"region,omitempty"`
+	Properties         map[string]any                `json:"properties,omitempty"`
+	Tags               map[string]string             `json:"tags,omitempty"`
+	Risk               RiskLevel                     `json:"risk"`
+	Findings           []string                      `json:"findings,omitempty"`
+	CreatedAt          time.Time                     `json:"created_at"`
+	UpdatedAt          time.Time                     `json:"updated_at"`
+	DeletedAt          *time.Time                    `json:"deleted_at,omitempty"`
+	Version            int                           `json:"version"`
+	PreviousProperties map[string]any                `json:"previous_properties,omitempty"`
+	PropertyHistory    map[string][]PropertySnapshot `json:"property_history,omitempty"`
 }
 
 // IsIdentity returns true if the node is an identity type

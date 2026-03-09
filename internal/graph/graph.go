@@ -192,6 +192,7 @@ func (g *Graph) SetNodeProperty(id string, key string, value any) bool {
 		node.Version = 1
 	}
 	node.Version++
+	g.appendNodePropertyHistoryLocked(node, key, value, now)
 	g.markGraphChangedLocked()
 	return true
 }
@@ -720,6 +721,17 @@ func (g *Graph) addNodeLocked(node *Node) {
 			node.CreatedAt = existing.CreatedAt
 		}
 		node.PreviousProperties = cloneAnyMap(existing.Properties)
+		if len(existing.PropertyHistory) > 0 {
+			if node.PropertyHistory == nil {
+				node.PropertyHistory = clonePropertyHistoryMap(existing.PropertyHistory)
+			} else {
+				for property, history := range existing.PropertyHistory {
+					if len(node.PropertyHistory[property]) == 0 {
+						node.PropertyHistory[property] = clonePropertySnapshots(history)
+					}
+				}
+			}
+		}
 		if node.Version <= existing.Version {
 			node.Version = existing.Version + 1
 		}
@@ -735,6 +747,7 @@ func (g *Graph) addNodeLocked(node *Node) {
 		node.Version = 1
 	}
 	node.DeletedAt = nil
+	g.appendNodePropertiesHistoryLocked(node, node.UpdatedAt)
 	g.nodes[node.ID] = node
 }
 

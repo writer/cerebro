@@ -321,6 +321,7 @@ func cloneNode(node *Node) *Node {
 	cloned := *node
 	cloned.Properties = cloneAnyMap(node.Properties)
 	cloned.PreviousProperties = cloneAnyMap(node.PreviousProperties)
+	cloned.PropertyHistory = clonePropertyHistoryMap(node.PropertyHistory)
 	cloned.Tags = cloneStringMap(node.Tags)
 	cloned.Findings = append([]string(nil), node.Findings...)
 	return &cloned
@@ -353,6 +354,31 @@ func cloneStringMap(values map[string]string) map[string]string {
 	cloned := make(map[string]string, len(values))
 	for key, value := range values {
 		cloned[key] = value
+	}
+	return cloned
+}
+
+func clonePropertyHistoryMap(values map[string][]PropertySnapshot) map[string][]PropertySnapshot {
+	if values == nil {
+		return nil
+	}
+	cloned := make(map[string][]PropertySnapshot, len(values))
+	for property, history := range values {
+		cloned[property] = clonePropertySnapshots(history)
+	}
+	return cloned
+}
+
+func clonePropertySnapshots(history []PropertySnapshot) []PropertySnapshot {
+	if history == nil {
+		return nil
+	}
+	cloned := make([]PropertySnapshot, len(history))
+	for i, snapshot := range history {
+		cloned[i] = PropertySnapshot{
+			Timestamp: snapshot.Timestamp,
+			Value:     cloneAny(snapshot.Value),
+		}
 	}
 	return cloned
 }
