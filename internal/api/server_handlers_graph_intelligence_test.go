@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/evalops/cerebro/internal/graph"
 )
@@ -73,6 +74,109 @@ func TestGraphIntelligenceInsightsEndpoint_InvalidParams(t *testing.T) {
 	w = do(t, s, http.MethodGet, "/api/v1/graph/intelligence/insights?max_insights=0", nil)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for max_insights=0, got %d", w.Code)
+	}
+}
+
+func TestGraphIntelligenceQualityEndpoint(t *testing.T) {
+	s := newTestServer(t)
+	g := s.app.SecurityGraph
+	now := time.Date(2026, 3, 9, 16, 0, 0, 0, time.UTC)
+
+	g.AddNode(&graph.Node{
+		ID:   "person:alice@example.com",
+		Kind: graph.NodeKindPerson,
+		Name: "Alice",
+		Properties: map[string]any{
+			"email":       "alice@example.com",
+			"observed_at": now.Add(-2 * time.Hour).Format(time.RFC3339),
+			"valid_from":  now.Add(-2 * time.Hour).Format(time.RFC3339),
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:   "identity_alias:github:alice",
+		Kind: graph.NodeKindIdentityAlias,
+		Name: "alice",
+		Properties: map[string]any{
+			"source_system": "github",
+			"external_id":   "alice",
+			"observed_at":   now.Add(-1 * time.Hour).Format(time.RFC3339),
+			"valid_from":    now.Add(-1 * time.Hour).Format(time.RFC3339),
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:   "decision:rollback",
+		Kind: graph.NodeKindDecision,
+		Name: "Rollback",
+		Properties: map[string]any{
+			"decision_type": "rollback",
+			"status":        "approved",
+			"observed_at":   now.Add(-2 * time.Hour).Format(time.RFC3339),
+			"valid_from":    now.Add(-2 * time.Hour).Format(time.RFC3339),
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:   "outcome:rollback",
+		Kind: graph.NodeKindOutcome,
+		Name: "Rollback outcome",
+		Properties: map[string]any{
+			"outcome_type": "deployment_result",
+			"verdict":      "positive",
+			"observed_at":  now.Add(-1 * time.Hour).Format(time.RFC3339),
+			"valid_from":   now.Add(-1 * time.Hour).Format(time.RFC3339),
+		},
+	})
+	g.AddNode(&graph.Node{ID: "node:unknown", Kind: graph.NodeKind("api_graph_quality_unknown_kind_v1"), Name: "Unknown"})
+
+	g.AddEdge(&graph.Edge{ID: "alias-link", Source: "identity_alias:github:alice", Target: "person:alice@example.com", Kind: graph.EdgeKindAliasOf, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "outcome-evaluates", Source: "outcome:rollback", Target: "decision:rollback", Kind: graph.EdgeKindEvaluates, Effect: graph.EdgeEffectAllow})
+
+	w := do(t, s, http.MethodGet, "/api/v1/graph/intelligence/quality?history_limit=10&stale_after_hours=24", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := decodeJSON(t, w)
+	summary, ok := body["summary"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected summary object, got %#v", body["summary"])
+	}
+	if _, ok := summary["maturity_score"].(float64); !ok {
+		t.Fatalf("expected summary.maturity_score, got %#v", summary["maturity_score"])
+	}
+	if nodes, ok := summary["nodes"].(float64); !ok || nodes < 1 {
+		t.Fatalf("expected summary.nodes >= 1, got %#v", summary["nodes"])
+	}
+
+	temporal, ok := body["temporal"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected temporal object, got %#v", body["temporal"])
+	}
+	if hours, ok := temporal["stale_after_hours"].(float64); !ok || int(hours) != 24 {
+		t.Fatalf("expected stale_after_hours=24, got %#v", temporal["stale_after_hours"])
+	}
+
+	recommendations, ok := body["recommendations"].([]any)
+	if !ok || len(recommendations) == 0 {
+		t.Fatalf("expected recommendations, got %#v", body["recommendations"])
+	}
+}
+
+func TestGraphIntelligenceQualityEndpoint_InvalidParams(t *testing.T) {
+	s := newTestServer(t)
+
+	w := do(t, s, http.MethodGet, "/api/v1/graph/intelligence/quality?history_limit=0", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for history_limit=0, got %d", w.Code)
+	}
+
+	w = do(t, s, http.MethodGet, "/api/v1/graph/intelligence/quality?since_version=0", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for since_version=0, got %d", w.Code)
+	}
+
+	w = do(t, s, http.MethodGet, "/api/v1/graph/intelligence/quality?stale_after_hours=0", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for stale_after_hours=0, got %d", w.Code)
 	}
 }
 

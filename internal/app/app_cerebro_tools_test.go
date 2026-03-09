@@ -141,6 +141,78 @@ func TestCerebroIntelligenceReportTool(t *testing.T) {
 	}
 }
 
+func TestCerebroGraphQualityReportTool(t *testing.T) {
+	g := graph.New()
+	now := time.Date(2026, 3, 9, 16, 0, 0, 0, time.UTC)
+	g.AddNode(&graph.Node{
+		ID:   "person:alice@example.com",
+		Kind: graph.NodeKindPerson,
+		Name: "Alice",
+		Properties: map[string]any{
+			"email":       "alice@example.com",
+			"observed_at": now.Add(-1 * time.Hour).Format(time.RFC3339),
+			"valid_from":  now.Add(-1 * time.Hour).Format(time.RFC3339),
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:   "identity_alias:github:alice",
+		Kind: graph.NodeKindIdentityAlias,
+		Name: "alice",
+		Properties: map[string]any{
+			"source_system": "github",
+			"external_id":   "alice",
+			"observed_at":   now.Add(-1 * time.Hour).Format(time.RFC3339),
+			"valid_from":    now.Add(-1 * time.Hour).Format(time.RFC3339),
+		},
+	})
+	g.AddEdge(&graph.Edge{ID: "alias-link", Source: "identity_alias:github:alice", Target: "person:alice@example.com", Kind: graph.EdgeKindAliasOf, Effect: graph.EdgeEffectAllow, Properties: map[string]any{
+		"observed_at": now.Add(-1 * time.Hour).Format(time.RFC3339),
+		"valid_from":  now.Add(-1 * time.Hour).Format(time.RFC3339),
+	}})
+
+	application := &App{SecurityGraph: g}
+	tool := findCerebroTool(application.cerebroTools(), "cerebro.graph_quality_report")
+	if tool == nil {
+		t.Fatal("expected graph quality report tool")
+	}
+
+	result, err := tool.Handler(context.Background(), json.RawMessage(`{"history_limit":10,"stale_after_hours":24}`))
+	if err != nil {
+		t.Fatalf("tool returned error: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(result), &payload); err != nil {
+		t.Fatalf("decode tool payload: %v", err)
+	}
+	summary, ok := payload["summary"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected summary object, got %#v", payload["summary"])
+	}
+	if _, ok := summary["maturity_score"].(float64); !ok {
+		t.Fatalf("expected maturity_score, got %#v", summary["maturity_score"])
+	}
+	temporal, ok := payload["temporal"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected temporal object, got %#v", payload["temporal"])
+	}
+	if hours, ok := temporal["stale_after_hours"].(float64); !ok || int(hours) != 24 {
+		t.Fatalf("expected stale_after_hours=24, got %#v", temporal["stale_after_hours"])
+	}
+}
+
+func TestCerebroGraphQualityReportToolValidation(t *testing.T) {
+	application := &App{SecurityGraph: graph.New()}
+	tool := findCerebroTool(application.cerebroTools(), "cerebro.graph_quality_report")
+	if tool == nil {
+		t.Fatal("expected graph quality report tool")
+	}
+
+	if _, err := tool.Handler(context.Background(), json.RawMessage(`{"since_version":-1}`)); err == nil {
+		t.Fatal("expected since_version validation error")
+	}
+}
+
 func TestCerebroGraphWritebackTools(t *testing.T) {
 	g := graph.New()
 	g.AddNode(&graph.Node{

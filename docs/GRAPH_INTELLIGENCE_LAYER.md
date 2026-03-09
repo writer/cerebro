@@ -37,6 +37,7 @@ Primary interface for product surfaces and automations.
 
 Current endpoint:
 - `GET /api/v1/graph/intelligence/insights`
+- `GET /api/v1/graph/intelligence/quality`
 
 Output characteristics:
 - Prioritized `insights[]`
@@ -45,6 +46,14 @@ Output characteristics:
 - `freshness` metrics and recency-sensitive confidence weighting
 - Optional `counterfactual` simulation previews
 - Embedded ontology health and outcome calibration context
+
+Quality report characteristics:
+- Top-line graph maturity score and grade.
+- Ontology coverage/conformance and unknown-kind counts.
+- Identity alias linkage quality.
+- Temporal metadata completeness and freshness KPIs.
+- Decision/outcome write-back closure rate.
+- Prioritized recommendations with suggested remediation actions.
 
 ### 2) Power Query API
 Read-only, bounded graph exploration for analysts and advanced workflows.
@@ -81,6 +90,7 @@ Agent workflows should call a curated tool surface, not raw graph internals.
 
 Current tools:
 - `cerebro.intelligence_report`
+- `cerebro.graph_quality_report`
 - `cerebro.graph_query`
 - `cerebro.record_observation`
 - `cerebro.annotate_entity`

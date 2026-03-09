@@ -124,6 +124,50 @@ func (s *Server) graphIntelligenceInsights(w http.ResponseWriter, r *http.Reques
 	s.json(w, http.StatusOK, report)
 }
 
+func (s *Server) graphIntelligenceQuality(w http.ResponseWriter, r *http.Request) {
+	if s.app.SecurityGraph == nil {
+		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		return
+	}
+
+	historyLimit := 20
+	if raw := strings.TrimSpace(r.URL.Query().Get("history_limit")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 200 {
+			s.error(w, http.StatusBadRequest, "history_limit must be between 1 and 200")
+			return
+		}
+		historyLimit = parsed
+	}
+
+	var sinceVersion int64
+	if raw := strings.TrimSpace(r.URL.Query().Get("since_version")); raw != "" {
+		parsed, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || parsed < 1 {
+			s.error(w, http.StatusBadRequest, "since_version must be a positive integer")
+			return
+		}
+		sinceVersion = parsed
+	}
+
+	var staleAfter time.Duration
+	if raw := strings.TrimSpace(r.URL.Query().Get("stale_after_hours")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 8760 {
+			s.error(w, http.StatusBadRequest, "stale_after_hours must be between 1 and 8760")
+			return
+		}
+		staleAfter = time.Duration(parsed) * time.Hour
+	}
+
+	report := graph.BuildGraphQualityReport(s.app.SecurityGraph, graph.GraphQualityReportOptions{
+		FreshnessStaleAfter: staleAfter,
+		SchemaHistoryLimit:  historyLimit,
+		SchemaSinceVersion:  sinceVersion,
+	})
+	s.json(w, http.StatusOK, report)
+}
+
 type graphQueryNeighborResult struct {
 	Direction string      `json:"direction"`
 	Edge      *graph.Edge `json:"edge"`

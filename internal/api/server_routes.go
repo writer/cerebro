@@ -315,6 +315,7 @@ func (s *Server) setupRoutes() {
 			r.Get("/query", s.graphQuery)
 			r.Get("/stats", s.graphStats)
 			r.Get("/intelligence/insights", s.graphIntelligenceInsights)
+			r.Get("/intelligence/quality", s.graphIntelligenceQuality)
 			r.Get("/schema", s.getGraphSchema)
 			r.Get("/schema/health", s.getGraphSchemaHealth)
 			r.Get("/who-knows", s.whoKnows)

@@ -5,6 +5,42 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 2 - Graph Quality Intelligence (2026-03-09)
+
+### Review findings
+- [x] Gap: no consolidated graph-quality report surface for ontology + identity + temporal + write-back health.
+- [x] Gap: no `/api/v1/graph/intelligence/quality` endpoint for product consumption.
+- [x] Gap: no MCP/tool surface for graph-quality reporting.
+- [x] Correctness issue: temporal metadata completeness was over-penalized for node-only graphs due fixed denominator averaging.
+
+### Execution plan
+- [x] Add `BuildGraphQualityReport` graph surface with:
+  - [x] summary maturity score/grade
+  - [x] ontology quality metrics
+  - [x] identity linkage metrics
+  - [x] temporal freshness + metadata completeness metrics
+  - [x] write-back loop closure metrics
+  - [x] domain coverage and prioritized recommendations
+- [x] Fix temporal completeness averaging to use only available node/edge metric dimensions.
+- [x] Add graph unit tests for quality report behavior and nil/node-only edge cases.
+- [x] Add API endpoint:
+  - [x] `GET /api/v1/graph/intelligence/quality`
+  - [x] query validation (`history_limit`, `since_version`, `stale_after_hours`)
+  - [x] API handler tests (happy path + invalid params)
+- [x] Add MCP tool:
+  - [x] `cerebro.graph_quality_report`
+  - [x] tool tests (happy path + validation)
+- [x] Update contracts/docs:
+  - [x] OpenAPI route documentation
+  - [x] `docs/GRAPH_INTELLIGENCE_LAYER.md` with quality interface/tool notes
+- [ ] Validate and ship:
+  - [x] `gofmt` changed files
+  - [x] targeted tests for graph/api/app
+  - [x] `make openapi-check`
+  - [x] `go test ./... -count=1`
+  - [x] gosec + golangci-lint
+  - [ ] push + verify CI green
+
 ## Phase 0 - Ground rules and acceptance criteria
 - [x] Every new node/edge written by new APIs/tools includes provenance and temporal metadata (`source_system`, `source_event_id`, `observed_at`, `valid_from`, optional `valid_to`, `confidence`).
 - [x] New surfaces are covered by tests (graph + api + app tool tests).

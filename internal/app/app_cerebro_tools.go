@@ -108,6 +108,30 @@ func (a *App) cerebroTools() []agents.Tool {
 			Handler: a.toolCerebroIntelligenceReport,
 		},
 		{
+			Name:        "cerebro.graph_quality_report",
+			Description: "Build graph quality KPIs and prioritized recommendations for ontology, identity, temporal, and write-back health",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"history_limit": map[string]any{
+						"type":        "integer",
+						"description": "Schema history entries to include (1-200)",
+						"default":     20,
+					},
+					"since_version": map[string]any{
+						"type":        "integer",
+						"description": "Optional schema drift baseline version",
+					},
+					"stale_after_hours": map[string]any{
+						"type":        "integer",
+						"description": "Freshness threshold in hours (1-8760)",
+						"default":     720,
+					},
+				},
+			},
+			Handler: a.toolCerebroGraphQualityReport,
+		},
+		{
 			Name:        "cerebro.record_observation",
 			Description: "Write one evidence observation targeting an entity with provenance and temporal metadata",
 			Parameters: map[string]any{
@@ -566,6 +590,36 @@ func (a *App) toolCerebroIntelligenceReport(_ context.Context, args json.RawMess
 		SchemaHistoryLimit:    historyLimit,
 		MaxInsights:           maxInsights,
 		IncludeCounterfactual: includeCounterfactual,
+	})
+	return marshalToolResponse(report)
+}
+
+func (a *App) toolCerebroGraphQualityReport(_ context.Context, args json.RawMessage) (string, error) {
+	g, err := a.requireSecurityGraph()
+	if err != nil {
+		return "", err
+	}
+
+	var req struct {
+		HistoryLimit    int   `json:"history_limit"`
+		SinceVersion    int64 `json:"since_version"`
+		StaleAfterHours int   `json:"stale_after_hours"`
+	}
+	if err := decodeToolArgs(args, &req); err != nil {
+		return "", err
+	}
+
+	if req.SinceVersion < 0 {
+		return "", fmt.Errorf("since_version must be a positive integer")
+	}
+
+	historyLimit := clampInt(req.HistoryLimit, 20, 1, 200)
+	staleAfterHours := clampInt(req.StaleAfterHours, 720, 1, 8760)
+
+	report := graph.BuildGraphQualityReport(g, graph.GraphQualityReportOptions{
+		SchemaHistoryLimit:  historyLimit,
+		SchemaSinceVersion:  req.SinceVersion,
+		FreshnessStaleAfter: time.Duration(staleAfterHours) * time.Hour,
 	})
 	return marshalToolResponse(report)
 }

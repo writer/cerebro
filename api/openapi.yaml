@@ -4802,6 +4802,56 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/graph/intelligence/quality:
+    get:
+      tags:
+        - Graph
+      summary: Build graph quality intelligence KPIs
+      description: Return ontology, identity, temporal, write-back, and domain-coverage quality metrics with prioritized improvement recommendations.
+      parameters:
+        - name: history_limit
+          in: query
+          required: false
+          description: Number of recent schema history entries to include (1-200).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: since_version
+          in: query
+          required: false
+          description: Optional schema drift baseline version.
+          schema:
+            type: integer
+            minimum: 1
+        - name: stale_after_hours
+          in: query
+          required: false
+          description: Freshness threshold in hours (1-8760).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 8760
+      responses:
+        '200':
+          description: Graph quality report
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Security graph is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/graph/write/observation:
     post:
       tags:
