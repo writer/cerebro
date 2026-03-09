@@ -45,8 +45,9 @@ def _get_environment() -> str:
 environment = _get_environment()
 domain = config.get("domain") or ""
 
-# Container image - default to ECR latest if not provided
-container_image = config.get("containerImage") or "073877318660.dkr.ecr.us-east-1.amazonaws.com/cerebro:latest"
+ecr_base_uri = config.require("ecrBaseUri")
+image_tag = config.get("imageTag") or "v1.0.0"
+container_image = f"{ecr_base_uri}:{image_tag}"
 
 alb_internal = config.get_bool("albInternal")
 if alb_internal is None:

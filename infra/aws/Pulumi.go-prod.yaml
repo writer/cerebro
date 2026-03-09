@@ -1,7 +1,8 @@
 config:
   aws:region: us-east-1
   cerebro:environment: go-production
-  cerebro:containerImage: 837279440628.dkr.ecr.us-east-1.amazonaws.com/cerebro:latest
+  cerebro:ecrBaseUri: 837279440628.dkr.ecr.us-east-1.amazonaws.com/cerebro
+  cerebro:imageTag: v1.0.0
   
   # Use existing VPC (sec-prod account)
   cerebro:useExistingVpc: true
