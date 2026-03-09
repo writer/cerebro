@@ -16,10 +16,14 @@ config:
     default: ""
     description: Custom domain for Cerebro API (optional)
 
-  cerebro:containerImage:
+  cerebro:ecrBaseUri:
     type: string
-    default: "073877318660.dkr.ecr.us-east-1.amazonaws.com/cerebro:latest"
-    description: Container image URI (ECR), defaults to latest in ECR
+    description: ECR repository base URI (without tag), e.g. 123456789.dkr.ecr.us-east-1.amazonaws.com/cerebro
+
+  cerebro:imageTag:
+    type: string
+    default: v1.0.0
+    description: Image tag used for both GHCR pull and ECR/ECS deployment
 
 
   cerebro:snowflakeDatabase:

@@ -2,7 +2,8 @@ config:
   aws:region: us-east-1
   cerebro:environment: sec-dev
   # ECR repo in sec-dev account
-  cerebro:containerImage: 944130631940.dkr.ecr.us-east-1.amazonaws.com/cerebro:latest
+  cerebro:ecrBaseUri: 944130631940.dkr.ecr.us-east-1.amazonaws.com/cerebro
+  cerebro:imageTag: v1.0.0
   
   # Snowflake - needs to be configured with actual credentials
   # Set via: pulumi config set --secret cerebro:snowflakeConnectionString "..."
