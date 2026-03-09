@@ -99,40 +99,20 @@ type Node struct {
 
 // IsIdentity returns true if the node is an identity type
 func (n *Node) IsIdentity() bool {
-	switch n.Kind {
-	case NodeKindUser, NodeKindPerson, NodeKindRole, NodeKindGroup, NodeKindServiceAccount:
-		return true
-	}
-	return false
+	return n != nil && IsNodeKindInCategory(n.Kind, NodeCategoryIdentity)
 }
 
 // IsResource returns true if the node is a resource type
 func (n *Node) IsResource() bool {
-	switch n.Kind {
-	case NodeKindBucket, NodeKindInstance, NodeKindDatabase, NodeKindSecret, NodeKindFunction, NodeKindNetwork, NodeKindApplication,
-		NodeKindPod, NodeKindDeployment, NodeKindConfigMap, NodeKindPersistentVolume:
-		return true
-	}
-	return false
+	return n != nil && IsNodeKindInCategory(n.Kind, NodeCategoryResource)
 }
 
 // IsKubernetes returns true if the node is a Kubernetes type
 func (n *Node) IsKubernetes() bool {
-	switch n.Kind {
-	case NodeKindPod, NodeKindDeployment, NodeKindNamespace, NodeKindClusterRole,
-		NodeKindClusterRoleBinding, NodeKindConfigMap, NodeKindPersistentVolume:
-		return true
-	}
-	return false
+	return n != nil && IsNodeKindInCategory(n.Kind, NodeCategoryKubernetes)
 }
 
 // IsBusinessEntity returns true if the node is a business domain entity.
 func (n *Node) IsBusinessEntity() bool {
-	switch n.Kind {
-	case NodeKindCustomer, NodeKindContact, NodeKindCompany, NodeKindDeal,
-		NodeKindOpportunity, NodeKindSubscription, NodeKindInvoice,
-		NodeKindTicket, NodeKindLead, NodeKindDepartment, NodeKindLocation:
-		return true
-	}
-	return false
+	return n != nil && IsNodeKindInCategory(n.Kind, NodeCategoryBusiness)
 }

@@ -4440,6 +4440,57 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/graph/schema:
+    get:
+      tags:
+        - Graph
+      summary: List registered graph schema kinds
+      description: Return built-in and dynamically registered node/edge kinds for runtime graph typing.
+      responses:
+        '200':
+          description: Graph schema registry contents
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/graph/schema/register:
+    post:
+      tags:
+        - Graph
+      summary: Register node and edge kinds in the graph schema registry
+      description: Register runtime entity and relationship kinds so new integrations can map into graph nodes/edges without code changes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                node_kinds:
+                  type: array
+                  items:
+                    type: object
+                    additionalProperties: true
+                edge_kinds:
+                  type: array
+                  items:
+                    type: object
+                    additionalProperties: true
+      responses:
+        '200':
+          description: Graph schema registration result
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Invalid schema registration payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/graph/evaluate-change:
     post:
       tags:

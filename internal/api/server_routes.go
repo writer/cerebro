@@ -313,8 +313,10 @@ func (s *Server) setupRoutes() {
 		r.Route("/graph", func(r chi.Router) {
 			r.Get("/diff", s.graphDiff)
 			r.Get("/stats", s.graphStats)
+			r.Get("/schema", s.getGraphSchema)
 			r.Get("/who-knows", s.whoKnows)
 			r.Post("/recommend-team", s.recommendTeam)
+			r.Post("/schema/register", s.registerGraphSchema)
 			r.Get("/blast-radius/{principalId}", s.blastRadius)
 			r.Get("/cascading-blast-radius/{principalId}", s.cascadingBlastRadius)
 			r.Get("/reverse-access/{resourceId}", s.reverseAccess)
