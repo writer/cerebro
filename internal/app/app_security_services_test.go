@@ -49,6 +49,30 @@ func TestEvaluateGraphOntologySLOStatus(t *testing.T) {
 	}
 }
 
+func TestEvaluateGraphOntologySLOStatus_BurnRateDegraded(t *testing.T) {
+	thresholds := graphOntologySLOThresholds{
+		FallbackWarn:        12,
+		FallbackCritical:    25,
+		SchemaValidWarn:     98,
+		SchemaValidCritical: 92,
+	}
+	status, msg := evaluateGraphOntologySLOStatus(graph.GraphOntologySLO{
+		FallbackActivityPercent: 10,
+		SchemaValidWritePercent: 99,
+		Trend: []graph.GraphOntologySLOPoint{
+			{Date: "2026-03-07", FallbackActivityPercent: 24, SchemaValidWritePercent: 99, Samples: 20},
+			{Date: "2026-03-08", FallbackActivityPercent: 24, SchemaValidWritePercent: 99, Samples: 20},
+			{Date: "2026-03-09", FallbackActivityPercent: 24, SchemaValidWritePercent: 99, Samples: 20},
+		},
+	}, thresholds)
+	if status != health.StatusDegraded {
+		t.Fatalf("expected degraded due to burn rate, got %s (%s)", status, msg)
+	}
+	if !strings.Contains(msg, "burn_rate") {
+		t.Fatalf("expected burn-rate message, got %q", msg)
+	}
+}
+
 func TestGraphOntologySLOHealthCheck(t *testing.T) {
 	g := graph.New()
 	now := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
@@ -87,5 +111,22 @@ func TestGraphOntologySLOHealthCheckWithoutGraph(t *testing.T) {
 	result := application.graphOntologySLOHealthCheck()(context.Background())
 	if result.Status != health.StatusUnknown {
 		t.Fatalf("expected unknown when graph is missing, got %s", result.Status)
+	}
+}
+
+func TestBurnRatesFastWindowUsesCurrentSnapshot(t *testing.T) {
+	trend := []graph.GraphOntologySLOPoint{
+		{Date: "2026-03-08", FallbackActivityPercent: 12, SchemaValidWritePercent: 97, Samples: 20},
+		{Date: "2026-03-09", FallbackActivityPercent: 12, SchemaValidWritePercent: 97, Samples: 20},
+	}
+
+	fastHigher, _ := burnRatesForHigherIsWorse(20, 10, 30, trend)
+	if fastHigher != 0.5 {
+		t.Fatalf("expected higher-is-worse fast burn from current snapshot, got %.4f", fastHigher)
+	}
+
+	fastLower, _ := burnRatesForLowerIsWorse(90, 98, 92, trend)
+	if fastLower != (8.0 / 6.0) {
+		t.Fatalf("expected lower-is-worse fast burn from current snapshot, got %.4f", fastLower)
 	}
 }

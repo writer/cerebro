@@ -5,6 +5,41 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 8 - Source SLOs + Weekly Calibration + Queryable DLQ + Burn-Rate Guardrails (2026-03-09)
+
+### Review findings
+- [x] Gap: ingest health reported only aggregate mapper counters without per-source SLO posture.
+- [x] Gap: replay CLI had no durable checkpoint/resume semantics for incremental dead-letter drain workflows.
+- [x] Gap: dead-letter backend was JSONL-only with no queryable storage option for focused triage.
+- [x] Gap: ontology SLO health checks used static thresholds without fast/slow burn-rate indicators.
+- [x] Gap: no dedicated weekly calibration endpoint unified risk-feedback backtest, identity calibration, and ontology trend context.
+- [x] Gap: CI lacked explicit source-domain ontology guardrail and replay dry-run checks.
+- [x] Gap: enforce-mode mapper validation was schema-only and did not strictly validate provenance integrity fields.
+
+### Execution plan
+- [x] Add ingest per-source SLO reporting:
+  - [x] Extend mapper runtime stats with `source_stats`.
+  - [x] Add source-level match/reject/dead-letter SLO rollups to `/api/v1/graph/ingest/health`.
+- [x] Add replay checkpoint + resume:
+  - [x] Extend `cerebro ingest replay-dead-letter` with `--checkpoint-path` and `--resume`.
+  - [x] Persist processed event keys and resume safely across runs.
+- [x] Add queryable DLQ backend and query surface:
+  - [x] Add sqlite dead-letter sink backend and auto-select by DLQ path.
+  - [x] Add backend-aware inspect/stream/query helpers.
+  - [x] Add `GET /api/v1/graph/ingest/dead-letter`.
+- [x] Improve ontology alerting with burn-rate signals:
+  - [x] Add fast/slow burn-rate evaluation on fallback and schema-valid SLO budgets.
+  - [x] Include burn-rate alerts in health-check degradation/unhealthy transitions.
+- [x] Add weekly calibration API:
+  - [x] Add `GET /api/v1/graph/intelligence/calibration/weekly`.
+  - [x] Return risk-feedback weekly backtest slice + identity calibration + ontology trend.
+- [x] Strengthen CI guardrails:
+  - [x] Add mapper ontology guardrail job by source domain.
+  - [x] Add ingest replay dry-run CI job with JSON summary assertion.
+- [x] Strengthen enforce-path provenance checks:
+  - [x] Reject invalid temporal/provenance metadata in enforce mode (`source_system`, `source_event_id`, `observed_at`, `valid_from`, `valid_to`, `confidence`).
+  - [x] Emit `invalid_provenance` issue code for mapper rejection accounting and DLQ triage.
+
 ## Deep Review Cycle 7 - Ingest Observability + Replay + Ontology Alerting (2026-03-09)
 
 ### Review findings

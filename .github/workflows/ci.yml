@@ -229,6 +229,63 @@ jobs:
             exit 1
           fi
 
+  graph-ontology-guardrails:
+    name: graph-ontology-guardrails
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+
+      - name: Enforce mapper ontology guardrails by source domain
+        run: |
+          go test ./internal/graphingest -run 'TestMapperContractFixtures|TestMapperSourceDomainCoverageGuardrails' -count=1
+
+  ingest-replay-dry-run:
+    name: ingest-replay-dry-run
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+
+      - name: Run dead-letter replay dry-run and emit summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmpdir="$(mktemp -d)"
+          mapping="${tmpdir}/mappings.yaml"
+          dlq="${tmpdir}/mapper.dlq.jsonl"
+
+          cat > "${mapping}" <<'YAML'
+          mappings:
+            - name: replay_test
+              source: replay.test
+              nodes:
+                - id: person:{{data.email}}
+                  kind: person
+                  name: "{{data.email}}"
+                  provider: replay
+          YAML
+
+          cat > "${dlq}" <<'JSONL'
+          {"recorded_at":"2026-03-09T23:00:00Z","event_id":"evt-ci-replay-1","event_type":"replay.test","event_source":"urn:test","event_time":"2026-03-09T23:00:00Z","event_data":{"email":"alice@example.com"},"mapping_name":"replay_test","entity_type":"node","entity_id":"person:alice@example.com","issues":[{"code":"unknown_node_kind","message":"fixture"}]}
+          JSONL
+
+          go run ./cmd/cerebro ingest replay-dead-letter \
+            --path "${dlq}" \
+            --mapping-path "${mapping}" \
+            --limit 10 \
+            --output json | tee "${tmpdir}/replay-summary.json"
+
+          grep -q '"events_replayed"' "${tmpdir}/replay-summary.json"
+
   config-docs-drift:
     name: config-docs-drift
     runs-on: blacksmith-4vcpu-ubuntu-2404

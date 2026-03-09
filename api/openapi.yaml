@@ -2529,7 +2529,7 @@ paths:
       tags:
         - Graph
       summary: Report graph ingest mapper and DLQ health
-      description: Return TAP mapper runtime counters and bounded dead-letter queue tail metrics.
+      description: Return TAP mapper runtime counters, per-source ingest SLO rollups, and bounded dead-letter queue tail metrics.
       parameters:
         - name: tail_limit
           in: query
@@ -2549,6 +2549,73 @@ paths:
                 additionalProperties: true
         '400':
           description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/graph/ingest/dead-letter:
+    get:
+      tags:
+        - Graph
+      summary: Query graph ingest dead-letter records
+      description: Query dead-letter records with optional filters across file or sqlite DLQ backends.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Maximum records to return (1-500).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+        - name: offset
+          in: query
+          required: false
+          description: Row offset for pagination (>=0).
+          schema:
+            type: integer
+            minimum: 0
+        - name: event_type
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: mapping_name
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: issue_code
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: entity_type
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: entity_kind
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Dead-letter query response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Dead-letter path not configured
           content:
             application/json:
               schema:
@@ -4960,6 +5027,69 @@ paths:
       responses:
         '200':
           description: Graph leverage report
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Security graph is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/graph/intelligence/calibration/weekly:
+    get:
+      tags:
+        - Graph
+      summary: Build weekly graph calibration report
+      description: Return a weekly calibration slice combining risk feedback backtest, identity calibration status, and ontology SLO trend context.
+      parameters:
+        - name: window_days
+          in: query
+          required: false
+          description: Feedback observation window in days (1-30).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 30
+        - name: trend_days
+          in: query
+          required: false
+          description: Ontology trend horizon in days (7-56).
+          schema:
+            type: integer
+            minimum: 7
+            maximum: 56
+        - name: profile
+          in: query
+          required: false
+          description: Optional risk profile name for outcome feedback calibration.
+          schema:
+            type: string
+        - name: include_queue
+          in: query
+          required: false
+          description: Include identity review queue details.
+          schema:
+            type: boolean
+        - name: queue_limit
+          in: query
+          required: false
+          description: Max identity review queue entries (1-200).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        '200':
+          description: Weekly graph calibration report
           content:
             application/json:
               schema:

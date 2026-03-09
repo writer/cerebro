@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -165,4 +166,70 @@ func containsString(values []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func TestMapperSourceDomainCoverageGuardrails(t *testing.T) {
+	config, err := LoadDefaultConfig()
+	if err != nil {
+		t.Fatalf("load default config failed: %v", err)
+	}
+
+	requiredDomains := []string{
+		"github",
+		"incident",
+		"slack",
+		"jira",
+		"ci",
+		"calendar",
+		"docs",
+		"support",
+		"sales",
+	}
+
+	domainSeen := make(map[string]bool)
+	domainSpecificKinds := make(map[string]bool)
+	for _, mapping := range config.Mappings {
+		domain := mapperSourceDomain(mapping.Source)
+		if domain == "" {
+			continue
+		}
+		domainSeen[domain] = true
+		for _, node := range mapping.Nodes {
+			kind := strings.ToLower(strings.TrimSpace(node.Kind))
+			if kind == "" || kind == string(graph.NodeKindActivity) {
+				continue
+			}
+			domainSpecificKinds[domain] = true
+		}
+	}
+
+	missing := make([]string, 0)
+	missingSpecific := make([]string, 0)
+	for _, domain := range requiredDomains {
+		if !domainSeen[domain] {
+			missing = append(missing, domain)
+		}
+		if !domainSpecificKinds[domain] {
+			missingSpecific = append(missingSpecific, domain)
+		}
+	}
+	sort.Strings(missing)
+	sort.Strings(missingSpecific)
+	if len(missing) > 0 {
+		t.Fatalf("missing required mapper domains: %v", missing)
+	}
+	if len(missingSpecific) > 0 {
+		t.Fatalf("required domains missing canonical kinds (non-activity): %v", missingSpecific)
+	}
+}
+
+func mapperSourceDomain(source string) string {
+	parts := strings.Split(strings.TrimSpace(source), ".")
+	if len(parts) < 3 {
+		return ""
+	}
+	if parts[0] != "ensemble" || parts[1] != "tap" {
+		return ""
+	}
+	return strings.TrimSpace(parts[2])
 }

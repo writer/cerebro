@@ -334,6 +334,17 @@ func TestGraphIngestHealthEndpoint(t *testing.T) {
 	if deadLettered, ok := stats["dead_lettered"].(float64); !ok || deadLettered < 1 {
 		t.Fatalf("expected dead_lettered >= 1, got %#v", stats["dead_lettered"])
 	}
+	sourceSLO, ok := mapperBody["source_slo"].([]any)
+	if !ok || len(sourceSLO) == 0 {
+		t.Fatalf("expected mapper source_slo entries, got %#v", mapperBody["source_slo"])
+	}
+	firstSource, ok := sourceSLO[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected first source_slo object, got %#v", sourceSLO[0])
+	}
+	if _, ok := firstSource["match_rate_percent"].(float64); !ok {
+		t.Fatalf("expected source_slo.match_rate_percent, got %#v", firstSource["match_rate_percent"])
+	}
 
 	deadLetter, ok := body["dead_letter"].(map[string]any)
 	if !ok {
@@ -354,11 +365,110 @@ func TestGraphIngestHealthEndpoint(t *testing.T) {
 	}
 }
 
+func TestGraphIngestDeadLetterEndpoint(t *testing.T) {
+	s := newTestServer(t)
+	dlqPath := filepath.Join(t.TempDir(), "graph-mapper.dlq.db")
+	s.app.Config.GraphEventMapperValidationMode = "enforce"
+	s.app.Config.GraphEventMapperDeadLetterPath = dlqPath
+
+	mapper, err := graphingest.NewMapperWithOptions(graphingest.MappingConfig{
+		Mappings: []graphingest.EventMapping{
+			{
+				Name:   "invalid_kind",
+				Source: "ensemble.tap.test.invalid",
+				Nodes: []graphingest.NodeMapping{
+					{
+						ID:       "test:entity:1",
+						Kind:     "nonexistent_kind",
+						Name:     "Invalid",
+						Provider: "test",
+					},
+				},
+			},
+		},
+	}, nil, graphingest.MapperOptions{
+		ValidationMode: graphingest.MapperValidationEnforce,
+		DeadLetterPath: dlqPath,
+	})
+	if err != nil {
+		t.Fatalf("new mapper with options failed: %v", err)
+	}
+	s.app.TapEventMapper = mapper
+
+	if _, err := mapper.Apply(s.app.SecurityGraph, events.CloudEvent{
+		ID:     "evt-invalid-query-1",
+		Type:   "ensemble.tap.test.invalid",
+		Time:   time.Date(2026, 3, 9, 22, 30, 0, 0, time.UTC),
+		Source: "urn:ensemble:tap",
+		Data:   map[string]any{"id": "1"},
+	}); err != nil {
+		t.Fatalf("mapper apply failed: %v", err)
+	}
+
+	w := do(t, s, http.MethodGet, "/api/v1/graph/ingest/dead-letter?limit=10&issue_code=unknown_node_kind", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	body := decodeJSON(t, w)
+	result, ok := body["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected result object, got %#v", body["result"])
+	}
+	if total, ok := result["total"].(float64); !ok || total < 1 {
+		t.Fatalf("expected dead-letter query total >= 1, got %#v", result["total"])
+	}
+	records, ok := result["records"].([]any)
+	if !ok || len(records) == 0 {
+		t.Fatalf("expected at least one dead-letter record, got %#v", result["records"])
+	}
+}
+
 func TestGraphIngestHealthEndpointInvalidTailLimit(t *testing.T) {
 	s := newTestServer(t)
 	w := do(t, s, http.MethodGet, "/api/v1/graph/ingest/health?tail_limit=0", nil)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for tail_limit=0, got %d", w.Code)
+	}
+}
+
+func TestGraphIntelligenceWeeklyCalibrationEndpoint(t *testing.T) {
+	s := newTestServer(t)
+	g := s.app.SecurityGraph
+	now := time.Date(2026, 3, 9, 18, 0, 0, 0, time.UTC)
+
+	g.AddNode(&graph.Node{
+		ID:   "identity_alias:github:alice",
+		Kind: graph.NodeKindIdentityAlias,
+		Name: "alice",
+		Properties: map[string]any{
+			"source_system": "github",
+			"external_id":   "alice",
+			"observed_at":   now.Format(time.RFC3339),
+			"valid_from":    now.Format(time.RFC3339),
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:   "person:alice@example.com",
+		Kind: graph.NodeKindPerson,
+		Name: "Alice",
+		Properties: map[string]any{
+			"email": "alice@example.com",
+		},
+	})
+
+	w := do(t, s, http.MethodGet, "/api/v1/graph/intelligence/calibration/weekly?window_days=7&trend_days=14", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	body := decodeJSON(t, w)
+	if _, ok := body["risk_feedback"].(map[string]any); !ok {
+		t.Fatalf("expected risk_feedback object, got %#v", body["risk_feedback"])
+	}
+	if _, ok := body["identity"].(map[string]any); !ok {
+		t.Fatalf("expected identity object, got %#v", body["identity"])
+	}
+	if _, ok := body["ontology"].(map[string]any); !ok {
+		t.Fatalf("expected ontology object, got %#v", body["ontology"])
 	}
 }
 

@@ -37,6 +37,7 @@ const (
 	SchemaIssueUnknownNodeKind         SchemaValidationIssueCode = "unknown_node_kind"
 	SchemaIssueMissingRequiredProperty SchemaValidationIssueCode = "missing_required_property"
 	SchemaIssueInvalidPropertyType     SchemaValidationIssueCode = "invalid_property_type"
+	SchemaIssueInvalidProvenance       SchemaValidationIssueCode = "invalid_provenance"
 	SchemaIssueUnknownEdgeKind         SchemaValidationIssueCode = "unknown_edge_kind"
 	SchemaIssueMissingSourceNode       SchemaValidationIssueCode = "missing_source_node"
 	SchemaIssueMissingTargetNode       SchemaValidationIssueCode = "missing_target_node"

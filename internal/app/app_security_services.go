@@ -168,6 +168,13 @@ type graphOntologySLOThresholds struct {
 	SchemaValidCritical float64
 }
 
+const (
+	ontologyBurnFastWarn     = 1.0
+	ontologyBurnFastCritical = 2.0
+	ontologyBurnSlowWarn     = 0.5
+	ontologyBurnSlowCritical = 1.0
+)
+
 func defaultGraphOntologySLOThresholds() graphOntologySLOThresholds {
 	return graphOntologySLOThresholds{
 		FallbackWarn:        12,
@@ -242,7 +249,7 @@ func (a *App) graphOntologySLOHealthCheck() health.Checker {
 
 func evaluateGraphOntologySLOStatus(slo graph.GraphOntologySLO, thresholds graphOntologySLOThresholds) (health.Status, string) {
 	status := health.StatusHealthy
-	issues := make([]string, 0, 2)
+	issues := make([]string, 0, 4)
 
 	if slo.FallbackActivityPercent >= thresholds.FallbackCritical {
 		status = health.StatusUnhealthy
@@ -262,10 +269,86 @@ func evaluateGraphOntologySLOStatus(slo graph.GraphOntologySLO, thresholds graph
 		issues = append(issues, fmt.Sprintf("schema_valid_write_percent %.1f <= warn %.1f", slo.SchemaValidWritePercent, thresholds.SchemaValidWarn))
 	}
 
+	fallbackBurnFast, fallbackBurnSlow := burnRatesForHigherIsWorse(slo.FallbackActivityPercent, thresholds.FallbackWarn, thresholds.FallbackCritical, slo.Trend)
+	schemaBurnFast, schemaBurnSlow := burnRatesForLowerIsWorse(slo.SchemaValidWritePercent, thresholds.SchemaValidWarn, thresholds.SchemaValidCritical, slo.Trend)
+	if fallbackBurnFast >= ontologyBurnFastCritical || fallbackBurnSlow >= ontologyBurnSlowCritical {
+		status = health.StatusUnhealthy
+		issues = append(issues, fmt.Sprintf("fallback_activity_burn_rate fast=%.2fx slow=%.2fx", fallbackBurnFast, fallbackBurnSlow))
+	} else if fallbackBurnFast >= ontologyBurnFastWarn || fallbackBurnSlow >= ontologyBurnSlowWarn {
+		if status != health.StatusUnhealthy {
+			status = health.StatusDegraded
+		}
+		issues = append(issues, fmt.Sprintf("fallback_activity_burn_rate fast=%.2fx slow=%.2fx", fallbackBurnFast, fallbackBurnSlow))
+	}
+	if schemaBurnFast >= ontologyBurnFastCritical || schemaBurnSlow >= ontologyBurnSlowCritical {
+		status = health.StatusUnhealthy
+		issues = append(issues, fmt.Sprintf("schema_valid_burn_rate fast=%.2fx slow=%.2fx", schemaBurnFast, schemaBurnSlow))
+	} else if schemaBurnFast >= ontologyBurnFastWarn || schemaBurnSlow >= ontologyBurnSlowWarn {
+		if status != health.StatusUnhealthy {
+			status = health.StatusDegraded
+		}
+		issues = append(issues, fmt.Sprintf("schema_valid_burn_rate fast=%.2fx slow=%.2fx", schemaBurnFast, schemaBurnSlow))
+	}
+
 	if len(issues) == 0 {
 		return health.StatusHealthy, fmt.Sprintf("fallback_activity_percent %.1f, schema_valid_write_percent %.1f", slo.FallbackActivityPercent, slo.SchemaValidWritePercent)
 	}
 	return status, strings.Join(issues, "; ")
+}
+
+func burnRatesForHigherIsWorse(current, warn, critical float64, trend []graph.GraphOntologySLOPoint) (float64, float64) {
+	budget := critical - warn
+	if budget <= 0 {
+		return 0, 0
+	}
+	fastValue := current
+	slowValue := current
+	if len(trend) > 0 {
+		sum := 0.0
+		count := 0
+		for _, point := range trend {
+			if point.Samples <= 0 {
+				continue
+			}
+			sum += point.FallbackActivityPercent
+			count++
+		}
+		if count > 0 {
+			slowValue = sum / float64(count)
+		}
+	}
+	return positiveBurnRate(fastValue-warn, budget), positiveBurnRate(slowValue-warn, budget)
+}
+
+func burnRatesForLowerIsWorse(current, warn, critical float64, trend []graph.GraphOntologySLOPoint) (float64, float64) {
+	budget := warn - critical
+	if budget <= 0 {
+		return 0, 0
+	}
+	fastValue := current
+	slowValue := current
+	if len(trend) > 0 {
+		sum := 0.0
+		count := 0
+		for _, point := range trend {
+			if point.Samples <= 0 {
+				continue
+			}
+			sum += point.SchemaValidWritePercent
+			count++
+		}
+		if count > 0 {
+			slowValue = sum / float64(count)
+		}
+	}
+	return positiveBurnRate(warn-fastValue, budget), positiveBurnRate(warn-slowValue, budget)
+}
+
+func positiveBurnRate(excess, budget float64) float64 {
+	if budget <= 0 || excess <= 0 {
+		return 0
+	}
+	return excess / budget
 }
 
 func (a *App) initLineage() {

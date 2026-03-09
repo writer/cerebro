@@ -190,6 +190,163 @@ mappings:
 	}
 }
 
+func TestReplayDeadLetterCheckpointResume(t *testing.T) {
+	dir := t.TempDir()
+	mappingPath := filepath.Join(dir, "mappings.yaml")
+	dlqPath := filepath.Join(dir, "mapper.dlq.jsonl")
+	checkpointPath := filepath.Join(dir, "replay-checkpoint.json")
+
+	mappingYAML := `
+mappings:
+  - name: replay_test
+    source: replay.test
+    nodes:
+      - id: person:{{data.email}}
+        kind: person
+        name: "{{data.email}}"
+        provider: replay
+`
+	if err := os.WriteFile(mappingPath, []byte(mappingYAML), 0o600); err != nil {
+		t.Fatalf("write mapping file: %v", err)
+	}
+
+	now := time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC)
+	records := []graphingest.DeadLetterRecord{
+		{
+			RecordedAt:  now,
+			EventID:     "evt-1",
+			EventType:   "replay.test",
+			EventSource: "urn:test",
+			EventTime:   now,
+			EventData:   map[string]any{"email": "alice@example.com"},
+			MappingName: "replay_test",
+			EntityType:  "node",
+			EntityID:    "person:alice@example.com",
+		},
+		{
+			RecordedAt:  now.Add(1 * time.Second),
+			EventID:     "evt-2",
+			EventType:   "replay.test",
+			EventSource: "urn:test",
+			EventTime:   now.Add(1 * time.Second),
+			EventData:   map[string]any{"email": "bob@example.com"},
+			MappingName: "replay_test",
+			EntityType:  "node",
+			EntityID:    "person:bob@example.com",
+		},
+	}
+	if err := writeDeadLetterJSONL(dlqPath, records, nil); err != nil {
+		t.Fatalf("write dead-letter file: %v", err)
+	}
+
+	first, err := replayDeadLetter(replayDeadLetterOptions{
+		Path:        dlqPath,
+		MappingPath: mappingPath,
+		Limit:       1,
+		Checkpoint:  checkpointPath,
+		Resume:      true,
+	})
+	if err != nil {
+		t.Fatalf("first replay failed: %v", err)
+	}
+	if first.EventsProcessed != 1 {
+		t.Fatalf("expected first run to process 1 event, got %d", first.EventsProcessed)
+	}
+	if !first.CheckpointSaved {
+		t.Fatalf("expected checkpoint to be saved on first run, got %#v", first)
+	}
+
+	second, err := replayDeadLetter(replayDeadLetterOptions{
+		Path:        dlqPath,
+		MappingPath: mappingPath,
+		Checkpoint:  checkpointPath,
+		Resume:      true,
+	})
+	if err != nil {
+		t.Fatalf("second replay failed: %v", err)
+	}
+	if !second.CheckpointLoaded {
+		t.Fatalf("expected checkpoint loaded on second run, got %#v", second)
+	}
+	if second.EventsCheckpointed != 1 {
+		t.Fatalf("expected one checkpoint-skipped event, got %d", second.EventsCheckpointed)
+	}
+	if second.EventsProcessed != 1 {
+		t.Fatalf("expected second run to process remaining one event, got %d", second.EventsProcessed)
+	}
+	if second.EventsReplayed != 1 {
+		t.Fatalf("expected one replayed event on second run, got %d", second.EventsReplayed)
+	}
+}
+
+func TestReplayDeadLetterCheckpointSkipsOnlySuccessfulReplays(t *testing.T) {
+	dir := t.TempDir()
+	mappingPath := filepath.Join(dir, "mappings.yaml")
+	dlqPath := filepath.Join(dir, "mapper.dlq.jsonl")
+	checkpointPath := filepath.Join(dir, "replay-checkpoint.json")
+
+	mappingYAML := `
+mappings:
+  - name: replay_test
+    source: replay.test
+    nodes:
+      - id: person:{{data.email}}
+        kind: person
+        name: "{{data.email}}"
+        provider: replay
+`
+	if err := os.WriteFile(mappingPath, []byte(mappingYAML), 0o600); err != nil {
+		t.Fatalf("write mapping file: %v", err)
+	}
+
+	now := time.Date(2026, 3, 10, 0, 10, 0, 0, time.UTC)
+	records := []graphingest.DeadLetterRecord{
+		{
+			RecordedAt:  now,
+			EventID:     "evt-unmatched-1",
+			EventType:   "replay.unmatched",
+			EventSource: "urn:test",
+			EventTime:   now,
+			EventData:   map[string]any{"email": "alice@example.com"},
+			MappingName: "replay_test",
+			EntityType:  "node",
+			EntityID:    "person:alice@example.com",
+		},
+	}
+	if err := writeDeadLetterJSONL(dlqPath, records, nil); err != nil {
+		t.Fatalf("write dead-letter file: %v", err)
+	}
+
+	first, err := replayDeadLetter(replayDeadLetterOptions{
+		Path:        dlqPath,
+		MappingPath: mappingPath,
+		Checkpoint:  checkpointPath,
+		Resume:      true,
+	})
+	if err != nil {
+		t.Fatalf("first replay failed: %v", err)
+	}
+	if first.EventsProcessed != 1 || first.EventsUnmatched != 1 {
+		t.Fatalf("expected one unmatched processed event, got %#v", first)
+	}
+
+	second, err := replayDeadLetter(replayDeadLetterOptions{
+		Path:        dlqPath,
+		MappingPath: mappingPath,
+		Checkpoint:  checkpointPath,
+		Resume:      true,
+	})
+	if err != nil {
+		t.Fatalf("second replay failed: %v", err)
+	}
+	if second.EventsCheckpointed != 0 {
+		t.Fatalf("expected no checkpoint-skipped events for unmatched replay, got %d", second.EventsCheckpointed)
+	}
+	if second.EventsProcessed != 1 || second.EventsUnmatched != 1 {
+		t.Fatalf("expected unmatched event to be retried, got %#v", second)
+	}
+}
+
 func writeDeadLetterJSONL(path string, records []graphingest.DeadLetterRecord, invalid []string) error {
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {

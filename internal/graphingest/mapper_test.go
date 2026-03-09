@@ -505,6 +505,114 @@ func TestMapperApply_WarnValidationAllowsInvalidWrites(t *testing.T) {
 	}
 }
 
+func TestMapperApply_EnforceValidationRejectsInvalidProvenance(t *testing.T) {
+	config := MappingConfig{
+		Mappings: []EventMapping{
+			{
+				Name:   "invalid_provenance",
+				Source: "ensemble.tap.test.provenance",
+				Nodes: []NodeMapping{
+					{
+						ID:       "service:payments",
+						Kind:     "service",
+						Name:     "Payments",
+						Provider: "test",
+						Properties: map[string]any{
+							"service_id":  "payments",
+							"observed_at": "{{data.observed_at}}",
+							"valid_from":  "{{data.valid_from}}",
+							"confidence":  "{{data.confidence}}",
+						},
+					},
+				},
+			},
+		},
+	}
+	mapper, err := NewMapperWithOptions(config, nil, MapperOptions{
+		ValidationMode: MapperValidationEnforce,
+	})
+	if err != nil {
+		t.Fatalf("new mapper failed: %v", err)
+	}
+
+	result, err := mapper.Apply(graph.New(), events.CloudEvent{
+		ID:     "evt-provenance-1",
+		Type:   "ensemble.tap.test.provenance",
+		Time:   time.Date(2026, 3, 9, 21, 20, 0, 0, time.UTC),
+		Source: "urn:ensemble:tap",
+		Data: map[string]any{
+			"observed_at": "not-a-time",
+			"valid_from":  "2026-03-09T21:00:00Z",
+			"confidence":  "not-a-number",
+		},
+	})
+	if err != nil {
+		t.Fatalf("mapper apply failed: %v", err)
+	}
+	if result.NodesRejected != 1 {
+		t.Fatalf("expected one rejected node, got %#v", result)
+	}
+	stats := mapper.Stats()
+	if stats.NodeRejectByCode[string(graph.SchemaIssueInvalidProvenance)] < 1 {
+		t.Fatalf("expected invalid_provenance rejection code, got %#v", stats.NodeRejectByCode)
+	}
+}
+
+func TestMapperStatsIncludesPerSourceCounters(t *testing.T) {
+	config := MappingConfig{
+		Mappings: []EventMapping{
+			{
+				Name:   "github_match",
+				Source: "ensemble.tap.github.pull_request.opened",
+				Nodes: []NodeMapping{
+					{
+						ID:       "service:payments",
+						Kind:     "service",
+						Name:     "Payments",
+						Provider: "github",
+						Properties: map[string]any{
+							"service_id": "payments",
+						},
+					},
+				},
+			},
+		},
+	}
+	mapper, err := NewMapper(config, nil)
+	if err != nil {
+		t.Fatalf("new mapper failed: %v", err)
+	}
+	g := graph.New()
+	if _, err := mapper.Apply(g, events.CloudEvent{
+		ID:     "evt-github-1",
+		Type:   "ensemble.tap.github.pull_request.opened",
+		Time:   time.Date(2026, 3, 9, 21, 30, 0, 0, time.UTC),
+		Source: "urn:ensemble:tap",
+		Data:   map[string]any{},
+	}); err != nil {
+		t.Fatalf("mapper apply github failed: %v", err)
+	}
+	if _, err := mapper.Apply(g, events.CloudEvent{
+		ID:     "evt-slack-1",
+		Type:   "ensemble.tap.slack.unknown",
+		Time:   time.Date(2026, 3, 9, 21, 31, 0, 0, time.UTC),
+		Source: "urn:ensemble:tap",
+		Data:   map[string]any{},
+	}); err != nil {
+		t.Fatalf("mapper apply slack failed: %v", err)
+	}
+
+	stats := mapper.Stats()
+	github := stats.SourceStats["github"]
+	if github.EventsProcessed != 1 || github.EventsMatched != 1 {
+		t.Fatalf("unexpected github source stats: %#v", github)
+	}
+	slack := stats.SourceStats["slack"]
+	if slack.EventsProcessed != 1 || slack.EventsUnmatched != 1 {
+		t.Fatalf("unexpected slack source stats: %#v", slack)
+	}
+}
+
 func stringValue(value any) string {
 	s, _ := value.(string)
 	return s
