@@ -252,6 +252,28 @@ if config.get("gcpImpersonateServiceAccount"):
 if config.get("gcpImpersonateDelegates"):
     app_environment["CEREBRO_GCP_IMPERSONATE_DELEGATES"] = config.get("gcpImpersonateDelegates")
 
+# S3 source ingestion (e.g., Kolide, SentinelOne)
+s3_sources = config.get_object("s3Sources") or []
+s3_source_bucket_arns = []
+if s3_sources:
+    source_names = []
+    for src in s3_sources:
+        name = src["name"]
+        source_names.append(name)
+        upper = name.upper().replace("-", "_")
+        app_environment[f"S3_SOURCE_{upper}_BUCKET"] = src["bucket"]
+        if src.get("prefixes"):
+            app_environment[f"S3_SOURCE_{upper}_PREFIXES"] = ",".join(src["prefixes"])
+        if src.get("region"):
+            app_environment[f"S3_SOURCE_{upper}_REGION"] = src["region"]
+        if src.get("format"):
+            app_environment[f"S3_SOURCE_{upper}_FORMAT"] = src["format"]
+        if src.get("roleArn"):
+            app_environment[f"S3_SOURCE_{upper}_ROLE_ARN"] = src["roleArn"]
+        bucket_arn = src.get("bucketArn") or f"arn:aws:s3:::{src['bucket']}"
+        s3_source_bucket_arns.append(bucket_arn)
+    app_environment["S3_SOURCES"] = ",".join(source_names)
+
 # Job queue config added to environment via Pulumi outputs
 # Note: These are Output objects, handled by compute module
 
@@ -275,6 +297,7 @@ ecs_stack = compute.create_ecs_cluster(
     job_queue_arn=job_queue_stack["queue_arn"],
     job_table_name=job_store_stack["table_name"],
     log_group_kms_key_id=logs_kms_key["key_arn"] if logs_kms_key else None,
+    s3_source_bucket_arns=s3_source_bucket_arns or None,
 )
 
 # Worker service
