@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"net/http"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	apicontract "github.com/evalops/cerebro/api"
 	"github.com/evalops/cerebro/internal/app"
+	"github.com/evalops/cerebro/internal/graph"
 	"github.com/evalops/cerebro/internal/health"
 	"github.com/evalops/cerebro/internal/metrics"
 	"github.com/evalops/cerebro/internal/snowflake"
@@ -18,10 +20,13 @@ import (
 
 // Server is the fully wired API server
 type Server struct {
-	app         *app.App
-	router      *chi.Mux
-	auditLogger auditLogWriter
-	rateLimiter *RateLimiter
+	app              *app.App
+	router           *chi.Mux
+	auditLogger      auditLogWriter
+	rateLimiter      *RateLimiter
+	riskEngineMu     sync.Mutex
+	riskEngine       *graph.RiskEngine
+	riskEngineSource *graph.Graph
 }
 
 type auditLogWriter interface {

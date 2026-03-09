@@ -2231,6 +2231,91 @@ paths:
         '503':
           description: Graph unavailable
           content: *id001
+  /api/v1/graph/risk-feedback:
+    get:
+      tags:
+        - Graph
+      summary: Get risk feedback and tuning recommendations
+      description: Evaluate historical rule effectiveness against realized outcomes and return severity, retirement, and risk profile weight tuning suggestions.
+      parameters:
+        - name: window_days
+          in: query
+          required: false
+          description: Historical lookback window in days (default 90).
+          schema:
+            type: integer
+        - name: profile
+          in: query
+          required: false
+          description: Optional risk profile name used for weight tuning suggestions.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Risk feedback report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphRiskFeedbackResponse'
+        '400':
+          description: Invalid query parameter
+          content: *id001
+        '503':
+          description: Graph unavailable
+          content: *id001
+  /api/v1/graph/outcomes:
+    get:
+      tags:
+        - Graph
+      summary: List realized outcomes
+      description: List historical outcome events used for risk feedback and auto-tuning.
+      parameters:
+        - name: entity_id
+          in: query
+          required: false
+          description: Optional entity ID filter.
+          schema:
+            type: string
+        - name: outcome
+          in: query
+          required: false
+          description: Optional outcome type filter.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Outcome events
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphOutcomesResponse'
+        '503':
+          description: Graph unavailable
+          content: *id001
+    post:
+      tags:
+        - Graph
+      summary: Record realized outcome
+      description: Record a business outcome event (for example churn, closed_lost, sla_breach, incident, payment_default) tied to an entity.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphOutcomeRecordRequest'
+      responses:
+        '200':
+          description: Outcome recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphOutcomeRecordResponse'
+        '400':
+          description: Invalid request body
+          content: *id001
+        '503':
+          description: Graph unavailable
+          content: *id001
   /api/v1/graph/stats:
     get:
       tags:
@@ -5809,6 +5894,43 @@ components:
     GraphRiskReportResponse:
       type: object
       additionalProperties: true
+    GraphRiskFeedbackResponse:
+      type: object
+      additionalProperties: true
+    GraphOutcomeRecordRequest:
+      type: object
+      required:
+        - entity_id
+        - outcome
+      properties:
+        id:
+          type: string
+        entity_id:
+          type: string
+        outcome:
+          type: string
+        occurred_at:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties: true
+    GraphOutcomeRecordResponse:
+      type: object
+      properties:
+        recorded:
+          type: object
+          additionalProperties: true
+    GraphOutcomesResponse:
+      type: object
+      properties:
+        count:
+          type: integer
+        outcomes:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
     ToxicCombinationsResponse:
       type: object
       properties:

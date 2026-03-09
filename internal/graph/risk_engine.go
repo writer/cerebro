@@ -18,6 +18,10 @@ type RiskEngine struct {
 	riskProfile     RiskProfile
 	entityScores    map[string]float64
 	customerHealth  map[string]CustomerRelationshipHealth
+	outcomeEvents   []OutcomeEvent
+	ruleSignals     []RuleObservation
+	factorSignals   []FactorObservation
+	signalLimit     int
 	onScoreChange   func(RiskScoreChangedEvent)
 	mu              sync.RWMutex
 }
@@ -31,6 +35,10 @@ func NewRiskEngine(g *Graph) *RiskEngine {
 		riskProfile:     DefaultRiskProfile("default"),
 		entityScores:    make(map[string]float64),
 		customerHealth:  make(map[string]CustomerRelationshipHealth),
+		outcomeEvents:   make([]OutcomeEvent, 0, 128),
+		ruleSignals:     make([]RuleObservation, 0, 512),
+		factorSignals:   make([]FactorObservation, 0, 1024),
+		signalLimit:     5000,
 	}
 }
 
@@ -188,6 +196,7 @@ func (r *RiskEngine) Analyze() *SecurityReport {
 	for entityID, entityRisk := range report.EntityRisks {
 		r.entityScores[entityID] = entityRisk.Score
 	}
+	r.recordSignalsLocked(report, start)
 	r.cachedReport = report
 	r.lastAnalysis = start
 	if r.onScoreChange != nil {

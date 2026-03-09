@@ -327,6 +327,9 @@ func (s *Server) setupRoutes() {
 
 			// Risk Intelligence endpoints
 			r.Get("/risk-report", s.riskReport)
+			r.Get("/risk-feedback", s.graphRiskFeedback)
+			r.Get("/outcomes", s.listGraphOutcomes)
+			r.Post("/outcomes", s.recordGraphOutcome)
 			r.Get("/toxic-combinations", s.listToxicCombinations)
 			r.Get("/attack-paths", s.listGraphAttackPaths)
 			r.Get("/attack-paths/{id}/simulate-fix", s.simulateAttackPathFix)

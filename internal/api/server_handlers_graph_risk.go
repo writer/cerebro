@@ -124,7 +124,11 @@ func (s *Server) riskReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	engine := graph.NewRiskEngine(s.app.SecurityGraph)
+	engine := s.graphRiskEngine()
+	if engine == nil {
+		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		return
+	}
 	report := engine.Analyze()
 	s.json(w, http.StatusOK, report)
 }
