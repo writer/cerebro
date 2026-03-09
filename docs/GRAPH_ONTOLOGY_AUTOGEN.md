@@ -64,6 +64,31 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `user` | identity | - | - |
 | `workload` | resource | `observed_at`, `runtime`, `valid_from`, `workload_id` | `connects_to`, `depends_on`, `targets` |
 
+## Node Metadata Profiles
+
+| Kind | Required Metadata | Optional Metadata | Timestamp Keys | Enum Constraints |
+|---|---|---|---|---|
+| `action` | `observed_at`, `source_system`, `valid_from` | `confidence`, `source_event_id`, `valid_to` | `observed_at`, `valid_from`, `valid_to` | - |
+| `check_run` | `observed_at`, `source_system`, `valid_from` | `confidence`, `source_event_id`, `valid_to` | `observed_at`, `valid_from`, `valid_to` | `conclusion`=`action_required`, `cancelled`, `failure`, `neutral`, `skipped`, `stale`, `startup_failure`, `success`, `timed_out`<br>`status`=`completed`, `in_progress`, `queued` |
+| `communication_thread` | `observed_at`, `source_system`, `valid_from` | `confidence`, `source_event_id`, `valid_to` | `observed_at`, `valid_from`, `valid_to` | - |
+| `decision` | `observed_at`, `source_system`, `valid_from` | `confidence`, `source_event_id`, `valid_to` | `observed_at`, `valid_from`, `valid_to` | `status`=`approved`, `cancelled`, `completed`, `deferred`, `in_progress`, `proposed`, `rejected` |
+| `deployment_run` | `observed_at`, `source_system`, `valid_from` | `confidence`, `source_event_id`, `valid_to` | `observed_at`, `valid_from`, `valid_to` | `environment`=`dev`, `prod`, `production`, `qa`, `sandbox`, `staging`, `test`<br>`status`=`cancelled`, `completed`, `error`, `failed`, `failure`, `in_progress`, `pending`, `queued`, `running`, `succeeded`, `success`, `successful` |
+| `document` | `observed_at`, `source_system`, `valid_from` | `confidence`, `source_event_id`, `valid_to` | `observed_at`, `valid_from`, `valid_to` | - |
+| `evidence` | `observed_at`, `source_system`, `valid_from` | `confidence`, `source_event_id`, `valid_to` | `observed_at`, `valid_from`, `valid_to` | - |
+| `group` | - | `confidence`, `observed_at`, `source_event_id`, `source_system`, `valid_from`, `valid_to` | `observed_at`, `valid_from`, `valid_to` | - |
+| `identity_alias` | `observed_at`, `source_system`, `valid_from` | `confidence`, `source_event_id`, `valid_to` | `observed_at`, `valid_from`, `valid_to` | `alias_type`=`email`, `employee_id`, `github`, `slack`, `uid`, `upn`, `username` |
+| `incident` | `observed_at`, `source_system`, `valid_from` | `confidence`, `source_event_id`, `valid_to` | `observed_at`, `valid_from`, `valid_to` | `severity`=`critical`, `high`, `low`, `medium`, `sev1`, `sev2`, `sev3`, `sev4`<br>`status`=`acknowledged`, `closed`, `investigating`, `monitoring`, `open`, `postmortem`, `resolved`, `triggered` |
+| `meeting` | `observed_at`, `source_system`, `valid_from` | `confidence`, `source_event_id`, `valid_to` | `observed_at`, `valid_from`, `valid_to` | - |
+| `outcome` | `observed_at`, `source_system`, `valid_from` | `confidence`, `source_event_id`, `valid_to` | `observed_at`, `valid_from`, `valid_to` | `verdict`=`mixed`, `negative`, `neutral`, `positive`, `unknown` |
+| `person` | - | `confidence`, `observed_at`, `source_event_id`, `source_system`, `valid_from`, `valid_to` | `observed_at`, `valid_from`, `valid_to` | - |
+| `pipeline_run` | `observed_at`, `source_system`, `valid_from` | `confidence`, `source_event_id`, `valid_to` | `observed_at`, `valid_from`, `valid_to` | `status`=`action_required`, `cancelled`, `completed`, `failed`, `failure`, `in_progress`, `neutral`, `passed`, `pending`, `queued`, `running`, `skipped`, `succeeded`, `success`, `successful`, `timed_out` |
+| `pull_request` | `observed_at`, `source_system`, `valid_from` | `confidence`, `source_event_id`, `valid_to` | `observed_at`, `valid_from`, `valid_to` | `state`=`closed`, `draft`, `merged`, `open`, `opened`, `review_submitted` |
+| `role` | - | `confidence`, `observed_at`, `source_event_id`, `source_system`, `valid_from`, `valid_to` | `observed_at`, `valid_from`, `valid_to` | - |
+| `service` | `observed_at`, `source_system`, `valid_from` | `confidence`, `source_event_id`, `valid_to` | `observed_at`, `valid_from`, `valid_to` | `criticality`=`critical`, `high`, `low`, `medium`, `tier0`, `tier1`, `tier2`, `tier3` |
+| `service_account` | - | `confidence`, `observed_at`, `source_event_id`, `source_system`, `valid_from`, `valid_to` | `observed_at`, `valid_from`, `valid_to` | - |
+| `user` | - | `confidence`, `observed_at`, `source_event_id`, `source_system`, `valid_from`, `valid_to` | `observed_at`, `valid_from`, `valid_to` | - |
+| `workload` | `observed_at`, `source_system`, `valid_from` | `confidence`, `source_event_id`, `valid_to` | `observed_at`, `valid_from`, `valid_to` | `environment`=`dev`, `prod`, `production`, `qa`, `sandbox`, `staging`, `test` |
+
 ## Edge Kinds
 
 | Kind | Description |

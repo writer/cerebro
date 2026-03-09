@@ -71,6 +71,29 @@ func renderMarkdown(nodeDefs []graph.NodeKindDefinition, edgeDefs []graph.EdgeKi
 		)
 	}
 
+	b.WriteString("\n## Node Metadata Profiles\n\n")
+	b.WriteString("| Kind | Required Metadata | Optional Metadata | Timestamp Keys | Enum Constraints |\n")
+	b.WriteString("|---|---|---|---|---|\n")
+	profiled := 0
+	for _, def := range nodeDefs {
+		profile := def.MetadataProfile
+		if len(profile.RequiredKeys) == 0 && len(profile.OptionalKeys) == 0 && len(profile.TimestampKeys) == 0 && len(profile.EnumValues) == 0 {
+			continue
+		}
+		profiled++
+		fmt.Fprintf(&b,
+			"| `%s` | %s | %s | %s | %s |\n",
+			def.Kind,
+			joinCodeOrDash(profile.RequiredKeys),
+			joinCodeOrDash(profile.OptionalKeys),
+			joinCodeOrDash(profile.TimestampKeys),
+			renderEnumConstraints(profile.EnumValues),
+		)
+	}
+	if profiled == 0 {
+		b.WriteString("| _none_ | - | - | - | - |\n")
+	}
+
 	b.WriteString("\n## Edge Kinds\n\n")
 	b.WriteString("| Kind | Description |\n")
 	b.WriteString("|---|---|\n")
@@ -215,6 +238,46 @@ func sortedKeys(values map[string]struct{}) []string {
 
 func escapePipes(value string) string {
 	return strings.ReplaceAll(value, "|", "\\|")
+}
+
+func renderEnumConstraints(values map[string][]string) string {
+	if len(values) == 0 {
+		return "-"
+	}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		keys = append(keys, key)
+	}
+	if len(keys) == 0 {
+		return "-"
+	}
+	sort.Strings(keys)
+
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		enumValues := append([]string(nil), values[key]...)
+		sort.Strings(enumValues)
+		renderedValues := make([]string, 0, len(enumValues))
+		for _, enumValue := range enumValues {
+			enumValue = strings.TrimSpace(enumValue)
+			if enumValue == "" {
+				continue
+			}
+			renderedValues = append(renderedValues, "`"+escapePipes(enumValue)+"`")
+		}
+		if len(renderedValues) == 0 {
+			continue
+		}
+		parts = append(parts, "`"+escapePipes(key)+"`="+strings.Join(renderedValues, ", "))
+	}
+	if len(parts) == 0 {
+		return "-"
+	}
+	return strings.Join(parts, "<br>")
 }
 
 func fatalf(format string, args ...any) {

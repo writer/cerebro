@@ -5,6 +5,110 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 12 - Contract Versioning + Runtime Event Validation + Generated Schema Catalogs (2026-03-09)
+
+### Review findings (external-pattern driven)
+- [x] Gap: Backstage-style envelope contract versioning (`apiVersion` + kind-specific validation) was not present in declarative mapper config.
+- [x] Gap: CloudEvents docs existed, but machine-readable contract artifacts (JSON catalog + per-event data schemas) were missing.
+- [x] Gap: enforce-mode validation happened at node/edge write time only; event payload contract validation did not run before mapping.
+- [x] Gap: OpenLineage facet learnings (`_producer`, `_schemaURL`) were not mapped into ingest metadata pointers on graph writes.
+- [x] Gap: no API endpoint exposed generated ingest contracts for runtime introspection/automation.
+- [x] Gap: no compatibility checker enforced version bumps for required data-key additions or enum tightening.
+- [x] Gap: CI drift checks covered markdown catalogs but not machine-readable contracts.
+
+### Execution plan
+- [x] Introduce mapping contract/version surface:
+  - [x] Extend mapper config with top-level `apiVersion`/`kind`.
+  - [x] Extend per-mapping contract metadata: `apiVersion`, `contractVersion`, `schemaURL`, `dataEnums`.
+  - [x] Add normalization defaults (`cerebro.graphingest/v1alpha1`, `MappingConfig`, `1.0.0`) in parser/runtime.
+- [x] Build shared contract extraction in `internal/graphingest`:
+  - [x] Add contract catalog model (`ContractCatalog`, `MappingContract`, envelope field contracts).
+  - [x] Derive required/optional/resolve/context keys from mapping templates.
+  - [x] Generate per-mapping JSON data schemas from template-derived required keys + enum constraints.
+- [x] Add enforce-path runtime event validation:
+  - [x] Validate required CloudEvent envelope fields (id/source/type/time) before mapping writes.
+  - [x] Validate required data key presence and enum constraints against derived contracts.
+  - [x] Validate optional `schema_version` and `dataschema` alignment when producer emits them.
+  - [x] Reject + dead-letter whole event in enforce mode on contract mismatch (`invalid_event_contract`).
+  - [x] Track event-level rejection counters and reject-code breakdowns in mapper stats.
+- [x] Deepen node/edge metadata enrichment:
+  - [x] Add ingest metadata pointers on writes:
+    - [x] `source_schema_url`
+    - [x] `producer_fingerprint`
+    - [x] `contract_version`
+    - [x] `contract_api_version`
+    - [x] `mapping_name`
+    - [x] `event_type`
+- [x] Add generated machine-readable contracts:
+  - [x] Extend CloudEvents generator to emit:
+    - [x] `docs/CLOUDEVENTS_AUTOGEN.md` (human-readable)
+    - [x] `docs/CLOUDEVENTS_CONTRACTS.json` (machine-readable)
+  - [x] Add unit coverage for contract extraction and compatibility logic.
+- [x] Add compatibility checker:
+  - [x] Add `scripts/check_cloudevents_contract_compat/main.go`.
+  - [x] Compare current contracts against baseline git ref (`HEAD^1`/`HEAD^`/`origin/main` fallback).
+  - [x] Fail on required-key additions or enum tightening without major contract version bump.
+- [x] Expose runtime contracts API:
+  - [x] Add `GET /api/v1/graph/ingest/contracts`.
+  - [x] Serve generated contract catalog from runtime mapper when initialized; fallback to default config.
+  - [x] Add handler test + OpenAPI route contract.
+- [x] Harden CI/Make guardrails:
+  - [x] Extend `cloudevents-docs-check` to include both markdown + JSON contract artifacts.
+  - [x] Add CI job `cloudevents-contract-compat`.
+  - [x] Keep drift checks green for generated contract artifacts.
+- [x] Update architecture/research docs:
+  - [x] Add contract catalog references in architecture + ontology docs.
+  - [x] Extend external-pattern doc with google-cloudevents catalog-generation learnings.
+
+## Deep Review Cycle 11 - CloudEvents Contract Auto-Generation + Drift Guardrails (2026-03-09)
+
+### Review findings
+- [x] Gap: graph ontology had autogen docs, but CloudEvents + mapper contract surfaces were still implicit in code.
+- [x] Gap: CI lacked generated-doc drift checks for event contract catalogs.
+- [x] Gap: external-pattern learnings (CloudEvents envelope rigor, Backstage-style contract visibility) were not reflected in generated artifacts.
+
+### Execution plan
+- [x] Add CloudEvents contract autogen:
+  - [x] Add `scripts/generate_cloudevents_docs/main.go`.
+  - [x] Generate `docs/CLOUDEVENTS_AUTOGEN.md` from `internal/events.CloudEvent` + `internal/graphingest/mappings.yaml`.
+  - [x] Extract template-derived required/optional data keys per mapping and identity `resolve(...)` usage.
+- [x] Add guardrails:
+  - [x] Add `make cloudevents-docs` and `make cloudevents-docs-check`.
+  - [x] Add CI job `cloudevents-docs-drift` in `.github/workflows/ci.yml`.
+- [x] Add coverage tests:
+  - [x] Add script unit tests for template normalization and mapping contract extraction.
+- [x] Update architecture/intelligence docs to link CloudEvents autogen catalog.
+
+## Deep Review Cycle 10 - Metadata Profiles + Metadata Quality Intelligence + External Pattern Benchmarking (2026-03-09)
+
+### Review findings
+- [x] Gap: ontology schema validated required properties but lacked first-class metadata profile contracts (required metadata keys, enum constraints, timestamp validation) per kind.
+- [x] Gap: schema health did not expose dedicated metadata issue classes, making metadata drift hard to prioritize.
+- [x] Gap: no dedicated intelligence API existed for metadata profile coverage and per-kind metadata quality.
+- [x] Gap: ontology autogen docs did not include metadata profile matrices.
+- [x] Gap: external project design patterns were not captured in one benchmark-to-implementation doc.
+
+### Execution plan
+- [x] Add metadata profile contract surface in schema registry:
+  - [x] Add `NodeMetadataProfile` to `NodeKindDefinition`.
+  - [x] Add new schema issue codes for metadata gaps (`missing_metadata_key`, `invalid_metadata_enum`, `invalid_metadata_timestamp`).
+  - [x] Extend node validation with metadata profile checks.
+  - [x] Extend normalization/merge/clone/compatibility-warning logic for metadata profiles.
+- [x] Deepen built-in ontology metadata enrichment:
+  - [x] Add metadata profiles to core operational/decision kinds.
+  - [x] Add canonical enum constraints for high-variance fields (`status`, `state`, `severity`, `verdict`, etc.).
+  - [x] Validate temporal metadata keys as RFC3339 timestamps.
+- [x] Improve metadata observability/intelligence:
+  - [x] Extend schema health report with metadata issue breakdowns and recommendations.
+  - [x] Add `BuildGraphMetadataQualityReport(...)` with per-kind rollups.
+  - [x] Add `GET /api/v1/graph/intelligence/metadata-quality` endpoint + tests + OpenAPI contract.
+- [x] Expand auto-generated ontology docs:
+  - [x] Extend `scripts/generate_graph_ontology_docs/main.go` to emit node metadata profile matrix.
+  - [x] Regenerate `docs/GRAPH_ONTOLOGY_AUTOGEN.md`.
+- [x] Capture external benchmark research via GH CLI:
+  - [x] Add `docs/GRAPH_ONTOLOGY_EXTERNAL_PATTERNS.md` covering OpenLineage, DataHub, OpenMetadata, Backstage, and CloudEvents learnings.
+  - [x] Link benchmark doc from architecture/ontology docs.
+
 ## Deep Review Cycle 9 - Ontology Auto-Generation + CI/CD Runtime Ontology Depth (2026-03-09)
 
 ### Review findings

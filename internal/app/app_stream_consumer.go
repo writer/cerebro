@@ -258,15 +258,17 @@ func (a *App) applyTapDeclarativeMappings(evt events.CloudEvent) (bool, error) {
 			"mappings", result.MappingNames,
 			"nodes", len(result.NodesUpserted),
 			"edges", len(result.EdgesUpserted),
+			"events_rejected", result.EventsRejected,
 			"nodes_rejected", result.NodesRejected,
 			"edges_rejected", result.EdgesRejected,
 			"dead_lettered", result.DeadLettered,
 		)
 	}
-	if (result.NodesRejected > 0 || result.EdgesRejected > 0) && a.Logger != nil {
+	if (result.EventsRejected > 0 || result.NodesRejected > 0 || result.EdgesRejected > 0) && a.Logger != nil {
 		a.Logger.Warn("tap declarative mapping rejected invalid writes",
 			"event_type", evt.Type,
 			"mappings", result.MappingNames,
+			"events_rejected", result.EventsRejected,
 			"nodes_rejected", result.NodesRejected,
 			"edges_rejected", result.EdgesRejected,
 			"dead_lettered", result.DeadLettered,

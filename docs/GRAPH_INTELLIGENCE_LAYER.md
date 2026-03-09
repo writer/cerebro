@@ -40,6 +40,8 @@ See [GRAPH_ONTOLOGY_ARCHITECTURE.md](./GRAPH_ONTOLOGY_ARCHITECTURE.md) for ontol
 
 All write surfaces must populate provenance and temporal metadata (`source_system`, `source_event_id`, `observed_at`, `valid_from`, optional `valid_to`, `confidence`) so ontology conformance and temporal traversal remain consistent.
 
+CloudEvents and mapper contracts are generated in `docs/CLOUDEVENTS_AUTOGEN.md` and `docs/CLOUDEVENTS_CONTRACTS.json` to keep event envelope, mapping versions, and generated data schemas explicit.
+
 ## Query Interfaces
 
 ### 1) Deterministic Insight API
@@ -48,8 +50,10 @@ Primary interface for product surfaces and automations.
 Current endpoint:
 - `GET /api/v1/graph/intelligence/insights`
 - `GET /api/v1/graph/intelligence/quality`
+- `GET /api/v1/graph/intelligence/metadata-quality`
 - `GET /api/v1/graph/intelligence/leverage`
 - `GET /api/v1/graph/ingest/health`
+- `GET /api/v1/graph/ingest/contracts`
 
 Output characteristics:
 - Prioritized `insights[]`
@@ -66,6 +70,12 @@ Quality report characteristics:
 - Temporal metadata completeness and freshness KPIs.
 - Decision/outcome write-back closure rate.
 - Prioritized recommendations with suggested remediation actions.
+
+Metadata quality report characteristics:
+- Per-kind metadata profile coverage and top unprofiled kinds.
+- Required metadata key coverage.
+- RFC3339 timestamp validity and enum normalization quality.
+- Per-kind missing required keys and invalid metadata distributions.
 
 Ingest health characteristics:
 - Mapper runtime counters (processed, matched, rejected, dead-lettered).

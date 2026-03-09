@@ -9,6 +9,9 @@ Graph-specific architecture references:
 - [Graph Intelligence Layer](./GRAPH_INTELLIGENCE_LAYER.md)
 - [Graph Ontology Architecture](./GRAPH_ONTOLOGY_ARCHITECTURE.md)
 - [Graph Ontology Auto-Generated Catalog](./GRAPH_ONTOLOGY_AUTOGEN.md)
+- [CloudEvents Auto-Generated Catalog](./CLOUDEVENTS_AUTOGEN.md)
+- [CloudEvents Machine-Readable Contract Catalog](./CLOUDEVENTS_CONTRACTS.json)
+- [Graph Ontology External Patterns](./GRAPH_ONTOLOGY_EXTERNAL_PATTERNS.md)
 
 ## System Architecture
 

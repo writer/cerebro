@@ -1,7 +1,9 @@
 package graphingest
 
 import (
+	"crypto/sha256"
 	_ "embed"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path"
@@ -42,14 +44,20 @@ type MapperOptions struct {
 }
 
 type MappingConfig struct {
-	Mappings []EventMapping `json:"mappings" yaml:"mappings"`
+	APIVersion string         `json:"apiVersion,omitempty" yaml:"apiVersion,omitempty"`
+	Kind       string         `json:"kind,omitempty" yaml:"kind,omitempty"`
+	Mappings   []EventMapping `json:"mappings" yaml:"mappings"`
 }
 
 type EventMapping struct {
-	Name   string        `json:"name" yaml:"name"`
-	Source string        `json:"source" yaml:"source"`
-	Nodes  []NodeMapping `json:"nodes" yaml:"nodes"`
-	Edges  []EdgeMapping `json:"edges" yaml:"edges"`
+	Name            string              `json:"name" yaml:"name"`
+	Source          string              `json:"source" yaml:"source"`
+	APIVersion      string              `json:"apiVersion,omitempty" yaml:"apiVersion,omitempty"`
+	ContractVersion string              `json:"contractVersion,omitempty" yaml:"contractVersion,omitempty"`
+	SchemaURL       string              `json:"schemaURL,omitempty" yaml:"schemaURL,omitempty"`
+	DataEnums       map[string][]string `json:"dataEnums,omitempty" yaml:"dataEnums,omitempty"`
+	Nodes           []NodeMapping       `json:"nodes" yaml:"nodes"`
+	Edges           []EdgeMapping       `json:"edges" yaml:"edges"`
 }
 
 type NodeMapping struct {
@@ -71,25 +79,28 @@ type EdgeMapping struct {
 }
 
 type ApplyResult struct {
-	Matched       bool     `json:"matched"`
-	MappingNames  []string `json:"mapping_names,omitempty"`
-	NodesUpserted []string `json:"nodes_upserted,omitempty"`
-	EdgesUpserted []string `json:"edges_upserted,omitempty"`
-	NodesRejected int      `json:"nodes_rejected,omitempty"`
-	EdgesRejected int      `json:"edges_rejected,omitempty"`
-	DeadLettered  int      `json:"dead_lettered,omitempty"`
+	Matched        bool     `json:"matched"`
+	MappingNames   []string `json:"mapping_names,omitempty"`
+	NodesUpserted  []string `json:"nodes_upserted,omitempty"`
+	EdgesUpserted  []string `json:"edges_upserted,omitempty"`
+	EventsRejected int      `json:"events_rejected,omitempty"`
+	NodesRejected  int      `json:"nodes_rejected,omitempty"`
+	EdgesRejected  int      `json:"edges_rejected,omitempty"`
+	DeadLettered   int      `json:"dead_lettered,omitempty"`
 }
 
 // MapperStats captures mapper counters since process start.
 type MapperStats struct {
 	EventsProcessed    int64                        `json:"events_processed"`
 	EventsMatched      int64                        `json:"events_matched"`
+	EventsRejected     int64                        `json:"events_rejected"`
 	NodesUpserted      int64                        `json:"nodes_upserted"`
 	EdgesUpserted      int64                        `json:"edges_upserted"`
 	NodesRejected      int64                        `json:"nodes_rejected"`
 	EdgesRejected      int64                        `json:"edges_rejected"`
 	DeadLettered       int64                        `json:"dead_lettered"`
 	DeadLetterFailures int64                        `json:"dead_letter_failures"`
+	EventRejectByCode  map[string]int               `json:"event_reject_by_code,omitempty"`
 	NodeRejectByCode   map[string]int               `json:"node_reject_by_code,omitempty"`
 	EdgeRejectByCode   map[string]int               `json:"edge_reject_by_code,omitempty"`
 	SourceStats        map[string]MapperSourceStats `json:"source_stats,omitempty"`
@@ -100,6 +111,7 @@ type MapperSourceStats struct {
 	EventsProcessed int64     `json:"events_processed"`
 	EventsMatched   int64     `json:"events_matched"`
 	EventsUnmatched int64     `json:"events_unmatched"`
+	EventsRejected  int64     `json:"events_rejected"`
 	NodesUpserted   int64     `json:"nodes_upserted"`
 	EdgesUpserted   int64     `json:"edges_upserted"`
 	NodesRejected   int64     `json:"nodes_rejected"`
@@ -110,6 +122,7 @@ type MapperSourceStats struct {
 
 type Mapper struct {
 	config     MappingConfig
+	contracts  map[string]MappingContract
 	resolver   IdentityResolver
 	options    MapperOptions
 	deadLetter DeadLetterSink
@@ -139,19 +152,9 @@ func ParseConfig(payload []byte) (MappingConfig, error) {
 	if err := yaml.Unmarshal(payload, &config); err != nil {
 		return MappingConfig{}, fmt.Errorf("decode mapping config: %w", err)
 	}
-	if len(config.Mappings) == 0 {
-		return MappingConfig{}, fmt.Errorf("mapping config requires at least one mapping")
-	}
-	for idx := range config.Mappings {
-		mapping := &config.Mappings[idx]
-		mapping.Name = strings.TrimSpace(mapping.Name)
-		mapping.Source = strings.TrimSpace(mapping.Source)
-		if mapping.Name == "" {
-			mapping.Name = fmt.Sprintf("mapping_%d", idx+1)
-		}
-		if mapping.Source == "" {
-			return MappingConfig{}, fmt.Errorf("mapping %q requires source", mapping.Name)
-		}
+	normalizeMappingConfig(&config)
+	if err := validateMappingConfig(config); err != nil {
+		return MappingConfig{}, err
 	}
 	return config, nil
 }
@@ -163,9 +166,12 @@ func NewMapper(config MappingConfig, resolver IdentityResolver) (*Mapper, error)
 }
 
 func NewMapperWithOptions(config MappingConfig, resolver IdentityResolver, opts MapperOptions) (*Mapper, error) {
-	if len(config.Mappings) == 0 {
-		return nil, fmt.Errorf("mapper requires at least one mapping")
+	config = cloneMappingConfig(config)
+	normalizeMappingConfig(&config)
+	if err := validateMappingConfig(config); err != nil {
+		return nil, err
 	}
+	contracts := BuildMappingContractLookup(BuildMappingContracts(config))
 	options := normalizeMapperOptions(opts)
 	var deadLetter DeadLetterSink
 	if options.DeadLetterPath != "" {
@@ -177,13 +183,15 @@ func NewMapperWithOptions(config MappingConfig, resolver IdentityResolver, opts 
 	}
 	return &Mapper{
 		config:     config,
+		contracts:  contracts,
 		resolver:   resolver,
 		options:    options,
 		deadLetter: deadLetter,
 		stats: MapperStats{
-			NodeRejectByCode: make(map[string]int),
-			EdgeRejectByCode: make(map[string]int),
-			SourceStats:      make(map[string]MapperSourceStats),
+			EventRejectByCode: make(map[string]int),
+			NodeRejectByCode:  make(map[string]int),
+			EdgeRejectByCode:  make(map[string]int),
+			SourceStats:       make(map[string]MapperSourceStats),
 		},
 	}, nil
 }
@@ -198,16 +206,34 @@ func (m *Mapper) Stats() MapperStats {
 	return MapperStats{
 		EventsProcessed:    m.stats.EventsProcessed,
 		EventsMatched:      m.stats.EventsMatched,
+		EventsRejected:     m.stats.EventsRejected,
 		NodesUpserted:      m.stats.NodesUpserted,
 		EdgesUpserted:      m.stats.EdgesUpserted,
 		NodesRejected:      m.stats.NodesRejected,
 		EdgesRejected:      m.stats.EdgesRejected,
 		DeadLettered:       m.stats.DeadLettered,
 		DeadLetterFailures: m.stats.DeadLetterFailures,
+		EventRejectByCode:  cloneIntMap(m.stats.EventRejectByCode),
 		NodeRejectByCode:   cloneIntMap(m.stats.NodeRejectByCode),
 		EdgeRejectByCode:   cloneIntMap(m.stats.EdgeRejectByCode),
 		SourceStats:        cloneSourceStatsMap(m.stats.SourceStats),
 	}
+}
+
+// Config returns a copy of mapper configuration including contract metadata.
+func (m *Mapper) Config() MappingConfig {
+	if m == nil {
+		return MappingConfig{}
+	}
+	return cloneMappingConfig(m.config)
+}
+
+// ContractCatalog returns current CloudEvents + mapping contract catalog for this mapper.
+func (m *Mapper) ContractCatalog(now time.Time) ContractCatalog {
+	if m == nil {
+		return ContractCatalog{}
+	}
+	return BuildContractCatalog(m.config, now)
 }
 
 func (m *Mapper) Apply(g *graph.Graph, evt events.CloudEvent) (ApplyResult, error) {
@@ -224,6 +250,7 @@ func (m *Mapper) Apply(g *graph.Graph, evt events.CloudEvent) (ApplyResult, erro
 	matchedNames := make([]string, 0)
 	nodesUpserted := make([]string, 0)
 	edgesUpserted := make([]string, 0)
+	eventsRejected := 0
 	nodesRejected := 0
 	edgesRejected := 0
 	deadLettered := 0
@@ -234,7 +261,31 @@ func (m *Mapper) Apply(g *graph.Graph, evt events.CloudEvent) (ApplyResult, erro
 			continue
 		}
 
+		contract, hasContract := m.contracts[mapping.Name]
+		if hasContract {
+			eventIssues := ValidateEventAgainstMappingContract(evt, mapping, contract)
+			if len(eventIssues) > 0 && m.shouldEnforceValidation() {
+				eventsRejected++
+				m.incrementEventRejected(eventIssues, eventSource, evt.Time)
+				if m.writeDeadLetter(buildDeadLetterRecord(evt, mapping.Name, "event", strings.TrimSpace(evt.ID), strings.TrimSpace(evt.Type), map[string]any{
+					"event": map[string]any{
+						"id":             evt.ID,
+						"source":         evt.Source,
+						"type":           evt.Type,
+						"time":           evt.Time.UTC().Format(time.RFC3339),
+						"dataschema":     evt.DataSchema,
+						"schema_version": evt.SchemaVersion,
+						"data":           evt.Data,
+					},
+					"contract": contract,
+				}, eventIssues), eventSource, evt.Time) {
+					deadLettered++
+				}
+				continue
+			}
+		}
 		matchedNames = append(matchedNames, mapping.Name)
+
 		for _, nodeDef := range mapping.Nodes {
 			nodeID := strings.TrimSpace(m.renderTemplate(nodeDef.ID, context, evt))
 			if nodeID == "" {
@@ -253,7 +304,7 @@ func (m *Mapper) Apply(g *graph.Graph, evt events.CloudEvent) (ApplyResult, erro
 				provider = sourceSystemFromEvent(evt)
 			}
 			properties := m.renderProperties(nodeDef.Properties, context, evt)
-			ensureTemporalAndProvenance(properties, evt)
+			ensureTemporalAndProvenance(properties, evt, mapping, contract)
 			node := &graph.Node{
 				ID:         nodeID,
 				Kind:       nodeKind,
@@ -297,7 +348,7 @@ func (m *Mapper) Apply(g *graph.Graph, evt events.CloudEvent) (ApplyResult, erro
 			}
 			effect := parseEdgeEffect(edgeDef.Effect)
 			properties := m.renderProperties(edgeDef.Properties, context, evt)
-			ensureTemporalAndProvenance(properties, evt)
+			ensureTemporalAndProvenance(properties, evt, mapping, contract)
 
 			edgeID := strings.TrimSpace(m.renderTemplate(edgeDef.ID, context, evt))
 			if edgeID == "" {
@@ -341,13 +392,14 @@ func (m *Mapper) Apply(g *graph.Graph, evt events.CloudEvent) (ApplyResult, erro
 	sort.Strings(edgesUpserted)
 	m.incrementMatched(len(matchedNames) > 0, eventSource, evt.Time)
 	return ApplyResult{
-		Matched:       len(matchedNames) > 0,
-		MappingNames:  matchedNames,
-		NodesUpserted: nodesUpserted,
-		EdgesUpserted: edgesUpserted,
-		NodesRejected: nodesRejected,
-		EdgesRejected: edgesRejected,
-		DeadLettered:  deadLettered,
+		Matched:        len(matchedNames) > 0,
+		MappingNames:   matchedNames,
+		NodesUpserted:  nodesUpserted,
+		EdgesUpserted:  edgesUpserted,
+		EventsRejected: eventsRejected,
+		NodesRejected:  nodesRejected,
+		EdgesRejected:  edgesRejected,
+		DeadLettered:   deadLettered,
 	}, nil
 }
 
@@ -481,7 +533,7 @@ func mappingMatchesSource(pattern, eventType string) bool {
 	return matched
 }
 
-func ensureTemporalAndProvenance(properties map[string]any, evt events.CloudEvent) {
+func ensureTemporalAndProvenance(properties map[string]any, evt events.CloudEvent, mapping EventMapping, contract MappingContract) {
 	if properties == nil {
 		return
 	}
@@ -502,6 +554,59 @@ func ensureTemporalAndProvenance(properties map[string]any, evt events.CloudEven
 	if _, ok := properties["confidence"]; !ok {
 		properties["confidence"] = 0.80
 	}
+
+	sourceSchemaURL := firstNonEmptyString(
+		valueToString(properties["source_schema_url"]),
+		strings.TrimSpace(contract.SchemaURL),
+		strings.TrimSpace(evt.DataSchema),
+	)
+	if sourceSchemaURL != "" {
+		properties["source_schema_url"] = sourceSchemaURL
+	}
+
+	contractVersion := firstNonEmptyString(
+		valueToString(properties["contract_version"]),
+		strings.TrimSpace(contract.ContractVersion),
+		strings.TrimSpace(evt.SchemaVersion),
+	)
+	if contractVersion != "" {
+		properties["contract_version"] = contractVersion
+	}
+
+	contractAPIVersion := firstNonEmptyString(
+		valueToString(properties["contract_api_version"]),
+		strings.TrimSpace(contract.APIVersion),
+		strings.TrimSpace(mapping.APIVersion),
+	)
+	if contractAPIVersion != "" {
+		properties["contract_api_version"] = contractAPIVersion
+	}
+
+	mappingName := firstNonEmptyString(valueToString(properties["mapping_name"]), strings.TrimSpace(mapping.Name))
+	if mappingName != "" {
+		properties["mapping_name"] = mappingName
+	}
+
+	eventType := firstNonEmptyString(valueToString(properties["event_type"]), strings.TrimSpace(evt.Type))
+	if eventType != "" {
+		properties["event_type"] = eventType
+	}
+
+	if _, ok := properties["producer_fingerprint"]; !ok {
+		properties["producer_fingerprint"] = mapperProducerFingerprint(evt, mapping, contract)
+	}
+}
+
+func mapperProducerFingerprint(evt events.CloudEvent, mapping EventMapping, contract MappingContract) string {
+	basis := strings.Join([]string{
+		strings.TrimSpace(evt.Source),
+		strings.TrimSpace(evt.Type),
+		strings.TrimSpace(mapping.Name),
+		strings.TrimSpace(firstNonEmptyString(contract.APIVersion, mapping.APIVersion)),
+		strings.TrimSpace(firstNonEmptyString(contract.ContractVersion, mapping.ContractVersion)),
+	}, "|")
+	sum := sha256.Sum256([]byte(basis))
+	return "tapmapper:" + hex.EncodeToString(sum[:8])
 }
 
 func sourceSystemFromEvent(evt events.CloudEvent) string {
@@ -665,6 +770,19 @@ func (m *Mapper) incrementMatched(matched bool, source string, eventTime time.Ti
 	}
 	stats.LastEventAt = latestEventTime(stats.LastEventAt, eventTime)
 	m.stats.SourceStats[sourceKey(source)] = stats
+}
+
+func (m *Mapper) incrementEventRejected(issues []graph.SchemaValidationIssue, source string, eventTime time.Time) {
+	m.statsMu.Lock()
+	defer m.statsMu.Unlock()
+	m.stats.EventsRejected++
+	stats := m.sourceStatsLocked(source)
+	stats.EventsRejected++
+	stats.LastEventAt = latestEventTime(stats.LastEventAt, eventTime)
+	m.stats.SourceStats[sourceKey(source)] = stats
+	for _, issue := range issues {
+		m.stats.EventRejectByCode[string(issue.Code)]++
+	}
 }
 
 func (m *Mapper) incrementNodeUpserted(source string, eventTime time.Time) {

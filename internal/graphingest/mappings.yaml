@@ -1,3 +1,5 @@
+apiVersion: cerebro.graphingest/v1alpha1
+kind: MappingConfig
 mappings:
   # Mapper outputs should prefer specific operational and closed-loop kinds (for example
   # pull_request, incident, deployment_run, meeting, document, communication_thread,
@@ -34,6 +36,23 @@ mappings:
         effect: allow
   - name: incident_timeline_event
     source: ensemble.tap.incident.timeline.*
+    dataEnums:
+      status:
+        - open
+        - investigating
+        - mitigated
+        - resolved
+        - closed
+      severity:
+        - critical
+        - high
+        - medium
+        - low
+        - sev0
+        - sev1
+        - sev2
+        - sev3
+        - sev4
     nodes:
       - id: 'service:{{data.service}}'
         kind: service

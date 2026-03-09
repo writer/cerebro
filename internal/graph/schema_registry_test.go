@@ -342,6 +342,96 @@ func TestSchemaRegistry_ValidateNodeAndEdge(t *testing.T) {
 	}
 }
 
+func TestSchemaRegistry_ValidateNodeMetadataProfile(t *testing.T) {
+	reg := NewSchemaRegistry()
+
+	kind := NodeKind("test_metadata_profile_v1")
+	if _, err := reg.RegisterNodeKindDefinition(NodeKindDefinition{
+		Kind:       kind,
+		Categories: []NodeKindCategory{NodeCategoryBusiness},
+		Properties: map[string]string{
+			"status":      "string",
+			"observed_at": "string",
+			"valid_from":  "string",
+		},
+		RequiredProperties: []string{"status", "observed_at", "valid_from"},
+		MetadataProfile: NodeMetadataProfile{
+			RequiredKeys:  []string{"source_event_id"},
+			TimestampKeys: []string{"observed_at"},
+			EnumValues: map[string][]string{
+				"status": {"open", "closed"},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("register metadata kind failed: %v", err)
+	}
+
+	node := &Node{
+		ID:   "node:metadata-1",
+		Kind: kind,
+		Properties: map[string]any{
+			"status":      "opened",
+			"observed_at": "not-a-time",
+			"valid_from":  "2026-03-09T00:00:00Z",
+		},
+	}
+	issues := reg.ValidateNode(node)
+	if !hasIssueCode(issues, SchemaIssueMissingMetadataKey) {
+		t.Fatalf("expected missing metadata key issue, got %#v", issues)
+	}
+	if !hasIssueCode(issues, SchemaIssueInvalidMetadataEnum) {
+		t.Fatalf("expected invalid metadata enum issue, got %#v", issues)
+	}
+	if !hasIssueCode(issues, SchemaIssueInvalidMetadataTS) {
+		t.Fatalf("expected invalid metadata timestamp issue, got %#v", issues)
+	}
+}
+
+func TestSchemaRegistry_MetadataProfileMergesDefinitions(t *testing.T) {
+	reg := NewSchemaRegistry()
+	kind := NodeKind("test_metadata_profile_merge_v1")
+
+	if _, err := reg.RegisterNodeKindDefinition(NodeKindDefinition{
+		Kind:       kind,
+		Categories: []NodeKindCategory{NodeCategoryBusiness},
+		MetadataProfile: NodeMetadataProfile{
+			RequiredKeys: []string{"source_system"},
+			EnumValues: map[string][]string{
+				"status": {"open"},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("initial metadata profile register failed: %v", err)
+	}
+
+	merged, err := reg.RegisterNodeKindDefinition(NodeKindDefinition{
+		Kind:       kind,
+		Categories: []NodeKindCategory{NodeCategoryBusiness},
+		MetadataProfile: NodeMetadataProfile{
+			RequiredKeys: []string{"source_event_id"},
+			EnumValues: map[string][]string{
+				"status": {"closed"},
+			},
+			TimestampKeys: []string{"observed_at"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("merge metadata profile register failed: %v", err)
+	}
+
+	if !containsRequiredProperty(merged.MetadataProfile.RequiredKeys, "source_system") ||
+		!containsRequiredProperty(merged.MetadataProfile.RequiredKeys, "source_event_id") {
+		t.Fatalf("expected merged metadata required keys, got %#v", merged.MetadataProfile.RequiredKeys)
+	}
+	statusValues := merged.MetadataProfile.EnumValues["status"]
+	if len(statusValues) != 2 || !sliceContainsString(statusValues, "open") || !sliceContainsString(statusValues, "closed") {
+		t.Fatalf("expected merged metadata enum values, got %#v", statusValues)
+	}
+	if !containsRequiredProperty(merged.MetadataProfile.TimestampKeys, "observed_at") {
+		t.Fatalf("expected merged metadata timestamp key observed_at, got %#v", merged.MetadataProfile.TimestampKeys)
+	}
+}
+
 func hasIssueCode(issues []SchemaValidationIssue, code SchemaValidationIssueCode) bool {
 	for _, issue := range issues {
 		if issue.Code == code {

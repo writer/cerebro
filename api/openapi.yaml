@@ -2620,6 +2620,26 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/graph/ingest/contracts:
+    get:
+      tags:
+        - Graph
+      summary: Get graph ingest event contracts
+      description: Return the generated CloudEvents envelope and per-mapping ingest contracts, including derived data schemas.
+      responses:
+        '200':
+          description: Graph ingest contract catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '500':
+          description: Contract generation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/graph/toxic-combinations:
     get:
       tags:
@@ -4945,6 +4965,41 @@ paths:
       responses:
         '200':
           description: Graph quality report
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Security graph is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/graph/intelligence/metadata-quality:
+    get:
+      tags:
+        - Graph
+      summary: Build graph metadata quality intelligence KPIs
+      description: Return metadata profile coverage and per-kind metadata quality metrics with prioritized recommendations.
+      parameters:
+        - name: top_kinds
+          in: query
+          required: false
+          description: Maximum number of profiled/unprofiled kinds to include in the response (1-200).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        '200':
+          description: Graph metadata quality report
           content:
             application/json:
               schema:

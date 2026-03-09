@@ -37,7 +37,11 @@ const (
 	SchemaIssueUnknownNodeKind         SchemaValidationIssueCode = "unknown_node_kind"
 	SchemaIssueMissingRequiredProperty SchemaValidationIssueCode = "missing_required_property"
 	SchemaIssueInvalidPropertyType     SchemaValidationIssueCode = "invalid_property_type"
+	SchemaIssueInvalidEventContract    SchemaValidationIssueCode = "invalid_event_contract"
 	SchemaIssueInvalidProvenance       SchemaValidationIssueCode = "invalid_provenance"
+	SchemaIssueMissingMetadataKey      SchemaValidationIssueCode = "missing_metadata_key"
+	SchemaIssueInvalidMetadataEnum     SchemaValidationIssueCode = "invalid_metadata_enum"
+	SchemaIssueInvalidMetadataTS       SchemaValidationIssueCode = "invalid_metadata_timestamp"
 	SchemaIssueUnknownEdgeKind         SchemaValidationIssueCode = "unknown_edge_kind"
 	SchemaIssueMissingSourceNode       SchemaValidationIssueCode = "missing_source_node"
 	SchemaIssueMissingTargetNode       SchemaValidationIssueCode = "missing_target_node"
@@ -45,6 +49,19 @@ const (
 	SchemaIssueUnknownTargetKind       SchemaValidationIssueCode = "unknown_target_kind"
 	SchemaIssueRelationshipNotAllowed  SchemaValidationIssueCode = "relationship_not_allowed"
 )
+
+// NodeMetadataProfile defines per-kind metadata requirements and validation hints.
+type NodeMetadataProfile struct {
+	RequiredKeys  []string            `json:"required_keys,omitempty"`
+	OptionalKeys  []string            `json:"optional_keys,omitempty"`
+	TimestampKeys []string            `json:"timestamp_keys,omitempty"`
+	EnumValues    map[string][]string `json:"enum_values,omitempty"`
+}
+
+// IsZero allows json omitempty to elide empty metadata profiles.
+func (p NodeMetadataProfile) IsZero() bool {
+	return !hasNodeMetadataProfile(p)
+}
 
 // NodeKindDefinition describes one node kind schema registration.
 type NodeKindDefinition struct {
@@ -54,6 +71,7 @@ type NodeKindDefinition struct {
 	RequiredProperties []string             `json:"required_properties,omitempty"`
 	Relationships      []EdgeKind           `json:"relationships,omitempty"`
 	Capabilities       []NodeKindCapability `json:"capabilities,omitempty"`
+	MetadataProfile    NodeMetadataProfile  `json:"metadata_profile,omitempty"`
 	Description        string               `json:"description,omitempty"`
 }
 
@@ -569,6 +587,97 @@ func (r *SchemaRegistry) ValidateNode(node *Node) []SchemaValidationIssue {
 		}
 	}
 
+	issues = append(issues, validateNodeMetadataProfile(node, kind, def.MetadataProfile, required)...)
+
+	return issues
+}
+
+func validateNodeMetadataProfile(node *Node, kind NodeKind, profile NodeMetadataProfile, alreadyRequired map[string]struct{}) []SchemaValidationIssue {
+	profile = normalizeNodeMetadataProfile(profile)
+	if !hasNodeMetadataProfile(profile) || node == nil {
+		return nil
+	}
+
+	issues := make([]SchemaValidationIssue, 0)
+	properties := node.Properties
+
+	for _, key := range profile.RequiredKeys {
+		if _, coveredByPropertyRequirement := alreadyRequired[key]; coveredByPropertyRequirement {
+			continue
+		}
+		if properties == nil {
+			issues = append(issues, SchemaValidationIssue{
+				Code:     SchemaIssueMissingMetadataKey,
+				EntityID: node.ID,
+				Kind:     string(kind),
+				Property: key,
+				Message:  fmt.Sprintf("node kind %q requires metadata key %q", kind, key),
+			})
+			continue
+		}
+		value, ok := properties[key]
+		if !ok || value == nil {
+			issues = append(issues, SchemaValidationIssue{
+				Code:     SchemaIssueMissingMetadataKey,
+				EntityID: node.ID,
+				Kind:     string(kind),
+				Property: key,
+				Message:  fmt.Sprintf("node kind %q requires metadata key %q", kind, key),
+			})
+		}
+	}
+
+	for _, key := range profile.TimestampKeys {
+		if properties == nil {
+			continue
+		}
+		value, ok := properties[key]
+		if !ok || value == nil {
+			continue
+		}
+		if matchesPropertyType(value, "timestamp") {
+			continue
+		}
+		issues = append(issues, SchemaValidationIssue{
+			Code:     SchemaIssueInvalidMetadataTS,
+			EntityID: node.ID,
+			Kind:     string(kind),
+			Property: key,
+			Message:  fmt.Sprintf("metadata key %q on node kind %q should be RFC3339 timestamp", key, kind),
+		})
+	}
+
+	for key, allowedValues := range profile.EnumValues {
+		if properties == nil {
+			continue
+		}
+		value, ok := properties[key]
+		if !ok || value == nil {
+			continue
+		}
+		stringValue, ok := value.(string)
+		if !ok {
+			issues = append(issues, SchemaValidationIssue{
+				Code:     SchemaIssueInvalidMetadataEnum,
+				EntityID: node.ID,
+				Kind:     string(kind),
+				Property: key,
+				Message:  fmt.Sprintf("metadata key %q on node kind %q should be one of %s", key, kind, strings.Join(allowedValues, "|")),
+			})
+			continue
+		}
+		normalized := strings.ToLower(strings.TrimSpace(stringValue))
+		if normalized == "" || !sliceContainsString(allowedValues, normalized) {
+			issues = append(issues, SchemaValidationIssue{
+				Code:     SchemaIssueInvalidMetadataEnum,
+				EntityID: node.ID,
+				Kind:     string(kind),
+				Property: key,
+				Message:  fmt.Sprintf("metadata key %q on node kind %q should be one of %s", key, kind, strings.Join(allowedValues, "|")),
+			})
+		}
+	}
+
 	return issues
 }
 
@@ -762,6 +871,7 @@ func normalizeNodeKindDefinition(def NodeKindDefinition) (NodeKindDefinition, er
 		}
 		capabilities = append(capabilities, normalizedCapability)
 	}
+	metadataProfile := normalizeNodeMetadataProfile(def.MetadataProfile)
 
 	return NodeKindDefinition{
 		Kind:               kind,
@@ -770,6 +880,7 @@ func normalizeNodeKindDefinition(def NodeKindDefinition) (NodeKindDefinition, er
 		RequiredProperties: uniqueSortedStrings(required),
 		Relationships:      uniqueSortedEdgeKinds(relationships),
 		Capabilities:       uniqueSortedNodeCapabilities(capabilities),
+		MetadataProfile:    metadataProfile,
 		Description:        strings.TrimSpace(def.Description),
 	}, nil
 }
@@ -808,12 +919,67 @@ func normalizeNodeCapability(capability NodeKindCapability) (NodeKindCapability,
 	}
 }
 
+func normalizeNodeMetadataProfile(profile NodeMetadataProfile) NodeMetadataProfile {
+	required := uniqueSortedStrings(profile.RequiredKeys)
+	requiredSet := make(map[string]struct{}, len(required))
+	for _, key := range required {
+		requiredSet[key] = struct{}{}
+	}
+
+	optionalRaw := uniqueSortedStrings(profile.OptionalKeys)
+	optional := make([]string, 0, len(optionalRaw))
+	for _, key := range optionalRaw {
+		if _, required := requiredSet[key]; required {
+			continue
+		}
+		optional = append(optional, key)
+	}
+	optional = uniqueSortedStrings(optional)
+
+	timestamps := uniqueSortedStrings(profile.TimestampKeys)
+	enumValues := make(map[string][]string)
+	for key, values := range profile.EnumValues {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		normalizedValues := make([]string, 0, len(values))
+		for _, value := range values {
+			value = strings.ToLower(strings.TrimSpace(value))
+			if value == "" {
+				continue
+			}
+			normalizedValues = append(normalizedValues, value)
+		}
+		normalizedValues = uniqueSortedStrings(normalizedValues)
+		if len(normalizedValues) == 0 {
+			continue
+		}
+		enumValues[key] = normalizedValues
+	}
+	if len(enumValues) == 0 {
+		enumValues = nil
+	}
+
+	profile = NodeMetadataProfile{
+		RequiredKeys:  required,
+		OptionalKeys:  optional,
+		TimestampKeys: timestamps,
+		EnumValues:    enumValues,
+	}
+	if !hasNodeMetadataProfile(profile) {
+		return NodeMetadataProfile{}
+	}
+	return profile
+}
+
 func mergeNodeKindDefinitions(existing NodeKindDefinition, incoming NodeKindDefinition) NodeKindDefinition {
 	merged := cloneNodeKindDefinition(existing)
 	merged.Categories = uniqueSortedNodeCategories(append(merged.Categories, incoming.Categories...))
 	merged.RequiredProperties = uniqueSortedStrings(append(merged.RequiredProperties, incoming.RequiredProperties...))
 	merged.Relationships = uniqueSortedEdgeKinds(append(merged.Relationships, incoming.Relationships...))
 	merged.Capabilities = uniqueSortedNodeCapabilities(append(merged.Capabilities, incoming.Capabilities...))
+	merged.MetadataProfile = mergeNodeMetadataProfiles(merged.MetadataProfile, incoming.MetadataProfile)
 
 	if merged.Properties == nil && len(incoming.Properties) > 0 {
 		merged.Properties = make(map[string]string, len(incoming.Properties))
@@ -830,6 +996,38 @@ func mergeNodeKindDefinitions(existing NodeKindDefinition, incoming NodeKindDefi
 	return merged
 }
 
+func mergeNodeMetadataProfiles(existing NodeMetadataProfile, incoming NodeMetadataProfile) NodeMetadataProfile {
+	if !hasNodeMetadataProfile(existing) {
+		return normalizeNodeMetadataProfile(incoming)
+	}
+	if !hasNodeMetadataProfile(incoming) {
+		return normalizeNodeMetadataProfile(existing)
+	}
+
+	merged := NodeMetadataProfile{
+		RequiredKeys:  append([]string(nil), existing.RequiredKeys...),
+		OptionalKeys:  append([]string(nil), existing.OptionalKeys...),
+		TimestampKeys: append([]string(nil), existing.TimestampKeys...),
+		EnumValues:    cloneStringSliceMap(existing.EnumValues),
+	}
+	merged.RequiredKeys = uniqueSortedStrings(append(merged.RequiredKeys, incoming.RequiredKeys...))
+	merged.OptionalKeys = uniqueSortedStrings(append(merged.OptionalKeys, incoming.OptionalKeys...))
+	merged.TimestampKeys = uniqueSortedStrings(append(merged.TimestampKeys, incoming.TimestampKeys...))
+
+	if merged.EnumValues == nil && len(incoming.EnumValues) > 0 {
+		merged.EnumValues = make(map[string][]string, len(incoming.EnumValues))
+	}
+	for key, values := range incoming.EnumValues {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		merged.EnumValues[key] = uniqueSortedStrings(append(merged.EnumValues[key], values...))
+	}
+
+	return normalizeNodeMetadataProfile(merged)
+}
+
 func cloneNodeKindDefinition(def NodeKindDefinition) NodeKindDefinition {
 	cloned := NodeKindDefinition{
 		Kind:               def.Kind,
@@ -837,6 +1035,7 @@ func cloneNodeKindDefinition(def NodeKindDefinition) NodeKindDefinition {
 		RequiredProperties: append([]string(nil), def.RequiredProperties...),
 		Relationships:      append([]EdgeKind(nil), def.Relationships...),
 		Capabilities:       append([]NodeKindCapability(nil), def.Capabilities...),
+		MetadataProfile:    cloneNodeMetadataProfile(def.MetadataProfile),
 		Description:        def.Description,
 	}
 	if def.Properties != nil {
@@ -846,6 +1045,25 @@ func cloneNodeKindDefinition(def NodeKindDefinition) NodeKindDefinition {
 		}
 	}
 	return cloned
+}
+
+func cloneNodeMetadataProfile(profile NodeMetadataProfile) NodeMetadataProfile {
+	if !hasNodeMetadataProfile(profile) {
+		return NodeMetadataProfile{}
+	}
+	return NodeMetadataProfile{
+		RequiredKeys:  append([]string(nil), profile.RequiredKeys...),
+		OptionalKeys:  append([]string(nil), profile.OptionalKeys...),
+		TimestampKeys: append([]string(nil), profile.TimestampKeys...),
+		EnumValues:    cloneStringSliceMap(profile.EnumValues),
+	}
+}
+
+func hasNodeMetadataProfile(profile NodeMetadataProfile) bool {
+	return len(profile.RequiredKeys) > 0 ||
+		len(profile.OptionalKeys) > 0 ||
+		len(profile.TimestampKeys) > 0 ||
+		len(profile.EnumValues) > 0
 }
 
 func compatibilityWarningsForNodeUpdate(existing NodeKindDefinition, incoming NodeKindDefinition) []string {
@@ -873,6 +1091,28 @@ func compatibilityWarningsForNodeUpdate(existing NodeKindDefinition, incoming No
 			continue
 		}
 		warnings = append(warnings, fmt.Sprintf("node kind %q changed property %q type from %s to %s", existing.Kind, key, strings.Join(oldTypes, "|"), strings.Join(newTypes, "|")))
+	}
+
+	existingRequiredMetadata := make(map[string]struct{}, len(existing.MetadataProfile.RequiredKeys))
+	for _, key := range existing.MetadataProfile.RequiredKeys {
+		existingRequiredMetadata[key] = struct{}{}
+	}
+	for _, key := range incoming.MetadataProfile.RequiredKeys {
+		if _, ok := existingRequiredMetadata[key]; ok {
+			continue
+		}
+		warnings = append(warnings, fmt.Sprintf("node kind %q added required metadata key %q", existing.Kind, key))
+	}
+
+	for key, incomingValues := range incoming.MetadataProfile.EnumValues {
+		existingValues, ok := existing.MetadataProfile.EnumValues[key]
+		if !ok {
+			continue
+		}
+		if reflect.DeepEqual(existingValues, incomingValues) {
+			continue
+		}
+		warnings = append(warnings, fmt.Sprintf("node kind %q changed metadata enum %q from %s to %s", existing.Kind, key, strings.Join(existingValues, "|"), strings.Join(incomingValues, "|")))
 	}
 
 	return uniqueSortedStrings(warnings)
@@ -1028,6 +1268,33 @@ func sliceContainsEdgeKind(values []EdgeKind, target EdgeKind) bool {
 	return false
 }
 
+func sliceContainsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+func cloneStringSliceMap(values map[string][]string) map[string][]string {
+	if len(values) == 0 {
+		return nil
+	}
+	cloned := make(map[string][]string, len(values))
+	for key, entries := range values {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		cloned[key] = append([]string(nil), entries...)
+	}
+	if len(cloned) == 0 {
+		return nil
+	}
+	return cloned
+}
+
 func uniqueSortedNodeCategories(values []NodeKindCategory) []NodeKindCategory {
 	if len(values) == 0 {
 		return nil
@@ -1166,10 +1433,34 @@ func cloneSchemaChanges(changes []SchemaChange) []SchemaChange {
 	return out
 }
 
+var defaultWriteMetadataKeys = []string{
+	"source_system",
+	"source_event_id",
+	"observed_at",
+	"valid_from",
+	"valid_to",
+	"confidence",
+}
+
+var defaultWriteTimestampKeys = []string{
+	"observed_at",
+	"valid_from",
+	"valid_to",
+}
+
+func writeMetadataProfile(requiredKeys []string, enumValues map[string][]string) NodeMetadataProfile {
+	return normalizeNodeMetadataProfile(NodeMetadataProfile{
+		RequiredKeys:  append([]string(nil), requiredKeys...),
+		OptionalKeys:  append([]string(nil), defaultWriteMetadataKeys...),
+		TimestampKeys: append([]string(nil), defaultWriteTimestampKeys...),
+		EnumValues:    cloneStringSliceMap(enumValues),
+	})
+}
+
 var builtInNodeKinds = []NodeKindDefinition{
 	{Kind: NodeKindAny},
-	{Kind: NodeKindUser, Categories: []NodeKindCategory{NodeCategoryIdentity}},
-	{Kind: NodeKindPerson, Categories: []NodeKindCategory{NodeCategoryIdentity}},
+	{Kind: NodeKindUser, Categories: []NodeKindCategory{NodeCategoryIdentity}, MetadataProfile: writeMetadataProfile(nil, nil)},
+	{Kind: NodeKindPerson, Categories: []NodeKindCategory{NodeCategoryIdentity}, MetadataProfile: writeMetadataProfile(nil, nil)},
 	{
 		Kind:       NodeKindIdentityAlias,
 		Categories: []NodeKindCategory{NodeCategoryIdentity},
@@ -1186,10 +1477,26 @@ var builtInNodeKinds = []NodeKindDefinition{
 		},
 		RequiredProperties: []string{"source_system", "external_id", "observed_at", "valid_from"},
 		Relationships:      []EdgeKind{EdgeKindAliasOf},
+		MetadataProfile: writeMetadataProfile(
+			[]string{"source_system", "observed_at", "valid_from"},
+			map[string][]string{
+				"alias_type": {"email", "username", "uid", "upn", "employee_id", "github", "slack"},
+			},
+		),
 	},
-	{Kind: NodeKindRole, Categories: []NodeKindCategory{NodeCategoryIdentity}, Capabilities: []NodeKindCapability{NodeCapabilityPrivilegedIdentity}},
-	{Kind: NodeKindGroup, Categories: []NodeKindCategory{NodeCategoryIdentity}},
-	{Kind: NodeKindServiceAccount, Categories: []NodeKindCategory{NodeCategoryIdentity}, Capabilities: []NodeKindCapability{NodeCapabilityPrivilegedIdentity}},
+	{
+		Kind:            NodeKindRole,
+		Categories:      []NodeKindCategory{NodeCategoryIdentity},
+		Capabilities:    []NodeKindCapability{NodeCapabilityPrivilegedIdentity},
+		MetadataProfile: writeMetadataProfile(nil, nil),
+	},
+	{Kind: NodeKindGroup, Categories: []NodeKindCategory{NodeCategoryIdentity}, MetadataProfile: writeMetadataProfile(nil, nil)},
+	{
+		Kind:            NodeKindServiceAccount,
+		Categories:      []NodeKindCategory{NodeCategoryIdentity},
+		Capabilities:    []NodeKindCapability{NodeCapabilityPrivilegedIdentity},
+		MetadataProfile: writeMetadataProfile(nil, nil),
+	},
 	{
 		Kind:       NodeKindService,
 		Categories: []NodeKindCategory{NodeCategoryResource, NodeCategoryBusiness},
@@ -1206,6 +1513,12 @@ var builtInNodeKinds = []NodeKindDefinition{
 		},
 		RequiredProperties: []string{"service_id", "observed_at", "valid_from"},
 		Relationships:      []EdgeKind{EdgeKindOwns, EdgeKindRuns, EdgeKindDependsOn, EdgeKindTargets},
+		MetadataProfile: writeMetadataProfile(
+			[]string{"source_system", "observed_at", "valid_from"},
+			map[string][]string{
+				"criticality": {"critical", "high", "medium", "low", "tier0", "tier1", "tier2", "tier3"},
+			},
+		),
 	},
 	{
 		Kind:       NodeKindWorkload,
@@ -1224,6 +1537,12 @@ var builtInNodeKinds = []NodeKindDefinition{
 		},
 		RequiredProperties: []string{"workload_id", "runtime", "observed_at", "valid_from"},
 		Relationships:      []EdgeKind{EdgeKindConnectsTo, EdgeKindDependsOn, EdgeKindTargets},
+		MetadataProfile: writeMetadataProfile(
+			[]string{"source_system", "observed_at", "valid_from"},
+			map[string][]string{
+				"environment": {"prod", "production", "staging", "qa", "dev", "test", "sandbox"},
+			},
+		),
 	},
 	{Kind: NodeKindBucket, Categories: []NodeKindCategory{NodeCategoryResource}, Capabilities: []NodeKindCapability{NodeCapabilityInternetExposable, NodeCapabilitySensitiveData}},
 	{Kind: NodeKindInstance, Categories: []NodeKindCategory{NodeCategoryResource}, Capabilities: []NodeKindCapability{NodeCapabilityInternetExposable}},
@@ -1271,6 +1590,12 @@ var builtInNodeKinds = []NodeKindDefinition{
 		},
 		RequiredProperties: []string{"repository", "number", "state", "observed_at", "valid_from"},
 		Relationships:      []EdgeKind{EdgeKindTargets, EdgeKindBasedOn},
+		MetadataProfile: writeMetadataProfile(
+			[]string{"source_system", "observed_at", "valid_from"},
+			map[string][]string{
+				"state": {"open", "opened", "closed", "merged", "draft", "review_submitted"},
+			},
+		),
 	},
 	{
 		Kind:       NodeKindDeploymentRun,
@@ -1289,6 +1614,13 @@ var builtInNodeKinds = []NodeKindDefinition{
 		},
 		RequiredProperties: []string{"deploy_id", "service_id", "environment", "status", "observed_at", "valid_from"},
 		Relationships:      []EdgeKind{EdgeKindTargets, EdgeKindBasedOn, EdgeKindDependsOn},
+		MetadataProfile: writeMetadataProfile(
+			[]string{"source_system", "observed_at", "valid_from"},
+			map[string][]string{
+				"status":      {"queued", "pending", "in_progress", "running", "completed", "success", "successful", "succeeded", "failure", "failed", "cancelled", "error"},
+				"environment": {"prod", "production", "staging", "qa", "dev", "test", "sandbox"},
+			},
+		),
 	},
 	{
 		Kind:       NodeKindPipelineRun,
@@ -1311,6 +1643,12 @@ var builtInNodeKinds = []NodeKindDefinition{
 		},
 		RequiredProperties: []string{"pipeline_id", "run_id", "status", "service_id", "observed_at", "valid_from"},
 		Relationships:      []EdgeKind{EdgeKindTargets, EdgeKindBasedOn, EdgeKindExecutedBy},
+		MetadataProfile: writeMetadataProfile(
+			[]string{"source_system", "observed_at", "valid_from"},
+			map[string][]string{
+				"status": {"queued", "pending", "in_progress", "running", "completed", "success", "successful", "succeeded", "failure", "failed", "passed", "cancelled", "neutral", "timed_out", "action_required", "skipped"},
+			},
+		),
 	},
 	{
 		Kind:       NodeKindCheckRun,
@@ -1332,6 +1670,13 @@ var builtInNodeKinds = []NodeKindDefinition{
 		},
 		RequiredProperties: []string{"check_run_id", "repository", "check_name", "status", "observed_at", "valid_from"},
 		Relationships:      []EdgeKind{EdgeKindTargets, EdgeKindBasedOn, EdgeKindEvaluates},
+		MetadataProfile: writeMetadataProfile(
+			[]string{"source_system", "observed_at", "valid_from"},
+			map[string][]string{
+				"status":     {"queued", "in_progress", "completed"},
+				"conclusion": {"success", "failure", "neutral", "cancelled", "timed_out", "action_required", "stale", "skipped", "startup_failure"},
+			},
+		),
 	},
 	{
 		Kind:       NodeKindMeeting,
@@ -1350,6 +1695,10 @@ var builtInNodeKinds = []NodeKindDefinition{
 		},
 		RequiredProperties: []string{"meeting_id", "starts_at", "ends_at", "observed_at", "valid_from"},
 		Relationships:      []EdgeKind{EdgeKindTargets, EdgeKindAssignedTo, EdgeKindBasedOn},
+		MetadataProfile: writeMetadataProfile(
+			[]string{"source_system", "observed_at", "valid_from"},
+			nil,
+		),
 	},
 	{
 		Kind:       NodeKindDocument,
@@ -1367,6 +1716,10 @@ var builtInNodeKinds = []NodeKindDefinition{
 		},
 		RequiredProperties: []string{"document_id", "title", "observed_at", "valid_from"},
 		Relationships:      []EdgeKind{EdgeKindTargets, EdgeKindBasedOn},
+		MetadataProfile: writeMetadataProfile(
+			[]string{"source_system", "observed_at", "valid_from"},
+			nil,
+		),
 	},
 	{
 		Kind:       NodeKindThread,
@@ -1384,6 +1737,10 @@ var builtInNodeKinds = []NodeKindDefinition{
 		},
 		RequiredProperties: []string{"thread_id", "channel_id", "observed_at", "valid_from"},
 		Relationships:      []EdgeKind{EdgeKindTargets, EdgeKindInteractedWith, EdgeKindBasedOn},
+		MetadataProfile: writeMetadataProfile(
+			[]string{"source_system", "observed_at", "valid_from"},
+			nil,
+		),
 	},
 	{
 		Kind:       NodeKindIncident,
@@ -1402,6 +1759,13 @@ var builtInNodeKinds = []NodeKindDefinition{
 		},
 		RequiredProperties: []string{"incident_id", "status", "observed_at", "valid_from"},
 		Relationships:      []EdgeKind{EdgeKindTargets, EdgeKindBasedOn, EdgeKindEvaluates},
+		MetadataProfile: writeMetadataProfile(
+			[]string{"source_system", "observed_at", "valid_from"},
+			map[string][]string{
+				"status":   {"triggered", "acknowledged", "investigating", "monitoring", "open", "resolved", "closed", "postmortem"},
+				"severity": {"critical", "high", "medium", "low", "sev1", "sev2", "sev3", "sev4"},
+			},
+		),
 	},
 	{
 		Kind:       NodeKindDecision,
@@ -1421,6 +1785,12 @@ var builtInNodeKinds = []NodeKindDefinition{
 		},
 		RequiredProperties: []string{"decision_type", "status", "made_at", "observed_at", "valid_from"},
 		Relationships:      []EdgeKind{EdgeKindTargets, EdgeKindBasedOn, EdgeKindExecutedBy},
+		MetadataProfile: writeMetadataProfile(
+			[]string{"source_system", "observed_at", "valid_from"},
+			map[string][]string{
+				"status": {"proposed", "approved", "rejected", "deferred", "cancelled", "in_progress", "completed"},
+			},
+		),
 	},
 	{
 		Kind:       NodeKindOutcome,
@@ -1438,6 +1808,12 @@ var builtInNodeKinds = []NodeKindDefinition{
 		},
 		RequiredProperties: []string{"outcome_type", "verdict", "observed_at", "valid_from"},
 		Relationships:      []EdgeKind{EdgeKindEvaluates, EdgeKindTargets},
+		MetadataProfile: writeMetadataProfile(
+			[]string{"source_system", "observed_at", "valid_from"},
+			map[string][]string{
+				"verdict": {"positive", "negative", "neutral", "mixed", "unknown"},
+			},
+		),
 	},
 	{
 		Kind:       NodeKindEvidence,
@@ -1454,6 +1830,10 @@ var builtInNodeKinds = []NodeKindDefinition{
 		},
 		RequiredProperties: []string{"evidence_type", "source_system", "observed_at", "valid_from"},
 		Relationships:      []EdgeKind{EdgeKindTargets, EdgeKindBasedOn},
+		MetadataProfile: writeMetadataProfile(
+			[]string{"source_system", "observed_at", "valid_from"},
+			nil,
+		),
 	},
 	{
 		Kind:       NodeKindAction,
@@ -1472,6 +1852,7 @@ var builtInNodeKinds = []NodeKindDefinition{
 		},
 		RequiredProperties: []string{"action_type", "status", "observed_at", "valid_from"},
 		Relationships:      []EdgeKind{EdgeKindTargets, EdgeKindEvaluates, EdgeKindBasedOn, EdgeKindInteractedWith},
+		MetadataProfile:    writeMetadataProfile([]string{"source_system", "observed_at", "valid_from"}, nil),
 	},
 	{Kind: NodeKindDepartment, Categories: []NodeKindCategory{NodeCategoryBusiness}},
 	{Kind: NodeKindLocation, Categories: []NodeKindCategory{NodeCategoryBusiness}},

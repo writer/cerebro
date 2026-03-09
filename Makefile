@@ -1,4 +1,4 @@
-.PHONY: build run test sync clean dev serve policy-list docker-build trivy-db security-scan security-scan-built security-scan-source vendor vendor-check oss-audit openapi-check openapi-sync config-docs config-docs-check ontology-docs ontology-docs-check platform-up platform-down platform-logs platform-smoke hooks
+.PHONY: build run test sync clean dev serve policy-list docker-build trivy-db security-scan security-scan-built security-scan-source vendor vendor-check oss-audit openapi-check openapi-sync config-docs config-docs-check ontology-docs ontology-docs-check cloudevents-docs cloudevents-docs-check cloudevents-contract-compat platform-up platform-down platform-logs platform-smoke hooks
 
 # Version info
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -146,6 +146,15 @@ ontology-docs:
 
 ontology-docs-check: ontology-docs
 	git diff --exit-code -- docs/GRAPH_ONTOLOGY_AUTOGEN.md
+
+cloudevents-docs:
+	go run ./scripts/generate_cloudevents_docs/main.go
+
+cloudevents-docs-check: cloudevents-docs
+	git diff --exit-code -- docs/CLOUDEVENTS_AUTOGEN.md docs/CLOUDEVENTS_CONTRACTS.json
+
+cloudevents-contract-compat:
+	go run ./scripts/check_cloudevents_contract_compat/main.go
 
 # Docker run
 docker-run:

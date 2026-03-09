@@ -170,6 +170,28 @@ func (s *Server) graphIntelligenceQuality(w http.ResponseWriter, r *http.Request
 	s.json(w, http.StatusOK, report)
 }
 
+func (s *Server) graphIntelligenceMetadataQuality(w http.ResponseWriter, r *http.Request) {
+	if s.app.SecurityGraph == nil {
+		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		return
+	}
+
+	topKinds := 25
+	if raw := strings.TrimSpace(r.URL.Query().Get("top_kinds")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 200 {
+			s.error(w, http.StatusBadRequest, "top_kinds must be between 1 and 200")
+			return
+		}
+		topKinds = parsed
+	}
+
+	report := graph.BuildGraphMetadataQualityReport(s.app.SecurityGraph, graph.GraphMetadataQualityReportOptions{
+		TopKinds: topKinds,
+	})
+	s.json(w, http.StatusOK, report)
+}
+
 func (s *Server) graphIntelligenceLeverage(w http.ResponseWriter, r *http.Request) {
 	if s.app.SecurityGraph == nil {
 		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
@@ -373,6 +395,31 @@ func (s *Server) graphIngestDeadLetter(w http.ResponseWriter, r *http.Request) {
 			"entity_kind":  strings.TrimSpace(r.URL.Query().Get("entity_kind")),
 		},
 		"result": result,
+	})
+}
+
+func (s *Server) graphIngestContracts(w http.ResponseWriter, _ *http.Request) {
+	now := time.Now().UTC()
+	if s.app != nil && s.app.TapEventMapper != nil {
+		catalog := s.app.TapEventMapper.ContractCatalog(now)
+		s.json(w, http.StatusOK, map[string]any{
+			"generated_at": now,
+			"source":       "runtime_mapper",
+			"catalog":      catalog,
+		})
+		return
+	}
+
+	config, err := graphingest.LoadDefaultConfig()
+	if err != nil {
+		s.error(w, http.StatusInternalServerError, fmt.Sprintf("load default graph mapping config: %v", err))
+		return
+	}
+	catalog := graphingest.BuildContractCatalog(config, now)
+	s.json(w, http.StatusOK, map[string]any{
+		"generated_at": now,
+		"source":       "default_config",
+		"catalog":      catalog,
 	})
 }
 

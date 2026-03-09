@@ -65,6 +65,11 @@ API handlers, tool writeback handlers, and graph actuation flows should all norm
 Generated ontology snapshot:
 
 - `docs/GRAPH_ONTOLOGY_AUTOGEN.md` (via `go run ./scripts/generate_graph_ontology_docs/main.go`)
+- Includes node metadata profile matrix (required keys, timestamp keys, enum constraints).
+- `docs/CLOUDEVENTS_AUTOGEN.md` (via `go run ./scripts/generate_cloudevents_docs/main.go`) for event envelope and mapping-level contract extraction.
+- `docs/CLOUDEVENTS_CONTRACTS.json` for machine-readable event/mapping contracts and per-mapping generated data schemas.
+- `go run ./scripts/check_cloudevents_contract_compat/main.go` to enforce required-key/enum compatibility with versioning discipline.
+- External benchmark references: `docs/GRAPH_ONTOLOGY_EXTERNAL_PATTERNS.md`
 
 ## Ingestion Mapping Strategy
 

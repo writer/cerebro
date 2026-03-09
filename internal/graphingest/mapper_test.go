@@ -21,6 +21,36 @@ func TestLoadDefaultConfig(t *testing.T) {
 	}
 }
 
+func TestParseConfig_NormalizesContractDefaults(t *testing.T) {
+	payload := []byte(`
+mappings:
+  - name: sample
+    source: ensemble.tap.test.sample
+    nodes:
+      - id: service:{{data.service}}
+        kind: service
+`)
+	config, err := ParseConfig(payload)
+	if err != nil {
+		t.Fatalf("parse config failed: %v", err)
+	}
+	if config.APIVersion != defaultMappingConfigAPIVersion {
+		t.Fatalf("expected default apiVersion %q, got %q", defaultMappingConfigAPIVersion, config.APIVersion)
+	}
+	if config.Kind != defaultMappingConfigKind {
+		t.Fatalf("expected default kind %q, got %q", defaultMappingConfigKind, config.Kind)
+	}
+	if len(config.Mappings) != 1 {
+		t.Fatalf("expected one mapping, got %d", len(config.Mappings))
+	}
+	if config.Mappings[0].APIVersion != defaultMappingConfigAPIVersion {
+		t.Fatalf("expected mapping apiVersion default, got %q", config.Mappings[0].APIVersion)
+	}
+	if config.Mappings[0].ContractVersion != defaultMappingContractVersion {
+		t.Fatalf("expected mapping contractVersion default %q, got %q", defaultMappingContractVersion, config.Mappings[0].ContractVersion)
+	}
+}
+
 func TestMapperApply_GithubPRMerged(t *testing.T) {
 	config, err := LoadDefaultConfig()
 	if err != nil {
@@ -458,6 +488,141 @@ func TestMapperApply_EnforceValidationRejectsInvalidWritesToDeadLetter(t *testin
 	}
 	if !strings.Contains(string(payload), "nonexistent_kind") {
 		t.Fatalf("expected dead-letter payload to mention invalid kind, got %s", string(payload))
+	}
+}
+
+func TestMapperApply_EnforceValidationRejectsInvalidEventContract(t *testing.T) {
+	config := MappingConfig{
+		APIVersion: "cerebro.graphingest/v1alpha1",
+		Mappings: []EventMapping{
+			{
+				Name:            "event_contract",
+				Source:          "ensemble.tap.test.contract.updated",
+				ContractVersion: "1.0.0",
+				SchemaURL:       "https://schemas.example.com/event-contract.json",
+				DataEnums: map[string][]string{
+					"status": []string{"open", "closed"},
+				},
+				Nodes: []NodeMapping{
+					{
+						ID:       "service:{{data.service}}",
+						Kind:     "service",
+						Name:     "{{data.service}}",
+						Provider: "test",
+						Properties: map[string]any{
+							"service_id": "{{data.service}}",
+						},
+					},
+				},
+			},
+		},
+	}
+	dlqPath := filepath.Join(t.TempDir(), "event-contract.dlq.jsonl")
+	mapper, err := NewMapperWithOptions(config, nil, MapperOptions{
+		ValidationMode: MapperValidationEnforce,
+		DeadLetterPath: dlqPath,
+	})
+	if err != nil {
+		t.Fatalf("new mapper failed: %v", err)
+	}
+
+	g := graph.New()
+	result, err := mapper.Apply(g, events.CloudEvent{
+		ID:            "evt-contract-bad-1",
+		Type:          "ensemble.tap.test.contract.updated",
+		Time:          time.Date(2026, 3, 9, 22, 10, 0, 0, time.UTC),
+		Source:        "urn:ensemble:tap",
+		SchemaVersion: "0.9.0",
+		DataSchema:    "https://schemas.example.com/other.json",
+		Data: map[string]any{
+			"status": "invalid_status",
+		},
+	})
+	if err != nil {
+		t.Fatalf("mapper apply failed: %v", err)
+	}
+	if result.EventsRejected != 1 || result.DeadLettered != 1 {
+		t.Fatalf("expected one rejected/dead-lettered event, got %#v", result)
+	}
+	if result.Matched {
+		t.Fatalf("expected Matched=false when contract validation rejects event, got %#v", result)
+	}
+	if len(result.NodesUpserted) > 0 || len(result.EdgesUpserted) > 0 {
+		t.Fatalf("expected no writes after event-contract rejection, got %#v", result)
+	}
+
+	stats := mapper.Stats()
+	if stats.EventsRejected != 1 {
+		t.Fatalf("expected events_rejected=1, got %#v", stats)
+	}
+	if stats.EventRejectByCode[string(graph.SchemaIssueInvalidEventContract)] < 1 {
+		t.Fatalf("expected invalid_event_contract reject code, got %#v", stats.EventRejectByCode)
+	}
+	payload, err := os.ReadFile(dlqPath)
+	if err != nil {
+		t.Fatalf("read dead-letter file failed: %v", err)
+	}
+	if !strings.Contains(string(payload), string(graph.SchemaIssueInvalidEventContract)) {
+		t.Fatalf("expected dead-letter payload to include invalid_event_contract, got %s", string(payload))
+	}
+}
+
+func TestMapperApply_EnrichesContractMetadataPointers(t *testing.T) {
+	config := MappingConfig{
+		APIVersion: "cerebro.graphingest/v1alpha1",
+		Mappings: []EventMapping{
+			{
+				Name:            "metadata_pointers",
+				Source:          "ensemble.tap.test.metadata.updated",
+				ContractVersion: "2.1.0",
+				SchemaURL:       "https://schemas.example.com/metadata.json",
+				Nodes: []NodeMapping{
+					{
+						ID:       "service:{{data.service}}",
+						Kind:     "service",
+						Name:     "{{data.service}}",
+						Provider: "test",
+						Properties: map[string]any{
+							"service_id": "{{data.service}}",
+						},
+					},
+				},
+			},
+		},
+	}
+	mapper, err := NewMapper(config, nil)
+	if err != nil {
+		t.Fatalf("new mapper failed: %v", err)
+	}
+
+	g := graph.New()
+	result, err := mapper.Apply(g, events.CloudEvent{
+		ID:            "evt-metadata-1",
+		Type:          "ensemble.tap.test.metadata.updated",
+		Time:          time.Date(2026, 3, 9, 22, 30, 0, 0, time.UTC),
+		Source:        "urn:ensemble:tap",
+		SchemaVersion: "2.1.0",
+		DataSchema:    "https://schemas.example.com/metadata.json",
+		Data: map[string]any{
+			"service": "payments",
+		},
+	})
+	if err != nil {
+		t.Fatalf("mapper apply failed: %v", err)
+	}
+	if result.EventsRejected != 0 || result.NodesRejected != 0 || result.EdgesRejected != 0 {
+		t.Fatalf("expected no rejections, got %#v", result)
+	}
+
+	node, ok := g.GetNode("service:payments")
+	if !ok || node == nil {
+		t.Fatalf("expected node service:payments, got %#v", node)
+	}
+	for _, key := range []string{"source_schema_url", "producer_fingerprint", "contract_version", "contract_api_version", "mapping_name", "event_type"} {
+		value := strings.TrimSpace(valueToString(node.Properties[key]))
+		if value == "" {
+			t.Fatalf("expected metadata pointer %q on node, got %#v", key, node.Properties)
+		}
 	}
 }
 

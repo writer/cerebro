@@ -1,0 +1,832 @@
+{
+  "apiVersion": "cerebro.graph.contracts/v1alpha1",
+  "kind": "CloudEventMappingContractCatalog",
+  "generated_at": "0001-01-01T00:00:00Z",
+  "envelope_fields": [
+    {
+      "name": "datacontenttype",
+      "type": "string",
+      "required": true
+    },
+    {
+      "name": "dataschema",
+      "type": "string",
+      "required": true
+    },
+    {
+      "name": "id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "name": "schema_version",
+      "type": "string",
+      "required": true
+    },
+    {
+      "name": "source",
+      "type": "string",
+      "required": true
+    },
+    {
+      "name": "specversion",
+      "type": "string",
+      "required": true
+    },
+    {
+      "name": "tenant_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "name": "time",
+      "type": "time.Time",
+      "required": true
+    },
+    {
+      "name": "traceparent",
+      "type": "string",
+      "required": true
+    },
+    {
+      "name": "type",
+      "type": "string",
+      "required": true
+    },
+    {
+      "name": "data",
+      "type": "map[string]interface {}",
+      "required": false
+    },
+    {
+      "name": "subject",
+      "type": "string",
+      "required": false
+    }
+  ],
+  "mappings": [
+    {
+      "name": "calendar_meeting_recorded",
+      "source_pattern": "ensemble.tap.calendar.meeting.recorded",
+      "domain": "calendar",
+      "wildcard_pattern": false,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "meeting",
+        "service"
+      ],
+      "edge_kinds": [
+        "assigned_to",
+        "targets"
+      ],
+      "required_data_keys": [
+        "meeting_id",
+        "organizer_email",
+        "service"
+      ],
+      "optional_data_keys": [
+        "ends_at",
+        "starts_at",
+        "title"
+      ],
+      "resolve_keys": [
+        "organizer_email"
+      ],
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "ends_at": {},
+          "meeting_id": {},
+          "organizer_email": {},
+          "service": {},
+          "starts_at": {},
+          "title": {}
+        },
+        "required": [
+          "meeting_id",
+          "organizer_email",
+          "service"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "ci_deploy_completed",
+      "source_pattern": "ensemble.tap.ci.deploy.completed",
+      "domain": "ci",
+      "wildcard_pattern": false,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "deployment_run",
+        "service",
+        "workload"
+      ],
+      "edge_kinds": [
+        "based_on",
+        "interacted_with",
+        "runs",
+        "targets"
+      ],
+      "required_data_keys": [
+        "actor_email",
+        "deploy_id",
+        "service"
+      ],
+      "optional_data_keys": [
+        "environment",
+        "release_version",
+        "status"
+      ],
+      "resolve_keys": [
+        "actor_email"
+      ],
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "actor_email": {},
+          "deploy_id": {},
+          "environment": {},
+          "release_version": {},
+          "service": {},
+          "status": {}
+        },
+        "required": [
+          "actor_email",
+          "deploy_id",
+          "service"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "ci_pipeline_completed",
+      "source_pattern": "ensemble.tap.ci.pipeline.completed",
+      "domain": "ci",
+      "wildcard_pattern": false,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "pipeline_run",
+        "service"
+      ],
+      "edge_kinds": [
+        "interacted_with",
+        "targets"
+      ],
+      "required_data_keys": [
+        "actor_email",
+        "pipeline_id",
+        "run_id",
+        "service"
+      ],
+      "optional_data_keys": [
+        "branch",
+        "commit_sha",
+        "completed_at",
+        "pipeline_name",
+        "started_at",
+        "status"
+      ],
+      "resolve_keys": [
+        "actor_email"
+      ],
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "actor_email": {},
+          "branch": {},
+          "commit_sha": {},
+          "completed_at": {},
+          "pipeline_id": {},
+          "pipeline_name": {},
+          "run_id": {},
+          "service": {},
+          "started_at": {},
+          "status": {}
+        },
+        "required": [
+          "actor_email",
+          "pipeline_id",
+          "run_id",
+          "service"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "docs_page_edited",
+      "source_pattern": "ensemble.tap.docs.page.edited",
+      "domain": "docs",
+      "wildcard_pattern": false,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "document",
+        "evidence"
+      ],
+      "edge_kinds": [
+        "based_on",
+        "interacted_with"
+      ],
+      "required_data_keys": [
+        "doc_id",
+        "editor_email",
+        "version"
+      ],
+      "optional_data_keys": [
+        "change_summary",
+        "title",
+        "url"
+      ],
+      "resolve_keys": [
+        "editor_email"
+      ],
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "change_summary": {},
+          "doc_id": {},
+          "editor_email": {},
+          "title": {},
+          "url": {},
+          "version": {}
+        },
+        "required": [
+          "doc_id",
+          "editor_email",
+          "version"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "github_check_run_completed",
+      "source_pattern": "ensemble.tap.github.check_run.completed",
+      "domain": "github",
+      "wildcard_pattern": false,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "check_run",
+        "service"
+      ],
+      "edge_kinds": [
+        "interacted_with",
+        "targets"
+      ],
+      "required_data_keys": [
+        "actor_email",
+        "check_run_id",
+        "repository"
+      ],
+      "optional_data_keys": [
+        "check_name",
+        "commit_sha",
+        "conclusion",
+        "status",
+        "url"
+      ],
+      "resolve_keys": [
+        "actor_email"
+      ],
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "actor_email": {},
+          "check_name": {},
+          "check_run_id": {},
+          "commit_sha": {},
+          "conclusion": {},
+          "repository": {},
+          "status": {},
+          "url": {}
+        },
+        "required": [
+          "actor_email",
+          "check_run_id",
+          "repository"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "github_pr_merged",
+      "source_pattern": "ensemble.tap.github.pull_request.merged",
+      "domain": "github",
+      "wildcard_pattern": false,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "pull_request",
+        "service"
+      ],
+      "edge_kinds": [
+        "interacted_with",
+        "targets"
+      ],
+      "required_data_keys": [
+        "merged_by_email",
+        "number",
+        "repository"
+      ],
+      "optional_data_keys": [
+        "merged_by",
+        "title"
+      ],
+      "resolve_keys": [
+        "merged_by_email"
+      ],
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "merged_by": {},
+          "merged_by_email": {},
+          "number": {},
+          "repository": {},
+          "title": {}
+        },
+        "required": [
+          "merged_by_email",
+          "number",
+          "repository"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "github_pr_opened",
+      "source_pattern": "ensemble.tap.github.pull_request.opened",
+      "domain": "github",
+      "wildcard_pattern": false,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "pull_request",
+        "service"
+      ],
+      "edge_kinds": [
+        "interacted_with",
+        "targets"
+      ],
+      "required_data_keys": [
+        "author_email",
+        "number",
+        "repository"
+      ],
+      "optional_data_keys": [
+        "author",
+        "title"
+      ],
+      "resolve_keys": [
+        "author_email"
+      ],
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "author": {},
+          "author_email": {},
+          "number": {},
+          "repository": {},
+          "title": {}
+        },
+        "required": [
+          "author_email",
+          "number",
+          "repository"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "github_pr_review_submitted",
+      "source_pattern": "ensemble.tap.github.pull_request.review_submitted",
+      "domain": "github",
+      "wildcard_pattern": false,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "pull_request",
+        "service"
+      ],
+      "edge_kinds": [
+        "interacted_with",
+        "targets"
+      ],
+      "required_data_keys": [
+        "number",
+        "repository",
+        "reviewer_email"
+      ],
+      "optional_data_keys": [
+        "state"
+      ],
+      "resolve_keys": [
+        "reviewer_email"
+      ],
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "number": {},
+          "repository": {},
+          "reviewer_email": {},
+          "state": {}
+        },
+        "required": [
+          "number",
+          "repository",
+          "reviewer_email"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "incident_timeline_event",
+      "source_pattern": "ensemble.tap.incident.timeline.*",
+      "domain": "incident",
+      "wildcard_pattern": true,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "action",
+        "evidence",
+        "incident",
+        "service"
+      ],
+      "edge_kinds": [
+        "based_on",
+        "targets"
+      ],
+      "required_data_keys": [
+        "event_id",
+        "incident_id",
+        "service"
+      ],
+      "optional_data_keys": [
+        "actor_email",
+        "event_type",
+        "performed_at",
+        "severity",
+        "status",
+        "summary",
+        "title"
+      ],
+      "resolve_keys": [
+        "actor_email"
+      ],
+      "data_enums": {
+        "severity": [
+          "critical",
+          "high",
+          "low",
+          "medium",
+          "sev0",
+          "sev1",
+          "sev2",
+          "sev3",
+          "sev4"
+        ],
+        "status": [
+          "closed",
+          "investigating",
+          "mitigated",
+          "open",
+          "resolved"
+        ]
+      },
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "actor_email": {},
+          "event_id": {},
+          "event_type": {},
+          "incident_id": {},
+          "performed_at": {},
+          "service": {},
+          "severity": {
+            "enum": [
+              "critical",
+              "high",
+              "low",
+              "medium",
+              "sev0",
+              "sev1",
+              "sev2",
+              "sev3",
+              "sev4"
+            ]
+          },
+          "status": {
+            "enum": [
+              "closed",
+              "investigating",
+              "mitigated",
+              "open",
+              "resolved"
+            ]
+          },
+          "summary": {},
+          "title": {}
+        },
+        "required": [
+          "event_id",
+          "incident_id",
+          "service"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "jira_issue_transition",
+      "source_pattern": "ensemble.tap.jira.issue.transitioned",
+      "domain": "jira",
+      "wildcard_pattern": false,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "action",
+        "ticket"
+      ],
+      "edge_kinds": [
+        "assigned_to",
+        "targets"
+      ],
+      "required_data_keys": [
+        "actor_email",
+        "issue_key",
+        "transition_id"
+      ],
+      "optional_data_keys": [
+        "from_status",
+        "issue_type",
+        "performed_at",
+        "project_key",
+        "summary",
+        "to_status"
+      ],
+      "resolve_keys": [
+        "actor_email"
+      ],
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "actor_email": {},
+          "from_status": {},
+          "issue_key": {},
+          "issue_type": {},
+          "performed_at": {},
+          "project_key": {},
+          "summary": {},
+          "to_status": {},
+          "transition_id": {}
+        },
+        "required": [
+          "actor_email",
+          "issue_key",
+          "transition_id"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "sales_call_logged",
+      "source_pattern": "ensemble.tap.sales.call.logged",
+      "domain": "sales",
+      "wildcard_pattern": false,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "action",
+        "contact"
+      ],
+      "edge_kinds": [
+        "interacted_with",
+        "targets"
+      ],
+      "required_data_keys": [
+        "call_id",
+        "contact_id",
+        "rep_email"
+      ],
+      "optional_data_keys": [
+        "contact_email",
+        "contact_name",
+        "duration_minutes",
+        "logged_at",
+        "summary"
+      ],
+      "resolve_keys": [
+        "rep_email"
+      ],
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "call_id": {},
+          "contact_email": {},
+          "contact_id": {},
+          "contact_name": {},
+          "duration_minutes": {},
+          "logged_at": {},
+          "rep_email": {},
+          "summary": {}
+        },
+        "required": [
+          "call_id",
+          "contact_id",
+          "rep_email"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "slack_thread_message",
+      "source_pattern": "ensemble.tap.slack.thread.message_posted",
+      "domain": "slack",
+      "wildcard_pattern": false,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "action",
+        "communication_thread"
+      ],
+      "edge_kinds": [
+        "interacted_with",
+        "targets"
+      ],
+      "required_data_keys": [
+        "author_email",
+        "channel_id",
+        "message_ts",
+        "thread_ts"
+      ],
+      "optional_data_keys": [
+        "channel_name",
+        "text"
+      ],
+      "resolve_keys": [
+        "author_email"
+      ],
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "author_email": {},
+          "channel_id": {},
+          "channel_name": {},
+          "message_ts": {},
+          "text": {},
+          "thread_ts": {}
+        },
+        "required": [
+          "author_email",
+          "channel_id",
+          "message_ts",
+          "thread_ts"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "support_ticket_updated",
+      "source_pattern": "ensemble.tap.support.ticket.updated",
+      "domain": "support",
+      "wildcard_pattern": false,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "action",
+        "ticket"
+      ],
+      "edge_kinds": [
+        "assigned_to",
+        "targets"
+      ],
+      "required_data_keys": [
+        "agent_email",
+        "ticket_id",
+        "update_id"
+      ],
+      "optional_data_keys": [
+        "priority",
+        "status",
+        "subject",
+        "update_type",
+        "updated_at"
+      ],
+      "resolve_keys": [
+        "agent_email"
+      ],
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "agent_email": {},
+          "priority": {},
+          "status": {},
+          "subject": {},
+          "ticket_id": {},
+          "update_id": {},
+          "update_type": {},
+          "updated_at": {}
+        },
+        "required": [
+          "agent_email",
+          "ticket_id",
+          "update_id"
+        ],
+        "type": "object"
+      }
+    }
+  ],
+  "distinct_required_data": [
+    "actor_email",
+    "agent_email",
+    "author_email",
+    "call_id",
+    "channel_id",
+    "check_run_id",
+    "contact_id",
+    "deploy_id",
+    "doc_id",
+    "editor_email",
+    "event_id",
+    "incident_id",
+    "issue_key",
+    "meeting_id",
+    "merged_by_email",
+    "message_ts",
+    "number",
+    "organizer_email",
+    "pipeline_id",
+    "rep_email",
+    "repository",
+    "reviewer_email",
+    "run_id",
+    "service",
+    "thread_ts",
+    "ticket_id",
+    "transition_id",
+    "update_id",
+    "version"
+  ],
+  "distinct_optional_data": [
+    "author",
+    "branch",
+    "change_summary",
+    "channel_name",
+    "check_name",
+    "commit_sha",
+    "completed_at",
+    "conclusion",
+    "contact_email",
+    "contact_name",
+    "duration_minutes",
+    "ends_at",
+    "environment",
+    "event_type",
+    "from_status",
+    "issue_type",
+    "logged_at",
+    "merged_by",
+    "performed_at",
+    "pipeline_name",
+    "priority",
+    "project_key",
+    "release_version",
+    "severity",
+    "started_at",
+    "starts_at",
+    "state",
+    "status",
+    "subject",
+    "summary",
+    "text",
+    "title",
+    "to_status",
+    "update_type",
+    "updated_at",
+    "url"
+  ],
+  "distinct_resolve_keys": [
+    "actor_email",
+    "agent_email",
+    "author_email",
+    "editor_email",
+    "merged_by_email",
+    "organizer_email",
+    "rep_email",
+    "reviewer_email"
+  ]
+}

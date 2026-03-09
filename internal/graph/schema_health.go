@@ -56,6 +56,9 @@ type SchemaHealthReport struct {
 	UnknownEdgeKinds          []SchemaKindCount  `json:"unknown_edge_kinds,omitempty"`
 	MissingRequiredProperties []SchemaIssueCount `json:"missing_required_properties,omitempty"`
 	InvalidPropertyTypes      []SchemaIssueCount `json:"invalid_property_types,omitempty"`
+	MissingMetadataKeys       []SchemaIssueCount `json:"missing_metadata_keys,omitempty"`
+	InvalidMetadataEnums      []SchemaIssueCount `json:"invalid_metadata_enums,omitempty"`
+	InvalidMetadataTS         []SchemaIssueCount `json:"invalid_metadata_timestamps,omitempty"`
 	InvalidRelationships      []SchemaIssueCount `json:"invalid_relationships,omitempty"`
 
 	Drift             SchemaDriftReport      `json:"drift"`
@@ -102,6 +105,9 @@ func AnalyzeSchemaHealth(g *Graph, historyLimit int, sinceVersion int64) SchemaH
 	unknownNodeKinds := make(map[string]int)
 	missingRequired := make(map[string]*SchemaIssueCount)
 	invalidPropTypes := make(map[string]*SchemaIssueCount)
+	missingMetadata := make(map[string]*SchemaIssueCount)
+	invalidMetadataEnums := make(map[string]*SchemaIssueCount)
+	invalidMetadataTS := make(map[string]*SchemaIssueCount)
 
 	for _, node := range nodes {
 		if node == nil {
@@ -128,6 +134,15 @@ func AnalyzeSchemaHealth(g *Graph, historyLimit int, sinceVersion int64) SchemaH
 			case SchemaIssueInvalidPropertyType:
 				detail := strings.TrimSpace(fmt.Sprintf("%s.%s", issue.Kind, issue.Property))
 				addSchemaIssueCount(invalidPropTypes, string(issue.Code), detail)
+			case SchemaIssueMissingMetadataKey:
+				detail := strings.TrimSpace(fmt.Sprintf("%s.%s", issue.Kind, issue.Property))
+				addSchemaIssueCount(missingMetadata, string(issue.Code), detail)
+			case SchemaIssueInvalidMetadataEnum:
+				detail := strings.TrimSpace(fmt.Sprintf("%s.%s", issue.Kind, issue.Property))
+				addSchemaIssueCount(invalidMetadataEnums, string(issue.Code), detail)
+			case SchemaIssueInvalidMetadataTS:
+				detail := strings.TrimSpace(fmt.Sprintf("%s.%s", issue.Kind, issue.Property))
+				addSchemaIssueCount(invalidMetadataTS, string(issue.Code), detail)
 			}
 		}
 	}
@@ -174,6 +189,9 @@ func AnalyzeSchemaHealth(g *Graph, historyLimit int, sinceVersion int64) SchemaH
 	report.UnknownEdgeKinds = sortedSchemaKindCounts(unknownEdgeKinds)
 	report.MissingRequiredProperties = sortedSchemaIssueCounts(missingRequired)
 	report.InvalidPropertyTypes = sortedSchemaIssueCounts(invalidPropTypes)
+	report.MissingMetadataKeys = sortedSchemaIssueCounts(missingMetadata)
+	report.InvalidMetadataEnums = sortedSchemaIssueCounts(invalidMetadataEnums)
+	report.InvalidMetadataTS = sortedSchemaIssueCounts(invalidMetadataTS)
 	report.InvalidRelationships = sortedSchemaIssueCounts(invalidRelationships)
 	report.Recommendations = buildSchemaRecommendations(report)
 	return report
@@ -228,6 +246,36 @@ func buildSchemaRecommendations(report SchemaHealthReport) []SchemaRecommendatio
 			"Normalize property types",
 			fmt.Sprintf("Property type mismatches detected on %d distinct key(s). Top mismatches: %s.", len(report.InvalidPropertyTypes), summarizeSchemaIssueCounts(report.InvalidPropertyTypes, 3)),
 			"Coerce source values to the declared ontology types before ingest.",
+		)
+	}
+
+	if len(report.MissingMetadataKeys) > 0 {
+		add(
+			"high",
+			"metadata_required_keys",
+			"Backfill required metadata keys",
+			fmt.Sprintf("Missing metadata keys detected on %d distinct key(s). Top gaps: %s.", len(report.MissingMetadataKeys), summarizeSchemaIssueCounts(report.MissingMetadataKeys, 3)),
+			"Populate required metadata keys (source_system, source_event_id, observed_at, valid_from) for profiled kinds before writes.",
+		)
+	}
+
+	if len(report.InvalidMetadataEnums) > 0 {
+		add(
+			"medium",
+			"metadata_enums",
+			"Normalize metadata enum values",
+			fmt.Sprintf("Metadata enum mismatches detected on %d distinct key(s). Top mismatches: %s.", len(report.InvalidMetadataEnums), summarizeSchemaIssueCounts(report.InvalidMetadataEnums, 3)),
+			"Map source states/severities/statuses to canonical enum values in mapping and writeback paths.",
+		)
+	}
+
+	if len(report.InvalidMetadataTS) > 0 {
+		add(
+			"medium",
+			"metadata_timestamps",
+			"Normalize metadata timestamps",
+			fmt.Sprintf("Metadata timestamp parsing failures detected on %d distinct key(s). Top failures: %s.", len(report.InvalidMetadataTS), summarizeSchemaIssueCounts(report.InvalidMetadataTS, 3)),
+			"Emit RFC3339 timestamps consistently for all temporal metadata keys.",
 		)
 	}
 

@@ -183,6 +183,80 @@ func TestGraphIntelligenceQualityEndpoint_InvalidParams(t *testing.T) {
 	}
 }
 
+func TestGraphIntelligenceMetadataQualityEndpoint(t *testing.T) {
+	s := newTestServer(t)
+	g := s.app.SecurityGraph
+	now := time.Date(2026, 3, 9, 17, 0, 0, 0, time.UTC)
+
+	g.AddNode(&graph.Node{
+		ID:   "service:payments",
+		Kind: graph.NodeKindService,
+		Name: "Payments",
+		Properties: map[string]any{
+			"service_id":    "payments",
+			"source_system": "github",
+			"observed_at":   now.Format(time.RFC3339),
+			"valid_from":    now.Format(time.RFC3339),
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:   "deployment:1",
+		Kind: graph.NodeKindDeploymentRun,
+		Name: "Deploy #1",
+		Properties: map[string]any{
+			"deploy_id":       "dep-1",
+			"service_id":      "payments",
+			"environment":     "production",
+			"status":          "mystery_status", // invalid enum for deployment status profile
+			"source_system":   "github",
+			"source_event_id": "evt-deploy-1",
+			"observed_at":     "not-a-time", // invalid timestamp for metadata profile
+			"valid_from":      now.Format(time.RFC3339),
+		},
+	})
+
+	w := do(t, s, http.MethodGet, "/api/v1/graph/intelligence/metadata-quality?top_kinds=10", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	body := decodeJSON(t, w)
+
+	summary, ok := body["summary"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected summary object, got %#v", body["summary"])
+	}
+	if _, ok := summary["profiled_kinds"].(float64); !ok {
+		t.Fatalf("expected summary.profiled_kinds, got %#v", summary["profiled_kinds"])
+	}
+	if _, ok := summary["required_key_coverage_percent"].(float64); !ok {
+		t.Fatalf("expected summary.required_key_coverage_percent, got %#v", summary["required_key_coverage_percent"])
+	}
+	if _, ok := summary["timestamp_validity_percent"].(float64); !ok {
+		t.Fatalf("expected summary.timestamp_validity_percent, got %#v", summary["timestamp_validity_percent"])
+	}
+	if _, ok := summary["enum_validity_percent"].(float64); !ok {
+		t.Fatalf("expected summary.enum_validity_percent, got %#v", summary["enum_validity_percent"])
+	}
+
+	kinds, ok := body["kinds"].([]any)
+	if !ok || len(kinds) == 0 {
+		t.Fatalf("expected kinds array, got %#v", body["kinds"])
+	}
+	recommendations, ok := body["recommendations"].([]any)
+	if !ok || len(recommendations) == 0 {
+		t.Fatalf("expected recommendations, got %#v", body["recommendations"])
+	}
+}
+
+func TestGraphIntelligenceMetadataQualityEndpoint_InvalidParams(t *testing.T) {
+	s := newTestServer(t)
+
+	w := do(t, s, http.MethodGet, "/api/v1/graph/intelligence/metadata-quality?top_kinds=0", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for top_kinds=0, got %d", w.Code)
+	}
+}
+
 func TestGraphIntelligenceLeverageEndpoint(t *testing.T) {
 	s := newTestServer(t)
 	g := s.app.SecurityGraph
@@ -420,6 +494,35 @@ func TestGraphIngestDeadLetterEndpoint(t *testing.T) {
 	records, ok := result["records"].([]any)
 	if !ok || len(records) == 0 {
 		t.Fatalf("expected at least one dead-letter record, got %#v", result["records"])
+	}
+}
+
+func TestGraphIngestContractsEndpoint(t *testing.T) {
+	s := newTestServer(t)
+
+	w := do(t, s, http.MethodGet, "/api/v1/graph/ingest/contracts", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	body := decodeJSON(t, w)
+
+	catalogWrapper, ok := body["catalog"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected catalog object, got %#v", body["catalog"])
+	}
+	if apiVersion, _ := catalogWrapper["apiVersion"].(string); apiVersion == "" {
+		t.Fatalf("expected catalog.apiVersion, got %#v", catalogWrapper["apiVersion"])
+	}
+	mappings, ok := catalogWrapper["mappings"].([]any)
+	if !ok || len(mappings) == 0 {
+		t.Fatalf("expected non-empty contract mappings, got %#v", catalogWrapper["mappings"])
+	}
+	first, ok := mappings[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected first mapping object, got %#v", mappings[0])
+	}
+	if _, ok := first["data_schema"].(map[string]any); !ok {
+		t.Fatalf("expected first mapping data_schema object, got %#v", first["data_schema"])
 	}
 }
 
