@@ -329,14 +329,12 @@ func (p *S3Provider) parseObject(ctx context.Context, object s3ObjectMeta) (s3Pa
 	}
 	defer func() { _ = output.Body.Close() }()
 
-	reader := io.Reader(output.Body)
-	if shouldGunzip(object.Key, aws.ToString(output.ContentEncoding)) {
-		gzipReader, err := gzip.NewReader(output.Body)
-		if err != nil {
-			return s3ParseOutput{}, fmt.Errorf("open gzip stream: %w", err)
-		}
-		defer func() { _ = gzipReader.Close() }()
-		reader = gzipReader
+	reader, cleanup, err := maybeGunzipReader(output.Body, object.Key, aws.ToString(output.ContentEncoding))
+	if err != nil {
+		return s3ParseOutput{}, err
+	}
+	if cleanup != nil {
+		defer cleanup()
 	}
 
 	format := p.resolveFormat(object.Key)
@@ -418,8 +416,12 @@ func shouldGunzip(key, contentEncoding string) bool {
 }
 
 func (p *S3Provider) resolveFormat(key string) string {
-	if p.format != "" && p.format != "auto" {
-		return p.format
+	return resolveS3Format(p.format, key)
+}
+
+func resolveS3Format(format, key string) string {
+	if format != "" && format != "auto" {
+		return format
 	}
 
 	name := strings.ToLower(strings.TrimSpace(key))
@@ -435,6 +437,17 @@ func (p *S3Provider) resolveFormat(key string) string {
 	default:
 		return "text"
 	}
+}
+
+func maybeGunzipReader(body io.ReadCloser, key, contentEncoding string) (io.Reader, func(), error) {
+	if !shouldGunzip(key, contentEncoding) {
+		return body, nil, nil
+	}
+	gzipReader, err := gzip.NewReader(body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("open gzip stream: %w", err)
+	}
+	return gzipReader, func() { _ = gzipReader.Close() }, nil
 }
 
 func parseS3Records(reader io.Reader, format string, maxRecords int) ([]s3ParsedRecord, int, error) {

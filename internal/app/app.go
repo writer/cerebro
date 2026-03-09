@@ -367,12 +367,15 @@ type Config struct {
 	KandjiAPIURL   string
 	KandjiAPIToken string
 
-	// S3 Input Provider
+	// S3 Input Provider (legacy single-source)
 	S3InputBucket     string
 	S3InputPrefix     string
 	S3InputRegion     string
 	S3InputFormat     string
 	S3InputMaxObjects int
+
+	// S3 Named Sources (multi-source)
+	S3Sources []providers.S3SourceConfig
 
 	// CloudTrail Provider
 	CloudTrailRegion       string
@@ -613,6 +616,7 @@ func LoadConfig() *Config {
 		S3InputRegion:                      getEnv("S3_INPUT_REGION", getEnv("AWS_REGION", "us-east-1")),
 		S3InputFormat:                      getEnv("S3_INPUT_FORMAT", "auto"),
 		S3InputMaxObjects:                  getEnvInt("S3_INPUT_MAX_OBJECTS", 200),
+		S3Sources:                          providers.ParseS3Sources(getEnv, getEnvInt),
 		CloudTrailRegion:                   getEnv("CLOUDTRAIL_REGION", ""),
 		CloudTrailTrailARN:                 getEnv("CLOUDTRAIL_TRAIL_ARN", ""),
 		CloudTrailLookbackDays:             getEnvInt("CLOUDTRAIL_LOOKBACK_DAYS", 7),
