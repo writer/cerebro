@@ -4603,6 +4603,184 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/graph/query:
+    get:
+      tags:
+        - Graph
+      summary: Run bounded graph neighborhood and path queries
+      description: Power-query interface for read-only neighbors and k-shortest paths with strict guardrails.
+      parameters:
+        - name: mode
+          in: query
+          required: false
+          description: Query mode. Defaults to neighbors.
+          schema:
+            type: string
+            enum:
+              - neighbors
+              - paths
+        - name: node_id
+          in: query
+          required: true
+          description: Source node identifier.
+          schema:
+            type: string
+        - name: direction
+          in: query
+          required: false
+          description: Direction filter for neighbors mode.
+          schema:
+            type: string
+            enum:
+              - in
+              - out
+              - both
+        - name: limit
+          in: query
+          required: false
+          description: Result limit for neighbors mode (1-200).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: target_id
+          in: query
+          required: false
+          description: Required target node for paths mode.
+          schema:
+            type: string
+        - name: k
+          in: query
+          required: false
+          description: Number of shortest paths to return (1-10) in paths mode.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 10
+        - name: max_depth
+          in: query
+          required: false
+          description: Maximum path depth (1-12) in paths mode.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 12
+      responses:
+        '200':
+          description: Query result payload
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Requested node was not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Security graph is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/graph/intelligence/insights:
+    get:
+      tags:
+        - Graph
+      summary: Build decision-grade intelligence insights
+      description: Unified intelligence report with prioritized insights, evidence, confidence, coverage, and optional counterfactuals.
+      parameters:
+        - name: entity_id
+          in: query
+          required: false
+          description: Optional entity focus for entity-centric scoring and evidence.
+          schema:
+            type: string
+        - name: window_days
+          in: query
+          required: false
+          description: Outcome feedback window in days (1-3650).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 3650
+        - name: history_limit
+          in: query
+          required: false
+          description: Number of recent schema history entries to include (1-200).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: max_insights
+          in: query
+          required: false
+          description: Maximum number of prioritized insights to return (1-20).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+        - name: since_version
+          in: query
+          required: false
+          description: Optional schema drift baseline version.
+          schema:
+            type: integer
+            minimum: 1
+        - name: include_counterfactual
+          in: query
+          required: false
+          description: Include precomputed what-if simulations in insights.
+          schema:
+            type: boolean
+        - name: from
+          in: query
+          required: false
+          description: Optional RFC3339 lower bound snapshot timestamp for temporal diff context.
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: false
+          description: Optional RFC3339 upper bound snapshot timestamp for temporal diff context.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Unified intelligence report
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Snapshots not found for temporal diff parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Security graph is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/graph/who-knows:
     get:
       tags:

@@ -108,6 +108,38 @@ func TestCerebroGraphQueryPathsTool(t *testing.T) {
 	}
 }
 
+func TestCerebroIntelligenceReportTool(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{ID: "user:alice", Kind: graph.NodeKindUser, Name: "Alice"})
+	g.AddNode(&graph.Node{ID: "role:ops", Kind: graph.NodeKindRole, Name: "Ops"})
+	g.AddNode(&graph.Node{ID: "db:prod", Kind: graph.NodeKindDatabase, Name: "Prod DB", Risk: graph.RiskCritical})
+	g.AddEdge(&graph.Edge{ID: "alice-role", Source: "user:alice", Target: "role:ops", Kind: graph.EdgeKindCanAssume, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "role-db", Source: "role:ops", Target: "db:prod", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow})
+
+	application := &App{SecurityGraph: g}
+	tool := findCerebroTool(application.cerebroTools(), "cerebro.intelligence_report")
+	if tool == nil {
+		t.Fatal("expected intelligence report tool")
+	}
+
+	result, err := tool.Handler(context.Background(), json.RawMessage(`{"entity_id":"db:prod","include_counterfactual":false}`))
+	if err != nil {
+		t.Fatalf("tool returned error: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(result), &payload); err != nil {
+		t.Fatalf("decode tool payload: %v", err)
+	}
+	if _, ok := payload["risk_score"].(float64); !ok {
+		t.Fatalf("expected risk_score, got %#v", payload["risk_score"])
+	}
+	insights, ok := payload["insights"].([]any)
+	if !ok || len(insights) == 0 {
+		t.Fatalf("expected insights, got %#v", payload["insights"])
+	}
+}
+
 func TestCerebroFindingsTool(t *testing.T) {
 	store := policyBackedFindingStore(t)
 	application := &App{Findings: store}

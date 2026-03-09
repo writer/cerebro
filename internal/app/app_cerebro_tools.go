@@ -74,6 +74,40 @@ func (a *App) cerebroTools() []agents.Tool {
 			Handler: a.toolCerebroInsightCard,
 		},
 		{
+			Name:        "cerebro.intelligence_report",
+			Description: "Build a decision-grade intelligence report with prioritized insights and evidence",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"entity_id": map[string]any{
+						"type":        "string",
+						"description": "Optional entity focus for entity-centric scoring and recommendations",
+					},
+					"window_days": map[string]any{
+						"type":        "integer",
+						"description": "Outcome feedback window in days (1-3650)",
+						"default":     90,
+					},
+					"history_limit": map[string]any{
+						"type":        "integer",
+						"description": "Schema history entries to include (1-200)",
+						"default":     20,
+					},
+					"include_counterfactual": map[string]any{
+						"type":        "boolean",
+						"description": "Include precomputed what-if simulations in returned insights",
+						"default":     true,
+					},
+					"max_insights": map[string]any{
+						"type":        "integer",
+						"description": "Maximum number of prioritized insights to return (1-20)",
+						"default":     8,
+					},
+				},
+			},
+			Handler: a.toolCerebroIntelligenceReport,
+		},
+		{
 			Name:             "cerebro.simulate",
 			Description:      "Run a hypothetical graph simulation for proposed node/edge mutations",
 			RequiresApproval: requiresSimApproval,
@@ -359,6 +393,42 @@ func (a *App) toolCerebroInsightCard(_ context.Context, args json.RawMessage) (s
 	}
 
 	return marshalToolResponse(response)
+}
+
+func (a *App) toolCerebroIntelligenceReport(_ context.Context, args json.RawMessage) (string, error) {
+	g, err := a.requireSecurityGraph()
+	if err != nil {
+		return "", err
+	}
+
+	var req struct {
+		EntityID              string `json:"entity_id"`
+		WindowDays            int    `json:"window_days"`
+		HistoryLimit          int    `json:"history_limit"`
+		IncludeCounterfactual *bool  `json:"include_counterfactual"`
+		MaxInsights           int    `json:"max_insights"`
+	}
+	if err := decodeToolArgs(args, &req); err != nil {
+		return "", err
+	}
+
+	includeCounterfactual := true
+	if req.IncludeCounterfactual != nil {
+		includeCounterfactual = *req.IncludeCounterfactual
+	}
+
+	windowDays := clampInt(req.WindowDays, 90, 1, 3650)
+	historyLimit := clampInt(req.HistoryLimit, 20, 1, 200)
+	maxInsights := clampInt(req.MaxInsights, 8, 1, 20)
+
+	report := graph.BuildIntelligenceReport(g, graph.NewRiskEngine(g), graph.IntelligenceReportOptions{
+		EntityID:              strings.TrimSpace(req.EntityID),
+		OutcomeWindow:         time.Duration(windowDays) * 24 * time.Hour,
+		SchemaHistoryLimit:    historyLimit,
+		MaxInsights:           maxInsights,
+		IncludeCounterfactual: includeCounterfactual,
+	})
+	return marshalToolResponse(report)
 }
 
 func buildScenarioSimulationDelta(g *graph.Graph, scenario string, target string, parameters map[string]any) (graph.GraphDelta, error) {

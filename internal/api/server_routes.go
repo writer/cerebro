@@ -312,7 +312,9 @@ func (s *Server) setupRoutes() {
 		// Security Graph endpoints
 		r.Route("/graph", func(r chi.Router) {
 			r.Get("/diff", s.graphDiff)
+			r.Get("/query", s.graphQuery)
 			r.Get("/stats", s.graphStats)
+			r.Get("/intelligence/insights", s.graphIntelligenceInsights)
 			r.Get("/schema", s.getGraphSchema)
 			r.Get("/schema/health", s.getGraphSchemaHealth)
 			r.Get("/who-knows", s.whoKnows)

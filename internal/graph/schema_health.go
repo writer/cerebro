@@ -20,6 +20,15 @@ type SchemaIssueCount struct {
 	Count  int    `json:"count"`
 }
 
+// SchemaRecommendation describes one actionable ontology improvement.
+type SchemaRecommendation struct {
+	Priority        string `json:"priority"`
+	Category        string `json:"category"`
+	Title           string `json:"title"`
+	Detail          string `json:"detail"`
+	SuggestedAction string `json:"suggested_action,omitempty"`
+}
+
 // SchemaEntityCoverage summarizes coverage/conformance for one entity type.
 type SchemaEntityCoverage struct {
 	Total          int `json:"total"`
@@ -49,9 +58,10 @@ type SchemaHealthReport struct {
 	InvalidPropertyTypes      []SchemaIssueCount `json:"invalid_property_types,omitempty"`
 	InvalidRelationships      []SchemaIssueCount `json:"invalid_relationships,omitempty"`
 
-	Drift             SchemaDriftReport     `json:"drift"`
-	RecentChanges     []SchemaChange        `json:"recent_changes,omitempty"`
-	RuntimeValidation SchemaValidationStats `json:"runtime_validation"`
+	Drift             SchemaDriftReport      `json:"drift"`
+	RecentChanges     []SchemaChange         `json:"recent_changes,omitempty"`
+	RuntimeValidation SchemaValidationStats  `json:"runtime_validation"`
+	Recommendations   []SchemaRecommendation `json:"recommendations,omitempty"`
 }
 
 // AnalyzeSchemaHealth evaluates ontology quality against one graph snapshot.
@@ -165,7 +175,114 @@ func AnalyzeSchemaHealth(g *Graph, historyLimit int, sinceVersion int64) SchemaH
 	report.MissingRequiredProperties = sortedSchemaIssueCounts(missingRequired)
 	report.InvalidPropertyTypes = sortedSchemaIssueCounts(invalidPropTypes)
 	report.InvalidRelationships = sortedSchemaIssueCounts(invalidRelationships)
+	report.Recommendations = buildSchemaRecommendations(report)
 	return report
+}
+
+func buildSchemaRecommendations(report SchemaHealthReport) []SchemaRecommendation {
+	recommendations := make([]SchemaRecommendation, 0, 8)
+	add := func(priority, category, title, detail, action string) {
+		recommendations = append(recommendations, SchemaRecommendation{
+			Priority:        priority,
+			Category:        category,
+			Title:           title,
+			Detail:          detail,
+			SuggestedAction: strings.TrimSpace(action),
+		})
+	}
+
+	if report.Nodes.UnknownKind > 0 {
+		add(
+			"high",
+			"node_kind_coverage",
+			"Register unknown node kinds",
+			fmt.Sprintf("%d node(s) use unregistered kinds. Top kinds: %s.", report.Nodes.UnknownKind, summarizeSchemaKindCounts(report.UnknownNodeKinds, 3)),
+			"Add node kind definitions through /api/v1/graph/schema/register or TAP schema metadata.",
+		)
+	}
+
+	if report.Edges.UnknownKind > 0 {
+		add(
+			"high",
+			"edge_kind_coverage",
+			"Register unknown edge kinds",
+			fmt.Sprintf("%d edge(s) use unregistered kinds. Top kinds: %s.", report.Edges.UnknownKind, summarizeSchemaKindCounts(report.UnknownEdgeKinds, 3)),
+			"Register missing edge kinds and map integration relationship names to known ontology kinds.",
+		)
+	}
+
+	if len(report.MissingRequiredProperties) > 0 {
+		add(
+			"high",
+			"required_properties",
+			"Backfill required node properties",
+			fmt.Sprintf("Missing required properties detected on %d distinct key(s). Top gaps: %s.", len(report.MissingRequiredProperties), summarizeSchemaIssueCounts(report.MissingRequiredProperties, 3)),
+			"Fix upstream enrichers to emit required properties or relax overly strict requirements in the schema.",
+		)
+	}
+
+	if len(report.InvalidPropertyTypes) > 0 {
+		add(
+			"medium",
+			"property_types",
+			"Normalize property types",
+			fmt.Sprintf("Property type mismatches detected on %d distinct key(s). Top mismatches: %s.", len(report.InvalidPropertyTypes), summarizeSchemaIssueCounts(report.InvalidPropertyTypes, 3)),
+			"Coerce source values to the declared ontology types before ingest.",
+		)
+	}
+
+	if len(report.InvalidRelationships) > 0 {
+		add(
+			"high",
+			"relationship_contracts",
+			"Align edge relationships with source kind contracts",
+			fmt.Sprintf("Invalid relationships detected across %d distinct pattern(s). Top patterns: %s.", len(report.InvalidRelationships), summarizeSchemaIssueCounts(report.InvalidRelationships, 3)),
+			"Expand allowed relationships for valid use cases, or remap edge kinds to the intended relationship.",
+		)
+	}
+
+	if (report.Nodes.Total > 0 && report.NodeConformancePercent < 95) || (report.Edges.Total > 0 && report.EdgeConformancePercent < 95) {
+		add(
+			"medium",
+			"conformance",
+			"Raise ontology conformance",
+			fmt.Sprintf("Current conformance is %.1f%% for nodes and %.1f%% for edges.", report.NodeConformancePercent, report.EdgeConformancePercent),
+			"Prioritize fixes for the highest-volume issue categories first to improve conformance quickly.",
+		)
+	}
+
+	totalIssues := (report.Nodes.Total - report.Nodes.Conformant) + (report.Edges.Total - report.Edges.Conformant)
+	if report.ValidationMode != SchemaValidationEnforce && totalIssues > 0 {
+		add(
+			"medium",
+			"validation_mode",
+			"Enable enforce mode in controlled environments",
+			fmt.Sprintf("Validation mode is %q while %d entity conformance issue(s) exist.", report.ValidationMode, totalIssues),
+			"Use GRAPH_SCHEMA_VALIDATION_MODE=enforce in CI/staging to block ontology drift before production.",
+		)
+	}
+
+	if len(report.Drift.CompatibilityWarnings) > 0 {
+		add(
+			"high",
+			"schema_drift",
+			"Review potentially breaking schema changes",
+			fmt.Sprintf("%d compatibility warning(s) were introduced since schema version %d.", len(report.Drift.CompatibilityWarnings), report.SinceVersion),
+			"Version data contracts with producers and plan backfills before enforcing new requirements.",
+		)
+	}
+
+	if len(recommendations) == 0 {
+		add(
+			"low",
+			"steady_state",
+			"Maintain ontology quality",
+			"Coverage and conformance are strong with no immediate high-impact ontology gaps detected.",
+			"Keep schema health checks in CI and continue registering new kinds before new feeds are enabled.",
+		)
+	}
+
+	return recommendations
 }
 
 func addSchemaIssueCount(target map[string]*SchemaIssueCount, code, detail string) {
@@ -225,6 +342,41 @@ func sortedSchemaIssueCounts(values map[string]*SchemaIssueCount) []SchemaIssueC
 		return out[i].Count > out[j].Count
 	})
 	return out
+}
+
+func summarizeSchemaKindCounts(values []SchemaKindCount, limit int) string {
+	if len(values) == 0 {
+		return "none"
+	}
+	if limit <= 0 || limit > len(values) {
+		limit = len(values)
+	}
+	parts := make([]string, 0, limit)
+	for _, value := range values[:limit] {
+		parts = append(parts, fmt.Sprintf("%s (%d)", value.Kind, value.Count))
+	}
+	return strings.Join(parts, ", ")
+}
+
+func summarizeSchemaIssueCounts(values []SchemaIssueCount, limit int) string {
+	if len(values) == 0 {
+		return "none"
+	}
+	if limit <= 0 || limit > len(values) {
+		limit = len(values)
+	}
+	parts := make([]string, 0, limit)
+	for _, value := range values[:limit] {
+		detail := strings.TrimSpace(value.Detail)
+		if detail == "" {
+			detail = strings.TrimSpace(value.Code)
+		}
+		if detail == "" {
+			detail = "unspecified"
+		}
+		parts = append(parts, fmt.Sprintf("%s (%d)", detail, value.Count))
+	}
+	return strings.Join(parts, ", ")
 }
 
 func percent(numerator, denominator int) float64 {
