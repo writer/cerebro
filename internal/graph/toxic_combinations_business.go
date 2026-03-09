@@ -3,9 +3,15 @@ package graph
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 const businessNeighborTraversalDepth = 2
+
+const (
+	businessTrajectoryWindow   = 30 * 24 * time.Hour
+	businessHealthStreakWindow = 60 * 24 * time.Hour
+)
 
 func (e *ToxicCombinationEngine) ruleChurnCompoundSignal() *ToxicCombinationRule {
 	return &ToxicCombinationRule{
@@ -74,6 +80,66 @@ func (e *ToxicCombinationEngine) ruleChurnCompoundSignal() *ToxicCombinationRule
 					{Priority: 2, Action: "Resolve payment blockers and executive outreach", Resource: node.ID, Impact: "Reduces immediate churn probability", Effort: "medium"},
 				},
 				Tags: []string{"churn", "support", "billing", "renewal"},
+			}
+		},
+	}
+}
+
+func (e *ToxicCombinationEngine) ruleTrajectoryDeterioration() *ToxicCombinationRule {
+	return &ToxicCombinationRule{
+		ID:          "TC-BIZ-006",
+		Name:        "Trajectory Deterioration",
+		Description: "Customer trajectory is deteriorating across health and support load",
+		Severity:    SeverityHigh,
+		Tags:        []string{"business", "trajectory", "churn"},
+		Detector: func(g *Graph, node *Node) *ToxicCombination {
+			if node.Kind != NodeKindCustomer && node.Kind != NodeKindCompany {
+				return nil
+			}
+
+			healthDelta, healthDeltaOK := g.TemporalDelta(node.ID, "health_score", businessTrajectoryWindow)
+			healthTrend, healthTrendOK := g.TemporalTrend(node.ID, "health_score", businessTrajectoryWindow)
+			ticketTrend, ticketTrendOK := g.TemporalTrend(node.ID, "open_tickets", businessTrajectoryWindow)
+			ticketDelta, ticketDeltaOK := g.TemporalDelta(node.ID, "open_tickets", businessTrajectoryWindow)
+			lowHealthStreak, lowHealthStreakOK := g.TemporalStreak(node.ID, "health_score", "<=", 80, businessHealthStreakWindow)
+
+			deterioratingHealth := healthDeltaOK && healthDelta <= -20
+			if healthTrendOK && healthTrend == "decreasing" && healthDeltaOK && healthDelta <= -10 {
+				deterioratingHealth = true
+			}
+			risingTickets := (ticketTrendOK && ticketTrend == "increasing") || (ticketDeltaOK && ticketDelta >= 3)
+			sustainedLowHealth := lowHealthStreakOK && lowHealthStreak >= 2
+			if !deterioratingHealth || !risingTickets || !sustainedLowHealth {
+				return nil
+			}
+
+			name := strings.TrimSpace(node.Name)
+			if name == "" {
+				name = node.ID
+			}
+
+			score := 86.0
+			if healthDelta <= -30 && ticketDeltaOK && ticketDelta >= 5 {
+				score = 92
+			}
+
+			return &ToxicCombination{
+				ID:          fmt.Sprintf("TC-BIZ-006-%s", node.ID),
+				Name:        "Trajectory Deterioration",
+				Description: fmt.Sprintf("%s shows sustained health decline with rising support pressure", name),
+				Severity:    SeverityHigh,
+				Score:       score,
+				Factors: []*RiskFactor{
+					{Type: RiskFactorMisconfiguration, NodeID: node.ID, Description: fmt.Sprintf("Health score delta %.1f over %d days", healthDelta, int(businessTrajectoryWindow.Hours()/24)), Severity: SeverityHigh},
+					{Type: RiskFactorExposure, NodeID: node.ID, Description: "Open tickets trend is increasing", Severity: SeverityHigh},
+					{Type: RiskFactorLateralMove, NodeID: node.ID, Description: fmt.Sprintf("Low-health streak: %d snapshots <= 80", lowHealthStreak), Severity: SeverityMedium},
+				},
+				AffectedAssets: []string{node.ID},
+				Remediation: []*RemediationStep{
+					{Priority: 1, Action: "Launch proactive customer recovery plan", Resource: node.ID, Impact: "Stabilizes health score before renewal risk compounds", Effort: "medium"},
+					{Priority: 2, Action: "Escalate support backlog burn-down", Resource: node.ID, Impact: "Reverses ticket growth trajectory", Effort: "medium"},
+				},
+				Tags: []string{"trajectory", "health-score", "support"},
 			}
 		},
 	}

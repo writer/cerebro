@@ -289,6 +289,14 @@ func RegisterAllRules() {
 			Enabled:  true,
 		})
 
+		reg.MustRegister(engine.ruleTrajectoryDeterioration(), RuleMetadata{
+			ID:       "TC-BIZ-006",
+			Name:     "Trajectory Deterioration",
+			Category: RuleCategoryCore,
+			MITREIDs: []string{"T1566"},
+			Enabled:  true,
+		})
+
 		reg.MustRegister(engine.ruleRevenueAtRisk(), RuleMetadata{
 			ID:       "TC-BIZ-002",
 			Name:     "Revenue-at-Risk",

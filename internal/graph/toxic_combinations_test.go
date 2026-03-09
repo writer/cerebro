@@ -3,6 +3,7 @@ package graph
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestToxicCombinationEngine_NewEngine(t *testing.T) {
@@ -1248,6 +1249,79 @@ func TestToxicCombination_BusinessChurnCompoundSignal(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("expected churn compound signal toxic combination")
+	}
+}
+
+func TestToxicCombination_BusinessTrajectoryDeterioration(t *testing.T) {
+	origNow := temporalNowUTC
+	defer func() { temporalNowUTC = origNow }()
+
+	base := time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC)
+	now := base
+	temporalNowUTC = func() time.Time { return now }
+
+	engine := NewToxicCombinationEngine()
+	g := New()
+
+	g.AddNode(&Node{
+		ID:   "customer-trajectory",
+		Kind: NodeKindCustomer,
+		Name: "Trajectory Corp",
+		Properties: map[string]any{
+			"health_score": 90.0,
+			"open_tickets": 2,
+		},
+	})
+
+	now = base.Add(10 * 24 * time.Hour)
+	g.SetNodeProperty("customer-trajectory", "health_score", 80.0)
+	g.SetNodeProperty("customer-trajectory", "open_tickets", 4)
+	now = base.Add(20 * 24 * time.Hour)
+	g.SetNodeProperty("customer-trajectory", "health_score", 65.0)
+	g.SetNodeProperty("customer-trajectory", "open_tickets", 8)
+	now = base.Add(30 * 24 * time.Hour)
+
+	results := engine.Analyze(g)
+	found := false
+	for _, tc := range results {
+		if strings.HasPrefix(tc.ID, "TC-BIZ-006-") {
+			found = true
+			if tc.Severity != SeverityHigh {
+				t.Fatalf("expected high severity, got %s", tc.Severity)
+			}
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected trajectory deterioration toxic combination")
+	}
+}
+
+func TestToxicCombination_BusinessTrajectoryDeterioration_NoTemporalSignal(t *testing.T) {
+	origNow := temporalNowUTC
+	defer func() { temporalNowUTC = origNow }()
+
+	temporalNowUTC = func() time.Time {
+		return time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC)
+	}
+
+	engine := NewToxicCombinationEngine()
+	g := New()
+	g.AddNode(&Node{
+		ID:   "customer-stable",
+		Kind: NodeKindCustomer,
+		Name: "Stable Co",
+		Properties: map[string]any{
+			"health_score": 92.0,
+			"open_tickets": 1,
+		},
+	})
+
+	results := engine.Analyze(g)
+	for _, tc := range results {
+		if strings.HasPrefix(tc.ID, "TC-BIZ-006-") {
+			t.Fatalf("did not expect trajectory deterioration rule, got %+v", tc)
+		}
 	}
 }
 

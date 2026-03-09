@@ -271,7 +271,7 @@ func (i toxicCombinationNodeIndex) candidatesForRule(ruleID string) []*Node {
 		return i.byKind[NodeKindServiceAccount]
 	case "TC-CICD-001", "TC-CICD-002":
 		return i.byKindProvider[NodeKindRole]["aws"]
-	case "TC-BIZ-001", "TC-BIZ-003":
+	case "TC-BIZ-001", "TC-BIZ-003", "TC-BIZ-006":
 		return appendNodeSlices(i.byKind[NodeKindCustomer], i.byKind[NodeKindCompany])
 	case "TC-BIZ-002":
 		return appendNodeSlices(i.byKind[NodeKindDeal], i.byKind[NodeKindOpportunity])
@@ -338,6 +338,7 @@ func (e *ToxicCombinationEngine) registerDefaultRules() {
 		e.ruleEKSNodeRoleECRPush(),
 		// Business + cross-system rules
 		e.ruleChurnCompoundSignal(),
+		e.ruleTrajectoryDeterioration(),
 		e.ruleRevenueAtRisk(),
 		e.ruleSecurityMeetsBusiness(),
 		e.ruleOperationalBlastRadius(),
