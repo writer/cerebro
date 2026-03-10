@@ -14,17 +14,22 @@ import (
 )
 
 type graphWriteObservationRequest struct {
-	ID            string         `json:"id"`
-	EntityID      string         `json:"entity_id"`
-	Observation   string         `json:"observation"`
-	Summary       string         `json:"summary"`
-	SourceSystem  string         `json:"source_system"`
-	SourceEventID string         `json:"source_event_id"`
-	ObservedAt    time.Time      `json:"observed_at"`
-	ValidFrom     time.Time      `json:"valid_from"`
-	ValidTo       *time.Time     `json:"valid_to,omitempty"`
-	Confidence    float64        `json:"confidence"`
-	Metadata      map[string]any `json:"metadata,omitempty"`
+	ID              string         `json:"id"`
+	EntityID        string         `json:"entity_id"`
+	SubjectID       string         `json:"subject_id"`
+	Observation     string         `json:"observation"`
+	ObservationType string         `json:"observation_type"`
+	Summary         string         `json:"summary"`
+	SourceSystem    string         `json:"source_system"`
+	SourceEventID   string         `json:"source_event_id"`
+	ObservedAt      time.Time      `json:"observed_at"`
+	ValidFrom       time.Time      `json:"valid_from"`
+	ValidTo         *time.Time     `json:"valid_to,omitempty"`
+	RecordedAt      time.Time      `json:"recorded_at,omitempty"`
+	TransactionFrom time.Time      `json:"transaction_from,omitempty"`
+	TransactionTo   *time.Time     `json:"transaction_to,omitempty"`
+	Confidence      float64        `json:"confidence"`
+	Metadata        map[string]any `json:"metadata,omitempty"`
 }
 
 type graphWriteClaimRequest struct {
@@ -172,58 +177,55 @@ func (s *Server) graphWriteObservation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.EntityID = strings.TrimSpace(req.EntityID)
+	req.SubjectID = strings.TrimSpace(req.SubjectID)
 	req.Observation = strings.TrimSpace(req.Observation)
+	req.ObservationType = strings.TrimSpace(req.ObservationType)
 	req.Summary = strings.TrimSpace(req.Summary)
-	if req.EntityID == "" {
-		s.error(w, http.StatusBadRequest, "entity_id is required")
+
+	subjectID := firstNonEmpty(req.SubjectID, req.EntityID)
+	observationType := firstNonEmpty(req.ObservationType, req.Observation)
+	if subjectID == "" {
+		s.error(w, http.StatusBadRequest, "subject_id is required")
 		return
 	}
-	if req.Observation == "" {
-		s.error(w, http.StatusBadRequest, "observation is required")
+	if observationType == "" {
+		s.error(w, http.StatusBadRequest, "observation_type is required")
 		return
 	}
-	if _, ok := g.GetNode(req.EntityID); !ok {
-		s.error(w, http.StatusNotFound, fmt.Sprintf("entity not found: %s", req.EntityID))
+	result, err := graph.WriteObservation(g, graph.ObservationWriteRequest{
+		ID:              req.ID,
+		SubjectID:       subjectID,
+		ObservationType: observationType,
+		Summary:         req.Summary,
+		SourceSystem:    req.SourceSystem,
+		SourceEventID:   req.SourceEventID,
+		ObservedAt:      req.ObservedAt,
+		ValidFrom:       req.ValidFrom,
+		ValidTo:         req.ValidTo,
+		RecordedAt:      req.RecordedAt,
+		TransactionFrom: req.TransactionFrom,
+		TransactionTo:   req.TransactionTo,
+		Confidence:      req.Confidence,
+		Metadata:        cloneJSONMap(req.Metadata),
+	})
+	if err != nil {
+		switch {
+		case strings.Contains(err.Error(), "required"):
+			s.error(w, http.StatusBadRequest, err.Error())
+		case strings.Contains(err.Error(), "not found"):
+			s.error(w, http.StatusNotFound, err.Error())
+		default:
+			s.error(w, http.StatusBadRequest, err.Error())
+		}
 		return
 	}
-
-	metadata := graph.NormalizeWriteMetadata(req.ObservedAt, req.ValidFrom, req.ValidTo, req.SourceSystem, req.SourceEventID, req.Confidence, graph.WriteMetadataDefaults{
-		SourceSystem:      "api",
-		SourceEventPrefix: "api",
-		DefaultConfidence: 0.80,
-	})
-
-	observationID := strings.TrimSpace(req.ID)
-	if observationID == "" {
-		observationID = fmt.Sprintf("evidence:observation:%d", metadata.ObservedAt.UnixNano())
-	}
-	properties := cloneJSONMap(req.Metadata)
-	properties["evidence_type"] = req.Observation
-	properties["detail"] = firstNonEmpty(req.Summary, req.Observation)
-	metadata.ApplyTo(properties)
-
-	g.AddNode(&graph.Node{
-		ID:         observationID,
-		Kind:       graph.NodeKindEvidence,
-		Name:       firstNonEmpty(req.Observation, req.Summary, observationID),
-		Provider:   metadata.SourceSystem,
-		Properties: properties,
-		Risk:       graph.RiskNone,
-	})
-	edgeProperties := metadata.PropertyMap()
-	g.AddEdge(&graph.Edge{
-		ID:         fmt.Sprintf("%s->%s:%s", observationID, req.EntityID, graph.EdgeKindTargets),
-		Source:     observationID,
-		Target:     req.EntityID,
-		Kind:       graph.EdgeKindTargets,
-		Effect:     graph.EdgeEffectAllow,
-		Properties: edgeProperties,
-	})
 
 	s.json(w, http.StatusCreated, map[string]any{
-		"observation_id": observationID,
-		"entity_id":      req.EntityID,
-		"observed_at":    metadata.ObservedAt,
+		"observation_id": result.ObservationID,
+		"subject_id":     result.SubjectID,
+		"entity_id":      result.SubjectID,
+		"observed_at":    result.ObservedAt,
+		"recorded_at":    result.RecordedAt,
 	})
 }
 

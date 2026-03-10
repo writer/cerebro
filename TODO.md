@@ -5,6 +5,74 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 31 - Knowledge Artifact Reads + Claim Adjudication Queue + Claim Explanation/Diff Surfaces (2026-03-10)
+
+### Review findings
+- [x] Gap: the platform could now write claims, evidence, and observations, but typed knowledge inspection still stopped at claim collection/detail, which left evidence and observation reads hidden behind generic graph traversals.
+- [x] Gap: `observation` existed as a first-class ontology kind, but the write path still serialized observations as `evidence`, which blurred raw observation semantics and made the ontology less honest than the docs claimed.
+- [x] Gap: contradiction reporting existed as a report surface, but there was still no first-class adjudication queue resource keyed by `subject_id + predicate` for downstream repair workflows.
+- [x] Gap: clients still could not ask the platform “why is this claim true”, “why is it disputed”, or “what changed in the claim layer between two bitemporal slices” without reimplementing the knowledge model client-side.
+- [x] Gap: platform docs still described observations, evidence, and claim explanation as design intent more than actual contract, which risked the code/docs boundary drifting again.
+
+### Research synthesis to adopt
+- [x] Knowledge-artifact rule: once observations and evidence are ontology kinds, they need the same typed collection/detail contracts as claims, otherwise report outputs become the only stable read surface.
+- [x] Adjudication-queue rule: contradiction repair should start as typed grouped read resources with explicit `needs_adjudication` and `recommended_action` signals before the system pretends it has safe claim-mutation workflows.
+- [x] Explanation rule: claim explanation should be a first-class resource composed from claim, source, evidence, observation, and support/refute/supersession chains rather than a report-only narrative blob.
+- [x] Diff rule: a world-model graph needs explicit “what changed” resources over bitemporal slices, even if the first version is claim-ID based and not yet a full historical version store.
+
+### Execution plan
+- [x] Normalize the observation write path onto the actual ontology:
+  - [x] add `graph.WriteObservation(...)`
+  - [x] make API/tool observation writes create `NodeKindObservation`
+  - [x] preserve backward-tolerant request fields (`entity_id`, `observation`) while exposing canonical platform fields (`subject_id`, `observation_type`)
+- [x] Add typed knowledge artifact reads:
+  - [x] add `QueryEvidence(...)`, `GetEvidenceRecord(...)`, `QueryObservations(...)`, and `GetObservationRecord(...)`
+  - [x] include target, claim, source, and referencing-link summaries on artifact records
+  - [x] expose `GET /api/v1/platform/knowledge/evidence`
+  - [x] expose `GET /api/v1/platform/knowledge/evidence/{evidence_id}`
+  - [x] expose `GET /api/v1/platform/knowledge/observations`
+  - [x] expose `GET /api/v1/platform/knowledge/observations/{observation_id}`
+  - [x] expose `POST /api/v1/platform/knowledge/observations`
+- [x] Add adjudication-oriented claim grouping:
+  - [x] add `QueryClaimGroups(...)` and `GetClaimGroupRecord(...)`
+  - [x] group by `subject_id + predicate`
+  - [x] emit grouped values, active/resolved claim IDs, supportability counts, and `recommended_action`
+  - [x] expose `GET /api/v1/platform/knowledge/claim-groups`
+  - [x] expose `GET /api/v1/platform/knowledge/claim-groups/{group_id}`
+- [x] Add claim explanation and history surfaces:
+  - [x] add `GetClaimTimeline(...)`
+  - [x] add `ExplainClaim(...)`
+  - [x] include support/refute/supersession/conflict claim chains plus evidence, observations, and sources
+  - [x] expose `GET /api/v1/platform/knowledge/claims/{claim_id}/timeline`
+  - [x] expose `GET /api/v1/platform/knowledge/claims/{claim_id}/explanation`
+- [x] Add claim-layer diffs:
+  - [x] add `DiffClaims(...)` over `from_*` and `to_*` bitemporal slices
+  - [x] return typed added/removed/modified claim records plus modified-field summaries
+  - [x] expose `GET /api/v1/platform/knowledge/claim-diffs`
+- [x] Tighten tests/contracts/docs:
+  - [x] add graph tests for observation writes, artifact reads, claim groups, timelines, explanations, and diffs
+  - [x] add API tests for the new platform knowledge routes and invalid param handling
+  - [x] update OpenAPI with typed artifact/group/timeline/explanation/diff schemas
+  - [x] update platform/world-model/intelligence docs to describe the new knowledge inspection substrate
+
+### Detailed follow-on backlog
+- [ ] Knowledge artifact track:
+  - [ ] add first-class read/query surfaces for `source`, `annotation`, `decision`, `action`, and `outcome` with the same typed derivation rigor now used for claims and artifacts
+  - [ ] add cross-resource filters for claim/evidence/observation reads by trust tier, source type, producer fingerprint, and artifact type family
+  - [ ] add cursor pagination and explicit sort selectors for knowledge collections once list sizes outgrow offset semantics
+- [ ] Adjudication workflow track:
+  - [ ] add review-state resources (status, assignee, SLA, owner) on claim groups instead of keeping the queue purely derived/read-only
+  - [ ] add decision/write-back workflows for contradiction repair once claim-state mutation can preserve historical visibility correctly
+  - [ ] add calibration metrics for adjudication throughput, reopened contradictions, and source-accuracy outcomes
+- [ ] Explanation/runtime track:
+  - [ ] add claim-neighborhood expansion resources for downstream traversal without falling back to generic graph query mode
+  - [ ] add richer explanation narratives with value comparisons, trust deltas, and freshness decay signals
+  - [ ] add source-trust scoring and explanation weighting so “why true” can separate raw support from source credibility
+- [ ] Historical fidelity track:
+  - [ ] add durable versioned claim mutation/history so claim diffs can report true modifications across slices instead of primarily added/removed visibility changes
+  - [ ] add first-class adjudication/repair events to CloudEvents and lifecycle catalogs once claim repair becomes writable
+  - [ ] add generated example payloads and compatibility gates for the new knowledge inspection contracts
+
 ## Deep Review Cycle 30 - Claim Query Surface + Knowledge Read RBAC + Source Attribution Hardening (2026-03-10)
 
 ### Review findings
@@ -47,19 +115,19 @@ Status: executed end-to-end via PR workflow
 
 ### Detailed follow-on backlog
 - [ ] Knowledge read track:
-  - [ ] add `GET /api/v1/platform/knowledge/evidence` and `GET /api/v1/platform/knowledge/evidence/{evidence_id}`
-  - [ ] add `GET /api/v1/platform/knowledge/observations` and typed observation-to-evidence linkage views
+  - [x] add `GET /api/v1/platform/knowledge/evidence` and `GET /api/v1/platform/knowledge/evidence/{evidence_id}`
+  - [x] add `GET /api/v1/platform/knowledge/observations` and typed observation-to-evidence linkage views
   - [ ] add cross-resource filters so claims can be queried by source trust tier, producer fingerprint, or evidence type
   - [ ] add stable sort selectors and cursor pagination once claim collections grow beyond offset-only ergonomics
 - [ ] Claim history / adjudication track:
-  - [ ] add claim timeline/history resources that show supersession, correction, and refutation chains explicitly
-  - [ ] add claim-group/adjudication queue resources keyed by `subject_id + predicate`
+  - [x] add claim timeline/history resources that show supersession, correction, and refutation chains explicitly
+  - [x] add claim-group/adjudication queue resources keyed by `subject_id + predicate`
   - [ ] add review statuses, assignees, and decision write-back for contradiction repair workflows
-  - [ ] add “why is this claim true” and “why is this claim disputed” explanation payloads built from support/refute/source chains
+  - [x] add “why is this claim true” and “why is this claim disputed” explanation payloads built from support/refute/source chains
 - [ ] Graph reasoning track:
   - [ ] add queryable claim-neighborhood expansions for follow-on graph traversals without forcing consumers into generic graph-query mode
   - [ ] add claim/evidence/source trust scoring that distinguishes asserted truth from confidence in the asserting producer
-  - [ ] add bitemporal diff helpers for “what changed in the claim layer between two slices”
+  - [x] add bitemporal diff helpers for “what changed in the claim layer between two slices”
   - [ ] add read APIs for decisions/actions/outcomes with the same typed derivation rigor used for claims
 - [ ] Contract/autogen track:
   - [ ] generate claim collection/detail example payloads from canonical schemas

@@ -448,8 +448,8 @@ func TestCerebroGraphWritebackTools(t *testing.T) {
 	if !ok || observationNode == nil {
 		t.Fatalf("expected observation node %q", observationID)
 	}
-	if observationNode.Kind != graph.NodeKindEvidence {
-		t.Fatalf("expected evidence node, got %q", observationNode.Kind)
+	if observationNode.Kind != graph.NodeKindObservation {
+		t.Fatalf("expected observation node, got %q", observationNode.Kind)
 	}
 	if stringValue(observationNode.Properties["source_system"]) != "agent" {
 		t.Fatalf("expected default source_system=agent, got %#v", observationNode.Properties["source_system"])

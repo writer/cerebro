@@ -165,30 +165,11 @@ func QueryClaims(g *Graph, opts ClaimQueryOptions) ClaimCollection {
 		return result
 	}
 
-	visibleClaims := visibleClaimsAt(g, query.ValidAt, query.RecordedAt)
-	conflictPeers := buildClaimConflictPeerMap(visibleClaims)
-	records := make([]ClaimRecord, 0, len(visibleClaims))
-	for _, claim := range visibleClaims {
-		record := buildClaimRecord(g, claim, query.ValidAt, query.RecordedAt, conflictPeers[claim.ID])
-		if !claimMatchesQuery(record, query) {
-			continue
-		}
-		records = append(records, record)
+	records := collectClaimRecords(g, query)
+	sortClaimRecords(records)
+	for _, record := range records {
 		updateClaimCollectionSummary(&result.Summary, record)
 	}
-
-	sort.Slice(records, func(i, j int) bool {
-		if !records[i].RecordedAt.Equal(records[j].RecordedAt) {
-			return records[i].RecordedAt.After(records[j].RecordedAt)
-		}
-		if !records[i].ValidFrom.Equal(records[j].ValidFrom) {
-			return records[i].ValidFrom.After(records[j].ValidFrom)
-		}
-		if !records[i].ObservedAt.Equal(records[j].ObservedAt) {
-			return records[i].ObservedAt.After(records[j].ObservedAt)
-		}
-		return records[i].ID < records[j].ID
-	})
 
 	total := len(records)
 	result.Pagination.Total = total
@@ -273,6 +254,38 @@ func visibleClaimsAt(g *Graph, validAt, recordedAt time.Time) []*Node {
 		}
 	}
 	return out
+}
+
+func collectClaimRecords(g *Graph, opts ClaimQueryOptions) []ClaimRecord {
+	if g == nil {
+		return nil
+	}
+	visibleClaims := visibleClaimsAt(g, opts.ValidAt, opts.RecordedAt)
+	conflictPeers := buildClaimConflictPeerMap(visibleClaims)
+	records := make([]ClaimRecord, 0, len(visibleClaims))
+	for _, claim := range visibleClaims {
+		record := buildClaimRecord(g, claim, opts.ValidAt, opts.RecordedAt, conflictPeers[claim.ID])
+		if !claimMatchesQuery(record, opts) {
+			continue
+		}
+		records = append(records, record)
+	}
+	return records
+}
+
+func sortClaimRecords(records []ClaimRecord) {
+	sort.Slice(records, func(i, j int) bool {
+		if !records[i].RecordedAt.Equal(records[j].RecordedAt) {
+			return records[i].RecordedAt.After(records[j].RecordedAt)
+		}
+		if !records[i].ValidFrom.Equal(records[j].ValidFrom) {
+			return records[i].ValidFrom.After(records[j].ValidFrom)
+		}
+		if !records[i].ObservedAt.Equal(records[j].ObservedAt) {
+			return records[i].ObservedAt.After(records[j].ObservedAt)
+		}
+		return records[i].ID < records[j].ID
+	})
 }
 
 func buildClaimRecord(g *Graph, claim *Node, validAt, recordedAt time.Time, conflictingClaimIDs []string) ClaimRecord {

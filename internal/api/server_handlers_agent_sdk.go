@@ -201,7 +201,7 @@ func (s *Server) agentSDKSimulate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) agentSDKObservation(w http.ResponseWriter, r *http.Request) {
-	s.graphWriteObservation(w, s.enrichAgentSDKWriteRequest(r, "cerebro_observe"))
+	s.platformWriteObservation(w, s.enrichAgentSDKWriteRequest(r, "cerebro_observe"))
 }
 
 func (s *Server) agentSDKClaim(w http.ResponseWriter, r *http.Request) {

@@ -45,46 +45,29 @@ func (a *App) toolCerebroRecordObservation(_ context.Context, args json.RawMessa
 	if _, ok := g.GetNode(req.EntityID); !ok {
 		return "", fmt.Errorf("entity not found: %s", req.EntityID)
 	}
-
-	metadata := graph.NormalizeWriteMetadata(req.ObservedAt, req.ValidFrom, req.ValidTo, req.SourceSystem, req.SourceEventID, req.Confidence, graph.WriteMetadataDefaults{
-		SourceSystem:      "agent",
-		SourceEventPrefix: "tool",
-		DefaultConfidence: 0.80,
+	result, err := graph.WriteObservation(g, graph.ObservationWriteRequest{
+		ID:              req.ID,
+		SubjectID:       req.EntityID,
+		ObservationType: req.Observation,
+		Summary:         req.Summary,
+		SourceSystem:    firstNonEmpty(req.SourceSystem, "agent"),
+		SourceEventID:   req.SourceEventID,
+		ObservedAt:      req.ObservedAt,
+		ValidFrom:       req.ValidFrom,
+		ValidTo:         req.ValidTo,
+		Confidence:      req.Confidence,
+		Metadata:        cloneToolJSONMap(req.Metadata),
 	})
-
-	observationID := strings.TrimSpace(req.ID)
-	if observationID == "" {
-		observationID = fmt.Sprintf("evidence:observation:%d", metadata.ObservedAt.UnixNano())
+	if err != nil {
+		return "", err
 	}
 
-	properties := cloneToolJSONMap(req.Metadata)
-	properties["evidence_type"] = req.Observation
-	properties["detail"] = firstNonEmpty(req.Summary, req.Observation)
-	metadata.ApplyTo(properties)
-
-	g.AddNode(&graph.Node{
-		ID:         observationID,
-		Kind:       graph.NodeKindEvidence,
-		Name:       firstNonEmpty(req.Observation, req.Summary, observationID),
-		Provider:   metadata.SourceSystem,
-		Properties: properties,
-		Risk:       graph.RiskNone,
-	})
-
-	edgeProperties := metadata.PropertyMap()
-	g.AddEdge(&graph.Edge{
-		ID:         fmt.Sprintf("%s->%s:%s", observationID, req.EntityID, graph.EdgeKindTargets),
-		Source:     observationID,
-		Target:     req.EntityID,
-		Kind:       graph.EdgeKindTargets,
-		Effect:     graph.EdgeEffectAllow,
-		Properties: edgeProperties,
-	})
-
 	return marshalToolResponse(map[string]any{
-		"observation_id": observationID,
+		"observation_id": result.ObservationID,
 		"entity_id":      req.EntityID,
-		"observed_at":    metadata.ObservedAt,
+		"subject_id":     result.SubjectID,
+		"observed_at":    result.ObservedAt,
+		"recorded_at":    result.RecordedAt,
 	})
 }
 

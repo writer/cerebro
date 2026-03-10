@@ -115,6 +115,12 @@ Claim conflict report characteristics:
 - Evidence-backed versus unsupported claim counts.
 - Optional bitemporal slice using `valid_at` and `recorded_at`.
 
+Knowledge inspection characteristics:
+- typed evidence and observation collection/detail reads under `/api/v1/platform/knowledge/evidence*` and `/api/v1/platform/knowledge/observations*`
+- typed adjudication queue reads under `/api/v1/platform/knowledge/claim-groups*`
+- typed claim reasoning resources under `/api/v1/platform/knowledge/claims/{claim_id}/timeline`, `/api/v1/platform/knowledge/claims/{claim_id}/explanation`, and `/api/v1/platform/knowledge/claim-diffs`
+- derived repair cues (`needs_adjudication`, `recommended_action`, `why_true`, `why_disputed`, `repair_actions`) surfaced directly on the platform contract
+
 Ingest health characteristics:
 - Mapper runtime counters (processed, matched, rejected, dead-lettered).
 - Validation mode and dead-letter path visibility.
@@ -198,9 +204,18 @@ Guardrails:
 Graph intelligence compounds only when decisions and outcomes write back.
 
 Current endpoints:
-- `POST /api/v1/graph/write/observation`
+- `GET /api/v1/platform/knowledge/evidence`
+- `GET /api/v1/platform/knowledge/evidence/{evidence_id}`
+- `GET /api/v1/platform/knowledge/observations`
+- `GET /api/v1/platform/knowledge/observations/{observation_id}`
+- `POST /api/v1/platform/knowledge/observations`
 - `GET /api/v1/platform/knowledge/claims`
 - `GET /api/v1/platform/knowledge/claims/{claim_id}`
+- `GET /api/v1/platform/knowledge/claim-groups`
+- `GET /api/v1/platform/knowledge/claim-groups/{group_id}`
+- `GET /api/v1/platform/knowledge/claim-diffs`
+- `GET /api/v1/platform/knowledge/claims/{claim_id}/timeline`
+- `GET /api/v1/platform/knowledge/claims/{claim_id}/explanation`
 - `POST /api/v1/platform/knowledge/claims`
 - `POST /api/v1/graph/write/annotation`
 - `POST /api/v1/platform/knowledge/decisions`

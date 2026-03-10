@@ -6700,56 +6700,184 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /api/v1/graph/write/observation:
+  /api/v1/platform/knowledge/evidence:
+    get:
+      tags:
+        - Platform
+      summary: List platform evidence artifacts
+      description: Return typed evidence records filtered by target, claim linkage, source linkage, evidence type, and bitemporal selectors.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - name: target_id
+          in: query
+          schema:
+            type: string
+        - name: claim_id
+          in: query
+          schema:
+            type: string
+        - name: source_id
+          in: query
+          schema:
+            type: string
+        - name: type
+          in: query
+          schema:
+            type: string
+        - name: valid_at
+          in: query
+          description: Fact-time selector for the evidence view.
+          schema:
+            type: string
+            format: date-time
+        - name: recorded_at
+          in: query
+          description: System-time selector for the evidence view.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Evidence collection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformKnowledgeArtifactCollection'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/platform/knowledge/evidence/{evidence_id}:
+    get:
+      tags:
+        - Platform
+      summary: Get platform evidence artifact
+      parameters:
+        - name: evidence_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: valid_at
+          in: query
+          description: Fact-time selector for the evidence view.
+          schema:
+            type: string
+            format: date-time
+        - name: recorded_at
+          in: query
+          description: System-time selector for the evidence view.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Evidence record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformKnowledgeArtifactRecord'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Evidence record not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/platform/knowledge/observations:
+    get:
+      tags:
+        - Platform
+      summary: List platform observations
+      description: Return typed observation records filtered by target, claim linkage, source linkage, observation type, and bitemporal selectors.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - name: target_id
+          in: query
+          schema:
+            type: string
+        - name: claim_id
+          in: query
+          schema:
+            type: string
+        - name: source_id
+          in: query
+          schema:
+            type: string
+        - name: type
+          in: query
+          schema:
+            type: string
+        - name: valid_at
+          in: query
+          description: Fact-time selector for the observation view.
+          schema:
+            type: string
+            format: date-time
+        - name: recorded_at
+          in: query
+          description: System-time selector for the observation view.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Observation collection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformKnowledgeArtifactCollection'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     post:
       tags:
-        - Graph
-      summary: Record an evidence observation
-      description: Create an evidence node and connect it to a target entity with provenance and temporal metadata.
+        - Platform
+      summary: Record a platform observation
+      description: Create a first-class observation node and connect it to its subject with provenance and bitemporal metadata.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - entity_id
-                - observation
-              properties:
-                id:
-                  type: string
-                entity_id:
-                  type: string
-                observation:
-                  type: string
-                summary:
-                  type: string
-                source_system:
-                  type: string
-                source_event_id:
-                  type: string
-                observed_at:
-                  type: string
-                  format: date-time
-                valid_from:
-                  type: string
-                  format: date-time
-                valid_to:
-                  type: string
-                  format: date-time
-                confidence:
-                  type: number
-                metadata:
-                  type: object
-                  additionalProperties: true
+              $ref: '#/components/schemas/PlatformObservationWriteRequest'
       responses:
         '201':
           description: Observation recorded
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: true
+                $ref: '#/components/schemas/PlatformObservationWriteResponse'
         '400':
           description: Invalid request body
           content:
@@ -6757,7 +6885,259 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '404':
-          description: Target entity not found
+          description: Subject entity not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/platform/knowledge/observations/{observation_id}:
+    get:
+      tags:
+        - Platform
+      summary: Get platform observation
+      parameters:
+        - name: observation_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: valid_at
+          in: query
+          description: Fact-time selector for the observation view.
+          schema:
+            type: string
+            format: date-time
+        - name: recorded_at
+          in: query
+          description: System-time selector for the observation view.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Observation record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformKnowledgeArtifactRecord'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Observation record not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/platform/knowledge/claim-groups:
+    get:
+      tags:
+        - Platform
+      summary: List claim adjudication groups
+      description: Return typed subject/predicate claim groups with adjudication queue signals, grouped values, and repair recommendations.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - name: group_id
+          in: query
+          schema:
+            type: string
+        - name: subject_id
+          in: query
+          schema:
+            type: string
+        - name: predicate
+          in: query
+          schema:
+            type: string
+        - name: include_resolved
+          in: query
+          schema:
+            type: boolean
+        - name: include_single_value
+          in: query
+          schema:
+            type: boolean
+        - name: needs_adjudication
+          in: query
+          schema:
+            type: boolean
+        - name: valid_at
+          in: query
+          description: Fact-time selector for the claim-group view.
+          schema:
+            type: string
+            format: date-time
+        - name: recorded_at
+          in: query
+          description: System-time selector for the claim-group view.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Claim group collection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformClaimGroupCollection'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/platform/knowledge/claim-groups/{group_id}:
+    get:
+      tags:
+        - Platform
+      summary: Get claim adjudication group
+      parameters:
+        - name: group_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: include_resolved
+          in: query
+          schema:
+            type: boolean
+        - name: valid_at
+          in: query
+          description: Fact-time selector for the claim-group view.
+          schema:
+            type: string
+            format: date-time
+        - name: recorded_at
+          in: query
+          description: System-time selector for the claim-group view.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Claim group record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformClaimGroupRecord'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Claim group not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/platform/knowledge/claim-diffs:
+    get:
+      tags:
+        - Platform
+      summary: Diff the claim layer between two bitemporal slices
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - name: claim_id
+          in: query
+          schema:
+            type: string
+        - name: subject_id
+          in: query
+          schema:
+            type: string
+        - name: predicate
+          in: query
+          schema:
+            type: string
+        - name: object_id
+          in: query
+          schema:
+            type: string
+        - name: object_value
+          in: query
+          schema:
+            type: string
+        - name: claim_type
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [asserted, disputed, corrected, retracted, superseded, refuted]
+        - name: source_id
+          in: query
+          schema:
+            type: string
+        - name: evidence_id
+          in: query
+          schema:
+            type: string
+        - name: include_resolved
+          in: query
+          schema:
+            type: boolean
+        - name: from_valid_at
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: from_recorded_at
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to_valid_at
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to_recorded_at
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Claim diff collection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformClaimDiffCollection'
+        '400':
+          description: Invalid query parameters
           content:
             application/json:
               schema:
@@ -6932,6 +7312,110 @@ paths:
                 $ref: '#/components/schemas/Error'
         '404':
           description: Claim not found at the requested bitemporal slice
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/platform/knowledge/claims/{claim_id}/timeline:
+    get:
+      tags:
+        - Platform
+      summary: Get claim timeline
+      description: Return a typed timeline of claim-chain, evidence, observation, and source records related to one claim.
+      parameters:
+        - name: claim_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+        - name: valid_at
+          in: query
+          description: Fact-time selector for the claim timeline.
+          schema:
+            type: string
+            format: date-time
+        - name: recorded_at
+          in: query
+          description: System-time selector for the claim timeline.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Claim timeline
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformClaimTimeline'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Claim not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/platform/knowledge/claims/{claim_id}/explanation:
+    get:
+      tags:
+        - Platform
+      summary: Explain a claim
+      description: Return typed support, source, contradiction, and repair context for one claim.
+      parameters:
+        - name: claim_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: valid_at
+          in: query
+          description: Fact-time selector for the claim explanation.
+          schema:
+            type: string
+            format: date-time
+        - name: recorded_at
+          in: query
+          description: System-time selector for the claim explanation.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Claim explanation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformClaimExplanation'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Claim not found
           content:
             application/json:
               schema:
@@ -10135,9 +10619,14 @@ components:
       properties:
         observation_id:
           type: string
+        subject_id:
+          type: string
         entity_id:
           type: string
         observed_at:
+          type: string
+          format: date-time
+        recorded_at:
           type: string
           format: date-time
     AgentSDKOutcomeRequest:
@@ -10791,6 +11280,666 @@ components:
           type: integer
         superseded_by_count:
           type: integer
+    PlatformObservationWriteRequest:
+      type: object
+      required:
+        - subject_id
+        - observation_type
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        subject_id:
+          type: string
+        observation_type:
+          type: string
+        summary:
+          type: string
+        source_system:
+          type: string
+        source_event_id:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+        valid_from:
+          type: string
+          format: date-time
+        valid_to:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+        transaction_from:
+          type: string
+          format: date-time
+        transaction_to:
+          type: string
+          format: date-time
+        confidence:
+          type: number
+        metadata:
+          type: object
+          additionalProperties: true
+    PlatformObservationWriteResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        observation_id:
+          type: string
+        subject_id:
+          type: string
+        entity_id:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+    PlatformKnowledgeArtifactCollection:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        kind:
+          type: string
+          enum: [evidence, observation]
+        valid_at:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+        filters:
+          $ref: '#/components/schemas/PlatformKnowledgeArtifactQueryFilters'
+        summary:
+          $ref: '#/components/schemas/PlatformKnowledgeArtifactCollectionSummary'
+        artifacts:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformKnowledgeArtifactRecord'
+        count:
+          type: integer
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    PlatformKnowledgeArtifactQueryFilters:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        target_id:
+          type: string
+        claim_id:
+          type: string
+        source_id:
+          type: string
+        type:
+          type: string
+    PlatformKnowledgeArtifactCollectionSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        matched_artifacts:
+          type: integer
+        targeted_artifacts:
+          type: integer
+        claim_linked_artifacts:
+          type: integer
+        source_backed_artifacts:
+          type: integer
+    PlatformKnowledgeArtifactRecord:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+          enum: [evidence, observation]
+        artifact_type:
+          type: string
+        subject_id:
+          type: string
+        detail:
+          type: string
+        source_system:
+          type: string
+        source_event_id:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+        valid_from:
+          type: string
+          format: date-time
+        valid_to:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+        transaction_from:
+          type: string
+          format: date-time
+        transaction_to:
+          type: string
+          format: date-time
+        confidence:
+          type: number
+        links:
+          $ref: '#/components/schemas/PlatformKnowledgeArtifactLinks'
+        derived:
+          $ref: '#/components/schemas/PlatformKnowledgeArtifactDerivedState'
+        metadata:
+          type: object
+          additionalProperties: true
+    PlatformKnowledgeArtifactLinks:
+      type: object
+      additionalProperties: false
+      properties:
+        target_ids:
+          type: array
+          items:
+            type: string
+        claim_ids:
+          type: array
+          items:
+            type: string
+        referenced_by_ids:
+          type: array
+          items:
+            type: string
+        source_ids:
+          type: array
+          items:
+            type: string
+    PlatformKnowledgeArtifactDerivedState:
+      type: object
+      additionalProperties: false
+      properties:
+        target_count:
+          type: integer
+        claim_count:
+          type: integer
+        referenced_by_count:
+          type: integer
+        source_count:
+          type: integer
+    PlatformKnowledgeSourceRecord:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        source_type:
+          type: string
+        canonical_name:
+          type: string
+        url:
+          type: string
+        trust_tier:
+          type: string
+        reliability_score:
+          type: number
+        source_system:
+          type: string
+        source_event_id:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+        valid_from:
+          type: string
+          format: date-time
+        valid_to:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+        transaction_from:
+          type: string
+          format: date-time
+        transaction_to:
+          type: string
+          format: date-time
+        claim_ids:
+          type: array
+          items:
+            type: string
+        artifact_ids:
+          type: array
+          items:
+            type: string
+        subject_ids:
+          type: array
+          items:
+            type: string
+        derived:
+          $ref: '#/components/schemas/PlatformKnowledgeSourceDerivedState'
+        metadata:
+          type: object
+          additionalProperties: true
+    PlatformKnowledgeSourceDerivedState:
+      type: object
+      additionalProperties: false
+      properties:
+        claim_count:
+          type: integer
+        artifact_count:
+          type: integer
+        observation_count:
+          type: integer
+        evidence_count:
+          type: integer
+        subject_count:
+          type: integer
+    PlatformClaimGroupCollection:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        valid_at:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+        filters:
+          $ref: '#/components/schemas/PlatformClaimGroupQueryFilters'
+        summary:
+          $ref: '#/components/schemas/PlatformClaimGroupCollectionSummary'
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformClaimGroupRecord'
+        count:
+          type: integer
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    PlatformClaimGroupQueryFilters:
+      type: object
+      additionalProperties: false
+      properties:
+        group_id:
+          type: string
+        subject_id:
+          type: string
+        predicate:
+          type: string
+        include_resolved:
+          type: boolean
+        include_single_value:
+          type: boolean
+        needs_adjudication:
+          type: boolean
+          nullable: true
+    PlatformClaimGroupCollectionSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        matched_groups:
+          type: integer
+        groups_needing_adjudication:
+          type: integer
+        conflict_groups:
+          type: integer
+        unsupported_groups:
+          type: integer
+        sourceless_groups:
+          type: integer
+        active_claims:
+          type: integer
+        resolved_claims:
+          type: integer
+    PlatformClaimGroupRecord:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        subject_id:
+          type: string
+        predicate:
+          type: string
+        claim_ids:
+          type: array
+          items:
+            type: string
+        active_claim_ids:
+          type: array
+          items:
+            type: string
+        resolved_claim_ids:
+          type: array
+          items:
+            type: string
+        source_ids:
+          type: array
+          items:
+            type: string
+        evidence_ids:
+          type: array
+          items:
+            type: string
+        highest_confidence:
+          type: number
+        latest_observed_at:
+          type: string
+          format: date-time
+        values:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformClaimGroupValueRecord'
+        claims:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformClaimRecord'
+        derived:
+          $ref: '#/components/schemas/PlatformClaimGroupDerivedState'
+    PlatformClaimGroupValueRecord:
+      type: object
+      additionalProperties: false
+      properties:
+        value:
+          type: string
+        claim_ids:
+          type: array
+          items:
+            type: string
+        active_claim_ids:
+          type: array
+          items:
+            type: string
+        resolved_claim_ids:
+          type: array
+          items:
+            type: string
+        source_ids:
+          type: array
+          items:
+            type: string
+        evidence_ids:
+          type: array
+          items:
+            type: string
+        highest_confidence:
+          type: number
+        latest_observed_at:
+          type: string
+          format: date-time
+    PlatformClaimGroupDerivedState:
+      type: object
+      additionalProperties: false
+      properties:
+        needs_adjudication:
+          type: boolean
+        has_conflict:
+          type: boolean
+        has_resolved_claims:
+          type: boolean
+        active_claim_count:
+          type: integer
+        resolved_claim_count:
+          type: integer
+        unsupported_claims:
+          type: integer
+        sourceless_claims:
+          type: integer
+        distinct_value_count:
+          type: integer
+        recommended_action:
+          type: string
+    PlatformClaimTimeline:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        claim_id:
+          type: string
+        valid_at:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+        summary:
+          $ref: '#/components/schemas/PlatformClaimTimelineSummary'
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformClaimTimelineEntry'
+    PlatformClaimTimelineSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        total_entries:
+          type: integer
+        returned_entries:
+          type: integer
+        entries_truncated:
+          type: boolean
+        claim_entries:
+          type: integer
+        evidence_entries:
+          type: integer
+        observation_entries:
+          type: integer
+        source_entries:
+          type: integer
+        support_entries:
+          type: integer
+        refutation_entries:
+          type: integer
+        supersession_entries:
+          type: integer
+        conflict_entries:
+          type: integer
+    PlatformClaimTimelineEntry:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        entry_type:
+          type: string
+          enum: [claim, evidence, observation, source]
+        relationship_kind:
+          type: string
+        direction:
+          type: string
+        chain_depth:
+          type: integer
+        via_claim_id:
+          type: string
+        summary:
+          type: string
+        claim:
+          $ref: '#/components/schemas/PlatformClaimRecord'
+        artifact:
+          $ref: '#/components/schemas/PlatformKnowledgeArtifactRecord'
+        source:
+          $ref: '#/components/schemas/PlatformKnowledgeSourceRecord'
+    PlatformClaimExplanation:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        valid_at:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+        claim:
+          $ref: '#/components/schemas/PlatformClaimRecord'
+        group:
+          $ref: '#/components/schemas/PlatformClaimGroupRecord'
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformKnowledgeSourceRecord'
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformKnowledgeArtifactRecord'
+        observations:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformKnowledgeArtifactRecord'
+        supporting_claims:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformClaimRecord'
+        refuting_claims:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformClaimRecord'
+        conflicting_claims:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformClaimRecord'
+        supersedes_claims:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformClaimRecord'
+        superseded_by_claims:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformClaimRecord'
+        summary:
+          $ref: '#/components/schemas/PlatformClaimExplanationSummary'
+        why_true:
+          type: array
+          items:
+            type: string
+        why_disputed:
+          type: array
+          items:
+            type: string
+        repair_actions:
+          type: array
+          items:
+            type: string
+    PlatformClaimExplanationSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        supported:
+          type: boolean
+        source_backed:
+          type: boolean
+        conflicted:
+          type: boolean
+        needs_adjudication:
+          type: boolean
+        evidence_count:
+          type: integer
+        observation_count:
+          type: integer
+        source_count:
+          type: integer
+        supporting_claims:
+          type: integer
+        refuting_claims:
+          type: integer
+        conflicting_claims:
+          type: integer
+    PlatformClaimDiffCollection:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        from_valid_at:
+          type: string
+          format: date-time
+        from_recorded_at:
+          type: string
+          format: date-time
+        to_valid_at:
+          type: string
+          format: date-time
+        to_recorded_at:
+          type: string
+          format: date-time
+        filters:
+          $ref: '#/components/schemas/PlatformClaimDiffQueryFilters'
+        summary:
+          $ref: '#/components/schemas/PlatformClaimDiffSummary'
+        diffs:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformClaimDiffRecord'
+        count:
+          type: integer
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    PlatformClaimDiffQueryFilters:
+      type: object
+      additionalProperties: false
+      properties:
+        claim_id:
+          type: string
+        subject_id:
+          type: string
+        predicate:
+          type: string
+        object_id:
+          type: string
+        object_value:
+          type: string
+        claim_type:
+          type: string
+        status:
+          type: string
+        source_id:
+          type: string
+        evidence_id:
+          type: string
+        include_resolved:
+          type: boolean
+    PlatformClaimDiffSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        added_claims:
+          type: integer
+        removed_claims:
+          type: integer
+        modified_claims:
+          type: integer
+    PlatformClaimDiffRecord:
+      type: object
+      additionalProperties: false
+      properties:
+        claim_id:
+          type: string
+        change_type:
+          type: string
+          enum: [added, removed, modified]
+        summary:
+          type: string
+        modified_fields:
+          type: array
+          items:
+            type: string
+        before:
+          $ref: '#/components/schemas/PlatformClaimRecord'
+        after:
+          $ref: '#/components/schemas/PlatformClaimRecord'
     PlatformDecisionWriteRequest:
       type: object
       required:

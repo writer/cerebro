@@ -81,6 +81,10 @@ This cycle adds the minimum viable world-model substrate:
 - bitemporal graph views through `GetAllNodesBitemporal(...)`, `GetOutEdgesBitemporal(...)`, and `SubgraphBitemporal(...)`
 - claim write path through `graph.WriteClaim(...)` and `POST /api/v1/platform/knowledge/claims`
 - claim read/query path through `graph.QueryClaims(...)`, `graph.GetClaimRecord(...)`, `GET /api/v1/platform/knowledge/claims`, and `GET /api/v1/platform/knowledge/claims/{claim_id}`
+- observation write path through `graph.WriteObservation(...)` and `POST /api/v1/platform/knowledge/observations`
+- typed artifact reads through `graph.QueryEvidence(...)`, `graph.QueryObservations(...)`, `GET /api/v1/platform/knowledge/evidence`, and `GET /api/v1/platform/knowledge/observations`
+- claim adjudication queue reads through `graph.QueryClaimGroups(...)`, `GET /api/v1/platform/knowledge/claim-groups`, and `GET /api/v1/platform/knowledge/claim-groups/{group_id}`
+- claim reasoning surfaces through `graph.GetClaimTimeline(...)`, `graph.ExplainClaim(...)`, `graph.DiffClaims(...)`, `GET /api/v1/platform/knowledge/claims/{claim_id}/timeline`, `GET /api/v1/platform/knowledge/claims/{claim_id}/explanation`, and `GET /api/v1/platform/knowledge/claim-diffs`
 - claim contradiction reporting through `BuildClaimConflictReport(...)` and `GET /api/v1/platform/intelligence/claim-conflicts`
 - derived claim state surfaced as typed fields (`supported`, `source_backed`, `sourceless`, `conflicted`, `superseded`) instead of forcing every consumer to traverse raw graph links
 
@@ -115,6 +119,12 @@ Contradictions should not be silently flattened. Cerebro needs:
 - claim conflict queues
 - merge / split / supersede workflows
 - human review records and calibration metrics
+
+Current status:
+
+- duplicate-entity and identity review queues exist
+- claim conflict queues now exist as both a report and a typed `claim-group` read surface
+- writable adjudication state still needs explicit review resources and version-preserving mutation semantics before contradiction repair can be automated safely
 
 ### Module Expansion
 

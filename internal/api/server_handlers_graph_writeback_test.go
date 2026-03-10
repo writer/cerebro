@@ -23,7 +23,7 @@ func TestGraphWriteObservationAndAnnotation(t *testing.T) {
 		},
 	})
 
-	observation := do(t, s, http.MethodPost, "/api/v1/graph/write/observation", map[string]any{
+	observation := do(t, s, http.MethodPost, "/api/v1/platform/knowledge/observations", map[string]any{
 		"entity_id":     "service:payments",
 		"observation":   "deploy_risk_increase",
 		"summary":       "Error rates spiked after deploy",
@@ -41,8 +41,8 @@ func TestGraphWriteObservationAndAnnotation(t *testing.T) {
 	if !ok || observationNode == nil {
 		t.Fatalf("expected observation node %q to exist", observationID)
 	}
-	if observationNode.Kind != graph.NodeKindEvidence {
-		t.Fatalf("expected observation node kind evidence, got %q", observationNode.Kind)
+	if observationNode.Kind != graph.NodeKindObservation {
+		t.Fatalf("expected observation node kind observation, got %q", observationNode.Kind)
 	}
 
 	annotation := do(t, s, http.MethodPost, "/api/v1/graph/write/annotation", map[string]any{
@@ -519,7 +519,7 @@ func TestGraphWritebackValidationFailures(t *testing.T) {
 		},
 	})
 
-	observation := do(t, s, http.MethodPost, "/api/v1/graph/write/observation", map[string]any{
+	observation := do(t, s, http.MethodPost, "/api/v1/platform/knowledge/observations", map[string]any{
 		"observation": "deploy_risk_increase",
 	})
 	if observation.Code != http.StatusBadRequest {
