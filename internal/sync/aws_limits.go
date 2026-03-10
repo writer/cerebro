@@ -9,6 +9,7 @@ type tableRegionOverride struct {
 
 var awsTableRegionOverrides = []tableRegionOverride{
 	{prefix: "aws_iam_", regions: []string{"us-east-1"}},
+	{prefix: "aws_identitycenter_", regions: []string{"us-east-1"}},
 	{prefix: "aws_organizations_", regions: []string{"us-east-1"}},
 	{prefix: "aws_cloudfront_", regions: []string{"us-east-1"}},
 	{prefix: "aws_route53_", regions: []string{"us-east-1"}},
@@ -23,6 +24,7 @@ type serviceConcurrencyLimit struct {
 
 var awsServiceConcurrencyLimits = []serviceConcurrencyLimit{
 	{prefix: "aws_iam_", limit: 2},
+	{prefix: "aws_identitycenter_", limit: 1},
 	{prefix: "aws_organizations_", limit: 1},
 	{prefix: "aws_route53_", limit: 2},
 	{prefix: "aws_cloudfront_", limit: 2},

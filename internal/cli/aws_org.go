@@ -235,7 +235,7 @@ func buildAWSEngineOptions(region string, tableFilter []string) []nativesync.Eng
 	} else {
 		opts = append(opts, nativesync.WithRegions([]string{region}))
 	}
-	return opts
+	return appendAWSPermissionUsageOptions(opts)
 }
 
 func listAWSOrgAccounts(ctx context.Context, cfg aws.Config, include, exclude map[string]struct{}) ([]awsOrgAccount, error) {

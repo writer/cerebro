@@ -76,6 +76,10 @@ var (
 	syncAzure              bool   // sync Azure resources
 	syncAzureSubscription  string // Azure subscription ID
 	syncConcurrency        int
+	syncPermissionLookback int
+	syncGCPIAMGroups       string
+	syncAWSPSInclude       string
+	syncAWSPSExclude       string
 	syncTable              string
 	syncOutput             string
 	syncReportFile         string
@@ -142,6 +146,10 @@ func init() {
 	syncCmd.Flags().BoolVar(&syncAzure, "azure", false, "Sync Azure resources")
 	syncCmd.Flags().StringVar(&syncAzureSubscription, "azure-subscription", "", "Azure subscription ID (optional, will auto-discover if not set)")
 	syncCmd.Flags().IntVar(&syncConcurrency, "concurrency", 20, "Max concurrent table syncs for native engines")
+	syncCmd.Flags().IntVar(&syncPermissionLookback, "permission-usage-lookback-days", 180, "Lookback window in days for IAM permission usage analysis (1-400)")
+	syncCmd.Flags().StringVar(&syncGCPIAMGroups, "gcp-iam-target-groups", "", "Comma-separated Google group emails to analyze for IAM permission usage")
+	syncCmd.Flags().StringVar(&syncAWSPSInclude, "aws-identity-center-permission-sets-include", "", "Comma-separated Identity Center permission set names/ARNs to include")
+	syncCmd.Flags().StringVar(&syncAWSPSExclude, "aws-identity-center-permission-sets-exclude", "", "Comma-separated Identity Center permission set names/ARNs to exclude")
 	syncCmd.Flags().StringVar(&syncTable, "table", "", "Sync only specific table(s), comma-separated (e.g., aws_iam_accounts)")
 	syncCmd.Flags().StringVarP(&syncOutput, "output", "o", "table", "Output format (table, json)")
 	syncCmd.Flags().StringVar(&syncReportFile, "report-file", "", "Write sync/preflight JSON summary to a file path")

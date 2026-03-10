@@ -10,6 +10,14 @@ func TestRegionsForTableOverride(t *testing.T) {
 	}
 }
 
+func TestRegionsForTableIdentityCenterOverride(t *testing.T) {
+	configured := []string{"us-east-1", "us-west-2", "eu-west-1"}
+	regions := regionsForTable("aws_identitycenter_permission_set_permission_usage", configured)
+	if len(regions) != 1 || regions[0] != "us-east-1" {
+		t.Fatalf("expected us-east-1 override for identity center, got %v", regions)
+	}
+}
+
 func TestRegionsForTableNoOverride(t *testing.T) {
 	configured := []string{"us-east-1", "us-west-2"}
 	regions := regionsForTable("aws_ec2_instances", configured)
@@ -38,6 +46,16 @@ func TestServiceLimitForTable(t *testing.T) {
 	}
 	if limit != 2 {
 		t.Fatalf("expected limit 2, got %d", limit)
+	}
+}
+
+func TestServiceLimitForIdentityCenterTable(t *testing.T) {
+	key, limit := serviceLimitForTable("aws_identitycenter_permission_set_permission_usage")
+	if key == "" {
+		t.Fatalf("expected service key for identity center")
+	}
+	if limit != 1 {
+		t.Fatalf("expected limit 1, got %d", limit)
 	}
 }
 

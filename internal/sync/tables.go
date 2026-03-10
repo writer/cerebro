@@ -132,6 +132,7 @@ func (e *SyncEngine) getAWSTables() []TableSpec {
 		e.iamSSHPublicKeyTable(),
 		e.iamServiceSpecificCredentialTable(),
 		e.iamAccessAdvisorTable(),
+		e.awsIdentityCenterPermissionSetUsageTable(),
 		e.iamInstanceProfileTable(),
 		e.iamSamlProviderTable(),
 		e.iamOidcProviderTable(),

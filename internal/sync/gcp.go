@@ -26,6 +26,9 @@ type GCPSyncEngine struct {
 	tableFilter  map[string]struct{}
 	rateLimiter  *rate.Limiter
 	retryOptions retryOptions
+
+	permissionUsageLookbackDays int
+	gcpIAMTargetGroups          map[string]struct{}
 }
 
 // GCPEngineOption configures the GCP sync engine
@@ -43,11 +46,24 @@ func WithGCPTableFilter(tables []string) GCPEngineOption {
 	return func(e *GCPSyncEngine) { e.tableFilter = normalizeTableFilter(tables) }
 }
 
+func WithGCPPermissionUsageLookbackDays(days int) GCPEngineOption {
+	return func(e *GCPSyncEngine) {
+		e.permissionUsageLookbackDays = clampPermissionUsageLookbackDays(days)
+	}
+}
+
+func WithGCPIAMTargetGroups(groups []string) GCPEngineOption {
+	return func(e *GCPSyncEngine) {
+		e.gcpIAMTargetGroups = normalizeIdentityFilterSet(groups)
+	}
+}
+
 func NewGCPSyncEngine(sf *snowflake.Client, logger *slog.Logger, opts ...GCPEngineOption) *GCPSyncEngine {
 	e := &GCPSyncEngine{
-		sf:          sf,
-		logger:      logger,
-		concurrency: 10,
+		sf:                          sf,
+		logger:                      logger,
+		concurrency:                 10,
+		permissionUsageLookbackDays: defaultPermissionUsageLookbackDays,
 	}
 	for _, opt := range opts {
 		opt(e)
@@ -342,6 +358,7 @@ func (e *GCPSyncEngine) getGCPTables() []GCPTableSpec {
 		e.gcpIAMServiceAccountKeyTable(),
 		e.gcpIAMPolicyTable(),
 		e.gcpIAMMemberTable(),
+		e.gcpIAMGroupPermissionUsageTable(),
 		// Database
 		e.gcpSQLInstanceTable(),
 		// Serverless

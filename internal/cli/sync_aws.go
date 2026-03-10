@@ -185,6 +185,7 @@ func runMultiAccountAWSSync(ctx context.Context, start time.Time) error {
 		} else {
 			opts = append(opts, nativesync.WithRegions([]string{region}))
 		}
+		opts = appendAWSPermissionUsageOptions(opts)
 
 		syncer := nativesync.NewSyncEngine(sfClient, slog.Default(), opts...)
 		results, err := syncer.SyncAllWithConfig(ctx, awsCfg)
@@ -269,6 +270,7 @@ func runNativeSync(ctx context.Context, start time.Time) error {
 	} else {
 		opts = append(opts, nativesync.WithRegions([]string{region}))
 	}
+	opts = appendAWSPermissionUsageOptions(opts)
 
 	syncer := nativesync.NewSyncEngine(client, slog.Default(), opts...)
 	if syncValidate {
@@ -306,6 +308,16 @@ func runNativeSync(ctx context.Context, start time.Time) error {
 	}
 
 	return nil
+}
+
+func appendAWSPermissionUsageOptions(opts []nativesync.EngineOption) []nativesync.EngineOption {
+	opts = append(opts, nativesync.WithAWSPermissionUsageLookbackDays(syncPermissionLookback))
+	include := parseCommaSeparatedValues(syncAWSPSInclude)
+	exclude := parseCommaSeparatedValues(syncAWSPSExclude)
+	if len(include) > 0 || len(exclude) > 0 {
+		opts = append(opts, nativesync.WithAWSIdentityCenterPermissionSetFilters(include, exclude))
+	}
+	return opts
 }
 
 func loadAWSConfig(ctx context.Context, profile string) (aws.Config, error) {

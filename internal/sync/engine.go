@@ -32,6 +32,10 @@ type SyncEngine struct {
 	tableFilter  map[string]struct{}
 	rateLimiter  *rate.Limiter
 	retryOptions retryOptions
+
+	permissionUsageLookbackDays        int
+	identityCenterPermissionSetInclude map[string]struct{}
+	identityCenterPermissionSetExclude map[string]struct{}
 }
 
 type tableInitState struct {
@@ -58,6 +62,19 @@ func WithRateLimiter(limiter *rate.Limiter) EngineOption {
 	return func(e *SyncEngine) { e.rateLimiter = limiter }
 }
 
+func WithAWSPermissionUsageLookbackDays(days int) EngineOption {
+	return func(e *SyncEngine) {
+		e.permissionUsageLookbackDays = clampPermissionUsageLookbackDays(days)
+	}
+}
+
+func WithAWSIdentityCenterPermissionSetFilters(include, exclude []string) EngineOption {
+	return func(e *SyncEngine) {
+		e.identityCenterPermissionSetInclude = normalizeIdentityFilterSet(include)
+		e.identityCenterPermissionSetExclude = normalizeIdentityFilterSet(exclude)
+	}
+}
+
 // DefaultAWSRegions returns commonly used AWS regions for multi-region scanning
 var DefaultAWSRegions = []string{
 	"us-east-1",
@@ -74,9 +91,10 @@ var DefaultAWSRegions = []string{
 
 func NewSyncEngine(sf *snowflake.Client, logger *slog.Logger, opts ...EngineOption) *SyncEngine {
 	e := &SyncEngine{
-		sf:          sf,
-		logger:      logger,
-		concurrency: 20,
+		sf:                          sf,
+		logger:                      logger,
+		concurrency:                 20,
+		permissionUsageLookbackDays: defaultPermissionUsageLookbackDays,
 	}
 	for _, opt := range opts {
 		opt(e)

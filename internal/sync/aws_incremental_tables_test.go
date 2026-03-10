@@ -40,9 +40,10 @@ func TestAWSTableIncrementalLookbackCoverage(t *testing.T) {
 	tables := e.getAWSTables()
 
 	expected := map[string]time.Duration{
-		"aws_securityhub_findings": securityHubIncrementalLookback,
-		"aws_guardduty_findings":   guardDutyIncrementalLookback,
-		"aws_inspector2_findings":  inspectorIncrementalLookback,
+		"aws_securityhub_findings":                           securityHubIncrementalLookback,
+		"aws_guardduty_findings":                             guardDutyIncrementalLookback,
+		"aws_inspector2_findings":                            inspectorIncrementalLookback,
+		"aws_identitycenter_permission_set_permission_usage": awsIdentityCenterIncrementalLookback,
 	}
 
 	foundIncremental := make(map[string]struct{})
