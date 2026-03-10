@@ -269,6 +269,7 @@ func defaultPermissions() []Permission {
 		{ID: "platform.intelligence.read", Resource: "platform.intelligence", Action: "read"},
 		{ID: "platform.intelligence.run", Resource: "platform.intelligence", Action: "run"},
 		{ID: "platform.jobs.read", Resource: "platform.jobs", Action: "read"},
+		{ID: "platform.knowledge.read", Resource: "platform.knowledge", Action: "read"},
 		{ID: "platform.knowledge.write", Resource: "platform.knowledge", Action: "write"},
 		{ID: "platform.workflow.write", Resource: "platform.workflow", Action: "write"},
 		{ID: "platform.schema.read", Resource: "platform.schema", Action: "read"},
@@ -333,7 +334,7 @@ func defaultAdminRolePermissions() []string {
 
 		"platform.graph.read", "platform.graph.write", "platform.intelligence.read",
 		"platform.intelligence.run",
-		"platform.jobs.read", "platform.knowledge.write", "platform.workflow.write",
+		"platform.jobs.read", "platform.knowledge.read", "platform.knowledge.write", "platform.workflow.write",
 		"platform.schema.read", "platform.schema.manage", "platform.identity.review",
 		"platform.simulation.run",
 
@@ -369,7 +370,7 @@ func defaultAnalystRolePermissions() []string {
 
 		"platform.graph.read", "platform.graph.write", "platform.intelligence.read",
 		"platform.intelligence.run",
-		"platform.jobs.read", "platform.knowledge.write", "platform.workflow.write",
+		"platform.jobs.read", "platform.knowledge.read", "platform.knowledge.write", "platform.workflow.write",
 		"platform.schema.read", "platform.identity.review", "platform.simulation.run",
 
 		"security.assets.read", "security.findings.read", "security.findings.manage",
@@ -391,7 +392,7 @@ func defaultViewerRolePermissions() []string {
 		"findings:read", "policies:read", "agents:read", "tickets:read",
 		"runtime:read", "graph:read", "assets:read", "compliance:read",
 
-		"platform.graph.read", "platform.intelligence.read", "platform.jobs.read", "platform.schema.read",
+		"platform.graph.read", "platform.intelligence.read", "platform.jobs.read", "platform.knowledge.read", "platform.schema.read",
 
 		"security.assets.read", "security.findings.read", "security.policies.read",
 		"security.compliance.read", "security.runtime.read", "security.tickets.read",
@@ -435,7 +436,7 @@ func permissionImplications() map[string][]string {
 		"tickets:write":              {"security.tickets.manage"},
 		"runtime:read":               {"security.runtime.read"},
 		"runtime:write":              {"security.runtime.write"},
-		"graph:read":                 {"platform.graph.read", "platform.intelligence.read", "platform.jobs.read", "platform.schema.read", "security.analyses.read", "org.expertise.read", "org.intelligence.read", "sdk.context.read", "sdk.schema.read"},
+		"graph:read":                 {"platform.graph.read", "platform.intelligence.read", "platform.jobs.read", "platform.knowledge.read", "platform.schema.read", "security.analyses.read", "org.expertise.read", "org.intelligence.read", "sdk.context.read", "sdk.schema.read"},
 		"graph:write":                {"platform.graph.write", "platform.intelligence.run", "platform.knowledge.write", "platform.workflow.write", "platform.schema.manage", "platform.identity.review", "platform.simulation.run", "security.analyses.run", "org.team.recommend", "org.reorg.simulate", "sdk.enforcement.run", "sdk.worldmodel.write", "sdk.invoke"},
 		"assets:read":                {"security.assets.read"},
 		"compliance:read":            {"security.compliance.read"},
@@ -446,6 +447,7 @@ func permissionImplications() map[string][]string {
 		"platform.graph.write":       {"platform.intelligence.run", "platform.simulation.run", "sdk.enforcement.run", "sdk.worldmodel.write", "sdk.invoke"},
 		"platform.intelligence.run":  {"platform.jobs.read"},
 		"platform.intelligence.read": {"sdk.context.read"},
+		"platform.knowledge.read":    {"sdk.context.read"},
 		"platform.knowledge.write":   {"sdk.worldmodel.write"},
 		"platform.workflow.write":    {"sdk.worldmodel.write"},
 		"platform.identity.review":   {"sdk.worldmodel.write"},

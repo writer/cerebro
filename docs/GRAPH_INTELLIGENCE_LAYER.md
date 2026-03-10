@@ -199,6 +199,8 @@ Graph intelligence compounds only when decisions and outcomes write back.
 
 Current endpoints:
 - `POST /api/v1/graph/write/observation`
+- `GET /api/v1/platform/knowledge/claims`
+- `GET /api/v1/platform/knowledge/claims/{claim_id}`
 - `POST /api/v1/platform/knowledge/claims`
 - `POST /api/v1/graph/write/annotation`
 - `POST /api/v1/platform/knowledge/decisions`
@@ -236,6 +238,7 @@ MCP adapter strategy:
 - Keep tool contracts stable and deterministic.
 - Enforce permission boundaries per tool/action.
 - Preserve traceability: every response carries IDs/evidence references.
+- Preserve source-attribution honesty: claims should only look source-backed when explicit source identity or source metadata was actually supplied.
 
 Gateway surfaces:
 - Typed REST: `/api/v1/agent-sdk/*`

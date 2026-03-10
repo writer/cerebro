@@ -390,6 +390,8 @@ func (s *Server) setupRoutes() {
 				r.Get("/calibration/weekly", s.graphIntelligenceWeeklyCalibration)
 			})
 			r.Route("/knowledge", func(r chi.Router) {
+				r.Get("/claims", s.listPlatformKnowledgeClaims)
+				r.Get("/claims/{claim_id}", s.getPlatformKnowledgeClaim)
 				r.Post("/claims", s.platformWriteClaim)
 				r.Post("/decisions", s.platformWriteDecision)
 			})

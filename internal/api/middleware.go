@@ -390,7 +390,10 @@ func routePermission(method, path string) string {
 	case strings.HasPrefix(path, "/api/v1/platform/jobs"):
 		return "platform.jobs.read"
 	case strings.HasPrefix(path, "/api/v1/platform/knowledge"):
-		return "platform.knowledge.write"
+		if isWrite {
+			return "platform.knowledge.write"
+		}
+		return "platform.knowledge.read"
 	case strings.HasPrefix(path, "/api/v1/platform/workflows"):
 		return "platform.workflow.write"
 	case strings.HasPrefix(path, "/api/v1/security/analyses"):

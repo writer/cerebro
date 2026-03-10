@@ -5,6 +5,67 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 30 - Claim Query Surface + Knowledge Read RBAC + Source Attribution Hardening (2026-03-10)
+
+### Review findings
+- [x] Gap: the platform had first-class claim writes and contradiction reports, but no first-class claim collection/detail read surface for the world model itself.
+- [x] Gap: derived truth signals such as supported vs unsupported, source-backed vs sourceless, and conflicted vs uncontested still had to be reconstructed ad hoc from raw node properties and edge walks.
+- [x] Gap: `/api/v1/platform/knowledge/*` only existed as a write namespace, so the permission model implicitly treated all knowledge routes as write-scoped.
+- [x] Gap: the existing claim write path silently synthesized generic source nodes when no explicit source attribution was supplied, which made sourceless-claim metrics and queues less honest than they appeared.
+- [x] Gap: historical/bitemporal claim reads were easy to test incorrectly because fixture entities without temporal metadata defaulted to `created_at=now`, hiding support/evidence links in older fact-time slices.
+
+### Research synthesis to adopt
+- [x] Knowledge-contract rule: once `claim` is a first-class ontology kind, it needs both a write surface and a typed read surface; otherwise reports and tools become the de facto API.
+- [x] Derived-state rule: supportability, contradiction, supersession, and source attribution should be emitted as typed fields on the read model instead of forcing every consumer to recalculate them differently.
+- [x] Permission honesty rule: namespace splits only matter if read/query and write/record semantics are scoped separately in RBAC and route mapping.
+- [x] Provenance honesty rule: “unknown/generic system source” is not equivalent to “explicit source attribution”; the model must preserve that distinction if source quality metrics are meant to guide adjudication.
+
+### Execution plan
+- [x] Add a graph-native claim query/read model:
+  - [x] add `ClaimQueryOptions`, `ClaimCollection`, `ClaimRecord`, link summaries, and derived-state summaries
+  - [x] add bitemporal claim filtering over `valid_at` + `recorded_at`
+  - [x] add subject/predicate/object/source/evidence/status filters
+  - [x] add derived filters for `supported`, `sourceless`, and `conflicted`
+  - [x] sort collections deterministically by recorded/fact recency
+- [x] Expose the claim read surface through platform APIs:
+  - [x] add `GET /api/v1/platform/knowledge/claims`
+  - [x] add `GET /api/v1/platform/knowledge/claims/{claim_id}`
+  - [x] return typed collection pagination, filters, summaries, links, and derived state
+  - [x] validate query booleans, status enums, and RFC3339 temporal selectors
+- [x] Split knowledge read vs write permissions:
+  - [x] add `platform.knowledge.read`
+  - [x] map `GET /api/v1/platform/knowledge/*` to read scope and writes to write scope
+  - [x] propagate the new scope through default roles and permission implications
+- [x] Harden source-attribution semantics:
+  - [x] stop creating synthetic `source:*` nodes when no explicit source identity/metadata was supplied
+  - [x] add regression coverage proving sourceless claims remain sourceless until attributed
+- [x] Tighten tests/contracts/docs:
+  - [x] add graph-level tests for derived claim state, conflict peers, and bitemporal visibility
+  - [x] add API tests for collection/detail reads and invalid param handling
+  - [x] extend OpenAPI with typed claim collection/detail schemas
+  - [x] update world-model/platform docs to include the claim read surface
+
+### Detailed follow-on backlog
+- [ ] Knowledge read track:
+  - [ ] add `GET /api/v1/platform/knowledge/evidence` and `GET /api/v1/platform/knowledge/evidence/{evidence_id}`
+  - [ ] add `GET /api/v1/platform/knowledge/observations` and typed observation-to-evidence linkage views
+  - [ ] add cross-resource filters so claims can be queried by source trust tier, producer fingerprint, or evidence type
+  - [ ] add stable sort selectors and cursor pagination once claim collections grow beyond offset-only ergonomics
+- [ ] Claim history / adjudication track:
+  - [ ] add claim timeline/history resources that show supersession, correction, and refutation chains explicitly
+  - [ ] add claim-group/adjudication queue resources keyed by `subject_id + predicate`
+  - [ ] add review statuses, assignees, and decision write-back for contradiction repair workflows
+  - [ ] add “why is this claim true” and “why is this claim disputed” explanation payloads built from support/refute/source chains
+- [ ] Graph reasoning track:
+  - [ ] add queryable claim-neighborhood expansions for follow-on graph traversals without forcing consumers into generic graph-query mode
+  - [ ] add claim/evidence/source trust scoring that distinguishes asserted truth from confidence in the asserting producer
+  - [ ] add bitemporal diff helpers for “what changed in the claim layer between two slices”
+  - [ ] add read APIs for decisions/actions/outcomes with the same typed derivation rigor used for claims
+- [ ] Contract/autogen track:
+  - [ ] generate claim collection/detail example payloads from canonical schemas
+  - [ ] add compatibility checks for knowledge read contracts the same way report, CloudEvent, and Agent SDK contracts are gated
+  - [ ] generate SDK bindings for typed knowledge read/write resources from one source of truth
+
 ## Deep Review Cycle 29 - Snapshot Manifest Index + Materialized Diff Artifacts + Async Diff Jobs (2026-03-10)
 
 ### Review findings

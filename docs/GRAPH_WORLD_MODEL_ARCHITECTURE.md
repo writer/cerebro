@@ -80,7 +80,9 @@ This cycle adds the minimum viable world-model substrate:
 - bitemporal metadata normalization in `graph.WriteMetadata`
 - bitemporal graph views through `GetAllNodesBitemporal(...)`, `GetOutEdgesBitemporal(...)`, and `SubgraphBitemporal(...)`
 - claim write path through `graph.WriteClaim(...)` and `POST /api/v1/platform/knowledge/claims`
+- claim read/query path through `graph.QueryClaims(...)`, `graph.GetClaimRecord(...)`, `GET /api/v1/platform/knowledge/claims`, and `GET /api/v1/platform/knowledge/claims/{claim_id}`
 - claim contradiction reporting through `BuildClaimConflictReport(...)` and `GET /api/v1/platform/intelligence/claim-conflicts`
+- derived claim state surfaced as typed fields (`supported`, `source_backed`, `sourceless`, `conflicted`, `superseded`) instead of forcing every consumer to traverse raw graph links
 
 ## What Still Needs To Be Added
 

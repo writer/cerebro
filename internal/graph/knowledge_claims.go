@@ -196,6 +196,21 @@ func WriteClaim(g *Graph, req ClaimWriteRequest) (ClaimWriteResult, error) {
 	if request.ObjectValue != "" {
 		properties["object_value"] = request.ObjectValue
 	}
+	if request.SourceName != "" {
+		properties["source_name"] = request.SourceName
+	}
+	if request.SourceType != "" {
+		properties["source_type"] = request.SourceType
+	}
+	if request.SourceURL != "" {
+		properties["source_url"] = request.SourceURL
+	}
+	if request.TrustTier != "" {
+		properties["source_trust_tier"] = request.TrustTier
+	}
+	if request.ReliabilityScore > 0 {
+		properties["source_reliability_score"] = request.ReliabilityScore
+	}
 	metadata.ApplyTo(properties)
 
 	g.AddNode(&Node{
@@ -445,9 +460,15 @@ func normalizeClaimWriteRequest(req ClaimWriteRequest) (ClaimWriteRequest, error
 	out.Summary = strings.TrimSpace(req.Summary)
 	out.SourceID = strings.TrimSpace(req.SourceID)
 	out.SourceName = strings.TrimSpace(req.SourceName)
-	out.SourceType = normalizeSourceType(req.SourceType)
+	out.SourceType = strings.TrimSpace(req.SourceType)
+	if out.SourceType != "" {
+		out.SourceType = normalizeSourceType(out.SourceType)
+	}
 	out.SourceURL = strings.TrimSpace(req.SourceURL)
-	out.TrustTier = normalizeTrustTier(req.TrustTier)
+	out.TrustTier = strings.TrimSpace(req.TrustTier)
+	if out.TrustTier != "" {
+		out.TrustTier = normalizeTrustTier(out.TrustTier)
+	}
 	out.SourceSystem = strings.TrimSpace(req.SourceSystem)
 	out.SourceEventID = strings.TrimSpace(req.SourceEventID)
 	out.SupersedesClaimID = strings.TrimSpace(req.SupersedesClaimID)

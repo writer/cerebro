@@ -649,6 +649,8 @@ Current security mapping:
 - `GET /api/v1/platform/ingest/dead-letter`
 - `POST /api/v1/platform/knowledge/observations`
 - `POST /api/v1/platform/knowledge/evidence`
+- `GET /api/v1/platform/knowledge/claims`
+- `GET /api/v1/platform/knowledge/claims/{claim_id}`
 - `POST /api/v1/platform/knowledge/claims`
 - `POST /api/v1/platform/knowledge/annotations`
 - `POST /api/v1/platform/knowledge/decisions`

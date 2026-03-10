@@ -6769,6 +6769,94 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
   /api/v1/platform/knowledge/claims:
+    get:
+      tags:
+        - Platform
+      summary: List platform claims
+      description: Return typed claim records filtered by subject, predicate, source or evidence linkage, derived supportability, contradiction state, and bitemporal selectors.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - name: subject_id
+          in: query
+          schema:
+            type: string
+        - name: predicate
+          in: query
+          schema:
+            type: string
+        - name: object_id
+          in: query
+          schema:
+            type: string
+        - name: object_value
+          in: query
+          schema:
+            type: string
+        - name: claim_type
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [asserted, disputed, corrected, retracted, superseded, refuted]
+        - name: source_id
+          in: query
+          schema:
+            type: string
+        - name: evidence_id
+          in: query
+          schema:
+            type: string
+        - name: include_resolved
+          in: query
+          schema:
+            type: boolean
+        - name: supported
+          in: query
+          schema:
+            type: boolean
+        - name: sourceless
+          in: query
+          schema:
+            type: boolean
+        - name: conflicted
+          in: query
+          schema:
+            type: boolean
+        - name: valid_at
+          in: query
+          description: Fact-time selector for the claim view.
+          schema:
+            type: string
+            format: date-time
+        - name: recorded_at
+          in: query
+          description: System-time selector for the claim view.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Claim collection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformClaimCollection'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     post:
       tags:
         - Platform
@@ -6795,6 +6883,55 @@ paths:
                 $ref: '#/components/schemas/Error'
         '404':
           description: Referenced graph entity not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/platform/knowledge/claims/{claim_id}:
+    get:
+      tags:
+        - Platform
+      summary: Get platform claim
+      description: Return one typed claim record at the requested bitemporal slice.
+      parameters:
+        - name: claim_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: valid_at
+          in: query
+          description: Fact-time selector for the claim view.
+          schema:
+            type: string
+            format: date-time
+        - name: recorded_at
+          in: query
+          description: System-time selector for the claim view.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Claim record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformClaimRecord'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Claim not found at the requested bitemporal slice
           content:
             application/json:
               schema:
@@ -10463,6 +10600,197 @@ components:
         recorded_at:
           type: string
           format: date-time
+    PlatformClaimCollection:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        valid_at:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+        filters:
+          $ref: '#/components/schemas/PlatformClaimQueryFilters'
+        summary:
+          $ref: '#/components/schemas/PlatformClaimCollectionSummary'
+        claims:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformClaimRecord'
+        count:
+          type: integer
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    PlatformClaimQueryFilters:
+      type: object
+      additionalProperties: false
+      properties:
+        claim_id:
+          type: string
+        subject_id:
+          type: string
+        predicate:
+          type: string
+        object_id:
+          type: string
+        object_value:
+          type: string
+        claim_type:
+          type: string
+        status:
+          type: string
+        source_id:
+          type: string
+        evidence_id:
+          type: string
+        include_resolved:
+          type: boolean
+        supported:
+          type: boolean
+          nullable: true
+        sourceless:
+          type: boolean
+          nullable: true
+        conflicted:
+          type: boolean
+          nullable: true
+    PlatformClaimCollectionSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        matched_claims:
+          type: integer
+        active_claims:
+          type: integer
+        resolved_claims:
+          type: integer
+        supported_claims:
+          type: integer
+        unsupported_claims:
+          type: integer
+        source_backed_claims:
+          type: integer
+        sourceless_claims:
+          type: integer
+        conflicted_claims:
+          type: integer
+        superseded_claims:
+          type: integer
+    PlatformClaimRecord:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        claim_type:
+          type: string
+        subject_id:
+          type: string
+        predicate:
+          type: string
+        object_id:
+          type: string
+        object_value:
+          type: string
+        status:
+          type: string
+        summary:
+          type: string
+        confidence:
+          type: number
+        observed_at:
+          type: string
+          format: date-time
+        valid_from:
+          type: string
+          format: date-time
+        valid_to:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+        transaction_from:
+          type: string
+          format: date-time
+        transaction_to:
+          type: string
+          format: date-time
+        source_system:
+          type: string
+        source_event_id:
+          type: string
+        links:
+          $ref: '#/components/schemas/PlatformClaimLinks'
+        derived:
+          $ref: '#/components/schemas/PlatformClaimDerivedState'
+        metadata:
+          type: object
+          additionalProperties: true
+    PlatformClaimLinks:
+      type: object
+      additionalProperties: false
+      properties:
+        source_ids:
+          type: array
+          items:
+            type: string
+        evidence_ids:
+          type: array
+          items:
+            type: string
+        supporting_claim_ids:
+          type: array
+          items:
+            type: string
+        refuting_claim_ids:
+          type: array
+          items:
+            type: string
+        supersedes_claim_ids:
+          type: array
+          items:
+            type: string
+        superseded_by_claim_ids:
+          type: array
+          items:
+            type: string
+        conflicting_claim_ids:
+          type: array
+          items:
+            type: string
+    PlatformClaimDerivedState:
+      type: object
+      additionalProperties: false
+      properties:
+        supported:
+          type: boolean
+        source_backed:
+          type: boolean
+        sourceless:
+          type: boolean
+        resolved:
+          type: boolean
+        conflicted:
+          type: boolean
+        superseded:
+          type: boolean
+        evidence_count:
+          type: integer
+        source_count:
+          type: integer
+        supporting_claim_count:
+          type: integer
+        refuting_claim_count:
+          type: integer
+        conflicting_claim_count:
+          type: integer
+        superseded_by_count:
+          type: integer
     PlatformDecisionWriteRequest:
       type: object
       required:
