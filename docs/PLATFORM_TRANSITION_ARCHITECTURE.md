@@ -2,7 +2,7 @@
 
 This document defines the architectural transition from a CSPM/security product with graph-like features into a domain-agnostic graph and intelligence platform where security remains the first major application surface.
 
-Research inputs for this design are captured in [GRAPH_ONTOLOGY_EXTERNAL_PATTERNS.md](./GRAPH_ONTOLOGY_EXTERNAL_PATTERNS.md), especially the contract and metadata patterns taken from Backstage, DataHub, OpenMetadata, OpenLineage, and CloudEvents.
+Research inputs for this design are captured in [GRAPH_ONTOLOGY_EXTERNAL_PATTERNS.md](./GRAPH_ONTOLOGY_EXTERNAL_PATTERNS.md) and [GRAPH_ASSET_DEEPENING_RESEARCH.md](./GRAPH_ASSET_DEEPENING_RESEARCH.md), especially the contract and metadata patterns taken from Backstage, DataHub, OpenMetadata, OpenLineage, CloudEvents, and Cartography.
 
 ## 1. Executive Summary
 
@@ -641,6 +641,8 @@ Current security mapping:
 - `GET /api/v1/platform/intelligence/reports/{id}/runs`
 - `POST /api/v1/platform/intelligence/reports/{id}/runs`
 - `GET /api/v1/platform/intelligence/reports/{id}/runs/{run_id}`
+- `GET /api/v1/platform/entities`
+- `GET /api/v1/platform/entities/{entity_id}`
 - `GET /api/v1/platform/schema`
 - `GET /api/v1/platform/schema/health`
 - `POST /api/v1/platform/schema/modules`
@@ -654,11 +656,14 @@ Current security mapping:
 - `POST /api/v1/platform/knowledge/observations`
 - `GET /api/v1/platform/knowledge/claim-groups`
 - `GET /api/v1/platform/knowledge/claim-groups/{group_id}`
+- `POST /api/v1/platform/knowledge/claim-groups/{group_id}/adjudications`
+- `GET /api/v1/platform/knowledge/diffs`
 - `GET /api/v1/platform/knowledge/claim-diffs`
 - `GET /api/v1/platform/knowledge/claims`
 - `GET /api/v1/platform/knowledge/claims/{claim_id}`
 - `GET /api/v1/platform/knowledge/claims/{claim_id}/timeline`
 - `GET /api/v1/platform/knowledge/claims/{claim_id}/explanation`
+- `GET /api/v1/platform/knowledge/claims/{claim_id}/proofs`
 - `POST /api/v1/platform/knowledge/claims`
 - `POST /api/v1/platform/knowledge/annotations`
 - `POST /api/v1/platform/knowledge/decisions`

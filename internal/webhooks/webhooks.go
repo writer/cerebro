@@ -151,6 +151,7 @@ const (
 	EventCohortOutlierDetected              EventType = "cohort.outlier_detected"
 	EventComplianceScoreChanged             EventType = "compliance.score_changed"
 	EventPlatformClaimWritten               EventType = "platform.claim.written"
+	EventPlatformClaimAdjudicated           EventType = "platform.claim.adjudicated"
 	EventPlatformDecisionRecorded           EventType = "platform.decision.recorded"
 	EventPlatformOutcomeRecorded            EventType = "platform.outcome.recorded"
 	EventPlatformActionRecorded             EventType = "platform.action.recorded"
@@ -194,6 +195,7 @@ var defaultEventTypes = []EventType{
 	EventCohortOutlierDetected,
 	EventComplianceScoreChanged,
 	EventPlatformClaimWritten,
+	EventPlatformClaimAdjudicated,
 	EventPlatformDecisionRecorded,
 	EventPlatformOutcomeRecorded,
 	EventPlatformActionRecorded,
@@ -436,10 +438,10 @@ func isValidEventType(e EventType) bool {
 		EventSignalCreated, EventSignalResolved, EventSignalEscalated,
 		EventRiskScoreChanged, EventToxicCombinationDetected, EventToxicCombinationResolved,
 		EventApprovalRequested, EventCohortOutlierDetected, EventComplianceScoreChanged,
-		EventPlatformClaimWritten, EventPlatformDecisionRecorded, EventPlatformOutcomeRecorded,
-		EventPlatformActionRecorded, EventPlatformReportRunQueued, EventPlatformReportRunStarted,
-		EventPlatformReportRunCompleted, EventPlatformReportRunFailed, EventPlatformReportRunCanceled,
-		EventPlatformReportSectionEmitted,
+		EventPlatformClaimWritten, EventPlatformClaimAdjudicated, EventPlatformDecisionRecorded,
+		EventPlatformOutcomeRecorded, EventPlatformActionRecorded, EventPlatformReportRunQueued,
+		EventPlatformReportRunStarted, EventPlatformReportRunCompleted, EventPlatformReportRunFailed,
+		EventPlatformReportRunCanceled, EventPlatformReportSectionEmitted,
 		EventPlatformReportSnapshotMaterialized:
 		return true
 	default:

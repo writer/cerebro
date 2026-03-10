@@ -53,6 +53,24 @@ func LifecycleContracts() []LifecycleEventContract {
 			},
 		),
 		buildContract(
+			webhooks.EventPlatformClaimAdjudicated,
+			"Claim-group adjudication recorded on the shared platform knowledge layer.",
+			[]fieldSpec{
+				{name: "group_id", kind: "string"},
+				{name: "action", kind: "string"},
+				{name: "created_claim_id", kind: "string"},
+				{name: "affected_claim_ids", kind: "array", itemKind: "string"},
+				{name: "superseded_claim_ids", kind: "array", itemKind: "string"},
+				{name: "observed_at", kind: "string", format: "date-time"},
+				{name: "recorded_at", kind: "string", format: "date-time"},
+			},
+			[]fieldSpec{
+				{name: "authoritative_claim_id", kind: "string"},
+				{name: "tenant_id", kind: "string"},
+				{name: "traceparent", kind: "string"},
+			},
+		),
+		buildContract(
 			webhooks.EventPlatformDecisionRecorded,
 			"Decision write recorded on the shared platform workflow layer.",
 			[]fieldSpec{

@@ -261,7 +261,7 @@ func collectClaimRecords(g *Graph, opts ClaimQueryOptions) []ClaimRecord {
 		return nil
 	}
 	visibleClaims := visibleClaimsAt(g, opts.ValidAt, opts.RecordedAt)
-	conflictPeers := buildClaimConflictPeerMap(visibleClaims)
+	conflictPeers := buildClaimConflictPeerMap(g, visibleClaims, opts.ValidAt, opts.RecordedAt)
 	records := make([]ClaimRecord, 0, len(visibleClaims))
 	for _, claim := range visibleClaims {
 		record := buildClaimRecord(g, claim, opts.ValidAt, opts.RecordedAt, conflictPeers[claim.ID])
@@ -337,18 +337,18 @@ func buildClaimRecord(g *Graph, claim *Node, validAt, recordedAt time.Time, conf
 		RefutingClaimCount:    len(record.Links.RefutingClaimIDs),
 		ConflictingClaimCount: len(record.Links.ConflictingClaimIDs),
 		SupersededByCount:     len(record.Links.SupersededByClaimIDs),
-		Resolved:              claimStatusResolved(record.Status),
 	}
 	record.Derived.Supported = record.Derived.EvidenceCount > 0 || record.Derived.SupportingClaimCount > 0
 	record.Derived.SourceBacked = record.Derived.SourceCount > 0
 	record.Derived.Sourceless = !record.Derived.SourceBacked
 	record.Derived.Conflicted = record.Derived.ConflictingClaimCount > 0
 	record.Derived.Superseded = record.Derived.SupersededByCount > 0 || record.Status == "superseded" || record.Status == "corrected"
+	record.Derived.Resolved = claimStatusResolved(record.Status) || record.Derived.Superseded
 	record.Metadata = claimMetadataProperties(claim.Properties)
 	return record
 }
 
-func buildClaimConflictPeerMap(claims []*Node) map[string][]string {
+func buildClaimConflictPeerMap(g *Graph, claims []*Node, validAt, recordedAt time.Time) map[string][]string {
 	type groupedClaim struct {
 		id    string
 		value string
@@ -359,7 +359,7 @@ func buildClaimConflictPeerMap(claims []*Node) map[string][]string {
 			continue
 		}
 		status := normalizeClaimStatus(readString(claim.Properties, "status"))
-		if claimStatusResolved(status) {
+		if claimStatusResolved(status) || claimSupersededAt(g, claim.ID, validAt, recordedAt) {
 			continue
 		}
 		subjectID := strings.TrimSpace(readString(claim.Properties, "subject_id"))
@@ -395,6 +395,18 @@ func buildClaimConflictPeerMap(claims []*Node) map[string][]string {
 		}
 	}
 	return peers
+}
+
+func claimSupersededAt(g *Graph, claimID string, validAt, recordedAt time.Time) bool {
+	if g == nil || strings.TrimSpace(claimID) == "" {
+		return false
+	}
+	for _, edge := range g.GetInEdgesBitemporal(claimID, validAt, recordedAt) {
+		if edge != nil && edge.Kind == EdgeKindSupersedes {
+			return true
+		}
+	}
+	return false
 }
 
 func claimMatchesQuery(record ClaimRecord, opts ClaimQueryOptions) bool {

@@ -3,6 +3,7 @@
 This document defines the next bar for Cerebro: a graph that does not just store entities and events, but tracks what is believed, who asserted it, what supports it, what contradicts it, and when Cerebro learned it.
 
 See [GRAPH_REPORT_EXTENSIBILITY_RESEARCH.md](./GRAPH_REPORT_EXTENSIBILITY_RESEARCH.md) for how most org/security dynamics should be surfaced as extensible derived reports over this world model.
+See [GRAPH_ASSET_DEEPENING_RESEARCH.md](./GRAPH_ASSET_DEEPENING_RESEARCH.md) for the next asset/entity deepening patterns that should sit on top of this substrate.
 
 ## Goal
 
@@ -83,10 +84,12 @@ This cycle adds the minimum viable world-model substrate:
 - claim read/query path through `graph.QueryClaims(...)`, `graph.GetClaimRecord(...)`, `GET /api/v1/platform/knowledge/claims`, and `GET /api/v1/platform/knowledge/claims/{claim_id}`
 - observation write path through `graph.WriteObservation(...)` and `POST /api/v1/platform/knowledge/observations`
 - typed artifact reads through `graph.QueryEvidence(...)`, `graph.QueryObservations(...)`, `GET /api/v1/platform/knowledge/evidence`, and `GET /api/v1/platform/knowledge/observations`
-- claim adjudication queue reads through `graph.QueryClaimGroups(...)`, `GET /api/v1/platform/knowledge/claim-groups`, and `GET /api/v1/platform/knowledge/claim-groups/{group_id}`
-- claim reasoning surfaces through `graph.GetClaimTimeline(...)`, `graph.ExplainClaim(...)`, `graph.DiffClaims(...)`, `GET /api/v1/platform/knowledge/claims/{claim_id}/timeline`, `GET /api/v1/platform/knowledge/claims/{claim_id}/explanation`, and `GET /api/v1/platform/knowledge/claim-diffs`
+- claim adjudication queue and append-only repair writes through `graph.QueryClaimGroups(...)`, `graph.AdjudicateClaimGroup(...)`, `GET /api/v1/platform/knowledge/claim-groups`, `GET /api/v1/platform/knowledge/claim-groups/{group_id}`, and `POST /api/v1/platform/knowledge/claim-groups/{group_id}/adjudications`
+- claim reasoning surfaces through `graph.GetClaimTimeline(...)`, `graph.ExplainClaim(...)`, `graph.BuildClaimProofs(...)`, `graph.DiffClaims(...)`, `graph.DiffKnowledgeGraphs(...)`, `GET /api/v1/platform/knowledge/claims/{claim_id}/timeline`, `GET /api/v1/platform/knowledge/claims/{claim_id}/explanation`, `GET /api/v1/platform/knowledge/claims/{claim_id}/proofs`, `GET /api/v1/platform/knowledge/claim-diffs`, and `GET /api/v1/platform/knowledge/diffs`
+- typed entity/resource reads through `graph.QueryEntities(...)`, `graph.GetEntityRecord(...)`, `GET /api/v1/platform/entities`, and `GET /api/v1/platform/entities/{entity_id}`
 - claim contradiction reporting through `BuildClaimConflictReport(...)` and `GET /api/v1/platform/intelligence/claim-conflicts`
 - derived claim state surfaced as typed fields (`supported`, `source_backed`, `sourceless`, `conflicted`, `superseded`) instead of forcing every consumer to traverse raw graph links
+- entity support state surfaced as typed fields (`relationships`, `claim_count`, `supported_claim_count`, `conflicted_claim_count`, `evidence_count`, `observation_count`) instead of leaving asset context trapped in raw table rows or one-off reports
 
 ## What Still Needs To Be Added
 
@@ -124,7 +127,8 @@ Current status:
 
 - duplicate-entity and identity review queues exist
 - claim conflict queues now exist as both a report and a typed `claim-group` read surface
-- writable adjudication state still needs explicit review resources and version-preserving mutation semantics before contradiction repair can be automated safely
+- append-only claim adjudication writes now exist through `graph.AdjudicateClaimGroup(...)` and `POST /api/v1/platform/knowledge/claim-groups/{group_id}/adjudications`
+- explicit review ownership/SLA resources still need to be added before contradiction repair can be run as a managed workflow
 
 ### Module Expansion
 

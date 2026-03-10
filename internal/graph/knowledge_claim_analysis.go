@@ -165,6 +165,7 @@ type ClaimExplanationSummary struct {
 	SupportingClaims  int  `json:"supporting_claims"`
 	RefutingClaims    int  `json:"refuting_claims"`
 	ConflictingClaims int  `json:"conflicting_claims"`
+	ProofCount        int  `json:"proof_count"`
 }
 
 // ClaimExplanation is the typed answer for why one claim is true, weak, or disputed.
@@ -183,6 +184,8 @@ type ClaimExplanation struct {
 	SupersedesClaims   []ClaimRecord             `json:"supersedes_claims,omitempty"`
 	SupersededByClaims []ClaimRecord             `json:"superseded_by_claims,omitempty"`
 	Summary            ClaimExplanationSummary   `json:"summary"`
+	ProofSummary       ClaimProofSummary         `json:"proof_summary"`
+	Proofs             []ClaimProofRecord        `json:"proofs,omitempty"`
 	WhyTrue            []string                  `json:"why_true,omitempty"`
 	WhyDisputed        []string                  `json:"why_disputed,omitempty"`
 	RepairActions      []string                  `json:"repair_actions,omitempty"`
@@ -498,6 +501,11 @@ func ExplainClaim(g *Graph, claimID string, validAt, recordedAt time.Time) (Clai
 	result.Summary.SupportingClaims = len(result.SupportingClaims)
 	result.Summary.RefutingClaims = len(result.RefutingClaims)
 	result.Summary.ConflictingClaims = len(result.ConflictingClaims)
+	if proofs, ok := BuildClaimProofs(g, claim.ID, ClaimProofOptions{ValidAt: result.ValidAt, RecordedAt: result.RecordedAt}); ok {
+		result.ProofSummary = proofs.Summary
+		result.Proofs = proofs.Proofs
+		result.Summary.ProofCount = len(proofs.Proofs)
+	}
 	result.WhyTrue = buildClaimWhyTrue(claim, result)
 	result.WhyDisputed = buildClaimWhyDisputed(claim, result)
 	result.RepairActions = buildClaimRepairActions(claim, result)

@@ -5,7 +5,7 @@ Generated from `internal/events.CloudEvent` and `internal/graphingest/mappings.y
 - Contract catalog API version: **cerebro.graph.contracts/v1alpha1**
 - Contract catalog kind: **CloudEventMappingContractCatalog**
 - CloudEvent envelope fields: **12**
-- Platform lifecycle event contracts: **11**
+- Platform lifecycle event contracts: **12**
 - TAP mapping rules: **13**
 - Wildcard event patterns: **1**
 - Distinct required data keys across mappings: **29**
@@ -33,6 +33,7 @@ Generated from `internal/events.CloudEvent` and `internal/graphingest/mappings.y
 | Event Type | Summary | Schema URL | Required Data Keys | Optional Data Keys |
 |---|---|---|---|---|
 | `platform.action.recorded` | Action write recorded on the shared platform workflow layer. | `urn:cerebro:events/platform.action.recorded/v1` | `action_id`, `title`, `target_ids`, `source_system`, `source_event_id`, `observed_at`, `valid_from`, `auto_generated` | `decision_id`, `recommendation_id`, `insight_type`, `summary`, `status`, `tenant_id`, `traceparent` |
+| `platform.claim.adjudicated` | Claim-group adjudication recorded on the shared platform knowledge layer. | `urn:cerebro:events/platform.claim.adjudicated/v1` | `group_id`, `action`, `created_claim_id`, `affected_claim_ids`, `superseded_claim_ids`, `observed_at`, `recorded_at` | `authoritative_claim_id`, `tenant_id`, `traceparent` |
 | `platform.claim.written` | Claim write recorded on the shared platform knowledge layer. | `urn:cerebro:events/platform.claim.written/v1` | `claim_id`, `subject_id`, `predicate`, `claim_type`, `status`, `source_system`, `source_event_id`, `observed_at`, `recorded_at`, `transaction_from` | `source_id`, `object_id`, `object_value`, `evidence_ids`, `supporting_claim_ids`, `refuting_claim_ids`, `tenant_id`, `traceparent` |
 | `platform.decision.recorded` | Decision write recorded on the shared platform workflow layer. | `urn:cerebro:events/platform.decision.recorded/v1` | `decision_id`, `decision_type`, `status`, `target_ids`, `source_system`, `source_event_id`, `observed_at`, `valid_from` | `made_by`, `rationale`, `evidence_ids`, `action_ids`, `tenant_id`, `traceparent` |
 | `platform.outcome.recorded` | Outcome write recorded on the shared platform workflow layer. | `urn:cerebro:events/platform.outcome.recorded/v1` | `outcome_id`, `decision_id`, `outcome_type`, `verdict`, `impact_score`, `source_system`, `source_event_id`, `observed_at`, `valid_from` | `target_ids`, `tenant_id`, `traceparent` |

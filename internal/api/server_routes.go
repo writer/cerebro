@@ -348,6 +348,8 @@ func (s *Server) setupRoutes() {
 
 		// Shared platform primitives
 		r.Route("/platform", func(r chi.Router) {
+			r.Get("/entities", s.listPlatformEntities)
+			r.Get("/entities/{entity_id}", s.getPlatformEntity)
 			r.Route("/graph", func(r chi.Router) {
 				r.Get("/queries", s.platformGraphQueriesGet)
 				r.Post("/queries", s.platformGraphQueries)
@@ -392,16 +394,19 @@ func (s *Server) setupRoutes() {
 			r.Route("/knowledge", func(r chi.Router) {
 				r.Get("/evidence", s.listPlatformKnowledgeEvidence)
 				r.Get("/evidence/{evidence_id}", s.getPlatformKnowledgeEvidence)
+				r.Get("/diffs", s.listPlatformKnowledgeDiffs)
 				r.Get("/observations", s.listPlatformKnowledgeObservations)
 				r.Get("/observations/{observation_id}", s.getPlatformKnowledgeObservation)
 				r.Post("/observations", s.platformWriteObservation)
 				r.Get("/claim-groups", s.listPlatformKnowledgeClaimGroups)
+				r.Post("/claim-groups/{group_id}/adjudications", s.adjudicatePlatformKnowledgeClaimGroup)
 				r.Get("/claim-groups/{group_id}", s.getPlatformKnowledgeClaimGroup)
 				r.Get("/claim-diffs", s.listPlatformKnowledgeClaimDiffs)
 				r.Get("/claims", s.listPlatformKnowledgeClaims)
 				r.Get("/claims/{claim_id}", s.getPlatformKnowledgeClaim)
 				r.Get("/claims/{claim_id}/timeline", s.getPlatformKnowledgeClaimTimeline)
 				r.Get("/claims/{claim_id}/explanation", s.getPlatformKnowledgeClaimExplanation)
+				r.Get("/claims/{claim_id}/proofs", s.getPlatformKnowledgeClaimProofs)
 				r.Post("/claims", s.platformWriteClaim)
 				r.Post("/decisions", s.platformWriteDecision)
 			})

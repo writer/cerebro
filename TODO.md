@@ -5,6 +5,76 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 32 - Append-Only Claim Adjudication + Proof Objects + Knowledge Diffs + Asset Entity Surface (2026-03-10)
+
+### Review findings
+- [x] Gap: the platform could surface contradiction queues, but still had no safe write path for claim repair that preserved historical visibility.
+- [x] Gap: claim explanation still stopped at summaries and flat lists, which was not strong enough for real “show me the proof” or downstream UI composition.
+- [x] Gap: cross-slice change reporting existed for claims only, which left evidence and observations outside the main “what changed” contract.
+- [x] Gap: asset support was still too shallow at the platform layer; security assets were readable as raw tables and graph nodes, but not as typed platform entities with support and relationship context.
+- [x] Gap: the backlog for asset deepening was still too generic and needed concrete external patterns to keep implementation honest.
+
+### Research synthesis to adopt
+- [x] Backstage rule: entities need one canonical envelope plus reusable ownership/dependency/part-of relations; assets should not invent custom identity shapes per source.
+- [x] DataHub rule: asset summaries are modular views over an asset, not special-case asset types; ownership and curated context deserve typed aspects/modules.
+- [x] OpenMetadata rule: deep asset support requires strict typed fragments and entity references, not ever-larger untyped property blobs.
+- [x] Cartography rule: provider assets should use a base entity plus composable facet fragments and promoted subresources where posture/explanation depends on them.
+- [x] Platform rule: risky posture should be representable as claims/evidence/observations attached to entities, not only as report rows or free-form properties.
+
+### Execution plan
+- [x] Add append-only claim adjudication writes:
+  - [x] add `graph.AdjudicateClaimGroup(...)`
+  - [x] support `accept_existing`, `replace_value`, and `retract_group`
+  - [x] preserve history by emitting a new claim version and superseding active claims rather than mutating existing rows
+  - [x] expose `POST /api/v1/platform/knowledge/claim-groups/{group_id}/adjudications`
+- [x] Add explanation-grade proof objects:
+  - [x] add `graph.BuildClaimProofs(...)`
+  - [x] emit typed proof fragments with explicit nodes/edges for source, evidence, observation, support, refutation, conflict, and supersession paths
+  - [x] expose `GET /api/v1/platform/knowledge/claims/{claim_id}/proofs`
+  - [x] embed proof summaries into `GET /api/v1/platform/knowledge/claims/{claim_id}/explanation`
+- [x] Add cross-slice knowledge diffs:
+  - [x] add `graph.DiffKnowledgeGraphs(...)`
+  - [x] support bitemporal and snapshot-pair comparisons
+  - [x] include claim, evidence, and observation changes in one typed response
+  - [x] expose `GET /api/v1/platform/knowledge/diffs`
+- [x] Add typed platform entity reads:
+  - [x] add `graph.QueryEntities(...)` and `graph.GetEntityRecord(...)`
+  - [x] expose typed relationship summaries and typed knowledge support summaries on entity records
+  - [x] expose `GET /api/v1/platform/entities`
+  - [x] expose `GET /api/v1/platform/entities/{entity_id}`
+- [x] Tighten contracts/docs:
+  - [x] extend OpenAPI for entity, adjudication, proof, and knowledge-diff surfaces
+  - [x] add lifecycle contract for `platform.claim.adjudicated`
+  - [x] add graph/API regression coverage for new routes and append-only semantics
+  - [x] add [GRAPH_ASSET_DEEPENING_RESEARCH.md](./docs/GRAPH_ASSET_DEEPENING_RESEARCH.md)
+
+### Detailed follow-on backlog
+- [ ] Track A - Canonical entity identity
+  - Exit criteria:
+  - [ ] add canonical entity refs on typed entity records (`kind`, namespace/scope, canonical name)
+  - [ ] add explicit external refs / alias records on entity detail
+  - [ ] stop treating source-native asset IDs as the only durable public identity
+- [ ] Track B - Entity facet registry
+  - Exit criteria:
+  - [ ] add schema-backed facet fragments for high-value resource kinds
+  - [ ] add facet compatibility checks and generated docs the same way report and event contracts are already gated
+  - [ ] expose typed facet summaries on entity detail without turning `properties` into the contract
+- [ ] Track C - Subresource deepening
+  - Exit criteria:
+  - [ ] pick one asset family and model it deeply end-to-end
+  - [ ] likely first target: `bucket` plus policy statements, logging config, encryption config, and public-access controls
+  - [ ] promote nested objects into nodes when lifecycle, evidence, or remediation depends on them
+- [ ] Track D - Support and posture claims
+  - Exit criteria:
+  - [ ] normalize risky configurations into evidence-backed claims attached to entities
+  - [ ] surface active/supported/disputed/stale posture claims on entity detail
+  - [ ] add entity-level explanation payloads for “why is this asset risky”
+- [ ] Track E - Asset summary/report modules
+  - Exit criteria:
+  - [ ] build entity summary modules as report sections over `/api/v1/platform/entities` plus knowledge/report registries
+  - [ ] support modules for ownership, posture, topology, support coverage, docs/links, and change timeline
+  - [ ] avoid bespoke asset-summary endpoint sprawl
+
 ## Deep Review Cycle 31 - Knowledge Artifact Reads + Claim Adjudication Queue + Claim Explanation/Diff Surfaces (2026-03-10)
 
 ### Review findings

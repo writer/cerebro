@@ -71,6 +71,39 @@ func RestoreFromSnapshot(snapshot *Snapshot) *Graph {
 	return g
 }
 
+// GraphViewFromSnapshot restores the active portion of a snapshot into a graph
+// view suitable for read/query flows. Deleted nodes and edges are excluded.
+func GraphViewFromSnapshot(snapshot *Snapshot) *Graph {
+	if snapshot == nil {
+		return nil
+	}
+	g := New()
+	for _, node := range snapshot.Nodes {
+		if node == nil || node.DeletedAt != nil {
+			continue
+		}
+		cloned := cloneNode(node)
+		cloned.DeletedAt = nil
+		g.AddNode(cloned)
+	}
+	for _, edge := range snapshot.Edges {
+		if edge == nil || edge.DeletedAt != nil {
+			continue
+		}
+		if _, ok := g.GetNode(edge.Source); !ok {
+			continue
+		}
+		if _, ok := g.GetNode(edge.Target); !ok {
+			continue
+		}
+		cloned := cloneEdge(edge)
+		cloned.DeletedAt = nil
+		g.AddEdge(cloned)
+	}
+	g.SetMetadata(snapshot.Metadata)
+	return g
+}
+
 // SaveToFile saves a snapshot to a compressed file
 func (s *Snapshot) SaveToFile(path string) error {
 	dir := filepath.Dir(path)
@@ -142,7 +175,7 @@ func NewSnapshotStore(basePath string, maxSnapshots int) *SnapshotStore {
 // Save saves a graph snapshot
 func (s *SnapshotStore) Save(g *Graph) error {
 	snapshot := CreateSnapshot(g)
-	filename := fmt.Sprintf("graph-%s.json.gz", snapshot.CreatedAt.Format("20060102-150405"))
+	filename := fmt.Sprintf("graph-%s.json.gz", snapshot.CreatedAt.Format("20060102-150405.000000000"))
 	path := filepath.Join(s.basePath, filename)
 
 	if err := snapshot.SaveToFile(path); err != nil {

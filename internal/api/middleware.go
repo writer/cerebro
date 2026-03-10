@@ -382,6 +382,8 @@ func routePermission(method, path string) string {
 		return "sdk.invoke"
 	case strings.HasPrefix(path, "/api/v1/platform/graph"):
 		return "platform.graph.read"
+	case strings.HasPrefix(path, "/api/v1/platform/entities"):
+		return "platform.graph.read"
 	case strings.HasPrefix(path, "/api/v1/platform/intelligence"):
 		if isWrite && strings.Contains(path, "/runs") {
 			return "platform.intelligence.run"

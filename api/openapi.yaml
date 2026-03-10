@@ -6700,6 +6700,148 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/platform/entities:
+    get:
+      tags:
+        - Platform
+      summary: List platform entities
+      description: Return typed graph-native entities filtered by ontology kind/category, provider scope, capabilities, risk, support context, and bitemporal selectors.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - name: id
+          in: query
+          schema:
+            type: string
+        - name: kind
+          in: query
+          description: Comma-separated node kinds to include.
+          schema:
+            type: string
+        - name: category
+          in: query
+          description: Comma-separated node categories to include.
+          schema:
+            type: string
+        - name: capability
+          in: query
+          description: Comma-separated node capabilities to require.
+          schema:
+            type: string
+        - name: provider
+          in: query
+          schema:
+            type: string
+        - name: account
+          in: query
+          schema:
+            type: string
+        - name: region
+          in: query
+          schema:
+            type: string
+        - name: risk
+          in: query
+          schema:
+            type: string
+            enum: [critical, high, medium, low, none]
+        - name: q
+          in: query
+          description: Case-insensitive free-text match over id, kind, name, provider, account, and region.
+          schema:
+            type: string
+        - name: tag_key
+          in: query
+          schema:
+            type: string
+        - name: tag_value
+          in: query
+          schema:
+            type: string
+        - name: has_findings
+          in: query
+          schema:
+            type: boolean
+        - name: valid_at
+          in: query
+          description: Fact-time selector for the entity view.
+          schema:
+            type: string
+            format: date-time
+        - name: recorded_at
+          in: query
+          description: System-time selector for the entity view.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Entity collection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformEntityCollection'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/platform/entities/{entity_id}:
+    get:
+      tags:
+        - Platform
+      summary: Get platform entity
+      description: Return one typed entity record with relationship and knowledge-support context at the requested bitemporal slice.
+      parameters:
+        - name: entity_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: valid_at
+          in: query
+          description: Fact-time selector for the entity view.
+          schema:
+            type: string
+            format: date-time
+        - name: recorded_at
+          in: query
+          description: System-time selector for the entity view.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Entity record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformEntityRecord'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Entity not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/platform/knowledge/evidence:
     get:
       tags:
@@ -7060,6 +7202,153 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/platform/knowledge/claim-groups/{group_id}/adjudications:
+    post:
+      tags:
+        - Platform
+      summary: Record a claim-group adjudication
+      description: Append a version-preserving adjudication action that emits a new canonical or terminal claim version instead of mutating historical claims in place.
+      parameters:
+        - name: group_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlatformClaimAdjudicationWriteRequest'
+      responses:
+        '201':
+          description: Claim adjudication recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformClaimAdjudicationWriteResponse'
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Claim group or authoritative claim not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/platform/knowledge/diffs:
+    get:
+      tags:
+        - Platform
+      summary: Diff the knowledge layer between two graph slices
+      description: Return typed claim, evidence, and observation changes across either a bitemporal comparison or a snapshot-pair comparison.
+      parameters:
+        - name: kinds
+          in: query
+          description: Comma-separated subset of `claim`, `evidence`, and `observation`.
+          schema:
+            type: string
+        - name: claim_id
+          in: query
+          schema:
+            type: string
+        - name: subject_id
+          in: query
+          schema:
+            type: string
+        - name: predicate
+          in: query
+          schema:
+            type: string
+        - name: object_id
+          in: query
+          schema:
+            type: string
+        - name: object_value
+          in: query
+          schema:
+            type: string
+        - name: claim_type
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [asserted, disputed, corrected, retracted, superseded, refuted]
+        - name: target_id
+          in: query
+          schema:
+            type: string
+        - name: source_id
+          in: query
+          schema:
+            type: string
+        - name: artifact_type
+          in: query
+          schema:
+            type: string
+        - name: include_resolved
+          in: query
+          schema:
+            type: boolean
+        - name: from_snapshot_id
+          in: query
+          schema:
+            type: string
+        - name: to_snapshot_id
+          in: query
+          schema:
+            type: string
+        - name: from_valid_at
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: from_recorded_at
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to_valid_at
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to_recorded_at
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Knowledge diff collection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformKnowledgeDiffCollection'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/platform/knowledge/claim-diffs:
     get:
       tags:
@@ -7408,6 +7697,61 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PlatformClaimExplanation'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Claim not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/platform/knowledge/claims/{claim_id}/proofs:
+    get:
+      tags:
+        - Platform
+      summary: Get claim proofs
+      description: Return explanation-grade proof fragments that show provenance, evidence, contradiction, and supersession paths for one claim.
+      parameters:
+        - name: claim_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 256
+        - name: valid_at
+          in: query
+          description: Fact-time selector for the proof view.
+          schema:
+            type: string
+            format: date-time
+        - name: recorded_at
+          in: query
+          description: System-time selector for the proof view.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Claim proof collection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformClaimProofCollection'
         '400':
           description: Invalid query parameters
           content:
@@ -11539,6 +11883,208 @@ components:
           type: integer
         subject_count:
           type: integer
+    PlatformEntityCollection:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        valid_at:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+        filters:
+          $ref: '#/components/schemas/PlatformEntityQueryFilters'
+        summary:
+          $ref: '#/components/schemas/PlatformEntityCollectionSummary'
+        entities:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformEntityRecord'
+        count:
+          type: integer
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    PlatformEntityQueryFilters:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        kinds:
+          type: array
+          items:
+            type: string
+        categories:
+          type: array
+          items:
+            type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        provider:
+          type: string
+        account:
+          type: string
+        region:
+          type: string
+        risk:
+          type: string
+        search:
+          type: string
+        tag_key:
+          type: string
+        tag_value:
+          type: string
+        has_findings:
+          type: boolean
+          nullable: true
+    PlatformEntityCollectionSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        matched_entities:
+          type: integer
+        resource_entities:
+          type: integer
+        identity_entities:
+          type: integer
+        business_entities:
+          type: integer
+        internet_exposable_entities:
+          type: integer
+        sensitive_entities:
+          type: integer
+        finding_backed_entities:
+          type: integer
+        knowledge_backed_entities:
+          type: integer
+    PlatformEntityRecord:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+        name:
+          type: string
+        provider:
+          type: string
+        account:
+          type: string
+        region:
+          type: string
+        risk:
+          type: string
+        categories:
+          type: array
+          items:
+            type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        tags:
+          type: object
+          additionalProperties:
+            type: string
+        findings:
+          type: array
+          items:
+            type: string
+        temporal:
+          $ref: '#/components/schemas/PlatformEntityTemporalMetadata'
+        links:
+          $ref: '#/components/schemas/PlatformEntityLinkSummary'
+        knowledge:
+          $ref: '#/components/schemas/PlatformEntityKnowledgeSupportSummary'
+        relationships:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformEntityRelationshipSummary'
+        properties:
+          type: object
+          additionalProperties: true
+    PlatformEntityTemporalMetadata:
+      type: object
+      additionalProperties: false
+      properties:
+        observed_at:
+          type: string
+          format: date-time
+        valid_from:
+          type: string
+          format: date-time
+        valid_to:
+          type: string
+          format: date-time
+          nullable: true
+        recorded_at:
+          type: string
+          format: date-time
+        transaction_from:
+          type: string
+          format: date-time
+        transaction_to:
+          type: string
+          format: date-time
+          nullable: true
+    PlatformEntityLinkSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        incoming_count:
+          type: integer
+        outgoing_count:
+          type: integer
+    PlatformEntityRelationshipSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        direction:
+          type: string
+          enum: [incoming, outgoing]
+        edge_kind:
+          type: string
+        related_kind:
+          type: string
+        count:
+          type: integer
+        sample_entity_ids:
+          type: array
+          items:
+            type: string
+    PlatformEntityKnowledgeSupportSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        claim_count:
+          type: integer
+        supported_claim_count:
+          type: integer
+        conflicted_claim_count:
+          type: integer
+        evidence_count:
+          type: integer
+        observation_count:
+          type: integer
+        predicates:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformEntityClaimPredicateSummary'
+    PlatformEntityClaimPredicateSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        predicate:
+          type: string
+        count:
+          type: integer
     PlatformClaimGroupCollection:
       type: object
       additionalProperties: false
@@ -11697,6 +12243,104 @@ components:
           type: integer
         recommended_action:
           type: string
+    PlatformClaimAdjudicationWriteRequest:
+      type: object
+      required:
+        - action
+      additionalProperties: false
+      properties:
+        action:
+          type: string
+          enum: [accept_existing, replace_value, retract_group]
+        authoritative_claim_id:
+          type: string
+        claim_type:
+          type: string
+        object_id:
+          type: string
+        object_value:
+          type: string
+        summary:
+          type: string
+        rationale:
+          type: string
+        actor:
+          type: string
+        evidence_ids:
+          type: array
+          items:
+            type: string
+        supporting_claim_ids:
+          type: array
+          items:
+            type: string
+        source_id:
+          type: string
+        source_name:
+          type: string
+        source_type:
+          type: string
+        source_url:
+          type: string
+        trust_tier:
+          type: string
+        reliability_score:
+          type: number
+        source_system:
+          type: string
+        source_event_id:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+        valid_from:
+          type: string
+          format: date-time
+        valid_to:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+        transaction_from:
+          type: string
+          format: date-time
+        transaction_to:
+          type: string
+          format: date-time
+        confidence:
+          type: number
+        metadata:
+          type: object
+          additionalProperties: true
+    PlatformClaimAdjudicationWriteResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        group_id:
+          type: string
+        action:
+          type: string
+        created_claim_id:
+          type: string
+        authoritative_claim_id:
+          type: string
+        affected_claim_ids:
+          type: array
+          items:
+            type: string
+        superseded_claim_ids:
+          type: array
+          items:
+            type: string
+        observed_at:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+        group:
+          $ref: '#/components/schemas/PlatformClaimGroupRecord'
     PlatformClaimTimeline:
       type: object
       additionalProperties: false
@@ -11820,6 +12464,12 @@ components:
             $ref: '#/components/schemas/PlatformClaimRecord'
         summary:
           $ref: '#/components/schemas/PlatformClaimExplanationSummary'
+        proof_summary:
+          $ref: '#/components/schemas/PlatformClaimProofSummary'
+        proofs:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformClaimProofRecord'
         why_true:
           type: array
           items:
@@ -11856,6 +12506,95 @@ components:
           type: integer
         conflicting_claims:
           type: integer
+        proof_count:
+          type: integer
+    PlatformClaimProofCollection:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        claim_id:
+          type: string
+        valid_at:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+        summary:
+          $ref: '#/components/schemas/PlatformClaimProofSummary'
+        proofs:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformClaimProofRecord'
+    PlatformClaimProofSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        total_proofs:
+          type: integer
+        returned_proofs:
+          type: integer
+        proofs_truncated:
+          type: boolean
+        source_proofs:
+          type: integer
+        evidence_proofs:
+          type: integer
+        observation_proofs:
+          type: integer
+        support_proofs:
+          type: integer
+        refutation_proofs:
+          type: integer
+        conflict_proofs:
+          type: integer
+        supersession_proofs:
+          type: integer
+    PlatformClaimProofRecord:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        proof_type:
+          type: string
+        summary:
+          type: string
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformClaimProofNode'
+        edges:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformClaimProofEdge'
+    PlatformClaimProofNode:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+        role:
+          type: string
+        summary:
+          type: string
+    PlatformClaimProofEdge:
+      type: object
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+        source_id:
+          type: string
+        target_id:
+          type: string
+        summary:
+          type: string
     PlatformClaimDiffCollection:
       type: object
       additionalProperties: false
@@ -11940,6 +12679,117 @@ components:
           $ref: '#/components/schemas/PlatformClaimRecord'
         after:
           $ref: '#/components/schemas/PlatformClaimRecord'
+    PlatformKnowledgeDiffCollection:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        comparison_mode:
+          type: string
+          enum: [bitemporal, snapshot_pair]
+        from_snapshot_id:
+          type: string
+        to_snapshot_id:
+          type: string
+        from_valid_at:
+          type: string
+          format: date-time
+        from_recorded_at:
+          type: string
+          format: date-time
+        to_valid_at:
+          type: string
+          format: date-time
+        to_recorded_at:
+          type: string
+          format: date-time
+        filters:
+          $ref: '#/components/schemas/PlatformKnowledgeDiffQueryFilters'
+        summary:
+          $ref: '#/components/schemas/PlatformKnowledgeDiffSummary'
+        claim_diffs:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformClaimDiffRecord'
+        artifact_diffs:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformKnowledgeArtifactDiffRecord'
+    PlatformKnowledgeDiffQueryFilters:
+      type: object
+      additionalProperties: false
+      properties:
+        kinds:
+          type: array
+          items:
+            type: string
+        claim_id:
+          type: string
+        subject_id:
+          type: string
+        predicate:
+          type: string
+        object_id:
+          type: string
+        object_value:
+          type: string
+        claim_type:
+          type: string
+        status:
+          type: string
+        target_id:
+          type: string
+        source_id:
+          type: string
+        artifact_type:
+          type: string
+        include_resolved:
+          type: boolean
+    PlatformKnowledgeDiffSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        added_claims:
+          type: integer
+        removed_claims:
+          type: integer
+        modified_claims:
+          type: integer
+        added_evidence:
+          type: integer
+        removed_evidence:
+          type: integer
+        modified_evidence:
+          type: integer
+        added_observations:
+          type: integer
+        removed_observations:
+          type: integer
+        modified_observations:
+          type: integer
+    PlatformKnowledgeArtifactDiffRecord:
+      type: object
+      additionalProperties: false
+      properties:
+        artifact_id:
+          type: string
+        kind:
+          type: string
+        change_type:
+          type: string
+          enum: [added, removed, modified]
+        summary:
+          type: string
+        modified_fields:
+          type: array
+          items:
+            type: string
+        before:
+          $ref: '#/components/schemas/PlatformKnowledgeArtifactRecord'
+        after:
+          $ref: '#/components/schemas/PlatformKnowledgeArtifactRecord'
     PlatformDecisionWriteRequest:
       type: object
       required:

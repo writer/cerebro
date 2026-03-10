@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/evalops/cerebro/internal/graph"
+	"github.com/evalops/cerebro/internal/webhooks"
 )
 
 func (s *Server) listPlatformKnowledgeClaims(w http.ResponseWriter, r *http.Request) {
@@ -211,6 +213,33 @@ func (s *Server) getPlatformKnowledgeClaimExplanation(w http.ResponseWriter, r *
 	s.json(w, http.StatusOK, explanation)
 }
 
+func (s *Server) getPlatformKnowledgeClaimProofs(w http.ResponseWriter, r *http.Request) {
+	g := s.app.SecurityGraph
+	if g == nil {
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+		return
+	}
+
+	claimID := strings.TrimSpace(chi.URLParam(r, "claim_id"))
+	if claimID == "" {
+		s.error(w, http.StatusBadRequest, "claim id required")
+		return
+	}
+
+	opts, err := parsePlatformClaimProofOptions(r)
+	if err != nil {
+		s.error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	proofs, ok := graph.BuildClaimProofs(g, claimID, opts)
+	if !ok {
+		s.error(w, http.StatusNotFound, "claim not found")
+		return
+	}
+	s.json(w, http.StatusOK, proofs)
+}
+
 func (s *Server) listPlatformKnowledgeClaimDiffs(w http.ResponseWriter, r *http.Request) {
 	g := s.app.SecurityGraph
 	if g == nil {
@@ -225,6 +254,92 @@ func (s *Server) listPlatformKnowledgeClaimDiffs(w http.ResponseWriter, r *http.
 	}
 
 	s.json(w, http.StatusOK, graph.DiffClaims(g, opts))
+}
+
+func (s *Server) listPlatformKnowledgeDiffs(w http.ResponseWriter, r *http.Request) {
+	g := s.app.SecurityGraph
+	if g == nil {
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+		return
+	}
+
+	opts, err := parsePlatformKnowledgeDiffQueryOptions(r)
+	if err != nil {
+		s.error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	fromGraph := g
+	toGraph := g
+	if opts.FromSnapshotID != "" || opts.ToSnapshotID != "" {
+		store := s.platformGraphSnapshotStore()
+		if store == nil {
+			s.error(w, http.StatusServiceUnavailable, "graph snapshot store not configured")
+			return
+		}
+		snapshots, records, err := store.LoadSnapshotsByRecordIDs(opts.FromSnapshotID, opts.ToSnapshotID)
+		if err != nil {
+			switch {
+			case strings.Contains(err.Error(), "not found"):
+				s.error(w, http.StatusNotFound, err.Error())
+			default:
+				s.error(w, http.StatusBadRequest, err.Error())
+			}
+			return
+		}
+		fromGraph = graph.GraphViewFromSnapshot(snapshots[opts.FromSnapshotID])
+		toGraph = graph.GraphViewFromSnapshot(snapshots[opts.ToSnapshotID])
+		opts.FromValidAt = snapshotKnowledgeComparisonTime(snapshots[opts.FromSnapshotID], records[opts.FromSnapshotID])
+		opts.FromRecordedAt = opts.FromValidAt
+		opts.ToValidAt = snapshotKnowledgeComparisonTime(snapshots[opts.ToSnapshotID], records[opts.ToSnapshotID])
+		opts.ToRecordedAt = opts.ToValidAt
+	}
+
+	s.json(w, http.StatusOK, graph.DiffKnowledgeGraphs(fromGraph, toGraph, opts))
+}
+
+func (s *Server) adjudicatePlatformKnowledgeClaimGroup(w http.ResponseWriter, r *http.Request) {
+	g := s.app.SecurityGraph
+	if g == nil {
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+		return
+	}
+
+	groupID := strings.TrimSpace(chi.URLParam(r, "group_id"))
+	if groupID == "" {
+		s.error(w, http.StatusBadRequest, "group id required")
+		return
+	}
+
+	var req graph.ClaimAdjudicationWriteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.error(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	req.GroupID = groupID
+
+	result, err := graph.AdjudicateClaimGroup(g, req)
+	if err != nil {
+		status := http.StatusBadRequest
+		switch {
+		case strings.Contains(err.Error(), "not found"):
+			status = http.StatusNotFound
+		}
+		s.error(w, status, err.Error())
+		return
+	}
+
+	s.emitPlatformLifecycleEvent(r.Context(), webhooks.EventPlatformClaimAdjudicated, map[string]any{
+		"group_id":               result.GroupID,
+		"action":                 result.Action,
+		"created_claim_id":       result.CreatedClaimID,
+		"authoritative_claim_id": result.AuthoritativeClaimID,
+		"affected_claim_ids":     append([]string(nil), result.AffectedClaimIDs...),
+		"superseded_claim_ids":   append([]string(nil), result.SupersededClaimIDs...),
+		"observed_at":            result.ObservedAt.Format(time.RFC3339),
+		"recorded_at":            result.RecordedAt.Format(time.RFC3339),
+	})
+	s.json(w, http.StatusCreated, result)
 }
 
 func (s *Server) platformWriteObservation(w http.ResponseWriter, r *http.Request) {
@@ -411,6 +526,28 @@ func parsePlatformClaimTimelineOptions(r *http.Request) (graph.ClaimTimelineOpti
 	return opts, nil
 }
 
+func parsePlatformClaimProofOptions(r *http.Request) (graph.ClaimProofOptions, error) {
+	opts := graph.ClaimProofOptions{}
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 256 {
+			return graph.ClaimProofOptions{}, errBadRequest("limit must be between 1 and 256")
+		}
+		opts.Limit = parsed
+	}
+	validAt, err := parseOptionalRFC3339Query(r, "valid_at")
+	if err != nil {
+		return graph.ClaimProofOptions{}, err
+	}
+	opts.ValidAt = validAt
+	recordedAt, err := parseOptionalRFC3339Query(r, "recorded_at")
+	if err != nil {
+		return graph.ClaimProofOptions{}, err
+	}
+	opts.RecordedAt = recordedAt
+	return opts, nil
+}
+
 func parsePlatformClaimDiffQueryOptions(r *http.Request) (graph.ClaimDiffQueryOptions, error) {
 	opts := graph.ClaimDiffQueryOptions{
 		ClaimID:     strings.TrimSpace(r.URL.Query().Get("claim_id")),
@@ -469,6 +606,70 @@ func parsePlatformClaimDiffQueryOptions(r *http.Request) (graph.ClaimDiffQueryOp
 		return graph.ClaimDiffQueryOptions{}, err
 	}
 	opts.ToRecordedAt = toRecordedAt
+	return opts, nil
+}
+
+func parsePlatformKnowledgeDiffQueryOptions(r *http.Request) (graph.KnowledgeDiffQueryOptions, error) {
+	opts := graph.KnowledgeDiffQueryOptions{
+		ClaimID:        strings.TrimSpace(r.URL.Query().Get("claim_id")),
+		SubjectID:      strings.TrimSpace(r.URL.Query().Get("subject_id")),
+		Predicate:      strings.TrimSpace(r.URL.Query().Get("predicate")),
+		ObjectID:       strings.TrimSpace(r.URL.Query().Get("object_id")),
+		ObjectValue:    strings.TrimSpace(r.URL.Query().Get("object_value")),
+		ClaimType:      strings.TrimSpace(r.URL.Query().Get("claim_type")),
+		TargetID:       strings.TrimSpace(firstNonEmpty(r.URL.Query().Get("target_id"), r.URL.Query().Get("entity_id"))),
+		SourceID:       strings.TrimSpace(r.URL.Query().Get("source_id")),
+		ArtifactType:   strings.TrimSpace(firstNonEmpty(r.URL.Query().Get("artifact_type"), r.URL.Query().Get("type"))),
+		FromSnapshotID: strings.TrimSpace(r.URL.Query().Get("from_snapshot_id")),
+		ToSnapshotID:   strings.TrimSpace(r.URL.Query().Get("to_snapshot_id")),
+	}
+	if rawKinds := strings.TrimSpace(r.URL.Query().Get("kinds")); rawKinds != "" {
+		parts := strings.Split(rawKinds, ",")
+		opts.Kinds = make([]graph.NodeKind, 0, len(parts))
+		for _, part := range parts {
+			opts.Kinds = append(opts.Kinds, graph.NodeKind(strings.TrimSpace(part)))
+		}
+	}
+	if rawStatus := strings.TrimSpace(r.URL.Query().Get("status")); rawStatus != "" {
+		switch strings.ToLower(rawStatus) {
+		case "asserted", "disputed", "corrected", "retracted", "superseded", "refuted":
+			opts.Status = rawStatus
+		default:
+			return graph.KnowledgeDiffQueryOptions{}, errBadRequest("status must be one of asserted, disputed, corrected, retracted, superseded, refuted")
+		}
+	}
+	if includeResolved, ok, err := parseOptionalBoolQuery(r, "include_resolved"); err != nil {
+		return graph.KnowledgeDiffQueryOptions{}, err
+	} else if ok {
+		opts.IncludeResolved = includeResolved
+	}
+	fromValidAt, err := parseOptionalRFC3339Query(r, "from_valid_at")
+	if err != nil {
+		return graph.KnowledgeDiffQueryOptions{}, err
+	}
+	opts.FromValidAt = fromValidAt
+	fromRecordedAt, err := parseOptionalRFC3339Query(r, "from_recorded_at")
+	if err != nil {
+		return graph.KnowledgeDiffQueryOptions{}, err
+	}
+	opts.FromRecordedAt = fromRecordedAt
+	toValidAt, err := parseOptionalRFC3339Query(r, "to_valid_at")
+	if err != nil {
+		return graph.KnowledgeDiffQueryOptions{}, err
+	}
+	opts.ToValidAt = toValidAt
+	toRecordedAt, err := parseOptionalRFC3339Query(r, "to_recorded_at")
+	if err != nil {
+		return graph.KnowledgeDiffQueryOptions{}, err
+	}
+	opts.ToRecordedAt = toRecordedAt
+
+	if (opts.FromSnapshotID == "") != (opts.ToSnapshotID == "") {
+		return graph.KnowledgeDiffQueryOptions{}, errBadRequest("from_snapshot_id and to_snapshot_id must be supplied together")
+	}
+	if opts.FromSnapshotID == "" && opts.ToSnapshotID == "" && (opts.FromValidAt.IsZero() || opts.ToValidAt.IsZero()) {
+		return graph.KnowledgeDiffQueryOptions{}, errBadRequest("either snapshot ids or both from_valid_at and to_valid_at are required")
+	}
 	return opts, nil
 }
 
@@ -544,6 +745,21 @@ func parseOptionalRFC3339Query(r *http.Request, key string) (time.Time, error) {
 
 func errBadRequest(message string) error {
 	return badRequestError(message)
+}
+
+func snapshotKnowledgeComparisonTime(snapshot *graph.Snapshot, record *graph.GraphSnapshotRecord) time.Time {
+	if snapshot != nil && !snapshot.CreatedAt.IsZero() {
+		return snapshot.CreatedAt.UTC()
+	}
+	if record != nil {
+		if record.CapturedAt != nil && !record.CapturedAt.IsZero() {
+			return record.CapturedAt.UTC()
+		}
+		if record.BuiltAt != nil && !record.BuiltAt.IsZero() {
+			return record.BuiltAt.UTC()
+		}
+	}
+	return time.Now().UTC()
 }
 
 type badRequestError string

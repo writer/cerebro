@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -351,5 +352,229 @@ func TestGetClaimGroupRecordIncludesSingleValueGroups(t *testing.T) {
 	}
 	if record.Derived.NeedsAdjudication {
 		t.Fatalf("did not expect adjudication on single-value group, got %+v", record.Derived)
+	}
+}
+
+func TestAdjudicateClaimGroupBuildsNewCanonicalClaimVersion(t *testing.T) {
+	g := New()
+	baseAt := time.Date(2026, 3, 10, 8, 0, 0, 0, time.UTC)
+	g.AddNode(&Node{ID: "service:payments", Kind: NodeKindService, Name: "Payments", Properties: knowledgeTestProperties(baseAt)})
+	g.AddNode(&Node{ID: "person:alice@example.com", Kind: NodeKindPerson, Name: "Alice", Properties: knowledgeTestProperties(baseAt)})
+	g.AddNode(&Node{ID: "person:bob@example.com", Kind: NodeKindPerson, Name: "Bob", Properties: knowledgeTestProperties(baseAt)})
+	evidenceProps := knowledgeTestProperties(baseAt)
+	evidenceProps["evidence_type"] = "document"
+	evidenceProps["detail"] = "Runbook excerpt"
+	g.AddNode(&Node{ID: "evidence:runbook", Kind: NodeKindEvidence, Name: "Runbook", Properties: evidenceProps})
+
+	aliceClaim, err := WriteClaim(g, ClaimWriteRequest{
+		ID:              "claim:payments:owner:alice",
+		SubjectID:       "service:payments",
+		Predicate:       "owner",
+		ObjectID:        "person:alice@example.com",
+		EvidenceIDs:     []string{"evidence:runbook"},
+		SourceName:      "CMDB",
+		SourceType:      "system",
+		SourceSystem:    "cmdb",
+		ObservedAt:      baseAt.Add(time.Hour),
+		ValidFrom:       baseAt.Add(time.Hour),
+		RecordedAt:      baseAt.Add(time.Hour),
+		TransactionFrom: baseAt.Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("write alice claim: %v", err)
+	}
+	bobClaim, err := WriteClaim(g, ClaimWriteRequest{
+		ID:              "claim:payments:owner:bob",
+		SubjectID:       "service:payments",
+		Predicate:       "owner",
+		ObjectID:        "person:bob@example.com",
+		SourceSystem:    "api",
+		ObservedAt:      baseAt.Add(2 * time.Hour),
+		ValidFrom:       baseAt.Add(2 * time.Hour),
+		RecordedAt:      baseAt.Add(2 * time.Hour),
+		TransactionFrom: baseAt.Add(2 * time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("write bob claim: %v", err)
+	}
+
+	adjudicatedAt := baseAt.Add(4 * time.Hour)
+	result, err := AdjudicateClaimGroup(g, ClaimAdjudicationWriteRequest{
+		GroupID:              buildClaimGroupID("service:payments", "owner"),
+		Action:               ClaimAdjudicationAcceptExisting,
+		AuthoritativeClaimID: aliceClaim.ClaimID,
+		Actor:                "reviewer:alice",
+		Rationale:            "CMDB is authoritative for service ownership",
+		SourceSystem:         "api",
+		SourceEventID:        "adj-001",
+		ObservedAt:           adjudicatedAt,
+		ValidFrom:            adjudicatedAt,
+		RecordedAt:           adjudicatedAt,
+		TransactionFrom:      adjudicatedAt,
+	})
+	if err != nil {
+		t.Fatalf("adjudicate claim group: %v", err)
+	}
+	if result.CreatedClaimID == "" {
+		t.Fatalf("expected created claim id, got %+v", result)
+	}
+	if result.CreatedClaimID == aliceClaim.ClaimID || result.CreatedClaimID == bobClaim.ClaimID {
+		t.Fatalf("expected a new canonical claim version, got %+v", result)
+	}
+
+	activeClaims := QueryClaims(g, ClaimQueryOptions{
+		SubjectID:  "service:payments",
+		Predicate:  "owner",
+		ValidAt:    adjudicatedAt.Add(time.Minute),
+		RecordedAt: adjudicatedAt.Add(time.Minute),
+		Limit:      10,
+	})
+	if len(activeClaims.Claims) != 1 {
+		t.Fatalf("expected only one active current claim after adjudication, got %+v", activeClaims.Claims)
+	}
+	if activeClaims.Claims[0].ID != result.CreatedClaimID {
+		t.Fatalf("expected created claim to be current, got %+v", activeClaims.Claims[0])
+	}
+
+	group, ok := GetClaimGroupRecord(g, buildClaimGroupID("service:payments", "owner"), adjudicatedAt.Add(time.Minute), adjudicatedAt.Add(time.Minute), true)
+	if !ok {
+		t.Fatal("expected adjudicated claim group")
+	}
+	if group.Derived.NeedsAdjudication {
+		t.Fatalf("did not expect adjudication to remain open, got %+v", group.Derived)
+	}
+	if group.Derived.ActiveClaimCount != 1 || group.Derived.ResolvedClaimCount < 2 {
+		t.Fatalf("expected one active and historical resolved claims, got %+v", group.Derived)
+	}
+
+	explanation, ok := ExplainClaim(g, result.CreatedClaimID, adjudicatedAt.Add(time.Minute), adjudicatedAt.Add(time.Minute))
+	if !ok {
+		t.Fatal("expected explanation for adjudicated claim")
+	}
+	if explanation.Summary.ProofCount == 0 || len(explanation.Proofs) == 0 {
+		t.Fatalf("expected explanation proofs, got %+v", explanation)
+	}
+
+	proofs, ok := BuildClaimProofs(g, result.CreatedClaimID, ClaimProofOptions{
+		ValidAt:    adjudicatedAt.Add(time.Minute),
+		RecordedAt: adjudicatedAt.Add(time.Minute),
+	})
+	if !ok {
+		t.Fatal("expected claim proofs")
+	}
+	if proofs.Summary.SupportProofs == 0 || proofs.Summary.SourceProofs == 0 {
+		t.Fatalf("expected support and source proofs, got %+v", proofs.Summary)
+	}
+
+	diffs := DiffKnowledgeGraphs(g, g, KnowledgeDiffQueryOptions{
+		Kinds:           []NodeKind{NodeKindClaim, NodeKindEvidence, NodeKindObservation},
+		SubjectID:       "service:payments",
+		Predicate:       "owner",
+		IncludeResolved: true,
+		FromValidAt:     baseAt.Add(3 * time.Hour),
+		FromRecordedAt:  baseAt.Add(3 * time.Hour),
+		ToValidAt:       adjudicatedAt.Add(time.Minute),
+		ToRecordedAt:    adjudicatedAt.Add(time.Minute),
+	})
+	if diffs.Summary.AddedClaims < 1 {
+		t.Fatalf("expected knowledge diff to include adjudicated claim, got %+v", diffs.Summary)
+	}
+	foundCanonical := false
+	for _, diff := range diffs.ClaimDiffs {
+		if diff.ClaimID == result.CreatedClaimID && diff.ChangeType == "added" {
+			foundCanonical = true
+			break
+		}
+	}
+	if !foundCanonical {
+		t.Fatalf("expected adjudicated claim in knowledge diff, got %+v", diffs.ClaimDiffs)
+	}
+}
+
+func TestDiffKnowledgeGraphsSupportsSnapshotPairs(t *testing.T) {
+	g := New()
+	baseAt := time.Date(2026, 3, 10, 8, 0, 0, 0, time.UTC)
+	g.SetMetadata(Metadata{BuiltAt: baseAt, NodeCount: g.NodeCount(), EdgeCount: g.EdgeCount()})
+	g.AddNode(&Node{ID: "service:payments", Kind: NodeKindService, Name: "Payments", Properties: knowledgeTestProperties(baseAt)})
+	g.AddNode(&Node{ID: "person:alice@example.com", Kind: NodeKindPerson, Name: "Alice", Properties: knowledgeTestProperties(baseAt)})
+
+	_, err := WriteClaim(g, ClaimWriteRequest{
+		ID:              "claim:payments:owner:alice",
+		SubjectID:       "service:payments",
+		Predicate:       "owner",
+		ObjectID:        "person:alice@example.com",
+		SourceSystem:    "api",
+		ObservedAt:      baseAt,
+		ValidFrom:       baseAt,
+		RecordedAt:      baseAt,
+		TransactionFrom: baseAt,
+	})
+	if err != nil {
+		t.Fatalf("write first claim: %v", err)
+	}
+
+	store := NewSnapshotStore(t.TempDir(), 10)
+	if err := store.Save(g); err != nil {
+		t.Fatalf("save first snapshot: %v", err)
+	}
+
+	secondAt := baseAt.Add(2 * time.Hour)
+	g.SetMetadata(Metadata{BuiltAt: secondAt, NodeCount: g.NodeCount(), EdgeCount: g.EdgeCount()})
+	g.AddNode(&Node{ID: "person:bob@example.com", Kind: NodeKindPerson, Name: "Bob", Properties: knowledgeTestProperties(secondAt)})
+	_, err = WriteClaim(g, ClaimWriteRequest{
+		ID:              "claim:payments:delegate:bob",
+		SubjectID:       "service:payments",
+		Predicate:       "delegate",
+		ObjectID:        "person:bob@example.com",
+		SourceSystem:    "api",
+		ObservedAt:      secondAt,
+		ValidFrom:       secondAt,
+		RecordedAt:      secondAt,
+		TransactionFrom: secondAt,
+	})
+	if err != nil {
+		t.Fatalf("write second claim: %v", err)
+	}
+	if err := store.Save(g); err != nil {
+		t.Fatalf("save second snapshot: %v", err)
+	}
+
+	records, err := store.ListGraphSnapshotRecords()
+	if err != nil {
+		t.Fatalf("list snapshot records: %v", err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("expected two snapshot records, got %+v", records)
+	}
+	sort.Slice(records, func(i, j int) bool {
+		left := time.Time{}
+		right := time.Time{}
+		if records[i].CapturedAt != nil {
+			left = records[i].CapturedAt.UTC()
+		}
+		if records[j].CapturedAt != nil {
+			right = records[j].CapturedAt.UTC()
+		}
+		return left.Before(right)
+	})
+	snapshots, _, err := store.LoadSnapshotsByRecordIDs(records[0].ID, records[1].ID)
+	if err != nil {
+		t.Fatalf("load snapshots: %v", err)
+	}
+
+	diffs := DiffKnowledgeGraphs(GraphViewFromSnapshot(snapshots[records[0].ID]), GraphViewFromSnapshot(snapshots[records[1].ID]), KnowledgeDiffQueryOptions{
+		Kinds:          []NodeKind{NodeKindClaim},
+		FromSnapshotID: records[0].ID,
+		ToSnapshotID:   records[1].ID,
+		FromValidAt:    baseAt,
+		FromRecordedAt: baseAt,
+		ToValidAt:      secondAt,
+		ToRecordedAt:   secondAt,
+	})
+	if diffs.ComparisonMode != "snapshot_pair" {
+		t.Fatalf("expected snapshot_pair mode, got %+v", diffs)
+	}
+	if diffs.Summary.AddedClaims < 1 {
+		t.Fatalf("expected added claims across snapshots, got %+v", diffs.Summary)
 	}
 }

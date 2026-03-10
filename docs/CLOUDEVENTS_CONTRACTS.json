@@ -156,6 +156,78 @@
       }
     },
     {
+      "event_type": "platform.claim.adjudicated",
+      "summary": "Claim-group adjudication recorded on the shared platform knowledge layer.",
+      "schema_url": "urn:cerebro:events/platform.claim.adjudicated/v1",
+      "required_data_keys": [
+        "group_id",
+        "action",
+        "created_claim_id",
+        "affected_claim_ids",
+        "superseded_claim_ids",
+        "observed_at",
+        "recorded_at"
+      ],
+      "optional_data_keys": [
+        "authoritative_claim_id",
+        "tenant_id",
+        "traceparent"
+      ],
+      "data_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "affected_claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "authoritative_claim_id": {
+            "type": "string"
+          },
+          "created_claim_id": {
+            "type": "string"
+          },
+          "group_id": {
+            "type": "string"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "superseded_claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "traceparent": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id",
+          "action",
+          "created_claim_id",
+          "affected_claim_ids",
+          "superseded_claim_ids",
+          "observed_at",
+          "recorded_at"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "event_type": "platform.claim.written",
       "summary": "Claim write recorded on the shared platform knowledge layer.",
       "schema_url": "urn:cerebro:events/platform.claim.written/v1",

@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"sort"
 	"testing"
 	"time"
 
@@ -132,6 +133,75 @@ func TestPlatformKnowledgeObservationAndClaimAnalysisEndpoints(t *testing.T) {
 	if !foundBob {
 		t.Fatalf("expected bob claim in diff results, got %#v", diffsBody["diffs"])
 	}
+
+	proofs := do(t, s, http.MethodGet, "/api/v1/platform/knowledge/claims/"+aliceClaimID+"/proofs", nil)
+	if proofs.Code != http.StatusOK {
+		t.Fatalf("expected 200 for claim proofs, got %d: %s", proofs.Code, proofs.Body.String())
+	}
+	proofsBody := decodeJSON(t, proofs)
+	proofSummary := proofsBody["summary"].(map[string]any)
+	if proofSummary["total_proofs"].(float64) < 1 {
+		t.Fatalf("expected proof fragments, got %#v", proofSummary)
+	}
+
+	adjudicate := do(t, s, http.MethodPost, "/api/v1/platform/knowledge/claim-groups/"+groupID+"/adjudications", map[string]any{
+		"action":                 "accept_existing",
+		"authoritative_claim_id": aliceClaimID,
+		"actor":                  "reviewer:alice",
+		"rationale":              "CMDB is the authoritative owner source",
+		"source_system":          "api",
+		"source_event_id":        "adj-001",
+		"observed_at":            baseAt.Add(4 * time.Hour).UTC().Format(time.RFC3339),
+		"valid_from":             baseAt.Add(4 * time.Hour).UTC().Format(time.RFC3339),
+		"recorded_at":            baseAt.Add(4 * time.Hour).UTC().Format(time.RFC3339),
+		"transaction_from":       baseAt.Add(4 * time.Hour).UTC().Format(time.RFC3339),
+	})
+	if adjudicate.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for claim adjudication, got %d: %s", adjudicate.Code, adjudicate.Body.String())
+	}
+	adjudicationBody := decodeJSON(t, adjudicate)
+	createdClaimID, _ := adjudicationBody["created_claim_id"].(string)
+	if createdClaimID == "" {
+		t.Fatalf("expected created adjudicated claim, got %#v", adjudicationBody)
+	}
+
+	groupAfter := do(t, s, http.MethodGet, "/api/v1/platform/knowledge/claim-groups/"+groupID+
+		"?include_resolved=true&valid_at="+baseAt.Add(4*time.Hour+time.Minute).UTC().Format(time.RFC3339)+
+		"&recorded_at="+baseAt.Add(4*time.Hour+time.Minute).UTC().Format(time.RFC3339), nil)
+	if groupAfter.Code != http.StatusOK {
+		t.Fatalf("expected 200 for adjudicated claim group, got %d: %s", groupAfter.Code, groupAfter.Body.String())
+	}
+	groupAfterBody := decodeJSON(t, groupAfter)
+	groupAfterDerived := groupAfterBody["derived"].(map[string]any)
+	if groupAfterDerived["needs_adjudication"] != false {
+		t.Fatalf("expected claim group to be closed after adjudication, got %#v", groupAfterDerived)
+	}
+
+	knowledgeDiffURL := "/api/v1/platform/knowledge/diffs?kinds=claim,evidence,observation&subject_id=service:payments&predicate=owner&include_resolved=true" +
+		"&from_valid_at=" + baseAt.Add(3*time.Hour).UTC().Format(time.RFC3339) +
+		"&from_recorded_at=" + baseAt.Add(3*time.Hour).UTC().Format(time.RFC3339) +
+		"&to_valid_at=" + baseAt.Add(4*time.Hour+time.Minute).UTC().Format(time.RFC3339) +
+		"&to_recorded_at=" + baseAt.Add(4*time.Hour+time.Minute).UTC().Format(time.RFC3339)
+	knowledgeDiff := do(t, s, http.MethodGet, knowledgeDiffURL, nil)
+	if knowledgeDiff.Code != http.StatusOK {
+		t.Fatalf("expected 200 for knowledge diffs, got %d: %s", knowledgeDiff.Code, knowledgeDiff.Body.String())
+	}
+	knowledgeDiffBody := decodeJSON(t, knowledgeDiff)
+	knowledgeSummary := knowledgeDiffBody["summary"].(map[string]any)
+	if knowledgeSummary["added_claims"].(float64) < 1 {
+		t.Fatalf("expected added claim in knowledge diff, got %#v", knowledgeSummary)
+	}
+	foundCanonical := false
+	for _, raw := range knowledgeDiffBody["claim_diffs"].([]any) {
+		diffRecord := raw.(map[string]any)
+		if diffRecord["claim_id"] == createdClaimID && diffRecord["change_type"] == "added" {
+			foundCanonical = true
+			break
+		}
+	}
+	if !foundCanonical {
+		t.Fatalf("expected adjudicated claim in knowledge diff, got %#v", knowledgeDiffBody["claim_diffs"])
+	}
 }
 
 func TestPlatformKnowledgeAnalysisRejectsInvalidParams(t *testing.T) {
@@ -150,6 +220,11 @@ func TestPlatformKnowledgeAnalysisRejectsInvalidParams(t *testing.T) {
 	w = do(t, s, http.MethodGet, "/api/v1/platform/knowledge/observations/observation:missing?recorded_at=nope", nil)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for invalid observation recorded_at, got %d: %s", w.Code, w.Body.String())
+	}
+
+	w = do(t, s, http.MethodGet, "/api/v1/platform/knowledge/diffs?from_snapshot_id=a", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for incomplete snapshot diff params, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
@@ -317,4 +392,64 @@ func seedPlatformKnowledgeScenario(t *testing.T, s *Server) (time.Time, string, 
 	g.AddEdge(&graph.Edge{ID: refutingClaim.ClaimID + "->" + aliceClaim.ClaimID + ":refutes", Source: refutingClaim.ClaimID, Target: aliceClaim.ClaimID, Kind: graph.EdgeKindRefutes, Effect: graph.EdgeEffectAllow, Properties: cloneJSONMap(edgeProps)})
 
 	return baseAt, aliceClaim.ClaimID, bobClaim.ClaimID, observation.ObservationID
+}
+
+func TestPlatformKnowledgeDiffsSupportSnapshotPairs(t *testing.T) {
+	s := newTestServer(t)
+	baseAt, _, _, _ := seedPlatformKnowledgeScenario(t, s)
+	store := s.platformGraphSnapshotStore()
+	if err := store.Save(s.app.SecurityGraph); err != nil {
+		t.Fatalf("save first snapshot: %v", err)
+	}
+
+	_, err := graph.WriteClaim(s.app.SecurityGraph, graph.ClaimWriteRequest{
+		ID:              "claim:payments:delegate:alice",
+		SubjectID:       "service:payments",
+		Predicate:       "delegate",
+		ObjectID:        "person:alice@example.com",
+		SourceSystem:    "api",
+		ObservedAt:      baseAt.Add(5 * time.Hour),
+		ValidFrom:       baseAt.Add(5 * time.Hour),
+		RecordedAt:      baseAt.Add(5 * time.Hour),
+		TransactionFrom: baseAt.Add(5 * time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("write snapshot diff claim: %v", err)
+	}
+	if err := store.Save(s.app.SecurityGraph); err != nil {
+		t.Fatalf("save second snapshot: %v", err)
+	}
+
+	records, err := store.ListGraphSnapshotRecords()
+	if err != nil {
+		t.Fatalf("list snapshot records: %v", err)
+	}
+	if len(records) < 2 {
+		t.Fatalf("expected at least two snapshot records, got %+v", records)
+	}
+	sort.Slice(records, func(i, j int) bool {
+		left := time.Time{}
+		right := time.Time{}
+		if records[i].CapturedAt != nil {
+			left = records[i].CapturedAt.UTC()
+		}
+		if records[j].CapturedAt != nil {
+			right = records[j].CapturedAt.UTC()
+		}
+		return left.Before(right)
+	})
+
+	path := "/api/v1/platform/knowledge/diffs?kinds=claim&from_snapshot_id=" + records[0].ID + "&to_snapshot_id=" + records[len(records)-1].ID
+	resp := do(t, s, http.MethodGet, path, nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200 for snapshot knowledge diff, got %d: %s", resp.Code, resp.Body.String())
+	}
+	body := decodeJSON(t, resp)
+	if body["comparison_mode"] != "snapshot_pair" {
+		t.Fatalf("expected snapshot_pair mode, got %#v", body)
+	}
+	summary := body["summary"].(map[string]any)
+	if summary["added_claims"].(float64) < 1 {
+		t.Fatalf("expected added claim in snapshot diff, got %#v", summary)
+	}
 }

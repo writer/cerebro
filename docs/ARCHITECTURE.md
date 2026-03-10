@@ -12,6 +12,7 @@ Graph-specific architecture references:
 - [Agent SDK Machine-Readable Contract Catalog](./AGENT_SDK_CONTRACTS.json)
 - [Agent SDK Package Auto-Generation](./AGENT_SDK_PACKAGES_AUTOGEN.md)
 - [Graph Report Extensibility Research](./GRAPH_REPORT_EXTENSIBILITY_RESEARCH.md)
+- [Graph Asset Deepening Research](./GRAPH_ASSET_DEEPENING_RESEARCH.md)
 - [Graph Ontology Architecture](./GRAPH_ONTOLOGY_ARCHITECTURE.md)
 - [Graph World Model Architecture](./GRAPH_WORLD_MODEL_ARCHITECTURE.md)
 - [Platform Transition Architecture](./PLATFORM_TRANSITION_ARCHITECTURE.md)
