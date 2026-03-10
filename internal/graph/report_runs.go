@@ -18,6 +18,7 @@ const (
 	ReportRunStatusRunning   = "running"
 	ReportRunStatusSucceeded = "succeeded"
 	ReportRunStatusFailed    = "failed"
+	ReportRunStatusCanceled  = "canceled"
 )
 
 // ReportParameterValue holds one typed parameter binding for a report run.
@@ -37,6 +38,13 @@ type ReportTimeSlice struct {
 	To         *time.Time `json:"to,omitempty"`
 	ValidAt    *time.Time `json:"valid_at,omitempty"`
 	RecordedAt *time.Time `json:"recorded_at,omitempty"`
+}
+
+// ReportRetryPolicy captures retry/backoff policy metadata for one report run.
+type ReportRetryPolicy struct {
+	MaxAttempts   int   `json:"max_attempts,omitempty"`
+	BaseBackoffMS int64 `json:"base_backoff_ms,omitempty"`
+	MaxBackoffMS  int64 `json:"max_backoff_ms,omitempty"`
 }
 
 // ReportSectionResult summarizes one rendered section within a report run.
@@ -88,6 +96,7 @@ type ReportRun struct {
 	LatestAttemptID string                 `json:"latest_attempt_id,omitempty"`
 	AttemptCount    int                    `json:"attempt_count,omitempty"`
 	EventCount      int                    `json:"event_count,omitempty"`
+	RetryPolicy     ReportRetryPolicy      `json:"retry_policy,omitempty"`
 	Lineage         ReportLineage          `json:"lineage,omitempty"`
 	Storage         ReportStoragePolicy    `json:"storage,omitempty"`
 	Snapshot        *ReportSnapshot        `json:"snapshot,omitempty"`
@@ -117,6 +126,7 @@ type ReportRunSummary struct {
 	LatestAttemptID string                 `json:"latest_attempt_id,omitempty"`
 	AttemptCount    int                    `json:"attempt_count,omitempty"`
 	EventCount      int                    `json:"event_count,omitempty"`
+	RetryPolicy     ReportRetryPolicy      `json:"retry_policy,omitempty"`
 	Lineage         ReportLineage          `json:"lineage,omitempty"`
 	Storage         ReportStoragePolicy    `json:"storage,omitempty"`
 	Snapshot        *ReportSnapshot        `json:"snapshot,omitempty"`
@@ -365,6 +375,7 @@ func SummarizeReportRun(run ReportRun) ReportRunSummary {
 		LatestAttemptID: run.LatestAttemptID,
 		AttemptCount:    len(run.Attempts),
 		EventCount:      len(run.Events),
+		RetryPolicy:     NormalizeReportRetryPolicy(run.RetryPolicy),
 		Lineage:         CloneReportLineage(run.Lineage),
 		Storage:         CloneReportStoragePolicy(run.Storage),
 		Snapshot:        cloneReportSnapshot(run.Snapshot),
@@ -383,6 +394,7 @@ func CloneReportRun(run *ReportRun) *ReportRun {
 	cloned.CompletedAt = cloneTimePtr(run.CompletedAt)
 	cloned.Parameters = CloneReportParameterValues(run.Parameters)
 	cloned.TimeSlice = cloneReportTimeSlice(run.TimeSlice)
+	cloned.RetryPolicy = NormalizeReportRetryPolicy(run.RetryPolicy)
 	cloned.Lineage = CloneReportLineage(run.Lineage)
 	cloned.Storage = CloneReportStoragePolicy(run.Storage)
 	cloned.Snapshot = cloneReportSnapshot(run.Snapshot)

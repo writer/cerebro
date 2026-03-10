@@ -5151,6 +5151,114 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/platform/intelligence/reports/{id}/runs/{run_id}:retry:
+    post:
+      tags:
+        - Platform
+      summary: Retry one platform intelligence report run
+      description: Re-queue a failed or canceled run as a new attempt on the same durable run resource.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlatformReportRetryRequest'
+      responses:
+        '200':
+          description: Synchronous retry executed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformReportRun'
+        '202':
+          description: Asynchronous retry accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformReportRun'
+        '400':
+          description: Invalid retry request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Report run or report definition not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Retry not allowed in current run state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Retry execution failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformReportRun'
+  /api/v1/platform/intelligence/reports/{id}/runs/{run_id}:cancel:
+    post:
+      tags:
+        - Platform
+      summary: Cancel one platform intelligence report run
+      description: Cancel a queued or running report run and propagate cancellation to any linked platform job.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlatformReportCancelRequest'
+      responses:
+        '200':
+          description: Report run canceled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformReportRun'
+        '400':
+          description: Invalid cancel request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Report run not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Cancel not allowed in current run state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/platform/intelligence/reports/{id}/runs/{run_id}/attempts:
     get:
       tags:
@@ -8888,6 +8996,7 @@ components:
             - running
             - succeeded
             - failed
+            - canceled
         submitted_at:
           type: string
           format: date-time
@@ -8897,6 +9006,11 @@ components:
         completed_at:
           type: string
           format: date-time
+        cancel_requested_at:
+          type: string
+          format: date-time
+        cancel_reason:
+          type: string
         requested_by:
           type: string
         input:
@@ -8924,6 +9038,45 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PlatformReportParameterValue'
+        retry_policy:
+          $ref: '#/components/schemas/PlatformReportRetryPolicy'
+    PlatformReportRetryRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        execution_mode:
+          type: string
+          enum:
+            - sync
+            - async
+        materialize_result:
+          type: boolean
+        parameters:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformReportParameterValue'
+        retry_policy:
+          $ref: '#/components/schemas/PlatformReportRetryPolicy'
+        reason:
+          type: string
+    PlatformReportCancelRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        reason:
+          type: string
+    PlatformReportRetryPolicy:
+      type: object
+      additionalProperties: false
+      properties:
+        max_attempts:
+          type: integer
+        base_backoff_ms:
+          type: integer
+          format: int64
+        max_backoff_ms:
+          type: integer
+          format: int64
     PlatformReportParameterValue:
       type: object
       additionalProperties: false
@@ -9056,6 +9209,7 @@ components:
             - running
             - succeeded
             - failed
+            - canceled
         execution_mode:
           type: string
           enum:
@@ -9102,6 +9256,8 @@ components:
           $ref: '#/components/schemas/PlatformReportLineage'
         storage:
           $ref: '#/components/schemas/PlatformReportStoragePolicy'
+        retry_policy:
+          $ref: '#/components/schemas/PlatformReportRetryPolicy'
         error:
           type: string
       required:
@@ -9177,6 +9333,13 @@ components:
           type: integer
         status:
           type: string
+        classification:
+          type: string
+          enum:
+            - transient
+            - deterministic
+            - cancelled
+            - superseded
         trigger_surface:
           type: string
         execution_surface:
@@ -9185,6 +9348,16 @@ components:
           type: string
         requested_by:
           type: string
+        retry_of_attempt_id:
+          type: string
+        retry_reason:
+          type: string
+        retry_backoff_ms:
+          type: integer
+          format: int64
+        scheduled_for:
+          type: string
+          format: date-time
         submitted_at:
           type: string
           format: date-time
@@ -10647,6 +10820,8 @@ components:
       properties:
         id:
           type: string
+        version:
+          type: string
         title:
           type: string
         description:
@@ -10664,6 +10839,7 @@ components:
           additionalProperties: true
       required:
         - id
+        - version
         - title
         - schema_name
         - schema_url

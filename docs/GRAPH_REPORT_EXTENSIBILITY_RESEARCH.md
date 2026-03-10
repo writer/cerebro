@@ -31,6 +31,10 @@ The report substrate now includes:
 - discoverable `ReportDefinition`, measure, check, section-envelope, and benchmark-pack registries
 - durable `ReportRun` resources with persisted `ReportSnapshot` payload artifacts
 - first-class `ReportRunAttempt` and `ReportRunEvent` resources for execution history
+- active execution control for durable runs:
+  - `POST /api/v1/platform/intelligence/reports/{id}/runs/{run_id}:retry`
+  - `POST /api/v1/platform/intelligence/reports/{id}/runs/{run_id}:cancel`
+  - retry policy metadata and typed attempt classification
 - explicit lineage/storage metadata on runs and snapshots:
   - `graph_snapshot_id`
   - `graph_built_at`
@@ -42,8 +46,12 @@ The report substrate now includes:
   - `materialized_result_available`
   - `result_truncated`
 - typed OpenAPI schema components for concrete envelope families and benchmark-pack families
+- generated report contract artifacts:
+  - `docs/GRAPH_REPORT_CONTRACTS_AUTOGEN.md`
+  - `docs/GRAPH_REPORT_CONTRACTS.json`
+- CI compatibility checks for section-envelope and benchmark-pack evolution
 
-The next gap is not "add more report endpoints." It is to make contract generation, compatibility checking, and graph/report derivation more automatic and less hand-maintained.
+The next gap is not "add more report endpoints." It is to deepen section telemetry/provenance and storage/retention policy while continuing to reduce hand-maintained contract duplication.
 
 ## Primary External Patterns
 
@@ -204,6 +212,7 @@ Adopt in Cerebro:
 - make `GET /api/v1/platform/intelligence/reports/{id}/runs` and `GET /api/v1/platform/intelligence/reports/{id}/runs/{run_id}` first-class resources
 - validate typed parameter bindings against report definitions before execution
 - link async report runs to platform jobs instead of inventing report-specific job models
+- make retry/cancel part of the same durable run resource instead of introducing a parallel execution-control surface
 
 Reject:
 - hiding execution identity inside transient handler responses
@@ -241,6 +250,7 @@ Cerebro should standardize on these report-layer primitives:
 - `ReportSnapshot`
 - `ReportRunAttempt`
 - `ReportRunEvent`
+- `ReportContractCatalog`
 - `ReportSectionEnvelopeDefinition`
 - `BenchmarkPack`
 
@@ -249,8 +259,10 @@ Cerebro should standardize on these report-layer primitives:
 - `ReportDefinition` owns the canonical contract; run resources may not invent new parameters, sections, or benchmark bindings at execution time.
 - `ReportRun` and `ReportSnapshot` must carry lineage/storage metadata sufficient to answer what graph state and contract version produced the artifact.
 - execution history must be durable enough to survive server restart without relying on webhook delivery logs.
+- retry/cancel semantics must be attached to durable run resources rather than ad hoc handler behavior.
 - every section should resolve to a known `envelope_kind`, and every reusable threshold overlay should resolve to a known benchmark-pack ID.
 - new envelope families and benchmark packs should carry stable schema names and schema URLs so codegen and compatibility checks can bind them deterministically.
+- compatibility enforcement belongs in CI, not in reviewer memory.
 
 - every report definition has a stable `id`
 - every measure has a stable `id`, value type, and optional unit

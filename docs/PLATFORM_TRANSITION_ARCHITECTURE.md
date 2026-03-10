@@ -175,6 +175,7 @@ Rationale:
 - `/api/v1/platform/schema/*`: ontology modules, health, registration, compatibility
 - `/api/v1/platform/ingest/*`: contracts, validation, dead-letter, pipeline health
 - `/api/v1/platform/intelligence/*`: quality, freshness, contradiction, coverage, calibration, report registries, benchmark/section contracts, and durable report execution history
+- `/api/v1/platform/intelligence/*` also owns report-runtime execution control (`retry`, `cancel`) and compatibility-governed contract catalogs for reusable report surfaces
 - `/api/v1/platform/simulations/*`: graph mutation simulation, scenario evaluation, change impact
 - `/api/v1/platform/jobs/*`: async execution objects and status
 
@@ -182,6 +183,7 @@ Rationale:
 
 - `knowledge` is acceptable as the first resource family name, but it is carrying two different lifecycles today: fact-like records and workflow-like records.
 - If permissions and audit semantics start diverging, split it into `/platform/facts/*` and `/platform/workflows/*` rather than letting one family accumulate too much meaning.
+- Treat report execution as an internal runtime domain even if it remains exposed under `/platform/intelligence/*`; once retry, cancel, attempt history, and retention policy are all first-class, that logic should not stay scattered across unrelated handlers.
 
 ### Node Categories
 

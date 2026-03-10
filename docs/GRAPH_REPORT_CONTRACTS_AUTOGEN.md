@@ -1,0 +1,112 @@
+# Graph Report Contract Catalog
+
+Generated from the built-in report runtime registries via `go run ./scripts/generate_report_contract_docs/main.go`.
+
+- Catalog API version: **cerebro.report.contracts/v1alpha1**
+- Catalog kind: **ReportContractCatalog**
+- Reports: **6**
+- Measures: **28**
+- Checks: **22**
+- Section envelopes: **8**
+- Benchmark packs: **6**
+
+## Reports
+
+| ID | Version | Category | Result Schema | Run Path | Measure Count | Check Count | Section Count |
+|---|---|---|---|---|---|---|---|
+| `insights` | `1.0.0` | `decision_support` | `graph.IntelligenceReport` | `/api/v1/platform/intelligence/reports/{id}/runs` | 4 | 3 | 4 |
+| `quality` | `1.0.0` | `quality` | `graph.GraphQualityReport` | `/api/v1/platform/intelligence/reports/{id}/runs` | 6 | 4 | 7 |
+| `metadata-quality` | `1.0.0` | `quality` | `graph.GraphMetadataQualityReport` | `/api/v1/platform/intelligence/reports/{id}/runs` | 4 | 4 | 4 |
+| `claim-conflicts` | `1.0.0` | `knowledge` | `graph.ClaimConflictReport` | `/api/v1/platform/intelligence/reports/{id}/runs` | 5 | 4 | 3 |
+| `leverage` | `1.0.0` | `operating_model` | `graph.GraphLeverageReport` | `/api/v1/platform/intelligence/reports/{id}/runs` | 7 | 4 | 11 |
+| `calibration-weekly` | `1.0.0` | `calibration` | `graph.WeeklyCalibrationReport` | `/api/v1/platform/intelligence/reports/{id}/runs` | 5 | 3 | 3 |
+
+## Measures
+
+| ID | Label | Value Type | Unit | Description |
+|---|---|---|---|---|
+| `actuation_coverage_percent` | `Actuation Coverage` | `number` | `percent` | Share of actions linked to targets, decisions, and outcomes. |
+| `canonical_kind_coverage_percent` | `Canonical Kind Coverage` | `number` | `percent` | Share of nodes using canonical ontology kinds. |
+| `closure_rate_percent` | `Closure Rate` | `number` | `percent` | Share of decisions linked to outcomes or evaluations. |
+| `confidence` | `Confidence` | `number` | `percent` | Overall confidence after freshness, conformance, and evidence weighting. |
+| `conflict_groups` | `Conflict Groups` | `integer` | - | Returned contradictory subject/predicate groups. |
+| `conflicting_claims` | `Conflicting Claims` | `integer` | - | Returned conflicting claims across the result set. |
+| `conformance_percent` | `Conformance` | `number` | `percent` | Schema conformance across graph writes. |
+| `coverage` | `Coverage` | `number` | `percent` | How much of the selected scope is covered by the available graph evidence. |
+| `coverage_percent` | `Coverage` | `number` | `percent` | Ontology coverage across node and edge kinds. |
+| `enum_validity_percent` | `Enum Validity` | `number` | `percent` | Share of enum-like values matching the allowed value set. |
+| `freshness_percent` | `Freshness` | `number` | `percent` | Recency-adjusted freshness for the selected scope. |
+| `leverage_score` | `Leverage Score` | `number` | `score` | Composite operating score for graph leverage. |
+| `linkage_percent` | `Identity Linkage` | `number` | `percent` | Share of alias identities linked to canonical entities. |
+| `maturity_score` | `Maturity Score` | `number` | `score` | Composite graph quality score. |
+| `metadata_completeness_percent` | `Metadata Completeness` | `number` | `percent` | Coverage for required temporal metadata keys. |
+| `outcome_count` | `Observed Outcomes` | `integer` | - | Number of outcomes in the calibration window. |
+| `precision_percent` | `Identity Precision` | `number` | `percent` | Accepted identity review precision over the selected calibration slice. |
+| `profiled_kinds` | `Profiled Kinds` | `integer` | - | Number of kinds with explicit metadata profiles. |
+| `readiness_score` | `Predictive Readiness` | `number` | `score` | Readiness for prediction and calibration based on evidence and labeled outcomes. |
+| `required_key_coverage_percent` | `Required Key Coverage` | `number` | `percent` | Coverage for metadata keys marked required by ontology profiles. |
+| `review_coverage_percent` | `Review Coverage` | `number` | `percent` | Share of aliases reviewed in the identity calibration slice. |
+| `risk_score` | `Risk Score` | `number` | `score` | Top-line modeled risk score for the selected scope. |
+| `rule_signal_count` | `Rule Signals` | `integer` | - | Number of rule signals available for backtesting. |
+| `schema_valid_write_percent` | `Schema Valid Writes` | `number` | `percent` | Share of writes conforming to schema contracts. |
+| `sourceless_claims` | `Sourceless Claims` | `integer` | - | Active claims with no source attribution. |
+| `stale_claims` | `Stale Claims` | `integer` | - | Claims beyond the requested staleness threshold. |
+| `timestamp_validity_percent` | `Timestamp Validity` | `number` | `percent` | Share of timestamp fields matching the expected timestamp type. |
+| `unsupported_claims` | `Unsupported Claims` | `integer` | - | Active claims with no evidence support. |
+
+## Checks
+
+| ID | Title | Severity | Description |
+|---|---|---|---|
+| `actuation_closure` | Actuation Closure | `medium` | Actions should land with targets, decisions, and outcomes. |
+| `closed_loop` | Closed Loop | `medium` | Decisions without outcomes leave the intelligence loop incomplete. |
+| `contradiction_density` | Contradiction Density | `medium` | Contradiction groups should remain bounded for key subject predicates. |
+| `counterfactual_readiness` | Counterfactual Readiness | `medium` | Counterfactual output depends on simulation-ready graph coverage. |
+| `enum_validity` | Enum Validity | `medium` | Ontology-enumerated values should be normalized consistently. |
+| `freshness` | Freshness | `high` | Insights depend on recent graph observations and outcome feedback. |
+| `identity_linkage` | Identity Linkage | `high` | Unlinked aliases reduce graph trust and downstream personalization. |
+| `identity_precision` | Identity Precision | `high` | Low-confidence identity linkage erodes cross-source graph trust. |
+| `identity_review_coverage` | Identity Review Coverage | `medium` | Identity calibration requires regular reviewer decisions. |
+| `metadata_profiles` | Metadata Profiles | `high` | Priority kinds should define required keys, timestamp keys, and enum constraints. |
+| `ontology_conformance` | Ontology Conformance | `high` | Unknown or invalid kinds should fail the graph quality bar. |
+| `ontology_trend` | Ontology Trend | `medium` | Weekly calibration should include a non-empty ontology trend slice. |
+| `ontology_trust` | Ontology Trust | `high` | Canonical kind coverage and valid writes are prerequisite for reuse. |
+| `outcome_backtest` | Outcome Backtest | `high` | Outcome coverage and signal backtesting must remain large enough for calibration. |
+| `required_keys` | Required Keys | `high` | Required metadata keys should be present across profiled writes. |
+| `schema_conformance` | Schema Conformance | `high` | Confidence should be reduced when ontology writes are invalid or drifting. |
+| `source_attribution` | Source Attribution | `high` | Claims should link back to first-class sources. |
+| `source_coverage` | Source Coverage | `high` | Leverage weakens quickly when ingest breadth misses core operating systems. |
+| `supportability` | Supportability | `high` | Claims should be backed by evidence nodes or observations. |
+| `temporal_metadata` | Temporal Metadata | `high` | Missing observed and valid timestamps weaken point-in-time reasoning. |
+| `timestamp_validity` | Timestamp Validity | `medium` | Timestamp fields should remain valid for bitemporal reasoning. |
+| `truncation_transparency` | Truncation Transparency | `medium` | When contradiction output is truncated, total counts must remain explicit. |
+
+## Section Envelopes
+
+| ID | Version | Schema Name | Schema URL | Compatible Section Kinds |
+|---|---|---|---|---|
+| `distribution` | `1.0.0` | `PlatformDistributionEnvelope` | `urn:cerebro:report-envelope:distribution:v1` | `distribution`, `coverage_breakdown`, `health_breakdown`, `breakdown_table` |
+| `evidence_list` | `1.0.0` | `PlatformEvidenceListEnvelope` | `urn:cerebro:report-envelope:evidence_list:v1` | `contradiction_groups`, `ranked_findings` |
+| `narrative_block` | `1.0.0` | `PlatformNarrativeBlockEnvelope` | `urn:cerebro:report-envelope:narrative_block:v1` | `context`, `embedded_report` |
+| `network_slice` | `1.0.0` | `PlatformNetworkSliceEnvelope` | `urn:cerebro:report-envelope:network_slice:v1` | `embedded_report` |
+| `ranking` | `1.0.0` | `PlatformRankingEnvelope` | `urn:cerebro:report-envelope:ranking:v1` | `ranked_findings`, `ranked_backlog`, `action_list` |
+| `recommendations` | `1.0.0` | `PlatformRecommendationsEnvelope` | `urn:cerebro:report-envelope:recommendations:v1` | `action_list` |
+| `summary` | `1.0.0` | `PlatformSummaryEnvelope` | `urn:cerebro:report-envelope:summary:v1` | `context`, `scorecard`, `health_summary`, `calibration_summary`, `freshness_summary`, `readiness_summary`, `capability_summary`, `backtest_summary` |
+| `timeseries` | `1.0.0` | `PlatformTimeseriesEnvelope` | `urn:cerebro:report-envelope:timeseries:v1` | `timeseries_summary` |
+
+## Benchmark Packs
+
+| ID | Version | Scope | Schema Name | Schema URL | Bound Measures |
+|---|---|---|---|---|---|
+| `claim-conflicts.default` | `1.0.0` | `report` | `PlatformClaimConflictBenchmarkPack` | `urn:cerebro:benchmark-pack:claim-conflicts.default:v1` | `conflict_groups`, `unsupported_claims` |
+| `decision-intelligence.default` | `1.0.0` | `report` | `PlatformDecisionIntelligenceBenchmarkPack` | `urn:cerebro:benchmark-pack:decision-intelligence.default:v1` | `risk_score`, `coverage`, `confidence` |
+| `graph-leverage.default` | `1.0.0` | `report` | `PlatformGraphLeverageBenchmarkPack` | `urn:cerebro:benchmark-pack:graph-leverage.default:v1` | `leverage_score` |
+| `graph-quality.default` | `1.0.0` | `report` | `PlatformGraphQualityBenchmarkPack` | `urn:cerebro:benchmark-pack:graph-quality.default:v1` | `maturity_score`, `coverage_percent`, `closure_rate_percent` |
+| `metadata-quality.default` | `1.0.0` | `report` | `PlatformMetadataQualityBenchmarkPack` | `urn:cerebro:benchmark-pack:metadata-quality.default:v1` | `required_key_coverage_percent`, `timestamp_validity_percent` |
+| `weekly-calibration.default` | `1.0.0` | `report` | `PlatformWeeklyCalibrationBenchmarkPack` | `urn:cerebro:benchmark-pack:weekly-calibration.default:v1` | `decision_accuracy_percent` |
+
+## Notes
+
+- `docs/GRAPH_REPORT_CONTRACTS.json` is the machine-readable catalog for compatibility checks and generated tooling.
+- Section-envelope and benchmark-pack compatibility is version-governed; semantic changes require a version bump.
+- Report runs, attempts, and events should bind to these contracts by stable IDs rather than handler-local assumptions.

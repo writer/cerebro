@@ -151,7 +151,7 @@ func TestReportRunAttemptAndEventCollections(t *testing.T) {
 	run.LatestAttemptID = run.Attempts[0].ID
 	AppendReportRunEvent(run, "platform.report_run.queued", run.Status, "api.request", "alice", run.SubmittedAt, map[string]any{"report_id": run.ReportID})
 	StartLatestReportRunAttempt(run, run.SubmittedAt.Add(10*time.Millisecond))
-	CompleteLatestReportRunAttempt(run, ReportRunStatusSucceeded, run.SubmittedAt.Add(20*time.Millisecond), "")
+	CompleteLatestReportRunAttempt(run, ReportRunStatusSucceeded, run.SubmittedAt.Add(20*time.Millisecond), "", "")
 	AppendReportRunEvent(run, "platform.report_run.completed", ReportRunStatusSucceeded, "api.request", "alice", run.SubmittedAt.Add(20*time.Millisecond), map[string]any{"report_id": run.ReportID})
 
 	attempts := ReportRunAttemptCollectionSnapshot(run.ReportID, run.ID, run.Attempts)
@@ -168,5 +168,67 @@ func TestReportRunAttemptAndEventCollections(t *testing.T) {
 	}
 	if events.Events[0].Type != "platform.report_run.queued" || events.Events[1].Type != "platform.report_run.completed" {
 		t.Fatalf("unexpected event ordering: %+v", events.Events)
+	}
+}
+
+func TestReportRetryPolicyNormalizationAndBackoff(t *testing.T) {
+	policy := NormalizeReportRetryPolicy(ReportRetryPolicy{})
+	if policy.MaxAttempts != DefaultReportRetryMaxAttempts {
+		t.Fatalf("expected default max attempts %d, got %d", DefaultReportRetryMaxAttempts, policy.MaxAttempts)
+	}
+	if policy.BaseBackoffMS != DefaultReportRetryBaseBackoffMS {
+		t.Fatalf("expected default base backoff %d, got %d", DefaultReportRetryBaseBackoffMS, policy.BaseBackoffMS)
+	}
+	if policy.MaxBackoffMS != DefaultReportRetryMaxBackoffMS {
+		t.Fatalf("expected default max backoff %d, got %d", DefaultReportRetryMaxBackoffMS, policy.MaxBackoffMS)
+	}
+
+	custom := NormalizeReportRetryPolicy(ReportRetryPolicy{
+		MaxAttempts:   5,
+		BaseBackoffMS: 1000,
+		MaxBackoffMS:  2500,
+	})
+	if backoff := ReportRetryBackoff(custom, 1); backoff != 0 {
+		t.Fatalf("expected first attempt backoff 0, got %s", backoff)
+	}
+	if backoff := ReportRetryBackoff(custom, 2); backoff != 1*time.Second {
+		t.Fatalf("expected second attempt backoff 1s, got %s", backoff)
+	}
+	if backoff := ReportRetryBackoff(custom, 3); backoff != 2*time.Second {
+		t.Fatalf("expected third attempt backoff 2s, got %s", backoff)
+	}
+	if backoff := ReportRetryBackoff(custom, 4); backoff != 2500*time.Millisecond {
+		t.Fatalf("expected capped fourth attempt backoff 2.5s, got %s", backoff)
+	}
+}
+
+func TestCloneReportRunAttemptsClonesRetrySchedulingMetadata(t *testing.T) {
+	scheduledFor := time.Date(2026, 3, 10, 7, 0, 0, 0, time.UTC)
+	startedAt := scheduledFor.Add(2 * time.Second)
+	completedAt := startedAt.Add(3 * time.Second)
+	attempts := []ReportRunAttempt{{
+		ID:               "report_run:test:attempt:2",
+		RunID:            "report_run:test",
+		AttemptNumber:    2,
+		Status:           ReportRunStatusFailed,
+		Classification:   ReportAttemptClassTransient,
+		RetryOfAttemptID: "report_run:test:attempt:1",
+		RetryReason:      "manual_retry",
+		RetryBackoffMS:   5000,
+		ScheduledFor:     &scheduledFor,
+		SubmittedAt:      scheduledFor.Add(-1 * time.Second),
+		StartedAt:        &startedAt,
+		CompletedAt:      &completedAt,
+	}}
+
+	cloned := CloneReportRunAttempts(attempts)
+	if len(cloned) != 1 {
+		t.Fatalf("expected one cloned attempt, got %d", len(cloned))
+	}
+	if cloned[0].ScheduledFor == attempts[0].ScheduledFor || cloned[0].StartedAt == attempts[0].StartedAt || cloned[0].CompletedAt == attempts[0].CompletedAt {
+		t.Fatal("expected retry scheduling timestamps to be deep-cloned")
+	}
+	if cloned[0].Classification != ReportAttemptClassTransient || cloned[0].RetryBackoffMS != 5000 {
+		t.Fatalf("expected retry metadata to survive clone, got %+v", cloned[0])
 	}
 }

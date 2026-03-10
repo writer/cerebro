@@ -20,21 +20,22 @@ import (
 
 // Server is the fully wired API server
 type Server struct {
-	app                  *app.App
-	router               *chi.Mux
-	auditLogger          auditLogWriter
-	rateLimiter          *RateLimiter
-	riskEngineMu         sync.Mutex
-	riskEngine           *graph.RiskEngine
-	riskEngineSource     *graph.Graph
-	crossTenantReplayMu  sync.Mutex
-	crossTenantReplay    map[string]time.Time
-	platformJobMu        sync.RWMutex
-	platformJobs         map[string]*platformJob
-	platformReportRunMu  sync.RWMutex
-	platformReportRuns   map[string]*graph.ReportRun
-	platformReportStore  *graph.ReportRunStore
-	platformReportSaveMu sync.Mutex
+	app                    *app.App
+	router                 *chi.Mux
+	auditLogger            auditLogWriter
+	rateLimiter            *RateLimiter
+	riskEngineMu           sync.Mutex
+	riskEngine             *graph.RiskEngine
+	riskEngineSource       *graph.Graph
+	crossTenantReplayMu    sync.Mutex
+	crossTenantReplay      map[string]time.Time
+	platformJobMu          sync.RWMutex
+	platformJobs           map[string]*platformJob
+	platformReportHandlers map[string]http.HandlerFunc
+	platformReportRunMu    sync.RWMutex
+	platformReportRuns     map[string]*graph.ReportRun
+	platformReportStore    *graph.ReportRunStore
+	platformReportSaveMu   sync.Mutex
 }
 
 type auditLogWriter interface {
@@ -46,12 +47,13 @@ var runtimeNumGoroutine = runtime.NumGoroutine
 // NewServer creates a new server with all services wired
 func NewServer(application *app.App) *Server {
 	s := &Server{
-		app:                application,
-		router:             chi.NewRouter(),
-		auditLogger:        application.AuditRepo,
-		crossTenantReplay:  make(map[string]time.Time),
-		platformJobs:       make(map[string]*platformJob),
-		platformReportRuns: make(map[string]*graph.ReportRun),
+		app:                    application,
+		router:                 chi.NewRouter(),
+		auditLogger:            application.AuditRepo,
+		crossTenantReplay:      make(map[string]time.Time),
+		platformJobs:           make(map[string]*platformJob),
+		platformReportHandlers: make(map[string]http.HandlerFunc),
+		platformReportRuns:     make(map[string]*graph.ReportRun),
 	}
 	if cfg := application.Config; cfg != nil {
 		s.platformReportStore = graph.NewReportRunStore(cfg.PlatformReportRunStateFile, cfg.PlatformReportSnapshotPath)
@@ -60,6 +62,14 @@ func NewServer(application *app.App) *Server {
 		} else {
 			s.platformReportRuns = restoredRuns
 		}
+	}
+	s.platformReportHandlers = map[string]http.HandlerFunc{
+		"insights":           s.graphIntelligenceInsights,
+		"quality":            s.graphIntelligenceQuality,
+		"metadata-quality":   s.graphIntelligenceMetadataQuality,
+		"claim-conflicts":    s.graphIntelligenceClaimConflicts,
+		"leverage":           s.graphIntelligenceLeverage,
+		"calibration-weekly": s.graphIntelligenceWeeklyCalibration,
 	}
 	s.setupMiddleware()
 	s.setupRoutes()

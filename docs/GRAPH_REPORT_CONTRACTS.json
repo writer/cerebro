@@ -1,0 +1,2323 @@
+{
+  "apiVersion": "cerebro.report.contracts/v1alpha1",
+  "kind": "ReportContractCatalog",
+  "generated_at": "0001-01-01T00:00:00Z",
+  "reports": [
+    {
+      "id": "insights",
+      "version": "1.0.0",
+      "title": "Decision Intelligence",
+      "category": "decision_support",
+      "description": "Prioritized decision-grade insights with evidence, coverage, confidence, and optional counterfactual context.",
+      "result_schema": "graph.IntelligenceReport",
+      "endpoint": {
+        "method": "GET",
+        "path": "/api/v1/platform/intelligence/insights",
+        "synchronous": true,
+        "job_capable": true,
+        "run_method": "POST",
+        "run_path_template": "/api/v1/platform/intelligence/reports/{id}/runs"
+      },
+      "temporal_modes": [
+        "window",
+        "snapshot_diff"
+      ],
+      "parameters": [
+        {
+          "name": "entity_id",
+          "in": "query",
+          "value_type": "string",
+          "description": "Optional entity focus for entity-centric evidence and scoring."
+        },
+        {
+          "name": "window_days",
+          "in": "query",
+          "value_type": "integer",
+          "description": "Outcome feedback window in days."
+        },
+        {
+          "name": "history_limit",
+          "in": "query",
+          "value_type": "integer",
+          "description": "Schema history samples to include."
+        },
+        {
+          "name": "since_version",
+          "in": "query",
+          "value_type": "integer",
+          "description": "Optional schema drift baseline version."
+        },
+        {
+          "name": "max_insights",
+          "in": "query",
+          "value_type": "integer",
+          "description": "Maximum number of prioritized insights."
+        },
+        {
+          "name": "include_counterfactual",
+          "in": "query",
+          "value_type": "boolean",
+          "description": "Include precomputed what-if scenarios."
+        },
+        {
+          "name": "from",
+          "in": "query",
+          "value_type": "date-time",
+          "description": "Lower bound snapshot timestamp for temporal diff context."
+        },
+        {
+          "name": "to",
+          "in": "query",
+          "value_type": "date-time",
+          "description": "Upper bound snapshot timestamp for temporal diff context."
+        }
+      ],
+      "measures": [
+        {
+          "id": "risk_score",
+          "label": "Risk Score",
+          "value_type": "number",
+          "unit": "score",
+          "description": "Top-line modeled risk score for the selected scope."
+        },
+        {
+          "id": "coverage",
+          "label": "Coverage",
+          "value_type": "number",
+          "unit": "percent",
+          "description": "How much of the selected scope is covered by the available graph evidence."
+        },
+        {
+          "id": "confidence",
+          "label": "Confidence",
+          "value_type": "number",
+          "unit": "percent",
+          "description": "Overall confidence after freshness, conformance, and evidence weighting."
+        },
+        {
+          "id": "freshness_percent",
+          "label": "Freshness",
+          "value_type": "number",
+          "unit": "percent",
+          "description": "Recency-adjusted freshness for the selected scope."
+        }
+      ],
+      "sections": [
+        {
+          "key": "scope",
+          "title": "Scope",
+          "kind": "context",
+          "envelope_kind": "summary",
+          "envelope_schema": "PlatformSummaryEnvelope",
+          "description": "Selected entity and time-window context."
+        },
+        {
+          "key": "schema_health",
+          "title": "Schema Health",
+          "kind": "health_summary",
+          "envelope_kind": "summary",
+          "envelope_schema": "PlatformSummaryEnvelope",
+          "description": "Ontology and schema drift context for the current run."
+        },
+        {
+          "key": "outcome_feedback",
+          "title": "Outcome Feedback",
+          "kind": "calibration_summary",
+          "envelope_kind": "summary",
+          "envelope_schema": "PlatformSummaryEnvelope",
+          "description": "Observed outcome feedback feeding intelligence confidence."
+        },
+        {
+          "key": "insights",
+          "title": "Insights",
+          "kind": "ranked_findings",
+          "envelope_kind": "ranking",
+          "envelope_schema": "PlatformRankingEnvelope",
+          "description": "Prioritized insights with evidence and suggested actions.",
+          "measures": [
+            "risk_score",
+            "coverage",
+            "confidence"
+          ],
+          "benchmark_pack_ids": [
+            "decision-intelligence.default"
+          ]
+        }
+      ],
+      "checks": [
+        {
+          "id": "schema_conformance",
+          "title": "Schema Conformance",
+          "severity": "high",
+          "description": "Confidence should be reduced when ontology writes are invalid or drifting."
+        },
+        {
+          "id": "freshness",
+          "title": "Freshness",
+          "severity": "high",
+          "description": "Insights depend on recent graph observations and outcome feedback."
+        },
+        {
+          "id": "counterfactual_readiness",
+          "title": "Counterfactual Readiness",
+          "severity": "medium",
+          "description": "Counterfactual output depends on simulation-ready graph coverage."
+        }
+      ],
+      "extension_points": [
+        {
+          "key": "report.narrative",
+          "scope": "report",
+          "description": "Attach generated narratives or operator notes with explicit provenance."
+        },
+        {
+          "key": "insights.overlays",
+          "scope": "insights[]",
+          "description": "Attach namespaced benchmark or scenario overlays to individual insights."
+        }
+      ]
+    },
+    {
+      "id": "quality",
+      "version": "1.0.0",
+      "title": "Graph Quality",
+      "category": "quality",
+      "description": "Graph operability view spanning ontology health, identity linkage, temporal completeness, and closed-loop write-back maturity.",
+      "result_schema": "graph.GraphQualityReport",
+      "endpoint": {
+        "method": "GET",
+        "path": "/api/v1/platform/intelligence/quality",
+        "synchronous": true,
+        "job_capable": true,
+        "run_method": "POST",
+        "run_path_template": "/api/v1/platform/intelligence/reports/{id}/runs"
+      },
+      "temporal_modes": [
+        "snapshot"
+      ],
+      "parameters": [
+        {
+          "name": "history_limit",
+          "in": "query",
+          "value_type": "integer",
+          "description": "Schema history samples to include."
+        },
+        {
+          "name": "since_version",
+          "in": "query",
+          "value_type": "integer",
+          "description": "Optional schema drift baseline version."
+        },
+        {
+          "name": "stale_after_hours",
+          "in": "query",
+          "value_type": "integer",
+          "description": "Freshness threshold in hours."
+        }
+      ],
+      "measures": [
+        {
+          "id": "maturity_score",
+          "label": "Maturity Score",
+          "value_type": "number",
+          "unit": "score",
+          "description": "Composite graph quality score."
+        },
+        {
+          "id": "coverage_percent",
+          "label": "Coverage",
+          "value_type": "number",
+          "unit": "percent",
+          "description": "Ontology coverage across node and edge kinds."
+        },
+        {
+          "id": "conformance_percent",
+          "label": "Conformance",
+          "value_type": "number",
+          "unit": "percent",
+          "description": "Schema conformance across graph writes."
+        },
+        {
+          "id": "linkage_percent",
+          "label": "Identity Linkage",
+          "value_type": "number",
+          "unit": "percent",
+          "description": "Share of alias identities linked to canonical entities."
+        },
+        {
+          "id": "metadata_completeness_percent",
+          "label": "Metadata Completeness",
+          "value_type": "number",
+          "unit": "percent",
+          "description": "Coverage for required temporal metadata keys."
+        },
+        {
+          "id": "closure_rate_percent",
+          "label": "Closure Rate",
+          "value_type": "number",
+          "unit": "percent",
+          "description": "Share of decisions linked to outcomes or evaluations."
+        }
+      ],
+      "sections": [
+        {
+          "key": "summary",
+          "title": "Summary",
+          "kind": "scorecard",
+          "envelope_kind": "summary",
+          "envelope_schema": "PlatformSummaryEnvelope",
+          "measures": [
+            "maturity_score"
+          ],
+          "benchmark_pack_ids": [
+            "graph-quality.default"
+          ]
+        },
+        {
+          "key": "ontology",
+          "title": "Ontology",
+          "kind": "health_breakdown",
+          "envelope_kind": "distribution",
+          "envelope_schema": "PlatformDistributionEnvelope",
+          "measures": [
+            "coverage_percent",
+            "conformance_percent"
+          ]
+        },
+        {
+          "key": "identity",
+          "title": "Identity",
+          "kind": "health_breakdown",
+          "envelope_kind": "distribution",
+          "envelope_schema": "PlatformDistributionEnvelope",
+          "measures": [
+            "linkage_percent"
+          ]
+        },
+        {
+          "key": "temporal",
+          "title": "Temporal",
+          "kind": "health_breakdown",
+          "envelope_kind": "distribution",
+          "envelope_schema": "PlatformDistributionEnvelope",
+          "measures": [
+            "metadata_completeness_percent"
+          ]
+        },
+        {
+          "key": "writeback",
+          "title": "Write-Back",
+          "kind": "health_breakdown",
+          "envelope_kind": "distribution",
+          "envelope_schema": "PlatformDistributionEnvelope",
+          "measures": [
+            "closure_rate_percent"
+          ]
+        },
+        {
+          "key": "domain_coverage",
+          "title": "Domain Coverage",
+          "kind": "distribution",
+          "envelope_kind": "distribution",
+          "envelope_schema": "PlatformDistributionEnvelope"
+        },
+        {
+          "key": "recommendations",
+          "title": "Recommendations",
+          "kind": "action_list",
+          "envelope_kind": "ranking",
+          "envelope_schema": "PlatformRankingEnvelope",
+          "benchmark_pack_ids": [
+            "graph-quality.default"
+          ]
+        }
+      ],
+      "checks": [
+        {
+          "id": "ontology_conformance",
+          "title": "Ontology Conformance",
+          "severity": "high",
+          "description": "Unknown or invalid kinds should fail the graph quality bar."
+        },
+        {
+          "id": "identity_linkage",
+          "title": "Identity Linkage",
+          "severity": "high",
+          "description": "Unlinked aliases reduce graph trust and downstream personalization."
+        },
+        {
+          "id": "temporal_metadata",
+          "title": "Temporal Metadata",
+          "severity": "high",
+          "description": "Missing observed and valid timestamps weaken point-in-time reasoning."
+        },
+        {
+          "id": "closed_loop",
+          "title": "Closed Loop",
+          "severity": "medium",
+          "description": "Decisions without outcomes leave the intelligence loop incomplete."
+        }
+      ],
+      "extension_points": [
+        {
+          "key": "summary.overlays",
+          "scope": "summary",
+          "description": "Attach benchmark overlays or tenant-specific thresholds to quality summaries."
+        },
+        {
+          "key": "recommendations.packs",
+          "scope": "recommendations",
+          "description": "Attach additional remediation packs or playbooks."
+        }
+      ]
+    },
+    {
+      "id": "metadata-quality",
+      "version": "1.0.0",
+      "title": "Metadata Quality",
+      "category": "quality",
+      "description": "Metadata-profile coverage view over required keys, timestamp validity, enum normalization, and the highest-volume unprofiled kinds.",
+      "result_schema": "graph.GraphMetadataQualityReport",
+      "endpoint": {
+        "method": "GET",
+        "path": "/api/v1/platform/intelligence/metadata-quality",
+        "synchronous": true,
+        "job_capable": true,
+        "run_method": "POST",
+        "run_path_template": "/api/v1/platform/intelligence/reports/{id}/runs"
+      },
+      "temporal_modes": [
+        "snapshot"
+      ],
+      "parameters": [
+        {
+          "name": "top_kinds",
+          "in": "query",
+          "value_type": "integer",
+          "description": "Maximum number of profiled and unprofiled kinds to include."
+        }
+      ],
+      "measures": [
+        {
+          "id": "required_key_coverage_percent",
+          "label": "Required Key Coverage",
+          "value_type": "number",
+          "unit": "percent",
+          "description": "Coverage for metadata keys marked required by ontology profiles."
+        },
+        {
+          "id": "timestamp_validity_percent",
+          "label": "Timestamp Validity",
+          "value_type": "number",
+          "unit": "percent",
+          "description": "Share of timestamp fields matching the expected timestamp type."
+        },
+        {
+          "id": "enum_validity_percent",
+          "label": "Enum Validity",
+          "value_type": "number",
+          "unit": "percent",
+          "description": "Share of enum-like values matching the allowed value set."
+        },
+        {
+          "id": "profiled_kinds",
+          "label": "Profiled Kinds",
+          "value_type": "integer",
+          "description": "Number of kinds with explicit metadata profiles."
+        }
+      ],
+      "sections": [
+        {
+          "key": "summary",
+          "title": "Summary",
+          "kind": "scorecard",
+          "envelope_kind": "summary",
+          "envelope_schema": "PlatformSummaryEnvelope",
+          "measures": [
+            "required_key_coverage_percent",
+            "timestamp_validity_percent",
+            "enum_validity_percent",
+            "profiled_kinds"
+          ],
+          "benchmark_pack_ids": [
+            "metadata-quality.default"
+          ]
+        },
+        {
+          "key": "kinds",
+          "title": "Per-Kind Quality",
+          "kind": "breakdown_table",
+          "envelope_kind": "distribution",
+          "envelope_schema": "PlatformDistributionEnvelope",
+          "description": "Per-kind metadata completeness and validation errors."
+        },
+        {
+          "key": "unprofiled_kinds",
+          "title": "Unprofiled Kinds",
+          "kind": "ranked_backlog",
+          "envelope_kind": "ranking",
+          "envelope_schema": "PlatformRankingEnvelope",
+          "description": "High-volume kinds missing metadata profiles."
+        },
+        {
+          "key": "recommendations",
+          "title": "Recommendations",
+          "kind": "action_list",
+          "envelope_kind": "ranking",
+          "envelope_schema": "PlatformRankingEnvelope",
+          "benchmark_pack_ids": [
+            "metadata-quality.default"
+          ]
+        }
+      ],
+      "checks": [
+        {
+          "id": "metadata_profiles",
+          "title": "Metadata Profiles",
+          "severity": "high",
+          "description": "Priority kinds should define required keys, timestamp keys, and enum constraints."
+        },
+        {
+          "id": "required_keys",
+          "title": "Required Keys",
+          "severity": "high",
+          "description": "Required metadata keys should be present across profiled writes."
+        },
+        {
+          "id": "timestamp_validity",
+          "title": "Timestamp Validity",
+          "severity": "medium",
+          "description": "Timestamp fields should remain valid for bitemporal reasoning."
+        },
+        {
+          "id": "enum_validity",
+          "title": "Enum Validity",
+          "severity": "medium",
+          "description": "Ontology-enumerated values should be normalized consistently."
+        }
+      ],
+      "extension_points": [
+        {
+          "key": "kinds.annotations",
+          "scope": "kinds[]",
+          "description": "Attach source-specific repair hints or owner routing information."
+        }
+      ]
+    },
+    {
+      "id": "claim-conflicts",
+      "version": "1.0.0",
+      "title": "Claim Conflicts",
+      "category": "knowledge",
+      "description": "Knowledge-layer contradiction report grouped by subject and predicate, including supportability, source attribution, and truncation transparency.",
+      "result_schema": "graph.ClaimConflictReport",
+      "endpoint": {
+        "method": "GET",
+        "path": "/api/v1/platform/intelligence/claim-conflicts",
+        "synchronous": true,
+        "job_capable": true,
+        "run_method": "POST",
+        "run_path_template": "/api/v1/platform/intelligence/reports/{id}/runs"
+      },
+      "temporal_modes": [
+        "fact_time",
+        "system_time",
+        "bitemporal"
+      ],
+      "parameters": [
+        {
+          "name": "max_conflicts",
+          "in": "query",
+          "value_type": "integer",
+          "description": "Maximum contradiction groups to return."
+        },
+        {
+          "name": "include_resolved",
+          "in": "query",
+          "value_type": "boolean",
+          "description": "Include resolved or superseded claims."
+        },
+        {
+          "name": "stale_after_hours",
+          "in": "query",
+          "value_type": "integer",
+          "description": "Optional stale-claim threshold in hours."
+        },
+        {
+          "name": "valid_at",
+          "in": "query",
+          "value_type": "date-time",
+          "description": "Fact-time slice for contradictions."
+        },
+        {
+          "name": "recorded_at",
+          "in": "query",
+          "value_type": "date-time",
+          "description": "System-time slice for contradictions."
+        }
+      ],
+      "measures": [
+        {
+          "id": "conflict_groups",
+          "label": "Conflict Groups",
+          "value_type": "integer",
+          "description": "Returned contradictory subject/predicate groups."
+        },
+        {
+          "id": "conflicting_claims",
+          "label": "Conflicting Claims",
+          "value_type": "integer",
+          "description": "Returned conflicting claims across the result set."
+        },
+        {
+          "id": "unsupported_claims",
+          "label": "Unsupported Claims",
+          "value_type": "integer",
+          "description": "Active claims with no evidence support."
+        },
+        {
+          "id": "sourceless_claims",
+          "label": "Sourceless Claims",
+          "value_type": "integer",
+          "description": "Active claims with no source attribution."
+        },
+        {
+          "id": "stale_claims",
+          "label": "Stale Claims",
+          "value_type": "integer",
+          "description": "Claims beyond the requested staleness threshold."
+        }
+      ],
+      "sections": [
+        {
+          "key": "summary",
+          "title": "Summary",
+          "kind": "scorecard",
+          "envelope_kind": "summary",
+          "envelope_schema": "PlatformSummaryEnvelope",
+          "measures": [
+            "conflict_groups",
+            "conflicting_claims",
+            "unsupported_claims",
+            "sourceless_claims",
+            "stale_claims"
+          ],
+          "benchmark_pack_ids": [
+            "claim-conflicts.default"
+          ]
+        },
+        {
+          "key": "conflicts",
+          "title": "Conflict Groups",
+          "kind": "contradiction_groups",
+          "envelope_kind": "object",
+          "description": "Subject/predicate contradiction groups with conflicting values, sources, and timestamps."
+        },
+        {
+          "key": "recommendations",
+          "title": "Recommendations",
+          "kind": "action_list",
+          "envelope_kind": "ranking",
+          "envelope_schema": "PlatformRankingEnvelope",
+          "benchmark_pack_ids": [
+            "claim-conflicts.default"
+          ]
+        }
+      ],
+      "checks": [
+        {
+          "id": "supportability",
+          "title": "Supportability",
+          "severity": "high",
+          "description": "Claims should be backed by evidence nodes or observations."
+        },
+        {
+          "id": "source_attribution",
+          "title": "Source Attribution",
+          "severity": "high",
+          "description": "Claims should link back to first-class sources."
+        },
+        {
+          "id": "contradiction_density",
+          "title": "Contradiction Density",
+          "severity": "medium",
+          "description": "Contradiction groups should remain bounded for key subject predicates."
+        },
+        {
+          "id": "truncation_transparency",
+          "title": "Truncation Transparency",
+          "severity": "medium",
+          "description": "When contradiction output is truncated, total counts must remain explicit."
+        }
+      ],
+      "extension_points": [
+        {
+          "key": "conflicts.adjudication",
+          "scope": "conflicts[]",
+          "description": "Attach adjudication queue metadata, reviewer ownership, or downstream workflow links."
+        }
+      ]
+    },
+    {
+      "id": "leverage",
+      "version": "1.0.0",
+      "title": "Graph Leverage",
+      "category": "operating_model",
+      "description": "Combined operating view across quality, identity calibration, ingestion breadth, temporal freshness, predictive readiness, query readiness, and actuation closure.",
+      "result_schema": "graph.GraphLeverageReport",
+      "endpoint": {
+        "method": "GET",
+        "path": "/api/v1/platform/intelligence/leverage",
+        "synchronous": true,
+        "job_capable": true,
+        "run_method": "POST",
+        "run_path_template": "/api/v1/platform/intelligence/reports/{id}/runs"
+      },
+      "temporal_modes": [
+        "snapshot",
+        "short_term_trend"
+      ],
+      "parameters": [
+        {
+          "name": "history_limit",
+          "in": "query",
+          "value_type": "integer",
+          "description": "Schema history samples to include."
+        },
+        {
+          "name": "since_version",
+          "in": "query",
+          "value_type": "integer",
+          "description": "Optional schema drift baseline version."
+        },
+        {
+          "name": "stale_after_hours",
+          "in": "query",
+          "value_type": "integer",
+          "description": "Freshness threshold in hours."
+        },
+        {
+          "name": "recent_window_hours",
+          "in": "query",
+          "value_type": "integer",
+          "description": "Recent activity window in hours."
+        },
+        {
+          "name": "decision_sla_days",
+          "in": "query",
+          "value_type": "integer",
+          "description": "Decision outcome SLA in days."
+        },
+        {
+          "name": "identity_suggest_threshold",
+          "in": "query",
+          "value_type": "number",
+          "description": "Identity review suggestion threshold."
+        },
+        {
+          "name": "identity_queue_limit",
+          "in": "query",
+          "value_type": "integer",
+          "description": "Maximum identity queue entries to return."
+        }
+      ],
+      "measures": [
+        {
+          "id": "leverage_score",
+          "label": "Leverage Score",
+          "value_type": "number",
+          "unit": "score",
+          "description": "Composite operating score for graph leverage."
+        },
+        {
+          "id": "coverage_percent",
+          "label": "Ingestion Coverage",
+          "value_type": "number",
+          "unit": "percent",
+          "description": "Observed source-system coverage against expected ingest breadth."
+        },
+        {
+          "id": "canonical_kind_coverage_percent",
+          "label": "Canonical Kind Coverage",
+          "value_type": "number",
+          "unit": "percent",
+          "description": "Share of nodes using canonical ontology kinds."
+        },
+        {
+          "id": "schema_valid_write_percent",
+          "label": "Schema Valid Writes",
+          "value_type": "number",
+          "unit": "percent",
+          "description": "Share of writes conforming to schema contracts."
+        },
+        {
+          "id": "closure_rate_percent",
+          "label": "Closed Loop",
+          "value_type": "number",
+          "unit": "percent",
+          "description": "Share of decisions linked to outcomes."
+        },
+        {
+          "id": "readiness_score",
+          "label": "Predictive Readiness",
+          "value_type": "number",
+          "unit": "score",
+          "description": "Readiness for prediction and calibration based on evidence and labeled outcomes."
+        },
+        {
+          "id": "actuation_coverage_percent",
+          "label": "Actuation Coverage",
+          "value_type": "number",
+          "unit": "percent",
+          "description": "Share of actions linked to targets, decisions, and outcomes."
+        }
+      ],
+      "sections": [
+        {
+          "key": "summary",
+          "title": "Summary",
+          "kind": "scorecard",
+          "envelope_kind": "summary",
+          "envelope_schema": "PlatformSummaryEnvelope",
+          "measures": [
+            "leverage_score"
+          ],
+          "benchmark_pack_ids": [
+            "graph-leverage.default"
+          ]
+        },
+        {
+          "key": "quality",
+          "title": "Quality",
+          "kind": "embedded_report",
+          "envelope_kind": "embedded_report"
+        },
+        {
+          "key": "identity",
+          "title": "Identity",
+          "kind": "embedded_report",
+          "envelope_kind": "embedded_report"
+        },
+        {
+          "key": "ingestion",
+          "title": "Ingestion",
+          "kind": "coverage_breakdown",
+          "envelope_kind": "distribution",
+          "envelope_schema": "PlatformDistributionEnvelope",
+          "measures": [
+            "coverage_percent"
+          ]
+        },
+        {
+          "key": "ontology",
+          "title": "Ontology SLO",
+          "kind": "timeseries_summary",
+          "envelope_kind": "timeseries",
+          "envelope_schema": "PlatformTimeseriesEnvelope",
+          "measures": [
+            "canonical_kind_coverage_percent",
+            "schema_valid_write_percent"
+          ]
+        },
+        {
+          "key": "temporal",
+          "title": "Temporal",
+          "kind": "freshness_summary",
+          "envelope_kind": "summary",
+          "envelope_schema": "PlatformSummaryEnvelope"
+        },
+        {
+          "key": "closed_loop",
+          "title": "Closed Loop",
+          "kind": "health_breakdown",
+          "envelope_kind": "distribution",
+          "envelope_schema": "PlatformDistributionEnvelope",
+          "measures": [
+            "closure_rate_percent"
+          ]
+        },
+        {
+          "key": "predictive",
+          "title": "Predictive",
+          "kind": "readiness_summary",
+          "envelope_kind": "summary",
+          "envelope_schema": "PlatformSummaryEnvelope",
+          "measures": [
+            "readiness_score"
+          ]
+        },
+        {
+          "key": "query",
+          "title": "Query",
+          "kind": "capability_summary",
+          "envelope_kind": "summary",
+          "envelope_schema": "PlatformSummaryEnvelope"
+        },
+        {
+          "key": "actuation",
+          "title": "Actuation",
+          "kind": "readiness_summary",
+          "envelope_kind": "summary",
+          "envelope_schema": "PlatformSummaryEnvelope",
+          "measures": [
+            "actuation_coverage_percent"
+          ]
+        },
+        {
+          "key": "recommendations",
+          "title": "Recommendations",
+          "kind": "action_list",
+          "envelope_kind": "ranking",
+          "envelope_schema": "PlatformRankingEnvelope",
+          "benchmark_pack_ids": [
+            "graph-leverage.default"
+          ]
+        }
+      ],
+      "checks": [
+        {
+          "id": "source_coverage",
+          "title": "Source Coverage",
+          "severity": "high",
+          "description": "Leverage weakens quickly when ingest breadth misses core operating systems."
+        },
+        {
+          "id": "identity_precision",
+          "title": "Identity Precision",
+          "severity": "high",
+          "description": "Low-confidence identity linkage erodes cross-source graph trust."
+        },
+        {
+          "id": "ontology_trust",
+          "title": "Ontology Trust",
+          "severity": "high",
+          "description": "Canonical kind coverage and valid writes are prerequisite for reuse."
+        },
+        {
+          "id": "actuation_closure",
+          "title": "Actuation Closure",
+          "severity": "medium",
+          "description": "Actions should land with targets, decisions, and outcomes."
+        }
+      ],
+      "extension_points": [
+        {
+          "key": "ingestion.expectations",
+          "scope": "ingestion",
+          "description": "Attach tenant-specific required-source sets or benchmarks."
+        },
+        {
+          "key": "recommendations.playbooks",
+          "scope": "recommendations",
+          "description": "Attach workflow playbooks for leverage remediation."
+        }
+      ]
+    },
+    {
+      "id": "calibration-weekly",
+      "version": "1.0.0",
+      "title": "Weekly Calibration",
+      "category": "calibration",
+      "description": "Weekly slice combining outcome backtest, identity calibration status, and ontology trend context.",
+      "result_schema": "graph.WeeklyCalibrationReport",
+      "endpoint": {
+        "method": "GET",
+        "path": "/api/v1/platform/intelligence/calibration/weekly",
+        "synchronous": true,
+        "job_capable": true,
+        "run_method": "POST",
+        "run_path_template": "/api/v1/platform/intelligence/reports/{id}/runs"
+      },
+      "temporal_modes": [
+        "window",
+        "trend"
+      ],
+      "parameters": [
+        {
+          "name": "window_days",
+          "in": "query",
+          "value_type": "integer",
+          "description": "Feedback observation window in days."
+        },
+        {
+          "name": "trend_days",
+          "in": "query",
+          "value_type": "integer",
+          "description": "Ontology trend horizon in days."
+        },
+        {
+          "name": "profile",
+          "in": "query",
+          "value_type": "string",
+          "description": "Optional risk profile selector."
+        },
+        {
+          "name": "include_queue",
+          "in": "query",
+          "value_type": "boolean",
+          "description": "Include identity review queue details."
+        },
+        {
+          "name": "queue_limit",
+          "in": "query",
+          "value_type": "integer",
+          "description": "Maximum identity review queue entries."
+        }
+      ],
+      "measures": [
+        {
+          "id": "outcome_count",
+          "label": "Observed Outcomes",
+          "value_type": "integer",
+          "description": "Number of outcomes in the calibration window."
+        },
+        {
+          "id": "rule_signal_count",
+          "label": "Rule Signals",
+          "value_type": "integer",
+          "description": "Number of rule signals available for backtesting."
+        },
+        {
+          "id": "precision_percent",
+          "label": "Identity Precision",
+          "value_type": "number",
+          "unit": "percent",
+          "description": "Accepted identity review precision over the selected calibration slice."
+        },
+        {
+          "id": "review_coverage_percent",
+          "label": "Review Coverage",
+          "value_type": "number",
+          "unit": "percent",
+          "description": "Share of aliases reviewed in the identity calibration slice."
+        },
+        {
+          "id": "canonical_kind_coverage_percent",
+          "label": "Canonical Kind Coverage",
+          "value_type": "number",
+          "unit": "percent",
+          "description": "Ontology trend coverage for the selected trend horizon."
+        }
+      ],
+      "sections": [
+        {
+          "key": "risk_feedback",
+          "title": "Risk Feedback",
+          "kind": "backtest_summary",
+          "envelope_kind": "summary",
+          "envelope_schema": "PlatformSummaryEnvelope",
+          "measures": [
+            "outcome_count",
+            "rule_signal_count"
+          ],
+          "benchmark_pack_ids": [
+            "weekly-calibration.default"
+          ]
+        },
+        {
+          "key": "identity",
+          "title": "Identity",
+          "kind": "calibration_summary",
+          "envelope_kind": "summary",
+          "envelope_schema": "PlatformSummaryEnvelope",
+          "measures": [
+            "precision_percent",
+            "review_coverage_percent"
+          ]
+        },
+        {
+          "key": "ontology",
+          "title": "Ontology Trend",
+          "kind": "timeseries_summary",
+          "envelope_kind": "timeseries",
+          "envelope_schema": "PlatformTimeseriesEnvelope",
+          "measures": [
+            "canonical_kind_coverage_percent"
+          ]
+        }
+      ],
+      "checks": [
+        {
+          "id": "outcome_backtest",
+          "title": "Outcome Backtest",
+          "severity": "high",
+          "description": "Outcome coverage and signal backtesting must remain large enough for calibration."
+        },
+        {
+          "id": "identity_review_coverage",
+          "title": "Identity Review Coverage",
+          "severity": "medium",
+          "description": "Identity calibration requires regular reviewer decisions."
+        },
+        {
+          "id": "ontology_trend",
+          "title": "Ontology Trend",
+          "severity": "medium",
+          "description": "Weekly calibration should include a non-empty ontology trend slice."
+        }
+      ],
+      "extension_points": [
+        {
+          "key": "risk_feedback.benchmarks",
+          "scope": "risk_feedback",
+          "description": "Attach historical benchmark bands or model baselines."
+        }
+      ]
+    }
+  ],
+  "measures": [
+    {
+      "id": "actuation_coverage_percent",
+      "label": "Actuation Coverage",
+      "value_type": "number",
+      "unit": "percent",
+      "description": "Share of actions linked to targets, decisions, and outcomes."
+    },
+    {
+      "id": "canonical_kind_coverage_percent",
+      "label": "Canonical Kind Coverage",
+      "value_type": "number",
+      "unit": "percent",
+      "description": "Share of nodes using canonical ontology kinds."
+    },
+    {
+      "id": "closure_rate_percent",
+      "label": "Closure Rate",
+      "value_type": "number",
+      "unit": "percent",
+      "description": "Share of decisions linked to outcomes or evaluations."
+    },
+    {
+      "id": "confidence",
+      "label": "Confidence",
+      "value_type": "number",
+      "unit": "percent",
+      "description": "Overall confidence after freshness, conformance, and evidence weighting."
+    },
+    {
+      "id": "conflict_groups",
+      "label": "Conflict Groups",
+      "value_type": "integer",
+      "description": "Returned contradictory subject/predicate groups."
+    },
+    {
+      "id": "conflicting_claims",
+      "label": "Conflicting Claims",
+      "value_type": "integer",
+      "description": "Returned conflicting claims across the result set."
+    },
+    {
+      "id": "conformance_percent",
+      "label": "Conformance",
+      "value_type": "number",
+      "unit": "percent",
+      "description": "Schema conformance across graph writes."
+    },
+    {
+      "id": "coverage",
+      "label": "Coverage",
+      "value_type": "number",
+      "unit": "percent",
+      "description": "How much of the selected scope is covered by the available graph evidence."
+    },
+    {
+      "id": "coverage_percent",
+      "label": "Coverage",
+      "value_type": "number",
+      "unit": "percent",
+      "description": "Ontology coverage across node and edge kinds."
+    },
+    {
+      "id": "enum_validity_percent",
+      "label": "Enum Validity",
+      "value_type": "number",
+      "unit": "percent",
+      "description": "Share of enum-like values matching the allowed value set."
+    },
+    {
+      "id": "freshness_percent",
+      "label": "Freshness",
+      "value_type": "number",
+      "unit": "percent",
+      "description": "Recency-adjusted freshness for the selected scope."
+    },
+    {
+      "id": "leverage_score",
+      "label": "Leverage Score",
+      "value_type": "number",
+      "unit": "score",
+      "description": "Composite operating score for graph leverage."
+    },
+    {
+      "id": "linkage_percent",
+      "label": "Identity Linkage",
+      "value_type": "number",
+      "unit": "percent",
+      "description": "Share of alias identities linked to canonical entities."
+    },
+    {
+      "id": "maturity_score",
+      "label": "Maturity Score",
+      "value_type": "number",
+      "unit": "score",
+      "description": "Composite graph quality score."
+    },
+    {
+      "id": "metadata_completeness_percent",
+      "label": "Metadata Completeness",
+      "value_type": "number",
+      "unit": "percent",
+      "description": "Coverage for required temporal metadata keys."
+    },
+    {
+      "id": "outcome_count",
+      "label": "Observed Outcomes",
+      "value_type": "integer",
+      "description": "Number of outcomes in the calibration window."
+    },
+    {
+      "id": "precision_percent",
+      "label": "Identity Precision",
+      "value_type": "number",
+      "unit": "percent",
+      "description": "Accepted identity review precision over the selected calibration slice."
+    },
+    {
+      "id": "profiled_kinds",
+      "label": "Profiled Kinds",
+      "value_type": "integer",
+      "description": "Number of kinds with explicit metadata profiles."
+    },
+    {
+      "id": "readiness_score",
+      "label": "Predictive Readiness",
+      "value_type": "number",
+      "unit": "score",
+      "description": "Readiness for prediction and calibration based on evidence and labeled outcomes."
+    },
+    {
+      "id": "required_key_coverage_percent",
+      "label": "Required Key Coverage",
+      "value_type": "number",
+      "unit": "percent",
+      "description": "Coverage for metadata keys marked required by ontology profiles."
+    },
+    {
+      "id": "review_coverage_percent",
+      "label": "Review Coverage",
+      "value_type": "number",
+      "unit": "percent",
+      "description": "Share of aliases reviewed in the identity calibration slice."
+    },
+    {
+      "id": "risk_score",
+      "label": "Risk Score",
+      "value_type": "number",
+      "unit": "score",
+      "description": "Top-line modeled risk score for the selected scope."
+    },
+    {
+      "id": "rule_signal_count",
+      "label": "Rule Signals",
+      "value_type": "integer",
+      "description": "Number of rule signals available for backtesting."
+    },
+    {
+      "id": "schema_valid_write_percent",
+      "label": "Schema Valid Writes",
+      "value_type": "number",
+      "unit": "percent",
+      "description": "Share of writes conforming to schema contracts."
+    },
+    {
+      "id": "sourceless_claims",
+      "label": "Sourceless Claims",
+      "value_type": "integer",
+      "description": "Active claims with no source attribution."
+    },
+    {
+      "id": "stale_claims",
+      "label": "Stale Claims",
+      "value_type": "integer",
+      "description": "Claims beyond the requested staleness threshold."
+    },
+    {
+      "id": "timestamp_validity_percent",
+      "label": "Timestamp Validity",
+      "value_type": "number",
+      "unit": "percent",
+      "description": "Share of timestamp fields matching the expected timestamp type."
+    },
+    {
+      "id": "unsupported_claims",
+      "label": "Unsupported Claims",
+      "value_type": "integer",
+      "description": "Active claims with no evidence support."
+    }
+  ],
+  "checks": [
+    {
+      "id": "actuation_closure",
+      "title": "Actuation Closure",
+      "severity": "medium",
+      "description": "Actions should land with targets, decisions, and outcomes."
+    },
+    {
+      "id": "closed_loop",
+      "title": "Closed Loop",
+      "severity": "medium",
+      "description": "Decisions without outcomes leave the intelligence loop incomplete."
+    },
+    {
+      "id": "contradiction_density",
+      "title": "Contradiction Density",
+      "severity": "medium",
+      "description": "Contradiction groups should remain bounded for key subject predicates."
+    },
+    {
+      "id": "counterfactual_readiness",
+      "title": "Counterfactual Readiness",
+      "severity": "medium",
+      "description": "Counterfactual output depends on simulation-ready graph coverage."
+    },
+    {
+      "id": "enum_validity",
+      "title": "Enum Validity",
+      "severity": "medium",
+      "description": "Ontology-enumerated values should be normalized consistently."
+    },
+    {
+      "id": "freshness",
+      "title": "Freshness",
+      "severity": "high",
+      "description": "Insights depend on recent graph observations and outcome feedback."
+    },
+    {
+      "id": "identity_linkage",
+      "title": "Identity Linkage",
+      "severity": "high",
+      "description": "Unlinked aliases reduce graph trust and downstream personalization."
+    },
+    {
+      "id": "identity_precision",
+      "title": "Identity Precision",
+      "severity": "high",
+      "description": "Low-confidence identity linkage erodes cross-source graph trust."
+    },
+    {
+      "id": "identity_review_coverage",
+      "title": "Identity Review Coverage",
+      "severity": "medium",
+      "description": "Identity calibration requires regular reviewer decisions."
+    },
+    {
+      "id": "metadata_profiles",
+      "title": "Metadata Profiles",
+      "severity": "high",
+      "description": "Priority kinds should define required keys, timestamp keys, and enum constraints."
+    },
+    {
+      "id": "ontology_conformance",
+      "title": "Ontology Conformance",
+      "severity": "high",
+      "description": "Unknown or invalid kinds should fail the graph quality bar."
+    },
+    {
+      "id": "ontology_trend",
+      "title": "Ontology Trend",
+      "severity": "medium",
+      "description": "Weekly calibration should include a non-empty ontology trend slice."
+    },
+    {
+      "id": "ontology_trust",
+      "title": "Ontology Trust",
+      "severity": "high",
+      "description": "Canonical kind coverage and valid writes are prerequisite for reuse."
+    },
+    {
+      "id": "outcome_backtest",
+      "title": "Outcome Backtest",
+      "severity": "high",
+      "description": "Outcome coverage and signal backtesting must remain large enough for calibration."
+    },
+    {
+      "id": "required_keys",
+      "title": "Required Keys",
+      "severity": "high",
+      "description": "Required metadata keys should be present across profiled writes."
+    },
+    {
+      "id": "schema_conformance",
+      "title": "Schema Conformance",
+      "severity": "high",
+      "description": "Confidence should be reduced when ontology writes are invalid or drifting."
+    },
+    {
+      "id": "source_attribution",
+      "title": "Source Attribution",
+      "severity": "high",
+      "description": "Claims should link back to first-class sources."
+    },
+    {
+      "id": "source_coverage",
+      "title": "Source Coverage",
+      "severity": "high",
+      "description": "Leverage weakens quickly when ingest breadth misses core operating systems."
+    },
+    {
+      "id": "supportability",
+      "title": "Supportability",
+      "severity": "high",
+      "description": "Claims should be backed by evidence nodes or observations."
+    },
+    {
+      "id": "temporal_metadata",
+      "title": "Temporal Metadata",
+      "severity": "high",
+      "description": "Missing observed and valid timestamps weaken point-in-time reasoning."
+    },
+    {
+      "id": "timestamp_validity",
+      "title": "Timestamp Validity",
+      "severity": "medium",
+      "description": "Timestamp fields should remain valid for bitemporal reasoning."
+    },
+    {
+      "id": "truncation_transparency",
+      "title": "Truncation Transparency",
+      "severity": "medium",
+      "description": "When contradiction output is truncated, total counts must remain explicit."
+    }
+  ],
+  "section_envelopes": [
+    {
+      "id": "distribution",
+      "version": "1.0.0",
+      "title": "Distribution Envelope",
+      "description": "Dimension-to-measure breakdown for categorical or grouped sections.",
+      "schema_name": "PlatformDistributionEnvelope",
+      "schema_url": "urn:cerebro:report-envelope:distribution:v1",
+      "compatible_section_kinds": [
+        "distribution",
+        "coverage_breakdown",
+        "health_breakdown",
+        "breakdown_table"
+      ],
+      "json_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "dimension": {
+                  "type": "string"
+                },
+                "measures": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "unit": {
+                        "type": "string"
+                      },
+                      "value": {
+                        "oneOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "boolean"
+                          }
+                        ]
+                      },
+                      "value_type": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "label",
+                      "value_type"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "dimension",
+                "measures"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "id": "evidence_list",
+      "version": "1.0.0",
+      "title": "Evidence List Envelope",
+      "description": "Evidence rows with source, timestamps, and confidence metadata.",
+      "schema_name": "PlatformEvidenceListEnvelope",
+      "schema_url": "urn:cerebro:report-envelope:evidence_list:v1",
+      "compatible_section_kinds": [
+        "contradiction_groups",
+        "ranked_findings"
+      ],
+      "json_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "confidence": {
+                  "type": "number"
+                },
+                "evidence_id": {
+                  "type": "string"
+                },
+                "observed_at": {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "source_system": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "evidence_id",
+                "source_system"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "id": "narrative_block",
+      "version": "1.0.0",
+      "title": "Narrative Block Envelope",
+      "description": "Curated narrative block with citations and optional document references.",
+      "schema_name": "PlatformNarrativeBlockEnvelope",
+      "schema_url": "urn:cerebro:report-envelope:narrative_block:v1",
+      "compatible_section_kinds": [
+        "context",
+        "embedded_report"
+      ],
+      "json_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "citations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "document_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "id": "network_slice",
+      "version": "1.0.0",
+      "title": "Network Slice Envelope",
+      "description": "Localized graph slice with typed node and edge summaries.",
+      "schema_name": "PlatformNetworkSliceEnvelope",
+      "schema_url": "urn:cerebro:report-envelope:network_slice:v1",
+      "compatible_section_kinds": [
+        "embedded_report"
+      ],
+      "json_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "edges": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                },
+                "target": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "source",
+                "target",
+                "kind"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "nodes": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "kind"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "nodes",
+          "edges"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "id": "ranking",
+      "version": "1.0.0",
+      "title": "Ranking Envelope",
+      "description": "Ranked findings, backlog items, or action candidates with scores.",
+      "schema_name": "PlatformRankingEnvelope",
+      "schema_url": "urn:cerebro:report-envelope:ranking:v1",
+      "compatible_section_kinds": [
+        "ranked_findings",
+        "ranked_backlog",
+        "action_list"
+      ],
+      "json_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "measure_values": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "unit": {
+                        "type": "string"
+                      },
+                      "value": {
+                        "oneOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "boolean"
+                          }
+                        ]
+                      },
+                      "value_type": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "label",
+                      "value_type"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "rank": {
+                  "type": "integer"
+                },
+                "score": {
+                  "type": "number"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "rank"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "id": "recommendations",
+      "version": "1.0.0",
+      "title": "Recommendations Envelope",
+      "description": "Typed recommendation list with target linkage and optional benchmark-pack binding.",
+      "schema_name": "PlatformRecommendationsEnvelope",
+      "schema_url": "urn:cerebro:report-envelope:recommendations:v1",
+      "compatible_section_kinds": [
+        "action_list"
+      ],
+      "json_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "benchmark_pack_id": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "priority": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "target_ids": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "priority"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "id": "summary",
+      "version": "1.0.0",
+      "title": "Summary Envelope",
+      "description": "Headline summary with typed measures and optional highlights.",
+      "schema_name": "PlatformSummaryEnvelope",
+      "schema_url": "urn:cerebro:report-envelope:summary:v1",
+      "compatible_section_kinds": [
+        "context",
+        "scorecard",
+        "health_summary",
+        "calibration_summary",
+        "freshness_summary",
+        "readiness_summary",
+        "capability_summary",
+        "backtest_summary"
+      ],
+      "json_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "headline": {
+            "type": "string"
+          },
+          "highlights": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "measures": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "value": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                "value_type": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "label",
+                "value_type"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "headline",
+          "measures"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "id": "timeseries",
+      "version": "1.0.0",
+      "title": "Timeseries Envelope",
+      "description": "Time-indexed series with typed measure values per point.",
+      "schema_name": "PlatformTimeseriesEnvelope",
+      "schema_url": "urn:cerebro:report-envelope:timeseries:v1",
+      "compatible_section_kinds": [
+        "timeseries_summary"
+      ],
+      "json_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "points": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "timestamp": {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "values": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "unit": {
+                        "type": "string"
+                      },
+                      "value": {
+                        "oneOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "boolean"
+                          }
+                        ]
+                      },
+                      "value_type": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "label",
+                      "value_type"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "timestamp",
+                "values"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "points"
+        ],
+        "type": "object"
+      }
+    }
+  ],
+  "benchmark_packs": [
+    {
+      "id": "claim-conflicts.default",
+      "version": "1.0.0",
+      "title": "Claim Conflict Default Thresholds",
+      "scope": "report",
+      "description": "Default thresholds for contradiction, supportability, and source attribution.",
+      "schema_name": "PlatformClaimConflictBenchmarkPack",
+      "schema_url": "urn:cerebro:benchmark-pack:claim-conflicts.default:v1",
+      "measure_bindings": [
+        {
+          "measure_id": "conflict_groups",
+          "direction": "lower_is_better",
+          "bands": [
+            {
+              "label": "quiet",
+              "status": "good",
+              "max_value": 5,
+              "description": "Conflict volume is bounded."
+            },
+            {
+              "label": "watch",
+              "status": "warn",
+              "min_value": 5,
+              "max_value": 20,
+              "description": "Conflict volume is rising."
+            },
+            {
+              "label": "noisy",
+              "status": "critical",
+              "min_value": 20,
+              "description": "Conflict volume is too high."
+            }
+          ]
+        },
+        {
+          "measure_id": "unsupported_claims",
+          "direction": "lower_is_better",
+          "bands": [
+            {
+              "label": "supported",
+              "status": "good",
+              "max_value": 3,
+              "description": "Most claims are supported."
+            },
+            {
+              "label": "watch",
+              "status": "warn",
+              "min_value": 3,
+              "max_value": 10,
+              "description": "Unsupported claims need cleanup."
+            },
+            {
+              "label": "unsupported",
+              "status": "critical",
+              "min_value": 10,
+              "description": "Too many unsupported claims."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "decision-intelligence.default",
+      "version": "1.0.0",
+      "title": "Decision Intelligence Default Thresholds",
+      "scope": "report",
+      "description": "Default confidence, coverage, and freshness bands for intelligence reports.",
+      "schema_name": "PlatformDecisionIntelligenceBenchmarkPack",
+      "schema_url": "urn:cerebro:benchmark-pack:decision-intelligence.default:v1",
+      "measure_bindings": [
+        {
+          "measure_id": "risk_score",
+          "direction": "lower_is_better",
+          "unit": "score",
+          "bands": [
+            {
+              "label": "healthy",
+              "status": "good",
+              "max_value": 30,
+              "description": "Low modeled risk."
+            },
+            {
+              "label": "watch",
+              "status": "warn",
+              "min_value": 30,
+              "max_value": 70,
+              "description": "Rising modeled risk."
+            },
+            {
+              "label": "critical",
+              "status": "critical",
+              "min_value": 70,
+              "description": "High modeled risk."
+            }
+          ]
+        },
+        {
+          "measure_id": "coverage",
+          "direction": "higher_is_better",
+          "unit": "percent",
+          "bands": [
+            {
+              "label": "critical_gap",
+              "status": "critical",
+              "max_value": 60,
+              "description": "Coverage is too low for decision-grade output."
+            },
+            {
+              "label": "developing",
+              "status": "warn",
+              "min_value": 60,
+              "max_value": 85,
+              "description": "Coverage is usable but incomplete."
+            },
+            {
+              "label": "strong",
+              "status": "good",
+              "min_value": 85,
+              "description": "Coverage is strong enough for decision support."
+            }
+          ]
+        },
+        {
+          "measure_id": "confidence",
+          "direction": "higher_is_better",
+          "unit": "percent",
+          "bands": [
+            {
+              "label": "low_confidence",
+              "status": "critical",
+              "max_value": 60,
+              "description": "Confidence is too weak for operator action."
+            },
+            {
+              "label": "moderate_confidence",
+              "status": "warn",
+              "min_value": 60,
+              "max_value": 80,
+              "description": "Confidence is improving but still conditional."
+            },
+            {
+              "label": "high_confidence",
+              "status": "good",
+              "min_value": 80,
+              "description": "Confidence is strong."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "graph-leverage.default",
+      "version": "1.0.0",
+      "title": "Graph Leverage Default Thresholds",
+      "scope": "report",
+      "description": "Default thresholds for leverage, actuation readiness, and closure.",
+      "schema_name": "PlatformGraphLeverageBenchmarkPack",
+      "schema_url": "urn:cerebro:benchmark-pack:graph-leverage.default:v1",
+      "measure_bindings": [
+        {
+          "measure_id": "leverage_score",
+          "direction": "higher_is_better",
+          "unit": "score",
+          "bands": [
+            {
+              "label": "low",
+              "status": "critical",
+              "max_value": 55,
+              "description": "The graph is not yet highly leveraged."
+            },
+            {
+              "label": "growing",
+              "status": "warn",
+              "min_value": 55,
+              "max_value": 80,
+              "description": "Leverage is growing."
+            },
+            {
+              "label": "high",
+              "status": "good",
+              "min_value": 80,
+              "description": "The graph is highly leveraged."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "graph-quality.default",
+      "version": "1.0.0",
+      "title": "Graph Quality Default Thresholds",
+      "scope": "report",
+      "description": "Default benchmark bands for graph maturity and health measures.",
+      "schema_name": "PlatformGraphQualityBenchmarkPack",
+      "schema_url": "urn:cerebro:benchmark-pack:graph-quality.default:v1",
+      "measure_bindings": [
+        {
+          "measure_id": "maturity_score",
+          "direction": "higher_is_better",
+          "unit": "score",
+          "bands": [
+            {
+              "label": "fragile",
+              "status": "critical",
+              "max_value": 60,
+              "description": "Graph quality is too fragile."
+            },
+            {
+              "label": "developing",
+              "status": "warn",
+              "min_value": 60,
+              "max_value": 80,
+              "description": "Graph quality is improving."
+            },
+            {
+              "label": "durable",
+              "status": "good",
+              "min_value": 80,
+              "description": "Graph quality is durable."
+            }
+          ]
+        },
+        {
+          "measure_id": "coverage_percent",
+          "direction": "higher_is_better",
+          "unit": "percent",
+          "bands": [
+            {
+              "label": "insufficient",
+              "status": "critical",
+              "max_value": 70,
+              "description": "Coverage is below the substrate bar."
+            },
+            {
+              "label": "partial",
+              "status": "warn",
+              "min_value": 70,
+              "max_value": 90,
+              "description": "Coverage is serviceable but partial."
+            },
+            {
+              "label": "strong",
+              "status": "good",
+              "min_value": 90,
+              "description": "Coverage is strong."
+            }
+          ]
+        },
+        {
+          "measure_id": "closure_rate_percent",
+          "direction": "higher_is_better",
+          "unit": "percent",
+          "bands": [
+            {
+              "label": "open_loop",
+              "status": "critical",
+              "max_value": 50,
+              "description": "Too many decisions lack outcomes."
+            },
+            {
+              "label": "mixed",
+              "status": "warn",
+              "min_value": 50,
+              "max_value": 80,
+              "description": "Closure is improving but incomplete."
+            },
+            {
+              "label": "closed_loop",
+              "status": "good",
+              "min_value": 80,
+              "description": "Decision loops are closing."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "metadata-quality.default",
+      "version": "1.0.0",
+      "title": "Metadata Quality Default Thresholds",
+      "scope": "report",
+      "description": "Default threshold bands for metadata completeness and validity.",
+      "schema_name": "PlatformMetadataQualityBenchmarkPack",
+      "schema_url": "urn:cerebro:benchmark-pack:metadata-quality.default:v1",
+      "measure_bindings": [
+        {
+          "measure_id": "required_key_coverage_percent",
+          "direction": "higher_is_better",
+          "unit": "percent",
+          "bands": [
+            {
+              "label": "missing",
+              "status": "critical",
+              "max_value": 75,
+              "description": "Required metadata coverage is too low."
+            },
+            {
+              "label": "partial",
+              "status": "warn",
+              "min_value": 75,
+              "max_value": 92,
+              "description": "Required coverage is improving."
+            },
+            {
+              "label": "strong",
+              "status": "good",
+              "min_value": 92,
+              "description": "Required coverage is strong."
+            }
+          ]
+        },
+        {
+          "measure_id": "timestamp_validity_percent",
+          "direction": "higher_is_better",
+          "unit": "percent",
+          "bands": [
+            {
+              "label": "invalid",
+              "status": "critical",
+              "max_value": 90,
+              "description": "Too many invalid timestamps."
+            },
+            {
+              "label": "watch",
+              "status": "warn",
+              "min_value": 90,
+              "max_value": 98,
+              "description": "Timestamp quality needs tightening."
+            },
+            {
+              "label": "valid",
+              "status": "good",
+              "min_value": 98,
+              "description": "Timestamp quality is strong."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "weekly-calibration.default",
+      "version": "1.0.0",
+      "title": "Weekly Calibration Default Thresholds",
+      "scope": "report",
+      "description": "Default calibration thresholds for outcome feedback and model confidence.",
+      "schema_name": "PlatformWeeklyCalibrationBenchmarkPack",
+      "schema_url": "urn:cerebro:benchmark-pack:weekly-calibration.default:v1",
+      "measure_bindings": [
+        {
+          "measure_id": "decision_accuracy_percent",
+          "direction": "higher_is_better",
+          "unit": "percent",
+          "bands": [
+            {
+              "label": "off_target",
+              "status": "critical",
+              "max_value": 60,
+              "description": "Calibration is off target."
+            },
+            {
+              "label": "stabilizing",
+              "status": "warn",
+              "min_value": 60,
+              "max_value": 80,
+              "description": "Calibration is improving."
+            },
+            {
+              "label": "calibrated",
+              "status": "good",
+              "min_value": 80,
+              "description": "Calibration is strong."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

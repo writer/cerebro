@@ -9,6 +9,7 @@ import (
 // ReportSectionEnvelopeDefinition describes one typed section-envelope contract for report authoring.
 type ReportSectionEnvelopeDefinition struct {
 	ID                     string         `json:"id"`
+	Version                string         `json:"version"`
 	Title                  string         `json:"title"`
 	Description            string         `json:"description,omitempty"`
 	SchemaName             string         `json:"schema_name"`
@@ -64,6 +65,7 @@ type BenchmarkPackCatalog struct {
 var defaultReportSectionEnvelopeDefinitions = []ReportSectionEnvelopeDefinition{
 	{
 		ID:          "summary",
+		Version:     "1.0.0",
 		Title:       "Summary Envelope",
 		Description: "Headline summary with typed measures and optional highlights.",
 		SchemaName:  "PlatformSummaryEnvelope",
@@ -90,6 +92,7 @@ var defaultReportSectionEnvelopeDefinitions = []ReportSectionEnvelopeDefinition{
 	},
 	{
 		ID:          "timeseries",
+		Version:     "1.0.0",
 		Title:       "Timeseries Envelope",
 		Description: "Time-indexed series with typed measure values per point.",
 		SchemaName:  "PlatformTimeseriesEnvelope",
@@ -122,6 +125,7 @@ var defaultReportSectionEnvelopeDefinitions = []ReportSectionEnvelopeDefinition{
 	},
 	{
 		ID:          "distribution",
+		Version:     "1.0.0",
 		Title:       "Distribution Envelope",
 		Description: "Dimension-to-measure breakdown for categorical or grouped sections.",
 		SchemaName:  "PlatformDistributionEnvelope",
@@ -154,6 +158,7 @@ var defaultReportSectionEnvelopeDefinitions = []ReportSectionEnvelopeDefinition{
 	},
 	{
 		ID:          "ranking",
+		Version:     "1.0.0",
 		Title:       "Ranking Envelope",
 		Description: "Ranked findings, backlog items, or action candidates with scores.",
 		SchemaName:  "PlatformRankingEnvelope",
@@ -190,6 +195,7 @@ var defaultReportSectionEnvelopeDefinitions = []ReportSectionEnvelopeDefinition{
 	},
 	{
 		ID:          "network_slice",
+		Version:     "1.0.0",
 		Title:       "Network Slice Envelope",
 		Description: "Localized graph slice with typed node and edge summaries.",
 		SchemaName:  "PlatformNetworkSliceEnvelope",
@@ -233,6 +239,7 @@ var defaultReportSectionEnvelopeDefinitions = []ReportSectionEnvelopeDefinition{
 	},
 	{
 		ID:          "recommendations",
+		Version:     "1.0.0",
 		Title:       "Recommendations Envelope",
 		Description: "Typed recommendation list with target linkage and optional benchmark-pack binding.",
 		SchemaName:  "PlatformRecommendationsEnvelope",
@@ -269,6 +276,7 @@ var defaultReportSectionEnvelopeDefinitions = []ReportSectionEnvelopeDefinition{
 	},
 	{
 		ID:          "evidence_list",
+		Version:     "1.0.0",
 		Title:       "Evidence List Envelope",
 		Description: "Evidence rows with source, timestamps, and confidence metadata.",
 		SchemaName:  "PlatformEvidenceListEnvelope",
@@ -301,6 +309,7 @@ var defaultReportSectionEnvelopeDefinitions = []ReportSectionEnvelopeDefinition{
 	},
 	{
 		ID:          "narrative_block",
+		Version:     "1.0.0",
 		Title:       "Narrative Block Envelope",
 		Description: "Curated narrative block with citations and optional document references.",
 		SchemaName:  "PlatformNarrativeBlockEnvelope",

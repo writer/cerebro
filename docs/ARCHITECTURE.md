@@ -14,6 +14,8 @@ Graph-specific architecture references:
 - [Graph Ontology Auto-Generated Catalog](./GRAPH_ONTOLOGY_AUTOGEN.md)
 - [CloudEvents Auto-Generated Catalog](./CLOUDEVENTS_AUTOGEN.md)
 - [CloudEvents Machine-Readable Contract Catalog](./CLOUDEVENTS_CONTRACTS.json)
+- [Graph Report Contract Catalog](./GRAPH_REPORT_CONTRACTS_AUTOGEN.md)
+- [Graph Report Machine-Readable Contract Catalog](./GRAPH_REPORT_CONTRACTS.json)
 - [Graph Ontology External Patterns](./GRAPH_ONTOLOGY_EXTERNAL_PATTERNS.md)
 
 ## Transition Direction

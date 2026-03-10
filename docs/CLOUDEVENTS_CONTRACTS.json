@@ -438,6 +438,196 @@
       }
     },
     {
+      "event_type": "platform.report_run.canceled",
+      "summary": "Report execution canceled on the shared platform intelligence layer.",
+      "schema_url": "urn:cerebro:events/platform.report_run.canceled/v1",
+      "required_data_keys": [
+        "run_id",
+        "report_id",
+        "status",
+        "execution_mode",
+        "submitted_at",
+        "completed_at",
+        "status_url",
+        "cancel_reason"
+      ],
+      "optional_data_keys": [
+        "started_at",
+        "requested_by",
+        "cache_key",
+        "job_id",
+        "job_status_url",
+        "parameter_count",
+        "materialized_result",
+        "latest_attempt_id",
+        "attempt_count",
+        "event_count",
+        "trigger_surface",
+        "execution_surface",
+        "execution_host",
+        "attempt_classification",
+        "retry_of_attempt_id",
+        "retry_reason",
+        "retry_backoff_ms",
+        "scheduled_for",
+        "retry_max_attempts",
+        "retry_base_backoff_ms",
+        "retry_max_backoff_ms",
+        "storage_class",
+        "retention_tier",
+        "result_truncated",
+        "graph_snapshot_id",
+        "graph_built_at",
+        "graph_schema_version",
+        "ontology_contract_version",
+        "report_definition_version",
+        "error",
+        "tenant_id",
+        "traceparent"
+      ],
+      "data_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt_classification": {
+            "type": "string"
+          },
+          "attempt_count": {
+            "type": "integer"
+          },
+          "cache_key": {
+            "type": "string"
+          },
+          "cancel_reason": {
+            "type": "string"
+          },
+          "completed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "event_count": {
+            "type": "integer"
+          },
+          "execution_host": {
+            "type": "string"
+          },
+          "execution_mode": {
+            "type": "string"
+          },
+          "execution_surface": {
+            "type": "string"
+          },
+          "graph_built_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "graph_schema_version": {
+            "type": "integer"
+          },
+          "graph_snapshot_id": {
+            "type": "string"
+          },
+          "job_id": {
+            "type": "string"
+          },
+          "job_status_url": {
+            "type": "string"
+          },
+          "latest_attempt_id": {
+            "type": "string"
+          },
+          "materialized_result": {
+            "type": "boolean"
+          },
+          "ontology_contract_version": {
+            "type": "string"
+          },
+          "parameter_count": {
+            "type": "integer"
+          },
+          "report_definition_version": {
+            "type": "string"
+          },
+          "report_id": {
+            "type": "string"
+          },
+          "requested_by": {
+            "type": "string"
+          },
+          "result_truncated": {
+            "type": "boolean"
+          },
+          "retention_tier": {
+            "type": "string"
+          },
+          "retry_backoff_ms": {
+            "type": "integer"
+          },
+          "retry_base_backoff_ms": {
+            "type": "integer"
+          },
+          "retry_max_attempts": {
+            "type": "integer"
+          },
+          "retry_max_backoff_ms": {
+            "type": "integer"
+          },
+          "retry_of_attempt_id": {
+            "type": "string"
+          },
+          "retry_reason": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "scheduled_for": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "status_url": {
+            "type": "string"
+          },
+          "storage_class": {
+            "type": "string"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "traceparent": {
+            "type": "string"
+          },
+          "trigger_surface": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "report_id",
+          "status",
+          "execution_mode",
+          "submitted_at",
+          "completed_at",
+          "status_url",
+          "cancel_reason"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "event_type": "platform.report_run.completed",
       "summary": "Report execution completed on the shared platform intelligence layer.",
       "schema_url": "urn:cerebro:events/platform.report_run.completed/v1",
@@ -464,6 +654,14 @@
         "trigger_surface",
         "execution_surface",
         "execution_host",
+        "attempt_classification",
+        "retry_of_attempt_id",
+        "retry_reason",
+        "retry_backoff_ms",
+        "scheduled_for",
+        "retry_max_attempts",
+        "retry_base_backoff_ms",
+        "retry_max_backoff_ms",
         "storage_class",
         "retention_tier",
         "result_truncated",
@@ -481,6 +679,9 @@
       "data_schema": {
         "additionalProperties": false,
         "properties": {
+          "attempt_classification": {
+            "type": "string"
+          },
           "attempt_count": {
             "type": "integer"
           },
@@ -549,7 +750,29 @@
           "retention_tier": {
             "type": "string"
           },
+          "retry_backoff_ms": {
+            "type": "integer"
+          },
+          "retry_base_backoff_ms": {
+            "type": "integer"
+          },
+          "retry_max_attempts": {
+            "type": "integer"
+          },
+          "retry_max_backoff_ms": {
+            "type": "integer"
+          },
+          "retry_of_attempt_id": {
+            "type": "string"
+          },
+          "retry_reason": {
+            "type": "string"
+          },
           "run_id": {
+            "type": "string"
+          },
+          "scheduled_for": {
+            "format": "date-time",
             "type": "string"
           },
           "section_count": {
@@ -626,6 +849,14 @@
         "trigger_surface",
         "execution_surface",
         "execution_host",
+        "attempt_classification",
+        "retry_of_attempt_id",
+        "retry_reason",
+        "retry_backoff_ms",
+        "scheduled_for",
+        "retry_max_attempts",
+        "retry_base_backoff_ms",
+        "retry_max_backoff_ms",
         "storage_class",
         "retention_tier",
         "result_truncated",
@@ -640,6 +871,9 @@
       "data_schema": {
         "additionalProperties": false,
         "properties": {
+          "attempt_classification": {
+            "type": "string"
+          },
           "attempt_count": {
             "type": "integer"
           },
@@ -708,7 +942,29 @@
           "retention_tier": {
             "type": "string"
           },
+          "retry_backoff_ms": {
+            "type": "integer"
+          },
+          "retry_base_backoff_ms": {
+            "type": "integer"
+          },
+          "retry_max_attempts": {
+            "type": "integer"
+          },
+          "retry_max_backoff_ms": {
+            "type": "integer"
+          },
+          "retry_of_attempt_id": {
+            "type": "string"
+          },
+          "retry_reason": {
+            "type": "string"
+          },
           "run_id": {
+            "type": "string"
+          },
+          "scheduled_for": {
+            "format": "date-time",
             "type": "string"
           },
           "started_at": {
@@ -776,6 +1032,14 @@
         "trigger_surface",
         "execution_surface",
         "execution_host",
+        "attempt_classification",
+        "retry_of_attempt_id",
+        "retry_reason",
+        "retry_backoff_ms",
+        "scheduled_for",
+        "retry_max_attempts",
+        "retry_base_backoff_ms",
+        "retry_max_backoff_ms",
         "storage_class",
         "retention_tier",
         "result_truncated",
@@ -790,6 +1054,9 @@
       "data_schema": {
         "additionalProperties": false,
         "properties": {
+          "attempt_classification": {
+            "type": "string"
+          },
           "attempt_count": {
             "type": "integer"
           },
@@ -851,7 +1118,29 @@
           "retention_tier": {
             "type": "string"
           },
+          "retry_backoff_ms": {
+            "type": "integer"
+          },
+          "retry_base_backoff_ms": {
+            "type": "integer"
+          },
+          "retry_max_attempts": {
+            "type": "integer"
+          },
+          "retry_max_backoff_ms": {
+            "type": "integer"
+          },
+          "retry_of_attempt_id": {
+            "type": "string"
+          },
+          "retry_reason": {
+            "type": "string"
+          },
           "run_id": {
+            "type": "string"
+          },
+          "scheduled_for": {
+            "format": "date-time",
             "type": "string"
           },
           "status": {
@@ -914,6 +1203,14 @@
         "trigger_surface",
         "execution_surface",
         "execution_host",
+        "attempt_classification",
+        "retry_of_attempt_id",
+        "retry_reason",
+        "retry_backoff_ms",
+        "scheduled_for",
+        "retry_max_attempts",
+        "retry_base_backoff_ms",
+        "retry_max_backoff_ms",
         "storage_class",
         "retention_tier",
         "result_truncated",
@@ -928,6 +1225,9 @@
       "data_schema": {
         "additionalProperties": false,
         "properties": {
+          "attempt_classification": {
+            "type": "string"
+          },
           "attempt_count": {
             "type": "integer"
           },
@@ -989,7 +1289,29 @@
           "retention_tier": {
             "type": "string"
           },
+          "retry_backoff_ms": {
+            "type": "integer"
+          },
+          "retry_base_backoff_ms": {
+            "type": "integer"
+          },
+          "retry_max_attempts": {
+            "type": "integer"
+          },
+          "retry_max_backoff_ms": {
+            "type": "integer"
+          },
+          "retry_of_attempt_id": {
+            "type": "string"
+          },
+          "retry_reason": {
+            "type": "string"
+          },
           "run_id": {
+            "type": "string"
+          },
+          "scheduled_for": {
+            "format": "date-time",
             "type": "string"
           },
           "started_at": {

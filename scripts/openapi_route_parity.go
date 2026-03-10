@@ -12,6 +12,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -28,6 +29,8 @@ var httpMethods = map[string]struct{}{
 	"Head":    {},
 	"Options": {},
 }
+
+var pathParamSegmentPattern = regexp.MustCompile(`^(?:[^{}]*)\{([A-Za-z0-9_]+)(?::[^}]*)?\}(.*)$`)
 
 type routeSet map[string]map[string]struct{}
 
@@ -227,6 +230,14 @@ func normalizePath(path string) string {
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + path
 	}
+	segments := strings.Split(path, "/")
+	for i, segment := range segments {
+		matches := pathParamSegmentPattern.FindStringSubmatch(segment)
+		if len(matches) == 3 {
+			segments[i] = "{" + matches[1] + "}" + matches[2]
+		}
+	}
+	path = strings.Join(segments, "/")
 	path = strings.ReplaceAll(path, "//", "/")
 	if len(path) > 1 {
 		path = strings.TrimRight(path, "/")

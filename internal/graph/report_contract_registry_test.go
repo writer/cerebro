@@ -17,6 +17,9 @@ func TestReportSectionEnvelopeRegistry(t *testing.T) {
 	if summary.SchemaName != "PlatformSummaryEnvelope" {
 		t.Fatalf("expected PlatformSummaryEnvelope schema, got %q", summary.SchemaName)
 	}
+	if summary.Version != "1.0.0" {
+		t.Fatalf("expected summary envelope version 1.0.0, got %q", summary.Version)
+	}
 	if len(summary.CompatibleSectionKinds) == 0 {
 		t.Fatalf("expected compatible section kinds, got %+v", summary)
 	}

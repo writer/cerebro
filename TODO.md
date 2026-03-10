@@ -5,6 +5,68 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 21 - Execution Control + Report Contract Compatibility (2026-03-09)
+
+### Review findings
+- [x] Gap: `ReportRun`/`ReportRunAttempt`/`ReportRunEvent` were durable and inspectable, but operators still could not actively control queued or running executions.
+- [x] Gap: retry semantics were implicit in operator behavior instead of explicit in the platform contract surface (`retry`, `cancel`, backoff policy, attempt classification).
+- [x] Gap: section-envelope and benchmark-pack registries were discoverable, but there was still no generated machine-readable contract catalog or CI compatibility gate to stop silent drift.
+- [x] Gap: the backlog had become too self-similar; it needed explicit delivery tracks with exit criteria instead of a flat pile of correct-sounding future work.
+
+### Research synthesis to adopt
+- [x] Backstage task-control pattern: durable execution resources need active control (`cancel`, rerun/retry) once status, attempts, and history are first-class.
+- [x] OpenMetadata definition/result discipline: compatibility pressure moves from handler code to typed registry/catalog contracts once execution and definition surfaces separate cleanly.
+- [x] OpenLineage/DataHub contract rule: generated catalogs and compatibility checks are the operational boundary that keeps extension registries from drifting into ceremonial mirrors of code.
+
+### Execution plan
+- [x] Add active execution control:
+  - [x] add `POST /api/v1/platform/intelligence/reports/{id}/runs/{run_id}:retry`
+  - [x] add `POST /api/v1/platform/intelligence/reports/{id}/runs/{run_id}:cancel`
+  - [x] add retry policy metadata (`max_attempts`, `base_backoff_ms`, `max_backoff_ms`)
+  - [x] classify attempts as `transient`, `deterministic`, `cancelled`, or `superseded`
+  - [x] propagate cancellation into linked platform jobs with cancel timestamps/reasons
+- [x] Add report contract generation and compatibility governance:
+  - [x] add `graph.ReportContractCatalog`
+  - [x] generate `docs/GRAPH_REPORT_CONTRACTS.json`
+  - [x] generate `docs/GRAPH_REPORT_CONTRACTS_AUTOGEN.md`
+  - [x] add report-contract compatibility checker script
+  - [x] add Make targets and CI jobs for docs drift + compatibility enforcement
+- [x] Tighten public contract surfaces:
+  - [x] extend OpenAPI with retry/cancel requests and retry policy schema
+  - [x] extend OpenAPI/job schemas with canceled status and cancel metadata
+  - [x] extend OpenAPI attempt/envelope schemas with classification/backoff/version metadata
+  - [x] extend lifecycle CloudEvent contracts for retry/cancel metadata
+- [x] Add regression coverage:
+  - [x] graph tests for retry policy normalization/backoff
+  - [x] graph tests for report-contract compatibility detection
+  - [x] API tests for sync retry, async retry/backoff metadata, and async cancellation
+
+### Program tracks with exit criteria
+- [ ] Track: execution control
+  - Exit criteria:
+  - retry/cancel are available for all durable report runs
+  - attempt classification is stable and emitted in history/events
+  - cancellation propagates to linked jobs and leaves no ambiguous terminal state
+  - retry policy is visible in run summaries, attempts, and lifecycle payloads
+- [ ] Track: contract governance
+  - Exit criteria:
+  - report registries generate one machine-readable contract catalog
+  - section-envelope and benchmark-pack changes are compatibility-checked in CI
+  - generated docs/examples are derived from the same canonical registry source
+  - report-definition drift is visible before merge
+- [ ] Track: section telemetry / provenance
+  - Exit criteria:
+  - each section exposes duration and partial-failure semantics
+  - each section exposes claim/evidence/source counts
+  - each section can link back to graph lineage IDs without bespoke handler logic
+  - section truncation/cache status is explicit in run artifacts
+- [ ] Track: storage / retention policy
+  - Exit criteria:
+  - snapshot retention is configurable by report family
+  - expiration/sweeping is automated
+  - integrity verification exists for persisted snapshots
+  - storage tier migration and metadata-only downgrade paths are defined and tested
+
 ## Deep Review Cycle 20 - Report History Resources + Lineage/Storage Semantics + Contract Registries (2026-03-09)
 
 ### Review findings
@@ -58,12 +120,6 @@ Status: executed end-to-end via PR workflow
   - [x] API-level restart persistence coverage for report history resources
 
 ### Detailed follow-on backlog
-- [ ] Add active execution control:
-  - [ ] `POST /api/v1/platform/intelligence/reports/{id}/runs/{run_id}:retry`
-  - [ ] `POST /api/v1/platform/intelligence/reports/{id}/runs/{run_id}:cancel`
-  - [ ] explicit attempt classification (`transient`, `deterministic`, `cancelled`, `superseded`)
-  - [ ] retry policy metadata and backoff semantics
-  - [ ] cancellation propagation into platform jobs
 - [ ] Add section-level execution telemetry:
   - [ ] per-section duration
   - [ ] per-section cache hit/miss
@@ -71,10 +127,10 @@ Status: executed end-to-end via PR workflow
   - [ ] per-section lineage refs to claim/evidence/source IDs
   - [ ] per-section partial-failure status and truncation semantics
 - [ ] Add stronger contract-generation and compatibility gates:
-  - [ ] generate section-envelope registries from typed schema components instead of duplicating JSON Schema fragments
-  - [ ] generate benchmark-pack docs/examples from registry definitions
-  - [ ] add CI compatibility checks for envelope schema evolution
-  - [ ] add CI compatibility checks for benchmark-pack threshold changes
+  - [ ] derive section-envelope registries from one canonical schema source instead of duplicating JSON Schema fragments
+  - [x] generate benchmark-pack docs/examples from registry definitions
+  - [x] add CI compatibility checks for envelope schema evolution
+  - [x] add CI compatibility checks for benchmark-pack threshold changes
   - [ ] generate report-definition diffs when measure/check/section contracts drift
 - [ ] Deepen reusable benchmark semantics:
   - [ ] support benchmark inheritance and overrides

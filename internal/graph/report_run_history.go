@@ -16,6 +16,15 @@ const (
 	reportStorageClassMetadataOnly = "metadata_only"
 	reportRetentionTierShort       = "short_term"
 	reportRetentionTierMetadata    = "metadata_only"
+
+	DefaultReportRetryMaxAttempts   = 3
+	DefaultReportRetryBaseBackoffMS = int64(5000)
+	DefaultReportRetryMaxBackoffMS  = int64(60000)
+
+	ReportAttemptClassTransient     = "transient"
+	ReportAttemptClassDeterministic = "deterministic"
+	ReportAttemptClassCancelled     = "cancelled"
+	ReportAttemptClassSuperseded    = "superseded"
 )
 
 // ReportLineage captures the graph/platform lineage context used to produce a report artifact.
@@ -41,10 +50,15 @@ type ReportRunAttempt struct {
 	RunID            string     `json:"run_id"`
 	AttemptNumber    int        `json:"attempt_number"`
 	Status           string     `json:"status"`
+	Classification   string     `json:"classification,omitempty"`
 	TriggerSurface   string     `json:"trigger_surface,omitempty"`
 	ExecutionSurface string     `json:"execution_surface,omitempty"`
 	ExecutionHost    string     `json:"execution_host,omitempty"`
 	RequestedBy      string     `json:"requested_by,omitempty"`
+	RetryOfAttemptID string     `json:"retry_of_attempt_id,omitempty"`
+	RetryReason      string     `json:"retry_reason,omitempty"`
+	RetryBackoffMS   int64      `json:"retry_backoff_ms,omitempty"`
+	ScheduledFor     *time.Time `json:"scheduled_for,omitempty"`
 	SubmittedAt      time.Time  `json:"submitted_at"`
 	StartedAt        *time.Time `json:"started_at,omitempty"`
 	CompletedAt      *time.Time `json:"completed_at,omitempty"`
@@ -119,6 +133,43 @@ func BuildReportStoragePolicy(materializedResult bool, truncated bool) ReportSto
 	return policy
 }
 
+// NormalizeReportRetryPolicy applies durable defaults for retry/backoff behavior.
+func NormalizeReportRetryPolicy(policy ReportRetryPolicy) ReportRetryPolicy {
+	if policy.MaxAttempts <= 0 {
+		policy.MaxAttempts = DefaultReportRetryMaxAttempts
+	}
+	if policy.BaseBackoffMS <= 0 {
+		policy.BaseBackoffMS = DefaultReportRetryBaseBackoffMS
+	}
+	if policy.MaxBackoffMS <= 0 {
+		policy.MaxBackoffMS = DefaultReportRetryMaxBackoffMS
+	}
+	if policy.MaxBackoffMS < policy.BaseBackoffMS {
+		policy.MaxBackoffMS = policy.BaseBackoffMS
+	}
+	return policy
+}
+
+// ReportRetryBackoff returns the delay for one retry attempt number.
+func ReportRetryBackoff(policy ReportRetryPolicy, attemptNumber int) time.Duration {
+	policy = NormalizeReportRetryPolicy(policy)
+	if attemptNumber <= 1 {
+		return 0
+	}
+	backoffMS := policy.BaseBackoffMS
+	for step := 2; step < attemptNumber; step++ {
+		backoffMS *= 2
+		if backoffMS >= policy.MaxBackoffMS {
+			backoffMS = policy.MaxBackoffMS
+			break
+		}
+	}
+	if backoffMS > policy.MaxBackoffMS {
+		backoffMS = policy.MaxBackoffMS
+	}
+	return time.Duration(backoffMS) * time.Millisecond
+}
+
 // NewReportRunAttempt constructs one new attempt record for a report run.
 func NewReportRunAttempt(runID string, attemptNumber int, status, triggerSurface, executionSurface, executionHost, requestedBy, jobID string, submittedAt time.Time) ReportRunAttempt {
 	if submittedAt.IsZero() {
@@ -185,7 +236,7 @@ func StartLatestReportRunAttempt(run *ReportRun, at time.Time) {
 }
 
 // CompleteLatestReportRunAttempt marks the latest attempt as completed.
-func CompleteLatestReportRunAttempt(run *ReportRun, status string, completedAt time.Time, errMessage string) {
+func CompleteLatestReportRunAttempt(run *ReportRun, status string, completedAt time.Time, errMessage, classification string) {
 	if run == nil || len(run.Attempts) == 0 {
 		return
 	}
@@ -200,6 +251,7 @@ func CompleteLatestReportRunAttempt(run *ReportRun, status string, completedAt t
 		run.Attempts[i].Status = strings.TrimSpace(status)
 		run.Attempts[i].CompletedAt = &completedAt
 		run.Attempts[i].Error = strings.TrimSpace(errMessage)
+		run.Attempts[i].Classification = strings.TrimSpace(classification)
 		return
 	}
 }
@@ -225,6 +277,7 @@ func CloneReportRunAttempts(values []ReportRunAttempt) []ReportRunAttempt {
 	}
 	cloned := append([]ReportRunAttempt(nil), values...)
 	for i := range cloned {
+		cloned[i].ScheduledFor = cloneTimePtr(values[i].ScheduledFor)
 		cloned[i].StartedAt = cloneTimePtr(values[i].StartedAt)
 		cloned[i].CompletedAt = cloneTimePtr(values[i].CompletedAt)
 	}
