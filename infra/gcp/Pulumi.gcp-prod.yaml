@@ -16,4 +16,5 @@ config:
     - writer-networking-nonprod
     - writer-devops
   cerebro:scannerRoles:
-    - "roles/compute.viewer"
+    - "roles/viewer"
+    - "roles/logging.privateLogViewer"
