@@ -48,3 +48,9 @@ config:
         - "results/inventory/"
         - "results/osx_attacks/"
         - "results/vulnerability_mgt_pack/"
+    - name: sentinelone
+      bucket: writer-sentinelone-cloud-funnel
+      region: us-east-1
+      format: jsonl
+      prefixes:
+        - "s1/cloud_funnel/"
