@@ -393,6 +393,7 @@ func TestRoutePermissionCoverage(t *testing.T) {
 		{name: "graph read", method: http.MethodGet, path: "/api/v1/graph/stats", expectedRB: "platform.graph.read"},
 		{name: "graph write", method: http.MethodPost, path: "/api/v1/graph/rebuild", expectedRB: "platform.graph.write"},
 		{name: "platform intelligence", method: http.MethodGet, path: "/api/v1/platform/intelligence/leverage", expectedRB: "platform.intelligence.read"},
+		{name: "platform intelligence run", method: http.MethodPost, path: "/api/v1/platform/intelligence/reports/quality/runs", expectedRB: "platform.intelligence.run"},
 		{name: "platform knowledge write", method: http.MethodPost, path: "/api/v1/platform/knowledge/claims", expectedRB: "platform.knowledge.write"},
 		{name: "org expertise read", method: http.MethodGet, path: "/api/v1/org/expertise/queries", expectedRB: "org.expertise.read"},
 		{name: "org reorg simulate", method: http.MethodPost, path: "/api/v1/org/reorg-simulations", expectedRB: "org.reorg.simulate"},

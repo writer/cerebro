@@ -56,8 +56,13 @@ CloudEvents and mapper contracts are generated in `docs/CLOUDEVENTS_AUTOGEN.md` 
 Primary interface for product surfaces and automations.
 
 Current endpoint:
+- `GET /api/v1/platform/intelligence/measures`
+- `GET /api/v1/platform/intelligence/checks`
 - `GET /api/v1/platform/intelligence/reports`
 - `GET /api/v1/platform/intelligence/reports/{id}`
+- `GET /api/v1/platform/intelligence/reports/{id}/runs`
+- `POST /api/v1/platform/intelligence/reports/{id}/runs`
+- `GET /api/v1/platform/intelligence/reports/{id}/runs/{run_id}`
 - `GET /api/v1/platform/intelligence/insights`
 - `GET /api/v1/platform/intelligence/quality`
 - `GET /api/v1/platform/intelligence/metadata-quality`
@@ -111,12 +116,18 @@ Report-definition rule:
 - Sections, measures, checks, and extension points should be declared once per report definition.
 - Future report families should reuse this registry rather than add one-off endpoints with bespoke payload shapes.
 
+Report-execution rule:
+- Report definitions and report runs are different resources.
+- `ReportRun` captures typed parameters, execution mode, time slice, cache key, job linkage, section summaries, and optional snapshot metadata.
+- Long-running or future high-cost reports should converge on the same run resource + platform job linkage rather than invent report-specific async endpoints.
+
 ### 2) Power Query API
 Read-only, bounded graph exploration for analysts and advanced workflows.
 
 Current endpoint:
-- `GET /api/v1/graph/query`
-- `GET /api/v1/graph/query/templates`
+- `GET /api/v1/platform/graph/queries`
+- `POST /api/v1/platform/graph/queries`
+- `GET /api/v1/platform/graph/templates`
 
 Supported modes:
 - `neighbors` (with direction + limits)
@@ -196,7 +207,7 @@ Operational replay loop:
 - The leverage report includes prioritized recommendations so teams can sequence high-impact remediation work.
 
 ## Query Template Surface
-- `GET /api/v1/graph/query/templates` and `cerebro.graph_query_templates` expose reusable investigations for common workflows (blast radius, incident windows, decision-outcome tracing, customer impact paths).
+- `GET /api/v1/platform/graph/templates` and `cerebro.graph_query_templates` expose reusable investigations for common workflows (blast radius, incident windows, decision-outcome tracing, customer impact paths).
 - Templates are intentionally temporal-capable (`as_of`, `from`, `to`) to keep investigations repeatable and time-bounded.
 
 ## Declarative Ingestion Mapper

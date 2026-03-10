@@ -165,6 +165,29 @@ Adopt in Cerebro:
 Reject:
 - turning each scorecard into a new top-level API family
 
+### 8) Backstage Scaffolder Tasks + OpenMetadata Test Cases
+
+Sources:
+- https://github.com/backstage/backstage/blob/master/plugins/scaffolder-backend/src/schema/openapi.yaml
+- https://github.com/open-metadata/OpenMetadata/blob/main/openmetadata-spec/src/main/resources/json/schema/tests/testDefinition.json
+- https://github.com/open-metadata/OpenMetadata/blob/main/openmetadata-spec/src/main/resources/json/schema/tests/testCase.json
+
+Useful pattern:
+- definitions, instantiated cases, and execution results are separate resources
+- task/execution resources have stable IDs, status, and follow-up retrieval paths
+- input parameter definitions are typed and validated before execution
+- execution state should be durable enough to support retry, history, and audit
+
+Adopt in Cerebro:
+- keep `ReportDefinition` separate from `ReportRun`
+- make `GET /api/v1/platform/intelligence/reports/{id}/runs` and `GET /api/v1/platform/intelligence/reports/{id}/runs/{run_id}` first-class resources
+- validate typed parameter bindings against report definitions before execution
+- link async report runs to platform jobs instead of inventing report-specific job models
+
+Reject:
+- hiding execution identity inside transient handler responses
+- allowing new report families to bypass typed parameter validation
+
 ## Synthesis: What Cerebro Should Adopt
 
 ### Core Rule
@@ -208,23 +231,26 @@ Cerebro should standardize on these report-layer primitives:
 
 ### Immediate discovery surface
 
+- `GET /api/v1/platform/intelligence/measures`
+- `GET /api/v1/platform/intelligence/checks`
 - `GET /api/v1/platform/intelligence/reports`
 - `GET /api/v1/platform/intelligence/reports/{id}`
 
 Purpose:
 - expose built-in report definitions
-- make sections/measures/checks discoverable
+- make measures/checks/sections discoverable through stable registries
 - provide a stable autogeneration input for OpenAPI, MCP tools, docs, and UI composition
 
 ### Next execution surface
 
+- `GET /api/v1/platform/intelligence/reports/{id}/runs`
 - `POST /api/v1/platform/intelligence/reports/{id}/runs`
 - `GET /api/v1/platform/intelligence/reports/{id}/runs/{run_id}`
 - `GET /api/v1/platform/jobs/{id}`
 
 Purpose:
 - allow heavy reports to materialize as runs/jobs
-- preserve inputs, time scope, provenance, and cached results
+- preserve inputs, time scope, section summaries, provenance, and cached results
 
 ### Optional future configuration surface
 

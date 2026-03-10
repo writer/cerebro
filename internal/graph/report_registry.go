@@ -1,13 +1,18 @@
 package graph
 
-import "time"
+import (
+	"sort"
+	"time"
+)
 
 // ReportEndpoint describes how one report is exposed over the API.
 type ReportEndpoint struct {
-	Method      string `json:"method"`
-	Path        string `json:"path"`
-	Synchronous bool   `json:"synchronous"`
-	JobCapable  bool   `json:"job_capable,omitempty"`
+	Method          string `json:"method"`
+	Path            string `json:"path"`
+	Synchronous     bool   `json:"synchronous"`
+	JobCapable      bool   `json:"job_capable,omitempty"`
+	RunMethod       string `json:"run_method,omitempty"`
+	RunPathTemplate string `json:"run_path_template,omitempty"`
 }
 
 // ReportParameter describes one typed request input for a report definition.
@@ -73,6 +78,20 @@ type ReportCatalog struct {
 	GeneratedAt time.Time          `json:"generated_at"`
 	Count       int                `json:"count"`
 	Reports     []ReportDefinition `json:"reports"`
+}
+
+// ReportMeasureCatalog is the discoverable registry payload for reusable report measures.
+type ReportMeasureCatalog struct {
+	GeneratedAt time.Time       `json:"generated_at"`
+	Count       int             `json:"count"`
+	Measures    []ReportMeasure `json:"measures"`
+}
+
+// ReportCheckCatalog is the discoverable registry payload for reusable report checks.
+type ReportCheckCatalog struct {
+	GeneratedAt time.Time     `json:"generated_at"`
+	Count       int           `json:"count"`
+	Checks      []ReportCheck `json:"checks"`
 }
 
 var defaultReportDefinitions = []ReportDefinition{
@@ -343,7 +362,7 @@ var defaultReportDefinitions = []ReportDefinition{
 func ListReportDefinitions() []ReportDefinition {
 	definitions := make([]ReportDefinition, 0, len(defaultReportDefinitions))
 	for _, definition := range defaultReportDefinitions {
-		definitions = append(definitions, cloneReportDefinition(definition))
+		definitions = append(definitions, normalizeReportDefinition(cloneReportDefinition(definition)))
 	}
 	return definitions
 }
@@ -352,7 +371,7 @@ func ListReportDefinitions() []ReportDefinition {
 func GetReportDefinition(id string) (ReportDefinition, bool) {
 	for _, definition := range defaultReportDefinitions {
 		if definition.ID == id {
-			return cloneReportDefinition(definition), true
+			return normalizeReportDefinition(cloneReportDefinition(definition)), true
 		}
 	}
 	return ReportDefinition{}, false
@@ -372,6 +391,80 @@ func ReportCatalogSnapshot(now time.Time) ReportCatalog {
 	}
 }
 
+// ListReportMeasures returns the deduplicated reusable measure catalog across built-in reports.
+func ListReportMeasures() []ReportMeasure {
+	byID := make(map[string]ReportMeasure)
+	for _, definition := range ListReportDefinitions() {
+		for _, measure := range definition.Measures {
+			if _, ok := byID[measure.ID]; ok {
+				continue
+			}
+			byID[measure.ID] = measure
+		}
+	}
+	ids := make([]string, 0, len(byID))
+	for id := range byID {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	measures := make([]ReportMeasure, 0, len(ids))
+	for _, id := range ids {
+		measures = append(measures, byID[id])
+	}
+	return measures
+}
+
+// ListReportChecks returns the deduplicated reusable check catalog across built-in reports.
+func ListReportChecks() []ReportCheck {
+	byID := make(map[string]ReportCheck)
+	for _, definition := range ListReportDefinitions() {
+		for _, check := range definition.Checks {
+			if _, ok := byID[check.ID]; ok {
+				continue
+			}
+			byID[check.ID] = check
+		}
+	}
+	ids := make([]string, 0, len(byID))
+	for id := range byID {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	checks := make([]ReportCheck, 0, len(ids))
+	for _, id := range ids {
+		checks = append(checks, byID[id])
+	}
+	return checks
+}
+
+// ReportMeasureCatalogSnapshot returns a timestamped view of the reusable measure registry.
+func ReportMeasureCatalogSnapshot(now time.Time) ReportMeasureCatalog {
+	now = now.UTC()
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	measures := ListReportMeasures()
+	return ReportMeasureCatalog{
+		GeneratedAt: now,
+		Count:       len(measures),
+		Measures:    measures,
+	}
+}
+
+// ReportCheckCatalogSnapshot returns a timestamped view of the reusable check registry.
+func ReportCheckCatalogSnapshot(now time.Time) ReportCheckCatalog {
+	now = now.UTC()
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	checks := ListReportChecks()
+	return ReportCheckCatalog{
+		GeneratedAt: now,
+		Count:       len(checks),
+		Checks:      checks,
+	}
+}
+
 func cloneReportDefinition(definition ReportDefinition) ReportDefinition {
 	cloned := definition
 	cloned.TemporalModes = append([]string(nil), definition.TemporalModes...)
@@ -384,4 +477,17 @@ func cloneReportDefinition(definition ReportDefinition) ReportDefinition {
 	cloned.Checks = append([]ReportCheck(nil), definition.Checks...)
 	cloned.ExtensionPoints = append([]ReportExtensionPoint(nil), definition.ExtensionPoints...)
 	return cloned
+}
+
+func normalizeReportDefinition(definition ReportDefinition) ReportDefinition {
+	if !definition.Endpoint.JobCapable {
+		definition.Endpoint.JobCapable = true
+	}
+	if definition.Endpoint.RunMethod == "" {
+		definition.Endpoint.RunMethod = "POST"
+	}
+	if definition.Endpoint.RunPathTemplate == "" {
+		definition.Endpoint.RunPathTemplate = "/api/v1/platform/intelligence/reports/{id}/runs"
+	}
+	return definition
 }

@@ -152,6 +152,7 @@ func TestRBAC_HasPermission_ScopedNamespaces(t *testing.T) {
 	}{
 		{"platform.graph.read", true},
 		{"platform.intelligence.read", true},
+		{"platform.intelligence.run", true},
 		{"platform.knowledge.write", true},
 		{"security.findings.manage", true},
 		{"security.analyses.run", true},
@@ -176,6 +177,7 @@ func TestRBAC_ListPermissionIDsIncludesScopedNamespaces(t *testing.T) {
 	expected := []string{
 		"platform.graph.read",
 		"platform.intelligence.read",
+		"platform.intelligence.run",
 		"security.findings.read",
 		"org.intelligence.read",
 		"admin.providers.manage",

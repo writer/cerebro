@@ -31,6 +31,8 @@ type Server struct {
 	crossTenantReplay   map[string]time.Time
 	platformJobMu       sync.RWMutex
 	platformJobs        map[string]*platformJob
+	platformReportRunMu sync.RWMutex
+	platformReportRuns  map[string]*graph.ReportRun
 }
 
 type auditLogWriter interface {
@@ -42,11 +44,12 @@ var runtimeNumGoroutine = runtime.NumGoroutine
 // NewServer creates a new server with all services wired
 func NewServer(application *app.App) *Server {
 	s := &Server{
-		app:               application,
-		router:            chi.NewRouter(),
-		auditLogger:       application.AuditRepo,
-		crossTenantReplay: make(map[string]time.Time),
-		platformJobs:      make(map[string]*platformJob),
+		app:                application,
+		router:             chi.NewRouter(),
+		auditLogger:        application.AuditRepo,
+		crossTenantReplay:  make(map[string]time.Time),
+		platformJobs:       make(map[string]*platformJob),
+		platformReportRuns: make(map[string]*graph.ReportRun),
 	}
 	s.setupMiddleware()
 	s.setupRoutes()

@@ -249,6 +249,182 @@ func TestPlatformIntelligenceReportDefinition(t *testing.T) {
 	if !ok || len(measures) == 0 {
 		t.Fatalf("expected measures, got %#v", body["measures"])
 	}
+	endpoint, ok := body["endpoint"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected endpoint object, got %#v", body["endpoint"])
+	}
+	if jobCapable, _ := endpoint["job_capable"].(bool); !jobCapable {
+		t.Fatalf("expected leverage report to advertise job_capable, got %#v", endpoint["job_capable"])
+	}
+	if runPath, _ := endpoint["run_path_template"].(string); runPath == "" {
+		t.Fatalf("expected run_path_template, got %#v", endpoint["run_path_template"])
+	}
+}
+
+func TestPlatformIntelligenceMeasureCatalog(t *testing.T) {
+	s := newTestServer(t)
+
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/measures", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	body := decodeJSON(t, w)
+	if count, ok := body["count"].(float64); !ok || int(count) < 10 {
+		t.Fatalf("expected at least 10 reusable measures, got %#v", body["count"])
+	}
+	measures, ok := body["measures"].([]any)
+	if !ok || len(measures) == 0 {
+		t.Fatalf("expected measures array, got %#v", body["measures"])
+	}
+	first, ok := measures[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected first measure object, got %#v", measures[0])
+	}
+	if _, ok := first["id"].(string); !ok {
+		t.Fatalf("expected measure id, got %#v", first["id"])
+	}
+}
+
+func TestPlatformIntelligenceCheckCatalog(t *testing.T) {
+	s := newTestServer(t)
+
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/checks", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	body := decodeJSON(t, w)
+	if count, ok := body["count"].(float64); !ok || int(count) < 6 {
+		t.Fatalf("expected at least 6 reusable checks, got %#v", body["count"])
+	}
+	checks, ok := body["checks"].([]any)
+	if !ok || len(checks) == 0 {
+		t.Fatalf("expected checks array, got %#v", body["checks"])
+	}
+}
+
+func TestPlatformIntelligenceReportRunSync(t *testing.T) {
+	s := newTestServer(t)
+	g := s.app.SecurityGraph
+	now := time.Date(2026, 3, 9, 16, 0, 0, 0, time.UTC)
+
+	g.AddNode(&graph.Node{
+		ID:   "person:alice@example.com",
+		Kind: graph.NodeKindPerson,
+		Name: "Alice",
+		Properties: map[string]any{
+			"email":       "alice@example.com",
+			"observed_at": now.Format(time.RFC3339),
+			"valid_from":  now.Format(time.RFC3339),
+		},
+	})
+
+	w := do(t, s, http.MethodPost, "/api/v1/platform/intelligence/reports/quality/runs", map[string]any{
+		"execution_mode": "sync",
+		"parameters": []map[string]any{
+			{"name": "stale_after_hours", "integer_value": 24},
+		},
+	})
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	body := decodeJSON(t, w)
+	if got := body["status"]; got != graph.ReportRunStatusSucceeded {
+		t.Fatalf("expected succeeded report run, got %#v", got)
+	}
+	if got := body["report_id"]; got != "quality" {
+		t.Fatalf("expected quality report_id, got %#v", got)
+	}
+	if _, ok := body["snapshot"].(map[string]any); !ok {
+		t.Fatalf("expected snapshot metadata, got %#v", body["snapshot"])
+	}
+	statusURL, _ := body["status_url"].(string)
+	if statusURL == "" {
+		t.Fatalf("expected status_url, got %#v", body["status_url"])
+	}
+	sections, ok := body["sections"].([]any)
+	if !ok || len(sections) == 0 {
+		t.Fatalf("expected section summaries, got %#v", body["sections"])
+	}
+
+	runResp := do(t, s, http.MethodGet, statusURL, nil)
+	if runResp.Code != http.StatusOK {
+		t.Fatalf("expected 200 for report run lookup, got %d: %s", runResp.Code, runResp.Body.String())
+	}
+	runBody := decodeJSON(t, runResp)
+	if _, ok := runBody["result"].(map[string]any); !ok {
+		t.Fatalf("expected materialized result object, got %#v", runBody["result"])
+	}
+
+	listResp := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/reports/quality/runs", nil)
+	if listResp.Code != http.StatusOK {
+		t.Fatalf("expected 200 for run list, got %d: %s", listResp.Code, listResp.Body.String())
+	}
+	listBody := decodeJSON(t, listResp)
+	if count, ok := listBody["count"].(float64); !ok || count < 1 {
+		t.Fatalf("expected at least one report run, got %#v", listBody["count"])
+	}
+}
+
+func TestPlatformIntelligenceReportRunAsync(t *testing.T) {
+	s := newTestServer(t)
+	g := s.app.SecurityGraph
+	now := time.Date(2026, 3, 9, 17, 0, 0, 0, time.UTC)
+
+	g.AddNode(&graph.Node{
+		ID:   "service:payments",
+		Kind: graph.NodeKindService,
+		Name: "Payments",
+		Properties: map[string]any{
+			"service_id":    "payments",
+			"source_system": "github",
+			"observed_at":   now.Format(time.RFC3339),
+			"valid_from":    now.Format(time.RFC3339),
+		},
+	})
+
+	w := do(t, s, http.MethodPost, "/api/v1/platform/intelligence/reports/metadata-quality/runs", map[string]any{
+		"execution_mode": "async",
+		"parameters": []map[string]any{
+			{"name": "top_kinds", "integer_value": 10},
+		},
+	})
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", w.Code, w.Body.String())
+	}
+	body := decodeJSON(t, w)
+	jobURL, _ := body["job_status_url"].(string)
+	statusURL, _ := body["status_url"].(string)
+	if jobURL == "" || statusURL == "" {
+		t.Fatalf("expected async run job/status URLs, got job=%#v status=%#v", body["job_status_url"], body["status_url"])
+	}
+
+	var runBody map[string]any
+	for i := 0; i < 50; i++ {
+		runResp := do(t, s, http.MethodGet, statusURL, nil)
+		if runResp.Code != http.StatusOK {
+			t.Fatalf("expected 200 for async run lookup, got %d: %s", runResp.Code, runResp.Body.String())
+		}
+		runBody = decodeJSON(t, runResp)
+		if runBody["status"] == graph.ReportRunStatusSucceeded {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := runBody["status"]; got != graph.ReportRunStatusSucceeded {
+		t.Fatalf("expected async report run to succeed, got %#v", got)
+	}
+	if _, ok := runBody["result"].(map[string]any); !ok {
+		t.Fatalf("expected async result payload, got %#v", runBody["result"])
+	}
+
+	jobResp := do(t, s, http.MethodGet, jobURL, nil)
+	if jobResp.Code != http.StatusOK {
+		t.Fatalf("expected 200 for linked job lookup, got %d: %s", jobResp.Code, jobResp.Body.String())
+	}
+	jobBody := decodeJSON(t, jobResp)
+	if got := jobBody["status"]; got != "succeeded" {
+		t.Fatalf("expected job succeeded, got %#v", got)
+	}
 }
 
 func TestGraphIntelligenceMetadataQualityEndpoint(t *testing.T) {
@@ -488,10 +664,10 @@ func TestGraphIntelligenceLeverageEndpoint(t *testing.T) {
 	}
 }
 
-func TestGraphQueryTemplatesEndpoint(t *testing.T) {
+func TestPlatformGraphQueryTemplatesEndpoint(t *testing.T) {
 	s := newTestServer(t)
 
-	w := do(t, s, http.MethodGet, "/api/v1/graph/query/templates", nil)
+	w := do(t, s, http.MethodGet, "/api/v1/platform/graph/templates", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
@@ -749,7 +925,7 @@ func TestGraphIntelligenceWeeklyCalibrationEndpoint(t *testing.T) {
 	}
 }
 
-func TestGraphQueryEndpoint_NeighborsAndPaths(t *testing.T) {
+func TestPlatformGraphQueryEndpoint_NeighborsAndPaths(t *testing.T) {
 	s := newTestServer(t)
 	g := s.app.SecurityGraph
 
@@ -759,7 +935,7 @@ func TestGraphQueryEndpoint_NeighborsAndPaths(t *testing.T) {
 	g.AddEdge(&graph.Edge{ID: "alice-admin", Source: "user:alice", Target: "role:admin", Kind: graph.EdgeKindCanAssume, Effect: graph.EdgeEffectAllow})
 	g.AddEdge(&graph.Edge{ID: "admin-db", Source: "role:admin", Target: "db:prod", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow})
 
-	neighbors := do(t, s, http.MethodGet, "/api/v1/graph/query?mode=neighbors&node_id=user:alice&direction=out&limit=10", nil)
+	neighbors := do(t, s, http.MethodGet, "/api/v1/platform/graph/queries?mode=neighbors&node_id=user:alice&direction=out&limit=10", nil)
 	if neighbors.Code != http.StatusOK {
 		t.Fatalf("expected 200 neighbors, got %d: %s", neighbors.Code, neighbors.Body.String())
 	}
@@ -771,7 +947,7 @@ func TestGraphQueryEndpoint_NeighborsAndPaths(t *testing.T) {
 		t.Fatalf("expected at least one neighbor, got %#v", neighborsBody["count"])
 	}
 
-	paths := do(t, s, http.MethodGet, "/api/v1/graph/query?mode=paths&node_id=user:alice&target_id=db:prod&k=2&max_depth=6", nil)
+	paths := do(t, s, http.MethodGet, "/api/v1/platform/graph/queries?mode=paths&node_id=user:alice&target_id=db:prod&k=2&max_depth=6", nil)
 	if paths.Code != http.StatusOK {
 		t.Fatalf("expected 200 paths, got %d: %s", paths.Code, paths.Body.String())
 	}
@@ -783,11 +959,8 @@ func TestGraphQueryEndpoint_NeighborsAndPaths(t *testing.T) {
 		t.Fatalf("expected at least one path, got %#v", pathsBody["count"])
 	}
 
-	if got := neighbors.Header().Get("Deprecation"); got != "true" {
-		t.Fatalf("expected deprecation header on legacy graph query endpoint, got %q", got)
-	}
-	if got := neighbors.Header().Get("Sunset"); got == "" {
-		t.Fatal("expected sunset header on legacy graph query endpoint")
+	if got := neighbors.Header().Get("Deprecation"); got != "" {
+		t.Fatalf("did not expect deprecation header on platform graph query endpoint, got %q", got)
 	}
 }
 
@@ -820,7 +993,7 @@ func TestPlatformGraphQueryEndpoint_PostAlias(t *testing.T) {
 	}
 }
 
-func TestGraphQueryEndpoint_TemporalScope(t *testing.T) {
+func TestPlatformGraphQueryEndpoint_TemporalScope(t *testing.T) {
 	s := newTestServer(t)
 	g := s.app.SecurityGraph
 
@@ -878,7 +1051,7 @@ func TestGraphQueryEndpoint_TemporalScope(t *testing.T) {
 		},
 	})
 
-	asOfActive := do(t, s, http.MethodGet, "/api/v1/graph/query?mode=neighbors&node_id=user:alice&direction=out&as_of=2026-03-04T00:00:00Z", nil)
+	asOfActive := do(t, s, http.MethodGet, "/api/v1/platform/graph/queries?mode=neighbors&node_id=user:alice&direction=out&as_of=2026-03-04T00:00:00Z", nil)
 	if asOfActive.Code != http.StatusOK {
 		t.Fatalf("expected 200 for as_of active query, got %d: %s", asOfActive.Code, asOfActive.Body.String())
 	}
@@ -887,7 +1060,7 @@ func TestGraphQueryEndpoint_TemporalScope(t *testing.T) {
 		t.Fatalf("expected active neighbors count >=1, got %#v", activeBody["count"])
 	}
 
-	asOfExpired := do(t, s, http.MethodGet, "/api/v1/graph/query?mode=neighbors&node_id=user:alice&direction=out&as_of=2026-03-08T00:00:00Z", nil)
+	asOfExpired := do(t, s, http.MethodGet, "/api/v1/platform/graph/queries?mode=neighbors&node_id=user:alice&direction=out&as_of=2026-03-08T00:00:00Z", nil)
 	if asOfExpired.Code != http.StatusOK {
 		t.Fatalf("expected 200 for expired as_of query, got %d: %s", asOfExpired.Code, asOfExpired.Body.String())
 	}
@@ -896,7 +1069,7 @@ func TestGraphQueryEndpoint_TemporalScope(t *testing.T) {
 		t.Fatalf("expected expired neighbors count 0, got %#v", expiredBody["count"])
 	}
 
-	windowed := do(t, s, http.MethodGet, "/api/v1/graph/query?mode=paths&node_id=user:alice&target_id=db:prod&from=2026-03-01T00:00:00Z&to=2026-03-06T00:00:00Z", nil)
+	windowed := do(t, s, http.MethodGet, "/api/v1/platform/graph/queries?mode=paths&node_id=user:alice&target_id=db:prod&from=2026-03-01T00:00:00Z&to=2026-03-06T00:00:00Z", nil)
 	if windowed.Code != http.StatusOK {
 		t.Fatalf("expected 200 for windowed query, got %d: %s", windowed.Code, windowed.Body.String())
 	}
@@ -906,37 +1079,37 @@ func TestGraphQueryEndpoint_TemporalScope(t *testing.T) {
 	}
 }
 
-func TestGraphQueryEndpoint_InvalidParams(t *testing.T) {
+func TestPlatformGraphQueryEndpoint_InvalidParams(t *testing.T) {
 	s := newTestServer(t)
 	g := s.app.SecurityGraph
 	g.AddNode(&graph.Node{ID: "user:alice", Kind: graph.NodeKindUser, Name: "Alice"})
 
-	w := do(t, s, http.MethodGet, "/api/v1/graph/query", nil)
+	w := do(t, s, http.MethodGet, "/api/v1/platform/graph/queries", nil)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for missing node_id, got %d", w.Code)
 	}
 
-	w = do(t, s, http.MethodGet, "/api/v1/graph/query?mode=unsupported&node_id=user:alice", nil)
+	w = do(t, s, http.MethodGet, "/api/v1/platform/graph/queries?mode=unsupported&node_id=user:alice", nil)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for unsupported mode, got %d", w.Code)
 	}
 
-	w = do(t, s, http.MethodGet, "/api/v1/graph/query?mode=paths&node_id=user:alice", nil)
+	w = do(t, s, http.MethodGet, "/api/v1/platform/graph/queries?mode=paths&node_id=user:alice", nil)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for missing target_id in paths mode, got %d", w.Code)
 	}
 
-	w = do(t, s, http.MethodGet, "/api/v1/graph/query?mode=neighbors&node_id=user:missing", nil)
+	w = do(t, s, http.MethodGet, "/api/v1/platform/graph/queries?mode=neighbors&node_id=user:missing", nil)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 for missing node, got %d", w.Code)
 	}
 
-	w = do(t, s, http.MethodGet, "/api/v1/graph/query?mode=neighbors&node_id=user:alice&as_of=not-a-time", nil)
+	w = do(t, s, http.MethodGet, "/api/v1/platform/graph/queries?mode=neighbors&node_id=user:alice&as_of=not-a-time", nil)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for invalid as_of, got %d", w.Code)
 	}
 
-	w = do(t, s, http.MethodGet, "/api/v1/graph/query?mode=neighbors&node_id=user:alice&from=2026-03-01T00:00:00Z", nil)
+	w = do(t, s, http.MethodGet, "/api/v1/platform/graph/queries?mode=neighbors&node_id=user:alice&from=2026-03-01T00:00:00Z", nil)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 when from is missing to, got %d", w.Code)
 	}

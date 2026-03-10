@@ -4755,13 +4755,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /api/v1/graph/query:
+  /api/v1/platform/graph/queries:
     get:
       tags:
-        - Graph
-      deprecated: true
-      summary: Run bounded graph neighborhood and path queries
-      description: Legacy compatibility endpoint. Use `POST /api/v1/platform/graph/queries` for the typed platform contract.
+        - Platform
+      summary: Run bounded platform graph neighborhood and path queries
+      description: Query the shared graph platform through a stable read surface with temporal scoping.
       parameters:
         - name: mode
           in: query
@@ -4845,8 +4844,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: true
+                $ref: '#/components/schemas/PlatformGraphQueryResponse'
         '400':
           description: Invalid query parameter
           content:
@@ -4865,7 +4863,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /api/v1/platform/graph/queries:
     post:
       tags:
         - Platform
@@ -4902,12 +4899,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /api/v1/graph/query/templates:
+  /api/v1/platform/graph/templates:
     get:
       tags:
-        - Graph
-      summary: List reusable graph investigation templates
-      description: Return built-in query templates for repeatable analyst and agent investigations.
+        - Platform
+      summary: List reusable platform graph investigation templates
+      description: Return built-in query templates for repeatable analyst and agent investigations over the shared graph platform.
       responses:
         '200':
           description: Query template catalog
@@ -4916,6 +4913,32 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+  /api/v1/platform/intelligence/measures:
+    get:
+      tags:
+        - Platform
+      summary: List reusable platform intelligence measures
+      description: Return the deduplicated measure registry shared across built-in platform reports.
+      responses:
+        '200':
+          description: Platform intelligence measure catalog
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformReportMeasureCatalog'
+  /api/v1/platform/intelligence/checks:
+    get:
+      tags:
+        - Platform
+      summary: List reusable platform intelligence checks
+      description: Return the deduplicated check/assertion registry shared across built-in platform reports.
+      responses:
+        '200':
+          description: Platform intelligence check catalog
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformReportCheckCatalog'
   /api/v1/platform/intelligence/reports:
     get:
       tags:
@@ -4949,6 +4972,107 @@ paths:
                 $ref: '#/components/schemas/PlatformReportDefinition'
         '404':
           description: Report definition not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/platform/intelligence/reports/{id}/runs:
+    get:
+      tags:
+        - Platform
+      summary: List materialized runs for a built-in platform intelligence report
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Platform intelligence report run collection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformReportRunCollection'
+        '404':
+          description: Report definition not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - Platform
+      summary: Execute a built-in platform intelligence report
+      description: Instantiate a report run with typed parameters and return a durable run resource with optional snapshot materialization.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlatformReportRunRequest'
+      responses:
+        '201':
+          description: Synchronous report run created and completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformReportRun'
+        '202':
+          description: Asynchronous report run accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformReportRun'
+        '400':
+          description: Invalid report run request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Report definition not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Report execution failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformReportRun'
+  /api/v1/platform/intelligence/reports/{id}/runs/{run_id}:
+    get:
+      tags:
+        - Platform
+      summary: Get one platform intelligence report run
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Platform intelligence report run
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformReportRun'
+        '404':
+          description: Report run not found
           content:
             application/json:
               schema:
@@ -8653,6 +8777,212 @@ components:
           type: string
         status_url:
           type: string
+    PlatformReportRunRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        execution_mode:
+          type: string
+          enum:
+            - sync
+            - async
+        materialize_result:
+          type: boolean
+        parameters:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformReportParameterValue'
+    PlatformReportParameterValue:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+        string_value:
+          type: string
+        integer_value:
+          type: integer
+        number_value:
+          type: number
+        boolean_value:
+          type: boolean
+        timestamp_value:
+          type: string
+          format: date-time
+      required:
+        - name
+    PlatformReportTimeSlice:
+      type: object
+      additionalProperties: false
+      properties:
+        as_of:
+          type: string
+          format: date-time
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        valid_at:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+    PlatformReportSectionResult:
+      type: object
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+        title:
+          type: string
+        kind:
+          type: string
+        present:
+          type: boolean
+        content_type:
+          type: string
+        item_count:
+          type: integer
+        field_count:
+          type: integer
+        measure_ids:
+          type: array
+          items:
+            type: string
+      required:
+        - key
+        - title
+        - kind
+        - present
+    PlatformReportSnapshot:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        result_schema:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+        content_hash:
+          type: string
+        byte_size:
+          type: integer
+        section_count:
+          type: integer
+        retained:
+          type: boolean
+        expires_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - result_schema
+        - generated_at
+        - recorded_at
+        - content_hash
+        - byte_size
+        - section_count
+        - retained
+    PlatformReportResult:
+      oneOf:
+        - $ref: '#/components/schemas/IntelligenceReport'
+        - $ref: '#/components/schemas/GraphQualityReport'
+        - $ref: '#/components/schemas/GraphMetadataQualityReport'
+        - $ref: '#/components/schemas/ClaimConflictReport'
+        - $ref: '#/components/schemas/GraphLeverageReport'
+        - $ref: '#/components/schemas/WeeklyCalibrationReport'
+    PlatformReportRunSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        report_id:
+          type: string
+        status:
+          type: string
+          enum:
+            - queued
+            - running
+            - succeeded
+            - failed
+        execution_mode:
+          type: string
+          enum:
+            - sync
+            - async
+        submitted_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        requested_by:
+          type: string
+        parameters:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformReportParameterValue'
+        time_slice:
+          $ref: '#/components/schemas/PlatformReportTimeSlice'
+        cache_key:
+          type: string
+        job_id:
+          type: string
+        job_status_url:
+          type: string
+        status_url:
+          type: string
+        snapshot:
+          $ref: '#/components/schemas/PlatformReportSnapshot'
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformReportSectionResult'
+        error:
+          type: string
+      required:
+        - id
+        - report_id
+        - status
+        - execution_mode
+        - submitted_at
+        - status_url
+    PlatformReportRun:
+      allOf:
+        - $ref: '#/components/schemas/PlatformReportRunSummary'
+        - type: object
+          additionalProperties: false
+          properties:
+            result:
+              $ref: '#/components/schemas/PlatformReportResult'
+    PlatformReportRunCollection:
+      type: object
+      additionalProperties: false
+      properties:
+        report_id:
+          type: string
+        count:
+          type: integer
+        runs:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformReportRunSummary'
+      required:
+        - report_id
+        - count
+        - runs
     SecurityAttackPathJobRequest:
       type: object
       additionalProperties: false
@@ -9969,6 +10299,40 @@ components:
         - generated_at
         - count
         - reports
+    PlatformReportMeasureCatalog:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        count:
+          type: integer
+        measures:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformReportMeasure'
+      required:
+        - generated_at
+        - count
+        - measures
+    PlatformReportCheckCatalog:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        count:
+          type: integer
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformReportCheck'
+      required:
+        - generated_at
+        - count
+        - checks
     PlatformReportDefinition:
       type: object
       additionalProperties: false
@@ -10027,6 +10391,10 @@ components:
           type: boolean
         job_capable:
           type: boolean
+        run_method:
+          type: string
+        run_path_template:
+          type: string
       required:
         - method
         - path

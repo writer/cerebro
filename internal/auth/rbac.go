@@ -267,6 +267,7 @@ func defaultPermissions() []Permission {
 		{ID: "platform.graph.read", Resource: "platform.graph", Action: "read"},
 		{ID: "platform.graph.write", Resource: "platform.graph", Action: "write"},
 		{ID: "platform.intelligence.read", Resource: "platform.intelligence", Action: "read"},
+		{ID: "platform.intelligence.run", Resource: "platform.intelligence", Action: "run"},
 		{ID: "platform.jobs.read", Resource: "platform.jobs", Action: "read"},
 		{ID: "platform.knowledge.write", Resource: "platform.knowledge", Action: "write"},
 		{ID: "platform.workflow.write", Resource: "platform.workflow", Action: "write"},
@@ -324,6 +325,7 @@ func defaultAdminRolePermissions() []string {
 		"admin:users", "admin:roles",
 
 		"platform.graph.read", "platform.graph.write", "platform.intelligence.read",
+		"platform.intelligence.run",
 		"platform.jobs.read", "platform.knowledge.write", "platform.workflow.write",
 		"platform.schema.read", "platform.schema.manage", "platform.identity.review",
 		"platform.simulation.run",
@@ -358,6 +360,7 @@ func defaultAnalystRolePermissions() []string {
 		"assets:read", "compliance:read",
 
 		"platform.graph.read", "platform.graph.write", "platform.intelligence.read",
+		"platform.intelligence.run",
 		"platform.jobs.read", "platform.knowledge.write", "platform.workflow.write",
 		"platform.schema.read", "platform.identity.review", "platform.simulation.run",
 
@@ -410,21 +413,22 @@ func permissionImplies(granted, requested string) bool {
 
 func permissionImplications() map[string][]string {
 	return map[string][]string{
-		"findings:read":        {"security.findings.read", "security.incidents.read", "security.identity.read", "security.threat.read"},
-		"findings:write":       {"security.findings.manage", "security.incidents.manage", "security.identity.manage", "security.threat.manage"},
-		"policies:read":        {"security.policies.read"},
-		"policies:write":       {"security.policies.manage"},
-		"tickets:read":         {"security.tickets.read"},
-		"tickets:write":        {"security.tickets.manage"},
-		"runtime:read":         {"security.runtime.read"},
-		"runtime:write":        {"security.runtime.write"},
-		"graph:read":           {"platform.graph.read", "platform.intelligence.read", "platform.jobs.read", "platform.schema.read", "security.analyses.read", "org.expertise.read", "org.intelligence.read"},
-		"graph:write":          {"platform.graph.write", "platform.knowledge.write", "platform.workflow.write", "platform.schema.manage", "platform.identity.review", "platform.simulation.run", "security.analyses.run", "org.team.recommend", "org.reorg.simulate"},
-		"assets:read":          {"security.assets.read"},
-		"compliance:read":      {"security.compliance.read"},
-		"compliance:export":    {"security.compliance.export"},
-		"admin:users":          {"admin.audit.read", "admin.operations.read", "admin.operations.manage", "admin.providers.manage", "admin.webhooks.manage", "admin.scheduler.manage", "admin.notifications.manage", "admin.rbac.users.manage"},
-		"admin:roles":          {"admin.rbac.roles.manage"},
-		"platform.graph.write": {"platform.simulation.run"},
+		"findings:read":             {"security.findings.read", "security.incidents.read", "security.identity.read", "security.threat.read"},
+		"findings:write":            {"security.findings.manage", "security.incidents.manage", "security.identity.manage", "security.threat.manage"},
+		"policies:read":             {"security.policies.read"},
+		"policies:write":            {"security.policies.manage"},
+		"tickets:read":              {"security.tickets.read"},
+		"tickets:write":             {"security.tickets.manage"},
+		"runtime:read":              {"security.runtime.read"},
+		"runtime:write":             {"security.runtime.write"},
+		"graph:read":                {"platform.graph.read", "platform.intelligence.read", "platform.jobs.read", "platform.schema.read", "security.analyses.read", "org.expertise.read", "org.intelligence.read"},
+		"graph:write":               {"platform.graph.write", "platform.intelligence.run", "platform.knowledge.write", "platform.workflow.write", "platform.schema.manage", "platform.identity.review", "platform.simulation.run", "security.analyses.run", "org.team.recommend", "org.reorg.simulate"},
+		"assets:read":               {"security.assets.read"},
+		"compliance:read":           {"security.compliance.read"},
+		"compliance:export":         {"security.compliance.export"},
+		"admin:users":               {"admin.audit.read", "admin.operations.read", "admin.operations.manage", "admin.providers.manage", "admin.webhooks.manage", "admin.scheduler.manage", "admin.notifications.manage", "admin.rbac.users.manage"},
+		"admin:roles":               {"admin.rbac.roles.manage"},
+		"platform.graph.write":      {"platform.intelligence.run", "platform.simulation.run"},
+		"platform.intelligence.run": {"platform.jobs.read"},
 	}
 }

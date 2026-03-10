@@ -5,6 +5,110 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 18 - Report Runs + Measure/Check Registries + Platform Query Parity (2026-03-09)
+
+### Review findings
+- [x] Gap: the report registry described reports, but the platform still lacked instantiated report-run resources with durable IDs, typed parameter bindings, and snapshot metadata.
+- [x] Gap: reusable measures and checks were present only as fields inside report definitions, which made downstream autogeneration and threshold-pack reuse harder than necessary.
+- [x] Gap: the last legacy graph-read seam still existed in `/api/v1/graph/query*`, even though the platform transition had already established `/api/v1/platform/*` as the shared primitive namespace.
+- [x] Gap: platform-intelligence execution was still implicitly governed by read permissions, even though report-run creation is an execution surface and should carry its own capability.
+- [x] Gap: the report extensibility research still needed sharper execution-resource guidance drawn from real task/run models in Backstage and definition/case/result separation in OpenMetadata.
+
+### Research synthesis to adopt
+- [x] Backstage Scaffolder task pattern: long-running derived work should be addressable as task/run resources with durable IDs and follow-up retrieval URLs.
+- [x] OpenMetadata definition/case/result pattern: definitions, parameterized instances, and execution results should remain separate resources with typed parameter contracts.
+- [x] OpenLineage facet pattern: extension payloads should remain schema-identifiable and versioned rather than free-form enrichment maps.
+- [x] PROV-O derivation pattern: report runs and report snapshots should be treated as derived artifacts with explicit execution and recording timestamps.
+
+### Execution plan
+- [x] Add executable report-run resources:
+  - [x] Add `GET /api/v1/platform/intelligence/reports/{id}/runs`.
+  - [x] Add `POST /api/v1/platform/intelligence/reports/{id}/runs`.
+  - [x] Add `GET /api/v1/platform/intelligence/reports/{id}/runs/{run_id}`.
+  - [x] Store run status, execution mode, requested-by identity, typed parameters, time-slice extraction, cache key, linked job, section summaries, and result payload.
+  - [x] Add snapshot metadata with content hash, result schema, generated/recorded timestamps, and section count.
+- [x] Add reusable registry discovery surfaces:
+  - [x] Add `GET /api/v1/platform/intelligence/measures`.
+  - [x] Add `GET /api/v1/platform/intelligence/checks`.
+  - [x] Deduplicate reusable measures/checks across built-in report definitions.
+- [x] Finish platform graph read parity:
+  - [x] Add `GET /api/v1/platform/graph/queries`.
+  - [x] Add `GET /api/v1/platform/graph/templates`.
+  - [x] Remove `/api/v1/graph/query`.
+  - [x] Remove `/api/v1/graph/query/templates`.
+  - [x] Move affected tests to the platform surface.
+- [x] Tighten auth for report execution:
+  - [x] Add `platform.intelligence.run`.
+  - [x] Route `POST /api/v1/platform/intelligence/reports/{id}/runs` through the new execution capability.
+  - [x] Extend role defaults and implication rules.
+- [x] Update docs and contract surfaces:
+  - [x] Update OpenAPI for report runs, measure/check catalogs, platform graph GET parity, and report endpoint execution metadata.
+  - [x] Update report extensibility and intelligence docs to distinguish definitions from runs.
+  - [x] Record the deeper execution backlog below.
+
+### Detailed follow-on backlog
+- [ ] Persist report runs beyond process memory:
+  - [ ] back runs with durable storage instead of in-memory maps
+  - [ ] support retention tiers by report family and tenant
+  - [ ] add explicit snapshot expiry/reaping behavior
+  - [ ] make cache invalidation depend on graph snapshot/version and schema version
+- [ ] Add report-run execution history surfaces:
+  - [ ] `GET /api/v1/platform/intelligence/reports/{id}/runs/{run_id}/events`
+  - [ ] `POST /api/v1/platform/intelligence/reports/{id}/runs/{run_id}:retry`
+  - [ ] `POST /api/v1/platform/intelligence/reports/{id}/runs/{run_id}:cancel`
+  - [ ] per-section timing and failure telemetry
+  - [ ] retryability classification for transient vs deterministic failures
+- [ ] Add report lifecycle events:
+  - [ ] `cerebro.platform.report_run.queued`
+  - [ ] `cerebro.platform.report_run.started`
+  - [ ] `cerebro.platform.report_run.completed`
+  - [ ] `cerebro.platform.report_run.failed`
+  - [ ] `cerebro.platform.report_snapshot.materialized`
+- [ ] Add typed section result envelopes:
+  - [ ] `summary`
+  - [ ] `timeseries`
+  - [ ] `distribution`
+  - [ ] `ranking`
+  - [ ] `network_slice`
+  - [ ] `recommendations`
+  - [ ] `evidence_list`
+  - [ ] `narrative_block`
+- [ ] Add a deeper reusable measure registry:
+  - [ ] canonical aggregation semantics (`sum`, `avg`, `latest`, `rate`, `percentile`)
+  - [ ] confidence/freshness qualifiers
+  - [ ] benchmark bands and threshold packs
+  - [ ] dimensional compatibility rules
+  - [ ] provenance hints back to graph evidence/claims
+- [ ] Add a deeper reusable check/assertion registry:
+  - [ ] parameter schemas
+  - [ ] rationale and remediation templates
+  - [ ] history/trend storage
+  - [ ] suppression/waiver model with expiry
+  - [ ] recommendation-generation hooks
+- [ ] Add extension contract infrastructure:
+  - [ ] schema URLs on extension payloads
+  - [ ] compatibility checks for extension-schema drift
+  - [ ] namespaced ownership/approval workflow
+  - [ ] generated JSON Schema catalog for extensions
+- [ ] Deepen the report authoring substrate:
+  - [ ] explicit dimensions registry
+  - [ ] benchmark overlays
+  - [ ] threshold packs by domain/application
+  - [ ] section composition presets for security/org/admin consumers
+  - [ ] report-definition versioning and compatibility rules
+- [ ] Move more heavy analysis/report work onto the execution substrate:
+  - [ ] provider sync jobs
+  - [ ] graph rebuild jobs
+  - [ ] large simulation jobs
+  - [ ] cross-tenant pattern build jobs
+  - [ ] scheduled report materialization jobs
+- [ ] Deepen graph/report coupling where it creates real leverage:
+  - [ ] report section provenance edges to claims/evidence/source nodes
+  - [ ] source trust scoring and freshness decay inputs exposed as reusable measures
+  - [ ] contradiction-aging and supportability trend measures
+  - [ ] report-ready relationship reification where lifecycle/evidence matters
+  - [ ] graph snapshot lineage linked to report snapshots
+
 ## Deep Review Cycle 17 - Report Definition Registry + Extensibility Research + Alias Pruning (2026-03-09)
 
 ### Review findings
@@ -39,10 +143,10 @@ Status: executed end-to-end via PR workflow
   - [x] Move affected tests/docs to `/api/v1/platform/*` and `/api/v1/org/*` routes only.
 
 ### Detailed follow-on backlog
-- [ ] Add `ReportRun` resources:
-  - [ ] `POST /api/v1/platform/intelligence/reports/{id}/runs`
-  - [ ] `GET /api/v1/platform/intelligence/reports/{id}/runs/{run_id}`
-  - [ ] Store run scope, bitemporal slice, provenance, status, cache metadata, and section-level derivation details.
+- [x] Add `ReportRun` resources:
+  - [x] `POST /api/v1/platform/intelligence/reports/{id}/runs`
+  - [x] `GET /api/v1/platform/intelligence/reports/{id}/runs/{run_id}`
+  - [x] Store run scope, bitemporal slice, provenance, status, cache metadata, and section-level execution details.
 - [ ] Add section result envelopes:
   - [ ] `summary`
   - [ ] `timeseries`
@@ -52,6 +156,7 @@ Status: executed end-to-end via PR workflow
   - [ ] `recommendations`
   - [ ] `evidence_list`
 - [ ] Add a reusable measure registry:
+  - [x] discovery endpoint + deduplicated built-in catalog
   - [ ] canonical IDs
   - [ ] value types
   - [ ] units
@@ -59,6 +164,7 @@ Status: executed end-to-end via PR workflow
   - [ ] freshness/confidence attributes
   - [ ] benchmark metadata
 - [ ] Add a reusable check/assertion registry:
+  - [x] discovery endpoint + deduplicated built-in catalog
   - [ ] stable check IDs and severities
   - [ ] parameter schemas
   - [ ] rationale and remediation templates

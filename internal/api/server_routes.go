@@ -312,11 +312,18 @@ func (s *Server) setupRoutes() {
 		// Shared platform primitives
 		r.Route("/platform", func(r chi.Router) {
 			r.Route("/graph", func(r chi.Router) {
+				r.Get("/queries", s.platformGraphQueriesGet)
 				r.Post("/queries", s.platformGraphQueries)
+				r.Get("/templates", s.platformGraphTemplates)
 			})
 			r.Route("/intelligence", func(r chi.Router) {
+				r.Get("/measures", s.listPlatformIntelligenceMeasures)
+				r.Get("/checks", s.listPlatformIntelligenceChecks)
 				r.Get("/reports", s.listPlatformIntelligenceReports)
 				r.Get("/reports/{id}", s.getPlatformIntelligenceReport)
+				r.Get("/reports/{id}/runs", s.listPlatformIntelligenceReportRuns)
+				r.Post("/reports/{id}/runs", s.createPlatformIntelligenceReportRun)
+				r.Get("/reports/{id}/runs/{run_id}", s.getPlatformIntelligenceReportRun)
 				r.Get("/insights", s.graphIntelligenceInsights)
 				r.Get("/quality", s.graphIntelligenceQuality)
 				r.Get("/metadata-quality", s.graphIntelligenceMetadataQuality)
@@ -343,8 +350,6 @@ func (s *Server) setupRoutes() {
 		// Graph platform endpoints
 		r.Route("/graph", func(r chi.Router) {
 			r.Get("/diff", s.graphDiff)
-			r.Get("/query", s.deprecatedAlias("/api/v1/platform/graph/queries", s.graphQuery))
-			r.Get("/query/templates", s.graphQueryTemplates)
 			r.Get("/stats", s.graphStats)
 			r.Get("/ingest/health", s.graphIngestHealth)
 			r.Get("/ingest/dead-letter", s.graphIngestDeadLetter)

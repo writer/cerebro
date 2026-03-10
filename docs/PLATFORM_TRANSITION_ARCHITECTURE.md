@@ -37,13 +37,14 @@ This is an evolutionary refactor, not a rewrite. Existing CSPM flows should keep
 
 ### Inventory Summary
 
-The current OpenAPI exposes 189 `/api/v1/*` paths. Of those, 61 sit under `/api/v1/graph`, but a meaningful fraction of those are not platform primitives. They are security or org application workflows.
+The current OpenAPI exposes 197 `/api/v1/*` paths. Of those, 48 sit under `/api/v1/graph`, but a meaningful fraction of those are not platform primitives. They are security or org application workflows.
 
 ### Current API Grouping
 
 `Platform primitives`
 
-- `/api/v1/graph/query`
+- `/api/v1/platform/graph/queries`
+- `/api/v1/platform/graph/templates`
 - `/api/v1/graph/diff`
 - `/api/v1/graph/schema`
 - `/api/v1/graph/schema/health`
@@ -625,9 +626,17 @@ Current security mapping:
 
 `Platform`
 
+- `GET /api/v1/platform/graph/queries`
 - `POST /api/v1/platform/graph/queries`
 - `POST /api/v1/platform/graph/diffs`
 - `GET /api/v1/platform/graph/templates`
+- `GET /api/v1/platform/intelligence/measures`
+- `GET /api/v1/platform/intelligence/checks`
+- `GET /api/v1/platform/intelligence/reports`
+- `GET /api/v1/platform/intelligence/reports/{id}`
+- `GET /api/v1/platform/intelligence/reports/{id}/runs`
+- `POST /api/v1/platform/intelligence/reports/{id}/runs`
+- `GET /api/v1/platform/intelligence/reports/{id}/runs/{run_id}`
 - `GET /api/v1/platform/schema`
 - `GET /api/v1/platform/schema/health`
 - `POST /api/v1/platform/schema/modules`

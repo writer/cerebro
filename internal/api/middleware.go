@@ -263,6 +263,9 @@ func routePermission(method, path string) string {
 	case strings.HasPrefix(path, "/api/v1/platform/graph"):
 		return "platform.graph.read"
 	case strings.HasPrefix(path, "/api/v1/platform/intelligence"):
+		if isWrite && strings.Contains(path, "/runs") {
+			return "platform.intelligence.run"
+		}
 		return "platform.intelligence.read"
 	case strings.HasPrefix(path, "/api/v1/platform/jobs"):
 		return "platform.jobs.read"
