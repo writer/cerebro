@@ -53,7 +53,7 @@ func TestGraphWhoKnowsEndpoint(t *testing.T) {
 		},
 	})
 
-	w := do(t, s, http.MethodGet, "/api/v1/graph/who-knows?system=auth-svc&limit=2", nil)
+	w := do(t, s, http.MethodGet, "/api/v1/org/expertise/queries?system=auth-svc&limit=2", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
@@ -88,7 +88,7 @@ func TestGraphWhoKnowsEndpoint(t *testing.T) {
 
 func TestGraphWhoKnowsEndpoint_RequiresQuery(t *testing.T) {
 	s := newTestServer(t)
-	w := do(t, s, http.MethodGet, "/api/v1/graph/who-knows", nil)
+	w := do(t, s, http.MethodGet, "/api/v1/org/expertise/queries", nil)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
 	}
@@ -126,7 +126,7 @@ func TestGraphWhoKnowsEndpoint_AvailableFilter(t *testing.T) {
 		},
 	})
 
-	w := do(t, s, http.MethodGet, "/api/v1/graph/who-knows?system=payment-service&available=true&limit=5", nil)
+	w := do(t, s, http.MethodGet, "/api/v1/org/expertise/queries?system=payment-service&available=true&limit=5", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}

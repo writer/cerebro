@@ -4916,6 +4916,43 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+  /api/v1/platform/intelligence/reports:
+    get:
+      tags:
+        - Platform
+      summary: List built-in platform intelligence reports
+      description: Return the registry of built-in report definitions, including sections, measures, checks, extension points, and endpoint metadata.
+      responses:
+        '200':
+          description: Platform intelligence report catalog
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformReportCatalog'
+  /api/v1/platform/intelligence/reports/{id}:
+    get:
+      tags:
+        - Platform
+      summary: Get one built-in platform intelligence report definition
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Platform intelligence report definition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformReportDefinition'
+        '404':
+          description: Report definition not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/platform/intelligence/insights:
     get:
       tags:
@@ -5293,389 +5330,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /api/v1/graph/intelligence/insights:
-    get:
-      tags:
-        - Graph
-      deprecated: true
-      summary: Build decision-grade intelligence insights
-      description: Legacy compatibility alias for `/api/v1/platform/intelligence/insights`.
-      parameters:
-        - name: entity_id
-          in: query
-          required: false
-          description: Optional entity focus for entity-centric scoring and evidence.
-          schema:
-            type: string
-        - name: window_days
-          in: query
-          required: false
-          description: Outcome feedback window in days (1-3650).
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 3650
-        - name: history_limit
-          in: query
-          required: false
-          description: Number of recent schema history entries to include (1-200).
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 200
-        - name: max_insights
-          in: query
-          required: false
-          description: Maximum number of prioritized insights to return (1-20).
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 20
-        - name: since_version
-          in: query
-          required: false
-          description: Optional schema drift baseline version.
-          schema:
-            type: integer
-            minimum: 1
-        - name: include_counterfactual
-          in: query
-          required: false
-          description: Include precomputed what-if simulations in insights.
-          schema:
-            type: boolean
-        - name: from
-          in: query
-          required: false
-          description: Optional RFC3339 lower bound snapshot timestamp for temporal diff context.
-          schema:
-            type: string
-            format: date-time
-        - name: to
-          in: query
-          required: false
-          description: Optional RFC3339 upper bound snapshot timestamp for temporal diff context.
-          schema:
-            type: string
-            format: date-time
-      responses:
-        '200':
-          description: Unified intelligence report
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/IntelligenceReport'
-        '400':
-          description: Invalid query parameter
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
-          description: Snapshots not found for temporal diff parameters
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '503':
-          description: Graph platform is not initialized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-  /api/v1/graph/intelligence/quality:
-    get:
-      tags:
-        - Graph
-      deprecated: true
-      summary: Build graph quality intelligence KPIs
-      description: Legacy compatibility alias for `/api/v1/platform/intelligence/quality`.
-      parameters:
-        - name: history_limit
-          in: query
-          required: false
-          description: Number of recent schema history entries to include (1-200).
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 200
-        - name: since_version
-          in: query
-          required: false
-          description: Optional schema drift baseline version.
-          schema:
-            type: integer
-            minimum: 1
-        - name: stale_after_hours
-          in: query
-          required: false
-          description: Freshness threshold in hours (1-8760).
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 8760
-      responses:
-        '200':
-          description: Graph quality report
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GraphQualityReport'
-        '400':
-          description: Invalid query parameter
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '503':
-          description: Graph platform is not initialized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-  /api/v1/graph/intelligence/metadata-quality:
-    get:
-      tags:
-        - Graph
-      deprecated: true
-      summary: Build graph metadata quality intelligence KPIs
-      description: Legacy compatibility alias for `/api/v1/platform/intelligence/metadata-quality`.
-      parameters:
-        - name: top_kinds
-          in: query
-          required: false
-          description: Maximum number of profiled/unprofiled kinds to include in the response (1-200).
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 200
-      responses:
-        '200':
-          description: Graph metadata quality report
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GraphMetadataQualityReport'
-        '400':
-          description: Invalid query parameter
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '503':
-          description: Graph platform is not initialized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-  /api/v1/graph/intelligence/claim-conflicts:
-    get:
-      tags:
-        - Graph
-      deprecated: true
-      summary: Build claim contradiction and supportability report
-      description: Legacy compatibility alias for `/api/v1/platform/intelligence/claim-conflicts`.
-      parameters:
-        - name: max_conflicts
-          in: query
-          required: false
-          description: Maximum number of contradiction groups to return (1-200).
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 200
-        - name: include_resolved
-          in: query
-          required: false
-          description: Include resolved or superseded claims in the scan.
-          schema:
-            type: boolean
-        - name: stale_after_hours
-          in: query
-          required: false
-          description: Optional freshness threshold in hours (1-8760).
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 8760
-        - name: valid_at
-          in: query
-          required: false
-          description: Optional fact-time slice (RFC3339).
-          schema:
-            type: string
-            format: date-time
-        - name: recorded_at
-          in: query
-          required: false
-          description: Optional system-time slice (RFC3339).
-          schema:
-            type: string
-            format: date-time
-      responses:
-        '200':
-          description: Claim conflict report
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ClaimConflictReport'
-        '400':
-          description: Invalid query parameter
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '503':
-          description: Graph platform is not initialized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-  /api/v1/graph/intelligence/leverage:
-    get:
-      tags:
-        - Graph
-      deprecated: true
-      summary: Build deep graph leverage intelligence report
-      description: Legacy compatibility alias for `/api/v1/platform/intelligence/leverage`.
-      parameters:
-        - name: history_limit
-          in: query
-          required: false
-          description: Number of recent schema history entries to include (1-200).
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 200
-        - name: since_version
-          in: query
-          required: false
-          description: Optional schema drift baseline version.
-          schema:
-            type: integer
-            minimum: 1
-        - name: stale_after_hours
-          in: query
-          required: false
-          description: Freshness threshold in hours (1-8760).
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 8760
-        - name: recent_window_hours
-          in: query
-          required: false
-          description: Recent activity window in hours (1-168).
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 168
-        - name: decision_sla_days
-          in: query
-          required: false
-          description: Days before a decision without outcomes is considered stale (1-365).
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 365
-        - name: identity_suggest_threshold
-          in: query
-          required: false
-          description: Candidate suggestion threshold for identity review backlog (0-1).
-          schema:
-            type: number
-            minimum: 0
-            maximum: 1
-        - name: identity_queue_limit
-          in: query
-          required: false
-          description: Maximum queue entries returned for identity review backlog (1-200).
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 200
-      responses:
-        '200':
-          description: Graph leverage report
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GraphLeverageReport'
-        '400':
-          description: Invalid query parameter
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '503':
-          description: Graph platform is not initialized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-  /api/v1/graph/intelligence/calibration/weekly:
-    get:
-      tags:
-        - Graph
-      deprecated: true
-      summary: Build weekly graph calibration report
-      description: Legacy compatibility alias for `/api/v1/platform/intelligence/calibration/weekly`.
-      parameters:
-        - name: window_days
-          in: query
-          required: false
-          description: Feedback observation window in days (1-30).
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 30
-        - name: trend_days
-          in: query
-          required: false
-          description: Ontology trend horizon in days (7-56).
-          schema:
-            type: integer
-            minimum: 7
-            maximum: 56
-        - name: profile
-          in: query
-          required: false
-          description: Optional risk profile name for outcome feedback calibration.
-          schema:
-            type: string
-        - name: include_queue
-          in: query
-          required: false
-          description: Include identity review queue details.
-          schema:
-            type: boolean
-        - name: queue_limit
-          in: query
-          required: false
-          description: Max identity review queue entries (1-200).
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 200
-      responses:
-        '200':
-          description: Weekly graph calibration report
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/WeeklyCalibrationReport'
-        '400':
-          description: Invalid query parameter
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '503':
-          description: Graph platform is not initialized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
   /api/v1/graph/actuate/recommendation:
     post:
       tags:
@@ -5813,44 +5467,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /api/v1/graph/write/claim:
-    post:
-      tags:
-        - Graph
-      deprecated: true
-      summary: Record a first-class claim with provenance and bitemporal metadata
-      description: Legacy compatibility endpoint. Use `POST /api/v1/platform/knowledge/claims` for the typed platform contract.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PlatformClaimWriteRequest'
-      responses:
-        '201':
-          description: Claim recorded
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PlatformClaimWriteResponse'
-        '400':
-          description: Invalid request body
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
-          description: Referenced graph entity not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '503':
-          description: Graph platform is not initialized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
   /api/v1/platform/knowledge/claims:
     post:
       tags:
@@ -5946,44 +5562,6 @@ paths:
                 $ref: '#/components/schemas/Error'
         '404':
           description: Entity not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '503':
-          description: Graph platform is not initialized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-  /api/v1/graph/write/decision:
-    post:
-      tags:
-        - Graph
-      deprecated: true
-      summary: Record a decision node with linked targets and evidence
-      description: Legacy compatibility endpoint. Use `POST /api/v1/platform/knowledge/decisions` for the typed platform contract.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PlatformDecisionWriteRequest'
-      responses:
-        '201':
-          description: Decision recorded
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PlatformDecisionWriteResponse'
-        '400':
-          description: Invalid request body
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
-          description: One or more target entities were not found
           content:
             application/json:
               schema:
@@ -6349,66 +5927,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /api/v1/graph/who-knows:
-    get:
-      tags:
-        - Graph
-      deprecated: true
-      summary: Rank experts for a topic, customer, or system
-      description: Legacy compatibility endpoint. Use `GET /api/v1/org/expertise/queries`.
-      parameters:
-        - name: topic
-          in: query
-          required: false
-          description: Free-text topic lookup (for example payment-service).
-          schema:
-            type: string
-        - name: customer
-          in: query
-          required: false
-          description: Customer identifier or name to route expertise for.
-          schema:
-            type: string
-        - name: system
-          in: query
-          required: false
-          description: System identifier or name to route expertise for.
-          schema:
-            type: string
-        - name: available
-          in: query
-          required: false
-          description: When true, only return currently available experts.
-          schema:
-            type: boolean
-        - name: limit
-          in: query
-          required: false
-          description: Maximum number of ranked candidates to return.
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 25
-      responses:
-        '200':
-          description: Ranked knowledge candidates
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: true
-        '400':
-          description: Missing required query parameters
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '503':
-          description: Graph platform is not initialized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
   /api/v1/org/expertise/queries:
     get:
       tags:
@@ -6453,38 +5971,6 @@ paths:
                 additionalProperties: true
         '400':
           description: Missing required query parameters
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '503':
-          description: Graph platform is not initialized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-  /api/v1/graph/recommend-team:
-    post:
-      tags:
-        - Graph
-      deprecated: true
-      summary: Recommend a graph-informed team for a project
-      description: Legacy compatibility endpoint. Use `POST /api/v1/org/team-recommendations`.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TeamRecommendationRequest'
-      responses:
-        '200':
-          description: Team recommendation with candidate ranking, team analysis, and alternatives
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TeamRecommendationResult'
-        '400':
-          description: Invalid request body
           content:
             application/json:
               schema:
@@ -6675,47 +6161,6 @@ paths:
                 additionalProperties: true
         '400':
           description: Invalid mutation payload
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '503':
-          description: Graph platform is not initialized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-  /api/v1/graph/simulate-reorg:
-    post:
-      tags:
-        - Graph
-      deprecated: true
-      summary: Simulate organizational reorg changes
-      description: Legacy compatibility endpoint. Use `POST /api/v1/org/reorg-simulations`.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - changes
-              properties:
-                changes:
-                  type: array
-                  items:
-                    type: object
-                    additionalProperties: true
-      responses:
-        '200':
-          description: Reorg impact analysis
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: true
-        '400':
-          description: Invalid reorg request
           content:
             application/json:
               schema:
@@ -10507,3 +9952,167 @@ components:
           $ref: '#/components/schemas/IdentityCalibrationReport'
         ontology:
           $ref: '#/components/schemas/GraphOntologySLO'
+    PlatformReportCatalog:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        count:
+          type: integer
+        reports:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformReportDefinition'
+      required:
+        - generated_at
+        - count
+        - reports
+    PlatformReportDefinition:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        category:
+          type: string
+        description:
+          type: string
+        result_schema:
+          type: string
+        endpoint:
+          $ref: '#/components/schemas/PlatformReportEndpoint'
+        temporal_modes:
+          type: array
+          items:
+            type: string
+        parameters:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformReportParameter'
+        measures:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformReportMeasure'
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformReportSection'
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformReportCheck'
+        extension_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformReportExtensionPoint'
+      required:
+        - id
+        - title
+        - category
+        - result_schema
+        - endpoint
+    PlatformReportEndpoint:
+      type: object
+      additionalProperties: false
+      properties:
+        method:
+          type: string
+        path:
+          type: string
+        synchronous:
+          type: boolean
+        job_capable:
+          type: boolean
+      required:
+        - method
+        - path
+        - synchronous
+    PlatformReportParameter:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+        in:
+          type: string
+        value_type:
+          type: string
+        required:
+          type: boolean
+        description:
+          type: string
+      required:
+        - name
+        - in
+        - value_type
+    PlatformReportMeasure:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        value_type:
+          type: string
+        unit:
+          type: string
+        description:
+          type: string
+      required:
+        - id
+        - label
+        - value_type
+    PlatformReportSection:
+      type: object
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+        title:
+          type: string
+        kind:
+          type: string
+        description:
+          type: string
+        measures:
+          type: array
+          items:
+            type: string
+      required:
+        - key
+        - title
+        - kind
+    PlatformReportCheck:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        severity:
+          type: string
+        description:
+          type: string
+      required:
+        - id
+        - title
+        - severity
+    PlatformReportExtensionPoint:
+      type: object
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+        scope:
+          type: string
+        description:
+          type: string
+      required:
+        - key
+        - scope

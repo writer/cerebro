@@ -22,7 +22,7 @@ func TestGraphIntelligenceInsightsEndpoint(t *testing.T) {
 	g.AddEdge(&graph.Edge{ID: "alice-role", Source: "user:alice", Target: "role:ops", Kind: graph.EdgeKindCanAssume, Effect: graph.EdgeEffectAllow})
 	g.AddEdge(&graph.Edge{ID: "role-db", Source: "role:ops", Target: "db:prod", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow})
 
-	w := do(t, s, http.MethodGet, "/api/v1/graph/intelligence/insights?window_days=30&include_counterfactual=false&max_insights=1", nil)
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/insights?window_days=30&include_counterfactual=false&max_insights=1", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
@@ -59,22 +59,22 @@ func TestGraphIntelligenceInsightsEndpoint(t *testing.T) {
 func TestGraphIntelligenceInsightsEndpoint_InvalidParams(t *testing.T) {
 	s := newTestServer(t)
 
-	w := do(t, s, http.MethodGet, "/api/v1/graph/intelligence/insights?window_days=0", nil)
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/insights?window_days=0", nil)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for window_days=0, got %d", w.Code)
 	}
 
-	w = do(t, s, http.MethodGet, "/api/v1/graph/intelligence/insights?from=2026-03-01T00:00:00Z", nil)
+	w = do(t, s, http.MethodGet, "/api/v1/platform/intelligence/insights?from=2026-03-01T00:00:00Z", nil)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 when from is missing to, got %d", w.Code)
 	}
 
-	w = do(t, s, http.MethodGet, "/api/v1/graph/intelligence/insights?include_counterfactual=maybe", nil)
+	w = do(t, s, http.MethodGet, "/api/v1/platform/intelligence/insights?include_counterfactual=maybe", nil)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for invalid include_counterfactual, got %d", w.Code)
 	}
 
-	w = do(t, s, http.MethodGet, "/api/v1/graph/intelligence/insights?max_insights=0", nil)
+	w = do(t, s, http.MethodGet, "/api/v1/platform/intelligence/insights?max_insights=0", nil)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for max_insights=0, got %d", w.Code)
 	}
@@ -133,7 +133,7 @@ func TestGraphIntelligenceQualityEndpoint(t *testing.T) {
 	g.AddEdge(&graph.Edge{ID: "alias-link", Source: "identity_alias:github:alice", Target: "person:alice@example.com", Kind: graph.EdgeKindAliasOf, Effect: graph.EdgeEffectAllow})
 	g.AddEdge(&graph.Edge{ID: "outcome-evaluates", Source: "outcome:rollback", Target: "decision:rollback", Kind: graph.EdgeKindEvaluates, Effect: graph.EdgeEffectAllow})
 
-	w := do(t, s, http.MethodGet, "/api/v1/graph/intelligence/quality?history_limit=10&stale_after_hours=24", nil)
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/quality?history_limit=10&stale_after_hours=24", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
@@ -167,23 +167,23 @@ func TestGraphIntelligenceQualityEndpoint(t *testing.T) {
 func TestGraphIntelligenceQualityEndpoint_InvalidParams(t *testing.T) {
 	s := newTestServer(t)
 
-	w := do(t, s, http.MethodGet, "/api/v1/graph/intelligence/quality?history_limit=0", nil)
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/quality?history_limit=0", nil)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for history_limit=0, got %d", w.Code)
 	}
 
-	w = do(t, s, http.MethodGet, "/api/v1/graph/intelligence/quality?since_version=0", nil)
+	w = do(t, s, http.MethodGet, "/api/v1/platform/intelligence/quality?since_version=0", nil)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for since_version=0, got %d", w.Code)
 	}
 
-	w = do(t, s, http.MethodGet, "/api/v1/graph/intelligence/quality?stale_after_hours=0", nil)
+	w = do(t, s, http.MethodGet, "/api/v1/platform/intelligence/quality?stale_after_hours=0", nil)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for stale_after_hours=0, got %d", w.Code)
 	}
 }
 
-func TestPlatformIntelligenceQualityEndpointAndLegacyAlias(t *testing.T) {
+func TestPlatformIntelligenceQualityEndpoint(t *testing.T) {
 	s := newTestServer(t)
 	g := s.app.SecurityGraph
 	now := time.Date(2026, 3, 9, 16, 0, 0, 0, time.UTC)
@@ -206,13 +206,48 @@ func TestPlatformIntelligenceQualityEndpointAndLegacyAlias(t *testing.T) {
 	if got := platformResp.Header().Get("Deprecation"); got != "" {
 		t.Fatalf("did not expect deprecation header on platform endpoint, got %q", got)
 	}
+}
 
-	legacyResp := do(t, s, http.MethodGet, "/api/v1/graph/intelligence/quality?stale_after_hours=24", nil)
-	if legacyResp.Code != http.StatusOK {
-		t.Fatalf("expected 200 for legacy intelligence quality alias, got %d: %s", legacyResp.Code, legacyResp.Body.String())
+func TestPlatformIntelligenceReportsCatalog(t *testing.T) {
+	s := newTestServer(t)
+
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/reports", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	if got := legacyResp.Header().Get("Deprecation"); got != "true" {
-		t.Fatalf("expected deprecation header on legacy graph endpoint, got %q", got)
+	body := decodeJSON(t, w)
+
+	if count, ok := body["count"].(float64); !ok || int(count) < 6 {
+		t.Fatalf("expected at least 6 built-in reports, got %#v", body["count"])
+	}
+	reports, ok := body["reports"].([]any)
+	if !ok || len(reports) == 0 {
+		t.Fatalf("expected report definitions, got %#v", body["reports"])
+	}
+	first, ok := reports[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected first report definition object, got %#v", reports[0])
+	}
+	if _, ok := first["endpoint"].(map[string]any); !ok {
+		t.Fatalf("expected endpoint metadata on first report, got %#v", first["endpoint"])
+	}
+}
+
+func TestPlatformIntelligenceReportDefinition(t *testing.T) {
+	s := newTestServer(t)
+
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/reports/leverage", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	body := decodeJSON(t, w)
+
+	if got := body["id"]; got != "leverage" {
+		t.Fatalf("expected leverage definition, got %#v", got)
+	}
+	measures, ok := body["measures"].([]any)
+	if !ok || len(measures) == 0 {
+		t.Fatalf("expected measures, got %#v", body["measures"])
 	}
 }
 
@@ -248,7 +283,7 @@ func TestGraphIntelligenceMetadataQualityEndpoint(t *testing.T) {
 		},
 	})
 
-	w := do(t, s, http.MethodGet, "/api/v1/graph/intelligence/metadata-quality?top_kinds=10", nil)
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/metadata-quality?top_kinds=10", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
@@ -284,7 +319,7 @@ func TestGraphIntelligenceMetadataQualityEndpoint(t *testing.T) {
 func TestGraphIntelligenceMetadataQualityEndpoint_InvalidParams(t *testing.T) {
 	s := newTestServer(t)
 
-	w := do(t, s, http.MethodGet, "/api/v1/graph/intelligence/metadata-quality?top_kinds=0", nil)
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/metadata-quality?top_kinds=0", nil)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for top_kinds=0, got %d", w.Code)
 	}
@@ -355,7 +390,7 @@ func TestGraphIntelligenceClaimConflictsEndpoint(t *testing.T) {
 		t.Fatalf("write claim 2: %v", err)
 	}
 
-	w := do(t, s, http.MethodGet, "/api/v1/graph/intelligence/claim-conflicts?max_conflicts=10&stale_after_hours=24", nil)
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/claim-conflicts?max_conflicts=10&stale_after_hours=24", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
@@ -376,17 +411,17 @@ func TestGraphIntelligenceClaimConflictsEndpoint(t *testing.T) {
 func TestGraphIntelligenceClaimConflictsEndpoint_InvalidParams(t *testing.T) {
 	s := newTestServer(t)
 
-	w := do(t, s, http.MethodGet, "/api/v1/graph/intelligence/claim-conflicts?max_conflicts=0", nil)
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/claim-conflicts?max_conflicts=0", nil)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for max_conflicts=0, got %d", w.Code)
 	}
 
-	w = do(t, s, http.MethodGet, "/api/v1/graph/intelligence/claim-conflicts?include_resolved=maybe", nil)
+	w = do(t, s, http.MethodGet, "/api/v1/platform/intelligence/claim-conflicts?include_resolved=maybe", nil)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for invalid include_resolved, got %d", w.Code)
 	}
 
-	w = do(t, s, http.MethodGet, "/api/v1/graph/intelligence/claim-conflicts?valid_at=nope", nil)
+	w = do(t, s, http.MethodGet, "/api/v1/platform/intelligence/claim-conflicts?valid_at=nope", nil)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for invalid valid_at, got %d", w.Code)
 	}
@@ -431,7 +466,7 @@ func TestGraphIntelligenceLeverageEndpoint(t *testing.T) {
 	g.AddEdge(&graph.Edge{ID: "alias-link", Source: "identity_alias:github:alice", Target: "person:alice@example.com", Kind: graph.EdgeKindAliasOf, Effect: graph.EdgeEffectAllow})
 	g.AddEdge(&graph.Edge{ID: "outcome-evaluates", Source: "outcome:rollback", Target: "decision:rollback", Kind: graph.EdgeKindEvaluates, Effect: graph.EdgeEffectAllow})
 
-	w := do(t, s, http.MethodGet, "/api/v1/graph/intelligence/leverage?identity_queue_limit=10&recent_window_hours=24", nil)
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/leverage?identity_queue_limit=10&recent_window_hours=24", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
@@ -473,7 +508,7 @@ func TestGraphQueryTemplatesEndpoint(t *testing.T) {
 func TestGraphIntelligenceLeverageEndpoint_InvalidParams(t *testing.T) {
 	s := newTestServer(t)
 
-	w := do(t, s, http.MethodGet, "/api/v1/graph/intelligence/leverage?identity_suggest_threshold=2", nil)
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/leverage?identity_suggest_threshold=2", nil)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for invalid identity_suggest_threshold, got %d", w.Code)
 	}
@@ -694,7 +729,7 @@ func TestGraphIntelligenceWeeklyCalibrationEndpoint(t *testing.T) {
 		},
 	})
 
-	w := do(t, s, http.MethodGet, "/api/v1/graph/intelligence/calibration/weekly?window_days=7&trend_days=14", nil)
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/calibration/weekly?window_days=7&trend_days=14", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}

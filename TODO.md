@@ -5,6 +5,94 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 17 - Report Definition Registry + Extensibility Research + Alias Pruning (2026-03-09)
+
+### Review findings
+- [x] Gap: report payloads existed, but there was no discoverable report-definition registry exposing reusable sections, measures, checks, and extension points.
+- [x] Gap: org/security dynamics were correctly moving into the derived report layer, but the system still lacked a concrete composition model for those reports.
+- [x] Gap: existing intelligence endpoints were typed at the payload level, but not at the report-definition level, making autogeneration and UI/tool composition harder than necessary.
+- [x] Gap: compatibility aliases remained for intelligence, claim/decision writeback, and org report routes even though there are no current API consumers to justify carrying them.
+- [x] Gap: report architecture guidance was spread across world-model and intelligence docs without a dedicated research-backed extensibility document.
+
+### Research synthesis to adopt
+- [x] RDF Data Cube pattern: keep report `dimensions`, `measures`, and qualifying attributes distinct.
+- [x] PROV-O pattern: treat report runs and sections as derived artifacts with explicit provenance.
+- [x] OpenLineage pattern: use namespaced, schema-backed extension points instead of untyped extension blobs.
+- [x] DataHub pattern: model checks/assertions separately from run history and use module-based summary surfaces.
+- [x] OpenMetadata pattern: keep metric and test-definition registries typed and parameterized with `additionalProperties: false`.
+- [x] Backstage/Roadie pattern: keep scorecards over shared facts instead of proliferating new product-specific primitives.
+
+### Execution plan
+- [x] Document the report extensibility architecture:
+  - [x] Add `docs/GRAPH_REPORT_EXTENSIBILITY_RESEARCH.md`.
+  - [x] Link it from the core architecture and intelligence/world-model docs.
+  - [x] Define the target report substrate: `ReportDefinition`, `ReportParameter`, `ReportMeasure`, `ReportSection`, `ReportCheck`, `ReportExtensionPoint`, `ReportRun`, `ReportSnapshot`.
+- [x] Add the first discoverable report registry surface:
+  - [x] Add built-in report definitions for `insights`, `quality`, `metadata-quality`, `claim-conflicts`, `leverage`, and `calibration-weekly`.
+  - [x] Add `GET /api/v1/platform/intelligence/reports`.
+  - [x] Add `GET /api/v1/platform/intelligence/reports/{id}`.
+  - [x] Add handler tests and OpenAPI schemas for the report-definition registry.
+- [x] Prune alias baggage where exact replacements already exist:
+  - [x] Remove `/api/v1/graph/intelligence/*` compatibility aliases.
+  - [x] Remove `/api/v1/graph/write/claim` and `/api/v1/graph/write/decision`.
+  - [x] Remove `/api/v1/graph/who-knows`, `/api/v1/graph/recommend-team`, and `/api/v1/graph/simulate-reorg`.
+  - [x] Move affected tests/docs to `/api/v1/platform/*` and `/api/v1/org/*` routes only.
+
+### Detailed follow-on backlog
+- [ ] Add `ReportRun` resources:
+  - [ ] `POST /api/v1/platform/intelligence/reports/{id}/runs`
+  - [ ] `GET /api/v1/platform/intelligence/reports/{id}/runs/{run_id}`
+  - [ ] Store run scope, bitemporal slice, provenance, status, cache metadata, and section-level derivation details.
+- [ ] Add section result envelopes:
+  - [ ] `summary`
+  - [ ] `timeseries`
+  - [ ] `distribution`
+  - [ ] `ranking`
+  - [ ] `network_slice`
+  - [ ] `recommendations`
+  - [ ] `evidence_list`
+- [ ] Add a reusable measure registry:
+  - [ ] canonical IDs
+  - [ ] value types
+  - [ ] units
+  - [ ] aggregation semantics
+  - [ ] freshness/confidence attributes
+  - [ ] benchmark metadata
+- [ ] Add a reusable check/assertion registry:
+  - [ ] stable check IDs and severities
+  - [ ] parameter schemas
+  - [ ] rationale and remediation templates
+  - [ ] run history and trend storage
+  - [ ] recommendation generation hooks
+- [ ] Add namespaced report extension contracts:
+  - [ ] schema URLs for extension payloads
+  - [ ] compatibility checks for extension schema changes
+  - [ ] validation at report-definition registration time
+- [ ] Add report autogeneration:
+  - [ ] OpenAPI fragments
+  - [ ] MCP/tool descriptors
+  - [ ] docs pages/examples
+  - [ ] JSON Schema catalogs
+  - [ ] report lifecycle CloudEvents
+- [ ] Add materialization and scheduling rules:
+  - [ ] synchronous vs job-backed thresholds
+  - [ ] report snapshot retention
+  - [ ] cache invalidation on graph/version changes
+  - [ ] scheduled refresh policies
+- [ ] Add high-value report families over the shared graph:
+  - [ ] identity trust and reviewer calibration
+  - [ ] org dynamics and knowledge fragility
+  - [ ] information-flow lag and coordination bottlenecks
+  - [ ] privilege concentration and risky-configuration posture
+  - [ ] decision closure and operating cadence
+  - [ ] source trust and ingestion confidence
+  - [ ] change risk and rollout readiness
+- [ ] Deepen the graph data needed for those reports:
+  - [ ] source trust scoring and freshness decay policy
+  - [ ] richer document/context linkage into the graph
+  - [ ] relationship reification where report logic needs lifecycle/evidence
+  - [ ] bitemporal claim coverage SLOs and contradiction aging metrics
+
 ## Deep Review Cycle 16 - Platform Intelligence Contracts + Lifecycle Events + Scoped Auth (2026-03-09)
 
 ### Review findings

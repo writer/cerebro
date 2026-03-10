@@ -180,6 +180,24 @@ func (s *Server) getPlatformJob(w http.ResponseWriter, r *http.Request) {
 	s.json(w, http.StatusOK, job)
 }
 
+func (s *Server) listPlatformIntelligenceReports(w http.ResponseWriter, _ *http.Request) {
+	s.json(w, http.StatusOK, graph.ReportCatalogSnapshot(time.Now().UTC()))
+}
+
+func (s *Server) getPlatformIntelligenceReport(w http.ResponseWriter, r *http.Request) {
+	reportID := strings.TrimSpace(chi.URLParam(r, "id"))
+	if reportID == "" {
+		s.error(w, http.StatusBadRequest, "report id required")
+		return
+	}
+	report, ok := graph.GetReportDefinition(reportID)
+	if !ok {
+		s.error(w, http.StatusNotFound, "report definition not found")
+		return
+	}
+	s.json(w, http.StatusOK, report)
+}
+
 func (s *Server) newPlatformJob(kind string, input map[string]any, requestedBy string) *platformJob {
 	now := time.Now().UTC()
 	job := &platformJob{

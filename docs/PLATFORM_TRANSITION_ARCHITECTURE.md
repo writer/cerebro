@@ -31,7 +31,7 @@ Additional boundary rule:
 - examples include bus factor, coordination fragility, privilege concentration, blast-radius posture, and other derived analytics
 - only promote those views into standalone resources when they require their own write lifecycle, durable IDs, approvals, or actuation semantics
 
-This is an evolutionary refactor, not a rewrite. Existing CSPM flows stay working behind compatibility aliases while new contracts move to typed platform/application boundaries.
+This is an evolutionary refactor, not a rewrite. Existing CSPM flows should keep working, but when there are no known API consumers Cerebro should remove temporary aliases quickly instead of preserving drift indefinitely.
 
 ## 2. Current-State Diagnosis
 
@@ -164,7 +164,7 @@ Rationale:
 
 - not every shared primitive is a graph traversal; some are identity, ingest, schema, jobs, or actuation contracts
 - it creates a clean home for future non-security applications without forcing them through a security-flavored `/graph` namespace
-- `/api/v1/graph/*` can be preserved temporarily as compatibility aliases that route to `/api/v1/platform/*`
+- `/api/v1/graph/*` may be preserved temporarily as compatibility aliases when there are real consumers, but exact replacement routes should be removed quickly when there are none
 
 ### Platform Resource Families
 
@@ -756,6 +756,7 @@ Recommended initial scopes:
 ### Compatibility And Deprecation Policy
 
 - Every renamed route gets a compatibility alias and a documented successor path.
+- If request telemetry or direct operator knowledge confirms there are no consumers, skip the alias and remove the old route immediately.
 - Compatibility aliases must emit deprecation headers and a concrete sunset date.
 - Removal requires request telemetry showing successor-path adoption above the target threshold.
 - The minimum support window should be one full minor release cycle or 90 days, whichever is longer.

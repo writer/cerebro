@@ -118,7 +118,7 @@ Cerebro application:
 - Added schema issue codes for missing metadata keys, invalid metadata enums, and invalid metadata timestamps.
 - Added metadata profile validation to schema registry node validation.
 - Added metadata profiles and enum contracts for operational/decision-intelligence kinds.
-- Added `BuildGraphMetadataQualityReport(...)` and API endpoint `GET /api/v1/graph/intelligence/metadata-quality`.
+- Added `BuildGraphMetadataQualityReport(...)` and API endpoint `GET /api/v1/platform/intelligence/metadata-quality`.
 - Extended ontology autogen output to include node metadata profile matrices.
 - Added CloudEvents autogen catalog (`docs/CLOUDEVENTS_AUTOGEN.md`) with envelope and template-derived mapping contracts.
 - Added machine-readable contract catalog (`docs/CLOUDEVENTS_CONTRACTS.json`) with generated per-mapping data schemas.
@@ -128,7 +128,7 @@ Cerebro application:
 - Added mapper metadata enrichment pointers (`source_schema_url`, `producer_fingerprint`, `contract_version`, `contract_api_version`).
 - Added first-class world-model ontology nodes (`claim`, `source`, `observation`) and contradiction/support edges.
 - Added bitemporal write metadata (`recorded_at`, `transaction_from`, `transaction_to`) plus bitemporal graph views.
-- Added claim writeback and contradiction intelligence endpoints (`POST /api/v1/graph/write/claim`, `GET /api/v1/graph/intelligence/claim-conflicts`).
+- Added claim writeback and contradiction intelligence endpoints (`POST /api/v1/platform/knowledge/claims`, `GET /api/v1/platform/intelligence/claim-conflicts`).
 
 ## Next Moves
 

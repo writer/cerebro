@@ -2,7 +2,7 @@
 
 This document defines how Cerebro's graph becomes the organization's intelligence layer: decision-grade, evidence-backed, and action-oriented.
 
-See [GRAPH_ONTOLOGY_ARCHITECTURE.md](./GRAPH_ONTOLOGY_ARCHITECTURE.md) for ontology layering, extension workflow, and metadata contract details.
+See [GRAPH_ONTOLOGY_ARCHITECTURE.md](./GRAPH_ONTOLOGY_ARCHITECTURE.md) for ontology layering, extension workflow, and metadata contract details, and [GRAPH_REPORT_EXTENSIBILITY_RESEARCH.md](./GRAPH_REPORT_EXTENSIBILITY_RESEARCH.md) for the report registry/module model that should sit on top of the graph.
 
 ## Principles
 - Every insight must be **decision-grade**: include evidence, confidence, coverage, and clear next actions.
@@ -56,6 +56,8 @@ CloudEvents and mapper contracts are generated in `docs/CLOUDEVENTS_AUTOGEN.md` 
 Primary interface for product surfaces and automations.
 
 Current endpoint:
+- `GET /api/v1/platform/intelligence/reports`
+- `GET /api/v1/platform/intelligence/reports/{id}`
 - `GET /api/v1/platform/intelligence/insights`
 - `GET /api/v1/platform/intelligence/quality`
 - `GET /api/v1/platform/intelligence/metadata-quality`
@@ -64,8 +66,6 @@ Current endpoint:
 - `GET /api/v1/platform/intelligence/calibration/weekly`
 - `GET /api/v1/graph/ingest/health`
 - `GET /api/v1/graph/ingest/contracts`
-
-Legacy `/api/v1/graph/intelligence/*` paths remain as compatibility aliases, but the shared platform surface now lives under `/api/v1/platform/intelligence/*`.
 
 Output characteristics:
 - Prioritized `insights[]`
@@ -106,6 +106,11 @@ Report-boundary rule:
 - Examples: bus factor, information-flow fragility, privilege concentration, blast radius trends, and risky-configuration posture.
 - Do not promote those views into new substrate primitives unless they need independent write lifecycles or durable IDs.
 
+Report-definition rule:
+- Built-in reports should be discoverable through the platform report registry, not just implicit in router code.
+- Sections, measures, checks, and extension points should be declared once per report definition.
+- Future report families should reuse this registry rather than add one-off endpoints with bespoke payload shapes.
+
 ### 2) Power Query API
 Read-only, bounded graph exploration for analysts and advanced workflows.
 
@@ -131,9 +136,9 @@ Graph intelligence compounds only when decisions and outcomes write back.
 
 Current endpoints:
 - `POST /api/v1/graph/write/observation`
-- `POST /api/v1/graph/write/claim`
+- `POST /api/v1/platform/knowledge/claims`
 - `POST /api/v1/graph/write/annotation`
-- `POST /api/v1/graph/write/decision`
+- `POST /api/v1/platform/knowledge/decisions`
 - `POST /api/v1/graph/write/outcome`
 - `POST /api/v1/graph/identity/resolve`
 - `POST /api/v1/graph/identity/split`

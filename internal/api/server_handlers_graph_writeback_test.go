@@ -105,7 +105,7 @@ func TestGraphWriteDecisionOutcomeAndIdentity(t *testing.T) {
 		t.Fatalf("expected alias_node_id from identity resolve, got %+v", resolveBody)
 	}
 
-	decision := do(t, s, http.MethodPost, "/api/v1/graph/write/decision", map[string]any{
+	decision := do(t, s, http.MethodPost, "/api/v1/platform/knowledge/decisions", map[string]any{
 		"decision_type": "rollback",
 		"status":        "approved",
 		"made_by":       "person:alice@example.com",
@@ -196,7 +196,7 @@ func TestGraphWriteClaim(t *testing.T) {
 		},
 	})
 
-	w := do(t, s, http.MethodPost, "/api/v1/graph/write/claim", map[string]any{
+	w := do(t, s, http.MethodPost, "/api/v1/platform/knowledge/claims", map[string]any{
 		"subject_id":        "service:payments",
 		"predicate":         "owner",
 		"object_id":         "person:alice@example.com",
@@ -226,12 +226,12 @@ func TestGraphWriteClaim(t *testing.T) {
 	if node, ok := g.GetNode(sourceID); !ok || node == nil || node.Kind != graph.NodeKindSource {
 		t.Fatalf("expected source node %q, got %#v", sourceID, node)
 	}
-	if got := w.Header().Get("Deprecation"); got != "true" {
-		t.Fatalf("expected deprecation header on legacy graph claim write endpoint, got %q", got)
+	if got := w.Header().Get("Deprecation"); got != "" {
+		t.Fatalf("did not expect deprecation header on platform claim write endpoint, got %q", got)
 	}
 }
 
-func TestPlatformClaimAndDecisionAliases(t *testing.T) {
+func TestPlatformClaimAndDecisionEndpoints(t *testing.T) {
 	s := newTestServer(t)
 	g := s.app.SecurityGraph
 
@@ -245,7 +245,7 @@ func TestPlatformClaimAndDecisionAliases(t *testing.T) {
 		"source_system": "api",
 	})
 	if claim.Code != http.StatusCreated {
-		t.Fatalf("expected 201 for platform claim alias, got %d: %s", claim.Code, claim.Body.String())
+		t.Fatalf("expected 201 for platform claim endpoint, got %d: %s", claim.Code, claim.Body.String())
 	}
 	claimBody := decodeJSON(t, claim)
 	if claimBody["claim_id"] == "" {
@@ -258,7 +258,7 @@ func TestPlatformClaimAndDecisionAliases(t *testing.T) {
 		"source_system": "api",
 	})
 	if decision.Code != http.StatusCreated {
-		t.Fatalf("expected 201 for platform decision alias, got %d: %s", decision.Code, decision.Body.String())
+		t.Fatalf("expected 201 for platform decision endpoint, got %d: %s", decision.Code, decision.Body.String())
 	}
 	decisionBody := decodeJSON(t, decision)
 	if decisionBody["decision_id"] == "" {
@@ -414,7 +414,7 @@ func TestGraphWritebackEmitsPlatformLifecycleEvents(t *testing.T) {
 		return nil
 	})
 
-	claim := do(t, s, http.MethodPost, "/api/v1/graph/write/claim", map[string]any{
+	claim := do(t, s, http.MethodPost, "/api/v1/platform/knowledge/claims", map[string]any{
 		"subject_id":    "service:payments",
 		"predicate":     "owner",
 		"object_id":     "person:alice@example.com",
@@ -436,7 +436,7 @@ func TestGraphWritebackEmitsPlatformLifecycleEvents(t *testing.T) {
 		t.Fatalf("expected subject_id service:payments, got %#v", event.Data["subject_id"])
 	}
 
-	decision := do(t, s, http.MethodPost, "/api/v1/graph/write/decision", map[string]any{
+	decision := do(t, s, http.MethodPost, "/api/v1/platform/knowledge/decisions", map[string]any{
 		"decision_type": "rollback",
 		"status":        "approved",
 		"made_by":       "person:alice@example.com",
@@ -526,7 +526,7 @@ func TestGraphWritebackValidationFailures(t *testing.T) {
 		t.Fatalf("expected 400 for missing entity_id, got %d: %s", observation.Code, observation.Body.String())
 	}
 
-	decision := do(t, s, http.MethodPost, "/api/v1/graph/write/decision", map[string]any{
+	decision := do(t, s, http.MethodPost, "/api/v1/platform/knowledge/decisions", map[string]any{
 		"decision_type": "rollback",
 		"target_ids":    []string{"service:missing"},
 	})
@@ -557,7 +557,7 @@ func TestGraphWritebackValidationFailures(t *testing.T) {
 		t.Fatalf("expected 400 for missing canonical_node_id on identity split, got %d: %s", split.Code, split.Body.String())
 	}
 
-	claim := do(t, s, http.MethodPost, "/api/v1/graph/write/claim", map[string]any{
+	claim := do(t, s, http.MethodPost, "/api/v1/platform/knowledge/claims", map[string]any{
 		"subject_id":   "service:missing",
 		"predicate":    "owner",
 		"object_value": "alice",

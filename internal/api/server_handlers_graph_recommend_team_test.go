@@ -11,7 +11,7 @@ func TestRecommendTeamEndpoint(t *testing.T) {
 	s := newTestServer(t)
 	seedRecommendTeamGraph(s.app.SecurityGraph)
 
-	w := do(t, s, http.MethodPost, "/api/v1/graph/recommend-team", map[string]any{
+	w := do(t, s, http.MethodPost, "/api/v1/org/team-recommendations", map[string]any{
 		"target_systems": []string{"payment-service", "billing-api"},
 		"domains":        []string{"payments", "customer-facing"},
 		"team_size":      2,
@@ -52,7 +52,7 @@ func TestRecommendTeamEndpoint(t *testing.T) {
 
 func TestRecommendTeamEndpoint_RequiresTargetSystems(t *testing.T) {
 	s := newTestServer(t)
-	w := do(t, s, http.MethodPost, "/api/v1/graph/recommend-team", map[string]any{
+	w := do(t, s, http.MethodPost, "/api/v1/org/team-recommendations", map[string]any{
 		"team_size": 3,
 	})
 	if w.Code != http.StatusBadRequest {

@@ -20,12 +20,12 @@ func TestGraphSimulateReorgEndpoint(t *testing.T) {
 			},
 		},
 	}
-	w := do(t, s, http.MethodPost, "/api/v1/graph/simulate-reorg", body)
+	w := do(t, s, http.MethodPost, "/api/v1/org/reorg-simulations", body)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	if got := w.Header().Get("Deprecation"); got != "true" {
-		t.Fatalf("expected deprecation header on legacy graph reorg endpoint, got %q", got)
+	if got := w.Header().Get("Deprecation"); got != "" {
+		t.Fatalf("did not expect deprecation header on org reorg endpoint, got %q", got)
 	}
 
 	decoded := decodeJSON(t, w)
@@ -43,12 +43,12 @@ func TestGraphSimulateReorgEndpoint_Validation(t *testing.T) {
 	s := newTestServer(t)
 	seedSimulateReorgGraph(s.app.SecurityGraph)
 
-	w := do(t, s, http.MethodPost, "/api/v1/graph/simulate-reorg", map[string]any{"changes": []any{}})
+	w := do(t, s, http.MethodPost, "/api/v1/org/reorg-simulations", map[string]any{"changes": []any{}})
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for empty changes, got %d", w.Code)
 	}
 
-	w = do(t, s, http.MethodPost, "/api/v1/graph/simulate-reorg", map[string]any{
+	w = do(t, s, http.MethodPost, "/api/v1/org/reorg-simulations", map[string]any{
 		"changes": []map[string]any{
 			{
 				"person":         "person:unknown@example.com",
@@ -61,7 +61,7 @@ func TestGraphSimulateReorgEndpoint_Validation(t *testing.T) {
 	}
 }
 
-func TestOrgReorgSimulationAlias(t *testing.T) {
+func TestOrgReorgSimulationEndpoint(t *testing.T) {
 	s := newTestServer(t)
 	seedSimulateReorgGraph(s.app.SecurityGraph)
 
@@ -73,11 +73,11 @@ func TestOrgReorgSimulationAlias(t *testing.T) {
 		}},
 	})
 	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200 for org reorg simulation alias, got %d: %s", w.Code, w.Body.String())
+		t.Fatalf("expected 200 for org reorg simulation endpoint, got %d: %s", w.Code, w.Body.String())
 	}
 	decoded := decodeJSON(t, w)
 	if _, ok := decoded["recommended_actions"].([]any); !ok {
-		t.Fatalf("expected recommended_actions in org alias response, got %#v", decoded["recommended_actions"])
+		t.Fatalf("expected recommended_actions in org response, got %#v", decoded["recommended_actions"])
 	}
 }
 

@@ -2,6 +2,8 @@
 
 This document defines the next bar for Cerebro: a graph that does not just store entities and events, but tracks what is believed, who asserted it, what supports it, what contradicts it, and when Cerebro learned it.
 
+See [GRAPH_REPORT_EXTENSIBILITY_RESEARCH.md](./GRAPH_REPORT_EXTENSIBILITY_RESEARCH.md) for how most org/security dynamics should be surfaced as extensible derived reports over this world model.
+
 ## Goal
 
 A world-model graph should be able to answer, for any important fact:
@@ -77,8 +79,8 @@ This cycle adds the minimum viable world-model substrate:
 - first-class edge kinds: `asserted_by`, `supports`, `refutes`, `supersedes`, `contradicts`
 - bitemporal metadata normalization in `graph.WriteMetadata`
 - bitemporal graph views through `GetAllNodesBitemporal(...)`, `GetOutEdgesBitemporal(...)`, and `SubgraphBitemporal(...)`
-- claim write path through `graph.WriteClaim(...)` and `POST /api/v1/graph/write/claim`
-- claim contradiction reporting through `BuildClaimConflictReport(...)` and `GET /api/v1/platform/intelligence/claim-conflicts` (with legacy `/api/v1/graph/intelligence/claim-conflicts` alias preserved)
+- claim write path through `graph.WriteClaim(...)` and `POST /api/v1/platform/knowledge/claims`
+- claim contradiction reporting through `BuildClaimConflictReport(...)` and `GET /api/v1/platform/intelligence/claim-conflicts`
 
 ## What Still Needs To Be Added
 

@@ -7,6 +7,7 @@ Cerebro is being refactored from a security-first CSPM product into a domain-agn
 Graph-specific architecture references:
 
 - [Graph Intelligence Layer](./GRAPH_INTELLIGENCE_LAYER.md)
+- [Graph Report Extensibility Research](./GRAPH_REPORT_EXTENSIBILITY_RESEARCH.md)
 - [Graph Ontology Architecture](./GRAPH_ONTOLOGY_ARCHITECTURE.md)
 - [Graph World Model Architecture](./GRAPH_WORLD_MODEL_ARCHITECTURE.md)
 - [Platform Transition Architecture](./PLATFORM_TRANSITION_ARCHITECTURE.md)
