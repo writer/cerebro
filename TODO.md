@@ -1,9 +1,52 @@
 # Cerebro Intelligence Layer Execution TODO
 
-Last updated: 2026-03-09 (America/Los_Angeles)
+Last updated: 2026-03-10 (America/Los_Angeles)
 Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
+
+## Deep Review Cycle 25 - Report Section Lineage + Truncation Metadata (2026-03-10)
+
+### Review findings
+- [x] Gap: durable report runs had stable section summaries, but section artifacts still lacked graph-aware lineage that downstream tools could use for explanation, drill-down, and follow-on reasoning.
+- [x] Gap: truncation hints lived inside report-specific payloads, which forced clients to scrape arbitrary section content instead of reading one stable section contract.
+- [x] Gap: section-emitted lifecycle events and stream payloads exposed content shape, but not enough metadata to explain which claims, evidence, and sources anchored the emitted section.
+
+### Research synthesis to adopt
+- [x] Derived-artifact rule: report sections are typed derived artifacts and should carry explicit lineage/sample metadata alongside payload content.
+- [x] Explainability rule: section contracts should expose supportability metadata directly so UI, SDK, and automation layers do not need report-specific parsers for every explanation workflow.
+- [x] Truncation-transparency rule: if a report section reflects partial output, that fact belongs in stable section metadata rather than being buried in one report family's custom fields.
+
+### Execution plan
+- [x] Enrich `ReportSectionResult` with reusable lineage metadata:
+  - [x] add referenced-node, claim, evidence, and source counts
+  - [x] add sampled lineage ID sets with truncation protection
+  - [x] expand direct claim references to linked evidence/source nodes
+- [x] Enrich `ReportSectionResult` with reusable materialization metadata:
+  - [x] add stable `truncated` flag
+  - [x] add sampled truncation-signal paths detected from report payloads
+- [x] Thread enriched section metadata through runtime surfaces:
+  - [x] persist it on durable report runs
+  - [x] include it in `section_emitted` lifecycle events
+  - [x] include it in platform SSE and MCP section/progress payloads
+- [x] Tighten tests and contracts:
+  - [x] add graph-level tests for lineage/truncation enrichment
+  - [x] add API regression coverage for claim-conflict report runs exposing lineage/truncation metadata
+  - [x] extend OpenAPI section schemas with lineage/materialization subcontracts
+
+### Detailed follow-on backlog
+- [ ] Section telemetry deepening:
+  - [ ] add real per-section duration capture instead of synthetic timing guesses
+  - [ ] add cache-hit/cache-miss and retry-backoff metadata where the runtime actually has those signals
+  - [ ] add per-section partial-failure classification separate from truncation
+- [ ] Section provenance deepening:
+  - [ ] expose supporting edge IDs and bitemporal windows for section lineage samples
+  - [ ] add configurable lineage sample limits by report family
+  - [ ] materialize high-value section lineage back into graph annotations/outcomes where it creates leverage
+- [ ] Section contract generation:
+  - [ ] derive section lineage/materialization schema fragments from one canonical contract source
+  - [ ] generate report-definition diff summaries when section metadata fields evolve
+  - [ ] emit section example payloads with lineage/truncation fixtures in generated docs
 
 ## Deep Review Cycle 24 - External SDK Packages + Section Streams + Managed Credential Control (2026-03-09)
 
@@ -51,7 +94,7 @@ Status: executed end-to-end via PR workflow
   - [ ] emit per-language examples and README snippets from the generated catalog
 - [ ] Runtime telemetry deepening:
   - [ ] stream cache-hit/cache-miss and retry-backoff metadata alongside section events
-  - [ ] extend section emissions with source/claim/evidence cardinality and truncation metadata
+  - [x] extend section emissions with source/claim/evidence cardinality and truncation metadata
   - [ ] reuse the same runtime streaming contract for simulation-heavy non-report tools
 - [ ] Auth and control-plane deepening:
   - [ ] per-tool and per-tenant throttling policies for managed SDK credentials

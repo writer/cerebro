@@ -3,6 +3,7 @@ package api
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1507,6 +1508,152 @@ func TestGraphIntelligenceClaimConflictsEndpoint_InvalidParams(t *testing.T) {
 	w = do(t, s, http.MethodGet, "/api/v1/platform/intelligence/claim-conflicts?valid_at=nope", nil)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for invalid valid_at, got %d", w.Code)
+	}
+}
+
+func TestPlatformReportRunClaimConflictSectionsIncludeLineageAndTruncationMetadata(t *testing.T) {
+	s := newTestServer(t)
+	g := s.app.SecurityGraph
+
+	g.AddNode(&graph.Node{
+		ID:   "service:payments",
+		Kind: graph.NodeKindService,
+		Name: "Payments",
+		Properties: map[string]any{
+			"service_id":    "payments",
+			"source_system": "cmdb",
+			"observed_at":   "2026-03-09T00:00:00Z",
+			"valid_from":    "2026-03-09T00:00:00Z",
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:   "service:billing",
+		Kind: graph.NodeKindService,
+		Name: "Billing",
+		Properties: map[string]any{
+			"service_id":    "billing",
+			"source_system": "cmdb",
+			"observed_at":   "2026-03-09T00:00:00Z",
+			"valid_from":    "2026-03-09T00:00:00Z",
+		},
+	})
+	subjectIDs := []string{"service:payments", "service:payments", "service:billing", "service:billing"}
+	for i, subjectID := range subjectIDs {
+		index := i + 1
+		evidenceID := fmt.Sprintf("evidence:doc:%d", i)
+		g.AddNode(&graph.Node{
+			ID:   evidenceID,
+			Kind: graph.NodeKindEvidence,
+			Name: fmt.Sprintf("Doc %d", i),
+			Properties: map[string]any{
+				"evidence_type": "document",
+				"source_system": "docs",
+				"observed_at":   "2026-03-09T00:00:00Z",
+				"valid_from":    "2026-03-09T00:00:00Z",
+			},
+		})
+		if _, err := graph.WriteClaim(g, graph.ClaimWriteRequest{
+			ID:           fmt.Sprintf("claim:tier:%d", index),
+			SubjectID:    subjectID,
+			Predicate:    "service_tier",
+			ObjectValue:  fmt.Sprintf("tier%d", index),
+			EvidenceIDs:  []string{evidenceID},
+			SourceID:     fmt.Sprintf("source:sheet:%d", index),
+			SourceName:   fmt.Sprintf("Sheet %d", index),
+			SourceType:   "document",
+			SourceSystem: "api",
+		}); err != nil {
+			t.Fatalf("write claim %d: %v", index, err)
+		}
+	}
+
+	run := do(t, s, http.MethodPost, "/api/v1/platform/intelligence/reports/claim-conflicts/runs", map[string]any{
+		"execution_mode": "sync",
+		"parameters": []map[string]any{
+			{"name": "max_conflicts", "integer_value": 1},
+			{"name": "stale_after_hours", "integer_value": 24},
+		},
+	})
+	if run.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for claim-conflicts run, got %d: %s", run.Code, run.Body.String())
+	}
+	body := decodeJSON(t, run)
+	sections, ok := body["sections"].([]any)
+	if !ok || len(sections) == 0 {
+		t.Fatalf("expected sections on report run, got %#v", body["sections"])
+	}
+
+	var summarySection map[string]any
+	var conflictsSection map[string]any
+	for _, raw := range sections {
+		section, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		switch section["key"] {
+		case "summary":
+			summarySection = section
+		case "conflicts":
+			conflictsSection = section
+		}
+	}
+	if summarySection == nil || conflictsSection == nil {
+		t.Fatalf("expected summary and conflicts sections, got %#v", sections)
+	}
+	materialization, ok := summarySection["materialization"].(map[string]any)
+	if !ok || materialization["truncated"] != true {
+		t.Fatalf("expected summary truncation metadata, got %#v", summarySection["materialization"])
+	}
+	lineage, ok := conflictsSection["lineage"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected conflicts lineage metadata, got %#v", conflictsSection["lineage"])
+	}
+	if got := lineage["claim_count"]; got != float64(2) {
+		t.Fatalf("expected claim_count=2 for returned conflict group, got %#v", got)
+	}
+	if got := lineage["evidence_count"]; got != float64(2) {
+		t.Fatalf("expected evidence_count=2 for returned conflict group, got %#v", got)
+	}
+	if got := lineage["source_count"]; got != float64(2) {
+		t.Fatalf("expected source_count=2 for returned conflict group, got %#v", got)
+	}
+
+	statusURL, _ := body["status_url"].(string)
+	if statusURL == "" {
+		t.Fatalf("expected status_url, got %#v", body["status_url"])
+	}
+	eventsResp := do(t, s, http.MethodGet, statusURL+"/events", nil)
+	if eventsResp.Code != http.StatusOK {
+		t.Fatalf("expected 200 for event history, got %d: %s", eventsResp.Code, eventsResp.Body.String())
+	}
+	eventsBody := decodeJSON(t, eventsResp)
+	events, ok := eventsBody["events"].([]any)
+	if !ok {
+		t.Fatalf("expected event array, got %#v", eventsBody["events"])
+	}
+	foundSectionLineage := false
+	foundSectionTruncation := false
+	for _, raw := range events {
+		event, ok := raw.(map[string]any)
+		if !ok || event["type"] != string(webhooks.EventPlatformReportSectionEmitted) {
+			continue
+		}
+		data, ok := event["data"].(map[string]any)
+		if !ok {
+			continue
+		}
+		if lineage, ok := data["lineage"].(map[string]any); ok && lineage["claim_count"] == float64(2) {
+			foundSectionLineage = true
+		}
+		if materialization, ok := data["materialization"].(map[string]any); ok && materialization["truncated"] == true {
+			foundSectionTruncation = true
+		}
+	}
+	if !foundSectionLineage {
+		t.Fatal("expected section_emitted event to include lineage metadata")
+	}
+	if !foundSectionTruncation {
+		t.Fatal("expected section_emitted event to include truncation metadata")
 	}
 }
 

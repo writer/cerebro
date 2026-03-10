@@ -145,6 +145,8 @@ Lifecycle/event rule:
 Section-contract rule:
 - `ReportSectionResult` should advertise a stable `envelope_kind` for downstream renderers, generated tools, and compatibility checks.
 - Object-backed sections should expose stable `field_keys` so UI/tool composition can reason about section shape without inspecting arbitrary payloads.
+- Section metadata should expose graph-aware lineage samples (`claim_ids`, `evidence_ids`, `source_ids`, plus counts) when the payload references durable graph nodes.
+- Section metadata should expose stable truncation/materialization hints so downstream clients do not need report-specific parsers to detect partial output.
 - Section-envelope definitions should be discoverable through the section-envelope registry with stable schema names and schema URLs.
 - Benchmark overlays should be discoverable through the benchmark-pack registry instead of being embedded ad hoc into individual report handlers.
 - Generated report contract catalogs should remain derivable from the same registries so docs, compatibility checks, and downstream tooling bind to one canonical source.

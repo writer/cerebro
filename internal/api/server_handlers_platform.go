@@ -821,8 +821,8 @@ func (s *Server) executePlatformReportRun(ctx context.Context, runID string, def
 		return err
 	}
 
-	sections := graph.BuildReportSectionResults(definition, result)
-	sectionEmissions := graph.BuildReportSectionEmissions(definition, result, completedAt)
+	sections := graph.BuildReportSectionResults(definition, result, s.app.SecurityGraph)
+	sectionEmissions := graph.BuildReportSectionEmissions(definition, result, s.app.SecurityGraph, completedAt)
 	var snapshot *graph.ReportSnapshot
 	if materializeResult {
 		snapshot, err = graph.BuildReportSnapshot(runID, definition, result, true, completedAt)
@@ -882,6 +882,9 @@ func (s *Server) executePlatformReportRun(ctx context.Context, runID string, def
 				"field_count":      emission.Section.FieldCount,
 				"field_keys":       append([]string(nil), emission.Section.FieldKeys...),
 				"measure_ids":      append([]string(nil), emission.Section.MeasureIDs...),
+			}
+			for key, value := range platformReportSectionMetadataPayload(emission.Section) {
+				eventData[key] = value
 			}
 			if snapshot != nil {
 				eventData["snapshot_id"] = snapshot.ID
@@ -1522,8 +1525,47 @@ func platformReportSectionEventPayload(run *graph.ReportRun, section graph.Repor
 	if len(emission.Section.MeasureIDs) > 0 {
 		payload["measure_ids"] = append([]string(nil), emission.Section.MeasureIDs...)
 	}
+	for key, value := range platformReportSectionMetadataPayload(emission.Section) {
+		payload[key] = value
+	}
 	if run.Snapshot != nil {
 		payload["snapshot_id"] = run.Snapshot.ID
+	}
+	return payload
+}
+
+func platformReportSectionMetadataPayload(section graph.ReportSectionResult) map[string]any {
+	payload := make(map[string]any)
+	if section.Lineage != nil {
+		lineage := map[string]any{
+			"referenced_node_count": section.Lineage.ReferencedNodeCount,
+			"claim_count":           section.Lineage.ClaimCount,
+			"evidence_count":        section.Lineage.EvidenceCount,
+			"source_count":          section.Lineage.SourceCount,
+			"ids_truncated":         section.Lineage.IDsTruncated,
+		}
+		if len(section.Lineage.ReferencedNodeIDs) > 0 {
+			lineage["referenced_node_ids"] = append([]string(nil), section.Lineage.ReferencedNodeIDs...)
+		}
+		if len(section.Lineage.ClaimIDs) > 0 {
+			lineage["claim_ids"] = append([]string(nil), section.Lineage.ClaimIDs...)
+		}
+		if len(section.Lineage.EvidenceIDs) > 0 {
+			lineage["evidence_ids"] = append([]string(nil), section.Lineage.EvidenceIDs...)
+		}
+		if len(section.Lineage.SourceIDs) > 0 {
+			lineage["source_ids"] = append([]string(nil), section.Lineage.SourceIDs...)
+		}
+		payload["lineage"] = lineage
+	}
+	if section.Materialization != nil {
+		materialization := map[string]any{
+			"truncated": section.Materialization.Truncated,
+		}
+		if len(section.Materialization.TruncationSignals) > 0 {
+			materialization["truncation_signals"] = append([]string(nil), section.Materialization.TruncationSignals...)
+		}
+		payload["materialization"] = materialization
 	}
 	return payload
 }

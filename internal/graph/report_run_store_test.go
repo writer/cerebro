@@ -40,7 +40,7 @@ func TestReportRunStoreRoundTrip(t *testing.T) {
 		CompletedAt:   timePtr(now),
 		StatusURL:     "/api/v1/platform/intelligence/reports/quality/runs/report_run:test",
 		CacheKey:      "cache-key",
-		Sections:      BuildReportSectionResults(definition, result),
+		Sections:      BuildReportSectionResults(definition, result, nil),
 		Snapshot:      snapshot,
 		Result:        result,
 		Lineage: ReportLineage{

@@ -10377,6 +10377,46 @@ components:
         recorded_at:
           type: string
           format: date-time
+    PlatformReportSectionLineage:
+      type: object
+      additionalProperties: false
+      properties:
+        referenced_node_count:
+          type: integer
+        referenced_node_ids:
+          type: array
+          items:
+            type: string
+        claim_count:
+          type: integer
+        claim_ids:
+          type: array
+          items:
+            type: string
+        evidence_count:
+          type: integer
+        evidence_ids:
+          type: array
+          items:
+            type: string
+        source_count:
+          type: integer
+        source_ids:
+          type: array
+          items:
+            type: string
+        ids_truncated:
+          type: boolean
+    PlatformReportSectionMaterialization:
+      type: object
+      additionalProperties: false
+      properties:
+        truncated:
+          type: boolean
+        truncation_signals:
+          type: array
+          items:
+            type: string
     PlatformReportSectionResult:
       type: object
       additionalProperties: false
@@ -10405,6 +10445,10 @@ components:
           type: array
           items:
             type: string
+        lineage:
+          $ref: '#/components/schemas/PlatformReportSectionLineage'
+        materialization:
+          $ref: '#/components/schemas/PlatformReportSectionMaterialization'
       required:
         - key
         - title

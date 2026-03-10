@@ -170,6 +170,18 @@ func (s *Server) emitPlatformReportSectionStream(run *graph.ReportRun, section g
 		return
 	}
 	emission := graph.CloneReportSectionEmissions([]graph.ReportSectionEmission{section})[0]
+	data := map[string]any{
+		"status_url":    run.StatusURL,
+		"snapshot_id":   reportSnapshotID(run),
+		"section_key":   emission.Section.Key,
+		"envelope_kind": emission.Section.EnvelopeKind,
+		"content_type":  emission.Section.ContentType,
+		"item_count":    emission.Section.ItemCount,
+		"field_count":   emission.Section.FieldCount,
+	}
+	for key, value := range platformReportSectionMetadataPayload(emission.Section) {
+		data[key] = value
+	}
 	s.emitPlatformReportStreamMessage(run.ID, platformReportStreamMessage{
 		Type:      "section",
 		RunID:     run.ID,
@@ -178,15 +190,7 @@ func (s *Server) emitPlatformReportSectionStream(run *graph.ReportRun, section g
 		EventType: string(webhooks.EventPlatformReportSectionEmitted),
 		Timestamp: emission.EmittedAt,
 		Progress:  emission.ProgressPercent,
-		Data: map[string]any{
-			"status_url":    run.StatusURL,
-			"snapshot_id":   reportSnapshotID(run),
-			"section_key":   emission.Section.Key,
-			"envelope_kind": emission.Section.EnvelopeKind,
-			"content_type":  emission.Section.ContentType,
-			"item_count":    emission.Section.ItemCount,
-			"field_count":   emission.Section.FieldCount,
-		},
-		Section: &emission,
+		Data:      data,
+		Section:   &emission,
 	})
 }

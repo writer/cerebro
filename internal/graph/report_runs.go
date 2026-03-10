@@ -49,16 +49,18 @@ type ReportRetryPolicy struct {
 
 // ReportSectionResult summarizes one rendered section within a report run.
 type ReportSectionResult struct {
-	Key          string   `json:"key"`
-	Title        string   `json:"title"`
-	Kind         string   `json:"kind"`
-	EnvelopeKind string   `json:"envelope_kind,omitempty"`
-	Present      bool     `json:"present"`
-	ContentType  string   `json:"content_type,omitempty"`
-	ItemCount    int      `json:"item_count,omitempty"`
-	FieldCount   int      `json:"field_count,omitempty"`
-	FieldKeys    []string `json:"field_keys,omitempty"`
-	MeasureIDs   []string `json:"measure_ids,omitempty"`
+	Key             string                        `json:"key"`
+	Title           string                        `json:"title"`
+	Kind            string                        `json:"kind"`
+	EnvelopeKind    string                        `json:"envelope_kind,omitempty"`
+	Present         bool                          `json:"present"`
+	ContentType     string                        `json:"content_type,omitempty"`
+	ItemCount       int                           `json:"item_count,omitempty"`
+	FieldCount      int                           `json:"field_count,omitempty"`
+	FieldKeys       []string                      `json:"field_keys,omitempty"`
+	MeasureIDs      []string                      `json:"measure_ids,omitempty"`
+	Lineage         *ReportSectionLineage         `json:"lineage,omitempty"`
+	Materialization *ReportSectionMaterialization `json:"materialization,omitempty"`
 }
 
 // ReportSectionEmission carries one section payload emitted over live report streams.
@@ -68,6 +70,25 @@ type ReportSectionEmission struct {
 	ProgressPercent int                 `json:"progress_percent,omitempty"`
 	Section         ReportSectionResult `json:"section"`
 	Payload         any                 `json:"payload,omitempty"`
+}
+
+// ReportSectionLineage captures graph lineage surfaced by one report section payload.
+type ReportSectionLineage struct {
+	ReferencedNodeCount int      `json:"referenced_node_count,omitempty"`
+	ReferencedNodeIDs   []string `json:"referenced_node_ids,omitempty"`
+	ClaimCount          int      `json:"claim_count,omitempty"`
+	ClaimIDs            []string `json:"claim_ids,omitempty"`
+	EvidenceCount       int      `json:"evidence_count,omitempty"`
+	EvidenceIDs         []string `json:"evidence_ids,omitempty"`
+	SourceCount         int      `json:"source_count,omitempty"`
+	SourceIDs           []string `json:"source_ids,omitempty"`
+	IDsTruncated        bool     `json:"ids_truncated,omitempty"`
+}
+
+// ReportSectionMaterialization captures delivery/truncation hints for one section payload.
+type ReportSectionMaterialization struct {
+	Truncated         bool     `json:"truncated,omitempty"`
+	TruncationSignals []string `json:"truncation_signals,omitempty"`
 }
 
 // ReportSnapshot stores materialization metadata for one report result.
@@ -272,7 +293,7 @@ func ExtractReportTimeSlice(values []ReportParameterValue) ReportTimeSlice {
 }
 
 // BuildReportSectionResults summarizes the section-level shape of a materialized report result.
-func BuildReportSectionResults(definition ReportDefinition, result map[string]any) []ReportSectionResult {
+func BuildReportSectionResults(definition ReportDefinition, result map[string]any, g *Graph) []ReportSectionResult {
 	sections := make([]ReportSectionResult, 0, len(definition.Sections))
 	for _, section := range definition.Sections {
 		summary := ReportSectionResult{
@@ -309,17 +330,19 @@ func BuildReportSectionResults(definition ReportDefinition, result map[string]an
 				summary.ContentType = fmt.Sprintf("%T", content)
 			}
 		}
+		summary.Lineage = BuildReportSectionLineage(g, content)
+		summary.Materialization = BuildReportSectionMaterialization(content)
 		sections = append(sections, summary)
 	}
 	return sections
 }
 
 // BuildReportSectionEmissions constructs stream-ready section payloads for one report result.
-func BuildReportSectionEmissions(definition ReportDefinition, result map[string]any, emittedAt time.Time) []ReportSectionEmission {
+func BuildReportSectionEmissions(definition ReportDefinition, result map[string]any, g *Graph, emittedAt time.Time) []ReportSectionEmission {
 	if emittedAt.IsZero() {
 		emittedAt = time.Now().UTC()
 	}
-	summaries := BuildReportSectionResults(definition, result)
+	summaries := BuildReportSectionResults(definition, result, g)
 	emissions := make([]ReportSectionEmission, 0, len(definition.Sections))
 	total := len(definition.Sections)
 	for index, summary := range summaries {
@@ -503,8 +526,268 @@ func CloneReportSectionResults(values []ReportSectionResult) []ReportSectionResu
 	for i := range cloned {
 		cloned[i].MeasureIDs = append([]string(nil), values[i].MeasureIDs...)
 		cloned[i].FieldKeys = append([]string(nil), values[i].FieldKeys...)
+		cloned[i].Lineage = cloneReportSectionLineage(values[i].Lineage)
+		cloned[i].Materialization = cloneReportSectionMaterialization(values[i].Materialization)
 	}
 	return cloned
+}
+
+const (
+	reportSectionLineageIDLimit        = 24
+	reportSectionTruncationSignalLimit = 8
+)
+
+// BuildReportSectionLineage extracts graph lineage references from one section payload.
+func BuildReportSectionLineage(g *Graph, payload any) *ReportSectionLineage {
+	if g == nil || payload == nil {
+		return nil
+	}
+	acc := reportSectionLineageAccumulator{
+		referenced: make(map[string]struct{}),
+		claims:     make(map[string]struct{}),
+		evidence:   make(map[string]struct{}),
+		sources:    make(map[string]struct{}),
+	}
+	collectReportSectionPayloadRefs(g, payload, &acc)
+	expandReportSectionClaimRefs(g, &acc)
+
+	if len(acc.referenced) == 0 && len(acc.claims) == 0 && len(acc.evidence) == 0 && len(acc.sources) == 0 {
+		return nil
+	}
+	referencedIDs, referencedTruncated := limitedSortedStrings(acc.referenced, reportSectionLineageIDLimit)
+	claimIDs, claimTruncated := limitedSortedStrings(acc.claims, reportSectionLineageIDLimit)
+	evidenceIDs, evidenceTruncated := limitedSortedStrings(acc.evidence, reportSectionLineageIDLimit)
+	sourceIDs, sourceTruncated := limitedSortedStrings(acc.sources, reportSectionLineageIDLimit)
+	return &ReportSectionLineage{
+		ReferencedNodeCount: len(acc.referenced),
+		ReferencedNodeIDs:   referencedIDs,
+		ClaimCount:          len(acc.claims),
+		ClaimIDs:            claimIDs,
+		EvidenceCount:       len(acc.evidence),
+		EvidenceIDs:         evidenceIDs,
+		SourceCount:         len(acc.sources),
+		SourceIDs:           sourceIDs,
+		IDsTruncated:        referencedTruncated || claimTruncated || evidenceTruncated || sourceTruncated,
+	}
+}
+
+// BuildReportSectionMaterialization inspects one section payload for truncation signals.
+func BuildReportSectionMaterialization(payload any) *ReportSectionMaterialization {
+	signals := make(map[string]struct{})
+	collectReportSectionTruncationSignals(payload, "", signals)
+	if len(signals) == 0 {
+		return nil
+	}
+	truncationSignals, _ := limitedSortedStrings(signals, reportSectionTruncationSignalLimit)
+	return &ReportSectionMaterialization{
+		Truncated:         true,
+		TruncationSignals: truncationSignals,
+	}
+}
+
+type reportSectionLineageAccumulator struct {
+	referenced map[string]struct{}
+	claims     map[string]struct{}
+	evidence   map[string]struct{}
+	sources    map[string]struct{}
+}
+
+func collectReportSectionPayloadRefs(g *Graph, value any, acc *reportSectionLineageAccumulator) {
+	if g == nil || acc == nil || value == nil {
+		return
+	}
+	switch typed := value.(type) {
+	case map[string]any:
+		for _, child := range typed {
+			collectReportSectionPayloadRefs(g, child, acc)
+		}
+	case []any:
+		for _, child := range typed {
+			collectReportSectionPayloadRefs(g, child, acc)
+		}
+	case []string:
+		for _, child := range typed {
+			collectReportSectionPayloadRefs(g, child, acc)
+		}
+	case string:
+		nodeID := strings.TrimSpace(typed)
+		if nodeID == "" {
+			return
+		}
+		node, ok := g.GetNode(nodeID)
+		if !ok || node == nil {
+			return
+		}
+		acc.referenced[node.ID] = struct{}{}
+		switch node.Kind {
+		case NodeKindClaim:
+			acc.claims[node.ID] = struct{}{}
+		case NodeKindEvidence, NodeKindObservation:
+			acc.evidence[node.ID] = struct{}{}
+		case NodeKindSource:
+			acc.sources[node.ID] = struct{}{}
+		}
+	}
+}
+
+func expandReportSectionClaimRefs(g *Graph, acc *reportSectionLineageAccumulator) {
+	if g == nil || acc == nil || len(acc.claims) == 0 {
+		return
+	}
+	queue := make([]string, 0, len(acc.claims))
+	visited := make(map[string]struct{}, len(acc.claims))
+	for claimID := range acc.claims {
+		queue = append(queue, claimID)
+	}
+	for len(queue) > 0 {
+		claimID := queue[0]
+		queue = queue[1:]
+		if _, ok := visited[claimID]; ok {
+			continue
+		}
+		visited[claimID] = struct{}{}
+
+		for _, edge := range g.GetOutEdges(claimID) {
+			reportSectionExpandClaimEdge(g, acc, edge, &queue)
+		}
+		for _, edge := range g.GetInEdges(claimID) {
+			if edge == nil || strings.TrimSpace(edge.Source) == "" {
+				continue
+			}
+			sourceNode, ok := g.GetNode(edge.Source)
+			if !ok || sourceNode == nil || sourceNode.Kind != NodeKindClaim {
+				continue
+			}
+			if !reportSectionClaimTraversalEdge(edge.Kind) {
+				continue
+			}
+			acc.referenced[sourceNode.ID] = struct{}{}
+			if _, ok := acc.claims[sourceNode.ID]; !ok {
+				acc.claims[sourceNode.ID] = struct{}{}
+				queue = append(queue, sourceNode.ID)
+			}
+		}
+	}
+}
+
+func reportSectionExpandClaimEdge(g *Graph, acc *reportSectionLineageAccumulator, edge *Edge, queue *[]string) {
+	if g == nil || acc == nil || edge == nil || strings.TrimSpace(edge.Target) == "" {
+		return
+	}
+	targetNode, ok := g.GetNode(edge.Target)
+	if !ok || targetNode == nil {
+		return
+	}
+	acc.referenced[targetNode.ID] = struct{}{}
+	switch targetNode.Kind {
+	case NodeKindEvidence, NodeKindObservation:
+		acc.evidence[targetNode.ID] = struct{}{}
+	case NodeKindSource:
+		acc.sources[targetNode.ID] = struct{}{}
+	case NodeKindClaim:
+		if !reportSectionClaimTraversalEdge(edge.Kind) {
+			return
+		}
+		if _, ok := acc.claims[targetNode.ID]; ok {
+			return
+		}
+		acc.claims[targetNode.ID] = struct{}{}
+		*queue = append(*queue, targetNode.ID)
+	}
+}
+
+func reportSectionClaimTraversalEdge(kind EdgeKind) bool {
+	switch kind {
+	case EdgeKindSupports, EdgeKindRefutes, EdgeKindSupersedes:
+		return true
+	default:
+		return false
+	}
+}
+
+func collectReportSectionTruncationSignals(value any, path string, signals map[string]struct{}) {
+	if value == nil || signals == nil {
+		return
+	}
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, child := range typed {
+			nextPath := strings.TrimSpace(key)
+			if path != "" && nextPath != "" {
+				nextPath = path + "." + nextPath
+			}
+			if reportSectionTruncationSignal(key, child) {
+				signals[nextPath] = struct{}{}
+			}
+			collectReportSectionTruncationSignals(child, nextPath, signals)
+		}
+	case []any:
+		for _, child := range typed {
+			collectReportSectionTruncationSignals(child, path, signals)
+		}
+	}
+}
+
+func reportSectionTruncationSignal(key string, value any) bool {
+	normalized := strings.ToLower(strings.TrimSpace(key))
+	if normalized == "" {
+		return false
+	}
+	if strings.Contains(normalized, "truncat") || strings.Contains(normalized, "partial") {
+		switch typed := value.(type) {
+		case bool:
+			return typed
+		case float64:
+			return typed > 0
+		case int:
+			return typed > 0
+		case int64:
+			return typed > 0
+		case string:
+			trimmed := strings.TrimSpace(strings.ToLower(typed))
+			return trimmed == "true" || trimmed == "partial" || trimmed == "truncated"
+		}
+	}
+	return false
+}
+
+func limitedSortedStrings(values map[string]struct{}, limit int) ([]string, bool) {
+	if len(values) == 0 {
+		return nil, false
+	}
+	items := make([]string, 0, len(values))
+	for value := range values {
+		if strings.TrimSpace(value) == "" {
+			continue
+		}
+		items = append(items, value)
+	}
+	sort.Strings(items)
+	if limit <= 0 || len(items) <= limit {
+		return items, false
+	}
+	return append([]string(nil), items[:limit]...), true
+}
+
+func cloneReportSectionLineage(lineage *ReportSectionLineage) *ReportSectionLineage {
+	if lineage == nil {
+		return nil
+	}
+	cloned := *lineage
+	cloned.ReferencedNodeIDs = append([]string(nil), lineage.ReferencedNodeIDs...)
+	cloned.ClaimIDs = append([]string(nil), lineage.ClaimIDs...)
+	cloned.EvidenceIDs = append([]string(nil), lineage.EvidenceIDs...)
+	cloned.SourceIDs = append([]string(nil), lineage.SourceIDs...)
+	return &cloned
+}
+
+func cloneReportSectionMaterialization(materialization *ReportSectionMaterialization) *ReportSectionMaterialization {
+	if materialization == nil {
+		return nil
+	}
+	cloned := *materialization
+	cloned.TruncationSignals = append([]string(nil), materialization.TruncationSignals...)
+	return &cloned
 }
 
 func cloneReportSnapshot(snapshot *ReportSnapshot) *ReportSnapshot {

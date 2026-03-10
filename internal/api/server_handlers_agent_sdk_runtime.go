@@ -151,6 +151,17 @@ func (s *Server) emitAgentSDKReportSection(run *graph.ReportRun, section graph.R
 			"section":       emission,
 		},
 	})
+	progressData := map[string]any{
+		"run_id":           run.ID,
+		"report_id":        run.ReportID,
+		"status_url":       run.StatusURL,
+		"section_key":      emission.Section.Key,
+		"envelope_kind":    emission.Section.EnvelopeKind,
+		"progress_percent": emission.ProgressPercent,
+	}
+	for key, value := range platformReportSectionMetadataPayload(emission.Section) {
+		progressData[key] = value
+	}
 	s.emitAgentSDKMCPNotification(subscription.SessionID, agentSDKMCPResponse{
 		JSONRPC: "2.0",
 		Method:  "notifications/progress",
@@ -159,14 +170,7 @@ func (s *Server) emitAgentSDKReportSection(run *graph.ReportRun, section graph.R
 			"progress":      emission.ProgressPercent,
 			"total":         100,
 			"message":       "section:" + emission.Section.Key,
-			"data": map[string]any{
-				"run_id":           run.ID,
-				"report_id":        run.ReportID,
-				"status_url":       run.StatusURL,
-				"section_key":      emission.Section.Key,
-				"envelope_kind":    emission.Section.EnvelopeKind,
-				"progress_percent": emission.ProgressPercent,
-			},
+			"data":          progressData,
 		},
 	})
 }
