@@ -9,12 +9,16 @@ import (
 // GraphSnapshotRecord is the typed graph-state resource referenced by report lineage.
 type GraphSnapshotRecord struct {
 	ID                       string     `json:"id"`
+	ParentSnapshotID         string     `json:"parent_snapshot_id,omitempty"`
 	BuiltAt                  *time.Time `json:"built_at,omitempty"`
 	CapturedAt               *time.Time `json:"captured_at,omitempty"`
 	Current                  bool       `json:"current,omitempty"`
 	Materialized             bool       `json:"materialized,omitempty"`
 	Diffable                 bool       `json:"diffable,omitempty"`
 	StorageClass             string     `json:"storage_class,omitempty"`
+	RetentionClass           string     `json:"retention_class,omitempty"`
+	IntegrityHash            string     `json:"integrity_hash,omitempty"`
+	ExpiresAt                *time.Time `json:"expires_at,omitempty"`
 	ByteSize                 int64      `json:"byte_size,omitempty"`
 	NodeCount                int        `json:"node_count,omitempty"`
 	EdgeCount                int        `json:"edge_count,omitempty"`
@@ -66,6 +70,7 @@ func GraphSnapshotCollectionFromRecords(records map[string]*GraphSnapshotRecord,
 			continue
 		}
 		record.ID = strings.TrimSpace(record.ID)
+		record.ParentSnapshotID = strings.TrimSpace(record.ParentSnapshotID)
 		record.Providers = append([]string(nil), record.Providers...)
 		record.Accounts = append([]string(nil), record.Accounts...)
 		record.ObservedReportIDs = append([]string(nil), record.ObservedReportIDs...)

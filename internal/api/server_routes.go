@@ -352,6 +352,7 @@ func (s *Server) setupRoutes() {
 				r.Get("/queries", s.platformGraphQueriesGet)
 				r.Post("/queries", s.platformGraphQueries)
 				r.Post("/diffs", s.createPlatformGraphDiff)
+				r.Get("/diffs/{diff_id}", s.getPlatformGraphDiffArtifact)
 				r.Get("/templates", s.platformGraphTemplates)
 				r.Get("/snapshots", s.listPlatformGraphSnapshots)
 				r.Get("/snapshots/current", s.getCurrentPlatformGraphSnapshot)

@@ -150,7 +150,11 @@ func (s *SnapshotStore) Save(g *Graph) error {
 	}
 
 	// Clean up old snapshots
-	return s.cleanup()
+	if err := s.cleanup(); err != nil {
+		return err
+	}
+	_, err := s.rebuildSnapshotIndex(nil)
+	return err
 }
 
 // LoadLatest loads the most recent snapshot
@@ -206,21 +210,14 @@ func (s *SnapshotStore) List() ([]SnapshotInfo, error) {
 
 // ListGraphSnapshotRecords returns typed graph snapshot records for file-backed snapshot artifacts.
 func (s *SnapshotStore) ListGraphSnapshotRecords() ([]GraphSnapshotRecord, error) {
-	infos, err := s.List()
+	index, err := s.loadOrRebuildSnapshotIndex()
 	if err != nil {
 		return nil, err
 	}
-	records := make([]GraphSnapshotRecord, 0, len(infos))
-	for _, info := range infos {
-		snapshot, err := LoadSnapshotFromFile(info.Path)
-		if err != nil {
-			continue
-		}
-		record := buildGraphSnapshotRecordFromSnapshot(snapshot, info)
-		if record == nil {
-			continue
-		}
-		records = append(records, *record)
+	records := make([]GraphSnapshotRecord, 0, len(index.Snapshots))
+	for _, manifest := range index.Snapshots {
+		record := manifest.Record
+		records = append(records, record)
 	}
 	return records, nil
 }
@@ -238,31 +235,33 @@ func (s *SnapshotStore) LoadSnapshotsByRecordIDs(snapshotIDs ...string) (map[str
 		return nil, nil, fmt.Errorf("at least one snapshot id required")
 	}
 
-	infos, err := s.List()
+	index, err := s.loadOrRebuildSnapshotIndex()
 	if err != nil {
 		return nil, nil, err
 	}
 
 	snapshots := make(map[string]*Snapshot, len(requested))
 	records := make(map[string]*GraphSnapshotRecord, len(requested))
-	for _, info := range infos {
+	for _, manifest := range index.Snapshots {
 		if len(records) == len(requested) {
 			break
 		}
-		snapshot, err := LoadSnapshotFromFile(info.Path)
-		if err != nil {
-			continue
-		}
-		record := buildGraphSnapshotRecordFromSnapshot(snapshot, info)
-		if record == nil {
-			continue
-		}
-		recordID := strings.TrimSpace(record.ID)
+		recordID := strings.TrimSpace(manifest.Record.ID)
 		if _, ok := requested[recordID]; !ok {
 			continue
 		}
+		path := manifest.ArtifactPath
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(s.basePath, path)
+		}
+		snapshot, err := LoadSnapshotFromFile(path)
+		if err != nil {
+			return nil, nil, err
+		}
+		record := manifest.Record
 		snapshots[recordID] = snapshot
-		records[recordID] = record
+		recordCopy := record
+		records[recordID] = &recordCopy
 	}
 
 	for snapshotID := range requested {
@@ -441,7 +440,8 @@ func buildGraphSnapshotRecordFromSnapshot(snapshot *Snapshot, info SnapshotInfo)
 		ID:                      buildSnapshotRecordID(snapshot),
 		Materialized:            true,
 		Diffable:                true,
-		StorageClass:            "local_snapshot_store",
+		StorageClass:            graphSnapshotStorageLocalStore,
+		RetentionClass:          graphSnapshotRetentionLocal,
 		ByteSize:                info.Size,
 		NodeCount:               snapshot.Metadata.NodeCount,
 		EdgeCount:               snapshot.Metadata.EdgeCount,

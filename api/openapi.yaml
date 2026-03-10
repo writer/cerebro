@@ -5359,6 +5359,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PlatformGraphSnapshotDiffRecord'
+        '202':
+          description: Async graph snapshot diff job accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJob'
         '400':
           description: Invalid request body
           content:
@@ -5373,6 +5379,30 @@ paths:
                 $ref: '#/components/schemas/Error'
         '409':
           description: One or both graph snapshots are not materialized and cannot be diffed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/platform/graph/diffs/{diff_id}:
+    get:
+      tags:
+        - Platform
+      summary: Get one materialized graph snapshot diff artifact
+      parameters:
+        - name: diff_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Materialized graph snapshot diff artifact
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformGraphSnapshotDiffRecord'
+        '404':
+          description: Graph snapshot diff artifact not found
           content:
             application/json:
               schema:
@@ -11199,6 +11229,8 @@ components:
       properties:
         id:
           type: string
+        parent_snapshot_id:
+          type: string
         built_at:
           type: string
           format: date-time
@@ -11213,6 +11245,13 @@ components:
           type: boolean
         storage_class:
           type: string
+        retention_class:
+          type: string
+        integrity_hash:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
         byte_size:
           type: integer
           format: int64
@@ -11258,6 +11297,8 @@ components:
       properties:
         id:
           type: string
+        parent_snapshot_id:
+          type: string
         built_at:
           type: string
           format: date-time
@@ -11297,6 +11338,12 @@ components:
           type: integer
         count:
           type: integer
+        parent:
+          $ref: '#/components/schemas/PlatformGraphSnapshotReference'
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformGraphSnapshotReference'
         previous:
           $ref: '#/components/schemas/PlatformGraphSnapshotReference'
         next:
@@ -11321,6 +11368,13 @@ components:
           type: string
         to_snapshot_id:
           type: string
+        execution_mode:
+          type: string
+          enum:
+            - sync
+            - async
+        materialize_result:
+          type: boolean
       required:
         - from_snapshot_id
         - to_snapshot_id
@@ -11414,6 +11468,20 @@ components:
         generated_at:
           type: string
           format: date-time
+        stored_at:
+          type: string
+          format: date-time
+        materialized:
+          type: boolean
+        storage_class:
+          type: string
+        byte_size:
+          type: integer
+          format: int64
+        integrity_hash:
+          type: string
+        job_id:
+          type: string
         from:
           $ref: '#/components/schemas/PlatformGraphSnapshotReference'
         to:

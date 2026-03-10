@@ -77,6 +77,7 @@ Current endpoint:
 - `GET /api/v1/platform/graph/snapshots`
 - `GET /api/v1/platform/graph/snapshots/current`
 - `GET /api/v1/platform/graph/snapshots/{snapshot_id}`
+- `GET /api/v1/platform/graph/diffs/{diff_id}`
 - `GET /api/v1/platform/intelligence/insights`
 - `GET /api/v1/platform/intelligence/quality`
 - `GET /api/v1/platform/intelligence/metadata-quality`
@@ -141,6 +142,10 @@ Report-execution rule:
 - `ReportSnapshot` is a retained derived artifact with content hash, recording timestamps, lineage metadata, and storage-backed materialization metadata.
 - `GraphSnapshotRecord` is the graph-state resource that durable report lineage points at; report runs should not be the only place a `graph_snapshot_id` can be inspected.
 - graph snapshot resources should expose ancestry and typed diff navigation through stable snapshot IDs, not timestamp-only APIs.
+- materialized graph snapshot resources should expose parent lineage, retention class, integrity hash, and optional expiry directly on the snapshot record instead of hiding that state in store-local conventions.
+- graph snapshot stores should maintain lightweight manifest/index metadata so catalog, ancestry, and targeted payload loads do not repeatedly rescan compressed snapshot artifacts.
+- `GraphSnapshotDiffRecord` can exist as a synchronous derived payload or a materialized artifact; materialized diff artifacts should expose `stored_at`, `storage_class`, `integrity_hash`, and `job_id`.
+- expensive snapshot comparisons should surface as platform jobs that materialize durable diff artifacts rather than forcing all callers through synchronous handler latency.
 - retry policy (`max_attempts`, `base_backoff_ms`, `max_backoff_ms`) and attempt classification (`transient`, `deterministic`, `cancelled`, `superseded`) are part of the durable execution contract.
 - attempt status is distinct from run status and should surface `scheduled` when async backoff is active.
 - Runs and snapshots should always expose:

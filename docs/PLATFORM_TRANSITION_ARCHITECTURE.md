@@ -46,6 +46,8 @@ The current OpenAPI exposes 237 `/api/v1/*` paths. Of those, 47 sit under `/api/
 - `/api/v1/platform/graph/queries`
 - `/api/v1/platform/graph/templates`
 - `/api/v1/platform/graph/diffs`
+- `/api/v1/platform/graph/diffs/{diff_id}`
+- `/api/v1/platform/graph/snapshots*`
 - `/api/v1/graph/schema`
 - `/api/v1/graph/schema/health`
 - `/api/v1/graph/schema/register`

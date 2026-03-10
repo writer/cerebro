@@ -49,6 +49,9 @@ func newTestApp(t *testing.T) *app.App {
 	fs := findings.NewStore()
 	sc := scanner.NewScanner(pe, scanner.ScanConfig{Workers: 2}, logger)
 	reportStateDir := t.TempDir()
+	if os.Getenv("GRAPH_SNAPSHOT_PATH") == "" {
+		t.Setenv("GRAPH_SNAPSHOT_PATH", filepath.Join(reportStateDir, "graph-snapshots"))
+	}
 
 	return &app.App{
 		Config: &app.Config{

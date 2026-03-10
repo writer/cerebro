@@ -5,6 +5,73 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 29 - Snapshot Manifest Index + Materialized Diff Artifacts + Async Diff Jobs (2026-03-10)
+
+### Review findings
+- [x] Gap: graph snapshot resources existed, but catalog and payload lookup still depended on scanning compressed snapshot artifacts instead of reading a durable manifest/index layer.
+- [x] Gap: typed graph diffs existed, but they were still effectively request-scoped computations rather than durable derived artifacts addressable by stable IDs.
+- [x] Gap: snapshot ancestry was still mostly chronological; the platform lacked explicit parent metadata on snapshot resources and references.
+- [x] Gap: integrity and retention semantics were starting to matter for snapshot/report portability, but graph snapshot resources still did not expose them directly.
+- [x] Gap: API tests could still emit package-local `.cerebro` artifacts through relative snapshot-store defaults, which hid storage assumptions and polluted the worktree.
+
+### Research synthesis to adopt
+- [x] Apache Iceberg metadata-table rule: snapshot history and ancestry reads should resolve through lightweight metadata structures instead of replaying every heavy artifact on every read.
+- [x] Delta Lake checkpoint rule: once artifact count grows, a durable index/checkpoint layer becomes part of the contract, not just a performance optimization.
+- [x] lakeFS and Dolt lineage rule: ancestry and diff are first-class resources keyed by stable IDs and parent relationships, not timestamp conveniences reconstructed at read time.
+- [x] Control-plane rule: expensive snapshot comparisons should degrade cleanly to async jobs with durable artifacts rather than forcing all callers through synchronous handler latency.
+
+### Execution plan
+- [x] Add an explicit graph snapshot manifest/index layer:
+  - [x] persist `index.json` under the snapshot store
+  - [x] persist per-snapshot manifest documents with artifact path, retention, integrity, and record metadata
+  - [x] make snapshot catalog reads resolve from the manifest/index layer
+  - [x] make targeted snapshot payload loads resolve by record ID through the index instead of rescanning all artifacts
+- [x] Deepen graph snapshot resources:
+  - [x] attach `parent_snapshot_id` to `GraphSnapshotRecord`
+  - [x] attach `retention_class`, `integrity_hash`, and `expires_at` to `GraphSnapshotRecord`
+  - [x] expose explicit `parent` and `children` relationships on `GraphSnapshotAncestry`
+  - [x] propagate parent lineage into `GraphSnapshotReference`
+- [x] Add durable diff artifacts:
+  - [x] persist `GraphSnapshotDiffRecord` artifacts in a dedicated local diff store
+  - [x] expose `GET /api/v1/platform/graph/diffs/{diff_id}`
+  - [x] attach `stored_at`, `materialized`, `storage_class`, `byte_size`, `integrity_hash`, and `job_id` to diff artifacts
+- [x] Add async diff execution:
+  - [x] allow `POST /api/v1/platform/graph/diffs` to run as `execution_mode=async`
+  - [x] materialize async diff results as durable diff artifacts
+  - [x] return a typed platform job for async diff creation
+- [x] Tighten runtime/tests/contracts:
+  - [x] extend OpenAPI for snapshot lineage/integrity fields and async diff responses
+  - [x] add graph-level tests for manifest/index persistence and explicit parent/child ancestry
+  - [x] add API regression coverage for async diff jobs and artifact retrieval
+  - [x] isolate API tests from package-local snapshot-path defaults
+
+### Detailed follow-on backlog
+- [ ] Snapshot substrate track:
+  - [ ] promote parent assignment from chronological fallback to explicit write-time lineage once graph snapshot creation becomes a first-class platform write path
+  - [ ] add snapshot reference/tag resources (`current`, `baseline`, `candidate`, `imported`) instead of forcing clients to memorize raw snapshot IDs
+  - [ ] add branch-aware ancestry metadata such as `is_current_ancestor`, rollback lineage, and fork/join semantics
+  - [ ] persist snapshot artifact format version separately from graph schema version and ontology contract version
+- [ ] Diff runtime track:
+  - [ ] add a diff catalog/list surface with filterable snapshot pairs and materialization state
+  - [ ] add canonical diff change classes (`node_added`, `node_removed`, `node_modified`, `edge_added`, `edge_removed`, `temporal_change`, `ontology_change`) for higher-level reports
+  - [ ] add filtered diff summaries by node kind, edge kind, provider, account, and report lineage scope
+  - [ ] add diff cache reuse keyed by snapshot pair, filter parameters, and contract version
+  - [ ] add async diff cancel/retry controls where comparisons become expensive enough to justify operator control
+- [ ] Integrity/retention track:
+  - [ ] add a background integrity verification sweep for snapshot and diff artifacts
+  - [ ] add orphan manifest/diff cleanup when artifact files disappear or retention sweeps expire them
+  - [ ] add retention tiers (`hot`, `metadata_only`, `expired`) instead of one local-retained default
+  - [ ] add a degraded metadata-only mode when manifests remain but payload artifacts are intentionally dropped
+- [ ] Contract/autogen track:
+  - [ ] generate machine-readable snapshot manifest and diff artifact contract catalogs alongside OpenAPI
+  - [ ] generate concrete example payloads for snapshot manifests, ancestry responses, and diff artifacts
+  - [ ] add compatibility checks for snapshot/diff contract evolution the same way report and CloudEvent contracts are already gated
+  - [ ] generate SDK bindings for snapshot and diff resources from one canonical contract source
+- [ ] Platform/report leverage track:
+  - [ ] let report runs target explicit snapshot IDs or snapshot pairs instead of only implicit current-graph lineage
+  - [ ] attach report-run lineage to materialized diff artifacts for “what changed since last run” surfaces
+  - [ ] expose snapshot/diff lineage navigation from report sections and recommendations where it improves explainability
+
 ## Deep Review Cycle 28 - Snapshot Ancestry + Typed Diffs + Contract Example Autogen (2026-03-10)
 
 ### Review findings
@@ -39,8 +106,8 @@ Status: executed end-to-end via PR workflow
 
 ### Detailed follow-on backlog
 - [ ] Snapshot/runtime hardening:
-  - [ ] persist standalone graph snapshot manifests with explicit parent/child lineage instead of inferring ancestry from timestamps
-  - [ ] attach integrity hashes and retention policy directly to graph snapshot resources
+  - [x] persist standalone graph snapshot manifests with explicit parent/child lineage instead of inferring ancestry from timestamps
+  - [x] attach integrity hashes and retention policy directly to graph snapshot resources
   - [ ] expose snapshot-to-snapshot change classes and filtered diff summaries for higher-level report/reporting use
 - [ ] Report contract/autogen hardening:
   - [ ] generate example payloads for section fragments and benchmark overlays
