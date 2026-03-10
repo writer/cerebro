@@ -636,6 +636,105 @@ func TestCerebroGraphWritebackToolsValidation(t *testing.T) {
 	}
 }
 
+func TestAgentSDKToolsExportMatchesCuratedTools(t *testing.T) {
+	application := &App{Config: &Config{}}
+
+	curated := application.cerebroTools()
+	exported := application.AgentSDKTools()
+	if len(curated) != len(exported) {
+		t.Fatalf("expected AgentSDKTools to expose the curated catalog, got %d tools vs %d", len(exported), len(curated))
+	}
+}
+
+func TestCerebroEvaluatePolicyTool(t *testing.T) {
+	pe := policy.NewEngine()
+	pe.AddPolicy(&policy.Policy{
+		ID:          "policy.refund.approval",
+		Name:        "Refund approval required",
+		Effect:      "forbid",
+		Action:      "refund.create",
+		Resource:    "business::refund",
+		Description: "Refunds must pass approval policy",
+		Severity:    "high",
+	})
+
+	application := &App{Policy: pe, SecurityGraph: graph.New()}
+	tool := findCerebroTool(application.AgentSDKTools(), "evaluate_policy")
+	if tool == nil {
+		t.Fatal("expected evaluate_policy tool")
+	}
+
+	result, err := tool.Handler(context.Background(), json.RawMessage(`{
+		"principal": {"id":"agent:sales-assistant"},
+		"action":"refund.create",
+		"resource":{"type":"refund","id":"refund:123"},
+		"context":{"amount":6500}
+	}`))
+	if err != nil {
+		t.Fatalf("evaluate_policy returned error: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(result), &payload); err != nil {
+		t.Fatalf("decode tool payload: %v", err)
+	}
+	if payload["decision"] != "deny" {
+		t.Fatalf("expected deny decision, got %#v", payload["decision"])
+	}
+	if _, ok := payload["request_id"].(string); !ok {
+		t.Fatalf("expected request_id, got %#v", payload["request_id"])
+	}
+	if _, ok := payload["matched_policies"].([]any); !ok {
+		t.Fatalf("expected matched_policies array, got %#v", payload["matched_policies"])
+	}
+}
+
+func TestCerebroWriteClaimTool(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{ID: "customer:acme", Kind: graph.NodeKindCustomer, Name: "Acme"})
+	g.AddNode(&graph.Node{ID: "evidence:signal", Kind: graph.NodeKindEvidence, Name: "Signal"})
+
+	if _, err := graph.WriteClaim(g, graph.ClaimWriteRequest{
+		SubjectID:    "customer:acme",
+		Predicate:    "churning",
+		ObjectValue:  "false",
+		SourceSystem: "existing",
+		ObservedAt:   time.Date(2026, 3, 9, 12, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("seed conflicting claim: %v", err)
+	}
+
+	application := &App{SecurityGraph: g}
+	tool := findCerebroTool(application.AgentSDKTools(), "cerebro.write_claim")
+	if tool == nil {
+		t.Fatal("expected cerebro.write_claim tool")
+	}
+
+	result, err := tool.Handler(context.Background(), json.RawMessage(`{
+		"subject_id":"customer:acme",
+		"predicate":"churning",
+		"object_value":"true",
+		"status":"asserted",
+		"evidence_ids":["evidence:signal"],
+		"source_system":"agent"
+	}`))
+	if err != nil {
+		t.Fatalf("write_claim returned error: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(result), &payload); err != nil {
+		t.Fatalf("decode tool payload: %v", err)
+	}
+	if _, ok := payload["claim_id"].(string); !ok {
+		t.Fatalf("expected claim_id, got %#v", payload["claim_id"])
+	}
+	conflicts, ok := payload["conflicts_detected"].([]any)
+	if !ok || len(conflicts) == 0 {
+		t.Fatalf("expected conflicts_detected, got %#v", payload["conflicts_detected"])
+	}
+}
+
 func TestCerebroFindingsTool(t *testing.T) {
 	store := policyBackedFindingStore(t)
 	application := &App{Findings: store}

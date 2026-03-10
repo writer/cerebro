@@ -190,12 +190,14 @@ Current endpoints:
 Agent workflows should call a curated tool surface, not raw graph internals.
 
 Current tools:
+- `evaluate_policy`
 - `cerebro.intelligence_report`
 - `cerebro.graph_quality_report`
 - `cerebro.graph_leverage_report`
 - `cerebro.graph_query`
 - `cerebro.graph_query_templates`
 - `cerebro.record_observation`
+- `cerebro.write_claim`
 - `cerebro.annotate_entity`
 - `cerebro.record_decision`
 - `cerebro.record_outcome`
@@ -206,10 +208,18 @@ Current tools:
 - `cerebro.actuate_recommendation`
 
 MCP adapter strategy:
-- Wrap existing tool publisher protocol with MCP transport adapters.
+- Export the curated tool registry once via `App.AgentSDKTools()`.
+- Wrap that shared registry with MCP transport adapters and HTTP SDK wrappers.
 - Keep tool contracts stable and deterministic.
 - Enforce permission boundaries per tool/action.
 - Preserve traceability: every response carries IDs/evidence references.
+
+Gateway surfaces:
+- Typed REST: `/api/v1/agent-sdk/*`
+- Generic tool discovery/invoke: `/api/v1/agent-sdk/tools`
+- MCP JSON-RPC + SSE: `/api/v1/mcp`
+
+See [AGENT_SDK_GATEWAY_ARCHITECTURE.md](./AGENT_SDK_GATEWAY_ARCHITECTURE.md) for the public IDs, permission model, and transport contract details.
 
 Operational replay loop:
 - Use `cerebro ingest replay-dead-letter` after mapper/ontology changes to replay rejected events.

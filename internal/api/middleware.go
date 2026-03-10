@@ -260,6 +260,31 @@ func routePermission(method, path string) string {
 	isExport := strings.Contains(path, "/export")
 
 	switch {
+	case strings.HasPrefix(path, "/api/v1/agent-sdk/tools"):
+		if strings.HasSuffix(path, ":call") || strings.HasSuffix(path, "/call") {
+			return "sdk.invoke"
+		}
+		return "sdk.schema.read"
+	case strings.HasPrefix(path, "/api/v1/agent-sdk/schema"):
+		return "sdk.schema.read"
+	case strings.HasPrefix(path, "/api/v1/agent-sdk/context"),
+		strings.HasPrefix(path, "/api/v1/agent-sdk/report"),
+		strings.HasPrefix(path, "/api/v1/agent-sdk/quality"),
+		strings.HasPrefix(path, "/api/v1/agent-sdk/leverage"),
+		strings.HasPrefix(path, "/api/v1/agent-sdk/templates"):
+		return "sdk.context.read"
+	case strings.HasPrefix(path, "/api/v1/agent-sdk/check"),
+		strings.HasPrefix(path, "/api/v1/agent-sdk/simulate"):
+		return "sdk.enforcement.run"
+	case strings.HasPrefix(path, "/api/v1/agent-sdk/observations"),
+		strings.HasPrefix(path, "/api/v1/agent-sdk/claims"),
+		strings.HasPrefix(path, "/api/v1/agent-sdk/decisions"),
+		strings.HasPrefix(path, "/api/v1/agent-sdk/outcomes"),
+		strings.HasPrefix(path, "/api/v1/agent-sdk/annotations"),
+		strings.HasPrefix(path, "/api/v1/agent-sdk/identity/resolve"):
+		return "sdk.worldmodel.write"
+	case strings.HasPrefix(path, "/api/v1/mcp"):
+		return "sdk.invoke"
 	case strings.HasPrefix(path, "/api/v1/platform/graph"):
 		return "platform.graph.read"
 	case strings.HasPrefix(path, "/api/v1/platform/intelligence"):

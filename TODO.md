@@ -5,6 +5,81 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 22 - Agent SDK Gateway + MCP Transport + Shared Tool Registry (2026-03-09)
+
+### Review findings
+- [x] Gap: Cerebro already had a curated internal/NATS tool surface, but HTTP and MCP clients still had no first-class gateway over the same registry.
+- [x] Gap: the shared tool catalog was not exported from `internal/app`, which meant new transports would drift into hand-maintained copies of tool definitions and parameters.
+- [x] Gap: the two highest-value agent workflows from issue `#125` were missing from the curated tool surface itself: pre-action policy checks and first-class claim writes.
+- [x] Gap: route-level RBAC alone was insufficient for generic tool invocation; `/agent-sdk/tools/*` and MCP required per-tool authorization or they would become permission bypasses.
+- [x] Gap: the platform lacked a stable external tool naming layer for SDK consumers; internal names like `cerebro.intelligence_report` and `insight_card` were usable internally but poor public contract IDs.
+
+### Research synthesis to adopt
+- [x] MCP Streamable HTTP guidance (official protocol as of 2026-03-10, version `2025-06-18`): keep `initialize`, `tools/list`, `tools/call`, `resources/list`, and `resources/read` small, explicit, and JSON-RPC native.
+- [x] Backstage/OpenMetadata style contract lesson: discovery catalogs only stay durable when they are generated from one canonical registry instead of mirrored across transports.
+- [x] Existing Cerebro architecture rule: report, quality, leverage, policy-check, and writeback flows should reuse the graph/policy substrate and not become a parallel agent-only backend.
+
+### Execution plan
+- [x] Export the canonical tool registry:
+  - [x] add `App.AgentSDKTools()`
+  - [x] switch NATS tool publication to consume the exported registry
+- [x] Deepen the curated tool surface itself:
+  - [x] add `evaluate_policy`
+  - [x] add `cerebro.write_claim`
+  - [x] add tool tests for policy-check and claim write conflict detection
+- [x] Add HTTP Agent SDK surface:
+  - [x] add `GET /api/v1/agent-sdk/tools`
+  - [x] add `POST /api/v1/agent-sdk/tools/{tool_id}:call`
+  - [x] add typed wrappers for context/report/quality/leverage/templates/check/simulate
+  - [x] add typed wrappers for observation/claim/decision/outcome/annotation/identity-resolve writes
+  - [x] add schema discovery endpoints for node/edge kinds
+- [x] Add MCP transport:
+  - [x] add `GET /api/v1/mcp`
+  - [x] add `POST /api/v1/mcp`
+  - [x] implement `initialize`
+  - [x] implement `tools/list`
+  - [x] implement `tools/call`
+  - [x] implement `resources/list`
+  - [x] implement `resources/read`
+  - [x] expose MCP resources for node kinds, edge kinds, and tool catalog
+- [x] Tighten auth/governance:
+  - [x] add `sdk.context.read`
+  - [x] add `sdk.enforcement.run`
+  - [x] add `sdk.worldmodel.write`
+  - [x] add `sdk.schema.read`
+  - [x] add `sdk.invoke`
+  - [x] add `sdk.admin`
+  - [x] enforce per-tool permission checks for generic invoke and MCP
+- [x] Tighten contracts and docs:
+  - [x] extend OpenAPI with the full Agent SDK + MCP surface
+  - [x] add `docs/AGENT_SDK_GATEWAY_ARCHITECTURE.md`
+  - [x] update architecture/intelligence docs with the shared-registry boundary
+- [x] Add regression coverage:
+  - [x] API tests for tool discovery and generic invoke
+  - [x] API tests for typed Agent SDK routes
+  - [x] API tests for MCP initialize/tools/resources flows
+  - [x] API tests for per-tool RBAC enforcement
+
+### Deep follow-on backlog
+- [ ] Generate language SDKs from the typed contract:
+  - [ ] Go SDK from OpenAPI + tool catalog metadata
+  - [ ] Python SDK with typed models and retry/stream helpers
+  - [ ] TypeScript SDK with Zod schemas and framework adapters
+- [ ] Deepen MCP/runtime behavior:
+  - [ ] progress notifications for long-running tool calls
+  - [ ] streaming report sections over SSE / MCP progress
+  - [ ] `.well-known/oauth-protected-resource` metadata
+  - [ ] explicit MCP session lifecycle tracking and telemetry
+- [ ] Deepen SDK governance:
+  - [ ] SDK-specific API key lifecycle and provisioning UX
+  - [ ] per-tool and per-tenant rate limiting
+  - [ ] request signing and richer trace/audit propagation
+  - [ ] generated example payloads per tool from the shared registry
+- [ ] Expand high-value resources:
+  - [ ] report-definition resource URIs
+  - [ ] measure/check registry URIs
+  - [ ] report-run snapshot URIs where retention policy allows
+
 ## Deep Review Cycle 21 - Execution Control + Report Contract Compatibility (2026-03-09)
 
 ### Review findings

@@ -309,6 +309,29 @@ func (s *Server) setupRoutes() {
 			r.Post("/ingest", s.ingestTelemetry)
 		})
 
+		// Agent SDK gateway over the shared tool registry.
+		r.Route("/agent-sdk", func(r chi.Router) {
+			r.Get("/tools", s.listAgentSDKTools)
+			r.Post("/tools/{tool_id:[A-Za-z0-9._-]+}:call", s.agentSDKCallTool)
+			r.Get("/context/{entity_id}", s.agentSDKContext)
+			r.Post("/report", s.agentSDKReport)
+			r.Get("/quality", s.agentSDKQuality)
+			r.Get("/leverage", s.agentSDKLeverage)
+			r.Get("/templates", s.agentSDKTemplates)
+			r.Post("/check", s.agentSDKCheck)
+			r.Post("/simulate", s.agentSDKSimulate)
+			r.Post("/observations", s.agentSDKObservation)
+			r.Post("/claims", s.agentSDKClaim)
+			r.Post("/decisions", s.agentSDKDecision)
+			r.Post("/outcomes", s.agentSDKOutcome)
+			r.Post("/annotations", s.agentSDKAnnotation)
+			r.Post("/identity/resolve", s.agentSDKResolveIdentity)
+			r.Get("/schema/nodes", s.listAgentSDKNodeSchema)
+			r.Get("/schema/edges", s.listAgentSDKEdgeSchema)
+		})
+		r.Get("/mcp", s.agentSDKMCPStream)
+		r.Post("/mcp", s.agentSDKMCP)
+
 		// Shared platform primitives
 		r.Route("/platform", func(r chi.Router) {
 			r.Route("/graph", func(r chi.Router) {

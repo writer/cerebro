@@ -88,6 +88,58 @@ func (a *App) toolCerebroRecordObservation(_ context.Context, args json.RawMessa
 	})
 }
 
+func (a *App) toolCerebroWriteClaim(_ context.Context, args json.RawMessage) (string, error) {
+	g, err := a.requireSecurityGraph()
+	if err != nil {
+		return "", err
+	}
+
+	var req graph.ClaimWriteRequest
+	if err := decodeToolArgs(args, &req); err != nil {
+		return "", err
+	}
+
+	result, err := graph.WriteClaim(g, req)
+	if err != nil {
+		return "", err
+	}
+
+	conflictReport := graph.BuildClaimConflictReport(g, graph.ClaimConflictReportOptions{
+		ValidAt:      result.ObservedAt,
+		RecordedAt:   result.RecordedAt,
+		MaxConflicts: 25,
+	})
+	conflicts := make([]map[string]any, 0, len(conflictReport.Conflicts))
+	for _, conflict := range conflictReport.Conflicts {
+		if conflict.SubjectID != strings.TrimSpace(req.SubjectID) || conflict.Predicate != strings.TrimSpace(req.Predicate) {
+			continue
+		}
+		conflicts = append(conflicts, map[string]any{
+			"key":                conflict.Key,
+			"claim_ids":          append([]string(nil), conflict.ClaimIDs...),
+			"values":             append([]string(nil), conflict.Values...),
+			"source_ids":         append([]string(nil), conflict.SourceIDs...),
+			"statuses":           append([]string(nil), conflict.Statuses...),
+			"highest_confidence": conflict.HighestConfidence,
+			"latest_observed_at": conflict.LatestObservedAt,
+		})
+	}
+
+	return marshalToolResponse(map[string]any{
+		"claim_id":                  result.ClaimID,
+		"source_id":                 result.SourceID,
+		"evidence_linked":           result.EvidenceLinked,
+		"supporting_claims_linked":  result.SupportingClaimsLinked,
+		"refuting_claims_linked":    result.RefutingClaimsLinked,
+		"supersedes_linked":         result.SupersedesLinked,
+		"observed_at":               result.ObservedAt,
+		"recorded_at":               result.RecordedAt,
+		"conflicts_detected":        conflicts,
+		"conflict_groups_returned":  len(conflicts),
+		"conflict_groups_truncated": conflictReport.Summary.ConflictsTruncated,
+	})
+}
+
 func (a *App) toolCerebroAnnotateEntity(_ context.Context, args json.RawMessage) (string, error) {
 	g, err := a.requireSecurityGraph()
 	if err != nil {

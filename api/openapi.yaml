@@ -52,6 +52,8 @@ tags:
     description: Administrative endpoints
   - name: Platform
     description: Shared platform primitives built on the graph substrate
+  - name: AgentSDK
+    description: Universal HTTP and MCP tool gateway for AI agent frameworks
   - name: Security
     description: Security application endpoints layered on the shared platform
   - name: Graph
@@ -4254,6 +4256,472 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/agent-sdk/tools:
+    get:
+      tags:
+        - AgentSDK
+      summary: List Agent SDK tools
+      description: List the public Agent SDK tool catalog backed by the shared curated Cerebro tool registry.
+      responses:
+        '200':
+          description: Agent SDK tool catalog
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AgentSDKToolDefinition'
+  /api/v1/agent-sdk/tools/{tool_id}:call:
+    post:
+      tags:
+        - AgentSDK
+      summary: Invoke one Agent SDK tool
+      description: Invoke a public Agent SDK tool by its stable external identifier.
+      parameters:
+        - name: tool_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Tool invocation completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentSDKToolInvokeResponse'
+        '400':
+          description: Invalid tool input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Insufficient permissions for this tool
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Tool not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Tool requires approval before execution
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/agent-sdk/context/{entity_id}:
+    get:
+      tags:
+        - AgentSDK
+      summary: Get entity context card
+      parameters:
+        - name: entity_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: sections
+          in: query
+          schema:
+            type: string
+          description: Comma-separated section list overriding default sections.
+        - name: include_relationships
+          in: query
+          schema:
+            type: boolean
+        - name: include_activity
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Context card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentSDKContextCard'
+        '400':
+          description: Invalid entity identifier or query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Entity not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/agent-sdk/report:
+    post:
+      tags:
+        - AgentSDK
+      summary: Generate intelligence report
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentSDKReportRequest'
+      responses:
+        '200':
+          description: Intelligence report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntelligenceReport'
+        '400':
+          description: Invalid report request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/agent-sdk/quality:
+    get:
+      tags:
+        - AgentSDK
+      summary: Get graph quality report
+      responses:
+        '200':
+          description: Quality report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphQualityReport'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/agent-sdk/leverage:
+    get:
+      tags:
+        - AgentSDK
+      summary: Get graph leverage report
+      responses:
+        '200':
+          description: Leverage report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphLeverageReport'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/agent-sdk/templates:
+    get:
+      tags:
+        - AgentSDK
+      summary: List reusable graph query templates
+      responses:
+        '200':
+          description: Query template catalog
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentSDKQueryTemplatesResponse'
+  /api/v1/agent-sdk/check:
+    post:
+      tags:
+        - AgentSDK
+      summary: Evaluate a pre-action policy check
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluateRequest'
+      responses:
+        '200':
+          description: Policy decision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluateResponse'
+        '400':
+          description: Invalid evaluation request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/agent-sdk/simulate:
+    post:
+      tags:
+        - AgentSDK
+      summary: Run scenario simulation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentSDKSimulateRequest'
+      responses:
+        '200':
+          description: Simulation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentSDKSimulateResponse'
+        '400':
+          description: Invalid simulation request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Simulation requires approval
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/agent-sdk/observations:
+    post:
+      tags:
+        - AgentSDK
+      summary: Record an observation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentSDKObservationRequest'
+      responses:
+        '201':
+          description: Observation recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentSDKObservationResponse'
+        '400':
+          description: Invalid observation request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Target entity not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/agent-sdk/claims:
+    post:
+      tags:
+        - AgentSDK
+      summary: Record a world-model claim
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlatformClaimWriteRequest'
+      responses:
+        '201':
+          description: Claim recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformClaimWriteResponse'
+        '400':
+          description: Invalid claim request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Referenced graph entity not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/agent-sdk/decisions:
+    post:
+      tags:
+        - AgentSDK
+      summary: Record a decision
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlatformDecisionWriteRequest'
+      responses:
+        '201':
+          description: Decision recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformDecisionWriteResponse'
+        '400':
+          description: Invalid decision request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: One or more target entities were not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/agent-sdk/outcomes:
+    post:
+      tags:
+        - AgentSDK
+      summary: Record a decision outcome
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentSDKOutcomeRequest'
+      responses:
+        '201':
+          description: Outcome recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentSDKOutcomeResponse'
+        '400':
+          description: Invalid outcome request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Referenced decision not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/agent-sdk/annotations:
+    post:
+      tags:
+        - AgentSDK
+      summary: Annotate an entity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentSDKAnnotationRequest'
+      responses:
+        '201':
+          description: Annotation recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentSDKAnnotationResponse'
+        '400':
+          description: Invalid annotation request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Entity not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/agent-sdk/identity/resolve:
+    post:
+      tags:
+        - AgentSDK
+      summary: Resolve an identity alias
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentSDKResolveIdentityRequest'
+      responses:
+        '200':
+          description: Identity resolution result
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Invalid identity resolution request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/agent-sdk/schema/nodes:
+    get:
+      tags:
+        - AgentSDK
+      summary: List registered node kind definitions
+      responses:
+        '200':
+          description: Node kind schema definitions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AgentSDKNodeKindDefinition'
+  /api/v1/agent-sdk/schema/edges:
+    get:
+      tags:
+        - AgentSDK
+      summary: List registered edge kind definitions
+      responses:
+        '200':
+          description: Edge kind schema definitions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AgentSDKEdgeKindDefinition'
+  /api/v1/mcp:
+    get:
+      tags:
+        - AgentSDK
+      summary: Open Agent SDK MCP SSE stream
+      responses:
+        '200':
+          description: MCP SSE readiness stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+    post:
+      tags:
+        - AgentSDK
+      summary: Send an MCP JSON-RPC request
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentSDKMCPRequest'
+      responses:
+        '200':
+          description: MCP JSON-RPC response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentSDKMCPResponse'
   /api/v1/threatintel/feeds:
     get:
       tags:
@@ -7008,6 +7476,9 @@ components:
           type: integer
     EvaluateRequest:
       type: object
+      required:
+        - action
+        - resource
       properties:
         principal:
           type: object
@@ -7023,8 +7494,6 @@ components:
         proposed_change:
           type: object
           additionalProperties: true
-      required:
-        - action
     EvaluateResponse:
       type: object
       properties:
@@ -8828,6 +9297,418 @@ components:
             additionalProperties: true
         explain:
           $ref: '#/components/schemas/PlatformGraphQueryExplain'
+    AgentSDKToolDefinition:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        tool_name:
+          type: string
+        sdk_method:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        http_method:
+          type: string
+        http_path:
+          type: string
+        required_permission:
+          type: string
+        input_schema:
+          type: object
+          additionalProperties: true
+        requires_approval:
+          type: boolean
+    AgentSDKToolInvokeResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        tool_id:
+          type: string
+        tool_name:
+          type: string
+        sdk_method:
+          type: string
+        result:
+          type: object
+          additionalProperties: true
+        raw_result:
+          type: string
+        invoked_at:
+          type: string
+          format: date-time
+        approval:
+          type: boolean
+        http_method:
+          type: string
+        http_path:
+          type: string
+    AgentSDKContextCard:
+      type: object
+      additionalProperties: true
+      properties:
+        entity:
+          type: string
+        entity_id:
+          type: string
+        card_type:
+          type: string
+        sections:
+          type: object
+          additionalProperties:
+            type: boolean
+        risk_score:
+          type: number
+        risk_trend:
+          type: string
+        risk_signals:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        toxic_combinations:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        blast_radius:
+          type: object
+          additionalProperties: true
+        key_relationships:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        peer_comparison:
+          type: object
+          additionalProperties: true
+        activity:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        recommendations:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    AgentSDKReportRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        entity_id:
+          type: string
+        window_days:
+          type: integer
+        history_limit:
+          type: integer
+        include_counterfactual:
+          type: boolean
+        max_insights:
+          type: integer
+    AgentSDKQueryTemplatesResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        templates:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphQueryTemplate'
+        count:
+          type: integer
+    AgentSDKSimulateRequest:
+      type: object
+      required:
+        - scenario
+        - target
+      additionalProperties: false
+      properties:
+        scenario:
+          type: string
+        target:
+          type: string
+        parameters:
+          type: object
+          additionalProperties: true
+        requester:
+          type: string
+        context:
+          type: string
+    AgentSDKSimulateResponse:
+      type: object
+      additionalProperties: true
+      properties:
+        scenario:
+          type: string
+        target:
+          type: string
+        before:
+          type: object
+          additionalProperties: true
+        after:
+          type: object
+          additionalProperties: true
+        delta:
+          type: object
+          additionalProperties: true
+        recommendation:
+          type: string
+    AgentSDKObservationRequest:
+      type: object
+      required:
+        - entity_id
+        - observation
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        entity_id:
+          type: string
+        observation:
+          type: string
+        summary:
+          type: string
+        source_system:
+          type: string
+        source_event_id:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+        valid_from:
+          type: string
+          format: date-time
+        valid_to:
+          type: string
+          format: date-time
+        confidence:
+          type: number
+        metadata:
+          type: object
+          additionalProperties: true
+    AgentSDKObservationResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        observation_id:
+          type: string
+        entity_id:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+    AgentSDKOutcomeRequest:
+      type: object
+      required:
+        - decision_id
+        - outcome_type
+        - verdict
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        decision_id:
+          type: string
+        outcome_type:
+          type: string
+        verdict:
+          type: string
+        impact_score:
+          type: number
+        target_ids:
+          type: array
+          items:
+            type: string
+        source_system:
+          type: string
+        source_event_id:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+        valid_from:
+          type: string
+          format: date-time
+        valid_to:
+          type: string
+          format: date-time
+        confidence:
+          type: number
+        metadata:
+          type: object
+          additionalProperties: true
+    AgentSDKOutcomeResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        outcome_id:
+          type: string
+        decision_id:
+          type: string
+        target_count:
+          type: integer
+    AgentSDKAnnotationRequest:
+      type: object
+      required:
+        - entity_id
+        - annotation
+      additionalProperties: false
+      properties:
+        entity_id:
+          type: string
+        annotation:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        source_system:
+          type: string
+        source_event_id:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+        valid_from:
+          type: string
+          format: date-time
+        valid_to:
+          type: string
+          format: date-time
+        confidence:
+          type: number
+        metadata:
+          type: object
+          additionalProperties: true
+    AgentSDKAnnotationResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        annotation_id:
+          type: string
+        entity_id:
+          type: string
+        count:
+          type: integer
+    AgentSDKResolveIdentityRequest:
+      type: object
+      required:
+        - source_system
+        - external_id
+      additionalProperties: false
+      properties:
+        alias_id:
+          type: string
+        source_system:
+          type: string
+        source_event_id:
+          type: string
+        external_id:
+          type: string
+        alias_type:
+          type: string
+        canonical_hint:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+        confidence:
+          type: number
+        auto_link_threshold:
+          type: number
+        suggest_threshold:
+          type: number
+    AgentSDKNodeKindDefinition:
+      type: object
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+        categories:
+          type: array
+          items:
+            type: string
+        properties:
+          type: object
+          additionalProperties:
+            type: string
+        required_properties:
+          type: array
+          items:
+            type: string
+        relationships:
+          type: array
+          items:
+            type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        metadata_profile:
+          type: object
+          additionalProperties: true
+        description:
+          type: string
+    AgentSDKEdgeKindDefinition:
+      type: object
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+        description:
+          type: string
+    AgentSDKMCPRequest:
+      type: object
+      required:
+        - jsonrpc
+        - method
+      additionalProperties: false
+      properties:
+        jsonrpc:
+          type: string
+          enum:
+            - '2.0'
+        id:
+          type: object
+          nullable: true
+        method:
+          type: string
+        params:
+          type: object
+          additionalProperties: true
+    AgentSDKMCPError:
+      type: object
+      additionalProperties: false
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+    AgentSDKMCPResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        jsonrpc:
+          type: string
+          enum:
+            - '2.0'
+        id:
+          type: object
+          nullable: true
+        result:
+          type: object
+          additionalProperties: true
+        error:
+          $ref: '#/components/schemas/AgentSDKMCPError'
     PlatformClaimWriteRequest:
       type: object
       required:

@@ -301,6 +301,13 @@ func defaultPermissions() []Permission {
 		{ID: "org.team.recommend", Resource: "org.team", Action: "recommend"},
 		{ID: "org.reorg.simulate", Resource: "org.reorg", Action: "simulate"},
 
+		{ID: "sdk.context.read", Resource: "sdk.context", Action: "read"},
+		{ID: "sdk.enforcement.run", Resource: "sdk.enforcement", Action: "run"},
+		{ID: "sdk.worldmodel.write", Resource: "sdk.worldmodel", Action: "write"},
+		{ID: "sdk.schema.read", Resource: "sdk.schema", Action: "read"},
+		{ID: "sdk.invoke", Resource: "sdk", Action: "invoke"},
+		{ID: "sdk.admin", Resource: "sdk", Action: "admin"},
+
 		{ID: "admin.audit.read", Resource: "admin.audit", Action: "read"},
 		{ID: "admin.operations.read", Resource: "admin.operations", Action: "read"},
 		{ID: "admin.operations.manage", Resource: "admin.operations", Action: "manage"},
@@ -341,6 +348,7 @@ func defaultAdminRolePermissions() []string {
 		"security.threat.read", "security.threat.manage",
 
 		"org.expertise.read", "org.intelligence.read", "org.team.recommend", "org.reorg.simulate",
+		"sdk.context.read", "sdk.enforcement.run", "sdk.worldmodel.write", "sdk.schema.read", "sdk.invoke", "sdk.admin",
 
 		"admin.audit.read", "admin.operations.read", "admin.operations.manage",
 		"admin.providers.manage", "admin.webhooks.manage",
@@ -374,6 +382,7 @@ func defaultAnalystRolePermissions() []string {
 		"security.threat.read", "security.threat.manage",
 
 		"org.expertise.read", "org.intelligence.read", "org.team.recommend", "org.reorg.simulate",
+		"sdk.context.read", "sdk.enforcement.run", "sdk.worldmodel.write", "sdk.schema.read", "sdk.invoke",
 	}
 }
 
@@ -389,6 +398,7 @@ func defaultViewerRolePermissions() []string {
 		"security.analyses.read", "security.incidents.read", "security.identity.read", "security.threat.read",
 
 		"org.expertise.read", "org.intelligence.read",
+		"sdk.context.read", "sdk.schema.read", "sdk.invoke",
 	}
 }
 
@@ -413,22 +423,29 @@ func permissionImplies(granted, requested string) bool {
 
 func permissionImplications() map[string][]string {
 	return map[string][]string{
-		"findings:read":             {"security.findings.read", "security.incidents.read", "security.identity.read", "security.threat.read"},
-		"findings:write":            {"security.findings.manage", "security.incidents.manage", "security.identity.manage", "security.threat.manage"},
-		"policies:read":             {"security.policies.read"},
-		"policies:write":            {"security.policies.manage"},
-		"tickets:read":              {"security.tickets.read"},
-		"tickets:write":             {"security.tickets.manage"},
-		"runtime:read":              {"security.runtime.read"},
-		"runtime:write":             {"security.runtime.write"},
-		"graph:read":                {"platform.graph.read", "platform.intelligence.read", "platform.jobs.read", "platform.schema.read", "security.analyses.read", "org.expertise.read", "org.intelligence.read"},
-		"graph:write":               {"platform.graph.write", "platform.intelligence.run", "platform.knowledge.write", "platform.workflow.write", "platform.schema.manage", "platform.identity.review", "platform.simulation.run", "security.analyses.run", "org.team.recommend", "org.reorg.simulate"},
-		"assets:read":               {"security.assets.read"},
-		"compliance:read":           {"security.compliance.read"},
-		"compliance:export":         {"security.compliance.export"},
-		"admin:users":               {"admin.audit.read", "admin.operations.read", "admin.operations.manage", "admin.providers.manage", "admin.webhooks.manage", "admin.scheduler.manage", "admin.notifications.manage", "admin.rbac.users.manage"},
-		"admin:roles":               {"admin.rbac.roles.manage"},
-		"platform.graph.write":      {"platform.intelligence.run", "platform.simulation.run"},
-		"platform.intelligence.run": {"platform.jobs.read"},
+		"findings:read":              {"security.findings.read", "security.incidents.read", "security.identity.read", "security.threat.read"},
+		"findings:write":             {"security.findings.manage", "security.incidents.manage", "security.identity.manage", "security.threat.manage"},
+		"policies:read":              {"security.policies.read"},
+		"policies:write":             {"security.policies.manage"},
+		"tickets:read":               {"security.tickets.read"},
+		"tickets:write":              {"security.tickets.manage"},
+		"runtime:read":               {"security.runtime.read"},
+		"runtime:write":              {"security.runtime.write"},
+		"graph:read":                 {"platform.graph.read", "platform.intelligence.read", "platform.jobs.read", "platform.schema.read", "security.analyses.read", "org.expertise.read", "org.intelligence.read", "sdk.context.read", "sdk.schema.read"},
+		"graph:write":                {"platform.graph.write", "platform.intelligence.run", "platform.knowledge.write", "platform.workflow.write", "platform.schema.manage", "platform.identity.review", "platform.simulation.run", "security.analyses.run", "org.team.recommend", "org.reorg.simulate", "sdk.enforcement.run", "sdk.worldmodel.write", "sdk.invoke"},
+		"assets:read":                {"security.assets.read"},
+		"compliance:read":            {"security.compliance.read"},
+		"compliance:export":          {"security.compliance.export"},
+		"admin:users":                {"admin.audit.read", "admin.operations.read", "admin.operations.manage", "admin.providers.manage", "admin.webhooks.manage", "admin.scheduler.manage", "admin.notifications.manage", "admin.rbac.users.manage"},
+		"admin:roles":                {"admin.rbac.roles.manage"},
+		"platform.graph.read":        {"sdk.context.read", "sdk.schema.read"},
+		"platform.graph.write":       {"platform.intelligence.run", "platform.simulation.run", "sdk.enforcement.run", "sdk.worldmodel.write", "sdk.invoke"},
+		"platform.intelligence.run":  {"platform.jobs.read"},
+		"platform.intelligence.read": {"sdk.context.read"},
+		"platform.knowledge.write":   {"sdk.worldmodel.write"},
+		"platform.workflow.write":    {"sdk.worldmodel.write"},
+		"platform.identity.review":   {"sdk.worldmodel.write"},
+		"platform.simulation.run":    {"sdk.enforcement.run"},
+		"sdk.admin":                  {"sdk.context.read", "sdk.enforcement.run", "sdk.worldmodel.write", "sdk.schema.read", "sdk.invoke"},
 	}
 }

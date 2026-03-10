@@ -41,7 +41,7 @@ func (a *App) initAgents() {
 		}
 	}
 
-	publisher, err := agents.NewToolPublisher(toolPublisherConfigFromConfig(a.Config), a.cerebroTools(), a.Logger)
+	publisher, err := agents.NewToolPublisher(toolPublisherConfigFromConfig(a.Config), a.AgentSDKTools(), a.Logger)
 	if err != nil {
 		a.Logger.Warn("failed to initialize cerebro tool publisher", "error", err)
 	} else if publisher != nil {
