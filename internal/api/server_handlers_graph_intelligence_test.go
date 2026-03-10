@@ -1,7 +1,9 @@
 package api
 
 import (
+	"context"
 	"net/http"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -9,6 +11,7 @@ import (
 	"github.com/evalops/cerebro/internal/events"
 	"github.com/evalops/cerebro/internal/graph"
 	"github.com/evalops/cerebro/internal/graphingest"
+	"github.com/evalops/cerebro/internal/webhooks"
 )
 
 func TestGraphIntelligenceInsightsEndpoint(t *testing.T) {
@@ -345,6 +348,16 @@ func TestPlatformIntelligenceReportRunSync(t *testing.T) {
 	if !ok || len(sections) == 0 {
 		t.Fatalf("expected section summaries, got %#v", body["sections"])
 	}
+	firstSection, ok := sections[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected first section object, got %#v", sections[0])
+	}
+	if got := firstSection["envelope_kind"]; got != "summary" {
+		t.Fatalf("expected summary envelope kind, got %#v", got)
+	}
+	if fieldKeys, ok := firstSection["field_keys"].([]any); !ok || len(fieldKeys) == 0 {
+		t.Fatalf("expected field key capture, got %#v", firstSection["field_keys"])
+	}
 
 	runResp := do(t, s, http.MethodGet, statusURL, nil)
 	if runResp.Code != http.StatusOK {
@@ -424,6 +437,167 @@ func TestPlatformIntelligenceReportRunAsync(t *testing.T) {
 	jobBody := decodeJSON(t, jobResp)
 	if got := jobBody["status"]; got != "succeeded" {
 		t.Fatalf("expected job succeeded, got %#v", got)
+	}
+}
+
+func TestPlatformIntelligenceReportRunPersistsAcrossServerRestart(t *testing.T) {
+	application := newTestApp(t)
+	s1 := NewServer(application)
+	g := application.SecurityGraph
+	now := time.Date(2026, 3, 10, 2, 0, 0, 0, time.UTC)
+
+	g.AddNode(&graph.Node{
+		ID:   "person:alice@example.com",
+		Kind: graph.NodeKindPerson,
+		Name: "Alice",
+		Properties: map[string]any{
+			"email":       "alice@example.com",
+			"observed_at": now.Format(time.RFC3339),
+			"valid_from":  now.Format(time.RFC3339),
+		},
+	})
+
+	createResp := do(t, s1, http.MethodPost, "/api/v1/platform/intelligence/reports/quality/runs", map[string]any{
+		"execution_mode": "sync",
+		"parameters": []map[string]any{
+			{"name": "stale_after_hours", "integer_value": 24},
+		},
+	})
+	if createResp.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", createResp.Code, createResp.Body.String())
+	}
+	createBody := decodeJSON(t, createResp)
+	statusURL, _ := createBody["status_url"].(string)
+	if statusURL == "" {
+		t.Fatalf("expected status_url, got %#v", createBody["status_url"])
+	}
+
+	s2 := NewServer(application)
+	runResp := do(t, s2, http.MethodGet, statusURL, nil)
+	if runResp.Code != http.StatusOK {
+		t.Fatalf("expected 200 after restart, got %d: %s", runResp.Code, runResp.Body.String())
+	}
+	runBody := decodeJSON(t, runResp)
+	if got := runBody["status"]; got != graph.ReportRunStatusSucceeded {
+		t.Fatalf("expected persisted run status succeeded, got %#v", got)
+	}
+	if _, ok := runBody["result"].(map[string]any); !ok {
+		t.Fatalf("expected restored result payload, got %#v", runBody["result"])
+	}
+}
+
+func TestPlatformIntelligenceReportRunLifecycleEvents(t *testing.T) {
+	s := newTestServer(t)
+	g := s.app.SecurityGraph
+	now := time.Date(2026, 3, 10, 3, 0, 0, 0, time.UTC)
+
+	g.AddNode(&graph.Node{
+		ID:   "person:alice@example.com",
+		Kind: graph.NodeKindPerson,
+		Name: "Alice",
+		Properties: map[string]any{
+			"email":       "alice@example.com",
+			"observed_at": now.Format(time.RFC3339),
+			"valid_from":  now.Format(time.RFC3339),
+		},
+	})
+
+	eventsCh := make(chan webhooks.Event, 8)
+	s.app.Webhooks.Subscribe(func(_ context.Context, event webhooks.Event) error {
+		switch event.Type {
+		case webhooks.EventPlatformReportRunQueued,
+			webhooks.EventPlatformReportRunStarted,
+			webhooks.EventPlatformReportRunCompleted,
+			webhooks.EventPlatformReportSnapshotMaterialized:
+			eventsCh <- event
+		}
+		return nil
+	})
+
+	w := do(t, s, http.MethodPost, "/api/v1/platform/intelligence/reports/quality/runs", map[string]any{
+		"execution_mode": "sync",
+		"parameters": []map[string]any{
+			{"name": "stale_after_hours", "integer_value": 24},
+		},
+	})
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	body := decodeJSON(t, w)
+
+	queued := <-eventsCh
+	if queued.Type != webhooks.EventPlatformReportRunQueued {
+		t.Fatalf("expected queued event first, got %q", queued.Type)
+	}
+	if queued.Data["report_id"] != "quality" {
+		t.Fatalf("expected queued report_id quality, got %#v", queued.Data["report_id"])
+	}
+
+	started := <-eventsCh
+	if started.Type != webhooks.EventPlatformReportRunStarted {
+		t.Fatalf("expected started event second, got %q", started.Type)
+	}
+	if started.Data["status"] != graph.ReportRunStatusRunning {
+		t.Fatalf("expected started status running, got %#v", started.Data["status"])
+	}
+
+	snapshot := <-eventsCh
+	completed := <-eventsCh
+	if snapshot.Type != webhooks.EventPlatformReportSnapshotMaterialized {
+		snapshot, completed = completed, snapshot
+	}
+	if snapshot.Type != webhooks.EventPlatformReportSnapshotMaterialized {
+		t.Fatalf("expected one snapshot event, got %q then %q", snapshot.Type, completed.Type)
+	}
+	if completed.Type != webhooks.EventPlatformReportRunCompleted {
+		t.Fatalf("expected completed event, got %q", completed.Type)
+	}
+	if snapshot.Data["run_id"] != body["id"] {
+		t.Fatalf("expected snapshot run_id %v, got %#v", body["id"], snapshot.Data["run_id"])
+	}
+	if completed.Data["snapshot_id"] == "" {
+		t.Fatalf("expected completed event snapshot_id, got %#v", completed.Data["snapshot_id"])
+	}
+	if completed.Data["materialized_result"] != true {
+		t.Fatalf("expected completed event to mark materialized_result=true, got %#v", completed.Data["materialized_result"])
+	}
+}
+
+func TestPlatformReportRunUpdateRollsBackOnPersistenceFailure(t *testing.T) {
+	application := newTestApp(t)
+	s := NewServer(application)
+	run := &graph.ReportRun{
+		ID:            "report_run:test-rollback",
+		ReportID:      "quality",
+		Status:        graph.ReportRunStatusQueued,
+		ExecutionMode: graph.ReportExecutionModeSync,
+		SubmittedAt:   time.Date(2026, 3, 10, 4, 0, 0, 0, time.UTC),
+		StatusURL:     "/api/v1/platform/intelligence/reports/quality/runs/report_run:test-rollback",
+	}
+	if err := s.storePlatformReportRun(run); err != nil {
+		t.Fatalf("storePlatformReportRun() failed: %v", err)
+	}
+
+	stateDir := filepath.Dir(application.Config.PlatformReportRunStateFile)
+	if err := os.Chmod(stateDir, 0o500); err != nil {
+		t.Fatalf("chmod state dir read-only: %v", err)
+	}
+	defer func() {
+		_ = os.Chmod(stateDir, 0o700)
+	}()
+
+	err := s.updatePlatformReportRun(run.ID, func(run *graph.ReportRun) {
+		run.Status = graph.ReportRunStatusRunning
+	})
+	if err == nil {
+		t.Fatal("expected persistence failure from updatePlatformReportRun")
+	}
+	stored, ok := s.platformReportRunSnapshot(run.ReportID, run.ID)
+	if !ok {
+		t.Fatalf("expected stored report run %q", run.ID)
+	}
+	if stored.Status != graph.ReportRunStatusQueued {
+		t.Fatalf("expected status rollback to queued, got %q", stored.Status)
 	}
 }
 

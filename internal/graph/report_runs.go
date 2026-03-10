@@ -41,14 +41,16 @@ type ReportTimeSlice struct {
 
 // ReportSectionResult summarizes one rendered section within a report run.
 type ReportSectionResult struct {
-	Key         string   `json:"key"`
-	Title       string   `json:"title"`
-	Kind        string   `json:"kind"`
-	Present     bool     `json:"present"`
-	ContentType string   `json:"content_type,omitempty"`
-	ItemCount   int      `json:"item_count,omitempty"`
-	FieldCount  int      `json:"field_count,omitempty"`
-	MeasureIDs  []string `json:"measure_ids,omitempty"`
+	Key          string   `json:"key"`
+	Title        string   `json:"title"`
+	Kind         string   `json:"kind"`
+	EnvelopeKind string   `json:"envelope_kind,omitempty"`
+	Present      bool     `json:"present"`
+	ContentType  string   `json:"content_type,omitempty"`
+	ItemCount    int      `json:"item_count,omitempty"`
+	FieldCount   int      `json:"field_count,omitempty"`
+	FieldKeys    []string `json:"field_keys,omitempty"`
+	MeasureIDs   []string `json:"measure_ids,omitempty"`
 }
 
 // ReportSnapshot stores materialization metadata for one report result.
@@ -62,6 +64,7 @@ type ReportSnapshot struct {
 	SectionCount int        `json:"section_count"`
 	Retained     bool       `json:"retained"`
 	ExpiresAt    *time.Time `json:"expires_at,omitempty"`
+	StoragePath  string     `json:"-"`
 }
 
 // ReportRun represents one instantiated execution of a report definition.
@@ -240,10 +243,11 @@ func BuildReportSectionResults(definition ReportDefinition, result map[string]an
 	sections := make([]ReportSectionResult, 0, len(definition.Sections))
 	for _, section := range definition.Sections {
 		summary := ReportSectionResult{
-			Key:        section.Key,
-			Title:      section.Title,
-			Kind:       section.Kind,
-			MeasureIDs: append([]string(nil), section.Measures...),
+			Key:          section.Key,
+			Title:        section.Title,
+			Kind:         section.Kind,
+			EnvelopeKind: reportEnvelopeKindForSection(section.Kind),
+			MeasureIDs:   append([]string(nil), section.Measures...),
 		}
 		content, ok := result[section.Key]
 		if !ok {
@@ -255,6 +259,7 @@ func BuildReportSectionResults(definition ReportDefinition, result map[string]an
 		case map[string]any:
 			summary.ContentType = "object"
 			summary.FieldCount = len(typed)
+			summary.FieldKeys = sortedReportFieldKeys(typed)
 		case []any:
 			summary.ContentType = "array"
 			summary.ItemCount = len(typed)
@@ -360,15 +365,7 @@ func CloneReportRun(run *ReportRun) *ReportRun {
 	cloned.TimeSlice = cloneReportTimeSlice(run.TimeSlice)
 	cloned.Snapshot = cloneReportSnapshot(run.Snapshot)
 	cloned.Sections = CloneReportSectionResults(run.Sections)
-	if run.Result != nil {
-		payload, err := json.Marshal(run.Result)
-		if err == nil {
-			var decoded map[string]any
-			if json.Unmarshal(payload, &decoded) == nil {
-				cloned.Result = decoded
-			}
-		}
-	}
+	cloned.Result = cloneReportResult(run.Result)
 	return &cloned
 }
 
@@ -395,6 +392,7 @@ func CloneReportSectionResults(values []ReportSectionResult) []ReportSectionResu
 	cloned := append([]ReportSectionResult(nil), values...)
 	for i := range cloned {
 		cloned[i].MeasureIDs = append([]string(nil), values[i].MeasureIDs...)
+		cloned[i].FieldKeys = append([]string(nil), values[i].FieldKeys...)
 	}
 	return cloned
 }
@@ -406,6 +404,39 @@ func cloneReportSnapshot(snapshot *ReportSnapshot) *ReportSnapshot {
 	cloned := *snapshot
 	cloned.ExpiresAt = cloneTimePtr(snapshot.ExpiresAt)
 	return &cloned
+}
+
+func cloneReportResult(result map[string]any) map[string]any {
+	return cloneAnyMap(result)
+}
+
+func reportEnvelopeKindForSection(kind string) string {
+	switch strings.TrimSpace(kind) {
+	case "scorecard", "context", "health_summary", "calibration_summary", "freshness_summary", "readiness_summary", "capability_summary", "backtest_summary":
+		return "summary"
+	case "timeseries_summary":
+		return "timeseries"
+	case "distribution", "coverage_breakdown", "health_breakdown", "breakdown_table":
+		return "distribution"
+	case "ranked_findings", "ranked_backlog", "action_list":
+		return "ranking"
+	case "embedded_report":
+		return "embedded_report"
+	default:
+		return "object"
+	}
+}
+
+func sortedReportFieldKeys(values map[string]any) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func cloneReportTimeSlice(slice ReportTimeSlice) ReportTimeSlice {

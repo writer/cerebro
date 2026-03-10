@@ -144,16 +144,21 @@ const (
 	EventSignalResolved             EventType = "signal.resolved"
 	EventSignalEscalated            EventType = "signal.escalated"
 
-	EventRiskScoreChanged         EventType = "risk_score.changed"
-	EventToxicCombinationDetected EventType = "toxic_combination.detected"
-	EventToxicCombinationResolved EventType = "toxic_combination.resolved"
-	EventApprovalRequested        EventType = "approval.requested"
-	EventCohortOutlierDetected    EventType = "cohort.outlier_detected"
-	EventComplianceScoreChanged   EventType = "compliance.score_changed"
-	EventPlatformClaimWritten     EventType = "platform.claim.written"
-	EventPlatformDecisionRecorded EventType = "platform.decision.recorded"
-	EventPlatformOutcomeRecorded  EventType = "platform.outcome.recorded"
-	EventPlatformActionRecorded   EventType = "platform.action.recorded"
+	EventRiskScoreChanged                   EventType = "risk_score.changed"
+	EventToxicCombinationDetected           EventType = "toxic_combination.detected"
+	EventToxicCombinationResolved           EventType = "toxic_combination.resolved"
+	EventApprovalRequested                  EventType = "approval.requested"
+	EventCohortOutlierDetected              EventType = "cohort.outlier_detected"
+	EventComplianceScoreChanged             EventType = "compliance.score_changed"
+	EventPlatformClaimWritten               EventType = "platform.claim.written"
+	EventPlatformDecisionRecorded           EventType = "platform.decision.recorded"
+	EventPlatformOutcomeRecorded            EventType = "platform.outcome.recorded"
+	EventPlatformActionRecorded             EventType = "platform.action.recorded"
+	EventPlatformReportRunQueued            EventType = "platform.report_run.queued"
+	EventPlatformReportRunStarted           EventType = "platform.report_run.started"
+	EventPlatformReportRunCompleted         EventType = "platform.report_run.completed"
+	EventPlatformReportRunFailed            EventType = "platform.report_run.failed"
+	EventPlatformReportSnapshotMaterialized EventType = "platform.report_snapshot.materialized"
 )
 
 var defaultEventTypes = []EventType{
@@ -190,6 +195,11 @@ var defaultEventTypes = []EventType{
 	EventPlatformDecisionRecorded,
 	EventPlatformOutcomeRecorded,
 	EventPlatformActionRecorded,
+	EventPlatformReportRunQueued,
+	EventPlatformReportRunStarted,
+	EventPlatformReportRunCompleted,
+	EventPlatformReportRunFailed,
+	EventPlatformReportSnapshotMaterialized,
 }
 
 // DefaultEventTypes returns the list of webhook event types registered by default.
@@ -423,7 +433,8 @@ func isValidEventType(e EventType) bool {
 		EventRiskScoreChanged, EventToxicCombinationDetected, EventToxicCombinationResolved,
 		EventApprovalRequested, EventCohortOutlierDetected, EventComplianceScoreChanged,
 		EventPlatformClaimWritten, EventPlatformDecisionRecorded, EventPlatformOutcomeRecorded,
-		EventPlatformActionRecorded:
+		EventPlatformActionRecorded, EventPlatformReportRunQueued, EventPlatformReportRunStarted,
+		EventPlatformReportRunCompleted, EventPlatformReportRunFailed, EventPlatformReportSnapshotMaterialized:
 		return true
 	default:
 		return false

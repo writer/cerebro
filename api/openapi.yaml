@@ -8840,6 +8840,8 @@ components:
           type: string
         kind:
           type: string
+        envelope_kind:
+          type: string
         present:
           type: boolean
         content_type:
@@ -8848,6 +8850,10 @@ components:
           type: integer
         field_count:
           type: integer
+        field_keys:
+          type: array
+          items:
+            type: string
         measure_ids:
           type: array
           items:

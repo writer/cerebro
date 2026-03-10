@@ -391,6 +391,8 @@ type Config struct {
 	APIKeys                             map[string]string
 	SecretsReloadInterval               time.Duration
 	RBACStateFile                       string
+	PlatformReportRunStateFile          string
+	PlatformReportSnapshotPath          string
 	GraphCrossTenantRequireSignedIngest bool
 	GraphCrossTenantSigningKey          string
 	GraphCrossTenantSignatureSkew       time.Duration
@@ -667,6 +669,8 @@ func LoadConfig() *Config {
 		APIKeys:                             apiKeys,
 		SecretsReloadInterval:               getEnvDuration("CEREBRO_SECRETS_RELOAD_INTERVAL", 0),
 		RBACStateFile:                       getEnv("RBAC_STATE_FILE", ""),
+		PlatformReportRunStateFile:          getEnv("PLATFORM_REPORT_RUN_STATE_FILE", filepath.Join(".cerebro", "report-runs", "state.json")),
+		PlatformReportSnapshotPath:          getEnv("PLATFORM_REPORT_SNAPSHOT_PATH", filepath.Join(".cerebro", "report-runs", "snapshots")),
 		GraphCrossTenantRequireSignedIngest: getEnvBool("GRAPH_CROSS_TENANT_REQUIRE_SIGNED_INGEST", false),
 		GraphCrossTenantSigningKey:          getEnv("GRAPH_CROSS_TENANT_SIGNING_KEY", ""),
 		GraphCrossTenantSignatureSkew:       getEnvDuration("GRAPH_CROSS_TENANT_SIGNATURE_MAX_SKEW", 5*time.Minute),

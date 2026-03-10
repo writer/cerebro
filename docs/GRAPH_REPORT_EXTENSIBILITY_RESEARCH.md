@@ -251,6 +251,23 @@ Purpose:
 Purpose:
 - allow heavy reports to materialize as runs/jobs
 - preserve inputs, time scope, section summaries, provenance, and cached results
+- keep run metadata durable even when materialized result payloads are stored separately
+
+## Current Adoption State
+
+Implemented now:
+
+- `ReportRun` resources are persisted beyond process memory with atomic state writes and separate compressed snapshot payload artifacts.
+- API startup restores persisted report runs and retained materialized results.
+- report lifecycle events are emitted for queue/start/complete/fail and snapshot materialization.
+- section summaries expose `envelope_kind` and stable `field_keys` for stronger generated contracts.
+
+Still missing:
+
+- run-attempt resources and execution event history surfaces
+- explicit graph snapshot/schema version capture on runs
+- typed JSON Schema catalogs for each section envelope kind
+- retention tiers, storage classes, and reaping policy for report snapshots
 
 ### Optional future configuration surface
 
@@ -303,6 +320,7 @@ The report registry should eventually generate:
 - add `ReportRun` and `ReportSnapshot`
 - add explicit section result envelopes
 - add provenance/evidence references per section and recommendation
+- persist run metadata and snapshot payloads separately so report execution remains durable without forcing every response to inline full historical result payloads
 
 ### 3) Reusable checks and measures
 
@@ -320,6 +338,7 @@ The report registry should eventually generate:
 - add job-backed execution for heavy reports
 - add snapshot history and cache invalidation rules
 - emit lifecycle events for report runs
+- add run-attempt history and retry/cancel semantics
 
 ## What Cerebro Should Avoid
 

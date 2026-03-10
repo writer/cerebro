@@ -48,11 +48,14 @@ func newTestApp(t *testing.T) *app.App {
 	pe := policy.NewEngine()
 	fs := findings.NewStore()
 	sc := scanner.NewScanner(pe, scanner.ScanConfig{Workers: 2}, logger)
+	reportStateDir := t.TempDir()
 
 	return &app.App{
 		Config: &app.Config{
-			LogLevel: "error",
-			Port:     0,
+			LogLevel:                   "error",
+			Port:                       0,
+			PlatformReportRunStateFile: filepath.Join(reportStateDir, "state.json"),
+			PlatformReportSnapshotPath: filepath.Join(reportStateDir, "snapshots"),
 		},
 		Logger:         logger,
 		Policy:         pe,

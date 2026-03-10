@@ -119,7 +119,19 @@ Report-definition rule:
 Report-execution rule:
 - Report definitions and report runs are different resources.
 - `ReportRun` captures typed parameters, execution mode, time slice, cache key, job linkage, section summaries, and optional snapshot metadata.
+- `ReportRun` is a durable control-plane resource: run metadata is persisted separately from materialized result payloads so restart recovery does not erase execution history.
+- `ReportSnapshot` is a retained derived artifact with content hash, recording timestamps, and storage-backed materialization metadata.
 - Long-running or future high-cost reports should converge on the same run resource + platform job linkage rather than invent report-specific async endpoints.
+
+Lifecycle/event rule:
+- Report execution should emit lifecycle events for queue/start/complete/fail plus snapshot materialization.
+- Current lifecycle event types are `platform.report_run.queued`, `platform.report_run.started`, `platform.report_run.completed`, `platform.report_run.failed`, and `platform.report_snapshot.materialized`.
+- These events belong to the shared platform layer because downstream applications consume report executions as derived artifacts, not as application-local side effects.
+
+Section-contract rule:
+- `ReportSectionResult` should advertise a stable `envelope_kind` for downstream renderers, generated tools, and compatibility checks.
+- Object-backed sections should expose stable `field_keys` so UI/tool composition can reason about section shape without inspecting arbitrary payloads.
+- New section envelopes should be added deliberately and eventually generated as their own typed schemas rather than proliferating report-specific ad hoc objects.
 
 ### 2) Power Query API
 Read-only, bounded graph exploration for analysts and advanced workflows.

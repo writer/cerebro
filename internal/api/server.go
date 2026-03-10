@@ -20,19 +20,21 @@ import (
 
 // Server is the fully wired API server
 type Server struct {
-	app                 *app.App
-	router              *chi.Mux
-	auditLogger         auditLogWriter
-	rateLimiter         *RateLimiter
-	riskEngineMu        sync.Mutex
-	riskEngine          *graph.RiskEngine
-	riskEngineSource    *graph.Graph
-	crossTenantReplayMu sync.Mutex
-	crossTenantReplay   map[string]time.Time
-	platformJobMu       sync.RWMutex
-	platformJobs        map[string]*platformJob
-	platformReportRunMu sync.RWMutex
-	platformReportRuns  map[string]*graph.ReportRun
+	app                  *app.App
+	router               *chi.Mux
+	auditLogger          auditLogWriter
+	rateLimiter          *RateLimiter
+	riskEngineMu         sync.Mutex
+	riskEngine           *graph.RiskEngine
+	riskEngineSource     *graph.Graph
+	crossTenantReplayMu  sync.Mutex
+	crossTenantReplay    map[string]time.Time
+	platformJobMu        sync.RWMutex
+	platformJobs         map[string]*platformJob
+	platformReportRunMu  sync.RWMutex
+	platformReportRuns   map[string]*graph.ReportRun
+	platformReportStore  *graph.ReportRunStore
+	platformReportSaveMu sync.Mutex
 }
 
 type auditLogWriter interface {
@@ -50,6 +52,14 @@ func NewServer(application *app.App) *Server {
 		crossTenantReplay:  make(map[string]time.Time),
 		platformJobs:       make(map[string]*platformJob),
 		platformReportRuns: make(map[string]*graph.ReportRun),
+	}
+	if cfg := application.Config; cfg != nil {
+		s.platformReportStore = graph.NewReportRunStore(cfg.PlatformReportRunStateFile, cfg.PlatformReportSnapshotPath)
+		if restoredRuns, err := s.platformReportStore.Load(); err != nil {
+			application.Logger.Warn("failed to load persisted platform report runs", "state_file", s.platformReportStore.StateFile(), "snapshot_dir", s.platformReportStore.SnapshotDir(), "error", err)
+		} else {
+			s.platformReportRuns = restoredRuns
+		}
 	}
 	s.setupMiddleware()
 	s.setupRoutes()

@@ -71,6 +71,19 @@ func TestLoadConfigCrossTenantIngestControls(t *testing.T) {
 	}
 }
 
+func TestLoadConfigPlatformReportPersistencePaths(t *testing.T) {
+	t.Setenv("PLATFORM_REPORT_RUN_STATE_FILE", "/tmp/cerebro-report-runs.json")
+	t.Setenv("PLATFORM_REPORT_SNAPSHOT_PATH", "/tmp/cerebro-report-snapshots")
+
+	cfg := LoadConfig()
+	if cfg.PlatformReportRunStateFile != "/tmp/cerebro-report-runs.json" {
+		t.Fatalf("expected report run state file to be set, got %q", cfg.PlatformReportRunStateFile)
+	}
+	if cfg.PlatformReportSnapshotPath != "/tmp/cerebro-report-snapshots" {
+		t.Fatalf("expected report snapshot path to be set, got %q", cfg.PlatformReportSnapshotPath)
+	}
+}
+
 func TestLoadConfigGraphSchemaValidationMode(t *testing.T) {
 	t.Setenv("GRAPH_SCHEMA_VALIDATION_MODE", "enforce")
 	cfg := LoadConfig()

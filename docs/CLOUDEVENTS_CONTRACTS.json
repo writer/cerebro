@@ -436,6 +436,463 @@
         ],
         "type": "object"
       }
+    },
+    {
+      "event_type": "platform.report_run.completed",
+      "summary": "Report execution completed on the shared platform intelligence layer.",
+      "schema_url": "urn:cerebro:events/platform.report_run.completed/v1",
+      "required_data_keys": [
+        "run_id",
+        "report_id",
+        "status",
+        "execution_mode",
+        "submitted_at",
+        "completed_at",
+        "status_url",
+        "materialized_result"
+      ],
+      "optional_data_keys": [
+        "started_at",
+        "requested_by",
+        "cache_key",
+        "job_id",
+        "job_status_url",
+        "parameter_count",
+        "snapshot_id",
+        "result_schema",
+        "section_count",
+        "tenant_id",
+        "traceparent"
+      ],
+      "data_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "cache_key": {
+            "type": "string"
+          },
+          "completed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "execution_mode": {
+            "type": "string"
+          },
+          "job_id": {
+            "type": "string"
+          },
+          "job_status_url": {
+            "type": "string"
+          },
+          "materialized_result": {
+            "type": "boolean"
+          },
+          "parameter_count": {
+            "type": "integer"
+          },
+          "report_id": {
+            "type": "string"
+          },
+          "requested_by": {
+            "type": "string"
+          },
+          "result_schema": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "section_count": {
+            "type": "integer"
+          },
+          "snapshot_id": {
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "status_url": {
+            "type": "string"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "traceparent": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "report_id",
+          "status",
+          "execution_mode",
+          "submitted_at",
+          "completed_at",
+          "status_url",
+          "materialized_result"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "event_type": "platform.report_run.failed",
+      "summary": "Report execution failed on the shared platform intelligence layer.",
+      "schema_url": "urn:cerebro:events/platform.report_run.failed/v1",
+      "required_data_keys": [
+        "run_id",
+        "report_id",
+        "status",
+        "execution_mode",
+        "submitted_at",
+        "completed_at",
+        "status_url",
+        "error"
+      ],
+      "optional_data_keys": [
+        "started_at",
+        "requested_by",
+        "cache_key",
+        "job_id",
+        "job_status_url",
+        "parameter_count",
+        "materialized_result",
+        "tenant_id",
+        "traceparent"
+      ],
+      "data_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "cache_key": {
+            "type": "string"
+          },
+          "completed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "execution_mode": {
+            "type": "string"
+          },
+          "job_id": {
+            "type": "string"
+          },
+          "job_status_url": {
+            "type": "string"
+          },
+          "materialized_result": {
+            "type": "boolean"
+          },
+          "parameter_count": {
+            "type": "integer"
+          },
+          "report_id": {
+            "type": "string"
+          },
+          "requested_by": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "status_url": {
+            "type": "string"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "traceparent": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "report_id",
+          "status",
+          "execution_mode",
+          "submitted_at",
+          "completed_at",
+          "status_url",
+          "error"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "event_type": "platform.report_run.queued",
+      "summary": "Report execution queued on the shared platform intelligence layer.",
+      "schema_url": "urn:cerebro:events/platform.report_run.queued/v1",
+      "required_data_keys": [
+        "run_id",
+        "report_id",
+        "status",
+        "execution_mode",
+        "submitted_at",
+        "status_url"
+      ],
+      "optional_data_keys": [
+        "requested_by",
+        "cache_key",
+        "job_id",
+        "job_status_url",
+        "parameter_count",
+        "materialized_result",
+        "tenant_id",
+        "traceparent"
+      ],
+      "data_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "cache_key": {
+            "type": "string"
+          },
+          "execution_mode": {
+            "type": "string"
+          },
+          "job_id": {
+            "type": "string"
+          },
+          "job_status_url": {
+            "type": "string"
+          },
+          "materialized_result": {
+            "type": "boolean"
+          },
+          "parameter_count": {
+            "type": "integer"
+          },
+          "report_id": {
+            "type": "string"
+          },
+          "requested_by": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "status_url": {
+            "type": "string"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "traceparent": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "report_id",
+          "status",
+          "execution_mode",
+          "submitted_at",
+          "status_url"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "event_type": "platform.report_run.started",
+      "summary": "Report execution started on the shared platform intelligence layer.",
+      "schema_url": "urn:cerebro:events/platform.report_run.started/v1",
+      "required_data_keys": [
+        "run_id",
+        "report_id",
+        "status",
+        "execution_mode",
+        "submitted_at",
+        "started_at",
+        "status_url"
+      ],
+      "optional_data_keys": [
+        "requested_by",
+        "cache_key",
+        "job_id",
+        "job_status_url",
+        "parameter_count",
+        "materialized_result",
+        "tenant_id",
+        "traceparent"
+      ],
+      "data_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "cache_key": {
+            "type": "string"
+          },
+          "execution_mode": {
+            "type": "string"
+          },
+          "job_id": {
+            "type": "string"
+          },
+          "job_status_url": {
+            "type": "string"
+          },
+          "materialized_result": {
+            "type": "boolean"
+          },
+          "parameter_count": {
+            "type": "integer"
+          },
+          "report_id": {
+            "type": "string"
+          },
+          "requested_by": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "status_url": {
+            "type": "string"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "traceparent": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "report_id",
+          "status",
+          "execution_mode",
+          "submitted_at",
+          "started_at",
+          "status_url"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "event_type": "platform.report_snapshot.materialized",
+      "summary": "Report snapshot materialized on the shared platform intelligence layer.",
+      "schema_url": "urn:cerebro:events/platform.report_snapshot.materialized/v1",
+      "required_data_keys": [
+        "snapshot_id",
+        "run_id",
+        "report_id",
+        "result_schema",
+        "generated_at",
+        "recorded_at",
+        "content_hash",
+        "byte_size",
+        "section_count",
+        "retained",
+        "status_url"
+      ],
+      "optional_data_keys": [
+        "expires_at",
+        "cache_key",
+        "tenant_id",
+        "traceparent"
+      ],
+      "data_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "byte_size": {
+            "type": "integer"
+          },
+          "cache_key": {
+            "type": "string"
+          },
+          "content_hash": {
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "report_id": {
+            "type": "string"
+          },
+          "result_schema": {
+            "type": "string"
+          },
+          "retained": {
+            "type": "boolean"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "section_count": {
+            "type": "integer"
+          },
+          "snapshot_id": {
+            "type": "string"
+          },
+          "status_url": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "traceparent": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot_id",
+          "run_id",
+          "report_id",
+          "result_schema",
+          "generated_at",
+          "recorded_at",
+          "content_hash",
+          "byte_size",
+          "section_count",
+          "retained",
+          "status_url"
+        ],
+        "type": "object"
+      }
     }
   ],
   "mappings": [

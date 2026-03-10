@@ -5,7 +5,7 @@ Generated from `internal/events.CloudEvent` and `internal/graphingest/mappings.y
 - Contract catalog API version: **cerebro.graph.contracts/v1alpha1**
 - Contract catalog kind: **CloudEventMappingContractCatalog**
 - CloudEvent envelope fields: **12**
-- Platform lifecycle event contracts: **4**
+- Platform lifecycle event contracts: **9**
 - TAP mapping rules: **13**
 - Wildcard event patterns: **1**
 - Distinct required data keys across mappings: **29**
@@ -36,6 +36,11 @@ Generated from `internal/events.CloudEvent` and `internal/graphingest/mappings.y
 | `platform.claim.written` | Claim write recorded on the shared platform knowledge layer. | `urn:cerebro:events/platform.claim.written/v1` | `claim_id`, `subject_id`, `predicate`, `claim_type`, `status`, `source_system`, `source_event_id`, `observed_at`, `recorded_at`, `transaction_from` | `source_id`, `object_id`, `object_value`, `evidence_ids`, `supporting_claim_ids`, `refuting_claim_ids`, `tenant_id`, `traceparent` |
 | `platform.decision.recorded` | Decision write recorded on the shared platform workflow layer. | `urn:cerebro:events/platform.decision.recorded/v1` | `decision_id`, `decision_type`, `status`, `target_ids`, `source_system`, `source_event_id`, `observed_at`, `valid_from` | `made_by`, `rationale`, `evidence_ids`, `action_ids`, `tenant_id`, `traceparent` |
 | `platform.outcome.recorded` | Outcome write recorded on the shared platform workflow layer. | `urn:cerebro:events/platform.outcome.recorded/v1` | `outcome_id`, `decision_id`, `outcome_type`, `verdict`, `impact_score`, `source_system`, `source_event_id`, `observed_at`, `valid_from` | `target_ids`, `tenant_id`, `traceparent` |
+| `platform.report_run.completed` | Report execution completed on the shared platform intelligence layer. | `urn:cerebro:events/platform.report_run.completed/v1` | `run_id`, `report_id`, `status`, `execution_mode`, `submitted_at`, `completed_at`, `status_url`, `materialized_result` | `started_at`, `requested_by`, `cache_key`, `job_id`, `job_status_url`, `parameter_count`, `snapshot_id`, `result_schema`, `section_count`, `tenant_id`, `traceparent` |
+| `platform.report_run.failed` | Report execution failed on the shared platform intelligence layer. | `urn:cerebro:events/platform.report_run.failed/v1` | `run_id`, `report_id`, `status`, `execution_mode`, `submitted_at`, `completed_at`, `status_url`, `error` | `started_at`, `requested_by`, `cache_key`, `job_id`, `job_status_url`, `parameter_count`, `materialized_result`, `tenant_id`, `traceparent` |
+| `platform.report_run.queued` | Report execution queued on the shared platform intelligence layer. | `urn:cerebro:events/platform.report_run.queued/v1` | `run_id`, `report_id`, `status`, `execution_mode`, `submitted_at`, `status_url` | `requested_by`, `cache_key`, `job_id`, `job_status_url`, `parameter_count`, `materialized_result`, `tenant_id`, `traceparent` |
+| `platform.report_run.started` | Report execution started on the shared platform intelligence layer. | `urn:cerebro:events/platform.report_run.started/v1` | `run_id`, `report_id`, `status`, `execution_mode`, `submitted_at`, `started_at`, `status_url` | `requested_by`, `cache_key`, `job_id`, `job_status_url`, `parameter_count`, `materialized_result`, `tenant_id`, `traceparent` |
+| `platform.report_snapshot.materialized` | Report snapshot materialized on the shared platform intelligence layer. | `urn:cerebro:events/platform.report_snapshot.materialized/v1` | `snapshot_id`, `run_id`, `report_id`, `result_schema`, `generated_at`, `recorded_at`, `content_hash`, `byte_size`, `section_count`, `retained`, `status_url` | `expires_at`, `cache_key`, `tenant_id`, `traceparent` |
 
 ## Mapping Contracts
 

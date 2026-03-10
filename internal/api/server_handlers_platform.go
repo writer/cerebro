@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/evalops/cerebro/internal/graph"
+	"github.com/evalops/cerebro/internal/webhooks"
 )
 
 type platformGraphQueryRequest struct {
@@ -290,6 +291,7 @@ func (s *Server) createPlatformIntelligenceReportRun(w http.ResponseWriter, r *h
 	run.StatusURL = "/api/v1/platform/intelligence/reports/" + reportID + "/runs/" + run.ID
 
 	if executionMode == graph.ReportExecutionModeAsync {
+		executionCtx := context.WithoutCancel(r.Context())
 		job := s.newPlatformJob("platform.report_run", map[string]any{
 			"report_id":       reportID,
 			"run_id":          run.ID,
@@ -298,10 +300,14 @@ func (s *Server) createPlatformIntelligenceReportRun(w http.ResponseWriter, r *h
 		}, run.RequestedBy)
 		run.JobID = job.ID
 		run.JobStatusURL = job.StatusURL
-		s.storePlatformReportRun(run)
+		if err := s.storePlatformReportRun(run); err != nil {
+			s.error(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		s.emitPlatformReportRunLifecycleEvent(r.Context(), webhooks.EventPlatformReportRunQueued, reportID, run.ID)
 
 		go s.runPlatformJob(job.ID, func() (any, error) {
-			if err := s.executePlatformReportRun(run.ID, definition, req.Parameters, materializeResult); err != nil {
+			if err := s.executePlatformReportRun(executionCtx, run.ID, definition, req.Parameters, materializeResult); err != nil {
 				return nil, err
 			}
 			stored, ok := s.platformReportRunSnapshot(reportID, run.ID)
@@ -316,8 +322,12 @@ func (s *Server) createPlatformIntelligenceReportRun(w http.ResponseWriter, r *h
 		return
 	}
 
-	s.storePlatformReportRun(run)
-	if err := s.executePlatformReportRun(run.ID, definition, req.Parameters, materializeResult); err != nil {
+	if err := s.storePlatformReportRun(run); err != nil {
+		s.error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.emitPlatformReportRunLifecycleEvent(r.Context(), webhooks.EventPlatformReportRunQueued, reportID, run.ID)
+	if err := s.executePlatformReportRun(r.Context(), run.ID, definition, req.Parameters, materializeResult); err != nil {
 		stored, _ := s.platformReportRunSnapshot(reportID, run.ID)
 		if stored != nil {
 			w.Header().Set("Location", stored.StatusURL)
@@ -347,22 +357,28 @@ func (s *Server) getPlatformIntelligenceReportRun(w http.ResponseWriter, r *http
 	s.json(w, http.StatusOK, run)
 }
 
-func (s *Server) executePlatformReportRun(runID string, definition graph.ReportDefinition, parameters []graph.ReportParameterValue, materializeResult bool) error {
+func (s *Server) executePlatformReportRun(ctx context.Context, runID string, definition graph.ReportDefinition, parameters []graph.ReportParameterValue, materializeResult bool) error {
 	startedAt := time.Now().UTC()
-	s.updatePlatformReportRun(runID, func(run *graph.ReportRun) {
+	if err := s.updatePlatformReportRun(runID, func(run *graph.ReportRun) {
 		run.Status = graph.ReportRunStatusRunning
 		run.StartedAt = &startedAt
 		run.Error = ""
-	})
+	}); err != nil {
+		return err
+	}
+	s.emitPlatformReportRunLifecycleEvent(ctx, webhooks.EventPlatformReportRunStarted, definition.ID, runID)
 
-	result, err := s.executePlatformReport(definition.ID, parameters)
+	result, err := s.executePlatformReport(ctx, definition.ID, parameters)
 	completedAt := time.Now().UTC()
 	if err != nil {
-		s.updatePlatformReportRun(runID, func(run *graph.ReportRun) {
+		if updateErr := s.updatePlatformReportRun(runID, func(run *graph.ReportRun) {
 			run.Status = graph.ReportRunStatusFailed
 			run.CompletedAt = &completedAt
 			run.Error = err.Error()
-		})
+		}); updateErr != nil {
+			return updateErr
+		}
+		s.emitPlatformReportRunLifecycleEvent(ctx, webhooks.EventPlatformReportRunFailed, definition.ID, runID)
 		return err
 	}
 
@@ -371,26 +387,35 @@ func (s *Server) executePlatformReportRun(runID string, definition graph.ReportD
 	if materializeResult {
 		snapshot, err = graph.BuildReportSnapshot(runID, definition, result, true, completedAt)
 		if err != nil {
-			s.updatePlatformReportRun(runID, func(run *graph.ReportRun) {
+			if updateErr := s.updatePlatformReportRun(runID, func(run *graph.ReportRun) {
 				run.Status = graph.ReportRunStatusFailed
 				run.CompletedAt = &completedAt
 				run.Error = err.Error()
-			})
+			}); updateErr != nil {
+				return updateErr
+			}
+			s.emitPlatformReportRunLifecycleEvent(ctx, webhooks.EventPlatformReportRunFailed, definition.ID, runID)
 			return err
 		}
 	}
 
-	s.updatePlatformReportRun(runID, func(run *graph.ReportRun) {
+	if err := s.updatePlatformReportRun(runID, func(run *graph.ReportRun) {
 		run.Status = graph.ReportRunStatusSucceeded
 		run.CompletedAt = &completedAt
 		run.Sections = graph.CloneReportSectionResults(sections)
 		run.Snapshot = snapshot
 		run.Result = cloneJSONObject(result)
-	})
+	}); err != nil {
+		return err
+	}
+	if snapshot != nil {
+		s.emitPlatformReportSnapshotLifecycleEvent(ctx, definition.ID, runID)
+	}
+	s.emitPlatformReportRunLifecycleEvent(ctx, webhooks.EventPlatformReportRunCompleted, definition.ID, runID)
 	return nil
 }
 
-func (s *Server) executePlatformReport(reportID string, parameters []graph.ReportParameterValue) (map[string]any, error) {
+func (s *Server) executePlatformReport(ctx context.Context, reportID string, parameters []graph.ReportParameterValue) (map[string]any, error) {
 	definition, ok := graph.GetReportDefinition(reportID)
 	if !ok {
 		return nil, fmt.Errorf("report definition not found: %s", reportID)
@@ -403,7 +428,7 @@ func (s *Server) executePlatformReport(reportID string, parameters []graph.Repor
 	if err != nil {
 		return nil, err
 	}
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, definition.Endpoint.Path, nil)
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, definition.Endpoint.Path, nil)
 	if encoded := values.Encode(); encoded != "" {
 		req.URL.RawQuery = encoded
 	}
@@ -581,23 +606,52 @@ func cloneJSONValue(value any) any {
 	return decoded
 }
 
-func (s *Server) storePlatformReportRun(run *graph.ReportRun) {
+func (s *Server) storePlatformReportRun(run *graph.ReportRun) error {
 	if run == nil {
-		return
+		return nil
 	}
+	s.platformReportSaveMu.Lock()
+	defer s.platformReportSaveMu.Unlock()
 	s.platformReportRunMu.Lock()
-	defer s.platformReportRunMu.Unlock()
+	previous, hadPrevious := s.platformReportRuns[run.ID]
 	s.platformReportRuns[run.ID] = graph.CloneReportRun(run)
+	snapshot := s.clonePlatformReportRunsLocked()
+	s.platformReportRunMu.Unlock()
+	if err := s.persistPlatformReportRuns(snapshot); err != nil {
+		s.platformReportRunMu.Lock()
+		if hadPrevious {
+			s.platformReportRuns[run.ID] = graph.CloneReportRun(previous)
+		} else {
+			delete(s.platformReportRuns, run.ID)
+		}
+		s.platformReportRunMu.Unlock()
+		return fmt.Errorf("persist report run %q: %w", run.ID, err)
+	}
+	return nil
 }
 
-func (s *Server) updatePlatformReportRun(runID string, apply func(*graph.ReportRun)) {
+func (s *Server) updatePlatformReportRun(runID string, apply func(*graph.ReportRun)) error {
+	s.platformReportSaveMu.Lock()
+	defer s.platformReportSaveMu.Unlock()
 	s.platformReportRunMu.Lock()
-	defer s.platformReportRunMu.Unlock()
 	run, ok := s.platformReportRuns[runID]
 	if !ok {
-		return
+		s.platformReportRunMu.Unlock()
+		return fmt.Errorf("report run not found: %s", runID)
 	}
-	apply(run)
+	previous := graph.CloneReportRun(run)
+	updated := graph.CloneReportRun(run)
+	apply(updated)
+	s.platformReportRuns[runID] = updated
+	snapshot := s.clonePlatformReportRunsLocked()
+	s.platformReportRunMu.Unlock()
+	if err := s.persistPlatformReportRuns(snapshot); err != nil {
+		s.platformReportRunMu.Lock()
+		s.platformReportRuns[runID] = previous
+		s.platformReportRunMu.Unlock()
+		return fmt.Errorf("persist report run %q: %w", runID, err)
+	}
+	return nil
 }
 
 func (s *Server) platformReportRunSnapshot(reportID, runID string) (*graph.ReportRun, bool) {
@@ -627,4 +681,90 @@ func (s *Server) platformReportRunSummaries(reportID string) []graph.ReportRunSu
 		return runs[i].SubmittedAt.After(runs[j].SubmittedAt)
 	})
 	return runs
+}
+
+func (s *Server) clonePlatformReportRunsLocked() map[string]*graph.ReportRun {
+	cloned := make(map[string]*graph.ReportRun, len(s.platformReportRuns))
+	for id, run := range s.platformReportRuns {
+		cloned[id] = graph.CloneReportRun(run)
+	}
+	return cloned
+}
+
+func (s *Server) persistPlatformReportRuns(runs map[string]*graph.ReportRun) error {
+	if s == nil || s.platformReportStore == nil {
+		return nil
+	}
+	return s.platformReportStore.SaveAll(runs)
+}
+
+func (s *Server) emitPlatformReportRunLifecycleEvent(ctx context.Context, eventType webhooks.EventType, reportID, runID string) {
+	run, ok := s.platformReportRunSnapshot(reportID, runID)
+	if !ok || run == nil {
+		return
+	}
+	payload := map[string]any{
+		"run_id":              run.ID,
+		"report_id":           run.ReportID,
+		"status":              run.Status,
+		"execution_mode":      run.ExecutionMode,
+		"submitted_at":        normalizeRFC3339(run.SubmittedAt),
+		"status_url":          run.StatusURL,
+		"parameter_count":     len(run.Parameters),
+		"materialized_result": run.Result != nil,
+	}
+	if run.StartedAt != nil {
+		payload["started_at"] = normalizeRFC3339(*run.StartedAt)
+	}
+	if run.CompletedAt != nil {
+		payload["completed_at"] = normalizeRFC3339(*run.CompletedAt)
+	}
+	if run.RequestedBy != "" {
+		payload["requested_by"] = run.RequestedBy
+	}
+	if run.CacheKey != "" {
+		payload["cache_key"] = run.CacheKey
+	}
+	if run.JobID != "" {
+		payload["job_id"] = run.JobID
+	}
+	if run.JobStatusURL != "" {
+		payload["job_status_url"] = run.JobStatusURL
+	}
+	if run.Error != "" {
+		payload["error"] = run.Error
+	}
+	if run.Snapshot != nil {
+		payload["snapshot_id"] = run.Snapshot.ID
+		payload["result_schema"] = run.Snapshot.ResultSchema
+		payload["section_count"] = run.Snapshot.SectionCount
+	}
+	s.emitPlatformLifecycleEvent(ctx, eventType, payload)
+}
+
+func (s *Server) emitPlatformReportSnapshotLifecycleEvent(ctx context.Context, reportID, runID string) {
+	run, ok := s.platformReportRunSnapshot(reportID, runID)
+	if !ok || run == nil || run.Snapshot == nil {
+		return
+	}
+	payload := map[string]any{
+		"snapshot_id":   run.Snapshot.ID,
+		"run_id":        run.ID,
+		"report_id":     run.ReportID,
+		"result_schema": run.Snapshot.ResultSchema,
+		"generated_at":  normalizeRFC3339(run.Snapshot.GeneratedAt),
+		"recorded_at":   normalizeRFC3339(run.Snapshot.RecordedAt),
+		"content_hash":  run.Snapshot.ContentHash,
+		"byte_size":     run.Snapshot.ByteSize,
+		"section_count": run.Snapshot.SectionCount,
+		"retained":      run.Snapshot.Retained,
+		"status_url":    run.StatusURL,
+	}
+	if run.Snapshot.ExpiresAt != nil {
+		payload["expires_at"] = normalizeRFC3339(*run.Snapshot.ExpiresAt)
+	}
+	if run.CacheKey != "" {
+		payload["cache_key"] = run.CacheKey
+	}
+	s.emitPlatformLifecycleEvent(ctx, webhooks.EventPlatformReportSnapshotMaterialized, payload)
 }

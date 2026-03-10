@@ -2,7 +2,7 @@
 
 Generated from `internal/app/app_config.go` (`LoadConfig`) via `go run ./scripts/generate_config_docs/main.go`.
 
-Total variables: **271**
+Total variables: **273**
 
 | Variable | Reader(s) | Default(s) | Config Field(s) |
 |---|---|---|---|
@@ -189,6 +189,8 @@ Total variables: **271**
 | `PINGONE_CLIENT_ID` | `getEnv` | `""` | `PingIdentityClientID` |
 | `PINGONE_CLIENT_SECRET` | `getEnv` | `""` | `PingIdentityClientSecret` |
 | `PINGONE_ENVIRONMENT_ID` | `getEnv` | `""` | `PingIdentityEnvironmentID` |
+| `PLATFORM_REPORT_RUN_STATE_FILE` | `getEnv` | `filepath.Join(".cerebro", "report-runs", "state.json")` | `PlatformReportRunStateFile` |
+| `PLATFORM_REPORT_SNAPSHOT_PATH` | `getEnv` | `filepath.Join(".cerebro", "report-runs", "snapshots")` | `PlatformReportSnapshotPath` |
 | `POLICIES_PATH` | `getEnv` | `"policies"` | `PoliciesPath` |
 | `QUALYS_PASSWORD` | `getEnv` | `""` | `QualysPassword` |
 | `QUALYS_PLATFORM` | `getEnv` | `"US1"` | `QualysPlatform` |

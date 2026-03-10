@@ -5,6 +5,107 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 19 - Durable Report Runs + Lifecycle Events + Typed Section Metadata (2026-03-09)
+
+### Review findings
+- [x] Gap: `ReportRun` had become a real platform resource, but its state still lived only in process memory, which made report execution history non-durable across restarts.
+- [x] Gap: report snapshots were modeled, but the platform lacked a concrete persistence split between lightweight run metadata and heavier materialized result payloads.
+- [x] Gap: report execution had no lifecycle event stream, which left downstream automation and audit flows blind to queued, started, completed, failed, and snapshot-materialized transitions.
+- [x] Gap: section summaries described content shape only loosely; they still needed typed envelope hints and stable field-key capture to support stronger autogeneration and UI/tool composition.
+- [x] Gap: the previous execution backlog in this file still treated persistence and lifecycle events as future work even though they had become the next structural constraint on report extensibility.
+
+### Research synthesis to adopt
+- [x] Backstage Scaffolder task model: execution resources should have durable identifiers, retrievable status, and step/status metadata rather than transient handler-local state.
+- [x] OpenMetadata test definition / test case split: typed definitions, instantiated parameterized executions, and execution history should stay separate resources with tight schemas.
+- [x] OpenLineage custom-facet rule: report lifecycle enrichments should remain schema-identifiable and namespaced instead of growing unbounded opaque payload maps.
+- [x] PROV-O derivation rule: report runs and snapshots are derived artifacts and should carry explicit execution, recording, and retention metadata.
+
+### Execution plan
+- [x] Persist report-run state durably:
+  - [x] Add `internal/graph/report_run_store.go`.
+  - [x] Persist report-run metadata atomically to a platform state file.
+  - [x] Persist materialized report results separately as compressed snapshot payload artifacts.
+  - [x] Restore persisted runs and snapshot payloads when the API server starts.
+  - [x] Add config paths for report-run state and snapshot storage.
+- [x] Emit report lifecycle events:
+  - [x] Add webhook/CloudEvent types for `platform.report_run.queued`.
+  - [x] Add webhook/CloudEvent types for `platform.report_run.started`.
+  - [x] Add webhook/CloudEvent types for `platform.report_run.completed`.
+  - [x] Add webhook/CloudEvent types for `platform.report_run.failed`.
+  - [x] Add webhook/CloudEvent types for `platform.report_snapshot.materialized`.
+  - [x] Extend generated lifecycle contracts to cover the new events.
+- [x] Tighten section result metadata:
+  - [x] Add `envelope_kind` to `ReportSectionResult`.
+  - [x] Add `field_keys` capture for object-backed section content.
+  - [x] Update OpenAPI to expose the stronger section contract.
+- [x] Add restart and lifecycle regression coverage:
+  - [x] Add graph-level persistence round-trip tests.
+  - [x] Add API-level restart recovery tests.
+  - [x] Add API-level lifecycle event emission tests.
+
+### Detailed follow-on backlog
+- [ ] Add report execution-history resources:
+  - [ ] `GET /api/v1/platform/intelligence/reports/{id}/runs/{run_id}/events`
+  - [ ] `GET /api/v1/platform/intelligence/reports/{id}/runs/{run_id}/attempts`
+  - [ ] `POST /api/v1/platform/intelligence/reports/{id}/runs/{run_id}:retry`
+  - [ ] `POST /api/v1/platform/intelligence/reports/{id}/runs/{run_id}:cancel`
+  - [ ] classify attempts as `transient`, `deterministic`, `cancelled`, or `superseded`
+  - [ ] store per-attempt execution host, actor, and triggering surface metadata
+- [ ] Add deeper execution metadata to `ReportRun` and `ReportSnapshot`:
+  - [ ] `graph_snapshot_id`
+  - [ ] `graph_schema_version`
+  - [ ] `ontology_contract_version`
+  - [ ] `report_definition_version`
+  - [ ] `storage_class` / retention tier
+  - [ ] `materialized_result_available` / `result_truncated`
+- [ ] Add section-level execution telemetry:
+  - [ ] per-section duration
+  - [ ] per-section cache hit/miss metadata
+  - [ ] per-section evidence/claim/source counts
+  - [ ] per-section partial-failure reporting
+  - [ ] per-section provenance edge materialization into the graph
+- [ ] Deepen typed section envelope infrastructure:
+  - [ ] publish JSON Schema for each `envelope_kind`
+  - [ ] add `network_slice`, `recommendations`, `evidence_list`, and `narrative_block` envelope contracts
+  - [ ] add envelope compatibility checks in CI
+  - [ ] add explicit section rendering hints separate from measure semantics
+- [ ] Add reusable dimensions and benchmark packs:
+  - [ ] dimensions registry with stable IDs and value types
+  - [ ] benchmark pack registry with threshold bands and rationale
+  - [ ] benchmark overlays by application family (`security`, `org`, `admin`)
+  - [ ] support benchmark inheritance and overrides
+  - [ ] attach benchmark provenance to report recommendations
+- [ ] Add a deeper reusable measure registry:
+  - [ ] canonical aggregation semantics (`sum`, `avg`, `latest`, `rate`, `percentile`)
+  - [ ] confidence/freshness qualifiers
+  - [ ] dimensional compatibility rules
+  - [ ] graph evidence/claim/source lineage hints
+  - [ ] machine-readable measure compatibility rules for generated tools/UI
+- [ ] Add a deeper reusable check/assertion registry:
+  - [ ] parameter schemas
+  - [ ] rationale and remediation templates
+  - [ ] history/trend storage
+  - [ ] waiver/suppression model with expiry and actor attribution
+  - [ ] recommendation-generation hooks and benchmark bindings
+- [ ] Add report-run retention and storage policy:
+  - [ ] expiration sweeper for persisted snapshots
+  - [ ] retention rules by report family and tenant
+  - [ ] materialized-result compaction for older runs
+  - [ ] stale-run detection for abandoned async executions
+  - [ ] storage migration path beyond local filesystem state
+- [ ] Deepen graph/report coupling where it creates real leverage:
+  - [ ] link report runs to graph snapshots and graph mutation lineage
+  - [ ] link section outputs to supporting claims/evidence/source nodes
+  - [ ] expose source trust and freshness decay as reusable measures
+  - [ ] materialize contradiction-aging and supportability trends
+  - [ ] reify high-value report recommendations into actions/decisions when operators accept them
+- [ ] Expand autogeneration around the report substrate:
+  - [ ] generate report-section envelope schemas
+  - [ ] generate benchmark-pack catalogs
+  - [ ] generate report compatibility diff summaries
+  - [ ] generate lifecycle-event docs/examples for report executions
+  - [ ] generate starter report-definition templates for new application families
+
 ## Deep Review Cycle 18 - Report Runs + Measure/Check Registries + Platform Query Parity (2026-03-09)
 
 ### Review findings
@@ -47,8 +148,8 @@ Status: executed end-to-end via PR workflow
   - [x] Record the deeper execution backlog below.
 
 ### Detailed follow-on backlog
-- [ ] Persist report runs beyond process memory:
-  - [ ] back runs with durable storage instead of in-memory maps
+- [x] Persist report runs beyond process memory:
+  - [x] back runs with durable storage instead of in-memory maps
   - [ ] support retention tiers by report family and tenant
   - [ ] add explicit snapshot expiry/reaping behavior
   - [ ] make cache invalidation depend on graph snapshot/version and schema version
@@ -58,17 +159,17 @@ Status: executed end-to-end via PR workflow
   - [ ] `POST /api/v1/platform/intelligence/reports/{id}/runs/{run_id}:cancel`
   - [ ] per-section timing and failure telemetry
   - [ ] retryability classification for transient vs deterministic failures
-- [ ] Add report lifecycle events:
-  - [ ] `cerebro.platform.report_run.queued`
-  - [ ] `cerebro.platform.report_run.started`
-  - [ ] `cerebro.platform.report_run.completed`
-  - [ ] `cerebro.platform.report_run.failed`
-  - [ ] `cerebro.platform.report_snapshot.materialized`
+- [x] Add report lifecycle events:
+  - [x] `platform.report_run.queued`
+  - [x] `platform.report_run.started`
+  - [x] `platform.report_run.completed`
+  - [x] `platform.report_run.failed`
+  - [x] `platform.report_snapshot.materialized`
 - [ ] Add typed section result envelopes:
-  - [ ] `summary`
+  - [x] `summary`
   - [ ] `timeseries`
-  - [ ] `distribution`
-  - [ ] `ranking`
+  - [x] `distribution`
+  - [x] `ranking`
   - [ ] `network_slice`
   - [ ] `recommendations`
   - [ ] `evidence_list`
