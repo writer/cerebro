@@ -134,7 +134,26 @@ def go_package_dirs(files: Iterable[str]) -> list[str]:
             dirs.add("./")
         else:
             dirs.add(f"./{directory}")
-    return sorted(dirs)
+    return sorted(filter_build_ignored_dirs(dirs))
+
+
+def filter_build_ignored_dirs(dirs: Iterable[str]) -> list[str]:
+    filtered: list[str] = []
+    for directory in dirs:
+        result = subprocess.run(
+            ["go", "list", directory],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            filtered.append(directory)
+            continue
+        combined = "\n".join(part for part in (result.stdout, result.stderr) if part)
+        if "build constraints exclude all Go files" in combined:
+            continue
+        filtered.append(directory)
+    return filtered
 
 
 def resolve_command(command: list[str]) -> list[str]:

@@ -1,10 +1,12 @@
 package app
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/evalops/cerebro/internal/apiauth"
@@ -21,6 +23,32 @@ func getEnv(key, fallback string) string {
 	return fallback
 }
 
+var configParseRecorder struct {
+	mu       sync.Mutex
+	problems *[]string
+}
+
+func withConfigParseRecorder(fn func()) []string {
+	configParseRecorder.mu.Lock()
+	defer configParseRecorder.mu.Unlock()
+
+	problems := make([]string, 0)
+	configParseRecorder.problems = &problems
+	defer func() {
+		configParseRecorder.problems = nil
+	}()
+
+	fn()
+	return normalizeConfigProblems(problems)
+}
+
+func recordConfigProblem(format string, args ...any) {
+	if configParseRecorder.problems == nil {
+		return
+	}
+	*configParseRecorder.problems = append(*configParseRecorder.problems, fmt.Sprintf(format, args...))
+}
+
 func getEnvInt(key string, fallback int) int {
 	value := strings.TrimSpace(getEnv(key, ""))
 	if value == "" {
@@ -28,6 +56,7 @@ func getEnvInt(key string, fallback int) int {
 	}
 	parsed, err := strconv.Atoi(value)
 	if err != nil {
+		recordConfigProblem("%s must be a valid integer", key)
 		return fallback
 	}
 	return parsed
@@ -38,7 +67,15 @@ func getEnvBool(key string, fallback bool) bool {
 	if value == "" {
 		return fallback
 	}
-	return value == "true" || value == "1" || value == "yes"
+	switch value {
+	case "true", "1", "yes":
+		return true
+	case "false", "0", "no":
+		return false
+	default:
+		recordConfigProblem("%s must be a valid boolean", key)
+		return fallback
+	}
 }
 
 func getEnvDuration(key string, fallback time.Duration) time.Duration {
@@ -48,6 +85,7 @@ func getEnvDuration(key string, fallback time.Duration) time.Duration {
 	}
 	parsed, err := time.ParseDuration(value)
 	if err != nil {
+		recordConfigProblem("%s must be a valid duration", key)
 		return fallback
 	}
 	return parsed
@@ -60,6 +98,7 @@ func getEnvFloat(key string, fallback float64) float64 {
 	}
 	parsed, err := strconv.ParseFloat(value, 64)
 	if err != nil {
+		recordConfigProblem("%s must be a valid number", key)
 		return fallback
 	}
 	return parsed
@@ -170,6 +209,7 @@ func parseDurationEnvMap(prefix string) map[string]time.Duration {
 		}
 		duration, err := time.ParseDuration(value)
 		if err != nil {
+			recordConfigProblem("%s must be a valid duration", key)
 			continue
 		}
 		suffix := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(key, prefix)))

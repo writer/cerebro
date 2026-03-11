@@ -188,6 +188,9 @@ func NewWithOptions(ctx context.Context, opts ...Option) (*App, error) {
 		cfg = LoadConfig()
 	}
 	cfg.RefreshProviderAwareConfig()
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
 
 	managedCredentialStore := apiauth.NewManagedCredentialStore(cfg.APICredentialStateFile)
 	if err := managedCredentialStore.Load(); err != nil {

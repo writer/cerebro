@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/evalops/cerebro/internal/apiauth"
 	"github.com/evalops/cerebro/internal/findings"
 	"github.com/evalops/cerebro/internal/policy"
 	"github.com/evalops/cerebro/internal/snowflake"
@@ -394,14 +396,71 @@ func TestNew_APIAuthEnabledWithoutKeys(t *testing.T) {
 }
 
 func TestNewWithConfig_APIAuthEnabledWithoutKeys(t *testing.T) {
-	cfg := &Config{
-		APIAuthEnabled: true,
-		PoliciesPath:   "policies",
-	}
+	cfg := LoadConfig()
+	cfg.APIAuthEnabled = true
+	cfg.APIKeys = nil
+	cfg.APICredentials = map[string]apiauth.Credential{}
 
 	_, err := NewWithConfig(context.Background(), cfg)
 	if err == nil {
 		t.Fatal("expected error when API auth enabled without API_KEYS")
+	}
+}
+
+func TestLoadConfigValidateAggregatesProblems(t *testing.T) {
+	t.Setenv("API_PORT", "not-a-port")
+	t.Setenv("API_CREDENTIALS_JSON", "{")
+	t.Setenv("QUERY_POLICY_ROW_LIMIT", "0")
+	t.Setenv("NATS_CONSUMER_ENABLED", "true")
+	t.Setenv("NATS_JETSTREAM_ENABLED", "false")
+	t.Setenv("GRAPH_CROSS_TENANT_REQUIRE_SIGNED_INGEST", "true")
+
+	cfg := LoadConfig()
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected config validation error")
+	}
+
+	var validationErr *ConfigValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected ConfigValidationError, got %T", err)
+	}
+
+	wantProblems := []string{
+		"API_PORT must be a valid integer",
+		"decode API_CREDENTIALS_JSON:",
+		"QUERY_POLICY_ROW_LIMIT must be greater than 0",
+		"NATS_JETSTREAM_ENABLED must be true when NATS_CONSUMER_ENABLED=true",
+		"GRAPH_CROSS_TENANT_SIGNING_KEY is required when GRAPH_CROSS_TENANT_REQUIRE_SIGNED_INGEST=true",
+	}
+	for _, want := range wantProblems {
+		found := false
+		for _, problem := range validationErr.Problems {
+			if strings.Contains(problem, want) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected validation problem containing %q, got %#v", want, validationErr.Problems)
+		}
+	}
+}
+
+func TestNewWithConfigFailsFastOnInvalidConfig(t *testing.T) {
+	cfg := LoadConfig()
+	cfg.Port = 0
+	cfg.QueryPolicyRowLimit = 0
+
+	_, err := NewWithConfig(context.Background(), cfg)
+	if err == nil {
+		t.Fatal("expected config validation error")
+	}
+	if !strings.Contains(err.Error(), "API_PORT must be between 1 and 65535") {
+		t.Fatalf("expected port validation error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "QUERY_POLICY_ROW_LIMIT must be greater than 0") {
+		t.Fatalf("expected query row limit validation error, got %v", err)
 	}
 }
 

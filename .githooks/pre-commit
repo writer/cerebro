@@ -29,5 +29,26 @@ fi
 
 mapfile -t STAGED_PACKAGE_DIRS < <(printf '%s\n' "${STAGED_FILES[@]}" | xargs -n1 dirname | sed 's#^\\.$#./#' | sort -u)
 
+FILTERED_PACKAGE_DIRS=()
+for dir in "${STAGED_PACKAGE_DIRS[@]}"; do
+  list_dir="$dir"
+  if [[ "$list_dir" != ./* && "$list_dir" != /* ]]; then
+    list_dir="./$list_dir"
+  fi
+  if output=$(go list "$list_dir" 2>&1); then
+    FILTERED_PACKAGE_DIRS+=("$list_dir")
+    continue
+  fi
+  if [[ "$output" == *"build constraints exclude all Go files"* ]]; then
+    continue
+  fi
+  echo "$output"
+  exit 1
+done
+
+if [ "${#FILTERED_PACKAGE_DIRS[@]}" -eq 0 ]; then
+  exit 0
+fi
+
 echo "golangci-lint: running fast checks on staged Go files..."
-golangci-lint run --fast-only --timeout 2m "${STAGED_PACKAGE_DIRS[@]}"
+golangci-lint run --fast-only --timeout 2m "${FILTERED_PACKAGE_DIRS[@]}"
