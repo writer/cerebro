@@ -1,6 +1,6 @@
-# Platform Transition Architecture
+# Platform Architecture Boundaries
 
-This document defines the architectural transition from a CSPM/security product with graph-like features into a domain-agnostic graph and intelligence platform where security remains the first major application surface.
+This document defines the platform boundary model for Cerebro's shared graph and intelligence services, with security remaining a primary application surface.
 
 Research inputs for this design are captured in [GRAPH_ONTOLOGY_EXTERNAL_PATTERNS.md](./GRAPH_ONTOLOGY_EXTERNAL_PATTERNS.md) and [GRAPH_ASSET_DEEPENING_RESEARCH.md](./GRAPH_ASSET_DEEPENING_RESEARCH.md), especially the contract and metadata patterns taken from Backstage, DataHub, OpenMetadata, OpenLineage, CloudEvents, and Cartography.
 
@@ -156,13 +156,13 @@ Cerebro currently exposes one API contract for two distinct layers:
 - a shared platform
 - a security application
 
-The transition work is to make that explicit in contracts, namespaces, and lifecycle boundaries.
+The goal is to make those layers explicit in contracts, namespaces, and lifecycle boundaries.
 
 ## 3. Target Platform Model
 
 ### Namespace Decision
 
-Use `/api/v1/platform/*` for all domain-agnostic shared primitives.
+Use `/api/v1/platform/*` for shared platform primitives.
 
 Rationale:
 
