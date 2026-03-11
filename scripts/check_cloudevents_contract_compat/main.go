@@ -97,6 +97,9 @@ func loadBaselineConfig(baseRef string) (graphingest.MappingConfig, string, erro
 		}
 		return config, candidate, nil
 	}
+	if _, err := os.Stat(mappingsPath); err == nil {
+		return graphingest.MappingConfig{}, "bootstrap:none", nil
+	}
 	return graphingest.MappingConfig{}, "", fmt.Errorf("no readable baseline mappings found for refs %v", candidates)
 }
 
