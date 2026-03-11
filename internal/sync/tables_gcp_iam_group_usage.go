@@ -13,6 +13,7 @@ import (
 	"cloud.google.com/go/iam/apiv1/iampb"
 	"cloud.google.com/go/logging"
 	"cloud.google.com/go/logging/logadmin"
+	"github.com/googleapis/gax-go/v2"
 	"google.golang.org/api/iterator"
 	auditpb "google.golang.org/genproto/googleapis/cloud/audit"
 )
@@ -20,7 +21,10 @@ import (
 const (
 	gcpIAMGroupPermissionUsageTable = "gcp_iam_group_permission_usage"
 	gcpIAMGroupUsageStatePrefix     = "gcp_iam_group_permission_usage"
+	gcpIAMUsageStatusUncertain      = "attribution_uncertain"
 )
+
+var errSkipGCPIAMGroupPermissionUsage = errors.New("gcp IAM group permission usage scan skipped: no target groups configured")
 
 func (e *GCPSyncEngine) gcpIAMGroupPermissionUsageTable() GCPTableSpec {
 	return GCPTableSpec{
@@ -50,8 +54,8 @@ func (e *GCPSyncEngine) gcpIAMGroupPermissionUsageTable() GCPTableSpec {
 
 func (e *GCPSyncEngine) fetchGCPIAMGroupPermissionUsage(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
 	if len(e.gcpIAMTargetGroups) == 0 {
-		e.logger.Warn("gcp IAM group permission usage table skipped: no target groups configured")
-		return nil, nil
+		e.logger.Info("gcp IAM group permission usage table skipped: no target groups configured")
+		return nil, errSkipGCPIAMGroupPermissionUsage
 	}
 
 	lookbackDays := clampPermissionUsageLookbackDays(e.permissionUsageLookbackDays)
@@ -65,7 +69,8 @@ func (e *GCPSyncEngine) fetchGCPIAMGroupPermissionUsage(ctx context.Context, pro
 
 	groupRoleBindings := extractTargetGroupRoles(policy, e.gcpIAMTargetGroups)
 	if len(groupRoleBindings) == 0 {
-		return nil, nil
+		e.logger.Info("gcp IAM group permission usage table skipped: target groups have no IAM bindings", "project_id", projectID)
+		return nil, errSkipGCPIAMGroupPermissionUsage
 	}
 
 	workspaceMembers, hasWorkspaceData := e.fetchWorkspaceGroupMembers(ctx, mapKeys(groupRoleBindings))
@@ -88,6 +93,7 @@ func (e *GCPSyncEngine) fetchGCPIAMGroupPermissionUsage(ctx context.Context, pro
 	}
 
 	rows := make([]map[string]interface{}, 0, 256)
+	hasResolvableTargetGrants := false
 
 	groups := mapKeys(groupRoleBindings)
 	sort.Strings(groups)
@@ -124,12 +130,23 @@ func (e *GCPSyncEngine) fetchGCPIAMGroupPermissionUsage(ctx context.Context, pro
 		if len(grantedPermissions) == 0 {
 			continue
 		}
+		hasResolvableTargetGrants = true
+
+		outsideGrantedPermissions, outsideRoleResolutionErr := e.resolvePermissionsGrantedOutsideGroup(
+			ctx,
+			iamClient,
+			policy,
+			group,
+			rolePermissionCache,
+			roleResolutionErrors,
+		)
 
 		cursorKey := fmt.Sprintf("%s:%s:%s", gcpIAMGroupUsageStatePrefix, projectID, group)
 		cursor, _ := e.loadPermissionUsageCursor(ctx, cursorKey)
 		windowStart := permissionUsageWindowStart(now, lookbackDays, cursor)
 
 		usedPermissions := make(map[string]time.Time)
+		ambiguousPermissions := make(map[string]time.Time)
 		membersObserved := make(map[string]struct{})
 		nextCursor := cursor
 		memberQueryFailed := false
@@ -152,6 +169,15 @@ func (e *GCPSyncEngine) fetchGCPIAMGroupPermissionUsage(ctx context.Context, pro
 					membersObserved[member] = struct{}{}
 				}
 				for permission, lastUsed := range memberUsage {
+					if _, granted := grantedPermissions[permission]; !granted {
+						continue
+					}
+					if _, ambiguous := outsideGrantedPermissions[permission]; ambiguous {
+						if existing, ok := ambiguousPermissions[permission]; !ok || lastUsed.After(existing) {
+							ambiguousPermissions[permission] = lastUsed
+						}
+						continue
+					}
 					if existing, ok := usedPermissions[permission]; !ok || lastUsed.After(existing) {
 						usedPermissions[permission] = lastUsed
 					}
@@ -165,6 +191,10 @@ func (e *GCPSyncEngine) fetchGCPIAMGroupPermissionUsage(ctx context.Context, pro
 		sort.Strings(permissions)
 		for _, permission := range permissions {
 			lastSeen := usedPermissions[permission]
+			ambiguousLastSeen := ambiguousPermissions[permission]
+			if ambiguousLastSeen.After(lastSeen) {
+				lastSeen = ambiguousLastSeen
+			}
 			if existing := existingLastSeen[permission]; existing.After(lastSeen) {
 				lastSeen = existing
 			}
@@ -175,7 +205,10 @@ func (e *GCPSyncEngine) fetchGCPIAMGroupPermissionUsage(ctx context.Context, pro
 
 			if !lastSeen.IsZero() {
 				daysUnused = int(now.Sub(lastSeen).Hours() / 24)
-				if lastSeen.After(usageCutoff) {
+				if ambiguousLastSeen.After(usageCutoff) {
+					usageStatus = gcpIAMUsageStatusUncertain
+					recommendation = fmt.Sprintf("Permission %s was observed in audit logs for members of group %s, but this permission is also granted outside the group bindings in project %s; verify attribution before removing the role grant.", permission, group, projectID)
+				} else if lastSeen.After(usageCutoff) {
 					usageStatus = "used"
 					recommendation = ""
 				}
@@ -192,6 +225,14 @@ func (e *GCPSyncEngine) fetchGCPIAMGroupPermissionUsage(ctx context.Context, pro
 				confidence = "medium"
 			}
 			if groupRoleResolutionErr && confidence != "low" {
+				coverage = "partial"
+				confidence = "medium"
+			}
+			if outsideRoleResolutionErr && confidence != "low" {
+				coverage = "partial"
+				confidence = "medium"
+			}
+			if usageStatus == gcpIAMUsageStatusUncertain && confidence == "high" {
 				coverage = "partial"
 				confidence = "medium"
 			}
@@ -237,7 +278,75 @@ func (e *GCPSyncEngine) fetchGCPIAMGroupPermissionUsage(ctx context.Context, pro
 		}
 	}
 
+	if !hasResolvableTargetGrants {
+		e.logger.Info("gcp IAM group permission usage table skipped: target group grants could not be resolved", "project_id", projectID)
+		return nil, errSkipGCPIAMGroupPermissionUsage
+	}
+
 	return rows, nil
+}
+
+func (e *GCPSyncEngine) resolvePermissionsGrantedOutsideGroup(
+	ctx context.Context,
+	iamClient gcpRolePermissionClient,
+	policy *iampb.Policy,
+	targetGroup string,
+	rolePermissionCache map[string][]string,
+	roleResolutionErrors map[string]error,
+) (map[string]struct{}, bool) {
+	outsidePermissions := make(map[string]struct{})
+	if policy == nil {
+		return outsidePermissions, false
+	}
+
+	hadResolutionError := false
+	for _, binding := range policy.Bindings {
+		if binding == nil || strings.TrimSpace(binding.Role) == "" {
+			continue
+		}
+		if bindingIsExclusiveToGroup(binding, targetGroup) {
+			continue
+		}
+
+		permissions, resolveErr := fetchGCPRolePermissions(ctx, iamClient, binding.Role, rolePermissionCache)
+		if resolveErr != nil {
+			roleResolutionErrors[binding.Role] = resolveErr
+			hadResolutionError = true
+			continue
+		}
+
+		for _, permission := range permissions {
+			normalized := strings.TrimSpace(permission)
+			if normalized == "" {
+				continue
+			}
+			outsidePermissions[normalized] = struct{}{}
+		}
+	}
+
+	return outsidePermissions, hadResolutionError
+}
+
+func bindingIsExclusiveToGroup(binding *iampb.Binding, targetGroup string) bool {
+	targetGroup = strings.ToLower(strings.TrimSpace(targetGroup))
+	if binding == nil || targetGroup == "" || len(binding.Members) == 0 {
+		return false
+	}
+
+	hasTargetGroup := false
+	for _, member := range binding.Members {
+		memberType, email := parseGCPMember(member)
+		if !strings.EqualFold(memberType, "group") {
+			return false
+		}
+		normalizedGroup := strings.ToLower(strings.TrimSpace(email))
+		if normalizedGroup != targetGroup {
+			return false
+		}
+		hasTargetGroup = true
+	}
+
+	return hasTargetGroup
 }
 
 func extractTargetGroupRoles(policy *iampb.Policy, targets map[string]struct{}) map[string][]string {
@@ -270,14 +379,6 @@ func extractTargetGroupRoles(policy *iampb.Policy, targets map[string]struct{}) 
 		}
 	}
 
-	if len(targets) > 0 {
-		for group := range targets {
-			if _, ok := roleSetByGroup[group]; !ok {
-				roleSetByGroup[group] = make(map[string]struct{})
-			}
-		}
-	}
-
 	rolesByGroup := make(map[string][]string, len(roleSetByGroup))
 	for group, roles := range roleSetByGroup {
 		if len(roles) == 0 {
@@ -295,7 +396,11 @@ func extractTargetGroupRoles(policy *iampb.Policy, targets map[string]struct{}) 
 	return rolesByGroup
 }
 
-func fetchGCPRolePermissions(ctx context.Context, client *admin.IamClient, role string, cache map[string][]string) ([]string, error) {
+type gcpRolePermissionClient interface {
+	GetRole(ctx context.Context, req *adminpb.GetRoleRequest, opts ...gax.CallOption) (*adminpb.Role, error)
+}
+
+func fetchGCPRolePermissions(ctx context.Context, client gcpRolePermissionClient, role string, cache map[string][]string) ([]string, error) {
 	if cached, ok := cache[role]; ok {
 		return cached, nil
 	}

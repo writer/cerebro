@@ -201,6 +201,11 @@ func (e *GCPSyncEngine) syncTable(ctx context.Context, table GCPTableSpec) (Sync
 
 	rows, err := e.fetchWithRetry(ctx, table)
 	if err != nil {
+		if errors.Is(err, errSkipGCPIAMGroupPermissionUsage) {
+			e.logger.Info("skipping gcp table sync", "table", table.Name, "project_id", e.projectID, "reason", err.Error())
+			result.Duration = time.Since(start)
+			return result, nil
+		}
 		e.logger.Error("fetch failed", "table", table.Name, "error", err)
 		result.Errors = 1
 		result.Error = err.Error()

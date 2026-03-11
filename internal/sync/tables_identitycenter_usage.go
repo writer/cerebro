@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -23,10 +24,33 @@ const (
 	awsIdentityCenterIncrementalLookback  = 5 * time.Minute
 )
 
+var awsIdentityCenterProbeFallbackRegions = []string{
+	"us-east-1", "us-east-2", "us-west-1", "us-west-2",
+	"ca-central-1", "ca-west-1",
+	"eu-west-1", "eu-west-2", "eu-west-3", "eu-central-1", "eu-central-2", "eu-north-1", "eu-south-1", "eu-south-2",
+	"ap-south-1", "ap-south-2", "ap-east-1",
+	"ap-northeast-1", "ap-northeast-2", "ap-northeast-3",
+	"ap-southeast-1", "ap-southeast-2", "ap-southeast-3", "ap-southeast-4", "ap-southeast-5",
+	"me-south-1", "me-central-1", "il-central-1",
+	"sa-east-1", "af-south-1",
+	"us-gov-east-1", "us-gov-west-1",
+}
+
 type awsTrackedActionUsage struct {
 	LastAccessedTime   time.Time
 	LastAccessedEntity string
 	LastAccessedRegion string
+}
+
+type identityCenterRegionScan struct {
+	Region    string
+	Client    *ssoadmin.Client
+	Instances []ssoadmintypes.InstanceMetadata
+}
+
+type permissionSetGrantedActions struct {
+	Actions  []string
+	Complete bool
 }
 
 func (e *SyncEngine) awsIdentityCenterPermissionSetUsageTable() TableSpec {
@@ -72,16 +96,14 @@ func (e *SyncEngine) fetchAWSIdentityCenterPermissionSetUsage(ctx context.Contex
 	if accountID == "" {
 		return nil, nil
 	}
-
-	adminClient := ssoadmin.NewFromConfig(cfg)
 	iamClient := iam.NewFromConfig(cfg)
 
-	instances, err := listIdentityCenterInstances(ctx, adminClient)
+	regionScans, err := e.discoverIdentityCenterRegions(ctx, cfg, region)
 	if err != nil {
-		e.logger.Warn("identity center instance listing failed, skipping table", "table", awsIdentityCenterPermissionUsageTable, "error", err)
+		e.logger.Warn("identity center region discovery failed, skipping table", "table", awsIdentityCenterPermissionUsageTable, "error", err)
 		return nil, nil
 	}
-	if len(instances) == 0 {
+	if len(regionScans) == 0 {
 		return nil, nil
 	}
 
@@ -95,172 +117,305 @@ func (e *SyncEngine) fetchAWSIdentityCenterPermissionSetUsage(ctx context.Contex
 	customerPolicyActions := make(map[string][]string)
 	rows := make([]map[string]interface{}, 0, 256)
 
-	for _, instance := range instances {
-		instanceArn := aws.ToString(instance.InstanceArn)
-		identityStoreID := aws.ToString(instance.IdentityStoreId)
-		if instanceArn == "" {
-			continue
-		}
-
-		permissionSetArns, psErr := listPermissionSetARNs(ctx, adminClient, instanceArn)
-		if psErr != nil {
-			e.logger.Warn("failed to list identity center permission sets", "instance_arn", instanceArn, "error", psErr)
-			continue
-		}
-
-		for _, permissionSetArn := range permissionSetArns {
-			permissionSet, descErr := describePermissionSet(ctx, adminClient, instanceArn, permissionSetArn)
-			if descErr != nil || permissionSet == nil {
-				e.logger.Warn("failed to describe permission set", "instance_arn", instanceArn, "permission_set_arn", permissionSetArn, "error", descErr)
+	for _, scan := range regionScans {
+		for _, instance := range scan.Instances {
+			instanceArn := aws.ToString(instance.InstanceArn)
+			identityStoreID := aws.ToString(instance.IdentityStoreId)
+			if instanceArn == "" {
 				continue
 			}
 
-			permissionSetName := aws.ToString(permissionSet.Name)
-			if !e.shouldIncludePermissionSet(permissionSetName, permissionSetArn) {
+			permissionSetArns, psErr := listPermissionSetARNs(ctx, scan.Client, instanceArn)
+			if psErr != nil {
+				e.logger.Warn("failed to list identity center permission sets", "instance_arn", instanceArn, "region", scan.Region, "error", psErr)
 				continue
 			}
 
-			provisionedAccounts, accountErr := listProvisionedAccountsForPermissionSet(ctx, adminClient, instanceArn, permissionSetArn)
-			if accountErr != nil {
-				e.logger.Warn("failed to list provisioned accounts for permission set", "permission_set_arn", permissionSetArn, "error", accountErr)
-				continue
-			}
-			if !containsStringValue(provisionedAccounts, accountID) {
-				e.deleteIdentityCenterUsageRowsByPermissionSet(ctx, permissionSetArn, accountID)
-				continue
-			}
-
-			assignmentCount, assignmentErr := countPermissionSetAssignments(ctx, adminClient, instanceArn, permissionSetArn, accountID)
-			if assignmentErr != nil {
-				e.logger.Warn("failed to count permission set assignments", "permission_set_arn", permissionSetArn, "account_id", accountID, "error", assignmentErr)
-			}
-
-			role := resolveReservedSSORole(reservedRoles, permissionSetName)
-			if role == nil {
-				e.logger.Warn("no AWSReservedSSO role found for permission set in account", "permission_set_name", permissionSetName, "permission_set_arn", permissionSetArn, "account_id", accountID)
-				e.deleteIdentityCenterUsageRowsByPermissionSet(ctx, permissionSetArn, accountID)
-				continue
-			}
-
-			roleArn := aws.ToString(role.Arn)
-			roleName := aws.ToString(role.RoleName)
-			if roleArn == "" || roleName == "" {
-				continue
-			}
-
-			grantedActions, grantErr := e.resolvePermissionSetGrantedActions(
-				ctx,
-				adminClient,
-				iamClient,
-				instanceArn,
-				permissionSetArn,
-				accountID,
-				managedPolicyActions,
-				customerPolicyActions,
-			)
-			if grantErr != nil {
-				e.logger.Warn("failed to resolve granted actions for permission set", "permission_set_arn", permissionSetArn, "error", grantErr)
-				continue
-			}
-			if len(grantedActions) == 0 {
-				e.deleteStaleIdentityCenterUsageRows(ctx, permissionSetArn, roleArn, nil)
-				continue
-			}
-
-			stateKey := fmt.Sprintf("%s:%s:%s:%s", awsIdentityCenterStatePrefix, accountID, instanceArn, permissionSetArn)
-			cursor, _ := e.loadPermissionUsageCursor(ctx, stateKey)
-			windowStart := permissionUsageWindowStart(now, lookbackDays, cursor)
-
-			trackedActions, usageErr := fetchRoleActionLastAccess(ctx, iamClient, roleArn)
-			if usageErr != nil {
-				e.logger.Warn("failed to fetch role action usage from access advisor", "role_arn", roleArn, "error", usageErr)
-				continue
-			}
-
-			existingLastSeen := e.loadExistingAWSPermissionActionLastSeen(ctx, permissionSetArn, roleArn)
-			nextCursor := permissionUsageCursor{Time: now, ID: roleArn}
-
-			sort.Strings(grantedActions)
-			for _, action := range grantedActions {
-				usage, wildcardMatch := resolveTrackedActionUsage(action, trackedActions)
-				lastSeen := usage.LastAccessedTime.UTC()
-				if existing := existingLastSeen[strings.ToLower(action)]; existing.After(lastSeen) {
-					lastSeen = existing
+			for _, permissionSetArn := range permissionSetArns {
+				permissionSetArn = strings.TrimSpace(permissionSetArn)
+				if permissionSetArn == "" {
+					continue
 				}
 
-				if !lastSeen.IsZero() {
-					nextCursor = cursorAfter(nextCursor, permissionUsageCursor{Time: lastSeen, ID: strings.ToLower(action)})
+				permissionSet, descErr := describePermissionSet(ctx, scan.Client, instanceArn, permissionSetArn)
+				if descErr != nil || permissionSet == nil {
+					e.logger.Warn("failed to describe permission set", "instance_arn", instanceArn, "permission_set_arn", permissionSetArn, "region", scan.Region, "error", descErr)
+					continue
 				}
 
-				usageStatus := "unused"
-				recommendation := ""
-				daysUnused := lookbackDays
-				coverage := "full"
-				confidence := "high"
-
-				if wildcardMatch {
-					coverage = "partial"
-					confidence = "medium"
+				permissionSetName := aws.ToString(permissionSet.Name)
+				if !e.shouldIncludePermissionSet(permissionSetName, permissionSetArn) {
+					e.deleteIdentityCenterUsageRowsByPermissionSet(ctx, permissionSetArn, accountID)
+					continue
 				}
 
-				if !lastSeen.IsZero() {
-					daysUnused = int(now.Sub(lastSeen).Hours() / 24)
-					if lastSeen.After(usageCutoff) {
-						usageStatus = "used"
+				provisionedAccounts, accountErr := listProvisionedAccountsForPermissionSet(ctx, scan.Client, instanceArn, permissionSetArn)
+				if accountErr != nil {
+					e.logger.Warn("failed to list provisioned accounts for permission set", "permission_set_arn", permissionSetArn, "error", accountErr)
+					continue
+				}
+				if !containsStringValue(provisionedAccounts, accountID) {
+					e.deleteIdentityCenterUsageRowsByPermissionSet(ctx, permissionSetArn, accountID)
+					continue
+				}
+
+				assignmentCount, assignmentErr := countPermissionSetAssignments(ctx, scan.Client, instanceArn, permissionSetArn, accountID)
+				if assignmentErr != nil {
+					e.logger.Warn("failed to count permission set assignments", "permission_set_arn", permissionSetArn, "account_id", accountID, "error", assignmentErr)
+				}
+
+				role := resolveReservedSSORole(reservedRoles, permissionSetName)
+				if role == nil {
+					e.logger.Warn("no AWSReservedSSO role found for permission set in account", "permission_set_name", permissionSetName, "permission_set_arn", permissionSetArn, "account_id", accountID)
+					e.deleteIdentityCenterUsageRowsByPermissionSet(ctx, permissionSetArn, accountID)
+					continue
+				}
+
+				roleArn := aws.ToString(role.Arn)
+				roleName := aws.ToString(role.RoleName)
+				if roleArn == "" || roleName == "" {
+					continue
+				}
+
+				grantedActions, grantErr := e.resolvePermissionSetGrantedActions(
+					ctx,
+					scan.Client,
+					iamClient,
+					instanceArn,
+					permissionSetArn,
+					accountID,
+					managedPolicyActions,
+					customerPolicyActions,
+				)
+				if grantErr != nil {
+					e.logger.Warn("failed to resolve granted actions for permission set", "permission_set_arn", permissionSetArn, "error", grantErr)
+					continue
+				}
+				if !grantedActions.Complete {
+					e.logger.Warn("skipping identity center permission usage update due incomplete policy resolution", "permission_set_arn", permissionSetArn, "region", scan.Region)
+					continue
+				}
+				if len(grantedActions.Actions) == 0 {
+					e.deleteStaleIdentityCenterUsageRows(ctx, permissionSetArn, roleArn, nil)
+					continue
+				}
+
+				stateKey := fmt.Sprintf("%s:%s:%s:%s", awsIdentityCenterStatePrefix, accountID, instanceArn, permissionSetArn)
+				cursor, _ := e.loadPermissionUsageCursor(ctx, stateKey)
+				windowStart := permissionUsageWindowStart(now, lookbackDays, cursor)
+
+				trackedActions, usageErr := fetchRoleActionLastAccess(ctx, iamClient, roleArn)
+				if usageErr != nil {
+					e.logger.Warn("failed to fetch role action usage from access advisor", "role_arn", roleArn, "error", usageErr)
+					continue
+				}
+
+				existingLastSeen := e.loadExistingAWSPermissionActionLastSeen(ctx, permissionSetArn, roleArn)
+				nextCursor := permissionUsageCursor{Time: now, ID: roleArn}
+
+				sort.Strings(grantedActions.Actions)
+				for _, action := range grantedActions.Actions {
+					usage, wildcardMatch := resolveTrackedActionUsage(action, trackedActions)
+					lastSeen := usage.LastAccessedTime.UTC()
+					if existing := existingLastSeen[strings.ToLower(action)]; existing.After(lastSeen) {
+						lastSeen = existing
 					}
+
+					if !lastSeen.IsZero() {
+						nextCursor = cursorAfter(nextCursor, permissionUsageCursor{Time: lastSeen, ID: strings.ToLower(action)})
+					}
+
+					usageStatus := "unused"
+					recommendation := ""
+					daysUnused := lookbackDays
+					coverage := "full"
+					confidence := "high"
+
+					if wildcardMatch {
+						coverage = "partial"
+						confidence = "medium"
+					}
+
+					if !lastSeen.IsZero() {
+						daysUnused = int(now.Sub(lastSeen).Hours() / 24)
+						if lastSeen.After(usageCutoff) {
+							usageStatus = "used"
+						}
+					}
+
+					if usageStatus == "unused" {
+						recommendation = fmt.Sprintf("Permission %s appears unused for this permission set in the last %d days; consider removing it from the Identity Center permission set.", action, lookbackDays)
+					}
+
+					rowID := fmt.Sprintf("%s|%s|%s|%s", instanceArn, permissionSetArn, roleArn, strings.ToLower(action))
+					row := map[string]interface{}{
+						"_cq_id":                       rowID,
+						"arn":                          rowID,
+						"account_id":                   accountID,
+						"region":                       scan.Region,
+						"identity_center_instance_arn": instanceArn,
+						"identity_store_id":            identityStoreID,
+						"permission_set_arn":           permissionSetArn,
+						"permission_set_name":          permissionSetName,
+						"sso_role_name":                roleName,
+						"sso_role_arn":                 roleArn,
+						"assignment_count":             assignmentCount,
+						"action":                       action,
+						"usage_status":                 usageStatus,
+						"days_unused":                  daysUnused,
+						"lookback_days":                lookbackDays,
+						"recommendation":               recommendation,
+						"evidence_source":              "aws_iam_access_advisor_action_level",
+						"confidence":                   confidence,
+						"coverage":                     coverage,
+						"scan_window_start":            windowStart,
+						"scan_window_end":              now,
+					}
+
+					if !lastSeen.IsZero() {
+						row["action_last_accessed"] = lastSeen
+					}
+					if usage.LastAccessedEntity != "" {
+						row["last_authenticated_entity"] = usage.LastAccessedEntity
+					}
+					if usage.LastAccessedRegion != "" {
+						row["last_authenticated_region"] = usage.LastAccessedRegion
+					}
+
+					rows = append(rows, row)
 				}
 
-				if usageStatus == "unused" {
-					recommendation = fmt.Sprintf("Permission %s appears unused for this permission set in the last %d days; consider removing it from the Identity Center permission set.", action, lookbackDays)
+				if err := e.savePermissionUsageCursor(ctx, stateKey, nextCursor); err != nil {
+					e.logger.Warn("failed to persist identity center usage cursor", "state_key", stateKey, "error", err)
 				}
 
-				rowID := fmt.Sprintf("%s|%s|%s|%s", instanceArn, permissionSetArn, roleArn, strings.ToLower(action))
-				row := map[string]interface{}{
-					"_cq_id":                       rowID,
-					"arn":                          rowID,
-					"account_id":                   accountID,
-					"region":                       region,
-					"identity_center_instance_arn": instanceArn,
-					"identity_store_id":            identityStoreID,
-					"permission_set_arn":           permissionSetArn,
-					"permission_set_name":          permissionSetName,
-					"sso_role_name":                roleName,
-					"sso_role_arn":                 roleArn,
-					"assignment_count":             assignmentCount,
-					"action":                       action,
-					"usage_status":                 usageStatus,
-					"days_unused":                  daysUnused,
-					"lookback_days":                lookbackDays,
-					"recommendation":               recommendation,
-					"evidence_source":              "aws_iam_access_advisor_action_level",
-					"confidence":                   confidence,
-					"coverage":                     coverage,
-					"scan_window_start":            windowStart,
-					"scan_window_end":              now,
-				}
-
-				if !lastSeen.IsZero() {
-					row["action_last_accessed"] = lastSeen
-				}
-				if usage.LastAccessedEntity != "" {
-					row["last_authenticated_entity"] = usage.LastAccessedEntity
-				}
-				if usage.LastAccessedRegion != "" {
-					row["last_authenticated_region"] = usage.LastAccessedRegion
-				}
-
-				rows = append(rows, row)
+				e.deleteStaleIdentityCenterUsageRows(ctx, permissionSetArn, roleArn, grantedActions.Actions)
 			}
 
-			if err := e.savePermissionUsageCursor(ctx, stateKey, nextCursor); err != nil {
-				e.logger.Warn("failed to persist identity center usage cursor", "state_key", stateKey, "error", err)
-			}
-
-			e.deleteStaleIdentityCenterUsageRows(ctx, permissionSetArn, roleArn, grantedActions)
+			e.deleteIdentityCenterUsageRowsNotInInstance(ctx, instanceArn, accountID, permissionSetArns)
 		}
 	}
 
 	return rows, nil
+}
+
+func (e *SyncEngine) discoverIdentityCenterRegions(ctx context.Context, cfg aws.Config, preferredRegion string) ([]identityCenterRegionScan, error) {
+	candidateRegions := identityCenterProbeRegions(preferredRegion, cfg.Region, e.regions, awsIdentityCenterProbeFallbackRegions)
+	if len(candidateRegions) == 0 {
+		candidateRegions = []string{"us-east-1"}
+	}
+
+	regionScans := make([]identityCenterRegionScan, 0, len(candidateRegions))
+	var lastErr error
+	for _, probeRegion := range candidateRegions {
+		regionalCfg := cfg.Copy()
+		regionalCfg.Region = probeRegion
+		adminClient := ssoadmin.NewFromConfig(regionalCfg)
+		instances, err := listIdentityCenterInstances(ctx, adminClient)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if len(instances) == 0 {
+			continue
+		}
+		regionScans = append(regionScans, identityCenterRegionScan{
+			Region:    probeRegion,
+			Client:    adminClient,
+			Instances: instances,
+		})
+	}
+
+	if len(regionScans) > 0 {
+		return regionScans, nil
+	}
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, nil
+}
+
+func identityCenterProbeRegions(preferredRegion, cfgRegion string, configured []string, defaults []string) []string {
+	regions := make([]string, 0, 1+len(configured)+len(defaults)+1)
+	seen := make(map[string]struct{}, 1+len(configured)+len(defaults)+1)
+
+	appendRegion := func(value string) {
+		normalized := strings.ToLower(strings.TrimSpace(value))
+		if normalized == "" {
+			return
+		}
+		if _, ok := seen[normalized]; ok {
+			return
+		}
+		seen[normalized] = struct{}{}
+		regions = append(regions, normalized)
+	}
+
+	appendRegion(preferredRegion)
+	appendRegion(cfgRegion)
+	for _, region := range configured {
+		appendRegion(region)
+	}
+	for _, region := range defaults {
+		appendRegion(region)
+	}
+
+	return regions
+}
+
+func (e *SyncEngine) deleteIdentityCenterUsageRowsNotInInstance(ctx context.Context, instanceArn, accountID string, currentPermissionSetARNs []string) {
+	if e.sf == nil || strings.TrimSpace(instanceArn) == "" || strings.TrimSpace(accountID) == "" {
+		return
+	}
+
+	filtered := make([]string, 0, len(currentPermissionSetARNs))
+	seen := make(map[string]struct{}, len(currentPermissionSetARNs))
+	for _, arn := range currentPermissionSetARNs {
+		normalized := strings.TrimSpace(arn)
+		if normalized == "" {
+			continue
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		filtered = append(filtered, normalized)
+	}
+
+	var (
+		query string
+		args  []interface{}
+	)
+
+	if len(filtered) == 0 {
+		query = fmt.Sprintf(
+			"DELETE FROM %s WHERE identity_center_instance_arn = ? AND account_id = ?",
+			awsIdentityCenterPermissionUsageTable,
+		)
+		args = []interface{}{instanceArn, accountID}
+	} else {
+		placeholders := strings.TrimRight(strings.Repeat("?,", len(filtered)), ",")
+		query = fmt.Sprintf(
+			"DELETE FROM %s WHERE identity_center_instance_arn = ? AND account_id = ? AND permission_set_arn NOT IN (%s)",
+			awsIdentityCenterPermissionUsageTable,
+			placeholders,
+		)
+		args = make([]interface{}, 0, len(filtered)+2)
+		args = append(args, instanceArn, accountID)
+		for _, arn := range filtered {
+			args = append(args, arn)
+		}
+	}
+
+	if _, err := e.sf.Exec(ctx, query, args...); err != nil {
+		if !strings.Contains(strings.ToLower(err.Error()), "does not exist") {
+			e.logger.Warn("failed to clean stale identity center usage rows for missing permission sets",
+				"instance_arn", instanceArn,
+				"account_id", accountID,
+				"error", err,
+			)
+		}
+	}
 }
 
 func (e *SyncEngine) deleteStaleIdentityCenterUsageRows(ctx context.Context, permissionSetArn, roleArn string, currentActions []string) {
@@ -333,12 +488,13 @@ func (e *SyncEngine) resolvePermissionSetGrantedActions(
 	accountID string,
 	managedPolicyActions map[string][]string,
 	customerPolicyActions map[string][]string,
-) ([]string, error) {
+) (permissionSetGrantedActions, error) {
 	actionsSet := make(map[string]struct{})
+	resolutionComplete := true
 
 	managedPolicies, err := listManagedPoliciesForPermissionSet(ctx, adminClient, instanceArn, permissionSetArn)
 	if err != nil {
-		return nil, err
+		return permissionSetGrantedActions{}, err
 	}
 	for _, policy := range managedPolicies {
 		policyArn := aws.ToString(policy.Arn)
@@ -349,6 +505,7 @@ func (e *SyncEngine) resolvePermissionSetGrantedActions(
 		if !ok {
 			doc, docErr := fetchIAMPolicyDocument(ctx, iamClient, policyArn)
 			if docErr != nil {
+				resolutionComplete = false
 				continue
 			}
 			actions = extractAllowActionsFromPolicyDocument(doc)
@@ -361,7 +518,7 @@ func (e *SyncEngine) resolvePermissionSetGrantedActions(
 
 	customerManagedPolicies, err := listCustomerManagedPoliciesForPermissionSet(ctx, adminClient, instanceArn, permissionSetArn)
 	if err != nil {
-		return nil, err
+		return permissionSetGrantedActions{}, err
 	}
 	for _, policy := range customerManagedPolicies {
 		policyArn := customerManagedPolicyARN(accountID, aws.ToString(policy.Path), aws.ToString(policy.Name))
@@ -372,6 +529,7 @@ func (e *SyncEngine) resolvePermissionSetGrantedActions(
 		if !ok {
 			doc, docErr := fetchIAMPolicyDocument(ctx, iamClient, policyArn)
 			if docErr != nil {
+				resolutionComplete = false
 				continue
 			}
 			actions = extractAllowActionsFromPolicyDocument(doc)
@@ -384,10 +542,11 @@ func (e *SyncEngine) resolvePermissionSetGrantedActions(
 
 	inlinePolicy, err := getInlinePolicyForPermissionSet(ctx, adminClient, instanceArn, permissionSetArn)
 	if err != nil {
-		return nil, err
-	}
-	for _, action := range extractAllowActionsFromPolicyDocument(inlinePolicy) {
-		actionsSet[action] = struct{}{}
+		resolutionComplete = false
+	} else {
+		for _, action := range extractAllowActionsFromPolicyDocument(inlinePolicy) {
+			actionsSet[action] = struct{}{}
+		}
 	}
 
 	actions := make([]string, 0, len(actionsSet))
@@ -395,7 +554,7 @@ func (e *SyncEngine) resolvePermissionSetGrantedActions(
 		actions = append(actions, action)
 	}
 	sort.Strings(actions)
-	return actions, nil
+	return permissionSetGrantedActions{Actions: actions, Complete: resolutionComplete}, nil
 }
 
 func (e *SyncEngine) loadExistingAWSPermissionActionLastSeen(ctx context.Context, permissionSetArn, roleArn string) map[string]time.Time {
@@ -582,7 +741,17 @@ func getInlinePolicyForPermissionSet(ctx context.Context, client *ssoadmin.Clien
 	return strings.TrimSpace(aws.ToString(out.InlinePolicy)), nil
 }
 
-func fetchIAMPolicyDocument(ctx context.Context, client *iam.Client, policyArn string) (string, error) {
+type iamPolicyDocumentClient interface {
+	GetPolicy(ctx context.Context, params *iam.GetPolicyInput, optFns ...func(*iam.Options)) (*iam.GetPolicyOutput, error)
+	GetPolicyVersion(ctx context.Context, params *iam.GetPolicyVersionInput, optFns ...func(*iam.Options)) (*iam.GetPolicyVersionOutput, error)
+}
+
+type iamServiceLastAccessClient interface {
+	GenerateServiceLastAccessedDetails(ctx context.Context, params *iam.GenerateServiceLastAccessedDetailsInput, optFns ...func(*iam.Options)) (*iam.GenerateServiceLastAccessedDetailsOutput, error)
+	GetServiceLastAccessedDetails(ctx context.Context, params *iam.GetServiceLastAccessedDetailsInput, optFns ...func(*iam.Options)) (*iam.GetServiceLastAccessedDetailsOutput, error)
+}
+
+func fetchIAMPolicyDocument(ctx context.Context, client iamPolicyDocumentClient, policyArn string) (string, error) {
 	policyOut, err := client.GetPolicy(ctx, &iam.GetPolicyInput{PolicyArn: aws.String(policyArn)})
 	if err != nil || policyOut.Policy == nil {
 		return "", err
@@ -598,7 +767,12 @@ func fetchIAMPolicyDocument(ctx context.Context, client *iam.Client, policyArn s
 	if err != nil || versionOut.PolicyVersion == nil {
 		return "", err
 	}
-	return aws.ToString(versionOut.PolicyVersion.Document), nil
+
+	document := aws.ToString(versionOut.PolicyVersion.Document)
+	if decoded, decodeErr := url.QueryUnescape(document); decodeErr == nil {
+		document = decoded
+	}
+	return document, nil
 }
 
 func extractAllowActionsFromPolicyDocument(document string) []string {
@@ -673,7 +847,7 @@ func reservedSSORolePrefix(permissionSetName string) string {
 	return b.String()
 }
 
-func fetchRoleActionLastAccess(ctx context.Context, client *iam.Client, roleArn string) (map[string]awsTrackedActionUsage, error) {
+func fetchRoleActionLastAccess(ctx context.Context, client iamServiceLastAccessClient, roleArn string) (map[string]awsTrackedActionUsage, error) {
 	jobOut, err := client.GenerateServiceLastAccessedDetails(ctx, &iam.GenerateServiceLastAccessedDetailsInput{
 		Arn:         aws.String(roleArn),
 		Granularity: iamtypes.AccessAdvisorUsageGranularityTypeActionLevel,
@@ -687,48 +861,74 @@ func fetchRoleActionLastAccess(ctx context.Context, client *iam.Client, roleArn 
 		return nil, nil
 	}
 
-	var details *iam.GetServiceLastAccessedDetailsOutput
+	pages := make([]*iam.GetServiceLastAccessedDetailsOutput, 0, 2)
 	for i := 0; i < 12; i++ {
 		out, getErr := client.GetServiceLastAccessedDetails(ctx, &iam.GetServiceLastAccessedDetailsInput{JobId: aws.String(jobID)})
 		if getErr != nil {
 			return nil, getErr
 		}
 		if out.JobStatus == iamtypes.JobStatusTypeCompleted {
-			details = out
+			pages = append(pages, out)
 			break
 		}
 		if out.JobStatus == iamtypes.JobStatusTypeFailed {
 			return nil, fmt.Errorf("access advisor action-level job failed for %s", roleArn)
 		}
-		time.Sleep(2 * time.Second)
+		if sleepErr := sleepWithContext(ctx, 2*time.Second); sleepErr != nil {
+			return nil, sleepErr
+		}
 	}
 
-	if details == nil {
+	if len(pages) == 0 {
 		return nil, fmt.Errorf("access advisor action-level job did not complete in time for %s", roleArn)
 	}
 
-	tracked := make(map[string]awsTrackedActionUsage)
-	for _, service := range details.ServicesLastAccessed {
-		namespace := strings.ToLower(strings.TrimSpace(aws.ToString(service.ServiceNamespace)))
-		if namespace == "" {
-			continue
+	for {
+		lastPage := pages[len(pages)-1]
+		if !lastPage.IsTruncated {
+			break
 		}
-		for _, action := range service.TrackedActionsLastAccessed {
-			actionName := strings.ToLower(strings.TrimSpace(aws.ToString(action.ActionName)))
-			if actionName == "" {
+		if lastPage.Marker == nil || strings.TrimSpace(aws.ToString(lastPage.Marker)) == "" {
+			break
+		}
+
+		nextPage, pageErr := client.GetServiceLastAccessedDetails(ctx, &iam.GetServiceLastAccessedDetailsInput{
+			JobId:  aws.String(jobID),
+			Marker: lastPage.Marker,
+		})
+		if pageErr != nil {
+			return nil, pageErr
+		}
+		if nextPage.JobStatus == iamtypes.JobStatusTypeFailed {
+			return nil, fmt.Errorf("access advisor action-level pagination failed for %s", roleArn)
+		}
+		pages = append(pages, nextPage)
+	}
+
+	tracked := make(map[string]awsTrackedActionUsage)
+	for _, page := range pages {
+		for _, service := range page.ServicesLastAccessed {
+			namespace := strings.ToLower(strings.TrimSpace(aws.ToString(service.ServiceNamespace)))
+			if namespace == "" {
 				continue
 			}
-			key := namespace + ":" + actionName
-			usage := tracked[key]
-			if action.LastAccessedTime != nil {
-				timeValue := action.LastAccessedTime.UTC()
-				if usage.LastAccessedTime.IsZero() || timeValue.After(usage.LastAccessedTime) {
-					usage.LastAccessedTime = timeValue
-					usage.LastAccessedEntity = aws.ToString(action.LastAccessedEntity)
-					usage.LastAccessedRegion = aws.ToString(action.LastAccessedRegion)
+			for _, action := range service.TrackedActionsLastAccessed {
+				actionName := strings.ToLower(strings.TrimSpace(aws.ToString(action.ActionName)))
+				if actionName == "" {
+					continue
 				}
+				key := namespace + ":" + actionName
+				usage := tracked[key]
+				if action.LastAccessedTime != nil {
+					timeValue := action.LastAccessedTime.UTC()
+					if usage.LastAccessedTime.IsZero() || timeValue.After(usage.LastAccessedTime) {
+						usage.LastAccessedTime = timeValue
+						usage.LastAccessedEntity = aws.ToString(action.LastAccessedEntity)
+						usage.LastAccessedRegion = aws.ToString(action.LastAccessedRegion)
+					}
+				}
+				tracked[key] = usage
 			}
-			tracked[key] = usage
 		}
 	}
 
