@@ -4,7 +4,7 @@
 
 Cerebro is a unified operations platform that combines data ingestion from cloud providers and SaaS tools, policy evaluation, compliance reporting, AI-powered investigation, business signal analysis, and automated remediation workflows. It works across security, revenue operations, support, and any domain where you need to detect, triage, and act on operational signals.
 
-> **Origin:** Cerebro was originally developed at [Writer](https://github.com/writer/cerebro) as a security-focused cloud posture management tool. This fork generalizes the platform to handle any operational signal — from cloud misconfigurations to stale deals, SLA breaches, payment failures, and business entity drift.
+> **Origin:** This is Writer's original Cerebro repository. Cerebro began as a security-focused cloud posture management tool and now handles broader operational signals too — from cloud misconfigurations to stale deals, SLA breaches, payment failures, and business entity drift.
 
 [![Go Version](https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
@@ -379,5 +379,3 @@ See [Configuration](docs/CONFIGURATION.md) for all options.
 ## License
 
 Apache 2.0 — see [LICENSE](LICENSE).
-
-Originally developed at [Writer](https://github.com/writer/cerebro).
