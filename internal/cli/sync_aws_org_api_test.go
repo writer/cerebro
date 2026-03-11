@@ -11,70 +11,72 @@ import (
 )
 
 type syncAWSOrgState struct {
-	region             string
-	multiRegion        bool
-	concurrency        int
-	permissionLookback int
-	awsPSInclude       string
-	awsPSExclude       string
-	table              string
-	validate           bool
-	output             string
-	strictExit         bool
-	awsProfile         string
-	awsConfigFile      string
-	awsSharedCredsFile string
-	awsCredentialProc  string
-	awsWebIDTokenFile  string
-	awsWebIDRoleARN    string
-	awsRoleARN         string
-	awsRoleSession     string
-	awsRoleExternalID  string
-	awsRoleMFASerial   string
-	awsRoleMFAToken    string
-	awsRoleSourceID    string
-	awsRoleDuration    string
-	awsRoleTags        string
-	awsRoleTransitive  string
-	awsOrgRole         string
-	awsOrgInclude      string
-	awsOrgExclude      string
-	awsOrgConcurrency  int
-	directFn           func(context.Context, time.Time) error
+	region                     string
+	multiRegion                bool
+	concurrency                int
+	permissionLookback         int
+	permissionRemovalThreshold int
+	awsPSInclude               string
+	awsPSExclude               string
+	table                      string
+	validate                   bool
+	output                     string
+	strictExit                 bool
+	awsProfile                 string
+	awsConfigFile              string
+	awsSharedCredsFile         string
+	awsCredentialProc          string
+	awsWebIDTokenFile          string
+	awsWebIDRoleARN            string
+	awsRoleARN                 string
+	awsRoleSession             string
+	awsRoleExternalID          string
+	awsRoleMFASerial           string
+	awsRoleMFAToken            string
+	awsRoleSourceID            string
+	awsRoleDuration            string
+	awsRoleTags                string
+	awsRoleTransitive          string
+	awsOrgRole                 string
+	awsOrgInclude              string
+	awsOrgExclude              string
+	awsOrgConcurrency          int
+	directFn                   func(context.Context, time.Time) error
 }
 
 func snapshotSyncAWSOrgState() syncAWSOrgState {
 	return syncAWSOrgState{
-		region:             syncRegion,
-		multiRegion:        syncMultiRegion,
-		concurrency:        syncConcurrency,
-		permissionLookback: syncPermissionLookback,
-		awsPSInclude:       syncAWSPSInclude,
-		awsPSExclude:       syncAWSPSExclude,
-		table:              syncTable,
-		validate:           syncValidate,
-		output:             syncOutput,
-		strictExit:         syncStrictExit,
-		awsProfile:         syncAWSProfile,
-		awsConfigFile:      syncAWSConfigFile,
-		awsSharedCredsFile: syncAWSSharedCredsFile,
-		awsCredentialProc:  syncAWSCredentialProc,
-		awsWebIDTokenFile:  syncAWSWebIDTokenFile,
-		awsWebIDRoleARN:    syncAWSWebIDRoleARN,
-		awsRoleARN:         syncAWSRoleARN,
-		awsRoleSession:     syncAWSRoleSession,
-		awsRoleExternalID:  syncAWSRoleExternalID,
-		awsRoleMFASerial:   syncAWSRoleMFASerial,
-		awsRoleMFAToken:    syncAWSRoleMFAToken,
-		awsRoleSourceID:    syncAWSRoleSourceID,
-		awsRoleDuration:    syncAWSRoleDuration,
-		awsRoleTags:        syncAWSRoleTags,
-		awsRoleTransitive:  syncAWSRoleTransitive,
-		awsOrgRole:         syncAWSOrgRole,
-		awsOrgInclude:      syncAWSOrgInclude,
-		awsOrgExclude:      syncAWSOrgExclude,
-		awsOrgConcurrency:  syncAWSOrgConcurrency,
-		directFn:           runAWSOrgSyncDirectFn,
+		region:                     syncRegion,
+		multiRegion:                syncMultiRegion,
+		concurrency:                syncConcurrency,
+		permissionLookback:         syncPermissionLookback,
+		permissionRemovalThreshold: syncPermissionRemovalThreshold,
+		awsPSInclude:               syncAWSPSInclude,
+		awsPSExclude:               syncAWSPSExclude,
+		table:                      syncTable,
+		validate:                   syncValidate,
+		output:                     syncOutput,
+		strictExit:                 syncStrictExit,
+		awsProfile:                 syncAWSProfile,
+		awsConfigFile:              syncAWSConfigFile,
+		awsSharedCredsFile:         syncAWSSharedCredsFile,
+		awsCredentialProc:          syncAWSCredentialProc,
+		awsWebIDTokenFile:          syncAWSWebIDTokenFile,
+		awsWebIDRoleARN:            syncAWSWebIDRoleARN,
+		awsRoleARN:                 syncAWSRoleARN,
+		awsRoleSession:             syncAWSRoleSession,
+		awsRoleExternalID:          syncAWSRoleExternalID,
+		awsRoleMFASerial:           syncAWSRoleMFASerial,
+		awsRoleMFAToken:            syncAWSRoleMFAToken,
+		awsRoleSourceID:            syncAWSRoleSourceID,
+		awsRoleDuration:            syncAWSRoleDuration,
+		awsRoleTags:                syncAWSRoleTags,
+		awsRoleTransitive:          syncAWSRoleTransitive,
+		awsOrgRole:                 syncAWSOrgRole,
+		awsOrgInclude:              syncAWSOrgInclude,
+		awsOrgExclude:              syncAWSOrgExclude,
+		awsOrgConcurrency:          syncAWSOrgConcurrency,
+		directFn:                   runAWSOrgSyncDirectFn,
 	}
 }
 
@@ -83,6 +85,7 @@ func restoreSyncAWSOrgState(state syncAWSOrgState) {
 	syncMultiRegion = state.multiRegion
 	syncConcurrency = state.concurrency
 	syncPermissionLookback = state.permissionLookback
+	syncPermissionRemovalThreshold = state.permissionRemovalThreshold
 	syncAWSPSInclude = state.awsPSInclude
 	syncAWSPSExclude = state.awsPSExclude
 	syncTable = state.table
@@ -148,6 +151,9 @@ func TestRunAWSOrgSync_APIModeSuccess(t *testing.T) {
 		if req["permission_usage_lookback_days"] != float64(210) {
 			t.Fatalf("expected permission_usage_lookback_days=210, got %#v", req["permission_usage_lookback_days"])
 		}
+		if req["permission_removal_threshold_days"] != float64(180) {
+			t.Fatalf("expected permission_removal_threshold_days=180, got %#v", req["permission_removal_threshold_days"])
+		}
 		include, ok := req["aws_identity_center_permission_sets_include"].([]interface{})
 		if !ok || len(include) != 1 || include[0] != "Admin" {
 			t.Fatalf("unexpected permission set include payload: %#v", req["aws_identity_center_permission_sets_include"])
@@ -179,6 +185,7 @@ func TestRunAWSOrgSync_APIModeSuccess(t *testing.T) {
 	syncMultiRegion = true
 	syncConcurrency = 4
 	syncPermissionLookback = 210
+	syncPermissionRemovalThreshold = 180
 	syncAWSPSInclude = "Admin"
 	syncAWSPSExclude = "ReadOnly"
 	syncTable = "aws_iam_users"

@@ -69,6 +69,7 @@ func runAWSOrgSyncViaAPI(ctx context.Context, start time.Time, apiClient *apicli
 		ExcludeAccounts:                        parseCommaSeparatedValues(syncAWSOrgExclude),
 		AccountConcurrency:                     syncAWSOrgConcurrency,
 		PermissionUsageLookbackDays:            syncPermissionLookback,
+		PermissionRemovalThresholdDays:         syncPermissionRemovalThreshold,
 		AWSIdentityCenterPermissionSetsInclude: permissionSetInclude,
 		AWSIdentityCenterPermissionSetsExclude: permissionSetExclude,
 	})

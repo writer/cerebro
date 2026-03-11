@@ -73,7 +73,9 @@ func (e *SyncEngine) awsIdentityCenterPermissionSetUsageTable() TableSpec {
 			"last_authenticated_region",
 			"usage_status",
 			"days_unused",
+			"unused_since",
 			"lookback_days",
+			"removal_threshold_days",
 			"recommendation",
 			"evidence_source",
 			"confidence",
@@ -88,7 +90,8 @@ func (e *SyncEngine) awsIdentityCenterPermissionSetUsageTable() TableSpec {
 }
 
 func (e *SyncEngine) fetchAWSIdentityCenterPermissionSetUsage(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
-	lookbackDays := clampPermissionUsageLookbackDays(e.permissionUsageLookbackDays)
+	lookbackDays := clampPermissionUsageWindowDays(e.permissionUsageLookbackDays)
+	removalThresholdDays := clampPermissionRemovalThresholdDays(e.permissionUsageRemovalThresholdDays)
 	now := time.Now().UTC()
 	usageCutoff := now.Add(-time.Duration(lookbackDays) * 24 * time.Hour)
 
@@ -210,41 +213,50 @@ func (e *SyncEngine) fetchAWSIdentityCenterPermissionSetUsage(ctx context.Contex
 					continue
 				}
 
-				existingLastSeen := e.loadExistingAWSPermissionActionLastSeen(ctx, permissionSetArn, roleArn)
+				existingStates := e.loadExistingAWSPermissionActionState(ctx, permissionSetArn, roleArn)
 				nextCursor := permissionUsageCursor{Time: now, ID: roleArn}
 
 				sort.Strings(grantedActions.Actions)
 				for _, action := range grantedActions.Actions {
 					usage, wildcardMatch := resolveTrackedActionUsage(action, trackedActions)
+					actionKey := strings.ToLower(action)
+					previousState := existingStates[actionKey]
 					lastSeen := usage.LastAccessedTime.UTC()
-					if existing := existingLastSeen[strings.ToLower(action)]; existing.After(lastSeen) {
-						lastSeen = existing
+					if previousState.LastUsed.After(lastSeen) {
+						lastSeen = previousState.LastUsed
 					}
 
 					if !lastSeen.IsZero() {
-						nextCursor = cursorAfter(nextCursor, permissionUsageCursor{Time: lastSeen, ID: strings.ToLower(action)})
+						nextCursor = cursorAfter(nextCursor, permissionUsageCursor{Time: lastSeen, ID: actionKey})
 					}
 
 					usageStatus := "unused"
 					recommendation := ""
-					daysUnused := lookbackDays
 					coverage := "full"
 					confidence := "high"
+					authoritativeCoverage := true
 
 					if wildcardMatch {
 						coverage = "partial"
 						confidence = "medium"
+						authoritativeCoverage = false
 					}
 
 					if !lastSeen.IsZero() {
-						daysUnused = int(now.Sub(lastSeen).Hours() / 24)
 						if lastSeen.After(usageCutoff) {
 							usageStatus = "used"
+						} else if !authoritativeCoverage {
+							usageStatus = "unknown"
 						}
+					} else if !authoritativeCoverage {
+						usageStatus = "unknown"
 					}
 
-					if usageStatus == "unused" {
-						recommendation = fmt.Sprintf("Permission %s appears unused for this permission set in the last %d days; consider removing it from the Identity Center permission set.", action, lookbackDays)
+					currentState := derivePermissionUsageCurrentState(now, windowStart, lastSeen, previousState, usageStatus)
+					daysUnused := permissionUsageDaysUnused(now, currentState, lookbackDays)
+
+					if permissionUsageShouldRecommendRemoval(usageStatus, daysUnused, removalThresholdDays, authoritativeCoverage) {
+						recommendation = fmt.Sprintf("Permission %s appears unused for this permission set for %d consecutive days; consider removing it from the Identity Center permission set.", action, daysUnused)
 					}
 
 					rowID := fmt.Sprintf("%s|%s|%s|%s", instanceArn, permissionSetArn, roleArn, strings.ToLower(action))
@@ -264,6 +276,7 @@ func (e *SyncEngine) fetchAWSIdentityCenterPermissionSetUsage(ctx context.Contex
 						"usage_status":                 usageStatus,
 						"days_unused":                  daysUnused,
 						"lookback_days":                lookbackDays,
+						"removal_threshold_days":       removalThresholdDays,
 						"recommendation":               recommendation,
 						"evidence_source":              "aws_iam_access_advisor_action_level",
 						"confidence":                   confidence,
@@ -274,6 +287,9 @@ func (e *SyncEngine) fetchAWSIdentityCenterPermissionSetUsage(ctx context.Contex
 
 					if !lastSeen.IsZero() {
 						row["action_last_accessed"] = lastSeen
+					}
+					if !currentState.UnusedSince.IsZero() {
+						row["unused_since"] = currentState.UnusedSince
 					}
 					if usage.LastAccessedEntity != "" {
 						row["last_authenticated_entity"] = usage.LastAccessedEntity
@@ -557,14 +573,14 @@ func (e *SyncEngine) resolvePermissionSetGrantedActions(
 	return permissionSetGrantedActions{Actions: actions, Complete: resolutionComplete}, nil
 }
 
-func (e *SyncEngine) loadExistingAWSPermissionActionLastSeen(ctx context.Context, permissionSetArn, roleArn string) map[string]time.Time {
-	result := make(map[string]time.Time)
+func (e *SyncEngine) loadExistingAWSPermissionActionState(ctx context.Context, permissionSetArn, roleArn string) map[string]permissionUsageCurrentState {
+	result := make(map[string]permissionUsageCurrentState)
 	if e.sf == nil {
 		return result
 	}
 
 	query := `
-		SELECT action, action_last_accessed
+		SELECT action, action_last_accessed, unused_since, usage_status
 		FROM ` + awsIdentityCenterPermissionUsageTable + `
 		WHERE permission_set_arn = ? AND sso_role_arn = ?
 	`
@@ -581,9 +597,14 @@ func (e *SyncEngine) loadExistingAWSPermissionActionLastSeen(ctx context.Context
 		if action == "" {
 			continue
 		}
+		state := permissionUsageCurrentState{Status: strings.ToLower(strings.TrimSpace(queryRowString(row, "usage_status")))}
 		if ts, ok := parseAnyTime(queryRow(row, "action_last_accessed")); ok {
-			result[action] = ts.UTC()
+			state.LastUsed = ts.UTC()
 		}
+		if ts, ok := parseAnyTime(queryRow(row, "unused_since")); ok {
+			state.UnusedSince = ts.UTC()
+		}
+		result[action] = state
 	}
 
 	return result

@@ -204,12 +204,13 @@ func runGCPSync(ctx context.Context, start time.Time, projectID string) error {
 		} else {
 			targetGroups := parseCommaSeparatedValues(syncGCPIAMGroups)
 			resp, err := apiClient.RunGCPSync(ctx, apiclient.GCPSyncRequest{
-				Project:                     projectID,
-				Concurrency:                 syncConcurrency,
-				Tables:                      nativeTableFilter,
-				Validate:                    syncValidate,
-				PermissionUsageLookbackDays: syncPermissionLookback,
-				GCPIAMTargetGroups:          targetGroups,
+				Project:                        projectID,
+				Concurrency:                    syncConcurrency,
+				Tables:                         nativeTableFilter,
+				Validate:                       syncValidate,
+				PermissionUsageLookbackDays:    syncPermissionLookback,
+				PermissionRemovalThresholdDays: syncPermissionRemovalThreshold,
+				GCPIAMTargetGroups:             targetGroups,
 			})
 			if err == nil {
 				provider := "GCP"
@@ -385,6 +386,7 @@ func runGCPSyncDirect(
 
 func appendGCPPermissionUsageOptions(options []nativesync.GCPEngineOption) []nativesync.GCPEngineOption {
 	options = append(options, nativesync.WithGCPPermissionUsageLookbackDays(syncPermissionLookback))
+	options = append(options, nativesync.WithGCPPermissionRemovalThresholdDays(syncPermissionRemovalThreshold))
 	targetGroups := parseCommaSeparatedValues(syncGCPIAMGroups)
 	if len(targetGroups) > 0 {
 		options = append(options, nativesync.WithGCPIAMTargetGroups(targetGroups))

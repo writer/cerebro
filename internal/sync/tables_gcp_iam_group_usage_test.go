@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -108,6 +109,38 @@ func TestGCPSyncTablePartialFetchDoesNotDeleteScopedRows(t *testing.T) {
 		if strings.Contains(strings.ToLower(call.Statement), "delete from "+gcpIAMGroupPermissionUsageTable) {
 			t.Fatalf("expected no scoped delete for partial fetch, found statement %q", call.Statement)
 		}
+	}
+}
+
+func TestFetchWorkspaceGroupMembersExpandsNestedGroups(t *testing.T) {
+	store := &warehouse.MemoryWarehouse{
+		QueryFunc: func(_ context.Context, _ string, args ...any) (*snowflake.QueryResult, error) {
+			rows := make([]map[string]any, 0)
+			for _, arg := range args {
+				group, _ := arg.(string)
+				switch strings.ToLower(group) {
+				case "eng@example.com":
+					rows = append(rows,
+						map[string]any{"group_email": "eng@example.com", "member_email": "alice@example.com", "member_type": "user"},
+						map[string]any{"group_email": "eng@example.com", "member_email": "subgroup@example.com", "member_type": "group"},
+					)
+				case "subgroup@example.com":
+					rows = append(rows,
+						map[string]any{"group_email": "subgroup@example.com", "member_email": "bob@example.com", "member_type": "user"},
+					)
+				}
+			}
+			return &snowflake.QueryResult{Rows: rows}, nil
+		},
+	}
+
+	e := &GCPSyncEngine{sf: store, logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	membersByGroup, ok := e.fetchWorkspaceGroupMembers(context.Background(), []string{"eng@example.com"})
+	if !ok {
+		t.Fatal("expected workspace data to be available")
+	}
+	if got, want := membersByGroup["eng@example.com"], []string{"alice@example.com", "bob@example.com"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected nested group expansion: got %#v want %#v", got, want)
 	}
 }
 

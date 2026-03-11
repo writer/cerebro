@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/writer/cerebro/internal/warehouse"
@@ -25,6 +26,12 @@ const (
 type permissionUsageCursor struct {
 	Time time.Time
 	ID   string
+}
+
+type permissionUsageCurrentState struct {
+	LastUsed    time.Time
+	UnusedSince time.Time
+	Status      string
 }
 
 func (e *SyncEngine) loadPermissionUsageCursor(ctx context.Context, key string) (permissionUsageCursor, error) {
@@ -154,4 +161,60 @@ func cursorAfter(current, candidate permissionUsageCursor) permissionUsageCursor
 		return candidate
 	}
 	return current
+}
+
+func derivePermissionUsageCurrentState(observedAt, windowStart, lastUsed time.Time, previous permissionUsageCurrentState, status string) permissionUsageCurrentState {
+	state := permissionUsageCurrentState{
+		Status:   strings.ToLower(strings.TrimSpace(status)),
+		LastUsed: lastUsed.UTC(),
+	}
+
+	switch state.Status {
+	case "used":
+		return state
+	case "unused":
+		if !lastUsed.IsZero() {
+			state.UnusedSince = lastUsed.UTC()
+			return state
+		}
+		if !previous.UnusedSince.IsZero() && strings.EqualFold(previous.Status, "unused") {
+			state.UnusedSince = previous.UnusedSince.UTC()
+			return state
+		}
+		if !windowStart.IsZero() {
+			state.UnusedSince = windowStart.UTC()
+			return state
+		}
+		if !observedAt.IsZero() {
+			state.UnusedSince = observedAt.UTC()
+		}
+	}
+
+	return state
+}
+
+func permissionUsageDaysUnused(observedAt time.Time, state permissionUsageCurrentState, fallback int) int {
+	if observedAt.IsZero() {
+		observedAt = time.Now().UTC()
+	}
+	if !state.LastUsed.IsZero() {
+		return max(0, int(observedAt.Sub(state.LastUsed.UTC()).Hours()/24))
+	}
+	if !state.UnusedSince.IsZero() {
+		return max(0, int(observedAt.Sub(state.UnusedSince.UTC()).Hours()/24))
+	}
+	return fallback
+}
+
+func permissionUsageShouldRecommendRemoval(status string, daysUnused, threshold int, authoritative bool) bool {
+	if !authoritative {
+		return false
+	}
+	if !strings.EqualFold(strings.TrimSpace(status), "unused") {
+		return false
+	}
+	if threshold <= 0 {
+		threshold = defaultPermissionRemovalThresholdDays
+	}
+	return daysUnused >= threshold
 }

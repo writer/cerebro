@@ -3,19 +3,35 @@ package sync
 import "strings"
 
 const (
-	defaultPermissionUsageLookbackDays = 180
-	minPermissionUsageLookbackDays     = 1
-	maxPermissionUsageLookbackDays     = 400
+	defaultPermissionUsageWindowDays      = 90
+	defaultPermissionRemovalThresholdDays = 180
+	minPermissionUsageDays                = 1
+	maxPermissionUsageDays                = 400
+	defaultPermissionUsageLookbackDays    = defaultPermissionUsageWindowDays
 )
 
-func clampPermissionUsageLookbackDays(days int) int {
-	if days < minPermissionUsageLookbackDays {
-		return defaultPermissionUsageLookbackDays
+func clampPermissionUsageWindowDays(days int) int {
+	if days < minPermissionUsageDays {
+		return defaultPermissionUsageWindowDays
 	}
-	if days > maxPermissionUsageLookbackDays {
-		return maxPermissionUsageLookbackDays
+	if days > maxPermissionUsageDays {
+		return maxPermissionUsageDays
 	}
 	return days
+}
+
+func clampPermissionRemovalThresholdDays(days int) int {
+	if days < minPermissionUsageDays {
+		return defaultPermissionRemovalThresholdDays
+	}
+	if days > maxPermissionUsageDays {
+		return maxPermissionUsageDays
+	}
+	return days
+}
+
+func clampPermissionUsageLookbackDays(days int) int {
+	return clampPermissionUsageWindowDays(days)
 }
 
 func normalizeIdentityFilterSet(values []string) map[string]struct{} {

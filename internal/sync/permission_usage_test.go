@@ -192,6 +192,68 @@ func TestCursorAfter(t *testing.T) {
 	}
 }
 
+func TestDerivePermissionUsageCurrentState(t *testing.T) {
+	now := time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC)
+	windowStart := now.Add(-90 * 24 * time.Hour)
+	lastUsed := now.Add(-7 * 24 * time.Hour)
+
+	used := derivePermissionUsageCurrentState(now, windowStart, lastUsed, permissionUsageCurrentState{}, "used")
+	if !used.LastUsed.Equal(lastUsed) {
+		t.Fatalf("used state lastUsed = %s, want %s", used.LastUsed, lastUsed)
+	}
+	if !used.UnusedSince.IsZero() {
+		t.Fatalf("used state should not set unusedSince, got %s", used.UnusedSince)
+	}
+
+	unused := derivePermissionUsageCurrentState(now, windowStart, time.Time{}, permissionUsageCurrentState{}, "unused")
+	if !unused.UnusedSince.Equal(windowStart) {
+		t.Fatalf("unused state unusedSince = %s, want %s", unused.UnusedSince, windowStart)
+	}
+
+	previous := permissionUsageCurrentState{Status: "unused", UnusedSince: now.Add(-150 * 24 * time.Hour)}
+	preserved := derivePermissionUsageCurrentState(now, windowStart, time.Time{}, previous, "unused")
+	if !preserved.UnusedSince.Equal(previous.UnusedSince) {
+		t.Fatalf("expected previous unusedSince to be preserved, got %s want %s", preserved.UnusedSince, previous.UnusedSince)
+	}
+
+	unknown := derivePermissionUsageCurrentState(now, windowStart, time.Time{}, previous, "unknown")
+	if !unknown.UnusedSince.IsZero() {
+		t.Fatalf("unknown state should clear unusedSince, got %s", unknown.UnusedSince)
+	}
+}
+
+func TestPermissionUsageDaysUnused(t *testing.T) {
+	now := time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC)
+	stateWithLastUsed := permissionUsageCurrentState{LastUsed: now.Add(-5 * 24 * time.Hour), Status: "unused"}
+	if got := permissionUsageDaysUnused(now, stateWithLastUsed, 90); got != 5 {
+		t.Fatalf("days unused from last used = %d, want 5", got)
+	}
+
+	stateWithUnusedSince := permissionUsageCurrentState{UnusedSince: now.Add(-120 * 24 * time.Hour), Status: "unused"}
+	if got := permissionUsageDaysUnused(now, stateWithUnusedSince, 90); got != 120 {
+		t.Fatalf("days unused from unusedSince = %d, want 120", got)
+	}
+
+	if got := permissionUsageDaysUnused(now, permissionUsageCurrentState{}, 90); got != 90 {
+		t.Fatalf("days unused fallback = %d, want 90", got)
+	}
+}
+
+func TestPermissionUsageShouldRecommendRemoval(t *testing.T) {
+	if !permissionUsageShouldRecommendRemoval("unused", 181, 180, true) {
+		t.Fatal("expected recommendation when authoritative unused duration exceeds threshold")
+	}
+	if permissionUsageShouldRecommendRemoval("unused", 181, 180, false) {
+		t.Fatal("did not expect recommendation without authoritative coverage")
+	}
+	if permissionUsageShouldRecommendRemoval("unknown", 181, 180, true) {
+		t.Fatal("did not expect recommendation for unknown status")
+	}
+	if permissionUsageShouldRecommendRemoval("unused", 30, 180, true) {
+		t.Fatal("did not expect recommendation below threshold")
+	}
+}
+
 func TestDeleteStaleIdentityCenterUsageRowsNilSF(t *testing.T) {
 	e := &SyncEngine{}
 	ctx := context.Background()

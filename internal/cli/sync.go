@@ -54,65 +54,66 @@ Examples:
 }
 
 var (
-	syncScanAfter          bool
-	syncPreflightOnly      bool
-	syncStrictExit         bool
-	syncGCP                bool
-	syncGCPProject         string
-	syncGCPProjects        string // comma-separated list of projects
-	syncScope              string
-	syncProjectsFile       string
-	syncProjectInclude     string
-	syncProjectExclude     string
-	syncGCPOrg             string // organization ID for multi-project sync
-	syncGCPProjectTimeout  string
-	syncMultiRegion        bool
-	syncRegion             string
-	syncUseAssetAPI        bool   // use Cloud Asset Inventory API
-	syncSecurity           bool   // sync security data (vulnerabilities, SCC findings)
-	syncK8s                bool   // sync Kubernetes resources
-	syncK8sKubeconfig      string // kubeconfig path
-	syncK8sContext         string // kubeconfig context
-	syncK8sNamespace       string // namespace to sync
-	syncAzure              bool   // sync Azure resources
-	syncAzureSubscription  string // Azure subscription ID
-	syncConcurrency        int
-	syncPermissionLookback int
-	syncGCPIAMGroups       string
-	syncAWSPSInclude       string
-	syncAWSPSExclude       string
-	syncTable              string
-	syncOutput             string
-	syncReportFile         string
-	syncValidate           bool
-	syncAuthMode           string
-	syncShowAuthChain      bool
-	syncGCPCredentialsFile string
-	syncGCPImpersonateSA   string
-	syncGCPImpersonateDel  string
-	syncGCPImpersonateTTL  string
-	syncAWSProfile         string
-	syncAWSProfiles        string // comma-separated AWS SSO profiles
-	syncAWSConfigFile      string
-	syncAWSSharedCredsFile string
-	syncAWSCredentialProc  string
-	syncAWSWebIDTokenFile  string
-	syncAWSWebIDRoleARN    string
-	syncAWSRoleARN         string
-	syncAWSRoleSession     string
-	syncAWSRoleExternalID  string
-	syncAWSRoleMFASerial   string
-	syncAWSRoleMFAToken    string
-	syncAWSRoleSourceID    string
-	syncAWSRoleDuration    string
-	syncAWSRoleTags        string
-	syncAWSRoleTransitive  string
-	syncAWSOrg             bool
-	syncAWSOrgRole         string
-	syncAWSOrgInclude      string
-	syncAWSOrgExclude      string
-	syncAWSOrgConcurrency  int
-	syncBackfillBatchSize  int
+	syncScanAfter                  bool
+	syncPreflightOnly              bool
+	syncStrictExit                 bool
+	syncGCP                        bool
+	syncGCPProject                 string
+	syncGCPProjects                string // comma-separated list of projects
+	syncScope                      string
+	syncProjectsFile               string
+	syncProjectInclude             string
+	syncProjectExclude             string
+	syncGCPOrg                     string // organization ID for multi-project sync
+	syncGCPProjectTimeout          string
+	syncMultiRegion                bool
+	syncRegion                     string
+	syncUseAssetAPI                bool   // use Cloud Asset Inventory API
+	syncSecurity                   bool   // sync security data (vulnerabilities, SCC findings)
+	syncK8s                        bool   // sync Kubernetes resources
+	syncK8sKubeconfig              string // kubeconfig path
+	syncK8sContext                 string // kubeconfig context
+	syncK8sNamespace               string // namespace to sync
+	syncAzure                      bool   // sync Azure resources
+	syncAzureSubscription          string // Azure subscription ID
+	syncConcurrency                int
+	syncPermissionLookback         int
+	syncGCPIAMGroups               string
+	syncPermissionRemovalThreshold int
+	syncAWSPSInclude               string
+	syncAWSPSExclude               string
+	syncTable                      string
+	syncOutput                     string
+	syncReportFile                 string
+	syncValidate                   bool
+	syncAuthMode                   string
+	syncShowAuthChain              bool
+	syncGCPCredentialsFile         string
+	syncGCPImpersonateSA           string
+	syncGCPImpersonateDel          string
+	syncGCPImpersonateTTL          string
+	syncAWSProfile                 string
+	syncAWSProfiles                string // comma-separated AWS SSO profiles
+	syncAWSConfigFile              string
+	syncAWSSharedCredsFile         string
+	syncAWSCredentialProc          string
+	syncAWSWebIDTokenFile          string
+	syncAWSWebIDRoleARN            string
+	syncAWSRoleARN                 string
+	syncAWSRoleSession             string
+	syncAWSRoleExternalID          string
+	syncAWSRoleMFASerial           string
+	syncAWSRoleMFAToken            string
+	syncAWSRoleSourceID            string
+	syncAWSRoleDuration            string
+	syncAWSRoleTags                string
+	syncAWSRoleTransitive          string
+	syncAWSOrg                     bool
+	syncAWSOrgRole                 string
+	syncAWSOrgInclude              string
+	syncAWSOrgExclude              string
+	syncAWSOrgConcurrency          int
+	syncBackfillBatchSize          int
 )
 
 const (
@@ -147,7 +148,8 @@ func init() {
 	syncCmd.Flags().BoolVar(&syncAzure, "azure", false, "Sync Azure resources")
 	syncCmd.Flags().StringVar(&syncAzureSubscription, "azure-subscription", "", "Azure subscription ID (optional, will auto-discover if not set)")
 	syncCmd.Flags().IntVar(&syncConcurrency, "concurrency", 20, "Max concurrent table syncs for native engines")
-	syncCmd.Flags().IntVar(&syncPermissionLookback, "permission-usage-lookback-days", 180, "Lookback window in days for IAM permission usage analysis (1-400)")
+	syncCmd.Flags().IntVar(&syncPermissionLookback, "permission-usage-lookback-days", 90, "Usage window in days for IAM permission usage analysis (1-400)")
+	syncCmd.Flags().IntVar(&syncPermissionRemovalThreshold, "permission-removal-threshold-days", 180, "Consecutive unused days before recommending IAM permission removal (1-400)")
 	syncCmd.Flags().StringVar(&syncGCPIAMGroups, "gcp-iam-target-groups", "", "Comma-separated Google group emails to analyze for IAM permission usage")
 	syncCmd.Flags().StringVar(&syncAWSPSInclude, "aws-identity-center-permission-sets-include", "", "Comma-separated Identity Center permission set names/ARNs to include")
 	syncCmd.Flags().StringVar(&syncAWSPSExclude, "aws-identity-center-permission-sets-exclude", "", "Comma-separated Identity Center permission set names/ARNs to exclude")

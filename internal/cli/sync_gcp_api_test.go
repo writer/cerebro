@@ -11,38 +11,40 @@ import (
 )
 
 type syncGCPAPIState struct {
-	table              string
-	security           bool
-	validate           bool
-	concurrency        int
-	permissionLookback int
-	gcpIAMGroups       string
-	output             string
-	strictExit         bool
-	useAssetAPI        bool
-	credentialsFile    string
-	impersonateSA      string
-	impersonateDel     string
-	impersonateTTL     string
-	directFn           func(context.Context, time.Time, string, []string, []string, []string, bool, bool, map[string]struct{}) error
+	table                      string
+	security                   bool
+	validate                   bool
+	concurrency                int
+	permissionLookback         int
+	permissionRemovalThreshold int
+	gcpIAMGroups               string
+	output                     string
+	strictExit                 bool
+	useAssetAPI                bool
+	credentialsFile            string
+	impersonateSA              string
+	impersonateDel             string
+	impersonateTTL             string
+	directFn                   func(context.Context, time.Time, string, []string, []string, []string, bool, bool, map[string]struct{}) error
 }
 
 func snapshotSyncGCPAPIState() syncGCPAPIState {
 	return syncGCPAPIState{
-		table:              syncTable,
-		security:           syncSecurity,
-		validate:           syncValidate,
-		concurrency:        syncConcurrency,
-		permissionLookback: syncPermissionLookback,
-		gcpIAMGroups:       syncGCPIAMGroups,
-		output:             syncOutput,
-		strictExit:         syncStrictExit,
-		useAssetAPI:        syncUseAssetAPI,
-		credentialsFile:    syncGCPCredentialsFile,
-		impersonateSA:      syncGCPImpersonateSA,
-		impersonateDel:     syncGCPImpersonateDel,
-		impersonateTTL:     syncGCPImpersonateTTL,
-		directFn:           runGCPSyncDirectFn,
+		table:                      syncTable,
+		security:                   syncSecurity,
+		validate:                   syncValidate,
+		concurrency:                syncConcurrency,
+		permissionLookback:         syncPermissionLookback,
+		permissionRemovalThreshold: syncPermissionRemovalThreshold,
+		gcpIAMGroups:               syncGCPIAMGroups,
+		output:                     syncOutput,
+		strictExit:                 syncStrictExit,
+		useAssetAPI:                syncUseAssetAPI,
+		credentialsFile:            syncGCPCredentialsFile,
+		impersonateSA:              syncGCPImpersonateSA,
+		impersonateDel:             syncGCPImpersonateDel,
+		impersonateTTL:             syncGCPImpersonateTTL,
+		directFn:                   runGCPSyncDirectFn,
 	}
 }
 
@@ -52,6 +54,7 @@ func restoreSyncGCPAPIState(state syncGCPAPIState) {
 	syncValidate = state.validate
 	syncConcurrency = state.concurrency
 	syncPermissionLookback = state.permissionLookback
+	syncPermissionRemovalThreshold = state.permissionRemovalThreshold
 	syncGCPIAMGroups = state.gcpIAMGroups
 	syncOutput = state.output
 	syncStrictExit = state.strictExit
@@ -88,6 +91,9 @@ func TestRunGCPSync_APIModeSuccess(t *testing.T) {
 		if req["permission_usage_lookback_days"] != float64(120) {
 			t.Fatalf("expected permission_usage_lookback_days=120, got %#v", req["permission_usage_lookback_days"])
 		}
+		if req["permission_removal_threshold_days"] != float64(240) {
+			t.Fatalf("expected permission_removal_threshold_days=240, got %#v", req["permission_removal_threshold_days"])
+		}
 		targetGroups, ok := req["gcp_iam_target_groups"].([]interface{})
 		if !ok || len(targetGroups) != 2 || targetGroups[0] != "eng@example.com" || targetGroups[1] != "ops@example.com" {
 			t.Fatalf("unexpected gcp_iam_target_groups payload: %#v", req["gcp_iam_target_groups"])
@@ -120,6 +126,7 @@ func TestRunGCPSync_APIModeSuccess(t *testing.T) {
 	syncValidate = false
 	syncConcurrency = 6
 	syncPermissionLookback = 120
+	syncPermissionRemovalThreshold = 240
 	syncGCPIAMGroups = "eng@example.com,ops@example.com"
 	syncOutput = FormatTable
 	syncStrictExit = false

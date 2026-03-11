@@ -203,6 +203,7 @@ type awsSyncRequest struct {
 	Tables                                 []string `json:"tables"`
 	Validate                               bool     `json:"validate"`
 	PermissionUsageLookbackDays            int      `json:"permission_usage_lookback_days"`
+	PermissionRemovalThresholdDays         int      `json:"permission_removal_threshold_days"`
 	AWSIdentityCenterPermissionSetsInclude []string `json:"aws_identity_center_permission_sets_include"`
 	AWSIdentityCenterPermissionSetsExclude []string `json:"aws_identity_center_permission_sets_exclude"`
 }
@@ -245,7 +246,7 @@ var runAWSSyncWithOptions = func(ctx context.Context, client *snowflake.Client, 
 		}
 		opts = append(opts, nativesync.WithRegions([]string{region}))
 	}
-	opts = appendAWSPermissionUsageRequestOptions(opts, req.PermissionUsageLookbackDays, req.AWSIdentityCenterPermissionSetsInclude, req.AWSIdentityCenterPermissionSetsExclude)
+	opts = appendAWSPermissionUsageRequestOptions(opts, req.PermissionUsageLookbackDays, req.PermissionRemovalThresholdDays, req.AWSIdentityCenterPermissionSetsInclude, req.AWSIdentityCenterPermissionSetsExclude)
 
 	syncer := nativesync.NewSyncEngine(client, slog.Default(), opts...)
 	if req.Validate {
@@ -336,6 +337,7 @@ type awsOrgSyncRequest struct {
 	ExcludeAccounts                        []string `json:"exclude_accounts"`
 	AccountConcurrency                     int      `json:"account_concurrency"`
 	PermissionUsageLookbackDays            int      `json:"permission_usage_lookback_days"`
+	PermissionRemovalThresholdDays         int      `json:"permission_removal_threshold_days"`
 	AWSIdentityCenterPermissionSetsInclude []string `json:"aws_identity_center_permission_sets_include"`
 	AWSIdentityCenterPermissionSetsExclude []string `json:"aws_identity_center_permission_sets_exclude"`
 }
@@ -512,12 +514,15 @@ func buildAWSEngineOptionsForRequest(region string, req awsOrgSyncRequest) []nat
 	} else {
 		options = append(options, nativesync.WithRegions([]string{region}))
 	}
-	return appendAWSPermissionUsageRequestOptions(options, req.PermissionUsageLookbackDays, req.AWSIdentityCenterPermissionSetsInclude, req.AWSIdentityCenterPermissionSetsExclude)
+	return appendAWSPermissionUsageRequestOptions(options, req.PermissionUsageLookbackDays, req.PermissionRemovalThresholdDays, req.AWSIdentityCenterPermissionSetsInclude, req.AWSIdentityCenterPermissionSetsExclude)
 }
 
-func appendAWSPermissionUsageRequestOptions(options []nativesync.EngineOption, lookbackDays int, include, exclude []string) []nativesync.EngineOption {
+func appendAWSPermissionUsageRequestOptions(options []nativesync.EngineOption, lookbackDays int, removalThresholdDays int, include, exclude []string) []nativesync.EngineOption {
 	if lookbackDays > 0 {
 		options = append(options, nativesync.WithAWSPermissionUsageLookbackDays(lookbackDays))
+	}
+	if removalThresholdDays > 0 {
+		options = append(options, nativesync.WithAWSPermissionRemovalThresholdDays(removalThresholdDays))
 	}
 	if len(include) > 0 || len(exclude) > 0 {
 		options = append(options, nativesync.WithAWSIdentityCenterPermissionSetFilters(include, exclude))
@@ -624,12 +629,13 @@ func assumeAWSOrgAccountConfig(ctx context.Context, baseCfg aws.Config, roleARN,
 }
 
 type gcpSyncRequest struct {
-	Project                     string   `json:"project"`
-	Concurrency                 int      `json:"concurrency"`
-	Tables                      []string `json:"tables"`
-	Validate                    bool     `json:"validate"`
-	PermissionUsageLookbackDays int      `json:"permission_usage_lookback_days"`
-	GCPIAMTargetGroups          []string `json:"gcp_iam_target_groups"`
+	Project                        string   `json:"project"`
+	Concurrency                    int      `json:"concurrency"`
+	Tables                         []string `json:"tables"`
+	Validate                       bool     `json:"validate"`
+	PermissionUsageLookbackDays    int      `json:"permission_usage_lookback_days"`
+	PermissionRemovalThresholdDays int      `json:"permission_removal_threshold_days"`
+	GCPIAMTargetGroups             []string `json:"gcp_iam_target_groups"`
 }
 
 type gcpSyncOutcome struct {
@@ -650,7 +656,7 @@ var runGCPSyncWithOptions = func(ctx context.Context, client *snowflake.Client, 
 	if len(req.Tables) > 0 {
 		opts = append(opts, nativesync.WithGCPTableFilter(req.Tables))
 	}
-	opts = appendGCPPermissionUsageRequestOptions(opts, req.PermissionUsageLookbackDays, req.GCPIAMTargetGroups)
+	opts = appendGCPPermissionUsageRequestOptions(opts, req.PermissionUsageLookbackDays, req.PermissionRemovalThresholdDays, req.GCPIAMTargetGroups)
 
 	syncer := nativesync.NewGCPSyncEngine(client, slog.Default(), opts...)
 	if req.Validate {
@@ -725,9 +731,12 @@ func (s *Server) syncGCP(w http.ResponseWriter, r *http.Request) {
 	s.json(w, http.StatusOK, resp)
 }
 
-func appendGCPPermissionUsageRequestOptions(options []nativesync.GCPEngineOption, lookbackDays int, targetGroups []string) []nativesync.GCPEngineOption {
+func appendGCPPermissionUsageRequestOptions(options []nativesync.GCPEngineOption, lookbackDays int, removalThresholdDays int, targetGroups []string) []nativesync.GCPEngineOption {
 	if lookbackDays > 0 {
 		options = append(options, nativesync.WithGCPPermissionUsageLookbackDays(lookbackDays))
+	}
+	if removalThresholdDays > 0 {
+		options = append(options, nativesync.WithGCPPermissionRemovalThresholdDays(removalThresholdDays))
 	}
 	if len(targetGroups) > 0 {
 		options = append(options, nativesync.WithGCPIAMTargetGroups(targetGroups))

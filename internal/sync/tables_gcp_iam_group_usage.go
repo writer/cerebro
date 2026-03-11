@@ -37,7 +37,9 @@ func (e *GCPSyncEngine) gcpIAMGroupPermissionUsageTable() GCPTableSpec {
 			"permission_last_used",
 			"usage_status",
 			"days_unused",
+			"unused_since",
 			"lookback_days",
+			"removal_threshold_days",
 			"member_count",
 			"members_observed",
 			"recommendation",
@@ -57,7 +59,8 @@ func (e *GCPSyncEngine) fetchGCPIAMGroupPermissionUsage(ctx context.Context, pro
 		return nil, errSkipGCPIAMGroupPermissionUsage
 	}
 
-	lookbackDays := clampPermissionUsageLookbackDays(e.permissionUsageLookbackDays)
+	lookbackDays := clampPermissionUsageWindowDays(e.permissionUsageLookbackDays)
+	removalThresholdDays := clampPermissionRemovalThresholdDays(e.permissionUsageRemovalThresholdDays)
 	now := time.Now().UTC()
 	usageCutoff := now.Add(-time.Duration(lookbackDays) * 24 * time.Hour)
 
@@ -187,82 +190,99 @@ func (e *GCPSyncEngine) fetchGCPIAMGroupPermissionUsage(ctx context.Context, pro
 			}
 		}
 
-		existingLastSeen := e.loadExistingGCPGroupPermissionLastSeen(ctx, projectID, group)
+		existingStates := e.loadExistingGCPGroupPermissionState(ctx, projectID, group)
 
 		permissions := mapKeys(grantedPermissions)
 		sort.Strings(permissions)
 		for _, permission := range permissions {
+			previousState := existingStates[permission]
 			lastSeen := usedPermissions[permission]
 			ambiguousLastSeen := ambiguousPermissions[permission]
 			if ambiguousLastSeen.After(lastSeen) {
 				lastSeen = ambiguousLastSeen
 			}
-			if existing := existingLastSeen[permission]; existing.After(lastSeen) {
-				lastSeen = existing
+			if previousState.LastUsed.After(lastSeen) {
+				lastSeen = previousState.LastUsed
 			}
 
 			usageStatus := "unused"
-			daysUnused := lookbackDays
-			recommendation := fmt.Sprintf("Permission %s appears unused for group %s in project %s over the last %d days; consider removing the granting IAM role(s).", permission, group, projectID, lookbackDays)
+			recommendation := ""
 
 			if !lastSeen.IsZero() {
-				daysUnused = int(now.Sub(lastSeen).Hours() / 24)
 				if ambiguousLastSeen.After(usageCutoff) {
 					usageStatus = gcpIAMUsageStatusUncertain
 					recommendation = fmt.Sprintf("Permission %s was observed in audit logs for members of group %s, but this permission is also granted outside the group bindings in project %s; verify attribution before removing the role grant.", permission, group, projectID)
 				} else if lastSeen.After(usageCutoff) {
 					usageStatus = "used"
-					recommendation = ""
 				}
 			}
 
 			coverage := "full"
 			confidence := "high"
+			authoritativeCoverage := true
 			if !hasWorkspaceData || len(members) == 0 || loggingClient == nil {
 				coverage = "partial"
 				confidence = "low"
+				authoritativeCoverage = false
 			}
 			if memberQueryFailed && confidence != "low" {
 				coverage = "partial"
 				confidence = "medium"
+				authoritativeCoverage = false
 			}
 			if groupRoleResolutionErr && confidence != "low" {
 				coverage = "partial"
 				confidence = "medium"
+				authoritativeCoverage = false
 			}
 			if outsideRoleResolutionErr && confidence != "low" {
 				coverage = "partial"
 				confidence = "medium"
+				authoritativeCoverage = false
 			}
 			if usageStatus == gcpIAMUsageStatusUncertain && confidence == "high" {
 				coverage = "partial"
 				confidence = "medium"
+				authoritativeCoverage = false
+			}
+			if usageStatus == "unused" && !authoritativeCoverage {
+				usageStatus = "unknown"
+			}
+
+			currentState := derivePermissionUsageCurrentState(now, windowStart, lastSeen, previousState, usageStatus)
+			daysUnused := permissionUsageDaysUnused(now, currentState, lookbackDays)
+			if permissionUsageShouldRecommendRemoval(usageStatus, daysUnused, removalThresholdDays, authoritativeCoverage) {
+				recommendation = fmt.Sprintf("Permission %s appears unused for group %s in project %s for %d consecutive days; consider removing the granting IAM role(s).", permission, group, projectID, daysUnused)
 			}
 
 			grantingRoles := mapKeys(grantedPermissions[permission])
 			sort.Strings(grantingRoles)
 			rowID := fmt.Sprintf("%s|%s|%s", projectID, strings.ToLower(group), strings.ToLower(permission))
 			row := map[string]interface{}{
-				"_cq_id":            rowID,
-				"id":                rowID,
-				"project_id":        projectID,
-				"group":             group,
-				"permission":        permission,
-				"granted_roles":     grantingRoles,
-				"usage_status":      usageStatus,
-				"days_unused":       daysUnused,
-				"lookback_days":     lookbackDays,
-				"member_count":      len(members),
-				"members_observed":  len(membersObserved),
-				"recommendation":    recommendation,
-				"evidence_source":   "gcp_cloud_audit_logs_authorization_info",
-				"confidence":        confidence,
-				"coverage":          coverage,
-				"scan_window_start": windowStart,
-				"scan_window_end":   now,
+				"_cq_id":                 rowID,
+				"id":                     rowID,
+				"project_id":             projectID,
+				"group":                  group,
+				"permission":             permission,
+				"granted_roles":          grantingRoles,
+				"usage_status":           usageStatus,
+				"days_unused":            daysUnused,
+				"lookback_days":          lookbackDays,
+				"removal_threshold_days": removalThresholdDays,
+				"member_count":           len(members),
+				"members_observed":       len(membersObserved),
+				"recommendation":         recommendation,
+				"evidence_source":        "gcp_cloud_audit_logs_authorization_info",
+				"confidence":             confidence,
+				"coverage":               coverage,
+				"scan_window_start":      windowStart,
+				"scan_window_end":        now,
 			}
 			if !lastSeen.IsZero() {
 				row["permission_last_used"] = lastSeen
+			}
+			if !currentState.UnusedSince.IsZero() {
+				row["unused_since"] = currentState.UnusedSince
 			}
 			rows = append(rows, row)
 		}
@@ -531,8 +551,70 @@ func extractGrantedPermissionsFromAuditEntry(entry *logging.Entry) []string {
 	return result
 }
 
+type workspaceGroupMember struct {
+	Email string
+	Type  string
+}
+
 func (e *GCPSyncEngine) fetchWorkspaceGroupMembers(ctx context.Context, groups []string) (map[string][]string, bool) {
 	result := make(map[string][]string, len(groups))
+	if len(groups) == 0 || e.sf == nil {
+		return result, false
+	}
+
+	hasWorkspaceData := false
+	for _, group := range groups {
+		root := strings.ToLower(strings.TrimSpace(group))
+		if root == "" {
+			continue
+		}
+
+		seenGroups := map[string]struct{}{root: {}}
+		membersSet := make(map[string]struct{})
+		frontier := []string{root}
+
+		for len(frontier) > 0 {
+			membersByGroup, ok := e.loadWorkspaceGroupMemberships(ctx, frontier)
+			if !ok {
+				return result, false
+			}
+			hasWorkspaceData = true
+
+			nextFrontier := make([]string, 0)
+			for _, currentGroup := range frontier {
+				for _, member := range membersByGroup[currentGroup] {
+					email := strings.ToLower(strings.TrimSpace(member.Email))
+					if email == "" {
+						continue
+					}
+					if member.Type == "group" {
+						if _, seen := seenGroups[email]; seen {
+							continue
+						}
+						seenGroups[email] = struct{}{}
+						nextFrontier = append(nextFrontier, email)
+						continue
+					}
+					membersSet[email] = struct{}{}
+				}
+			}
+
+			frontier = nextFrontier
+		}
+
+		members := make([]string, 0, len(membersSet))
+		for member := range membersSet {
+			members = append(members, member)
+		}
+		sort.Strings(members)
+		result[root] = members
+	}
+
+	return result, hasWorkspaceData
+}
+
+func (e *GCPSyncEngine) loadWorkspaceGroupMemberships(ctx context.Context, groups []string) (map[string][]workspaceGroupMember, bool) {
+	result := make(map[string][]workspaceGroupMember, len(groups))
 	if len(groups) == 0 || e.sf == nil {
 		return result, false
 	}
@@ -540,15 +622,14 @@ func (e *GCPSyncEngine) fetchWorkspaceGroupMembers(ctx context.Context, groups [
 	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(groups)), ",")
 	args := make([]interface{}, 0, len(groups))
 	for _, group := range groups {
-		args = append(args, strings.ToLower(group))
+		args = append(args, strings.ToLower(strings.TrimSpace(group)))
 	}
 
 	query := fmt.Sprintf(`
-		SELECT LOWER(g.email) AS group_email, LOWER(m.email) AS member_email
+		SELECT LOWER(g.email) AS group_email, LOWER(m.email) AS member_email, COALESCE(LOWER(m.type), 'user') AS member_type
 		FROM google_workspace_groups g
 		JOIN google_workspace_group_members m ON LOWER(m.group_id) = LOWER(g.id)
 		WHERE LOWER(g.email) IN (%s)
-		  AND COALESCE(LOWER(m.type), 'user') = 'user'
 		  AND COALESCE(m.email, '') <> ''
 	`, placeholders)
 
@@ -561,47 +642,30 @@ func (e *GCPSyncEngine) fetchWorkspaceGroupMembers(ctx context.Context, groups [
 		return result, false
 	}
 
-	membersSet := make(map[string]map[string]struct{})
 	for _, row := range rows.Rows {
 		group := strings.ToLower(strings.TrimSpace(queryRowString(row, "group_email")))
 		member := strings.ToLower(strings.TrimSpace(queryRowString(row, "member_email")))
+		memberType := strings.ToLower(strings.TrimSpace(queryRowString(row, "member_type")))
 		if group == "" || member == "" {
 			continue
 		}
-		set := membersSet[group]
-		if set == nil {
-			set = make(map[string]struct{})
-			membersSet[group] = set
+		if memberType == "" {
+			memberType = "user"
 		}
-		set[member] = struct{}{}
-	}
-
-	for _, group := range groups {
-		group = strings.ToLower(group)
-		set := membersSet[group]
-		if len(set) == 0 {
-			result[group] = nil
-			continue
-		}
-		members := make([]string, 0, len(set))
-		for member := range set {
-			members = append(members, member)
-		}
-		sort.Strings(members)
-		result[group] = members
+		result[group] = append(result[group], workspaceGroupMember{Email: member, Type: memberType})
 	}
 
 	return result, true
 }
 
-func (e *GCPSyncEngine) loadExistingGCPGroupPermissionLastSeen(ctx context.Context, projectID, group string) map[string]time.Time {
-	result := make(map[string]time.Time)
+func (e *GCPSyncEngine) loadExistingGCPGroupPermissionState(ctx context.Context, projectID, group string) map[string]permissionUsageCurrentState {
+	result := make(map[string]permissionUsageCurrentState)
 	if e.sf == nil {
 		return result
 	}
 
 	rows, err := e.sf.Query(ctx, `
-		SELECT permission, permission_last_used
+		SELECT permission, permission_last_used, unused_since, usage_status
 		FROM `+gcpIAMGroupPermissionUsageTable+`
 		WHERE project_id = ? AND LOWER("group") = ?
 	`, projectID, strings.ToLower(group))
@@ -617,9 +681,14 @@ func (e *GCPSyncEngine) loadExistingGCPGroupPermissionLastSeen(ctx context.Conte
 		if permission == "" {
 			continue
 		}
+		state := permissionUsageCurrentState{Status: strings.ToLower(strings.TrimSpace(queryRowString(row, "usage_status")))}
 		if ts, ok := parseAnyTime(queryRow(row, "permission_last_used")); ok {
-			result[permission] = ts.UTC()
+			state.LastUsed = ts.UTC()
 		}
+		if ts, ok := parseAnyTime(queryRow(row, "unused_since")); ok {
+			state.UnusedSince = ts.UTC()
+		}
+		result[permission] = state
 	}
 
 	return result

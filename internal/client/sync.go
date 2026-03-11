@@ -83,6 +83,7 @@ type AWSSyncRequest struct {
 	Tables                                 []string
 	Validate                               bool
 	PermissionUsageLookbackDays            int
+	PermissionRemovalThresholdDays         int
 	AWSIdentityCenterPermissionSetsInclude []string
 	AWSIdentityCenterPermissionSetsExclude []string
 }
@@ -128,6 +129,12 @@ func (c *Client) RunAWSSync(ctx context.Context, req AWSSyncRequest) (*SyncRunRe
 			reqBody = make(map[string]interface{}, 1)
 		}
 		reqBody["permission_usage_lookback_days"] = req.PermissionUsageLookbackDays
+	}
+	if req.PermissionRemovalThresholdDays > 0 {
+		if reqBody == nil {
+			reqBody = make(map[string]interface{}, 1)
+		}
+		reqBody["permission_removal_threshold_days"] = req.PermissionRemovalThresholdDays
 	}
 	if len(req.AWSIdentityCenterPermissionSetsInclude) > 0 {
 		include := make([]string, 0, len(req.AWSIdentityCenterPermissionSetsInclude))
@@ -177,6 +184,7 @@ type AWSOrgSyncRequest struct {
 	ExcludeAccounts                        []string
 	AccountConcurrency                     int
 	PermissionUsageLookbackDays            int
+	PermissionRemovalThresholdDays         int
 	AWSIdentityCenterPermissionSetsInclude []string
 	AWSIdentityCenterPermissionSetsExclude []string
 }
@@ -263,6 +271,12 @@ func (c *Client) RunAWSOrgSync(ctx context.Context, req AWSOrgSyncRequest) (*Syn
 		}
 		reqBody["permission_usage_lookback_days"] = req.PermissionUsageLookbackDays
 	}
+	if req.PermissionRemovalThresholdDays > 0 {
+		if reqBody == nil {
+			reqBody = make(map[string]interface{}, 1)
+		}
+		reqBody["permission_removal_threshold_days"] = req.PermissionRemovalThresholdDays
+	}
 	if len(req.AWSIdentityCenterPermissionSetsInclude) > 0 {
 		include := make([]string, 0, len(req.AWSIdentityCenterPermissionSetsInclude))
 		for _, value := range req.AWSIdentityCenterPermissionSetsInclude {
@@ -300,12 +314,13 @@ func (c *Client) RunAWSOrgSync(ctx context.Context, req AWSOrgSyncRequest) (*Syn
 }
 
 type GCPSyncRequest struct {
-	Project                     string
-	Concurrency                 int
-	Tables                      []string
-	Validate                    bool
-	PermissionUsageLookbackDays int
-	GCPIAMTargetGroups          []string
+	Project                        string
+	Concurrency                    int
+	Tables                         []string
+	Validate                       bool
+	PermissionUsageLookbackDays    int
+	PermissionRemovalThresholdDays int
+	GCPIAMTargetGroups             []string
 }
 
 func (c *Client) RunGCPSync(ctx context.Context, req GCPSyncRequest) (*SyncRunResponse, error) {
@@ -336,6 +351,12 @@ func (c *Client) RunGCPSync(ctx context.Context, req GCPSyncRequest) (*SyncRunRe
 			reqBody = make(map[string]interface{}, 1)
 		}
 		reqBody["permission_usage_lookback_days"] = req.PermissionUsageLookbackDays
+	}
+	if req.PermissionRemovalThresholdDays > 0 {
+		if reqBody == nil {
+			reqBody = make(map[string]interface{}, 1)
+		}
+		reqBody["permission_removal_threshold_days"] = req.PermissionRemovalThresholdDays
 	}
 	if len(req.GCPIAMTargetGroups) > 0 {
 		targetGroups := make([]string, 0, len(req.GCPIAMTargetGroups))

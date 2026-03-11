@@ -64,7 +64,7 @@ var ResourceToTableMapping = map[string][]string{
 	"aws::iam::role_policy":               {"aws_iam_role_policies"},
 	"aws::iam::user_policy":               {"aws_iam_user_policies"},
 	"aws::iam::group_policy":              {"aws_iam_group_policies"},
-	"aws::identitycenter::permission_set": {"aws_identitycenter_permission_set_permission_usage"},
+	"aws::identitycenter::permission_set": {"aws_identitycenter_permission_set_permission_usage_rollup"},
 
 	// Lambda
 	"aws::lambda::function": {"aws_lambda_functions"},

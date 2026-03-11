@@ -230,6 +230,9 @@ func TestRunAWSSync_SendsRequestAndParsesResponse(t *testing.T) {
 		if req["permission_usage_lookback_days"] != float64(270) {
 			t.Fatalf("expected permission_usage_lookback_days=270, got %#v", req["permission_usage_lookback_days"])
 		}
+		if req["permission_removal_threshold_days"] != float64(180) {
+			t.Fatalf("expected permission_removal_threshold_days=180, got %#v", req["permission_removal_threshold_days"])
+		}
 		include, ok := req["aws_identity_center_permission_sets_include"].([]interface{})
 		if !ok || len(include) != 2 || include[0] != "Admin" || include[1] != "arn:aws:sso:::permissionSet/ssoins-123/ps-123" {
 			t.Fatalf("unexpected aws_identity_center_permission_sets_include payload: %#v", req["aws_identity_center_permission_sets_include"])
@@ -276,6 +279,7 @@ func TestRunAWSSync_SendsRequestAndParsesResponse(t *testing.T) {
 		Tables:                                 []string{"aws_iam_users", "aws_s3_buckets"},
 		Validate:                               true,
 		PermissionUsageLookbackDays:            270,
+		PermissionRemovalThresholdDays:         180,
 		AWSIdentityCenterPermissionSetsInclude: []string{" Admin ", "arn:aws:sso:::permissionSet/ssoins-123/ps-123"},
 		AWSIdentityCenterPermissionSetsExclude: []string{" ReadOnly "},
 	})
@@ -369,6 +373,9 @@ func TestRunAWSOrgSync_SendsRequestAndParsesResponse(t *testing.T) {
 		if req["permission_usage_lookback_days"] != float64(365) {
 			t.Fatalf("expected permission_usage_lookback_days=365, got %#v", req["permission_usage_lookback_days"])
 		}
+		if req["permission_removal_threshold_days"] != float64(210) {
+			t.Fatalf("expected permission_removal_threshold_days=210, got %#v", req["permission_removal_threshold_days"])
+		}
 		includePS, ok := req["aws_identity_center_permission_sets_include"].([]interface{})
 		if !ok || len(includePS) != 1 || includePS[0] != "Admin" {
 			t.Fatalf("unexpected aws_identity_center_permission_sets_include payload: %#v", req["aws_identity_center_permission_sets_include"])
@@ -426,6 +433,7 @@ func TestRunAWSOrgSync_SendsRequestAndParsesResponse(t *testing.T) {
 		ExcludeAccounts:                        []string{"333333333333"},
 		AccountConcurrency:                     3,
 		PermissionUsageLookbackDays:            365,
+		PermissionRemovalThresholdDays:         210,
 		AWSIdentityCenterPermissionSetsInclude: []string{" Admin "},
 		AWSIdentityCenterPermissionSetsExclude: []string{" Billing "},
 	})
@@ -621,6 +629,9 @@ func TestRunGCPSync_SendsRequestAndParsesResponse(t *testing.T) {
 		if req["permission_usage_lookback_days"] != float64(120) {
 			t.Fatalf("expected permission_usage_lookback_days=120, got %#v", req["permission_usage_lookback_days"])
 		}
+		if req["permission_removal_threshold_days"] != float64(240) {
+			t.Fatalf("expected permission_removal_threshold_days=240, got %#v", req["permission_removal_threshold_days"])
+		}
 		targetGroups, ok := req["gcp_iam_target_groups"].([]interface{})
 		if !ok || len(targetGroups) != 2 || targetGroups[0] != "eng@example.com" || targetGroups[1] != "ops@example.com" {
 			t.Fatalf("unexpected gcp_iam_target_groups payload: %#v", req["gcp_iam_target_groups"])
@@ -655,12 +666,13 @@ func TestRunGCPSync_SendsRequestAndParsesResponse(t *testing.T) {
 	}
 
 	resp, err := c.RunGCPSync(context.Background(), GCPSyncRequest{
-		Project:                     " my-project ",
-		Concurrency:                 7,
-		Tables:                      []string{"gcp_compute_instances", "gcp_storage_buckets"},
-		Validate:                    true,
-		PermissionUsageLookbackDays: 120,
-		GCPIAMTargetGroups:          []string{" eng@example.com ", "ops@example.com"},
+		Project:                        " my-project ",
+		Concurrency:                    7,
+		Tables:                         []string{"gcp_compute_instances", "gcp_storage_buckets"},
+		Validate:                       true,
+		PermissionUsageLookbackDays:    120,
+		PermissionRemovalThresholdDays: 240,
+		GCPIAMTargetGroups:             []string{" eng@example.com ", "ops@example.com"},
 	})
 	if err != nil {
 		t.Fatalf("RunGCPSync returned error: %v", err)

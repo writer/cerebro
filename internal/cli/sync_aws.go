@@ -190,6 +190,7 @@ func runMultiAccountAWSSyncViaAPI(
 			Tables:                                 tableFilter,
 			Validate:                               syncValidate,
 			PermissionUsageLookbackDays:            syncPermissionLookback,
+			PermissionRemovalThresholdDays:         syncPermissionRemovalThreshold,
 			AWSIdentityCenterPermissionSetsInclude: permissionSetInclude,
 			AWSIdentityCenterPermissionSetsExclude: permissionSetExclude,
 		})
@@ -330,6 +331,7 @@ func runNativeSync(ctx context.Context, start time.Time) error {
 				Tables:                                 tableFilter,
 				Validate:                               syncValidate,
 				PermissionUsageLookbackDays:            syncPermissionLookback,
+				PermissionRemovalThresholdDays:         syncPermissionRemovalThreshold,
 				AWSIdentityCenterPermissionSetsInclude: permissionSetInclude,
 				AWSIdentityCenterPermissionSetsExclude: permissionSetExclude,
 			})
@@ -503,6 +505,7 @@ func runNativeSyncDirect(ctx context.Context, start time.Time) error {
 
 func appendAWSPermissionUsageOptions(opts []nativesync.EngineOption) []nativesync.EngineOption {
 	opts = append(opts, nativesync.WithAWSPermissionUsageLookbackDays(syncPermissionLookback))
+	opts = append(opts, nativesync.WithAWSPermissionRemovalThresholdDays(syncPermissionRemovalThreshold))
 	include := parseCommaSeparatedValues(syncAWSPSInclude)
 	exclude := parseCommaSeparatedValues(syncAWSPSExclude)
 	if len(include) > 0 || len(exclude) > 0 {

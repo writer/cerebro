@@ -28,8 +28,9 @@ type GCPSyncEngine struct {
 	rateLimiter  *rate.Limiter
 	retryOptions retryOptions
 
-	permissionUsageLookbackDays int
-	gcpIAMTargetGroups          map[string]struct{}
+	permissionUsageLookbackDays         int
+	permissionUsageRemovalThresholdDays int
+	gcpIAMTargetGroups                  map[string]struct{}
 }
 
 // GCPEngineOption configures the GCP sync engine
@@ -53,6 +54,12 @@ func WithGCPPermissionUsageLookbackDays(days int) GCPEngineOption {
 	}
 }
 
+func WithGCPPermissionRemovalThresholdDays(days int) GCPEngineOption {
+	return func(e *GCPSyncEngine) {
+		e.permissionUsageRemovalThresholdDays = clampPermissionRemovalThresholdDays(days)
+	}
+}
+
 func WithGCPIAMTargetGroups(groups []string) GCPEngineOption {
 	return func(e *GCPSyncEngine) {
 		e.gcpIAMTargetGroups = normalizeIdentityFilterSet(groups)
@@ -61,10 +68,11 @@ func WithGCPIAMTargetGroups(groups []string) GCPEngineOption {
 
 func NewGCPSyncEngine(sf warehouse.SyncWarehouse, logger *slog.Logger, opts ...GCPEngineOption) *GCPSyncEngine {
 	e := &GCPSyncEngine{
-		sf:                          sf,
-		logger:                      logger,
-		concurrency:                 10,
-		permissionUsageLookbackDays: defaultPermissionUsageLookbackDays,
+		sf:                                  sf,
+		logger:                              logger,
+		concurrency:                         10,
+		permissionUsageLookbackDays:         defaultPermissionUsageWindowDays,
+		permissionUsageRemovalThresholdDays: defaultPermissionRemovalThresholdDays,
 	}
 	for _, opt := range opts {
 		opt(e)
@@ -228,6 +236,15 @@ func (e *GCPSyncEngine) syncTable(ctx context.Context, table GCPTableSpec) (Sync
 		result.Error = err.Error()
 		result.Duration = time.Since(start)
 		return result, fmt.Errorf("gcp %s (project %s): upsert: %w", table.Name, e.projectID, err)
+	}
+	if table.Name == gcpIAMGroupPermissionUsageTable {
+		if err := e.appendGCPIAMGroupPermissionUsageHistory(ctx, rows); err != nil {
+			e.logger.Error("append gcp iam permission usage history failed", "table", table.Name, "error", err)
+			result.Errors = 1
+			result.Error = err.Error()
+			result.Duration = time.Since(start)
+			return result, fmt.Errorf("gcp %s (project %s): append history: %w", table.Name, e.projectID, err)
+		}
 	}
 
 	syncTime := time.Now().UTC()

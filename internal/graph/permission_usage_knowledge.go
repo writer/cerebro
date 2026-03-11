@@ -23,25 +23,29 @@ var (
 		SELECT
 			_cq_id,
 			account_id,
+			account_ids,
+			account_count,
 			region,
 			identity_center_instance_arn,
 			permission_set_arn,
 			permission_set_name,
-			sso_role_arn,
-			sso_role_name,
+			sso_role_arns,
 			action,
 			action_last_accessed,
 			usage_status,
 			days_unused,
+			unused_since,
 			lookback_days,
+			removal_threshold_days,
 			recommendation,
 			evidence_source,
 			confidence,
 			coverage,
 			scan_window_start,
 			scan_window_end,
+			history_day,
 			assignment_count
-		FROM aws_identitycenter_permission_set_permission_usage
+		FROM aws_identitycenter_permission_set_permission_usage_history
 	`
 
 	gcpIAMPermissionUsageKnowledgeQuery = `
@@ -54,7 +58,9 @@ var (
 			permission_last_used,
 			usage_status,
 			days_unused,
+			unused_since,
 			lookback_days,
+			removal_threshold_days,
 			member_count,
 			members_observed,
 			recommendation,
@@ -62,8 +68,9 @@ var (
 			confidence,
 			coverage,
 			scan_window_start,
-			scan_window_end
-		FROM gcp_iam_group_permission_usage
+			scan_window_end,
+			history_day
+		FROM gcp_iam_group_permission_usage_history
 	`
 )
 
@@ -88,7 +95,7 @@ func (b *Builder) buildIAMPermissionUsageKnowledge(ctx context.Context) {
 }
 
 func (b *Builder) buildAWSIAMPermissionUsageKnowledge(ctx context.Context) (int, int) {
-	result, err := b.queryIfExists(ctx, "aws_identitycenter_permission_set_permission_usage", awsIAMPermissionUsageKnowledgeQuery)
+	result, err := b.queryIfExists(ctx, "aws_identitycenter_permission_set_permission_usage_history", awsIAMPermissionUsageKnowledgeQuery)
 	if err != nil {
 		b.logger.Warn("failed to query AWS IAM permission usage table", "error", err)
 		return 0, 0
@@ -110,12 +117,17 @@ func (b *Builder) buildAWSIAMPermissionUsageKnowledge(ctx context.Context) (int,
 
 		rowKey := firstNonEmpty(strings.TrimSpace(queryRowString(row, "_cq_id")), subjectID+"|"+permission)
 		observedAt := permissionUsageTimeOr(queryRow(row, "scan_window_end"), time.Now().UTC())
-		validFrom := permissionUsageTimeOr(queryRow(row, "scan_window_start"), observedAt)
+		validFrom := permissionUsageTimeOr(queryRow(row, "history_day"), observedAt)
 		lastUsed, hasLastUsed := permissionUsageTime(queryRow(row, "action_last_accessed"))
+		unusedSince, hasUnusedSince := permissionUsageTime(queryRow(row, "unused_since"))
 
 		lookbackDays := permissionUsageInt(queryRow(row, "lookback_days"))
 		if lookbackDays <= 0 {
-			lookbackDays = 180
+			lookbackDays = 90
+		}
+		removalThresholdDays := permissionUsageInt(queryRow(row, "removal_threshold_days"))
+		if removalThresholdDays <= 0 {
+			removalThresholdDays = 180
 		}
 		daysUnused := permissionUsageInt(queryRow(row, "days_unused"))
 		usageStatus := normalizePermissionUsageStatus(queryRowString(row, "usage_status"))
@@ -129,14 +141,21 @@ func (b *Builder) buildAWSIAMPermissionUsageKnowledge(ctx context.Context) (int,
 			"usage_status":                 usageStatus,
 			"days_unused":                  daysUnused,
 			"lookback_days":                lookbackDays,
+			"removal_threshold_days":       removalThresholdDays,
 			"coverage":                     strings.TrimSpace(queryRowString(row, "coverage")),
 			"identity_center_instance_arn": strings.TrimSpace(queryRowString(row, "identity_center_instance_arn")),
 			"permission_set_arn":           strings.TrimSpace(queryRowString(row, "permission_set_arn")),
 			"permission_set_name":          strings.TrimSpace(queryRowString(row, "permission_set_name")),
 			"assignment_count":             permissionUsageInt(queryRow(row, "assignment_count")),
+			"account_ids":                  permissionUsageStringSlice(queryRow(row, "account_ids")),
+			"account_count":                permissionUsageInt(queryRow(row, "account_count")),
+			"sso_role_arns":                permissionUsageStringSlice(queryRow(row, "sso_role_arns")),
 		}
 		if hasLastUsed {
 			metadata["last_used_at"] = lastUsed
+		}
+		if hasUnusedSince {
+			metadata["unused_since"] = unusedSince
 		}
 		if recommendation != "" {
 			metadata["recommendation"] = recommendation
@@ -200,7 +219,7 @@ func (b *Builder) buildAWSIAMPermissionUsageKnowledge(ctx context.Context) (int,
 }
 
 func (b *Builder) buildGCPIAMPermissionUsageKnowledge(ctx context.Context) (int, int) {
-	result, err := b.queryIfExists(ctx, "gcp_iam_group_permission_usage", gcpIAMPermissionUsageKnowledgeQuery)
+	result, err := b.queryIfExists(ctx, "gcp_iam_group_permission_usage_history", gcpIAMPermissionUsageKnowledgeQuery)
 	if err != nil {
 		b.logger.Warn("failed to query GCP IAM permission usage table", "error", err)
 		return 0, 0
@@ -224,12 +243,17 @@ func (b *Builder) buildGCPIAMPermissionUsageKnowledge(ctx context.Context) (int,
 
 		rowKey := firstNonEmpty(strings.TrimSpace(queryRowString(row, "_cq_id")), subjectID+"|"+permission)
 		observedAt := permissionUsageTimeOr(queryRow(row, "scan_window_end"), time.Now().UTC())
-		validFrom := permissionUsageTimeOr(queryRow(row, "scan_window_start"), observedAt)
+		validFrom := permissionUsageTimeOr(queryRow(row, "history_day"), observedAt)
 		lastUsed, hasLastUsed := permissionUsageTime(queryRow(row, "permission_last_used"))
+		unusedSince, hasUnusedSince := permissionUsageTime(queryRow(row, "unused_since"))
 
 		lookbackDays := permissionUsageInt(queryRow(row, "lookback_days"))
 		if lookbackDays <= 0 {
-			lookbackDays = 180
+			lookbackDays = 90
+		}
+		removalThresholdDays := permissionUsageInt(queryRow(row, "removal_threshold_days"))
+		if removalThresholdDays <= 0 {
+			removalThresholdDays = 180
 		}
 		daysUnused := permissionUsageInt(queryRow(row, "days_unused"))
 		usageStatus := normalizePermissionUsageStatus(queryRowString(row, "usage_status"))
@@ -238,20 +262,24 @@ func (b *Builder) buildGCPIAMPermissionUsageKnowledge(ctx context.Context) (int,
 		confidence := permissionUsageConfidenceScore(queryRow(row, "confidence"))
 
 		metadata := map[string]any{
-			"provider":         "gcp",
-			"project_id":       projectID,
-			"group_email":      groupEmail,
-			"permission":       permission,
-			"usage_status":     usageStatus,
-			"days_unused":      daysUnused,
-			"lookback_days":    lookbackDays,
-			"coverage":         strings.TrimSpace(queryRowString(row, "coverage")),
-			"member_count":     permissionUsageInt(queryRow(row, "member_count")),
-			"members_observed": permissionUsageInt(queryRow(row, "members_observed")),
-			"granted_roles":    permissionUsageStringSlice(queryRow(row, "granted_roles")),
+			"provider":               "gcp",
+			"project_id":             projectID,
+			"group_email":            groupEmail,
+			"permission":             permission,
+			"usage_status":           usageStatus,
+			"days_unused":            daysUnused,
+			"lookback_days":          lookbackDays,
+			"removal_threshold_days": removalThresholdDays,
+			"coverage":               strings.TrimSpace(queryRowString(row, "coverage")),
+			"member_count":           permissionUsageInt(queryRow(row, "member_count")),
+			"members_observed":       permissionUsageInt(queryRow(row, "members_observed")),
+			"granted_roles":          permissionUsageStringSlice(queryRow(row, "granted_roles")),
 		}
 		if hasLastUsed {
 			metadata["last_used_at"] = lastUsed
+		}
+		if hasUnusedSince {
+			metadata["unused_since"] = unusedSince
 		}
 		if recommendation != "" {
 			metadata["recommendation"] = recommendation
@@ -315,7 +343,7 @@ func (b *Builder) buildGCPIAMPermissionUsageKnowledge(ctx context.Context) (int,
 }
 
 func (b *Builder) ensureAWSIAMPermissionUsageSubject(row map[string]any) string {
-	subjectID := strings.TrimSpace(queryRowString(row, "sso_role_arn"))
+	subjectID := strings.TrimSpace(queryRowString(row, "permission_set_arn"))
 	if subjectID == "" {
 		return ""
 	}
@@ -323,17 +351,25 @@ func (b *Builder) ensureAWSIAMPermissionUsageSubject(row map[string]any) string 
 		return subjectID
 	}
 
-	name := firstNonEmpty(strings.TrimSpace(queryRowString(row, "sso_role_name")), subjectID)
+	name := firstNonEmpty(strings.TrimSpace(queryRowString(row, "permission_set_name")), subjectID)
+	accountIDs := permissionUsageStringSlice(queryRow(row, "account_ids"))
+	accountID := strings.TrimSpace(queryRowString(row, "account_id"))
+	if accountID == "" && len(accountIDs) == 1 {
+		accountID = accountIDs[0]
+	}
 	b.graph.AddNode(&Node{
 		ID:       subjectID,
 		Kind:     NodeKindRole,
 		Name:     name,
 		Provider: "aws",
-		Account:  strings.TrimSpace(queryRowString(row, "account_id")),
+		Account:  accountID,
 		Region:   strings.TrimSpace(queryRowString(row, "region")),
 		Properties: map[string]any{
 			"permission_set_arn":  strings.TrimSpace(queryRowString(row, "permission_set_arn")),
 			"permission_set_name": strings.TrimSpace(queryRowString(row, "permission_set_name")),
+			"account_ids":         accountIDs,
+			"account_count":       permissionUsageInt(queryRow(row, "account_count")),
+			"sso_role_arns":       permissionUsageStringSlice(queryRow(row, "sso_role_arns")),
 			"identity_center":     true,
 		},
 	})
@@ -384,6 +420,12 @@ func permissionUsageSourceEventID(provider, rowKey string, observedAt time.Time)
 func permissionUsageSummary(provider, permission, subjectID, usageStatus string, daysUnused, lookbackDays int, recommendation string) string {
 	if usageStatus == "used" {
 		return fmt.Sprintf("%s permission %s for %s was observed within the %d-day lookback window.", strings.ToUpper(provider), permission, subjectID, lookbackDays)
+	}
+	if usageStatus == "attribution_uncertain" {
+		return fmt.Sprintf("%s permission %s for %s was observed within the %d-day lookback window, but attribution remains uncertain.", strings.ToUpper(provider), permission, subjectID, lookbackDays)
+	}
+	if usageStatus == "unknown" {
+		return fmt.Sprintf("%s permission %s for %s could not be authoritatively classified during the %d-day lookback window.", strings.ToUpper(provider), permission, subjectID, lookbackDays)
 	}
 	if recommendation != "" {
 		return recommendation
