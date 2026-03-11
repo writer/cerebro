@@ -2,7 +2,7 @@
 
 Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and `internal/graphingest/mappings.yaml` via `go run ./scripts/generate_graph_ontology_docs/main.go`.
 
-- Node kinds: **60**
+- Node kinds: **61**
 - Edge kinds: **37**
 - Mapping rules: **13**
 - Source domains: **9**
@@ -62,6 +62,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `pull_request` | business | `number`, `observed_at`, `repository`, `state`, `valid_from` | `based_on`, `targets` |
 | `repository` | - | - | - |
 | `role` | identity | - | - |
+| `role_binding` | kubernetes | - | - |
 | `scp` | - | - | - |
 | `secret` | resource | - | - |
 | `service` | business, resource | `observed_at`, `service_id`, `valid_from` | `depends_on`, `owns`, `runs`, `targets` |
@@ -157,13 +158,13 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `github` | `ensemble.tap.github.check_run.completed`, `ensemble.tap.github.pull_request.merged`, `ensemble.tap.github.pull_request.opened`, `ensemble.tap.github.pull_request.review_submitted` | `check_run`, `ci_workflow`, `pull_request`, `repository`, `service` |
 | `incident` | `ensemble.tap.incident.timeline.*` | `action`, `evidence`, `incident`, `service` |
 | `jira` | `ensemble.tap.jira.issue.transitioned` | `action`, `ticket` |
-| `sales` | `ensemble.tap.sales.call.logged` | `action`, `contact` |
+| `sales` | `ensemble.tap.sales.call.logged` | `action`, `company`, `contact`, `deal`, `lead`, `opportunity` |
 | `slack` | `ensemble.tap.slack.thread.message_posted` | `action`, `communication_thread` |
-| `support` | `ensemble.tap.support.ticket.updated` | `action`, `ticket` |
+| `support` | `ensemble.tap.support.ticket.updated` | `action`, `company`, `customer`, `subscription`, `ticket` |
 
 ## Unmapped Built-in Node Kinds
 
-Total unmapped kinds: **43**
+Total unmapped kinds: **38**
 
 - `activity`
 - `application`
@@ -176,11 +177,8 @@ Total unmapped kinds: **43**
 - `claim`
 - `cluster_role`
 - `cluster_role_binding`
-- `company`
 - `configmap`
-- `customer`
 - `database`
-- `deal`
 - `decision`
 - `department`
 - `deployment`
@@ -190,21 +188,19 @@ Total unmapped kinds: **43**
 - `instance`
 - `internet`
 - `invoice`
-- `lead`
 - `location`
 - `namespace`
 - `network`
 - `observation`
-- `opportunity`
 - `outcome`
 - `permission_boundary`
 - `persistent_volume`
 - `person`
 - `pod`
 - `role`
+- `role_binding`
 - `scp`
 - `secret`
 - `service_account`
 - `source`
-- `subscription`
 - `user`

@@ -113,6 +113,7 @@ func (b *Builder) Build(ctx context.Context) error {
 	g.Go(func() error { b.buildGCPNodes(gctx); return nil })
 	g.Go(func() error { b.buildAzureNodes(gctx); return nil })
 	g.Go(func() error { b.buildOktaNodes(gctx); return nil })
+	g.Go(func() error { b.buildK8sNodes(gctx); return nil })
 	_ = g.Wait()
 	if err := ctx.Err(); err != nil {
 		return err
@@ -134,6 +135,7 @@ func (b *Builder) Build(ctx context.Context) error {
 	eg.Go(func() error { b.buildAWSEdges(ectx); return nil })
 	eg.Go(func() error { b.buildGCPEdges(ectx); return nil })
 	eg.Go(func() error { b.buildAzureEdges(ectx); return nil })
+	eg.Go(func() error { b.buildKubernetesEdges(ectx); return nil })
 	eg.Go(func() error { b.buildRelationshipEdges(ectx); return nil })
 	_ = eg.Wait()
 	if err := ctx.Err(); err != nil {

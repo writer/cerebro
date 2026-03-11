@@ -9,7 +9,7 @@ Generated from `internal/events.CloudEvent` and `internal/graphingest/mappings.y
 - TAP mapping rules: **13**
 - Wildcard event patterns: **1**
 - Distinct required data keys across mappings: **30**
-- Distinct optional data keys across mappings: **35**
+- Distinct optional data keys across mappings: **53**
 
 ## CloudEvent Envelope
 
@@ -59,9 +59,9 @@ Generated from `internal/events.CloudEvent` and `internal/graphingest/mappings.y
 | `github_pr_review_submitted` | `ensemble.tap.github.pull_request.review_submitted` | `github` | no | `cerebro.graphingest/v1alpha1` | `1.0.0` | - | `pull_request`, `repository`, `service` | `interacted_with`, `targets` | `number`, `repository`, `reviewer_email` | `state` | `reviewer_email` |
 | `incident_timeline_event` | `ensemble.tap.incident.timeline.*` | `incident` | yes | `cerebro.graphingest/v1alpha1` | `1.0.0` | - | `action`, `evidence`, `incident`, `service` | `based_on`, `targets` | `event_id`, `incident_id`, `service` | `actor_email`, `event_type`, `performed_at`, `severity`, `status`, `summary`, `title` | `actor_email` |
 | `jira_issue_transition` | `ensemble.tap.jira.issue.transitioned` | `jira` | no | `cerebro.graphingest/v1alpha1` | `1.0.0` | - | `action`, `ticket` | `assigned_to`, `targets` | `actor_email`, `issue_key`, `transition_id` | `from_status`, `issue_type`, `performed_at`, `project_key`, `summary`, `to_status` | `actor_email` |
-| `sales_call_logged` | `ensemble.tap.sales.call.logged` | `sales` | no | `cerebro.graphingest/v1alpha1` | `1.0.0` | - | `action`, `contact` | `interacted_with`, `targets` | `call_id`, `contact_id`, `rep_email` | `contact_email`, `contact_name`, `duration_minutes`, `logged_at`, `summary` | `rep_email` |
+| `sales_call_logged` | `ensemble.tap.sales.call.logged` | `sales` | no | `cerebro.graphingest/v1alpha1` | `1.0.0` | - | `action`, `company`, `contact`, `deal`, `lead`, `opportunity` | `interacted_with`, `targets`, `works_at` | `call_id`, `contact_id`, `rep_email` | `company_domain`, `company_id`, `company_name`, `contact_email`, `contact_name`, `deal_id`, `deal_name`, `deal_stage`, `duration_minutes`, `lead_id`, `lead_name`, `lead_source`, `logged_at`, `opportunity_amount`, `opportunity_id`, `opportunity_name`, `opportunity_stage`, `summary` | `rep_email` |
 | `slack_thread_message` | `ensemble.tap.slack.thread.message_posted` | `slack` | no | `cerebro.graphingest/v1alpha1` | `1.0.0` | - | `action`, `communication_thread` | `interacted_with`, `targets` | `author_email`, `channel_id`, `message_ts`, `thread_ts` | `channel_name`, `text` | `author_email` |
-| `support_ticket_updated` | `ensemble.tap.support.ticket.updated` | `support` | no | `cerebro.graphingest/v1alpha1` | `1.0.0` | - | `action`, `ticket` | `assigned_to`, `targets` | `agent_email`, `ticket_id`, `update_id` | `priority`, `status`, `subject`, `update_type`, `updated_at` | `agent_email` |
+| `support_ticket_updated` | `ensemble.tap.support.ticket.updated` | `support` | no | `cerebro.graphingest/v1alpha1` | `1.0.0` | - | `action`, `company`, `customer`, `subscription`, `ticket` | `assigned_to`, `subscribed_to`, `targets` | `agent_email`, `ticket_id`, `update_id` | `company_id`, `company_name`, `customer_id`, `customer_name`, `priority`, `status`, `subject`, `subscription_id`, `subscription_name`, `subscription_plan`, `update_type`, `updated_at` | `agent_email` |
 
 ## Shared Context Keys Used by Templates
 

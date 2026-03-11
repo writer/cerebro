@@ -251,6 +251,105 @@ func TestMapperApply_SupportTicketUpdated(t *testing.T) {
 	if !assignmentFound {
 		t.Fatalf("expected assigned_to edge to support ticket, got %#v", g.GetOutEdges("person:agent@example.com"))
 	}
+	if _, ok := g.GetNode("company:"); ok {
+		t.Fatal("did not expect empty optional company node")
+	}
+}
+
+func TestMapperApply_SupportTicketCreatesConditionalBusinessNodes(t *testing.T) {
+	config, err := LoadDefaultConfig()
+	if err != nil {
+		t.Fatalf("load default config failed: %v", err)
+	}
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:   "person:agent@example.com",
+		Kind: graph.NodeKindPerson,
+		Name: "Agent",
+		Properties: map[string]any{
+			"email": "agent@example.com",
+		},
+	})
+
+	mapper, err := NewMapper(config, func(raw string, _ events.CloudEvent) string {
+		raw = strings.ToLower(strings.TrimSpace(raw))
+		if strings.Contains(raw, "@") {
+			return "person:" + raw
+		}
+		return raw
+	})
+	if err != nil {
+		t.Fatalf("new mapper failed: %v", err)
+	}
+
+	_, err = mapper.Apply(g, events.CloudEvent{
+		ID:     "evt-support-conditional-1",
+		Type:   "ensemble.tap.support.ticket.updated",
+		Time:   time.Date(2026, 3, 9, 18, 5, 0, 0, time.UTC),
+		Source: "urn:ensemble:tap",
+		Data: map[string]any{
+			"ticket_id":         "12346",
+			"subject":           "Renewal blocker",
+			"status":            "open",
+			"priority":          "high",
+			"update_id":         "u-2",
+			"update_type":       "escalation",
+			"agent_email":       "agent@example.com",
+			"customer_id":       "cust-42",
+			"customer_name":     "Acme West",
+			"company_id":        "comp-42",
+			"company_name":      "Acme Corp",
+			"subscription_id":   "sub-42",
+			"subscription_name": "Enterprise Annual",
+			"subscription_plan": "enterprise",
+		},
+	})
+	if err != nil {
+		t.Fatalf("mapper apply failed: %v", err)
+	}
+
+	for _, id := range []string{"customer:cust-42", "company:comp-42", "subscription:sub-42"} {
+		if _, ok := g.GetNode(id); !ok {
+			t.Fatalf("expected conditional node %q to exist", id)
+		}
+	}
+	foundCustomerSubscription := false
+	for _, edge := range g.GetOutEdges("customer:cust-42") {
+		if edge != nil && edge.Kind == graph.EdgeKindSubscribedTo && edge.Target == "subscription:sub-42" {
+			foundCustomerSubscription = true
+			break
+		}
+	}
+	if !foundCustomerSubscription {
+		t.Fatalf("expected customer -> subscription edge, got %#v", g.GetOutEdges("customer:cust-42"))
+	}
+}
+
+func TestMapperConditionMatches_TreatsScalarValuesAsPresent(t *testing.T) {
+	mapper := &Mapper{}
+	context := map[string]any{
+		"data": map[string]any{
+			"customer_zero":  "0",
+			"customer_false": "false",
+			"customer_null":  "null",
+			"customer_empty": "",
+		},
+	}
+
+	for _, tc := range []struct {
+		name string
+		when string
+		want bool
+	}{
+		{name: "zero string", when: "{{data.customer_zero}}", want: true},
+		{name: "false string", when: "{{data.customer_false}}", want: true},
+		{name: "null string", when: "{{data.customer_null}}", want: true},
+		{name: "empty string", when: "{{data.customer_empty}}", want: false},
+	} {
+		if got := mapper.conditionMatches(tc.when, context, events.CloudEvent{}); got != tc.want {
+			t.Fatalf("%s: conditionMatches(%q) = %v, want %v", tc.name, tc.when, got, tc.want)
+		}
+	}
 }
 
 func TestMapperApply_CalendarMeetingUsesMeetingKind(t *testing.T) {
@@ -579,6 +678,84 @@ func TestMapperApply_SalesCallLoggedUsesActionKind(t *testing.T) {
 	}
 	if actionNode.Kind != graph.NodeKindAction {
 		t.Fatalf("expected sales action node kind %q, got %q", graph.NodeKindAction, actionNode.Kind)
+	}
+	if _, ok := g.GetNode("company:"); ok {
+		t.Fatal("did not expect empty optional company node")
+	}
+}
+
+func TestMapperApply_SalesCallLoggedCreatesConditionalBusinessNodes(t *testing.T) {
+	config, err := LoadDefaultConfig()
+	if err != nil {
+		t.Fatalf("load default config failed: %v", err)
+	}
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:   "person:rep@example.com",
+		Kind: graph.NodeKindPerson,
+		Name: "Rep",
+		Properties: map[string]any{
+			"email": "rep@example.com",
+		},
+	})
+
+	mapper, err := NewMapper(config, func(raw string, _ events.CloudEvent) string {
+		raw = strings.ToLower(strings.TrimSpace(raw))
+		if strings.Contains(raw, "@") {
+			return "person:" + raw
+		}
+		return raw
+	})
+	if err != nil {
+		t.Fatalf("new mapper failed: %v", err)
+	}
+
+	_, err = mapper.Apply(g, events.CloudEvent{
+		ID:     "evt-sales-conditional-1",
+		Type:   "ensemble.tap.sales.call.logged",
+		Time:   time.Date(2026, 3, 9, 20, 10, 0, 0, time.UTC),
+		Source: "urn:ensemble:tap",
+		Data: map[string]any{
+			"call_id":            "call-78",
+			"contact_id":         "cont-124",
+			"contact_name":       "Ari Lee",
+			"contact_email":      "ari@example.com",
+			"summary":            "Qualified expansion and next procurement steps",
+			"duration_minutes":   31,
+			"rep_email":          "rep@example.com",
+			"company_id":         "comp-7",
+			"company_name":       "Northwind",
+			"company_domain":     "northwind.example",
+			"lead_id":            "lead-7",
+			"lead_name":          "Northwind Expansion",
+			"lead_source":        "conference",
+			"opportunity_id":     "opp-7",
+			"opportunity_name":   "Northwind Expansion FY26",
+			"opportunity_stage":  "qualified",
+			"opportunity_amount": 120000,
+			"deal_id":            "deal-7",
+			"deal_name":          "Northwind Annual",
+			"deal_stage":         "proposal",
+		},
+	})
+	if err != nil {
+		t.Fatalf("mapper apply failed: %v", err)
+	}
+
+	for _, id := range []string{"company:comp-7", "lead:lead-7", "opportunity:opp-7", "deal:deal-7"} {
+		if _, ok := g.GetNode(id); !ok {
+			t.Fatalf("expected conditional node %q to exist", id)
+		}
+	}
+	foundContactCompany := false
+	for _, edge := range g.GetOutEdges("contact:cont-124") {
+		if edge != nil && edge.Kind == graph.EdgeKindWorksAt && edge.Target == "company:comp-7" {
+			foundContactCompany = true
+			break
+		}
+	}
+	if !foundContactCompany {
+		t.Fatalf("expected contact -> company works_at edge, got %#v", g.GetOutEdges("contact:cont-124"))
 	}
 }
 

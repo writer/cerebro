@@ -248,3 +248,168 @@ func TestBuilderHasChanges_UsesCDCEventTime(t *testing.T) {
 		t.Fatal("expected HasChanges=true when latest CDC event is newer than last build")
 	}
 }
+
+func TestBuilderApplyChanges_KubernetesEventsMaterializeTypedNodesAndEdges(t *testing.T) {
+	source := newCDCRoutingSource()
+	source.routes["from k8s_core_pods"] = &QueryResult{Rows: []map[string]any{{
+		"_cq_id":               "prod-cluster/pod/payments/payments-api",
+		"name":                 "payments-api",
+		"namespace":            "payments",
+		"cluster_name":         "prod-cluster",
+		"service_account_name": "payments-sa",
+	}}}
+	source.routes["from k8s_rbac_service_account_bindings"] = &QueryResult{Rows: []map[string]any{{
+		"cluster_name":              "prod-cluster",
+		"binding_kind":              "ClusterRoleBinding",
+		"binding_name":              "payments-admins",
+		"binding_namespace":         "",
+		"service_account_name":      "payments-sa",
+		"service_account_namespace": "payments",
+		"role_ref_kind":             "ClusterRole",
+		"role_ref_name":             "cluster-admin",
+		"role_ref_api_group":        "rbac.authorization.k8s.io",
+	}}}
+
+	builder := NewBuilder(source, nil)
+	builder.Graph().AddNode(&Node{ID: "internet", Kind: NodeKindInternet, Provider: "external", Name: "Internet", Risk: RiskCritical})
+
+	base := time.Now().UTC().Add(-1 * time.Minute)
+	source.events = []map[string]any{
+		{
+			"event_id":    "evt-k8s-pod-1",
+			"table_name":  "k8s_core_pods",
+			"resource_id": "prod-cluster/pod/payments/payments-api",
+			"change_type": "added",
+			"provider":    "k8s",
+			"account_id":  "prod-cluster",
+			"payload": map[string]any{
+				"_cq_id":               "prod-cluster/pod/payments/payments-api",
+				"uid":                  "pod-uid-1",
+				"name":                 "payments-api",
+				"namespace":            "payments",
+				"cluster_name":         "prod-cluster",
+				"service_account_name": "payments-sa",
+				"spec": map[string]any{
+					"automount_service_account_token": true,
+					"uses_host_path_volume":           true,
+					"containers": []any{
+						map[string]any{
+							"name": "app",
+							"security_context": map[string]any{
+								"privileged":  true,
+								"run_as_user": float64(0),
+							},
+						},
+					},
+				},
+			},
+			"event_time": base.Add(5 * time.Second),
+		},
+		{
+			"event_id":    "evt-k8s-sa-1",
+			"table_name":  "k8s_core_service_accounts",
+			"resource_id": "prod-cluster/serviceaccount/payments/payments-sa",
+			"change_type": "added",
+			"provider":    "k8s",
+			"account_id":  "prod-cluster",
+			"payload": map[string]any{
+				"_cq_id":                          "prod-cluster/serviceaccount/payments/payments-sa",
+				"uid":                             "sa-uid-1",
+				"name":                            "payments-sa",
+				"namespace":                       "payments",
+				"cluster_name":                    "prod-cluster",
+				"automount_service_account_token": true,
+			},
+			"event_time": base.Add(10 * time.Second),
+		},
+		{
+			"event_id":    "evt-k8s-role-1",
+			"table_name":  "k8s_rbac_cluster_roles",
+			"resource_id": "prod-cluster/clusterrole/cluster-admin",
+			"change_type": "added",
+			"provider":    "k8s",
+			"account_id":  "prod-cluster",
+			"payload": map[string]any{
+				"_cq_id":       "prod-cluster/clusterrole/cluster-admin",
+				"uid":          "cr-uid-1",
+				"name":         "cluster-admin",
+				"cluster_name": "prod-cluster",
+				"rules": []any{
+					map[string]any{"resources": []any{"secrets"}, "verbs": []any{"*"}},
+				},
+			},
+			"event_time": base.Add(15 * time.Second),
+		},
+		{
+			"event_id":    "evt-k8s-configmap-1",
+			"table_name":  "k8s_core_configmaps",
+			"resource_id": "prod-cluster/configmap/payments/payments-config",
+			"change_type": "added",
+			"provider":    "k8s",
+			"account_id":  "prod-cluster",
+			"payload": map[string]any{
+				"_cq_id":           "prod-cluster/configmap/payments/payments-config",
+				"uid":              "cfg-uid-1",
+				"name":             "payments-config",
+				"namespace":        "payments",
+				"cluster_name":     "prod-cluster",
+				"immutable":        true,
+				"data_keys":        []any{"LOG_LEVEL"},
+				"binary_data_keys": []any{},
+			},
+			"event_time": base.Add(20 * time.Second),
+		},
+		{
+			"event_id":    "evt-k8s-pv-1",
+			"table_name":  "k8s_core_persistent_volumes",
+			"resource_id": "prod-cluster/persistentvolume/payments-pv",
+			"change_type": "added",
+			"provider":    "k8s",
+			"account_id":  "prod-cluster",
+			"payload": map[string]any{
+				"_cq_id":             "prod-cluster/persistentvolume/payments-pv",
+				"uid":                "pv-uid-1",
+				"name":               "payments-pv",
+				"cluster_name":       "prod-cluster",
+				"storage_class_name": "gp3",
+				"phase":              "Bound",
+			},
+			"event_time": base.Add(25 * time.Second),
+		},
+	}
+
+	summary, err := builder.ApplyChanges(context.Background(), base)
+	if err != nil {
+		t.Fatalf("ApplyChanges failed: %v", err)
+	}
+	if summary.NodesAdded != 5 {
+		t.Fatalf("expected 5 k8s nodes added, got %+v", summary)
+	}
+
+	for _, id := range []string{
+		"prod-cluster/pod/payments/payments-api",
+		"prod-cluster/serviceaccount/payments/payments-sa",
+		"prod-cluster/clusterrole/cluster-admin",
+		"prod-cluster/configmap/payments/payments-config",
+		"prod-cluster/persistentvolume/payments-pv",
+	} {
+		if _, ok := builder.Graph().GetNode(id); !ok {
+			t.Fatalf("expected node %q to exist after CDC apply", id)
+		}
+	}
+
+	assertHasEdge(t, builder.Graph(), "prod-cluster/pod/payments/payments-api", "prod-cluster/serviceaccount/payments/payments-sa", EdgeKindCanAssume)
+	assertHasEdge(t, builder.Graph(), "prod-cluster/serviceaccount/payments/payments-sa", "prod-cluster/clusterrole/cluster-admin", EdgeKindCanAssume)
+}
+
+func TestCDCNodeID_KubernetesPrefersTypedIDOverLegacyFallback(t *testing.T) {
+	payload := map[string]any{
+		"name":         "cluster-admin",
+		"cluster_name": "prod-cluster",
+	}
+
+	got := cdcNodeID("k8s_rbac_cluster_roles", payload, "prod-cluster/cluster-admin")
+	if got != "prod-cluster/clusterrole/cluster-admin" {
+		t.Fatalf("expected typed kubernetes id, got %q", got)
+	}
+}

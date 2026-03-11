@@ -185,6 +185,7 @@ func (b *Builder) rebuildEdges(ctx context.Context) error {
 	eg.Go(func() error { b.buildAWSEdges(ectx); return nil })
 	eg.Go(func() error { b.buildGCPEdges(ectx); return nil })
 	eg.Go(func() error { b.buildAzureEdges(ectx); return nil })
+	eg.Go(func() error { b.buildKubernetesEdges(ectx); return nil })
 	eg.Go(func() error { b.buildRelationshipEdges(ectx); return nil })
 	_ = eg.Wait()
 	if err := ctx.Err(); err != nil {
@@ -624,32 +625,68 @@ func cdcEventToNode(table string, event cdcEvent) *Node {
 				"role_type": roleType,
 			},
 		}
+	case "k8s_core_pods",
+		"k8s_core_namespaces",
+		"k8s_core_service_accounts",
+		"k8s_apps_deployments",
+		"k8s_rbac_cluster_roles",
+		"k8s_rbac_roles",
+		"k8s_rbac_cluster_role_bindings",
+		"k8s_rbac_role_bindings",
+		"k8s_core_configmaps",
+		"k8s_core_persistent_volumes":
+		return k8sNodeFromRecord(table, payload, event.ResourceID)
 	}
 
 	return nil
 }
 
 func cdcNodeID(table string, payload map[string]any, fallback string) string {
-	if id := strings.TrimSpace(fallback); id != "" {
-		return id
-	}
-
 	switch strings.ToLower(strings.TrimSpace(table)) {
 	case "aws_iam_users", "aws_iam_roles", "aws_iam_groups", "aws_s3_buckets", "aws_ec2_instances", "aws_rds_instances", "aws_lambda_functions", "aws_secretsmanager_secrets":
+		if id := strings.TrimSpace(fallback); id != "" {
+			return id
+		}
 		return firstNonEmpty(queryRowString(payload, "arn"), queryRowString(payload, "id"), queryRowString(payload, "name"))
 	case "gcp_iam_service_accounts":
+		if id := strings.TrimSpace(fallback); id != "" {
+			return id
+		}
 		return firstNonEmpty(queryRowString(payload, "unique_id"), queryRowString(payload, "email"), queryRowString(payload, "name"), queryRowString(payload, "id"))
 	case "gcp_compute_instances", "gcp_storage_buckets", "gcp_sql_instances", "gcp_cloudfunctions_functions", "gcp_cloudrun_services":
+		if id := strings.TrimSpace(fallback); id != "" {
+			return id
+		}
 		return firstNonEmpty(queryRowString(payload, "id"), queryRowString(payload, "name"))
 	case "azure_ad_service_principals", "azure_ad_users", "azure_compute_virtual_machines", "azure_storage_accounts", "azure_sql_databases", "azure_keyvault_vaults", "azure_functions_apps", "okta_users", "okta_groups", "okta_applications":
+		if id := strings.TrimSpace(fallback); id != "" {
+			return id
+		}
 		return firstNonEmpty(queryRowString(payload, "id"), queryRowString(payload, "name"))
 	case "okta_admin_roles":
+		if id := strings.TrimSpace(fallback); id != "" {
+			return id
+		}
 		roleType := strings.TrimSpace(queryRowString(payload, "role_type"))
 		if roleType == "" {
 			return ""
 		}
 		return "okta_admin_role:" + strings.ToLower(roleType)
+	case "k8s_core_pods",
+		"k8s_core_namespaces",
+		"k8s_core_service_accounts",
+		"k8s_apps_deployments",
+		"k8s_rbac_cluster_roles",
+		"k8s_rbac_roles",
+		"k8s_rbac_cluster_role_bindings",
+		"k8s_rbac_role_bindings",
+		"k8s_core_configmaps",
+		"k8s_core_persistent_volumes":
+		return k8sNodeID(table, payload, fallback)
 	default:
+		if id := strings.TrimSpace(fallback); id != "" {
+			return id
+		}
 		return firstNonEmpty(queryRowString(payload, "arn"), queryRowString(payload, "id"), queryRowString(payload, "unique_id"), queryRowString(payload, "name"))
 	}
 }

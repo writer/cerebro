@@ -39,6 +39,7 @@ const (
 	NodeKindNamespace          NodeKind = "namespace"
 	NodeKindClusterRole        NodeKind = "cluster_role"
 	NodeKindClusterRoleBinding NodeKind = "cluster_role_binding"
+	NodeKindRoleBinding        NodeKind = "role_binding"
 	NodeKindConfigMap          NodeKind = "configmap"
 	NodeKindPersistentVolume   NodeKind = "persistent_volume"
 

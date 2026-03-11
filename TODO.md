@@ -5,6 +5,49 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 41 - Ontology Ingest Depth: Kubernetes Materialization + Conditional Business Mappings (2026-03-10)
+
+### Review findings
+- [x] Gap: the graph schema already defined Kubernetes node kinds, but neither full builds nor CDC rebuilds materialized those resources into the graph.
+- [x] Gap: the K8s sync layer emitted ambiguous `cluster/namespace/name` IDs that would collide across pods, deployments, service accounts, and configmaps once the ontology was actually turned on.
+- [x] Gap: K8s toxic-combination logic expected pod -> service account -> role paths, but the builder never constructed those prerequisite edges from normalized RBAC data.
+- [x] Gap: business-domain mappings needed deeper optional nodes, but the declarative mapper had no way to gate node/edge emission on sparse CRM/support fields.
+
+### Execution plan
+- [x] Materialize Kubernetes ontology in the graph builder:
+  - [x] add full-build node loading for `pod`, `deployment`, `namespace`, `service_account`, `cluster_role`, `cluster_role_binding`, `configmap`, `persistent_volume`, and namespaced RBAC `role`
+  - [x] add incremental CDC node handling for the same K8s resource tables
+  - [x] build pod -> service account and service account -> role / cluster role edges from normalized K8s tables
+  - [x] expose pod security signals (`privileged`, `host_path_volumes`, `run_as_root`) directly on pod nodes so existing toxic-combination logic works on real sync data
+- [x] Fix K8s identifier semantics before rollout:
+  - [x] switch sync-emitted K8s `_cq_id` values to typed resource IDs (`cluster/pod/ns/name`, `cluster/deployment/ns/name`, etc.)
+  - [x] keep the graph builder resilient to old untyped `_cq_id` rows by deriving typed IDs from semantic fields
+- [x] Deepen declarative business mappings safely:
+  - [x] add `when` support for conditional node/edge emission in the declarative mapper
+  - [x] deepen support events into optional `customer`, `company`, and `subscription` nodes
+  - [x] deepen sales-call events into optional `company`, `lead`, `opportunity`, and `deal` nodes
+  - [x] update mapper contract inference so conditionally emitted fields stay optional instead of becoming global required keys
+- [x] Prove the new substrate:
+  - [x] add full-build K8s ontology tests
+  - [x] add CDC K8s materialization + edge rebuild tests
+  - [x] add mapper tests for conditional node/edge creation and empty-field suppression
+
+### Detailed follow-on backlog
+- [ ] Track A - K8s graph depth beyond baseline ontology
+  - Exit criteria:
+  - [ ] add first-class K8s service / ingress / node materialization where they improve pathing and blast-radius analysis
+  - [ ] connect deployment/template selectors to workload/service topology instead of leaving deployments as isolated resource nodes
+  - [ ] model namespaced secret access explicitly so `TC-K8S-004` can reason over real K8s secrets rather than only generic secret nodes
+- [ ] Track B - External ingest convergence
+  - Exit criteria:
+  - [ ] decide where K8s data should stay warehouse/builder-native vs emit CloudEvents into the declarative mapper
+  - [ ] add additional CRM/billing event families so `invoice` and broader customer/revenue surfaces stop depending on synthetic nodes
+  - [ ] add compatibility fixtures for conditional mappings with sparse and fully populated payloads
+- [ ] Track C - Identifier governance
+  - Exit criteria:
+  - [ ] add explicit K8s ID-shape guardrails/tests across sync, CDC, and graph query layers
+  - [ ] add migration/cleanup handling for any historical untyped K8s IDs that may already exist in raw tables or snapshots
+
 ## Deep Review Cycle 40 - API Contract Governance + Graph Freshness + Temporal/Changelog Surfaces (2026-03-10)
 
 ### Review findings

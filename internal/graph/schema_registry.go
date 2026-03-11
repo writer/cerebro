@@ -1715,6 +1715,7 @@ var builtInNodeKinds = []NodeKindDefinition{
 	{Kind: NodeKindNamespace, Categories: []NodeKindCategory{NodeCategoryKubernetes}},
 	{Kind: NodeKindClusterRole, Categories: []NodeKindCategory{NodeCategoryKubernetes}},
 	{Kind: NodeKindClusterRoleBinding, Categories: []NodeKindCategory{NodeCategoryKubernetes}},
+	{Kind: NodeKindRoleBinding, Categories: []NodeKindCategory{NodeCategoryKubernetes}},
 	{Kind: NodeKindConfigMap, Categories: []NodeKindCategory{NodeCategoryResource, NodeCategoryKubernetes}},
 	{Kind: NodeKindPersistentVolume, Categories: []NodeKindCategory{NodeCategoryResource, NodeCategoryKubernetes}},
 	{Kind: NodeKindRepository},

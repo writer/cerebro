@@ -164,8 +164,10 @@ func BuildMappingContracts(config MappingConfig) []MappingContract {
 		resolveKeys := make(map[string]struct{})
 
 		for _, node := range mapping.Nodes {
-			addAllRefs(collectTemplateRefs(node.ID), true, requiredData, optionalData, contextKeys, resolveKeys)
-			addAllRefs(collectTemplateRefs(node.Kind), true, requiredData, optionalData, contextKeys, resolveKeys)
+			addAllRefs(collectTemplateRefs(node.When), false, requiredData, optionalData, contextKeys, resolveKeys)
+			nodeRequired := strings.TrimSpace(node.When) == ""
+			addAllRefs(collectTemplateRefs(node.ID), nodeRequired, requiredData, optionalData, contextKeys, resolveKeys)
+			addAllRefs(collectTemplateRefs(node.Kind), nodeRequired, requiredData, optionalData, contextKeys, resolveKeys)
 			addAllRefs(collectTemplateRefs(node.Name), false, requiredData, optionalData, contextKeys, resolveKeys)
 			addAllRefs(collectTemplateRefs(node.Provider), false, requiredData, optionalData, contextKeys, resolveKeys)
 			for _, value := range node.Properties {
@@ -180,10 +182,12 @@ func BuildMappingContracts(config MappingConfig) []MappingContract {
 		}
 
 		for _, edge := range mapping.Edges {
+			addAllRefs(collectTemplateRefs(edge.When), false, requiredData, optionalData, contextKeys, resolveKeys)
+			edgeRequired := strings.TrimSpace(edge.When) == ""
 			addAllRefs(collectTemplateRefs(edge.ID), false, requiredData, optionalData, contextKeys, resolveKeys)
-			addAllRefs(collectTemplateRefs(edge.Source), true, requiredData, optionalData, contextKeys, resolveKeys)
-			addAllRefs(collectTemplateRefs(edge.Target), true, requiredData, optionalData, contextKeys, resolveKeys)
-			addAllRefs(collectTemplateRefs(edge.Kind), true, requiredData, optionalData, contextKeys, resolveKeys)
+			addAllRefs(collectTemplateRefs(edge.Source), edgeRequired, requiredData, optionalData, contextKeys, resolveKeys)
+			addAllRefs(collectTemplateRefs(edge.Target), edgeRequired, requiredData, optionalData, contextKeys, resolveKeys)
+			addAllRefs(collectTemplateRefs(edge.Kind), edgeRequired, requiredData, optionalData, contextKeys, resolveKeys)
 			addAllRefs(collectTemplateRefs(edge.Effect), false, requiredData, optionalData, contextKeys, resolveKeys)
 			for _, value := range edge.Properties {
 				if asString, ok := value.(string); ok {
@@ -1011,6 +1015,7 @@ func cloneMappingConfig(config MappingConfig) MappingConfig {
 		for _, node := range mapping.Nodes {
 			clonedNode := NodeMapping{
 				ID:         node.ID,
+				When:       node.When,
 				Kind:       node.Kind,
 				Name:       node.Name,
 				Provider:   node.Provider,
@@ -1022,6 +1027,7 @@ func cloneMappingConfig(config MappingConfig) MappingConfig {
 		for _, edge := range mapping.Edges {
 			clonedEdge := EdgeMapping{
 				ID:         edge.ID,
+				When:       edge.When,
 				Source:     edge.Source,
 				Target:     edge.Target,
 				Kind:       edge.Kind,
