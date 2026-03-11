@@ -476,6 +476,9 @@ func permissionUsageStringSlice(value any) []string {
 }
 
 func permissionUsageInt(value any) int {
+	maxInt := int(^uint(0) >> 1)
+	minInt := -maxInt - 1
+
 	switch typed := value.(type) {
 	case int:
 		return typed
@@ -486,20 +489,59 @@ func permissionUsageInt(value any) int {
 	case int32:
 		return int(typed)
 	case int64:
+		if typed > int64(maxInt) {
+			return maxInt
+		}
+		if typed < int64(minInt) {
+			return minInt
+		}
 		return int(typed)
 	case uint:
-		return int(typed)
+		if uint64(typed) > uint64(maxInt) {
+			return maxInt
+		}
+		parsed, err := strconv.Atoi(strconv.FormatUint(uint64(typed), 10))
+		if err == nil {
+			return parsed
+		}
+		return maxInt
 	case uint8:
 		return int(typed)
 	case uint16:
 		return int(typed)
 	case uint32:
-		return int(typed)
+		if uint64(typed) > uint64(maxInt) {
+			return maxInt
+		}
+		parsed, err := strconv.Atoi(strconv.FormatUint(uint64(typed), 10))
+		if err == nil {
+			return parsed
+		}
+		return maxInt
 	case uint64:
-		return int(typed)
+		if typed > uint64(maxInt) {
+			return maxInt
+		}
+		parsed, err := strconv.Atoi(strconv.FormatUint(typed, 10))
+		if err == nil {
+			return parsed
+		}
+		return maxInt
 	case float32:
+		if float64(typed) > float64(maxInt) {
+			return maxInt
+		}
+		if float64(typed) < float64(minInt) {
+			return minInt
+		}
 		return int(typed)
 	case float64:
+		if typed > float64(maxInt) {
+			return maxInt
+		}
+		if typed < float64(minInt) {
+			return minInt
+		}
 		return int(typed)
 	case string:
 		parsed, err := strconv.Atoi(strings.TrimSpace(typed))

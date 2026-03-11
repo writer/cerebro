@@ -10,25 +10,8 @@ import (
 
 	"cloud.google.com/go/iam/admin/apiv1/adminpb"
 	"cloud.google.com/go/iam/apiv1/iampb"
-	"github.com/googleapis/gax-go/v2"
 	"github.com/writer/cerebro/internal/warehouse"
 )
-
-type mockGCPRolePermissionClient struct {
-	permissionsByRole map[string][]string
-	errByRole         map[string]error
-}
-
-func (m *mockGCPRolePermissionClient) GetRole(_ context.Context, req *adminpb.GetRoleRequest, _ ...gax.CallOption) (*adminpb.Role, error) {
-	if req == nil {
-		return nil, errors.New("missing request")
-	}
-	if err := m.errByRole[req.Name]; err != nil {
-		return nil, err
-	}
-	permissions := append([]string(nil), m.permissionsByRole[req.Name]...)
-	return &adminpb.Role{IncludedPermissions: permissions}, nil
-}
 
 func TestFetchGCPIAMGroupPermissionUsageSkipsWithoutTargets(t *testing.T) {
 	e := &GCPSyncEngine{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
@@ -120,17 +103,22 @@ func TestResolvePermissionsGrantedOutsideGroup(t *testing.T) {
 		{Role: "roles/editor", Members: []string{"group:eng@example.com", "group:ops@example.com"}},
 	}}
 
-	mockClient := &mockGCPRolePermissionClient{
-		permissionsByRole: map[string][]string{
-			"roles/viewer":                   {"resourcemanager.projects.get"},
-			"roles/logging.privateLogViewer": {"logging.logEntries.list"},
-			"roles/editor":                   {"resourcemanager.projects.get", "storage.buckets.get"},
-		},
+	permissionsByRole := map[string][]string{
+		"roles/viewer":                   {"resourcemanager.projects.get"},
+		"roles/logging.privateLogViewer": {"logging.logEntries.list"},
+		"roles/editor":                   {"resourcemanager.projects.get", "storage.buckets.get"},
+	}
+	roleLookup := func(_ context.Context, req *adminpb.GetRoleRequest) (*adminpb.Role, error) {
+		if req == nil {
+			return nil, errors.New("missing request")
+		}
+		permissions := append([]string(nil), permissionsByRole[req.Name]...)
+		return &adminpb.Role{IncludedPermissions: permissions}, nil
 	}
 
 	outsidePermissions, hadResolutionError := e.resolvePermissionsGrantedOutsideGroup(
 		context.Background(),
-		mockClient,
+		roleLookup,
 		policy,
 		"eng@example.com",
 		cache,

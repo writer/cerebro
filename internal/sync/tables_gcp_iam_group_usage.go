@@ -13,7 +13,6 @@ import (
 	"cloud.google.com/go/iam/apiv1/iampb"
 	"cloud.google.com/go/logging"
 	"cloud.google.com/go/logging/logadmin"
-	"github.com/googleapis/gax-go/v2"
 	"google.golang.org/api/iterator"
 	auditpb "google.golang.org/genproto/googleapis/cloud/audit"
 )
@@ -83,6 +82,9 @@ func (e *GCPSyncEngine) fetchGCPIAMGroupPermissionUsage(ctx context.Context, pro
 
 	rolePermissionCache := make(map[string][]string)
 	roleResolutionErrors := make(map[string]error)
+	roleLookup := func(lookupCtx context.Context, req *adminpb.GetRoleRequest) (*adminpb.Role, error) {
+		return iamClient.GetRole(lookupCtx, req)
+	}
 
 	loggingClient, logErr := logadmin.NewClient(ctx, projectID, gcpClientOptionsFromContext(ctx)...)
 	if logErr != nil {
@@ -107,7 +109,7 @@ func (e *GCPSyncEngine) fetchGCPIAMGroupPermissionUsage(ctx context.Context, pro
 
 		grantedPermissions := make(map[string]map[string]struct{})
 		for _, role := range roles {
-			permissions, resolveErr := fetchGCPRolePermissions(ctx, iamClient, role, rolePermissionCache)
+			permissions, resolveErr := fetchGCPRolePermissions(ctx, roleLookup, role, rolePermissionCache)
 			if resolveErr != nil {
 				roleResolutionErrors[role] = resolveErr
 				groupRoleResolutionErr = true
@@ -134,7 +136,7 @@ func (e *GCPSyncEngine) fetchGCPIAMGroupPermissionUsage(ctx context.Context, pro
 
 		outsideGrantedPermissions, outsideRoleResolutionErr := e.resolvePermissionsGrantedOutsideGroup(
 			ctx,
-			iamClient,
+			roleLookup,
 			policy,
 			group,
 			rolePermissionCache,
@@ -288,7 +290,7 @@ func (e *GCPSyncEngine) fetchGCPIAMGroupPermissionUsage(ctx context.Context, pro
 
 func (e *GCPSyncEngine) resolvePermissionsGrantedOutsideGroup(
 	ctx context.Context,
-	iamClient gcpRolePermissionClient,
+	roleLookup gcpRoleLookupFunc,
 	policy *iampb.Policy,
 	targetGroup string,
 	rolePermissionCache map[string][]string,
@@ -308,7 +310,7 @@ func (e *GCPSyncEngine) resolvePermissionsGrantedOutsideGroup(
 			continue
 		}
 
-		permissions, resolveErr := fetchGCPRolePermissions(ctx, iamClient, binding.Role, rolePermissionCache)
+		permissions, resolveErr := fetchGCPRolePermissions(ctx, roleLookup, binding.Role, rolePermissionCache)
 		if resolveErr != nil {
 			roleResolutionErrors[binding.Role] = resolveErr
 			hadResolutionError = true
@@ -396,15 +398,13 @@ func extractTargetGroupRoles(policy *iampb.Policy, targets map[string]struct{}) 
 	return rolesByGroup
 }
 
-type gcpRolePermissionClient interface {
-	GetRole(ctx context.Context, req *adminpb.GetRoleRequest, opts ...gax.CallOption) (*adminpb.Role, error)
-}
+type gcpRoleLookupFunc func(context.Context, *adminpb.GetRoleRequest) (*adminpb.Role, error)
 
-func fetchGCPRolePermissions(ctx context.Context, client gcpRolePermissionClient, role string, cache map[string][]string) ([]string, error) {
+func fetchGCPRolePermissions(ctx context.Context, roleLookup gcpRoleLookupFunc, role string, cache map[string][]string) ([]string, error) {
 	if cached, ok := cache[role]; ok {
 		return cached, nil
 	}
-	out, err := client.GetRole(ctx, &adminpb.GetRoleRequest{Name: role})
+	out, err := roleLookup(ctx, &adminpb.GetRoleRequest{Name: role})
 	if err != nil {
 		return nil, err
 	}
