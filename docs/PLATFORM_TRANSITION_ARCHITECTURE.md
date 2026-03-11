@@ -30,6 +30,7 @@ Additional boundary rule:
 - org and security dynamics should default to report surfaces built on the shared graph, not new platform primitives
 - examples include bus factor, coordination fragility, privilege concentration, blast-radius posture, and other derived analytics
 - only promote those views into standalone resources when they require their own write lifecycle, durable IDs, approvals, or actuation semantics
+- the same rule now applies to asset pages: rich asset views should prefer `/api/v1/platform/intelligence/entity-summary` and report runs over bespoke `/assets/{id}/*` trees
 
 This is an evolutionary refactor, not a rewrite. Existing CSPM flows should keep working, but when there are no known API consumers Cerebro should remove temporary aliases quickly instead of preserving drift indefinitely.
 

@@ -258,6 +258,52 @@ func (s *Server) graphIntelligenceClaimConflicts(w http.ResponseWriter, r *http.
 	s.json(w, http.StatusOK, report)
 }
 
+func (s *Server) graphIntelligenceEntitySummary(w http.ResponseWriter, r *http.Request) {
+	if s.app.SecurityGraph == nil {
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+		return
+	}
+
+	entityID := strings.TrimSpace(r.URL.Query().Get("entity_id"))
+	if entityID == "" {
+		s.error(w, http.StatusBadRequest, "entity_id is required")
+		return
+	}
+
+	validAt, err := parseOptionalRFC3339Query(r, "valid_at")
+	if err != nil {
+		s.error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	recordedAt, err := parseOptionalRFC3339Query(r, "recorded_at")
+	if err != nil {
+		s.error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	maxPostureClaims := 10
+	if raw := strings.TrimSpace(r.URL.Query().Get("max_posture_claims")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 100 {
+			s.error(w, http.StatusBadRequest, "max_posture_claims must be between 1 and 100")
+			return
+		}
+		maxPostureClaims = parsed
+	}
+
+	report, ok := graph.BuildEntitySummaryReport(s.app.SecurityGraph, graph.EntitySummaryReportOptions{
+		EntityID:         entityID,
+		ValidAt:          validAt,
+		RecordedAt:       recordedAt,
+		MaxPostureClaims: maxPostureClaims,
+	})
+	if !ok {
+		s.error(w, http.StatusNotFound, "entity not found")
+		return
+	}
+	s.json(w, http.StatusOK, report)
+}
+
 func (s *Server) graphIntelligenceLeverage(w http.ResponseWriter, r *http.Request) {
 	if s.app.SecurityGraph == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")

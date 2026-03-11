@@ -87,9 +87,15 @@ This cycle adds the minimum viable world-model substrate:
 - claim adjudication queue and append-only repair writes through `graph.QueryClaimGroups(...)`, `graph.AdjudicateClaimGroup(...)`, `GET /api/v1/platform/knowledge/claim-groups`, `GET /api/v1/platform/knowledge/claim-groups/{group_id}`, and `POST /api/v1/platform/knowledge/claim-groups/{group_id}/adjudications`
 - claim reasoning surfaces through `graph.GetClaimTimeline(...)`, `graph.ExplainClaim(...)`, `graph.BuildClaimProofs(...)`, `graph.DiffClaims(...)`, `graph.DiffKnowledgeGraphs(...)`, `GET /api/v1/platform/knowledge/claims/{claim_id}/timeline`, `GET /api/v1/platform/knowledge/claims/{claim_id}/explanation`, `GET /api/v1/platform/knowledge/claims/{claim_id}/proofs`, `GET /api/v1/platform/knowledge/claim-diffs`, and `GET /api/v1/platform/knowledge/diffs`
 - typed entity/resource reads through `graph.QueryEntities(...)`, `graph.GetEntityRecord(...)`, `GET /api/v1/platform/entities`, and `GET /api/v1/platform/entities/{entity_id}`
+- canonical entity identity surfaced through `canonical_ref`, `external_refs`, and `aliases` instead of raw source IDs alone
+- schema-backed entity deepening through typed facet modules (`ownership`, `exposure`, `data_sensitivity`, and bucket support facets) plus discoverable facet contracts under `GET /api/v1/platform/entities/facets*`
+- promoted asset support subresources (`bucket_policy_statement`, `bucket_public_access_block`, `bucket_encryption_config`, `bucket_logging_config`, `bucket_versioning_config`) linked to parent assets through `configures`
+- normalized bucket posture claims derived from promoted support modules instead of only read-time interpretation of raw properties
+- normalized entity posture summaries derived from posture/support claims attached to the entity
+- report-level asset views through `graph.BuildEntitySummaryReport(...)` and `GET /api/v1/platform/intelligence/entity-summary`
 - claim contradiction reporting through `BuildClaimConflictReport(...)` and `GET /api/v1/platform/intelligence/claim-conflicts`
 - derived claim state surfaced as typed fields (`supported`, `source_backed`, `sourceless`, `conflicted`, `superseded`) instead of forcing every consumer to traverse raw graph links
-- entity support state surfaced as typed fields (`relationships`, `claim_count`, `supported_claim_count`, `conflicted_claim_count`, `evidence_count`, `observation_count`) instead of leaving asset context trapped in raw table rows or one-off reports
+- entity support state surfaced as typed fields (`relationships`, `claim_count`, `supported_claim_count`, `conflicted_claim_count`, `evidence_count`, `observation_count`, `facets`, `subresources`, `posture`) instead of leaving asset context trapped in raw table rows or one-off reports
 
 ## What Still Needs To Be Added
 

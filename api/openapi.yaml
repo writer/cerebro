@@ -6488,6 +6488,62 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/platform/intelligence/entity-summary:
+    get:
+      tags:
+        - Platform
+      summary: Build entity summary report
+      description: Return a report-level entity view composed from canonical identity, facets, posture claims, topology, and support coverage.
+      parameters:
+        - name: entity_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: valid_at
+          in: query
+          description: Fact-time selector for the entity summary.
+          schema:
+            type: string
+            format: date-time
+        - name: recorded_at
+          in: query
+          description: System-time selector for the entity summary.
+          schema:
+            type: string
+            format: date-time
+        - name: max_posture_claims
+          in: query
+          description: Maximum posture claims to include inline (1-100).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: Entity summary report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformEntitySummaryReport'
+        '400':
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Entity not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/platform/intelligence/leverage:
     get:
       tags:
@@ -6789,6 +6845,50 @@ paths:
                 $ref: '#/components/schemas/Error'
         '503':
           description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/platform/entities/facets:
+    get:
+      tags:
+        - Platform
+      summary: List platform entity facet contracts
+      description: Return the machine-readable built-in facet catalog used by typed entity detail and entity-summary report modules.
+      responses:
+        '200':
+          description: Entity facet contract catalog
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformEntityFacetContractCatalog'
+  /api/v1/platform/entities/facets/{facet_id}:
+    get:
+      tags:
+        - Platform
+      summary: Get platform entity facet contract
+      description: Return one built-in entity facet definition by stable facet identifier.
+      parameters:
+        - name: facet_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Entity facet definition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformEntityFacetDefinition'
+        '400':
+          description: Invalid facet identifier
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Entity facet not found
           content:
             application/json:
               schema:
@@ -11963,6 +12063,109 @@ components:
           type: integer
         knowledge_backed_entities:
           type: integer
+    PlatformEntityCanonicalRef:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+        namespace:
+          type: string
+        name:
+          type: string
+        provider:
+          type: string
+        account:
+          type: string
+        region:
+          type: string
+    PlatformEntityExternalRef:
+      type: object
+      additionalProperties: false
+      properties:
+        system:
+          type: string
+        type:
+          type: string
+        value:
+          type: string
+        url:
+          type: string
+        primary:
+          type: boolean
+    PlatformEntityAliasRecord:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+        name:
+          type: string
+        alias_type:
+          type: string
+        source_system:
+          type: string
+    PlatformEntityFacetFieldDefinition:
+      type: object
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+        value_type:
+          type: string
+        description:
+          type: string
+    PlatformEntityFacetDefinition:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        version:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        schema_name:
+          type: string
+        schema_url:
+          type: string
+        applicable_kinds:
+          type: array
+          items:
+            type: string
+        source_keys:
+          type: array
+          items:
+            type: string
+        claim_predicates:
+          type: array
+          items:
+            type: string
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformEntityFacetFieldDefinition'
+    PlatformEntityFacetContractCatalog:
+      type: object
+      additionalProperties: false
+      properties:
+        apiVersion:
+          type: string
+        kind:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+        facets:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformEntityFacetDefinition'
     PlatformEntityRecord:
       type: object
       additionalProperties: false
@@ -11989,6 +12192,16 @@ components:
           type: array
           items:
             type: string
+        canonical_ref:
+          $ref: '#/components/schemas/PlatformEntityCanonicalRef'
+        external_refs:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformEntityExternalRef'
+        aliases:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformEntityAliasRecord'
         tags:
           type: object
           additionalProperties:
@@ -12003,6 +12216,16 @@ components:
           $ref: '#/components/schemas/PlatformEntityLinkSummary'
         knowledge:
           $ref: '#/components/schemas/PlatformEntityKnowledgeSupportSummary'
+        facets:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformEntityFacetRecord'
+        posture:
+          $ref: '#/components/schemas/PlatformEntityPostureSummary'
+        subresources:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformEntitySubresourceRecord'
         relationships:
           type: array
           items:
@@ -12085,6 +12308,252 @@ components:
           type: string
         count:
           type: integer
+    PlatformEntityFacetRecord:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        schema_name:
+          type: string
+        schema_url:
+          type: string
+        status:
+          type: string
+        assessment:
+          type: string
+        summary:
+          type: string
+        source_keys:
+          type: array
+          items:
+            type: string
+        claim_predicates:
+          type: array
+          items:
+            type: string
+        fields:
+          type: object
+          additionalProperties: true
+    PlatformEntitySubresourceRecord:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+        name:
+          type: string
+        assessment:
+          type: string
+        summary:
+          type: string
+        knowledge:
+          $ref: '#/components/schemas/PlatformEntityKnowledgeSupportSummary'
+        related_entity_ids:
+          type: array
+          items:
+            type: string
+        fields:
+          type: object
+          additionalProperties: true
+    PlatformEntityPostureSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        active_claim_count:
+          type: integer
+        supported_claim_count:
+          type: integer
+        disputed_claim_count:
+          type: integer
+        stale_claim_count:
+          type: integer
+        claims:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformEntityPostureClaimRecord'
+    PlatformEntityPostureClaimRecord:
+      type: object
+      additionalProperties: false
+      properties:
+        claim_id:
+          type: string
+        predicate:
+          type: string
+        object_id:
+          type: string
+        object_value:
+          type: string
+        status:
+          type: string
+        assessment:
+          type: string
+        summary:
+          type: string
+        confidence:
+          type: number
+        observed_at:
+          type: string
+          format: date-time
+        supported:
+          type: boolean
+        conflicted:
+          type: boolean
+        stale:
+          type: boolean
+        evidence_count:
+          type: integer
+        source_count:
+          type: integer
+    PlatformEntitySummaryReport:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        valid_at:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+        entity:
+          $ref: '#/components/schemas/PlatformEntityRecord'
+        overview:
+          $ref: '#/components/schemas/PlatformEntitySummaryOverviewSection'
+        topology:
+          $ref: '#/components/schemas/PlatformEntitySummaryTopologySection'
+        facets:
+          $ref: '#/components/schemas/PlatformEntitySummaryFacetSection'
+        subresources:
+          $ref: '#/components/schemas/PlatformEntitySummarySubresourceSection'
+        posture:
+          $ref: '#/components/schemas/PlatformEntitySummaryPostureSection'
+        support:
+          $ref: '#/components/schemas/PlatformEntitySummarySupportSection'
+    PlatformEntitySummaryMeasureValue:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        value_type:
+          type: string
+        unit:
+          type: string
+        value:
+          oneOf:
+            - type: string
+            - type: number
+            - type: integer
+            - type: boolean
+        status:
+          type: string
+    PlatformEntitySummaryOverviewSection:
+      type: object
+      additionalProperties: false
+      properties:
+        headline:
+          type: string
+        highlights:
+          type: array
+          items:
+            type: string
+        measures:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformEntitySummaryMeasureValue'
+    PlatformEntitySummaryDistributionItem:
+      type: object
+      additionalProperties: false
+      properties:
+        dimension:
+          type: string
+        measures:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformEntitySummaryMeasureValue'
+    PlatformEntitySummaryTopologySection:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformEntitySummaryDistributionItem'
+    PlatformEntitySummaryRankingItem:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        rank:
+          type: integer
+        score:
+          type: number
+        summary:
+          type: string
+        measure_values:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformEntitySummaryMeasureValue'
+    PlatformEntitySummaryFacetSection:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformEntitySummaryRankingItem'
+    PlatformEntitySummarySubresourceSection:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformEntitySummaryRankingItem'
+    PlatformEntitySummaryPostureSection:
+      type: object
+      additionalProperties: false
+      properties:
+        headline:
+          type: string
+        highlights:
+          type: array
+          items:
+            type: string
+        measures:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformEntitySummaryMeasureValue'
+        claims:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformEntityPostureClaimRecord'
+    PlatformEntitySummarySupportSection:
+      type: object
+      additionalProperties: false
+      properties:
+        headline:
+          type: string
+        highlights:
+          type: array
+          items:
+            type: string
+        measures:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformEntitySummaryMeasureValue'
     PlatformClaimGroupCollection:
       type: object
       additionalProperties: false

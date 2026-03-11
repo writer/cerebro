@@ -2,8 +2,8 @@
 
 Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and `internal/graphingest/mappings.yaml` via `go run ./scripts/generate_graph_ontology_docs/main.go`.
 
-- Node kinds: **55**
-- Edge kinds: **36**
+- Node kinds: **60**
+- Edge kinds: **37**
 - Mapping rules: **13**
 - Source domains: **9**
 
@@ -15,7 +15,12 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `activity` | business | - | - |
 | `any` | - | - | - |
 | `application` | resource | - | - |
-| `bucket` | resource | - | - |
+| `bucket` | resource | - | `configures`, `depends_on`, `exposed_to`, `managed_by`, `owns`, `targets` |
+| `bucket_encryption_config` | resource | `bucket_id`, `encryption_config_id`, `observed_at`, `recorded_at`, `transaction_from`, `valid_from` | `asserted_by`, `based_on`, `configures`, `refers` |
+| `bucket_logging_config` | resource | `bucket_id`, `logging_config_id`, `observed_at`, `recorded_at`, `transaction_from`, `valid_from` | `asserted_by`, `based_on`, `configures`, `targets` |
+| `bucket_policy_statement` | resource | `bucket_id`, `effect`, `observed_at`, `recorded_at`, `statement_id`, `transaction_from`, `valid_from` | `asserted_by`, `based_on`, `configures`, `targets` |
+| `bucket_public_access_block` | resource | `bucket_id`, `observed_at`, `public_access_block_id`, `recorded_at`, `transaction_from`, `valid_from` | `asserted_by`, `based_on`, `configures`, `targets` |
+| `bucket_versioning_config` | resource | `bucket_id`, `observed_at`, `recorded_at`, `transaction_from`, `valid_from`, `versioning_config_id` | `asserted_by`, `based_on`, `configures` |
 | `check_run` | business | `check_name`, `check_run_id`, `observed_at`, `repository`, `status`, `valid_from` | `based_on`, `evaluates`, `targets` |
 | `ci_workflow` | - | - | - |
 | `claim` | business | `claim_type`, `observed_at`, `predicate`, `recorded_at`, `status`, `subject_id`, `transaction_from`, `valid_from` | `asserted_by`, `based_on`, `contradicts`, `refers`, `refutes`, `supersedes`, `supports`, `targets` |
@@ -72,6 +77,11 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | Kind | Required Metadata | Optional Metadata | Timestamp Keys | Enum Constraints |
 |---|---|---|---|---|
 | `action` | `observed_at`, `source_system`, `valid_from` | `confidence`, `recorded_at`, `source_event_id`, `transaction_from`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
+| `bucket_encryption_config` | `observed_at`, `recorded_at`, `source_system`, `transaction_from`, `valid_from` | `confidence`, `source_event_id`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
+| `bucket_logging_config` | `observed_at`, `recorded_at`, `source_system`, `transaction_from`, `valid_from` | `confidence`, `source_event_id`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
+| `bucket_policy_statement` | `observed_at`, `recorded_at`, `source_system`, `transaction_from`, `valid_from` | `confidence`, `source_event_id`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `effect`=`allow`, `deny`<br>`principal_type`=`account`, `all_authenticated_users`, `all_users`, `anonymous`, `public`, `service`, `user` |
+| `bucket_public_access_block` | `observed_at`, `recorded_at`, `source_system`, `transaction_from`, `valid_from` | `confidence`, `source_event_id`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `public_access_prevention`=`disabled`, `enabled`, `enforced`, `inherited`, `unspecified` |
+| `bucket_versioning_config` | `observed_at`, `recorded_at`, `source_system`, `transaction_from`, `valid_from` | `confidence`, `source_event_id`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `versioning_status`=`disabled`, `enabled`, `off`, `on`, `suspended` |
 | `check_run` | `observed_at`, `source_system`, `valid_from` | `confidence`, `recorded_at`, `source_event_id`, `transaction_from`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `conclusion`=`action_required`, `cancelled`, `failure`, `neutral`, `skipped`, `stale`, `startup_failure`, `success`, `timed_out`<br>`status`=`completed`, `in_progress`, `queued` |
 | `claim` | `observed_at`, `recorded_at`, `source_system`, `transaction_from`, `valid_from` | `confidence`, `source_event_id`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `claim_type`=`attribute`, `classification`, `existence`, `relation`<br>`status`=`asserted`, `corrected`, `disputed`, `refuted`, `retracted`, `superseded` |
 | `communication_thread` | `observed_at`, `source_system`, `valid_from` | `confidence`, `recorded_at`, `source_event_id`, `transaction_from`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
@@ -109,6 +119,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `can_delete` | - |
 | `can_read` | - |
 | `can_write` | - |
+| `configures` | - |
 | `connects_to` | - |
 | `contradicts` | - |
 | `depends_on` | - |
@@ -152,11 +163,16 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 
 ## Unmapped Built-in Node Kinds
 
-Total unmapped kinds: **40**
+Total unmapped kinds: **45**
 
 - `activity`
 - `application`
 - `bucket`
+- `bucket_encryption_config`
+- `bucket_logging_config`
+- `bucket_policy_statement`
+- `bucket_public_access_block`
+- `bucket_versioning_config`
 - `ci_workflow`
 - `claim`
 - `cluster_role`

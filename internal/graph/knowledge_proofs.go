@@ -215,6 +215,18 @@ func buildClaimRelationshipProof(g *Graph, proofType string, other ClaimRecord, 
 		proof.Nodes = append(proof.Nodes, claimProofArtifactNode(artifact, artifactRoleForProof(artifact)))
 		proof.Edges = append(proof.Edges, claimProofEdge(string(EdgeKindBasedOn), other.ID, artifact.ID, "Related claim based on artifact"))
 	}
+	if subjectID := strings.TrimSpace(other.SubjectID); subjectID != "" {
+		role := "subject"
+		if subjectID == claim.SubjectID {
+			role = "shared_subject"
+		}
+		proof.Nodes = append(proof.Nodes, ClaimProofNode{ID: subjectID, Kind: "entity", Role: role, Summary: subjectID})
+		proof.Edges = append(proof.Edges, claimProofEdge(string(EdgeKindTargets), other.ID, subjectID, "Related claim targets entity"))
+	}
+	if objectID := strings.TrimSpace(other.ObjectID); objectID != "" {
+		proof.Nodes = append(proof.Nodes, ClaimProofNode{ID: objectID, Kind: "entity", Role: "object", Summary: objectID})
+		proof.Edges = append(proof.Edges, claimProofEdge(string(EdgeKindRefers), other.ID, objectID, "Related claim refers to entity"))
+	}
 	return proof
 }
 

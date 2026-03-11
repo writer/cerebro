@@ -680,7 +680,12 @@ func readBool(m map[string]any, keys ...string) bool {
 			return typed
 		case string:
 			normalized := strings.TrimSpace(strings.ToLower(typed))
-			return normalized == "true" || normalized == "1" || normalized == "yes"
+			switch normalized {
+			case "true", "1", "yes", "enabled", "enable", "on":
+				return true
+			case "false", "0", "no", "disabled", "disable", "off":
+				return false
+			}
 		}
 	}
 	return false

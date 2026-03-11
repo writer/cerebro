@@ -10,15 +10,16 @@ Cerebro now has:
 
 - typed platform knowledge reads and writes
 - typed platform entity reads under `/api/v1/platform/entities`
+- canonical refs, external refs, aliases, facet modules, and posture summaries on entity detail
+- report-level entity summaries under `/api/v1/platform/intelligence/entity-summary`
 - canonical graph ontology and schema registration
 
 What is still shallow:
 
-- security assets still largely enter the system as provider/table-shaped records
-- entity identity is not yet consistently expressed as one canonical ref plus source aliases
+- security assets still often enter the system as provider/table-shaped records before facet normalization
 - complex assets are not decomposed into subresources with durable semantics
-- asset posture is still mostly a mix of raw properties and downstream findings rather than evidence-backed claims
-- summary/support views for assets are not yet modularized
+- asset posture normalization is still partially read-derived instead of fully written back as durable claims
+- facet contracts are code-backed but not yet generated/compat-checked like report and event contracts
 
 ## Research Inputs
 
@@ -102,6 +103,24 @@ Implication for Cerebro:
 - deep asset support should use composable profile fragments, not one ever-growing node payload
 - assets like `bucket`, `database`, `service`, and `network` need attached support fragments such as encryption, exposure, logging, policy, backup, and runtime posture
 - rules, policy statements, ports, endpoints, columns, and bindings should become subresource nodes when they drive analysis or explanation
+
+### 5) Steampipe Compliance Control Packs
+
+Files researched:
+
+- https://github.com/turbot/steampipe-mod-aws-compliance/blob/main/all_controls/s3.pp
+
+Patterns worth adopting:
+
+- one asset family should have a stable pack of reusable control modules
+- controls stay modular even when they all target the same asset kind
+- public access, encryption, logging, versioning, lifecycle, and notification posture belong in distinct modules, not one giant bucket blob
+
+Implication for Cerebro:
+
+- bucket and database families should grow as small facet packs and report modules, not monolithic per-kind payload structs
+- entity-summary reports should be able to include or suppress modules per asset family without changing the base entity contract
+- later benchmark/control overlays should bind to facet IDs and posture predicates rather than ad hoc property names
 
 ## Design Rules For Cerebro
 
@@ -202,6 +221,7 @@ Exit criteria:
 - canonical entity ref on all typed entity reads
 - source alias list on entities
 - explicit external reference objects
+- current status: implemented on typed entity detail and report views; next step is compatibility governance and broader source coverage
 
 ### Track B: Asset Facet Registry
 
@@ -210,6 +230,7 @@ Exit criteria:
 - schema-backed facet definitions for high-value resource kinds
 - typed facet summaries on entity detail
 - compatibility checks for facet evolution
+- current status: implemented in code and contract generation for ownership/exposure/data sensitivity and bucket support facets; next step is broader family coverage and stricter generation from the registry
 
 ### Track C: Subresource Deepening
 
@@ -217,6 +238,7 @@ Exit criteria:
 
 - at least one fully modeled asset family with promoted subresources
 - example: `bucket` plus policy statements, logging config, encryption config, and public-access controls
+- current status: implemented for `bucket` with promoted policy/public-access/encryption/logging/versioning support nodes plus normalized support claims
 
 ### Track D: Support And Posture Claims
 
@@ -224,6 +246,7 @@ Exit criteria:
 
 - risky configurations expressed as claims with evidence links
 - entity detail shows which claims are active, supported, disputed, or stale
+- current status: implemented for bucket-family support normalization; next step is family-specific normalization jobs and lifecycle events
 
 ### Track E: Asset Summary Modules
 
@@ -231,15 +254,22 @@ Exit criteria:
 
 - extensible report modules for entity summary pages
 - no new bespoke asset-summary endpoints
+- current status: `entity-summary` now includes subresource-backed sections; next step is timeline/remediation/benchmark overlays bound to facet IDs and claim packs
 
 ## Immediate Conclusion
 
 The right next move for asset deepening is:
 
 1. keep expanding `/api/v1/platform/entities` as the canonical typed read surface
-2. add canonical refs and external refs
-3. add facet fragments for high-value resource kinds
-4. promote subresources where posture/explanation depends on them
-5. express risky configurations as evidence-backed claims
+2. reuse the facet registry and compatibility model across more asset families
+3. promote subresources where posture/explanation depends on them
+4. express risky configurations as evidence-backed claims
+5. make report modules consume those subresources and claims rather than raw provider fields
+
+The next concrete cut after this should be:
+
+1. deepen `database` with encryption/logging/backup/public-endpoint support modules
+2. deepen network-boundary families with promoted rule/route/endpoint subresources
+3. add write-side normalization executions/events so support claim production is inspectable and replayable
 
 That keeps the graph honest: assets stay entities, support stays in the knowledge layer, and UI/report richness stays in derived modules rather than becoming another pile of special-case APIs.

@@ -2,7 +2,7 @@
 
 This document defines how Cerebro's graph becomes the organization's intelligence layer: decision-grade, evidence-backed, and action-oriented.
 
-See [GRAPH_ONTOLOGY_ARCHITECTURE.md](./GRAPH_ONTOLOGY_ARCHITECTURE.md) for ontology layering, extension workflow, and metadata contract details, [GRAPH_REPORT_EXTENSIBILITY_RESEARCH.md](./GRAPH_REPORT_EXTENSIBILITY_RESEARCH.md) for the report registry/module model that should sit on top of the graph, and [GRAPH_ASSET_DEEPENING_RESEARCH.md](./GRAPH_ASSET_DEEPENING_RESEARCH.md) for the next asset/entity deepening patterns.
+See [GRAPH_ONTOLOGY_ARCHITECTURE.md](./GRAPH_ONTOLOGY_ARCHITECTURE.md) for ontology layering, extension workflow, and metadata contract details, [GRAPH_REPORT_EXTENSIBILITY_RESEARCH.md](./GRAPH_REPORT_EXTENSIBILITY_RESEARCH.md) for the report registry/module model that should sit on top of the graph, [GRAPH_ASSET_DEEPENING_RESEARCH.md](./GRAPH_ASSET_DEEPENING_RESEARCH.md) for external asset-model patterns, and [GRAPH_ENTITY_FACET_ARCHITECTURE.md](./GRAPH_ENTITY_FACET_ARCHITECTURE.md) for the current entity/facet/report layering.
 
 ## Principles
 - Every insight must be **decision-grade**: include evidence, confidence, coverage, and clear next actions.
@@ -82,6 +82,7 @@ Current endpoint:
 - `GET /api/v1/platform/intelligence/quality`
 - `GET /api/v1/platform/intelligence/metadata-quality`
 - `GET /api/v1/platform/intelligence/claim-conflicts`
+- `GET /api/v1/platform/intelligence/entity-summary`
 - `GET /api/v1/platform/intelligence/leverage`
 - `GET /api/v1/platform/intelligence/calibration/weekly`
 - `GET /api/v1/graph/ingest/health`
@@ -117,11 +118,13 @@ Claim conflict report characteristics:
 
 Knowledge inspection characteristics:
 - typed entity/resource collection/detail reads under `/api/v1/platform/entities*`
-- entity detail exposes relationship and support context (`relationships`, `claim_count`, `supported_claim_count`, `conflicted_claim_count`, `evidence_count`, `observation_count`) so asset views do not have to reconstruct graph context client-side
+- typed facet contract discovery under `/api/v1/platform/entities/facets*`
+- entity detail exposes canonical refs, external refs, aliases, relationship context, support context, facet modules, promoted subresources, and posture summaries so asset views do not have to reconstruct graph context client-side
 - typed evidence and observation collection/detail reads under `/api/v1/platform/knowledge/evidence*` and `/api/v1/platform/knowledge/observations*`
 - typed adjudication queue reads and append-only adjudication writes under `/api/v1/platform/knowledge/claim-groups*`
 - typed claim reasoning resources under `/api/v1/platform/knowledge/claims/{claim_id}/timeline`, `/api/v1/platform/knowledge/claims/{claim_id}/explanation`, `/api/v1/platform/knowledge/claims/{claim_id}/proofs`, `/api/v1/platform/knowledge/claim-diffs`, and `/api/v1/platform/knowledge/diffs`
 - derived repair cues (`needs_adjudication`, `recommended_action`, `why_true`, `why_disputed`, `repair_actions`) surfaced directly on the platform contract
+- report-level asset views should now prefer `entity-summary` and report runs over bespoke asset page APIs
 
 Ingest health characteristics:
 - Mapper runtime counters (processed, matched, rejected, dead-lettered).
@@ -207,6 +210,8 @@ Graph intelligence compounds only when decisions and outcomes write back.
 
 Current endpoints:
 - `GET /api/v1/platform/entities`
+- `GET /api/v1/platform/entities/facets`
+- `GET /api/v1/platform/entities/facets/{facet_id}`
 - `GET /api/v1/platform/entities/{entity_id}`
 - `GET /api/v1/platform/knowledge/evidence`
 - `GET /api/v1/platform/knowledge/evidence/{evidence_id}`

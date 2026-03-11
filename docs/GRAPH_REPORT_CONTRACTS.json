@@ -659,6 +659,179 @@
       ]
     },
     {
+      "id": "entity-summary",
+      "version": "1.0.0",
+      "title": "Entity Summary",
+      "category": "entity",
+      "description": "Report-level entity view composed from canonical identity, facet modules, posture claims, topology, and support coverage.",
+      "result_schema": "graph.EntitySummaryReport",
+      "endpoint": {
+        "method": "GET",
+        "path": "/api/v1/platform/intelligence/entity-summary",
+        "synchronous": true,
+        "job_capable": true,
+        "run_method": "POST",
+        "run_path_template": "/api/v1/platform/intelligence/reports/entity-summary/runs"
+      },
+      "temporal_modes": [
+        "bitemporal"
+      ],
+      "parameters": [
+        {
+          "name": "entity_id",
+          "in": "query",
+          "value_type": "string",
+          "required": true,
+          "description": "Entity to summarize."
+        },
+        {
+          "name": "valid_at",
+          "in": "query",
+          "value_type": "date-time",
+          "description": "Fact-time slice for the entity summary."
+        },
+        {
+          "name": "recorded_at",
+          "in": "query",
+          "value_type": "date-time",
+          "description": "System-time slice for the entity summary."
+        },
+        {
+          "name": "max_posture_claims",
+          "in": "query",
+          "value_type": "integer",
+          "description": "Maximum posture claims to include inline."
+        }
+      ],
+      "measures": [
+        {
+          "id": "risk_score",
+          "label": "Risk Score",
+          "value_type": "number",
+          "unit": "score",
+          "description": "Normalized risk score derived from the entity risk level."
+        },
+        {
+          "id": "facet_coverage_percent",
+          "label": "Facet Coverage",
+          "value_type": "number",
+          "unit": "percent",
+          "description": "Share of applicable built-in facets materialized on the entity."
+        },
+        {
+          "id": "subresource_count",
+          "label": "Subresources",
+          "value_type": "integer",
+          "description": "Promoted subresources attached to the entity for explanation and provenance."
+        },
+        {
+          "id": "supported_claims",
+          "label": "Supported Claims",
+          "value_type": "integer",
+          "description": "Active posture claims with evidence support."
+        },
+        {
+          "id": "disputed_claims",
+          "label": "Disputed Claims",
+          "value_type": "integer",
+          "description": "Active posture claims with contradictory support."
+        },
+        {
+          "id": "evidence_count",
+          "label": "Evidence",
+          "value_type": "integer",
+          "description": "Evidence artifacts attached to the entity support surface."
+        }
+      ],
+      "sections": [
+        {
+          "key": "overview",
+          "title": "Overview",
+          "kind": "entity_overview",
+          "envelope_kind": "object",
+          "description": "Canonical identity and top-line coverage measures."
+        },
+        {
+          "key": "topology",
+          "title": "Topology",
+          "kind": "entity_topology",
+          "envelope_kind": "object",
+          "description": "Grouped relationships and immediate graph context."
+        },
+        {
+          "key": "facets",
+          "title": "Facets",
+          "kind": "entity_facets",
+          "envelope_kind": "object",
+          "description": "Typed facet modules derived from properties and claims."
+        },
+        {
+          "key": "subresources",
+          "title": "Subresources",
+          "kind": "entity_subresources",
+          "envelope_kind": "object",
+          "description": "Promoted subresources linked for durable explanation and provenance."
+        },
+        {
+          "key": "posture",
+          "title": "Posture",
+          "kind": "entity_posture",
+          "envelope_kind": "object",
+          "description": "Normalized posture/support claims attached to the entity."
+        },
+        {
+          "key": "support",
+          "title": "Support",
+          "kind": "entity_support",
+          "envelope_kind": "object",
+          "description": "Knowledge support coverage and conflict signals."
+        }
+      ],
+      "checks": [
+        {
+          "id": "canonical_identity",
+          "title": "Canonical Identity",
+          "severity": "high",
+          "description": "Entity summaries should expose canonical refs plus source-native external refs."
+        },
+        {
+          "id": "facet_coverage",
+          "title": "Facet Coverage",
+          "severity": "medium",
+          "description": "Applicable entity facets should materialize from the available source data."
+        },
+        {
+          "id": "subresource_promotion",
+          "title": "Subresource Promotion",
+          "severity": "medium",
+          "description": "Nested asset constructs that drive explanation or remediation should be promoted into durable subresources."
+        },
+        {
+          "id": "posture_support",
+          "title": "Posture Support",
+          "severity": "high",
+          "description": "Risk posture should be backed by evidence-linked claims rather than raw properties alone."
+        }
+      ],
+      "extension_points": [
+        {
+          "key": "facets.overlays",
+          "scope": "facets.items[]",
+          "description": "Attach tenant-specific facet overlays or remediation links."
+        },
+        {
+          "key": "subresources.overlays",
+          "scope": "subresources.items[]",
+          "description": "Attach subresource-specific remediation actions, docs, or benchmark overlays."
+        },
+        {
+          "key": "posture.annotations",
+          "scope": "posture.claims[]",
+          "description": "Attach adjudication, ownership, or workflow annotations to posture claims."
+        }
+      ]
+    },
+    {
       "id": "leverage",
       "version": "1.0.0",
       "title": "Graph Leverage",
@@ -1128,11 +1301,30 @@
       "description": "Ontology coverage across node and edge kinds."
     },
     {
+      "id": "disputed_claims",
+      "label": "Disputed Claims",
+      "value_type": "integer",
+      "description": "Active posture claims with contradictory support."
+    },
+    {
       "id": "enum_validity_percent",
       "label": "Enum Validity",
       "value_type": "number",
       "unit": "percent",
       "description": "Share of enum-like values matching the allowed value set."
+    },
+    {
+      "id": "evidence_count",
+      "label": "Evidence",
+      "value_type": "integer",
+      "description": "Evidence artifacts attached to the entity support surface."
+    },
+    {
+      "id": "facet_coverage_percent",
+      "label": "Facet Coverage",
+      "value_type": "number",
+      "unit": "percent",
+      "description": "Share of applicable built-in facets materialized on the entity."
     },
     {
       "id": "freshness_percent",
@@ -1242,6 +1434,18 @@
       "description": "Claims beyond the requested staleness threshold."
     },
     {
+      "id": "subresource_count",
+      "label": "Subresources",
+      "value_type": "integer",
+      "description": "Promoted subresources attached to the entity for explanation and provenance."
+    },
+    {
+      "id": "supported_claims",
+      "label": "Supported Claims",
+      "value_type": "integer",
+      "description": "Active posture claims with evidence support."
+    },
+    {
       "id": "timestamp_validity_percent",
       "label": "Timestamp Validity",
       "value_type": "number",
@@ -1261,6 +1465,12 @@
       "title": "Actuation Closure",
       "severity": "medium",
       "description": "Actions should land with targets, decisions, and outcomes."
+    },
+    {
+      "id": "canonical_identity",
+      "title": "Canonical Identity",
+      "severity": "high",
+      "description": "Entity summaries should expose canonical refs plus source-native external refs."
     },
     {
       "id": "closed_loop",
@@ -1285,6 +1495,12 @@
       "title": "Enum Validity",
       "severity": "medium",
       "description": "Ontology-enumerated values should be normalized consistently."
+    },
+    {
+      "id": "facet_coverage",
+      "title": "Facet Coverage",
+      "severity": "medium",
+      "description": "Applicable entity facets should materialize from the available source data."
     },
     {
       "id": "freshness",
@@ -1341,6 +1557,12 @@
       "description": "Outcome coverage and signal backtesting must remain large enough for calibration."
     },
     {
+      "id": "posture_support",
+      "title": "Posture Support",
+      "severity": "high",
+      "description": "Risk posture should be backed by evidence-linked claims rather than raw properties alone."
+    },
+    {
       "id": "required_keys",
       "title": "Required Keys",
       "severity": "high",
@@ -1363,6 +1585,12 @@
       "title": "Source Coverage",
       "severity": "high",
       "description": "Leverage weakens quickly when ingest breadth misses core operating systems."
+    },
+    {
+      "id": "subresource_promotion",
+      "title": "Subresource Promotion",
+      "severity": "medium",
+      "description": "Nested asset constructs that drive explanation or remediation should be promoted into durable subresources."
     },
     {
       "id": "supportability",

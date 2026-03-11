@@ -275,8 +275,11 @@ func cdcEventToNode(table string, event cdcEvent) *Node {
 			Region:   firstNonEmpty(queryRowString(payload, "region"), region),
 			Risk:     risk,
 			Properties: map[string]any{
-				"public":     isPublic,
-				"versioning": queryRow(payload, "versioning_status"),
+				"public":              isPublic,
+				"block_public_acls":   queryRow(payload, "block_public_acls"),
+				"block_public_policy": queryRow(payload, "block_public_policy"),
+				"versioning":          queryRow(payload, "versioning_status"),
+				"versioning_status":   queryRow(payload, "versioning_status"),
 			},
 		}
 	case "aws_ec2_instances":

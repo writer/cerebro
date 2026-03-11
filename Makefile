@@ -1,4 +1,4 @@
-.PHONY: build run test sync clean dev serve policy-list docker-build trivy-db security-scan security-scan-built security-scan-source vendor vendor-check oss-audit openapi-check openapi-sync config-docs config-docs-check ontology-docs ontology-docs-check cloudevents-docs cloudevents-docs-check cloudevents-contract-compat report-contract-docs report-contract-docs-check report-contract-compat agent-sdk-docs agent-sdk-docs-check agent-sdk-contract-compat agent-sdk-packages agent-sdk-packages-check platform-up platform-down platform-logs platform-smoke hooks
+.PHONY: build run test sync clean dev serve policy-list docker-build trivy-db security-scan security-scan-built security-scan-source vendor vendor-check oss-audit openapi-check openapi-sync config-docs config-docs-check ontology-docs ontology-docs-check cloudevents-docs cloudevents-docs-check cloudevents-contract-compat report-contract-docs report-contract-docs-check report-contract-compat entity-facet-docs entity-facet-docs-check entity-facet-contract-compat agent-sdk-docs agent-sdk-docs-check agent-sdk-contract-compat agent-sdk-packages agent-sdk-packages-check platform-up platform-down platform-logs platform-smoke hooks
 
 # Version info
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -164,6 +164,15 @@ report-contract-docs-check: report-contract-docs
 
 report-contract-compat:
 	go run ./scripts/check_report_contract_compat/main.go
+
+entity-facet-docs:
+	go run ./scripts/generate_entity_facet_docs/main.go
+
+entity-facet-docs-check: entity-facet-docs
+	git diff --exit-code -- docs/GRAPH_ENTITY_FACETS_AUTOGEN.md docs/GRAPH_ENTITY_FACETS.json
+
+entity-facet-contract-compat:
+	go run ./scripts/check_entity_facet_compat/main.go
 
 agent-sdk-docs:
 	go run ./scripts/generate_agent_sdk_docs/main.go

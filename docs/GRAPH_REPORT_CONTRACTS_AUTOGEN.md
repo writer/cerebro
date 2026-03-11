@@ -4,9 +4,9 @@ Generated from the built-in report runtime registries via `go run ./scripts/gene
 
 - Catalog API version: **cerebro.report.contracts/v1alpha1**
 - Catalog kind: **ReportContractCatalog**
-- Reports: **6**
-- Measures: **28**
-- Checks: **22**
+- Reports: **7**
+- Measures: **33**
+- Checks: **26**
 - Section envelopes: **8**
 - Section fragments: **3**
 - Benchmark packs: **6**
@@ -19,6 +19,7 @@ Generated from the built-in report runtime registries via `go run ./scripts/gene
 | `quality` | `1.0.0` | `quality` | `graph.GraphQualityReport` | `/api/v1/platform/intelligence/reports/{id}/runs` | 6 | 4 | 7 |
 | `metadata-quality` | `1.0.0` | `quality` | `graph.GraphMetadataQualityReport` | `/api/v1/platform/intelligence/reports/{id}/runs` | 4 | 4 | 4 |
 | `claim-conflicts` | `1.0.0` | `knowledge` | `graph.ClaimConflictReport` | `/api/v1/platform/intelligence/reports/{id}/runs` | 5 | 4 | 3 |
+| `entity-summary` | `1.0.0` | `entity` | `graph.EntitySummaryReport` | `/api/v1/platform/intelligence/reports/entity-summary/runs` | 6 | 4 | 6 |
 | `leverage` | `1.0.0` | `operating_model` | `graph.GraphLeverageReport` | `/api/v1/platform/intelligence/reports/{id}/runs` | 7 | 4 | 11 |
 | `calibration-weekly` | `1.0.0` | `calibration` | `graph.WeeklyCalibrationReport` | `/api/v1/platform/intelligence/reports/{id}/runs` | 5 | 3 | 3 |
 
@@ -35,7 +36,10 @@ Generated from the built-in report runtime registries via `go run ./scripts/gene
 | `conformance_percent` | `Conformance` | `number` | `percent` | Schema conformance across graph writes. |
 | `coverage` | `Coverage` | `number` | `percent` | How much of the selected scope is covered by the available graph evidence. |
 | `coverage_percent` | `Coverage` | `number` | `percent` | Ontology coverage across node and edge kinds. |
+| `disputed_claims` | `Disputed Claims` | `integer` | - | Active posture claims with contradictory support. |
 | `enum_validity_percent` | `Enum Validity` | `number` | `percent` | Share of enum-like values matching the allowed value set. |
+| `evidence_count` | `Evidence` | `integer` | - | Evidence artifacts attached to the entity support surface. |
+| `facet_coverage_percent` | `Facet Coverage` | `number` | `percent` | Share of applicable built-in facets materialized on the entity. |
 | `freshness_percent` | `Freshness` | `number` | `percent` | Recency-adjusted freshness for the selected scope. |
 | `leverage_score` | `Leverage Score` | `number` | `score` | Composite operating score for graph leverage. |
 | `linkage_percent` | `Identity Linkage` | `number` | `percent` | Share of alias identities linked to canonical entities. |
@@ -52,6 +56,8 @@ Generated from the built-in report runtime registries via `go run ./scripts/gene
 | `schema_valid_write_percent` | `Schema Valid Writes` | `number` | `percent` | Share of writes conforming to schema contracts. |
 | `sourceless_claims` | `Sourceless Claims` | `integer` | - | Active claims with no source attribution. |
 | `stale_claims` | `Stale Claims` | `integer` | - | Claims beyond the requested staleness threshold. |
+| `subresource_count` | `Subresources` | `integer` | - | Promoted subresources attached to the entity for explanation and provenance. |
+| `supported_claims` | `Supported Claims` | `integer` | - | Active posture claims with evidence support. |
 | `timestamp_validity_percent` | `Timestamp Validity` | `number` | `percent` | Share of timestamp fields matching the expected timestamp type. |
 | `unsupported_claims` | `Unsupported Claims` | `integer` | - | Active claims with no evidence support. |
 
@@ -60,10 +66,12 @@ Generated from the built-in report runtime registries via `go run ./scripts/gene
 | ID | Title | Severity | Description |
 |---|---|---|---|
 | `actuation_closure` | Actuation Closure | `medium` | Actions should land with targets, decisions, and outcomes. |
+| `canonical_identity` | Canonical Identity | `high` | Entity summaries should expose canonical refs plus source-native external refs. |
 | `closed_loop` | Closed Loop | `medium` | Decisions without outcomes leave the intelligence loop incomplete. |
 | `contradiction_density` | Contradiction Density | `medium` | Contradiction groups should remain bounded for key subject predicates. |
 | `counterfactual_readiness` | Counterfactual Readiness | `medium` | Counterfactual output depends on simulation-ready graph coverage. |
 | `enum_validity` | Enum Validity | `medium` | Ontology-enumerated values should be normalized consistently. |
+| `facet_coverage` | Facet Coverage | `medium` | Applicable entity facets should materialize from the available source data. |
 | `freshness` | Freshness | `high` | Insights depend on recent graph observations and outcome feedback. |
 | `identity_linkage` | Identity Linkage | `high` | Unlinked aliases reduce graph trust and downstream personalization. |
 | `identity_precision` | Identity Precision | `high` | Low-confidence identity linkage erodes cross-source graph trust. |
@@ -73,10 +81,12 @@ Generated from the built-in report runtime registries via `go run ./scripts/gene
 | `ontology_trend` | Ontology Trend | `medium` | Weekly calibration should include a non-empty ontology trend slice. |
 | `ontology_trust` | Ontology Trust | `high` | Canonical kind coverage and valid writes are prerequisite for reuse. |
 | `outcome_backtest` | Outcome Backtest | `high` | Outcome coverage and signal backtesting must remain large enough for calibration. |
+| `posture_support` | Posture Support | `high` | Risk posture should be backed by evidence-linked claims rather than raw properties alone. |
 | `required_keys` | Required Keys | `high` | Required metadata keys should be present across profiled writes. |
 | `schema_conformance` | Schema Conformance | `high` | Confidence should be reduced when ontology writes are invalid or drifting. |
 | `source_attribution` | Source Attribution | `high` | Claims should link back to first-class sources. |
 | `source_coverage` | Source Coverage | `high` | Leverage weakens quickly when ingest breadth misses core operating systems. |
+| `subresource_promotion` | Subresource Promotion | `medium` | Nested asset constructs that drive explanation or remediation should be promoted into durable subresources. |
 | `supportability` | Supportability | `high` | Claims should be backed by evidence nodes or observations. |
 | `temporal_metadata` | Temporal Metadata | `high` | Missing observed and valid timestamps weaken point-in-time reasoning. |
 | `timestamp_validity` | Timestamp Validity | `medium` | Timestamp fields should remain valid for bitemporal reasoning. |

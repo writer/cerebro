@@ -349,6 +349,8 @@ func (s *Server) setupRoutes() {
 		// Shared platform primitives
 		r.Route("/platform", func(r chi.Router) {
 			r.Get("/entities", s.listPlatformEntities)
+			r.Get("/entities/facets", s.listPlatformEntityFacets)
+			r.Get("/entities/facets/{facet_id}", s.getPlatformEntityFacet)
 			r.Get("/entities/{entity_id}", s.getPlatformEntity)
 			r.Route("/graph", func(r chi.Router) {
 				r.Get("/queries", s.platformGraphQueriesGet)
@@ -388,6 +390,7 @@ func (s *Server) setupRoutes() {
 				r.Get("/quality", s.graphIntelligenceQuality)
 				r.Get("/metadata-quality", s.graphIntelligenceMetadataQuality)
 				r.Get("/claim-conflicts", s.graphIntelligenceClaimConflicts)
+				r.Get("/entity-summary", s.graphIntelligenceEntitySummary)
 				r.Get("/leverage", s.graphIntelligenceLeverage)
 				r.Get("/calibration/weekly", s.graphIntelligenceWeeklyCalibration)
 			})

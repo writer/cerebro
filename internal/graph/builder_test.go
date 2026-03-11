@@ -208,6 +208,12 @@ func TestBuilder_BuildWithMockData(t *testing.T) {
 	} else if publicBucket.Risk != RiskHigh {
 		t.Errorf("public bucket should have high risk, got %s", publicBucket.Risk)
 	}
+	if _, ok := g.GetNode("bucket_public_access_block:arn-aws-s3-public-website"); !ok {
+		t.Error("expected normalized bucket public-access-block subresource")
+	}
+	if _, ok := g.GetNode("claim:arn-aws-s3-public-website:public-access:normalized"); !ok {
+		t.Error("expected normalized bucket public_access claim")
+	}
 
 	// Verify internet node exists
 	_, ok = g.GetNode("internet")

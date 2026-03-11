@@ -161,10 +161,16 @@ func (b *Builder) Build(ctx context.Context) error {
 		return err
 	}
 	b.buildSCMInference()
+	normalization := NormalizeEntityAssetSupport(b.graph, temporalNowUTC())
 
 	b.logger.Info("graph inferred edges built",
 		"edges", b.graph.EdgeCount(),
 		"duration", time.Since(inferStart))
+	b.logger.Info("graph asset support normalized",
+		"buckets", normalization.BucketsProcessed,
+		"subresources", normalization.SubresourcesCreated,
+		"observations", normalization.ObservationsCreated,
+		"claims", normalization.ClaimsCreated)
 
 	// Rebuild index with edges included
 	b.graph.BuildIndex()

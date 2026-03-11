@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -25,6 +26,24 @@ func (s *Server) listPlatformEntities(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.json(w, http.StatusOK, graph.QueryEntities(g, opts))
+}
+
+func (s *Server) listPlatformEntityFacets(w http.ResponseWriter, r *http.Request) {
+	s.json(w, http.StatusOK, graph.BuildEntityFacetContractCatalog(time.Now().UTC()))
+}
+
+func (s *Server) getPlatformEntityFacet(w http.ResponseWriter, r *http.Request) {
+	facetID := strings.TrimSpace(chi.URLParam(r, "facet_id"))
+	if facetID == "" {
+		s.error(w, http.StatusBadRequest, "facet id required")
+		return
+	}
+	facet, ok := graph.GetEntityFacetDefinition(facetID)
+	if !ok {
+		s.error(w, http.StatusNotFound, "facet not found")
+		return
+	}
+	s.json(w, http.StatusOK, facet)
 }
 
 func (s *Server) getPlatformEntity(w http.ResponseWriter, r *http.Request) {

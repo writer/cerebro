@@ -23,6 +23,7 @@ const (
 	EdgeKindConnectsTo EdgeKind = "connects_to"
 	EdgeKindRuns       EdgeKind = "runs"
 	EdgeKindDependsOn  EdgeKind = "depends_on"
+	EdgeKindConfigures EdgeKind = "configures"
 
 	// Internet -> Resource
 	EdgeKindExposedTo EdgeKind = "exposed_to"

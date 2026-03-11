@@ -78,6 +78,7 @@ func NewServer(application *app.App) *Server {
 		"quality":            s.graphIntelligenceQuality,
 		"metadata-quality":   s.graphIntelligenceMetadataQuality,
 		"claim-conflicts":    s.graphIntelligenceClaimConflicts,
+		"entity-summary":     s.graphIntelligenceEntitySummary,
 		"leverage":           s.graphIntelligenceLeverage,
 		"calibration-weekly": s.graphIntelligenceWeeklyCalibration,
 	}
