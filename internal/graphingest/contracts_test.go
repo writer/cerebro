@@ -15,8 +15,10 @@ func TestBuildMappingContracts(t *testing.T) {
 		Kind:       "MappingConfig",
 		Mappings: []EventMapping{
 			{
-				Name:   "service_updated",
-				Source: "ensemble.tap.test.service.updated",
+				Name:         "service_updated",
+				Source:       "ensemble.tap.test.service.updated",
+				Domain:       "operations",
+				SourceSystem: "serviceops",
 				DataEnums: map[string][]string{
 					"status": []string{"open", "closed"},
 				},
@@ -53,6 +55,12 @@ func TestBuildMappingContracts(t *testing.T) {
 	}
 	if row.ContractVersion != defaultMappingContractVersion {
 		t.Fatalf("expected default contract version %q, got %q", defaultMappingContractVersion, row.ContractVersion)
+	}
+	if row.Domain != "operations" {
+		t.Fatalf("expected explicit domain operations, got %q", row.Domain)
+	}
+	if row.SourceSystem != "serviceops" {
+		t.Fatalf("expected explicit source system serviceops, got %q", row.SourceSystem)
 	}
 	if !containsContractString(row.RequiredDataKeys, "service.id") || !containsContractString(row.RequiredDataKeys, "actor_email") {
 		t.Fatalf("expected required keys service.id + actor_email, got %#v", row.RequiredDataKeys)

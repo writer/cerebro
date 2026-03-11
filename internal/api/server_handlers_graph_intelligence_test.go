@@ -2206,7 +2206,7 @@ func TestGraphIngestHealthEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new mapper with options failed: %v", err)
 	}
-	s.app.TapEventMapper = mapper
+	s.app.GraphEventMapper = mapper
 
 	if _, err := mapper.Apply(s.app.SecurityGraph, events.CloudEvent{
 		ID:     "evt-invalid-1",
@@ -2301,7 +2301,7 @@ func TestGraphIngestDeadLetterEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new mapper with options failed: %v", err)
 	}
-	s.app.TapEventMapper = mapper
+	s.app.GraphEventMapper = mapper
 
 	if _, err := mapper.Apply(s.app.SecurityGraph, events.CloudEvent{
 		ID:     "evt-invalid-query-1",

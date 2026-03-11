@@ -7,6 +7,8 @@ mappings:
   # reason by ontology type.
   - name: github_pr_merged
     source: ensemble.tap.github.pull_request.merged
+    domain: github
+    sourceSystem: github
     nodes:
       - id: 'service:{{data.repository}}'
         kind: service
@@ -36,6 +38,8 @@ mappings:
         effect: allow
   - name: incident_timeline_event
     source: ensemble.tap.incident.timeline.*
+    domain: incident
+    sourceSystem: incident
     dataEnums:
       status:
         - open
@@ -104,6 +108,8 @@ mappings:
         effect: allow
   - name: github_pr_opened
     source: ensemble.tap.github.pull_request.opened
+    domain: github
+    sourceSystem: github
     nodes:
       - id: 'service:{{data.repository}}'
         kind: service
@@ -132,6 +138,8 @@ mappings:
         effect: allow
   - name: github_pr_review_submitted
     source: ensemble.tap.github.pull_request.review_submitted
+    domain: github
+    sourceSystem: github
     nodes:
       - id: 'service:{{data.repository}}'
         kind: service
@@ -160,6 +168,8 @@ mappings:
         effect: allow
   - name: github_check_run_completed
     source: ensemble.tap.github.check_run.completed
+    domain: github
+    sourceSystem: github
     nodes:
       - id: 'service:{{data.repository}}'
         kind: service
@@ -190,6 +200,8 @@ mappings:
         effect: allow
   - name: slack_thread_message
     source: ensemble.tap.slack.thread.message_posted
+    domain: slack
+    sourceSystem: slack
     nodes:
       - id: 'thread:slack:{{data.channel_id}}:{{data.thread_ts}}'
         kind: communication_thread
@@ -221,6 +233,8 @@ mappings:
         effect: allow
   - name: jira_issue_transition
     source: ensemble.tap.jira.issue.transitioned
+    domain: jira
+    sourceSystem: jira
     nodes:
       - id: 'ticket:jira:{{data.issue_key}}'
         kind: ticket
@@ -251,6 +265,8 @@ mappings:
         effect: allow
   - name: ci_deploy_completed
     source: ensemble.tap.ci.deploy.completed
+    domain: ci
+    sourceSystem: ci
     nodes:
       - id: 'service:{{data.service}}'
         kind: service
@@ -295,6 +311,8 @@ mappings:
         effect: allow
   - name: ci_pipeline_completed
     source: ensemble.tap.ci.pipeline.completed
+    domain: ci
+    sourceSystem: ci
     nodes:
       - id: 'service:{{data.service}}'
         kind: service
@@ -326,6 +344,8 @@ mappings:
         effect: allow
   - name: calendar_meeting_recorded
     source: ensemble.tap.calendar.meeting.recorded
+    domain: calendar
+    sourceSystem: calendar
     nodes:
       - id: 'service:{{data.service}}'
         kind: service
@@ -353,6 +373,8 @@ mappings:
         effect: allow
   - name: docs_page_edited
     source: ensemble.tap.docs.page.edited
+    domain: docs
+    sourceSystem: docs
     nodes:
       - id: 'document:{{data.doc_id}}'
         kind: document
@@ -380,6 +402,8 @@ mappings:
         effect: allow
   - name: support_ticket_updated
     source: ensemble.tap.support.ticket.updated
+    domain: support
+    sourceSystem: support
     nodes:
       - id: 'ticket:support:{{data.ticket_id}}'
         kind: ticket
@@ -409,6 +433,8 @@ mappings:
         effect: allow
   - name: sales_call_logged
     source: ensemble.tap.sales.call.logged
+    domain: sales
+    sourceSystem: sales
     nodes:
       - id: 'contact:{{data.contact_id}}'
         kind: contact

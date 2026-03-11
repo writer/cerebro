@@ -25,7 +25,7 @@ import (
 var defaultAlertRoutesYAML []byte
 
 const (
-	defaultAlertNotifySubjectPrefix = "ensemble.notify"
+	defaultAlertNotifySubjectPrefix = "cerebro.notify"
 	defaultAlertEscalationReason    = "alert_unacknowledged"
 )
 

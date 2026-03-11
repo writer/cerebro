@@ -17,9 +17,9 @@ import (
 )
 
 const (
-	defaultConsumerStream              = "ENSEMBLE_TAP"
+	defaultConsumerStream              = "CEREBRO_EVENTS"
 	defaultConsumerDurable             = "cerebro_graph_builder"
-	defaultConsumerSubject             = "ensemble.tap.>"
+	defaultConsumerSubject             = "cerebro.events.>"
 	defaultConsumerBatchSize           = 50
 	defaultConsumerAckWait             = 120 * time.Second
 	defaultConsumerFetchTimeout        = 2 * time.Second
@@ -35,6 +35,7 @@ type ConsumerConfig struct {
 	URLs                []string
 	Stream              string
 	Subject             string
+	Subjects            []string
 	Durable             string
 	BatchSize           int
 	AckWait             time.Duration
@@ -165,14 +166,14 @@ func NewJetStreamConsumer(cfg ConsumerConfig, logger *slog.Logger, handler Event
 		nc.Close()
 		return nil, err
 	}
-	sub, err := c.js.PullSubscribe(
-		config.Subject,
-		config.Durable,
+	subject, subOpts := config.subscriptionOptions()
+	subOpts = append(subOpts,
 		nats.BindStream(config.Stream),
 		nats.AckExplicit(),
 		nats.AckWait(config.AckWait),
 		nats.MaxAckPending(config.MaxAckPending),
 	)
+	sub, err := c.js.PullSubscribe(subject, config.Durable, subOpts...)
 	if err != nil {
 		nc.Close()
 		return nil, fmt.Errorf("create consumer subscription: %w", err)
@@ -273,7 +274,7 @@ func (c *Consumer) run() {
 				}
 				continue
 			}
-			c.logger.Warn("tap consumer fetch failed", "error", err)
+			c.logger.Warn("nats consumer fetch failed", "error", err)
 			time.Sleep(500 * time.Millisecond)
 			continue
 		}
@@ -328,7 +329,7 @@ func (c *Consumer) handleMessage(ctx context.Context, subject string, payload []
 			Error:      err.Error(),
 			Payload:    string(payload),
 		}); dlqErr != nil {
-			c.logger.Error("tap consumer failed to dead-letter malformed cloud event; message requeued",
+			c.logger.Error("nats consumer failed to dead-letter malformed cloud event; message requeued",
 				"error", dlqErr,
 				"subject", subject,
 				"stream", c.config.Stream,
@@ -336,11 +337,11 @@ func (c *Consumer) handleMessage(ctx context.Context, subject string, payload []
 				"payload_preview", preview,
 			)
 			if nakErr := nak(); nakErr != nil {
-				c.logger.Warn("tap consumer nak failed after dead-letter error", "error", nakErr, "subject", subject)
+				c.logger.Warn("nats consumer nak failed after dead-letter error", "error", nakErr, "subject", subject)
 			}
 			return consumerMessageResult{}
 		}
-		c.logger.Error("tap consumer dead-lettered malformed cloud event",
+		c.logger.Error("nats consumer dead-lettered malformed cloud event",
 			"error", err,
 			"subject", subject,
 			"stream", c.config.Stream,
@@ -349,22 +350,22 @@ func (c *Consumer) handleMessage(ctx context.Context, subject string, payload []
 		)
 		c.recordDropped("malformed", time.Now().UTC())
 		if err := ack(); err != nil {
-			c.logger.Warn("tap consumer ack failed after dead-lettering malformed event", "error", err, "subject", subject)
+			c.logger.Warn("nats consumer ack failed after dead-lettering malformed event", "error", err, "subject", subject)
 		}
 		return consumerMessageResult{}
 	}
 	stopHeartbeat := c.startInProgressHeartbeat(ctx, inProgress)
 	defer stopHeartbeat()
 	if err := c.handler(ctx, evt); err != nil {
-		c.logger.Warn("tap consumer handler failed; message requeued", "error", err, "event_type", evt.Type)
+		c.logger.Warn("nats consumer handler failed; message requeued", "error", err, "event_type", evt.Type)
 		if nakErr := nak(); nakErr != nil {
-			c.logger.Warn("tap consumer nak failed", "error", nakErr, "event_type", evt.Type)
+			c.logger.Warn("nats consumer nak failed", "error", nakErr, "event_type", evt.Type)
 		}
 		return consumerMessageResult{}
 	}
 	processedAt := time.Now().UTC()
 	if err := ack(); err != nil {
-		c.logger.Warn("tap consumer ack failed", "error", err, "event_type", evt.Type)
+		c.logger.Warn("nats consumer ack failed", "error", err, "event_type", evt.Type)
 	}
 	return consumerMessageResult{
 		Processed:   true,
@@ -445,7 +446,7 @@ func (c *Consumer) startInProgressHeartbeat(ctx context.Context, inProgress func
 				return
 			case <-ticker.C:
 				if err := inProgress(); err != nil && c.logger != nil {
-					c.logger.Debug("tap consumer in-progress heartbeat failed", "error", err, "stream", c.config.Stream, "durable", c.config.Durable)
+					c.logger.Debug("nats consumer in-progress heartbeat failed", "error", err, "stream", c.config.Stream, "durable", c.config.Durable)
 				}
 			}
 		}
@@ -486,7 +487,7 @@ func (c *Consumer) startBatchInProgressHeartbeat(ctx context.Context, inProgress
 						continue
 					}
 					if err := heartbeat(); err != nil && c.logger != nil {
-						c.logger.Debug("tap consumer batch in-progress heartbeat failed", "error", err, "stream", c.config.Stream, "durable", c.config.Durable, "index", i)
+						c.logger.Debug("nats consumer batch in-progress heartbeat failed", "error", err, "stream", c.config.Stream, "durable", c.config.Durable, "index", i)
 					}
 				}
 				activeMu.RUnlock()
@@ -622,18 +623,196 @@ func payloadPreview(payload []byte, limit int) string {
 	return trimmed[:limit] + "...(truncated)"
 }
 
+func normalizeConsumerSubjects(subject string, subjects []string) []string {
+	values := make([]string, 0, len(subjects)+1)
+	if trimmed := strings.TrimSpace(subject); trimmed != "" {
+		values = append(values, trimmed)
+	}
+	values = append(values, subjects...)
+
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		out = append(out, trimmed)
+	}
+	return out
+}
+
+func defaultConsumerSubjects(subject string, subjects []string) []string {
+	out := normalizeConsumerSubjects(subject, subjects)
+	if len(out) == 0 {
+		return []string{defaultConsumerSubject}
+	}
+	return out
+}
+
+func (c ConsumerConfig) subscriptionOptions() (string, []nats.SubOpt) {
+	if len(c.Subjects) <= 1 {
+		return c.Subject, nil
+	}
+	return "", []nats.SubOpt{nats.ConsumerFilterSubjects(c.Subjects...)}
+}
+
+type subjectConstraintKind int
+
+const (
+	subjectConstraintNone subjectConstraintKind = iota
+	subjectConstraintAny
+	subjectConstraintLiteral
+)
+
+type subjectPatternInfo struct {
+	tokens    []string
+	prefixLen int
+	minLen    int
+	maxLen    int
+	valid     bool
+}
+
+func parseSubjectPattern(pattern string) subjectPatternInfo {
+	pattern = strings.TrimSpace(pattern)
+	if pattern == "" {
+		return subjectPatternInfo{}
+	}
+	tokens := strings.Split(pattern, ".")
+	for idx, token := range tokens {
+		token = strings.TrimSpace(token)
+		if token == "" {
+			return subjectPatternInfo{}
+		}
+		if token == ">" && idx != len(tokens)-1 {
+			return subjectPatternInfo{}
+		}
+		tokens[idx] = token
+	}
+
+	info := subjectPatternInfo{
+		tokens:    tokens,
+		prefixLen: len(tokens),
+		minLen:    len(tokens),
+		maxLen:    len(tokens),
+		valid:     true,
+	}
+	if len(tokens) > 0 && tokens[len(tokens)-1] == ">" {
+		info.prefixLen = len(tokens) - 1
+		info.maxLen = math.MaxInt
+	}
+	return info
+}
+
+func patternConstraintAt(info subjectPatternInfo, index int) (subjectConstraintKind, string) {
+	if !info.valid || index < 0 {
+		return subjectConstraintNone, ""
+	}
+	if index < info.prefixLen {
+		token := info.tokens[index]
+		if token == "*" {
+			return subjectConstraintAny, ""
+		}
+		return subjectConstraintLiteral, token
+	}
+	if info.maxLen == math.MaxInt {
+		return subjectConstraintAny, ""
+	}
+	return subjectConstraintNone, ""
+}
+
+func constraintCovers(streamKind subjectConstraintKind, streamLiteral string, consumerKind subjectConstraintKind, consumerLiteral string) bool {
+	switch consumerKind {
+	case subjectConstraintNone:
+		return true
+	case subjectConstraintLiteral:
+		switch streamKind {
+		case subjectConstraintAny:
+			return true
+		case subjectConstraintLiteral:
+			return streamLiteral == consumerLiteral
+		default:
+			return false
+		}
+	case subjectConstraintAny:
+		return streamKind == subjectConstraintAny
+	default:
+		return false
+	}
+}
+
+func subjectPatternCoversPattern(streamPattern, consumerPattern string) bool {
+	stream := parseSubjectPattern(streamPattern)
+	consumer := parseSubjectPattern(consumerPattern)
+	if !stream.valid || !consumer.valid {
+		return false
+	}
+	if consumer.minLen < stream.minLen {
+		return false
+	}
+	if stream.maxLen != math.MaxInt && consumer.maxLen > stream.maxLen {
+		return false
+	}
+
+	maxPositions := consumer.maxLen
+	if maxPositions == math.MaxInt {
+		if stream.maxLen != math.MaxInt {
+			return false
+		}
+		maxPositions = maxInt(stream.prefixLen, consumer.prefixLen)
+	}
+
+	for idx := 0; idx < maxPositions; idx++ {
+		streamKind, streamLiteral := patternConstraintAt(stream, idx)
+		consumerKind, consumerLiteral := patternConstraintAt(consumer, idx)
+		if !constraintCovers(streamKind, streamLiteral, consumerKind, consumerLiteral) {
+			return false
+		}
+	}
+	return true
+}
+
+func streamSupportsConsumerSubjects(streamSubjects, consumerSubjects []string) bool {
+	if len(streamSubjects) == 0 || len(consumerSubjects) == 0 {
+		return false
+	}
+	for _, consumerSubject := range consumerSubjects {
+		covered := false
+		for _, streamSubject := range streamSubjects {
+			if subjectPatternCoversPattern(streamSubject, consumerSubject) {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			return false
+		}
+	}
+	return true
+}
+
+func maxInt(left, right int) int {
+	if left > right {
+		return left
+	}
+	return right
+}
+
 func (c *Consumer) ensureStream() error {
+	subjects := c.config.Subjects
 	stream, err := c.js.StreamInfo(c.config.Stream)
 	if err == nil {
-		for _, subj := range stream.Config.Subjects {
-			if subj == c.config.Subject || subj == ">" || subj == "ensemble.tap.>" {
-				return nil
-			}
+		if streamSupportsConsumerSubjects(stream.Config.Subjects, subjects) {
+			return nil
 		}
 		c.logger.Warn("consumer stream exists without matching subject filter",
 			"stream", c.config.Stream,
 			"stream_subjects", stream.Config.Subjects,
-			"expected_subject", c.config.Subject,
+			"expected_subjects", subjects,
 		)
 		return nil
 	}
@@ -642,7 +821,7 @@ func (c *Consumer) ensureStream() error {
 	}
 	_, err = c.js.AddStream(&nats.StreamConfig{
 		Name:      c.config.Stream,
-		Subjects:  []string{c.config.Subject},
+		Subjects:  subjects,
 		Retention: nats.LimitsPolicy,
 		Storage:   nats.FileStorage,
 		Replicas:  1,
@@ -650,7 +829,7 @@ func (c *Consumer) ensureStream() error {
 	if err != nil {
 		return fmt.Errorf("create consumer stream %s: %w", c.config.Stream, err)
 	}
-	c.logger.Info("created jetstream consumer stream", "stream", c.config.Stream, "subject", c.config.Subject)
+	c.logger.Info("created jetstream consumer stream", "stream", c.config.Stream, "subjects", subjects)
 	return nil
 }
 
@@ -662,9 +841,8 @@ func (c ConsumerConfig) withDefaults() ConsumerConfig {
 	if cfg.Stream == "" {
 		cfg.Stream = defaultConsumerStream
 	}
-	if cfg.Subject == "" {
-		cfg.Subject = defaultConsumerSubject
-	}
+	cfg.Subjects = defaultConsumerSubjects(cfg.Subject, cfg.Subjects)
+	cfg.Subject = cfg.Subjects[0]
 	if cfg.Durable == "" {
 		cfg.Durable = defaultConsumerDurable
 	}
@@ -708,7 +886,7 @@ func (c ConsumerConfig) validate() error {
 	if strings.TrimSpace(c.Stream) == "" {
 		return errors.New("consumer stream is required")
 	}
-	if strings.TrimSpace(c.Subject) == "" {
+	if len(normalizeConsumerSubjects(c.Subject, c.Subjects)) == 0 {
 		return errors.New("consumer subject is required")
 	}
 	if strings.TrimSpace(c.Durable) == "" {

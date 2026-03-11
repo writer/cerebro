@@ -204,7 +204,7 @@ func (a *App) Close() error {
 		}
 	}
 
-	if a.TapConsumer != nil {
+	if a.GraphEventConsumer != nil {
 		drainTimeout := appShutdownTimeout
 		if a.Config != nil && a.Config.NATSConsumerDrainTimeout > 0 {
 			drainTimeout = a.Config.NATSConsumerDrainTimeout
@@ -220,10 +220,10 @@ func (a *App) Close() error {
 		} else {
 			drainCtx, drainCancel = context.WithTimeout(context.Background(), drainTimeout)
 		}
-		if err := a.TapConsumer.Drain(drainCtx); err != nil {
-			errs = append(errs, fmt.Errorf("tap consumer drain: %w", err))
+		if err := a.GraphEventConsumer.Drain(drainCtx); err != nil {
+			errs = append(errs, fmt.Errorf("nats graph consumer drain: %w", err))
 			if a.Logger != nil {
-				a.Logger.Warn("timed out draining tap consumer before graph shutdown", "timeout", drainTimeout, "error", err)
+				a.Logger.Warn("timed out draining nats graph consumer before graph shutdown", "timeout", drainTimeout, "error", err)
 			}
 		}
 		drainCancel()
@@ -255,9 +255,9 @@ func (a *App) Close() error {
 		}
 	}
 
-	if a.TapConsumer != nil {
-		if err := a.TapConsumer.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("tap consumer: %w", err))
+	if a.GraphEventConsumer != nil {
+		if err := a.GraphEventConsumer.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("nats graph consumer: %w", err))
 		}
 	}
 

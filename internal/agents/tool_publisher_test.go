@@ -106,7 +106,7 @@ func TestExtractToolNameFromSubject(t *testing.T) {
 	if got != "cerebro.simulate" {
 		t.Fatalf("tool name = %q, want cerebro.simulate", got)
 	}
-	if extractToolNameFromSubject("cerebro.tools.request", "ensemble.tools.request.any") != "" {
+	if extractToolNameFromSubject("cerebro.tools.request", "external.tools.request.any") != "" {
 		t.Fatal("expected empty tool name for non-matching subject")
 	}
 }

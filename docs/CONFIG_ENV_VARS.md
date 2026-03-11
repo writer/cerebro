@@ -8,9 +8,9 @@ Total variables: **283**
 |---|---|---|---|
 | `AGENT_REMOTE_TOOLS_DISCOVER_TIMEOUT` | `getEnvDuration` | `5 * time.Second` | `AgentRemoteToolsDiscoverTimeout` |
 | `AGENT_REMOTE_TOOLS_ENABLED` | `getEnvBool` | `false` | `AgentRemoteToolsEnabled` |
-| `AGENT_REMOTE_TOOLS_MANIFEST_SUBJECT` | `getEnv` | `"ensemble.tools.manifest"` | `AgentRemoteToolsManifestSubject` |
+| `AGENT_REMOTE_TOOLS_MANIFEST_SUBJECT` | `getEnv` | `"cerebro.tools.manifest"` | `AgentRemoteToolsManifestSubject` |
 | `AGENT_REMOTE_TOOLS_MAX_TOOLS` | `getEnvInt` | `200` | `AgentRemoteToolsMaxTools` |
-| `AGENT_REMOTE_TOOLS_REQUEST_PREFIX` | `getEnv` | `"ensemble.tools.request"` | `AgentRemoteToolsRequestPrefix` |
+| `AGENT_REMOTE_TOOLS_REQUEST_PREFIX` | `getEnv` | `"cerebro.tools.request"` | `AgentRemoteToolsRequestPrefix` |
 | `AGENT_REMOTE_TOOLS_REQUEST_TIMEOUT` | `getEnvDuration` | `30 * time.Second` | `AgentRemoteToolsRequestTimeout` |
 | `AGENT_TOOL_PUBLISHER_ENABLED` | `getEnvBool` | `false` | `AgentToolPublisherEnabled` |
 | `AGENT_TOOL_PUBLISHER_MANIFEST_SUBJECT` | `getEnv` | `"cerebro.tools.manifest"` | `AgentToolPublisherManifestSubject` |
@@ -18,7 +18,7 @@ Total variables: **283**
 | `AGENT_TOOL_PUBLISHER_REQUEST_TIMEOUT` | `getEnvDuration` | `30 * time.Second` | `AgentToolPublisherRequestTimeout` |
 | `ALERT_ROUTER_CONFIG_PATH` | `getEnv` | `""` | `AlertRouterConfigPath` |
 | `ALERT_ROUTER_ENABLED` | `getEnvBool` | `true` | `AlertRouterEnabled` |
-| `ALERT_ROUTER_NOTIFY_PREFIX` | `getEnv` | `"ensemble.notify"` | `AlertRouterNotifyPrefix` |
+| `ALERT_ROUTER_NOTIFY_PREFIX` | `getEnv` | `"cerebro.notify"` | `AlertRouterNotifyPrefix` |
 | `ANTHROPIC_API_KEY` | `getEnv` | `""` | `AnthropicAPIKey` |
 | `API_AUTHORIZATION_SERVERS` | `getEnv` | `""` | `APIAuthorizationServers` |
 | `API_AUTH_ENABLED` | `getEnvBool` | `len(apiKeys) > 0` | `-` |
@@ -145,8 +145,8 @@ Total variables: **283**
 | `NATS_CONSUMER_FETCH_TIMEOUT` | `getEnvDuration` | `2 * time.Second` | `NATSConsumerFetchTimeout` |
 | `NATS_CONSUMER_GRAPH_STALENESS_THRESHOLD` | `getEnvDuration` | `15 * time.Minute` | `NATSConsumerGraphStalenessThreshold` |
 | `NATS_CONSUMER_IN_PROGRESS_INTERVAL` | `getEnvDuration` | `15 * time.Second` | `NATSConsumerInProgressInterval` |
-| `NATS_CONSUMER_STREAM` | `getEnv` | `"ENSEMBLE_TAP"` | `NATSConsumerStream` |
-| `NATS_CONSUMER_SUBJECTS` | `getEnv` | `"ensemble.tap.>"` | `NATSConsumerSubjects` |
+| `NATS_CONSUMER_STREAM` | `getEnv` | `"CEREBRO_EVENTS"` | `NATSConsumerStream` |
+| `NATS_CONSUMER_SUBJECTS` | `getEnv` | `"cerebro.events.>"` | `NATSConsumerSubjects` |
 | `NATS_JETSTREAM_AUTH_MODE` | `getEnv` | `"none"` | `NATSJetStreamAuthMode` |
 | `NATS_JETSTREAM_CONNECT_TIMEOUT` | `getEnvDuration` | `5 * time.Second` | `NATSJetStreamConnectTimeout` |
 | `NATS_JETSTREAM_ENABLED` | `getEnvBool` | `false` | `NATSJetStreamEnabled` |

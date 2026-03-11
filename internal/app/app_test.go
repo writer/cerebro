@@ -43,6 +43,25 @@ func TestLoadConfig(t *testing.T) {
 	}
 }
 
+func TestLoadConfigGenericNATSDefaults(t *testing.T) {
+	cfg := LoadConfig()
+	if cfg.NATSConsumerStream != "CEREBRO_EVENTS" {
+		t.Fatalf("expected default nats consumer stream CEREBRO_EVENTS, got %q", cfg.NATSConsumerStream)
+	}
+	if !reflect.DeepEqual(cfg.NATSConsumerSubjects, []string{"cerebro.events.>"}) {
+		t.Fatalf("expected default nats consumer subjects cerebro.events.>, got %v", cfg.NATSConsumerSubjects)
+	}
+	if cfg.AlertRouterNotifyPrefix != "cerebro.notify" {
+		t.Fatalf("expected default alert notify prefix cerebro.notify, got %q", cfg.AlertRouterNotifyPrefix)
+	}
+	if cfg.AgentRemoteToolsManifestSubject != "cerebro.tools.manifest" || cfg.AgentRemoteToolsRequestPrefix != "cerebro.tools.request" {
+		t.Fatalf("unexpected remote tools defaults: %q %q", cfg.AgentRemoteToolsManifestSubject, cfg.AgentRemoteToolsRequestPrefix)
+	}
+	if cfg.AgentToolPublisherManifestSubject != "cerebro.tools.manifest" || cfg.AgentToolPublisherRequestPrefix != "cerebro.tools.request" {
+		t.Fatalf("unexpected tool publisher defaults: %q %q", cfg.AgentToolPublisherManifestSubject, cfg.AgentToolPublisherRequestPrefix)
+	}
+}
+
 func TestLoadConfigCrossTenantIngestControls(t *testing.T) {
 	t.Setenv("GRAPH_CROSS_TENANT_REQUIRE_SIGNED_INGEST", "true")
 	t.Setenv("GRAPH_CROSS_TENANT_SIGNING_KEY", "test-signing-key")

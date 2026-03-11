@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	defaultRemoteToolsManifestSubject = "ensemble.tools.manifest"
-	defaultRemoteToolsRequestPrefix   = "ensemble.tools.request"
+	defaultRemoteToolsManifestSubject = "cerebro.tools.manifest"
+	defaultRemoteToolsRequestPrefix   = "cerebro.tools.request"
 	defaultRemoteToolsDiscoverTimeout = 5 * time.Second
 	defaultRemoteToolsRequestTimeout  = 30 * time.Second
 	defaultRemoteToolsAuthMode        = "none"

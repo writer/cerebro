@@ -626,6 +626,64 @@ func TestMapperApply_EnrichesContractMetadataPointers(t *testing.T) {
 	}
 }
 
+func TestMapperApply_UsesExplicitSourceSystemMetadata(t *testing.T) {
+	config := MappingConfig{
+		Mappings: []EventMapping{
+			{
+				Name:         "generic_event",
+				Source:       "writer.graph.audit.logged",
+				Domain:       "audit",
+				SourceSystem: "auditbus",
+				Nodes: []NodeMapping{
+					{
+						ID:   "service:{{data.event_id}}",
+						Kind: "service",
+						Name: "Audit Event",
+						Properties: map[string]any{
+							"service_id": "{{data.event_id}}",
+						},
+					},
+				},
+			},
+		},
+	}
+	mapper, err := NewMapper(config, nil)
+	if err != nil {
+		t.Fatalf("new mapper failed: %v", err)
+	}
+
+	g := graph.New()
+	result, err := mapper.Apply(g, events.CloudEvent{
+		ID:     "evt-generic-1",
+		Source: "urn:writer:auditbus",
+		Type:   "writer.graph.audit.logged",
+		Time:   time.Date(2026, 3, 11, 4, 0, 0, 0, time.UTC),
+		Data: map[string]any{
+			"event_id": "audit-1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("mapper apply failed: %v", err)
+	}
+	if result.NodesRejected != 0 || result.EventsRejected != 0 {
+		t.Fatalf("expected generic event to apply cleanly, got %#v", result)
+	}
+
+	node, ok := g.GetNode("service:audit-1")
+	if !ok || node == nil {
+		t.Fatalf("expected node service:audit-1, got %#v", node)
+	}
+	if node.Provider != "auditbus" {
+		t.Fatalf("expected provider auditbus, got %q", node.Provider)
+	}
+	if got := strings.TrimSpace(valueToString(node.Properties["source_system"])); got != "auditbus" {
+		t.Fatalf("expected source_system auditbus, got %q", got)
+	}
+	if got := strings.TrimSpace(valueToString(node.Properties["producer_fingerprint"])); !strings.HasPrefix(got, "graphmapper:") {
+		t.Fatalf("expected graphmapper fingerprint, got %q", got)
+	}
+}
+
 func TestMapperApply_WarnValidationAllowsInvalidWrites(t *testing.T) {
 	config := MappingConfig{
 		Mappings: []EventMapping{

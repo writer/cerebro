@@ -64,7 +64,7 @@ func TestAlertRouterRoutesToOwnerAndChannel(t *testing.T) {
 
 	subjects := []string{sender.messages[0].subject, sender.messages[1].subject}
 	sort.Strings(subjects)
-	expected := []string{"ensemble.notify.dm", "ensemble.notify.security-alerts"}
+	expected := []string{"cerebro.notify.dm", "cerebro.notify.security-alerts"}
 	if subjects[0] != expected[0] || subjects[1] != expected[1] {
 		t.Fatalf("unexpected subjects: got %v want %v", subjects, expected)
 	}
@@ -339,7 +339,7 @@ func newRouterForTest(t *testing.T, config AlertRoutingConfig, resolver AlertRec
 		Config:        config,
 		Resolver:      resolver,
 		Sender:        sender,
-		SubjectPrefix: "ensemble.notify",
+		SubjectPrefix: "cerebro.notify",
 		Now: func() time.Time {
 			return now.UTC()
 		},

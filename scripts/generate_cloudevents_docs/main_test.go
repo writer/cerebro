@@ -26,6 +26,7 @@ func TestRenderMarkdownIncludesSections(t *testing.T) {
 			Name:             "m1",
 			SourcePattern:    "ensemble.tap.incident.timeline.*",
 			Domain:           "incident",
+			SourceSystem:     "incident",
 			WildcardPattern:  true,
 			APIVersion:       "cerebro.graphingest/v1alpha1",
 			ContractVersion:  "1.0.0",
@@ -42,6 +43,7 @@ func TestRenderMarkdownIncludesSections(t *testing.T) {
 		"## Mapping Contracts",
 		"`m1`",
 		"`ensemble.tap.incident.timeline.*`",
+		"`incident`",
 		"`cerebro.graphingest/v1alpha1`",
 		"`1.0.0`",
 	} {
