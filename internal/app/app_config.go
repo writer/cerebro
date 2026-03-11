@@ -309,13 +309,16 @@ type Config struct {
 	NATSJetStreamTLSInsecure           bool
 
 	// NATS JetStream consumer for ensemble-tap ingestion
-	NATSConsumerEnabled      bool
-	NATSConsumerStream       string
-	NATSConsumerSubjects     []string
-	NATSConsumerDurable      string
-	NATSConsumerBatchSize    int
-	NATSConsumerAckWait      time.Duration
-	NATSConsumerFetchTimeout time.Duration
+	NATSConsumerEnabled             bool
+	NATSConsumerStream              string
+	NATSConsumerSubjects            []string
+	NATSConsumerDurable             string
+	NATSConsumerBatchSize           int
+	NATSConsumerAckWait             time.Duration
+	NATSConsumerFetchTimeout        time.Duration
+	NATSConsumerDeadLetterPath      string
+	NATSConsumerDropHealthLookback  time.Duration
+	NATSConsumerDropHealthThreshold int
 
 	// Event alert routing to Ensemble channels/DMs
 	AlertRouterEnabled      bool
@@ -628,6 +631,9 @@ func LoadConfig() *Config {
 		NATSConsumerBatchSize:               getEnvInt("NATS_CONSUMER_BATCH_SIZE", 50),
 		NATSConsumerAckWait:                 getEnvDuration("NATS_CONSUMER_ACK_WAIT", 30*time.Second),
 		NATSConsumerFetchTimeout:            getEnvDuration("NATS_CONSUMER_FETCH_TIMEOUT", 2*time.Second),
+		NATSConsumerDeadLetterPath:          getEnv("NATS_CONSUMER_DEAD_LETTER_PATH", filepath.Join(findings.DefaultFilePath(), "nats-consumer.dlq.jsonl")),
+		NATSConsumerDropHealthLookback:      getEnvDuration("NATS_CONSUMER_DROP_HEALTH_LOOKBACK", 5*time.Minute),
+		NATSConsumerDropHealthThreshold:     getEnvInt("NATS_CONSUMER_DROP_HEALTH_THRESHOLD", 1),
 		AlertRouterEnabled:                  getEnvBool("ALERT_ROUTER_ENABLED", true),
 		AlertRouterConfigPath:               getEnv("ALERT_ROUTER_CONFIG_PATH", ""),
 		AlertRouterNotifyPrefix:             getEnv("ALERT_ROUTER_NOTIFY_PREFIX", "ensemble.notify"),

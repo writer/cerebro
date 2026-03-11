@@ -257,6 +257,14 @@ var (
 		[]string{"stream", "level"},
 	)
 
+	NATSConsumerDroppedTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_nats_consumer_dropped_total",
+			Help: "Total number of NATS consumer messages dropped after successful dead-letter quarantine",
+		},
+		[]string{"stream", "durable", "reason"},
+	)
+
 	// Notification metrics
 	NotificationsSent = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -435,6 +443,7 @@ func Register() {
 			JetStreamPublisherReady,
 			JetStreamOutboxBackpressureLevel,
 			JetStreamBackpressureAlertsTotal,
+			NATSConsumerDroppedTotal,
 			// Notifications
 			NotificationsSent,
 			// Scheduler

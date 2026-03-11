@@ -2,7 +2,7 @@
 
 Generated from `internal/app/app_config.go` (`LoadConfig`) via `go run ./scripts/generate_config_docs/main.go`.
 
-Total variables: **276**
+Total variables: **279**
 
 | Variable | Reader(s) | Default(s) | Config Field(s) |
 |---|---|---|---|
@@ -135,6 +135,9 @@ Total variables: **276**
 | `LOG_LEVEL` | `getEnv` | `"info"` | `LogLevel` |
 | `NATS_CONSUMER_ACK_WAIT` | `getEnvDuration` | `30 * time.Second` | `NATSConsumerAckWait` |
 | `NATS_CONSUMER_BATCH_SIZE` | `getEnvInt` | `50` | `NATSConsumerBatchSize` |
+| `NATS_CONSUMER_DEAD_LETTER_PATH` | `getEnv` | `filepath.Join(findings.DefaultFilePath(), "nats-consumer.dlq.jsonl")` | `NATSConsumerDeadLetterPath` |
+| `NATS_CONSUMER_DROP_HEALTH_LOOKBACK` | `getEnvDuration` | `5 * time.Minute` | `NATSConsumerDropHealthLookback` |
+| `NATS_CONSUMER_DROP_HEALTH_THRESHOLD` | `getEnvInt` | `1` | `NATSConsumerDropHealthThreshold` |
 | `NATS_CONSUMER_DURABLE` | `getEnv` | `"cerebro_graph_builder"` | `NATSConsumerDurable` |
 | `NATS_CONSUMER_ENABLED` | `getEnvBool` | `false` | `NATSConsumerEnabled` |
 | `NATS_CONSUMER_FETCH_TIMEOUT` | `getEnvDuration` | `2 * time.Second` | `NATSConsumerFetchTimeout` |

@@ -5,6 +5,51 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 38 - NATS Consumer Dead-Letter Integrity + Health Signals (2026-03-10)
+
+### Review findings
+- [x] Gap: malformed NATS/CloudEvent payloads were ACKed and dropped from `internal/events/consumer.go`, creating silent business-event loss.
+- [x] Gap: the consumer had no dead-letter path of its own, so operator replay/debugging started only after the graph mapper layer, which is too late for serialization failures.
+- [x] Gap: the platform had JetStream publisher metrics and outbox health, but no consumer-side dropped-message signal or health surface.
+- [x] Gap: the app health registry did not reflect consumer ingestion integrity at all, so `/ready` could stay healthy while events were being discarded.
+
+### Execution plan
+- [ ] Add consumer-local quarantine behavior:
+  - [x] require a consumer dead-letter path in `ConsumerConfig`
+  - [x] append malformed payloads to a JSONL dead-letter file before ACK
+  - [x] requeue with `Nak()` when dead-letter persistence fails
+  - [x] log payload preview at `ERROR` level for malformed events
+- [ ] Add operator-visible integrity signals:
+  - [x] add `cerebro_nats_consumer_dropped_total{stream,durable,reason}`
+  - [x] track recent dropped-event history in the consumer
+  - [x] expose a consumer health snapshot for registry wiring
+- [ ] Wire application configuration and health:
+  - [x] add env-backed config for dead-letter path, health lookback, and health threshold
+  - [x] register `tap_consumer` health after consumer initialization
+  - [x] document the new env vars through generated config docs
+- [ ] Prove behavior with direct tests:
+  - [x] malformed payload is dead-lettered and ACKed
+  - [x] dead-letter write failure causes `Nak()` instead of silent drop
+  - [x] dropped-message metric increments only after successful quarantine
+  - [x] config loading covers new consumer controls
+
+### Detailed follow-on backlog
+- [ ] Track A - Consumer operational hardening
+  - Exit criteria:
+  - [ ] implement `#160` so `AckWait` sizing is workload-aware and redelivery storms stop masking real failures
+  - [ ] implement `#163` so shutdown drains the pull consumer instead of abandoning in-flight delivery
+  - [ ] implement `#153` lag/staleness metrics so health can incorporate freshness, not just malformed-drop rate
+- [ ] Track B - Replay and quarantine tooling
+  - Exit criteria:
+  - [ ] add a CLI/API path to inspect and replay NATS consumer dead-letter records
+  - [ ] add bounded retention and pruning policy for consumer dead-letter files
+  - [ ] add dead-letter record schemas/examples to generated contract docs
+- [ ] Track C - Ingest contract tightening
+  - Exit criteria:
+  - [ ] classify post-unmarshal failures separately (`validation_failed`, `unsupported_type`, `handler_rejected`) instead of folding everything into handler retries
+  - [ ] add consumer-side event contract validation before graph-mapper handoff where it creates leverage
+  - [ ] connect consumer integrity health to broader graph freshness/build health surfaces
+
 ## Deep Review Cycle 37 - Warehouse Interface + Testability Seams (2026-03-10)
 
 ### Review findings

@@ -13,6 +13,7 @@ import (
 	"github.com/evalops/cerebro/internal/events"
 	"github.com/evalops/cerebro/internal/graph"
 	"github.com/evalops/cerebro/internal/graphingest"
+	"github.com/evalops/cerebro/internal/health"
 )
 
 func (a *App) initTapGraphConsumer(ctx context.Context) {
@@ -38,6 +39,9 @@ func (a *App) initTapGraphConsumer(ctx context.Context) {
 		BatchSize:             a.Config.NATSConsumerBatchSize,
 		AckWait:               a.Config.NATSConsumerAckWait,
 		FetchTimeout:          a.Config.NATSConsumerFetchTimeout,
+		DeadLetterPath:        a.Config.NATSConsumerDeadLetterPath,
+		DropHealthLookback:    a.Config.NATSConsumerDropHealthLookback,
+		DropHealthThreshold:   a.Config.NATSConsumerDropHealthThreshold,
 		ConnectTimeout:        a.Config.NATSJetStreamConnectTimeout,
 		AuthMode:              a.Config.NATSJetStreamAuthMode,
 		Username:              a.Config.NATSJetStreamUsername,
@@ -56,6 +60,30 @@ func (a *App) initTapGraphConsumer(ctx context.Context) {
 		return
 	}
 	a.TapConsumer = consumer
+	if a.Health != nil {
+		a.Health.Register("tap_consumer", func(_ context.Context) health.CheckResult {
+			start := time.Now().UTC()
+			snapshot := consumer.HealthSnapshot(start)
+			status := health.StatusHealthy
+			message := "consumer healthy"
+			if snapshot.Threshold > 0 && snapshot.RecentDropped >= snapshot.Threshold {
+				status = health.StatusUnhealthy
+				message = fmt.Sprintf("consumer dropped %d malformed events in last %s (threshold %d); last_reason=%s",
+					snapshot.RecentDropped,
+					snapshot.Lookback.String(),
+					snapshot.Threshold,
+					snapshot.LastDropReason,
+				)
+			}
+			return health.CheckResult{
+				Name:      "tap_consumer",
+				Status:    status,
+				Message:   message,
+				Timestamp: start,
+				Latency:   time.Since(start),
+			}
+		})
+	}
 	a.Logger.Info("tap graph consumer enabled",
 		"stream", a.Config.NATSConsumerStream,
 		"subject", subject,

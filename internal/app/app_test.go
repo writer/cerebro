@@ -109,6 +109,31 @@ func TestLoadConfigGraphEventMapperControls(t *testing.T) {
 	}
 }
 
+func TestLoadConfigNATSConsumerControls(t *testing.T) {
+	t.Setenv("NATS_CONSUMER_DEAD_LETTER_PATH", "/tmp/test-nats-consumer.dlq.jsonl")
+	t.Setenv("NATS_CONSUMER_DROP_HEALTH_LOOKBACK", "7m")
+	t.Setenv("NATS_CONSUMER_DROP_HEALTH_THRESHOLD", "3")
+
+	cfg := LoadConfig()
+	if cfg.NATSConsumerDeadLetterPath != "/tmp/test-nats-consumer.dlq.jsonl" {
+		t.Fatalf("expected nats consumer dead-letter path to be set, got %q", cfg.NATSConsumerDeadLetterPath)
+	}
+	if cfg.NATSConsumerDropHealthLookback != 7*time.Minute {
+		t.Fatalf("expected nats consumer drop health lookback 7m, got %s", cfg.NATSConsumerDropHealthLookback)
+	}
+	if cfg.NATSConsumerDropHealthThreshold != 3 {
+		t.Fatalf("expected nats consumer drop health threshold 3, got %d", cfg.NATSConsumerDropHealthThreshold)
+	}
+}
+
+func TestLoadConfigNATSConsumerZeroDropHealthThreshold(t *testing.T) {
+	t.Setenv("NATS_CONSUMER_DROP_HEALTH_THRESHOLD", "0")
+	cfg := LoadConfig()
+	if cfg.NATSConsumerDropHealthThreshold != 0 {
+		t.Fatalf("expected nats consumer drop health threshold 0, got %d", cfg.NATSConsumerDropHealthThreshold)
+	}
+}
+
 func TestLoadConfigGraphOntologySLOThresholds(t *testing.T) {
 	t.Setenv("GRAPH_ONTOLOGY_FALLBACK_WARN_PERCENT", "14.5")
 	t.Setenv("GRAPH_ONTOLOGY_FALLBACK_CRITICAL_PERCENT", "31")

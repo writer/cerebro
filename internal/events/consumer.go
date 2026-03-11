@@ -10,29 +10,38 @@ import (
 	"sync"
 	"time"
 
+	"github.com/evalops/cerebro/internal/jsonl"
+	"github.com/evalops/cerebro/internal/metrics"
 	"github.com/nats-io/nats.go"
 )
 
 const (
-	defaultConsumerStream       = "ENSEMBLE_TAP"
-	defaultConsumerDurable      = "cerebro_graph_builder"
-	defaultConsumerSubject      = "ensemble.tap.>"
-	defaultConsumerBatchSize    = 50
-	defaultConsumerAckWait      = 30 * time.Second
-	defaultConsumerFetchTimeout = 2 * time.Second
-	defaultConsumerConnectWait  = 5 * time.Second
+	defaultConsumerStream              = "ENSEMBLE_TAP"
+	defaultConsumerDurable             = "cerebro_graph_builder"
+	defaultConsumerSubject             = "ensemble.tap.>"
+	defaultConsumerBatchSize           = 50
+	defaultConsumerAckWait             = 30 * time.Second
+	defaultConsumerFetchTimeout        = 2 * time.Second
+	defaultConsumerConnectWait         = 5 * time.Second
+	defaultConsumerDropLookback        = 5 * time.Minute
+	defaultConsumerDropThreshold       = 1
+	defaultConsumerPayloadPreviewBytes = 512
 )
 
 type ConsumerConfig struct {
-	URLs           []string
-	Stream         string
-	Subject        string
-	Durable        string
-	BatchSize      int
-	AckWait        time.Duration
-	FetchTimeout   time.Duration
-	ConnectTimeout time.Duration
-	MaxAckPending  int
+	URLs                []string
+	Stream              string
+	Subject             string
+	Durable             string
+	BatchSize           int
+	AckWait             time.Duration
+	FetchTimeout        time.Duration
+	ConnectTimeout      time.Duration
+	MaxAckPending       int
+	DeadLetterPath      string
+	DropHealthLookback  time.Duration
+	DropHealthThreshold int
+	PayloadPreviewBytes int
 
 	AuthMode string
 	Username string
@@ -54,13 +63,26 @@ type Consumer struct {
 	logger  *slog.Logger
 	config  ConsumerConfig
 	handler EventHandler
+	dlq     *consumerDeadLetterSink
 	nc      *nats.Conn
 	js      nats.JetStreamContext
 	sub     *nats.Subscription
 
-	stopCh   chan struct{}
-	stopOnce sync.Once
-	wg       sync.WaitGroup
+	stopCh         chan struct{}
+	stopOnce       sync.Once
+	wg             sync.WaitGroup
+	dropMu         sync.Mutex
+	drops          []time.Time
+	lastDropReason string
+	lastDropAt     time.Time
+}
+
+type ConsumerHealthSnapshot struct {
+	RecentDropped  int           `json:"recent_dropped"`
+	Threshold      int           `json:"threshold"`
+	Lookback       time.Duration `json:"lookback"`
+	LastDropAt     time.Time     `json:"last_drop_at,omitempty"`
+	LastDropReason string        `json:"last_drop_reason,omitempty"`
 }
 
 func NewJetStreamConsumer(cfg ConsumerConfig, logger *slog.Logger, handler EventHandler) (*Consumer, error) {
@@ -73,6 +95,10 @@ func NewJetStreamConsumer(cfg ConsumerConfig, logger *slog.Logger, handler Event
 	}
 	if logger == nil {
 		logger = slog.Default()
+	}
+	dlq, err := newConsumerDeadLetterSink(config.DeadLetterPath)
+	if err != nil {
+		return nil, err
 	}
 
 	base := JetStreamConfig{
@@ -110,6 +136,7 @@ func NewJetStreamConsumer(cfg ConsumerConfig, logger *slog.Logger, handler Event
 		logger:  logger,
 		config:  config,
 		handler: handler,
+		dlq:     dlq,
 		nc:      nc,
 		js:      js,
 		stopCh:  make(chan struct{}),
@@ -191,20 +218,112 @@ func (c *Consumer) run() {
 		}
 
 		for _, msg := range msgs {
-			var evt CloudEvent
-			if err := json.Unmarshal(msg.Data, &evt); err != nil {
-				c.logger.Warn("tap consumer dropped malformed cloud event", "error", err, "subject", msg.Subject)
-				_ = msg.Ack()
-				continue
-			}
-			if err := c.handler(runCtx, evt); err != nil {
-				c.logger.Warn("tap consumer handler failed; message requeued", "error", err, "event_type", evt.Type)
-				_ = msg.Nak()
-				continue
-			}
-			_ = msg.Ack()
+			c.handleMessage(runCtx, msg.Subject, msg.Data, func() error { return msg.Ack() }, func() error { return msg.Nak() })
 		}
 	}
+}
+
+func (c *Consumer) handleMessage(ctx context.Context, subject string, payload []byte, ack func() error, nak func() error) {
+	var evt CloudEvent
+	if err := json.Unmarshal(payload, &evt); err != nil {
+		preview := payloadPreview(payload, c.config.PayloadPreviewBytes)
+		if dlqErr := c.dlq.Write(consumerDeadLetterRecord{
+			RecordedAt: time.Now().UTC(),
+			Stream:     c.config.Stream,
+			Durable:    c.config.Durable,
+			Subject:    subject,
+			Reason:     "malformed",
+			Error:      err.Error(),
+			Payload:    string(payload),
+		}); dlqErr != nil {
+			c.logger.Error("tap consumer failed to dead-letter malformed cloud event; message requeued",
+				"error", dlqErr,
+				"subject", subject,
+				"stream", c.config.Stream,
+				"durable", c.config.Durable,
+				"payload_preview", preview,
+			)
+			if nakErr := nak(); nakErr != nil {
+				c.logger.Warn("tap consumer nak failed after dead-letter error", "error", nakErr, "subject", subject)
+			}
+			return
+		}
+		c.logger.Error("tap consumer dead-lettered malformed cloud event",
+			"error", err,
+			"subject", subject,
+			"stream", c.config.Stream,
+			"durable", c.config.Durable,
+			"payload_preview", preview,
+		)
+		c.recordDropped("malformed", time.Now().UTC())
+		if err := ack(); err != nil {
+			c.logger.Warn("tap consumer ack failed after dead-lettering malformed event", "error", err, "subject", subject)
+		}
+		return
+	}
+	if err := c.handler(ctx, evt); err != nil {
+		c.logger.Warn("tap consumer handler failed; message requeued", "error", err, "event_type", evt.Type)
+		if nakErr := nak(); nakErr != nil {
+			c.logger.Warn("tap consumer nak failed", "error", nakErr, "event_type", evt.Type)
+		}
+		return
+	}
+	if err := ack(); err != nil {
+		c.logger.Warn("tap consumer ack failed", "error", err, "event_type", evt.Type)
+	}
+}
+
+func (c *Consumer) recordDropped(reason string, at time.Time) {
+	if c == nil {
+		return
+	}
+	at = at.UTC()
+	c.dropMu.Lock()
+	defer c.dropMu.Unlock()
+	c.pruneDropsLocked(at)
+	c.drops = append(c.drops, at)
+	c.lastDropAt = at
+	c.lastDropReason = strings.TrimSpace(reason)
+	metrics.NATSConsumerDroppedTotal.WithLabelValues(c.config.Stream, c.config.Durable, strings.TrimSpace(reason)).Inc()
+}
+
+func (c *Consumer) HealthSnapshot(now time.Time) ConsumerHealthSnapshot {
+	if c == nil {
+		return ConsumerHealthSnapshot{}
+	}
+	now = now.UTC()
+	c.dropMu.Lock()
+	defer c.dropMu.Unlock()
+	c.pruneDropsLocked(now)
+	return ConsumerHealthSnapshot{
+		RecentDropped:  len(c.drops),
+		Threshold:      c.config.DropHealthThreshold,
+		Lookback:       c.config.DropHealthLookback,
+		LastDropAt:     c.lastDropAt,
+		LastDropReason: c.lastDropReason,
+	}
+}
+
+func (c *Consumer) pruneDropsLocked(now time.Time) {
+	if c.config.DropHealthLookback <= 0 || len(c.drops) == 0 {
+		return
+	}
+	cutoff := now.Add(-c.config.DropHealthLookback)
+	idx := 0
+	for idx < len(c.drops) && c.drops[idx].Before(cutoff) {
+		idx++
+	}
+	if idx > 0 {
+		c.drops = append([]time.Time(nil), c.drops[idx:]...)
+	}
+}
+
+func payloadPreview(payload []byte, limit int) string {
+	trimmed := strings.TrimSpace(string(payload))
+	if limit <= 0 || len(trimmed) <= limit {
+		return trimmed
+	}
+	return trimmed[:limit] + "...(truncated)"
 }
 
 func (c *Consumer) ensureStream() error {
@@ -265,6 +384,15 @@ func (c ConsumerConfig) withDefaults() ConsumerConfig {
 	if cfg.ConnectTimeout <= 0 {
 		cfg.ConnectTimeout = defaultConsumerConnectWait
 	}
+	if cfg.DropHealthLookback <= 0 {
+		cfg.DropHealthLookback = defaultConsumerDropLookback
+	}
+	if cfg.DropHealthThreshold < 0 {
+		cfg.DropHealthThreshold = defaultConsumerDropThreshold
+	}
+	if cfg.PayloadPreviewBytes <= 0 {
+		cfg.PayloadPreviewBytes = defaultConsumerPayloadPreviewBytes
+	}
 	if cfg.MaxAckPending <= 0 {
 		cfg.MaxAckPending = cfg.BatchSize * 10
 	}
@@ -287,6 +415,9 @@ func (c ConsumerConfig) validate() error {
 	if strings.TrimSpace(c.Durable) == "" {
 		return errors.New("consumer durable name is required")
 	}
+	if strings.TrimSpace(c.DeadLetterPath) == "" {
+		return errors.New("consumer dead-letter path is required")
+	}
 	if c.BatchSize <= 0 {
 		return errors.New("consumer batch size must be > 0")
 	}
@@ -297,4 +428,37 @@ func (c ConsumerConfig) validate() error {
 		return errors.New("consumer fetch timeout must be > 0")
 	}
 	return nil
+}
+
+type consumerDeadLetterRecord struct {
+	RecordedAt time.Time `json:"recorded_at"`
+	Stream     string    `json:"stream"`
+	Durable    string    `json:"durable"`
+	Subject    string    `json:"subject"`
+	Reason     string    `json:"reason"`
+	Error      string    `json:"error,omitempty"`
+	Payload    string    `json:"payload,omitempty"`
+}
+
+type consumerDeadLetterSink struct {
+	sink *jsonl.FileSink
+}
+
+func newConsumerDeadLetterSink(path string) (*consumerDeadLetterSink, error) {
+	sink, err := jsonl.NewFileSink(path)
+	if err != nil {
+		return nil, fmt.Errorf("consumer dead-letter path is required: %w", err)
+	}
+	return &consumerDeadLetterSink{sink: sink}, nil
+}
+
+func (s *consumerDeadLetterSink) Write(record consumerDeadLetterRecord) error {
+	if s == nil {
+		return fmt.Errorf("consumer dead-letter sink is nil")
+	}
+	record.RecordedAt = record.RecordedAt.UTC()
+	if record.RecordedAt.IsZero() {
+		record.RecordedAt = time.Now().UTC()
+	}
+	return s.sink.Write(record)
 }

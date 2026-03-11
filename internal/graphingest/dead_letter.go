@@ -7,13 +7,12 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/evalops/cerebro/internal/events"
 	"github.com/evalops/cerebro/internal/graph"
+	"github.com/evalops/cerebro/internal/jsonl"
 )
 
 // DeadLetterRecord captures one mapper write rejected by ontology validation.
@@ -98,16 +97,15 @@ type DeadLetterSink interface {
 
 // FileDeadLetterSink appends dead-letter records as JSONL.
 type FileDeadLetterSink struct {
-	path string
-	mu   sync.Mutex
+	sink *jsonl.FileSink
 }
 
 func NewFileDeadLetterSink(path string) (*FileDeadLetterSink, error) {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return nil, fmt.Errorf("dead-letter path is required")
+	sink, err := jsonl.NewFileSink(path)
+	if err != nil {
+		return nil, fmt.Errorf("dead-letter path is required: %w", err)
 	}
-	return &FileDeadLetterSink{path: path}, nil
+	return &FileDeadLetterSink{sink: sink}, nil
 }
 
 func (s *FileDeadLetterSink) WriteDeadLetter(record DeadLetterRecord) error {
@@ -119,31 +117,7 @@ func (s *FileDeadLetterSink) WriteDeadLetter(record DeadLetterRecord) error {
 	if record.RecordedAt.IsZero() {
 		record.RecordedAt = time.Now().UTC()
 	}
-
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o750); err != nil {
-		return fmt.Errorf("create dead-letter directory: %w", err)
-	}
-
-	payload, err := json.Marshal(record)
-	if err != nil {
-		return fmt.Errorf("marshal dead-letter record: %w", err)
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	file, err := os.OpenFile(s.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
-	if err != nil {
-		return fmt.Errorf("open dead-letter file: %w", err)
-	}
-	defer func() {
-		_ = file.Close()
-	}()
-
-	if _, err := file.Write(append(payload, '\n')); err != nil {
-		return fmt.Errorf("append dead-letter record: %w", err)
-	}
-	return nil
+	return s.sink.Write(record)
 }
 
 // InspectDeadLetterFile returns bounded tail summary metrics for one DLQ file.
