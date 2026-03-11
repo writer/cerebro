@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -9,6 +11,15 @@ import (
 	"github.com/writer/cerebro/internal/events"
 	"github.com/writer/cerebro/internal/graph"
 )
+
+func writeGraphEventMappingFile(t *testing.T, contents string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "mappings.yaml")
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatalf("write graph event mapping file: %v", err)
+	}
+	return path
+}
 
 func TestEnsureSecurityGraph_ConcurrentInitSingleInstance(t *testing.T) {
 	a := &App{}
@@ -198,6 +209,83 @@ func TestHandleTapCloudEvent_InvalidCustomMapperPathDoesNotBlockPipeline(t *test
 	}
 	if mapper == nil {
 		t.Fatal("expected tap mapper to be initialized from default config fallback")
+	}
+}
+
+func TestHandleTapCloudEvent_AppliesDeclarativeMappingsForGenericEventTypes(t *testing.T) {
+	mappingPath := writeGraphEventMappingFile(t, `mappings:
+  - name: generic_repo_sync
+    source: writer.platform.repo.synced
+    nodes:
+      - id: 'service:{{data.repository}}'
+        kind: service
+        name: '{{data.repository}}'
+        provider: writer
+        properties:
+          service_id: '{{data.repository}}'
+`)
+	t.Setenv("GRAPH_EVENT_MAPPING_PATH", mappingPath)
+
+	a := &App{SecurityGraph: graph.New()}
+	evt := events.CloudEvent{
+		SpecVersion: "1.0",
+		ID:          "evt-generic-repo-sync",
+		Type:        "writer.platform.repo.synced",
+		Source:      "urn:writer:platform",
+		Time:        time.Date(2026, 3, 11, 12, 0, 0, 0, time.UTC),
+		Data: map[string]any{
+			"repository": "cerebro",
+		},
+	}
+
+	if err := a.handleTapCloudEvent(context.Background(), evt); err != nil {
+		t.Fatalf("handleTapCloudEvent failed for generic mapped event: %v", err)
+	}
+
+	node, ok := a.SecurityGraph.GetNode("service:cerebro")
+	if !ok {
+		t.Fatal("expected generic mapped service node to be created")
+	}
+	if node.Provider != "writer" {
+		t.Fatalf("expected provider writer, got %q", node.Provider)
+	}
+	if got := anyToString(node.Properties["mapping_name"]); got != "generic_repo_sync" {
+		t.Fatalf("expected mapping_name generic_repo_sync, got %q", got)
+	}
+}
+
+func TestHandleTapCloudEvent_UsesSubjectForGenericDeclarativeMappingsWhenTypeMissing(t *testing.T) {
+	mappingPath := writeGraphEventMappingFile(t, `mappings:
+  - name: generic_subject_only
+    source: writer.platform.subject_only
+    nodes:
+      - id: 'service:{{data.repository}}'
+        kind: service
+        name: '{{data.repository}}'
+        provider: writer
+        properties:
+          service_id: '{{data.repository}}'
+`)
+	t.Setenv("GRAPH_EVENT_MAPPING_PATH", mappingPath)
+
+	a := &App{SecurityGraph: graph.New()}
+	evt := events.CloudEvent{
+		SpecVersion: "1.0",
+		ID:          "evt-generic-subject-only",
+		Subject:     "writer.platform.subject_only",
+		Source:      "urn:writer:platform",
+		Time:        time.Date(2026, 3, 11, 12, 5, 0, 0, time.UTC),
+		Data: map[string]any{
+			"repository": "subject-only",
+		},
+	}
+
+	if err := a.handleTapCloudEvent(context.Background(), evt); err != nil {
+		t.Fatalf("handleTapCloudEvent failed for subject-only mapped event: %v", err)
+	}
+
+	if _, ok := a.SecurityGraph.GetNode("service:subject-only"); !ok {
+		t.Fatal("expected subject-only mapped service node to be created")
 	}
 }
 

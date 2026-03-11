@@ -20,21 +20,15 @@ func (a *App) initTapGraphConsumer(ctx context.Context) {
 	if !a.Config.NATSConsumerEnabled {
 		return
 	}
-	subject := "ensemble.tap.>"
-	if len(a.Config.NATSConsumerSubjects) > 0 && strings.TrimSpace(a.Config.NATSConsumerSubjects[0]) != "" {
-		subject = strings.TrimSpace(a.Config.NATSConsumerSubjects[0])
-	}
-	if len(a.Config.NATSConsumerSubjects) > 1 {
-		a.Logger.Warn("multiple NATS consumer subjects configured; using first subject only",
-			"configured_subjects", a.Config.NATSConsumerSubjects,
-			"active_subject", subject,
-		)
+	subjects := append([]string(nil), a.Config.NATSConsumerSubjects...)
+	if len(subjects) == 0 {
+		subjects = []string{"ensemble.tap.>"}
 	}
 
 	consumer, err := events.NewJetStreamConsumer(events.ConsumerConfig{
 		URLs:                  a.Config.NATSJetStreamURLs,
 		Stream:                a.Config.NATSConsumerStream,
-		Subject:               subject,
+		Subjects:              subjects,
 		Durable:               a.Config.NATSConsumerDurable,
 		BatchSize:             a.Config.NATSConsumerBatchSize,
 		AckWait:               a.Config.NATSConsumerAckWait,
@@ -57,7 +51,7 @@ func (a *App) initTapGraphConsumer(ctx context.Context) {
 		TLSInsecureSkipVerify: a.Config.NATSJetStreamTLSInsecure,
 	}, a.Logger, a.handleTapCloudEvent)
 	if err != nil {
-		a.Logger.Warn("failed to initialize tap graph consumer", "error", err)
+		a.Logger.Warn("failed to initialize nats graph consumer", "error", err)
 		return
 	}
 	a.TapConsumer = consumer
@@ -97,9 +91,9 @@ func (a *App) initTapGraphConsumer(ctx context.Context) {
 			}
 		})
 	}
-	a.Logger.Info("tap graph consumer enabled",
+	a.Logger.Info("nats graph consumer enabled",
 		"stream", a.Config.NATSConsumerStream,
-		"subject", subject,
+		"subjects", subjects,
 		"durable", a.Config.NATSConsumerDurable,
 		"batch_size", a.Config.NATSConsumerBatchSize,
 	)
@@ -135,23 +129,31 @@ func (a *App) waitForSecurityGraphReady(ctx context.Context) error {
 }
 
 func (a *App) handleTapCloudEvent(ctx context.Context, evt events.CloudEvent) error {
-	eventType := strings.TrimSpace(evt.Type)
+	event := evt
+	eventType := strings.TrimSpace(event.Type)
 	if eventType == "" {
-		eventType = strings.TrimSpace(evt.Subject)
+		eventType = strings.TrimSpace(event.Subject)
+		event.Type = eventType
 	}
-	if !strings.HasPrefix(strings.ToLower(eventType), "ensemble.tap.") {
-		return nil
-	}
+	isLegacyTapEvent := strings.HasPrefix(strings.ToLower(eventType), "ensemble.tap.")
 	if err := a.waitForSecurityGraphReady(ctx); err != nil {
 		return err
 	}
+	if !isLegacyTapEvent {
+		if mapped, err := a.applyTapDeclarativeMappings(event); err != nil {
+			return err
+		} else if mapped {
+			return nil
+		}
+		return nil
+	}
 	if isTapSchemaEventType(eventType) {
-		return a.handleTapSchemaEvent(eventType, evt)
+		return a.handleTapSchemaEvent(eventType, event)
 	}
 	if isTapInteractionType(eventType) {
-		return a.handleTapInteractionEvent(eventType, evt)
+		return a.handleTapInteractionEvent(eventType, event)
 	}
-	if mapped, err := a.applyTapDeclarativeMappings(evt); err != nil {
+	if mapped, err := a.applyTapDeclarativeMappings(event); err != nil {
 		return err
 	} else if mapped {
 		return nil
@@ -162,12 +164,12 @@ func (a *App) handleTapCloudEvent(ctx context.Context, evt events.CloudEvent) er
 		return nil
 	}
 	if isTapActivityType(eventType) {
-		return a.handleTapActivityEvent(system, entityType, evt)
+		return a.handleTapActivityEvent(system, entityType, event)
 	}
 
-	entityID := strings.TrimSpace(anyToString(evt.Data["entity_id"]))
+	entityID := strings.TrimSpace(anyToString(event.Data["entity_id"]))
 	if entityID == "" {
-		entityID = strings.TrimSpace(anyToString(evt.Data["id"]))
+		entityID = strings.TrimSpace(anyToString(event.Data["id"]))
 	}
 	if entityID == "" {
 		return nil
@@ -186,16 +188,16 @@ func (a *App) handleTapCloudEvent(ctx context.Context, evt events.CloudEvent) er
 		"entity_type":   entityType,
 		"action":        action,
 		"event_type":    eventType,
-		"event_time":    evt.Time.UTC().Format(time.RFC3339),
+		"event_time":    event.Time.UTC().Format(time.RFC3339),
 	}
 
-	snapshot := mapFromAny(evt.Data["snapshot"])
-	changes := mapFromAny(evt.Data["changes"])
+	snapshot := mapFromAny(event.Data["snapshot"])
+	changes := mapFromAny(event.Data["changes"])
 	for k, v := range snapshot {
 		properties[k] = v
 	}
 	properties["changes"] = changes
-	for k, v := range deriveComputedFields(system, entityType, snapshot, changes, existingProperties, evt.Time) {
+	for k, v := range deriveComputedFields(system, entityType, snapshot, changes, existingProperties, event.Time) {
 		properties[k] = v
 	}
 	if action == "deleted" {

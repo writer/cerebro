@@ -69,6 +69,127 @@ func TestConsumerConfigValidate(t *testing.T) {
 	}
 }
 
+func TestConsumerConfigWithDefaultsNormalizesSubjectFilters(t *testing.T) {
+	cfg := (ConsumerConfig{
+		Subject:  "cerebro.events.primary.>",
+		Subjects: []string{"", "cerebro.events.secondary.>", "cerebro.events.primary.>"},
+	}).withDefaults()
+
+	if cfg.Subject != "cerebro.events.primary.>" {
+		t.Fatalf("expected first normalized subject to become primary, got %q", cfg.Subject)
+	}
+	if len(cfg.Subjects) != 2 {
+		t.Fatalf("expected 2 unique normalized subjects, got %v", cfg.Subjects)
+	}
+	if cfg.Subjects[0] != "cerebro.events.primary.>" || cfg.Subjects[1] != "cerebro.events.secondary.>" {
+		t.Fatalf("unexpected normalized subjects: %v", cfg.Subjects)
+	}
+}
+
+func TestSubjectPatternCoversPattern(t *testing.T) {
+	tests := []struct {
+		name     string
+		stream   string
+		consumer string
+		want     bool
+	}{
+		{name: "global wildcard covers ensemble tap", stream: ">", consumer: "ensemble.tap.>", want: true},
+		{name: "prefix wildcard covers specific subtree", stream: "cerebro.events.>", consumer: "cerebro.events.github.*", want: true},
+		{name: "specific subtree does not cover broader prefix", stream: "cerebro.events.github.*", consumer: "cerebro.events.>", want: false},
+		{name: "mixed wildcard covers nested wildcard", stream: "foo.*.>", consumer: "foo.bar.>", want: true},
+		{name: "literal token does not cover wildcard token", stream: "foo.bar.>", consumer: "foo.*.>", want: false},
+		{name: "tail wildcard does not cover shorter subject", stream: "foo.>", consumer: "foo", want: false},
+		{name: "single token wildcard covers literal", stream: "foo.*", consumer: "foo.bar", want: true},
+		{name: "literal does not cover single token wildcard", stream: "foo.bar", consumer: "foo.*", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := subjectPatternCoversPattern(tt.stream, tt.consumer); got != tt.want {
+				t.Fatalf("subjectPatternCoversPattern(%q, %q) = %t, want %t", tt.stream, tt.consumer, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestJetStreamConsumer_ConsumesConfiguredSubjects(t *testing.T) {
+	natsURL := startJetStreamServer(t)
+	received := make(chan string, 2)
+
+	consumer, err := NewJetStreamConsumer(ConsumerConfig{
+		URLs:           []string{natsURL},
+		Stream:         "CEREBRO_EVENTS_MULTI_SUBJECT_TEST",
+		Subjects:       []string{"cerebro.events.repo.>", "cerebro.events.chat.>"},
+		Durable:        "cerebro_multi_subject_test",
+		DeadLetterPath: t.TempDir() + "/consumer.dlq.jsonl",
+		BatchSize:      1,
+		AckWait:        5 * time.Second,
+		FetchTimeout:   100 * time.Millisecond,
+	}, nil, func(_ context.Context, evt CloudEvent) error {
+		received <- evt.Type
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("new consumer: %v", err)
+	}
+	defer func() { _ = consumer.Close() }()
+
+	if info, err := consumer.sub.ConsumerInfo(); err != nil {
+		t.Fatalf("consumer info: %v", err)
+	} else if len(info.Config.FilterSubjects) != 2 {
+		t.Fatalf("expected 2 consumer filter subjects, got %#v", info.Config.FilterSubjects)
+	}
+
+	nc, err := nats.Connect(natsURL)
+	if err != nil {
+		t.Fatalf("connect nats: %v", err)
+	}
+	defer nc.Close()
+	js, err := nc.JetStream()
+	if err != nil {
+		t.Fatalf("jetstream context: %v", err)
+	}
+
+	eventsBySubject := map[string]string{
+		"cerebro.events.repo.synced":         "repo.synced",
+		"cerebro.events.chat.message_posted": "chat.message_posted",
+	}
+	for subject, eventType := range eventsBySubject {
+		event := CloudEvent{
+			SpecVersion: cloudEventSpecVersion,
+			ID:          "evt-" + strings.ReplaceAll(eventType, ".", "-"),
+			Source:      "cerebro.events.test",
+			Type:        eventType,
+			Time:        time.Now().UTC(),
+			DataSchema:  "urn:cerebro:events:test",
+		}
+		payload, err := json.Marshal(event)
+		if err != nil {
+			t.Fatalf("marshal cloud event %s: %v", eventType, err)
+		}
+		if _, err := js.Publish(subject, payload); err != nil {
+			t.Fatalf("publish %s: %v", subject, err)
+		}
+	}
+
+	seen := make(map[string]bool, len(eventsBySubject))
+	deadline := time.After(5 * time.Second)
+	for len(seen) < len(eventsBySubject) {
+		select {
+		case eventType := <-received:
+			seen[eventType] = true
+		case <-deadline:
+			t.Fatalf("timed out waiting for events, saw %v", seen)
+		}
+	}
+
+	for _, eventType := range eventsBySubject {
+		if !seen[eventType] {
+			t.Fatalf("expected event type %q to be consumed, saw %v", eventType, seen)
+		}
+	}
+}
+
 func TestJetStreamConsumer_CloseCancelsHandlerContext(t *testing.T) {
 	natsURL := startJetStreamServer(t)
 
