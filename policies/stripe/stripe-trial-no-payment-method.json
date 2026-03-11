@@ -1,0 +1,14 @@
+{
+  "id": "stripe-trial-no-payment-method",
+  "name": "Trial Ending Without Payment Method",
+  "description": "Flags trial subscriptions nearing expiration without a default payment method.",
+  "effect": "forbid",
+  "resource": "stripe::subscription",
+  "conditions": [
+    "status == 'trialing'",
+    "days_until_trial_end < 7",
+    "default_payment_method == null"
+  ],
+  "severity": "medium",
+  "tags": ["conversion", "revenue", "stripe"]
+}

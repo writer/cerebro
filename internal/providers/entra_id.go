@@ -25,7 +25,7 @@ type EntraIDProvider struct {
 func NewEntraIDProvider() *EntraIDProvider {
 	return &EntraIDProvider{
 		BaseProvider: NewBaseProvider("entra_id", ProviderTypeIdentity),
-		client:       &http.Client{Timeout: 60 * time.Second},
+		client:       newProviderHTTPClient(60 * time.Second),
 	}
 }
 

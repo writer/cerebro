@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	apiclient "github.com/writer/cerebro/internal/client"
 	"github.com/writer/cerebro/internal/snowflake"
 )
 
@@ -32,6 +33,8 @@ Examples:
 var (
 	queryFormat string
 	queryLimit  int
+
+	runQueryDirectFn = runQueryDirect
 )
 
 func init() {
@@ -40,6 +43,39 @@ func init() {
 }
 
 func runQuery(cmd *cobra.Command, args []string) error {
+	ctx := commandContextOrBackground(cmd)
+	mode, err := loadCLIExecutionMode()
+	if err != nil {
+		return err
+	}
+
+	if mode != cliExecutionModeDirect {
+		apiClient, err := newCLIAPIClient()
+		if err != nil {
+			if mode == cliExecutionModeAPI {
+				return err
+			}
+			Warning("API client configuration invalid; using direct mode: %v", err)
+		} else {
+			result, err := apiClient.Query(ctx, apiclient.QueryRequest{
+				Query:          strings.Join(args, " "),
+				Limit:          queryLimit,
+				TimeoutSeconds: int((60 * time.Second) / time.Second),
+			})
+			if err == nil {
+				return renderQueryResult(result)
+			}
+			if mode == cliExecutionModeAPI || !shouldFallbackToDirect(mode, err) {
+				return fmt.Errorf("query via api failed: %w", err)
+			}
+			Warning("API unavailable; using direct mode: %v", err)
+		}
+	}
+
+	return runQueryDirectFn(cmd, args)
+}
+
+func runQueryDirect(cmd *cobra.Command, args []string) error {
 	dsnCfg := snowflake.DSNConfigFromEnv()
 	if missing := dsnCfg.MissingFields(); len(missing) > 0 {
 		return fmt.Errorf("snowflake not configured: set %s", strings.Join(missing, ", "))
@@ -66,7 +102,7 @@ func runQuery(cmd *cobra.Command, args []string) error {
 		query = fmt.Sprintf("%s LIMIT %d", query, queryLimit)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(commandContextOrBackground(cmd), 60*time.Second)
 	defer cancel()
 
 	result, err := client.Query(ctx, query)
@@ -74,6 +110,10 @@ func runQuery(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("query failed: %w", err)
 	}
 
+	return renderQueryResult(result)
+}
+
+func renderQueryResult(result *snowflake.QueryResult) error {
 	switch queryFormat {
 	case "json":
 		return JSONOutput(map[string]interface{}{

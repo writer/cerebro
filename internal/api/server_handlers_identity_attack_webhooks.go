@@ -1,8 +1,10 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -11,53 +13,154 @@ import (
 
 	"github.com/writer/cerebro/internal/attackpath"
 	"github.com/writer/cerebro/internal/identity"
+	"github.com/writer/cerebro/internal/remediation"
 	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/webhooks"
 )
 
 func (s *Server) detectStaleAccess(w http.ResponseWriter, r *http.Request) {
-	if s.app.Snowflake == nil {
+	if s.app.Warehouse == nil {
 		s.error(w, http.StatusServiceUnavailable, "snowflake not configured")
 		return
 	}
 
 	detector := identity.NewStaleAccessDetector(identity.DefaultThresholds())
-
-	// Fetch users from Snowflake
-	users, err := s.app.Snowflake.GetAssets(r.Context(), "aws_iam_users", snowflake.AssetFilter{Limit: 1000})
-	if err != nil {
-		users = []map[string]interface{}{}
+	fetch := func(table string) []map[string]interface{} {
+		rows, err := s.app.Warehouse.GetAssets(r.Context(), table, snowflake.AssetFilter{Limit: 1000})
+		if err != nil {
+			return []map[string]interface{}{}
+		}
+		return rows
 	}
 
-	// Fetch credentials
-	creds, err := s.app.Snowflake.GetAssets(r.Context(), "aws_iam_credential_reports", snowflake.AssetFilter{Limit: 1000})
-	if err != nil {
-		creds = []map[string]interface{}{}
-	}
+	users := make([]map[string]interface{}, 0)
+	users = append(users, fetch("aws_iam_users")...)
+	users = append(users, fetch("okta_users")...)
+	users = append(users, fetch("azure_ad_users")...)
+	users = append(users, fetch("entra_users")...)
+	users = append(users, fetch("google_workspace_users")...)
 
-	// Fetch service accounts
-	sas, err := s.app.Snowflake.GetAssets(r.Context(), "gcp_iam_service_accounts", snowflake.AssetFilter{Limit: 1000})
-	if err != nil {
-		sas = []map[string]interface{}{}
-	}
+	credentials := fetch("aws_iam_credential_reports")
 
-	staleUsers := detector.DetectStaleUsers(r.Context(), users)
-	unusedKeys := detector.DetectUnusedAccessKeys(r.Context(), creds)
-	staleSAs := detector.DetectStaleServiceAccounts(r.Context(), sas)
-	allFindings := make([]identity.StaleAccessFinding, 0, len(staleUsers)+len(unusedKeys)+len(staleSAs))
-	allFindings = append(allFindings, staleUsers...)
-	allFindings = append(allFindings, unusedKeys...)
-	allFindings = append(allFindings, staleSAs...)
+	serviceAccounts := make([]map[string]interface{}, 0)
+	serviceAccounts = append(serviceAccounts, fetch("gcp_iam_service_accounts")...)
+	serviceAccounts = append(serviceAccounts, fetch("k8s_core_service_accounts")...)
+
+	hrData := make([]map[string]interface{}, 0)
+	hrData = append(hrData, fetch("bamboohr_employees")...)
+	hrData = append(hrData, fetch("workday_workers")...)
+
+	roleBindings := make([]map[string]interface{}, 0)
+	roleBindings = append(roleBindings, fetch("azure_rbac_role_assignments")...)
+	roleBindings = append(roleBindings, fetch("k8s_rbac_risky_bindings")...)
+
+	allFindings := collectStaleAccessFindings(r.Context(), detector, users, credentials, serviceAccounts, hrData, roleBindings)
+	persistedCount, remediatedCount := s.persistStaleAccessFindings(r.Context(), allFindings)
 
 	s.json(w, http.StatusOK, map[string]interface{}{
-		"findings": allFindings,
-		"count":    len(allFindings),
+		"findings":           allFindings,
+		"count":              len(allFindings),
+		"persisted_findings": persistedCount,
+		"remediation_runs":   remediatedCount,
 		"summary": map[string]int{
 			"inactive_users":      countByType(allFindings, identity.StaleAccessInactiveUser),
 			"unused_keys":         countByType(allFindings, identity.StaleAccessUnusedAccessKey),
+			"orphaned_accounts":   countByType(allFindings, identity.StaleAccessOrphanedAccount),
+			"excessive_privilege": countByType(allFindings, identity.StaleAccessExcessivePrivilege),
 			"stale_service_accts": countByType(allFindings, identity.StaleAccessStaleServiceAccount),
 		},
 	})
+}
+
+func collectStaleAccessFindings(
+	ctx context.Context,
+	detector *identity.StaleAccessDetector,
+	users []map[string]interface{},
+	credentials []map[string]interface{},
+	serviceAccounts []map[string]interface{},
+	hrData []map[string]interface{},
+	roleBindings []map[string]interface{},
+) []identity.StaleAccessFinding {
+	if detector == nil {
+		return nil
+	}
+
+	collected := make([]identity.StaleAccessFinding, 0)
+	seen := make(map[string]bool)
+	appendUnique := func(items []identity.StaleAccessFinding) {
+		for _, finding := range items {
+			if seen[finding.ID] {
+				continue
+			}
+			seen[finding.ID] = true
+			collected = append(collected, finding)
+		}
+	}
+
+	appendUnique(detector.DetectStaleUsers(ctx, users))
+	appendUnique(detector.DetectUnusedAccessKeys(ctx, credentials))
+	appendUnique(detector.DetectStaleServiceAccounts(ctx, serviceAccounts))
+	if len(hrData) > 0 {
+		appendUnique(detector.DetectOrphanedAccounts(ctx, users, hrData))
+	}
+	if len(roleBindings) > 0 {
+		appendUnique(detector.DetectExcessivePrivileges(ctx, roleBindings))
+	}
+	return collected
+}
+
+func (s *Server) persistStaleAccessFindings(ctx context.Context, staleFindings []identity.StaleAccessFinding) (int, int) {
+	if s.app.Findings == nil || len(staleFindings) == 0 {
+		return 0, 0
+	}
+
+	persistedCount := 0
+	remediationRuns := 0
+	for _, staleFinding := range staleFindings {
+		policyFinding := staleFinding.ToPolicyFinding()
+		finding := s.app.Findings.Upsert(ctx, policyFinding)
+		persistedCount++
+
+		// Only trigger remediation on first observation.
+		if !finding.FirstSeen.Equal(finding.LastSeen) {
+			continue
+		}
+		if s.app.Remediation == nil || s.app.RemediationExecutor == nil {
+			continue
+		}
+
+		event := remediation.Event{
+			Type:       remediation.TriggerFindingCreated,
+			FindingID:  finding.ID,
+			Severity:   strings.ToLower(strings.TrimSpace(finding.Severity)),
+			PolicyID:   finding.PolicyID,
+			SignalType: finding.SignalType,
+			Domain:     finding.Domain,
+			EntityID:   finding.ResourceID,
+			Data: map[string]any{
+				"resource_id":   finding.ResourceID,
+				"resource_type": finding.ResourceType,
+				"provider":      staleFinding.Provider,
+				"account":       staleFinding.Account,
+				"days_since":    staleFinding.DaysSince,
+			},
+		}
+
+		executions, err := s.app.Remediation.Evaluate(ctx, event)
+		if err != nil {
+			s.app.Logger.Warn("failed to evaluate stale-access remediation", "finding_id", finding.ID, "error", err)
+			continue
+		}
+		for _, execution := range executions {
+			if err := s.app.RemediationExecutor.Execute(ctx, execution); err != nil {
+				s.app.Logger.Warn("failed to execute stale-access remediation", "execution_id", execution.ID, "error", err)
+				continue
+			}
+			remediationRuns++
+		}
+	}
+
+	return persistedCount, remediationRuns
 }
 
 func countByType(findings []identity.StaleAccessFinding, t identity.StaleAccessType) int {
@@ -75,31 +178,31 @@ func (s *Server) identityReport(w http.ResponseWriter, r *http.Request) {
 
 	data := identity.IdentityData{}
 
-	if s.app.Snowflake != nil {
+	if s.app.Warehouse != nil {
 		// Load identity data from various tables
-		if users, err := s.app.Snowflake.GetAssets(r.Context(), "aws_iam_users", snowflake.AssetFilter{Limit: 1000}); err == nil {
+		if users, err := s.app.Warehouse.GetAssets(r.Context(), "aws_iam_users", snowflake.AssetFilter{Limit: 1000}); err == nil {
 			data.Users = append(data.Users, users...)
 		}
-		if users, err := s.app.Snowflake.GetAssets(r.Context(), "okta_users", snowflake.AssetFilter{Limit: 1000}); err == nil {
+		if users, err := s.app.Warehouse.GetAssets(r.Context(), "okta_users", snowflake.AssetFilter{Limit: 1000}); err == nil {
 			data.Users = append(data.Users, users...)
 		}
-		if users, err := s.app.Snowflake.GetAssets(r.Context(), "azure_ad_users", snowflake.AssetFilter{Limit: 1000}); err == nil {
+		if users, err := s.app.Warehouse.GetAssets(r.Context(), "azure_ad_users", snowflake.AssetFilter{Limit: 1000}); err == nil {
 			data.Users = append(data.Users, users...)
 		}
-		if sas, err := s.app.Snowflake.GetAssets(r.Context(), "gcp_iam_service_accounts", snowflake.AssetFilter{Limit: 1000}); err == nil {
+		if sas, err := s.app.Warehouse.GetAssets(r.Context(), "gcp_iam_service_accounts", snowflake.AssetFilter{Limit: 1000}); err == nil {
 			data.ServiceAccounts = sas
 		}
-		if creds, err := s.app.Snowflake.GetAssets(r.Context(), "aws_iam_credential_reports", snowflake.AssetFilter{Limit: 1000}); err == nil {
+		if creds, err := s.app.Warehouse.GetAssets(r.Context(), "aws_iam_credential_reports", snowflake.AssetFilter{Limit: 1000}); err == nil {
 			data.Credentials = creds
 		}
-		if roles, err := s.app.Snowflake.GetAssets(r.Context(), "aws_iam_roles", snowflake.AssetFilter{Limit: 1000}); err == nil {
+		if roles, err := s.app.Warehouse.GetAssets(r.Context(), "aws_iam_roles", snowflake.AssetFilter{Limit: 1000}); err == nil {
 			data.Roles = roles
 		}
 	}
 
 	report, err := generator.GenerateReport(r.Context(), data)
 	if err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
+		s.errorFromErr(w, err)
 		return
 	}
 
@@ -215,7 +318,10 @@ func (s *Server) addEdge(w http.ResponseWriter, r *http.Request) {
 // Webhook endpoints
 
 func (s *Server) listWebhooks(w http.ResponseWriter, r *http.Request) {
+	pagination := ParsePagination(r, 100, 1000)
 	hooks := s.app.Webhooks.ListWebhooks()
+	sort.Slice(hooks, func(i, j int) bool { return hooks[i].ID < hooks[j].ID })
+
 	// Redact secrets
 	result := make([]map[string]interface{}, len(hooks))
 	for i, h := range hooks {
@@ -227,7 +333,13 @@ func (s *Server) listWebhooks(w http.ResponseWriter, r *http.Request) {
 			"created_at": h.CreatedAt,
 		}
 	}
-	s.json(w, http.StatusOK, map[string]interface{}{"webhooks": result, "count": len(result)})
+	paged, paginationResp := paginateSlice(result, pagination)
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"webhooks":    paged,
+		"count":       len(paged),
+		"pagination":  paginationResp,
+		"total_count": len(result),
+	})
 }
 
 func (s *Server) createWebhook(w http.ResponseWriter, r *http.Request) {
@@ -316,24 +428,70 @@ func (s *Server) testWebhook(w http.ResponseWriter, r *http.Request) {
 // Audit log endpoints
 
 func (s *Server) listAuditLogs(w http.ResponseWriter, r *http.Request) {
-	if s.app.AuditRepo == nil {
-		s.json(w, http.StatusOK, map[string]interface{}{"logs": []interface{}{}, "message": "snowflake not configured"})
-		return
-	}
-
+	pagination := ParsePagination(r, 100, 1000)
 	resourceType := r.URL.Query().Get("resource_type")
 	resourceID := r.URL.Query().Get("resource_id")
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	if limit == 0 {
-		limit = 100
+
+	limit := pagination.Limit
+	if rawLimit := strings.TrimSpace(r.URL.Query().Get("limit")); rawLimit != "" {
+		parsedLimit, err := strconv.Atoi(rawLimit)
+		if err != nil || parsedLimit <= 0 {
+			s.error(w, http.StatusBadRequest, "limit must be a positive integer")
+			return
+		}
+		if parsedLimit > pagination.Limit {
+			limit = pagination.Limit
+		} else {
+			limit = parsedLimit
+		}
 	}
 
-	logs, err := s.app.AuditRepo.List(r.Context(), resourceType, resourceID, limit)
-	if err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
+	offset := pagination.Offset
+	if rawOffset := strings.TrimSpace(r.URL.Query().Get("offset")); rawOffset != "" {
+		parsedOffset, err := strconv.Atoi(rawOffset)
+		if err != nil || parsedOffset < 0 {
+			s.error(w, http.StatusBadRequest, "offset must be a non-negative integer")
+			return
+		}
+		offset = parsedOffset
+	}
+
+	if s.app.AuditRepo == nil {
+		s.json(w, http.StatusOK, map[string]interface{}{
+			"logs":       []interface{}{},
+			"count":      0,
+			"message":    "snowflake not configured",
+			"pagination": PaginationResponse{Limit: limit, Offset: offset, HasMore: false},
+		})
 		return
 	}
-	s.json(w, http.StatusOK, map[string]interface{}{"logs": logs, "count": len(logs)})
+
+	fetchLimit := limit + offset + 1
+	if fetchLimit > 1000 {
+		fetchLimit = 1000
+	}
+
+	logs, err := s.app.AuditRepo.List(r.Context(), resourceType, resourceID, fetchLimit)
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
+
+	if offset > len(logs) {
+		offset = len(logs)
+	}
+
+	window := logs[offset:]
+	hasMore := len(window) > limit
+	if hasMore {
+		window = window[:limit]
+	}
+
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"logs":       window,
+		"count":      len(window),
+		"pagination": PaginationResponse{Limit: limit, Offset: offset, HasMore: hasMore},
+	})
 }
 
 // Scheduler endpoints

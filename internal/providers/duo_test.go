@@ -279,7 +279,7 @@ func duoAuthHeaderLooksValid(value string, expectedIKey string) bool {
 		return false
 	}
 	for _, ch := range parts[1] {
-		if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f')) {
+		if (ch < '0' || ch > '9') && (ch < 'a' || ch > 'f') {
 			return false
 		}
 	}

@@ -1,0 +1,418 @@
+[
+  {
+    "name": "github_pr_merged_contract",
+    "event": {
+      "id": "evt-contract-github-1",
+      "type": "ensemble.tap.github.pull_request.merged",
+      "time": "2026-03-09T12:00:00Z",
+      "source": "urn:ensemble:tap",
+      "data": {
+        "repository": "payments-api",
+        "number": 42,
+        "title": "Improve reconciliation retries",
+        "merged_by": "alice",
+        "merged_by_email": "alice@example.com"
+      }
+    },
+    "seed_nodes": [
+      {
+        "id": "person:alice@example.com",
+        "kind": "person",
+        "name": "Alice",
+        "properties": {
+          "email": "alice@example.com"
+        }
+      }
+    ],
+    "expected_mapping": "github_pr_merged",
+    "expected_nodes": [
+      {"id": "service:payments-api", "kind": "service"},
+      {"id": "pull_request:payments-api:42", "kind": "pull_request"}
+    ],
+    "expected_edges": [
+      {"source": "person:alice@example.com", "target": "service:payments-api", "kind": "interacted_with"},
+      {"source": "pull_request:payments-api:42", "target": "service:payments-api", "kind": "targets"}
+    ]
+  },
+  {
+    "name": "incident_timeline_contract",
+    "event": {
+      "id": "evt-contract-incident-1",
+      "type": "ensemble.tap.incident.timeline.updated",
+      "time": "2026-03-09T12:10:00Z",
+      "source": "urn:ensemble:tap",
+      "data": {
+        "incident_id": "inc-7",
+        "status": "investigating",
+        "severity": "high",
+        "service": "payments",
+        "event_id": "inc-e-1",
+        "event_type": "mitigation_step",
+        "title": "Scale workers",
+        "performed_at": "2026-03-09T12:09:00Z",
+        "actor_email": "responder@example.com",
+        "summary": "Scaled payments workers to handle traffic."
+      }
+    },
+    "seed_nodes": [
+      {
+        "id": "person:responder@example.com",
+        "kind": "person",
+        "name": "Responder",
+        "properties": {
+          "email": "responder@example.com"
+        }
+      }
+    ],
+    "expected_mapping": "incident_timeline_event",
+    "expected_nodes": [
+      {"id": "service:payments", "kind": "service"},
+      {"id": "incident:inc-7", "kind": "incident"},
+      {"id": "action:incident:inc-7:inc-e-1", "kind": "action"},
+      {"id": "evidence:incident:inc-7:inc-e-1", "kind": "evidence"}
+    ],
+    "expected_edges": [
+      {"source": "incident:inc-7", "target": "service:payments", "kind": "targets"},
+      {"source": "action:incident:inc-7:inc-e-1", "target": "incident:inc-7", "kind": "targets"},
+      {"source": "action:incident:inc-7:inc-e-1", "target": "evidence:incident:inc-7:inc-e-1", "kind": "based_on"},
+      {"source": "evidence:incident:inc-7:inc-e-1", "target": "incident:inc-7", "kind": "targets"}
+    ]
+  },
+  {
+    "name": "slack_thread_contract",
+    "event": {
+      "id": "evt-contract-slack-1",
+      "type": "ensemble.tap.slack.thread.message_posted",
+      "time": "2026-03-09T12:20:00Z",
+      "source": "urn:ensemble:tap",
+      "data": {
+        "channel_id": "C123",
+        "thread_ts": "1700000000.000100",
+        "message_ts": "1700000000.000200",
+        "channel_name": "payments-alerts",
+        "text": "Investigating elevated timeout rate",
+        "author_email": "author@example.com"
+      }
+    },
+    "seed_nodes": [
+      {
+        "id": "person:author@example.com",
+        "kind": "person",
+        "name": "Author",
+        "properties": {
+          "email": "author@example.com"
+        }
+      }
+    ],
+    "expected_mapping": "slack_thread_message",
+    "expected_nodes": [
+      {"id": "thread:slack:C123:1700000000.000100", "kind": "communication_thread"},
+      {"id": "action:slack_message:C123:1700000000.000200", "kind": "action"}
+    ],
+    "expected_edges": [
+      {"source": "person:author@example.com", "target": "thread:slack:C123:1700000000.000100", "kind": "interacted_with"},
+      {"source": "action:slack_message:C123:1700000000.000200", "target": "thread:slack:C123:1700000000.000100", "kind": "targets"}
+    ]
+  },
+  {
+    "name": "jira_transition_contract",
+    "event": {
+      "id": "evt-contract-jira-1",
+      "type": "ensemble.tap.jira.issue.transitioned",
+      "time": "2026-03-09T12:30:00Z",
+      "source": "urn:ensemble:tap",
+      "data": {
+        "issue_key": "PAY-7",
+        "summary": "Fix payment retries",
+        "to_status": "in_progress",
+        "from_status": "todo",
+        "issue_type": "bug",
+        "project_key": "PAY",
+        "transition_id": "31",
+        "actor_email": "jira-user@example.com"
+      }
+    },
+    "seed_nodes": [
+      {
+        "id": "person:jira-user@example.com",
+        "kind": "person",
+        "name": "Jira User",
+        "properties": {
+          "email": "jira-user@example.com"
+        }
+      }
+    ],
+    "expected_mapping": "jira_issue_transition",
+    "expected_nodes": [
+      {"id": "ticket:jira:PAY-7", "kind": "ticket"},
+      {"id": "action:jira:PAY-7:31", "kind": "action"}
+    ],
+    "expected_edges": [
+      {"source": "action:jira:PAY-7:31", "target": "ticket:jira:PAY-7", "kind": "targets"},
+      {"source": "person:jira-user@example.com", "target": "ticket:jira:PAY-7", "kind": "assigned_to"}
+    ]
+  },
+  {
+    "name": "ci_deploy_contract",
+    "event": {
+      "id": "evt-contract-ci-1",
+      "type": "ensemble.tap.ci.deploy.completed",
+      "time": "2026-03-09T12:40:00Z",
+      "source": "urn:ensemble:tap",
+      "data": {
+        "service": "payments",
+        "deploy_id": "dep-1",
+        "environment": "prod",
+        "status": "succeeded",
+        "release_version": "v1.2.3",
+        "actor_email": "deployer@example.com"
+      }
+    },
+    "seed_nodes": [
+      {
+        "id": "person:deployer@example.com",
+        "kind": "person",
+        "name": "Deployer",
+        "properties": {
+          "email": "deployer@example.com"
+        }
+      }
+    ],
+    "expected_mapping": "ci_deploy_completed",
+    "expected_nodes": [
+      {"id": "service:payments", "kind": "service"},
+      {"id": "workload:deploy:payments:dep-1", "kind": "workload"},
+      {"id": "deployment:payments:dep-1", "kind": "deployment_run"}
+    ],
+    "expected_edges": [
+      {"source": "service:payments", "target": "workload:deploy:payments:dep-1", "kind": "runs"},
+      {"source": "deployment:payments:dep-1", "target": "service:payments", "kind": "targets"},
+      {"source": "deployment:payments:dep-1", "target": "workload:deploy:payments:dep-1", "kind": "based_on"},
+      {"source": "person:deployer@example.com", "target": "service:payments", "kind": "interacted_with"}
+    ]
+  },
+  {
+    "name": "calendar_meeting_contract",
+    "event": {
+      "id": "evt-contract-calendar-1",
+      "type": "ensemble.tap.calendar.meeting.recorded",
+      "time": "2026-03-09T12:50:00Z",
+      "source": "urn:ensemble:tap",
+      "data": {
+        "meeting_id": "mtg-9",
+        "title": "Payments Weekly",
+        "organizer_email": "organizer@example.com",
+        "starts_at": "2026-03-09T12:45:00Z",
+        "ends_at": "2026-03-09T13:15:00Z",
+        "service": "payments"
+      }
+    },
+    "seed_nodes": [
+      {
+        "id": "person:organizer@example.com",
+        "kind": "person",
+        "name": "Organizer",
+        "properties": {
+          "email": "organizer@example.com"
+        }
+      }
+    ],
+    "expected_mapping": "calendar_meeting_recorded",
+    "expected_nodes": [
+      {"id": "service:payments", "kind": "service"},
+      {"id": "meeting:mtg-9", "kind": "meeting"}
+    ],
+    "expected_edges": [
+      {"source": "person:organizer@example.com", "target": "meeting:mtg-9", "kind": "assigned_to"},
+      {"source": "meeting:mtg-9", "target": "service:payments", "kind": "targets"}
+    ]
+  },
+  {
+    "name": "docs_edited_contract",
+    "event": {
+      "id": "evt-contract-docs-1",
+      "type": "ensemble.tap.docs.page.edited",
+      "time": "2026-03-09T13:00:00Z",
+      "source": "urn:ensemble:tap",
+      "data": {
+        "doc_id": "runbook-1",
+        "title": "Payments Runbook",
+        "url": "https://docs.example/runbook-1",
+        "version": "v2",
+        "change_summary": "Updated rollback section",
+        "editor_email": "editor@example.com"
+      }
+    },
+    "seed_nodes": [
+      {
+        "id": "person:editor@example.com",
+        "kind": "person",
+        "name": "Editor",
+        "properties": {
+          "email": "editor@example.com"
+        }
+      }
+    ],
+    "expected_mapping": "docs_page_edited",
+    "expected_nodes": [
+      {"id": "document:runbook-1", "kind": "document"},
+      {"id": "evidence:doc_edit:runbook-1:v2", "kind": "evidence"}
+    ],
+    "expected_edges": [
+      {"source": "person:editor@example.com", "target": "document:runbook-1", "kind": "interacted_with"},
+      {"source": "evidence:doc_edit:runbook-1:v2", "target": "document:runbook-1", "kind": "based_on"}
+    ]
+  },
+  {
+    "name": "support_updated_contract",
+    "event": {
+      "id": "evt-contract-support-1",
+      "type": "ensemble.tap.support.ticket.updated",
+      "time": "2026-03-09T13:10:00Z",
+      "source": "urn:ensemble:tap",
+      "data": {
+        "ticket_id": "12345",
+        "subject": "Payment failures",
+        "status": "open",
+        "priority": "high",
+        "update_id": "u-1",
+        "update_type": "comment",
+        "agent_email": "agent@example.com"
+      }
+    },
+    "seed_nodes": [
+      {
+        "id": "person:agent@example.com",
+        "kind": "person",
+        "name": "Agent",
+        "properties": {
+          "email": "agent@example.com"
+        }
+      }
+    ],
+    "expected_mapping": "support_ticket_updated",
+    "expected_nodes": [
+      {"id": "ticket:support:12345", "kind": "ticket"},
+      {"id": "action:support_update:12345:u-1", "kind": "action"}
+    ],
+    "expected_edges": [
+      {"source": "action:support_update:12345:u-1", "target": "ticket:support:12345", "kind": "targets"},
+      {"source": "person:agent@example.com", "target": "ticket:support:12345", "kind": "assigned_to"}
+    ]
+  },
+  {
+    "name": "github_check_run_completed_contract",
+    "event": {
+      "id": "evt-contract-github-check-1",
+      "type": "ensemble.tap.github.check_run.completed",
+      "time": "2026-03-09T13:15:00Z",
+      "source": "urn:ensemble:tap",
+      "data": {
+        "repository": "payments-api",
+        "check_run_id": "991",
+        "check_name": "unit-tests",
+        "status": "completed",
+        "conclusion": "success",
+        "commit_sha": "abc1234",
+        "url": "https://github.com/example/payments-api/actions/runs/991",
+        "actor_email": "ci-bot@example.com"
+      }
+    },
+    "seed_nodes": [
+      {
+        "id": "person:ci-bot@example.com",
+        "kind": "person",
+        "name": "CI Bot",
+        "properties": {
+          "email": "ci-bot@example.com"
+        }
+      }
+    ],
+    "expected_mapping": "github_check_run_completed",
+    "expected_nodes": [
+      {"id": "service:payments-api", "kind": "service"},
+      {"id": "check_run:payments-api:991", "kind": "check_run"}
+    ],
+    "expected_edges": [
+      {"source": "check_run:payments-api:991", "target": "service:payments-api", "kind": "targets"},
+      {"source": "person:ci-bot@example.com", "target": "service:payments-api", "kind": "interacted_with"}
+    ]
+  },
+  {
+    "name": "ci_pipeline_completed_contract",
+    "event": {
+      "id": "evt-contract-ci-pipeline-1",
+      "type": "ensemble.tap.ci.pipeline.completed",
+      "time": "2026-03-09T13:18:00Z",
+      "source": "urn:ensemble:tap",
+      "data": {
+        "service": "payments",
+        "pipeline_id": "pipe-1",
+        "run_id": "run-9",
+        "pipeline_name": "payments-main",
+        "status": "succeeded",
+        "branch": "main",
+        "commit_sha": "abc1234",
+        "started_at": "2026-03-09T13:16:00Z",
+        "completed_at": "2026-03-09T13:18:00Z",
+        "actor_email": "build@example.com"
+      }
+    },
+    "seed_nodes": [
+      {
+        "id": "person:build@example.com",
+        "kind": "person",
+        "name": "Build User",
+        "properties": {
+          "email": "build@example.com"
+        }
+      }
+    ],
+    "expected_mapping": "ci_pipeline_completed",
+    "expected_nodes": [
+      {"id": "service:payments", "kind": "service"},
+      {"id": "pipeline_run:payments:pipe-1:run-9", "kind": "pipeline_run"}
+    ],
+    "expected_edges": [
+      {"source": "pipeline_run:payments:pipe-1:run-9", "target": "service:payments", "kind": "targets"},
+      {"source": "person:build@example.com", "target": "service:payments", "kind": "interacted_with"}
+    ]
+  },
+  {
+    "name": "sales_call_contract",
+    "event": {
+      "id": "evt-contract-sales-1",
+      "type": "ensemble.tap.sales.call.logged",
+      "time": "2026-03-09T13:20:00Z",
+      "source": "urn:ensemble:tap",
+      "data": {
+        "call_id": "call-88",
+        "contact_id": "cont-9",
+        "contact_name": "Ari Lee",
+        "contact_email": "ari@example.com",
+        "summary": "Reviewed renewal timeline",
+        "duration_minutes": 22,
+        "rep_email": "rep@example.com"
+      }
+    },
+    "seed_nodes": [
+      {
+        "id": "person:rep@example.com",
+        "kind": "person",
+        "name": "Rep",
+        "properties": {
+          "email": "rep@example.com"
+        }
+      }
+    ],
+    "expected_mapping": "sales_call_logged",
+    "expected_nodes": [
+      {"id": "contact:cont-9", "kind": "contact"},
+      {"id": "action:sales_call:call-88", "kind": "action"}
+    ],
+    "expected_edges": [
+      {"source": "person:rep@example.com", "target": "contact:cont-9", "kind": "interacted_with"},
+      {"source": "action:sales_call:call-88", "target": "contact:cont-9", "kind": "targets"}
+    ]
+  }
+]

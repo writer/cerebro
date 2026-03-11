@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +20,7 @@ type testWorkerProvider struct {
 	err    error
 	result *providerregistry.SyncResult
 	calls  int
+	last   providerregistry.SyncOptions
 }
 
 func (p *testWorkerProvider) Name() string { return p.name }
@@ -28,8 +31,9 @@ func (p *testWorkerProvider) Type() providerregistry.ProviderType {
 
 func (p *testWorkerProvider) Configure(context.Context, map[string]interface{}) error { return nil }
 
-func (p *testWorkerProvider) Sync(context.Context, providerregistry.SyncOptions) (*providerregistry.SyncResult, error) {
+func (p *testWorkerProvider) Sync(_ context.Context, opts providerregistry.SyncOptions) (*providerregistry.SyncResult, error) {
 	p.calls++
+	p.last = opts
 	if p.err != nil {
 		return p.result, p.err
 	}
@@ -48,6 +52,8 @@ func (p *testWorkerProvider) Test(context.Context) error { return nil }
 func (p *testWorkerProvider) Schema() []providerregistry.TableSchema { return nil }
 
 func TestSyncConfiguredProviderSources_SkipsNativeProviders(t *testing.T) {
+	t.Setenv(envCLIExecutionMode, string(cliExecutionModeDirect))
+
 	registry := providerregistry.NewRegistry()
 	native := &testWorkerProvider{name: "azure"}
 	other := &testWorkerProvider{name: "okta"}
@@ -75,6 +81,8 @@ func TestSyncConfiguredProviderSources_SkipsNativeProviders(t *testing.T) {
 }
 
 func TestSyncConfiguredProviderSources_CollectsErrorsWithoutFailing(t *testing.T) {
+	t.Setenv(envCLIExecutionMode, string(cliExecutionModeDirect))
+
 	registry := providerregistry.NewRegistry()
 	failing := &testWorkerProvider{name: "github", err: errors.New("boom")}
 	success := &testWorkerProvider{name: "okta"}
@@ -101,6 +109,101 @@ func TestSyncConfiguredProviderSources_CollectsErrorsWithoutFailing(t *testing.T
 	}
 	if len(synced) != 1 || synced[0] != "okta" {
 		t.Fatalf("unexpected synced providers: %#v", synced)
+	}
+}
+
+func TestSyncConfiguredProviderSources_APIModeUsesAPI(t *testing.T) {
+	registry := providerregistry.NewRegistry()
+	provider := &testWorkerProvider{name: "okta"}
+	registry.Register(provider)
+
+	application := &app.App{Providers: registry}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v1/providers/okta/sync" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"provider":"okta","errors":[]}`))
+	}))
+	defer server.Close()
+
+	t.Setenv(envCLIExecutionMode, string(cliExecutionModeAPI))
+	t.Setenv(envCLIAPIURL, server.URL)
+
+	synced, failed, err := syncConfiguredProviderSources(context.Background(), application, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if provider.calls != 0 {
+		t.Fatalf("expected direct provider sync to be skipped in api mode, got %d calls", provider.calls)
+	}
+	if len(failed) != 0 {
+		t.Fatalf("unexpected failed providers: %#v", failed)
+	}
+	if len(synced) != 1 || synced[0] != "okta" {
+		t.Fatalf("unexpected synced providers: %#v", synced)
+	}
+}
+
+func TestSyncConfiguredProviderSources_AutoModeFallbacksToDirectOnTransportError(t *testing.T) {
+	registry := providerregistry.NewRegistry()
+	provider := &testWorkerProvider{name: "okta"}
+	registry.Register(provider)
+
+	application := &app.App{Providers: registry}
+
+	t.Setenv(envCLIExecutionMode, string(cliExecutionModeAuto))
+	t.Setenv(envCLIAPIURL, "http://127.0.0.1:1")
+
+	synced, failed, err := syncConfiguredProviderSources(context.Background(), application, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if provider.calls != 1 {
+		t.Fatalf("expected direct fallback sync call, got %d", provider.calls)
+	}
+	if len(failed) != 0 {
+		t.Fatalf("unexpected failed providers: %#v", failed)
+	}
+	if len(synced) != 1 || synced[0] != "okta" {
+		t.Fatalf("unexpected synced providers: %#v", synced)
+	}
+}
+
+func TestSyncConfiguredProviderSources_AutoModeDoesNotFallbackOnUnauthorized(t *testing.T) {
+	registry := providerregistry.NewRegistry()
+	provider := &testWorkerProvider{name: "okta"}
+	registry.Register(provider)
+
+	application := &app.App{Providers: registry}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"unauthorized","code":"unauthorized"}`))
+	}))
+	defer server.Close()
+
+	t.Setenv(envCLIExecutionMode, string(cliExecutionModeAuto))
+	t.Setenv(envCLIAPIURL, server.URL)
+
+	synced, failed, err := syncConfiguredProviderSources(context.Background(), application, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if provider.calls != 0 {
+		t.Fatalf("did not expect direct fallback sync call, got %d", provider.calls)
+	}
+	if len(synced) != 0 {
+		t.Fatalf("unexpected synced providers: %#v", synced)
+	}
+	if len(failed) != 1 {
+		t.Fatalf("expected one failed provider, got %#v", failed)
+	}
+	if !strings.Contains(failed[0].Error, "sync via api failed") {
+		t.Fatalf("expected api failure message, got %q", failed[0].Error)
 	}
 }
 

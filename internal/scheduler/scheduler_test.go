@@ -3,20 +3,37 @@ package scheduler
 import (
 	"context"
 	"errors"
-	"io"
-	"log/slog"
-	"os"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/writer/cerebro/internal/testutil"
 )
 
-func testLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+func waitForCondition(t *testing.T, timeout time.Duration, description string, condition func() bool) {
+	t.Helper()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	ticker := time.NewTicker(5 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		if condition() {
+			return
+		}
+
+		select {
+		case <-timer.C:
+			t.Fatalf("timed out waiting for %s", description)
+		case <-ticker.C:
+		}
+	}
 }
 
 func TestScheduler_NewScheduler(t *testing.T) {
-	s := NewScheduler(testLogger())
+	s := NewScheduler(testutil.Logger())
 	if s == nil {
 		t.Fatal("NewScheduler returned nil")
 	}
@@ -27,7 +44,7 @@ func TestScheduler_NewScheduler(t *testing.T) {
 }
 
 func TestScheduler_AddJob(t *testing.T) {
-	s := NewScheduler(testLogger())
+	s := NewScheduler(testutil.Logger())
 
 	handler := func(ctx context.Context) error { return nil }
 	s.AddJob("test", 1*time.Hour, handler)
@@ -51,7 +68,7 @@ func TestScheduler_AddJob(t *testing.T) {
 }
 
 func TestScheduler_RemoveJob(t *testing.T) {
-	s := NewScheduler(testLogger())
+	s := NewScheduler(testutil.Logger())
 
 	s.AddJob("test", 1*time.Hour, func(ctx context.Context) error { return nil })
 	s.RemoveJob("test")
@@ -62,8 +79,49 @@ func TestScheduler_RemoveJob(t *testing.T) {
 	}
 }
 
+func TestScheduler_RemoveJobWhileRunning(t *testing.T) {
+	s := NewScheduler(testutil.Logger())
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	s.AddJob("test", time.Hour, func(ctx context.Context) error {
+		close(started)
+		<-release
+		return nil
+	})
+
+	s.mu.Lock()
+	s.running = true
+	s.ctx = testutil.Context(t)
+	s.mu.Unlock()
+
+	if err := s.RunNow("test"); err != nil {
+		t.Fatalf("run now failed: %v", err)
+	}
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("job did not start")
+	}
+
+	s.RemoveJob("test")
+	if job, ok := s.GetJob("test"); !ok || !job.Running {
+		t.Fatalf("expected running job to remain until completion")
+	}
+
+	close(release)
+
+	waitForCondition(t, time.Second, "job removal after in-flight completion", func() bool {
+		if _, ok := s.GetJob("test"); !ok {
+			return true
+		}
+		return false
+	})
+}
+
 func TestScheduler_EnableDisableJob(t *testing.T) {
-	s := NewScheduler(testLogger())
+	s := NewScheduler(testutil.Logger())
 
 	s.AddJob("test", 1*time.Hour, func(ctx context.Context) error { return nil })
 
@@ -83,7 +141,7 @@ func TestScheduler_EnableDisableJob(t *testing.T) {
 }
 
 func TestScheduler_ListJobs(t *testing.T) {
-	s := NewScheduler(testLogger())
+	s := NewScheduler(testutil.Logger())
 
 	s.AddJob("job1", 1*time.Hour, func(ctx context.Context) error { return nil })
 	s.AddJob("job2", 2*time.Hour, func(ctx context.Context) error { return nil })
@@ -96,7 +154,7 @@ func TestScheduler_ListJobs(t *testing.T) {
 }
 
 func TestScheduler_GetJob(t *testing.T) {
-	s := NewScheduler(testLogger())
+	s := NewScheduler(testutil.Logger())
 
 	s.AddJob("exists", 1*time.Hour, func(ctx context.Context) error { return nil })
 
@@ -114,26 +172,39 @@ func TestScheduler_GetJob(t *testing.T) {
 }
 
 func TestScheduler_RunNow(t *testing.T) {
-	s := NewScheduler(testLogger())
+	s := NewScheduler(testutil.Logger())
 
 	var called atomic.Int32
+	done := make(chan struct{}, 1)
 	s.AddJob("test", 1*time.Hour, func(ctx context.Context) error {
 		called.Add(1)
+		select {
+		case done <- struct{}{}:
+		default:
+		}
 		return nil
 	})
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go s.Start(ctx)
-	time.Sleep(20 * time.Millisecond)
+	s.mu.Lock()
+	s.running = true
+	s.ctx = testutil.Context(t)
+	s.mu.Unlock()
 
 	err := s.RunNow("test")
 	if err != nil {
 		t.Fatalf("RunNow failed: %v", err)
 	}
 
-	// Wait for job to complete
-	time.Sleep(100 * time.Millisecond)
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("expected job to complete")
+	}
+
+	waitForCondition(t, time.Second, "job state reset after run", func() bool {
+		job, ok := s.GetJob("test")
+		return ok && !job.Running
+	})
 
 	if called.Load() != 1 {
 		t.Errorf("expected handler to be called once, got %d", called.Load())
@@ -143,7 +214,7 @@ func TestScheduler_RunNow(t *testing.T) {
 }
 
 func TestScheduler_Status(t *testing.T) {
-	s := NewScheduler(testLogger())
+	s := NewScheduler(testutil.Logger())
 
 	s.AddJob("job1", 1*time.Hour, func(ctx context.Context) error { return nil })
 	s.AddJob("job2", 2*time.Hour, func(ctx context.Context) error { return nil })
@@ -160,14 +231,16 @@ func TestScheduler_Status(t *testing.T) {
 }
 
 func TestScheduler_StartStop(t *testing.T) {
-	s := NewScheduler(testLogger())
+	s := NewScheduler(testutil.Logger())
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(testutil.Context(t))
 	defer cancel()
 
 	// Start in goroutine
 	go s.Start(ctx)
-	time.Sleep(50 * time.Millisecond)
+	waitForCondition(t, time.Second, "scheduler start", func() bool {
+		return s.Status().Running
+	})
 
 	status := s.Status()
 	if !status.Running {
@@ -176,7 +249,6 @@ func TestScheduler_StartStop(t *testing.T) {
 
 	// Stop
 	s.Stop()
-	time.Sleep(50 * time.Millisecond)
 
 	status = s.Status()
 	if status.Running {
@@ -186,10 +258,13 @@ func TestScheduler_StartStop(t *testing.T) {
 
 func TestJob_Fields(t *testing.T) {
 	job := &Job{
-		Name:     "test",
-		Interval: 1 * time.Hour,
-		Enabled:  true,
-		Running:  false,
+		Name:           "test",
+		Interval:       1 * time.Hour,
+		Enabled:        true,
+		Running:        false,
+		MaxRetries:     3,
+		InitialBackoff: 5 * time.Second,
+		MaxBackoff:     1 * time.Minute,
 	}
 
 	if job.Name != "test" {
@@ -207,16 +282,28 @@ func TestJob_Fields(t *testing.T) {
 	if job.Running {
 		t.Error("running field should be false")
 	}
+	if job.MaxRetries != 3 {
+		t.Error("max retries field incorrect")
+	}
+	if job.InitialBackoff != 5*time.Second {
+		t.Error("initial backoff field incorrect")
+	}
+	if job.MaxBackoff != 1*time.Minute {
+		t.Error("max backoff field incorrect")
+	}
 }
 
 func TestJobStatus_Fields(t *testing.T) {
 	now := time.Now()
 	js := JobStatus{
-		Name:     "test",
-		Interval: "1h0m0s",
-		NextRun:  now,
-		Running:  false,
-		Enabled:  true,
+		Name:       "test",
+		Interval:   "1h0m0s",
+		NextRun:    now,
+		Running:    false,
+		Enabled:    true,
+		RetryCount: 1,
+		MaxRetries: 3,
+		LastError:  "boom",
 	}
 
 	if js.Name != "test" {
@@ -238,10 +325,153 @@ func TestJobStatus_Fields(t *testing.T) {
 	if !js.Enabled {
 		t.Error("enabled field incorrect")
 	}
+	if js.RetryCount != 1 {
+		t.Error("retry count field incorrect")
+	}
+	if js.MaxRetries != 3 {
+		t.Error("max retries field incorrect")
+	}
+	if js.LastError != "boom" {
+		t.Error("last error field incorrect")
+	}
+}
+
+func TestScheduler_AddJobDefaultRetryOptions(t *testing.T) {
+	s := NewScheduler(testutil.Logger())
+	s.AddJob("retry-defaults", time.Hour, func(ctx context.Context) error { return nil })
+
+	job, ok := s.GetJob("retry-defaults")
+	if !ok {
+		t.Fatal("expected job to exist")
+	}
+	if job.MaxRetries != defaultJobMaxRetries {
+		t.Fatalf("max retries = %d, want %d", job.MaxRetries, defaultJobMaxRetries)
+	}
+	if job.InitialBackoff != defaultJobInitialBackoff {
+		t.Fatalf("initial backoff = %s, want %s", job.InitialBackoff, defaultJobInitialBackoff)
+	}
+	if job.MaxBackoff != defaultJobMaxRetryBackoff {
+		t.Fatalf("max backoff = %s, want %s", job.MaxBackoff, defaultJobMaxRetryBackoff)
+	}
+}
+
+func TestScheduler_RetrySchedulesBackoffAndResetsOnSuccess(t *testing.T) {
+	origJitter := retryJitterFunc
+	retryJitterFunc = func(time.Duration) time.Duration { return 0 }
+	t.Cleanup(func() { retryJitterFunc = origJitter })
+
+	s := NewScheduler(testutil.Logger())
+	s.AddJobWithOptions("retry-job", time.Hour, func(ctx context.Context) error { return nil }, JobOptions{
+		MaxRetries:     2,
+		InitialBackoff: 10 * time.Millisecond,
+		MaxBackoff:     50 * time.Millisecond,
+	})
+
+	// Replace handler with deterministic attempt counter.
+	var attempts atomic.Int32
+	s.mu.Lock()
+	job := s.jobs["retry-job"]
+	job.Handler = func(ctx context.Context) error {
+		if attempts.Add(1) == 1 {
+			return errors.New("transient")
+		}
+		return nil
+	}
+	job.Running = true
+	s.mu.Unlock()
+
+	s.runJob(testutil.Context(t), job)
+
+	got, ok := s.GetJob("retry-job")
+	if !ok {
+		t.Fatal("expected job to exist")
+	}
+	if got.RetryCount != 1 {
+		t.Fatalf("retry count after first failure = %d, want 1", got.RetryCount)
+	}
+	if got.LastError == "" {
+		t.Fatal("expected last error to be populated after failure")
+	}
+	if time.Until(got.NextRun) >= got.Interval {
+		t.Fatalf("expected retry next run before normal interval; next=%s interval=%s", got.NextRun, got.Interval)
+	}
+
+	s.mu.Lock()
+	job = s.jobs["retry-job"]
+	job.Running = true
+	s.mu.Unlock()
+	s.runJob(testutil.Context(t), job)
+
+	got, ok = s.GetJob("retry-job")
+	if !ok {
+		t.Fatal("expected job to exist")
+	}
+	if got.RetryCount != 0 {
+		t.Fatalf("retry count after success = %d, want 0", got.RetryCount)
+	}
+	if got.LastError != "" {
+		t.Fatalf("last error after success = %q, want empty", got.LastError)
+	}
+	untilNextRun := time.Until(got.NextRun)
+	if untilNextRun < 30*time.Minute {
+		t.Fatalf("expected successful run to restore normal interval scheduling, next in %s", untilNextRun)
+	}
+}
+
+func TestScheduler_RetryStopsAfterMaxRetries(t *testing.T) {
+	origJitter := retryJitterFunc
+	retryJitterFunc = func(time.Duration) time.Duration { return 0 }
+	t.Cleanup(func() { retryJitterFunc = origJitter })
+
+	s := NewScheduler(testutil.Logger())
+	s.AddJobWithOptions("always-fail", time.Hour, func(ctx context.Context) error {
+		return errors.New("persistent")
+	}, JobOptions{
+		MaxRetries:     2,
+		InitialBackoff: 5 * time.Millisecond,
+		MaxBackoff:     10 * time.Millisecond,
+	})
+
+	s.mu.Lock()
+	job := s.jobs["always-fail"]
+	s.mu.Unlock()
+
+	for i := 0; i < 3; i++ {
+		s.mu.Lock()
+		job.Running = true
+		s.mu.Unlock()
+		s.runJob(testutil.Context(t), job)
+	}
+
+	got, ok := s.GetJob("always-fail")
+	if !ok {
+		t.Fatal("expected job to exist")
+	}
+	if got.RetryCount != 0 {
+		t.Fatalf("retry count after max retries exhausted = %d, want 0", got.RetryCount)
+	}
+	if got.LastError == "" {
+		t.Fatal("expected last error to remain populated after terminal failure")
+	}
+	untilNextRun := time.Until(got.NextRun)
+	if untilNextRun < 30*time.Minute {
+		t.Fatalf("expected terminal failure to defer to normal interval, next in %s", untilNextRun)
+	}
+}
+
+func TestCalculateRetryDelayCapsAtMaxBackoff(t *testing.T) {
+	origJitter := retryJitterFunc
+	retryJitterFunc = func(time.Duration) time.Duration { return 0 }
+	t.Cleanup(func() { retryJitterFunc = origJitter })
+
+	delay := calculateRetryDelay(10*time.Millisecond, 25*time.Millisecond, 5)
+	if delay != 25*time.Millisecond {
+		t.Fatalf("delay = %s, want capped delay %s", delay, 25*time.Millisecond)
+	}
 }
 
 func TestScheduler_DisabledJobNotRun(t *testing.T) {
-	s := NewScheduler(testLogger())
+	s := NewScheduler(testutil.Logger())
 
 	var called atomic.Int32
 	s.AddJob("disabled", 1*time.Millisecond, func(ctx context.Context) error {
@@ -263,7 +493,7 @@ func TestScheduler_DisabledJobNotRun(t *testing.T) {
 }
 
 func TestScheduler_PanicRecovery(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := testutil.Logger()
 	s := NewScheduler(logger)
 
 	panicJob := func(ctx context.Context) error {
@@ -272,10 +502,10 @@ func TestScheduler_PanicRecovery(t *testing.T) {
 
 	s.AddJob("panic-job", 1*time.Hour, panicJob)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go s.Start(ctx)
-	time.Sleep(20 * time.Millisecond)
+	s.mu.Lock()
+	s.running = true
+	s.ctx = testutil.Context(t)
+	s.mu.Unlock()
 
 	// Run the job - should not crash the test
 	err := s.RunNow("panic-job")
@@ -283,8 +513,10 @@ func TestScheduler_PanicRecovery(t *testing.T) {
 		t.Fatalf("RunNow failed: %v", err)
 	}
 
-	// Wait for the job to complete (and recover from panic)
-	time.Sleep(100 * time.Millisecond)
+	waitForCondition(t, time.Second, "panic job completion", func() bool {
+		job, ok := s.GetJob("panic-job")
+		return ok && !job.Running
+	})
 
 	// Verify job state was reset after panic
 	job, ok := s.GetJob("panic-job")
@@ -299,13 +531,13 @@ func TestScheduler_PanicRecovery(t *testing.T) {
 }
 
 func TestScheduler_RunNowErrors(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := testutil.Logger()
 	s := NewScheduler(logger)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go s.Start(ctx)
-	time.Sleep(20 * time.Millisecond)
+	s.mu.Lock()
+	s.running = true
+	s.ctx = testutil.Context(t)
+	s.mu.Unlock()
 
 	// Test job not found
 	err := s.RunNow("non-existent")
@@ -313,9 +545,12 @@ func TestScheduler_RunNowErrors(t *testing.T) {
 		t.Errorf("expected ErrJobNotFound, got %v", err)
 	}
 
+	started := make(chan struct{})
+	release := make(chan struct{})
 	// Add a job that takes time
 	s.AddJob("slow", 1*time.Hour, func(ctx context.Context) error {
-		time.Sleep(500 * time.Millisecond)
+		close(started)
+		<-release
 		return nil
 	})
 
@@ -325,34 +560,49 @@ func TestScheduler_RunNowErrors(t *testing.T) {
 		t.Fatalf("first RunNow failed: %v", err)
 	}
 
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("expected slow job to start")
+	}
+
 	// Try to run again while running
-	time.Sleep(10 * time.Millisecond) // Give time for goroutine to start
 	err = s.RunNow("slow")
 	if !errors.Is(err, ErrJobAlreadyRunning) {
 		t.Errorf("expected ErrJobAlreadyRunning, got %v", err)
 	}
 
-	// Wait for job to complete
-	time.Sleep(600 * time.Millisecond)
+	close(release)
+
+	waitForCondition(t, time.Second, "slow job completion", func() bool {
+		job, ok := s.GetJob("slow")
+		return ok && !job.Running
+	})
 
 	s.Stop()
 }
 
 func TestScheduler_GracefulShutdown(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := testutil.Logger()
 	s := NewScheduler(logger)
 
-	jobCompleted := make(chan bool, 1)
+	jobStarted := make(chan struct{})
+	release := make(chan struct{})
+	jobCompleted := make(chan struct{}, 1)
 	s.AddJob("long-running", 1*time.Hour, func(ctx context.Context) error {
-		time.Sleep(200 * time.Millisecond)
-		jobCompleted <- true
+		close(jobStarted)
+		<-release
+		jobCompleted <- struct{}{}
 		return nil
 	})
 
 	// Start scheduler
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(testutil.Context(t))
+	defer cancel()
 	go s.Start(ctx)
-	time.Sleep(50 * time.Millisecond)
+	waitForCondition(t, time.Second, "scheduler start", func() bool {
+		return s.Status().Running
+	})
 
 	// Trigger the job
 	err := s.RunNow("long-running")
@@ -360,9 +610,31 @@ func TestScheduler_GracefulShutdown(t *testing.T) {
 		t.Fatalf("RunNow failed: %v", err)
 	}
 
-	// Immediately stop - should wait for job to complete
-	time.Sleep(50 * time.Millisecond)
-	s.Stop()
+	select {
+	case <-jobStarted:
+	case <-time.After(time.Second):
+		t.Fatal("job did not start")
+	}
+
+	stopDone := make(chan struct{})
+	go func() {
+		s.Stop()
+		close(stopDone)
+	}()
+
+	select {
+	case <-stopDone:
+		t.Fatal("Stop returned before in-flight job completed")
+	default:
+	}
+
+	close(release)
+
+	select {
+	case <-stopDone:
+	case <-time.After(time.Second):
+		t.Fatal("Stop did not return after in-flight job completion")
+	}
 
 	// Verify job completed
 	select {
@@ -370,5 +642,98 @@ func TestScheduler_GracefulShutdown(t *testing.T) {
 		// Success - job completed before Stop returned
 	case <-time.After(1 * time.Second):
 		t.Error("job should have completed before Stop returned")
+	}
+}
+
+func TestScheduler_RunDueJobs_NoopWhenStopped(t *testing.T) {
+	logger := testutil.Logger()
+	s := NewScheduler(logger)
+
+	var called atomic.Int32
+	s.AddJob("due", time.Hour, func(ctx context.Context) error {
+		called.Add(1)
+		return nil
+	})
+
+	s.mu.Lock()
+	s.jobs["due"].NextRun = time.Now().Add(-time.Second)
+	s.mu.Unlock()
+
+	// Scheduler is not running, so due jobs must not execute.
+	s.runDueJobs()
+	s.wg.Wait()
+
+	if called.Load() != 0 {
+		t.Fatalf("expected no job execution while stopped, got %d", called.Load())
+	}
+}
+
+func TestScheduler_RunDueJobs_ExecutesDueJobs(t *testing.T) {
+	logger := testutil.Logger()
+	s := NewScheduler(logger)
+
+	done := make(chan struct{}, 1)
+	s.AddJob("due", time.Hour, func(ctx context.Context) error {
+		select {
+		case done <- struct{}{}:
+		default:
+		}
+		return nil
+	})
+
+	s.mu.Lock()
+	s.running = true
+	s.ctx = testutil.Context(t)
+	s.jobs["due"].NextRun = time.Now().Add(-time.Second)
+	s.mu.Unlock()
+
+	s.runDueJobs()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("expected due job to execute")
+	}
+
+	s.wg.Wait()
+
+	job, ok := s.GetJob("due")
+	if !ok {
+		t.Fatal("expected due job to remain registered")
+	}
+	if job.LastRun.IsZero() {
+		t.Fatal("expected LastRun to be updated")
+	}
+	if job.Running {
+		t.Fatal("expected job to be marked not running after completion")
+	}
+}
+
+func TestScheduler_RunDueJobs_RemovedJobNotExecuted(t *testing.T) {
+	logger := testutil.Logger()
+	s := NewScheduler(logger)
+
+	var called atomic.Int32
+	s.AddJob("remove-me", time.Hour, func(ctx context.Context) error {
+		called.Add(1)
+		return nil
+	})
+
+	s.mu.Lock()
+	s.running = true
+	s.ctx = testutil.Context(t)
+	job := s.jobs["remove-me"]
+	job.NextRun = time.Now().Add(-time.Second)
+	job.removeRequested = true
+	s.mu.Unlock()
+
+	s.runDueJobs()
+	s.wg.Wait()
+
+	if called.Load() != 0 {
+		t.Fatalf("expected removed job to skip execution, got %d", called.Load())
+	}
+	if _, ok := s.GetJob("remove-me"); ok {
+		t.Fatal("expected removed job to be deleted")
 	}
 }

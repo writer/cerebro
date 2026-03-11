@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -106,14 +107,31 @@ func NewGraph() *Graph {
 }
 
 func (g *Graph) AddNode(node *Node) {
+	if node == nil || node.ID == "" {
+		return
+	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.nodes[node.ID] = node
 }
 
 func (g *Graph) AddEdge(edge *Edge) {
+	if edge == nil || edge.ID == "" || edge.Source == "" || edge.Target == "" {
+		return
+	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	if _, ok := g.nodes[edge.Source]; !ok {
+		return
+	}
+	if _, ok := g.nodes[edge.Target]; !ok {
+		return
+	}
+	for _, existing := range g.edges[edge.Source] {
+		if existing.ID == edge.ID {
+			return
+		}
+	}
 	g.edges[edge.Source] = append(g.edges[edge.Source], edge)
 }
 
@@ -127,7 +145,13 @@ func (g *Graph) GetNode(id string) (*Node, bool) {
 func (g *Graph) GetEdges(nodeID string) []*Edge {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
-	return g.edges[nodeID]
+	edges := g.edges[nodeID]
+	if len(edges) == 0 {
+		return nil
+	}
+	copied := make([]*Edge, len(edges))
+	copy(copied, edges)
+	return copied
 }
 
 func (g *Graph) GetAllNodes() []*Node {
@@ -170,8 +194,16 @@ func (pf *PathFinder) FindPaths(ctx context.Context) []*AttackPath {
 	entryPoints := pf.findEntryPoints()
 
 	for _, entry := range entryPoints {
+		if ctx != nil {
+			select {
+			case <-ctx.Done():
+				return paths
+			default:
+			}
+		}
+
 		// BFS to find paths to high-value targets
-		discovered := pf.bfs(entry.ID, pf.maxDepth)
+		discovered := pf.bfs(ctx, entry.ID, pf.maxDepth)
 
 		for targetID, path := range discovered {
 			if pf.highValue[targetID] {
@@ -194,7 +226,7 @@ func (pf *PathFinder) FindPaths(ctx context.Context) []*AttackPath {
 func (pf *PathFinder) findEntryPoints() []*Node {
 	var entries []*Node
 
-	for _, node := range pf.graph.nodes {
+	for _, node := range pf.graph.GetAllNodes() {
 		// External-facing resources
 		if node.Type == NodeTypeExternal {
 			entries = append(entries, node)
@@ -216,7 +248,7 @@ func (pf *PathFinder) findEntryPoints() []*Node {
 	return entries
 }
 
-func (pf *PathFinder) bfs(startID string, maxDepth int) map[string][]string {
+func (pf *PathFinder) bfs(ctx context.Context, startID string, maxDepth int) map[string][]string {
 	discovered := make(map[string][]string)
 	visited := make(map[string]bool)
 	queue := []struct {
@@ -226,6 +258,14 @@ func (pf *PathFinder) bfs(startID string, maxDepth int) map[string][]string {
 	}{{startID, []string{startID}, 0}}
 
 	for len(queue) > 0 {
+		if ctx != nil {
+			select {
+			case <-ctx.Done():
+				return discovered
+			default:
+			}
+		}
+
 		current := queue[0]
 		queue = queue[1:]
 
@@ -269,7 +309,6 @@ func (pf *PathFinder) buildAttackPath(entry *Node, nodePath []string) *AttackPat
 
 	// Build steps from edges
 	var edgeIDs []string
-	score := 0
 
 	for i := 0; i < len(nodePath)-1; i++ {
 		sourceID := nodePath[i]
@@ -286,30 +325,58 @@ func (pf *PathFinder) buildAttackPath(entry *Node, nodePath []string) *AttackPat
 				step := AttackStep{
 					Order:  i + 1,
 					Action: string(edge.Type),
-					Source: sourceNode.Name,
-					Target: targetNode.Name,
+					Source: sourceID,
+					Target: targetID,
+				}
+				if sourceNode != nil && strings.TrimSpace(sourceNode.Name) != "" {
+					step.Source = sourceNode.Name
+				}
+				if targetNode != nil && strings.TrimSpace(targetNode.Name) != "" {
+					step.Target = targetNode.Name
 				}
 
 				// Add MITRE technique mapping
-				step.Technique = mapToMITRE(edge.Type, targetNode.Type)
+				targetType := NodeTypeResource
+				if targetNode != nil {
+					targetType = targetNode.Type
+				}
+				step.Technique = mapToMITRE(edge.Type, targetType)
 				step.Description = describeStep(edge, sourceNode, targetNode)
 
 				path.Steps = append(path.Steps, step)
-
-				// Calculate score based on edge risk
-				score += riskScore(edge.Risk)
 			}
 		}
 	}
 
 	path.Edges = edgeIDs
-	path.Score = score
-	path.Severity = scoreSeverity(score)
+	path.Score = pf.ScorePath(nodePath)
+	path.Severity = scoreSeverity(path.Score)
 	path.Title = generateTitle(path)
 	path.Description = generateDescription(path)
 	path.Remediation = generateRemediation(path)
 
 	return path
+}
+
+// ScorePath calculates the attack path score for a node path.
+func (pf *PathFinder) ScorePath(nodePath []string) int {
+	if len(nodePath) < 2 {
+		return 0
+	}
+
+	score := 0
+	for i := 0; i < len(nodePath)-1; i++ {
+		sourceID := nodePath[i]
+		targetID := nodePath[i+1]
+		edges := pf.graph.GetEdges(sourceID)
+		for _, edge := range edges {
+			if edge.Target == targetID {
+				score += riskScore(edge.Risk)
+				break
+			}
+		}
+	}
+	return score
 }
 
 func mapToMITRE(edgeType EdgeType, _ NodeType) string {
@@ -329,19 +396,28 @@ func mapToMITRE(edgeType EdgeType, _ NodeType) string {
 }
 
 func describeStep(edge *Edge, source, target *Node) string {
+	sourceName := edge.Source
+	targetName := edge.Target
+	if source != nil && strings.TrimSpace(source.Name) != "" {
+		sourceName = source.Name
+	}
+	if target != nil && strings.TrimSpace(target.Name) != "" {
+		targetName = target.Name
+	}
+
 	switch edge.Type {
 	case EdgeTypeCanAssume:
-		return source.Name + " can assume role " + target.Name
+		return sourceName + " can assume role " + targetName
 	case EdgeTypeHasAccess:
-		return source.Name + " has access to " + target.Name
+		return sourceName + " has access to " + targetName
 	case EdgeTypeCanModify:
-		return source.Name + " can modify " + target.Name
+		return sourceName + " can modify " + targetName
 	case EdgeTypeNetworkAccess:
-		return source.Name + " has network access to " + target.Name
+		return sourceName + " has network access to " + targetName
 	case EdgeTypeExposedTo:
-		return target.Name + " is exposed to " + source.Name
+		return targetName + " is exposed to " + sourceName
 	default:
-		return source.Name + " -> " + target.Name
+		return sourceName + " -> " + targetName
 	}
 }
 

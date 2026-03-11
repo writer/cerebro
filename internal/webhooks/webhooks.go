@@ -59,7 +59,9 @@ func ValidateWebhookURL(rawURL string) error {
 	}
 
 	// Resolve the hostname to check for private IPs
-	addrRecords, err := net.DefaultResolver.LookupIPAddr(context.Background(), hostname)
+	dnsCtx, cancel := context.WithTimeout(context.Background(), webhookDNSLookupTimeout)
+	defer cancel()
+	addrRecords, err := net.DefaultResolver.LookupIPAddr(dnsCtx, hostname)
 	ips := make([]net.IP, 0, len(addrRecords))
 	for _, record := range addrRecords {
 		ips = append(ips, record.IP)
@@ -118,23 +120,48 @@ func isPrivateOrReservedIP(ip net.IP) bool {
 type EventType string
 
 const (
-	EventFindingCreated    EventType = "finding.created"
-	EventFindingResolved   EventType = "finding.resolved"
-	EventFindingSuppressed EventType = "finding.suppressed"
-	EventScanCompleted     EventType = "scan.completed"
-	EventSchedulerJobRun   EventType = "scheduler.job.run"
-	EventReviewStarted     EventType = "review.started"
-	EventReviewCompleted   EventType = "review.completed"
-	EventAttackPathFound   EventType = "attack_path.found"
-	EventTicketCreated     EventType = "ticket.created"
-	EventGraphRebuilt      EventType = "graph.rebuilt"
-	EventThreatIntelSynced EventType = "threatintel.feed.synced"
-	EventRuntimeIngested   EventType = "runtime.ingested"
-	EventRbacUserCreated   EventType = "rbac.user.created"
-	EventRbacRoleAssigned  EventType = "rbac.role.assigned"
-	EventRbacTenantCreated EventType = "rbac.tenant.created"
-	EventWebhookCreated    EventType = "webhook.created"
-	EventRemediationRule   EventType = "remediation.rule.created"
+	EventFindingCreated             EventType = "finding.created"
+	EventFindingResolved            EventType = "finding.resolved"
+	EventFindingSuppressed          EventType = "finding.suppressed"
+	EventScanCompleted              EventType = "scan.completed"
+	EventSchedulerJobRun            EventType = "scheduler.job.run"
+	EventReviewStarted              EventType = "review.started"
+	EventReviewCompleted            EventType = "review.completed"
+	EventAttackPathFound            EventType = "attack_path.found"
+	EventTicketCreated              EventType = "ticket.created"
+	EventGraphRebuilt               EventType = "graph.rebuilt"
+	EventGraphMutated               EventType = "graph.mutated"
+	EventThreatIntelSynced          EventType = "threatintel.feed.synced"
+	EventRuntimeIngested            EventType = "runtime.ingested"
+	EventRbacUserCreated            EventType = "rbac.user.created"
+	EventRbacRoleAssigned           EventType = "rbac.role.assigned"
+	EventRbacTenantCreated          EventType = "rbac.tenant.created"
+	EventWebhookCreated             EventType = "webhook.created"
+	EventRemediationRule            EventType = "remediation.rule.created"
+	EventRemediationActionCompleted EventType = "remediation.action.completed"
+	EventRemediationActionFailed    EventType = "remediation.action.failed"
+	EventSignalCreated              EventType = "signal.created"
+	EventSignalResolved             EventType = "signal.resolved"
+	EventSignalEscalated            EventType = "signal.escalated"
+
+	EventRiskScoreChanged                   EventType = "risk_score.changed"
+	EventToxicCombinationDetected           EventType = "toxic_combination.detected"
+	EventToxicCombinationResolved           EventType = "toxic_combination.resolved"
+	EventApprovalRequested                  EventType = "approval.requested"
+	EventCohortOutlierDetected              EventType = "cohort.outlier_detected"
+	EventComplianceScoreChanged             EventType = "compliance.score_changed"
+	EventPlatformClaimWritten               EventType = "platform.claim.written"
+	EventPlatformClaimAdjudicated           EventType = "platform.claim.adjudicated"
+	EventPlatformDecisionRecorded           EventType = "platform.decision.recorded"
+	EventPlatformOutcomeRecorded            EventType = "platform.outcome.recorded"
+	EventPlatformActionRecorded             EventType = "platform.action.recorded"
+	EventPlatformReportRunQueued            EventType = "platform.report_run.queued"
+	EventPlatformReportRunStarted           EventType = "platform.report_run.started"
+	EventPlatformReportRunCompleted         EventType = "platform.report_run.completed"
+	EventPlatformReportRunFailed            EventType = "platform.report_run.failed"
+	EventPlatformReportRunCanceled          EventType = "platform.report_run.canceled"
+	EventPlatformReportSectionEmitted       EventType = "platform.report_run.section_emitted"
+	EventPlatformReportSnapshotMaterialized EventType = "platform.report_snapshot.materialized"
 )
 
 var defaultEventTypes = []EventType{
@@ -148,6 +175,7 @@ var defaultEventTypes = []EventType{
 	EventAttackPathFound,
 	EventTicketCreated,
 	EventGraphRebuilt,
+	EventGraphMutated,
 	EventThreatIntelSynced,
 	EventRuntimeIngested,
 	EventRbacUserCreated,
@@ -155,6 +183,29 @@ var defaultEventTypes = []EventType{
 	EventRbacTenantCreated,
 	EventWebhookCreated,
 	EventRemediationRule,
+	EventRemediationActionCompleted,
+	EventRemediationActionFailed,
+	EventSignalCreated,
+	EventSignalResolved,
+	EventSignalEscalated,
+	EventRiskScoreChanged,
+	EventToxicCombinationDetected,
+	EventToxicCombinationResolved,
+	EventApprovalRequested,
+	EventCohortOutlierDetected,
+	EventComplianceScoreChanged,
+	EventPlatformClaimWritten,
+	EventPlatformClaimAdjudicated,
+	EventPlatformDecisionRecorded,
+	EventPlatformOutcomeRecorded,
+	EventPlatformActionRecorded,
+	EventPlatformReportRunQueued,
+	EventPlatformReportRunStarted,
+	EventPlatformReportRunCompleted,
+	EventPlatformReportRunFailed,
+	EventPlatformReportRunCanceled,
+	EventPlatformReportSectionEmitted,
+	EventPlatformReportSnapshotMaterialized,
 }
 
 // DefaultEventTypes returns the list of webhook event types registered by default.
@@ -162,7 +213,10 @@ func DefaultEventTypes() []EventType {
 	return append([]EventType(nil), defaultEventTypes...)
 }
 
-const defaultDeliveryConcurrency = 5
+const (
+	defaultDeliveryConcurrency = 5
+	webhookDNSLookupTimeout    = 5 * time.Second
+)
 
 // Webhook represents a webhook configuration
 type Webhook struct {
@@ -181,6 +235,9 @@ type Event struct {
 	Timestamp time.Time              `json:"timestamp"`
 	Data      map[string]interface{} `json:"data"`
 }
+
+// EventSubscriber handles in-process webhook events.
+type EventSubscriber func(ctx context.Context, event Event) error
 
 // EventPublisher can publish webhook events to external systems (for example JetStream).
 type EventPublisher interface {
@@ -218,14 +275,16 @@ type Service struct {
 	client              *http.Client
 	deliveryConcurrency int
 	eventPublisher      EventPublisher
+	subscribers         []EventSubscriber
 	mu                  sync.RWMutex
 	skipValidation      bool // For testing only - allows localhost URLs
 }
 
 func NewService() *Service {
 	return &Service{
-		webhooks:   make(map[string]*Webhook),
-		deliveries: make([]Delivery, 0),
+		webhooks:    make(map[string]*Webhook),
+		deliveries:  make([]Delivery, 0),
+		subscribers: make([]EventSubscriber, 0),
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -260,7 +319,7 @@ func (s *Service) EventPublisherReady(ctx context.Context) error {
 	}
 
 	if ctx == nil {
-		ctx = context.Background()
+		return errors.New("context is required")
 	}
 
 	return readiness.Ready(ctx)
@@ -282,7 +341,11 @@ func (s *Service) EventPublisherStatus(ctx context.Context) map[string]interface
 	}
 
 	if ctx == nil {
-		ctx = context.Background()
+		return map[string]interface{}{
+			"configured": true,
+			"ready":      false,
+			"error":      "context is required",
+		}
 	}
 	status := statusReporter.Status(ctx)
 	if status == nil {
@@ -290,6 +353,16 @@ func (s *Service) EventPublisherStatus(ctx context.Context) map[string]interface
 	}
 	status["configured"] = true
 	return status
+}
+
+// Subscribe registers an in-process subscriber for all emitted events.
+func (s *Service) Subscribe(subscriber EventSubscriber) {
+	if subscriber == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.subscribers = append(s.subscribers, subscriber)
 }
 
 // Close releases service resources.
@@ -358,10 +431,18 @@ func isValidEventType(e EventType) bool {
 	switch e {
 	case EventFindingCreated, EventFindingResolved, EventFindingSuppressed,
 		EventScanCompleted, EventSchedulerJobRun, EventReviewStarted, EventReviewCompleted,
-		EventAttackPathFound, EventTicketCreated, EventGraphRebuilt,
+		EventAttackPathFound, EventTicketCreated, EventGraphRebuilt, EventGraphMutated,
 		EventThreatIntelSynced, EventRuntimeIngested, EventRbacUserCreated,
 		EventRbacRoleAssigned, EventRbacTenantCreated, EventWebhookCreated,
-		EventRemediationRule:
+		EventRemediationRule, EventRemediationActionCompleted, EventRemediationActionFailed,
+		EventSignalCreated, EventSignalResolved, EventSignalEscalated,
+		EventRiskScoreChanged, EventToxicCombinationDetected, EventToxicCombinationResolved,
+		EventApprovalRequested, EventCohortOutlierDetected, EventComplianceScoreChanged,
+		EventPlatformClaimWritten, EventPlatformClaimAdjudicated, EventPlatformDecisionRecorded,
+		EventPlatformOutcomeRecorded, EventPlatformActionRecorded, EventPlatformReportRunQueued,
+		EventPlatformReportRunStarted, EventPlatformReportRunCompleted, EventPlatformReportRunFailed,
+		EventPlatformReportRunCanceled, EventPlatformReportSectionEmitted,
+		EventPlatformReportSnapshotMaterialized:
 		return true
 	default:
 		return false
@@ -429,6 +510,7 @@ func (s *Service) EmitWithErrors(ctx context.Context, eventType EventType, data 
 
 	s.mu.RLock()
 	publisher := s.eventPublisher
+	subscribers := append([]EventSubscriber(nil), s.subscribers...)
 	webhooks := make([]*Webhook, 0)
 	for _, w := range s.webhooks {
 		if w.Enabled && s.isSubscribed(w, eventType) {
@@ -441,6 +523,11 @@ func (s *Service) EmitWithErrors(ctx context.Context, eventType EventType, data 
 	if publisher != nil {
 		if err := publisher.Publish(ctx, event); err != nil {
 			errs = append(errs, fmt.Errorf("event publisher: %w", err))
+		}
+	}
+	for _, subscriber := range subscribers {
+		if err := subscriber(ctx, event); err != nil {
+			errs = append(errs, fmt.Errorf("event subscriber: %w", err))
 		}
 	}
 

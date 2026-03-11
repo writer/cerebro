@@ -151,36 +151,15 @@ func generateReviewItems(g *Graph, scope ReviewScope) []*AccessReviewItem {
 }
 
 func generateAllAccessItems(g *Graph) []*AccessReviewItem {
-	var items []*AccessReviewItem
-	seen := make(map[string]bool)
-
+	principals := make([]*Node, 0)
 	for _, node := range g.GetAllNodes() {
 		if !node.IsIdentity() {
 			continue
 		}
-
-		result := BlastRadius(g, node.ID, 3)
-		for _, rn := range result.ReachableNodes {
-			key := node.ID + "->" + rn.Node.ID
-			if seen[key] {
-				continue
-			}
-			seen[key] = true
-
-			items = append(items, &AccessReviewItem{
-				ID:            uuid.New().String(),
-				PrincipalID:   node.ID,
-				PrincipalName: node.Name,
-				ResourceID:    rn.Node.ID,
-				ResourceName:  rn.Node.Name,
-				AccessType:    rn.EdgeKind,
-				RiskLevel:     rn.Node.Risk,
-				Path:          rn.Path,
-			})
-		}
+		principals = append(principals, node)
 	}
 
-	return items
+	return generateItemsForPrincipals(g, principals, true)
 }
 
 func generateAccountAccessItems(g *Graph, accountIDs []string) []*AccessReviewItem {
@@ -189,53 +168,55 @@ func generateAccountAccessItems(g *Graph, accountIDs []string) []*AccessReviewIt
 		accountSet[id] = true
 	}
 
-	var items []*AccessReviewItem
-	seen := make(map[string]bool)
-
+	principals := make([]*Node, 0)
 	for _, node := range g.GetAllNodes() {
 		if !node.IsIdentity() || !accountSet[node.Account] {
 			continue
 		}
-
-		result := BlastRadius(g, node.ID, 3)
-		for _, rn := range result.ReachableNodes {
-			key := node.ID + "->" + rn.Node.ID
-			if seen[key] {
-				continue
-			}
-			seen[key] = true
-
-			items = append(items, &AccessReviewItem{
-				ID:            uuid.New().String(),
-				PrincipalID:   node.ID,
-				PrincipalName: node.Name,
-				ResourceID:    rn.Node.ID,
-				ResourceName:  rn.Node.Name,
-				AccessType:    rn.EdgeKind,
-				RiskLevel:     rn.Node.Risk,
-				Path:          rn.Path,
-			})
-		}
+		principals = append(principals, node)
 	}
 
-	return items
+	return generateItemsForPrincipals(g, principals, true)
 }
 
 func generatePrincipalAccessItems(g *Graph, principals []string) []*AccessReviewItem {
-	var items []*AccessReviewItem
-
+	principalNodes := make([]*Node, 0, len(principals))
+	seenPrincipals := make(map[string]bool, len(principals))
 	for _, pid := range principals {
+		if seenPrincipals[pid] {
+			continue
+		}
+		seenPrincipals[pid] = true
+
 		node, ok := g.GetNode(pid)
 		if !ok {
 			continue
 		}
+		principalNodes = append(principalNodes, node)
+	}
 
-		result := BlastRadius(g, pid, 3)
+	return generateItemsForPrincipals(g, principalNodes, false)
+}
+
+func generateItemsForPrincipals(g *Graph, principals []*Node, dedupeByPrincipalResource bool) []*AccessReviewItem {
+	items := make([]*AccessReviewItem, 0)
+	seen := make(map[string]bool)
+
+	for _, principal := range principals {
+		result := BlastRadius(g, principal.ID, 3)
 		for _, rn := range result.ReachableNodes {
+			key := principal.ID + "->" + rn.Node.ID
+			if dedupeByPrincipalResource && seen[key] {
+				continue
+			}
+			if dedupeByPrincipalResource {
+				seen[key] = true
+			}
+
 			items = append(items, &AccessReviewItem{
 				ID:            uuid.New().String(),
-				PrincipalID:   pid,
-				PrincipalName: node.Name,
+				PrincipalID:   principal.ID,
+				PrincipalName: principal.Name,
 				ResourceID:    rn.Node.ID,
 				ResourceName:  rn.Node.Name,
 				AccessType:    rn.EdgeKind,

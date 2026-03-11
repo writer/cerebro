@@ -66,7 +66,9 @@ func TestRBAC_AssignRole(t *testing.T) {
 		Email: "test@example.com",
 		Name:  "Test User",
 	}
-	rbac.CreateUser(user)
+	if err := rbac.CreateUser(user); err != nil {
+		t.Fatalf("CreateUser failed: %v", err)
+	}
 
 	// Assign role
 	err := rbac.AssignRole(user.ID, "analyst")
@@ -99,7 +101,9 @@ func TestRBAC_HasPermission(t *testing.T) {
 		Name:    "Test User",
 		RoleIDs: []string{"analyst"},
 	}
-	rbac.CreateUser(user)
+	if err := rbac.CreateUser(user); err != nil {
+		t.Fatalf("CreateUser failed: %v", err)
+	}
 
 	tests := []struct {
 		permission string
@@ -127,6 +131,70 @@ func TestRBAC_HasPermission(t *testing.T) {
 				t.Errorf("HasPermission(%s) = %v, want %v", tt.permission, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestRBAC_HasPermission_ScopedNamespaces(t *testing.T) {
+	rbac := NewRBAC()
+
+	user := &User{
+		Email:   "platform@example.com",
+		Name:    "Platform Analyst",
+		RoleIDs: []string{"analyst"},
+	}
+	if err := rbac.CreateUser(user); err != nil {
+		t.Fatalf("CreateUser failed: %v", err)
+	}
+
+	tests := []struct {
+		permission string
+		want       bool
+	}{
+		{"platform.graph.read", true},
+		{"platform.intelligence.read", true},
+		{"platform.intelligence.run", true},
+		{"platform.knowledge.read", true},
+		{"platform.knowledge.write", true},
+		{"security.findings.manage", true},
+		{"security.analyses.run", true},
+		{"org.expertise.read", true},
+		{"org.reorg.simulate", true},
+		{"admin.operations.manage", false},
+		{"admin.rbac.roles.manage", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.permission, func(t *testing.T) {
+			if got := rbac.HasPermission(context.Background(), user.ID, tt.permission); got != tt.want {
+				t.Fatalf("HasPermission(%s) = %v, want %v", tt.permission, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRBAC_ListPermissionIDsIncludesScopedNamespaces(t *testing.T) {
+	rbac := NewRBAC()
+	ids := rbac.ListPermissionIDs()
+	expected := []string{
+		"platform.graph.read",
+		"platform.intelligence.read",
+		"platform.intelligence.run",
+		"platform.knowledge.read",
+		"security.findings.read",
+		"org.intelligence.read",
+		"admin.providers.manage",
+	}
+	for _, want := range expected {
+		found := false
+		for _, id := range ids {
+			if id == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected permission id %q in list", want)
+		}
 	}
 }
 
@@ -221,8 +289,12 @@ func TestRBAC_ListTenants(t *testing.T) {
 	rbac := NewRBAC()
 
 	// Create tenants
-	rbac.CreateTenant(&Tenant{Name: "Org 1"})
-	rbac.CreateTenant(&Tenant{Name: "Org 2"})
+	if err := rbac.CreateTenant(&Tenant{Name: "Org 1"}); err != nil {
+		t.Fatalf("CreateTenant Org 1 failed: %v", err)
+	}
+	if err := rbac.CreateTenant(&Tenant{Name: "Org 2"}); err != nil {
+		t.Fatalf("CreateTenant Org 2 failed: %v", err)
+	}
 
 	tenants := rbac.ListTenants()
 	if len(tenants) != 2 {

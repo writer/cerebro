@@ -1,0 +1,13 @@
+{
+  "id": "stripe-large-refund",
+  "name": "Large Refund Without Approval",
+  "description": "Flags large refunds without explicit approval metadata.",
+  "effect": "forbid",
+  "resource": "stripe::charge",
+  "conditions": [
+    "amount_refunded > 500000",
+    "metadata.approved != true"
+  ],
+  "severity": "high",
+  "tags": ["finance", "guardrail", "stripe"]
+}

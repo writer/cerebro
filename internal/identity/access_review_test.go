@@ -56,8 +56,12 @@ func TestServiceGetReview(t *testing.T) {
 func TestServiceListReviews(t *testing.T) {
 	svc := NewService()
 
-	svc.CreateReview(context.Background(), &AccessReview{Name: "Review 1"})
-	svc.CreateReview(context.Background(), &AccessReview{Name: "Review 2"})
+	if _, err := svc.CreateReview(context.Background(), &AccessReview{Name: "Review 1"}); err != nil {
+		t.Fatalf("CreateReview Review 1 failed: %v", err)
+	}
+	if _, err := svc.CreateReview(context.Background(), &AccessReview{Name: "Review 2"}); err != nil {
+		t.Fatalf("CreateReview Review 2 failed: %v", err)
+	}
 
 	reviews := svc.ListReviews(context.Background(), "")
 	if len(reviews) != 2 {
@@ -142,7 +146,9 @@ func TestServiceRecordDecision(t *testing.T) {
 		Principal: Principal{ID: "user-1"},
 		RiskScore: 30,
 	}
-	svc.AddReviewItem(context.Background(), review.ID, item)
+	if err := svc.AddReviewItem(context.Background(), review.ID, item); err != nil {
+		t.Fatalf("AddReviewItem failed: %v", err)
+	}
 
 	// Get item ID
 	got, _ := svc.GetReview(context.Background(), review.ID)
@@ -180,10 +186,12 @@ func TestServiceRecordDecisionRevoke(t *testing.T) {
 
 	review, _ := svc.CreateReview(context.Background(), &AccessReview{Name: "Test Review"})
 
-	svc.AddReviewItem(context.Background(), review.ID, &ReviewItem{
+	if err := svc.AddReviewItem(context.Background(), review.ID, &ReviewItem{
 		Type:      "user",
 		Principal: Principal{ID: "user-1"},
-	})
+	}); err != nil {
+		t.Fatalf("AddReviewItem failed: %v", err)
+	}
 
 	got, _ := svc.GetReview(context.Background(), review.ID)
 	itemID := got.Items[0].ID
@@ -194,7 +202,9 @@ func TestServiceRecordDecisionRevoke(t *testing.T) {
 		Comment:  "Access no longer needed",
 	}
 
-	svc.RecordDecision(context.Background(), itemID, decision)
+	if err := svc.RecordDecision(context.Background(), itemID, decision); err != nil {
+		t.Fatalf("RecordDecision failed: %v", err)
+	}
 
 	got, _ = svc.GetReview(context.Background(), review.ID)
 	if got.Stats.Revoked != 1 {
@@ -208,18 +218,22 @@ func TestServiceHighRiskTracking(t *testing.T) {
 	review, _ := svc.CreateReview(context.Background(), &AccessReview{Name: "Test Review"})
 
 	// Low risk item
-	svc.AddReviewItem(context.Background(), review.ID, &ReviewItem{
+	if err := svc.AddReviewItem(context.Background(), review.ID, &ReviewItem{
 		Type:      "user",
 		Principal: Principal{ID: "user-1"},
 		RiskScore: 30,
-	})
+	}); err != nil {
+		t.Fatalf("AddReviewItem low risk failed: %v", err)
+	}
 
 	// High risk item (>= 80)
-	svc.AddReviewItem(context.Background(), review.ID, &ReviewItem{
+	if err := svc.AddReviewItem(context.Background(), review.ID, &ReviewItem{
 		Type:      "user",
 		Principal: Principal{ID: "user-2"},
 		RiskScore: 85,
-	})
+	}); err != nil {
+		t.Fatalf("AddReviewItem high risk failed: %v", err)
+	}
 
 	got, _ := svc.GetReview(context.Background(), review.ID)
 	if got.Stats.HighRisk != 1 {

@@ -10,6 +10,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
+	goruntime "runtime"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -45,11 +48,17 @@ func newTestApp(t *testing.T) *app.App {
 	pe := policy.NewEngine()
 	fs := findings.NewStore()
 	sc := scanner.NewScanner(pe, scanner.ScanConfig{Workers: 2}, logger)
+	reportStateDir := t.TempDir()
+	if os.Getenv("GRAPH_SNAPSHOT_PATH") == "" {
+		t.Setenv("GRAPH_SNAPSHOT_PATH", filepath.Join(reportStateDir, "graph-snapshots"))
+	}
 
 	return &app.App{
 		Config: &app.Config{
-			LogLevel: "error",
-			Port:     0,
+			LogLevel:                   "error",
+			Port:                       0,
+			PlatformReportRunStateFile: filepath.Join(reportStateDir, "state.json"),
+			PlatformReportSnapshotPath: filepath.Join(reportStateDir, "snapshots"),
 		},
 		Logger:         logger,
 		Policy:         pe,
@@ -79,7 +88,11 @@ func newTestApp(t *testing.T) *app.App {
 // newTestServer creates a Server backed by the in-memory test app.
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
-	return NewServer(newTestApp(t))
+	s := NewServer(newTestApp(t))
+	t.Cleanup(func() {
+		s.Close()
+	})
+	return s
 }
 
 // do is a helper that sends a request to the test server and returns the response.
@@ -110,6 +123,19 @@ func decodeJSON(t *testing.T, w *httptest.ResponseRecorder) map[string]interface
 		t.Fatalf("decode json: %v (body=%s)", err, w.Body.String())
 	}
 	return out
+}
+
+func decodePagination(t *testing.T, body map[string]interface{}) map[string]interface{} {
+	t.Helper()
+	raw, ok := body["pagination"]
+	if !ok {
+		t.Fatalf("expected pagination object in response: %v", body)
+	}
+	pagination, ok := raw.(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected pagination map, got %T", raw)
+	}
+	return pagination
 }
 
 type scriptedAgentProvider struct {
@@ -164,6 +190,43 @@ func (p *staticProvider) Schema() []providers.TableSchema {
 	}}
 }
 
+type captureSyncProvider struct {
+	name     string
+	provider providers.ProviderType
+	calls    int
+	lastOpts providers.SyncOptions
+}
+
+func (p *captureSyncProvider) Name() string { return p.name }
+
+func (p *captureSyncProvider) Type() providers.ProviderType { return p.provider }
+
+func (p *captureSyncProvider) Configure(context.Context, map[string]interface{}) error { return nil }
+
+func (p *captureSyncProvider) Sync(_ context.Context, opts providers.SyncOptions) (*providers.SyncResult, error) {
+	p.calls++
+	p.lastOpts = opts
+	return &providers.SyncResult{Provider: p.name}, nil
+}
+
+func (p *captureSyncProvider) Test(context.Context) error { return nil }
+
+func (p *captureSyncProvider) Schema() []providers.TableSchema {
+	return []providers.TableSchema{{
+		Name:       "table",
+		Columns:    []providers.ColumnSchema{{Name: "id", Type: "string", Required: true}},
+		PrimaryKey: []string{"id"},
+	}}
+}
+
+type stubNotifier struct {
+	name string
+}
+
+func (n stubNotifier) Send(context.Context, notifications.Event) error { return nil }
+func (n stubNotifier) Name() string                                    { return n.name }
+func (n stubNotifier) Test(context.Context) error                      { return nil }
+
 // --- Health / Readiness ---
 
 func TestHealth(t *testing.T) {
@@ -178,12 +241,86 @@ func TestHealth(t *testing.T) {
 	}
 }
 
+func TestHealth_DegradedReturns503(t *testing.T) {
+	prev := runtimeNumGoroutine
+	runtimeNumGoroutine = func() int { return 15000 }
+	defer func() { runtimeNumGoroutine = prev }()
+
+	s := newTestServer(t)
+	w := do(t, s, "GET", "/health", nil)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", w.Code)
+	}
+	body := decodeJSON(t, w)
+	if body["status"] != "degraded" {
+		t.Fatalf("expected degraded status, got %v", body["status"])
+	}
+}
+
 func TestReady(t *testing.T) {
 	s := newTestServer(t)
 	w := do(t, s, "GET", "/ready", nil)
-	// Ready may return 503 when Snowflake is nil; that's expected in unit tests
-	if w.Code != http.StatusOK && w.Code != http.StatusServiceUnavailable {
-		t.Fatalf("expected 200 or 503, got %d", w.Code)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	body := decodeJSON(t, w)
+	if body["status"] != "healthy" {
+		t.Fatalf("expected healthy status, got %v", body["status"])
+	}
+}
+
+func TestReady_UnhealthyReturns503(t *testing.T) {
+	a := newTestApp(t)
+	a.Health.Register("dependency", func(ctx context.Context) health.CheckResult {
+		return health.CheckResult{
+			Name:    "dependency",
+			Status:  health.StatusUnhealthy,
+			Message: "dependency unavailable",
+		}
+	})
+
+	s := NewServer(a)
+	w := do(t, s, "GET", "/ready", nil)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", w.Code)
+	}
+	body := decodeJSON(t, w)
+	if body["status"] != "unhealthy" {
+		t.Fatalf("expected unhealthy status, got %v", body["status"])
+	}
+	if body["ready"] != false {
+		t.Fatalf("expected ready=false, got %v", body["ready"])
+	}
+}
+
+func TestStatus(t *testing.T) {
+	s := newTestServer(t)
+	w := do(t, s, "GET", "/status", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	body := decodeJSON(t, w)
+	if _, ok := body["graph_build"]; !ok {
+		t.Fatalf("expected graph_build in status response, got %v", body)
+	}
+	if _, ok := body["retention"]; !ok {
+		t.Fatalf("expected retention in status response, got %v", body)
+	}
+}
+
+func TestGraphBuildWarningHeadersSkipHealthAndStatus(t *testing.T) {
+	for _, path := range []string{"/health", "/ready", "/status", "/metrics"} {
+		if !skipGraphBuildWarningHeaders(path) {
+			t.Fatalf("expected graph build warning headers to be skipped for %s", path)
+		}
+	}
+}
+
+func TestGraphBuildWarningHeadersApplyToNonHealthRoutes(t *testing.T) {
+	for _, path := range []string{"/api/v1/policies/", "/api/v1/admin/providers", "/docs"} {
+		if skipGraphBuildWarningHeaders(path) {
+			t.Fatalf("expected graph build warning headers to apply to %s", path)
+		}
 	}
 }
 
@@ -211,6 +348,85 @@ func TestSetupMiddleware_RateLimitBeforeAuth(t *testing.T) {
 	s.ServeHTTP(w2, req2)
 	if w2.Code != http.StatusTooManyRequests {
 		t.Fatalf("second request expected 429, got %d", w2.Code)
+	}
+}
+
+func TestRateLimitSpoofedXFF_UntrustedRemote(t *testing.T) {
+	// An untrusted client sends spoofed X-Forwarded-For to appear as
+	// different IPs per request. Without the ordering fix (RealIP before
+	// rate limiting) each request would get a different bucket and never
+	// be throttled. After the fix the limiter keys on RemoteAddr so the
+	// same socket peer is correctly rate-limited.
+	a := newTestApp(t)
+	a.Config.RateLimitEnabled = true
+	a.Config.RateLimitRequests = 1
+	a.Config.RateLimitWindow = time.Minute
+	// No trusted proxies configured -- forwarded headers must be ignored.
+
+	s := NewServer(a)
+
+	// First request: spoofed XFF, should consume the one allowed request.
+	req1 := httptest.NewRequest(http.MethodGet, "/api/v1/policies/", nil)
+	req1.RemoteAddr = "203.0.113.50:9999"
+	req1.Header.Set("X-Forwarded-For", "10.10.10.1")
+	w1 := httptest.NewRecorder()
+	s.ServeHTTP(w1, req1)
+	// Expect 200 (policies list, not rate limited yet).
+	if w1.Code == http.StatusTooManyRequests {
+		t.Fatalf("first request should not be rate limited, got %d", w1.Code)
+	}
+
+	// Second request: same RemoteAddr, different spoofed XFF.
+	// Must be rejected because the limiter keys on RemoteAddr, not XFF.
+	req2 := httptest.NewRequest(http.MethodGet, "/api/v1/policies/", nil)
+	req2.RemoteAddr = "203.0.113.50:9999"
+	req2.Header.Set("X-Forwarded-For", "10.10.10.2")
+	w2 := httptest.NewRecorder()
+	s.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusTooManyRequests {
+		t.Fatalf("second request expected 429 (rate limited), got %d", w2.Code)
+	}
+}
+
+func TestRateLimitTrustedProxy_HonoursXFF(t *testing.T) {
+	// When the direct peer IS a trusted proxy, the limiter should honour
+	// X-Forwarded-For and rate-limit by the real client IP.
+	a := newTestApp(t)
+	a.Config.RateLimitEnabled = true
+	a.Config.RateLimitRequests = 1
+	a.Config.RateLimitWindow = time.Minute
+	a.Config.RateLimitTrustedProxies = []string{"10.0.0.0/8"}
+
+	s := NewServer(a)
+
+	// Request 1 from client A through the trusted proxy.
+	req1 := httptest.NewRequest(http.MethodGet, "/api/v1/policies/", nil)
+	req1.RemoteAddr = "10.0.0.1:8080" // trusted proxy
+	req1.Header.Set("X-Forwarded-For", "198.51.100.1")
+	w1 := httptest.NewRecorder()
+	s.ServeHTTP(w1, req1)
+	if w1.Code == http.StatusTooManyRequests {
+		t.Fatalf("first request should not be rate limited, got %d", w1.Code)
+	}
+
+	// Request 2 from client A (same XFF) through same trusted proxy => rate limited.
+	req2 := httptest.NewRequest(http.MethodGet, "/api/v1/policies/", nil)
+	req2.RemoteAddr = "10.0.0.1:8080"
+	req2.Header.Set("X-Forwarded-For", "198.51.100.1")
+	w2 := httptest.NewRecorder()
+	s.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusTooManyRequests {
+		t.Fatalf("second request from same XFF client expected 429, got %d", w2.Code)
+	}
+
+	// Request 3 from client B (different XFF) through same trusted proxy => allowed.
+	req3 := httptest.NewRequest(http.MethodGet, "/api/v1/policies/", nil)
+	req3.RemoteAddr = "10.0.0.1:8080"
+	req3.Header.Set("X-Forwarded-For", "198.51.100.2")
+	w3 := httptest.NewRecorder()
+	s.ServeHTTP(w3, req3)
+	if w3.Code == http.StatusTooManyRequests {
+		t.Fatalf("request from different XFF client should not be rate limited, got %d", w3.Code)
 	}
 }
 
@@ -271,6 +487,37 @@ func TestListPolicies_Empty(t *testing.T) {
 	}
 }
 
+func TestListPolicies_Pagination(t *testing.T) {
+	s := newTestServer(t)
+	s.app.Policy.AddPolicy(&policy.Policy{ID: "policy-1", Name: "Policy 1", Effect: "forbid", Resource: "aws::s3::bucket", Conditions: []string{"public == true"}, Severity: "high"})
+	s.app.Policy.AddPolicy(&policy.Policy{ID: "policy-2", Name: "Policy 2", Effect: "forbid", Resource: "aws::s3::bucket", Conditions: []string{"public == true"}, Severity: "high"})
+	s.app.Policy.AddPolicy(&policy.Policy{ID: "policy-3", Name: "Policy 3", Effect: "forbid", Resource: "aws::s3::bucket", Conditions: []string{"public == true"}, Severity: "high"})
+
+	w := do(t, s, "GET", "/api/v1/policies/?limit=2&offset=1", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	body := decodeJSON(t, w)
+	if body["count"].(float64) != 2 {
+		t.Fatalf("expected paged count 2, got %v", body["count"])
+	}
+	if body["total_count"].(float64) != 3 {
+		t.Fatalf("expected total_count 3, got %v", body["total_count"])
+	}
+
+	pagination := decodePagination(t, body)
+	if pagination["limit"].(float64) != 2 {
+		t.Fatalf("expected pagination.limit 2, got %v", pagination["limit"])
+	}
+	if pagination["offset"].(float64) != 1 {
+		t.Fatalf("expected pagination.offset 1, got %v", pagination["offset"])
+	}
+	if pagination["has_more"].(bool) {
+		t.Fatal("expected has_more false for final page")
+	}
+}
+
 func TestCreateAndGetPolicy(t *testing.T) {
 	s := newTestServer(t)
 
@@ -306,6 +553,170 @@ func TestCreateAndGetPolicy(t *testing.T) {
 	}
 }
 
+func TestPolicyUpdateAndDelete(t *testing.T) {
+	s := newTestServer(t)
+	create := do(t, s, "POST", "/api/v1/policies/", policy.Policy{
+		ID:         "policy-update",
+		Name:       "Original",
+		Effect:     "forbid",
+		Resource:   "aws::s3::bucket",
+		Conditions: []string{"public == true"},
+		Severity:   "high",
+	})
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", create.Code, create.Body.String())
+	}
+
+	update := do(t, s, "PUT", "/api/v1/policies/policy-update", policy.Policy{
+		Name:       "Updated",
+		Effect:     "forbid",
+		Resource:   "aws::s3::bucket",
+		Conditions: []string{"public == false"},
+		Severity:   "critical",
+	})
+	if update.Code != http.StatusOK {
+		t.Fatalf("expected 200 on update, got %d: %s", update.Code, update.Body.String())
+	}
+
+	get := do(t, s, "GET", "/api/v1/policies/policy-update", nil)
+	if get.Code != http.StatusOK {
+		t.Fatalf("expected 200 on get, got %d", get.Code)
+	}
+	body := decodeJSON(t, get)
+	if body["name"] != "Updated" {
+		t.Fatalf("expected updated name, got %v", body["name"])
+	}
+
+	del := do(t, s, "DELETE", "/api/v1/policies/policy-update", nil)
+	if del.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 on delete, got %d: %s", del.Code, del.Body.String())
+	}
+
+	missing := do(t, s, "GET", "/api/v1/policies/policy-update", nil)
+	if missing.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 after delete, got %d", missing.Code)
+	}
+}
+
+func TestPolicyVersionsAndRollback(t *testing.T) {
+	s := newTestServer(t)
+
+	create := do(t, s, "POST", "/api/v1/policies/", policy.Policy{
+		ID:          "policy-history",
+		Name:        "V1",
+		Description: "version 1",
+		Effect:      "forbid",
+		Resource:    "aws::s3::bucket",
+		Conditions:  []string{"public == true"},
+		Severity:    "high",
+	})
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", create.Code, create.Body.String())
+	}
+
+	update := do(t, s, "PUT", "/api/v1/policies/policy-history", policy.Policy{
+		Name:        "V2",
+		Description: "version 2",
+		Effect:      "forbid",
+		Resource:    "aws::s3::bucket",
+		Conditions:  []string{"public == false"},
+		Severity:    "critical",
+	})
+	if update.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", update.Code, update.Body.String())
+	}
+
+	versionsResp := do(t, s, "GET", "/api/v1/policies/policy-history/versions", nil)
+	if versionsResp.Code != http.StatusOK {
+		t.Fatalf("expected 200 for versions, got %d: %s", versionsResp.Code, versionsResp.Body.String())
+	}
+	versionsBody := decodeJSON(t, versionsResp)
+	versions, ok := versionsBody["versions"].([]interface{})
+	if !ok {
+		t.Fatalf("expected versions array, got %T", versionsBody["versions"])
+	}
+	if len(versions) != 2 {
+		t.Fatalf("expected 2 versions, got %d", len(versions))
+	}
+
+	rollback := do(t, s, "POST", "/api/v1/policies/policy-history/rollback", map[string]interface{}{"version": 1})
+	if rollback.Code != http.StatusOK {
+		t.Fatalf("expected 200 on rollback, got %d: %s", rollback.Code, rollback.Body.String())
+	}
+	rollbackBody := decodeJSON(t, rollback)
+	if rollbackBody["version"].(float64) != 3 {
+		t.Fatalf("expected rollback to create version 3, got %v", rollbackBody["version"])
+	}
+	if rollbackBody["pinned_version"].(float64) != 1 {
+		t.Fatalf("expected pinned_version 1, got %v", rollbackBody["pinned_version"])
+	}
+	if rollbackBody["name"] != "V1" {
+		t.Fatalf("expected rollback content from version 1, got %v", rollbackBody["name"])
+	}
+}
+
+func TestPolicyDryRun_DoesNotPersistChanges(t *testing.T) {
+	s := newTestServer(t)
+
+	create := do(t, s, "POST", "/api/v1/policies/", policy.Policy{
+		ID:          "policy-dry-run-api",
+		Name:        "Current",
+		Description: "current",
+		Effect:      "forbid",
+		Resource:    "aws::s3::bucket",
+		Conditions:  []string{"public == true"},
+		Severity:    "high",
+	})
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", create.Code, create.Body.String())
+	}
+
+	dryRun := do(t, s, "POST", "/api/v1/policies/policy-dry-run-api/dry-run", map[string]interface{}{
+		"policy": map[string]interface{}{
+			"name":        "Candidate",
+			"description": "candidate",
+			"effect":      "forbid",
+			"resource":    "aws::s3::bucket",
+			"conditions":  []string{"public == false"},
+			"severity":    "high",
+		},
+		"assets": []map[string]interface{}{
+			{"_cq_id": "bucket-a", "_cq_table": "aws_s3_buckets", "public": "true"},
+			{"_cq_id": "bucket-b", "_cq_table": "aws_s3_buckets", "public": "false"},
+		},
+	})
+	if dryRun.Code != http.StatusOK {
+		t.Fatalf("expected 200 for dry-run, got %d: %s", dryRun.Code, dryRun.Body.String())
+	}
+	dryRunBody := decodeJSON(t, dryRun)
+	if dryRunBody["dry_run"] != true {
+		t.Fatalf("expected dry_run=true, got %v", dryRunBody["dry_run"])
+	}
+	impact, ok := dryRunBody["impact"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected impact object, got %T", dryRunBody["impact"])
+	}
+	if impact["before_matches"].(float64) != 1 {
+		t.Fatalf("expected before_matches=1, got %v", impact["before_matches"])
+	}
+	if impact["after_matches"].(float64) != 1 {
+		t.Fatalf("expected after_matches=1, got %v", impact["after_matches"])
+	}
+
+	get := do(t, s, "GET", "/api/v1/policies/policy-dry-run-api", nil)
+	if get.Code != http.StatusOK {
+		t.Fatalf("expected 200 on policy get, got %d", get.Code)
+	}
+	body := decodeJSON(t, get)
+	if body["name"] != "Current" {
+		t.Fatalf("expected persisted policy name to remain Current, got %v", body["name"])
+	}
+	conditions, ok := body["conditions"].([]interface{})
+	if !ok || len(conditions) != 1 || conditions[0] != "public == true" {
+		t.Fatalf("expected original conditions to remain, got %v", body["conditions"])
+	}
+}
+
 func TestGetPolicy_NotFound(t *testing.T) {
 	s := newTestServer(t)
 	w := do(t, s, "GET", "/api/v1/policies/nonexistent", nil)
@@ -325,6 +736,34 @@ func TestListFindings_Empty(t *testing.T) {
 	body := decodeJSON(t, w)
 	if body["count"].(float64) != 0 {
 		t.Fatalf("expected 0, got %v", body["count"])
+	}
+}
+
+func TestDeleteFinding_SoftDelete(t *testing.T) {
+	s := newTestServer(t)
+	s.app.Findings.Upsert(context.Background(), policy.Finding{
+		ID:           "finding-delete",
+		PolicyID:     "policy-1",
+		PolicyName:   "Policy 1",
+		Description:  "test finding",
+		Severity:     "high",
+		Resource:     map[string]interface{}{"_cq_id": "res-1"},
+		ResourceID:   "res-1",
+		ResourceType: "aws::s3::bucket",
+	})
+
+	w := do(t, s, "DELETE", "/api/v1/findings/finding-delete", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	get := do(t, s, "GET", "/api/v1/findings/finding-delete", nil)
+	if get.Code != http.StatusOK {
+		t.Fatalf("expected 200 when retrieving soft-deleted finding, got %d", get.Code)
+	}
+	body := decodeJSON(t, get)
+	if body["status"] != "DELETED" {
+		t.Fatalf("expected finding status DELETED, got %v", body["status"])
 	}
 }
 
@@ -409,6 +848,83 @@ func TestListFindings_SeverityFilter(t *testing.T) {
 	}
 }
 
+func TestListFindings_SignalTypeAndDomainFilter(t *testing.T) {
+	s := newTestServer(t)
+	s.app.Findings.Upsert(context.Background(), policy.Finding{
+		ID: "f-1", PolicyID: "p1", Severity: "high",
+	})
+	s.app.Findings.Upsert(context.Background(), policy.Finding{
+		ID: "f-2", PolicyID: "stripe-large-refund", Severity: "high",
+	})
+
+	if err := s.app.Findings.Update("f-1", func(f *findings.Finding) error {
+		f.SignalType = findings.SignalTypeBusiness
+		f.Domain = findings.DomainPipeline
+		return nil
+	}); err != nil {
+		t.Fatalf("update f-1: %v", err)
+	}
+
+	w := do(t, s, "GET", "/api/v1/findings/?signal_type=business&domain=pipeline", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	body := decodeJSON(t, w)
+	if body["count"].(float64) != 1 {
+		t.Fatalf("expected 1 filtered finding, got %v", body["count"])
+	}
+}
+
+func TestSignalsDashboard(t *testing.T) {
+	s := newTestServer(t)
+	s.app.Findings.Upsert(context.Background(), policy.Finding{
+		ID: "f-1", PolicyID: "hubspot-stale-deal", Severity: "high",
+	})
+	s.app.Findings.Upsert(context.Background(), policy.Finding{
+		ID: "f-2", PolicyID: "stripe-large-refund", Severity: "critical",
+	})
+
+	if err := s.app.Findings.Update("f-1", func(f *findings.Finding) error {
+		f.SignalType = findings.SignalTypeBusiness
+		f.Domain = findings.DomainPipeline
+		return nil
+	}); err != nil {
+		t.Fatalf("update f-1: %v", err)
+	}
+	if err := s.app.Findings.Update("f-2", func(f *findings.Finding) error {
+		f.SignalType = findings.SignalTypeCompliance
+		f.Domain = findings.DomainFinancial
+		f.Status = "SNOOZED"
+		return nil
+	}); err != nil {
+		t.Fatalf("update f-2: %v", err)
+	}
+
+	w := do(t, s, "GET", "/api/v1/signals/dashboard", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	body := decodeJSON(t, w)
+	summary, ok := body["summary"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("missing summary payload: %#v", body)
+	}
+	if summary["total_signals"].(float64) != 2 {
+		t.Fatalf("expected total_signals=2, got %v", summary["total_signals"])
+	}
+	if summary["snoozed_signals"].(float64) != 1 {
+		t.Fatalf("expected snoozed_signals=1, got %v", summary["snoozed_signals"])
+	}
+}
+
+func TestExportFindings_InvalidFormat(t *testing.T) {
+	s := newTestServer(t)
+	w := do(t, s, "GET", "/api/v1/findings/export?format=xml", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 // --- Compliance exports ---
 
 func TestComplianceExportAuditPackage_ReturnsZip(t *testing.T) {
@@ -452,7 +968,9 @@ func TestComplianceExportAuditPackage_ReturnsZip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open summary entry: %v", err)
 	}
-	defer summaryRC.Close()
+	defer func() {
+		_ = summaryRC.Close()
+	}()
 
 	var summary struct {
 		FailingControls int `json:"failing_controls"`
@@ -514,6 +1032,82 @@ func TestCompliancePreAuditToExport_Smoke(t *testing.T) {
 		if !entries[required] {
 			t.Fatalf("missing export entry %q", required)
 		}
+	}
+}
+
+func TestComplianceReportAndExport_IgnoreResolvedFindings(t *testing.T) {
+	s := newTestServer(t)
+	s.app.Findings.Upsert(context.Background(), policy.Finding{
+		ID:         "f-resolved-1",
+		PolicyID:   "aws-iam-root-no-access-keys",
+		PolicyName: "Root access key found",
+		ResourceID: "aws-account-111",
+		Severity:   "critical",
+	})
+	if !s.app.Findings.Resolve("f-resolved-1") {
+		t.Fatal("expected finding resolve to succeed")
+	}
+
+	preAudit := do(t, s, "GET", "/api/v1/compliance/frameworks/cis-aws-1.5/pre-audit", nil)
+	if preAudit.Code != http.StatusOK {
+		t.Fatalf("pre-audit expected 200, got %d: %s", preAudit.Code, preAudit.Body.String())
+	}
+	preAuditBody := decodeJSON(t, preAudit)
+	if preAuditBody["estimated_outcome"] != "PASS" {
+		t.Fatalf("expected PASS outcome, got %v", preAuditBody["estimated_outcome"])
+	}
+	summary, ok := preAuditBody["summary"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected summary map, got %T", preAuditBody["summary"])
+	}
+	if failing, ok := summary["failing"].(float64); !ok || failing != 0 {
+		t.Fatalf("expected failing=0, got %v", summary["failing"])
+	}
+
+	report := do(t, s, "GET", "/api/v1/compliance/frameworks/cis-aws-1.5/report", nil)
+	if report.Code != http.StatusOK {
+		t.Fatalf("report expected 200, got %d: %s", report.Code, report.Body.String())
+	}
+	reportBody := decodeJSON(t, report)
+	if got, ok := reportBody["total_findings"].(float64); !ok || got != 0 {
+		t.Fatalf("expected total_findings=0, got %v", reportBody["total_findings"])
+	}
+
+	export := do(t, s, "GET", "/api/v1/compliance/frameworks/cis-aws-1.5/export", nil)
+	if export.Code != http.StatusOK {
+		t.Fatalf("export expected 200, got %d: %s", export.Code, export.Body.String())
+	}
+
+	body := export.Body.Bytes()
+	zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		t.Fatalf("invalid zip payload: %v", err)
+	}
+
+	entries := map[string]*zip.File{}
+	for _, file := range zr.File {
+		entries[file.Name] = file
+	}
+	summaryFile, ok := entries["summary.json"]
+	if !ok {
+		t.Fatalf("missing summary.json entry")
+	}
+	summaryRC, err := summaryFile.Open()
+	if err != nil {
+		t.Fatalf("open summary entry: %v", err)
+	}
+	defer func() {
+		_ = summaryRC.Close()
+	}()
+
+	var exportSummary struct {
+		FailingControls int `json:"failing_controls"`
+	}
+	if err := json.NewDecoder(summaryRC).Decode(&exportSummary); err != nil {
+		t.Fatalf("decode summary: %v", err)
+	}
+	if exportSummary.FailingControls != 0 {
+		t.Fatalf("expected no failing controls, got %+v", exportSummary)
 	}
 }
 
@@ -581,6 +1175,14 @@ func TestSyncScanFindingsPreAuditExport_Smoke(t *testing.T) {
 		if !entries[required] {
 			t.Fatalf("missing export entry %q", required)
 		}
+	}
+}
+
+func TestGenerateAuditRecommendations_ZeroTotal(t *testing.T) {
+	s := newTestServer(t)
+	recs := s.generateAuditRecommendations(1, 0, 0)
+	if len(recs) == 0 {
+		t.Fatal("expected recommendations")
 	}
 }
 
@@ -661,6 +1263,34 @@ func TestGetAttackPath_RespectsMaxDepth(t *testing.T) {
 	}
 }
 
+func TestListToxicCombinations_PaginationMetadata(t *testing.T) {
+	s := newTestServer(t)
+	w := do(t, s, "GET", "/api/v1/graph/toxic-combinations?limit=1&offset=0", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	body := decodeJSON(t, w)
+	pagination := decodePagination(t, body)
+	if pagination["limit"].(float64) != 1 || pagination["offset"].(float64) != 0 {
+		t.Fatalf("unexpected pagination: %v", pagination)
+	}
+}
+
+func TestAnalyzePeerGroups_PaginationMetadata(t *testing.T) {
+	s := newTestServer(t)
+	w := do(t, s, "GET", "/api/v1/graph/peer-groups?limit=1&offset=0", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	body := decodeJSON(t, w)
+	pagination := decodePagination(t, body)
+	if pagination["limit"].(float64) != 1 || pagination["offset"].(float64) != 0 {
+		t.Fatalf("unexpected pagination: %v", pagination)
+	}
+}
+
 // --- Webhooks CRUD ---
 
 func TestWebhookCRUD(t *testing.T) {
@@ -693,6 +1323,39 @@ func TestWebhookCRUD(t *testing.T) {
 	w = do(t, s, "DELETE", "/api/v1/webhooks/"+id, nil)
 	if w.Code != http.StatusNoContent && w.Code != http.StatusOK {
 		t.Fatalf("expected 200/204, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestListWebhooks_Pagination(t *testing.T) {
+	s := newTestServer(t)
+
+	for i := 1; i <= 3; i++ {
+		w := do(t, s, "POST", "/api/v1/webhooks/", map[string]interface{}{
+			"url":    "https://example.com/hook-" + strconv.Itoa(i),
+			"events": []string{"finding.created"},
+		})
+		if w.Code != http.StatusCreated {
+			t.Fatalf("create webhook %d: expected 201, got %d", i, w.Code)
+		}
+	}
+
+	w := do(t, s, "GET", "/api/v1/webhooks/?limit=2&offset=1", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	body := decodeJSON(t, w)
+	if body["count"].(float64) != 2 {
+		t.Fatalf("expected count 2, got %v", body["count"])
+	}
+	if body["total_count"].(float64) != 3 {
+		t.Fatalf("expected total_count 3, got %v", body["total_count"])
+	}
+	pagination := decodePagination(t, body)
+	if pagination["limit"].(float64) != 2 || pagination["offset"].(float64) != 1 {
+		t.Fatalf("unexpected pagination: %v", pagination)
+	}
+	if pagination["has_more"].(bool) {
+		t.Fatal("expected has_more false on final page")
 	}
 }
 
@@ -729,6 +1392,86 @@ func TestRemediationRuleCRUD(t *testing.T) {
 	}
 }
 
+func TestRemediationRuleUpdateAndDelete(t *testing.T) {
+	s := newTestServer(t)
+
+	create := do(t, s, "POST", "/api/v1/remediation/rules", map[string]interface{}{
+		"id":          "rule-update",
+		"name":        "Original Rule",
+		"description": "original description",
+		"enabled":     true,
+		"trigger": map[string]interface{}{
+			"type":     "finding.created",
+			"severity": "high",
+		},
+		"actions": []map[string]interface{}{
+			{"type": "create_ticket", "config": map[string]string{"priority": "high"}},
+		},
+	})
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", create.Code, create.Body.String())
+	}
+
+	update := do(t, s, "PUT", "/api/v1/remediation/rules/rule-update", map[string]interface{}{
+		"name":        "Updated Rule",
+		"description": "updated description",
+		"enabled":     false,
+		"trigger": map[string]interface{}{
+			"type":     "finding.created",
+			"severity": "critical",
+		},
+		"actions": []map[string]interface{}{
+			{"type": "notify_slack", "config": map[string]string{"channel": "#security"}},
+		},
+	})
+	if update.Code != http.StatusOK {
+		t.Fatalf("expected 200 on update, got %d: %s", update.Code, update.Body.String())
+	}
+
+	get := do(t, s, "GET", "/api/v1/remediation/rules/rule-update", nil)
+	if get.Code != http.StatusOK {
+		t.Fatalf("expected 200 on get, got %d", get.Code)
+	}
+	body := decodeJSON(t, get)
+	if body["name"] != "Updated Rule" {
+		t.Fatalf("expected updated name, got %v", body["name"])
+	}
+	if body["enabled"] != false {
+		t.Fatalf("expected updated enabled=false, got %v", body["enabled"])
+	}
+
+	del := do(t, s, "DELETE", "/api/v1/remediation/rules/rule-update", nil)
+	if del.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 on delete, got %d: %s", del.Code, del.Body.String())
+	}
+
+	missing := do(t, s, "GET", "/api/v1/remediation/rules/rule-update", nil)
+	if missing.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 after delete, got %d", missing.Code)
+	}
+}
+
+func TestListRemediationRules_Pagination(t *testing.T) {
+	s := newTestServer(t)
+
+	w := do(t, s, "GET", "/api/v1/remediation/rules?limit=2&offset=1", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	body := decodeJSON(t, w)
+	if body["count"].(float64) != 2 {
+		t.Fatalf("expected count 2, got %v", body["count"])
+	}
+	if body["total_count"].(float64) < 2 {
+		t.Fatalf("expected total_count >= 2, got %v", body["total_count"])
+	}
+	pagination := decodePagination(t, body)
+	if pagination["limit"].(float64) != 2 || pagination["offset"].(float64) != 1 {
+		t.Fatalf("unexpected pagination: %v", pagination)
+	}
+}
+
 // --- Scheduler ---
 
 func TestSchedulerStatus(t *testing.T) {
@@ -744,6 +1487,30 @@ func TestSchedulerListJobs(t *testing.T) {
 	w := do(t, s, "GET", "/api/v1/scheduler/jobs", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
+	}
+}
+
+func TestSchedulerListJobs_Pagination(t *testing.T) {
+	s := newTestServer(t)
+	s.app.Scheduler.AddJob("job-a", time.Hour, func(ctx context.Context) error { return nil })
+	s.app.Scheduler.AddJob("job-b", time.Hour, func(ctx context.Context) error { return nil })
+	s.app.Scheduler.AddJob("job-c", time.Hour, func(ctx context.Context) error { return nil })
+
+	w := do(t, s, "GET", "/api/v1/scheduler/jobs?limit=1&offset=1", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	body := decodeJSON(t, w)
+	if body["count"].(float64) != 1 {
+		t.Fatalf("expected count 1, got %v", body["count"])
+	}
+	pagination := decodePagination(t, body)
+	if pagination["limit"].(float64) != 1 || pagination["offset"].(float64) != 1 {
+		t.Fatalf("unexpected pagination: %v", pagination)
+	}
+	if !pagination["has_more"].(bool) {
+		t.Fatal("expected has_more true when more jobs remain")
 	}
 }
 
@@ -879,6 +1646,62 @@ func TestGetProvider_OracleIDCSVisibleByDefault(t *testing.T) {
 	}
 }
 
+func TestConfigureProvider_NotFound(t *testing.T) {
+	s := newTestServer(t)
+	w := do(t, s, "POST", "/api/v1/providers/missing/configure", map[string]interface{}{"token": "x"})
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestSyncProvider_UsesRequestOptions(t *testing.T) {
+	a := newTestApp(t)
+	provider := &captureSyncProvider{name: "okta", provider: providers.ProviderTypeIdentity}
+	a.Providers.Register(provider)
+
+	s := NewServer(a)
+	w := do(t, s, "POST", "/api/v1/providers/okta/sync", map[string]interface{}{
+		"full_sync": false,
+		"tables":    []string{"okta_users", "okta_groups"},
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	if provider.calls != 1 {
+		t.Fatalf("expected exactly one provider sync call, got %d", provider.calls)
+	}
+	if provider.lastOpts.FullSync {
+		t.Fatalf("expected full_sync=false, got %+v", provider.lastOpts)
+	}
+	if len(provider.lastOpts.Tables) != 2 || provider.lastOpts.Tables[0] != "okta_users" || provider.lastOpts.Tables[1] != "okta_groups" {
+		t.Fatalf("expected table filter to be forwarded, got %+v", provider.lastOpts.Tables)
+	}
+}
+
+func TestSyncProvider_EmptyBodyDefaultsToFullSync(t *testing.T) {
+	a := newTestApp(t)
+	provider := &captureSyncProvider{name: "okta", provider: providers.ProviderTypeIdentity}
+	a.Providers.Register(provider)
+
+	s := NewServer(a)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/providers/okta/sync", nil)
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if provider.calls != 1 {
+		t.Fatalf("expected exactly one provider sync call, got %d", provider.calls)
+	}
+	if !provider.lastOpts.FullSync {
+		t.Fatalf("expected default full sync behavior, got %+v", provider.lastOpts)
+	}
+	if len(provider.lastOpts.Tables) != 0 {
+		t.Fatalf("expected no table filter by default, got %+v", provider.lastOpts.Tables)
+	}
+}
+
 // --- RBAC ---
 
 func TestListRoles(t *testing.T) {
@@ -942,6 +1765,100 @@ func TestListReviews(t *testing.T) {
 	}
 }
 
+func TestCollectStaleAccessFindings_SkipsOrphanedWithoutHRData(t *testing.T) {
+	detector := identity.NewStaleAccessDetector(identity.DefaultThresholds())
+
+	users := []map[string]interface{}{
+		{
+			"arn":                "arn:aws:iam::123456789012:user/alice",
+			"user_name":          "alice",
+			"password_last_used": "2000-01-01T00:00:00Z",
+			"provider":           "aws",
+			"account_id":         "123456789012",
+		},
+	}
+
+	findings := collectStaleAccessFindings(context.Background(), detector, users, nil, nil, nil, nil)
+	if len(findings) == 0 {
+		t.Fatal("expected stale access findings")
+	}
+
+	for _, finding := range findings {
+		if finding.Type == identity.StaleAccessOrphanedAccount {
+			t.Fatal("expected orphaned account detection to be skipped without HR data")
+		}
+	}
+}
+
+func TestPersistStaleAccessFindings_PersistsAndRunsRemediation(t *testing.T) {
+	s := newTestServer(t)
+	s.app.RemediationExecutor = remediation.NewExecutor(
+		s.app.Remediation,
+		s.app.Ticketing,
+		s.app.Notifications,
+		s.app.Findings,
+		s.app.Webhooks,
+	)
+
+	err := s.app.Remediation.AddRule(remediation.Rule{
+		ID:          "test-identity-stale-resolve",
+		Name:        "Resolve stale identity finding",
+		Description: "Test-only rule",
+		Enabled:     true,
+		Trigger: remediation.Trigger{
+			Type:     remediation.TriggerFindingCreated,
+			PolicyID: "identity-stale-inactive-user",
+		},
+		Actions: []remediation.Action{
+			{Type: remediation.ActionResolveFinding},
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to add remediation rule: %v", err)
+	}
+
+	now := time.Now().Add(-120 * 24 * time.Hour)
+	stale := identity.StaleAccessFinding{
+		ID:       "stale-user-arn:aws:iam::123456789012:user/alice",
+		Type:     identity.StaleAccessInactiveUser,
+		Severity: "high",
+		Principal: identity.Principal{
+			ID:    "arn:aws:iam::123456789012:user/alice",
+			Type:  "user",
+			Name:  "alice",
+			Email: "alice@example.com",
+		},
+		Provider:     "aws",
+		Account:      "123456789012",
+		LastActivity: &now,
+		DaysSince:    120,
+		Details:      "stale user",
+		Remediation:  "disable user",
+	}
+
+	persisted, remediated := s.persistStaleAccessFindings(context.Background(), []identity.StaleAccessFinding{stale})
+	if persisted != 1 {
+		t.Fatalf("expected persisted=1, got %d", persisted)
+	}
+	if remediated == 0 {
+		t.Fatalf("expected remediation executions, got %d", remediated)
+	}
+
+	findingID := "identity-" + stale.ID
+	record, ok := s.app.Findings.Get(findingID)
+	if !ok {
+		t.Fatalf("expected finding %s in store", findingID)
+	}
+	if strings.ToUpper(record.Status) != "RESOLVED" {
+		t.Fatalf("expected finding to be resolved by remediation rule, got status=%s", record.Status)
+	}
+
+	_, remediatedAgain := s.persistStaleAccessFindings(context.Background(), []identity.StaleAccessFinding{stale})
+	if remediatedAgain != 0 {
+		t.Fatalf("expected no remediation run on re-observation, got %d", remediatedAgain)
+	}
+}
+
 // --- Reports ---
 
 func TestExecutiveSummary(t *testing.T) {
@@ -967,6 +1884,51 @@ func TestListNotifiers(t *testing.T) {
 	w := do(t, s, "GET", "/api/v1/notifications/", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
+	}
+}
+
+func TestListNotifiers_Pagination(t *testing.T) {
+	s := newTestServer(t)
+	s.app.Notifications.AddNotifier(stubNotifier{name: "zeta"})
+	s.app.Notifications.AddNotifier(stubNotifier{name: "alpha"})
+	s.app.Notifications.AddNotifier(stubNotifier{name: "bravo"})
+
+	w := do(t, s, "GET", "/api/v1/notifications/?limit=2&offset=1", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	body := decodeJSON(t, w)
+	if body["count"].(float64) != 2 {
+		t.Fatalf("expected count 2, got %v", body["count"])
+	}
+	pagination := decodePagination(t, body)
+	if pagination["limit"].(float64) != 2 || pagination["offset"].(float64) != 1 {
+		t.Fatalf("unexpected pagination: %v", pagination)
+	}
+}
+
+func TestListAgents_Pagination(t *testing.T) {
+	s := newTestServer(t)
+	s.app.Agents.RegisterAgent(&agents.Agent{ID: "agent-a", Name: "A"})
+	s.app.Agents.RegisterAgent(&agents.Agent{ID: "agent-b", Name: "B"})
+	s.app.Agents.RegisterAgent(&agents.Agent{ID: "agent-c", Name: "C"})
+
+	w := do(t, s, "GET", "/api/v1/agents/?limit=2&offset=1", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	body := decodeJSON(t, w)
+	if body["count"].(float64) != 2 {
+		t.Fatalf("expected count 2, got %v", body["count"])
+	}
+	if body["total_count"].(float64) != 3 {
+		t.Fatalf("expected total_count 3, got %v", body["total_count"])
+	}
+	pagination := decodePagination(t, body)
+	if pagination["limit"].(float64) != 2 || pagination["offset"].(float64) != 1 {
+		t.Fatalf("unexpected pagination: %v", pagination)
 	}
 }
 
@@ -1119,6 +2081,7 @@ func TestAuthMiddleware_RBACRouteMatrix(t *testing.T) {
 		{name: "runtime write", method: http.MethodPost, path: "/api/v1/runtime/events", body: map[string]interface{}{}, viewerForbidden: true, analystForbidden: false, adminForbidden: false},
 		{name: "graph read", method: http.MethodGet, path: "/api/v1/graph/stats", viewerForbidden: false, analystForbidden: false, adminForbidden: false},
 		{name: "graph write", method: http.MethodPost, path: "/api/v1/graph/rebuild", viewerForbidden: true, analystForbidden: false, adminForbidden: false},
+		{name: "audit admin only", method: http.MethodGet, path: "/api/v1/audit", viewerForbidden: true, analystForbidden: true, adminForbidden: false},
 		{name: "providers admin only", method: http.MethodGet, path: "/api/v1/providers/", viewerForbidden: true, analystForbidden: true, adminForbidden: false},
 		{name: "scheduler admin only", method: http.MethodPost, path: "/api/v1/scheduler/jobs/test/run", viewerForbidden: true, analystForbidden: true, adminForbidden: false},
 		{name: "fallback read", method: http.MethodGet, path: "/api/v1/nonexistent", viewerForbidden: false, analystForbidden: false, adminForbidden: false},
@@ -1166,6 +2129,226 @@ func TestAuthMiddleware_RBACRouteMatrix(t *testing.T) {
 			admin := doAuth(tc.method, tc.path, "admin-key", tc.body)
 			assertForbidden(tc, "admin", admin.Code, tc.adminForbidden)
 		})
+	}
+}
+
+func TestAuthMiddleware_TenantIsolationForFindings(t *testing.T) {
+	a := newTestApp(t)
+	a.Config.APIAuthEnabled = true
+	a.Config.APIKeys = map[string]string{
+		"alice-key": "alice-tenant-a",
+		"bob-key":   "bob-tenant-b",
+	}
+
+	if err := a.RBAC.CreateUser(&auth.User{
+		ID:       "alice-tenant-a",
+		Email:    "alice@example.com",
+		TenantID: "tenant-a",
+		RoleIDs:  []string{"analyst"},
+	}); err != nil {
+		t.Fatalf("create alice user: %v", err)
+	}
+	if err := a.RBAC.CreateUser(&auth.User{
+		ID:       "bob-tenant-b",
+		Email:    "bob@example.com",
+		TenantID: "tenant-b",
+		RoleIDs:  []string{"analyst"},
+	}); err != nil {
+		t.Fatalf("create bob user: %v", err)
+	}
+
+	a.Findings.Upsert(context.Background(), policy.Finding{
+		ID:          "finding-tenant-a",
+		PolicyID:    "policy-a",
+		PolicyName:  "Policy A",
+		Severity:    "high",
+		Description: "tenant a finding",
+		Resource: map[string]interface{}{
+			"_cq_id":    "asset-a",
+			"_cq_table": "aws_s3_buckets",
+			"tenant_id": "tenant-a",
+		},
+	})
+	a.Findings.Upsert(context.Background(), policy.Finding{
+		ID:          "finding-tenant-b",
+		PolicyID:    "policy-b",
+		PolicyName:  "Policy B",
+		Severity:    "critical",
+		Description: "tenant b finding",
+		Resource: map[string]interface{}{
+			"_cq_id":    "asset-b",
+			"_cq_table": "aws_s3_buckets",
+			"tenant_id": "tenant-b",
+		},
+	})
+
+	s := NewServer(a)
+
+	doAuth := func(method, path, apiKey string, body interface{}) *httptest.ResponseRecorder {
+		var reader io.Reader
+		if body != nil {
+			payload, err := json.Marshal(body)
+			if err != nil {
+				t.Fatalf("marshal body: %v", err)
+			}
+			reader = bytes.NewReader(payload)
+		}
+		req := httptest.NewRequest(method, path, reader)
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+		if body != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, req)
+		return w
+	}
+
+	aliceList := doAuth(http.MethodGet, "/api/v1/findings", "alice-key", nil)
+	if aliceList.Code != http.StatusOK {
+		t.Fatalf("expected alice list status 200, got %d", aliceList.Code)
+	}
+	aliceBody := decodeJSON(t, aliceList)
+	if aliceBody["count"].(float64) != 1 {
+		t.Fatalf("expected alice to see 1 finding, got %v", aliceBody["count"])
+	}
+	aliceFindings, ok := aliceBody["findings"].([]interface{})
+	if !ok || len(aliceFindings) != 1 {
+		t.Fatalf("expected alice findings list with one entry, got %#v", aliceBody["findings"])
+	}
+	aliceFinding, ok := aliceFindings[0].(map[string]interface{})
+	if !ok || aliceFinding["id"] != "finding-tenant-a" {
+		t.Fatalf("expected alice to see finding-tenant-a, got %#v", aliceFindings[0])
+	}
+
+	aliceCrossTenantGet := doAuth(http.MethodGet, "/api/v1/findings/finding-tenant-b", "alice-key", nil)
+	if aliceCrossTenantGet.Code != http.StatusNotFound {
+		t.Fatalf("expected alice cross-tenant get to return 404, got %d", aliceCrossTenantGet.Code)
+	}
+
+	aliceCrossTenantResolve := doAuth(http.MethodPost, "/api/v1/findings/finding-tenant-b/resolve", "alice-key", nil)
+	if aliceCrossTenantResolve.Code != http.StatusNotFound {
+		t.Fatalf("expected alice cross-tenant resolve to return 404, got %d", aliceCrossTenantResolve.Code)
+	}
+
+	bobGet := doAuth(http.MethodGet, "/api/v1/findings/finding-tenant-b", "bob-key", nil)
+	if bobGet.Code != http.StatusOK {
+		t.Fatalf("expected bob to access own finding, got %d", bobGet.Code)
+	}
+}
+
+func TestAgentSessionOwnershipEnforcedWhenAuthenticated(t *testing.T) {
+	a := newTestApp(t)
+	a.Config.APIAuthEnabled = true
+	a.Config.APIKeys = map[string]string{"alice-key": "alice-1", "bob-key": "bob-1"}
+
+	if err := a.RBAC.CreateUser(&auth.User{ID: "alice-1", Email: "alice@example.com", RoleIDs: []string{"analyst"}}); err != nil {
+		t.Fatalf("create alice user: %v", err)
+	}
+	if err := a.RBAC.CreateUser(&auth.User{ID: "bob-1", Email: "bob@example.com", RoleIDs: []string{"analyst"}}); err != nil {
+		t.Fatalf("create bob user: %v", err)
+	}
+
+	a.Agents.RegisterAgent(&agents.Agent{
+		ID:   "agent-ownership",
+		Name: "Ownership Agent",
+	})
+
+	s := NewServer(a)
+
+	doAuth := func(method, path, apiKey string, body interface{}) *httptest.ResponseRecorder {
+		var reader io.Reader
+		if body != nil {
+			b, err := json.Marshal(body)
+			if err != nil {
+				t.Fatalf("marshal body: %v", err)
+			}
+			reader = bytes.NewReader(b)
+		}
+
+		req := httptest.NewRequest(method, path, reader)
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+		if body != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, req)
+		return w
+	}
+
+	// Cannot spoof another user's identity when creating sessions.
+	spoofedCreate := doAuth(http.MethodPost, "/api/v1/agents/sessions", "alice-key", map[string]string{
+		"agent_id": "agent-ownership",
+		"user_id":  "bob-1",
+	})
+	if spoofedCreate.Code != http.StatusForbidden {
+		t.Fatalf("expected spoofed create to be forbidden, got %d", spoofedCreate.Code)
+	}
+
+	create := doAuth(http.MethodPost, "/api/v1/agents/sessions", "alice-key", map[string]string{
+		"agent_id": "agent-ownership",
+		"user_id":  "alice-1",
+	})
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected session create to succeed, got %d: %s", create.Code, create.Body.String())
+	}
+
+	var session agents.Session
+	if err := json.Unmarshal(create.Body.Bytes(), &session); err != nil {
+		t.Fatalf("decode session: %v", err)
+	}
+	if session.UserID != "alice-1" {
+		t.Fatalf("expected session user alice-1, got %s", session.UserID)
+	}
+
+	bobRead := doAuth(http.MethodGet, "/api/v1/agents/sessions/"+session.ID, "bob-key", nil)
+	if bobRead.Code != http.StatusForbidden {
+		t.Fatalf("expected bob read to be forbidden, got %d", bobRead.Code)
+	}
+
+	bobMessages := doAuth(http.MethodGet, "/api/v1/agents/sessions/"+session.ID+"/messages", "bob-key", nil)
+	if bobMessages.Code != http.StatusForbidden {
+		t.Fatalf("expected bob message read to be forbidden, got %d", bobMessages.Code)
+	}
+
+	bobSend := doAuth(http.MethodPost, "/api/v1/agents/sessions/"+session.ID+"/messages", "bob-key", map[string]string{
+		"content": "hi",
+	})
+	if bobSend.Code != http.StatusForbidden {
+		t.Fatalf("expected bob send to be forbidden, got %d", bobSend.Code)
+	}
+}
+
+func TestListAuditLogsRejectsNonPositiveLimit(t *testing.T) {
+	s := newTestServer(t)
+	w := do(t, s, "GET", "/api/v1/audit?limit=-1", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid limit, got %d", w.Code)
+	}
+}
+
+func TestListAuditLogsRejectsNegativeOffset(t *testing.T) {
+	s := newTestServer(t)
+	w := do(t, s, "GET", "/api/v1/audit?offset=-1", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid offset, got %d", w.Code)
+	}
+}
+
+func TestListAuditLogsDegradedResponseIncludesPagination(t *testing.T) {
+	s := newTestServer(t)
+	w := do(t, s, "GET", "/api/v1/audit?limit=5&offset=2", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	body := decodeJSON(t, w)
+	pagination := decodePagination(t, body)
+	if pagination["limit"].(float64) != 5 || pagination["offset"].(float64) != 2 {
+		t.Fatalf("unexpected pagination: %v", pagination)
+	}
+	if pagination["has_more"].(bool) {
+		t.Fatal("expected has_more false for degraded empty response")
 	}
 }
 
@@ -1285,7 +2468,13 @@ func TestAgentSendMessage_NoProviderConfiguredReturnsGuidance(t *testing.T) {
 }
 
 func TestNoPlaceholderMarkersInAPIServer(t *testing.T) {
-	content, err := os.ReadFile("server.go")
+	_, thisFile, _, ok := goruntime.Caller(0)
+	if !ok {
+		t.Fatal("resolve test file path: runtime caller unavailable")
+	}
+
+	serverPath := filepath.Join(filepath.Dir(thisFile), "server.go")
+	content, err := os.ReadFile(serverPath)
 	if err != nil {
 		t.Fatalf("read server.go: %v", err)
 	}

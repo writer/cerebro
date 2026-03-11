@@ -19,19 +19,21 @@ import (
 	"github.com/writer/cerebro/internal/metrics"
 	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/snowflake/tableops"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 // SyncEngine orchestrates cloud resource syncing
 type SyncEngine struct {
-	sf           *snowflake.Client
-	logger       *slog.Logger
-	concurrency  int
-	regions      []string
-	accountID    string
-	tableInit    sync.Map
-	tableFilter  map[string]struct{}
-	rateLimiter  *rate.Limiter
-	retryOptions retryOptions
+	sf                 warehouse.SyncWarehouse
+	logger             *slog.Logger
+	concurrency        int
+	regions            []string
+	accountID          string
+	tableInit          sync.Map
+	tableFilter        map[string]struct{}
+	rateLimiter        *rate.Limiter
+	retryOptions       retryOptions
+	stalenessThreshold time.Duration
 }
 
 type tableInitState struct {
@@ -58,6 +60,10 @@ func WithRateLimiter(limiter *rate.Limiter) EngineOption {
 	return func(e *SyncEngine) { e.rateLimiter = limiter }
 }
 
+func WithStalenessThreshold(threshold time.Duration) EngineOption {
+	return func(e *SyncEngine) { e.stalenessThreshold = threshold }
+}
+
 // DefaultAWSRegions returns commonly used AWS regions for multi-region scanning
 var DefaultAWSRegions = []string{
 	"us-east-1",
@@ -72,7 +78,7 @@ var DefaultAWSRegions = []string{
 	"ap-northeast-1",
 }
 
-func NewSyncEngine(sf *snowflake.Client, logger *slog.Logger, opts ...EngineOption) *SyncEngine {
+func NewSyncEngine(sf warehouse.SyncWarehouse, logger *slog.Logger, opts ...EngineOption) *SyncEngine {
 	e := &SyncEngine{
 		sf:          sf,
 		logger:      logger,
@@ -86,6 +92,9 @@ func NewSyncEngine(sf *snowflake.Client, logger *slog.Logger, opts ...EngineOpti
 	}
 	if e.retryOptions.Attempts == 0 {
 		e.retryOptions = defaultAWSRetryOptions()
+	}
+	if e.stalenessThreshold == 0 {
+		e.stalenessThreshold = defaultSyncStalenessThreshold
 	}
 	return e
 }
@@ -121,6 +130,7 @@ func (e *SyncEngine) SyncAllWithConfig(ctx context.Context, cfg aws.Config) ([]S
 	}
 
 	backfillRequests := e.loadBackfillRequests(ctx)
+	generationID := newSyncGenerationID("aws", e.accountID, time.Now().UTC())
 
 	// Create work queue
 	type workItem struct {
@@ -144,13 +154,28 @@ func (e *SyncEngine) SyncAllWithConfig(ctx context.Context, cfg aws.Config) ([]S
 		return []SyncResult{}, nil
 	}
 
+	sort.SliceStable(work, func(i, j int) bool {
+		leftOrder := syncDependencyOrder(work[i].table.Name)
+		rightOrder := syncDependencyOrder(work[j].table.Name)
+		if leftOrder != rightOrder {
+			return leftOrder < rightOrder
+		}
+
+		leftBackfill := hasBackfillRequest(backfillRequests, work[i].table.Name, work[i].region)
+		rightBackfill := hasBackfillRequest(backfillRequests, work[j].table.Name, work[j].region)
+		if leftBackfill != rightBackfill {
+			return leftBackfill && !rightBackfill
+		}
+
+		if work[i].table.Name != work[j].table.Name {
+			return work[i].table.Name < work[j].table.Name
+		}
+		return work[i].region < work[j].region
+	})
 	if len(backfillRequests) > 0 {
-		sort.SliceStable(work, func(i, j int) bool {
-			left := hasBackfillRequest(backfillRequests, work[i].table.Name, work[i].region)
-			right := hasBackfillRequest(backfillRequests, work[j].table.Name, work[j].region)
-			return left && !right
-		})
-		e.logger.Info("prioritizing queued backfill work", "count", len(backfillRequests))
+		e.logger.Info("ordered sync queue by dependency and queued backfill priority", "backfill_count", len(backfillRequests))
+	} else {
+		e.logger.Info("ordered sync queue by dependency priority")
 	}
 
 	results := make([]SyncResult, len(work))
@@ -177,8 +202,12 @@ func (e *SyncEngine) SyncAllWithConfig(ctx context.Context, cfg aws.Config) ([]S
 				serviceLimiter <- struct{}{}
 				defer func() { <-serviceLimiter }()
 			}
-			result, err := e.syncTable(ctx, cfg, item.table, item.region, forceBackfill, backfillReason)
+			result, err := e.syncTable(ctx, cfg, item.table, item.region, forceBackfill, backfillReason, generationID)
+			result.GenerationID = generationID
 			results[idx] = result
+			if recErr := e.recordGenerationResult(ctx, generationID, result, err); recErr != nil {
+				e.logger.Warn("failed to record sync generation status", "generation_id", generationID, "table", result.Table, "region", result.Region, "error", recErr)
+			}
 			if err != nil {
 				mu.Lock()
 				errs = append(errs, err)
@@ -189,6 +218,23 @@ func (e *SyncEngine) SyncAllWithConfig(ctx context.Context, cfg aws.Config) ([]S
 	}
 
 	_ = group.Wait()
+
+	if alert, ok := detectSyncStaleness(results, e.stalenessThreshold); ok {
+		e.logger.Warn("detected sync staleness divergence",
+			"generation_id", generationID,
+			"threshold", alert.Threshold.String(),
+			"drift", alert.Drift.String(),
+			"oldest_table", alert.Min.Table,
+			"oldest_region", alert.Min.Region,
+			"oldest_sync_time", alert.Min.SyncTime,
+			"newest_table", alert.Max.Table,
+			"newest_region", alert.Max.Region,
+			"newest_sync_time", alert.Max.SyncTime,
+		)
+		if err := e.recordGenerationAlert(ctx, generationID, alert); err != nil {
+			e.logger.Warn("failed to persist sync staleness alert", "generation_id", generationID, "error", err)
+		}
+	}
 
 	// Persist change history
 	if err := e.persistChangeHistory(ctx, results); err != nil {
@@ -275,11 +321,12 @@ func (e *SyncEngine) ValidateTablesWithConfig(ctx context.Context, cfg aws.Confi
 	return results, errors.Join(errs...)
 }
 
-func (e *SyncEngine) syncTable(ctx context.Context, cfg aws.Config, table TableSpec, region string, forceBackfill bool, backfillReason string) (SyncResult, error) {
+func (e *SyncEngine) syncTable(ctx context.Context, cfg aws.Config, table TableSpec, region string, forceBackfill bool, backfillReason string, generationID string) (SyncResult, error) {
 	start := time.Now()
 	result := SyncResult{
-		Table:  table.Name,
-		Region: region,
+		Table:        table.Name,
+		Region:       region,
+		GenerationID: generationID,
 	}
 	defer func() {
 		if result.Duration == 0 {
@@ -322,6 +369,7 @@ func (e *SyncEngine) syncTable(ctx context.Context, cfg aws.Config, table TableS
 	if err != nil {
 		if isPartialFetchError(err) && len(rows) > 0 {
 			partialFetch = true
+			result.BackfillPending = true
 			e.logger.Warn("fetch returned partial results; enabling backfill-safe upsert", "table", table.Name, "region", region, "rows", len(rows), "error", err)
 			if recErr := e.recordBackfillRequest(ctx, table.Name, region, err.Error()); recErr != nil {
 				e.logger.Warn("failed to record backfill request", "table", table.Name, "region", region, "error", recErr)
@@ -472,35 +520,33 @@ func (e *SyncEngine) upsertWithChanges(ctx context.Context, table string, column
 		if incremental {
 			return changes, nil
 		}
-		existing := e.getExistingHashes(ctx, table, region, hasRegion, hasAccount, globalScope)
+		existing, err := e.getExistingHashes(ctx, table, region, hasRegion, hasAccount, globalScope)
+		if err != nil {
+			return changes, fmt.Errorf("get existing hashes: %w", err)
+		}
 		changes = detectRowChanges(existing, map[string]string{}, false)
 		if len(changes.Removed) > 0 {
 			if err := e.deleteScopedRows(ctx, table, region, hasRegion, hasAccount, globalScope); err != nil {
-				e.logger.Debug("delete failed", "error", err)
+				return changes, fmt.Errorf("delete scoped rows: %w", err)
 			}
 		}
 		return changes, nil
 	}
 
+	rows = dedupeRowsByID(rows)
+
 	// Get existing rows with their hashes
-	existing := e.getExistingHashes(ctx, table, region, hasRegion, hasAccount, globalScope)
+	existing, err := e.getExistingHashes(ctx, table, region, hasRegion, hasAccount, globalScope)
+	if err != nil {
+		return changes, fmt.Errorf("get existing hashes: %w", err)
+	}
 
 	// Build new row map with hashes
 	newRows := buildRowHashes(rows, hashRowContent)
 	changes = detectRowChanges(existing, newRows, incremental)
 
-	// Delete and insert
-	if incremental {
-		if err := e.deleteRowsByID(ctx, table, newRows, region, hasRegion, hasAccount, globalScope); err != nil {
-			e.logger.Debug("delete by id failed", "table", table, "error", err)
-		}
-	} else {
-		if err := e.deleteScopedRows(ctx, table, region, hasRegion, hasAccount, globalScope); err != nil {
-			e.logger.Debug("delete failed", "error", err)
-		}
-	}
-
-	insertRows := make([]map[string]interface{}, 0, len(rows))
+	// Build row set for atomic upsert.
+	mergeRows := make([]map[string]interface{}, 0, len(rows))
 	for _, row := range rows {
 		id, ok := row["_cq_id"].(string)
 		if !ok {
@@ -516,11 +562,23 @@ func (e *SyncEngine) upsertWithChanges(ctx context.Context, table string, column
 			}
 			newRow[k] = v
 		}
-		insertRows = append(insertRows, newRow)
+		mergeRows = append(mergeRows, newRow)
 	}
 
-	if err := insertRowsBatch(ctx, e.sf, table, insertRows); err != nil {
-		return changes, fmt.Errorf("insert rows: %w", err)
+	// Atomic upsert via MERGE - no delete-before-insert window.
+	if err := mergeRowsBatch(ctx, e.sf, table, mergeRows); err != nil {
+		return changes, fmt.Errorf("merge rows: %w", err)
+	}
+
+	// For full snapshots, remove rows that disappeared from source.
+	if !incremental && len(changes.Removed) > 0 {
+		removedIDs := make(map[string]string, len(changes.Removed))
+		for _, id := range changes.Removed {
+			removedIDs[id] = ""
+		}
+		if err := e.deleteRowsByID(ctx, table, removedIDs, region, hasRegion, hasAccount, globalScope); err != nil {
+			return changes, fmt.Errorf("delete removed rows: %w", err)
+		}
 	}
 
 	return changes, nil
@@ -571,20 +629,20 @@ func (e *SyncEngine) deleteRowsByID(ctx context.Context, table string, ids map[s
 	return nil
 }
 
-func (e *SyncEngine) getExistingHashes(ctx context.Context, table string, region string, hasRegion bool, hasAccount bool, globalScope bool) map[string]string {
+func (e *SyncEngine) getExistingHashes(ctx context.Context, table string, region string, hasRegion bool, hasAccount bool, globalScope bool) (map[string]string, error) {
 	result := make(map[string]string)
 	if err := snowflake.ValidateTableName(table); err != nil {
-		return result
+		return result, err
 	}
 
 	where, args := e.scopeWhereClause(region, hasRegion, hasAccount, globalScope)
 	query := fmt.Sprintf("SELECT _CQ_ID, _CQ_HASH FROM %s%s", table, where)
 	rows, err := e.sf.Query(ctx, query, args...)
 	if err != nil {
-		return result
+		return result, err
 	}
 
-	return decodeExistingHashes(rows.Rows)
+	return decodeExistingHashes(rows.Rows), nil
 }
 
 func (e *SyncEngine) deleteScopedRows(ctx context.Context, table string, region string, hasRegion bool, hasAccount bool, globalScope bool) error {
@@ -639,12 +697,24 @@ func (e *SyncEngine) persistChangeHistory(ctx context.Context, results []SyncRes
 		operation VARCHAR,
 		region VARCHAR,
 		account_id VARCHAR,
+		provider VARCHAR,
 		timestamp TIMESTAMP_TZ,
 		_cq_sync_time TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP()
 	)`
 
 	if _, err := e.sf.Exec(ctx, createQuery); err != nil {
 		return fmt.Errorf("create change history table: %w", err)
+	}
+	for _, query := range []string{
+		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS operation VARCHAR",
+		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS region VARCHAR",
+		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS account_id VARCHAR",
+		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS provider VARCHAR",
+		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS timestamp TIMESTAMP_TZ",
+	} {
+		if _, err := e.sf.Exec(ctx, query); err != nil {
+			e.logger.Debug("failed to ensure change history column", "query", query, "error", err)
+		}
 	}
 
 	// Insert changes
@@ -674,10 +744,10 @@ func (e *SyncEngine) persistChangeHistory(ctx context.Context, results []SyncRes
 
 func (e *SyncEngine) insertChangeRecord(ctx context.Context, table, resourceID, op, region string, ts time.Time) {
 	id := fmt.Sprintf("%s-%s-%s-%d", table, resourceID, op, ts.UnixNano())
-	query := `INSERT INTO _sync_change_history (id, table_name, resource_id, operation, region, account_id, timestamp)
-		SELECT ?, ?, ?, ?, ?, ?, ?`
+	query := `INSERT INTO _sync_change_history (id, table_name, resource_id, operation, region, account_id, provider, timestamp)
+		SELECT ?, ?, ?, ?, ?, ?, ?, ?`
 
-	if _, err := e.sf.Exec(ctx, query, id, table, resourceID, op, region, e.accountID, ts); err != nil {
+	if _, err := e.sf.Exec(ctx, query, id, table, resourceID, op, region, e.accountID, "aws", ts); err != nil {
 		e.logger.Debug("failed to insert change record", "error", err)
 	}
 }

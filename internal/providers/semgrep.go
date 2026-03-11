@@ -31,7 +31,7 @@ func NewSemgrepProvider() *SemgrepProvider {
 	return &SemgrepProvider{
 		BaseProvider: NewBaseProvider("semgrep", ProviderTypeSaaS),
 		baseURL:      semgrepDefaultAPIURL,
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

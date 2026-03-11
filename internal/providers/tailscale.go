@@ -22,7 +22,7 @@ func NewTailscaleProvider() *TailscaleProvider {
 	return &TailscaleProvider{
 		BaseProvider: NewBaseProvider("tailscale", ProviderTypeNetwork),
 		apiURL:       "https://api.tailscale.com/api/v2",
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

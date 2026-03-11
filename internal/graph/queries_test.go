@@ -107,6 +107,52 @@ func TestBlastRadius(t *testing.T) {
 	})
 }
 
+func TestBlastRadius_CacheIsolationAndInvalidation(t *testing.T) {
+	g := setupTestGraph()
+
+	first := BlastRadius(g, "user:alice", 3)
+	if first.TotalCount == 0 {
+		t.Fatal("expected blast radius results for alice")
+	}
+
+	// Mutating the returned object should not poison cached results.
+	first.ReachableNodes = nil
+	first.TotalCount = 0
+
+	second := BlastRadius(g, "user:alice", 3)
+	if second.TotalCount == 0 {
+		t.Fatal("expected cached blast radius result to remain intact")
+	}
+
+	// Graph mutation should invalidate cache and include the new resource.
+	g.AddNode(&Node{
+		ID:      "bucket:cache-test",
+		Kind:    NodeKindBucket,
+		Name:    "cache-test",
+		Account: "111111111111",
+		Risk:    RiskLow,
+	})
+	g.AddEdge(&Edge{
+		ID:     "edge:cache-test",
+		Source: "role:admin",
+		Target: "bucket:cache-test",
+		Kind:   EdgeKindCanRead,
+		Effect: EdgeEffectAllow,
+	})
+
+	third := BlastRadius(g, "user:alice", 3)
+	found := false
+	for _, rn := range third.ReachableNodes {
+		if rn.Node.ID == "bucket:cache-test" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected blast radius to include post-mutation resource after cache invalidation")
+	}
+}
+
 func TestReverseAccess(t *testing.T) {
 	g := setupTestGraph()
 

@@ -25,7 +25,7 @@ func NewVantaProvider() *VantaProvider {
 	return &VantaProvider{
 		BaseProvider: NewBaseProvider("vanta", ProviderTypeSaaS),
 		baseURL:      vantaDefaultAPIURL,
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

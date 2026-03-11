@@ -1,0 +1,13 @@
+{
+  "id": "stripe-payment-failure-streak",
+  "name": "Consecutive Payment Failures",
+  "description": "Detects subscriptions in past_due state with repeated payment failures.",
+  "effect": "forbid",
+  "resource": "stripe::subscription",
+  "conditions": [
+    "past_due == true",
+    "failed_payment_count > 2"
+  ],
+  "severity": "critical",
+  "tags": ["churn-risk", "revenue", "stripe"]
+}

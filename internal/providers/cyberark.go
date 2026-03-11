@@ -28,7 +28,7 @@ type CyberArkProvider struct {
 func NewCyberArkProvider() *CyberArkProvider {
 	return &CyberArkProvider{
 		BaseProvider: NewBaseProvider("cyberark", ProviderTypeIdentity),
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

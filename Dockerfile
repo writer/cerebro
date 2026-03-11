@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1.7
 
 # Build stage - use buildx cross-compilation (no QEMU needed)
-FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS builder
+ARG GO_VERSION
+FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine AS builder
 
 ARG TARGETOS
 ARG TARGETARCH
@@ -37,6 +38,9 @@ WORKDIR /app
 USER cerebro
 
 EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD curl -fsS http://127.0.0.1:8080/health || exit 1
 
 ENTRYPOINT ["/usr/local/bin/cerebro"]
 CMD ["serve"]

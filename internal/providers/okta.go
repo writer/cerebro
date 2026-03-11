@@ -32,7 +32,7 @@ const (
 func NewOktaProvider() *OktaProvider {
 	return &OktaProvider{
 		BaseProvider: NewBaseProvider("okta", ProviderTypeIdentity),
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

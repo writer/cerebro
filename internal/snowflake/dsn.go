@@ -26,7 +26,7 @@ func DSNConfigFromEnv() DSNConfig {
 		User:       os.Getenv("SNOWFLAKE_USER"),
 		PrivateKey: NormalizePrivateKey(os.Getenv("SNOWFLAKE_PRIVATE_KEY")),
 		Database:   getEnvOrDefault("SNOWFLAKE_DATABASE", "CEREBRO"),
-		Schema:     getEnvOrDefault("SNOWFLAKE_SCHEMA", "RAW"),
+		Schema:     getEnvOrDefault("SNOWFLAKE_SCHEMA", "CEREBRO"),
 		Warehouse:  os.Getenv("SNOWFLAKE_WAREHOUSE"),
 		Role:       os.Getenv("SNOWFLAKE_ROLE"),
 	}

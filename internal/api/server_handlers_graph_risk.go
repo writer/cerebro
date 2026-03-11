@@ -11,7 +11,7 @@ import (
 
 func (s *Server) graphStats(w http.ResponseWriter, r *http.Request) {
 	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
 
@@ -28,7 +28,7 @@ func (s *Server) graphStats(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) blastRadius(w http.ResponseWriter, r *http.Request) {
 	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
 
@@ -51,7 +51,7 @@ func (s *Server) blastRadius(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) cascadingBlastRadius(w http.ResponseWriter, r *http.Request) {
 	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
 
@@ -74,7 +74,7 @@ func (s *Server) cascadingBlastRadius(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) reverseAccess(w http.ResponseWriter, r *http.Request) {
 	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
 
@@ -97,12 +97,12 @@ func (s *Server) reverseAccess(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) rebuildGraph(w http.ResponseWriter, r *http.Request) {
 	if s.app.SecurityGraphBuilder == nil {
-		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
 
 	if err := s.app.RebuildSecurityGraph(r.Context()); err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
+		s.errorFromErr(w, err)
 		return
 	}
 
@@ -120,20 +120,26 @@ func (s *Server) rebuildGraph(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) riskReport(w http.ResponseWriter, r *http.Request) {
 	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
 
-	engine := graph.NewRiskEngine(s.app.SecurityGraph)
+	engine := s.graphRiskEngine()
+	if engine == nil {
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+		return
+	}
 	report := engine.Analyze()
+	s.persistRiskEngineState(r.Context(), engine)
 	s.json(w, http.StatusOK, report)
 }
 
 func (s *Server) listToxicCombinations(w http.ResponseWriter, r *http.Request) {
 	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
+	pagination := ParsePagination(r, 100, 1000)
 
 	engine := graph.NewToxicCombinationEngine()
 	results := engine.Analyze(s.app.SecurityGraph)
@@ -150,26 +156,20 @@ func (s *Server) listToxicCombinations(w http.ResponseWriter, r *http.Request) {
 		results = filtered
 	}
 
-	// Limit results
-	limit := 50
-	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
-		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 200 {
-			limit = l
-		}
-	}
-	if len(results) > limit {
-		results = results[:limit]
-	}
+	paged, paginationResp := paginateSlice(results, pagination)
 
 	s.json(w, http.StatusOK, map[string]interface{}{
-		"total":   len(results),
-		"results": results,
+		"total":       len(results),
+		"results":     paged,
+		"count":       len(paged),
+		"pagination":  paginationResp,
+		"total_count": len(results),
 	})
 }
 
 func (s *Server) listGraphAttackPaths(w http.ResponseWriter, r *http.Request) {
 	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
 
@@ -218,7 +218,7 @@ func (s *Server) listGraphAttackPaths(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) simulateAttackPathFix(w http.ResponseWriter, r *http.Request) {
 	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
 
@@ -237,7 +237,7 @@ func (s *Server) simulateAttackPathFix(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) listChokepoints(w http.ResponseWriter, r *http.Request) {
 	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
 
@@ -264,7 +264,7 @@ func (s *Server) listChokepoints(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) detectPrivilegeEscalation(w http.ResponseWriter, r *http.Request) {
 	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
 
@@ -287,9 +287,10 @@ func (s *Server) detectPrivilegeEscalation(w http.ResponseWriter, r *http.Reques
 
 func (s *Server) analyzePeerGroups(w http.ResponseWriter, r *http.Request) {
 	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
+	pagination := ParsePagination(r, 100, 1000)
 
 	minSimilarity := 0.7
 	if simStr := r.URL.Query().Get("min_similarity"); simStr != "" {
@@ -307,19 +308,23 @@ func (s *Server) analyzePeerGroups(w http.ResponseWriter, r *http.Request) {
 
 	analysis := graph.AnalyzePeerGroups(s.app.SecurityGraph, minSimilarity, minGroupSize)
 	privilegeCreep := graph.FindPrivilegeCreep(s.app.SecurityGraph, 1.5)
+	pagedGroups, paginationResp := paginateSlice(analysis.Groups, pagination)
 
 	s.json(w, http.StatusOK, map[string]interface{}{
 		"total_principals": analysis.TotalPrincipals,
-		"groups":           analysis.Groups,
+		"groups":           pagedGroups,
 		"ungrouped":        analysis.Ungrouped,
 		"outliers":         analysis.Outliers,
 		"privilege_creep":  privilegeCreep,
+		"count":            len(pagedGroups),
+		"pagination":       paginationResp,
+		"total_count":      len(analysis.Groups),
 	})
 }
 
 func (s *Server) getEffectivePermissions(w http.ResponseWriter, r *http.Request) {
 	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
 
@@ -337,7 +342,7 @@ func (s *Server) getEffectivePermissions(w http.ResponseWriter, r *http.Request)
 
 func (s *Server) comparePermissions(w http.ResponseWriter, r *http.Request) {
 	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
 

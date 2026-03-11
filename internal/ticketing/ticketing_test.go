@@ -23,6 +23,8 @@ func NewMockProvider(name string) *MockProvider {
 
 func (m *MockProvider) Name() string { return m.name }
 
+func (m *MockProvider) Validate(ctx context.Context) error { return nil }
+
 func (m *MockProvider) CreateTicket(ctx context.Context, ticket *Ticket) (*Ticket, error) {
 	ticket.ID = "MOCK-" + ticket.Title[:min(5, len(ticket.Title))]
 	ticket.ExternalID = ticket.ID
@@ -118,6 +120,28 @@ func TestService_SetPrimary(t *testing.T) {
 	}
 }
 
+func TestService_Primary_NoProviders(t *testing.T) {
+	var nilService *Service
+	if nilService.Primary() != nil {
+		t.Fatal("expected nil service to have nil primary provider")
+	}
+
+	s := NewService()
+	if s.Primary() != nil {
+		t.Fatal("expected empty service to have nil primary provider")
+	}
+}
+
+func TestService_Primary_UnknownProvider(t *testing.T) {
+	s := NewService()
+	s.RegisterProvider(NewMockProvider("jira"))
+	s.SetPrimary("linear")
+
+	if s.Primary() != nil {
+		t.Fatal("expected nil primary when configured primary provider is missing")
+	}
+}
+
 func TestService_CreateTicket(t *testing.T) {
 	s := NewService()
 	s.RegisterProvider(NewMockProvider("jira"))
@@ -140,6 +164,22 @@ func TestService_CreateTicket(t *testing.T) {
 
 	if created.Status != "open" {
 		t.Errorf("got status %s, want open", created.Status)
+	}
+}
+
+func TestService_CreateTicket_NoPrimaryConfigured(t *testing.T) {
+	s := NewService()
+
+	_, err := s.CreateTicket(context.Background(), &Ticket{Title: "Test Ticket"})
+	if err == nil {
+		t.Fatal("expected CreateTicket to fail when no provider is configured")
+	}
+
+	s.RegisterProvider(NewMockProvider("jira"))
+	s.SetPrimary("linear")
+	_, err = s.CreateTicket(context.Background(), &Ticket{Title: "Test Ticket"})
+	if err == nil {
+		t.Fatal("expected CreateTicket to fail when primary provider is missing")
 	}
 }
 
@@ -359,9 +399,11 @@ func TestMockProvider_Operations(t *testing.T) {
 
 	// Update
 	status := "in_progress"
-	provider.UpdateTicket(context.Background(), ticket.ID, &TicketUpdate{
+	if _, err := provider.UpdateTicket(context.Background(), ticket.ID, &TicketUpdate{
 		Status: &status,
-	})
+	}); err != nil {
+		t.Fatalf("UpdateTicket failed: %v", err)
+	}
 
 	found, _ = provider.GetTicket(context.Background(), ticket.ID)
 	if found.Status != "in_progress" {
@@ -375,7 +417,9 @@ func TestMockProvider_Operations(t *testing.T) {
 	}
 
 	// Close
-	provider.Close(context.Background(), ticket.ID, "resolved")
+	if err := provider.Close(context.Background(), ticket.ID, "resolved"); err != nil {
+		t.Fatalf("Close failed: %v", err)
+	}
 	found, _ = provider.GetTicket(context.Background(), ticket.ID)
 	if found.Status != "closed" {
 		t.Error("Close failed")

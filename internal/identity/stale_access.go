@@ -3,7 +3,10 @@ package identity
 import (
 	"context"
 	"strconv"
+	"strings"
 	"time"
+
+	"github.com/writer/cerebro/internal/policy"
 )
 
 // StaleAccessDetector identifies unused or orphaned access
@@ -58,6 +61,90 @@ const (
 	StaleAccessUnusedRole          StaleAccessType = "unused_role"
 	StaleAccessExcessivePrivilege  StaleAccessType = "excessive_privilege"
 )
+
+// ToPolicyFinding converts identity stale-access findings into the platform's
+// canonical policy finding format for persistence and downstream remediation.
+func (f StaleAccessFinding) ToPolicyFinding() policy.Finding {
+	policyID, policyName := staleAccessPolicyMetadata(f.Type)
+	severity := strings.ToLower(strings.TrimSpace(f.Severity))
+	if severity == "" {
+		severity = "medium"
+	}
+
+	resource := map[string]interface{}{
+		"stale_access_type": string(f.Type),
+		"principal_id":      f.Principal.ID,
+		"principal_name":    f.Principal.Name,
+		"principal_email":   f.Principal.Email,
+		"principal_type":    f.Principal.Type,
+		"provider":          f.Provider,
+		"account":           f.Account,
+		"days_since":        f.DaysSince,
+	}
+	if f.LastActivity != nil {
+		resource["last_activity"] = f.LastActivity.UTC().Format(time.RFC3339)
+	}
+	for key, value := range f.Metadata {
+		resource[key] = value
+	}
+
+	resourceID := strings.TrimSpace(f.Principal.ID)
+	if resourceID == "" {
+		resourceID = strings.TrimSpace(f.ID)
+	}
+	resourceName := strings.TrimSpace(f.Principal.Name)
+	if resourceName == "" {
+		resourceName = strings.TrimSpace(f.Principal.Email)
+	}
+
+	riskCategories := []string{"identity", "stale_access"}
+	switch f.Type {
+	case StaleAccessExcessivePrivilege:
+		riskCategories = append(riskCategories, "over_privileged")
+	case StaleAccessUnusedAccessKey:
+		riskCategories = append(riskCategories, "credential_hygiene")
+	case StaleAccessOrphanedAccount:
+		riskCategories = append(riskCategories, "orphaned_identity")
+	case StaleAccessStaleServiceAccount:
+		riskCategories = append(riskCategories, "service_account_hygiene")
+	default:
+		riskCategories = append(riskCategories, "inactive_identity")
+	}
+
+	return policy.Finding{
+		ID:             "identity-" + f.ID,
+		PolicyID:       policyID,
+		PolicyName:     policyName,
+		Title:          policyName,
+		Severity:       severity,
+		Description:    f.Details,
+		Remediation:    f.Remediation,
+		Resource:       resource,
+		ResourceType:   "identity/" + f.Principal.Type,
+		ResourceID:     resourceID,
+		ResourceName:   resourceName,
+		RiskCategories: riskCategories,
+	}
+}
+
+func staleAccessPolicyMetadata(findingType StaleAccessType) (string, string) {
+	switch findingType {
+	case StaleAccessInactiveUser:
+		return "identity-stale-inactive-user", "Inactive Identity Account"
+	case StaleAccessUnusedAccessKey:
+		return "identity-unused-access-key", "Unused Access Key"
+	case StaleAccessOrphanedAccount:
+		return "identity-orphaned-account", "Orphaned Identity Account"
+	case StaleAccessStaleServiceAccount:
+		return "identity-stale-service-account", "Stale Service Account"
+	case StaleAccessUnusedRole:
+		return "identity-unused-role", "Unused Identity Role"
+	case StaleAccessExcessivePrivilege:
+		return "identity-excessive-privilege", "Excessive Privilege Assignment"
+	default:
+		return "identity-stale-access", "Identity Stale Access"
+	}
+}
 
 // DetectStaleUsers finds users with no recent login activity
 func (d *StaleAccessDetector) DetectStaleUsers(ctx context.Context, users []map[string]interface{}) []StaleAccessFinding {

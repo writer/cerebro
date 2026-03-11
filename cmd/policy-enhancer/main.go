@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -53,13 +53,13 @@ func main() {
 
 		data, err := os.ReadFile(path) // #nosec G304,G122 -- path is enumerated via filepath.Walk under operator-supplied directory
 		if err != nil {
-			log.Printf("Error reading %s: %v", path, err)
+			slog.Error("read policy file", "path", path, "error", err)
 			return nil
 		}
 
 		var policy Policy
 		if unmarshalErr := json.Unmarshal(data, &policy); unmarshalErr != nil {
-			log.Printf("Error parsing %s: %v", path, unmarshalErr)
+			slog.Error("parse policy file", "path", path, "error", unmarshalErr)
 			return nil
 		}
 
@@ -83,19 +83,20 @@ func main() {
 		// Write enhanced policy
 		output, err := json.MarshalIndent(policy, "", "  ")
 		if err != nil {
-			log.Printf("Error marshaling %s: %v", path, err)
+			slog.Error("marshal policy file", "path", path, "error", err)
 			return nil
 		}
 
 		if err := os.WriteFile(path, output, 0600); err != nil { // #nosec G122 -- path is enumerated via filepath.Walk under operator-supplied directory
-			log.Printf("Error writing %s: %v", path, err)
+			slog.Error("write policy file", "path", path, "error", err)
 			return nil
 		}
 
 		fmt.Printf("Enhanced: %s\n", path)
 		return nil
 	}); err != nil {
-		log.Fatal(err)
+		slog.Error("walk policies", "error", err)
+		os.Exit(1)
 	}
 }
 

@@ -157,7 +157,9 @@ func TestSemaphore_TryAcquire(t *testing.T) {
 
 func TestSemaphore_Release(t *testing.T) {
 	sem := NewSemaphore(1)
-	sem.Acquire(context.Background())
+	if err := sem.Acquire(context.Background()); err != nil {
+		t.Fatalf("Acquire failed: %v", err)
+	}
 	sem.Release()
 
 	// Should be able to acquire again

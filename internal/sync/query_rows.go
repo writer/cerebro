@@ -2,6 +2,8 @@ package sync
 
 import "strings"
 
+const queryRowLookupCacheKey = "\x00cerebro_query_row_lookup_cache"
+
 func queryRowValue(row map[string]interface{}, key string) (interface{}, bool) {
 	if row == nil {
 		return nil, false
@@ -19,10 +21,10 @@ func queryRowValue(row map[string]interface{}, key string) (interface{}, bool) {
 		return value, true
 	}
 
-	for rowKey, value := range row {
-		if strings.EqualFold(rowKey, key) {
-			return value, true
-		}
+	lookup := queryRowLookupCache(row)
+	if rowKey, ok := lookup[normalized]; ok {
+		value, exists := row[rowKey]
+		return value, exists
 	}
 
 	return nil, false
@@ -51,4 +53,27 @@ func decodeExistingHashes(rows []map[string]interface{}) map[string]string {
 		result[id] = queryRowString(row, "_cq_hash")
 	}
 	return result
+}
+
+func queryRowLookupCache(row map[string]interface{}) map[string]string {
+	if cache, ok := row[queryRowLookupCacheKey].(map[string]string); ok {
+		return cache
+	}
+
+	cache := make(map[string]string, len(row))
+	for rowKey := range row {
+		if rowKey == queryRowLookupCacheKey {
+			continue
+		}
+		normalized := strings.ToLower(strings.TrimSpace(rowKey))
+		if normalized == "" {
+			continue
+		}
+		if _, exists := cache[normalized]; !exists {
+			cache[normalized] = rowKey
+		}
+	}
+
+	row[queryRowLookupCacheKey] = cache
+	return cache
 }

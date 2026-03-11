@@ -1,0 +1,15 @@
+{
+  "id": "hubspot-stale-deal",
+  "name": "Stale High-Value Deal",
+  "description": "Flags high-value open deals with no recent activity.",
+  "effect": "forbid",
+  "resource": "hubspot::deal",
+  "conditions": [
+    "properties.days_since_last_activity > 21",
+    "properties.amount > 50000",
+    "properties.dealstage != 'closedwon'",
+    "properties.dealstage != 'closedlost'"
+  ],
+  "severity": "high",
+  "tags": ["revenue", "pipeline-hygiene", "hubspot"]
+}

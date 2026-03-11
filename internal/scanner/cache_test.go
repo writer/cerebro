@@ -22,6 +22,9 @@ func TestHashAsset_Deterministic(t *testing.T) {
 	if h1 != h2 {
 		t.Error("same asset should produce same hash")
 	}
+	if len(h1) != 64 {
+		t.Errorf("expected full SHA256 hex length (64), got %d", len(h1))
+	}
 }
 
 func TestHashAsset_ExcludesMetadata(t *testing.T) {
@@ -70,6 +73,12 @@ func TestScannerWithCache(t *testing.T) {
 	if r1.Scanned != 2 {
 		t.Errorf("first scan: expected 2 scanned, got %d", r1.Scanned)
 	}
+	if r1.CacheMisses != 2 {
+		t.Errorf("first scan: expected 2 cache misses, got %d", r1.CacheMisses)
+	}
+	if r1.CacheHits != 0 {
+		t.Errorf("first scan: expected 0 cache hits, got %d", r1.CacheHits)
+	}
 	firstViolations := r1.Violations
 
 	// Second scan with same assets: should get cache hits but still report findings
@@ -77,8 +86,14 @@ func TestScannerWithCache(t *testing.T) {
 	if r2.Scanned != 2 {
 		t.Errorf("second scan: expected 2 scanned, got %d", r2.Scanned)
 	}
-	if r2.Skipped < 1 {
-		t.Logf("cache skipped: %d (may be 0 if cache key format doesn't match)", r2.Skipped)
+	if r2.CacheHits != 2 {
+		t.Errorf("second scan: expected 2 cache hits, got %d", r2.CacheHits)
+	}
+	if r2.CacheMisses != 0 {
+		t.Errorf("second scan: expected 0 cache misses, got %d", r2.CacheMisses)
+	}
+	if r2.Skipped != 2 {
+		t.Errorf("second scan: expected 2 skipped via cache, got %d", r2.Skipped)
 	}
 	// Violations must remain the same on cache hit -- findings must not be dropped
 	if r2.Violations != firstViolations {
@@ -112,8 +127,54 @@ func TestScannerCacheCountersArePerScan(t *testing.T) {
 	// Third scan: 1 cache hit
 	r3 := s.ScanAssets(context.Background(), assets)
 
-	// Skipped must reflect THIS scan only, not accumulate
+	// Cache counters must reflect THIS scan only, not accumulate.
 	if r2.Skipped != r3.Skipped {
 		t.Errorf("skipped should be per-scan: scan2=%d scan3=%d", r2.Skipped, r3.Skipped)
+	}
+	if r2.CacheHits != r3.CacheHits {
+		t.Errorf("cache hits should be per-scan: scan2=%d scan3=%d", r2.CacheHits, r3.CacheHits)
+	}
+	if r2.CacheMisses != r3.CacheMisses {
+		t.Errorf("cache misses should be per-scan: scan2=%d scan3=%d", r2.CacheMisses, r3.CacheMisses)
+	}
+}
+
+func TestScannerCacheInvalidatesWhenPoliciesChange(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	engine := policy.NewEngine()
+	engine.AddPolicy(&policy.Policy{
+		ID:         "pub-check",
+		Effect:     "forbid",
+		Conditions: []string{"public == true"},
+		Severity:   "high",
+	})
+
+	c := cache.NewPolicyCache(1000, 5*time.Minute)
+	s := NewScanner(engine, ScanConfig{Workers: 1}, logger)
+	s.SetCache(c)
+
+	assets := []map[string]interface{}{
+		{"_cq_id": "1", "name": "bucket", "public": "true"},
+	}
+
+	_ = s.ScanAssets(context.Background(), assets)
+	r2 := s.ScanAssets(context.Background(), assets)
+	if r2.CacheHits != 1 {
+		t.Fatalf("expected cache hit before policy change, got %d", r2.CacheHits)
+	}
+
+	engine.AddPolicy(&policy.Policy{
+		ID:         "name-check",
+		Effect:     "forbid",
+		Conditions: []string{"name == 'bucket'"},
+		Severity:   "medium",
+	})
+
+	r3 := s.ScanAssets(context.Background(), assets)
+	if r3.CacheMisses != 1 {
+		t.Fatalf("expected cache miss after policy change, got %d", r3.CacheMisses)
+	}
+	if r3.CacheHits != 0 {
+		t.Fatalf("expected zero cache hits immediately after policy change, got %d", r3.CacheHits)
 	}
 }

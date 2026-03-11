@@ -26,7 +26,7 @@ func NewFigmaProvider() *FigmaProvider {
 	return &FigmaProvider{
 		BaseProvider: NewBaseProvider("figma", ProviderTypeSaaS),
 		baseURL:      figmaDefaultAPIURL,
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

@@ -32,7 +32,7 @@ func NewGitLabProvider() *GitLabProvider {
 	return &GitLabProvider{
 		BaseProvider: NewBaseProvider("gitlab", ProviderTypeSaaS),
 		baseURL:      "https://gitlab.com",
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

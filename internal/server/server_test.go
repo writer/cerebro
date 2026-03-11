@@ -77,7 +77,9 @@ func TestServer_Handler(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		if _, err := w.Write([]byte("ok")); err != nil {
+			t.Fatalf("write response: %v", err)
+		}
 	})
 
 	ts := httptest.NewServer(handler)
@@ -131,7 +133,9 @@ func TestRunWithCleanup_CallsCleanups(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
-	RunWithCleanup(ctx, handler, cfg, logger, cleanup1, cleanup2)
+	if err := RunWithCleanup(ctx, handler, cfg, logger, cleanup1, cleanup2); err != nil {
+		t.Fatalf("RunWithCleanup returned error: %v", err)
+	}
 
 	if !cleanup1Called {
 		t.Error("expected cleanup1 to be called")

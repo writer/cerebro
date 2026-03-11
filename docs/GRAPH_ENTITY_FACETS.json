@@ -1,0 +1,264 @@
+{
+  "apiVersion": "cerebro.entity-facets/v1alpha1",
+  "kind": "EntityFacetContractCatalog",
+  "generated_at": "0001-01-01T00:00:00Z",
+  "facets": [
+    {
+      "id": "bucket_encryption",
+      "version": "1.0.0",
+      "title": "Bucket Encryption",
+      "description": "Bucket encryption posture and key configuration.",
+      "schema_name": "PlatformBucketEncryptionFacet",
+      "schema_url": "urn:cerebro:entity-facet:bucket-encryption:v1",
+      "applicable_kinds": [
+        "bucket"
+      ],
+      "source_keys": [
+        "encrypted",
+        "default_encryption",
+        "default_encryption_enabled",
+        "kms_encrypted",
+        "encryption_algorithm",
+        "encryption_key_id",
+        "bucket_key_enabled"
+      ],
+      "claim_predicates": [
+        "encrypted",
+        "default_encryption_enabled"
+      ],
+      "fields": [
+        {
+          "key": "encrypted",
+          "value_type": "boolean"
+        },
+        {
+          "key": "encryption_algorithm",
+          "value_type": "string"
+        },
+        {
+          "key": "encryption_key_id",
+          "value_type": "string"
+        },
+        {
+          "key": "bucket_key_enabled",
+          "value_type": "boolean"
+        }
+      ]
+    },
+    {
+      "id": "bucket_logging",
+      "version": "1.0.0",
+      "title": "Bucket Logging",
+      "description": "Bucket access logging configuration and target.",
+      "schema_name": "PlatformBucketLoggingFacet",
+      "schema_url": "urn:cerebro:entity-facet:bucket-logging:v1",
+      "applicable_kinds": [
+        "bucket"
+      ],
+      "source_keys": [
+        "logging_enabled",
+        "access_logging_enabled",
+        "logging_target_bucket"
+      ],
+      "claim_predicates": [
+        "access_logging_enabled"
+      ],
+      "fields": [
+        {
+          "key": "logging_enabled",
+          "value_type": "boolean"
+        },
+        {
+          "key": "logging_target_bucket",
+          "value_type": "string"
+        }
+      ]
+    },
+    {
+      "id": "bucket_public_access",
+      "version": "1.0.0",
+      "title": "Bucket Public Access",
+      "description": "Bucket public exposure and public-access-block configuration.",
+      "schema_name": "PlatformBucketPublicAccessFacet",
+      "schema_url": "urn:cerebro:entity-facet:bucket-public-access:v1",
+      "applicable_kinds": [
+        "bucket"
+      ],
+      "source_keys": [
+        "public",
+        "public_access",
+        "block_public_acls",
+        "block_public_policy",
+        "restrict_public_buckets",
+        "public_access_prevention",
+        "all_users_access",
+        "all_authenticated_users_access",
+        "anonymous_access"
+      ],
+      "claim_predicates": [
+        "public_access",
+        "internet_exposed"
+      ],
+      "fields": [
+        {
+          "key": "public_access",
+          "value_type": "boolean"
+        },
+        {
+          "key": "block_public_acls",
+          "value_type": "boolean"
+        },
+        {
+          "key": "block_public_policy",
+          "value_type": "boolean"
+        },
+        {
+          "key": "restrict_public_buckets",
+          "value_type": "boolean"
+        },
+        {
+          "key": "all_users_access",
+          "value_type": "boolean"
+        },
+        {
+          "key": "all_authenticated_users_access",
+          "value_type": "boolean"
+        }
+      ]
+    },
+    {
+      "id": "bucket_versioning",
+      "version": "1.0.0",
+      "title": "Bucket Versioning",
+      "description": "Bucket versioning and MFA delete posture.",
+      "schema_name": "PlatformBucketVersioningFacet",
+      "schema_url": "urn:cerebro:entity-facet:bucket-versioning:v1",
+      "applicable_kinds": [
+        "bucket"
+      ],
+      "source_keys": [
+        "versioning",
+        "versioning_status",
+        "mfa_delete"
+      ],
+      "claim_predicates": [
+        "versioning_enabled"
+      ],
+      "fields": [
+        {
+          "key": "versioning_status",
+          "value_type": "string"
+        },
+        {
+          "key": "mfa_delete",
+          "value_type": "boolean"
+        }
+      ]
+    },
+    {
+      "id": "data_sensitivity",
+      "version": "1.0.0",
+      "title": "Data Sensitivity",
+      "description": "Sensitivity signals derived from tags, raw properties, and normalized sensitivity claims.",
+      "schema_name": "PlatformEntityDataSensitivityFacet",
+      "schema_url": "urn:cerebro:entity-facet:data-sensitivity:v1",
+      "applicable_kinds": [
+        "bucket",
+        "database",
+        "secret",
+        "service"
+      ],
+      "source_keys": [
+        "contains_pii",
+        "contains_phi",
+        "contains_pci",
+        "contains_secrets",
+        "data_classification"
+      ],
+      "claim_predicates": [
+        "contains_sensitive_data",
+        "data_classification"
+      ],
+      "fields": [
+        {
+          "key": "contains_pii",
+          "value_type": "boolean"
+        },
+        {
+          "key": "contains_phi",
+          "value_type": "boolean"
+        },
+        {
+          "key": "contains_pci",
+          "value_type": "boolean"
+        },
+        {
+          "key": "contains_secrets",
+          "value_type": "boolean"
+        },
+        {
+          "key": "classification",
+          "value_type": "string"
+        }
+      ]
+    },
+    {
+      "id": "exposure",
+      "version": "1.0.0",
+      "title": "Exposure",
+      "description": "Internet/public-access posture derived from graph edges, raw properties, and exposure claims.",
+      "schema_name": "PlatformEntityExposureFacet",
+      "schema_url": "urn:cerebro:entity-facet:exposure:v1",
+      "applicable_kinds": [
+        "bucket",
+        "database",
+        "function",
+        "instance",
+        "network",
+        "service"
+      ],
+      "source_keys": [
+        "public",
+        "public_access",
+        "internet_accessible",
+        "publicly_accessible"
+      ],
+      "claim_predicates": [
+        "public_access",
+        "internet_exposed"
+      ],
+      "fields": [
+        {
+          "key": "internet_exposed",
+          "value_type": "boolean"
+        },
+        {
+          "key": "public_access",
+          "value_type": "boolean"
+        }
+      ]
+    },
+    {
+      "id": "ownership",
+      "version": "1.0.0",
+      "title": "Ownership",
+      "description": "Typed owner and manager context derived from relations and ownership claims.",
+      "schema_name": "PlatformEntityOwnershipFacet",
+      "schema_url": "urn:cerebro:entity-facet:ownership:v1",
+      "claim_predicates": [
+        "owner",
+        "managed_by"
+      ],
+      "fields": [
+        {
+          "key": "owner_ids",
+          "value_type": "array[string]"
+        },
+        {
+          "key": "manager_ids",
+          "value_type": "array[string]"
+        }
+      ]
+    }
+  ]
+}

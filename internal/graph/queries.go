@@ -6,6 +6,19 @@ import (
 	"strings"
 )
 
+type blastRadiusCacheKey struct {
+	principalID string
+	maxDepth    int
+}
+
+type cachedBlastRadius struct {
+	version uint64
+	result  *BlastRadiusResult
+}
+
+// blastRadiusComputeHook is used by tests to verify cache hit/miss behavior.
+var blastRadiusComputeHook func(principalID string, maxDepth int)
+
 // BlastRadiusResult represents the result of a blast radius analysis
 type BlastRadiusResult struct {
 	PrincipalID      string           `json:"principal_id"`
@@ -38,9 +51,20 @@ type RiskSummary struct {
 
 // BlastRadius performs forward reachability analysis from a principal
 func BlastRadius(g *Graph, principalID string, maxDepth int) *BlastRadiusResult {
+	if cached, ok := g.getBlastRadiusFromCache(principalID, maxDepth); ok {
+		return cached
+	}
+	cacheVersion := g.currentBlastRadiusCacheVersion()
+
 	principal, ok := g.GetNode(principalID)
 	if !ok {
-		return &BlastRadiusResult{PrincipalID: principalID}
+		result := &BlastRadiusResult{PrincipalID: principalID}
+		g.putBlastRadiusInCache(principalID, maxDepth, cacheVersion, result)
+		return result
+	}
+
+	if blastRadiusComputeHook != nil {
+		blastRadiusComputeHook(principalID, maxDepth)
 	}
 
 	result := &BlastRadiusResult{
@@ -145,7 +169,78 @@ func BlastRadius(g *Graph, principalID string, maxDepth int) *BlastRadiusResult 
 		result.ForeignAccounts = append(result.ForeignAccounts, acc)
 	}
 
-	return result
+	g.putBlastRadiusInCache(principalID, maxDepth, cacheVersion, result)
+	return cloneBlastRadiusResult(result)
+}
+
+func (g *Graph) getBlastRadiusFromCache(principalID string, maxDepth int) (*BlastRadiusResult, bool) {
+	version := g.currentBlastRadiusCacheVersion()
+
+	key := blastRadiusCacheKey{principalID: principalID, maxDepth: maxDepth}
+	raw, ok := g.blastRadiusCache.Load(key)
+	if !ok {
+		return nil, false
+	}
+
+	cached, ok := raw.(*cachedBlastRadius)
+	if !ok || cached == nil || cached.version != version || cached.result == nil {
+		return nil, false
+	}
+
+	return cloneBlastRadiusResult(cached.result), true
+}
+
+func (g *Graph) putBlastRadiusInCache(principalID string, maxDepth int, version uint64, result *BlastRadiusResult) {
+	if result == nil {
+		return
+	}
+
+	if version != g.currentBlastRadiusCacheVersion() {
+		return
+	}
+
+	key := blastRadiusCacheKey{principalID: principalID, maxDepth: maxDepth}
+	g.blastRadiusCache.Store(key, &cachedBlastRadius{
+		version: version,
+		result:  cloneBlastRadiusResult(result),
+	})
+}
+
+func (g *Graph) currentBlastRadiusCacheVersion() uint64 {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.blastRadiusVersion
+}
+
+func cloneBlastRadiusResult(result *BlastRadiusResult) *BlastRadiusResult {
+	if result == nil {
+		return nil
+	}
+
+	cloned := *result
+	if len(result.ForeignAccounts) > 0 {
+		cloned.ForeignAccounts = append([]string(nil), result.ForeignAccounts...)
+	}
+
+	if len(result.ReachableNodes) > 0 {
+		cloned.ReachableNodes = make([]*ReachableNode, 0, len(result.ReachableNodes))
+		for _, reachable := range result.ReachableNodes {
+			if reachable == nil {
+				continue
+			}
+
+			reachableClone := *reachable
+			if len(reachable.Path) > 0 {
+				reachableClone.Path = append([]string(nil), reachable.Path...)
+			}
+			if len(reachable.Actions) > 0 {
+				reachableClone.Actions = append([]string(nil), reachable.Actions...)
+			}
+			cloned.ReachableNodes = append(cloned.ReachableNodes, &reachableClone)
+		}
+	}
+
+	return &cloned
 }
 
 // ReverseAccessResult represents who can access a resource
@@ -640,8 +735,8 @@ func detectSensitiveData(node *Node) *SensitiveDataNode {
 		result.ComplianceImpact = append(result.ComplianceImpact, "PCI-DSS")
 	}
 
-	// Check for credentials/secrets
-	if node.Kind == NodeKindSecret {
+	// Check for credentials/secrets via ontology capability.
+	if NodeKindHasCapability(node.Kind, NodeCapabilityCredentialStore) {
 		result.DataTypes = append(result.DataTypes, "credentials")
 	}
 

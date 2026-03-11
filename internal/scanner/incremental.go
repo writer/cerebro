@@ -36,6 +36,14 @@ func NewWatermarkStore(db *sql.DB) *WatermarkStore {
 	}
 }
 
+// SetDB updates the backing database handle used for watermark persistence.
+func (s *WatermarkStore) SetDB(db *sql.DB) {
+	s.schemaMu.Lock()
+	s.db = db
+	s.schemaReady = false
+	s.schemaMu.Unlock()
+}
+
 // GetWatermark returns the last scan watermark for a table
 func (s *WatermarkStore) GetWatermark(table string) *ScanWatermark {
 	s.mu.RLock()

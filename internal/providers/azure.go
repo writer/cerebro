@@ -26,7 +26,7 @@ type AzureProvider struct {
 func NewAzureProvider() *AzureProvider {
 	return &AzureProvider{
 		BaseProvider: NewBaseProvider("azure", ProviderTypeCloud),
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

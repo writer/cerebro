@@ -6,11 +6,13 @@ import (
 	"log/slog"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nkeys"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/writer/cerebro/internal/webhooks"
 )
@@ -27,7 +29,7 @@ func TestCloudEventFromWebhook(t *testing.T) {
 		},
 	}
 
-	ce := cloudEventFromWebhook("cerebro", event)
+	ce := cloudEventFromWebhook(context.Background(), "cerebro", event)
 
 	if ce.SpecVersion != "1.0" {
 		t.Fatalf("expected specversion 1.0, got %s", ce.SpecVersion)
@@ -64,7 +66,7 @@ func TestCloudEventFromWebhook_DefaultExtensions(t *testing.T) {
 		Timestamp: time.Now().UTC(),
 	}
 
-	ce := cloudEventFromWebhook("", event)
+	ce := cloudEventFromWebhook(context.Background(), "", event)
 	if ce.Source != defaultJetStreamSource {
 		t.Fatalf("expected default source %s, got %s", defaultJetStreamSource, ce.Source)
 	}
@@ -76,6 +78,38 @@ func TestCloudEventFromWebhook_DefaultExtensions(t *testing.T) {
 	}
 	if matched := regexp.MustCompile(`^00-[0-9a-f]{32}-[0-9a-f]{16}-01$`).MatchString(ce.TraceParent); !matched {
 		t.Fatalf("invalid traceparent format: %s", ce.TraceParent)
+	}
+}
+
+func TestCloudEventFromWebhook_UsesTraceparentFromContext(t *testing.T) {
+	traceID, err := trace.TraceIDFromHex("4bf92f3577b34da6a3ce929d0e0e4736")
+	if err != nil {
+		t.Fatalf("parse trace id: %v", err)
+	}
+	spanID, err := trace.SpanIDFromHex("00f067aa0ba902b7")
+	if err != nil {
+		t.Fatalf("parse span id: %v", err)
+	}
+	spanCtx := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    traceID,
+		SpanID:     spanID,
+		TraceFlags: trace.FlagsSampled,
+		Remote:     true,
+	})
+	ctx := trace.ContextWithSpanContext(context.Background(), spanCtx)
+
+	ce := cloudEventFromWebhook(ctx, "cerebro", webhooks.Event{
+		ID:        "evt-ctx",
+		Type:      webhooks.EventFindingCreated,
+		Timestamp: time.Now().UTC(),
+		Data:      map[string]interface{}{"finding_id": "f-ctx"},
+	})
+
+	if ce.TraceParent == "" {
+		t.Fatal("expected traceparent to be populated from context")
+	}
+	if !strings.Contains(ce.TraceParent, "4bf92f3577b34da6a3ce929d0e0e4736") {
+		t.Fatalf("expected context trace id in traceparent, got %s", ce.TraceParent)
 	}
 }
 

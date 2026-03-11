@@ -63,6 +63,22 @@ func deduplicationIDForMessage(msg JobMessage, now time.Time) string {
 	return dedupID
 }
 
+func clampInt(value, min, max int) int {
+	if value < min {
+		return min
+	}
+	if value > max {
+		return max
+	}
+	return value
+}
+
+func boundedInt32(value, min, max int) int32 {
+	value = clampInt(value, min, max)
+	// #nosec G115 -- value is clamped to a known-safe int32 range by caller bounds.
+	return int32(value)
+}
+
 func (q *SQSQueue) Enqueue(ctx context.Context, msg JobMessage) error {
 	return q.EnqueueWithDelay(ctx, msg, 0)
 }
@@ -106,33 +122,19 @@ func (q *SQSQueue) EnqueueWithDelay(ctx context.Context, msg JobMessage, delay t
 }
 
 func (q *SQSQueue) Receive(ctx context.Context, maxMessages int, waitTime time.Duration, visibilityTimeout time.Duration) ([]QueueMessage, error) {
-	if maxMessages <= 0 {
-		maxMessages = 1
-	}
-	if maxMessages > 10 {
-		maxMessages = 10
-	}
+	maxMessages = clampInt(maxMessages, 1, 10)
 
 	// Bound values to safe ranges before int32 conversion
-	waitSec := int(waitTime.Seconds())
-	if waitSec > 20 {
-		waitSec = 20
-	}
-	if waitSec < 0 {
-		waitSec = 0
-	}
+	waitSec := clampInt(int(waitTime.Seconds()), 0, 20)
 
 	input := &sqs.ReceiveMessageInput{
 		QueueUrl:            aws.String(q.queueURL),
-		MaxNumberOfMessages: int32(maxMessages), // Already bounded to 1-10 above
-		WaitTimeSeconds:     int32(waitSec),     // Bounded to 0-20
+		MaxNumberOfMessages: boundedInt32(maxMessages, 1, 10),
+		WaitTimeSeconds:     boundedInt32(waitSec, 0, 20),
 	}
 	if visibilityTimeout > 0 {
-		visSec := int(visibilityTimeout.Seconds())
-		if visSec > 43200 {
-			visSec = 43200 // SQS max is 12h
-		}
-		input.VisibilityTimeout = int32(visSec)
+		visSec := clampInt(int(visibilityTimeout.Seconds()), 0, 43200)
+		input.VisibilityTimeout = boundedInt32(visSec, 0, 43200)
 	}
 
 	out, err := q.client.ReceiveMessage(ctx, input)

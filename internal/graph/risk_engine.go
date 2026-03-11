@@ -15,6 +15,18 @@ type RiskEngine struct {
 	permissionsCalc *EffectivePermissionsCalculator
 	lastAnalysis    time.Time
 	cachedReport    *SecurityReport
+	riskProfile     RiskProfile
+	entityScores    map[string]float64
+	customerHealth  map[string]CustomerRelationshipHealth
+	outcomeEvents   []OutcomeEvent
+	ruleSignals     []RuleObservation
+	factorSignals   []FactorObservation
+	discoveredRules map[string]DiscoveredRuleCandidate
+	patternLibrary  map[string]*crossTenantPatternAggregate
+	rulePromotions  []RulePromotionEvent
+	crossTenantCfg  CrossTenantPrivacyConfig
+	signalLimit     int
+	onScoreChange   func(RiskScoreChangedEvent)
 	mu              sync.RWMutex
 }
 
@@ -24,23 +36,42 @@ func NewRiskEngine(g *Graph) *RiskEngine {
 		graph:           g,
 		toxicEngine:     NewToxicCombinationEngine(),
 		permissionsCalc: NewEffectivePermissionsCalculator(g),
+		riskProfile:     DefaultRiskProfile("default"),
+		entityScores:    make(map[string]float64),
+		customerHealth:  make(map[string]CustomerRelationshipHealth),
+		outcomeEvents:   make([]OutcomeEvent, 0, 128),
+		ruleSignals:     make([]RuleObservation, 0, 512),
+		factorSignals:   make([]FactorObservation, 0, 1024),
+		discoveredRules: make(map[string]DiscoveredRuleCandidate),
+		patternLibrary:  make(map[string]*crossTenantPatternAggregate),
+		rulePromotions:  make([]RulePromotionEvent, 0, 64),
+		crossTenantCfg:  defaultCrossTenantPrivacyConfig(),
+		signalLimit:     5000,
 	}
 }
 
-// SecurityReport is the comprehensive security analysis
-type SecurityReport struct {
-	GeneratedAt       time.Time           `json:"generated_at"`
-	GraphStats        *GraphStats         `json:"graph_stats"`
-	RiskScore         float64             `json:"risk_score"` // 0-100, overall security posture
-	RiskLevel         RiskLevel           `json:"risk_level"`
-	ToxicCombinations []*ToxicCombination `json:"toxic_combinations"`
-	AttackPaths       *SimulationResult   `json:"attack_paths"`
-	Chokepoints       []*Chokepoint       `json:"chokepoints"`
-	TopRisks          []*RankedRisk       `json:"top_risks"`
-	RemediationPlan   *RemediationPlan    `json:"remediation_plan"`
-	TrendAnalysis     *TrendAnalysis      `json:"trend_analysis,omitempty"`
-	ComplianceGaps    []*ComplianceGap    `json:"compliance_gaps,omitempty"`
+// PostureReport is the comprehensive security + business posture analysis.
+type PostureReport struct {
+	GeneratedAt       time.Time                    `json:"generated_at"`
+	GraphStats        *GraphStats                  `json:"graph_stats"`
+	RiskScore         float64                      `json:"risk_score"` // 0-100, overall security posture
+	RiskLevel         RiskLevel                    `json:"risk_level"`
+	OrgHealth         *OrgHealthScore              `json:"org_health,omitempty"`
+	CustomerHealth    []CustomerRelationshipHealth `json:"customer_health,omitempty"`
+	ToxicCombinations []*ToxicCombination          `json:"toxic_combinations"`
+	AttackPaths       *SimulationResult            `json:"attack_paths"`
+	Chokepoints       []*Chokepoint                `json:"chokepoints"`
+	TopRisks          []*RankedRisk                `json:"top_risks"`
+	RemediationPlan   *RemediationPlan             `json:"remediation_plan"`
+	TrendAnalysis     *TrendAnalysis               `json:"trend_analysis,omitempty"`
+	ComplianceGaps    []*ComplianceGap             `json:"compliance_gaps,omitempty"`
+	RiskProfile       string                       `json:"risk_profile,omitempty"`
+	EntityRisks       map[string]EntityRisk        `json:"entity_risks,omitempty"`
+	RiskScoreChanges  []RiskScoreChangedEvent      `json:"risk_score_changes,omitempty"`
 }
+
+// SecurityReport is kept as an alias for backward compatibility.
+type SecurityReport = PostureReport
 
 // GraphStats provides overview statistics
 type GraphStats struct {
@@ -125,13 +156,26 @@ func (r *RiskEngine) Analyze() *SecurityReport {
 	defer r.mu.Unlock()
 
 	start := time.Now()
+	previous := r.cachedReport
+	previousEntityScores := make(map[string]float64, len(r.entityScores))
+	for id, score := range r.entityScores {
+		previousEntityScores[id] = score
+	}
 
 	report := &SecurityReport{
 		GeneratedAt: start,
+		RiskProfile: r.riskProfile.Name,
 	}
 
 	// Graph statistics
 	report.GraphStats = r.calculateGraphStats()
+	orgHealth := ComputeOrgHealthScore(r.graph)
+	report.OrgHealth = &orgHealth
+	report.CustomerHealth = ComputeCustomerRelationshipHealth(r.graph)
+	r.customerHealth = make(map[string]CustomerRelationshipHealth, len(report.CustomerHealth))
+	for _, health := range report.CustomerHealth {
+		r.customerHealth[health.CustomerID] = health
+	}
 
 	// Toxic combinations
 	report.ToxicCombinations = r.toxicEngine.Analyze(r.graph)
@@ -140,6 +184,7 @@ func (r *RiskEngine) Analyze() *SecurityReport {
 	r.attackSimulator = NewAttackPathSimulator(r.graph)
 	report.AttackPaths = r.attackSimulator.Simulate(6)
 	report.Chokepoints = report.AttackPaths.Chokepoints
+	report.EntityRisks = r.collectEntityRisks(previousEntityScores)
 
 	// Rank all risks
 	report.TopRisks = r.rankAllRisks(report)
@@ -147,6 +192,8 @@ func (r *RiskEngine) Analyze() *SecurityReport {
 	// Calculate overall risk score
 	report.RiskScore = r.calculateOverallRiskScore(report)
 	report.RiskLevel = scoreToRiskLevel(report.RiskScore)
+	report.TrendAnalysis = r.calculateTrendAnalysis(previous, report)
+	report.RiskScoreChanges = r.calculateRiskScoreChanges(previous, report, start)
 
 	// Generate remediation plan
 	report.RemediationPlan = r.generateRemediationPlan(report)
@@ -154,8 +201,17 @@ func (r *RiskEngine) Analyze() *SecurityReport {
 	// Check compliance (basic)
 	report.ComplianceGaps = r.checkCompliance(report)
 
+	for entityID, entityRisk := range report.EntityRisks {
+		r.entityScores[entityID] = entityRisk.Score
+	}
+	r.recordSignalsLocked(report, start)
 	r.cachedReport = report
 	r.lastAnalysis = start
+	if r.onScoreChange != nil {
+		for _, event := range report.RiskScoreChanges {
+			r.onScoreChange(event)
+		}
+	}
 
 	return report
 }
@@ -248,6 +304,7 @@ func (r *RiskEngine) rankAllRisks(report *SecurityReport) []*RankedRisk {
 			})
 		}
 	}
+	risks = append(risks, r.rankEntityRisks(report.EntityRisks)...)
 
 	// Sort by score descending
 	sort.Slice(risks, func(i, j int) bool {
@@ -268,7 +325,7 @@ func (r *RiskEngine) rankAllRisks(report *SecurityReport) []*RankedRisk {
 }
 
 func (r *RiskEngine) calculateOverallRiskScore(report *SecurityReport) float64 {
-	score := 0.0
+	securityScore := 0.0
 
 	// Toxic combinations contribute most (up to 40 points)
 	toxicScore := 0.0
@@ -278,7 +335,7 @@ func (r *RiskEngine) calculateOverallRiskScore(report *SecurityReport) float64 {
 	if toxicScore > 40 {
 		toxicScore = 40
 	}
-	score += toxicScore
+	securityScore += toxicScore
 
 	// Attack paths (up to 30 points)
 	pathScore := 0.0
@@ -288,30 +345,48 @@ func (r *RiskEngine) calculateOverallRiskScore(report *SecurityReport) float64 {
 	if pathScore > 30 {
 		pathScore = 30
 	}
-	score += pathScore
+	securityScore += pathScore
 
 	// Public exposures (up to 15 points)
 	exposureScore := float64(report.GraphStats.PublicExposures) * 2
 	if exposureScore > 15 {
 		exposureScore = 15
 	}
-	score += exposureScore
+	securityScore += exposureScore
 
 	// Cross-account access (up to 10 points)
 	crossAccountScore := float64(report.GraphStats.CrossAccountEdges) * 0.5
 	if crossAccountScore > 10 {
 		crossAccountScore = 10
 	}
-	score += crossAccountScore
+	securityScore += crossAccountScore
 
 	// Critical resources without protection (up to 5 points)
 	criticalScore := float64(report.GraphStats.CriticalResources) * 0.5
 	if criticalScore > 5 {
 		criticalScore = 5
 	}
-	score += criticalScore
+	securityScore += criticalScore
 
-	// Normalize to 0-100
+	if securityScore > 100 {
+		securityScore = 100
+	}
+
+	businessScore := r.calculateBusinessRiskScore(report.EntityRisks)
+	if businessScore <= 0 {
+		return securityScore
+	}
+
+	securityWeight := r.riskProfile.Weight("security")
+	if securityWeight <= 0 {
+		securityWeight = 1
+	}
+	businessWeight := r.riskProfile.Weight("business")
+	if businessWeight <= 0 {
+		businessWeight = 1
+	}
+	totalWeight := securityWeight + businessWeight
+	score := (securityScore*securityWeight + businessScore*businessWeight) / totalWeight
 	if score > 100 {
 		score = 100
 	}

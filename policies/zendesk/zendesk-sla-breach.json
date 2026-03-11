@@ -1,0 +1,13 @@
+{
+  "id": "zendesk-sla-breach",
+  "name": "Zendesk First Response SLA Breach",
+  "description": "Flags high-priority Zendesk tickets that have breached first response SLA.",
+  "effect": "forbid",
+  "resource": "zendesk::ticket",
+  "conditions": [
+    "first_response_sla_breached == true",
+    "status != 'closed'"
+  ],
+  "severity": "high",
+  "tags": ["sla", "support", "zendesk"]
+}

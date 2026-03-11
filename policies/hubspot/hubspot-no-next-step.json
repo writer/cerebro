@@ -1,0 +1,14 @@
+{
+  "id": "hubspot-no-next-step",
+  "name": "Open Deal Without Next Step",
+  "description": "Flags active deals missing a defined next-step field.",
+  "effect": "forbid",
+  "resource": "hubspot::deal",
+  "conditions": [
+    "properties.dealstage != 'closedwon'",
+    "properties.dealstage != 'closedlost'",
+    "properties.hs_next_step not exists"
+  ],
+  "severity": "low",
+  "tags": ["pipeline-hygiene", "hubspot"]
+}

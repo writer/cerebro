@@ -3,6 +3,7 @@ package lineage
 import (
 	"context"
 	"testing"
+	"time"
 )
 
 func TestLineageMapper_MapKubernetesResource(t *testing.T) {
@@ -224,4 +225,157 @@ func TestGenerateLineageID(t *testing.T) {
 	if id1 == "" {
 		t.Error("ID should not be empty")
 	}
+}
+
+func TestLineageMapper_MapBusinessEntity(t *testing.T) {
+	mapper := NewLineageMapper()
+
+	entity := map[string]interface{}{
+		"entity_id":             "tenant-123",
+		"entity_type":           "tenant",
+		"provider":              "application",
+		"lead_source":           "partner-referral",
+		"lead_id":               "lead-1",
+		"contact_id":            "contact-2",
+		"deal_id":               "deal-3",
+		"contract_id":           "contract-4",
+		"subscription_id":       "sub-5",
+		"tenant_id":             "tenant-123",
+		"crm_entity_id":         "sf-opp-3",
+		"billing_entity_id":     "cus-6",
+		"support_entity_id":     "zd-org-7",
+		"onboarded_at":          "2026-02-01T12:00:00Z",
+		"k8s_namespace":         "cust-tenant-123",
+		"cloud_resource_id":     "arn:aws:eks:us-west-2:123456789012:cluster/prod",
+		"subscriptionStartedAt": "2026-02-02T13:30:00Z",
+	}
+
+	lineage, err := mapper.MapBusinessEntity(context.Background(), entity)
+	if err != nil {
+		t.Fatalf("MapBusinessEntity failed: %v", err)
+	}
+
+	if lineage.AssetID != "tenant-123" {
+		t.Fatalf("expected asset id tenant-123, got %s", lineage.AssetID)
+	}
+	if lineage.DealID != "deal-3" {
+		t.Fatalf("expected deal id deal-3, got %s", lineage.DealID)
+	}
+	if lineage.ContractID != "contract-4" {
+		t.Fatalf("expected contract id contract-4, got %s", lineage.ContractID)
+	}
+	if lineage.SubscriptionID != "sub-5" {
+		t.Fatalf("expected subscription id sub-5, got %s", lineage.SubscriptionID)
+	}
+	if lineage.OnboardedAt == nil {
+		t.Fatal("expected onboarded_at to be parsed")
+	}
+
+	if len(lineage.BusinessChain) == 0 {
+		t.Fatal("expected business chain to be populated")
+	}
+	if !hasBusinessStep(lineage.BusinessChain, BusinessLineageStepOriginatedFrom, "deal-3") {
+		t.Fatal("expected deal step in business chain")
+	}
+	if !hasBusinessStep(lineage.BusinessChain, BusinessLineageStepProvisionedAs, "sub-5") {
+		t.Fatal("expected subscription step in business chain")
+	}
+	if !hasBusinessStep(lineage.BusinessChain, BusinessLineageStepProvisionedAs, "cust-tenant-123") {
+		t.Fatal("expected kubernetes namespace step in business chain")
+	}
+}
+
+func TestLineageMapper_GetLineageByBusinessEntityID(t *testing.T) {
+	mapper := NewLineageMapper()
+
+	_, err := mapper.MapBusinessEntity(context.Background(), map[string]interface{}{
+		"entity_id":         "tenant-abc",
+		"deal_id":           "deal-100",
+		"contract_id":       "contract-200",
+		"subscription_id":   "sub-300",
+		"lead_id":           "lead-400",
+		"billing_entity_id": "cus-500",
+	})
+	if err != nil {
+		t.Fatalf("MapBusinessEntity failed: %v", err)
+	}
+
+	found, ok := mapper.GetLineage("contract-200")
+	if !ok {
+		t.Fatal("expected to find lineage by contract id")
+	}
+	if found.AssetID != "tenant-abc" {
+		t.Fatalf("expected tenant-abc lineage, got %s", found.AssetID)
+	}
+
+	found, ok = mapper.GetLineage("lead-400")
+	if !ok {
+		t.Fatal("expected to find lineage by business chain entity id")
+	}
+	if found.AssetID != "tenant-abc" {
+		t.Fatalf("expected tenant-abc lineage from lead lookup, got %s", found.AssetID)
+	}
+}
+
+func TestLineageMapper_DetectBusinessDrift(t *testing.T) {
+	mapper := NewLineageMapper()
+	mapper.assets["tenant-xyz"] = &AssetLineage{
+		AssetID: "tenant-xyz",
+	}
+
+	expectedState := map[string]interface{}{
+		"contract_plan":   "enterprise",
+		"contract_amount": 5000,
+		"crm_stage":       "closed_won",
+		"sla_tier":        "enterprise",
+	}
+	runtimeState := map[string]interface{}{
+		"billing_plan":     "pro",
+		"billing_amount":   4500,
+		"usage_state":      "dormant",
+		"support_priority": "p3",
+	}
+
+	drifts := mapper.DetectBusinessDrift(context.Background(), "tenant-xyz", expectedState, runtimeState)
+	if len(drifts) != 4 {
+		t.Fatalf("expected 4 business drifts, got %d", len(drifts))
+	}
+
+	lineage, ok := mapper.GetLineage("tenant-xyz")
+	if !ok {
+		t.Fatal("expected lineage to exist")
+	}
+	if !lineage.DriftDetected {
+		t.Fatal("expected lineage to be marked drifted")
+	}
+	if len(lineage.DriftDetails) != 4 {
+		t.Fatalf("expected 4 stored drift details, got %d", len(lineage.DriftDetails))
+	}
+}
+
+func TestParseTime_StringUnix(t *testing.T) {
+	ts := parseTime("1700000000")
+	if ts == nil {
+		t.Fatal("expected unix timestamp string to parse")
+	}
+	if ts.UTC().Unix() != 1700000000 {
+		t.Fatalf("unexpected parsed unix value: %d", ts.UTC().Unix())
+	}
+}
+
+func TestFirstNonEmptyTime(t *testing.T) {
+	now := time.Now().UTC()
+	got := firstNonEmptyTime(nil, &now)
+	if got == nil || !got.Equal(now) {
+		t.Fatal("expected first non-nil time to be returned")
+	}
+}
+
+func hasBusinessStep(steps []BusinessLineageStep, stepType, entityID string) bool {
+	for _, step := range steps {
+		if step.StepType == stepType && step.EntityID == entityID {
+			return true
+		}
+	}
+	return false
 }

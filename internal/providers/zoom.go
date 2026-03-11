@@ -36,7 +36,7 @@ func NewZoomProvider() *ZoomProvider {
 		BaseProvider: NewBaseProvider("zoom", ProviderTypeSaaS),
 		baseURL:      zoomDefaultAPIURL,
 		tokenURL:     zoomDefaultTokenURL,
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

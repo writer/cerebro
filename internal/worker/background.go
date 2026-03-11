@@ -2,7 +2,9 @@ package worker
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"runtime/debug"
 	"sync"
 	"time"
 )
@@ -44,6 +46,16 @@ func (r *BackgroundRunner) Run(name string, task func(ctx context.Context) error
 		}
 
 		defer func() {
+			if recovered := recover(); recovered != nil {
+				result.Error = fmt.Errorf("panic: %v", recovered)
+				if r.logger != nil {
+					r.logger.Error("background task panicked",
+						"task", name,
+						"panic", fmt.Sprintf("%v", recovered),
+						"stack", string(debug.Stack()))
+				}
+			}
+
 			result.EndedAt = time.Now()
 			r.mu.Lock()
 			r.running--
@@ -83,6 +95,16 @@ func (r *BackgroundRunner) RunWithContext(ctx context.Context, name string, task
 		}
 
 		defer func() {
+			if recovered := recover(); recovered != nil {
+				result.Error = fmt.Errorf("panic: %v", recovered)
+				if r.logger != nil {
+					r.logger.Error("background task panicked",
+						"task", name,
+						"panic", fmt.Sprintf("%v", recovered),
+						"stack", string(debug.Stack()))
+				}
+			}
+
 			result.EndedAt = time.Now()
 			r.mu.Lock()
 			r.running--

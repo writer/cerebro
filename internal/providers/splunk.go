@@ -28,7 +28,7 @@ type SplunkProvider struct {
 func NewSplunkProvider() *SplunkProvider {
 	return &SplunkProvider{
 		BaseProvider: NewBaseProvider("splunk", ProviderTypeSaaS),
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

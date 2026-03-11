@@ -35,7 +35,7 @@ type Auth0Provider struct {
 func NewAuth0Provider() *Auth0Provider {
 	return &Auth0Provider{
 		BaseProvider: NewBaseProvider("auth0", ProviderTypeSaaS),
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

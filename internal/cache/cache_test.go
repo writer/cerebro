@@ -47,7 +47,15 @@ func TestLRUExpiration(t *testing.T) {
 		t.Error("expected 'a' to exist before expiration")
 	}
 
-	time.Sleep(100 * time.Millisecond)
+	c.mu.Lock()
+	elem, ok := c.items["a"]
+	if !ok {
+		c.mu.Unlock()
+		t.Fatal("expected cache entry to exist before forcing expiration")
+	}
+	e := elem.Value.(*entry)
+	e.expiresAt = time.Now().Add(-time.Millisecond)
+	c.mu.Unlock()
 
 	if _, ok := c.Get("a"); ok {
 		t.Error("expected 'a' to be expired")

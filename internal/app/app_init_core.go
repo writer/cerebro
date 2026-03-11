@@ -2,15 +2,16 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
-	"github.com/writer/cerebro/internal/agents"
-	agentproviders "github.com/writer/cerebro/internal/agents/providers"
 	"github.com/writer/cerebro/internal/attackpath"
 	"github.com/writer/cerebro/internal/cache"
+	"github.com/writer/cerebro/internal/dspm"
 	"github.com/writer/cerebro/internal/events"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/identity"
@@ -18,7 +19,6 @@ import (
 	"github.com/writer/cerebro/internal/notifications"
 	"github.com/writer/cerebro/internal/policy"
 	"github.com/writer/cerebro/internal/scanner"
-	"github.com/writer/cerebro/internal/scm"
 	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/ticketing"
 	"github.com/writer/cerebro/internal/webhooks"
@@ -48,6 +48,7 @@ func (a *App) initSnowflake(ctx context.Context) error {
 	}
 
 	a.Snowflake = client
+	a.Warehouse = client
 	return nil
 }
 
@@ -70,9 +71,14 @@ func (a *App) initPolicy() error {
 }
 
 func (a *App) initFindings() {
+	warehouseDB := (*sql.DB)(nil)
+	if a.Warehouse != nil {
+		warehouseDB = a.Warehouse.DB()
+	}
+
 	// Use SQLite persistence when Snowflake is not available
 	// This prevents data loss on restart in dev/test environments
-	if a.Snowflake == nil {
+	if a.Warehouse == nil || warehouseDB == nil {
 		dbPath := filepath.Join(findings.DefaultFilePath(), "cerebro.db")
 		if path := os.Getenv("CEREBRO_DB_PATH"); path != "" {
 			dbPath = path
@@ -92,10 +98,18 @@ func (a *App) initFindings() {
 	}
 	// When Snowflake is available, create SnowflakeStore as primary
 	// This will be loaded from Snowflake in initSnowflakeFindings
+	databaseName := strings.TrimSpace(a.Config.SnowflakeDatabase)
+	schemaName := strings.TrimSpace(a.Config.SnowflakeSchema)
+	if candidate := strings.TrimSpace(a.Warehouse.Database()); candidate != "" {
+		databaseName = candidate
+	}
+	if candidate := strings.TrimSpace(a.Warehouse.Schema()); candidate != "" {
+		schemaName = candidate
+	}
 	snowflakeStore := findings.NewSnowflakeStore(
-		a.Snowflake.DB(),
-		a.Config.SnowflakeDatabase,
-		a.Config.SnowflakeSchema,
+		warehouseDB,
+		databaseName,
+		schemaName,
 	)
 	a.Findings = snowflakeStore
 	a.SnowflakeFindings = snowflakeStore
@@ -162,72 +176,33 @@ func (a *App) initScanner() {
 	if a.Cache != nil {
 		a.Scanner.SetCache(a.Cache)
 	}
+	a.DSPM = dspm.NewScanner(dspm.NewMetadataFetcher(), a.Logger, dspm.DefaultScannerConfig())
 }
 
 func (a *App) initCache() {
-	a.Cache = cache.NewPolicyCache(10000, 0) // No TTL for policy cache
+	a.Cache = cache.NewPolicyCache(10000, 15*time.Minute)
 }
 
-func (a *App) initAgents() {
-	a.Agents = agents.NewAgentRegistry()
-	if a.Snowflake != nil {
-		store, err := agents.NewSnowflakeSessionStore(a.Snowflake)
-		if err != nil {
-			a.Logger.Warn("failed to initialize persistent agent session store, using in-memory store", "error", err)
-		} else {
-			a.Agents.SetSessionStore(store)
-		}
+func (a *App) initTicketing(ctx context.Context) {
+	if ctx == nil {
+		ctx = context.Background()
 	}
-
-	// Initialize SCM client
-	scmClient := scm.NewConfiguredClient(a.Config.GitHubToken, a.Config.GitLabToken, a.Config.GitLabBaseURL)
-
-	// Create security tools for agents
-	tools := agents.NewSecurityTools(a.Snowflake, a.Findings, a.Policy, scmClient)
-
-	// Register Anthropic-based agent if configured
-	if a.Config.AnthropicAPIKey != "" {
-		provider := agentproviders.NewAnthropicProvider(agentproviders.AnthropicConfig{
-			APIKey: a.Config.AnthropicAPIKey,
-		})
-		a.Agents.RegisterAgent(&agents.Agent{
-			ID:          "security-analyst",
-			Name:        "Security Analyst",
-			Description: "AI-powered security analyst for investigating findings and incidents",
-			Provider:    provider,
-			Tools:       tools.GetTools(),
-			Memory:      agents.NewMemory(100),
-		})
-	}
-
-	// Register OpenAI-based agent if configured
-	if a.Config.OpenAIAPIKey != "" {
-		provider := agentproviders.NewOpenAIProvider(agentproviders.OpenAIConfig{
-			APIKey: a.Config.OpenAIAPIKey,
-		})
-		a.Agents.RegisterAgent(&agents.Agent{
-			ID:          "incident-responder",
-			Name:        "Incident Responder",
-			Description: "AI-powered incident responder for triage and remediation",
-			Provider:    provider,
-			Tools:       tools.GetTools(),
-			Memory:      agents.NewMemory(100),
-		})
-	}
-}
-
-func (a *App) initTicketing() {
 	a.Ticketing = ticketing.NewService()
 
 	// Register Jira if configured
 	if a.Config.JiraBaseURL != "" && a.Config.JiraAPIToken != "" {
 		jira := ticketing.NewJiraProvider(ticketing.JiraConfig{
-			BaseURL:  a.Config.JiraBaseURL,
-			Email:    a.Config.JiraEmail,
-			APIToken: a.Config.JiraAPIToken,
-			Project:  a.Config.JiraProject,
+			BaseURL:          a.Config.JiraBaseURL,
+			Email:            a.Config.JiraEmail,
+			APIToken:         a.Config.JiraAPIToken,
+			Project:          a.Config.JiraProject,
+			CloseTransitions: a.Config.JiraCloseTransitions,
 		})
-		a.Ticketing.RegisterProvider(jira)
+		if err := validateTicketingProvider(ctx, jira); err != nil {
+			a.Logger.Error("ticketing provider validation failed", "provider", jira.Name(), "error", err)
+		} else {
+			a.Ticketing.RegisterProvider(jira)
+		}
 	}
 
 	// Register Linear if configured
@@ -236,8 +211,21 @@ func (a *App) initTicketing() {
 			APIKey: a.Config.LinearAPIKey,
 			TeamID: a.Config.LinearTeamID,
 		})
-		a.Ticketing.RegisterProvider(linear)
+		if err := validateTicketingProvider(ctx, linear); err != nil {
+			a.Logger.Error("ticketing provider validation failed", "provider", linear.Name(), "error", err)
+		} else {
+			a.Ticketing.RegisterProvider(linear)
+		}
 	}
+}
+
+func validateTicketingProvider(parent context.Context, provider ticketing.Provider) error {
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
+	defer cancel()
+	return provider.Validate(ctx)
 }
 
 func (a *App) initIdentity() {

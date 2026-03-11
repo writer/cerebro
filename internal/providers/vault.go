@@ -21,7 +21,7 @@ type VaultProvider struct {
 func NewVaultProvider() *VaultProvider {
 	return &VaultProvider{
 		BaseProvider: NewBaseProvider("vault", ProviderTypeSaaS),
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

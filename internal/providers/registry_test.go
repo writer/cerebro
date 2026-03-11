@@ -2,6 +2,7 @@ package providers
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -130,6 +131,14 @@ func TestRegistry_Configure(t *testing.T) {
 
 	if provider.GetConfigString("api_key") != "secret" {
 		t.Error("config should be stored")
+	}
+}
+
+func TestRegistry_ConfigureUnknownProvider(t *testing.T) {
+	r := NewRegistry()
+	err := r.Configure(context.Background(), "missing", map[string]interface{}{"k": "v"})
+	if !errors.Is(err, ErrProviderNotFound) {
+		t.Fatalf("expected ErrProviderNotFound, got %v", err)
 	}
 }
 

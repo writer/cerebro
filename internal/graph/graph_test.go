@@ -261,3 +261,215 @@ func TestGraph_CrossAccountEdgesIndexed(t *testing.T) {
 		t.Errorf("expected 1 cross-account edge, got %d", len(crossEdges))
 	}
 }
+
+func TestGraph_RemoveNode(t *testing.T) {
+	g := New()
+
+	g.AddNode(&Node{ID: "user:alice", Kind: NodeKindUser})
+	g.AddNode(&Node{ID: "role:admin", Kind: NodeKindRole})
+	g.AddNode(&Node{ID: "bucket:data", Kind: NodeKindBucket})
+
+	g.AddEdge(&Edge{ID: "e1", Source: "user:alice", Target: "role:admin", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "e2", Source: "role:admin", Target: "bucket:data", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "e3", Source: "bucket:data", Target: "user:alice", Kind: EdgeKindOwns, Effect: EdgeEffectAllow})
+
+	g.BuildIndex()
+	if !g.IsIndexBuilt() {
+		t.Fatal("expected index to be built")
+	}
+
+	if !g.RemoveNode("role:admin") {
+		t.Fatal("expected RemoveNode to delete existing node")
+	}
+	if g.IsIndexBuilt() {
+		t.Fatal("expected RemoveNode to invalidate index")
+	}
+	if _, ok := g.GetNode("role:admin"); ok {
+		t.Fatal("expected removed node to be absent")
+	}
+
+	if len(g.GetOutEdges("user:alice")) != 0 {
+		t.Fatal("expected edges targeting removed node to be deleted")
+	}
+	if len(g.GetOutEdges("role:admin")) != 0 {
+		t.Fatal("expected removed source edge list to be deleted")
+	}
+	if len(g.GetInEdges("role:admin")) != 0 {
+		t.Fatal("expected removed target edge list to be deleted")
+	}
+	if g.EdgeCount() != 1 {
+		t.Fatalf("expected 1 remaining edge, got %d", g.EdgeCount())
+	}
+	if g.RemoveNode("missing-node") {
+		t.Fatal("expected RemoveNode to return false for missing node")
+	}
+}
+
+func TestGraph_RemoveEdge(t *testing.T) {
+	g := New()
+
+	g.AddNode(&Node{ID: "user:alice", Kind: NodeKindUser})
+	g.AddNode(&Node{ID: "role:admin", Kind: NodeKindRole})
+	g.AddEdge(&Edge{ID: "e1", Source: "user:alice", Target: "role:admin", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "e2", Source: "user:alice", Target: "role:admin", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "e3", Source: "user:alice", Target: "role:admin", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+
+	g.BuildIndex()
+	if !g.IsIndexBuilt() {
+		t.Fatal("expected index to be built")
+	}
+
+	if !g.RemoveEdge("user:alice", "role:admin", EdgeKindCanAssume) {
+		t.Fatal("expected RemoveEdge to remove matching edges")
+	}
+	if g.IsIndexBuilt() {
+		t.Fatal("expected RemoveEdge to invalidate index")
+	}
+
+	if got := len(g.GetOutEdges("user:alice")); got != 1 {
+		t.Fatalf("expected 1 remaining out edge, got %d", got)
+	}
+	if g.GetOutEdges("user:alice")[0].Kind != EdgeKindCanRead {
+		t.Fatalf("expected remaining edge kind to be %q", EdgeKindCanRead)
+	}
+	if got := len(g.GetInEdges("role:admin")); got != 1 {
+		t.Fatalf("expected 1 remaining in edge, got %d", got)
+	}
+	if g.RemoveEdge("user:alice", "role:admin", EdgeKindCanDelete) {
+		t.Fatal("expected RemoveEdge to return false when nothing is removed")
+	}
+}
+
+func TestGraph_RemoveEdgesByNode(t *testing.T) {
+	g := New()
+
+	g.AddNode(&Node{ID: "a", Kind: NodeKindUser})
+	g.AddNode(&Node{ID: "b", Kind: NodeKindRole})
+	g.AddNode(&Node{ID: "c", Kind: NodeKindBucket})
+	g.AddEdge(&Edge{ID: "e1", Source: "a", Target: "b", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "e2", Source: "b", Target: "c", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "e3", Source: "c", Target: "b", Kind: EdgeKindOwns, Effect: EdgeEffectAllow})
+
+	g.BuildIndex()
+	g.RemoveEdgesByNode("b")
+
+	if g.IsIndexBuilt() {
+		t.Fatal("expected RemoveEdgesByNode to invalidate index")
+	}
+	if len(g.GetOutEdges("a")) != 0 {
+		t.Fatal("expected outgoing edge to removed node to be deleted")
+	}
+	if len(g.GetOutEdges("b")) != 0 {
+		t.Fatal("expected outgoing edges from target node to be deleted")
+	}
+	if len(g.GetInEdges("b")) != 0 {
+		t.Fatal("expected inbound edges to target node to be deleted")
+	}
+	if g.EdgeCount() != 0 {
+		t.Fatalf("expected all edges touching node b to be removed, got %d", g.EdgeCount())
+	}
+}
+
+func TestGraph_SetNodeProperty(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "node-1", Kind: NodeKindUser})
+	g.BuildIndex()
+
+	if !g.SetNodeProperty("node-1", "department", "security") {
+		t.Fatal("expected SetNodeProperty to update existing node")
+	}
+	if g.IsIndexBuilt() {
+		t.Fatal("expected SetNodeProperty to invalidate index")
+	}
+	n, ok := g.GetNode("node-1")
+	if !ok {
+		t.Fatal("expected node to exist")
+	}
+	if got := n.Properties["department"]; got != "security" {
+		t.Fatalf("expected property to be set, got %v", got)
+	}
+	if g.SetNodeProperty("missing", "k", "v") {
+		t.Fatal("expected SetNodeProperty to return false for missing node")
+	}
+}
+
+func TestGraph_Clone(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{
+		ID:       "node-1",
+		Kind:     NodeKindUser,
+		Name:     "original",
+		Findings: []string{"f1"},
+		Properties: map[string]any{
+			"flat": "value",
+			"nested": map[string]any{
+				"key": "value",
+			},
+			"arr": []any{"x", map[string]any{"inner": "y"}},
+		},
+		Tags: map[string]string{"env": "prod"},
+	})
+	g.AddNode(&Node{ID: "node-2", Kind: NodeKindRole})
+	g.AddEdge(&Edge{
+		ID:     "e1",
+		Source: "node-1",
+		Target: "node-2",
+		Kind:   EdgeKindCanAssume,
+		Effect: EdgeEffectAllow,
+		Properties: map[string]any{
+			"reason": "delegation",
+		},
+	})
+
+	clone := g.Clone()
+	if clone == g {
+		t.Fatal("expected Clone to return a distinct graph")
+	}
+	if clone.NodeCount() != g.NodeCount() {
+		t.Fatalf("expected clone node count %d, got %d", g.NodeCount(), clone.NodeCount())
+	}
+	if clone.EdgeCount() != g.EdgeCount() {
+		t.Fatalf("expected clone edge count %d, got %d", g.EdgeCount(), clone.EdgeCount())
+	}
+
+	clonedNode, ok := clone.GetNode("node-1")
+	if !ok {
+		t.Fatal("expected cloned node to exist")
+	}
+	clonedNode.Name = "changed"
+	clonedNode.Properties["flat"] = "changed"
+	clonedNode.Properties["nested"].(map[string]any)["key"] = "changed"
+	clonedNode.Properties["arr"].([]any)[1].(map[string]any)["inner"] = "changed"
+	clonedNode.Tags["env"] = "dev"
+	clonedNode.Findings[0] = "f2"
+
+	origNode, ok := g.GetNode("node-1")
+	if !ok {
+		t.Fatal("expected original node to exist")
+	}
+	if origNode.Name != "original" {
+		t.Fatalf("expected original name to remain unchanged, got %q", origNode.Name)
+	}
+	if got := origNode.Properties["flat"]; got != "value" {
+		t.Fatalf("expected original flat property to remain unchanged, got %v", got)
+	}
+	if got := origNode.Properties["nested"].(map[string]any)["key"]; got != "value" {
+		t.Fatalf("expected original nested property to remain unchanged, got %v", got)
+	}
+	if got := origNode.Properties["arr"].([]any)[1].(map[string]any)["inner"]; got != "y" {
+		t.Fatalf("expected original nested array value to remain unchanged, got %v", got)
+	}
+	if got := origNode.Tags["env"]; got != "prod" {
+		t.Fatalf("expected original tag to remain unchanged, got %v", got)
+	}
+	if got := origNode.Findings[0]; got != "f1" {
+		t.Fatalf("expected original findings to remain unchanged, got %v", got)
+	}
+
+	clonedEdge := clone.GetOutEdges("node-1")[0]
+	clonedEdge.Properties["reason"] = "changed"
+	origEdge := g.GetOutEdges("node-1")[0]
+	if got := origEdge.Properties["reason"]; got != "delegation" {
+		t.Fatalf("expected original edge properties to remain unchanged, got %v", got)
+	}
+}

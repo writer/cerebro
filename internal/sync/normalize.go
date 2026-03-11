@@ -185,10 +185,11 @@ func normalizeTimestampValue(value interface{}) (interface{}, bool) {
 	case int64:
 		return normalizeTimestampEpoch(typed)
 	case uint:
-		if uint64(typed) > uint64(maxSignedInt64) {
+		epoch, ok := uint64ToInt64Checked(uint64(typed), uint64(maxSignedInt64))
+		if !ok {
 			return nil, false
 		}
-		return normalizeTimestampEpoch(int64(typed))
+		return normalizeTimestampEpoch(epoch)
 	case uint8:
 		return normalizeTimestampEpoch(int64(typed))
 	case uint16:
@@ -196,10 +197,11 @@ func normalizeTimestampValue(value interface{}) (interface{}, bool) {
 	case uint32:
 		return normalizeTimestampEpoch(int64(typed))
 	case uint64:
-		if typed > uint64(maxSignedInt64) {
+		epoch, ok := uint64ToInt64Checked(typed, uint64(maxSignedInt64))
+		if !ok {
 			return nil, false
 		}
-		return normalizeTimestampEpoch(int64(typed))
+		return normalizeTimestampEpoch(epoch)
 	case float32:
 		return normalizeTimestampEpoch(int64(typed))
 	case float64:
@@ -207,6 +209,14 @@ func normalizeTimestampValue(value interface{}) (interface{}, bool) {
 	}
 
 	return nil, false
+}
+
+func uint64ToInt64Checked(value uint64, max uint64) (int64, bool) {
+	if value > max {
+		return 0, false
+	}
+	// #nosec G115 -- bounded by caller-provided max (math.MaxInt64 equivalent) above.
+	return int64(value), true
 }
 
 func normalizeTimestampString(raw string) (interface{}, bool) {

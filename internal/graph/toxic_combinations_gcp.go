@@ -239,3 +239,92 @@ func (e *ToxicCombinationEngine) ruleGCPComputeDefaultSA() *ToxicCombinationRule
 		},
 	}
 }
+
+func (e *ToxicCombinationEngine) ruleGCPDefaultSAProjectWidePermissions() *ToxicCombinationRule {
+	return &ToxicCombinationRule{
+		ID:          "TC-GCP-004",
+		Name:        "Default Compute Service Account with Project-Wide Permissions",
+		Description: "Default compute service account is attached to instances and has project-wide IAM privileges",
+		Severity:    SeverityHigh,
+		Tags:        []string{"gcp", "service-account", "project-iam", "over-privilege"},
+		Detector: func(g *Graph, node *Node) *ToxicCombination {
+			if node.Kind != NodeKindServiceAccount || node.Provider != "gcp" {
+				return nil
+			}
+
+			saIdentity := strings.ToLower(readString(node.Properties, "email", "service_account_email"))
+			if saIdentity == "" {
+				saIdentity = strings.ToLower(node.Name)
+			}
+			isDefaultComputeSA := strings.Contains(saIdentity, "-compute@developer.gserviceaccount.com") ||
+				readBool(node.Properties, "is_default_compute_sa")
+			if !isDefaultComputeSA {
+				return nil
+			}
+
+			projectWide := readBool(node.Properties, "project_wide_permissions", "project_level_binding", "broad_project_access")
+			roles, _ := node.Properties["roles"].([]any)
+			for _, roleValue := range roles {
+				role, _ := roleValue.(string)
+				normalized := strings.ToLower(role)
+				if normalized == "roles/owner" ||
+					normalized == "roles/editor" ||
+					normalized == "roles/resourcemanager.projectiamadmin" ||
+					normalized == "roles/iam.securityadmin" ||
+					normalized == "roles/compute.admin" {
+					projectWide = true
+					break
+				}
+			}
+			if !projectWide {
+				return nil
+			}
+
+			attachedInstances := make([]string, 0)
+			hasPublicCompute := false
+			for _, edge := range g.GetInEdges(node.ID) {
+				if edge.Kind != EdgeKindCanAssume || edge.IsDeny() {
+					continue
+				}
+				instance, ok := g.GetNode(edge.Source)
+				if !ok || instance.Kind != NodeKindInstance || instance.Provider != "gcp" {
+					continue
+				}
+				attachedInstances = append(attachedInstances, instance.ID)
+				if isExposedToInternet(g, instance.ID) {
+					hasPublicCompute = true
+				}
+			}
+			if len(attachedInstances) == 0 {
+				return nil
+			}
+
+			severity := SeverityHigh
+			score := 82.0
+			if hasPublicCompute {
+				severity = SeverityCritical
+				score = 92.0
+			}
+
+			affected := append([]string{node.ID}, attachedInstances...)
+			return &ToxicCombination{
+				ID:          fmt.Sprintf("TC-GCP-004-%s", node.ID),
+				Name:        "Default Compute SA with Project-Wide IAM",
+				Description: fmt.Sprintf("Default service account %s is attached to compute and has project-wide privileges", node.Name),
+				Severity:    severity,
+				Score:       score,
+				Factors: []*RiskFactor{
+					{Type: RiskFactorOverPrivilege, NodeID: node.ID, Description: "Default compute service account has project-wide permissions", Severity: SeverityHigh},
+					{Type: RiskFactorLateralMove, NodeID: node.ID, Description: fmt.Sprintf("Attached to %d compute instances", len(attachedInstances)), Severity: SeverityHigh},
+				},
+				Remediation: []*RemediationStep{
+					{Priority: 1, Action: "Replace default SA with dedicated least-privilege service account", Resource: node.ID, Effort: "medium"},
+					{Priority: 2, Action: "Remove owner/editor style project-level role bindings", Resource: node.ID, Effort: "medium"},
+					{Priority: 3, Action: "Constrain instance-to-SA attachment and rotate credentials", Resource: node.ID, Effort: "low"},
+				},
+				AffectedAssets: dedupeStrings(affected),
+				Tags:           []string{"gcp", "service-account", "project-iam"},
+			}
+		},
+	}
+}

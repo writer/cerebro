@@ -80,7 +80,13 @@ func (b *Builder) buildAWSNodes(ctx context.Context) {
 					nodes = append(nodes, &Node{
 						ID: toString(bucket["arn"]), Kind: NodeKindBucket, Name: toString(bucket["name"]),
 						Provider: "aws", Account: toString(bucket["account_id"]), Region: toString(bucket["region"]),
-						Risk: risk, Properties: map[string]any{"public": isPublic, "versioning": bucket["versioning_status"]},
+						Risk: risk, Properties: map[string]any{
+							"public":              isPublic,
+							"block_public_acls":   bucket["block_public_acls"],
+							"block_public_policy": bucket["block_public_policy"],
+							"versioning":          bucket["versioning_status"],
+							"versioning_status":   bucket["versioning_status"],
+						},
 					})
 				}
 				return nodes

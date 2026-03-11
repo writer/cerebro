@@ -4,10 +4,12 @@ import "testing"
 
 func TestEvaluateConditionOperators(t *testing.T) {
 	asset := map[string]interface{}{
-		"role":  "admin",
-		"ports": []interface{}{"22", "443"},
-		"name":  "service-admin",
-		"tags":  []interface{}{"prod", "internal"},
+		"role":          "admin",
+		"ports":         []interface{}{"22", "443"},
+		"name":          "service-admin",
+		"tags":          []interface{}{"prod", "internal"},
+		"open_port":     22,
+		"cpu_threshold": 0.75,
 		"rules": []interface{}{
 			map[string]interface{}{
 				"resources": []interface{}{"*"},
@@ -87,6 +89,26 @@ func TestEvaluateConditionOperators(t *testing.T) {
 			name:      "bracketed key",
 			condition: "metadata.annotations['nginx.ingress.kubernetes.io/auth-type'] == null",
 			want:      true,
+		},
+		{
+			name:      "greater or equal numeric comparison",
+			condition: "open_port >= 22",
+			want:      true,
+		},
+		{
+			name:      "less or equal numeric comparison",
+			condition: "cpu_threshold <= 1",
+			want:      true,
+		},
+		{
+			name:      "not exists true for missing field",
+			condition: "metadata.annotations['missing'] not exists",
+			want:      true,
+		},
+		{
+			name:      "not exists false for existing field",
+			condition: "role not exists",
+			want:      false,
 		},
 	}
 
