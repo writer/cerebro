@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"testing"
@@ -207,6 +208,12 @@ func TestBuilder_BuildWithMockData(t *testing.T) {
 	} else if publicBucket.Risk != RiskHigh {
 		t.Errorf("public bucket should have high risk, got %s", publicBucket.Risk)
 	}
+	if _, ok := g.GetNode("bucket_public_access_block:arn-aws-s3-public-website"); !ok {
+		t.Error("expected normalized bucket public-access-block subresource")
+	}
+	if _, ok := g.GetNode("claim:arn-aws-s3-public-website:public-access:normalized"); !ok {
+		t.Error("expected normalized bucket public_access claim")
+	}
 
 	// Verify internet node exists
 	_, ok = g.GetNode("internet")
@@ -225,6 +232,20 @@ func TestBuilder_BuildWithMockData(t *testing.T) {
 	}
 	if !foundTrustEdge {
 		t.Error("expected trust edge from alice to AdminRole")
+	}
+}
+
+func TestBuilder_BuildReturnsContextErrorWhenCanceled(t *testing.T) {
+	source := newMockDataSource()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	builder := NewBuilder(source, logger)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := builder.Build(ctx)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
 	}
 }
 

@@ -25,7 +25,7 @@ func (s *Server) createReview(w http.ResponseWriter, r *http.Request) {
 
 	created, err := s.app.Identity.CreateReview(r.Context(), &review)
 	if err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
+		s.errorFromErr(w, err)
 		return
 	}
 	s.json(w, http.StatusCreated, created)
@@ -44,7 +44,7 @@ func (s *Server) getReview(w http.ResponseWriter, r *http.Request) {
 func (s *Server) startReview(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if err := s.app.Identity.StartReview(r.Context(), id); err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
+		s.errorFromErr(w, err)
 		return
 	}
 	s.json(w, http.StatusOK, map[string]string{"status": "started"})
@@ -69,7 +69,7 @@ func (s *Server) addReviewItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.app.Identity.AddReviewItem(r.Context(), reviewID, &item); err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
+		s.errorFromErr(w, err)
 		return
 	}
 	s.json(w, http.StatusCreated, item)
@@ -84,7 +84,7 @@ func (s *Server) recordDecision(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.app.Identity.RecordDecision(r.Context(), itemID, &decision); err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
+		s.errorFromErr(w, err)
 		return
 	}
 	s.json(w, http.StatusOK, map[string]string{"status": "decision recorded"})

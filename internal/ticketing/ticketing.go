@@ -2,12 +2,14 @@ package ticketing
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
 // Provider interface for ticketing systems
 type Provider interface {
 	Name() string
+	Validate(ctx context.Context) error
 	CreateTicket(ctx context.Context, ticket *Ticket) (*Ticket, error)
 	UpdateTicket(ctx context.Context, id string, update *TicketUpdate) (*Ticket, error)
 	GetTicket(ctx context.Context, id string) (*Ticket, error)
@@ -91,11 +93,18 @@ func (s *Service) GetProvider(name string) (Provider, bool) {
 }
 
 func (s *Service) Primary() Provider {
+	if s == nil || s.primary == "" || len(s.providers) == 0 {
+		return nil
+	}
 	return s.providers[s.primary]
 }
 
 func (s *Service) CreateTicket(ctx context.Context, ticket *Ticket) (*Ticket, error) {
-	return s.Primary().CreateTicket(ctx, ticket)
+	primary := s.Primary()
+	if primary == nil {
+		return nil, fmt.Errorf("ticketing provider not configured")
+	}
+	return primary.CreateTicket(ctx, ticket)
 }
 
 func (s *Service) CreateTicketFromFinding(ctx context.Context, findingID, title, description, priority string) (*Ticket, error) {

@@ -101,6 +101,7 @@ func TestEventType_Constants(t *testing.T) {
 		EventFindingResolved,
 		EventScanCompleted,
 		EventScanFailed,
+		EventSecurityDigest,
 		EventAttackPathFound,
 		EventReviewRequired,
 	}
@@ -127,7 +128,9 @@ func TestSlackNotifier_Send(t *testing.T) {
 			t.Errorf("expected POST, got %s", r.Method)
 		}
 
-		json.NewDecoder(r.Body).Decode(&receivedPayload)
+		if err := json.NewDecoder(r.Body).Decode(&receivedPayload); err != nil {
+			t.Fatalf("decode request payload: %v", err)
+		}
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
@@ -203,7 +206,9 @@ func TestPagerDutyNotifier_Send(t *testing.T) {
 	var receivedPayload map[string]interface{}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewDecoder(r.Body).Decode(&receivedPayload)
+		if err := json.NewDecoder(r.Body).Decode(&receivedPayload); err != nil {
+			t.Fatalf("decode pagerduty payload: %v", err)
+		}
 		w.WriteHeader(http.StatusAccepted)
 	}))
 	defer server.Close()
@@ -251,7 +256,9 @@ func TestWebhookNotifier_Send(t *testing.T) {
 			t.Error("expected X-Cerebro-Event header")
 		}
 
-		json.NewDecoder(r.Body).Decode(&receivedEvent)
+		if err := json.NewDecoder(r.Body).Decode(&receivedEvent); err != nil {
+			t.Fatalf("decode webhook event: %v", err)
+		}
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
@@ -292,7 +299,9 @@ func TestWebhookNotifier_WithSecret(t *testing.T) {
 		Secret: "my-secret",
 	})
 
-	n.Send(context.Background(), Event{Type: "test", Title: "Test"})
+	if err := n.Send(context.Background(), Event{Type: "test", Title: "Test"}); err != nil {
+		t.Fatalf("Send failed: %v", err)
+	}
 
 	if gotSignature == "" {
 		t.Error("expected signature header")
@@ -352,7 +361,9 @@ func TestManager_Send_SetsTimestamp(t *testing.T) {
 	var receivedEvent Event
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewDecoder(r.Body).Decode(&receivedEvent)
+		if err := json.NewDecoder(r.Body).Decode(&receivedEvent); err != nil {
+			t.Fatalf("decode manager event: %v", err)
+		}
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
@@ -367,7 +378,9 @@ func TestManager_Send_SetsTimestamp(t *testing.T) {
 		Title: "Test",
 	}
 
-	m.Send(context.Background(), event)
+	if err := m.Send(context.Background(), event); err != nil {
+		t.Fatalf("manager send failed: %v", err)
+	}
 
 	if receivedEvent.Timestamp.IsZero() {
 		t.Error("expected timestamp to be set automatically")

@@ -169,6 +169,124 @@ func InsertVariantRowsBatch(ctx context.Context, client ExecClient, table string
 	return nil
 }
 
+// MergeVariantRowsBatch atomically upserts rows using MERGE INTO so that a
+// failed batch never leaves the target table with missing data (no
+// delete-before-insert window). Rows are matched on _CQ_ID.
+func MergeVariantRowsBatch(ctx context.Context, client ExecClient, table string, rows []map[string]interface{}, reservedColumns map[string]struct{}, batchSize int) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	if err := snowflake.ValidateTableName(table); err != nil {
+		return fmt.Errorf("invalid table name: %w", err)
+	}
+	if batchSize <= 0 {
+		batchSize = DefaultInsertBatchSize
+	}
+
+	reserved := normalizeReserved(reservedColumns)
+	columnSet := make(map[string]struct{})
+	for _, row := range rows {
+		for key := range row {
+			if _, skip := reserved[strings.ToUpper(key)]; skip {
+				continue
+			}
+			columnSet[strings.ToUpper(key)] = struct{}{}
+		}
+	}
+
+	columns := make([]string, 0, len(columnSet))
+	for col := range columnSet {
+		columns = append(columns, col)
+	}
+	sort.Strings(columns)
+
+	allColumns := append([]string{"_CQ_ID", "_CQ_HASH"}, columns...)
+	if err := validateColumns(allColumns); err != nil {
+		return err
+	}
+
+	for start := 0; start < len(rows); start += batchSize {
+		end := start + batchSize
+		if end > len(rows) {
+			end = len(rows)
+		}
+
+		batch := rows[start:end]
+		selects := make([]string, 0, len(batch))
+		args := make([]interface{}, 0, len(batch)*len(allColumns))
+		firstSelect := true
+
+		for _, row := range batch {
+			rowUpper := make(map[string]interface{}, len(row))
+			for key, value := range row {
+				rowUpper[strings.ToUpper(key)] = value
+			}
+
+			id := strings.TrimSpace(stringValue(rowUpper["_CQ_ID"]))
+			if id == "" {
+				continue
+			}
+			hash := stringValue(rowUpper["_CQ_HASH"])
+
+			parts := make([]string, 0, len(allColumns))
+			args = append(args, id, hash)
+
+			// The first emitted SELECT needs column aliases for UNION ALL.
+			if firstSelect {
+				parts = append(parts, "? AS _CQ_ID", "? AS _CQ_HASH")
+				for _, col := range columns {
+					jsonVal, _ := json.Marshal(rowUpper[col])
+					parts = append(parts, fmt.Sprintf("PARSE_JSON(?) AS %s", col))
+					args = append(args, string(jsonVal))
+				}
+				firstSelect = false
+			} else {
+				parts = append(parts, "?", "?")
+				for _, col := range columns {
+					jsonVal, _ := json.Marshal(rowUpper[col])
+					parts = append(parts, "PARSE_JSON(?)")
+					args = append(args, string(jsonVal))
+				}
+			}
+
+			selects = append(selects, "SELECT "+strings.Join(parts, ", "))
+		}
+
+		if len(selects) == 0 {
+			continue
+		}
+
+		usingClause := strings.Join(selects, " UNION ALL ")
+
+		// Build UPDATE SET clause
+		updateParts := make([]string, 0, len(columns)+1)
+		updateParts = append(updateParts, "t._CQ_HASH = s._CQ_HASH")
+		for _, col := range columns {
+			updateParts = append(updateParts, fmt.Sprintf("t.%s = s.%s", col, col))
+		}
+
+		// Build INSERT column/value lists
+		insertCols := strings.Join(allColumns, ", ")
+		insertVals := make([]string, 0, len(allColumns))
+		for _, col := range allColumns {
+			insertVals = append(insertVals, "s."+col)
+		}
+
+		query := fmt.Sprintf(
+			"MERGE INTO %s t USING (%s) s ON t._CQ_ID = s._CQ_ID "+
+				"WHEN MATCHED THEN UPDATE SET %s "+
+				"WHEN NOT MATCHED THEN INSERT (%s) VALUES (%s)",
+			table, usingClause, strings.Join(updateParts, ", "),
+			insertCols, strings.Join(insertVals, ", "))
+
+		if _, err := client.Exec(ctx, query, args...); err != nil {
+			return fmt.Errorf("merge rows: %w", err)
+		}
+	}
+
+	return nil
+}
+
 func normalizeReserved(custom map[string]struct{}) map[string]struct{} {
 	reserved := map[string]struct{}{
 		"_CQ_ID":        {},

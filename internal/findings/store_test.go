@@ -123,6 +123,37 @@ func TestStoreList(t *testing.T) {
 	}
 }
 
+func TestStoreListAndCount_FilterByTenant(t *testing.T) {
+	store := NewStore()
+
+	store.Upsert(context.Background(), policy.Finding{
+		ID:       "tenant-a-f1",
+		PolicyID: "p1",
+		Severity: "high",
+		Resource: map[string]interface{}{"tenant_id": "tenant-a"},
+	})
+	store.Upsert(context.Background(), policy.Finding{
+		ID:       "tenant-b-f1",
+		PolicyID: "p1",
+		Severity: "high",
+		Resource: map[string]interface{}{"tenant_id": "tenant-b"},
+	})
+
+	tenantAFindings := store.List(FindingFilter{TenantID: "tenant-a"})
+	if len(tenantAFindings) != 1 {
+		t.Fatalf("expected 1 finding for tenant-a, got %d", len(tenantAFindings))
+	}
+	if tenantAFindings[0].ID != "tenant-a-f1" {
+		t.Fatalf("expected tenant-a-f1, got %s", tenantAFindings[0].ID)
+	}
+	if got := store.Count(FindingFilter{TenantID: "tenant-a"}); got != 1 {
+		t.Fatalf("expected tenant-a count=1, got %d", got)
+	}
+	if got := store.Count(FindingFilter{TenantID: "tenant-b"}); got != 1 {
+		t.Fatalf("expected tenant-b count=1, got %d", got)
+	}
+}
+
 func TestStoreStats(t *testing.T) {
 	store := NewStore()
 
@@ -144,6 +175,66 @@ func TestStoreStats(t *testing.T) {
 	}
 	if stats.ByStatus["RESOLVED"] != 1 {
 		t.Errorf("expected 1 resolved, got %d", stats.ByStatus["RESOLVED"])
+	}
+}
+
+func TestStoreList_FilterBySignalTypeAndDomain(t *testing.T) {
+	store := NewStore()
+
+	store.Upsert(context.Background(), policy.Finding{ID: "f1", PolicyID: "p1", Severity: "high"})
+	store.Upsert(context.Background(), policy.Finding{ID: "f2", PolicyID: "stripe-large-refund", Severity: "high"})
+
+	if err := store.Update("f1", func(f *Finding) error {
+		f.SignalType = SignalTypeBusiness
+		f.Domain = DomainPipeline
+		return nil
+	}); err != nil {
+		t.Fatalf("update f1: %v", err)
+	}
+	if err := store.Update("f2", func(f *Finding) error {
+		f.SignalType = SignalTypeCompliance
+		f.Domain = DomainFinancial
+		return nil
+	}); err != nil {
+		t.Fatalf("update f2: %v", err)
+	}
+
+	filtered := store.List(FindingFilter{SignalType: SignalTypeBusiness, Domain: DomainPipeline})
+	if len(filtered) != 1 {
+		t.Fatalf("expected 1 filtered finding, got %d", len(filtered))
+	}
+	if filtered[0].ID != "f1" {
+		t.Fatalf("expected f1, got %s", filtered[0].ID)
+	}
+}
+
+func TestStoreStats_BySignalTypeAndDomain(t *testing.T) {
+	store := NewStore()
+
+	store.Upsert(context.Background(), policy.Finding{ID: "f1", PolicyID: "p1", Severity: "high"})
+	store.Upsert(context.Background(), policy.Finding{ID: "f2", PolicyID: "stripe-large-refund", Severity: "critical"})
+
+	if err := store.Update("f1", func(f *Finding) error {
+		f.SignalType = SignalTypeBusiness
+		f.Domain = DomainPipeline
+		return nil
+	}); err != nil {
+		t.Fatalf("update f1: %v", err)
+	}
+	if err := store.Update("f2", func(f *Finding) error {
+		f.SignalType = SignalTypeCompliance
+		f.Domain = DomainFinancial
+		return nil
+	}); err != nil {
+		t.Fatalf("update f2: %v", err)
+	}
+
+	stats := store.Stats()
+	if stats.BySignalType[SignalTypeBusiness] != 1 || stats.BySignalType[SignalTypeCompliance] != 1 {
+		t.Fatalf("unexpected by_signal_type stats: %#v", stats.BySignalType)
+	}
+	if stats.ByDomain[DomainPipeline] != 1 || stats.ByDomain[DomainFinancial] != 1 {
+		t.Fatalf("unexpected by_domain stats: %#v", stats.ByDomain)
 	}
 }
 

@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/writer/cerebro/internal/app"
+	apiclient "github.com/writer/cerebro/internal/client"
 	"github.com/writer/cerebro/internal/findings"
 )
 
@@ -76,6 +78,14 @@ var (
 	findingsPretty     bool
 )
 
+var (
+	runFindingsListDirectFn     = runFindingsListDirect
+	runFindingsStatsDirectFn    = runFindingsStatsDirect
+	runFindingsResolveDirectFn  = runFindingsResolveDirect
+	runFindingsSuppressDirectFn = runFindingsSuppressDirect
+	runFindingsExportDirectFn   = runFindingsExportDirect
+)
+
 func init() {
 	findingsCmd.AddCommand(findingsListCmd)
 	findingsCmd.AddCommand(findingsStatsCmd)
@@ -97,6 +107,230 @@ func init() {
 }
 
 func runFindingsList(cmd *cobra.Command, args []string) error {
+	ctx := commandContextOrBackground(cmd)
+	mode, err := loadCLIExecutionMode()
+	if err != nil {
+		return err
+	}
+
+	filter := findingsListFilter()
+	if mode != cliExecutionModeDirect {
+		apiClient, err := newCLIAPIClient()
+		if err != nil {
+			if mode == cliExecutionModeAPI {
+				return err
+			}
+			Warning("API client configuration invalid; using direct mode: %v", err)
+		} else {
+			list, err := apiClient.ListFindings(ctx, filter)
+			if err == nil {
+				return renderFindingsList(list)
+			}
+			if mode == cliExecutionModeAPI || !shouldFallbackToDirect(mode, err) {
+				return fmt.Errorf("list findings via api: %w", err)
+			}
+			Warning("API unavailable; using direct mode: %v", err)
+		}
+	}
+
+	return runFindingsListDirectFn(cmd, args)
+}
+
+func runFindingsStats(cmd *cobra.Command, args []string) error {
+	ctx := commandContextOrBackground(cmd)
+	mode, err := loadCLIExecutionMode()
+	if err != nil {
+		return err
+	}
+
+	if mode != cliExecutionModeDirect {
+		apiClient, err := newCLIAPIClient()
+		if err != nil {
+			if mode == cliExecutionModeAPI {
+				return err
+			}
+			Warning("API client configuration invalid; using direct mode: %v", err)
+		} else {
+			stats, err := apiClient.FindingsStats(ctx)
+			if err == nil {
+				return renderFindingsStats(stats)
+			}
+			if mode == cliExecutionModeAPI || !shouldFallbackToDirect(mode, err) {
+				return fmt.Errorf("load findings stats via api: %w", err)
+			}
+			Warning("API unavailable; using direct mode: %v", err)
+		}
+	}
+
+	return runFindingsStatsDirectFn(cmd, args)
+}
+
+func runFindingsResolve(cmd *cobra.Command, args []string) error {
+	ctx := commandContextOrBackground(cmd)
+	findingID := args[0]
+
+	mode, err := loadCLIExecutionMode()
+	if err != nil {
+		return err
+	}
+
+	if mode != cliExecutionModeDirect {
+		apiClient, err := newCLIAPIClient()
+		if err != nil {
+			if mode == cliExecutionModeAPI {
+				return err
+			}
+			Warning("API client configuration invalid; using direct mode: %v", err)
+		} else {
+			err := apiClient.ResolveFinding(ctx, findingID)
+			if err == nil {
+				Success("Finding %s marked as resolved", findingID)
+				return nil
+			}
+			if apiclient.IsAPIErrorStatus(err, http.StatusNotFound) {
+				return fmt.Errorf("finding not found: %s", findingID)
+			}
+			if mode == cliExecutionModeAPI || !shouldFallbackToDirect(mode, err) {
+				return fmt.Errorf("resolve finding via api: %w", err)
+			}
+			Warning("API unavailable; using direct mode: %v", err)
+		}
+	}
+
+	return runFindingsResolveDirectFn(cmd, args)
+}
+
+func runFindingsSuppress(cmd *cobra.Command, args []string) error {
+	ctx := commandContextOrBackground(cmd)
+	findingID := args[0]
+
+	mode, err := loadCLIExecutionMode()
+	if err != nil {
+		return err
+	}
+
+	if mode != cliExecutionModeDirect {
+		apiClient, err := newCLIAPIClient()
+		if err != nil {
+			if mode == cliExecutionModeAPI {
+				return err
+			}
+			Warning("API client configuration invalid; using direct mode: %v", err)
+		} else {
+			err := apiClient.SuppressFinding(ctx, findingID)
+			if err == nil {
+				Success("Finding %s suppressed", findingID)
+				return nil
+			}
+			if apiclient.IsAPIErrorStatus(err, http.StatusNotFound) {
+				return fmt.Errorf("finding not found: %s", findingID)
+			}
+			if mode == cliExecutionModeAPI || !shouldFallbackToDirect(mode, err) {
+				return fmt.Errorf("suppress finding via api: %w", err)
+			}
+			Warning("API unavailable; using direct mode: %v", err)
+		}
+	}
+
+	return runFindingsSuppressDirectFn(cmd, args)
+}
+
+func runFindingsExport(cmd *cobra.Command, args []string) error {
+	ctx := commandContextOrBackground(cmd)
+	mode, err := loadCLIExecutionMode()
+	if err != nil {
+		return err
+	}
+
+	filter := findings.FindingFilter{
+		Severity: findingsSeverity,
+		Status:   findingsStatus,
+		PolicyID: findingsPolicyID,
+	}
+	format := normalizeFindingsExportFormat(findingsExportFmt)
+
+	if mode != cliExecutionModeDirect {
+		apiClient, err := newCLIAPIClient()
+		if err != nil {
+			if mode == cliExecutionModeAPI {
+				return err
+			}
+			Warning("API client configuration invalid; using direct mode: %v", err)
+		} else {
+			data, _, err := apiClient.ExportFindings(ctx, filter, format, findingsPretty)
+			if err == nil {
+				return writeFindingsExportData(data, 0)
+			}
+			if mode == cliExecutionModeAPI || !shouldFallbackToDirect(mode, err) {
+				return fmt.Errorf("export findings via api: %w", err)
+			}
+			Warning("API unavailable; using direct mode: %v", err)
+		}
+	}
+
+	return runFindingsExportDirectFn(cmd, args)
+}
+
+func runFindingsListDirect(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+
+	application, err := app.New(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to initialize: %w", err)
+	}
+	defer func() { _ = application.Close() }()
+
+	list := application.Findings.List(findingsListFilter())
+	return renderFindingsList(list)
+}
+
+func runFindingsStatsDirect(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+
+	application, err := app.New(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to initialize: %w", err)
+	}
+	defer func() { _ = application.Close() }()
+
+	return renderFindingsStats(application.Findings.Stats())
+}
+
+func runFindingsResolveDirect(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+	findingID := args[0]
+
+	application, err := app.New(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to initialize: %w", err)
+	}
+	defer func() { _ = application.Close() }()
+
+	if application.Findings.Resolve(findingID) {
+		Success("Finding %s marked as resolved", findingID)
+		return nil
+	}
+	return fmt.Errorf("finding not found: %s", findingID)
+}
+
+func runFindingsSuppressDirect(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+	findingID := args[0]
+
+	application, err := app.New(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to initialize: %w", err)
+	}
+	defer func() { _ = application.Close() }()
+
+	if application.Findings.Suppress(findingID) {
+		Success("Finding %s suppressed", findingID)
+		return nil
+	}
+	return fmt.Errorf("finding not found: %s", findingID)
+}
+
+func runFindingsExportDirect(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
 	application, err := app.New(ctx)
@@ -112,8 +346,36 @@ func runFindingsList(cmd *cobra.Command, args []string) error {
 	}
 
 	list := application.Findings.List(filter)
+	for _, f := range list {
+		findings.EnrichFinding(f)
+	}
 
-	// Apply limit
+	var data []byte
+	switch normalizeFindingsExportFormat(findingsExportFmt) {
+	case "json":
+		exporter := findings.NewJSONExporter(findingsPretty)
+		data, err = exporter.Export(list)
+	default:
+		exporter := findings.NewCSVExporter()
+		data, err = exporter.Export(list)
+	}
+	if err != nil {
+		return fmt.Errorf("export failed: %w", err)
+	}
+
+	return writeFindingsExportData(data, len(list))
+}
+
+func findingsListFilter() findings.FindingFilter {
+	return findings.FindingFilter{
+		Severity: findingsSeverity,
+		Status:   findingsStatus,
+		PolicyID: findingsPolicyID,
+		Limit:    findingsLimit,
+	}
+}
+
+func renderFindingsList(list []*findings.Finding) error {
 	if findingsLimit > 0 && len(list) > findingsLimit {
 		list = list[:findingsLimit]
 	}
@@ -142,7 +404,7 @@ func runFindingsList(cmd *cobra.Command, args []string) error {
 		tw := NewTableWriter(os.Stdout, "ID", "Severity", "Status", "Policy", "Resource", "Description", "First Seen")
 		for _, f := range list {
 			tw.AddRow(
-				f.ID[:8],
+				shortFindingID(f.ID),
 				severityColor(f.Severity),
 				statusColor(f.Status),
 				f.PolicyID,
@@ -156,7 +418,7 @@ func runFindingsList(cmd *cobra.Command, args []string) error {
 		tw := NewTableWriter(os.Stdout, "ID", "Severity", "Status", "Policy", "Resource")
 		for _, f := range list {
 			tw.AddRow(
-				f.ID[:8],
+				shortFindingID(f.ID),
 				severityColor(f.Severity),
 				statusColor(f.Status),
 				truncateStr(f.PolicyID, 25),
@@ -170,17 +432,7 @@ func runFindingsList(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runFindingsStats(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
-
-	application, err := app.New(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to initialize: %w", err)
-	}
-	defer func() { _ = application.Close() }()
-
-	stats := application.Findings.Stats()
-
+func renderFindingsStats(stats findings.Stats) error {
 	if findingsOutput == FormatJSON {
 		return JSONOutput(stats)
 	}
@@ -205,85 +457,43 @@ func runFindingsStats(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runFindingsResolve(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
-	findingID := args[0]
-
-	application, err := app.New(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to initialize: %w", err)
-	}
-	defer func() { _ = application.Close() }()
-
-	if application.Findings.Resolve(findingID) {
-		Success("Finding %s marked as resolved", findingID)
-		return nil
-	}
-	return fmt.Errorf("finding not found: %s", findingID)
-}
-
-func runFindingsSuppress(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
-	findingID := args[0]
-
-	application, err := app.New(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to initialize: %w", err)
-	}
-	defer func() { _ = application.Close() }()
-
-	if application.Findings.Suppress(findingID) {
-		Success("Finding %s suppressed", findingID)
-		return nil
-	}
-	return fmt.Errorf("finding not found: %s", findingID)
-}
-
-func runFindingsExport(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
-
-	application, err := app.New(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to initialize: %w", err)
-	}
-	defer func() { _ = application.Close() }()
-
-	filter := findings.FindingFilter{
-		Severity: findingsSeverity,
-		Status:   findingsStatus,
-	}
-
-	list := application.Findings.List(filter)
-
-	// Enrich findings with cloud URLs, tags, etc.
-	for _, f := range list {
-		findings.EnrichFinding(f)
-	}
-
-	var data []byte
-	switch findingsExportFmt {
-	case "json":
-		exporter := findings.NewJSONExporter(findingsPretty)
-		data, err = exporter.Export(list)
-	default:
-		exporter := findings.NewCSVExporter()
-		data, err = exporter.Export(list)
-	}
-
-	if err != nil {
-		return fmt.Errorf("export failed: %w", err)
-	}
-
+func writeFindingsExportData(data []byte, count int) error {
 	if findingsExportFile != "" {
-		if err := os.WriteFile(findingsExportFile, data, 0600); err != nil {
+		if err := os.WriteFile(findingsExportFile, data, 0o600); err != nil {
 			return fmt.Errorf("write file: %w", err)
 		}
-		Success("Exported %d findings to %s", len(list), findingsExportFile)
-	} else {
-		fmt.Print(string(data))
+		if count > 0 {
+			Success("Exported %d findings to %s", count, findingsExportFile)
+		} else {
+			Success("Exported findings to %s", findingsExportFile)
+		}
+		return nil
 	}
 
+	fmt.Print(string(data))
 	return nil
+}
+
+func normalizeFindingsExportFormat(format string) string {
+	format = strings.ToLower(strings.TrimSpace(format))
+	if format == "" {
+		return "csv"
+	}
+	return format
+}
+
+func shortFindingID(id string) string {
+	if len(id) <= 8 {
+		return id
+	}
+	return id[:8]
+}
+
+func commandContextOrBackground(cmd *cobra.Command) context.Context {
+	if cmd != nil && cmd.Context() != nil {
+		return cmd.Context()
+	}
+	return context.Background()
 }
 
 func truncateStr(s string, maxLen int) string {

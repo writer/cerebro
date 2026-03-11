@@ -25,7 +25,7 @@ type IntuneProvider struct {
 func NewIntuneProvider() *IntuneProvider {
 	return &IntuneProvider{
 		BaseProvider: NewBaseProvider("intune", ProviderTypeEndpoint),
-		client:       &http.Client{Timeout: 60 * time.Second},
+		client:       newProviderHTTPClient(60 * time.Second),
 	}
 }
 

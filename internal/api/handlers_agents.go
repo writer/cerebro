@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -16,7 +17,10 @@ import (
 // Agent endpoints
 
 func (s *Server) listAgents(w http.ResponseWriter, r *http.Request) {
+	pagination := ParsePagination(r, 100, 1000)
 	agentList := s.app.Agents.ListAgents()
+	sort.Slice(agentList, func(i, j int) bool { return agentList[i].ID < agentList[j].ID })
+
 	result := make([]map[string]interface{}, len(agentList))
 	for i, a := range agentList {
 		result[i] = map[string]interface{}{
@@ -26,7 +30,13 @@ func (s *Server) listAgents(w http.ResponseWriter, r *http.Request) {
 			"tools":       len(a.Tools),
 		}
 	}
-	s.json(w, http.StatusOK, map[string]interface{}{"agents": result, "count": len(result)})
+	paged, paginationResp := paginateSlice(result, pagination)
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"agents":      paged,
+		"count":       len(paged),
+		"pagination":  paginationResp,
+		"total_count": len(result),
+	})
 }
 
 func (s *Server) getAgent(w http.ResponseWriter, r *http.Request) {
@@ -66,7 +76,22 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session, err := s.app.Agents.CreateSession(req.AgentID, req.UserID, agents.SessionContext{
+	authenticatedUserID := strings.TrimSpace(GetUserID(r.Context()))
+	requestedUserID := strings.TrimSpace(req.UserID)
+	sessionUserID := requestedUserID
+	if authenticatedUserID != "" {
+		if requestedUserID != "" && requestedUserID != authenticatedUserID {
+			s.error(w, http.StatusForbidden, "cannot create a session for another user")
+			return
+		}
+		sessionUserID = authenticatedUserID
+	}
+	if sessionUserID == "" {
+		s.error(w, http.StatusBadRequest, "user_id is required")
+		return
+	}
+
+	session, err := s.app.Agents.CreateSession(req.AgentID, sessionUserID, agents.SessionContext{
 		FindingIDs: req.FindingIDs,
 		Metadata:   req.Context,
 	})
@@ -85,6 +110,10 @@ func (s *Server) getSession(w http.ResponseWriter, r *http.Request) {
 		s.error(w, http.StatusNotFound, "session not found")
 		return
 	}
+	if !canAccessSession(r, session) {
+		s.error(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	s.json(w, http.StatusOK, session)
 }
 
@@ -93,6 +122,10 @@ func (s *Server) sendMessage(w http.ResponseWriter, r *http.Request) {
 	session, ok := s.app.Agents.GetSession(sessionID)
 	if !ok {
 		s.error(w, http.StatusNotFound, "session not found")
+		return
+	}
+	if !canAccessSession(r, session) {
+		s.error(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -124,7 +157,7 @@ func (s *Server) sendMessage(w http.ResponseWriter, r *http.Request) {
 			Content: "I understand you want help with: " + req.Content + ". However, no LLM provider is configured. Please set ANTHROPIC_API_KEY or OPENAI_API_KEY.",
 		})
 		if err := s.app.Agents.UpdateSession(session); err != nil {
-			s.error(w, http.StatusInternalServerError, err.Error())
+			s.errorFromErr(w, err)
 			return
 		}
 		s.json(w, http.StatusOK, session.Messages[len(session.Messages)-1])
@@ -133,11 +166,11 @@ func (s *Server) sendMessage(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := s.runAgentSessionLoop(r.Context(), session, agent)
 	if err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
+		s.errorFromErr(w, err)
 		return
 	}
 	if err := s.app.Agents.UpdateSession(session); err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
+		s.errorFromErr(w, err)
 		return
 	}
 	s.json(w, http.StatusOK, resp)
@@ -148,6 +181,10 @@ func (s *Server) approveSessionToolCall(w http.ResponseWriter, r *http.Request) 
 	session, ok := s.app.Agents.GetSession(sessionID)
 	if !ok {
 		s.error(w, http.StatusNotFound, "session not found")
+		return
+	}
+	if !canAccessSession(r, session) {
+		s.error(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -176,7 +213,7 @@ func (s *Server) approveSessionToolCall(w http.ResponseWriter, r *http.Request) 
 		session.Messages = append(session.Messages, msg)
 		s.logToolApprovalDecision(r.Context(), r, session, pendingCall, "expired")
 		if err := s.app.Agents.UpdateSession(session); err != nil {
-			s.error(w, http.StatusInternalServerError, err.Error())
+			s.errorFromErr(w, err)
 			return
 		}
 		s.json(w, http.StatusBadRequest, msg)
@@ -211,7 +248,7 @@ func (s *Server) approveSessionToolCall(w http.ResponseWriter, r *http.Request) 
 		session.Messages = append(session.Messages, msg)
 		s.logToolApprovalDecision(r.Context(), r, session, pendingCall, "denied")
 		if err := s.app.Agents.UpdateSession(session); err != nil {
-			s.error(w, http.StatusInternalServerError, err.Error())
+			s.errorFromErr(w, err)
 			return
 		}
 		s.json(w, http.StatusOK, msg)
@@ -256,12 +293,12 @@ func (s *Server) approveSessionToolCall(w http.ResponseWriter, r *http.Request) 
 
 	resp, err := s.runAgentSessionLoop(r.Context(), session, agent)
 	if err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
+		s.errorFromErr(w, err)
 		return
 	}
 
 	if err := s.app.Agents.UpdateSession(session); err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
+		s.errorFromErr(w, err)
 		return
 	}
 	s.json(w, http.StatusOK, resp)
@@ -274,5 +311,20 @@ func (s *Server) getMessages(w http.ResponseWriter, r *http.Request) {
 		s.error(w, http.StatusNotFound, "session not found")
 		return
 	}
+	if !canAccessSession(r, session) {
+		s.error(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	s.json(w, http.StatusOK, map[string]interface{}{"messages": session.Messages, "count": len(session.Messages)})
+}
+
+func canAccessSession(r *http.Request, session *agents.Session) bool {
+	if session == nil {
+		return false
+	}
+	authenticatedUserID := strings.TrimSpace(GetUserID(r.Context()))
+	if authenticatedUserID == "" {
+		return true
+	}
+	return strings.TrimSpace(session.UserID) == authenticatedUserID
 }

@@ -1,0 +1,22 @@
+{
+  "id": "org-customer-touchpoints-low",
+  "name": "Customer Touchpoint Coverage Too Thin",
+  "description": "Customer relationship has fewer than two active touchpoints.",
+  "effect": "forbid",
+  "resource": "org::customer_relationship",
+  "conditions": [
+    "touchpoint_count < 2",
+    "renewal_days < 120"
+  ],
+  "severity": "high",
+  "remediation": "Add at least one additional owner and auto-escalate to the account owner for coverage recovery.",
+  "tags": [
+    "org-topology",
+    "customer-health",
+    "coverage"
+  ],
+  "risk_categories": [
+    "CUSTOMER_HEALTH_RISK",
+    "RESILIENCE_RISK"
+  ]
+}

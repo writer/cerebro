@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os/exec"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -41,6 +43,18 @@ type RegistryClient interface {
 	GetVulnerabilities(ctx context.Context, repo, tag string) ([]ImageVulnerability, error)
 }
 
+// SignatureVerifier is an optional registry extension for signature validation.
+type SignatureVerifier interface {
+	VerifySignature(ctx context.Context, repo, tag string, manifest *ImageManifest) (*SignatureVerification, error)
+}
+
+type SignatureVerification struct {
+	Verified      bool   `json:"verified"`
+	Verifier      string `json:"verifier,omitempty"`
+	SignatureType string `json:"signature_type,omitempty"`
+	Reason        string `json:"reason,omitempty"`
+}
+
 // Repository represents a container repository
 type Repository struct {
 	Name       string    `json:"name"`
@@ -67,6 +81,7 @@ type ImageManifest struct {
 	MediaType string            `json:"media_type"`
 	Config    ImageConfig       `json:"config"`
 	Layers    []Layer           `json:"layers"`
+	History   []string          `json:"history,omitempty"`
 	Labels    map[string]string `json:"labels"`
 	Created   time.Time         `json:"created"`
 }
@@ -154,6 +169,8 @@ type CVEInfo struct {
 	InKEV       bool      `json:"in_kev"`
 }
 
+var manifestParseFailures atomic.Int64
+
 func NewContainerScanner() *ContainerScanner {
 	return &ContainerScanner{
 		registries: make(map[string]RegistryClient),
@@ -211,6 +228,11 @@ func (s *ContainerScanner) ScanImage(ctx context.Context, registry, repo, tag st
 		}
 	}
 
+	signatureStatus, signatureErr := verifyImageSignature(ctx, client, repo, tag, manifest)
+
+	findings := generateFindings(vulns, manifest)
+	findings = append(findings, generateSupplyChainFindings(repo, tag, manifest, signatureStatus, signatureErr)...)
+
 	result := &ContainerScanResult{
 		Repository:      repo,
 		Tag:             tag,
@@ -221,10 +243,18 @@ func (s *ContainerScanner) ScanImage(ctx context.Context, registry, repo, tag st
 		Architecture:    manifest.Config.Architecture,
 		Vulnerabilities: vulns,
 		Summary:         summarizeVulnerabilities(vulns),
-		Findings:        generateFindings(vulns, manifest),
+		Findings:        findings,
 	}
 
 	return result, nil
+}
+
+func verifyImageSignature(ctx context.Context, client RegistryClient, repo, tag string, manifest *ImageManifest) (*SignatureVerification, error) {
+	verifier, ok := client.(SignatureVerifier)
+	if !ok {
+		return nil, nil
+	}
+	return verifier.VerifySignature(ctx, repo, tag, manifest)
 }
 
 // ScanAllRepositories scans all repositories in registered registries.
@@ -357,6 +387,148 @@ func generateFindings(vulns []ImageVulnerability, manifest *ImageManifest) []Con
 			})
 			break
 		}
+	}
+
+	return findings
+}
+
+func generateSupplyChainFindings(repo, tag string, manifest *ImageManifest, signature *SignatureVerification, signatureErr error) []ContainerFinding {
+	findings := make([]ContainerFinding, 0, 4)
+
+	if isMutableImageTag(tag) {
+		findings = append(findings, ContainerFinding{
+			ID:          "supply-chain-mutable-tag",
+			Type:        "supply_chain",
+			Severity:    "medium",
+			Title:       "Mutable image tag in use",
+			Description: fmt.Sprintf("Image %s:%s uses mutable tag %q", repo, tag, tag),
+			Remediation: "Pin image references to immutable digests (sha256) for deterministic deployments.",
+		})
+	}
+
+	switch {
+	case signatureErr != nil:
+		findings = append(findings, ContainerFinding{
+			ID:          "supply-chain-signature-verification-error",
+			Type:        "supply_chain",
+			Severity:    "high",
+			Title:       "Image signature verification failed",
+			Description: fmt.Sprintf("Signature verification failed for %s:%s: %v", repo, tag, signatureErr),
+			Remediation: "Investigate registry/signature infrastructure and block deployment until signature status is verified.",
+		})
+	case signature == nil:
+		findings = append(findings, ContainerFinding{
+			ID:          "supply-chain-signature-unverified",
+			Type:        "supply_chain",
+			Severity:    "medium",
+			Title:       "Image signature status unavailable",
+			Description: "Registry client does not provide signature verification for this image.",
+			Remediation: "Enable signature verification support (e.g., cosign/notary) and enforce signed image policies.",
+		})
+	case !signature.Verified:
+		desc := "Image signature is missing or invalid."
+		if strings.TrimSpace(signature.Reason) != "" {
+			desc = signature.Reason
+		}
+		findings = append(findings, ContainerFinding{
+			ID:          "supply-chain-unsigned-image",
+			Type:        "supply_chain",
+			Severity:    "high",
+			Title:       "Image is unsigned or signature is invalid",
+			Description: desc,
+			Remediation: "Sign the image and enforce signature verification before deployment.",
+		})
+	}
+
+	findings = append(findings, analyzeLayerHistoryFindings(manifest)...)
+	return findings
+}
+
+func isMutableImageTag(tag string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(tag))
+	if normalized == "" {
+		return false
+	}
+	mutable := map[string]struct{}{
+		"latest":  {},
+		"stable":  {},
+		"main":    {},
+		"master":  {},
+		"current": {},
+		"dev":     {},
+		"edge":    {},
+	}
+	_, ok := mutable[normalized]
+	return ok
+}
+
+func analyzeLayerHistoryFindings(manifest *ImageManifest) []ContainerFinding {
+	if manifest == nil {
+		return nil
+	}
+
+	seen := make(map[string]struct{})
+	findings := make([]ContainerFinding, 0, 3)
+	add := func(f ContainerFinding) {
+		if _, ok := seen[f.ID]; ok {
+			return
+		}
+		seen[f.ID] = struct{}{}
+		findings = append(findings, f)
+	}
+
+	for _, raw := range manifest.History {
+		cmd := strings.ToLower(strings.TrimSpace(raw))
+		if cmd == "" {
+			continue
+		}
+		if (strings.Contains(cmd, "curl") || strings.Contains(cmd, "wget")) &&
+			strings.Contains(cmd, "|") &&
+			(strings.Contains(cmd, "bash") || strings.Contains(cmd, "sh")) {
+			add(ContainerFinding{
+				ID:          "supply-chain-suspicious-build-command",
+				Type:        "supply_chain",
+				Severity:    "critical",
+				Title:       "Suspicious remote execution in image build history",
+				Description: "Build history contains a network download piped directly to a shell.",
+				Remediation: "Remove pipe-to-shell build steps and validate downloaded artifacts with checksums/signatures.",
+			})
+		}
+		if (strings.Contains(cmd, "curl") || strings.Contains(cmd, "wget")) && strings.Contains(cmd, "http://") {
+			add(ContainerFinding{
+				ID:          "supply-chain-insecure-download",
+				Type:        "supply_chain",
+				Severity:    "high",
+				Title:       "Insecure artifact download in image build history",
+				Description: "Build history includes HTTP (non-TLS) downloads.",
+				Remediation: "Use HTTPS sources with integrity verification (checksum/signature validation).",
+			})
+		}
+		if strings.Contains(cmd, "chmod 777") {
+			add(ContainerFinding{
+				ID:          "supply-chain-overly-permissive-permissions",
+				Type:        "supply_chain",
+				Severity:    "medium",
+				Title:       "Overly permissive file permissions in build history",
+				Description: "Build history sets world-writable permissions (chmod 777).",
+				Remediation: "Apply least-privilege file permissions and avoid world-writable artifacts.",
+			})
+		}
+	}
+
+	for _, layer := range manifest.Layers {
+		mt := strings.ToLower(strings.TrimSpace(layer.MediaType))
+		if mt == "" || strings.Contains(mt, "layer") {
+			continue
+		}
+		add(ContainerFinding{
+			ID:          "supply-chain-unexpected-layer-media-type",
+			Type:        "supply_chain",
+			Severity:    "low",
+			Title:       "Unexpected layer media type",
+			Description: fmt.Sprintf("Layer %s has unexpected media type %q", layer.Digest, layer.MediaType),
+			Remediation: "Validate image manifest structure and provenance.",
+		})
 	}
 
 	return findings
@@ -520,7 +692,17 @@ func (c *ECRClient) GetManifest(ctx context.Context, repo, tag string) (*ImageMa
 		MediaType: aws.ToString(img.ImageManifestMediaType),
 	}
 	if img.ImageManifest != nil {
-		_ = parseManifest([]byte(*img.ImageManifest), manifest)
+		if err := parseManifest([]byte(*img.ImageManifest), manifest); err != nil {
+			slog.Warn("failed to parse image manifest",
+				"registry", "ecr",
+				"repository", repo,
+				"tag", tag,
+				"digest", manifest.Digest,
+				"manifest_size", len(*img.ImageManifest),
+				"error", err,
+			)
+			return nil, fmt.Errorf("parse manifest: %w", err)
+		}
 	}
 
 	return manifest, nil
@@ -684,7 +866,17 @@ func (c *GCRClient) GetManifest(ctx context.Context, repo, tag string) (*ImageMa
 		Digest:    headers.Get("Docker-Content-Digest"),
 		MediaType: headers.Get("Content-Type"),
 	}
-	_ = parseManifest(body, manifest)
+	if err := parseManifest(body, manifest); err != nil {
+		slog.Warn("failed to parse image manifest",
+			"registry", "gcr",
+			"repository", repo,
+			"tag", tag,
+			"digest", manifest.Digest,
+			"manifest_size", len(body),
+			"error", err,
+		)
+		return nil, fmt.Errorf("parse manifest: %w", err)
+	}
 	return manifest, nil
 }
 
@@ -836,7 +1028,17 @@ func (c *ACRClient) GetManifest(ctx context.Context, repo, tag string) (*ImageMa
 		Digest:    headers.Get("Docker-Content-Digest"),
 		MediaType: headers.Get("Content-Type"),
 	}
-	_ = parseManifest(body, manifest)
+	if err := parseManifest(body, manifest); err != nil {
+		slog.Warn("failed to parse image manifest",
+			"registry", "acr",
+			"repository", repo,
+			"tag", tag,
+			"digest", manifest.Digest,
+			"manifest_size", len(body),
+			"error", err,
+		)
+		return nil, fmt.Errorf("parse manifest: %w", err)
+	}
 	return manifest, nil
 }
 
@@ -995,11 +1197,22 @@ type registryManifest struct {
 		Digest    string `json:"digest"`
 		Size      int64  `json:"size"`
 	} `json:"layers"`
+	History []struct {
+		V1Compatibility string `json:"v1Compatibility"`
+	} `json:"history"`
+}
+
+type historyCompatibility struct {
+	CreatedBy       string `json:"created_by"`
+	ContainerConfig struct {
+		Cmd []string `json:"Cmd"`
+	} `json:"container_config"`
 }
 
 func parseManifest(data []byte, manifest *ImageManifest) error {
 	var decoded registryManifest
 	if err := json.Unmarshal(data, &decoded); err != nil {
+		manifestParseFailures.Add(1)
 		return err
 	}
 
@@ -1008,6 +1221,7 @@ func parseManifest(data []byte, manifest *ImageManifest) error {
 	}
 	manifest.Config = ImageConfig{Labels: make(map[string]string)}
 	manifest.Layers = make([]Layer, 0, len(decoded.Layers))
+	manifest.History = manifest.History[:0]
 	for _, layer := range decoded.Layers {
 		manifest.Layers = append(manifest.Layers, Layer{
 			Digest:    layer.Digest,
@@ -1015,7 +1229,29 @@ func parseManifest(data []byte, manifest *ImageManifest) error {
 			Size:      layer.Size,
 		})
 	}
+	for _, history := range decoded.History {
+		raw := strings.TrimSpace(history.V1Compatibility)
+		if raw == "" {
+			continue
+		}
+		var compat historyCompatibility
+		if err := json.Unmarshal([]byte(raw), &compat); err != nil {
+			continue
+		}
+		command := strings.TrimSpace(compat.CreatedBy)
+		if command == "" && len(compat.ContainerConfig.Cmd) > 0 {
+			command = strings.TrimSpace(strings.Join(compat.ContainerConfig.Cmd, " "))
+		}
+		if command != "" {
+			manifest.History = append(manifest.History, command)
+		}
+	}
 	return nil
+}
+
+// ManifestParseFailures returns total manifest parse failures observed.
+func ManifestParseFailures() int64 {
+	return manifestParseFailures.Load()
 }
 
 // stripURLScheme removes http:// or https:// prefixes from a host string,

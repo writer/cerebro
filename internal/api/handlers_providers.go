@@ -2,6 +2,8 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"strings"
 
@@ -65,7 +67,11 @@ func (s *Server) configureProvider(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.app.Providers.Configure(r.Context(), name, config); err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
+		if errors.Is(err, providers.ErrProviderNotFound) {
+			s.error(w, http.StatusNotFound, "provider not found")
+			return
+		}
+		s.errorFromErr(w, err)
 		return
 	}
 	s.json(w, http.StatusOK, map[string]string{"status": "configured"})
@@ -84,9 +90,27 @@ func (s *Server) syncProvider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := p.Sync(r.Context(), providers.SyncOptions{FullSync: true})
+	opts := providers.SyncOptions{FullSync: true}
+	var req struct {
+		FullSync *bool    `json:"full_sync,omitempty"`
+		Tables   []string `json:"tables,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if !errors.Is(err, io.EOF) {
+			s.error(w, http.StatusBadRequest, "invalid request")
+			return
+		}
+	}
+	if req.FullSync != nil {
+		opts.FullSync = *req.FullSync
+	}
+	if len(req.Tables) > 0 {
+		opts.Tables = req.Tables
+	}
+
+	result, err := p.Sync(r.Context(), opts)
 	if err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
+		s.errorFromErr(w, err)
 		return
 	}
 	s.json(w, http.StatusOK, result)

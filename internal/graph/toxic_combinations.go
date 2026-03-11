@@ -239,12 +239,26 @@ func (i toxicCombinationNodeIndex) candidatesForRule(ruleID string) []*Node {
 		return i.byKindProvider[NodeKindBucket]["aws"]
 	case "TC-AWS-003":
 		return i.byKindProvider[NodeKindFunction]["aws"]
+	case "TC-AWS-004":
+		return i.byKindProvider[NodeKindFunction]["aws"]
+	case "TC-AWS-005":
+		return i.byKindProvider[NodeKindDatabase]["aws"]
+	case "TC-AWS-006":
+		return appendNodeSlices(
+			i.byKindProvider[NodeKindRole]["aws"],
+			i.byKindProvider[NodeKindUser]["aws"],
+			i.byKindProvider[NodeKindServiceAccount]["aws"],
+		)
+	case "TC-AWS-007":
+		return i.byKindProvider[NodeKindInstance]["aws"]
 	case "TC-GCP-001":
 		return i.byKindProvider[NodeKindServiceAccount]["gcp"]
 	case "TC-GCP-002":
 		return i.byKindProvider[NodeKindBucket]["gcp"]
 	case "TC-GCP-003":
 		return i.byKindProvider[NodeKindInstance]["gcp"]
+	case "TC-GCP-004":
+		return i.byKindProvider[NodeKindServiceAccount]["gcp"]
 	case "TC-AZURE-001":
 		return i.byKindProvider[NodeKindServiceAccount]["azure"]
 	case "TC-AZURE-002":
@@ -257,6 +271,14 @@ func (i toxicCombinationNodeIndex) candidatesForRule(ruleID string) []*Node {
 		return i.byKind[NodeKindServiceAccount]
 	case "TC-CICD-001", "TC-CICD-002":
 		return i.byKindProvider[NodeKindRole]["aws"]
+	case "TC-BIZ-001", "TC-BIZ-003", "TC-BIZ-006":
+		return appendNodeSlices(i.byKind[NodeKindCustomer], i.byKind[NodeKindCompany])
+	case "TC-BIZ-002":
+		return appendNodeSlices(i.byKind[NodeKindDeal], i.byKind[NodeKindOpportunity])
+	case "TC-BIZ-004":
+		return appendNodeSlices(i.byKind[NodeKindApplication], i.byKind[NodeKindInstance], i.byKind[NodeKindFunction])
+	case "TC-BIZ-005":
+		return appendNodeSlices(i.byKind[NodeKindInvoice], i.byKind[NodeKindSubscription], i.byKind[NodeKindCustomer])
 	default:
 		return i.all
 	}
@@ -294,10 +316,15 @@ func (e *ToxicCombinationEngine) registerDefaultRules() {
 		e.ruleIMDSv1WithSensitiveRole(),
 		e.ruleS3PublicBucketWithSensitiveData(),
 		e.ruleLambdaVPCSecretsAccess(),
+		e.ruleLambdaPublicInlinePolicyDynamoTrigger(),
+		e.rulePublicRDSUnencryptedHighBlastRadius(),
+		e.ruleCrossAccountTransitiveTrustChain(),
+		e.ruleExposedComputeWithKeyedAdminIdentity(),
 		// GCP-specific rules
 		e.ruleGCPServiceAccountKeyExposed(),
 		e.ruleGCPPublicGCSBucket(),
 		e.ruleGCPComputeDefaultSA(),
+		e.ruleGCPDefaultSAProjectWidePermissions(),
 		// Azure-specific rules
 		e.ruleAzureManagedIdentityOverprivileged(),
 		e.ruleAzurePublicStorageBlob(),
@@ -309,6 +336,13 @@ func (e *ToxicCombinationEngine) registerDefaultRules() {
 		// CI/CD supply chain rules
 		e.ruleGitHubActionsOIDCOverprivileged(),
 		e.ruleEKSNodeRoleECRPush(),
+		// Business + cross-system rules
+		e.ruleChurnCompoundSignal(),
+		e.ruleTrajectoryDeterioration(),
+		e.ruleRevenueAtRisk(),
+		e.ruleSecurityMeetsBusiness(),
+		e.ruleOperationalBlastRadius(),
+		e.ruleFinancialGuardrail(),
 	}
 }
 

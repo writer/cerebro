@@ -32,7 +32,7 @@ type OneLoginProvider struct {
 func NewOneLoginProvider() *OneLoginProvider {
 	return &OneLoginProvider{
 		BaseProvider: NewBaseProvider("onelogin", ProviderTypeSaaS),
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

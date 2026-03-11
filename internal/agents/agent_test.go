@@ -615,7 +615,7 @@ func TestAgentRegistry_ConcurrentAccess(t *testing.T) {
 	// Concurrent writes
 	for i := 0; i < 5; i++ {
 		go func(id int) {
-			r.CreateSession("agent-1", "user", SessionContext{})
+			_, _ = r.CreateSession("agent-1", "user", SessionContext{})
 			done <- true
 		}(i)
 	}

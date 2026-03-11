@@ -41,7 +41,7 @@ func NewSnykProvider() *SnykProvider {
 	return &SnykProvider{
 		BaseProvider: NewBaseProvider("snyk", ProviderTypeSaaS),
 		baseURL:      "https://api.snyk.io",
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

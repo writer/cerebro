@@ -7,24 +7,22 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/policy"
 	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 func TestLoadConfig(t *testing.T) {
 	// Set some env vars
-	os.Setenv("API_PORT", "9999")
-	os.Setenv("LOG_LEVEL", "debug")
-	os.Setenv("RBAC_STATE_FILE", "/tmp/rbac-state.json")
-	defer func() {
-		os.Unsetenv("API_PORT")
-		os.Unsetenv("LOG_LEVEL")
-		os.Unsetenv("RBAC_STATE_FILE")
-	}()
+	t.Setenv("API_PORT", "9999")
+	t.Setenv("LOG_LEVEL", "debug")
+	t.Setenv("RBAC_STATE_FILE", "/tmp/rbac-state.json")
+	t.Setenv("SECURITY_DIGEST_INTERVAL", "24h")
 
 	cfg := LoadConfig()
 
@@ -38,6 +36,225 @@ func TestLoadConfig(t *testing.T) {
 
 	if cfg.RBACStateFile != "/tmp/rbac-state.json" {
 		t.Errorf("expected RBAC state file to be set, got %s", cfg.RBACStateFile)
+	}
+
+	if cfg.SecurityDigestInterval != "24h" {
+		t.Errorf("expected security digest interval 24h, got %s", cfg.SecurityDigestInterval)
+	}
+}
+
+func TestLoadConfigCrossTenantIngestControls(t *testing.T) {
+	t.Setenv("GRAPH_CROSS_TENANT_REQUIRE_SIGNED_INGEST", "true")
+	t.Setenv("GRAPH_CROSS_TENANT_SIGNING_KEY", "test-signing-key")
+	t.Setenv("GRAPH_CROSS_TENANT_SIGNATURE_MAX_SKEW", "7m")
+	t.Setenv("GRAPH_CROSS_TENANT_REPLAY_TTL", "2h")
+	t.Setenv("GRAPH_CROSS_TENANT_MIN_TENANTS", "4")
+	t.Setenv("GRAPH_CROSS_TENANT_MIN_SUPPORT", "5")
+
+	cfg := LoadConfig()
+	if !cfg.GraphCrossTenantRequireSignedIngest {
+		t.Fatal("expected signed ingest requirement to be enabled")
+	}
+	if cfg.GraphCrossTenantSigningKey != "test-signing-key" {
+		t.Fatalf("expected graph signing key to be set, got %q", cfg.GraphCrossTenantSigningKey)
+	}
+	if cfg.GraphCrossTenantSignatureSkew != 7*time.Minute {
+		t.Fatalf("expected signature skew 7m, got %v", cfg.GraphCrossTenantSignatureSkew)
+	}
+	if cfg.GraphCrossTenantReplayTTL != 2*time.Hour {
+		t.Fatalf("expected replay ttl 2h, got %v", cfg.GraphCrossTenantReplayTTL)
+	}
+	if cfg.GraphCrossTenantMinTenants != 4 {
+		t.Fatalf("expected min tenants 4, got %d", cfg.GraphCrossTenantMinTenants)
+	}
+	if cfg.GraphCrossTenantMinSupport != 5 {
+		t.Fatalf("expected min support 5, got %d", cfg.GraphCrossTenantMinSupport)
+	}
+}
+
+func TestLoadConfigPlatformReportPersistencePaths(t *testing.T) {
+	t.Setenv("PLATFORM_REPORT_RUN_STATE_FILE", "/tmp/cerebro-report-runs.json")
+	t.Setenv("PLATFORM_REPORT_SNAPSHOT_PATH", "/tmp/cerebro-report-snapshots")
+
+	cfg := LoadConfig()
+	if cfg.PlatformReportRunStateFile != "/tmp/cerebro-report-runs.json" {
+		t.Fatalf("expected report run state file to be set, got %q", cfg.PlatformReportRunStateFile)
+	}
+	if cfg.PlatformReportSnapshotPath != "/tmp/cerebro-report-snapshots" {
+		t.Fatalf("expected report snapshot path to be set, got %q", cfg.PlatformReportSnapshotPath)
+	}
+}
+
+func TestLoadConfigGraphSchemaValidationMode(t *testing.T) {
+	t.Setenv("GRAPH_SCHEMA_VALIDATION_MODE", "enforce")
+	cfg := LoadConfig()
+	if cfg.GraphSchemaValidationMode != "enforce" {
+		t.Fatalf("expected graph schema validation mode enforce, got %q", cfg.GraphSchemaValidationMode)
+	}
+}
+
+func TestLoadConfigGraphEventMapperControls(t *testing.T) {
+	t.Setenv("GRAPH_EVENT_MAPPER_VALIDATION_MODE", "warn")
+	t.Setenv("GRAPH_EVENT_MAPPER_DEAD_LETTER_PATH", "/tmp/test-graph-mapper.dlq.jsonl")
+	t.Setenv("GRAPH_MIGRATE_LEGACY_ACTIVITY_ON_START", "true")
+	cfg := LoadConfig()
+	if cfg.GraphEventMapperValidationMode != "warn" {
+		t.Fatalf("expected graph event mapper validation mode warn, got %q", cfg.GraphEventMapperValidationMode)
+	}
+	if cfg.GraphEventMapperDeadLetterPath != "/tmp/test-graph-mapper.dlq.jsonl" {
+		t.Fatalf("expected graph event mapper dead-letter path to be set, got %q", cfg.GraphEventMapperDeadLetterPath)
+	}
+	if !cfg.GraphMigrateLegacyActivityOnStart {
+		t.Fatal("expected graph legacy activity migration on start to be enabled")
+	}
+}
+
+func TestLoadConfigNATSConsumerControls(t *testing.T) {
+	t.Setenv("NATS_CONSUMER_DEAD_LETTER_PATH", "/tmp/test-nats-consumer.dlq.jsonl")
+	t.Setenv("NATS_CONSUMER_DROP_HEALTH_LOOKBACK", "7m")
+	t.Setenv("NATS_CONSUMER_DROP_HEALTH_THRESHOLD", "3")
+	t.Setenv("NATS_CONSUMER_IN_PROGRESS_INTERVAL", "11s")
+	t.Setenv("NATS_CONSUMER_DRAIN_TIMEOUT", "41s")
+	t.Setenv("NATS_CONSUMER_GRAPH_STALENESS_THRESHOLD", "19m")
+	t.Setenv("CEREBRO_INIT_TIMEOUT", "95s")
+
+	cfg := LoadConfig()
+	if cfg.NATSConsumerDeadLetterPath != "/tmp/test-nats-consumer.dlq.jsonl" {
+		t.Fatalf("expected nats consumer dead-letter path to be set, got %q", cfg.NATSConsumerDeadLetterPath)
+	}
+	if cfg.NATSConsumerDropHealthLookback != 7*time.Minute {
+		t.Fatalf("expected nats consumer drop health lookback 7m, got %s", cfg.NATSConsumerDropHealthLookback)
+	}
+	if cfg.NATSConsumerDropHealthThreshold != 3 {
+		t.Fatalf("expected nats consumer drop health threshold 3, got %d", cfg.NATSConsumerDropHealthThreshold)
+	}
+	if cfg.NATSConsumerInProgressInterval != 11*time.Second {
+		t.Fatalf("expected nats consumer in-progress interval 11s, got %s", cfg.NATSConsumerInProgressInterval)
+	}
+	if cfg.NATSConsumerDrainTimeout != 41*time.Second {
+		t.Fatalf("expected nats consumer drain timeout 41s, got %s", cfg.NATSConsumerDrainTimeout)
+	}
+	if cfg.NATSConsumerGraphStalenessThreshold != 19*time.Minute {
+		t.Fatalf("expected nats consumer graph staleness threshold 19m, got %s", cfg.NATSConsumerGraphStalenessThreshold)
+	}
+	if cfg.InitTimeout != 95*time.Second {
+		t.Fatalf("expected init timeout 95s, got %s", cfg.InitTimeout)
+	}
+}
+
+func TestLoadConfigNATSConsumerZeroDropHealthThreshold(t *testing.T) {
+	t.Setenv("NATS_CONSUMER_DROP_HEALTH_THRESHOLD", "0")
+	cfg := LoadConfig()
+	if cfg.NATSConsumerDropHealthThreshold != 0 {
+		t.Fatalf("expected nats consumer drop health threshold 0, got %d", cfg.NATSConsumerDropHealthThreshold)
+	}
+}
+
+func TestLoadConfigGraphOntologySLOThresholds(t *testing.T) {
+	t.Setenv("GRAPH_ONTOLOGY_FALLBACK_WARN_PERCENT", "14.5")
+	t.Setenv("GRAPH_ONTOLOGY_FALLBACK_CRITICAL_PERCENT", "31")
+	t.Setenv("GRAPH_ONTOLOGY_SCHEMA_VALID_WARN_PERCENT", "97.2")
+	t.Setenv("GRAPH_ONTOLOGY_SCHEMA_VALID_CRITICAL_PERCENT", "90")
+
+	cfg := LoadConfig()
+	if cfg.GraphOntologyFallbackWarnPct != 14.5 {
+		t.Fatalf("expected fallback warn percent 14.5, got %v", cfg.GraphOntologyFallbackWarnPct)
+	}
+	if cfg.GraphOntologyFallbackCriticalPct != 31 {
+		t.Fatalf("expected fallback critical percent 31, got %v", cfg.GraphOntologyFallbackCriticalPct)
+	}
+	if cfg.GraphOntologySchemaValidWarnPct != 97.2 {
+		t.Fatalf("expected schema valid warn percent 97.2, got %v", cfg.GraphOntologySchemaValidWarnPct)
+	}
+	if cfg.GraphOntologySchemaValidCriticalPct != 90 {
+		t.Fatalf("expected schema valid critical percent 90, got %v", cfg.GraphOntologySchemaValidCriticalPct)
+	}
+}
+
+func TestLoadConfigRetention(t *testing.T) {
+	t.Setenv("CEREBRO_AUDIT_RETENTION_DAYS", "45")
+	t.Setenv("CEREBRO_SESSION_RETENTION_DAYS", "21")
+	t.Setenv("CEREBRO_GRAPH_RETENTION_DAYS", "14")
+	t.Setenv("CEREBRO_ACCESS_REVIEW_RETENTION_DAYS", "90")
+	t.Setenv("CEREBRO_RETENTION_JOB_INTERVAL", "2h")
+
+	cfg := LoadConfig()
+
+	if cfg.AuditRetentionDays != 45 {
+		t.Fatalf("expected audit retention days 45, got %d", cfg.AuditRetentionDays)
+	}
+	if cfg.SessionRetentionDays != 21 {
+		t.Fatalf("expected session retention days 21, got %d", cfg.SessionRetentionDays)
+	}
+	if cfg.GraphRetentionDays != 14 {
+		t.Fatalf("expected graph retention days 14, got %d", cfg.GraphRetentionDays)
+	}
+	if cfg.AccessReviewRetentionDays != 90 {
+		t.Fatalf("expected access review retention days 90, got %d", cfg.AccessReviewRetentionDays)
+	}
+	if cfg.RetentionJobInterval != 2*time.Hour {
+		t.Fatalf("expected retention job interval 2h, got %v", cfg.RetentionJobInterval)
+	}
+}
+
+func TestLoadConfigRetentionDefaults(t *testing.T) {
+	cfg := LoadConfig()
+	if cfg.AuditRetentionDays != 90 {
+		t.Fatalf("expected audit retention default 90, got %d", cfg.AuditRetentionDays)
+	}
+	if cfg.SessionRetentionDays != 30 {
+		t.Fatalf("expected session retention default 30, got %d", cfg.SessionRetentionDays)
+	}
+	if cfg.GraphRetentionDays != 180 {
+		t.Fatalf("expected graph retention default 180, got %d", cfg.GraphRetentionDays)
+	}
+	if cfg.AccessReviewRetentionDays != 365 {
+		t.Fatalf("expected access review retention default 365, got %d", cfg.AccessReviewRetentionDays)
+	}
+	if cfg.NATSConsumerAckWait != 120*time.Second {
+		t.Fatalf("expected nats consumer ack wait default 120s, got %s", cfg.NATSConsumerAckWait)
+	}
+}
+
+func TestLoadConfigTracing(t *testing.T) {
+	t.Setenv("CEREBRO_OTEL_ENABLED", "true")
+	t.Setenv("CEREBRO_OTEL_SERVICE_NAME", "cerebro-test")
+	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4318")
+	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_INSECURE", "true")
+	t.Setenv("CEREBRO_OTEL_EXPORTER_OTLP_HEADERS", "x-api-key=abc123,env=dev")
+	t.Setenv("CEREBRO_OTEL_SAMPLE_RATIO", "0.5")
+	t.Setenv("CEREBRO_OTEL_EXPORT_TIMEOUT", "4s")
+
+	cfg := LoadConfig()
+	if !cfg.TracingEnabled {
+		t.Fatal("expected tracing to be enabled")
+	}
+	if cfg.TracingServiceName != "cerebro-test" {
+		t.Fatalf("expected tracing service name cerebro-test, got %q", cfg.TracingServiceName)
+	}
+	if cfg.TracingOTLPEndpoint != "localhost:4318" {
+		t.Fatalf("expected tracing endpoint localhost:4318, got %q", cfg.TracingOTLPEndpoint)
+	}
+	if !cfg.TracingOTLPInsecure {
+		t.Fatal("expected tracing OTLP insecure to be true")
+	}
+	if cfg.TracingSampleRatio != 0.5 {
+		t.Fatalf("expected tracing sample ratio 0.5, got %v", cfg.TracingSampleRatio)
+	}
+	if cfg.TracingExportTimeout != 4*time.Second {
+		t.Fatalf("expected tracing export timeout 4s, got %v", cfg.TracingExportTimeout)
+	}
+	if cfg.TracingOTLPHeaders["x-api-key"] != "abc123" || cfg.TracingOTLPHeaders["env"] != "dev" {
+		t.Fatalf("unexpected tracing headers: %#v", cfg.TracingOTLPHeaders)
+	}
+}
+
+func TestLoadConfigSecretsReloadInterval(t *testing.T) {
+	t.Setenv("CEREBRO_SECRETS_RELOAD_INTERVAL", "90s")
+
+	cfg := LoadConfig()
+	if cfg.SecretsReloadInterval != 90*time.Second {
+		t.Fatalf("expected secrets reload interval 90s, got %v", cfg.SecretsReloadInterval)
 	}
 }
 
@@ -98,8 +315,7 @@ LOG_LEVEL = "warn"
 }
 
 func TestLoadConfigWebhookURLs(t *testing.T) {
-	os.Setenv("WEBHOOK_URLS", "https://example.com/hook1, https://example.com/hook2")
-	defer os.Unsetenv("WEBHOOK_URLS")
+	t.Setenv("WEBHOOK_URLS", "https://example.com/hook1, https://example.com/hook2")
 
 	cfg := LoadConfig()
 
@@ -110,8 +326,7 @@ func TestLoadConfigWebhookURLs(t *testing.T) {
 }
 
 func TestLoadConfigCORSAllowedOrigins(t *testing.T) {
-	os.Setenv("API_CORS_ALLOWED_ORIGINS", "https://app.example.com, https://admin.example.com")
-	defer os.Unsetenv("API_CORS_ALLOWED_ORIGINS")
+	t.Setenv("API_CORS_ALLOWED_ORIGINS", "https://app.example.com, https://admin.example.com")
 
 	cfg := LoadConfig()
 
@@ -121,12 +336,32 @@ func TestLoadConfigCORSAllowedOrigins(t *testing.T) {
 	}
 }
 
+func TestLoadConfigQueryPolicyRowLimit(t *testing.T) {
+	t.Setenv("QUERY_POLICY_ROW_LIMIT", "321")
+
+	cfg := LoadConfig()
+	if cfg.QueryPolicyRowLimit != 321 {
+		t.Fatalf("expected query policy row limit 321, got %d", cfg.QueryPolicyRowLimit)
+	}
+}
+
+func TestLoadConfigJiraCloseTransitions(t *testing.T) {
+	t.Setenv("JIRA_CLOSE_TRANSITIONS", "Done, Closed, Resolve Issue")
+
+	cfg := LoadConfig()
+
+	expected := []string{"Done", "Closed", "Resolve Issue"}
+	if !reflect.DeepEqual(cfg.JiraCloseTransitions, expected) {
+		t.Fatalf("expected Jira close transitions %v, got %v", expected, cfg.JiraCloseTransitions)
+	}
+}
+
 func TestLoadConfig_Defaults(t *testing.T) {
 	// Clear any env vars that might affect defaults
-	os.Unsetenv("API_PORT")
-	os.Unsetenv("LOG_LEVEL")
-	os.Unsetenv("SNOWFLAKE_SCHEMA")
-	os.Unsetenv("SNOWFLAKE_DATABASE")
+	t.Setenv("API_PORT", "")
+	t.Setenv("LOG_LEVEL", "")
+	t.Setenv("SNOWFLAKE_SCHEMA", "")
+	t.Setenv("SNOWFLAKE_DATABASE", "")
 
 	cfg := LoadConfig()
 
@@ -142,19 +377,14 @@ func TestLoadConfig_Defaults(t *testing.T) {
 		t.Errorf("expected default database CEREBRO, got %s", cfg.SnowflakeDatabase)
 	}
 
-	// Note: Default schema may be RAW or CEREBRO depending on env
-	if cfg.SnowflakeSchema != "RAW" && cfg.SnowflakeSchema != "CEREBRO" {
-		t.Errorf("expected default schema RAW or CEREBRO, got %s", cfg.SnowflakeSchema)
+	if cfg.SnowflakeSchema != "CEREBRO" {
+		t.Errorf("expected default schema CEREBRO, got %s", cfg.SnowflakeSchema)
 	}
 }
 
 func TestNew_APIAuthEnabledWithoutKeys(t *testing.T) {
-	os.Setenv("API_AUTH_ENABLED", "true")
-	os.Unsetenv("API_KEYS")
-	defer func() {
-		os.Unsetenv("API_AUTH_ENABLED")
-		os.Unsetenv("API_KEYS")
-	}()
+	t.Setenv("API_AUTH_ENABLED", "true")
+	t.Setenv("API_KEYS", "")
 
 	ctx := context.Background()
 	_, err := New(ctx)
@@ -163,18 +393,61 @@ func TestNew_APIAuthEnabledWithoutKeys(t *testing.T) {
 	}
 }
 
+func TestNewWithConfig_APIAuthEnabledWithoutKeys(t *testing.T) {
+	cfg := &Config{
+		APIAuthEnabled: true,
+		PoliciesPath:   "policies",
+	}
+
+	_, err := NewWithConfig(context.Background(), cfg)
+	if err == nil {
+		t.Fatal("expected error when API auth enabled without API_KEYS")
+	}
+}
+
+func TestNewWithConfig_UsesProvidedPoliciesPath(t *testing.T) {
+	t.Setenv("CEDAR_POLICIES_PATH", filepath.Join(t.TempDir(), "missing-policies"))
+
+	cfg := LoadConfig()
+	policiesPath := "policies"
+	if _, err := os.Stat(policiesPath); err != nil {
+		policiesPath = filepath.Join("..", "..", "policies")
+	}
+	cfg.PoliciesPath = policiesPath
+	cfg.APIAuthEnabled = false
+	cfg.APIKeys = nil
+
+	app, err := NewWithConfig(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("NewWithConfig() failed: %v", err)
+	}
+	defer func() {
+		if closeErr := app.Close(); closeErr != nil {
+			t.Fatalf("Close() failed: %v", closeErr)
+		}
+	}()
+
+	if app.Config.PoliciesPath != policiesPath {
+		t.Fatalf("expected policies path %q, got %q", policiesPath, app.Config.PoliciesPath)
+	}
+}
+
 func TestNew_WithoutSnowflake(t *testing.T) {
 	// Clear snowflake config to test initialization without it
-	os.Unsetenv("SNOWFLAKE_PRIVATE_KEY")
-	os.Unsetenv("SNOWFLAKE_ACCOUNT")
-	os.Unsetenv("SNOWFLAKE_USER")
+	t.Setenv("SNOWFLAKE_PRIVATE_KEY", "")
+	t.Setenv("SNOWFLAKE_ACCOUNT", "")
+	t.Setenv("SNOWFLAKE_USER", "")
 
 	ctx := context.Background()
 	app, err := New(ctx)
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
-	defer app.Close()
+	defer func() {
+		if closeErr := app.Close(); closeErr != nil {
+			t.Fatalf("Close() failed: %v", closeErr)
+		}
+	}()
 
 	// Core services should be initialized
 	if app.Policy == nil {
@@ -257,28 +530,27 @@ func TestNew_WithoutSnowflake(t *testing.T) {
 }
 
 func TestNew_WebhookURLs(t *testing.T) {
-	os.Setenv("WEBHOOK_URLS", "https://example.com/hook")
-	os.Unsetenv("SLACK_WEBHOOK_URL")
-	os.Unsetenv("PAGERDUTY_ROUTING_KEY")
-	defer func() {
-		os.Unsetenv("WEBHOOK_URLS")
-		os.Unsetenv("SLACK_WEBHOOK_URL")
-		os.Unsetenv("PAGERDUTY_ROUTING_KEY")
-	}()
+	t.Setenv("WEBHOOK_URLS", "https://1.1.1.1/hook")
+	t.Setenv("SLACK_WEBHOOK_URL", "")
+	t.Setenv("PAGERDUTY_ROUTING_KEY", "")
 
 	ctx := context.Background()
 	app, err := New(ctx)
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
-	defer app.Close()
+	defer func() {
+		if closeErr := app.Close(); closeErr != nil {
+			t.Fatalf("Close() failed: %v", closeErr)
+		}
+	}()
 
 	hooks := app.Webhooks.ListWebhooks()
 	if len(hooks) != 1 {
 		t.Fatalf("expected 1 webhook, got %d", len(hooks))
 	}
-	if hooks[0].URL != "https://example.com/hook" {
-		t.Fatalf("expected webhook URL https://example.com/hook, got %s", hooks[0].URL)
+	if hooks[0].URL != "https://1.1.1.1/hook" {
+		t.Fatalf("expected webhook URL https://1.1.1.1/hook, got %s", hooks[0].URL)
 	}
 	if len(hooks[0].Events) == 0 {
 		t.Fatalf("expected webhook to have events configured")
@@ -290,16 +562,20 @@ func TestNew_WebhookURLs(t *testing.T) {
 }
 
 func TestNew_ServicesWired(t *testing.T) {
-	os.Unsetenv("SNOWFLAKE_PRIVATE_KEY")
-	os.Unsetenv("SNOWFLAKE_ACCOUNT")
-	os.Unsetenv("SNOWFLAKE_USER")
+	t.Setenv("SNOWFLAKE_PRIVATE_KEY", "")
+	t.Setenv("SNOWFLAKE_ACCOUNT", "")
+	t.Setenv("SNOWFLAKE_USER", "")
 
 	ctx := context.Background()
 	app, err := New(ctx)
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
-	defer app.Close()
+	defer func() {
+		if closeErr := app.Close(); closeErr != nil {
+			t.Fatalf("Close() failed: %v", closeErr)
+		}
+	}()
 
 	// Verify policy engine loaded policies
 	policies := app.Policy.ListPolicies()
@@ -571,7 +847,7 @@ func TestScanQueryPolicies_DedupAndSuppressionFlow(t *testing.T) {
 		executeReadOnlyQueryFn = originalExecuteReadOnlyQueryFn
 	})
 
-	executeReadOnlyQueryFn = func(context.Context, *snowflake.Client, string) (*snowflake.QueryResult, error) {
+	executeReadOnlyQueryFn = func(context.Context, warehouse.QueryWarehouse, string) (*snowflake.QueryResult, error) {
 		return &snowflake.QueryResult{Rows: []map[string]interface{}{
 			{"_cq_id": "asset-1", "_cq_table": "assets", "name": "Asset 1"},
 			{"id": "asset-1", "_cq_table": "assets", "name": "Asset 1 duplicate"},
@@ -593,7 +869,7 @@ func TestScanQueryPolicies_DedupAndSuppressionFlow(t *testing.T) {
 		Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Policy:          engine,
 		Findings:        store,
-		Snowflake:       &snowflake.Client{},
+		Warehouse:       &warehouse.MemoryWarehouse{},
 		AvailableTables: []string{"assets"},
 	}
 
@@ -644,7 +920,7 @@ func TestScanQueryPolicies_SkipsDisallowedTables(t *testing.T) {
 	})
 
 	queryCallCount := 0
-	executeReadOnlyQueryFn = func(context.Context, *snowflake.Client, string) (*snowflake.QueryResult, error) {
+	executeReadOnlyQueryFn = func(context.Context, warehouse.QueryWarehouse, string) (*snowflake.QueryResult, error) {
 		queryCallCount++
 		return &snowflake.QueryResult{}, nil
 	}
@@ -662,7 +938,7 @@ func TestScanQueryPolicies_SkipsDisallowedTables(t *testing.T) {
 		Config:          &Config{},
 		Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Policy:          engine,
-		Snowflake:       &snowflake.Client{},
+		Warehouse:       &warehouse.MemoryWarehouse{},
 		AvailableTables: []string{"allowed_table"},
 	}
 
@@ -678,10 +954,72 @@ func TestScanQueryPolicies_SkipsDisallowedTables(t *testing.T) {
 	}
 }
 
+func TestScanQueryPolicies_AddsTruncationMetaFinding(t *testing.T) {
+	originalExecuteReadOnlyQueryFn := executeReadOnlyQueryFn
+	t.Cleanup(func() {
+		executeReadOnlyQueryFn = originalExecuteReadOnlyQueryFn
+	})
+
+	observedQuery := ""
+	executeReadOnlyQueryFn = func(_ context.Context, _ warehouse.QueryWarehouse, query string) (*snowflake.QueryResult, error) {
+		observedQuery = query
+		return &snowflake.QueryResult{Rows: []map[string]interface{}{
+			{"_cq_id": "asset-1", "_cq_table": "assets", "name": "Asset 1"},
+			{"_cq_id": "asset-2", "_cq_table": "assets", "name": "Asset 2"},
+		}}, nil
+	}
+
+	engine := policy.NewEngine()
+	engine.AddPolicy(&policy.Policy{
+		ID:          "query-policy",
+		Name:        "Query Policy",
+		Description: "query finding",
+		Severity:    "high",
+		Query:       "SELECT _cq_id FROM assets",
+	})
+
+	app := &App{
+		Config:          &Config{QueryPolicyRowLimit: 2},
+		Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Policy:          engine,
+		Warehouse:       &warehouse.MemoryWarehouse{},
+		AvailableTables: []string{"assets"},
+	}
+
+	result := app.ScanQueryPolicies(context.Background())
+	if result.Policies != 1 {
+		t.Fatalf("expected 1 query policy, got %d", result.Policies)
+	}
+	if len(result.Errors) != 0 {
+		t.Fatalf("expected no query policy errors, got %v", result.Errors)
+	}
+	if len(result.Findings) != 3 {
+		t.Fatalf("expected 2 row findings plus 1 truncation meta finding, got %d", len(result.Findings))
+	}
+
+	metaID := "query-policy:query-result-limit"
+	var meta *policy.Finding
+	for i := range result.Findings {
+		if result.Findings[i].ID == metaID {
+			meta = &result.Findings[i]
+			break
+		}
+	}
+	if meta == nil {
+		t.Fatalf("expected truncation meta finding %q", metaID)
+	}
+	if meta.ResourceType != "query_policy_scan" {
+		t.Fatalf("expected meta resource type query_policy_scan, got %q", meta.ResourceType)
+	}
+	if observedQuery == "" || !strings.Contains(observedQuery, "LIMIT 2") {
+		t.Fatalf("expected bounded query to include LIMIT 2, got %q", observedQuery)
+	}
+}
+
 func TestApp_Close(t *testing.T) {
-	os.Unsetenv("SNOWFLAKE_PRIVATE_KEY")
-	os.Unsetenv("SNOWFLAKE_ACCOUNT")
-	os.Unsetenv("SNOWFLAKE_USER")
+	t.Setenv("SNOWFLAKE_PRIVATE_KEY", "")
+	t.Setenv("SNOWFLAKE_ACCOUNT", "")
+	t.Setenv("SNOWFLAKE_USER", "")
 
 	ctx := context.Background()
 	app, _ := New(ctx)
@@ -693,8 +1031,7 @@ func TestApp_Close(t *testing.T) {
 }
 
 func TestGetEnv(t *testing.T) {
-	os.Setenv("TEST_VAR", "test_value")
-	defer os.Unsetenv("TEST_VAR")
+	t.Setenv("TEST_VAR", "test_value")
 
 	val := getEnv("TEST_VAR", "default")
 	if val != "test_value" {
@@ -708,8 +1045,7 @@ func TestGetEnv(t *testing.T) {
 }
 
 func TestGetEnvInt(t *testing.T) {
-	os.Setenv("TEST_INT", "42")
-	defer os.Unsetenv("TEST_INT")
+	t.Setenv("TEST_INT", "42")
 
 	val := getEnvInt("TEST_INT", 0)
 	if val != 42 {
@@ -736,18 +1072,16 @@ func TestGetEnvBool(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		os.Setenv("TEST_BOOL", tt.value)
+		t.Setenv("TEST_BOOL", tt.value)
 		got := getEnvBool("TEST_BOOL", false)
 		if got != tt.want {
 			t.Errorf("getEnvBool(%q) = %v, want %v", tt.value, got, tt.want)
 		}
-		os.Unsetenv("TEST_BOOL")
 	}
 }
 
 func TestGetEnvDuration(t *testing.T) {
-	os.Setenv("TEST_DUR", "5m")
-	defer os.Unsetenv("TEST_DUR")
+	t.Setenv("TEST_DUR", "5m")
 
 	val := getEnvDuration("TEST_DUR", time.Hour)
 	if val != 5*time.Minute {
@@ -757,6 +1091,33 @@ func TestGetEnvDuration(t *testing.T) {
 	val = getEnvDuration("NONEXISTENT_DUR", time.Hour)
 	if val != time.Hour {
 		t.Errorf("expected 1h, got %v", val)
+	}
+}
+
+func TestGetEnvFloat(t *testing.T) {
+	t.Setenv("TEST_FLOAT", "0.25")
+
+	val := getEnvFloat("TEST_FLOAT", 1.0)
+	if val != 0.25 {
+		t.Errorf("expected 0.25, got %v", val)
+	}
+
+	val = getEnvFloat("NONEXISTENT_FLOAT", 0.75)
+	if val != 0.75 {
+		t.Errorf("expected fallback 0.75, got %v", val)
+	}
+}
+
+func TestParseKeyValueCSV(t *testing.T) {
+	parsed := parseKeyValueCSV("x-api-key=abc123, env=dev,invalid,no-value= ")
+	if parsed["x-api-key"] != "abc123" {
+		t.Fatalf("expected x-api-key=abc123, got %q", parsed["x-api-key"])
+	}
+	if parsed["env"] != "dev" {
+		t.Fatalf("expected env=dev, got %q", parsed["env"])
+	}
+	if _, ok := parsed["invalid"]; ok {
+		t.Fatalf("did not expect invalid entry to be parsed: %#v", parsed)
 	}
 }
 
@@ -825,16 +1186,17 @@ func TestSplitTables(t *testing.T) {
 
 func TestConfig_Fields(t *testing.T) {
 	cfg := &Config{ //nolint:govet // false positive - all fields are tested below
-		Port:               8080,
-		LogLevel:           "info",
-		SnowflakeDatabase:  "CEREBRO",
-		SnowflakeSchema:    "CEREBRO",
-		PoliciesPath:       "policies",
-		ScanInterval:       "1h",
-		RateLimitEnabled:   true,
-		RateLimitRequests:  1000,
-		RateLimitWindow:    time.Hour,
-		CORSAllowedOrigins: []string{"https://app.example.com"},
+		Port:                   8080,
+		LogLevel:               "info",
+		SnowflakeDatabase:      "CEREBRO",
+		SnowflakeSchema:        "CEREBRO",
+		PoliciesPath:           "policies",
+		ScanInterval:           "1h",
+		SecurityDigestInterval: "24h",
+		RateLimitEnabled:       true,
+		RateLimitRequests:      1000,
+		RateLimitWindow:        time.Hour,
+		CORSAllowedOrigins:     []string{"https://app.example.com"},
 	}
 
 	if cfg.Port != 8080 {
@@ -854,6 +1216,9 @@ func TestConfig_Fields(t *testing.T) {
 	}
 	if cfg.ScanInterval != "1h" {
 		t.Error("ScanInterval field incorrect")
+	}
+	if cfg.SecurityDigestInterval != "24h" {
+		t.Error("SecurityDigestInterval field incorrect")
 	}
 	if cfg.RateLimitEnabled != true {
 		t.Error("RateLimitEnabled field incorrect")

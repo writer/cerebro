@@ -21,7 +21,7 @@ func NewCloudflareProvider() *CloudflareProvider {
 	return &CloudflareProvider{
 		BaseProvider: NewBaseProvider("cloudflare", ProviderTypeNetwork),
 		baseURL:      "https://api.cloudflare.com/client/v4",
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

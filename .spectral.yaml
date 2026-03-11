@@ -1,0 +1,26 @@
+extends:
+  - spectral:oas
+
+rules:
+  operation-description: off
+  operation-operationId: off
+
+  no-undocumented-tag:
+    description: Placeholder tags are not allowed in committed OpenAPI contracts.
+    message: Remove `Undocumented` tag and provide concrete endpoint metadata.
+    severity: error
+    given: $.paths[*][*].tags[*]
+    then:
+      function: pattern
+      functionOptions:
+        notMatch: ^Undocumented$
+
+  no-placeholder-summary:
+    description: Placeholder operation summaries are not allowed.
+    message: Replace placeholder summaries with endpoint-specific summaries.
+    severity: error
+    given: $.paths[*][*].summary
+    then:
+      function: pattern
+      functionOptions:
+        notMatch: '[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]'

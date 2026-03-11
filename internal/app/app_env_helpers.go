@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/writer/cerebro/internal/apiauth"
 	"github.com/writer/cerebro/internal/envutil"
 )
 
@@ -51,6 +52,39 @@ func getEnvDuration(key string, fallback time.Duration) time.Duration {
 	return parsed
 }
 
+func getEnvFloat(key string, fallback float64) float64 {
+	value := strings.TrimSpace(getEnv(key, ""))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func parseKeyValueCSV(value string) map[string]string {
+	parsed := make(map[string]string)
+	for _, entry := range strings.Split(value, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		parts := strings.SplitN(entry, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(parts[0])
+		val := strings.TrimSpace(parts[1])
+		if key == "" || val == "" {
+			continue
+		}
+		parsed[key] = val
+	}
+	return parsed
+}
+
 func parseAPIKeys(value string) map[string]string {
 	keys := make(map[string]string)
 	if value == "" {
@@ -73,17 +107,21 @@ func parseAPIKeys(value string) map[string]string {
 			continue
 		}
 
-		userID := key
+		userID := ""
 		if len(parts) == 2 {
 			userID = strings.TrimSpace(parts[1])
-			if userID == "" {
-				userID = key
-			}
+		}
+		if userID == "" {
+			userID = defaultAPIUserID(key)
 		}
 		keys[key] = userID
 	}
 
 	return keys
+}
+
+func defaultAPIUserID(key string) string {
+	return apiauth.DefaultUserIDForKey(key)
 }
 
 func parseLogLevel(level string) slog.Level {

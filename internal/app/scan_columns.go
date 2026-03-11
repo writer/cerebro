@@ -39,11 +39,11 @@ func (a *App) ScanColumnsForTable(ctx context.Context, table string) []string {
 		candidates[col] = struct{}{}
 	}
 
-	if a.Snowflake == nil {
+	if a.Warehouse == nil {
 		return sortedColumns(candidates)
 	}
 
-	available, err := a.Snowflake.DescribeColumns(ctx, table)
+	available, err := a.Warehouse.DescribeColumns(ctx, table)
 	if err != nil {
 		a.Logger.Warn("failed to describe scan columns", "table", table, "error", err)
 		return nil

@@ -28,7 +28,7 @@ type WorkdayProvider struct {
 func NewWorkdayProvider() *WorkdayProvider {
 	return &WorkdayProvider{
 		BaseProvider: NewBaseProvider("workday", ProviderTypeSaaS),
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

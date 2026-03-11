@@ -19,7 +19,9 @@ func TestFileStore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
-	defer store.Close()
+	defer func() {
+		_ = store.Close()
+	}()
 
 	// Add a finding
 	pf := policy.Finding{
@@ -56,7 +58,9 @@ func TestFileStore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create store2: %v", err)
 	}
-	defer store2.Close()
+	defer func() {
+		_ = store2.Close()
+	}()
 
 	// Should have loaded the finding
 	stats2 := store2.Stats()
@@ -82,7 +86,9 @@ func TestFileStoreResolve(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
-	defer store.Close()
+	defer func() {
+		_ = store.Close()
+	}()
 
 	// Add a finding
 	pf := policy.Finding{
@@ -112,7 +118,9 @@ func TestFileStoreCleanup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
-	defer store.Close()
+	defer func() {
+		_ = store.Close()
+	}()
 
 	// Add old resolved finding directly
 	store.store.mu.Lock()

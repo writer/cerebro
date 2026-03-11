@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	apiclient "github.com/writer/cerebro/internal/client"
 	nativesync "github.com/writer/cerebro/internal/sync"
 )
 
@@ -17,6 +18,60 @@ func runK8sSync(ctx context.Context, start time.Time) error {
 		Info("Filtering Kubernetes tables: %s", strings.Join(tableFilter, ", "))
 	}
 
+	mode, err := loadCLIExecutionMode()
+	if err != nil {
+		return err
+	}
+
+	if mode != cliExecutionModeDirect {
+		apiClient, err := newCLIAPIClient()
+		if err != nil {
+			if mode == cliExecutionModeAPI {
+				return err
+			}
+			Warning("API client configuration invalid; using direct mode: %v", err)
+		} else {
+			resp, err := apiClient.RunK8sSync(ctx, apiclient.K8sSyncRequest{
+				Kubeconfig:  syncK8sKubeconfig,
+				Context:     syncK8sContext,
+				Namespace:   syncK8sNamespace,
+				Concurrency: syncConcurrency,
+				Tables:      tableFilter,
+				Validate:    syncValidate,
+			})
+			if err == nil {
+				provider := "Kubernetes"
+				if syncValidate || (resp != nil && resp.Validate) {
+					provider = "Kubernetes (validate)"
+				}
+				var results []nativesync.SyncResult
+				if resp != nil {
+					results = resp.Results
+				}
+				if err := printSyncResults(results, start, provider); err != nil {
+					return err
+				}
+				if syncScanAfter && !syncValidate {
+					Info("Triggering policy scan...")
+					if err := runPostSyncScan(ctx, tableFilter); err != nil {
+						Warning("Post-sync scan failed: %v", err)
+					}
+				}
+				return nil
+			}
+			if mode == cliExecutionModeAPI || !shouldFallbackToDirect(mode, err) {
+				return fmt.Errorf("kubernetes sync via api failed: %w", err)
+			}
+			Warning("API unavailable; using direct mode: %v", err)
+		}
+	}
+
+	return runK8sSyncDirectFn(ctx, start, tableFilter)
+}
+
+var runK8sSyncDirectFn = runK8sSyncDirect
+
+func runK8sSyncDirect(ctx context.Context, start time.Time, tableFilter []string) error {
 	client, err := createSnowflakeClient()
 	if err != nil {
 		return fmt.Errorf("create snowflake client: %w", err)

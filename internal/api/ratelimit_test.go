@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -55,8 +56,15 @@ func TestRateLimiterWindowReset(t *testing.T) {
 		t.Error("should be rate limited")
 	}
 
-	// Wait for window to reset
-	time.Sleep(60 * time.Millisecond)
+	// Force bucket into an expired window without sleeping.
+	rl.mu.Lock()
+	b, ok := rl.buckets[key]
+	if !ok {
+		rl.mu.Unlock()
+		t.Fatal("expected bucket to exist")
+	}
+	b.lastReset = time.Now().Add(-rl.window)
+	rl.mu.Unlock()
 
 	allowed, remaining, _ := rl.Allow(key)
 	if !allowed {
@@ -139,8 +147,56 @@ func TestRateLimitMiddleware(t *testing.T) {
 	if w.Code != http.StatusTooManyRequests {
 		t.Errorf("expected 429, got %d", w.Code)
 	}
-	if w.Header().Get("Retry-After") == "" {
+	retryAfter := w.Header().Get("Retry-After")
+	if retryAfter == "" {
 		t.Error("missing Retry-After header")
+	} else if parsed, err := strconv.Atoi(retryAfter); err != nil || parsed < 1 {
+		t.Errorf("expected Retry-After >= 1, got %q", retryAfter)
+	}
+}
+
+func TestRateLimitMiddleware_RetryAfterMinimumOneSecond(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	rl := NewRateLimiter(RateLimitConfig{
+		RequestsPerWindow: 1,
+		Window:            50 * time.Millisecond,
+		Enabled:           true,
+	})
+	t.Cleanup(rl.Close)
+	middleware := RateLimitMiddlewareWithLimiter(RateLimitConfig{
+		RequestsPerWindow: 1,
+		Window:            50 * time.Millisecond,
+		Enabled:           true,
+	}, rl)
+
+	wrapped := middleware(handler)
+
+	req1 := httptest.NewRequest("GET", "/api/v1/test", nil)
+	req1.RemoteAddr = "192.168.1.1:1234"
+	w1 := httptest.NewRecorder()
+	wrapped.ServeHTTP(w1, req1)
+	if w1.Code != http.StatusOK {
+		t.Fatalf("first request: expected 200, got %d", w1.Code)
+	}
+
+	req2 := httptest.NewRequest("GET", "/api/v1/test", nil)
+	req2.RemoteAddr = "192.168.1.1:1234"
+	w2 := httptest.NewRecorder()
+	wrapped.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusTooManyRequests {
+		t.Fatalf("second request: expected 429, got %d", w2.Code)
+	}
+
+	retryAfter := w2.Header().Get("Retry-After")
+	parsed, err := strconv.Atoi(retryAfter)
+	if err != nil {
+		t.Fatalf("expected numeric Retry-After header, got %q", retryAfter)
+	}
+	if parsed < 1 {
+		t.Fatalf("expected Retry-After >= 1, got %d", parsed)
 	}
 }
 
@@ -170,7 +226,7 @@ func TestRateLimitMiddlewareDisabled(t *testing.T) {
 	}
 }
 
-func TestRateLimitMiddlewareSkipsHealthEndpoints(t *testing.T) {
+func TestRateLimitMiddlewareSkipsPublicEndpoints(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -189,32 +245,100 @@ func TestRateLimitMiddlewareSkipsHealthEndpoints(t *testing.T) {
 
 	wrapped := middleware(handler)
 
-	// Health endpoint should always work
-	for i := 0; i < 5; i++ {
-		req := httptest.NewRequest("GET", "/health", nil)
-		w := httptest.NewRecorder()
+	publicPaths := []string{"/health", "/ready", "/docs", "/openapi.yaml"}
+	for _, path := range publicPaths {
+		for i := 0; i < 5; i++ {
+			req := httptest.NewRequest("GET", path, nil)
+			w := httptest.NewRecorder()
 
-		wrapped.ServeHTTP(w, req)
+			wrapped.ServeHTTP(w, req)
 
-		if w.Code != http.StatusOK {
-			t.Errorf("/health request %d: expected 200, got %d", i+1, w.Code)
+			if w.Code != http.StatusOK {
+				t.Errorf("%s request %d: expected 200, got %d", path, i+1, w.Code)
+			}
+			if got := w.Header().Get("X-RateLimit-Limit"); got != "" {
+				t.Errorf("%s request %d: expected no rate limit headers for bypassed endpoint, got X-RateLimit-Limit=%q", path, i+1, got)
+			}
 		}
 	}
 
-	// Same for /ready
-	for i := 0; i < 5; i++ {
-		req := httptest.NewRequest("GET", "/ready", nil)
-		w := httptest.NewRecorder()
+	metricsReq1 := httptest.NewRequest("GET", "/metrics", nil)
+	metricsReq1.RemoteAddr = "192.168.1.200:1111"
+	metricsW1 := httptest.NewRecorder()
+	wrapped.ServeHTTP(metricsW1, metricsReq1)
+	if metricsW1.Code != http.StatusOK {
+		t.Fatalf("/metrics first request: expected 200, got %d", metricsW1.Code)
+	}
+	if metricsW1.Header().Get("X-RateLimit-Limit") == "" {
+		t.Fatal("expected /metrics to include rate limit headers")
+	}
 
-		wrapped.ServeHTTP(w, req)
+	metricsReq2 := httptest.NewRequest("GET", "/metrics", nil)
+	metricsReq2.RemoteAddr = "192.168.1.200:1111"
+	metricsW2 := httptest.NewRecorder()
+	wrapped.ServeHTTP(metricsW2, metricsReq2)
+	if metricsW2.Code != http.StatusTooManyRequests {
+		t.Fatalf("/metrics second request: expected 429, got %d", metricsW2.Code)
+	}
 
-		if w.Code != http.StatusOK {
-			t.Errorf("/ready request %d: expected 200, got %d", i+1, w.Code)
-		}
+	// Public endpoint traffic should not consume API route quota.
+	req := httptest.NewRequest("GET", "/api/v1/test", nil)
+	req.RemoteAddr = "192.168.1.1:1234"
+	w := httptest.NewRecorder()
+	wrapped.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("first protected route request: expected 200, got %d", w.Code)
+	}
+
+	req2 := httptest.NewRequest("GET", "/api/v1/test", nil)
+	req2.RemoteAddr = "192.168.1.1:1234"
+	w2 := httptest.NewRecorder()
+	wrapped.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusTooManyRequests {
+		t.Fatalf("second protected route request: expected 429, got %d", w2.Code)
 	}
 }
 
-func TestGetClientKey(t *testing.T) {
+func TestRateLimitMiddleware_UsesRemoteIPWithoutPort(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	rl := NewRateLimiter(RateLimitConfig{
+		RequestsPerWindow: 1,
+		Window:            time.Minute,
+		Enabled:           true,
+	})
+	t.Cleanup(rl.Close)
+	middleware := RateLimitMiddlewareWithLimiter(RateLimitConfig{
+		RequestsPerWindow: 1,
+		Window:            time.Minute,
+		Enabled:           true,
+	}, rl)
+
+	wrapped := middleware(handler)
+
+	// Requests from the same client IP but different source ports must share
+	// one bucket so opening new connections cannot bypass limits.
+	req := httptest.NewRequest("GET", "/api/v1/test", nil)
+	req.RemoteAddr = "192.168.1.1:10001"
+	w := httptest.NewRecorder()
+	wrapped.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("first request: expected 200, got %d", w.Code)
+	}
+
+	req2 := httptest.NewRequest("GET", "/api/v1/test", nil)
+	req2.RemoteAddr = "192.168.1.1:10002"
+	w2 := httptest.NewRecorder()
+	wrapped.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusTooManyRequests {
+		t.Fatalf("second request from same IP with different port: expected 429, got %d", w2.Code)
+	}
+}
+
+func TestGetClientKey_NoTrustedProxies(t *testing.T) {
+	// Without trusted proxies configured, forwarded headers are ignored.
 	tests := []struct {
 		name     string
 		headers  map[string]string
@@ -229,28 +353,59 @@ func TestGetClientKey(t *testing.T) {
 		{
 			name:     "Authorization header",
 			headers:  map[string]string{"Authorization": "Bearer token123"},
-			expected: "auth:Bearer token123",
+			expected: "apikey:token123",
 		},
 		{
-			name:     "X-Forwarded-For header",
+			name:     "Authorization header with extra spaces",
+			headers:  map[string]string{"Authorization": "   Bearer   token123   "},
+			expected: "apikey:token123",
+		},
+		{
+			name:     "matching Authorization and X-API-Key canonicalize to one key",
+			headers:  map[string]string{"Authorization": "Bearer key", "X-API-Key": "key"},
+			expected: "apikey:key",
+		},
+		{
+			name:     "malformed Authorization falls back to IP key",
+			headers:  map[string]string{"Authorization": "Token token123", "X-Forwarded-For": "1.2.3.4"},
+			addr:     "203.0.113.9:8443",
+			expected: "ip:203.0.113.9",
+		},
+		{
+			name:     "conflicting API credentials fall back to IP key",
+			headers:  map[string]string{"Authorization": "Bearer token123", "X-API-Key": "other"},
+			addr:     "192.168.1.1:1234",
+			expected: "ip:192.168.1.1",
+		},
+		{
+			name:     "RemoteAddr used even when XFF present",
 			headers:  map[string]string{"X-Forwarded-For": "1.2.3.4"},
-			expected: "ip:1.2.3.4",
+			addr:     "203.0.113.9:8443",
+			expected: "ip:203.0.113.9",
 		},
 		{
-			name:     "X-Real-IP header",
-			headers:  map[string]string{"X-Real-IP": "5.6.7.8"},
-			expected: "ip:5.6.7.8",
+			name:     "RemoteAddr plain ip",
+			headers:  map[string]string{},
+			addr:     "10.0.0.7",
+			expected: "ip:10.0.0.7",
 		},
 		{
-			name:     "RemoteAddr fallback",
+			name:     "RemoteAddr host:port",
 			headers:  map[string]string{},
 			addr:     "192.168.1.1:1234",
-			expected: "ip:192.168.1.1:1234",
+			expected: "ip:192.168.1.1",
 		},
 		{
-			name:     "X-API-Key takes precedence",
-			headers:  map[string]string{"X-API-Key": "key", "X-Forwarded-For": "1.2.3.4"},
-			expected: "apikey:key",
+			name:     "RemoteAddr IPv6 host:port",
+			headers:  map[string]string{},
+			addr:     "[2001:db8::1]:1234",
+			expected: "ip:2001:db8::1",
+		},
+		{
+			name:     "invalid RemoteAddr returns unknown",
+			headers:  map[string]string{"X-Forwarded-For": "1.2.3.4"},
+			addr:     "invalid",
+			expected: "ip:unknown",
 		},
 	}
 
@@ -264,11 +419,121 @@ func TestGetClientKey(t *testing.T) {
 				req.RemoteAddr = tt.addr
 			}
 
-			got := getClientKey(req)
+			got := getClientKeyTrusted(req, nil, nil, nil)
 			if got != tt.expected {
-				t.Errorf("expected '%s', got '%s'", tt.expected, got)
+				t.Errorf("expected %q, got %q", tt.expected, got)
 			}
 		})
+	}
+}
+
+func TestGetClientKey_TrustedProxy(t *testing.T) {
+	trusted := parseTrustedProxyCIDRs([]string{"10.0.0.0/8", "172.16.0.0/12"})
+
+	tests := []struct {
+		name     string
+		headers  map[string]string
+		addr     string
+		expected string
+	}{
+		{
+			name:     "trusted proxy honours XFF",
+			headers:  map[string]string{"X-Forwarded-For": "1.2.3.4"},
+			addr:     "10.0.0.1:9090",
+			expected: "ip:1.2.3.4",
+		},
+		{
+			name:     "trusted proxy multi-hop XFF uses leftmost",
+			headers:  map[string]string{"X-Forwarded-For": "5.6.7.8, 10.0.0.2"},
+			addr:     "10.0.0.1:9090",
+			expected: "ip:5.6.7.8",
+		},
+		{
+			name:     "trusted proxy honours X-Real-IP when no XFF",
+			headers:  map[string]string{"X-Real-IP": "9.8.7.6"},
+			addr:     "172.16.0.5:8080",
+			expected: "ip:9.8.7.6",
+		},
+		{
+			name:     "trusted proxy falls back to RemoteAddr when no forwarded headers",
+			headers:  map[string]string{},
+			addr:     "10.0.0.1:9090",
+			expected: "ip:10.0.0.1",
+		},
+		{
+			name:     "untrusted remote ignores XFF",
+			headers:  map[string]string{"X-Forwarded-For": "1.2.3.4"},
+			addr:     "203.0.113.50:4321",
+			expected: "ip:203.0.113.50",
+		},
+		{
+			name:     "trusted proxy with malformed XFF falls to RemoteAddr",
+			headers:  map[string]string{"X-Forwarded-For": "not-an-ip"},
+			addr:     "10.0.0.1:9090",
+			expected: "ip:10.0.0.1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/", nil)
+			for k, v := range tt.headers {
+				req.Header.Set(k, v)
+			}
+			if tt.addr != "" {
+				req.RemoteAddr = tt.addr
+			}
+
+			got := getClientKeyTrusted(req, trusted, nil, nil)
+			if got != tt.expected {
+				t.Errorf("expected %q, got %q", tt.expected, got)
+			}
+		})
+	}
+}
+
+func TestParseTrustedProxyCIDRs(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  []string
+		expect int
+	}{
+		{"nil input", nil, 0},
+		{"empty strings", []string{"", " "}, 0},
+		{"valid CIDR", []string{"10.0.0.0/8"}, 1},
+		{"bare IP becomes /32", []string{"192.168.1.1"}, 1},
+		{"mixed valid and invalid", []string{"10.0.0.0/8", "garbage", "172.16.0.0/12"}, 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			nets := parseTrustedProxyCIDRs(tt.input)
+			if len(nets) != tt.expect {
+				t.Errorf("expected %d nets, got %d", tt.expect, len(nets))
+			}
+		})
+	}
+}
+
+func TestRateLimiterEnforcesBucketCap(t *testing.T) {
+	rl := NewRateLimiter(RateLimitConfig{
+		RequestsPerWindow: 2,
+		Window:            time.Minute,
+		MaxBuckets:        3,
+	})
+	t.Cleanup(rl.Close)
+
+	for i := 0; i < 10; i++ {
+		key := "ip:198.51.100." + strconv.Itoa(i)
+		_, _, _ = rl.Allow(key)
+	}
+
+	rl.mu.RLock()
+	defer rl.mu.RUnlock()
+	if len(rl.buckets) > 3 {
+		t.Fatalf("expected bucket count to be capped at 3, got %d", len(rl.buckets))
+	}
+	if _, ok := rl.buckets[overflowRateLimitBucketKey]; !ok {
+		t.Fatalf("expected overflow bucket %q to exist", overflowRateLimitBucketKey)
 	}
 }
 

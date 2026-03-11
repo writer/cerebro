@@ -19,7 +19,9 @@ func TestSQLiteStore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
-	defer store.Close()
+	defer func() {
+		_ = store.Close()
+	}()
 
 	ctx := context.Background()
 
@@ -111,13 +113,17 @@ func TestSQLiteStore(t *testing.T) {
 	}
 
 	// Test Persistence (close and reopen)
-	store.Close()
+	if err := store.Close(); err != nil {
+		t.Fatalf("close store: %v", err)
+	}
 
 	store2, err := NewSQLiteStore(dbPath)
 	if err != nil {
 		t.Fatalf("failed to re-open store: %v", err)
 	}
-	defer store2.Close()
+	defer func() {
+		_ = store2.Close()
+	}()
 
 	stats2 := store2.Stats()
 	if stats2.Total != 1 {
@@ -133,7 +139,9 @@ func TestSQLiteStore_Concurrency(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
-	defer store.Close()
+	defer func() {
+		_ = store.Close()
+	}()
 
 	ctx := context.Background()
 	count := 100
@@ -160,5 +168,54 @@ func TestSQLiteStore_Concurrency(t *testing.T) {
 	stats := store.Stats()
 	if stats.Total != count {
 		t.Errorf("expected %d total findings, got %d", count, stats.Total)
+	}
+}
+
+func TestSQLiteStore_SignalTypeDomainFiltersAndStats(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "signals_test.db")
+
+	store, err := NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer func() {
+		_ = store.Close()
+	}()
+
+	ctx := context.Background()
+	store.Upsert(ctx, policy.Finding{ID: "f-1", PolicyID: "p-1", Severity: "high"})
+	store.Upsert(ctx, policy.Finding{ID: "f-2", PolicyID: "stripe-large-refund", Severity: "critical"})
+
+	if err := store.Update("f-1", func(f *Finding) error {
+		f.SignalType = SignalTypeBusiness
+		f.Domain = DomainPipeline
+		return nil
+	}); err != nil {
+		t.Fatalf("update f-1: %v", err)
+	}
+	if err := store.Update("f-2", func(f *Finding) error {
+		f.SignalType = SignalTypeCompliance
+		f.Domain = DomainFinancial
+		return nil
+	}); err != nil {
+		t.Fatalf("update f-2: %v", err)
+	}
+
+	filtered := store.List(FindingFilter{SignalType: SignalTypeBusiness, Domain: DomainPipeline})
+	if len(filtered) != 1 || filtered[0].ID != "f-1" {
+		t.Fatalf("unexpected filtered results: %#v", filtered)
+	}
+
+	if got := store.Count(FindingFilter{SignalType: SignalTypeCompliance, Domain: DomainFinancial}); got != 1 {
+		t.Fatalf("count = %d, want 1", got)
+	}
+
+	stats := store.Stats()
+	if stats.BySignalType[SignalTypeBusiness] != 1 || stats.BySignalType[SignalTypeCompliance] != 1 {
+		t.Fatalf("unexpected by_signal_type stats: %#v", stats.BySignalType)
+	}
+	if stats.ByDomain[DomainPipeline] != 1 || stats.ByDomain[DomainFinancial] != 1 {
+		t.Fatalf("unexpected by_domain stats: %#v", stats.ByDomain)
 	}
 }

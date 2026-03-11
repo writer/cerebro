@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/writer/cerebro/internal/auth"
@@ -37,10 +38,13 @@ func (a *App) initRBAC() {
 
 func (a *App) initThreatIntel(ctx context.Context) {
 	a.ThreatIntel = threatintel.NewThreatIntelService()
+	syncCtx, syncCancel := context.WithCancel(backgroundWorkContext(ctx))
+	a.threatIntelSyncCancel = syncCancel
+	a.threatIntelSyncWG.Add(1)
 
 	// Sync feeds in background
-	// #nosec G118 -- background threat intel sync is intentionally detached from request context
 	go func() {
+		defer a.threatIntelSyncWG.Done()
 		const (
 			syncTimeout  = 2 * time.Minute
 			syncMaxAge   = 12 * time.Hour
@@ -53,16 +57,16 @@ func (a *App) initThreatIntel(ctx context.Context) {
 			return
 		}
 
-		syncCtx, cancel := context.WithTimeout(ctx, syncTimeout)
+		runCtx, cancel := context.WithTimeout(syncCtx, syncTimeout)
 		defer cancel()
 
-		err := a.ThreatIntel.SyncAllWithRetry(syncCtx, threatintel.SyncOptions{
+		err := a.ThreatIntel.SyncAllWithRetry(runCtx, threatintel.SyncOptions{
 			MaxAge:   syncMaxAge,
 			Attempts: syncAttempts,
 			Backoff:  syncBackoff,
 		})
 		if err != nil {
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || syncCtx.Err() != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || runCtx.Err() != nil {
 				a.Logger.Debug("threat intel sync canceled", "error", err)
 			} else {
 				a.Logger.Warn("failed to sync threat intel feeds", "error", err)
@@ -71,7 +75,7 @@ func (a *App) initThreatIntel(ctx context.Context) {
 		}
 		stats := a.ThreatIntel.Stats()
 		if a.Webhooks != nil {
-			if err := a.Webhooks.EmitWithErrors(syncCtx, webhooks.EventThreatIntelSynced, map[string]interface{}{
+			if err := a.Webhooks.EmitWithErrors(runCtx, webhooks.EventThreatIntelSynced, map[string]interface{}{
 				"feed_count":       stats["feed_count"],
 				"total_indicators": stats["total_indicators"],
 			}); err != nil {
@@ -116,11 +120,11 @@ func (a *App) initHealth() {
 	}))
 
 	a.Health.Register("sync_data", health.PingCheck("sync_data", func(ctx context.Context) error {
-		if a.Snowflake == nil {
+		if a.Warehouse == nil {
 			return fmt.Errorf("not configured")
 		}
 		// Check that at least some tables have data
-		tables, err := a.Snowflake.ListAvailableTables(ctx)
+		tables, err := a.Warehouse.ListAvailableTables(ctx)
 		if err != nil {
 			return fmt.Errorf("cannot list tables: %w", err)
 		}
@@ -143,7 +147,248 @@ func (a *App) initHealth() {
 		return nil
 	}))
 
+	a.Health.Register("providers", health.PingCheck("providers", func(ctx context.Context) error {
+		if a.Providers == nil {
+			return fmt.Errorf("provider registry not initialized")
+		}
+		for _, provider := range a.Providers.List() {
+			if err := provider.Test(ctx); err != nil {
+				return fmt.Errorf("provider %s test failed: %w", provider.Name(), err)
+			}
+		}
+		return nil
+	}))
+
+	a.Health.Register("graph_ontology_slo", a.graphOntologySLOHealthCheck())
+	a.Health.Register("graph_build", func(_ context.Context) health.CheckResult {
+		start := time.Now().UTC()
+		result := health.CheckResult{
+			Name:      "graph_build",
+			Timestamp: start,
+		}
+		if a.Warehouse == nil {
+			result.Status = health.StatusHealthy
+			result.Message = "graph disabled - warehouse not configured"
+			result.Latency = time.Since(start)
+			return result
+		}
+		snapshot := a.GraphBuildSnapshot()
+		switch snapshot.State {
+		case GraphBuildSuccess:
+			result.Status = health.StatusHealthy
+			result.Message = fmt.Sprintf("graph build succeeded at %s with %d nodes", snapshot.LastBuildAt.Format(time.RFC3339), snapshot.NodeCount)
+		case GraphBuildFailed:
+			result.Status = health.StatusUnhealthy
+			result.Message = snapshot.LastError
+		case GraphBuildBuilding:
+			result.Status = health.StatusDegraded
+			result.Message = "graph build in progress"
+		default:
+			result.Status = health.StatusUnknown
+			result.Message = "graph build not started"
+		}
+		result.Latency = time.Since(start)
+		return result
+	})
+
 	a.Logger.Info("health service initialized")
+}
+
+type graphOntologySLOThresholds struct {
+	FallbackWarn        float64
+	FallbackCritical    float64
+	SchemaValidWarn     float64
+	SchemaValidCritical float64
+}
+
+const (
+	ontologyBurnFastWarn     = 1.0
+	ontologyBurnFastCritical = 2.0
+	ontologyBurnSlowWarn     = 0.5
+	ontologyBurnSlowCritical = 1.0
+)
+
+func defaultGraphOntologySLOThresholds() graphOntologySLOThresholds {
+	return graphOntologySLOThresholds{
+		FallbackWarn:        12,
+		FallbackCritical:    25,
+		SchemaValidWarn:     98,
+		SchemaValidCritical: 92,
+	}
+}
+
+func sanitizeGraphOntologySLOThresholds(raw graphOntologySLOThresholds) graphOntologySLOThresholds {
+	defaults := defaultGraphOntologySLOThresholds()
+	out := raw
+
+	if out.FallbackWarn < 0 || out.FallbackWarn > 100 || out.FallbackWarn != out.FallbackWarn {
+		out.FallbackWarn = defaults.FallbackWarn
+	}
+	if out.FallbackCritical < 0 || out.FallbackCritical > 100 || out.FallbackCritical != out.FallbackCritical {
+		out.FallbackCritical = defaults.FallbackCritical
+	}
+	if out.FallbackCritical < out.FallbackWarn {
+		out.FallbackCritical = out.FallbackWarn
+	}
+
+	if out.SchemaValidWarn < 0 || out.SchemaValidWarn > 100 || out.SchemaValidWarn != out.SchemaValidWarn {
+		out.SchemaValidWarn = defaults.SchemaValidWarn
+	}
+	if out.SchemaValidCritical < 0 || out.SchemaValidCritical > 100 || out.SchemaValidCritical != out.SchemaValidCritical {
+		out.SchemaValidCritical = defaults.SchemaValidCritical
+	}
+	if out.SchemaValidCritical > out.SchemaValidWarn {
+		out.SchemaValidCritical = out.SchemaValidWarn
+	}
+	return out
+}
+
+func (a *App) graphOntologySLOThresholds() graphOntologySLOThresholds {
+	if a == nil || a.Config == nil {
+		return defaultGraphOntologySLOThresholds()
+	}
+	return sanitizeGraphOntologySLOThresholds(graphOntologySLOThresholds{
+		FallbackWarn:        a.Config.GraphOntologyFallbackWarnPct,
+		FallbackCritical:    a.Config.GraphOntologyFallbackCriticalPct,
+		SchemaValidWarn:     a.Config.GraphOntologySchemaValidWarnPct,
+		SchemaValidCritical: a.Config.GraphOntologySchemaValidCriticalPct,
+	})
+}
+
+func (a *App) graphOntologySLOHealthCheck() health.Checker {
+	return func(_ context.Context) health.CheckResult {
+		start := time.Now()
+		result := health.CheckResult{
+			Name:      "graph_ontology_slo",
+			Timestamp: start,
+		}
+
+		if a == nil {
+			result.Status = health.StatusUnknown
+			result.Message = "security graph not initialized"
+			result.Latency = time.Since(start)
+			return result
+		}
+		securityGraph := a.CurrentSecurityGraph()
+		if securityGraph == nil {
+			result.Status = health.StatusUnknown
+			result.Message = "security graph not initialized"
+			result.Latency = time.Since(start)
+			return result
+		}
+
+		thresholds := a.graphOntologySLOThresholds()
+		slo := graph.BuildGraphOntologySLO(securityGraph, time.Now().UTC(), 7)
+		status, message := evaluateGraphOntologySLOStatus(slo, thresholds)
+		result.Status = status
+		result.Message = message
+		result.Latency = time.Since(start)
+		return result
+	}
+}
+
+func evaluateGraphOntologySLOStatus(slo graph.GraphOntologySLO, thresholds graphOntologySLOThresholds) (health.Status, string) {
+	status := health.StatusHealthy
+	issues := make([]string, 0, 4)
+
+	if slo.FallbackActivityPercent >= thresholds.FallbackCritical {
+		status = health.StatusUnhealthy
+		issues = append(issues, fmt.Sprintf("fallback_activity_percent %.1f >= critical %.1f", slo.FallbackActivityPercent, thresholds.FallbackCritical))
+	} else if slo.FallbackActivityPercent >= thresholds.FallbackWarn {
+		status = health.StatusDegraded
+		issues = append(issues, fmt.Sprintf("fallback_activity_percent %.1f >= warn %.1f", slo.FallbackActivityPercent, thresholds.FallbackWarn))
+	}
+
+	if slo.SchemaValidWritePercent <= thresholds.SchemaValidCritical {
+		status = health.StatusUnhealthy
+		issues = append(issues, fmt.Sprintf("schema_valid_write_percent %.1f <= critical %.1f", slo.SchemaValidWritePercent, thresholds.SchemaValidCritical))
+	} else if slo.SchemaValidWritePercent <= thresholds.SchemaValidWarn {
+		if status != health.StatusUnhealthy {
+			status = health.StatusDegraded
+		}
+		issues = append(issues, fmt.Sprintf("schema_valid_write_percent %.1f <= warn %.1f", slo.SchemaValidWritePercent, thresholds.SchemaValidWarn))
+	}
+
+	fallbackBurnFast, fallbackBurnSlow := burnRatesForHigherIsWorse(slo.FallbackActivityPercent, thresholds.FallbackWarn, thresholds.FallbackCritical, slo.Trend)
+	schemaBurnFast, schemaBurnSlow := burnRatesForLowerIsWorse(slo.SchemaValidWritePercent, thresholds.SchemaValidWarn, thresholds.SchemaValidCritical, slo.Trend)
+	if fallbackBurnFast >= ontologyBurnFastCritical || fallbackBurnSlow >= ontologyBurnSlowCritical {
+		status = health.StatusUnhealthy
+		issues = append(issues, fmt.Sprintf("fallback_activity_burn_rate fast=%.2fx slow=%.2fx", fallbackBurnFast, fallbackBurnSlow))
+	} else if fallbackBurnFast >= ontologyBurnFastWarn || fallbackBurnSlow >= ontologyBurnSlowWarn {
+		if status != health.StatusUnhealthy {
+			status = health.StatusDegraded
+		}
+		issues = append(issues, fmt.Sprintf("fallback_activity_burn_rate fast=%.2fx slow=%.2fx", fallbackBurnFast, fallbackBurnSlow))
+	}
+	if schemaBurnFast >= ontologyBurnFastCritical || schemaBurnSlow >= ontologyBurnSlowCritical {
+		status = health.StatusUnhealthy
+		issues = append(issues, fmt.Sprintf("schema_valid_burn_rate fast=%.2fx slow=%.2fx", schemaBurnFast, schemaBurnSlow))
+	} else if schemaBurnFast >= ontologyBurnFastWarn || schemaBurnSlow >= ontologyBurnSlowWarn {
+		if status != health.StatusUnhealthy {
+			status = health.StatusDegraded
+		}
+		issues = append(issues, fmt.Sprintf("schema_valid_burn_rate fast=%.2fx slow=%.2fx", schemaBurnFast, schemaBurnSlow))
+	}
+
+	if len(issues) == 0 {
+		return health.StatusHealthy, fmt.Sprintf("fallback_activity_percent %.1f, schema_valid_write_percent %.1f", slo.FallbackActivityPercent, slo.SchemaValidWritePercent)
+	}
+	return status, strings.Join(issues, "; ")
+}
+
+func burnRatesForHigherIsWorse(current, warn, critical float64, trend []graph.GraphOntologySLOPoint) (float64, float64) {
+	budget := critical - warn
+	if budget <= 0 {
+		return 0, 0
+	}
+	fastValue := current
+	slowValue := current
+	if len(trend) > 0 {
+		sum := 0.0
+		count := 0
+		for _, point := range trend {
+			if point.Samples <= 0 {
+				continue
+			}
+			sum += point.FallbackActivityPercent
+			count++
+		}
+		if count > 0 {
+			slowValue = sum / float64(count)
+		}
+	}
+	return positiveBurnRate(fastValue-warn, budget), positiveBurnRate(slowValue-warn, budget)
+}
+
+func burnRatesForLowerIsWorse(current, warn, critical float64, trend []graph.GraphOntologySLOPoint) (float64, float64) {
+	budget := warn - critical
+	if budget <= 0 {
+		return 0, 0
+	}
+	fastValue := current
+	slowValue := current
+	if len(trend) > 0 {
+		sum := 0.0
+		count := 0
+		for _, point := range trend {
+			if point.Samples <= 0 {
+				continue
+			}
+			sum += point.SchemaValidWritePercent
+			count++
+		}
+		if count > 0 {
+			slowValue = sum / float64(count)
+		}
+	}
+	return positiveBurnRate(warn-fastValue, budget), positiveBurnRate(warn-slowValue, budget)
+}
+
+func positiveBurnRate(excess, budget float64) float64 {
+	if budget <= 0 || excess <= 0 {
+		return 0
+	}
+	return excess / budget
 }
 
 func (a *App) initLineage() {
@@ -153,7 +398,10 @@ func (a *App) initLineage() {
 
 func (a *App) initRemediation() {
 	a.Remediation = remediation.NewEngine(a.Logger)
-	a.RemediationExecutor = remediation.NewExecutor(a.Remediation, a.Ticketing, a.Notifications, a.Findings)
+	a.RemediationExecutor = remediation.NewExecutor(a.Remediation, a.Ticketing, a.Notifications, a.Findings, a.Webhooks)
+	if a.RemoteTools != nil {
+		a.RemediationExecutor.SetRemoteCaller(a.RemoteTools)
+	}
 	a.Logger.Info("remediation engine initialized", "rules", len(a.Remediation.ListRules()))
 }
 
@@ -166,48 +414,80 @@ func (a *App) initRuntime() {
 
 func (a *App) initSecurityGraph(ctx context.Context) {
 	a.graphReady = make(chan struct{})
+	a.setGraphBuildState(GraphBuildNotStarted, time.Time{}, nil)
 
-	if a.Snowflake == nil {
+	if a.Warehouse == nil {
 		a.Logger.Warn("security graph disabled - snowflake not configured")
+		a.Propagation = nil
 		a.graphCancel = nil
 		close(a.graphReady)
 		return
 	}
 
-	source := graph.NewSnowflakeSource(a.Snowflake)
+	source := graph.NewSnowflakeSource(a.Warehouse)
 	a.SecurityGraphBuilder = graph.NewBuilder(source, a.Logger)
-	a.SecurityGraph = a.SecurityGraphBuilder.Graph()
+	securityGraph := a.SecurityGraphBuilder.Graph()
+	a.configureGraphSchemaValidation(securityGraph)
+	a.setSecurityGraph(securityGraph)
+	a.Propagation = graph.NewPropagationEngine(securityGraph)
 
-	graphCtx := ctx
-	if graphCtx == nil {
-		graphCtx = context.Background()
-	}
-	graphCtx, cancel := context.WithCancel(graphCtx)
+	graphCtx, cancel := context.WithCancel(backgroundWorkContext(ctx))
 	a.graphCancel = cancel
+	a.setGraphBuildState(GraphBuildBuilding, time.Time{}, nil)
 
 	// Build initial graph in background
 	go func() {
 		defer close(a.graphReady)
 
 		if err := a.SecurityGraphBuilder.Build(graphCtx); err != nil {
+			a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
 			a.Logger.Error("failed to build security graph", "error", err)
 			return
 		}
-		meta := a.SecurityGraph.Metadata()
+		builtGraph := a.SecurityGraphBuilder.Graph()
+		a.setSecurityGraph(builtGraph)
+		meta := builtGraph.Metadata()
+		a.setGraphBuildState(GraphBuildSuccess, meta.BuiltAt, nil)
 		a.Logger.Info("security graph built",
 			"nodes", meta.NodeCount,
 			"edges", meta.EdgeCount,
 			"duration", meta.BuildDuration,
 		)
-
-		if err := a.Webhooks.EmitWithErrors(ctx, webhooks.EventGraphRebuilt, map[string]interface{}{
-			"nodes":          meta.NodeCount,
-			"edges":          meta.EdgeCount,
-			"build_duration": meta.BuildDuration.String(),
-		}); err != nil {
-			a.Logger.Warn("failed to emit graph rebuilt webhook", "error", err)
+		if a.Config != nil && a.Config.GraphMigrateLegacyActivityOnStart {
+			migration := graph.MigrateLegacyActivityNodes(builtGraph, graph.LegacyActivityMigrationOptions{Now: time.Now().UTC()})
+			if migration.Migrated > 0 || migration.Scanned > 0 {
+				a.Logger.Info("migrated legacy activity nodes",
+					"scanned", migration.Scanned,
+					"migrated", migration.Migrated,
+					"marked_for_review", migration.MarkedForReview,
+					"migrated_by_kind", migration.MigratedByKind,
+				)
+			}
 		}
+
+		emitCtx := graphCtx
+		a.emitGraphRebuiltEvent(emitCtx, meta, meta.BuildDuration)
+		a.emitGraphMutationEvent(emitCtx, a.SecurityGraphBuilder.LastMutation(), "startup")
 	}()
+}
+
+func backgroundWorkContext(ctx context.Context) context.Context {
+	if ctx == nil {
+		return context.Background()
+	}
+	return context.WithoutCancel(ctx)
+}
+
+func (a *App) configureGraphSchemaValidation(g *graph.Graph) {
+	if g == nil {
+		return
+	}
+
+	mode := graph.SchemaValidationWarn
+	if a != nil && a.Config != nil {
+		mode = graph.ParseSchemaValidationMode(a.Config.GraphSchemaValidationMode)
+	}
+	g.SetSchemaValidationMode(mode)
 }
 
 // WaitForGraph blocks until the initial graph build completes (or ctx is cancelled).
@@ -219,7 +499,8 @@ func (a *App) WaitForGraph(ctx context.Context) bool {
 	}
 	select {
 	case <-a.graphReady:
-		return a.SecurityGraph != nil && a.SecurityGraph.NodeCount() > 0
+		securityGraph := a.CurrentSecurityGraph()
+		return securityGraph != nil && securityGraph.NodeCount() > 0
 	case <-ctx.Done():
 		return false
 	}
@@ -233,27 +514,64 @@ func (a *App) RebuildSecurityGraph(ctx context.Context) error {
 	}
 
 	start := time.Now()
+	a.setGraphBuildState(GraphBuildBuilding, time.Time{}, nil)
 	if err := a.SecurityGraphBuilder.Build(ctx); err != nil {
+		a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
 		return err
 	}
 
-	meta := a.SecurityGraph.Metadata()
+	securityGraph := a.SecurityGraphBuilder.Graph()
+	meta, err := a.activateBuiltSecurityGraph(securityGraph)
+	if err != nil {
+		return err
+	}
 	a.Logger.Info("security graph rebuilt",
 		"nodes", meta.NodeCount,
 		"edges", meta.EdgeCount,
 		"duration", time.Since(start),
 	)
 
-	// Emit webhook event
+	duration := time.Since(start)
+	a.emitGraphRebuiltEvent(ctx, meta, duration)
+	a.emitGraphMutationEvent(ctx, a.SecurityGraphBuilder.LastMutation(), "manual_rebuild")
+
+	return nil
+}
+
+func (a *App) activateBuiltSecurityGraph(securityGraph *graph.Graph) (graph.Metadata, error) {
+	if securityGraph == nil {
+		err := fmt.Errorf("security graph not initialized")
+		a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
+		return graph.Metadata{}, err
+	}
+	a.configureGraphSchemaValidation(securityGraph)
+	a.setSecurityGraph(securityGraph)
+	meta := securityGraph.Metadata()
+	a.setGraphBuildState(GraphBuildSuccess, meta.BuiltAt, nil)
+	return meta, nil
+}
+
+func (a *App) emitGraphRebuiltEvent(ctx context.Context, meta graph.Metadata, duration time.Duration) {
+	if a.Webhooks == nil {
+		return
+	}
 	if err := a.Webhooks.EmitWithErrors(ctx, webhooks.EventGraphRebuilt, map[string]interface{}{
 		"nodes":          meta.NodeCount,
 		"edges":          meta.EdgeCount,
-		"build_duration": time.Since(start).String(),
+		"build_duration": duration.String(),
+		"duration_ms":    duration.Milliseconds(),
 	}); err != nil {
 		a.Logger.Warn("failed to emit graph rebuilt webhook", "error", err)
 	}
+}
 
-	return nil
+func (a *App) emitGraphMutationEvent(ctx context.Context, summary graph.GraphMutationSummary, trigger string) {
+	if a.Webhooks == nil {
+		return
+	}
+	if err := a.Webhooks.EmitWithErrors(ctx, webhooks.EventGraphMutated, summary.Payload(trigger)); err != nil {
+		a.Logger.Warn("failed to emit graph mutation event", "error", err)
+	}
 }
 
 // normalizePrivateKey cleans up PEM-encoded private key strings that may have

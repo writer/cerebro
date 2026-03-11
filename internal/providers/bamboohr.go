@@ -28,7 +28,7 @@ type BambooHRProvider struct {
 func NewBambooHRProvider() *BambooHRProvider {
 	return &BambooHRProvider{
 		BaseProvider: NewBaseProvider("bamboohr", ProviderTypeSaaS),
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

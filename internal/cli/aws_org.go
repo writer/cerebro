@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"golang.org/x/sync/errgroup"
 
+	apiclient "github.com/writer/cerebro/internal/client"
 	nativesync "github.com/writer/cerebro/internal/sync"
 )
 
@@ -25,6 +26,99 @@ type awsOrgAccount struct {
 }
 
 func runAWSOrgSync(ctx context.Context, start time.Time) error {
+	mode, err := loadCLIExecutionMode()
+	if err != nil {
+		return err
+	}
+
+	supportsAPI, apiReason := syncSupportsAWSOrgAPIMode()
+	if mode != cliExecutionModeDirect && supportsAPI {
+		apiClient, err := newCLIAPIClient()
+		if err != nil {
+			if mode == cliExecutionModeAPI {
+				return err
+			}
+			Warning("API client configuration invalid; using direct mode: %v", err)
+		} else {
+			return runAWSOrgSyncViaAPI(ctx, start, apiClient, mode)
+		}
+	}
+
+	if mode == cliExecutionModeAPI && !supportsAPI {
+		return fmt.Errorf("aws org sync API mode unsupported: %s", apiReason)
+	}
+	if mode != cliExecutionModeDirect && !supportsAPI {
+		Warning("API sync mode skipped; using direct mode: %s", apiReason)
+	}
+
+	return runAWSOrgSyncDirectFn(ctx, start)
+}
+
+func runAWSOrgSyncViaAPI(ctx context.Context, start time.Time, apiClient *apiclient.Client, mode cliExecutionMode) error {
+	resp, err := apiClient.RunAWSOrgSync(ctx, apiclient.AWSOrgSyncRequest{
+		Profile:            strings.TrimSpace(syncAWSProfile),
+		Region:             strings.TrimSpace(syncRegion),
+		MultiRegion:        syncMultiRegion,
+		Concurrency:        syncConcurrency,
+		Tables:             parseTableFilter(syncTable),
+		Validate:           syncValidate,
+		OrgRole:            strings.TrimSpace(syncAWSOrgRole),
+		IncludeAccounts:    parseCommaSeparatedValues(syncAWSOrgInclude),
+		ExcludeAccounts:    parseCommaSeparatedValues(syncAWSOrgExclude),
+		AccountConcurrency: syncAWSOrgConcurrency,
+	})
+	if err != nil {
+		if mode == cliExecutionModeAPI || !shouldFallbackToDirect(mode, err) {
+			return fmt.Errorf("aws org sync via api failed: %w", err)
+		}
+		Warning("API unavailable; using direct mode: %v", err)
+		return runAWSOrgSyncDirectFn(ctx, start)
+	}
+
+	provider := "AWS Org"
+	if syncValidate || (resp != nil && resp.Validate) {
+		provider = "AWS Org (validate)"
+	}
+
+	var results []nativesync.SyncResult
+	var accountErrors []string
+	if resp != nil {
+		results = resp.Results
+		accountErrors = resp.AccountErrors
+	}
+
+	if len(accountErrors) > 0 && len(results) == 0 {
+		Warning("%d account(s) reported errors", len(accountErrors))
+		syncErrs := make([]error, 0, len(accountErrors))
+		for _, accountErr := range accountErrors {
+			syncErrs = append(syncErrs, fmt.Errorf("%s", accountErr))
+		}
+		return summarizeSyncRunErrors("AWS org sync", syncErrs)
+	}
+
+	if err := printSyncResults(results, start, provider); err != nil {
+		return err
+	}
+
+	if len(accountErrors) > 0 {
+		Warning("%d account(s) reported errors", len(accountErrors))
+		syncErrs := make([]error, 0, len(accountErrors))
+		for _, accountErr := range accountErrors {
+			syncErrs = append(syncErrs, fmt.Errorf("%s", accountErr))
+		}
+		return summarizeSyncRunErrors("AWS org sync", syncErrs)
+	}
+
+	return nil
+}
+
+func syncSupportsAWSOrgAPIMode() (bool, string) {
+	return syncSupportsAWSAPIMode()
+}
+
+var runAWSOrgSyncDirectFn = runAWSOrgSyncDirect
+
+func runAWSOrgSyncDirect(ctx context.Context, start time.Time) error {
 	awsCfg, err := loadAWSConfig(ctx, syncAWSProfile)
 	if err != nil {
 		return fmt.Errorf("load AWS config: %w", err)

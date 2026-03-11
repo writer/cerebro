@@ -24,6 +24,9 @@ func (m *mockFindingStore) Upsert(ctx context.Context, pf policy.Finding) *findi
 	return nil
 }
 func (m *mockFindingStore) Get(id string) (*findings.Finding, bool) { return nil, false }
+func (m *mockFindingStore) Update(id string, mutate func(*findings.Finding) error) error {
+	return nil
+}
 func (m *mockFindingStore) List(filter findings.FindingFilter) []*findings.Finding {
 	return []*findings.Finding{}
 }

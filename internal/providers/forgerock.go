@@ -28,7 +28,7 @@ type ForgeRockProvider struct {
 func NewForgeRockProvider() *ForgeRockProvider {
 	return &ForgeRockProvider{
 		BaseProvider: NewBaseProvider("forgerock", ProviderTypeIdentity),
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

@@ -34,6 +34,7 @@ const (
 	EventFindingResolved EventType = "finding.resolved"
 	EventScanCompleted   EventType = "scan.completed"
 	EventScanFailed      EventType = "scan.failed"
+	EventSecurityDigest  EventType = "security.digest"
 	EventAttackPathFound EventType = "attack_path.found"
 	EventReviewRequired  EventType = "review.required"
 )

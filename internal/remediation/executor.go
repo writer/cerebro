@@ -7,19 +7,28 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/notifications"
 	"github.com/writer/cerebro/internal/ticketing"
+	"github.com/writer/cerebro/internal/webhooks"
 )
 
 // Executor runs remediation actions
+type RemoteActionCaller interface {
+	CallTool(ctx context.Context, toolName string, args json.RawMessage, timeout time.Duration) (string, error)
+}
+
 type Executor struct {
 	engine        *Engine
 	ticketing     *ticketing.Service
 	notifications *notifications.Manager
 	findings      findings.FindingStore
+	webhooks      *webhooks.Service
+	remoteCaller  RemoteActionCaller
+	ensemble      *EnsembleExecutor
 }
 
 func NewExecutor(
@@ -27,12 +36,22 @@ func NewExecutor(
 	ticketing *ticketing.Service,
 	notifications *notifications.Manager,
 	findings findings.FindingStore,
+	webhookService *webhooks.Service,
 ) *Executor {
 	return &Executor{
 		engine:        engine,
 		ticketing:     ticketing,
 		notifications: notifications,
 		findings:      findings,
+		webhooks:      webhookService,
+		ensemble:      NewEnsembleExecutor(nil, webhookService),
+	}
+}
+
+func (ex *Executor) SetRemoteCaller(caller RemoteActionCaller) {
+	ex.remoteCaller = caller
+	if ex.ensemble != nil {
+		ex.ensemble.SetRemoteCaller(caller)
 	}
 }
 
@@ -47,12 +66,17 @@ func (ex *Executor) Execute(ctx context.Context, execution *Execution) error {
 		return fmt.Errorf("rule not found: %s", execution.RuleID)
 	}
 
+	approvalGranted, _ := execution.TriggerData["_approval_granted"].(bool)
+
 	// Check if any action requires approval
-	for _, action := range rule.Actions {
-		if action.RequiresApproval {
-			execution.Status = ExecutionApproval
-			execution.ApprovalID = fmt.Sprintf("approval-%s", execution.ID)
-			return nil
+	if !approvalGranted {
+		for _, action := range rule.Actions {
+			if ex.actionRequiresApproval(action) {
+				execution.Status = ExecutionApproval
+				execution.ApprovalID = fmt.Sprintf("approval-%s", execution.ID)
+				ex.emitApprovalRequested(ctx, execution, rule)
+				return nil
+			}
 		}
 	}
 
@@ -73,8 +97,19 @@ func (ex *Executor) Execute(ctx context.Context, execution *Execution) error {
 	execution.Status = ExecutionCompleted
 	now := time.Now().UTC()
 	execution.CompletedAt = &now
+	delete(execution.TriggerData, "_approval_granted")
 
 	return nil
+}
+
+func (ex *Executor) actionRequiresApproval(action Action) bool {
+	if action.RequiresApproval {
+		return true
+	}
+	if ex != nil && ex.ensemble != nil {
+		return ex.ensemble.ActionRequiresApproval(action.Type)
+	}
+	return false
 }
 
 func (ex *Executor) executeAction(ctx context.Context, action Action, execution *Execution) ActionResult {
@@ -85,40 +120,81 @@ func (ex *Executor) executeAction(ctx context.Context, action Action, execution 
 	}
 
 	var err error
+	approvalGranted, _ := execution.TriggerData["_approval_granted"].(bool)
+	if ex.actionRequiresApproval(action) && !approvalGranted {
+		err = fmt.Errorf("%s action requires approval", action.Type)
+	}
 
-	switch action.Type {
-	case ActionCreateTicket:
-		err = ex.createTicket(ctx, action, execution)
-		if err == nil {
-			result.Output = "Ticket created"
+	if err == nil {
+		switch action.Type {
+		case ActionCreateTicket:
+			err = ex.createTicket(ctx, action, execution)
+			if err == nil {
+				result.Output = "Ticket created"
+			}
+
+		case ActionNotifySlack:
+			err = ex.notifySlack(ctx, action, execution)
+			if err == nil {
+				result.Output = "Slack notification sent"
+			}
+
+		case ActionNotifyPagerDuty:
+			err = ex.notifyPagerDuty(ctx, action, execution)
+			if err == nil {
+				result.Output = "PagerDuty alert sent"
+			}
+
+		case ActionResolveFinding:
+			err = ex.resolveFinding(ctx, action, execution)
+			if err == nil {
+				result.Output = "Finding resolved"
+			}
+
+		case ActionRunWebhook:
+			err = ex.runWebhook(ctx, action, execution)
+			if err == nil {
+				result.Output = "Webhook executed"
+			}
+
+		case ActionUpdateCRMField:
+			err = ex.updateCRMField(ctx, action, execution)
+			if err == nil {
+				result.Output = "CRM field updated"
+			}
+
+		case ActionTriggerWorkflow:
+			err = ex.triggerWorkflow(ctx, action, execution)
+			if err == nil {
+				result.Output = "Workflow triggered"
+			}
+
+		case ActionCreateReview:
+			err = ex.createReview(ctx, action, execution)
+			if err == nil {
+				result.Output = "Review created"
+			}
+
+		case ActionEscalateToOwner:
+			err = ex.escalateToOwner(ctx, action, execution)
+			if err == nil {
+				result.Output = "Escalated to owner"
+			}
+
+		case ActionPauseSubscription:
+			err = ex.pauseSubscription(ctx, action, execution)
+			if err == nil {
+				result.Output = "Subscription paused"
+			}
+		case ActionSendCustomerComm:
+			err = ex.sendCustomerCommunication(ctx, action, execution)
+			if err == nil {
+				result.Output = "Customer communication sent"
+			}
+
+		default:
+			err = fmt.Errorf("unknown action type: %s", action.Type)
 		}
-
-	case ActionNotifySlack:
-		err = ex.notifySlack(ctx, action, execution)
-		if err == nil {
-			result.Output = "Slack notification sent"
-		}
-
-	case ActionNotifyPagerDuty:
-		err = ex.notifyPagerDuty(ctx, action, execution)
-		if err == nil {
-			result.Output = "PagerDuty alert sent"
-		}
-
-	case ActionResolveFinding:
-		err = ex.resolveFinding(ctx, action, execution)
-		if err == nil {
-			result.Output = "Finding resolved"
-		}
-
-	case ActionRunWebhook:
-		err = ex.runWebhook(ctx, action, execution)
-		if err == nil {
-			result.Output = "Webhook executed"
-		}
-
-	default:
-		err = fmt.Errorf("unknown action type: %s", action.Type)
 	}
 
 	duration := time.Since(result.StartedAt)
@@ -135,6 +211,20 @@ func (ex *Executor) executeAction(ctx context.Context, action Action, execution 
 }
 
 func (ex *Executor) createTicket(ctx context.Context, action Action, execution *Execution) error {
+	if ex.ensemble != nil && ex.ensemble.HasRemoteCaller() {
+		if err := ex.ensemble.Execute(ctx, action, execution); err == nil {
+			return nil
+		} else if ex.ticketing == nil || ex.ticketing.Primary() == nil {
+			return err
+		} else if ex.engine != nil && ex.engine.logger != nil {
+			ex.engine.logger.Warn("ensemble create_ticket failed; falling back to local ticketing",
+				"execution_id", execution.ID,
+				"rule_id", execution.RuleID,
+				"error", err,
+			)
+		}
+	}
+
 	if ex.ticketing == nil || ex.ticketing.Primary() == nil {
 		return fmt.Errorf("ticketing not configured")
 	}
@@ -160,6 +250,20 @@ func (ex *Executor) createTicket(ctx context.Context, action Action, execution *
 }
 
 func (ex *Executor) notifySlack(ctx context.Context, action Action, execution *Execution) error {
+	if ex.ensemble != nil && ex.ensemble.HasRemoteCaller() {
+		if err := ex.ensemble.Execute(ctx, action, execution); err == nil {
+			return nil
+		} else if ex.notifications == nil {
+			return err
+		} else if ex.engine != nil && ex.engine.logger != nil {
+			ex.engine.logger.Warn("ensemble notify_slack failed; falling back to local notifications",
+				"execution_id", execution.ID,
+				"rule_id", execution.RuleID,
+				"error", err,
+			)
+		}
+	}
+
 	if ex.notifications == nil {
 		return fmt.Errorf("notifications not configured")
 	}
@@ -226,6 +330,71 @@ func (ex *Executor) resolveFinding(_ context.Context, _ Action, execution *Execu
 	}
 
 	return nil
+}
+
+func (ex *Executor) updateCRMField(ctx context.Context, action Action, execution *Execution) error {
+	return ex.executeEnsembleAction(ctx, action, execution)
+}
+
+func (ex *Executor) triggerWorkflow(ctx context.Context, action Action, execution *Execution) error {
+	tool := firstNonEmpty(action.Config["tool"], "ensemble_trigger_workflow")
+	return ex.invokeRemoteTool(ctx, tool, action, execution)
+}
+
+func (ex *Executor) createReview(ctx context.Context, action Action, execution *Execution) error {
+	tool := firstNonEmpty(action.Config["tool"], "create_review")
+	return ex.invokeRemoteTool(ctx, tool, action, execution)
+}
+
+func (ex *Executor) escalateToOwner(ctx context.Context, action Action, execution *Execution) error {
+	return ex.executeEnsembleAction(ctx, action, execution)
+}
+
+func (ex *Executor) pauseSubscription(ctx context.Context, action Action, execution *Execution) error {
+	return ex.executeEnsembleAction(ctx, action, execution)
+}
+
+func (ex *Executor) sendCustomerCommunication(ctx context.Context, action Action, execution *Execution) error {
+	return ex.executeEnsembleAction(ctx, action, execution)
+}
+
+func (ex *Executor) executeEnsembleAction(ctx context.Context, action Action, execution *Execution) error {
+	if ex.ensemble == nil || !ex.ensemble.HasRemoteCaller() {
+		return fmt.Errorf("remote tool caller not configured")
+	}
+	return ex.ensemble.Execute(ctx, action, execution)
+}
+
+func (ex *Executor) invokeRemoteTool(ctx context.Context, tool string, action Action, execution *Execution) error {
+	if ex.remoteCaller == nil {
+		return fmt.Errorf("remote tool caller not configured")
+	}
+
+	timeout := 30 * time.Second
+	if action.TimeoutSeconds > 0 {
+		timeout = time.Duration(action.TimeoutSeconds) * time.Second
+	}
+
+	payload := map[string]interface{}{
+		"execution_id": execution.ID,
+		"rule_id":      execution.RuleID,
+		"rule_name":    execution.RuleName,
+		"trigger_data": execution.TriggerData,
+		"config":       action.Config,
+	}
+	if entityID, ok := execution.TriggerData["entity_id"].(string); ok && strings.TrimSpace(entityID) != "" {
+		payload["entity_id"] = entityID
+	}
+	if findingID, ok := execution.TriggerData["finding_id"].(string); ok && strings.TrimSpace(findingID) != "" {
+		payload["finding_id"] = findingID
+	}
+	if policyID, ok := execution.TriggerData["policy_id"].(string); ok && strings.TrimSpace(policyID) != "" {
+		payload["policy_id"] = policyID
+	}
+
+	args, _ := json.Marshal(payload)
+	_, err := ex.remoteCaller.CallTool(ctx, tool, args, timeout)
+	return err
 }
 
 // WebhookPayload is the payload sent to webhook endpoints
@@ -329,6 +498,36 @@ func severityToPriority(severity string) string {
 	}
 }
 
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func (ex *Executor) emitApprovalRequested(ctx context.Context, execution *Execution, rule *Rule) {
+	if ex.webhooks == nil {
+		return
+	}
+	actions := make([]string, 0, len(rule.Actions))
+	for _, action := range rule.Actions {
+		if action.RequiresApproval {
+			actions = append(actions, string(action.Type))
+		}
+	}
+
+	_ = ex.webhooks.EmitWithErrors(ctx, webhooks.EventApprovalRequested, map[string]interface{}{
+		"approval_id":      execution.ApprovalID,
+		"execution_id":     execution.ID,
+		"rule_id":          execution.RuleID,
+		"rule_name":        execution.RuleName,
+		"approval_actions": actions,
+		"trigger_data":     execution.TriggerData,
+	})
+}
+
 // Approve approves a pending execution
 func (ex *Executor) Approve(ctx context.Context, executionID, approverID string) error {
 	execution, ok := ex.engine.GetExecution(executionID)
@@ -339,6 +538,13 @@ func (ex *Executor) Approve(ctx context.Context, executionID, approverID string)
 	if execution.Status != ExecutionApproval {
 		return fmt.Errorf("execution is not awaiting approval")
 	}
+
+	if execution.TriggerData == nil {
+		execution.TriggerData = make(map[string]any)
+	}
+	execution.TriggerData["_approval_granted"] = true
+	execution.TriggerData["approved_by"] = approverID
+	execution.TriggerData["approved_at"] = time.Now().UTC().Format(time.RFC3339Nano)
 
 	return ex.Execute(ctx, execution)
 }

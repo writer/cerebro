@@ -1,0 +1,2593 @@
+{
+  "apiVersion": "cerebro.graph.contracts/v1alpha1",
+  "kind": "CloudEventMappingContractCatalog",
+  "generated_at": "0001-01-01T00:00:00Z",
+  "envelope_fields": [
+    {
+      "name": "datacontenttype",
+      "type": "string",
+      "required": true
+    },
+    {
+      "name": "dataschema",
+      "type": "string",
+      "required": true
+    },
+    {
+      "name": "id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "name": "schema_version",
+      "type": "string",
+      "required": true
+    },
+    {
+      "name": "source",
+      "type": "string",
+      "required": true
+    },
+    {
+      "name": "specversion",
+      "type": "string",
+      "required": true
+    },
+    {
+      "name": "tenant_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "name": "time",
+      "type": "time.Time",
+      "required": true
+    },
+    {
+      "name": "traceparent",
+      "type": "string",
+      "required": true
+    },
+    {
+      "name": "type",
+      "type": "string",
+      "required": true
+    },
+    {
+      "name": "data",
+      "type": "map[string]interface {}",
+      "required": false
+    },
+    {
+      "name": "subject",
+      "type": "string",
+      "required": false
+    }
+  ],
+  "lifecycle_events": [
+    {
+      "event_type": "platform.action.recorded",
+      "summary": "Action write recorded on the shared platform workflow layer.",
+      "schema_url": "urn:cerebro:events/platform.action.recorded/v1",
+      "required_data_keys": [
+        "action_id",
+        "title",
+        "target_ids",
+        "source_system",
+        "source_event_id",
+        "observed_at",
+        "valid_from",
+        "auto_generated"
+      ],
+      "optional_data_keys": [
+        "decision_id",
+        "recommendation_id",
+        "insight_type",
+        "summary",
+        "status",
+        "tenant_id",
+        "traceparent"
+      ],
+      "data_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "action_id": {
+            "type": "string"
+          },
+          "auto_generated": {
+            "type": "boolean"
+          },
+          "decision_id": {
+            "type": "string"
+          },
+          "insight_type": {
+            "type": "string"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "recommendation_id": {
+            "type": "string"
+          },
+          "source_event_id": {
+            "type": "string"
+          },
+          "source_system": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "target_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "traceparent": {
+            "type": "string"
+          },
+          "valid_from": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action_id",
+          "title",
+          "target_ids",
+          "source_system",
+          "source_event_id",
+          "observed_at",
+          "valid_from",
+          "auto_generated"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "event_type": "platform.claim.adjudicated",
+      "summary": "Claim-group adjudication recorded on the shared platform knowledge layer.",
+      "schema_url": "urn:cerebro:events/platform.claim.adjudicated/v1",
+      "required_data_keys": [
+        "group_id",
+        "action",
+        "created_claim_id",
+        "affected_claim_ids",
+        "superseded_claim_ids",
+        "observed_at",
+        "recorded_at"
+      ],
+      "optional_data_keys": [
+        "authoritative_claim_id",
+        "tenant_id",
+        "traceparent"
+      ],
+      "data_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "affected_claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "authoritative_claim_id": {
+            "type": "string"
+          },
+          "created_claim_id": {
+            "type": "string"
+          },
+          "group_id": {
+            "type": "string"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "superseded_claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "traceparent": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id",
+          "action",
+          "created_claim_id",
+          "affected_claim_ids",
+          "superseded_claim_ids",
+          "observed_at",
+          "recorded_at"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "event_type": "platform.claim.written",
+      "summary": "Claim write recorded on the shared platform knowledge layer.",
+      "schema_url": "urn:cerebro:events/platform.claim.written/v1",
+      "required_data_keys": [
+        "claim_id",
+        "subject_id",
+        "predicate",
+        "claim_type",
+        "status",
+        "source_system",
+        "source_event_id",
+        "observed_at",
+        "recorded_at",
+        "transaction_from"
+      ],
+      "optional_data_keys": [
+        "source_id",
+        "object_id",
+        "object_value",
+        "evidence_ids",
+        "supporting_claim_ids",
+        "refuting_claim_ids",
+        "tenant_id",
+        "traceparent"
+      ],
+      "data_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "claim_id": {
+            "type": "string"
+          },
+          "claim_type": {
+            "type": "string"
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "object_id": {
+            "type": "string"
+          },
+          "object_value": {
+            "type": "string"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "predicate": {
+            "type": "string"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "refuting_claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "source_event_id": {
+            "type": "string"
+          },
+          "source_id": {
+            "type": "string"
+          },
+          "source_system": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "subject_id": {
+            "type": "string"
+          },
+          "supporting_claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "traceparent": {
+            "type": "string"
+          },
+          "transaction_from": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "claim_id",
+          "subject_id",
+          "predicate",
+          "claim_type",
+          "status",
+          "source_system",
+          "source_event_id",
+          "observed_at",
+          "recorded_at",
+          "transaction_from"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "event_type": "platform.decision.recorded",
+      "summary": "Decision write recorded on the shared platform workflow layer.",
+      "schema_url": "urn:cerebro:events/platform.decision.recorded/v1",
+      "required_data_keys": [
+        "decision_id",
+        "decision_type",
+        "status",
+        "target_ids",
+        "source_system",
+        "source_event_id",
+        "observed_at",
+        "valid_from"
+      ],
+      "optional_data_keys": [
+        "made_by",
+        "rationale",
+        "evidence_ids",
+        "action_ids",
+        "tenant_id",
+        "traceparent"
+      ],
+      "data_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "action_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "decision_id": {
+            "type": "string"
+          },
+          "decision_type": {
+            "type": "string"
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "made_by": {
+            "type": "string"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "source_event_id": {
+            "type": "string"
+          },
+          "source_system": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "target_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "traceparent": {
+            "type": "string"
+          },
+          "valid_from": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision_id",
+          "decision_type",
+          "status",
+          "target_ids",
+          "source_system",
+          "source_event_id",
+          "observed_at",
+          "valid_from"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "event_type": "platform.outcome.recorded",
+      "summary": "Outcome write recorded on the shared platform workflow layer.",
+      "schema_url": "urn:cerebro:events/platform.outcome.recorded/v1",
+      "required_data_keys": [
+        "outcome_id",
+        "decision_id",
+        "outcome_type",
+        "verdict",
+        "impact_score",
+        "source_system",
+        "source_event_id",
+        "observed_at",
+        "valid_from"
+      ],
+      "optional_data_keys": [
+        "target_ids",
+        "tenant_id",
+        "traceparent"
+      ],
+      "data_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "decision_id": {
+            "type": "string"
+          },
+          "impact_score": {
+            "type": "number"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "outcome_id": {
+            "type": "string"
+          },
+          "outcome_type": {
+            "type": "string"
+          },
+          "source_event_id": {
+            "type": "string"
+          },
+          "source_system": {
+            "type": "string"
+          },
+          "target_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "traceparent": {
+            "type": "string"
+          },
+          "valid_from": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "verdict": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "outcome_id",
+          "decision_id",
+          "outcome_type",
+          "verdict",
+          "impact_score",
+          "source_system",
+          "source_event_id",
+          "observed_at",
+          "valid_from"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "event_type": "platform.report_run.canceled",
+      "summary": "Report execution canceled on the shared platform intelligence layer.",
+      "schema_url": "urn:cerebro:events/platform.report_run.canceled/v1",
+      "required_data_keys": [
+        "run_id",
+        "report_id",
+        "status",
+        "execution_mode",
+        "submitted_at",
+        "completed_at",
+        "status_url",
+        "cancel_reason"
+      ],
+      "optional_data_keys": [
+        "started_at",
+        "requested_by",
+        "cache_key",
+        "cache_status",
+        "cache_source_run_id",
+        "job_id",
+        "job_status_url",
+        "parameter_count",
+        "materialized_result",
+        "latest_attempt_id",
+        "attempt_count",
+        "event_count",
+        "cancel_requested_at",
+        "cancel_requested_by",
+        "trigger_surface",
+        "execution_surface",
+        "execution_host",
+        "attempt_classification",
+        "latest_attempt_status",
+        "retry_of_attempt_id",
+        "retry_reason",
+        "retry_backoff_ms",
+        "scheduled_for",
+        "retry_max_attempts",
+        "retry_base_backoff_ms",
+        "retry_max_backoff_ms",
+        "storage_class",
+        "retention_tier",
+        "result_truncated",
+        "graph_snapshot_id",
+        "graph_snapshot_url",
+        "graph_built_at",
+        "graph_schema_version",
+        "ontology_contract_version",
+        "report_definition_version",
+        "error",
+        "tenant_id",
+        "traceparent"
+      ],
+      "data_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt_classification": {
+            "type": "string"
+          },
+          "attempt_count": {
+            "type": "integer"
+          },
+          "cache_key": {
+            "type": "string"
+          },
+          "cache_source_run_id": {
+            "type": "string"
+          },
+          "cache_status": {
+            "type": "string"
+          },
+          "cancel_reason": {
+            "type": "string"
+          },
+          "cancel_requested_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "cancel_requested_by": {
+            "type": "string"
+          },
+          "completed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "event_count": {
+            "type": "integer"
+          },
+          "execution_host": {
+            "type": "string"
+          },
+          "execution_mode": {
+            "type": "string"
+          },
+          "execution_surface": {
+            "type": "string"
+          },
+          "graph_built_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "graph_schema_version": {
+            "type": "integer"
+          },
+          "graph_snapshot_id": {
+            "type": "string"
+          },
+          "graph_snapshot_url": {
+            "type": "string"
+          },
+          "job_id": {
+            "type": "string"
+          },
+          "job_status_url": {
+            "type": "string"
+          },
+          "latest_attempt_id": {
+            "type": "string"
+          },
+          "latest_attempt_status": {
+            "type": "string"
+          },
+          "materialized_result": {
+            "type": "boolean"
+          },
+          "ontology_contract_version": {
+            "type": "string"
+          },
+          "parameter_count": {
+            "type": "integer"
+          },
+          "report_definition_version": {
+            "type": "string"
+          },
+          "report_id": {
+            "type": "string"
+          },
+          "requested_by": {
+            "type": "string"
+          },
+          "result_truncated": {
+            "type": "boolean"
+          },
+          "retention_tier": {
+            "type": "string"
+          },
+          "retry_backoff_ms": {
+            "type": "integer"
+          },
+          "retry_base_backoff_ms": {
+            "type": "integer"
+          },
+          "retry_max_attempts": {
+            "type": "integer"
+          },
+          "retry_max_backoff_ms": {
+            "type": "integer"
+          },
+          "retry_of_attempt_id": {
+            "type": "string"
+          },
+          "retry_reason": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "scheduled_for": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "status_url": {
+            "type": "string"
+          },
+          "storage_class": {
+            "type": "string"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "traceparent": {
+            "type": "string"
+          },
+          "trigger_surface": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "report_id",
+          "status",
+          "execution_mode",
+          "submitted_at",
+          "completed_at",
+          "status_url",
+          "cancel_reason"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "event_type": "platform.report_run.completed",
+      "summary": "Report execution completed on the shared platform intelligence layer.",
+      "schema_url": "urn:cerebro:events/platform.report_run.completed/v1",
+      "required_data_keys": [
+        "run_id",
+        "report_id",
+        "status",
+        "execution_mode",
+        "submitted_at",
+        "completed_at",
+        "status_url",
+        "materialized_result"
+      ],
+      "optional_data_keys": [
+        "started_at",
+        "requested_by",
+        "cache_key",
+        "cache_status",
+        "cache_source_run_id",
+        "job_id",
+        "job_status_url",
+        "parameter_count",
+        "latest_attempt_id",
+        "attempt_count",
+        "event_count",
+        "cancel_requested_at",
+        "cancel_requested_by",
+        "cancel_reason",
+        "trigger_surface",
+        "execution_surface",
+        "execution_host",
+        "attempt_classification",
+        "latest_attempt_status",
+        "retry_of_attempt_id",
+        "retry_reason",
+        "retry_backoff_ms",
+        "scheduled_for",
+        "retry_max_attempts",
+        "retry_base_backoff_ms",
+        "retry_max_backoff_ms",
+        "storage_class",
+        "retention_tier",
+        "result_truncated",
+        "graph_snapshot_id",
+        "graph_snapshot_url",
+        "graph_built_at",
+        "graph_schema_version",
+        "ontology_contract_version",
+        "report_definition_version",
+        "snapshot_id",
+        "result_schema",
+        "section_count",
+        "tenant_id",
+        "traceparent"
+      ],
+      "data_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt_classification": {
+            "type": "string"
+          },
+          "attempt_count": {
+            "type": "integer"
+          },
+          "cache_key": {
+            "type": "string"
+          },
+          "cache_source_run_id": {
+            "type": "string"
+          },
+          "cache_status": {
+            "type": "string"
+          },
+          "cancel_reason": {
+            "type": "string"
+          },
+          "cancel_requested_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "cancel_requested_by": {
+            "type": "string"
+          },
+          "completed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "event_count": {
+            "type": "integer"
+          },
+          "execution_host": {
+            "type": "string"
+          },
+          "execution_mode": {
+            "type": "string"
+          },
+          "execution_surface": {
+            "type": "string"
+          },
+          "graph_built_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "graph_schema_version": {
+            "type": "integer"
+          },
+          "graph_snapshot_id": {
+            "type": "string"
+          },
+          "graph_snapshot_url": {
+            "type": "string"
+          },
+          "job_id": {
+            "type": "string"
+          },
+          "job_status_url": {
+            "type": "string"
+          },
+          "latest_attempt_id": {
+            "type": "string"
+          },
+          "latest_attempt_status": {
+            "type": "string"
+          },
+          "materialized_result": {
+            "type": "boolean"
+          },
+          "ontology_contract_version": {
+            "type": "string"
+          },
+          "parameter_count": {
+            "type": "integer"
+          },
+          "report_definition_version": {
+            "type": "string"
+          },
+          "report_id": {
+            "type": "string"
+          },
+          "requested_by": {
+            "type": "string"
+          },
+          "result_schema": {
+            "type": "string"
+          },
+          "result_truncated": {
+            "type": "boolean"
+          },
+          "retention_tier": {
+            "type": "string"
+          },
+          "retry_backoff_ms": {
+            "type": "integer"
+          },
+          "retry_base_backoff_ms": {
+            "type": "integer"
+          },
+          "retry_max_attempts": {
+            "type": "integer"
+          },
+          "retry_max_backoff_ms": {
+            "type": "integer"
+          },
+          "retry_of_attempt_id": {
+            "type": "string"
+          },
+          "retry_reason": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "scheduled_for": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "section_count": {
+            "type": "integer"
+          },
+          "snapshot_id": {
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "status_url": {
+            "type": "string"
+          },
+          "storage_class": {
+            "type": "string"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "traceparent": {
+            "type": "string"
+          },
+          "trigger_surface": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "report_id",
+          "status",
+          "execution_mode",
+          "submitted_at",
+          "completed_at",
+          "status_url",
+          "materialized_result"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "event_type": "platform.report_run.failed",
+      "summary": "Report execution failed on the shared platform intelligence layer.",
+      "schema_url": "urn:cerebro:events/platform.report_run.failed/v1",
+      "required_data_keys": [
+        "run_id",
+        "report_id",
+        "status",
+        "execution_mode",
+        "submitted_at",
+        "completed_at",
+        "status_url",
+        "error"
+      ],
+      "optional_data_keys": [
+        "started_at",
+        "requested_by",
+        "cache_key",
+        "cache_status",
+        "cache_source_run_id",
+        "job_id",
+        "job_status_url",
+        "parameter_count",
+        "materialized_result",
+        "latest_attempt_id",
+        "attempt_count",
+        "event_count",
+        "cancel_requested_at",
+        "cancel_requested_by",
+        "cancel_reason",
+        "trigger_surface",
+        "execution_surface",
+        "execution_host",
+        "attempt_classification",
+        "latest_attempt_status",
+        "retry_of_attempt_id",
+        "retry_reason",
+        "retry_backoff_ms",
+        "scheduled_for",
+        "retry_max_attempts",
+        "retry_base_backoff_ms",
+        "retry_max_backoff_ms",
+        "storage_class",
+        "retention_tier",
+        "result_truncated",
+        "graph_snapshot_id",
+        "graph_snapshot_url",
+        "graph_built_at",
+        "graph_schema_version",
+        "ontology_contract_version",
+        "report_definition_version",
+        "tenant_id",
+        "traceparent"
+      ],
+      "data_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt_classification": {
+            "type": "string"
+          },
+          "attempt_count": {
+            "type": "integer"
+          },
+          "cache_key": {
+            "type": "string"
+          },
+          "cache_source_run_id": {
+            "type": "string"
+          },
+          "cache_status": {
+            "type": "string"
+          },
+          "cancel_reason": {
+            "type": "string"
+          },
+          "cancel_requested_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "cancel_requested_by": {
+            "type": "string"
+          },
+          "completed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "event_count": {
+            "type": "integer"
+          },
+          "execution_host": {
+            "type": "string"
+          },
+          "execution_mode": {
+            "type": "string"
+          },
+          "execution_surface": {
+            "type": "string"
+          },
+          "graph_built_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "graph_schema_version": {
+            "type": "integer"
+          },
+          "graph_snapshot_id": {
+            "type": "string"
+          },
+          "graph_snapshot_url": {
+            "type": "string"
+          },
+          "job_id": {
+            "type": "string"
+          },
+          "job_status_url": {
+            "type": "string"
+          },
+          "latest_attempt_id": {
+            "type": "string"
+          },
+          "latest_attempt_status": {
+            "type": "string"
+          },
+          "materialized_result": {
+            "type": "boolean"
+          },
+          "ontology_contract_version": {
+            "type": "string"
+          },
+          "parameter_count": {
+            "type": "integer"
+          },
+          "report_definition_version": {
+            "type": "string"
+          },
+          "report_id": {
+            "type": "string"
+          },
+          "requested_by": {
+            "type": "string"
+          },
+          "result_truncated": {
+            "type": "boolean"
+          },
+          "retention_tier": {
+            "type": "string"
+          },
+          "retry_backoff_ms": {
+            "type": "integer"
+          },
+          "retry_base_backoff_ms": {
+            "type": "integer"
+          },
+          "retry_max_attempts": {
+            "type": "integer"
+          },
+          "retry_max_backoff_ms": {
+            "type": "integer"
+          },
+          "retry_of_attempt_id": {
+            "type": "string"
+          },
+          "retry_reason": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "scheduled_for": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "status_url": {
+            "type": "string"
+          },
+          "storage_class": {
+            "type": "string"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "traceparent": {
+            "type": "string"
+          },
+          "trigger_surface": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "report_id",
+          "status",
+          "execution_mode",
+          "submitted_at",
+          "completed_at",
+          "status_url",
+          "error"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "event_type": "platform.report_run.queued",
+      "summary": "Report execution queued on the shared platform intelligence layer.",
+      "schema_url": "urn:cerebro:events/platform.report_run.queued/v1",
+      "required_data_keys": [
+        "run_id",
+        "report_id",
+        "status",
+        "execution_mode",
+        "submitted_at",
+        "status_url"
+      ],
+      "optional_data_keys": [
+        "requested_by",
+        "cache_key",
+        "cache_status",
+        "cache_source_run_id",
+        "job_id",
+        "job_status_url",
+        "parameter_count",
+        "materialized_result",
+        "latest_attempt_id",
+        "attempt_count",
+        "event_count",
+        "cancel_requested_at",
+        "cancel_requested_by",
+        "cancel_reason",
+        "trigger_surface",
+        "execution_surface",
+        "execution_host",
+        "attempt_classification",
+        "latest_attempt_status",
+        "retry_of_attempt_id",
+        "retry_reason",
+        "retry_backoff_ms",
+        "scheduled_for",
+        "retry_max_attempts",
+        "retry_base_backoff_ms",
+        "retry_max_backoff_ms",
+        "storage_class",
+        "retention_tier",
+        "result_truncated",
+        "graph_snapshot_id",
+        "graph_snapshot_url",
+        "graph_built_at",
+        "graph_schema_version",
+        "ontology_contract_version",
+        "report_definition_version",
+        "tenant_id",
+        "traceparent"
+      ],
+      "data_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt_classification": {
+            "type": "string"
+          },
+          "attempt_count": {
+            "type": "integer"
+          },
+          "cache_key": {
+            "type": "string"
+          },
+          "cache_source_run_id": {
+            "type": "string"
+          },
+          "cache_status": {
+            "type": "string"
+          },
+          "cancel_reason": {
+            "type": "string"
+          },
+          "cancel_requested_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "cancel_requested_by": {
+            "type": "string"
+          },
+          "event_count": {
+            "type": "integer"
+          },
+          "execution_host": {
+            "type": "string"
+          },
+          "execution_mode": {
+            "type": "string"
+          },
+          "execution_surface": {
+            "type": "string"
+          },
+          "graph_built_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "graph_schema_version": {
+            "type": "integer"
+          },
+          "graph_snapshot_id": {
+            "type": "string"
+          },
+          "graph_snapshot_url": {
+            "type": "string"
+          },
+          "job_id": {
+            "type": "string"
+          },
+          "job_status_url": {
+            "type": "string"
+          },
+          "latest_attempt_id": {
+            "type": "string"
+          },
+          "latest_attempt_status": {
+            "type": "string"
+          },
+          "materialized_result": {
+            "type": "boolean"
+          },
+          "ontology_contract_version": {
+            "type": "string"
+          },
+          "parameter_count": {
+            "type": "integer"
+          },
+          "report_definition_version": {
+            "type": "string"
+          },
+          "report_id": {
+            "type": "string"
+          },
+          "requested_by": {
+            "type": "string"
+          },
+          "result_truncated": {
+            "type": "boolean"
+          },
+          "retention_tier": {
+            "type": "string"
+          },
+          "retry_backoff_ms": {
+            "type": "integer"
+          },
+          "retry_base_backoff_ms": {
+            "type": "integer"
+          },
+          "retry_max_attempts": {
+            "type": "integer"
+          },
+          "retry_max_backoff_ms": {
+            "type": "integer"
+          },
+          "retry_of_attempt_id": {
+            "type": "string"
+          },
+          "retry_reason": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "scheduled_for": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "status_url": {
+            "type": "string"
+          },
+          "storage_class": {
+            "type": "string"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "traceparent": {
+            "type": "string"
+          },
+          "trigger_surface": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "report_id",
+          "status",
+          "execution_mode",
+          "submitted_at",
+          "status_url"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "event_type": "platform.report_run.section_emitted",
+      "summary": "Report section payload emitted on the shared platform intelligence layer.",
+      "schema_url": "urn:cerebro:events/platform.report_run.section_emitted/v1",
+      "required_data_keys": [
+        "run_id",
+        "report_id",
+        "section_key",
+        "sequence",
+        "emitted_at",
+        "status_url"
+      ],
+      "optional_data_keys": [
+        "status",
+        "progress_percent",
+        "envelope_kind",
+        "envelope_schema",
+        "content_type",
+        "item_count",
+        "field_count",
+        "field_keys",
+        "measure_ids",
+        "payload_schema",
+        "payload_schema_url",
+        "payload_strict",
+        "lineage",
+        "materialization",
+        "telemetry",
+        "snapshot_id",
+        "tenant_id",
+        "traceparent"
+      ],
+      "data_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "content_type": {
+            "type": "string"
+          },
+          "emitted_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "envelope_kind": {
+            "type": "string"
+          },
+          "envelope_schema": {
+            "type": "string"
+          },
+          "field_count": {
+            "type": "integer"
+          },
+          "field_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "item_count": {
+            "type": "integer"
+          },
+          "lineage": {
+            "type": "object"
+          },
+          "materialization": {
+            "type": "object"
+          },
+          "measure_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "payload_schema": {
+            "type": "string"
+          },
+          "payload_schema_url": {
+            "type": "string"
+          },
+          "payload_strict": {
+            "type": "boolean"
+          },
+          "progress_percent": {
+            "type": "integer"
+          },
+          "report_id": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "section_key": {
+            "type": "string"
+          },
+          "sequence": {
+            "type": "integer"
+          },
+          "snapshot_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "status_url": {
+            "type": "string"
+          },
+          "telemetry": {
+            "type": "object"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "traceparent": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "report_id",
+          "section_key",
+          "sequence",
+          "emitted_at",
+          "status_url"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "event_type": "platform.report_run.started",
+      "summary": "Report execution started on the shared platform intelligence layer.",
+      "schema_url": "urn:cerebro:events/platform.report_run.started/v1",
+      "required_data_keys": [
+        "run_id",
+        "report_id",
+        "status",
+        "execution_mode",
+        "submitted_at",
+        "started_at",
+        "status_url"
+      ],
+      "optional_data_keys": [
+        "requested_by",
+        "cache_key",
+        "cache_status",
+        "cache_source_run_id",
+        "job_id",
+        "job_status_url",
+        "parameter_count",
+        "materialized_result",
+        "latest_attempt_id",
+        "attempt_count",
+        "event_count",
+        "cancel_requested_at",
+        "cancel_requested_by",
+        "cancel_reason",
+        "trigger_surface",
+        "execution_surface",
+        "execution_host",
+        "attempt_classification",
+        "latest_attempt_status",
+        "retry_of_attempt_id",
+        "retry_reason",
+        "retry_backoff_ms",
+        "scheduled_for",
+        "retry_max_attempts",
+        "retry_base_backoff_ms",
+        "retry_max_backoff_ms",
+        "storage_class",
+        "retention_tier",
+        "result_truncated",
+        "graph_snapshot_id",
+        "graph_snapshot_url",
+        "graph_built_at",
+        "graph_schema_version",
+        "ontology_contract_version",
+        "report_definition_version",
+        "tenant_id",
+        "traceparent"
+      ],
+      "data_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt_classification": {
+            "type": "string"
+          },
+          "attempt_count": {
+            "type": "integer"
+          },
+          "cache_key": {
+            "type": "string"
+          },
+          "cache_source_run_id": {
+            "type": "string"
+          },
+          "cache_status": {
+            "type": "string"
+          },
+          "cancel_reason": {
+            "type": "string"
+          },
+          "cancel_requested_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "cancel_requested_by": {
+            "type": "string"
+          },
+          "event_count": {
+            "type": "integer"
+          },
+          "execution_host": {
+            "type": "string"
+          },
+          "execution_mode": {
+            "type": "string"
+          },
+          "execution_surface": {
+            "type": "string"
+          },
+          "graph_built_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "graph_schema_version": {
+            "type": "integer"
+          },
+          "graph_snapshot_id": {
+            "type": "string"
+          },
+          "graph_snapshot_url": {
+            "type": "string"
+          },
+          "job_id": {
+            "type": "string"
+          },
+          "job_status_url": {
+            "type": "string"
+          },
+          "latest_attempt_id": {
+            "type": "string"
+          },
+          "latest_attempt_status": {
+            "type": "string"
+          },
+          "materialized_result": {
+            "type": "boolean"
+          },
+          "ontology_contract_version": {
+            "type": "string"
+          },
+          "parameter_count": {
+            "type": "integer"
+          },
+          "report_definition_version": {
+            "type": "string"
+          },
+          "report_id": {
+            "type": "string"
+          },
+          "requested_by": {
+            "type": "string"
+          },
+          "result_truncated": {
+            "type": "boolean"
+          },
+          "retention_tier": {
+            "type": "string"
+          },
+          "retry_backoff_ms": {
+            "type": "integer"
+          },
+          "retry_base_backoff_ms": {
+            "type": "integer"
+          },
+          "retry_max_attempts": {
+            "type": "integer"
+          },
+          "retry_max_backoff_ms": {
+            "type": "integer"
+          },
+          "retry_of_attempt_id": {
+            "type": "string"
+          },
+          "retry_reason": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "scheduled_for": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "status_url": {
+            "type": "string"
+          },
+          "storage_class": {
+            "type": "string"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "traceparent": {
+            "type": "string"
+          },
+          "trigger_surface": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "report_id",
+          "status",
+          "execution_mode",
+          "submitted_at",
+          "started_at",
+          "status_url"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "event_type": "platform.report_snapshot.materialized",
+      "summary": "Report snapshot materialized on the shared platform intelligence layer.",
+      "schema_url": "urn:cerebro:events/platform.report_snapshot.materialized/v1",
+      "required_data_keys": [
+        "snapshot_id",
+        "run_id",
+        "report_id",
+        "result_schema",
+        "generated_at",
+        "recorded_at",
+        "content_hash",
+        "byte_size",
+        "section_count",
+        "retained",
+        "status_url"
+      ],
+      "optional_data_keys": [
+        "expires_at",
+        "cache_key",
+        "storage_class",
+        "retention_tier",
+        "materialized_result",
+        "result_truncated",
+        "graph_snapshot_id",
+        "graph_snapshot_url",
+        "graph_built_at",
+        "graph_schema_version",
+        "ontology_contract_version",
+        "report_definition_version",
+        "tenant_id",
+        "traceparent"
+      ],
+      "data_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "byte_size": {
+            "type": "integer"
+          },
+          "cache_key": {
+            "type": "string"
+          },
+          "content_hash": {
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "graph_built_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "graph_schema_version": {
+            "type": "integer"
+          },
+          "graph_snapshot_id": {
+            "type": "string"
+          },
+          "graph_snapshot_url": {
+            "type": "string"
+          },
+          "materialized_result": {
+            "type": "boolean"
+          },
+          "ontology_contract_version": {
+            "type": "string"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "report_definition_version": {
+            "type": "string"
+          },
+          "report_id": {
+            "type": "string"
+          },
+          "result_schema": {
+            "type": "string"
+          },
+          "result_truncated": {
+            "type": "boolean"
+          },
+          "retained": {
+            "type": "boolean"
+          },
+          "retention_tier": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "section_count": {
+            "type": "integer"
+          },
+          "snapshot_id": {
+            "type": "string"
+          },
+          "status_url": {
+            "type": "string"
+          },
+          "storage_class": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "traceparent": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot_id",
+          "run_id",
+          "report_id",
+          "result_schema",
+          "generated_at",
+          "recorded_at",
+          "content_hash",
+          "byte_size",
+          "section_count",
+          "retained",
+          "status_url"
+        ],
+        "type": "object"
+      }
+    }
+  ],
+  "mappings": [
+    {
+      "name": "calendar_meeting_recorded",
+      "source_pattern": "ensemble.tap.calendar.meeting.recorded",
+      "domain": "calendar",
+      "wildcard_pattern": false,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "meeting",
+        "service"
+      ],
+      "edge_kinds": [
+        "assigned_to",
+        "targets"
+      ],
+      "required_data_keys": [
+        "meeting_id",
+        "organizer_email",
+        "service"
+      ],
+      "optional_data_keys": [
+        "ends_at",
+        "starts_at",
+        "title"
+      ],
+      "resolve_keys": [
+        "organizer_email"
+      ],
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "ends_at": {},
+          "meeting_id": {},
+          "organizer_email": {},
+          "service": {},
+          "starts_at": {},
+          "title": {}
+        },
+        "required": [
+          "meeting_id",
+          "organizer_email",
+          "service"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "ci_deploy_completed",
+      "source_pattern": "ensemble.tap.ci.deploy.completed",
+      "domain": "ci",
+      "wildcard_pattern": false,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "deployment_run",
+        "service",
+        "workload"
+      ],
+      "edge_kinds": [
+        "based_on",
+        "interacted_with",
+        "runs",
+        "targets"
+      ],
+      "required_data_keys": [
+        "actor_email",
+        "deploy_id",
+        "service"
+      ],
+      "optional_data_keys": [
+        "environment",
+        "release_version",
+        "status"
+      ],
+      "resolve_keys": [
+        "actor_email"
+      ],
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "actor_email": {},
+          "deploy_id": {},
+          "environment": {},
+          "release_version": {},
+          "service": {},
+          "status": {}
+        },
+        "required": [
+          "actor_email",
+          "deploy_id",
+          "service"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "ci_pipeline_completed",
+      "source_pattern": "ensemble.tap.ci.pipeline.completed",
+      "domain": "ci",
+      "wildcard_pattern": false,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "pipeline_run",
+        "service"
+      ],
+      "edge_kinds": [
+        "interacted_with",
+        "targets"
+      ],
+      "required_data_keys": [
+        "actor_email",
+        "pipeline_id",
+        "run_id",
+        "service"
+      ],
+      "optional_data_keys": [
+        "branch",
+        "commit_sha",
+        "completed_at",
+        "pipeline_name",
+        "started_at",
+        "status"
+      ],
+      "resolve_keys": [
+        "actor_email"
+      ],
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "actor_email": {},
+          "branch": {},
+          "commit_sha": {},
+          "completed_at": {},
+          "pipeline_id": {},
+          "pipeline_name": {},
+          "run_id": {},
+          "service": {},
+          "started_at": {},
+          "status": {}
+        },
+        "required": [
+          "actor_email",
+          "pipeline_id",
+          "run_id",
+          "service"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "docs_page_edited",
+      "source_pattern": "ensemble.tap.docs.page.edited",
+      "domain": "docs",
+      "wildcard_pattern": false,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "document",
+        "evidence"
+      ],
+      "edge_kinds": [
+        "based_on",
+        "interacted_with"
+      ],
+      "required_data_keys": [
+        "doc_id",
+        "editor_email",
+        "version"
+      ],
+      "optional_data_keys": [
+        "change_summary",
+        "title",
+        "url"
+      ],
+      "resolve_keys": [
+        "editor_email"
+      ],
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "change_summary": {},
+          "doc_id": {},
+          "editor_email": {},
+          "title": {},
+          "url": {},
+          "version": {}
+        },
+        "required": [
+          "doc_id",
+          "editor_email",
+          "version"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "github_check_run_completed",
+      "source_pattern": "ensemble.tap.github.check_run.completed",
+      "domain": "github",
+      "wildcard_pattern": false,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "check_run",
+        "service"
+      ],
+      "edge_kinds": [
+        "interacted_with",
+        "targets"
+      ],
+      "required_data_keys": [
+        "actor_email",
+        "check_run_id",
+        "repository"
+      ],
+      "optional_data_keys": [
+        "check_name",
+        "commit_sha",
+        "conclusion",
+        "status",
+        "url"
+      ],
+      "resolve_keys": [
+        "actor_email"
+      ],
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "actor_email": {},
+          "check_name": {},
+          "check_run_id": {},
+          "commit_sha": {},
+          "conclusion": {},
+          "repository": {},
+          "status": {},
+          "url": {}
+        },
+        "required": [
+          "actor_email",
+          "check_run_id",
+          "repository"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "github_pr_merged",
+      "source_pattern": "ensemble.tap.github.pull_request.merged",
+      "domain": "github",
+      "wildcard_pattern": false,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "pull_request",
+        "service"
+      ],
+      "edge_kinds": [
+        "interacted_with",
+        "targets"
+      ],
+      "required_data_keys": [
+        "merged_by_email",
+        "number",
+        "repository"
+      ],
+      "optional_data_keys": [
+        "merged_by",
+        "title"
+      ],
+      "resolve_keys": [
+        "merged_by_email"
+      ],
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "merged_by": {},
+          "merged_by_email": {},
+          "number": {},
+          "repository": {},
+          "title": {}
+        },
+        "required": [
+          "merged_by_email",
+          "number",
+          "repository"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "github_pr_opened",
+      "source_pattern": "ensemble.tap.github.pull_request.opened",
+      "domain": "github",
+      "wildcard_pattern": false,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "pull_request",
+        "service"
+      ],
+      "edge_kinds": [
+        "interacted_with",
+        "targets"
+      ],
+      "required_data_keys": [
+        "author_email",
+        "number",
+        "repository"
+      ],
+      "optional_data_keys": [
+        "author",
+        "title"
+      ],
+      "resolve_keys": [
+        "author_email"
+      ],
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "author": {},
+          "author_email": {},
+          "number": {},
+          "repository": {},
+          "title": {}
+        },
+        "required": [
+          "author_email",
+          "number",
+          "repository"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "github_pr_review_submitted",
+      "source_pattern": "ensemble.tap.github.pull_request.review_submitted",
+      "domain": "github",
+      "wildcard_pattern": false,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "pull_request",
+        "service"
+      ],
+      "edge_kinds": [
+        "interacted_with",
+        "targets"
+      ],
+      "required_data_keys": [
+        "number",
+        "repository",
+        "reviewer_email"
+      ],
+      "optional_data_keys": [
+        "state"
+      ],
+      "resolve_keys": [
+        "reviewer_email"
+      ],
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "number": {},
+          "repository": {},
+          "reviewer_email": {},
+          "state": {}
+        },
+        "required": [
+          "number",
+          "repository",
+          "reviewer_email"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "incident_timeline_event",
+      "source_pattern": "ensemble.tap.incident.timeline.*",
+      "domain": "incident",
+      "wildcard_pattern": true,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "action",
+        "evidence",
+        "incident",
+        "service"
+      ],
+      "edge_kinds": [
+        "based_on",
+        "targets"
+      ],
+      "required_data_keys": [
+        "event_id",
+        "incident_id",
+        "service"
+      ],
+      "optional_data_keys": [
+        "actor_email",
+        "event_type",
+        "performed_at",
+        "severity",
+        "status",
+        "summary",
+        "title"
+      ],
+      "resolve_keys": [
+        "actor_email"
+      ],
+      "data_enums": {
+        "severity": [
+          "critical",
+          "high",
+          "low",
+          "medium",
+          "sev0",
+          "sev1",
+          "sev2",
+          "sev3",
+          "sev4"
+        ],
+        "status": [
+          "closed",
+          "investigating",
+          "mitigated",
+          "open",
+          "resolved"
+        ]
+      },
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "actor_email": {},
+          "event_id": {},
+          "event_type": {},
+          "incident_id": {},
+          "performed_at": {},
+          "service": {},
+          "severity": {
+            "enum": [
+              "critical",
+              "high",
+              "low",
+              "medium",
+              "sev0",
+              "sev1",
+              "sev2",
+              "sev3",
+              "sev4"
+            ]
+          },
+          "status": {
+            "enum": [
+              "closed",
+              "investigating",
+              "mitigated",
+              "open",
+              "resolved"
+            ]
+          },
+          "summary": {},
+          "title": {}
+        },
+        "required": [
+          "event_id",
+          "incident_id",
+          "service"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "jira_issue_transition",
+      "source_pattern": "ensemble.tap.jira.issue.transitioned",
+      "domain": "jira",
+      "wildcard_pattern": false,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "action",
+        "ticket"
+      ],
+      "edge_kinds": [
+        "assigned_to",
+        "targets"
+      ],
+      "required_data_keys": [
+        "actor_email",
+        "issue_key",
+        "transition_id"
+      ],
+      "optional_data_keys": [
+        "from_status",
+        "issue_type",
+        "performed_at",
+        "project_key",
+        "summary",
+        "to_status"
+      ],
+      "resolve_keys": [
+        "actor_email"
+      ],
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "actor_email": {},
+          "from_status": {},
+          "issue_key": {},
+          "issue_type": {},
+          "performed_at": {},
+          "project_key": {},
+          "summary": {},
+          "to_status": {},
+          "transition_id": {}
+        },
+        "required": [
+          "actor_email",
+          "issue_key",
+          "transition_id"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "sales_call_logged",
+      "source_pattern": "ensemble.tap.sales.call.logged",
+      "domain": "sales",
+      "wildcard_pattern": false,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "action",
+        "contact"
+      ],
+      "edge_kinds": [
+        "interacted_with",
+        "targets"
+      ],
+      "required_data_keys": [
+        "call_id",
+        "contact_id",
+        "rep_email"
+      ],
+      "optional_data_keys": [
+        "contact_email",
+        "contact_name",
+        "duration_minutes",
+        "logged_at",
+        "summary"
+      ],
+      "resolve_keys": [
+        "rep_email"
+      ],
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "call_id": {},
+          "contact_email": {},
+          "contact_id": {},
+          "contact_name": {},
+          "duration_minutes": {},
+          "logged_at": {},
+          "rep_email": {},
+          "summary": {}
+        },
+        "required": [
+          "call_id",
+          "contact_id",
+          "rep_email"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "slack_thread_message",
+      "source_pattern": "ensemble.tap.slack.thread.message_posted",
+      "domain": "slack",
+      "wildcard_pattern": false,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "action",
+        "communication_thread"
+      ],
+      "edge_kinds": [
+        "interacted_with",
+        "targets"
+      ],
+      "required_data_keys": [
+        "author_email",
+        "channel_id",
+        "message_ts",
+        "thread_ts"
+      ],
+      "optional_data_keys": [
+        "channel_name",
+        "text"
+      ],
+      "resolve_keys": [
+        "author_email"
+      ],
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "author_email": {},
+          "channel_id": {},
+          "channel_name": {},
+          "message_ts": {},
+          "text": {},
+          "thread_ts": {}
+        },
+        "required": [
+          "author_email",
+          "channel_id",
+          "message_ts",
+          "thread_ts"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "support_ticket_updated",
+      "source_pattern": "ensemble.tap.support.ticket.updated",
+      "domain": "support",
+      "wildcard_pattern": false,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "action",
+        "ticket"
+      ],
+      "edge_kinds": [
+        "assigned_to",
+        "targets"
+      ],
+      "required_data_keys": [
+        "agent_email",
+        "ticket_id",
+        "update_id"
+      ],
+      "optional_data_keys": [
+        "priority",
+        "status",
+        "subject",
+        "update_type",
+        "updated_at"
+      ],
+      "resolve_keys": [
+        "agent_email"
+      ],
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "agent_email": {},
+          "priority": {},
+          "status": {},
+          "subject": {},
+          "ticket_id": {},
+          "update_id": {},
+          "update_type": {},
+          "updated_at": {}
+        },
+        "required": [
+          "agent_email",
+          "ticket_id",
+          "update_id"
+        ],
+        "type": "object"
+      }
+    }
+  ],
+  "distinct_required_data": [
+    "actor_email",
+    "agent_email",
+    "author_email",
+    "call_id",
+    "channel_id",
+    "check_run_id",
+    "contact_id",
+    "deploy_id",
+    "doc_id",
+    "editor_email",
+    "event_id",
+    "incident_id",
+    "issue_key",
+    "meeting_id",
+    "merged_by_email",
+    "message_ts",
+    "number",
+    "organizer_email",
+    "pipeline_id",
+    "rep_email",
+    "repository",
+    "reviewer_email",
+    "run_id",
+    "service",
+    "thread_ts",
+    "ticket_id",
+    "transition_id",
+    "update_id",
+    "version"
+  ],
+  "distinct_optional_data": [
+    "author",
+    "branch",
+    "change_summary",
+    "channel_name",
+    "check_name",
+    "commit_sha",
+    "completed_at",
+    "conclusion",
+    "contact_email",
+    "contact_name",
+    "duration_minutes",
+    "ends_at",
+    "environment",
+    "event_type",
+    "from_status",
+    "issue_type",
+    "logged_at",
+    "merged_by",
+    "performed_at",
+    "pipeline_name",
+    "priority",
+    "project_key",
+    "release_version",
+    "severity",
+    "started_at",
+    "starts_at",
+    "state",
+    "status",
+    "subject",
+    "summary",
+    "text",
+    "title",
+    "to_status",
+    "update_type",
+    "updated_at",
+    "url"
+  ],
+  "distinct_resolve_keys": [
+    "actor_email",
+    "agent_email",
+    "author_email",
+    "editor_email",
+    "merged_by_email",
+    "organizer_email",
+    "rep_email",
+    "reviewer_email"
+  ]
+}

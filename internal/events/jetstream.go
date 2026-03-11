@@ -21,6 +21,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nkeys"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/writer/cerebro/internal/metrics"
 	"github.com/writer/cerebro/internal/webhooks"
@@ -208,18 +213,35 @@ func (p *Publisher) Publish(ctx context.Context, event webhooks.Event) error {
 		ctx = context.Background()
 	}
 
+	ctx, span := otel.Tracer("cerebro.events").Start(ctx, "jetstream.publish",
+		trace.WithAttributes(
+			attribute.String("messaging.system", "nats"),
+			attribute.String("messaging.destination.name", p.config.Stream),
+			attribute.String("messaging.event.type", strings.TrimSpace(string(event.Type))),
+		),
+	)
+	defer span.End()
+
 	subject := p.subjectFor(event.Type)
-	ce := cloudEventFromWebhook(p.config.Source, event)
+	span.SetAttributes(attribute.String("messaging.subject", subject))
+	ce := cloudEventFromWebhook(ctx, p.config.Source, event)
 	payload, err := json.Marshal(ce)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("marshal cloud event: %w", err)
 	}
 
 	if !p.canPublishLive() {
+		span.SetAttributes(attribute.String("messaging.publish_result", "queued_outbox"))
 		return p.queueOutboxEvent(subject, event, ce.ID, payload, errJetStreamUnavailable)
 	}
 
 	if err := p.publishWithRetry(ctx, subject, payload, ce.ID); err == nil {
+		span.SetAttributes(
+			attribute.String("messaging.publish_result", "published"),
+			attribute.String("messaging.message_id", ce.ID),
+		)
 		p.publishedTotal.Add(1)
 		p.setLastPublish(time.Now().UTC())
 		p.clearLastError()
@@ -228,6 +250,7 @@ func (p *Publisher) Publish(ctx context.Context, event webhooks.Event) error {
 		return nil
 	}
 
+	span.SetAttributes(attribute.String("messaging.publish_result", "queued_outbox"))
 	return p.queueOutboxEvent(subject, event, ce.ID, payload, err)
 }
 
@@ -341,26 +364,31 @@ func (p *Publisher) publishWithRetry(ctx context.Context, subject string, payloa
 
 	var lastErr error
 	for attempt := 1; attempt <= p.config.RetryAttempts; attempt++ {
-		publishCtx := ctx
-		cancel := func() {}
-		if p.config.PublishTimeout > 0 {
-			publishCtx, cancel = context.WithTimeout(ctx, p.config.PublishTimeout)
+		publishOnce := func() error {
+			publishCtx := ctx
+			cancel := func() {}
+			if p.config.PublishTimeout > 0 {
+				publishCtx, cancel = context.WithTimeout(ctx, p.config.PublishTimeout)
+			}
+			defer cancel()
+
+			opts := []nats.PubOpt{nats.Context(publishCtx)}
+			if strings.TrimSpace(messageID) != "" {
+				opts = append(opts, nats.MsgId(strings.TrimSpace(messageID)))
+			}
+
+			_, err := p.js.Publish(subject, payload, opts...)
+			return err
 		}
 
-		opts := []nats.PubOpt{nats.Context(publishCtx)}
-		if strings.TrimSpace(messageID) != "" {
-			opts = append(opts, nats.MsgId(strings.TrimSpace(messageID)))
-		}
-
-		_, lastErr = p.js.Publish(subject, payload, opts...)
-		cancel()
+		lastErr = publishOnce()
 		if lastErr == nil {
 			return nil
 		}
 
 		if shouldEnsureJetStreamStream(lastErr) {
 			if ensureErr := p.ensureStream(); ensureErr == nil {
-				_, lastErr = p.js.Publish(subject, payload, opts...)
+				lastErr = publishOnce()
 				if lastErr == nil {
 					return nil
 				}
@@ -559,7 +587,7 @@ func (p *Publisher) subjectFor(eventType webhooks.EventType) string {
 	return p.config.SubjectPrefix + "." + value
 }
 
-func cloudEventFromWebhook(source string, event webhooks.Event) CloudEvent {
+func cloudEventFromWebhook(ctx context.Context, source string, event webhooks.Event) CloudEvent {
 	eventID := strings.TrimSpace(event.ID)
 	if eventID == "" {
 		eventID = uuid.NewString()
@@ -592,6 +620,9 @@ func cloudEventFromWebhook(source string, event webhooks.Event) CloudEvent {
 
 	traceParent := dataValueString(dataCopy, "traceparent", "trace_parent", "traceParent")
 	if traceParent == "" {
+		traceParent = traceParentFromContext(ctx)
+	}
+	if traceParent == "" {
 		traceParent = generateTraceParent()
 	}
 
@@ -617,6 +648,26 @@ func cloudEventFromWebhook(source string, event webhooks.Event) CloudEvent {
 		DataContentType: "application/json",
 		Data:            dataCopy,
 	}
+}
+
+func traceParentFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	carrier := propagation.MapCarrier{}
+	otel.GetTextMapPropagator().Inject(ctx, carrier)
+	traceParent := strings.TrimSpace(carrier.Get("traceparent"))
+	if traceParent != "" {
+		return traceParent
+	}
+
+	// Fall back to directly encoding the current span context when no
+	// global propagator has been installed (for example in unit tests).
+	spanCtx := trace.SpanContextFromContext(ctx)
+	if !spanCtx.IsValid() {
+		return ""
+	}
+	return fmt.Sprintf("00-%s-%s-%02x", spanCtx.TraceID(), spanCtx.SpanID(), byte(spanCtx.TraceFlags()))
 }
 
 func (c JetStreamConfig) withDefaults() JetStreamConfig {

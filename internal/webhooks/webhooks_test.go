@@ -412,6 +412,16 @@ func TestServiceEventPublisherReady(t *testing.T) {
 	}
 }
 
+func TestServiceEventPublisherReadyRequiresContext(t *testing.T) {
+	svc := NewService()
+	publisher := &mockEventPublisher{}
+	svc.SetEventPublisher(publisher)
+
+	if err := svc.EventPublisherReady(nilContext()); err == nil {
+		t.Fatal("expected readiness error when context is nil")
+	}
+}
+
 func TestServiceEventPublisherStatus(t *testing.T) {
 	svc := NewService()
 	status := svc.EventPublisherStatus(context.Background())
@@ -428,6 +438,24 @@ func TestServiceEventPublisherStatus(t *testing.T) {
 	if status["stream"] != "TEST" {
 		t.Fatalf("expected stream TEST, got %#v", status["stream"])
 	}
+}
+
+func TestServiceEventPublisherStatusRequiresContext(t *testing.T) {
+	svc := NewService()
+	publisher := &mockEventPublisher{status: map[string]interface{}{"ready": true}}
+	svc.SetEventPublisher(publisher)
+
+	status := svc.EventPublisherStatus(nilContext())
+	if ready, ok := status["ready"].(bool); !ok || ready {
+		t.Fatalf("expected ready=false when context is nil, got %#v", status)
+	}
+	if status["error"] == nil {
+		t.Fatalf("expected context error status, got %#v", status)
+	}
+}
+
+func nilContext() context.Context {
+	return nil
 }
 
 func TestNoopEmitter(t *testing.T) {
@@ -448,5 +476,25 @@ func TestMustEmitter(t *testing.T) {
 	emitter = MustEmitter(nil)
 	if _, ok := emitter.(*NoopEmitter); !ok {
 		t.Error("expected MustEmitter to return NoopEmitter when nil")
+	}
+}
+
+func TestServiceSubscribeReceivesEmittedEvents(t *testing.T) {
+	svc := NewServiceForTesting()
+	received := false
+
+	svc.Subscribe(func(_ context.Context, event Event) error {
+		received = true
+		if event.Type != EventSignalCreated {
+			t.Fatalf("expected event type %q, got %q", EventSignalCreated, event.Type)
+		}
+		return nil
+	})
+
+	if err := svc.EmitWithErrors(context.Background(), EventSignalCreated, map[string]interface{}{"signal_type": "test"}); err != nil {
+		t.Fatalf("emit with subscriber: %v", err)
+	}
+	if !received {
+		t.Fatal("expected subscriber to receive emitted event")
 	}
 }

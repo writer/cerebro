@@ -18,6 +18,7 @@ import (
 	"google.golang.org/api/option"
 
 	"github.com/writer/cerebro/internal/app"
+	apiclient "github.com/writer/cerebro/internal/client"
 	"github.com/writer/cerebro/internal/scanner"
 	"github.com/writer/cerebro/internal/snowflake"
 	nativesync "github.com/writer/cerebro/internal/sync"
@@ -630,6 +631,40 @@ func runBackfillRelationships(cmd *cobra.Command, args []string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
+	mode, err := loadCLIExecutionMode()
+	if err != nil {
+		return err
+	}
+
+	if mode != cliExecutionModeDirect {
+		apiClient, err := newCLIAPIClient()
+		if err != nil {
+			if mode == cliExecutionModeAPI {
+				return err
+			}
+			Warning("API client configuration invalid; using direct mode: %v", err)
+		} else {
+			stats, err := apiClient.BackfillRelationshipIDs(ctx, syncBackfillBatchSize)
+			if err == nil {
+				renderBackfillRelationshipStats(stats)
+				return nil
+			}
+			if mode == cliExecutionModeAPI || !shouldFallbackToDirect(mode, err) {
+				return fmt.Errorf("backfill relationship IDs via api failed: %w", err)
+			}
+			Warning("API unavailable; using direct mode: %v", err)
+		}
+	}
+
+	return runBackfillRelationshipsDirectFn(cmd, args)
+}
+
+var runBackfillRelationshipsDirectFn = runBackfillRelationshipsDirect
+
+func runBackfillRelationshipsDirect(cmd *cobra.Command, args []string) error {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
 	client, err := createSnowflakeClient()
 	if err != nil {
 		return fmt.Errorf("create snowflake client: %w", err)
@@ -642,8 +677,20 @@ func runBackfillRelationships(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("backfill relationship IDs: %w", err)
 	}
 
-	Success("Relationship ID backfill complete (scanned %d, updated %d, deleted %d, skipped %d)", stats.Scanned, stats.Updated, stats.Deleted, stats.Skipped)
+	renderBackfillRelationshipStats(&apiclient.RelationshipBackfillStats{
+		Scanned: int64(stats.Scanned),
+		Updated: int64(stats.Updated),
+		Deleted: int64(stats.Deleted),
+		Skipped: int64(stats.Skipped),
+	})
 	return nil
+}
+
+func renderBackfillRelationshipStats(stats *apiclient.RelationshipBackfillStats) {
+	if stats == nil {
+		stats = &apiclient.RelationshipBackfillStats{}
+	}
+	Success("Relationship ID backfill complete (scanned %d, updated %d, deleted %d, skipped %d)", stats.Scanned, stats.Updated, stats.Deleted, stats.Skipped)
 }
 
 type envSnapshot struct {
@@ -924,7 +971,7 @@ func runPostSyncScan(ctx context.Context, tableFilter []string) error {
 	defer func() { _ = application.Close() }()
 
 	if application.Snowflake == nil {
-		return fmt.Errorf("snowflake not configured: set SNOWFLAKE_PRIVATE_KEY/ACCOUNT/USER or SNOWFLAKE_CONNECTION_STRING")
+		return fmt.Errorf("snowflake not configured: set SNOWFLAKE_PRIVATE_KEY, SNOWFLAKE_ACCOUNT, and SNOWFLAKE_USER")
 	}
 
 	availableTables := application.AvailableTables

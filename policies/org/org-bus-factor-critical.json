@@ -1,0 +1,22 @@
+{
+  "id": "org-bus-factor-critical",
+  "name": "Critical System With Bus Factor 1",
+  "description": "A system classified as critical has only one person with active knowledge.",
+  "effect": "forbid",
+  "resource": "org::system",
+  "conditions": [
+    "criticality == 'high'",
+    "bus_factor <= 1"
+  ],
+  "severity": "high",
+  "remediation": "Assign at least one additional active owner and execute a knowledge-transfer plan.",
+  "tags": [
+    "org-topology",
+    "knowledge-concentration",
+    "resilience"
+  ],
+  "risk_categories": [
+    "RESILIENCE_RISK",
+    "KNOWLEDGE_CONCENTRATION"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "id": "org-silo-shared-dependency",
+  "name": "Teams Sharing Dependencies With No Communication",
+  "description": "Two teams depend on the same infrastructure but have zero interaction edges.",
+  "effect": "forbid",
+  "resource": "org::team_pair",
+  "conditions": [
+    "shared_dependencies > 2",
+    "interaction_edges == 0"
+  ],
+  "severity": "medium",
+  "remediation": "Create explicit cross-team operating rhythms and assign joint dependency ownership.",
+  "tags": [
+    "org-topology",
+    "silos",
+    "communication"
+  ],
+  "risk_categories": [
+    "SILO_RISK",
+    "OPERATIONAL_FRAGMENTATION"
+  ]
+}

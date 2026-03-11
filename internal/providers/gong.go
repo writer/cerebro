@@ -26,7 +26,7 @@ func NewGongProvider() *GongProvider {
 	return &GongProvider{
 		BaseProvider: NewBaseProvider("gong", ProviderTypeSaaS),
 		baseURL:      gongDefaultAPIURL,
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

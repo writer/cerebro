@@ -26,7 +26,7 @@ func NewSocketProvider() *SocketProvider {
 	return &SocketProvider{
 		BaseProvider: NewBaseProvider("socket", ProviderTypeSaaS),
 		baseURL:      socketDefaultAPIURL,
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

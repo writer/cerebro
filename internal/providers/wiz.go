@@ -46,7 +46,7 @@ func NewWizProvider() *WizProvider {
 		BaseProvider: NewBaseProvider("wiz", ProviderTypeSaaS),
 		tokenURL:     wizDefaultTokenURL,
 		audience:     wizDefaultAudience,
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

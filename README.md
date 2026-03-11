@@ -1,27 +1,44 @@
 # Cerebro
 
-**Security Data Platform for Cloud and SaaS Posture Management**
+**Operations Data Platform for Cloud, SaaS, and Business Signal Management**
 
-Cerebro is a comprehensive security platform that combines cloud asset discovery, policy evaluation, compliance reporting, AI-powered investigation, and automated remediation workflows.
+Cerebro is a unified operations platform that combines data ingestion from cloud providers and SaaS tools, policy evaluation, compliance reporting, AI-powered investigation, business signal analysis, and automated remediation workflows. It works across security, revenue operations, support, and any domain where you need to detect, triage, and act on operational signals.
 
-[![Go Version](https://img.shields.io/badge/Go-1.23+-00ADD8?style=flat&logo=go)](https://go.dev/)
+> **Origin:** Cerebro was originally developed at [Writer](https://github.com/writer/cerebro) as a security-focused cloud posture management tool. This fork generalizes the platform to handle any operational signal — from cloud misconfigurations to stale deals, SLA breaches, payment failures, and business entity drift.
+
+[![Go Version](https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 ---
 
 ## Features
 
-- **Cloud Asset Discovery** - Ingest configurations from AWS, GCP, Azure, and Kubernetes via native scanners
-- **Policy Engine** - Cedar-style policies for security evaluation with custom condition support
-- **Parallel Scanning** - High-performance scanning with configurable worker pools
-- **Compliance Frameworks** - Pre-built mappings for SOC 2, CIS, PCI DSS, HIPAA, NIST 800-53
-- **AI Agents** - LLM-powered security investigation with Anthropic Claude and OpenAI GPT
-- **Deep Research Agent** - Code-to-cloud security analysis bridging source code and live cloud inspection
-- **Distributed Job Queue** - SQS + DynamoDB based job system for scalable distributed processing
-- **Identity Governance** - Access reviews, stale access detection, and risk scoring
-- **Attack Path Analysis** - Graph-based visualization of potential attack paths
-- **Integrations** - Jira, Linear, Slack, PagerDuty, and custom webhooks
-- **Scheduled Operations** - Automated scanning with configurable intervals
+### Core Platform
+- **Multi-Source Data Ingestion** — Ingest configurations and events from AWS, GCP, Azure, Kubernetes, and SaaS providers (Salesforce, HubSpot, Stripe, Zendesk, and more) via native scanners
+- **Policy Engine** — Cedar-style JSON policies for evaluation with custom condition support, applicable to any domain
+- **Parallel Scanning** — High-performance scanning with configurable worker pools
+- **Findings Lifecycle** — Generalized signal detection, filtering, suppression, and dashboard views
+- **Distributed Job Queue** — SQS + DynamoDB based job system for scalable distributed processing
+- **Scheduled Operations** — Automated scanning and digest notifications with configurable intervals
+
+### Security
+- **Compliance Frameworks** — Pre-built mappings for SOC 2, CIS, PCI DSS, HIPAA, NIST 800-53
+- **Identity Governance** — Access reviews, stale access detection, and risk scoring
+- **Attack Path Analysis** — Graph-based visualization of potential attack paths
+
+### Business Operations
+- **Business Signal Graph** — Ingest events from Ensemble/NATS streams and map them into a business entity graph with computed policy fields
+- **Impact Path Analysis** — Churn, revenue, and incident scenario analysis with aggregate business metrics and chokepoints
+- **Business Cohort Analysis** — MinHash-based entity clustering with outlier scoring
+- **Composite Posture Scoring** — Per-entity risk scoring with trend/change detection across security and business domains
+- **Cross-System Toxic Combinations** — Detect compound risks spanning security and business systems (e.g., churn risk + elevated access)
+
+### AI & Integrations
+- **AI Agents** — LLM-powered investigation with Anthropic Claude and OpenAI GPT
+- **Deep Research Agent** — Code-to-cloud analysis bridging source code and live cloud inspection
+- **Remote Tool Proxy** — Ensemble NATS-based remote tool execution for distributed agent capabilities
+- **Integrations** — Jira, Linear, Slack, PagerDuty, and custom webhooks
+- **Entity Lineage** — End-to-end provenance tracking and drift detection across business entities
 
 ---
 
@@ -39,6 +56,7 @@ Cerebro is a comprehensive security platform that combines cloud asset discovery
 │                       ┌─────────────▼─────────────┐                        │
 │                       │    Application Container   │                        │
 │                       │  Policy│Scanner│Findings  │                        │
+│                       │  Graph │Lineage│Remediate │                        │
 │                       └─────────────┬─────────────┘                        │
 │                                     │                                       │
 └─────────────────────────────────────┼───────────────────────────────────────┘
@@ -51,7 +69,8 @@ Cerebro is a comprehensive security platform that combines cloud asset discovery
   └───────────┘              └──────────────┘              └───────────┘
         │                           │                             │
   AWS/GCP/Azure              Cloud Providers             Jira/Slack/PD
-  Kubernetes                  SaaS Apps                  Anthropic/OpenAI
+  Kubernetes                 SaaS (SF/HubSpot/           Anthropic/OpenAI
+  NATS/Ensemble              Stripe/Zendesk)             NATS Remote Tools
 ```
 
 ---
@@ -60,8 +79,8 @@ Cerebro is a comprehensive security platform that combines cloud asset discovery
 
 ### Prerequisites
 
-- Go 1.23+
-- Snowflake account
+- Go 1.25+
+- Snowflake account (or use local SQLite mode)
 
 ### Installation
 
@@ -83,8 +102,11 @@ make build
 # Copy environment template
 cp .env.example .env
 
-# Required: Snowflake connection
-export SNOWFLAKE_CONNECTION_STRING="user:pass@account/CEREBRO/CEREBRO"
+# Required: Snowflake key-pair auth
+export SNOWFLAKE_ACCOUNT="myaccount.us-east-1"
+export SNOWFLAKE_USER="CEREBRO_APP"
+export SNOWFLAKE_PRIVATE_KEY="<paste-pem-private-key>"
+export SNOWFLAKE_WAREHOUSE="COMPUTE_WH"
 
 # Optional: AI agents
 export ANTHROPIC_API_KEY="sk-ant-..."
@@ -107,7 +129,7 @@ export CEREBRO_DB_PATH=.cerebro/cerebro.db
 make serve
 ```
 
-In local mode, findings are persisted to SQLite. Snowflake-backed capabilities (for example direct data-lake query endpoints and security graph population) are reduced or unavailable.
+In local mode, findings are persisted to SQLite. Snowflake-backed capabilities (data-lake queries, graph population) are reduced or unavailable.
 
 ### Running
 
@@ -124,6 +146,53 @@ make dev
 
 ---
 
+## Policies
+
+Policies are JSON files defining evaluation checks across any domain:
+
+```json
+{
+    "id": "aws-s3-bucket-no-public-access",
+    "name": "S3 Bucket Public Access",
+    "description": "S3 buckets should not allow public access",
+    "effect": "forbid",
+    "conditions": ["block_public_acls != true"],
+    "severity": "critical",
+    "tags": ["cis-aws-2.1.5", "security", "s3"]
+}
+```
+
+```json
+{
+    "id": "hubspot-stale-deal",
+    "name": "Stale HubSpot Deal",
+    "description": "Open deals with no activity in 30+ days",
+    "effect": "forbid",
+    "conditions": ["days_since_last_activity > 30", "stage != closedwon"],
+    "severity": "high",
+    "tags": ["revops", "hubspot", "pipeline-hygiene"]
+}
+```
+
+### Policy Directory
+
+```
+policies/
+├── aws/           # AWS policies (S3, IAM, EC2, RDS)
+├── gcp/           # GCP policies (Storage, Compute, IAM)
+├── azure/         # Azure policies (Storage, VM)
+├── kubernetes/    # Kubernetes policies (Pods, RBAC)
+├── hubspot/       # HubSpot deal hygiene policies
+├── salesforce/    # Salesforce opportunity policies
+├── stripe/        # Stripe payment and billing policies
+├── zendesk/       # Zendesk SLA and resolution policies
+└── compliance/    # Cross-system compliance policies
+```
+
+See [Policy Documentation](docs/POLICIES.md) for writing custom policies.
+
+---
+
 ## CLI Commands
 
 ```bash
@@ -133,14 +202,14 @@ cerebro serve
 # Start distributed job worker
 cerebro worker
 
-# Run code-to-cloud security analysis
+# Run code-to-cloud analysis
 cerebro agent run --repo-url https://github.com/org/repo
 cerebro agent run --resource arn:aws:s3:::my-bucket --aws-region us-east-1
 
 # Run distributed analysis (enqueue jobs to SQS)
 cerebro agent run --repo-url https://github.com/org/repo --distributed --wait
 
-# Sync cloud data via native scanners
+# Sync data via native scanners
 cerebro sync
 cerebro sync --gcp --gcp-project my-project
 cerebro sync --azure
@@ -179,155 +248,18 @@ cerebro bootstrap
 | `POST /api/v1/agents/sessions/{id}/messages` | Send message to agent |
 | `GET /api/v1/identity/stale-access` | Detect stale access |
 | `POST /api/v1/attack-paths/analyze` | Analyze attack paths |
+| `GET /api/v1/entities/{id}/cohort` | Business entity cohort analysis |
+| `GET /api/v1/entities/{id}/outlier-score` | Entity outlier scoring |
+| `POST /api/v1/impact-analysis` | Business impact path analysis |
 | `POST /api/v1/webhooks` | Register webhook |
 
 See [API Reference](docs/API_REFERENCE.md) for complete documentation.
 
 ---
 
-## Policies
-
-Policies are JSON files defining security checks:
-
-```json
-{
-    "id": "aws-s3-bucket-no-public-access",
-    "name": "S3 Bucket Public Access",
-    "description": "S3 buckets should not allow public access",
-    "effect": "forbid",
-    "conditions": ["block_public_acls != true"],
-    "severity": "critical",
-    "tags": ["cis-aws-2.1.5", "security", "s3"]
-}
-```
-
-### Policy Directory
-
-```
-policies/
-├── aws/           # AWS policies (S3, IAM, EC2, RDS)
-├── gcp/           # GCP policies (Storage, Compute, IAM)
-├── azure/         # Azure policies (Storage, VM)
-└── kubernetes/    # Kubernetes policies (Pods, RBAC)
-```
-
-See [Policy Documentation](docs/POLICIES.md) for writing custom policies.
-
----
-
-## Compliance
-
-### Supported Frameworks
-
-- **SOC 2 Type II** - Trust Services Criteria
-- **CIS AWS Foundations** - v1.4.0 Benchmark
-- **CIS GCP Foundations** - v1.3.0 Benchmark
-- **PCI DSS** - v4.0
-- **HIPAA** - Security Rule
-- **NIST 800-53** - Rev 5
-
-### Pre-Audit Check
-
-```bash
-curl http://localhost:8080/api/v1/compliance/frameworks/soc2/pre-audit
-```
-
-Returns estimated audit outcome, failing controls, and remediation recommendations.
-
----
-
-## AI Agents
-
-Cerebro includes AI-powered security investigation agents:
-
-### Available Agents
-
-| Agent | Provider | Purpose |
-|-------|----------|---------|
-| `security-analyst` | Anthropic Claude | Security finding investigation |
-| `incident-responder` | OpenAI GPT | Incident triage and response |
-
-### Usage
-
-```bash
-# Create session
-curl -X POST http://localhost:8080/api/v1/agents/sessions \
-  -H "Content-Type: application/json" \
-  -d '{"agent_id": "security-analyst", "user_id": "analyst@company.com"}'
-
-# Send message
-curl -X POST http://localhost:8080/api/v1/agents/sessions/{id}/messages \
-  -H "Content-Type: application/json" \
-  -d '{"content": "Investigate the public S3 bucket findings"}'
-```
-
-### Agent Tools
-
-- `query_snowflake` - Execute SQL queries
-- `list_findings` - List security findings
-- `get_asset` - Get asset details
-- `evaluate_policy` - Test policy against asset
-- `search_logs` - Search audit logs
-
----
-
-## Identity & Access Review
-
-### Stale Access Detection
-
-```bash
-curl http://localhost:8080/api/v1/identity/stale-access
-```
-
-Detects:
-- Inactive users (90+ days)
-- Unused access keys
-- Stale service accounts
-
-### Access Reviews
-
-```bash
-# Create review
-curl -X POST http://localhost:8080/api/v1/identity/reviews \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Q1 2024 Access Review",
-    "type": "user_access",
-    "scope": {"providers": ["aws", "gcp"]}
-  }'
-```
-
----
-
-## Webhooks
-
-Register webhooks for real-time event notifications:
-
-```bash
-curl -X POST http://localhost:8080/api/v1/webhooks \
-  -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://example.com/webhook",
-    "events": ["finding.created", "scan.completed"],
-    "secret": "webhook-secret"
-  }'
-```
-
-### Event Types
-
-- `finding.created` / `finding.resolved` / `finding.suppressed`
-- `scan.completed`
-- `review.started` / `review.completed`
-- `attack_path.found`
-- `ticket.created`
-
----
-
 ## Distributed Job System
 
-Cerebro includes a distributed job queue for scalable security analysis across large repositories and cloud environments.
-
-### Architecture
+Cerebro includes a distributed job queue for scalable analysis across large repositories and cloud environments.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -346,15 +278,6 @@ Cerebro includes a distributed job queue for scalable security analysis across l
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Components
-
-- **Job Manager**: Enqueues inspection jobs and tracks batch completion
-- **SQS Queue**: Distributes work with visibility timeout and dead-letter queue
-- **DynamoDB Store**: Persists job state with lease-based claiming for exactly-once execution
-- **Workers**: Poll SQS, claim jobs, execute inspections, update results
-
-### Usage
-
 ```bash
 # Set up infrastructure (via Pulumi)
 cd infra && pulumi up --stack prod
@@ -364,19 +287,7 @@ cerebro agent run --repo-url https://github.com/org/repo --distributed
 
 # Run workers (scale horizontally)
 cerebro worker --concurrency 4
-
-# Or wait for completion
-cerebro agent run --repo-url https://github.com/org/repo --distributed --wait
 ```
-
-### Infrastructure (Pulumi)
-
-The distributed job infrastructure is managed via Pulumi in `infra/`:
-
-- SQS queue with dead-letter queue for failed jobs
-- DynamoDB table with GSI for group/status queries
-- Worker ECS service with auto-scaling based on queue depth
-- CloudWatch alarms for DLQ messages and queue backlog
 
 ---
 
@@ -419,17 +330,31 @@ See [Development Guide](docs/DEVELOPMENT.md) for detailed instructions.
 |----------|-------------|---------|
 | `API_PORT` | Server port | `8080` |
 | `LOG_LEVEL` | Log verbosity | `info` |
-| `SNOWFLAKE_CONNECTION_STRING` | Snowflake DSN | - |
+| `SNOWFLAKE_ACCOUNT` | Snowflake account identifier | - |
+| `SNOWFLAKE_USER` | Snowflake service user | - |
+| `SNOWFLAKE_PRIVATE_KEY` | Snowflake PEM private key | - |
+| `SNOWFLAKE_DATABASE` | Snowflake database | `CEREBRO` |
+| `SNOWFLAKE_SCHEMA` | Snowflake schema | `CEREBRO` |
+| `SNOWFLAKE_WAREHOUSE` | Snowflake warehouse | `COMPUTE_WH` |
 | `POLICIES_PATH` | Policy directory | `policies` |
 | `ANTHROPIC_API_KEY` | Claude API key | - |
 | `OPENAI_API_KEY` | OpenAI API key | - |
+| `API_AUTH_ENABLED` | Require API key auth | `false`* |
+| `API_KEYS` | Comma-separated API keys | - |
+| `RATE_LIMIT_ENABLED` | Enable API rate limiting | `false` |
+| `RATE_LIMIT_REQUESTS` | Requests per rate limit window | `1000` |
+| `RATE_LIMIT_WINDOW` | Rate limit duration window | `1h` |
 | `JIRA_BASE_URL` | Jira instance | - |
 | `SLACK_WEBHOOK_URL` | Slack webhook | - |
 | `SCAN_INTERVAL` | Scan frequency | - |
+| `SECURITY_DIGEST_INTERVAL` | Security digest frequency | - |
 | `JOB_QUEUE_URL` | SQS queue URL for distributed jobs | - |
 | `JOB_TABLE_NAME` | DynamoDB table for job state | - |
 | `JOB_REGION` | AWS region for job infrastructure | - |
 | `JOB_WORKER_CONCURRENCY` | Concurrent jobs per worker | `4` |
+| `NATS_URL` | NATS server URL for event streaming | - |
+
+`*` When `API_KEYS` is set, API auth auto-enables unless explicitly overridden.
 
 See [Configuration](docs/CONFIGURATION.md) for all options.
 
@@ -439,9 +364,10 @@ See [Configuration](docs/CONFIGURATION.md) for all options.
 
 | Component | Technology |
 |-----------|------------|
-| Language | Go 1.23+ |
+| Language | Go 1.25+ |
 | API Framework | Chi |
-| Database | Snowflake |
+| Database | Snowflake / SQLite (local) |
+| Event Streaming | NATS JetStream |
 | Data Ingestion | Native scanners |
 | Policy Engine | Cedar-style JSON |
 | CLI | Cobra |
@@ -452,4 +378,6 @@ See [Configuration](docs/CONFIGURATION.md) for all options.
 
 ## License
 
-Apache 2.0
+Apache 2.0 — see [LICENSE](LICENSE).
+
+Originally developed at [Writer](https://github.com/writer/cerebro).

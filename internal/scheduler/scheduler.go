@@ -2,9 +2,11 @@ package scheduler
 
 import (
 	"context"
+	crand "crypto/rand"
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/big"
 	"runtime/debug"
 	"sync"
 	"time"
@@ -19,15 +21,51 @@ var (
 	ErrSchedulerStopped = errors.New("scheduler not running")
 )
 
+const (
+	defaultJobMaxRetries      = 3
+	defaultJobInitialBackoff  = 5 * time.Second
+	defaultJobMaxRetryBackoff = 1 * time.Minute
+)
+
+var retryJitterFunc = func(base time.Duration) time.Duration {
+	if base <= 0 {
+		return 0
+	}
+	maxJitter := base / 5 // up to 20% jitter
+	if maxJitter <= 0 {
+		return 0
+	}
+	max := int64(maxJitter) + 1
+	n, err := crand.Int(crand.Reader, big.NewInt(max))
+	if err != nil {
+		return 0
+	}
+	return time.Duration(n.Int64())
+}
+
 // Job represents a scheduled task
 type Job struct {
-	Name     string
-	Interval time.Duration
-	Handler  func(ctx context.Context) error
-	LastRun  time.Time
-	NextRun  time.Time
-	Running  bool
-	Enabled  bool
+	Name           string
+	Interval       time.Duration
+	Handler        func(ctx context.Context) error
+	LastRun        time.Time
+	NextRun        time.Time
+	Running        bool
+	Enabled        bool
+	MaxRetries     int
+	InitialBackoff time.Duration
+	MaxBackoff     time.Duration
+	RetryCount     int
+	LastError      string
+
+	removeRequested bool
+}
+
+// JobOptions controls retry behavior for a scheduled job.
+type JobOptions struct {
+	MaxRetries     int
+	InitialBackoff time.Duration
+	MaxBackoff     time.Duration
 }
 
 // Scheduler manages periodic jobs
@@ -51,15 +89,24 @@ func NewScheduler(logger *slog.Logger) *Scheduler {
 
 // AddJob registers a new periodic job
 func (s *Scheduler) AddJob(name string, interval time.Duration, handler func(ctx context.Context) error) {
+	s.AddJobWithOptions(name, interval, handler, JobOptions{})
+}
+
+// AddJobWithOptions registers a new periodic job with retry options.
+func (s *Scheduler) AddJobWithOptions(name string, interval time.Duration, handler func(ctx context.Context) error, options JobOptions) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	options = normalizeJobOptions(options)
 	s.jobs[name] = &Job{
-		Name:     name,
-		Interval: interval,
-		Handler:  handler,
-		NextRun:  time.Now().Add(interval),
-		Enabled:  true,
+		Name:           name,
+		Interval:       interval,
+		Handler:        handler,
+		NextRun:        time.Now().Add(interval),
+		Enabled:        true,
+		MaxRetries:     options.MaxRetries,
+		InitialBackoff: options.InitialBackoff,
+		MaxBackoff:     options.MaxBackoff,
 	}
 }
 
@@ -67,7 +114,15 @@ func (s *Scheduler) AddJob(name string, interval time.Duration, handler func(ctx
 func (s *Scheduler) RemoveJob(name string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	delete(s.jobs, name)
+	job, ok := s.jobs[name]
+	if !ok {
+		return
+	}
+	job.Enabled = false
+	job.removeRequested = true
+	if !job.Running {
+		delete(s.jobs, name)
+	}
 }
 
 // EnableJob enables a job
@@ -169,10 +224,14 @@ func (s *Scheduler) runDueJobs() {
 		s.mu.RLock()
 		jobCtx := s.ctx
 		ctxActive := s.running && jobCtx != nil && jobCtx.Err() == nil
+		removed := job.removeRequested
 		s.mu.RUnlock()
-		if !ctxActive {
+		if !ctxActive || removed {
 			s.mu.Lock()
 			job.Running = false
+			if job.removeRequested {
+				delete(s.jobs, job.Name)
+			}
 			s.mu.Unlock()
 			continue
 		}
@@ -188,31 +247,23 @@ func (s *Scheduler) runJob(ctx context.Context, job *Job) {
 	start := time.Now()
 	s.logger.Info("job started", "job", job.Name)
 
-	// Recover from panics in job handlers to prevent scheduler crash
+	var (
+		runErr     error
+		panicValue any
+		panicStack []byte
+	)
+
+	// Recover from panics in job handlers to prevent scheduler crash.
 	defer func() {
 		if r := recover(); r != nil {
-			s.mu.Lock()
-			job.LastRun = start
-			job.NextRun = time.Now().Add(job.Interval)
-			job.Running = false
-			s.mu.Unlock()
-			s.logger.Error("job panicked", "job", job.Name, "panic", fmt.Sprintf("%v", r), "stack", string(debug.Stack()))
+			panicValue = r
+			panicStack = debug.Stack()
+			runErr = fmt.Errorf("panic: %v", r)
 		}
+		s.finalizeJobRun(start, job, runErr, panicValue, panicStack)
 	}()
 
-	err := job.Handler(ctx)
-
-	s.mu.Lock()
-	job.LastRun = start
-	job.NextRun = time.Now().Add(job.Interval)
-	job.Running = false
-	s.mu.Unlock()
-
-	if err != nil {
-		s.logger.Error("job failed", "job", job.Name, "error", err, "duration", time.Since(start))
-	} else {
-		s.logger.Info("job completed", "job", job.Name, "duration", time.Since(start))
-	}
+	runErr = job.Handler(ctx)
 }
 
 // RunNow triggers a job immediately
@@ -273,12 +324,15 @@ type Status struct {
 }
 
 type JobStatus struct {
-	Name     string     `json:"name"`
-	Interval string     `json:"interval"`
-	LastRun  *time.Time `json:"last_run,omitempty"`
-	NextRun  time.Time  `json:"next_run"`
-	Running  bool       `json:"running"`
-	Enabled  bool       `json:"enabled"`
+	Name       string     `json:"name"`
+	Interval   string     `json:"interval"`
+	LastRun    *time.Time `json:"last_run,omitempty"`
+	NextRun    time.Time  `json:"next_run"`
+	Running    bool       `json:"running"`
+	Enabled    bool       `json:"enabled"`
+	RetryCount int        `json:"retry_count"`
+	MaxRetries int        `json:"max_retries"`
+	LastError  string     `json:"last_error,omitempty"`
 }
 
 func (s *Scheduler) Status() Status {
@@ -292,11 +346,14 @@ func (s *Scheduler) Status() Status {
 
 	for _, j := range s.jobs {
 		js := JobStatus{
-			Name:     j.Name,
-			Interval: j.Interval.String(),
-			NextRun:  j.NextRun,
-			Running:  j.Running,
-			Enabled:  j.Enabled,
+			Name:       j.Name,
+			Interval:   j.Interval.String(),
+			NextRun:    j.NextRun,
+			Running:    j.Running,
+			Enabled:    j.Enabled,
+			RetryCount: j.RetryCount,
+			MaxRetries: j.MaxRetries,
+			LastError:  j.LastError,
 		}
 		if !j.LastRun.IsZero() {
 			js.LastRun = &j.LastRun
@@ -305,4 +362,115 @@ func (s *Scheduler) Status() Status {
 	}
 
 	return status
+}
+
+func (s *Scheduler) finalizeJobRun(start time.Time, job *Job, runErr error, panicValue any, panicStack []byte) {
+	now := time.Now()
+	duration := time.Since(start)
+
+	s.mu.Lock()
+	job.LastRun = start
+	job.Running = false
+
+	if job.removeRequested {
+		delete(s.jobs, job.Name)
+		s.mu.Unlock()
+		if panicValue != nil {
+			s.logger.Error("job panicked", "job", job.Name, "panic", fmt.Sprintf("%v", panicValue), "stack", string(panicStack))
+		}
+		return
+	}
+
+	if runErr == nil {
+		job.RetryCount = 0
+		job.LastError = ""
+		job.NextRun = now.Add(job.Interval)
+		s.mu.Unlock()
+		s.logger.Info("job completed", "job", job.Name, "duration", duration)
+		return
+	}
+
+	job.LastError = runErr.Error()
+	if job.RetryCount < job.MaxRetries {
+		job.RetryCount++
+		retryIn := calculateRetryDelay(job.InitialBackoff, job.MaxBackoff, job.RetryCount)
+		nextRun := now.Add(retryIn)
+		job.NextRun = nextRun
+		attempt := job.RetryCount
+		maxRetries := job.MaxRetries
+		s.mu.Unlock()
+
+		if panicValue != nil {
+			s.logger.Error("job panicked", "job", job.Name, "panic", fmt.Sprintf("%v", panicValue), "stack", string(panicStack))
+		}
+		s.logger.Warn(
+			"job failed, scheduling retry",
+			"job", job.Name,
+			"error", runErr,
+			"attempt", attempt,
+			"max_retries", maxRetries,
+			"retry_in", retryIn,
+			"next_run", nextRun,
+			"duration", duration,
+		)
+		return
+	}
+
+	job.RetryCount = 0
+	job.NextRun = now.Add(job.Interval)
+	s.mu.Unlock()
+
+	if panicValue != nil {
+		s.logger.Error("job panicked", "job", job.Name, "panic", fmt.Sprintf("%v", panicValue), "stack", string(panicStack))
+	}
+	s.logger.Error("job failed", "job", job.Name, "error", runErr, "duration", duration)
+}
+
+func normalizeJobOptions(options JobOptions) JobOptions {
+	if options.MaxRetries <= 0 {
+		options.MaxRetries = defaultJobMaxRetries
+	}
+	if options.InitialBackoff <= 0 {
+		options.InitialBackoff = defaultJobInitialBackoff
+	}
+	if options.MaxBackoff <= 0 {
+		options.MaxBackoff = defaultJobMaxRetryBackoff
+	}
+	if options.MaxBackoff < options.InitialBackoff {
+		options.MaxBackoff = options.InitialBackoff
+	}
+	return options
+}
+
+func calculateRetryDelay(initialBackoff, maxBackoff time.Duration, attempt int) time.Duration {
+	if initialBackoff <= 0 {
+		initialBackoff = defaultJobInitialBackoff
+	}
+	if maxBackoff <= 0 {
+		maxBackoff = defaultJobMaxRetryBackoff
+	}
+	if maxBackoff < initialBackoff {
+		maxBackoff = initialBackoff
+	}
+	if attempt < 1 {
+		attempt = 1
+	}
+
+	delay := initialBackoff
+	for i := 1; i < attempt; i++ {
+		delay *= 2
+		if delay >= maxBackoff {
+			delay = maxBackoff
+			break
+		}
+	}
+	if delay > maxBackoff {
+		delay = maxBackoff
+	}
+
+	jitter := retryJitterFunc(delay)
+	if jitter < 0 {
+		jitter = 0
+	}
+	return delay + jitter
 }

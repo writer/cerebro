@@ -30,7 +30,7 @@ type ServiceNowProvider struct {
 func NewServiceNowProvider() *ServiceNowProvider {
 	return &ServiceNowProvider{
 		BaseProvider: NewBaseProvider("servicenow", ProviderTypeSaaS),
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

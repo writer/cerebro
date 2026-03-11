@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -11,6 +12,9 @@ import (
 )
 
 var (
+	graphLastUpdateMu       sync.Mutex
+	graphLastUpdateUnixNano atomic.Int64
+
 	// Findings metrics
 	FindingsTotal = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -43,7 +47,7 @@ var (
 			Name: "cerebro_syncs_total",
 			Help: "Total number of sync operations",
 		},
-		[]string{"provider", "table", "region", "status"},
+		[]string{"provider", "status"},
 	)
 
 	SyncDuration = prometheus.NewHistogramVec(
@@ -52,7 +56,7 @@ var (
 			Help:    "Duration of sync operations",
 			Buckets: prometheus.ExponentialBuckets(0.1, 2, 10),
 		},
-		[]string{"provider", "table", "region"},
+		[]string{"provider"},
 	)
 
 	SyncRows = prometheus.NewCounterVec(
@@ -60,7 +64,7 @@ var (
 			Name: "cerebro_sync_rows_total",
 			Help: "Total number of rows synced",
 		},
-		[]string{"provider", "table", "region"},
+		[]string{"provider"},
 	)
 
 	SyncErrors = prometheus.NewCounterVec(
@@ -68,7 +72,7 @@ var (
 			Name: "cerebro_sync_errors_total",
 			Help: "Total number of sync errors",
 		},
-		[]string{"provider", "table", "region"},
+		[]string{"provider"},
 	)
 
 	ScanDuration = prometheus.NewHistogramVec(
@@ -176,6 +180,14 @@ var (
 		[]string{"policy_id", "result"},
 	)
 
+	PolicyQueryTruncatedTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_policy_query_truncated_total",
+			Help: "Total number of query policy scans where row limit truncation was detected",
+		},
+		[]string{"policy_id"},
+	)
+
 	// Webhook metrics
 	WebhookDeliveriesTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -249,6 +261,67 @@ var (
 		[]string{"stream", "level"},
 	)
 
+	NATSConsumerDroppedTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_nats_consumer_dropped_total",
+			Help: "Total number of NATS consumer messages dropped after successful dead-letter quarantine",
+		},
+		[]string{"stream", "durable", "reason"},
+	)
+
+	NATSConsumerRedeliveriesTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_nats_consumer_redeliveries_total",
+			Help: "Total number of NATS consumer redeliveries observed",
+		},
+		[]string{"stream", "durable"},
+	)
+
+	NATSConsumerLag = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "cerebro_nats_consumer_lag",
+			Help: "Current NATS consumer lag measured as pending plus ack-pending messages",
+		},
+		[]string{"stream", "durable"},
+	)
+
+	NATSConsumerLagSeconds = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "cerebro_nats_consumer_lag_seconds",
+			Help: "Estimated NATS consumer lag in seconds between the stream head and the last processed event time",
+		},
+		[]string{"stream", "durable"},
+	)
+
+	GraphBuildStatus = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "cerebro_graph_build_status",
+			Help: "Graph build status (0 not_started, 1 building, 2 success, 3 failed)",
+		},
+	)
+
+	GraphLastUpdateTimestamp = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "cerebro_graph_last_update_timestamp",
+			Help: "Unix timestamp of the most recent successful graph update",
+		},
+	)
+
+	GraphStalenessSeconds = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "cerebro_graph_staleness_seconds",
+			Help: "Age in seconds of the most recent successful graph update",
+		},
+	)
+
+	EventProcessingDuration = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "cerebro_event_processing_duration_seconds",
+			Help:    "End-to-end duration from event timestamp to successful graph processing",
+			Buckets: prometheus.ExponentialBuckets(0.1, 2, 12),
+		},
+	)
+
 	// Notification metrics
 	NotificationsSent = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -309,6 +382,68 @@ var (
 		[]string{"type"},
 	)
 
+	GraphOutcomeEventsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_graph_outcome_events_total",
+			Help: "Total number of graph outcome events by status",
+		},
+		[]string{"status"},
+	)
+
+	GraphRuleDiscoveryCandidatesTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_graph_rule_discovery_candidates_total",
+			Help: "Total number of graph rule discovery candidates by type and status",
+		},
+		[]string{"type", "status"},
+	)
+
+	GraphRuleDecisionsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_graph_rule_decisions_total",
+			Help: "Total number of graph rule review decisions by type and resulting status",
+		},
+		[]string{"type", "status"},
+	)
+
+	GraphCrossTenantIngestRequestsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_graph_cross_tenant_ingest_requests_total",
+			Help: "Total number of cross-tenant ingest requests by result",
+		},
+		[]string{"result"},
+	)
+
+	GraphCrossTenantIngestSamplesTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_graph_cross_tenant_ingest_samples_total",
+			Help: "Total number of cross-tenant ingest samples by result",
+		},
+		[]string{"result"},
+	)
+
+	GraphCrossTenantPatterns = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "cerebro_graph_cross_tenant_patterns",
+			Help: "Current number of cross-tenant aggregate patterns returned by API",
+		},
+	)
+
+	GraphCrossTenantMatches = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "cerebro_graph_cross_tenant_matches",
+			Help: "Current number of cross-tenant matches returned by API",
+		},
+	)
+
+	GraphStatePersistenceTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_graph_state_persistence_total",
+			Help: "Total number of risk-engine state persistence operations by result",
+		},
+		[]string{"result"},
+	)
+
 	// Build info
 	BuildInfo = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -354,6 +489,7 @@ func Register() {
 			PoliciesLoadedByType,
 			QueryOnlyPoliciesLoaded,
 			PolicyEvaluationsTotal,
+			PolicyQueryTruncatedTotal,
 			// Webhooks
 			WebhookDeliveriesTotal,
 			WebhookDeliveryDuration,
@@ -364,6 +500,14 @@ func Register() {
 			JetStreamPublisherReady,
 			JetStreamOutboxBackpressureLevel,
 			JetStreamBackpressureAlertsTotal,
+			NATSConsumerDroppedTotal,
+			NATSConsumerRedeliveriesTotal,
+			NATSConsumerLag,
+			NATSConsumerLagSeconds,
+			GraphBuildStatus,
+			GraphLastUpdateTimestamp,
+			GraphStalenessSeconds,
+			EventProcessingDuration,
 			// Notifications
 			NotificationsSent,
 			// Scheduler
@@ -374,6 +518,15 @@ func Register() {
 			ComplianceExportsTotal,
 			// Identity
 			StaleAccessFindings,
+			// Graph intelligence
+			GraphOutcomeEventsTotal,
+			GraphRuleDiscoveryCandidatesTotal,
+			GraphRuleDecisionsTotal,
+			GraphCrossTenantIngestRequestsTotal,
+			GraphCrossTenantIngestSamplesTotal,
+			GraphCrossTenantPatterns,
+			GraphCrossTenantMatches,
+			GraphStatePersistenceTotal,
 			// Build
 			BuildInfo,
 		)
@@ -403,17 +556,20 @@ func RecordSyncMetrics(provider, table, region string, duration time.Duration, r
 	if errorCount > 0 {
 		status = "error"
 	}
-	regionLabel := normalizeRegion(region)
-	SyncsTotal.WithLabelValues(provider, table, regionLabel, status).Inc()
-	SyncDuration.WithLabelValues(provider, table, regionLabel).Observe(duration.Seconds())
-	SyncRows.WithLabelValues(provider, table, regionLabel).Add(float64(rows))
+	_ = table
+	_ = region
+	providerLabel := normalizeProvider(provider)
+	SyncsTotal.WithLabelValues(providerLabel, status).Inc()
+	SyncDuration.WithLabelValues(providerLabel).Observe(duration.Seconds())
+	SyncRows.WithLabelValues(providerLabel).Add(float64(rows))
 	if errorCount > 0 {
-		SyncErrors.WithLabelValues(provider, table, regionLabel).Add(float64(errorCount))
+		SyncErrors.WithLabelValues(providerLabel).Add(float64(errorCount))
 	}
 }
 
 // RecordHTTPRequest records metrics for an HTTP request
 func RecordHTTPRequest(method, path string, status int, duration time.Duration) {
+	path = normalizeMetricPath(path)
 	HTTPRequestsTotal.WithLabelValues(method, path, statusBucket(status)).Inc()
 	HTTPRequestDuration.WithLabelValues(method, path).Observe(duration.Seconds())
 }
@@ -439,6 +595,14 @@ func SetPolicyLoadMetrics(totalPolicies, queryOnlyPolicies int) {
 	PoliciesLoadedByType.WithLabelValues("condition_resource").Set(float64(conditionPolicies))
 	PoliciesLoadedByType.WithLabelValues("query_only").Set(float64(queryOnlyPolicies))
 	QueryOnlyPoliciesLoaded.Set(float64(queryOnlyPolicies))
+}
+
+func RecordPolicyQueryTruncation(policyID string) {
+	policyID = strings.TrimSpace(policyID)
+	if policyID == "" {
+		policyID = "unknown"
+	}
+	PolicyQueryTruncatedTotal.WithLabelValues(policyID).Inc()
 }
 
 // SetProviderCountMetrics sets provider inventory gauges.
@@ -469,6 +633,71 @@ func RecordScheduledAuthPreflight(provider, authMethod string, success bool) {
 		authMethod = "unknown"
 	}
 	ScheduledAuthPreflightTotal.WithLabelValues(provider, authMethod, status).Inc()
+}
+
+func RecordGraphOutcome(status string) {
+	status = strings.TrimSpace(status)
+	if status == "" {
+		status = "unknown"
+	}
+	GraphOutcomeEventsTotal.WithLabelValues(status).Inc()
+}
+
+func RecordGraphRuleDiscoveryCandidate(ruleType, status string) {
+	ruleType = strings.TrimSpace(strings.ToLower(ruleType))
+	if ruleType == "" {
+		ruleType = "unknown"
+	}
+	status = strings.TrimSpace(strings.ToLower(status))
+	if status == "" {
+		status = "unknown"
+	}
+	GraphRuleDiscoveryCandidatesTotal.WithLabelValues(ruleType, status).Inc()
+}
+
+func RecordGraphRuleDecision(ruleType, status string) {
+	ruleType = strings.TrimSpace(strings.ToLower(ruleType))
+	if ruleType == "" {
+		ruleType = "unknown"
+	}
+	status = strings.TrimSpace(strings.ToLower(status))
+	if status == "" {
+		status = "unknown"
+	}
+	GraphRuleDecisionsTotal.WithLabelValues(ruleType, status).Inc()
+}
+
+func RecordGraphCrossTenantIngest(result string, samples int) {
+	result = strings.TrimSpace(strings.ToLower(result))
+	if result == "" {
+		result = "unknown"
+	}
+	GraphCrossTenantIngestRequestsTotal.WithLabelValues(result).Inc()
+	if samples > 0 {
+		GraphCrossTenantIngestSamplesTotal.WithLabelValues(result).Add(float64(samples))
+	}
+}
+
+func RecordGraphCrossTenantPatterns(count int) {
+	if count < 0 {
+		count = 0
+	}
+	GraphCrossTenantPatterns.Set(float64(count))
+}
+
+func RecordGraphCrossTenantMatches(count int) {
+	if count < 0 {
+		count = 0
+	}
+	GraphCrossTenantMatches.Set(float64(count))
+}
+
+func RecordGraphStatePersistence(result string) {
+	result = strings.TrimSpace(strings.ToLower(result))
+	if result == "" {
+		result = "unknown"
+	}
+	GraphStatePersistenceTotal.WithLabelValues(result).Inc()
 }
 
 func RecordJetStreamPublish(stream, result string) {
@@ -523,6 +752,98 @@ func SetJetStreamPublisherReady(stream string, ready bool) {
 		return
 	}
 	JetStreamPublisherReady.WithLabelValues(stream).Set(0)
+}
+
+func RecordNATSConsumerRedelivery(stream, durable string) {
+	if strings.TrimSpace(stream) == "" {
+		stream = "unknown"
+	}
+	if strings.TrimSpace(durable) == "" {
+		durable = "unknown"
+	}
+	NATSConsumerRedeliveriesTotal.WithLabelValues(stream, durable).Inc()
+}
+
+func SetNATSConsumerLag(stream, durable string, lag int) {
+	if strings.TrimSpace(stream) == "" {
+		stream = "unknown"
+	}
+	if strings.TrimSpace(durable) == "" {
+		durable = "unknown"
+	}
+	if lag < 0 {
+		lag = 0
+	}
+	NATSConsumerLag.WithLabelValues(stream, durable).Set(float64(lag))
+}
+
+func SetNATSConsumerLagSeconds(stream, durable string, lag time.Duration) {
+	if strings.TrimSpace(stream) == "" {
+		stream = "unknown"
+	}
+	if strings.TrimSpace(durable) == "" {
+		durable = "unknown"
+	}
+	if lag < 0 {
+		lag = 0
+	}
+	NATSConsumerLagSeconds.WithLabelValues(stream, durable).Set(lag.Seconds())
+}
+
+func SetGraphBuildStatus(status string) {
+	value := 0.0
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "building":
+		value = 1
+	case "success", "succeeded", "healthy":
+		value = 2
+	case "failed", "error":
+		value = 3
+	default:
+		value = 0
+	}
+	GraphBuildStatus.Set(value)
+}
+
+func SetGraphLastUpdate(at time.Time) {
+	graphLastUpdateMu.Lock()
+	defer graphLastUpdateMu.Unlock()
+
+	if at.IsZero() {
+		graphLastUpdateUnixNano.Store(0)
+		GraphLastUpdateTimestamp.Set(0)
+		GraphStalenessSeconds.Set(0)
+		return
+	}
+	at = at.UTC()
+	targetUnixNano := at.UnixNano()
+	for {
+		current := graphLastUpdateUnixNano.Load()
+		if current >= targetUnixNano {
+			targetUnixNano = current
+			break
+		}
+		if graphLastUpdateUnixNano.CompareAndSwap(current, targetUnixNano) {
+			break
+		}
+	}
+	effectiveAt := time.Unix(0, targetUnixNano).UTC()
+	GraphLastUpdateTimestamp.Set(float64(effectiveAt.Unix()))
+	SetGraphStaleness(time.Since(effectiveAt))
+}
+
+func SetGraphStaleness(age time.Duration) {
+	if age < 0 {
+		age = 0
+	}
+	GraphStalenessSeconds.Set(age.Seconds())
+}
+
+func ObserveEventProcessingDuration(duration time.Duration) {
+	if duration < 0 {
+		return
+	}
+	EventProcessingDuration.Observe(duration.Seconds())
 }
 
 func SetJetStreamOutboxBackpressureLevel(stream, level string) {
@@ -592,9 +913,39 @@ func statusBucket(status int) string {
 	}
 }
 
-func normalizeRegion(region string) string {
-	if region == "" {
-		return "global"
+func normalizeProvider(provider string) string {
+	if strings.TrimSpace(provider) == "" {
+		return "unknown"
 	}
-	return region
+	return provider
+}
+
+func normalizeMetricPath(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "/"
+	}
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	if len(path) > 1 {
+		path = strings.TrimRight(path, "/")
+	}
+
+	switch {
+	case strings.HasPrefix(path, "/api/v1/assets/"):
+		return "/api/v1/assets/{table}"
+	case strings.HasPrefix(path, "/api/v1/policies/"):
+		return "/api/v1/policies/{id}"
+	case strings.HasPrefix(path, "/api/v1/findings/"):
+		return "/api/v1/findings/{id}"
+	case strings.HasPrefix(path, "/api/v1/"):
+		parts := strings.Split(strings.Trim(path, "/"), "/")
+		if len(parts) >= 4 {
+			return "/" + strings.Join(parts[:3], "/") + "/{subpath}"
+		}
+		return path
+	default:
+		return path
+	}
 }
