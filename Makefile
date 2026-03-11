@@ -1,4 +1,4 @@
-.PHONY: build run test sync clean dev serve policy-list docker-build trivy-db security-scan security-scan-built security-scan-source vendor vendor-check oss-audit openapi-check openapi-sync config-docs config-docs-check ontology-docs ontology-docs-check cloudevents-docs cloudevents-docs-check cloudevents-contract-compat report-contract-docs report-contract-docs-check report-contract-compat entity-facet-docs entity-facet-docs-check entity-facet-contract-compat agent-sdk-docs agent-sdk-docs-check agent-sdk-contract-compat agent-sdk-packages agent-sdk-packages-check platform-up platform-down platform-logs platform-smoke hooks
+.PHONY: build run test sync clean dev serve policy-list docker-build trivy-db security-scan security-scan-built security-scan-source vendor vendor-check oss-audit openapi-check openapi-sync config-docs config-docs-check ontology-docs ontology-docs-check cloudevents-docs cloudevents-docs-check cloudevents-contract-compat report-contract-docs report-contract-docs-check report-contract-compat entity-facet-docs entity-facet-docs-check entity-facet-contract-compat agent-sdk-docs agent-sdk-docs-check agent-sdk-contract-compat agent-sdk-packages agent-sdk-packages-check graph-ontology-guardrails gosec govulncheck devex-changed devex-pr platform-up platform-down platform-logs platform-smoke hooks
 
 # Version info
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -33,6 +33,14 @@ test:
 lint:
 	golangci-lint run --timeout 5m ./...
 
+gosec:
+	$(GO_BIN)/gosec -quiet -severity medium -confidence medium -exclude-generated ./...
+
+govulncheck: build
+	go build -o bin/policy-enhancer ./cmd/policy-enhancer
+	$(GO_BIN)/govulncheck -mode binary ./bin/cerebro
+	$(GO_BIN)/govulncheck -mode binary ./bin/policy-enhancer
+
 # Format code
 fmt:
 	goimports -w $$(find . -name '*.go' -not -path './vendor/*')
@@ -44,11 +52,11 @@ sync: build
 
 # List policies
 policy-list: build
-	./bin/cerebro policy list
+	CEREBRO_CLI_MODE=direct ./bin/cerebro policy list
 
 # Validate policies
 policy-validate: build
-	./bin/cerebro policy validate
+	CEREBRO_CLI_MODE=direct ./bin/cerebro policy validate
 
 # Execute a query (usage: make query SQL="SELECT * FROM aws_s3_buckets")
 query: build
@@ -192,6 +200,15 @@ agent-sdk-packages-check: agent-sdk-packages
 	python3 -m py_compile sdk/python/cerebro_sdk/*.py
 	python3 -c 'import pathlib,tomllib; tomllib.load(pathlib.Path("sdk/python/pyproject.toml").open("rb"))'
 	npx --yes -p typescript tsc -p sdk/typescript/tsconfig.json --noEmit
+
+graph-ontology-guardrails:
+	go test ./internal/graphingest -run 'TestMapperContractFixtures|TestMapperSourceDomainCoverageGuardrails' -count=1
+
+devex-changed:
+	python3 ./scripts/devex.py run --mode changed
+
+devex-pr:
+	python3 ./scripts/devex.py run --mode pr
 
 # Docker run
 docker-run:

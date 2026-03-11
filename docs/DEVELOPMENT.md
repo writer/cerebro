@@ -64,12 +64,41 @@ make config-docs
 # Verify generated env-var docs are committed (drift check)
 make config-docs-check
 
+# Plan the local checks implied by your current diff
+python3 scripts/devex.py plan --mode changed
+
+# Run changed-file-aware local preflight against origin/main
+make devex-changed
+
+# Run broader PR-parity local preflight
+make devex-pr
+
 # Run go:generate directives for generated artifacts
 go generate ./internal/app ./internal/api
 
 # Reuse shared test helpers (logger/context)
 go test ./internal/testutil
 ```
+
+### DevEx Workflow
+
+- `make devex-changed`
+  - Detects the checks implied by the current diff against `origin/main`
+  - Runs targeted `go test` / `golangci-lint` on changed Go package directories
+  - Runs only the relevant generated-doc, contract-compat, OpenAPI, policy, or vendor checks
+- `make devex-pr`
+  - Runs a broader local PR preflight:
+  - full `go test ./... -count=1`
+  - full `golangci-lint`
+  - generated artifact drift checks
+  - contract compatibility checks against `origin/main`
+  - `gosec` and `govulncheck`
+- `python3 scripts/devex.py plan --mode changed --json`
+  - Emits a machine-readable execution plan for editor integrations or custom tooling
+- `.githooks/pre-push`
+  - Runs `python3 ./scripts/devex.py run --mode changed --base-ref origin/main`
+  - Set `CEREBRO_SKIP_PRE_PUSH=1` to skip explicitly when needed
+  - Set `CEREBRO_DEVEX_BASE_REF=<ref>` to override the comparison baseline
 
 ### Building
 

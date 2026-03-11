@@ -5,6 +5,50 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 35 - DevEx Preflight + Hook Automation + Local PR Parity (2026-03-10)
+
+### Review findings
+- [ ] Gap: contract-heavy development now spans too many separate `make` targets and CI jobs for a contributor to infer the right local preflight from memory.
+- [ ] Gap: the repository had a strong staged-file `pre-commit` hook, but no corresponding `pre-push` guard for generated-artifact drift, contract compatibility, or broader changed-file validation.
+- [ ] Gap: CI workflow knowledge lived primarily in `.github/workflows/ci.yml`, not in an inspectable local runner that developers and tooling could plan against.
+- [ ] Gap: the development guide documented individual checks, but not the higher-level “changed diff preflight vs full PR preflight” workflow that now matters more than any single command.
+
+### Execution plan
+- [ ] Add a first-class DevEx preflight runner:
+  - [ ] add `scripts/devex.py plan --mode changed|pr`
+  - [ ] add `scripts/devex.py run --mode changed|pr`
+  - [ ] support explicit file lists for editor/tool integrations
+  - [ ] support baseline-aware contract compatibility execution against `origin/main`
+- [ ] Add stable local entry points:
+  - [ ] add `make devex-changed`
+  - [ ] add `make devex-pr`
+  - [ ] add missing local parity targets for `graph-ontology-guardrails`, `gosec`, and `govulncheck`
+- [ ] Add hook automation:
+  - [ ] keep fast staged-file linting in `.githooks/pre-commit`
+  - [ ] add `.githooks/pre-push` to run changed-file-aware DevEx preflight
+  - [ ] support explicit skip and base-ref overrides for controlled exceptions
+- [ ] Tighten docs and workflow tests:
+  - [ ] document the DevEx workflow in `docs/DEVELOPMENT.md`
+  - [ ] add static tests for Make targets, hooks, and documented commands
+  - [ ] add a regression test that exercises `scripts/devex.py plan` against representative changed files
+
+### Detailed follow-on backlog
+- [ ] Track A - CI/local parity convergence
+  - Exit criteria:
+  - [ ] move more duplicated CI shell logic behind reusable Make/DevEx entry points
+  - [ ] expose a machine-readable CI-to-local command map for editor integrations
+  - [ ] keep local and CI contract-baseline behavior aligned
+- [ ] Track B - Smarter changed-scope execution
+  - Exit criteria:
+  - [ ] expand changed-file routing to more graph/report/SDK families without overfiring checks
+  - [ ] add package dependency awareness so changed Go tests can include directly affected dependents where useful
+  - [ ] add optional JSON output meant for IDE task runners
+- [ ] Track C - PR review-loop tooling
+  - Exit criteria:
+  - [ ] script recurring `gh` review-thread + check monitoring into a reusable local command
+  - [ ] expose “new unresolved feedback since last poll” summaries instead of raw thread dumps
+  - [ ] keep the review loop cheap enough to run continuously during active PR cycles
+
 ## Deep Review Cycle 34 - Asset Subresource Promotion + Facet Contract Governance + Bucket Support Normalization (2026-03-10)
 
 ### Review findings

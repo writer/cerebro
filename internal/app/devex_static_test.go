@@ -1,12 +1,14 @@
 package app
 
 import (
+	"encoding/json"
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -30,6 +32,26 @@ func TestPreCommitHookRunsFastLintOnStagedGoFiles(t *testing.T) {
 	}
 	if !strings.Contains(text, "STAGED_PACKAGE_DIRS") {
 		t.Fatalf("expected pre-commit hook to lint staged package directories")
+	}
+}
+
+func TestPrePushHookRunsChangedDevexPreflight(t *testing.T) {
+	root := repoRoot(t)
+	hookPath := filepath.Join(root, ".githooks", "pre-push")
+	content, err := os.ReadFile(hookPath)
+	if err != nil {
+		t.Fatalf("read pre-push hook: %v", err)
+	}
+	text := string(content)
+
+	if !strings.Contains(text, "python3 ./scripts/devex.py run --mode changed") {
+		t.Fatalf("expected pre-push hook to run changed-file DevEx preflight")
+	}
+	if !strings.Contains(text, "CEREBRO_SKIP_PRE_PUSH") {
+		t.Fatalf("expected pre-push hook to allow explicit skip")
+	}
+	if !strings.Contains(text, "CEREBRO_DEVEX_BASE_REF") {
+		t.Fatalf("expected pre-push hook to support an override base ref")
 	}
 }
 
@@ -138,6 +160,23 @@ func TestDockerBuildCommandsPassGoVersionBuildArg(t *testing.T) {
 	if !strings.Contains(makefileText, "docker build --build-arg GO_VERSION=$(GO_VERSION) -f Dockerfile -t $(SECURITY_SCAN_IMAGE) .") {
 		t.Fatalf("expected Makefile security scan image build to pass GO_VERSION build arg")
 	}
+	for _, target := range []string{"gosec:", "govulncheck:", "graph-ontology-guardrails:", "devex-changed:", "devex-pr:"} {
+		if !strings.Contains(makefileText, "\n"+target) {
+			t.Fatalf("expected Makefile to define %s", strings.TrimSuffix(target, ":"))
+		}
+	}
+	if !strings.Contains(makefileText, "python3 ./scripts/devex.py run --mode changed") {
+		t.Fatalf("expected Makefile devex-changed target to invoke scripts/devex.py")
+	}
+	if !strings.Contains(makefileText, "python3 ./scripts/devex.py run --mode pr") {
+		t.Fatalf("expected Makefile devex-pr target to invoke scripts/devex.py")
+	}
+	if !strings.Contains(makefileText, "CEREBRO_CLI_MODE=direct ./bin/cerebro policy validate") {
+		t.Fatalf("expected Makefile policy-validate target to force direct CLI mode")
+	}
+	if !strings.Contains(makefileText, "CEREBRO_CLI_MODE=direct ./bin/cerebro policy list") {
+		t.Fatalf("expected Makefile policy-list target to force direct CLI mode")
+	}
 
 	ciPath := filepath.Join(root, ".github", "workflows", "ci.yml")
 	ciContent, err := os.ReadFile(ciPath)
@@ -184,6 +223,73 @@ func TestGoGenerateDirectivesForGeneratedArtifacts(t *testing.T) {
 	devGuideText := string(devGuideContent)
 	if !strings.Contains(devGuideText, "go generate ./internal/app ./internal/api") {
 		t.Fatalf("expected DEVELOPMENT.md to document go generate workflow")
+	}
+}
+
+func TestDevelopmentGuideDocumentsDevexPreflight(t *testing.T) {
+	root := repoRoot(t)
+	devGuidePath := filepath.Join(root, "docs", "DEVELOPMENT.md")
+	content, err := os.ReadFile(devGuidePath)
+	if err != nil {
+		t.Fatalf("read DEVELOPMENT.md: %v", err)
+	}
+	text := string(content)
+
+	for _, needle := range []string{"make devex-changed", "make devex-pr", "python3 scripts/devex.py plan --mode changed"} {
+		if !strings.Contains(text, needle) {
+			t.Fatalf("expected DEVELOPMENT.md to document %s", needle)
+		}
+	}
+}
+
+func TestDevexScriptPlansRelevantChecks(t *testing.T) {
+	root := repoRoot(t)
+	cmd := exec.Command("python3", "./scripts/devex.py", "plan", "--mode", "changed", "--json", "--files", "api/openapi.yaml", "internal/graph/entity_facets.go", ".githooks/pre-push")
+	cmd.Dir = root
+	output, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("run scripts/devex.py: %v", err)
+	}
+
+	var plan struct {
+		Steps []struct {
+			Key string `json:"key"`
+		} `json:"steps"`
+	}
+	if err := json.Unmarshal(output, &plan); err != nil {
+		t.Fatalf("decode devex plan: %v", err)
+	}
+	keys := make(map[string]struct{}, len(plan.Steps))
+	for _, step := range plan.Steps {
+		keys[step.Key] = struct{}{}
+	}
+	for _, expected := range []string{"changed-go-tests", "changed-go-lint", "openapi-check", "entity-facet-docs-check", "entity-facet-contract-compat", "devex-static-tests"} {
+		if _, ok := keys[expected]; !ok {
+			t.Fatalf("expected devex plan to include %q, got %#v", expected, keys)
+		}
+	}
+}
+
+func TestDevexScriptChangedModeIncludesWorkspaceDiffSources(t *testing.T) {
+	root := repoRoot(t)
+	path := filepath.Join(root, "scripts", "devex.py")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read scripts/devex.py: %v", err)
+	}
+	text := string(content)
+
+	for _, needle := range []string{
+		"merge-base\", \"HEAD\", base_ref",
+		"run_git([\"diff\", \"--name-only\", \"--diff-filter=ACMRTUXB\", f\"{merge_base}...HEAD\"])",
+		"run_git([\"diff\", \"--name-only\", \"--diff-filter=ACMRTUXB\"])",
+		"run_git([\"diff\", \"--cached\", \"--name-only\", \"--diff-filter=ACMRTUXB\"])",
+		"run_git([\"ls-files\", \"--others\", \"--exclude-standard\"])",
+		"DevexScriptChangedModeIncludesWorkspaceDiffSources",
+	} {
+		if !strings.Contains(text, needle) {
+			t.Fatalf("expected scripts/devex.py to include %s", needle)
+		}
 	}
 }
 
