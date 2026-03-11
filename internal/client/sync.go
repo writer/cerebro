@@ -76,12 +76,15 @@ func (c *Client) RunAzureSync(ctx context.Context, req AzureSyncRequest) (*SyncR
 }
 
 type AWSSyncRequest struct {
-	Profile     string
-	Region      string
-	MultiRegion bool
-	Concurrency int
-	Tables      []string
-	Validate    bool
+	Profile                                string
+	Region                                 string
+	MultiRegion                            bool
+	Concurrency                            int
+	Tables                                 []string
+	Validate                               bool
+	PermissionUsageLookbackDays            int
+	AWSIdentityCenterPermissionSetsInclude []string
+	AWSIdentityCenterPermissionSetsExclude []string
 }
 
 func (c *Client) RunAWSSync(ctx context.Context, req AWSSyncRequest) (*SyncRunResponse, error) {
@@ -120,6 +123,40 @@ func (c *Client) RunAWSSync(ctx context.Context, req AWSSyncRequest) (*SyncRunRe
 		}
 		reqBody["validate"] = true
 	}
+	if req.PermissionUsageLookbackDays > 0 {
+		if reqBody == nil {
+			reqBody = make(map[string]interface{}, 1)
+		}
+		reqBody["permission_usage_lookback_days"] = req.PermissionUsageLookbackDays
+	}
+	if len(req.AWSIdentityCenterPermissionSetsInclude) > 0 {
+		include := make([]string, 0, len(req.AWSIdentityCenterPermissionSetsInclude))
+		for _, value := range req.AWSIdentityCenterPermissionSetsInclude {
+			if trimmed := strings.TrimSpace(value); trimmed != "" {
+				include = append(include, trimmed)
+			}
+		}
+		if len(include) > 0 {
+			if reqBody == nil {
+				reqBody = make(map[string]interface{}, 1)
+			}
+			reqBody["aws_identity_center_permission_sets_include"] = include
+		}
+	}
+	if len(req.AWSIdentityCenterPermissionSetsExclude) > 0 {
+		exclude := make([]string, 0, len(req.AWSIdentityCenterPermissionSetsExclude))
+		for _, value := range req.AWSIdentityCenterPermissionSetsExclude {
+			if trimmed := strings.TrimSpace(value); trimmed != "" {
+				exclude = append(exclude, trimmed)
+			}
+		}
+		if len(exclude) > 0 {
+			if reqBody == nil {
+				reqBody = make(map[string]interface{}, 1)
+			}
+			reqBody["aws_identity_center_permission_sets_exclude"] = exclude
+		}
+	}
 
 	var resp SyncRunResponse
 	if err := c.doJSON(ctx, http.MethodPost, "/api/v1/sync/aws", nil, reqBody, &resp); err != nil {
@@ -129,16 +166,19 @@ func (c *Client) RunAWSSync(ctx context.Context, req AWSSyncRequest) (*SyncRunRe
 }
 
 type AWSOrgSyncRequest struct {
-	Profile            string
-	Region             string
-	MultiRegion        bool
-	Concurrency        int
-	Tables             []string
-	Validate           bool
-	OrgRole            string
-	IncludeAccounts    []string
-	ExcludeAccounts    []string
-	AccountConcurrency int
+	Profile                                string
+	Region                                 string
+	MultiRegion                            bool
+	Concurrency                            int
+	Tables                                 []string
+	Validate                               bool
+	OrgRole                                string
+	IncludeAccounts                        []string
+	ExcludeAccounts                        []string
+	AccountConcurrency                     int
+	PermissionUsageLookbackDays            int
+	AWSIdentityCenterPermissionSetsInclude []string
+	AWSIdentityCenterPermissionSetsExclude []string
 }
 
 func (c *Client) RunAWSOrgSync(ctx context.Context, req AWSOrgSyncRequest) (*SyncRunResponse, error) {
@@ -217,6 +257,40 @@ func (c *Client) RunAWSOrgSync(ctx context.Context, req AWSOrgSyncRequest) (*Syn
 		}
 		reqBody["account_concurrency"] = req.AccountConcurrency
 	}
+	if req.PermissionUsageLookbackDays > 0 {
+		if reqBody == nil {
+			reqBody = make(map[string]interface{}, 1)
+		}
+		reqBody["permission_usage_lookback_days"] = req.PermissionUsageLookbackDays
+	}
+	if len(req.AWSIdentityCenterPermissionSetsInclude) > 0 {
+		include := make([]string, 0, len(req.AWSIdentityCenterPermissionSetsInclude))
+		for _, value := range req.AWSIdentityCenterPermissionSetsInclude {
+			if trimmed := strings.TrimSpace(value); trimmed != "" {
+				include = append(include, trimmed)
+			}
+		}
+		if len(include) > 0 {
+			if reqBody == nil {
+				reqBody = make(map[string]interface{}, 1)
+			}
+			reqBody["aws_identity_center_permission_sets_include"] = include
+		}
+	}
+	if len(req.AWSIdentityCenterPermissionSetsExclude) > 0 {
+		exclude := make([]string, 0, len(req.AWSIdentityCenterPermissionSetsExclude))
+		for _, value := range req.AWSIdentityCenterPermissionSetsExclude {
+			if trimmed := strings.TrimSpace(value); trimmed != "" {
+				exclude = append(exclude, trimmed)
+			}
+		}
+		if len(exclude) > 0 {
+			if reqBody == nil {
+				reqBody = make(map[string]interface{}, 1)
+			}
+			reqBody["aws_identity_center_permission_sets_exclude"] = exclude
+		}
+	}
 
 	var resp SyncRunResponse
 	if err := c.doJSON(ctx, http.MethodPost, "/api/v1/sync/aws-org", nil, reqBody, &resp); err != nil {
@@ -226,10 +300,12 @@ func (c *Client) RunAWSOrgSync(ctx context.Context, req AWSOrgSyncRequest) (*Syn
 }
 
 type GCPSyncRequest struct {
-	Project     string
-	Concurrency int
-	Tables      []string
-	Validate    bool
+	Project                     string
+	Concurrency                 int
+	Tables                      []string
+	Validate                    bool
+	PermissionUsageLookbackDays int
+	GCPIAMTargetGroups          []string
 }
 
 func (c *Client) RunGCPSync(ctx context.Context, req GCPSyncRequest) (*SyncRunResponse, error) {
@@ -254,6 +330,26 @@ func (c *Client) RunGCPSync(ctx context.Context, req GCPSyncRequest) (*SyncRunRe
 			reqBody = make(map[string]interface{}, 1)
 		}
 		reqBody["validate"] = true
+	}
+	if req.PermissionUsageLookbackDays > 0 {
+		if reqBody == nil {
+			reqBody = make(map[string]interface{}, 1)
+		}
+		reqBody["permission_usage_lookback_days"] = req.PermissionUsageLookbackDays
+	}
+	if len(req.GCPIAMTargetGroups) > 0 {
+		targetGroups := make([]string, 0, len(req.GCPIAMTargetGroups))
+		for _, value := range req.GCPIAMTargetGroups {
+			if trimmed := strings.TrimSpace(value); trimmed != "" {
+				targetGroups = append(targetGroups, trimmed)
+			}
+		}
+		if len(targetGroups) > 0 {
+			if reqBody == nil {
+				reqBody = make(map[string]interface{}, 1)
+			}
+			reqBody["gcp_iam_target_groups"] = targetGroups
+		}
 	}
 
 	var resp SyncRunResponse

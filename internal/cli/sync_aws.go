@@ -174,6 +174,8 @@ func runMultiAccountAWSSyncViaAPI(
 ) error {
 	Info("Starting multi-account AWS sync (%d profiles)...", len(profiles))
 	tableFilter := parseTableFilter(syncTable)
+	permissionSetInclude := parseCommaSeparatedValues(syncAWSPSInclude)
+	permissionSetExclude := parseCommaSeparatedValues(syncAWSPSExclude)
 	totalResults := make([]nativesync.SyncResult, 0, len(profiles))
 
 	for idx, profile := range profiles {
@@ -181,12 +183,15 @@ func runMultiAccountAWSSyncViaAPI(
 		profileStart := time.Now()
 
 		resp, err := apiClient.RunAWSSync(ctx, apiclient.AWSSyncRequest{
-			Profile:     profile,
-			Region:      strings.TrimSpace(syncRegion),
-			MultiRegion: syncMultiRegion,
-			Concurrency: syncConcurrency,
-			Tables:      tableFilter,
-			Validate:    syncValidate,
+			Profile:                                profile,
+			Region:                                 strings.TrimSpace(syncRegion),
+			MultiRegion:                            syncMultiRegion,
+			Concurrency:                            syncConcurrency,
+			Tables:                                 tableFilter,
+			Validate:                               syncValidate,
+			PermissionUsageLookbackDays:            syncPermissionLookback,
+			AWSIdentityCenterPermissionSetsInclude: permissionSetInclude,
+			AWSIdentityCenterPermissionSetsExclude: permissionSetExclude,
 		})
 		if err != nil {
 			if mode == cliExecutionModeAuto && shouldFallbackToDirect(mode, err) {
@@ -315,13 +320,18 @@ func runNativeSync(ctx context.Context, start time.Time) error {
 			}
 			Warning("API client configuration invalid; using direct mode: %v", err)
 		} else {
+			permissionSetInclude := parseCommaSeparatedValues(syncAWSPSInclude)
+			permissionSetExclude := parseCommaSeparatedValues(syncAWSPSExclude)
 			resp, err := apiClient.RunAWSSync(ctx, apiclient.AWSSyncRequest{
-				Profile:     strings.TrimSpace(syncAWSProfile),
-				Region:      strings.TrimSpace(syncRegion),
-				MultiRegion: syncMultiRegion,
-				Concurrency: syncConcurrency,
-				Tables:      tableFilter,
-				Validate:    syncValidate,
+				Profile:                                strings.TrimSpace(syncAWSProfile),
+				Region:                                 strings.TrimSpace(syncRegion),
+				MultiRegion:                            syncMultiRegion,
+				Concurrency:                            syncConcurrency,
+				Tables:                                 tableFilter,
+				Validate:                               syncValidate,
+				PermissionUsageLookbackDays:            syncPermissionLookback,
+				AWSIdentityCenterPermissionSetsInclude: permissionSetInclude,
+				AWSIdentityCenterPermissionSetsExclude: permissionSetExclude,
 			})
 			if err == nil {
 				provider := "AWS"

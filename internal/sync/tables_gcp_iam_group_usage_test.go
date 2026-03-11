@@ -10,6 +10,7 @@ import (
 
 	"cloud.google.com/go/iam/admin/apiv1/adminpb"
 	"cloud.google.com/go/iam/apiv1/iampb"
+	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/warehouse"
 )
 
@@ -53,6 +54,76 @@ func TestGCPSyncTableSkipsSentinelWithoutDelete(t *testing.T) {
 		if strings.Contains(strings.ToLower(call.Statement), "delete from "+gcpIAMGroupPermissionUsageTable) {
 			t.Fatalf("expected no scoped delete for skipped table, found statement %q", call.Statement)
 		}
+	}
+}
+
+func TestGCPSyncTablePartialFetchDoesNotDeleteScopedRows(t *testing.T) {
+	store := &warehouse.MemoryWarehouse{
+		QueryFunc: func(_ context.Context, query string, _ ...any) (*snowflake.QueryResult, error) {
+			if strings.Contains(strings.ToLower(query), "select _cq_id, _cq_hash from "+gcpIAMGroupPermissionUsageTable) {
+				return &snowflake.QueryResult{Rows: []map[string]any{{
+					"_cq_id":   "project-123|ops@example.com|storage.buckets.get",
+					"_cq_hash": "stale-hash",
+				}}}, nil
+			}
+			return &snowflake.QueryResult{}, nil
+		},
+	}
+	e := &GCPSyncEngine{
+		sf:        store,
+		logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		projectID: "project-123",
+	}
+
+	table := GCPTableSpec{
+		Name:    gcpIAMGroupPermissionUsageTable,
+		Columns: []string{"project_id", "id", "group", "permission"},
+		Fetch: func(context.Context, string) ([]map[string]interface{}, error) {
+			rows := []map[string]interface{}{{
+				"_cq_id":     "project-123|eng@example.com|resourcemanager.projects.get",
+				"id":         "project-123|eng@example.com|resourcemanager.projects.get",
+				"project_id": "project-123",
+				"group":      "eng@example.com",
+				"permission": "resourcemanager.projects.get",
+			}}
+			return rows, newPartialFetchError(errors.New("roles/editor: temporarily unavailable"))
+		},
+	}
+
+	result, err := e.syncTable(context.Background(), table)
+	if err != nil {
+		t.Fatalf("expected syncTable to accept partial fetch with incremental upsert, got %v", err)
+	}
+	if result.Errors != 0 {
+		t.Fatalf("expected zero sync errors, got %+v", result)
+	}
+	if result.Changes == nil {
+		t.Fatal("expected change set for partial fetch upsert")
+	}
+	if len(result.Changes.Removed) != 0 {
+		t.Fatalf("expected no removals during partial fetch upsert, got %+v", result.Changes)
+	}
+
+	for _, call := range store.Execs {
+		if strings.Contains(strings.ToLower(call.Statement), "delete from "+gcpIAMGroupPermissionUsageTable) {
+			t.Fatalf("expected no scoped delete for partial fetch, found statement %q", call.Statement)
+		}
+	}
+}
+
+func TestSummarizeGCPIAMRoleResolutionErrors(t *testing.T) {
+	err := summarizeGCPIAMRoleResolutionErrors(map[string]error{
+		"roles/editor": errors.New("permission denied"),
+		"roles/viewer": errors.New("not found"),
+	})
+	if err == nil {
+		t.Fatal("expected aggregated role resolution error")
+	}
+	if !strings.Contains(err.Error(), "roles/editor: permission denied") {
+		t.Fatalf("expected aggregated error to mention editor role, got %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "roles/viewer: not found") {
+		t.Fatalf("expected aggregated error to mention viewer role, got %q", err.Error())
 	}
 }
 

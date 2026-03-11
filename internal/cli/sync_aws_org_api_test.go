@@ -14,6 +14,9 @@ type syncAWSOrgState struct {
 	region             string
 	multiRegion        bool
 	concurrency        int
+	permissionLookback int
+	awsPSInclude       string
+	awsPSExclude       string
 	table              string
 	validate           bool
 	output             string
@@ -45,6 +48,9 @@ func snapshotSyncAWSOrgState() syncAWSOrgState {
 		region:             syncRegion,
 		multiRegion:        syncMultiRegion,
 		concurrency:        syncConcurrency,
+		permissionLookback: syncPermissionLookback,
+		awsPSInclude:       syncAWSPSInclude,
+		awsPSExclude:       syncAWSPSExclude,
 		table:              syncTable,
 		validate:           syncValidate,
 		output:             syncOutput,
@@ -76,6 +82,9 @@ func restoreSyncAWSOrgState(state syncAWSOrgState) {
 	syncRegion = state.region
 	syncMultiRegion = state.multiRegion
 	syncConcurrency = state.concurrency
+	syncPermissionLookback = state.permissionLookback
+	syncAWSPSInclude = state.awsPSInclude
+	syncAWSPSExclude = state.awsPSExclude
 	syncTable = state.table
 	syncValidate = state.validate
 	syncOutput = state.output
@@ -136,6 +145,17 @@ func TestRunAWSOrgSync_APIModeSuccess(t *testing.T) {
 		if req["account_concurrency"] != float64(3) {
 			t.Fatalf("expected account_concurrency=3, got %#v", req["account_concurrency"])
 		}
+		if req["permission_usage_lookback_days"] != float64(210) {
+			t.Fatalf("expected permission_usage_lookback_days=210, got %#v", req["permission_usage_lookback_days"])
+		}
+		include, ok := req["aws_identity_center_permission_sets_include"].([]interface{})
+		if !ok || len(include) != 1 || include[0] != "Admin" {
+			t.Fatalf("unexpected permission set include payload: %#v", req["aws_identity_center_permission_sets_include"])
+		}
+		exclude, ok := req["aws_identity_center_permission_sets_exclude"].([]interface{})
+		if !ok || len(exclude) != 1 || exclude[0] != "ReadOnly" {
+			t.Fatalf("unexpected permission set exclude payload: %#v", req["aws_identity_center_permission_sets_exclude"])
+		}
 
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"provider": "aws_org",
@@ -158,6 +178,9 @@ func TestRunAWSOrgSync_APIModeSuccess(t *testing.T) {
 	syncRegion = "us-west-2"
 	syncMultiRegion = true
 	syncConcurrency = 4
+	syncPermissionLookback = 210
+	syncAWSPSInclude = "Admin"
+	syncAWSPSExclude = "ReadOnly"
 	syncTable = "aws_iam_users"
 	syncValidate = false
 	syncOutput = FormatTable

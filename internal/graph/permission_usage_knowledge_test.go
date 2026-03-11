@@ -143,3 +143,50 @@ func TestBuildGCPIAMPermissionUsageKnowledgeCreatesGroupSubject(t *testing.T) {
 		t.Fatalf("expected 2 granted roles, got %d", len(roles))
 	}
 }
+
+func TestBuildGCPIAMPermissionUsageKnowledgePreservesAttributionUncertain(t *testing.T) {
+	source := newMockDataSource()
+	builder := NewBuilder(source, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	observedAt := time.Date(2026, 3, 10, 8, 0, 0, 0, time.UTC)
+	windowStart := observedAt.Add(-90 * 24 * time.Hour)
+
+	source.setResult(gcpIAMPermissionUsageKnowledgeQuery, &QueryResult{Rows: []map[string]any{
+		{
+			"_cq_id":            "row-gcp-uncertain-1",
+			"project_id":        "writer-prod",
+			"group_email":       "eng@example.com",
+			"permission":        "storage.buckets.get",
+			"granted_roles":     []any{"roles/storage.admin"},
+			"usage_status":      "attribution_uncertain",
+			"days_unused":       14,
+			"lookback_days":     90,
+			"member_count":      6,
+			"members_observed":  2,
+			"recommendation":    "Verify attribution before removing the role grant.",
+			"evidence_source":   "gcp_cloud_audit_logs_authorization_info",
+			"confidence":        "medium",
+			"coverage":          "partial",
+			"scan_window_start": windowStart,
+			"scan_window_end":   observedAt,
+		},
+	}})
+
+	builder.buildIAMPermissionUsageKnowledge(context.Background())
+
+	claims := builder.graph.GetNodesByKind(NodeKindClaim)
+	if len(claims) != 1 {
+		t.Fatalf("expected 1 claim, got %d", len(claims))
+	}
+	if claims[0].Properties["object_value"] != "attribution_uncertain" {
+		t.Fatalf("expected uncertain claim object value, got %v", claims[0].Properties["object_value"])
+	}
+
+	observations := builder.graph.GetNodesByKind(NodeKindObservation)
+	if len(observations) != 1 {
+		t.Fatalf("expected 1 observation, got %d", len(observations))
+	}
+	if observations[0].Properties["usage_status"] != "attribution_uncertain" {
+		t.Fatalf("expected uncertain observation status, got %v", observations[0].Properties["usage_status"])
+	}
+}

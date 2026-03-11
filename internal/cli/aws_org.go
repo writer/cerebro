@@ -55,17 +55,22 @@ func runAWSOrgSync(ctx context.Context, start time.Time) error {
 }
 
 func runAWSOrgSyncViaAPI(ctx context.Context, start time.Time, apiClient *apiclient.Client, mode cliExecutionMode) error {
+	permissionSetInclude := parseCommaSeparatedValues(syncAWSPSInclude)
+	permissionSetExclude := parseCommaSeparatedValues(syncAWSPSExclude)
 	resp, err := apiClient.RunAWSOrgSync(ctx, apiclient.AWSOrgSyncRequest{
-		Profile:            strings.TrimSpace(syncAWSProfile),
-		Region:             strings.TrimSpace(syncRegion),
-		MultiRegion:        syncMultiRegion,
-		Concurrency:        syncConcurrency,
-		Tables:             parseTableFilter(syncTable),
-		Validate:           syncValidate,
-		OrgRole:            strings.TrimSpace(syncAWSOrgRole),
-		IncludeAccounts:    parseCommaSeparatedValues(syncAWSOrgInclude),
-		ExcludeAccounts:    parseCommaSeparatedValues(syncAWSOrgExclude),
-		AccountConcurrency: syncAWSOrgConcurrency,
+		Profile:                                strings.TrimSpace(syncAWSProfile),
+		Region:                                 strings.TrimSpace(syncRegion),
+		MultiRegion:                            syncMultiRegion,
+		Concurrency:                            syncConcurrency,
+		Tables:                                 parseTableFilter(syncTable),
+		Validate:                               syncValidate,
+		OrgRole:                                strings.TrimSpace(syncAWSOrgRole),
+		IncludeAccounts:                        parseCommaSeparatedValues(syncAWSOrgInclude),
+		ExcludeAccounts:                        parseCommaSeparatedValues(syncAWSOrgExclude),
+		AccountConcurrency:                     syncAWSOrgConcurrency,
+		PermissionUsageLookbackDays:            syncPermissionLookback,
+		AWSIdentityCenterPermissionSetsInclude: permissionSetInclude,
+		AWSIdentityCenterPermissionSetsExclude: permissionSetExclude,
 	})
 	if err != nil {
 		if mode == cliExecutionModeAPI || !shouldFallbackToDirect(mode, err) {

@@ -196,12 +196,15 @@ func (s *Server) syncK8s(w http.ResponseWriter, r *http.Request) {
 }
 
 type awsSyncRequest struct {
-	Profile     string   `json:"profile"`
-	Region      string   `json:"region"`
-	MultiRegion bool     `json:"multi_region"`
-	Concurrency int      `json:"concurrency"`
-	Tables      []string `json:"tables"`
-	Validate    bool     `json:"validate"`
+	Profile                                string   `json:"profile"`
+	Region                                 string   `json:"region"`
+	MultiRegion                            bool     `json:"multi_region"`
+	Concurrency                            int      `json:"concurrency"`
+	Tables                                 []string `json:"tables"`
+	Validate                               bool     `json:"validate"`
+	PermissionUsageLookbackDays            int      `json:"permission_usage_lookback_days"`
+	AWSIdentityCenterPermissionSetsInclude []string `json:"aws_identity_center_permission_sets_include"`
+	AWSIdentityCenterPermissionSetsExclude []string `json:"aws_identity_center_permission_sets_exclude"`
 }
 
 type awsSyncOutcome struct {
@@ -242,6 +245,7 @@ var runAWSSyncWithOptions = func(ctx context.Context, client *snowflake.Client, 
 		}
 		opts = append(opts, nativesync.WithRegions([]string{region}))
 	}
+	opts = appendAWSPermissionUsageRequestOptions(opts, req.PermissionUsageLookbackDays, req.AWSIdentityCenterPermissionSetsInclude, req.AWSIdentityCenterPermissionSetsExclude)
 
 	syncer := nativesync.NewSyncEngine(client, slog.Default(), opts...)
 	if req.Validate {
@@ -290,6 +294,8 @@ func (s *Server) syncAWS(w http.ResponseWriter, r *http.Request) {
 	req.Profile = strings.TrimSpace(req.Profile)
 	req.Region = strings.TrimSpace(req.Region)
 	req.Tables = normalizeSyncTables(req.Tables)
+	req.AWSIdentityCenterPermissionSetsInclude = normalizeSyncStrings(req.AWSIdentityCenterPermissionSetsInclude)
+	req.AWSIdentityCenterPermissionSetsExclude = normalizeSyncStrings(req.AWSIdentityCenterPermissionSetsExclude)
 
 	if s.app.Snowflake == nil {
 		s.error(w, http.StatusServiceUnavailable, "snowflake not configured")
@@ -319,16 +325,19 @@ func (s *Server) syncAWS(w http.ResponseWriter, r *http.Request) {
 }
 
 type awsOrgSyncRequest struct {
-	Profile            string   `json:"profile"`
-	Region             string   `json:"region"`
-	MultiRegion        bool     `json:"multi_region"`
-	Concurrency        int      `json:"concurrency"`
-	Tables             []string `json:"tables"`
-	Validate           bool     `json:"validate"`
-	OrgRole            string   `json:"org_role"`
-	IncludeAccounts    []string `json:"include_accounts"`
-	ExcludeAccounts    []string `json:"exclude_accounts"`
-	AccountConcurrency int      `json:"account_concurrency"`
+	Profile                                string   `json:"profile"`
+	Region                                 string   `json:"region"`
+	MultiRegion                            bool     `json:"multi_region"`
+	Concurrency                            int      `json:"concurrency"`
+	Tables                                 []string `json:"tables"`
+	Validate                               bool     `json:"validate"`
+	OrgRole                                string   `json:"org_role"`
+	IncludeAccounts                        []string `json:"include_accounts"`
+	ExcludeAccounts                        []string `json:"exclude_accounts"`
+	AccountConcurrency                     int      `json:"account_concurrency"`
+	PermissionUsageLookbackDays            int      `json:"permission_usage_lookback_days"`
+	AWSIdentityCenterPermissionSetsInclude []string `json:"aws_identity_center_permission_sets_include"`
+	AWSIdentityCenterPermissionSetsExclude []string `json:"aws_identity_center_permission_sets_exclude"`
 }
 
 type awsOrgSyncOutcome struct {
@@ -458,6 +467,8 @@ func (s *Server) syncAWSOrg(w http.ResponseWriter, r *http.Request) {
 	}
 	req.IncludeAccounts = normalizeSyncAccountIDs(req.IncludeAccounts)
 	req.ExcludeAccounts = normalizeSyncAccountIDs(req.ExcludeAccounts)
+	req.AWSIdentityCenterPermissionSetsInclude = normalizeSyncStrings(req.AWSIdentityCenterPermissionSetsInclude)
+	req.AWSIdentityCenterPermissionSetsExclude = normalizeSyncStrings(req.AWSIdentityCenterPermissionSetsExclude)
 	if req.AccountConcurrency <= 0 {
 		req.AccountConcurrency = 4
 	}
@@ -500,6 +511,16 @@ func buildAWSEngineOptionsForRequest(region string, req awsOrgSyncRequest) []nat
 		options = append(options, nativesync.WithRegions(nativesync.DefaultAWSRegions))
 	} else {
 		options = append(options, nativesync.WithRegions([]string{region}))
+	}
+	return appendAWSPermissionUsageRequestOptions(options, req.PermissionUsageLookbackDays, req.AWSIdentityCenterPermissionSetsInclude, req.AWSIdentityCenterPermissionSetsExclude)
+}
+
+func appendAWSPermissionUsageRequestOptions(options []nativesync.EngineOption, lookbackDays int, include, exclude []string) []nativesync.EngineOption {
+	if lookbackDays > 0 {
+		options = append(options, nativesync.WithAWSPermissionUsageLookbackDays(lookbackDays))
+	}
+	if len(include) > 0 || len(exclude) > 0 {
+		options = append(options, nativesync.WithAWSIdentityCenterPermissionSetFilters(include, exclude))
 	}
 	return options
 }
@@ -603,10 +624,12 @@ func assumeAWSOrgAccountConfig(ctx context.Context, baseCfg aws.Config, roleARN,
 }
 
 type gcpSyncRequest struct {
-	Project     string   `json:"project"`
-	Concurrency int      `json:"concurrency"`
-	Tables      []string `json:"tables"`
-	Validate    bool     `json:"validate"`
+	Project                     string   `json:"project"`
+	Concurrency                 int      `json:"concurrency"`
+	Tables                      []string `json:"tables"`
+	Validate                    bool     `json:"validate"`
+	PermissionUsageLookbackDays int      `json:"permission_usage_lookback_days"`
+	GCPIAMTargetGroups          []string `json:"gcp_iam_target_groups"`
 }
 
 type gcpSyncOutcome struct {
@@ -627,6 +650,7 @@ var runGCPSyncWithOptions = func(ctx context.Context, client *snowflake.Client, 
 	if len(req.Tables) > 0 {
 		opts = append(opts, nativesync.WithGCPTableFilter(req.Tables))
 	}
+	opts = appendGCPPermissionUsageRequestOptions(opts, req.PermissionUsageLookbackDays, req.GCPIAMTargetGroups)
 
 	syncer := nativesync.NewGCPSyncEngine(client, slog.Default(), opts...)
 	if req.Validate {
@@ -668,6 +692,7 @@ func (s *Server) syncGCP(w http.ResponseWriter, r *http.Request) {
 
 	req.Project = strings.TrimSpace(req.Project)
 	req.Tables = normalizeSyncTables(req.Tables)
+	req.GCPIAMTargetGroups = normalizeSyncStrings(req.GCPIAMTargetGroups)
 	if req.Project == "" {
 		s.error(w, http.StatusBadRequest, "project is required")
 		return
@@ -698,6 +723,16 @@ func (s *Server) syncGCP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.json(w, http.StatusOK, resp)
+}
+
+func appendGCPPermissionUsageRequestOptions(options []nativesync.GCPEngineOption, lookbackDays int, targetGroups []string) []nativesync.GCPEngineOption {
+	if lookbackDays > 0 {
+		options = append(options, nativesync.WithGCPPermissionUsageLookbackDays(lookbackDays))
+	}
+	if len(targetGroups) > 0 {
+		options = append(options, nativesync.WithGCPIAMTargetGroups(targetGroups))
+	}
+	return options
 }
 
 type gcpAssetSyncRequest struct {
@@ -786,6 +821,31 @@ func normalizeSyncProjects(raw []string) []string {
 		}
 		seen[key] = struct{}{}
 		normalized = append(normalized, name)
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
+}
+
+func normalizeSyncStrings(raw []string) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+
+	normalized := make([]string, 0, len(raw))
+	seen := make(map[string]struct{}, len(raw))
+	for _, value := range raw {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		key := strings.ToLower(trimmed)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		normalized = append(normalized, trimmed)
 	}
 	if len(normalized) == 0 {
 		return nil

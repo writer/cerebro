@@ -297,7 +297,7 @@ func (e *GCPAssetInventoryEngine) syncAssetType(ctx context.Context, scope, asse
 
 	// Upsert with change detection
 	gcpEngine := &GCPSyncEngine{sf: e.sf, logger: e.logger, projectID: gcpProjectIDFromScope(scope)}
-	changes, err := gcpEngine.upsertWithChanges(ctx, tableName, columns, rows)
+	changes, err := gcpEngine.upsertWithChanges(ctx, tableName, columns, rows, false)
 	if err != nil {
 		e.logger.Error("upsert failed", "table", tableName, "error", err)
 		result.Errors = 1

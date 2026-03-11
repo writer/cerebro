@@ -14,6 +14,9 @@ type syncAWSState struct {
 	region             string
 	multiRegion        bool
 	concurrency        int
+	permissionLookback int
+	awsPSInclude       string
+	awsPSExclude       string
 	table              string
 	validate           bool
 	scanAfter          bool
@@ -42,6 +45,9 @@ func snapshotSyncAWSState() syncAWSState {
 		region:             syncRegion,
 		multiRegion:        syncMultiRegion,
 		concurrency:        syncConcurrency,
+		permissionLookback: syncPermissionLookback,
+		awsPSInclude:       syncAWSPSInclude,
+		awsPSExclude:       syncAWSPSExclude,
 		table:              syncTable,
 		validate:           syncValidate,
 		scanAfter:          syncScanAfter,
@@ -70,6 +76,9 @@ func restoreSyncAWSState(state syncAWSState) {
 	syncRegion = state.region
 	syncMultiRegion = state.multiRegion
 	syncConcurrency = state.concurrency
+	syncPermissionLookback = state.permissionLookback
+	syncAWSPSInclude = state.awsPSInclude
+	syncAWSPSExclude = state.awsPSExclude
 	syncTable = state.table
 	syncValidate = state.validate
 	syncScanAfter = state.scanAfter
@@ -121,6 +130,17 @@ func TestRunNativeSync_APIModeSuccess(t *testing.T) {
 		if req["concurrency"] != float64(3) {
 			t.Fatalf("expected concurrency=3, got %#v", req["concurrency"])
 		}
+		if req["permission_usage_lookback_days"] != float64(365) {
+			t.Fatalf("expected permission_usage_lookback_days=365, got %#v", req["permission_usage_lookback_days"])
+		}
+		include, ok := req["aws_identity_center_permission_sets_include"].([]interface{})
+		if !ok || len(include) != 1 || include[0] != "Admin" {
+			t.Fatalf("unexpected permission set include payload: %#v", req["aws_identity_center_permission_sets_include"])
+		}
+		exclude, ok := req["aws_identity_center_permission_sets_exclude"].([]interface{})
+		if !ok || len(exclude) != 1 || exclude[0] != "Billing" {
+			t.Fatalf("unexpected permission set exclude payload: %#v", req["aws_identity_center_permission_sets_exclude"])
+		}
 
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"provider":                "aws",
@@ -144,6 +164,9 @@ func TestRunNativeSync_APIModeSuccess(t *testing.T) {
 	syncRegion = "us-west-2"
 	syncMultiRegion = true
 	syncConcurrency = 3
+	syncPermissionLookback = 365
+	syncAWSPSInclude = "Admin"
+	syncAWSPSExclude = "Billing"
 	syncTable = ""
 	syncValidate = false
 	syncScanAfter = false

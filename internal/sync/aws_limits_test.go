@@ -11,10 +11,10 @@ func TestRegionsForTableOverride(t *testing.T) {
 }
 
 func TestRegionsForTableIdentityCenterOverride(t *testing.T) {
-	configured := []string{"us-east-1", "us-west-2", "eu-west-1"}
+	configured := []string{"eu-west-1"}
 	regions := regionsForTable("aws_identitycenter_permission_set_permission_usage", configured)
-	if len(regions) != 1 || regions[0] != "us-east-1" {
-		t.Fatalf("expected us-east-1 override for identity center, got %v", regions)
+	if len(regions) != 1 || regions[0] != "eu-west-1" {
+		t.Fatalf("expected identity center to use configured seed region, got %v", regions)
 	}
 }
 

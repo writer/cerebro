@@ -293,7 +293,7 @@ func (e *K8sSyncEngine) ensureTable(ctx context.Context, table string, columns [
 }
 
 func (e *K8sSyncEngine) upsertWithChanges(ctx context.Context, table string, rows []map[string]interface{}) (*ChangeSet, error) {
-	return upsertScopedRowsWithChanges(ctx, e.sf, e.logger, table, rows, "", nil, e.hashRowContent)
+	return upsertScopedRowsWithChanges(ctx, e.sf, e.logger, table, rows, "", nil, e.hashRowContent, false)
 }
 
 func (e *K8sSyncEngine) hashRowContent(row map[string]interface{}) string {

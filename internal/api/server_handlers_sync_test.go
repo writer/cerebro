@@ -222,6 +222,15 @@ func TestSyncAWS_UsesRequestOptions(t *testing.T) {
 		if len(req.Tables) != 2 || req.Tables[0] != "aws_iam_users" || req.Tables[1] != "aws_s3_buckets" {
 			t.Fatalf("unexpected table filter: %#v", req.Tables)
 		}
+		if req.PermissionUsageLookbackDays != 240 {
+			t.Fatalf("expected permission usage lookback 240, got %d", req.PermissionUsageLookbackDays)
+		}
+		if len(req.AWSIdentityCenterPermissionSetsInclude) != 2 || req.AWSIdentityCenterPermissionSetsInclude[0] != "Admin" || req.AWSIdentityCenterPermissionSetsInclude[1] != "arn:aws:sso:::permissionSet/ssoins-123/ps-123" {
+			t.Fatalf("unexpected permission set include filter: %#v", req.AWSIdentityCenterPermissionSetsInclude)
+		}
+		if len(req.AWSIdentityCenterPermissionSetsExclude) != 1 || req.AWSIdentityCenterPermissionSetsExclude[0] != "ReadOnly" {
+			t.Fatalf("unexpected permission set exclude filter: %#v", req.AWSIdentityCenterPermissionSetsExclude)
+		}
 		if !req.Validate {
 			t.Fatal("expected validate=true")
 		}
@@ -233,12 +242,15 @@ func TestSyncAWS_UsesRequestOptions(t *testing.T) {
 	}
 
 	w := do(t, s, http.MethodPost, "/api/v1/sync/aws", map[string]interface{}{
-		"profile":      " prod-profile ",
-		"region":       " us-west-2 ",
-		"multi_region": true,
-		"concurrency":  6,
-		"tables":       []string{"AWS_IAM_USERS", "aws_iam_users", " aws_s3_buckets "},
-		"validate":     true,
+		"profile":                        " prod-profile ",
+		"region":                         " us-west-2 ",
+		"multi_region":                   true,
+		"concurrency":                    6,
+		"tables":                         []string{"AWS_IAM_USERS", "aws_iam_users", " aws_s3_buckets "},
+		"validate":                       true,
+		"permission_usage_lookback_days": 240,
+		"aws_identity_center_permission_sets_include": []string{" Admin ", "arn:aws:sso:::permissionSet/ssoins-123/ps-123"},
+		"aws_identity_center_permission_sets_exclude": []string{" ReadOnly "},
 	})
 	if !called {
 		t.Fatal("expected sync runner to be called")
@@ -314,6 +326,15 @@ func TestSyncAWSOrg_UsesRequestOptions(t *testing.T) {
 		if len(req.Tables) != 2 || req.Tables[0] != "aws_iam_users" || req.Tables[1] != "aws_s3_buckets" {
 			t.Fatalf("unexpected table filter: %#v", req.Tables)
 		}
+		if req.PermissionUsageLookbackDays != 365 {
+			t.Fatalf("expected permission usage lookback 365, got %d", req.PermissionUsageLookbackDays)
+		}
+		if len(req.AWSIdentityCenterPermissionSetsInclude) != 1 || req.AWSIdentityCenterPermissionSetsInclude[0] != "Admin" {
+			t.Fatalf("unexpected permission set include filter: %#v", req.AWSIdentityCenterPermissionSetsInclude)
+		}
+		if len(req.AWSIdentityCenterPermissionSetsExclude) != 1 || req.AWSIdentityCenterPermissionSetsExclude[0] != "Billing" {
+			t.Fatalf("unexpected permission set exclude filter: %#v", req.AWSIdentityCenterPermissionSetsExclude)
+		}
 		if !req.Validate {
 			t.Fatal("expected validate=true")
 		}
@@ -324,16 +345,19 @@ func TestSyncAWSOrg_UsesRequestOptions(t *testing.T) {
 	}
 
 	w := do(t, s, http.MethodPost, "/api/v1/sync/aws-org", map[string]interface{}{
-		"profile":             " prod-profile ",
-		"region":              " us-west-2 ",
-		"multi_region":        true,
-		"concurrency":         6,
-		"tables":              []string{"AWS_IAM_USERS", "aws_iam_users", " aws_s3_buckets "},
-		"validate":            true,
-		"org_role":            " OrganizationAccountAccessRole ",
-		"include_accounts":    []string{" 111111111111 ", "111111111111", "222222222222"},
-		"exclude_accounts":    []string{"333333333333", "333333333333"},
-		"account_concurrency": 3,
+		"profile":                        " prod-profile ",
+		"region":                         " us-west-2 ",
+		"multi_region":                   true,
+		"concurrency":                    6,
+		"tables":                         []string{"AWS_IAM_USERS", "aws_iam_users", " aws_s3_buckets "},
+		"validate":                       true,
+		"org_role":                       " OrganizationAccountAccessRole ",
+		"include_accounts":               []string{" 111111111111 ", "111111111111", "222222222222"},
+		"exclude_accounts":               []string{"333333333333", "333333333333"},
+		"account_concurrency":            3,
+		"permission_usage_lookback_days": 365,
+		"aws_identity_center_permission_sets_include": []string{" Admin "},
+		"aws_identity_center_permission_sets_exclude": []string{" Billing "},
 	})
 	if !called {
 		t.Fatal("expected sync runner to be called")
@@ -406,6 +430,12 @@ func TestSyncGCP_UsesRequestOptions(t *testing.T) {
 		if len(req.Tables) != 2 || req.Tables[0] != "gcp_compute_instances" || req.Tables[1] != "gcp_storage_buckets" {
 			t.Fatalf("unexpected table filter: %#v", req.Tables)
 		}
+		if req.PermissionUsageLookbackDays != 120 {
+			t.Fatalf("expected permission usage lookback 120, got %d", req.PermissionUsageLookbackDays)
+		}
+		if len(req.GCPIAMTargetGroups) != 2 || req.GCPIAMTargetGroups[0] != "eng@example.com" || req.GCPIAMTargetGroups[1] != "ops@example.com" {
+			t.Fatalf("unexpected IAM target groups: %#v", req.GCPIAMTargetGroups)
+		}
 		if !req.Validate {
 			t.Fatal("expected validate=true")
 		}
@@ -417,10 +447,12 @@ func TestSyncGCP_UsesRequestOptions(t *testing.T) {
 	}
 
 	w := do(t, s, http.MethodPost, "/api/v1/sync/gcp", map[string]interface{}{
-		"project":     "  proj-123  ",
-		"concurrency": 5,
-		"tables":      []string{"GCP_COMPUTE_INSTANCES", "gcp_compute_instances", " gcp_storage_buckets "},
-		"validate":    true,
+		"project":                        "  proj-123  ",
+		"concurrency":                    5,
+		"tables":                         []string{"GCP_COMPUTE_INSTANCES", "gcp_compute_instances", " gcp_storage_buckets "},
+		"validate":                       true,
+		"permission_usage_lookback_days": 120,
+		"gcp_iam_target_groups":          []string{" eng@example.com ", "ops@example.com", "ENG@example.com"},
 	})
 	if !called {
 		t.Fatal("expected sync runner to be called")

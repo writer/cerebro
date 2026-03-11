@@ -200,22 +200,28 @@ func (e *GCPSyncEngine) syncTable(ctx context.Context, table GCPTableSpec) (Sync
 	}
 
 	rows, err := e.fetchWithRetry(ctx, table)
+	partialFetch := false
 	if err != nil {
 		if errors.Is(err, errSkipGCPIAMGroupPermissionUsage) {
 			e.logger.Info("skipping gcp table sync", "table", table.Name, "project_id", e.projectID, "reason", err.Error())
 			result.Duration = time.Since(start)
 			return result, nil
 		}
-		e.logger.Error("fetch failed", "table", table.Name, "error", err)
-		result.Errors = 1
-		result.Error = err.Error()
-		result.Duration = time.Since(start)
-		return result, fmt.Errorf("gcp %s (project %s): fetch: %w", table.Name, e.projectID, err)
+		if isPartialFetchError(err) && len(rows) > 0 {
+			partialFetch = true
+			e.logger.Warn("fetch returned partial results; enabling backfill-safe scoped upsert", "table", table.Name, "project_id", e.projectID, "rows", len(rows), "error", err)
+		} else {
+			e.logger.Error("fetch failed", "table", table.Name, "error", err)
+			result.Errors = 1
+			result.Error = err.Error()
+			result.Duration = time.Since(start)
+			return result, fmt.Errorf("gcp %s (project %s): fetch: %w", table.Name, e.projectID, err)
+		}
 	}
 
 	rows = normalizeRows(table.Name, table.Columns, rows, e.logger)
 
-	changes, err := e.upsertWithChanges(ctx, table.Name, table.Columns, rows)
+	changes, err := e.upsertWithChanges(ctx, table.Name, table.Columns, rows, partialFetch)
 	if err != nil {
 		e.logger.Error("upsert failed", "table", table.Name, "error", err)
 		result.Errors = 1
@@ -295,9 +301,9 @@ func (e *GCPSyncEngine) ensureTable(ctx context.Context, table string, columns [
 	})
 }
 
-func (e *GCPSyncEngine) upsertWithChanges(ctx context.Context, table string, columns []string, rows []map[string]interface{}) (*ChangeSet, error) {
+func (e *GCPSyncEngine) upsertWithChanges(ctx context.Context, table string, columns []string, rows []map[string]interface{}, incremental bool) (*ChangeSet, error) {
 	scopeColumn, scopeValues := gcpScopeFilter(columns, rows, e.projectID)
-	return upsertScopedRowsWithChanges(ctx, e.sf, e.logger, table, rows, scopeColumn, scopeValues, e.hashRowContent)
+	return upsertScopedRowsWithChanges(ctx, e.sf, e.logger, table, rows, scopeColumn, scopeValues, e.hashRowContent, incremental)
 }
 
 func gcpScopeFilter(columns []string, rows []map[string]interface{}, projectID string) (string, []string) {

@@ -300,7 +300,7 @@ func (e *AzureSyncEngine) ensureTable(ctx context.Context, table string, columns
 
 func (e *AzureSyncEngine) upsertWithChanges(ctx context.Context, table string, columns []string, rows []map[string]interface{}) (*ChangeSet, error) {
 	scopeColumn, scopeValues := azureScopeFilter(columns, rows, e.subscriptionID)
-	return upsertScopedRowsWithChanges(ctx, e.sf, e.logger, table, rows, scopeColumn, scopeValues, e.hashRowContent)
+	return upsertScopedRowsWithChanges(ctx, e.sf, e.logger, table, rows, scopeColumn, scopeValues, e.hashRowContent, false)
 }
 
 func azureScopeFilter(columns []string, rows []map[string]interface{}, subscriptionID string) (string, []string) {

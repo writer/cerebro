@@ -202,11 +202,14 @@ func runGCPSync(ctx context.Context, start time.Time, projectID string) error {
 			}
 			Warning("API client configuration invalid; using direct mode: %v", err)
 		} else {
+			targetGroups := parseCommaSeparatedValues(syncGCPIAMGroups)
 			resp, err := apiClient.RunGCPSync(ctx, apiclient.GCPSyncRequest{
-				Project:     projectID,
-				Concurrency: syncConcurrency,
-				Tables:      nativeTableFilter,
-				Validate:    syncValidate,
+				Project:                     projectID,
+				Concurrency:                 syncConcurrency,
+				Tables:                      nativeTableFilter,
+				Validate:                    syncValidate,
+				PermissionUsageLookbackDays: syncPermissionLookback,
+				GCPIAMTargetGroups:          targetGroups,
 			})
 			if err == nil {
 				provider := "GCP"

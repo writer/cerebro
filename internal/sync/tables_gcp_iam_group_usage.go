@@ -274,7 +274,8 @@ func (e *GCPSyncEngine) fetchGCPIAMGroupPermissionUsage(ctx context.Context, pro
 		}
 	}
 
-	if len(roleResolutionErrors) > 0 {
+	roleResolutionErr := summarizeGCPIAMRoleResolutionErrors(roleResolutionErrors)
+	if roleResolutionErr != nil {
 		for role, resolveErr := range roleResolutionErrors {
 			e.logger.Warn("failed to resolve IAM role permissions", "role", role, "error", resolveErr)
 		}
@@ -284,8 +285,30 @@ func (e *GCPSyncEngine) fetchGCPIAMGroupPermissionUsage(ctx context.Context, pro
 		e.logger.Info("gcp IAM group permission usage table skipped: target group grants could not be resolved", "project_id", projectID)
 		return nil, errSkipGCPIAMGroupPermissionUsage
 	}
+	if roleResolutionErr != nil && len(rows) > 0 {
+		return rows, newPartialFetchError(roleResolutionErr)
+	}
 
 	return rows, nil
+}
+
+func summarizeGCPIAMRoleResolutionErrors(roleResolutionErrors map[string]error) error {
+	if len(roleResolutionErrors) == 0 {
+		return nil
+	}
+
+	roles := make([]string, 0, len(roleResolutionErrors))
+	for role := range roleResolutionErrors {
+		roles = append(roles, role)
+	}
+	sort.Strings(roles)
+
+	parts := make([]string, 0, len(roles))
+	for _, role := range roles {
+		parts = append(parts, fmt.Sprintf("%s: %v", role, roleResolutionErrors[role]))
+	}
+
+	return errors.New("failed to resolve IAM role permissions: " + strings.Join(parts, "; "))
 }
 
 func (e *GCPSyncEngine) resolvePermissionsGrantedOutsideGroup(

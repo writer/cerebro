@@ -15,6 +15,9 @@ type syncAWSProfilesState struct {
 	region             string
 	multiRegion        bool
 	concurrency        int
+	permissionLookback int
+	awsPSInclude       string
+	awsPSExclude       string
 	table              string
 	validate           bool
 	output             string
@@ -42,6 +45,9 @@ func snapshotSyncAWSProfilesState() syncAWSProfilesState {
 		region:             syncRegion,
 		multiRegion:        syncMultiRegion,
 		concurrency:        syncConcurrency,
+		permissionLookback: syncPermissionLookback,
+		awsPSInclude:       syncAWSPSInclude,
+		awsPSExclude:       syncAWSPSExclude,
 		table:              syncTable,
 		validate:           syncValidate,
 		output:             syncOutput,
@@ -69,6 +75,9 @@ func restoreSyncAWSProfilesState(state syncAWSProfilesState) {
 	syncRegion = state.region
 	syncMultiRegion = state.multiRegion
 	syncConcurrency = state.concurrency
+	syncPermissionLookback = state.permissionLookback
+	syncAWSPSInclude = state.awsPSInclude
+	syncAWSPSExclude = state.awsPSExclude
 	syncTable = state.table
 	syncValidate = state.validate
 	syncOutput = state.output
@@ -111,6 +120,17 @@ func TestRunMultiAccountAWSSync_APIModeSuccess(t *testing.T) {
 		if profile == "" {
 			t.Fatalf("expected profile in request, got %#v", req["profile"])
 		}
+		if req["permission_usage_lookback_days"] != float64(150) {
+			t.Fatalf("expected permission_usage_lookback_days=150, got %#v", req["permission_usage_lookback_days"])
+		}
+		include, ok := req["aws_identity_center_permission_sets_include"].([]interface{})
+		if !ok || len(include) != 1 || include[0] != "Admin" {
+			t.Fatalf("unexpected permission set include payload: %#v", req["aws_identity_center_permission_sets_include"])
+		}
+		exclude, ok := req["aws_identity_center_permission_sets_exclude"].([]interface{})
+		if !ok || len(exclude) != 1 || exclude[0] != "ReadOnly" {
+			t.Fatalf("unexpected permission set exclude payload: %#v", req["aws_identity_center_permission_sets_exclude"])
+		}
 		seenProfiles = append(seenProfiles, profile)
 
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
@@ -140,6 +160,9 @@ func TestRunMultiAccountAWSSync_APIModeSuccess(t *testing.T) {
 	syncRegion = "us-west-2"
 	syncMultiRegion = false
 	syncConcurrency = 4
+	syncPermissionLookback = 150
+	syncAWSPSInclude = "Admin"
+	syncAWSPSExclude = "ReadOnly"
 	syncTable = "aws_iam_users"
 	syncValidate = false
 	syncOutput = FormatTable

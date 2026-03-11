@@ -397,7 +397,7 @@ func permissionUsageSummary(provider, permission, subjectID, usageStatus string,
 func normalizePermissionUsageStatus(status string) string {
 	status = strings.ToLower(strings.TrimSpace(status))
 	switch status {
-	case "used", "unused":
+	case "used", "unused", "attribution_uncertain":
 		return status
 	default:
 		return "unknown"

@@ -44,6 +44,14 @@ func regionsForTable(tableName string, configured []string) []string {
 	if len(configured) == 0 {
 		return nil
 	}
+	if strings.HasPrefix(tableName, "aws_identitycenter_") {
+		for _, region := range configured {
+			if strings.TrimSpace(region) != "" {
+				return []string{region}
+			}
+		}
+		return nil
+	}
 	for _, override := range awsTableRegionOverrides {
 		if strings.HasPrefix(tableName, override.prefix) {
 			return intersectRegions(configured, override.regions)

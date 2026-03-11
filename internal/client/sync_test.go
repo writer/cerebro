@@ -227,6 +227,17 @@ func TestRunAWSSync_SendsRequestAndParsesResponse(t *testing.T) {
 		if req["validate"] != true {
 			t.Fatalf("expected validate=true, got %#v", req["validate"])
 		}
+		if req["permission_usage_lookback_days"] != float64(270) {
+			t.Fatalf("expected permission_usage_lookback_days=270, got %#v", req["permission_usage_lookback_days"])
+		}
+		include, ok := req["aws_identity_center_permission_sets_include"].([]interface{})
+		if !ok || len(include) != 2 || include[0] != "Admin" || include[1] != "arn:aws:sso:::permissionSet/ssoins-123/ps-123" {
+			t.Fatalf("unexpected aws_identity_center_permission_sets_include payload: %#v", req["aws_identity_center_permission_sets_include"])
+		}
+		exclude, ok := req["aws_identity_center_permission_sets_exclude"].([]interface{})
+		if !ok || len(exclude) != 1 || exclude[0] != "ReadOnly" {
+			t.Fatalf("unexpected aws_identity_center_permission_sets_exclude payload: %#v", req["aws_identity_center_permission_sets_exclude"])
+		}
 		tables, ok := req["tables"].([]interface{})
 		if !ok || len(tables) != 2 || tables[0] != "aws_iam_users" || tables[1] != "aws_s3_buckets" {
 			t.Fatalf("unexpected tables payload: %#v", req["tables"])
@@ -258,12 +269,15 @@ func TestRunAWSSync_SendsRequestAndParsesResponse(t *testing.T) {
 	}
 
 	resp, err := c.RunAWSSync(context.Background(), AWSSyncRequest{
-		Profile:     " prod-profile ",
-		Region:      " us-west-2 ",
-		MultiRegion: true,
-		Concurrency: 11,
-		Tables:      []string{"aws_iam_users", "aws_s3_buckets"},
-		Validate:    true,
+		Profile:                                " prod-profile ",
+		Region:                                 " us-west-2 ",
+		MultiRegion:                            true,
+		Concurrency:                            11,
+		Tables:                                 []string{"aws_iam_users", "aws_s3_buckets"},
+		Validate:                               true,
+		PermissionUsageLookbackDays:            270,
+		AWSIdentityCenterPermissionSetsInclude: []string{" Admin ", "arn:aws:sso:::permissionSet/ssoins-123/ps-123"},
+		AWSIdentityCenterPermissionSetsExclude: []string{" ReadOnly "},
 	})
 	if err != nil {
 		t.Fatalf("RunAWSSync returned error: %v", err)
@@ -352,6 +366,17 @@ func TestRunAWSOrgSync_SendsRequestAndParsesResponse(t *testing.T) {
 		if req["account_concurrency"] != float64(3) {
 			t.Fatalf("expected account_concurrency=3, got %#v", req["account_concurrency"])
 		}
+		if req["permission_usage_lookback_days"] != float64(365) {
+			t.Fatalf("expected permission_usage_lookback_days=365, got %#v", req["permission_usage_lookback_days"])
+		}
+		includePS, ok := req["aws_identity_center_permission_sets_include"].([]interface{})
+		if !ok || len(includePS) != 1 || includePS[0] != "Admin" {
+			t.Fatalf("unexpected aws_identity_center_permission_sets_include payload: %#v", req["aws_identity_center_permission_sets_include"])
+		}
+		excludePS, ok := req["aws_identity_center_permission_sets_exclude"].([]interface{})
+		if !ok || len(excludePS) != 1 || excludePS[0] != "Billing" {
+			t.Fatalf("unexpected aws_identity_center_permission_sets_exclude payload: %#v", req["aws_identity_center_permission_sets_exclude"])
+		}
 		includeAccounts, ok := req["include_accounts"].([]interface{})
 		if !ok || len(includeAccounts) != 2 || includeAccounts[0] != "111111111111" || includeAccounts[1] != "222222222222" {
 			t.Fatalf("unexpected include_accounts payload: %#v", req["include_accounts"])
@@ -390,16 +415,19 @@ func TestRunAWSOrgSync_SendsRequestAndParsesResponse(t *testing.T) {
 	}
 
 	resp, err := c.RunAWSOrgSync(context.Background(), AWSOrgSyncRequest{
-		Profile:            " prod-profile ",
-		Region:             " us-west-2 ",
-		MultiRegion:        true,
-		Concurrency:        9,
-		Tables:             []string{"aws_iam_users", "aws_s3_buckets"},
-		Validate:           true,
-		OrgRole:            " OrganizationAccountAccessRole ",
-		IncludeAccounts:    []string{" 111111111111 ", "222222222222"},
-		ExcludeAccounts:    []string{"333333333333"},
-		AccountConcurrency: 3,
+		Profile:                                " prod-profile ",
+		Region:                                 " us-west-2 ",
+		MultiRegion:                            true,
+		Concurrency:                            9,
+		Tables:                                 []string{"aws_iam_users", "aws_s3_buckets"},
+		Validate:                               true,
+		OrgRole:                                " OrganizationAccountAccessRole ",
+		IncludeAccounts:                        []string{" 111111111111 ", "222222222222"},
+		ExcludeAccounts:                        []string{"333333333333"},
+		AccountConcurrency:                     3,
+		PermissionUsageLookbackDays:            365,
+		AWSIdentityCenterPermissionSetsInclude: []string{" Admin "},
+		AWSIdentityCenterPermissionSetsExclude: []string{" Billing "},
 	})
 	if err != nil {
 		t.Fatalf("RunAWSOrgSync returned error: %v", err)
@@ -590,6 +618,13 @@ func TestRunGCPSync_SendsRequestAndParsesResponse(t *testing.T) {
 		if req["validate"] != true {
 			t.Fatalf("expected validate=true, got %#v", req["validate"])
 		}
+		if req["permission_usage_lookback_days"] != float64(120) {
+			t.Fatalf("expected permission_usage_lookback_days=120, got %#v", req["permission_usage_lookback_days"])
+		}
+		targetGroups, ok := req["gcp_iam_target_groups"].([]interface{})
+		if !ok || len(targetGroups) != 2 || targetGroups[0] != "eng@example.com" || targetGroups[1] != "ops@example.com" {
+			t.Fatalf("unexpected gcp_iam_target_groups payload: %#v", req["gcp_iam_target_groups"])
+		}
 		tables, ok := req["tables"].([]interface{})
 		if !ok || len(tables) != 2 || tables[0] != "gcp_compute_instances" || tables[1] != "gcp_storage_buckets" {
 			t.Fatalf("unexpected tables payload: %#v", req["tables"])
@@ -620,10 +655,12 @@ func TestRunGCPSync_SendsRequestAndParsesResponse(t *testing.T) {
 	}
 
 	resp, err := c.RunGCPSync(context.Background(), GCPSyncRequest{
-		Project:     " my-project ",
-		Concurrency: 7,
-		Tables:      []string{"gcp_compute_instances", "gcp_storage_buckets"},
-		Validate:    true,
+		Project:                     " my-project ",
+		Concurrency:                 7,
+		Tables:                      []string{"gcp_compute_instances", "gcp_storage_buckets"},
+		Validate:                    true,
+		PermissionUsageLookbackDays: 120,
+		GCPIAMTargetGroups:          []string{" eng@example.com ", "ops@example.com"},
 	})
 	if err != nil {
 		t.Fatalf("RunGCPSync returned error: %v", err)
