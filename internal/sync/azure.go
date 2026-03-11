@@ -20,13 +20,14 @@ import (
 	"github.com/evalops/cerebro/internal/metrics"
 	"github.com/evalops/cerebro/internal/snowflake"
 	"github.com/evalops/cerebro/internal/snowflake/tableops"
+	"github.com/evalops/cerebro/internal/warehouse"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/time/rate"
 )
 
 // AzureSyncEngine orchestrates Azure resource syncing with change detection
 type AzureSyncEngine struct {
-	sf             *snowflake.Client
+	sf             warehouse.SyncWarehouse
 	logger         *slog.Logger
 	concurrency    int
 	subscriptionID string
@@ -51,7 +52,7 @@ func WithAzureTableFilter(tables []string) AzureEngineOption {
 	return func(e *AzureSyncEngine) { e.tableFilter = normalizeTableFilter(tables) }
 }
 
-func NewAzureSyncEngine(sf *snowflake.Client, logger *slog.Logger, opts ...AzureEngineOption) (*AzureSyncEngine, error) {
+func NewAzureSyncEngine(sf warehouse.SyncWarehouse, logger *slog.Logger, opts ...AzureEngineOption) (*AzureSyncEngine, error) {
 	cred, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
 		return nil, fmt.Errorf("create Azure credential: %w", err)

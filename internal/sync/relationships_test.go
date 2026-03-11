@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/evalops/cerebro/internal/snowflake"
+	"github.com/evalops/cerebro/internal/warehouse"
 )
 
 func TestExtractReferenceID(t *testing.T) {
@@ -460,9 +460,9 @@ func TestPersistRelationships_UsesRunSyncTimeForFreshWrites(t *testing.T) {
 		relationshipQueryBatch = originalBatch
 	})
 
-	relationshipSchemaName = func(_ *snowflake.Client) string { return "RAW" }
+	relationshipSchemaName = func(_ warehouse.SyncWarehouse) string { return "RAW" }
 	var capturedArgs []interface{}
-	relationshipQueryBatch = func(_ context.Context, _ *snowflake.Client, _ string, args ...interface{}) error {
+	relationshipQueryBatch = func(_ context.Context, _ warehouse.SyncWarehouse, _ string, args ...interface{}) error {
 		capturedArgs = append([]interface{}(nil), args...)
 		return nil
 	}
@@ -512,12 +512,12 @@ func TestPersistRelationships_UsesCurrentTimeWhenRunSyncTimeMissing(t *testing.T
 		relationshipNowUTC = originalNow
 	})
 
-	relationshipSchemaName = func(_ *snowflake.Client) string { return "RAW" }
+	relationshipSchemaName = func(_ warehouse.SyncWarehouse) string { return "RAW" }
 	fixedNow := time.Date(2026, 2, 24, 16, 5, 0, 0, time.UTC)
 	relationshipNowUTC = func() time.Time { return fixedNow }
 
 	var capturedArgs []interface{}
-	relationshipQueryBatch = func(_ context.Context, _ *snowflake.Client, _ string, args ...interface{}) error {
+	relationshipQueryBatch = func(_ context.Context, _ warehouse.SyncWarehouse, _ string, args ...interface{}) error {
 		capturedArgs = append([]interface{}(nil), args...)
 		return nil
 	}

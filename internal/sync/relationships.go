@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/evalops/cerebro/internal/snowflake"
+	"github.com/evalops/cerebro/internal/warehouse"
 )
 
 // Relationship represents a connection between two cloud resources
@@ -52,7 +53,7 @@ const (
 
 // RelationshipExtractor extracts relationships from synced resources
 type RelationshipExtractor struct {
-	sf          *snowflake.Client
+	sf          warehouse.SyncWarehouse
 	logger      *slog.Logger
 	runSyncTime time.Time
 }
@@ -98,14 +99,14 @@ var relationshipExtractionSteps = func(r *RelationshipExtractor) []relationshipE
 	}
 }
 
-var relationshipSchemaName = func(sf *snowflake.Client) string {
+var relationshipSchemaName = func(sf warehouse.SyncWarehouse) string {
 	if sf == nil {
 		return ""
 	}
 	return sf.Schema()
 }
 
-var relationshipQueryBatch = func(ctx context.Context, sf *snowflake.Client, query string, args ...interface{}) error {
+var relationshipQueryBatch = func(ctx context.Context, sf warehouse.SyncWarehouse, query string, args ...interface{}) error {
 	if sf == nil {
 		return fmt.Errorf("snowflake client is nil")
 	}
@@ -114,7 +115,7 @@ var relationshipQueryBatch = func(ctx context.Context, sf *snowflake.Client, que
 }
 
 // NewRelationshipExtractor creates a new extractor
-func NewRelationshipExtractor(sf *snowflake.Client, logger *slog.Logger) *RelationshipExtractor {
+func NewRelationshipExtractor(sf warehouse.SyncWarehouse, logger *slog.Logger) *RelationshipExtractor {
 	return &RelationshipExtractor{sf: sf, logger: logger}
 }
 

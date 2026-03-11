@@ -66,6 +66,7 @@ import (
 	"github.com/evalops/cerebro/internal/snowflake"
 	"github.com/evalops/cerebro/internal/threatintel"
 	"github.com/evalops/cerebro/internal/ticketing"
+	"github.com/evalops/cerebro/internal/warehouse"
 	"github.com/evalops/cerebro/internal/webhooks"
 )
 
@@ -88,6 +89,7 @@ type App struct {
 
 	// Core services
 	Snowflake *snowflake.Client
+	Warehouse warehouse.DataWarehouse
 	Policy    *policy.Engine
 	Findings  findings.FindingStore
 	Scanner   *scanner.Scanner

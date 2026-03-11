@@ -15,12 +15,13 @@ import (
 
 	"github.com/evalops/cerebro/internal/metrics"
 	"github.com/evalops/cerebro/internal/snowflake"
+	"github.com/evalops/cerebro/internal/warehouse"
 	"golang.org/x/sync/errgroup"
 )
 
 // GCPAssetInventoryEngine uses Cloud Asset Inventory API for efficient bulk resource fetching
 type GCPAssetInventoryEngine struct {
-	sf          *snowflake.Client
+	sf          warehouse.SyncWarehouse
 	logger      *slog.Logger
 	concurrency int
 	scope       string // organization/ORG_ID, folder/FOLDER_ID, or project/PROJECT_ID
@@ -48,7 +49,7 @@ func WithAssetTypeFilter(types []string) GCPAssetOption {
 }
 
 // NewGCPAssetInventoryEngine creates a new engine using Cloud Asset Inventory API
-func NewGCPAssetInventoryEngine(sf *snowflake.Client, logger *slog.Logger, opts ...GCPAssetOption) *GCPAssetInventoryEngine {
+func NewGCPAssetInventoryEngine(sf warehouse.SyncWarehouse, logger *slog.Logger, opts ...GCPAssetOption) *GCPAssetInventoryEngine {
 	e := &GCPAssetInventoryEngine{
 		sf:          sf,
 		logger:      logger,

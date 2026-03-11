@@ -117,11 +117,11 @@ func (a *App) initHealth() {
 	}))
 
 	a.Health.Register("sync_data", health.PingCheck("sync_data", func(ctx context.Context) error {
-		if a.Snowflake == nil {
+		if a.Warehouse == nil {
 			return fmt.Errorf("not configured")
 		}
 		// Check that at least some tables have data
-		tables, err := a.Snowflake.ListAvailableTables(ctx)
+		tables, err := a.Warehouse.ListAvailableTables(ctx)
 		if err != nil {
 			return fmt.Errorf("cannot list tables: %w", err)
 		}
@@ -375,7 +375,7 @@ func (a *App) initRuntime() {
 func (a *App) initSecurityGraph(ctx context.Context) {
 	a.graphReady = make(chan struct{})
 
-	if a.Snowflake == nil {
+	if a.Warehouse == nil {
 		a.Logger.Warn("security graph disabled - snowflake not configured")
 		a.Propagation = nil
 		a.graphCancel = nil
@@ -383,7 +383,7 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 		return
 	}
 
-	source := graph.NewSnowflakeSource(a.Snowflake)
+	source := graph.NewSnowflakeSource(a.Warehouse)
 	a.SecurityGraphBuilder = graph.NewBuilder(source, a.Logger)
 	a.SecurityGraph = a.SecurityGraphBuilder.Graph()
 	a.configureGraphSchemaValidation(a.SecurityGraph)

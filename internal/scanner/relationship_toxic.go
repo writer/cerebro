@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/evalops/cerebro/internal/policy"
-	"github.com/evalops/cerebro/internal/snowflake"
+	"github.com/evalops/cerebro/internal/warehouse"
 )
 
 type RelationshipToxicFinding struct {
@@ -36,7 +36,7 @@ type ToxicScanCursor struct {
 	SinceID   string // keyset tiebreak: last resource_id at SinceTime
 }
 
-func DetectRelationshipToxicCombinations(ctx context.Context, sf *snowflake.Client, cursor *ToxicScanCursor) (*ToxicDetectionResult, error) {
+func DetectRelationshipToxicCombinations(ctx context.Context, sf warehouse.QueryWarehouse, cursor *ToxicScanCursor) (*ToxicDetectionResult, error) {
 	if sf == nil {
 		return &ToxicDetectionResult{}, nil
 	}

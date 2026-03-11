@@ -137,7 +137,7 @@ func (s *Server) scanFindings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	store := s.findingsStoreForRequest(r.Context())
-	if s.app.Snowflake == nil {
+	if s.app.Warehouse == nil {
 		s.error(w, http.StatusServiceUnavailable, "snowflake not configured")
 		return
 	}
@@ -150,7 +150,7 @@ func (s *Server) scanFindings(w http.ResponseWriter, r *http.Request) {
 
 	for _, table := range tables {
 		tableStart := time.Now()
-		assets, err := s.app.Snowflake.GetAssets(r.Context(), table, snowflake.AssetFilter{Limit: req.Limit})
+		assets, err := s.app.Warehouse.GetAssets(r.Context(), table, snowflake.AssetFilter{Limit: req.Limit})
 		if err != nil {
 			s.errorFromErr(w, err)
 			return

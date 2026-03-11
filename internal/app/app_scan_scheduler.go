@@ -218,7 +218,7 @@ func (a *App) runRetentionCleanup(ctx context.Context) error {
 }
 
 func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
-	if a.Snowflake == nil {
+	if a.Warehouse == nil {
 		return fmt.Errorf("snowflake not configured")
 	}
 
@@ -275,7 +275,7 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 				filter.Offset = offset
 			}
 			assets, attempts, err := scanner.WithRetryValue(tableCtx, tuning.RetryOptions, func() ([]map[string]interface{}, error) {
-				return a.Snowflake.GetAssets(tableCtx, table, filter)
+				return a.Warehouse.GetAssets(tableCtx, table, filter)
 			})
 			if attempts > 1 {
 				tableProfile.RetryAttempts += attempts - 1
@@ -434,14 +434,14 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 	}
 
 	sqlToxicRiskSets := make(map[string][]map[string]bool)
-	if a.Snowflake != nil {
+	if a.Warehouse != nil {
 		var toxicCursor *scanner.ToxicScanCursor
 		if a.ScanWatermarks != nil {
 			if wm := a.ScanWatermarks.GetWatermark("_toxic_relationships"); wm != nil {
 				toxicCursor = &scanner.ToxicScanCursor{SinceTime: wm.LastScanTime, SinceID: wm.LastScanID}
 			}
 		}
-		toxicResult, err := scanner.DetectRelationshipToxicCombinations(ctx, a.Snowflake, toxicCursor)
+		toxicResult, err := scanner.DetectRelationshipToxicCombinations(ctx, a.Warehouse, toxicCursor)
 		if err != nil {
 			a.Logger.Warn("relationship toxic combo scan failed", "error", err)
 		} else {
@@ -652,8 +652,8 @@ func (a *App) resolveScanTables(ctx context.Context) []string {
 	}
 
 	available := a.AvailableTables
-	if a.Snowflake != nil {
-		if refreshed, err := a.Snowflake.ListAvailableTables(ctx); err == nil {
+	if a.Warehouse != nil {
+		if refreshed, err := a.Warehouse.ListAvailableTables(ctx); err == nil {
 			a.AvailableTables = refreshed
 			available = refreshed
 		} else if ctx.Err() == nil {

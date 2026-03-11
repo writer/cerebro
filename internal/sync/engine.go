@@ -19,11 +19,12 @@ import (
 	"github.com/evalops/cerebro/internal/metrics"
 	"github.com/evalops/cerebro/internal/snowflake"
 	"github.com/evalops/cerebro/internal/snowflake/tableops"
+	"github.com/evalops/cerebro/internal/warehouse"
 )
 
 // SyncEngine orchestrates cloud resource syncing
 type SyncEngine struct {
-	sf                 *snowflake.Client
+	sf                 warehouse.SyncWarehouse
 	logger             *slog.Logger
 	concurrency        int
 	regions            []string
@@ -77,7 +78,7 @@ var DefaultAWSRegions = []string{
 	"ap-northeast-1",
 }
 
-func NewSyncEngine(sf *snowflake.Client, logger *slog.Logger, opts ...EngineOption) *SyncEngine {
+func NewSyncEngine(sf warehouse.SyncWarehouse, logger *slog.Logger, opts ...EngineOption) *SyncEngine {
 	e := &SyncEngine{
 		sf:          sf,
 		logger:      logger,

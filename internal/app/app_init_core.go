@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -47,6 +48,7 @@ func (a *App) initSnowflake(ctx context.Context) error {
 	}
 
 	a.Snowflake = client
+	a.Warehouse = client
 	return nil
 }
 
@@ -69,9 +71,14 @@ func (a *App) initPolicy() error {
 }
 
 func (a *App) initFindings() {
+	warehouseDB := (*sql.DB)(nil)
+	if a.Warehouse != nil {
+		warehouseDB = a.Warehouse.DB()
+	}
+
 	// Use SQLite persistence when Snowflake is not available
 	// This prevents data loss on restart in dev/test environments
-	if a.Snowflake == nil {
+	if a.Warehouse == nil || warehouseDB == nil {
 		dbPath := filepath.Join(findings.DefaultFilePath(), "cerebro.db")
 		if path := os.Getenv("CEREBRO_DB_PATH"); path != "" {
 			dbPath = path
@@ -91,10 +98,18 @@ func (a *App) initFindings() {
 	}
 	// When Snowflake is available, create SnowflakeStore as primary
 	// This will be loaded from Snowflake in initSnowflakeFindings
+	databaseName := strings.TrimSpace(a.Config.SnowflakeDatabase)
+	schemaName := strings.TrimSpace(a.Config.SnowflakeSchema)
+	if candidate := strings.TrimSpace(a.Warehouse.Database()); candidate != "" {
+		databaseName = candidate
+	}
+	if candidate := strings.TrimSpace(a.Warehouse.Schema()); candidate != "" {
+		schemaName = candidate
+	}
 	snowflakeStore := findings.NewSnowflakeStore(
-		a.Snowflake.DB(),
-		a.Config.SnowflakeDatabase,
-		a.Config.SnowflakeSchema,
+		warehouseDB,
+		databaseName,
+		schemaName,
 	)
 	a.Findings = snowflakeStore
 	a.SnowflakeFindings = snowflakeStore

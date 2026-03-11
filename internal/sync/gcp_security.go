@@ -15,14 +15,14 @@ import (
 	containeranalysis "cloud.google.com/go/containeranalysis/apiv1"
 	securitycenter "cloud.google.com/go/securitycenter/apiv1"
 	"cloud.google.com/go/securitycenter/apiv1/securitycenterpb"
-	"github.com/evalops/cerebro/internal/snowflake"
+	"github.com/evalops/cerebro/internal/warehouse"
 	"google.golang.org/api/iterator"
 	grafeaspb "google.golang.org/genproto/googleapis/grafeas/v1"
 )
 
 // GCPSecuritySync handles syncing security-related GCP data
 type GCPSecuritySync struct {
-	sf        *snowflake.Client
+	sf        warehouse.SyncWarehouse
 	logger    *slog.Logger
 	projectID string
 	orgID     string
@@ -37,7 +37,7 @@ func WithGCPSecurityTableFilter(tables []string) GCPSecurityOption {
 }
 
 // NewGCPSecuritySync creates a new GCP security sync instance
-func NewGCPSecuritySync(sf *snowflake.Client, logger *slog.Logger, projectID, orgID string, opts ...GCPSecurityOption) *GCPSecuritySync {
+func NewGCPSecuritySync(sf warehouse.SyncWarehouse, logger *slog.Logger, projectID, orgID string, opts ...GCPSecurityOption) *GCPSecuritySync {
 	syncer := &GCPSecuritySync{
 		sf:        sf,
 		logger:    logger,

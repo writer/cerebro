@@ -263,6 +263,7 @@ func (a *App) rotateSnowflakeClient(ctx context.Context, cfg *Config) error {
 
 	oldClient := a.Snowflake
 	a.Snowflake = newClient
+	a.Warehouse = newClient
 	a.initRepositories()
 
 	if a.ScanWatermarks != nil {

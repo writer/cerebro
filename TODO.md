@@ -5,6 +5,52 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 37 - Warehouse Interface + Testability Seams (2026-03-10)
+
+### Review findings
+- [x] Gap: `snowflake.Client` still leaked through sync entry points, scan helpers, and read handlers even after lower-level graph/sync seams were introduced.
+- [x] Gap: the codebase had no reusable in-memory warehouse test double that could exercise sync/query/asset flows without a live database client.
+- [x] Gap: read/query code paths that only needed warehouse behavior were still keyed to the concrete Snowflake type, limiting unit-test reach and making broader platform extraction harder.
+- [x] Gap: table-discovery and column-introspection helpers were treated as Snowflake-only concerns even though they are part of the generic warehouse contract needed by scans and query policies.
+
+### Execution plan
+- [ ] Add a reusable warehouse contract package:
+  - [x] create `internal/warehouse`
+  - [x] define narrow query/exec/schema/asset/CDC interfaces
+  - [x] define broader `DataWarehouse` application contract
+  - [x] provide `MemoryWarehouse` for unit tests
+- [ ] Migrate core sync and graph seams:
+  - [x] move sync engines and relationship extraction onto `warehouse.SyncWarehouse`
+  - [x] move graph snowflake source onto warehouse query interface
+  - [x] keep compile-time assertion that `*snowflake.Client` satisfies the contract
+- [ ] Widen testability through higher-level read paths:
+  - [x] add table-discovery and column-introspection methods to the warehouse contract
+  - [x] move query-policy scans and scan column discovery onto `App.Warehouse`
+  - [x] move obvious read/asset handlers onto `App.Warehouse`
+  - [x] move identity/report read fetches onto `App.Warehouse`
+- [ ] Prove the seam with direct tests:
+  - [x] add `MemoryWarehouse` package tests
+  - [x] add sync watermark/query tests against `MemoryWarehouse`
+  - [x] add handler tests that succeed with `Warehouse` set and `Snowflake` unset
+- [ ] Validate full repo and ship through PR feedback loop
+
+### Detailed follow-on backlog
+- [ ] Track A - API/service warehouse adoption
+  - Exit criteria:
+  - [ ] move remaining asset/query consumers in app and API layers off direct `Snowflake` reads where they only need warehouse behavior
+  - [ ] convert sync HTTP wrappers to accept the warehouse interface where engine constructors already do
+  - [ ] isolate the remaining true Snowflake-only responsibilities behind smaller contracts
+- [ ] Track B - Test coverage unlocks
+  - Exit criteria:
+  - [ ] add more sync-engine unit tests that use `MemoryWarehouse` rather than query function stubbing
+  - [ ] add handler-level tests for dry-run asset loads, identity reports, and stale-access detection using the memory warehouse
+  - [ ] measure and raise `internal/sync` coverage on the back of the new seam
+- [ ] Track C - Warehouse portability
+  - Exit criteria:
+  - [ ] define whether a second concrete warehouse implementation is actually needed or whether contract-only portability is enough for now
+  - [ ] document which capabilities are generic warehouse primitives vs Snowflake-specific extensions
+  - [ ] keep platform extraction work from reintroducing concrete-client coupling in new code
+
 ## Deep Review Cycle 36 - Codegen Catalog + CI-to-Local Contract Map (2026-03-10)
 
 ### Review findings

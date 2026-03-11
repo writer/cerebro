@@ -5,10 +5,12 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/evalops/cerebro/internal/snowflake"
+	"github.com/evalops/cerebro/internal/warehouse"
 )
 
 func TestDeriveIncrementalStart(t *testing.T) {
@@ -62,7 +64,7 @@ func TestIncrementalStartTime_UsesPersistedWatermarkForIncrementalTables(t *test
 	t.Cleanup(func() { queryLatestTableSyncTime = original })
 
 	persisted := time.Date(2026, 2, 24, 12, 30, 0, 0, time.UTC)
-	queryLatestTableSyncTime = func(_ context.Context, _ *snowflake.Client, _ string, _ string, _ bool) (time.Time, error) {
+	queryLatestTableSyncTime = func(_ context.Context, _ warehouse.SyncWarehouse, _ string, _ string, _ bool) (time.Time, error) {
 		return persisted, nil
 	}
 
@@ -96,7 +98,7 @@ func TestIncrementalStartTime_LookupErrorReturnsNoStart(t *testing.T) {
 	original := queryLatestTableSyncTime
 	t.Cleanup(func() { queryLatestTableSyncTime = original })
 
-	queryLatestTableSyncTime = func(_ context.Context, _ *snowflake.Client, _ string, _ string, _ bool) (time.Time, error) {
+	queryLatestTableSyncTime = func(_ context.Context, _ warehouse.SyncWarehouse, _ string, _ string, _ bool) (time.Time, error) {
 		return time.Time{}, errors.New("lookup failed")
 	}
 
@@ -115,7 +117,7 @@ func TestIncrementalStartTime_ForceFullBackfillBypassesWatermarkLookup(t *testin
 	t.Cleanup(func() { queryLatestTableSyncTime = original })
 
 	called := false
-	queryLatestTableSyncTime = func(_ context.Context, _ *snowflake.Client, _ string, _ string, _ bool) (time.Time, error) {
+	queryLatestTableSyncTime = func(_ context.Context, _ warehouse.SyncWarehouse, _ string, _ string, _ bool) (time.Time, error) {
 		called = true
 		return time.Now().UTC(), nil
 	}
@@ -131,5 +133,33 @@ func TestIncrementalStartTime_ForceFullBackfillBypassesWatermarkLookup(t *testin
 	}
 	if called {
 		t.Fatalf("expected watermark lookup to be skipped when forcing full backfill")
+	}
+}
+
+func TestQueryLatestTableSyncTime_UsesWarehouseInterface(t *testing.T) {
+	expected := time.Date(2026, 3, 10, 12, 34, 56, 0, time.UTC)
+	store := &warehouse.MemoryWarehouse{
+		QueryFunc: func(_ context.Context, query string, args ...any) (*snowflake.QueryResult, error) {
+			if !strings.Contains(query, "WHERE REGION = ?") {
+				t.Fatalf("expected regional filter in query, got %q", query)
+			}
+			if len(args) != 1 || args[0] != "us-east-1" {
+				t.Fatalf("expected region arg us-east-1, got %#v", args)
+			}
+			return &snowflake.QueryResult{
+				Rows: []map[string]any{{"SYNC_TIME": expected.Format(time.RFC3339Nano)}},
+			}, nil
+		},
+	}
+
+	got, err := queryLatestTableSyncTime(context.Background(), store, "aws_securityhub_findings", "us-east-1", true)
+	if err != nil {
+		t.Fatalf("queryLatestTableSyncTime returned error: %v", err)
+	}
+	if !got.Equal(expected) {
+		t.Fatalf("expected %s, got %s", expected, got)
+	}
+	if len(store.Queries) != 1 {
+		t.Fatalf("expected 1 recorded query, got %d", len(store.Queries))
 	}
 }

@@ -19,14 +19,14 @@ import (
 )
 
 func (s *Server) detectStaleAccess(w http.ResponseWriter, r *http.Request) {
-	if s.app.Snowflake == nil {
+	if s.app.Warehouse == nil {
 		s.error(w, http.StatusServiceUnavailable, "snowflake not configured")
 		return
 	}
 
 	detector := identity.NewStaleAccessDetector(identity.DefaultThresholds())
 	fetch := func(table string) []map[string]interface{} {
-		rows, err := s.app.Snowflake.GetAssets(r.Context(), table, snowflake.AssetFilter{Limit: 1000})
+		rows, err := s.app.Warehouse.GetAssets(r.Context(), table, snowflake.AssetFilter{Limit: 1000})
 		if err != nil {
 			return []map[string]interface{}{}
 		}
@@ -178,24 +178,24 @@ func (s *Server) identityReport(w http.ResponseWriter, r *http.Request) {
 
 	data := identity.IdentityData{}
 
-	if s.app.Snowflake != nil {
+	if s.app.Warehouse != nil {
 		// Load identity data from various tables
-		if users, err := s.app.Snowflake.GetAssets(r.Context(), "aws_iam_users", snowflake.AssetFilter{Limit: 1000}); err == nil {
+		if users, err := s.app.Warehouse.GetAssets(r.Context(), "aws_iam_users", snowflake.AssetFilter{Limit: 1000}); err == nil {
 			data.Users = append(data.Users, users...)
 		}
-		if users, err := s.app.Snowflake.GetAssets(r.Context(), "okta_users", snowflake.AssetFilter{Limit: 1000}); err == nil {
+		if users, err := s.app.Warehouse.GetAssets(r.Context(), "okta_users", snowflake.AssetFilter{Limit: 1000}); err == nil {
 			data.Users = append(data.Users, users...)
 		}
-		if users, err := s.app.Snowflake.GetAssets(r.Context(), "azure_ad_users", snowflake.AssetFilter{Limit: 1000}); err == nil {
+		if users, err := s.app.Warehouse.GetAssets(r.Context(), "azure_ad_users", snowflake.AssetFilter{Limit: 1000}); err == nil {
 			data.Users = append(data.Users, users...)
 		}
-		if sas, err := s.app.Snowflake.GetAssets(r.Context(), "gcp_iam_service_accounts", snowflake.AssetFilter{Limit: 1000}); err == nil {
+		if sas, err := s.app.Warehouse.GetAssets(r.Context(), "gcp_iam_service_accounts", snowflake.AssetFilter{Limit: 1000}); err == nil {
 			data.ServiceAccounts = sas
 		}
-		if creds, err := s.app.Snowflake.GetAssets(r.Context(), "aws_iam_credential_reports", snowflake.AssetFilter{Limit: 1000}); err == nil {
+		if creds, err := s.app.Warehouse.GetAssets(r.Context(), "aws_iam_credential_reports", snowflake.AssetFilter{Limit: 1000}); err == nil {
 			data.Credentials = creds
 		}
-		if roles, err := s.app.Snowflake.GetAssets(r.Context(), "aws_iam_roles", snowflake.AssetFilter{Limit: 1000}); err == nil {
+		if roles, err := s.app.Warehouse.GetAssets(r.Context(), "aws_iam_roles", snowflake.AssetFilter{Limit: 1000}); err == nil {
 			data.Roles = roles
 		}
 	}

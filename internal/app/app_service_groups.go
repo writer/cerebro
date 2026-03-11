@@ -23,12 +23,14 @@ import (
 	"github.com/evalops/cerebro/internal/snowflake"
 	"github.com/evalops/cerebro/internal/threatintel"
 	"github.com/evalops/cerebro/internal/ticketing"
+	"github.com/evalops/cerebro/internal/warehouse"
 	"github.com/evalops/cerebro/internal/webhooks"
 )
 
 // CoreServices groups policy evaluation and scanning primitives.
 type CoreServices struct {
 	Snowflake     *snowflake.Client
+	Warehouse     warehouse.DataWarehouse
 	Policy        *policy.Engine
 	Findings      findings.FindingStore
 	Scanner       *scanner.Scanner
@@ -82,6 +84,7 @@ type StorageServices struct {
 func (a *App) CoreServices() CoreServices {
 	return CoreServices{
 		Snowflake:     a.Snowflake,
+		Warehouse:     a.Warehouse,
 		Policy:        a.Policy,
 		Findings:      a.Findings,
 		Scanner:       a.Scanner,

@@ -18,7 +18,7 @@ import (
 )
 
 func (s *Server) syncStatus(w http.ResponseWriter, r *http.Request) {
-	if s.app.Snowflake == nil {
+	if s.app.Warehouse == nil {
 		s.error(w, http.StatusServiceUnavailable, "snowflake not configured")
 		return
 	}
@@ -43,7 +43,7 @@ func (s *Server) syncStatus(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		query := fmt.Sprintf("SELECT MAX(_cq_sync_time) as last_sync FROM %s", table)
-		result, err := s.app.Snowflake.Query(r.Context(), query)
+		result, err := s.app.Warehouse.Query(r.Context(), query)
 		if err != nil {
 			continue // Table might not exist
 		}
@@ -135,13 +135,13 @@ func parseLastSyncValue(value interface{}) time.Time {
 // Query endpoints
 
 func (s *Server) listTables(w http.ResponseWriter, r *http.Request) {
-	if s.app.Snowflake == nil {
+	if s.app.Warehouse == nil {
 		s.error(w, http.StatusServiceUnavailable, "snowflake not configured")
 		return
 	}
 	pagination := ParsePagination(r, 100, 1000)
 
-	tables, err := s.app.Snowflake.ListTables(r.Context())
+	tables, err := s.app.Warehouse.ListTables(r.Context())
 	if err != nil {
 		s.errorFromErr(w, err)
 		return
@@ -158,7 +158,7 @@ func (s *Server) listTables(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) executeQuery(w http.ResponseWriter, r *http.Request) {
-	if s.app.Snowflake == nil {
+	if s.app.Warehouse == nil {
 		s.error(w, http.StatusServiceUnavailable, "snowflake not configured")
 		return
 	}
@@ -182,7 +182,7 @@ func (s *Server) executeQuery(w http.ResponseWriter, r *http.Request) {
 	queryCtx, cancel := context.WithTimeout(r.Context(), snowflake.ClampReadOnlyQueryTimeout(req.TimeoutSeconds))
 	defer cancel()
 
-	result, err := s.app.Snowflake.Query(queryCtx, boundedQuery)
+	result, err := s.app.Warehouse.Query(queryCtx, boundedQuery)
 	if err != nil {
 		s.error(w, http.StatusInternalServerError, "query execution failed")
 		return
@@ -199,7 +199,7 @@ func (s *Server) executeQuery(w http.ResponseWriter, r *http.Request) {
 // Asset endpoints
 
 func (s *Server) listAssets(w http.ResponseWriter, r *http.Request) {
-	if s.app.Snowflake == nil {
+	if s.app.Warehouse == nil {
 		s.error(w, http.StatusServiceUnavailable, "snowflake not configured")
 		return
 	}
@@ -207,7 +207,7 @@ func (s *Server) listAssets(w http.ResponseWriter, r *http.Request) {
 	table := chi.URLParam(r, "table")
 	limit := queryPositiveInt(r, "limit", 100)
 
-	assets, err := s.app.Snowflake.GetAssets(r.Context(), table, snowflake.AssetFilter{
+	assets, err := s.app.Warehouse.GetAssets(r.Context(), table, snowflake.AssetFilter{
 		Limit:   limit,
 		Account: r.URL.Query().Get("account"),
 		Region:  r.URL.Query().Get("region"),
@@ -220,7 +220,7 @@ func (s *Server) listAssets(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getAsset(w http.ResponseWriter, r *http.Request) {
-	if s.app.Snowflake == nil {
+	if s.app.Warehouse == nil {
 		s.error(w, http.StatusServiceUnavailable, "snowflake not configured")
 		return
 	}
@@ -228,7 +228,7 @@ func (s *Server) getAsset(w http.ResponseWriter, r *http.Request) {
 	table := chi.URLParam(r, "table")
 	id := chi.URLParam(r, "id")
 
-	asset, err := s.app.Snowflake.GetAssetByID(r.Context(), table, id)
+	asset, err := s.app.Warehouse.GetAssetByID(r.Context(), table, id)
 	if err != nil {
 		s.error(w, http.StatusNotFound, err.Error())
 		return
@@ -483,7 +483,7 @@ func (s *Server) persistPolicyHistory(ctx context.Context, policyID string) erro
 }
 
 func (s *Server) loadPolicyDryRunAssets(ctx context.Context, current, candidate *policy.Policy, limit int) ([]map[string]interface{}, error) {
-	if s.app.Snowflake == nil {
+	if s.app.Warehouse == nil {
 		return nil, nil
 	}
 
@@ -516,7 +516,7 @@ func (s *Server) loadPolicyDryRunAssets(ctx context.Context, current, candidate 
 
 	assets := make([]map[string]interface{}, 0, limit*len(tables))
 	for table := range tables {
-		rows, err := s.app.Snowflake.GetAssets(ctx, table, snowflake.AssetFilter{Limit: limit})
+		rows, err := s.app.Warehouse.GetAssets(ctx, table, snowflake.AssetFilter{Limit: limit})
 		if err != nil {
 			s.app.Logger.Warn("dry-run asset load failed", "table", table, "error", err)
 			continue

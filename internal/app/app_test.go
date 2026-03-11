@@ -14,6 +14,7 @@ import (
 	"github.com/evalops/cerebro/internal/findings"
 	"github.com/evalops/cerebro/internal/policy"
 	"github.com/evalops/cerebro/internal/snowflake"
+	"github.com/evalops/cerebro/internal/warehouse"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -786,7 +787,7 @@ func TestScanQueryPolicies_DedupAndSuppressionFlow(t *testing.T) {
 		executeReadOnlyQueryFn = originalExecuteReadOnlyQueryFn
 	})
 
-	executeReadOnlyQueryFn = func(context.Context, *snowflake.Client, string) (*snowflake.QueryResult, error) {
+	executeReadOnlyQueryFn = func(context.Context, warehouse.QueryWarehouse, string) (*snowflake.QueryResult, error) {
 		return &snowflake.QueryResult{Rows: []map[string]interface{}{
 			{"_cq_id": "asset-1", "_cq_table": "assets", "name": "Asset 1"},
 			{"id": "asset-1", "_cq_table": "assets", "name": "Asset 1 duplicate"},
@@ -808,7 +809,7 @@ func TestScanQueryPolicies_DedupAndSuppressionFlow(t *testing.T) {
 		Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Policy:          engine,
 		Findings:        store,
-		Snowflake:       &snowflake.Client{},
+		Warehouse:       &warehouse.MemoryWarehouse{},
 		AvailableTables: []string{"assets"},
 	}
 
@@ -859,7 +860,7 @@ func TestScanQueryPolicies_SkipsDisallowedTables(t *testing.T) {
 	})
 
 	queryCallCount := 0
-	executeReadOnlyQueryFn = func(context.Context, *snowflake.Client, string) (*snowflake.QueryResult, error) {
+	executeReadOnlyQueryFn = func(context.Context, warehouse.QueryWarehouse, string) (*snowflake.QueryResult, error) {
 		queryCallCount++
 		return &snowflake.QueryResult{}, nil
 	}
@@ -877,7 +878,7 @@ func TestScanQueryPolicies_SkipsDisallowedTables(t *testing.T) {
 		Config:          &Config{},
 		Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Policy:          engine,
-		Snowflake:       &snowflake.Client{},
+		Warehouse:       &warehouse.MemoryWarehouse{},
 		AvailableTables: []string{"allowed_table"},
 	}
 
@@ -900,7 +901,7 @@ func TestScanQueryPolicies_AddsTruncationMetaFinding(t *testing.T) {
 	})
 
 	observedQuery := ""
-	executeReadOnlyQueryFn = func(_ context.Context, _ *snowflake.Client, query string) (*snowflake.QueryResult, error) {
+	executeReadOnlyQueryFn = func(_ context.Context, _ warehouse.QueryWarehouse, query string) (*snowflake.QueryResult, error) {
 		observedQuery = query
 		return &snowflake.QueryResult{Rows: []map[string]interface{}{
 			{"_cq_id": "asset-1", "_cq_table": "assets", "name": "Asset 1"},
@@ -921,7 +922,7 @@ func TestScanQueryPolicies_AddsTruncationMetaFinding(t *testing.T) {
 		Config:          &Config{QueryPolicyRowLimit: 2},
 		Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Policy:          engine,
-		Snowflake:       &snowflake.Client{},
+		Warehouse:       &warehouse.MemoryWarehouse{},
 		AvailableTables: []string{"assets"},
 	}
 

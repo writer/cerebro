@@ -10,6 +10,7 @@ import (
 	"github.com/evalops/cerebro/internal/policy"
 	"github.com/evalops/cerebro/internal/scanner"
 	"github.com/evalops/cerebro/internal/snowflake"
+	"github.com/evalops/cerebro/internal/warehouse"
 )
 
 const (
@@ -17,7 +18,7 @@ const (
 	queryPolicyMetaFindingID   = "query-result-limit"
 )
 
-var executeReadOnlyQueryFn = func(ctx context.Context, client *snowflake.Client, query string) (*snowflake.QueryResult, error) {
+var executeReadOnlyQueryFn = func(ctx context.Context, client warehouse.QueryWarehouse, query string) (*snowflake.QueryResult, error) {
 	return client.Query(ctx, query)
 }
 
@@ -30,7 +31,7 @@ type QueryPolicyScanResult struct {
 // ScanQueryPolicies executes query-backed policies with read-only SQL guardrails.
 func (a *App) ScanQueryPolicies(ctx context.Context) QueryPolicyScanResult {
 	result := QueryPolicyScanResult{Findings: make([]policy.Finding, 0)}
-	if a == nil || a.Policy == nil || a.Snowflake == nil {
+	if a == nil || a.Policy == nil || a.Warehouse == nil {
 		return result
 	}
 
@@ -76,7 +77,7 @@ func (a *App) ScanQueryPolicies(ctx context.Context) QueryPolicyScanResult {
 		defer cancel()
 
 		queryResult, attempts, err := scanner.WithRetryValue(queryCtx, tuning.RetryOptions, func() (*snowflake.QueryResult, error) {
-			return executeReadOnlyQueryFn(queryCtx, a.Snowflake, boundedQuery)
+			return executeReadOnlyQueryFn(queryCtx, a.Warehouse, boundedQuery)
 		})
 		if attempts > 1 {
 			logger.Debug("query policy retried", "policy_id", queryPolicy.ID, "attempts", attempts)
@@ -168,8 +169,8 @@ func (a *App) queryPolicyRowLimit() int {
 
 func (a *App) queryPolicyAllowlist(ctx context.Context) map[string]struct{} {
 	tables := a.AvailableTables
-	if len(tables) == 0 && a.Snowflake != nil {
-		if refreshed, err := a.Snowflake.ListAvailableTables(ctx); err == nil {
+	if len(tables) == 0 && a.Warehouse != nil {
+		if refreshed, err := a.Warehouse.ListAvailableTables(ctx); err == nil {
 			a.AvailableTables = refreshed
 			tables = refreshed
 		} else if ctx.Err() == nil && a.Logger != nil {

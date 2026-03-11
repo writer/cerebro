@@ -8,11 +8,12 @@ import (
 	"time"
 
 	"github.com/evalops/cerebro/internal/snowflake"
+	"github.com/evalops/cerebro/internal/warehouse"
 )
 
 func upsertScopedRowsWithChanges(
 	ctx context.Context,
-	sf *snowflake.Client,
+	sf warehouse.SyncWarehouse,
 	logger *slog.Logger,
 	table string,
 	rows []map[string]interface{},
@@ -84,7 +85,7 @@ func upsertScopedRowsWithChanges(
 	return changes, nil
 }
 
-func getExistingHashesByScope(ctx context.Context, sf *snowflake.Client, table, scopeColumn string, scopeValues []string) (map[string]string, error) {
+func getExistingHashesByScope(ctx context.Context, sf warehouse.SyncWarehouse, table, scopeColumn string, scopeValues []string) (map[string]string, error) {
 	result := make(map[string]string)
 	if err := snowflake.ValidateTableName(table); err != nil {
 		return result, err
@@ -100,7 +101,7 @@ func getExistingHashesByScope(ctx context.Context, sf *snowflake.Client, table, 
 	return decodeExistingHashes(rows.Rows), nil
 }
 
-func deleteRowsByIDByScope(ctx context.Context, sf *snowflake.Client, table string, ids map[string]string, scopeColumn string, scopeValues []string) error {
+func deleteRowsByIDByScope(ctx context.Context, sf warehouse.SyncWarehouse, table string, ids map[string]string, scopeColumn string, scopeValues []string) error {
 	if len(ids) == 0 {
 		return nil
 	}
@@ -147,7 +148,7 @@ func deleteRowsByIDByScope(ctx context.Context, sf *snowflake.Client, table stri
 	return nil
 }
 
-func deleteScopedRowsByScope(ctx context.Context, sf *snowflake.Client, table, scopeColumn string, scopeValues []string) error {
+func deleteScopedRowsByScope(ctx context.Context, sf warehouse.SyncWarehouse, table, scopeColumn string, scopeValues []string) error {
 	whereClause, args := scopedWhereClause(scopeColumn, scopeValues)
 	if whereClause == "" {
 		if _, err := sf.Exec(ctx, fmt.Sprintf("TRUNCATE TABLE %s", table)); err != nil {
@@ -177,7 +178,7 @@ func scopedWhereClause(column string, values []string) (string, []interface{}) {
 	return fmt.Sprintf(" WHERE %s IN (%s)", column, placeholders), args
 }
 
-func persistProviderChangeHistory(ctx context.Context, sf *snowflake.Client, logger *slog.Logger, provider string, results []SyncResult) error {
+func persistProviderChangeHistory(ctx context.Context, sf warehouse.SyncWarehouse, logger *slog.Logger, provider string, results []SyncResult) error {
 	createQuery := `CREATE TABLE IF NOT EXISTS _sync_change_history (
 		id VARCHAR PRIMARY KEY,
 		table_name VARCHAR,
@@ -225,7 +226,7 @@ func persistProviderChangeHistory(ctx context.Context, sf *snowflake.Client, log
 	return nil
 }
 
-func insertProviderChangeRecord(ctx context.Context, sf *snowflake.Client, logger *slog.Logger, provider, table, operation, region string, resourceIDs []string, syncTime time.Time) {
+func insertProviderChangeRecord(ctx context.Context, sf warehouse.SyncWarehouse, logger *slog.Logger, provider, table, operation, region string, resourceIDs []string, syncTime time.Time) {
 	for _, resourceID := range resourceIDs {
 		id := fmt.Sprintf("%s-%s-%s-%d", table, operation, resourceID, syncTime.UnixNano())
 		query := `INSERT INTO _sync_change_history (id, table_name, resource_id, operation, region, account_id, provider, timestamp)

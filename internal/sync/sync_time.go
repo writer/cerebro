@@ -6,9 +6,10 @@ import (
 	"time"
 
 	"github.com/evalops/cerebro/internal/snowflake"
+	"github.com/evalops/cerebro/internal/warehouse"
 )
 
-var queryLatestTableSyncTime = func(ctx context.Context, sf *snowflake.Client, table string, region string, hasRegion bool) (time.Time, error) {
+var queryLatestTableSyncTime = func(ctx context.Context, sf warehouse.SyncWarehouse, table string, region string, hasRegion bool) (time.Time, error) {
 	query := fmt.Sprintf("SELECT MAX(_CQ_SYNC_TIME) AS SYNC_TIME FROM %s", table)
 	args := []interface{}{}
 	if hasRegion {
