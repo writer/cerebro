@@ -6,11 +6,18 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/evalops/cerebro/internal/graph"
 )
+
+const maxPlatformEntityQueryLength = 512
+
+func platformEntityQueryLengthExceeds(value string) bool {
+	return utf8.RuneCountInString(value) > maxPlatformEntityQueryLength
+}
 
 func (s *Server) listPlatformEntities(w http.ResponseWriter, r *http.Request) {
 	g := s.app.CurrentSecurityGraph()
@@ -26,6 +33,36 @@ func (s *Server) listPlatformEntities(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.json(w, http.StatusOK, graph.QueryEntities(g, opts))
+}
+
+func (s *Server) searchPlatformEntities(w http.ResponseWriter, r *http.Request) {
+	g := s.app.CurrentSecurityGraph()
+	if g == nil {
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+		return
+	}
+
+	opts, err := parsePlatformEntitySearchOptions(r)
+	if err != nil {
+		s.error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	s.json(w, http.StatusOK, graph.SearchEntities(g, opts))
+}
+
+func (s *Server) suggestPlatformEntities(w http.ResponseWriter, r *http.Request) {
+	g := s.app.CurrentSecurityGraph()
+	if g == nil {
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+		return
+	}
+
+	opts, err := parsePlatformEntitySuggestOptions(r)
+	if err != nil {
+		s.error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	s.json(w, http.StatusOK, graph.SuggestEntities(g, opts))
 }
 
 func (s *Server) listPlatformEntityFacets(w http.ResponseWriter, r *http.Request) {
@@ -159,6 +196,9 @@ func parsePlatformEntityQueryOptions(r *http.Request) (graph.EntityQueryOptions,
 		TagKey:       strings.TrimSpace(query.Get("tag_key")),
 		TagValue:     strings.TrimSpace(query.Get("tag_value")),
 	}
+	if platformEntityQueryLengthExceeds(opts.Search) {
+		return graph.EntityQueryOptions{}, fmt.Errorf("q exceeds max length %d", maxPlatformEntityQueryLength)
+	}
 	if risk := strings.ToLower(strings.TrimSpace(query.Get("risk"))); risk != "" {
 		switch graph.RiskLevel(risk) {
 		case graph.RiskCritical, graph.RiskHigh, graph.RiskMedium, graph.RiskLow, graph.RiskNone:
@@ -195,6 +235,55 @@ func parsePlatformEntityQueryOptions(r *http.Request) (graph.EntityQueryOptions,
 			return graph.EntityQueryOptions{}, fmt.Errorf("invalid offset %q", raw)
 		}
 		opts.Offset = offset
+	}
+	return opts, nil
+}
+
+func parsePlatformEntitySearchOptions(r *http.Request) (graph.EntitySearchOptions, error) {
+	query := r.URL.Query()
+	opts := graph.EntitySearchOptions{
+		Query: strings.TrimSpace(query.Get("q")),
+		Kinds: parseNodeKindsCSV(query.Get("kind")),
+	}
+	if opts.Query == "" {
+		return graph.EntitySearchOptions{}, fmt.Errorf("q is required")
+	}
+	if platformEntityQueryLengthExceeds(opts.Query) {
+		return graph.EntitySearchOptions{}, fmt.Errorf("q exceeds max length %d", maxPlatformEntityQueryLength)
+	}
+	if fuzzy, ok, err := parseOptionalBoolQuery(r, "fuzzy"); err != nil {
+		return graph.EntitySearchOptions{}, err
+	} else if ok {
+		opts.Fuzzy = fuzzy
+	}
+	if raw := strings.TrimSpace(query.Get("limit")); raw != "" {
+		limit, err := strconv.Atoi(raw)
+		if err != nil {
+			return graph.EntitySearchOptions{}, fmt.Errorf("invalid limit %q", raw)
+		}
+		opts.Limit = limit
+	}
+	return opts, nil
+}
+
+func parsePlatformEntitySuggestOptions(r *http.Request) (graph.EntitySuggestOptions, error) {
+	query := r.URL.Query()
+	opts := graph.EntitySuggestOptions{
+		Prefix: strings.TrimSpace(query.Get("prefix")),
+		Kinds:  parseNodeKindsCSV(query.Get("kind")),
+	}
+	if opts.Prefix == "" {
+		return graph.EntitySuggestOptions{}, fmt.Errorf("prefix is required")
+	}
+	if platformEntityQueryLengthExceeds(opts.Prefix) {
+		return graph.EntitySuggestOptions{}, fmt.Errorf("prefix exceeds max length %d", maxPlatformEntityQueryLength)
+	}
+	if raw := strings.TrimSpace(query.Get("limit")); raw != "" {
+		limit, err := strconv.Atoi(raw)
+		if err != nil {
+			return graph.EntitySuggestOptions{}, fmt.Errorf("invalid limit %q", raw)
+		}
+		opts.Limit = limit
 	}
 	return opts, nil
 }

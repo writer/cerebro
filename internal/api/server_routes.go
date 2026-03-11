@@ -352,6 +352,8 @@ func (s *Server) setupRoutes() {
 		// Shared platform primitives
 		r.Route("/platform", func(r chi.Router) {
 			r.Get("/entities", s.listPlatformEntities)
+			r.Get("/entities/search", s.searchPlatformEntities)
+			r.Get("/entities/suggest", s.suggestPlatformEntities)
 			r.Get("/entities/facets", s.listPlatformEntityFacets)
 			r.Get("/entities/facets/{facet_id}", s.getPlatformEntityFacet)
 			r.Get("/entities/{entity_id}/at", s.getPlatformEntityAtTime)

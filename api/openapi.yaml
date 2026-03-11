@@ -6973,6 +6973,96 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/platform/entities/search:
+    get:
+      tags:
+        - Platform
+      summary: Search platform entities
+      description: Return indexed current-state entity matches scored across normalized token and fuzzy trigram overlaps.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 512
+        - name: kind
+          in: query
+          description: Comma-separated node kinds to include.
+          schema:
+            type: string
+        - name: fuzzy
+          in: query
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: Indexed entity search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformEntitySearchCollection'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/platform/entities/suggest:
+    get:
+      tags:
+        - Platform
+      summary: Suggest platform entities
+      description: Return prefix-indexed entity suggestions over current active entities.
+      parameters:
+        - name: prefix
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 512
+        - name: kind
+          in: query
+          description: Comma-separated node kinds to include.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 25
+      responses:
+        '200':
+          description: Indexed entity suggestions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformEntitySuggestCollection'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/platform/entities/facets:
     get:
       tags:
@@ -12359,6 +12449,63 @@ components:
           type: integer
         pagination:
           $ref: '#/components/schemas/Pagination'
+    PlatformEntitySearchCollection:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        query:
+          type: string
+        fuzzy:
+          type: boolean
+        count:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformEntitySearchResult'
+    PlatformEntitySearchResult:
+      type: object
+      additionalProperties: false
+      properties:
+        entity:
+          $ref: '#/components/schemas/PlatformEntityRecord'
+        score:
+          type: number
+          format: double
+        matched_fields:
+          type: array
+          items:
+            type: string
+    PlatformEntitySuggestCollection:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        prefix:
+          type: string
+        count:
+          type: integer
+        suggestions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformEntitySuggestion'
+    PlatformEntitySuggestion:
+      type: object
+      additionalProperties: false
+      properties:
+        entity_id:
+          type: string
+        kind:
+          type: string
+        name:
+          type: string
+        value:
+          type: string
     PlatformEntityQueryFilters:
       type: object
       additionalProperties: false

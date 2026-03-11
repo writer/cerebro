@@ -4,7 +4,7 @@ Generated from `api/openapi.yaml` via `go run ./scripts/generate_api_contract_do
 
 - Catalog API version: **devex.cerebro/v1alpha1**
 - Catalog kind: **HTTPAPIContractCatalog**
-- Endpoints: **291**
+- Endpoints: **293**
 
 ## Endpoint Summary
 
@@ -100,6 +100,8 @@ Generated from `api/openapi.yaml` via `go run ./scripts/generate_api_contract_do
 | `GET /api/v1/platform/entities` | 16 | 0 | `200` |
 | `GET /api/v1/platform/entities/facets` | 0 | 0 | `200` |
 | `GET /api/v1/platform/entities/facets/{facet_id}` | 0 | 0 | `200` |
+| `GET /api/v1/platform/entities/search` | 4 | 0 | `200` |
+| `GET /api/v1/platform/entities/suggest` | 3 | 0 | `200` |
 | `GET /api/v1/platform/entities/{entity_id}` | 2 | 0 | `200` |
 | `GET /api/v1/platform/entities/{entity_id}/at` | 2 | 0 | `200` |
 | `GET /api/v1/platform/entities/{entity_id}/diff` | 3 | 0 | `200` |

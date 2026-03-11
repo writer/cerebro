@@ -2,7 +2,7 @@
   "api_version": "devex.cerebro/v1alpha1",
   "kind": "HTTPAPIContractCatalog",
   "generated_at": "0001-01-01T00:00:00Z",
-  "endpoint_count": 291,
+  "endpoint_count": 293,
   "endpoints": [
     {
       "id": "DELETE /api/v1/findings/{id}",
@@ -5665,6 +5665,631 @@
             },
             {
               "path": "version",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GET /api/v1/platform/entities/search",
+      "path": "/api/v1/platform/entities/search",
+      "method": "GET",
+      "query_params": [
+        {
+          "name": "fuzzy",
+          "required": false,
+          "schema_type": "boolean"
+        },
+        {
+          "name": "kind",
+          "required": false,
+          "schema_type": "string"
+        },
+        {
+          "name": "limit",
+          "required": false,
+          "schema_type": "integer"
+        },
+        {
+          "name": "q",
+          "required": true,
+          "schema_type": "string"
+        }
+      ],
+      "success_responses": [
+        {
+          "status_code": "200",
+          "content_types": [
+            "application/json"
+          ],
+          "fields": [
+            {
+              "path": "count",
+              "type": "integer"
+            },
+            {
+              "path": "fuzzy",
+              "type": "boolean"
+            },
+            {
+              "path": "generated_at",
+              "type": "string"
+            },
+            {
+              "path": "query",
+              "type": "string"
+            },
+            {
+              "path": "results",
+              "type": "array"
+            },
+            {
+              "path": "results[]",
+              "type": "object"
+            },
+            {
+              "path": "results[].entity",
+              "type": "object"
+            },
+            {
+              "path": "results[].entity.account",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.aliases",
+              "type": "array"
+            },
+            {
+              "path": "results[].entity.aliases[]",
+              "type": "object"
+            },
+            {
+              "path": "results[].entity.aliases[].alias_type",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.aliases[].id",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.aliases[].kind",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.aliases[].name",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.aliases[].source_system",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.canonical_ref",
+              "type": "object"
+            },
+            {
+              "path": "results[].entity.canonical_ref.account",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.canonical_ref.id",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.canonical_ref.kind",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.canonical_ref.name",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.canonical_ref.namespace",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.canonical_ref.provider",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.canonical_ref.region",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.capabilities",
+              "type": "array"
+            },
+            {
+              "path": "results[].entity.capabilities[]",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.categories",
+              "type": "array"
+            },
+            {
+              "path": "results[].entity.categories[]",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.external_refs",
+              "type": "array"
+            },
+            {
+              "path": "results[].entity.external_refs[]",
+              "type": "object"
+            },
+            {
+              "path": "results[].entity.external_refs[].primary",
+              "type": "boolean"
+            },
+            {
+              "path": "results[].entity.external_refs[].system",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.external_refs[].type",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.external_refs[].url",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.external_refs[].value",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.facets",
+              "type": "array"
+            },
+            {
+              "path": "results[].entity.facets[]",
+              "type": "object"
+            },
+            {
+              "path": "results[].entity.facets[].assessment",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.facets[].claim_predicates",
+              "type": "array"
+            },
+            {
+              "path": "results[].entity.facets[].claim_predicates[]",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.facets[].fields",
+              "type": "object"
+            },
+            {
+              "path": "results[].entity.facets[].id",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.facets[].schema_name",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.facets[].schema_url",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.facets[].source_keys",
+              "type": "array"
+            },
+            {
+              "path": "results[].entity.facets[].source_keys[]",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.facets[].status",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.facets[].summary",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.facets[].title",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.findings",
+              "type": "array"
+            },
+            {
+              "path": "results[].entity.findings[]",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.id",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.kind",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.knowledge",
+              "type": "object"
+            },
+            {
+              "path": "results[].entity.knowledge.claim_count",
+              "type": "integer"
+            },
+            {
+              "path": "results[].entity.knowledge.conflicted_claim_count",
+              "type": "integer"
+            },
+            {
+              "path": "results[].entity.knowledge.evidence_count",
+              "type": "integer"
+            },
+            {
+              "path": "results[].entity.knowledge.observation_count",
+              "type": "integer"
+            },
+            {
+              "path": "results[].entity.knowledge.predicates",
+              "type": "array"
+            },
+            {
+              "path": "results[].entity.knowledge.predicates[]",
+              "type": "object"
+            },
+            {
+              "path": "results[].entity.knowledge.predicates[].count",
+              "type": "integer"
+            },
+            {
+              "path": "results[].entity.knowledge.predicates[].predicate",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.knowledge.supported_claim_count",
+              "type": "integer"
+            },
+            {
+              "path": "results[].entity.links",
+              "type": "object"
+            },
+            {
+              "path": "results[].entity.links.incoming_count",
+              "type": "integer"
+            },
+            {
+              "path": "results[].entity.links.outgoing_count",
+              "type": "integer"
+            },
+            {
+              "path": "results[].entity.name",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.posture",
+              "type": "object"
+            },
+            {
+              "path": "results[].entity.posture.active_claim_count",
+              "type": "integer"
+            },
+            {
+              "path": "results[].entity.posture.claims",
+              "type": "array"
+            },
+            {
+              "path": "results[].entity.posture.claims[]",
+              "type": "object"
+            },
+            {
+              "path": "results[].entity.posture.claims[].assessment",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.posture.claims[].claim_id",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.posture.claims[].confidence",
+              "type": "number"
+            },
+            {
+              "path": "results[].entity.posture.claims[].conflicted",
+              "type": "boolean"
+            },
+            {
+              "path": "results[].entity.posture.claims[].evidence_count",
+              "type": "integer"
+            },
+            {
+              "path": "results[].entity.posture.claims[].object_id",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.posture.claims[].object_value",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.posture.claims[].observed_at",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.posture.claims[].predicate",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.posture.claims[].source_count",
+              "type": "integer"
+            },
+            {
+              "path": "results[].entity.posture.claims[].stale",
+              "type": "boolean"
+            },
+            {
+              "path": "results[].entity.posture.claims[].status",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.posture.claims[].summary",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.posture.claims[].supported",
+              "type": "boolean"
+            },
+            {
+              "path": "results[].entity.posture.disputed_claim_count",
+              "type": "integer"
+            },
+            {
+              "path": "results[].entity.posture.stale_claim_count",
+              "type": "integer"
+            },
+            {
+              "path": "results[].entity.posture.supported_claim_count",
+              "type": "integer"
+            },
+            {
+              "path": "results[].entity.properties",
+              "type": "object"
+            },
+            {
+              "path": "results[].entity.provider",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.region",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.relationships",
+              "type": "array"
+            },
+            {
+              "path": "results[].entity.relationships[]",
+              "type": "object"
+            },
+            {
+              "path": "results[].entity.relationships[].count",
+              "type": "integer"
+            },
+            {
+              "path": "results[].entity.relationships[].direction",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.relationships[].edge_kind",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.relationships[].related_kind",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.relationships[].sample_entity_ids",
+              "type": "array"
+            },
+            {
+              "path": "results[].entity.relationships[].sample_entity_ids[]",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.risk",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.subresources",
+              "type": "array"
+            },
+            {
+              "path": "results[].entity.subresources[]",
+              "type": "object"
+            },
+            {
+              "path": "results[].entity.subresources[].assessment",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.subresources[].fields",
+              "type": "object"
+            },
+            {
+              "path": "results[].entity.subresources[].id",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.subresources[].kind",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.subresources[].knowledge",
+              "type": "object"
+            },
+            {
+              "path": "results[].entity.subresources[].knowledge.claim_count",
+              "type": "integer"
+            },
+            {
+              "path": "results[].entity.subresources[].knowledge.conflicted_claim_count",
+              "type": "integer"
+            },
+            {
+              "path": "results[].entity.subresources[].knowledge.evidence_count",
+              "type": "integer"
+            },
+            {
+              "path": "results[].entity.subresources[].knowledge.observation_count",
+              "type": "integer"
+            },
+            {
+              "path": "results[].entity.subresources[].knowledge.predicates",
+              "type": "array"
+            },
+            {
+              "path": "results[].entity.subresources[].knowledge.predicates[]",
+              "type": "object"
+            },
+            {
+              "path": "results[].entity.subresources[].knowledge.predicates[].count",
+              "type": "integer"
+            },
+            {
+              "path": "results[].entity.subresources[].knowledge.predicates[].predicate",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.subresources[].knowledge.supported_claim_count",
+              "type": "integer"
+            },
+            {
+              "path": "results[].entity.subresources[].name",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.subresources[].related_entity_ids",
+              "type": "array"
+            },
+            {
+              "path": "results[].entity.subresources[].related_entity_ids[]",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.subresources[].summary",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.tags",
+              "type": "object"
+            },
+            {
+              "path": "results[].entity.temporal",
+              "type": "object"
+            },
+            {
+              "path": "results[].entity.temporal.observed_at",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.temporal.recorded_at",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.temporal.transaction_from",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.temporal.transaction_to",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.temporal.valid_from",
+              "type": "string"
+            },
+            {
+              "path": "results[].entity.temporal.valid_to",
+              "type": "string"
+            },
+            {
+              "path": "results[].matched_fields",
+              "type": "array"
+            },
+            {
+              "path": "results[].matched_fields[]",
+              "type": "string"
+            },
+            {
+              "path": "results[].score",
+              "type": "number"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GET /api/v1/platform/entities/suggest",
+      "path": "/api/v1/platform/entities/suggest",
+      "method": "GET",
+      "query_params": [
+        {
+          "name": "kind",
+          "required": false,
+          "schema_type": "string"
+        },
+        {
+          "name": "limit",
+          "required": false,
+          "schema_type": "integer"
+        },
+        {
+          "name": "prefix",
+          "required": true,
+          "schema_type": "string"
+        }
+      ],
+      "success_responses": [
+        {
+          "status_code": "200",
+          "content_types": [
+            "application/json"
+          ],
+          "fields": [
+            {
+              "path": "count",
+              "type": "integer"
+            },
+            {
+              "path": "generated_at",
+              "type": "string"
+            },
+            {
+              "path": "prefix",
+              "type": "string"
+            },
+            {
+              "path": "suggestions",
+              "type": "array"
+            },
+            {
+              "path": "suggestions[]",
+              "type": "object"
+            },
+            {
+              "path": "suggestions[].entity_id",
+              "type": "string"
+            },
+            {
+              "path": "suggestions[].kind",
+              "type": "string"
+            },
+            {
+              "path": "suggestions[].name",
+              "type": "string"
+            },
+            {
+              "path": "suggestions[].value",
               "type": "string"
             }
           ]

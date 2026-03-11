@@ -87,7 +87,7 @@ func (a *App) initFindings() {
 		store, err := findings.NewSQLiteStore(dbPath)
 		if err != nil {
 			a.Logger.Warn("failed to initialize sqlite findings store, falling back to in-memory", "error", err)
-			a.Findings = findings.NewStore()
+			a.Findings = a.newInMemoryFindingsStore()
 			a.configureFindingAttestation()
 			return
 		}
@@ -115,6 +115,30 @@ func (a *App) initFindings() {
 	a.SnowflakeFindings = snowflakeStore
 	a.configureFindingAttestation()
 	a.Logger.Info("using snowflake findings store")
+}
+
+func (a *App) newInMemoryFindingsStore() *findings.Store {
+	cfg := findings.DefaultStoreConfig()
+	if a != nil && a.Config != nil {
+		cfg.MaxFindings = a.Config.FindingsMaxInMemory
+		cfg.ResolvedRetention = a.Config.FindingsResolvedRetention
+	}
+
+	if cfg.MaxFindings == 0 && cfg.ResolvedRetention == 0 && a != nil && a.Logger != nil {
+		a.Logger.Warn("findings in-memory store configured without size or retention bounds",
+			"max_findings", cfg.MaxFindings,
+			"resolved_retention", cfg.ResolvedRetention.String(),
+		)
+	}
+
+	store := findings.NewStoreWithConfig(cfg)
+	if a != nil && a.Logger != nil {
+		a.Logger.Info("using in-memory findings store",
+			"max_findings", cfg.MaxFindings,
+			"resolved_retention", cfg.ResolvedRetention.String(),
+		)
+	}
+	return store
 }
 
 func (a *App) configureFindingAttestation() {

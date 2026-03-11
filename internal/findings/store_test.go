@@ -419,13 +419,26 @@ func TestStats_Fields(t *testing.T) {
 	}
 }
 
-func TestNewStore_BackwardCompatible(t *testing.T) {
+func TestNewStore_UsesBoundedDefaults(t *testing.T) {
 	store := NewStore()
 	if store.Len() != 0 {
 		t.Errorf("expected empty store, got %d", store.Len())
 	}
 
-	// Should accept unlimited findings without eviction
+	for i := 0; i < DefaultMaxFindings+10; i++ {
+		store.Upsert(context.Background(), policy.Finding{
+			ID:       fmt.Sprintf("f-%d", i),
+			PolicyID: "p1",
+			Severity: "high",
+		})
+	}
+	if store.Len() != DefaultMaxFindings {
+		t.Errorf("expected default cap of %d findings, got %d", DefaultMaxFindings, store.Len())
+	}
+}
+
+func TestNewStoreWithConfig_AllowsExplicitUnlimitedStore(t *testing.T) {
+	store := NewStoreWithConfig(StoreConfig{})
 	for i := 0; i < 100; i++ {
 		store.Upsert(context.Background(), policy.Finding{
 			ID:       fmt.Sprintf("f-%d", i),
@@ -434,7 +447,7 @@ func TestNewStore_BackwardCompatible(t *testing.T) {
 		})
 	}
 	if store.Len() != 100 {
-		t.Errorf("expected 100 findings, got %d", store.Len())
+		t.Errorf("expected explicit unlimited store to keep 100 findings, got %d", store.Len())
 	}
 }
 
@@ -525,6 +538,36 @@ func TestStoreWithResolvedRetention(t *testing.T) {
 	}
 }
 
+func TestStoreResolvedRetentionCleanupIsAmortized(t *testing.T) {
+	store := NewStoreWithConfig(StoreConfig{ResolvedRetention: time.Hour})
+
+	store.Upsert(context.Background(), policy.Finding{ID: "f-old", PolicyID: "p1", Severity: "high"})
+	store.Resolve("f-old")
+
+	func() {
+		store.mu.Lock()
+		defer store.mu.Unlock()
+		store.findings["f-old"].LastSeen = time.Now().Add(-2 * time.Hour)
+		store.lastResolvedSweep = time.Now()
+	}()
+
+	store.Upsert(context.Background(), policy.Finding{ID: "f-new", PolicyID: "p1", Severity: "high"})
+	if _, ok := store.Get("f-old"); !ok {
+		t.Fatal("expected cleanup to skip resolved scan before the amortized interval")
+	}
+
+	func() {
+		store.mu.Lock()
+		defer store.mu.Unlock()
+		store.lastResolvedSweep = time.Now().Add(-store.resolvedCleanupInterval())
+	}()
+
+	store.Upsert(context.Background(), policy.Finding{ID: "f-newer", PolicyID: "p1", Severity: "high"})
+	if _, ok := store.Get("f-old"); ok {
+		t.Fatal("expected expired resolved finding to be removed once cleanup interval elapses")
+	}
+}
+
 func TestStoreCleanup(t *testing.T) {
 	store := NewStore()
 
@@ -557,6 +600,42 @@ func TestStoreCleanup(t *testing.T) {
 	}
 	if _, ok := store.Get("f3"); !ok {
 		t.Error("expected f3 to still be present")
+	}
+}
+
+func TestStoreEvictToCapacityRecountsResolvedCountOnUndercount(t *testing.T) {
+	store := NewStoreWithConfig(StoreConfig{MaxFindings: 1})
+
+	store.mu.Lock()
+	store.findings["resolved-1"] = &Finding{ID: "resolved-1", PolicyID: "p1", Status: "RESOLVED", LastSeen: time.Now().Add(-2 * time.Hour)}
+	store.findings["resolved-2"] = &Finding{ID: "resolved-2", PolicyID: "p1", Status: "RESOLVED", LastSeen: time.Now().Add(-time.Hour)}
+	store.resolvedCount = 0
+	store.evictToCapacity()
+	store.mu.Unlock()
+
+	if got := store.Len(); got != 1 {
+		t.Fatalf("expected one finding after eviction, got %d", got)
+	}
+	if got := store.resolvedCount; got != 1 {
+		t.Fatalf("expected resolvedCount to be recomputed to 1, got %d", got)
+	}
+}
+
+func TestStoreCleanupRecountsResolvedCountOnUndercount(t *testing.T) {
+	store := NewStoreWithConfig(StoreConfig{ResolvedRetention: time.Hour})
+
+	store.mu.Lock()
+	store.findings["resolved-old"] = &Finding{ID: "resolved-old", PolicyID: "p1", Status: "RESOLVED", LastSeen: time.Now().Add(-3 * time.Hour)}
+	store.findings["resolved-current"] = &Finding{ID: "resolved-current", PolicyID: "p1", Status: "RESOLVED", LastSeen: time.Now().Add(-10 * time.Minute)}
+	store.resolvedCount = 0
+	removed := store.cleanupResolvedBeforeLocked(time.Now().Add(-time.Hour))
+	store.mu.Unlock()
+
+	if removed != 1 {
+		t.Fatalf("expected one resolved finding removed, got %d", removed)
+	}
+	if got := store.resolvedCount; got != 1 {
+		t.Fatalf("expected resolvedCount to be recomputed to 1, got %d", got)
 	}
 }
 

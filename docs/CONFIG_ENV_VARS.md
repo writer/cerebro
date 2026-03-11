@@ -2,7 +2,7 @@
 
 Generated from `internal/app/app_config.go` (`LoadConfig`) via `go run ./scripts/generate_config_docs/main.go`.
 
-Total variables: **284**
+Total variables: **286**
 
 | Variable | Reader(s) | Default(s) | Config Field(s) |
 |---|---|---|---|
@@ -76,6 +76,8 @@ Total variables: **284**
 | `FIGMA_API_TOKEN` | `getEnv` | `""` | `FigmaAPIToken` |
 | `FIGMA_BASE_URL` | `getEnv` | `"https://api.figma.com"` | `FigmaBaseURL` |
 | `FIGMA_TEAM_ID` | `getEnv` | `""` | `FigmaTeamID` |
+| `FINDINGS_MAX_IN_MEMORY` | `getEnvInt` | `findings.DefaultMaxFindings` | `FindingsMaxInMemory` |
+| `FINDINGS_RESOLVED_RETENTION` | `getEnvDuration` | `findings.DefaultResolvedRetention` | `FindingsResolvedRetention` |
 | `FINDING_ATTESTATION_ATTEST_REOBSERVED` | `getEnvBool` | `false` | `FindingAttestationAttestReobserved` |
 | `FINDING_ATTESTATION_ENABLED` | `getEnvBool` | `false` | `FindingAttestationEnabled` |
 | `FINDING_ATTESTATION_KEY_ID` | `getEnv` | `""` | `FindingAttestationKeyID` |

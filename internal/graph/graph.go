@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"strings"
 	"sync"
 	"time"
 )
@@ -22,15 +23,19 @@ type Graph struct {
 	blastRadiusVersion uint64
 
 	// Indexes for O(1) lookups - rebuilt on BuildIndex()
-	indexByKind      map[NodeKind][]*Node
-	indexByAccount   map[string][]*Node
-	indexByRisk      map[RiskLevel][]*Node
-	indexByProvider  map[string][]*Node
-	indexByARNPrefix map[string][]*Node // "service:resourceType" -> nodes for fast ARN matching
-	crossAccountEdge []*Edge
-	internetNodes    []*Node // Pre-computed internet-facing nodes
-	crownJewels      []*Node // Pre-computed high-value targets
-	indexBuilt       bool
+	indexByKind              map[NodeKind][]*Node
+	indexByAccount           map[string][]*Node
+	indexByRisk              map[RiskLevel][]*Node
+	indexByProvider          map[string][]*Node
+	indexByARNPrefix         map[string][]*Node // "service:resourceType" -> nodes for fast ARN matching
+	crossAccountEdge         []*Edge
+	internetNodes            []*Node // Pre-computed internet-facing nodes
+	crownJewels              []*Node // Pre-computed high-value targets
+	entitySearchDocs         map[string]entitySearchDocument
+	entitySearchTokenIndex   map[string][]string
+	entitySearchTrigramIndex map[string][]string
+	entitySuggestIndex       map[string][]EntitySuggestion
+	indexBuilt               bool
 
 	// Runtime ontology validation behavior and counters.
 	schemaValidationMode  SchemaValidationMode
@@ -428,6 +433,9 @@ func (g *Graph) Metadata() Metadata {
 func (g *Graph) BuildIndex() {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	if g.indexBuilt {
+		return
+	}
 
 	// Initialize index maps
 	g.indexByKind = make(map[NodeKind][]*Node)
@@ -438,6 +446,14 @@ func (g *Graph) BuildIndex() {
 	g.crossAccountEdge = nil
 	g.internetNodes = nil
 	g.crownJewels = nil
+	g.entitySearchDocs = make(map[string]entitySearchDocument)
+	g.entitySearchTokenIndex = make(map[string][]string)
+	g.entitySearchTrigramIndex = make(map[string][]string)
+	g.entitySuggestIndex = make(map[string][]EntitySuggestion)
+
+	entityTokenSets := make(map[string]map[string]struct{})
+	entityTrigramSets := make(map[string]map[string]struct{})
+	entitySuggestSets := make(map[string]map[string]EntitySuggestion)
 
 	// Index all nodes
 	for _, node := range g.nodes {
@@ -473,6 +489,36 @@ func (g *Graph) BuildIndex() {
 		if g.isCrownJewel(node) {
 			g.crownJewels = append(g.crownJewels, node)
 		}
+
+		if doc, ok := buildEntitySearchDocument(node); ok {
+			g.entitySearchDocs[node.ID] = doc
+			for _, token := range doc.Tokens {
+				appendEntitySearchSet(entityTokenSets, token, node.ID)
+			}
+			for _, trigram := range entitySearchTrigrams(doc.SearchText) {
+				appendEntitySearchSet(entityTrigramSets, trigram, node.ID)
+			}
+			for _, suggestion := range doc.Suggestions {
+				normalized := entitySearchNormalize(suggestion)
+				if normalized == "" {
+					continue
+				}
+				runes := []rune(normalized)
+				for length := 1; length <= len(runes) && length <= 24; length++ {
+					prefix := string(runes[:length])
+					if entitySuggestSets[prefix] == nil {
+						entitySuggestSets[prefix] = make(map[string]EntitySuggestion)
+					}
+					key := node.ID + "\x00" + normalized
+					entitySuggestSets[prefix][key] = EntitySuggestion{
+						EntityID: node.ID,
+						Kind:     node.Kind,
+						Name:     strings.TrimSpace(node.Name),
+						Value:    suggestion,
+					}
+				}
+			}
+		}
 	}
 
 	// Index cross-account edges
@@ -485,6 +531,16 @@ func (g *Graph) BuildIndex() {
 				g.crossAccountEdge = append(g.crossAccountEdge, edge)
 			}
 		}
+	}
+
+	for token, ids := range entityTokenSets {
+		g.entitySearchTokenIndex[token] = flattenEntitySearchSet(ids)
+	}
+	for trigram, ids := range entityTrigramSets {
+		g.entitySearchTrigramIndex[trigram] = flattenEntitySearchSet(ids)
+	}
+	for prefix, candidates := range entitySuggestSets {
+		g.entitySuggestIndex[prefix] = flattenEntitySuggestionSet(candidates)
 	}
 
 	g.indexBuilt = true

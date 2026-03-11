@@ -5,6 +5,49 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 42 - Hardening Batch: Findings Bounds + Provider Circuit Breaking + Indexed Entity Search (2026-03-10)
+
+### Review findings
+- [x] Gap: the default in-memory findings store still had effectively unbounded growth semantics, leaving fallback/dev paths vulnerable to OOM if SQLite or warehouse persistence was unavailable.
+- [x] Gap: provider HTTP clients still relied on a shared 30-second timeout with no circuit breaker or transport-level retry/backoff policy, so degraded providers could keep burning request time without fast failover semantics.
+- [x] Gap: entity search still lived as an O(n) substring scan on the listing API and had no dedicated autocomplete/indexed search surface for graph-native discovery.
+
+### Execution plan
+- [x] Bound and instrument the in-memory findings store:
+  - [x] change `findings.NewStore()` to use sane bounded defaults instead of implicit unlimited growth
+  - [x] add default resolved-finding retention so stale resolved findings age out automatically
+  - [x] add `cerebro_findings_store_size`
+  - [x] add app-side fallback warnings only when operators explicitly choose unlimited/no-retention mode
+  - [x] expose `FINDINGS_MAX_IN_MEMORY` and `FINDINGS_RESOLVED_RETENTION`
+- [x] Add resilient provider HTTP semantics at the shared seam:
+  - [x] add per-provider circuit breaker state with open / half-open / closed transitions
+  - [x] add transport-level retry/backoff with retryable response/error classification
+  - [x] add `cerebro_provider_circuit_state{provider=...}`
+  - [x] allow per-provider config-map overrides for timeout, retry, and circuit settings via `BaseProvider`
+  - [x] wire the shared resilient client into Okta, CrowdStrike, and Snyk
+- [x] Add indexed entity search and autocomplete:
+  - [x] build token / trigram / prefix indexes as part of `Graph.BuildIndex()`
+  - [x] add `GET /api/v1/platform/entities/search`
+  - [x] add `GET /api/v1/platform/entities/suggest`
+  - [x] add graph + API tests covering `s3 bucket` matching and `ali` autocomplete
+
+### Detailed follow-on backlog
+- [ ] Track A - Search quality and query ergonomics
+  - Exit criteria:
+  - [ ] add highlighted match fragments and stronger field-aware scoring so name matches outrank incidental provider/region matches
+  - [ ] add bitemporal-aware historical entity search instead of limiting the new index to current active graph state
+  - [ ] add graph-native explanation payloads showing why a result matched (tokens, trigrams, field hits)
+- [ ] Track B - Provider resilience rollout
+  - Exit criteria:
+  - [ ] extend the resilient shared client beyond Okta/CrowdStrike/Snyk to the broader provider fleet in dependency-priority order
+  - [ ] add operator-facing status/report surfaces for open provider circuits and recent retry/failure streaks
+  - [ ] add env-backed default override surfaces for shared provider HTTP resilience settings where app-only deployment needs them
+- [ ] Track C - Findings retention and persistence
+  - Exit criteria:
+  - [ ] decide whether SQLite/file-backed findings stores should enforce the same bounded semantics or expose their own retention guarantees
+  - [ ] add periodic maintenance for long-idle in-memory stores so retention cleanup does not depend solely on write traffic
+  - [ ] feed findings-store bound/retention state into `/ready` or status surfaces when fallback storage is active
+
 ## Deep Review Cycle 41 - Ontology Ingest Depth: Kubernetes Materialization + Conditional Business Mappings (2026-03-10)
 
 ### Review findings

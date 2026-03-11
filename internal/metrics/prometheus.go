@@ -32,6 +32,13 @@ var (
 		[]string{"policy_id", "severity"},
 	)
 
+	FindingsStoreSize = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "cerebro_findings_store_size",
+			Help: "Current number of findings retained in the active in-memory findings store",
+		},
+	)
+
 	// Scan metrics
 	ScansTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -389,6 +396,14 @@ var (
 		[]string{"state"},
 	)
 
+	ProviderCircuitState = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "cerebro_provider_circuit_state",
+			Help: "Circuit breaker state per provider (0=closed, 0.5=half_open, 1=open)",
+		},
+		[]string{"provider"},
+	)
+
 	ComplianceExportsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "cerebro_compliance_exports_total",
@@ -489,6 +504,7 @@ func Register() {
 			// Findings
 			FindingsTotal,
 			FindingsByPolicy,
+			FindingsStoreSize,
 			// Scans
 			ScansTotal,
 			ScanDuration,
@@ -542,6 +558,7 @@ func Register() {
 			SchedulerJobDuration,
 			ScheduledAuthPreflightTotal,
 			ProviderCounts,
+			ProviderCircuitState,
 			ComplianceExportsTotal,
 			// Identity
 			StaleAccessFindings,
@@ -817,6 +834,20 @@ func SetNATSConsumerLagSeconds(stream, durable string, lag time.Duration) {
 	NATSConsumerLagSeconds.WithLabelValues(stream, durable).Set(lag.Seconds())
 }
 
+func SetProviderCircuitState(provider, state string) {
+	provider = normalizeProvider(provider)
+	value := 0.0
+	switch strings.ToLower(strings.TrimSpace(state)) {
+	case "open":
+		value = 1
+	case "half_open":
+		value = 0.5
+	default:
+		value = 0
+	}
+	ProviderCircuitState.WithLabelValues(provider).Set(value)
+}
+
 func SetGraphBuildStatus(status string) {
 	value := 0.0
 	switch strings.ToLower(strings.TrimSpace(status)) {
@@ -938,6 +969,13 @@ func UpdateFindingsMetrics(bySeverity, byStatus map[string]int) {
 			_ = count // Use severity count elsewhere
 		}
 	}
+}
+
+func SetFindingsStoreSize(size int) {
+	if size < 0 {
+		size = 0
+	}
+	FindingsStoreSize.Set(float64(size))
 }
 
 // SetBuildInfo sets the build info metric

@@ -190,6 +190,31 @@ func TestGraph_BuildIndex(t *testing.T) {
 	}
 }
 
+func TestGraph_BuildIndexSkipsRebuildWhenCurrent(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{
+		ID:       "service:payments",
+		Kind:     NodeKindService,
+		Name:     "Payments",
+		Provider: "aws",
+	})
+
+	g.BuildIndex()
+
+	g.mu.Lock()
+	g.entitySearchDocs["sentinel"] = entitySearchDocument{ID: "sentinel"}
+	g.mu.Unlock()
+
+	g.BuildIndex()
+
+	g.mu.RLock()
+	_, ok := g.entitySearchDocs["sentinel"]
+	g.mu.RUnlock()
+	if !ok {
+		t.Fatal("expected BuildIndex to skip redundant rebuild when index is already current")
+	}
+}
+
 func TestGraph_InvalidateIndex(t *testing.T) {
 	g := New()
 	g.AddNode(&Node{ID: "test", Kind: NodeKindUser})

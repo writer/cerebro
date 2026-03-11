@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -255,6 +256,52 @@ func TestPlatformEntitiesListAndDetail(t *testing.T) {
 	}
 }
 
+func TestPlatformEntitySearchAndSuggest(t *testing.T) {
+	s := newTestServer(t)
+	g := s.app.SecurityGraph
+	g.AddNode(&graph.Node{
+		ID:       "arn:aws:s3:::audit-logs",
+		Kind:     graph.NodeKindBucket,
+		Name:     "Audit Logs",
+		Provider: "aws",
+		Region:   "us-east-1",
+	})
+	g.AddNode(&graph.Node{
+		ID:       "person:alice@example.com",
+		Kind:     graph.NodeKindPerson,
+		Name:     "Alice Example",
+		Provider: "workspace",
+	})
+	g.BuildIndex()
+
+	search := do(t, s, http.MethodGet, "/api/v1/platform/entities/search?q=s3+bucket&limit=5", nil)
+	if search.Code != http.StatusOK {
+		t.Fatalf("expected 200 for entity search, got %d: %s", search.Code, search.Body.String())
+	}
+	searchBody := decodeJSON(t, search)
+	if searchBody["count"].(float64) < 1 {
+		t.Fatalf("expected at least one search result, got %#v", searchBody)
+	}
+	first := searchBody["results"].([]any)[0].(map[string]any)
+	entity := first["entity"].(map[string]any)
+	if entity["id"] != "arn:aws:s3:::audit-logs" {
+		t.Fatalf("expected bucket search hit, got %#v", entity["id"])
+	}
+
+	suggest := do(t, s, http.MethodGet, "/api/v1/platform/entities/suggest?prefix=ali&limit=5", nil)
+	if suggest.Code != http.StatusOK {
+		t.Fatalf("expected 200 for entity suggest, got %d: %s", suggest.Code, suggest.Body.String())
+	}
+	suggestBody := decodeJSON(t, suggest)
+	if suggestBody["count"].(float64) < 1 {
+		t.Fatalf("expected at least one suggestion, got %#v", suggestBody)
+	}
+	suggestion := suggestBody["suggestions"].([]any)[0].(map[string]any)
+	if suggestion["entity_id"] != "person:alice@example.com" {
+		t.Fatalf("expected alice suggestion, got %#v", suggestion)
+	}
+}
+
 func TestPlatformEntitySummaryReport(t *testing.T) {
 	s := newTestServer(t)
 	g := s.app.SecurityGraph
@@ -466,5 +513,49 @@ func TestPlatformEntitiesRejectInvalidParams(t *testing.T) {
 	w = do(t, s, http.MethodGet, "/api/v1/platform/entities/service:payments?valid_at=nope", nil)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for invalid valid_at, got %d: %s", w.Code, w.Body.String())
+	}
+
+	w = do(t, s, http.MethodGet, "/api/v1/platform/entities/search", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing search query, got %d: %s", w.Code, w.Body.String())
+	}
+
+	w = do(t, s, http.MethodGet, "/api/v1/platform/entities/suggest", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing suggest prefix, got %d: %s", w.Code, w.Body.String())
+	}
+
+	longValue := strings.Repeat("a", maxPlatformEntityQueryLength+1)
+
+	w = do(t, s, http.MethodGet, "/api/v1/platform/entities?q="+longValue, nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for oversized entity list q, got %d: %s", w.Code, w.Body.String())
+	}
+
+	w = do(t, s, http.MethodGet, "/api/v1/platform/entities/search?q="+longValue, nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for oversized entity search q, got %d: %s", w.Code, w.Body.String())
+	}
+
+	w = do(t, s, http.MethodGet, "/api/v1/platform/entities/suggest?prefix="+longValue, nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for oversized suggest prefix, got %d: %s", w.Code, w.Body.String())
+	}
+
+	runeValue := strings.Repeat("世", 300)
+
+	w = do(t, s, http.MethodGet, "/api/v1/platform/entities?q="+runeValue, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for rune-bounded entity list q, got %d: %s", w.Code, w.Body.String())
+	}
+
+	w = do(t, s, http.MethodGet, "/api/v1/platform/entities/search?q="+runeValue, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for rune-bounded entity search q, got %d: %s", w.Code, w.Body.String())
+	}
+
+	w = do(t, s, http.MethodGet, "/api/v1/platform/entities/suggest?prefix="+runeValue, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for rune-bounded suggest prefix, got %d: %s", w.Code, w.Body.String())
 	}
 }
