@@ -52,15 +52,31 @@ func (b *BaseProvider) syncTable(ctx context.Context, schema TableSchema, rows [
 		result.Rows = int64(len(prepared))
 	}
 
-	if err := truncateProviderTable(ctx, sf, schema.Name); err != nil {
+	existingIDs, err := listProviderExistingIDs(ctx, sf, schema.Name)
+	if err != nil {
 		return result, err
 	}
-	if err := insertProviderRows(ctx, sf, schema.Name, prepared); err != nil {
+
+	newIDs := providerRowIDSet(prepared)
+
+	// Atomic upsert via MERGE - no delete-before-insert window.
+	if err := mergeProviderRows(ctx, sf, schema.Name, prepared); err != nil {
+		return result, err
+	}
+
+	removedIDs := make(map[string]struct{}, len(existingIDs))
+	for id := range existingIDs {
+		if _, exists := newIDs[id]; !exists {
+			removedIDs[id] = struct{}{}
+		}
+	}
+	if err := deleteProviderRowsByID(ctx, sf, schema.Name, removedIDs); err != nil {
 		return result, err
 	}
 
 	result.Rows = int64(len(prepared))
 	result.Inserted = result.Rows
+	result.Deleted = int64(len(removedIDs))
 	return result, nil
 }
 
@@ -85,17 +101,86 @@ func ensureProviderTable(ctx context.Context, sf providerSnowflakeClient, table 
 	return err
 }
 
-func truncateProviderTable(ctx context.Context, sf providerSnowflakeClient, table string) error {
-	if _, err := sf.Exec(ctx, fmt.Sprintf("TRUNCATE TABLE %s", table)); err != nil {
-		if _, err := sf.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table)); err != nil {
-			return fmt.Errorf("truncate table: %w", err)
+func listProviderExistingIDs(ctx context.Context, sf providerSnowflakeClient, table string) (map[string]struct{}, error) {
+	if err := snowflake.ValidateTableName(table); err != nil {
+		return nil, fmt.Errorf("invalid table name %s: %w", table, err)
+	}
+
+	query := fmt.Sprintf("SELECT _CQ_ID FROM %s", table)
+	result, err := sf.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("list existing provider rows: %w", err)
+	}
+
+	ids := make(map[string]struct{}, len(result.Rows))
+	for _, row := range result.Rows {
+		value, _ := lookupProviderValue(row, "_cq_id")
+		id := strings.TrimSpace(providerStringValue(value))
+		if id == "" {
+			continue
+		}
+		ids[id] = struct{}{}
+	}
+	return ids, nil
+}
+
+func providerRowIDSet(rows []map[string]interface{}) map[string]struct{} {
+	ids := make(map[string]struct{}, len(rows))
+	for _, row := range rows {
+		value, _ := lookupProviderValue(row, "_cq_id")
+		id := strings.TrimSpace(providerStringValue(value))
+		if id == "" {
+			continue
+		}
+		ids[id] = struct{}{}
+	}
+	return ids
+}
+
+func deleteProviderRowsByID(ctx context.Context, sf providerSnowflakeClient, table string, ids map[string]struct{}) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	if err := snowflake.ValidateTableName(table); err != nil {
+		return fmt.Errorf("invalid table name %s: %w", table, err)
+	}
+
+	keys := make([]string, 0, len(ids))
+	for id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		keys = append(keys, id)
+	}
+	if len(keys) == 0 {
+		return nil
+	}
+
+	for start := 0; start < len(keys); start += providerInsertBatchSize {
+		end := start + providerInsertBatchSize
+		if end > len(keys) {
+			end = len(keys)
+		}
+
+		batch := keys[start:end]
+		placeholders := strings.TrimRight(strings.Repeat("?,", len(batch)), ",")
+		args := make([]interface{}, 0, len(batch))
+		for _, id := range batch {
+			args = append(args, id)
+		}
+		query := fmt.Sprintf("DELETE FROM %s WHERE _CQ_ID IN (%s)", table, placeholders)
+		if _, err := sf.Exec(ctx, query, args...); err != nil {
+			return fmt.Errorf("delete provider rows by id: %w", err)
 		}
 	}
+
 	return nil
 }
 
 func prepareProviderRows(schema TableSchema, rows []map[string]interface{}) ([]map[string]interface{}, int) {
 	prepared := make([]map[string]interface{}, 0, len(rows))
+	indexByID := make(map[string]int, len(rows))
 	skipped := 0
 	for _, row := range rows {
 		projected := projectProviderRow(row, schema.Columns)
@@ -106,6 +191,11 @@ func prepareProviderRows(schema TableSchema, rows []map[string]interface{}) ([]m
 		}
 		projected["_cq_id"] = id
 		projected["_cq_hash"] = hashProviderRow(projected)
+		if idx, exists := indexByID[id]; exists {
+			prepared[idx] = projected
+			continue
+		}
+		indexByID[id] = len(prepared)
 		prepared = append(prepared, projected)
 	}
 	return prepared, skipped
@@ -206,8 +296,8 @@ func formatProviderIDValue(value interface{}) string {
 	}
 }
 
-func insertProviderRows(ctx context.Context, sf providerSnowflakeClient, table string, rows []map[string]interface{}) error {
-	return tableops.InsertVariantRowsBatch(ctx, sf, table, rows, nil, providerInsertBatchSize)
+func mergeProviderRows(ctx context.Context, sf providerSnowflakeClient, table string, rows []map[string]interface{}) error {
+	return tableops.MergeVariantRowsBatch(ctx, sf, table, rows, nil, providerInsertBatchSize)
 }
 
 func hashProviderRow(row map[string]interface{}) string {

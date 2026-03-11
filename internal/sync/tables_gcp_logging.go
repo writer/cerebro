@@ -8,7 +8,7 @@ import (
 
 	"cloud.google.com/go/iam"
 	"cloud.google.com/go/logging/logadmin"
-	"cloud.google.com/go/pubsub" //nolint:staticcheck // Pub/Sub IAM handle not available in v2 client
+	pubsub "cloud.google.com/go/pubsub" //nolint:staticcheck // Pub/Sub IAM handle is not available in the v2 client yet.
 	"cloud.google.com/go/storage"
 	"google.golang.org/api/iterator"
 )

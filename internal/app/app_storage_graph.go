@@ -11,13 +11,25 @@ import (
 	"github.com/writer/cerebro/internal/snowflake"
 )
 
+var appShutdownTimeout = 30 * time.Second
+
 func (a *App) initRepositories() {
+	a.FindingsRepo = nil
+	a.TicketsRepo = nil
+	a.AuditRepo = nil
+	a.PolicyHistoryRepo = nil
+	a.RiskEngineStateRepo = nil
+	a.RetentionRepo = nil
+
 	if a.Snowflake == nil {
 		return
 	}
 	a.FindingsRepo = snowflake.NewFindingRepository(a.Snowflake)
 	a.TicketsRepo = snowflake.NewTicketRepository(a.Snowflake)
 	a.AuditRepo = snowflake.NewAuditRepository(a.Snowflake)
+	a.PolicyHistoryRepo = snowflake.NewPolicyHistoryRepository(a.Snowflake)
+	a.RiskEngineStateRepo = snowflake.NewRiskEngineStateRepository(a.Snowflake)
+	a.RetentionRepo = snowflake.NewRetentionRepository(a.Snowflake)
 }
 
 func (a *App) initSnowflakeFindings(ctx context.Context) {
@@ -182,29 +194,86 @@ func topStrings(values []string, limit int) []string {
 func (a *App) Close() error {
 	var errs []error
 
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), appShutdownTimeout)
+	defer shutdownCancel()
+
 	// Sync findings store to persist any pending changes
 	if syncer, ok := a.Findings.(interface{ Sync(context.Context) error }); ok {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		if err := syncer.Sync(ctx); err != nil {
+		if err := syncer.Sync(shutdownCtx); err != nil {
 			errs = append(errs, fmt.Errorf("findings sync: %w", err))
 		}
+	}
+
+	if a.TapConsumer != nil {
+		drainTimeout := appShutdownTimeout
+		if a.Config != nil && a.Config.NATSConsumerDrainTimeout > 0 {
+			drainTimeout = a.Config.NATSConsumerDrainTimeout
+		}
+		// Drain gets its own phase budget so earlier shutdown work does not silently
+		// shorten the configured consumer drain window.
+		var (
+			drainCtx    context.Context
+			drainCancel context.CancelFunc
+		)
+		if drainTimeout <= 0 {
+			drainCtx, drainCancel = context.WithCancel(context.Background())
+		} else {
+			drainCtx, drainCancel = context.WithTimeout(context.Background(), drainTimeout)
+		}
+		if err := a.TapConsumer.Drain(drainCtx); err != nil {
+			errs = append(errs, fmt.Errorf("tap consumer drain: %w", err))
+			if a.Logger != nil {
+				a.Logger.Warn("timed out draining tap consumer before graph shutdown", "timeout", drainTimeout, "error", err)
+			}
+		}
+		drainCancel()
 	}
 
 	if a.graphCancel != nil {
 		a.graphCancel()
 	}
 	if a.graphReady != nil {
+		graphWaitCtx, graphWaitCancel := context.WithTimeout(context.Background(), appShutdownTimeout)
+		defer graphWaitCancel()
 		select {
 		case <-a.graphReady:
-		case <-time.After(5 * time.Second):
+		case <-graphWaitCtx.Done():
+			if a.Logger != nil {
+				a.Logger.Warn("timed out waiting for security graph shutdown", "timeout", appShutdownTimeout, "error", graphWaitCtx.Err())
+			}
 		}
 	}
+
+	a.stopSecretsReloader()
+
+	a.stopThreatIntelSync()
 
 	// Close Snowflake connection
 	if a.Snowflake != nil {
 		if err := a.Snowflake.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("snowflake: %w", err))
+		}
+	}
+
+	if a.TapConsumer != nil {
+		if err := a.TapConsumer.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("tap consumer: %w", err))
+		}
+	}
+
+	if a.RemoteTools != nil {
+		if err := a.RemoteTools.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("remote tool provider: %w", err))
+		}
+	}
+	if a.ToolPublisher != nil {
+		if err := a.ToolPublisher.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("tool publisher: %w", err))
+		}
+	}
+	if a.AlertRouter != nil {
+		if err := a.AlertRouter.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("alert router: %w", err))
 		}
 	}
 
@@ -226,8 +295,24 @@ func (a *App) Close() error {
 		a.Scheduler.Stop()
 	}
 
+	if a.traceShutdown != nil {
+		if err := a.traceShutdown(shutdownCtx); err != nil {
+			errs = append(errs, fmt.Errorf("otel shutdown: %w", err))
+		}
+	}
+
 	if len(errs) > 0 {
 		return fmt.Errorf("close errors: %v", errs)
 	}
 	return nil
+}
+
+func (a *App) stopThreatIntelSync() {
+	if a == nil {
+		return
+	}
+	if a.threatIntelSyncCancel != nil {
+		a.threatIntelSyncCancel()
+	}
+	a.threatIntelSyncWG.Wait()
 }

@@ -25,7 +25,7 @@ func NewTerraformCloudProvider() *TerraformCloudProvider {
 	return &TerraformCloudProvider{
 		BaseProvider: NewBaseProvider("terraform_cloud", ProviderTypeSaaS),
 		baseURL:      terraformCloudDefaultAPIURL,
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

@@ -5,6 +5,58 @@ import (
 	"testing"
 )
 
+func TestEngineUpdateAndDeletePolicy(t *testing.T) {
+	engine := NewEngine()
+	engine.AddPolicy(&Policy{
+		ID:         "policy-1",
+		Name:       "Old Name",
+		Effect:     "forbid",
+		Resource:   "aws::s3::bucket",
+		Conditions: []string{"public == true"},
+		Severity:   "high",
+	})
+
+	updated := &Policy{
+		Name:       "Updated Name",
+		Effect:     "forbid",
+		Resource:   "aws::s3::bucket",
+		Conditions: []string{"public == false"},
+		Severity:   "critical",
+	}
+
+	if ok := engine.UpdatePolicy("policy-1", updated); !ok {
+		t.Fatal("expected policy update to succeed")
+	}
+
+	got, ok := engine.GetPolicy("policy-1")
+	if !ok {
+		t.Fatal("expected updated policy to exist")
+	}
+	if got.ID != "policy-1" {
+		t.Fatalf("expected policy ID to remain policy-1, got %s", got.ID)
+	}
+	if got.Name != "Updated Name" {
+		t.Fatalf("expected updated name, got %s", got.Name)
+	}
+	if got.Severity != "critical" {
+		t.Fatalf("expected updated severity critical, got %s", got.Severity)
+	}
+
+	if ok := engine.UpdatePolicy("missing", updated); ok {
+		t.Fatal("expected update of missing policy to fail")
+	}
+
+	if ok := engine.DeletePolicy("policy-1"); !ok {
+		t.Fatal("expected policy delete to succeed")
+	}
+	if _, ok := engine.GetPolicy("policy-1"); ok {
+		t.Fatal("expected policy to be deleted")
+	}
+	if ok := engine.DeletePolicy("policy-1"); ok {
+		t.Fatal("expected second delete to report missing policy")
+	}
+}
+
 func TestPublicVMPolicies(t *testing.T) {
 	engine := NewEngine()
 

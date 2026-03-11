@@ -68,6 +68,33 @@ func TestBuildRowHashes_DeduplicatesAndSkipsInvalidRows(t *testing.T) {
 	}
 }
 
+func TestDedupeRowsByID_UsesLatestAndSkipsInvalid(t *testing.T) {
+	rows := []map[string]interface{}{
+		{"_cq_id": "id-1", "value": "first"},
+		{"_cq_id": "id-2", "value": "only"},
+		{"_cq_id": "id-1", "value": "latest"},
+		{"_cq_id": 12, "value": "invalid"},
+	}
+
+	deduped := dedupeRowsByID(rows)
+	if len(deduped) != 2 {
+		t.Fatalf("expected 2 deduped rows, got %d", len(deduped))
+	}
+
+	byID := make(map[string]string, len(deduped))
+	for _, row := range deduped {
+		id, _ := row["_cq_id"].(string)
+		byID[id], _ = row["value"].(string)
+	}
+
+	if got := byID["id-1"]; got != "latest" {
+		t.Fatalf("expected id-1 latest row, got %q", got)
+	}
+	if got := byID["id-2"]; got != "only" {
+		t.Fatalf("expected id-2 row, got %q", got)
+	}
+}
+
 func assertIDs(t *testing.T, got []string, want []string) {
 	t.Helper()
 	sortedGot := append([]string(nil), got...)

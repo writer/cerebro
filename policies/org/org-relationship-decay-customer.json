@@ -1,0 +1,23 @@
+{
+  "id": "org-relationship-decay-customer",
+  "name": "Customer Relationship Weakening",
+  "description": "Primary contact interaction with customer has decayed below threshold before renewal.",
+  "effect": "forbid",
+  "resource": "org::customer_relationship",
+  "conditions": [
+    "relationship_strength < 0.3",
+    "previous_strength > 0.7",
+    "renewal_days < 90"
+  ],
+  "severity": "high",
+  "remediation": "Escalate account engagement and assign backup contacts before renewal.",
+  "tags": [
+    "org-topology",
+    "customer-health",
+    "churn-risk"
+  ],
+  "risk_categories": [
+    "CUSTOMER_HEALTH_RISK",
+    "CHURN_RISK"
+  ]
+}

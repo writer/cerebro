@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials/processcreds"
+	apiclient "github.com/writer/cerebro/internal/client"
 	nativesync "github.com/writer/cerebro/internal/sync"
 )
 
@@ -136,6 +137,83 @@ func runMultiAccountAWSSync(ctx context.Context, start time.Time) error {
 		return fmt.Errorf("--aws-profiles did not include any valid profile names")
 	}
 
+	mode, err := loadCLIExecutionMode()
+	if err != nil {
+		return err
+	}
+
+	supportsAPI, apiReason := syncSupportsAWSAPIMode()
+	if mode != cliExecutionModeDirect && supportsAPI {
+		apiClient, err := newCLIAPIClient()
+		if err != nil {
+			if mode == cliExecutionModeAPI {
+				return err
+			}
+			Warning("API client configuration invalid; using direct mode: %v", err)
+		} else {
+			return runMultiAccountAWSSyncViaAPI(ctx, start, profiles, apiClient, mode)
+		}
+	}
+
+	if mode == cliExecutionModeAPI && !supportsAPI {
+		return fmt.Errorf("aws multi-account sync API mode unsupported: %s", apiReason)
+	}
+	if mode != cliExecutionModeDirect && !supportsAPI {
+		Warning("API sync mode skipped; using direct mode: %s", apiReason)
+	}
+
+	return runMultiAccountAWSSyncDirectFn(ctx, start, profiles)
+}
+
+func runMultiAccountAWSSyncViaAPI(
+	ctx context.Context,
+	start time.Time,
+	profiles []string,
+	apiClient *apiclient.Client,
+	mode cliExecutionMode,
+) error {
+	Info("Starting multi-account AWS sync (%d profiles)...", len(profiles))
+	tableFilter := parseTableFilter(syncTable)
+	totalResults := make([]nativesync.SyncResult, 0, len(profiles))
+
+	for idx, profile := range profiles {
+		Info("Syncing AWS profile: %s", profile)
+		profileStart := time.Now()
+
+		resp, err := apiClient.RunAWSSync(ctx, apiclient.AWSSyncRequest{
+			Profile:     profile,
+			Region:      strings.TrimSpace(syncRegion),
+			MultiRegion: syncMultiRegion,
+			Concurrency: syncConcurrency,
+			Tables:      tableFilter,
+			Validate:    syncValidate,
+		})
+		if err != nil {
+			if mode == cliExecutionModeAuto && shouldFallbackToDirect(mode, err) {
+				if idx == 0 {
+					Warning("API unavailable; using direct mode: %v", err)
+					return runMultiAccountAWSSyncDirectFn(ctx, start, profiles)
+				}
+				return fmt.Errorf("aws multi-account sync via api failed after syncing %d/%d profiles: %w", idx, len(profiles), err)
+			}
+			return fmt.Errorf("aws multi-account sync via api failed: %w", err)
+		}
+		if resp != nil {
+			totalResults = append(totalResults, resp.Results...)
+		}
+		Success("Profile %s synced in %s", profile, time.Since(profileStart).Round(time.Second))
+	}
+
+	provider := fmt.Sprintf("AWS (%d profiles)", len(profiles))
+	if syncValidate {
+		provider = fmt.Sprintf("AWS (%d profiles) (validate)", len(profiles))
+	}
+	return printSyncResults(totalResults, start, provider)
+}
+
+var runMultiAccountAWSSyncDirectFn = runMultiAccountAWSSyncDirect
+
+func runMultiAccountAWSSyncDirect(ctx context.Context, start time.Time, profiles []string) error {
 	Info("Starting multi-account AWS sync (%d profiles)...", len(profiles))
 	var totalResults []nativesync.SyncResult
 	var syncErrs []error
@@ -221,6 +299,104 @@ func runMultiAccountAWSSync(ctx context.Context, start time.Time) error {
 }
 
 func runNativeSync(ctx context.Context, start time.Time) error {
+	tableFilter := parseTableFilter(syncTable)
+
+	mode, err := loadCLIExecutionMode()
+	if err != nil {
+		return err
+	}
+
+	supportsAPI, apiReason := syncSupportsAWSAPIMode()
+	if mode != cliExecutionModeDirect && supportsAPI {
+		apiClient, err := newCLIAPIClient()
+		if err != nil {
+			if mode == cliExecutionModeAPI {
+				return err
+			}
+			Warning("API client configuration invalid; using direct mode: %v", err)
+		} else {
+			resp, err := apiClient.RunAWSSync(ctx, apiclient.AWSSyncRequest{
+				Profile:     strings.TrimSpace(syncAWSProfile),
+				Region:      strings.TrimSpace(syncRegion),
+				MultiRegion: syncMultiRegion,
+				Concurrency: syncConcurrency,
+				Tables:      tableFilter,
+				Validate:    syncValidate,
+			})
+			if err == nil {
+				provider := "AWS"
+				if syncValidate || (resp != nil && resp.Validate) {
+					provider = "AWS (validate)"
+				}
+
+				var results []nativesync.SyncResult
+				if resp != nil {
+					results = resp.Results
+				}
+				if err := printSyncResults(results, start, provider); err != nil {
+					return err
+				}
+
+				if !syncValidate {
+					if len(tableFilter) > 0 {
+						Info("Skipping relationship extraction because --table filter is set")
+					} else if resp != nil {
+						if reason := strings.TrimSpace(resp.RelationshipsSkippedReason); reason != "" {
+							Info("Skipping relationship extraction: %s", reason)
+						} else {
+							Info("Extracted %d relationships", resp.RelationshipsExtracted)
+						}
+					}
+				}
+
+				if syncScanAfter && !syncValidate {
+					Info("Triggering policy scan...")
+					if err := runPostSyncScan(ctx, tableFilter); err != nil {
+						Warning("Post-sync scan failed: %v", err)
+					}
+				}
+
+				return nil
+			}
+			if mode == cliExecutionModeAPI || !shouldFallbackToDirect(mode, err) {
+				return fmt.Errorf("aws sync via api failed: %w", err)
+			}
+			Warning("API unavailable; using direct mode: %v", err)
+		}
+	}
+
+	if mode == cliExecutionModeAPI && !supportsAPI {
+		return fmt.Errorf("aws sync API mode unsupported: %s", apiReason)
+	}
+	if mode != cliExecutionModeDirect && !supportsAPI {
+		Warning("API sync mode skipped; using direct mode: %s", apiReason)
+	}
+
+	return runNativeSyncDirectFn(ctx, start)
+}
+
+func syncSupportsAWSAPIMode() (bool, string) {
+	if strings.TrimSpace(syncAWSConfigFile) != "" {
+		return false, "--aws-config-file requires direct mode"
+	}
+	if strings.TrimSpace(syncAWSSharedCredsFile) != "" {
+		return false, "--aws-shared-credentials-file requires direct mode"
+	}
+	if strings.TrimSpace(syncAWSCredentialProc) != "" {
+		return false, "--aws-credential-process requires direct mode"
+	}
+	if strings.TrimSpace(syncAWSWebIDTokenFile) != "" || strings.TrimSpace(syncAWSWebIDRoleARN) != "" {
+		return false, "--aws-web-identity-* flags require direct mode"
+	}
+	if strings.TrimSpace(syncAWSRoleARN) != "" || strings.TrimSpace(syncAWSRoleExternalID) != "" || strings.TrimSpace(syncAWSRoleMFASerial) != "" || strings.TrimSpace(syncAWSRoleMFAToken) != "" || strings.TrimSpace(syncAWSRoleSourceID) != "" || strings.TrimSpace(syncAWSRoleDuration) != "" || strings.TrimSpace(syncAWSRoleTags) != "" || strings.TrimSpace(syncAWSRoleTransitive) != "" {
+		return false, "--aws-role-* flags require direct mode"
+	}
+	return true, ""
+}
+
+var runNativeSyncDirectFn = runNativeSyncDirect
+
+func runNativeSyncDirect(ctx context.Context, start time.Time) error {
 	awsCfg, err := loadAWSConfig(ctx, syncAWSProfile)
 	if err != nil {
 		return fmt.Errorf("load AWS config: %w", err)
@@ -287,14 +463,19 @@ func runNativeSync(ctx context.Context, start time.Time) error {
 	}
 
 	if len(tableFilter) == 0 {
-		// Extract resource relationships for graph building
-		Info("Extracting resource relationships...")
-		relExtractor := nativesync.NewRelationshipExtractor(client, slog.Default())
-		relCount, err := relExtractor.ExtractAndPersist(ctx)
-		if err != nil {
-			Warning("Relationship extraction failed: %v", err)
+		allowed, reason := nativesync.CanExtractRelationships(results, nil)
+		if !allowed {
+			Info("Skipping relationship extraction: %s", reason)
 		} else {
-			Info("Extracted %d relationships", relCount)
+			// Extract resource relationships for graph building.
+			Info("Extracting resource relationships...")
+			relExtractor := nativesync.NewRelationshipExtractor(client, slog.Default())
+			relCount, err := relExtractor.ExtractAndPersist(ctx)
+			if err != nil {
+				Warning("Relationship extraction failed: %v", err)
+			} else {
+				Info("Extracted %d relationships", relCount)
+			}
 		}
 	} else {
 		Info("Skipping relationship extraction because --table filter is set")

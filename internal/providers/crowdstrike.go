@@ -32,7 +32,7 @@ func NewCrowdStrikeProvider() *CrowdStrikeProvider {
 	return &CrowdStrikeProvider{
 		BaseProvider: NewBaseProvider("crowdstrike", ProviderTypeEndpoint),
 		baseURL:      "https://api.crowdstrike.com",
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

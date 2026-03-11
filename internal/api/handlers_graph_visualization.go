@@ -12,7 +12,7 @@ import (
 
 func (s *Server) visualizeAttackPath(w http.ResponseWriter, r *http.Request) {
 	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
 
@@ -41,7 +41,7 @@ func (s *Server) visualizeAttackPath(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) visualizeToxicCombination(w http.ResponseWriter, r *http.Request) {
 	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
 
@@ -77,7 +77,7 @@ func (s *Server) visualizeToxicCombination(w http.ResponseWriter, r *http.Reques
 
 func (s *Server) visualizeBlastRadius(w http.ResponseWriter, r *http.Request) {
 	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
 
@@ -105,7 +105,7 @@ func (s *Server) visualizeBlastRadius(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) visualizeReport(w http.ResponseWriter, r *http.Request) {
 	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
 

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 func TestExtractReferenceID(t *testing.T) {
@@ -258,6 +258,109 @@ func TestGCPAssetNodeType(t *testing.T) {
 	}
 }
 
+func TestExtractAndPersist_CleansStaleAfterPartialExtractorFailure(t *testing.T) {
+	origEnsure := relationshipEnsureTable
+	origSteps := relationshipExtractionSteps
+	origCleanup := relationshipCleanupStale
+	origNow := relationshipNowUTC
+	t.Cleanup(func() {
+		relationshipEnsureTable = origEnsure
+		relationshipExtractionSteps = origSteps
+		relationshipCleanupStale = origCleanup
+		relationshipNowUTC = origNow
+	})
+
+	runSyncTime := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
+	relationshipNowUTC = func() time.Time { return runSyncTime }
+	relationshipEnsureTable = func(_ *RelationshipExtractor, _ context.Context) error { return nil }
+	relationshipExtractionSteps = func(_ *RelationshipExtractor) []relationshipExtractionStep {
+		return []relationshipExtractionStep{
+			{
+				name: "first-success",
+				fn: func(context.Context) (int, error) {
+					return 3, nil
+				},
+			},
+			{
+				name: "second-failure",
+				fn: func(context.Context) (int, error) {
+					return 0, errors.New("extractor failure")
+				},
+			},
+		}
+	}
+
+	cleanupCalls := 0
+	var cleanupCutoff time.Time
+	relationshipCleanupStale = func(_ *RelationshipExtractor, _ context.Context, cutoff time.Time) error {
+		cleanupCalls++
+		cleanupCutoff = cutoff
+		return nil
+	}
+
+	extractor := &RelationshipExtractor{
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	total, err := extractor.ExtractAndPersist(context.Background())
+	if err == nil {
+		t.Fatal("expected extraction to return an error when one extractor fails")
+	}
+	if total != 3 {
+		t.Fatalf("expected total relationships 3, got %d", total)
+	}
+	if cleanupCalls != 1 {
+		t.Fatalf("expected cleanup to run once, got %d", cleanupCalls)
+	}
+	if !cleanupCutoff.Equal(runSyncTime) {
+		t.Fatalf("expected cleanup cutoff %s, got %s", runSyncTime, cleanupCutoff)
+	}
+}
+
+func TestExtractAndPersist_SkipsCleanupWhenNothingPersisted(t *testing.T) {
+	origEnsure := relationshipEnsureTable
+	origSteps := relationshipExtractionSteps
+	origCleanup := relationshipCleanupStale
+	t.Cleanup(func() {
+		relationshipEnsureTable = origEnsure
+		relationshipExtractionSteps = origSteps
+		relationshipCleanupStale = origCleanup
+	})
+
+	relationshipEnsureTable = func(_ *RelationshipExtractor, _ context.Context) error { return nil }
+	relationshipExtractionSteps = func(_ *RelationshipExtractor) []relationshipExtractionStep {
+		return []relationshipExtractionStep{
+			{
+				name: "failure",
+				fn: func(context.Context) (int, error) {
+					return 0, errors.New("failed extractor")
+				},
+			},
+		}
+	}
+
+	cleanupCalls := 0
+	relationshipCleanupStale = func(_ *RelationshipExtractor, _ context.Context, _ time.Time) error {
+		cleanupCalls++
+		return nil
+	}
+
+	extractor := &RelationshipExtractor{
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	total, err := extractor.ExtractAndPersist(context.Background())
+	if err == nil {
+		t.Fatal("expected extraction to return an error")
+	}
+	if total != 0 {
+		t.Fatalf("expected total relationships 0, got %d", total)
+	}
+	if cleanupCalls != 0 {
+		t.Fatalf("expected cleanup not to run, got %d calls", cleanupCalls)
+	}
+}
+
 func TestNormalizeGCPAssetRelationshipType(t *testing.T) {
 	if got := normalizeGCPAssetRelationshipType("instance-to.instance group"); got != "INSTANCE_TO_INSTANCE_GROUP" {
 		t.Fatalf("unexpected relationship type: %s", got)
@@ -357,9 +460,9 @@ func TestPersistRelationships_UsesRunSyncTimeForFreshWrites(t *testing.T) {
 		relationshipQueryBatch = originalBatch
 	})
 
-	relationshipSchemaName = func(_ *snowflake.Client) string { return "RAW" }
+	relationshipSchemaName = func(_ warehouse.SyncWarehouse) string { return "RAW" }
 	var capturedArgs []interface{}
-	relationshipQueryBatch = func(_ context.Context, _ *snowflake.Client, _ string, args ...interface{}) error {
+	relationshipQueryBatch = func(_ context.Context, _ warehouse.SyncWarehouse, _ string, args ...interface{}) error {
 		capturedArgs = append([]interface{}(nil), args...)
 		return nil
 	}
@@ -409,12 +512,12 @@ func TestPersistRelationships_UsesCurrentTimeWhenRunSyncTimeMissing(t *testing.T
 		relationshipNowUTC = originalNow
 	})
 
-	relationshipSchemaName = func(_ *snowflake.Client) string { return "RAW" }
+	relationshipSchemaName = func(_ warehouse.SyncWarehouse) string { return "RAW" }
 	fixedNow := time.Date(2026, 2, 24, 16, 5, 0, 0, time.UTC)
 	relationshipNowUTC = func() time.Time { return fixedNow }
 
 	var capturedArgs []interface{}
-	relationshipQueryBatch = func(_ context.Context, _ *snowflake.Client, _ string, args ...interface{}) error {
+	relationshipQueryBatch = func(_ context.Context, _ warehouse.SyncWarehouse, _ string, args ...interface{}) error {
 		capturedArgs = append([]interface{}(nil), args...)
 		return nil
 	}

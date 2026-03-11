@@ -2,7 +2,7 @@ version: "2"
 
 run:
   timeout: 15m
-  tests: false
+  tests: true
 
 linters:
   enable:
@@ -15,6 +15,11 @@ linters:
     - noctx
     - errorlint
     - misspell
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - noctx
 
 formatters:
   enable:

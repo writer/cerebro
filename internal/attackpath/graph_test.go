@@ -54,6 +54,24 @@ func TestGraphAddEdge(t *testing.T) {
 	}
 }
 
+func TestGraphAddEdge_IgnoresUnknownNodes(t *testing.T) {
+	g := NewGraph()
+	g.AddNode(&Node{ID: "known", Name: "known"})
+
+	g.AddEdge(&Edge{
+		ID:     "edge-unknown",
+		Source: "known",
+		Target: "missing",
+		Type:   EdgeTypeHasAccess,
+		Risk:   RiskHigh,
+	})
+
+	edges := g.GetEdges("known")
+	if len(edges) != 0 {
+		t.Fatalf("expected no edges to be added when target node is missing, got %d", len(edges))
+	}
+}
+
 func TestGraphGetAllNodes(t *testing.T) {
 	g := NewGraph()
 
@@ -139,7 +157,7 @@ func TestPathFinderBFS(t *testing.T) {
 	g.AddEdge(&Edge{ID: "e2", Source: "B", Target: "C", Type: EdgeTypeHasAccess})
 
 	pf := NewPathFinder(g, 5)
-	discovered := pf.bfs("A", 5)
+	discovered := pf.bfs(context.Background(), "A", 5)
 
 	if _, ok := discovered["B"]; !ok {
 		t.Error("expected to discover B from A")
@@ -197,6 +215,39 @@ func TestPathFinderFindPaths(t *testing.T) {
 	}
 	if path.Severity != RiskHigh && path.Severity != RiskCritical {
 		t.Errorf("expected high/critical severity, got %s", path.Severity)
+	}
+}
+
+func TestPathFinderFindPaths_ContextCancelled(t *testing.T) {
+	g := NewGraph()
+	g.AddNode(&Node{ID: "external", Type: NodeTypeExternal, Name: "internet"})
+	g.AddNode(&Node{ID: "target", Type: NodeTypeDatabase, Name: "db", Risk: RiskCritical})
+	g.AddEdge(&Edge{ID: "edge", Source: "external", Target: "target", Type: EdgeTypeHasAccess, Risk: RiskHigh})
+
+	pf := NewPathFinder(g, 5)
+	pf.SetHighValueTargets([]string{"target"})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	paths := pf.FindPaths(ctx)
+	if len(paths) != 0 {
+		t.Fatalf("expected no paths when context is canceled, got %d", len(paths))
+	}
+}
+
+func TestPathFinderScorePath(t *testing.T) {
+	g := NewGraph()
+	g.AddNode(&Node{ID: "A", Name: "A"})
+	g.AddNode(&Node{ID: "B", Name: "B"})
+	g.AddNode(&Node{ID: "C", Name: "C"})
+	g.AddEdge(&Edge{ID: "e1", Source: "A", Target: "B", Type: EdgeTypeCanAssume, Risk: RiskHigh})
+	g.AddEdge(&Edge{ID: "e2", Source: "B", Target: "C", Type: EdgeTypeHasAccess, Risk: RiskCritical})
+
+	pf := NewPathFinder(g, 5)
+	score := pf.ScorePath([]string{"A", "B", "C"})
+	if score != 70 { // high (30) + critical (40)
+		t.Fatalf("expected score 70, got %d", score)
 	}
 }
 

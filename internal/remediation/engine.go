@@ -29,6 +29,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -74,6 +75,7 @@ type TriggerType string
 const (
 	TriggerFindingCreated TriggerType = "finding.created"
 	TriggerFindingOpen    TriggerType = "finding.open"
+	TriggerSignalCreated  TriggerType = "signal.created"
 	TriggerSchedule       TriggerType = "schedule"
 	TriggerManual         TriggerType = "manual"
 )
@@ -95,6 +97,13 @@ const (
 	ActionResolveFinding  ActionType = "resolve_finding"
 	ActionRunWebhook      ActionType = "run_webhook"
 	ActionTagResource     ActionType = "tag_resource"
+
+	ActionUpdateCRMField    ActionType = "update_crm_field"
+	ActionTriggerWorkflow   ActionType = "trigger_workflow"
+	ActionCreateReview      ActionType = "create_review"
+	ActionEscalateToOwner   ActionType = "escalate_to_owner"
+	ActionPauseSubscription ActionType = "pause_subscription"
+	ActionSendCustomerComm  ActionType = "send_customer_comm"
 )
 
 // Execution tracks a rule execution
@@ -237,6 +246,172 @@ func (e *Engine) loadDefaultRules() {
 				},
 			},
 		},
+		{
+			ID:          "identity-stale-user-remediation",
+			Name:        "Stale User Access Remediation",
+			Description: "Create and notify on stale inactive user findings for identity hygiene follow-up",
+			Enabled:     true,
+			Trigger: Trigger{
+				Type:     TriggerFindingCreated,
+				PolicyID: "identity-stale-inactive-user",
+			},
+			Actions: []Action{
+				{
+					Type: ActionCreateTicket,
+					Config: map[string]string{
+						"priority": "high",
+						"labels":   "identity,stale-access,auto-generated",
+					},
+					RequiresApproval: false,
+				},
+				{
+					Type: ActionNotifySlack,
+					Config: map[string]string{
+						"channel": "#identity-security",
+					},
+					RequiresApproval: false,
+				},
+			},
+		},
+		{
+			ID:          "identity-excessive-privilege-remediation",
+			Name:        "Identity Excessive Privilege Escalation",
+			Description: "Escalate excessive identity privilege findings with high-priority response",
+			Enabled:     true,
+			Trigger: Trigger{
+				Type:     TriggerFindingCreated,
+				PolicyID: "identity-excessive-privilege",
+			},
+			Actions: []Action{
+				{
+					Type: ActionCreateTicket,
+					Config: map[string]string{
+						"priority": "highest",
+						"labels":   "identity,privilege,critical,auto-generated",
+					},
+					RequiresApproval: false,
+				},
+				{
+					Type: ActionNotifySlack,
+					Config: map[string]string{
+						"channel": "#security-alerts",
+					},
+					RequiresApproval: false,
+				},
+			},
+		},
+		{
+			ID:          "dspm-restricted-data-unencrypted-remediation",
+			Name:        "DSPM Restricted Data Encryption Enforcement",
+			Description: "Escalate and track restricted data stores detected without encryption at rest",
+			Enabled:     true,
+			Trigger: Trigger{
+				Type:     TriggerFindingCreated,
+				PolicyID: "dspm-restricted-data-unencrypted",
+			},
+			Actions: []Action{
+				{
+					Type: ActionCreateTicket,
+					Config: map[string]string{
+						"priority": "highest",
+						"labels":   "dspm,data-encryption,restricted,auto-generated",
+					},
+					RequiresApproval: false,
+				},
+				{
+					Type: ActionNotifySlack,
+					Config: map[string]string{
+						"channel": "#security-alerts",
+					},
+					RequiresApproval: false,
+				},
+			},
+		},
+		{
+			ID:          "dspm-confidential-data-public-remediation",
+			Name:        "DSPM Public Sensitive Data Access Restriction",
+			Description: "Trigger response playbooks when confidential or restricted data is publicly exposed",
+			Enabled:     true,
+			Trigger: Trigger{
+				Type:     TriggerFindingCreated,
+				PolicyID: "dspm-confidential-data-public",
+			},
+			Actions: []Action{
+				{
+					Type: ActionCreateTicket,
+					Config: map[string]string{
+						"priority": "highest",
+						"labels":   "dspm,public-exposure,data-security,auto-generated",
+					},
+					RequiresApproval: false,
+				},
+				{
+					Type: ActionNotifySlack,
+					Config: map[string]string{
+						"channel": "#security-alerts",
+					},
+					RequiresApproval: false,
+				},
+			},
+		},
+		{
+			ID:          "signal-escalate-customer-health-critical",
+			Name:        "Escalate Critical Customer Health Signals",
+			Description: "Escalate critical customer-health signals to account owner and create a tracking ticket",
+			Enabled:     true,
+			Trigger: Trigger{
+				Type:     TriggerSignalCreated,
+				Severity: "critical",
+			},
+			Conditions: map[string]string{
+				"domain": "customer_health",
+			},
+			Actions: []Action{
+				{
+					Type: ActionEscalateToOwner,
+					Config: map[string]string{
+						"tool":      "slack.send_message",
+						"task_tool": "hubspot.create_task",
+					},
+					RequiresApproval: false,
+				},
+				{
+					Type: ActionCreateTicket,
+					Config: map[string]string{
+						"priority": "high",
+						"labels":   "signal,customer-health,critical",
+					},
+					RequiresApproval: false,
+				},
+			},
+		},
+		{
+			ID:          "signal-finance-refund-approval",
+			Name:        "Finance Approval Guardrail for Large Refund",
+			Description: "Route large refund signals through finance approvals with CRM flag update",
+			Enabled:     true,
+			Trigger: Trigger{
+				Type:     TriggerSignalCreated,
+				PolicyID: "stripe-large-refund",
+			},
+			Actions: []Action{
+				{
+					Type: ActionNotifySlack,
+					Config: map[string]string{
+						"channel": "#finance-approvals",
+					},
+					RequiresApproval: false,
+				},
+				{
+					Type: ActionUpdateCRMField,
+					Config: map[string]string{
+						"tool":          "hubspot.update_contact",
+						"fallback_tool": "salesforce.update_record",
+					},
+					RequiresApproval: true,
+				},
+			},
+		},
 	}
 }
 
@@ -252,6 +427,40 @@ func (e *Engine) AddRule(rule Rule) error {
 
 	e.rules = append(e.rules, rule)
 	return nil
+}
+
+// UpdateRule updates an existing rule by ID.
+func (e *Engine) UpdateRule(id string, rule Rule) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	for i := range e.rules {
+		if e.rules[i].ID == id {
+			createdAt := e.rules[i].CreatedAt
+			rule.ID = id
+			if createdAt.IsZero() {
+				createdAt = time.Now().UTC()
+			}
+			rule.CreatedAt = createdAt
+			e.rules[i] = rule
+			return nil
+		}
+	}
+	return fmt.Errorf("rule not found: %s", id)
+}
+
+// DeleteRule removes a rule by ID.
+func (e *Engine) DeleteRule(id string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	for i := range e.rules {
+		if e.rules[i].ID == id {
+			e.rules = append(e.rules[:i], e.rules[i+1:]...)
+			return nil
+		}
+	}
+	return fmt.Errorf("rule not found: %s", id)
 }
 
 // GetRule gets a rule by ID
@@ -315,7 +524,7 @@ func (e *Engine) Evaluate(ctx context.Context, event Event) ([]*Execution, error
 			continue
 		}
 
-		if e.matchesTrigger(rule.Trigger, event) {
+		if e.matchesTrigger(rule.Trigger, event) && e.matchesConditions(rule.Conditions, event) {
 			exec := e.createExecution(rule, event)
 			executions = append(executions, exec)
 
@@ -336,12 +545,15 @@ func (e *Engine) Evaluate(ctx context.Context, event Event) ([]*Execution, error
 
 // Event represents something that can trigger rules
 type Event struct {
-	Type      TriggerType    `json:"type"`
-	FindingID string         `json:"finding_id,omitempty"`
-	Severity  string         `json:"severity,omitempty"`
-	PolicyID  string         `json:"policy_id,omitempty"`
-	Tags      []string       `json:"tags,omitempty"`
-	Data      map[string]any `json:"data,omitempty"`
+	Type       TriggerType    `json:"type"`
+	FindingID  string         `json:"finding_id,omitempty"`
+	Severity   string         `json:"severity,omitempty"`
+	PolicyID   string         `json:"policy_id,omitempty"`
+	SignalType string         `json:"signal_type,omitempty"`
+	Domain     string         `json:"domain,omitempty"`
+	EntityID   string         `json:"entity_id,omitempty"`
+	Tags       []string       `json:"tags,omitempty"`
+	Data       map[string]any `json:"data,omitempty"`
 }
 
 func (e *Engine) matchesTrigger(trigger Trigger, event Event) bool {
@@ -379,20 +591,76 @@ func (e *Engine) matchesTrigger(trigger Trigger, event Event) bool {
 	return true
 }
 
+func (e *Engine) matchesConditions(conditions map[string]string, event Event) bool {
+	if len(conditions) == 0 {
+		return true
+	}
+
+	for key, expected := range conditions {
+		actual, ok := eventFieldValue(event, key)
+		if !ok {
+			return false
+		}
+		if strings.TrimSpace(strings.ToLower(actual)) != strings.TrimSpace(strings.ToLower(expected)) {
+			return false
+		}
+	}
+	return true
+}
+
+func eventFieldValue(event Event, key string) (string, bool) {
+	normalized := strings.TrimSpace(strings.ToLower(key))
+	switch normalized {
+	case "type":
+		return string(event.Type), true
+	case "finding_id":
+		return event.FindingID, event.FindingID != ""
+	case "severity":
+		return event.Severity, event.Severity != ""
+	case "policy_id":
+		return event.PolicyID, event.PolicyID != ""
+	case "signal_type":
+		return event.SignalType, event.SignalType != ""
+	case "domain":
+		return event.Domain, event.Domain != ""
+	case "entity_id":
+		return event.EntityID, event.EntityID != ""
+	}
+
+	if event.Data == nil {
+		return "", false
+	}
+	raw, ok := event.Data[key]
+	if !ok {
+		return "", false
+	}
+	return fmt.Sprintf("%v", raw), true
+}
+
 func (e *Engine) createExecution(rule Rule, event Event) *Execution {
+	triggerData := map[string]any{
+		"event_type":  event.Type,
+		"finding_id":  event.FindingID,
+		"severity":    event.Severity,
+		"policy_id":   event.PolicyID,
+		"signal_type": event.SignalType,
+		"domain":      event.Domain,
+		"entity_id":   event.EntityID,
+	}
+	for key, value := range event.Data {
+		if _, exists := triggerData[key]; !exists {
+			triggerData[key] = value
+		}
+	}
+
 	return &Execution{
-		ID:       uuid.New().String(),
-		RuleID:   rule.ID,
-		RuleName: rule.Name,
-		Status:   ExecutionPending,
-		TriggerData: map[string]any{
-			"event_type": event.Type,
-			"finding_id": event.FindingID,
-			"severity":   event.Severity,
-			"policy_id":  event.PolicyID,
-		},
-		Actions:   make([]ActionResult, 0),
-		StartedAt: time.Now().UTC(),
+		ID:          uuid.New().String(),
+		RuleID:      rule.ID,
+		RuleName:    rule.Name,
+		Status:      ExecutionPending,
+		TriggerData: triggerData,
+		Actions:     make([]ActionResult, 0),
+		StartedAt:   time.Now().UTC(),
 	}
 }
 

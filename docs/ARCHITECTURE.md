@@ -2,7 +2,39 @@
 
 ## Overview
 
-Cerebro is a comprehensive security data platform for cloud and SaaS posture management. It combines data ingestion (native sync), storage (Snowflake), policy evaluation (Cedar-style), and intelligent security analysis (AI agents) into a unified platform.
+Cerebro is Writer's original platform and combines security-first workflows with a shared graph and intelligence foundation. Security remains a primary application surface, while the broader architecture supports common ingest, identity, reasoning, and actuation primitives that can be reused across domains.
+
+Graph-specific architecture references:
+
+- [Graph Intelligence Layer](./GRAPH_INTELLIGENCE_LAYER.md)
+- [Agent SDK Gateway Architecture](./AGENT_SDK_GATEWAY_ARCHITECTURE.md)
+- [Agent SDK Auto-Generated Contract Catalog](./AGENT_SDK_AUTOGEN.md)
+- [Agent SDK Machine-Readable Contract Catalog](./AGENT_SDK_CONTRACTS.json)
+- [Agent SDK Package Auto-Generation](./AGENT_SDK_PACKAGES_AUTOGEN.md)
+- [Graph Report Extensibility Research](./GRAPH_REPORT_EXTENSIBILITY_RESEARCH.md)
+- [Graph Asset Deepening Research](./GRAPH_ASSET_DEEPENING_RESEARCH.md)
+- [Graph Entity Facet Architecture](./GRAPH_ENTITY_FACET_ARCHITECTURE.md)
+- [Graph Entity Facet Contract Catalog](./GRAPH_ENTITY_FACETS_AUTOGEN.md)
+- [Graph Entity Facet Machine-Readable Catalog](./GRAPH_ENTITY_FACETS.json)
+- [Graph Ontology Architecture](./GRAPH_ONTOLOGY_ARCHITECTURE.md)
+- [Graph World Model Architecture](./GRAPH_WORLD_MODEL_ARCHITECTURE.md)
+- [Platform Architecture Boundaries](./PLATFORM_TRANSITION_ARCHITECTURE.md)
+- [Graph Ontology Auto-Generated Catalog](./GRAPH_ONTOLOGY_AUTOGEN.md)
+- [CloudEvents Auto-Generated Catalog](./CLOUDEVENTS_AUTOGEN.md)
+- [CloudEvents Machine-Readable Contract Catalog](./CLOUDEVENTS_CONTRACTS.json)
+- [Graph Report Contract Catalog](./GRAPH_REPORT_CONTRACTS_AUTOGEN.md)
+- [Graph Report Machine-Readable Contract Catalog](./GRAPH_REPORT_CONTRACTS.json)
+- [Graph Ontology External Patterns](./GRAPH_ONTOLOGY_EXTERNAL_PATTERNS.md)
+
+## Platform Boundaries
+
+The current implementation still reflects historical security-first packaging, especially in API namespaces and some internal service boundaries. The target architecture separates:
+
+- platform capabilities: graph query, ontology/schema, ingest contracts, evidence/claim/decision/action/outcome writes, identity resolution, simulation, actuation, and intelligence quality/calibration
+- application capabilities: security/CSPM, org intelligence, compliance, runtime detection/response, and future verticals
+- transport/client capabilities: typed REST, MCP, webhooks, and generated SDK contracts layered over the same shared platform primitives
+
+See [Platform Architecture Boundaries](./PLATFORM_TRANSITION_ARCHITECTURE.md) for the concrete endpoint inventory, boundary diagnosis, migration matrix, and schema proposals that define these boundaries.
 
 ## System Architecture
 

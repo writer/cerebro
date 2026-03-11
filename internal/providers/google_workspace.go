@@ -2,12 +2,15 @@ package providers
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -23,7 +26,14 @@ type GoogleWorkspaceProvider struct {
 	adminEmail   string
 	credentials  []byte
 	impersonator string
+
+	calendarRowsLoaded bool
+	calendarEventRows  []map[string]interface{}
+	calendarGuestRows  []map[string]interface{}
+	calendarRowsErr    error
 }
+
+const googleWorkspaceCalendarLookbackDays = 180
 
 func NewGoogleWorkspaceProvider() *GoogleWorkspaceProvider {
 	return &GoogleWorkspaceProvider{
@@ -78,6 +88,7 @@ func (g *GoogleWorkspaceProvider) Configure(ctx context.Context, config map[stri
 		"https://www.googleapis.com/auth/admin.directory.group.readonly",
 		"https://www.googleapis.com/auth/admin.directory.group.member.readonly",
 		"https://www.googleapis.com/auth/admin.directory.domain.readonly",
+		"https://www.googleapis.com/auth/calendar.readonly",
 	)
 	if err != nil {
 		return fmt.Errorf("parse credentials: %w", err)
@@ -159,6 +170,38 @@ func (g *GoogleWorkspaceProvider) Schema() []TableSchema {
 			},
 			PrimaryKey: []string{"domain_name"},
 		},
+		{
+			Name:        "google_workspace_calendar_events",
+			Description: "Google Calendar event metadata (privacy-safe)",
+			Columns: []ColumnSchema{
+				{Name: "id", Type: "string", Required: true},
+				{Name: "calendar_id", Type: "string"},
+				{Name: "organizer_email", Type: "string"},
+				{Name: "title_hash", Type: "string"},
+				{Name: "start_time", Type: "timestamp"},
+				{Name: "end_time", Type: "timestamp"},
+				{Name: "duration_minutes", Type: "integer"},
+				{Name: "is_recurring", Type: "boolean"},
+				{Name: "recurrence_pattern", Type: "string"},
+				{Name: "attendee_count", Type: "integer"},
+				{Name: "response_status", Type: "string"},
+				{Name: "created", Type: "timestamp"},
+				{Name: "updated", Type: "timestamp"},
+			},
+			PrimaryKey: []string{"id"},
+		},
+		{
+			Name:        "google_workspace_calendar_attendees",
+			Description: "Google Calendar event attendees",
+			Columns: []ColumnSchema{
+				{Name: "event_id", Type: "string", Required: true},
+				{Name: "attendee_email", Type: "string", Required: true},
+				{Name: "response_status", Type: "string"},
+				{Name: "is_organizer", Type: "boolean"},
+				{Name: "is_optional", Type: "boolean"},
+			},
+			PrimaryKey: []string{"event_id", "attendee_email"},
+		},
 	}
 }
 
@@ -172,6 +215,7 @@ func (g *GoogleWorkspaceProvider) schemaFor(name string) (TableSchema, error) {
 
 func (g *GoogleWorkspaceProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResult, error) {
 	start := time.Now()
+	g.resetCalendarRowsCache()
 	result := &SyncResult{
 		Provider:  g.Name(),
 		StartedAt: start,
@@ -210,6 +254,22 @@ func (g *GoogleWorkspaceProvider) Sync(ctx context.Context, opts SyncOptions) (*
 	} else {
 		result.Tables = append(result.Tables, *domains)
 		result.TotalRows += domains.Rows
+	}
+
+	calendarEvents, err := g.syncCalendarEvents(ctx)
+	if err != nil {
+		result.Errors = append(result.Errors, "calendar_events: "+err.Error())
+	} else {
+		result.Tables = append(result.Tables, *calendarEvents)
+		result.TotalRows += calendarEvents.Rows
+	}
+
+	calendarAttendees, err := g.syncCalendarAttendees(ctx)
+	if err != nil {
+		result.Errors = append(result.Errors, "calendar_attendees: "+err.Error())
+	} else {
+		result.Tables = append(result.Tables, *calendarAttendees)
+		result.TotalRows += calendarAttendees.Rows
 	}
 
 	result.CompletedAt = time.Now()
@@ -362,6 +422,48 @@ func (g *GoogleWorkspaceProvider) syncGroupMembers(ctx context.Context) (*TableR
 	return g.syncTable(ctx, schema, rows)
 }
 
+func (g *GoogleWorkspaceProvider) syncCalendarEvents(ctx context.Context) (*TableResult, error) {
+	schema, err := g.schemaFor("google_workspace_calendar_events")
+	result := &TableResult{Name: "google_workspace_calendar_events"}
+	if err != nil {
+		return result, err
+	}
+	if err := g.ensureCalendarRows(ctx); err != nil {
+		return result, err
+	}
+	return g.syncTable(ctx, schema, g.calendarEventRows)
+}
+
+func (g *GoogleWorkspaceProvider) syncCalendarAttendees(ctx context.Context) (*TableResult, error) {
+	schema, err := g.schemaFor("google_workspace_calendar_attendees")
+	result := &TableResult{Name: "google_workspace_calendar_attendees"}
+	if err != nil {
+		return result, err
+	}
+	if err := g.ensureCalendarRows(ctx); err != nil {
+		return result, err
+	}
+	return g.syncTable(ctx, schema, g.calendarGuestRows)
+}
+
+func (g *GoogleWorkspaceProvider) ensureCalendarRows(ctx context.Context) error {
+	if g.calendarRowsLoaded {
+		return g.calendarRowsErr
+	}
+
+	since := time.Now().AddDate(0, 0, -googleWorkspaceCalendarLookbackDays)
+	g.calendarEventRows, g.calendarGuestRows, g.calendarRowsErr = g.listCalendarActivity(ctx, since)
+	g.calendarRowsLoaded = true
+	return g.calendarRowsErr
+}
+
+func (g *GoogleWorkspaceProvider) resetCalendarRowsCache() {
+	g.calendarRowsLoaded = false
+	g.calendarEventRows = nil
+	g.calendarGuestRows = nil
+	g.calendarRowsErr = nil
+}
+
 func (g *GoogleWorkspaceProvider) request(ctx context.Context, url string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -384,6 +486,132 @@ func (g *GoogleWorkspaceProvider) request(ctx context.Context, url string) ([]by
 	}
 
 	return body, nil
+}
+
+func (g *GoogleWorkspaceProvider) listCalendarActivity(ctx context.Context, since time.Time) ([]map[string]interface{}, []map[string]interface{}, error) {
+	users, err := g.listAll(ctx, "https://admin.googleapis.com/admin/directory/v1/users", map[string]string{
+		"domain":     g.domain,
+		"maxResults": "500",
+		"projection": "basic",
+	}, "users")
+	if err != nil {
+		return nil, nil, err
+	}
+
+	eventsByID := make(map[string]map[string]interface{})
+	attendees := make([]map[string]interface{}, 0)
+	seenAttendees := make(map[string]struct{})
+
+	for _, rawUser := range users {
+		user := normalizeGoogleUser(rawUser)
+		calendarID := strings.ToLower(providerStringValue(user["primary_email"]))
+		if calendarID == "" {
+			continue
+		}
+		if suspended, _ := user["suspended"].(bool); suspended {
+			continue
+		}
+
+		calendarEvents, eventErr := g.listCalendarEvents(ctx, calendarID, since)
+		if eventErr != nil {
+			if isGoogleWorkspaceIgnorableError(eventErr) {
+				continue
+			}
+			return nil, nil, fmt.Errorf("list calendar events for %q: %w", calendarID, eventErr)
+		}
+
+		for _, rawEvent := range calendarEvents {
+			event := normalizeGoogleRow(rawEvent)
+			eventID := googleCalendarEventID(event)
+			if eventID == "" {
+				continue
+			}
+
+			if _, exists := eventsByID[eventID]; !exists {
+				eventsByID[eventID] = normalizeGoogleCalendarEvent(eventID, calendarID, event)
+			}
+
+			eventAttendees := googleCalendarAttendees(event["attendees"])
+			for _, attendee := range eventAttendees {
+				email := strings.ToLower(providerStringValue(attendee["email"]))
+				if email == "" {
+					continue
+				}
+
+				attendeeKey := eventID + "|" + email
+				if _, exists := seenAttendees[attendeeKey]; exists {
+					continue
+				}
+				seenAttendees[attendeeKey] = struct{}{}
+
+				attendees = append(attendees, map[string]interface{}{
+					"event_id":        eventID,
+					"attendee_email":  email,
+					"response_status": attendee["response_status"],
+					"is_organizer":    attendee["organizer"],
+					"is_optional":     attendee["optional"],
+				})
+			}
+		}
+	}
+
+	eventIDs := make([]string, 0, len(eventsByID))
+	for eventID := range eventsByID {
+		eventIDs = append(eventIDs, eventID)
+	}
+	sort.Strings(eventIDs)
+
+	events := make([]map[string]interface{}, 0, len(eventIDs))
+	for _, eventID := range eventIDs {
+		events = append(events, eventsByID[eventID])
+	}
+
+	return events, attendees, nil
+}
+
+func (g *GoogleWorkspaceProvider) listCalendarEvents(ctx context.Context, calendarID string, since time.Time) ([]map[string]interface{}, error) {
+	baseURL := fmt.Sprintf("https://www.googleapis.com/calendar/v3/calendars/%s/events", url.PathEscape(calendarID))
+	pageToken := ""
+	events := make([]map[string]interface{}, 0)
+
+	for {
+		parsed, err := url.Parse(baseURL)
+		if err != nil {
+			return nil, err
+		}
+		query := parsed.Query()
+		query.Set("maxResults", "250")
+		query.Set("showDeleted", "false")
+		query.Set("singleEvents", "false")
+		if !since.IsZero() {
+			query.Set("timeMin", since.UTC().Format(time.RFC3339))
+		}
+		if pageToken != "" {
+			query.Set("pageToken", pageToken)
+		}
+		parsed.RawQuery = query.Encode()
+
+		body, err := g.request(ctx, parsed.String())
+		if err != nil {
+			return nil, err
+		}
+
+		var resp struct {
+			Items         []map[string]interface{} `json:"items"`
+			NextPageToken string                   `json:"nextPageToken"`
+		}
+		if err := json.Unmarshal(body, &resp); err != nil {
+			return nil, err
+		}
+
+		events = append(events, resp.Items...)
+		if resp.NextPageToken == "" {
+			break
+		}
+		pageToken = resp.NextPageToken
+	}
+
+	return events, nil
 }
 
 func (g *GoogleWorkspaceProvider) listAll(ctx context.Context, baseURL string, params map[string]string, itemsKey string) ([]map[string]interface{}, error) {
@@ -470,6 +698,133 @@ func normalizeGoogleGroup(group map[string]interface{}) map[string]interface{} {
 		"direct_members_count": parseGoogleCount(normalized["direct_members_count"]),
 		"admin_created":        normalized["admin_created"],
 	}
+}
+
+func normalizeGoogleCalendarEvent(eventID string, calendarID string, event map[string]interface{}) map[string]interface{} {
+	startTime := googleCalendarEventTime(event["start"])
+	endTime := googleCalendarEventTime(event["end"])
+	recurrence := googleCalendarRecurrencePattern(event["recurrence"])
+	attendees := googleCalendarAttendees(event["attendees"])
+	organizerEmail := strings.ToLower(getGoogleNestedString(event, "organizer", "email"))
+	responseStatus := googleCalendarResponseStatus(calendarID, organizerEmail, attendees)
+
+	return map[string]interface{}{
+		"id":                 eventID,
+		"calendar_id":        calendarID,
+		"organizer_email":    organizerEmail,
+		"title_hash":         hashGoogleWorkspaceTitle(providerStringValue(event["summary"])),
+		"start_time":         startTime,
+		"end_time":           endTime,
+		"duration_minutes":   googleCalendarDurationMinutes(startTime, endTime),
+		"is_recurring":       recurrence != "",
+		"recurrence_pattern": recurrence,
+		"attendee_count":     len(attendees),
+		"response_status":    responseStatus,
+		"created":            event["created"],
+		"updated":            event["updated"],
+	}
+}
+
+func googleCalendarEventID(event map[string]interface{}) string {
+	if iCalUID := strings.TrimSpace(providerStringValue(event["i_cal_uid"])); iCalUID != "" {
+		return iCalUID
+	}
+	if iCalUID := strings.TrimSpace(providerStringValue(event["i_cal_u_i_d"])); iCalUID != "" {
+		return iCalUID
+	}
+	return strings.TrimSpace(providerStringValue(event["id"]))
+}
+
+func googleCalendarEventTime(value interface{}) string {
+	data, ok := value.(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	if dateTime := strings.TrimSpace(providerStringValue(data["date_time"])); dateTime != "" {
+		return dateTime
+	}
+	if date := strings.TrimSpace(providerStringValue(data["date"])); date != "" {
+		return date + "T00:00:00Z"
+	}
+	return ""
+}
+
+func googleCalendarDurationMinutes(startTime string, endTime string) interface{} {
+	if startTime == "" || endTime == "" {
+		return nil
+	}
+	start, startErr := time.Parse(time.RFC3339, startTime)
+	end, endErr := time.Parse(time.RFC3339, endTime)
+	if startErr != nil || endErr != nil || end.Before(start) {
+		return nil
+	}
+	return int(end.Sub(start).Minutes())
+}
+
+func googleCalendarRecurrencePattern(value interface{}) string {
+	list, ok := value.([]interface{})
+	if !ok {
+		return ""
+	}
+	patterns := make([]string, 0, len(list))
+	for _, item := range list {
+		pattern := strings.TrimSpace(providerStringValue(item))
+		if pattern == "" {
+			continue
+		}
+		patterns = append(patterns, pattern)
+	}
+	return strings.Join(patterns, ";")
+}
+
+func googleCalendarAttendees(value interface{}) []map[string]interface{} {
+	list, ok := value.([]interface{})
+	if !ok {
+		return nil
+	}
+	attendees := make([]map[string]interface{}, 0, len(list))
+	for _, item := range list {
+		attendee, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		attendees = append(attendees, normalizeGoogleRow(attendee))
+	}
+	return attendees
+}
+
+func googleCalendarResponseStatus(calendarID string, organizerEmail string, attendees []map[string]interface{}) string {
+	calendarID = strings.ToLower(strings.TrimSpace(calendarID))
+	organizerEmail = strings.ToLower(strings.TrimSpace(organizerEmail))
+
+	for _, attendee := range attendees {
+		email := strings.ToLower(providerStringValue(attendee["email"]))
+		if email == "" {
+			continue
+		}
+		if self, _ := attendee["self"].(bool); self {
+			return providerStringValue(attendee["response_status"])
+		}
+		if calendarID != "" && email == calendarID {
+			return providerStringValue(attendee["response_status"])
+		}
+	}
+	for _, attendee := range attendees {
+		email := strings.ToLower(providerStringValue(attendee["email"]))
+		if email == organizerEmail {
+			return providerStringValue(attendee["response_status"])
+		}
+	}
+	return ""
+}
+
+func hashGoogleWorkspaceTitle(title string) string {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(title))
+	return hex.EncodeToString(sum[:])
 }
 
 func normalizeGoogleRow(row map[string]interface{}) map[string]interface{} {

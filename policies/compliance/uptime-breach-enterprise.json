@@ -1,0 +1,13 @@
+{
+  "id": "uptime-breach-enterprise",
+  "name": "Enterprise Uptime SLA Breach",
+  "description": "Flags enterprise services whose 30-day uptime falls below contractual targets.",
+  "effect": "forbid",
+  "resource": "service::uptime",
+  "conditions": [
+    "plan_tier == 'enterprise'",
+    "uptime_pct_30d < 99.9"
+  ],
+  "severity": "critical",
+  "tags": ["sla", "uptime", "operations"]
+}

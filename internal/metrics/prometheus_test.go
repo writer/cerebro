@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 )
 
 func TestRegister(t *testing.T) {
@@ -125,6 +128,35 @@ func TestStatusBucket(t *testing.T) {
 	}
 }
 
+func TestNormalizeProvider(t *testing.T) {
+	if got := normalizeProvider(""); got != "unknown" {
+		t.Fatalf("expected unknown provider label, got %q", got)
+	}
+	if got := normalizeProvider("aws"); got != "aws" {
+		t.Fatalf("expected provider label aws, got %q", got)
+	}
+}
+
+func TestNormalizeMetricPath(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{input: "", want: "/"},
+		{input: "health", want: "/health"},
+		{input: "/api/v1/findings/abc123", want: "/api/v1/findings/{id}"},
+		{input: "/api/v1/assets/aws_s3_buckets", want: "/api/v1/assets/{table}"},
+		{input: "/api/v1/webhooks/test/path", want: "/api/v1/webhooks/{subpath}"},
+		{input: "/metrics", want: "/metrics"},
+	}
+
+	for _, tt := range tests {
+		if got := normalizeMetricPath(tt.input); got != tt.want {
+			t.Fatalf("normalizeMetricPath(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
 func TestCacheMetrics(t *testing.T) {
 	Register()
 
@@ -149,6 +181,19 @@ func TestPolicyMetrics(t *testing.T) {
 func TestSetPolicyLoadMetrics(t *testing.T) {
 	Register()
 	SetPolicyLoadMetrics(20, 5)
+}
+
+func TestRecordPolicyQueryTruncation(t *testing.T) {
+	Register()
+	policyID := "query-policy-truncation-test"
+
+	before := counterValue(t, PolicyQueryTruncatedTotal, policyID)
+	RecordPolicyQueryTruncation(policyID)
+	after := counterValue(t, PolicyQueryTruncatedTotal, policyID)
+
+	if after != before+1 {
+		t.Fatalf("expected truncation counter to increase by 1, got before=%v after=%v", before, after)
+	}
 }
 
 func TestWebhookMetrics(t *testing.T) {
@@ -234,4 +279,61 @@ func TestJetStreamMetrics(t *testing.T) {
 	RecordJetStreamBackpressureAlert("CEREBRO_EVENTS", "warning")
 	RecordJetStreamBackpressureAlert("CEREBRO_EVENTS", "critical")
 	RecordJetStreamBackpressureAlert("CEREBRO_EVENTS", "recovered")
+}
+
+func TestSetGraphLastUpdateDoesNotRegress(t *testing.T) {
+	Register()
+	graphLastUpdateUnixNano.Store(0)
+	t.Cleanup(func() {
+		graphLastUpdateUnixNano.Store(0)
+	})
+
+	newer := time.Now().UTC()
+	older := newer.Add(-time.Minute)
+	SetGraphLastUpdate(newer)
+	SetGraphLastUpdate(older)
+
+	if got := gaugeValue(t, GraphLastUpdateTimestamp); got != float64(newer.Unix()) {
+		t.Fatalf("expected graph last update timestamp to remain at %d, got %v", newer.Unix(), got)
+	}
+}
+
+func TestSetGraphLastUpdatePublishesStoredTimestamp(t *testing.T) {
+	Register()
+	graphLastUpdateUnixNano.Store(0)
+	t.Cleanup(func() {
+		graphLastUpdateUnixNano.Store(0)
+	})
+
+	newer := time.Now().UTC()
+	older := newer.Add(-time.Minute)
+	graphLastUpdateUnixNano.Store(newer.UnixNano())
+
+	SetGraphLastUpdate(older)
+
+	if got := gaugeValue(t, GraphLastUpdateTimestamp); got != float64(newer.Unix()) {
+		t.Fatalf("expected graph last update timestamp to publish stored timestamp %d, got %v", newer.Unix(), got)
+	}
+}
+
+func counterValue(t *testing.T, vec *prometheus.CounterVec, labels ...string) float64 {
+	t.Helper()
+	counter, err := vec.GetMetricWithLabelValues(labels...)
+	if err != nil {
+		t.Fatalf("get metric with labels %v: %v", labels, err)
+	}
+	var metric dto.Metric
+	if err := counter.Write(&metric); err != nil {
+		t.Fatalf("write metric: %v", err)
+	}
+	return metric.GetCounter().GetValue()
+}
+
+func gaugeValue(t *testing.T, gauge prometheus.Gauge) float64 {
+	t.Helper()
+	var metric dto.Metric
+	if err := gauge.Write(&metric); err != nil {
+		t.Fatalf("write gauge metric: %v", err)
+	}
+	return metric.GetGauge().GetValue()
 }

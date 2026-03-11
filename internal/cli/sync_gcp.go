@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	apiclient "github.com/writer/cerebro/internal/client"
 	nativesync "github.com/writer/cerebro/internal/sync"
 )
 
@@ -187,6 +188,104 @@ func runGCPSync(ctx context.Context, start time.Time, projectID string) error {
 		return fmt.Errorf("validation for GCP security-only table filters is not supported; include at least one native table")
 	}
 
+	mode, err := loadCLIExecutionMode()
+	if err != nil {
+		return err
+	}
+
+	supportsAPI, apiReason := syncSupportsGCPAPIMode(projectID, runNativeSync, runSecuritySync)
+	if mode != cliExecutionModeDirect && supportsAPI {
+		apiClient, err := newCLIAPIClient()
+		if err != nil {
+			if mode == cliExecutionModeAPI {
+				return err
+			}
+			Warning("API client configuration invalid; using direct mode: %v", err)
+		} else {
+			resp, err := apiClient.RunGCPSync(ctx, apiclient.GCPSyncRequest{
+				Project:     projectID,
+				Concurrency: syncConcurrency,
+				Tables:      nativeTableFilter,
+				Validate:    syncValidate,
+			})
+			if err == nil {
+				provider := "GCP"
+				if syncValidate || (resp != nil && resp.Validate) {
+					provider = "GCP (validate)"
+				}
+				var results []nativesync.SyncResult
+				if resp != nil {
+					results = resp.Results
+				}
+				if err := printSyncResults(results, start, provider); err != nil {
+					return err
+				}
+
+				if !syncValidate {
+					if len(tableFilterSet) > 0 {
+						Info("Skipping relationship extraction because --table filter is set")
+					} else if resp != nil {
+						if reason := strings.TrimSpace(resp.RelationshipsSkippedReason); reason != "" {
+							Info("Skipping relationship extraction: %s", reason)
+						} else {
+							Info("Extracted %d relationships", resp.RelationshipsExtracted)
+						}
+					}
+				}
+				return nil
+			}
+			if mode == cliExecutionModeAPI || !shouldFallbackToDirect(mode, err) {
+				return fmt.Errorf("gcp sync via api failed: %w", err)
+			}
+			Warning("API unavailable; using direct mode: %v", err)
+		}
+	}
+
+	if mode == cliExecutionModeAPI && !supportsAPI {
+		return fmt.Errorf("gcp sync API mode unsupported: %s", apiReason)
+	}
+	if mode != cliExecutionModeDirect && !supportsAPI {
+		Warning("API sync mode skipped; using direct mode: %s", apiReason)
+	}
+
+	return runGCPSyncDirectFn(ctx, start, projectID, tableFilter, nativeTableFilter, securityTableFilter, runNativeSync, runSecuritySync, tableFilterSet)
+}
+
+func syncSupportsGCPAPIMode(projectID string, runNativeSync, runSecuritySync bool) (bool, string) {
+	if strings.TrimSpace(projectID) == "" {
+		return false, "organization or multi-project scope requires direct mode"
+	}
+	if !runNativeSync {
+		return false, "security-only sync requires direct mode"
+	}
+	if runSecuritySync {
+		return false, "--security requires direct mode"
+	}
+	if syncUseAssetAPI {
+		return false, "--asset-api requires direct mode"
+	}
+	if strings.TrimSpace(syncGCPCredentialsFile) != "" {
+		return false, "--gcp-credentials-file requires direct mode"
+	}
+	if strings.TrimSpace(syncGCPImpersonateSA) != "" || strings.TrimSpace(syncGCPImpersonateDel) != "" || strings.TrimSpace(syncGCPImpersonateTTL) != "" {
+		return false, "--gcp-impersonate-* flags require direct mode"
+	}
+	return true, ""
+}
+
+var runGCPSyncDirectFn = runGCPSyncDirect
+
+func runGCPSyncDirect(
+	ctx context.Context,
+	start time.Time,
+	projectID string,
+	tableFilter []string,
+	nativeTableFilter []string,
+	securityTableFilter []string,
+	runNativeSync bool,
+	runSecuritySync bool,
+	tableFilterSet map[string]struct{},
+) error {
 	client, err := createSnowflakeClient()
 	if err != nil {
 		return fmt.Errorf("create snowflake client: %w", err)
@@ -531,6 +630,85 @@ func runGCPAssetAPISync(ctx context.Context, start time.Time, projects []string)
 		return fmt.Errorf("validation for GCP security-only table filters is not supported; include at least one native table")
 	}
 
+	mode, err := loadCLIExecutionMode()
+	if err != nil {
+		return err
+	}
+
+	supportsAPI, apiReason := syncSupportsGCPAssetAPIMode(runNativeSync, runSecuritySync)
+	if mode != cliExecutionModeDirect && supportsAPI {
+		apiClient, err := newCLIAPIClient()
+		if err != nil {
+			if mode == cliExecutionModeAPI {
+				return err
+			}
+			Warning("API client configuration invalid; using direct mode: %v", err)
+		} else {
+			resp, err := apiClient.RunGCPAssetSync(ctx, apiclient.GCPAssetSyncRequest{
+				Projects:    projects,
+				Concurrency: syncConcurrency,
+				Tables:      nativeTableFilter,
+				Validate:    syncValidate,
+			})
+			if err == nil {
+				provider := "GCP (Asset API)"
+				if syncValidate || (resp != nil && resp.Validate) {
+					provider = "GCP (Asset API) (validate)"
+				}
+				var results []nativesync.SyncResult
+				if resp != nil {
+					results = resp.Results
+				}
+				return printSyncResults(results, start, provider)
+			}
+			if mode == cliExecutionModeAPI || !shouldFallbackToDirect(mode, err) {
+				return fmt.Errorf("gcp asset sync via api failed: %w", err)
+			}
+			Warning("API unavailable; using direct mode: %v", err)
+		}
+	}
+
+	if mode == cliExecutionModeAPI && !supportsAPI {
+		return fmt.Errorf("gcp asset sync API mode unsupported: %s", apiReason)
+	}
+	if mode != cliExecutionModeDirect && !supportsAPI {
+		Warning("API sync mode skipped; using direct mode: %s", apiReason)
+	}
+
+	return runGCPAssetAPISyncDirectFn(ctx, start, projects, tableFilter, nativeTableFilter, securityTableFilter, runNativeSync, runSecuritySync)
+}
+
+func syncSupportsGCPAssetAPIMode(runNativeSync, runSecuritySync bool) (bool, string) {
+	if !runNativeSync {
+		return false, "security-only sync requires direct mode"
+	}
+	if syncSecurity {
+		return false, "--security requires direct mode"
+	}
+	if runSecuritySync {
+		return false, "--security requires direct mode"
+	}
+	if strings.TrimSpace(syncGCPCredentialsFile) != "" {
+		return false, "--gcp-credentials-file requires direct mode"
+	}
+	if strings.TrimSpace(syncGCPImpersonateSA) != "" || strings.TrimSpace(syncGCPImpersonateDel) != "" || strings.TrimSpace(syncGCPImpersonateTTL) != "" {
+		return false, "--gcp-impersonate-* flags require direct mode"
+	}
+	return true, ""
+}
+
+var runGCPAssetAPISyncDirectFn = runGCPAssetAPISyncDirect
+
+func runGCPAssetAPISyncDirect(
+	ctx context.Context,
+	start time.Time,
+	projects []string,
+	tableFilter []string,
+	nativeTableFilter []string,
+	securityTableFilter []string,
+	runNativeSync bool,
+	runSecuritySync bool,
+) error {
 	client, err := createSnowflakeClient()
 	if err != nil {
 		return fmt.Errorf("create snowflake client: %w", err)

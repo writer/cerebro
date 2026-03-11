@@ -20,7 +20,7 @@ type RipplingProvider struct {
 func NewRipplingProvider() *RipplingProvider {
 	return &RipplingProvider{
 		BaseProvider: NewBaseProvider("rippling", ProviderTypeIdentity),
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

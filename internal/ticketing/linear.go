@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -32,6 +33,16 @@ func NewLinearProvider(cfg LinearConfig) *LinearProvider {
 
 func (l *LinearProvider) Name() string {
 	return "linear"
+}
+
+func (l *LinearProvider) Validate(_ context.Context) error {
+	if strings.TrimSpace(l.apiKey) == "" {
+		return fmt.Errorf("linear API key is required")
+	}
+	if strings.TrimSpace(l.teamID) == "" {
+		return fmt.Errorf("linear team ID is required")
+	}
+	return nil
 }
 
 type graphQLRequest struct {

@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Go 1.23+
+- Go 1.25+
 - Docker & Docker Compose (optional)
 - Snowflake account (for full functionality)
 - Make
@@ -51,7 +51,64 @@ go test -v ./internal/policy/...
 
 # With race detection
 go test -race ./...
+
+# Verify OpenAPI parity with registered routes
+make openapi-check
+
+# Auto-add placeholder path/method entries for new routes
+make openapi-sync
+
+# Regenerate the machine-readable codegen family catalog
+make devex-codegen
+
+# Verify the generated DevEx codegen catalog docs are committed
+make devex-codegen-check
+
+# Regenerate env-var docs from LoadConfig()
+make config-docs
+
+# Verify generated env-var docs are committed (drift check)
+make config-docs-check
+
+# Plan the local checks implied by your current diff
+python3 scripts/devex.py plan --mode changed
+
+# Run changed-file-aware local preflight against origin/main
+make devex-changed
+
+# Run broader PR-parity local preflight
+make devex-pr
+
+# Run go:generate directives for generated artifacts
+go generate ./internal/app ./internal/api
+
+# Reuse shared test helpers (logger/context)
+go test ./internal/testutil
 ```
+
+### DevEx Workflow
+
+- `make devex-changed`
+  - Detects the checks implied by the current diff against `origin/main`
+  - Runs targeted `go test` / `golangci-lint` on changed Go package directories
+  - Runs only the relevant generated-doc, contract-compat, OpenAPI, policy, or vendor checks
+  - Uses `devex/codegen_catalog.json` as the source of truth for codegen-family routing
+- `make devex-pr`
+  - Runs a broader local PR preflight:
+  - full `go test ./... -count=1`
+  - full `golangci-lint`
+  - generated artifact drift checks
+  - contract compatibility checks against `origin/main`
+  - `gosec` and `govulncheck`
+- `make devex-codegen-check`
+  - Regenerates `docs/DEVEX_CODEGEN_AUTOGEN.md` and `docs/DEVEX_CODEGEN_CATALOG.json`
+  - Validates that the catalog references real `Makefile` targets and CI jobs
+- `python3 scripts/devex.py plan --mode changed --json`
+  - Emits a machine-readable execution plan for editor integrations or custom tooling
+- `.githooks/pre-push`
+  - Runs `python3 ./scripts/devex.py run --mode changed --base-ref origin/main`
+  - Set `CEREBRO_SKIP_PRE_PUSH=1` to skip explicitly when needed
+  - Set `CEREBRO_DEVEX_BASE_REF=<ref>` to override the comparison baseline
 
 ### Building
 
@@ -616,6 +673,8 @@ make policy-validate # Validate policies
 
 ## CI/CD
 
+Dependency/toolchain updates are automated via [`.github/dependabot.yml`](../.github/dependabot.yml) for `gomod`, Docker base images, and GitHub Actions.
+
 ### GitHub Actions Example
 
 ```yaml
@@ -635,7 +694,7 @@ jobs:
       
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version-file: go.mod
       
       - name: Install dependencies
         run: go mod download
@@ -665,13 +724,13 @@ jobs:
       
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version-file: go.mod
       
       - name: Build
         run: make build
       
       - name: Build Docker image
-        run: docker build -t cerebro:${{ github.sha }} .
+        run: docker build --build-arg GO_VERSION="$(./scripts/go_version.sh)" -t cerebro:${{ github.sha }} .
 ```
 
 ---
@@ -683,7 +742,7 @@ jobs:
 **Error:** `failed to connect: authentication error`
 
 **Solution:**
-1. Verify connection string format
+1. Verify `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, and `SNOWFLAKE_PRIVATE_KEY` are set
 2. Check account name includes region (e.g., `myaccount.us-east-1`)
 3. Ensure user has required grants
 

@@ -21,7 +21,7 @@ Tables created:
 - findings, tickets, access_reviews, review_items
 - attack_path_nodes, attack_path_edges, attack_paths
 - agent_sessions, agent_messages, provider_syncs
-- audit_log, webhooks, webhook_deliveries
+- policy_history, audit_log, webhooks, webhook_deliveries
 
 Examples:
   cerebro bootstrap                    # Create schema and tables
@@ -46,7 +46,7 @@ func runBootstrap(cmd *cobra.Command, args []string) error {
 		"findings", "tickets", "access_reviews", "review_items",
 		"attack_path_nodes", "attack_path_edges", "attack_paths",
 		"agent_sessions", "agent_messages", "provider_syncs",
-		"audit_log", "webhooks", "webhook_deliveries",
+		"policy_history", "audit_log", "webhooks", "webhook_deliveries",
 	}
 
 	application, err := app.New(ctx)

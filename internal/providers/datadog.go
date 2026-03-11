@@ -23,7 +23,7 @@ func NewDatadogProvider() *DatadogProvider {
 	return &DatadogProvider{
 		BaseProvider: NewBaseProvider("datadog", ProviderTypeSaaS),
 		site:         "datadoghq.com",
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

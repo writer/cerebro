@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/notifications"
 	"github.com/writer/cerebro/internal/scanner"
 	"github.com/writer/cerebro/internal/scheduler"
@@ -42,6 +43,19 @@ func (a *App) initScheduler(_ context.Context) {
 		}
 	}
 
+	// Add security digest job if interval configured
+	if a.Config.SecurityDigestInterval != "" {
+		interval, err := parseDuration(a.Config.SecurityDigestInterval)
+		if err != nil {
+			a.Logger.Warn("invalid security digest interval", "value", a.Config.SecurityDigestInterval, "error", err)
+		} else {
+			a.Scheduler.AddJob("security-digest", interval, func(ctx context.Context) error {
+				return a.sendSecurityDigest(ctx)
+			})
+			a.Logger.Info("scheduled security digest enabled", "interval", interval)
+		}
+	}
+
 	// Add graph rebuild job - rebuild hourly by default
 	graphInterval := time.Hour
 	if envInterval := getEnv("GRAPH_REBUILD_INTERVAL", ""); envInterval != "" {
@@ -54,23 +68,167 @@ func (a *App) initScheduler(_ context.Context) {
 		if a.SecurityGraphBuilder == nil {
 			return nil
 		}
-		if err := a.SecurityGraphBuilder.Build(ctx); err != nil {
-			return err
+
+		if !a.SecurityGraphBuilder.HasChanges(ctx) {
+			a.Logger.Info("security graph rebuild skipped - no data changes detected")
+			return nil
 		}
-		a.SecurityGraph = a.SecurityGraphBuilder.Graph()
-		meta := a.SecurityGraph.Metadata()
-		a.Logger.Info("security graph rebuilt",
+
+		a.setGraphBuildState(GraphBuildBuilding, time.Time{}, nil)
+		summary, err := a.SecurityGraphBuilder.ApplyChanges(ctx, time.Time{})
+		if err != nil {
+			a.Logger.Warn("incremental graph apply failed, falling back to full rebuild", "error", err)
+			if err := a.SecurityGraphBuilder.Build(ctx); err != nil {
+				a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
+				return err
+			}
+			securityGraph := a.SecurityGraphBuilder.Graph()
+			a.configureGraphSchemaValidation(securityGraph)
+			a.setSecurityGraph(securityGraph)
+			meta := securityGraph.Metadata()
+			a.setGraphBuildState(GraphBuildSuccess, meta.BuiltAt, nil)
+			a.Logger.Info("security graph rebuilt",
+				"nodes", meta.NodeCount,
+				"edges", meta.EdgeCount,
+				"duration", meta.BuildDuration,
+			)
+			a.emitGraphRebuiltEvent(ctx, meta, meta.BuildDuration)
+			a.emitGraphMutationEvent(ctx, a.SecurityGraphBuilder.LastMutation(), "scheduler_full_rebuild")
+			return nil
+		}
+
+		if summary.EventsProcessed == 0 {
+			currentGraph := a.CurrentSecurityGraph()
+			if currentGraph != nil {
+				a.setGraphBuildState(GraphBuildSuccess, currentGraph.Metadata().BuiltAt, nil)
+			}
+			a.Logger.Info("security graph rebuild skipped - no CDC events found")
+			return nil
+		}
+
+		securityGraph := a.SecurityGraphBuilder.Graph()
+		a.configureGraphSchemaValidation(securityGraph)
+		a.setSecurityGraph(securityGraph)
+		meta := securityGraph.Metadata()
+		a.setGraphBuildState(GraphBuildSuccess, meta.BuiltAt, nil)
+		a.Logger.Info("security graph incrementally updated",
+			"events", summary.EventsProcessed,
+			"nodes_added", summary.NodesAdded,
+			"nodes_updated", summary.NodesUpdated,
+			"nodes_removed", summary.NodesRemoved,
 			"nodes", meta.NodeCount,
 			"edges", meta.EdgeCount,
-			"duration", meta.BuildDuration,
+			"duration", summary.Duration,
 		)
+		a.emitGraphMutationEvent(ctx, summary, "scheduler_incremental")
 		return nil
 	})
 	a.Logger.Info("scheduled graph rebuild enabled", "interval", graphInterval)
+
+	if a.retentionEnabled() {
+		interval := a.Config.RetentionJobInterval
+		if interval <= 0 {
+			interval = 24 * time.Hour
+		}
+		a.Scheduler.AddJob("data-retention", interval, func(ctx context.Context) error {
+			return a.runRetentionCleanup(ctx)
+		})
+		a.Logger.Info("scheduled data retention cleanup enabled",
+			"interval", interval,
+			"audit_retention_days", maxRetentionDays(a.Config.AuditRetentionDays),
+			"session_retention_days", maxRetentionDays(a.Config.SessionRetentionDays),
+			"graph_retention_days", maxRetentionDays(a.Config.GraphRetentionDays),
+			"access_review_retention_days", maxRetentionDays(a.Config.AccessReviewRetentionDays),
+		)
+	}
+}
+
+func (a *App) retentionEnabled() bool {
+	return maxRetentionDays(a.Config.AuditRetentionDays) > 0 ||
+		maxRetentionDays(a.Config.SessionRetentionDays) > 0 ||
+		maxRetentionDays(a.Config.GraphRetentionDays) > 0 ||
+		maxRetentionDays(a.Config.AccessReviewRetentionDays) > 0
+}
+
+func maxRetentionDays(days int) int {
+	if days < 0 {
+		return 0
+	}
+	return days
+}
+
+func retentionCutoff(days int) time.Time {
+	return time.Now().UTC().Add(-time.Duration(days) * 24 * time.Hour)
+}
+
+func (a *App) runRetentionCleanup(ctx context.Context) error {
+	if a.RetentionRepo == nil || !a.retentionEnabled() {
+		return nil
+	}
+
+	var (
+		auditDeleted           int64
+		sessionDeleted         int64
+		sessionMessagesDeleted int64
+		graphPathsDeleted      int64
+		graphEdgesDeleted      int64
+		graphNodesDeleted      int64
+		reviewsDeleted         int64
+		reviewItemsDeleted     int64
+	)
+
+	if days := maxRetentionDays(a.Config.AuditRetentionDays); days > 0 {
+		deleted, err := a.RetentionRepo.CleanupAuditLogs(ctx, retentionCutoff(days))
+		if err != nil {
+			return fmt.Errorf("cleanup audit logs: %w", err)
+		}
+		auditDeleted = deleted
+	}
+
+	if days := maxRetentionDays(a.Config.SessionRetentionDays); days > 0 {
+		sessions, messages, err := a.RetentionRepo.CleanupAgentData(ctx, retentionCutoff(days))
+		if err != nil {
+			return fmt.Errorf("cleanup agent sessions: %w", err)
+		}
+		sessionDeleted = sessions
+		sessionMessagesDeleted = messages
+	}
+
+	if days := maxRetentionDays(a.Config.GraphRetentionDays); days > 0 {
+		paths, edges, nodes, err := a.RetentionRepo.CleanupGraphData(ctx, retentionCutoff(days))
+		if err != nil {
+			return fmt.Errorf("cleanup graph data: %w", err)
+		}
+		graphPathsDeleted = paths
+		graphEdgesDeleted = edges
+		graphNodesDeleted = nodes
+	}
+
+	if days := maxRetentionDays(a.Config.AccessReviewRetentionDays); days > 0 {
+		reviews, items, err := a.RetentionRepo.CleanupAccessReviewData(ctx, retentionCutoff(days))
+		if err != nil {
+			return fmt.Errorf("cleanup access review data: %w", err)
+		}
+		reviewsDeleted = reviews
+		reviewItemsDeleted = items
+	}
+
+	a.Logger.Info("retention cleanup completed",
+		"audit_deleted", auditDeleted,
+		"agent_sessions_deleted", sessionDeleted,
+		"agent_messages_deleted", sessionMessagesDeleted,
+		"attack_paths_deleted", graphPathsDeleted,
+		"attack_path_edges_deleted", graphEdgesDeleted,
+		"attack_path_nodes_deleted", graphNodesDeleted,
+		"access_reviews_deleted", reviewsDeleted,
+		"review_items_deleted", reviewItemsDeleted,
+	)
+
+	return nil
 }
 
 func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
-	if a.Snowflake == nil {
+	if a.Warehouse == nil {
 		return fmt.Errorf("snowflake not configured")
 	}
 
@@ -82,6 +240,8 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 	var totalViolations int64
 	var queryPolicyFindingCount int
 	var queryPolicyErrorCount int
+	var orgTopologyFindingCount int
+	var orgTopologyErrorCount int
 	var relationshipCount int
 	var graphToxicCount int
 	var graphPaths int
@@ -125,7 +285,7 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 				filter.Offset = offset
 			}
 			assets, attempts, err := scanner.WithRetryValue(tableCtx, tuning.RetryOptions, func() ([]map[string]interface{}, error) {
-				return a.Snowflake.GetAssets(tableCtx, table, filter)
+				return a.Warehouse.GetAssets(tableCtx, table, filter)
 			})
 			if attempts > 1 {
 				tableProfile.RetryAttempts += attempts - 1
@@ -167,7 +327,10 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 
 			// Persist findings
 			for _, f := range result.Findings {
-				finding := a.Findings.Upsert(tableCtx, f)
+				finding := a.upsertFindingAndRemediate(tableCtx, f)
+				if finding == nil {
+					continue
+				}
 
 				// Send notification for new critical/high findings
 				if finding.FirstSeen.Equal(finding.LastSeen) && (f.Severity == "critical" || f.Severity == "high") {
@@ -185,6 +348,12 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 						a.Logger.Warn("failed to send finding notification", "finding_id", f.ID, "error", err)
 					}
 				}
+			}
+
+			dspmFindings := a.scanAndPersistDSPMFindings(tableCtx, table, assets)
+			if dspmFindings > 0 {
+				totalViolations += dspmFindings
+				tableViolations += dspmFindings
 			}
 
 			// If we got fewer than batchSize, we're done with this table
@@ -250,7 +419,10 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 		a.Logger.Warn("query policy execution failed", "error", errMsg)
 	}
 	for _, f := range queryPolicyResult.Findings {
-		finding := a.Findings.Upsert(ctx, f)
+		finding := a.upsertFindingAndRemediate(ctx, f)
+		if finding == nil {
+			continue
+		}
 		if finding.FirstSeen.Equal(finding.LastSeen) && (f.Severity == "critical" || f.Severity == "high") {
 			if err := a.Notifications.Send(ctx, notifications.Event{
 				Type:     notifications.EventFindingCreated,
@@ -272,14 +444,14 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 	}
 
 	sqlToxicRiskSets := make(map[string][]map[string]bool)
-	if a.Snowflake != nil {
+	if a.Warehouse != nil {
 		var toxicCursor *scanner.ToxicScanCursor
 		if a.ScanWatermarks != nil {
 			if wm := a.ScanWatermarks.GetWatermark("_toxic_relationships"); wm != nil {
 				toxicCursor = &scanner.ToxicScanCursor{SinceTime: wm.LastScanTime, SinceID: wm.LastScanID}
 			}
 		}
-		toxicResult, err := scanner.DetectRelationshipToxicCombinations(ctx, a.Snowflake, toxicCursor)
+		toxicResult, err := scanner.DetectRelationshipToxicCombinations(ctx, a.Warehouse, toxicCursor)
 		if err != nil {
 			a.Logger.Warn("relationship toxic combo scan failed", "error", err)
 		} else {
@@ -291,7 +463,7 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 					}
 				}
 				if a.Findings != nil && f.PolicyID != "" && f.ResourceID != "" {
-					a.Findings.Upsert(ctx, f.ToPolicyFinding())
+					a.upsertFindingAndRemediate(ctx, f.ToPolicyFinding())
 				}
 			}
 			totalViolations += int64(relationshipCount)
@@ -301,7 +473,7 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 		}
 	}
 
-	if a.SecurityGraph != nil {
+	if a.CurrentSecurityGraph() != nil {
 		graphCtx := ctx
 		cancel := func() {}
 		if tuning.GraphWaitTimeout > 0 {
@@ -310,29 +482,50 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 		graphReady := a.WaitForGraph(graphCtx)
 		cancel()
 		if graphReady {
-			graphResult := a.Scanner.AnalyzeGraph(ctx, a.SecurityGraph)
-			if graphResult != nil {
-				graphPaths = graphResult.AttackPathStats.TotalPaths
-				for _, f := range graphResult.ToxicCombinations {
-					resourceID := scanner.NormalizeResourceID(f.ResourceID)
-					graphRiskSet := scanner.CanonicalizeRiskCategories(f.RiskCategories)
-					if scanner.ShouldSkipGraphToxicCombination(resourceID, graphRiskSet, sqlToxicRiskSets) {
-						continue
+			if securityGraph := a.CurrentSecurityGraph(); securityGraph != nil {
+				graphResult := a.Scanner.AnalyzeGraph(ctx, securityGraph)
+				if graphResult != nil {
+					graphPaths = graphResult.AttackPathStats.TotalPaths
+					for _, f := range graphResult.ToxicCombinations {
+						resourceID := scanner.NormalizeResourceID(f.ResourceID)
+						graphRiskSet := scanner.CanonicalizeRiskCategories(f.RiskCategories)
+						if scanner.ShouldSkipGraphToxicCombination(resourceID, graphRiskSet, sqlToxicRiskSets) {
+							continue
+						}
+						a.upsertFindingAndRemediate(ctx, f)
+						graphToxicCount++
 					}
-					a.Findings.Upsert(ctx, f)
-					graphToxicCount++
 				}
+			}
+
+			orgTopologyResult := a.ScanOrgTopologyPolicies(ctx)
+			orgTopologyFindingCount = len(orgTopologyResult.Findings)
+			orgTopologyErrorCount = len(orgTopologyResult.Errors)
+			for _, errMsg := range orgTopologyResult.Errors {
+				a.Logger.Warn("org topology policy execution failed", "error", errMsg)
+			}
+			for _, finding := range orgTopologyResult.Findings {
+				a.upsertFindingAndRemediate(ctx, finding)
 			}
 		}
 	}
 	if graphToxicCount > 0 {
 		totalViolations += int64(graphToxicCount)
 	}
+	if orgTopologyFindingCount > 0 {
+		totalViolations += int64(orgTopologyFindingCount)
+	}
 	if relationshipCount > 0 || graphToxicCount > 0 {
 		a.Logger.Info("toxic combination analysis complete",
 			"relationship_count", relationshipCount,
 			"graph_count", graphToxicCount,
 			"attack_paths", graphPaths,
+		)
+	}
+	if orgTopologyFindingCount > 0 || orgTopologyErrorCount > 0 {
+		a.Logger.Info("org topology policy scan complete",
+			"findings", orgTopologyFindingCount,
+			"errors", orgTopologyErrorCount,
 		)
 	}
 
@@ -361,6 +554,8 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 			"tables":                   tables,
 			"query_policy_findings":    queryPolicyFindingCount,
 			"query_policy_errors":      queryPolicyErrorCount,
+			"org_topology_findings":    orgTopologyFindingCount,
+			"org_topology_errors":      orgTopologyErrorCount,
 			"relationship_toxic_count": relationshipCount,
 			"graph_toxic_count":        graphToxicCount,
 			"graph_attack_paths":       graphPaths,
@@ -376,6 +571,78 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 	}
 
 	return nil
+}
+
+func (a *App) sendSecurityDigest(ctx context.Context) error {
+	if a.Findings == nil || a.Notifications == nil {
+		return nil
+	}
+
+	openTotal := a.Findings.Count(findings.FindingFilter{Status: "open"})
+	criticalOpen := a.Findings.Count(findings.FindingFilter{Severity: "critical", Status: "open"})
+	highOpen := a.Findings.Count(findings.FindingFilter{Severity: "high", Status: "open"})
+	mediumOpen := a.Findings.Count(findings.FindingFilter{Severity: "medium", Status: "open"})
+	lowOpen := a.Findings.Count(findings.FindingFilter{Severity: "low", Status: "open"})
+
+	highlights := append([]string{},
+		formatDigestHighlights(a.Findings.List(findings.FindingFilter{Severity: "critical", Status: "open"}), "critical", 3)...,
+	)
+	highlights = append(highlights, formatDigestHighlights(a.Findings.List(findings.FindingFilter{Severity: "high", Status: "open"}), "high", 3)...)
+
+	message := fmt.Sprintf(
+		"Open findings: %d (critical: %d, high: %d, medium: %d, low: %d)",
+		openTotal,
+		criticalOpen,
+		highOpen,
+		mediumOpen,
+		lowOpen,
+	)
+	if len(highlights) > 0 {
+		message = fmt.Sprintf("%s. Top priorities: %s", message, strings.Join(highlights, "; "))
+	}
+
+	return a.Notifications.Send(ctx, notifications.Event{
+		Type:     notifications.EventSecurityDigest,
+		Severity: "info",
+		Title:    "Scheduled Security Digest",
+		Message:  message,
+		Data: map[string]interface{}{
+			"open_total": openTotal,
+			"critical":   criticalOpen,
+			"high":       highOpen,
+			"medium":     mediumOpen,
+			"low":        lowOpen,
+			"highlights": highlights,
+		},
+	})
+}
+
+func formatDigestHighlights(list []*findings.Finding, severity string, limit int) []string {
+	if len(list) == 0 || limit <= 0 {
+		return nil
+	}
+
+	entries := make([]string, 0, len(list))
+	for _, finding := range list {
+		title := strings.TrimSpace(finding.PolicyName)
+		if title == "" {
+			title = strings.TrimSpace(finding.PolicyID)
+		}
+		if title == "" {
+			title = finding.ID
+		}
+		entries = append(entries, fmt.Sprintf("%s (%s)", title, finding.ID))
+	}
+	sort.Strings(entries)
+	if len(entries) > limit {
+		entries = entries[:limit]
+	}
+
+	result := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		result = append(result, fmt.Sprintf("%s: %s", severity, entry))
+	}
+	return result
 }
 
 func parseDuration(s string) (time.Duration, error) {
@@ -397,8 +664,8 @@ func (a *App) resolveScanTables(ctx context.Context) []string {
 	}
 
 	available := a.AvailableTables
-	if a.Snowflake != nil {
-		if refreshed, err := a.Snowflake.ListAvailableTables(ctx); err == nil {
+	if a.Warehouse != nil {
+		if refreshed, err := a.Warehouse.ListAvailableTables(ctx); err == nil {
 			a.AvailableTables = refreshed
 			available = refreshed
 		} else if ctx.Err() == nil {

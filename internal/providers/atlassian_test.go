@@ -11,6 +11,8 @@ import (
 func TestAtlassianProviderSync_TableParity(t *testing.T) {
 	t.Parallel()
 
+	searchCalls := 0
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, token, ok := r.BasicAuth()
 		if !ok || user != "admin@example.com" || token != "token" {
@@ -80,6 +82,86 @@ func TestAtlassianProviderSync_TableParity(t *testing.T) {
 				"startAt":    0,
 				"maxResults": 100,
 			})
+		case "/rest/api/3/search":
+			searchCalls++
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"issues": []map[string]interface{}{
+					{
+						"id":  "10001",
+						"key": "SEC-1",
+						"fields": map[string]interface{}{
+							"project": map[string]interface{}{
+								"key":  "SEC",
+								"name": "Security",
+							},
+							"summary": "Investigate access review gaps",
+							"status": map[string]interface{}{
+								"name": "In Progress",
+								"statusCategory": map[string]interface{}{
+									"name": "In Progress",
+								},
+							},
+							"issueType": map[string]interface{}{
+								"name": "Task",
+							},
+							"priority": map[string]interface{}{
+								"name": "High",
+							},
+							"assignee": map[string]interface{}{
+								"accountId":    "acct-1",
+								"emailAddress": "alice@example.com",
+							},
+							"reporter": map[string]interface{}{
+								"accountId":    "acct-2",
+								"emailAddress": "bob@example.com",
+							},
+							"created":        "2026-02-01T00:00:00.000+0000",
+							"updated":        "2026-02-02T00:00:00.000+0000",
+							"resolutiondate": nil,
+							"duedate":        "2026-02-15",
+							"labels":         []string{"security", "identity"},
+							"components": []map[string]interface{}{
+								{"name": "Identity"},
+							},
+							"comment": map[string]interface{}{
+								"comments": []map[string]interface{}{
+									{
+										"id":      "20001",
+										"created": "2026-02-02T01:00:00.000+0000",
+										"updated": "2026-02-02T01:05:00.000+0000",
+										"author": map[string]interface{}{
+											"accountId":    "acct-3",
+											"emailAddress": "carol@example.com",
+										},
+									},
+								},
+							},
+						},
+						"changelog": map[string]interface{}{
+							"histories": []map[string]interface{}{
+								{
+									"id":      "30001",
+									"created": "2026-02-02T02:00:00.000+0000",
+									"author": map[string]interface{}{
+										"accountId":    "acct-4",
+										"emailAddress": "dave@example.com",
+									},
+									"items": []map[string]interface{}{
+										{
+											"field":      "status",
+											"fromString": "To Do",
+											"toString":   "In Progress",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				"startAt":    0,
+				"maxResults": 50,
+				"total":      1,
+			})
 		default:
 			http.NotFound(w, r)
 		}
@@ -113,11 +195,17 @@ func TestAtlassianProviderSync_TableParity(t *testing.T) {
 		"atlassian_users":             1,
 		"atlassian_groups":            1,
 		"atlassian_group_memberships": 1,
+		"atlassian_issues":            1,
+		"atlassian_issue_comments":    1,
+		"atlassian_issue_changelogs":  1,
 	}
 	for table, want := range expected {
 		if got := rowsByTable[table]; got != want {
 			t.Fatalf("%s rows = %d, want %d", table, got, want)
 		}
+	}
+	if searchCalls != 1 {
+		t.Fatalf("expected issue activity search to be fetched once, got %d calls", searchCalls)
 	}
 }
 

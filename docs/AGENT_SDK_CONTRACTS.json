@@ -1,0 +1,1482 @@
+{
+  "api_version": "cerebro.agent-sdk.contracts/v1alpha1",
+  "kind": "AgentSDKCatalog",
+  "generated_at": "0001-01-01T00:00:00Z",
+  "protocol_version": "2025-06-18",
+  "tools": [
+    {
+      "id": "cerebro_access_review",
+      "version": "1.0.0",
+      "tool_name": "cerebro.access_review",
+      "sdk_method": "access_review",
+      "title": "Access Review",
+      "description": "Generate an access review scoped to one identity",
+      "category": "query",
+      "required_permission": "sdk.enforcement.run",
+      "input_schema": {
+        "properties": {
+          "created_by": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "identity_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "identity_id"
+        ],
+        "type": "object"
+      },
+      "example_input": {
+        "created_by": "created_by",
+        "description": "description",
+        "identity_id": "identity_id",
+        "name": "name"
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
+      "id": "cerebro_actuate_recommendation",
+      "version": "1.0.0",
+      "tool_name": "cerebro.actuate_recommendation",
+      "sdk_method": "actuate_recommendation",
+      "title": "Actuate Recommendation",
+      "description": "Write one action node from a recommendation and link it to targets and optional decision context",
+      "category": "query",
+      "required_permission": "sdk.worldmodel.write",
+      "input_schema": {
+        "properties": {
+          "auto_generated": {
+            "default": true,
+            "type": "boolean"
+          },
+          "confidence": {
+            "default": 0.8,
+            "type": "number"
+          },
+          "decision_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "insight_type": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "observed_at": {
+            "type": "string"
+          },
+          "recommendation_id": {
+            "type": "string"
+          },
+          "source_event_id": {
+            "type": "string"
+          },
+          "source_system": {
+            "default": "agent",
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "target_ids": {
+            "type": "array"
+          },
+          "title": {
+            "type": "string"
+          },
+          "valid_from": {
+            "type": "string"
+          },
+          "valid_to": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "example_input": {
+        "auto_generated": true,
+        "confidence": 0.8,
+        "decision_id": "decision:example",
+        "id": "id",
+        "insight_type": "insight_type",
+        "metadata": {
+          "example": true
+        },
+        "observed_at": "observed_at",
+        "recommendation_id": "recommendation_id",
+        "source_event_id": "source_event_id",
+        "source_system": "agent",
+        "summary": "summary",
+        "target_ids": [],
+        "title": "title",
+        "valid_from": "valid_from",
+        "valid_to": "valid_to"
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
+      "id": "cerebro_annotate",
+      "version": "1.0.0",
+      "tool_name": "cerebro.annotate_entity",
+      "sdk_method": "annotate",
+      "title": "Annotate Entity",
+      "description": "Append analyst/agent annotations to one entity with provenance metadata",
+      "category": "writeback",
+      "http_method": "POST",
+      "http_path": "/api/v1/agent-sdk/annotations",
+      "required_permission": "sdk.worldmodel.write",
+      "input_schema": {
+        "properties": {
+          "annotation": {
+            "type": "string"
+          },
+          "confidence": {
+            "default": 0.8,
+            "type": "number"
+          },
+          "entity_id": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "observed_at": {
+            "type": "string"
+          },
+          "source_event_id": {
+            "type": "string"
+          },
+          "source_system": {
+            "default": "agent",
+            "type": "string"
+          },
+          "tags": {
+            "type": "array"
+          },
+          "valid_from": {
+            "type": "string"
+          },
+          "valid_to": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "entity_id",
+          "annotation"
+        ],
+        "type": "object"
+      },
+      "example_input": {
+        "annotation": "Escalate for review",
+        "confidence": 0.8,
+        "entity_id": "service:payments",
+        "metadata": {
+          "example": true
+        },
+        "observed_at": "observed_at",
+        "source_event_id": "source_event_id",
+        "source_system": "agent",
+        "tags": [],
+        "valid_from": "valid_from",
+        "valid_to": "valid_to"
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
+      "id": "cerebro_blast_radius",
+      "version": "1.0.0",
+      "tool_name": "cerebro.blast_radius",
+      "sdk_method": "blast_radius",
+      "title": "Blast Radius",
+      "description": "Compute blast radius and reachable resources for a principal",
+      "category": "query",
+      "required_permission": "sdk.context.read",
+      "input_schema": {
+        "properties": {
+          "max_depth": {
+            "default": 3,
+            "type": "integer"
+          },
+          "principal_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "principal_id"
+        ],
+        "type": "object"
+      },
+      "example_input": {
+        "max_depth": 3,
+        "principal_id": "service:payments"
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
+      "id": "cerebro_check",
+      "version": "1.0.0",
+      "tool_name": "evaluate_policy",
+      "sdk_method": "check",
+      "title": "Pre-Action Policy Check",
+      "description": "Evaluate whether a proposed action should be allowed, denied, or require approval with optional propagation analysis",
+      "category": "enforcement",
+      "http_method": "POST",
+      "http_path": "/api/v1/agent-sdk/check",
+      "required_permission": "sdk.enforcement.run",
+      "input_schema": {
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "context": {
+            "type": "object"
+          },
+          "principal": {
+            "type": "object"
+          },
+          "proposed_change": {
+            "description": "Optional proposed graph mutations to evaluate propagation and approval impact",
+            "type": "object"
+          },
+          "resource": {
+            "type": "object"
+          },
+          "trace_context": {
+            "description": "Optional trace metadata to carry through gateway calls",
+            "type": "object"
+          }
+        },
+        "required": [
+          "action",
+          "resource"
+        ],
+        "type": "object"
+      },
+      "example_input": {
+        "action": "refund.create",
+        "context": {
+          "example": true
+        },
+        "principal": {
+          "example": true
+        },
+        "proposed_change": {
+          "example": true
+        },
+        "resource": {
+          "example": true
+        },
+        "trace_context": {
+          "example": true
+        }
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
+      "id": "cerebro_claim",
+      "version": "1.0.0",
+      "tool_name": "cerebro.write_claim",
+      "sdk_method": "claim",
+      "title": "Write World Model Claim",
+      "description": "Write one first-class claim with provenance, bitemporal fields, and evidence/source linkage",
+      "category": "writeback",
+      "http_method": "POST",
+      "http_path": "/api/v1/agent-sdk/claims",
+      "required_permission": "sdk.worldmodel.write",
+      "input_schema": {
+        "properties": {
+          "claim_type": {
+            "type": "string"
+          },
+          "confidence": {
+            "default": 0.8,
+            "type": "number"
+          },
+          "evidence_ids": {
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "object_id": {
+            "type": "string"
+          },
+          "object_value": {
+            "type": "string"
+          },
+          "observed_at": {
+            "type": "string"
+          },
+          "predicate": {
+            "type": "string"
+          },
+          "recorded_at": {
+            "type": "string"
+          },
+          "refuting_claim_ids": {
+            "type": "array"
+          },
+          "reliability_score": {
+            "type": "number"
+          },
+          "source_event_id": {
+            "type": "string"
+          },
+          "source_id": {
+            "type": "string"
+          },
+          "source_name": {
+            "type": "string"
+          },
+          "source_system": {
+            "default": "agent",
+            "type": "string"
+          },
+          "source_type": {
+            "type": "string"
+          },
+          "source_url": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "subject_id": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "supersedes_claim_id": {
+            "type": "string"
+          },
+          "supporting_claim_ids": {
+            "type": "array"
+          },
+          "transaction_from": {
+            "type": "string"
+          },
+          "transaction_to": {
+            "type": "string"
+          },
+          "trust_tier": {
+            "type": "string"
+          },
+          "valid_from": {
+            "type": "string"
+          },
+          "valid_to": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject_id",
+          "predicate"
+        ],
+        "type": "object"
+      },
+      "example_input": {
+        "claim_type": "claim_type",
+        "confidence": 0.8,
+        "evidence_ids": [],
+        "id": "id",
+        "metadata": {
+          "example": true
+        },
+        "object_id": "object_id",
+        "object_value": "object_value",
+        "observed_at": "observed_at",
+        "predicate": "healthy",
+        "recorded_at": "recorded_at",
+        "refuting_claim_ids": [],
+        "reliability_score": 0.5,
+        "source_event_id": "source_event_id",
+        "source_id": "source_id",
+        "source_name": "source_name",
+        "source_system": "agent",
+        "source_type": "source_type",
+        "source_url": "source_url",
+        "status": "status",
+        "subject_id": "service:payments",
+        "summary": "summary",
+        "supersedes_claim_id": "supersedes_claim_id",
+        "supporting_claim_ids": [],
+        "transaction_from": "transaction_from",
+        "transaction_to": "transaction_to",
+        "trust_tier": "trust_tier",
+        "valid_from": "valid_from",
+        "valid_to": "valid_to"
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
+      "id": "cerebro_context",
+      "version": "1.0.0",
+      "tool_name": "insight_card",
+      "sdk_method": "context",
+      "title": "Entity Context Card",
+      "description": "Build a context-rich entity insight card for Slack/Ensemble responses",
+      "category": "query",
+      "http_method": "GET",
+      "http_path": "/api/v1/agent-sdk/context/{entity_id}",
+      "required_permission": "sdk.context.read",
+      "input_schema": {
+        "properties": {
+          "entity": {
+            "description": "Entity node ID (for example customer:acme-corp, person:alice@example.com)",
+            "type": "string"
+          },
+          "sections": {
+            "description": "Optional sections to include: risk, relationships, activity, recommendations",
+            "items": {
+              "enum": [
+                "risk",
+                "relationships",
+                "activity",
+                "recommendations"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "entity"
+        ],
+        "type": "object"
+      },
+      "example_input": {
+        "entity": "service:payments",
+        "sections": [
+          "sections"
+        ]
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
+      "id": "cerebro_decide",
+      "version": "1.0.0",
+      "tool_name": "cerebro.record_decision",
+      "sdk_method": "decide",
+      "title": "Record Decision",
+      "description": "Write one decision node and connect it to targets/evidence/actions",
+      "category": "writeback",
+      "http_method": "POST",
+      "http_path": "/api/v1/agent-sdk/decisions",
+      "required_permission": "sdk.worldmodel.write",
+      "input_schema": {
+        "properties": {
+          "action_ids": {
+            "type": "array"
+          },
+          "confidence": {
+            "default": 0.8,
+            "type": "number"
+          },
+          "decision_type": {
+            "type": "string"
+          },
+          "evidence_ids": {
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "made_by": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "observed_at": {
+            "type": "string"
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "source_event_id": {
+            "type": "string"
+          },
+          "source_system": {
+            "default": "agent",
+            "type": "string"
+          },
+          "status": {
+            "default": "proposed",
+            "type": "string"
+          },
+          "target_ids": {
+            "type": "array"
+          },
+          "valid_from": {
+            "type": "string"
+          },
+          "valid_to": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision_type",
+          "target_ids"
+        ],
+        "type": "object"
+      },
+      "example_input": {
+        "action_ids": [],
+        "confidence": 0.8,
+        "decision_type": "prioritization",
+        "evidence_ids": [],
+        "id": "id",
+        "made_by": "made_by",
+        "metadata": {
+          "example": true
+        },
+        "observed_at": "observed_at",
+        "rationale": "rationale",
+        "source_event_id": "source_event_id",
+        "source_system": "agent",
+        "status": "proposed",
+        "target_ids": [],
+        "valid_from": "valid_from",
+        "valid_to": "valid_to"
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
+      "id": "cerebro_findings",
+      "version": "1.0.0",
+      "tool_name": "cerebro.findings",
+      "sdk_method": "findings",
+      "title": "Findings",
+      "description": "List and search findings with filtering",
+      "category": "query",
+      "required_permission": "sdk.context.read",
+      "input_schema": {
+        "properties": {
+          "domain": {
+            "type": "string"
+          },
+          "limit": {
+            "default": 50,
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "type": "integer"
+          },
+          "policy_id": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "signal_type": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "example_input": {
+        "domain": "domain",
+        "limit": 50,
+        "offset": 0,
+        "policy_id": "policy_id",
+        "query": "query",
+        "severity": "severity",
+        "signal_type": "signal_type",
+        "status": "status"
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
+      "id": "cerebro_graph_query",
+      "version": "1.0.0",
+      "tool_name": "cerebro.graph_query",
+      "sdk_method": "graph_query",
+      "title": "Graph Query",
+      "description": "Run graph queries for neighbors or shortest paths",
+      "category": "query",
+      "required_permission": "sdk.context.read",
+      "input_schema": {
+        "properties": {
+          "as_of": {
+            "description": "Optional RFC3339 point-in-time scope",
+            "type": "string"
+          },
+          "direction": {
+            "default": "both",
+            "enum": [
+              "out",
+              "in",
+              "both"
+            ],
+            "type": "string"
+          },
+          "from": {
+            "description": "Optional RFC3339 temporal window start (requires to)",
+            "type": "string"
+          },
+          "k": {
+            "default": 3,
+            "type": "integer"
+          },
+          "limit": {
+            "default": 25,
+            "type": "integer"
+          },
+          "max_depth": {
+            "default": 6,
+            "type": "integer"
+          },
+          "mode": {
+            "default": "neighbors",
+            "enum": [
+              "neighbors",
+              "paths"
+            ],
+            "type": "string"
+          },
+          "node_id": {
+            "type": "string"
+          },
+          "target_id": {
+            "type": "string"
+          },
+          "to": {
+            "description": "Optional RFC3339 temporal window end (requires from)",
+            "type": "string"
+          }
+        },
+        "required": [
+          "node_id"
+        ],
+        "type": "object"
+      },
+      "example_input": {
+        "as_of": "as_of",
+        "direction": "both",
+        "from": "from",
+        "k": 3,
+        "limit": 25,
+        "max_depth": 6,
+        "mode": "neighbors",
+        "node_id": "node_id",
+        "target_id": "target_id",
+        "to": "to"
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
+      "id": "cerebro_graph_simulate",
+      "version": "1.0.0",
+      "tool_name": "cerebro.simulate",
+      "sdk_method": "graph_simulate",
+      "title": "Graph Mutation Simulation",
+      "description": "Run a hypothetical graph simulation for proposed node/edge mutations",
+      "category": "enforcement",
+      "required_permission": "sdk.enforcement.run",
+      "input_schema": {
+        "properties": {
+          "edges": {
+            "description": "Edge mutations in graph.GraphDelta format",
+            "type": "array"
+          },
+          "mutations": {
+            "description": "Optional shorthand mutations (add_node/remove_node/modify_node/add_edge/remove_edge)",
+            "type": "array"
+          },
+          "nodes": {
+            "description": "Node mutations in graph.GraphDelta format",
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "example_input": {
+        "edges": [],
+        "mutations": [],
+        "nodes": []
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
+      "id": "cerebro_identity_calibration",
+      "version": "1.0.0",
+      "tool_name": "cerebro.identity_calibration",
+      "sdk_method": "identity_calibration",
+      "title": "Identity Calibration",
+      "description": "Return identity precision/coverage metrics and optional review queue backlog",
+      "category": "query",
+      "required_permission": "sdk.context.read",
+      "input_schema": {
+        "properties": {
+          "include_queue": {
+            "default": true,
+            "type": "boolean"
+          },
+          "queue_limit": {
+            "default": 25,
+            "type": "integer"
+          },
+          "suggest_threshold": {
+            "default": 0.55,
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "example_input": {
+        "include_queue": true,
+        "queue_limit": 25,
+        "suggest_threshold": 0.55
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
+      "id": "cerebro_identity_review",
+      "version": "1.0.0",
+      "tool_name": "cerebro.identity_review",
+      "sdk_method": "identity_review",
+      "title": "Identity Review",
+      "description": "Record a human verdict for one alias-\u003ecanonical identity candidate",
+      "category": "query",
+      "required_permission": "sdk.worldmodel.write",
+      "input_schema": {
+        "properties": {
+          "alias_node_id": {
+            "type": "string"
+          },
+          "canonical_node_id": {
+            "type": "string"
+          },
+          "confidence": {
+            "default": 0.95,
+            "type": "number"
+          },
+          "observed_at": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "reviewer": {
+            "type": "string"
+          },
+          "source_event_id": {
+            "type": "string"
+          },
+          "source_system": {
+            "default": "review",
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "accepted",
+              "rejected",
+              "uncertain"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "alias_node_id",
+          "canonical_node_id",
+          "verdict"
+        ],
+        "type": "object"
+      },
+      "example_input": {
+        "alias_node_id": "alias_node_id",
+        "canonical_node_id": "canonical_node_id",
+        "confidence": 0.95,
+        "observed_at": "observed_at",
+        "reason": "reason",
+        "reviewer": "reviewer",
+        "source_event_id": "source_event_id",
+        "source_system": "review",
+        "verdict": "accepted"
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
+      "id": "cerebro_leverage",
+      "version": "1.0.0",
+      "tool_name": "cerebro.graph_leverage_report",
+      "sdk_method": "leverage",
+      "title": "Graph Leverage Report",
+      "description": "Build a deep graph leverage report across identity, ingestion, temporal, closed-loop, predictive, query, and actuation readiness",
+      "category": "query",
+      "http_method": "GET",
+      "http_path": "/api/v1/agent-sdk/leverage",
+      "required_permission": "sdk.context.read",
+      "input_schema": {
+        "properties": {
+          "decision_sla_days": {
+            "default": 14,
+            "description": "Days before a decision without outcomes is considered stale (1-365)",
+            "type": "integer"
+          },
+          "history_limit": {
+            "default": 20,
+            "description": "Schema history entries to include (1-200)",
+            "type": "integer"
+          },
+          "identity_queue_limit": {
+            "default": 25,
+            "description": "Max identity review queue entries (1-200)",
+            "type": "integer"
+          },
+          "identity_suggest_threshold": {
+            "default": 0.55,
+            "description": "Identity candidate suggestion threshold (0-1)",
+            "type": "number"
+          },
+          "recent_window_hours": {
+            "default": 24,
+            "description": "Recent activity window in hours (1-168)",
+            "type": "integer"
+          },
+          "since_version": {
+            "description": "Optional schema drift baseline version",
+            "type": "integer"
+          },
+          "stale_after_hours": {
+            "default": 720,
+            "description": "Freshness threshold in hours (1-8760)",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "example_input": {
+        "decision_sla_days": 14,
+        "history_limit": 20,
+        "identity_queue_limit": 25,
+        "identity_suggest_threshold": 0.55,
+        "recent_window_hours": 24,
+        "since_version": 1,
+        "stale_after_hours": 720
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
+      "id": "cerebro_observe",
+      "version": "1.0.0",
+      "tool_name": "cerebro.record_observation",
+      "sdk_method": "observe",
+      "title": "Record Observation",
+      "description": "Write one evidence observation targeting an entity with provenance and temporal metadata",
+      "category": "writeback",
+      "http_method": "POST",
+      "http_path": "/api/v1/agent-sdk/observations",
+      "required_permission": "sdk.worldmodel.write",
+      "input_schema": {
+        "properties": {
+          "confidence": {
+            "default": 0.8,
+            "type": "number"
+          },
+          "entity_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "observation": {
+            "type": "string"
+          },
+          "observed_at": {
+            "type": "string"
+          },
+          "source_event_id": {
+            "type": "string"
+          },
+          "source_system": {
+            "default": "agent",
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "valid_from": {
+            "type": "string"
+          },
+          "valid_to": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "entity_id",
+          "observation"
+        ],
+        "type": "object"
+      },
+      "example_input": {
+        "confidence": 0.8,
+        "entity_id": "service:payments",
+        "id": "id",
+        "metadata": {
+          "example": true
+        },
+        "observation": "manual_review_signal",
+        "observed_at": "observed_at",
+        "source_event_id": "source_event_id",
+        "source_system": "agent",
+        "summary": "summary",
+        "valid_from": "valid_from",
+        "valid_to": "valid_to"
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
+      "id": "cerebro_outcome",
+      "version": "1.0.0",
+      "tool_name": "cerebro.record_outcome",
+      "sdk_method": "outcome",
+      "title": "Record Outcome",
+      "description": "Write one outcome node and connect it back to decision + impacted targets",
+      "category": "writeback",
+      "http_method": "POST",
+      "http_path": "/api/v1/agent-sdk/outcomes",
+      "required_permission": "sdk.worldmodel.write",
+      "input_schema": {
+        "properties": {
+          "confidence": {
+            "default": 0.8,
+            "type": "number"
+          },
+          "decision_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "impact_score": {
+            "type": "number"
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "observed_at": {
+            "type": "string"
+          },
+          "outcome_type": {
+            "type": "string"
+          },
+          "source_event_id": {
+            "type": "string"
+          },
+          "source_system": {
+            "default": "agent",
+            "type": "string"
+          },
+          "target_ids": {
+            "type": "array"
+          },
+          "valid_from": {
+            "type": "string"
+          },
+          "valid_to": {
+            "type": "string"
+          },
+          "verdict": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision_id",
+          "outcome_type",
+          "verdict"
+        ],
+        "type": "object"
+      },
+      "example_input": {
+        "confidence": 0.8,
+        "decision_id": "decision:example",
+        "id": "id",
+        "impact_score": 0.5,
+        "metadata": {
+          "example": true
+        },
+        "observed_at": "observed_at",
+        "outcome_type": "impact_review",
+        "source_event_id": "source_event_id",
+        "source_system": "agent",
+        "target_ids": [],
+        "valid_from": "valid_from",
+        "valid_to": "valid_to",
+        "verdict": "confirmed"
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
+      "id": "cerebro_quality",
+      "version": "1.0.0",
+      "tool_name": "cerebro.graph_quality_report",
+      "sdk_method": "quality",
+      "title": "Graph Quality Report",
+      "description": "Build graph quality KPIs and prioritized recommendations for ontology, identity, temporal, and write-back health",
+      "category": "query",
+      "http_method": "GET",
+      "http_path": "/api/v1/agent-sdk/quality",
+      "required_permission": "sdk.context.read",
+      "input_schema": {
+        "properties": {
+          "history_limit": {
+            "default": 20,
+            "description": "Schema history entries to include (1-200)",
+            "type": "integer"
+          },
+          "since_version": {
+            "description": "Optional schema drift baseline version",
+            "type": "integer"
+          },
+          "stale_after_hours": {
+            "default": 720,
+            "description": "Freshness threshold in hours (1-8760)",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "example_input": {
+        "history_limit": 20,
+        "since_version": 1,
+        "stale_after_hours": 720
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
+      "id": "cerebro_report",
+      "version": "2.0.0",
+      "tool_name": "cerebro.intelligence_report",
+      "sdk_method": "report",
+      "title": "Platform Intelligence Report Run",
+      "description": "Build a decision-grade intelligence report with prioritized insights and evidence",
+      "category": "intelligence",
+      "http_method": "POST",
+      "http_path": "/api/v1/agent-sdk/report",
+      "required_permission": "sdk.context.read",
+      "input_schema": {
+        "properties": {
+          "execution_mode": {
+            "default": "sync",
+            "description": "Whether to execute inline or queue a durable report run",
+            "enum": [
+              "sync",
+              "async"
+            ],
+            "type": "string"
+          },
+          "materialize_result": {
+            "default": true,
+            "description": "Whether to persist the materialized report snapshot payload",
+            "type": "boolean"
+          },
+          "parameters": {
+            "description": "Typed report parameter bindings",
+            "items": {
+              "properties": {
+                "boolean_value": {
+                  "type": "boolean"
+                },
+                "integer_value": {
+                  "type": "integer"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "number_value": {
+                  "type": "number"
+                },
+                "string_value": {
+                  "type": "string"
+                },
+                "timestamp_value": {
+                  "format": "date-time",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "report_id": {
+            "default": "insights",
+            "description": "Built-in platform report definition ID",
+            "type": "string"
+          },
+          "retry_policy": {
+            "description": "Retry and backoff configuration for durable async report runs",
+            "properties": {
+              "base_backoff_ms": {
+                "default": 5000,
+                "type": "integer"
+              },
+              "max_attempts": {
+                "default": 3,
+                "type": "integer"
+              },
+              "max_backoff_ms": {
+                "default": 60000,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
+      "example_input": {
+        "execution_mode": "sync",
+        "materialize_result": true,
+        "parameters": [
+          {
+            "boolean_value": true,
+            "integer_value": 1,
+            "name": "name",
+            "number_value": 0.5,
+            "string_value": "string_value",
+            "timestamp_value": "2026-03-09T00:00:00Z"
+          }
+        ],
+        "report_id": "insights",
+        "retry_policy": {
+          "base_backoff_ms": 5000,
+          "max_attempts": 3,
+          "max_backoff_ms": 60000
+        }
+      },
+      "execution_kind": "report_run",
+      "supports_async": true,
+      "supports_progress": true,
+      "status_resource": "platform.report_run"
+    },
+    {
+      "id": "cerebro_resolve_identity",
+      "version": "1.0.0",
+      "tool_name": "cerebro.resolve_identity",
+      "sdk_method": "resolve_identity",
+      "title": "Resolve Identity",
+      "description": "Resolve one external alias to canonical identity nodes with confidence scoring",
+      "category": "writeback",
+      "http_method": "POST",
+      "http_path": "/api/v1/agent-sdk/identity/resolve",
+      "required_permission": "sdk.worldmodel.write",
+      "input_schema": {
+        "properties": {
+          "alias_id": {
+            "type": "string"
+          },
+          "alias_type": {
+            "type": "string"
+          },
+          "auto_link_threshold": {
+            "type": "number"
+          },
+          "canonical_hint": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number"
+          },
+          "email": {
+            "type": "string"
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "observed_at": {
+            "type": "string"
+          },
+          "source_event_id": {
+            "type": "string"
+          },
+          "source_system": {
+            "type": "string"
+          },
+          "suggest_threshold": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "source_system",
+          "external_id"
+        ],
+        "type": "object"
+      },
+      "example_input": {
+        "alias_id": "alias_id",
+        "alias_type": "alias_type",
+        "auto_link_threshold": 0.5,
+        "canonical_hint": "canonical_hint",
+        "confidence": 0.5,
+        "email": "email",
+        "external_id": "external_id",
+        "name": "name",
+        "observed_at": "observed_at",
+        "source_event_id": "source_event_id",
+        "source_system": "source_system",
+        "suggest_threshold": 0.5
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
+      "id": "cerebro_risk_score",
+      "version": "1.0.0",
+      "tool_name": "cerebro.risk_score",
+      "sdk_method": "risk_score",
+      "title": "Risk Score",
+      "description": "Return composite risk scoring details for an entity",
+      "category": "query",
+      "required_permission": "sdk.context.read",
+      "input_schema": {
+        "properties": {
+          "entity_id": {
+            "type": "string"
+          },
+          "include_overall": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "entity_id"
+        ],
+        "type": "object"
+      },
+      "example_input": {
+        "entity_id": "service:payments",
+        "include_overall": false
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
+      "id": "cerebro_simulate",
+      "version": "2.0.0",
+      "tool_name": "simulate",
+      "sdk_method": "simulate",
+      "title": "Scenario Simulation",
+      "description": "Run high-level scenario simulations (customer_churn, access_removal, team_change, service_disruption, vendor_exit, role_change)",
+      "category": "enforcement",
+      "http_method": "POST",
+      "http_path": "/api/v1/agent-sdk/simulate",
+      "required_permission": "sdk.enforcement.run",
+      "input_schema": {
+        "properties": {
+          "context": {
+            "type": "string"
+          },
+          "parameters": {
+            "description": "Scenario-specific parameters (for example to_team, from_team, new_role)",
+            "type": "object"
+          },
+          "requester": {
+            "type": "string"
+          },
+          "scenario": {
+            "enum": [
+              "customer_churn",
+              "access_removal",
+              "team_change",
+              "service_disruption",
+              "vendor_exit",
+              "role_change"
+            ],
+            "type": "string"
+          },
+          "target": {
+            "description": "Primary node identifier to simulate against",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scenario",
+          "target"
+        ],
+        "type": "object"
+      },
+      "example_input": {
+        "context": "context",
+        "parameters": {
+          "example": true
+        },
+        "requester": "requester",
+        "scenario": "customer_churn",
+        "target": "service:payments"
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
+      "id": "cerebro_split_identity",
+      "version": "1.0.0",
+      "tool_name": "cerebro.split_identity",
+      "sdk_method": "split_identity",
+      "title": "Split Identity",
+      "description": "Remove one alias-\u003ecanonical identity link to reverse an incorrect merge",
+      "category": "query",
+      "required_permission": "sdk.worldmodel.write",
+      "input_schema": {
+        "properties": {
+          "alias_node_id": {
+            "type": "string"
+          },
+          "canonical_node_id": {
+            "type": "string"
+          },
+          "observed_at": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "source_event_id": {
+            "type": "string"
+          },
+          "source_system": {
+            "default": "agent",
+            "type": "string"
+          }
+        },
+        "required": [
+          "alias_node_id",
+          "canonical_node_id"
+        ],
+        "type": "object"
+      },
+      "example_input": {
+        "alias_node_id": "alias_node_id",
+        "canonical_node_id": "canonical_node_id",
+        "observed_at": "observed_at",
+        "reason": "reason",
+        "source_event_id": "source_event_id",
+        "source_system": "agent"
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
+      "id": "cerebro_templates",
+      "version": "1.0.0",
+      "tool_name": "cerebro.graph_query_templates",
+      "sdk_method": "templates",
+      "title": "Graph Query Templates",
+      "description": "List reusable graph investigation templates for analysts and agents",
+      "category": "query",
+      "http_method": "GET",
+      "http_path": "/api/v1/agent-sdk/templates",
+      "required_permission": "sdk.context.read",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "execution_kind": "direct_tool"
+    }
+  ],
+  "resources": [
+    {
+      "uri": "cerebro://agent-sdk/catalog",
+      "version": "1.0.0",
+      "name": "Agent SDK Contract Catalog",
+      "description": "Generated Agent SDK contract catalog with tools, resources, and MCP method metadata",
+      "mime_type": "application/json",
+      "required_permission": "sdk.schema.read"
+    },
+    {
+      "uri": "cerebro://reports/catalog",
+      "version": "1.0.0",
+      "name": "Platform Report Catalog",
+      "description": "Built-in platform intelligence report definitions exposed for agent discovery",
+      "mime_type": "application/json",
+      "required_permission": "sdk.schema.read"
+    },
+    {
+      "uri": "cerebro://schema/edge-kinds",
+      "version": "1.0.0",
+      "name": "Edge Kinds",
+      "description": "Registered graph edge kind schema definitions",
+      "mime_type": "application/json",
+      "required_permission": "sdk.schema.read"
+    },
+    {
+      "uri": "cerebro://schema/node-kinds",
+      "version": "1.0.0",
+      "name": "Node Kinds",
+      "description": "Registered graph node kind schema definitions",
+      "mime_type": "application/json",
+      "required_permission": "sdk.schema.read"
+    },
+    {
+      "uri": "cerebro://tools/catalog",
+      "version": "1.0.0",
+      "name": "Agent Tool Catalog",
+      "description": "Discovered Agent SDK tool catalog with JSON Schema parameters",
+      "mime_type": "application/json",
+      "required_permission": "sdk.schema.read"
+    }
+  ],
+  "methods": [
+    {
+      "name": "initialize",
+      "kind": "request",
+      "description": "Initialize one MCP session over Streamable HTTP"
+    },
+    {
+      "name": "tools/list",
+      "kind": "request",
+      "description": "List visible Agent SDK tools"
+    },
+    {
+      "name": "tools/call",
+      "kind": "request",
+      "description": "Invoke one Agent SDK tool by public ID"
+    },
+    {
+      "name": "resources/list",
+      "kind": "request",
+      "description": "List readable Agent SDK resources"
+    },
+    {
+      "name": "resources/read",
+      "kind": "request",
+      "description": "Read one Agent SDK resource payload"
+    },
+    {
+      "name": "notifications/progress",
+      "kind": "notification",
+      "description": "Server-initiated progress notifications for long-running report executions"
+    },
+    {
+      "name": "notifications/report_section",
+      "kind": "notification",
+      "description": "Server-initiated section payload notifications for durable report executions"
+    }
+  ]
+}

@@ -22,7 +22,7 @@ func (s *Server) listTickets(w http.ResponseWriter, r *http.Request) {
 		Limit:    50,
 	})
 	if err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
+		s.errorFromErr(w, err)
 		return
 	}
 	s.json(w, http.StatusOK, map[string]interface{}{"tickets": tickets, "count": len(tickets)})
@@ -55,7 +55,7 @@ func (s *Server) createTicket(w http.ResponseWriter, r *http.Request) {
 
 	created, err := s.app.Ticketing.CreateTicket(r.Context(), ticket)
 	if err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
+		s.errorFromErr(w, err)
 		return
 	}
 	s.json(w, http.StatusCreated, created)
@@ -91,7 +91,7 @@ func (s *Server) updateTicket(w http.ResponseWriter, r *http.Request) {
 
 	ticket, err := s.app.Ticketing.Primary().UpdateTicket(r.Context(), id, &update)
 	if err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
+		s.errorFromErr(w, err)
 		return
 	}
 	s.json(w, http.StatusOK, ticket)
@@ -114,7 +114,7 @@ func (s *Server) addComment(w http.ResponseWriter, r *http.Request) {
 
 	err := s.app.Ticketing.Primary().AddComment(r.Context(), id, &ticketing.Comment{Body: req.Body})
 	if err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
+		s.errorFromErr(w, err)
 		return
 	}
 	s.json(w, http.StatusCreated, map[string]string{"status": "comment added"})
@@ -134,7 +134,7 @@ func (s *Server) closeTicket(w http.ResponseWriter, r *http.Request) {
 
 	err := s.app.Ticketing.Primary().Close(r.Context(), id, req.Resolution)
 	if err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
+		s.errorFromErr(w, err)
 		return
 	}
 	s.json(w, http.StatusOK, map[string]string{"status": "closed"})

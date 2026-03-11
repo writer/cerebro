@@ -7,37 +7,66 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
 // JiraProvider implements ticketing for Atlassian Jira
 type JiraProvider struct {
-	baseURL  string
-	email    string
-	apiToken string
-	project  string
-	client   *http.Client
+	baseURL          string
+	email            string
+	apiToken         string
+	project          string
+	closeTransitions []string
+	client           *http.Client
 }
 
 type JiraConfig struct {
-	BaseURL  string // e.g., https://yourcompany.atlassian.net
-	Email    string
-	APIToken string
-	Project  string // Project key, e.g., "SEC"
+	BaseURL          string // e.g., https://yourcompany.atlassian.net
+	Email            string
+	APIToken         string
+	Project          string   // Project key, e.g., "SEC"
+	CloseTransitions []string // Transition names attempted in order when closing an issue
 }
 
+var defaultJiraCloseTransitions = []string{"Done", "Closed", "Resolve Issue"}
+
 func NewJiraProvider(cfg JiraConfig) *JiraProvider {
+	transitions := normalizeTransitionNames(cfg.CloseTransitions)
+	if len(transitions) == 0 {
+		transitions = append([]string(nil), defaultJiraCloseTransitions...)
+	}
 	return &JiraProvider{
-		baseURL:  cfg.BaseURL,
-		email:    cfg.Email,
-		apiToken: cfg.APIToken,
-		project:  cfg.Project,
-		client:   &http.Client{Timeout: 30 * time.Second},
+		baseURL:          cfg.BaseURL,
+		email:            cfg.Email,
+		apiToken:         cfg.APIToken,
+		project:          cfg.Project,
+		closeTransitions: transitions,
+		client:           &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
 func (j *JiraProvider) Name() string {
 	return "jira"
+}
+
+func (j *JiraProvider) Validate(_ context.Context) error {
+	if strings.TrimSpace(j.baseURL) == "" {
+		return fmt.Errorf("jira base URL is required")
+	}
+	if strings.TrimSpace(j.email) == "" {
+		return fmt.Errorf("jira email is required")
+	}
+	if strings.TrimSpace(j.apiToken) == "" {
+		return fmt.Errorf("jira API token is required")
+	}
+	if strings.TrimSpace(j.project) == "" {
+		return fmt.Errorf("jira project is required")
+	}
+	if len(j.closeTransitions) == 0 {
+		return fmt.Errorf("jira close transitions must not be empty")
+	}
+	return nil
 }
 
 type jiraIssue struct {
@@ -320,14 +349,7 @@ func (j *JiraProvider) Close(ctx context.Context, id string, resolution string) 
 		return decErr
 	}
 
-	// Find "Done" or "Closed" transition
-	var transitionID string
-	for _, t := range transitions.Transitions {
-		if t.Name == "Done" || t.Name == "Closed" || t.Name == "Resolve Issue" {
-			transitionID = t.ID
-			break
-		}
-	}
+	transitionID := j.findCloseTransitionID(transitions.Transitions, resolution)
 
 	if transitionID == "" {
 		return fmt.Errorf("no close transition found")
@@ -405,4 +427,54 @@ func (j *JiraProvider) convertIssue(issue *jiraIssue) *Ticket {
 	ticket.Reporter = issue.Fields.Reporter.DisplayName
 
 	return ticket
+}
+
+func (j *JiraProvider) findCloseTransitionID(transitions []struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}, resolution string) string {
+	byName := make(map[string]string, len(transitions))
+	for _, transition := range transitions {
+		name := strings.ToLower(strings.TrimSpace(transition.Name))
+		if name == "" {
+			continue
+		}
+		byName[name] = transition.ID
+	}
+
+	candidates := make([]string, 0, len(j.closeTransitions)+1)
+	if strings.TrimSpace(resolution) != "" {
+		candidates = append(candidates, resolution)
+	}
+	candidates = append(candidates, j.closeTransitions...)
+
+	for _, candidate := range candidates {
+		key := strings.ToLower(strings.TrimSpace(candidate))
+		if key == "" {
+			continue
+		}
+		if id, ok := byName[key]; ok {
+			return id
+		}
+	}
+
+	return ""
+}
+
+func normalizeTransitionNames(names []string) []string {
+	normalized := make([]string, 0, len(names))
+	seen := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		trimmed := strings.TrimSpace(name)
+		if trimmed == "" {
+			continue
+		}
+		key := strings.ToLower(trimmed)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		normalized = append(normalized, trimmed)
+	}
+	return normalized
 }

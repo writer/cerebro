@@ -12,6 +12,10 @@ import (
 	"time"
 
 	sf "github.com/snowflakedb/gosnowflake"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/writer/cerebro/internal/cerrors"
 )
@@ -37,7 +41,7 @@ type ClientConfig struct {
 	Role string
 	// Database is the default database
 	Database string
-	// Schema is the default schema for asset tables (default: RAW)
+	// Schema is the default schema for asset tables (default: CEREBRO)
 	Schema string
 	// AppSchema is the schema for Cerebro app tables (default: CEREBRO)
 	AppSchema string
@@ -174,7 +178,12 @@ func (c *Client) AppSchema() string {
 
 // Ping verifies the database connection is alive.
 func (c *Client) Ping(ctx context.Context) error {
+	ctx, span := startSnowflakeSpan(ctx, "snowflake.ping", attribute.String("db.operation", "ping"))
+	defer span.End()
+
 	if err := c.db.PingContext(ctx); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		if ctx.Err() != nil {
 			return cerrors.E(opPing, cerrors.ErrContextTimeout, ctx.Err())
 		}
@@ -185,8 +194,17 @@ func (c *Client) Ping(ctx context.Context) error {
 
 // Query executes a query and returns structured results.
 func (c *Client) Query(ctx context.Context, query string, args ...interface{}) (*QueryResult, error) {
+	ctx, span := startSnowflakeSpan(ctx, "snowflake.query",
+		attribute.String("db.operation", "query"),
+		attribute.String("db.statement", statementForSpan(query)),
+		attribute.Int("db.args_count", len(args)),
+	)
+	defer span.End()
+
 	rows, err := c.db.QueryContext(ctx, query, args...)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		if ctx.Err() != nil {
 			return nil, cerrors.E(opQuery, cerrors.ErrDBTimeout, ctx.Err())
 		}
@@ -196,6 +214,8 @@ func (c *Client) Query(ctx context.Context, query string, args ...interface{}) (
 
 	columns, err := rows.Columns()
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, cerrors.Wrapf(opQuery, err, "failed to get columns")
 	}
 
@@ -221,6 +241,8 @@ func (c *Client) Query(ctx context.Context, query string, args ...interface{}) (
 
 	for rows.Next() {
 		if err := rows.Scan(valuePtrs...); err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
 			return nil, cerrors.Wrapf(opQuery, err, "failed to scan row")
 		}
 
@@ -238,10 +260,13 @@ func (c *Client) Query(ctx context.Context, query string, args ...interface{}) (
 	}
 
 	if err := rows.Err(); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, cerrors.Wrapf(opQuery, err, "row iteration error")
 	}
 
 	result.Count = len(result.Rows)
+	span.SetAttributes(attribute.Int("db.rows_returned", result.Count))
 	return result, nil
 }
 
@@ -252,12 +277,24 @@ func (c *Client) QueryRow(ctx context.Context, query string, args ...interface{}
 
 // Exec executes a query that doesn't return rows.
 func (c *Client) Exec(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+	ctx, span := startSnowflakeSpan(ctx, "snowflake.exec",
+		attribute.String("db.operation", "exec"),
+		attribute.String("db.statement", statementForSpan(query)),
+		attribute.Int("db.args_count", len(args)),
+	)
+	defer span.End()
+
 	result, err := c.db.ExecContext(ctx, query, args...)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		if ctx.Err() != nil {
 			return nil, cerrors.E(opQuery, cerrors.ErrDBTimeout, ctx.Err())
 		}
 		return nil, cerrors.E(opQuery, cerrors.ErrDBQuery, err)
+	}
+	if rows, rowsErr := result.RowsAffected(); rowsErr == nil {
+		span.SetAttributes(attribute.Int64("db.rows_affected", rows))
 	}
 	return result, nil
 }
@@ -339,4 +376,25 @@ func (c *Client) ListAvailableTables(ctx context.Context) ([]string, error) {
 // WithTimeout returns a context with the specified timeout, suitable for database operations.
 func WithTimeout(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(ctx, timeout) // #nosec G118 -- caller receives and owns cancel function lifecycle
+}
+
+var snowflakeTracer = otel.Tracer("cerebro.snowflake")
+
+func startSnowflakeSpan(ctx context.Context, name string, attrs ...attribute.KeyValue) (context.Context, trace.Span) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	defaultAttrs := []attribute.KeyValue{
+		attribute.String("db.system", "snowflake"),
+	}
+	defaultAttrs = append(defaultAttrs, attrs...)
+	return snowflakeTracer.Start(ctx, name, trace.WithAttributes(defaultAttrs...))
+}
+
+func statementForSpan(statement string) string {
+	statement = strings.Join(strings.Fields(strings.TrimSpace(statement)), " ")
+	if len(statement) <= 256 {
+		return statement
+	}
+	return statement[:256] + "..."
 }

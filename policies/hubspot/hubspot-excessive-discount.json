@@ -1,0 +1,13 @@
+{
+  "id": "hubspot-excessive-discount",
+  "name": "Excessive Discount on Small Deal",
+  "description": "Flags unusually high discount percentages on lower-value deals.",
+  "effect": "forbid",
+  "resource": "hubspot::deal",
+  "conditions": [
+    "properties.discount_percentage > 30",
+    "properties.amount < 50000"
+  ],
+  "severity": "medium",
+  "tags": ["revenue", "guardrail", "hubspot"]
+}

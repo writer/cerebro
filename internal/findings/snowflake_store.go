@@ -42,6 +42,16 @@ func (s *SnowflakeStore) SetAttestor(attestor FindingAttestor, attestReobserved 
 	s.attestReobserved = attestReobserved
 }
 
+// SetConnection updates the Snowflake database handle and schema used by the store.
+func (s *SnowflakeStore) SetConnection(db *sql.DB, database, schema string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.db = db
+	if strings.TrimSpace(database) != "" && strings.TrimSpace(schema) != "" {
+		s.schema = fmt.Sprintf("%s.%s", database, schema)
+	}
+}
+
 // Load fetches all findings from Snowflake into cache
 func (s *SnowflakeStore) Load(ctx context.Context) error {
 	findingsTable, err := snowflake.SafeQualifiedTableRef(s.schema, "findings")
@@ -90,8 +100,10 @@ func (s *SnowflakeStore) Load(ctx context.Context) error {
 		if resolvedAt.Valid {
 			f.ResolvedAt = &resolvedAt.Time
 		}
-		if resourceData != nil {
-			_ = json.Unmarshal(resourceData, &f.Resource)
+		if len(resourceData) > 0 {
+			if err := parseResourceData(&f, resourceData); err != nil {
+				return fmt.Errorf("parse resource data for finding %s: %w", f.ID, err)
+			}
 		}
 		if remediation.Valid {
 			f.Remediation = remediation.String
@@ -119,6 +131,10 @@ func (s *SnowflakeStore) Upsert(ctx context.Context, pf policy.Finding) *Finding
 		existing.LastSeen = now
 		if len(pf.Resource) > 0 {
 			existing.Resource = pf.Resource
+			invalidateResourceJSONCache(existing)
+		}
+		if existing.TenantID == "" {
+			existing.TenantID = extractTenantID(pf.Resource)
 		}
 		existing.UpdatedAt = now
 		if pf.Description != "" {
@@ -168,9 +184,16 @@ func (s *SnowflakeStore) Upsert(ctx context.Context, pf policy.Finding) *Finding
 		if len(pf.MitreAttack) > 0 {
 			existing.MitreAttack = pf.MitreAttack
 		}
-		if previousStatus == "RESOLVED" {
+		if existing.SignalType == "" {
+			existing.SignalType = SignalTypeSecurity
+		}
+		if existing.Domain == "" {
+			existing.Domain = inferDomain(existing.PolicyID, existing.ResourceType)
+		}
+		if previousStatus == "RESOLVED" || previousStatus == "SNOOZED" {
 			existing.Status = "OPEN"
 			existing.ResolvedAt = nil
+			existing.SnoozedUntil = nil
 			existing.StatusChangedAt = &now
 		}
 		EnrichFinding(existing)
@@ -208,10 +231,13 @@ func (s *SnowflakeStore) Upsert(ctx context.Context, pf policy.Finding) *Finding
 		ID:                 pf.ID,
 		IssueID:            pf.ID,
 		ControlID:          pf.ControlID,
+		TenantID:           extractTenantID(pf.Resource),
 		PolicyID:           pf.PolicyID,
 		PolicyName:         pf.PolicyName,
 		Title:              pf.Title,
 		Severity:           pf.Severity,
+		SignalType:         SignalTypeSecurity,
+		Domain:             inferDomain(pf.PolicyID, resourceType),
 		Status:             "OPEN",
 		ResourceID:         resourceID,
 		ResourceName:       resourceName,
@@ -245,6 +271,24 @@ func (s *SnowflakeStore) Get(id string) (*Finding, bool) {
 	return f, ok
 }
 
+func (s *SnowflakeStore) Update(id string, mutate func(*Finding) error) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	f, ok := s.cache[id]
+	if !ok {
+		return ErrIssueNotFound
+	}
+	if err := mutate(f); err != nil {
+		return err
+	}
+	invalidateResourceJSONCache(f)
+	f.Status = normalizeStatus(f.Status)
+	EnrichFinding(f)
+	s.dirty[id] = true
+	return nil
+}
+
 func (s *SnowflakeStore) List(filter FindingFilter) []*Finding {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -260,6 +304,15 @@ func (s *SnowflakeStore) List(filter FindingFilter) []*Finding {
 			continue
 		}
 		if filter.PolicyID != "" && f.PolicyID != filter.PolicyID {
+			continue
+		}
+		if filter.TenantID != "" && !strings.EqualFold(strings.TrimSpace(f.TenantID), strings.TrimSpace(filter.TenantID)) {
+			continue
+		}
+		if filter.SignalType != "" && !strings.EqualFold(f.SignalType, filter.SignalType) {
+			continue
+		}
+		if filter.Domain != "" && !strings.EqualFold(f.Domain, filter.Domain) {
 			continue
 		}
 		result = append(result, f)
@@ -297,6 +350,15 @@ func (s *SnowflakeStore) Count(filter FindingFilter) int {
 		if filter.PolicyID != "" && f.PolicyID != filter.PolicyID {
 			continue
 		}
+		if filter.TenantID != "" && !strings.EqualFold(strings.TrimSpace(f.TenantID), strings.TrimSpace(filter.TenantID)) {
+			continue
+		}
+		if filter.SignalType != "" && !strings.EqualFold(f.SignalType, filter.SignalType) {
+			continue
+		}
+		if filter.Domain != "" && !strings.EqualFold(f.Domain, filter.Domain) {
+			continue
+		}
 		count++
 	}
 	return count
@@ -313,6 +375,7 @@ func (s *SnowflakeStore) Resolve(id string) bool {
 	now := time.Now()
 	f.Status = "RESOLVED"
 	f.ResolvedAt = &now
+	f.SnoozedUntil = nil
 	f.StatusChangedAt = &now
 	f.UpdatedAt = now
 	s.dirty[id] = true
@@ -329,6 +392,7 @@ func (s *SnowflakeStore) Suppress(id string) bool {
 	}
 	now := time.Now()
 	f.Status = "SUPPRESSED"
+	f.SnoozedUntil = nil
 	f.StatusChangedAt = &now
 	f.UpdatedAt = now
 	s.dirty[id] = true
@@ -340,9 +404,11 @@ func (s *SnowflakeStore) Stats() Stats {
 	defer s.mu.RUnlock()
 
 	stats := Stats{
-		BySeverity: make(map[string]int),
-		ByStatus:   make(map[string]int),
-		ByPolicy:   make(map[string]int),
+		BySeverity:   make(map[string]int),
+		ByStatus:     make(map[string]int),
+		ByPolicy:     make(map[string]int),
+		BySignalType: make(map[string]int),
+		ByDomain:     make(map[string]int),
 	}
 
 	for _, f := range s.cache {
@@ -350,6 +416,16 @@ func (s *SnowflakeStore) Stats() Stats {
 		stats.BySeverity[f.Severity]++
 		stats.ByStatus[normalizeStatus(f.Status)]++
 		stats.ByPolicy[f.PolicyID]++
+		signalType := strings.ToLower(strings.TrimSpace(f.SignalType))
+		if signalType == "" {
+			signalType = SignalTypeSecurity
+		}
+		stats.BySignalType[signalType]++
+		domain := strings.ToLower(strings.TrimSpace(f.Domain))
+		if domain == "" {
+			domain = DomainInfra
+		}
+		stats.ByDomain[domain]++
 	}
 
 	return stats
@@ -396,7 +472,10 @@ func (s *SnowflakeStore) Sync(ctx context.Context) error {
 		values := make([]string, 0, len(batch))
 		args := make([]interface{}, 0, len(batch)*14)
 		for _, f := range batch {
-			resourceJSON, _ := json.Marshal(f.Resource)
+			resourceJSON, err := resourceJSONForSync(f)
+			if err != nil {
+				return fmt.Errorf("marshal resource data for finding %s: %w", f.ID, err)
+			}
 			metadataJSON, _ := buildFindingMetadata(f)
 			if len(metadataJSON) == 0 {
 				metadataJSON = []byte("{}")
@@ -477,6 +556,46 @@ func (s *SnowflakeStore) Sync(ctx context.Context) error {
 
 	s.syncedAt = time.Now()
 	return nil
+}
+
+func parseResourceData(f *Finding, raw []byte) error {
+	if len(raw) == 0 {
+		f.Resource = nil
+		f.resourceJSONRaw = nil
+		return nil
+	}
+
+	f.resourceJSONRaw = cloneBytes(raw)
+	return json.Unmarshal(raw, &f.Resource)
+}
+
+func resourceJSONForSync(f *Finding) ([]byte, error) {
+	if len(f.resourceJSONRaw) > 0 {
+		return cloneBytes(f.resourceJSONRaw), nil
+	}
+
+	resourceJSON, err := json.Marshal(f.Resource)
+	if err != nil {
+		return nil, err
+	}
+	f.resourceJSONRaw = cloneBytes(resourceJSON)
+	return resourceJSON, nil
+}
+
+func invalidateResourceJSONCache(f *Finding) {
+	if f == nil {
+		return
+	}
+	f.resourceJSONRaw = nil
+}
+
+func cloneBytes(src []byte) []byte {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make([]byte, len(src))
+	copy(dst, src)
+	return dst
 }
 
 // SyncedAt returns when the store was last synced

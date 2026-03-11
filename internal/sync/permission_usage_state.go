@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 const (
@@ -43,7 +43,7 @@ func (e *GCPSyncEngine) savePermissionUsageCursor(ctx context.Context, key strin
 	return savePermissionUsageCursor(ctx, e.sf, key, cursor)
 }
 
-func loadPermissionUsageCursor(ctx context.Context, sf *snowflake.Client, key string) (permissionUsageCursor, error) {
+func loadPermissionUsageCursor(ctx context.Context, sf warehouse.SyncWarehouse, key string) (permissionUsageCursor, error) {
 	if sf == nil || sf.DB() == nil || key == "" {
 		return permissionUsageCursor{}, nil
 	}
@@ -75,7 +75,7 @@ func loadPermissionUsageCursor(ctx context.Context, sf *snowflake.Client, key st
 	return cursor, nil
 }
 
-func savePermissionUsageCursor(ctx context.Context, sf *snowflake.Client, key string, cursor permissionUsageCursor) error {
+func savePermissionUsageCursor(ctx context.Context, sf warehouse.SyncWarehouse, key string, cursor permissionUsageCursor) error {
 	if sf == nil || sf.DB() == nil || key == "" || cursor.Time.IsZero() {
 		return nil
 	}
@@ -109,7 +109,7 @@ func savePermissionUsageCursor(ctx context.Context, sf *snowflake.Client, key st
 	return nil
 }
 
-func ensurePermissionUsageStateTable(ctx context.Context, sf *snowflake.Client) error {
+func ensurePermissionUsageStateTable(ctx context.Context, sf warehouse.SyncWarehouse) error {
 	if sf == nil || sf.DB() == nil {
 		return nil
 	}

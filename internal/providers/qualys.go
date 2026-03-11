@@ -35,7 +35,7 @@ func NewQualysProvider() *QualysProvider {
 	return &QualysProvider{
 		BaseProvider: NewBaseProvider("qualys", ProviderTypeSaaS),
 		platform:     "US1",
-		client:       &http.Client{Timeout: 120 * time.Second},
+		client:       newProviderHTTPClient(120 * time.Second),
 	}
 }
 

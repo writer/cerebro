@@ -242,6 +242,14 @@ func (st *SecurityTools) GetTools() []Tool {
 						"type":        "string",
 						"description": "Filter by policy ID",
 					},
+					"signal_type": map[string]interface{}{
+						"type":        "string",
+						"description": "Filter by signal type (security, business, operational, compliance)",
+					},
+					"domain": map[string]interface{}{
+						"type":        "string",
+						"description": "Filter by signal domain (infra, revenue, customer_health, pipeline, sla, financial)",
+					},
 				},
 			},
 			Handler: st.listFindings,
@@ -391,18 +399,22 @@ func (st *SecurityTools) getFinding(ctx context.Context, args json.RawMessage) (
 
 func (st *SecurityTools) listFindings(ctx context.Context, args json.RawMessage) (string, error) {
 	var params struct {
-		Severity string `json:"severity"`
-		Status   string `json:"status"`
-		PolicyID string `json:"policy_id"`
+		Severity   string `json:"severity"`
+		Status     string `json:"status"`
+		PolicyID   string `json:"policy_id"`
+		SignalType string `json:"signal_type"`
+		Domain     string `json:"domain"`
 	}
 	if err := json.Unmarshal(args, &params); err != nil {
 		return "", err
 	}
 
 	list := st.findings.List(findings.FindingFilter{
-		Severity: params.Severity,
-		Status:   params.Status,
-		PolicyID: params.PolicyID,
+		Severity:   params.Severity,
+		Status:     params.Status,
+		PolicyID:   params.PolicyID,
+		SignalType: params.SignalType,
+		Domain:     params.Domain,
 	})
 
 	output, _ := json.Marshal(list)

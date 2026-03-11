@@ -33,7 +33,7 @@ func NewJumpCloudProvider() *JumpCloudProvider {
 		BaseProvider: NewBaseProvider("jumpcloud", ProviderTypeIdentity),
 		v1BaseURL:    jumpCloudDefaultBaseURL + "/api",
 		v2BaseURL:    jumpCloudDefaultBaseURL + "/api/v2",
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

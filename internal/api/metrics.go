@@ -1,6 +1,9 @@
 package api
 
 import (
+	"bufio"
+	"io"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -9,13 +12,12 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var (
 	httpRequestsTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "cerebro_http_requests_total",
+			Name: "cerebro_api_http_requests_total",
 			Help: "Total number of HTTP requests",
 		},
 		[]string{"method", "path", "status"},
@@ -23,7 +25,7 @@ var (
 
 	httpRequestDuration = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "cerebro_http_request_duration_seconds",
+			Name:    "cerebro_api_http_request_duration_seconds",
 			Help:    "HTTP request duration in seconds",
 			Buckets: prometheus.DefBuckets,
 		},
@@ -34,78 +36,6 @@ var (
 		prometheus.GaugeOpts{
 			Name: "cerebro_http_requests_in_flight",
 			Help: "Number of HTTP requests currently being processed",
-		},
-	)
-
-	scanAssetsTotal = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "cerebro_scan_assets_total",
-			Help: "Total number of assets scanned",
-		},
-		[]string{"table"},
-	)
-
-	scanFindingsTotal = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "cerebro_scan_findings_total",
-			Help: "Total number of findings from scans",
-		},
-		[]string{"severity", "policy"},
-	)
-
-	scanDuration = promauto.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "cerebro_scan_duration_seconds",
-			Help:    "Scan duration in seconds",
-			Buckets: []float64{0.1, 0.5, 1, 2, 5, 10, 30, 60, 120},
-		},
-		[]string{"table"},
-	)
-
-	policyEvaluationsTotal = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "cerebro_policy_evaluations_total",
-			Help: "Total number of policy evaluations",
-		},
-		[]string{"policy", "result"},
-	)
-
-	snowflakeQueriesTotal = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "cerebro_snowflake_queries_total",
-			Help: "Total number of Snowflake queries",
-		},
-		[]string{"status"},
-	)
-
-	snowflakeQueryDuration = promauto.NewHistogram(
-		prometheus.HistogramOpts{
-			Name:    "cerebro_snowflake_query_duration_seconds",
-			Help:    "Snowflake query duration in seconds",
-			Buckets: []float64{0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
-		},
-	)
-
-	findingsGauge = promauto.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "cerebro_findings_current",
-			Help: "Current number of findings by status and severity",
-		},
-		[]string{"status", "severity"},
-	)
-
-	webhookDeliveriesTotal = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "cerebro_webhook_deliveries_total",
-			Help: "Total number of webhook deliveries",
-		},
-		[]string{"event_type", "success"},
-	)
-
-	agentSessionsGauge = promauto.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "cerebro_agent_sessions_active",
-			Help: "Number of active agent sessions",
 		},
 	)
 )
@@ -157,8 +87,48 @@ func (rw *responseWriter) WriteHeader(code int) {
 	rw.ResponseWriter.WriteHeader(code)
 }
 
+func (rw *responseWriter) Flush() {
+	if flusher, ok := rw.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := rw.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, http.ErrNotSupported
+	}
+	return hijacker.Hijack()
+}
+
+func (rw *responseWriter) Push(target string, opts *http.PushOptions) error {
+	pusher, ok := rw.ResponseWriter.(http.Pusher)
+	if !ok {
+		return http.ErrNotSupported
+	}
+	return pusher.Push(target, opts)
+}
+
+func (rw *responseWriter) ReadFrom(src io.Reader) (int64, error) {
+	if readerFrom, ok := rw.ResponseWriter.(io.ReaderFrom); ok {
+		return readerFrom.ReadFrom(src)
+	}
+	return io.Copy(rw.ResponseWriter, src)
+}
+
 // normalizePath removes variable parts from paths for cardinality control
 func normalizePath(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "/"
+	}
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	if len(path) > 1 {
+		path = strings.TrimRight(path, "/")
+	}
+
 	switch {
 	case strings.HasPrefix(path, "/api/v1/assets/"):
 		return "/api/v1/assets/{table}"
@@ -166,60 +136,13 @@ func normalizePath(path string) string {
 		return "/api/v1/policies/{id}"
 	case strings.HasPrefix(path, "/api/v1/findings/"):
 		return "/api/v1/findings/{id}"
+	case strings.HasPrefix(path, "/api/v1/"):
+		parts := strings.Split(strings.Trim(path, "/"), "/")
+		if len(parts) >= 4 {
+			return "/" + strings.Join(parts[:3], "/") + "/{subpath}"
+		}
+		return path
 	default:
 		return path
 	}
-}
-
-// MetricsHandler returns the Prometheus metrics handler
-func MetricsHandler() http.Handler {
-	return promhttp.Handler()
-}
-
-// RecordScan records metrics for a scan operation
-func RecordScan(table string, assetsScanned int64, findingsBySeverity map[string]int64, duration time.Duration) {
-	scanAssetsTotal.WithLabelValues(table).Add(float64(assetsScanned))
-	scanDuration.WithLabelValues(table).Observe(duration.Seconds())
-
-	for severity, count := range findingsBySeverity {
-		scanFindingsTotal.WithLabelValues(severity, "").Add(float64(count))
-	}
-}
-
-// RecordPolicyEvaluation records a policy evaluation
-func RecordPolicyEvaluation(policyID string, violated bool) {
-	result := "pass"
-	if violated {
-		result = "fail"
-	}
-	policyEvaluationsTotal.WithLabelValues(policyID, result).Inc()
-}
-
-// RecordSnowflakeQuery records a Snowflake query
-func RecordSnowflakeQuery(success bool, duration time.Duration) {
-	status := "success"
-	if !success {
-		status = "error"
-	}
-	snowflakeQueriesTotal.WithLabelValues(status).Inc()
-	snowflakeQueryDuration.Observe(duration.Seconds())
-}
-
-// RecordWebhookDelivery records a webhook delivery
-func RecordWebhookDelivery(eventType string, success bool) {
-	webhookDeliveriesTotal.WithLabelValues(eventType, strconv.FormatBool(success)).Inc()
-}
-
-// UpdateFindingsGauge updates the findings gauge with current counts
-func UpdateFindingsGauge(bySeverityAndStatus map[string]map[string]int) {
-	for status, severities := range bySeverityAndStatus {
-		for severity, count := range severities {
-			findingsGauge.WithLabelValues(status, severity).Set(float64(count))
-		}
-	}
-}
-
-// SetActiveAgentSessions sets the number of active agent sessions
-func SetActiveAgentSessions(count int) {
-	agentSessionsGauge.Set(float64(count))
 }

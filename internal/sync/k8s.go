@@ -18,6 +18,7 @@ import (
 	"github.com/writer/cerebro/internal/metrics"
 	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/snowflake/tableops"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 // K8sEngineOption configures the Kubernetes sync engine.
@@ -25,7 +26,7 @@ type K8sEngineOption func(*K8sSyncEngine)
 
 // K8sSyncEngine syncs Kubernetes resources to Snowflake.
 type K8sSyncEngine struct {
-	sf          *snowflake.Client
+	sf          warehouse.SyncWarehouse
 	logger      *slog.Logger
 	concurrency int
 	kubeconfig  string
@@ -67,7 +68,7 @@ func WithK8sTableFilter(tables []string) K8sEngineOption {
 }
 
 // NewK8sSyncEngine creates a Kubernetes sync engine.
-func NewK8sSyncEngine(sf *snowflake.Client, logger *slog.Logger, opts ...K8sEngineOption) *K8sSyncEngine {
+func NewK8sSyncEngine(sf warehouse.SyncWarehouse, logger *slog.Logger, opts ...K8sEngineOption) *K8sSyncEngine {
 	e := &K8sSyncEngine{
 		sf:          sf,
 		logger:      logger,

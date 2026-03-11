@@ -40,6 +40,7 @@ import (
 type FindingStore interface {
 	Upsert(ctx context.Context, pf policy.Finding) *Finding
 	Get(id string) (*Finding, bool)
+	Update(id string, mutate func(*Finding) error) error
 	List(filter FindingFilter) []*Finding
 	Count(filter FindingFilter) int
 	Resolve(id string) bool
@@ -48,11 +49,26 @@ type FindingStore interface {
 	Sync(ctx context.Context) error // Sync to persistent storage
 }
 
+const (
+	SignalTypeSecurity    = "security"
+	SignalTypeBusiness    = "business"
+	SignalTypeOperational = "operational"
+	SignalTypeCompliance  = "compliance"
+
+	DomainInfra          = "infra"
+	DomainRevenue        = "revenue"
+	DomainCustomerHealth = "customer_health"
+	DomainPipeline       = "pipeline"
+	DomainSLA            = "sla"
+	DomainFinancial      = "financial"
+)
+
 type Finding struct {
 	// Core identification
 	ID        string `json:"id"`
 	IssueID   string `json:"issue_id,omitempty"`
 	ControlID string `json:"control_id,omitempty"` // Policy control ID
+	TenantID  string `json:"tenant_id,omitempty"`
 
 	// Policy info
 	PolicyID    string `json:"policy_id"`
@@ -60,6 +76,8 @@ type Finding struct {
 	Title       string `json:"title,omitempty"` // Human-readable issue title
 	Description string `json:"description"`
 	Severity    string `json:"severity"`
+	SignalType  string `json:"signal_type,omitempty"`
+	Domain      string `json:"domain,omitempty"`
 
 	// Status & lifecycle
 	Status          string     `json:"status"`                      // OPEN, RESOLVED, SUPPRESSED, IN_PROGRESS
@@ -67,6 +85,8 @@ type Finding struct {
 	ResolvedAt      *time.Time `json:"resolved_at,omitempty"`       // When resolved
 	DueAt           *time.Time `json:"due_at,omitempty"`            // Due date for remediation
 	StatusChangedAt *time.Time `json:"status_changed_at,omitempty"` // When status last changed
+	SnoozedUntil    *time.Time `json:"snoozed_until,omitempty"`
+	EscalationCount int        `json:"escalation_count,omitempty"`
 
 	// Timestamps
 	CreatedAt time.Time `json:"created_at,omitempty"` // When first created (alias for FirstSeen)
@@ -122,7 +142,14 @@ type Finding struct {
 	TicketNames       []string `json:"ticket_names,omitempty"`
 	TicketExternalIDs []string `json:"ticket_external_ids,omitempty"`
 	Notes             string   `json:"note,omitempty"`
+	EntityIDs         []string `json:"entity_ids,omitempty"`
+
+	// Cached raw resource JSON used by SnowflakeStore to avoid repeated marshalling.
+	resourceJSONRaw []byte `json:"-"`
 }
+
+// Signal is a backward-compatible alias for generalized findings.
+type Signal = Finding
 
 // Evidence stores proof data for a finding
 type Evidence struct {
@@ -202,6 +229,9 @@ func (s *Store) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 		if len(pf.Resource) > 0 {
 			existing.Resource = pf.Resource
 		}
+		if existing.TenantID == "" {
+			existing.TenantID = extractTenantID(pf.Resource)
+		}
 		if pf.ResourceID != "" {
 			existing.ResourceID = pf.ResourceID
 		}
@@ -234,11 +264,18 @@ func (s *Store) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 		if len(pf.MitreAttack) > 0 {
 			existing.MitreAttack = pf.MitreAttack
 		}
+		if existing.SignalType == "" {
+			existing.SignalType = SignalTypeSecurity
+		}
+		if existing.Domain == "" {
+			existing.Domain = inferDomain(existing.PolicyID, existing.ResourceType)
+		}
 
 		// Reopen resolved findings if they recur
-		if previousStatus == "RESOLVED" {
+		if previousStatus == "RESOLVED" || previousStatus == "SNOOZED" {
 			existing.Status = "OPEN"
 			existing.ResolvedAt = nil
+			existing.SnoozedUntil = nil
 			existing.StatusChangedAt = &now
 		}
 		EnrichFinding(existing)
@@ -262,6 +299,7 @@ func (s *Store) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 	if resourceName == "" {
 		resourceName = extractResourceName(pf.Resource)
 	}
+	tenantID := extractTenantID(pf.Resource)
 
 	// Extract frameworks and controls for the finding
 	frameworks := make([]string, 0, len(pf.Frameworks))
@@ -277,10 +315,13 @@ func (s *Store) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 		ID:                 pf.ID,
 		IssueID:            pf.ID, // Use same ID as issue ID for now
 		ControlID:          pf.ControlID,
+		TenantID:           tenantID,
 		PolicyID:           pf.PolicyID,
 		PolicyName:         pf.PolicyName,
 		Title:              pf.Title,
 		Severity:           pf.Severity,
+		SignalType:         SignalTypeSecurity,
+		Domain:             inferDomain(pf.PolicyID, resourceType),
 		Status:             "OPEN",
 		ResourceID:         resourceID,
 		ResourceName:       resourceName,
@@ -316,6 +357,34 @@ func normalizeStatus(status string) string {
 		return ""
 	}
 	return strings.ToUpper(strings.TrimSpace(status))
+}
+
+func inferDomain(policyID, resourceType string) string {
+	lookup := strings.ToLower(strings.TrimSpace(policyID + " " + resourceType))
+	switch {
+	case strings.Contains(lookup, "stripe"),
+		strings.Contains(lookup, "billing"),
+		strings.Contains(lookup, "invoice"),
+		strings.Contains(lookup, "refund"):
+		return DomainFinancial
+	case strings.Contains(lookup, "deal"),
+		strings.Contains(lookup, "opportunity"),
+		strings.Contains(lookup, "salesforce"),
+		strings.Contains(lookup, "hubspot"):
+		return DomainPipeline
+	case strings.Contains(lookup, "sla"),
+		strings.Contains(lookup, "ticket"),
+		strings.Contains(lookup, "zendesk"):
+		return DomainSLA
+	case strings.Contains(lookup, "customer"),
+		strings.Contains(lookup, "churn"),
+		strings.Contains(lookup, "health"):
+		return DomainCustomerHealth
+	case strings.Contains(lookup, "revenue"):
+		return DomainRevenue
+	default:
+		return DomainInfra
+	}
 }
 
 // extractResourceID tries multiple fields to find a suitable resource identifier
@@ -393,11 +462,45 @@ func extractResourceType(resource map[string]interface{}) string {
 	return ""
 }
 
+func extractTenantID(resource map[string]interface{}) string {
+	if len(resource) == 0 {
+		return ""
+	}
+	candidates := []string{"tenant_id", "tenantId", "tenant", "organization_id", "org_id"}
+	for _, key := range candidates {
+		if raw, ok := resource[key]; ok && raw != nil {
+			if value, ok := raw.(string); ok {
+				value = strings.TrimSpace(value)
+				if value != "" {
+					return value
+				}
+			}
+		}
+	}
+	return ""
+}
+
 func (s *Store) Get(id string) (*Finding, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	f, ok := s.findings[id]
 	return f, ok
+}
+
+func (s *Store) Update(id string, mutate func(*Finding) error) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	f, ok := s.findings[id]
+	if !ok {
+		return ErrIssueNotFound
+	}
+	if err := mutate(f); err != nil {
+		return err
+	}
+	f.Status = normalizeStatus(f.Status)
+	EnrichFinding(f)
+	return nil
 }
 
 func (s *Store) List(filter FindingFilter) []*Finding {
@@ -415,6 +518,15 @@ func (s *Store) List(filter FindingFilter) []*Finding {
 			continue
 		}
 		if filter.PolicyID != "" && f.PolicyID != filter.PolicyID {
+			continue
+		}
+		if filter.TenantID != "" && !strings.EqualFold(strings.TrimSpace(f.TenantID), strings.TrimSpace(filter.TenantID)) {
+			continue
+		}
+		if filter.SignalType != "" && !strings.EqualFold(f.SignalType, filter.SignalType) {
+			continue
+		}
+		if filter.Domain != "" && !strings.EqualFold(f.Domain, filter.Domain) {
 			continue
 		}
 		result = append(result, f)
@@ -452,6 +564,15 @@ func (s *Store) Count(filter FindingFilter) int {
 		if filter.PolicyID != "" && f.PolicyID != filter.PolicyID {
 			continue
 		}
+		if filter.TenantID != "" && !strings.EqualFold(strings.TrimSpace(f.TenantID), strings.TrimSpace(filter.TenantID)) {
+			continue
+		}
+		if filter.SignalType != "" && !strings.EqualFold(f.SignalType, filter.SignalType) {
+			continue
+		}
+		if filter.Domain != "" && !strings.EqualFold(f.Domain, filter.Domain) {
+			continue
+		}
 		count++
 	}
 	return count
@@ -468,6 +589,7 @@ func (s *Store) Resolve(id string) bool {
 	now := time.Now()
 	f.Status = "RESOLVED"
 	f.ResolvedAt = &now
+	f.SnoozedUntil = nil
 	f.StatusChangedAt = &now
 	f.UpdatedAt = now
 	return true
@@ -483,6 +605,7 @@ func (s *Store) Suppress(id string) bool {
 	}
 	now := time.Now()
 	f.Status = "SUPPRESSED"
+	f.SnoozedUntil = nil
 	f.StatusChangedAt = &now
 	f.UpdatedAt = now
 	return true
@@ -493,9 +616,11 @@ func (s *Store) Stats() Stats {
 	defer s.mu.RUnlock()
 
 	stats := Stats{
-		BySeverity: make(map[string]int),
-		ByStatus:   make(map[string]int),
-		ByPolicy:   make(map[string]int),
+		BySeverity:   make(map[string]int),
+		ByStatus:     make(map[string]int),
+		ByPolicy:     make(map[string]int),
+		BySignalType: make(map[string]int),
+		ByDomain:     make(map[string]int),
 	}
 
 	for _, f := range s.findings {
@@ -503,24 +628,39 @@ func (s *Store) Stats() Stats {
 		stats.BySeverity[f.Severity]++
 		stats.ByStatus[normalizeStatus(f.Status)]++
 		stats.ByPolicy[f.PolicyID]++
+		signalType := strings.ToLower(strings.TrimSpace(f.SignalType))
+		if signalType == "" {
+			signalType = SignalTypeSecurity
+		}
+		stats.BySignalType[signalType]++
+		domain := strings.ToLower(strings.TrimSpace(f.Domain))
+		if domain == "" {
+			domain = DomainInfra
+		}
+		stats.ByDomain[domain]++
 	}
 
 	return stats
 }
 
 type FindingFilter struct {
-	Severity string
-	Status   string
-	PolicyID string
-	Limit    int
-	Offset   int
+	Severity   string
+	Status     string
+	PolicyID   string
+	TenantID   string
+	SignalType string
+	Domain     string
+	Limit      int
+	Offset     int
 }
 
 type Stats struct {
-	Total      int            `json:"total"`
-	BySeverity map[string]int `json:"by_severity"`
-	ByStatus   map[string]int `json:"by_status"`
-	ByPolicy   map[string]int `json:"by_policy"`
+	Total        int            `json:"total"`
+	BySeverity   map[string]int `json:"by_severity"`
+	ByStatus     map[string]int `json:"by_status"`
+	ByPolicy     map[string]int `json:"by_policy"`
+	BySignalType map[string]int `json:"by_signal_type,omitempty"`
+	ByDomain     map[string]int `json:"by_domain,omitempty"`
 }
 
 // evictToCapacity removes findings until the store is within its configured

@@ -13,13 +13,14 @@ import (
 	"github.com/writer/cerebro/internal/metrics"
 	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/snowflake/tableops"
+	"github.com/writer/cerebro/internal/warehouse"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/time/rate"
 )
 
 // GCPSyncEngine orchestrates GCP resource syncing with change detection
 type GCPSyncEngine struct {
-	sf           *snowflake.Client
+	sf           warehouse.SyncWarehouse
 	logger       *slog.Logger
 	concurrency  int
 	projectID    string
@@ -58,7 +59,7 @@ func WithGCPIAMTargetGroups(groups []string) GCPEngineOption {
 	}
 }
 
-func NewGCPSyncEngine(sf *snowflake.Client, logger *slog.Logger, opts ...GCPEngineOption) *GCPSyncEngine {
+func NewGCPSyncEngine(sf warehouse.SyncWarehouse, logger *slog.Logger, opts ...GCPEngineOption) *GCPSyncEngine {
 	e := &GCPSyncEngine{
 		sf:                          sf,
 		logger:                      logger,

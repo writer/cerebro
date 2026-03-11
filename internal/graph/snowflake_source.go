@@ -5,16 +5,16 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 // SnowflakeSource adapts the Snowflake client to the DataSource interface
 type SnowflakeSource struct {
-	client *snowflake.Client
+	client warehouse.QueryWarehouse
 }
 
 // NewSnowflakeSource creates a new Snowflake data source
-func NewSnowflakeSource(client *snowflake.Client) *SnowflakeSource {
+func NewSnowflakeSource(client warehouse.QueryWarehouse) *SnowflakeSource {
 	return &SnowflakeSource{client: client}
 }
 

@@ -32,6 +32,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -83,6 +84,23 @@ type AssetLineage struct {
 	BuildTime   *time.Time `json:"build_time,omitempty"`
 	BuildActor  string     `json:"build_actor,omitempty"`
 
+	// Business provenance
+	LeadSource     string     `json:"lead_source,omitempty"`
+	DealID         string     `json:"deal_id,omitempty"`
+	SalesRep       string     `json:"sales_rep,omitempty"`
+	ContractID     string     `json:"contract_id,omitempty"`
+	SubscriptionID string     `json:"subscription_id,omitempty"`
+	TenantID       string     `json:"tenant_id,omitempty"`
+	OnboardedAt    *time.Time `json:"onboarded_at,omitempty"`
+
+	// Cross-system references
+	CRMEntityID     string `json:"crm_entity_id,omitempty"`
+	BillingEntityID string `json:"billing_entity_id,omitempty"`
+	SupportEntityID string `json:"support_entity_id,omitempty"`
+
+	// Business entity evolution chain
+	BusinessChain []BusinessLineageStep `json:"business_chain,omitempty"`
+
 	// Drift Detection
 	DriftDetected bool          `json:"drift_detected"`
 	DriftDetails  []DriftDetail `json:"drift_details,omitempty"`
@@ -90,6 +108,20 @@ type AssetLineage struct {
 
 	Metadata map[string]interface{} `json:"metadata,omitempty"`
 }
+
+// BusinessLineageStep describes a relationship transition in the business-to-infra chain.
+type BusinessLineageStep struct {
+	StepType  string     `json:"step_type"` // originated_from, provisioned_as
+	System    string     `json:"system"`
+	EntityID  string     `json:"entity_id"`
+	EntityRef string     `json:"entity_ref,omitempty"`
+	Timestamp *time.Time `json:"timestamp,omitempty"`
+}
+
+const (
+	BusinessLineageStepOriginatedFrom = "originated_from"
+	BusinessLineageStepProvisionedAs  = "provisioned_as"
+)
 
 // DriftDetail describes a specific configuration drift
 type DriftDetail struct {
@@ -393,6 +425,83 @@ func (m *LineageMapper) MapTerraformState(ctx context.Context, state map[string]
 	return lineages, nil
 }
 
+// MapBusinessEntity extracts business-to-infrastructure provenance from entity metadata.
+func (m *LineageMapper) MapBusinessEntity(ctx context.Context, entity map[string]interface{}) (*AssetLineage, error) {
+	_ = ctx
+
+	lineage := &AssetLineage{
+		AssetType:  firstNonEmpty(extractString(entity, "asset_type", "entity_type", "type", "kind"), "business_entity"),
+		Provider:   firstNonEmpty(extractString(entity, "provider", "system", "source", "platform"), "business"),
+		LastSynced: time.Now(),
+		Metadata:   make(map[string]interface{}, len(entity)),
+	}
+
+	for key, value := range entity {
+		lineage.Metadata[key] = value
+	}
+
+	lineage.AssetID = extractString(
+		entity,
+		"asset_id",
+		"entity_id",
+		"id",
+		"tenant_id",
+		"subscription_id",
+		"contract_id",
+		"deal_id",
+		"opportunity_id",
+		"customer_id",
+	)
+	if lineage.AssetID == "" {
+		return nil, fmt.Errorf("missing business entity identifier")
+	}
+
+	lineage.AssetName = firstNonEmpty(
+		extractString(entity, "asset_name", "entity_name", "name", "customer_name", "tenant_name"),
+		lineage.AssetID,
+	)
+	lineage.Region = extractString(entity, "region")
+	lineage.AccountID = extractString(entity, "account_id", "cloud_account_id")
+
+	lineage.LeadSource = extractString(entity, "lead_source", "leadSource", "source_channel", "utm_source")
+	lineage.DealID = extractString(entity, "deal_id", "dealId", "opportunity_id", "opportunityId")
+	lineage.SalesRep = extractString(entity, "sales_rep", "salesRep", "account_executive", "owner", "owner_name")
+	lineage.ContractID = extractString(entity, "contract_id", "contractId", "agreement_id", "agreementId")
+	lineage.SubscriptionID = extractString(entity, "subscription_id", "subscriptionId", "stripe_subscription_id")
+	lineage.TenantID = extractString(entity, "tenant_id", "tenantId")
+	lineage.OnboardedAt = extractTime(entity, "onboarded_at", "onboardedAt", "tenant_provisioned_at", "tenantProvisionedAt")
+
+	lineage.CRMEntityID = extractString(entity, "crm_entity_id", "crmEntityId", "hubspot_id", "salesforce_id")
+	lineage.BillingEntityID = extractString(
+		entity,
+		"billing_entity_id",
+		"billingEntityId",
+		"stripe_customer_id",
+		"stripeCustomerId",
+		"billing_customer_id",
+	)
+	lineage.SupportEntityID = extractString(entity, "support_entity_id", "supportEntityId", "zendesk_org_id", "support_org_id")
+
+	// Keep core source/build lineage fields when present so business entities can still
+	// be correlated with deployment lineage records.
+	lineage.Repository = extractString(entity, "repository")
+	lineage.Branch = extractString(entity, "branch")
+	lineage.CommitSHA = extractString(entity, "commit_sha", "commitSha")
+	lineage.ImageURI = extractString(entity, "image_uri", "imageUri")
+	lineage.ImageDigest = extractString(entity, "image_digest", "imageDigest")
+	lineage.PipelineID = extractString(entity, "pipeline_id", "pipelineId")
+	lineage.PipelineURL = extractString(entity, "pipeline_url", "pipelineUrl")
+	lineage.BuildID = extractString(entity, "build_id", "buildId")
+	lineage.IaCType = extractString(entity, "iac_type", "iacType")
+	lineage.IaCModule = extractString(entity, "iac_module", "iacModule")
+	lineage.IaCStateID = extractString(entity, "iac_state_id", "iacStateId")
+
+	lineage.BusinessChain = buildBusinessChain(entity, lineage)
+	m.assets[lineage.AssetID] = lineage
+
+	return lineage, nil
+}
+
 // DetectDrift compares runtime state with declared IaC state
 func (m *LineageMapper) DetectDrift(ctx context.Context, assetID string, currentState map[string]interface{}, iacState map[string]interface{}) []DriftDetail {
 	var drifts []DriftDetail
@@ -428,10 +537,86 @@ func (m *LineageMapper) DetectDrift(ctx context.Context, assetID string, current
 	return drifts
 }
 
+// DetectBusinessDrift compares expected business state with observed runtime state.
+func (m *LineageMapper) DetectBusinessDrift(ctx context.Context, assetID string, expectedState map[string]interface{}, runtimeState map[string]interface{}) []DriftDetail {
+	_ = ctx
+
+	var drifts []DriftDetail
+
+	// Contract terms vs actual billing.
+	contractPlan := strings.ToLower(extractString(expectedState, "contract_plan", "plan_tier", "contract_tier", "product_tier"))
+	billingPlan := strings.ToLower(extractString(runtimeState, "billing_plan", "subscription_plan", "plan_tier", "product_tier", "stripe_plan"))
+	if contractPlan != "" && billingPlan != "" && contractPlan != billingPlan {
+		drifts = append(drifts, DriftDetail{
+			Field:         "contract.billing.plan_tier",
+			ExpectedValue: contractPlan,
+			ActualValue:   billingPlan,
+			Source:        "contract_vs_billing",
+		})
+	}
+
+	contractAmount := extractValueString(expectedState, "contract_mrr", "contract_amount", "mrr")
+	billingAmount := extractValueString(runtimeState, "billing_mrr", "billing_amount", "mrr")
+	if contractAmount != "" && billingAmount != "" && contractAmount != billingAmount {
+		drifts = append(drifts, DriftDetail{
+			Field:         "contract.billing.amount",
+			ExpectedValue: contractAmount,
+			ActualValue:   billingAmount,
+			Source:        "contract_vs_billing",
+		})
+	}
+
+	// CRM stage vs product usage.
+	crmStage := strings.ToLower(extractString(expectedState, "crm_stage", "deal_stage", "opportunity_stage", "stage"))
+	usageState := strings.ToLower(extractString(runtimeState, "usage_state", "product_usage", "engagement_state", "tenant_usage"))
+	if crmStage != "" && usageState != "" {
+		stageActive := stageImpliesActive(crmStage)
+		usageActive := usageImpliesActive(usageState)
+		if stageActive != usageActive {
+			drifts = append(drifts, DriftDetail{
+				Field:         "crm.stage_vs_usage",
+				ExpectedValue: crmStage,
+				ActualValue:   usageState,
+				Source:        "crm_vs_usage",
+			})
+		}
+	}
+
+	// Promised SLA tier vs configured support priority.
+	slaTier := strings.ToLower(extractString(expectedState, "sla_tier", "contract_sla_tier", "support_plan"))
+	supportPriority := normalizeSupportPriority(extractString(runtimeState, "support_priority", "zendesk_priority", "ticket_priority"))
+	requiredPriority := requiredSupportPriorityForSLA(slaTier)
+	if requiredPriority != "" && supportPriority != "" && priorityRank(supportPriority) > priorityRank(requiredPriority) {
+		drifts = append(drifts, DriftDetail{
+			Field:         "sla.support.priority",
+			ExpectedValue: requiredPriority,
+			ActualValue:   supportPriority,
+			Source:        "sla_vs_support",
+		})
+	}
+
+	if asset, ok := m.GetLineage(assetID); ok {
+		asset.DriftDetected = len(drifts) > 0
+		asset.DriftDetails = drifts
+	}
+
+	return drifts
+}
+
 // GetLineage returns lineage for an asset
 func (m *LineageMapper) GetLineage(assetID string) (*AssetLineage, bool) {
-	lineage, ok := m.assets[assetID]
-	return lineage, ok
+	if lineage, ok := m.assets[assetID]; ok {
+		return lineage, true
+	}
+
+	// Support lookups by raw entity IDs (deal, contract, subscription, tenant, etc.)
+	// so `/api/v1/lineage/{entity_id}` can resolve business provenance chains.
+	for _, lineage := range m.assets {
+		if matchesLineageEntity(lineage, assetID) {
+			return lineage, true
+		}
+	}
+	return nil, false
 }
 
 // GetLineageByCommit returns all assets deployed from a specific commit
@@ -519,6 +704,240 @@ func extractString(m map[string]interface{}, keys ...string) string {
 		}
 	}
 	return ""
+}
+
+func extractValueString(m map[string]interface{}, keys ...string) string {
+	for _, key := range keys {
+		raw, ok := m[key]
+		if !ok || raw == nil {
+			continue
+		}
+		switch v := raw.(type) {
+		case string:
+			if strings.TrimSpace(v) != "" {
+				return strings.TrimSpace(v)
+			}
+		case fmt.Stringer:
+			out := strings.TrimSpace(v.String())
+			if out != "" {
+				return out
+			}
+		default:
+			return fmt.Sprintf("%v", v)
+		}
+	}
+	return ""
+}
+
+func extractTime(m map[string]interface{}, keys ...string) *time.Time {
+	for _, key := range keys {
+		raw, ok := m[key]
+		if !ok || raw == nil {
+			continue
+		}
+		if ts := parseTime(raw); ts != nil {
+			return ts
+		}
+	}
+	return nil
+}
+
+func parseTime(raw interface{}) *time.Time {
+	switch v := raw.(type) {
+	case time.Time:
+		t := v.UTC()
+		return &t
+	case *time.Time:
+		if v == nil {
+			return nil
+		}
+		t := v.UTC()
+		return &t
+	case int64:
+		t := time.Unix(v, 0).UTC()
+		return &t
+	case int:
+		t := time.Unix(int64(v), 0).UTC()
+		return &t
+	case float64:
+		t := time.Unix(int64(v), 0).UTC()
+		return &t
+	case string:
+		s := strings.TrimSpace(v)
+		if s == "" {
+			return nil
+		}
+		if unix, err := strconv.ParseInt(s, 10, 64); err == nil {
+			t := time.Unix(unix, 0).UTC()
+			return &t
+		}
+		layouts := []string{
+			time.RFC3339Nano,
+			time.RFC3339,
+			"2006-01-02 15:04:05",
+			"2006-01-02",
+		}
+		for _, layout := range layouts {
+			if parsed, err := time.Parse(layout, s); err == nil {
+				t := parsed.UTC()
+				return &t
+			}
+		}
+	}
+	return nil
+}
+
+func buildBusinessChain(entity map[string]interface{}, lineage *AssetLineage) []BusinessLineageStep {
+	var chain []BusinessLineageStep
+	add := func(stepType, system, entityID, entityRef string, ts *time.Time) {
+		if entityID == "" {
+			return
+		}
+		chain = append(chain, BusinessLineageStep{
+			StepType:  stepType,
+			System:    system,
+			EntityID:  entityID,
+			EntityRef: entityRef,
+			Timestamp: ts,
+		})
+	}
+
+	crmSystem := firstNonEmpty(extractString(entity, "crm_system"), "crm")
+	billingSystem := firstNonEmpty(extractString(entity, "billing_system"), "billing")
+	supportSystem := firstNonEmpty(extractString(entity, "support_system"), "support")
+	appSystem := firstNonEmpty(extractString(entity, "tenant_system"), "application")
+	cloudSystem := firstNonEmpty(extractString(entity, "cloud_provider"), "cloud")
+
+	leadID := extractString(entity, "lead_id", "leadId")
+	contactID := extractString(entity, "contact_id", "contactId")
+	dealID := firstNonEmpty(lineage.DealID, extractString(entity, "opportunity_id", "opportunityId"))
+	contractID := lineage.ContractID
+	customerID := firstNonEmpty(lineage.BillingEntityID, extractString(entity, "customer_id"))
+	subscriptionID := lineage.SubscriptionID
+	tenantID := lineage.TenantID
+	namespace := extractString(entity, "k8s_namespace", "namespace")
+	infraID := extractString(entity, "infrastructure_id", "cloud_resource_id", "resource_id")
+
+	add(BusinessLineageStepOriginatedFrom, crmSystem, firstNonEmpty(leadID, lineage.LeadSource), lineage.LeadSource, extractTime(entity, "lead_created_at", "leadCreatedAt"))
+	add(BusinessLineageStepOriginatedFrom, crmSystem, contactID, "", extractTime(entity, "contact_created_at", "contactCreatedAt"))
+	add(BusinessLineageStepOriginatedFrom, crmSystem, dealID, "", extractTime(entity, "deal_closed_at", "dealClosedAt", "closed_won_at", "closedWonAt"))
+	add(BusinessLineageStepProvisionedAs, crmSystem, contractID, "", extractTime(entity, "contract_signed_at", "contractSignedAt"))
+	add(BusinessLineageStepProvisionedAs, billingSystem, customerID, "", extractTime(entity, "customer_created_at", "customerCreatedAt"))
+	add(BusinessLineageStepProvisionedAs, billingSystem, subscriptionID, "", extractTime(entity, "subscription_started_at", "subscriptionStartedAt", "subscription_created_at", "subscriptionCreatedAt"))
+	add(BusinessLineageStepProvisionedAs, appSystem, tenantID, "", firstNonEmptyTime(lineage.OnboardedAt, extractTime(entity, "tenant_provisioned_at", "tenantProvisionedAt")))
+	add(BusinessLineageStepProvisionedAs, "kubernetes", namespace, "", extractTime(entity, "k8s_provisioned_at", "k8sProvisionedAt"))
+	add(BusinessLineageStepProvisionedAs, cloudSystem, infraID, "", extractTime(entity, "infra_deployed_at", "infraDeployedAt", "deployed_at", "deployedAt"))
+	add(BusinessLineageStepProvisionedAs, supportSystem, lineage.SupportEntityID, "", extractTime(entity, "support_onboarded_at", "supportOnboardedAt"))
+
+	return chain
+}
+
+func matchesLineageEntity(lineage *AssetLineage, entityID string) bool {
+	if lineage == nil || entityID == "" {
+		return false
+	}
+
+	candidates := []string{
+		lineage.AssetID,
+		lineage.DealID,
+		lineage.ContractID,
+		lineage.SubscriptionID,
+		lineage.TenantID,
+		lineage.CRMEntityID,
+		lineage.BillingEntityID,
+		lineage.SupportEntityID,
+	}
+	for _, candidate := range candidates {
+		if candidate != "" && strings.EqualFold(candidate, entityID) {
+			return true
+		}
+	}
+	for _, step := range lineage.BusinessChain {
+		if step.EntityID != "" && strings.EqualFold(step.EntityID, entityID) {
+			return true
+		}
+	}
+	return false
+}
+
+func stageImpliesActive(stage string) bool {
+	stage = strings.ToLower(stage)
+	return strings.Contains(stage, "closed_won") ||
+		strings.Contains(stage, "customer") ||
+		strings.Contains(stage, "active")
+}
+
+func usageImpliesActive(usage string) bool {
+	usage = strings.ToLower(usage)
+	return strings.Contains(usage, "active") ||
+		strings.Contains(usage, "engaged") ||
+		strings.Contains(usage, "adopted") ||
+		strings.Contains(usage, "production")
+}
+
+func normalizeSupportPriority(priority string) string {
+	p := strings.ToLower(strings.TrimSpace(priority))
+	switch p {
+	case "urgent", "critical", "p0", "p1", "1", "sev1", "high":
+		return "p1"
+	case "p2", "2", "sev2", "medium":
+		return "p2"
+	case "p3", "3", "sev3", "normal", "low":
+		return "p3"
+	case "p4", "4", "sev4":
+		return "p4"
+	default:
+		return p
+	}
+}
+
+func requiredSupportPriorityForSLA(tier string) string {
+	tier = strings.ToLower(strings.TrimSpace(tier))
+	switch tier {
+	case "enterprise", "platinum", "premium":
+		return "p1"
+	case "business", "gold":
+		return "p2"
+	case "pro", "silver":
+		return "p3"
+	case "starter", "basic", "bronze":
+		return "p4"
+	default:
+		return ""
+	}
+}
+
+func priorityRank(priority string) int {
+	switch normalizeSupportPriority(priority) {
+	case "p1":
+		return 1
+	case "p2":
+		return 2
+	case "p3":
+		return 3
+	case "p4":
+		return 4
+	default:
+		return 99
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
+}
+
+func firstNonEmptyTime(values ...*time.Time) *time.Time {
+	for _, v := range values {
+		if v != nil {
+			return v
+		}
+	}
+	return nil
 }
 
 // ImageDigestPattern matches container image digests

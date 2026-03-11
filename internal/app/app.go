@@ -30,23 +30,30 @@
 //
 // The New() function initializes all services based on environment configuration.
 // Services gracefully handle missing configuration (e.g., no Snowflake connection).
+//
+//go:generate sh -c "cd ../.. && go run ./scripts/generate_config_docs/main.go"
 package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
-	"os"
-	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/writer/cerebro/internal/agents"
+	"github.com/writer/cerebro/internal/apiauth"
 	"github.com/writer/cerebro/internal/attackpath"
 	"github.com/writer/cerebro/internal/auth"
 	"github.com/writer/cerebro/internal/cache"
 	"github.com/writer/cerebro/internal/compliance"
+	"github.com/writer/cerebro/internal/dspm"
+	"github.com/writer/cerebro/internal/events"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graph"
+	"github.com/writer/cerebro/internal/graphingest"
 	"github.com/writer/cerebro/internal/health"
 	"github.com/writer/cerebro/internal/identity"
 	"github.com/writer/cerebro/internal/lineage"
@@ -60,10 +67,16 @@ import (
 	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/threatintel"
 	"github.com/writer/cerebro/internal/ticketing"
+	"github.com/writer/cerebro/internal/warehouse"
 	"github.com/writer/cerebro/internal/webhooks"
-
-	"golang.org/x/sync/errgroup"
 )
+
+type retentionCleaner interface {
+	CleanupAuditLogs(ctx context.Context, olderThan time.Time) (int64, error)
+	CleanupAgentData(ctx context.Context, olderThan time.Time) (sessionsDeleted, messagesDeleted int64, err error)
+	CleanupGraphData(ctx context.Context, olderThan time.Time) (pathsDeleted, edgesDeleted, nodesDeleted int64, err error)
+	CleanupAccessReviewData(ctx context.Context, olderThan time.Time) (reviewsDeleted, itemsDeleted int64, err error)
+}
 
 // App is the main application container that holds references to all initialized
 // services. Create a new App using the New() function which handles all service
@@ -77,25 +90,35 @@ type App struct {
 
 	// Core services
 	Snowflake *snowflake.Client
+	Warehouse warehouse.DataWarehouse
 	Policy    *policy.Engine
 	Findings  findings.FindingStore
 	Scanner   *scanner.Scanner
+	DSPM      *dspm.Scanner
 	Cache     *cache.PolicyCache
 
 	// Feature services
-	Agents        *agents.AgentRegistry
-	Ticketing     *ticketing.Service
-	Identity      *identity.Service
-	AttackPath    *attackpath.Graph
-	Providers     *providers.Registry
-	Webhooks      *webhooks.Service
-	Notifications *notifications.Manager
-	Scheduler     *scheduler.Scheduler
+	Agents         *agents.AgentRegistry
+	Ticketing      *ticketing.Service
+	Identity       *identity.Service
+	AttackPath     *attackpath.Graph
+	Providers      *providers.Registry
+	Webhooks       *webhooks.Service
+	TapConsumer    *events.Consumer
+	AlertRouter    *events.AlertRouter
+	TapEventMapper *graphingest.Mapper
+	RemoteTools    *agents.RemoteToolProvider
+	ToolPublisher  *agents.ToolPublisher
+	Notifications  *notifications.Manager
+	Scheduler      *scheduler.Scheduler
 
 	// Repositories (for Snowflake persistence)
-	FindingsRepo *snowflake.FindingRepository
-	TicketsRepo  *snowflake.TicketRepository
-	AuditRepo    *snowflake.AuditRepository
+	FindingsRepo        *snowflake.FindingRepository
+	TicketsRepo         *snowflake.TicketRepository
+	AuditRepo           *snowflake.AuditRepository
+	PolicyHistoryRepo   *snowflake.PolicyHistoryRepository
+	RiskEngineStateRepo *snowflake.RiskEngineStateRepository
+	RetentionRepo       retentionCleaner
 
 	// Snowflake-backed stores (when available)
 	SnowflakeFindings *findings.SnowflakeStore
@@ -115,653 +138,109 @@ type App struct {
 	RuntimeRespond      *runtime.ResponseEngine
 
 	// Security Graph
-	SecurityGraph        *graph.Graph
-	SecurityGraphBuilder *graph.Builder
-	graphReady           chan struct{} // closed when initial graph build completes
-	graphCancel          context.CancelFunc
+	SecurityGraph         *graph.Graph
+	SecurityGraphBuilder  *graph.Builder
+	Propagation           *graph.PropagationEngine
+	graphReady            chan struct{} // closed when initial graph build completes
+	graphCancel           context.CancelFunc
+	graphBuildMu          sync.RWMutex
+	graphBuildState       GraphBuildState
+	graphBuildLastAt      time.Time
+	graphBuildErr         string
+	threatIntelSyncCancel context.CancelFunc
+	threatIntelSyncWG     sync.WaitGroup
+	traceShutdown         func(context.Context) error
+	secretsReloadCancel   context.CancelFunc
+	secretsReloadWG       sync.WaitGroup
+	tapMapperOnce         sync.Once
+	tapMapperErr          error
+	securityGraphInitMu   sync.RWMutex
+	reloadMu              sync.Mutex
+	apiKeys               atomic.Value // map[string]string
+	apiCredentials        atomic.Value // map[string]apiauth.Credential
+	apiCredentialStore    *apiauth.ManagedCredentialStore
+	secretsLoader         secretsLoader
 
 	// Cached table list from Snowflake (shared by graph builder + policy coverage)
 	AvailableTables []string
 }
 
-// Config holds all application configuration
-type Config struct {
-	// Server
-	Port     int
-	LogLevel string
-
-	// Snowflake (key-pair auth only)
-	SnowflakeAccount    string
-	SnowflakeUser       string
-	SnowflakePrivateKey string
-	SnowflakeDatabase   string
-	SnowflakeSchema     string
-	SnowflakeWarehouse  string
-	SnowflakeRole       string
-
-	// Policies
-	PoliciesPath string
-
-	// LLM Providers
-	AnthropicAPIKey string
-	OpenAIAPIKey    string
-
-	// Ticketing
-	JiraBaseURL  string
-	JiraEmail    string
-	JiraAPIToken string
-	JiraProject  string
-	LinearAPIKey string
-	LinearTeamID string
-
-	// Custom Providers
-	CrowdStrikeClientID     string
-	CrowdStrikeClientSecret string
-	OktaDomain              string
-	OktaAPIToken            string
-
-	// Entra ID Provider
-	EntraTenantID     string
-	EntraClientID     string
-	EntraClientSecret string
-
-	// Azure Provider
-	AzureTenantID       string
-	AzureClientID       string
-	AzureClientSecret   string
-	AzureSubscriptionID string
-
-	// Snyk Provider
-	SnykAPIToken string
-	SnykOrgID    string
-
-	// Zoom Provider
-	ZoomAccountID    string
-	ZoomClientID     string
-	ZoomClientSecret string
-	ZoomAPIURL       string
-	ZoomTokenURL     string
-
-	// Wiz Provider
-	WizClientID     string
-	WizClientSecret string
-	WizAPIURL       string
-	WizTokenURL     string
-	WizAudience     string
-
-	// Datadog Provider
-	DatadogAPIKey string
-	DatadogAppKey string
-	DatadogSite   string
-
-	// GitHub Provider
-	GitHubToken string
-	GitHubOrg   string
-
-	// Figma Provider
-	FigmaAPIToken string
-	FigmaTeamID   string
-	FigmaBaseURL  string
-
-	// Socket Provider
-	SocketAPIToken string
-	SocketOrgSlug  string
-	SocketAPIURL   string
-
-	// Ramp Provider
-	RampClientID     string
-	RampClientSecret string
-	RampAPIURL       string
-	RampTokenURL     string
-
-	// Gong Provider
-	GongAccessKey    string
-	GongAccessSecret string
-	GongBaseURL      string
-
-	// Vanta Provider
-	VantaAPIToken string
-	VantaBaseURL  string
-
-	// Panther Provider
-	PantherAPIToken string
-	PantherBaseURL  string
-
-	// Kolide Provider
-	KolideAPIToken string
-	KolideBaseURL  string
-
-	// Google Workspace Provider
-	GoogleWorkspaceDomain            string
-	GoogleWorkspaceAdminEmail        string
-	GoogleWorkspaceImpersonatorEmail string
-	GoogleWorkspaceCredentialsFile   string
-	GoogleWorkspaceCredentialsJSON   string
-
-	// Tailscale Provider
-	TailscaleAPIKey  string
-	TailscaleTailnet string
-
-	// SentinelOne Provider
-	SentinelOneAPIToken string
-	SentinelOneBaseURL  string
-
-	// Tenable Provider
-	TenableAccessKey string
-	TenableSecretKey string
-
-	// Qualys Provider
-	QualysUsername string
-	QualysPassword string
-	QualysPlatform string
-
-	// Semgrep Provider
-	SemgrepAPIToken string
-
-	// ServiceNow Provider
-	ServiceNowURL      string
-	ServiceNowAPIToken string
-	ServiceNowUsername string
-	ServiceNowPassword string
-
-	// Workday Provider
-	WorkdayURL      string
-	WorkdayAPIToken string
-
-	// BambooHR Provider
-	BambooHRURL      string
-	BambooHRAPIToken string
-
-	// OneLogin Provider
-	OneLoginURL          string
-	OneLoginClientID     string
-	OneLoginClientSecret string
-
-	// JumpCloud Provider
-	JumpCloudURL      string
-	JumpCloudAPIToken string
-	JumpCloudOrgID    string
-
-	// Duo Provider
-	DuoURL            string
-	DuoIntegrationKey string
-	DuoSecretKey      string
-
-	// PingIdentity Provider
-	PingIdentityEnvironmentID string
-	PingIdentityClientID      string
-	PingIdentityClientSecret  string
-	PingIdentityAPIURL        string
-	PingIdentityAuthURL       string
-
-	// CyberArk Provider
-	CyberArkURL      string
-	CyberArkAPIToken string
-
-	// SailPoint Provider
-	SailPointURL      string
-	SailPointAPIToken string
-
-	// Saviynt Provider
-	SaviyntURL      string
-	SaviyntAPIToken string
-
-	// ForgeRock Provider
-	ForgeRockURL      string
-	ForgeRockAPIToken string
-
-	// Oracle IDCS Provider
-	OracleIDCSURL      string
-	OracleIDCSAPIToken string
-
-	// GitLab Provider
-	GitLabToken   string
-	GitLabBaseURL string
-
-	// Terraform Cloud Provider
-	TerraformCloudToken string
-
-	// Splunk Provider
-	SplunkURL   string
-	SplunkToken string
-
-	// Auth0 Provider
-	Auth0Domain       string
-	Auth0ClientID     string
-	Auth0ClientSecret string
-
-	// Cloudflare Provider
-	CloudflareAPIToken string
-
-	// Salesforce Provider
-	SalesforceInstanceURL   string
-	SalesforceClientID      string
-	SalesforceClientSecret  string
-	SalesforceUsername      string
-	SalesforcePassword      string
-	SalesforceSecurityToken string
-
-	// Vault Provider
-	VaultAddress   string
-	VaultToken     string
-	VaultNamespace string
-
-	// Slack Provider (data source sync)
-	SlackAPIToken string
-
-	// Rippling Provider
-	RipplingAPIURL   string
-	RipplingAPIToken string
-
-	// Jamf Provider
-	JamfBaseURL      string
-	JamfClientID     string
-	JamfClientSecret string
-
-	// Intune Provider
-	IntuneTenantID     string
-	IntuneClientID     string
-	IntuneClientSecret string
-
-	// Kandji Provider
-	KandjiAPIURL   string
-	KandjiAPIToken string
-
-	// S3 Input Provider (legacy single-source)
-	S3InputBucket     string
-	S3InputPrefix     string
-	S3InputRegion     string
-	S3InputFormat     string
-	S3InputMaxObjects int
-
-	// S3 Named Sources (multi-source)
-	S3Sources []providers.S3SourceConfig
-
-	// CloudTrail Provider
-	CloudTrailRegion       string
-	CloudTrailTrailARN     string
-	CloudTrailLookbackDays int
-
-	// Webhooks
-	WebhookURLs []string
-
-	// NATS JetStream event publishing
-	NATSJetStreamEnabled               bool
-	NATSJetStreamURLs                  []string
-	NATSJetStreamStream                string
-	NATSJetStreamSubjectPrefix         string
-	NATSJetStreamSource                string
-	NATSJetStreamOutboxPath            string
-	NATSJetStreamOutboxDLQPath         string
-	NATSJetStreamOutboxMaxAge          time.Duration
-	NATSJetStreamOutboxMaxItems        int
-	NATSJetStreamOutboxMaxRetry        int
-	NATSJetStreamOutboxWarnPercent     int
-	NATSJetStreamOutboxCriticalPercent int
-	NATSJetStreamOutboxWarnAge         time.Duration
-	NATSJetStreamOutboxCriticalAge     time.Duration
-	NATSJetStreamPublishTimeout        time.Duration
-	NATSJetStreamRetryAttempts         int
-	NATSJetStreamRetryBackoff          time.Duration
-	NATSJetStreamFlushInterval         time.Duration
-	NATSJetStreamConnectTimeout        time.Duration
-	NATSJetStreamAuthMode              string
-	NATSJetStreamUsername              string
-	NATSJetStreamPassword              string
-	NATSJetStreamNKeySeed              string
-	NATSJetStreamUserJWT               string
-	NATSJetStreamTLSEnabled            bool
-	NATSJetStreamTLSCAFile             string
-	NATSJetStreamTLSCertFile           string
-	NATSJetStreamTLSKeyFile            string
-	NATSJetStreamTLSServerName         string
-	NATSJetStreamTLSInsecure           bool
-
-	// Notifications
-	SlackWebhookURL    string
-	SlackSigningSecret string
-	PagerDutyKey       string
-
-	// Scheduler
-	ScanInterval            string // e.g., "1h", "30m"
-	ScanTables              string // comma-separated list of tables to scan
-	ScanTableTimeout        time.Duration
-	ScanMaxConcurrent       int
-	ScanMinConcurrent       int
-	ScanAdaptiveConcurrency bool
-	ScanRetryAttempts       int
-	ScanRetryBackoff        time.Duration
-	ScanRetryMaxBackoff     time.Duration
-
-	// Finding attestation chain
-	FindingAttestationEnabled          bool
-	FindingAttestationSigningKey       string
-	FindingAttestationKeyID            string
-	FindingAttestationLogURL           string
-	FindingAttestationTimeout          time.Duration
-	FindingAttestationAttestReobserved bool
-
-	// Distributed jobs
-	JobQueueURL          string
-	JobTableName         string
-	JobRegion            string
-	JobWorkerConcurrency int
-	JobVisibilityTimeout time.Duration
-	JobPollWait          time.Duration
-	JobMaxAttempts       int
-
-	// Rate Limiting
-	RateLimitEnabled   bool
-	RateLimitRequests  int
-	RateLimitWindow    time.Duration
-	CORSAllowedOrigins []string
-
-	// API Authentication
-	APIAuthEnabled bool
-	APIKeys        map[string]string
-	RBACStateFile  string
-
-	// Nested provider-aware view (derived from flat env-backed fields)
-	Providers ProviderAwareConfig
-}
-
-func LoadConfig() *Config {
-	apiKeys := parseAPIKeys(getEnv("API_KEYS", ""))
-	apiAuthEnabled := getEnvBool("API_AUTH_ENABLED", len(apiKeys) > 0)
-
-	cfg := &Config{
-		Port:                               getEnvInt("API_PORT", 8080),
-		LogLevel:                           getEnv("LOG_LEVEL", "info"),
-		SnowflakeAccount:                   getEnv("SNOWFLAKE_ACCOUNT", ""),
-		SnowflakeUser:                      getEnv("SNOWFLAKE_USER", ""),
-		SnowflakePrivateKey:                normalizePrivateKey(getEnv("SNOWFLAKE_PRIVATE_KEY", "")),
-		SnowflakeDatabase:                  getEnv("SNOWFLAKE_DATABASE", "CEREBRO"),
-		SnowflakeSchema:                    getEnv("SNOWFLAKE_SCHEMA", "CEREBRO"),
-		SnowflakeWarehouse:                 getEnv("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH"),
-		SnowflakeRole:                      getEnv("SNOWFLAKE_ROLE", ""),
-		PoliciesPath:                       getEnv("POLICIES_PATH", "policies"),
-		AnthropicAPIKey:                    getEnv("ANTHROPIC_API_KEY", ""),
-		OpenAIAPIKey:                       getEnv("OPENAI_API_KEY", ""),
-		JiraBaseURL:                        getEnv("JIRA_BASE_URL", ""),
-		JiraEmail:                          getEnv("JIRA_EMAIL", ""),
-		JiraAPIToken:                       getEnv("JIRA_API_TOKEN", ""),
-		JiraProject:                        getEnv("JIRA_PROJECT", "SEC"),
-		LinearAPIKey:                       getEnv("LINEAR_API_KEY", ""),
-		LinearTeamID:                       getEnv("LINEAR_TEAM_ID", ""),
-		CrowdStrikeClientID:                getEnv("CROWDSTRIKE_CLIENT_ID", ""),
-		CrowdStrikeClientSecret:            getEnv("CROWDSTRIKE_CLIENT_SECRET", ""),
-		OktaDomain:                         getEnv("OKTA_DOMAIN", ""),
-		OktaAPIToken:                       getEnv("OKTA_API_TOKEN", ""),
-		EntraTenantID:                      getEnv("ENTRA_TENANT_ID", ""),
-		EntraClientID:                      getEnv("ENTRA_CLIENT_ID", ""),
-		EntraClientSecret:                  getEnv("ENTRA_CLIENT_SECRET", ""),
-		AzureTenantID:                      getEnv("AZURE_TENANT_ID", ""),
-		AzureClientID:                      getEnv("AZURE_CLIENT_ID", ""),
-		AzureClientSecret:                  getEnv("AZURE_CLIENT_SECRET", ""),
-		AzureSubscriptionID:                getEnv("AZURE_SUBSCRIPTION_ID", ""),
-		SnykAPIToken:                       getEnv("SNYK_API_TOKEN", ""),
-		SnykOrgID:                          getEnv("SNYK_ORG_ID", ""),
-		ZoomAccountID:                      getEnv("ZOOM_ACCOUNT_ID", ""),
-		ZoomClientID:                       getEnv("ZOOM_CLIENT_ID", ""),
-		ZoomClientSecret:                   getEnv("ZOOM_CLIENT_SECRET", ""),
-		ZoomAPIURL:                         getEnv("ZOOM_API_URL", "https://api.zoom.us/v2"),
-		ZoomTokenURL:                       getEnv("ZOOM_TOKEN_URL", "https://zoom.us/oauth/token"),
-		WizClientID:                        getEnv("WIZ_CLIENT_ID", ""),
-		WizClientSecret:                    getEnv("WIZ_CLIENT_SECRET", ""),
-		WizAPIURL:                          getEnv("WIZ_API_URL", ""),
-		WizTokenURL:                        getEnv("WIZ_TOKEN_URL", "https://auth.app.wiz.io/oauth/token"),
-		WizAudience:                        getEnv("WIZ_AUDIENCE", "wiz-api"),
-		DatadogAPIKey:                      getEnv("DATADOG_API_KEY", ""),
-		DatadogAppKey:                      getEnv("DATADOG_APP_KEY", ""),
-		DatadogSite:                        getEnv("DATADOG_SITE", "datadoghq.com"),
-		GitHubToken:                        getEnv("GITHUB_TOKEN", ""),
-		GitHubOrg:                          getEnv("GITHUB_ORG", ""),
-		FigmaAPIToken:                      getEnv("FIGMA_API_TOKEN", ""),
-		FigmaTeamID:                        getEnv("FIGMA_TEAM_ID", ""),
-		FigmaBaseURL:                       getEnv("FIGMA_BASE_URL", "https://api.figma.com"),
-		SocketAPIToken:                     getEnv("SOCKET_API_TOKEN", ""),
-		SocketOrgSlug:                      getEnv("SOCKET_ORG", ""),
-		SocketAPIURL:                       getEnv("SOCKET_API_URL", "https://api.socket.dev/v0"),
-		RampClientID:                       getEnv("RAMP_CLIENT_ID", ""),
-		RampClientSecret:                   getEnv("RAMP_CLIENT_SECRET", ""),
-		RampAPIURL:                         getEnv("RAMP_API_URL", "https://api.ramp.com/developer/v1"),
-		RampTokenURL:                       getEnv("RAMP_TOKEN_URL", "https://api.ramp.com/developer/v1/token"),
-		GongAccessKey:                      getEnv("GONG_ACCESS_KEY", ""),
-		GongAccessSecret:                   getEnv("GONG_ACCESS_SECRET", ""),
-		GongBaseURL:                        getEnv("GONG_BASE_URL", "https://api.gong.io"),
-		VantaAPIToken:                      getEnv("VANTA_API_TOKEN", ""),
-		VantaBaseURL:                       getEnv("VANTA_BASE_URL", "https://api.vanta.com"),
-		PantherAPIToken:                    getEnv("PANTHER_API_TOKEN", ""),
-		PantherBaseURL:                     getEnv("PANTHER_BASE_URL", "https://api.runpanther.io/public_api/v1"),
-		KolideAPIToken:                     getEnv("KOLIDE_API_TOKEN", ""),
-		KolideBaseURL:                      getEnv("KOLIDE_BASE_URL", "https://api.kolide.com/v1"),
-		GoogleWorkspaceDomain:              getEnv("GOOGLE_WORKSPACE_DOMAIN", ""),
-		GoogleWorkspaceAdminEmail:          getEnv("GOOGLE_WORKSPACE_ADMIN_EMAIL", ""),
-		GoogleWorkspaceImpersonatorEmail:   getEnv("GOOGLE_WORKSPACE_IMPERSONATOR_EMAIL", ""),
-		GoogleWorkspaceCredentialsFile:     getEnv("GOOGLE_WORKSPACE_CREDENTIALS_FILE", ""),
-		GoogleWorkspaceCredentialsJSON:     getEnv("GOOGLE_WORKSPACE_CREDENTIALS_JSON", ""),
-		TailscaleAPIKey:                    getEnv("TAILSCALE_API_KEY", ""),
-		TailscaleTailnet:                   getEnv("TAILSCALE_TAILNET", ""),
-		SentinelOneAPIToken:                getEnv("SENTINELONE_API_TOKEN", ""),
-		SentinelOneBaseURL:                 getEnv("SENTINELONE_BASE_URL", ""),
-		TenableAccessKey:                   getEnv("TENABLE_ACCESS_KEY", ""),
-		TenableSecretKey:                   getEnv("TENABLE_SECRET_KEY", ""),
-		QualysUsername:                     getEnv("QUALYS_USERNAME", ""),
-		QualysPassword:                     getEnv("QUALYS_PASSWORD", ""),
-		QualysPlatform:                     getEnv("QUALYS_PLATFORM", "US1"),
-		SemgrepAPIToken:                    getEnv("SEMGREP_API_TOKEN", ""),
-		ServiceNowURL:                      getEnv("SERVICENOW_URL", ""),
-		ServiceNowAPIToken:                 getEnv("SERVICENOW_API_TOKEN", ""),
-		ServiceNowUsername:                 getEnv("SERVICENOW_USERNAME", ""),
-		ServiceNowPassword:                 getEnv("SERVICENOW_PASSWORD", ""),
-		WorkdayURL:                         getEnv("WORKDAY_URL", ""),
-		WorkdayAPIToken:                    getEnv("WORKDAY_API_TOKEN", ""),
-		BambooHRURL:                        getEnv("BAMBOOHR_URL", ""),
-		BambooHRAPIToken:                   getEnv("BAMBOOHR_API_TOKEN", ""),
-		OneLoginURL:                        getEnv("ONELOGIN_URL", ""),
-		OneLoginClientID:                   getEnv("ONELOGIN_CLIENT_ID", ""),
-		OneLoginClientSecret:               getEnv("ONELOGIN_CLIENT_SECRET", ""),
-		JumpCloudURL:                       getEnv("JUMPCLOUD_URL", "https://console.jumpcloud.com"),
-		JumpCloudAPIToken:                  getEnv("JUMPCLOUD_API_TOKEN", ""),
-		JumpCloudOrgID:                     getEnv("JUMPCLOUD_ORG_ID", ""),
-		DuoURL:                             getEnv("DUO_URL", getEnv("DUO_API_HOSTNAME", "")),
-		DuoIntegrationKey:                  getEnv("DUO_INTEGRATION_KEY", getEnv("DUO_IKEY", "")),
-		DuoSecretKey:                       getEnv("DUO_SECRET_KEY", getEnv("DUO_SKEY", "")),
-		PingIdentityEnvironmentID:          getEnv("PINGIDENTITY_ENVIRONMENT_ID", getEnv("PINGONE_ENVIRONMENT_ID", "")),
-		PingIdentityClientID:               getEnv("PINGIDENTITY_CLIENT_ID", getEnv("PINGONE_CLIENT_ID", "")),
-		PingIdentityClientSecret:           getEnv("PINGIDENTITY_CLIENT_SECRET", getEnv("PINGONE_CLIENT_SECRET", "")),
-		PingIdentityAPIURL:                 getEnv("PINGIDENTITY_API_URL", "https://api.pingone.com"),
-		PingIdentityAuthURL:                getEnv("PINGIDENTITY_AUTH_URL", "https://auth.pingone.com"),
-		CyberArkURL:                        getEnv("CYBERARK_URL", ""),
-		CyberArkAPIToken:                   getEnv("CYBERARK_API_TOKEN", ""),
-		SailPointURL:                       getEnv("SAILPOINT_URL", ""),
-		SailPointAPIToken:                  getEnv("SAILPOINT_API_TOKEN", ""),
-		SaviyntURL:                         getEnv("SAVIYNT_URL", ""),
-		SaviyntAPIToken:                    getEnv("SAVIYNT_API_TOKEN", ""),
-		ForgeRockURL:                       getEnv("FORGEROCK_URL", ""),
-		ForgeRockAPIToken:                  getEnv("FORGEROCK_API_TOKEN", ""),
-		OracleIDCSURL:                      getEnv("ORACLE_IDCS_URL", ""),
-		OracleIDCSAPIToken:                 getEnv("ORACLE_IDCS_API_TOKEN", ""),
-		GitLabToken:                        getEnv("GITLAB_TOKEN", ""),
-		GitLabBaseURL:                      getEnv("GITLAB_BASE_URL", "https://gitlab.com"),
-		TerraformCloudToken:                getEnv("TFC_TOKEN", ""),
-		SplunkURL:                          getEnv("SPLUNK_URL", ""),
-		SplunkToken:                        getEnv("SPLUNK_TOKEN", ""),
-		Auth0Domain:                        getEnv("AUTH0_DOMAIN", ""),
-		Auth0ClientID:                      getEnv("AUTH0_CLIENT_ID", ""),
-		Auth0ClientSecret:                  getEnv("AUTH0_CLIENT_SECRET", ""),
-		CloudflareAPIToken:                 getEnv("CLOUDFLARE_API_TOKEN", ""),
-		SalesforceInstanceURL:              getEnv("SALESFORCE_INSTANCE_URL", ""),
-		SalesforceClientID:                 getEnv("SALESFORCE_CLIENT_ID", ""),
-		SalesforceClientSecret:             getEnv("SALESFORCE_CLIENT_SECRET", ""),
-		SalesforceUsername:                 getEnv("SALESFORCE_USERNAME", ""),
-		SalesforcePassword:                 getEnv("SALESFORCE_PASSWORD", ""),
-		SalesforceSecurityToken:            getEnv("SALESFORCE_SECURITY_TOKEN", ""),
-		VaultAddress:                       getEnv("VAULT_ADDRESS", ""),
-		VaultToken:                         getEnv("VAULT_TOKEN", ""),
-		VaultNamespace:                     getEnv("VAULT_NAMESPACE", ""),
-		SlackAPIToken:                      getEnv("SLACK_API_TOKEN", ""),
-		RipplingAPIURL:                     getEnv("RIPPLING_API_URL", ""),
-		RipplingAPIToken:                   getEnv("RIPPLING_API_TOKEN", ""),
-		JamfBaseURL:                        getEnv("JAMF_BASE_URL", ""),
-		JamfClientID:                       getEnv("JAMF_CLIENT_ID", ""),
-		JamfClientSecret:                   getEnv("JAMF_CLIENT_SECRET", ""),
-		IntuneTenantID:                     getEnv("INTUNE_TENANT_ID", ""),
-		IntuneClientID:                     getEnv("INTUNE_CLIENT_ID", ""),
-		IntuneClientSecret:                 getEnv("INTUNE_CLIENT_SECRET", ""),
-		KandjiAPIURL:                       getEnv("KANDJI_API_URL", ""),
-		KandjiAPIToken:                     getEnv("KANDJI_API_TOKEN", ""),
-		S3InputBucket:                      getEnv("S3_INPUT_BUCKET", ""),
-		S3InputPrefix:                      getEnv("S3_INPUT_PREFIX", ""),
-		S3InputRegion:                      getEnv("S3_INPUT_REGION", getEnv("AWS_REGION", "us-east-1")),
-		S3InputFormat:                      getEnv("S3_INPUT_FORMAT", "auto"),
-		S3InputMaxObjects:                  getEnvInt("S3_INPUT_MAX_OBJECTS", 200),
-		S3Sources:                          providers.ParseS3Sources(getEnv, getEnvInt),
-		CloudTrailRegion:                   getEnv("CLOUDTRAIL_REGION", ""),
-		CloudTrailTrailARN:                 getEnv("CLOUDTRAIL_TRAIL_ARN", ""),
-		CloudTrailLookbackDays:             getEnvInt("CLOUDTRAIL_LOOKBACK_DAYS", 7),
-		WebhookURLs:                        splitCSV(getEnv("WEBHOOK_URLS", "")),
-		NATSJetStreamEnabled:               getEnvBool("NATS_JETSTREAM_ENABLED", false),
-		NATSJetStreamURLs:                  splitCSV(getEnv("NATS_URLS", "nats://127.0.0.1:4222")),
-		NATSJetStreamStream:                getEnv("NATS_JETSTREAM_STREAM", "CEREBRO_EVENTS"),
-		NATSJetStreamSubjectPrefix:         getEnv("NATS_JETSTREAM_SUBJECT_PREFIX", "cerebro.events"),
-		NATSJetStreamSource:                getEnv("NATS_JETSTREAM_SOURCE", "cerebro"),
-		NATSJetStreamOutboxPath:            getEnv("NATS_JETSTREAM_OUTBOX_PATH", filepath.Join(findings.DefaultFilePath(), "jetstream-outbox.jsonl")),
-		NATSJetStreamOutboxDLQPath:         getEnv("NATS_JETSTREAM_OUTBOX_DLQ_PATH", ""),
-		NATSJetStreamOutboxMaxAge:          getEnvDuration("NATS_JETSTREAM_OUTBOX_MAX_AGE", 7*24*time.Hour),
-		NATSJetStreamOutboxMaxItems:        getEnvInt("NATS_JETSTREAM_OUTBOX_MAX_ITEMS", 10000),
-		NATSJetStreamOutboxMaxRetry:        getEnvInt("NATS_JETSTREAM_OUTBOX_MAX_RETRY", 10),
-		NATSJetStreamOutboxWarnPercent:     getEnvInt("NATS_JETSTREAM_OUTBOX_WARN_PERCENT", 70),
-		NATSJetStreamOutboxCriticalPercent: getEnvInt("NATS_JETSTREAM_OUTBOX_CRITICAL_PERCENT", 90),
-		NATSJetStreamOutboxWarnAge:         getEnvDuration("NATS_JETSTREAM_OUTBOX_WARN_AGE", time.Hour),
-		NATSJetStreamOutboxCriticalAge:     getEnvDuration("NATS_JETSTREAM_OUTBOX_CRITICAL_AGE", 6*time.Hour),
-		NATSJetStreamPublishTimeout:        getEnvDuration("NATS_JETSTREAM_PUBLISH_TIMEOUT", 3*time.Second),
-		NATSJetStreamRetryAttempts:         getEnvInt("NATS_JETSTREAM_RETRY_ATTEMPTS", 3),
-		NATSJetStreamRetryBackoff:          getEnvDuration("NATS_JETSTREAM_RETRY_BACKOFF", 500*time.Millisecond),
-		NATSJetStreamFlushInterval:         getEnvDuration("NATS_JETSTREAM_FLUSH_INTERVAL", 10*time.Second),
-		NATSJetStreamConnectTimeout:        getEnvDuration("NATS_JETSTREAM_CONNECT_TIMEOUT", 5*time.Second),
-		NATSJetStreamAuthMode:              getEnv("NATS_JETSTREAM_AUTH_MODE", "none"),
-		NATSJetStreamUsername:              getEnv("NATS_JETSTREAM_USERNAME", ""),
-		NATSJetStreamPassword:              getEnv("NATS_JETSTREAM_PASSWORD", ""),
-		NATSJetStreamNKeySeed:              getEnv("NATS_JETSTREAM_NKEY_SEED", ""),
-		NATSJetStreamUserJWT:               getEnv("NATS_JETSTREAM_USER_JWT", ""),
-		NATSJetStreamTLSEnabled:            getEnvBool("NATS_JETSTREAM_TLS_ENABLED", false),
-		NATSJetStreamTLSCAFile:             getEnv("NATS_JETSTREAM_TLS_CA_FILE", ""),
-		NATSJetStreamTLSCertFile:           getEnv("NATS_JETSTREAM_TLS_CERT_FILE", ""),
-		NATSJetStreamTLSKeyFile:            getEnv("NATS_JETSTREAM_TLS_KEY_FILE", ""),
-		NATSJetStreamTLSServerName:         getEnv("NATS_JETSTREAM_TLS_SERVER_NAME", ""),
-		NATSJetStreamTLSInsecure:           getEnvBool("NATS_JETSTREAM_TLS_INSECURE_SKIP_VERIFY", false),
-		SlackWebhookURL:                    getEnv("SLACK_WEBHOOK_URL", ""),
-		SlackSigningSecret:                 getEnv("SLACK_SIGNING_SECRET", ""),
-		PagerDutyKey:                       getEnv("PAGERDUTY_ROUTING_KEY", ""),
-		ScanInterval:                       getEnv("SCAN_INTERVAL", ""),
-		ScanTables:                         getEnv("SCAN_TABLES", ""),
-		ScanTableTimeout:                   getEnvDuration("SCAN_TABLE_TIMEOUT", 30*time.Minute),
-		ScanMaxConcurrent:                  getEnvInt("SCAN_MAX_CONCURRENCY", 6),
-		ScanMinConcurrent:                  getEnvInt("SCAN_MIN_CONCURRENCY", 2),
-		ScanAdaptiveConcurrency:            getEnvBool("SCAN_ADAPTIVE_CONCURRENCY", true),
-		ScanRetryAttempts:                  getEnvInt("SCAN_RETRY_ATTEMPTS", 3),
-		ScanRetryBackoff:                   getEnvDuration("SCAN_RETRY_BACKOFF", 2*time.Second),
-		ScanRetryMaxBackoff:                getEnvDuration("SCAN_RETRY_MAX_BACKOFF", 30*time.Second),
-		FindingAttestationEnabled:          getEnvBool("FINDING_ATTESTATION_ENABLED", false),
-		FindingAttestationSigningKey:       normalizePrivateKey(getEnv("FINDING_ATTESTATION_SIGNING_KEY", "")),
-		FindingAttestationKeyID:            getEnv("FINDING_ATTESTATION_KEY_ID", ""),
-		FindingAttestationLogURL:           getEnv("FINDING_ATTESTATION_LOG_URL", ""),
-		FindingAttestationTimeout:          getEnvDuration("FINDING_ATTESTATION_TIMEOUT", 3*time.Second),
-		FindingAttestationAttestReobserved: getEnvBool("FINDING_ATTESTATION_ATTEST_REOBSERVED", false),
-		JobQueueURL:                        getEnv("JOB_QUEUE_URL", ""),
-		JobTableName:                       getEnv("JOB_TABLE_NAME", ""),
-		JobRegion:                          getEnv("JOB_REGION", getEnv("AWS_REGION", "")),
-		JobWorkerConcurrency:               getEnvInt("JOB_WORKER_CONCURRENCY", 4),
-		JobVisibilityTimeout:               getEnvDuration("JOB_VISIBILITY_TIMEOUT", 30*time.Second),
-		JobPollWait:                        getEnvDuration("JOB_POLL_WAIT", 10*time.Second),
-		JobMaxAttempts:                     getEnvInt("JOB_MAX_ATTEMPTS", 3),
-		RateLimitEnabled:                   getEnvBool("RATE_LIMIT_ENABLED", false),
-		RateLimitRequests:                  getEnvInt("RATE_LIMIT_REQUESTS", 1000),
-		RateLimitWindow:                    getEnvDuration("RATE_LIMIT_WINDOW", time.Hour),
-		CORSAllowedOrigins:                 splitCSV(getEnv("API_CORS_ALLOWED_ORIGINS", "")),
-		APIAuthEnabled:                     apiAuthEnabled,
-		APIKeys:                            apiKeys,
-		RBACStateFile:                      getEnv("RBAC_STATE_FILE", ""),
-	}
-
-	cfg.RefreshProviderAwareConfig()
-	return cfg
-}
-
-// New creates and wires up the entire application
+// New creates and wires up the entire application using environment-backed config.
 func New(ctx context.Context) (*App, error) {
-	cfg := LoadConfig()
-	if cfg.APIAuthEnabled && len(cfg.APIKeys) == 0 {
+	return NewWithOptions(ctx)
+}
+
+// NewWithConfig creates and wires up the entire application from an explicit config.
+// This enables deterministic integration tests and gradual container decomposition
+// without relying on process-wide environment mutation.
+func NewWithConfig(ctx context.Context, cfg *Config) (*App, error) {
+	return NewWithOptions(ctx, WithConfig(cfg))
+}
+
+// NewWithOptions creates and wires up the entire application from constructor options.
+// This allows incremental decomposition of app construction while preserving the
+// existing New/NewWithConfig behavior.
+func NewWithOptions(ctx context.Context, opts ...Option) (*App, error) {
+	options := applyOptions(opts)
+
+	cfg := options.config
+	if cfg == nil {
+		cfg = LoadConfig()
+	}
+	cfg.RefreshProviderAwareConfig()
+
+	managedCredentialStore := apiauth.NewManagedCredentialStore(cfg.APICredentialStateFile)
+	if err := managedCredentialStore.Load(); err != nil {
+		return nil, fmt.Errorf("load managed api credential state: %w", err)
+	}
+	if cfg.APIAuthEnabled && len(cfg.APIKeys) == 0 && len(managedCredentialStore.List()) == 0 {
 		return nil, fmt.Errorf("api auth enabled but no API_KEYS configured")
 	}
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: parseLogLevel(cfg.LogLevel),
-	}))
+	logger := options.logger
+	if logger == nil {
+		logger = newDefaultAppLogger(cfg.LogLevel)
+	}
+	logUnboundedRetentionWarnings(logger, cfg)
 
 	app := &App{
 		Config: cfg,
 		Logger: logger,
 	}
-
-	// Phase 1: Snowflake + policies (everything else depends on these)
-	if err := app.initSnowflake(ctx); err != nil {
-		logger.Warn("snowflake initialization failed", "error", err)
+	app.secretsLoader = options.secretsLoader
+	app.apiCredentialStore = managedCredentialStore
+	if len(cfg.APICredentials) > 0 || len(cfg.APIKeys) == 0 {
+		app.setAPICredentials(cfg.APICredentials)
+	} else {
+		app.setAPIKeys(cfg.APIKeys)
 	}
-	if err := app.initPolicy(); err != nil {
-		return nil, err
+
+	initCtx := ctx
+	if initCtx == nil {
+		initCtx = context.Background()
+	}
+	if cfg.InitTimeout > 0 {
+		var cancel context.CancelFunc
+		initCtx, cancel = context.WithTimeout(initCtx, cfg.InitTimeout)
+		defer cancel()
 	}
 
-	// Phase 2a: independent services in parallel (no cross-dependencies)
-	g, gctx := errgroup.WithContext(ctx)
-
-	g.Go(func() error { app.initCache(); return nil })
-	g.Go(func() error { app.initTicketing(); return nil })
-	g.Go(func() error { app.initIdentity(); return nil })
-	g.Go(func() error { app.initAttackPath(); return nil })
-	g.Go(func() error { app.initWebhooks(); return nil })
-	g.Go(func() error { app.initNotifications(); return nil })
-	g.Go(func() error { app.initRBAC(); return nil })
-	g.Go(func() error { app.initCompliance(); return nil })
-	g.Go(func() error { app.initHealth(); return nil })
-	g.Go(func() error { app.initLineage(); return nil })
-	g.Go(func() error { app.initRuntime(); return nil })
-	g.Go(func() error { app.initFindings(); return nil })
-	g.Go(func() error { app.initProviders(gctx); return nil })
-	g.Go(func() error { app.initScheduler(gctx); return nil })
-	g.Go(func() error { app.initRepositories(); return nil })
-	g.Go(func() error { app.initSnowflakeFindings(gctx); return nil })
-	g.Go(func() error { app.initScanWatermarks(gctx); return nil })
-	g.Go(func() error { app.initThreatIntel(ctx); return nil })
-	g.Go(func() error { app.initAvailableTables(gctx); return nil })
-
-	_ = g.Wait()
-
-	// Phase 2b: services that depend on Phase 2a outputs
-	// initRemediation reads Ticketing, Notifications, Findings
-	// initAgents reads Findings
-	g2, _ := errgroup.WithContext(ctx)
-	g2.Go(func() error { app.initRemediation(); return nil })
-	g2.Go(func() error { app.initAgents(); return nil })
-	_ = g2.Wait()
-
-	// Phase 3: depends on findings store being ready
-	app.initScanner()
-
-	// Phase 4: depends on AvailableTables being populated
-	app.initSecurityGraph(ctx)
-	if err := app.validatePolicyCoverage(ctx); err != nil {
-		logger.Warn("policy coverage validation failed", "error", err)
-		if os.Getenv("CI") != "" {
-			return nil, err
+	if err := app.initialize(initCtx); err != nil {
+		if app.graphCancel != nil {
+			app.graphCancel()
 		}
+		app.stopThreatIntelSync()
+		if errors.Is(err, context.DeadlineExceeded) || initCtx.Err() == context.DeadlineExceeded {
+			logger.Error("application initialization timed out", "timeout", cfg.InitTimeout, "error", err)
+		}
+		return nil, err
 	}
 
 	logger.Info("application initialized",
 		"snowflake", app.Snowflake != nil,
 		"policies", len(app.Policy.ListPolicies()),
 	)
+	app.startSecretsReloader(ctx)
 
 	return app, nil
 }

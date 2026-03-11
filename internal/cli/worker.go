@@ -166,7 +166,7 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		Timeout:          30 * time.Second,
 	})
 
-	workerService := jobs.NewWorker(queue, store, registry, jobs.WorkerOptions{
+	workerOpts := jobs.WorkerOptions{
 		Concurrency:       concurrency,
 		VisibilityTimeout: visibilityTimeout,
 		JobTimeout:        jobTimeout,
@@ -175,7 +175,17 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		Logger:            application.Logger,
 		Metrics:           metrics,
 		CircuitBreaker:    circuit,
-	})
+	}
+
+	idempotencyTable := application.Config.JobIdempotencyTableName
+	if idempotencyTable != "" {
+		workerOpts.Idempotency = jobs.NewDynamoIdempotencyStore(awsCfg, idempotencyTable)
+		application.Logger.Info("idempotency store enabled", "table", idempotencyTable)
+	} else {
+		application.Logger.Warn("no JOB_IDEMPOTENCY_TABLE_NAME configured; running without idempotency protection")
+	}
+
+	workerService := jobs.NewWorker(queue, store, registry, workerOpts)
 
 	// Start health check server
 	healthServer := jobs.NewHealthServer(workerService, fmt.Sprintf(":%d", workerHealthPort), application.Logger)
@@ -291,6 +301,30 @@ func syncConfiguredProviderSources(ctx context.Context, application *app.App, lo
 	synced := make([]string, 0, len(providers))
 	failed := make([]providerSyncFailure, 0)
 
+	mode, err := loadCLIExecutionMode()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var apiClient interface {
+		SyncProvider(context.Context, string) (*providerregistry.SyncResult, error)
+	}
+	apiEnabled := mode != cliExecutionModeDirect
+	if apiEnabled {
+		client, err := newCLIAPIClient()
+		if err != nil {
+			if mode == cliExecutionModeAPI {
+				return nil, nil, err
+			}
+			apiEnabled = false
+			if logger != nil {
+				logger.Warn("api client configuration invalid; using direct provider sync mode", "error", err)
+			}
+		} else {
+			apiClient = client
+		}
+	}
+
 	for _, provider := range providers {
 		if err := ctx.Err(); err != nil {
 			return synced, failed, err
@@ -307,6 +341,40 @@ func syncConfiguredProviderSources(ctx context.Context, application *app.App, lo
 
 		if logger != nil {
 			logger.Info("running configured provider sync", "provider", name)
+		}
+
+		if apiEnabled && apiClient != nil {
+			result, err := apiClient.SyncProvider(ctx, name)
+			if err == nil {
+				if result != nil && len(result.Errors) > 0 {
+					message := fmt.Sprintf("%s sync reported errors: %s", name, strings.Join(result.Errors, "; "))
+					failed = append(failed, providerSyncFailure{
+						Provider: name,
+						Error:    message,
+					})
+					if logger != nil {
+						logger.Warn("configured provider sync reported errors", "provider", name, "errors", strings.Join(result.Errors, "; "))
+					}
+					continue
+				}
+				synced = append(synced, name)
+				continue
+			}
+
+			if mode == cliExecutionModeAPI || !shouldFallbackToDirect(mode, err) {
+				failed = append(failed, providerSyncFailure{
+					Provider: name,
+					Error:    fmt.Sprintf("%s sync via api failed: %v", name, err),
+				})
+				if logger != nil {
+					logger.Warn("configured provider sync via api failed", "provider", name, "error", err)
+				}
+				continue
+			}
+
+			if logger != nil {
+				logger.Warn("api unavailable; using direct mode for configured provider sync", "provider", name, "error", err)
+			}
 		}
 
 		result, err := provider.Sync(ctx, providerregistry.SyncOptions{FullSync: true})

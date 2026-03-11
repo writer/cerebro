@@ -4,10 +4,10 @@ import (
 	"testing"
 )
 
-func TestNewClient_EmptyConnectionString(t *testing.T) {
+func TestNewClient_MissingKeyPairConfig(t *testing.T) {
 	_, err := NewClient(ClientConfig{})
 	if err == nil {
-		t.Error("expected error for empty connection string")
+		t.Error("expected error for missing Snowflake key-pair configuration")
 	}
 }
 
@@ -57,6 +57,7 @@ func TestTableDDLs(t *testing.T) {
 		"tickets",
 		"access_reviews",
 		"review_items",
+		"policy_history",
 	}
 
 	for _, table := range expectedTables {

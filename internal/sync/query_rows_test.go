@@ -51,3 +51,29 @@ func TestDecodeExistingHashes_CaseInsensitiveKeys(t *testing.T) {
 		t.Fatalf("expected hash-2 for id-2, got %q", decoded["id-2"])
 	}
 }
+
+func TestQueryRowHelpers_BuildsLookupCache(t *testing.T) {
+	row := map[string]interface{}{
+		"COLUMN_NAME": "REGION",
+		"_CQ_ID":      "id-1",
+	}
+
+	if got := queryRowString(row, "column_name"); got != "REGION" {
+		t.Fatalf("expected case-insensitive lookup to resolve, got %q", got)
+	}
+
+	cache, ok := row[queryRowLookupCacheKey].(map[string]string)
+	if !ok {
+		t.Fatalf("expected row lookup cache to be stored on first lookup, got %#v", row[queryRowLookupCacheKey])
+	}
+	if cache["column_name"] != "COLUMN_NAME" {
+		t.Fatalf("expected cache to map normalized key to source key, got %#v", cache)
+	}
+	if cache["_cq_id"] != "_CQ_ID" {
+		t.Fatalf("expected cache to include _CQ_ID mapping, got %#v", cache)
+	}
+
+	if got := queryRowString(row, "_cq_id"); got != "id-1" {
+		t.Fatalf("expected cached lookup for _cq_id, got %q", got)
+	}
+}

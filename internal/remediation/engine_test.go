@@ -2,17 +2,13 @@ package remediation
 
 import (
 	"context"
-	"log/slog"
-	"os"
 	"testing"
+
+	"github.com/writer/cerebro/internal/testutil"
 )
 
-func testLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-}
-
 func TestEngine_NewEngine(t *testing.T) {
-	engine := NewEngine(testLogger())
+	engine := NewEngine(testutil.Logger())
 
 	if engine == nil {
 		t.Fatal("NewEngine returned nil")
@@ -25,7 +21,7 @@ func TestEngine_NewEngine(t *testing.T) {
 }
 
 func TestEngine_ListRules(t *testing.T) {
-	engine := NewEngine(testLogger())
+	engine := NewEngine(testutil.Logger())
 	rules := engine.ListRules()
 
 	// Verify default rules exist
@@ -39,6 +35,10 @@ func TestEngine_ListRules(t *testing.T) {
 		"pagerduty-critical",
 		"auto-ticket-high",
 		"s3-public-notify",
+		"identity-stale-user-remediation",
+		"identity-excessive-privilege-remediation",
+		"dspm-restricted-data-unencrypted-remediation",
+		"dspm-confidential-data-public-remediation",
 	}
 
 	for _, id := range expectedRules {
@@ -49,7 +49,7 @@ func TestEngine_ListRules(t *testing.T) {
 }
 
 func TestEngine_GetRule(t *testing.T) {
-	engine := NewEngine(testLogger())
+	engine := NewEngine(testutil.Logger())
 
 	// Get existing rule
 	rule, ok := engine.GetRule("auto-ticket-critical")
@@ -73,7 +73,7 @@ func TestEngine_GetRule(t *testing.T) {
 }
 
 func TestEngine_EnableDisableRule(t *testing.T) {
-	engine := NewEngine(testLogger())
+	engine := NewEngine(testutil.Logger())
 
 	// Disable rule
 	err := engine.DisableRule("auto-ticket-critical")
@@ -105,7 +105,7 @@ func TestEngine_EnableDisableRule(t *testing.T) {
 }
 
 func TestEngine_AddRule(t *testing.T) {
-	engine := NewEngine(testLogger())
+	engine := NewEngine(testutil.Logger())
 
 	rule := Rule{
 		ID:          "test-rule",
@@ -140,8 +140,69 @@ func TestEngine_AddRule(t *testing.T) {
 	}
 }
 
+func TestEngine_UpdateAndDeleteRule(t *testing.T) {
+	engine := NewEngine(testutil.Logger())
+
+	err := engine.AddRule(Rule{
+		ID:      "updatable-rule",
+		Name:    "Original",
+		Enabled: true,
+		Trigger: Trigger{
+			Type: TriggerFindingCreated,
+		},
+		Actions: []Action{{Type: ActionCreateTicket}},
+	})
+	if err != nil {
+		t.Fatalf("AddRule failed: %v", err)
+	}
+
+	err = engine.UpdateRule("updatable-rule", Rule{
+		Name:    "Updated",
+		Enabled: false,
+		Trigger: Trigger{
+			Type:     TriggerFindingCreated,
+			Severity: "critical",
+		},
+		Actions: []Action{{Type: ActionNotifySlack, Config: map[string]string{"channel": "#security"}}},
+	})
+	if err != nil {
+		t.Fatalf("UpdateRule failed: %v", err)
+	}
+
+	got, ok := engine.GetRule("updatable-rule")
+	if !ok {
+		t.Fatal("expected updated rule to exist")
+	}
+	if got.Name != "Updated" {
+		t.Fatalf("expected updated name, got %s", got.Name)
+	}
+	if got.Enabled {
+		t.Fatal("expected updated rule to be disabled")
+	}
+	if got.ID != "updatable-rule" {
+		t.Fatalf("expected rule ID to remain updatable-rule, got %s", got.ID)
+	}
+	if len(got.Actions) != 1 || got.Actions[0].Type != ActionNotifySlack {
+		t.Fatalf("expected updated actions to be applied, got %+v", got.Actions)
+	}
+
+	if err := engine.UpdateRule("missing-rule", Rule{Name: "Missing"}); err == nil {
+		t.Fatal("expected update on missing rule to fail")
+	}
+
+	if err := engine.DeleteRule("updatable-rule"); err != nil {
+		t.Fatalf("DeleteRule failed: %v", err)
+	}
+	if _, ok := engine.GetRule("updatable-rule"); ok {
+		t.Fatal("expected deleted rule to be absent")
+	}
+	if err := engine.DeleteRule("updatable-rule"); err == nil {
+		t.Fatal("expected second delete on missing rule to fail")
+	}
+}
+
 func TestEngine_RuleWithActions(t *testing.T) {
-	engine := NewEngine(testLogger())
+	engine := NewEngine(testutil.Logger())
 
 	rule := Rule{
 		ID:      "multi-action",
@@ -157,7 +218,9 @@ func TestEngine_RuleWithActions(t *testing.T) {
 			{Type: ActionNotifyPagerDuty, Config: map[string]string{}},
 		},
 	}
-	engine.AddRule(rule)
+	if err := engine.AddRule(rule); err != nil {
+		t.Fatalf("AddRule failed: %v", err)
+	}
 
 	found, ok := engine.GetRule("multi-action")
 	if !ok {
@@ -170,7 +233,7 @@ func TestEngine_RuleWithActions(t *testing.T) {
 }
 
 func TestEngine_Evaluate(t *testing.T) {
-	engine := NewEngine(testLogger())
+	engine := NewEngine(testutil.Logger())
 
 	tests := []struct {
 		name      string
@@ -224,7 +287,7 @@ func TestEngine_Evaluate(t *testing.T) {
 }
 
 func TestEngine_EvaluateCreatesExecution(t *testing.T) {
-	engine := NewEngine(testLogger())
+	engine := NewEngine(testutil.Logger())
 
 	event := Event{
 		Type:      TriggerFindingCreated,
@@ -256,7 +319,7 @@ func TestEngine_EvaluateCreatesExecution(t *testing.T) {
 }
 
 func TestEngine_GetExecution(t *testing.T) {
-	engine := NewEngine(testLogger())
+	engine := NewEngine(testutil.Logger())
 
 	event := Event{
 		Type:      TriggerFindingCreated,
@@ -289,7 +352,7 @@ func TestEngine_GetExecution(t *testing.T) {
 }
 
 func TestEngine_ListExecutions(t *testing.T) {
-	engine := NewEngine(testLogger())
+	engine := NewEngine(testutil.Logger())
 
 	// Create multiple executions via Evaluate
 	for i := 0; i < 5; i++ {
@@ -298,7 +361,9 @@ func TestEngine_ListExecutions(t *testing.T) {
 			Severity:  "critical",
 			FindingID: "test-" + string(rune('0'+i)),
 		}
-		engine.Evaluate(context.Background(), event)
+		if _, err := engine.Evaluate(context.Background(), event); err != nil {
+			t.Fatalf("Evaluate failed: %v", err)
+		}
 	}
 
 	executions := engine.ListExecutions(10)
@@ -328,6 +393,7 @@ func TestTriggerType(t *testing.T) {
 	triggers := []TriggerType{
 		TriggerFindingCreated,
 		TriggerFindingOpen,
+		TriggerSignalCreated,
 		TriggerSchedule,
 		TriggerManual,
 	}
@@ -347,11 +413,40 @@ func TestActionType(t *testing.T) {
 		ActionResolveFinding,
 		ActionRunWebhook,
 		ActionTagResource,
+		ActionUpdateCRMField,
+		ActionTriggerWorkflow,
+		ActionCreateReview,
+		ActionEscalateToOwner,
+		ActionPauseSubscription,
+		ActionSendCustomerComm,
 	}
 
 	for _, a := range actions {
 		if a == "" {
 			t.Error("action type should not be empty")
 		}
+	}
+}
+
+func TestEngine_EvaluateSignalRuleWithConditions(t *testing.T) {
+	engine := NewEngine(testutil.Logger())
+
+	event := Event{
+		Type:       TriggerSignalCreated,
+		Severity:   "critical",
+		PolicyID:   "hubspot-stale-deal",
+		Domain:     "customer_health",
+		SignalType: "business",
+		Data: map[string]any{
+			"domain": "customer_health",
+		},
+	}
+
+	executions, err := engine.Evaluate(context.Background(), event)
+	if err != nil {
+		t.Fatalf("evaluate failed: %v", err)
+	}
+	if len(executions) == 0 {
+		t.Fatal("expected signal executions for customer health critical signal")
 	}
 }

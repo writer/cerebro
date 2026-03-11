@@ -25,7 +25,7 @@ func NewPantherProvider() *PantherProvider {
 	return &PantherProvider{
 		BaseProvider: NewBaseProvider("panther", ProviderTypeSaaS),
 		baseURL:      pantherDefaultAPIURL,
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

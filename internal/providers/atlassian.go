@@ -19,12 +19,20 @@ type AtlassianProvider struct {
 	email    string
 	apiToken string
 	client   *http.Client
+
+	issueActivityLoaded bool
+	issueActivityRows   []map[string]interface{}
+	issueCommentRows    []map[string]interface{}
+	issueChangelogRows  []map[string]interface{}
+	issueActivityErr    error
 }
+
+const atlassianIssueLookbackDays = 180
 
 func NewAtlassianProvider() *AtlassianProvider {
 	return &AtlassianProvider{
 		BaseProvider: NewBaseProvider("atlassian", ProviderTypeSaaS),
-		client:       &http.Client{Timeout: 60 * time.Second},
+		client:       newProviderHTTPClient(60 * time.Second),
 	}
 }
 
@@ -55,6 +63,8 @@ func (a *AtlassianProvider) Configure(ctx context.Context, config map[string]int
 	if a.apiToken == "" {
 		return fmt.Errorf("atlassian api_token required")
 	}
+
+	a.resetIssueActivityCache()
 
 	return nil
 }
@@ -121,6 +131,62 @@ func (a *AtlassianProvider) Schema() []TableSchema {
 			},
 			PrimaryKey: []string{"id"},
 		},
+		{
+			Name:        "atlassian_issues",
+			Description: "Atlassian Jira issues",
+			Columns: []ColumnSchema{
+				{Name: "id", Type: "string", Required: true},
+				{Name: "key", Type: "string", Required: true},
+				{Name: "project_key", Type: "string"},
+				{Name: "project_name", Type: "string"},
+				{Name: "summary", Type: "string"},
+				{Name: "status", Type: "string"},
+				{Name: "status_category", Type: "string"},
+				{Name: "issue_type", Type: "string"},
+				{Name: "priority", Type: "string"},
+				{Name: "assignee_account_id", Type: "string"},
+				{Name: "assignee_email", Type: "string"},
+				{Name: "reporter_account_id", Type: "string"},
+				{Name: "reporter_email", Type: "string"},
+				{Name: "created", Type: "timestamp"},
+				{Name: "updated", Type: "timestamp"},
+				{Name: "resolved", Type: "timestamp"},
+				{Name: "due_date", Type: "timestamp"},
+				{Name: "labels", Type: "array"},
+				{Name: "components", Type: "array"},
+			},
+			PrimaryKey: []string{"id"},
+		},
+		{
+			Name:        "atlassian_issue_comments",
+			Description: "Atlassian Jira issue comments",
+			Columns: []ColumnSchema{
+				{Name: "id", Type: "string", Required: true},
+				{Name: "issue_id", Type: "string", Required: true},
+				{Name: "issue_key", Type: "string", Required: true},
+				{Name: "author_account_id", Type: "string"},
+				{Name: "author_email", Type: "string"},
+				{Name: "created", Type: "timestamp"},
+				{Name: "updated", Type: "timestamp"},
+			},
+			PrimaryKey: []string{"issue_id", "id"},
+		},
+		{
+			Name:        "atlassian_issue_changelogs",
+			Description: "Atlassian Jira issue changelog entries",
+			Columns: []ColumnSchema{
+				{Name: "id", Type: "string", Required: true},
+				{Name: "issue_id", Type: "string", Required: true},
+				{Name: "issue_key", Type: "string", Required: true},
+				{Name: "author_account_id", Type: "string"},
+				{Name: "author_email", Type: "string"},
+				{Name: "field", Type: "string"},
+				{Name: "from_value", Type: "string"},
+				{Name: "to_value", Type: "string"},
+				{Name: "created", Type: "timestamp"},
+			},
+			PrimaryKey: []string{"issue_id", "id"},
+		},
 	}
 }
 
@@ -134,6 +200,8 @@ func (a *AtlassianProvider) schemaFor(name string) (TableSchema, error) {
 
 func (a *AtlassianProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResult, error) {
 	start := time.Now()
+	a.resetIssueActivityCache()
+
 	result := &SyncResult{
 		Provider:  a.Name(),
 		StartedAt: start,
@@ -153,6 +221,9 @@ func (a *AtlassianProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncRe
 	syncTable("users", a.syncUsers)
 	syncTable("groups", a.syncGroups)
 	syncTable("group_memberships", a.syncGroupMemberships)
+	syncTable("issues", a.syncIssues)
+	syncTable("issue_comments", a.syncIssueComments)
+	syncTable("issue_changelogs", a.syncIssueChangelogs)
 
 	result.CompletedAt = time.Now()
 	result.Duration = result.CompletedAt.Sub(start)
@@ -301,6 +372,59 @@ func (a *AtlassianProvider) syncGroupMemberships(ctx context.Context) (*TableRes
 	}
 
 	return a.syncTable(ctx, schema, rows)
+}
+
+func (a *AtlassianProvider) syncIssues(ctx context.Context) (*TableResult, error) {
+	schema, err := a.schemaFor("atlassian_issues")
+	result := &TableResult{Name: "atlassian_issues"}
+	if err != nil {
+		return result, err
+	}
+
+	if err := a.ensureIssueActivityRows(ctx); err != nil {
+		return result, err
+	}
+
+	return a.syncTable(ctx, schema, a.issueActivityRows)
+}
+
+func (a *AtlassianProvider) syncIssueComments(ctx context.Context) (*TableResult, error) {
+	schema, err := a.schemaFor("atlassian_issue_comments")
+	result := &TableResult{Name: "atlassian_issue_comments"}
+	if err != nil {
+		return result, err
+	}
+
+	if err := a.ensureIssueActivityRows(ctx); err != nil {
+		return result, err
+	}
+
+	return a.syncTable(ctx, schema, a.issueCommentRows)
+}
+
+func (a *AtlassianProvider) syncIssueChangelogs(ctx context.Context) (*TableResult, error) {
+	schema, err := a.schemaFor("atlassian_issue_changelogs")
+	result := &TableResult{Name: "atlassian_issue_changelogs"}
+	if err != nil {
+		return result, err
+	}
+
+	if err := a.ensureIssueActivityRows(ctx); err != nil {
+		return result, err
+	}
+
+	return a.syncTable(ctx, schema, a.issueChangelogRows)
+}
+
+func (a *AtlassianProvider) ensureIssueActivityRows(ctx context.Context) error {
+	if a.issueActivityLoaded {
+		return a.issueActivityErr
+	}
+
+	lookback := time.Now().AddDate(0, 0, -atlassianIssueLookbackDays)
+	a.issueActivityRows, a.issueCommentRows, a.issueChangelogRows, a.issueActivityErr = a.listIssueActivity(ctx, lookback)
+	a.issueActivityLoaded = true
+	return a.issueActivityErr
 }
 
 func (a *AtlassianProvider) listProjects(ctx context.Context) ([]map[string]interface{}, error) {
@@ -479,6 +603,174 @@ func (a *AtlassianProvider) listGroupMembers(ctx context.Context, groupID string
 	return all, nil
 }
 
+func (a *AtlassianProvider) listIssueActivity(ctx context.Context, since time.Time) ([]map[string]interface{}, []map[string]interface{}, []map[string]interface{}, error) {
+	pageSize := 50
+	startAt := 0
+	issues := make([]map[string]interface{}, 0)
+	comments := make([]map[string]interface{}, 0)
+	changelogs := make([]map[string]interface{}, 0)
+
+	for {
+		params := map[string]string{
+			"startAt":    strconv.Itoa(startAt),
+			"maxResults": strconv.Itoa(pageSize),
+			"expand":     "changelog",
+			"fields": strings.Join([]string{
+				"project",
+				"summary",
+				"status",
+				"issuetype",
+				"priority",
+				"assignee",
+				"reporter",
+				"created",
+				"updated",
+				"resolutiondate",
+				"duedate",
+				"labels",
+				"components",
+				"comment",
+			}, ","),
+		}
+		if !since.IsZero() {
+			params["jql"] = fmt.Sprintf("updated >= \"%s\" ORDER BY updated DESC", since.UTC().Format("2006-01-02"))
+		}
+
+		path := addQueryParams("/rest/api/3/search", params)
+		body, err := a.request(ctx, path)
+		if err != nil {
+			if isAtlassianIgnorableError(err) {
+				return nil, nil, nil, nil
+			}
+			return nil, nil, nil, err
+		}
+
+		pageIssues, respStartAt, total, err := decodeAtlassianIssueSearchPage(body)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		if len(pageIssues) == 0 {
+			break
+		}
+
+		for _, issue := range pageIssues {
+			normalizedIssue := normalizeAtlassianRow(issue)
+			issueID := firstAtlassianString(normalizedIssue, "id")
+			issueKey := firstAtlassianString(normalizedIssue, "key")
+			if issueID == "" || issueKey == "" {
+				continue
+			}
+
+			fields := atlassianMap(normalizedIssue["fields"])
+			project := atlassianMap(fields["project"])
+			status := atlassianMap(fields["status"])
+			statusCategory := atlassianMap(status["status_category"])
+			issueType := atlassianMap(fields["issue_type"])
+			priority := atlassianMap(fields["priority"])
+			assignee := atlassianMap(fields["assignee"])
+			reporter := atlassianMap(fields["reporter"])
+
+			issueRow := map[string]interface{}{
+				"id":              issueID,
+				"key":             issueKey,
+				"project_key":     firstAtlassianValue(project, "key"),
+				"project_name":    firstAtlassianValue(project, "name"),
+				"summary":         firstAtlassianValue(fields, "summary"),
+				"status":          firstAtlassianValue(status, "name"),
+				"status_category": firstAtlassianValue(statusCategory, "name"),
+				"issue_type":      firstAtlassianValue(issueType, "name"),
+				"priority":        firstAtlassianValue(priority, "name"),
+				"assignee_account_id": firstAtlassianValue(assignee,
+					"account_id", "id"),
+				"assignee_email": firstAtlassianValue(assignee,
+					"email_address", "email"),
+				"reporter_account_id": firstAtlassianValue(reporter,
+					"account_id", "id"),
+				"reporter_email": firstAtlassianValue(reporter,
+					"email_address", "email"),
+				"created":    firstAtlassianValue(fields, "created"),
+				"updated":    firstAtlassianValue(fields, "updated"),
+				"resolved":   firstAtlassianValue(fields, "resolutiondate", "resolved"),
+				"due_date":   firstAtlassianValue(fields, "duedate", "due_date"),
+				"labels":     atlassianStringArray(fields["labels"]),
+				"components": atlassianComponentNames(fields["components"]),
+			}
+			issues = append(issues, issueRow)
+
+			commentData := atlassianMap(fields["comment"])
+			commentItems, _ := commentData["comments"].([]interface{})
+			for _, comment := range commentItems {
+				normalizedComment := atlassianMap(comment)
+				commentID := firstAtlassianString(normalizedComment, "id")
+				if commentID == "" {
+					continue
+				}
+				author := atlassianMap(normalizedComment["author"])
+				comments = append(comments, map[string]interface{}{
+					"id":        commentID,
+					"issue_id":  issueID,
+					"issue_key": issueKey,
+					"author_account_id": firstAtlassianValue(author,
+						"account_id", "id"),
+					"author_email": firstAtlassianValue(author,
+						"email_address", "email"),
+					"created": firstAtlassianValue(normalizedComment,
+						"created"),
+					"updated": firstAtlassianValue(normalizedComment,
+						"updated"),
+				})
+			}
+
+			changelogData := atlassianMap(normalizedIssue["changelog"])
+			historyItems, _ := changelogData["histories"].([]interface{})
+			for historyIndex, history := range historyItems {
+				normalizedHistory := atlassianMap(history)
+				author := atlassianMap(normalizedHistory["author"])
+				historyID := firstAtlassianString(normalizedHistory, "id")
+				if historyID == "" {
+					historyID = fmt.Sprintf("history-%d", historyIndex)
+				}
+
+				items, _ := normalizedHistory["items"].([]interface{})
+				for itemIndex, item := range items {
+					normalizedItem := atlassianMap(item)
+					changelogs = append(changelogs, map[string]interface{}{
+						"id":        fmt.Sprintf("%s-%d", historyID, itemIndex),
+						"issue_id":  issueID,
+						"issue_key": issueKey,
+						"author_account_id": firstAtlassianValue(author,
+							"account_id", "id"),
+						"author_email": firstAtlassianValue(author,
+							"email_address", "email"),
+						"field": firstAtlassianValue(normalizedItem,
+							"field"),
+						"from_value": firstAtlassianValue(normalizedItem,
+							"from_string", "from"),
+						"to_value": firstAtlassianValue(normalizedItem,
+							"to_string", "to"),
+						"created": firstAtlassianValue(normalizedHistory,
+							"created"),
+					})
+				}
+			}
+		}
+
+		next := respStartAt + len(pageIssues)
+		if total > 0 && next >= total {
+			break
+		}
+		if len(pageIssues) < pageSize {
+			break
+		}
+		if next <= startAt {
+			break
+		}
+		startAt = next
+	}
+
+	return issues, comments, changelogs, nil
+}
+
 func decodeAtlassianValuesPage(body []byte) ([]map[string]interface{}, bool, int, int, error) {
 	var page struct {
 		Values     []map[string]interface{} `json:"values"`
@@ -499,6 +791,18 @@ func decodeAtlassianValuesPage(body []byte) ([]map[string]interface{}, bool, int
 	}
 
 	return nil, false, 0, 0, fmt.Errorf("failed to parse atlassian paginated response")
+}
+
+func decodeAtlassianIssueSearchPage(body []byte) ([]map[string]interface{}, int, int, error) {
+	var page struct {
+		Issues  []map[string]interface{} `json:"issues"`
+		StartAt int                      `json:"startAt"`
+		Total   int                      `json:"total"`
+	}
+	if err := json.Unmarshal(body, &page); err != nil {
+		return nil, 0, 0, fmt.Errorf("failed to parse atlassian issue search response: %w", err)
+	}
+	return page.Issues, page.StartAt, page.Total, nil
 }
 
 func (a *AtlassianProvider) request(ctx context.Context, path string) ([]byte, error) {
@@ -577,4 +881,56 @@ func isAtlassianIgnorableError(err error) bool {
 	}
 	message := strings.ToLower(err.Error())
 	return strings.Contains(message, "api error 403") || strings.Contains(message, "api error 404")
+}
+
+func (a *AtlassianProvider) resetIssueActivityCache() {
+	a.issueActivityLoaded = false
+	a.issueActivityRows = nil
+	a.issueCommentRows = nil
+	a.issueChangelogRows = nil
+	a.issueActivityErr = nil
+}
+
+func atlassianStringArray(value interface{}) []string {
+	switch typed := value.(type) {
+	case []interface{}:
+		items := make([]string, 0, len(typed))
+		for _, item := range typed {
+			text := strings.TrimSpace(providerStringValue(item))
+			if text == "" {
+				continue
+			}
+			items = append(items, text)
+		}
+		return items
+	case []string:
+		items := make([]string, 0, len(typed))
+		for _, item := range typed {
+			text := strings.TrimSpace(item)
+			if text == "" {
+				continue
+			}
+			items = append(items, text)
+		}
+		return items
+	default:
+		return nil
+	}
+}
+
+func atlassianComponentNames(value interface{}) []string {
+	components, ok := value.([]interface{})
+	if !ok {
+		return nil
+	}
+	names := make([]string, 0, len(components))
+	for _, component := range components {
+		normalized := atlassianMap(component)
+		name := firstAtlassianString(normalized, "name")
+		if name == "" {
+			continue
+		}
+		names = append(names, name)
+	}
+	return names
 }

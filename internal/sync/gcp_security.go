@@ -15,14 +15,14 @@ import (
 	containeranalysis "cloud.google.com/go/containeranalysis/apiv1"
 	securitycenter "cloud.google.com/go/securitycenter/apiv1"
 	"cloud.google.com/go/securitycenter/apiv1/securitycenterpb"
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/warehouse"
 	"google.golang.org/api/iterator"
 	grafeaspb "google.golang.org/genproto/googleapis/grafeas/v1"
 )
 
 // GCPSecuritySync handles syncing security-related GCP data
 type GCPSecuritySync struct {
-	sf        *snowflake.Client
+	sf        warehouse.SyncWarehouse
 	logger    *slog.Logger
 	projectID string
 	orgID     string
@@ -37,7 +37,7 @@ func WithGCPSecurityTableFilter(tables []string) GCPSecurityOption {
 }
 
 // NewGCPSecuritySync creates a new GCP security sync instance
-func NewGCPSecuritySync(sf *snowflake.Client, logger *slog.Logger, projectID, orgID string, opts ...GCPSecurityOption) *GCPSecuritySync {
+func NewGCPSecuritySync(sf warehouse.SyncWarehouse, logger *slog.Logger, projectID, orgID string, opts ...GCPSecurityOption) *GCPSecuritySync {
 	syncer := &GCPSecuritySync{
 		sf:        sf,
 		logger:    logger,
@@ -731,7 +731,7 @@ func (s *GCPSecuritySync) upsertVulnerabilities(ctx context.Context, vulns []map
 	// Delete existing and insert new
 	deleteSQL := "DELETE FROM GCP_CONTAINER_VULNERABILITIES WHERE PROJECT_ID = ?"
 	if _, err := s.sf.Exec(ctx, deleteSQL, s.projectID); err != nil {
-		s.logger.Warn("failed to delete existing vulnerabilities", "error", err)
+		return fmt.Errorf("delete existing vulnerabilities: %w", err)
 	}
 
 	// Insert records
@@ -741,6 +741,7 @@ func (s *GCPSecuritySync) upsertVulnerabilities(ctx context.Context, vulns []map
 		 SEVERITY, CVSS_SCORE, CVSS_V3_SCORE, EFFECTIVE_SEVERITY, FIX_AVAILABLE,
 		 LONG_DESCRIPTION, SHORT_DESCRIPTION, CVE_ID, PACKAGE_ISSUE)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	insertErrs := make([]error, 0)
 	for _, v := range vulns {
 		if _, err := s.sf.Exec(ctx, insertSQL,
 			toStr(v["_cq_id"]),
@@ -762,7 +763,11 @@ func (s *GCPSecuritySync) upsertVulnerabilities(ctx context.Context, vulns []map
 			toStr(v["package_issue"]),
 		); err != nil {
 			s.logger.Warn("failed to insert vulnerability", "error", err, "cve", v["cve_id"])
+			insertErrs = append(insertErrs, fmt.Errorf("insert vulnerability %s: %w", toStr(v["cve_id"]), err))
 		}
+	}
+	if len(insertErrs) > 0 {
+		return fmt.Errorf("insert vulnerabilities: %w", errors.Join(insertErrs...))
 	}
 	return nil
 }
@@ -818,13 +823,14 @@ func (s *GCPSecuritySync) upsertDockerImages(ctx context.Context, images []map[s
 
 	deleteSQL := "DELETE FROM GCP_ARTIFACT_REGISTRY_IMAGES WHERE PROJECT_ID = ?"
 	if _, err := s.sf.Exec(ctx, deleteSQL, s.projectID); err != nil {
-		s.logger.Warn("failed to delete existing images", "error", err)
+		return fmt.Errorf("delete existing images: %w", err)
 	}
 
 	insertSQL := `
 		INSERT INTO GCP_ARTIFACT_REGISTRY_IMAGES
 		(_CQ_ID, PROJECT_ID, NAME, URI, TAGS, IMAGE_SIZE, UPLOAD_TIME, MEDIA_TYPE, BUILD_TIME, UPDATE_TIME, REPOSITORY, REGISTRY_TYPE, SCANNED, SCAN_STATUS, VULNERABILITIES, HAS_VULNERABILITIES, HAS_OPENSSL_VULNERABILITY, SECRETS, HAS_CLOUD_KEYS, HAS_HIGH_PRIVILEGE_CLOUD_KEYS, HAS_CROSS_ACCOUNT_CLOUD_KEYS)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	insertErrs := make([]error, 0)
 	for _, img := range images {
 		if _, err := s.sf.Exec(ctx, insertSQL,
 			toStr(img["_cq_id"]),
@@ -850,7 +856,11 @@ func (s *GCPSecuritySync) upsertDockerImages(ctx context.Context, images []map[s
 			img["has_cross_account_cloud_keys"],
 		); err != nil {
 			s.logger.Warn("failed to insert image", "error", err, "uri", img["uri"])
+			insertErrs = append(insertErrs, fmt.Errorf("insert image %s: %w", toStr(img["uri"]), err))
 		}
+	}
+	if len(insertErrs) > 0 {
+		return fmt.Errorf("insert artifact registry images: %w", errors.Join(insertErrs...))
 	}
 	return nil
 }
@@ -884,7 +894,7 @@ func (s *GCPSecuritySync) upsertSCCFindings(ctx context.Context, findings []map[
 
 	deleteSQL := "DELETE FROM GCP_SCC_FINDINGS WHERE PROJECT_ID = ?"
 	if _, err := s.sf.Exec(ctx, deleteSQL, s.projectID); err != nil {
-		s.logger.Warn("failed to delete existing SCC findings", "error", err)
+		return fmt.Errorf("delete existing scc findings: %w", err)
 	}
 
 	insertSQL := `
@@ -892,6 +902,7 @@ func (s *GCPSecuritySync) upsertSCCFindings(ctx context.Context, findings []map[
 		(_CQ_ID, PROJECT_ID, NAME, PARENT, RESOURCE_NAME, STATE, CATEGORY, EXTERNAL_URI,
 		 SEVERITY, FINDING_CLASS, MUTE, CREATE_TIME, EVENT_TIME, DESCRIPTION, INDICATOR, VULNERABILITY)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	insertErrs := make([]error, 0)
 	for _, f := range findings {
 		if _, err := s.sf.Exec(ctx, insertSQL,
 			toStr(f["_cq_id"]),
@@ -912,7 +923,11 @@ func (s *GCPSecuritySync) upsertSCCFindings(ctx context.Context, findings []map[
 			toStr(f["vulnerability"]),
 		); err != nil {
 			s.logger.Warn("failed to insert SCC finding", "error", err, "name", f["name"])
+			insertErrs = append(insertErrs, fmt.Errorf("insert scc finding %s: %w", toStr(f["name"]), err))
 		}
+	}
+	if len(insertErrs) > 0 {
+		return fmt.Errorf("insert scc findings: %w", errors.Join(insertErrs...))
 	}
 	return nil
 }

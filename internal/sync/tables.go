@@ -43,6 +43,10 @@ type SyncResult struct {
 	Duration time.Duration
 	Changes  *ChangeSet
 	SyncTime time.Time
+	// GenerationID ties table/region results to a single sync run.
+	GenerationID string
+	// BackfillPending marks partial syncs that queued a backfill request.
+	BackfillPending bool
 }
 
 // ChangeSet tracks what changed during sync

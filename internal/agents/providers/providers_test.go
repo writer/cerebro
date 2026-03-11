@@ -71,7 +71,9 @@ func TestAnthropicProvider_Complete(t *testing.T) {
 				OutputTokens: 20,
 			},
 		}
-		json.NewEncoder(w).Encode(resp)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			t.Fatalf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -110,7 +112,9 @@ func TestAnthropicProvider_Complete(t *testing.T) {
 func TestAnthropicProvider_Complete_WithTools(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req anthropicRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
 
 		if len(req.Tools) != 1 {
 			t.Errorf("expected 1 tool, got %d", len(req.Tools))
@@ -134,7 +138,9 @@ func TestAnthropicProvider_Complete_WithTools(t *testing.T) {
 			StopReason: "tool_use",
 			Usage:      anthropicUsage{InputTokens: 5, OutputTokens: 10},
 		}
-		json.NewEncoder(w).Encode(resp)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			t.Fatalf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -167,7 +173,9 @@ func TestAnthropicProvider_Complete_WithTools(t *testing.T) {
 func TestAnthropicProvider_Complete_APIError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte(`{"error": "invalid api key"}`))
+		if _, err := w.Write([]byte(`{"error": "invalid api key"}`)); err != nil {
+			t.Fatalf("write response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -189,10 +197,14 @@ func TestAnthropicProvider_Stream(t *testing.T) {
 
 		// 1. Send content delta
 		data := `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Streamed response"}}`
-		fmt.Fprintf(w, "event: content_block_delta\ndata: %s\n\n", data)
+		if _, err := fmt.Fprintf(w, "event: content_block_delta\ndata: %s\n\n", data); err != nil {
+			t.Fatalf("write sse delta: %v", err)
+		}
 
 		// 2. Send message stop
-		fmt.Fprintf(w, "event: message_stop\ndata: {}\n\n")
+		if _, err := fmt.Fprintf(w, "event: message_stop\ndata: {}\n\n"); err != nil {
+			t.Fatalf("write sse stop: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -274,7 +286,9 @@ func TestOpenAIProvider_Complete(t *testing.T) {
 				TotalTokens:      25,
 			},
 		}
-		json.NewEncoder(w).Encode(resp)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			t.Fatalf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -310,7 +324,9 @@ func TestOpenAIProvider_Complete_NoChoices(t *testing.T) {
 				FinishReason string        `json:"finish_reason"`
 			}{},
 		}
-		json.NewEncoder(w).Encode(resp)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			t.Fatalf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -356,7 +372,9 @@ func TestOpenAIProvider_Complete_WithToolCalls(t *testing.T) {
 				},
 			},
 		}
-		json.NewEncoder(w).Encode(resp)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			t.Fatalf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -393,7 +411,9 @@ func TestOpenAIProvider_Stream(t *testing.T) {
 				},
 			},
 		}
-		json.NewEncoder(w).Encode(resp)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			t.Fatalf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 

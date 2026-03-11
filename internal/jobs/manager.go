@@ -76,6 +76,10 @@ func (m *Manager) EnqueueInspectResources(ctx context.Context, resources []Resou
 		}
 
 		if err := m.queue.Enqueue(ctx, JobMessage{JobID: job.ID, GroupID: groupID}); err != nil {
+			failMsg := fmt.Sprintf("enqueue failed: %v", err)
+			if failErr := m.store.FailJob(ctx, job.ID, failMsg); failErr != nil && m.logger != nil {
+				m.logger.Warn("failed to mark job failed after enqueue error", "job_id", job.ID, "error", failErr)
+			}
 			return nil, err
 		}
 
@@ -191,6 +195,10 @@ func (m *Manager) EnqueueNativeSync(ctx context.Context, payload NativeSyncPaylo
 	}
 
 	if err := m.queue.Enqueue(ctx, JobMessage{JobID: job.ID, GroupID: groupID}); err != nil {
+		failMsg := fmt.Sprintf("enqueue failed: %v", err)
+		if failErr := m.store.FailJob(ctx, job.ID, failMsg); failErr != nil && m.logger != nil {
+			m.logger.Warn("failed to mark native sync job failed after enqueue error", "job_id", job.ID, "error", failErr)
+		}
 		return nil, err
 	}
 

@@ -54,8 +54,8 @@ func TestGoogleWorkspaceProviderSync_IncludesGroupMembers(t *testing.T) {
 	provider := NewGoogleWorkspaceProvider()
 	provider.domain = "example.com"
 	provider.client = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		switch req.URL.Path {
-		case "/admin/directory/v1/users":
+		switch {
+		case req.URL.Path == "/admin/directory/v1/users":
 			query := req.URL.Query()
 			if query.Get("domain") != "example.com" {
 				t.Fatalf("unexpected users domain query: %q", query.Get("domain"))
@@ -65,10 +65,11 @@ func TestGoogleWorkspaceProviderSync_IncludesGroupMembers(t *testing.T) {
 					{
 						"id":           "user-1",
 						"primaryEmail": "user-1@example.com",
+						"suspended":    false,
 					},
 				},
 			})
-		case "/admin/directory/v1/groups":
+		case req.URL.Path == "/admin/directory/v1/groups":
 			query := req.URL.Query()
 			if query.Get("domain") != "example.com" {
 				t.Fatalf("unexpected groups domain query: %q", query.Get("domain"))
@@ -82,7 +83,7 @@ func TestGoogleWorkspaceProviderSync_IncludesGroupMembers(t *testing.T) {
 					},
 				},
 			})
-		case "/admin/directory/v1/groups/group-1/members":
+		case req.URL.Path == "/admin/directory/v1/groups/group-1/members":
 			return jsonHTTPResponse(http.StatusOK, map[string]interface{}{
 				"members": []map[string]interface{}{
 					{
@@ -94,13 +95,53 @@ func TestGoogleWorkspaceProviderSync_IncludesGroupMembers(t *testing.T) {
 					},
 				},
 			})
-		case "/admin/directory/v1/customer/my_customer/domains":
+		case req.URL.Path == "/admin/directory/v1/customer/my_customer/domains":
 			return jsonHTTPResponse(http.StatusOK, map[string]interface{}{
 				"domains": []map[string]interface{}{
 					{
 						"domainName": "example.com",
 						"isPrimary":  true,
 						"verified":   true,
+					},
+				},
+			})
+		case strings.HasPrefix(req.URL.Path, "/calendar/v3/calendars/") && strings.HasSuffix(req.URL.Path, "/events"):
+			if !strings.Contains(req.URL.Path, "user-1@example.com") && !strings.Contains(req.URL.Path, "user-1%40example.com") {
+				t.Fatalf("unexpected calendar path %q", req.URL.Path)
+			}
+			if req.URL.Query().Get("timeMin") == "" {
+				t.Fatal("expected calendar event request to include timeMin")
+			}
+			return jsonHTTPResponse(http.StatusOK, map[string]interface{}{
+				"items": []map[string]interface{}{
+					{
+						"id":      "event-1",
+						"iCalUID": "event-1@example.com",
+						"summary": "Weekly engineering sync",
+						"start": map[string]interface{}{
+							"dateTime": "2026-03-01T10:00:00Z",
+						},
+						"end": map[string]interface{}{
+							"dateTime": "2026-03-01T11:00:00Z",
+						},
+						"organizer": map[string]interface{}{
+							"email": "manager@example.com",
+						},
+						"attendees": []map[string]interface{}{
+							{
+								"email":          "manager@example.com",
+								"responseStatus": "accepted",
+								"organizer":      true,
+							},
+							{
+								"email":          "user-1@example.com",
+								"responseStatus": "accepted",
+								"self":           true,
+							},
+						},
+						"recurrence": []string{"RRULE:FREQ=WEEKLY;BYDAY=MO"},
+						"created":    "2026-02-20T00:00:00Z",
+						"updated":    "2026-02-28T00:00:00Z",
 					},
 				},
 			})
@@ -134,6 +175,12 @@ func TestGoogleWorkspaceProviderSync_IncludesGroupMembers(t *testing.T) {
 	}
 	if got := rowsByTable["google_workspace_domains"]; got != 1 {
 		t.Fatalf("google_workspace_domains rows = %d, want 1", got)
+	}
+	if got := rowsByTable["google_workspace_calendar_events"]; got != 1 {
+		t.Fatalf("google_workspace_calendar_events rows = %d, want 1", got)
+	}
+	if got := rowsByTable["google_workspace_calendar_attendees"]; got != 2 {
+		t.Fatalf("google_workspace_calendar_attendees rows = %d, want 2", got)
 	}
 }
 

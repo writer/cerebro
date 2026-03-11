@@ -36,7 +36,7 @@ type PingIdentityProvider struct {
 func NewPingIdentityProvider() *PingIdentityProvider {
 	return &PingIdentityProvider{
 		BaseProvider: NewBaseProvider("pingidentity", ProviderTypeIdentity),
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

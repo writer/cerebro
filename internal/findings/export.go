@@ -121,6 +121,9 @@ func (e *CSVExporter) Export(findings []*Finding) ([]byte, error) {
 			formatComplianceMappings(f.ComplianceMappings),
 			formatEvidence(f.Evidence),
 		}
+		for i := range row {
+			row[i] = sanitizeCSVCell(row[i])
+		}
 		if err := writer.Write(row); err != nil {
 			return nil, fmt.Errorf("write row: %w", err)
 		}
@@ -246,4 +249,17 @@ func formatMitreAttack(mappings []policy.MitreMapping) string {
 	}
 	sort.Strings(parts)
 	return strings.Join(parts, "|")
+}
+
+func sanitizeCSVCell(value string) string {
+	trimmed := strings.TrimLeft(value, " \t")
+	if trimmed == "" {
+		return value
+	}
+	switch trimmed[0] {
+	case '=', '+', '-', '@':
+		return "'" + value
+	default:
+		return value
+	}
 }

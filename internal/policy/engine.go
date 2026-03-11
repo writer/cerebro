@@ -41,6 +41,12 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Engine is the core policy evaluation engine. It maintains an in-memory cache
@@ -49,8 +55,9 @@ import (
 //
 // The engine is thread-safe and supports concurrent policy evaluation.
 type Engine struct {
-	policies map[string]*Policy // Policies indexed by ID
-	mu       sync.RWMutex       // Protects policies map
+	policies map[string]*Policy       // Policies indexed by ID
+	history  map[string][]PolicyEvent // Version history indexed by policy ID
+	mu       sync.RWMutex             // Protects policies/history maps
 }
 
 // Policy defines a security policy rule. Policies specify what configurations
@@ -60,18 +67,21 @@ type Engine struct {
 // or generate violations ("forbid"). Conditions are evaluated against resource
 // attributes to determine if the policy matches.
 type Policy struct {
-	ID          string   `json:"id"`              // Unique policy identifier
-	Name        string   `json:"name"`            // Human-readable policy name
-	Description string   `json:"description"`     // Detailed description of policy intent
-	Query       string   `json:"query,omitempty"` // Optional SQL query-based policy definition
-	Effect      string   `json:"effect"`          // "permit" or "forbid"
-	Principal   string   `json:"principal"`       // Who the policy applies to (optional)
-	Action      string   `json:"action"`          // What action is being evaluated
-	Resource    string   `json:"resource"`        // Resource type pattern (e.g., "aws::s3::bucket")
-	Conditions  []string `json:"conditions"`      // Conditions that must be true for policy to match
-	Severity    string   `json:"severity"`        // critical, high, medium, low
-	Tags        []string `json:"tags"`            // Tags for categorization
-	Raw         string   `json:"raw,omitempty"`   // Raw Cedar policy text (optional)
+	ID            string    `json:"id"`                       // Unique policy identifier
+	Version       int       `json:"version,omitempty"`        // Monotonic policy version
+	LastModified  time.Time `json:"last_modified,omitempty"`  // Last policy change timestamp (UTC)
+	PinnedVersion int       `json:"pinned_version,omitempty"` // Source version used for rollback pinning
+	Name          string    `json:"name"`                     // Human-readable policy name
+	Description   string    `json:"description"`              // Detailed description of policy intent
+	Query         string    `json:"query,omitempty"`          // Optional SQL query-based policy definition
+	Effect        string    `json:"effect"`                   // "permit" or "forbid"
+	Principal     string    `json:"principal"`                // Who the policy applies to (optional)
+	Action        string    `json:"action"`                   // What action is being evaluated
+	Resource      string    `json:"resource"`                 // Resource type pattern (e.g., "aws::s3::bucket")
+	Conditions    []string  `json:"conditions"`               // Conditions that must be true for policy to match
+	Severity      string    `json:"severity"`                 // critical, high, medium, low
+	Tags          []string  `json:"tags"`                     // Tags for categorization
+	Raw           string    `json:"raw,omitempty"`            // Raw Cedar policy text (optional)
 
 	// External control mapping
 	ControlID string `json:"control_id,omitempty"` // External control ID for reference
@@ -156,12 +166,16 @@ func NewEngine() *Engine {
 
 	return &Engine{
 		policies: make(map[string]*Policy),
+		history:  make(map[string][]PolicyEvent),
 	}
 }
 
 func (e *Engine) LoadPolicies(dir string) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+
+	e.policies = make(map[string]*Policy)
+	e.history = make(map[string][]PolicyEvent)
 
 	registry := NewComplianceRegistry()
 	seenPolicyFiles := make(map[string]string)
@@ -207,7 +221,21 @@ func (e *Engine) LoadPolicies(dir string) error {
 			policyDef.MitreAttack = InferMitreAttack(&policyDef)
 		}
 
-		e.policies[policyDef.ID] = &policyDef
+		if policyDef.Version <= 0 {
+			policyDef.Version = 1
+		}
+		if policyDef.LastModified.IsZero() {
+			policyDef.LastModified = info.ModTime().UTC()
+			if policyDef.LastModified.IsZero() {
+				policyDef.LastModified = time.Now().UTC()
+			}
+		} else {
+			policyDef.LastModified = policyDef.LastModified.UTC()
+		}
+
+		stored := clonePolicy(&policyDef)
+		e.policies[policyDef.ID] = stored
+		e.appendPolicyEventLocked(policyDef.ID, stored, policyDef.LastModified, nil, PolicyEventLoaded)
 		return nil
 	})
 	if err != nil {
@@ -314,14 +342,84 @@ func isValidSeverity(severity string) bool {
 func (e *Engine) AddPolicy(p *Policy) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.policies[p.ID] = p
+	if p == nil {
+		return
+	}
+
+	policyID := strings.TrimSpace(p.ID)
+	if policyID == "" {
+		return
+	}
+
+	now := time.Now().UTC()
+	stored := clonePolicy(p)
+	stored.ID = policyID
+	stored.LastModified = now
+
+	if existing, ok := e.policies[policyID]; ok {
+		stored.Version = existing.Version + 1
+		e.closeActivePolicyEventLocked(policyID, now)
+		e.appendPolicyEventLocked(policyID, stored, now, nil, PolicyEventUpdated)
+	} else {
+		if stored.Version <= 0 {
+			stored.Version = 1
+		}
+		e.appendPolicyEventLocked(policyID, stored, now, nil, PolicyEventCreated)
+	}
+
+	e.policies[policyID] = stored
+}
+
+func (e *Engine) UpdatePolicy(id string, p *Policy) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if _, ok := e.policies[id]; !ok {
+		return false
+	}
+
+	now := time.Now().UTC()
+	stored := clonePolicy(p)
+	stored.ID = id
+	stored.Version = e.nextPolicyVersionLocked(id)
+	stored.LastModified = now
+	stored.PinnedVersion = 0
+
+	e.closeActivePolicyEventLocked(id, now)
+	e.appendPolicyEventLocked(id, stored, now, nil, PolicyEventUpdated)
+	e.policies[id] = stored
+	return true
+}
+
+func (e *Engine) DeletePolicy(id string) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if _, ok := e.policies[id]; !ok {
+		return false
+	}
+
+	existing := clonePolicy(e.policies[id])
+	now := time.Now().UTC()
+	e.closeActivePolicyEventLocked(id, now)
+	if existing != nil {
+		existing.Version = e.nextPolicyVersionLocked(id)
+		existing.LastModified = now
+		effectiveTo := now
+		e.appendPolicyEventLocked(id, existing, now, &effectiveTo, PolicyEventDeleted)
+	}
+	delete(e.policies, id)
+	return true
 }
 
 func (e *Engine) GetPolicy(id string) (*Policy, bool) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	p, ok := e.policies[id]
-	return p, ok
+	if !ok {
+		return nil, false
+	}
+	return clonePolicy(p), true
 }
 
 func (e *Engine) ListPolicies() []*Policy {
@@ -330,7 +428,7 @@ func (e *Engine) ListPolicies() []*Policy {
 
 	result := make([]*Policy, 0, len(e.policies))
 	for _, p := range e.policies {
-		result = append(result, p)
+		result = append(result, clonePolicy(p))
 	}
 	return result
 }
@@ -520,6 +618,26 @@ func topLevelConditionField(field string) string {
 }
 
 func (e *Engine) Evaluate(ctx context.Context, req *EvalRequest) (*EvalResponse, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	action := ""
+	if req != nil {
+		action = req.Action
+	}
+	_, span := otel.Tracer("cerebro.policy").Start(ctx, "policy.evaluate",
+		trace.WithAttributes(
+			attribute.String("policy.action", strings.TrimSpace(action)),
+		),
+	)
+	defer span.End()
+	if req == nil {
+		err := fmt.Errorf("eval request is required")
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return nil, err
+	}
+
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
@@ -539,10 +657,29 @@ func (e *Engine) Evaluate(ctx context.Context, req *EvalRequest) (*EvalResponse,
 		}
 	}
 
+	span.SetAttributes(
+		attribute.Int("policy.count", len(e.policies)),
+		attribute.Int("policy.matched_count", len(resp.Matched)),
+		attribute.String("policy.decision", resp.Decision),
+	)
+
 	return resp, nil
 }
 
 func (e *Engine) EvaluateAsset(ctx context.Context, asset map[string]interface{}) ([]Finding, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	assetType, _ := asset["type"].(string)
+	assetTableName, _ := asset["_cq_table"].(string)
+	_, span := otel.Tracer("cerebro.policy").Start(ctx, "policy.evaluate_asset",
+		trace.WithAttributes(
+			attribute.String("asset.type", strings.TrimSpace(assetType)),
+			attribute.String("asset.table", strings.TrimSpace(assetTableName)),
+		),
+	)
+	defer span.End()
+
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
@@ -599,6 +736,11 @@ func (e *Engine) EvaluateAsset(ctx context.Context, asset map[string]interface{}
 			})
 		}
 	}
+
+	span.SetAttributes(
+		attribute.Int("policy.count", len(e.policies)),
+		attribute.Int("policy.findings_count", len(findings)),
+	)
 
 	return findings, nil
 }
@@ -685,36 +827,9 @@ func evaluateCondition(condition string, asset map[string]interface{}) bool {
 		return match
 	}
 
-	// Handle equality (==)
-	if parts := strings.SplitN(condition, "==", 2); len(parts) == 2 {
-		field := strings.TrimSpace(parts[0])
-		expected := strings.TrimSpace(parts[1])
+	if field, expected, operator, ok := parseComparisonCondition(condition); ok {
 		val := getNestedValue(asset, field)
-		return compareValues(val, expected, "==")
-	}
-
-	// Handle inequality (!=)
-	if parts := strings.SplitN(condition, "!=", 2); len(parts) == 2 {
-		field := strings.TrimSpace(parts[0])
-		expected := strings.TrimSpace(parts[1])
-		val := getNestedValue(asset, field)
-		return compareValues(val, expected, "!=")
-	}
-
-	// Handle greater than (>)
-	if parts := strings.SplitN(condition, ">", 2); len(parts) == 2 && !strings.Contains(parts[0], "<") {
-		field := strings.TrimSpace(parts[0])
-		expected := strings.TrimSpace(parts[1])
-		val := getNestedValue(asset, field)
-		return compareValues(val, expected, ">")
-	}
-
-	// Handle less than (<)
-	if parts := strings.SplitN(condition, "<", 2); len(parts) == 2 && !strings.Contains(parts[0], ">") {
-		field := strings.TrimSpace(parts[0])
-		expected := strings.TrimSpace(parts[1])
-		val := getNestedValue(asset, field)
-		return compareValues(val, expected, "<")
+		return compareValues(val, expected, operator)
 	}
 
 	// Handle starts_with
@@ -730,21 +845,35 @@ func evaluateCondition(condition string, asset map[string]interface{}) bool {
 		}
 	}
 
+	// Handle not exists check
+	lower := strings.ToLower(condition)
+	if strings.HasSuffix(lower, " not exists") {
+		field := strings.TrimSpace(condition[:len(condition)-len(" not exists")])
+		val := getNestedValue(asset, field)
+		return val == nil
+	}
 	// Handle exists check
-	if strings.HasSuffix(condition, " exists") {
-		field := strings.TrimSpace(strings.TrimSuffix(condition, " exists"))
+	if strings.HasSuffix(lower, " exists") {
+		field := strings.TrimSpace(condition[:len(condition)-len(" exists")])
 		val := getNestedValue(asset, field)
 		return val != nil
 	}
 
-	// Handle not exists check
-	if strings.HasSuffix(condition, " not exists") {
-		field := strings.TrimSpace(strings.TrimSuffix(condition, " not exists"))
-		val := getNestedValue(asset, field)
-		return val == nil
-	}
-
 	return false
+}
+
+func parseComparisonCondition(condition string) (string, string, string, bool) {
+	for _, operator := range []string{">=", "<=", "==", "!=", ">", "<"} {
+		if parts := splitTopLevel(condition, operator); len(parts) == 2 {
+			field := strings.TrimSpace(parts[0])
+			expected := strings.TrimSpace(parts[1])
+			if field == "" || expected == "" {
+				return "", "", "", false
+			}
+			return field, expected, operator, true
+		}
+	}
+	return "", "", "", false
 }
 
 func normalizeLogicalOperators(condition string) string {
@@ -1379,6 +1508,10 @@ func compareValues(val interface{}, expected string, operator string) bool {
 				return f == ef
 			case "!=":
 				return f != ef
+			case ">=":
+				return f >= ef
+			case "<=":
+				return f <= ef
 			case ">":
 				return f > ef
 			case "<":

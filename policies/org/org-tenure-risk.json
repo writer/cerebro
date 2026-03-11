@@ -1,0 +1,23 @@
+{
+  "id": "org-tenure-risk",
+  "name": "Long-Tenured Sole Expert Showing Disengagement",
+  "description": "A person owning bus-factor-1 systems is showing declining activity and has long tenure.",
+  "effect": "forbid",
+  "resource": "org::person",
+  "conditions": [
+    "bus_factor_1_systems > 0",
+    "activity_trend == 'declining'",
+    "tenure_years > 2"
+  ],
+  "severity": "high",
+  "remediation": "Start successor planning, document ownership, and rebalance system coverage.",
+  "tags": [
+    "org-topology",
+    "departure-risk",
+    "knowledge-transfer"
+  ],
+  "risk_categories": [
+    "DEPARTURE_RISK",
+    "KNOWLEDGE_CONCENTRATION"
+  ]
+}

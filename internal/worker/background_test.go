@@ -51,12 +51,12 @@ func TestBackgroundRunner_RunWithError(t *testing.T) {
 	<-done
 	time.Sleep(10 * time.Millisecond)
 
-	errors := runner.Errors()
-	if len(errors) != 1 {
-		t.Errorf("expected 1 error, got %d", len(errors))
+	taskErrors := runner.Errors()
+	if len(taskErrors) != 1 {
+		t.Errorf("expected 1 error, got %d", len(taskErrors))
 	}
-	if errors[0].Error != expectedErr {
-		t.Errorf("got error %v, want %v", errors[0].Error, expectedErr)
+	if !errors.Is(taskErrors[0].Error, expectedErr) {
+		t.Errorf("got error %v, want %v", taskErrors[0].Error, expectedErr)
 	}
 }
 
@@ -106,7 +106,7 @@ func TestBackgroundRunner_RunWithContext(t *testing.T) {
 	if len(results) != 1 {
 		t.Errorf("expected 1 result, got %d", len(results))
 	}
-	if results[0].Error != context.Canceled {
+	if !errors.Is(results[0].Error, context.Canceled) {
 		t.Errorf("expected context.Canceled, got %v", results[0].Error)
 	}
 }
@@ -183,7 +183,7 @@ func TestTaskResult_Fields(t *testing.T) {
 	if result.EndedAt != now.Add(time.Second) {
 		t.Error("EndedAt field incorrect")
 	}
-	if result.Error != err {
+	if !errors.Is(result.Error, err) {
 		t.Error("Error field incorrect")
 	}
 }

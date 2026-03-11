@@ -28,7 +28,7 @@ func (s *Server) createIncident(w http.ResponseWriter, r *http.Request) {
 	ir := agents.NewIncidentResponse(s.app.Agents)
 	incident, err := ir.CreateIncident(r.Context(), req)
 	if err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
+		s.errorFromErr(w, err)
 		return
 	}
 

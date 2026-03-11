@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // AuditManifest describes metadata for an exported compliance artifact.
@@ -96,7 +97,20 @@ func AuditPackageFilename(frameworkID string, generatedAt time.Time) string {
 	if cleanID == "" {
 		cleanID = "framework"
 	}
-	cleanID = strings.ReplaceAll(cleanID, " ", "-")
+	cleanID = strings.Map(func(r rune) rune {
+		switch {
+		case unicode.IsLetter(r), unicode.IsDigit(r), r == '-', r == '_', r == '.':
+			return r
+		case unicode.IsSpace(r):
+			return '-'
+		default:
+			return -1
+		}
+	}, cleanID)
+	cleanID = strings.Trim(cleanID, "-._")
+	if cleanID == "" {
+		cleanID = "framework"
+	}
 	return fmt.Sprintf("cerebro-audit-%s-%s.zip", cleanID, generatedAt.UTC().Format("20060102T150405Z"))
 }
 

@@ -2,6 +2,7 @@ package graph
 
 import (
 	"testing"
+	"time"
 )
 
 func createTestGraphForRiskEngine() *Graph {
@@ -280,5 +281,157 @@ func BenchmarkRiskEngine_Analyze(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		engine.Analyze()
+	}
+}
+
+func TestRiskEngine_ScoreEntity_BusinessSignals(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{
+		ID:   "cust-1",
+		Kind: NodeKindCustomer,
+		Name: "Acme",
+		Properties: map[string]any{
+			"open_p1_tickets":      2,
+			"failed_payment_count": 1,
+		},
+	})
+	g.AddNode(&Node{
+		ID:   "deal-1",
+		Kind: NodeKindDeal,
+		Name: "Enterprise Renewal",
+		Properties: map[string]any{
+			"amount":                   250000,
+			"days_since_last_activity": 35,
+		},
+	})
+	g.AddEdge(&Edge{ID: "cust-deal", Source: "cust-1", Target: "deal-1", Kind: EdgeKindOwns, Effect: EdgeEffectAllow})
+
+	engine := NewRiskEngine(g)
+	entity := engine.ScoreEntity("cust-1")
+	if entity == nil {
+		t.Fatal("expected entity score")
+	}
+	if entity.Score <= 0 {
+		t.Fatalf("expected positive entity score, got %.2f", entity.Score)
+	}
+	if len(entity.Factors) == 0 {
+		t.Fatal("expected entity risk factors")
+	}
+}
+
+func TestRiskEngine_IncludesCustomerTopologyHealth(t *testing.T) {
+	now := time.Date(2026, 3, 8, 18, 0, 0, 0, time.UTC)
+	prevNow := orgHealthNowUTC
+	orgHealthNowUTC = func() time.Time { return now }
+	t.Cleanup(func() { orgHealthNowUTC = prevNow })
+
+	g := New()
+	g.AddNode(&Node{
+		ID:   "cust-1",
+		Kind: NodeKindCustomer,
+		Name: "Acme",
+		Properties: map[string]any{
+			"renewal_days": 45,
+		},
+	})
+	g.AddNode(&Node{ID: "person:owner", Kind: NodeKindPerson, Name: "Owner", Properties: map[string]any{"title": "Account Owner"}})
+	g.AddEdge(&Edge{
+		ID:     "owner-customer",
+		Source: "person:owner",
+		Target: "cust-1",
+		Kind:   EdgeKindManagedBy,
+		Properties: map[string]any{
+			"role":               "account_owner",
+			"frequency":          1,
+			"strength":           0.1,
+			"previous_frequency": 5,
+			"previous_strength":  0.8,
+			"last_seen":          now.Add(-120 * 24 * time.Hour),
+		},
+	})
+
+	engine := NewRiskEngine(g)
+	report := engine.Analyze()
+	if len(report.CustomerHealth) == 0 {
+		t.Fatal("expected customer topology health metrics in report")
+	}
+
+	entity := engine.ScoreEntity("cust-1")
+	if entity == nil {
+		t.Fatal("expected customer entity score")
+	}
+
+	foundTopology := false
+	for _, factor := range entity.Factors {
+		if factor.Source == "topology" {
+			foundTopology = true
+			if factor.Score <= 0 {
+				t.Fatalf("expected positive topology factor score, got %.2f", factor.Score)
+			}
+		}
+	}
+	if !foundTopology {
+		t.Fatalf("expected topology factor in entity score, got %+v", entity.Factors)
+	}
+}
+
+func TestRiskEngine_ProfileInfluencesCompositeScore(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{
+		ID:   "cust-1",
+		Kind: NodeKindCustomer,
+		Name: "Acme",
+		Properties: map[string]any{
+			"failed_payment_count":      2,
+			"open_p1_tickets":           3,
+			"days_since_last_activity":  40,
+			"investigation_frequency":   4,
+			"critical_finding_count":    0,
+			"high_finding_count":        0,
+			"deploy_frequency_drop_pct": 0,
+		},
+	})
+
+	engine := NewRiskEngine(g)
+	defaultScore := engine.Analyze().RiskScore
+
+	if err := engine.SetRiskProfile("revenue-heavy"); err != nil {
+		t.Fatalf("set profile: %v", err)
+	}
+	revenueScore := engine.Analyze().RiskScore
+
+	if err := engine.SetRiskProfile("security-heavy"); err != nil {
+		t.Fatalf("set profile: %v", err)
+	}
+	securityScore := engine.Analyze().RiskScore
+
+	if revenueScore <= securityScore {
+		t.Fatalf("expected revenue-heavy score > security-heavy score (got %.2f vs %.2f, default %.2f)", revenueScore, securityScore, defaultScore)
+	}
+}
+
+func TestRiskEngine_RiskScoreChangeEvents(t *testing.T) {
+	g := New()
+	customer := &Node{
+		ID:   "cust-1",
+		Kind: NodeKindCustomer,
+		Name: "Acme",
+		Properties: map[string]any{
+			"open_p1_tickets":      1,
+			"failed_payment_count": 0,
+		},
+	}
+	g.AddNode(customer)
+
+	engine := NewRiskEngine(g)
+	_ = engine.Analyze()
+
+	customer.Properties["open_p1_tickets"] = 8
+	customer.Properties["failed_payment_count"] = 6
+	customer.Properties["investigation_frequency"] = 10
+
+	events := engine.Analyze().RiskScoreChanges
+	if len(events) == 0 {
+		t.Fatal("expected threshold crossing events")
 	}
 }

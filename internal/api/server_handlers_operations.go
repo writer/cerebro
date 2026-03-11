@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sort"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
@@ -20,7 +21,10 @@ func (s *Server) schedulerStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listJobs(w http.ResponseWriter, r *http.Request) {
+	pagination := ParsePagination(r, 100, 1000)
 	jobs := s.app.Scheduler.ListJobs()
+	sort.Slice(jobs, func(i, j int) bool { return jobs[i].Name < jobs[j].Name })
+
 	result := make([]map[string]interface{}, len(jobs))
 	for i, j := range jobs {
 		result[i] = map[string]interface{}{
@@ -34,7 +38,13 @@ func (s *Server) listJobs(w http.ResponseWriter, r *http.Request) {
 			result[i]["last_run"] = j.LastRun
 		}
 	}
-	s.json(w, http.StatusOK, map[string]interface{}{"jobs": result, "count": len(result)})
+	paged, paginationResp := paginateSlice(result, pagination)
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"jobs":        paged,
+		"count":       len(paged),
+		"pagination":  paginationResp,
+		"total_count": len(result),
+	})
 }
 
 func (s *Server) runJob(w http.ResponseWriter, r *http.Request) {
@@ -45,8 +55,10 @@ func (s *Server) runJob(w http.ResponseWriter, r *http.Request) {
 			s.error(w, http.StatusNotFound, err.Error())
 		case errors.Is(err, scheduler.ErrJobAlreadyRunning):
 			s.error(w, http.StatusConflict, err.Error())
+		case errors.Is(err, scheduler.ErrSchedulerStopped):
+			s.error(w, http.StatusServiceUnavailable, err.Error())
 		default:
-			s.error(w, http.StatusInternalServerError, err.Error())
+			s.errorFromErr(w, err)
 		}
 		return
 	}
@@ -76,8 +88,16 @@ func (s *Server) disableJob(w http.ResponseWriter, r *http.Request) {
 // Notification endpoints
 
 func (s *Server) listNotifiers(w http.ResponseWriter, r *http.Request) {
+	pagination := ParsePagination(r, 100, 1000)
 	notifiers := s.app.Notifications.ListNotifiers()
-	s.json(w, http.StatusOK, map[string]interface{}{"notifiers": notifiers, "count": len(notifiers)})
+	sort.Strings(notifiers)
+	paged, paginationResp := paginateSlice(notifiers, pagination)
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"notifiers":   paged,
+		"count":       len(paged),
+		"pagination":  paginationResp,
+		"total_count": len(notifiers),
+	})
 }
 
 func (s *Server) testNotifications(w http.ResponseWriter, r *http.Request) {
@@ -125,10 +145,16 @@ func (s *Server) slackCommands(w http.ResponseWriter, r *http.Request) {
 // Remediation endpoints
 
 func (s *Server) listRemediationRules(w http.ResponseWriter, r *http.Request) {
+	pagination := ParsePagination(r, 100, 1000)
 	rules := s.app.Remediation.ListRules()
+	sort.Slice(rules, func(i, j int) bool { return rules[i].ID < rules[j].ID })
+	paged, paginationResp := paginateSlice(rules, pagination)
+
 	s.json(w, http.StatusOK, map[string]interface{}{
-		"rules": rules,
-		"count": len(rules),
+		"rules":       paged,
+		"count":       len(paged),
+		"pagination":  paginationResp,
+		"total_count": len(rules),
 	})
 }
 
@@ -140,7 +166,7 @@ func (s *Server) createRemediationRule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.app.Remediation.AddRule(rule); err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
+		s.errorFromErr(w, err)
 		return
 	}
 
@@ -155,6 +181,46 @@ func (s *Server) createRemediationRule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.json(w, http.StatusCreated, rule)
+}
+
+func (s *Server) updateRemediationRule(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		s.error(w, http.StatusBadRequest, "rule id required")
+		return
+	}
+
+	var rule remediation.Rule
+	if err := json.NewDecoder(r.Body).Decode(&rule); err != nil {
+		s.error(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	if rule.ID != "" && rule.ID != id {
+		s.error(w, http.StatusBadRequest, "rule id in body must match path id")
+		return
+	}
+
+	rule.ID = id
+	if err := s.app.Remediation.UpdateRule(id, rule); err != nil {
+		s.error(w, http.StatusNotFound, "rule not found")
+		return
+	}
+
+	updated, _ := s.app.Remediation.GetRule(id)
+	s.json(w, http.StatusOK, updated)
+}
+
+func (s *Server) deleteRemediationRule(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		s.error(w, http.StatusBadRequest, "rule id required")
+		return
+	}
+	if err := s.app.Remediation.DeleteRule(id); err != nil {
+		s.error(w, http.StatusNotFound, "rule not found")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) getRemediationRule(w http.ResponseWriter, r *http.Request) {

@@ -12,6 +12,31 @@ func buildRowHashes(rows []map[string]interface{}, hashFn func(map[string]interf
 	return result
 }
 
+func dedupeRowsByID(rows []map[string]interface{}) []map[string]interface{} {
+	if len(rows) == 0 {
+		return nil
+	}
+
+	deduped := make([]map[string]interface{}, 0, len(rows))
+	indexByID := make(map[string]int, len(rows))
+	for _, row := range rows {
+		id, ok := row["_cq_id"].(string)
+		if !ok || id == "" {
+			continue
+		}
+
+		if idx, exists := indexByID[id]; exists {
+			deduped[idx] = row
+			continue
+		}
+
+		indexByID[id] = len(deduped)
+		deduped = append(deduped, row)
+	}
+
+	return deduped
+}
+
 func detectRowChanges(existing map[string]string, newRows map[string]string, incremental bool) *ChangeSet {
 	changes := &ChangeSet{}
 

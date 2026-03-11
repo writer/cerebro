@@ -25,13 +25,14 @@ type QueryResult struct {
 	Count   int
 }
 
-// Builder constructs the security graph from data sources
+// Builder constructs the graph platform from data sources.
 type Builder struct {
 	source          DataSource
 	graph           *Graph
 	logger          *slog.Logger
 	availableTables map[string]bool // populated tables, skips queries for missing ones
 	lastBuildTime   time.Time       // when the last successful build finished
+	lastMutation    GraphMutationSummary
 }
 
 // NewBuilder creates a new graph builder
@@ -88,13 +89,23 @@ func (b *Builder) queryIfExists(ctx context.Context, table, query string) (*Quer
 // Phase 4: build all edges in parallel across providers
 // Phase 5: build inferred edges (exposure, SCM, relationships)
 func (b *Builder) Build(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	start := time.Now()
 	b.graph.Clear()
 
-	b.logger.Info("building security graph")
+	b.logger.Info("building graph platform")
 
 	// Phase 1: discover which tables have data (1 round-trip)
 	b.discoverTables(ctx)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 
 	// Phase 2: load all nodes in parallel
 	g, gctx := errgroup.WithContext(ctx)
@@ -103,6 +114,9 @@ func (b *Builder) Build(ctx context.Context) error {
 	g.Go(func() error { b.buildAzureNodes(gctx); return nil })
 	g.Go(func() error { b.buildOktaNodes(gctx); return nil })
 	_ = g.Wait()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 
 	// Add internet entry point (needed before edge building)
 	b.addInternetNode()
@@ -122,19 +136,43 @@ func (b *Builder) Build(ctx context.Context) error {
 	eg.Go(func() error { b.buildAzureEdges(ectx); return nil })
 	eg.Go(func() error { b.buildRelationshipEdges(ectx); return nil })
 	_ = eg.Wait()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 
 	b.logger.Info("graph edges built",
 		"edges", b.graph.EdgeCount(),
 		"duration", time.Since(edgeStart))
 
+	b.buildIAMPermissionUsageKnowledge(ctx)
+
+	// Build unified person graph overlay (person nodes + projected edges).
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	b.buildUnifiedPersonGraph(ctx)
+	b.buildPersonInteractionEdges(ctx)
+
 	// Phase 5: inferred edges (these iterate nodes, run sequentially)
 	inferStart := time.Now()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	b.buildExposureEdges()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	b.buildSCMInference()
+	normalization := NormalizeEntityAssetSupport(b.graph, temporalNowUTC())
 
 	b.logger.Info("graph inferred edges built",
 		"edges", b.graph.EdgeCount(),
 		"duration", time.Since(inferStart))
+	b.logger.Info("graph asset support normalized",
+		"buckets", normalization.BucketsProcessed,
+		"subresources", normalization.SubresourcesCreated,
+		"observations", normalization.ObservationsCreated,
+		"claims", normalization.ClaimsCreated)
 
 	// Rebuild index with edges included
 	b.graph.BuildIndex()
@@ -147,34 +185,39 @@ func (b *Builder) Build(ctx context.Context) error {
 		BuildDuration: time.Since(start),
 	})
 
-	b.logger.Info("security graph built",
+	b.logger.Info("graph platform built",
 		"nodes", b.graph.NodeCount(),
 		"edges", b.graph.EdgeCount(),
 		"duration", time.Since(start))
 
-	b.lastBuildTime = time.Now()
+	finishedAt := time.Now().UTC()
+	b.lastBuildTime = finishedAt
+	b.lastMutation = GraphMutationSummary{
+		Mode:      GraphMutationModeFullRebuild,
+		Since:     start,
+		Until:     finishedAt,
+		NodeCount: b.graph.NodeCount(),
+		EdgeCount: b.graph.EdgeCount(),
+		Duration:  time.Since(start),
+	}
 	return nil
 }
 
 // HasChanges checks whether any asset tables have been modified since the last
-// graph build by looking at MAX(_cq_sync_time). Returns true if changes are
-// detected or if the check fails (fail-open to ensure freshness).
+// graph build by looking at MAX(event_time) from CDC_EVENTS. Returns true if
+// changes are detected or if the check fails (fail-open to ensure freshness).
 func (b *Builder) HasChanges(ctx context.Context) bool {
 	if b.lastBuildTime.IsZero() {
 		return true
 	}
 	result, err := b.source.Query(ctx, `
-		SELECT MAX(COALESCE(_cq_sync_time, '1970-01-01'::TIMESTAMP_TZ)) AS latest
-		FROM (
-			SELECT _cq_sync_time FROM RAW.AWS_IAM_ROLES
-			UNION ALL SELECT _cq_sync_time FROM RAW.AWS_S3_BUCKETS
-			UNION ALL SELECT _cq_sync_time FROM RAW.GCP_COMPUTE_INSTANCES
-		)
+		SELECT MAX(event_time) AS latest
+		FROM CDC_EVENTS
 	`)
 	if err != nil || len(result.Rows) == 0 {
 		return true // fail-open
 	}
-	if latest, ok := queryRow(result.Rows[0], "latest").(time.Time); ok {
+	if latest, ok := queryRow(result.Rows[0], "latest").(time.Time); ok && !latest.IsZero() {
 		return latest.After(b.lastBuildTime)
 	}
 	return true
@@ -193,6 +236,11 @@ func (b *Builder) RebuildIfChanged(ctx context.Context) (bool, error) {
 // Graph returns the built graph
 func (b *Builder) Graph() *Graph {
 	return b.graph
+}
+
+// LastMutation returns metadata for the most recent graph update operation.
+func (b *Builder) LastMutation() GraphMutationSummary {
+	return b.lastMutation
 }
 
 func (b *Builder) buildRelationshipEdges(ctx context.Context) {

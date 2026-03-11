@@ -1,0 +1,46 @@
+routes:
+  - name: high_severity_findings
+    match:
+      event_type: finding.created
+      severity:
+        - critical
+        - high
+    deliver_to:
+      - type: entity_owner
+        channel: dm
+      - type: channel
+        channel: "#security-alerts"
+    escalate_after: 30m
+
+  - name: risk_score_spike
+    match:
+      event_type: risk_score.changed
+      delta: "> 0.3"
+    deliver_to:
+      - type: entity_owner
+        channel: dm
+      - type: account_team
+        channel: thread
+    group_by: entity_id
+    throttle: 5m
+
+  - name: toxic_combination_alerts
+    match:
+      event_type: toxic_combination.detected
+    deliver_to:
+      - type: channel
+        channel: "#ops-alerts"
+    group_by: entity_id
+    throttle: 5m
+
+  - name: low_severity_digest
+    match:
+      event_type: finding.created
+      severity:
+        - medium
+        - low
+    deliver_to:
+      - type: channel
+        channel: "#security-digest"
+    group_by: entity_id
+    digest: 15m

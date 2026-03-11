@@ -22,7 +22,7 @@ func NewSlackProvider() *SlackProvider {
 	return &SlackProvider{
 		BaseProvider: NewBaseProvider("slack", ProviderTypeSaaS),
 		apiURL:       "https://slack.com/api",
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newProviderHTTPClient(30 * time.Second),
 	}
 }
 

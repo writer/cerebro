@@ -83,7 +83,9 @@ func TestRenderAuditPackageZIP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open manifest: %v", err)
 	}
-	defer rc.Close()
+	defer func() {
+		_ = rc.Close()
+	}()
 
 	var manifest AuditManifest
 	if err := json.NewDecoder(rc).Decode(&manifest); err != nil {
@@ -98,6 +100,15 @@ func TestAuditPackageFilename(t *testing.T) {
 	now := time.Date(2026, 2, 24, 16, 15, 3, 0, time.UTC)
 	got := AuditPackageFilename("pci-dss-4.0", now)
 	want := "cerebro-audit-pci-dss-4.0-20260224T161503Z.zip"
+	if got != want {
+		t.Fatalf("filename = %q, want %q", got, want)
+	}
+}
+
+func TestAuditPackageFilename_SanitizesFrameworkID(t *testing.T) {
+	now := time.Date(2026, 2, 24, 16, 15, 3, 0, time.UTC)
+	got := AuditPackageFilename("../../PCI DSS v4.0\n", now)
+	want := "cerebro-audit-pci-dss-v4.0-20260224T161503Z.zip"
 	if got != want {
 		t.Fatalf("filename = %q, want %q", got, want)
 	}

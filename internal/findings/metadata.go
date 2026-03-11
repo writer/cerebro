@@ -10,10 +10,15 @@ import (
 type findingMetadata struct {
 	IssueID             string                    `json:"issue_id,omitempty"`
 	ControlID           string                    `json:"control_id,omitempty"`
+	TenantID            string                    `json:"tenant_id,omitempty"`
 	Title               string                    `json:"title,omitempty"`
+	SignalType          string                    `json:"signal_type,omitempty"`
+	Domain              string                    `json:"domain,omitempty"`
 	Resolution          string                    `json:"resolution,omitempty"`
 	DueAt               *time.Time                `json:"due_at,omitempty"`
 	StatusChangedAt     *time.Time                `json:"status_changed_at,omitempty"`
+	SnoozedUntil        *time.Time                `json:"snoozed_until,omitempty"`
+	EscalationCount     int                       `json:"escalation_count,omitempty"`
 	CreatedAt           *time.Time                `json:"created_at,omitempty"`
 	UpdatedAt           *time.Time                `json:"updated_at,omitempty"`
 	ResourceName        string                    `json:"resource_name,omitempty"`
@@ -44,16 +49,22 @@ type findingMetadata struct {
 	TicketNames         []string                  `json:"ticket_names,omitempty"`
 	TicketExternalIDs   []string                  `json:"ticket_external_ids,omitempty"`
 	Notes               string                    `json:"note,omitempty"`
+	EntityIDs           []string                  `json:"entity_ids,omitempty"`
 }
 
 func buildFindingMetadata(f *Finding) ([]byte, error) {
 	metadata := findingMetadata{
 		IssueID:             f.IssueID,
 		ControlID:           f.ControlID,
+		TenantID:            f.TenantID,
 		Title:               f.Title,
+		SignalType:          f.SignalType,
+		Domain:              f.Domain,
 		Resolution:          f.Resolution,
 		DueAt:               f.DueAt,
 		StatusChangedAt:     f.StatusChangedAt,
+		SnoozedUntil:        f.SnoozedUntil,
+		EscalationCount:     f.EscalationCount,
 		ResourceName:        f.ResourceName,
 		ResourceExternalID:  f.ResourceExternalID,
 		ResourceRegion:      f.ResourceRegion,
@@ -82,6 +93,7 @@ func buildFindingMetadata(f *Finding) ([]byte, error) {
 		TicketNames:         f.TicketNames,
 		TicketExternalIDs:   f.TicketExternalIDs,
 		Notes:               f.Notes,
+		EntityIDs:           f.EntityIDs,
 	}
 	if !f.CreatedAt.IsZero() {
 		metadata.CreatedAt = &f.CreatedAt
@@ -108,8 +120,17 @@ func applyFindingMetadata(f *Finding, data []byte) {
 	if f.ControlID == "" {
 		f.ControlID = metadata.ControlID
 	}
+	if f.TenantID == "" {
+		f.TenantID = metadata.TenantID
+	}
 	if f.Title == "" {
 		f.Title = metadata.Title
+	}
+	if f.SignalType == "" {
+		f.SignalType = metadata.SignalType
+	}
+	if f.Domain == "" {
+		f.Domain = metadata.Domain
 	}
 	if f.Resolution == "" {
 		f.Resolution = metadata.Resolution
@@ -119,6 +140,12 @@ func applyFindingMetadata(f *Finding, data []byte) {
 	}
 	if f.StatusChangedAt == nil && metadata.StatusChangedAt != nil {
 		f.StatusChangedAt = metadata.StatusChangedAt
+	}
+	if f.SnoozedUntil == nil && metadata.SnoozedUntil != nil {
+		f.SnoozedUntil = metadata.SnoozedUntil
+	}
+	if f.EscalationCount == 0 && metadata.EscalationCount > 0 {
+		f.EscalationCount = metadata.EscalationCount
 	}
 	if f.CreatedAt.IsZero() && metadata.CreatedAt != nil {
 		f.CreatedAt = *metadata.CreatedAt
@@ -209,5 +236,8 @@ func applyFindingMetadata(f *Finding, data []byte) {
 	}
 	if f.Notes == "" {
 		f.Notes = metadata.Notes
+	}
+	if len(f.EntityIDs) == 0 && len(metadata.EntityIDs) > 0 {
+		f.EntityIDs = metadata.EntityIDs
 	}
 }
