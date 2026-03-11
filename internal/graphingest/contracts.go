@@ -36,6 +36,7 @@ type MappingContract struct {
 	Name             string              `json:"name"`
 	SourcePattern    string              `json:"source_pattern"`
 	Domain           string              `json:"domain"`
+	SourceSystem     string              `json:"source_system,omitempty"`
 	WildcardPattern  bool                `json:"wildcard_pattern"`
 	APIVersion       string              `json:"apiVersion,omitempty"`
 	ContractVersion  string              `json:"contractVersion,omitempty"`
@@ -148,7 +149,8 @@ func BuildMappingContracts(config MappingConfig) []MappingContract {
 		row := MappingContract{
 			Name:            strings.TrimSpace(mapping.Name),
 			SourcePattern:   strings.TrimSpace(mapping.Source),
-			Domain:          mappingSourceDomain(mapping.Source),
+			Domain:          MappingDomain(mapping),
+			SourceSystem:    MappingSourceSystem(mapping),
 			WildcardPattern: strings.Contains(mapping.Source, "*"),
 			APIVersion:      normalizeMappingConfigAPIVersion(firstNonEmptyString(mapping.APIVersion, config.APIVersion)),
 			ContractVersion: normalizeMappingContractVersion(mapping.ContractVersion),
@@ -712,7 +714,23 @@ func isEnvelopeContextKey(key string) bool {
 	}
 }
 
-func mappingSourceDomain(source string) string {
+// MappingDomain returns the explicit mapping domain when set, otherwise derives it from legacy ensemble.tap sources.
+func MappingDomain(mapping EventMapping) string {
+	if domain := strings.ToLower(strings.TrimSpace(mapping.Domain)); domain != "" {
+		return domain
+	}
+	return legacyMappingSourceDomain(mapping.Source)
+}
+
+// MappingSourceSystem returns the explicit source system when set, otherwise derives it from legacy ensemble.tap sources.
+func MappingSourceSystem(mapping EventMapping) string {
+	if sourceSystem := strings.ToLower(strings.TrimSpace(mapping.SourceSystem)); sourceSystem != "" {
+		return sourceSystem
+	}
+	return legacyMappingSourceDomain(mapping.Source)
+}
+
+func legacyMappingSourceDomain(source string) string {
 	parts := strings.Split(strings.TrimSpace(source), ".")
 	if len(parts) < 3 {
 		return "unknown"
@@ -1001,6 +1019,8 @@ func cloneMappingConfig(config MappingConfig) MappingConfig {
 		cloned := EventMapping{
 			Name:            strings.TrimSpace(mapping.Name),
 			Source:          strings.TrimSpace(mapping.Source),
+			Domain:          strings.TrimSpace(mapping.Domain),
+			SourceSystem:    strings.TrimSpace(mapping.SourceSystem),
 			APIVersion:      strings.TrimSpace(mapping.APIVersion),
 			ContractVersion: strings.TrimSpace(mapping.ContractVersion),
 			SchemaURL:       strings.TrimSpace(mapping.SchemaURL),
@@ -1047,6 +1067,8 @@ func normalizeMappingConfig(config *MappingConfig) {
 		mapping := &config.Mappings[idx]
 		mapping.Name = strings.TrimSpace(mapping.Name)
 		mapping.Source = strings.TrimSpace(mapping.Source)
+		mapping.Domain = strings.ToLower(strings.TrimSpace(mapping.Domain))
+		mapping.SourceSystem = strings.ToLower(strings.TrimSpace(mapping.SourceSystem))
 		mapping.APIVersion = normalizeMappingConfigAPIVersion(firstNonEmptyString(mapping.APIVersion, config.APIVersion))
 		mapping.ContractVersion = normalizeMappingContractVersion(mapping.ContractVersion)
 		mapping.SchemaURL = strings.TrimSpace(mapping.SchemaURL)
@@ -1086,6 +1108,12 @@ func validateMappingConfig(config MappingConfig) error {
 		}
 		if _, err := path.Match(strings.TrimSpace(mapping.Source), strings.TrimSpace(mapping.Source)); err != nil {
 			return fmt.Errorf("mapping %q has invalid source pattern %q: %w", name, mapping.Source, err)
+		}
+		if strings.ContainsAny(strings.TrimSpace(mapping.Domain), "*?[]") {
+			return fmt.Errorf("mapping %q has invalid domain %q", name, mapping.Domain)
+		}
+		if strings.ContainsAny(strings.TrimSpace(mapping.SourceSystem), "*?[]") {
+			return fmt.Errorf("mapping %q has invalid sourceSystem %q", name, mapping.SourceSystem)
 		}
 	}
 	return nil

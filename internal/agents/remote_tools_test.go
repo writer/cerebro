@@ -14,6 +14,9 @@ func TestRemoteToolProviderConfigWithDefaults(t *testing.T) {
 	if cfg.ManifestSubject == "" || cfg.RequestPrefix == "" {
 		t.Fatal("expected default manifest subject and request prefix")
 	}
+	if cfg.ManifestSubject != "cerebro.tools.manifest" || cfg.RequestPrefix != "cerebro.tools.request" {
+		t.Fatalf("unexpected default subjects: %q %q", cfg.ManifestSubject, cfg.RequestPrefix)
+	}
 	if cfg.DiscoverTimeout <= 0 || cfg.RequestTimeout <= 0 {
 		t.Fatal("expected positive default timeouts")
 	}
@@ -23,8 +26,8 @@ func TestRemoteToolProviderConfigValidate(t *testing.T) {
 	valid := (RemoteToolProviderConfig{
 		Enabled:         true,
 		URLs:            []string{"nats://127.0.0.1:4222"},
-		ManifestSubject: "ensemble.tools.manifest",
-		RequestPrefix:   "ensemble.tools.request",
+		ManifestSubject: "cerebro.tools.manifest",
+		RequestPrefix:   "cerebro.tools.request",
 		AuthMode:        "none",
 	}).withDefaults()
 	if err := valid.validate(); err != nil {

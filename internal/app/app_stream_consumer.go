@@ -16,13 +16,13 @@ import (
 	"github.com/writer/cerebro/internal/health"
 )
 
-func (a *App) initTapGraphConsumer(ctx context.Context) {
+func (a *App) initGraphEventConsumer(ctx context.Context) {
 	if !a.Config.NATSConsumerEnabled {
 		return
 	}
 	subjects := append([]string(nil), a.Config.NATSConsumerSubjects...)
 	if len(subjects) == 0 {
-		subjects = []string{"ensemble.tap.>"}
+		subjects = []string{"cerebro.events.>"}
 	}
 
 	consumer, err := events.NewJetStreamConsumer(events.ConsumerConfig{
@@ -49,14 +49,14 @@ func (a *App) initTapGraphConsumer(ctx context.Context) {
 		TLSKeyFile:            a.Config.NATSJetStreamTLSKeyFile,
 		TLSServerName:         a.Config.NATSJetStreamTLSServerName,
 		TLSInsecureSkipVerify: a.Config.NATSJetStreamTLSInsecure,
-	}, a.Logger, a.handleTapCloudEvent)
+	}, a.Logger, a.handleGraphEvent)
 	if err != nil {
 		a.Logger.Warn("failed to initialize nats graph consumer", "error", err)
 		return
 	}
-	a.TapConsumer = consumer
+	a.GraphEventConsumer = consumer
 	if a.Health != nil {
-		a.Health.Register("tap_consumer", func(_ context.Context) health.CheckResult {
+		a.Health.Register("graph_event_consumer", func(_ context.Context) health.CheckResult {
 			start := time.Now().UTC()
 			snapshot := consumer.HealthSnapshot(start)
 			status := health.StatusHealthy
@@ -83,7 +83,7 @@ func (a *App) initTapGraphConsumer(ctx context.Context) {
 				message = fmt.Sprintf("consumer healthy; lag=%d lag_seconds=%s", snapshot.ConsumerLag, snapshot.ConsumerLagAge.Round(time.Second))
 			}
 			return health.CheckResult{
-				Name:      "tap_consumer",
+				Name:      "graph_event_consumer",
 				Status:    status,
 				Message:   message,
 				Timestamp: start,
@@ -128,7 +128,7 @@ func (a *App) waitForSecurityGraphReady(ctx context.Context) error {
 	}
 }
 
-func (a *App) handleTapCloudEvent(ctx context.Context, evt events.CloudEvent) error {
+func (a *App) handleGraphEvent(ctx context.Context, evt events.CloudEvent) error {
 	event := evt
 	eventType := strings.TrimSpace(event.Type)
 	if eventType == "" {
@@ -140,7 +140,7 @@ func (a *App) handleTapCloudEvent(ctx context.Context, evt events.CloudEvent) er
 		return err
 	}
 	if !isLegacyTapEvent {
-		if mapped, err := a.applyTapDeclarativeMappings(event); err != nil {
+		if mapped, err := a.applyGraphEventDeclarativeMappings(event); err != nil {
 			return err
 		} else if mapped {
 			return nil
@@ -153,7 +153,7 @@ func (a *App) handleTapCloudEvent(ctx context.Context, evt events.CloudEvent) er
 	if isTapInteractionType(eventType) {
 		return a.handleTapInteractionEvent(eventType, event)
 	}
-	if mapped, err := a.applyTapDeclarativeMappings(event); err != nil {
+	if mapped, err := a.applyGraphEventDeclarativeMappings(event); err != nil {
 		return err
 	} else if mapped {
 		return nil
@@ -242,11 +242,11 @@ func (a *App) handleTapCloudEvent(ctx context.Context, evt events.CloudEvent) er
 	return nil
 }
 
-func (a *App) tapEventMapper() (*graphingest.Mapper, error) {
+func (a *App) graphEventMapper() (*graphingest.Mapper, error) {
 	if a == nil {
 		return nil, fmt.Errorf("app is required")
 	}
-	a.tapMapperOnce.Do(func() {
+	a.graphEventMapperOnce.Do(func() {
 		path := strings.TrimSpace(os.Getenv("GRAPH_EVENT_MAPPING_PATH"))
 		var config graphingest.MappingConfig
 		var err error
@@ -261,14 +261,14 @@ func (a *App) tapEventMapper() (*graphingest.Mapper, error) {
 				}
 				config, err = graphingest.LoadDefaultConfig()
 				if err != nil {
-					a.tapMapperErr = fmt.Errorf("load default graph event mapping config after custom config failure: %w", err)
+					a.graphEventMapperErr = fmt.Errorf("load default graph event mapping config after custom config failure: %w", err)
 					return
 				}
 			}
 		} else {
 			config, err = graphingest.LoadDefaultConfig()
 			if err != nil {
-				a.tapMapperErr = err
+				a.graphEventMapperErr = err
 				return
 			}
 		}
@@ -283,19 +283,19 @@ func (a *App) tapEventMapper() (*graphingest.Mapper, error) {
 			ValidationMode: validationMode,
 			DeadLetterPath: deadLetterPath,
 		}
-		a.TapEventMapper, a.tapMapperErr = graphingest.NewMapperWithOptions(config, a.resolveTapMappingIdentity, mapperOpts)
+		a.GraphEventMapper, a.graphEventMapperErr = graphingest.NewMapperWithOptions(config, a.resolveGraphEventMappingIdentity, mapperOpts)
 	})
-	if a.tapMapperErr != nil {
-		return nil, a.tapMapperErr
+	if a.graphEventMapperErr != nil {
+		return nil, a.graphEventMapperErr
 	}
-	return a.TapEventMapper, nil
+	return a.GraphEventMapper, nil
 }
 
-func (a *App) applyTapDeclarativeMappings(evt events.CloudEvent) (bool, error) {
-	mapper, err := a.tapEventMapper()
+func (a *App) applyGraphEventDeclarativeMappings(evt events.CloudEvent) (bool, error) {
+	mapper, err := a.graphEventMapper()
 	if err != nil {
 		if a.Logger != nil {
-			a.Logger.Warn("tap declarative mapping unavailable; using legacy fallback mapping",
+			a.Logger.Warn("graph event declarative mapping unavailable; using legacy fallback mapping",
 				"event_type", evt.Type,
 				"error", err,
 			)
@@ -311,7 +311,7 @@ func (a *App) applyTapDeclarativeMappings(evt events.CloudEvent) (bool, error) {
 		return false, err
 	}
 	if result.Matched && a.Logger != nil {
-		a.Logger.Info("applied declarative tap graph mappings",
+		a.Logger.Info("applied declarative graph event mappings",
 			"event_type", evt.Type,
 			"mappings", result.MappingNames,
 			"nodes", len(result.NodesUpserted),
@@ -323,7 +323,7 @@ func (a *App) applyTapDeclarativeMappings(evt events.CloudEvent) (bool, error) {
 		)
 	}
 	if (result.EventsRejected > 0 || result.NodesRejected > 0 || result.EdgesRejected > 0) && a.Logger != nil {
-		a.Logger.Warn("tap declarative mapping rejected invalid writes",
+		a.Logger.Warn("graph event declarative mapping rejected invalid writes",
 			"event_type", evt.Type,
 			"mappings", result.MappingNames,
 			"events_rejected", result.EventsRejected,
@@ -335,7 +335,7 @@ func (a *App) applyTapDeclarativeMappings(evt events.CloudEvent) (bool, error) {
 	return result.Matched, nil
 }
 
-func (a *App) resolveTapMappingIdentity(raw string, evt events.CloudEvent) string {
+func (a *App) resolveGraphEventMappingIdentity(raw string, evt events.CloudEvent) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return ""
@@ -346,6 +346,7 @@ func (a *App) resolveTapMappingIdentity(raw string, evt events.CloudEvent) strin
 
 	email := strings.ToLower(strings.TrimSpace(raw))
 	if strings.Contains(email, "@") {
+		sourceSystem := sourceSystemFromCloudEvent(evt)
 		canonicalID := "person:" + email
 		if securityGraph := a.ensureSecurityGraph(); securityGraph != nil {
 			if _, ok := securityGraph.GetNode(canonicalID); !ok {
@@ -356,7 +357,7 @@ func (a *App) resolveTapMappingIdentity(raw string, evt events.CloudEvent) strin
 					Provider: "org",
 					Properties: map[string]any{
 						"email":           email,
-						"source_system":   firstNonEmpty(sourceSystemFromTapType(evt.Type), "tap"),
+						"source_system":   sourceSystem,
 						"source_event_id": evt.ID,
 						"observed_at":     evt.Time.UTC().Format(time.RFC3339),
 						"valid_from":      evt.Time.UTC().Format(time.RFC3339),
@@ -365,7 +366,7 @@ func (a *App) resolveTapMappingIdentity(raw string, evt events.CloudEvent) strin
 				})
 			}
 			_, _ = graph.ResolveIdentityAlias(securityGraph, graph.IdentityAliasAssertion{
-				SourceSystem:  firstNonEmpty(sourceSystemFromTapType(evt.Type), "tap"),
+				SourceSystem:  sourceSystem,
 				SourceEventID: strings.TrimSpace(evt.ID),
 				ExternalID:    email,
 				Email:         email,
@@ -379,12 +380,24 @@ func (a *App) resolveTapMappingIdentity(raw string, evt events.CloudEvent) strin
 	return raw
 }
 
-func sourceSystemFromTapType(eventType string) string {
+func sourceSystemFromEventType(eventType string) string {
 	parts := strings.Split(strings.TrimSpace(eventType), ".")
-	if len(parts) >= 3 {
+	if len(parts) >= 3 && strings.EqualFold(parts[0], "ensemble") && strings.EqualFold(parts[1], "tap") {
 		return strings.ToLower(strings.TrimSpace(parts[2]))
 	}
 	return ""
+}
+
+func sourceSystemFromCloudEvent(evt events.CloudEvent) string {
+	if sourceSystem := sourceSystemFromEventType(evt.Type); sourceSystem != "" {
+		return sourceSystem
+	}
+	source := strings.ToLower(strings.TrimSpace(evt.Source))
+	source = strings.TrimPrefix(source, "urn:")
+	if source != "" {
+		return source
+	}
+	return firstNonEmpty(sourceSystemFromEventType(evt.Type), "graph")
 }
 
 func parseTapType(eventType string) (system string, entityType string, action string) {

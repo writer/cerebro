@@ -188,12 +188,16 @@ func TestMapperSourceDomainCoverageGuardrails(t *testing.T) {
 
 	domainSeen := make(map[string]bool)
 	domainSpecificKinds := make(map[string]bool)
+	sourceSystemsSeen := make(map[string]bool)
 	for _, mapping := range config.Mappings {
-		domain := mapperSourceDomain(mapping.Source)
+		domain := MappingDomain(mapping)
 		if domain == "" {
 			continue
 		}
 		domainSeen[domain] = true
+		if sourceSystem := MappingSourceSystem(mapping); sourceSystem != "" && sourceSystem != "unknown" {
+			sourceSystemsSeen[sourceSystem] = true
+		}
 		for _, node := range mapping.Nodes {
 			kind := strings.ToLower(strings.TrimSpace(node.Kind))
 			if kind == "" || kind == string(graph.NodeKindActivity) {
@@ -221,15 +225,9 @@ func TestMapperSourceDomainCoverageGuardrails(t *testing.T) {
 	if len(missingSpecific) > 0 {
 		t.Fatalf("required domains missing canonical kinds (non-activity): %v", missingSpecific)
 	}
-}
-
-func mapperSourceDomain(source string) string {
-	parts := strings.Split(strings.TrimSpace(source), ".")
-	if len(parts) < 3 {
-		return ""
+	for _, domain := range requiredDomains {
+		if !sourceSystemsSeen[domain] {
+			t.Fatalf("required domains missing explicit source system metadata: %s", domain)
+		}
 	}
-	if parts[0] != "ensemble" || parts[1] != "tap" {
-		return ""
-	}
-	return strings.TrimSpace(parts[2])
 }

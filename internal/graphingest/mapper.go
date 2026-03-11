@@ -52,6 +52,8 @@ type MappingConfig struct {
 type EventMapping struct {
 	Name            string              `json:"name" yaml:"name"`
 	Source          string              `json:"source" yaml:"source"`
+	Domain          string              `json:"domain,omitempty" yaml:"domain,omitempty"`
+	SourceSystem    string              `json:"sourceSystem,omitempty" yaml:"sourceSystem,omitempty"`
 	APIVersion      string              `json:"apiVersion,omitempty" yaml:"apiVersion,omitempty"`
 	ContractVersion string              `json:"contractVersion,omitempty" yaml:"contractVersion,omitempty"`
 	SchemaURL       string              `json:"schemaURL,omitempty" yaml:"schemaURL,omitempty"`
@@ -301,7 +303,7 @@ func (m *Mapper) Apply(g *graph.Graph, evt events.CloudEvent) (ApplyResult, erro
 			}
 			provider := strings.TrimSpace(m.renderTemplate(nodeDef.Provider, context, evt))
 			if provider == "" {
-				provider = sourceSystemFromEvent(evt)
+				provider = firstNonEmptyString(MappingSourceSystem(mapping), sourceSystemFromEvent(evt), "graph")
 			}
 			properties := m.renderProperties(nodeDef.Properties, context, evt)
 			ensureTemporalAndProvenance(properties, evt, mapping, contract)
@@ -540,8 +542,9 @@ func ensureTemporalAndProvenance(properties map[string]any, evt events.CloudEven
 
 	sourceSystem := firstNonEmptyString(
 		valueToString(properties["source_system"]),
+		MappingSourceSystem(mapping),
 		sourceSystemFromEvent(evt),
-		"tap",
+		"graph",
 	)
 	sourceEventID := firstNonEmptyString(valueToString(properties["source_event_id"]), evt.ID)
 	observedAt := parseMetadataTimestamp(valueToString(properties["observed_at"]))
@@ -619,17 +622,27 @@ func mapperProducerFingerprint(evt events.CloudEvent, mapping EventMapping, cont
 		strings.TrimSpace(firstNonEmptyString(contract.ContractVersion, mapping.ContractVersion)),
 	}, "|")
 	sum := sha256.Sum256([]byte(basis))
-	return "tapmapper:" + hex.EncodeToString(sum[:8])
+	return "graphmapper:" + hex.EncodeToString(sum[:8])
 }
 
 func sourceSystemFromEvent(evt events.CloudEvent) string {
-	parts := strings.Split(strings.TrimSpace(evt.Type), ".")
-	if len(parts) >= 3 {
-		return strings.ToLower(strings.TrimSpace(parts[2]))
+	if sourceSystem := sourceSystemFromEventType(evt.Type); sourceSystem != "" {
+		return sourceSystem
 	}
 	source := strings.ToLower(strings.TrimSpace(evt.Source))
 	source = strings.TrimPrefix(source, "urn:")
-	return firstNonEmptyString(source, "tap")
+	if source != "" {
+		return source
+	}
+	return firstNonEmptyString(sourceSystemFromEventType(evt.Type), "graph")
+}
+
+func sourceSystemFromEventType(eventType string) string {
+	parts := strings.Split(strings.TrimSpace(eventType), ".")
+	if len(parts) >= 3 && strings.EqualFold(parts[0], "ensemble") && strings.EqualFold(parts[1], "tap") {
+		return strings.ToLower(strings.TrimSpace(parts[2]))
+	}
+	return ""
 }
 
 func validateMapperWriteMetadata(properties map[string]any, entityType, entityID, entityKind string) []graph.SchemaValidationIssue {

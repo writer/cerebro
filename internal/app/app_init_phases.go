@@ -98,7 +98,7 @@ func (a *App) initPhase3() {
 
 func (a *App) initPhase4(ctx context.Context) error {
 	a.initSecurityGraph(ctx)
-	a.initTapGraphConsumer(ctx)
+	a.initGraphEventConsumer(ctx)
 	return a.validatePolicyCoverage(ctx)
 }
 

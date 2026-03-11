@@ -54,7 +54,7 @@ func renderMarkdown(catalog graphingest.ContractCatalog) string {
 	}
 	fmt.Fprintf(&b, "- CloudEvent envelope fields: **%d**\n", len(catalog.EnvelopeFields))
 	fmt.Fprintf(&b, "- Platform lifecycle event contracts: **%d**\n", len(catalog.LifecycleEvents))
-	fmt.Fprintf(&b, "- TAP mapping rules: **%d**\n", len(catalog.Mappings))
+	fmt.Fprintf(&b, "- Graph event mapping rules: **%d**\n", len(catalog.Mappings))
 	fmt.Fprintf(&b, "- Wildcard event patterns: **%d**\n", totalWildcards)
 	fmt.Fprintf(&b, "- Distinct required data keys across mappings: **%d**\n", len(catalog.DistinctRequiredData))
 	fmt.Fprintf(&b, "- Distinct optional data keys across mappings: **%d**\n\n", len(catalog.DistinctOptionalData))
@@ -89,18 +89,19 @@ func renderMarkdown(catalog graphingest.ContractCatalog) string {
 	}
 
 	b.WriteString("\n## Mapping Contracts\n\n")
-	b.WriteString("| Mapping | Source Pattern | Domain | Wildcard | apiVersion | contractVersion | schemaURL | Node Kinds | Edge Kinds | Required Data Keys | Optional Data Keys | Resolve Keys |\n")
-	b.WriteString("|---|---|---|---|---|---|---|---|---|---|---|---|\n")
+	b.WriteString("| Mapping | Source Pattern | Domain | Source System | Wildcard | apiVersion | contractVersion | schemaURL | Node Kinds | Edge Kinds | Required Data Keys | Optional Data Keys | Resolve Keys |\n")
+	b.WriteString("|---|---|---|---|---|---|---|---|---|---|---|---|---|\n")
 	for _, contract := range catalog.Mappings {
 		wildcard := "no"
 		if contract.WildcardPattern {
 			wildcard = "yes"
 		}
 		fmt.Fprintf(&b,
-			"| `%s` | `%s` | `%s` | %s | `%s` | `%s` | %s | %s | %s | %s | %s | %s |\n",
+			"| `%s` | `%s` | `%s` | `%s` | %s | `%s` | `%s` | %s | %s | %s | %s | %s | %s |\n",
 			contract.Name,
 			escapePipes(contract.SourcePattern),
 			escapePipes(contract.Domain),
+			escapePipes(contract.SourceSystem),
 			wildcard,
 			escapePipes(contract.APIVersion),
 			escapePipes(contract.ContractVersion),

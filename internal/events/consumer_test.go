@@ -27,6 +27,9 @@ func TestConsumerConfigWithDefaults(t *testing.T) {
 	if cfg.Stream == "" || cfg.Subject == "" || cfg.Durable == "" {
 		t.Fatal("expected default stream/subject/durable")
 	}
+	if cfg.Stream != "CEREBRO_EVENTS" || cfg.Subject != "cerebro.events.>" {
+		t.Fatalf("unexpected default stream/subject: %q %q", cfg.Stream, cfg.Subject)
+	}
 	if cfg.BatchSize <= 0 || cfg.AckWait <= 0 || cfg.FetchTimeout <= 0 {
 		t.Fatal("expected positive default batch/ack/fetch settings")
 	}
@@ -44,8 +47,8 @@ func TestConsumerConfigWithDefaultsPreservesZeroDropHealthThreshold(t *testing.T
 func TestConsumerConfigValidate(t *testing.T) {
 	valid := (ConsumerConfig{
 		URLs:           []string{"nats://127.0.0.1:4222"},
-		Stream:         "ENSEMBLE_TAP",
-		Subject:        "ensemble.tap.>",
+		Stream:         "CEREBRO_EVENTS",
+		Subject:        "cerebro.events.>",
 		Durable:        "cerebro_graph_builder",
 		DeadLetterPath: t.TempDir() + "/consumer.dlq.jsonl",
 		BatchSize:      10,
@@ -58,8 +61,8 @@ func TestConsumerConfigValidate(t *testing.T) {
 
 	invalid := ConsumerConfig{
 		URLs:           []string{"nats://127.0.0.1:4222"},
-		Stream:         "ENSEMBLE_TAP",
-		Subject:        "ensemble.tap.>",
+		Stream:         "CEREBRO_EVENTS",
+		Subject:        "cerebro.events.>",
 		Durable:        "cerebro_graph_builder",
 		DeadLetterPath: t.TempDir() + "/consumer.dlq.jsonl",
 		BatchSize:      0,

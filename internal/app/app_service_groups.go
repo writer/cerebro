@@ -41,17 +41,17 @@ type CoreServices struct {
 
 // FeatureServices groups optional product integrations and orchestrators.
 type FeatureServices struct {
-	Agents        *agents.AgentRegistry
-	Ticketing     *ticketing.Service
-	Identity      *identity.Service
-	AttackPath    *attackpath.Graph
-	Providers     *providers.Registry
-	Webhooks      *webhooks.Service
-	TapConsumer   *events.Consumer
-	RemoteTools   *agents.RemoteToolProvider
-	ToolPublisher *agents.ToolPublisher
-	Notifications *notifications.Manager
-	Scheduler     *scheduler.Scheduler
+	Agents             *agents.AgentRegistry
+	Ticketing          *ticketing.Service
+	Identity           *identity.Service
+	AttackPath         *attackpath.Graph
+	Providers          *providers.Registry
+	Webhooks           *webhooks.Service
+	GraphEventConsumer *events.Consumer
+	RemoteTools        *agents.RemoteToolProvider
+	ToolPublisher      *agents.ToolPublisher
+	Notifications      *notifications.Manager
+	Scheduler          *scheduler.Scheduler
 }
 
 // SecurityServices groups access control, runtime, remediation, and graph intelligence.
@@ -96,17 +96,17 @@ func (a *App) CoreServices() CoreServices {
 
 func (a *App) FeatureServices() FeatureServices {
 	return FeatureServices{
-		Agents:        a.Agents,
-		Ticketing:     a.Ticketing,
-		Identity:      a.Identity,
-		AttackPath:    a.AttackPath,
-		Providers:     a.Providers,
-		Webhooks:      a.Webhooks,
-		TapConsumer:   a.TapConsumer,
-		RemoteTools:   a.RemoteTools,
-		ToolPublisher: a.ToolPublisher,
-		Notifications: a.Notifications,
-		Scheduler:     a.Scheduler,
+		Agents:             a.Agents,
+		Ticketing:          a.Ticketing,
+		Identity:           a.Identity,
+		AttackPath:         a.AttackPath,
+		Providers:          a.Providers,
+		Webhooks:           a.Webhooks,
+		GraphEventConsumer: a.GraphEventConsumer,
+		RemoteTools:        a.RemoteTools,
+		ToolPublisher:      a.ToolPublisher,
+		Notifications:      a.Notifications,
+		Scheduler:          a.Scheduler,
 	}
 }
 

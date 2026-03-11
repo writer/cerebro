@@ -414,9 +414,9 @@ func (s *Server) graphIngestHealth(w http.ResponseWriter, r *http.Request) {
 
 	stats := graphingest.MapperStats{}
 	initialized := false
-	if s.app != nil && s.app.TapEventMapper != nil {
+	if s.app != nil && s.app.GraphEventMapper != nil {
 		initialized = true
-		stats = s.app.TapEventMapper.Stats()
+		stats = s.app.GraphEventMapper.Stats()
 	}
 
 	deadLetter := graphingest.DeadLetterTailMetrics{
@@ -512,8 +512,8 @@ func (s *Server) graphIngestDeadLetter(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) graphIngestContracts(w http.ResponseWriter, _ *http.Request) {
 	now := time.Now().UTC()
-	if s.app != nil && s.app.TapEventMapper != nil {
-		catalog := s.app.TapEventMapper.ContractCatalog(now)
+	if s.app != nil && s.app.GraphEventMapper != nil {
+		catalog := s.app.GraphEventMapper.ContractCatalog(now)
 		s.json(w, http.StatusOK, map[string]any{
 			"generated_at": now,
 			"source":       "runtime_mapper",

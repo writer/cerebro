@@ -130,7 +130,7 @@ func renderMarkdown(nodeDefs []graph.NodeKindDefinition, edgeDefs []graph.EdgeKi
 func collectDomainCoverage(mappings graphingest.MappingConfig) []domainCoverage {
 	byDomain := make(map[string]*domainCoverage)
 	for _, mapping := range mappings.Mappings {
-		domain := mappingSourceDomain(mapping.Source)
+		domain := graphingest.MappingDomain(mapping)
 		if domain == "" {
 			continue
 		}
@@ -189,18 +189,6 @@ func collectUnmappedNodeKinds(nodeDefs []graph.NodeKindDefinition, mappedKinds m
 	sort.Strings(unmapped)
 	return unmapped
 }
-
-func mappingSourceDomain(source string) string {
-	parts := strings.Split(strings.TrimSpace(source), ".")
-	if len(parts) < 3 {
-		return ""
-	}
-	if parts[0] != "ensemble" || parts[1] != "tap" {
-		return ""
-	}
-	return strings.TrimSpace(parts[2])
-}
-
 func joinOrDash(values []string) string {
 	if len(values) == 0 {
 		return "-"

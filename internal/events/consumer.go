@@ -17,9 +17,9 @@ import (
 )
 
 const (
-	defaultConsumerStream              = "ENSEMBLE_TAP"
+	defaultConsumerStream              = "CEREBRO_EVENTS"
 	defaultConsumerDurable             = "cerebro_graph_builder"
-	defaultConsumerSubject             = "ensemble.tap.>"
+	defaultConsumerSubject             = "cerebro.events.>"
 	defaultConsumerBatchSize           = 50
 	defaultConsumerAckWait             = 120 * time.Second
 	defaultConsumerFetchTimeout        = 2 * time.Second

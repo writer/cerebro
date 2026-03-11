@@ -69,7 +69,7 @@ func TestHandleTapCloudEventWaitsForGraphReady(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- a.handleTapCloudEvent(context.Background(), evt)
+		done <- a.handleGraphEvent(context.Background(), evt)
 	}()
 
 	select {
@@ -83,10 +83,10 @@ func TestHandleTapCloudEventWaitsForGraphReady(t *testing.T) {
 	select {
 	case err := <-done:
 		if err != nil {
-			t.Fatalf("handleTapCloudEvent returned error after graph became ready: %v", err)
+			t.Fatalf("handleGraphEvent returned error after graph became ready: %v", err)
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("handleTapCloudEvent did not resume after graph became ready")
+		t.Fatal("handleGraphEvent did not resume after graph became ready")
 	}
 
 	if a.SecurityGraph == nil {
@@ -158,8 +158,8 @@ func TestHandleTapCloudEvent_BuildsBusinessNodeAndEdge(t *testing.T) {
 		},
 	}
 
-	if err := a.handleTapCloudEvent(context.Background(), evt); err != nil {
-		t.Fatalf("handleTapCloudEvent failed: %v", err)
+	if err := a.handleGraphEvent(context.Background(), evt); err != nil {
+		t.Fatalf("handleGraphEvent failed: %v", err)
 	}
 
 	node, ok := a.SecurityGraph.GetNode("hubspot:contact:contact-1")
@@ -195,15 +195,15 @@ func TestHandleTapCloudEvent_InvalidCustomMapperPathDoesNotBlockPipeline(t *test
 		},
 	}
 
-	if err := a.handleTapCloudEvent(context.Background(), evt); err != nil {
-		t.Fatalf("handleTapCloudEvent should fallback without error when mapper path is invalid: %v", err)
+	if err := a.handleGraphEvent(context.Background(), evt); err != nil {
+		t.Fatalf("handleGraphEvent should fallback without error when mapper path is invalid: %v", err)
 	}
 
 	if _, ok := a.SecurityGraph.GetNode("hubspot:contact:contact-1"); !ok {
 		t.Fatal("expected legacy fallback mapping to continue processing TAP event")
 	}
 
-	mapper, err := a.tapEventMapper()
+	mapper, err := a.graphEventMapper()
 	if err != nil {
 		t.Fatalf("expected mapper fallback to default config, got error: %v", err)
 	}
@@ -238,8 +238,8 @@ func TestHandleTapCloudEvent_AppliesDeclarativeMappingsForGenericEventTypes(t *t
 		},
 	}
 
-	if err := a.handleTapCloudEvent(context.Background(), evt); err != nil {
-		t.Fatalf("handleTapCloudEvent failed for generic mapped event: %v", err)
+	if err := a.handleGraphEvent(context.Background(), evt); err != nil {
+		t.Fatalf("handleGraphEvent failed for generic mapped event: %v", err)
 	}
 
 	node, ok := a.SecurityGraph.GetNode("service:cerebro")
@@ -280,8 +280,8 @@ func TestHandleTapCloudEvent_UsesSubjectForGenericDeclarativeMappingsWhenTypeMis
 		},
 	}
 
-	if err := a.handleTapCloudEvent(context.Background(), evt); err != nil {
-		t.Fatalf("handleTapCloudEvent failed for subject-only mapped event: %v", err)
+	if err := a.handleGraphEvent(context.Background(), evt); err != nil {
+		t.Fatalf("handleGraphEvent failed for subject-only mapped event: %v", err)
 	}
 
 	if _, ok := a.SecurityGraph.GetNode("service:subject-only"); !ok {
@@ -310,7 +310,7 @@ func TestHandleTapCloudEvent_AccumulatesCloseDatePushCount(t *testing.T) {
 			},
 		},
 	}
-	if err := a.handleTapCloudEvent(context.Background(), first); err != nil {
+	if err := a.handleGraphEvent(context.Background(), first); err != nil {
 		t.Fatalf("first event failed: %v", err)
 	}
 
@@ -331,7 +331,7 @@ func TestHandleTapCloudEvent_AccumulatesCloseDatePushCount(t *testing.T) {
 			},
 		},
 	}
-	if err := a.handleTapCloudEvent(context.Background(), second); err != nil {
+	if err := a.handleGraphEvent(context.Background(), second); err != nil {
 		t.Fatalf("second event failed: %v", err)
 	}
 
@@ -367,8 +367,8 @@ func TestHandleTapCloudEvent_ActivitySubjectCreatesNodesAndEdges(t *testing.T) {
 		},
 	}
 
-	if err := a.handleTapCloudEvent(context.Background(), evt); err != nil {
-		t.Fatalf("handleTapCloudEvent failed: %v", err)
+	if err := a.handleGraphEvent(context.Background(), evt); err != nil {
+		t.Fatalf("handleGraphEvent failed: %v", err)
 	}
 
 	actorNodeID := "person:alice@example.com"
@@ -421,8 +421,8 @@ func TestHandleTapCloudEvent_UnknownActivitySourceFallsBackToGenericActivity(t *
 		},
 	}
 
-	if err := a.handleTapCloudEvent(context.Background(), evt); err != nil {
-		t.Fatalf("handleTapCloudEvent failed: %v", err)
+	if err := a.handleGraphEvent(context.Background(), evt); err != nil {
+		t.Fatalf("handleGraphEvent failed: %v", err)
 	}
 
 	activityNodeID := "activity:custom:audit_ping:evt-activity-unknown-1"
@@ -450,8 +450,8 @@ func TestHandleTapCloudEvent_InteractionSubjectCreatesPeopleAndEdge(t *testing.T
 		},
 	}
 
-	if err := a.handleTapCloudEvent(context.Background(), evt); err != nil {
-		t.Fatalf("handleTapCloudEvent failed: %v", err)
+	if err := a.handleGraphEvent(context.Background(), evt); err != nil {
+		t.Fatalf("handleGraphEvent failed: %v", err)
 	}
 
 	aliceNode, ok := a.SecurityGraph.GetNode("person:alice@example.com")
@@ -507,10 +507,10 @@ func TestHandleTapCloudEvent_InteractionSubjectAggregatesAcrossEvents(t *testing
 		},
 	}
 
-	if err := a.handleTapCloudEvent(context.Background(), first); err != nil {
+	if err := a.handleGraphEvent(context.Background(), first); err != nil {
 		t.Fatalf("first interaction event failed: %v", err)
 	}
-	if err := a.handleTapCloudEvent(context.Background(), second); err != nil {
+	if err := a.handleGraphEvent(context.Background(), second); err != nil {
 		t.Fatalf("second interaction event failed: %v", err)
 	}
 
@@ -569,7 +569,7 @@ func TestHandleTapCloudEvent_SchemaEventRegistersRuntimeKinds(t *testing.T) {
 		},
 	}
 
-	if err := a.handleTapCloudEvent(context.Background(), evt); err != nil {
+	if err := a.handleGraphEvent(context.Background(), evt); err != nil {
 		t.Fatalf("schema event failed: %v", err)
 	}
 

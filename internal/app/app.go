@@ -98,19 +98,19 @@ type App struct {
 	Cache     *cache.PolicyCache
 
 	// Feature services
-	Agents         *agents.AgentRegistry
-	Ticketing      *ticketing.Service
-	Identity       *identity.Service
-	AttackPath     *attackpath.Graph
-	Providers      *providers.Registry
-	Webhooks       *webhooks.Service
-	TapConsumer    *events.Consumer
-	AlertRouter    *events.AlertRouter
-	TapEventMapper *graphingest.Mapper
-	RemoteTools    *agents.RemoteToolProvider
-	ToolPublisher  *agents.ToolPublisher
-	Notifications  *notifications.Manager
-	Scheduler      *scheduler.Scheduler
+	Agents             *agents.AgentRegistry
+	Ticketing          *ticketing.Service
+	Identity           *identity.Service
+	AttackPath         *attackpath.Graph
+	Providers          *providers.Registry
+	Webhooks           *webhooks.Service
+	GraphEventConsumer *events.Consumer
+	AlertRouter        *events.AlertRouter
+	GraphEventMapper   *graphingest.Mapper
+	RemoteTools        *agents.RemoteToolProvider
+	ToolPublisher      *agents.ToolPublisher
+	Notifications      *notifications.Manager
+	Scheduler          *scheduler.Scheduler
 
 	// Repositories (for Snowflake persistence)
 	FindingsRepo        *snowflake.FindingRepository
@@ -152,8 +152,8 @@ type App struct {
 	traceShutdown         func(context.Context) error
 	secretsReloadCancel   context.CancelFunc
 	secretsReloadWG       sync.WaitGroup
-	tapMapperOnce         sync.Once
-	tapMapperErr          error
+	graphEventMapperOnce  sync.Once
+	graphEventMapperErr   error
 	securityGraphInitMu   sync.RWMutex
 	reloadMu              sync.Mutex
 	apiKeys               atomic.Value // map[string]string
