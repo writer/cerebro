@@ -8,11 +8,11 @@ Cerebro's container image scanning pipeline should be durable, registry-neutral,
 - Reuse the existing registry client surface instead of inventing one-off sync-only paths.
 - Resolve multi-arch manifests, config blobs, and layer downloads directly from registries.
 - Reconstruct root filesystems safely enough for shared analyzers without requiring a full local image pull.
-- Keep execution-state semantics compatible with the existing workload-scan runtime so both can later move onto a shared execution store cleanly.
+- Keep execution-state semantics compatible with the existing workload-scan runtime on top of one shared execution store.
 
 ## Runtime Model
 
-The runtime persists state in SQLite via `internal/imagescan.SQLiteRunStore`.
+The runtime persists state through `internal/imagescan.SQLiteRunStore`, which now wraps the shared `internal/executionstore` schema.
 
 Persisted records:
 
@@ -20,7 +20,7 @@ Persisted records:
 - `RunEvent`: append-only lifecycle and debugging timeline
 - `FilesystemArtifact`: materialized rootfs metadata, retention, and cleanup timestamps
 
-By default, image scans now use the same `EXECUTION_STORE_FILE` fallback as workload scans. The tables remain separate, but the durability boundary is shared intentionally so the repo stops adding more process-local execution silos.
+By default, image scans now use the same `EXECUTION_STORE_FILE` fallback as workload scans. The underlying persistence schema is shared, with `namespace` separating image/function/workload execution resources.
 
 ## Execution Pipeline
 
@@ -71,10 +71,10 @@ This is the current local durability boundary, not the final distributed executo
 The runtime depends on a small analyzer seam:
 
 - `Analyzer`
-- current concrete: `FilesystemAnalyzer` backed by `scanner.TrivyFilesystemScanner`
+- current concrete: `FilesystemAnalyzer` backed by the shared `internal/filesystemanalyzer` package plus `scanner.TrivyFilesystemScanner` for vulnerability bridging
 - fallback: `NoopAnalyzer`
 
-This is intentionally thinner than the eventual workload filesystem analyzer from issue `#180`. The purpose here is to land durable execution plus materialization first, then let deeper SBOM/package/secret analysis evolve independently.
+This now uses the same filesystem cataloger as workload and function scans. The remaining work is deeper vulnerability knowledge and graph contextualization, not inventing another analyzer seam.
 
 ## Lifecycle Events
 
@@ -99,13 +99,12 @@ The current implementation intentionally borrows shape from a few mature project
 
 - SQLite is durable, but still single-node.
 - The rootfs materializer is local-disk based, not yet remote-worker aware.
-- The analyzer still relies on Trivy FS; richer package/SBOM/secret analysis belongs in issue `#180`.
+- The analyzer still relies on Trivy FS for vulnerability bridging; the native vulnerability knowledge pipeline belongs in issue `#181`.
 - Running-workload correlation and graph contextualization are later issues (`#179` / `#182`).
 
 ## Next Steps
 
-1. Reuse the same analyzer substrate for serverless package scans (`#179`).
-2. Replace the thin Trivy-based analyzer with the richer filesystem analyzer (`#180`).
-3. Feed image scan outputs into the vulnerability knowledge pipeline (`#181`).
-4. Link image scan runs, packages, and vulnerabilities into the temporal security graph (`#182`).
-5. Extract workload/image runtimes onto a real shared execution store once the execution surface stabilizes.
+1. Feed image scan outputs into the vulnerability knowledge pipeline (`#181`).
+2. Link image scan runs, packages, and vulnerabilities into the temporal security graph (`#182`).
+3. Extend package inventory coverage beyond the current curated ecosystem set.
+4. Expose execution resources over platform APIs instead of CLI-only surfaces.

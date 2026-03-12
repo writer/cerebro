@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/evalops/cerebro/internal/filesystemanalyzer"
 	"github.com/evalops/cerebro/internal/scanner"
 	"github.com/evalops/cerebro/internal/webhooks"
 )
@@ -47,30 +48,38 @@ func (NoopAnalyzer) Analyze(_ context.Context, input AnalysisInput) (*AnalysisRe
 }
 
 type FilesystemAnalyzer struct {
-	Scanner scanner.FilesystemScanner
+	Scanner  scanner.FilesystemScanner
+	Analyzer *filesystemanalyzer.Analyzer
 }
 
 func (a FilesystemAnalyzer) Analyze(ctx context.Context, input AnalysisInput) (*AnalysisReport, error) {
-	if a.Scanner == nil {
+	analyzer := a.Analyzer
+	if analyzer == nil && a.Scanner != nil {
+		analyzer = filesystemanalyzer.New(filesystemanalyzer.Options{VulnerabilityScanner: a.Scanner})
+	}
+	if analyzer == nil {
 		return NoopAnalyzer{}.Analyze(ctx, input)
 	}
 	if input.Filesystem == nil || strings.TrimSpace(input.Filesystem.Path) == "" {
 		return nil, fmt.Errorf("filesystem artifact is required for filesystem analysis")
 	}
-	result, err := a.Scanner.ScanFilesystem(ctx, input.Filesystem.Path)
+	catalog, err := analyzer.Analyze(ctx, input.Filesystem.Path)
 	if err != nil {
 		return nil, err
 	}
-	result.Repository = input.Target.Repository
-	result.Tag = input.Target.Tag
-	result.Digest = input.Target.Digest
-	result.Registry = string(input.Target.Registry)
-	result.OS = firstNonEmpty(result.OS, input.Manifest.Config.OS)
-	result.Architecture = firstNonEmpty(result.Architecture, input.Manifest.Config.Architecture)
+	result := scanner.ContainerScanResult{}
+	if catalog != nil {
+		result.Vulnerabilities = append(result.Vulnerabilities, catalog.Vulnerabilities...)
+		result.Findings = append(result.Findings, catalog.Findings...)
+		result.OS = firstNonEmpty(catalog.OS.PrettyName, catalog.OS.Name, input.Manifest.Config.OS)
+		result.Architecture = firstNonEmpty(catalog.OS.Architecture, input.Manifest.Config.Architecture)
+		result.Summary = summarizeVulnerabilities(result.Vulnerabilities)
+	}
 	return &AnalysisReport{
 		Analyzer:                     "filesystem",
 		FilesystemVulnerabilityCount: len(result.Vulnerabilities),
-		Result:                       *result,
+		Catalog:                      catalog,
+		Result:                       result,
 	}, nil
 }
 

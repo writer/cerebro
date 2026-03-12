@@ -5,6 +5,61 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 52 - Shared Filesystem Analyzer + Shared Execution Store (2026-03-11)
+
+### Review findings
+- [x] Gap: issue `#180` still existed only as a problem statement; workload, image, and function scans still used thin or stub analyzers instead of one shared filesystem cataloger.
+- [x] Gap: the repo still had three near-identical scan run stores, which meant `EXECUTION_STORE_FILE` was a shared path but not a shared execution substrate.
+- [x] Gap: workload scans were still defaulting to a noop analyzer in the CLI even though image and function scans had already started to grow filesystem analysis seams.
+- [x] Gap: the architecture docs still described the scan stack as “later shared” instead of documenting the actual shared execution/analyzer boundaries the code now needs.
+- [x] Gap: issue `#181` needed a stable package/SBOM catalog contract to consume, not more Trivy-only runtime glue.
+
+### Execution plan
+- [x] Extract a shared execution-store package:
+  - [x] add `internal/executionstore` with shared `execution_runs` and `execution_events` tables
+  - [x] refactor `internal/workloadscan`, `internal/imagescan`, and `internal/functionscan` stores onto that package
+  - [x] keep runtime-level `RunStore` APIs stable while collapsing duplicate SQLite logic underneath
+- [x] Add a real shared filesystem analyzer:
+  - [x] add `internal/filesystemanalyzer`
+  - [x] catalog OS identity, package inventory, SBOM components, secrets, and config findings from one mounted filesystem
+  - [x] bridge vulnerabilities through `scanner.FilesystemScanner` so the advisory layer can be swapped in later
+  - [x] add optional malware-engine seam instead of baking malware logic into one runtime
+- [x] Converge scan runtimes on the shared analyzer:
+  - [x] wire image scans through the shared cataloger
+  - [x] wire function scans through the shared cataloger while keeping env/runtime-specific findings
+  - [x] replace workload scan CLI noop analysis with the shared cataloger
+  - [x] add workload scan Trivy config/flag parity
+- [x] Capture the architecture shift:
+  - [x] add `docs/FILESYSTEM_ANALYZER_ARCHITECTURE.md`
+  - [x] update workload/image/function architecture docs to reflect the new analyzer/store reality
+  - [x] document GitHub-researched upstream patterns from Trivy, Syft, Grype, OSV Scanner, and KubeClarity
+- [x] Add regression coverage:
+  - [x] test shared execution-store namespace isolation and event sequencing
+  - [x] test filesystem analyzer package/secret/config/SBOM extraction
+  - [x] verify runtime/CLI/app integration still compiles and passes
+
+### Detailed follow-on backlog
+- [ ] Track A - Advisory knowledge layer (`#181`)
+  - Exit criteria:
+  - [ ] replace the Trivy vulnerability bridge with a first-class advisory matcher over the shared package catalog
+  - [ ] ingest NVD/OSV/distro advisory data into a reusable knowledge surface
+  - [ ] score vulnerabilities with fix availability, KEV, EPSS, and distro/package context
+- [ ] Track B - Graph contextualization (`#182`)
+  - Exit criteria:
+  - [ ] map scan runs, packages, vulnerabilities, and SBOM coverage into canonical graph node/edge kinds
+  - [ ] attach workload/function/image scan freshness and exposure context to prioritization paths
+  - [ ] surface workload security facets and attack-path-aware vulnerability ranking
+- [ ] Track C - Analyzer coverage depth
+  - Exit criteria:
+  - [ ] add RPM parsing and deeper language ecosystem coverage
+  - [ ] add Windows artifact parsing
+  - [ ] add persisted SBOM artifact storage instead of in-run embedding only
+- [ ] Track D - Distributed execution
+  - Exit criteria:
+  - [ ] decide whether the shared execution store remains SQLite or moves to a multi-worker backend
+  - [ ] expose execution resources over platform APIs instead of CLI-only delivery
+  - [ ] add migration/import for legacy runtime-specific state tables if backward persistence compatibility matters
+
 ## Deep Review Cycle 51 - Durable Serverless Function Scan Runtime (2026-03-11)
 
 ### Review findings
@@ -41,7 +96,7 @@ Status: executed end-to-end via PR workflow
 ### Detailed follow-on backlog
 - [ ] Track A - Analyzer depth
   - Exit criteria:
-  - [ ] replace the thin Trivy-plus-heuristics analyzer path with the richer shared filesystem analyzer from issue `#180`
+  - [x] replace the thin Trivy-plus-heuristics analyzer path with the richer shared filesystem analyzer from issue `#180`
   - [ ] normalize package/SBOM output so serverless, image, and VM scans emit the same package/vulnerability contracts
 - [ ] Track B - Vulnerability knowledge + graph integration
   - Exit criteria:
@@ -50,7 +105,7 @@ Status: executed end-to-end via PR workflow
   - [ ] cross-reference function roles, event sources, and network exposure during prioritization
 - [ ] Track C - Shared execution store extraction
   - Exit criteria:
-  - [ ] move workload/image/function scan run storage off per-runtime helpers and onto a shared execution-store package
+  - [x] move workload/image/function scan run storage off per-runtime helpers and onto a shared execution-store package
   - [ ] expose execution resources over platform APIs instead of CLI-only surfaces
   - [ ] decide whether the long-term backend remains SQLite with leadering or moves to a multi-worker store
 

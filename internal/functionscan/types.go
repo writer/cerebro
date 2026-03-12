@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/evalops/cerebro/internal/filesystemanalyzer"
 	"github.com/evalops/cerebro/internal/scanner"
 )
 
@@ -166,6 +167,7 @@ type AnalysisReport struct {
 	EnvironmentSecretCount       int                         `json:"environment_secret_count,omitempty"`
 	CodeSecretCount              int                         `json:"code_secret_count,omitempty"`
 	RuntimeDeprecated            bool                        `json:"runtime_deprecated,omitempty"`
+	Catalog                      *filesystemanalyzer.Report  `json:"catalog,omitempty"`
 	Result                       scanner.ContainerScanResult `json:"result"`
 	Metadata                     map[string]any              `json:"metadata,omitempty"`
 }

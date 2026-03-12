@@ -12,7 +12,7 @@ Cerebro's serverless function scanning pipeline should be durable, API-driven, a
 
 ## Runtime Model
 
-The runtime persists state in SQLite via `internal/functionscan.SQLiteRunStore`.
+The runtime persists state through `internal/functionscan.SQLiteRunStore`, which now wraps the shared `internal/executionstore` schema.
 
 Persisted records:
 
@@ -21,7 +21,7 @@ Persisted records:
 - `FilesystemArtifact`: materialized package metadata, retention, and cleanup timestamps
 - `AppliedArtifact`: ordered package/layer application metadata
 
-By default, function scans now use the same `EXECUTION_STORE_FILE` fallback as workload and image scans. The tables are still runtime-specific, but the durability boundary is intentionally shared so scans stop creating new in-memory silos.
+By default, function scans now use the same `EXECUTION_STORE_FILE` fallback as workload and image scans. The underlying persistence schema is shared, with `namespace` separating execution resources by runtime type.
 
 ## Execution Pipeline
 
@@ -81,17 +81,19 @@ This is the current local durability boundary, not the final distributed executo
 The runtime depends on a small analyzer seam:
 
 - `Analyzer`
-- current concrete: `FilesystemAnalyzer` backed by `scanner.TrivyFilesystemScanner`
+- current concrete: `FilesystemAnalyzer` backed by the shared `internal/filesystemanalyzer` package plus `scanner.TrivyFilesystemScanner` for vulnerability bridging
 - fallback: `NoopAnalyzer`
 
 Current analysis coverage:
 
+- package inventory + CycloneDX-style SBOM generation
 - filesystem vulnerability scan through Trivy
 - secrets in function environment variables
 - secrets in materialized source/package files
+- SSH/sudo/cron/permission misconfiguration detection where relevant in the unpacked filesystem
 - curated runtime deprecation detection
 
-This is intentionally thinner than the deeper package/SBOM/vulnerability knowledge work in issue `#180` / `#181`.
+This now uses the same filesystem analyzer substrate as image and VM scans. The remaining work is the advisory knowledge layer (`#181`) and graph contextualization (`#182`).
 
 ## Lifecycle Events
 
@@ -117,11 +119,11 @@ The implementation is intentionally borrowing shape from a few mature projects:
 - SQLite is durable, but still single-node.
 - GCP v2 container-backed functions are described, but full container-image fallback should converge with the image-scan runtime instead of duplicating registry logic here.
 - Runtime EOL detection is currently curated/manual rather than sourced from a continuously-updated advisory feed.
-- The analyzer still relies on Trivy FS plus lightweight secret heuristics; richer package/SBOM/config analysis belongs in issue `#180`.
+- The analyzer still relies on Trivy FS for vulnerability matching; richer advisory knowledge and ecosystem-specific fix intelligence belong in issue `#181`.
 
 ## Next Steps
 
-1. Converge serverless/container/VM analyzers on the richer filesystem analyzer from issue `#180`.
-2. Feed package and vulnerability outputs into the vulnerability knowledge pipeline from issue `#181`.
-3. Link function scan runs, packages, vulnerabilities, and runtime exposure into the temporal security graph from issue `#182`.
-4. Extract workload/image/function runtimes onto a real shared execution-store package once the execution surface stabilizes.
+1. Feed package and vulnerability outputs into the vulnerability knowledge pipeline from issue `#181`.
+2. Link function scan runs, packages, vulnerabilities, and runtime exposure into the temporal security graph from issue `#182`.
+3. Converge function metadata, runtime policy, and graph evidence into one function-risk surface.
+4. Expose function scan execution resources over platform APIs instead of CLI-only surfaces.

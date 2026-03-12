@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/evalops/cerebro/internal/filesystemanalyzer"
 	"github.com/evalops/cerebro/internal/scanner"
 )
 
@@ -107,6 +108,7 @@ type AnalysisReport struct {
 	Analyzer                     string                      `json:"analyzer"`
 	NativeVulnerabilityCount     int                         `json:"native_vulnerability_count,omitempty"`
 	FilesystemVulnerabilityCount int                         `json:"filesystem_vulnerability_count,omitempty"`
+	Catalog                      *filesystemanalyzer.Report  `json:"catalog,omitempty"`
 	Result                       scanner.ContainerScanResult `json:"result"`
 	Metadata                     map[string]any              `json:"metadata,omitempty"`
 }

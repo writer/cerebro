@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/evalops/cerebro/internal/filesystemanalyzer"
 	"github.com/evalops/cerebro/internal/scanner"
 	"github.com/evalops/cerebro/internal/webhooks"
 )
@@ -58,6 +59,38 @@ func (NoopAnalyzer) Analyze(_ context.Context, input AnalysisInput) (*AnalysisRe
 			"mount_path": input.Mount.MountPath,
 		},
 	}, nil
+}
+
+type FilesystemAnalyzer struct {
+	Scanner  scanner.FilesystemScanner
+	Analyzer *filesystemanalyzer.Analyzer
+}
+
+func (a FilesystemAnalyzer) Analyze(ctx context.Context, input AnalysisInput) (*AnalysisReport, error) {
+	analyzer := a.Analyzer
+	if analyzer == nil && a.Scanner != nil {
+		analyzer = filesystemanalyzer.New(filesystemanalyzer.Options{VulnerabilityScanner: a.Scanner})
+	}
+	if analyzer == nil {
+		return NoopAnalyzer{}.Analyze(ctx, input)
+	}
+	catalog, err := analyzer.Analyze(ctx, input.Mount.MountPath)
+	if err != nil {
+		return nil, err
+	}
+	report := &AnalysisReport{
+		FindingCount: int64(len(catalog.Findings)),
+		Catalog:      catalog,
+		Metadata: map[string]any{
+			"analyzer":      "filesystem",
+			"mount_path":    input.Mount.MountPath,
+			"package_count": catalog.Summary.PackageCount,
+		},
+	}
+	if catalog.SBOM.Format != "" {
+		report.SBOMRef = "embedded:" + catalog.SBOM.Format
+	}
+	return report, nil
 }
 
 type RunnerOptions struct {

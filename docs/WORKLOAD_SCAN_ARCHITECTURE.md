@@ -29,7 +29,7 @@ The pipeline is intentionally split so later issues can swap analyzers, transfer
 
 ## Persisted Runtime Model
 
-The runtime persists state in SQLite via `internal/workloadscan.SQLiteRunStore`.
+The runtime persists state through `internal/workloadscan.SQLiteRunStore`, which now wraps the shared `internal/executionstore` schema.
 
 Persisted records:
 
@@ -59,7 +59,7 @@ Current concrete implementations:
 
 - `AWSProvider`
 - `LocalMounter`
-- `NoopAnalyzer`
+- `FilesystemAnalyzer`
 - `SQLiteRunStore`
 
 This allows the issue stack to progress in layers:
@@ -105,6 +105,7 @@ Current controls:
 - `WORKLOAD_SCAN_MAX_CONCURRENT_SNAPSHOTS`
 - `WORKLOAD_SCAN_CLEANUP_TIMEOUT`
 - `WORKLOAD_SCAN_RECONCILE_OLDER_THAN`
+- `WORKLOAD_SCAN_TRIVY_BINARY`
 
 These are meant to bound:
 
@@ -116,14 +117,14 @@ These are meant to bound:
 ## Known Limits
 
 - The runtime is SQLite-backed and single-node durable today, not yet multi-worker/distributed.
-- The analyzer is still a stub contract (`NoopAnalyzer`) until the analyzer issue lands.
+- The analyzer now catalogs OS/package/SBOM/secret/config data through the shared filesystem analyzer, but RPM/Windows/deeper ecosystem coverage is still incomplete.
 - The execution surface is CLI-first; there is no first-class platform API/job resource yet.
 - Persisted run state is durable, but the live graph/runtime integration is still separate work.
 
 ## Next Steps
 
 1. Add GCP and Azure providers behind the same `Provider` contract.
-2. Add real analyzers for mounted disks and filesystem/package inspection.
+2. Feed the shared analyzer package inventory into the vulnerability knowledge layer (`#181`).
 3. Expose run resources and events through the platform API.
 4. Link workload scan runs to graph entities, evidence, and provenance.
-5. Decide whether the long-term state backend remains SQLite or moves to a shared execution store.
+5. Decide whether the long-term state backend remains SQLite or moves to a multi-worker execution store.

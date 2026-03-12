@@ -2,7 +2,7 @@
 
 Generated from `internal/app/app_config.go` (`LoadConfig`) via `go run ./scripts/generate_config_docs/main.go`.
 
-Total variables: **305**
+Total variables: **306**
 
 | Variable | Reader(s) | Default(s) | Config Field(s) | Validation rule(s) |
 |---|---|---|---|---|
@@ -306,6 +306,7 @@ Total variables: **305**
 | `WORKLOAD_SCAN_MOUNT_BASE_PATH` | `getEnv` | `filepath.Join(".cerebro", "workload-scan", "mounts")` | `WorkloadScanMountBasePath` | `-` |
 | `WORKLOAD_SCAN_RECONCILE_OLDER_THAN` | `getEnvDuration` | `30 * time.Minute` | `WorkloadScanReconcileOlderThan` | `-` |
 | `WORKLOAD_SCAN_STATE_FILE` | `getEnv` | `getEnv("EXECUTION_STORE_FILE", filepath.Join(".cerebro", "executions.db"))` | `WorkloadScanStateFile` | `-` |
+| `WORKLOAD_SCAN_TRIVY_BINARY` | `getEnv` | `"trivy"` | `WorkloadScanTrivyBinary` | `-` |
 | `ZOOM_ACCOUNT_ID` | `getEnv` | `""` | `ZoomAccountID` | `-` |
 | `ZOOM_API_URL` | `getEnv` | `"https://api.zoom.us/v2"` | `ZoomAPIURL` | `-` |
 | `ZOOM_CLIENT_ID` | `getEnv` | `""` | `ZoomClientID` | `-` |

@@ -1,6 +1,10 @@
 package workloadscan
 
-import "time"
+import (
+	"time"
+
+	"github.com/evalops/cerebro/internal/filesystemanalyzer"
+)
 
 type ProviderKind string
 
@@ -163,9 +167,10 @@ type AnalysisInput struct {
 }
 
 type AnalysisReport struct {
-	FindingCount int64          `json:"finding_count"`
-	SBOMRef      string         `json:"sbom_ref,omitempty"`
-	Metadata     map[string]any `json:"metadata,omitempty"`
+	FindingCount int64                      `json:"finding_count"`
+	SBOMRef      string                     `json:"sbom_ref,omitempty"`
+	Catalog      *filesystemanalyzer.Report `json:"catalog,omitempty"`
+	Metadata     map[string]any             `json:"metadata,omitempty"`
 }
 
 type CostBreakdown struct {

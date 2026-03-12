@@ -14,6 +14,7 @@ import (
 
 	"github.com/evalops/cerebro/internal/app"
 	"github.com/evalops/cerebro/internal/events"
+	"github.com/evalops/cerebro/internal/scanner"
 	"github.com/evalops/cerebro/internal/webhooks"
 	"github.com/evalops/cerebro/internal/workloadscan"
 )
@@ -58,6 +59,7 @@ var (
 	workloadScanMaxConcurrent       int
 	workloadScanCleanupTimeout      time.Duration
 	workloadScanReconcileOlderThan  time.Duration
+	workloadScanTrivyBinary         string
 	workloadScanListStatuses        string
 	workloadScanListLimit           int
 	workloadScanAWSRegion           string
@@ -78,6 +80,7 @@ func init() {
 	workloadScanCmd.PersistentFlags().IntVar(&workloadScanMaxConcurrent, "max-concurrent-snapshots", 0, "Override max concurrent snapshots per scan")
 	workloadScanCmd.PersistentFlags().DurationVar(&workloadScanCleanupTimeout, "cleanup-timeout", 0, "Override cleanup timeout")
 	workloadScanCmd.PersistentFlags().DurationVar(&workloadScanReconcileOlderThan, "reconcile-older-than", 0, "Override minimum run age before reconciliation")
+	workloadScanCmd.PersistentFlags().StringVar(&workloadScanTrivyBinary, "trivy-binary", "", "Override trivy binary path")
 
 	workloadScanListCmd.Flags().StringVar(&workloadScanListStatuses, "status", "", "Optional comma-separated status filter")
 	workloadScanListCmd.Flags().IntVar(&workloadScanListLimit, "limit", 20, "Maximum runs to list")
@@ -153,7 +156,7 @@ func runWorkloadScanAWS(cmd *cobra.Command, args []string) error {
 		Store:                  store,
 		Providers:              []workloadscan.Provider{provider},
 		Mounter:                workloadscan.NewLocalMounter(resolveWorkloadScanMountBasePath(cfg)),
-		Analyzer:               workloadscan.NoopAnalyzer{},
+		Analyzer:               workloadscan.FilesystemAnalyzer{Scanner: scanner.NewTrivyFilesystemScanner(resolveWorkloadScanTrivyBinary(cfg))},
 		Events:                 emitter,
 		MaxConcurrentSnapshots: resolveWorkloadScanMaxConcurrent(cfg),
 		CleanupTimeout:         resolveWorkloadScanCleanupTimeout(cfg),
@@ -211,7 +214,7 @@ func reconcileWorkloadScanAWS(cmd *cobra.Command, args []string) error {
 		Store:          store,
 		Providers:      []workloadscan.Provider{provider},
 		Mounter:        workloadscan.NewLocalMounter(resolveWorkloadScanMountBasePath(cfg)),
-		Analyzer:       workloadscan.NoopAnalyzer{},
+		Analyzer:       workloadscan.FilesystemAnalyzer{Scanner: scanner.NewTrivyFilesystemScanner(resolveWorkloadScanTrivyBinary(cfg))},
 		Events:         emitter,
 		CleanupTimeout: resolveWorkloadScanCleanupTimeout(cfg),
 	})
@@ -377,6 +380,16 @@ func resolveWorkloadScanReconcileOlderThan(cfg *app.Config) time.Duration {
 		return cfg.WorkloadScanReconcileOlderThan
 	}
 	return 0
+}
+
+func resolveWorkloadScanTrivyBinary(cfg *app.Config) string {
+	if strings.TrimSpace(workloadScanTrivyBinary) != "" {
+		return strings.TrimSpace(workloadScanTrivyBinary)
+	}
+	if cfg != nil {
+		return strings.TrimSpace(cfg.WorkloadScanTrivyBinary)
+	}
+	return "trivy"
 }
 
 func parseMetadataPairs(values []string) map[string]string {

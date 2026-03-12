@@ -379,6 +379,7 @@ type Config struct {
 	WorkloadScanMaxConcurrentSnapshots int
 	WorkloadScanCleanupTimeout         time.Duration
 	WorkloadScanReconcileOlderThan     time.Duration
+	WorkloadScanTrivyBinary            string
 
 	// Container image scanning
 	ImageScanStateFile      string
@@ -717,6 +718,7 @@ func LoadConfig() *Config {
 			WorkloadScanMaxConcurrentSnapshots:  getEnvInt("WORKLOAD_SCAN_MAX_CONCURRENT_SNAPSHOTS", 2),
 			WorkloadScanCleanupTimeout:          getEnvDuration("WORKLOAD_SCAN_CLEANUP_TIMEOUT", 2*time.Minute),
 			WorkloadScanReconcileOlderThan:      getEnvDuration("WORKLOAD_SCAN_RECONCILE_OLDER_THAN", 30*time.Minute),
+			WorkloadScanTrivyBinary:             getEnv("WORKLOAD_SCAN_TRIVY_BINARY", "trivy"),
 			ImageScanStateFile:                  getEnv("IMAGE_SCAN_STATE_FILE", getEnv("EXECUTION_STORE_FILE", filepath.Join(".cerebro", "executions.db"))),
 			ImageScanRootFSBasePath:             getEnv("IMAGE_SCAN_ROOTFS_BASE_PATH", filepath.Join(".cerebro", "image-scan", "rootfs")),
 			ImageScanCleanupTimeout:             getEnvDuration("IMAGE_SCAN_CLEANUP_TIMEOUT", 2*time.Minute),

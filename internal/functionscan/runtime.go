@@ -4,17 +4,15 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/fs"
 	"log/slog"
 	"net/url"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/evalops/cerebro/internal/filesystemanalyzer"
 	"github.com/evalops/cerebro/internal/scanner"
 	"github.com/evalops/cerebro/internal/webhooks"
 )
@@ -80,7 +78,8 @@ func (NoopAnalyzer) Analyze(_ context.Context, input AnalysisInput) (*AnalysisRe
 }
 
 type FilesystemAnalyzer struct {
-	Scanner scanner.FilesystemScanner
+	Scanner  scanner.FilesystemScanner
+	Analyzer *filesystemanalyzer.Analyzer
 }
 
 func (a FilesystemAnalyzer) Analyze(ctx context.Context, input AnalysisInput) (*AnalysisReport, error) {
@@ -89,24 +88,26 @@ func (a FilesystemAnalyzer) Analyze(ctx context.Context, input AnalysisInput) (*
 		return nil, err
 	}
 	report.Analyzer = "filesystem"
-	if a.Scanner != nil && input.Filesystem != nil && strings.TrimSpace(input.Filesystem.Path) != "" {
-		result, err := a.Scanner.ScanFilesystem(ctx, input.Filesystem.Path)
+	analyzer := a.Analyzer
+	if analyzer == nil && a.Scanner != nil {
+		analyzer = filesystemanalyzer.New(filesystemanalyzer.Options{VulnerabilityScanner: a.Scanner})
+	}
+	if analyzer != nil && input.Filesystem != nil && strings.TrimSpace(input.Filesystem.Path) != "" {
+		catalog, err := analyzer.Analyze(ctx, input.Filesystem.Path)
 		if err != nil {
 			return nil, err
 		}
-		result.Repository = input.Target.Identity()
-		result.Tag = input.Descriptor.CodeSHA256
-		result.Digest = input.Descriptor.CodeSHA256
-		result.Registry = string(input.Target.Provider)
-		result.OS = firstNonEmpty(result.OS, input.Descriptor.Runtime)
-		result.Architecture = firstNonEmpty(result.Architecture, strings.Join(input.Descriptor.Architectures, ","))
-		report.Result = *result
-		report.FilesystemVulnerabilityCount = len(result.Vulnerabilities)
+		report.Catalog = catalog
+		report.Result.Vulnerabilities = append(report.Result.Vulnerabilities, catalog.Vulnerabilities...)
+		report.Result.Findings = append(report.Result.Findings, catalog.Findings...)
+		report.Result.OS = firstNonEmpty(catalog.OS.PrettyName, catalog.OS.Name, input.Descriptor.Runtime)
+		report.Result.Architecture = firstNonEmpty(catalog.OS.Architecture, strings.Join(input.Descriptor.Architectures, ","))
+		report.FilesystemVulnerabilityCount = len(catalog.Vulnerabilities)
 	}
 	envFindings, envCount := detectEnvironmentSecrets(input.Descriptor)
-	codeFindings, codeCount, err := detectFilesystemSecrets(input.Filesystem)
-	if err != nil {
-		return nil, err
+	codeCount := 0
+	if report.Catalog != nil {
+		codeCount = len(report.Catalog.Secrets)
 	}
 	report.EnvironmentSecretCount = envCount
 	report.CodeSecretCount = codeCount
@@ -122,10 +123,13 @@ func (a FilesystemAnalyzer) Analyze(ctx context.Context, input AnalysisInput) (*
 		})
 	}
 	report.Result.Findings = append(report.Result.Findings, envFindings...)
-	report.Result.Findings = append(report.Result.Findings, codeFindings...)
 	report.Result.Summary = summarizeVulnerabilities(report.Result.Vulnerabilities)
 	if report.Metadata == nil {
 		report.Metadata = map[string]any{}
+	}
+	if report.Catalog != nil {
+		report.Metadata["package_count"] = report.Catalog.Summary.PackageCount
+		report.Metadata["sbom_format"] = report.Catalog.SBOM.Format
 	}
 	report.Metadata["deprecated_runtime_policy"] = "curated-2026-03"
 	return report, nil
@@ -484,66 +488,6 @@ func detectEnvironmentSecrets(descriptor FunctionDescriptor) ([]scanner.Containe
 	return findings, count
 }
 
-func detectFilesystemSecrets(artifact *FilesystemArtifact) ([]scanner.ContainerFinding, int, error) {
-	if artifact == nil || strings.TrimSpace(artifact.Path) == "" {
-		return nil, 0, nil
-	}
-	root, err := os.OpenRoot(artifact.Path)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer func() { _ = root.Close() }()
-	findings := make([]scanner.ContainerFinding, 0)
-	count := 0
-	err = fs.WalkDir(root.FS(), ".", func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if path == "." {
-			return nil
-		}
-		if entry.IsDir() {
-			name := entry.Name()
-			if name == ".git" || name == "node_modules" || name == ".terraform" || name == ".venv" || name == "vendor" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		if info.Size() > 2*1024*1024 {
-			return nil
-		}
-		data, err := root.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		if !isLikelyText(data) {
-			return nil
-		}
-		text := string(data)
-		if !looksSensitiveValue(text) && !inlineSecretPattern.MatchString(text) {
-			return nil
-		}
-		count++
-		findings = append(findings, scanner.ContainerFinding{
-			ID:          "code_secret:" + sanitizeFindingID(path),
-			Type:        "secret",
-			Severity:    "high",
-			Title:       "Potential secret in function package",
-			Description: fmt.Sprintf("Potential hardcoded secret detected in %s", path),
-			Remediation: "Remove hardcoded secrets from source and load them at runtime from a secret manager.",
-		})
-		return nil
-	})
-	if err != nil {
-		return nil, 0, err
-	}
-	return findings, count, nil
-}
-
 func runtimeDeprecated(provider ProviderKind, runtime string) bool {
 	runtime = strings.ToLower(strings.TrimSpace(runtime))
 	if runtime == "" {
@@ -577,18 +521,6 @@ func looksSensitiveValue(value string) bool {
 func looksPlaceholderValue(value string) bool {
 	value = strings.TrimSpace(strings.ToLower(value))
 	return value == "***" || value == "******" || value == "changeme" || value == "replace-me" || strings.HasPrefix(value, "${")
-}
-
-func isLikelyText(data []byte) bool {
-	if len(data) == 0 {
-		return false
-	}
-	for _, b := range data {
-		if b == 0 {
-			return false
-		}
-	}
-	return true
 }
 
 func sanitizeFindingID(raw string) string {

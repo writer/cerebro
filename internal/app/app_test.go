@@ -94,6 +94,7 @@ func TestLoadConfigWorkloadScanPathsAndControls(t *testing.T) {
 	t.Setenv("WORKLOAD_SCAN_MAX_CONCURRENT_SNAPSHOTS", "7")
 	t.Setenv("WORKLOAD_SCAN_CLEANUP_TIMEOUT", "4m")
 	t.Setenv("WORKLOAD_SCAN_RECONCILE_OLDER_THAN", "45m")
+	t.Setenv("WORKLOAD_SCAN_TRIVY_BINARY", "/usr/local/bin/trivy-workload")
 
 	cfg := LoadConfig()
 	if cfg.ExecutionStoreFile != "/tmp/cerebro-executions.db" {
@@ -113,6 +114,9 @@ func TestLoadConfigWorkloadScanPathsAndControls(t *testing.T) {
 	}
 	if cfg.WorkloadScanReconcileOlderThan != 45*time.Minute {
 		t.Fatalf("expected workload scan reconcile older than 45m, got %s", cfg.WorkloadScanReconcileOlderThan)
+	}
+	if cfg.WorkloadScanTrivyBinary != "/usr/local/bin/trivy-workload" {
+		t.Fatalf("expected workload scan trivy binary override, got %q", cfg.WorkloadScanTrivyBinary)
 	}
 }
 
