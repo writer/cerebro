@@ -53,6 +53,7 @@ import (
 	"github.com/evalops/cerebro/internal/events"
 	"github.com/evalops/cerebro/internal/findings"
 	"github.com/evalops/cerebro/internal/graph"
+	"github.com/evalops/cerebro/internal/graph/builders"
 	"github.com/evalops/cerebro/internal/graphingest"
 	"github.com/evalops/cerebro/internal/health"
 	"github.com/evalops/cerebro/internal/identity"
@@ -139,7 +140,7 @@ type App struct {
 
 	// Security Graph
 	SecurityGraph                 *graph.Graph
-	SecurityGraphBuilder          *graph.Builder
+	SecurityGraphBuilder          *builders.Builder
 	Propagation                   *graph.PropagationEngine
 	graphReady                    chan struct{} // closed when initial graph build completes
 	graphCtx                      context.Context

@@ -1,4 +1,4 @@
-package graph
+package builders
 
 import (
 	"context"
@@ -15,11 +15,11 @@ import (
 
 // DataSource abstracts the data source for graph building
 type DataSource interface {
-	Query(ctx context.Context, query string, args ...any) (*QueryResult, error)
+	Query(ctx context.Context, query string, args ...any) (*DataQueryResult, error)
 }
 
 // QueryResult represents query results from the data source
-type QueryResult struct {
+type DataQueryResult struct {
 	Columns []string
 	Rows    []map[string]any
 	Count   int
@@ -88,9 +88,9 @@ func (b *Builder) hasTable(name string) bool {
 }
 
 // queryIfExists runs the query only if the referenced table exists.
-func (b *Builder) queryIfExists(ctx context.Context, table, query string) (*QueryResult, error) {
+func (b *Builder) queryIfExists(ctx context.Context, table, query string) (*DataQueryResult, error) {
 	if !b.hasTable(table) {
-		return &QueryResult{}, nil
+		return &DataQueryResult{}, nil
 	}
 	return b.source.Query(ctx, query)
 }

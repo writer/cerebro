@@ -1,4 +1,4 @@
-package graph
+package builders
 
 import (
 	"context"
@@ -14,14 +14,14 @@ func TestBuilderBuild_AddsPersonInteractionEdges(t *testing.T) {
 	source := newMockDataSource()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 
-	source.setResult(`SELECT id, login, email, status, last_login, mfa_enrolled, is_admin FROM okta_users`, &QueryResult{
+	source.setResult(`SELECT id, login, email, status, last_login, mfa_enrolled, is_admin FROM okta_users`, &DataQueryResult{
 		Rows: []map[string]any{
 			{"id": "okta-a", "login": "alice", "email": "alice@example.com"},
 			{"id": "okta-b", "login": "bob", "email": "bob@example.com"},
 		},
 	})
 
-	source.setResult(`SELECT id, email FROM gong_users`, &QueryResult{
+	source.setResult(`SELECT id, email FROM gong_users`, &DataQueryResult{
 		Rows: []map[string]any{
 			{"id": "gong-a", "email": "alice@example.com"},
 			{"id": "gong-b", "email": "bob@example.com"},
@@ -38,7 +38,7 @@ func TestBuilderBuild_AddsPersonInteractionEdges(t *testing.T) {
 		JOIN gong_calls c ON a.call_id = c.id
 		WHERE a.user_id IS NOT NULL AND b.user_id IS NOT NULL
 		GROUP BY a.user_id, b.user_id
-	`, &QueryResult{
+	`, &DataQueryResult{
 		Rows: []map[string]any{
 			{
 				"person_a":               "gong-a",
@@ -60,7 +60,7 @@ func TestBuilderBuild_AddsPersonInteractionEdges(t *testing.T) {
 		  AND a.target_id IS NOT NULL
 		  AND ABS(DATEDIFF('hour', a.published, b.published)) < 24
 		GROUP BY a.actor_id, b.actor_id
-	`, &QueryResult{
+	`, &DataQueryResult{
 		Rows: []map[string]any{
 			{
 				"person_a":         "okta-a",
@@ -77,7 +77,7 @@ func TestBuilderBuild_AddsPersonInteractionEdges(t *testing.T) {
 		FROM okta_group_memberships a
 		JOIN okta_group_memberships b ON a.group_id = b.group_id AND a.user_id < b.user_id
 		GROUP BY a.user_id, b.user_id
-	`, &QueryResult{
+	`, &DataQueryResult{
 		Rows: []map[string]any{{"person_a": "okta-a", "person_b": "okta-b", "shared_groups": int64(1)}},
 	})
 
@@ -88,7 +88,7 @@ func TestBuilderBuild_AddsPersonInteractionEdges(t *testing.T) {
 		JOIN okta_app_assignments b ON a.app_id = b.app_id AND a.assignee_id < b.assignee_id
 		WHERE a.assignee_type = 'USER' AND b.assignee_type = 'USER'
 		GROUP BY a.assignee_id, b.assignee_id
-	`, &QueryResult{
+	`, &DataQueryResult{
 		Rows: []map[string]any{{"person_a": "okta-a", "person_b": "okta-b", "shared_apps": int64(2)}},
 	})
 

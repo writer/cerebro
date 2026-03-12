@@ -1129,14 +1129,6 @@ func cloneReportTimeSlice(slice ReportTimeSlice) ReportTimeSlice {
 	}
 }
 
-func cloneTimePtr(value *time.Time) *time.Time {
-	if value == nil {
-		return nil
-	}
-	cloned := value.UTC()
-	return &cloned
-}
-
 func cloneInt64Ptr(value *int64) *int64 {
 	if value == nil {
 		return nil

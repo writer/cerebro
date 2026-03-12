@@ -1,4 +1,4 @@
-package graph
+package builders
 
 import (
 	"context"
@@ -36,7 +36,7 @@ func normalizeTableNames(query string) string {
 }
 
 // Query executes a query against Snowflake
-func (s *SnowflakeSource) Query(ctx context.Context, query string, args ...any) (*QueryResult, error) {
+func (s *SnowflakeSource) Query(ctx context.Context, query string, args ...any) (*DataQueryResult, error) {
 	// Normalize table names to uppercase for Snowflake
 	normalizedQuery := normalizeTableNames(query)
 
@@ -45,7 +45,7 @@ func (s *SnowflakeSource) Query(ctx context.Context, query string, args ...any) 
 		return nil, err
 	}
 
-	return &QueryResult{
+	return &DataQueryResult{
 		Columns: result.Columns,
 		Rows:    result.Rows,
 		Count:   result.Count,

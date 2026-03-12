@@ -1,4 +1,4 @@
-package graph
+package builders
 
 import (
 	"context"
@@ -12,7 +12,7 @@ type cdcRoutingSource struct {
 	mu           sync.Mutex
 	latest       time.Time
 	events       []map[string]any
-	routes       map[string]*QueryResult
+	routes       map[string]*DataQueryResult
 	queryHits    map[string]int
 	blockNeedle  string
 	blockStart   chan struct{}
@@ -24,12 +24,12 @@ var _ DataSource = (*cdcRoutingSource)(nil)
 
 func newCDCRoutingSource() *cdcRoutingSource {
 	return &cdcRoutingSource{
-		routes:    make(map[string]*QueryResult),
+		routes:    make(map[string]*DataQueryResult),
 		queryHits: make(map[string]int),
 	}
 }
 
-func (s *cdcRoutingSource) Query(ctx context.Context, query string, args ...any) (*QueryResult, error) {
+func (s *cdcRoutingSource) Query(ctx context.Context, query string, args ...any) (*DataQueryResult, error) {
 	_ = ctx
 	_ = args
 	lower := strings.ToLower(query)
@@ -53,29 +53,29 @@ func (s *cdcRoutingSource) Query(ctx context.Context, query string, args ...any)
 	if strings.Contains(lower, "select max(event_time)") && strings.Contains(lower, "from cdc_events") {
 		s.queryHits["has_changes"]++
 		if s.latest.IsZero() {
-			return &QueryResult{Rows: []map[string]any{{"latest": time.Time{}}}, Count: 1}, nil
+			return &DataQueryResult{Rows: []map[string]any{{"latest": time.Time{}}}, Count: 1}, nil
 		}
-		return &QueryResult{Rows: []map[string]any{{"latest": s.latest}}, Count: 1}, nil
+		return &DataQueryResult{Rows: []map[string]any{{"latest": s.latest}}, Count: 1}, nil
 	}
 
 	if strings.Contains(lower, "select event_id") && strings.Contains(lower, "from cdc_events") {
 		s.queryHits["cdc_events"]++
 		rows := make([]map[string]any, 0, len(s.events))
 		rows = append(rows, s.events...)
-		return &QueryResult{Rows: rows, Count: len(rows)}, nil
+		return &DataQueryResult{Rows: rows, Count: len(rows)}, nil
 	}
 
 	for needle, result := range s.routes {
 		if strings.Contains(lower, needle) {
 			s.queryHits[needle]++
 			if result == nil {
-				return &QueryResult{Rows: []map[string]any{}}, nil
+				return &DataQueryResult{Rows: []map[string]any{}}, nil
 			}
 			return result, nil
 		}
 	}
 
-	return &QueryResult{Rows: []map[string]any{}}, nil
+	return &DataQueryResult{Rows: []map[string]any{}}, nil
 }
 
 func TestBuilderApplyChanges_UpsertsAndRemovesNodes(t *testing.T) {
@@ -188,7 +188,7 @@ func TestBuilderApplyChanges_UpsertsAndRemovesNodes(t *testing.T) {
 
 func TestBuilderApplyChanges_EdgeOnlyTableChangeRebuildsEdges(t *testing.T) {
 	source := newCDCRoutingSource()
-	source.routes["from aws_iam_policy_versions"] = &QueryResult{Rows: []map[string]any{{
+	source.routes["from aws_iam_policy_versions"] = &DataQueryResult{Rows: []map[string]any{{
 		"policy_arn": "arn:aws:iam::111111111111:policy/S3FullAccess",
 		"document": `{
 			"Version": "2012-10-17",
@@ -199,7 +199,7 @@ func TestBuilderApplyChanges_EdgeOnlyTableChangeRebuildsEdges(t *testing.T) {
 			}]
 		}`,
 	}}}
-	source.routes["from aws_iam_user_attached_policies"] = &QueryResult{Rows: []map[string]any{{
+	source.routes["from aws_iam_user_attached_policies"] = &DataQueryResult{Rows: []map[string]any{{
 		"user_arn":   "arn:aws:iam::111111111111:user/alice",
 		"policy_arn": "arn:aws:iam::111111111111:policy/S3FullAccess",
 	}}}
@@ -394,14 +394,14 @@ func TestBuilderApplyChanges_DoesNotRegressWatermarkOnHistoricalReplay(t *testin
 
 func TestBuilderApplyChanges_KubernetesEventsMaterializeTypedNodesAndEdges(t *testing.T) {
 	source := newCDCRoutingSource()
-	source.routes["from k8s_core_pods"] = &QueryResult{Rows: []map[string]any{{
+	source.routes["from k8s_core_pods"] = &DataQueryResult{Rows: []map[string]any{{
 		"_cq_id":               "prod-cluster/pod/payments/payments-api",
 		"name":                 "payments-api",
 		"namespace":            "payments",
 		"cluster_name":         "prod-cluster",
 		"service_account_name": "payments-sa",
 	}}}
-	source.routes["from k8s_rbac_service_account_bindings"] = &QueryResult{Rows: []map[string]any{{
+	source.routes["from k8s_rbac_service_account_bindings"] = &DataQueryResult{Rows: []map[string]any{{
 		"cluster_name":              "prod-cluster",
 		"binding_kind":              "ClusterRoleBinding",
 		"binding_name":              "payments-admins",

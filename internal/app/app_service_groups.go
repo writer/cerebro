@@ -10,6 +10,7 @@ import (
 	"github.com/evalops/cerebro/internal/events"
 	"github.com/evalops/cerebro/internal/findings"
 	"github.com/evalops/cerebro/internal/graph"
+	"github.com/evalops/cerebro/internal/graph/builders"
 	"github.com/evalops/cerebro/internal/health"
 	"github.com/evalops/cerebro/internal/identity"
 	"github.com/evalops/cerebro/internal/lineage"
@@ -66,7 +67,7 @@ type SecurityServices struct {
 	RuntimeDetect       *runtime.DetectionEngine
 	RuntimeRespond      *runtime.ResponseEngine
 	SecurityGraph       *graph.Graph
-	GraphBuilder        *graph.Builder
+	GraphBuilder        *builders.Builder
 	Propagation         *graph.PropagationEngine
 }
 

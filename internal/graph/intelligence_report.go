@@ -626,16 +626,6 @@ func intelligenceBaseConfidence(schema SchemaHealthReport, feedback OutcomeFeedb
 	return clampUnit(confidence)
 }
 
-func clampUnit(value float64) float64 {
-	if value < 0 {
-		return 0
-	}
-	if value > 1 {
-		return 1
-	}
-	return value
-}
-
 func nodeKindString(node *Node) string {
 	if node == nil {
 		return "unknown"

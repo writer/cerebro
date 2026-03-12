@@ -1,8 +1,6 @@
 package graph
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"sort"
 	"strings"
@@ -11,7 +9,6 @@ import (
 
 const (
 	DefaultReportDefinitionVersion = "1.0.0"
-	GraphOntologyContractVersion   = "cerebro.graph.contracts/v1alpha1"
 	reportStorageClassLocalDurable = "local_durable"
 	reportStorageClassMetadataOnly = "metadata_only"
 	reportRetentionTierShort       = "short_term"
@@ -484,25 +481,6 @@ func ReportRunEventCollectionSnapshot(reportID, runID string, events []ReportRun
 		Count:    len(cloned),
 		Events:   cloned,
 	}
-}
-
-func buildReportGraphSnapshotID(meta Metadata) string {
-	if meta.BuiltAt.IsZero() {
-		return ""
-	}
-	providers := append([]string(nil), meta.Providers...)
-	accounts := append([]string(nil), meta.Accounts...)
-	sort.Strings(providers)
-	sort.Strings(accounts)
-	payload := fmt.Sprintf("%s|%d|%d|%s|%s",
-		meta.BuiltAt.UTC().Format(time.RFC3339Nano),
-		meta.NodeCount,
-		meta.EdgeCount,
-		strings.Join(providers, ","),
-		strings.Join(accounts, ","),
-	)
-	sum := sha256.Sum256([]byte(payload))
-	return "graph_snapshot:" + hex.EncodeToString(sum[:12])
 }
 
 func normalizeReportAttemptStatus(status string) string {

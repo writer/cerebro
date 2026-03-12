@@ -11,6 +11,7 @@ import (
 
 	"github.com/evalops/cerebro/internal/findings"
 	"github.com/evalops/cerebro/internal/graph"
+	"github.com/evalops/cerebro/internal/graph/builders"
 )
 
 type blockingConsistencySource struct {
@@ -19,7 +20,7 @@ type blockingConsistencySource struct {
 	once     sync.Once
 }
 
-func (s *blockingConsistencySource) Query(ctx context.Context, query string, args ...any) (*graph.QueryResult, error) {
+func (s *blockingConsistencySource) Query(ctx context.Context, query string, args ...any) (*builders.DataQueryResult, error) {
 	_ = args
 	if strings.Contains(strings.ToLower(query), "information_schema.tables") {
 		s.once.Do(func() { close(s.started) })
@@ -27,7 +28,7 @@ func (s *blockingConsistencySource) Query(ctx context.Context, query string, arg
 		close(s.finished)
 		return nil, ctx.Err()
 	}
-	return &graph.QueryResult{Rows: []map[string]any{}}, nil
+	return &builders.DataQueryResult{Rows: []map[string]any{}}, nil
 }
 
 func TestAppCloseCancelsGraphConsistencyChecks(t *testing.T) {
@@ -47,7 +48,7 @@ func TestAppCloseCancelsGraphConsistencyChecks(t *testing.T) {
 		graphCtx:    graphCtx,
 		graphCancel: cancel,
 	}
-	application.SecurityGraphBuilder = graph.NewBuilder(source, logger)
+	application.SecurityGraphBuilder = builders.NewBuilder(source, logger)
 	application.SecurityGraph = application.SecurityGraphBuilder.Graph()
 
 	application.maybeStartGraphConsistencyCheck("test", graph.GraphMutationSummary{

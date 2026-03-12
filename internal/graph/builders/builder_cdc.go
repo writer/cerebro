@@ -1,4 +1,4 @@
-package graph
+package builders
 
 import (
 	"context"
@@ -802,42 +802,4 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func (s GraphMutationSummary) Payload(trigger string) map[string]any {
-	tables := s.Tables
-	if tables == nil {
-		tables = []string{}
-	}
-	payload := map[string]any{
-		"mode":             s.Mode,
-		"since":            s.Since.UTC().Format(time.RFC3339Nano),
-		"until":            s.Until.UTC().Format(time.RFC3339Nano),
-		"tables":           tables,
-		"events_processed": s.EventsProcessed,
-		"nodes_added":      s.NodesAdded,
-		"nodes_updated":    s.NodesUpdated,
-		"nodes_removed":    s.NodesRemoved,
-		"nodes":            s.NodeCount,
-		"edges":            s.EdgeCount,
-		"duration":         s.Duration.String(),
-		"duration_ms":      s.Duration.Milliseconds(),
-	}
-	if trigger != "" {
-		payload["trigger"] = trigger
-	}
-	return payload
-}
-
-func (s GraphMutationSummary) String() string {
-	return fmt.Sprintf(
-		"mode=%s events=%d nodes(+%d/~%d/-%d) totals(n=%d,e=%d)",
-		s.Mode,
-		s.EventsProcessed,
-		s.NodesAdded,
-		s.NodesUpdated,
-		s.NodesRemoved,
-		s.NodeCount,
-		s.EdgeCount,
-	)
 }

@@ -1,6 +1,13 @@
-package graph
+package builders
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
+
+var temporalNowUTC = func() time.Time {
+	return time.Now().UTC()
+}
 
 func queryRowValue(row map[string]any, key string) (any, bool) {
 	if row == nil {
@@ -39,4 +46,32 @@ func queryRowString(row map[string]any, key string) string {
 func queryRow(row map[string]any, key string) any {
 	value, _ := queryRowValue(row, key)
 	return value
+}
+
+func cloneAnyMap(values map[string]any) map[string]any {
+	if values == nil {
+		return nil
+	}
+	cloned := make(map[string]any, len(values))
+	for key, value := range values {
+		cloned[key] = cloneAny(value)
+	}
+	return cloned
+}
+
+func cloneAny(value any) any {
+	switch v := value.(type) {
+	case map[string]any:
+		return cloneAnyMap(v)
+	case []any:
+		cloned := make([]any, len(v))
+		for i := range v {
+			cloned[i] = cloneAny(v[i])
+		}
+		return cloned
+	case []string:
+		return append([]string(nil), v...)
+	default:
+		return value
+	}
 }

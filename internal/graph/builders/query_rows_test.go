@@ -1,4 +1,4 @@
-package graph
+package builders
 
 import (
 	"bufio"
@@ -13,18 +13,18 @@ import (
 )
 
 type fixedQuerySource struct {
-	result *QueryResult
+	result *DataQueryResult
 	err    error
 }
 
-func (f *fixedQuerySource) Query(ctx context.Context, query string, args ...any) (*QueryResult, error) {
+func (f *fixedQuerySource) Query(ctx context.Context, query string, args ...any) (*DataQueryResult, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
 	if f.result != nil {
 		return f.result, nil
 	}
-	return &QueryResult{Rows: []map[string]any{}}, nil
+	return &DataQueryResult{Rows: []map[string]any{}}, nil
 }
 
 func TestQueryRowHelpers_UppercaseMapCompatibility(t *testing.T) {
@@ -45,7 +45,7 @@ func TestHasChanges_HandlesUppercaseLatestKey(t *testing.T) {
 	base := time.Date(2026, 2, 17, 12, 0, 0, 0, time.UTC)
 
 	t.Run("older latest returns false", func(t *testing.T) {
-		source := &fixedQuerySource{result: &QueryResult{Rows: []map[string]any{{"LATEST": base.Add(-time.Minute)}}}}
+		source := &fixedQuerySource{result: &DataQueryResult{Rows: []map[string]any{{"LATEST": base.Add(-time.Minute)}}}}
 		builder := NewBuilder(source, nil)
 		builder.lastBuildTime = base
 
@@ -55,7 +55,7 @@ func TestHasChanges_HandlesUppercaseLatestKey(t *testing.T) {
 	})
 
 	t.Run("newer latest returns true", func(t *testing.T) {
-		source := &fixedQuerySource{result: &QueryResult{Rows: []map[string]any{{"LATEST": base.Add(time.Minute)}}}}
+		source := &fixedQuerySource{result: &DataQueryResult{Rows: []map[string]any{{"LATEST": base.Add(time.Minute)}}}}
 		builder := NewBuilder(source, nil)
 		builder.lastBuildTime = base
 

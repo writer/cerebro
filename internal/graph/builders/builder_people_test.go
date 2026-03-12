@@ -1,4 +1,4 @@
-package graph
+package builders
 
 import (
 	"context"
@@ -13,20 +13,20 @@ func TestBuilderBuild_UnifiesPersonNodesAndProjectsEdges(t *testing.T) {
 	source := newMockDataSource()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 
-	source.setResult(`SELECT id, user_principal_name, display_name, mail FROM azure_ad_users`, &QueryResult{
+	source.setResult(`SELECT id, user_principal_name, display_name, mail FROM azure_ad_users`, &DataQueryResult{
 		Rows: []map[string]any{
 			{"id": "azure-1", "user_principal_name": "alice@example.com", "display_name": "Alice Azure", "mail": "alice@example.com"},
 		},
 	})
 
-	source.setResult(`SELECT id, login, email, status, last_login, mfa_enrolled, is_admin FROM okta_users`, &QueryResult{
+	source.setResult(`SELECT id, login, email, status, last_login, mfa_enrolled, is_admin FROM okta_users`, &DataQueryResult{
 		Rows: []map[string]any{
 			{"id": "okta-1", "login": "alice", "email": "ALICE@example.com", "status": "ACTIVE"},
 			{"id": "okta-personal", "login": "alice.personal", "email": "alice.personal@gmail.com", "status": "ACTIVE"},
 		},
 	})
 
-	source.setResult(`SELECT id, label, name, status, sign_on_mode FROM okta_applications`, &QueryResult{
+	source.setResult(`SELECT id, label, name, status, sign_on_mode FROM okta_applications`, &DataQueryResult{
 		Rows: []map[string]any{
 			{"id": "app-1", "label": "Payroll", "status": "ACTIVE", "sign_on_mode": "SAML_2_0"},
 		},
@@ -35,7 +35,7 @@ func TestBuilderBuild_UnifiesPersonNodesAndProjectsEdges(t *testing.T) {
 	source.setResult(`
 		SELECT source_id, source_type, target_id, target_type, rel_type, properties
 		FROM resource_relationships
-	`, &QueryResult{
+	`, &DataQueryResult{
 		Rows: []map[string]any{
 			{
 				"source_id":   "okta-1",
@@ -51,7 +51,7 @@ func TestBuilderBuild_UnifiesPersonNodesAndProjectsEdges(t *testing.T) {
 		SELECT id, work_email, personal_email, display_name, first_name, last_name, employment_status,
 		       department, title, manager_id, location, start_date
 		FROM rippling_employees
-	`, &QueryResult{
+	`, &DataQueryResult{
 		Rows: []map[string]any{
 			{
 				"id":                "emp-1",
@@ -128,7 +128,7 @@ func TestBuilderBuild_PersonResolutionSkipsServiceAccountsAndMarksExternal(t *te
 	source := newMockDataSource()
 	builder := NewBuilder(source, slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError})))
 
-	source.setResult(`SELECT id, login, email, status, last_login, mfa_enrolled, is_admin FROM okta_users`, &QueryResult{
+	source.setResult(`SELECT id, login, email, status, last_login, mfa_enrolled, is_admin FROM okta_users`, &DataQueryResult{
 		Rows: []map[string]any{
 			{"id": "svc-1", "login": "svc-build", "email": "svc-build@example.com"},
 			{"id": "contractor-1", "login": "contractor", "email": "contractor@vendor.com"},

@@ -43,6 +43,49 @@ Status: executed end-to-end via PR workflow
   - [ ] feed the resulting seams into issue `#141` package splitting and issue `#144` graph concurrency work
   - [ ] make graph-only and scan-only processes construct dependency bundles without initializing unrelated services
 
+## Deep Review Cycle 61 - Graph Package Split Phase 1: Builders Extraction (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#141` remained blocked because `internal/graph` still forced builder/ETL code, report contracts, knowledge logic, and core mutation/query code through one namespace and one import path.
+- [x] Gap: the first attempted extraction showed `reports/` was not the right first cut yet; it still depended on too many package-private helpers and would have created a cosmetic split with hidden coupling.
+- [x] Gap: `builders/` was the cleanest real leaf package, but the move still exposed ad hoc helper duplication (`query_rows`, JSON snapshot helpers, mutation formatting) that needed explicit shared seams instead of dot-import sprawl.
+- [x] Gap: external references pointed at the same lesson from different directions: `temporalio/temporal` keeps execution/history concerns behind explicit service boundaries, `argoproj/argo-workflows` isolates executor/progress/sync packages instead of one workflow namespace, and the large Wiz GraphQL schema in `/Users/jonathanhaas/Downloads/wiz.graphql` is a useful warning about how fast graph-adjacent surfaces become one giant ambient API when boundaries are not enforced early.
+
+### Execution plan
+- [x] Extract the builder/ETL subsystem into its own package:
+  - [x] move graph build orchestration, provider-specific builders, and Snowflake graph-source code into `internal/graph/builders`
+  - [x] colocate builder-focused tests with that package
+  - [x] update `internal/app` and `internal/api` to depend on the extracted builders package explicitly
+- [x] Keep the split honest instead of over-extracting:
+  - [x] revert the initial `reports/` package move after confirming the dependency boundary was still too porous
+  - [x] leave report execution/registry code in `internal/graph` until it can depend on stable shared helpers rather than package-private reach-through
+- [x] Replace ambient helper leakage with explicit bridges:
+  - [x] add shared compatibility helpers for atomic JSON writes and snapshot-record loading in core graph
+  - [x] add a builders-local helper layer instead of dot-importing core graph symbols
+  - [x] move `GraphMutationSummary` formatting back into core so builders depend on graph contracts, not the reverse
+- [x] Validate the first split as a real package boundary:
+  - [x] keep full-repo tests green
+  - [x] keep lint green after removing dot-import usage
+  - [x] verify API/app graph consumers build against the new package seam
+
+### Detailed follow-on backlog
+- [ ] Track A - Continue domain package extraction
+  - Exit criteria:
+  - [ ] extract `internal/graph/knowledge` behind explicit read/write/query interfaces instead of direct core reach-through
+  - [ ] extract `internal/graph/entities` with stable facet/query contracts
+  - [ ] extract `internal/graph/reports` only after its helper/state dependencies are reduced enough to avoid a fake split
+  - [ ] extract `internal/graph/risk` and `internal/graph/simulate` once the core query/mutation interfaces are narrow enough
+- [ ] Track B - Shared graph utility boundary
+  - Exit criteria:
+  - [ ] move remaining cross-domain helpers out of `internal/graph` file-local scopes into explicit shared utility contracts
+  - [ ] remove any remaining need for alias-heavy bridge files by narrowing builder/core interfaces further
+  - [ ] ensure new sibling packages depend on interfaces or small exported contracts, not broad type alias sets
+- [ ] Track C - Shared execution store convergence
+  - Exit criteria:
+  - [ ] route graph/report/runtime derivation execution metadata through `internal/executionstore` instead of package-local persistence patterns
+  - [ ] unify correlation/report/materialization run records on a shared execution-store contract for multi-worker consistency
+  - [ ] keep package extraction aligned with execution-store ownership so new packages do not invent their own run-state silos
+
 ## Deep Review Cycle 59 - Policy CEL Migration + Legacy Conversion Path (2026-03-12)
 
 ### Review findings

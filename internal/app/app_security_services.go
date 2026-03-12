@@ -11,6 +11,7 @@ import (
 	"github.com/evalops/cerebro/internal/actionengine"
 	"github.com/evalops/cerebro/internal/auth"
 	"github.com/evalops/cerebro/internal/graph"
+	"github.com/evalops/cerebro/internal/graph/builders"
 	"github.com/evalops/cerebro/internal/health"
 	"github.com/evalops/cerebro/internal/lineage"
 	"github.com/evalops/cerebro/internal/remediation"
@@ -472,8 +473,8 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 		return
 	}
 
-	source := graph.NewSnowflakeSource(a.Warehouse)
-	a.SecurityGraphBuilder = graph.NewBuilder(source, a.Logger)
+	source := builders.NewSnowflakeSource(a.Warehouse)
+	a.SecurityGraphBuilder = builders.NewBuilder(source, a.Logger)
 	securityGraph := a.SecurityGraphBuilder.Graph()
 	a.configureGraphSchemaValidation(securityGraph)
 	a.setSecurityGraph(securityGraph)
