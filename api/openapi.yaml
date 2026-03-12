@@ -106,6 +106,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SystemStatusResponse'
+  /api/v1/status/freshness:
+    get:
+      tags:
+        - Health
+      summary: Graph freshness status
+      description: Return aggregate plus per-provider and per-kind graph freshness metrics, including configured provider SLA breaches.
+      responses:
+        '200':
+          description: Graph freshness status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformGraphFreshnessStatus'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /metrics:
     get:
       tags:
@@ -5420,6 +5439,98 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/platform/graph/diffs/{diff_id}/details:
+    get:
+      tags:
+        - Platform
+      summary: Get one filtered graph snapshot diff with changed values and attribution
+      parameters:
+        - name: diff_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: kind
+          in: query
+          schema:
+            type: string
+        - name: provider
+          in: query
+          schema:
+            type: string
+        - name: account
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Filtered graph snapshot diff details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformGraphSnapshotDiffDetails'
+        '404':
+          description: Graph snapshot diff artifact not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/platform/graph/changelog:
+    get:
+      tags:
+        - Platform
+      summary: List recent graph snapshot changes
+      description: Return adjacent graph snapshot diffs within the requested window, optionally filtered by kind, provider, or account.
+      parameters:
+        - name: since
+          in: query
+          description: Optional RFC3339 lower bound.
+          schema:
+            type: string
+            format: date-time
+        - name: until
+          in: query
+          description: Optional RFC3339 upper bound.
+          schema:
+            type: string
+            format: date-time
+        - name: last
+          in: query
+          description: Optional relative duration window, for example 24h or 7d.
+          schema:
+            type: string
+        - name: kind
+          in: query
+          schema:
+            type: string
+        - name: provider
+          in: query
+          schema:
+            type: string
+        - name: account
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 20
+      responses:
+        '200':
+          description: Graph changelog collection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformGraphChangelog'
+        '400':
+          description: Invalid changelog query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/platform/graph/queries:
     get:
       tags:
@@ -6862,6 +6973,96 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/platform/entities/search:
+    get:
+      tags:
+        - Platform
+      summary: Search platform entities
+      description: Return indexed current-state entity matches scored across normalized token and fuzzy trigram overlaps.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 512
+        - name: kind
+          in: query
+          description: Comma-separated node kinds to include.
+          schema:
+            type: string
+        - name: fuzzy
+          in: query
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: Indexed entity search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformEntitySearchCollection'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/platform/entities/suggest:
+    get:
+      tags:
+        - Platform
+      summary: Suggest platform entities
+      description: Return prefix-indexed entity suggestions over current active entities.
+      parameters:
+        - name: prefix
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 512
+        - name: kind
+          in: query
+          description: Comma-separated node kinds to include.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 25
+      responses:
+        '200':
+          description: Indexed entity suggestions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformEntitySuggestCollection'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/platform/entities/facets:
     get:
       tags:
@@ -6902,6 +7103,113 @@ paths:
                 $ref: '#/components/schemas/Error'
         '404':
           description: Entity facet not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/platform/entities/{entity_id}/at:
+    get:
+      tags:
+        - Platform
+      summary: Reconstruct one entity at a historical time
+      description: Return one entity record reconstructed from temporal property history at the requested fact-time slice.
+      parameters:
+        - name: entity_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: timestamp
+          in: query
+          required: true
+          description: RFC3339 fact-time selector.
+          schema:
+            type: string
+            format: date-time
+        - name: recorded_at
+          in: query
+          description: Optional RFC3339 system-time selector.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Point-in-time entity record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformEntityTimeRecord'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Entity not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/platform/entities/{entity_id}/diff:
+    get:
+      tags:
+        - Platform
+      summary: Diff one entity across two historical times
+      description: Return one entity-level property diff across two fact-time slices, preserving the reconstructed before and after entity states.
+      parameters:
+        - name: entity_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: from
+          in: query
+          required: true
+          description: RFC3339 start fact-time selector.
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: true
+          description: RFC3339 end fact-time selector.
+          schema:
+            type: string
+            format: date-time
+        - name: recorded_at
+          in: query
+          description: Optional RFC3339 system-time selector.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Point-in-time entity diff
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformEntityTimeDiffRecord'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Entity not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
           content:
             application/json:
               schema:
@@ -8973,6 +9281,88 @@ components:
               type: object
               additionalProperties:
                 type: object
+        freshness:
+          $ref: '#/components/schemas/PlatformGraphFreshnessStatus'
+    PlatformGraphFreshnessStatus:
+      type: object
+      additionalProperties: false
+      properties:
+        evaluated_at:
+          type: string
+          format: date-time
+        healthy:
+          type: boolean
+        breakdown:
+          $ref: '#/components/schemas/PlatformGraphFreshnessBreakdown'
+        breaches:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformGraphFreshnessBreach'
+    PlatformGraphFreshnessBreakdown:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        default_stale_after_seconds:
+          type: number
+        overall:
+          $ref: '#/components/schemas/FreshnessMetrics'
+        providers:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformGraphFreshnessScopeMetrics'
+        kinds:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformGraphFreshnessScopeMetrics'
+    PlatformGraphFreshnessScopeMetrics:
+      type: object
+      additionalProperties: false
+      properties:
+        scope:
+          type: string
+        stale_after_seconds:
+          type: number
+        total_nodes:
+          type: integer
+        nodes_with_observed:
+          type: integer
+        fresh_nodes:
+          type: integer
+        stale_nodes:
+          type: integer
+        freshness_percent:
+          type: number
+        median_age_hours:
+          type: number
+        p95_age_hours:
+          type: number
+        oldest_node_age_seconds:
+          type: number
+        newest_node_age_seconds:
+          type: number
+        last_sync_time:
+          type: string
+          format: date-time
+    PlatformGraphFreshnessBreach:
+      type: object
+      additionalProperties: false
+      properties:
+        provider:
+          type: string
+        last_sync_time:
+          type: string
+          format: date-time
+        last_sync_age_seconds:
+          type: number
+        stale_after_seconds:
+          type: number
+        total_nodes:
+          type: integer
+        stale_nodes:
+          type: integer
     TablesResponse:
       type: object
       properties:
@@ -9113,6 +9503,16 @@ components:
       properties:
         id:
           type: string
+        semantic_key:
+          type: string
+        observed_finding_ids:
+          type: array
+          items:
+            type: string
+        observed_policy_ids:
+          type: array
+          items:
+            type: string
         policy_id:
           type: string
         policy_name:
@@ -9649,10 +10049,77 @@ components:
           type: integer
         relationships_skipped_reason:
           type: string
+        graph_update:
+          $ref: '#/components/schemas/GraphUpdateStatus'
         results:
           type: array
           items:
             $ref: '#/components/schemas/SyncTableResult'
+    GraphUpdateStatus:
+      type: object
+      required:
+        - status
+        - trigger
+      properties:
+        status:
+          type: string
+          enum:
+            - applied
+            - busy
+            - noop
+            - failed
+        trigger:
+          type: string
+        error:
+          type: string
+        error_code:
+          type: string
+        summary:
+          $ref: '#/components/schemas/GraphMutationSummary'
+    GraphMutationSummary:
+      type: object
+      required:
+        - mode
+        - since
+        - until
+        - tables
+        - events_processed
+        - nodes_added
+        - nodes_updated
+        - nodes_removed
+        - nodes
+        - edges
+        - duration
+        - duration_ms
+      properties:
+        mode:
+          type: string
+        trigger:
+          type: string
+        since:
+          type: string
+        until:
+          type: string
+        tables:
+          type: array
+          items:
+            type: string
+        events_processed:
+          type: integer
+        nodes_added:
+          type: integer
+        nodes_updated:
+          type: integer
+        nodes_removed:
+          type: integer
+        nodes:
+          type: integer
+        edges:
+          type: integer
+        duration:
+          type: string
+        duration_ms:
+          type: integer
     SyncTableResult:
       type: object
       required:
@@ -12059,6 +12526,63 @@ components:
           type: integer
         pagination:
           $ref: '#/components/schemas/Pagination'
+    PlatformEntitySearchCollection:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        query:
+          type: string
+        fuzzy:
+          type: boolean
+        count:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformEntitySearchResult'
+    PlatformEntitySearchResult:
+      type: object
+      additionalProperties: false
+      properties:
+        entity:
+          $ref: '#/components/schemas/PlatformEntityRecord'
+        score:
+          type: number
+          format: double
+        matched_fields:
+          type: array
+          items:
+            type: string
+    PlatformEntitySuggestCollection:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        prefix:
+          type: string
+        count:
+          type: integer
+        suggestions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformEntitySuggestion'
+    PlatformEntitySuggestion:
+      type: object
+      additionalProperties: false
+      properties:
+        entity_id:
+          type: string
+        kind:
+          type: string
+        name:
+          type: string
+        value:
+          type: string
     PlatformEntityQueryFilters:
       type: object
       additionalProperties: false
@@ -12284,6 +12808,67 @@ components:
         properties:
           type: object
           additionalProperties: true
+    PlatformEntityTimeReconstruction:
+      type: object
+      additionalProperties: false
+      properties:
+        as_of:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+        property_history_applied:
+          type: boolean
+        historical_core_fields:
+          type: boolean
+        reconstructed_properties:
+          type: integer
+    PlatformEntityTimeRecord:
+      type: object
+      additionalProperties: false
+      properties:
+        entity:
+          $ref: '#/components/schemas/PlatformEntityRecord'
+        reconstruction:
+          $ref: '#/components/schemas/PlatformEntityTimeReconstruction'
+    PlatformEntityPropertyDiff:
+      type: object
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+        before:
+          $ref: '#/components/schemas/FlexibleValue'
+        after:
+          $ref: '#/components/schemas/FlexibleValue'
+    PlatformEntityTimeDiffRecord:
+      type: object
+      additionalProperties: false
+      properties:
+        entity_id:
+          type: string
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+        before:
+          $ref: '#/components/schemas/PlatformEntityTimeRecord'
+        after:
+          $ref: '#/components/schemas/PlatformEntityTimeRecord'
+        changed_keys:
+          type: array
+          items:
+            type: string
+        property_changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformEntityPropertyDiff'
     PlatformEntityTemporalMetadata:
       type: object
       additionalProperties: false
@@ -14344,6 +14929,123 @@ components:
         - to
         - summary
         - diff
+    PlatformGraphDiffFilter:
+      type: object
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+        provider:
+          type: string
+        account:
+          type: string
+    PlatformGraphDiffAttribution:
+      type: object
+      additionalProperties: false
+      properties:
+        providers:
+          type: array
+          items:
+            type: string
+        accounts:
+          type: array
+          items:
+            type: string
+        kinds:
+          type: array
+          items:
+            type: string
+        source_systems:
+          type: array
+          items:
+            type: string
+    PlatformGraphSnapshotDiffDetails:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+        from:
+          $ref: '#/components/schemas/PlatformGraphSnapshotReference'
+        to:
+          $ref: '#/components/schemas/PlatformGraphSnapshotReference'
+        filter:
+          $ref: '#/components/schemas/PlatformGraphDiffFilter'
+        summary:
+          $ref: '#/components/schemas/PlatformGraphSnapshotDiffSummary'
+        attribution:
+          $ref: '#/components/schemas/PlatformGraphDiffAttribution'
+        diff:
+          $ref: '#/components/schemas/PlatformGraphDiff'
+      required:
+        - id
+        - generated_at
+        - from
+        - to
+        - filter
+        - summary
+        - attribution
+        - diff
+    PlatformGraphChangelogEntry:
+      type: object
+      additionalProperties: false
+      properties:
+        diff_id:
+          type: string
+        diff_url:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+        stored_at:
+          type: string
+          format: date-time
+        materialized:
+          type: boolean
+        from:
+          $ref: '#/components/schemas/PlatformGraphSnapshotReference'
+        to:
+          $ref: '#/components/schemas/PlatformGraphSnapshotReference'
+        summary:
+          $ref: '#/components/schemas/PlatformGraphSnapshotDiffSummary'
+        attribution:
+          $ref: '#/components/schemas/PlatformGraphDiffAttribution'
+      required:
+        - diff_id
+        - generated_at
+        - from
+        - to
+        - summary
+        - attribution
+    PlatformGraphChangelog:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        since:
+          type: string
+          format: date-time
+        until:
+          type: string
+          format: date-time
+        filter:
+          $ref: '#/components/schemas/PlatformGraphDiffFilter'
+        count:
+          type: integer
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformGraphChangelogEntry'
+      required:
+        - generated_at
+        - filter
+        - count
+        - entries
     SecurityAttackPathJobRequest:
       type: object
       additionalProperties: false

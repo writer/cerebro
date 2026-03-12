@@ -171,13 +171,15 @@ func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) status(w http.ResponseWriter, r *http.Request) {
+	now := time.Now().UTC()
 	body := map[string]any{
-		"timestamp": time.Now().UTC(),
+		"timestamp": now,
 	}
 	if s.app != nil {
 		graphBuild := s.app.GraphBuildSnapshot()
 		body["graph_build"] = graphBuild
 		body["retention"] = s.app.CurrentRetentionStatus()
+		body["freshness"] = s.app.GraphFreshnessStatusSnapshot(now)
 	}
 	if s.app != nil && s.app.Health != nil {
 		status, checks := runHealthChecks(r.Context(), s.app.Health)
@@ -187,6 +189,14 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.json(w, http.StatusOK, body)
+}
+
+func (s *Server) statusFreshness(w http.ResponseWriter, r *http.Request) {
+	if s.app == nil {
+		s.error(w, http.StatusServiceUnavailable, "app not initialized")
+		return
+	}
+	s.json(w, http.StatusOK, s.app.GraphFreshnessStatusSnapshot(time.Now().UTC()))
 }
 
 func (s *Server) graphBuildWarningHeaders(next http.Handler) http.Handler {
@@ -211,6 +221,7 @@ func (s *Server) graphBuildWarningHeaders(next http.Handler) http.Handler {
 func skipGraphBuildWarningHeaders(path string) bool {
 	switch strings.TrimSpace(path) {
 	case "/health", "/ready", "/status", "/metrics",
+		"/api/v1/status/freshness",
 		"/api/v1/admin/health", "/api/v1/admin/sync/status",
 		"/api/v1/scheduler/status", "/api/v1/graph/ingest/health",
 		"/api/v1/graph/schema/health":

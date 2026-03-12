@@ -3,6 +3,7 @@ package events
 import (
 	"context"
 	"encoding/json"
+	"path/filepath"
 	"sort"
 	"testing"
 	"time"
@@ -296,6 +297,244 @@ func TestAlertRouterEscalationAndAck(t *testing.T) {
 	}
 }
 
+func TestAlertRouterThrottlePersistsAcrossRestart(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "router.db")
+	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
+	config := AlertRoutingConfig{
+		Routes: []AlertRoute{{
+			Name: "risk_spike",
+			Match: AlertRouteMatch{
+				EventType: "risk_score.changed",
+				Delta:     "> 0.3",
+			},
+			DeliverTo: []AlertRouteDelivery{{Type: "channel", Channel: "#ops-alerts"}},
+			GroupBy:   "entity_id",
+			Throttle:  "5m",
+		}},
+	}
+
+	store, err := NewSQLiteAlertRouterStateStore(dbPath)
+	if err != nil {
+		t.Fatalf("new state store: %v", err)
+	}
+	sender1 := &captureAlertSender{}
+	router := newRouterForTestWithStore(t, config, &stubAlertResolver{}, sender1, store, &now)
+
+	event := webhooks.Event{
+		ID:        "evt-1",
+		Type:      webhooks.EventRiskScoreChanged,
+		Timestamp: now,
+		Data: map[string]interface{}{
+			"entity_id":  "customer:acme",
+			"risk_delta": 0.41,
+			"severity":   "high",
+		},
+	}
+	if err := router.Route(context.Background(), event); err != nil {
+		t.Fatalf("route event: %v", err)
+	}
+	if err := router.Close(); err != nil {
+		t.Fatalf("close router: %v", err)
+	}
+
+	now = now.Add(time.Minute)
+	reopenStore, err := NewSQLiteAlertRouterStateStore(dbPath)
+	if err != nil {
+		t.Fatalf("re-open state store: %v", err)
+	}
+	sender2 := &captureAlertSender{}
+	router = newRouterForTestWithStore(t, config, &stubAlertResolver{}, sender2, reopenStore, &now)
+	defer func() { _ = router.Close() }()
+
+	if err := router.Route(context.Background(), event); err != nil {
+		t.Fatalf("route throttled event after restart: %v", err)
+	}
+	if got := len(sender2.messages); got != 0 {
+		t.Fatalf("expected throttle to survive restart, got %d messages", got)
+	}
+}
+
+func TestAlertRouterDigestPersistsAcrossRestart(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "router.db")
+	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
+	config := AlertRoutingConfig{
+		Routes: []AlertRoute{{
+			Name:      "digest",
+			Match:     AlertRouteMatch{EventType: "finding.created"},
+			DeliverTo: []AlertRouteDelivery{{Type: "channel", Channel: "#security-digest"}},
+			GroupBy:   "entity_id",
+			Digest:    "10m",
+		}},
+	}
+
+	store, err := NewSQLiteAlertRouterStateStore(dbPath)
+	if err != nil {
+		t.Fatalf("new state store: %v", err)
+	}
+	sender1 := &captureAlertSender{}
+	router := newRouterForTestWithStore(t, config, &stubAlertResolver{}, sender1, store, &now)
+	event := func(id string) webhooks.Event {
+		return webhooks.Event{
+			ID:        id,
+			Type:      webhooks.EventFindingCreated,
+			Timestamp: now,
+			Data: map[string]interface{}{
+				"entity_id": "customer:acme",
+				"severity":  "low",
+			},
+		}
+	}
+	if err := router.Route(context.Background(), event("evt-1")); err != nil {
+		t.Fatalf("route first event: %v", err)
+	}
+	now = now.Add(5 * time.Minute)
+	if err := router.Route(context.Background(), event("evt-2")); err != nil {
+		t.Fatalf("route second event: %v", err)
+	}
+	if err := router.Close(); err != nil {
+		t.Fatalf("close router: %v", err)
+	}
+
+	now = now.Add(6 * time.Minute)
+	reopenStore, err := NewSQLiteAlertRouterStateStore(dbPath)
+	if err != nil {
+		t.Fatalf("re-open state store: %v", err)
+	}
+	sender2 := &captureAlertSender{}
+	router = newRouterForTestWithStore(t, config, &stubAlertResolver{}, sender2, reopenStore, &now)
+	defer func() { _ = router.Close() }()
+
+	if err := router.Route(context.Background(), webhooks.Event{
+		ID:        "evt-tick",
+		Type:      webhooks.EventScanCompleted,
+		Timestamp: now,
+		Data:      map[string]interface{}{"scanned": 10},
+	}); err != nil {
+		t.Fatalf("route tick event: %v", err)
+	}
+	if got := len(sender2.messages); got != 1 {
+		t.Fatalf("expected persisted digest delivery after restart, got %d", got)
+	}
+	payload := decodeAlertPayload(t, sender2.messages[0].payload)
+	if payload["digest_count"] != float64(2) {
+		t.Fatalf("expected digest_count=2, got %#v", payload["digest_count"])
+	}
+}
+
+func TestAlertRouterEscalationPersistsAcrossRestart(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "router.db")
+	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
+	config := AlertRoutingConfig{
+		Routes: []AlertRoute{{
+			Name: "critical_finding_owner",
+			Match: AlertRouteMatch{
+				EventType: "finding.created",
+				Severity:  []string{"critical"},
+			},
+			DeliverTo:     []AlertRouteDelivery{{Type: "entity_owner", Channel: "dm"}},
+			EscalateAfter: "1m",
+		}},
+	}
+	resolver := &stubAlertResolver{
+		owners: []AlertRecipient{{Type: "person", ID: "person:alice@example.com", Channel: "dm"}},
+		managers: map[string]AlertRecipient{
+			"person:alice@example.com": {Type: "person", ID: "person:manager@example.com", Channel: "dm"},
+		},
+	}
+
+	store, err := NewSQLiteAlertRouterStateStore(dbPath)
+	if err != nil {
+		t.Fatalf("new state store: %v", err)
+	}
+	sender1 := &captureAlertSender{}
+	router := newRouterForTestWithStore(t, config, resolver, sender1, store, &now)
+
+	if err := router.Route(context.Background(), webhooks.Event{
+		ID:        "evt-critical-1",
+		Type:      webhooks.EventFindingCreated,
+		Timestamp: now,
+		Data: map[string]interface{}{
+			"entity_id": "customer:acme",
+			"severity":  "critical",
+		},
+	}); err != nil {
+		t.Fatalf("route critical event: %v", err)
+	}
+	if err := router.Close(); err != nil {
+		t.Fatalf("close router: %v", err)
+	}
+
+	now = now.Add(2 * time.Minute)
+	reopenStore, err := NewSQLiteAlertRouterStateStore(dbPath)
+	if err != nil {
+		t.Fatalf("re-open state store: %v", err)
+	}
+	sender2 := &captureAlertSender{}
+	router = newRouterForTestWithStore(t, config, resolver, sender2, reopenStore, &now)
+	defer func() { _ = router.Close() }()
+
+	if err := router.Route(context.Background(), webhooks.Event{
+		ID:        "evt-tick",
+		Type:      webhooks.EventScanCompleted,
+		Timestamp: now,
+		Data:      map[string]interface{}{"scanned": 100},
+	}); err != nil {
+		t.Fatalf("route tick event: %v", err)
+	}
+	if got := len(sender2.messages); got != 1 {
+		t.Fatalf("expected escalation after restart, got %d messages", got)
+	}
+	payload := decodeAlertPayload(t, sender2.messages[0].payload)
+	if payload["alert_type"] != "escalation" {
+		t.Fatalf("expected escalation payload, got %#v", payload["alert_type"])
+	}
+}
+
+func TestAlertRouterRouteRollsBackStateWhenPersistenceFails(t *testing.T) {
+	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
+	config := AlertRoutingConfig{
+		Routes: []AlertRoute{{
+			Name: "risk_spike",
+			Match: AlertRouteMatch{
+				EventType: "risk_score.changed",
+				Delta:     "> 0.3",
+			},
+			DeliverTo: []AlertRouteDelivery{{Type: "channel", Channel: "#ops-alerts"}},
+			GroupBy:   "entity_id",
+			Throttle:  "5m",
+		}},
+	}
+	stateStore := &failingAlertRouterStateStore{failSave: true}
+	sender := &captureAlertSender{}
+	router := newRouterForTestWithStore(t, config, &stubAlertResolver{}, sender, stateStore, &now)
+	defer func() { _ = router.Close() }()
+
+	event := webhooks.Event{
+		ID:        "evt-1",
+		Type:      webhooks.EventRiskScoreChanged,
+		Timestamp: now,
+		Data: map[string]interface{}{
+			"entity_id":  "customer:acme",
+			"risk_delta": 0.41,
+			"severity":   "high",
+		},
+	}
+	if err := router.Route(context.Background(), event); err == nil {
+		t.Fatal("expected route to fail when persistence fails")
+	}
+	if got := len(sender.messages); got != 0 {
+		t.Fatalf("expected no alert send on persistence failure, got %d", got)
+	}
+
+	stateStore.failSave = false
+	if err := router.Route(context.Background(), event); err != nil {
+		t.Fatalf("route after persistence recovery: %v", err)
+	}
+	if got := len(sender.messages); got != 1 {
+		t.Fatalf("expected alert to send after rollback and retry, got %d", got)
+	}
+}
+
 func TestGraphAlertResolver(t *testing.T) {
 	g := graph.New()
 	g.AddNode(&graph.Node{ID: "customer:acme", Kind: graph.NodeKindCustomer, Name: "Acme"})
@@ -350,6 +589,24 @@ func newRouterForTest(t *testing.T, config AlertRoutingConfig, resolver AlertRec
 	return router
 }
 
+func newRouterForTestWithStore(t *testing.T, config AlertRoutingConfig, resolver AlertRecipientResolver, sender *captureAlertSender, store AlertRouterStateStore, now *time.Time) *AlertRouter {
+	t.Helper()
+	router, err := NewAlertRouter(AlertRouterOptions{
+		Config:        config,
+		Resolver:      resolver,
+		Sender:        sender,
+		StateStore:    store,
+		SubjectPrefix: "ensemble.notify",
+		Now: func() time.Time {
+			return now.UTC()
+		},
+	})
+	if err != nil {
+		t.Fatalf("new alert router with store: %v", err)
+	}
+	return router
+}
+
 func decodeAlertPayload(t *testing.T, payload []byte) map[string]interface{} {
 	t.Helper()
 	var out map[string]interface{}
@@ -384,6 +641,27 @@ type stubAlertResolver struct {
 	owners   []AlertRecipient
 	team     []AlertRecipient
 	managers map[string]AlertRecipient
+}
+
+type failingAlertRouterStateStore struct {
+	snapshot alertRouterStateSnapshot
+	failSave bool
+}
+
+func (s *failingAlertRouterStateStore) Load(_ context.Context) (alertRouterStateSnapshot, error) {
+	return s.snapshot, nil
+}
+
+func (s *failingAlertRouterStateStore) Save(_ context.Context, snapshot alertRouterStateSnapshot) error {
+	if s.failSave {
+		return context.DeadlineExceeded
+	}
+	s.snapshot = snapshot
+	return nil
+}
+
+func (s *failingAlertRouterStateStore) Close() error {
+	return nil
 }
 
 func (s *stubAlertResolver) ResolveEntityOwner(_ context.Context, _ string, _ webhooks.Event) []AlertRecipient {

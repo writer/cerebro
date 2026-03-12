@@ -5,7 +5,10 @@ import (
 	"errors"
 	"log/slog"
 	"os"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 // mockDataSource implements DataSource for testing
@@ -31,6 +34,25 @@ func (m *mockDataSource) Query(ctx context.Context, query string, args ...any) (
 
 func (m *mockDataSource) setResult(query string, result *QueryResult) {
 	m.results[query] = result
+}
+
+type blockingBuildSource struct {
+	started chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (s *blockingBuildSource) Query(ctx context.Context, query string, args ...any) (*QueryResult, error) {
+	_ = args
+	if strings.Contains(strings.ToLower(query), "information_schema.tables") {
+		s.once.Do(func() { close(s.started) })
+		select {
+		case <-s.release:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	return &QueryResult{Rows: []map[string]any{}}, nil
 }
 
 func TestBuilder_BuildWithMockData(t *testing.T) {
@@ -246,6 +268,56 @@ func TestBuilder_BuildReturnsContextErrorWhenCanceled(t *testing.T) {
 	err := builder.Build(ctx)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+}
+
+func TestBuilder_BuildUsesCopyOnWriteSwap(t *testing.T) {
+	source := &blockingBuildSource{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	builder := NewBuilder(source, slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError})))
+	builder.Graph().AddNode(&Node{ID: "service:live", Kind: NodeKindService, Name: "live"})
+
+	done := make(chan error, 1)
+	go func() {
+		done <- builder.Build(context.Background())
+	}()
+
+	select {
+	case <-source.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for build to start")
+	}
+
+	if _, ok := builder.Graph().GetNode("service:live"); !ok {
+		t.Fatal("expected live graph to remain readable until rebuilt graph swaps in")
+	}
+
+	close(source.release)
+	if err := <-done; err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+
+	if _, ok := builder.Graph().GetNode("service:live"); ok {
+		t.Fatal("expected rebuilt graph to replace previous live node")
+	}
+	if _, ok := builder.Graph().GetNode("internet"); !ok {
+		t.Fatal("expected rebuilt graph to contain internet node")
+	}
+}
+
+func TestBuilder_BuildPreservesSchemaValidationMode(t *testing.T) {
+	source := newMockDataSource()
+	builder := NewBuilder(source, slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError})))
+	builder.Graph().SetSchemaValidationMode(SchemaValidationEnforce)
+
+	if err := builder.Build(context.Background()); err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	if got := builder.Graph().SchemaValidationMode(); got != SchemaValidationEnforce {
+		t.Fatalf("expected schema validation mode %q, got %q", SchemaValidationEnforce, got)
 	}
 }
 

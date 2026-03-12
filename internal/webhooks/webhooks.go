@@ -162,6 +162,17 @@ const (
 	EventPlatformReportRunCanceled          EventType = "platform.report_run.canceled"
 	EventPlatformReportSectionEmitted       EventType = "platform.report_run.section_emitted"
 	EventPlatformReportSnapshotMaterialized EventType = "platform.report_snapshot.materialized"
+	EventPlatformGraphChangelogComputed     EventType = "platform.graph_changelog.computed"
+	EventSecurityWorkloadScanStarted        EventType = "security.workload_scan.started"
+	EventSecurityWorkloadScanCompleted      EventType = "security.workload_scan.completed"
+	EventSecurityWorkloadScanFailed         EventType = "security.workload_scan.failed"
+	EventSecurityWorkloadScanReconciled     EventType = "security.workload_scan.reconciled"
+	EventSecurityImageScanStarted           EventType = "security.image_scan.started"
+	EventSecurityImageScanCompleted         EventType = "security.image_scan.completed"
+	EventSecurityImageScanFailed            EventType = "security.image_scan.failed"
+	EventSecurityFunctionScanStarted        EventType = "security.function_scan.started"
+	EventSecurityFunctionScanCompleted      EventType = "security.function_scan.completed"
+	EventSecurityFunctionScanFailed         EventType = "security.function_scan.failed"
 )
 
 var defaultEventTypes = []EventType{
@@ -206,6 +217,17 @@ var defaultEventTypes = []EventType{
 	EventPlatformReportRunCanceled,
 	EventPlatformReportSectionEmitted,
 	EventPlatformReportSnapshotMaterialized,
+	EventPlatformGraphChangelogComputed,
+	EventSecurityWorkloadScanStarted,
+	EventSecurityWorkloadScanCompleted,
+	EventSecurityWorkloadScanFailed,
+	EventSecurityWorkloadScanReconciled,
+	EventSecurityImageScanStarted,
+	EventSecurityImageScanCompleted,
+	EventSecurityImageScanFailed,
+	EventSecurityFunctionScanStarted,
+	EventSecurityFunctionScanCompleted,
+	EventSecurityFunctionScanFailed,
 }
 
 // DefaultEventTypes returns the list of webhook event types registered by default.
@@ -442,7 +464,12 @@ func isValidEventType(e EventType) bool {
 		EventPlatformOutcomeRecorded, EventPlatformActionRecorded, EventPlatformReportRunQueued,
 		EventPlatformReportRunStarted, EventPlatformReportRunCompleted, EventPlatformReportRunFailed,
 		EventPlatformReportRunCanceled, EventPlatformReportSectionEmitted,
-		EventPlatformReportSnapshotMaterialized:
+		EventPlatformReportSnapshotMaterialized, EventPlatformGraphChangelogComputed,
+		EventSecurityWorkloadScanStarted, EventSecurityWorkloadScanCompleted,
+		EventSecurityWorkloadScanFailed, EventSecurityWorkloadScanReconciled,
+		EventSecurityImageScanStarted, EventSecurityImageScanCompleted,
+		EventSecurityImageScanFailed, EventSecurityFunctionScanStarted,
+		EventSecurityFunctionScanCompleted, EventSecurityFunctionScanFailed:
 		return true
 	default:
 		return false

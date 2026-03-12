@@ -32,6 +32,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/writer/cerebro/internal/metrics"
 	"github.com/writer/cerebro/internal/policy"
 )
 
@@ -65,10 +66,13 @@ const (
 
 type Finding struct {
 	// Core identification
-	ID        string `json:"id"`
-	IssueID   string `json:"issue_id,omitempty"`
-	ControlID string `json:"control_id,omitempty"` // Policy control ID
-	TenantID  string `json:"tenant_id,omitempty"`
+	ID                 string   `json:"id"`
+	IssueID            string   `json:"issue_id,omitempty"`
+	ControlID          string   `json:"control_id,omitempty"` // Policy control ID
+	TenantID           string   `json:"tenant_id,omitempty"`
+	SemanticKey        string   `json:"semantic_key,omitempty"`
+	ObservedFindingIDs []string `json:"observed_finding_ids,omitempty"`
+	ObservedPolicyIDs  []string `json:"observed_policy_ids,omitempty"`
 
 	// Policy info
 	PolicyID    string `json:"policy_id"`
@@ -160,33 +164,54 @@ type Evidence struct {
 
 // StoreConfig configures capacity limits for the in-memory Store.
 type StoreConfig struct {
-	MaxFindings       int           // 0 means unlimited (default for backward compat)
+	MaxFindings       int           // 0 means unlimited when explicitly configured.
 	ResolvedRetention time.Duration // How long to keep resolved findings; 0 means forever
+	SemanticDedup     bool
+}
+
+const (
+	DefaultMaxFindings             = 50000
+	DefaultResolvedRetention       = 30 * 24 * time.Hour
+	defaultResolvedCleanupInterval = 5 * time.Minute
+)
+
+func DefaultStoreConfig() StoreConfig {
+	return StoreConfig{
+		MaxFindings:       DefaultMaxFindings,
+		ResolvedRetention: DefaultResolvedRetention,
+		SemanticDedup:     DefaultSemanticDedupEnabled,
+	}
 }
 
 type Store struct {
 	findings          map[string]*Finding
+	semanticIndex     map[string]string
 	attestor          FindingAttestor
 	attestReobserved  bool
 	maxFindings       int
 	resolvedRetention time.Duration
+	semanticDedup     bool
+	resolvedCount     int
+	lastResolvedSweep time.Time
 	mu                sync.RWMutex
 }
 
-// NewStore creates an unlimited in-memory store (backward compatible).
+// NewStore creates a bounded in-memory store with sane defaults.
 func NewStore() *Store {
-	return &Store{
-		findings: make(map[string]*Finding),
-	}
+	return NewStoreWithConfig(DefaultStoreConfig())
 }
 
 // NewStoreWithConfig creates an in-memory store with capacity limits.
 func NewStoreWithConfig(cfg StoreConfig) *Store {
-	return &Store{
+	store := &Store{
 		findings:          make(map[string]*Finding),
+		semanticIndex:     make(map[string]string),
 		maxFindings:       cfg.MaxFindings,
 		resolvedRetention: cfg.ResolvedRetention,
+		semanticDedup:     cfg.SemanticDedup,
 	}
+	store.updateMetricsLocked()
+	return store
 }
 
 func (s *Store) SetAttestor(attestor FindingAttestor, attestReobserved bool) {
@@ -201,153 +226,43 @@ func (s *Store) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 	defer s.mu.Unlock()
 
 	now := time.Now()
-	if s.resolvedRetention > 0 {
-		_ = s.cleanupResolvedBeforeLocked(now.Add(-s.resolvedRetention))
-	}
+	s.maybeCleanupResolvedLocked(now)
+	semanticKey := semanticKeyForPolicyFinding(pf)
 
 	if existing, ok := s.findings[pf.ID]; ok {
-		previousStatus := normalizeStatus(existing.Status)
-		existing.Status = normalizeStatus(existing.Status)
-		existing.LastSeen = now
-		existing.UpdatedAt = now
-		// Only update fields that might change
-		if pf.Description != "" {
-			existing.Description = pf.Description
-		}
-		if pf.Severity != "" {
-			existing.Severity = pf.Severity
-		}
-		if pf.ControlID != "" {
-			existing.ControlID = pf.ControlID
-		}
-		if pf.Title != "" {
-			existing.Title = pf.Title
-		}
-		if pf.Remediation != "" {
-			existing.Remediation = pf.Remediation
-		}
-		if len(pf.Resource) > 0 {
-			existing.Resource = pf.Resource
-		}
-		if existing.TenantID == "" {
-			existing.TenantID = extractTenantID(pf.Resource)
-		}
-		if pf.ResourceID != "" {
-			existing.ResourceID = pf.ResourceID
-		}
-		if pf.ResourceType != "" {
-			existing.ResourceType = pf.ResourceType
-		}
-		if pf.ResourceName != "" {
-			existing.ResourceName = pf.ResourceName
-		}
-		if len(pf.RiskCategories) > 0 {
-			existing.RiskCategories = pf.RiskCategories
-		}
-		if len(pf.Frameworks) > 0 {
-			totalControls := 0
-			for _, fm := range pf.Frameworks {
-				totalControls += len(fm.Controls)
-			}
-			frameworks := make([]string, 0, len(pf.Frameworks))
-			securityCategories := make([]string, 0, totalControls)
-			for _, fm := range pf.Frameworks {
-				frameworks = append(frameworks, fm.Name)
-				for _, control := range fm.Controls {
-					securityCategories = append(securityCategories, fm.Name+":"+control)
-				}
-			}
-			existing.SecurityFrameworks = frameworks
-			existing.SecurityCategories = securityCategories
-			existing.ComplianceMappings = pf.Frameworks
-		}
-		if len(pf.MitreAttack) > 0 {
-			existing.MitreAttack = pf.MitreAttack
-		}
-		if existing.SignalType == "" {
-			existing.SignalType = SignalTypeSecurity
-		}
-		if existing.Domain == "" {
-			existing.Domain = inferDomain(existing.PolicyID, existing.ResourceType)
-		}
-
-		// Reopen resolved findings if they recur
-		if previousStatus == "RESOLVED" || previousStatus == "SNOOZED" {
-			existing.Status = "OPEN"
-			existing.ResolvedAt = nil
-			existing.SnoozedUntil = nil
-			existing.StatusChangedAt = &now
-		}
+		previousStatus := s.refreshFindingFromPolicyLocked(existing, pf, now, semanticKey)
+		s.adjustResolvedCountLocked(previousStatus, existing.Status)
 		EnrichFinding(existing)
 		eventType := upsertAttestationEvent(true, previousStatus, s.attestReobserved)
 		if eventType != "" {
 			_ = attestFindingEvent(ctx, s.attestor, existing, eventType, now)
 		}
+		s.updateMetricsLocked()
 		return existing
 	}
-
-	// Use enhanced fields from policy finding if available, fall back to extraction
-	resourceID := pf.ResourceID
-	if resourceID == "" {
-		resourceID = extractResourceID(pf.Resource)
-	}
-	resourceType := pf.ResourceType
-	if resourceType == "" {
-		resourceType = extractResourceType(pf.Resource)
-	}
-	resourceName := pf.ResourceName
-	if resourceName == "" {
-		resourceName = extractResourceName(pf.Resource)
-	}
-	tenantID := extractTenantID(pf.Resource)
-
-	// Extract frameworks and controls for the finding
-	frameworks := make([]string, 0, len(pf.Frameworks))
-	securityCategories := make([]string, 0)
-	for _, fm := range pf.Frameworks {
-		frameworks = append(frameworks, fm.Name)
-		for _, control := range fm.Controls {
-			securityCategories = append(securityCategories, fm.Name+":"+control)
+	if match := s.findSemanticMatchLocked(semanticKey); match != nil {
+		previousStatus := s.refreshFindingFromPolicyLocked(match, pf, now, semanticKey)
+		s.adjustResolvedCountLocked(previousStatus, match.Status)
+		EnrichFinding(match)
+		eventType := upsertAttestationEvent(true, previousStatus, s.attestReobserved)
+		if eventType != "" {
+			_ = attestFindingEvent(ctx, s.attestor, match, eventType, now)
 		}
+		s.updateMetricsLocked()
+		return match
 	}
 
-	f := &Finding{
-		ID:                 pf.ID,
-		IssueID:            pf.ID, // Use same ID as issue ID for now
-		ControlID:          pf.ControlID,
-		TenantID:           tenantID,
-		PolicyID:           pf.PolicyID,
-		PolicyName:         pf.PolicyName,
-		Title:              pf.Title,
-		Severity:           pf.Severity,
-		SignalType:         SignalTypeSecurity,
-		Domain:             inferDomain(pf.PolicyID, resourceType),
-		Status:             "OPEN",
-		ResourceID:         resourceID,
-		ResourceName:       resourceName,
-		ResourceType:       resourceType,
-		Resource:           pf.Resource,
-		Description:        pf.Description,
-		Remediation:        pf.Remediation,
-		RiskCategories:     pf.RiskCategories,
-		SecurityFrameworks: frameworks,
-		SecurityCategories: securityCategories,
-		ComplianceMappings: pf.Frameworks,
-		MitreAttack:        pf.MitreAttack,
-		CreatedAt:          now,
-		UpdatedAt:          now,
-		FirstSeen:          now,
-		LastSeen:           now,
-	}
-	f.StatusChangedAt = &now
-
+	f := newFindingFromPolicyFinding(pf, now)
+	applySemanticObservation(f, pf, semanticKey)
 	EnrichFinding(f)
 	_ = attestFindingEvent(ctx, s.attestor, f, upsertAttestationEvent(false, "", s.attestReobserved), now)
 	s.findings[pf.ID] = f
+	s.indexFindingLocked(f)
 
 	if s.maxFindings > 0 && len(s.findings) > s.maxFindings {
 		s.evictToCapacity()
 	}
+	s.updateMetricsLocked()
 
 	return f
 }
@@ -487,6 +402,13 @@ func (s *Store) Get(id string) (*Finding, bool) {
 	return f, ok
 }
 
+func (s *Store) SetSemanticDedup(enabled bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.semanticDedup = enabled
+	s.rebuildIndexesLocked()
+}
+
 func (s *Store) Update(id string, mutate func(*Finding) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -495,11 +417,17 @@ func (s *Store) Update(id string, mutate func(*Finding) error) error {
 	if !ok {
 		return ErrIssueNotFound
 	}
+	previousStatus := normalizeStatus(f.Status)
+	oldKey := f.SemanticKey
 	if err := mutate(f); err != nil {
 		return err
 	}
 	f.Status = normalizeStatus(f.Status)
+	refreshFindingSemanticState(f)
+	s.syncSemanticIndexLocked(f, oldKey)
+	s.adjustResolvedCountLocked(previousStatus, f.Status)
 	EnrichFinding(f)
+	s.updateMetricsLocked()
 	return nil
 }
 
@@ -587,11 +515,14 @@ func (s *Store) Resolve(id string) bool {
 		return false
 	}
 	now := time.Now()
+	previousStatus := normalizeStatus(f.Status)
 	f.Status = "RESOLVED"
 	f.ResolvedAt = &now
 	f.SnoozedUntil = nil
 	f.StatusChangedAt = &now
 	f.UpdatedAt = now
+	s.adjustResolvedCountLocked(previousStatus, f.Status)
+	s.updateMetricsLocked()
 	return true
 }
 
@@ -604,10 +535,13 @@ func (s *Store) Suppress(id string) bool {
 		return false
 	}
 	now := time.Now()
+	previousStatus := normalizeStatus(f.Status)
 	f.Status = "SUPPRESSED"
 	f.SnoozedUntil = nil
 	f.StatusChangedAt = &now
 	f.UpdatedAt = now
+	s.adjustResolvedCountLocked(previousStatus, f.Status)
+	s.updateMetricsLocked()
 	return true
 }
 
@@ -701,8 +635,14 @@ func (s *Store) evictToCapacity() {
 	})
 
 	for i := 0; i < len(candidates) && excess > 0; i++ {
-		delete(s.findings, candidates[i].id)
+		if f, ok := s.findings[candidates[i].id]; ok && normalizeStatus(f.Status) == "RESOLVED" {
+			s.resolvedCount--
+		}
+		s.removeFindingLocked(candidates[i].id)
 		excess--
+	}
+	if s.resolvedCount < 0 {
+		s.resolvedCount = s.countResolvedFindingsLocked()
 	}
 }
 
@@ -712,11 +652,59 @@ func (s *Store) cleanupResolvedBeforeLocked(cutoff time.Time) int {
 	removed := 0
 	for id, f := range s.findings {
 		if normalizeStatus(f.Status) == "RESOLVED" && f.LastSeen.Before(cutoff) {
-			delete(s.findings, id)
+			s.removeFindingLocked(id)
+			s.resolvedCount--
 			removed++
 		}
 	}
+	if s.resolvedCount < 0 {
+		s.resolvedCount = s.countResolvedFindingsLocked()
+	}
 	return removed
+}
+
+func (s *Store) countResolvedFindingsLocked() int {
+	count := 0
+	for _, f := range s.findings {
+		if normalizeStatus(f.Status) == "RESOLVED" {
+			count++
+		}
+	}
+	return count
+}
+
+func (s *Store) maybeCleanupResolvedLocked(now time.Time) {
+	if !s.shouldCleanupResolvedLocked(now) {
+		return
+	}
+	_ = s.cleanupResolvedBeforeLocked(now.Add(-s.resolvedRetention))
+	s.lastResolvedSweep = now
+}
+
+func (s *Store) shouldCleanupResolvedLocked(now time.Time) bool {
+	if s.resolvedRetention <= 0 || s.resolvedCount == 0 {
+		return false
+	}
+	if s.lastResolvedSweep.IsZero() {
+		return true
+	}
+	return now.Sub(s.lastResolvedSweep) >= s.resolvedCleanupInterval()
+}
+
+func (s *Store) resolvedCleanupInterval() time.Duration {
+	if s.resolvedRetention > 0 && s.resolvedRetention < defaultResolvedCleanupInterval {
+		return s.resolvedRetention
+	}
+	return defaultResolvedCleanupInterval
+}
+
+func (s *Store) adjustResolvedCountLocked(previousStatus, currentStatus string) {
+	switch {
+	case previousStatus != "RESOLVED" && currentStatus == "RESOLVED":
+		s.resolvedCount++
+	case previousStatus == "RESOLVED" && currentStatus != "RESOLVED" && s.resolvedCount > 0:
+		s.resolvedCount--
+	}
 }
 
 // Cleanup removes resolved findings older than maxAge. Returns the number of
@@ -725,7 +713,9 @@ func (s *Store) Cleanup(maxAge time.Duration) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return s.cleanupResolvedBeforeLocked(time.Now().Add(-maxAge))
+	removed := s.cleanupResolvedBeforeLocked(time.Now().Add(-maxAge))
+	s.updateMetricsLocked()
+	return removed
 }
 
 // Len returns the number of findings in the store.
@@ -738,6 +728,85 @@ func (s *Store) Len() int {
 // Sync is a no-op for in-memory store
 func (s *Store) Sync(ctx context.Context) error {
 	return nil
+}
+
+func (s *Store) Config() StoreConfig {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return StoreConfig{
+		MaxFindings:       s.maxFindings,
+		ResolvedRetention: s.resolvedRetention,
+		SemanticDedup:     s.semanticDedup,
+	}
+}
+
+func (s *Store) refreshFindingFromPolicyLocked(existing *Finding, pf policy.Finding, now time.Time, semanticKey string) string {
+	oldKey := existing.SemanticKey
+	previousStatus := applyPolicyFindingUpdate(existing, pf, now)
+	applySemanticObservation(existing, pf, semanticKey)
+	s.syncSemanticIndexLocked(existing, oldKey)
+	return previousStatus
+}
+
+func (s *Store) findSemanticMatchLocked(semanticKey string) *Finding {
+	if !findingNeedsSemanticMatch(s.semanticDedup, semanticKey) {
+		return nil
+	}
+	id, ok := s.semanticIndex[semanticKey]
+	if !ok {
+		return nil
+	}
+	return s.findings[id]
+}
+
+func (s *Store) syncSemanticIndexLocked(f *Finding, oldKey string) {
+	if !s.semanticDedup {
+		return
+	}
+	ensureFindingSemanticState(f)
+	oldKey = strings.TrimSpace(oldKey)
+	if oldKey != "" && oldKey != f.SemanticKey && s.semanticIndex[oldKey] == f.ID {
+		delete(s.semanticIndex, oldKey)
+	}
+	if strings.TrimSpace(f.SemanticKey) != "" {
+		s.semanticIndex[f.SemanticKey] = f.ID
+	}
+}
+
+func (s *Store) indexFindingLocked(f *Finding) {
+	if !s.semanticDedup {
+		return
+	}
+	ensureFindingSemanticState(f)
+	if strings.TrimSpace(f.SemanticKey) != "" {
+		s.semanticIndex[f.SemanticKey] = f.ID
+	}
+}
+
+func (s *Store) removeFindingLocked(id string) {
+	if f, ok := s.findings[id]; ok {
+		if s.semanticDedup {
+			ensureFindingSemanticState(f)
+			if key := strings.TrimSpace(f.SemanticKey); key != "" && s.semanticIndex[key] == id {
+				delete(s.semanticIndex, key)
+			}
+		}
+		delete(s.findings, id)
+	}
+}
+
+func (s *Store) rebuildIndexesLocked() {
+	s.semanticIndex = make(map[string]string, len(s.findings))
+	if !s.semanticDedup {
+		return
+	}
+	for _, f := range s.findings {
+		s.indexFindingLocked(f)
+	}
+}
+
+func (s *Store) updateMetricsLocked() {
+	metrics.SetFindingsStoreSize(len(s.findings))
 }
 
 // Ensure Store implements FindingStore

@@ -32,8 +32,20 @@ func (b *Builder) ApplyChanges(ctx context.Context, since time.Time) (GraphMutat
 		return GraphMutationSummary{}, err
 	}
 
+	b.updateMu.Lock()
+	defer b.updateMu.Unlock()
+
+	b.stateMu.RLock()
+	currentWatermark := b.lastBuildTime
 	if since.IsZero() {
-		since = b.lastBuildTime
+		since = currentWatermark
+	}
+	currentGraph := b.graph
+	availableTables := cloneAvailableTables(b.availableTables)
+	b.stateMu.RUnlock()
+
+	if currentGraph == nil {
+		return GraphMutationSummary{}, fmt.Errorf("graph not initialized")
 	}
 
 	start := time.Now()
@@ -42,21 +54,39 @@ func (b *Builder) ApplyChanges(ctx context.Context, since time.Time) (GraphMutat
 		Since: since,
 	}
 
-	events, err := b.queryCDCEvents(ctx, since)
+	working := &Builder{
+		source:          b.source,
+		logger:          b.logger,
+		availableTables: availableTables,
+	}
+
+	// Refresh table discovery so incremental edge rebuilds see newly populated tables.
+	working.discoverTables(ctx)
+
+	events, err := working.queryCDCEvents(ctx, since)
 	if err != nil {
 		return GraphMutationSummary{}, err
 	}
 	summary.EventsProcessed = len(events)
 	if len(events) == 0 {
-		now := time.Now().UTC()
-		summary.Until = now
-		summary.NodeCount = b.graph.NodeCount()
-		summary.EdgeCount = b.graph.EdgeCount()
+		until := currentWatermark
+		if until.IsZero() {
+			until = since
+		}
+		summary.Tables = []string{}
+		summary.Until = until
+		summary.NodeCount = currentGraph.NodeCount()
+		summary.EdgeCount = currentGraph.EdgeCount()
 		summary.Duration = time.Since(start)
-		b.lastBuildTime = now
+		b.stateMu.Lock()
+		b.availableTables = working.availableTables
+		b.lastBuildTime = until
 		b.lastMutation = summary
+		b.stateMu.Unlock()
 		return summary, nil
 	}
+
+	working.graph = currentGraph.Clone()
 
 	tableSet := make(map[string]struct{}, len(events))
 	latest := since
@@ -79,7 +109,7 @@ func (b *Builder) ApplyChanges(ctx context.Context, since time.Time) (GraphMutat
 			if nodeID == "" {
 				continue
 			}
-			if b.graph.RemoveNode(nodeID) {
+			if working.graph.RemoveNode(nodeID) {
 				summary.NodesRemoved++
 			}
 		case "added", "modified":
@@ -87,20 +117,20 @@ func (b *Builder) ApplyChanges(ctx context.Context, since time.Time) (GraphMutat
 			if node == nil {
 				continue
 			}
-			if existing, ok := b.graph.GetNodeIncludingDeleted(node.ID); ok && existing != nil {
+			if existing, ok := working.graph.GetNodeIncludingDeleted(node.ID); ok && existing != nil {
 				summary.NodesUpdated++
 			} else {
 				summary.NodesAdded++
 			}
-			b.graph.AddNode(node)
+			working.graph.AddNode(node)
 		}
 	}
 
-	if _, ok := b.graph.GetNodeIncludingDeleted("internet"); !ok {
-		b.addInternetNode()
+	if _, ok := working.graph.GetNodeIncludingDeleted("internet"); !ok {
+		working.addInternetNode()
 	}
 
-	if err := b.rebuildEdges(ctx); err != nil {
+	if err := working.rebuildEdges(ctx); err != nil {
 		return GraphMutationSummary{}, err
 	}
 
@@ -115,20 +145,27 @@ func (b *Builder) ApplyChanges(ctx context.Context, since time.Time) (GraphMutat
 	if latest.IsZero() {
 		latest = now
 	}
+	if latest.Before(currentWatermark) {
+		latest = currentWatermark
+	}
 	summary.Until = latest
 	summary.Duration = time.Since(start)
-	summary.NodeCount = b.graph.NodeCount()
-	summary.EdgeCount = b.graph.EdgeCount()
+	summary.NodeCount = working.graph.NodeCount()
+	summary.EdgeCount = working.graph.EdgeCount()
 
-	b.graph.SetMetadata(Metadata{
+	working.graph.SetMetadata(Metadata{
 		BuiltAt:       now,
 		NodeCount:     summary.NodeCount,
 		EdgeCount:     summary.EdgeCount,
 		BuildDuration: summary.Duration,
 	})
 
+	b.stateMu.Lock()
+	b.graph = working.graph
+	b.availableTables = working.availableTables
 	b.lastBuildTime = latest
 	b.lastMutation = summary
+	b.stateMu.Unlock()
 
 	b.logger.Info("graph platform incrementally updated",
 		"events", summary.EventsProcessed,
@@ -185,6 +222,7 @@ func (b *Builder) rebuildEdges(ctx context.Context) error {
 	eg.Go(func() error { b.buildAWSEdges(ectx); return nil })
 	eg.Go(func() error { b.buildGCPEdges(ectx); return nil })
 	eg.Go(func() error { b.buildAzureEdges(ectx); return nil })
+	eg.Go(func() error { b.buildKubernetesEdges(ectx); return nil })
 	eg.Go(func() error { b.buildRelationshipEdges(ectx); return nil })
 	_ = eg.Wait()
 	if err := ctx.Err(); err != nil {
@@ -624,32 +662,68 @@ func cdcEventToNode(table string, event cdcEvent) *Node {
 				"role_type": roleType,
 			},
 		}
+	case "k8s_core_pods",
+		"k8s_core_namespaces",
+		"k8s_core_service_accounts",
+		"k8s_apps_deployments",
+		"k8s_rbac_cluster_roles",
+		"k8s_rbac_roles",
+		"k8s_rbac_cluster_role_bindings",
+		"k8s_rbac_role_bindings",
+		"k8s_core_configmaps",
+		"k8s_core_persistent_volumes":
+		return k8sNodeFromRecord(table, payload, event.ResourceID)
 	}
 
 	return nil
 }
 
 func cdcNodeID(table string, payload map[string]any, fallback string) string {
-	if id := strings.TrimSpace(fallback); id != "" {
-		return id
-	}
-
 	switch strings.ToLower(strings.TrimSpace(table)) {
 	case "aws_iam_users", "aws_iam_roles", "aws_iam_groups", "aws_s3_buckets", "aws_ec2_instances", "aws_rds_instances", "aws_lambda_functions", "aws_secretsmanager_secrets":
+		if id := strings.TrimSpace(fallback); id != "" {
+			return id
+		}
 		return firstNonEmpty(queryRowString(payload, "arn"), queryRowString(payload, "id"), queryRowString(payload, "name"))
 	case "gcp_iam_service_accounts":
+		if id := strings.TrimSpace(fallback); id != "" {
+			return id
+		}
 		return firstNonEmpty(queryRowString(payload, "unique_id"), queryRowString(payload, "email"), queryRowString(payload, "name"), queryRowString(payload, "id"))
 	case "gcp_compute_instances", "gcp_storage_buckets", "gcp_sql_instances", "gcp_cloudfunctions_functions", "gcp_cloudrun_services":
+		if id := strings.TrimSpace(fallback); id != "" {
+			return id
+		}
 		return firstNonEmpty(queryRowString(payload, "id"), queryRowString(payload, "name"))
 	case "azure_ad_service_principals", "azure_ad_users", "azure_compute_virtual_machines", "azure_storage_accounts", "azure_sql_databases", "azure_keyvault_vaults", "azure_functions_apps", "okta_users", "okta_groups", "okta_applications":
+		if id := strings.TrimSpace(fallback); id != "" {
+			return id
+		}
 		return firstNonEmpty(queryRowString(payload, "id"), queryRowString(payload, "name"))
 	case "okta_admin_roles":
+		if id := strings.TrimSpace(fallback); id != "" {
+			return id
+		}
 		roleType := strings.TrimSpace(queryRowString(payload, "role_type"))
 		if roleType == "" {
 			return ""
 		}
 		return "okta_admin_role:" + strings.ToLower(roleType)
+	case "k8s_core_pods",
+		"k8s_core_namespaces",
+		"k8s_core_service_accounts",
+		"k8s_apps_deployments",
+		"k8s_rbac_cluster_roles",
+		"k8s_rbac_roles",
+		"k8s_rbac_cluster_role_bindings",
+		"k8s_rbac_role_bindings",
+		"k8s_core_configmaps",
+		"k8s_core_persistent_volumes":
+		return k8sNodeID(table, payload, fallback)
 	default:
+		if id := strings.TrimSpace(fallback); id != "" {
+			return id
+		}
 		return firstNonEmpty(queryRowString(payload, "arn"), queryRowString(payload, "id"), queryRowString(payload, "unique_id"), queryRowString(payload, "name"))
 	}
 }
@@ -731,11 +805,15 @@ func firstNonEmpty(values ...string) string {
 }
 
 func (s GraphMutationSummary) Payload(trigger string) map[string]any {
+	tables := s.Tables
+	if tables == nil {
+		tables = []string{}
+	}
 	payload := map[string]any{
 		"mode":             s.Mode,
 		"since":            s.Since.UTC().Format(time.RFC3339Nano),
 		"until":            s.Until.UTC().Format(time.RFC3339Nano),
-		"tables":           s.Tables,
+		"tables":           tables,
 		"events_processed": s.EventsProcessed,
 		"nodes_added":      s.NodesAdded,
 		"nodes_updated":    s.NodesUpdated,

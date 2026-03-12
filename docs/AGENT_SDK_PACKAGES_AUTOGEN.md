@@ -2,7 +2,7 @@
 
 Generated from `docs/AGENT_SDK_CONTRACTS.json` via `go run ./scripts/generate_agent_sdk_packages/main.go`.
 
-- Tool bindings: **23**
+- Tool bindings: **25**
 - Package paths:
   - `sdk/go/cerebro`
   - `sdk/python/cerebro_sdk`
@@ -21,7 +21,9 @@ Generated from `docs/AGENT_SDK_CONTRACTS.json` via `go run ./scripts/generate_ag
 | `cerebro_claim` | `Claim` | `claim` | `claim` |
 | `cerebro_context` | `Context` | `context` | `context` |
 | `cerebro_decide` | `Decide` | `decide` | `decide` |
+| `cerebro_entity_history` | `EntityHistory` | `entity_history` | `entityHistory` |
 | `cerebro_findings` | `Findings` | `findings` | `findings` |
+| `cerebro_graph_changelog` | `GraphChangelog` | `graph_changelog` | `graphChangelog` |
 | `cerebro_graph_query` | `GraphQuery` | `graph_query` | `graphQuery` |
 | `cerebro_graph_simulate` | `GraphSimulate` | `graph_simulate` | `graphSimulate` |
 | `cerebro_identity_calibration` | `IdentityCalibration` | `identity_calibration` | `identityCalibration` |

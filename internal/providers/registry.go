@@ -3,6 +3,9 @@ package providers
 import (
 	"context"
 	"errors"
+	"net/http"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -218,6 +221,77 @@ func (b *BaseProvider) GetConfigString(key string) string {
 		}
 	}
 	return ""
+}
+
+func (b *BaseProvider) GetConfigInt(key string, fallback int) int {
+	value := b.GetConfig(key)
+	switch typed := value.(type) {
+	case int:
+		return typed
+	case int8:
+		return int(typed)
+	case int16:
+		return int(typed)
+	case int32:
+		return int(typed)
+	case int64:
+		return int(typed)
+	case float32:
+		return int(typed)
+	case float64:
+		return int(typed)
+	case string:
+		if parsed, err := strconv.Atoi(strings.TrimSpace(typed)); err == nil {
+			return parsed
+		}
+	}
+	return fallback
+}
+
+func (b *BaseProvider) GetConfigDuration(key string, fallback time.Duration) time.Duration {
+	value := b.GetConfig(key)
+	switch typed := value.(type) {
+	case time.Duration:
+		return typed
+	case int:
+		return time.Duration(typed) * time.Second
+	case int8:
+		return time.Duration(typed) * time.Second
+	case int16:
+		return time.Duration(typed) * time.Second
+	case int32:
+		return time.Duration(typed) * time.Second
+	case int64:
+		return time.Duration(typed) * time.Second
+	case float32:
+		return time.Duration(float64(typed) * float64(time.Second))
+	case float64:
+		return time.Duration(typed * float64(time.Second))
+	case string:
+		raw := strings.TrimSpace(typed)
+		if raw == "" {
+			return fallback
+		}
+		if parsed, err := time.ParseDuration(raw); err == nil {
+			return parsed
+		}
+		if seconds, err := strconv.ParseFloat(raw, 64); err == nil {
+			return time.Duration(seconds * float64(time.Second))
+		}
+	}
+	return fallback
+}
+
+func (b *BaseProvider) NewHTTPClient(defaultTimeout time.Duration) *http.Client {
+	return newProviderHTTPClientWithOptions(ProviderHTTPClientOptions{
+		Provider:                b.name,
+		Timeout:                 b.GetConfigDuration("http_timeout", defaultTimeout),
+		RetryAttempts:           b.GetConfigInt("http_retry_attempts", defaultProviderHTTPRetryAttempts),
+		RetryBackoff:            b.GetConfigDuration("http_retry_backoff", defaultProviderHTTPRetryBackoff),
+		RetryMaxBackoff:         b.GetConfigDuration("http_retry_max_backoff", defaultProviderHTTPRetryMaxBackoff),
+		CircuitFailureThreshold: b.GetConfigInt("http_circuit_failure_threshold", defaultProviderCircuitFailureThreshold),
+		CircuitOpenTimeout:      b.GetConfigDuration("http_circuit_open_timeout", defaultProviderCircuitOpenTimeout),
+	})
 }
 
 func (b *BaseProvider) IsConfigured() bool {

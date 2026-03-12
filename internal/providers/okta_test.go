@@ -179,7 +179,15 @@ func TestOktaRequestWithResponse_RetryOn429(t *testing.T) {
 
 	okta := &OktaProvider{
 		apiToken: "token",
-		client:   server.Client(),
+		client: newProviderHTTPClientWithOptions(ProviderHTTPClientOptions{
+			Provider:                "okta",
+			Timeout:                 2 * time.Second,
+			RetryAttempts:           2,
+			RetryBackoff:            time.Millisecond,
+			RetryMaxBackoff:         time.Millisecond,
+			CircuitFailureThreshold: 5,
+			CircuitOpenTimeout:      time.Minute,
+		}),
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)

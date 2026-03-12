@@ -33,6 +33,9 @@ func TestPreCommitHookRunsFastLintOnStagedGoFiles(t *testing.T) {
 	if !strings.Contains(text, "STAGED_PACKAGE_DIRS") {
 		t.Fatalf("expected pre-commit hook to lint staged package directories")
 	}
+	if !strings.Contains(text, "build constraints exclude all Go files") {
+		t.Fatalf("expected pre-commit hook to skip build-ignored generator directories")
+	}
 }
 
 func TestPrePushHookRunsChangedDevexPreflight(t *testing.T) {
@@ -292,6 +295,34 @@ func TestDevexScriptChangedModeIncludesWorkspaceDiffSources(t *testing.T) {
 	} {
 		if !strings.Contains(text, needle) {
 			t.Fatalf("expected scripts/devex.py to include %s", needle)
+		}
+	}
+}
+
+func TestDevexScriptSkipsBuildIgnoredGeneratorDirs(t *testing.T) {
+	root := repoRoot(t)
+	cmd := exec.Command("python3", "./scripts/devex.py", "plan", "--mode", "changed", "--json", "--files", "scripts/generate_config_docs/main.go")
+	cmd.Dir = root
+	output, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("run scripts/devex.py: %v", err)
+	}
+
+	var plan struct {
+		Steps []struct {
+			Key     string   `json:"key"`
+			Command []string `json:"command"`
+		} `json:"steps"`
+	}
+	if err := json.Unmarshal(output, &plan); err != nil {
+		t.Fatalf("decode devex plan: %v", err)
+	}
+
+	for _, step := range plan.Steps {
+		for _, arg := range step.Command {
+			if arg == "./scripts/generate_config_docs" {
+				t.Fatalf("expected build-ignored generator package to be excluded from changed-go steps, got %#v", plan.Steps)
+			}
 		}
 	}
 }

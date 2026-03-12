@@ -1,13 +1,16 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/writer/cerebro/internal/graph"
+	"github.com/writer/cerebro/internal/webhooks"
 )
 
 func TestPlatformGraphSnapshotAncestryAndDiffEndpoints(t *testing.T) {
@@ -286,6 +289,234 @@ func TestPlatformGraphDiffRequiresMaterializedSnapshots(t *testing.T) {
 	})
 	if diff.Code != http.StatusConflict {
 		t.Fatalf("expected 409 for non-materialized snapshot diff, got %d: %s", diff.Code, diff.Body.String())
+	}
+}
+
+func TestPlatformGraphDiffMaterializationIsIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GRAPH_SNAPSHOT_PATH", dir)
+
+	base := time.Date(2026, 3, 7, 3, 0, 0, 0, time.UTC)
+	older := &graph.Snapshot{
+		Version:   "1.0",
+		CreatedAt: base.Add(5 * time.Minute),
+		Metadata: graph.Metadata{
+			BuiltAt:   base,
+			NodeCount: 1,
+			EdgeCount: 0,
+			Providers: []string{"aws"},
+			Accounts:  []string{"acct-a"},
+		},
+		Nodes: []*graph.Node{
+			{ID: "node-a", Kind: graph.NodeKindUser, Name: "a"},
+		},
+	}
+	newer := &graph.Snapshot{
+		Version:   "1.0",
+		CreatedAt: base.Add(65 * time.Minute),
+		Metadata: graph.Metadata{
+			BuiltAt:   base.Add(1 * time.Hour),
+			NodeCount: 2,
+			EdgeCount: 1,
+			Providers: []string{"aws"},
+			Accounts:  []string{"acct-a"},
+		},
+		Nodes: []*graph.Node{
+			{ID: "node-a", Kind: graph.NodeKindUser, Name: "a"},
+			{ID: "node-b", Kind: graph.NodeKindBucket, Name: "b"},
+		},
+		Edges: []*graph.Edge{
+			{ID: "edge-1", Source: "node-a", Target: "node-b", Kind: graph.EdgeKindCanRead},
+		},
+	}
+	mustSaveGraphSnapshot(t, dir, older)
+	mustSaveGraphSnapshot(t, dir, newer)
+
+	s := newTestServer(t)
+	body := decodeJSON(t, do(t, s, http.MethodGet, "/api/v1/platform/graph/snapshots", nil))
+	snapshots := body["snapshots"].([]any)
+	newerID, _ := snapshots[0].(map[string]any)["id"].(string)
+	olderID, _ := snapshots[1].(map[string]any)["id"].(string)
+
+	changelogEvents := make(chan webhooks.Event, 2)
+	s.app.Webhooks.Subscribe(func(_ context.Context, event webhooks.Event) error {
+		if event.Type == webhooks.EventPlatformGraphChangelogComputed {
+			changelogEvents <- event
+		}
+		return nil
+	})
+
+	first := do(t, s, http.MethodPost, "/api/v1/platform/graph/diffs", map[string]any{
+		"from_snapshot_id":   olderID,
+		"to_snapshot_id":     newerID,
+		"materialize_result": true,
+	})
+	if first.Code != http.StatusOK {
+		t.Fatalf("expected 200 for first diff materialization, got %d: %s", first.Code, first.Body.String())
+	}
+	firstBody := decodeJSON(t, first)
+	firstStoredAt, _ := firstBody["stored_at"].(string)
+	if firstStoredAt == "" {
+		t.Fatalf("expected stored_at on materialized diff, got %#v", firstBody)
+	}
+
+	select {
+	case <-changelogEvents:
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected webhook emission for first materialization")
+	}
+
+	second := do(t, s, http.MethodPost, "/api/v1/platform/graph/diffs", map[string]any{
+		"from_snapshot_id":   olderID,
+		"to_snapshot_id":     newerID,
+		"materialize_result": true,
+	})
+	if second.Code != http.StatusOK {
+		t.Fatalf("expected 200 for repeated diff materialization, got %d: %s", second.Code, second.Body.String())
+	}
+	secondBody := decodeJSON(t, second)
+	if got := secondBody["id"]; got != firstBody["id"] {
+		t.Fatalf("expected repeated materialization to reuse diff id %#v, got %#v", firstBody["id"], got)
+	}
+	if got := secondBody["stored_at"]; got != firstStoredAt {
+		t.Fatalf("expected repeated materialization to reuse stored_at %q, got %#v", firstStoredAt, got)
+	}
+
+	select {
+	case event := <-changelogEvents:
+		t.Fatalf("expected repeated materialization to avoid duplicate webhook emission, got %#v", event)
+	default:
+	}
+}
+
+func TestPlatformGraphChangelogAndDiffDetailsEndpoints(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GRAPH_SNAPSHOT_PATH", dir)
+
+	base := time.Date(2026, 3, 7, 0, 0, 0, 0, time.UTC)
+	older := &graph.Snapshot{
+		Version:   "1.0",
+		CreatedAt: base.Add(5 * time.Minute),
+		Metadata: graph.Metadata{
+			BuiltAt:   base,
+			NodeCount: 1,
+			EdgeCount: 0,
+			Providers: []string{"aws"},
+			Accounts:  []string{"acct-a"},
+		},
+		Nodes: []*graph.Node{
+			{ID: "service:payments", Kind: graph.NodeKindService, Name: "Payments", Provider: "aws", Account: "acct-a"},
+		},
+	}
+	newer := &graph.Snapshot{
+		Version:   "1.0",
+		CreatedAt: base.Add(65 * time.Minute),
+		Metadata: graph.Metadata{
+			BuiltAt:   base.Add(1 * time.Hour),
+			NodeCount: 2,
+			EdgeCount: 1,
+			Providers: []string{"aws"},
+			Accounts:  []string{"acct-a"},
+		},
+		Nodes: []*graph.Node{
+			{ID: "service:payments", Kind: graph.NodeKindService, Name: "Payments", Provider: "aws", Account: "acct-a"},
+			{ID: "bucket:logs", Kind: graph.NodeKindBucket, Name: "Logs", Provider: "aws", Account: "acct-a", Properties: map[string]any{"source_system": "aws"}},
+		},
+		Edges: []*graph.Edge{
+			{ID: "service:payments->bucket:logs:targets", Source: "service:payments", Target: "bucket:logs", Kind: graph.EdgeKindTargets},
+		},
+	}
+	latest := &graph.Snapshot{
+		Version:   "1.0",
+		CreatedAt: base.Add(125 * time.Minute),
+		Metadata: graph.Metadata{
+			BuiltAt:   base.Add(2 * time.Hour),
+			NodeCount: 2,
+			EdgeCount: 1,
+			Providers: []string{"aws"},
+			Accounts:  []string{"acct-a"},
+		},
+		Nodes: []*graph.Node{
+			{ID: "service:payments", Kind: graph.NodeKindService, Name: "Payments Core", Provider: "aws", Account: "acct-a"},
+			{ID: "bucket:logs", Kind: graph.NodeKindBucket, Name: "Logs", Provider: "aws", Account: "acct-a", Properties: map[string]any{"source_system": "aws"}},
+		},
+		Edges: []*graph.Edge{
+			{ID: "service:payments->bucket:logs:targets", Source: "service:payments", Target: "bucket:logs", Kind: graph.EdgeKindTargets},
+		},
+	}
+	mustSaveGraphSnapshot(t, dir, older)
+	mustSaveGraphSnapshot(t, dir, newer)
+	mustSaveGraphSnapshot(t, dir, latest)
+
+	s := newTestServer(t)
+	changelogEvents := make(chan webhooks.Event, 2)
+	s.app.Webhooks.Subscribe(func(_ context.Context, event webhooks.Event) error {
+		if event.Type == webhooks.EventPlatformGraphChangelogComputed {
+			changelogEvents <- event
+		}
+		return nil
+	})
+	changelog := do(t, s, http.MethodGet, "/api/v1/platform/graph/changelog?last=7d&provider=aws&limit=1", nil)
+	if changelog.Code != http.StatusOK {
+		t.Fatalf("expected 200 for graph changelog, got %d: %s", changelog.Code, changelog.Body.String())
+	}
+	changelogBody := decodeJSON(t, changelog)
+	if changelogBody["count"] != float64(1) {
+		t.Fatalf("expected one changelog entry, got %#v", changelogBody["count"])
+	}
+	entries, ok := changelogBody["entries"].([]any)
+	if !ok || len(entries) != 1 {
+		t.Fatalf("expected one changelog entry, got %#v", changelogBody["entries"])
+	}
+	entry := entries[0].(map[string]any)
+	diffID, _ := entry["diff_id"].(string)
+	if diffID == "" {
+		t.Fatalf("expected diff_id on changelog entry, got %#v", entry)
+	}
+	toSnapshot := entry["to"].(map[string]any)
+	if got := toSnapshot["captured_at"]; got != latest.CreatedAt.Format(time.RFC3339) {
+		t.Fatalf("expected newest changelog entry, got to=%#v", toSnapshot)
+	}
+	summary := entry["summary"].(map[string]any)
+	if summary["nodes_modified"] != float64(1) || summary["nodes_added"] != float64(0) {
+		t.Fatalf("expected newest diff summary with one modified node, got %#v", summary)
+	}
+	attribution := entry["attribution"].(map[string]any)
+	if providers, ok := attribution["providers"].([]any); !ok || len(providers) != 1 || providers[0] != "aws" {
+		t.Fatalf("expected aws attribution, got %#v", attribution)
+	}
+	if got := entry["materialized"]; got != nil && got != false {
+		t.Fatalf("expected changelog read to stay non-materialized, got %#v", got)
+	}
+	diffURL, _ := entry["diff_url"].(string)
+	if diffURL == "" ||
+		!strings.HasPrefix(diffURL, "/api/v1/platform/graph/snapshots/") ||
+		!strings.Contains(diffURL, "/diffs/") {
+		t.Fatalf("expected changelog diff_url to use snapshot diff path, got %#v", diffURL)
+	}
+
+	artifact := do(t, s, http.MethodGet, "/api/v1/platform/graph/diffs/"+diffID, nil)
+	if artifact.Code != http.StatusNotFound {
+		t.Fatalf("expected changelog read to avoid diff artifact materialization, got %d: %s", artifact.Code, artifact.Body.String())
+	}
+
+	details := do(t, s, http.MethodGet, "/api/v1/platform/graph/diffs/"+diffID+"/details?provider=aws&kind=service", nil)
+	if details.Code != http.StatusOK {
+		t.Fatalf("expected 200 for diff details, got %d: %s", details.Code, details.Body.String())
+	}
+	detailsBody := decodeJSON(t, details)
+	detailSummary := detailsBody["summary"].(map[string]any)
+	if detailSummary["nodes_modified"] != float64(1) || detailSummary["nodes_added"] != float64(0) {
+		t.Fatalf("unexpected filtered detail summary: %#v", detailSummary)
+	}
+	filter := detailsBody["filter"].(map[string]any)
+	if filter["provider"] != "aws" || filter["kind"] != string(graph.NodeKindService) {
+		t.Fatalf("unexpected detail filter echo: %#v", filter)
+	}
+	select {
+	case event := <-changelogEvents:
+		t.Fatalf("expected changelog reads to avoid webhook emission, got %#v", event)
+	default:
 	}
 }
 

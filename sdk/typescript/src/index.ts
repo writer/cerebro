@@ -177,8 +177,18 @@ export class Client {
   }
 
 
+  async entityHistory(args: unknown): Promise<ToolCallResponse> {
+    return this.callTool("cerebro_entity_history", args);
+  }
+
+
   async findings(args: unknown): Promise<ToolCallResponse> {
     return this.callTool("cerebro_findings", args);
+  }
+
+
+  async graphChangelog(args: unknown): Promise<ToolCallResponse> {
+    return this.callTool("cerebro_graph_changelog", args);
   }
 
 

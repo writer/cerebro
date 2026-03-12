@@ -47,14 +47,23 @@ func (a *App) startEventAlertRouting(_ context.Context) {
 	}
 
 	subjectPrefix := strings.TrimSpace(a.Config.AlertRouterNotifyPrefix)
+	stateStore, err := events.NewSQLiteAlertRouterStateStore(a.Config.AlertRouterStateFile)
+	if err != nil {
+		a.Logger.Warn("failed to initialize alert router state store", "error", err, "path", a.Config.AlertRouterStateFile)
+		stateStore = nil
+	}
 	router, err := events.NewAlertRouter(events.AlertRouterOptions{
 		Config:        routingConfig,
 		Resolver:      events.NewGraphAlertResolver(func() *graph.Graph { return a.CurrentSecurityGraph() }),
 		Sender:        notifier,
+		StateStore:    stateStore,
 		SubjectPrefix: subjectPrefix,
 		Logger:        a.Logger,
 	})
 	if err != nil {
+		if stateStore != nil {
+			_ = stateStore.Close()
+		}
 		_ = notifier.Close()
 		a.Logger.Warn("failed to initialize alert router", "error", err)
 		return

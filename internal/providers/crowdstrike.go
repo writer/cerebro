@@ -1,13 +1,13 @@
 package providers
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -47,6 +47,7 @@ func (c *CrowdStrikeProvider) Configure(ctx context.Context, config map[string]i
 	if baseURL := c.GetConfigString("base_url"); baseURL != "" {
 		c.baseURL = baseURL
 	}
+	c.client = c.NewHTTPClient(30 * time.Second)
 
 	return nil
 }
@@ -153,7 +154,7 @@ func (c *CrowdStrikeProvider) authenticate(ctx context.Context) (string, error) 
 	data.Set("client_secret", c.clientSecret)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/oauth2/token",
-		bytes.NewBufferString(data.Encode()))
+		strings.NewReader(data.Encode()))
 	if err != nil {
 		return "", err
 	}

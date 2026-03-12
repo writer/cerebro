@@ -190,6 +190,37 @@ func (a *App) initHealth() {
 		result.Latency = time.Since(start)
 		return result
 	})
+	a.Health.Register("graph_freshness", func(_ context.Context) health.CheckResult {
+		start := time.Now().UTC()
+		result := health.CheckResult{
+			Name:      "graph_freshness",
+			Timestamp: start,
+		}
+		if a.CurrentSecurityGraph() == nil {
+			result.Status = health.StatusUnknown
+			result.Message = "graph not initialized"
+			result.Latency = time.Since(start)
+			return result
+		}
+		status := a.GraphFreshnessStatusSnapshot(start)
+		if len(status.Breaches) == 0 {
+			result.Status = health.StatusHealthy
+			result.Message = "all providers within freshness SLA"
+			result.Latency = time.Since(start)
+			return result
+		}
+		parts := make([]string, 0, len(status.Breaches))
+		for _, breach := range status.Breaches {
+			parts = append(parts, fmt.Sprintf("%s %.0fs>%.0fs", breach.Provider, breach.LastSyncAgeSeconds, breach.StaleAfterSeconds))
+			if len(parts) == 3 {
+				break
+			}
+		}
+		result.Status = health.StatusUnhealthy
+		result.Message = "stale providers: " + strings.Join(parts, ", ")
+		result.Latency = time.Since(start)
+		return result
+	})
 
 	a.Logger.Info("health service initialized")
 }
@@ -429,15 +460,17 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 	securityGraph := a.SecurityGraphBuilder.Graph()
 	a.configureGraphSchemaValidation(securityGraph)
 	a.setSecurityGraph(securityGraph)
-	a.Propagation = graph.NewPropagationEngine(securityGraph)
 
 	graphCtx, cancel := context.WithCancel(backgroundWorkContext(ctx))
+	a.graphCtx = graphCtx
 	a.graphCancel = cancel
 	a.setGraphBuildState(GraphBuildBuilding, time.Time{}, nil)
 
 	// Build initial graph in background
 	go func() {
 		defer close(a.graphReady)
+		a.graphUpdateMu.Lock()
+		defer a.graphUpdateMu.Unlock()
 
 		if err := a.SecurityGraphBuilder.Build(graphCtx); err != nil {
 			a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
@@ -512,6 +545,9 @@ func (a *App) RebuildSecurityGraph(ctx context.Context) error {
 	if a.SecurityGraphBuilder == nil {
 		return fmt.Errorf("security graph not initialized")
 	}
+
+	a.graphUpdateMu.Lock()
+	defer a.graphUpdateMu.Unlock()
 
 	start := time.Now()
 	a.setGraphBuildState(GraphBuildBuilding, time.Time{}, nil)
