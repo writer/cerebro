@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	appcfg "github.com/writer/cerebro/internal/app"
 )
 
 const (
@@ -28,9 +30,10 @@ var envReaders = map[string]struct{}{
 }
 
 type envDoc struct {
-	Helpers  map[string]struct{}
-	Defaults map[string]struct{}
-	Fields   map[string]struct{}
+	Helpers     map[string]struct{}
+	Defaults    map[string]struct{}
+	Fields      map[string]struct{}
+	Validations map[string]struct{}
 }
 
 func main() {
@@ -50,6 +53,7 @@ func main() {
 
 	docs := collectEnvDocs(fset, loadConfig)
 	annotateConfigFields(loadConfig, docs)
+	annotateValidationRules(docs)
 
 	rendered := renderMarkdown(loadConfigSource, docs)
 	if err := os.WriteFile(outputPath, []byte(rendered), 0o644); err != nil {
@@ -231,12 +235,22 @@ func ensureDoc(docs map[string]*envDoc, envVar string) *envDoc {
 		return existing
 	}
 	doc := &envDoc{
-		Helpers:  make(map[string]struct{}),
-		Defaults: make(map[string]struct{}),
-		Fields:   make(map[string]struct{}),
+		Helpers:     make(map[string]struct{}),
+		Defaults:    make(map[string]struct{}),
+		Fields:      make(map[string]struct{}),
+		Validations: make(map[string]struct{}),
 	}
 	docs[envVar] = doc
 	return doc
+}
+
+func annotateValidationRules(docs map[string]*envDoc) {
+	for _, rule := range appcfg.ConfigValidationRules() {
+		for _, envVar := range rule.EnvVars {
+			doc := ensureDoc(docs, envVar)
+			doc.Validations[rule.Summary] = struct{}{}
+		}
+	}
 }
 
 func renderMarkdown(loadConfigSource string, docs map[string]*envDoc) string {
@@ -252,16 +266,20 @@ func renderMarkdown(loadConfigSource string, docs map[string]*envDoc) string {
 	b.WriteString(loadConfigSource)
 	b.WriteString("` (`LoadConfig`) via `go run ./scripts/generate_config_docs/main.go`.\n\n")
 	fmt.Fprintf(&b, "Total variables: **%d**\n\n", len(names))
-	b.WriteString("| Variable | Reader(s) | Default(s) | Config Field(s) |\n")
-	b.WriteString("|---|---|---|---|\n")
+	b.WriteString("| Variable | Reader(s) | Default(s) | Config Field(s) | Validation rule(s) |\n")
+	b.WriteString("|---|---|---|---|---|\n")
 
 	for _, name := range names {
 		doc := docs[name]
 		helpers := sortedKeys(doc.Helpers)
 		defaults := sortedKeys(doc.Defaults)
 		fields := sortedKeys(doc.Fields)
+		validations := sortedKeys(doc.Validations)
 		if len(fields) == 0 {
 			fields = []string{"-"}
+		}
+		if len(validations) == 0 {
+			validations = []string{"-"}
 		}
 		b.WriteString("| `")
 		b.WriteString(name)
@@ -271,6 +289,8 @@ func renderMarkdown(loadConfigSource string, docs map[string]*envDoc) string {
 		b.WriteString(strings.Join(escapePipes(defaults), "`, `"))
 		b.WriteString("` | `")
 		b.WriteString(strings.Join(fields, "`, `"))
+		b.WriteString("` | `")
+		b.WriteString(strings.Join(escapePipes(validations), "`, `"))
 		b.WriteString("` |\n")
 	}
 

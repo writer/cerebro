@@ -21,6 +21,9 @@ func TestSchemaRegistry_BuiltinsAvailable(t *testing.T) {
 	if !(&Node{Kind: NodeKindPod}).IsKubernetes() {
 		t.Fatal("expected pod to be kubernetes")
 	}
+	if !(&Node{Kind: NodeKindRoleBinding}).IsKubernetes() {
+		t.Fatal("expected role_binding to be kubernetes")
+	}
 	if !(&Node{Kind: NodeKindPod}).IsResource() {
 		t.Fatal("expected pod to be resource")
 	}

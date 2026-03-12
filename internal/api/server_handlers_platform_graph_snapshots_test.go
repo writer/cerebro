@@ -1,13 +1,18 @@
 package api
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/writer/cerebro/internal/graph"
+	"github.com/writer/cerebro/internal/webhooks"
 )
 
 func TestPlatformGraphSnapshotAncestryAndDiffEndpoints(t *testing.T) {
@@ -289,11 +294,436 @@ func TestPlatformGraphDiffRequiresMaterializedSnapshots(t *testing.T) {
 	}
 }
 
+func TestPlatformGraphDiffMaterializationIsIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GRAPH_SNAPSHOT_PATH", dir)
+
+	base := time.Date(2026, 3, 7, 3, 0, 0, 0, time.UTC)
+	older := &graph.Snapshot{
+		Version:   "1.0",
+		CreatedAt: base.Add(5 * time.Minute),
+		Metadata: graph.Metadata{
+			BuiltAt:   base,
+			NodeCount: 1,
+			EdgeCount: 0,
+			Providers: []string{"aws"},
+			Accounts:  []string{"acct-a"},
+		},
+		Nodes: []*graph.Node{
+			{ID: "node-a", Kind: graph.NodeKindUser, Name: "a"},
+		},
+	}
+	newer := &graph.Snapshot{
+		Version:   "1.0",
+		CreatedAt: base.Add(65 * time.Minute),
+		Metadata: graph.Metadata{
+			BuiltAt:   base.Add(1 * time.Hour),
+			NodeCount: 2,
+			EdgeCount: 1,
+			Providers: []string{"aws"},
+			Accounts:  []string{"acct-a"},
+		},
+		Nodes: []*graph.Node{
+			{ID: "node-a", Kind: graph.NodeKindUser, Name: "a"},
+			{ID: "node-b", Kind: graph.NodeKindBucket, Name: "b"},
+		},
+		Edges: []*graph.Edge{
+			{ID: "edge-1", Source: "node-a", Target: "node-b", Kind: graph.EdgeKindCanRead},
+		},
+	}
+	mustSaveGraphSnapshot(t, dir, older)
+	mustSaveGraphSnapshot(t, dir, newer)
+
+	s := newTestServer(t)
+	body := decodeJSON(t, do(t, s, http.MethodGet, "/api/v1/platform/graph/snapshots", nil))
+	snapshots := body["snapshots"].([]any)
+	newerID, _ := snapshots[0].(map[string]any)["id"].(string)
+	olderID, _ := snapshots[1].(map[string]any)["id"].(string)
+
+	changelogEvents := make(chan webhooks.Event, 2)
+	s.app.Webhooks.Subscribe(func(_ context.Context, event webhooks.Event) error {
+		if event.Type == webhooks.EventPlatformGraphChangelogComputed {
+			changelogEvents <- event
+		}
+		return nil
+	})
+
+	first := do(t, s, http.MethodPost, "/api/v1/platform/graph/diffs", map[string]any{
+		"from_snapshot_id":   olderID,
+		"to_snapshot_id":     newerID,
+		"materialize_result": true,
+	})
+	if first.Code != http.StatusOK {
+		t.Fatalf("expected 200 for first diff materialization, got %d: %s", first.Code, first.Body.String())
+	}
+	firstBody := decodeJSON(t, first)
+	firstStoredAt, _ := firstBody["stored_at"].(string)
+	if firstStoredAt == "" {
+		t.Fatalf("expected stored_at on materialized diff, got %#v", firstBody)
+	}
+
+	select {
+	case <-changelogEvents:
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected webhook emission for first materialization")
+	}
+
+	second := do(t, s, http.MethodPost, "/api/v1/platform/graph/diffs", map[string]any{
+		"from_snapshot_id":   olderID,
+		"to_snapshot_id":     newerID,
+		"materialize_result": true,
+	})
+	if second.Code != http.StatusOK {
+		t.Fatalf("expected 200 for repeated diff materialization, got %d: %s", second.Code, second.Body.String())
+	}
+	secondBody := decodeJSON(t, second)
+	if got := secondBody["id"]; got != firstBody["id"] {
+		t.Fatalf("expected repeated materialization to reuse diff id %#v, got %#v", firstBody["id"], got)
+	}
+	if got := secondBody["stored_at"]; got != firstStoredAt {
+		t.Fatalf("expected repeated materialization to reuse stored_at %q, got %#v", firstStoredAt, got)
+	}
+
+	select {
+	case event := <-changelogEvents:
+		t.Fatalf("expected repeated materialization to avoid duplicate webhook emission, got %#v", event)
+	default:
+	}
+}
+
+func TestPlatformGraphChangelogAndDiffDetailsEndpoints(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GRAPH_SNAPSHOT_PATH", dir)
+
+	base := time.Date(2026, 3, 7, 0, 0, 0, 0, time.UTC)
+	older := &graph.Snapshot{
+		Version:   "1.0",
+		CreatedAt: base.Add(5 * time.Minute),
+		Metadata: graph.Metadata{
+			BuiltAt:   base,
+			NodeCount: 1,
+			EdgeCount: 0,
+			Providers: []string{"aws"},
+			Accounts:  []string{"acct-a"},
+		},
+		Nodes: []*graph.Node{
+			{ID: "service:payments", Kind: graph.NodeKindService, Name: "Payments", Provider: "aws", Account: "acct-a"},
+		},
+	}
+	newer := &graph.Snapshot{
+		Version:   "1.0",
+		CreatedAt: base.Add(65 * time.Minute),
+		Metadata: graph.Metadata{
+			BuiltAt:   base.Add(1 * time.Hour),
+			NodeCount: 2,
+			EdgeCount: 1,
+			Providers: []string{"aws"},
+			Accounts:  []string{"acct-a"},
+		},
+		Nodes: []*graph.Node{
+			{ID: "service:payments", Kind: graph.NodeKindService, Name: "Payments", Provider: "aws", Account: "acct-a"},
+			{ID: "bucket:logs", Kind: graph.NodeKindBucket, Name: "Logs", Provider: "aws", Account: "acct-a", Properties: map[string]any{"source_system": "aws"}},
+		},
+		Edges: []*graph.Edge{
+			{ID: "service:payments->bucket:logs:targets", Source: "service:payments", Target: "bucket:logs", Kind: graph.EdgeKindTargets},
+		},
+	}
+	latest := &graph.Snapshot{
+		Version:   "1.0",
+		CreatedAt: base.Add(125 * time.Minute),
+		Metadata: graph.Metadata{
+			BuiltAt:   base.Add(2 * time.Hour),
+			NodeCount: 2,
+			EdgeCount: 1,
+			Providers: []string{"aws"},
+			Accounts:  []string{"acct-a"},
+		},
+		Nodes: []*graph.Node{
+			{ID: "service:payments", Kind: graph.NodeKindService, Name: "Payments Core", Provider: "aws", Account: "acct-a"},
+			{ID: "bucket:logs", Kind: graph.NodeKindBucket, Name: "Logs", Provider: "aws", Account: "acct-a", Properties: map[string]any{"source_system": "aws"}},
+		},
+		Edges: []*graph.Edge{
+			{ID: "service:payments->bucket:logs:targets", Source: "service:payments", Target: "bucket:logs", Kind: graph.EdgeKindTargets},
+		},
+	}
+	mustSaveGraphSnapshot(t, dir, older)
+	mustSaveGraphSnapshot(t, dir, newer)
+	mustSaveGraphSnapshot(t, dir, latest)
+
+	s := newTestServer(t)
+	changelogEvents := make(chan webhooks.Event, 2)
+	s.app.Webhooks.Subscribe(func(_ context.Context, event webhooks.Event) error {
+		if event.Type == webhooks.EventPlatformGraphChangelogComputed {
+			changelogEvents <- event
+		}
+		return nil
+	})
+	changelog := do(t, s, http.MethodGet, "/api/v1/platform/graph/changelog?last=7d&provider=aws&limit=1", nil)
+	if changelog.Code != http.StatusOK {
+		t.Fatalf("expected 200 for graph changelog, got %d: %s", changelog.Code, changelog.Body.String())
+	}
+	changelogBody := decodeJSON(t, changelog)
+	if changelogBody["count"] != float64(1) {
+		t.Fatalf("expected one changelog entry, got %#v", changelogBody["count"])
+	}
+	entries, ok := changelogBody["entries"].([]any)
+	if !ok || len(entries) != 1 {
+		t.Fatalf("expected one changelog entry, got %#v", changelogBody["entries"])
+	}
+	entry := entries[0].(map[string]any)
+	diffID, _ := entry["diff_id"].(string)
+	if diffID == "" {
+		t.Fatalf("expected diff_id on changelog entry, got %#v", entry)
+	}
+	toSnapshot := entry["to"].(map[string]any)
+	if got := toSnapshot["captured_at"]; got != latest.CreatedAt.Format(time.RFC3339) {
+		t.Fatalf("expected newest changelog entry, got to=%#v", toSnapshot)
+	}
+	summary := entry["summary"].(map[string]any)
+	if summary["nodes_modified"] != float64(1) || summary["nodes_added"] != float64(0) {
+		t.Fatalf("expected newest diff summary with one modified node, got %#v", summary)
+	}
+	attribution := entry["attribution"].(map[string]any)
+	if providers, ok := attribution["providers"].([]any); !ok || len(providers) != 1 || providers[0] != "aws" {
+		t.Fatalf("expected aws attribution, got %#v", attribution)
+	}
+	if got := entry["materialized"]; got != nil && got != false {
+		t.Fatalf("expected changelog read to stay non-materialized, got %#v", got)
+	}
+	diffURL, _ := entry["diff_url"].(string)
+	if diffURL == "" ||
+		!strings.HasPrefix(diffURL, "/api/v1/platform/graph/snapshots/") ||
+		!strings.Contains(diffURL, "/diffs/") {
+		t.Fatalf("expected changelog diff_url to use snapshot diff path, got %#v", diffURL)
+	}
+
+	artifact := do(t, s, http.MethodGet, "/api/v1/platform/graph/diffs/"+diffID, nil)
+	if artifact.Code != http.StatusNotFound {
+		t.Fatalf("expected changelog read to avoid diff artifact materialization, got %d: %s", artifact.Code, artifact.Body.String())
+	}
+
+	details := do(t, s, http.MethodGet, "/api/v1/platform/graph/diffs/"+diffID+"/details?provider=aws&kind=service", nil)
+	if details.Code != http.StatusOK {
+		t.Fatalf("expected 200 for diff details, got %d: %s", details.Code, details.Body.String())
+	}
+	detailsBody := decodeJSON(t, details)
+	detailSummary := detailsBody["summary"].(map[string]any)
+	if detailSummary["nodes_modified"] != float64(1) || detailSummary["nodes_added"] != float64(0) {
+		t.Fatalf("unexpected filtered detail summary: %#v", detailSummary)
+	}
+	filter := detailsBody["filter"].(map[string]any)
+	if filter["provider"] != "aws" || filter["kind"] != string(graph.NodeKindService) {
+		t.Fatalf("unexpected detail filter echo: %#v", filter)
+	}
+	select {
+	case event := <-changelogEvents:
+		t.Fatalf("expected changelog reads to avoid webhook emission, got %#v", event)
+	default:
+	}
+}
+
+func TestPlatformGraphChangelogUsesExplicitParentSnapshotLineage(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GRAPH_SNAPSHOT_PATH", dir)
+
+	base := time.Date(2026, 3, 7, 7, 0, 0, 0, time.UTC)
+	root := &graph.Snapshot{
+		Version:   "1.0",
+		CreatedAt: base.Add(5 * time.Minute),
+		Metadata:  graph.Metadata{BuiltAt: base, NodeCount: 1, Providers: []string{"aws"}, Accounts: []string{"acct-a"}},
+		Nodes:     []*graph.Node{{ID: "node-root", Kind: graph.NodeKindService, Name: "Root", Provider: "aws", Account: "acct-a"}},
+	}
+	branchA := &graph.Snapshot{
+		Version:   "1.0",
+		CreatedAt: base.Add(65 * time.Minute),
+		Metadata:  graph.Metadata{BuiltAt: base.Add(1 * time.Hour), NodeCount: 2, Providers: []string{"aws"}, Accounts: []string{"acct-a"}},
+		Nodes: []*graph.Node{
+			{ID: "node-root", Kind: graph.NodeKindService, Name: "Root", Provider: "aws", Account: "acct-a"},
+			{ID: "node-a", Kind: graph.NodeKindBucket, Name: "Branch A", Provider: "aws", Account: "acct-a"},
+		},
+	}
+	branchB := &graph.Snapshot{
+		Version:   "1.0",
+		CreatedAt: base.Add(125 * time.Minute),
+		Metadata:  graph.Metadata{BuiltAt: base.Add(2 * time.Hour), NodeCount: 2, Providers: []string{"aws"}, Accounts: []string{"acct-a"}},
+		Nodes: []*graph.Node{
+			{ID: "node-root", Kind: graph.NodeKindService, Name: "Root", Provider: "aws", Account: "acct-a"},
+			{ID: "node-b", Kind: graph.NodeKindDatabase, Name: "Branch B", Provider: "aws", Account: "acct-a"},
+		},
+	}
+	mustSaveGraphSnapshot(t, dir, root)
+	mustSaveGraphSnapshot(t, dir, branchA)
+	mustSaveGraphSnapshot(t, dir, branchB)
+
+	store := graph.NewSnapshotStore(dir, 10)
+	records, err := store.ListGraphSnapshotRecords()
+	if err != nil {
+		t.Fatalf("list graph snapshot records: %v", err)
+	}
+	if len(records) != 3 {
+		t.Fatalf("expected three snapshot records, got %d", len(records))
+	}
+	rootID := records[0].ID
+	branchAID := records[1].ID
+	branchBID := records[2].ID
+	mustRewriteGraphSnapshotIndexParents(t, dir, map[string]string{
+		branchAID: rootID,
+		branchBID: rootID,
+	})
+
+	s := newTestServer(t)
+	changelog := do(t, s, http.MethodGet, "/api/v1/platform/graph/changelog?last=7d&provider=aws&limit=1", nil)
+	if changelog.Code != http.StatusOK {
+		t.Fatalf("expected 200 for graph changelog, got %d: %s", changelog.Code, changelog.Body.String())
+	}
+	body := decodeJSON(t, changelog)
+	entries, ok := body["entries"].([]any)
+	if !ok || len(entries) != 1 {
+		t.Fatalf("expected one changelog entry, got %#v", body["entries"])
+	}
+	entry := entries[0].(map[string]any)
+	fromSnapshot := entry["from"].(map[string]any)
+	toSnapshot := entry["to"].(map[string]any)
+	if got := fromSnapshot["id"]; got != rootID {
+		t.Fatalf("expected explicit root parent %s, got %#v", rootID, got)
+	}
+	if got := toSnapshot["id"]; got != branchBID {
+		t.Fatalf("expected branch-b target %s, got %#v", branchBID, got)
+	}
+	summary := entry["summary"].(map[string]any)
+	if summary["nodes_added"] != float64(1) || summary["nodes_removed"] != float64(0) {
+		t.Fatalf("expected explicit parent diff summary, got %#v", summary)
+	}
+	diffURL, _ := entry["diff_url"].(string)
+	if !strings.Contains(diffURL, rootID) || !strings.Contains(diffURL, branchBID) {
+		t.Fatalf("expected diff URL to use explicit parent/child ids, got %q", diffURL)
+	}
+}
+
+func TestPlatformGraphDiffLookupByIDUsesExplicitParentSnapshotLineage(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GRAPH_SNAPSHOT_PATH", dir)
+
+	base := time.Date(2026, 3, 7, 10, 0, 0, 0, time.UTC)
+	root := &graph.Snapshot{
+		Version:   "1.0",
+		CreatedAt: base.Add(5 * time.Minute),
+		Metadata:  graph.Metadata{BuiltAt: base, NodeCount: 1, Providers: []string{"aws"}, Accounts: []string{"acct-a"}},
+		Nodes:     []*graph.Node{{ID: "node-root", Kind: graph.NodeKindService, Name: "Root", Provider: "aws", Account: "acct-a"}},
+	}
+	branchA := &graph.Snapshot{
+		Version:   "1.0",
+		CreatedAt: base.Add(65 * time.Minute),
+		Metadata:  graph.Metadata{BuiltAt: base.Add(1 * time.Hour), NodeCount: 2, Providers: []string{"aws"}, Accounts: []string{"acct-a"}},
+		Nodes: []*graph.Node{
+			{ID: "node-root", Kind: graph.NodeKindService, Name: "Root", Provider: "aws", Account: "acct-a"},
+			{ID: "node-a", Kind: graph.NodeKindBucket, Name: "Branch A", Provider: "aws", Account: "acct-a"},
+		},
+	}
+	branchB := &graph.Snapshot{
+		Version:   "1.0",
+		CreatedAt: base.Add(125 * time.Minute),
+		Metadata:  graph.Metadata{BuiltAt: base.Add(2 * time.Hour), NodeCount: 2, Providers: []string{"aws"}, Accounts: []string{"acct-a"}},
+		Nodes: []*graph.Node{
+			{ID: "node-root", Kind: graph.NodeKindService, Name: "Root", Provider: "aws", Account: "acct-a"},
+			{ID: "node-b", Kind: graph.NodeKindDatabase, Name: "Branch B", Provider: "aws", Account: "acct-a"},
+		},
+	}
+	mustSaveGraphSnapshot(t, dir, root)
+	mustSaveGraphSnapshot(t, dir, branchA)
+	mustSaveGraphSnapshot(t, dir, branchB)
+
+	store := graph.NewSnapshotStore(dir, 10)
+	records, err := store.ListGraphSnapshotRecords()
+	if err != nil {
+		t.Fatalf("list graph snapshot records: %v", err)
+	}
+	if len(records) != 3 {
+		t.Fatalf("expected three snapshot records, got %d", len(records))
+	}
+	rootID := records[0].ID
+	branchAID := records[1].ID
+	branchBID := records[2].ID
+	mustRewriteGraphSnapshotIndexParents(t, dir, map[string]string{
+		branchAID: rootID,
+		branchBID: rootID,
+	})
+	expected := graph.BuildGraphSnapshotDiffRecord(
+		graph.GraphSnapshotRecord{ID: rootID},
+		graph.GraphSnapshotRecord{ID: branchBID},
+		&graph.GraphDiff{},
+		time.Time{},
+	)
+	if expected == nil {
+		t.Fatal("expected diff id")
+	}
+
+	s := newTestServer(t)
+	diff := do(t, s, http.MethodGet, "/api/v1/platform/graph/diffs/"+expected.ID+"/details", nil)
+	if diff.Code != http.StatusOK {
+		t.Fatalf("expected 200 for explicit-parent diff details lookup, got %d: %s", diff.Code, diff.Body.String())
+	}
+	body := decodeJSON(t, diff)
+	fromSnapshot := body["from"].(map[string]any)
+	toSnapshot := body["to"].(map[string]any)
+	if got := fromSnapshot["id"]; got != rootID {
+		t.Fatalf("expected diff lookup from snapshot %s, got %#v", rootID, got)
+	}
+	if got := toSnapshot["id"]; got != branchBID {
+		t.Fatalf("expected diff lookup to snapshot %s, got %#v", branchBID, got)
+	}
+	summary := body["summary"].(map[string]any)
+	if summary["nodes_added"] != float64(1) || summary["nodes_removed"] != float64(0) {
+		t.Fatalf("expected explicit parent diff summary, got %#v", summary)
+	}
+}
+
 func mustSaveGraphSnapshot(t *testing.T, dir string, snapshot *graph.Snapshot) {
 	t.Helper()
 	path := filepath.Join(dir, fmt.Sprintf("graph-%s.json.gz", snapshot.CreatedAt.Format("20060102-150405")))
 	if err := snapshot.SaveToFile(path); err != nil {
 		t.Fatalf("save snapshot: %v", err)
+	}
+}
+
+func mustRewriteGraphSnapshotIndexParents(t *testing.T, dir string, parents map[string]string) {
+	t.Helper()
+	indexPath := filepath.Join(dir, "index.json")
+	payload, err := os.ReadFile(indexPath)
+	if err != nil {
+		t.Fatalf("read snapshot index: %v", err)
+	}
+	var index map[string]any
+	if err := json.Unmarshal(payload, &index); err != nil {
+		t.Fatalf("decode snapshot index: %v", err)
+	}
+	manifests, ok := index["snapshots"].([]any)
+	if !ok {
+		t.Fatalf("expected snapshot manifests in index, got %#v", index["snapshots"])
+	}
+	for _, raw := range manifests {
+		manifest, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		record, ok := manifest["record"].(map[string]any)
+		if !ok {
+			continue
+		}
+		snapshotID, _ := record["id"].(string)
+		parentID, ok := parents[snapshotID]
+		if !ok {
+			continue
+		}
+		record["parent_snapshot_id"] = parentID
+		manifest["parent_snapshot_id"] = parentID
+	}
+	encoded, err := json.Marshal(index)
+	if err != nil {
+		t.Fatalf("encode snapshot index: %v", err)
+	}
+	if err := os.WriteFile(indexPath, encoded, 0o600); err != nil {
+		t.Fatalf("write snapshot index: %v", err)
 	}
 }
 

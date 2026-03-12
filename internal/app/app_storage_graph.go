@@ -232,6 +232,11 @@ func (a *App) Close() error {
 	if a.graphCancel != nil {
 		a.graphCancel()
 	}
+	a.graphConsistencyMu.Lock()
+	if a.graphConsistencyCancel != nil {
+		a.graphConsistencyCancel()
+	}
+	a.graphConsistencyMu.Unlock()
 	if a.graphReady != nil {
 		graphWaitCtx, graphWaitCancel := context.WithTimeout(context.Background(), appShutdownTimeout)
 		defer graphWaitCancel()
@@ -241,6 +246,18 @@ func (a *App) Close() error {
 			if a.Logger != nil {
 				a.Logger.Warn("timed out waiting for security graph shutdown", "timeout", appShutdownTimeout, "error", graphWaitCtx.Err())
 			}
+		}
+	}
+	graphConsistencyDone := make(chan struct{})
+	go func() {
+		a.graphConsistencyWG.Wait()
+		close(graphConsistencyDone)
+	}()
+	select {
+	case <-graphConsistencyDone:
+	case <-time.After(appShutdownTimeout):
+		if a.Logger != nil {
+			a.Logger.Warn("timed out waiting for graph consistency checks to stop", "timeout", appShutdownTimeout)
 		}
 	}
 

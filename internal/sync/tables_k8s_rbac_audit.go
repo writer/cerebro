@@ -74,7 +74,7 @@ func (e *K8sSyncEngine) k8sRoleTable() K8sTableSpec {
 			rows := make([]map[string]interface{}, 0, len(roles.Items))
 			for _, role := range roles.Items {
 				row := map[string]interface{}{
-					"_cq_id":       buildNamespacedID(clusterName, role.Namespace, role.Name),
+					"_cq_id":       buildTypedNamespacedID(clusterName, "role", role.Namespace, role.Name),
 					"uid":          string(role.UID),
 					"name":         role.Name,
 					"namespace":    role.Namespace,
@@ -157,7 +157,7 @@ func (e *K8sSyncEngine) k8sRoleBindingTable() K8sTableSpec {
 			rows := make([]map[string]interface{}, 0, len(bindings.Items))
 			for _, binding := range bindings.Items {
 				row := map[string]interface{}{
-					"_cq_id":       buildNamespacedID(clusterName, binding.Namespace, binding.Name),
+					"_cq_id":       buildTypedNamespacedID(clusterName, "rolebinding", binding.Namespace, binding.Name),
 					"uid":          string(binding.UID),
 					"name":         binding.Name,
 					"namespace":    binding.Namespace,
@@ -418,7 +418,7 @@ func (e *K8sSyncEngine) k8sAuditEventTable() K8sTableSpec {
 				verb := strings.ToLower(event.Action)
 				resource := strings.ToLower(event.InvolvedObject.Kind)
 				row := map[string]interface{}{
-					"_cq_id":              buildNamespacedID(clusterName, event.Namespace, event.Name),
+					"_cq_id":              buildTypedNamespacedID(clusterName, "event", event.Namespace, event.Name),
 					"uid":                 string(event.UID),
 					"name":                event.Name,
 					"namespace":           event.Namespace,
@@ -451,15 +451,7 @@ func (e *K8sSyncEngine) k8sAuditEventTable() K8sTableSpec {
 }
 
 func buildPodID(clusterName, namespace, name string) string {
-	clusterName = normalizeClusterName(clusterName)
-	parts := []string{clusterName}
-	if namespace != "" {
-		parts = append(parts, namespace)
-	}
-	if name != "" {
-		parts = append(parts, name)
-	}
-	return strings.Join(parts, "/")
+	return buildTypedNamespacedID(clusterName, "pod", namespace, name)
 }
 
 func buildClusterScopedID(clusterName, resourceType, name string) string {
@@ -474,12 +466,17 @@ func buildClusterScopedID(clusterName, resourceType, name string) string {
 	return strings.Join(parts, "/")
 }
 
-func buildNamespacedID(clusterName, namespace, name string) string {
+func buildTypedNamespacedID(clusterName, resourceType, namespace, name string) string {
 	clusterName = normalizeClusterName(clusterName)
 	parts := []string{clusterName}
-	if namespace != "" {
-		parts = append(parts, namespace)
+	if resourceType != "" {
+		parts = append(parts, strings.ToLower(strings.TrimSpace(resourceType)))
 	}
+	namespace = strings.TrimSpace(namespace)
+	if namespace == "" {
+		namespace = "_missing_namespace"
+	}
+	parts = append(parts, namespace)
 	if name != "" {
 		parts = append(parts, name)
 	}

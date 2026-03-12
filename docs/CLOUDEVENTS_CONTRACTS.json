@@ -1931,10 +1931,12 @@
       "apiVersion": "cerebro.graphingest/v1alpha1",
       "contractVersion": "1.0.0",
       "node_kinds": [
+        "ci_workflow",
         "pipeline_run",
         "service"
       ],
       "edge_kinds": [
+        "based_on",
         "interacted_with",
         "targets"
       ],
@@ -2032,22 +2034,25 @@
       "domain": "github",
       "wildcard_pattern": false,
       "apiVersion": "cerebro.graphingest/v1alpha1",
-      "contractVersion": "1.0.0",
+      "contractVersion": "2.0.0",
       "node_kinds": [
         "check_run",
+        "ci_workflow",
+        "repository",
         "service"
       ],
       "edge_kinds": [
+        "based_on",
         "interacted_with",
         "targets"
       ],
       "required_data_keys": [
         "actor_email",
+        "check_name",
         "check_run_id",
         "repository"
       ],
       "optional_data_keys": [
-        "check_name",
         "commit_sha",
         "conclusion",
         "status",
@@ -2071,6 +2076,7 @@
         },
         "required": [
           "actor_email",
+          "check_name",
           "check_run_id",
           "repository"
         ],
@@ -2086,6 +2092,7 @@
       "contractVersion": "1.0.0",
       "node_kinds": [
         "pull_request",
+        "repository",
         "service"
       ],
       "edge_kinds": [
@@ -2131,6 +2138,7 @@
       "contractVersion": "1.0.0",
       "node_kinds": [
         "pull_request",
+        "repository",
         "service"
       ],
       "edge_kinds": [
@@ -2176,6 +2184,7 @@
       "contractVersion": "1.0.0",
       "node_kinds": [
         "pull_request",
+        "repository",
         "service"
       ],
       "edge_kinds": [
@@ -2369,11 +2378,16 @@
       "contractVersion": "1.0.0",
       "node_kinds": [
         "action",
-        "contact"
+        "company",
+        "contact",
+        "deal",
+        "lead",
+        "opportunity"
       ],
       "edge_kinds": [
         "interacted_with",
-        "targets"
+        "targets",
+        "works_at"
       ],
       "required_data_keys": [
         "call_id",
@@ -2381,10 +2395,23 @@
         "rep_email"
       ],
       "optional_data_keys": [
+        "company_domain",
+        "company_id",
+        "company_name",
         "contact_email",
         "contact_name",
+        "deal_id",
+        "deal_name",
+        "deal_stage",
         "duration_minutes",
+        "lead_id",
+        "lead_name",
+        "lead_source",
         "logged_at",
+        "opportunity_amount",
+        "opportunity_id",
+        "opportunity_name",
+        "opportunity_stage",
         "summary"
       ],
       "resolve_keys": [
@@ -2395,11 +2422,24 @@
         "additionalProperties": true,
         "properties": {
           "call_id": {},
+          "company_domain": {},
+          "company_id": {},
+          "company_name": {},
           "contact_email": {},
           "contact_id": {},
           "contact_name": {},
+          "deal_id": {},
+          "deal_name": {},
+          "deal_stage": {},
           "duration_minutes": {},
+          "lead_id": {},
+          "lead_name": {},
+          "lead_source": {},
           "logged_at": {},
+          "opportunity_amount": {},
+          "opportunity_id": {},
+          "opportunity_name": {},
+          "opportunity_stage": {},
           "rep_email": {},
           "summary": {}
         },
@@ -2468,10 +2508,14 @@
       "contractVersion": "1.0.0",
       "node_kinds": [
         "action",
+        "company",
+        "customer",
+        "subscription",
         "ticket"
       ],
       "edge_kinds": [
         "assigned_to",
+        "subscribed_to",
         "targets"
       ],
       "required_data_keys": [
@@ -2480,9 +2524,16 @@
         "update_id"
       ],
       "optional_data_keys": [
+        "company_id",
+        "company_name",
+        "customer_id",
+        "customer_name",
         "priority",
         "status",
         "subject",
+        "subscription_id",
+        "subscription_name",
+        "subscription_plan",
         "update_type",
         "updated_at"
       ],
@@ -2494,9 +2545,16 @@
         "additionalProperties": true,
         "properties": {
           "agent_email": {},
+          "company_id": {},
+          "company_name": {},
+          "customer_id": {},
+          "customer_name": {},
           "priority": {},
           "status": {},
           "subject": {},
+          "subscription_id": {},
+          "subscription_name": {},
+          "subscription_plan": {},
           "ticket_id": {},
           "update_id": {},
           "update_type": {},
@@ -2517,6 +2575,7 @@
     "author_email",
     "call_id",
     "channel_id",
+    "check_name",
     "check_run_id",
     "contact_id",
     "deploy_id",
@@ -2547,20 +2606,34 @@
     "branch",
     "change_summary",
     "channel_name",
-    "check_name",
     "commit_sha",
+    "company_domain",
+    "company_id",
+    "company_name",
     "completed_at",
     "conclusion",
     "contact_email",
     "contact_name",
+    "customer_id",
+    "customer_name",
+    "deal_id",
+    "deal_name",
+    "deal_stage",
     "duration_minutes",
     "ends_at",
     "environment",
     "event_type",
     "from_status",
     "issue_type",
+    "lead_id",
+    "lead_name",
+    "lead_source",
     "logged_at",
     "merged_by",
+    "opportunity_amount",
+    "opportunity_id",
+    "opportunity_name",
+    "opportunity_stage",
     "performed_at",
     "pipeline_name",
     "priority",
@@ -2572,6 +2645,9 @@
     "state",
     "status",
     "subject",
+    "subscription_id",
+    "subscription_name",
+    "subscription_plan",
     "summary",
     "text",
     "title",

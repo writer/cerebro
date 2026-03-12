@@ -11,6 +11,9 @@ type findingMetadata struct {
 	IssueID             string                    `json:"issue_id,omitempty"`
 	ControlID           string                    `json:"control_id,omitempty"`
 	TenantID            string                    `json:"tenant_id,omitempty"`
+	SemanticKey         string                    `json:"semantic_key,omitempty"`
+	ObservedFindingIDs  []string                  `json:"observed_finding_ids,omitempty"`
+	ObservedPolicyIDs   []string                  `json:"observed_policy_ids,omitempty"`
 	Title               string                    `json:"title,omitempty"`
 	SignalType          string                    `json:"signal_type,omitempty"`
 	Domain              string                    `json:"domain,omitempty"`
@@ -57,6 +60,9 @@ func buildFindingMetadata(f *Finding) ([]byte, error) {
 		IssueID:             f.IssueID,
 		ControlID:           f.ControlID,
 		TenantID:            f.TenantID,
+		SemanticKey:         f.SemanticKey,
+		ObservedFindingIDs:  f.ObservedFindingIDs,
+		ObservedPolicyIDs:   f.ObservedPolicyIDs,
 		Title:               f.Title,
 		SignalType:          f.SignalType,
 		Domain:              f.Domain,
@@ -122,6 +128,15 @@ func applyFindingMetadata(f *Finding, data []byte) {
 	}
 	if f.TenantID == "" {
 		f.TenantID = metadata.TenantID
+	}
+	if f.SemanticKey == "" {
+		f.SemanticKey = metadata.SemanticKey
+	}
+	if len(f.ObservedFindingIDs) == 0 && len(metadata.ObservedFindingIDs) > 0 {
+		f.ObservedFindingIDs = metadata.ObservedFindingIDs
+	}
+	if len(f.ObservedPolicyIDs) == 0 && len(metadata.ObservedPolicyIDs) > 0 {
+		f.ObservedPolicyIDs = metadata.ObservedPolicyIDs
 	}
 	if f.Title == "" {
 		f.Title = metadata.Title
@@ -240,4 +255,5 @@ func applyFindingMetadata(f *Finding, data []byte) {
 	if len(f.EntityIDs) == 0 && len(metadata.EntityIDs) > 0 {
 		f.EntityIDs = metadata.EntityIDs
 	}
+	ensureFindingSemanticState(f)
 }

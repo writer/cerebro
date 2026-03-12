@@ -55,6 +55,7 @@ func (s *SnykProvider) Configure(ctx context.Context, config map[string]interfac
 	if baseURL := s.GetConfigString("base_url"); baseURL != "" {
 		s.baseURL = strings.TrimRight(baseURL, "/")
 	}
+	s.client = s.NewHTTPClient(30 * time.Second)
 
 	return nil
 }

@@ -20,14 +20,14 @@ const (
 // EnsembleExecutor maps remediation business actions to Ensemble remote tools.
 type EnsembleExecutor struct {
 	caller      RemoteActionCaller
-	webhooks    *webhooks.Service
+	webhooks    EventPublisher
 	maxAttempts int
 	baseBackoff time.Duration
 	maxBackoff  time.Duration
 	sleep       func(context.Context, time.Duration) error
 }
 
-func NewEnsembleExecutor(caller RemoteActionCaller, hooks *webhooks.Service) *EnsembleExecutor {
+func NewEnsembleExecutor(caller RemoteActionCaller, hooks EventPublisher) *EnsembleExecutor {
 	return &EnsembleExecutor{
 		caller:      caller,
 		webhooks:    hooks,

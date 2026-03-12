@@ -18,9 +18,11 @@ type SnowflakeStore struct {
 	db               *sql.DB
 	schema           string
 	cache            map[string]*Finding
+	semanticIndex    map[string]string
 	dirty            map[string]bool // tracks which findings need sync
 	attestor         FindingAttestor
 	attestReobserved bool
+	semanticDedup    bool
 	mu               sync.RWMutex
 	syncedAt         time.Time
 }
@@ -28,10 +30,12 @@ type SnowflakeStore struct {
 // NewSnowflakeStore creates a Snowflake-backed findings store
 func NewSnowflakeStore(db *sql.DB, database, schema string) *SnowflakeStore {
 	return &SnowflakeStore{
-		db:     db,
-		schema: fmt.Sprintf("%s.%s", database, schema),
-		cache:  make(map[string]*Finding),
-		dirty:  make(map[string]bool),
+		db:            db,
+		schema:        fmt.Sprintf("%s.%s", database, schema),
+		cache:         make(map[string]*Finding),
+		semanticIndex: make(map[string]string),
+		dirty:         make(map[string]bool),
+		semanticDedup: DefaultSemanticDedupEnabled,
 	}
 }
 
@@ -40,6 +44,13 @@ func (s *SnowflakeStore) SetAttestor(attestor FindingAttestor, attestReobserved 
 	defer s.mu.Unlock()
 	s.attestor = attestor
 	s.attestReobserved = attestReobserved
+}
+
+func (s *SnowflakeStore) SetSemanticDedup(enabled bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.semanticDedup = enabled
+	s.rebuildSemanticIndexLocked()
 }
 
 // SetConnection updates the Snowflake database handle and schema used by the store.
@@ -80,6 +91,10 @@ func (s *SnowflakeStore) Load(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	s.cache = make(map[string]*Finding)
+	s.semanticIndex = make(map[string]string)
+	s.dirty = make(map[string]bool)
+
 	for rows.Next() {
 		var f Finding
 		var resourceData []byte
@@ -113,6 +128,7 @@ func (s *SnowflakeStore) Load(ctx context.Context) error {
 		EnrichFinding(&f)
 
 		s.cache[f.ID] = &f
+		s.indexSemanticFindingLocked(&f)
 	}
 
 	s.syncedAt = time.Now()
@@ -124,142 +140,42 @@ func (s *SnowflakeStore) Upsert(ctx context.Context, pf policy.Finding) *Finding
 	defer s.mu.Unlock()
 
 	now := time.Now()
+	semanticKey := semanticKeyForPolicyFinding(pf)
 
 	if existing, ok := s.cache[pf.ID]; ok {
-		previousStatus := normalizeStatus(existing.Status)
-		existing.Status = normalizeStatus(existing.Status)
-		existing.LastSeen = now
-		if len(pf.Resource) > 0 {
-			existing.Resource = pf.Resource
-			invalidateResourceJSONCache(existing)
-		}
-		if existing.TenantID == "" {
-			existing.TenantID = extractTenantID(pf.Resource)
-		}
-		existing.UpdatedAt = now
-		if pf.Description != "" {
-			existing.Description = pf.Description
-		}
-		if pf.Severity != "" {
-			existing.Severity = pf.Severity
-		}
-		if pf.ControlID != "" {
-			existing.ControlID = pf.ControlID
-		}
-		if pf.Title != "" {
-			existing.Title = pf.Title
-		}
-		if pf.Remediation != "" {
-			existing.Remediation = pf.Remediation
-		}
-		if pf.ResourceID != "" {
-			existing.ResourceID = pf.ResourceID
-		}
-		if pf.ResourceType != "" {
-			existing.ResourceType = pf.ResourceType
-		}
-		if pf.ResourceName != "" {
-			existing.ResourceName = pf.ResourceName
-		}
-		if len(pf.RiskCategories) > 0 {
-			existing.RiskCategories = pf.RiskCategories
-		}
-		if len(pf.Frameworks) > 0 {
-			totalControls := 0
-			for _, fm := range pf.Frameworks {
-				totalControls += len(fm.Controls)
-			}
-			frameworks := make([]string, 0, len(pf.Frameworks))
-			securityCategories := make([]string, 0, totalControls)
-			for _, fm := range pf.Frameworks {
-				frameworks = append(frameworks, fm.Name)
-				for _, control := range fm.Controls {
-					securityCategories = append(securityCategories, fm.Name+":"+control)
-				}
-			}
-			existing.SecurityFrameworks = frameworks
-			existing.SecurityCategories = securityCategories
-			existing.ComplianceMappings = pf.Frameworks
-		}
-		if len(pf.MitreAttack) > 0 {
-			existing.MitreAttack = pf.MitreAttack
-		}
-		if existing.SignalType == "" {
-			existing.SignalType = SignalTypeSecurity
-		}
-		if existing.Domain == "" {
-			existing.Domain = inferDomain(existing.PolicyID, existing.ResourceType)
-		}
-		if previousStatus == "RESOLVED" || previousStatus == "SNOOZED" {
-			existing.Status = "OPEN"
-			existing.ResolvedAt = nil
-			existing.SnoozedUntil = nil
-			existing.StatusChangedAt = &now
-		}
+		oldKey := existing.SemanticKey
+		previousStatus := applyPolicyFindingUpdate(existing, pf, now)
+		applySemanticObservation(existing, pf, semanticKey)
+		s.syncSemanticIndexLocked(existing, oldKey)
 		EnrichFinding(existing)
 		eventType := upsertAttestationEvent(true, previousStatus, s.attestReobserved)
 		if eventType != "" {
 			_ = attestFindingEvent(ctx, s.attestor, existing, eventType, now)
 		}
-		s.dirty[pf.ID] = true
+		s.dirty[existing.ID] = true
 		return existing
 	}
-
-	resourceID := pf.ResourceID
-	if resourceID == "" {
-		resourceID = extractResourceID(pf.Resource)
-	}
-	resourceType := pf.ResourceType
-	if resourceType == "" {
-		resourceType = extractResourceType(pf.Resource)
-	}
-	resourceName := pf.ResourceName
-	if resourceName == "" {
-		resourceName = extractResourceName(pf.Resource)
-	}
-
-	frameworks := make([]string, 0, len(pf.Frameworks))
-	securityCategories := make([]string, 0)
-	for _, fm := range pf.Frameworks {
-		frameworks = append(frameworks, fm.Name)
-		for _, control := range fm.Controls {
-			securityCategories = append(securityCategories, fm.Name+":"+control)
+	if match := s.findSemanticMatchLocked(semanticKey); match != nil {
+		oldKey := match.SemanticKey
+		previousStatus := applyPolicyFindingUpdate(match, pf, now)
+		applySemanticObservation(match, pf, semanticKey)
+		s.syncSemanticIndexLocked(match, oldKey)
+		EnrichFinding(match)
+		eventType := upsertAttestationEvent(true, previousStatus, s.attestReobserved)
+		if eventType != "" {
+			_ = attestFindingEvent(ctx, s.attestor, match, eventType, now)
 		}
+		s.dirty[match.ID] = true
+		return match
 	}
 
-	f := &Finding{
-		ID:                 pf.ID,
-		IssueID:            pf.ID,
-		ControlID:          pf.ControlID,
-		TenantID:           extractTenantID(pf.Resource),
-		PolicyID:           pf.PolicyID,
-		PolicyName:         pf.PolicyName,
-		Title:              pf.Title,
-		Severity:           pf.Severity,
-		SignalType:         SignalTypeSecurity,
-		Domain:             inferDomain(pf.PolicyID, resourceType),
-		Status:             "OPEN",
-		ResourceID:         resourceID,
-		ResourceName:       resourceName,
-		ResourceType:       resourceType,
-		Resource:           pf.Resource,
-		Description:        pf.Description,
-		Remediation:        pf.Remediation,
-		RiskCategories:     pf.RiskCategories,
-		SecurityFrameworks: frameworks,
-		SecurityCategories: securityCategories,
-		ComplianceMappings: pf.Frameworks,
-		MitreAttack:        pf.MitreAttack,
-		CreatedAt:          now,
-		UpdatedAt:          now,
-		FirstSeen:          now,
-		LastSeen:           now,
-	}
-	f.StatusChangedAt = &now
+	f := newFindingFromPolicyFinding(pf, now)
+	applySemanticObservation(f, pf, semanticKey)
 	EnrichFinding(f)
 	_ = attestFindingEvent(ctx, s.attestor, f, upsertAttestationEvent(false, "", s.attestReobserved), now)
 
 	s.cache[pf.ID] = f
+	s.indexSemanticFindingLocked(f)
 	s.dirty[pf.ID] = true
 	return f
 }
@@ -279,11 +195,14 @@ func (s *SnowflakeStore) Update(id string, mutate func(*Finding) error) error {
 	if !ok {
 		return ErrIssueNotFound
 	}
+	oldKey := f.SemanticKey
 	if err := mutate(f); err != nil {
 		return err
 	}
 	invalidateResourceJSONCache(f)
 	f.Status = normalizeStatus(f.Status)
+	refreshFindingSemanticState(f)
+	s.syncSemanticIndexLocked(f, oldKey)
 	EnrichFinding(f)
 	s.dirty[id] = true
 	return nil
@@ -610,6 +529,51 @@ func (s *SnowflakeStore) DirtyCount() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return len(s.dirty)
+}
+
+func (s *SnowflakeStore) findSemanticMatchLocked(semanticKey string) *Finding {
+	if !findingNeedsSemanticMatch(s.semanticDedup, semanticKey) {
+		return nil
+	}
+	id, ok := s.semanticIndex[semanticKey]
+	if !ok {
+		return nil
+	}
+	return s.cache[id]
+}
+
+func (s *SnowflakeStore) syncSemanticIndexLocked(f *Finding, oldKey string) {
+	if !s.semanticDedup {
+		return
+	}
+	ensureFindingSemanticState(f)
+	oldKey = strings.TrimSpace(oldKey)
+	if oldKey != "" && oldKey != f.SemanticKey && s.semanticIndex[oldKey] == f.ID {
+		delete(s.semanticIndex, oldKey)
+	}
+	if strings.TrimSpace(f.SemanticKey) != "" {
+		s.semanticIndex[f.SemanticKey] = f.ID
+	}
+}
+
+func (s *SnowflakeStore) indexSemanticFindingLocked(f *Finding) {
+	if !s.semanticDedup {
+		return
+	}
+	ensureFindingSemanticState(f)
+	if strings.TrimSpace(f.SemanticKey) != "" {
+		s.semanticIndex[f.SemanticKey] = f.ID
+	}
+}
+
+func (s *SnowflakeStore) rebuildSemanticIndexLocked() {
+	s.semanticIndex = make(map[string]string, len(s.cache))
+	if !s.semanticDedup {
+		return
+	}
+	for _, f := range s.cache {
+		s.indexSemanticFindingLocked(f)
+	}
 }
 
 // Ensure SnowflakeStore implements FindingStore

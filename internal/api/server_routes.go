@@ -76,6 +76,7 @@ func (s *Server) setupRoutes() {
 		// Query endpoints
 		r.Get("/tables", s.listTables)
 		r.Post("/query", s.executeQuery)
+		r.Get("/status/freshness", s.statusFreshness)
 
 		// Asset endpoints
 		r.Route("/assets", func(r chi.Router) {
@@ -351,14 +352,20 @@ func (s *Server) setupRoutes() {
 		// Shared platform primitives
 		r.Route("/platform", func(r chi.Router) {
 			r.Get("/entities", s.listPlatformEntities)
+			r.Get("/entities/search", s.searchPlatformEntities)
+			r.Get("/entities/suggest", s.suggestPlatformEntities)
 			r.Get("/entities/facets", s.listPlatformEntityFacets)
 			r.Get("/entities/facets/{facet_id}", s.getPlatformEntityFacet)
+			r.Get("/entities/{entity_id}/at", s.getPlatformEntityAtTime)
+			r.Get("/entities/{entity_id}/diff", s.getPlatformEntityTimeDiff)
 			r.Get("/entities/{entity_id}", s.getPlatformEntity)
 			r.Route("/graph", func(r chi.Router) {
 				r.Get("/queries", s.platformGraphQueriesGet)
 				r.Post("/queries", s.platformGraphQueries)
 				r.Post("/diffs", s.createPlatformGraphDiff)
 				r.Get("/diffs/{diff_id}", s.getPlatformGraphDiffArtifact)
+				r.Get("/diffs/{diff_id}/details", s.getPlatformGraphDiffDetails)
+				r.Get("/changelog", s.listPlatformGraphChangelog)
 				r.Get("/templates", s.platformGraphTemplates)
 				r.Get("/snapshots", s.listPlatformGraphSnapshots)
 				r.Get("/snapshots/current", s.getCurrentPlatformGraphSnapshot)

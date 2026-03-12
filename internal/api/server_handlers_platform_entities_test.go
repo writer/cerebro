@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -255,6 +256,52 @@ func TestPlatformEntitiesListAndDetail(t *testing.T) {
 	}
 }
 
+func TestPlatformEntitySearchAndSuggest(t *testing.T) {
+	s := newTestServer(t)
+	g := s.app.SecurityGraph
+	g.AddNode(&graph.Node{
+		ID:       "arn:aws:s3:::audit-logs",
+		Kind:     graph.NodeKindBucket,
+		Name:     "Audit Logs",
+		Provider: "aws",
+		Region:   "us-east-1",
+	})
+	g.AddNode(&graph.Node{
+		ID:       "person:alice@example.com",
+		Kind:     graph.NodeKindPerson,
+		Name:     "Alice Example",
+		Provider: "workspace",
+	})
+	g.BuildIndex()
+
+	search := do(t, s, http.MethodGet, "/api/v1/platform/entities/search?q=s3+bucket&limit=5", nil)
+	if search.Code != http.StatusOK {
+		t.Fatalf("expected 200 for entity search, got %d: %s", search.Code, search.Body.String())
+	}
+	searchBody := decodeJSON(t, search)
+	if searchBody["count"].(float64) < 1 {
+		t.Fatalf("expected at least one search result, got %#v", searchBody)
+	}
+	first := searchBody["results"].([]any)[0].(map[string]any)
+	entity := first["entity"].(map[string]any)
+	if entity["id"] != "arn:aws:s3:::audit-logs" {
+		t.Fatalf("expected bucket search hit, got %#v", entity["id"])
+	}
+
+	suggest := do(t, s, http.MethodGet, "/api/v1/platform/entities/suggest?prefix=ali&limit=5", nil)
+	if suggest.Code != http.StatusOK {
+		t.Fatalf("expected 200 for entity suggest, got %d: %s", suggest.Code, suggest.Body.String())
+	}
+	suggestBody := decodeJSON(t, suggest)
+	if suggestBody["count"].(float64) < 1 {
+		t.Fatalf("expected at least one suggestion, got %#v", suggestBody)
+	}
+	suggestion := suggestBody["suggestions"].([]any)[0].(map[string]any)
+	if suggestion["entity_id"] != "person:alice@example.com" {
+		t.Fatalf("expected alice suggestion, got %#v", suggestion)
+	}
+}
+
 func TestPlatformEntitySummaryReport(t *testing.T) {
 	s := newTestServer(t)
 	g := s.app.SecurityGraph
@@ -314,6 +361,142 @@ func TestPlatformEntitySummaryReport(t *testing.T) {
 	}
 }
 
+func TestPlatformEntityPointInTimeAndDiff(t *testing.T) {
+	s := newTestServer(t)
+	g := s.app.SecurityGraph
+	base := time.Date(2026, 3, 10, 9, 0, 0, 0, time.UTC)
+	g.AddNode(&graph.Node{
+		ID:       "service:payments",
+		Kind:     graph.NodeKindService,
+		Name:     "Payments",
+		Provider: "aws",
+		Properties: map[string]any{
+			"status":           "degraded",
+			"owner":            "team-payments",
+			"observed_at":      base.Add(2 * time.Hour).UTC().Format(time.RFC3339),
+			"valid_from":       base.UTC().Format(time.RFC3339),
+			"recorded_at":      base.UTC().Format(time.RFC3339),
+			"transaction_from": base.UTC().Format(time.RFC3339),
+		},
+	})
+	node, ok := g.GetNode("service:payments")
+	if !ok || node == nil {
+		t.Fatal("expected seeded service node")
+	}
+	node.PropertyHistory = map[string][]graph.PropertySnapshot{
+		"status": []graph.PropertySnapshot{
+			{Timestamp: base, Value: "healthy"},
+			{Timestamp: base.Add(2 * time.Hour), Value: "degraded"},
+		},
+		"owner": []graph.PropertySnapshot{
+			{Timestamp: base.Add(2 * time.Hour), Value: "team-payments"},
+		},
+	}
+
+	at := do(t, s, http.MethodGet, "/api/v1/platform/entities/service:payments/at?timestamp=2026-03-10T09:30:00Z", nil)
+	if at.Code != http.StatusOK {
+		t.Fatalf("expected 200 for entity at-time, got %d: %s", at.Code, at.Body.String())
+	}
+	atBody := decodeJSON(t, at)
+	entity := atBody["entity"].(map[string]any)
+	properties := entity["properties"].(map[string]any)
+	if got := properties["status"]; got != "healthy" {
+		t.Fatalf("expected historical status healthy, got %#v", got)
+	}
+	if _, ok := properties["owner"]; ok {
+		t.Fatalf("did not expect owner at 09:30, got %#v", properties["owner"])
+	}
+	reconstruction := atBody["reconstruction"].(map[string]any)
+	if reconstruction["property_history_applied"] != true || reconstruction["historical_core_fields"] != false {
+		t.Fatalf("unexpected reconstruction metadata: %#v", reconstruction)
+	}
+
+	diff := do(t, s, http.MethodGet, "/api/v1/platform/entities/service:payments/diff?from=2026-03-10T09:00:00Z&to=2026-03-10T12:00:00Z", nil)
+	if diff.Code != http.StatusOK {
+		t.Fatalf("expected 200 for entity diff, got %d: %s", diff.Code, diff.Body.String())
+	}
+	diffBody := decodeJSON(t, diff)
+	if diffBody["entity_id"] != "service:payments" {
+		t.Fatalf("expected entity_id service:payments, got %#v", diffBody["entity_id"])
+	}
+	changedKeys, ok := diffBody["changed_keys"].([]any)
+	if !ok || len(changedKeys) < 2 {
+		t.Fatalf("expected changed_keys, got %#v", diffBody["changed_keys"])
+	}
+
+	missingTimestamp := do(t, s, http.MethodGet, "/api/v1/platform/entities/service:payments/at", nil)
+	if missingTimestamp.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing timestamp, got %d: %s", missingTimestamp.Code, missingTimestamp.Body.String())
+	}
+	if body := decodeJSON(t, missingTimestamp); body["error"] != "timestamp is required" {
+		t.Fatalf("expected missing timestamp error, got %#v", body)
+	}
+}
+
+func TestPlatformEntityTimeDiffAcrossDeletion(t *testing.T) {
+	s := newTestServer(t)
+	g := s.app.SecurityGraph
+	base := time.Date(2026, 3, 10, 9, 0, 0, 0, time.UTC)
+	deletedAt := base.Add(2 * time.Hour)
+	g.AddNode(&graph.Node{
+		ID:       "service:legacy",
+		Kind:     graph.NodeKindService,
+		Name:     "Legacy",
+		Provider: "aws",
+		Properties: map[string]any{
+			"status":           "retiring",
+			"observed_at":      base.UTC().Format(time.RFC3339),
+			"valid_from":       base.UTC().Format(time.RFC3339),
+			"valid_to":         deletedAt.UTC().Format(time.RFC3339),
+			"recorded_at":      base.UTC().Format(time.RFC3339),
+			"transaction_from": base.UTC().Format(time.RFC3339),
+			"transaction_to":   deletedAt.UTC().Format(time.RFC3339),
+		},
+	})
+	node, ok := g.GetNode("service:legacy")
+	if !ok || node == nil {
+		t.Fatal("expected seeded deleted node")
+	}
+	node.CreatedAt = base
+	node.UpdatedAt = base
+	node.DeletedAt = &deletedAt
+	node.PropertyHistory = nil
+
+	diff := do(t, s, http.MethodGet, "/api/v1/platform/entities/service:legacy/diff?from=2026-03-10T10:00:00Z&to=2026-03-10T12:00:00Z&recorded_at=2026-03-10T12:00:00Z", nil)
+	if diff.Code != http.StatusOK {
+		t.Fatalf("expected 200 for deleted-entity diff, got %d: %s", diff.Code, diff.Body.String())
+	}
+	body := decodeJSON(t, diff)
+	if body["entity_id"] != "service:legacy" {
+		t.Fatalf("expected deleted entity id, got %#v", body["entity_id"])
+	}
+	after := body["after"].(map[string]any)["entity"].(map[string]any)
+	if after["id"] != "service:legacy" {
+		t.Fatalf("expected tombstone after entity id, got %#v", after)
+	}
+	changes, ok := body["property_changes"].([]any)
+	if !ok || len(changes) == 0 {
+		t.Fatalf("expected deletion diff property changes, got %#v", body)
+	}
+	foundStatus := false
+	for _, raw := range changes {
+		change := raw.(map[string]any)
+		if change["key"] != "status" {
+			continue
+		}
+		foundStatus = true
+		if change["before"] != "retiring" {
+			t.Fatalf("expected status removal before=retiring, got %#v", change)
+		}
+		if _, ok := change["after"]; ok {
+			t.Fatalf("expected removed property to omit after value, got %#v", change)
+		}
+	}
+	if !foundStatus {
+		t.Fatalf("expected deletion diff to include status removal, got %#v", body["property_changes"])
+	}
+}
+
 func TestPlatformEntitiesRejectInvalidParams(t *testing.T) {
 	s := newTestServer(t)
 
@@ -330,5 +513,49 @@ func TestPlatformEntitiesRejectInvalidParams(t *testing.T) {
 	w = do(t, s, http.MethodGet, "/api/v1/platform/entities/service:payments?valid_at=nope", nil)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for invalid valid_at, got %d: %s", w.Code, w.Body.String())
+	}
+
+	w = do(t, s, http.MethodGet, "/api/v1/platform/entities/search", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing search query, got %d: %s", w.Code, w.Body.String())
+	}
+
+	w = do(t, s, http.MethodGet, "/api/v1/platform/entities/suggest", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing suggest prefix, got %d: %s", w.Code, w.Body.String())
+	}
+
+	longValue := strings.Repeat("a", maxPlatformEntityQueryLength+1)
+
+	w = do(t, s, http.MethodGet, "/api/v1/platform/entities?q="+longValue, nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for oversized entity list q, got %d: %s", w.Code, w.Body.String())
+	}
+
+	w = do(t, s, http.MethodGet, "/api/v1/platform/entities/search?q="+longValue, nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for oversized entity search q, got %d: %s", w.Code, w.Body.String())
+	}
+
+	w = do(t, s, http.MethodGet, "/api/v1/platform/entities/suggest?prefix="+longValue, nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for oversized suggest prefix, got %d: %s", w.Code, w.Body.String())
+	}
+
+	runeValue := strings.Repeat("世", 300)
+
+	w = do(t, s, http.MethodGet, "/api/v1/platform/entities?q="+runeValue, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for rune-bounded entity list q, got %d: %s", w.Code, w.Body.String())
+	}
+
+	w = do(t, s, http.MethodGet, "/api/v1/platform/entities/search?q="+runeValue, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for rune-bounded entity search q, got %d: %s", w.Code, w.Body.String())
+	}
+
+	w = do(t, s, http.MethodGet, "/api/v1/platform/entities/suggest?prefix="+runeValue, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for rune-bounded suggest prefix, got %d: %s", w.Code, w.Body.String())
 	}
 }

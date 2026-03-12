@@ -64,13 +64,31 @@ func (fs *FileStore) load() error {
 		return fmt.Errorf("unmarshal: %w", err)
 	}
 
-	// Load into in-memory store
+	// Load into in-memory store while applying the same retention, capacity,
+	// and metrics invariants as live mutations.
 	fs.store.mu.Lock()
+	now := time.Now()
 	for _, f := range findings {
 		f.Status = normalizeStatus(f.Status)
+		ensureFindingSemanticState(f)
 		EnrichFinding(f)
 		fs.store.findings[f.ID] = f
 	}
+	fs.store.rebuildIndexesLocked()
+	fs.store.resolvedCount = 0
+	for _, f := range fs.store.findings {
+		if normalizeStatus(f.Status) == "RESOLVED" {
+			fs.store.resolvedCount++
+		}
+	}
+	if fs.store.resolvedRetention > 0 {
+		_ = fs.store.cleanupResolvedBeforeLocked(now.Add(-fs.store.resolvedRetention))
+		fs.store.lastResolvedSweep = now
+	}
+	if fs.store.maxFindings > 0 && len(fs.store.findings) > fs.store.maxFindings {
+		fs.store.evictToCapacity()
+	}
+	fs.store.updateMetricsLocked()
 	fs.store.mu.Unlock()
 
 	return nil
@@ -129,6 +147,10 @@ func (fs *FileStore) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 
 func (fs *FileStore) SetAttestor(attestor FindingAttestor, attestReobserved bool) {
 	fs.store.SetAttestor(attestor, attestReobserved)
+}
+
+func (fs *FileStore) SetSemanticDedup(enabled bool) {
+	fs.store.SetSemanticDedup(enabled)
 }
 
 // Get retrieves a finding by ID
@@ -199,6 +221,10 @@ func (fs *FileStore) Close() error {
 func (fs *FileStore) Clear() error {
 	fs.store.mu.Lock()
 	fs.store.findings = make(map[string]*Finding)
+	fs.store.semanticIndex = make(map[string]string)
+	fs.store.resolvedCount = 0
+	fs.store.lastResolvedSweep = time.Time{}
+	fs.store.updateMetricsLocked()
 	fs.store.mu.Unlock()
 
 	fs.mu.Lock()
@@ -222,16 +248,11 @@ func (fs *FileStore) Cleanup(maxAge time.Duration) int {
 	fs.store.mu.Lock()
 	defer fs.store.mu.Unlock()
 
-	cutoff := time.Now().Add(-maxAge)
-	removed := 0
+	now := time.Now()
+	removed := fs.store.cleanupResolvedBeforeLocked(now.Add(-maxAge))
+	fs.store.lastResolvedSweep = now
 
-	for id, f := range fs.store.findings {
-		if f.LastSeen.Before(cutoff) && normalizeStatus(f.Status) == "RESOLVED" {
-			delete(fs.store.findings, id)
-			removed++
-		}
-	}
-
+	fs.store.updateMetricsLocked()
 	if removed > 0 {
 		fs.mu.Lock()
 		fs.dirty = true

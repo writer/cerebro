@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 )
 
@@ -31,16 +32,14 @@ func TestReloadSecretsUpdatesAPIKeys(t *testing.T) {
 	previousLoad := loadConfigForSecretsReload
 	t.Cleanup(func() { loadConfigForSecretsReload = previousLoad })
 
-	current := &Config{
-		APIAuthEnabled: true,
-		APIKeys:        map[string]string{"old-key": "old-user"},
-	}
+	current := LoadConfig()
+	current.APIAuthEnabled = true
+	current.APIKeys = map[string]string{"old-key": "old-user"}
 	current.RefreshProviderAwareConfig()
 
-	next := &Config{
-		APIAuthEnabled: true,
-		APIKeys:        map[string]string{"new-key": "new-user"},
-	}
+	next := LoadConfig()
+	next.APIAuthEnabled = true
+	next.APIKeys = map[string]string{"new-key": "new-user"}
 	next.RefreshProviderAwareConfig()
 
 	loadConfigForSecretsReload = func() *Config {
@@ -70,18 +69,16 @@ func TestReloadSecretsRebuildsProvidersWhenCredentialsChange(t *testing.T) {
 	previousLoad := loadConfigForSecretsReload
 	t.Cleanup(func() { loadConfigForSecretsReload = previousLoad })
 
-	current := &Config{
-		APIAuthEnabled: true,
-		APIKeys:        map[string]string{"key": "user"},
-	}
+	current := LoadConfig()
+	current.APIAuthEnabled = true
+	current.APIKeys = map[string]string{"key": "user"}
 	current.RefreshProviderAwareConfig()
 
-	next := &Config{
-		APIAuthEnabled: true,
-		APIKeys:        map[string]string{"key": "user"},
-		GitHubToken:    "ghp_test_token",
-		GitHubOrg:      "acme-security",
-	}
+	next := LoadConfig()
+	next.APIAuthEnabled = true
+	next.APIKeys = map[string]string{"key": "user"}
+	next.GitHubToken = "ghp_test_token"
+	next.GitHubOrg = "acme-security"
 	next.RefreshProviderAwareConfig()
 
 	loadConfigForSecretsReload = func() *Config {
@@ -104,5 +101,41 @@ func TestReloadSecretsRebuildsProvidersWhenCredentialsChange(t *testing.T) {
 	}
 	if _, ok := application.Providers.Get("github"); !ok {
 		t.Fatalf("expected github provider to be registered after credential reload")
+	}
+}
+
+func TestReloadSecretsRejectsInvalidConfig(t *testing.T) {
+	previousLoad := loadConfigForSecretsReload
+	t.Cleanup(func() { loadConfigForSecretsReload = previousLoad })
+
+	current := LoadConfig()
+	current.APIAuthEnabled = true
+	current.APIKeys = map[string]string{"key": "user"}
+	current.RefreshProviderAwareConfig()
+
+	next := LoadConfig()
+	next.NATSConsumerEnabled = true
+	next.NATSJetStreamEnabled = false
+	next.RefreshProviderAwareConfig()
+
+	loadConfigForSecretsReload = func() *Config {
+		return next
+	}
+
+	application := &App{
+		Config: current,
+		Logger: testAppLogger(),
+	}
+	application.setAPIKeys(current.APIKeys)
+
+	err := application.ReloadSecrets(context.Background())
+	if err == nil {
+		t.Fatal("expected ReloadSecrets to reject invalid config")
+	}
+	if !strings.Contains(err.Error(), "NATS_JETSTREAM_ENABLED must be true when NATS_CONSUMER_ENABLED=true") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if application.Config != current {
+		t.Fatal("expected current config to remain in place after validation failure")
 	}
 }

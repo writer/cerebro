@@ -557,6 +557,7 @@ func clonePropertySnapshots(history []PropertySnapshot) []PropertySnapshot {
 		cloned[i] = PropertySnapshot{
 			Timestamp: snapshot.Timestamp,
 			Value:     cloneAny(snapshot.Value),
+			Deleted:   snapshot.Deleted,
 		}
 	}
 	return cloned

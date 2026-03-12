@@ -185,6 +185,80 @@ func (a *App) cerebroTools() []agents.Tool {
 			Handler: a.toolCerebroGraphQueryTemplates,
 		},
 		{
+			Name:        "cerebro.graph_changelog",
+			Description: "Inspect recent graph snapshot changes or one stored/derived graph diff in detail",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"diff_id": map[string]any{
+						"type":        "string",
+						"description": "Optional graph diff ID from changelog results. When set, returns detailed filtered diff data for either a stored artifact or a derived adjacent snapshot diff.",
+					},
+					"since": map[string]any{
+						"type":        "string",
+						"description": "Optional RFC3339 lower bound for changelog listing.",
+					},
+					"until": map[string]any{
+						"type":        "string",
+						"description": "Optional RFC3339 upper bound for changelog listing.",
+					},
+					"last": map[string]any{
+						"type":        "string",
+						"description": "Optional duration window for changelog listing, for example 24h or 7d.",
+					},
+					"kind": map[string]any{
+						"type":        "string",
+						"description": "Optional node kind filter.",
+					},
+					"provider": map[string]any{
+						"type":        "string",
+						"description": "Optional provider filter.",
+					},
+					"account": map[string]any{
+						"type":        "string",
+						"description": "Optional account filter.",
+					},
+					"limit": map[string]any{
+						"type":        "integer",
+						"description": "Maximum changelog entries to return (1-200).",
+						"default":     20,
+					},
+				},
+			},
+			Handler: a.toolCerebroGraphChangelog,
+		},
+		{
+			Name:        "cerebro.entity_history",
+			Description: "Reconstruct one entity at a historical time or diff one entity across two times",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"entity_id": map[string]any{
+						"type":        "string",
+						"description": "Stable entity identifier.",
+					},
+					"timestamp": map[string]any{
+						"type":        "string",
+						"description": "RFC3339 point-in-time selector for one reconstructed entity state.",
+					},
+					"from": map[string]any{
+						"type":        "string",
+						"description": "RFC3339 start timestamp for one entity diff window.",
+					},
+					"to": map[string]any{
+						"type":        "string",
+						"description": "RFC3339 end timestamp for one entity diff window.",
+					},
+					"recorded_at": map[string]any{
+						"type":        "string",
+						"description": "Optional RFC3339 system-time selector.",
+					},
+				},
+				"required": []string{"entity_id"},
+			},
+			Handler: a.toolCerebroEntityHistory,
+		},
+		{
 			Name:        "evaluate_policy",
 			Description: "Evaluate whether a proposed action should be allowed, denied, or require approval with optional propagation analysis",
 			Parameters: map[string]any{

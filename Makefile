@@ -1,4 +1,4 @@
-.PHONY: build run test sync clean dev serve policy-list docker-build trivy-db security-scan security-scan-built security-scan-source vendor vendor-check oss-audit openapi-check openapi-sync config-docs config-docs-check ontology-docs ontology-docs-check cloudevents-docs cloudevents-docs-check cloudevents-contract-compat report-contract-docs report-contract-docs-check report-contract-compat entity-facet-docs entity-facet-docs-check entity-facet-contract-compat agent-sdk-docs agent-sdk-docs-check agent-sdk-contract-compat agent-sdk-packages agent-sdk-packages-check graph-ontology-guardrails gosec govulncheck devex-codegen devex-codegen-check devex-changed devex-pr platform-up platform-down platform-logs platform-smoke hooks
+.PHONY: build run test sync clean dev serve policy-list docker-build trivy-db security-scan security-scan-built security-scan-source vendor vendor-check oss-audit openapi-check openapi-sync api-contract-docs api-contract-docs-check api-contract-compat config-docs config-docs-check ontology-docs ontology-docs-check cloudevents-docs cloudevents-docs-check cloudevents-contract-compat report-contract-docs report-contract-docs-check report-contract-compat entity-facet-docs entity-facet-docs-check entity-facet-contract-compat agent-sdk-docs agent-sdk-docs-check agent-sdk-contract-compat agent-sdk-packages agent-sdk-packages-check connector-docs connector-docs-check graph-ontology-guardrails gosec govulncheck devex-codegen devex-codegen-check devex-changed devex-pr platform-up platform-down platform-logs platform-smoke hooks
 
 # Version info
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -143,6 +143,15 @@ openapi-sync:
 openapi-lint:
 	npx --yes @stoplight/spectral-cli@6 lint --ruleset .spectral.yaml api/openapi.yaml
 
+api-contract-docs:
+	go run ./scripts/generate_api_contract_docs/main.go
+
+api-contract-docs-check: api-contract-docs
+	git diff --exit-code -- docs/API_CONTRACTS_AUTOGEN.md docs/API_CONTRACTS.json
+
+api-contract-compat:
+	go run ./scripts/check_api_contract_compat/main.go
+
 config-docs:
 	go run ./scripts/generate_config_docs/main.go
 
@@ -198,8 +207,14 @@ agent-sdk-packages-check: agent-sdk-packages
 	git diff --exit-code -- docs/AGENT_SDK_PACKAGES_AUTOGEN.md sdk/go/cerebro/client.go sdk/python/cerebro_sdk/__init__.py sdk/python/cerebro_sdk/client.py sdk/python/pyproject.toml sdk/typescript/package.json sdk/typescript/src/index.ts sdk/typescript/tsconfig.json
 	go test ./sdk/go/cerebro
 	python3 -m py_compile sdk/python/cerebro_sdk/*.py
-	python3 -c 'import pathlib,tomllib; tomllib.load(pathlib.Path("sdk/python/pyproject.toml").open("rb"))'
+	python3 ./scripts/validate_toml.py sdk/python/pyproject.toml
 	npx --yes -p typescript tsc -p sdk/typescript/tsconfig.json --noEmit
+
+connector-docs:
+	go run ./scripts/generate_connector_docs/main.go
+
+connector-docs-check: connector-docs
+	git diff --exit-code -- docs/CONNECTOR_PROVISIONING_AUTOGEN.md docs/CONNECTOR_PROVISIONING_CATALOG.json
 
 graph-ontology-guardrails:
 	go test ./internal/graphingest -run 'TestMapperContractFixtures|TestMapperSourceDomainCoverageGuardrails' -count=1
@@ -239,8 +254,7 @@ platform-smoke:
 
 # Install git hooks
 hooks:
-	git config core.hooksPath .githooks
-	@echo "Git hooks installed (.githooks/)"
+	./scripts/install_hooks.sh
 
 # Full local setup
 setup: install-deps build hooks

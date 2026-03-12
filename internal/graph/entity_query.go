@@ -235,7 +235,7 @@ func GetEntityRecord(g *Graph, id string, validAt, recordedAt time.Time) (Entity
 	recordedAt = recordedAt.UTC()
 	g.mu.RLock()
 	node, ok := g.nodes[id]
-	if !ok || node == nil || node.DeletedAt != nil || !entityQueryAllowedNodeKind(node.Kind) || !g.nodeVisibleAtLocked(node, validAt, recordedAt) {
+	if !ok || node == nil || !entityQueryAllowedNodeKind(node.Kind) || !entityHistoricalVisibleAtLocked(node, validAt, recordedAt) {
 		g.mu.RUnlock()
 		return EntityRecord{}, false
 	}

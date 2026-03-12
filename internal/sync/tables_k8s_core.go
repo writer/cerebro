@@ -15,7 +15,9 @@ func (e *K8sSyncEngine) getK8sTables() []K8sTableSpec {
 		e.k8sClusterInventoryTable(),
 		e.k8sPodTable(),
 		e.k8sNamespaceTable(),
+		e.k8sConfigMapTable(),
 		e.k8sNodeTable(),
+		e.k8sPersistentVolumeTable(),
 		e.k8sServiceTable(),
 		e.k8sServiceAccountTable(),
 		e.k8sDeploymentTable(),
@@ -285,6 +287,65 @@ func (e *K8sSyncEngine) k8sNodeTable() K8sTableSpec {
 	}
 }
 
+func (e *K8sSyncEngine) k8sConfigMapTable() K8sTableSpec {
+	return K8sTableSpec{
+		Name: "k8s_core_configmaps",
+		Columns: []string{
+			"uid",
+			"name",
+			"namespace",
+			"cluster_name",
+			"immutable",
+			"data_keys",
+			"binary_data_keys",
+			"labels",
+			"annotations",
+		},
+		Fetch: func(ctx context.Context, client kubernetes.Interface, namespace, clusterName string) ([]map[string]interface{}, error) {
+			if namespace == "" {
+				namespace = metav1.NamespaceAll
+			}
+
+			configMaps, err := client.CoreV1().ConfigMaps(namespace).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+
+			clusterName = normalizeClusterName(clusterName)
+			rows := make([]map[string]interface{}, 0, len(configMaps.Items))
+			for _, configMap := range configMaps.Items {
+				dataKeys := make([]string, 0, len(configMap.Data))
+				for key := range configMap.Data {
+					dataKeys = append(dataKeys, key)
+				}
+				sort.Strings(dataKeys)
+
+				binaryDataKeys := make([]string, 0, len(configMap.BinaryData))
+				for key := range configMap.BinaryData {
+					binaryDataKeys = append(binaryDataKeys, key)
+				}
+				sort.Strings(binaryDataKeys)
+
+				row := map[string]interface{}{
+					"_cq_id":           buildTypedNamespacedID(clusterName, "configmap", configMap.Namespace, configMap.Name),
+					"uid":              string(configMap.UID),
+					"name":             configMap.Name,
+					"namespace":        configMap.Namespace,
+					"cluster_name":     clusterName,
+					"immutable":        boolPtrValue(configMap.Immutable),
+					"data_keys":        dataKeys,
+					"binary_data_keys": binaryDataKeys,
+					"labels":           configMap.Labels,
+					"annotations":      configMap.Annotations,
+				}
+				rows = append(rows, row)
+			}
+
+			return rows, nil
+		},
+	}
+}
+
 func (e *K8sSyncEngine) k8sServiceTable() K8sTableSpec {
 	return K8sTableSpec{
 		Name: "k8s_core_services",
@@ -316,7 +377,7 @@ func (e *K8sSyncEngine) k8sServiceTable() K8sTableSpec {
 			rows := make([]map[string]interface{}, 0, len(services.Items))
 			for _, svc := range services.Items {
 				row := map[string]interface{}{
-					"_cq_id":                buildNamespacedID(clusterName, svc.Namespace, svc.Name),
+					"_cq_id":                buildTypedNamespacedID(clusterName, "service", svc.Namespace, svc.Name),
 					"uid":                   string(svc.UID),
 					"name":                  svc.Name,
 					"namespace":             svc.Namespace,
@@ -329,6 +390,65 @@ func (e *K8sSyncEngine) k8sServiceTable() K8sTableSpec {
 					"selector":              svc.Spec.Selector,
 					"labels":                svc.Labels,
 					"annotations":           svc.Annotations,
+				}
+				rows = append(rows, row)
+			}
+
+			return rows, nil
+		},
+	}
+}
+
+func (e *K8sSyncEngine) k8sPersistentVolumeTable() K8sTableSpec {
+	return K8sTableSpec{
+		Name: "k8s_core_persistent_volumes",
+		Columns: []string{
+			"uid",
+			"name",
+			"cluster_name",
+			"storage_class_name",
+			"phase",
+			"access_modes",
+			"capacity",
+			"reclaim_policy",
+			"volume_mode",
+			"claim_ref",
+			"labels",
+			"annotations",
+		},
+		Fetch: func(ctx context.Context, client kubernetes.Interface, _ string, clusterName string) ([]map[string]interface{}, error) {
+			persistentVolumes, err := client.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+
+			clusterName = normalizeClusterName(clusterName)
+			rows := make([]map[string]interface{}, 0, len(persistentVolumes.Items))
+			for _, volume := range persistentVolumes.Items {
+				accessModes := make([]string, 0, len(volume.Spec.AccessModes))
+				for _, mode := range volume.Spec.AccessModes {
+					accessModes = append(accessModes, string(mode))
+				}
+				sort.Strings(accessModes)
+				volumeMode := ""
+				if volume.Spec.VolumeMode != nil {
+					volumeMode = string(*volume.Spec.VolumeMode)
+				}
+
+				row := map[string]interface{}{
+					"_cq_id":             buildClusterScopedID(clusterName, "persistentvolume", volume.Name),
+					"uid":                string(volume.UID),
+					"name":               volume.Name,
+					"cluster_name":       clusterName,
+					"storage_class_name": volume.Spec.StorageClassName,
+					"phase":              string(volume.Status.Phase),
+					"access_modes":       accessModes,
+					"capacity":           resourceListToMap(volume.Spec.Capacity),
+					"reclaim_policy":     string(volume.Spec.PersistentVolumeReclaimPolicy),
+					"volume_mode":        volumeMode,
+					"claim_ref":          serializeObjectReferencePtr(volume.Spec.ClaimRef),
+					"labels":             volume.Labels,
+					"annotations":        volume.Annotations,
 				}
 				rows = append(rows, row)
 			}
@@ -366,7 +486,7 @@ func (e *K8sSyncEngine) k8sServiceAccountTable() K8sTableSpec {
 			rows := make([]map[string]interface{}, 0, len(serviceAccounts.Items))
 			for _, serviceAccount := range serviceAccounts.Items {
 				row := map[string]interface{}{
-					"_cq_id":                          buildNamespacedID(clusterName, serviceAccount.Namespace, serviceAccount.Name),
+					"_cq_id":                          buildTypedNamespacedID(clusterName, "serviceaccount", serviceAccount.Namespace, serviceAccount.Name),
 					"uid":                             string(serviceAccount.UID),
 					"name":                            serviceAccount.Name,
 					"namespace":                       serviceAccount.Namespace,
@@ -415,7 +535,7 @@ func (e *K8sSyncEngine) k8sDeploymentTable() K8sTableSpec {
 			rows := make([]map[string]interface{}, 0, len(deployments.Items))
 			for _, deployment := range deployments.Items {
 				row := map[string]interface{}{
-					"_cq_id":             buildNamespacedID(clusterName, deployment.Namespace, deployment.Name),
+					"_cq_id":             buildTypedNamespacedID(clusterName, "deployment", deployment.Namespace, deployment.Name),
 					"uid":                string(deployment.UID),
 					"name":               deployment.Name,
 					"namespace":          deployment.Namespace,
@@ -481,7 +601,7 @@ func (e *K8sSyncEngine) k8sIngressTable() K8sTableSpec {
 				}
 
 				row := map[string]interface{}{
-					"_cq_id":             buildNamespacedID(clusterName, ingress.Namespace, ingress.Name),
+					"_cq_id":             buildTypedNamespacedID(clusterName, "ingress", ingress.Namespace, ingress.Name),
 					"uid":                string(ingress.UID),
 					"name":               ingress.Name,
 					"namespace":          ingress.Namespace,

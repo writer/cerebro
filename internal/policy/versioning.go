@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/writer/cerebro/internal/setutil"
 )
 
 // PolicyEventType represents a policy lifecycle change.
@@ -323,8 +325,8 @@ func (e *Engine) DryRunPolicyChange(ctx context.Context, current, candidate *Pol
 		AfterMatches:       len(afterFindings),
 		AddedFindingIDs:    addedIDs,
 		RemovedFindingIDs:  removedIDs,
-		AddedResourceIDs:   sortedStringSet(addedResourceSet),
-		RemovedResourceIDs: sortedStringSet(removedResourceSet),
+		AddedResourceIDs:   setutil.SortedStrings(addedResourceSet),
+		RemovedResourceIDs: setutil.SortedStrings(removedResourceSet),
 	}, nil
 }
 
@@ -433,17 +435,5 @@ func normalizeMitreMappings(mappings []MitreMapping) []MitreMapping {
 			Technique: strings.TrimSpace(mapping.Technique),
 		})
 	}
-	return result
-}
-
-func sortedStringSet(values map[string]struct{}) []string {
-	if len(values) == 0 {
-		return nil
-	}
-	result := make([]string, 0, len(values))
-	for value := range values {
-		result = append(result, value)
-	}
-	sort.Strings(result)
 	return result
 }

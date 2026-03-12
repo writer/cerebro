@@ -21,22 +21,47 @@ type RemoteActionCaller interface {
 	CallTool(ctx context.Context, toolName string, args json.RawMessage, timeout time.Duration) (string, error)
 }
 
+type TicketService interface {
+	Primary() ticketing.Provider
+}
+
+type NotificationSender interface {
+	Send(ctx context.Context, event notifications.Event) error
+}
+
+type FindingsWriter interface {
+	Resolve(id string) bool
+}
+
+type EventPublisher interface {
+	EmitWithErrors(ctx context.Context, eventType webhooks.EventType, data map[string]interface{}) error
+}
+
+var (
+	_ TicketService      = (*ticketing.Service)(nil)
+	_ NotificationSender = (*notifications.Manager)(nil)
+	_ FindingsWriter     = (*findings.Store)(nil)
+	_ FindingsWriter     = (*findings.SQLiteStore)(nil)
+	_ FindingsWriter     = (*findings.SnowflakeStore)(nil)
+	_ EventPublisher     = (*webhooks.Service)(nil)
+)
+
 type Executor struct {
 	engine        *Engine
-	ticketing     *ticketing.Service
-	notifications *notifications.Manager
-	findings      findings.FindingStore
-	webhooks      *webhooks.Service
+	ticketing     TicketService
+	notifications NotificationSender
+	findings      FindingsWriter
+	webhooks      EventPublisher
 	remoteCaller  RemoteActionCaller
 	ensemble      *EnsembleExecutor
 }
 
 func NewExecutor(
 	engine *Engine,
-	ticketing *ticketing.Service,
-	notifications *notifications.Manager,
-	findings findings.FindingStore,
-	webhookService *webhooks.Service,
+	ticketing TicketService,
+	notifications NotificationSender,
+	findings FindingsWriter,
+	webhookService EventPublisher,
 ) *Executor {
 	return &Executor{
 		engine:        engine,

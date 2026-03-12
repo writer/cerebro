@@ -20,9 +20,17 @@ import (
 	"github.com/writer/cerebro/internal/policy"
 )
 
+// PolicyEvaluator captures the policy engine surface the scanner actually uses.
+type PolicyEvaluator interface {
+	EvaluateAsset(ctx context.Context, asset map[string]interface{}) ([]policy.Finding, error)
+	ListPolicies() []*policy.Policy
+}
+
+var _ PolicyEvaluator = (*policy.Engine)(nil)
+
 // Scanner performs parallel policy evaluation across assets
 type Scanner struct {
-	engine           *policy.Engine
+	engine           PolicyEvaluator
 	toxicDetector    *attackpath.ToxicCombinationDetector
 	graphToxicEngine *graph.ToxicCombinationEngine
 	workers          int
@@ -38,7 +46,7 @@ type ScanConfig struct {
 	BatchSize int
 }
 
-func NewScanner(engine *policy.Engine, cfg ScanConfig, logger *slog.Logger) *Scanner {
+func NewScanner(engine PolicyEvaluator, cfg ScanConfig, logger *slog.Logger) *Scanner {
 	if cfg.Workers == 0 {
 		cfg.Workers = 10
 	}

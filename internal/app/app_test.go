@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/writer/cerebro/internal/apiauth"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/policy"
 	"github.com/writer/cerebro/internal/snowflake"
@@ -82,6 +84,81 @@ func TestLoadConfigPlatformReportPersistencePaths(t *testing.T) {
 	}
 	if cfg.PlatformReportSnapshotPath != "/tmp/cerebro-report-snapshots" {
 		t.Fatalf("expected report snapshot path to be set, got %q", cfg.PlatformReportSnapshotPath)
+	}
+}
+
+func TestLoadConfigWorkloadScanPathsAndControls(t *testing.T) {
+	t.Setenv("EXECUTION_STORE_FILE", "/tmp/cerebro-executions.db")
+	t.Setenv("WORKLOAD_SCAN_STATE_FILE", "/tmp/cerebro-workload-scan.db")
+	t.Setenv("WORKLOAD_SCAN_MOUNT_BASE_PATH", "/tmp/cerebro-workload-mounts")
+	t.Setenv("WORKLOAD_SCAN_MAX_CONCURRENT_SNAPSHOTS", "7")
+	t.Setenv("WORKLOAD_SCAN_CLEANUP_TIMEOUT", "4m")
+	t.Setenv("WORKLOAD_SCAN_RECONCILE_OLDER_THAN", "45m")
+	t.Setenv("WORKLOAD_SCAN_TRIVY_BINARY", "/usr/local/bin/trivy-workload")
+
+	cfg := LoadConfig()
+	if cfg.ExecutionStoreFile != "/tmp/cerebro-executions.db" {
+		t.Fatalf("expected execution store file to be set, got %q", cfg.ExecutionStoreFile)
+	}
+	if cfg.WorkloadScanStateFile != "/tmp/cerebro-workload-scan.db" {
+		t.Fatalf("expected workload scan state file to be set, got %q", cfg.WorkloadScanStateFile)
+	}
+	if cfg.WorkloadScanMountBasePath != "/tmp/cerebro-workload-mounts" {
+		t.Fatalf("expected workload scan mount base path to be set, got %q", cfg.WorkloadScanMountBasePath)
+	}
+	if cfg.WorkloadScanMaxConcurrentSnapshots != 7 {
+		t.Fatalf("expected workload scan max concurrent snapshots 7, got %d", cfg.WorkloadScanMaxConcurrentSnapshots)
+	}
+	if cfg.WorkloadScanCleanupTimeout != 4*time.Minute {
+		t.Fatalf("expected workload scan cleanup timeout 4m, got %s", cfg.WorkloadScanCleanupTimeout)
+	}
+	if cfg.WorkloadScanReconcileOlderThan != 45*time.Minute {
+		t.Fatalf("expected workload scan reconcile older than 45m, got %s", cfg.WorkloadScanReconcileOlderThan)
+	}
+	if cfg.WorkloadScanTrivyBinary != "/usr/local/bin/trivy-workload" {
+		t.Fatalf("expected workload scan trivy binary override, got %q", cfg.WorkloadScanTrivyBinary)
+	}
+}
+
+func TestLoadConfigImageScanPathsAndControls(t *testing.T) {
+	t.Setenv("EXECUTION_STORE_FILE", "/tmp/cerebro-executions.db")
+	t.Setenv("IMAGE_SCAN_ROOTFS_BASE_PATH", "/tmp/cerebro-image-rootfs")
+	t.Setenv("IMAGE_SCAN_CLEANUP_TIMEOUT", "5m")
+	t.Setenv("IMAGE_SCAN_TRIVY_BINARY", "/usr/local/bin/trivy")
+
+	cfg := LoadConfig()
+	if cfg.ImageScanStateFile != "/tmp/cerebro-executions.db" {
+		t.Fatalf("expected image scan state file to default to shared execution store, got %q", cfg.ImageScanStateFile)
+	}
+	if cfg.ImageScanRootFSBasePath != "/tmp/cerebro-image-rootfs" {
+		t.Fatalf("expected image scan rootfs base path to be set, got %q", cfg.ImageScanRootFSBasePath)
+	}
+	if cfg.ImageScanCleanupTimeout != 5*time.Minute {
+		t.Fatalf("expected image scan cleanup timeout 5m, got %s", cfg.ImageScanCleanupTimeout)
+	}
+	if cfg.ImageScanTrivyBinary != "/usr/local/bin/trivy" {
+		t.Fatalf("expected image scan trivy binary override, got %q", cfg.ImageScanTrivyBinary)
+	}
+}
+
+func TestLoadConfigFunctionScanPathsAndControls(t *testing.T) {
+	t.Setenv("EXECUTION_STORE_FILE", "/tmp/cerebro-executions.db")
+	t.Setenv("FUNCTION_SCAN_ROOTFS_BASE_PATH", "/tmp/cerebro-function-rootfs")
+	t.Setenv("FUNCTION_SCAN_CLEANUP_TIMEOUT", "6m")
+	t.Setenv("FUNCTION_SCAN_TRIVY_BINARY", "/usr/local/bin/trivy-function")
+
+	cfg := LoadConfig()
+	if cfg.FunctionScanStateFile != "/tmp/cerebro-executions.db" {
+		t.Fatalf("expected function scan state file to default to shared execution store, got %q", cfg.FunctionScanStateFile)
+	}
+	if cfg.FunctionScanRootFSBasePath != "/tmp/cerebro-function-rootfs" {
+		t.Fatalf("expected function scan rootfs base path to be set, got %q", cfg.FunctionScanRootFSBasePath)
+	}
+	if cfg.FunctionScanCleanupTimeout != 6*time.Minute {
+		t.Fatalf("expected function scan cleanup timeout 6m, got %s", cfg.FunctionScanCleanupTimeout)
+	}
+	if cfg.FunctionScanTrivyBinary != "/usr/local/bin/trivy-function" {
+		t.Fatalf("expected function scan trivy binary override, got %q", cfg.FunctionScanTrivyBinary)
 	}
 }
 
@@ -394,14 +471,71 @@ func TestNew_APIAuthEnabledWithoutKeys(t *testing.T) {
 }
 
 func TestNewWithConfig_APIAuthEnabledWithoutKeys(t *testing.T) {
-	cfg := &Config{
-		APIAuthEnabled: true,
-		PoliciesPath:   "policies",
-	}
+	cfg := LoadConfig()
+	cfg.APIAuthEnabled = true
+	cfg.APIKeys = nil
+	cfg.APICredentials = map[string]apiauth.Credential{}
 
 	_, err := NewWithConfig(context.Background(), cfg)
 	if err == nil {
 		t.Fatal("expected error when API auth enabled without API_KEYS")
+	}
+}
+
+func TestLoadConfigValidateAggregatesProblems(t *testing.T) {
+	t.Setenv("API_PORT", "not-a-port")
+	t.Setenv("API_CREDENTIALS_JSON", "{")
+	t.Setenv("QUERY_POLICY_ROW_LIMIT", "0")
+	t.Setenv("NATS_CONSUMER_ENABLED", "true")
+	t.Setenv("NATS_JETSTREAM_ENABLED", "false")
+	t.Setenv("GRAPH_CROSS_TENANT_REQUIRE_SIGNED_INGEST", "true")
+
+	cfg := LoadConfig()
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected config validation error")
+	}
+
+	var validationErr *ConfigValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected ConfigValidationError, got %T", err)
+	}
+
+	wantProblems := []string{
+		"API_PORT must be a valid integer",
+		"decode API_CREDENTIALS_JSON:",
+		"QUERY_POLICY_ROW_LIMIT must be greater than 0",
+		"NATS_JETSTREAM_ENABLED must be true when NATS_CONSUMER_ENABLED=true",
+		"GRAPH_CROSS_TENANT_SIGNING_KEY is required when GRAPH_CROSS_TENANT_REQUIRE_SIGNED_INGEST=true",
+	}
+	for _, want := range wantProblems {
+		found := false
+		for _, problem := range validationErr.Problems {
+			if strings.Contains(problem, want) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected validation problem containing %q, got %#v", want, validationErr.Problems)
+		}
+	}
+}
+
+func TestNewWithConfigFailsFastOnInvalidConfig(t *testing.T) {
+	cfg := LoadConfig()
+	cfg.Port = 0
+	cfg.QueryPolicyRowLimit = 0
+
+	_, err := NewWithConfig(context.Background(), cfg)
+	if err == nil {
+		t.Fatal("expected config validation error")
+	}
+	if !strings.Contains(err.Error(), "API_PORT must be between 1 and 65535") {
+		t.Fatalf("expected port validation error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "QUERY_POLICY_ROW_LIMIT must be greater than 0") {
+		t.Fatalf("expected query row limit validation error, got %v", err)
 	}
 }
 
