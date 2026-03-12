@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
+	dto "github.com/prometheus/client_model/go"
 	"github.com/writer/cerebro/internal/metrics"
 	"github.com/writer/cerebro/internal/policy"
-	dto "github.com/prometheus/client_model/go"
 )
 
 func TestFileStore(t *testing.T) {
