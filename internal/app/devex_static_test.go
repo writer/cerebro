@@ -33,6 +33,9 @@ func TestPreCommitHookRunsFastLintOnStagedGoFiles(t *testing.T) {
 	if !strings.Contains(text, "STAGED_PACKAGE_DIRS") {
 		t.Fatalf("expected pre-commit hook to lint staged package directories")
 	}
+	if strings.Contains(text, "mapfile") {
+		t.Fatalf("expected pre-commit hook to avoid bash 4-only mapfile")
+	}
 	if !strings.Contains(text, "build constraints exclude all Go files") {
 		t.Fatalf("expected pre-commit hook to skip build-ignored generator directories")
 	}
@@ -53,8 +56,81 @@ func TestPrePushHookRunsChangedDevexPreflight(t *testing.T) {
 	if !strings.Contains(text, "CEREBRO_SKIP_PRE_PUSH") {
 		t.Fatalf("expected pre-push hook to allow explicit skip")
 	}
+	if !strings.Contains(text, "git symbolic-ref --quiet --short \"refs/remotes/${remote_name}/HEAD\"") {
+		t.Fatalf("expected pre-push hook to resolve the push remote's default branch")
+	}
+	if !strings.Contains(text, "git merge-base HEAD \"$candidate\"") {
+		t.Fatalf("expected pre-push hook to skip unrelated remote base refs")
+	}
 	if !strings.Contains(text, "CEREBRO_DEVEX_BASE_REF") {
 		t.Fatalf("expected pre-push hook to support an override base ref")
+	}
+}
+
+func TestHooksTargetInstallsTrackedHooksAndFallbackShims(t *testing.T) {
+	root := repoRoot(t)
+
+	makefilePath := filepath.Join(root, "Makefile")
+	makefileContent, err := os.ReadFile(makefilePath)
+	if err != nil {
+		t.Fatalf("read Makefile: %v", err)
+	}
+	makefileText := string(makefileContent)
+	if !strings.Contains(makefileText, "./scripts/install_hooks.sh") {
+		t.Fatalf("expected Makefile hooks target to invoke scripts/install_hooks.sh")
+	}
+
+	scriptPath := filepath.Join(root, "scripts", "install_hooks.sh")
+	scriptContent, err := os.ReadFile(scriptPath)
+	if err != nil {
+		t.Fatalf("read install_hooks.sh: %v", err)
+	}
+	scriptText := string(scriptContent)
+
+	checks := []string{
+		"git rev-parse --git-common-dir",
+		"for hook in pre-commit pre-push; do",
+		"cat >\"$git_common_dir/hooks/$hook\" <<EOF",
+		"hook_path=\"\\${repo_root}/.githooks/$hook\"",
+		"exec \"\\$hook_path\" \"\\$@\"",
+		"git config core.hooksPath .githooks",
+	}
+	for _, needle := range checks {
+		if !strings.Contains(scriptText, needle) {
+			t.Fatalf("expected install_hooks.sh to contain %q", needle)
+		}
+	}
+}
+
+func TestAgentSDKPackagesCheckUsesPortableTOMLValidator(t *testing.T) {
+	root := repoRoot(t)
+
+	makefilePath := filepath.Join(root, "Makefile")
+	makefileContent, err := os.ReadFile(makefilePath)
+	if err != nil {
+		t.Fatalf("read Makefile: %v", err)
+	}
+	makefileText := string(makefileContent)
+	if !strings.Contains(makefileText, "python3 ./scripts/validate_toml.py sdk/python/pyproject.toml") {
+		t.Fatalf("expected agent-sdk-packages-check to use scripts/validate_toml.py")
+	}
+
+	scriptPath := filepath.Join(root, "scripts", "validate_toml.py")
+	scriptContent, err := os.ReadFile(scriptPath)
+	if err != nil {
+		t.Fatalf("read validate_toml.py: %v", err)
+	}
+	scriptText := string(scriptContent)
+
+	checks := []string{
+		"import tomli as tomllib",
+		"skipping TOML parse",
+		"parser.load(handle)",
+	}
+	for _, needle := range checks {
+		if !strings.Contains(scriptText, needle) {
+			t.Fatalf("expected validate_toml.py to contain %q", needle)
+		}
 	}
 }
 
@@ -296,6 +372,28 @@ func TestDevexScriptChangedModeIncludesWorkspaceDiffSources(t *testing.T) {
 		if !strings.Contains(text, needle) {
 			t.Fatalf("expected scripts/devex.py to include %s", needle)
 		}
+	}
+}
+
+func TestDevexScriptPrefersGoPathToolingForGoChecks(t *testing.T) {
+	root := repoRoot(t)
+	path := filepath.Join(root, "scripts", "devex.py")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read scripts/devex.py: %v", err)
+	}
+	text := string(content)
+
+	goPathIdx := strings.Index(text, "candidate = Path(")
+	whichIdx := strings.Index(text, "resolved = shutil.which(executable)")
+	if goPathIdx == -1 || whichIdx == -1 {
+		t.Fatalf("expected scripts/devex.py to resolve both GOPATH and PATH tooling")
+	}
+	if goPathIdx > whichIdx {
+		t.Fatalf("expected scripts/devex.py to prefer GOPATH tooling before PATH resolution")
+	}
+	if !strings.Contains(text, "if executable in {\"golangci-lint\", \"gosec\", \"govulncheck\", \"goimports\"}") {
+		t.Fatalf("expected scripts/devex.py to special-case Go developer tools")
 	}
 }
 

@@ -160,9 +160,6 @@ def resolve_command(command: list[str]) -> list[str]:
     if not command:
         return command
     executable = command[0]
-    resolved = shutil.which(executable)
-    if resolved:
-        return [resolved, *command[1:]]
     if executable in {"golangci-lint", "gosec", "govulncheck", "goimports"}:
         try:
             candidate = Path(
@@ -172,6 +169,9 @@ def resolve_command(command: list[str]) -> list[str]:
                 return [str(candidate), *command[1:]]
         except (subprocess.CalledProcessError, FileNotFoundError):
             return command
+    resolved = shutil.which(executable)
+    if resolved:
+        return [resolved, *command[1:]]
     return command
 
 

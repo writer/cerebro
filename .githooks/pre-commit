@@ -5,7 +5,10 @@ set -euo pipefail
 export PATH="${GOPATH:-$HOME/go}/bin:$PATH"
 
 # Run goimports on staged .go files (excluding vendor)
-mapfile -t STAGED_FILES < <(git diff --cached --name-only --diff-filter=ACM -- '*.go' | grep -v '^vendor/' || true)
+STAGED_FILES=()
+while IFS= read -r file; do
+	STAGED_FILES+=("$file")
+done < <(git diff --cached --name-only --diff-filter=ACM -- '*.go' | grep -v '^vendor/' || true)
 if [ "${#STAGED_FILES[@]}" -eq 0 ]; then
   exit 0
 fi
@@ -27,7 +30,10 @@ if ! command -v golangci-lint &>/dev/null; then
   exit 1
 fi
 
-mapfile -t STAGED_PACKAGE_DIRS < <(printf '%s\n' "${STAGED_FILES[@]}" | xargs -n1 dirname | sed 's#^\\.$#./#' | sort -u)
+STAGED_PACKAGE_DIRS=()
+while IFS= read -r dir; do
+	STAGED_PACKAGE_DIRS+=("$dir")
+done < <(printf '%s\n' "${STAGED_FILES[@]}" | xargs -n1 dirname | sed 's#^\\.$#./#' | sort -u)
 
 FILTERED_PACKAGE_DIRS=()
 for dir in "${STAGED_PACKAGE_DIRS[@]}"; do

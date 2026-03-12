@@ -207,7 +207,7 @@ agent-sdk-packages-check: agent-sdk-packages
 	git diff --exit-code -- docs/AGENT_SDK_PACKAGES_AUTOGEN.md sdk/go/cerebro/client.go sdk/python/cerebro_sdk/__init__.py sdk/python/cerebro_sdk/client.py sdk/python/pyproject.toml sdk/typescript/package.json sdk/typescript/src/index.ts sdk/typescript/tsconfig.json
 	go test ./sdk/go/cerebro
 	python3 -m py_compile sdk/python/cerebro_sdk/*.py
-	python3 -c 'import pathlib,tomllib; tomllib.load(pathlib.Path("sdk/python/pyproject.toml").open("rb"))'
+	python3 ./scripts/validate_toml.py sdk/python/pyproject.toml
 	npx --yes -p typescript tsc -p sdk/typescript/tsconfig.json --noEmit
 
 connector-docs:
@@ -254,8 +254,7 @@ platform-smoke:
 
 # Install git hooks
 hooks:
-	git config core.hooksPath .githooks
-	@echo "Git hooks installed (.githooks/)"
+	./scripts/install_hooks.sh
 
 # Full local setup
 setup: install-deps build hooks
