@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/evalops/cerebro/internal/actionengine"
 	"github.com/evalops/cerebro/internal/auth"
 	"github.com/evalops/cerebro/internal/graph"
 	"github.com/evalops/cerebro/internal/health"
@@ -16,6 +17,15 @@ import (
 	"github.com/evalops/cerebro/internal/threatintel"
 	"github.com/evalops/cerebro/internal/webhooks"
 )
+
+func (a *App) newSharedActionExecutor() *actionengine.Executor {
+	store, err := actionengine.NewSQLiteStore(a.Config.ExecutionStoreFile, actionengine.DefaultNamespace)
+	if err != nil {
+		a.Logger.Warn("failed to initialize shared action execution store; falling back to in-memory", "error", err, "path", a.Config.ExecutionStoreFile)
+		return actionengine.NewExecutor(nil)
+	}
+	return actionengine.NewExecutor(store)
+}
 
 func (a *App) initRBAC() {
 	if a.Config.RBACStateFile == "" {
@@ -430,6 +440,7 @@ func (a *App) initLineage() {
 func (a *App) initRemediation() {
 	a.Remediation = remediation.NewEngine(a.Logger)
 	a.RemediationExecutor = remediation.NewExecutor(a.Remediation, a.Ticketing, a.Notifications, a.Findings, a.Webhooks)
+	a.RemediationExecutor.SetSharedExecutor(a.newSharedActionExecutor())
 	if a.RemoteTools != nil {
 		a.RemediationExecutor.SetRemoteCaller(a.RemoteTools)
 	}
@@ -439,6 +450,7 @@ func (a *App) initRemediation() {
 func (a *App) initRuntime() {
 	a.RuntimeDetect = runtime.NewDetectionEngine()
 	a.RuntimeRespond = runtime.NewResponseEngine()
+	a.RuntimeRespond.SetSharedExecutor(a.newSharedActionExecutor())
 	a.Logger.Info("runtime detection initialized", "rules", len(a.RuntimeDetect.ListRules()))
 	a.Logger.Info("runtime response initialized", "policies", len(a.RuntimeRespond.ListPolicies()))
 }

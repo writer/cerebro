@@ -5,6 +5,62 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 55 - Shared Action Engine + Durable Security Actuation (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#143` still existed because remediation and runtime response were maintaining separate approval, sequencing, and execution-status models for the same underlying action problem.
+- [x] Gap: issue `#154` would have duplicated "real executor" work again unless both application surfaces moved onto one shared substrate first.
+- [x] Gap: the repo already had a shared execution-store seam, but security actuation was not using it consistently and could still drift back into process-local orchestration.
+- [x] Gap: runtime approval flows were at risk of losing original finding context unless the triggering payload was preserved end-to-end through approval and execution.
+- [x] Gap: a naive lock-scoped runtime refactor would deadlock or serialize action execution behind policy-map reads.
+
+### Execution plan
+- [x] Add a shared action-engine substrate:
+  - [x] add `internal/actionengine` with typed `Signal`, `Trigger`, `Playbook`, `Step`, `Execution`, and `Event`
+  - [x] add trigger matching, approval gating, ordered step execution, timeout handling, and failure-policy support
+  - [x] persist executions and events through `internal/executionstore` under namespace `action_engine`
+- [x] Replatform remediation execution on top of the shared action engine:
+  - [x] map remediation rules to shared playbooks
+  - [x] map trigger data to shared signals
+  - [x] map shared execution state/results back onto remediation-native execution records
+- [x] Replatform runtime response execution on top of the shared action engine:
+  - [x] map response policies to shared playbooks
+  - [x] map findings to shared signals
+  - [x] preserve full finding payload in `TriggerData` so approval resumes with the original context
+- [x] Wire app initialization to one durable action executor:
+  - [x] build the executor from `EXECUTION_STORE_FILE`
+  - [x] inject it into both remediation and runtime services
+  - [x] keep in-memory fallback only as defensive startup behavior when the durable store cannot initialize
+- [x] Harden concurrency and regression coverage:
+  - [x] add `internal/actionengine/executor_test.go`
+  - [x] add runtime approval-context regression coverage in `internal/runtime/response_test.go`
+  - [x] fix the runtime policy lock-upgrade deadlock by copying matched policy state before execution creation
+- [x] Capture the architecture and upstream learnings:
+  - [x] add `docs/ACTION_ENGINE_ARCHITECTURE.md`
+  - [x] pull reference patterns via `gh` from `StackStorm/st2`, `argoproj/argo-events`, and `argoproj/argo-workflows`
+
+### Detailed follow-on backlog
+- [ ] Track A - Shared action read/control surface
+  - Exit criteria:
+  - [ ] expose durable action executions and events over a typed API surface instead of application-local lists only
+  - [ ] decide which parts belong under platform actions vs security application aliases
+  - [ ] unify approval/reject/read semantics across remediation and runtime on top of the shared store
+- [ ] Track B - Real executors on one substrate
+  - Exit criteria:
+  - [ ] land issue `#154` on top of `internal/actionengine` rather than extending runtime-only executors
+  - [ ] support executor capability metadata so unsupported steps fail predictably before dispatch
+  - [ ] capture provider/action output in shared execution events instead of one-off native structs
+- [ ] Track C - Shared execution store extraction
+  - Exit criteria:
+  - [ ] decide whether SQLite remains sufficient for multi-worker action execution
+  - [ ] define locking/lease semantics for multi-process action runners
+  - [ ] avoid introducing new per-subsystem state stores for actions, scans, and graph jobs
+- [ ] Track D - Graph/world-model integration
+  - Exit criteria:
+  - [ ] project action executions, approvals, and outcomes into claim/action/outcome graph primitives where it improves explanation and auditability
+  - [ ] attach remediation/runtime outcomes back to finding, vulnerability, and incident context
+  - [ ] connect future issue `#170` correlation work to the shared action execution timeline
+
 ## Deep Review Cycle 54 - Workload Scan Graph Projection + Attack-Path Context (2026-03-12)
 
 ### Review findings
