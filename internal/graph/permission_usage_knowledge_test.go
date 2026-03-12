@@ -197,3 +197,42 @@ func TestBuildGCPIAMPermissionUsageKnowledgePreservesAttributionUncertain(t *tes
 		t.Fatalf("expected uncertain observation status, got %v", observations[0].Properties["usage_status"])
 	}
 }
+
+func TestBuildCandidateWritesPermissionUsageIntoCandidateOnly(t *testing.T) {
+	source := newMockDataSource()
+	builder := NewBuilder(source, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	observedAt := time.Date(2026, 3, 10, 8, 0, 0, 0, time.UTC)
+	windowStart := observedAt.Add(-90 * 24 * time.Hour)
+
+	source.setResult(gcpIAMPermissionUsageKnowledgeQuery, &QueryResult{Rows: []map[string]any{{
+		"_cq_id":                 "row-gcp-1",
+		"project_id":             "writer-prod",
+		"group_email":            "eng@example.com",
+		"permission":             "resourcemanager.projects.get",
+		"granted_roles":          []any{"roles/viewer"},
+		"usage_status":           "used",
+		"days_unused":            2,
+		"lookback_days":          90,
+		"removal_threshold_days": 180,
+		"member_count":           12,
+		"members_observed":       8,
+		"evidence_source":        "gcp_cloud_audit_logs_authorization_info",
+		"confidence":             "medium",
+		"coverage":               "partial",
+		"scan_window_start":      windowStart,
+		"scan_window_end":        observedAt,
+		"history_day":            observedAt.Truncate(24 * time.Hour),
+	}}})
+
+	candidate, _, err := builder.BuildCandidate(context.Background())
+	if err != nil {
+		t.Fatalf("BuildCandidate failed: %v", err)
+	}
+	if claims := candidate.GetNodesByKind(NodeKindClaim); len(claims) != 1 {
+		t.Fatalf("expected candidate to contain 1 permission-usage claim, got %d", len(claims))
+	}
+	if claims := builder.Graph().GetNodesByKind(NodeKindClaim); len(claims) != 0 {
+		t.Fatalf("expected live graph to remain untouched, got %d claims", len(claims))
+	}
+}

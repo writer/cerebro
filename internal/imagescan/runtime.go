@@ -302,8 +302,8 @@ func (r *Runner) analyze(ctx context.Context, client scanner.RegistryClient, run
 	report.Result.Architecture = firstNonEmpty(report.Result.Architecture, input.Manifest.Config.Architecture)
 	report.Result.ScanTime = r.now().UTC()
 
-	if strings.TrimSpace(run.Target.Tag) != "" {
-		nativeVulns, err := client.GetVulnerabilities(ctx, run.Target.Repository, run.Target.Tag)
+	if nativeReference := run.Target.NativeVulnerabilityReference(); nativeReference != "" {
+		nativeVulns, err := client.GetVulnerabilities(ctx, run.Target.Repository, nativeReference)
 		if err == nil {
 			report.NativeVulnerabilityCount = len(nativeVulns)
 			report.Result.Vulnerabilities = mergeVulnerabilities(nativeVulns, report.Result.Vulnerabilities)

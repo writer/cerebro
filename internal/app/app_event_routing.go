@@ -73,6 +73,7 @@ func (a *App) startEventAlertRouting(_ context.Context) {
 	a.Webhooks.Subscribe(func(eventCtx context.Context, event webhooks.Event) error {
 		if routeErr := router.Route(eventCtx, event); routeErr != nil {
 			a.Logger.Warn("alert routing failed", "event_type", event.Type, "error", routeErr)
+			return routeErr
 		}
 		return nil
 	})

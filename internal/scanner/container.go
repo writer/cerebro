@@ -750,11 +750,21 @@ func (c *ECRClient) GetVulnerabilities(ctx context.Context, repo, tag string) ([
 	if err := c.ensureClient(ctx); err != nil {
 		return nil, err
 	}
+	reference := strings.TrimSpace(tag)
+	if reference == "" {
+		return nil, fmt.Errorf("image reference is required")
+	}
 
 	var vulns []ImageVulnerability
+	imageID := &ecrtypes.ImageIdentifier{}
+	if strings.HasPrefix(reference, "sha256:") {
+		imageID.ImageDigest = aws.String(reference)
+	} else {
+		imageID.ImageTag = aws.String(reference)
+	}
 	input := &ecr.DescribeImageScanFindingsInput{
 		RepositoryName: aws.String(repo),
-		ImageId:        &ecrtypes.ImageIdentifier{ImageTag: aws.String(tag)},
+		ImageId:        imageID,
 	}
 	if c.accountID != "" {
 		input.RegistryId = aws.String(c.accountID)

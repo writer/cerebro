@@ -41,13 +41,14 @@ func TestQueryRowHelpers_UppercaseMapCompatibility(t *testing.T) {
 	}
 }
 
-func TestHasChanges_HandlesUppercaseLatestKey(t *testing.T) {
+func TestHasChanges_HandlesUppercaseWatermarkKeys(t *testing.T) {
 	base := time.Date(2026, 2, 17, 12, 0, 0, 0, time.UTC)
 
 	t.Run("older latest returns false", func(t *testing.T) {
-		source := &fixedQuerySource{result: &QueryResult{Rows: []map[string]any{{"LATEST": base.Add(-time.Minute)}}}}
+		source := &fixedQuerySource{result: &QueryResult{Rows: []map[string]any{{"EVENT_TIME": base.Add(-time.Minute), "INGESTED_AT": base.Add(-time.Minute), "EVENT_ID": "evt-1"}}}}
 		builder := NewBuilder(source, nil)
 		builder.lastBuildTime = base
+		builder.lastCDCWatermark = cdcWatermark{EventTime: base, IngestedAt: base, EventID: "evt-2"}
 
 		if changed := builder.HasChanges(context.Background()); changed {
 			t.Fatal("expected no changes when latest is older")
@@ -55,9 +56,10 @@ func TestHasChanges_HandlesUppercaseLatestKey(t *testing.T) {
 	})
 
 	t.Run("newer latest returns true", func(t *testing.T) {
-		source := &fixedQuerySource{result: &QueryResult{Rows: []map[string]any{{"LATEST": base.Add(time.Minute)}}}}
+		source := &fixedQuerySource{result: &QueryResult{Rows: []map[string]any{{"EVENT_TIME": base, "INGESTED_AT": base.Add(time.Minute), "EVENT_ID": "evt-2"}}}}
 		builder := NewBuilder(source, nil)
 		builder.lastBuildTime = base
+		builder.lastCDCWatermark = cdcWatermark{EventTime: base, IngestedAt: base, EventID: "evt-1"}
 
 		if changed := builder.HasChanges(context.Background()); !changed {
 			t.Fatal("expected changes when latest is newer")

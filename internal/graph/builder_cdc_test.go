@@ -31,7 +31,6 @@ func newCDCRoutingSource() *cdcRoutingSource {
 
 func (s *cdcRoutingSource) Query(ctx context.Context, query string, args ...any) (*QueryResult, error) {
 	_ = ctx
-	_ = args
 	lower := strings.ToLower(query)
 
 	if s.blockNeedle != "" && strings.Contains(lower, s.blockNeedle) {
@@ -58,10 +57,26 @@ func (s *cdcRoutingSource) Query(ctx context.Context, query string, args ...any)
 		return &QueryResult{Rows: []map[string]any{{"latest": s.latest}}, Count: 1}, nil
 	}
 
+	if strings.Contains(lower, "select event_time") && strings.Contains(lower, "from cdc_events") && strings.Contains(lower, "limit 1") {
+		s.queryHits["latest_watermark"]++
+		if len(s.events) == 0 {
+			if s.latest.IsZero() {
+				return &QueryResult{Rows: []map[string]any{}}, nil
+			}
+			return &QueryResult{Rows: []map[string]any{{"event_time": s.latest, "ingested_at": s.latest, "event_id": "evt-latest"}}, Count: 1}, nil
+		}
+		latest := s.events[0]
+		for _, row := range s.events[1:] {
+			if compareCDCEventRows(row, latest) > 0 {
+				latest = row
+			}
+		}
+		return &QueryResult{Rows: []map[string]any{latest}, Count: 1}, nil
+	}
+
 	if strings.Contains(lower, "select event_id") && strings.Contains(lower, "from cdc_events") {
 		s.queryHits["cdc_events"]++
-		rows := make([]map[string]any, 0, len(s.events))
-		rows = append(rows, s.events...)
+		rows := filterCDCEventRows(s.events, args)
 		return &QueryResult{Rows: rows, Count: len(rows)}, nil
 	}
 
@@ -76,6 +91,66 @@ func (s *cdcRoutingSource) Query(ctx context.Context, query string, args ...any)
 	}
 
 	return &QueryResult{Rows: []map[string]any{}}, nil
+}
+
+func filterCDCEventRows(rows []map[string]any, args []any) []map[string]any {
+	if len(args) < 6 {
+		cloned := make([]map[string]any, 0, len(rows))
+		cloned = append(cloned, rows...)
+		return cloned
+	}
+	sinceEventTime, _ := args[0].(time.Time)
+	sinceIngestedAt, _ := args[2].(time.Time)
+	sinceEventID, _ := args[5].(string)
+	filtered := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		eventTime := parseCDCEventTime(row["event_time"])
+		ingestedAt := parseCDCEventTime(row["ingested_at"])
+		if ingestedAt.IsZero() {
+			ingestedAt = eventTime
+		}
+		eventID, _ := row["event_id"].(string)
+		if eventTime.After(sinceEventTime) ||
+			(eventTime.Equal(sinceEventTime) && ingestedAt.After(sinceIngestedAt)) ||
+			(eventTime.Equal(sinceEventTime) && ingestedAt.Equal(sinceIngestedAt) && eventID > sinceEventID) {
+			filtered = append(filtered, row)
+		}
+	}
+	return filtered
+}
+
+func compareCDCEventRows(left, right map[string]any) int {
+	leftEventTime := parseCDCEventTime(left["event_time"])
+	rightEventTime := parseCDCEventTime(right["event_time"])
+	if leftEventTime.After(rightEventTime) {
+		return 1
+	}
+	if leftEventTime.Before(rightEventTime) {
+		return -1
+	}
+	leftIngestedAt := parseCDCEventTime(left["ingested_at"])
+	rightIngestedAt := parseCDCEventTime(right["ingested_at"])
+	if leftIngestedAt.IsZero() {
+		leftIngestedAt = leftEventTime
+	}
+	if rightIngestedAt.IsZero() {
+		rightIngestedAt = rightEventTime
+	}
+	if leftIngestedAt.After(rightIngestedAt) {
+		return 1
+	}
+	if leftIngestedAt.Before(rightIngestedAt) {
+		return -1
+	}
+	leftEventID, _ := left["event_id"].(string)
+	rightEventID, _ := right["event_id"].(string)
+	if leftEventID > rightEventID {
+		return 1
+	}
+	if leftEventID < rightEventID {
+		return -1
+	}
+	return 0
 }
 
 func TestBuilderApplyChanges_UpsertsAndRemovesNodes(t *testing.T) {
@@ -389,6 +464,158 @@ func TestBuilderApplyChanges_DoesNotRegressWatermarkOnHistoricalReplay(t *testin
 	}
 	if _, ok := builder.Graph().GetNode("arn:aws:s3:::historical-bucket"); !ok {
 		t.Fatal("expected historical node to be applied while preserving watermark")
+	}
+}
+
+func TestBuilderApplyChangesRefreshesDerivedKnowledge(t *testing.T) {
+	source := newCDCRoutingSource()
+	builder := NewBuilder(source, nil)
+
+	permissionSetID := "arn:aws:sso:::permissionSet/ssoins-123/ps-123"
+	bucketID := "arn:aws:s3:::payments-bucket"
+	base := time.Date(2026, 3, 12, 12, 0, 0, 0, time.UTC)
+	observedAt := base.Add(30 * time.Minute)
+	windowStart := observedAt.Add(-180 * 24 * time.Hour)
+	permissionRowKey := "row-aws-1"
+	permissionClaimID := permissionUsageClaimID("aws", permissionRowKey, observedAt)
+
+	builder.Graph().AddNode(&Node{ID: "internet", Kind: NodeKindInternet, Provider: "external", Name: "Internet", Risk: RiskCritical})
+	builder.Graph().AddNode(&Node{ID: permissionSetID, Kind: NodeKindRole, Provider: "aws", Account: "123456789012", Region: "us-east-1", Name: "Admin"})
+	builder.Graph().AddNode(&Node{ID: bucketID, Kind: NodeKindBucket, Provider: "aws", Account: "123456789012", Region: "us-east-1", Name: "payments-bucket", Properties: map[string]any{"public": false, "versioning_status": "Suspended"}})
+	builder.Graph().AddNode(&Node{ID: permissionClaimID, Kind: NodeKindClaim, Properties: map[string]any{"object_value": "unused", "source_system": awsIAMPermissionUsageSourceSystem}})
+	builder.Graph().AddNode(&Node{ID: "claim:" + slugifyKnowledgeKey(bucketID) + ":versioning_enabled:normalized", Kind: NodeKindClaim, Properties: map[string]any{"object_value": "false", "source_system": entityAssetNormalizerSourceSystem}})
+
+	source.routes["from aws_identitycenter_permission_set_permission_usage_history"] = &QueryResult{Rows: []map[string]any{{
+		"_cq_id":                       permissionRowKey,
+		"account_id":                   "123456789012",
+		"account_ids":                  []any{"123456789012"},
+		"account_count":                1,
+		"region":                       "us-east-1",
+		"identity_center_instance_arn": "arn:aws:sso:::instance/ssoins-123",
+		"permission_set_arn":           permissionSetID,
+		"permission_set_name":          "Admin",
+		"sso_role_arns":                []any{"arn:aws:iam::123456789012:role/AWSReservedSSO_Admin_abcdef"},
+		"action":                       "iam:CreateUser",
+		"usage_status":                 "used",
+		"days_unused":                  1,
+		"lookback_days":                180,
+		"removal_threshold_days":       180,
+		"recommendation":               "Keep iam:CreateUser in the permission set.",
+		"evidence_source":              "aws_iam_access_advisor_action_level",
+		"confidence":                   "high",
+		"coverage":                     "full",
+		"scan_window_start":            windowStart,
+		"scan_window_end":              observedAt,
+		"history_day":                  observedAt.Truncate(24 * time.Hour),
+		"assignment_count":             3,
+	}}}
+
+	source.events = []map[string]any{
+		{
+			"event_id":    "evt-iam-1",
+			"table_name":  "aws_identitycenter_permission_set_permission_usage_history",
+			"resource_id": permissionRowKey,
+			"change_type": "modified",
+			"provider":    "aws",
+			"region":      "us-east-1",
+			"account_id":  "123456789012",
+			"payload":     map[string]any{"_cq_id": permissionRowKey},
+			"event_time":  base.Add(5 * time.Second),
+			"ingested_at": base.Add(6 * time.Second),
+		},
+		{
+			"event_id":    "evt-bucket-1",
+			"table_name":  "aws_s3_buckets",
+			"resource_id": bucketID,
+			"change_type": "modified",
+			"provider":    "aws",
+			"region":      "us-east-1",
+			"account_id":  "123456789012",
+			"payload": map[string]any{
+				"arn":                 bucketID,
+				"name":                "payments-bucket",
+				"account_id":          "123456789012",
+				"region":              "us-east-1",
+				"block_public_acls":   true,
+				"block_public_policy": true,
+				"versioning_status":   "Enabled",
+			},
+			"event_time":  base.Add(10 * time.Second),
+			"ingested_at": base.Add(11 * time.Second),
+		},
+	}
+
+	if _, err := builder.ApplyChanges(context.Background(), base); err != nil {
+		t.Fatalf("ApplyChanges failed: %v", err)
+	}
+
+	permissionClaim, ok := builder.Graph().GetNode(permissionClaimID)
+	if !ok {
+		t.Fatalf("expected permission usage claim %q to be rebuilt", permissionClaimID)
+	}
+	if got := permissionClaim.Properties["object_value"]; got != "used" {
+		t.Fatalf("expected permission usage claim to refresh to used, got %v", got)
+	}
+
+	var bucketClaim *Node
+	for _, claim := range builder.Graph().GetNodesByKind(NodeKindClaim) {
+		if claim == nil {
+			continue
+		}
+		if claim.Properties["subject_id"] == bucketID && claim.Properties["predicate"] == "versioning_enabled" && claim.Properties["source_system"] == entityAssetNormalizerSourceSystem {
+			bucketClaim = claim
+			break
+		}
+	}
+	if bucketClaim == nil {
+		t.Fatal("expected bucket normalization claim to be rebuilt")
+	}
+	if got := bucketClaim.Properties["object_value"]; got != "true" {
+		t.Fatalf("expected normalized bucket claim to refresh to true, got %v", got)
+	}
+}
+
+func TestBuilderApplyChangesUsesCDCWatermarkTieBreakers(t *testing.T) {
+	source := newCDCRoutingSource()
+	builder := NewBuilder(source, nil)
+
+	base := time.Date(2026, 3, 12, 13, 0, 0, 0, time.UTC)
+	builder.Graph().AddNode(&Node{ID: "internet", Kind: NodeKindInternet, Provider: "external", Name: "Internet", Risk: RiskCritical})
+	builder.lastBuildTime = base
+	builder.lastCDCWatermark = cdcWatermark{EventTime: base, IngestedAt: base.Add(time.Second), EventID: "evt-1"}
+
+	source.events = []map[string]any{{
+		"event_id":    "evt-2",
+		"table_name":  "aws_s3_buckets",
+		"resource_id": "arn:aws:s3:::later-bucket",
+		"change_type": "added",
+		"provider":    "aws",
+		"region":      "us-east-1",
+		"account_id":  "111111111111",
+		"payload": map[string]any{
+			"arn":                 "arn:aws:s3:::later-bucket",
+			"name":                "later-bucket",
+			"account_id":          "111111111111",
+			"region":              "us-east-1",
+			"block_public_acls":   true,
+			"block_public_policy": true,
+		},
+		"event_time":  base,
+		"ingested_at": base.Add(2 * time.Second),
+	}}
+
+	summary, err := builder.ApplyChanges(context.Background(), time.Time{})
+	if err != nil {
+		t.Fatalf("ApplyChanges failed: %v", err)
+	}
+	if summary.EventsProcessed != 1 {
+		t.Fatalf("expected one same-timestamp event to be processed, got %+v", summary)
+	}
+	if _, ok := builder.Graph().GetNode("arn:aws:s3:::later-bucket"); !ok {
+		t.Fatal("expected same-timestamp bucket event to be applied")
+	}
+	if builder.lastCDCWatermark.EventID != "evt-2" {
+		t.Fatalf("expected watermark event id to advance to evt-2, got %#v", builder.lastCDCWatermark)
 	}
 }
 

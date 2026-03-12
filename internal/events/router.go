@@ -333,15 +333,6 @@ func (r *AlertRouter) Route(ctx context.Context, event webhooks.Event) error {
 	nextSnapshot := r.snapshotStateLocked(now)
 	r.mu.Unlock()
 
-	if err := r.persistSnapshot(ctx, nextSnapshot); err != nil {
-		r.mu.Lock()
-		if r.stateRevision == nextSnapshot.Revision {
-			r.restoreStateLocked(previousSnapshot, now)
-		}
-		r.mu.Unlock()
-		return err
-	}
-
 	var errs []error
 	for _, item := range outbound {
 		if len(item.payload) == 0 || strings.TrimSpace(item.subject) == "" {
@@ -351,7 +342,18 @@ func (r *AlertRouter) Route(ctx context.Context, event webhooks.Event) error {
 			errs = append(errs, err)
 		}
 	}
-	return errors.Join(errs...)
+	if sendErr := errors.Join(errs...); sendErr != nil {
+		r.mu.Lock()
+		if r.stateRevision == nextSnapshot.Revision {
+			r.restoreStateLocked(previousSnapshot, now)
+		}
+		r.mu.Unlock()
+		return sendErr
+	}
+	if err := r.persistSnapshot(ctx, nextSnapshot); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (r *AlertRouter) Acknowledge(alertID string, recipientID string) bool {

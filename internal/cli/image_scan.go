@@ -128,6 +128,21 @@ func bindImageReferenceFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&imageScanDigest, "digest", "", "Optional image digest (overrides tag for manifest resolution)")
 }
 
+func imageScanTargetFromFlags(cmd *cobra.Command, registry imagescan.RegistryKind, registryHost string) imagescan.ScanTarget {
+	tag := strings.TrimSpace(imageScanTag)
+	digest := strings.TrimSpace(imageScanDigest)
+	if digest != "" && cmd != nil && !cmd.Flags().Changed("tag") {
+		tag = ""
+	}
+	return imagescan.ScanTarget{
+		Registry:     registry,
+		RegistryHost: registryHost,
+		Repository:   strings.TrimSpace(imageScanRepository),
+		Tag:          tag,
+		Digest:       digest,
+	}
+}
+
 func runImageScanList(cmd *cobra.Command, args []string) error {
 	cfg := app.LoadConfig()
 	store, err := imagescan.NewSQLiteRunStore(resolveImageScanStateFile(cfg))
@@ -152,39 +167,21 @@ func runImageScanList(cmd *cobra.Command, args []string) error {
 
 func runImageScanECR(cmd *cobra.Command, args []string) error {
 	client := scanner.NewECRClient(strings.TrimSpace(imageScanECRRegion), strings.TrimSpace(imageScanECRAccountID))
-	return runImageScan(cmd.Context(), imagescan.ScanTarget{
-		Registry:     imagescan.RegistryECR,
-		RegistryHost: client.RegistryHost(),
-		Repository:   strings.TrimSpace(imageScanRepository),
-		Tag:          strings.TrimSpace(imageScanTag),
-		Digest:       strings.TrimSpace(imageScanDigest),
-	}, client)
+	return runImageScan(cmd.Context(), imageScanTargetFromFlags(cmd, imagescan.RegistryECR, client.RegistryHost()), client)
 }
 
 func runImageScanGCR(cmd *cobra.Command, args []string) error {
 	client := scanner.NewGCRClient(strings.TrimSpace(imageScanGCRProjectID))
 	client.SetRegistryHost(strings.TrimSpace(imageScanGCRHost))
 	client.SetAccessToken(strings.TrimSpace(imageScanGCRAccessToken))
-	return runImageScan(cmd.Context(), imagescan.ScanTarget{
-		Registry:     imagescan.RegistryGCR,
-		RegistryHost: client.RegistryHost(),
-		Repository:   strings.TrimSpace(imageScanRepository),
-		Tag:          strings.TrimSpace(imageScanTag),
-		Digest:       strings.TrimSpace(imageScanDigest),
-	}, client)
+	return runImageScan(cmd.Context(), imageScanTargetFromFlags(cmd, imagescan.RegistryGCR, client.RegistryHost()), client)
 }
 
 func runImageScanACR(cmd *cobra.Command, args []string) error {
 	client := scanner.NewACRClient(strings.TrimSpace(imageScanACRRegistryName), strings.TrimSpace(imageScanACRSubscriptionID))
 	client.SetCredentials(strings.TrimSpace(imageScanACRUsername), strings.TrimSpace(imageScanACRPassword))
 	client.SetBaseURL(strings.TrimSpace(imageScanACRBaseURL))
-	return runImageScan(cmd.Context(), imagescan.ScanTarget{
-		Registry:     imagescan.RegistryACR,
-		RegistryHost: client.RegistryHost(),
-		Repository:   strings.TrimSpace(imageScanRepository),
-		Tag:          strings.TrimSpace(imageScanTag),
-		Digest:       strings.TrimSpace(imageScanDigest),
-	}, client)
+	return runImageScan(cmd.Context(), imageScanTargetFromFlags(cmd, imagescan.RegistryACR, client.RegistryHost()), client)
 }
 
 func runImageScan(parent context.Context, target imagescan.ScanTarget, client scanner.RegistryClient) error {

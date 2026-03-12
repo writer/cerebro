@@ -27,14 +27,15 @@ type QueryResult struct {
 
 // Builder constructs the graph platform from data sources.
 type Builder struct {
-	source          DataSource
-	logger          *slog.Logger
-	stateMu         sync.RWMutex
-	updateMu        sync.Mutex
-	graph           *Graph
-	availableTables map[string]bool // populated tables, skips queries for missing ones
-	lastBuildTime   time.Time       // when the last successful build finished
-	lastMutation    GraphMutationSummary
+	source           DataSource
+	logger           *slog.Logger
+	stateMu          sync.RWMutex
+	updateMu         sync.Mutex
+	graph            *Graph
+	availableTables  map[string]bool // populated tables, skips queries for missing ones
+	lastBuildTime    time.Time       // event_time watermark for the last successful build (or build completion when CDC watermark is unavailable)
+	lastCDCWatermark cdcWatermark
+	lastMutation     GraphMutationSummary
 }
 
 // NewBuilder creates a new graph builder
@@ -167,7 +168,7 @@ func (b *Builder) BuildCandidate(ctx context.Context) (*Graph, GraphMutationSumm
 		"edges", working.graph.EdgeCount(),
 		"duration", time.Since(edgeStart))
 
-	b.buildIAMPermissionUsageKnowledge(ctx)
+	working.buildIAMPermissionUsageKnowledge(ctx)
 
 	// Build unified person graph overlay (person nodes + projected edges).
 	if err := ctx.Err(); err != nil {
@@ -236,37 +237,39 @@ func (b *Builder) Build(ctx context.Context) error {
 		return err
 	}
 
+	watermark, watermarkErr := b.queryLatestCDCWatermark(ctx)
+	if watermarkErr != nil || watermark.EventTime.IsZero() {
+		watermark = cdcWatermark{EventTime: summary.Until}
+	}
+
 	b.stateMu.Lock()
 	b.graph = candidate
 	b.availableTables = nil
-	b.lastBuildTime = summary.Until
+	b.lastBuildTime = watermark.EventTime
+	b.lastCDCWatermark = watermark
 	b.lastMutation = summary
 	b.stateMu.Unlock()
 	return nil
 }
 
 // HasChanges checks whether any asset tables have been modified since the last
-// graph build by looking at MAX(event_time) from CDC_EVENTS. Returns true if
-// changes are detected or if the check fails (fail-open to ensure freshness).
+// graph build by looking at the latest CDC watermark. Returns true if changes
+// are detected or if the check fails (fail-open to ensure freshness).
 func (b *Builder) HasChanges(ctx context.Context) bool {
 	b.stateMu.RLock()
 	lastBuildTime := b.lastBuildTime
+	lastCDCWatermark := b.lastCDCWatermark
 	b.stateMu.RUnlock()
 
-	if lastBuildTime.IsZero() {
+	currentWatermark := effectiveCDCWatermark(lastBuildTime, lastCDCWatermark)
+	if currentWatermark.EventTime.IsZero() {
 		return true
 	}
-	result, err := b.source.Query(ctx, `
-		SELECT MAX(event_time) AS latest
-		FROM CDC_EVENTS
-	`)
-	if err != nil || len(result.Rows) == 0 {
+	latest, err := b.queryLatestCDCWatermark(ctx)
+	if err != nil || latest.EventTime.IsZero() {
 		return true // fail-open
 	}
-	if latest, ok := queryRow(result.Rows[0], "latest").(time.Time); ok && !latest.IsZero() {
-		return latest.After(lastBuildTime)
-	}
-	return true
+	return latest.After(currentWatermark)
 }
 
 // RebuildIfChanged rebuilds the graph only if data has changed since the last build.

@@ -25,9 +25,18 @@ type Materializer interface {
 	Cleanup(ctx context.Context, artifact FilesystemArtifact) error
 }
 
+const (
+	defaultMaterializedFileCount  = int64(100000)
+	defaultMaterializedFileBytes  = int64(256 << 20)
+	defaultMaterializedTotalBytes = int64(1 << 30)
+)
+
 type LocalMaterializer struct {
-	basePath string
-	now      func() time.Time
+	basePath      string
+	now           func() time.Time
+	maxFileCount  int64
+	maxFileBytes  int64
+	maxTotalBytes int64
 }
 
 func NewLocalMaterializer(basePath string) *LocalMaterializer {
@@ -36,8 +45,11 @@ func NewLocalMaterializer(basePath string) *LocalMaterializer {
 		basePath = filepath.Join(".cerebro", "image-scan", "rootfs")
 	}
 	return &LocalMaterializer{
-		basePath: basePath,
-		now:      time.Now,
+		basePath:      basePath,
+		now:           time.Now,
+		maxFileCount:  defaultMaterializedFileCount,
+		maxFileBytes:  defaultMaterializedFileBytes,
+		maxTotalBytes: defaultMaterializedTotalBytes,
 	}
 }
 
@@ -68,7 +80,7 @@ func (m *LocalMaterializer) Materialize(ctx context.Context, runID string, manif
 		if err := ctx.Err(); err != nil {
 			return nil, layers, err
 		}
-		layerRecord, countDelta, byteDelta, err := m.applyLayer(ctx, rootfsPath, layer, open)
+		layerRecord, countDelta, byteDelta, err := m.applyLayer(ctx, rootfsPath, layer, open, fileCount, byteSize)
 		if err != nil {
 			return nil, layers, err
 		}
@@ -106,7 +118,7 @@ func (m *LocalMaterializer) Cleanup(_ context.Context, artifact FilesystemArtifa
 	return nil
 }
 
-func (m *LocalMaterializer) applyLayer(ctx context.Context, rootfsPath string, layer scanner.Layer, open BlobOpener) (LayerArtifact, int64, int64, error) {
+func (m *LocalMaterializer) applyLayer(ctx context.Context, rootfsPath string, layer scanner.Layer, open BlobOpener, existingFileCount, existingByteSize int64) (LayerArtifact, int64, int64, error) {
 	record := LayerArtifact{
 		Digest:    strings.TrimSpace(layer.Digest),
 		MediaType: strings.TrimSpace(layer.MediaType),
@@ -141,7 +153,7 @@ func (m *LocalMaterializer) applyLayer(ctx context.Context, rootfsPath string, l
 		if err != nil {
 			return record, fileCount, byteSize, fmt.Errorf("read layer %s: %w", layer.Digest, err)
 		}
-		countDelta, byteDelta, err := applyTarEntry(rootfsPath, header, tarReader)
+		countDelta, byteDelta, err := m.applyTarEntry(rootfsPath, header, tarReader, existingFileCount, fileCount, existingByteSize, byteSize)
 		if err != nil {
 			return record, fileCount, byteSize, fmt.Errorf("apply layer %s entry %s: %w", layer.Digest, header.Name, err)
 		}
@@ -187,7 +199,7 @@ func layerTarReader(reader io.Reader, mediaType string) (*tar.Reader, func(), er
 	return tar.NewReader(buffered), func() {}, nil
 }
 
-func applyTarEntry(rootfsPath string, header *tar.Header, reader io.Reader) (int64, int64, error) {
+func (m *LocalMaterializer) applyTarEntry(rootfsPath string, header *tar.Header, reader io.Reader, existingFileCount, fileCount, existingByteSize, byteSize int64) (int64, int64, error) {
 	relPath := sanitizeTarPath(header.Name)
 	if relPath == "" {
 		return 0, 0, nil
@@ -219,6 +231,12 @@ func applyTarEntry(rootfsPath string, header *tar.Header, reader io.Reader) (int
 		}
 		return 0, 0, os.MkdirAll(targetPath, mode)
 	case tar.TypeReg:
+		if header.Size < 0 {
+			return 0, 0, fmt.Errorf("tar entry size %d is invalid", header.Size)
+		}
+		if err := m.validateRegularFileLimits(header.Name, header.Size, existingFileCount, fileCount, existingByteSize, byteSize); err != nil {
+			return 0, 0, err
+		}
 		if err := removeReplaceableTarget(targetPath); err != nil {
 			return 0, 0, err
 		}
@@ -231,9 +249,12 @@ func applyTarEntry(rootfsPath string, header *tar.Header, reader io.Reader) (int
 			return 0, 0, err
 		}
 		defer func() { _ = file.Close() }()
-		written, err := io.Copy(file, reader)
+		written, err := io.Copy(file, io.LimitReader(reader, header.Size+1))
 		if err != nil {
 			return 0, written, err
+		}
+		if written > header.Size {
+			return 0, written, fmt.Errorf("tar entry %s exceeds declared size %d", header.Name, header.Size)
 		}
 		return 1, written, nil
 	case tar.TypeSymlink:
@@ -253,6 +274,62 @@ func applyTarEntry(rootfsPath string, header *tar.Header, reader io.Reader) (int
 	default:
 		return 0, 0, nil
 	}
+}
+
+func (m *LocalMaterializer) validateRegularFileLimits(name string, size, existingFileCount, fileCount, existingByteSize, byteSize int64) error {
+	if m == nil {
+		return fmt.Errorf("local materializer is nil")
+	}
+	if m.maxFileCount > 0 && existingFileCount+fileCount+1 > m.maxFileCount {
+		return fmt.Errorf("materialized file count exceeds max of %d", m.maxFileCount)
+	}
+	if m.maxFileBytes > 0 && size > m.maxFileBytes {
+		return fmt.Errorf("tar entry %s exceeds max size of %d bytes", name, m.maxFileBytes)
+	}
+	if m.maxTotalBytes > 0 {
+		exceeds, err := exceedsMaterializedSizeLimit(existingByteSize, byteSize, size, m.maxTotalBytes)
+		if err != nil {
+			return err
+		}
+		if exceeds {
+			return fmt.Errorf("materialized filesystem exceeds max size of %d bytes", m.maxTotalBytes)
+		}
+	}
+	return nil
+}
+
+func exceedsMaterializedSizeLimit(existingByteSize, byteSize, entryByteSize, maxTotalBytes int64) (bool, error) {
+	existingU64, err := int64ToUint64(existingByteSize)
+	if err != nil {
+		return false, err
+	}
+	currentU64, err := int64ToUint64(byteSize)
+	if err != nil {
+		return false, err
+	}
+	entryU64, err := int64ToUint64(entryByteSize)
+	if err != nil {
+		return false, err
+	}
+	maxU64, err := int64ToUint64(maxTotalBytes)
+	if err != nil {
+		return false, err
+	}
+	if existingU64 > maxU64 || currentU64 > maxU64 {
+		return true, nil
+	}
+	if currentU64 > maxU64-existingU64 {
+		return true, nil
+	}
+	used := existingU64 + currentU64
+	return entryU64 > maxU64-used, nil
+}
+
+func int64ToUint64(value int64) (uint64, error) {
+	if value < 0 {
+		return 0, fmt.Errorf("negative size %d is not supported", value)
+	}
+	return uint64(value), nil
 }
 
 func applyWhiteout(rootfsPath, dir, base string) error {

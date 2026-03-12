@@ -25,6 +25,8 @@ type fakeRegistry struct {
 	vulns    []scanner.ImageVulnerability
 	blobs    map[string][]byte
 	blobErr  error
+	vulnRepo string
+	vulnRef  string
 }
 
 func (r *fakeRegistry) Name() string { return r.name }
@@ -43,7 +45,9 @@ func (r *fakeRegistry) ListTags(context.Context, string) ([]scanner.ImageTag, er
 func (r *fakeRegistry) GetManifest(context.Context, string, string) (*scanner.ImageManifest, error) {
 	return r.manifest, nil
 }
-func (r *fakeRegistry) GetVulnerabilities(context.Context, string, string) ([]scanner.ImageVulnerability, error) {
+func (r *fakeRegistry) GetVulnerabilities(_ context.Context, repo, ref string) ([]scanner.ImageVulnerability, error) {
+	r.vulnRepo = repo
+	r.vulnRef = ref
 	return append([]scanner.ImageVulnerability(nil), r.vulns...), nil
 }
 func (r *fakeRegistry) DownloadBlob(_ context.Context, _ string, digest string) (io.ReadCloser, error) {
@@ -428,6 +432,52 @@ func TestRunnerRunImageScanPreservesFilesystemVulnerabilityCountAcrossDedup(t *t
 	}
 	if run.Analysis.Result.Summary.Total != 1 {
 		t.Fatalf("expected one merged vulnerability, got %#v", run.Analysis.Result.Summary)
+	}
+}
+
+func TestRunnerRunImageScanPrefersDigestForNativeVulnerabilityLookup(t *testing.T) {
+	store, err := NewSQLiteRunStore(filepath.Join(t.TempDir(), "image-scan.db"))
+	if err != nil {
+		t.Fatalf("new sqlite run store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	layer := gzipTarLayer(t, map[string]string{"etc/os-release": "NAME=Ubuntu\n"}, nil)
+	registry := &fakeRegistry{
+		name: "ecr",
+		host: "123456789012.dkr.ecr.us-east-1.amazonaws.com",
+		manifest: &scanner.ImageManifest{
+			Digest: "sha256:image",
+			Config: scanner.ImageConfig{OS: "linux", Architecture: "amd64"},
+			Layers: []scanner.Layer{{Digest: "sha256:layer", MediaType: "application/vnd.oci.image.layer.v1.tar+gzip"}},
+		},
+		vulns: []scanner.ImageVulnerability{{CVE: "CVE-2024-0001", Severity: "high", Package: "openssl", InstalledVersion: "1.0.0"}},
+		blobs: map[string][]byte{"sha256:layer": layer},
+	}
+	runner := NewRunner(RunnerOptions{
+		Store:        store,
+		Registries:   []scanner.RegistryClient{registry},
+		Materializer: NewLocalMaterializer(filepath.Join(t.TempDir(), "rootfs")),
+		Analyzer:     FilesystemAnalyzer{Scanner: fakeFilesystemScanner{result: &scanner.ContainerScanResult{}}},
+	})
+
+	_, err = runner.RunImageScan(context.Background(), ScanRequest{
+		ID: "image_scan:digest-native-vulns",
+		Target: ScanTarget{
+			Registry:   RegistryECR,
+			Repository: "repo",
+			Tag:        "latest",
+			Digest:     "sha256:image",
+		},
+	})
+	if err != nil {
+		t.Fatalf("run image scan: %v", err)
+	}
+	if registry.vulnRepo != "repo" {
+		t.Fatalf("expected vulnerability lookup repo repo, got %q", registry.vulnRepo)
+	}
+	if registry.vulnRef != "sha256:image" {
+		t.Fatalf("expected vulnerability lookup to use digest, got %q", registry.vulnRef)
 	}
 }
 

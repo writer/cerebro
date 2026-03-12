@@ -68,6 +68,13 @@ func (t ScanTarget) ManifestReference() string {
 	return strings.TrimSpace(t.Tag)
 }
 
+func (t ScanTarget) NativeVulnerabilityReference() string {
+	if digest := strings.TrimSpace(t.Digest); digest != "" {
+		return digest
+	}
+	return strings.TrimSpace(t.Tag)
+}
+
 type ScanRequest struct {
 	ID             string            `json:"id"`
 	RequestedBy    string            `json:"requested_by,omitempty"`

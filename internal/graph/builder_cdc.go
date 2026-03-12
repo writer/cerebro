@@ -21,6 +21,65 @@ type cdcEvent struct {
 	AccountID  string
 	Payload    map[string]any
 	EventTime  time.Time
+	IngestedAt time.Time
+}
+
+type cdcWatermark struct {
+	EventTime  time.Time
+	IngestedAt time.Time
+	EventID    string
+}
+
+func effectiveCDCWatermark(lastBuildTime time.Time, watermark cdcWatermark) cdcWatermark {
+	if watermark.EventTime.IsZero() && !lastBuildTime.IsZero() {
+		watermark.EventTime = lastBuildTime.UTC()
+	}
+	if !watermark.EventTime.IsZero() {
+		watermark.EventTime = watermark.EventTime.UTC()
+	}
+	if !watermark.IngestedAt.IsZero() {
+		watermark.IngestedAt = watermark.IngestedAt.UTC()
+	}
+	watermark.EventID = strings.TrimSpace(watermark.EventID)
+	return watermark
+}
+
+func (w cdcWatermark) After(other cdcWatermark) bool {
+	left := effectiveCDCWatermark(time.Time{}, w)
+	right := effectiveCDCWatermark(time.Time{}, other)
+	if left.EventTime.After(right.EventTime) {
+		return true
+	}
+	if left.EventTime.Before(right.EventTime) {
+		return false
+	}
+	if left.IngestedAt.After(right.IngestedAt) {
+		return true
+	}
+	if left.IngestedAt.Before(right.IngestedAt) {
+		return false
+	}
+	return strings.Compare(left.EventID, right.EventID) > 0
+}
+
+func cdcWatermarkFromEvent(event cdcEvent) cdcWatermark {
+	return cdcWatermark{
+		EventTime:  event.EventTime,
+		IngestedAt: event.IngestedAt,
+		EventID:    event.EventID,
+	}
+}
+
+func queryCDCWatermark(current cdcWatermark, since time.Time) cdcWatermark {
+	if since.IsZero() {
+		return effectiveCDCWatermark(time.Time{}, current)
+	}
+	queryWatermark := cdcWatermark{EventTime: since.UTC()}
+	current = effectiveCDCWatermark(time.Time{}, current)
+	if !current.EventTime.IsZero() && queryWatermark.EventTime.Equal(current.EventTime) {
+		return current
+	}
+	return queryWatermark
 }
 
 // ApplyChanges updates the current graph from CDC_EVENTS without full node reload.
@@ -36,10 +95,11 @@ func (b *Builder) ApplyChanges(ctx context.Context, since time.Time) (GraphMutat
 	defer b.updateMu.Unlock()
 
 	b.stateMu.RLock()
-	currentWatermark := b.lastBuildTime
+	currentWatermark := effectiveCDCWatermark(b.lastBuildTime, b.lastCDCWatermark)
 	if since.IsZero() {
-		since = currentWatermark
+		since = currentWatermark.EventTime
 	}
+	queryWatermark := queryCDCWatermark(currentWatermark, since)
 	currentGraph := b.graph
 	availableTables := cloneAvailableTables(b.availableTables)
 	b.stateMu.RUnlock()
@@ -63,13 +123,13 @@ func (b *Builder) ApplyChanges(ctx context.Context, since time.Time) (GraphMutat
 	// Refresh table discovery so incremental edge rebuilds see newly populated tables.
 	working.discoverTables(ctx)
 
-	events, err := working.queryCDCEvents(ctx, since)
+	events, err := working.queryCDCEvents(ctx, queryWatermark)
 	if err != nil {
 		return GraphMutationSummary{}, err
 	}
 	summary.EventsProcessed = len(events)
 	if len(events) == 0 {
-		until := currentWatermark
+		until := currentWatermark.EventTime
 		if until.IsZero() {
 			until = since
 		}
@@ -81,6 +141,7 @@ func (b *Builder) ApplyChanges(ctx context.Context, since time.Time) (GraphMutat
 		b.stateMu.Lock()
 		b.availableTables = working.availableTables
 		b.lastBuildTime = until
+		b.lastCDCWatermark = effectiveCDCWatermark(until, currentWatermark)
 		b.lastMutation = summary
 		b.stateMu.Unlock()
 		return summary, nil
@@ -89,15 +150,16 @@ func (b *Builder) ApplyChanges(ctx context.Context, since time.Time) (GraphMutat
 	working.graph = currentGraph.Clone()
 
 	tableSet := make(map[string]struct{}, len(events))
-	latest := since
+	latest := effectiveCDCWatermark(time.Time{}, currentWatermark)
 
 	for _, event := range events {
 		table := strings.ToLower(strings.TrimSpace(event.TableName))
 		if table != "" {
 			tableSet[table] = struct{}{}
 		}
-		if event.EventTime.After(latest) {
-			latest = event.EventTime
+		eventWatermark := cdcWatermarkFromEvent(event)
+		if eventWatermark.After(latest) {
+			latest = eventWatermark
 		}
 
 		switch normalizeCDCChangeType(event.ChangeType) {
@@ -142,13 +204,13 @@ func (b *Builder) ApplyChanges(ctx context.Context, since time.Time) (GraphMutat
 	summary.Tables = tables
 
 	now := time.Now().UTC()
-	if latest.IsZero() {
-		latest = now
+	if latest.EventTime.IsZero() {
+		latest.EventTime = now
 	}
-	if latest.Before(currentWatermark) {
-		latest = currentWatermark
+	if latest.IngestedAt.IsZero() {
+		latest.IngestedAt = latest.EventTime
 	}
-	summary.Until = latest
+	summary.Until = latest.EventTime
 	summary.Duration = time.Since(start)
 	summary.NodeCount = working.graph.NodeCount()
 	summary.EdgeCount = working.graph.EdgeCount()
@@ -163,7 +225,8 @@ func (b *Builder) ApplyChanges(ctx context.Context, since time.Time) (GraphMutat
 	b.stateMu.Lock()
 	b.graph = working.graph
 	b.availableTables = working.availableTables
-	b.lastBuildTime = latest
+	b.lastBuildTime = latest.EventTime
+	b.lastCDCWatermark = latest
 	b.lastMutation = summary
 	b.stateMu.Unlock()
 
@@ -180,16 +243,34 @@ func (b *Builder) ApplyChanges(ctx context.Context, since time.Time) (GraphMutat
 	return summary, nil
 }
 
-func (b *Builder) queryCDCEvents(ctx context.Context, since time.Time) ([]cdcEvent, error) {
+func (b *Builder) queryCDCEvents(ctx context.Context, since cdcWatermark) ([]cdcEvent, error) {
 	query := `
-		SELECT event_id, table_name, resource_id, change_type, provider, region, account_id, payload, event_time
+		SELECT event_id, table_name, resource_id, change_type, provider, region, account_id, payload, event_time,
+		       COALESCE(ingested_at, event_time) AS ingested_at
 		FROM CDC_EVENTS`
-	args := make([]any, 0, 1)
-	if !since.IsZero() {
-		query += " WHERE event_time > ?"
-		args = append(args, since)
+	args := make([]any, 0, 6)
+	since = effectiveCDCWatermark(time.Time{}, since)
+	if !since.EventTime.IsZero() {
+		sinceIngestedAt := since.IngestedAt
+		if sinceIngestedAt.IsZero() {
+			sinceIngestedAt = since.EventTime
+		}
+		query += `
+		WHERE (
+			event_time > ?
+			OR (event_time = ? AND COALESCE(ingested_at, event_time) > ?)
+			OR (event_time = ? AND COALESCE(ingested_at, event_time) = ? AND event_id > ?)
+		)`
+		args = append(args,
+			since.EventTime,
+			since.EventTime,
+			sinceIngestedAt,
+			since.EventTime,
+			sinceIngestedAt,
+			since.EventID,
+		)
 	}
-	query += " ORDER BY event_time ASC, ingested_at ASC"
+	query += " ORDER BY event_time ASC, ingested_at ASC, event_id ASC"
 
 	result, err := b.source.Query(ctx, query, args...)
 	if err != nil {
@@ -208,14 +289,66 @@ func (b *Builder) queryCDCEvents(ctx context.Context, since time.Time) ([]cdcEve
 			AccountID:  queryRowString(row, "account_id"),
 			Payload:    decodeCDCPayload(queryRow(row, "payload")),
 			EventTime:  parseCDCEventTime(queryRow(row, "event_time")),
+			IngestedAt: parseCDCEventTime(queryRow(row, "ingested_at")),
 		})
 	}
 
 	return events, nil
 }
 
+func (b *Builder) queryLatestCDCWatermark(ctx context.Context) (cdcWatermark, error) {
+	result, err := b.source.Query(ctx, `
+		SELECT event_time, COALESCE(ingested_at, event_time) AS ingested_at, event_id
+		FROM CDC_EVENTS
+		ORDER BY event_time DESC, ingested_at DESC, event_id DESC
+		LIMIT 1
+	`)
+	if err != nil || len(result.Rows) == 0 {
+		return cdcWatermark{}, err
+	}
+	row := result.Rows[0]
+	return cdcWatermark{
+		EventTime:  parseCDCEventTime(queryRow(row, "event_time")),
+		IngestedAt: parseCDCEventTime(queryRow(row, "ingested_at")),
+		EventID:    queryRowString(row, "event_id"),
+	}, nil
+}
+
+func removeNodesBySourceSystems(g *Graph, sourceSystems ...string) int {
+	if g == nil || len(sourceSystems) == 0 {
+		return 0
+	}
+	allowed := make(map[string]struct{}, len(sourceSystems))
+	for _, sourceSystem := range sourceSystems {
+		sourceSystem = strings.TrimSpace(sourceSystem)
+		if sourceSystem == "" {
+			continue
+		}
+		allowed[sourceSystem] = struct{}{}
+	}
+	removed := 0
+	for _, node := range g.Nodes() {
+		if node == nil {
+			continue
+		}
+		sourceSystem := strings.TrimSpace(readString(node.Properties, "source_system"))
+		if _, ok := allowed[sourceSystem]; !ok {
+			continue
+		}
+		if g.RemoveNode(node.ID) {
+			removed++
+		}
+	}
+	return removed
+}
+
 func (b *Builder) rebuildEdges(ctx context.Context) error {
 	b.graph.ClearEdges()
+	removeNodesBySourceSystems(b.graph,
+		awsIAMPermissionUsageSourceSystem,
+		gcpIAMPermissionUsageSourceSystem,
+		entityAssetNormalizerSourceSystem,
+	)
 	b.graph.BuildIndex()
 
 	eg, ectx := errgroup.WithContext(ctx)
@@ -225,6 +358,11 @@ func (b *Builder) rebuildEdges(ctx context.Context) error {
 	eg.Go(func() error { b.buildKubernetesEdges(ectx); return nil })
 	eg.Go(func() error { b.buildRelationshipEdges(ectx); return nil })
 	_ = eg.Wait()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	b.buildIAMPermissionUsageKnowledge(ctx)
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -243,6 +381,10 @@ func (b *Builder) rebuildEdges(ctx context.Context) error {
 		return err
 	}
 	b.buildSCMInference()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	NormalizeEntityAssetSupport(b.graph, temporalNowUTC())
 	if err := ctx.Err(); err != nil {
 		return err
 	}

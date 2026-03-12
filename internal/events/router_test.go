@@ -490,7 +490,7 @@ func TestAlertRouterEscalationPersistsAcrossRestart(t *testing.T) {
 	}
 }
 
-func TestAlertRouterRouteRollsBackStateWhenPersistenceFails(t *testing.T) {
+func TestAlertRouterRouteKeepsInMemoryStateWhenPersistenceFailsAfterDelivery(t *testing.T) {
 	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
 	config := AlertRoutingConfig{
 		Routes: []AlertRoute{{
@@ -522,13 +522,57 @@ func TestAlertRouterRouteRollsBackStateWhenPersistenceFails(t *testing.T) {
 	if err := router.Route(context.Background(), event); err == nil {
 		t.Fatal("expected route to fail when persistence fails")
 	}
-	if got := len(sender.messages); got != 0 {
-		t.Fatalf("expected no alert send on persistence failure, got %d", got)
+	if got := len(sender.messages); got != 1 {
+		t.Fatalf("expected alert delivery before persistence failure, got %d", got)
 	}
 
 	stateStore.failSave = false
 	if err := router.Route(context.Background(), event); err != nil {
 		t.Fatalf("route after persistence recovery: %v", err)
+	}
+	if got := len(sender.messages); got != 1 {
+		t.Fatalf("expected in-memory throttle state to suppress duplicate delivery, got %d", got)
+	}
+}
+
+func TestAlertRouterRouteRollsBackStateWhenDeliveryFails(t *testing.T) {
+	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
+	config := AlertRoutingConfig{
+		Routes: []AlertRoute{{
+			Name: "risk_spike",
+			Match: AlertRouteMatch{
+				EventType: "risk_score.changed",
+				Delta:     "> 0.3",
+			},
+			DeliverTo: []AlertRouteDelivery{{Type: "channel", Channel: "#ops-alerts"}},
+			GroupBy:   "entity_id",
+			Throttle:  "5m",
+		}},
+	}
+	stateStore := &failingAlertRouterStateStore{}
+	sender := &failingAlertSender{failuresRemaining: 1}
+	router := newRouterForTestWithStore(t, config, &stubAlertResolver{}, sender, stateStore, &now)
+	defer func() { _ = router.Close() }()
+
+	event := webhooks.Event{
+		ID:        "evt-1",
+		Type:      webhooks.EventRiskScoreChanged,
+		Timestamp: now,
+		Data: map[string]interface{}{
+			"entity_id":  "customer:acme",
+			"risk_delta": 0.41,
+			"severity":   "high",
+		},
+	}
+	if err := router.Route(context.Background(), event); err == nil {
+		t.Fatal("expected route to fail when delivery fails")
+	}
+	if stateStore.saveCalls != 0 {
+		t.Fatalf("expected no state persistence on delivery failure, got %d saves", stateStore.saveCalls)
+	}
+
+	if err := router.Route(context.Background(), event); err != nil {
+		t.Fatalf("route after delivery recovery: %v", err)
 	}
 	if got := len(sender.messages); got != 1 {
 		t.Fatalf("expected alert to send after rollback and retry, got %d", got)
@@ -572,7 +616,7 @@ func TestGraphAlertResolver(t *testing.T) {
 	}
 }
 
-func newRouterForTest(t *testing.T, config AlertRoutingConfig, resolver AlertRecipientResolver, sender *captureAlertSender, now *time.Time) *AlertRouter {
+func newRouterForTest(t *testing.T, config AlertRoutingConfig, resolver AlertRecipientResolver, sender AlertSender, now *time.Time) *AlertRouter {
 	t.Helper()
 	router, err := NewAlertRouter(AlertRouterOptions{
 		Config:        config,
@@ -589,7 +633,7 @@ func newRouterForTest(t *testing.T, config AlertRoutingConfig, resolver AlertRec
 	return router
 }
 
-func newRouterForTestWithStore(t *testing.T, config AlertRoutingConfig, resolver AlertRecipientResolver, sender *captureAlertSender, store AlertRouterStateStore, now *time.Time) *AlertRouter {
+func newRouterForTestWithStore(t *testing.T, config AlertRoutingConfig, resolver AlertRecipientResolver, sender AlertSender, store AlertRouterStateStore, now *time.Time) *AlertRouter {
 	t.Helper()
 	router, err := NewAlertRouter(AlertRouterOptions{
 		Config:        config,
@@ -620,6 +664,11 @@ type captureAlertSender struct {
 	messages []capturedAlertMessage
 }
 
+type failingAlertSender struct {
+	captureAlertSender
+	failuresRemaining int
+}
+
 type capturedAlertMessage struct {
 	subject string
 	payload []byte
@@ -637,6 +686,18 @@ func (c *captureAlertSender) Close() error {
 	return nil
 }
 
+func (f *failingAlertSender) Send(ctx context.Context, subject string, payload []byte) error {
+	if f.failuresRemaining > 0 {
+		f.failuresRemaining--
+		return context.DeadlineExceeded
+	}
+	return f.captureAlertSender.Send(ctx, subject, payload)
+}
+
+func (f *failingAlertSender) Close() error {
+	return nil
+}
+
 type stubAlertResolver struct {
 	owners   []AlertRecipient
 	team     []AlertRecipient
@@ -644,8 +705,9 @@ type stubAlertResolver struct {
 }
 
 type failingAlertRouterStateStore struct {
-	snapshot alertRouterStateSnapshot
-	failSave bool
+	snapshot  alertRouterStateSnapshot
+	failSave  bool
+	saveCalls int
 }
 
 func (s *failingAlertRouterStateStore) Load(_ context.Context) (alertRouterStateSnapshot, error) {
@@ -653,6 +715,7 @@ func (s *failingAlertRouterStateStore) Load(_ context.Context) (alertRouterState
 }
 
 func (s *failingAlertRouterStateStore) Save(_ context.Context, snapshot alertRouterStateSnapshot) error {
+	s.saveCalls++
 	if s.failSave {
 		return context.DeadlineExceeded
 	}
