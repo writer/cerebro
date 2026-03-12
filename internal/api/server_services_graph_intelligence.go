@@ -4,7 +4,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/evalops/cerebro/internal/app"
 	"github.com/evalops/cerebro/internal/graph"
 	"github.com/evalops/cerebro/internal/graphingest"
 )
@@ -20,53 +19,53 @@ type graphIntelligenceService interface {
 	MapperContractCatalog(now time.Time) (graphingest.ContractCatalog, bool)
 }
 
-type appGraphIntelligenceService struct {
-	app *app.App
+type serverGraphIntelligenceService struct {
+	deps *serverDependencies
 }
 
-func newAppGraphIntelligenceService(application *app.App) graphIntelligenceService {
-	return appGraphIntelligenceService{app: application}
+func newGraphIntelligenceService(deps *serverDependencies) graphIntelligenceService {
+	return serverGraphIntelligenceService{deps: deps}
 }
 
-func (s appGraphIntelligenceService) CurrentGraph() *graph.Graph {
-	if s.app == nil {
+func (s serverGraphIntelligenceService) CurrentGraph() *graph.Graph {
+	if s.deps == nil {
 		return nil
 	}
-	return s.app.CurrentSecurityGraph()
+	return s.deps.CurrentSecurityGraph()
 }
 
-func (s appGraphIntelligenceService) MapperInitialized() bool {
-	return s.app != nil && s.app.TapEventMapper != nil
+func (s serverGraphIntelligenceService) MapperInitialized() bool {
+	return s.deps != nil && s.deps.TapEventMapper != nil
 }
 
-func (s appGraphIntelligenceService) MapperValidationMode() string {
-	if s.app == nil || s.app.Config == nil {
+func (s serverGraphIntelligenceService) MapperValidationMode() string {
+	if s.deps == nil || s.deps.Config == nil {
 		return string(graphingest.MapperValidationEnforce)
 	}
-	mode := strings.ToLower(strings.TrimSpace(s.app.Config.GraphEventMapperValidationMode))
+	mode := strings.ToLower(strings.TrimSpace(s.deps.Config.GraphEventMapperValidationMode))
 	if mode == "" {
 		return string(graphingest.MapperValidationEnforce)
 	}
 	return mode
 }
 
-func (s appGraphIntelligenceService) MapperDeadLetterPath() string {
-	if s.app == nil || s.app.Config == nil {
+func (s serverGraphIntelligenceService) MapperDeadLetterPath() string {
+	if s.deps == nil || s.deps.Config == nil {
 		return ""
 	}
-	return strings.TrimSpace(s.app.Config.GraphEventMapperDeadLetterPath)
+	return strings.TrimSpace(s.deps.Config.GraphEventMapperDeadLetterPath)
 }
 
-func (s appGraphIntelligenceService) MapperStats() graphingest.MapperStats {
-	if s.app == nil || s.app.TapEventMapper == nil {
+func (s serverGraphIntelligenceService) MapperStats() graphingest.MapperStats {
+	if s.deps == nil || s.deps.TapEventMapper == nil {
 		return graphingest.MapperStats{}
 	}
-	return s.app.TapEventMapper.Stats()
+	return s.deps.TapEventMapper.Stats()
 }
 
-func (s appGraphIntelligenceService) MapperContractCatalog(now time.Time) (graphingest.ContractCatalog, bool) {
-	if s.app == nil || s.app.TapEventMapper == nil {
+func (s serverGraphIntelligenceService) MapperContractCatalog(now time.Time) (graphingest.ContractCatalog, bool) {
+	if s.deps == nil || s.deps.TapEventMapper == nil {
 		return graphingest.ContractCatalog{}, false
 	}
-	return s.app.TapEventMapper.ContractCatalog(now), true
+	return s.deps.TapEventMapper.ContractCatalog(now), true
 }

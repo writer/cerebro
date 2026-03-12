@@ -5,6 +5,44 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 60 - API Service Bundle + App Composition Root Narrowing (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#146` remained open because `internal/api` still stored `*app.App` directly, so the HTTP layer kept a hidden dependency on the full composition root even after earlier graph-intelligence service seams landed.
+- [x] Gap: the current server constructor made later graph/package splitting harder because handler code could still reach through `s.app.*` for any field added to `App`.
+- [x] Gap: sync/graph tests were implicitly proving the API surface against the full app object, not against a minimal dependency bundle that a future graph-only or worker binary could construct.
+- [x] Gap: external project references kept pointing at the same architectural lesson: `openfga/openfga` keeps transport surfaces thin around explicit services, while larger server monoliths like `argoproj/argo-cd` and `grafana/grafana` show how quickly composition roots become ambient dependencies.
+
+### Execution plan
+- [x] Replace the server's direct `*app.App` dependency with an explicit dependency bundle:
+  - [x] add `internal/api/server_dependencies.go`
+  - [x] capture only the concrete services and narrow runtime interfaces the API layer actually consumes
+  - [x] keep `NewServer(*app.App)` as an adapter around `NewServerWithDependencies(...)`
+- [x] Preserve graph-runtime behavior without tying the API layer back to `App`:
+  - [x] add a graph-runtime adapter that follows the server dependency bundle's current graph/builder fields
+  - [x] preserve incremental graph-update and rebuild behavior for sync handlers and tests
+- [x] Remove remaining direct `internal/app` imports from handler/service files:
+  - [x] rewire graph-intelligence service construction through the dependency bundle instead of `*app.App`
+  - [x] keep `internal/api` imports of `internal/app` limited to the constructor/adapter surface and test config types
+- [x] Prove the new seam with minimal construction:
+  - [x] add a test that instantiates `Server` through `NewServerWithDependencies(...)` and a stub graph runtime, without constructing a full `*app.App`
+- [x] Pull external reference patterns with `gh` and fold them into the design:
+  - [x] `openfga/openfga` for thin transport/service boundaries
+  - [x] `argoproj/argo-cd` as the warning case for server/composition-root sprawl
+  - [x] `grafana/grafana` as another example of how broad server surfaces need explicit dependency seams
+
+### Detailed follow-on backlog
+- [ ] Track A - Finish API service slicing
+  - Exit criteria:
+  - [ ] extract explicit dependency bundles for graph-risk, findings/compliance, and ticketing/runtime handler families instead of relying on a single broad server bundle
+  - [ ] reduce `s.app.*` field access in handlers by routing new work through service-specific helpers or interfaces first
+  - [ ] add more `NewServerWithDependencies(...)` tests that stub only the handler family under test
+- [ ] Track B - App container decomposition
+  - Exit criteria:
+  - [ ] use the same consumption-point dependency inventory to shrink `internal/app.App`
+  - [ ] feed the resulting seams into issue `#141` package splitting and issue `#144` graph concurrency work
+  - [ ] make graph-only and scan-only processes construct dependency bundles without initializing unrelated services
+
 ## Deep Review Cycle 59 - Policy CEL Migration + Legacy Conversion Path (2026-03-12)
 
 ### Review findings
