@@ -202,11 +202,15 @@ func runGCPSync(ctx context.Context, start time.Time, projectID string) error {
 			}
 			Warning("API client configuration invalid; using direct mode: %v", err)
 		} else {
+			targetGroups := parseCommaSeparatedValues(syncGCPIAMGroups)
 			resp, err := apiClient.RunGCPSync(ctx, apiclient.GCPSyncRequest{
-				Project:     projectID,
-				Concurrency: syncConcurrency,
-				Tables:      nativeTableFilter,
-				Validate:    syncValidate,
+				Project:                        projectID,
+				Concurrency:                    syncConcurrency,
+				Tables:                         nativeTableFilter,
+				Validate:                       syncValidate,
+				PermissionUsageLookbackDays:    syncPermissionLookback,
+				PermissionRemovalThresholdDays: syncPermissionRemovalThreshold,
+				GCPIAMTargetGroups:             targetGroups,
 			})
 			if err == nil {
 				provider := "GCP"
@@ -310,6 +314,7 @@ func runGCPSyncDirect(
 		if len(nativeTableFilter) > 0 {
 			options = append(options, nativesync.WithGCPTableFilter(nativeTableFilter))
 		}
+		options = appendGCPPermissionUsageOptions(options)
 		syncer := nativesync.NewGCPSyncEngine(client, slog.Default(), options...)
 		if syncValidate {
 			results, err := syncer.ValidateTables(ctx)
@@ -377,6 +382,16 @@ func runGCPSyncDirect(
 	}
 
 	return nil
+}
+
+func appendGCPPermissionUsageOptions(options []nativesync.GCPEngineOption) []nativesync.GCPEngineOption {
+	options = append(options, nativesync.WithGCPPermissionUsageLookbackDays(syncPermissionLookback))
+	options = append(options, nativesync.WithGCPPermissionRemovalThresholdDays(syncPermissionRemovalThreshold))
+	targetGroups := parseCommaSeparatedValues(syncGCPIAMGroups)
+	if len(targetGroups) > 0 {
+		options = append(options, nativesync.WithGCPIAMTargetGroups(targetGroups))
+	}
+	return options
 }
 
 func runGCPOrgSync(ctx context.Context, start time.Time, orgID string) error {
@@ -471,6 +486,7 @@ func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []str
 		if len(nativeTableFilter) > 0 {
 			options = append(options, nativesync.WithGCPTableFilter(nativeTableFilter))
 		}
+		options = appendGCPPermissionUsageOptions(options)
 		syncer := nativesync.NewGCPSyncEngine(client, slog.Default(), options...)
 		results, err := syncer.ValidateTables(ctx)
 		if err != nil {
@@ -511,6 +527,7 @@ func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []str
 			if len(nativeTableFilter) > 0 {
 				options = append(options, nativesync.WithGCPTableFilter(nativeTableFilter))
 			}
+			options = appendGCPPermissionUsageOptions(options)
 			syncer := nativesync.NewGCPSyncEngine(client, slog.Default(), options...)
 			results, err := syncer.SyncAll(projectCtx)
 			allResults = append(allResults, results...)

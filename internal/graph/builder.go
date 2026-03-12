@@ -144,6 +144,8 @@ func (b *Builder) Build(ctx context.Context) error {
 		"edges", b.graph.EdgeCount(),
 		"duration", time.Since(edgeStart))
 
+	b.buildIAMPermissionUsageKnowledge(ctx)
+
 	// Build unified person graph overlay (person nodes + projected edges).
 	if err := ctx.Err(); err != nil {
 		return err

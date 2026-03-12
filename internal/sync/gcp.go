@@ -27,6 +27,10 @@ type GCPSyncEngine struct {
 	tableFilter  map[string]struct{}
 	rateLimiter  *rate.Limiter
 	retryOptions retryOptions
+
+	permissionUsageLookbackDays         int
+	permissionUsageRemovalThresholdDays int
+	gcpIAMTargetGroups                  map[string]struct{}
 }
 
 // GCPEngineOption configures the GCP sync engine
@@ -44,11 +48,31 @@ func WithGCPTableFilter(tables []string) GCPEngineOption {
 	return func(e *GCPSyncEngine) { e.tableFilter = normalizeTableFilter(tables) }
 }
 
+func WithGCPPermissionUsageLookbackDays(days int) GCPEngineOption {
+	return func(e *GCPSyncEngine) {
+		e.permissionUsageLookbackDays = clampPermissionUsageLookbackDays(days)
+	}
+}
+
+func WithGCPPermissionRemovalThresholdDays(days int) GCPEngineOption {
+	return func(e *GCPSyncEngine) {
+		e.permissionUsageRemovalThresholdDays = clampPermissionRemovalThresholdDays(days)
+	}
+}
+
+func WithGCPIAMTargetGroups(groups []string) GCPEngineOption {
+	return func(e *GCPSyncEngine) {
+		e.gcpIAMTargetGroups = normalizeIdentityFilterSet(groups)
+	}
+}
+
 func NewGCPSyncEngine(sf warehouse.SyncWarehouse, logger *slog.Logger, opts ...GCPEngineOption) *GCPSyncEngine {
 	e := &GCPSyncEngine{
-		sf:          sf,
-		logger:      logger,
-		concurrency: 10,
+		sf:                                  sf,
+		logger:                              logger,
+		concurrency:                         10,
+		permissionUsageLookbackDays:         defaultPermissionUsageWindowDays,
+		permissionUsageRemovalThresholdDays: defaultPermissionRemovalThresholdDays,
 	}
 	for _, opt := range opts {
 		opt(e)
@@ -184,23 +208,43 @@ func (e *GCPSyncEngine) syncTable(ctx context.Context, table GCPTableSpec) (Sync
 	}
 
 	rows, err := e.fetchWithRetry(ctx, table)
+	partialFetch := false
 	if err != nil {
-		e.logger.Error("fetch failed", "table", table.Name, "error", err)
-		result.Errors = 1
-		result.Error = err.Error()
-		result.Duration = time.Since(start)
-		return result, fmt.Errorf("gcp %s (project %s): fetch: %w", table.Name, e.projectID, err)
+		if errors.Is(err, errSkipGCPIAMGroupPermissionUsage) {
+			e.logger.Info("skipping gcp table sync", "table", table.Name, "project_id", e.projectID, "reason", err.Error())
+			result.Duration = time.Since(start)
+			return result, nil
+		}
+		if isPartialFetchError(err) && len(rows) > 0 {
+			partialFetch = true
+			e.logger.Warn("fetch returned partial results; enabling backfill-safe scoped upsert", "table", table.Name, "project_id", e.projectID, "rows", len(rows), "error", err)
+		} else {
+			e.logger.Error("fetch failed", "table", table.Name, "error", err)
+			result.Errors = 1
+			result.Error = err.Error()
+			result.Duration = time.Since(start)
+			return result, fmt.Errorf("gcp %s (project %s): fetch: %w", table.Name, e.projectID, err)
+		}
 	}
 
 	rows = normalizeRows(table.Name, table.Columns, rows, e.logger)
 
-	changes, err := e.upsertWithChanges(ctx, table.Name, table.Columns, rows)
+	changes, err := e.upsertWithChanges(ctx, table.Name, table.Columns, rows, partialFetch)
 	if err != nil {
 		e.logger.Error("upsert failed", "table", table.Name, "error", err)
 		result.Errors = 1
 		result.Error = err.Error()
 		result.Duration = time.Since(start)
 		return result, fmt.Errorf("gcp %s (project %s): upsert: %w", table.Name, e.projectID, err)
+	}
+	if table.Name == gcpIAMGroupPermissionUsageTable {
+		if err := e.appendGCPIAMGroupPermissionUsageHistory(ctx, rows); err != nil {
+			e.logger.Error("append gcp iam permission usage history failed", "table", table.Name, "error", err)
+			result.Errors = 1
+			result.Error = err.Error()
+			result.Duration = time.Since(start)
+			return result, fmt.Errorf("gcp %s (project %s): append history: %w", table.Name, e.projectID, err)
+		}
 	}
 
 	syncTime := time.Now().UTC()
@@ -274,9 +318,9 @@ func (e *GCPSyncEngine) ensureTable(ctx context.Context, table string, columns [
 	})
 }
 
-func (e *GCPSyncEngine) upsertWithChanges(ctx context.Context, table string, columns []string, rows []map[string]interface{}) (*ChangeSet, error) {
+func (e *GCPSyncEngine) upsertWithChanges(ctx context.Context, table string, columns []string, rows []map[string]interface{}, incremental bool) (*ChangeSet, error) {
 	scopeColumn, scopeValues := gcpScopeFilter(columns, rows, e.projectID)
-	return upsertScopedRowsWithChanges(ctx, e.sf, e.logger, table, rows, scopeColumn, scopeValues, e.hashRowContent)
+	return upsertScopedRowsWithChanges(ctx, e.sf, e.logger, table, rows, scopeColumn, scopeValues, e.hashRowContent, incremental)
 }
 
 func gcpScopeFilter(columns []string, rows []map[string]interface{}, projectID string) (string, []string) {
@@ -343,6 +387,7 @@ func (e *GCPSyncEngine) getGCPTables() []GCPTableSpec {
 		e.gcpIAMServiceAccountKeyTable(),
 		e.gcpIAMPolicyTable(),
 		e.gcpIAMMemberTable(),
+		e.gcpIAMGroupPermissionUsageTable(),
 		// Database
 		e.gcpSQLInstanceTable(),
 		// Serverless

@@ -135,6 +135,7 @@ func RegisterAllTables() {
 
 		registerAWSTables(registry, (&SyncEngine{}).getAWSTables())
 		registerGCPTables(registry, (&GCPSyncEngine{}).getGCPTables())
+		registerDerivedPermissionUsageTables(registry)
 		registerAzureTables(registry, (&AzureSyncEngine{}).getAzureTables())
 		registerK8sTables(registry, (&K8sSyncEngine{}).getK8sTables())
 		registerGCPSecurityTables(registry)
@@ -145,6 +146,31 @@ func RegisterAllTables() {
 			panic(fmt.Sprintf("missing expected table registrations: %s", strings.Join(missing, ", ")))
 		}
 	})
+}
+
+func registerDerivedPermissionUsageTables(registry *TableRegistry) {
+	for _, registration := range []TableRegistration{
+		{
+			Name:     awsIdentityCenterPermissionUsageRollupTable,
+			Provider: TableProviderAWS,
+			Columns:  awsIdentityCenterPermissionUsageRollupColumns,
+			Source:   TableSourceNative,
+		},
+		{
+			Name:     awsIdentityCenterPermissionUsageHistoryTable,
+			Provider: TableProviderAWS,
+			Columns:  awsIdentityCenterPermissionUsageHistoryColumns,
+			Source:   TableSourceNative,
+		},
+		{
+			Name:     gcpIAMGroupPermissionUsageHistoryTable,
+			Provider: TableProviderGCP,
+			Columns:  gcpIAMGroupPermissionUsageHistoryColumns,
+			Source:   TableSourceNative,
+		},
+	} {
+		registry.MustRegister(registration)
+	}
 }
 
 func registerAWSTables(registry *TableRegistry, tables []TableSpec) {

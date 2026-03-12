@@ -24,16 +24,20 @@ import (
 
 // SyncEngine orchestrates cloud resource syncing
 type SyncEngine struct {
-	sf                 warehouse.SyncWarehouse
-	logger             *slog.Logger
-	concurrency        int
-	regions            []string
-	accountID          string
-	tableInit          sync.Map
-	tableFilter        map[string]struct{}
-	rateLimiter        *rate.Limiter
-	retryOptions       retryOptions
-	stalenessThreshold time.Duration
+	sf                                  warehouse.SyncWarehouse
+	logger                              *slog.Logger
+	concurrency                         int
+	regions                             []string
+	accountID                           string
+	tableInit                           sync.Map
+	tableFilter                         map[string]struct{}
+	rateLimiter                         *rate.Limiter
+	retryOptions                        retryOptions
+	permissionUsageLookbackDays         int
+	permissionUsageRemovalThresholdDays int
+	identityCenterPermissionSetInclude  map[string]struct{}
+	identityCenterPermissionSetExclude  map[string]struct{}
+	stalenessThreshold                  time.Duration
 }
 
 type tableInitState struct {
@@ -60,6 +64,25 @@ func WithRateLimiter(limiter *rate.Limiter) EngineOption {
 	return func(e *SyncEngine) { e.rateLimiter = limiter }
 }
 
+func WithAWSPermissionUsageLookbackDays(days int) EngineOption {
+	return func(e *SyncEngine) {
+		e.permissionUsageLookbackDays = clampPermissionUsageLookbackDays(days)
+	}
+}
+
+func WithAWSPermissionRemovalThresholdDays(days int) EngineOption {
+	return func(e *SyncEngine) {
+		e.permissionUsageRemovalThresholdDays = clampPermissionRemovalThresholdDays(days)
+	}
+}
+
+func WithAWSIdentityCenterPermissionSetFilters(include, exclude []string) EngineOption {
+	return func(e *SyncEngine) {
+		e.identityCenterPermissionSetInclude = normalizeIdentityFilterSet(include)
+		e.identityCenterPermissionSetExclude = normalizeIdentityFilterSet(exclude)
+	}
+}
+
 func WithStalenessThreshold(threshold time.Duration) EngineOption {
 	return func(e *SyncEngine) { e.stalenessThreshold = threshold }
 }
@@ -80,9 +103,11 @@ var DefaultAWSRegions = []string{
 
 func NewSyncEngine(sf warehouse.SyncWarehouse, logger *slog.Logger, opts ...EngineOption) *SyncEngine {
 	e := &SyncEngine{
-		sf:          sf,
-		logger:      logger,
-		concurrency: 20,
+		sf:                                  sf,
+		logger:                              logger,
+		concurrency:                         20,
+		permissionUsageLookbackDays:         defaultPermissionUsageWindowDays,
+		permissionUsageRemovalThresholdDays: defaultPermissionRemovalThresholdDays,
 	}
 	for _, opt := range opts {
 		opt(e)
@@ -394,6 +419,15 @@ func (e *SyncEngine) syncTable(ctx context.Context, cfg aws.Config, table TableS
 		result.Error = err.Error()
 		result.Duration = time.Since(start)
 		return result, fmt.Errorf("aws %s (%s): upsert: %w", table.Name, region, err)
+	}
+	if table.Name == awsIdentityCenterPermissionUsageTable {
+		if err := e.refreshAWSIdentityCenterPermissionUsageArtifacts(ctx); err != nil {
+			e.logger.Error("refresh aws identity center permission usage artifacts failed", "table", table.Name, "error", err)
+			result.Errors = 1
+			result.Error = err.Error()
+			result.Duration = time.Since(start)
+			return result, fmt.Errorf("aws %s (%s): refresh artifacts: %w", table.Name, region, err)
+		}
 	}
 
 	syncTime := time.Now().UTC()

@@ -174,6 +174,8 @@ func runMultiAccountAWSSyncViaAPI(
 ) error {
 	Info("Starting multi-account AWS sync (%d profiles)...", len(profiles))
 	tableFilter := parseTableFilter(syncTable)
+	permissionSetInclude := parseCommaSeparatedValues(syncAWSPSInclude)
+	permissionSetExclude := parseCommaSeparatedValues(syncAWSPSExclude)
 	totalResults := make([]nativesync.SyncResult, 0, len(profiles))
 
 	for idx, profile := range profiles {
@@ -181,12 +183,16 @@ func runMultiAccountAWSSyncViaAPI(
 		profileStart := time.Now()
 
 		resp, err := apiClient.RunAWSSync(ctx, apiclient.AWSSyncRequest{
-			Profile:     profile,
-			Region:      strings.TrimSpace(syncRegion),
-			MultiRegion: syncMultiRegion,
-			Concurrency: syncConcurrency,
-			Tables:      tableFilter,
-			Validate:    syncValidate,
+			Profile:                                profile,
+			Region:                                 strings.TrimSpace(syncRegion),
+			MultiRegion:                            syncMultiRegion,
+			Concurrency:                            syncConcurrency,
+			Tables:                                 tableFilter,
+			Validate:                               syncValidate,
+			PermissionUsageLookbackDays:            syncPermissionLookback,
+			PermissionRemovalThresholdDays:         syncPermissionRemovalThreshold,
+			AWSIdentityCenterPermissionSetsInclude: permissionSetInclude,
+			AWSIdentityCenterPermissionSetsExclude: permissionSetExclude,
 		})
 		if err != nil {
 			if mode == cliExecutionModeAuto && shouldFallbackToDirect(mode, err) {
@@ -263,6 +269,7 @@ func runMultiAccountAWSSyncDirect(ctx context.Context, start time.Time, profiles
 		} else {
 			opts = append(opts, nativesync.WithRegions([]string{region}))
 		}
+		opts = appendAWSPermissionUsageOptions(opts)
 
 		syncer := nativesync.NewSyncEngine(sfClient, slog.Default(), opts...)
 		results, err := syncer.SyncAllWithConfig(ctx, awsCfg)
@@ -314,13 +321,19 @@ func runNativeSync(ctx context.Context, start time.Time) error {
 			}
 			Warning("API client configuration invalid; using direct mode: %v", err)
 		} else {
+			permissionSetInclude := parseCommaSeparatedValues(syncAWSPSInclude)
+			permissionSetExclude := parseCommaSeparatedValues(syncAWSPSExclude)
 			resp, err := apiClient.RunAWSSync(ctx, apiclient.AWSSyncRequest{
-				Profile:     strings.TrimSpace(syncAWSProfile),
-				Region:      strings.TrimSpace(syncRegion),
-				MultiRegion: syncMultiRegion,
-				Concurrency: syncConcurrency,
-				Tables:      tableFilter,
-				Validate:    syncValidate,
+				Profile:                                strings.TrimSpace(syncAWSProfile),
+				Region:                                 strings.TrimSpace(syncRegion),
+				MultiRegion:                            syncMultiRegion,
+				Concurrency:                            syncConcurrency,
+				Tables:                                 tableFilter,
+				Validate:                               syncValidate,
+				PermissionUsageLookbackDays:            syncPermissionLookback,
+				PermissionRemovalThresholdDays:         syncPermissionRemovalThreshold,
+				AWSIdentityCenterPermissionSetsInclude: permissionSetInclude,
+				AWSIdentityCenterPermissionSetsExclude: permissionSetExclude,
 			})
 			if err == nil {
 				provider := "AWS"
@@ -445,6 +458,7 @@ func runNativeSyncDirect(ctx context.Context, start time.Time) error {
 	} else {
 		opts = append(opts, nativesync.WithRegions([]string{region}))
 	}
+	opts = appendAWSPermissionUsageOptions(opts)
 
 	syncer := nativesync.NewSyncEngine(client, slog.Default(), opts...)
 	if syncValidate {
@@ -487,6 +501,17 @@ func runNativeSyncDirect(ctx context.Context, start time.Time) error {
 	}
 
 	return nil
+}
+
+func appendAWSPermissionUsageOptions(opts []nativesync.EngineOption) []nativesync.EngineOption {
+	opts = append(opts, nativesync.WithAWSPermissionUsageLookbackDays(syncPermissionLookback))
+	opts = append(opts, nativesync.WithAWSPermissionRemovalThresholdDays(syncPermissionRemovalThreshold))
+	include := parseCommaSeparatedValues(syncAWSPSInclude)
+	exclude := parseCommaSeparatedValues(syncAWSPSExclude)
+	if len(include) > 0 || len(exclude) > 0 {
+		opts = append(opts, nativesync.WithAWSIdentityCenterPermissionSetFilters(include, exclude))
+	}
+	return opts
 }
 
 func loadAWSConfig(ctx context.Context, profile string) (aws.Config, error) {

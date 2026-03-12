@@ -20,6 +20,7 @@ func upsertScopedRowsWithChanges(
 	scopeColumn string,
 	scopeValues []string,
 	hashFn func(map[string]interface{}) string,
+	incremental bool,
 ) (*ChangeSet, error) {
 	changes := &ChangeSet{}
 	if err := snowflake.ValidateTableName(table); err != nil {
@@ -27,6 +28,9 @@ func upsertScopedRowsWithChanges(
 	}
 
 	if len(rows) == 0 {
+		if incremental {
+			return changes, nil
+		}
 		existing, err := getExistingHashesByScope(ctx, sf, table, scopeColumn, scopeValues)
 		if err != nil {
 			return changes, fmt.Errorf("get existing hashes: %w", err)
@@ -46,7 +50,7 @@ func upsertScopedRowsWithChanges(
 		return changes, fmt.Errorf("get existing hashes: %w", err)
 	}
 	newRows := buildRowHashes(rows, hashFn)
-	changes = detectRowChanges(existing, newRows, false)
+	changes = detectRowChanges(existing, newRows, incremental)
 
 	mergeRows := make([]map[string]interface{}, 0, len(rows))
 	for _, row := range rows {
@@ -72,7 +76,7 @@ func upsertScopedRowsWithChanges(
 		return changes, fmt.Errorf("merge rows: %w", err)
 	}
 
-	if len(changes.Removed) > 0 {
+	if !incremental && len(changes.Removed) > 0 {
 		removed := make(map[string]string, len(changes.Removed))
 		for _, id := range changes.Removed {
 			removed[id] = ""

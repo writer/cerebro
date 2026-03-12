@@ -11,58 +11,66 @@ import (
 )
 
 type syncAWSState struct {
-	region             string
-	multiRegion        bool
-	concurrency        int
-	table              string
-	validate           bool
-	scanAfter          bool
-	output             string
-	strictExit         bool
-	awsProfile         string
-	awsConfigFile      string
-	awsSharedCredsFile string
-	awsCredentialProc  string
-	awsWebIDTokenFile  string
-	awsWebIDRoleARN    string
-	awsRoleARN         string
-	awsRoleSession     string
-	awsRoleExternalID  string
-	awsRoleMFASerial   string
-	awsRoleMFAToken    string
-	awsRoleSourceID    string
-	awsRoleDuration    string
-	awsRoleTags        string
-	awsRoleTransitive  string
-	directFn           func(context.Context, time.Time) error
+	region                     string
+	multiRegion                bool
+	concurrency                int
+	permissionLookback         int
+	permissionRemovalThreshold int
+	awsPSInclude               string
+	awsPSExclude               string
+	table                      string
+	validate                   bool
+	scanAfter                  bool
+	output                     string
+	strictExit                 bool
+	awsProfile                 string
+	awsConfigFile              string
+	awsSharedCredsFile         string
+	awsCredentialProc          string
+	awsWebIDTokenFile          string
+	awsWebIDRoleARN            string
+	awsRoleARN                 string
+	awsRoleSession             string
+	awsRoleExternalID          string
+	awsRoleMFASerial           string
+	awsRoleMFAToken            string
+	awsRoleSourceID            string
+	awsRoleDuration            string
+	awsRoleTags                string
+	awsRoleTransitive          string
+	directFn                   func(context.Context, time.Time) error
 }
 
 func snapshotSyncAWSState() syncAWSState {
 	return syncAWSState{
-		region:             syncRegion,
-		multiRegion:        syncMultiRegion,
-		concurrency:        syncConcurrency,
-		table:              syncTable,
-		validate:           syncValidate,
-		scanAfter:          syncScanAfter,
-		output:             syncOutput,
-		strictExit:         syncStrictExit,
-		awsProfile:         syncAWSProfile,
-		awsConfigFile:      syncAWSConfigFile,
-		awsSharedCredsFile: syncAWSSharedCredsFile,
-		awsCredentialProc:  syncAWSCredentialProc,
-		awsWebIDTokenFile:  syncAWSWebIDTokenFile,
-		awsWebIDRoleARN:    syncAWSWebIDRoleARN,
-		awsRoleARN:         syncAWSRoleARN,
-		awsRoleSession:     syncAWSRoleSession,
-		awsRoleExternalID:  syncAWSRoleExternalID,
-		awsRoleMFASerial:   syncAWSRoleMFASerial,
-		awsRoleMFAToken:    syncAWSRoleMFAToken,
-		awsRoleSourceID:    syncAWSRoleSourceID,
-		awsRoleDuration:    syncAWSRoleDuration,
-		awsRoleTags:        syncAWSRoleTags,
-		awsRoleTransitive:  syncAWSRoleTransitive,
-		directFn:           runNativeSyncDirectFn,
+		region:                     syncRegion,
+		multiRegion:                syncMultiRegion,
+		concurrency:                syncConcurrency,
+		permissionLookback:         syncPermissionLookback,
+		permissionRemovalThreshold: syncPermissionRemovalThreshold,
+		awsPSInclude:               syncAWSPSInclude,
+		awsPSExclude:               syncAWSPSExclude,
+		table:                      syncTable,
+		validate:                   syncValidate,
+		scanAfter:                  syncScanAfter,
+		output:                     syncOutput,
+		strictExit:                 syncStrictExit,
+		awsProfile:                 syncAWSProfile,
+		awsConfigFile:              syncAWSConfigFile,
+		awsSharedCredsFile:         syncAWSSharedCredsFile,
+		awsCredentialProc:          syncAWSCredentialProc,
+		awsWebIDTokenFile:          syncAWSWebIDTokenFile,
+		awsWebIDRoleARN:            syncAWSWebIDRoleARN,
+		awsRoleARN:                 syncAWSRoleARN,
+		awsRoleSession:             syncAWSRoleSession,
+		awsRoleExternalID:          syncAWSRoleExternalID,
+		awsRoleMFASerial:           syncAWSRoleMFASerial,
+		awsRoleMFAToken:            syncAWSRoleMFAToken,
+		awsRoleSourceID:            syncAWSRoleSourceID,
+		awsRoleDuration:            syncAWSRoleDuration,
+		awsRoleTags:                syncAWSRoleTags,
+		awsRoleTransitive:          syncAWSRoleTransitive,
+		directFn:                   runNativeSyncDirectFn,
 	}
 }
 
@@ -70,6 +78,10 @@ func restoreSyncAWSState(state syncAWSState) {
 	syncRegion = state.region
 	syncMultiRegion = state.multiRegion
 	syncConcurrency = state.concurrency
+	syncPermissionLookback = state.permissionLookback
+	syncPermissionRemovalThreshold = state.permissionRemovalThreshold
+	syncAWSPSInclude = state.awsPSInclude
+	syncAWSPSExclude = state.awsPSExclude
 	syncTable = state.table
 	syncValidate = state.validate
 	syncScanAfter = state.scanAfter
@@ -121,6 +133,20 @@ func TestRunNativeSync_APIModeSuccess(t *testing.T) {
 		if req["concurrency"] != float64(3) {
 			t.Fatalf("expected concurrency=3, got %#v", req["concurrency"])
 		}
+		if req["permission_usage_lookback_days"] != float64(365) {
+			t.Fatalf("expected permission_usage_lookback_days=365, got %#v", req["permission_usage_lookback_days"])
+		}
+		if req["permission_removal_threshold_days"] != float64(210) {
+			t.Fatalf("expected permission_removal_threshold_days=210, got %#v", req["permission_removal_threshold_days"])
+		}
+		include, ok := req["aws_identity_center_permission_sets_include"].([]interface{})
+		if !ok || len(include) != 1 || include[0] != "Admin" {
+			t.Fatalf("unexpected permission set include payload: %#v", req["aws_identity_center_permission_sets_include"])
+		}
+		exclude, ok := req["aws_identity_center_permission_sets_exclude"].([]interface{})
+		if !ok || len(exclude) != 1 || exclude[0] != "Billing" {
+			t.Fatalf("unexpected permission set exclude payload: %#v", req["aws_identity_center_permission_sets_exclude"])
+		}
 
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"provider":                "aws",
@@ -144,6 +170,10 @@ func TestRunNativeSync_APIModeSuccess(t *testing.T) {
 	syncRegion = "us-west-2"
 	syncMultiRegion = true
 	syncConcurrency = 3
+	syncPermissionLookback = 365
+	syncPermissionRemovalThreshold = 210
+	syncAWSPSInclude = "Admin"
+	syncAWSPSExclude = "Billing"
 	syncTable = ""
 	syncValidate = false
 	syncScanAfter = false

@@ -9,6 +9,7 @@ type tableRegionOverride struct {
 
 var awsTableRegionOverrides = []tableRegionOverride{
 	{prefix: "aws_iam_", regions: []string{"us-east-1"}},
+	{prefix: "aws_identitycenter_", regions: []string{"us-east-1"}},
 	{prefix: "aws_organizations_", regions: []string{"us-east-1"}},
 	{prefix: "aws_cloudfront_", regions: []string{"us-east-1"}},
 	{prefix: "aws_route53_", regions: []string{"us-east-1"}},
@@ -23,6 +24,7 @@ type serviceConcurrencyLimit struct {
 
 var awsServiceConcurrencyLimits = []serviceConcurrencyLimit{
 	{prefix: "aws_iam_", limit: 2},
+	{prefix: "aws_identitycenter_", limit: 1},
 	{prefix: "aws_organizations_", limit: 1},
 	{prefix: "aws_route53_", limit: 2},
 	{prefix: "aws_cloudfront_", limit: 2},
@@ -40,6 +42,14 @@ func (e *SyncEngine) regionsForTable(table TableSpec) []string {
 
 func regionsForTable(tableName string, configured []string) []string {
 	if len(configured) == 0 {
+		return nil
+	}
+	if strings.HasPrefix(tableName, "aws_identitycenter_") {
+		for _, region := range configured {
+			if strings.TrimSpace(region) != "" {
+				return []string{region}
+			}
+		}
 		return nil
 	}
 	for _, override := range awsTableRegionOverrides {

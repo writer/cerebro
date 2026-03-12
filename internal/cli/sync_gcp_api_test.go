@@ -11,34 +11,40 @@ import (
 )
 
 type syncGCPAPIState struct {
-	table           string
-	security        bool
-	validate        bool
-	concurrency     int
-	output          string
-	strictExit      bool
-	useAssetAPI     bool
-	credentialsFile string
-	impersonateSA   string
-	impersonateDel  string
-	impersonateTTL  string
-	directFn        func(context.Context, time.Time, string, []string, []string, []string, bool, bool, map[string]struct{}) error
+	table                      string
+	security                   bool
+	validate                   bool
+	concurrency                int
+	permissionLookback         int
+	permissionRemovalThreshold int
+	gcpIAMGroups               string
+	output                     string
+	strictExit                 bool
+	useAssetAPI                bool
+	credentialsFile            string
+	impersonateSA              string
+	impersonateDel             string
+	impersonateTTL             string
+	directFn                   func(context.Context, time.Time, string, []string, []string, []string, bool, bool, map[string]struct{}) error
 }
 
 func snapshotSyncGCPAPIState() syncGCPAPIState {
 	return syncGCPAPIState{
-		table:           syncTable,
-		security:        syncSecurity,
-		validate:        syncValidate,
-		concurrency:     syncConcurrency,
-		output:          syncOutput,
-		strictExit:      syncStrictExit,
-		useAssetAPI:     syncUseAssetAPI,
-		credentialsFile: syncGCPCredentialsFile,
-		impersonateSA:   syncGCPImpersonateSA,
-		impersonateDel:  syncGCPImpersonateDel,
-		impersonateTTL:  syncGCPImpersonateTTL,
-		directFn:        runGCPSyncDirectFn,
+		table:                      syncTable,
+		security:                   syncSecurity,
+		validate:                   syncValidate,
+		concurrency:                syncConcurrency,
+		permissionLookback:         syncPermissionLookback,
+		permissionRemovalThreshold: syncPermissionRemovalThreshold,
+		gcpIAMGroups:               syncGCPIAMGroups,
+		output:                     syncOutput,
+		strictExit:                 syncStrictExit,
+		useAssetAPI:                syncUseAssetAPI,
+		credentialsFile:            syncGCPCredentialsFile,
+		impersonateSA:              syncGCPImpersonateSA,
+		impersonateDel:             syncGCPImpersonateDel,
+		impersonateTTL:             syncGCPImpersonateTTL,
+		directFn:                   runGCPSyncDirectFn,
 	}
 }
 
@@ -47,6 +53,9 @@ func restoreSyncGCPAPIState(state syncGCPAPIState) {
 	syncSecurity = state.security
 	syncValidate = state.validate
 	syncConcurrency = state.concurrency
+	syncPermissionLookback = state.permissionLookback
+	syncPermissionRemovalThreshold = state.permissionRemovalThreshold
+	syncGCPIAMGroups = state.gcpIAMGroups
 	syncOutput = state.output
 	syncStrictExit = state.strictExit
 	syncUseAssetAPI = state.useAssetAPI
@@ -79,6 +88,16 @@ func TestRunGCPSync_APIModeSuccess(t *testing.T) {
 		if req["concurrency"] != float64(6) {
 			t.Fatalf("expected concurrency=6, got %#v", req["concurrency"])
 		}
+		if req["permission_usage_lookback_days"] != float64(120) {
+			t.Fatalf("expected permission_usage_lookback_days=120, got %#v", req["permission_usage_lookback_days"])
+		}
+		if req["permission_removal_threshold_days"] != float64(240) {
+			t.Fatalf("expected permission_removal_threshold_days=240, got %#v", req["permission_removal_threshold_days"])
+		}
+		targetGroups, ok := req["gcp_iam_target_groups"].([]interface{})
+		if !ok || len(targetGroups) != 2 || targetGroups[0] != "eng@example.com" || targetGroups[1] != "ops@example.com" {
+			t.Fatalf("unexpected gcp_iam_target_groups payload: %#v", req["gcp_iam_target_groups"])
+		}
 		tables, ok := req["tables"].([]interface{})
 		if !ok || len(tables) != 2 || tables[0] != "gcp_compute_instances" || tables[1] != "gcp_storage_buckets" {
 			t.Fatalf("unexpected tables payload: %#v", req["tables"])
@@ -106,6 +125,9 @@ func TestRunGCPSync_APIModeSuccess(t *testing.T) {
 	syncSecurity = false
 	syncValidate = false
 	syncConcurrency = 6
+	syncPermissionLookback = 120
+	syncPermissionRemovalThreshold = 240
+	syncGCPIAMGroups = "eng@example.com,ops@example.com"
 	syncOutput = FormatTable
 	syncStrictExit = false
 	syncUseAssetAPI = false
