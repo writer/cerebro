@@ -3,6 +3,7 @@ package events
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"sort"
 	"testing"
@@ -490,6 +491,46 @@ func TestAlertRouterEscalationPersistsAcrossRestart(t *testing.T) {
 	}
 }
 
+func TestAlertRouterFallsBackToStatelessWhenPersistedStateLoadFails(t *testing.T) {
+	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
+	config := AlertRoutingConfig{
+		Routes: []AlertRoute{{
+			Name: "risk_spike",
+			Match: AlertRouteMatch{
+				EventType: "risk_score.changed",
+				Delta:     "> 0.3",
+			},
+			DeliverTo: []AlertRouteDelivery{{Type: "channel", Channel: "#ops-alerts"}},
+			GroupBy:   "entity_id",
+			Throttle:  "5m",
+		}},
+	}
+	stateStore := &failingAlertRouterStateStore{loadErr: fmt.Errorf("decode alert router state: corrupt payload")}
+	sender := &captureAlertSender{}
+	router := newRouterForTestWithStore(t, config, &stubAlertResolver{}, sender, stateStore, &now)
+	defer func() { _ = router.Close() }()
+
+	event := webhooks.Event{
+		ID:        "evt-1",
+		Type:      webhooks.EventRiskScoreChanged,
+		Timestamp: now,
+		Data: map[string]interface{}{
+			"entity_id":  "customer:acme",
+			"risk_delta": 0.41,
+			"severity":   "high",
+		},
+	}
+	if err := router.Route(context.Background(), event); err != nil {
+		t.Fatalf("route event with corrupt persisted state: %v", err)
+	}
+	if got := len(sender.messages); got != 1 {
+		t.Fatalf("expected alert delivery after stateless fallback, got %d", got)
+	}
+	if stateStore.saveCalls == 0 {
+		t.Fatal("expected router to resume persisting fresh state after fallback")
+	}
+}
+
 func TestAlertRouterRouteKeepsInMemoryStateWhenPersistenceFailsAfterDelivery(t *testing.T) {
 	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
 	config := AlertRoutingConfig{
@@ -706,11 +747,15 @@ type stubAlertResolver struct {
 
 type failingAlertRouterStateStore struct {
 	snapshot  alertRouterStateSnapshot
+	loadErr   error
 	failSave  bool
 	saveCalls int
 }
 
 func (s *failingAlertRouterStateStore) Load(_ context.Context) (alertRouterStateSnapshot, error) {
+	if s.loadErr != nil {
+		return alertRouterStateSnapshot{}, s.loadErr
+	}
 	return s.snapshot, nil
 }
 

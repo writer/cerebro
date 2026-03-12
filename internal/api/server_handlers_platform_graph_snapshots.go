@@ -144,26 +144,12 @@ func (s *Server) listPlatformGraphChangelog(w http.ResponseWriter, r *http.Reque
 		changelog.Until = &copy
 	}
 
-	records := make([]graph.GraphSnapshotRecord, 0)
-	for _, record := range s.platformGraphSnapshotRecordMap() {
-		if record == nil || !record.Diffable {
-			continue
-		}
-		records = append(records, *record)
-	}
-	sort.Slice(records, func(i, j int) bool {
-		left := snapshotRecordSortTime(records[i])
-		right := snapshotRecordSortTime(records[j])
-		if !left.Equal(right) {
-			return left.Before(right)
-		}
-		return records[i].ID < records[j].ID
-	})
+	pairs := s.platformGraphSnapshotDiffPairs()
 
 	entries := make([]graph.GraphChangelogEntry, 0, limit)
-	for i := len(records) - 2; i >= 0; i-- {
-		fromRecord := records[i]
-		toRecord := records[i+1]
+	for i := len(pairs) - 1; i >= 0; i-- {
+		fromRecord := pairs[i].from
+		toRecord := pairs[i].to
 		changeTime := snapshotRecordSortTime(toRecord)
 		if !since.IsZero() && changeTime.Before(since) {
 			continue
@@ -281,27 +267,12 @@ func (s *Server) platformGraphSnapshotDiffByID(diffID string) (*graph.GraphSnaps
 	if diffID == "" {
 		return nil, nil, http.StatusBadRequest, fmt.Errorf("diff id required")
 	}
-	records := make([]graph.GraphSnapshotRecord, 0)
-	for _, record := range s.platformGraphSnapshotRecordMap() {
-		if record == nil || !record.Diffable {
-			continue
-		}
-		records = append(records, *record)
-	}
-	sort.Slice(records, func(i, j int) bool {
-		left := snapshotRecordSortTime(records[i])
-		right := snapshotRecordSortTime(records[j])
-		if !left.Equal(right) {
-			return left.Before(right)
-		}
-		return records[i].ID < records[j].ID
-	})
-	for i := 0; i+1 < len(records); i++ {
-		candidate := graph.BuildGraphSnapshotDiffRecord(records[i], records[i+1], &graph.GraphDiff{}, time.Time{})
+	for _, pair := range s.platformGraphSnapshotDiffPairs() {
+		candidate := graph.BuildGraphSnapshotDiffRecord(pair.from, pair.to, &graph.GraphDiff{}, time.Time{})
 		if candidate == nil || candidate.ID != diffID {
 			continue
 		}
-		return s.platformGraphSnapshotDiffWithSnapshots(records[i].ID, records[i+1].ID)
+		return s.platformGraphSnapshotDiffWithSnapshots(pair.from.ID, pair.to.ID)
 	}
 	return nil, nil, http.StatusNotFound, fmt.Errorf("graph snapshot diff not found: %s", diffID)
 }
@@ -328,6 +299,71 @@ func (s *Server) platformGraphSnapshotRecordMap() map[string]*graph.GraphSnapsho
 		cloned[id] = &copy
 	}
 	return cloned
+}
+
+type platformGraphSnapshotDiffPair struct {
+	from graph.GraphSnapshotRecord
+	to   graph.GraphSnapshotRecord
+}
+
+func (s *Server) platformGraphSnapshotDiffPairs() []platformGraphSnapshotDiffPair {
+	records := make([]graph.GraphSnapshotRecord, 0)
+	for _, record := range s.platformGraphSnapshotRecordMap() {
+		if record == nil || !record.Diffable {
+			continue
+		}
+		records = append(records, *record)
+	}
+	sort.Slice(records, func(i, j int) bool {
+		left := snapshotRecordSortTime(records[i])
+		right := snapshotRecordSortTime(records[j])
+		if !left.Equal(right) {
+			return left.Before(right)
+		}
+		return records[i].ID < records[j].ID
+	})
+	if len(records) < 2 {
+		return nil
+	}
+	recordByID := make(map[string]graph.GraphSnapshotRecord, len(records))
+	for _, record := range records {
+		recordByID[strings.TrimSpace(record.ID)] = record
+	}
+	pairs := make([]platformGraphSnapshotDiffPair, 0, len(records)-1)
+	seen := make(map[string]struct{}, len(records)-1)
+	for i, toRecord := range records {
+		fromRecord, ok := parentPlatformGraphSnapshotDiffRecord(records, recordByID, i)
+		if !ok {
+			continue
+		}
+		key := strings.TrimSpace(fromRecord.ID) + "|" + strings.TrimSpace(toRecord.ID)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		pairs = append(pairs, platformGraphSnapshotDiffPair{from: fromRecord, to: toRecord})
+	}
+	return pairs
+}
+
+func parentPlatformGraphSnapshotDiffRecord(records []graph.GraphSnapshotRecord, recordByID map[string]graph.GraphSnapshotRecord, index int) (graph.GraphSnapshotRecord, bool) {
+	if index < 0 || index >= len(records) {
+		return graph.GraphSnapshotRecord{}, false
+	}
+	record := records[index]
+	if parentID := strings.TrimSpace(record.ParentSnapshotID); parentID != "" {
+		parent, ok := recordByID[parentID]
+		if !ok || !parent.Diffable {
+			return graph.GraphSnapshotRecord{}, false
+		}
+		return parent, true
+	}
+	for i := index - 1; i >= 0; i-- {
+		if records[i].Diffable {
+			return records[i], true
+		}
+	}
+	return graph.GraphSnapshotRecord{}, false
 }
 
 func (s *Server) getPlatformGraphSnapshotAncestry(w http.ResponseWriter, r *http.Request) {

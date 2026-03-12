@@ -39,7 +39,7 @@ func NewLocalMaterializer(basePath string) *LocalMaterializer {
 	return &LocalMaterializer{basePath: basePath, now: time.Now}
 }
 
-func (m *LocalMaterializer) Materialize(ctx context.Context, runID string, descriptor *FunctionDescriptor, open ArchiveOpener) (*FilesystemArtifact, []AppliedArtifact, error) {
+func (m *LocalMaterializer) Materialize(ctx context.Context, runID string, descriptor *FunctionDescriptor, open ArchiveOpener) (artifact *FilesystemArtifact, applied []AppliedArtifact, err error) {
 	if m == nil {
 		return nil, nil, fmt.Errorf("local materializer is nil")
 	}
@@ -58,10 +58,15 @@ func (m *LocalMaterializer) Materialize(ctx context.Context, runID string, descr
 		return nil, nil, err
 	}
 	defer func() { _ = os.RemoveAll(archiveDir) }()
+	defer func() {
+		if err != nil {
+			_ = os.RemoveAll(rootfsPath)
+		}
+	}()
 	if err := os.MkdirAll(rootfsPath, 0o750); err != nil {
 		return nil, nil, fmt.Errorf("create rootfs path %s: %w", rootfsPath, err)
 	}
-	applied := make([]AppliedArtifact, 0, len(descriptor.Artifacts))
+	applied = make([]AppliedArtifact, 0, len(descriptor.Artifacts))
 	var (
 		fileCount int64
 		byteSize  int64
@@ -97,7 +102,7 @@ func (m *LocalMaterializer) Materialize(ctx context.Context, runID string, descr
 		fileCount += countDelta
 		byteSize += byteDelta
 	}
-	artifact := &FilesystemArtifact{
+	artifact = &FilesystemArtifact{
 		Path:           rootfsPath,
 		MaterializedAt: m.now().UTC(),
 		FileCount:      fileCount,

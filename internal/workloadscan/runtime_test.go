@@ -18,8 +18,12 @@ type fakeProvider struct {
 	maxConcurrentSnapshot int
 	maxAttachmentSlots    int
 	attachmentSlots       []int
+	failShareSnapshot     int
+	failCreateVolume      int
+	failAttachVolume      int
 	failDeleteVolume      int
 	failDeleteSnapshot    int
+	detachedVolumes       []string
 	deletedVolumes        []string
 	deletedSnapshots      []string
 }
@@ -59,10 +63,22 @@ func (p *fakeProvider) CreateSnapshot(_ context.Context, _ VMTarget, volume Sour
 }
 
 func (p *fakeProvider) ShareSnapshot(context.Context, VMTarget, ScannerHost, SnapshotArtifact) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.failShareSnapshot > 0 {
+		p.failShareSnapshot--
+		return fmt.Errorf("share snapshot failed")
+	}
 	return nil
 }
 
 func (p *fakeProvider) CreateInspectionVolume(_ context.Context, _ VMTarget, _ ScannerHost, snapshot SnapshotArtifact) (*InspectionVolume, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.failCreateVolume > 0 {
+		p.failCreateVolume--
+		return nil, fmt.Errorf("create inspection volume failed")
+	}
 	now := time.Now().UTC()
 	return &InspectionVolume{
 		ID:         "vol-" + snapshot.ID,
@@ -81,8 +97,12 @@ func (p *fakeProvider) MaxConcurrentAttachments() int {
 
 func (p *fakeProvider) AttachInspectionVolume(_ context.Context, _ VMTarget, scannerHost ScannerHost, volume InspectionVolume, index int) (*VolumeAttachment, error) {
 	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.failAttachVolume > 0 {
+		p.failAttachVolume--
+		return nil, fmt.Errorf("attach inspection volume failed")
+	}
 	p.attachmentSlots = append(p.attachmentSlots, index)
-	p.mu.Unlock()
 	return &VolumeAttachment{
 		VolumeID:   volume.ID,
 		HostID:     scannerHost.HostID,
@@ -92,7 +112,10 @@ func (p *fakeProvider) AttachInspectionVolume(_ context.Context, _ VMTarget, sca
 	}, nil
 }
 
-func (p *fakeProvider) DetachInspectionVolume(context.Context, VolumeAttachment) error {
+func (p *fakeProvider) DetachInspectionVolume(_ context.Context, attachment VolumeAttachment) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.detachedVolumes = append(p.detachedVolumes, attachment.VolumeID)
 	return nil
 }
 
@@ -120,10 +143,14 @@ func (p *fakeProvider) DeleteSnapshot(_ context.Context, snapshot SnapshotArtifa
 
 type fakeMounter struct {
 	mu        sync.Mutex
+	failMount bool
 	unmounted []string
 }
 
 func (m *fakeMounter) Mount(_ context.Context, attachment VolumeAttachment, _ SourceVolume) (*MountedVolume, error) {
+	if m.failMount {
+		return nil, fmt.Errorf("mount %s failed", attachment.VolumeID)
+	}
 	return &MountedVolume{
 		VolumeID:   attachment.VolumeID,
 		DevicePath: attachment.DeviceName,
@@ -283,6 +310,111 @@ func TestRunnerRunVMScanPersistsLifecycleAndCleanup(t *testing.T) {
 	}
 }
 
+func TestRunnerCleansUpArtifactsOnIntermediateVolumeFailures(t *testing.T) {
+	tests := []struct {
+		name                string
+		configureProvider   func(*fakeProvider)
+		configureMounter    func(*fakeMounter)
+		wantStage           RunStage
+		wantDeletedSnapshot bool
+		wantDeletedVolume   bool
+		wantDetachedVolume  bool
+		wantUnmountedVolume bool
+	}{
+		{
+			name: "share failure",
+			configureProvider: func(provider *fakeProvider) {
+				provider.failShareSnapshot = 1
+			},
+			wantStage:           RunStageShare,
+			wantDeletedSnapshot: true,
+		},
+		{
+			name: "volume create failure",
+			configureProvider: func(provider *fakeProvider) {
+				provider.failCreateVolume = 1
+			},
+			wantStage:           RunStageVolumeCreate,
+			wantDeletedSnapshot: true,
+		},
+		{
+			name: "attach failure",
+			configureProvider: func(provider *fakeProvider) {
+				provider.failAttachVolume = 1
+			},
+			wantStage:           RunStageAttach,
+			wantDeletedSnapshot: true,
+			wantDeletedVolume:   true,
+		},
+		{
+			name: "mount failure",
+			configureMounter: func(mounter *fakeMounter) {
+				mounter.failMount = true
+			},
+			wantStage:           RunStageMount,
+			wantDeletedSnapshot: true,
+			wantDeletedVolume:   true,
+			wantDetachedVolume:  true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			store, err := NewSQLiteRunStore(filepath.Join(t.TempDir(), "workload-scan.db"))
+			if err != nil {
+				t.Fatalf("new sqlite run store: %v", err)
+			}
+			defer func() { _ = store.Close() }()
+
+			provider := &fakeProvider{volumes: []SourceVolume{{ID: "vol-a", SizeGiB: 10}}}
+			mounter := &fakeMounter{}
+			if tc.configureProvider != nil {
+				tc.configureProvider(provider)
+			}
+			if tc.configureMounter != nil {
+				tc.configureMounter(mounter)
+			}
+			runner := NewRunner(RunnerOptions{
+				Store:     store,
+				Providers: []Provider{provider},
+				Mounter:   mounter,
+				Analyzer:  fakeAnalyzer{},
+			})
+
+			run, err := runner.RunVMScan(context.Background(), ScanRequest{
+				ID:          "workload_scan:intermediate-failure",
+				Target:      VMTarget{Provider: ProviderAWS, Region: "us-east-1", InstanceID: "i-target"},
+				ScannerHost: ScannerHost{HostID: "i-scan", Region: "us-east-1"},
+			})
+			if err == nil {
+				t.Fatal("expected scan failure")
+			}
+			if run == nil {
+				t.Fatal("expected failed run record")
+			}
+			if run.Status != RunStatusFailed {
+				t.Fatalf("expected failed run, got %s", run.Status)
+			}
+			volume := run.Volumes[0]
+			if volume.Stage != tc.wantStage {
+				t.Fatalf("expected failed volume stage %s, got %s", tc.wantStage, volume.Stage)
+			}
+			if volume.Cleanup.DeletedSnapshot != tc.wantDeletedSnapshot {
+				t.Fatalf("expected deleted snapshot=%t, got %#v", tc.wantDeletedSnapshot, volume.Cleanup)
+			}
+			if volume.Cleanup.DeletedVolume != tc.wantDeletedVolume {
+				t.Fatalf("expected deleted volume=%t, got %#v", tc.wantDeletedVolume, volume.Cleanup)
+			}
+			if volume.Cleanup.Detached != tc.wantDetachedVolume {
+				t.Fatalf("expected detached volume=%t, got %#v", tc.wantDetachedVolume, volume.Cleanup)
+			}
+			if volume.Cleanup.Unmounted != tc.wantUnmountedVolume {
+				t.Fatalf("expected unmounted volume=%t, got %#v", tc.wantUnmountedVolume, volume.Cleanup)
+			}
+		})
+	}
+}
+
 func TestRunnerReconcileCleansUpAfterFailedCleanup(t *testing.T) {
 	store, err := NewSQLiteRunStore(filepath.Join(t.TempDir(), "workload-scan.db"))
 	if err != nil {
@@ -340,6 +472,9 @@ func TestRunnerReconcileCleansUpAfterFailedCleanup(t *testing.T) {
 	}
 	if !loaded.Volumes[0].Cleanup.Reconciled {
 		t.Fatalf("expected reconciled flag on volume cleanup, got %#v", loaded.Volumes[0].Cleanup)
+	}
+	if loaded.Volumes[0].Status != RunStatusFailed {
+		t.Fatalf("expected reconciled volume to preserve failed status, got %#v", loaded.Volumes[0])
 	}
 }
 

@@ -165,7 +165,7 @@ func (g *Graph) EntityAtTime(id string, asOf, recordedAt time.Time) (*Node, Enti
 	}
 
 	reconstructed := cloneNode(node)
-	reconstructed.Properties = reconstructNodePropertiesAt(node, asOf)
+	reconstructed.Properties = reconstructNodePropertiesAt(node, asOf, recordedAt)
 	if len(reconstructed.Properties) == 0 {
 		reconstructed.Properties = nil
 	}
@@ -192,11 +192,17 @@ func entityHistoricalVisibleAtLocked(node *Node, validAt, recordedAt time.Time) 
 	recordedAt = recordedAt.UTC()
 
 	validStart, validEnd := temporalBounds(node.Properties, node.CreatedAt, node.DeletedAt)
-	recordedStart, _ := recordedBounds(node.Properties, node.CreatedAt, node.DeletedAt)
-	return temporalContains(validStart, validEnd, validAt) && !recordedAt.Before(recordedStart.UTC())
+	recordedStart, recordedEnd := recordedBounds(node.Properties, node.CreatedAt, node.DeletedAt)
+	if !temporalContains(validStart, validEnd, validAt) {
+		return false
+	}
+	if node.DeletedAt != nil {
+		return !recordedAt.Before(recordedStart.UTC())
+	}
+	return temporalContains(recordedStart, recordedEnd, recordedAt)
 }
 
-func reconstructNodePropertiesAt(node *Node, asOf time.Time) map[string]any {
+func reconstructNodePropertiesAt(node *Node, asOf, recordedAt time.Time) map[string]any {
 	if node == nil {
 		return nil
 	}
@@ -213,22 +219,30 @@ func reconstructNodePropertiesAt(node *Node, asOf time.Time) map[string]any {
 
 	properties := make(map[string]any, len(keys))
 	for key := range keys {
-		if value, ok := propertyValueAt(node, key, asOf); ok {
+		if value, ok := propertyValueAt(node, key, asOf, recordedAt); ok {
 			properties[key] = cloneAny(value)
 		}
 	}
 	return properties
 }
 
-func propertyValueAt(node *Node, key string, asOf time.Time) (any, bool) {
+func propertyValueAt(node *Node, key string, asOf, recordedAt time.Time) (any, bool) {
 	if node == nil {
 		return nil, false
 	}
 	if history := node.PropertyHistory[key]; len(history) > 0 {
 		for i := len(history) - 1; i >= 0; i-- {
-			if !history[i].Timestamp.After(asOf) {
-				return history[i].Value, true
+			snapshot := history[i]
+			if snapshot.Timestamp.After(asOf) {
+				continue
 			}
+			if !recordedAt.IsZero() && snapshot.Timestamp.After(recordedAt) {
+				continue
+			}
+			if snapshot.Deleted {
+				return nil, false
+			}
+			return snapshot.Value, true
 		}
 		return nil, false
 	}

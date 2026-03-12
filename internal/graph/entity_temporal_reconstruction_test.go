@@ -81,6 +81,103 @@ func TestGetEntityRecordAtTimeAndDiff(t *testing.T) {
 	}
 }
 
+func TestGetEntityRecordAtTimeHonorsTransactionTo(t *testing.T) {
+	base := time.Date(2026, 3, 10, 9, 0, 0, 0, time.UTC)
+	transactionTo := base.Add(2 * time.Hour)
+	g := New()
+	g.AddNode(&Node{
+		ID:        "service:ephemeral",
+		Kind:      NodeKindService,
+		Name:      "Ephemeral",
+		Provider:  "aws",
+		CreatedAt: base,
+		UpdatedAt: base,
+		Properties: map[string]any{
+			"status":           "active",
+			"observed_at":      base.Format(time.RFC3339),
+			"valid_from":       base.Format(time.RFC3339),
+			"recorded_at":      base.Format(time.RFC3339),
+			"transaction_from": base.Format(time.RFC3339),
+			"transaction_to":   transactionTo.Format(time.RFC3339),
+		},
+	})
+
+	if _, ok := GetEntityRecordAtTime(g, "service:ephemeral", base.Add(time.Hour), transactionTo.Add(-time.Minute)); !ok {
+		t.Fatal("expected entity record before transaction window closed")
+	}
+	if _, ok := GetEntityRecordAtTime(g, "service:ephemeral", base.Add(time.Hour), transactionTo.Add(time.Minute)); ok {
+		t.Fatal("did not expect entity record after transaction_to")
+	}
+}
+
+func TestGetEntityRecordAtTimeUsesRecordedAtHistoryAndTombstones(t *testing.T) {
+	base := time.Date(2026, 3, 10, 9, 0, 0, 0, time.UTC)
+	correctionAt := base.Add(2 * time.Hour)
+	g := New()
+	g.AddNode(&Node{
+		ID:        "service:checkout",
+		Kind:      NodeKindService,
+		Name:      "Checkout",
+		Provider:  "aws",
+		CreatedAt: base,
+		UpdatedAt: base,
+		Properties: map[string]any{
+			"status":           "healthy",
+			"owner":            "team-checkout",
+			"observed_at":      base.Format(time.RFC3339),
+			"valid_from":       base.Format(time.RFC3339),
+			"recorded_at":      base.Format(time.RFC3339),
+			"transaction_from": base.Format(time.RFC3339),
+		},
+	})
+	g.AddNode(&Node{
+		ID:        "service:checkout",
+		Kind:      NodeKindService,
+		Name:      "Checkout",
+		Provider:  "aws",
+		CreatedAt: base,
+		UpdatedAt: correctionAt,
+		Properties: map[string]any{
+			"status":           "degraded",
+			"observed_at":      correctionAt.Format(time.RFC3339),
+			"valid_from":       base.Format(time.RFC3339),
+			"recorded_at":      base.Format(time.RFC3339),
+			"transaction_from": base.Format(time.RFC3339),
+		},
+	})
+
+	node, ok := g.GetNode("service:checkout")
+	if !ok || node == nil {
+		t.Fatal("expected updated node")
+	}
+	history := node.PropertyHistory["owner"]
+	if len(history) == 0 || !history[len(history)-1].Deleted {
+		t.Fatalf("expected owner tombstone in property history, got %#v", history)
+	}
+
+	beforeCorrection, ok := GetEntityRecordAtTime(g, "service:checkout", correctionAt.Add(time.Minute), base.Add(time.Minute))
+	if !ok {
+		t.Fatal("expected entity record before later correction was recorded")
+	}
+	if got := beforeCorrection.Entity.Properties["status"]; got != "healthy" {
+		t.Fatalf("expected status healthy before correction recorded, got %#v", got)
+	}
+	if got := beforeCorrection.Entity.Properties["owner"]; got != "team-checkout" {
+		t.Fatalf("expected owner before tombstone, got %#v", got)
+	}
+
+	afterCorrection, ok := GetEntityRecordAtTime(g, "service:checkout", correctionAt.Add(time.Minute), correctionAt.Add(time.Minute))
+	if !ok {
+		t.Fatal("expected entity record after correction was recorded")
+	}
+	if got := afterCorrection.Entity.Properties["status"]; got != "degraded" {
+		t.Fatalf("expected degraded status after correction, got %#v", got)
+	}
+	if _, ok := afterCorrection.Entity.Properties["owner"]; ok {
+		t.Fatalf("did not expect owner after tombstone, got %#v", afterCorrection.Entity.Properties["owner"])
+	}
+}
+
 func TestGetEntityTimeDiffAcrossDeletion(t *testing.T) {
 	base := time.Date(2026, 3, 10, 9, 0, 0, 0, time.UTC)
 	deletedAt := base.Add(2 * time.Hour)

@@ -382,6 +382,10 @@ func (r *Runner) Reconcile(ctx context.Context, olderThan time.Duration) ([]RunR
 
 func (r *Runner) processVolume(ctx context.Context, provider Provider, req ScanRequest, run *RunRecord, idx int, attachmentSlots chan int, runMu *sync.Mutex) error {
 	source := run.Volumes[idx].Source
+	failWithCleanup := func(stage RunStage, err error) error {
+		cleanupErr := r.cleanupVolume(run, idx, provider, runMu)
+		return r.failVolume(ctx, run, idx, runMu, stage, joinErrors([]error{err, cleanupErr}))
+	}
 	r.updateVolume(ctx, run, idx, runMu, func(volume *VolumeScanRecord) {
 		volume.Status = RunStatusRunning
 		volume.Stage = RunStageSnapshot
@@ -403,7 +407,7 @@ func (r *Runner) processVolume(ctx context.Context, provider Provider, req ScanR
 	if _, err := scanner.WithRetry(ctx, r.retry, func() error {
 		return provider.ShareSnapshot(ctx, req.Target, req.ScannerHost, *snapshot)
 	}); err != nil {
-		return r.failVolume(ctx, run, idx, runMu, RunStageShare, fmt.Errorf("share snapshot %s: %w", snapshot.ID, err))
+		return failWithCleanup(RunStageShare, fmt.Errorf("share snapshot %s: %w", snapshot.ID, err))
 	}
 	r.updateVolume(ctx, run, idx, runMu, func(volume *VolumeScanRecord) {
 		volume.Stage = RunStageVolumeCreate
@@ -417,7 +421,7 @@ func (r *Runner) processVolume(ctx context.Context, provider Provider, req ScanR
 		return provider.CreateInspectionVolume(ctx, req.Target, req.ScannerHost, *snapshot)
 	})
 	if err != nil {
-		return r.failVolume(ctx, run, idx, runMu, RunStageVolumeCreate, fmt.Errorf("create inspection volume from snapshot %s: %w", snapshot.ID, err))
+		return failWithCleanup(RunStageVolumeCreate, fmt.Errorf("create inspection volume from snapshot %s: %w", snapshot.ID, err))
 	}
 	r.updateVolume(ctx, run, idx, runMu, func(volume *VolumeScanRecord) {
 		volume.Stage = RunStageAttach
@@ -433,7 +437,7 @@ func (r *Runner) processVolume(ctx context.Context, provider Provider, req ScanR
 				attachmentSlots <- attachmentSlot
 			}
 		case <-ctx.Done():
-			return r.failVolume(ctx, run, idx, runMu, RunStageAttach, ctx.Err())
+			return failWithCleanup(RunStageAttach, ctx.Err())
 		}
 	}
 	defer releaseAttachmentSlot()
@@ -441,7 +445,7 @@ func (r *Runner) processVolume(ctx context.Context, provider Provider, req ScanR
 		return provider.AttachInspectionVolume(ctx, req.Target, req.ScannerHost, *inspection, attachmentSlot)
 	})
 	if err != nil {
-		return r.failVolume(ctx, run, idx, runMu, RunStageAttach, fmt.Errorf("attach inspection volume %s: %w", inspection.ID, err))
+		return failWithCleanup(RunStageAttach, fmt.Errorf("attach inspection volume %s: %w", inspection.ID, err))
 	}
 	r.updateVolume(ctx, run, idx, runMu, func(volume *VolumeScanRecord) {
 		volume.Stage = RunStageMount
@@ -451,7 +455,7 @@ func (r *Runner) processVolume(ctx context.Context, provider Provider, req ScanR
 
 	mount, err := r.mounter.Mount(ctx, *attachment, source)
 	if err != nil {
-		return r.failVolume(ctx, run, idx, runMu, RunStageMount, fmt.Errorf("mount inspection volume %s: %w", inspection.ID, err))
+		return failWithCleanup(RunStageMount, fmt.Errorf("mount inspection volume %s: %w", inspection.ID, err))
 	}
 	r.updateVolume(ctx, run, idx, runMu, func(volume *VolumeScanRecord) {
 		volume.Stage = RunStageAnalyze
@@ -619,11 +623,6 @@ func (r *Runner) reconcileVolume(ctx context.Context, provider Provider, run *Ru
 		return err
 	}
 	volume.Cleanup.Reconciled = true
-	volume.Status = RunStatusSucceeded
-	if volume.CompletedAt == nil {
-		completed := r.now().UTC()
-		volume.CompletedAt = &completed
-	}
 	return nil
 }
 

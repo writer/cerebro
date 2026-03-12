@@ -247,9 +247,10 @@ func NewAlertRouter(options AlertRouterOptions) (*AlertRouter, error) {
 	if options.StateStore != nil {
 		snapshot, err := options.StateStore.Load(context.Background())
 		if err != nil {
-			return nil, err
+			logger.Warn("failed to load alert router state; continuing without persisted state", "error", err)
+		} else {
+			router.restoreState(snapshot, now().UTC())
 		}
-		router.restoreState(snapshot, now().UTC())
 	}
 	return router, nil
 }

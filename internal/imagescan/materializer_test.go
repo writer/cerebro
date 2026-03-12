@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -24,8 +25,12 @@ func TestLocalMaterializerRejectsOversizedRegularFiles(t *testing.T) {
 	manifest := &scanner.ImageManifest{Layers: []scanner.Layer{{Digest: "sha256:one", MediaType: "application/vnd.oci.image.layer.v1.tar+gzip"}}}
 	materializer := NewLocalMaterializer(filepath.Join(t.TempDir(), "rootfs"))
 	materializer.maxFileBytes = 4
+	rootfsPath, err := materializer.rootfsPath("image_scan:oversized-file")
+	if err != nil {
+		t.Fatalf("rootfs path: %v", err)
+	}
 
-	_, _, err := materializer.Materialize(context.Background(), "image_scan:oversized-file", manifest, func(_ context.Context, digest string) (io.ReadCloser, error) {
+	_, _, err = materializer.Materialize(context.Background(), "image_scan:oversized-file", manifest, func(_ context.Context, digest string) (io.ReadCloser, error) {
 		if digest != "sha256:one" {
 			return nil, fmt.Errorf("unexpected digest %s", digest)
 		}
@@ -33,6 +38,9 @@ func TestLocalMaterializerRejectsOversizedRegularFiles(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "exceeds max size") {
 		t.Fatalf("expected oversized file error, got %v", err)
+	}
+	if _, statErr := os.Stat(rootfsPath); !os.IsNotExist(statErr) {
+		t.Fatalf("expected rootfs path cleanup after failure, got %v", statErr)
 	}
 }
 
@@ -55,8 +63,12 @@ func TestLocalMaterializerRejectsTotalExtractedSizeLimit(t *testing.T) {
 	}}
 	materializer := NewLocalMaterializer(filepath.Join(t.TempDir(), "rootfs"))
 	materializer.maxTotalBytes = 6
+	rootfsPath, err := materializer.rootfsPath("image_scan:oversized-total")
+	if err != nil {
+		t.Fatalf("rootfs path: %v", err)
+	}
 
-	_, _, err := materializer.Materialize(context.Background(), "image_scan:oversized-total", manifest, func(_ context.Context, digest string) (io.ReadCloser, error) {
+	_, _, err = materializer.Materialize(context.Background(), "image_scan:oversized-total", manifest, func(_ context.Context, digest string) (io.ReadCloser, error) {
 		switch digest {
 		case "sha256:one":
 			return io.NopCloser(bytes.NewReader(layer1)), nil
@@ -68,5 +80,8 @@ func TestLocalMaterializerRejectsTotalExtractedSizeLimit(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "materialized filesystem exceeds max size") {
 		t.Fatalf("expected total extracted size error, got %v", err)
+	}
+	if _, statErr := os.Stat(rootfsPath); !os.IsNotExist(statErr) {
+		t.Fatalf("expected rootfs path cleanup after failure, got %v", statErr)
 	}
 }

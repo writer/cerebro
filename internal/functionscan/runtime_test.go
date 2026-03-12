@@ -330,13 +330,20 @@ func TestLocalMaterializerRejectsOversizedArchiveEntry(t *testing.T) {
 	descriptor := &FunctionDescriptor{
 		Artifacts: []ArtifactRef{{ID: "function_code", Kind: ArtifactFunctionCode, Format: ArchiveFormatZIP}},
 	}
-	_, _, err := materializer.Materialize(context.Background(), "function_scan:oversized-entry", descriptor, func(_ context.Context, artifact ArtifactRef) (io.ReadCloser, error) {
+	rootfsPath, err := materializer.rootfsPath("function_scan:oversized-entry")
+	if err != nil {
+		t.Fatalf("rootfs path: %v", err)
+	}
+	_, _, err = materializer.Materialize(context.Background(), "function_scan:oversized-entry", descriptor, func(_ context.Context, artifact ArtifactRef) (io.ReadCloser, error) {
 		return io.NopCloser(bytes.NewReader(zipBytes(t, map[string]string{
 			"handler.py": "this payload is too large",
 		}))), nil
 	})
 	if err == nil || !strings.Contains(err.Error(), "max extracted size") {
 		t.Fatalf("expected max extracted size error, got %v", err)
+	}
+	if _, statErr := os.Stat(rootfsPath); !os.IsNotExist(statErr) {
+		t.Fatalf("expected rootfs path cleanup after failure, got %v", statErr)
 	}
 }
 
@@ -349,11 +356,18 @@ func TestLocalMaterializerRejectsOversizedDownload(t *testing.T) {
 	descriptor := &FunctionDescriptor{
 		Artifacts: []ArtifactRef{{ID: "function_code", Kind: ArtifactFunctionCode, Format: ArchiveFormatZIP}},
 	}
-	_, _, err := materializer.Materialize(context.Background(), "function_scan:oversized-download", descriptor, func(_ context.Context, artifact ArtifactRef) (io.ReadCloser, error) {
+	rootfsPath, err := materializer.rootfsPath("function_scan:oversized-download")
+	if err != nil {
+		t.Fatalf("rootfs path: %v", err)
+	}
+	_, _, err = materializer.Materialize(context.Background(), "function_scan:oversized-download", descriptor, func(_ context.Context, artifact ArtifactRef) (io.ReadCloser, error) {
 		return io.NopCloser(bytes.NewReader(bytes.Repeat([]byte("a"), 32))), nil
 	})
 	if err == nil || !strings.Contains(err.Error(), "max download size") {
 		t.Fatalf("expected max download size error, got %v", err)
+	}
+	if _, statErr := os.Stat(rootfsPath); !os.IsNotExist(statErr) {
+		t.Fatalf("expected rootfs path cleanup after failure, got %v", statErr)
 	}
 }
 

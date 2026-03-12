@@ -53,7 +53,7 @@ func NewLocalMaterializer(basePath string) *LocalMaterializer {
 	}
 }
 
-func (m *LocalMaterializer) Materialize(ctx context.Context, runID string, manifest *scanner.ImageManifest, open BlobOpener) (*FilesystemArtifact, []LayerArtifact, error) {
+func (m *LocalMaterializer) Materialize(ctx context.Context, runID string, manifest *scanner.ImageManifest, open BlobOpener) (artifact *FilesystemArtifact, layers []LayerArtifact, err error) {
 	if m == nil {
 		return nil, nil, fmt.Errorf("local materializer is nil")
 	}
@@ -67,11 +67,16 @@ func (m *LocalMaterializer) Materialize(ctx context.Context, runID string, manif
 	if err != nil {
 		return nil, nil, err
 	}
+	defer func() {
+		if err != nil {
+			_ = os.RemoveAll(rootfsPath)
+		}
+	}()
 	if err := os.MkdirAll(rootfsPath, 0o750); err != nil {
 		return nil, nil, fmt.Errorf("create rootfs path %s: %w", rootfsPath, err)
 	}
 
-	layers := make([]LayerArtifact, 0, len(manifest.Layers))
+	layers = make([]LayerArtifact, 0, len(manifest.Layers))
 	var (
 		fileCount int64
 		byteSize  int64
@@ -88,7 +93,7 @@ func (m *LocalMaterializer) Materialize(ctx context.Context, runID string, manif
 		fileCount += countDelta
 		byteSize += byteDelta
 	}
-	artifact := &FilesystemArtifact{
+	artifact = &FilesystemArtifact{
 		Path:           rootfsPath,
 		MaterializedAt: m.now().UTC(),
 		FileCount:      fileCount,

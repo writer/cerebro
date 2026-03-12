@@ -99,6 +99,7 @@ const (
 type PropertySnapshot struct {
 	Timestamp time.Time `json:"timestamp"`
 	Value     any       `json:"value"`
+	Deleted   bool      `json:"deleted,omitempty"`
 }
 
 // Node represents an entity in the graph platform.
