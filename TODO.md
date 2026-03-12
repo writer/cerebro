@@ -5,6 +5,50 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 48 - Connector Provisioning Contracts + Dry-Run Validation (2026-03-11)
+
+### Review findings
+- [x] Gap: the workload scan issue stack had no typed provisioning contract, so IAM snippets and trust configuration would have drifted across issues, docs, and customer setup guides.
+- [x] Gap: there was no `cerebro connector` CLI surface for generating provider-specific install artifacts, which meant the provisioning story would remain ad hoc and hard to evolve.
+- [x] Gap: validation semantics were not explicit by provider; GCP and Azure can verify permissions non-destructively, while AWS needs caller-supplied sample resources for honest mutation dry-run probes.
+- [x] Gap: connector requirements were not part of the repo's codegen/doc workflow, so provider permissions and template outputs could have silently diverged from implementation.
+
+### Execution plan
+- [x] Add a typed connector provisioning catalog:
+  - [x] add built-in provider catalogs for AWS, GCP, and Azure under `internal/connectors`
+  - [x] model artifact kinds, required permissions, and validation checks explicitly
+- [x] Add provider-specific bundle rendering:
+  - [x] render AWS StackSet-safe CloudFormation bundle
+  - [x] render GCP Terraform bundle with optional Workload Identity Federation
+  - [x] render Azure ARM + Terraform bundle
+- [x] Add CLI surface:
+  - [x] add `cerebro connector catalog`
+  - [x] add `cerebro connector scaffold aws|gcp|azure`
+  - [x] add `cerebro connector validate aws|gcp|azure`
+- [x] Make validation non-destructive and provider-aware:
+  - [x] AWS: prove STS + describe access and optional dry-run mutation probes using sample resources
+  - [x] GCP: prove auth and use `projects.testIamPermissions`
+  - [x] Azure: prove auth and inspect effective subscription permissions from ARM
+- [x] Integrate docs/codegen:
+  - [x] add generated connector provisioning catalog docs
+  - [x] add Makefile drift check target
+  - [x] add architecture doc links and manual connector architecture notes
+- [x] Add focused regression coverage for rendering, validation dispatch, and permission-matching helpers
+
+### Detailed follow-on backlog
+- [ ] Track A - Connector API surface
+  - Exit criteria:
+  - [ ] expose connector bundle/catalog resources over the platform API instead of CLI-only delivery
+  - [ ] persist generated bundle metadata and rollout history as first-class platform artifacts
+- [ ] Track B - Contract hardening
+  - Exit criteria:
+  - [ ] add connector contract baseline compatibility checks against `docs/CONNECTOR_PROVISIONING_CATALOG.json`
+  - [ ] add provider-specific example fixtures and smoke validators in CI
+- [ ] Track C - Workload scan integration
+  - Exit criteria:
+  - [ ] wire connector validation results into the issue `#176 -> #182` workload scan execution path
+  - [ ] carry validated connector metadata into graph entities and asset provenance
+
 ## Deep Review Cycle 47 - Shared Test Helpers + Narrow Service Interfaces for Testability (2026-03-11)
 
 ### Review findings

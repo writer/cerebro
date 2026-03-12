@@ -4,7 +4,7 @@ Generated from `devex/codegen_catalog.json` via `go run ./scripts/generate_devex
 
 - Catalog API version: **devex.cerebro/v1alpha1**
 - Catalog kind: **CodegenCatalog**
-- Families: **9**
+- Families: **10**
 
 ## CI to Local Map
 
@@ -18,6 +18,7 @@ Generated from `devex/codegen_catalog.json` via `go run ./scripts/generate_devex
 | `report-contracts` | `report-contract-docs` | `report-contract-compat`, `report-contract-docs-check` | `report-contract-compat`, `report-contract-docs-drift` | `docs/GRAPH_REPORT_CONTRACTS.json`, `docs/GRAPH_REPORT_CONTRACTS_AUTOGEN.md` |
 | `entity-facets` | `entity-facet-docs` | `entity-facet-contract-compat`, `entity-facet-docs-check` | `entity-facet-contract-compat`, `entity-facet-docs-drift` | `docs/GRAPH_ENTITY_FACETS.json`, `docs/GRAPH_ENTITY_FACETS_AUTOGEN.md` |
 | `agent-sdk` | `agent-sdk-docs` | `agent-sdk-contract-compat`, `agent-sdk-docs-check`, `agent-sdk-packages-check` | `agent-sdk-contract-compat`, `agent-sdk-docs-drift`, `agent-sdk-packages` | `docs/AGENT_SDK_AUTOGEN.md`, `docs/AGENT_SDK_CONTRACTS.json`, `docs/AGENT_SDK_PACKAGES_AUTOGEN.md`, `sdk/go/cerebro/client.go`, `sdk/python/cerebro_sdk/__init__.py`, `sdk/python/cerebro_sdk/client.py`, `sdk/python/pyproject.toml`, `sdk/typescript/package.json`, `sdk/typescript/src/index.ts`, `sdk/typescript/tsconfig.json` |
+| `connector-provisioning` | `connector-docs` | `connector-docs-check` | - | `docs/CONNECTOR_PROVISIONING_AUTOGEN.md`, `docs/CONNECTOR_PROVISIONING_CATALOG.json` |
 | `devex-codegen-catalog` | `devex-codegen` | `devex-codegen-check` | - | `docs/DEVEX_CODEGEN_AUTOGEN.md`, `docs/DEVEX_CODEGEN_CATALOG.json` |
 
 ## Families
@@ -124,6 +125,18 @@ Generates SDK contract catalogs and client packages from the shared tool surface
 - Triggers: `docs/AGENT_SDK_AUTOGEN.md`, `docs/AGENT_SDK_CONTRACTS.json`, `docs/AGENT_SDK_PACKAGES_AUTOGEN.md`, `internal/agentsdk/**`, `internal/api/server_handlers_agent_sdk*`, `internal/app/app_agent_sdk*`, `internal/app/app_cerebro_tools*`, `scripts/check_agent_sdk_contract_compat/**`, `scripts/generate_agent_sdk_docs/**`, `scripts/generate_agent_sdk_packages/**`, `sdk/**`
 - Outputs: `docs/AGENT_SDK_AUTOGEN.md`, `docs/AGENT_SDK_CONTRACTS.json`, `docs/AGENT_SDK_PACKAGES_AUTOGEN.md`, `sdk/go/cerebro/client.go`, `sdk/python/cerebro_sdk/__init__.py`, `sdk/python/cerebro_sdk/client.py`, `sdk/python/pyproject.toml`, `sdk/typescript/package.json`, `sdk/typescript/src/index.ts`, `sdk/typescript/tsconfig.json`
 - CI jobs: `agent-sdk-contract-compat`, `agent-sdk-docs-drift`, `agent-sdk-packages`
+
+### `connector-provisioning`
+
+Generates the cloud connector provisioning catalog used by CLI scaffolding, validation, and rollout docs.
+
+- Change reason: connector provisioning contracts changed
+- Generator: `connector-docs` -> `connector-docs`
+- Checks:
+  - `connector-docs-check` -> `connector-docs-check`
+- Triggers: `Makefile`, `docs/CONNECTOR_PROVISIONING_ARCHITECTURE.md`, `docs/CONNECTOR_PROVISIONING_AUTOGEN.md`, `docs/CONNECTOR_PROVISIONING_CATALOG.json`, `internal/cli/connector*`, `internal/connectors/**`, `scripts/generate_connector_docs/**`
+- Outputs: `docs/CONNECTOR_PROVISIONING_AUTOGEN.md`, `docs/CONNECTOR_PROVISIONING_CATALOG.json`
+- CI jobs: -
 
 ### `devex-codegen-catalog`
 

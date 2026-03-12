@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/evalops/cerebro/internal/agents"
+	"github.com/evalops/cerebro/internal/textutil"
 )
 
 const (
@@ -122,11 +123,11 @@ func DefinitionForTool(tool agents.Tool) ToolDefinition {
 		override.Version = "1.0.0"
 	}
 	definition := ToolDefinition{
-		ID:                 firstNonEmpty(strings.TrimSpace(override.ID), sanitizeToolID(tool.Name)),
+		ID:                 textutil.FirstNonEmptyTrimmed(strings.TrimSpace(override.ID), sanitizeToolID(tool.Name)),
 		Version:            override.Version,
 		ToolName:           strings.TrimSpace(tool.Name),
 		SDKMethod:          strings.TrimSpace(override.SDKMethod),
-		Title:              firstNonEmpty(override.Title, humanizeToolName(tool.Name)),
+		Title:              textutil.FirstNonEmptyTrimmed(override.Title, humanizeToolName(tool.Name)),
 		Description:        strings.TrimSpace(tool.Description),
 		Category:           strings.TrimSpace(override.Category),
 		HTTPMethod:         strings.TrimSpace(override.HTTPMethod),
@@ -135,7 +136,7 @@ func DefinitionForTool(tool agents.Tool) ToolDefinition {
 		InputSchema:        inputSchema,
 		ExampleInput:       ExampleInput(inputSchema),
 		RequiresApproval:   tool.RequiresApproval,
-		ExecutionKind:      firstNonEmpty(override.ExecutionKind, ExecutionKindDirectTool),
+		ExecutionKind:      textutil.FirstNonEmptyTrimmed(override.ExecutionKind, ExecutionKindDirectTool),
 		SupportsAsync:      override.SupportsAsync,
 		SupportsProgress:   override.SupportsProgress,
 		StatusResource:     strings.TrimSpace(override.StatusResource),
@@ -558,16 +559,6 @@ func cloneJSONValue(value any) any {
 		return value
 	}
 	return cloned
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value != "" {
-			return value
-		}
-	}
-	return ""
 }
 
 func stringValue(value any) string {

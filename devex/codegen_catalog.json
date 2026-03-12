@@ -450,6 +450,47 @@
       ]
     },
     {
+      "id": "connector-provisioning",
+      "title": "Connector Provisioning Contracts",
+      "summary": "Generates the cloud connector provisioning catalog used by CLI scaffolding, validation, and rollout docs.",
+      "change_reason": "connector provisioning contracts changed",
+      "triggers": [
+        "internal/connectors/**",
+        "internal/cli/connector*",
+        "scripts/generate_connector_docs/**",
+        "docs/CONNECTOR_PROVISIONING_AUTOGEN.md",
+        "docs/CONNECTOR_PROVISIONING_CATALOG.json",
+        "docs/CONNECTOR_PROVISIONING_ARCHITECTURE.md",
+        "Makefile"
+      ],
+      "generator": {
+        "make_target": "connector-docs",
+        "command": [
+          "go",
+          "run",
+          "./scripts/generate_connector_docs/main.go"
+        ],
+        "summary": "Regenerate the connector provisioning catalog artifacts."
+      },
+      "checks": [
+        {
+          "key": "connector-docs-check",
+          "summary": "Verify generated connector provisioning docs are up to date",
+          "make_target": "connector-docs-check",
+          "command": [
+            "make",
+            "connector-docs-check"
+          ],
+          "include_in_pr_generated_step": true
+        }
+      ],
+      "outputs": [
+        "docs/CONNECTOR_PROVISIONING_AUTOGEN.md",
+        "docs/CONNECTOR_PROVISIONING_CATALOG.json"
+      ],
+      "ci_jobs": []
+    },
+    {
       "id": "devex-codegen-catalog",
       "title": "DevEx Codegen Catalog",
       "summary": "Publishes the machine-readable CI-to-local codegen map used by DevEx tooling.",
