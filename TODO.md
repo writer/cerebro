@@ -5,6 +5,37 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 73 - GCP IAM Binding Fidelity + Bucket Resource Policies (2026-03-13)
+
+### Review findings
+- [x] Gap: issue `#245` is not blocked on broader GCP inventory first; the immediate enterprise-credibility hole is that Cerebro already syncs richer IAM policy structures but the graph flattens them back into lossy member-level edges.
+- [x] Gap: `gcp_iam_policies` preserves binding conditions, but the builder used fallback member rows in a way that could discard those conditions and silently under-model real-world access controls.
+- [x] Gap: GCS bucket IAM policies are already present in `gcp_storage_buckets.iam_policy`, but the graph was still missing resource-level permission edges for them, which leaves one of the most common GCP posture questions trapped in raw JSON.
+- [x] Gap: upstream patterns line up on the same lesson:
+  - [x] `cartography-cncf/cartography` keeps GCP storage, IAM, and Secret Manager as distinct resource families because enterprise GCP modeling breaks down quickly when everything is reduced to project-level metadata.
+  - [x] `forseti-security/forseti-security` treated IAM and bucket posture as separate audit domains, which reinforces that resource-scoped GCS policy edges should be first-class graph material, not inferred later from a bucket boolean.
+  - [x] `google/security-command-center-docs` style product expectations still imply the same substrate requirement: conditional grants and resource-local public access need to stay queryable as edges with provenance.
+
+### Execution plan
+- [x] Prefer richer project IAM policy bindings over collapsed member rows:
+  - [x] keep `gcp_iam_policies` as the primary project-edge source
+  - [x] only fall back to `gcp_iam_members` when policy bindings are unavailable
+  - [x] preserve binding `condition` payloads on graph edges
+- [x] Materialize GCS bucket IAM bindings as resource-level permission edges:
+  - [x] parse bucket `iam_policy` bindings from `gcp_storage_buckets`
+  - [x] emit `resource_policy`-marked edges to bucket nodes
+  - [x] map `allUsers` to the shared `internet` principal so public grants participate in exposure/risk traversals
+- [x] Harden builder parsing and tests:
+  - [x] make the GCP IAM binding parser tolerant of full policy objects and raw binding arrays/JSON strings
+  - [x] add regression coverage for policy-preferred condition preservation
+  - [x] add regression coverage for bucket IAM public and explicit-principal edges
+- [ ] Next GCP depth cuts after this slice:
+  - [ ] org/folder/project hierarchy nodes and inherited IAM edges
+  - [ ] Secret Manager nodes + access controls
+  - [ ] Pub/Sub and KMS resource-level IAM edges
+  - [ ] service-account impersonation chain modeling (`actAs`, `tokenCreator`)
+  - [ ] Workload Identity Federation trust edges
+
 ## Deep Review Cycle 72 - AWS Resource-Policy Permission Depth (2026-03-13)
 
 ### Review findings
