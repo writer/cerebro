@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"net/http"
@@ -18,15 +19,15 @@ func (s *Server) graphIntelligenceEventPatterns(w http.ResponseWriter, _ *http.R
 	s.json(w, http.StatusOK, graph.EventCorrelationPatternCatalogSnapshot(time.Now().UTC()))
 }
 
-func (s *Server) currentGraphIntelligenceGraph() *graph.Graph {
+func (s *Server) currentGraphIntelligenceGraph(ctx context.Context) *graph.Graph {
 	if s == nil || s.graphIntelligence == nil {
 		return nil
 	}
-	return s.graphIntelligence.CurrentGraph()
+	return s.tenantScopedGraph(ctx, s.graphIntelligence.CurrentGraph())
 }
 
 func (s *Server) graphIntelligenceEventCorrelations(w http.ResponseWriter, r *http.Request) {
-	g := s.currentGraphIntelligenceGraph()
+	g := s.currentGraphIntelligenceGraph(r.Context())
 	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -79,6 +80,18 @@ func (s *Server) graphIntelligenceEventCorrelations(w http.ResponseWriter, r *ht
 		s.error(w, http.StatusBadRequest, "event_id or entity_id is required")
 		return
 	}
+	if eventID != "" {
+		if _, ok := g.GetNode(eventID); !ok {
+			s.error(w, http.StatusNotFound, "event not found in selected scope")
+			return
+		}
+	}
+	if entityID != "" {
+		if _, ok := g.GetNode(entityID); !ok {
+			s.error(w, http.StatusNotFound, "entity not found in selected scope")
+			return
+		}
+	}
 
 	result := graph.QueryEventCorrelations(g, time.Now().UTC(), graph.EventCorrelationQuery{
 		EventID:          eventID,
@@ -93,7 +106,7 @@ func (s *Server) graphIntelligenceEventCorrelations(w http.ResponseWriter, r *ht
 }
 
 func (s *Server) graphIntelligenceEventAnomalies(w http.ResponseWriter, r *http.Request) {
-	g := s.currentGraphIntelligenceGraph()
+	g := s.currentGraphIntelligenceGraph(r.Context())
 	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -135,13 +148,13 @@ func (s *Server) graphIntelligenceEventAnomalies(w http.ResponseWriter, r *http.
 }
 
 func (s *Server) graphIntelligenceInsights(w http.ResponseWriter, r *http.Request) {
-	g := s.currentGraphIntelligenceGraph()
+	g := s.currentGraphIntelligenceGraph(r.Context())
 	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
 
-	engine := s.graphRiskEngine()
+	engine := s.currentTenantRiskEngine(r.Context())
 	if engine == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -247,7 +260,7 @@ func (s *Server) graphIntelligenceInsights(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) graphIntelligenceQuality(w http.ResponseWriter, r *http.Request) {
-	g := s.currentGraphIntelligenceGraph()
+	g := s.currentGraphIntelligenceGraph(r.Context())
 	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -292,7 +305,7 @@ func (s *Server) graphIntelligenceQuality(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) graphIntelligenceMetadataQuality(w http.ResponseWriter, r *http.Request) {
-	g := s.currentGraphIntelligenceGraph()
+	g := s.currentGraphIntelligenceGraph(r.Context())
 	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -315,7 +328,7 @@ func (s *Server) graphIntelligenceMetadataQuality(w http.ResponseWriter, r *http
 }
 
 func (s *Server) graphIntelligenceClaimConflicts(w http.ResponseWriter, r *http.Request) {
-	g := s.currentGraphIntelligenceGraph()
+	g := s.currentGraphIntelligenceGraph(r.Context())
 	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -382,7 +395,7 @@ func (s *Server) graphIntelligenceClaimConflicts(w http.ResponseWriter, r *http.
 }
 
 func (s *Server) graphIntelligenceEntitySummary(w http.ResponseWriter, r *http.Request) {
-	g := s.currentGraphIntelligenceGraph()
+	g := s.currentGraphIntelligenceGraph(r.Context())
 	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -391,6 +404,10 @@ func (s *Server) graphIntelligenceEntitySummary(w http.ResponseWriter, r *http.R
 	entityID := strings.TrimSpace(r.URL.Query().Get("entity_id"))
 	if entityID == "" {
 		s.error(w, http.StatusBadRequest, "entity_id is required")
+		return
+	}
+	if _, ok := g.GetNode(entityID); !ok {
+		s.error(w, http.StatusNotFound, "entity not found in selected scope")
 		return
 	}
 
@@ -429,7 +446,7 @@ func (s *Server) graphIntelligenceEntitySummary(w http.ResponseWriter, r *http.R
 }
 
 func (s *Server) graphIntelligenceLeverage(w http.ResponseWriter, r *http.Request) {
-	g := s.currentGraphIntelligenceGraph()
+	g := s.currentGraphIntelligenceGraph(r.Context())
 	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -660,12 +677,12 @@ func (s *Server) graphIngestContracts(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) graphIntelligenceWeeklyCalibration(w http.ResponseWriter, r *http.Request) {
-	g := s.currentGraphIntelligenceGraph()
+	g := s.currentGraphIntelligenceGraph(r.Context())
 	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
-	engine := s.graphRiskEngine()
+	engine := s.currentTenantRiskEngine(r.Context())
 	if engine == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -810,7 +827,7 @@ type graphQueryNeighborResult struct {
 }
 
 func (s *Server) graphQuery(w http.ResponseWriter, r *http.Request) {
-	g := s.currentGraphIntelligenceGraph()
+	g := s.currentGraphIntelligenceGraph(r.Context())
 	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return

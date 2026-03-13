@@ -791,6 +791,7 @@ func (g *Graph) GetResourceNodesByARNPrefix(prefix string) []*Node {
 }
 
 func (g *Graph) addNodeLocked(node *Node) bool {
+	normalizeNodeTenantID(node)
 	if !g.applyNodeSchemaValidationLocked(node) {
 		return false
 	}
