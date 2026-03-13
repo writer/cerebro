@@ -35,7 +35,7 @@ var connectorCmd = &cobra.Command{
 
 Examples:
   cerebro connector catalog -o json
-  cerebro connector scaffold aws --output-dir ./out --aws-principal-arn arn:aws:iam::111122223333:role/Cerebro
+  cerebro connector scaffold aws --output-dir ./out --aws-principal-arn arn:aws:iam::<account-id>:role/Cerebro
   cerebro connector validate gcp --gcp-project my-project --dry-run
   cerebro connector validate azure --azure-subscription <subscription-id> --dry-run`,
 }

@@ -53,7 +53,7 @@ type AzureRenderOptions struct {
 func RenderAWSBundle(opts AWSRenderOptions) (Bundle, error) {
 	data := map[string]string{
 		"RoleName":      textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.RoleName), "CerebroScanRole"),
-		"PrincipalARN":  textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.PrincipalARN), "arn:aws:iam::111122223333:role/CerebroControlPlane"),
+		"PrincipalARN":  textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.PrincipalARN), "arn:aws:iam::<account-id>:role/CerebroControlPlane"),
 		"ExternalID":    textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.ExternalID), "replace-with-customer-specific-external-id"),
 		"ManagedTagKey": textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.ManagedTagKey), "CerebroManagedBy"),
 		"ManagedTagVal": textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.ManagedTagVal), "cerebro"),
@@ -76,7 +76,7 @@ func RenderGCPBundle(opts GCPRenderOptions) (Bundle, error) {
 		"WorkloadIdentityProviderID": textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.WorkloadIdentityProviderID), "cerebro-oidc"),
 		"WorkloadIdentityIssuerURI":  textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.WorkloadIdentityIssuerURI), "https://token.actions.githubusercontent.com"),
 		"WorkloadIdentityAudience":   textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.WorkloadIdentityAudience), "//iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/cerebro-workload-pool/providers/cerebro-oidc"),
-		"PrincipalSubject":           textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.PrincipalSubject), "repo:evalops/cerebro:ref:refs/heads/main"),
+		"PrincipalSubject":           textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.PrincipalSubject), "repo:your-org/your-repo:ref:refs/heads/main"),
 	}
 	files := []GeneratedFile{
 		{Path: filepath.ToSlash("gcp/main.tf"), Content: renderTemplate(gcpMainTemplate, data)},
@@ -89,8 +89,8 @@ func RenderGCPBundle(opts GCPRenderOptions) (Bundle, error) {
 
 func RenderAzureBundle(opts AzureRenderOptions) (Bundle, error) {
 	data := map[string]string{
-		"SubscriptionID":       textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.SubscriptionID), "00000000-0000-0000-0000-000000000000"),
-		"TenantID":             textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.TenantID), "00000000-0000-0000-0000-000000000000"),
+		"SubscriptionID":       textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.SubscriptionID), "replace-with-subscription-id"),
+		"TenantID":             textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.TenantID), "replace-with-tenant-id"),
 		"Location":             textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.Location), "eastus"),
 		"PrincipalDisplayName": textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.PrincipalDisplayName), "cerebro-workload-scan"),
 		"CustomRoleName":       textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.CustomRoleName), "Cerebro Snapshot Operator"),
@@ -508,7 +508,7 @@ const azureARMParametersTemplate = `{
   "contentVersion": "1.0.0.0",
   "parameters": {
     "principalId": {
-      "value": "00000000-0000-0000-0000-000000000000"
+      "value": "replace-with-principal-id"
     },
     "subscriptionId": {
       "value": {{jsonString .SubscriptionID}}

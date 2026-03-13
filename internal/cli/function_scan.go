@@ -14,7 +14,6 @@ import (
 
 	"github.com/writer/cerebro/internal/app"
 	"github.com/writer/cerebro/internal/functionscan"
-	"github.com/writer/cerebro/internal/scanner"
 )
 
 var functionScanCmd = &cobra.Command{
@@ -195,6 +194,11 @@ func runFunctionScan(parent context.Context, target functionscan.FunctionTarget,
 		return err
 	}
 	defer func() { _ = emitter.Close() }()
+	filesystemAnalyzer, vulnDBCloser, err := buildFilesystemAnalyzer(cfg, resolveFunctionScanTrivyBinary(cfg))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = vulnDBCloser.Close() }()
 
 	provider, err := providerFactory(ctx)
 	if err != nil {
@@ -208,7 +212,7 @@ func runFunctionScan(parent context.Context, target functionscan.FunctionTarget,
 		Store:          store,
 		Providers:      []functionscan.Provider{provider},
 		Materializer:   functionscan.NewLocalMaterializer(resolveFunctionScanRootFSBasePath(cfg)),
-		Analyzer:       functionscan.FilesystemAnalyzer{Scanner: scanner.NewTrivyFilesystemScanner(resolveFunctionScanTrivyBinary(cfg))},
+		Analyzer:       functionscan.FilesystemAnalyzer{Analyzer: filesystemAnalyzer},
 		Events:         emitter,
 		CleanupTimeout: resolveFunctionScanCleanupTimeout(cfg),
 	})

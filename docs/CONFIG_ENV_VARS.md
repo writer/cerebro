@@ -2,7 +2,7 @@
 
 Generated from `internal/app/app_config.go` (`LoadConfig`) via `go run ./scripts/generate_config_docs/main.go`.
 
-Total variables: **306**
+Total variables: **307**
 
 | Variable | Reader(s) | Default(s) | Config Field(s) | Validation rule(s) |
 |---|---|---|---|---|
@@ -293,6 +293,7 @@ Total variables: **306**
 | `VAULT_ADDRESS` | `getEnv` | `""` | `VaultAddress` | `-` |
 | `VAULT_NAMESPACE` | `getEnv` | `""` | `VaultNamespace` | `-` |
 | `VAULT_TOKEN` | `getEnv` | `""` | `VaultToken` | `-` |
+| `VULNDB_STATE_FILE` | `getEnv` | `filepath.Join(".cerebro", "vulndb.db")` | `VulnDBStateFile` | `-` |
 | `WEBHOOK_URLS` | `getEnv` | `""` | `WebhookURLs` | `-` |
 | `WIZ_API_URL` | `getEnv` | `""` | `WizAPIURL` | `-` |
 | `WIZ_AUDIENCE` | `getEnv` | `"wiz-api"` | `WizAudience` | `-` |

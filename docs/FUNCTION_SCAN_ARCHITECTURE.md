@@ -38,7 +38,7 @@ The pipeline is intentionally narrow:
 
 - provider metadata/package acquisition belongs in `internal/functionscan`
 - vulnerability/secret/runtime analysis belongs in the shared filesystem analyzer seam
-- graph contextualization belongs in later issues (`#181`, `#182`)
+- graph contextualization belongs in later issue `#182`
 
 ## Provider Substrate
 
@@ -81,7 +81,7 @@ This is the current local durability boundary, not the final distributed executo
 The runtime depends on a small analyzer seam:
 
 - `Analyzer`
-- current concrete: `FilesystemAnalyzer` backed by the shared `internal/filesystemanalyzer` package plus `scanner.TrivyFilesystemScanner` for vulnerability bridging
+- current concrete: `FilesystemAnalyzer` backed by the shared `internal/filesystemanalyzer` package plus persisted `internal/vulndb` matching and optional `scanner.TrivyFilesystemScanner` fallback
 - fallback: `NoopAnalyzer`
 
 Current analysis coverage:
@@ -93,7 +93,7 @@ Current analysis coverage:
 - SSH/sudo/cron/permission misconfiguration detection where relevant in the unpacked filesystem
 - curated runtime deprecation detection
 
-This now uses the same filesystem analyzer substrate as image and VM scans. The remaining work is the advisory knowledge layer (`#181`) and graph contextualization (`#182`).
+This now uses the same filesystem analyzer substrate as image and VM scans. The remaining work is deeper advisory-source coverage on top of the new vulnerability database and graph contextualization (`#182`).
 
 ## Lifecycle Events
 
@@ -119,11 +119,11 @@ The implementation is intentionally borrowing shape from a few mature projects:
 - SQLite is durable, but still single-node.
 - GCP v2 container-backed functions are described, but full container-image fallback should converge with the image-scan runtime instead of duplicating registry logic here.
 - Runtime EOL detection is currently curated/manual rather than sourced from a continuously-updated advisory feed.
-- The analyzer still relies on Trivy FS for vulnerability matching; richer advisory knowledge and ecosystem-specific fix intelligence belong in issue `#181`.
+- The analyzer can now use the persisted vulnerability database, but richer advisory-source coverage and ecosystem-specific fix intelligence are still incomplete.
 
 ## Next Steps
 
-1. Feed package and vulnerability outputs into the vulnerability knowledge pipeline from issue `#181`.
-2. Link function scan runs, packages, vulnerabilities, and runtime exposure into the temporal security graph from issue `#182`.
+1. Link function scan runs, packages, vulnerabilities, and runtime exposure into the temporal security graph from issue `#182`.
+2. Expand advisory-source coverage and runtime/package matching depth.
 3. Converge function metadata, runtime policy, and graph evidence into one function-risk surface.
 4. Expose function scan execution resources over platform APIs instead of CLI-only surfaces.

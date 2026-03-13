@@ -122,4 +122,5 @@ func init() {
 	rootCmd.AddCommand(workloadScanCmd)
 	rootCmd.AddCommand(imageScanCmd)
 	rootCmd.AddCommand(functionScanCmd)
+	rootCmd.AddCommand(vulndbCmd)
 }

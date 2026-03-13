@@ -40,6 +40,7 @@ func TestSubcommands(t *testing.T) {
 	foundPolicy := false
 	foundWorkloadScan := false
 	foundImageScan := false
+	foundVulnDB := false
 	for _, cmd := range subcommands {
 		if cmd.Name() == "serve" {
 			foundServe = true
@@ -52,6 +53,9 @@ func TestSubcommands(t *testing.T) {
 		}
 		if cmd.Name() == "image-scan" {
 			foundImageScan = true
+		}
+		if cmd.Name() == "vulndb" {
+			foundVulnDB = true
 		}
 	}
 
@@ -68,6 +72,9 @@ func TestSubcommands(t *testing.T) {
 	}
 	if !foundImageScan {
 		t.Error("expected image-scan subcommand")
+	}
+	if !foundVulnDB {
+		t.Error("expected vulndb subcommand")
 	}
 }
 
@@ -262,6 +269,38 @@ func TestImageScanRegistryRequiredFlags(t *testing.T) {
 				t.Fatalf("expected %s flag on %s to be marked required", name, tc.cmd.Name())
 			}
 		}
+	}
+}
+
+func TestVulnDBCommands(t *testing.T) {
+	if vulndbCmd == nil {
+		t.Fatal("vulndbCmd should not be nil")
+	}
+	if vulndbCmd.Name() != "vulndb" {
+		t.Fatalf("expected vulndb command, got %s", vulndbCmd.Name())
+	}
+	subcommands := vulndbCmd.Commands()
+	foundStats := false
+	foundImportOSV := false
+	foundImportKEV := false
+	foundImportEPSS := false
+	foundSync := false
+	for _, cmd := range subcommands {
+		switch cmd.Name() {
+		case "stats":
+			foundStats = true
+		case "import-osv":
+			foundImportOSV = true
+		case "import-kev":
+			foundImportKEV = true
+		case "import-epss":
+			foundImportEPSS = true
+		case "sync":
+			foundSync = true
+		}
+	}
+	if !foundStats || !foundImportOSV || !foundImportKEV || !foundImportEPSS || !foundSync {
+		t.Fatalf("expected vuln db subcommands, got stats=%t import-osv=%t import-kev=%t import-epss=%t sync=%t", foundStats, foundImportOSV, foundImportKEV, foundImportEPSS, foundSync)
 	}
 }
 

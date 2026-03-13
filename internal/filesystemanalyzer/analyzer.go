@@ -44,6 +44,7 @@ var (
 
 type Analyzer struct {
 	vulnerabilityScanner scanner.FilesystemScanner
+	vulnerabilityMatcher PackageVulnerabilityMatcher
 	malwareScanner       MalwareScanner
 	now                  func() time.Time
 	maxWalkEntries       int
@@ -75,6 +76,7 @@ func New(opts Options) *Analyzer {
 	}
 	return &Analyzer{
 		vulnerabilityScanner: opts.VulnerabilityScanner,
+		vulnerabilityMatcher: opts.VulnerabilityMatcher,
 		malwareScanner:       opts.MalwareScanner,
 		now:                  now,
 		maxWalkEntries:       maxWalk,
@@ -238,6 +240,15 @@ func (a *Analyzer) Analyze(ctx context.Context, rootfsPath string) (*Report, err
 	mergeOSInfo(&report.OS, inv.os)
 	report.OS.EOL = isLikelyEOL(report.OS)
 	report.Packages = inv.sortedPackages()
+	if a.vulnerabilityMatcher != nil && len(report.Packages) > 0 {
+		matchedVulns, err := a.vulnerabilityMatcher.MatchPackages(ctx, report.OS, report.Packages)
+		if err != nil {
+			report.Metadata["vulnerability_match_error"] = err.Error()
+		} else {
+			report.Vulnerabilities = dedupeVulnerabilities(append(report.Vulnerabilities, matchedVulns...))
+			report.Findings = append(report.Findings, buildVulnerabilityFindings(matchedVulns)...)
+		}
+	}
 	report.Secrets = inv.secrets
 	report.Misconfigurations = inv.configs
 	report.Malware = inv.malware
@@ -922,6 +933,63 @@ func dedupeFindings(findings []scanner.ContainerFinding) []scanner.ContainerFind
 		out = append(out, finding)
 	}
 	return out
+}
+
+func dedupeVulnerabilities(vulns []scanner.ImageVulnerability) []scanner.ImageVulnerability {
+	if len(vulns) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(vulns))
+	out := make([]scanner.ImageVulnerability, 0, len(vulns))
+	for _, vuln := range vulns {
+		identifier := strings.TrimSpace(vuln.CVE)
+		if identifier == "" {
+			identifier = firstNonEmpty(strings.TrimSpace(vuln.ID), strings.TrimSpace(vuln.Description))
+		}
+		key := identifier + "|" + strings.TrimSpace(vuln.Package) + "|" + strings.TrimSpace(vuln.InstalledVersion)
+		if key == "||" {
+			key = strings.TrimSpace(vuln.FixedVersion) + "|" + strings.TrimSpace(vuln.Severity)
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, vuln)
+	}
+	return out
+}
+
+func buildVulnerabilityFindings(vulns []scanner.ImageVulnerability) []scanner.ContainerFinding {
+	if len(vulns) == 0 {
+		return nil
+	}
+	findings := make([]scanner.ContainerFinding, 0, len(vulns))
+	for _, vuln := range vulns {
+		severity := strings.ToLower(strings.TrimSpace(vuln.Severity))
+		if severity != "critical" && severity != "high" && !vuln.InKEV {
+			continue
+		}
+		title := fmt.Sprintf("%s in %s", firstNonEmpty(vuln.CVE, vuln.ID, "unknown-vulnerability"), vuln.Package)
+		if vuln.InKEV {
+			title = "[KEV] " + title
+			severity = "critical"
+		}
+		remediation := "No fix available. Consider using an alternative package or mitigating controls."
+		if strings.TrimSpace(vuln.FixedVersion) != "" {
+			remediation = fmt.Sprintf("Update %s to version %s", vuln.Package, vuln.FixedVersion)
+		}
+		findings = append(findings, scanner.ContainerFinding{
+			ID:          findingID("pkg_vuln", firstNonEmpty(vuln.CVE, vuln.ID)+"|"+vuln.Package+"|"+vuln.InstalledVersion),
+			Type:        "vulnerability",
+			Severity:    severity,
+			Title:       title,
+			Description: vuln.Description,
+			Remediation: remediation,
+			CVE:         firstNonEmpty(vuln.CVE, vuln.ID),
+			Package:     vuln.Package,
+		})
+	}
+	return findings
 }
 
 func buildPURL(pkg PackageRecord) string {

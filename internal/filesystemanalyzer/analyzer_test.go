@@ -88,6 +88,29 @@ func TestAnalyzerIncludesVulnerabilityScannerResults(t *testing.T) {
 	}
 }
 
+func TestDedupeVulnerabilitiesUsesIDWhenCVEIsMissing(t *testing.T) {
+	vulns := dedupeVulnerabilities([]scanner.ImageVulnerability{
+		{
+			ID:               "GHSA-2026-0001",
+			Package:          "busybox",
+			InstalledVersion: "1.36.1-r0",
+		},
+		{
+			ID:               "GHSA-2026-0002",
+			Package:          "busybox",
+			InstalledVersion: "1.36.1-r0",
+		},
+		{
+			ID:               "GHSA-2026-0001",
+			Package:          "busybox",
+			InstalledVersion: "1.36.1-r0",
+		},
+	})
+	if len(vulns) != 2 {
+		t.Fatalf("expected distinct missing-CVE vulnerabilities to survive dedupe, got %#v", vulns)
+	}
+}
+
 func TestAnalyzerRecordsUnreadableFileErrors(t *testing.T) {
 	root := t.TempDir()
 	mustWriteFile(t, filepath.Join(root, "etc", "os-release"), "ID=ubuntu\nNAME=Ubuntu\nVERSION_ID=22.04\n")
