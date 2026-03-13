@@ -44,6 +44,7 @@ func (a *App) initTapGraphConsumer(ctx context.Context) {
 		DeadLetterPath:        a.Config.NATSConsumerDeadLetterPath,
 		DedupEnabled:          a.Config.NATSConsumerDedupEnabled,
 		DedupStateFile:        a.Config.NATSConsumerDedupStateFile,
+		DedupStore:            a.executionStoreForPath(a.Config.NATSConsumerDedupStateFile),
 		DedupTTL:              a.Config.NATSConsumerDedupTTL,
 		DedupMaxRecords:       a.Config.NATSConsumerDedupMaxRecords,
 		DropHealthLookback:    a.Config.NATSConsumerDropHealthLookback,

@@ -19,13 +19,16 @@ func (s *Server) listPlatformExecutions(w http.ResponseWriter, r *http.Request) 
 		s.error(w, http.StatusInternalServerError, "platform execution store not configured")
 		return
 	}
-	store, err := executionstore.NewSQLiteStore(s.app.Config.ExecutionStoreFile)
-	if err != nil {
-		s.error(w, http.StatusInternalServerError, "platform execution store unavailable")
-		return
+	store := s.app.ExecutionStore
+	if store == nil {
+		var err error
+		store, err = executionstore.NewSQLiteStore(s.app.Config.ExecutionStoreFile)
+		if err != nil {
+			s.error(w, http.StatusInternalServerError, "platform execution store unavailable")
+			return
+		}
+		defer func() { _ = store.Close() }()
 	}
-	defer func() { _ = store.Close() }()
-
 	limit := 50
 	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
 		parsed, err := strconv.Atoi(raw)

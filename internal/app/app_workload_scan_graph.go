@@ -16,9 +16,17 @@ func (a *App) materializePersistedWorkloadScans(ctx context.Context, g *graph.Gr
 	if storePath == "" {
 		return workloadscan.GraphMaterializationResult{}, nil
 	}
-	store, err := workloadscan.NewSQLiteRunStore(storePath)
-	if err != nil {
-		return workloadscan.GraphMaterializationResult{}, err
+	var (
+		store workloadscan.RunStore
+		err   error
+	)
+	if shared := a.executionStoreForPath(storePath); shared != nil {
+		store = workloadscan.NewSQLiteRunStoreWithExecutionStore(shared)
+	} else {
+		store, err = workloadscan.NewSQLiteRunStore(storePath)
+		if err != nil {
+			return workloadscan.GraphMaterializationResult{}, err
+		}
 	}
 	defer func() { _ = store.Close() }()
 

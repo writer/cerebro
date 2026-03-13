@@ -80,11 +80,10 @@ func TestPlatformExecutionsListsSharedExecutionStoreRuns(t *testing.T) {
 		t.Fatalf("storePlatformReportRun: %v", err)
 	}
 
-	sharedStore, err := executionstore.NewSQLiteStore(s.app.Config.ExecutionStoreFile)
-	if err != nil {
-		t.Fatalf("NewSQLiteStore: %v", err)
+	sharedStore := s.app.ExecutionStore
+	if sharedStore == nil {
+		t.Fatal("expected shared execution store")
 	}
-	defer func() { _ = sharedStore.Close() }()
 
 	workloadRun := workloadscan.RunRecord{
 		ID:          "workload_scan:test-execution-list",
