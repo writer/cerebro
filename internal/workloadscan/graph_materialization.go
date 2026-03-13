@@ -21,8 +21,12 @@ type GraphMaterializationResult struct {
 	RunsSkipped            int `json:"runs_skipped"`
 	TargetLinksCreated     int `json:"target_links_created"`
 	ScanNodesUpserted      int `json:"scan_nodes_upserted"`
+	SecretNodesUpserted    int `json:"secret_nodes_upserted"`
 	PackageNodesUpserted   int `json:"package_nodes_upserted"`
 	VulnNodesUpserted      int `json:"vulnerability_nodes_upserted"`
+	ScanSecretEdges        int `json:"scan_secret_edges"`
+	SecretTargetEdges      int `json:"secret_target_edges"`
+	CredentialPivotEdges   int `json:"credential_pivot_edges"`
 	ScanPackageEdges       int `json:"scan_package_edges"`
 	ScanVulnEdges          int `json:"scan_vulnerability_edges"`
 	PackageVulnEdges       int `json:"package_vulnerability_edges"`
@@ -38,6 +42,10 @@ type resolvedRun struct {
 
 type packageAggregate struct {
 	record filesystemanalyzer.PackageRecord
+}
+
+type secretAggregate struct {
+	record filesystemanalyzer.SecretFinding
 }
 
 type vulnerabilityAggregate struct {
@@ -129,8 +137,12 @@ func MaterializeRunsIntoGraph(g *graph.Graph, runs []RunRecord, now time.Time) G
 			result.RunsSkipped += batch.RunsSkipped
 			result.TargetLinksCreated += batch.TargetLinksCreated
 			result.ScanNodesUpserted += batch.ScanNodesUpserted
+			result.SecretNodesUpserted += batch.SecretNodesUpserted
 			result.PackageNodesUpserted += batch.PackageNodesUpserted
 			result.VulnNodesUpserted += batch.VulnNodesUpserted
+			result.ScanSecretEdges += batch.ScanSecretEdges
+			result.SecretTargetEdges += batch.SecretTargetEdges
+			result.CredentialPivotEdges += batch.CredentialPivotEdges
 			result.ScanPackageEdges += batch.ScanPackageEdges
 			result.ScanVulnEdges += batch.ScanVulnEdges
 			result.PackageVulnEdges += batch.PackageVulnEdges
@@ -161,7 +173,7 @@ func materializeOneRun(g *graph.Graph, target *graph.Node, run RunRecord, validT
 		return result
 	}
 	validFrom := runValidFrom(run, seenAt)
-	summary, packages, vulns, relations := summarizeRun(run)
+	summary, secrets, packages, vulns, relations := summarizeRun(run)
 	sourceEventID := fmt.Sprintf("workload_scan:%s", firstNonEmpty(strings.TrimSpace(run.ID), syntheticRunKey(run)))
 	writeMeta := graph.NormalizeWriteMetadata(
 		seenAt,
@@ -323,6 +335,12 @@ func materializeOneRun(g *graph.Graph, target *graph.Node, run RunRecord, validT
 		}
 	}
 
+	secretResult := materializeSecretPivots(g, target, scanNode, secrets, writeMeta, now)
+	result.SecretNodesUpserted += secretResult.SecretNodesUpserted
+	result.ScanSecretEdges += secretResult.ScanSecretEdges
+	result.SecretTargetEdges += secretResult.SecretTargetEdges
+	result.CredentialPivotEdges += secretResult.CredentialPivotEdges
+
 	result.RunsMaterialized = 1
 	return result
 }
@@ -381,11 +399,12 @@ func resolveTargetNode(g *graph.Graph, run RunRecord) (*graph.Node, bool) {
 	return nil, false
 }
 
-func summarizeRun(run RunRecord) (scanSummary, map[string]packageAggregate, map[string]vulnerabilityAggregate, map[string]packageVulnerabilityAggregate) {
+func summarizeRun(run RunRecord) (scanSummary, map[string]secretAggregate, map[string]packageAggregate, map[string]vulnerabilityAggregate, map[string]packageVulnerabilityAggregate) {
 	summary := scanSummary{
 		FindingCount: run.Summary.Findings,
 		Risk:         graph.RiskNone,
 	}
+	secrets := make(map[string]secretAggregate)
 	packages := make(map[string]packageAggregate)
 	vulns := make(map[string]vulnerabilityAggregate)
 	relations := make(map[string]packageVulnerabilityAggregate)
@@ -406,6 +425,15 @@ func summarizeRun(run RunRecord) (scanSummary, map[string]packageAggregate, map[
 		summary.SecretCount += len(catalog.Secrets)
 		summary.MisconfigurationCount += len(catalog.Misconfigurations)
 		summary.MalwareCount += len(catalog.Malware)
+		for _, secret := range catalog.Secrets {
+			secretID := strings.TrimSpace(secret.ID)
+			if secretID == "" {
+				continue
+			}
+			if _, exists := secrets[secretID]; !exists {
+				secrets[secretID] = secretAggregate{record: secret}
+			}
+		}
 
 		for _, pkg := range catalog.Packages {
 			id := packageNodeID(pkg)
@@ -468,7 +496,7 @@ func summarizeRun(run RunRecord) (scanSummary, map[string]packageAggregate, map[
 		}
 	}
 	summary.Risk = summaryRisk(summary)
-	return summary, packages, vulns, relations
+	return summary, secrets, packages, vulns, relations
 }
 
 func mergeVulnerabilityRecord(existing, incoming scanner.ImageVulnerability) scanner.ImageVulnerability {

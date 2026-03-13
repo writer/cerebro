@@ -5,6 +5,41 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 74 - Credential Pivot Graph Materialization (2026-03-13)
+
+### Review findings
+- [x] Gap: issue `#243` is not fundamentally a scan-engine problem; Cerebro already detects secrets during workload scans, but it stops at findings instead of turning those discoveries into graph pivots.
+- [x] Gap: attack-path and toxic-combination logic can already reason over arbitrary graph edges, so the missing substrate is credential-to-target materialization, not another standalone lateral-movement detector.
+- [x] Gap: AWS and GCP identity nodes were still under-modeled for this use case because key metadata existed in synced tables but not on the graph identities that should be reachable from discovered credentials.
+- [x] Gap: upstream patterns align on the same lesson:
+  - [x] `trufflesecurity/trufflehog` treats credential detection as typed signal extraction, not just regex-only findings.
+  - [x] `cartography-cncf/cartography` gets leverage by mapping cloud identity artifacts into graph-reachable relationships instead of leaving them as isolated inventory facts.
+  - [x] `stackrox/stackrox` and `falcosecurity/falco` both reinforce that runtime/security value compounds when credential evidence is connected to reachable resources, not just reported.
+
+### Execution plan
+- [x] Deepen secret scan output so findings can drive graph resolution:
+  - [x] add typed secret references for cloud identities and database connections
+  - [x] extract AWS access-key IDs, GCP service-account key identities, and database connection targets without persisting raw secrets
+- [x] Materialize discovered secret artifacts into the workload graph:
+  - [x] add secret nodes derived from workload scans
+  - [x] link scan nodes to discovered secret artifacts
+  - [x] link secret artifacts to matched graph principals/resources
+- [x] Add first-class credential pivot edges:
+  - [x] add `has_credential_for` graph edges from compromised workloads to resolved targets
+  - [x] resolve cloud-identity credentials through blast radius so keys expand to concrete reachable resources
+  - [x] map database connection strings directly to database nodes
+- [x] Enrich cloud identity nodes with key metadata needed for pivot resolution:
+  - [x] hydrate AWS IAM users from `aws_iam_user_access_keys`
+  - [x] hydrate GCP service accounts with synced key metadata and privilege signals
+- [x] Fold pivots into existing security reasoning:
+  - [x] teach lateral-movement detection to recognize `has_credential_for`
+  - [x] verify attack-path simulation traverses credential pivots
+- [ ] Next credential depth cuts after this slice:
+  - [ ] SSH private-key to `authorized_keys` matching across scanned workloads
+  - [ ] Azure service-principal secret and connection-string pivot resolution
+  - [ ] SaaS token pivots where the graph already models the target system
+  - [ ] confidence scoring for weak/ambiguous target matches
+
 ## Deep Review Cycle 73 - GCP IAM Binding Fidelity + Bucket Resource Policies (2026-03-13)
 
 ### Review findings

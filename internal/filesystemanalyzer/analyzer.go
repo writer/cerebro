@@ -12,6 +12,7 @@ import (
 	"io"
 	"io/fs"
 	"math"
+	"net"
 	"net/url"
 	"os"
 	"path"
@@ -40,6 +41,7 @@ var (
 	privateKeyPattern   = regexp.MustCompile(`-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----`)
 	inlineSecretPattern = regexp.MustCompile(`(?i)(password|passwd|pwd|secret|token|api[_-]?key|client[_-]?secret|connection[_-]?string)\s*[:=]`)
 	secretTokenPattern  = regexp.MustCompile(`[A-Za-z0-9+/=_-]{20,}`)
+	databaseURLPattern  = regexp.MustCompile(`(?i)(?:jdbc:sqlserver://[^\s'"]+|(?:jdbc:)?(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis|rediss|sqlserver)://[^\s'"]+)`)
 )
 
 type Analyzer struct {
@@ -857,6 +859,36 @@ func scanSecrets(filePath string, data []byte) []SecretFinding {
 	}
 	findings := make([]SecretFinding, 0)
 	seen := make(map[string]struct{})
+	appendFinding := func(kind, severity, match, description string, lineNo int, refs ...SecretReference) {
+		id := findingID(kind, fmt.Sprintf("%s:%d:%s", filePath, lineNo, match))
+		if _, ok := seen[id]; ok {
+			return
+		}
+		seen[id] = struct{}{}
+		finding := SecretFinding{
+			ID:          id,
+			Type:        kind,
+			Severity:    severity,
+			Path:        filePath,
+			Line:        lineNo,
+			Match:       match,
+			Description: description,
+		}
+		if len(refs) > 0 {
+			finding.References = append([]SecretReference(nil), refs...)
+		}
+		findings = append(findings, finding)
+	}
+	if ref, ok := gcpServiceAccountKeyReference(data); ok {
+		appendFinding(
+			"gcp_service_account_key",
+			"critical",
+			fingerprintSecretMatch(ref.Identifier+"|"+ref.Attributes["private_key_id"]),
+			"Potential GCP service account key detected.",
+			1,
+			ref,
+		)
+	}
 	scanner := bufio.NewScanner(bytes.NewReader(data))
 	lineNo := 0
 	for scanner.Scan() {
@@ -866,32 +898,163 @@ func scanSecrets(filePath string, data []byte) []SecretFinding {
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
-		appendFinding := func(kind, severity, match, description string) {
-			id := findingID(kind, fmt.Sprintf("%s:%d:%s", filePath, lineNo, match))
-			if _, ok := seen[id]; ok {
-				return
-			}
-			seen[id] = struct{}{}
-			findings = append(findings, SecretFinding{ID: id, Type: kind, Severity: severity, Path: filePath, Line: lineNo, Match: match, Description: description})
-		}
 		switch {
 		case awsAccessKeyPattern.MatchString(line):
-			appendFinding("aws_access_key", "critical", fingerprintSecretMatch(awsAccessKeyPattern.FindString(line)), "Potential AWS access key detected.")
+			match := awsAccessKeyPattern.FindString(line)
+			appendFinding(
+				"aws_access_key",
+				"critical",
+				fingerprintSecretMatch(match),
+				"Potential AWS access key detected.",
+				lineNo,
+				SecretReference{Kind: "cloud_identity", Provider: "aws", Identifier: strings.TrimSpace(match)},
+			)
 		case githubTokenPattern.MatchString(line):
-			appendFinding("github_token", "high", fingerprintSecretMatch(githubTokenPattern.FindString(line)), "Potential GitHub token detected.")
+			appendFinding("github_token", "high", fingerprintSecretMatch(githubTokenPattern.FindString(line)), "Potential GitHub token detected.", lineNo)
 		case slackTokenPattern.MatchString(line):
-			appendFinding("slack_token", "high", fingerprintSecretMatch(slackTokenPattern.FindString(line)), "Potential Slack token detected.")
+			appendFinding("slack_token", "high", fingerprintSecretMatch(slackTokenPattern.FindString(line)), "Potential Slack token detected.", lineNo)
 		case privateKeyPattern.MatchString(line):
-			appendFinding("private_key", "critical", "private_key", "Private key material detected.")
+			appendFinding("private_key", "critical", "private_key", "Private key material detected.", lineNo)
+		case databaseURLPattern.MatchString(line):
+			match := databaseURLPattern.FindString(line)
+			if ref, ok := parseDatabaseConnectionReference(match); ok {
+				appendFinding(
+					"database_connection_string",
+					"critical",
+					fingerprintSecretMatch(match),
+					"Potential database connection string detected.",
+					lineNo,
+					ref,
+				)
+			} else {
+				appendFinding("database_connection_string", "critical", fingerprintSecretMatch(match), "Potential database connection string detected.", lineNo)
+			}
 		case inlineSecretPattern.MatchString(line):
-			appendFinding("inline_secret", "high", fingerprintSecretMatch(line), "Inline secret-like assignment detected.")
+			appendFinding("inline_secret", "high", fingerprintSecretMatch(line), "Inline secret-like assignment detected.", lineNo)
 		default:
 			if token := entropySecretToken(line); token != "" {
-				appendFinding("high_entropy_token", "medium", fingerprintSecretMatch(token), "High-entropy token detected in text content.")
+				appendFinding("high_entropy_token", "medium", fingerprintSecretMatch(token), "High-entropy token detected in text content.", lineNo)
 			}
 		}
 	}
 	return findings
+}
+
+func gcpServiceAccountKeyReference(data []byte) (SecretReference, bool) {
+	var payload struct {
+		Type         string `json:"type"`
+		ClientEmail  string `json:"client_email"`
+		PrivateKeyID string `json:"private_key_id"`
+		TokenURI     string `json:"token_uri"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return SecretReference{}, false
+	}
+	if !strings.EqualFold(strings.TrimSpace(payload.Type), "service_account") {
+		return SecretReference{}, false
+	}
+	email := strings.ToLower(strings.TrimSpace(payload.ClientEmail))
+	if email == "" {
+		return SecretReference{}, false
+	}
+	attributes := map[string]string{
+		"credential_format": "json",
+	}
+	if strings.TrimSpace(payload.PrivateKeyID) != "" {
+		attributes["private_key_id"] = strings.TrimSpace(payload.PrivateKeyID)
+	}
+	if strings.TrimSpace(payload.TokenURI) != "" {
+		attributes["token_uri"] = strings.TrimSpace(payload.TokenURI)
+	}
+	return SecretReference{
+		Kind:       "cloud_identity",
+		Provider:   "gcp",
+		Identifier: email,
+		Attributes: attributes,
+	}, true
+}
+
+func parseDatabaseConnectionReference(raw string) (SecretReference, bool) {
+	raw = strings.TrimSpace(strings.Trim(raw, `"'`))
+	if raw == "" {
+		return SecretReference{}, false
+	}
+	if strings.HasPrefix(strings.ToLower(raw), "jdbc:sqlserver://") {
+		return parseJDBCSQLServerReference(raw)
+	}
+	normalized := strings.TrimPrefix(raw, "jdbc:")
+	parsed, err := url.Parse(normalized)
+	if err != nil || parsed == nil {
+		return SecretReference{}, false
+	}
+	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+	if host == "" {
+		return SecretReference{}, false
+	}
+	port, _ := strconv.Atoi(strings.TrimSpace(parsed.Port()))
+	database := strings.Trim(strings.TrimSpace(parsed.Path), "/")
+	if database == "" {
+		if db := strings.TrimSpace(parsed.Query().Get("database")); db != "" {
+			database = db
+		}
+		if db := strings.TrimSpace(parsed.Query().Get("databaseName")); db != "" {
+			database = db
+		}
+	}
+	scheme := strings.ToLower(strings.TrimSpace(parsed.Scheme))
+	if scheme == "" {
+		scheme = "unknown"
+	}
+	return SecretReference{
+		Kind:       "database",
+		Identifier: host,
+		Host:       host,
+		Port:       port,
+		Database:   database,
+		Attributes: map[string]string{"scheme": scheme},
+	}, true
+}
+
+func parseJDBCSQLServerReference(raw string) (SecretReference, bool) {
+	raw = strings.TrimPrefix(strings.TrimSpace(raw), "jdbc:sqlserver://")
+	hostPort, _, _ := strings.Cut(raw, ";")
+	hostPort = strings.TrimSpace(hostPort)
+	if hostPort == "" {
+		return SecretReference{}, false
+	}
+	host := hostPort
+	port := 0
+	if strings.Contains(hostPort, ":") {
+		if parsedHost, parsedPort, err := net.SplitHostPort(hostPort); err == nil {
+			host = parsedHost
+			port, _ = strconv.Atoi(parsedPort)
+		} else {
+			host, _, _ = strings.Cut(hostPort, ":")
+		}
+	}
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" {
+		return SecretReference{}, false
+	}
+	database := ""
+	for _, segment := range strings.Split(raw, ";") {
+		key, value, ok := strings.Cut(segment, "=")
+		if !ok {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(key)) {
+		case "databasename", "database":
+			database = strings.TrimSpace(value)
+		}
+	}
+	return SecretReference{
+		Kind:       "database",
+		Identifier: host,
+		Host:       host,
+		Port:       port,
+		Database:   database,
+		Attributes: map[string]string{"scheme": "sqlserver"},
+	}, true
 }
 
 func buildSBOM(generatedAt time.Time, packages []PackageRecord) SBOMDocument {

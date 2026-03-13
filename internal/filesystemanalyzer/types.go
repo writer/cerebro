@@ -47,13 +47,24 @@ type PackageRecord struct {
 }
 
 type SecretFinding struct {
-	ID          string `json:"id"`
-	Type        string `json:"type"`
-	Severity    string `json:"severity"`
-	Path        string `json:"path"`
-	Line        int    `json:"line,omitempty"`
-	Match       string `json:"match,omitempty"`
-	Description string `json:"description,omitempty"`
+	ID          string            `json:"id"`
+	Type        string            `json:"type"`
+	Severity    string            `json:"severity"`
+	Path        string            `json:"path"`
+	Line        int               `json:"line,omitempty"`
+	Match       string            `json:"match,omitempty"`
+	Description string            `json:"description,omitempty"`
+	References  []SecretReference `json:"references,omitempty"`
+}
+
+type SecretReference struct {
+	Kind       string            `json:"kind"`
+	Provider   string            `json:"provider,omitempty"`
+	Identifier string            `json:"identifier,omitempty"`
+	Host       string            `json:"host,omitempty"`
+	Port       int               `json:"port,omitempty"`
+	Database   string            `json:"database,omitempty"`
+	Attributes map[string]string `json:"attributes,omitempty"`
 }
 
 type ConfigFinding struct {
