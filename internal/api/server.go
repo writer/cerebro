@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"runtime"
 	"strings"
@@ -21,7 +23,7 @@ import (
 
 // Server is the fully wired API server
 type Server struct {
-	app                      *app.App
+	app                      *serverDependencies
 	graphIntelligence        graphIntelligenceService
 	router                   *chi.Mux
 	auditLogger              auditLogWriter
@@ -55,11 +57,24 @@ var runtimeNumGoroutine = runtime.NumGoroutine
 
 // NewServer creates a new server with all services wired
 func NewServer(application *app.App) *Server {
+	return NewServerWithDependencies(newServerDependenciesFromApp(application))
+}
+
+// NewServerWithDependencies creates a new server from an explicit dependency
+// bundle. This keeps App as the composition root while allowing tests and
+// future workers to construct only the services they actually need.
+func NewServerWithDependencies(deps serverDependencies) *Server {
+	if deps.Logger == nil {
+		deps.Logger = slog.New(slog.NewJSONHandler(io.Discard, nil))
+	}
+	if adapter, ok := deps.graphRuntime.(*graphRuntimeAdapter); ok {
+		adapter.deps = &deps
+	}
 	s := &Server{
-		app:                    application,
-		graphIntelligence:      newAppGraphIntelligenceService(application),
+		app:                    &deps,
+		graphIntelligence:      newGraphIntelligenceService(&deps),
 		router:                 chi.NewRouter(),
-		auditLogger:            application.AuditRepo,
+		auditLogger:            deps.AuditRepo,
 		crossTenantReplay:      make(map[string]time.Time),
 		platformJobs:           make(map[string]*platformJob),
 		platformReportHandlers: make(map[string]http.HandlerFunc),
@@ -68,10 +83,12 @@ func NewServer(application *app.App) *Server {
 		agentSDKMCPSessions:    make(map[string]*agentSDKMCPSession),
 		agentSDKReportProgress: make(map[string]agentSDKReportProgressSubscription),
 	}
-	if cfg := application.Config; cfg != nil {
+	if cfg := deps.Config; cfg != nil {
 		s.platformReportStore = graph.NewReportRunStore(cfg.PlatformReportRunStateFile, cfg.PlatformReportSnapshotPath)
 		if restoredRuns, err := s.platformReportStore.Load(); err != nil {
-			application.Logger.Warn("failed to load persisted platform report runs", "state_file", s.platformReportStore.StateFile(), "snapshot_dir", s.platformReportStore.SnapshotDir(), "error", err)
+			if deps.Logger != nil {
+				deps.Logger.Warn("failed to load persisted platform report runs", "state_file", s.platformReportStore.StateFile(), "snapshot_dir", s.platformReportStore.SnapshotDir(), "error", err)
+			}
 		} else {
 			s.platformReportRuns = restoredRuns
 		}
