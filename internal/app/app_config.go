@@ -376,6 +376,7 @@ type Config struct {
 
 	// Agentless workload snapshot scanning
 	ExecutionStoreFile                 string
+	VulnDBStateFile                    string
 	WorkloadScanStateFile              string
 	WorkloadScanMountBasePath          string
 	WorkloadScanMaxConcurrentSnapshots int
@@ -716,6 +717,7 @@ func LoadConfig() *Config {
 			ScanRetryBackoff:                    getEnvDuration("SCAN_RETRY_BACKOFF", 2*time.Second),
 			ScanRetryMaxBackoff:                 getEnvDuration("SCAN_RETRY_MAX_BACKOFF", 30*time.Second),
 			ExecutionStoreFile:                  getEnv("EXECUTION_STORE_FILE", filepath.Join(".cerebro", "executions.db")),
+			VulnDBStateFile:                     getEnv("VULNDB_STATE_FILE", filepath.Join(".cerebro", "vulndb.db")),
 			WorkloadScanStateFile:               getEnv("WORKLOAD_SCAN_STATE_FILE", getEnv("EXECUTION_STORE_FILE", filepath.Join(".cerebro", "executions.db"))),
 			WorkloadScanMountBasePath:           getEnv("WORKLOAD_SCAN_MOUNT_BASE_PATH", filepath.Join(".cerebro", "workload-scan", "mounts")),
 			WorkloadScanMaxConcurrentSnapshots:  getEnvInt("WORKLOAD_SCAN_MAX_CONCURRENT_SNAPSHOTS", 2),

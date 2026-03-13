@@ -5,6 +5,67 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 53 - Persisted Vulnerability DB + Package Matching Pipeline (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#181` still existed only as an issue outline; there was no first-class persisted advisory knowledge layer behind the new shared filesystem analyzer.
+- [x] Gap: package inventories from workload/image/function scans could be cataloged, but they were still dependent on scanner-local vulnerability bridging instead of one reusable package matcher.
+- [x] Gap: KEV/EPSS/advisory context was not persisted together, which meant exploitability enrichment would drift between scan runtimes.
+- [x] Gap: the repo still lacked a concrete operator surface for importing and inspecting the vulnerability database.
+- [x] Gap: the architecture docs still described issue `#181` as future work even though the analyzer/runtime seams were already ready to consume a native advisory substrate.
+
+### Execution plan
+- [x] Add a persisted advisory store:
+  - [x] add `internal/vulndb` with typed `Vulnerability`, `AffectedPackage`, `SyncState`, and `Stats` records
+  - [x] persist advisories, aliases, package ranges, and sync state in SQLite at `VULNDB_STATE_FILE`
+  - [x] support KEV/EPSS enrichment on the same canonical advisory record
+- [x] Add a reusable advisory matching service:
+  - [x] implement `vulndb.Service` as the shared package matcher
+  - [x] normalize package ecosystems and map matches into `scanner.ImageVulnerability`
+  - [x] start with semver-like ecosystem matching while keeping the storage contract broader than the current comparator depth
+- [x] Wire the shared filesystem analyzer to the advisory layer:
+  - [x] add `filesystemanalyzer.PackageVulnerabilityMatcher`
+  - [x] allow workload/image/function scan CLIs to build analyzers backed by the persisted vulnerability DB
+  - [x] keep existing Trivy-based bridging as fallback-compatible analyzer behavior instead of the only path
+- [x] Add operator surface:
+  - [x] add `cerebro vulndb stats`
+  - [x] add `cerebro vulndb import-osv`
+  - [x] add `cerebro vulndb import-kev`
+  - [x] add `cerebro vulndb import-epss`
+  - [x] add `cerebro vulndb sync`
+- [x] Capture architecture and upstream learnings:
+  - [x] add `docs/VULNERABILITY_DB_ARCHITECTURE.md`
+  - [x] update shared analyzer + runtime docs to reflect the native advisory layer
+  - [x] document GitHub-researched patterns from Trivy DB, Grype, OSV Scanner, and GitHub Advisory Database
+- [x] Add focused regression coverage:
+  - [x] advisory import + match + KEV/EPSS enrichment round trip
+  - [x] CLI registration coverage for the new `vulndb` command group
+  - [x] analyzer/runtime package integration coverage via focused package tests
+
+### Detailed follow-on backlog
+- [ ] Track A - Source breadth and sync execution
+  - Exit criteria:
+  - [ ] add NVD feed ingestion with delta semantics and stored cursors/ETags
+  - [ ] add GitHub Advisory Database ingestion without depending on unstable `database_specific` fields
+  - [ ] add distro advisory ingestion for `deb`, `rpm`, and `apk`
+  - [ ] move feed sync orchestration onto the shared execution-store package instead of CLI-only sequencing
+- [ ] Track B - Version comparator depth
+  - Exit criteria:
+  - [ ] add RPM version comparison semantics
+  - [ ] add Debian/Ubuntu package version comparison semantics
+  - [ ] add Alpine `apk` version comparison semantics
+  - [ ] add ecosystem-specific edge-case coverage for prereleases, epochs, and vendor backports
+- [ ] Track C - Scan/runtime integration depth
+  - Exit criteria:
+  - [ ] replace the remaining scanner-local vulnerability bridge paths with the shared matcher where practical
+  - [ ] persist scan-package-to-advisory evidence in a reusable artifact format instead of transient finding-only output
+  - [ ] expose advisory database stats/sync health over API or report surfaces where operators already look
+- [ ] Track D - Graph and prioritization projection
+  - Exit criteria:
+  - [ ] map vulnerabilities, packages, and matches into canonical graph entities/claims in issue `#182`
+  - [ ] attach fix availability, KEV, EPSS, and runtime exposure context to prioritization
+  - [ ] use advisory recency and exploitability as first-class report dimensions
+
 ## Deep Review Cycle 52 - Shared Filesystem Analyzer + Shared Execution Store (2026-03-11)
 
 ### Review findings
@@ -41,9 +102,9 @@ Status: executed end-to-end via PR workflow
 ### Detailed follow-on backlog
 - [ ] Track A - Advisory knowledge layer (`#181`)
   - Exit criteria:
-  - [ ] replace the Trivy vulnerability bridge with a first-class advisory matcher over the shared package catalog
+  - [x] replace the Trivy vulnerability bridge with a first-class advisory matcher over the shared package catalog
   - [ ] ingest NVD/OSV/distro advisory data into a reusable knowledge surface
-  - [ ] score vulnerabilities with fix availability, KEV, EPSS, and distro/package context
+  - [x] score vulnerabilities with fix availability, KEV, EPSS, and distro/package context
 - [ ] Track B - Graph contextualization (`#182`)
   - Exit criteria:
   - [ ] map scan runs, packages, vulnerabilities, and SBOM coverage into canonical graph node/edge kinds

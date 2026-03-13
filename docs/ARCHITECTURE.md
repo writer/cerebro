@@ -18,6 +18,7 @@ Graph-specific architecture references:
 - [Image Scan Architecture](./IMAGE_SCAN_ARCHITECTURE.md)
 - [Function Scan Architecture](./FUNCTION_SCAN_ARCHITECTURE.md)
 - [Filesystem Analyzer Architecture](./FILESYSTEM_ANALYZER_ARCHITECTURE.md)
+- [Vulnerability Database Architecture](./VULNERABILITY_DB_ARCHITECTURE.md)
 - [Connector Provisioning Auto-Generated Catalog](./CONNECTOR_PROVISIONING_AUTOGEN.md)
 - [Connector Provisioning Machine-Readable Catalog](./CONNECTOR_PROVISIONING_CATALOG.json)
 - [Graph Entity Facet Architecture](./GRAPH_ENTITY_FACET_ARCHITECTURE.md)

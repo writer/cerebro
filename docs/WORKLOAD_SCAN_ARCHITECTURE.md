@@ -68,7 +68,7 @@ This allows the issue stack to progress in layers:
 - `#178`: provider expansion and orchestration hardening
 - `#179`: transport/copy strategy improvements
 - `#180`: analyzers
-- `#181` / `#182`: higher-level reporting and product surfaces
+- `#181` / `#182`: advisory enrichment and graph/report projection
 
 ## AWS Behavior
 
@@ -124,7 +124,7 @@ These are meant to bound:
 ## Next Steps
 
 1. Add GCP and Azure providers behind the same `Provider` contract.
-2. Feed the shared analyzer package inventory into the vulnerability knowledge layer (`#181`).
+2. Expand the vulnerability database with richer distro and advisory sources.
 3. Expose run resources and events through the platform API.
 4. Link workload scan runs to graph entities, evidence, and provenance.
 5. Decide whether the long-term state backend remains SQLite or moves to a multi-worker execution store.

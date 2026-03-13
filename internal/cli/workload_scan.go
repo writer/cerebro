@@ -14,7 +14,6 @@ import (
 
 	"github.com/writer/cerebro/internal/app"
 	"github.com/writer/cerebro/internal/events"
-	"github.com/writer/cerebro/internal/scanner"
 	"github.com/writer/cerebro/internal/webhooks"
 	"github.com/writer/cerebro/internal/workloadscan"
 )
@@ -147,6 +146,11 @@ func runWorkloadScanAWS(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	defer func() { _ = emitter.Close() }()
+	filesystemAnalyzer, vulnDBCloser, err := buildFilesystemAnalyzer(cfg, resolveWorkloadScanTrivyBinary(cfg))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = vulnDBCloser.Close() }()
 
 	provider, err := workloadscan.NewAWSProvider(ctx, strings.TrimSpace(workloadScanAWSRegion))
 	if err != nil {
@@ -156,7 +160,7 @@ func runWorkloadScanAWS(cmd *cobra.Command, args []string) error {
 		Store:                  store,
 		Providers:              []workloadscan.Provider{provider},
 		Mounter:                workloadscan.NewLocalMounter(resolveWorkloadScanMountBasePath(cfg)),
-		Analyzer:               workloadscan.FilesystemAnalyzer{Scanner: scanner.NewTrivyFilesystemScanner(resolveWorkloadScanTrivyBinary(cfg))},
+		Analyzer:               workloadscan.FilesystemAnalyzer{Analyzer: filesystemAnalyzer},
 		Events:                 emitter,
 		MaxConcurrentSnapshots: resolveWorkloadScanMaxConcurrent(cfg),
 		CleanupTimeout:         resolveWorkloadScanCleanupTimeout(cfg),
@@ -205,6 +209,11 @@ func reconcileWorkloadScanAWS(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	defer func() { _ = emitter.Close() }()
+	filesystemAnalyzer, vulnDBCloser, err := buildFilesystemAnalyzer(cfg, resolveWorkloadScanTrivyBinary(cfg))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = vulnDBCloser.Close() }()
 
 	provider, err := workloadscan.NewAWSProvider(ctx, strings.TrimSpace(workloadScanAWSRegion))
 	if err != nil {
@@ -214,7 +223,7 @@ func reconcileWorkloadScanAWS(cmd *cobra.Command, args []string) error {
 		Store:          store,
 		Providers:      []workloadscan.Provider{provider},
 		Mounter:        workloadscan.NewLocalMounter(resolveWorkloadScanMountBasePath(cfg)),
-		Analyzer:       workloadscan.FilesystemAnalyzer{Scanner: scanner.NewTrivyFilesystemScanner(resolveWorkloadScanTrivyBinary(cfg))},
+		Analyzer:       workloadscan.FilesystemAnalyzer{Analyzer: filesystemAnalyzer},
 		Events:         emitter,
 		CleanupTimeout: resolveWorkloadScanCleanupTimeout(cfg),
 	})
