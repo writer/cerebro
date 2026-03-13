@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"math"
 	"net/http"
-	"os"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -219,11 +217,11 @@ func (s *Server) graphIntelligenceInsights(w http.ResponseWriter, r *http.Reques
 			return
 		}
 
-		snapshotPath := strings.TrimSpace(os.Getenv("GRAPH_SNAPSHOT_PATH"))
-		if snapshotPath == "" {
-			snapshotPath = filepath.Join(".cerebro", "graph-snapshots")
+		store := s.platformGraphSnapshotStore()
+		if store == nil {
+			s.error(w, http.StatusNotFound, "graph snapshot store not configured")
+			return
 		}
-		store := graph.NewSnapshotStore(snapshotPath, 10)
 		diff, err := store.DiffByTime(from, to)
 		if err != nil {
 			status := http.StatusInternalServerError
