@@ -19,6 +19,40 @@ import (
 	"github.com/writer/cerebro/internal/webhooks"
 )
 
+type stubGraphIntelligenceService struct {
+	graph             *graph.Graph
+	mapperInitialized bool
+	mapperValidation  string
+	deadLetterPath    string
+	mapperStats       graphingest.MapperStats
+	contractCatalog   graphingest.ContractCatalog
+	hasCatalog        bool
+}
+
+func (s stubGraphIntelligenceService) CurrentGraph() *graph.Graph {
+	return s.graph
+}
+
+func (s stubGraphIntelligenceService) MapperInitialized() bool {
+	return s.mapperInitialized
+}
+
+func (s stubGraphIntelligenceService) MapperValidationMode() string {
+	return s.mapperValidation
+}
+
+func (s stubGraphIntelligenceService) MapperDeadLetterPath() string {
+	return s.deadLetterPath
+}
+
+func (s stubGraphIntelligenceService) MapperStats() graphingest.MapperStats {
+	return s.mapperStats
+}
+
+func (s stubGraphIntelligenceService) MapperContractCatalog(_ time.Time) (graphingest.ContractCatalog, bool) {
+	return s.contractCatalog, s.hasCatalog
+}
+
 func TestGraphIntelligenceInsightsEndpoint(t *testing.T) {
 	s := newTestServer(t)
 	g := s.app.SecurityGraph
@@ -148,6 +182,95 @@ func TestGraphIntelligenceEventCorrelationEndpoints(t *testing.T) {
 	unscopedAnomalies := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/event-anomalies?limit=10", nil)
 	if unscopedAnomalies.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for unscoped event-anomalies, got %d: %s", unscopedAnomalies.Code, unscopedAnomalies.Body.String())
+	}
+}
+
+func TestGraphIntelligenceHandlersUseServiceInterface(t *testing.T) {
+	s := newTestServer(t)
+	base := time.Date(2026, 3, 12, 10, 0, 0, 0, time.UTC)
+
+	serviceGraph := graph.New()
+	serviceGraph.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "Payments"})
+	serviceGraph.AddNode(&graph.Node{
+		ID:   "pull_request:payments:42",
+		Kind: graph.NodeKindPullRequest,
+		Properties: map[string]any{
+			"repository":  "payments",
+			"number":      "42",
+			"state":       "merged",
+			"observed_at": base.Format(time.RFC3339),
+			"valid_from":  base.Format(time.RFC3339),
+		},
+	})
+	serviceGraph.AddNode(&graph.Node{
+		ID:   "deployment:payments:deploy-1",
+		Kind: graph.NodeKindDeploymentRun,
+		Properties: map[string]any{
+			"deploy_id":   "deploy-1",
+			"service_id":  "payments",
+			"environment": "prod",
+			"status":      "succeeded",
+			"observed_at": base.Add(5 * time.Minute).Format(time.RFC3339),
+			"valid_from":  base.Add(5 * time.Minute).Format(time.RFC3339),
+		},
+	})
+	serviceGraph.AddEdge(&graph.Edge{ID: "pr->service", Source: "pull_request:payments:42", Target: "service:payments", Kind: graph.EdgeKindTargets, Effect: graph.EdgeEffectAllow})
+	serviceGraph.AddEdge(&graph.Edge{ID: "deploy->service", Source: "deployment:payments:deploy-1", Target: "service:payments", Kind: graph.EdgeKindTargets, Effect: graph.EdgeEffectAllow})
+	graph.MaterializeEventCorrelations(serviceGraph, base.Add(10*time.Minute))
+
+	s.graphIntelligence = stubGraphIntelligenceService{
+		graph:             serviceGraph,
+		mapperInitialized: true,
+		mapperValidation:  "warn",
+		deadLetterPath:    "/tmp/cerebro-dead-letter.jsonl",
+		mapperStats: graphingest.MapperStats{
+			EventsProcessed: 17,
+		},
+		contractCatalog: graphingest.ContractCatalog{
+			APIVersion:  "cerebro.graph.contracts/v1alpha1",
+			Kind:        "CloudEventMappingContractCatalog",
+			GeneratedAt: base,
+		},
+		hasCatalog: true,
+	}
+	s.app.SecurityGraph = nil
+	s.app.TapEventMapper = nil
+	s.app.Config.GraphEventMapperValidationMode = ""
+	s.app.Config.GraphEventMapperDeadLetterPath = ""
+
+	correlations := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/event-correlations?entity_id=service:payments&limit=10", nil)
+	if correlations.Code != http.StatusOK {
+		t.Fatalf("expected 200 for service-backed event-correlations, got %d: %s", correlations.Code, correlations.Body.String())
+	}
+	body := decodeJSON(t, correlations)
+	summary, ok := body["summary"].(map[string]any)
+	if !ok || int(summary["correlation_count"].(float64)) == 0 {
+		t.Fatalf("expected scoped correlations from service-backed graph, got %#v", body)
+	}
+
+	healthResp := do(t, s, http.MethodGet, "/api/v1/graph/ingest/health?tail_limit=10", nil)
+	if healthResp.Code != http.StatusOK {
+		t.Fatalf("expected 200 for service-backed ingest health, got %d: %s", healthResp.Code, healthResp.Body.String())
+	}
+	healthBody := decodeJSON(t, healthResp)
+	mapper, ok := healthBody["mapper"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected mapper payload, got %#v", healthBody["mapper"])
+	}
+	if mapper["validation_mode"] != "warn" {
+		t.Fatalf("expected stub validation mode, got %#v", mapper["validation_mode"])
+	}
+	if mapper["dead_letter_path"] != "/tmp/cerebro-dead-letter.jsonl" {
+		t.Fatalf("expected stub dead-letter path, got %#v", mapper["dead_letter_path"])
+	}
+
+	contracts := do(t, s, http.MethodGet, "/api/v1/graph/ingest/contracts", nil)
+	if contracts.Code != http.StatusOK {
+		t.Fatalf("expected 200 for service-backed ingest contracts, got %d: %s", contracts.Code, contracts.Body.String())
+	}
+	contractsBody := decodeJSON(t, contracts)
+	if contractsBody["source"] != "runtime_mapper" {
+		t.Fatalf("expected runtime mapper contract source, got %#v", contractsBody["source"])
 	}
 }
 

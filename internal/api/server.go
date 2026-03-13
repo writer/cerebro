@@ -22,6 +22,7 @@ import (
 // Server is the fully wired API server
 type Server struct {
 	app                      *app.App
+	graphIntelligence        graphIntelligenceService
 	router                   *chi.Mux
 	auditLogger              auditLogWriter
 	rateLimiter              *RateLimiter
@@ -56,6 +57,7 @@ var runtimeNumGoroutine = runtime.NumGoroutine
 func NewServer(application *app.App) *Server {
 	s := &Server{
 		app:                    application,
+		graphIntelligence:      newAppGraphIntelligenceService(application),
 		router:                 chi.NewRouter(),
 		auditLogger:            application.AuditRepo,
 		crossTenantReplay:      make(map[string]time.Time),
