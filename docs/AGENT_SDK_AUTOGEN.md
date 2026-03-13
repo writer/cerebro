@@ -5,7 +5,7 @@ Generated from the shared `App.AgentSDKTools()` registry and `internal/agentsdk`
 - Catalog API version: **cerebro.agent-sdk.contracts/v1alpha1**
 - Catalog kind: **AgentSDKCatalog**
 - MCP protocol version: **2025-06-18**
-- Tools: **26**
+- Tools: **27**
 - Resources: **5**
 - MCP methods + notifications: **7**
 
@@ -23,6 +23,7 @@ Generated from the shared `App.AgentSDKTools()` registry and `internal/agentsdk`
 | `cerebro_correlate_events` | `1.0.0` | `cerebro.correlate_events` | `correlate_events` | `query` | `direct_tool` | false | false | ` ` | `sdk.context.read` |
 | `cerebro_decide` | `1.0.0` | `cerebro.record_decision` | `decide` | `writeback` | `direct_tool` | false | false | `POST /api/v1/agent-sdk/decisions` | `sdk.worldmodel.write` |
 | `cerebro_entity_history` | `1.0.0` | `cerebro.entity_history` | `entity_history` | `query` | `direct_tool` | false | false | ` ` | `sdk.context.read` |
+| `cerebro_execution_status` | `1.0.0` | `cerebro.execution_status` | `execution_status` | `query` | `direct_tool` | false | false | ` ` | `sdk.context.read` |
 | `cerebro_findings` | `1.0.0` | `cerebro.findings` | `findings` | `query` | `direct_tool` | false | false | ` ` | `sdk.context.read` |
 | `cerebro_graph_changelog` | `1.0.0` | `cerebro.graph_changelog` | `graph_changelog` | `query` | `direct_tool` | false | false | ` ` | `sdk.context.read` |
 | `cerebro_graph_query` | `1.0.0` | `cerebro.graph_query` | `graph_query` | `query` | `direct_tool` | false | false | ` ` | `sdk.context.read` |
@@ -243,6 +244,22 @@ Generated from the shared `App.AgentSDKTools()` registry and `internal/agentsdk`
   "recorded_at": "recorded_at",
   "timestamp": "timestamp",
   "to": "to"
+}
+```
+
+### `cerebro_execution_status`
+
+```json
+{
+  "limit": 20,
+  "namespace": [
+    "namespace"
+  ],
+  "order": "updated",
+  "report_id": "insights",
+  "status": [
+    "status"
+  ]
 }
 ```
 

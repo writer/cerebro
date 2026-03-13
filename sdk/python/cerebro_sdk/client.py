@@ -112,6 +112,10 @@ class Client:
         return self.call_tool("cerebro_entity_history", args)
 
 
+    def execution_status(self, args: Any) -> Any:
+        return self.call_tool("cerebro_execution_status", args)
+
+
     def findings(self, args: Any) -> Any:
         return self.call_tool("cerebro_findings", args)
 
