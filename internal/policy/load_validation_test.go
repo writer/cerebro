@@ -171,3 +171,76 @@ func TestEngineLoadPolicies_RejectsUnsupportedSeverity(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestEngineLoadPolicies_NormalizesConditionFormat(t *testing.T) {
+	dir := t.TempDir()
+
+	writePolicyFile(t, dir, "policy.json", `{
+		"id": "cel-format",
+		"name": "CEL Format",
+		"description": "test",
+		"severity": "high",
+		"resource": "aws::s3::bucket",
+		"condition_format": "CEL",
+		"conditions": ["resource.public == true"]
+	}`)
+
+	engine := NewEngine()
+	if err := engine.LoadPolicies(dir); err != nil {
+		t.Fatalf("LoadPolicies failed: %v", err)
+	}
+
+	p, ok := engine.GetPolicy("cel-format")
+	if !ok {
+		t.Fatal("expected policy to load")
+	}
+	if p.ConditionFormat != ConditionFormatCEL {
+		t.Fatalf("expected condition format %q, got %q", ConditionFormatCEL, p.ConditionFormat)
+	}
+}
+
+func TestEngineLoadPolicies_RejectsUnsupportedConditionFormat(t *testing.T) {
+	dir := t.TempDir()
+
+	writePolicyFile(t, dir, "policy.json", `{
+		"id": "invalid-format",
+		"name": "Invalid Format",
+		"description": "test",
+		"severity": "high",
+		"resource": "aws::s3::bucket",
+		"condition_format": "rego",
+		"conditions": ["public == true"]
+	}`)
+
+	engine := NewEngine()
+	err := engine.LoadPolicies(dir)
+	if err == nil {
+		t.Fatal("expected unsupported condition format error")
+	}
+	if !strings.Contains(err.Error(), "unsupported condition_format") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestEngineLoadPolicies_RejectsInvalidCELCondition(t *testing.T) {
+	dir := t.TempDir()
+
+	writePolicyFile(t, dir, "policy.json", `{
+		"id": "invalid-cel",
+		"name": "Invalid CEL",
+		"description": "test",
+		"severity": "high",
+		"resource": "aws::s3::bucket",
+		"condition_format": "cel",
+		"conditions": ["resource.public =="]
+	}`)
+
+	engine := NewEngine()
+	err := engine.LoadPolicies(dir)
+	if err == nil {
+		t.Fatal("expected invalid CEL condition error")
+	}
+	if !strings.Contains(err.Error(), "invalid CEL condition") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

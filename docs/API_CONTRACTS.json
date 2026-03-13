@@ -25152,6 +25152,10 @@
               "type": "object"
             },
             {
+              "path": "policies[].condition_format",
+              "type": "string"
+            },
+            {
               "path": "policies[].conditions",
               "type": "array"
             },
@@ -25206,6 +25210,10 @@
             "application/json"
           ],
           "fields": [
+            {
+              "path": "condition_format",
+              "type": "string"
+            },
             {
               "path": "conditions",
               "type": "array"
@@ -34317,6 +34325,10 @@
           ],
           "fields": [
             {
+              "path": "condition_format",
+              "type": "string"
+            },
+            {
               "path": "conditions",
               "type": "array"
             },
@@ -34470,6 +34482,10 @@
             "application/json"
           ],
           "fields": [
+            {
+              "path": "condition_format",
+              "type": "string"
+            },
             {
               "path": "conditions",
               "type": "array"
@@ -36722,6 +36738,10 @@
             "application/json"
           ],
           "fields": [
+            {
+              "path": "condition_format",
+              "type": "string"
+            },
             {
               "path": "conditions",
               "type": "array"
