@@ -25,7 +25,8 @@ type ReportRunStore struct {
 	executionFile string
 	legacyState   string
 	snapshotDir   string
-	execution     *executionstore.SQLiteStore
+	execution     executionstore.Store
+	ownsExecution bool
 }
 
 type persistedReportRunRecord struct {
@@ -56,16 +57,22 @@ func NewReportRunStore(executionFile, snapshotDir, legacyStateFile string) (*Rep
 	if err != nil {
 		return nil, err
 	}
+	reportStore := NewReportRunStoreWithExecutionStore(store, executionFile, snapshotDir, legacyStateFile)
+	reportStore.ownsExecution = true
+	return reportStore, nil
+}
+
+func NewReportRunStoreWithExecutionStore(store executionstore.Store, executionFile, snapshotDir, legacyStateFile string) *ReportRunStore {
 	return &ReportRunStore{
 		executionFile: strings.TrimSpace(executionFile),
 		legacyState:   strings.TrimSpace(legacyStateFile),
 		snapshotDir:   strings.TrimSpace(snapshotDir),
 		execution:     store,
-	}, nil
+	}
 }
 
 func (s *ReportRunStore) Close() error {
-	if s == nil || s.execution == nil {
+	if s == nil || s.execution == nil || !s.ownsExecution {
 		return nil
 	}
 	return s.execution.Close()

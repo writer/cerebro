@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
+	"github.com/writer/cerebro/internal/executionstore"
 	"github.com/writer/cerebro/internal/jsonl"
 	"github.com/writer/cerebro/internal/metrics"
 )
@@ -48,6 +49,7 @@ type ConsumerConfig struct {
 	PayloadPreviewBytes int
 	DedupEnabled        bool
 	DedupStateFile      string
+	DedupStore          executionstore.Store
 	DedupTTL            time.Duration
 	DedupMaxRecords     int
 
@@ -125,9 +127,13 @@ func NewJetStreamConsumer(cfg ConsumerConfig, logger *slog.Logger, handler Event
 	}
 	var deduper *consumerProcessedEventDeduper
 	if config.DedupEnabled {
-		deduper, err = newConsumerProcessedEventDeduper(config.DedupStateFile, config.Stream, config.Durable, config.DedupTTL, config.DedupMaxRecords)
-		if err != nil {
-			return nil, err
+		if config.DedupStore != nil {
+			deduper = newConsumerProcessedEventDeduperWithStore(config.DedupStore, config.Stream, config.Durable, config.DedupTTL, config.DedupMaxRecords)
+		} else {
+			deduper, err = newConsumerProcessedEventDeduper(config.DedupStateFile, config.Stream, config.Durable, config.DedupTTL, config.DedupMaxRecords)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 

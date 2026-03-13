@@ -1996,8 +1996,11 @@ func TestPlatformReportRunUpdateRollsBackOnPersistenceFailure(t *testing.T) {
 	// Force a deterministic persistence failure by making the underlying shared
 	// execution store unavailable, while leaving the in-memory cache intact so we
 	// can verify the update path does not partially mutate durable state.
-	if err := s.platformReportStore.Close(); err != nil {
-		t.Fatalf("platformReportStore.Close(): %v", err)
+	if application.ExecutionStore == nil {
+		t.Fatal("expected shared execution store to be configured")
+	}
+	if err := application.ExecutionStore.Close(); err != nil {
+		t.Fatalf("ExecutionStore.Close(): %v", err)
 	}
 
 	err := s.updatePlatformReportRun(run.ID, func(run *reports.ReportRun) {

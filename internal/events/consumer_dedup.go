@@ -13,10 +13,11 @@ import (
 )
 
 type consumerProcessedEventDeduper struct {
-	store      *executionstore.SQLiteStore
+	store      executionstore.Store
 	namespace  string
 	ttl        time.Duration
 	maxRecords int
+	ownsStore  bool
 }
 
 func newConsumerProcessedEventDeduper(path, stream, durable string, ttl time.Duration, maxRecords int) (*consumerProcessedEventDeduper, error) {
@@ -34,16 +35,22 @@ func newConsumerProcessedEventDeduper(path, stream, durable string, ttl time.Dur
 	if err != nil {
 		return nil, err
 	}
+	deduper := newConsumerProcessedEventDeduperWithStore(store, stream, durable, ttl, maxRecords)
+	deduper.ownsStore = true
+	return deduper, nil
+}
+
+func newConsumerProcessedEventDeduperWithStore(store executionstore.Store, stream, durable string, ttl time.Duration, maxRecords int) *consumerProcessedEventDeduper {
 	return &consumerProcessedEventDeduper{
 		store:      store,
 		namespace:  fmt.Sprintf("%s:%s:%s", executionstore.NamespaceProcessedCloudEvent, strings.TrimSpace(stream), strings.TrimSpace(durable)),
 		ttl:        ttl,
 		maxRecords: maxRecords,
-	}, nil
+	}
 }
 
 func (d *consumerProcessedEventDeduper) Close() error {
-	if d == nil || d.store == nil {
+	if d == nil || d.store == nil || !d.ownsStore {
 		return nil
 	}
 	return d.store.Close()
