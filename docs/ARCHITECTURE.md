@@ -27,6 +27,7 @@ Graph-specific architecture references:
 - [Graph Entity Facet Contract Catalog](./GRAPH_ENTITY_FACETS_AUTOGEN.md)
 - [Graph Entity Facet Machine-Readable Catalog](./GRAPH_ENTITY_FACETS.json)
 - [Graph Ontology Architecture](./GRAPH_ONTOLOGY_ARCHITECTURE.md)
+- [Graph Horizontal Scaling Architecture](./GRAPH_HORIZONTAL_SCALING_ARCHITECTURE.md)
 - [Graph World Model Architecture](./GRAPH_WORLD_MODEL_ARCHITECTURE.md)
 - [Platform Transition Architecture](./PLATFORM_TRANSITION_ARCHITECTURE.md)
 - [Graph Ontology Auto-Generated Catalog](./GRAPH_ONTOLOGY_AUTOGEN.md)

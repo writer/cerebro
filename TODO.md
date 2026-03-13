@@ -5,6 +5,57 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 67 - Graph Horizontal Scaling Path and Persistence Decision Gate (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#221` was still only a design statement; the repo had no executable graph scaling benchmark to prove where the current in-memory copy-on-write graph actually becomes the bottleneck.
+- [x] Gap: issue `#209` introduced a shared execution-store seam, but the graph itself still had no equivalent decision gate for persistence, hydration, or multi-worker coordination.
+- [x] Gap: the highest-risk next issues (`#246`, `#247`) were both correctly urgent but still premature to implement blindly; they needed a measured breakpoint and an explicit persistence recommendation first.
+- [x] Gap: upstream references point at the same practical boundary:
+  - [x] `dagster-io/dagster` keeps durable run/storage seams stable before deepening indexes and orchestration layers.
+  - [x] `temporalio/temporal` treats coordination state as durable infrastructure, not process-local behavior.
+  - [x] `OpenLineage/OpenLineage` and `open-metadata/OpenMetadata` reinforce typed lineage/state resources rather than ambient runtime glue.
+  - [x] the Wiz schema dump in `/Users/jonathanhaas/Downloads/other/wiz.graphql` is a warning about broad query surfaces: pagination, counts, and typed connection resources only stay tractable when the underlying execution/persistence model is explicit.
+
+### Execution plan
+- [x] Add an executable graph scale profiler:
+  - [x] add `internal/graph/scale_profile.go`
+  - [x] benchmark build/index/search/suggest/blast-radius/snapshot/clone/copy-on-write/diff costs
+  - [x] benchmark tiers `1K`, `10K`, `50K`, `100K`
+- [x] Add a usable CLI surface:
+  - [x] add `cerebro graph profile-scale`
+  - [x] support `table` and `json` output
+  - [x] support custom tiers and query-iteration counts
+- [x] Add guardrail coverage:
+  - [x] unit-test scale-spec normalization and synthetic topology generation
+  - [x] test CLI registration and output rendering
+- [x] Document the architectural decision:
+  - [x] add `docs/GRAPH_HORIZONTAL_SCALING_ARCHITECTURE.md`
+  - [x] recommend hybrid hot-graph + durable backing storage
+  - [x] make `#246` and `#247` explicitly follow this decision gate instead of guessing
+  - [x] capture the first local breakpoint:
+    - [x] `1K` stays comfortably single-node (`8.5s` total run, `43.6ms` copy-on-write)
+    - [x] `10K` already crosses into uncomfortable latency (`15.5s` total run, `11.3s` search, `533.6ms` copy-on-write)
+    - [x] `50K+` exceeds sane single-node local profiling budgets and pushes resident memory into `~1.6-1.7 GiB`
+
+### Detailed follow-on backlog
+- [ ] Track A - `#246` durable graph persistence and HA
+  - Exit criteria:
+  - [ ] add durable graph snapshot manifests plus lineage/index metadata
+  - [ ] support object-backed / replicated snapshot storage for read-graph hydration
+  - [ ] add one-writer lease semantics for rebuild / CDC apply jobs
+  - [ ] add follower hydration health and freshness lag reporting
+- [ ] Track B - `#247` tenant/account partitioning
+  - Exit criteria:
+  - [ ] add tenant/account partition keys to graph snapshot and query paths
+  - [ ] enforce tenant-scoped query guards on platform graph reads
+  - [ ] add explicit audited cross-tenant read/report paths rather than ambient joins
+- [ ] Track C - graph persistence backend decision
+  - Exit criteria:
+  - [ ] keep the hot graph in memory for low-latency traversals
+  - [ ] move full graph durability to snapshot/log-backed storage before considering graph-DB migration
+  - [ ] revisit Neo4j/Dgraph only if the hybrid model fails on measured operational complexity, not by default
+
 ## Deep Review Cycle 66 - Shared Execution Store Convergence (2026-03-12)
 
 ### Review findings
