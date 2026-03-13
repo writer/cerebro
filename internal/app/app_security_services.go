@@ -478,9 +478,12 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 			return
 		}
 		builtGraph := a.SecurityGraphBuilder.Graph()
-		a.setSecurityGraph(builtGraph)
-		meta := builtGraph.Metadata()
-		a.setGraphBuildState(GraphBuildSuccess, meta.BuiltAt, nil)
+		meta, err := a.activateBuiltSecurityGraph(graphCtx, builtGraph)
+		if err != nil {
+			a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
+			a.Logger.Error("failed to activate security graph", "error", err)
+			return
+		}
 		a.Logger.Info("security graph built",
 			"nodes", meta.NodeCount,
 			"edges", meta.EdgeCount,
@@ -557,7 +560,7 @@ func (a *App) RebuildSecurityGraph(ctx context.Context) error {
 	}
 
 	securityGraph := a.SecurityGraphBuilder.Graph()
-	meta, err := a.activateBuiltSecurityGraph(securityGraph)
+	meta, err := a.activateBuiltSecurityGraph(ctx, securityGraph)
 	if err != nil {
 		return err
 	}
@@ -574,11 +577,24 @@ func (a *App) RebuildSecurityGraph(ctx context.Context) error {
 	return nil
 }
 
-func (a *App) activateBuiltSecurityGraph(securityGraph *graph.Graph) (graph.Metadata, error) {
+func (a *App) activateBuiltSecurityGraph(ctx context.Context, securityGraph *graph.Graph) (graph.Metadata, error) {
 	if securityGraph == nil {
 		err := fmt.Errorf("security graph not initialized")
 		a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
 		return graph.Metadata{}, err
+	}
+	if materialized, err := a.materializePersistedWorkloadScans(ctx, securityGraph); err != nil {
+		a.Logger.Warn("failed to materialize persisted workload scans into security graph", "error", err)
+	} else if materialized.RunsMaterialized > 0 {
+		a.Logger.Info("materialized workload scans into security graph",
+			"runs", materialized.RunsMaterialized,
+			"scan_nodes", materialized.ScanNodesUpserted,
+			"package_nodes", materialized.PackageNodesUpserted,
+			"vulnerability_nodes", materialized.VulnNodesUpserted,
+			"scan_package_edges", materialized.ScanPackageEdges,
+			"scan_vulnerability_edges", materialized.ScanVulnEdges,
+			"package_vulnerability_edges", materialized.PackageVulnEdges,
+		)
 	}
 	a.configureGraphSchemaValidation(securityGraph)
 	a.setSecurityGraph(securityGraph)

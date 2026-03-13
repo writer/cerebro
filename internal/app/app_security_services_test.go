@@ -148,7 +148,7 @@ func TestActivateBuiltSecurityGraphDoesNotReplaceLiveGraphWithNil(t *testing.T) 
 		SecurityGraph: liveGraph,
 	}
 
-	if _, err := application.activateBuiltSecurityGraph(nil); err == nil {
+	if _, err := application.activateBuiltSecurityGraph(context.Background(), nil); err == nil {
 		t.Fatal("expected nil built graph to return an error")
 	}
 	if got := application.CurrentSecurityGraph(); got != liveGraph {

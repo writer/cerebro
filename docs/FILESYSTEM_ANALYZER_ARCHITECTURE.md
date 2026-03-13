@@ -131,6 +131,6 @@ Cerebro should keep those stages separate.
 ## Next Steps
 
 1. Extend the vulnerability database with NVD, GitHub Advisory, and distro feeds.
-2. Issue `#182`: project scan packages/vulnerabilities/SBOM coverage into the security graph and attack-path context.
+2. Extend the now-landed workload scan graph projection from issue `#182` to image/function scan families and richer claim/evidence projection.
 3. Extend package coverage for RPM, Ruby gems, and .NET `.deps.json`.
 4. Move execution resources and vuln sync jobs onto a multi-worker backend if SQLite becomes the scaling bottleneck.

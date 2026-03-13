@@ -4,7 +4,7 @@ Generated from the built-in entity facet registry via `go run ./scripts/generate
 
 - Catalog API version: **cerebro.entity-facets/v1alpha1**
 - Catalog kind: **EntityFacetContractCatalog**
-- Facets: **7**
+- Facets: **8**
 
 | ID | Version | Schema Name | Schema URL | Applicable Kinds | Claim Predicates | Source Keys |
 |---|---|---|---|---|---|---|
@@ -15,6 +15,7 @@ Generated from the built-in entity facet registry via `go run ./scripts/generate
 | `data_sensitivity` | `1.0.0` | `PlatformEntityDataSensitivityFacet` | `urn:cerebro:entity-facet:data-sensitivity:v1` | `bucket`, `database`, `secret`, `service` | `contains_sensitive_data`, `data_classification` | `contains_pii`, `contains_phi`, `contains_pci`, `contains_secrets`, `data_classification` |
 | `exposure` | `1.0.0` | `PlatformEntityExposureFacet` | `urn:cerebro:entity-facet:exposure:v1` | `bucket`, `database`, `function`, `instance`, `network`, `service` | `public_access`, `internet_exposed` | `public`, `public_access`, `internet_accessible`, `publicly_accessible` |
 | `ownership` | `1.0.0` | `PlatformEntityOwnershipFacet` | `urn:cerebro:entity-facet:ownership:v1` | - | `owner`, `managed_by` | - |
+| `workload_security` | `1.0.0` | `PlatformWorkloadSecurityFacet` | `urn:cerebro:entity-facet:workload-security:v1` | `instance`, `function`, `workload` | - | - |
 
 ## Fields
 
@@ -89,6 +90,30 @@ Typed owner and manager context derived from relations and ownership claims.
 |---|---|---|
 | `owner_ids` | `array[string]` | - |
 | `manager_ids` | `array[string]` | - |
+
+### `workload_security`
+
+Latest workload scan posture with vulnerability depth and attack-path context.
+
+| Field | Value Type | Description |
+|---|---|---|
+| `last_scan_id` | `string` | - |
+| `last_scanned_at` | `string` | - |
+| `stale` | `boolean` | - |
+| `os_name` | `string` | - |
+| `os_version` | `string` | - |
+| `os_architecture` | `string` | - |
+| `package_count` | `integer` | - |
+| `vulnerability_count` | `integer` | - |
+| `critical_vulnerability_count` | `integer` | - |
+| `high_vulnerability_count` | `integer` | - |
+| `known_exploited_count` | `integer` | - |
+| `fixable_vulnerability_count` | `integer` | - |
+| `internet_exposed` | `boolean` | - |
+| `admin_reachable_count` | `integer` | - |
+| `sensitive_data_path_count` | `integer` | - |
+| `cross_account_risk` | `boolean` | - |
+| `prioritized_risk` | `string` | - |
 
 ## Notes
 

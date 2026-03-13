@@ -1,9 +1,61 @@
 # Cerebro Intelligence Layer Execution TODO
 
-Last updated: 2026-03-11 (America/Los_Angeles)
+Last updated: 2026-03-12 (America/Los_Angeles)
 Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
+
+## Deep Review Cycle 54 - Workload Scan Graph Projection + Attack-Path Context (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#182` was still sitting as architecture intent only; successful workload scans were durable in the shared execution store but still absent from the live security graph.
+- [x] Gap: entity summary surfaces had no typed workload-security facet, so vulnerability depth, scan freshness, and attack-path context were still disconnected at read time.
+- [x] Gap: the world-model/security docs still described workload scan graph projection as future work, even though the ontology and execution-store seams were already in place.
+- [x] Gap: older scans needed temporal supersession semantics instead of naive append-only "latest wins" behavior.
+
+### Execution plan
+- [x] Extend the ontology for workload security projection:
+  - [x] add node kinds `workload_scan`, `package`, and `vulnerability`
+  - [x] add edge kinds `has_scan`, `contains_package`, `found_vulnerability`, and `affected_by`
+  - [x] register schema contracts and runtime tests for the new kinds
+- [x] Materialize durable workload scan runs from the shared execution store into the graph:
+  - [x] add `internal/workloadscan/graph_materialization.go`
+  - [x] resolve VM scan targets against existing canonical instance nodes
+  - [x] preserve temporal supersession by setting `valid_to` on older scans when newer successful scans exist for the same workload
+  - [x] keep graph writes idempotent on repeated hydration
+- [x] Add workload-aware entity summaries:
+  - [x] add `workload_security` facet contract
+  - [x] surface last scan time, OS/package/vulnerability counts, KEV/fixable counts, and stale-scan signals
+  - [x] fold in attack-path context via exposure, blast-radius admin reachability, and sensitive-data path counts
+- [x] Wire graph activation to hydrate workload scan state:
+  - [x] load successful workload scans from `WORKLOAD_SCAN_STATE_FILE`
+  - [x] project them into the built security graph before activation
+  - [x] keep the shared execution store as the durability boundary rather than introducing another in-memory side channel
+- [x] Add focused regression coverage:
+  - [x] materialization node/edge tests in `internal/workloadscan/graph_materialization_test.go`
+  - [x] workload facet temporal visibility and attack-path context tests in `internal/graph/workload_security_facet_test.go`
+
+### Detailed follow-on backlog
+- [ ] Track A - Scan family parity
+  - Exit criteria:
+  - [ ] project image scan runs into the same `package` / `vulnerability` ontology
+  - [ ] project function scan runs into the same ontology
+  - [ ] converge image/function/workload asset facets on one reusable workload-security/read model
+- [ ] Track B - Real-time graph refresh
+  - Exit criteria:
+  - [ ] add a fast-path consumer or job hook for `security.workload_scan.completed`
+  - [ ] avoid waiting for the next graph rebuild/incremental apply cycle before new scan context appears
+  - [ ] decide whether scan-driven graph projection becomes its own execution resource/job surface
+- [ ] Track C - Claim/evidence projection depth
+  - Exit criteria:
+  - [ ] project package/vulnerability matches as first-class observations/evidence/claims, not just nodes and edges
+  - [ ] attach advisory source attribution, confidence, and remediation decisions directly to vulnerability context
+  - [ ] connect remediation outcomes back to workload scan history
+- [ ] Track D - Prioritization depth
+  - Exit criteria:
+  - [ ] feed workload vulnerability context into risk-engine/ranking surfaces instead of entity summary only
+  - [ ] distinguish exploitable-but-contained vs exploitable-and-exposed workloads in platform intelligence reports
+  - [ ] include cross-account and crown-jewel reachability directly in vulnerability prioritization views
 
 ## Deep Review Cycle 53 - Persisted Vulnerability DB + Package Matching Pipeline (2026-03-12)
 
@@ -62,7 +114,7 @@ Status: executed end-to-end via PR workflow
   - [ ] expose advisory database stats/sync health over API or report surfaces where operators already look
 - [ ] Track D - Graph and prioritization projection
   - Exit criteria:
-  - [ ] map vulnerabilities, packages, and matches into canonical graph entities/claims in issue `#182`
+  - [x] map workload scan vulnerabilities/packages into canonical graph entities and edges in issue `#182`
   - [ ] attach fix availability, KEV, EPSS, and runtime exposure context to prioritization
   - [ ] use advisory recency and exploitability as first-class report dimensions
 
@@ -107,9 +159,10 @@ Status: executed end-to-end via PR workflow
   - [x] score vulnerabilities with fix availability, KEV, EPSS, and distro/package context
 - [ ] Track B - Graph contextualization (`#182`)
   - Exit criteria:
-  - [ ] map scan runs, packages, vulnerabilities, and SBOM coverage into canonical graph node/edge kinds
-  - [ ] attach workload/function/image scan freshness and exposure context to prioritization paths
-  - [ ] surface workload security facets and attack-path-aware vulnerability ranking
+  - [x] map workload scan runs, packages, vulnerabilities, and SBOM coverage into canonical graph node/edge kinds
+  - [x] attach workload scan freshness and exposure context to entity prioritization paths
+  - [x] surface workload security facets with attack-path-aware context
+  - [ ] extend the same graph contextualization to image and function scans
 - [ ] Track C - Analyzer coverage depth
   - Exit criteria:
   - [ ] add RPM parsing and deeper language ecosystem coverage
