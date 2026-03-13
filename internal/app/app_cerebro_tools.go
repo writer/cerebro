@@ -13,6 +13,7 @@ import (
 	"github.com/writer/cerebro/internal/agents"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graph"
+	reports "github.com/writer/cerebro/internal/graph/reports"
 )
 
 func (a *App) cerebroTools() []agents.Tool {
@@ -863,7 +864,7 @@ func (a *App) toolCerebroIntelligenceReport(_ context.Context, args json.RawMess
 	historyLimit := clampInt(req.HistoryLimit, 20, 1, 200)
 	maxInsights := clampInt(req.MaxInsights, 8, 1, 20)
 
-	report := graph.BuildIntelligenceReport(g, graph.NewRiskEngine(g), graph.IntelligenceReportOptions{
+	report := reports.BuildIntelligenceReport(g, graph.NewRiskEngine(g), reports.IntelligenceReportOptions{
 		EntityID:              strings.TrimSpace(req.EntityID),
 		OutcomeWindow:         time.Duration(windowDays) * 24 * time.Hour,
 		SchemaHistoryLimit:    historyLimit,
@@ -895,7 +896,7 @@ func (a *App) toolCerebroGraphQualityReport(_ context.Context, args json.RawMess
 	historyLimit := clampInt(req.HistoryLimit, 20, 1, 200)
 	staleAfterHours := clampInt(req.StaleAfterHours, 720, 1, 8760)
 
-	report := graph.BuildGraphQualityReport(g, graph.GraphQualityReportOptions{
+	report := reports.BuildGraphQualityReport(g, reports.GraphQualityReportOptions{
 		SchemaHistoryLimit:  historyLimit,
 		SchemaSinceVersion:  req.SinceVersion,
 		FreshnessStaleAfter: time.Duration(staleAfterHours) * time.Hour,
@@ -938,7 +939,7 @@ func (a *App) toolCerebroGraphLeverageReport(_ context.Context, args json.RawMes
 		suggestThreshold = 0.55
 	}
 
-	report := graph.BuildGraphLeverageReport(g, graph.GraphLeverageReportOptions{
+	report := reports.BuildGraphLeverageReport(g, reports.GraphLeverageReportOptions{
 		SchemaHistoryLimit:       historyLimit,
 		SchemaSinceVersion:       req.SinceVersion,
 		FreshnessStaleAfter:      time.Duration(staleAfterHours) * time.Hour,

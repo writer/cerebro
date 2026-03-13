@@ -1,4 +1,4 @@
-package graph
+package reports
 
 import (
 	"path/filepath"
@@ -10,7 +10,7 @@ func TestReportRunStoreRoundTrip(t *testing.T) {
 	now := time.Date(2026, 3, 10, 0, 15, 0, 0, time.UTC)
 	definition := ReportDefinition{
 		ID:           "quality",
-		ResultSchema: "graph.GraphQualityReport",
+		ResultSchema: "reports.GraphQualityReport",
 		Sections: []ReportSection{
 			{Key: "summary", Title: "Summary", Kind: "scorecard", Measures: []string{"maturity_score"}},
 			{Key: "recommendations", Title: "Recommendations", Kind: "action_list"},

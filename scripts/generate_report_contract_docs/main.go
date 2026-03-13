@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/writer/cerebro/internal/graph"
+	reports "github.com/writer/cerebro/internal/graph/reports"
 )
 
 const (
@@ -16,7 +16,7 @@ const (
 )
 
 func main() {
-	catalog := graph.BuildReportContractCatalog(time.Time{})
+	catalog := reports.BuildReportContractCatalog(time.Time{})
 	markdown := renderMarkdown(catalog)
 	if err := os.WriteFile(outputMarkdownPath, []byte(markdown), 0o644); err != nil { // #nosec G306 -- generated docs are repository-readable artifacts.
 		fatalf("write %s: %v", outputMarkdownPath, err)
@@ -31,7 +31,7 @@ func main() {
 	}
 }
 
-func renderMarkdown(catalog graph.ReportContractCatalog) string {
+func renderMarkdown(catalog reports.ReportContractCatalog) string {
 	var b strings.Builder
 	b.WriteString("# Graph Report Contract Catalog\n\n")
 	b.WriteString("Generated from the built-in report runtime registries via `go run ./scripts/generate_report_contract_docs/main.go`.\n\n")
@@ -217,7 +217,7 @@ func buildSchemaExampleValue(schema any) any {
 	switch strings.TrimSpace(typeName) {
 	case "object":
 		properties, _ := definition["properties"].(map[string]any)
-		required := graph.SchemaRequiredKeys(definition["required"])
+		required := reports.SchemaRequiredKeys(definition["required"])
 		example := make(map[string]any, len(required))
 		for _, key := range required {
 			example[key] = buildSchemaExampleValue(properties[key])

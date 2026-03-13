@@ -5,6 +5,53 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 63 - Graph Package Split Phase 1: Reports Extraction (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#141` was still materially open because `internal/graph` remained a monolith even after concurrency and execution-store work, so every report/runtime change still loaded the full graph namespace and its private helpers.
+- [x] Gap: reports were the best first extraction seam because they already behaved like a distinct runtime: definitions, executions, attempts, events, snapshots, contract catalogs, and typed result models.
+- [x] Gap: the first extraction surfaced exactly the hidden coupling we needed to expose: report code was reaching into private graph helpers for temporal visibility, schema/profile utilities, facet applicability, and JSON-schema cloning.
+- [x] Gap: external references reinforced the same package-boundary lesson from different angles:
+  - [x] `open-metadata/OpenMetadata` keeps report/test/catalog resources under explicit module seams rather than one ambient metadata package.
+  - [x] `backstage/backstage` keeps plugin contracts in bounded packages and pushes shared primitives through explicit exported surfaces.
+  - [x] `OpenLineage/OpenLineage` treats contract catalogs and lineage payloads as versioned resources, not incidental helper code.
+  - [x] the Wiz GraphQL schema dump in `/Users/jonathanhaas/Downloads/wiz.graphql` exposes `185` top-level `Query` fields and `144` top-level `Mutation` fields, which is a concrete warning against letting one ambient graph surface absorb every report/runtime concern.
+
+### Execution plan
+- [x] Extract the report subsystem into `internal/graph/reports`:
+  - [x] move typed report payloads, report registry/contracts, run/attempt/event history, snapshot logic, and report-store logic out of root `internal/graph`
+  - [x] keep the root `graph` package focused on graph primitives, schemas, entities, knowledge, snapshots, and risk substrate
+- [x] Replace implicit same-package access with explicit boundaries:
+  - [x] add narrow exported compatibility helpers in `internal/graph/package_exports.go` where reports genuinely need root graph services
+  - [x] move report-local helper behavior into `reports` where it should not be shared ambiently
+  - [x] convert report node visibility from direct `g.mu`/`g.nodes` access to an exported `GetNodeBitemporal(...)` graph API
+- [x] Rewire external callers onto the new package:
+  - [x] update API/app/client/script imports from `graph.*report*` to `reports.*`
+  - [x] keep graph snapshot record types in root `graph` while moving report-run and report-contract types into `reports`
+  - [x] update report contract/result-schema strings from `graph.*` to `reports.*`
+- [x] Regenerate and validate the report contract surface:
+  - [x] regenerate `docs/GRAPH_REPORT_CONTRACTS_AUTOGEN.md`
+  - [x] regenerate `docs/GRAPH_REPORT_CONTRACTS.json`
+  - [x] run report contract compatibility checks after the package-path migration
+
+### Detailed follow-on backlog
+- [ ] Track A - `internal/graph/entities`
+  - Exit criteria:
+  - [ ] move entity query/detail/facet/subresource/search logic behind an `entities` package
+  - [ ] eliminate report compatibility shims that currently expose entity-facet helper behavior from root `graph`
+- [ ] Track B - `internal/graph/knowledge`
+  - Exit criteria:
+  - [ ] split claims/evidence/observations/sources/proofs/diffs/adjudication into a dedicated `knowledge` package
+  - [ ] replace remaining root/entity cross-calls with exported interfaces or package-level query functions
+- [ ] Track C - `internal/graph/risk`
+  - Exit criteria:
+  - [ ] isolate risk engine, toxic combos, attack paths, and feedback/calibration into a dedicated package
+  - [ ] prevent report/intelligence code from depending on root risk internals beyond explicit exported types
+- [ ] Track D - remove migration shims
+  - Exit criteria:
+  - [ ] audit `internal/graph/package_exports.go` and delete compatibility exports once downstream packages are properly split
+  - [ ] keep only stable graph-surface APIs that are justified independently of the migration
+
 ## Deep Review Cycle 62 - Graph Concurrency Phase 1: Copy-on-Write Live Mutations (2026-03-12)
 
 ### Review findings
@@ -1411,7 +1458,7 @@ Status: executed end-to-end via PR workflow
   - [x] include support/dispute/staleness signals on posture claims
   - [x] keep raw config in `properties` while exposing normalized posture separately
 - [x] Add report-level asset view:
-  - [x] add `graph.BuildEntitySummaryReport(...)`
+  - [x] add `reports.BuildEntitySummaryReport(...)`
   - [x] register `entity-summary` in the platform report catalog
   - [x] expose `GET /api/v1/platform/intelligence/entity-summary`
   - [x] make the report runnable through the existing report-run substrate
@@ -2554,7 +2601,7 @@ Status: executed end-to-end via PR workflow
   - [x] Add concrete `/api/v1/platform/intelligence/*` OpenAPI paths for `insights`, `quality`, `metadata-quality`, `claim-conflicts`, `leverage`, and `calibration/weekly`.
   - [x] Keep `/api/v1/graph/intelligence/*` as deprecated compatibility aliases.
   - [x] Replace `additionalProperties: true` response contracts for those endpoints with typed report schemas.
-  - [x] Add a typed `graph.WeeklyCalibrationReport` model and route handler output.
+  - [x] Add a typed `reports.WeeklyCalibrationReport` model and route handler output.
 - [x] Add lifecycle event emission + contract hardening:
   - [x] Emit `platform.claim.written`, `platform.decision.recorded`, `platform.outcome.recorded`, and `platform.action.recorded` from writeback handlers.
   - [x] Add generated lifecycle event contract metadata under `internal/platformevents`.

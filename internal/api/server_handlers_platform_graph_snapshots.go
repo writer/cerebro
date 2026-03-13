@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/writer/cerebro/internal/graph"
+	reports "github.com/writer/cerebro/internal/graph/reports"
 	"github.com/writer/cerebro/internal/webhooks"
 )
 
@@ -440,7 +441,7 @@ func (s *Server) platformGraphSnapshotStore() *graph.SnapshotStore {
 }
 
 func (s *Server) platformGraphSnapshotRecords() map[string]*graph.GraphSnapshotRecord {
-	collection := graph.GraphSnapshotCollectionSnapshot(s.app.SecurityGraph, s.platformReportRunSnapshotMap(), time.Now().UTC())
+	collection := reports.GraphSnapshotCollectionSnapshot(s.app.SecurityGraph, s.platformReportRunSnapshotMap(), time.Now().UTC())
 	records := make(map[string]*graph.GraphSnapshotRecord, collection.Count)
 	for i := range collection.Snapshots {
 		record := collection.Snapshots[i]
@@ -468,7 +469,7 @@ func (s *Server) platformGraphSnapshotRecords() map[string]*graph.GraphSnapshotR
 	return records
 }
 
-func (s *Server) platformReportRunSnapshotMap() map[string]*graph.ReportRun {
+func (s *Server) platformReportRunSnapshotMap() map[string]*reports.ReportRun {
 	s.platformReportRunMu.RLock()
 	defer s.platformReportRunMu.RUnlock()
 	return s.clonePlatformReportRunsLocked()

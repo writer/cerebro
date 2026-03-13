@@ -15,6 +15,7 @@ import (
 
 	"github.com/writer/cerebro/internal/events"
 	"github.com/writer/cerebro/internal/graph"
+	reports "github.com/writer/cerebro/internal/graph/reports"
 	"github.com/writer/cerebro/internal/graphingest"
 	"github.com/writer/cerebro/internal/webhooks"
 )
@@ -610,12 +611,12 @@ func TestPlatformGraphSnapshotCatalog(t *testing.T) {
 		BuildDuration: 2 * time.Second,
 	})
 
-	run := &graph.ReportRun{
+	run := &reports.ReportRun{
 		ID:          "report_run:graph-snapshot",
 		ReportID:    "quality",
-		Status:      graph.ReportRunStatusSucceeded,
+		Status:      reports.ReportRunStatusSucceeded,
 		SubmittedAt: now.Add(5 * time.Minute),
-		Lineage:     graph.BuildReportLineage(s.app.SecurityGraph, graph.ReportDefinition{ID: "quality"}),
+		Lineage:     reports.BuildReportLineage(s.app.SecurityGraph, reports.ReportDefinition{ID: "quality"}),
 	}
 	if err := s.storePlatformReportRun(run); err != nil {
 		t.Fatalf("storePlatformReportRun() failed: %v", err)
@@ -685,7 +686,7 @@ func TestPlatformIntelligenceReportRunSync(t *testing.T) {
 		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
 	}
 	body := decodeJSON(t, w)
-	if got := body["status"]; got != graph.ReportRunStatusSucceeded {
+	if got := body["status"]; got != reports.ReportRunStatusSucceeded {
 		t.Fatalf("expected succeeded report run, got %#v", got)
 	}
 	if got := body["report_id"]; got != "quality" {
@@ -698,7 +699,7 @@ func TestPlatformIntelligenceReportRunSync(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected lineage metadata, got %#v", body["lineage"])
 	}
-	if got := lineage["report_definition_version"]; got != graph.DefaultReportDefinitionVersion {
+	if got := lineage["report_definition_version"]; got != reports.DefaultReportDefinitionVersion {
 		t.Fatalf("expected default report definition version, got %#v", got)
 	}
 	if got := lineage["graph_snapshot_id"]; got == "" {
@@ -778,7 +779,7 @@ func TestPlatformIntelligenceReportRunSync(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected attempt object, got %#v", attempts[0])
 	}
-	if got := attempt["status"]; got != graph.ReportRunStatusSucceeded {
+	if got := attempt["status"]; got != reports.ReportRunStatusSucceeded {
 		t.Fatalf("expected attempt succeeded, got %#v", got)
 	}
 	if got := attempt["execution_surface"]; got != "platform.inline" {
@@ -870,7 +871,7 @@ func TestPlatformIntelligenceReportRunCacheReuseExposesSectionTelemetry(t *testi
 	if firstRunID == "" {
 		t.Fatalf("expected first run id, got %#v", firstBody["id"])
 	}
-	if got := firstBody["cache_status"]; got != graph.ReportCacheStatusMiss {
+	if got := firstBody["cache_status"]; got != reports.ReportCacheStatusMiss {
 		t.Fatalf("expected first run cache_status miss, got %#v", got)
 	}
 
@@ -884,7 +885,7 @@ func TestPlatformIntelligenceReportRunCacheReuseExposesSectionTelemetry(t *testi
 		t.Fatalf("expected 201 for second run, got %d: %s", second.Code, second.Body.String())
 	}
 	secondBody := decodeJSON(t, second)
-	if got := secondBody["cache_status"]; got != graph.ReportCacheStatusHit {
+	if got := secondBody["cache_status"]; got != reports.ReportCacheStatusHit {
 		t.Fatalf("expected second run cache_status hit, got %#v", got)
 	}
 	if got := secondBody["cache_source_run_id"]; got != firstRunID {
@@ -902,7 +903,7 @@ func TestPlatformIntelligenceReportRunCacheReuseExposesSectionTelemetry(t *testi
 	if !ok {
 		t.Fatalf("expected section telemetry, got %#v", firstSection["telemetry"])
 	}
-	if got := telemetry["cache_status"]; got != graph.ReportCacheStatusHit {
+	if got := telemetry["cache_status"]; got != reports.ReportCacheStatusHit {
 		t.Fatalf("expected section telemetry cache_status hit, got %#v", got)
 	}
 	if got := telemetry["cache_source_run_id"]; got != firstRunID {
@@ -966,7 +967,7 @@ func TestPlatformIntelligenceReportRunControlAndRetryPolicyEndpoints(t *testing.
 		t.Fatalf("expected 200 for retry policy lookup, got %d: %s", retryPolicy.Code, retryPolicy.Body.String())
 	}
 	policyBody := decodeJSON(t, retryPolicy)
-	if got := policyBody["remaining_attempts"]; got != float64(graph.DefaultReportRetryMaxAttempts-1) {
+	if got := policyBody["remaining_attempts"]; got != float64(reports.DefaultReportRetryMaxAttempts-1) {
 		t.Fatalf("expected remaining attempts to reflect one consumed attempt, got %#v", got)
 	}
 
@@ -1033,12 +1034,12 @@ func TestPlatformIntelligenceReportRunAsync(t *testing.T) {
 			t.Fatalf("expected 200 for async run lookup, got %d: %s", runResp.Code, runResp.Body.String())
 		}
 		runBody = decodeJSON(t, runResp)
-		if runBody["status"] == graph.ReportRunStatusSucceeded {
+		if runBody["status"] == reports.ReportRunStatusSucceeded {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if got := runBody["status"]; got != graph.ReportRunStatusSucceeded {
+	if got := runBody["status"]; got != reports.ReportRunStatusSucceeded {
 		t.Fatalf("expected async report run to succeed, got %#v", got)
 	}
 	if _, ok := runBody["result"].(map[string]any); !ok {
@@ -1197,7 +1198,7 @@ func TestPlatformIntelligenceReportRunRetrySync(t *testing.T) {
 		t.Fatalf("expected 500 for failed first run, got %d: %s", create.Code, create.Body.String())
 	}
 	created := decodeJSON(t, create)
-	if got := created["status"]; got != graph.ReportRunStatusFailed {
+	if got := created["status"]; got != reports.ReportRunStatusFailed {
 		t.Fatalf("expected failed first run, got %#v", got)
 	}
 	statusURL, _ := created["status_url"].(string)
@@ -1212,7 +1213,7 @@ func TestPlatformIntelligenceReportRunRetrySync(t *testing.T) {
 		t.Fatalf("expected 200 for sync retry, got %d: %s", retry.Code, retry.Body.String())
 	}
 	retried := decodeJSON(t, retry)
-	if got := retried["status"]; got != graph.ReportRunStatusSucceeded {
+	if got := retried["status"]; got != reports.ReportRunStatusSucceeded {
 		t.Fatalf("expected retry to succeed, got %#v", got)
 	}
 	if got := retried["attempt_count"]; got != float64(2) {
@@ -1222,7 +1223,7 @@ func TestPlatformIntelligenceReportRunRetrySync(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected retry_policy metadata, got %#v", retried["retry_policy"])
 	}
-	if got := retryPolicy["max_attempts"]; got != float64(graph.DefaultReportRetryMaxAttempts) {
+	if got := retryPolicy["max_attempts"]; got != float64(reports.DefaultReportRetryMaxAttempts) {
 		t.Fatalf("expected default max attempts, got %#v", got)
 	}
 
@@ -1239,7 +1240,7 @@ func TestPlatformIntelligenceReportRunRetrySync(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected first attempt object, got %#v", attempts[0])
 	}
-	if got := firstAttempt["classification"]; got != graph.ReportAttemptClassTransient {
+	if got := firstAttempt["classification"]; got != reports.ReportAttemptClassTransient {
 		t.Fatalf("expected transient first attempt classification, got %#v", got)
 	}
 	secondAttempt, ok := attempts[1].(map[string]any)
@@ -1307,12 +1308,12 @@ func TestPlatformIntelligenceReportRunRetryAsyncIncludesBackoffMetadata(t *testi
 			t.Fatalf("expected 200 for async run lookup, got %d: %s", status.Code, status.Body.String())
 		}
 		failedRun = decodeJSON(t, status)
-		if failedRun["status"] == graph.ReportRunStatusFailed {
+		if failedRun["status"] == reports.ReportRunStatusFailed {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if got := failedRun["status"]; got != graph.ReportRunStatusFailed {
+	if got := failedRun["status"]; got != reports.ReportRunStatusFailed {
 		t.Fatalf("expected initial async run to fail, got %#v", got)
 	}
 
@@ -1329,7 +1330,7 @@ func TestPlatformIntelligenceReportRunRetryAsyncIncludesBackoffMetadata(t *testi
 		t.Fatalf("expected 202 for async retry, got %d: %s", retry.Code, retry.Body.String())
 	}
 	retried := decodeJSON(t, retry)
-	if got := retried["status"]; got != graph.ReportRunStatusQueued {
+	if got := retried["status"]; got != reports.ReportRunStatusQueued {
 		t.Fatalf("expected queued retry response, got %#v", got)
 	}
 	if got := retried["attempt_count"]; got != float64(2) {
@@ -1355,7 +1356,7 @@ func TestPlatformIntelligenceReportRunRetryAsyncIncludesBackoffMetadata(t *testi
 	if got := secondAttempt["scheduled_for"]; got == "" {
 		t.Fatalf("expected scheduled_for metadata, got %#v", got)
 	}
-	if got := secondAttempt["status"]; got != graph.ReportAttemptStatusScheduled {
+	if got := secondAttempt["status"]; got != reports.ReportAttemptStatusScheduled {
 		t.Fatalf("expected scheduled second attempt status, got %#v", got)
 	}
 
@@ -1366,12 +1367,12 @@ func TestPlatformIntelligenceReportRunRetryAsyncIncludesBackoffMetadata(t *testi
 			t.Fatalf("expected 200 for async retry lookup, got %d: %s", status.Code, status.Body.String())
 		}
 		latest = decodeJSON(t, status)
-		if latest["status"] == graph.ReportRunStatusSucceeded {
+		if latest["status"] == reports.ReportRunStatusSucceeded {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if got := latest["status"]; got != graph.ReportRunStatusSucceeded {
+	if got := latest["status"]; got != reports.ReportRunStatusSucceeded {
 		t.Fatalf("expected async retry to succeed, got %#v", got)
 	}
 	sections, ok := latest["sections"].([]any)
@@ -1394,26 +1395,26 @@ func TestPlatformIntelligenceReportRunRetryAsyncIncludesBackoffMetadata(t *testi
 func TestPlatformIntelligenceReportRunRetryRechecksMaxAttemptsInsideUpdate(t *testing.T) {
 	s := newTestServer(t)
 	now := time.Date(2026, 3, 10, 2, 15, 0, 0, time.UTC)
-	run := &graph.ReportRun{
+	run := &reports.ReportRun{
 		ID:            "report_run:retry-race",
 		ReportID:      "quality",
-		Status:        graph.ReportRunStatusFailed,
-		ExecutionMode: graph.ReportExecutionModeSync,
+		Status:        reports.ReportRunStatusFailed,
+		ExecutionMode: reports.ReportExecutionModeSync,
 		SubmittedAt:   now.Add(-2 * time.Minute),
 		CompletedAt:   ptrTime(now.Add(-time.Minute)),
 		RequestedBy:   "alice@example.com",
 		StatusURL:     "/api/v1/platform/intelligence/reports/quality/runs/report_run:retry-race",
-		RetryPolicy: graph.ReportRetryPolicy{
+		RetryPolicy: reports.ReportRetryPolicy{
 			MaxAttempts:   2,
 			BaseBackoffMS: 10,
 			MaxBackoffMS:  20,
 		},
 		Error: "temporary upstream failure",
 	}
-	firstAttempt := graph.NewReportRunAttempt(run.ID, 1, graph.ReportRunStatusFailed, "api.request", "platform.inline", "test-host", run.RequestedBy, "", now.Add(-2*time.Minute))
-	run.Attempts = []graph.ReportRunAttempt{firstAttempt}
+	firstAttempt := reports.NewReportRunAttempt(run.ID, 1, reports.ReportRunStatusFailed, "api.request", "platform.inline", "test-host", run.RequestedBy, "", now.Add(-2*time.Minute))
+	run.Attempts = []reports.ReportRunAttempt{firstAttempt}
 	run.LatestAttemptID = firstAttempt.ID
-	graph.CompleteLatestReportRunAttempt(run, graph.ReportRunStatusFailed, now.Add(-time.Minute), run.Error, graph.ReportAttemptClassTransient)
+	reports.CompleteLatestReportRunAttempt(run, reports.ReportRunStatusFailed, now.Add(-time.Minute), run.Error, reports.ReportAttemptClassTransient)
 	run.AttemptCount = 1
 	run.EventCount = 1
 	if err := s.storePlatformReportRun(run); err != nil {
@@ -1435,8 +1436,8 @@ func TestPlatformIntelligenceReportRunRetryRechecksMaxAttemptsInsideUpdate(t *te
 	time.Sleep(50 * time.Millisecond)
 
 	s.platformReportRunMu.Lock()
-	stored := graph.CloneReportRun(s.platformReportRuns[run.ID])
-	secondAttempt := graph.NewReportRunAttempt(run.ID, 2, graph.ReportRunStatusFailed, "api.retry", "platform.inline", "test-host", run.RequestedBy, "", now.Add(-30*time.Second))
+	stored := reports.CloneReportRun(s.platformReportRuns[run.ID])
+	secondAttempt := reports.NewReportRunAttempt(run.ID, 2, reports.ReportRunStatusFailed, "api.retry", "platform.inline", "test-host", run.RequestedBy, "", now.Add(-30*time.Second))
 	secondAttempt.RetryOfAttemptID = firstAttempt.ID
 	secondAttempt.RetryReason = "other operator retry"
 	stored.Attempts = append(stored.Attempts, secondAttempt)
@@ -1530,7 +1531,7 @@ func TestPlatformIntelligenceReportRunCancelAsync(t *testing.T) {
 		t.Fatalf("expected 202 for running cancel request, got %d: %s", cancel.Code, cancel.Body.String())
 	}
 	canceled := decodeJSON(t, cancel)
-	if got := canceled["status"]; got != graph.ReportRunStatusCanceled {
+	if got := canceled["status"]; got != reports.ReportRunStatusCanceled {
 		t.Fatalf("expected durable run to transition to canceled immediately, got %#v", got)
 	}
 	if got := canceled["cancel_reason"]; got != "operator requested cancellation" {
@@ -1550,12 +1551,12 @@ func TestPlatformIntelligenceReportRunCancelAsync(t *testing.T) {
 			t.Fatalf("expected 200 for canceled run lookup, got %d: %s", runResp.Code, runResp.Body.String())
 		}
 		runBody = decodeJSON(t, runResp)
-		if runBody["status"] == graph.ReportRunStatusCanceled {
+		if runBody["status"] == reports.ReportRunStatusCanceled {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if got := runBody["status"]; got != graph.ReportRunStatusCanceled {
+	if got := runBody["status"]; got != reports.ReportRunStatusCanceled {
 		t.Fatalf("expected canceled run status, got %#v", got)
 	}
 	if got := runBody["error"]; got != "operator requested cancellation" {
@@ -1617,10 +1618,10 @@ func TestPlatformIntelligenceReportRunCancelAsync(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected attempt object, got %#v", attempts[0])
 	}
-	if got := attempt["classification"]; got != graph.ReportAttemptClassCancelled {
+	if got := attempt["classification"]; got != reports.ReportAttemptClassCancelled {
 		t.Fatalf("expected cancelled attempt classification, got %#v", got)
 	}
-	if got := attempt["status"]; got != graph.ReportAttemptStatusCanceled {
+	if got := attempt["status"]; got != reports.ReportAttemptStatusCanceled {
 		t.Fatalf("expected canceled attempt status, got %#v", got)
 	}
 
@@ -1641,21 +1642,21 @@ func TestPlatformIntelligenceReportRunCancelAsync(t *testing.T) {
 func TestPlatformIntelligenceReportRunCancelDoesNotOverwriteSucceededRun(t *testing.T) {
 	s := newTestServer(t)
 	now := time.Date(2026, 3, 10, 2, 45, 0, 0, time.UTC)
-	run := &graph.ReportRun{
+	run := &reports.ReportRun{
 		ID:            "report_run:cancel-race",
 		ReportID:      "quality",
-		Status:        graph.ReportRunStatusRunning,
-		ExecutionMode: graph.ReportExecutionModeAsync,
+		Status:        reports.ReportRunStatusRunning,
+		ExecutionMode: reports.ReportExecutionModeAsync,
 		SubmittedAt:   now.Add(-2 * time.Minute),
 		StartedAt:     ptrTime(now.Add(-time.Minute)),
 		RequestedBy:   "alice@example.com",
 		StatusURL:     "/api/v1/platform/intelligence/reports/quality/runs/report_run:cancel-race",
 	}
-	run.Attempts = []graph.ReportRunAttempt{
-		graph.NewReportRunAttempt(run.ID, 1, graph.ReportRunStatusRunning, "api.request", "platform.job", "test-host", run.RequestedBy, "", now.Add(-2*time.Minute)),
+	run.Attempts = []reports.ReportRunAttempt{
+		reports.NewReportRunAttempt(run.ID, 1, reports.ReportRunStatusRunning, "api.request", "platform.job", "test-host", run.RequestedBy, "", now.Add(-2*time.Minute)),
 	}
 	run.LatestAttemptID = run.Attempts[0].ID
-	graph.StartLatestReportRunAttempt(run, now.Add(-time.Minute))
+	reports.StartLatestReportRunAttempt(run, now.Add(-time.Minute))
 	run.AttemptCount = len(run.Attempts)
 	if err := s.storePlatformReportRun(run); err != nil {
 		t.Fatalf("storePlatformReportRun() failed: %v", err)
@@ -1671,12 +1672,12 @@ func TestPlatformIntelligenceReportRunCancelDoesNotOverwriteSucceededRun(t *test
 	time.Sleep(50 * time.Millisecond)
 
 	s.platformReportRunMu.Lock()
-	stored := graph.CloneReportRun(s.platformReportRuns[run.ID])
+	stored := reports.CloneReportRun(s.platformReportRuns[run.ID])
 	completedAt := now
-	stored.Status = graph.ReportRunStatusSucceeded
+	stored.Status = reports.ReportRunStatusSucceeded
 	stored.CompletedAt = &completedAt
 	stored.Error = ""
-	graph.CompleteLatestReportRunAttempt(stored, stored.Status, completedAt, "", "")
+	reports.CompleteLatestReportRunAttempt(stored, stored.Status, completedAt, "", "")
 	stored.AttemptCount = len(stored.Attempts)
 	s.platformReportRuns[run.ID] = stored
 	s.platformReportRunMu.Unlock()
@@ -1692,7 +1693,7 @@ func TestPlatformIntelligenceReportRunCancelDoesNotOverwriteSucceededRun(t *test
 		t.Fatalf("expected 200 for run lookup, got %d: %s", status.Code, status.Body.String())
 	}
 	body := decodeJSON(t, status)
-	if got := body["status"]; got != graph.ReportRunStatusSucceeded {
+	if got := body["status"]; got != reports.ReportRunStatusSucceeded {
 		t.Fatalf("expected succeeded run to remain succeeded, got %#v", got)
 	}
 	if got := body["cancel_reason"]; got != nil {
@@ -1707,19 +1708,19 @@ func ptrTime(value time.Time) *time.Time {
 func TestAttachPlatformReportRunJobCancelsLateAttachedJobForCanceledRun(t *testing.T) {
 	s := newTestServer(t)
 	now := time.Date(2026, 3, 10, 1, 50, 0, 0, time.UTC)
-	run := &graph.ReportRun{
+	run := &reports.ReportRun{
 		ID:            "report_run:late-cancel-job",
 		ReportID:      "quality",
-		Status:        graph.ReportRunStatusCanceled,
-		ExecutionMode: graph.ReportExecutionModeAsync,
+		Status:        reports.ReportRunStatusCanceled,
+		ExecutionMode: reports.ReportExecutionModeAsync,
 		SubmittedAt:   now.Add(-time.Minute),
 		CompletedAt:   &now,
 		RequestedBy:   "alice@example.com",
 		StatusURL:     "/api/v1/platform/intelligence/reports/quality/runs/report_run:late-cancel-job",
 		Error:         "operator requested cancellation",
 	}
-	run.Attempts = []graph.ReportRunAttempt{
-		graph.NewReportRunAttempt(run.ID, 1, run.Status, "api.retry", "platform.async", "test-host", run.RequestedBy, "", now.Add(-time.Minute)),
+	run.Attempts = []reports.ReportRunAttempt{
+		reports.NewReportRunAttempt(run.ID, 1, run.Status, "api.retry", "platform.async", "test-host", run.RequestedBy, "", now.Add(-time.Minute)),
 	}
 	run.LatestAttemptID = run.Attempts[0].ID
 	run.AttemptCount = len(run.Attempts)
@@ -1766,7 +1767,7 @@ func TestAttachPlatformReportRunJobCancelsLateAttachedJobForCanceledRun(t *testi
 	if !ok {
 		t.Fatalf("expected persisted report run %q", run.ID)
 	}
-	if got := runSnapshot.Status; got != graph.ReportRunStatusCanceled {
+	if got := runSnapshot.Status; got != reports.ReportRunStatusCanceled {
 		t.Fatalf("expected run to remain canceled, got %q", got)
 	}
 	if got := runSnapshot.JobID; got != job.ID {
@@ -1823,7 +1824,7 @@ func TestPlatformIntelligenceReportRunPersistsAcrossServerRestart(t *testing.T) 
 		t.Fatalf("expected 200 after restart, got %d: %s", runResp.Code, runResp.Body.String())
 	}
 	runBody := decodeJSON(t, runResp)
-	if got := runBody["status"]; got != graph.ReportRunStatusSucceeded {
+	if got := runBody["status"]; got != reports.ReportRunStatusSucceeded {
 		t.Fatalf("expected persisted run status succeeded, got %#v", got)
 	}
 	if _, ok := runBody["result"].(map[string]any); !ok {
@@ -1909,7 +1910,7 @@ func TestPlatformIntelligenceReportRunLifecycleEvents(t *testing.T) {
 	if started.Type != webhooks.EventPlatformReportRunStarted {
 		t.Fatalf("expected started event second, got %q", started.Type)
 	}
-	if started.Data["status"] != graph.ReportRunStatusRunning {
+	if started.Data["status"] != reports.ReportRunStatusRunning {
 		t.Fatalf("expected started status running, got %#v", started.Data["status"])
 	}
 	if started.Data["execution_surface"] != "platform.inline" {
@@ -1936,7 +1937,7 @@ func TestPlatformIntelligenceReportRunLifecycleEvents(t *testing.T) {
 	if completed.Data["materialized_result"] != true {
 		t.Fatalf("expected completed event to mark materialized_result=true, got %#v", completed.Data["materialized_result"])
 	}
-	if completed.Data["report_definition_version"] != graph.DefaultReportDefinitionVersion {
+	if completed.Data["report_definition_version"] != reports.DefaultReportDefinitionVersion {
 		t.Fatalf("expected completed event report definition version, got %#v", completed.Data["report_definition_version"])
 	}
 }
@@ -1944,11 +1945,11 @@ func TestPlatformIntelligenceReportRunLifecycleEvents(t *testing.T) {
 func TestPlatformReportRunUpdateRollsBackOnPersistenceFailure(t *testing.T) {
 	application := newTestApp(t)
 	s := NewServer(application)
-	run := &graph.ReportRun{
+	run := &reports.ReportRun{
 		ID:            "report_run:test-rollback",
 		ReportID:      "quality",
-		Status:        graph.ReportRunStatusQueued,
-		ExecutionMode: graph.ReportExecutionModeSync,
+		Status:        reports.ReportRunStatusQueued,
+		ExecutionMode: reports.ReportExecutionModeSync,
 		SubmittedAt:   time.Date(2026, 3, 10, 4, 0, 0, 0, time.UTC),
 		StatusURL:     "/api/v1/platform/intelligence/reports/quality/runs/report_run:test-rollback",
 	}
@@ -1964,8 +1965,8 @@ func TestPlatformReportRunUpdateRollsBackOnPersistenceFailure(t *testing.T) {
 		_ = os.Chmod(stateDir, 0o700)
 	}()
 
-	err := s.updatePlatformReportRun(run.ID, func(run *graph.ReportRun) {
-		run.Status = graph.ReportRunStatusRunning
+	err := s.updatePlatformReportRun(run.ID, func(run *reports.ReportRun) {
+		run.Status = reports.ReportRunStatusRunning
 	})
 	if err == nil {
 		t.Fatal("expected persistence failure from updatePlatformReportRun")
@@ -1974,7 +1975,7 @@ func TestPlatformReportRunUpdateRollsBackOnPersistenceFailure(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected stored report run %q", run.ID)
 	}
-	if stored.Status != graph.ReportRunStatusQueued {
+	if stored.Status != reports.ReportRunStatusQueued {
 		t.Fatalf("expected status rollback to queued, got %q", stored.Status)
 	}
 }

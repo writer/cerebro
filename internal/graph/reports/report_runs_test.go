@@ -1,4 +1,4 @@
-package graph
+package reports
 
 import (
 	"testing"
@@ -40,7 +40,7 @@ func TestValidateReportParameterValues(t *testing.T) {
 func TestBuildReportSnapshotAndSections(t *testing.T) {
 	definition := ReportDefinition{
 		ID:           "quality",
-		ResultSchema: "graph.GraphQualityReport",
+		ResultSchema: "reports.GraphQualityReport",
 		Sections: []ReportSection{
 			{Key: "summary", Title: "Summary", Kind: "scorecard", Measures: []string{"maturity_score"}},
 			{Key: "recommendations", Title: "Recommendations", Kind: "action_list"},
