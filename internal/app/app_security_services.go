@@ -451,6 +451,10 @@ func (a *App) initRuntime() {
 	a.RuntimeDetect = runtime.NewDetectionEngine()
 	a.RuntimeRespond = runtime.NewResponseEngine()
 	a.RuntimeRespond.SetSharedExecutor(a.newSharedActionExecutor())
+	a.RuntimeRespond.SetActionHandler(runtime.NewDefaultActionHandler(runtime.DefaultActionHandlerOptions{
+		Blocklist:    a.RuntimeRespond.Blocklist(),
+		RemoteCaller: a.RemoteTools,
+	}))
 	a.Logger.Info("runtime detection initialized", "rules", len(a.RuntimeDetect.ListRules()))
 	a.Logger.Info("runtime response initialized", "policies", len(a.RuntimeRespond.ListPolicies()))
 }
