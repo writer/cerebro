@@ -4,6 +4,16 @@ import (
 	"testing"
 	"time"
 
+	"context"
+	"database/sql"
+	"errors"
+	"io"
+	"log/slog"
+	"strings"
+
+	"cloud.google.com/go/securitycenter/apiv1/securitycenterpb"
+	"github.com/evalops/cerebro/internal/snowflake"
+	"github.com/evalops/cerebro/internal/warehouse"
 	grafeaspb "google.golang.org/genproto/googleapis/grafeas/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -138,5 +148,155 @@ func TestAppendUniqueString(t *testing.T) {
 	}
 	if values[2] != "C" {
 		t.Fatalf("expected appended unique value C, got %q", values[2])
+	}
+}
+
+func TestUpsertVulnerabilitiesAggregatesInsertErrors(t *testing.T) {
+	store := &warehouse.MemoryWarehouse{
+		QueryFunc: func(_ context.Context, query string, _ ...any) (*snowflake.QueryResult, error) {
+			if !strings.Contains(query, "CREATE TABLE IF NOT EXISTS GCP_CONTAINER_VULNERABILITIES") {
+				t.Fatalf("unexpected query %q", query)
+			}
+			return &snowflake.QueryResult{}, nil
+		},
+		ExecFunc: func(_ context.Context, query string, args ...any) (sql.Result, error) {
+			if strings.Contains(query, "INSERT INTO GCP_CONTAINER_VULNERABILITIES") {
+				return warehouseResult(0), errors.New("insert failed")
+			}
+			return warehouseResult(0), nil
+		},
+	}
+	syncer := NewGCPSecuritySync(store, slog.New(slog.NewTextHandler(io.Discard, nil)), "project-a", "")
+
+	err := syncer.upsertVulnerabilities(context.Background(), []map[string]interface{}{
+		{
+			"_cq_id":        "occ-1",
+			"project_id":    "project-a",
+			"name":          "occ-1",
+			"resource_uri":  "gcr.io/project/image@sha256:abc",
+			"severity":      "HIGH",
+			"cve_id":        "CVE-2024-1234",
+			"fix_available": true,
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "insert vulnerabilities") {
+		t.Fatalf("expected aggregated insert error, got %v", err)
+	}
+}
+
+func TestUpsertDockerImagesAddsCompatibilityColumns(t *testing.T) {
+	store := &warehouse.MemoryWarehouse{
+		QueryFunc: func(_ context.Context, query string, _ ...any) (*snowflake.QueryResult, error) {
+			if !strings.Contains(query, "CREATE TABLE IF NOT EXISTS GCP_ARTIFACT_REGISTRY_IMAGES") {
+				t.Fatalf("unexpected query %q", query)
+			}
+			return &snowflake.QueryResult{}, nil
+		},
+	}
+	syncer := NewGCPSecuritySync(store, slog.New(slog.NewTextHandler(io.Discard, nil)), "project-a", "")
+
+	err := syncer.upsertDockerImages(context.Background(), []map[string]interface{}{
+		{
+			"_cq_id":                        "image-1",
+			"project_id":                    "project-a",
+			"name":                          "image-1",
+			"uri":                           "us-docker.pkg.dev/project-a/repo/image@sha256:abc",
+			"registry_type":                 "artifact_registry",
+			"scanned":                       true,
+			"scan_status":                   "FINISHED_SUCCESS",
+			"vulnerabilities":               "[\"CVE-2022-3602\"]",
+			"has_vulnerabilities":           true,
+			"has_openssl_vulnerability":     true,
+			"secrets":                       "[]",
+			"has_cloud_keys":                false,
+			"has_high_privilege_cloud_keys": false,
+			"has_cross_account_cloud_keys":  false,
+		},
+	})
+	if err != nil {
+		t.Fatalf("upsertDockerImages returned error: %v", err)
+	}
+
+	alterCount := 0
+	insertCount := 0
+	for _, call := range store.Execs {
+		if strings.HasPrefix(call.Statement, "ALTER TABLE GCP_ARTIFACT_REGISTRY_IMAGES ADD COLUMN IF NOT EXISTS") {
+			alterCount++
+		}
+		if strings.Contains(call.Statement, "INSERT INTO GCP_ARTIFACT_REGISTRY_IMAGES") {
+			insertCount++
+		}
+	}
+	if alterCount != 10 {
+		t.Fatalf("expected 10 compatibility alter statements, got %d", alterCount)
+	}
+	if insertCount != 1 {
+		t.Fatalf("expected 1 image insert, got %d", insertCount)
+	}
+}
+
+func TestUpsertSCCFindingsPersistsFindings(t *testing.T) {
+	store := &warehouse.MemoryWarehouse{
+		QueryFunc: func(_ context.Context, query string, _ ...any) (*snowflake.QueryResult, error) {
+			if !strings.Contains(query, "CREATE TABLE IF NOT EXISTS GCP_SCC_FINDINGS") {
+				t.Fatalf("unexpected query %q", query)
+			}
+			return &snowflake.QueryResult{}, nil
+		},
+	}
+	syncer := NewGCPSecuritySync(store, slog.New(slog.NewTextHandler(io.Discard, nil)), "project-a", "123456")
+
+	err := syncer.upsertSCCFindings(context.Background(), []map[string]interface{}{
+		{
+			"_cq_id":        "finding-1",
+			"project_id":    "project-a",
+			"name":          "finding-1",
+			"parent":        "organizations/123456/sources/1",
+			"resource_name": "//cloudresourcemanager.googleapis.com/projects/project-a",
+			"severity":      "HIGH",
+		},
+	})
+	if err != nil {
+		t.Fatalf("upsertSCCFindings returned error: %v", err)
+	}
+
+	var sawDelete, sawInsert bool
+	for _, call := range store.Execs {
+		if strings.Contains(call.Statement, "DELETE FROM GCP_SCC_FINDINGS WHERE PROJECT_ID = ?") {
+			sawDelete = true
+		}
+		if strings.Contains(call.Statement, "INSERT INTO GCP_SCC_FINDINGS") {
+			sawInsert = true
+		}
+	}
+	if !sawDelete || !sawInsert {
+		t.Fatalf("expected delete and insert for SCC findings, execs=%#v", store.Execs)
+	}
+}
+
+func TestSecurityFormattingHelpers(t *testing.T) {
+	if got := extractCVEFromNote("projects/goog-vulnz/notes/CVE-2024-1234"); got != "CVE-2024-1234" {
+		t.Fatalf("unexpected cve id %q", got)
+	}
+	if got := formatPackageIssues([]*grafeaspb.VulnerabilityOccurrence_PackageIssue{{
+		AffectedPackage: "openssl",
+		AffectedVersion: &grafeaspb.Version{FullName: "1.1.1"},
+		FixedVersion:    &grafeaspb.Version{FullName: "1.1.1w"},
+	}}); !strings.Contains(got, "openssl@1.1.1 (fix: 1.1.1w)") {
+		t.Fatalf("unexpected package issue summary %q", got)
+	}
+	if got := formatIndicator(&securitycenterpb.Indicator{IpAddresses: []string{"1.2.3.4"}, Domains: []string{"example.com"}}); got != "ip:1.2.3.4,domain:example.com" {
+		t.Fatalf("unexpected indicator format %q", got)
+	}
+	if got := formatVulnerability(&securitycenterpb.Vulnerability{
+		Cve: &securitycenterpb.Cve{
+			Id:     "CVE-2024-1234",
+			Cvssv3: &securitycenterpb.Cvssv3{BaseScore: 9.8},
+		},
+	}); !strings.Contains(got, "CVE-2024-1234") {
+		t.Fatalf("unexpected vulnerability format %q", got)
+	}
+	if got := toStr(42); got != "42" {
+		t.Fatalf("unexpected toStr output %q", got)
 	}
 }

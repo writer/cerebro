@@ -1,12 +1,20 @@
 package sync
 
 import (
+	"context"
+	"io"
+	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/client-go/kubernetes"
+
+	"github.com/evalops/cerebro/internal/snowflake"
+	"github.com/evalops/cerebro/internal/warehouse"
 )
 
 func TestK8sTables(t *testing.T) {
@@ -399,4 +407,83 @@ func containsString(values []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func TestK8sSyncTableEmitsCDCEvents(t *testing.T) {
+	store := &warehouse.MemoryWarehouse{
+		QueryFunc: func(_ context.Context, query string, _ ...any) (*snowflake.QueryResult, error) {
+			switch {
+			case strings.Contains(query, "INFORMATION_SCHEMA.COLUMNS"):
+				return &snowflake.QueryResult{
+					Rows: []map[string]interface{}{
+						{"COLUMN_NAME": "_CQ_ID"},
+						{"COLUMN_NAME": "_CQ_HASH"},
+						{"COLUMN_NAME": "NAME"},
+					},
+				}, nil
+			case strings.Contains(query, "SELECT _CQ_ID, _CQ_HASH FROM K8S_SAMPLE_TABLE"):
+				return &snowflake.QueryResult{}, nil
+			default:
+				return &snowflake.QueryResult{}, nil
+			}
+		},
+	}
+	engine := NewK8sSyncEngine(store, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	var client kubernetes.Interface
+
+	result, err := engine.syncTable(context.Background(), K8sTableSpec{
+		Name:    "K8S_SAMPLE_TABLE",
+		Columns: []string{"name"},
+		Fetch: func(_ context.Context, _ kubernetes.Interface, namespace, clusterName string) ([]map[string]interface{}, error) {
+			if namespace != "all-namespaces" {
+				t.Fatalf("expected namespace all-namespaces, got %q", namespace)
+			}
+			if clusterName != "cluster-a" {
+				t.Fatalf("expected cluster-a, got %q", clusterName)
+			}
+			return []map[string]interface{}{
+				{"_cq_id": "pod-1", "name": "pod-a"},
+			}, nil
+		},
+	}, client, "cluster-a", "all-namespaces")
+	if err != nil {
+		t.Fatalf("syncTable returned error: %v", err)
+	}
+	if result.Synced != 1 || result.Changes == nil || len(result.Changes.Added) != 1 {
+		t.Fatalf("unexpected sync result: %#v", result)
+	}
+	if len(store.CDCBatches) != 1 || store.CDCBatches[0][0].Region != "cluster-a" {
+		t.Fatalf("expected one k8s CDC batch, got %#v", store.CDCBatches)
+	}
+}
+
+func TestK8sPersistChangeHistoryUsesSharedProviderHelper(t *testing.T) {
+	store := &warehouse.MemoryWarehouse{}
+	engine := NewK8sSyncEngine(store, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	syncTime := time.Date(2026, 3, 12, 21, 0, 0, 0, time.UTC)
+
+	err := engine.persistChangeHistory(context.Background(), []SyncResult{{
+		Table:    "K8S_SAMPLE_TABLE",
+		Region:   "cluster-a",
+		SyncTime: syncTime,
+		Changes: &ChangeSet{
+			Added: []string{"pod-1"},
+		},
+	}})
+	if err != nil {
+		t.Fatalf("persistChangeHistory returned error: %v", err)
+	}
+
+	var sawInsert bool
+	for _, call := range store.Execs {
+		if strings.Contains(call.Statement, "INSERT INTO _sync_change_history") {
+			sawInsert = true
+			if call.Args[6] != "k8s" {
+				t.Fatalf("expected k8s provider arg, got %#v", call.Args)
+			}
+		}
+	}
+	if !sawInsert {
+		t.Fatalf("expected change-history insert, execs=%#v", store.Execs)
+	}
 }
