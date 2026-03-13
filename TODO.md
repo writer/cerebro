@@ -5,6 +5,64 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 56 - Runtime Response Executors + Capability Boundaries (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#154` was still leaving runtime response policies half-stubbed even after the shared action engine landed in issue `#143`.
+- [x] Gap: default runtime policies referenced `kill_process`, `isolate_container`, `block_ip`, `block_domain`, `revoke_credentials`, and `scale_down`, but only the action model existed; no concrete executor coverage was wired in app runtime initialization.
+- [x] Gap: Cerebro needed an explicit split between direct local actions, Ensemble-delegated actions, and control-plane side effects instead of one undifferentiated handler interface.
+- [x] Gap: scale-down actions needed a typed workload target contract or they would stay permanently heuristic and silently broken.
+- [x] Gap: the architecture/docs still had no record of which runtime actions are genuinely local today versus which ones require remote actuator coverage.
+- [x] Gap: default destructive runtime policies were auto-executing against finding-derived target identifiers without a trusted source/ownership gate.
+
+### Execution plan
+- [x] Add a concrete runtime action handler:
+  - [x] add `internal/runtime/action_handler.go`
+  - [x] implement direct local handlers for `block_ip`, `block_domain`, and `scale_down`
+  - [x] implement Ensemble delegation for `kill_process`, `isolate_container`, `isolate_host`, `quarantine_file`, and `revoke_credentials`
+  - [x] return typed capability errors when a remote-only action has no remote tool provider configured
+- [x] Tighten scale-down targeting:
+  - [x] add typed workload target parsing via `deployment:namespace/name` and `statefulset:namespace/name`
+  - [x] resolve scale-down targets from runtime finding metadata before dispatch
+  - [x] use Kubernetes client-go scale updates for direct workload scale-down
+- [x] Wire runtime response initialization in the app:
+  - [x] set `runtime.NewDefaultActionHandler(...)` during `initRuntime()`
+  - [x] feed the runtime blocklist and optional `RemoteTools` provider into that handler
+- [x] Add trust boundaries for destructive actuation:
+  - [x] require a trusted actuation scope before destructive runtime targets are accepted
+  - [x] force the default destructive runtime policies back behind approval until source identity binding exists
+  - [x] reject out-of-range direct scale-down replica counts
+- [x] Add focused regression coverage:
+  - [x] blocklist containment tests
+  - [x] Ensemble delegation tests
+  - [x] scale-down target resolution tests
+  - [x] app/runtime focused validation on the new handler path
+- [x] Capture architecture + external references:
+  - [x] add `docs/RUNTIME_RESPONSE_EXECUTION_ARCHITECTURE.md`
+  - [x] pull runtime/executor reference patterns via `gh` from `falcosecurity/falco`, `stackrox/stackrox`, and `aquasecurity/trivy-operator`
+
+### Detailed follow-on backlog
+- [ ] Track A - Remote runtime action packs
+  - Exit criteria:
+  - [ ] publish documented contracts for `security.runtime.*` remote tools
+  - [ ] add at least one reference implementation for host/container/process enforcement
+  - [ ] make provider/action capability discovery queryable
+- [ ] Track B - Direct provider-native containment
+  - Exit criteria:
+  - [ ] add first-class cloud credential revocation for supported providers
+  - [ ] add provider-native network containment instead of best-effort remote tooling only
+  - [ ] decide whether host isolation remains remote-only or grows direct cloud implementations
+- [ ] Track C - Shared execution + distributed enforcement
+  - Exit criteria:
+  - [ ] stop treating runtime blocklists as process-local state only
+  - [ ] attach runtime containment state to a shared execution/control-store boundary
+  - [ ] propagate enforcement state cleanly across multi-worker/runtime instances
+- [ ] Track D - Graph/incident integration
+  - Exit criteria:
+  - [ ] project runtime response executions and containment outcomes into the graph
+  - [ ] connect runtime action outcomes to findings, workload vulnerability context, and incident timelines
+  - [ ] feed issue `#170` cross-event correlation with concrete response-action outcomes
+
 ## Deep Review Cycle 55 - Shared Action Engine + Durable Security Actuation (2026-03-12)
 
 ### Review findings

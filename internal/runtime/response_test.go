@@ -369,3 +369,22 @@ func TestRejectExecutionFailsOnceApprovalIsRunning(t *testing.T) {
 		t.Fatalf("status = %s, want %s", execution.Status, StatusCompleted)
 	}
 }
+
+func TestDefaultContainmentPoliciesRequireApproval(t *testing.T) {
+	engine := NewResponseEngine()
+	policies := engine.ListPolicies()
+	requireApproval := map[string]bool{}
+	for _, policy := range policies {
+		requireApproval[policy.ID] = policy.RequireApproval
+	}
+
+	for _, policyID := range []string{
+		"auto-kill-crypto-miner",
+		"auto-isolate-container-escape",
+		"auto-kill-reverse-shell",
+	} {
+		if !requireApproval[policyID] {
+			t.Fatalf("policy %s should require approval", policyID)
+		}
+	}
+}
