@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/graph"
+	reports "github.com/writer/cerebro/internal/graph/reports"
 	"github.com/writer/cerebro/internal/health"
 	"github.com/writer/cerebro/internal/warehouse"
 )
@@ -21,7 +22,7 @@ func TestEvaluateGraphOntologySLOStatus(t *testing.T) {
 		SchemaValidCritical: 92,
 	}
 
-	healthyStatus, _ := evaluateGraphOntologySLOStatus(graph.GraphOntologySLO{
+	healthyStatus, _ := evaluateGraphOntologySLOStatus(reports.GraphOntologySLO{
 		FallbackActivityPercent: 4,
 		SchemaValidWritePercent: 99.5,
 	}, thresholds)
@@ -29,7 +30,7 @@ func TestEvaluateGraphOntologySLOStatus(t *testing.T) {
 		t.Fatalf("expected healthy status, got %s", healthyStatus)
 	}
 
-	degradedStatus, degradedMsg := evaluateGraphOntologySLOStatus(graph.GraphOntologySLO{
+	degradedStatus, degradedMsg := evaluateGraphOntologySLOStatus(reports.GraphOntologySLO{
 		FallbackActivityPercent: 15,
 		SchemaValidWritePercent: 99.5,
 	}, thresholds)
@@ -40,7 +41,7 @@ func TestEvaluateGraphOntologySLOStatus(t *testing.T) {
 		t.Fatalf("expected fallback degradation message, got %q", degradedMsg)
 	}
 
-	unhealthyStatus, unhealthyMsg := evaluateGraphOntologySLOStatus(graph.GraphOntologySLO{
+	unhealthyStatus, unhealthyMsg := evaluateGraphOntologySLOStatus(reports.GraphOntologySLO{
 		FallbackActivityPercent: 10,
 		SchemaValidWritePercent: 90,
 	}, thresholds)
@@ -59,10 +60,10 @@ func TestEvaluateGraphOntologySLOStatus_BurnRateDegraded(t *testing.T) {
 		SchemaValidWarn:     98,
 		SchemaValidCritical: 92,
 	}
-	status, msg := evaluateGraphOntologySLOStatus(graph.GraphOntologySLO{
+	status, msg := evaluateGraphOntologySLOStatus(reports.GraphOntologySLO{
 		FallbackActivityPercent: 10,
 		SchemaValidWritePercent: 99,
-		Trend: []graph.GraphOntologySLOPoint{
+		Trend: []reports.GraphOntologySLOPoint{
 			{Date: "2026-03-07", FallbackActivityPercent: 24, SchemaValidWritePercent: 99, Samples: 20},
 			{Date: "2026-03-08", FallbackActivityPercent: 24, SchemaValidWritePercent: 99, Samples: 20},
 			{Date: "2026-03-09", FallbackActivityPercent: 24, SchemaValidWritePercent: 99, Samples: 20},
@@ -283,7 +284,7 @@ func TestRefreshCurrentEventCorrelationsSwapsGraphInsteadOfMutatingLiveInstance(
 }
 
 func TestBurnRatesFastWindowUsesCurrentSnapshot(t *testing.T) {
-	trend := []graph.GraphOntologySLOPoint{
+	trend := []reports.GraphOntologySLOPoint{
 		{Date: "2026-03-08", FallbackActivityPercent: 12, SchemaValidWritePercent: 97, Samples: 20},
 		{Date: "2026-03-09", FallbackActivityPercent: 12, SchemaValidWritePercent: 97, Samples: 20},
 	}

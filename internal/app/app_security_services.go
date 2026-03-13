@@ -12,6 +12,7 @@ import (
 	"github.com/writer/cerebro/internal/auth"
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/graph/builders"
+	reports "github.com/writer/cerebro/internal/graph/reports"
 	"github.com/writer/cerebro/internal/health"
 	"github.com/writer/cerebro/internal/lineage"
 	"github.com/writer/cerebro/internal/remediation"
@@ -321,7 +322,7 @@ func (a *App) graphOntologySLOHealthCheck() health.Checker {
 		}
 
 		thresholds := a.graphOntologySLOThresholds()
-		slo := graph.BuildGraphOntologySLO(securityGraph, time.Now().UTC(), 7)
+		slo := reports.BuildGraphOntologySLO(securityGraph, time.Now().UTC(), 7)
 		status, message := evaluateGraphOntologySLOStatus(slo, thresholds)
 		result.Status = status
 		result.Message = message
@@ -330,7 +331,7 @@ func (a *App) graphOntologySLOHealthCheck() health.Checker {
 	}
 }
 
-func evaluateGraphOntologySLOStatus(slo graph.GraphOntologySLO, thresholds graphOntologySLOThresholds) (health.Status, string) {
+func evaluateGraphOntologySLOStatus(slo reports.GraphOntologySLO, thresholds graphOntologySLOThresholds) (health.Status, string) {
 	status := health.StatusHealthy
 	issues := make([]string, 0, 4)
 
@@ -379,7 +380,7 @@ func evaluateGraphOntologySLOStatus(slo graph.GraphOntologySLO, thresholds graph
 	return status, strings.Join(issues, "; ")
 }
 
-func burnRatesForHigherIsWorse(current, warn, critical float64, trend []graph.GraphOntologySLOPoint) (float64, float64) {
+func burnRatesForHigherIsWorse(current, warn, critical float64, trend []reports.GraphOntologySLOPoint) (float64, float64) {
 	budget := critical - warn
 	if budget <= 0 {
 		return 0, 0
@@ -403,7 +404,7 @@ func burnRatesForHigherIsWorse(current, warn, critical float64, trend []graph.Gr
 	return positiveBurnRate(fastValue-warn, budget), positiveBurnRate(slowValue-warn, budget)
 }
 
-func burnRatesForLowerIsWorse(current, warn, critical float64, trend []graph.GraphOntologySLOPoint) (float64, float64) {
+func burnRatesForLowerIsWorse(current, warn, critical float64, trend []reports.GraphOntologySLOPoint) (float64, float64) {
 	budget := warn - critical
 	if budget <= 0 {
 		return 0, 0

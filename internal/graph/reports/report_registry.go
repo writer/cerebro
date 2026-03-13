@@ -1,4 +1,4 @@
-package graph
+package reports
 
 import (
 	"sort"
@@ -105,7 +105,7 @@ var defaultReportDefinitions = []ReportDefinition{
 		Title:        "Decision Intelligence",
 		Category:     "decision_support",
 		Description:  "Prioritized decision-grade insights with evidence, coverage, confidence, and optional counterfactual context.",
-		ResultSchema: "graph.IntelligenceReport",
+		ResultSchema: "reports.IntelligenceReport",
 		Endpoint: ReportEndpoint{
 			Method:      "GET",
 			Path:        "/api/v1/platform/intelligence/insights",
@@ -149,7 +149,7 @@ var defaultReportDefinitions = []ReportDefinition{
 		Title:        "Graph Quality",
 		Category:     "quality",
 		Description:  "Graph operability view spanning ontology health, identity linkage, temporal completeness, and closed-loop write-back maturity.",
-		ResultSchema: "graph.GraphQualityReport",
+		ResultSchema: "reports.GraphQualityReport",
 		Endpoint: ReportEndpoint{
 			Method:      "GET",
 			Path:        "/api/v1/platform/intelligence/quality",
@@ -194,7 +194,7 @@ var defaultReportDefinitions = []ReportDefinition{
 		Title:        "Metadata Quality",
 		Category:     "quality",
 		Description:  "Metadata-profile coverage view over required keys, timestamp validity, enum normalization, and the highest-volume unprofiled kinds.",
-		ResultSchema: "graph.GraphMetadataQualityReport",
+		ResultSchema: "reports.GraphMetadataQualityReport",
 		Endpoint: ReportEndpoint{
 			Method:      "GET",
 			Path:        "/api/v1/platform/intelligence/metadata-quality",
@@ -272,7 +272,7 @@ var defaultReportDefinitions = []ReportDefinition{
 		Title:        "Entity Summary",
 		Category:     "entity",
 		Description:  "Report-level entity view composed from canonical identity, facet modules, posture claims, topology, and support coverage.",
-		ResultSchema: "graph.EntitySummaryReport",
+		ResultSchema: "reports.EntitySummaryReport",
 		Endpoint: ReportEndpoint{
 			Method:          "GET",
 			Path:            "/api/v1/platform/intelligence/entity-summary",
@@ -321,7 +321,7 @@ var defaultReportDefinitions = []ReportDefinition{
 		Title:        "Graph Leverage",
 		Category:     "operating_model",
 		Description:  "Combined operating view across quality, identity calibration, ingestion breadth, temporal freshness, predictive readiness, query readiness, and actuation closure.",
-		ResultSchema: "graph.GraphLeverageReport",
+		ResultSchema: "reports.GraphLeverageReport",
 		Endpoint: ReportEndpoint{
 			Method:      "GET",
 			Path:        "/api/v1/platform/intelligence/leverage",
@@ -375,7 +375,7 @@ var defaultReportDefinitions = []ReportDefinition{
 		Title:        "Weekly Calibration",
 		Category:     "calibration",
 		Description:  "Weekly slice combining outcome backtest, identity calibration status, and ontology trend context.",
-		ResultSchema: "graph.WeeklyCalibrationReport",
+		ResultSchema: "reports.WeeklyCalibrationReport",
 		Endpoint: ReportEndpoint{
 			Method:      "GET",
 			Path:        "/api/v1/platform/intelligence/calibration/weekly",

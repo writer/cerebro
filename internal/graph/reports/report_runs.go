@@ -1,4 +1,4 @@
-package graph
+package reports
 
 import (
 	"crypto/sha256"
@@ -1208,16 +1208,7 @@ func reportSectionVisibleNode(g *Graph, nodeID string, validAt, recordedAt time.
 	if !useTemporal {
 		return g.GetNode(nodeID)
 	}
-	g.mu.RLock()
-	defer g.mu.RUnlock()
-	node, ok := g.nodes[nodeID]
-	if !ok || node == nil || node.DeletedAt != nil {
-		return nil, false
-	}
-	if !g.nodeVisibleAtLocked(node, validAt, recordedAt) {
-		return nil, false
-	}
-	return node, true
+	return g.GetNodeBitemporal(nodeID, validAt, recordedAt)
 }
 
 func reportSectionClaimOutEdges(g *Graph, claimID string, validAt, recordedAt time.Time, useTemporal bool) []*Edge {
