@@ -5,6 +5,41 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 58 - API Service Seams for Graph Intelligence Handlers (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#146` was still open because API handlers were reaching through `*app.App` for graph-intelligence reads, even after shared app-aware test helpers landed in cycle 47.
+- [x] Gap: graph-intelligence routes mixed three concerns in one place: transport parsing, graph/report logic, and mapper/runtime configuration reads from `App`.
+- [x] Gap: existing API tests still proved the handler family only through the full app container, not through a narrow consumption-point service seam.
+- [x] Gap: external project references showed the same split pressure repeatedly: `openfga/openfga` keeps handler packages thin around narrower service/command seams, while `argoproj/argo-cd`'s large server surface is the cautionary example to avoid reproducing.
+
+### Execution plan
+- [x] Add a narrow graph-intelligence handler service surface:
+  - [x] add `internal/api/server_services_graph_intelligence.go`
+  - [x] model only the primitives this handler family actually consumes: current graph, mapper initialization, mapper stats, mapper config, and mapper contract catalog
+  - [x] keep `*app.App` as the composition root by adapting it into that interface in `NewServer(...)`
+- [x] Remove direct `*app.App` reach-through from the graph-intelligence handler family:
+  - [x] route event-correlation, intelligence, quality, ingest-health, contract, weekly calibration, and graph-query reads through the new service seam
+  - [x] keep legacy server-wide `app` access for unrelated handler families until their own slices are extracted
+- [x] Prove the seam with a minimal mock:
+  - [x] add a stub `graphIntelligenceService` in API tests
+  - [x] force `app.SecurityGraph` / `TapEventMapper` to `nil` in the test and verify the handlers still operate through the stub service
+- [x] Fold `gh` research into the design:
+  - [x] `openfga/openfga` for thinner server/command boundaries
+  - [x] `argoproj/argo-cd` as the anti-pattern warning for server monolith drift
+  - [x] `grafana/grafana` as another example of large surface area needing consumption-point seams
+
+### Detailed follow-on backlog
+- [ ] Track A - Broaden handler/service decomposition
+  - Exit criteria:
+  - [ ] extract equivalent seams for findings/compliance, platform knowledge, and graph-risk handler families
+  - [ ] reduce `internal/api` direct `s.app.*` reach-through counts materially from the current baseline
+  - [ ] make new handler slices testable with interface stubs before touching the wider app container
+- [ ] Track B - Constructor cleanup
+  - Exit criteria:
+  - [ ] decide whether `Server` should grow explicit dependency bundles/options instead of only `NewServer(*app.App)`
+  - [ ] keep `App` as composition root while preventing new handler code from reaching back through it ad hoc
+
 ## Deep Review Cycle 57 - Cross-Event Correlation + Incident Pattern Detection (2026-03-12)
 
 ### Review findings
