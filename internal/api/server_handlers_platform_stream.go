@@ -115,6 +115,17 @@ func (s *Server) streamPlatformIntelligenceReportRun(w http.ResponseWriter, r *h
 	}
 	s.writePlatformReportStreamEvent(w, "ready", ready)
 	flusher.Flush()
+	for _, message := range s.platformReportStreamReplayMessages(run) {
+		eventName := "message"
+		switch message.Type {
+		case "lifecycle":
+			eventName = "lifecycle"
+		case "section":
+			eventName = "section"
+		}
+		s.writePlatformReportStreamEvent(w, eventName, message)
+		flusher.Flush()
+	}
 
 	keepAlive := time.NewTicker(15 * time.Second)
 	defer keepAlive.Stop()
@@ -138,6 +149,55 @@ func (s *Server) streamPlatformIntelligenceReportRun(w http.ResponseWriter, r *h
 			flusher.Flush()
 		}
 	}
+}
+
+func (s *Server) platformReportStreamReplayMessages(run *reports.ReportRun) []platformReportStreamMessage {
+	if run == nil {
+		return nil
+	}
+	switch run.Status {
+	case reports.ReportRunStatusSucceeded, reports.ReportRunStatusFailed, reports.ReportRunStatusCanceled:
+	default:
+		return nil
+	}
+	if len(run.Sections) == 0 {
+		return nil
+	}
+	emittedAt := time.Now().UTC()
+	if run.CompletedAt != nil {
+		emittedAt = run.CompletedAt.UTC()
+	} else if run.StartedAt != nil {
+		emittedAt = run.StartedAt.UTC()
+	}
+	emissions := reports.BuildReportSectionEmissionsFromResults(run.Sections, run.Result, emittedAt)
+	messages := make([]platformReportStreamMessage, 0, len(emissions))
+	for _, emission := range emissions {
+		data := map[string]any{
+			"status_url":    run.StatusURL,
+			"snapshot_id":   reportSnapshotID(run),
+			"section_key":   emission.Section.Key,
+			"envelope_kind": emission.Section.EnvelopeKind,
+			"content_type":  emission.Section.ContentType,
+			"item_count":    emission.Section.ItemCount,
+			"field_count":   emission.Section.FieldCount,
+		}
+		for key, value := range platformReportSectionMetadataPayload(emission.Section) {
+			data[key] = value
+		}
+		emissionCopy := reports.CloneReportSectionEmissions([]reports.ReportSectionEmission{emission})[0]
+		messages = append(messages, platformReportStreamMessage{
+			Type:      "section",
+			RunID:     run.ID,
+			ReportID:  run.ReportID,
+			Status:    run.Status,
+			EventType: string(webhooks.EventPlatformReportSectionEmitted),
+			Timestamp: emissionCopy.EmittedAt,
+			Progress:  emissionCopy.ProgressPercent,
+			Data:      data,
+			Section:   &emissionCopy,
+		})
+	}
+	return messages
 }
 
 func (s *Server) writePlatformReportStreamEvent(w http.ResponseWriter, event string, payload platformReportStreamMessage) {

@@ -6949,6 +6949,76 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/platform/executions:
+    get:
+      tags:
+        - Platform
+      summary: List shared platform executions across reports, scans, and action workflows
+      parameters:
+        - name: namespace
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional comma-separated execution namespaces.
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional comma-separated statuses to include.
+        - name: exclude_status
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional comma-separated statuses to exclude.
+        - name: report_id
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional report definition filter for report executions.
+        - name: order
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - updated
+              - submitted
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        '200':
+          description: Shared execution listing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformExecutionCollection'
+        '400':
+          description: Invalid execution listing parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Failed to load shared execution state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/graph/actuate/recommendation:
     post:
       tags:
@@ -14335,6 +14405,71 @@ components:
           type: string
         status_url:
           type: string
+    PlatformExecutionSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        namespace:
+          type: string
+        run_id:
+          type: string
+        kind:
+          type: string
+        status:
+          type: string
+        stage:
+          type: string
+        submitted_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        display_name:
+          type: string
+        scope_id:
+          type: string
+        requested_by:
+          type: string
+        execution_mode:
+          type: string
+        status_url:
+          type: string
+        job_id:
+          type: string
+        error:
+          type: string
+        provider:
+          type: string
+        target:
+          type: string
+      required:
+        - namespace
+        - run_id
+        - kind
+        - status
+        - stage
+        - submitted_at
+        - updated_at
+    PlatformExecutionCollection:
+      type: object
+      additionalProperties: false
+      properties:
+        count:
+          type: integer
+        executions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformExecutionSummary'
+      required:
+        - count
+        - executions
     PlatformReportRunRequest:
       type: object
       additionalProperties: false

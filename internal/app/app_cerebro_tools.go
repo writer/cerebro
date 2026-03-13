@@ -186,6 +186,41 @@ func (a *App) cerebroTools() []agents.Tool {
 			Handler: a.toolCerebroGraphQueryTemplates,
 		},
 		{
+			Name:        "cerebro.execution_status",
+			Description: "List recent shared-platform executions across report runs, scans, and action workflows",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"namespace": map[string]any{
+						"type":        "array",
+						"description": "Optional execution namespaces to filter, for example report_run, workload_scan, image_scan, function_scan, action_engine.",
+						"items":       map[string]any{"type": "string"},
+					},
+					"status": map[string]any{
+						"type":        "array",
+						"description": "Optional execution statuses to include.",
+						"items":       map[string]any{"type": "string"},
+					},
+					"report_id": map[string]any{
+						"type":        "string",
+						"description": "Optional report definition ID filter for report executions.",
+					},
+					"limit": map[string]any{
+						"type":        "integer",
+						"description": "Maximum executions to return (1-100).",
+						"default":     20,
+					},
+					"order": map[string]any{
+						"type":        "string",
+						"description": "Sort order: updated or submitted.",
+						"enum":        []string{"updated", "submitted"},
+						"default":     "updated",
+					},
+				},
+			},
+			Handler: a.toolCerebroExecutionStatus,
+		},
+		{
 			Name:        "cerebro.graph_changelog",
 			Description: "Inspect recent graph snapshot changes or one stored/derived graph diff in detail",
 			Parameters: map[string]any{

@@ -1443,17 +1443,13 @@ func (s *Server) storePlatformReportRun(run *reports.ReportRun) error {
 	}
 	s.platformReportSaveMu.Lock()
 	defer s.platformReportSaveMu.Unlock()
-	s.platformReportRunMu.Lock()
-	snapshot := s.clonePlatformReportRunsLocked()
-	s.platformReportRunMu.Unlock()
-	snapshot[run.ID] = reports.CloneReportRun(run)
-	if err := s.persistPlatformReportRuns(snapshot); err != nil {
-		return fmt.Errorf("persist report run %q: %w", run.ID, err)
+	if s.platformReportStore != nil {
+		if err := s.platformReportStore.SaveRun(run); err != nil {
+			return fmt.Errorf("persist report run %q: %w", run.ID, err)
+		}
 	}
 	s.syncPlatformJobWithReportRun(run)
-	s.platformReportRunMu.Lock()
-	s.platformReportRuns[run.ID] = reports.CloneReportRun(run)
-	s.platformReportRunMu.Unlock()
+	s.cachePlatformReportRun(run)
 	return nil
 }
 
@@ -1465,28 +1461,44 @@ func (s *Server) updatePlatformReportRun(runID string, apply func(*reports.Repor
 func (s *Server) updatePlatformReportRunSnapshot(runID string, apply func(*reports.ReportRun)) (*reports.ReportRun, error) {
 	s.platformReportSaveMu.Lock()
 	defer s.platformReportSaveMu.Unlock()
-	s.platformReportRunMu.Lock()
-	run, ok := s.platformReportRuns[runID]
-	if !ok {
-		s.platformReportRunMu.Unlock()
+	var (
+		run *reports.ReportRun
+		err error
+	)
+	if s.platformReportStore != nil {
+		run, err = s.platformReportStore.LoadRun(runID)
+		if err != nil {
+			return nil, fmt.Errorf("load report run %q: %w", runID, err)
+		}
+	}
+	if run == nil {
+		s.platformReportRunMu.RLock()
+		run = reports.CloneReportRun(s.platformReportRuns[runID])
+		s.platformReportRunMu.RUnlock()
+	}
+	if run == nil {
 		return nil, fmt.Errorf("report run not found: %s", runID)
 	}
 	updated := reports.CloneReportRun(run)
 	apply(updated)
-	snapshot := s.clonePlatformReportRunsLocked()
-	s.platformReportRunMu.Unlock()
-	snapshot[runID] = reports.CloneReportRun(updated)
-	if err := s.persistPlatformReportRuns(snapshot); err != nil {
-		return nil, fmt.Errorf("persist report run %q: %w", runID, err)
+	if s.platformReportStore != nil {
+		if err := s.platformReportStore.SaveRun(updated); err != nil {
+			return nil, fmt.Errorf("persist report run %q: %w", runID, err)
+		}
 	}
 	s.syncPlatformJobWithReportRun(updated)
-	s.platformReportRunMu.Lock()
-	s.platformReportRuns[runID] = reports.CloneReportRun(updated)
-	s.platformReportRunMu.Unlock()
+	s.cachePlatformReportRun(updated)
 	return reports.CloneReportRun(updated), nil
 }
 
 func (s *Server) platformReportRunSnapshot(reportID, runID string) (*reports.ReportRun, bool) {
+	if s.platformReportStore != nil {
+		run, err := s.platformReportStore.LoadRun(runID)
+		if err == nil && run != nil && run.ReportID == reportID {
+			s.cachePlatformReportRun(run)
+			return reports.CloneReportRun(run), true
+		}
+	}
 	s.platformReportRunMu.RLock()
 	defer s.platformReportRunMu.RUnlock()
 	run, ok := s.platformReportRuns[runID]
@@ -1558,6 +1570,26 @@ func (s *Server) syncPlatformJobWithReportRun(run *reports.ReportRun) {
 }
 
 func (s *Server) platformReportRunSummaries(reportID string) []reports.ReportRunSummary {
+	if s.platformReportStore != nil {
+		runs, err := s.platformReportStore.ListRuns(reportID)
+		if err == nil {
+			s.cachePlatformReportRuns(runs)
+			summaries := make([]reports.ReportRunSummary, 0, len(runs))
+			for _, run := range runs {
+				if run == nil {
+					continue
+				}
+				summaries = append(summaries, reports.SummarizeReportRun(*run))
+			}
+			sort.Slice(summaries, func(i, j int) bool {
+				if summaries[i].SubmittedAt.Equal(summaries[j].SubmittedAt) {
+					return summaries[i].ID > summaries[j].ID
+				}
+				return summaries[i].SubmittedAt.After(summaries[j].SubmittedAt)
+			})
+			return summaries
+		}
+	}
 	s.platformReportRunMu.RLock()
 	defer s.platformReportRunMu.RUnlock()
 	runs := make([]reports.ReportRunSummary, 0)
@@ -1583,11 +1615,22 @@ func (s *Server) reusablePlatformReportRun(reportID, cacheKey string, lineage re
 	if reportID == "" || cacheKey == "" {
 		return nil
 	}
-	s.platformReportRunMu.RLock()
-	defer s.platformReportRunMu.RUnlock()
-
+	candidates := make([]*reports.ReportRun, 0)
+	if s.platformReportStore != nil {
+		if storedRuns, err := s.platformReportStore.ListRuns(reportID); err == nil {
+			s.cachePlatformReportRuns(storedRuns)
+			candidates = append(candidates, storedRuns...)
+		}
+	}
+	if len(candidates) == 0 {
+		s.platformReportRunMu.RLock()
+		for _, candidate := range s.platformReportRuns {
+			candidates = append(candidates, reports.CloneReportRun(candidate))
+		}
+		s.platformReportRunMu.RUnlock()
+	}
 	var best *reports.ReportRun
-	for _, candidate := range s.platformReportRuns {
+	for _, candidate := range candidates {
 		if candidate == nil {
 			continue
 		}
@@ -1735,13 +1778,6 @@ func (s *Server) platformGraphSnapshot(snapshotID string) (*graph.GraphSnapshotR
 	}
 	snapshot := *record
 	return &snapshot, true
-}
-
-func (s *Server) persistPlatformReportRuns(runs map[string]*reports.ReportRun) error {
-	if s == nil || s.platformReportStore == nil {
-		return nil
-	}
-	return s.platformReportStore.SaveAll(runs)
 }
 
 func (s *Server) emitPlatformReportRunLifecycleEvent(ctx context.Context, eventType webhooks.EventType, reportID, runID string) {
@@ -2057,4 +2093,27 @@ func platformReportTriggerSurface(run *reports.ReportRun) string {
 		return strings.TrimSpace(attempt.TriggerSurface)
 	}
 	return "api.request"
+}
+
+func (s *Server) cachePlatformReportRun(run *reports.ReportRun) {
+	if s == nil || run == nil || strings.TrimSpace(run.ID) == "" {
+		return
+	}
+	s.platformReportRunMu.Lock()
+	s.platformReportRuns[run.ID] = reports.CloneReportRun(run)
+	s.platformReportRunMu.Unlock()
+}
+
+func (s *Server) cachePlatformReportRuns(runs []*reports.ReportRun) {
+	if s == nil || len(runs) == 0 {
+		return
+	}
+	s.platformReportRunMu.Lock()
+	defer s.platformReportRunMu.Unlock()
+	for _, run := range runs {
+		if run == nil || strings.TrimSpace(run.ID) == "" {
+			continue
+		}
+		s.platformReportRuns[run.ID] = reports.CloneReportRun(run)
+	}
 }

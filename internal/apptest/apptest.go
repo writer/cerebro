@@ -43,6 +43,7 @@ func NewConfig(t *testing.T) *app.Config {
 	return &app.Config{
 		LogLevel:                   "error",
 		Port:                       0,
+		ExecutionStoreFile:         filepath.Join(reportStateDir, "executions.db"),
 		PlatformReportRunStateFile: filepath.Join(reportStateDir, "state.json"),
 		PlatformReportSnapshotPath: filepath.Join(reportStateDir, "snapshots"),
 	}
