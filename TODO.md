@@ -5,6 +5,354 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 72 - AWS Resource-Policy Permission Depth (2026-03-13)
+
+### Review findings
+- [x] Gap: issue `#220` is not blocked by more raw AWS inventory first; the immediate substrate hole is that `aws_s3_bucket_policies` are synced but not materialized into the permission graph.
+- [x] Gap: the effective-permissions calculator already has a conceptual `resource_policy` source type, but the builder never emitted edges that would exercise it.
+- [x] Gap: object-scoped S3 policy resources such as `arn:aws:s3:::bucket/*` do not map cleanly into the current node model because Cerebro does not model individual objects yet; without an explicit bridge, the graph drops the permission entirely.
+- [x] Gap: wildcard principals with conditions such as `aws:SourceVpce` should not be flattened into unconstrained public access until the graph can evaluate those conditions, or the model will overstate exposure.
+- [x] Gap: upstream patterns line up on the same lesson:
+  - [x] `duo-labs/cloudmapper` and `cartography-cncf/cartography` both get value from turning provider-specific permission structure into reusable graph edges rather than leaving it trapped in raw tables.
+  - [x] `cloud-custodian/cloud-custodian` and `prowler-cloud/prowler` treat S3 public/cross-account policy nuance as a first-class AWS depth area, not a cosmetic property flag.
+  - [x] the local Wiz schema dump in `/Users/jonathanhaas/Downloads/other/wiz.graphql` reinforces the same product lesson: entity snapshots and relationship-heavy query surfaces only stay credible when resource-policy provenance is queryable instead of inferred from bucket booleans.
+
+### Execution plan
+- [x] Materialize S3 bucket resource-policy edges into the shared permission graph:
+  - [x] parse `aws_s3_bucket_policies`
+  - [x] emit `resource_policy`-marked edges for explicit principals
+  - [x] conservatively emit `internet` edges only for unconstrained wildcard principals
+  - [x] preserve statement actions, conditions, owner resource, and policy provenance on each edge
+- [x] Bridge object-level selectors into the current bucket node model:
+  - [x] map `arn:aws:s3:::bucket/*`-style resources back to the owning bucket until object nodes exist
+- [x] Tighten effective-permission provenance:
+  - [x] classify resource-policy edges as `resource_policy` in inheritance chains
+  - [x] surface serialized policy conditions on `ResourceAccess`
+  - [x] merge multiple direct edges to the same resource instead of overwriting them
+- [x] Add regression coverage:
+  - [x] builder test for explicit principal + public wildcard S3 bucket policy handling
+  - [x] calculator test for resource-policy source tracking and condition propagation
+- [ ] Next AWS depth cuts after this slice:
+  - [ ] KMS key policy edges
+  - [ ] Lambda resource-policy edges
+  - [ ] condition-aware evaluation for common S3/IAM keys (`aws:SourceVpce`, org/account scoping, secure transport)
+  - [ ] bucket policy status integration so public exposure uses evaluated policy state instead of public-access-block heuristics alone
+
+## Deep Review Cycle 71 - Credential Source Abstraction and Vault/File-Backed Secret Reload (2026-03-13)
+
+### Review findings
+- [x] Gap: issue `#249` still had one giant configuration assumption: every secret had to arrive as a process env var even though the app already had a periodic secret-reload path.
+- [x] Gap: reusing provider-facing `VAULT_*` fields as bootstrap config for secret loading would have leaked secret-source concerns into the provider registry and implicitly enabled the Vault provider whenever Vault-backed config was used.
+- [x] Gap: the right upstream patterns are consistent:
+  - [x] `hashicorp/vault` keeps one explicit client path for point-in-time secret reads and lease-aware rotation instead of smearing Vault logic across unrelated config code.
+  - [x] `external-secrets/external-secrets` treats mounted/file-backed secrets as first-class sync targets, which matches Cerebro's existing periodic reload loop better than inventing a second watch subsystem immediately.
+  - [x] `dagster-io/dagster` keeps storage/config backends behind typed seams so runtime code consumes contracts, not one-off env lookups.
+  - [x] the local Wiz schema dump in `/Users/jonathanhaas/Downloads/other/wiz.graphql` reinforces the same architectural lesson as the graph work: large query surfaces stay manageable only when source state is typed, inspectable, and decoupled from one bootstrap path.
+
+### Execution plan
+- [x] Add a standalone credential-source seam behind config loading:
+  - [x] add `internal/secretsource` with `env`, `file`, and Vault KV implementations
+  - [x] keep the source as a point-in-time snapshot per `LoadConfig()` pass so reload semantics remain deterministic
+- [x] Wire `LoadConfig()` through the source seam without creating a second config system:
+  - [x] keep existing `getEnv(...)` call sites
+  - [x] add bootstrap-only raw config reads for credential-source settings
+  - [x] make non-env credential sources override matching secret keys while normal config still falls back to env/config-file values
+- [x] Keep provider/bootstrap boundaries explicit:
+  - [x] add dedicated `CEREBRO_CREDENTIAL_VAULT_*` settings instead of reusing provider `VAULT_*` fields
+  - [x] keep Vault provider enablement tied to provider config, not secret-source bootstrap
+- [x] Reuse the existing reload path for rotation:
+  - [x] file-backed secret updates are picked up by `ReloadSecrets()`
+  - [x] provider/API credential rotation continues to flow through the existing rebuild path
+  - [x] leave lease renewal and API-key grace-period semantics as explicit follow-on work instead of hand-wavy half-implementation
+- [x] Add regression coverage and docs:
+  - [x] credential file source tests
+  - [x] Vault KV source tests
+  - [x] `LoadConfig()` file/vault source tests
+  - [x] reload test for updated file-backed API keys
+  - [x] config docs update for new credential-source env vars
+
+## Deep Review Cycle 70 - Pluggable Warehouse Backends and Local Zero-Dependency Graph Startup (2026-03-13)
+
+### Review findings
+- [x] Gap: issue `#250` still had the classic half-abstraction smell: `DataWarehouse` existed, but app bootstrap still hard-wired Snowflake as the only real warehouse path.
+- [x] Gap: local startup could pretend to have a warehouse backend, but scanner watermark persistence still emitted Snowflake-only SQL (`TIMESTAMP_NTZ`, `MERGE`, `CURRENT_TIMESTAMP()`), so SQLite was not actually a first-class backend.
+- [x] Gap: findings initialization still treated any warehouse `*sql.DB` as a Snowflake store, which would have made new backends inherit broken SQL semantics immediately.
+- [x] Gap: the right upstream storage shapes are consistent:
+  - [x] `openfga/openfga` keeps one storage contract with backend-specific packages plus shared SQL helpers (`pkg/storage`, `pkg/storage/sqlcommon`, `pkg/storage/postgres`, `pkg/storage/sqlite`).
+  - [x] `authzed/spicedb` keeps datastore backends explicit (`internal/datastore/postgres`, `mysql`, `spanner`, `memdb`) instead of hiding backend semantics behind one magical implementation.
+  - [x] `dagster-io/dagster` keeps storage base contracts separate from concrete SQLite/Postgres storage modules, which matches the direction Cerebro needs for warehouse selection.
+  - [x] the local Wiz schema dump in `/Users/jonathanhaas/Downloads/other/wiz.graphql` reinforces that broad graph/query surfaces stay tractable only when the underlying source layer is typed and backend-neutral instead of implicitly tied to one warehouse vendor.
+
+### Execution plan
+- [x] Add concrete warehouse backends behind `internal/warehouse`:
+  - [x] add `SQLiteWarehouse`
+  - [x] add `PostgresWarehouse`
+  - [x] keep Snowflake as the existing production backend
+- [x] Add backend selection during app bootstrap:
+  - [x] add `WAREHOUSE_BACKEND=snowflake|sqlite|postgres`
+  - [x] add `WAREHOUSE_SQLITE_PATH`
+  - [x] add `WAREHOUSE_POSTGRES_DSN`
+  - [x] default to Snowflake when Snowflake auth is present, otherwise default to SQLite for local zero-dependency startup
+- [x] Make warehouse-adjacent persistence backend-aware:
+  - [x] teach `scanner.WatermarkStore` SQLite-safe DDL/upsert semantics
+  - [x] add PostgreSQL-safe watermark DDL/upsert semantics
+  - [x] keep Snowflake merge-based persistence for the existing production path
+- [x] Remove Snowflake leakage from non-Snowflake app startup:
+  - [x] only use `findings.SnowflakeStore` when the Snowflake backend is actually selected
+  - [x] keep SQLite findings persistence for SQLite/Postgres warehouse modes until a generic SQL findings store exists
+  - [x] keep Snowflake-only repositories gated behind the real Snowflake client
+- [x] Add regression coverage and docs:
+  - [x] sqlite warehouse tests
+  - [x] sqlite watermark persistence test
+  - [x] sqlite-backend startup/graph readiness tests
+  - [x] config docs update for warehouse backend env vars
+
+## Deep Review Cycle 69 - Tenant-Scoped Graph Reads and Cross-Tenant Audit Guards (2026-03-13)
+
+### Review findings
+- [x] Gap: issue `#247` still had the classic half-secure shape: tenant context existed in middleware, but the graph/entity/intelligence/risk read surfaces were still free to operate on the full graph.
+- [x] Gap: cross-tenant routes were reachable through generic graph permissions instead of one explicit permission boundary, which made the audit story weaker than the API shape implied.
+- [x] Gap: the right upstream patterns are consistent:
+  - [x] `openfga/openfga` keeps storage/authorization seams explicit instead of relying on ambient context in downstream handlers.
+  - [x] `authzed/spicedb` treats multi-backend datastore structure as a first-class contract, which is the right lead-in for `#250` after tenant scoping is correct.
+  - [x] `dagster-io/dagster` keeps execution/storage boundaries explicit, which matches the current shared execution-store and graph-persistence direction.
+  - [x] the local Wiz schema dump in `/Users/jonathanhaas/Downloads/other/wiz.graphql` reinforces that project/issue/entity surfaces stay usable only when tenant/project boundaries are first-class in the graph substrate.
+
+### Execution plan
+- [x] Add first-class tenant metadata to graph nodes:
+  - [x] add `tenant_id` to `graph.Node`
+  - [x] normalize `tenant_id` from node properties on write
+  - [x] preserve `tenant_id` through cloned/scoped graph views
+- [x] Add one shared tenant-scope graph helper:
+  - [x] add `Graph.SubgraphForTenant(...)`
+  - [x] treat untagged nodes as shared/global for the incremental rollout
+  - [x] rebuild indexes on scoped graph views so entity search/suggest stay correct
+- [x] Enforce tenant-scoped reads on high-value graph surfaces:
+  - [x] platform entity list/search/detail/time-diff
+  - [x] platform intelligence event/risk/report query surfaces
+  - [x] graph risk traversal/query surfaces (`blast-radius`, `attack-paths`, `toxic-combinations`, etc.)
+  - [x] platform knowledge read/diff surfaces
+- [x] Add explicit cross-tenant authorization and audit:
+  - [x] add `platform.cross_tenant.read`
+  - [x] add `platform.cross_tenant.write`
+  - [x] route `/api/v1/graph/cross-tenant/*` through explicit permissions instead of generic graph read/write
+  - [x] add structured audit entries for allowed cross-tenant reads
+  - [x] add Prometheus access counters by operation and requesting/target tenant pair
+- [x] Add regression coverage:
+  - [x] graph tenant normalization/scoping tests
+  - [x] platform entity tenant isolation tests
+  - [x] intelligence/risk tenant isolation tests
+  - [x] cross-tenant audit + metrics tests
+
+## Deep Review Cycle 68 - Distributed Graph Persistence Foundation and Replica Recovery (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#246` was still conceptually correct but operationally hollow; snapshot artifacts existed, yet the live graph did not actually depend on a shared graph-persistence seam for activation, recovery, or API/tool reads.
+- [x] Gap: snapshot usage was fragmented across API handlers, graph intelligence handlers, replay code, and tool paths via ad hoc `GRAPH_SNAPSHOT_PATH` lookups instead of a shared store owned at the application layer.
+- [x] Gap: the graph had no replica-aware recovery path. Losing the local snapshot directory still meant rebuilding from the warehouse even though the issue explicitly called for replicated durability.
+- [x] Gap: the right abstractions were visible in upstream references:
+  - [x] `dagster-io/dagster` keeps durable run storage behind one seam even while the execution/runtime layer stays hot and in-process.
+  - [x] `temporalio/temporal` treats recovery and coordination state as infrastructure, not handler-local glue.
+  - [x] the local Wiz schema dump in `/Users/jonathanhaas/Downloads/other/wiz.graphql` reinforces that broad graph/intelligence query surfaces only stay operable when snapshot/entity state is typed, inspectable, and recoverable.
+
+### Execution plan
+- [x] Add a shared graph persistence store:
+  - [x] add `internal/graph/persistence_store.go`
+  - [x] keep the current local snapshot store as the hot/local durability layer
+  - [x] add replica backends for `file://`, `s3://`, and `gs://`
+- [x] Deepen the snapshot substrate:
+  - [x] add reusable compressed snapshot encode/decode helpers
+  - [x] teach `SnapshotStore` to return typed persisted records/manifests for the latest saved snapshot
+  - [x] expose latest-snapshot record loading for recovery and status
+- [x] Move graph persistence to the app boundary:
+  - [x] add shared config-backed `App.GraphSnapshots`
+  - [x] initialize it during app bootstrap next to the shared execution store
+  - [x] persist graph snapshots automatically on graph activation
+  - [x] recover from the latest persisted snapshot before the warehouse rebuild completes
+- [x] Move graph read surfaces onto the shared store:
+  - [x] platform graph snapshot APIs
+  - [x] graph intelligence temporal diff path
+  - [x] tool temporal graph-diff helpers
+- [x] Add health and regression coverage:
+  - [x] register `graph_persistence` health
+  - [x] add replica fallback tests
+  - [x] add activation-time persistence tests
+
+### Detailed follow-on backlog
+- [ ] Track A - complete `#246` HA control plane
+  - Exit criteria:
+  - [ ] add one-writer lease semantics for rebuild / CDC apply
+  - [ ] add follower hydration mode and readiness gates on replica freshness
+  - [ ] add replica integrity verification sweeps and background repair
+- [ ] Track B - persistence substrate hardening
+  - Exit criteria:
+  - [ ] move diff artifacts onto the shared graph persistence path instead of sibling local-only storage
+  - [ ] add explicit replica lag / hydration metrics
+  - [ ] add object-store integration coverage for `s3://` and `gs://` backends
+- [ ] Track C - downstream partitioning and tenancy
+  - Exit criteria:
+  - [ ] land `#247` on top of the shared graph persistence seam rather than directly on raw in-memory graphs
+  - [ ] push tenant/account partition keys into snapshot manifests and hydration boundaries
+
+## Deep Review Cycle 67 - Graph Horizontal Scaling Path and Persistence Decision Gate (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#221` was still only a design statement; the repo had no executable graph scaling benchmark to prove where the current in-memory copy-on-write graph actually becomes the bottleneck.
+- [x] Gap: issue `#209` introduced a shared execution-store seam, but the graph itself still had no equivalent decision gate for persistence, hydration, or multi-worker coordination.
+- [x] Gap: the highest-risk next issues (`#246`, `#247`) were both correctly urgent but still premature to implement blindly; they needed a measured breakpoint and an explicit persistence recommendation first.
+- [x] Gap: upstream references point at the same practical boundary:
+  - [x] `dagster-io/dagster` keeps durable run/storage seams stable before deepening indexes and orchestration layers.
+  - [x] `temporalio/temporal` treats coordination state as durable infrastructure, not process-local behavior.
+  - [x] `OpenLineage/OpenLineage` and `open-metadata/OpenMetadata` reinforce typed lineage/state resources rather than ambient runtime glue.
+  - [x] the Wiz schema dump in `/Users/jonathanhaas/Downloads/other/wiz.graphql` is a warning about broad query surfaces: pagination, counts, and typed connection resources only stay tractable when the underlying execution/persistence model is explicit.
+
+### Execution plan
+- [x] Add an executable graph scale profiler:
+  - [x] add `internal/graph/scale_profile.go`
+  - [x] benchmark build/index/search/suggest/blast-radius/snapshot/clone/copy-on-write/diff costs
+  - [x] benchmark tiers `1K`, `10K`, `50K`, `100K`
+- [x] Add a usable CLI surface:
+  - [x] add `cerebro graph profile-scale`
+  - [x] support `table` and `json` output
+  - [x] support custom tiers and query-iteration counts
+- [x] Add guardrail coverage:
+  - [x] unit-test scale-spec normalization and synthetic topology generation
+  - [x] test CLI registration and output rendering
+- [x] Document the architectural decision:
+  - [x] add `docs/GRAPH_HORIZONTAL_SCALING_ARCHITECTURE.md`
+  - [x] recommend hybrid hot-graph + durable backing storage
+  - [x] make `#246` and `#247` explicitly follow this decision gate instead of guessing
+  - [x] capture the first local breakpoint:
+    - [x] `1K` stays comfortably single-node (`8.5s` total run, `43.6ms` copy-on-write)
+    - [x] `10K` already crosses into uncomfortable latency (`15.5s` total run, `11.3s` search, `533.6ms` copy-on-write)
+    - [x] `50K+` exceeds sane single-node local profiling budgets and pushes resident memory into `~1.6-1.7 GiB`
+
+### Detailed follow-on backlog
+- [ ] Track A - `#246` durable graph persistence and HA
+  - Exit criteria:
+  - [ ] add durable graph snapshot manifests plus lineage/index metadata
+  - [ ] support object-backed / replicated snapshot storage for read-graph hydration
+  - [ ] add one-writer lease semantics for rebuild / CDC apply jobs
+  - [ ] add follower hydration health and freshness lag reporting
+- [ ] Track B - `#247` tenant/account partitioning
+  - Exit criteria:
+  - [ ] add tenant/account partition keys to graph snapshot and query paths
+  - [x] enforce tenant-scoped query guards on platform graph reads
+  - [x] add explicit audited cross-tenant read/report paths rather than ambient joins
+- [ ] Track C - graph persistence backend decision
+  - Exit criteria:
+  - [ ] keep the hot graph in memory for low-latency traversals
+  - [ ] move full graph durability to snapshot/log-backed storage before considering graph-DB migration
+  - [ ] revisit Neo4j/Dgraph only if the hybrid model fails on measured operational complexity, not by default
+
+## Deep Review Cycle 66 - Shared Execution Store Convergence (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#209` was still only partially true; the repo had a shared execution-store package, but report runs, action executions, consumer dedupe, and scan materialization still reopened concrete SQLite stores and therefore kept backend assumptions in leaf services.
+- [x] Gap: that concrete `*executionstore.SQLiteStore` coupling would make a future multi-worker backend migration harder than it needs to be, which matters because SQLite is an acceptable default but not the long-term answer for larger customers.
+- [x] Gap: API/server tests were still proving persistence behavior through wrapper ownership assumptions instead of the actual shared execution-store boundary.
+- [x] Gap: GitHub/wider-project references reinforce the right seam:
+  - [x] `dagster-io/dagster` keeps run state on a generic storage contract while layering richer indexes/tags on top.
+  - [x] `argoproj/argo-workflows` keeps execution status and node state explicit rather than hiding orchestration state in process memory.
+  - [x] the Wiz schema dump in `/Users/jonathanhaas/Downloads/other/wiz.graphql` is a useful reminder that broad query surfaces stay tractable only when the underlying execution resources remain typed and inspectable.
+
+### Execution plan
+- [x] Extract a backend-neutral shared execution-store contract:
+  - [x] add `executionstore.Store`
+  - [x] move callers off concrete `*executionstore.SQLiteStore` dependencies where they only need the shared contract
+- [x] Centralize app-level shared execution-store ownership:
+  - [x] initialize one shared app execution store from `EXECUTION_STORE_FILE`
+  - [x] thread that shared handle into API/report/action/consumer paths when they point at the same underlying store
+  - [x] keep wrapper-specific `Close()` semantics from accidentally closing borrowed shared stores
+- [x] Preserve durable behavior while removing wrapper-owned assumptions:
+  - [x] update report-run persistence tests to fail through the shared store itself
+  - [x] keep scan/action/report/consumer paths green under the shared contract
+- [x] Add follow-on scale direction to the backlog:
+  - [x] document that SQLite remains the default implementation for now
+  - [x] make “higher-scale backend behind `executionstore.Store`” the next scale seam instead of deepening SQLite-only code paths
+
+## Deep Review Cycle 65 - Durable CloudEvent Deduplication for NATS Consumer (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#248` was still materially open because the JetStream consumer acknowledged events after handler success but had no durable CloudEvent-ID suppression, so transient ack failures and consumer restarts could re-run the same mutation path.
+- [x] Gap: the issue proposal allowed an in-memory sliding window with periodic persistence, but that would still leave a correctness hole on restart and does not match the broader platform direction toward shared execution state.
+- [x] Gap: consumer observability exposed redeliveries and dropped messages, but not the actual successful-vs-deduplicated throughput split needed to prove the pipeline is suppressing duplicates instead of just retrying them.
+- [x] Gap: external references were directionally useful but not prescriptive here:
+  - [x] `argoproj/argo-events` reinforces durable event-processing state over process-local memory when workflows restart.
+  - [x] `OpenLineage/OpenLineage` reinforces treating event identity as a first-class contract surface instead of an incidental transport detail.
+  - [x] the Wiz schema dump in `/Users/jonathanhaas/Downloads/other/wiz.graphql` is a useful caution that very broad event/query surfaces become harder to reason about unless identity and processing contracts are explicit and inspectable.
+
+### Execution plan
+- [x] Add durable processed-event storage in the shared execution store:
+  - [x] add `processed_events` persistence + indexes in the SQLite execution store
+  - [x] add processed-event lookup/remember helpers with TTL and bounded retention
+- [x] Add consumer-level CloudEvent dedupe:
+  - [x] derive a deterministic dedupe key from tenant/source/event ID
+  - [x] skip handler execution when the CloudEvent is already recorded in the dedupe window
+  - [x] log payload-hash mismatches for duplicate IDs carrying different payloads
+- [x] Expose config and metrics:
+  - [x] add NATS consumer dedupe env/config fields with validation
+  - [x] add processed and deduplicated Prometheus counters
+  - [x] document the new config in `docs/CONFIG_ENV_VARS.md`
+- [x] Add regression coverage:
+  - [x] execution-store round trip + bounded retention tests
+  - [x] consumer duplicate suppression tests
+  - [x] metrics registration coverage
+
+### Detailed follow-on backlog
+- [ ] Track A - Stronger idempotency semantics
+  - Exit criteria:
+  - [ ] add durable in-flight / completed processing states instead of completed-event memory only
+  - [ ] thread idempotency keys into graph mutation write paths so handler replay becomes a true no-op
+- [ ] Track B - Dedupe lifecycle observability
+  - Exit criteria:
+  - [ ] add dedupe-store health metrics and storage-pressure telemetry
+  - [ ] expose dedupe hit/miss posture in consumer health/readiness reporting
+- [ ] Track C - Ordered entity-local sequencing
+  - Exit criteria:
+  - [ ] add per-entity ordering windows for create/update/delete event families that cannot tolerate reorder
+  - [ ] keep that sequencing logic separate from the generic dedupe window
+
+## Deep Review Cycle 64 - Coverage Ratchet for Critical Packages: Sync + API (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#152` was still open even after warehouse/test seams improved because CI was still enforcing stale package floors: `internal/api` at `40%` despite already exceeding `55%`, and `internal/sync` at `11.5%` despite the highest orchestration complexity in the repo.
+- [x] Gap: the real blocker was not `internal/api`; shared app test helpers already existed via `internal/apptest`, and package coverage was already above the requested floor.
+- [x] Gap: `internal/sync` needed honest coverage work in the warehouse-backed orchestration seams we actually rely on today: sync coordination, CDC event emission, scoped persistence helpers, and provider-specific change-history paths.
+- [x] Gap: external references reinforced the same discipline from different angles:
+  - [x] `openfga/openfga` keeps transport and service seams narrow enough that handler/service tests are cheap instead of requiring full-process integration.
+  - [x] `grafana/grafana` is the warning case for broad surface area where package-level ratchets only work if helper seams exist first.
+  - [x] the Wiz schema dump in `/Users/jonathanhaas/Downloads/wiz.graphql` remains the opposite cautionary example: large ambient surfaces become difficult to test rigorously unless they are broken into explicit modules and query seams.
+
+### Execution plan
+- [x] Raise real sync coverage with warehouse-backed tests:
+  - [x] add CDC builder tests for event IDs, payload extraction, and scope fallback
+  - [x] add sync engine tests for change history, partial fetch backfill, and CDC emission
+  - [x] add scoped table operation tests for scoped deletes, provider change history, and merge behavior
+  - [x] add GCP/Kubernetes provider tests covering CDC emission and shared persistence helpers
+  - [x] add helper/fetch-wrapper tests for retry helpers, region-limit helpers, and thin provider fetch delegates
+- [x] Re-measure package coverage before touching CI:
+  - [x] `internal/sync` now measures `21.0%`
+  - [x] `internal/api` measures `64.4%`
+- [x] Ratchet CI floors to measured reality:
+  - [x] raise `internal/api` threshold from `40.0` to `55.0`
+  - [x] raise `internal/sync` threshold from `11.5` to `20.0`
+
+### Detailed follow-on backlog
+- [ ] Track A - Next sync coverage ratchet to `30%`
+  - Exit criteria:
+  - [ ] add deeper relationship extraction tests for AWS/GCP relationship builders
+  - [ ] add more provider fetch/retry edge-case coverage around partial-page and auth failure handling
+  - [ ] raise the `internal/sync` CI floor from `20.0` to `30.0` only after measured package coverage holds above that mark with headroom
+- [ ] Track B - Coverage by package seam, not full-process setup
+  - Exit criteria:
+  - [ ] keep using `internal/apptest` / warehouse memory doubles instead of reintroducing full Snowflake/process dependencies into unit suites
+  - [ ] extract any remaining broad setup helpers only where a new handler or sync surface still cannot be tested cheaply
+- [ ] Track C - Package split pressure
+  - Exit criteria:
+  - [ ] use the next `internal/sync` coverage wave to identify the worst ambient files for later package extraction
+  - [ ] keep coverage work aligned with the larger graph/app package-boundary cleanup instead of growing more monolithic provider files
+
 ## Deep Review Cycle 63 - Graph Package Split Phase 1: Reports Extraction (2026-03-12)
 
 ### Review findings
