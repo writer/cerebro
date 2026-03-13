@@ -2,7 +2,7 @@
   "api_version": "devex.cerebro/v1alpha1",
   "kind": "HTTPAPIContractCatalog",
   "generated_at": "0001-01-01T00:00:00Z",
-  "endpoint_count": 296,
+  "endpoint_count": 297,
   "endpoints": [
     {
       "id": "DELETE /api/v1/findings/{id}",
@@ -8472,6 +8472,142 @@
             },
             {
               "path": "to",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GET /api/v1/platform/executions",
+      "path": "/api/v1/platform/executions",
+      "method": "GET",
+      "query_params": [
+        {
+          "name": "exclude_status",
+          "required": false,
+          "schema_type": "string"
+        },
+        {
+          "name": "limit",
+          "required": false,
+          "schema_type": "integer"
+        },
+        {
+          "name": "namespace",
+          "required": false,
+          "schema_type": "string"
+        },
+        {
+          "name": "offset",
+          "required": false,
+          "schema_type": "integer"
+        },
+        {
+          "name": "order",
+          "required": false,
+          "schema_type": "string"
+        },
+        {
+          "name": "report_id",
+          "required": false,
+          "schema_type": "string"
+        },
+        {
+          "name": "status",
+          "required": false,
+          "schema_type": "string"
+        }
+      ],
+      "success_responses": [
+        {
+          "status_code": "200",
+          "content_types": [
+            "application/json"
+          ],
+          "fields": [
+            {
+              "path": "count",
+              "type": "integer"
+            },
+            {
+              "path": "executions",
+              "type": "array"
+            },
+            {
+              "path": "executions[]",
+              "type": "object"
+            },
+            {
+              "path": "executions[].completed_at",
+              "type": "string"
+            },
+            {
+              "path": "executions[].display_name",
+              "type": "string"
+            },
+            {
+              "path": "executions[].error",
+              "type": "string"
+            },
+            {
+              "path": "executions[].execution_mode",
+              "type": "string"
+            },
+            {
+              "path": "executions[].job_id",
+              "type": "string"
+            },
+            {
+              "path": "executions[].kind",
+              "type": "string"
+            },
+            {
+              "path": "executions[].namespace",
+              "type": "string"
+            },
+            {
+              "path": "executions[].provider",
+              "type": "string"
+            },
+            {
+              "path": "executions[].requested_by",
+              "type": "string"
+            },
+            {
+              "path": "executions[].run_id",
+              "type": "string"
+            },
+            {
+              "path": "executions[].scope_id",
+              "type": "string"
+            },
+            {
+              "path": "executions[].stage",
+              "type": "string"
+            },
+            {
+              "path": "executions[].started_at",
+              "type": "string"
+            },
+            {
+              "path": "executions[].status",
+              "type": "string"
+            },
+            {
+              "path": "executions[].status_url",
+              "type": "string"
+            },
+            {
+              "path": "executions[].submitted_at",
+              "type": "string"
+            },
+            {
+              "path": "executions[].target",
+              "type": "string"
+            },
+            {
+              "path": "executions[].updated_at",
               "type": "string"
             }
           ]

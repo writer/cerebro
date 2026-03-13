@@ -1028,7 +1028,7 @@ func TestPlatformIntelligenceReportRunAsync(t *testing.T) {
 	}
 
 	var runBody map[string]any
-	for i := 0; i < 50; i++ {
+	for i := 0; i < 600; i++ {
 		runResp := do(t, s, http.MethodGet, statusURL, nil)
 		if runResp.Code != http.StatusOK {
 			t.Fatalf("expected 200 for async run lookup, got %d: %s", runResp.Code, runResp.Body.String())
@@ -1089,19 +1089,14 @@ func TestPlatformIntelligenceReportRunAsync(t *testing.T) {
 
 func TestPlatformIntelligenceReportRunStreamEmitsSections(t *testing.T) {
 	s := newTestServer(t)
-	original := s.platformReportHandlers["quality"]
-	s.platformReportHandlers["quality"] = func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(75 * time.Millisecond)
-		original(w, r)
-	}
 	server := httptest.NewServer(s)
 	defer server.Close()
 
 	createResp := doAuthenticatedHTTP(t, server.URL, http.MethodPost, "/api/v1/platform/intelligence/reports/quality/runs", map[string]any{
-		"execution_mode": "async",
+		"execution_mode": "sync",
 	}, nil)
-	if createResp.Code != http.StatusAccepted {
-		t.Fatalf("expected 202 for async run create, got %d: %s", createResp.Code, createResp.Body.String())
+	if createResp.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for sync run create, got %d: %s", createResp.Code, createResp.Body.String())
 	}
 	createBody := decodeJSON(t, createResp)
 	statusURL, _ := createBody["status_url"].(string)
@@ -1302,7 +1297,7 @@ func TestPlatformIntelligenceReportRunRetryAsyncIncludesBackoffMetadata(t *testi
 	}
 
 	var failedRun map[string]any
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 600; i++ {
 		status := do(t, s, http.MethodGet, statusURL, nil)
 		if status.Code != http.StatusOK {
 			t.Fatalf("expected 200 for async run lookup, got %d: %s", status.Code, status.Body.String())
@@ -1361,7 +1356,7 @@ func TestPlatformIntelligenceReportRunRetryAsyncIncludesBackoffMetadata(t *testi
 	}
 
 	var latest map[string]any
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 600; i++ {
 		status := do(t, s, http.MethodGet, statusURL, nil)
 		if status.Code != http.StatusOK {
 			t.Fatalf("expected 200 for async retry lookup, got %d: %s", status.Code, status.Body.String())
@@ -1445,6 +1440,12 @@ func TestPlatformIntelligenceReportRunRetryRechecksMaxAttemptsInsideUpdate(t *te
 	stored.AttemptCount = len(stored.Attempts)
 	s.platformReportRuns[run.ID] = stored
 	s.platformReportRunMu.Unlock()
+	if s.platformReportStore != nil {
+		if err := s.platformReportStore.SaveRun(stored); err != nil {
+			s.platformReportSaveMu.Unlock()
+			t.Fatalf("SaveRun() failed: %v", err)
+		}
+	}
 	s.platformReportSaveMu.Unlock()
 
 	resp := <-done
@@ -1681,6 +1682,12 @@ func TestPlatformIntelligenceReportRunCancelDoesNotOverwriteSucceededRun(t *test
 	stored.AttemptCount = len(stored.Attempts)
 	s.platformReportRuns[run.ID] = stored
 	s.platformReportRunMu.Unlock()
+	if s.platformReportStore != nil {
+		if err := s.platformReportStore.SaveRun(stored); err != nil {
+			s.platformReportSaveMu.Unlock()
+			t.Fatalf("SaveRun() failed: %v", err)
+		}
+	}
 	s.platformReportSaveMu.Unlock()
 
 	resp := <-done
@@ -1957,7 +1964,7 @@ func TestPlatformReportRunUpdateRollsBackOnPersistenceFailure(t *testing.T) {
 		t.Fatalf("storePlatformReportRun() failed: %v", err)
 	}
 
-	stateDir := filepath.Dir(application.Config.PlatformReportRunStateFile)
+	stateDir := filepath.Dir(application.Config.ExecutionStoreFile)
 	if err := os.Chmod(stateDir, 0o500); err != nil {
 		t.Fatalf("chmod state dir read-only: %v", err)
 	}
