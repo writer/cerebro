@@ -5,6 +5,39 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 72 - AWS Resource-Policy Permission Depth (2026-03-13)
+
+### Review findings
+- [x] Gap: issue `#220` is not blocked by more raw AWS inventory first; the immediate substrate hole is that `aws_s3_bucket_policies` are synced but not materialized into the permission graph.
+- [x] Gap: the effective-permissions calculator already has a conceptual `resource_policy` source type, but the builder never emitted edges that would exercise it.
+- [x] Gap: object-scoped S3 policy resources such as `arn:aws:s3:::bucket/*` do not map cleanly into the current node model because Cerebro does not model individual objects yet; without an explicit bridge, the graph drops the permission entirely.
+- [x] Gap: wildcard principals with conditions such as `aws:SourceVpce` should not be flattened into unconstrained public access until the graph can evaluate those conditions, or the model will overstate exposure.
+- [x] Gap: upstream patterns line up on the same lesson:
+  - [x] `duo-labs/cloudmapper` and `cartography-cncf/cartography` both get value from turning provider-specific permission structure into reusable graph edges rather than leaving it trapped in raw tables.
+  - [x] `cloud-custodian/cloud-custodian` and `prowler-cloud/prowler` treat S3 public/cross-account policy nuance as a first-class AWS depth area, not a cosmetic property flag.
+  - [x] the local Wiz schema dump in `/Users/jonathanhaas/Downloads/other/wiz.graphql` reinforces the same product lesson: entity snapshots and relationship-heavy query surfaces only stay credible when resource-policy provenance is queryable instead of inferred from bucket booleans.
+
+### Execution plan
+- [x] Materialize S3 bucket resource-policy edges into the shared permission graph:
+  - [x] parse `aws_s3_bucket_policies`
+  - [x] emit `resource_policy`-marked edges for explicit principals
+  - [x] conservatively emit `internet` edges only for unconstrained wildcard principals
+  - [x] preserve statement actions, conditions, owner resource, and policy provenance on each edge
+- [x] Bridge object-level selectors into the current bucket node model:
+  - [x] map `arn:aws:s3:::bucket/*`-style resources back to the owning bucket until object nodes exist
+- [x] Tighten effective-permission provenance:
+  - [x] classify resource-policy edges as `resource_policy` in inheritance chains
+  - [x] surface serialized policy conditions on `ResourceAccess`
+  - [x] merge multiple direct edges to the same resource instead of overwriting them
+- [x] Add regression coverage:
+  - [x] builder test for explicit principal + public wildcard S3 bucket policy handling
+  - [x] calculator test for resource-policy source tracking and condition propagation
+- [ ] Next AWS depth cuts after this slice:
+  - [ ] KMS key policy edges
+  - [ ] Lambda resource-policy edges
+  - [ ] condition-aware evaluation for common S3/IAM keys (`aws:SourceVpce`, org/account scoping, secure transport)
+  - [ ] bucket policy status integration so public exposure uses evaluated policy state instead of public-access-block heuristics alone
+
 ## Deep Review Cycle 71 - Credential Source Abstraction and Vault/File-Backed Secret Reload (2026-03-13)
 
 ### Review findings
