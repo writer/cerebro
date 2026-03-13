@@ -307,6 +307,116 @@ func TestBuilder_BuildUsesCopyOnWriteSwap(t *testing.T) {
 	}
 }
 
+func TestBuilder_BuildsS3BucketResourcePolicyEdges(t *testing.T) {
+	ctx := context.Background()
+	source := newMockDataSource()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	source.setResult(`
+		SELECT arn, user_name, account_id, password_last_used, tags
+		FROM aws_iam_users
+	`, &DataQueryResult{
+		Rows: []map[string]any{
+			{
+				"arn":        "arn:aws:iam::111111111111:user/alice",
+				"user_name":  "alice",
+				"account_id": "111111111111",
+			},
+		},
+	})
+
+	source.setResult(`
+		SELECT arn, name, account_id, region, block_public_acls, block_public_policy, versioning_status
+		FROM aws_s3_buckets
+	`, &DataQueryResult{
+		Rows: []map[string]any{
+			{
+				"arn":                 "arn:aws:s3:::sensitive-data",
+				"name":                "sensitive-data",
+				"account_id":          "111111111111",
+				"region":              "us-east-1",
+				"block_public_acls":   true,
+				"block_public_policy": true,
+			},
+		},
+	})
+
+	source.setResult(`
+		SELECT arn, bucket, policy FROM aws_s3_bucket_policies
+	`, &DataQueryResult{
+		Rows: []map[string]any{
+			{
+				"arn":    "arn:aws:s3:::sensitive-data/policy",
+				"bucket": "sensitive-data",
+				"policy": `{
+					"Version": "2012-10-17",
+					"Statement": [
+						{
+							"Effect": "Allow",
+							"Principal": {"AWS": "arn:aws:iam::111111111111:user/alice"},
+							"Action": "s3:GetObject",
+							"Resource": "arn:aws:s3:::sensitive-data/*",
+							"Condition": {"StringEquals": {"s3:prefix": "finance/"}}
+						},
+						{
+							"Effect": "Allow",
+							"Principal": "*",
+							"Action": "s3:GetObject",
+							"Resource": "arn:aws:s3:::sensitive-data/*",
+							"Condition": {"StringEquals": {"aws:SourceVpce": "vpce-123"}}
+						},
+						{
+							"Effect": "Allow",
+							"Principal": "*",
+							"Action": "s3:GetObject",
+							"Resource": "arn:aws:s3:::sensitive-data/*"
+						}
+					]
+				}`,
+			},
+		},
+	})
+
+	builder := NewBuilder(source, logger)
+	if err := builder.Build(ctx); err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	g := builder.Graph()
+	aliceEdges := g.GetOutEdges("arn:aws:iam::111111111111:user/alice")
+	foundAliceResourcePolicy := false
+	for _, edge := range aliceEdges {
+		if edge.Target != "arn:aws:s3:::sensitive-data" || edge.Kind != EdgeKindCanRead {
+			continue
+		}
+		if edge.Properties["mechanism"] != "resource_policy" {
+			t.Fatalf("expected resource_policy mechanism, got %#v", edge.Properties)
+		}
+		if edge.Properties["via"] != "arn:aws:s3:::sensitive-data/policy" {
+			t.Fatalf("expected via policy ARN, got %#v", edge.Properties["via"])
+		}
+		if conditions, ok := edge.Properties["conditions"].(map[string]any); !ok || len(conditions) == 0 {
+			t.Fatalf("expected statement conditions on edge, got %#v", edge.Properties["conditions"])
+		}
+		foundAliceResourcePolicy = true
+	}
+	if !foundAliceResourcePolicy {
+		t.Fatal("expected explicit principal edge from S3 bucket policy")
+	}
+
+	internetEdges := g.GetOutEdges("internet")
+	publicPolicyEdges := 0
+	for _, edge := range internetEdges {
+		if edge.Target != "arn:aws:s3:::sensitive-data" || edge.Kind != EdgeKindCanRead {
+			continue
+		}
+		publicPolicyEdges++
+	}
+	if publicPolicyEdges != 1 {
+		t.Fatalf("expected exactly one unconstrained public policy edge, got %d", publicPolicyEdges)
+	}
+}
+
 func TestBuilder_BuildPreservesSchemaValidationMode(t *testing.T) {
 	source := newMockDataSource()
 	builder := NewBuilder(source, slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError})))

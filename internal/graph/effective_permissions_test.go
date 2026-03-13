@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -528,6 +529,79 @@ func TestEffectivePermissionsCalculator_InheritanceChain(t *testing.T) {
 			t.Error("expected role source in inheritance chain")
 		}
 	})
+}
+
+func TestEffectivePermissionsCalculator_TracksResourcePolicySources(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{
+		ID:       "user:alice",
+		Kind:     NodeKindUser,
+		Name:     "alice",
+		Account:  "111111111111",
+		Provider: "aws",
+	})
+	g.AddNode(&Node{
+		ID:       "bucket:data",
+		Kind:     NodeKindBucket,
+		Name:     "data",
+		Account:  "111111111111",
+		Provider: "aws",
+	})
+	g.AddEdge(&Edge{
+		ID:     "resource-policy-read",
+		Source: "user:alice",
+		Target: "bucket:data",
+		Kind:   EdgeKindCanRead,
+		Effect: EdgeEffectAllow,
+		Properties: map[string]any{
+			"actions":    []string{"s3:GetObject"},
+			"mechanism":  "resource_policy",
+			"via":        "arn:aws:s3:::data/policy",
+			"conditions": map[string]any{"StringEquals": map[string]any{"aws:SourceVpce": "vpce-123"}},
+		},
+	})
+	g.AddEdge(&Edge{
+		ID:     "resource-policy-write",
+		Source: "user:alice",
+		Target: "bucket:data",
+		Kind:   EdgeKindCanWrite,
+		Effect: EdgeEffectAllow,
+		Properties: map[string]any{
+			"actions":   []string{"s3:PutObject"},
+			"mechanism": "resource_policy",
+			"via":       "arn:aws:s3:::data/policy",
+		},
+	})
+
+	ep := NewEffectivePermissionsCalculator(g).Calculate("user:alice")
+	if ep == nil {
+		t.Fatal("expected effective permissions, got nil")
+	}
+
+	access, ok := ep.Resources["bucket:data"]
+	if !ok {
+		t.Fatal("expected bucket access from resource policy")
+	}
+	if !containsString(access.Actions, "s3:GetObject") || !containsString(access.Actions, "s3:PutObject") {
+		t.Fatalf("expected merged actions from multiple resource-policy edges, got %#v", access.Actions)
+	}
+	if len(access.Conditions) != 1 || !strings.Contains(access.Conditions[0], "aws:SourceVpce") {
+		t.Fatalf("expected serialized policy condition, got %#v", access.Conditions)
+	}
+	if len(access.Sources) != 1 || access.Sources[0] != "arn:aws:s3:::data/policy" {
+		t.Fatalf("expected resource-policy source provenance, got %#v", access.Sources)
+	}
+
+	found := false
+	for _, source := range ep.InheritanceChain {
+		if source.Type == "resource_policy" && source.SourceID == "arn:aws:s3:::data/policy" && source.Effect == "allow" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected resource_policy inheritance source, got %#v", ep.InheritanceChain)
+	}
 }
 
 func TestEffectivePermissionsCalculator_ComparePermissions(t *testing.T) {

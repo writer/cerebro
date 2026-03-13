@@ -288,6 +288,13 @@ func (b *Builder) buildAWSEdges(ctx context.Context) {
 		return nil
 	})
 
+	eg.Go(func() error {
+		if err := b.buildS3BucketPolicyEdges(ectx); err != nil {
+			b.logger.Warn("failed to build S3 bucket policy edges", "error", err)
+		}
+		return nil
+	})
+
 	// Structural edges
 	eg.Go(func() error {
 		if err := b.buildGroupMembershipEdges(ectx); err != nil {
@@ -315,6 +322,27 @@ func (b *Builder) buildAWSEdges(ctx context.Context) {
 	})
 
 	_ = eg.Wait()
+}
+
+func (b *Builder) buildS3BucketPolicyEdges(ctx context.Context) error {
+	rows, err := b.queryIfExists(ctx, "aws_s3_bucket_policies", `
+		SELECT arn, bucket, policy FROM aws_s3_bucket_policies
+	`)
+	if err != nil {
+		return err
+	}
+
+	for _, row := range rows.Rows {
+		bucketName := toString(row["bucket"])
+		if strings.TrimSpace(bucketName) == "" {
+			continue
+		}
+		bucketARN := fmt.Sprintf("arn:aws:s3:::%s", bucketName)
+		b.buildEdgesFromResourcePolicy(bucketARN, toString(row["policy"]), toString(row["arn"]), "s3_bucket_policy")
+	}
+
+	b.logger.Debug("processed S3 bucket resource policies", "count", len(rows.Rows))
+	return nil
 }
 
 func (b *Builder) buildEdgesFromPolicy(principalARN, policyDoc, via string) {
@@ -355,6 +383,131 @@ func (b *Builder) buildEdgesFromPolicy(principalARN, policyDoc, via string) {
 			}
 		}
 	}
+}
+
+func (b *Builder) buildEdgesFromResourcePolicy(ownerResourceID, policyDoc, via, policyType string) {
+	if policyDoc == "" || ownerResourceID == "" {
+		return
+	}
+
+	statements, err := ParseAWSPolicy(policyDoc)
+	if err != nil {
+		b.logger.Debug("failed to parse resource policy", "owner_resource_id", ownerResourceID, "via", via, "error", err)
+		return
+	}
+
+	for stmtIdx, stmt := range statements {
+		if len(stmt.Principals) == 0 || len(stmt.Resources) == 0 {
+			continue
+		}
+
+		effect := EdgeEffectAllow
+		priority := 50
+		if strings.EqualFold(stmt.Effect, "Deny") {
+			effect = EdgeEffectDeny
+			priority = 100
+		}
+
+		conditionsPresent := len(stmt.Conditions) > 0
+		for _, principal := range stmt.Principals {
+			sourceIDs := b.resourcePolicySourceIDs(principal, conditionsPresent)
+			if len(sourceIDs) == 0 {
+				continue
+			}
+			for _, sourceID := range sourceIDs {
+				targets := b.matchResourcePolicyTargets(ownerResourceID, stmt.Resources)
+				if len(targets) == 0 {
+					continue
+				}
+
+				for targetIdx, target := range targets {
+					principalAccount := ExtractAccountFromARN(sourceID)
+					crossAccount := principalAccount != "" && target.Account != "" && principalAccount != target.Account
+					edgeID := fmt.Sprintf("%s->%s:%s:%s:%d:%d", sourceID, target.ID, stmt.Effect, via, stmtIdx, targetIdx)
+					properties := map[string]any{
+						"actions":               append([]string(nil), stmt.Actions...),
+						"conditions":            cloneAnyMap(stmt.Conditions),
+						"conditions_present":    conditionsPresent,
+						"mechanism":             "resource_policy",
+						"policy_type":           policyType,
+						"resource_policy_owner": ownerResourceID,
+						"resource_selector":     append([]string(nil), stmt.Resources...),
+						"source_account":        principalAccount,
+						"target_account":        target.Account,
+						"via":                   via,
+					}
+					if sourceID == "internet" {
+						properties["public_principal"] = true
+					}
+					if strings.HasSuffix(sourceID, ":root") {
+						properties["account_principal"] = true
+					}
+					if crossAccount {
+						properties["cross_account"] = true
+					}
+
+					b.graph.AddEdge(&Edge{
+						ID:         edgeID,
+						Source:     sourceID,
+						Target:     target.ID,
+						Kind:       ActionsToEdgeKind(stmt.Actions),
+						Effect:     effect,
+						Priority:   priority,
+						Properties: properties,
+					})
+				}
+			}
+		}
+	}
+}
+
+func (b *Builder) resourcePolicySourceIDs(principal string, conditionsPresent bool) []string {
+	principal = strings.TrimSpace(principal)
+	if principal == "" {
+		return nil
+	}
+	if principal == "*" {
+		if conditionsPresent {
+			return nil
+		}
+		return []string{"internet"}
+	}
+	return []string{principal}
+}
+
+func (b *Builder) matchResourcePolicyTargets(ownerResourceID string, resources []string) []*Node {
+	seen := make(map[string]struct{})
+	targets := make([]*Node, 0)
+
+	for _, resource := range resources {
+		resource = strings.TrimSpace(resource)
+		if resource == "" {
+			continue
+		}
+		for _, node := range FindMatchingNodes(b.graph, resource) {
+			if node == nil {
+				continue
+			}
+			if _, exists := seen[node.ID]; exists {
+				continue
+			}
+			seen[node.ID] = struct{}{}
+			targets = append(targets, node)
+		}
+
+		// Cerebro does not model individual S3 objects yet; map object selectors back to
+		// the owning bucket so bucket policy permissions still participate in graph reads.
+		if ownerResourceID != "" && (resource == ownerResourceID || strings.HasPrefix(resource, ownerResourceID+"/")) {
+			if node, ok := b.graph.GetNode(ownerResourceID); ok {
+				if _, exists := seen[node.ID]; !exists {
+					seen[node.ID] = struct{}{}
+					targets = append(targets, node)
+				}
+			}
+		}
+	}
+
+	return targets
 }
 
 func (b *Builder) buildTrustEdges(ctx context.Context) error {
