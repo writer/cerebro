@@ -1,4 +1,4 @@
-package graph
+package builders
 
 import (
 	"context"
@@ -13,26 +13,26 @@ import (
 
 // mockDataSource implements DataSource for testing
 type mockDataSource struct {
-	results map[string]*QueryResult
+	results map[string]*DataQueryResult
 }
 
 var _ DataSource = (*mockDataSource)(nil)
 
 func newMockDataSource() *mockDataSource {
 	return &mockDataSource{
-		results: make(map[string]*QueryResult),
+		results: make(map[string]*DataQueryResult),
 	}
 }
 
-func (m *mockDataSource) Query(ctx context.Context, query string, args ...any) (*QueryResult, error) {
+func (m *mockDataSource) Query(ctx context.Context, query string, args ...any) (*DataQueryResult, error) {
 	// Return empty result if no mock data configured
 	if result, ok := m.results[query]; ok {
 		return result, nil
 	}
-	return &QueryResult{Rows: []map[string]any{}}, nil
+	return &DataQueryResult{Rows: []map[string]any{}}, nil
 }
 
-func (m *mockDataSource) setResult(query string, result *QueryResult) {
+func (m *mockDataSource) setResult(query string, result *DataQueryResult) {
 	m.results[query] = result
 }
 
@@ -42,7 +42,7 @@ type blockingBuildSource struct {
 	once    sync.Once
 }
 
-func (s *blockingBuildSource) Query(ctx context.Context, query string, args ...any) (*QueryResult, error) {
+func (s *blockingBuildSource) Query(ctx context.Context, query string, args ...any) (*DataQueryResult, error) {
 	_ = args
 	if strings.Contains(strings.ToLower(query), "information_schema.tables") {
 		s.once.Do(func() { close(s.started) })
@@ -52,7 +52,7 @@ func (s *blockingBuildSource) Query(ctx context.Context, query string, args ...a
 			return nil, ctx.Err()
 		}
 	}
-	return &QueryResult{Rows: []map[string]any{}}, nil
+	return &DataQueryResult{Rows: []map[string]any{}}, nil
 }
 
 func TestBuilder_BuildWithMockData(t *testing.T) {
@@ -64,7 +64,7 @@ func TestBuilder_BuildWithMockData(t *testing.T) {
 	source.setResult(`
 		SELECT arn, user_name, account_id, password_last_used, tags
 		FROM aws_iam_users
-	`, &QueryResult{
+	`, &DataQueryResult{
 		Rows: []map[string]any{
 			{
 				"arn":        "arn:aws:iam::111111111111:user/alice",
@@ -83,7 +83,7 @@ func TestBuilder_BuildWithMockData(t *testing.T) {
 	source.setResult(`
 		SELECT arn, role_name, account_id, assume_role_policy_document, description
 		FROM aws_iam_roles
-	`, &QueryResult{
+	`, &DataQueryResult{
 		Rows: []map[string]any{
 			{
 				"arn":        "arn:aws:iam::111111111111:role/AdminRole",
@@ -105,7 +105,7 @@ func TestBuilder_BuildWithMockData(t *testing.T) {
 	source.setResult(`
 		SELECT arn, group_name, account_id
 		FROM aws_iam_groups
-	`, &QueryResult{
+	`, &DataQueryResult{
 		Rows: []map[string]any{
 			{
 				"arn":        "arn:aws:iam::111111111111:group/Developers",
@@ -119,7 +119,7 @@ func TestBuilder_BuildWithMockData(t *testing.T) {
 	source.setResult(`
 		SELECT arn, name, account_id, region, block_public_acls, block_public_policy, versioning_status
 		FROM aws_s3_buckets
-	`, &QueryResult{
+	`, &DataQueryResult{
 		Rows: []map[string]any{
 			{
 				"arn":                 "arn:aws:s3:::sensitive-data",
@@ -143,7 +143,7 @@ func TestBuilder_BuildWithMockData(t *testing.T) {
 	// Set up mock policies
 	source.setResult(`
 		SELECT arn, name, document FROM aws_iam_policies
-	`, &QueryResult{
+	`, &DataQueryResult{
 		Rows: []map[string]any{
 			{
 				"arn":  "arn:aws:iam::111111111111:policy/S3FullAccess",
@@ -163,7 +163,7 @@ func TestBuilder_BuildWithMockData(t *testing.T) {
 	// Set up mock role attached policies
 	source.setResult(`
 		SELECT role_arn, policy_arn FROM aws_iam_role_attached_policies
-	`, &QueryResult{
+	`, &DataQueryResult{
 		Rows: []map[string]any{
 			{
 				"role_arn":   "arn:aws:iam::111111111111:role/AdminRole",
@@ -177,7 +177,7 @@ func TestBuilder_BuildWithMockData(t *testing.T) {
 		SELECT arn, account_id, assume_role_policy_document
 		FROM aws_iam_roles
 		WHERE assume_role_policy_document IS NOT NULL
-	`, &QueryResult{
+	`, &DataQueryResult{
 		Rows: []map[string]any{
 			{
 				"arn":        "arn:aws:iam::111111111111:role/AdminRole",
@@ -370,7 +370,7 @@ func TestBuilder_PublicTrustPolicy(t *testing.T) {
 	source.setResult(`
 		SELECT arn, role_name, account_id, assume_role_policy_document, description
 		FROM aws_iam_roles
-	`, &QueryResult{
+	`, &DataQueryResult{
 		Rows: []map[string]any{
 			{
 				"arn":        "arn:aws:iam::111111111111:role/PublicRole",
@@ -392,7 +392,7 @@ func TestBuilder_PublicTrustPolicy(t *testing.T) {
 		SELECT arn, account_id, assume_role_policy_document
 		FROM aws_iam_roles
 		WHERE assume_role_policy_document IS NOT NULL
-	`, &QueryResult{
+	`, &DataQueryResult{
 		Rows: []map[string]any{
 			{
 				"arn":        "arn:aws:iam::111111111111:role/PublicRole",
@@ -560,7 +560,7 @@ func TestBuilder_GCPIAMEdgesFromMembers(t *testing.T) {
 	source := newMockDataSource()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 
-	source.setResult(`SELECT id, name, project_id, zone, status, service_accounts FROM gcp_compute_instances`, &QueryResult{
+	source.setResult(`SELECT id, name, project_id, zone, status, service_accounts FROM gcp_compute_instances`, &DataQueryResult{
 		Rows: []map[string]any{{
 			"id":               "instance-1",
 			"name":             "instance-1",
@@ -571,7 +571,7 @@ func TestBuilder_GCPIAMEdgesFromMembers(t *testing.T) {
 		}},
 	})
 
-	source.setResult(`SELECT project_id, member, roles FROM gcp_iam_members`, &QueryResult{
+	source.setResult(`SELECT project_id, member, roles FROM gcp_iam_members`, &DataQueryResult{
 		Rows: []map[string]any{{
 			"project_id": "proj-1",
 			"member":     "user:alice@example.com",
@@ -604,7 +604,7 @@ func TestBuilder_GCPIAMEdgesFallbackToPolicies(t *testing.T) {
 	source := newMockDataSource()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 
-	source.setResult(`SELECT id, name, project_id, zone, status, service_accounts FROM gcp_compute_instances`, &QueryResult{
+	source.setResult(`SELECT id, name, project_id, zone, status, service_accounts FROM gcp_compute_instances`, &DataQueryResult{
 		Rows: []map[string]any{{
 			"id":               "instance-2",
 			"name":             "instance-2",
@@ -615,7 +615,7 @@ func TestBuilder_GCPIAMEdgesFallbackToPolicies(t *testing.T) {
 		}},
 	})
 
-	source.setResult(`SELECT project_id, bindings FROM gcp_iam_policies`, &QueryResult{
+	source.setResult(`SELECT project_id, bindings FROM gcp_iam_policies`, &DataQueryResult{
 		Rows: []map[string]any{{
 			"project_id": "proj-2",
 			"bindings": []any{
@@ -650,7 +650,7 @@ func TestBuilder_GCPIAMServiceAccountMemberResolvesToNodeID(t *testing.T) {
 	source := newMockDataSource()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 
-	source.setResult(`SELECT unique_id, email, project_id, display_name FROM gcp_iam_service_accounts`, &QueryResult{
+	source.setResult(`SELECT unique_id, email, project_id, display_name FROM gcp_iam_service_accounts`, &DataQueryResult{
 		Rows: []map[string]any{{
 			"unique_id":    "sa-uid-1",
 			"email":        "app-sa@proj-1.iam.gserviceaccount.com",
@@ -659,7 +659,7 @@ func TestBuilder_GCPIAMServiceAccountMemberResolvesToNodeID(t *testing.T) {
 		}},
 	})
 
-	source.setResult(`SELECT id, name, project_id, zone, status, service_accounts FROM gcp_compute_instances`, &QueryResult{
+	source.setResult(`SELECT id, name, project_id, zone, status, service_accounts FROM gcp_compute_instances`, &DataQueryResult{
 		Rows: []map[string]any{{
 			"id":               "instance-1",
 			"name":             "instance-1",
@@ -670,7 +670,7 @@ func TestBuilder_GCPIAMServiceAccountMemberResolvesToNodeID(t *testing.T) {
 		}},
 	})
 
-	source.setResult(`SELECT project_id, member, roles FROM gcp_iam_members`, &QueryResult{
+	source.setResult(`SELECT project_id, member, roles FROM gcp_iam_members`, &DataQueryResult{
 		Rows: []map[string]any{{
 			"project_id": "proj-1",
 			"member":     "serviceAccount:app-sa@proj-1.iam.gserviceaccount.com",
@@ -703,7 +703,7 @@ func TestBuilder_GCPInstanceServiceAccountEdgeResolvesToNodeID(t *testing.T) {
 	source := newMockDataSource()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 
-	source.setResult(`SELECT unique_id, email, project_id, display_name FROM gcp_iam_service_accounts`, &QueryResult{
+	source.setResult(`SELECT unique_id, email, project_id, display_name FROM gcp_iam_service_accounts`, &DataQueryResult{
 		Rows: []map[string]any{{
 			"unique_id":    "sa-uid-3",
 			"email":        "runtime-sa@proj-3.iam.gserviceaccount.com",
@@ -712,7 +712,7 @@ func TestBuilder_GCPInstanceServiceAccountEdgeResolvesToNodeID(t *testing.T) {
 		}},
 	})
 
-	source.setResult(`SELECT id, name, project_id, zone, status, service_accounts FROM gcp_compute_instances`, &QueryResult{
+	source.setResult(`SELECT id, name, project_id, zone, status, service_accounts FROM gcp_compute_instances`, &DataQueryResult{
 		Rows: []map[string]any{{
 			"id":         "instance-3",
 			"name":       "instance-3",

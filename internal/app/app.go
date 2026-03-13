@@ -53,6 +53,7 @@ import (
 	"github.com/writer/cerebro/internal/events"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graph"
+	"github.com/writer/cerebro/internal/graph/builders"
 	"github.com/writer/cerebro/internal/graphingest"
 	"github.com/writer/cerebro/internal/health"
 	"github.com/writer/cerebro/internal/identity"
@@ -139,7 +140,7 @@ type App struct {
 
 	// Security Graph
 	SecurityGraph                 *graph.Graph
-	SecurityGraphBuilder          *graph.Builder
+	SecurityGraphBuilder          *builders.Builder
 	Propagation                   *graph.PropagationEngine
 	graphReady                    chan struct{} // closed when initial graph build completes
 	graphCtx                      context.Context

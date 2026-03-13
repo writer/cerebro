@@ -11,6 +11,7 @@ import (
 	"github.com/writer/cerebro/internal/actionengine"
 	"github.com/writer/cerebro/internal/auth"
 	"github.com/writer/cerebro/internal/graph"
+	"github.com/writer/cerebro/internal/graph/builders"
 	"github.com/writer/cerebro/internal/health"
 	"github.com/writer/cerebro/internal/lineage"
 	"github.com/writer/cerebro/internal/remediation"
@@ -472,8 +473,8 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 		return
 	}
 
-	source := graph.NewSnowflakeSource(a.Warehouse)
-	a.SecurityGraphBuilder = graph.NewBuilder(source, a.Logger)
+	source := builders.NewSnowflakeSource(a.Warehouse)
+	a.SecurityGraphBuilder = builders.NewBuilder(source, a.Logger)
 	securityGraph := a.SecurityGraphBuilder.Graph()
 	a.configureGraphSchemaValidation(securityGraph)
 	a.setSecurityGraph(securityGraph)

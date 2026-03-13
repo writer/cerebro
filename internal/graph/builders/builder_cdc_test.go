@@ -1,4 +1,4 @@
-package graph
+package builders
 
 import (
 	"context"
@@ -12,7 +12,7 @@ type cdcRoutingSource struct {
 	mu           sync.Mutex
 	latest       time.Time
 	events       []map[string]any
-	routes       map[string]*QueryResult
+	routes       map[string]*DataQueryResult
 	queryHits    map[string]int
 	blockNeedle  string
 	blockStart   chan struct{}
@@ -24,12 +24,12 @@ var _ DataSource = (*cdcRoutingSource)(nil)
 
 func newCDCRoutingSource() *cdcRoutingSource {
 	return &cdcRoutingSource{
-		routes:    make(map[string]*QueryResult),
+		routes:    make(map[string]*DataQueryResult),
 		queryHits: make(map[string]int),
 	}
 }
 
-func (s *cdcRoutingSource) Query(ctx context.Context, query string, args ...any) (*QueryResult, error) {
+func (s *cdcRoutingSource) Query(ctx context.Context, query string, args ...any) (*DataQueryResult, error) {
 	_ = ctx
 	lower := strings.ToLower(query)
 
@@ -52,18 +52,18 @@ func (s *cdcRoutingSource) Query(ctx context.Context, query string, args ...any)
 	if strings.Contains(lower, "select max(event_time)") && strings.Contains(lower, "from cdc_events") {
 		s.queryHits["has_changes"]++
 		if s.latest.IsZero() {
-			return &QueryResult{Rows: []map[string]any{{"latest": time.Time{}}}, Count: 1}, nil
+			return &DataQueryResult{Rows: []map[string]any{{"latest": time.Time{}}}, Count: 1}, nil
 		}
-		return &QueryResult{Rows: []map[string]any{{"latest": s.latest}}, Count: 1}, nil
+		return &DataQueryResult{Rows: []map[string]any{{"latest": s.latest}}, Count: 1}, nil
 	}
 
 	if strings.Contains(lower, "select event_time") && strings.Contains(lower, "from cdc_events") && strings.Contains(lower, "limit 1") {
 		s.queryHits["latest_watermark"]++
 		if len(s.events) == 0 {
 			if s.latest.IsZero() {
-				return &QueryResult{Rows: []map[string]any{}}, nil
+				return &DataQueryResult{Rows: []map[string]any{}}, nil
 			}
-			return &QueryResult{Rows: []map[string]any{{"event_time": s.latest, "ingested_at": s.latest, "event_id": "evt-latest"}}, Count: 1}, nil
+			return &DataQueryResult{Rows: []map[string]any{{"event_time": s.latest, "ingested_at": s.latest, "event_id": "evt-latest"}}, Count: 1}, nil
 		}
 		latest := s.events[0]
 		for _, row := range s.events[1:] {
@@ -71,26 +71,26 @@ func (s *cdcRoutingSource) Query(ctx context.Context, query string, args ...any)
 				latest = row
 			}
 		}
-		return &QueryResult{Rows: []map[string]any{latest}, Count: 1}, nil
+		return &DataQueryResult{Rows: []map[string]any{latest}, Count: 1}, nil
 	}
 
 	if strings.Contains(lower, "select event_id") && strings.Contains(lower, "from cdc_events") {
 		s.queryHits["cdc_events"]++
 		rows := filterCDCEventRows(s.events, args)
-		return &QueryResult{Rows: rows, Count: len(rows)}, nil
+		return &DataQueryResult{Rows: rows, Count: len(rows)}, nil
 	}
 
 	for needle, result := range s.routes {
 		if strings.Contains(lower, needle) {
 			s.queryHits[needle]++
 			if result == nil {
-				return &QueryResult{Rows: []map[string]any{}}, nil
+				return &DataQueryResult{Rows: []map[string]any{}}, nil
 			}
 			return result, nil
 		}
 	}
 
-	return &QueryResult{Rows: []map[string]any{}}, nil
+	return &DataQueryResult{Rows: []map[string]any{}}, nil
 }
 
 func filterCDCEventRows(rows []map[string]any, args []any) []map[string]any {
@@ -263,7 +263,7 @@ func TestBuilderApplyChanges_UpsertsAndRemovesNodes(t *testing.T) {
 
 func TestBuilderApplyChanges_EdgeOnlyTableChangeRebuildsEdges(t *testing.T) {
 	source := newCDCRoutingSource()
-	source.routes["from aws_iam_policy_versions"] = &QueryResult{Rows: []map[string]any{{
+	source.routes["from aws_iam_policy_versions"] = &DataQueryResult{Rows: []map[string]any{{
 		"policy_arn": "arn:aws:iam::111111111111:policy/S3FullAccess",
 		"document": `{
 			"Version": "2012-10-17",
@@ -274,7 +274,7 @@ func TestBuilderApplyChanges_EdgeOnlyTableChangeRebuildsEdges(t *testing.T) {
 			}]
 		}`,
 	}}}
-	source.routes["from aws_iam_user_attached_policies"] = &QueryResult{Rows: []map[string]any{{
+	source.routes["from aws_iam_user_attached_policies"] = &DataQueryResult{Rows: []map[string]any{{
 		"user_arn":   "arn:aws:iam::111111111111:user/alice",
 		"policy_arn": "arn:aws:iam::111111111111:policy/S3FullAccess",
 	}}}
@@ -485,7 +485,7 @@ func TestBuilderApplyChangesRefreshesDerivedKnowledge(t *testing.T) {
 	builder.Graph().AddNode(&Node{ID: permissionClaimID, Kind: NodeKindClaim, Properties: map[string]any{"object_value": "unused", "source_system": awsIAMPermissionUsageSourceSystem}})
 	builder.Graph().AddNode(&Node{ID: "claim:" + slugifyKnowledgeKey(bucketID) + ":versioning_enabled:normalized", Kind: NodeKindClaim, Properties: map[string]any{"object_value": "false", "source_system": entityAssetNormalizerSourceSystem}})
 
-	source.routes["from aws_identitycenter_permission_set_permission_usage_history"] = &QueryResult{Rows: []map[string]any{{
+	source.routes["from aws_identitycenter_permission_set_permission_usage_history"] = &DataQueryResult{Rows: []map[string]any{{
 		"_cq_id":                       permissionRowKey,
 		"account_id":                   "123456789012",
 		"account_ids":                  []any{"123456789012"},
@@ -621,14 +621,14 @@ func TestBuilderApplyChangesUsesCDCWatermarkTieBreakers(t *testing.T) {
 
 func TestBuilderApplyChanges_KubernetesEventsMaterializeTypedNodesAndEdges(t *testing.T) {
 	source := newCDCRoutingSource()
-	source.routes["from k8s_core_pods"] = &QueryResult{Rows: []map[string]any{{
+	source.routes["from k8s_core_pods"] = &DataQueryResult{Rows: []map[string]any{{
 		"_cq_id":               "prod-cluster/pod/payments/payments-api",
 		"name":                 "payments-api",
 		"namespace":            "payments",
 		"cluster_name":         "prod-cluster",
 		"service_account_name": "payments-sa",
 	}}}
-	source.routes["from k8s_rbac_service_account_bindings"] = &QueryResult{Rows: []map[string]any{{
+	source.routes["from k8s_rbac_service_account_bindings"] = &DataQueryResult{Rows: []map[string]any{{
 		"cluster_name":              "prod-cluster",
 		"binding_kind":              "ClusterRoleBinding",
 		"binding_name":              "payments-admins",

@@ -15,6 +15,7 @@ import (
 	"github.com/writer/cerebro/internal/cache"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graph"
+	"github.com/writer/cerebro/internal/graph/builders"
 	"github.com/writer/cerebro/internal/graphingest"
 	"github.com/writer/cerebro/internal/health"
 	"github.com/writer/cerebro/internal/identity"
@@ -97,7 +98,7 @@ type serverDependencies struct {
 	RemediationExecutor *remediation.Executor
 
 	SecurityGraph        *graph.Graph
-	SecurityGraphBuilder *graph.Builder
+	SecurityGraphBuilder *builders.Builder
 
 	graphRuntime       graphRuntimeService
 	apiCredentials     apiCredentialService
@@ -109,7 +110,7 @@ type graphRuntimeAdapter struct {
 	fallback        graphRuntimeService
 	logger          *slog.Logger
 	originalGraph   *graph.Graph
-	originalBuilder *graph.Builder
+	originalBuilder *builders.Builder
 
 	updateMu   sync.Mutex
 	snapshotMu sync.RWMutex
@@ -412,7 +413,7 @@ func (r *graphRuntimeAdapter) TryApplySecurityGraphChanges(ctx context.Context, 
 	return summary, true, nil
 }
 
-func (r *graphRuntimeAdapter) localBuilder() *graph.Builder {
+func (r *graphRuntimeAdapter) localBuilder() *builders.Builder {
 	if r == nil || r.deps == nil {
 		return nil
 	}

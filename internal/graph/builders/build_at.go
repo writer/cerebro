@@ -1,4 +1,4 @@
-package graph
+package builders
 
 import (
 	"context"
@@ -30,7 +30,7 @@ type timeTravelDataSource struct {
 	timestamp time.Time
 }
 
-func (s *timeTravelDataSource) Query(ctx context.Context, query string, args ...any) (*QueryResult, error) {
+func (s *timeTravelDataSource) Query(ctx context.Context, query string, args ...any) (*DataQueryResult, error) {
 	rewritten := applyTimeTravelClauses(query, s.timestamp)
 	return s.base.Query(ctx, rewritten, args...)
 }
