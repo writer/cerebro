@@ -232,6 +232,7 @@ func (a *App) Close() error {
 	if a.graphCancel != nil {
 		a.graphCancel()
 	}
+	a.stopEventCorrelationRefreshLoop()
 	a.graphConsistencyMu.Lock()
 	if a.graphConsistencyCancel != nil {
 		a.graphConsistencyCancel()
