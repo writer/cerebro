@@ -165,6 +165,8 @@ type App struct {
 	secretsReloadWG               sync.WaitGroup
 	tapMapperOnce                 sync.Once
 	tapMapperErr                  error
+	tapResolveGraphMu             sync.RWMutex
+	tapResolveGraph               *graph.Graph
 	securityGraphInitMu           sync.RWMutex
 	reloadMu                      sync.Mutex
 	apiKeys                       atomic.Value // map[string]string

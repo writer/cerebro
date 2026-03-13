@@ -667,7 +667,7 @@ func (a *App) initEventCorrelationRefreshLoop(ctx context.Context) {
 			}
 			sort.Strings(reasons)
 			pendingReasons = make(map[string]struct{})
-			a.rematerializeEventCorrelations(a.CurrentSecurityGraph(), strings.Join(reasons, ","))
+			a.refreshCurrentEventCorrelations(strings.Join(reasons, ","))
 		}
 		for {
 			select {
@@ -715,7 +715,7 @@ func (a *App) queueEventCorrelationRefresh(reason string) {
 		reason = "tap_mapping"
 	}
 	if a.eventCorrelationRefreshCh == nil {
-		a.rematerializeEventCorrelations(a.CurrentSecurityGraph(), reason)
+		a.refreshCurrentEventCorrelations(reason)
 		return
 	}
 	select {
@@ -745,6 +745,39 @@ func (a *App) stopEventCorrelationRefreshLoop() {
 	}
 	a.eventCorrelationRefreshCh = nil
 	a.eventCorrelationRefreshCancel = nil
+}
+
+func (a *App) refreshCurrentEventCorrelations(reason string) {
+	if a == nil {
+		return
+	}
+	baseCtx := a.graphCtx
+	if baseCtx == nil {
+		baseCtx = context.Background()
+	}
+	var summary graph.EventCorrelationMaterializationSummary
+	_, err := a.MutateSecurityGraphMaybe(baseCtx, func(candidate *graph.Graph) (bool, error) {
+		summary = graph.MaterializeEventCorrelations(candidate, time.Now().UTC())
+		return summary.CorrelationsCreated > 0 || summary.CorrelationsRemoved > 0, nil
+	})
+	if err != nil {
+		if a.Logger != nil {
+			a.Logger.Warn("failed to refresh event correlations on live graph", "reason", strings.TrimSpace(reason), "error", err)
+		}
+		return
+	}
+	if a.Logger == nil {
+		return
+	}
+	if summary.CorrelationsCreated == 0 && summary.CorrelationsRemoved == 0 {
+		return
+	}
+	a.Logger.Info("materialized event correlations into security graph",
+		"reason", strings.TrimSpace(reason),
+		"patterns", summary.PatternsEvaluated,
+		"created", summary.CorrelationsCreated,
+		"removed", summary.CorrelationsRemoved,
+	)
 }
 
 func shouldRefreshEventCorrelations(securityGraph *graph.Graph, nodeIDs []string) bool {

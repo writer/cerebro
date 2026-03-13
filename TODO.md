@@ -5,6 +5,58 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 62 - Graph Concurrency Phase 1: Copy-on-Write Live Mutations (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#144` was still materially open even after builder extraction because the live app/API surfaces were mutating the current `SecurityGraph` instance directly, so copy-on-write rebuilds existed alongside in-place writes on the hot path.
+- [x] Gap: platform knowledge reads and identity calibration were still reading the injected `SecurityGraph` field in the API dependency bundle rather than the runtime's current graph pointer, which made copy-on-write swaps invisible to some read surfaces.
+- [x] Gap: TAP/NATS consumer paths still mutated the live graph directly in multiple places: legacy business fallback ingestion, declarative mapper application, identity resolution during mapper `resolve(...)`, interaction aggregation, and activity materialization.
+- [x] Gap: external references reinforced the same boundary lesson from different angles: `temporalio/temporal` isolates mutable execution/history state behind explicit services, `argoproj/argo-workflows` separates executor/progress/sync responsibilities instead of one shared mutable runtime, `open-metadata/OpenMetadata` treats jobs/events/metadata reads as explicit resources, and the large Wiz GraphQL schema in `/Users/jonathanhaas/Downloads/wiz.graphql` is a useful warning about how fast one ambient graph surface becomes ungovernable when mutation/read boundaries are not explicit.
+
+### Execution plan
+- [x] Introduce an app-level live-graph mutation seam:
+  - [x] add `MutateSecurityGraph(...)` and `MutateSecurityGraphMaybe(...)`
+  - [x] perform clone/mutate/index/swap under `graphUpdateMu`
+  - [x] preserve schema validation and metadata counts across swaps
+  - [x] allow lazy graph initialization through the mutation seam instead of direct hot-path graph creation
+- [x] Move platform/API writeback flows onto copy-on-write:
+  - [x] route claim/observation/decision/outcome/annotation/identity/actuation handlers through the graph mutation seam
+  - [x] fix lifecycle-event emission and tests to reference the swapped current graph instead of stale pointers
+- [x] Move app/tool writeback flows onto copy-on-write:
+  - [x] route Cerebro writeback tools through the same mutation seam
+  - [x] update tool tests to assert against `CurrentSecurityGraph()` after writes
+- [x] Fix stale live-read surfaces:
+  - [x] switch platform knowledge handlers to `CurrentSecurityGraph()`
+  - [x] switch identity calibration to `CurrentSecurityGraph()`
+  - [x] add regressions proving writes become visible through the runtime read surface after swap
+- [x] Move TAP consumer mutation paths onto copy-on-write:
+  - [x] route legacy business fallback event ingestion through `MutateSecurityGraphMaybe(...)`
+  - [x] route declarative mapper application through the mutation seam
+  - [x] bind mapper `resolve(...)` identity writes to the candidate graph instead of the live graph pointer
+  - [x] route interaction aggregation and activity materialization through the mutation seam
+  - [x] keep event-correlation refresh asynchronous and post-swap instead of nested under the mutation lock
+- [x] Prove the concurrency cut with regressions:
+  - [x] add swap-semantics tests for app writebacks
+  - [x] add swap-semantics tests for TAP fallback mutation
+  - [x] add swap-semantics tests for declarative mapping plus identity resolution
+
+### Detailed follow-on backlog
+- [ ] Track A - Shared execution store
+  - Exit criteria:
+  - [ ] move report runs, runtime response attempts, scan executions, replay jobs, and future graph mutation jobs onto one shared execution-state substrate instead of per-process in-memory coordination
+  - [ ] define common execution records for status, attempts, progress, lease/ownership, retry policy, and durable event history
+  - [ ] make API/app/worker paths consume the same execution records so horizontal scale does not depend on sticky process memory
+- [ ] Track B - Graph read-view isolation
+  - Exit criteria:
+  - [ ] identify the hottest read-heavy graph surfaces (`blast_radius`, entity facets, knowledge lists, event correlations) and decide which should remain direct graph traversals vs materialized read views
+  - [ ] add benchmarks for concurrent read throughput during event-ingest write load
+  - [ ] only introduce sharding or MVCC beyond copy-on-write where the benchmark shows actual lock pressure remains
+- [ ] Track C - Consumer/runtime cleanup
+  - Exit criteria:
+  - [ ] remove remaining direct `a.SecurityGraph` hot-path reads in app services where `CurrentSecurityGraph()` is the correct runtime source
+  - [ ] isolate TAP ingestion mutation helpers from read-only parsing helpers so the consumer file stops mixing event parsing, graph mutation, and runtime coordination in one surface
+  - [ ] feed the same mutation seam into later package splits for `internal/graph/knowledge`, `internal/graph/entities`, and future worker-only graph executors
+
 ## Deep Review Cycle 60 - API Service Bundle + App Composition Root Narrowing (2026-03-12)
 
 ### Review findings
