@@ -253,33 +253,3 @@ func loadReportSnapshotPayload(path string) (*persistedReportSnapshotPayload, er
 	}
 	return &payload, nil
 }
-
-func writeJSONAtomic(path string, payload any) error {
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("marshal report run state: %w", err)
-	}
-	dir := filepath.Dir(path)
-	if dir != "." {
-		if err := os.MkdirAll(dir, 0o750); err != nil {
-			return fmt.Errorf("create report run state dir: %w", err)
-		}
-	}
-	tmpFile := path + ".tmp"
-	if err := os.WriteFile(tmpFile, data, 0o600); err != nil {
-		return fmt.Errorf("write report run state: %w", err)
-	}
-	if err := os.Rename(tmpFile, path); err != nil {
-		return fmt.Errorf("commit report run state: %w", err)
-	}
-	return nil
-}
-
-func sanitizeReportFileName(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return "unknown"
-	}
-	replacer := strings.NewReplacer(":", "_", "/", "_", "\\", "_", " ", "_", "?", "_", "*", "_")
-	return replacer.Replace(value)
-}

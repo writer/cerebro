@@ -1,4 +1,4 @@
-package graph
+package builders
 
 import (
 	"context"
@@ -15,13 +15,13 @@ type captureQuerySource struct {
 
 var _ DataSource = (*captureQuerySource)(nil)
 
-func (s *captureQuerySource) Query(ctx context.Context, query string, args ...any) (*QueryResult, error) {
+func (s *captureQuerySource) Query(ctx context.Context, query string, args ...any) (*DataQueryResult, error) {
 	_ = ctx
 	_ = args
 	s.mu.Lock()
 	s.queries = append(s.queries, query)
 	s.mu.Unlock()
-	return &QueryResult{Rows: []map[string]any{}}, nil
+	return &DataQueryResult{Rows: []map[string]any{}}, nil
 }
 
 func (s *captureQuerySource) allQueries() []string {

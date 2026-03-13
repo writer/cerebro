@@ -1,4 +1,4 @@
-package graph
+package builders
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 
 func TestBuilderBuild_KubernetesOntologyAndEdges(t *testing.T) {
 	source := newCDCRoutingSource()
-	source.routes["from k8s_core_pods"] = &QueryResult{Rows: []map[string]any{{
+	source.routes["from k8s_core_pods"] = &DataQueryResult{Rows: []map[string]any{{
 		"_cq_id":               "prod-cluster/pod/payments/payments-api",
 		"uid":                  "pod-uid-1",
 		"name":                 "payments-api",
@@ -30,7 +30,7 @@ func TestBuilderBuild_KubernetesOntologyAndEdges(t *testing.T) {
 		"status": map[string]any{"phase": "Running"},
 		"labels": map[string]any{"app": "payments"},
 	}}}
-	source.routes["from k8s_core_namespaces"] = &QueryResult{Rows: []map[string]any{{
+	source.routes["from k8s_core_namespaces"] = &DataQueryResult{Rows: []map[string]any{{
 		"_cq_id":                            "prod-cluster/namespace/payments",
 		"uid":                               "ns-uid-1",
 		"name":                              "payments",
@@ -40,7 +40,7 @@ func TestBuilderBuild_KubernetesOntologyAndEdges(t *testing.T) {
 		"network_policies_with_selector":    1,
 		"network_policies_without_selector": 1,
 	}}}
-	source.routes["from k8s_core_service_accounts"] = &QueryResult{Rows: []map[string]any{{
+	source.routes["from k8s_core_service_accounts"] = &DataQueryResult{Rows: []map[string]any{{
 		"_cq_id":                          "prod-cluster/serviceaccount/payments/payments-sa",
 		"uid":                             "sa-uid-1",
 		"name":                            "payments-sa",
@@ -49,7 +49,7 @@ func TestBuilderBuild_KubernetesOntologyAndEdges(t *testing.T) {
 		"automount_service_account_token": true,
 		"secrets":                         []any{"payments-token"},
 	}}}
-	source.routes["from k8s_apps_deployments"] = &QueryResult{Rows: []map[string]any{{
+	source.routes["from k8s_apps_deployments"] = &DataQueryResult{Rows: []map[string]any{{
 		"_cq_id":             "prod-cluster/deployment/payments/payments-api",
 		"uid":                "deploy-uid-1",
 		"name":               "payments-api",
@@ -59,7 +59,7 @@ func TestBuilderBuild_KubernetesOntologyAndEdges(t *testing.T) {
 		"available_replicas": 3,
 		"template":           map[string]any{"spec": map[string]any{"service_account_name": "payments-sa"}},
 	}}}
-	source.routes["from k8s_rbac_cluster_roles"] = &QueryResult{Rows: []map[string]any{{
+	source.routes["from k8s_rbac_cluster_roles"] = &DataQueryResult{Rows: []map[string]any{{
 		"_cq_id":       "prod-cluster/clusterrole/cluster-admin",
 		"uid":          "cr-uid-1",
 		"name":         "cluster-admin",
@@ -71,7 +71,7 @@ func TestBuilderBuild_KubernetesOntologyAndEdges(t *testing.T) {
 			},
 		},
 	}}}
-	source.routes["from k8s_rbac_roles"] = &QueryResult{Rows: []map[string]any{{
+	source.routes["from k8s_rbac_roles"] = &DataQueryResult{Rows: []map[string]any{{
 		"_cq_id":       "prod-cluster/role/payments/payments-reader",
 		"uid":          "role-uid-1",
 		"name":         "payments-reader",
@@ -84,7 +84,7 @@ func TestBuilderBuild_KubernetesOntologyAndEdges(t *testing.T) {
 			},
 		},
 	}}}
-	source.routes["from k8s_rbac_cluster_role_bindings"] = &QueryResult{Rows: []map[string]any{{
+	source.routes["from k8s_rbac_cluster_role_bindings"] = &DataQueryResult{Rows: []map[string]any{{
 		"_cq_id":       "prod-cluster/clusterrolebinding/payments-admins",
 		"uid":          "crb-uid-1",
 		"name":         "payments-admins",
@@ -94,7 +94,7 @@ func TestBuilderBuild_KubernetesOntologyAndEdges(t *testing.T) {
 			map[string]any{"kind": "ServiceAccount", "namespace": "payments", "name": "payments-sa"},
 		},
 	}}}
-	source.routes["from k8s_rbac_role_bindings"] = &QueryResult{Rows: []map[string]any{{
+	source.routes["from k8s_rbac_role_bindings"] = &DataQueryResult{Rows: []map[string]any{{
 		"_cq_id":       "prod-cluster/rolebinding/payments/payments-readers",
 		"uid":          "rb-uid-1",
 		"name":         "payments-readers",
@@ -105,7 +105,7 @@ func TestBuilderBuild_KubernetesOntologyAndEdges(t *testing.T) {
 			map[string]any{"kind": "ServiceAccount", "namespace": "payments", "name": "payments-sa"},
 		},
 	}}}
-	source.routes["from k8s_core_configmaps"] = &QueryResult{Rows: []map[string]any{{
+	source.routes["from k8s_core_configmaps"] = &DataQueryResult{Rows: []map[string]any{{
 		"_cq_id":           "prod-cluster/configmap/payments/payments-config",
 		"uid":              "cfg-uid-1",
 		"name":             "payments-config",
@@ -115,7 +115,7 @@ func TestBuilderBuild_KubernetesOntologyAndEdges(t *testing.T) {
 		"data_keys":        []any{"LOG_LEVEL", "TIMEOUT"},
 		"binary_data_keys": []any{},
 	}}}
-	source.routes["from k8s_core_persistent_volumes"] = &QueryResult{Rows: []map[string]any{{
+	source.routes["from k8s_core_persistent_volumes"] = &DataQueryResult{Rows: []map[string]any{{
 		"_cq_id":             "prod-cluster/persistentvolume/payments-pv",
 		"uid":                "pv-uid-1",
 		"name":               "payments-pv",
@@ -128,7 +128,7 @@ func TestBuilderBuild_KubernetesOntologyAndEdges(t *testing.T) {
 		"volume_mode":        "Filesystem",
 		"claim_ref":          map[string]any{"namespace": "payments", "name": "payments-pvc"},
 	}}}
-	source.routes["from k8s_rbac_service_account_bindings"] = &QueryResult{Rows: []map[string]any{{
+	source.routes["from k8s_rbac_service_account_bindings"] = &DataQueryResult{Rows: []map[string]any{{
 		"cluster_name":              "prod-cluster",
 		"binding_kind":              "ClusterRoleBinding",
 		"binding_name":              "payments-admins",

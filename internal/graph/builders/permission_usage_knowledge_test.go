@@ -1,4 +1,4 @@
-package graph
+package builders
 
 import (
 	"context"
@@ -25,7 +25,7 @@ func TestBuildAWSIAMPermissionUsageKnowledgeWritesObservationAndClaim(t *testing
 	observedAt := time.Date(2026, 3, 10, 8, 0, 0, 0, time.UTC)
 	windowStart := observedAt.Add(-180 * 24 * time.Hour)
 
-	source.setResult(awsIAMPermissionUsageKnowledgeQuery, &QueryResult{Rows: []map[string]any{
+	source.setResult(awsIAMPermissionUsageKnowledgeQuery, &DataQueryResult{Rows: []map[string]any{
 		{
 			"_cq_id":                       "row-aws-1",
 			"account_id":                   "123456789012",
@@ -91,7 +91,7 @@ func TestBuildGCPIAMPermissionUsageKnowledgeCreatesGroupSubject(t *testing.T) {
 	observedAt := time.Date(2026, 3, 10, 8, 0, 0, 0, time.UTC)
 	windowStart := observedAt.Add(-90 * 24 * time.Hour)
 
-	source.setResult(gcpIAMPermissionUsageKnowledgeQuery, &QueryResult{Rows: []map[string]any{
+	source.setResult(gcpIAMPermissionUsageKnowledgeQuery, &DataQueryResult{Rows: []map[string]any{
 		{
 			"_cq_id":                 "row-gcp-1",
 			"project_id":             "writer-prod",
@@ -156,7 +156,7 @@ func TestBuildGCPIAMPermissionUsageKnowledgePreservesAttributionUncertain(t *tes
 	observedAt := time.Date(2026, 3, 10, 8, 0, 0, 0, time.UTC)
 	windowStart := observedAt.Add(-90 * 24 * time.Hour)
 
-	source.setResult(gcpIAMPermissionUsageKnowledgeQuery, &QueryResult{Rows: []map[string]any{
+	source.setResult(gcpIAMPermissionUsageKnowledgeQuery, &DataQueryResult{Rows: []map[string]any{
 		{
 			"_cq_id":                 "row-gcp-uncertain-1",
 			"project_id":             "writer-prod",
@@ -205,7 +205,7 @@ func TestBuildCandidateWritesPermissionUsageIntoCandidateOnly(t *testing.T) {
 	observedAt := time.Date(2026, 3, 10, 8, 0, 0, 0, time.UTC)
 	windowStart := observedAt.Add(-90 * 24 * time.Hour)
 
-	source.setResult(gcpIAMPermissionUsageKnowledgeQuery, &QueryResult{Rows: []map[string]any{{
+	source.setResult(gcpIAMPermissionUsageKnowledgeQuery, &DataQueryResult{Rows: []map[string]any{{
 		"_cq_id":                 "row-gcp-1",
 		"project_id":             "writer-prod",
 		"group_email":            "eng@example.com",
