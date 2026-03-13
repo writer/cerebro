@@ -2,9 +2,12 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/writer/cerebro/internal/actionengine"
 )
 
 // ResponseEngine handles automated threat response actions
@@ -13,6 +16,7 @@ type ResponseEngine struct {
 	executions    []*ResponseExecution
 	blocklist     *Blocklist
 	actionHandler ActionHandler
+	shared        *actionengine.Executor
 	mu            sync.RWMutex
 }
 
@@ -89,6 +93,7 @@ type ResponseExecution struct {
 	PolicyID     string            `json:"policy_id"`
 	PolicyName   string            `json:"policy_name"`
 	TriggerEvent string            `json:"trigger_event"`
+	TriggerData  map[string]any    `json:"trigger_data,omitempty"`
 	Actions      []ActionExecution `json:"actions"`
 	Status       ExecutionStatus   `json:"status"`
 	ResourceID   string            `json:"resource_id"`
@@ -156,6 +161,7 @@ func NewResponseEngine() *ResponseEngine {
 		policies:   make(map[string]*ResponsePolicy),
 		executions: make([]*ResponseExecution, 0),
 		blocklist:  NewBlocklist(),
+		shared:     actionengine.NewExecutor(nil),
 	}
 	engine.loadDefaultPolicies()
 	return engine
@@ -172,6 +178,13 @@ func NewBlocklist() *Blocklist {
 
 func (e *ResponseEngine) SetActionHandler(handler ActionHandler) {
 	e.actionHandler = handler
+}
+
+func (e *ResponseEngine) SetSharedExecutor(shared *actionengine.Executor) {
+	if shared == nil {
+		return
+	}
+	e.shared = shared
 }
 
 func (e *ResponseEngine) loadDefaultPolicies() {
@@ -283,19 +296,23 @@ func (e *ResponseEngine) loadDefaultPolicies() {
 // ProcessFinding evaluates a runtime finding against policies
 func (e *ResponseEngine) ProcessFinding(ctx context.Context, finding *RuntimeFinding) (*ResponseExecution, error) {
 	e.mu.RLock()
-	defer e.mu.RUnlock()
-
+	var matched *ResponsePolicy
 	for _, policy := range e.policies {
 		if !policy.Enabled {
 			continue
 		}
 
 		if e.matchesTriggers(finding, policy.Triggers) {
-			return e.createExecution(ctx, policy, finding), nil
+			matched = cloneResponsePolicy(policy)
+			break
 		}
 	}
+	e.mu.RUnlock()
 
-	return nil, nil
+	if matched == nil {
+		return nil, nil
+	}
+	return e.createExecution(ctx, matched, finding), nil
 }
 
 func (e *ResponseEngine) matchesTriggers(finding *RuntimeFinding, triggers []PolicyTrigger) bool {
@@ -335,74 +352,16 @@ func severityMatches(actual, required string) bool {
 }
 
 func (e *ResponseEngine) createExecution(ctx context.Context, policy *ResponsePolicy, finding *RuntimeFinding) *ResponseExecution {
-	execution := &ResponseExecution{
-		ID:           fmt.Sprintf("exec-%s-%d", policy.ID, time.Now().UnixNano()),
-		PolicyID:     policy.ID,
-		PolicyName:   policy.Name,
-		TriggerEvent: finding.ID,
-		Status:       StatusPending,
-		ResourceID:   finding.ResourceID,
-		ResourceType: finding.ResourceType,
-		StartTime:    time.Now(),
-	}
+	playbook := runtimePlaybookFromPolicy(policy)
+	signal := runtimeSignalFromFinding(finding)
+	sharedExecution := e.shared.NewExecution(playbook, signal)
+	_ = e.shared.Execute(ctx, sharedExecution, playbook, signal, runtimeStepRunner{engine: e})
 
-	if policy.RequireApproval {
-		execution.Status = StatusApproval
-		e.mu.Lock()
-		e.executions = append(e.executions, execution)
-		e.mu.Unlock()
-		return execution
-	}
-
-	// Execute immediately
-	execution.Status = StatusRunning
-	err := e.executeActions(ctx, execution, policy.Actions, finding)
-	if err != nil {
-		execution.Status = StatusFailed
-		execution.Error = err.Error()
-	} else {
-		execution.Status = StatusCompleted
-	}
-
-	now := time.Now()
-	execution.EndTime = &now
-
+	execution := responseExecutionFromShared(sharedExecution, policy)
 	e.mu.Lock()
 	e.executions = append(e.executions, execution)
 	e.mu.Unlock()
-
 	return execution
-}
-
-func (e *ResponseEngine) executeActions(ctx context.Context, execution *ResponseExecution, actions []PolicyAction, finding *RuntimeFinding) error {
-	for _, action := range actions {
-		actionExec := ActionExecution{
-			Type:      action.Type,
-			Status:    StatusRunning,
-			StartTime: time.Now(),
-		}
-
-		err := e.executeAction(ctx, action, finding)
-
-		now := time.Now()
-		actionExec.EndTime = &now
-
-		if err != nil {
-			actionExec.Status = StatusFailed
-			actionExec.Error = err.Error()
-
-			if action.OnFailure == "abort" {
-				execution.Actions = append(execution.Actions, actionExec)
-				return err
-			}
-		} else {
-			actionExec.Status = StatusCompleted
-		}
-
-		execution.Actions = append(execution.Actions, actionExec)
-	}
-
-	return nil
 }
 
 func (e *ResponseEngine) executeAction(ctx context.Context, action PolicyAction, finding *RuntimeFinding) error {
@@ -455,51 +414,437 @@ func (e *ResponseEngine) executeAction(ctx context.Context, action PolicyAction,
 	return nil
 }
 
+type runtimeStepRunner struct {
+	engine *ResponseEngine
+}
+
+func (r runtimeStepRunner) RunStep(ctx context.Context, step actionengine.Step, signal actionengine.Signal, execution *actionengine.Execution) (string, error) {
+	if r.engine == nil {
+		return "", fmt.Errorf("response engine is nil")
+	}
+	action := PolicyAction{
+		Type:       ResponseActionType(step.Type),
+		Parameters: cloneRuntimeStringMap(step.Parameters),
+		Timeout:    step.TimeoutSeconds,
+	}
+	finding := runtimeFindingFromSignal(signal)
+	if err := r.engine.executeAction(ctx, action, finding); err != nil {
+		return "", err
+	}
+	return step.Type + " executed", nil
+}
+
+func runtimePlaybookFromPolicy(policy *ResponsePolicy) actionengine.Playbook {
+	if policy == nil {
+		return actionengine.Playbook{}
+	}
+	steps := make([]actionengine.Step, 0, len(policy.Actions))
+	for idx, action := range policy.Actions {
+		failurePolicy := actionengine.FailurePolicyContinue
+		if action.OnFailure == "abort" {
+			failurePolicy = actionengine.FailurePolicyAbort
+		}
+		steps = append(steps, actionengine.Step{
+			ID:             fmt.Sprintf("%s-step-%d", policy.ID, idx+1),
+			Type:           string(action.Type),
+			Parameters:     cloneRuntimeStringMap(action.Parameters),
+			TimeoutSeconds: action.Timeout,
+			OnFailure:      failurePolicy,
+		})
+	}
+	triggers := make([]actionengine.Trigger, 0, len(policy.Triggers))
+	for _, trigger := range policy.Triggers {
+		triggers = append(triggers, actionengine.Trigger{
+			Kind:              trigger.Type,
+			Severity:          trigger.Severity,
+			SeverityMatchMode: actionengine.SeverityMatchMinimum,
+			Category:          string(trigger.Category),
+			RuleID:            trigger.RuleID,
+			Conditions:        cloneRuntimeStringMap(trigger.Conditions),
+		})
+	}
+	return actionengine.Playbook{
+		ID:              policy.ID,
+		Name:            policy.Name,
+		Description:     policy.Description,
+		Enabled:         policy.Enabled,
+		Priority:        policy.Priority,
+		Triggers:        triggers,
+		Steps:           steps,
+		RequireApproval: policy.RequireApproval,
+		CreatedAt:       policy.CreatedAt,
+		UpdatedAt:       policy.UpdatedAt,
+	}
+}
+
+func runtimeSignalFromFinding(finding *RuntimeFinding) actionengine.Signal {
+	signal := actionengine.Signal{
+		ID:           findingID(finding),
+		Kind:         "finding",
+		Severity:     findingSeverity(finding),
+		Category:     string(findingCategory(finding)),
+		RuleID:       findingRuleID(finding),
+		ResourceID:   findingResourceID(finding),
+		ResourceType: findingResourceType(finding),
+		Data:         map[string]any{},
+		CreatedAt:    time.Now().UTC(),
+	}
+	if finding == nil {
+		return signal
+	}
+	var payload map[string]any
+	if bytes, err := json.Marshal(finding); err == nil {
+		_ = json.Unmarshal(bytes, &payload)
+	}
+	if payload != nil {
+		signal.Data["finding"] = payload
+	}
+	if signal.RuleID != "" {
+		signal.Data["rule_id"] = signal.RuleID
+	}
+	if signal.ResourceID != "" {
+		signal.Data["resource_id"] = signal.ResourceID
+	}
+	if signal.ResourceType != "" {
+		signal.Data["resource_type"] = signal.ResourceType
+	}
+	return signal
+}
+
+func runtimeSignalFromTriggerData(data map[string]any) actionengine.Signal {
+	signal := actionengine.Signal{
+		ID:           runtimeMapValueToString(data, "finding_id"),
+		Kind:         firstNonEmptyRuntime(runtimeMapValueToString(data, "signal_kind"), runtimeMapValueToString(data, "type"), "finding"),
+		Severity:     runtimeMapValueToString(data, "severity"),
+		Category:     runtimeMapValueToString(data, "category"),
+		RuleID:       runtimeMapValueToString(data, "rule_id"),
+		ResourceID:   runtimeMapValueToString(data, "resource_id"),
+		ResourceType: runtimeMapValueToString(data, "resource_type"),
+		Data:         cloneRuntimeAnyMap(data),
+		CreatedAt:    time.Now().UTC(),
+	}
+	return signal
+}
+
+func runtimeFindingFromSignal(signal actionengine.Signal) *RuntimeFinding {
+	if signal.Data != nil {
+		if raw, ok := signal.Data["finding"]; ok {
+			bytes, err := json.Marshal(raw)
+			if err == nil {
+				var finding RuntimeFinding
+				if err := json.Unmarshal(bytes, &finding); err == nil {
+					if finding.ID == "" {
+						finding.ID = signal.ID
+					}
+					if finding.ResourceID == "" {
+						finding.ResourceID = signal.ResourceID
+					}
+					if finding.ResourceType == "" {
+						finding.ResourceType = signal.ResourceType
+					}
+					if finding.Severity == "" {
+						finding.Severity = signal.Severity
+					}
+					if finding.Category == "" {
+						finding.Category = DetectionCategory(signal.Category)
+					}
+					return &finding
+				}
+			}
+		}
+	}
+	return &RuntimeFinding{
+		ID:           signal.ID,
+		Severity:     signal.Severity,
+		Category:     DetectionCategory(signal.Category),
+		RuleID:       signal.RuleID,
+		ResourceID:   signal.ResourceID,
+		ResourceType: signal.ResourceType,
+	}
+}
+
+func responseExecutionFromShared(shared *actionengine.Execution, policy *ResponsePolicy) *ResponseExecution {
+	execution := &ResponseExecution{
+		ID:           shared.ID,
+		PolicyID:     shared.PlaybookID,
+		PolicyName:   shared.PlaybookName,
+		TriggerEvent: shared.SignalID,
+		TriggerData:  cloneRuntimeAnyMap(shared.TriggerData),
+		Status:       sharedStatusToRuntime(shared.Status),
+		ResourceID:   shared.ResourceID,
+		ResourceType: shared.ResourceType,
+		ApprovedBy:   shared.ApprovedBy,
+		ApprovedAt:   shared.ApprovedAt,
+		StartTime:    shared.StartedAt,
+		EndTime:      shared.CompletedAt,
+		Error:        shared.Error,
+		Actions:      make([]ActionExecution, 0, len(shared.Results)),
+	}
+	if policy != nil && execution.PolicyName == "" {
+		execution.PolicyName = policy.Name
+	}
+	for _, result := range shared.Results {
+		execution.Actions = append(execution.Actions, ActionExecution{
+			Type:      ResponseActionType(result.Type),
+			Status:    sharedStatusToRuntime(result.Status),
+			StartTime: result.StartedAt,
+			EndTime:   result.CompletedAt,
+			Output:    result.Output,
+			Error:     result.Error,
+		})
+	}
+	return execution
+}
+
+func runtimeExecutionToShared(execution *ResponseExecution) *actionengine.Execution {
+	shared := &actionengine.Execution{
+		ID:           execution.ID,
+		PlaybookID:   execution.PolicyID,
+		PlaybookName: execution.PolicyName,
+		SignalID:     execution.TriggerEvent,
+		Status:       runtimeStatusToShared(execution.Status),
+		ResourceID:   execution.ResourceID,
+		ResourceType: execution.ResourceType,
+		TriggerData:  cloneRuntimeAnyMap(execution.TriggerData),
+		Results:      make([]actionengine.ActionResult, 0, len(execution.Actions)),
+		ApprovedBy:   execution.ApprovedBy,
+		ApprovedAt:   execution.ApprovedAt,
+		StartedAt:    execution.StartTime,
+		CompletedAt:  execution.EndTime,
+		Error:        execution.Error,
+	}
+	for _, action := range execution.Actions {
+		shared.Results = append(shared.Results, actionengine.ActionResult{
+			Type:        string(action.Type),
+			Status:      runtimeStatusToShared(action.Status),
+			Output:      action.Output,
+			Error:       action.Error,
+			StartedAt:   action.StartTime,
+			CompletedAt: action.EndTime,
+		})
+	}
+	return shared
+}
+
+func applySharedResponseExecution(target *ResponseExecution, shared *actionengine.Execution) {
+	if target == nil || shared == nil {
+		return
+	}
+	target.Status = sharedStatusToRuntime(shared.Status)
+	target.TriggerData = cloneRuntimeAnyMap(shared.TriggerData)
+	target.ResourceID = shared.ResourceID
+	target.ResourceType = shared.ResourceType
+	target.ApprovedBy = shared.ApprovedBy
+	target.ApprovedAt = shared.ApprovedAt
+	target.StartTime = shared.StartedAt
+	target.EndTime = shared.CompletedAt
+	target.Error = shared.Error
+	target.Actions = make([]ActionExecution, 0, len(shared.Results))
+	for _, result := range shared.Results {
+		target.Actions = append(target.Actions, ActionExecution{
+			Type:      ResponseActionType(result.Type),
+			Status:    sharedStatusToRuntime(result.Status),
+			StartTime: result.StartedAt,
+			EndTime:   result.CompletedAt,
+			Output:    result.Output,
+			Error:     result.Error,
+		})
+	}
+}
+
+func runtimeStatusToShared(status ExecutionStatus) actionengine.Status {
+	switch status {
+	case StatusApproval:
+		return actionengine.StatusAwaitingApproval
+	case StatusRunning:
+		return actionengine.StatusRunning
+	case StatusCompleted:
+		return actionengine.StatusCompleted
+	case StatusFailed:
+		return actionengine.StatusFailed
+	case StatusCanceled:
+		return actionengine.StatusCanceled
+	default:
+		return actionengine.StatusPending
+	}
+}
+
+func sharedStatusToRuntime(status actionengine.Status) ExecutionStatus {
+	switch status {
+	case actionengine.StatusAwaitingApproval:
+		return StatusApproval
+	case actionengine.StatusRunning:
+		return StatusRunning
+	case actionengine.StatusCompleted:
+		return StatusCompleted
+	case actionengine.StatusFailed:
+		return StatusFailed
+	case actionengine.StatusCanceled:
+		return StatusCanceled
+	default:
+		return StatusPending
+	}
+}
+
+func findingID(finding *RuntimeFinding) string {
+	if finding == nil {
+		return ""
+	}
+	return finding.ID
+}
+
+func findingSeverity(finding *RuntimeFinding) string {
+	if finding == nil {
+		return ""
+	}
+	return finding.Severity
+}
+
+func findingCategory(finding *RuntimeFinding) DetectionCategory {
+	if finding == nil {
+		return ""
+	}
+	return finding.Category
+}
+
+func findingRuleID(finding *RuntimeFinding) string {
+	if finding == nil {
+		return ""
+	}
+	return finding.RuleID
+}
+
+func findingResourceID(finding *RuntimeFinding) string {
+	if finding == nil {
+		return ""
+	}
+	return finding.ResourceID
+}
+
+func findingResourceType(finding *RuntimeFinding) string {
+	if finding == nil {
+		return ""
+	}
+	return finding.ResourceType
+}
+
+func cloneRuntimeStringMap(input map[string]string) map[string]string {
+	if len(input) == 0 {
+		return nil
+	}
+	cloned := make(map[string]string, len(input))
+	for key, value := range input {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func cloneResponsePolicy(policy *ResponsePolicy) *ResponsePolicy {
+	if policy == nil {
+		return nil
+	}
+	cloned := *policy
+	if len(policy.Triggers) > 0 {
+		cloned.Triggers = make([]PolicyTrigger, 0, len(policy.Triggers))
+		for _, trigger := range policy.Triggers {
+			triggerCopy := trigger
+			triggerCopy.Conditions = cloneRuntimeStringMap(trigger.Conditions)
+			cloned.Triggers = append(cloned.Triggers, triggerCopy)
+		}
+	}
+	if len(policy.Actions) > 0 {
+		cloned.Actions = make([]PolicyAction, 0, len(policy.Actions))
+		for _, action := range policy.Actions {
+			actionCopy := action
+			actionCopy.Parameters = cloneRuntimeStringMap(action.Parameters)
+			cloned.Actions = append(cloned.Actions, actionCopy)
+		}
+	}
+	cloned.Scope = PolicyScope{
+		Clusters:   append([]string(nil), policy.Scope.Clusters...),
+		Namespaces: append([]string(nil), policy.Scope.Namespaces...),
+		Accounts:   append([]string(nil), policy.Scope.Accounts...),
+		Regions:    append([]string(nil), policy.Scope.Regions...),
+		Tags:       cloneRuntimeStringMap(policy.Scope.Tags),
+	}
+	return &cloned
+}
+
+func cloneRuntimeAnyMap(input map[string]any) map[string]any {
+	if len(input) == 0 {
+		return nil
+	}
+	cloned := make(map[string]any, len(input))
+	for key, value := range input {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func runtimeMapValueToString(values map[string]any, key string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	value, ok := values[key]
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf("%v", value)
+}
+
+func firstNonEmptyRuntime(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 // ApproveExecution approves a pending execution
 func (e *ResponseEngine) ApproveExecution(ctx context.Context, executionID, approver string) error {
 	e.mu.Lock()
-	defer e.mu.Unlock()
-
+	var target *ResponseExecution
+	var policyCopy *ResponsePolicy
+	var sharedExecution *actionengine.Execution
+	var signal actionengine.Signal
 	for _, exec := range e.executions {
 		if exec.ID == executionID {
 			if exec.Status != StatusApproval {
+				e.mu.Unlock()
 				return fmt.Errorf("execution not awaiting approval")
 			}
 
-			now := time.Now()
-			exec.ApprovedBy = approver
-			exec.ApprovedAt = &now
-			exec.Status = StatusRunning
-
-			// Get policy and execute
 			policy, ok := e.policies[exec.PolicyID]
 			if !ok {
+				e.mu.Unlock()
 				return fmt.Errorf("policy not found")
 			}
-
-			// Create dummy finding for execution
-			finding := &RuntimeFinding{
-				ID:         exec.TriggerEvent,
-				ResourceID: exec.ResourceID,
-			}
-
-			go func() {
-				err := e.executeActions(ctx, exec, policy.Actions, finding)
-				if err != nil {
-					exec.Status = StatusFailed
-					exec.Error = err.Error()
-				} else {
-					exec.Status = StatusCompleted
-				}
-				end := time.Now()
-				exec.EndTime = &end
-			}()
-
-			return nil
+			target = exec
+			policyCopy = cloneResponsePolicy(policy)
+			now := time.Now().UTC()
+			target.Status = StatusRunning
+			target.ApprovedBy = approver
+			target.ApprovedAt = &now
+			target.Error = ""
+			sharedExecution = runtimeExecutionToShared(target)
+			signal = runtimeSignalFromTriggerData(target.TriggerData)
+			break
 		}
 	}
+	e.mu.Unlock()
 
-	return fmt.Errorf("execution not found")
+	if target == nil || policyCopy == nil || sharedExecution == nil {
+		return fmt.Errorf("execution not found")
+	}
+	err := e.shared.Approve(ctx, sharedExecution, approver, runtimePlaybookFromPolicy(policyCopy), signal, runtimeStepRunner{engine: e})
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	applySharedResponseExecution(target, sharedExecution)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // RejectExecution rejects a pending execution
@@ -513,10 +858,9 @@ func (e *ResponseEngine) RejectExecution(executionID, rejecter, reason string) e
 				return fmt.Errorf("execution not awaiting approval")
 			}
 
-			exec.Status = StatusCanceled
-			exec.Error = fmt.Sprintf("Rejected by %s: %s", rejecter, reason)
-			now := time.Now()
-			exec.EndTime = &now
+			sharedExecution := runtimeExecutionToShared(exec)
+			_ = e.shared.Reject(context.Background(), sharedExecution, rejecter, reason)
+			applySharedResponseExecution(exec, sharedExecution)
 			return nil
 		}
 	}
