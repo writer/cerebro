@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"io"
 	"log/slog"
@@ -18,6 +19,7 @@ import (
 func TestInitFindings_FallsBackToConfiguredWarehouseMetadata(t *testing.T) {
 	a := &App{
 		Config: &Config{
+			WarehouseBackend:  "snowflake",
 			SnowflakeDatabase: "RAW",
 			SnowflakeSchema:   "PUBLIC",
 		},
@@ -96,5 +98,53 @@ func TestNewInMemoryFindingsStore_WarnsOnExplicitUnlimitedConfig(t *testing.T) {
 
 	if !strings.Contains(logs.String(), "configured without size or retention bounds") {
 		t.Fatalf("expected unlimited findings warning, got %q", logs.String())
+	}
+}
+
+func TestInitWarehouse_UsesSQLiteBackend(t *testing.T) {
+	a := &App{
+		Config: &Config{
+			WarehouseBackend:    "sqlite",
+			WarehouseSQLitePath: filepath.Join(t.TempDir(), "warehouse.db"),
+		},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	if err := a.initWarehouse(context.Background()); err != nil {
+		t.Fatalf("init warehouse: %v", err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+
+	if a.Warehouse == nil {
+		t.Fatal("expected sqlite warehouse to be initialized")
+	}
+	if a.Snowflake != nil {
+		t.Fatal("expected snowflake client to stay nil for sqlite backend")
+	}
+	if got := a.Warehouse.Database(); got != "sqlite" {
+		t.Fatalf("expected sqlite warehouse database label, got %q", got)
+	}
+}
+
+func TestInitFindings_UsesSQLiteStoreForSQLiteWarehouse(t *testing.T) {
+	a := &App{
+		Config: &Config{
+			WarehouseBackend:    "sqlite",
+			WarehouseSQLitePath: filepath.Join(t.TempDir(), "warehouse.db"),
+		},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	if err := a.initWarehouse(context.Background()); err != nil {
+		t.Fatalf("init warehouse: %v", err)
+	}
+	t.Setenv("CEREBRO_DB_PATH", filepath.Join(t.TempDir(), "findings.db"))
+
+	a.initFindings()
+
+	if _, ok := a.Findings.(*findings.SQLiteStore); !ok {
+		t.Fatalf("expected sqlite findings store for sqlite warehouse, got %T", a.Findings)
+	}
+	if a.SnowflakeFindings != nil {
+		t.Fatal("expected no snowflake findings store for sqlite warehouse backend")
 	}
 }

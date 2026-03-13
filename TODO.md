@@ -5,6 +5,42 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 70 - Pluggable Warehouse Backends and Local Zero-Dependency Graph Startup (2026-03-13)
+
+### Review findings
+- [x] Gap: issue `#250` still had the classic half-abstraction smell: `DataWarehouse` existed, but app bootstrap still hard-wired Snowflake as the only real warehouse path.
+- [x] Gap: local startup could pretend to have a warehouse backend, but scanner watermark persistence still emitted Snowflake-only SQL (`TIMESTAMP_NTZ`, `MERGE`, `CURRENT_TIMESTAMP()`), so SQLite was not actually a first-class backend.
+- [x] Gap: findings initialization still treated any warehouse `*sql.DB` as a Snowflake store, which would have made new backends inherit broken SQL semantics immediately.
+- [x] Gap: the right upstream storage shapes are consistent:
+  - [x] `openfga/openfga` keeps one storage contract with backend-specific packages plus shared SQL helpers (`pkg/storage`, `pkg/storage/sqlcommon`, `pkg/storage/postgres`, `pkg/storage/sqlite`).
+  - [x] `authzed/spicedb` keeps datastore backends explicit (`internal/datastore/postgres`, `mysql`, `spanner`, `memdb`) instead of hiding backend semantics behind one magical implementation.
+  - [x] `dagster-io/dagster` keeps storage base contracts separate from concrete SQLite/Postgres storage modules, which matches the direction Cerebro needs for warehouse selection.
+  - [x] the local Wiz schema dump in `/Users/jonathanhaas/Downloads/other/wiz.graphql` reinforces that broad graph/query surfaces stay tractable only when the underlying source layer is typed and backend-neutral instead of implicitly tied to one warehouse vendor.
+
+### Execution plan
+- [x] Add concrete warehouse backends behind `internal/warehouse`:
+  - [x] add `SQLiteWarehouse`
+  - [x] add `PostgresWarehouse`
+  - [x] keep Snowflake as the existing production backend
+- [x] Add backend selection during app bootstrap:
+  - [x] add `WAREHOUSE_BACKEND=snowflake|sqlite|postgres`
+  - [x] add `WAREHOUSE_SQLITE_PATH`
+  - [x] add `WAREHOUSE_POSTGRES_DSN`
+  - [x] default to Snowflake when Snowflake auth is present, otherwise default to SQLite for local zero-dependency startup
+- [x] Make warehouse-adjacent persistence backend-aware:
+  - [x] teach `scanner.WatermarkStore` SQLite-safe DDL/upsert semantics
+  - [x] add PostgreSQL-safe watermark DDL/upsert semantics
+  - [x] keep Snowflake merge-based persistence for the existing production path
+- [x] Remove Snowflake leakage from non-Snowflake app startup:
+  - [x] only use `findings.SnowflakeStore` when the Snowflake backend is actually selected
+  - [x] keep SQLite findings persistence for SQLite/Postgres warehouse modes until a generic SQL findings store exists
+  - [x] keep Snowflake-only repositories gated behind the real Snowflake client
+- [x] Add regression coverage and docs:
+  - [x] sqlite warehouse tests
+  - [x] sqlite watermark persistence test
+  - [x] sqlite-backend startup/graph readiness tests
+  - [x] config docs update for warehouse backend env vars
+
 ## Deep Review Cycle 69 - Tenant-Scoped Graph Reads and Cross-Tenant Audit Guards (2026-03-13)
 
 ### Review findings

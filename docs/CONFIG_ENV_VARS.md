@@ -2,7 +2,7 @@
 
 Generated from `internal/app/app_config.go` (`LoadConfig`) via `go run ./scripts/generate_config_docs/main.go`.
 
-Total variables: **314**
+Total variables: **317**
 
 | Variable | Reader(s) | Default(s) | Config Field(s) | Validation rule(s) |
 |---|---|---|---|---|
@@ -276,12 +276,12 @@ Total variables: **314**
 | `SLACK_API_TOKEN` | `getEnv` | `""` | `SlackAPIToken` | `-` |
 | `SLACK_SIGNING_SECRET` | `getEnv` | `""` | `SlackSigningSecret` | `-` |
 | `SLACK_WEBHOOK_URL` | `getEnv` | `""` | `SlackWebhookURL` | `-` |
-| `SNOWFLAKE_ACCOUNT` | `getEnv` | `""` | `SnowflakeAccount` | `when any Snowflake auth field is set, all three are required` |
+| `SNOWFLAKE_ACCOUNT` | `getEnv` | `""` | `-` | `when the Snowflake backend is selected or any Snowflake auth field is set, all three auth fields are required` |
 | `SNOWFLAKE_DATABASE` | `getEnv` | `"CEREBRO"` | `SnowflakeDatabase` | `-` |
-| `SNOWFLAKE_PRIVATE_KEY` | `getEnv` | `""` | `SnowflakePrivateKey` | `when any Snowflake auth field is set, all three are required` |
+| `SNOWFLAKE_PRIVATE_KEY` | `getEnv` | `""` | `-` | `when the Snowflake backend is selected or any Snowflake auth field is set, all three auth fields are required` |
 | `SNOWFLAKE_ROLE` | `getEnv` | `""` | `SnowflakeRole` | `-` |
 | `SNOWFLAKE_SCHEMA` | `getEnv` | `"CEREBRO"` | `SnowflakeSchema` | `-` |
-| `SNOWFLAKE_USER` | `getEnv` | `""` | `SnowflakeUser` | `when any Snowflake auth field is set, all three are required` |
+| `SNOWFLAKE_USER` | `getEnv` | `""` | `-` | `when the Snowflake backend is selected or any Snowflake auth field is set, all three auth fields are required` |
 | `SNOWFLAKE_WAREHOUSE` | `getEnv` | `"COMPUTE_WH"` | `SnowflakeWarehouse` | `-` |
 | `SNYK_API_TOKEN` | `getEnv` | `""` | `SnykAPIToken` | `-` |
 | `SNYK_ORG_ID` | `getEnv` | `""` | `SnykOrgID` | `-` |
@@ -301,6 +301,9 @@ Total variables: **314**
 | `VAULT_NAMESPACE` | `getEnv` | `""` | `VaultNamespace` | `-` |
 | `VAULT_TOKEN` | `getEnv` | `""` | `VaultToken` | `-` |
 | `VULNDB_STATE_FILE` | `getEnv` | `filepath.Join(".cerebro", "vulndb.db")` | `VulnDBStateFile` | `-` |
+| `WAREHOUSE_BACKEND` | `getEnv` | `defaultWarehouseBackend` | `WarehouseBackend` | `backend-specific connection settings must be present when an alternative warehouse backend is selected`, `must be one of snowflake, sqlite, postgres` |
+| `WAREHOUSE_POSTGRES_DSN` | `getEnv` | `""` | `WarehousePostgresDSN` | `backend-specific connection settings must be present when an alternative warehouse backend is selected` |
+| `WAREHOUSE_SQLITE_PATH` | `getEnv` | `defaultWarehouseSQLitePath` | `WarehouseSQLitePath` | `backend-specific connection settings must be present when an alternative warehouse backend is selected` |
 | `WEBHOOK_URLS` | `getEnv` | `""` | `WebhookURLs` | `-` |
 | `WIZ_API_URL` | `getEnv` | `""` | `WizAPIURL` | `-` |
 | `WIZ_AUDIENCE` | `getEnv` | `"wiz-api"` | `WizAudience` | `-` |

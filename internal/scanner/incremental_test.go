@@ -1,10 +1,14 @@
 package scanner
 
 import (
+	"context"
 	"database/sql"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	_ "modernc.org/sqlite"
 )
 
 func TestWatermarkStore(t *testing.T) {
@@ -149,5 +153,40 @@ func TestWatermarkStoreSetDBResetsSchemaState(t *testing.T) {
 	}
 	if store.schemaReady {
 		t.Fatal("expected schema readiness to be reset after db update")
+	}
+}
+
+func TestWatermarkStoreSQLitePersistence(t *testing.T) {
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "watermarks.db"))
+	if err != nil {
+		t.Fatalf("open sqlite db: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	store := NewWatermarkStore(db)
+	now := time.Date(2026, 3, 13, 15, 4, 5, 0, time.UTC)
+	store.SetWatermark("aws_s3_buckets", now, "cursor-1", 42)
+
+	if err := store.PersistWatermarks(context.Background()); err != nil {
+		t.Fatalf("persist watermarks: %v", err)
+	}
+
+	reloaded := NewWatermarkStore(db)
+	if err := reloaded.LoadWatermarks(context.Background()); err != nil {
+		t.Fatalf("load watermarks: %v", err)
+	}
+
+	wm := reloaded.GetWatermark("aws_s3_buckets")
+	if wm == nil {
+		t.Fatal("expected persisted watermark")
+	}
+	if !wm.LastScanTime.Equal(now) {
+		t.Fatalf("expected persisted time %s, got %s", now, wm.LastScanTime)
+	}
+	if wm.LastScanID != "cursor-1" {
+		t.Fatalf("expected last scan id cursor-1, got %q", wm.LastScanID)
+	}
+	if wm.RowsScanned != 42 {
+		t.Fatalf("expected rows scanned 42, got %d", wm.RowsScanned)
 	}
 }

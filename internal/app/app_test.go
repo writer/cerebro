@@ -437,8 +437,12 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	// Clear any env vars that might affect defaults
 	t.Setenv("API_PORT", "")
 	t.Setenv("LOG_LEVEL", "")
+	t.Setenv("WAREHOUSE_BACKEND", "")
 	t.Setenv("SNOWFLAKE_SCHEMA", "")
 	t.Setenv("SNOWFLAKE_DATABASE", "")
+	t.Setenv("SNOWFLAKE_ACCOUNT", "")
+	t.Setenv("SNOWFLAKE_USER", "")
+	t.Setenv("SNOWFLAKE_PRIVATE_KEY", "")
 
 	cfg := LoadConfig()
 
@@ -456,6 +460,24 @@ func TestLoadConfig_Defaults(t *testing.T) {
 
 	if cfg.SnowflakeSchema != "CEREBRO" {
 		t.Errorf("expected default schema CEREBRO, got %s", cfg.SnowflakeSchema)
+	}
+	if cfg.WarehouseBackend != "sqlite" {
+		t.Errorf("expected default warehouse backend sqlite without Snowflake auth, got %s", cfg.WarehouseBackend)
+	}
+	if cfg.WarehouseSQLitePath == "" {
+		t.Error("expected default sqlite warehouse path to be set")
+	}
+}
+
+func TestLoadConfig_DefaultsToSnowflakeBackendWhenAuthPresent(t *testing.T) {
+	t.Setenv("WAREHOUSE_BACKEND", "")
+	t.Setenv("SNOWFLAKE_ACCOUNT", "acct")
+	t.Setenv("SNOWFLAKE_USER", "user")
+	t.Setenv("SNOWFLAKE_PRIVATE_KEY", "-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----")
+
+	cfg := LoadConfig()
+	if cfg.WarehouseBackend != "snowflake" {
+		t.Fatalf("expected snowflake warehouse backend with auth present, got %q", cfg.WarehouseBackend)
 	}
 }
 

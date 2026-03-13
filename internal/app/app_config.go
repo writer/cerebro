@@ -2,6 +2,7 @@ package app
 
 import (
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/evalops/cerebro/internal/apiauth"
@@ -21,6 +22,11 @@ type Config struct {
 	TracingOTLPHeaders   map[string]string
 	TracingSampleRatio   float64
 	TracingExportTimeout time.Duration
+
+	// Warehouse backend selection
+	WarehouseBackend     string
+	WarehouseSQLitePath  string
+	WarehousePostgresDSN string
 
 	// Snowflake (key-pair auth only)
 	SnowflakeAccount    string
@@ -481,6 +487,14 @@ func LoadConfig() *Config {
 		}
 		apiKeys = apiauth.CredentialsToUserMap(apiCredentials)
 		apiAuthEnabled := getEnvBool("API_AUTH_ENABLED", len(apiKeys) > 0)
+		snowflakeAccount := getEnv("SNOWFLAKE_ACCOUNT", "")
+		snowflakeUser := getEnv("SNOWFLAKE_USER", "")
+		snowflakePrivateKey := normalizePrivateKey(getEnv("SNOWFLAKE_PRIVATE_KEY", ""))
+		defaultWarehouseBackend := "sqlite"
+		if strings.TrimSpace(snowflakeAccount) != "" || strings.TrimSpace(snowflakeUser) != "" || strings.TrimSpace(snowflakePrivateKey) != "" {
+			defaultWarehouseBackend = "snowflake"
+		}
+		defaultWarehouseSQLitePath := filepath.Join(filepath.Dir(findings.DefaultFilePath()), "warehouse.db")
 
 		cfg = Config{
 			Port:                                getEnvInt("API_PORT", 8080),
@@ -492,9 +506,12 @@ func LoadConfig() *Config {
 			TracingOTLPHeaders:                  parseKeyValueCSV(getEnv("CEREBRO_OTEL_EXPORTER_OTLP_HEADERS", getEnv("OTEL_EXPORTER_OTLP_HEADERS", ""))),
 			TracingSampleRatio:                  getEnvFloat("CEREBRO_OTEL_SAMPLE_RATIO", 1.0),
 			TracingExportTimeout:                getEnvDuration("CEREBRO_OTEL_EXPORT_TIMEOUT", 5*time.Second),
-			SnowflakeAccount:                    getEnv("SNOWFLAKE_ACCOUNT", ""),
-			SnowflakeUser:                       getEnv("SNOWFLAKE_USER", ""),
-			SnowflakePrivateKey:                 normalizePrivateKey(getEnv("SNOWFLAKE_PRIVATE_KEY", "")),
+			WarehouseBackend:                    strings.ToLower(strings.TrimSpace(getEnv("WAREHOUSE_BACKEND", defaultWarehouseBackend))),
+			WarehouseSQLitePath:                 getEnv("WAREHOUSE_SQLITE_PATH", defaultWarehouseSQLitePath),
+			WarehousePostgresDSN:                getEnv("WAREHOUSE_POSTGRES_DSN", ""),
+			SnowflakeAccount:                    snowflakeAccount,
+			SnowflakeUser:                       snowflakeUser,
+			SnowflakePrivateKey:                 snowflakePrivateKey,
 			SnowflakeDatabase:                   getEnv("SNOWFLAKE_DATABASE", "CEREBRO"),
 			SnowflakeSchema:                     getEnv("SNOWFLAKE_SCHEMA", "CEREBRO"),
 			SnowflakeWarehouse:                  getEnv("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH"),

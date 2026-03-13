@@ -64,8 +64,18 @@ func ConfigValidationRules() []ConfigValidationRule {
 		{EnvVars: []string{"FINDINGS_RESOLVED_RETENTION"}, Summary: "must be greater than or equal to 0", Category: "range"},
 		{EnvVars: []string{"FINDINGS_SEMANTIC_DEDUP_ENABLED"}, Summary: "enables semantic finding identity across policy/version drift", Category: "behavior"},
 		{
+			EnvVars:  []string{"WAREHOUSE_BACKEND"},
+			Summary:  "must be one of snowflake, sqlite, postgres",
+			Category: "enum",
+		},
+		{
+			EnvVars:  []string{"WAREHOUSE_BACKEND", "WAREHOUSE_SQLITE_PATH", "WAREHOUSE_POSTGRES_DSN"},
+			Summary:  "backend-specific connection settings must be present when an alternative warehouse backend is selected",
+			Category: "dependency",
+		},
+		{
 			EnvVars:  []string{"SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER", "SNOWFLAKE_PRIVATE_KEY"},
-			Summary:  "when any Snowflake auth field is set, all three are required",
+			Summary:  "when the Snowflake backend is selected or any Snowflake auth field is set, all three auth fields are required",
 			Category: "dependency",
 		},
 		{
@@ -163,18 +173,37 @@ func (c *Config) Validate() error {
 		problems = addConfigProblem(problems, "FINDINGS_RESOLVED_RETENTION must be >= 0")
 	}
 
+	switch strings.ToLower(strings.TrimSpace(c.WarehouseBackend)) {
+	case "", "snowflake", "sqlite", "postgres":
+	default:
+		problems = addConfigProblem(problems, "WAREHOUSE_BACKEND must be one of snowflake, sqlite, postgres")
+	}
+
 	hasSnowflakeAuth := strings.TrimSpace(c.SnowflakeAccount) != "" ||
 		strings.TrimSpace(c.SnowflakeUser) != "" ||
 		strings.TrimSpace(c.SnowflakePrivateKey) != ""
-	if hasSnowflakeAuth {
+	requiresSnowflakeAuth := strings.EqualFold(strings.TrimSpace(c.WarehouseBackend), "snowflake") || hasSnowflakeAuth
+	if requiresSnowflakeAuth {
 		if strings.TrimSpace(c.SnowflakeAccount) == "" {
-			problems = addConfigProblem(problems, "SNOWFLAKE_ACCOUNT is required when Snowflake auth is configured")
+			problems = addConfigProblem(problems, "SNOWFLAKE_ACCOUNT is required when the Snowflake warehouse backend is configured")
 		}
 		if strings.TrimSpace(c.SnowflakeUser) == "" {
-			problems = addConfigProblem(problems, "SNOWFLAKE_USER is required when Snowflake auth is configured")
+			problems = addConfigProblem(problems, "SNOWFLAKE_USER is required when the Snowflake warehouse backend is configured")
 		}
 		if strings.TrimSpace(c.SnowflakePrivateKey) == "" {
-			problems = addConfigProblem(problems, "SNOWFLAKE_PRIVATE_KEY is required when Snowflake auth is configured")
+			problems = addConfigProblem(problems, "SNOWFLAKE_PRIVATE_KEY is required when the Snowflake warehouse backend is configured")
+		}
+	}
+
+	if strings.EqualFold(strings.TrimSpace(c.WarehouseBackend), "sqlite") {
+		if strings.TrimSpace(c.WarehouseSQLitePath) == "" {
+			problems = addConfigProblem(problems, "WAREHOUSE_SQLITE_PATH is required when WAREHOUSE_BACKEND=sqlite")
+		}
+	}
+
+	if strings.EqualFold(strings.TrimSpace(c.WarehouseBackend), "postgres") {
+		if strings.TrimSpace(c.WarehousePostgresDSN) == "" {
+			problems = addConfigProblem(problems, "WAREHOUSE_POSTGRES_DSN is required when WAREHOUSE_BACKEND=postgres")
 		}
 	}
 

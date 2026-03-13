@@ -517,7 +517,7 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 	a.setGraphBuildState(GraphBuildNotStarted, time.Time{}, nil)
 
 	if a.Warehouse == nil {
-		a.Logger.Warn("security graph disabled - snowflake not configured")
+		a.Logger.Warn("security graph disabled - warehouse not configured")
 		a.Propagation = nil
 		a.graphCancel = nil
 		close(a.graphReady)

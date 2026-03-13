@@ -47,16 +47,24 @@ func TestRunInitErrorStep_ReturnsError(t *testing.T) {
 	}
 }
 
-func TestNew_MissingSnowflakeConfigStartsDegraded(t *testing.T) {
+func TestNew_MissingSnowflakeConfigStartsWithSQLiteWarehouse(t *testing.T) {
+	tempDir := t.TempDir()
 	t.Setenv("SNOWFLAKE_PRIVATE_KEY", "")
 	t.Setenv("SNOWFLAKE_ACCOUNT", "")
 	t.Setenv("SNOWFLAKE_USER", "")
 	t.Setenv("API_AUTH_ENABLED", "false")
 	t.Setenv("API_KEYS", "")
+	t.Setenv("WAREHOUSE_BACKEND", "sqlite")
+	t.Setenv("WAREHOUSE_SQLITE_PATH", filepath.Join(tempDir, "warehouse.db"))
+	t.Setenv("EXECUTION_STORE_FILE", filepath.Join(tempDir, "executions.db"))
+	t.Setenv("GRAPH_SNAPSHOT_PATH", filepath.Join(tempDir, "graph-snapshots"))
+	t.Setenv("PLATFORM_REPORT_RUN_STATE_FILE", filepath.Join(tempDir, "report-runs.json"))
+	t.Setenv("PLATFORM_REPORT_SNAPSHOT_PATH", filepath.Join(tempDir, "report-snapshots"))
+	t.Setenv("CEREBRO_DB_PATH", filepath.Join(tempDir, "findings.db"))
 
 	app, err := New(context.Background())
 	if err != nil {
-		t.Fatalf("expected startup without snowflake to succeed in degraded mode, got: %v", err)
+		t.Fatalf("expected startup without snowflake to succeed with sqlite warehouse, got: %v", err)
 	}
 	t.Cleanup(func() {
 		_ = app.Close()
@@ -65,11 +73,14 @@ func TestNew_MissingSnowflakeConfigStartsDegraded(t *testing.T) {
 	if app.Snowflake != nil {
 		t.Fatal("expected snowflake client to be nil when required snowflake auth env vars are unset")
 	}
-	if app.Findings == nil || app.Scanner == nil || app.Policy == nil {
-		t.Fatal("expected core services to still initialize in degraded mode")
+	if app.Warehouse == nil {
+		t.Fatal("expected local sqlite warehouse to be initialized when snowflake auth is unset")
 	}
-	if app.WaitForGraph(context.Background()) {
-		t.Fatal("expected graph readiness to be false when snowflake is not configured")
+	if app.Findings == nil || app.Scanner == nil || app.Policy == nil {
+		t.Fatal("expected core services to still initialize with sqlite warehouse")
+	}
+	if !app.WaitForGraph(context.Background()) {
+		t.Fatal("expected graph readiness to become true when sqlite warehouse is configured")
 	}
 }
 

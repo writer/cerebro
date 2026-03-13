@@ -23,7 +23,7 @@ type ScanWatermark struct {
 type WatermarkStore struct {
 	watermarks  map[string]*ScanWatermark
 	mu          sync.RWMutex
-	db          *sql.DB // Optional Snowflake persistence
+	db          *sql.DB // Optional persistent backing store
 	schemaMu    sync.Mutex
 	schemaReady bool
 }
@@ -157,27 +157,60 @@ func (s *WatermarkStore) ensureWatermarkTable(ctx context.Context) error {
 		return nil
 	}
 
-	if _, err := s.db.ExecContext(ctx, `
-		CREATE TABLE IF NOT EXISTS cerebro_scan_watermarks (
-			table_name VARCHAR PRIMARY KEY,
-			last_scan_time TIMESTAMP_NTZ,
-			last_scan_id VARCHAR,
-			rows_scanned NUMBER,
-			updated_at TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
-		)
-	`); err != nil {
-		return fmt.Errorf("create watermarks table: %w", err)
-	}
+	switch s.dbDialect() {
+	case "sqlite":
+		if _, err := s.db.ExecContext(ctx, `
+			CREATE TABLE IF NOT EXISTS cerebro_scan_watermarks (
+				table_name TEXT PRIMARY KEY,
+				last_scan_time TIMESTAMP,
+				last_scan_id TEXT,
+				rows_scanned INTEGER,
+				updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+			)
+		`); err != nil {
+			return fmt.Errorf("create watermarks table: %w", err)
+		}
+		if _, err := s.db.ExecContext(ctx, `ALTER TABLE cerebro_scan_watermarks ADD COLUMN last_scan_id TEXT`); err != nil && !isIgnorableDuplicateColumnError(err) {
+			return fmt.Errorf("ensure last_scan_id column: %w", err)
+		}
+	case "postgres":
+		if _, err := s.db.ExecContext(ctx, `
+			CREATE TABLE IF NOT EXISTS cerebro_scan_watermarks (
+				table_name TEXT PRIMARY KEY,
+				last_scan_time TIMESTAMPTZ,
+				last_scan_id TEXT,
+				rows_scanned BIGINT,
+				updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+			)
+		`); err != nil {
+			return fmt.Errorf("create watermarks table: %w", err)
+		}
+		if _, err := s.db.ExecContext(ctx, `ALTER TABLE cerebro_scan_watermarks ADD COLUMN IF NOT EXISTS last_scan_id TEXT`); err != nil {
+			return fmt.Errorf("ensure last_scan_id column: %w", err)
+		}
+	default:
+		if _, err := s.db.ExecContext(ctx, `
+			CREATE TABLE IF NOT EXISTS cerebro_scan_watermarks (
+				table_name VARCHAR PRIMARY KEY,
+				last_scan_time TIMESTAMP_NTZ,
+				last_scan_id VARCHAR,
+				rows_scanned NUMBER,
+				updated_at TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
+			)
+		`); err != nil {
+			return fmt.Errorf("create watermarks table: %w", err)
+		}
 
-	if _, err := s.db.ExecContext(ctx, `ALTER TABLE cerebro_scan_watermarks ADD COLUMN IF NOT EXISTS last_scan_id VARCHAR`); err != nil {
-		return fmt.Errorf("ensure last_scan_id column: %w", err)
+		if _, err := s.db.ExecContext(ctx, `ALTER TABLE cerebro_scan_watermarks ADD COLUMN IF NOT EXISTS last_scan_id VARCHAR`); err != nil {
+			return fmt.Errorf("ensure last_scan_id column: %w", err)
+		}
 	}
 
 	s.schemaReady = true
 	return nil
 }
 
-// PersistWatermarks saves watermarks to Snowflake (if configured)
+// PersistWatermarks saves watermarks to the configured backing store.
 func (s *WatermarkStore) PersistWatermarks(ctx context.Context) error {
 	if s.db == nil {
 		return nil
@@ -211,23 +244,65 @@ func (s *WatermarkStore) PersistWatermarks(ctx context.Context) error {
 			values = append(values, "(?, ?, ?, ?)")
 			args = append(args, wm.Table, wm.LastScanTime, wm.LastScanID, wm.RowsScanned)
 		}
+		switch s.dbDialect() {
+		case "sqlite":
+			// #nosec G202 -- target table is static and VALUES placeholders are generated internally.
+			upsert := `
+				INSERT INTO cerebro_scan_watermarks (
+					table_name,
+					last_scan_time,
+					last_scan_id,
+					rows_scanned
+				) VALUES ` + strings.Join(values, ",") + `
+				ON CONFLICT(table_name) DO UPDATE SET
+					last_scan_time = excluded.last_scan_time,
+					last_scan_id = excluded.last_scan_id,
+					rows_scanned = excluded.rows_scanned,
+					updated_at = CURRENT_TIMESTAMP
+			`
+			if _, err := s.db.ExecContext(ctx, upsert, args...); err != nil {
+				return fmt.Errorf("upsert watermarks: %w", err)
+			}
+			continue
+		case "postgres":
+			const upsert = `
+				INSERT INTO cerebro_scan_watermarks (
+					table_name,
+					last_scan_time,
+					last_scan_id,
+					rows_scanned
+				) VALUES ($1, $2, $3, $4)
+				ON CONFLICT(table_name) DO UPDATE SET
+					last_scan_time = EXCLUDED.last_scan_time,
+					last_scan_id = EXCLUDED.last_scan_id,
+					rows_scanned = EXCLUDED.rows_scanned,
+					updated_at = CURRENT_TIMESTAMP
+			`
+			for _, wm := range batch {
+				if _, err := s.db.ExecContext(ctx, upsert, wm.Table, wm.LastScanTime, wm.LastScanID, wm.RowsScanned); err != nil {
+					return fmt.Errorf("upsert watermarks: %w", err)
+				}
+			}
+			continue
+		}
+
 		// #nosec G202 -- target table is static and VALUES placeholders are generated internally.
 		merge := `
-			MERGE INTO cerebro_scan_watermarks t
-			USING (SELECT column1 AS table_name,
-			              column2 AS last_scan_time,
-			              column3 AS last_scan_id,
-			              column4 AS rows_scanned
-			       FROM VALUES ` + strings.Join(values, ",") + `) s
-			ON t.table_name = s.table_name
-			WHEN MATCHED THEN UPDATE SET
-				last_scan_time = s.last_scan_time,
-				last_scan_id = s.last_scan_id,
-				rows_scanned = s.rows_scanned,
-				updated_at = CURRENT_TIMESTAMP()
-			WHEN NOT MATCHED THEN INSERT (table_name, last_scan_time, last_scan_id, rows_scanned)
-			VALUES (s.table_name, s.last_scan_time, s.last_scan_id, s.rows_scanned)
-		`
+				MERGE INTO cerebro_scan_watermarks t
+				USING (SELECT column1 AS table_name,
+				              column2 AS last_scan_time,
+				              column3 AS last_scan_id,
+				              column4 AS rows_scanned
+				       FROM VALUES ` + strings.Join(values, ",") + `) s
+				ON t.table_name = s.table_name
+				WHEN MATCHED THEN UPDATE SET
+					last_scan_time = s.last_scan_time,
+					last_scan_id = s.last_scan_id,
+					rows_scanned = s.rows_scanned,
+					updated_at = CURRENT_TIMESTAMP()
+				WHEN NOT MATCHED THEN INSERT (table_name, last_scan_time, last_scan_id, rows_scanned)
+				VALUES (s.table_name, s.last_scan_time, s.last_scan_id, s.rows_scanned)
+			`
 		if _, err := s.db.ExecContext(ctx, merge, args...); err != nil {
 			return fmt.Errorf("upsert watermarks: %w", err)
 		}
@@ -284,26 +359,14 @@ func (s *WatermarkStore) PersistWatermarksWithRetry(ctx context.Context, opts Wa
 	return lastErr
 }
 
-// LoadWatermarks loads watermarks from Snowflake (if configured)
+// LoadWatermarks loads watermarks from the configured backing store.
 func (s *WatermarkStore) LoadWatermarks(ctx context.Context) error {
 	if s.db == nil {
 		return nil
 	}
 
-	if _, err := s.db.ExecContext(ctx, `
-		CREATE TABLE IF NOT EXISTS cerebro_scan_watermarks (
-			table_name VARCHAR PRIMARY KEY,
-			last_scan_time TIMESTAMP_NTZ,
-			last_scan_id VARCHAR,
-			rows_scanned NUMBER,
-			updated_at TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
-		)
-	`); err != nil {
-		return fmt.Errorf("create watermarks table: %w", err)
-	}
-
-	if _, err := s.db.ExecContext(ctx, `ALTER TABLE cerebro_scan_watermarks ADD COLUMN IF NOT EXISTS last_scan_id VARCHAR`); err != nil {
-		return fmt.Errorf("ensure last_scan_id column: %w", err)
+	if err := s.ensureWatermarkTable(ctx); err != nil {
+		return err
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
@@ -327,6 +390,29 @@ func (s *WatermarkStore) LoadWatermarks(ctx context.Context) error {
 	}
 
 	return rows.Err()
+}
+
+func (s *WatermarkStore) dbDialect() string {
+	if s == nil || s.db == nil {
+		return ""
+	}
+	driverType := strings.ToLower(fmt.Sprintf("%T", s.db.Driver()))
+	switch {
+	case strings.Contains(driverType, "sqlite"):
+		return "sqlite"
+	case strings.Contains(driverType, "pgx"), strings.Contains(driverType, "postgres"), strings.Contains(driverType, "pq"):
+		return "postgres"
+	default:
+		return "snowflake"
+	}
+}
+
+func isIgnorableDuplicateColumnError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "duplicate column") || strings.Contains(msg, "already exists")
 }
 
 // IncrementalStats returns statistics about incremental scanning

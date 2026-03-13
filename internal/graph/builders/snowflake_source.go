@@ -5,17 +5,20 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/evalops/cerebro/internal/snowflake"
 	"github.com/evalops/cerebro/internal/warehouse"
 )
 
 // SnowflakeSource adapts the Snowflake client to the DataSource interface
 type SnowflakeSource struct {
-	client warehouse.QueryWarehouse
+	client              warehouse.QueryWarehouse
+	normalizeTableNames bool
 }
 
 // NewSnowflakeSource creates a new Snowflake data source
 func NewSnowflakeSource(client warehouse.QueryWarehouse) *SnowflakeSource {
-	return &SnowflakeSource{client: client}
+	_, shouldNormalize := client.(*snowflake.Client)
+	return &SnowflakeSource{client: client, normalizeTableNames: shouldNormalize}
 }
 
 // tableNamePattern matches table names in common clauses (FROM/JOIN/UPDATE/INTO)
@@ -37,8 +40,10 @@ func normalizeTableNames(query string) string {
 
 // Query executes a query against Snowflake
 func (s *SnowflakeSource) Query(ctx context.Context, query string, args ...any) (*DataQueryResult, error) {
-	// Normalize table names to uppercase for Snowflake
-	normalizedQuery := normalizeTableNames(query)
+	normalizedQuery := query
+	if s.normalizeTableNames {
+		normalizedQuery = normalizeTableNames(query)
+	}
 
 	result, err := s.client.Query(ctx, normalizedQuery, args...)
 	if err != nil {

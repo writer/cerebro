@@ -47,8 +47,8 @@ func (a *App) initSnowflakeFindings(ctx context.Context) {
 }
 
 func (a *App) initScanWatermarks(ctx context.Context) {
-	if a.Snowflake != nil {
-		a.ScanWatermarks = scanner.NewWatermarkStore(a.Snowflake.DB())
+	if a.Warehouse != nil && a.Warehouse.DB() != nil {
+		a.ScanWatermarks = scanner.NewWatermarkStore(a.Warehouse.DB())
 		if err := a.ScanWatermarks.LoadWatermarks(ctx); err != nil {
 			a.Logger.Warn("failed to load scan watermarks", "error", err)
 		}
@@ -58,13 +58,13 @@ func (a *App) initScanWatermarks(ctx context.Context) {
 	a.Logger.Info("scan watermarks initialized")
 }
 
-// initAvailableTables caches the Snowflake table list for reuse by graph builder and policy validation.
+// initAvailableTables caches the warehouse table list for reuse by graph builder and policy validation.
 
 func (a *App) initAvailableTables(ctx context.Context) {
-	if a.Snowflake == nil {
+	if a.Warehouse == nil {
 		return
 	}
-	tables, err := a.Snowflake.ListAvailableTables(ctx)
+	tables, err := a.Warehouse.ListAvailableTables(ctx)
 	if err != nil {
 		a.Logger.Warn("failed to list available tables", "error", err)
 		return
@@ -75,8 +75,8 @@ func (a *App) initAvailableTables(ctx context.Context) {
 // validatePolicyCoverage checks that required tables exist for loaded policies
 
 func (a *App) validatePolicyCoverage(_ context.Context) error {
-	if a.Snowflake == nil {
-		a.Logger.Warn("skipping policy coverage validation - Snowflake not configured")
+	if a.Warehouse == nil {
+		a.Logger.Warn("skipping policy coverage validation - warehouse not configured")
 		return nil
 	}
 
@@ -270,6 +270,13 @@ func (a *App) Close() error {
 	if a.Snowflake != nil {
 		if err := a.Snowflake.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("snowflake: %w", err))
+		}
+	}
+	if closer, ok := a.Warehouse.(interface{ Close() error }); ok {
+		if a.Snowflake == nil || any(a.Warehouse) != any(a.Snowflake) {
+			if err := closer.Close(); err != nil {
+				errs = append(errs, fmt.Errorf("warehouse: %w", err))
+			}
 		}
 	}
 

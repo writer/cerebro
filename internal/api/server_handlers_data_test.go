@@ -87,3 +87,14 @@ func TestListAssets_UsesWarehouseInterface(t *testing.T) {
 		t.Fatalf("expected count 1, got %#v", body["count"])
 	}
 }
+
+func TestListAssets_RejectsNonAssetTable(t *testing.T) {
+	a := newTestApp(t)
+	a.Warehouse = &warehouse.MemoryWarehouse{}
+	s := NewServer(a)
+
+	w := do(t, s, http.MethodGet, "/api/v1/assets/cdc_events?limit=1", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
