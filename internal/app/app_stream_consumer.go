@@ -42,6 +42,10 @@ func (a *App) initTapGraphConsumer(ctx context.Context) {
 		FetchTimeout:          a.Config.NATSConsumerFetchTimeout,
 		InProgressInterval:    a.Config.NATSConsumerInProgressInterval,
 		DeadLetterPath:        a.Config.NATSConsumerDeadLetterPath,
+		DedupEnabled:          a.Config.NATSConsumerDedupEnabled,
+		DedupStateFile:        a.Config.NATSConsumerDedupStateFile,
+		DedupTTL:              a.Config.NATSConsumerDedupTTL,
+		DedupMaxRecords:       a.Config.NATSConsumerDedupMaxRecords,
 		DropHealthLookback:    a.Config.NATSConsumerDropHealthLookback,
 		DropHealthThreshold:   a.Config.NATSConsumerDropHealthThreshold,
 		ConnectTimeout:        a.Config.NATSJetStreamConnectTimeout,
@@ -104,6 +108,7 @@ func (a *App) initTapGraphConsumer(ctx context.Context) {
 		"subject", subject,
 		"durable", a.Config.NATSConsumerDurable,
 		"batch_size", a.Config.NATSConsumerBatchSize,
+		"dedupe_enabled", a.Config.NATSConsumerDedupEnabled,
 	)
 
 	_ = ctx

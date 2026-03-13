@@ -5,6 +5,88 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 65 - Durable CloudEvent Deduplication for NATS Consumer (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#248` was still materially open because the JetStream consumer acknowledged events after handler success but had no durable CloudEvent-ID suppression, so transient ack failures and consumer restarts could re-run the same mutation path.
+- [x] Gap: the issue proposal allowed an in-memory sliding window with periodic persistence, but that would still leave a correctness hole on restart and does not match the broader platform direction toward shared execution state.
+- [x] Gap: consumer observability exposed redeliveries and dropped messages, but not the actual successful-vs-deduplicated throughput split needed to prove the pipeline is suppressing duplicates instead of just retrying them.
+- [x] Gap: external references were directionally useful but not prescriptive here:
+  - [x] `argoproj/argo-events` reinforces durable event-processing state over process-local memory when workflows restart.
+  - [x] `OpenLineage/OpenLineage` reinforces treating event identity as a first-class contract surface instead of an incidental transport detail.
+  - [x] the Wiz schema dump in `/Users/jonathanhaas/Downloads/other/wiz.graphql` is a useful caution that very broad event/query surfaces become harder to reason about unless identity and processing contracts are explicit and inspectable.
+
+### Execution plan
+- [x] Add durable processed-event storage in the shared execution store:
+  - [x] add `processed_events` persistence + indexes in the SQLite execution store
+  - [x] add processed-event lookup/remember helpers with TTL and bounded retention
+- [x] Add consumer-level CloudEvent dedupe:
+  - [x] derive a deterministic dedupe key from tenant/source/event ID
+  - [x] skip handler execution when the CloudEvent is already recorded in the dedupe window
+  - [x] log payload-hash mismatches for duplicate IDs carrying different payloads
+- [x] Expose config and metrics:
+  - [x] add NATS consumer dedupe env/config fields with validation
+  - [x] add processed and deduplicated Prometheus counters
+  - [x] document the new config in `docs/CONFIG_ENV_VARS.md`
+- [x] Add regression coverage:
+  - [x] execution-store round trip + bounded retention tests
+  - [x] consumer duplicate suppression tests
+  - [x] metrics registration coverage
+
+### Detailed follow-on backlog
+- [ ] Track A - Stronger idempotency semantics
+  - Exit criteria:
+  - [ ] add durable in-flight / completed processing states instead of completed-event memory only
+  - [ ] thread idempotency keys into graph mutation write paths so handler replay becomes a true no-op
+- [ ] Track B - Dedupe lifecycle observability
+  - Exit criteria:
+  - [ ] add dedupe-store health metrics and storage-pressure telemetry
+  - [ ] expose dedupe hit/miss posture in consumer health/readiness reporting
+- [ ] Track C - Ordered entity-local sequencing
+  - Exit criteria:
+  - [ ] add per-entity ordering windows for create/update/delete event families that cannot tolerate reorder
+  - [ ] keep that sequencing logic separate from the generic dedupe window
+
+## Deep Review Cycle 64 - Coverage Ratchet for Critical Packages: Sync + API (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#152` was still open even after warehouse/test seams improved because CI was still enforcing stale package floors: `internal/api` at `40%` despite already exceeding `55%`, and `internal/sync` at `11.5%` despite the highest orchestration complexity in the repo.
+- [x] Gap: the real blocker was not `internal/api`; shared app test helpers already existed via `internal/apptest`, and package coverage was already above the requested floor.
+- [x] Gap: `internal/sync` needed honest coverage work in the warehouse-backed orchestration seams we actually rely on today: sync coordination, CDC event emission, scoped persistence helpers, and provider-specific change-history paths.
+- [x] Gap: external references reinforced the same discipline from different angles:
+  - [x] `openfga/openfga` keeps transport and service seams narrow enough that handler/service tests are cheap instead of requiring full-process integration.
+  - [x] `grafana/grafana` is the warning case for broad surface area where package-level ratchets only work if helper seams exist first.
+  - [x] the Wiz schema dump in `/Users/jonathanhaas/Downloads/wiz.graphql` remains the opposite cautionary example: large ambient surfaces become difficult to test rigorously unless they are broken into explicit modules and query seams.
+
+### Execution plan
+- [x] Raise real sync coverage with warehouse-backed tests:
+  - [x] add CDC builder tests for event IDs, payload extraction, and scope fallback
+  - [x] add sync engine tests for change history, partial fetch backfill, and CDC emission
+  - [x] add scoped table operation tests for scoped deletes, provider change history, and merge behavior
+  - [x] add GCP/Kubernetes provider tests covering CDC emission and shared persistence helpers
+  - [x] add helper/fetch-wrapper tests for retry helpers, region-limit helpers, and thin provider fetch delegates
+- [x] Re-measure package coverage before touching CI:
+  - [x] `internal/sync` now measures `21.0%`
+  - [x] `internal/api` measures `64.4%`
+- [x] Ratchet CI floors to measured reality:
+  - [x] raise `internal/api` threshold from `40.0` to `55.0`
+  - [x] raise `internal/sync` threshold from `11.5` to `20.0`
+
+### Detailed follow-on backlog
+- [ ] Track A - Next sync coverage ratchet to `30%`
+  - Exit criteria:
+  - [ ] add deeper relationship extraction tests for AWS/GCP relationship builders
+  - [ ] add more provider fetch/retry edge-case coverage around partial-page and auth failure handling
+  - [ ] raise the `internal/sync` CI floor from `20.0` to `30.0` only after measured package coverage holds above that mark with headroom
+- [ ] Track B - Coverage by package seam, not full-process setup
+  - Exit criteria:
+  - [ ] keep using `internal/apptest` / warehouse memory doubles instead of reintroducing full Snowflake/process dependencies into unit suites
+  - [ ] extract any remaining broad setup helpers only where a new handler or sync surface still cannot be tested cheaply
+- [ ] Track C - Package split pressure
+  - Exit criteria:
+  - [ ] use the next `internal/sync` coverage wave to identify the worst ambient files for later package extraction
+  - [ ] keep coverage work aligned with the larger graph/app package-boundary cleanup instead of growing more monolithic provider files
+
 ## Deep Review Cycle 63 - Graph Package Split Phase 1: Reports Extraction (2026-03-12)
 
 ### Review findings
