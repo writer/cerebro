@@ -179,6 +179,109 @@ func TestGraphBuildSnapshotIncludesNodeCountWithoutHoldingBuildLock(t *testing.T
 	}
 }
 
+func TestMutateSecurityGraphSwapsCloneAfterMutationCompletes(t *testing.T) {
+	liveGraph := graph.New()
+	liveGraph.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})
+
+	application := &App{
+		Config:        &Config{},
+		SecurityGraph: liveGraph,
+	}
+
+	started := make(chan *graph.Graph, 1)
+	release := make(chan struct{})
+	errCh := make(chan error, 1)
+
+	go func() {
+		_, err := application.MutateSecurityGraph(context.Background(), func(candidate *graph.Graph) error {
+			started <- candidate
+			<-release
+			candidate.AddNode(&graph.Node{ID: "service:billing", Kind: graph.NodeKindService, Name: "billing"})
+			return nil
+		})
+		errCh <- err
+	}()
+
+	candidate := <-started
+	if candidate == liveGraph {
+		t.Fatal("expected mutation to operate on a cloned graph")
+	}
+	if got := application.CurrentSecurityGraph(); got != liveGraph {
+		t.Fatal("expected live graph pointer to remain unchanged until swap")
+	}
+	if got := liveGraph.NodeCount(); got != 1 {
+		t.Fatalf("expected original live graph node count 1 during in-flight mutation, got %d", got)
+	}
+
+	close(release)
+	if err := <-errCh; err != nil {
+		t.Fatalf("mutateSecurityGraph failed: %v", err)
+	}
+
+	current := application.CurrentSecurityGraph()
+	if current == liveGraph {
+		t.Fatal("expected live graph pointer to swap after mutation")
+	}
+	if got := current.NodeCount(); got != 2 {
+		t.Fatalf("expected swapped graph node count 2, got %d", got)
+	}
+	if got := liveGraph.NodeCount(); got != 1 {
+		t.Fatalf("expected original graph to remain unchanged after swap, got %d", got)
+	}
+}
+
+func TestRefreshCurrentEventCorrelationsSwapsGraphInsteadOfMutatingLiveInstance(t *testing.T) {
+	base := time.Date(2026, 3, 12, 10, 0, 0, 0, time.UTC)
+	liveGraph := graph.New()
+	liveGraph.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})
+	liveGraph.AddNode(&graph.Node{
+		ID:   "pull_request:payments:42",
+		Kind: graph.NodeKindPullRequest,
+		Name: "payments pr",
+		Properties: map[string]any{
+			"state":       "merged",
+			"observed_at": base.Format(time.RFC3339),
+			"valid_from":  base.Format(time.RFC3339),
+		},
+	})
+	liveGraph.AddNode(&graph.Node{
+		ID:   "deployment:payments:deploy-1",
+		Kind: graph.NodeKindDeploymentRun,
+		Name: "deploy-1",
+		Properties: map[string]any{
+			"service_id":  "payments",
+			"status":      "succeeded",
+			"observed_at": base.Add(5 * time.Minute).Format(time.RFC3339),
+			"valid_from":  base.Add(5 * time.Minute).Format(time.RFC3339),
+		},
+	})
+	liveGraph.AddEdge(&graph.Edge{ID: "pr->service", Source: "pull_request:payments:42", Target: "service:payments", Kind: graph.EdgeKindTargets, Effect: graph.EdgeEffectAllow})
+	liveGraph.AddEdge(&graph.Edge{ID: "deploy->service", Source: "deployment:payments:deploy-1", Target: "service:payments", Kind: graph.EdgeKindTargets, Effect: graph.EdgeEffectAllow})
+
+	application := &App{
+		Config:        &Config{},
+		SecurityGraph: liveGraph,
+		graphCtx:      context.Background(),
+	}
+
+	if graphEdgeExists(liveGraph.GetOutEdges("deployment:payments:deploy-1"), graph.EdgeKindTriggeredBy, "pull_request:payments:42") {
+		t.Fatal("expected no correlation edge on original live graph before refresh")
+	}
+
+	application.refreshCurrentEventCorrelations("test")
+
+	current := application.CurrentSecurityGraph()
+	if current == liveGraph {
+		t.Fatal("expected live graph pointer to swap after correlation refresh")
+	}
+	if graphEdgeExists(liveGraph.GetOutEdges("deployment:payments:deploy-1"), graph.EdgeKindTriggeredBy, "pull_request:payments:42") {
+		t.Fatal("expected original live graph to remain unchanged after refresh")
+	}
+	if !graphEdgeExists(current.GetOutEdges("deployment:payments:deploy-1"), graph.EdgeKindTriggeredBy, "pull_request:payments:42") {
+		t.Fatal("expected swapped graph to include correlated deployment edge")
+	}
+}
+
 func TestBurnRatesFastWindowUsesCurrentSnapshot(t *testing.T) {
 	trend := []graph.GraphOntologySLOPoint{
 		{Date: "2026-03-08", FallbackActivityPercent: 12, SchemaValidWritePercent: 97, Samples: 20},

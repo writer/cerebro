@@ -10,12 +10,7 @@ import (
 	"github.com/writer/cerebro/internal/graph"
 )
 
-func (a *App) toolCerebroRecordObservation(_ context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireSecurityGraph()
-	if err != nil {
-		return "", err
-	}
-
+func (a *App) toolCerebroRecordObservation(ctx context.Context, args json.RawMessage) (string, error) {
 	var req struct {
 		ID            string         `json:"id"`
 		EntityID      string         `json:"entity_id"`
@@ -42,21 +37,26 @@ func (a *App) toolCerebroRecordObservation(_ context.Context, args json.RawMessa
 	if req.Observation == "" {
 		return "", fmt.Errorf("observation is required")
 	}
-	if _, ok := g.GetNode(req.EntityID); !ok {
-		return "", fmt.Errorf("entity not found: %s", req.EntityID)
-	}
-	result, err := graph.WriteObservation(g, graph.ObservationWriteRequest{
-		ID:              req.ID,
-		SubjectID:       req.EntityID,
-		ObservationType: req.Observation,
-		Summary:         req.Summary,
-		SourceSystem:    firstNonEmpty(req.SourceSystem, "agent"),
-		SourceEventID:   req.SourceEventID,
-		ObservedAt:      req.ObservedAt,
-		ValidFrom:       req.ValidFrom,
-		ValidTo:         req.ValidTo,
-		Confidence:      req.Confidence,
-		Metadata:        cloneToolJSONMap(req.Metadata),
+	var result graph.ObservationWriteResult
+	_, err := a.MutateSecurityGraph(ctx, func(g *graph.Graph) error {
+		if _, ok := g.GetNode(req.EntityID); !ok {
+			return fmt.Errorf("entity not found: %s", req.EntityID)
+		}
+		var writeErr error
+		result, writeErr = graph.WriteObservation(g, graph.ObservationWriteRequest{
+			ID:              req.ID,
+			SubjectID:       req.EntityID,
+			ObservationType: req.Observation,
+			Summary:         req.Summary,
+			SourceSystem:    firstNonEmpty(req.SourceSystem, "agent"),
+			SourceEventID:   req.SourceEventID,
+			ObservedAt:      req.ObservedAt,
+			ValidFrom:       req.ValidFrom,
+			ValidTo:         req.ValidTo,
+			Confidence:      req.Confidence,
+			Metadata:        cloneToolJSONMap(req.Metadata),
+		})
+		return writeErr
 	})
 	if err != nil {
 		return "", err
@@ -71,23 +71,23 @@ func (a *App) toolCerebroRecordObservation(_ context.Context, args json.RawMessa
 	})
 }
 
-func (a *App) toolCerebroWriteClaim(_ context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireSecurityGraph()
-	if err != nil {
-		return "", err
-	}
-
+func (a *App) toolCerebroWriteClaim(ctx context.Context, args json.RawMessage) (string, error) {
 	var req graph.ClaimWriteRequest
 	if err := decodeToolArgs(args, &req); err != nil {
 		return "", err
 	}
 
-	result, err := graph.WriteClaim(g, req)
+	var result graph.ClaimWriteResult
+	mutatedGraph, err := a.MutateSecurityGraph(ctx, func(g *graph.Graph) error {
+		var writeErr error
+		result, writeErr = graph.WriteClaim(g, req)
+		return writeErr
+	})
 	if err != nil {
 		return "", err
 	}
 
-	conflictReport := graph.BuildClaimConflictReport(g, graph.ClaimConflictReportOptions{
+	conflictReport := graph.BuildClaimConflictReport(mutatedGraph, graph.ClaimConflictReportOptions{
 		ValidAt:      result.ObservedAt,
 		RecordedAt:   result.RecordedAt,
 		MaxConflicts: 25,
@@ -123,12 +123,7 @@ func (a *App) toolCerebroWriteClaim(_ context.Context, args json.RawMessage) (st
 	})
 }
 
-func (a *App) toolCerebroAnnotateEntity(_ context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireSecurityGraph()
-	if err != nil {
-		return "", err
-	}
-
+func (a *App) toolCerebroAnnotateEntity(ctx context.Context, args json.RawMessage) (string, error) {
 	var req struct {
 		EntityID      string         `json:"entity_id"`
 		Annotation    string         `json:"annotation"`
@@ -154,56 +149,62 @@ func (a *App) toolCerebroAnnotateEntity(_ context.Context, args json.RawMessage)
 		return "", fmt.Errorf("annotation is required")
 	}
 
-	entity, ok := g.GetNode(req.EntityID)
-	if !ok || entity == nil {
-		return "", fmt.Errorf("entity not found: %s", req.EntityID)
-	}
+	var (
+		annotationID string
+		count        int
+	)
+	_, err := a.MutateSecurityGraph(ctx, func(g *graph.Graph) error {
+		entity, ok := g.GetNode(req.EntityID)
+		if !ok || entity == nil {
+			return fmt.Errorf("entity not found: %s", req.EntityID)
+		}
 
-	metadata := graph.NormalizeWriteMetadata(req.ObservedAt, req.ValidFrom, req.ValidTo, req.SourceSystem, req.SourceEventID, req.Confidence, graph.WriteMetadataDefaults{
-		SourceSystem:      "agent",
-		SourceEventPrefix: "tool",
-		DefaultConfidence: 0.80,
+		metadata := graph.NormalizeWriteMetadata(req.ObservedAt, req.ValidFrom, req.ValidTo, req.SourceSystem, req.SourceEventID, req.Confidence, graph.WriteMetadataDefaults{
+			SourceSystem:      "agent",
+			SourceEventPrefix: "tool",
+			DefaultConfidence: 0.80,
+		})
+
+		annotationID = fmt.Sprintf("annotation:%s:%d", req.EntityID, metadata.ObservedAt.UnixNano())
+		properties := cloneToolJSONMap(entity.Properties)
+		existing := toolAnnotationsFromValue(properties["annotations"])
+		entry := map[string]any{
+			"id":              annotationID,
+			"annotation":      req.Annotation,
+			"tags":            normalizeToolStringSlice(req.Tags),
+			"source_system":   metadata.SourceSystem,
+			"source_event_id": metadata.SourceEventID,
+			"observed_at":     metadata.ObservedAt.Format(time.RFC3339),
+			"valid_from":      metadata.ValidFrom.Format(time.RFC3339),
+			"confidence":      metadata.Confidence,
+		}
+		if metadata.ValidTo != nil {
+			entry["valid_to"] = metadata.ValidTo.Format(time.RFC3339)
+		}
+		if len(req.Metadata) > 0 {
+			entry["metadata"] = cloneToolJSONMap(req.Metadata)
+		}
+		existing = append(existing, entry)
+		properties["annotations"] = existing
+		metadata.ApplyTo(properties)
+
+		entity.Properties = properties
+		g.AddNode(entity)
+		count = len(existing)
+		return nil
 	})
-
-	annotationID := fmt.Sprintf("annotation:%s:%d", req.EntityID, metadata.ObservedAt.UnixNano())
-	properties := cloneToolJSONMap(entity.Properties)
-	existing := toolAnnotationsFromValue(properties["annotations"])
-	entry := map[string]any{
-		"id":              annotationID,
-		"annotation":      req.Annotation,
-		"tags":            normalizeToolStringSlice(req.Tags),
-		"source_system":   metadata.SourceSystem,
-		"source_event_id": metadata.SourceEventID,
-		"observed_at":     metadata.ObservedAt.Format(time.RFC3339),
-		"valid_from":      metadata.ValidFrom.Format(time.RFC3339),
-		"confidence":      metadata.Confidence,
-	}
-	if metadata.ValidTo != nil {
-		entry["valid_to"] = metadata.ValidTo.Format(time.RFC3339)
-	}
-	if len(req.Metadata) > 0 {
-		entry["metadata"] = cloneToolJSONMap(req.Metadata)
-	}
-	existing = append(existing, entry)
-	properties["annotations"] = existing
-	metadata.ApplyTo(properties)
-
-	entity.Properties = properties
-	g.AddNode(entity)
-
-	return marshalToolResponse(map[string]any{
-		"annotation_id": annotationID,
-		"entity_id":     req.EntityID,
-		"count":         len(existing),
-	})
-}
-
-func (a *App) toolCerebroRecordDecision(_ context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireSecurityGraph()
 	if err != nil {
 		return "", err
 	}
 
+	return marshalToolResponse(map[string]any{
+		"annotation_id": annotationID,
+		"entity_id":     req.EntityID,
+		"count":         count,
+	})
+}
+
+func (a *App) toolCerebroRecordDecision(ctx context.Context, args json.RawMessage) (string, error) {
 	var req struct {
 		ID            string         `json:"id"`
 		DecisionType  string         `json:"decision_type"`
@@ -237,78 +238,85 @@ func (a *App) toolCerebroRecordDecision(_ context.Context, args json.RawMessage)
 	if len(targetIDs) == 0 {
 		return "", fmt.Errorf("target_ids requires at least one target")
 	}
-	for _, targetID := range targetIDs {
-		if _, ok := g.GetNode(targetID); !ok {
-			return "", fmt.Errorf("target not found: %s", targetID)
+	var decisionID string
+	_, err := a.MutateSecurityGraph(ctx, func(g *graph.Graph) error {
+		for _, targetID := range targetIDs {
+			if _, ok := g.GetNode(targetID); !ok {
+				return fmt.Errorf("target not found: %s", targetID)
+			}
 		}
-	}
 
-	metadata := graph.NormalizeWriteMetadata(req.ObservedAt, req.ValidFrom, req.ValidTo, req.SourceSystem, req.SourceEventID, req.Confidence, graph.WriteMetadataDefaults{
-		SourceSystem:      "agent",
-		SourceEventPrefix: "tool",
-		DefaultConfidence: 0.80,
+		metadata := graph.NormalizeWriteMetadata(req.ObservedAt, req.ValidFrom, req.ValidTo, req.SourceSystem, req.SourceEventID, req.Confidence, graph.WriteMetadataDefaults{
+			SourceSystem:      "agent",
+			SourceEventPrefix: "tool",
+			DefaultConfidence: 0.80,
+		})
+
+		decisionID = strings.TrimSpace(req.ID)
+		if decisionID == "" {
+			decisionID = fmt.Sprintf("decision:%d", metadata.ObservedAt.UnixNano())
+		}
+
+		properties := cloneToolJSONMap(req.Metadata)
+		properties["decision_type"] = req.DecisionType
+		properties["status"] = firstNonEmpty(req.Status, "proposed")
+		properties["made_at"] = metadata.ObservedAt.Format(time.RFC3339)
+		properties["made_by"] = req.MadeBy
+		properties["rationale"] = req.Rationale
+		metadata.ApplyTo(properties)
+
+		g.AddNode(&graph.Node{
+			ID:         decisionID,
+			Kind:       graph.NodeKindDecision,
+			Name:       firstNonEmpty(req.DecisionType, decisionID),
+			Provider:   metadata.SourceSystem,
+			Properties: properties,
+			Risk:       graph.RiskNone,
+		})
+
+		for _, targetID := range targetIDs {
+			edgeProperties := metadata.PropertyMap()
+			g.AddEdge(&graph.Edge{
+				ID:         fmt.Sprintf("%s->%s:%s", decisionID, targetID, graph.EdgeKindTargets),
+				Source:     decisionID,
+				Target:     targetID,
+				Kind:       graph.EdgeKindTargets,
+				Effect:     graph.EdgeEffectAllow,
+				Properties: edgeProperties,
+			})
+		}
+		for _, evidenceID := range uniqueToolNormalizedIDs(req.EvidenceIDs) {
+			if _, ok := g.GetNode(evidenceID); !ok {
+				continue
+			}
+			edgeProperties := metadata.PropertyMap()
+			g.AddEdge(&graph.Edge{
+				ID:         fmt.Sprintf("%s->%s:%s", decisionID, evidenceID, graph.EdgeKindBasedOn),
+				Source:     decisionID,
+				Target:     evidenceID,
+				Kind:       graph.EdgeKindBasedOn,
+				Effect:     graph.EdgeEffectAllow,
+				Properties: edgeProperties,
+			})
+		}
+		for _, actionID := range uniqueToolNormalizedIDs(req.ActionIDs) {
+			if _, ok := g.GetNode(actionID); !ok {
+				continue
+			}
+			edgeProperties := metadata.PropertyMap()
+			g.AddEdge(&graph.Edge{
+				ID:         fmt.Sprintf("%s->%s:%s", decisionID, actionID, graph.EdgeKindExecutedBy),
+				Source:     decisionID,
+				Target:     actionID,
+				Kind:       graph.EdgeKindExecutedBy,
+				Effect:     graph.EdgeEffectAllow,
+				Properties: edgeProperties,
+			})
+		}
+		return nil
 	})
-
-	decisionID := strings.TrimSpace(req.ID)
-	if decisionID == "" {
-		decisionID = fmt.Sprintf("decision:%d", metadata.ObservedAt.UnixNano())
-	}
-
-	properties := cloneToolJSONMap(req.Metadata)
-	properties["decision_type"] = req.DecisionType
-	properties["status"] = firstNonEmpty(req.Status, "proposed")
-	properties["made_at"] = metadata.ObservedAt.Format(time.RFC3339)
-	properties["made_by"] = req.MadeBy
-	properties["rationale"] = req.Rationale
-	metadata.ApplyTo(properties)
-
-	g.AddNode(&graph.Node{
-		ID:         decisionID,
-		Kind:       graph.NodeKindDecision,
-		Name:       firstNonEmpty(req.DecisionType, decisionID),
-		Provider:   metadata.SourceSystem,
-		Properties: properties,
-		Risk:       graph.RiskNone,
-	})
-
-	for _, targetID := range targetIDs {
-		edgeProperties := metadata.PropertyMap()
-		g.AddEdge(&graph.Edge{
-			ID:         fmt.Sprintf("%s->%s:%s", decisionID, targetID, graph.EdgeKindTargets),
-			Source:     decisionID,
-			Target:     targetID,
-			Kind:       graph.EdgeKindTargets,
-			Effect:     graph.EdgeEffectAllow,
-			Properties: edgeProperties,
-		})
-	}
-	for _, evidenceID := range uniqueToolNormalizedIDs(req.EvidenceIDs) {
-		if _, ok := g.GetNode(evidenceID); !ok {
-			continue
-		}
-		edgeProperties := metadata.PropertyMap()
-		g.AddEdge(&graph.Edge{
-			ID:         fmt.Sprintf("%s->%s:%s", decisionID, evidenceID, graph.EdgeKindBasedOn),
-			Source:     decisionID,
-			Target:     evidenceID,
-			Kind:       graph.EdgeKindBasedOn,
-			Effect:     graph.EdgeEffectAllow,
-			Properties: edgeProperties,
-		})
-	}
-	for _, actionID := range uniqueToolNormalizedIDs(req.ActionIDs) {
-		if _, ok := g.GetNode(actionID); !ok {
-			continue
-		}
-		edgeProperties := metadata.PropertyMap()
-		g.AddEdge(&graph.Edge{
-			ID:         fmt.Sprintf("%s->%s:%s", decisionID, actionID, graph.EdgeKindExecutedBy),
-			Source:     decisionID,
-			Target:     actionID,
-			Kind:       graph.EdgeKindExecutedBy,
-			Effect:     graph.EdgeEffectAllow,
-			Properties: edgeProperties,
-		})
+	if err != nil {
+		return "", err
 	}
 
 	return marshalToolResponse(map[string]any{
@@ -317,12 +325,7 @@ func (a *App) toolCerebroRecordDecision(_ context.Context, args json.RawMessage)
 	})
 }
 
-func (a *App) toolCerebroRecordOutcome(_ context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireSecurityGraph()
-	if err != nil {
-		return "", err
-	}
-
+func (a *App) toolCerebroRecordOutcome(ctx context.Context, args json.RawMessage) (string, error) {
 	var req struct {
 		ID            string         `json:"id"`
 		DecisionID    string         `json:"decision_id"`
@@ -351,59 +354,66 @@ func (a *App) toolCerebroRecordOutcome(_ context.Context, args json.RawMessage) 
 	if req.OutcomeType == "" || req.Verdict == "" {
 		return "", fmt.Errorf("outcome_type and verdict are required")
 	}
-	if _, ok := g.GetNode(req.DecisionID); !ok {
-		return "", fmt.Errorf("decision not found: %s", req.DecisionID)
-	}
-
-	metadata := graph.NormalizeWriteMetadata(req.ObservedAt, req.ValidFrom, req.ValidTo, req.SourceSystem, req.SourceEventID, req.Confidence, graph.WriteMetadataDefaults{
-		SourceSystem:      "agent",
-		SourceEventPrefix: "tool",
-		DefaultConfidence: 0.80,
-	})
-
-	outcomeID := strings.TrimSpace(req.ID)
-	if outcomeID == "" {
-		outcomeID = fmt.Sprintf("outcome:%d", metadata.ObservedAt.UnixNano())
-	}
-
-	properties := cloneToolJSONMap(req.Metadata)
-	properties["outcome_type"] = req.OutcomeType
-	properties["verdict"] = req.Verdict
-	properties["impact_score"] = req.ImpactScore
-	metadata.ApplyTo(properties)
-
-	g.AddNode(&graph.Node{
-		ID:         outcomeID,
-		Kind:       graph.NodeKindOutcome,
-		Name:       firstNonEmpty(req.OutcomeType, outcomeID),
-		Provider:   metadata.SourceSystem,
-		Properties: properties,
-		Risk:       graph.RiskNone,
-	})
-	evaluatesEdgeProperties := metadata.PropertyMap()
-	g.AddEdge(&graph.Edge{
-		ID:         fmt.Sprintf("%s->%s:%s", outcomeID, req.DecisionID, graph.EdgeKindEvaluates),
-		Source:     outcomeID,
-		Target:     req.DecisionID,
-		Kind:       graph.EdgeKindEvaluates,
-		Effect:     graph.EdgeEffectAllow,
-		Properties: evaluatesEdgeProperties,
-	})
-
+	var outcomeID string
 	targetIDs := uniqueToolNormalizedIDs(req.TargetIDs)
-	for _, targetID := range targetIDs {
-		if _, ok := g.GetNode(targetID); !ok {
-			continue
+	_, err := a.MutateSecurityGraph(ctx, func(g *graph.Graph) error {
+		if _, ok := g.GetNode(req.DecisionID); !ok {
+			return fmt.Errorf("decision not found: %s", req.DecisionID)
 		}
-		edgeProperties := metadata.PropertyMap()
-		g.AddEdge(&graph.Edge{
-			ID:         fmt.Sprintf("%s->%s:%s", outcomeID, targetID, graph.EdgeKindTargets),
-			Source:     outcomeID,
-			Target:     targetID,
-			Kind:       graph.EdgeKindTargets,
-			Effect:     graph.EdgeEffectAllow,
-			Properties: edgeProperties,
+
+		metadata := graph.NormalizeWriteMetadata(req.ObservedAt, req.ValidFrom, req.ValidTo, req.SourceSystem, req.SourceEventID, req.Confidence, graph.WriteMetadataDefaults{
+			SourceSystem:      "agent",
+			SourceEventPrefix: "tool",
+			DefaultConfidence: 0.80,
 		})
+
+		outcomeID = strings.TrimSpace(req.ID)
+		if outcomeID == "" {
+			outcomeID = fmt.Sprintf("outcome:%d", metadata.ObservedAt.UnixNano())
+		}
+
+		properties := cloneToolJSONMap(req.Metadata)
+		properties["outcome_type"] = req.OutcomeType
+		properties["verdict"] = req.Verdict
+		properties["impact_score"] = req.ImpactScore
+		metadata.ApplyTo(properties)
+
+		g.AddNode(&graph.Node{
+			ID:         outcomeID,
+			Kind:       graph.NodeKindOutcome,
+			Name:       firstNonEmpty(req.OutcomeType, outcomeID),
+			Provider:   metadata.SourceSystem,
+			Properties: properties,
+			Risk:       graph.RiskNone,
+		})
+		evaluatesEdgeProperties := metadata.PropertyMap()
+		g.AddEdge(&graph.Edge{
+			ID:         fmt.Sprintf("%s->%s:%s", outcomeID, req.DecisionID, graph.EdgeKindEvaluates),
+			Source:     outcomeID,
+			Target:     req.DecisionID,
+			Kind:       graph.EdgeKindEvaluates,
+			Effect:     graph.EdgeEffectAllow,
+			Properties: evaluatesEdgeProperties,
+		})
+
+		for _, targetID := range targetIDs {
+			if _, ok := g.GetNode(targetID); !ok {
+				continue
+			}
+			edgeProperties := metadata.PropertyMap()
+			g.AddEdge(&graph.Edge{
+				ID:         fmt.Sprintf("%s->%s:%s", outcomeID, targetID, graph.EdgeKindTargets),
+				Source:     outcomeID,
+				Target:     targetID,
+				Kind:       graph.EdgeKindTargets,
+				Effect:     graph.EdgeEffectAllow,
+				Properties: edgeProperties,
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		return "", err
 	}
 
 	return marshalToolResponse(map[string]any{
@@ -413,12 +423,7 @@ func (a *App) toolCerebroRecordOutcome(_ context.Context, args json.RawMessage) 
 	})
 }
 
-func (a *App) toolCerebroResolveIdentity(_ context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireSecurityGraph()
-	if err != nil {
-		return "", err
-	}
-
+func (a *App) toolCerebroResolveIdentity(ctx context.Context, args json.RawMessage) (string, error) {
 	var req struct {
 		AliasID           string    `json:"alias_id"`
 		SourceSystem      string    `json:"source_system"`
@@ -437,20 +442,25 @@ func (a *App) toolCerebroResolveIdentity(_ context.Context, args json.RawMessage
 		return "", err
 	}
 
-	result, err := graph.ResolveIdentityAlias(g, graph.IdentityAliasAssertion{
-		AliasID:       strings.TrimSpace(req.AliasID),
-		SourceSystem:  strings.TrimSpace(req.SourceSystem),
-		SourceEventID: strings.TrimSpace(req.SourceEventID),
-		ExternalID:    strings.TrimSpace(req.ExternalID),
-		AliasType:     strings.TrimSpace(req.AliasType),
-		CanonicalHint: strings.TrimSpace(req.CanonicalHint),
-		Email:         strings.TrimSpace(req.Email),
-		Name:          strings.TrimSpace(req.Name),
-		ObservedAt:    req.ObservedAt,
-		Confidence:    req.Confidence,
-	}, graph.IdentityResolutionOptions{
-		AutoLinkThreshold: req.AutoLinkThreshold,
-		SuggestThreshold:  req.SuggestThreshold,
+	var result graph.IdentityResolutionResult
+	_, err := a.MutateSecurityGraph(ctx, func(g *graph.Graph) error {
+		var resolveErr error
+		result, resolveErr = graph.ResolveIdentityAlias(g, graph.IdentityAliasAssertion{
+			AliasID:       strings.TrimSpace(req.AliasID),
+			SourceSystem:  strings.TrimSpace(req.SourceSystem),
+			SourceEventID: strings.TrimSpace(req.SourceEventID),
+			ExternalID:    strings.TrimSpace(req.ExternalID),
+			AliasType:     strings.TrimSpace(req.AliasType),
+			CanonicalHint: strings.TrimSpace(req.CanonicalHint),
+			Email:         strings.TrimSpace(req.Email),
+			Name:          strings.TrimSpace(req.Name),
+			ObservedAt:    req.ObservedAt,
+			Confidence:    req.Confidence,
+		}, graph.IdentityResolutionOptions{
+			AutoLinkThreshold: req.AutoLinkThreshold,
+			SuggestThreshold:  req.SuggestThreshold,
+		})
+		return resolveErr
 	})
 	if err != nil {
 		return "", err
@@ -458,12 +468,7 @@ func (a *App) toolCerebroResolveIdentity(_ context.Context, args json.RawMessage
 	return marshalToolResponse(result)
 }
 
-func (a *App) toolCerebroSplitIdentity(_ context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireSecurityGraph()
-	if err != nil {
-		return "", err
-	}
-
+func (a *App) toolCerebroSplitIdentity(ctx context.Context, args json.RawMessage) (string, error) {
 	var req struct {
 		AliasNodeID     string    `json:"alias_node_id"`
 		CanonicalNodeID string    `json:"canonical_node_id"`
@@ -476,15 +481,20 @@ func (a *App) toolCerebroSplitIdentity(_ context.Context, args json.RawMessage) 
 		return "", err
 	}
 
-	removed, err := graph.SplitIdentityAlias(
-		g,
-		strings.TrimSpace(req.AliasNodeID),
-		strings.TrimSpace(req.CanonicalNodeID),
-		strings.TrimSpace(req.Reason),
-		strings.TrimSpace(req.SourceSystem),
-		strings.TrimSpace(req.SourceEventID),
-		req.ObservedAt,
-	)
+	var removed bool
+	_, err := a.MutateSecurityGraph(ctx, func(g *graph.Graph) error {
+		var splitErr error
+		removed, splitErr = graph.SplitIdentityAlias(
+			g,
+			strings.TrimSpace(req.AliasNodeID),
+			strings.TrimSpace(req.CanonicalNodeID),
+			strings.TrimSpace(req.Reason),
+			strings.TrimSpace(req.SourceSystem),
+			strings.TrimSpace(req.SourceEventID),
+			req.ObservedAt,
+		)
+		return splitErr
+	})
 	if err != nil {
 		return "", err
 	}
@@ -495,12 +505,7 @@ func (a *App) toolCerebroSplitIdentity(_ context.Context, args json.RawMessage) 
 	})
 }
 
-func (a *App) toolCerebroIdentityReview(_ context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireSecurityGraph()
-	if err != nil {
-		return "", err
-	}
-
+func (a *App) toolCerebroIdentityReview(ctx context.Context, args json.RawMessage) (string, error) {
 	var req struct {
 		AliasNodeID     string    `json:"alias_node_id"`
 		CanonicalNodeID string    `json:"canonical_node_id"`
@@ -516,16 +521,21 @@ func (a *App) toolCerebroIdentityReview(_ context.Context, args json.RawMessage)
 		return "", err
 	}
 
-	record, err := graph.ReviewIdentityAlias(g, graph.IdentityReviewDecision{
-		AliasNodeID:     strings.TrimSpace(req.AliasNodeID),
-		CanonicalNodeID: strings.TrimSpace(req.CanonicalNodeID),
-		Verdict:         strings.TrimSpace(req.Verdict),
-		Reviewer:        strings.TrimSpace(req.Reviewer),
-		Reason:          strings.TrimSpace(req.Reason),
-		SourceSystem:    strings.TrimSpace(req.SourceSystem),
-		SourceEventID:   strings.TrimSpace(req.SourceEventID),
-		ObservedAt:      req.ObservedAt,
-		Confidence:      req.Confidence,
+	var record graph.IdentityReviewRecord
+	_, err := a.MutateSecurityGraph(ctx, func(g *graph.Graph) error {
+		var reviewErr error
+		record, reviewErr = graph.ReviewIdentityAlias(g, graph.IdentityReviewDecision{
+			AliasNodeID:     strings.TrimSpace(req.AliasNodeID),
+			CanonicalNodeID: strings.TrimSpace(req.CanonicalNodeID),
+			Verdict:         strings.TrimSpace(req.Verdict),
+			Reviewer:        strings.TrimSpace(req.Reviewer),
+			Reason:          strings.TrimSpace(req.Reason),
+			SourceSystem:    strings.TrimSpace(req.SourceSystem),
+			SourceEventID:   strings.TrimSpace(req.SourceEventID),
+			ObservedAt:      req.ObservedAt,
+			Confidence:      req.Confidence,
+		})
+		return reviewErr
 	})
 	if err != nil {
 		return "", err
@@ -569,12 +579,7 @@ func (a *App) toolCerebroIdentityCalibration(_ context.Context, args json.RawMes
 	return marshalToolResponse(report)
 }
 
-func (a *App) toolCerebroActuateRecommendation(_ context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireSecurityGraph()
-	if err != nil {
-		return "", err
-	}
-
+func (a *App) toolCerebroActuateRecommendation(ctx context.Context, args json.RawMessage) (string, error) {
 	var req struct {
 		ID               string         `json:"id"`
 		RecommendationID string         `json:"recommendation_id"`
@@ -596,22 +601,27 @@ func (a *App) toolCerebroActuateRecommendation(_ context.Context, args json.RawM
 		return "", err
 	}
 
-	result, err := graph.ActuateRecommendation(g, graph.RecommendationActuationRequest{
-		ID:               strings.TrimSpace(req.ID),
-		RecommendationID: strings.TrimSpace(req.RecommendationID),
-		InsightType:      strings.TrimSpace(req.InsightType),
-		Title:            strings.TrimSpace(req.Title),
-		Summary:          strings.TrimSpace(req.Summary),
-		DecisionID:       strings.TrimSpace(req.DecisionID),
-		TargetIDs:        req.TargetIDs,
-		SourceSystem:     strings.TrimSpace(req.SourceSystem),
-		SourceEventID:    strings.TrimSpace(req.SourceEventID),
-		ObservedAt:       req.ObservedAt,
-		ValidFrom:        req.ValidFrom,
-		ValidTo:          req.ValidTo,
-		Confidence:       req.Confidence,
-		AutoGenerated:    req.AutoGenerated,
-		Metadata:         req.Metadata,
+	var result graph.RecommendationActuationResult
+	_, err := a.MutateSecurityGraph(ctx, func(g *graph.Graph) error {
+		var actuationErr error
+		result, actuationErr = graph.ActuateRecommendation(g, graph.RecommendationActuationRequest{
+			ID:               strings.TrimSpace(req.ID),
+			RecommendationID: strings.TrimSpace(req.RecommendationID),
+			InsightType:      strings.TrimSpace(req.InsightType),
+			Title:            strings.TrimSpace(req.Title),
+			Summary:          strings.TrimSpace(req.Summary),
+			DecisionID:       strings.TrimSpace(req.DecisionID),
+			TargetIDs:        req.TargetIDs,
+			SourceSystem:     strings.TrimSpace(req.SourceSystem),
+			SourceEventID:    strings.TrimSpace(req.SourceEventID),
+			ObservedAt:       req.ObservedAt,
+			ValidFrom:        req.ValidFrom,
+			ValidTo:          req.ValidTo,
+			Confidence:       req.Confidence,
+			AutoGenerated:    req.AutoGenerated,
+			Metadata:         req.Metadata,
+		})
+		return actuationErr
 	})
 	if err != nil {
 		return "", err

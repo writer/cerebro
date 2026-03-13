@@ -461,7 +461,7 @@ func TestCerebroIdentityReviewCalibrationAndActuationTools(t *testing.T) {
 	if actionID == "" {
 		t.Fatalf("expected action_id, got %#v", actuationPayload)
 	}
-	if node, ok := g.GetNode(actionID); !ok || node == nil || node.Kind != graph.NodeKindAction {
+	if node, ok := application.CurrentSecurityGraph().GetNode(actionID); !ok || node == nil || node.Kind != graph.NodeKindAction {
 		t.Fatalf("expected action node to exist, got %#v", node)
 	}
 }
@@ -520,7 +520,7 @@ func TestCerebroGraphWritebackTools(t *testing.T) {
 	if observationID == "" {
 		t.Fatalf("expected observation_id, got %#v", observationBody)
 	}
-	observationNode, ok := g.GetNode(observationID)
+	observationNode, ok := application.CurrentSecurityGraph().GetNode(observationID)
 	if !ok || observationNode == nil {
 		t.Fatalf("expected observation node %q", observationID)
 	}
@@ -543,7 +543,7 @@ func TestCerebroGraphWritebackTools(t *testing.T) {
 	}`)); err != nil {
 		t.Fatalf("annotate_entity returned error: %v", err)
 	}
-	serviceNode, _ := g.GetNode("service:payments")
+	serviceNode, _ := application.CurrentSecurityGraph().GetNode("service:payments")
 	if serviceNode == nil {
 		t.Fatal("expected service node")
 	}
@@ -581,7 +581,7 @@ func TestCerebroGraphWritebackTools(t *testing.T) {
 	if decisionID == "" {
 		t.Fatalf("expected decision_id, got %#v", decisionBody)
 	}
-	if decisionNode, ok := g.GetNode(decisionID); !ok || decisionNode == nil {
+	if decisionNode, ok := application.CurrentSecurityGraph().GetNode(decisionID); !ok || decisionNode == nil {
 		t.Fatalf("expected decision node %q", decisionID)
 	}
 
@@ -607,7 +607,7 @@ func TestCerebroGraphWritebackTools(t *testing.T) {
 	if outcomeID == "" {
 		t.Fatalf("expected outcome_id, got %#v", outcomeBody)
 	}
-	if outcomeNode, ok := g.GetNode(outcomeID); !ok || outcomeNode == nil || outcomeNode.Kind != graph.NodeKindOutcome {
+	if outcomeNode, ok := application.CurrentSecurityGraph().GetNode(outcomeID); !ok || outcomeNode == nil || outcomeNode.Kind != graph.NodeKindOutcome {
 		t.Fatalf("expected outcome node %q, got %#v", outcomeID, outcomeNode)
 	}
 
@@ -632,7 +632,7 @@ func TestCerebroGraphWritebackTools(t *testing.T) {
 	if aliasID == "" {
 		t.Fatalf("expected alias_node_id, got %#v", resolveBody)
 	}
-	if aliasNode, ok := g.GetNode(aliasID); !ok || aliasNode == nil || aliasNode.Kind != graph.NodeKindIdentityAlias {
+	if aliasNode, ok := application.CurrentSecurityGraph().GetNode(aliasID); !ok || aliasNode == nil || aliasNode.Kind != graph.NodeKindIdentityAlias {
 		t.Fatalf("expected identity_alias node %q, got %#v", aliasID, aliasNode)
 	}
 
