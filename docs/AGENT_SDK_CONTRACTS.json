@@ -467,6 +467,51 @@
       "execution_kind": "direct_tool"
     },
     {
+      "id": "cerebro_correlate_events",
+      "version": "1.0.0",
+      "tool_name": "cerebro.correlate_events",
+      "sdk_method": "correlate_events",
+      "title": "Correlate Events",
+      "description": "Find temporal causal chains and anomaly signals around one event or entity",
+      "category": "query",
+      "required_permission": "sdk.context.read",
+      "input_schema": {
+        "properties": {
+          "entity_id": {
+            "description": "Optional entity ID (for example service:payments) to scope correlated events.",
+            "type": "string"
+          },
+          "event_id": {
+            "description": "Optional event node ID to expand into the local causal neighborhood.",
+            "type": "string"
+          },
+          "include_anomalies": {
+            "default": false,
+            "description": "Include anomaly summaries for the same event/entity context.",
+            "type": "boolean"
+          },
+          "limit": {
+            "default": 25,
+            "description": "Maximum number of correlations/anomalies to return (1-200).",
+            "type": "integer"
+          },
+          "pattern_id": {
+            "description": "Optional built-in correlation pattern filter applied after event_id/entity_id scoping.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "example_input": {
+        "entity_id": "service:payments",
+        "event_id": "event_id",
+        "include_anomalies": false,
+        "limit": 25,
+        "pattern_id": "pattern_id"
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
       "id": "cerebro_decide",
       "version": "1.0.0",
       "tool_name": "cerebro.record_decision",

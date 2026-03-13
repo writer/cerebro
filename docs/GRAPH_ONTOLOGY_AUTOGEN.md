@@ -3,7 +3,7 @@
 Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and `internal/graphingest/mappings.yaml` via `go run ./scripts/generate_graph_ontology_docs/main.go`.
 
 - Node kinds: **64**
-- Edge kinds: **41**
+- Edge kinds: **43**
 - Mapping rules: **13**
 - Source domains: **9**
 
@@ -21,7 +21,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `bucket_policy_statement` | resource | `bucket_id`, `effect`, `observed_at`, `recorded_at`, `statement_id`, `transaction_from`, `valid_from` | `asserted_by`, `based_on`, `configures`, `targets` |
 | `bucket_public_access_block` | resource | `bucket_id`, `observed_at`, `public_access_block_id`, `recorded_at`, `transaction_from`, `valid_from` | `asserted_by`, `based_on`, `configures`, `targets` |
 | `bucket_versioning_config` | resource | `bucket_id`, `observed_at`, `recorded_at`, `transaction_from`, `valid_from`, `versioning_config_id` | `asserted_by`, `based_on`, `configures` |
-| `check_run` | business | `check_name`, `check_run_id`, `observed_at`, `repository`, `status`, `valid_from` | `based_on`, `evaluates`, `targets` |
+| `check_run` | business | `check_name`, `check_run_id`, `observed_at`, `repository`, `status`, `valid_from` | `based_on`, `caused_by`, `evaluates`, `targets` |
 | `ci_workflow` | - | - | - |
 | `claim` | business | `claim_type`, `observed_at`, `predicate`, `recorded_at`, `status`, `subject_id`, `transaction_from`, `valid_from` | `asserted_by`, `based_on`, `contradicts`, `refers`, `refutes`, `supersedes`, `supports`, `targets` |
 | `cluster_role` | kubernetes | - | - |
@@ -36,13 +36,13 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `decision` | business | `decision_type`, `made_at`, `observed_at`, `status`, `valid_from` | `based_on`, `executed_by`, `targets` |
 | `department` | business | - | - |
 | `deployment` | kubernetes, resource | - | - |
-| `deployment_run` | business, resource | `deploy_id`, `environment`, `observed_at`, `service_id`, `status`, `valid_from` | `based_on`, `depends_on`, `targets` |
+| `deployment_run` | business, resource | `deploy_id`, `environment`, `observed_at`, `service_id`, `status`, `valid_from` | `based_on`, `depends_on`, `targets`, `triggered_by` |
 | `document` | business | `document_id`, `observed_at`, `title`, `valid_from` | `based_on`, `targets` |
 | `evidence` | business | `evidence_type`, `observed_at`, `source_system`, `valid_from` | `based_on`, `targets` |
 | `function` | resource | - | - |
 | `group` | identity | - | - |
 | `identity_alias` | identity | `external_id`, `observed_at`, `source_system`, `valid_from` | `alias_of` |
-| `incident` | business | `incident_id`, `observed_at`, `status`, `valid_from` | `based_on`, `evaluates`, `targets` |
+| `incident` | business | `incident_id`, `observed_at`, `status`, `valid_from` | `based_on`, `caused_by`, `evaluates`, `targets` |
 | `instance` | resource | - | - |
 | `internet` | - | - | - |
 | `invoice` | business | - | - |
@@ -127,6 +127,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `can_delete` | - |
 | `can_read` | - |
 | `can_write` | - |
+| `caused_by` | - |
 | `configures` | - |
 | `connects_to` | - |
 | `contains_package` | - |
@@ -156,6 +157,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `supersedes` | - |
 | `supports` | - |
 | `targets` | - |
+| `triggered_by` | - |
 | `works_at` | - |
 
 ## Source Domain Coverage

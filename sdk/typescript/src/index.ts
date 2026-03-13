@@ -172,6 +172,11 @@ export class Client {
   }
 
 
+  async correlateEvents(args: unknown): Promise<ToolCallResponse> {
+    return this.callTool("cerebro_correlate_events", args);
+  }
+
+
   async decide(args: unknown): Promise<ToolCallResponse> {
     return this.callTool("cerebro_decide", args);
   }

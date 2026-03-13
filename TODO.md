@@ -5,6 +5,67 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 57 - Cross-Event Correlation + Incident Pattern Detection (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#170` was still leaving Cerebro with event nodes but no shared causal layer, so analysts and agents still had to manually infer `PR -> deploy -> incident` chains from raw neighbors.
+- [x] Gap: graph activation and live TAP ingest were both materializing event nodes independently, but neither path was projecting durable `triggered_by` / `caused_by` edges back into the graph substrate.
+- [x] Gap: temporal pattern detection needed to be a typed catalog, not a report-only heuristic blob, or downstream APIs/tools would drift into duplicated correlation logic.
+- [x] Gap: anomaly detection for event rates had no baseline contract, so operational reports could not distinguish one-off incidents from real volume spikes.
+- [x] Gap: the platform intelligence surface had no dedicated read/tool endpoint for causal event neighborhoods.
+
+### Execution plan
+- [x] Add graph-level event-correlation substrate:
+  - [x] add built-in edge kinds `triggered_by` and `caused_by`
+  - [x] extend schema registry allowances for `deployment_run` and `incident`
+  - [x] add `internal/graph/event_correlation.go` with typed pattern catalog and deterministic edge IDs
+  - [x] materialize `pull_request -> deployment_run` and `deployment_run -> incident` chains from shared service target context plus time windows
+- [x] Add baseline anomaly summaries:
+  - [x] compare current 7d windows against the prior 28d baseline
+  - [x] flag failed-deployment spikes
+  - [x] flag first incident activity in 90d
+- [x] Wire both graph build paths:
+  - [x] rematerialize event correlations during `activateBuiltSecurityGraph(...)`
+  - [x] rematerialize event correlations on live TAP declarative mappings when relevant event kinds change
+- [x] Add platform read surfaces:
+  - [x] `GET /api/v1/platform/intelligence/event-patterns`
+  - [x] `GET /api/v1/platform/intelligence/event-correlations`
+  - [x] `GET /api/v1/platform/intelligence/event-anomalies`
+- [x] Add agent-facing tool surface:
+  - [x] `cerebro.correlate_events`
+  - [x] tool regression coverage
+- [x] Add focused regression coverage:
+  - [x] graph-level causal chain materialization
+  - [x] graph-level anomaly detection
+  - [x] live TAP ingest correlation materialization
+  - [x] platform intelligence endpoint coverage
+- [x] Pull external reference patterns with `gh` and fold them into the design:
+  - [x] `argoproj/argo-events` trigger registry shape
+  - [x] `OpenLineage/OpenLineage` explicit lineage contract surface
+  - [x] `falcosecurity/falco` typed event-pattern/rule engine inspiration
+
+### Detailed follow-on backlog
+- [ ] Track A - Correlation rule expansion
+  - Exit criteria:
+  - [ ] add typed patterns for `pipeline_run -> deployment_run`, `check_run -> deployment_run`, and `incident -> decision/action/outcome`
+  - [ ] support multi-step correlation chains without recomputing the entire graph client-side
+  - [ ] attach confidence decay/ambiguity scoring when multiple candidate causes exist
+- [ ] Track B - Shared execution + persistent derivation store
+  - Exit criteria:
+  - [ ] move event-correlation execution metadata out of process memory and into the shared execution store boundary
+  - [ ] persist correlation runs / refresh metadata for multi-worker consistency
+  - [ ] make manual re-correlation and backfill operations first-class platform jobs
+- [ ] Track C - Report and simulation integration
+  - Exit criteria:
+  - [ ] expose correlation chains directly in incident, runtime, and org-dynamics reports
+  - [ ] feed correlation edges into simulation/explanation payloads instead of duplicating neighborhood traversal
+  - [ ] attach supporting evidence/claim lineage to correlation edges where source artifacts exist
+- [ ] Track D - Asset/runtime deepening
+  - Exit criteria:
+  - [ ] connect image/workload scan findings into the same causal graph so deploy/runtime/incident chains become asset-aware
+  - [ ] project runtime response executions and containment outcomes into event correlation chains
+  - [ ] extend anomaly baselines with workload/image/runtime dimensions once shared execution storage is in place
+
 ## Deep Review Cycle 56 - Runtime Response Executors + Capability Boundaries (2026-03-12)
 
 ### Review findings
