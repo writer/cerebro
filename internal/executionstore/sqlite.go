@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -46,6 +47,8 @@ type SQLiteStore struct {
 	db *sql.DB
 }
 
+const sqliteBusyTimeoutMS = 5000
+
 func NewSQLiteStore(path string) (*SQLiteStore, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
@@ -54,7 +57,7 @@ func NewSQLiteStore(path string) (*SQLiteStore, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return nil, fmt.Errorf("create execution store directory: %w", err)
 	}
-	db, err := sql.Open("sqlite", path)
+	db, err := sql.Open("sqlite", sqliteStoreDSN(path))
 	if err != nil {
 		return nil, fmt.Errorf("open execution sqlite: %w", err)
 	}
@@ -63,6 +66,20 @@ func NewSQLiteStore(path string) (*SQLiteStore, error) {
 		return nil, err
 	}
 	return &SQLiteStore{db: db}, nil
+}
+
+func sqliteStoreDSN(path string) string {
+	absPath, err := filepath.Abs(path)
+	if err == nil {
+		path = absPath
+	}
+	u := url.URL{Scheme: "file", Path: filepath.ToSlash(path)}
+	query := u.Query()
+	query.Add("_pragma", "journal_mode(WAL)")
+	query.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", sqliteBusyTimeoutMS))
+	query.Add("_pragma", "synchronous(NORMAL)")
+	u.RawQuery = query.Encode()
+	return u.String()
 }
 
 func initSQLiteStore(db *sql.DB) error {
@@ -95,6 +112,21 @@ func initSQLiteStore(db *sql.DB) error {
 		payload JSON NOT NULL,
 		PRIMARY KEY (namespace, run_id, sequence)
 	);
+	CREATE TABLE IF NOT EXISTS processed_events (
+		namespace TEXT NOT NULL,
+		event_key TEXT NOT NULL,
+		payload_hash TEXT NOT NULL,
+		first_seen_at TIMESTAMP NOT NULL,
+		last_seen_at TIMESTAMP NOT NULL,
+		processed_at TIMESTAMP NOT NULL,
+		expires_at TIMESTAMP NOT NULL,
+		duplicate_count INTEGER NOT NULL DEFAULT 0,
+		PRIMARY KEY (namespace, event_key)
+	);
+	CREATE INDEX IF NOT EXISTS idx_processed_events_namespace_expires
+		ON processed_events(namespace, expires_at ASC);
+	CREATE INDEX IF NOT EXISTS idx_processed_events_namespace_processed
+		ON processed_events(namespace, processed_at DESC, event_key DESC);
 	`
 	if _, err := db.ExecContext(context.Background(), schema); err != nil {
 		return fmt.Errorf("init execution sqlite schema: %w", err)
