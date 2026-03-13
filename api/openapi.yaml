@@ -9563,6 +9563,11 @@ components:
             - forbid
         resource:
           type: string
+        condition_format:
+          type: string
+          enum:
+            - legacy
+            - cel
         conditions:
           type: array
           items:

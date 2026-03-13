@@ -5,6 +5,46 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 59 - Policy CEL Migration + Legacy Conversion Path (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#145` was still only half-solved if CEL existed beside the legacy parser but no migration surface existed for repository policies.
+- [x] Gap: API validation and policy loading now rejected invalid CEL cleanly, but the public contract still did not advertise `condition_format`.
+- [x] Gap: a credible migration needed a deterministic converter for the common legacy operator surface instead of a manual rewrite expectation.
+- [x] Gap: CEL evaluation for converted policies needed safe helpers for legacy semantics like missing nested paths, recursive `CONTAINS` / `MATCHES`, and array membership.
+- [x] Gap: the CLI still described Cerebro as Cedar-backed even after the policy engine seam had started moving to CEL.
+
+### Execution plan
+- [x] Harden the CEL runtime seam:
+  - [x] extend the CEL environment with safe helper functions for path lookup, existence, recursive contains/matches, list coercion, membership, and comparison
+  - [x] keep compiled CEL programs cached in the engine while preserving legacy-default behavior
+- [x] Add legacy-to-CEL conversion helpers:
+  - [x] add typed conversion helpers for comparisons, `exists` / `not exists`, `IN` / `NOT IN`, `MATCHES`, `CONTAINS`, `starts_with`, and nested `ANY` / `NOT ANY`
+  - [x] add round-trip regression coverage comparing converted CEL conditions against the legacy evaluator
+- [x] Add a real operator-facing migration surface:
+  - [x] add `cerebro policy convert [policy-file]`
+  - [x] support stdout JSON output by default and `--write` for in-place conversion
+  - [x] add CLI regression coverage
+- [x] Update public/docs contract:
+  - [x] advertise `condition_format` in OpenAPI
+  - [x] update CLI copy to describe the CEL-backed policy engine
+- [x] Pull external reference patterns with `gh` and fold them into the design:
+  - [x] `google/cel-go` for the core parse/check/program model and extension registration shape
+  - [x] `kubernetes/kubernetes` for practical CEL migration pressure in real policy surfaces
+  - [x] `open-policy-agent/opa` as the contrast point for “policy engine” scope versus lightweight embedded expressions
+
+### Detailed follow-on backlog
+- [ ] Track A - Full repository migration
+  - Exit criteria:
+  - [ ] convert repository policies that are trivially translatable to `condition_format: cel`
+  - [ ] report the remaining non-trivial policy files that still need manual review
+  - [ ] decide when to flip new authored policies to CEL by default
+- [ ] Track B - Legacy parser retirement
+  - Exit criteria:
+  - [ ] add shadow/dual evaluation for a bounded migration window if policy drift appears
+  - [ ] remove the legacy recursive-descent evaluator once repo policies and API-created policies are predominantly CEL
+  - [ ] delete legacy-only parser helpers no longer needed by conversion tooling
+
 ## Deep Review Cycle 58 - API Service Seams for Graph Intelligence Handlers (2026-03-12)
 
 ### Review findings
