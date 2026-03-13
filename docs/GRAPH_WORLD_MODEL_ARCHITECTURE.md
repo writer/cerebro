@@ -24,7 +24,7 @@ A world-model graph should be able to answer, for any important fact:
 Durable world objects and actors:
 
 - identities: `person`, `user`, `role`, `group`, `service_account`, `identity_alias`
-- systems and resources: `service`, `workload`, `database`, `bucket`, `application`, `network`
+- systems and resources: `organization`, `folder`, `project`, `service`, `workload`, `database`, `bucket`, `application`, `network`
 - operational domains: `pull_request`, `deployment_run`, `pipeline_run`, `check_run`, `meeting`, `document`, `communication_thread`, `incident`
 - decision loop: `decision`, `action`, `outcome`
 - workload-security projection: `workload_scan`, `package`, `vulnerability`

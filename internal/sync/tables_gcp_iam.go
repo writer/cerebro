@@ -147,7 +147,7 @@ type gcpServiceAccountRoleMetadata struct {
 }
 
 func (e *GCPSyncEngine) fetchGCPProjectIAMPolicy(ctx context.Context, projectID string) (*iampb.Policy, error) {
-	client, err := resourcemanager.NewProjectsClient(ctx)
+	client, err := resourcemanager.NewProjectsClient(ctx, gcpClientOptionsFromContext(ctx)...)
 	if err != nil {
 		return nil, fmt.Errorf("create resource manager client: %w", err)
 	}

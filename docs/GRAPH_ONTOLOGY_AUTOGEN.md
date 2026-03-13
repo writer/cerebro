@@ -2,7 +2,7 @@
 
 Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and `internal/graphingest/mappings.yaml` via `go run ./scripts/generate_graph_ontology_docs/main.go`.
 
-- Node kinds: **64**
+- Node kinds: **67**
 - Edge kinds: **44**
 - Mapping rules: **13**
 - Source domains: **9**
@@ -39,6 +39,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `deployment_run` | business, resource | `deploy_id`, `environment`, `observed_at`, `service_id`, `status`, `valid_from` | `based_on`, `depends_on`, `targets`, `triggered_by` |
 | `document` | business | `document_id`, `observed_at`, `title`, `valid_from` | `based_on`, `targets` |
 | `evidence` | business | `evidence_type`, `observed_at`, `source_system`, `valid_from` | `based_on`, `targets` |
+| `folder` | resource | `folder_id`, `resource_name` | `located_in` |
 | `function` | resource | - | - |
 | `group` | identity | - | - |
 | `identity_alias` | identity | `external_id`, `observed_at`, `source_system`, `valid_from` | `alias_of` |
@@ -53,6 +54,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `network` | resource | - | - |
 | `observation` | business | `observation_type`, `observed_at`, `recorded_at`, `subject_id`, `transaction_from`, `valid_from` | `asserted_by`, `based_on`, `targets` |
 | `opportunity` | business | - | - |
+| `organization` | resource | `organization_id`, `resource_name` | - |
 | `outcome` | business | `observed_at`, `outcome_type`, `valid_from`, `verdict` | `evaluates`, `targets` |
 | `package` | resource | `ecosystem`, `observed_at`, `package_name`, `recorded_at`, `transaction_from`, `valid_from`, `version` | `affected_by`, `based_on` |
 | `permission_boundary` | - | - | - |
@@ -60,6 +62,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `person` | identity | - | - |
 | `pipeline_run` | business, resource | `observed_at`, `pipeline_id`, `run_id`, `service_id`, `status`, `valid_from` | `based_on`, `executed_by`, `targets` |
 | `pod` | kubernetes, resource | - | - |
+| `project` | resource | `project_id`, `resource_name` | `located_in` |
 | `pull_request` | business | `number`, `observed_at`, `repository`, `state`, `valid_from` | `based_on`, `targets` |
 | `repository` | - | - | - |
 | `role` | identity | - | - |
@@ -93,15 +96,18 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `deployment_run` | `observed_at`, `source_system`, `valid_from` | `confidence`, `recorded_at`, `source_event_id`, `transaction_from`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `environment`=`dev`, `prod`, `production`, `qa`, `sandbox`, `staging`, `test`<br>`status`=`cancelled`, `completed`, `error`, `failed`, `failure`, `in_progress`, `pending`, `queued`, `running`, `succeeded`, `success`, `successful` |
 | `document` | `observed_at`, `source_system`, `valid_from` | `confidence`, `recorded_at`, `source_event_id`, `transaction_from`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
 | `evidence` | `observed_at`, `source_system`, `valid_from` | `confidence`, `recorded_at`, `source_event_id`, `transaction_from`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
+| `folder` | - | `confidence`, `observed_at`, `recorded_at`, `source_event_id`, `source_system`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
 | `group` | - | `confidence`, `observed_at`, `recorded_at`, `source_event_id`, `source_system`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
 | `identity_alias` | `observed_at`, `source_system`, `valid_from` | `confidence`, `recorded_at`, `source_event_id`, `transaction_from`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `alias_type`=`email`, `employee_id`, `github`, `slack`, `uid`, `upn`, `username` |
 | `incident` | `observed_at`, `source_system`, `valid_from` | `confidence`, `recorded_at`, `source_event_id`, `transaction_from`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `severity`=`critical`, `high`, `low`, `medium`, `sev1`, `sev2`, `sev3`, `sev4`<br>`status`=`acknowledged`, `closed`, `investigating`, `monitoring`, `open`, `postmortem`, `resolved`, `triggered` |
 | `meeting` | `observed_at`, `source_system`, `valid_from` | `confidence`, `recorded_at`, `source_event_id`, `transaction_from`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
 | `observation` | `observed_at`, `recorded_at`, `source_system`, `transaction_from`, `valid_from` | `confidence`, `source_event_id`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
+| `organization` | - | `confidence`, `observed_at`, `recorded_at`, `source_event_id`, `source_system`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
 | `outcome` | `observed_at`, `source_system`, `valid_from` | `confidence`, `recorded_at`, `source_event_id`, `transaction_from`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `verdict`=`mixed`, `negative`, `neutral`, `positive`, `unknown` |
 | `package` | `observed_at`, `recorded_at`, `source_system`, `transaction_from`, `valid_from` | `confidence`, `source_event_id`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
 | `person` | - | `confidence`, `observed_at`, `recorded_at`, `source_event_id`, `source_system`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
 | `pipeline_run` | `observed_at`, `source_system`, `valid_from` | `confidence`, `recorded_at`, `source_event_id`, `transaction_from`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `status`=`action_required`, `cancelled`, `completed`, `failed`, `failure`, `in_progress`, `neutral`, `passed`, `pending`, `queued`, `running`, `skipped`, `succeeded`, `success`, `successful`, `timed_out` |
+| `project` | - | `confidence`, `observed_at`, `recorded_at`, `source_event_id`, `source_system`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
 | `pull_request` | `observed_at`, `source_system`, `valid_from` | `confidence`, `recorded_at`, `source_event_id`, `transaction_from`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `state`=`closed`, `draft`, `merged`, `open`, `opened`, `review_submitted` |
 | `role` | - | `confidence`, `observed_at`, `recorded_at`, `source_event_id`, `source_system`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
 | `service` | `observed_at`, `source_system`, `valid_from` | `confidence`, `recorded_at`, `source_event_id`, `transaction_from`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `criticality`=`critical`, `high`, `low`, `medium`, `tier0`, `tier1`, `tier2`, `tier3` |
@@ -177,7 +183,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 
 ## Unmapped Built-in Node Kinds
 
-Total unmapped kinds: **41**
+Total unmapped kinds: **44**
 
 - `activity`
 - `application`
@@ -195,6 +201,7 @@ Total unmapped kinds: **41**
 - `decision`
 - `department`
 - `deployment`
+- `folder`
 - `function`
 - `group`
 - `identity_alias`
@@ -205,12 +212,14 @@ Total unmapped kinds: **41**
 - `namespace`
 - `network`
 - `observation`
+- `organization`
 - `outcome`
 - `package`
 - `permission_boundary`
 - `persistent_volume`
 - `person`
 - `pod`
+- `project`
 - `role`
 - `role_binding`
 - `scp`
