@@ -5,6 +5,56 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 68 - Distributed Graph Persistence Foundation and Replica Recovery (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#246` was still conceptually correct but operationally hollow; snapshot artifacts existed, yet the live graph did not actually depend on a shared graph-persistence seam for activation, recovery, or API/tool reads.
+- [x] Gap: snapshot usage was fragmented across API handlers, graph intelligence handlers, replay code, and tool paths via ad hoc `GRAPH_SNAPSHOT_PATH` lookups instead of a shared store owned at the application layer.
+- [x] Gap: the graph had no replica-aware recovery path. Losing the local snapshot directory still meant rebuilding from the warehouse even though the issue explicitly called for replicated durability.
+- [x] Gap: the right abstractions were visible in upstream references:
+  - [x] `dagster-io/dagster` keeps durable run storage behind one seam even while the execution/runtime layer stays hot and in-process.
+  - [x] `temporalio/temporal` treats recovery and coordination state as infrastructure, not handler-local glue.
+  - [x] the local Wiz schema dump in `/Users/jonathanhaas/Downloads/other/wiz.graphql` reinforces that broad graph/intelligence query surfaces only stay operable when snapshot/entity state is typed, inspectable, and recoverable.
+
+### Execution plan
+- [x] Add a shared graph persistence store:
+  - [x] add `internal/graph/persistence_store.go`
+  - [x] keep the current local snapshot store as the hot/local durability layer
+  - [x] add replica backends for `file://`, `s3://`, and `gs://`
+- [x] Deepen the snapshot substrate:
+  - [x] add reusable compressed snapshot encode/decode helpers
+  - [x] teach `SnapshotStore` to return typed persisted records/manifests for the latest saved snapshot
+  - [x] expose latest-snapshot record loading for recovery and status
+- [x] Move graph persistence to the app boundary:
+  - [x] add shared config-backed `App.GraphSnapshots`
+  - [x] initialize it during app bootstrap next to the shared execution store
+  - [x] persist graph snapshots automatically on graph activation
+  - [x] recover from the latest persisted snapshot before the warehouse rebuild completes
+- [x] Move graph read surfaces onto the shared store:
+  - [x] platform graph snapshot APIs
+  - [x] graph intelligence temporal diff path
+  - [x] tool temporal graph-diff helpers
+- [x] Add health and regression coverage:
+  - [x] register `graph_persistence` health
+  - [x] add replica fallback tests
+  - [x] add activation-time persistence tests
+
+### Detailed follow-on backlog
+- [ ] Track A - complete `#246` HA control plane
+  - Exit criteria:
+  - [ ] add one-writer lease semantics for rebuild / CDC apply
+  - [ ] add follower hydration mode and readiness gates on replica freshness
+  - [ ] add replica integrity verification sweeps and background repair
+- [ ] Track B - persistence substrate hardening
+  - Exit criteria:
+  - [ ] move diff artifacts onto the shared graph persistence path instead of sibling local-only storage
+  - [ ] add explicit replica lag / hydration metrics
+  - [ ] add object-store integration coverage for `s3://` and `gs://` backends
+- [ ] Track C - downstream partitioning and tenancy
+  - Exit criteria:
+  - [ ] land `#247` on top of the shared graph persistence seam rather than directly on raw in-memory graphs
+  - [ ] push tenant/account partition keys into snapshot manifests and hydration boundaries
+
 ## Deep Review Cycle 67 - Graph Horizontal Scaling Path and Persistence Decision Gate (2026-03-12)
 
 ### Review findings

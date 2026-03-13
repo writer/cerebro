@@ -126,6 +126,7 @@ func (a *App) maybeStartGraphConsistencyCheck(trigger string, summary graph.Grap
 	if baseCtx == nil {
 		baseCtx = context.Background()
 	}
+	// #nosec G118 -- cancel is stored for shutdown coordination and also deferred inside the check goroutine.
 	checkCtx, cancel := context.WithTimeout(baseCtx, 30*time.Minute)
 	a.graphConsistencyCancel = cancel
 	a.graphConsistencyMu.Unlock()

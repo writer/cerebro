@@ -187,6 +187,36 @@ The hybrid path uses existing seams and keeps optionality open.
 
 It should not start by replacing the query engine.
 
+## What `#246` Now Implements
+
+The first concrete `#246` cut is now in the repo:
+
+- a shared app-owned graph persistence store, parallel to the shared execution store
+- automatic snapshot persistence on graph activation
+- recovery from the latest persisted snapshot before the warehouse rebuild completes
+- replica-aware fallback for graph snapshot APIs, temporal diff paths, and tool diff helpers
+- pluggable replica backends for:
+  - local filesystem mirrors (`file://` or plain path)
+  - Amazon S3 (`s3://bucket/prefix`)
+  - Google Cloud Storage (`gs://bucket/prefix`)
+- persistence health reporting through the app health registry
+
+That means Cerebro now has the first durable graph-runtime seam needed for:
+
+- rolling deployments without throwing away the only durable graph artifact
+- follower/read replica hydration in a later cut
+- one-writer lease semantics in a later cut
+- tenant/account partitioned hydration in `#247`
+
+It still intentionally does **not** solve:
+
+- lease election / writer fencing
+- follower promotion logic
+- replica lag metrics and automatic repair
+- tenant/account graph partitioning
+
+Those remain the next layers on top of the shared persistence substrate.
+
 ## What `#247` Should Actually Build
 
 `#247` should implement:
