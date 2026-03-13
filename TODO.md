@@ -5,6 +5,43 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 75 - GCP Hierarchy and Inherited IAM Foundations (2026-03-13)
+
+### Review findings
+- [x] Gap: issue `#245` is broader than one inventory backlog, but the first enterprise-grade credibility seam is still structural: Cerebro had GCP resources and project IAM, yet no first-class `organization`, `folder`, or `project` graph nodes to anchor inheritance.
+- [x] Gap: org/folder/project hierarchy was already partially present in raw sync context (`runGCPOrgSync`, Cloud Asset `parent_full_name`, org policy parent references), but it was not normalized into reusable platform nodes and `located_in` edges.
+- [x] Gap: GCP IAM inheritance above the project was absent, so the graph systematically understated permissions that actually apply at folder or organization scope.
+- [x] Gap: upstream patterns converged on the same structural lesson:
+  - [x] `cartography-cncf/cartography` models GCP CRM resources explicitly and treats org, folder, and project hierarchy as first-class graph structure instead of implicit provider metadata.
+  - [x] `forseti-security/forseti-security` split hierarchy/IAM analysis from project-local checks, reinforcing that inherited policy scope has to be queryable as graph material, not reconstructed ad hoc later.
+
+### Execution plan
+- [x] Add first-class hierarchy ontology kinds:
+  - [x] add `organization`, `folder`, and `project` node kinds
+  - [x] register schema definitions so hierarchy nodes can emit `located_in`
+- [x] Sync GCP Resource Manager hierarchy metadata per project:
+  - [x] add native tables for projects, folders, and organizations
+  - [x] resolve project ancestry with Resource Manager APIs instead of guessing from one project row
+  - [x] preserve ancestor path and folder IDs for downstream reasoning
+- [x] Sync inherited IAM policy scopes:
+  - [x] add folder-level IAM policy table
+  - [x] add organization-level IAM policy table
+  - [x] preserve binding conditions and hierarchy provenance in stored rows
+- [x] Materialize hierarchy and inherited permissions in the graph:
+  - [x] create `organization` / `folder` / `project` nodes
+  - [x] add `located_in` hierarchy edges
+  - [x] fan folder/org IAM bindings out to descendant project resources with `hierarchy_policy` provenance
+- [x] Add regression coverage:
+  - [x] lineage ordering and ancestor-path tests for Resource Manager fetch helpers
+  - [x] builder tests for hierarchy nodes/edges
+  - [x] builder tests for inherited folder/org IAM edge materialization
+- [ ] Next GCP enterprise-depth cuts after this slice:
+  - [ ] Secret Manager nodes + access controls
+  - [ ] Pub/Sub and KMS resource-level IAM edges
+  - [ ] service-account impersonation chain modeling (`iam.serviceAccounts.actAs`, `iam.serviceAccountTokenCreator`)
+  - [ ] Workload Identity Federation trust edges
+  - [ ] billing-account and service-enablement modeling
+
 ## Deep Review Cycle 74 - Credential Pivot Graph Materialization (2026-03-13)
 
 ### Review findings

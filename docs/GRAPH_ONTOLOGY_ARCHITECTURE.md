@@ -16,7 +16,7 @@ This document describes how Cerebro's graph ontology should be structured and ev
 Core identity and infrastructure backbone used by most traversals:
 
 - Identity: `person`, `user`, `role`, `group`, `service_account`, `identity_alias`
-- Infra resources: `service`, `workload`, `database`, `bucket`, `secret`, `function`, `network`, `application`
+- Infra resources: `organization`, `folder`, `project`, `service`, `workload`, `database`, `bucket`, `secret`, `function`, `network`, `application`
 - Access edges: `can_read`, `can_write`, `can_admin`, `can_assume`, `member_of`, `alias_of`
 
 ### 2) Operational Activity Layer
