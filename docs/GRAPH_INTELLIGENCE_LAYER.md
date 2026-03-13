@@ -31,6 +31,9 @@ See [GRAPH_ONTOLOGY_ARCHITECTURE.md](./GRAPH_ONTOLOGY_ARCHITECTURE.md) for ontol
 - `source`: first-class claim/assertion origin entities.
 - `claim`: durable assertions about subjects, relationships, and values.
 - `action`: interventions and operational steps.
+- `workload_scan`: one persisted workload scan execution projected into the graph.
+- `package`: one installed software package/version observed on a scanned workload.
+- `vulnerability`: one normalized advisory/vulnerability record linked to scanned packages.
 
 ### Edge kinds
 - `alias_of`: alias identity to canonical identity.
@@ -45,6 +48,10 @@ See [GRAPH_ONTOLOGY_ARCHITECTURE.md](./GRAPH_ONTOLOGY_ARCHITECTURE.md) for ontol
 - `refutes`: contradictory-claim relationship.
 - `supersedes`: correction/replacement relationship for stale or withdrawn claims.
 - `contradicts`: explicit contradiction relationship when retained as graph state.
+- `has_scan`: asset-to-scan relationship for projected workload coverage.
+- `contains_package`: scan-to-package relationship for observed package inventory.
+- `found_vulnerability`: scan-to-vulnerability relationship for observed vulnerable components.
+- `affected_by`: package-to-vulnerability relationship for version-specific exposure.
 
 All write surfaces must populate provenance and temporal metadata (`source_system`, `source_event_id`, `observed_at`, `valid_from`, optional `valid_to`, `recorded_at`, `transaction_from`, optional `transaction_to`, `confidence`) so ontology conformance and bitemporal traversal remain consistent.
 
@@ -120,6 +127,7 @@ Knowledge inspection characteristics:
 - typed entity/resource collection/detail reads under `/api/v1/platform/entities*`
 - typed facet contract discovery under `/api/v1/platform/entities/facets*`
 - entity detail exposes canonical refs, external refs, aliases, relationship context, support context, facet modules, promoted subresources, and posture summaries so asset views do not have to reconstruct graph context client-side
+- compute/entity detail now exposes `workload_security` when projected scan context exists, including freshness, vulnerability depth, KEV/fixability counts, and attack-path context
 - typed evidence and observation collection/detail reads under `/api/v1/platform/knowledge/evidence*` and `/api/v1/platform/knowledge/observations*`
 - typed adjudication queue reads and append-only adjudication writes under `/api/v1/platform/knowledge/claim-groups*`
 - typed claim reasoning resources under `/api/v1/platform/knowledge/claims/{claim_id}/timeline`, `/api/v1/platform/knowledge/claims/{claim_id}/explanation`, `/api/v1/platform/knowledge/claims/{claim_id}/proofs`, `/api/v1/platform/knowledge/claim-diffs`, and `/api/v1/platform/knowledge/diffs`
