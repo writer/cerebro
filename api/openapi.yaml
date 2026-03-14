@@ -614,6 +614,71 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Framework'
+  /api/v1/compliance/frameworks/{id}/status:
+    get:
+      tags:
+        - Compliance
+      summary: Get current compliance framework status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: valid_at
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: recorded_at
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Framework compliance status summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FrameworkComplianceStatusResponse'
+  /api/v1/compliance/frameworks/{id}/controls/{control_id}:
+    get:
+      tags:
+        - Compliance
+      summary: Get compliance control detail with evidence
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: control_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: valid_at
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: recorded_at
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Compliance control detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComplianceControlDetailResponse'
   /api/v1/compliance/frameworks/{id}/report:
     get:
       tags:
@@ -625,6 +690,18 @@ paths:
           required: true
           schema:
             type: string
+        - name: valid_at
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: recorded_at
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
       responses:
         '200':
           description: Compliance report
@@ -643,6 +720,18 @@ paths:
           required: true
           schema:
             type: string
+        - name: valid_at
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: recorded_at
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
       responses:
         '200':
           description: Pre-audit assessment
@@ -661,6 +750,18 @@ paths:
           required: true
           schema:
             type: string
+        - name: valid_at
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: recorded_at
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
       responses:
         '200':
           description: Audit package data
@@ -9820,10 +9921,25 @@ components:
           type: string
         description:
           type: string
+        severity:
+          type: string
         policy_ids:
           type: array
           items:
             type: string
+        graph_queries:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphQueryDefinition'
+    GraphQueryDefinition:
+      type: object
+      properties:
+        id:
+          type: string
+        provider:
+          type: string
+        description:
+          type: string
     FrameworksResponse:
       type: object
       properties:
@@ -9858,19 +9974,177 @@ components:
           type: integer
         failing_controls:
           type: integer
+        partial_controls:
+          type: integer
+        not_applicable_controls:
+          type: integer
         compliance_score:
           type: number
-    ControlStatus:
+        weighted_score:
+          type: number
+        graph_evaluated_controls:
+          type: integer
+        fallback_controls:
+          type: integer
+    ControlEvidence:
       type: object
       properties:
-        control_id:
+        entity_id:
+          type: string
+        entity_kind:
+          type: string
+        entity_name:
+          type: string
+        facet_id:
+          type: string
+        policy_id:
           type: string
         status:
           type: string
           enum:
             - passing
             - failing
+            - partial
+            - not_applicable
             - unknown
+        reason:
+          type: string
+    ControlStatus:
+      type: object
+      properties:
+        control_id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        severity:
+          type: string
+        status:
+          type: string
+          enum:
+            - passing
+            - failing
+            - partial
+            - not_applicable
+            - unknown
+        pass_count:
+          type: integer
+          description: "Count of graph-identified assets currently passing this control; findings-fallback controls leave this at 0 because asset counts are not inferred from findings alone."
+        fail_count:
+          type: integer
+          description: "Count of graph-identified assets currently failing this control; findings-fallback controls leave this at 0 because asset counts are not inferred from findings alone."
+        total_assets:
+          type: integer
+          description: "Count of graph-identified assets evaluated for this control; findings-fallback controls leave this at 0 when the graph cannot enumerate an evaluated asset set."
+        evaluation_source:
+          type: string
+          description: "findings_fallback determines control state from mapped findings only and does not imply graph-backed asset counts."
+          enum:
+            - graph
+            - findings_fallback
+            - hybrid
+        last_evaluated:
+          type: string
+          format: date-time
+        policy_ids:
+          type: array
+          items:
+            type: string
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/ControlEvidence'
+    ComplianceFrameworkStatusControl:
+      type: object
+      properties:
+        control_id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        severity:
+          type: string
+        status:
+          type: string
+          enum:
+            - passing
+            - failing
+            - partial
+            - not_applicable
+            - unknown
+        pass_count:
+          type: integer
+        fail_count:
+          type: integer
+        total_assets:
+          type: integer
+        evaluation_source:
+          type: string
+          enum:
+            - graph
+            - findings_fallback
+            - hybrid
+        last_evaluated:
+          type: string
+          format: date-time
+        policy_ids:
+          type: array
+          items:
+            type: string
+        graph_queries:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphQueryDefinition'
+    FrameworkComplianceStatusResponse:
+      type: object
+      properties:
+        framework_id:
+          type: string
+        framework_name:
+          type: string
+        version:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+        valid_at:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+        summary:
+          $ref: '#/components/schemas/ComplianceSummary'
+        controls:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComplianceFrameworkStatusControl'
+        total_findings:
+          type: integer
+    ComplianceControlDetailResponse:
+      type: object
+      properties:
+        framework_id:
+          type: string
+        framework_name:
+          type: string
+        version:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+        valid_at:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+        control:
+          $ref: '#/components/schemas/Control'
+        status:
+          $ref: '#/components/schemas/ControlStatus'
     PreAuditReport:
       type: object
       properties:

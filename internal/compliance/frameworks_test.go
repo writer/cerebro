@@ -66,6 +66,29 @@ func TestGetFramework(t *testing.T) {
 	}
 }
 
+func TestGetFrameworkEnrichesGraphQueries(t *testing.T) {
+	framework := GetFramework("cis-aws-1.5")
+	if framework == nil {
+		t.Fatal("expected CIS AWS framework")
+	}
+
+	encryption, ok := GetControl(framework, "2.1.1")
+	if !ok {
+		t.Fatal("expected encryption control")
+	}
+	if len(encryption.GraphQueries) != 1 || encryption.GraphQueries[0].ID != "aws-s3-bucket-encryption-enabled" {
+		t.Fatalf("expected graph query metadata for encryption control, got %+v", encryption.GraphQueries)
+	}
+
+	root, ok := GetControl(framework, "1.4")
+	if !ok {
+		t.Fatal("expected root access key control")
+	}
+	if len(root.GraphQueries) != 0 {
+		t.Fatalf("expected findings-only control to omit graph query metadata, got %+v", root.GraphQueries)
+	}
+}
+
 func TestCISAWSControls(t *testing.T) {
 	f := GetFramework("cis-aws-1.5")
 	if f == nil {

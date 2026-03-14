@@ -4,7 +4,7 @@ Generated from `api/openapi.yaml` via `go run ./scripts/generate_api_contract_do
 
 - Catalog API version: **devex.cerebro/v1alpha1**
 - Catalog kind: **HTTPAPIContractCatalog**
-- Endpoints: **297**
+- Endpoints: **299**
 
 ## Endpoint Summary
 
@@ -38,9 +38,11 @@ Generated from `api/openapi.yaml` via `go run ./scripts/generate_api_contract_do
 | `GET /api/v1/audit` | 3 | 0 | `200` |
 | `GET /api/v1/compliance/frameworks` | 0 | 0 | `200` |
 | `GET /api/v1/compliance/frameworks/{id}` | 0 | 0 | `200` |
-| `GET /api/v1/compliance/frameworks/{id}/export` | 0 | 0 | `200` |
-| `GET /api/v1/compliance/frameworks/{id}/pre-audit` | 0 | 0 | `200` |
-| `GET /api/v1/compliance/frameworks/{id}/report` | 0 | 0 | `200` |
+| `GET /api/v1/compliance/frameworks/{id}/controls/{control_id}` | 2 | 0 | `200` |
+| `GET /api/v1/compliance/frameworks/{id}/export` | 2 | 0 | `200` |
+| `GET /api/v1/compliance/frameworks/{id}/pre-audit` | 2 | 0 | `200` |
+| `GET /api/v1/compliance/frameworks/{id}/report` | 2 | 0 | `200` |
+| `GET /api/v1/compliance/frameworks/{id}/status` | 2 | 0 | `200` |
 | `GET /api/v1/entities/{id}/cohort` | 0 | 0 | `200` |
 | `GET /api/v1/entities/{id}/outlier-score` | 0 | 0 | `200` |
 | `GET /api/v1/findings` | 5 | 0 | `200` |
