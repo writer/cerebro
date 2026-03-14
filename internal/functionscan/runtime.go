@@ -78,8 +78,9 @@ func (NoopAnalyzer) Analyze(_ context.Context, input AnalysisInput) (*AnalysisRe
 }
 
 type FilesystemAnalyzer struct {
-	Scanner  scanner.FilesystemScanner
-	Analyzer *filesystemanalyzer.Analyzer
+	Scanner       scanner.FilesystemScanner
+	SecretScanner filesystemanalyzer.SecretScanner
+	Analyzer      *filesystemanalyzer.Analyzer
 }
 
 func (a FilesystemAnalyzer) Analyze(ctx context.Context, input AnalysisInput) (*AnalysisReport, error) {
@@ -90,7 +91,10 @@ func (a FilesystemAnalyzer) Analyze(ctx context.Context, input AnalysisInput) (*
 	report.Analyzer = "filesystem"
 	analyzer := a.Analyzer
 	if analyzer == nil && a.Scanner != nil {
-		analyzer = filesystemanalyzer.New(filesystemanalyzer.Options{VulnerabilityScanner: a.Scanner})
+		analyzer = filesystemanalyzer.New(filesystemanalyzer.Options{
+			VulnerabilityScanner: a.Scanner,
+			SecretScanner:        a.SecretScanner,
+		})
 	}
 	if analyzer != nil && input.Filesystem != nil && strings.TrimSpace(input.Filesystem.Path) != "" {
 		catalog, err := analyzer.Analyze(ctx, input.Filesystem.Path)

@@ -59,6 +59,7 @@ var (
 	workloadScanCleanupTimeout             time.Duration
 	workloadScanReconcileOlderThan         time.Duration
 	workloadScanTrivyBinary                string
+	workloadScanGitleaksBinary             string
 	workloadScanListStatuses               string
 	workloadScanListLimit                  int
 	workloadScanAWSRegion                  string
@@ -91,6 +92,7 @@ func init() {
 	workloadScanCmd.PersistentFlags().DurationVar(&workloadScanCleanupTimeout, "cleanup-timeout", 0, "Override cleanup timeout")
 	workloadScanCmd.PersistentFlags().DurationVar(&workloadScanReconcileOlderThan, "reconcile-older-than", 0, "Override minimum run age before reconciliation")
 	workloadScanCmd.PersistentFlags().StringVar(&workloadScanTrivyBinary, "trivy-binary", "", "Override trivy binary path")
+	workloadScanCmd.PersistentFlags().StringVar(&workloadScanGitleaksBinary, "gitleaks-binary", "", "Optional gitleaks binary path for expanded secret scanning")
 	workloadScanCmd.PersistentFlags().StringVar(&workloadScanAWSSourceProfile, "source-profile", "", "Optional AWS profile for source-account snapshot operations")
 	workloadScanCmd.PersistentFlags().StringVar(&workloadScanAWSSourceRoleARN, "source-role-arn", "", "Optional AWS role ARN assumed for source-account snapshot operations")
 	workloadScanCmd.PersistentFlags().StringVar(&workloadScanAWSSourceRoleSession, "source-role-session-name", "", "Optional AWS source role session name")
@@ -168,7 +170,7 @@ func runWorkloadScanAWS(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	defer func() { _ = emitter.Close() }()
-	filesystemAnalyzer, vulnDBCloser, err := buildFilesystemAnalyzer(cfg, resolveWorkloadScanTrivyBinary(cfg))
+	filesystemAnalyzer, vulnDBCloser, err := buildFilesystemAnalyzer(cfg, resolveWorkloadScanTrivyBinary(cfg), resolveWorkloadScanGitleaksBinary(cfg))
 	if err != nil {
 		return err
 	}
@@ -236,7 +238,7 @@ func reconcileWorkloadScanAWS(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	defer func() { _ = emitter.Close() }()
-	filesystemAnalyzer, vulnDBCloser, err := buildFilesystemAnalyzer(cfg, resolveWorkloadScanTrivyBinary(cfg))
+	filesystemAnalyzer, vulnDBCloser, err := buildFilesystemAnalyzer(cfg, resolveWorkloadScanTrivyBinary(cfg), resolveWorkloadScanGitleaksBinary(cfg))
 	if err != nil {
 		return err
 	}
@@ -430,10 +432,20 @@ func resolveWorkloadScanTrivyBinary(cfg *app.Config) string {
 	if strings.TrimSpace(workloadScanTrivyBinary) != "" {
 		return strings.TrimSpace(workloadScanTrivyBinary)
 	}
-	if cfg != nil {
+	if cfg != nil && strings.TrimSpace(cfg.WorkloadScanTrivyBinary) != "" {
 		return strings.TrimSpace(cfg.WorkloadScanTrivyBinary)
 	}
 	return "trivy"
+}
+
+func resolveWorkloadScanGitleaksBinary(cfg *app.Config) string {
+	if strings.TrimSpace(workloadScanGitleaksBinary) != "" {
+		return strings.TrimSpace(workloadScanGitleaksBinary)
+	}
+	if cfg != nil && strings.TrimSpace(cfg.WorkloadScanGitleaksBinary) != "" {
+		return strings.TrimSpace(cfg.WorkloadScanGitleaksBinary)
+	}
+	return ""
 }
 
 func parseMetadataPairs(values []string) map[string]string {

@@ -401,18 +401,21 @@ type Config struct {
 	WorkloadScanCleanupTimeout         time.Duration
 	WorkloadScanReconcileOlderThan     time.Duration
 	WorkloadScanTrivyBinary            string
+	WorkloadScanGitleaksBinary         string
 
 	// Container image scanning
 	ImageScanStateFile      string
 	ImageScanRootFSBasePath string
 	ImageScanCleanupTimeout time.Duration
 	ImageScanTrivyBinary    string
+	ImageScanGitleaksBinary string
 
 	// Serverless function package scanning
 	FunctionScanStateFile      string
 	FunctionScanRootFSBasePath string
 	FunctionScanCleanupTimeout time.Duration
 	FunctionScanTrivyBinary    string
+	FunctionScanGitleaksBinary string
 
 	// Finding attestation chain
 	FindingsMaxInMemory                int
@@ -773,14 +776,17 @@ func LoadConfig() *Config {
 				WorkloadScanCleanupTimeout:          getEnvDuration("WORKLOAD_SCAN_CLEANUP_TIMEOUT", 2*time.Minute),
 				WorkloadScanReconcileOlderThan:      getEnvDuration("WORKLOAD_SCAN_RECONCILE_OLDER_THAN", 30*time.Minute),
 				WorkloadScanTrivyBinary:             getEnv("WORKLOAD_SCAN_TRIVY_BINARY", "trivy"),
+				WorkloadScanGitleaksBinary:          getEnv("WORKLOAD_SCAN_GITLEAKS_BINARY", ""),
 				ImageScanStateFile:                  getEnv("IMAGE_SCAN_STATE_FILE", getEnv("EXECUTION_STORE_FILE", filepath.Join(".cerebro", "executions.db"))),
 				ImageScanRootFSBasePath:             getEnv("IMAGE_SCAN_ROOTFS_BASE_PATH", filepath.Join(".cerebro", "image-scan", "rootfs")),
 				ImageScanCleanupTimeout:             getEnvDuration("IMAGE_SCAN_CLEANUP_TIMEOUT", 2*time.Minute),
 				ImageScanTrivyBinary:                getEnv("IMAGE_SCAN_TRIVY_BINARY", "trivy"),
+				ImageScanGitleaksBinary:             getEnv("IMAGE_SCAN_GITLEAKS_BINARY", ""),
 				FunctionScanStateFile:               getEnv("FUNCTION_SCAN_STATE_FILE", getEnv("EXECUTION_STORE_FILE", filepath.Join(".cerebro", "executions.db"))),
 				FunctionScanRootFSBasePath:          getEnv("FUNCTION_SCAN_ROOTFS_BASE_PATH", filepath.Join(".cerebro", "function-scan", "rootfs")),
 				FunctionScanCleanupTimeout:          getEnvDuration("FUNCTION_SCAN_CLEANUP_TIMEOUT", 2*time.Minute),
 				FunctionScanTrivyBinary:             getEnv("FUNCTION_SCAN_TRIVY_BINARY", "trivy"),
+				FunctionScanGitleaksBinary:          getEnv("FUNCTION_SCAN_GITLEAKS_BINARY", ""),
 				FindingsMaxInMemory:                 getEnvInt("FINDINGS_MAX_IN_MEMORY", findings.DefaultMaxFindings),
 				FindingsResolvedRetention:           getEnvDuration("FINDINGS_RESOLVED_RETENTION", findings.DefaultResolvedRetention),
 				FindingsSemanticDedupEnabled:        getEnvBool("FINDINGS_SEMANTIC_DEDUP_ENABLED", findings.DefaultSemanticDedupEnabled),

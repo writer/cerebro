@@ -57,6 +57,7 @@ var (
 	imageScanRootFSBasePath    string
 	imageScanCleanupTimeout    time.Duration
 	imageScanTrivyBinary       string
+	imageScanGitleaksBinary    string
 	imageScanListStatuses      string
 	imageScanListLimit         int
 	imageScanRequestedBy       string
@@ -84,6 +85,7 @@ func init() {
 	imageScanCmd.PersistentFlags().StringVar(&imageScanRootFSBasePath, "rootfs-base", "", "Override image scan rootfs materialization path")
 	imageScanCmd.PersistentFlags().DurationVar(&imageScanCleanupTimeout, "cleanup-timeout", 0, "Override image scan cleanup timeout")
 	imageScanCmd.PersistentFlags().StringVar(&imageScanTrivyBinary, "trivy-binary", "", "Override trivy binary path")
+	imageScanCmd.PersistentFlags().StringVar(&imageScanGitleaksBinary, "gitleaks-binary", "", "Optional gitleaks binary path for expanded secret scanning")
 
 	imageScanListCmd.Flags().StringVar(&imageScanListStatuses, "status", "", "Optional comma-separated status filter")
 	imageScanListCmd.Flags().IntVar(&imageScanListLimit, "limit", 20, "Maximum runs to list")
@@ -203,7 +205,7 @@ func runImageScan(parent context.Context, target imagescan.ScanTarget, client sc
 		return err
 	}
 	defer func() { _ = emitter.Close() }()
-	filesystemAnalyzer, vulnDBCloser, err := buildFilesystemAnalyzer(cfg, resolveImageScanTrivyBinary(cfg))
+	filesystemAnalyzer, vulnDBCloser, err := buildFilesystemAnalyzer(cfg, resolveImageScanTrivyBinary(cfg), resolveImageScanGitleaksBinary(cfg))
 	if err != nil {
 		return err
 	}
@@ -343,4 +345,14 @@ func resolveImageScanTrivyBinary(cfg *app.Config) string {
 		return strings.TrimSpace(cfg.ImageScanTrivyBinary)
 	}
 	return "trivy"
+}
+
+func resolveImageScanGitleaksBinary(cfg *app.Config) string {
+	if strings.TrimSpace(imageScanGitleaksBinary) != "" {
+		return strings.TrimSpace(imageScanGitleaksBinary)
+	}
+	if cfg != nil && strings.TrimSpace(cfg.ImageScanGitleaksBinary) != "" {
+		return strings.TrimSpace(cfg.ImageScanGitleaksBinary)
+	}
+	return ""
 }

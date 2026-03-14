@@ -2,7 +2,7 @@
 
 Generated from `internal/app/app_config.go` (`LoadConfig`) via `go run ./scripts/generate_config_docs/main.go`.
 
-Total variables: **324**
+Total variables: **327**
 
 | Variable | Reader(s) | Default(s) | Config Field(s) | Validation rule(s) |
 |---|---|---|---|---|
@@ -98,6 +98,7 @@ Total variables: **324**
 | `FORGEROCK_API_TOKEN` | `getEnv` | `""` | `ForgeRockAPIToken` | `-` |
 | `FORGEROCK_URL` | `getEnv` | `""` | `ForgeRockURL` | `-` |
 | `FUNCTION_SCAN_CLEANUP_TIMEOUT` | `getEnvDuration` | `2 * time.Minute` | `FunctionScanCleanupTimeout` | `-` |
+| `FUNCTION_SCAN_GITLEAKS_BINARY` | `getEnv` | `""` | `FunctionScanGitleaksBinary` | `-` |
 | `FUNCTION_SCAN_ROOTFS_BASE_PATH` | `getEnv` | `filepath.Join(".cerebro", "function-scan", "rootfs")` | `FunctionScanRootFSBasePath` | `-` |
 | `FUNCTION_SCAN_STATE_FILE` | `getEnv` | `getEnv("EXECUTION_STORE_FILE", filepath.Join(".cerebro", "executions.db"))` | `FunctionScanStateFile` | `-` |
 | `FUNCTION_SCAN_TRIVY_BINARY` | `getEnv` | `"trivy"` | `FunctionScanTrivyBinary` | `-` |
@@ -129,6 +130,7 @@ Total variables: **324**
 | `GRAPH_SNAPSHOT_PATH` | `getEnv` | `filepath.Join(".cerebro", "graph-snapshots")` | `GraphSnapshotPath` | `-` |
 | `GRAPH_SNAPSHOT_REPLICA_URI` | `getEnv` | `""` | `GraphSnapshotReplicaURI` | `-` |
 | `IMAGE_SCAN_CLEANUP_TIMEOUT` | `getEnvDuration` | `2 * time.Minute` | `ImageScanCleanupTimeout` | `-` |
+| `IMAGE_SCAN_GITLEAKS_BINARY` | `getEnv` | `""` | `ImageScanGitleaksBinary` | `-` |
 | `IMAGE_SCAN_ROOTFS_BASE_PATH` | `getEnv` | `filepath.Join(".cerebro", "image-scan", "rootfs")` | `ImageScanRootFSBasePath` | `-` |
 | `IMAGE_SCAN_STATE_FILE` | `getEnv` | `getEnv("EXECUTION_STORE_FILE", filepath.Join(".cerebro", "executions.db"))` | `ImageScanStateFile` | `-` |
 | `IMAGE_SCAN_TRIVY_BINARY` | `getEnv` | `"trivy"` | `ImageScanTrivyBinary` | `-` |
@@ -320,6 +322,7 @@ Total variables: **324**
 | `WORKDAY_API_TOKEN` | `getEnv` | `""` | `WorkdayAPIToken` | `-` |
 | `WORKDAY_URL` | `getEnv` | `""` | `WorkdayURL` | `-` |
 | `WORKLOAD_SCAN_CLEANUP_TIMEOUT` | `getEnvDuration` | `2 * time.Minute` | `WorkloadScanCleanupTimeout` | `-` |
+| `WORKLOAD_SCAN_GITLEAKS_BINARY` | `getEnv` | `""` | `WorkloadScanGitleaksBinary` | `-` |
 | `WORKLOAD_SCAN_MAX_CONCURRENT_SNAPSHOTS` | `getEnvInt` | `2` | `WorkloadScanMaxConcurrentSnapshots` | `-` |
 | `WORKLOAD_SCAN_MOUNT_BASE_PATH` | `getEnv` | `filepath.Join(".cerebro", "workload-scan", "mounts")` | `WorkloadScanMountBasePath` | `-` |
 | `WORKLOAD_SCAN_RECONCILE_OLDER_THAN` | `getEnvDuration` | `30 * time.Minute` | `WorkloadScanReconcileOlderThan` | `-` |
