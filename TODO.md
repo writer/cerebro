@@ -5,6 +5,31 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 81 - Provider-Aware Terraform Delivery Defaults (2026-03-14)
+
+### Review findings
+- [x] Gap: the first Terraform-backed public-storage cut still left delivery defaults modeled globally per action, which is wrong for mixed-provider actions where AWS is ready for Terraform-first change control but GCP/Azure still require remote apply.
+- [x] Gap: approval and delivery selection were computed without execution context in parts of the remediation pipeline, so provider-aware defaults could not be applied consistently to playbook generation, approval gating, metadata, and approval webhooks.
+- [x] Gap: explicit operator overrides still need to win. Provider-aware defaults are useful only if `delivery_mode=remote_apply` can still force a reviewed remote action on AWS when teams want imperative execution.
+
+### Execution plan
+- [x] Add provider-aware catalog defaults:
+  - [x] support per-provider default delivery modes on catalog entries
+  - [x] make `restrict_public_storage_access` default to Terraform for AWS while keeping the action-level global default at `remote_apply`
+- [x] Thread execution-aware mode selection through remediation execution:
+  - [x] compute delivery mode with provider context from the current execution
+  - [x] compute approval requirements from the effective mode, not just the static catalog entry
+  - [x] make catalog action plans, playbook generation, and approval notifications all use that same effective mode
+- [x] Add TDD coverage for the new semantics:
+  - [x] AWS default path auto-selects Terraform and skips approval
+  - [x] GCP default path stays on remote apply and keeps approval
+  - [x] explicit `delivery_mode=remote_apply` overrides the AWS default and still requires approval
+- [ ] Next Terraform/IaC codegen depth cuts after this slice:
+  - [ ] introduce a remediation codegen registry keyed by action + provider + resource family, not just a flat action-to-template map
+  - [ ] use lineage/state/HCL parsing to prefer existing Terraform resource references when available instead of literal identifiers
+  - [ ] emit import-block/state-reconciliation guidance in a structured artifact model once Terraform v1.5+ import surfaces become first-class in generated output
+  - [ ] add the next Terraform-backed safe actions: public security-group ingress restriction and selected encryption defaults beyond S3
+
 ## Deep Review Cycle 80 - Terraform-Backed Public Storage Remediation (2026-03-14)
 
 ### Review findings
@@ -29,7 +54,7 @@ Status: executed end-to-end via PR workflow
   - [x] non-AWS terraform delivery fails preconditions instead of emitting the wrong provider HCL
   - [x] the renderer itself rejects explicit non-AWS provider context
 - [ ] Next Terraform/IaC codegen depth cuts after this slice:
-  - [ ] add provider-specific default delivery preferences instead of one global default per remediation action
+  - [x] add provider-specific default delivery preferences instead of one global default per remediation action
   - [ ] introduce a remediation codegen registry keyed by action + provider + resource family, not just a flat action-to-template map
   - [ ] use lineage/state/HCL parsing to prefer existing Terraform resource references when available instead of literal identifiers
   - [ ] emit import-block/state-reconciliation guidance in a structured artifact model once Terraform v1.5+ import surfaces become first-class in generated output

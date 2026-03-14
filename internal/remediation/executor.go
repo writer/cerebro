@@ -99,7 +99,7 @@ func (ex *Executor) Execute(ctx context.Context, execution *Execution) error {
 		execution.Error = "rule not found"
 		return fmt.Errorf("rule not found: %s", execution.RuleID)
 	}
-	playbook := remediationPlaybookFromRule(*rule, ex)
+	playbook := remediationPlaybookFromRule(*rule, ex, execution)
 	signal := remediationSignalFromTriggerData(execution.TriggerData)
 	sharedExecution := remediationExecutionToShared(execution)
 	err := ex.shared.Execute(ctx, sharedExecution, playbook, signal, remediationStepRunner{executor: ex})
@@ -116,7 +116,7 @@ func (ex *Executor) Execute(ctx context.Context, execution *Execution) error {
 	return nil
 }
 
-func (ex *Executor) actionRequiresApproval(action Action) bool {
+func (ex *Executor) actionRequiresApproval(action Action, execution *Execution) bool {
 	switch strings.ToLower(strings.TrimSpace(action.Config["approval_mode"])) {
 	case "auto", "none", "disabled", "not_required":
 		return false
@@ -124,7 +124,7 @@ func (ex *Executor) actionRequiresApproval(action Action) bool {
 		return true
 	}
 	entry, _ := CatalogEntryByAction(action.Type)
-	mode := actionDeliveryMode(action, entry)
+	mode := actionDeliveryMode(action, execution, entry)
 	if catalogSupportsDeliveryMode(entry, mode) && mode == DeliveryModeTerraform {
 		return false
 	}
@@ -176,7 +176,7 @@ func (r remediationStepRunner) RunStep(ctx context.Context, step actionengine.St
 	return result.Output, nil
 }
 
-func remediationPlaybookFromRule(rule Rule, executor *Executor) actionengine.Playbook {
+func remediationPlaybookFromRule(rule Rule, executor *Executor, execution *Execution) actionengine.Playbook {
 	steps := make([]actionengine.Step, 0, len(rule.Actions))
 	for idx, action := range rule.Actions {
 		failurePolicy := actionengine.FailurePolicyAbort
@@ -184,7 +184,7 @@ func remediationPlaybookFromRule(rule Rule, executor *Executor) actionengine.Pla
 			ID:               fmt.Sprintf("%s-step-%d", firstNonEmpty(rule.ID, "rule"), idx+1),
 			Type:             string(action.Type),
 			Parameters:       cloneStringMap(action.Config),
-			RequiresApproval: executor != nil && executor.actionRequiresApproval(action),
+			RequiresApproval: executor != nil && executor.actionRequiresApproval(action, execution),
 			TimeoutSeconds:   action.TimeoutSeconds,
 			OnFailure:        failurePolicy,
 		})
@@ -457,7 +457,7 @@ func (ex *Executor) executeAction(ctx context.Context, action Action, execution 
 
 	var err error
 	approvalGranted, _ := execution.TriggerData["_approval_granted"].(bool)
-	if ex.actionRequiresApproval(action) && !approvalGranted {
+	if ex.actionRequiresApproval(action, execution) && !approvalGranted {
 		err = fmt.Errorf("%s action requires approval", action.Type)
 	}
 
@@ -855,7 +855,7 @@ func (ex *Executor) emitApprovalRequested(ctx context.Context, execution *Execut
 	}
 	actions := make([]string, 0, len(rule.Actions))
 	for _, action := range rule.Actions {
-		if ex.actionRequiresApproval(action) {
+		if ex.actionRequiresApproval(action, execution) {
 			actions = append(actions, string(action.Type))
 		}
 	}
@@ -894,7 +894,7 @@ func (ex *Executor) Approve(ctx context.Context, executionID, approverID string)
 		if approvedAt, _ := time.Parse(time.RFC3339Nano, remediationMapValueToString(execution.TriggerData, "approved_at")); !approvedAt.IsZero() {
 			sharedExecution.ApprovedAt = &approvedAt
 		}
-		playbook := remediationPlaybookFromRule(*rule, ex)
+		playbook := remediationPlaybookFromRule(*rule, ex, execution)
 		signal := remediationSignalFromTriggerData(execution.TriggerData)
 		err := ex.shared.Approve(ctx, sharedExecution, approverID, playbook, signal, remediationStepRunner{executor: ex})
 		applySharedExecution(execution, sharedExecution)

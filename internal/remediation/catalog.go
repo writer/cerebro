@@ -11,24 +11,25 @@ const (
 )
 
 type CatalogEntry struct {
-	ID                     string            `json:"id"`
-	ActionType             ActionType        `json:"action_type"`
-	Name                   string            `json:"name"`
-	Description            string            `json:"description"`
-	Providers              []string          `json:"providers,omitempty"`
-	ResourceTypes          []string          `json:"resource_types,omitempty"`
-	SafeByDefault          bool              `json:"safe_by_default"`
-	SupportsDryRun         bool              `json:"supports_dry_run"`
-	SupportsRollback       bool              `json:"supports_rollback"`
-	RequiresApproval       bool              `json:"requires_approval"`
-	BlastRadius            BlastRadiusClass  `json:"blast_radius"`
-	Preconditions          []string          `json:"preconditions,omitempty"`
-	RollbackSteps          []string          `json:"rollback_steps,omitempty"`
-	EvidenceFields         []string          `json:"evidence_fields,omitempty"`
-	DefaultRemoteTools     map[string]string `json:"default_remote_tools,omitempty"`
-	SupportedDeliveryModes []DeliveryMode    `json:"supported_delivery_modes,omitempty"`
-	DefaultDeliveryMode    DeliveryMode      `json:"default_delivery_mode,omitempty"`
-	BlastRadiusRationale   string            `json:"blast_radius_rationale,omitempty"`
+	ID                             string                  `json:"id"`
+	ActionType                     ActionType              `json:"action_type"`
+	Name                           string                  `json:"name"`
+	Description                    string                  `json:"description"`
+	Providers                      []string                `json:"providers,omitempty"`
+	ResourceTypes                  []string                `json:"resource_types,omitempty"`
+	SafeByDefault                  bool                    `json:"safe_by_default"`
+	SupportsDryRun                 bool                    `json:"supports_dry_run"`
+	SupportsRollback               bool                    `json:"supports_rollback"`
+	RequiresApproval               bool                    `json:"requires_approval"`
+	BlastRadius                    BlastRadiusClass        `json:"blast_radius"`
+	Preconditions                  []string                `json:"preconditions,omitempty"`
+	RollbackSteps                  []string                `json:"rollback_steps,omitempty"`
+	EvidenceFields                 []string                `json:"evidence_fields,omitempty"`
+	DefaultRemoteTools             map[string]string       `json:"default_remote_tools,omitempty"`
+	SupportedDeliveryModes         []DeliveryMode          `json:"supported_delivery_modes,omitempty"`
+	DefaultDeliveryModesByProvider map[string]DeliveryMode `json:"default_delivery_modes_by_provider,omitempty"`
+	DefaultDeliveryMode            DeliveryMode            `json:"default_delivery_mode,omitempty"`
+	BlastRadiusRationale           string                  `json:"blast_radius_rationale,omitempty"`
 }
 
 var remediationCatalog = []CatalogEntry{
@@ -65,6 +66,9 @@ var remediationCatalog = []CatalogEntry{
 		SupportedDeliveryModes: []DeliveryMode{
 			DeliveryModeRemoteApply,
 			DeliveryModeTerraform,
+		},
+		DefaultDeliveryModesByProvider: map[string]DeliveryMode{
+			"aws": DeliveryModeTerraform,
 		},
 		DefaultDeliveryMode: DeliveryModeRemoteApply,
 		DefaultRemoteTools: map[string]string{
@@ -230,6 +234,13 @@ func cloneCatalogEntry(entry CatalogEntry) CatalogEntry {
 	entry.RollbackSteps = append([]string(nil), entry.RollbackSteps...)
 	entry.EvidenceFields = append([]string(nil), entry.EvidenceFields...)
 	entry.SupportedDeliveryModes = append([]DeliveryMode(nil), entry.SupportedDeliveryModes...)
+	if len(entry.DefaultDeliveryModesByProvider) > 0 {
+		clonedModes := make(map[string]DeliveryMode, len(entry.DefaultDeliveryModesByProvider))
+		for key, value := range entry.DefaultDeliveryModesByProvider {
+			clonedModes[key] = value
+		}
+		entry.DefaultDeliveryModesByProvider = clonedModes
+	}
 	if len(entry.DefaultRemoteTools) > 0 {
 		clonedTools := make(map[string]string, len(entry.DefaultRemoteTools))
 		for key, value := range entry.DefaultRemoteTools {

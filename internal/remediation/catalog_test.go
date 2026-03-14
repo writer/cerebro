@@ -29,6 +29,9 @@ func TestCatalogIncludesSafeCloudRemediations(t *testing.T) {
 	if storage.DefaultDeliveryMode != DeliveryModeRemoteApply {
 		t.Fatalf("expected public storage default delivery mode to remain remote apply, got %s", storage.DefaultDeliveryMode)
 	}
+	if got := storage.DefaultDeliveryModesByProvider["aws"]; got != DeliveryModeTerraform {
+		t.Fatalf("expected aws public storage default delivery mode override to be terraform, got %q", got)
+	}
 	if len(storage.SupportedDeliveryModes) != 2 || storage.SupportedDeliveryModes[0] != DeliveryModeRemoteApply || storage.SupportedDeliveryModes[1] != DeliveryModeTerraform {
 		t.Fatalf("unexpected public storage supported delivery modes: %#v", storage.SupportedDeliveryModes)
 	}

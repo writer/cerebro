@@ -37,8 +37,24 @@ func TestRenderTerraformBucketDefaultEncryptionArtifact_InfersBucketNameFromARN(
 }
 
 func TestActionDeliveryModeDefaultsToCatalogEntry(t *testing.T) {
-	mode := actionDeliveryMode(Action{Type: ActionEnableBucketDefaultEncryption}, CatalogEntry{
+	mode := actionDeliveryMode(Action{Type: ActionEnableBucketDefaultEncryption}, nil, CatalogEntry{
 		DefaultDeliveryMode: DeliveryModeTerraform,
+	})
+	if mode != DeliveryModeTerraform {
+		t.Fatalf("unexpected delivery mode: %s", mode)
+	}
+}
+
+func TestActionDeliveryModeUsesProviderSpecificDefault(t *testing.T) {
+	mode := actionDeliveryMode(Action{Type: ActionRestrictPublicStorageAccess}, &Execution{
+		TriggerData: map[string]any{
+			"resource_platform": "aws",
+		},
+	}, CatalogEntry{
+		DefaultDeliveryMode: DeliveryModeRemoteApply,
+		DefaultDeliveryModesByProvider: map[string]DeliveryMode{
+			"aws": DeliveryModeTerraform,
+		},
 	})
 	if mode != DeliveryModeTerraform {
 		t.Fatalf("unexpected delivery mode: %s", mode)

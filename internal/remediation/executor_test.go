@@ -183,13 +183,13 @@ func TestExecutor_RestrictPublicStorageAccessDryRunCapturesMetadata(t *testing.T
 
 	executions, err := engine.Evaluate(context.Background(), Event{
 		Type:     TriggerManual,
-		PolicyID: "aws-s3-bucket-no-public-access",
+		PolicyID: "gcp-storage-bucket-no-public",
 		EntityID: "bucket:public-assets",
 		Data: map[string]any{
 			"resource_id":       "bucket:public-assets",
 			"resource_name":     "public-assets",
 			"resource_type":     "bucket",
-			"resource_platform": "aws",
+			"resource_platform": "gcp",
 			"resource": map[string]any{
 				"public_access": true,
 			},
@@ -217,7 +217,7 @@ func TestExecutor_RestrictPublicStorageAccessDryRunCapturesMetadata(t *testing.T
 	if requiresApproval, _ := metadata["requires_approval"].(bool); requiresApproval {
 		t.Fatalf("expected dry-run action with approval_mode=auto to report requires_approval=false, got %#v", metadata)
 	}
-	if metadata["planned_tool"] != "aws.s3.block_public_access" {
+	if metadata["planned_tool"] != "gcp.storage.remove_public_access" {
 		t.Fatalf("unexpected planned tool metadata: %#v", metadata["planned_tool"])
 	}
 	after, _ := metadata["after"].(map[string]any)
@@ -226,15 +226,76 @@ func TestExecutor_RestrictPublicStorageAccessDryRunCapturesMetadata(t *testing.T
 	}
 }
 
-func TestExecutor_RestrictPublicStorageAccessRequiresApprovalByDefault(t *testing.T) {
+func TestExecutor_RestrictPublicStorageAccessUsesProviderDefaultTerraformModeForAWS(t *testing.T) {
 	engine := NewEngine(testutil.Logger())
 	rule := Rule{
-		ID:      "restrict-public-storage",
-		Name:    "Restrict Public Storage",
+		ID:      "restrict-public-storage-aws-default",
+		Name:    "Restrict Public Storage AWS Default",
 		Enabled: true,
 		Trigger: Trigger{Type: TriggerManual},
 		Actions: []Action{{
 			Type: ActionRestrictPublicStorageAccess,
+		}},
+	}
+	if err := engine.AddRule(rule); err != nil {
+		t.Fatalf("add rule: %v", err)
+	}
+
+	executions, err := engine.Evaluate(context.Background(), Event{
+		Type:     TriggerManual,
+		PolicyID: "aws-s3-bucket-no-public-access",
+		EntityID: "bucket:public-assets",
+		Data: map[string]any{
+			"resource_id":       "bucket:public-assets",
+			"resource_name":     "public-assets",
+			"resource_type":     "bucket",
+			"resource_platform": "aws",
+			"iac_file":          "infra/storage/main.tf",
+			"resource": map[string]any{
+				"public_access": true,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	execution := executions[0]
+	executor := NewExecutor(engine, nil, nil, nil, nil)
+
+	if err := executor.Execute(context.Background(), execution); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if execution.Status != ExecutionCompleted {
+		t.Fatalf("status = %s, want %s", execution.Status, ExecutionCompleted)
+	}
+	if len(execution.Actions) != 1 {
+		t.Fatalf("expected one action result, got %d", len(execution.Actions))
+	}
+	metadata := execution.Actions[0].Metadata
+	if metadata["delivery_mode"] != "terraform" {
+		t.Fatalf("expected aws default delivery mode to be terraform, got %#v", metadata["delivery_mode"])
+	}
+	if requiresApproval, _ := metadata["requires_approval"].(bool); requiresApproval {
+		t.Fatalf("expected aws default terraform delivery not to require approval, got %#v", metadata)
+	}
+	artifact, _ := metadata["artifact"].(map[string]any)
+	if artifact["path"] != "infra/storage/cerebro_s3_bucket_public_access_block_public_assets.tf" {
+		t.Fatalf("unexpected terraform artifact path: %#v", artifact["path"])
+	}
+}
+
+func TestExecutor_RestrictPublicStorageAccessExplicitRemoteApplyOverridesAWSDefault(t *testing.T) {
+	engine := NewEngine(testutil.Logger())
+	rule := Rule{
+		ID:      "restrict-public-storage-aws-remote-apply",
+		Name:    "Restrict Public Storage AWS Remote Apply",
+		Enabled: true,
+		Trigger: Trigger{Type: TriggerManual},
+		Actions: []Action{{
+			Type: ActionRestrictPublicStorageAccess,
+			Config: map[string]string{
+				"delivery_mode": "remote_apply",
+			},
 		}},
 	}
 	if err := engine.AddRule(rule); err != nil {
@@ -274,6 +335,75 @@ func TestExecutor_RestrictPublicStorageAccessRequiresApprovalByDefault(t *testin
 		t.Fatalf("status = %s, want %s", execution.Status, ExecutionApproval)
 	}
 	if len(caller.calls) != 0 {
+		t.Fatalf("expected no remote calls before approval, got %v", caller.calls)
+	}
+
+	if err := executor.Approve(context.Background(), execution.ID, "approver-1"); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if execution.Status != ExecutionCompleted {
+		t.Fatalf("status = %s, want %s", execution.Status, ExecutionCompleted)
+	}
+	if len(caller.calls) != 1 || caller.calls[0] != "aws.s3.block_public_access" {
+		t.Fatalf("unexpected remote calls after approval: %v", caller.calls)
+	}
+	metadata := execution.Actions[0].Metadata
+	if metadata["delivery_mode"] != "remote_apply" {
+		t.Fatalf("expected explicit remote_apply override, got %#v", metadata["delivery_mode"])
+	}
+	if requiresApproval, _ := metadata["requires_approval"].(bool); !requiresApproval {
+		t.Fatalf("expected explicit remote_apply override to require approval, got %#v", metadata)
+	}
+}
+
+func TestExecutor_RestrictPublicStorageAccessRequiresApprovalByDefaultForGCP(t *testing.T) {
+	engine := NewEngine(testutil.Logger())
+	rule := Rule{
+		ID:      "restrict-public-storage-gcp",
+		Name:    "Restrict Public Storage GCP",
+		Enabled: true,
+		Trigger: Trigger{Type: TriggerManual},
+		Actions: []Action{{
+			Type: ActionRestrictPublicStorageAccess,
+		}},
+	}
+	if err := engine.AddRule(rule); err != nil {
+		t.Fatalf("add rule: %v", err)
+	}
+
+	executions, err := engine.Evaluate(context.Background(), Event{
+		Type:     TriggerManual,
+		PolicyID: "gcp-storage-bucket-no-public",
+		EntityID: "bucket:public-assets",
+		Data: map[string]any{
+			"resource_id":       "bucket:public-assets",
+			"resource_name":     "public-assets",
+			"resource_type":     "bucket",
+			"resource_platform": "gcp",
+			"resource": map[string]any{
+				"public_access": true,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	execution := executions[0]
+	caller := &fakeRemoteCaller{
+		responses: map[string][]fakeRemoteCallResult{
+			"gcp.storage.remove_public_access": {{output: `{"changed":true}`}},
+		},
+	}
+	executor := NewExecutor(engine, nil, nil, nil, nil)
+	executor.SetRemoteCaller(caller)
+
+	if err := executor.Execute(context.Background(), execution); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if execution.Status != ExecutionApproval {
+		t.Fatalf("status = %s, want %s", execution.Status, ExecutionApproval)
+	}
+	if len(caller.calls) != 0 {
 		t.Fatalf("expected no remote call before approval, got %v", caller.calls)
 	}
 
@@ -283,7 +413,7 @@ func TestExecutor_RestrictPublicStorageAccessRequiresApprovalByDefault(t *testin
 	if execution.Status != ExecutionCompleted {
 		t.Fatalf("status = %s, want %s", execution.Status, ExecutionCompleted)
 	}
-	if len(caller.calls) != 1 || caller.calls[0] != "aws.s3.block_public_access" {
+	if len(caller.calls) != 1 || caller.calls[0] != "gcp.storage.remove_public_access" {
 		t.Fatalf("unexpected remote calls: %v", caller.calls)
 	}
 }
@@ -626,7 +756,7 @@ func TestExecutor_NonCatalogTerraformDeliveryDoesNotBypassApproval(t *testing.T)
 		Config: map[string]string{
 			"delivery_mode": "terraform",
 		},
-	}) {
+	}, nil) {
 		t.Fatal("expected non-catalog action to keep approval requirement")
 	}
 }

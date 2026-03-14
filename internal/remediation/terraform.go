@@ -39,11 +39,17 @@ var terraformArtifactRenderers = map[ActionType]func(Action, *Execution) (Terraf
 	ActionEnableBucketDefaultEncryption: renderTerraformBucketDefaultEncryptionActionArtifact,
 }
 
-func actionDeliveryMode(action Action, entry CatalogEntry) DeliveryMode {
+func actionDeliveryMode(action Action, execution *Execution, entry CatalogEntry) DeliveryMode {
 	raw := strings.ToLower(strings.TrimSpace(action.Config["delivery_mode"]))
 	switch DeliveryMode(raw) {
 	case DeliveryModeRemoteApply, DeliveryModeTerraform:
 		return DeliveryMode(raw)
+	}
+	provider := strings.ToLower(strings.TrimSpace(inferProvider(execution)))
+	if provider != "" && len(entry.DefaultDeliveryModesByProvider) > 0 {
+		if mode, ok := entry.DefaultDeliveryModesByProvider[provider]; ok {
+			return mode
+		}
 	}
 	if entry.DefaultDeliveryMode != "" {
 		return entry.DefaultDeliveryMode
