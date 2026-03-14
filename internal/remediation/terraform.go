@@ -17,19 +17,38 @@ const (
 )
 
 type TerraformArtifact struct {
-	Kind            string   `json:"kind"`
-	IaCType         string   `json:"iac_type"`
-	Format          string   `json:"format"`
-	Path            string   `json:"path"`
-	ResourceType    string   `json:"resource_type"`
-	ResourceAddress string   `json:"resource_address"`
-	ImportID        string   `json:"import_id,omitempty"`
-	Summary         string   `json:"summary"`
-	Content         string   `json:"content"`
-	Notes           []string `json:"notes,omitempty"`
-	IaCFile         string   `json:"iac_file,omitempty"`
-	IaCModule       string   `json:"iac_module,omitempty"`
-	IaCStateID      string   `json:"iac_state_id,omitempty"`
+	Kind                string                        `json:"kind"`
+	IaCType             string                        `json:"iac_type"`
+	Format              string                        `json:"format"`
+	Path                string                        `json:"path"`
+	ResourceType        string                        `json:"resource_type"`
+	ResourceAddress     string                        `json:"resource_address"`
+	ImportID            string                        `json:"import_id,omitempty"`
+	Summary             string                        `json:"summary"`
+	Content             string                        `json:"content"`
+	Notes               []string                      `json:"notes,omitempty"`
+	IaCFile             string                        `json:"iac_file,omitempty"`
+	IaCModule           string                        `json:"iac_module,omitempty"`
+	IaCStateID          string                        `json:"iac_state_id,omitempty"`
+	StateReconciliation *TerraformStateReconciliation `json:"state_reconciliation,omitempty"`
+}
+
+type TerraformCommand struct {
+	Program string   `json:"program"`
+	Args    []string `json:"args,omitempty"`
+}
+
+type TerraformImportInstruction struct {
+	To      string           `json:"to"`
+	ID      string           `json:"id"`
+	HCL     string           `json:"hcl,omitempty"`
+	Command TerraformCommand `json:"command"`
+}
+
+type TerraformStateReconciliation struct {
+	StateShow TerraformCommand             `json:"state_show,omitempty"`
+	Plan      TerraformCommand             `json:"plan,omitempty"`
+	Imports   []TerraformImportInstruction `json:"imports,omitempty"`
 }
 
 var terraformIdentifierUnsafeChars = regexp.MustCompile(`[^0-9A-Za-z_]+`)
@@ -130,6 +149,10 @@ func renderTerraformPublicStorageAccessArtifact(execution *Execution) (Terraform
 
 	resourceName := terraformIdentifier(bucketName + "_public_access_block")
 	address := "aws_s3_bucket_public_access_block." + resourceName
+	if existingAddress, existingName, ok := terraformExistingManagedResourceAddress(execution, "aws_s3_bucket_public_access_block"); ok {
+		address = existingAddress
+		resourceName = existingName
+	}
 	path := terraformArtifactPath(execution, "cerebro_s3_bucket_public_access_block_"+terraformIdentifier(bucketName)+".tf")
 	content := iacrender.RenderTemplate("terraform", terraformBucketPublicAccessBlockTemplate, map[string]string{
 		"BucketReference":   terraformBucketArgument(execution, bucketName),
@@ -150,19 +173,20 @@ func renderTerraformPublicStorageAccessArtifact(execution *Execution) (Terraform
 	}
 
 	return TerraformArtifact{
-		Kind:            "terraform_hcl",
-		IaCType:         "terraform",
-		Format:          "hcl",
-		Path:            path,
-		ResourceType:    "bucket",
-		ResourceAddress: address,
-		ImportID:        bucketName,
-		Summary:         fmt.Sprintf("Terraform patch for blocking public access on S3 bucket %s", bucketName),
-		Content:         content,
-		Notes:           notes,
-		IaCFile:         iacFile,
-		IaCModule:       iacModule,
-		IaCStateID:      iacStateID,
+		Kind:                "terraform_hcl",
+		IaCType:             "terraform",
+		Format:              "hcl",
+		Path:                path,
+		ResourceType:        "bucket",
+		ResourceAddress:     address,
+		ImportID:            bucketName,
+		Summary:             fmt.Sprintf("Terraform patch for blocking public access on S3 bucket %s", bucketName),
+		Content:             content,
+		Notes:               notes,
+		IaCFile:             iacFile,
+		IaCModule:           iacModule,
+		IaCStateID:          iacStateID,
+		StateReconciliation: terraformStateReconciliation(address, bucketName),
 	}, nil
 }
 
@@ -188,6 +212,10 @@ func renderTerraformBucketDefaultEncryptionArtifact(execution *Execution, sseAlg
 
 	resourceName := terraformIdentifier(bucketName + "_default_encryption")
 	address := "aws_s3_bucket_server_side_encryption_configuration." + resourceName
+	if existingAddress, existingName, ok := terraformExistingManagedResourceAddress(execution, "aws_s3_bucket_server_side_encryption_configuration"); ok {
+		address = existingAddress
+		resourceName = existingName
+	}
 	path := terraformArtifactPath(execution, "cerebro_s3_bucket_default_encryption_"+terraformIdentifier(bucketName)+".tf")
 	content := iacrender.RenderTemplate("terraform", terraformBucketDefaultEncryptionTemplate, map[string]string{
 		"BucketReference":   terraformBucketArgument(execution, bucketName),
@@ -212,38 +240,102 @@ func renderTerraformBucketDefaultEncryptionArtifact(execution *Execution, sseAlg
 	}
 
 	return TerraformArtifact{
-		Kind:            "terraform_hcl",
-		IaCType:         "terraform",
-		Format:          "hcl",
-		Path:            path,
-		ResourceType:    "bucket",
-		ResourceAddress: address,
-		ImportID:        bucketName,
-		Summary:         fmt.Sprintf("Terraform patch for enabling default encryption on S3 bucket %s", bucketName),
-		Content:         content,
-		Notes:           notes,
-		IaCFile:         iacFile,
-		IaCModule:       iacModule,
-		IaCStateID:      iacStateID,
+		Kind:                "terraform_hcl",
+		IaCType:             "terraform",
+		Format:              "hcl",
+		Path:                path,
+		ResourceType:        "bucket",
+		ResourceAddress:     address,
+		ImportID:            bucketName,
+		Summary:             fmt.Sprintf("Terraform patch for enabling default encryption on S3 bucket %s", bucketName),
+		Content:             content,
+		Notes:               notes,
+		IaCFile:             iacFile,
+		IaCModule:           iacModule,
+		IaCStateID:          iacStateID,
+		StateReconciliation: terraformStateReconciliation(address, bucketName),
 	}, nil
 }
 
 func terraformArtifactMetadata(artifact TerraformArtifact) map[string]any {
 	return compactAnyMap(map[string]any{
-		"kind":             artifact.Kind,
-		"iac_type":         artifact.IaCType,
-		"format":           artifact.Format,
-		"path":             artifact.Path,
-		"resource_type":    artifact.ResourceType,
-		"resource_address": artifact.ResourceAddress,
-		"import_id":        artifact.ImportID,
-		"summary":          artifact.Summary,
-		"content":          artifact.Content,
-		"notes":            append([]string(nil), artifact.Notes...),
-		"iac_file":         artifact.IaCFile,
-		"iac_module":       artifact.IaCModule,
-		"iac_state_id":     artifact.IaCStateID,
+		"kind":                 artifact.Kind,
+		"iac_type":             artifact.IaCType,
+		"format":               artifact.Format,
+		"path":                 artifact.Path,
+		"resource_type":        artifact.ResourceType,
+		"resource_address":     artifact.ResourceAddress,
+		"import_id":            artifact.ImportID,
+		"summary":              artifact.Summary,
+		"content":              artifact.Content,
+		"notes":                append([]string(nil), artifact.Notes...),
+		"iac_file":             artifact.IaCFile,
+		"iac_module":           artifact.IaCModule,
+		"iac_state_id":         artifact.IaCStateID,
+		"state_reconciliation": terraformStateReconciliationMetadata(artifact.StateReconciliation),
 	})
+}
+
+func terraformStateReconciliation(address, importID string) *TerraformStateReconciliation {
+	address = strings.TrimSpace(address)
+	importID = strings.TrimSpace(importID)
+	if address == "" || importID == "" {
+		return nil
+	}
+	return &TerraformStateReconciliation{
+		StateShow: terraformCommand("terraform", "state", "show", address),
+		Plan:      terraformCommand("terraform", "plan"),
+		Imports: []TerraformImportInstruction{{
+			To:      address,
+			ID:      importID,
+			HCL:     terraformImportBlock(address, importID),
+			Command: terraformCommand("terraform", "import", address, importID),
+		}},
+	}
+}
+
+func terraformStateReconciliationMetadata(reconciliation *TerraformStateReconciliation) map[string]any {
+	if reconciliation == nil {
+		return nil
+	}
+	imports := make([]map[string]any, 0, len(reconciliation.Imports))
+	for _, instruction := range reconciliation.Imports {
+		imports = append(imports, compactAnyMap(map[string]any{
+			"to":      instruction.To,
+			"id":      instruction.ID,
+			"hcl":     instruction.HCL,
+			"command": terraformCommandMetadata(instruction.Command),
+		}))
+	}
+	return compactAnyMap(map[string]any{
+		"state_show": terraformCommandMetadata(reconciliation.StateShow),
+		"plan":       terraformCommandMetadata(reconciliation.Plan),
+		"imports":    imports,
+	})
+}
+
+func terraformCommand(program string, args ...string) TerraformCommand {
+	return TerraformCommand{
+		Program: strings.TrimSpace(program),
+		Args:    append([]string(nil), args...),
+	}
+}
+
+func terraformCommandMetadata(command TerraformCommand) map[string]any {
+	if strings.TrimSpace(command.Program) == "" {
+		return nil
+	}
+	return compactAnyMap(map[string]any{
+		"program": command.Program,
+		"args":    append([]string(nil), command.Args...),
+	})
+}
+
+func terraformImportBlock(address, importID string) string {
+	return strings.TrimSpace(iacrender.RenderTemplate("terraform", terraformImportBlockTemplate, map[string]string{
+		"To": address,
+		"ID": iacrender.HCLString(strings.TrimSpace(importID)),
+	}))
 }
 
 func terraformArtifactRendererLookupKey(actionType ActionType, execution *Execution) terraformArtifactRendererKey {
@@ -374,6 +466,26 @@ func terraformBucketReferenceFromExecution(execution *Execution) string {
 	return resourceAddress + ".id"
 }
 
+func terraformExistingManagedResourceAddress(execution *Execution, expectedType string) (string, string, bool) {
+	if execution == nil {
+		return "", "", false
+	}
+	stateID := strings.TrimSpace(remediationMapValueToString(execution.TriggerData, "iac_state_id"))
+	resourceAddress, resourceType := terraformStateResourceAddress(stateID)
+	if resourceType != expectedType || resourceAddress == "" {
+		return "", "", false
+	}
+	parts := terraformAddressParts(resourceAddress)
+	if len(parts) < 2 {
+		return "", "", false
+	}
+	resourceName := strings.TrimSpace(parts[len(parts)-1])
+	if resourceName == "" || strings.ContainsRune(resourceName, '[') {
+		return "", "", false
+	}
+	return resourceAddress, resourceName, true
+}
+
 func terraformStateResourceAddress(stateID string) (string, string) {
 	stateID = strings.TrimSpace(stateID)
 	if stateID == "" {
@@ -404,7 +516,7 @@ func terraformStateResourceAddress(stateID string) (string, string) {
 		idx += 2
 	}
 	remaining := parts[idx:]
-	if len(remaining) != 2 {
+	if len(remaining) < 2 {
 		return "", ""
 	}
 	resourceType := strings.TrimSpace(remaining[0])
@@ -644,5 +756,12 @@ resource "aws_s3_bucket_public_access_block" "{{ .ResourceName }}" {
   block_public_policy     = true
   ignore_public_acls      = true
   restrict_public_buckets = true
+}
+`
+
+const terraformImportBlockTemplate = `
+import {
+  to = {{ .To }}
+  id = {{ .ID }}
 }
 `

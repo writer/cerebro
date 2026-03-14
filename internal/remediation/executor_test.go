@@ -545,9 +545,120 @@ func TestExecutor_RestrictPublicStorageAccessTerraformModeCapturesArtifact(t *te
 	if !strings.Contains(content, `resource "aws_s3_bucket_public_access_block" "public_assets_public_access_block"`) {
 		t.Fatalf("expected terraform resource block, got %q", content)
 	}
+	stateReconciliation, _ := artifact["state_reconciliation"].(map[string]any)
+	if len(stateReconciliation) == 0 {
+		t.Fatalf("expected structured state reconciliation metadata, got %#v", artifact)
+	}
+	stateShow, _ := stateReconciliation["state_show"].(map[string]any)
+	if stateShow["program"] != "terraform" {
+		t.Fatalf("unexpected state show command metadata: %#v", stateShow)
+	}
+	imports, _ := stateReconciliation["imports"].([]map[string]any)
+	if len(imports) != 1 {
+		t.Fatalf("expected one import instruction in metadata, got %#v", stateReconciliation["imports"])
+	}
+	if imports[0]["to"] != "aws_s3_bucket_public_access_block.public_assets_public_access_block" {
+		t.Fatalf("unexpected import instruction target: %#v", imports[0])
+	}
 	after, _ := metadata["after"].(map[string]any)
 	if planned, _ := after["planned"].(bool); !planned {
 		t.Fatalf("expected planned after-state metadata, got %#v", after)
+	}
+}
+
+func TestExecutor_RestrictPublicStorageAccessTerraformModeReusesExistingPublicAccessBlockAddress(t *testing.T) {
+	engine := NewEngine(testutil.Logger())
+	rule := Rule{
+		ID:      "restrict-public-storage-terraform-existing-address",
+		Name:    "Restrict Public Storage Terraform Existing Address",
+		Enabled: true,
+		Trigger: Trigger{Type: TriggerManual},
+		Actions: []Action{{
+			Type: ActionRestrictPublicStorageAccess,
+			Config: map[string]string{
+				"delivery_mode": "terraform",
+			},
+		}},
+	}
+	if err := engine.AddRule(rule); err != nil {
+		t.Fatalf("add rule: %v", err)
+	}
+
+	executions, err := engine.Evaluate(context.Background(), Event{
+		Type:     TriggerManual,
+		PolicyID: "aws-s3-bucket-no-public-access",
+		EntityID: "bucket:public-assets",
+		Data: map[string]any{
+			"resource_id":       "bucket:public-assets",
+			"resource_name":     "public-assets",
+			"resource_type":     "bucket",
+			"resource_platform": "aws",
+			"iac_state_id":      "module.platform.module.storage.aws_s3_bucket_public_access_block.existing_block",
+			"resource": map[string]any{
+				"public_access": true,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	execution := executions[0]
+	executor := NewExecutor(engine, nil, nil, nil, nil)
+
+	if err := executor.Execute(context.Background(), execution); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	artifact, _ := execution.Actions[0].Metadata["artifact"].(map[string]any)
+	if artifact["resource_address"] != "module.platform.module.storage.aws_s3_bucket_public_access_block.existing_block" {
+		t.Fatalf("unexpected reused terraform resource address: %#v", artifact["resource_address"])
+	}
+}
+
+func TestExecutor_RestrictPublicStorageAccessTerraformModeReusesExistingPublicAccessBlockAddressFromAttributePath(t *testing.T) {
+	engine := NewEngine(testutil.Logger())
+	rule := Rule{
+		ID:      "restrict-public-storage-terraform-existing-address-attribute-path",
+		Name:    "Restrict Public Storage Terraform Existing Address Attribute Path",
+		Enabled: true,
+		Trigger: Trigger{Type: TriggerManual},
+		Actions: []Action{{
+			Type: ActionRestrictPublicStorageAccess,
+			Config: map[string]string{
+				"delivery_mode": "terraform",
+			},
+		}},
+	}
+	if err := engine.AddRule(rule); err != nil {
+		t.Fatalf("add rule: %v", err)
+	}
+
+	executions, err := engine.Evaluate(context.Background(), Event{
+		Type:     TriggerManual,
+		PolicyID: "aws-s3-bucket-no-public-access",
+		EntityID: "bucket:public-assets",
+		Data: map[string]any{
+			"resource_id":       "bucket:public-assets",
+			"resource_name":     "public-assets",
+			"resource_type":     "bucket",
+			"resource_platform": "aws",
+			"iac_state_id":      "module.platform.module.storage.aws_s3_bucket_public_access_block.existing_block.id",
+			"resource": map[string]any{
+				"public_access": true,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	execution := executions[0]
+	executor := NewExecutor(engine, nil, nil, nil, nil)
+
+	if err := executor.Execute(context.Background(), execution); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	artifact, _ := execution.Actions[0].Metadata["artifact"].(map[string]any)
+	if artifact["resource_address"] != "module.platform.module.storage.aws_s3_bucket_public_access_block.existing_block" {
+		t.Fatalf("unexpected reused terraform resource address: %#v", artifact["resource_address"])
 	}
 }
 
@@ -691,6 +802,102 @@ func TestExecutor_EnableBucketDefaultEncryptionTerraformModeCapturesArtifact(t *
 	after, _ := metadata["after"].(map[string]any)
 	if planned, _ := after["planned"].(bool); !planned {
 		t.Fatalf("expected planned after-state metadata, got %#v", after)
+	}
+}
+
+func TestExecutor_EnableBucketDefaultEncryptionTerraformModeReusesExistingEncryptionAddress(t *testing.T) {
+	engine := NewEngine(testutil.Logger())
+	rule := Rule{
+		ID:      "enable-bucket-default-encryption-terraform-existing-address",
+		Name:    "Enable Bucket Default Encryption Terraform Existing Address",
+		Enabled: true,
+		Trigger: Trigger{Type: TriggerManual},
+		Actions: []Action{{
+			Type: ActionEnableBucketDefaultEncryption,
+			Config: map[string]string{
+				"delivery_mode": "terraform",
+			},
+		}},
+	}
+	if err := engine.AddRule(rule); err != nil {
+		t.Fatalf("add rule: %v", err)
+	}
+
+	executions, err := engine.Evaluate(context.Background(), Event{
+		Type:     TriggerManual,
+		PolicyID: "aws-s3-bucket-encryption-enabled",
+		EntityID: "bucket:audit-logs",
+		Data: map[string]any{
+			"resource_id":       "bucket:audit-logs",
+			"resource_name":     "audit-logs",
+			"resource_type":     "bucket",
+			"resource_platform": "aws",
+			"iac_state_id":      "module.platform.module.storage.aws_s3_bucket_server_side_encryption_configuration.existing_encryption",
+			"resource": map[string]any{
+				"default_encryption_enabled": false,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	execution := executions[0]
+	executor := NewExecutor(engine, nil, nil, nil, nil)
+
+	if err := executor.Execute(context.Background(), execution); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	artifact, _ := execution.Actions[0].Metadata["artifact"].(map[string]any)
+	if artifact["resource_address"] != "module.platform.module.storage.aws_s3_bucket_server_side_encryption_configuration.existing_encryption" {
+		t.Fatalf("unexpected reused terraform resource address: %#v", artifact["resource_address"])
+	}
+}
+
+func TestExecutor_EnableBucketDefaultEncryptionTerraformModeReusesExistingEncryptionAddressFromAttributePath(t *testing.T) {
+	engine := NewEngine(testutil.Logger())
+	rule := Rule{
+		ID:      "enable-bucket-default-encryption-terraform-existing-address-attribute-path",
+		Name:    "Enable Bucket Default Encryption Terraform Existing Address Attribute Path",
+		Enabled: true,
+		Trigger: Trigger{Type: TriggerManual},
+		Actions: []Action{{
+			Type: ActionEnableBucketDefaultEncryption,
+			Config: map[string]string{
+				"delivery_mode": "terraform",
+			},
+		}},
+	}
+	if err := engine.AddRule(rule); err != nil {
+		t.Fatalf("add rule: %v", err)
+	}
+
+	executions, err := engine.Evaluate(context.Background(), Event{
+		Type:     TriggerManual,
+		PolicyID: "aws-s3-bucket-encryption-enabled",
+		EntityID: "bucket:audit-logs",
+		Data: map[string]any{
+			"resource_id":       "bucket:audit-logs",
+			"resource_name":     "audit-logs",
+			"resource_type":     "bucket",
+			"resource_platform": "aws",
+			"iac_state_id":      "module.platform.module.storage.aws_s3_bucket_server_side_encryption_configuration.existing_encryption.id",
+			"resource": map[string]any{
+				"default_encryption_enabled": false,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	execution := executions[0]
+	executor := NewExecutor(engine, nil, nil, nil, nil)
+
+	if err := executor.Execute(context.Background(), execution); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	artifact, _ := execution.Actions[0].Metadata["artifact"].(map[string]any)
+	if artifact["resource_address"] != "module.platform.module.storage.aws_s3_bucket_server_side_encryption_configuration.existing_encryption" {
+		t.Fatalf("unexpected reused terraform resource address: %#v", artifact["resource_address"])
 	}
 }
 
