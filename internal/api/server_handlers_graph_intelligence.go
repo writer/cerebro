@@ -14,6 +14,7 @@ import (
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/graph/knowledge"
 	reports "github.com/writer/cerebro/internal/graph/reports"
+	risk "github.com/writer/cerebro/internal/graph/risk"
 	"github.com/writer/cerebro/internal/graphingest"
 )
 
@@ -993,7 +994,7 @@ func (s *Server) graphQueryPaths(w http.ResponseWriter, r *http.Request, g *grap
 		maxDepth = parsed
 	}
 
-	simulator := graph.NewAttackPathSimulator(g)
+	simulator := risk.NewAttackPathSimulator(g)
 	paths := simulator.KShortestPaths(nodeID, targetID, k, maxDepth)
 	pathsExamined := 0
 	for _, path := range paths {
