@@ -351,6 +351,7 @@ func (s *Server) setupRoutes() {
 
 		// Shared platform primitives
 		r.Route("/platform", func(r chi.Router) {
+			r.Get("/workload-scan/targets", s.listPlatformWorkloadScanTargets)
 			r.Get("/entities", s.listPlatformEntities)
 			r.Get("/entities/search", s.searchPlatformEntities)
 			r.Get("/entities/suggest", s.suggestPlatformEntities)

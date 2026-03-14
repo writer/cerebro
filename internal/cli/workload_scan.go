@@ -70,6 +70,7 @@ var (
 	workloadScanRequestedBy         string
 	workloadScanDryRun              bool
 	workloadScanMetadataPairs       []string
+	workloadScanPriorityOverride    string
 )
 
 func init() {
@@ -93,6 +94,7 @@ func init() {
 	workloadScanRunAWSCmd.Flags().StringVar(&workloadScanRequestedBy, "requested-by", "", "Optional operator identity recorded on the run")
 	workloadScanRunAWSCmd.Flags().BoolVar(&workloadScanDryRun, "dry-run", false, "Inventory only; do not snapshot, attach, or mount volumes")
 	workloadScanRunAWSCmd.Flags().StringSliceVar(&workloadScanMetadataPairs, "metadata", nil, "Optional metadata entries (key=value)")
+	workloadScanRunAWSCmd.Flags().StringVar(&workloadScanPriorityOverride, "priority-override", "", "Optional manual workload scan priority override (critical, high, medium, low)")
 	_ = workloadScanRunAWSCmd.MarkFlagRequired("region")
 	_ = workloadScanRunAWSCmd.MarkFlagRequired("instance-id")
 	_ = workloadScanRunAWSCmd.MarkFlagRequired("scanner-instance-id")
@@ -165,6 +167,10 @@ func runWorkloadScanAWS(cmd *cobra.Command, args []string) error {
 		MaxConcurrentSnapshots: resolveWorkloadScanMaxConcurrent(cfg),
 		CleanupTimeout:         resolveWorkloadScanCleanupTimeout(cfg),
 	})
+	priority, err := parseWorkloadScanPriorityOverride(workloadScanPriorityOverride)
+	if err != nil {
+		return err
+	}
 
 	run, runErr := runner.RunVMScan(ctx, workloadscan.ScanRequest{
 		RequestedBy: workloadScanRequestedBy,
@@ -183,6 +189,7 @@ func runWorkloadScanAWS(cmd *cobra.Command, args []string) error {
 		MaxConcurrentSnapshots: resolveWorkloadScanMaxConcurrent(cfg),
 		DryRun:                 workloadScanDryRun,
 		Metadata:               parseMetadataPairs(workloadScanMetadataPairs),
+		Priority:               priority,
 		SubmittedAt:            time.Now().UTC(),
 	})
 	if run != nil {
@@ -282,14 +289,19 @@ func renderWorkloadRuns(runs []workloadscan.RunRecord) error {
 	if workloadScanOutput == FormatJSON {
 		return JSONOutput(runs)
 	}
-	tw := NewTableWriter(os.Stdout, "Run ID", "Provider", "Status", "Stage", "Target", "Volumes", "Findings", "Updated")
+	tw := NewTableWriter(os.Stdout, "Run ID", "Provider", "Status", "Stage", "Target", "Priority", "Volumes", "Findings", "Updated")
 	for _, run := range runs {
+		priority := "-"
+		if run.Priority != nil && run.Priority.Priority != "" {
+			priority = string(run.Priority.Priority)
+		}
 		tw.AddRow(
 			run.ID,
 			string(run.Provider),
 			statusColor(string(run.Status)),
 			string(run.Stage),
 			run.Target.Identity(),
+			priority,
 			fmt.Sprintf("%d", run.Summary.VolumeCount),
 			fmt.Sprintf("%d", run.Summary.Findings),
 			run.UpdatedAt.UTC().Format(time.RFC3339),
@@ -309,6 +321,9 @@ func renderWorkloadRun(run workloadscan.RunRecord) error {
 	fmt.Printf("  Status:    %s\n", statusColor(string(run.Status)))
 	fmt.Printf("  Stage:     %s\n", run.Stage)
 	fmt.Printf("  Target:    %s\n", run.Target.Identity())
+	if run.Priority != nil && run.Priority.Priority != "" {
+		fmt.Printf("  Priority:  %s (%d)\n", run.Priority.Priority, run.Priority.Score)
+	}
 	fmt.Printf("  Volumes:   %d (ok=%d failed=%d)\n", run.Summary.VolumeCount, run.Summary.SucceededVolumes, run.Summary.FailedVolumes)
 	fmt.Printf("  Findings:  %d\n", run.Summary.Findings)
 	fmt.Printf("  Snapshot:  %.4f GiB-hours\n", run.Summary.SnapshotGiBHours)
@@ -419,6 +434,18 @@ func parseMetadataPairs(values []string) map[string]string {
 		out[key] = value
 	}
 	return out
+}
+
+func parseWorkloadScanPriorityOverride(raw string) (*workloadscan.PriorityAssessment, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	priority, ok := workloadscan.NormalizeScanPriority(raw)
+	if !ok {
+		return nil, fmt.Errorf("priority override must be one of critical, high, medium, low")
+	}
+	return workloadscan.ManualPriorityAssessment(priority, ""), nil
 }
 
 func parseWorkloadRunStatuses(raw string) ([]workloadscan.RunStatus, error) {

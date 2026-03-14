@@ -187,6 +187,7 @@ func (r *Runner) RunVMScan(ctx context.Context, req ScanRequest) (*RunRecord, er
 		RequestedBy: strings.TrimSpace(req.RequestedBy),
 		DryRun:      req.DryRun,
 		Metadata:    cloneStringMap(req.Metadata),
+		Priority:    ClonePriorityAssessment(req.Priority),
 		SubmittedAt: req.SubmittedAt.UTC(),
 		UpdatedAt:   req.SubmittedAt.UTC(),
 	}

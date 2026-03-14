@@ -196,7 +196,6 @@ Status: executed end-to-end via PR workflow
   - [ ] Workload Identity Federation trust edges
   - [ ] billing-account and service-enablement modeling
 
->>>>>>> bf45aad98 (Detect IaC artifacts during workload filesystem scans (#271))
 ## Deep Review Cycle 74 - Credential Pivot Graph Materialization (2026-03-13)
 
 ### Review findings

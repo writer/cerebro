@@ -43,6 +43,52 @@ func TestMaterializeRunsIntoGraphAddsWorkloadScanNodes(t *testing.T) {
 	}
 }
 
+func TestMaterializeRunsIntoGraphCarriesPriorityAssessment(t *testing.T) {
+	now := time.Date(2026, 3, 12, 18, 0, 0, 0, time.UTC)
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:       "arn:aws:ec2:us-east-1:123456789012:instance/i-abc123",
+		Kind:     graph.NodeKindInstance,
+		Name:     "i-abc123",
+		Provider: "aws",
+		Account:  "123456789012",
+		Region:   "us-east-1",
+	})
+	g.BuildIndex()
+
+	run := buildGraphMaterializationTestRun("workload_scan:run-priority", now.Add(-2*time.Hour), 0)
+	lastScannedAt := now.Add(-48 * time.Hour)
+	run.Priority = &PriorityAssessment{
+		Score:            84,
+		Priority:         ScanPriorityCritical,
+		Eligible:         true,
+		Source:           "graph",
+		Reasons:          []string{"workload is directly internet-facing"},
+		Exposure:         "internet_facing",
+		Privilege:        "privileged",
+		Criticality:      "high",
+		ComplianceScopes: []string{"pci"},
+		Staleness:        "stale",
+		LastScannedAt:    &lastScannedAt,
+	}
+
+	MaterializeRunsIntoGraph(g, []RunRecord{run}, now)
+
+	scanNode, ok := g.GetNode(run.ID)
+	if !ok {
+		t.Fatalf("expected workload scan node %q", run.ID)
+	}
+	if got := graphValueString(scanNode.Properties["priority"]); got != "critical" {
+		t.Fatalf("expected priority property, got %#v", scanNode.Properties)
+	}
+	if got := graphValueInt(scanNode.Properties["priority_score"]); got != 84 {
+		t.Fatalf("expected priority_score=84, got %#v", scanNode.Properties)
+	}
+	if got := graphValueString(scanNode.Properties["priority_staleness"]); got != "stale" {
+		t.Fatalf("expected priority staleness, got %#v", scanNode.Properties)
+	}
+}
+
 func TestMaterializeRunsIntoGraphClosesOlderScans(t *testing.T) {
 	g := graph.New()
 	g.AddNode(&graph.Node{

@@ -4,7 +4,7 @@ Generated from `api/openapi.yaml` via `go run ./scripts/generate_api_contract_do
 
 - Catalog API version: **devex.cerebro/v1alpha1**
 - Catalog kind: **HTTPAPIContractCatalog**
-- Endpoints: **296**
+- Endpoints: **297**
 
 ## Endpoint Summary
 
@@ -156,6 +156,7 @@ Generated from `api/openapi.yaml` via `go run ./scripts/generate_api_contract_do
 | `GET /api/v1/platform/knowledge/evidence/{evidence_id}` | 2 | 0 | `200` |
 | `GET /api/v1/platform/knowledge/observations` | 8 | 0 | `200` |
 | `GET /api/v1/platform/knowledge/observations/{observation_id}` | 2 | 0 | `200` |
+| `GET /api/v1/platform/workload-scan/targets` | 3 | 0 | `200` |
 | `GET /api/v1/policies` | 0 | 0 | `200` |
 | `GET /api/v1/policies/{id}` | 0 | 0 | `200` |
 | `GET /api/v1/policies/{id}/versions` | 0 | 0 | `200` |
