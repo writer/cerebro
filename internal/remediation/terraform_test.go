@@ -5,12 +5,88 @@ import (
 	"testing"
 )
 
-func TestRenderTerraformArtifact_RejectsUnsupportedAction(t *testing.T) {
+func TestRenderTerraformArtifact_RejectsUnsupportedContextForSecurityGroupIngress(t *testing.T) {
 	_, err := renderTerraformArtifact(Action{Type: ActionRestrictPublicSecurityGroupIngress}, &Execution{})
 	if err == nil {
-		t.Fatal("expected unsupported terraform action error")
+		t.Fatal("expected unsupported terraform context error")
 	}
-	if !strings.Contains(err.Error(), "not implemented") {
+	if !strings.Contains(err.Error(), "standalone Terraform security group rule resources") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRenderTerraformArtifact_RestrictPublicSecurityGroupIngressUsesRemovedBlockForStandaloneRule(t *testing.T) {
+	artifact, err := renderTerraformArtifact(Action{Type: ActionRestrictPublicSecurityGroupIngress}, &Execution{
+		TriggerData: map[string]any{
+			"resource_id":       "sg-rule-123",
+			"resource_name":     "public-ssh",
+			"resource_type":     "security_group_rule",
+			"resource_platform": "aws",
+			"iac_state_id":      "module.platform.aws_security_group_rule.public_ssh",
+			"matched_ports":     []string{"22"},
+			"matched_cidrs":     []string{"0.0.0.0/0"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("render artifact: %v", err)
+	}
+
+	if artifact.ResourceAddress != "module.platform.aws_security_group_rule.public_ssh" {
+		t.Fatalf("unexpected resource address: %#v", artifact.ResourceAddress)
+	}
+	if artifact.Summary != "Terraform removal patch for public ingress rule module.platform.aws_security_group_rule.public_ssh" {
+		t.Fatalf("unexpected artifact summary: %#v", artifact.Summary)
+	}
+	if artifact.Path != "generated/terraform/platform/cerebro_remove_public_ingress_public_ssh.tf" {
+		t.Fatalf("unexpected artifact path: %#v", artifact.Path)
+	}
+	if !strings.Contains(artifact.Content, "removed {") {
+		t.Fatalf("expected removed block, got:\n%s", artifact.Content)
+	}
+	if !strings.Contains(artifact.Content, "from = module.platform.aws_security_group_rule.public_ssh") {
+		t.Fatalf("expected removed block address, got:\n%s", artifact.Content)
+	}
+	if !strings.Contains(artifact.Content, "destroy = true") {
+		t.Fatalf("expected removed block destroy lifecycle, got:\n%s", artifact.Content)
+	}
+	if artifact.StateReconciliation == nil || artifact.StateReconciliation.StateShow.Program != "terraform" {
+		t.Fatalf("expected state reconciliation metadata, got %#v", artifact.StateReconciliation)
+	}
+	if len(artifact.StateReconciliation.Imports) != 0 {
+		t.Fatalf("expected no import instructions for removed block artifact, got %#v", artifact.StateReconciliation.Imports)
+	}
+}
+
+func TestRenderTerraformArtifact_RestrictPublicSecurityGroupIngressRejectsForEachRuleAddresses(t *testing.T) {
+	_, err := renderTerraformArtifact(Action{Type: ActionRestrictPublicSecurityGroupIngress}, &Execution{
+		TriggerData: map[string]any{
+			"resource_id":       "sg-rule-123",
+			"resource_type":     "security_group_rule",
+			"resource_platform": "aws",
+			"iac_state_id":      `module.platform.aws_vpc_security_group_ingress_rule.public["ssh_open"].id`,
+		},
+	})
+	if err == nil {
+		t.Fatal("expected for_each rule address rejection")
+	}
+	if !strings.Contains(err.Error(), "standalone Terraform security group rule resources") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRenderTerraformArtifact_RestrictPublicSecurityGroupIngressRejectsInlineSecurityGroupState(t *testing.T) {
+	_, err := renderTerraformArtifact(Action{Type: ActionRestrictPublicSecurityGroupIngress}, &Execution{
+		TriggerData: map[string]any{
+			"resource_id":       "sg-123",
+			"resource_type":     "security_group",
+			"resource_platform": "aws",
+			"iac_state_id":      "module.platform.aws_security_group.public",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected inline security group state rejection")
+	}
+	if !strings.Contains(err.Error(), "standalone Terraform security group rule resources") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

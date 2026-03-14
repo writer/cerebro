@@ -72,6 +72,11 @@ var terraformArtifactRenderers = map[terraformArtifactRendererKey]terraformArtif
 		Provider:       "aws",
 		ResourceFamily: "bucket",
 	}: renderTerraformBucketDefaultEncryptionActionArtifact,
+	{
+		ActionType:     ActionRestrictPublicSecurityGroupIngress,
+		Provider:       "aws",
+		ResourceFamily: "security_group",
+	}: renderTerraformRestrictPublicSecurityGroupIngressActionArtifact,
 }
 
 func actionDeliveryMode(action Action, execution *Execution, entry CatalogEntry) DeliveryMode {
@@ -125,6 +130,10 @@ func renderTerraformBucketDefaultEncryptionActionArtifact(action Action, executi
 
 func renderTerraformRestrictPublicStorageAccessActionArtifact(_ Action, execution *Execution) (TerraformArtifact, error) {
 	return renderTerraformPublicStorageAccessArtifact(execution)
+}
+
+func renderTerraformRestrictPublicSecurityGroupIngressActionArtifact(_ Action, execution *Execution) (TerraformArtifact, error) {
+	return renderTerraformRestrictPublicSecurityGroupIngressArtifact(execution)
 }
 
 func renderTerraformPublicStorageAccessArtifact(execution *Execution) (TerraformArtifact, error) {
@@ -257,6 +266,62 @@ func renderTerraformBucketDefaultEncryptionArtifact(execution *Execution, sseAlg
 	}, nil
 }
 
+func renderTerraformRestrictPublicSecurityGroupIngressArtifact(execution *Execution) (TerraformArtifact, error) {
+	if err := validateTerraformArtifactContext(ActionRestrictPublicSecurityGroupIngress, execution, "aws", "security_group"); err != nil {
+		return TerraformArtifact{}, err
+	}
+	ruleAddress, _, ok := terraformExistingSecurityGroupRuleAddress(execution)
+	if !ok {
+		return TerraformArtifact{}, fmt.Errorf("terraform delivery for %s currently requires standalone Terraform security group rule resources (aws_security_group_rule or aws_vpc_security_group_ingress_rule)", ActionRestrictPublicSecurityGroupIngress)
+	}
+	resourceName := terraformRuleArtifactName(execution)
+	path := terraformArtifactPath(execution, "cerebro_remove_public_ingress_"+resourceName+".tf")
+	content := iacrender.RenderTemplate("terraform", terraformRemoveManagedResourceTemplate, map[string]string{
+		"ResourceAddress": ruleAddress,
+	})
+	iacFile := ""
+	iacModule := ""
+	iacStateID := ""
+	if execution != nil {
+		iacFile = strings.TrimSpace(remediationMapValueToString(execution.TriggerData, "iac_file"))
+		iacModule = firstNonEmpty(
+			strings.TrimSpace(remediationMapValueToString(execution.TriggerData, "iac_module")),
+			terraformModuleAddressFromStateID(strings.TrimSpace(remediationMapValueToString(execution.TriggerData, "iac_state_id"))),
+		)
+		iacStateID = strings.TrimSpace(remediationMapValueToString(execution.TriggerData, "iac_state_id"))
+	}
+	notes := []string{
+		"Review the generated removed block and replace the existing Terraform rule resource with it before apply.",
+		"Run terraform plan before apply.",
+	}
+	if ports := strings.Join(remediationAnyToStringSlice(execution.TriggerData["matched_ports"]), ", "); ports != "" {
+		notes = append(notes, fmt.Sprintf("Matched public ingress ports: %s", ports))
+	}
+	if cidrs := strings.Join(remediationAnyToStringSlice(execution.TriggerData["matched_cidrs"]), ", "); cidrs != "" {
+		notes = append(notes, fmt.Sprintf("Matched public CIDRs: %s", cidrs))
+	}
+	if iacFile != "" {
+		notes = append(notes, fmt.Sprintf("Apply this removal in the existing IaC file %s that manages the rule resource.", iacFile))
+	} else if iacModule != "" {
+		notes = append(notes, fmt.Sprintf("Apply this removal in the Terraform module %s that manages the rule resource.", iacModule))
+	}
+	return TerraformArtifact{
+		Kind:                "terraform_hcl",
+		IaCType:             "terraform",
+		Format:              "hcl",
+		Path:                path,
+		ResourceType:        "security_group_rule",
+		ResourceAddress:     ruleAddress,
+		Summary:             fmt.Sprintf("Terraform removal patch for public ingress rule %s", ruleAddress),
+		Content:             content,
+		Notes:               notes,
+		IaCFile:             iacFile,
+		IaCModule:           iacModule,
+		IaCStateID:          iacStateID,
+		StateReconciliation: terraformRemovalStateReconciliation(ruleAddress),
+	}, nil
+}
+
 func terraformArtifactMetadata(artifact TerraformArtifact) map[string]any {
 	return compactAnyMap(map[string]any{
 		"kind":                 artifact.Kind,
@@ -291,6 +356,17 @@ func terraformStateReconciliation(address, importID string) *TerraformStateRecon
 			HCL:     terraformImportBlock(address, importID),
 			Command: terraformCommand("terraform", "import", address, importID),
 		}},
+	}
+}
+
+func terraformRemovalStateReconciliation(address string) *TerraformStateReconciliation {
+	address = strings.TrimSpace(address)
+	if address == "" {
+		return nil
+	}
+	return &TerraformStateReconciliation{
+		StateShow: terraformCommand("terraform", "state", "show", address),
+		Plan:      terraformCommand("terraform", "plan"),
 	}
 }
 
@@ -484,6 +560,50 @@ func terraformExistingManagedResourceAddress(execution *Execution, expectedType 
 		return "", "", false
 	}
 	return resourceAddress, resourceName, true
+}
+
+func terraformExistingSecurityGroupRuleAddress(execution *Execution) (string, string, bool) {
+	if execution == nil {
+		return "", "", false
+	}
+	stateID := strings.TrimSpace(remediationMapValueToString(execution.TriggerData, "iac_state_id"))
+	resourceAddress, resourceType := terraformStateResourceAddress(stateID)
+	switch resourceType {
+	case "aws_security_group_rule", "aws_vpc_security_group_ingress_rule":
+		if resourceAddress == "" {
+			return "", "", false
+		}
+		if strings.Contains(resourceAddress, "[") {
+			return "", "", false
+		}
+		return resourceAddress, resourceType, true
+	default:
+		return "", "", false
+	}
+}
+
+func terraformRuleArtifactName(execution *Execution) string {
+	if execution == nil {
+		return "public_ingress_rule"
+	}
+	if stateID := strings.TrimSpace(remediationMapValueToString(execution.TriggerData, "iac_state_id")); stateID != "" {
+		resourceAddress, _ := terraformStateResourceAddress(stateID)
+		if resourceAddress != "" {
+			if parts := terraformAddressParts(resourceAddress); len(parts) >= 2 {
+				name := terraformIdentifier(parts[len(parts)-1])
+				if name != "" {
+					return name
+				}
+			}
+		}
+	}
+	if name := terraformIdentifier(firstNonEmpty(
+		strings.TrimSpace(remediationMapValueToString(execution.TriggerData, "resource_name")),
+		strings.TrimSpace(remediationMapValueToString(execution.TriggerData, "resource_id")),
+	)); name != "" {
+		return name
+	}
+	return "public_ingress_rule"
 }
 
 func terraformStateResourceAddress(stateID string) (string, string) {
@@ -763,5 +883,16 @@ const terraformImportBlockTemplate = `
 import {
   to = {{ .To }}
   id = {{ .ID }}
+}
+`
+
+const terraformRemoveManagedResourceTemplate = `
+# Generated by Cerebro. Replace the existing rule resource with this removed block and run terraform plan before apply.
+removed {
+  from = {{ .ResourceAddress }}
+
+  lifecycle {
+    destroy = true
+  }
 }
 `
