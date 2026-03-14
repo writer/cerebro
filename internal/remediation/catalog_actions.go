@@ -50,7 +50,7 @@ func (ex *Executor) executeCatalogAction(ctx context.Context, action Action, exe
 
 func (ex *Executor) restrictPublicStorageAccess(ctx context.Context, action Action, execution *Execution) (string, map[string]any, error) {
 	entry, _ := CatalogEntryByAction(action.Type)
-	plan := newCatalogActionPlan(action, execution, entry, ex.actionRequiresApproval(action))
+	plan := newCatalogActionPlan(action, execution, entry, ex.actionRequiresApproval(action, execution))
 	plan.before = captureStorageAccessEvidence(execution)
 
 	providerSupported := false
@@ -115,7 +115,7 @@ func (ex *Executor) restrictPublicStorageAccess(ctx context.Context, action Acti
 
 func (ex *Executor) enableBucketDefaultEncryption(ctx context.Context, action Action, execution *Execution) (string, map[string]any, error) {
 	entry, _ := CatalogEntryByAction(action.Type)
-	plan := newCatalogActionPlan(action, execution, entry, ex.actionRequiresApproval(action))
+	plan := newCatalogActionPlan(action, execution, entry, ex.actionRequiresApproval(action, execution))
 	sseAlgorithm := firstNonEmpty(strings.TrimSpace(action.Config["sse_algorithm"]), "AES256")
 	kmsMasterKeyID := strings.TrimSpace(action.Config["kms_master_key_id"])
 	bucketKeyEnabled := configBool(action.Config["bucket_key_enabled"])
@@ -189,7 +189,7 @@ func (ex *Executor) enableBucketDefaultEncryption(ctx context.Context, action Ac
 
 func (ex *Executor) restrictPublicSecurityGroupIngress(ctx context.Context, action Action, execution *Execution) (string, map[string]any, error) {
 	entry, _ := CatalogEntryByAction(action.Type)
-	plan := newCatalogActionPlan(action, execution, entry, ex.actionRequiresApproval(action))
+	plan := newCatalogActionPlan(action, execution, entry, ex.actionRequiresApproval(action, execution))
 	matches, detail := publicSecurityGroupIngressMatches(execution)
 	plan.before = captureSecurityGroupIngressEvidence(execution, matches)
 
@@ -237,7 +237,7 @@ func (ex *Executor) restrictPublicSecurityGroupIngress(ctx context.Context, acti
 
 func (ex *Executor) disableStaleAccessKey(ctx context.Context, action Action, execution *Execution) (string, map[string]any, error) {
 	entry, _ := CatalogEntryByAction(action.Type)
-	plan := newCatalogActionPlan(action, execution, entry, ex.actionRequiresApproval(action))
+	plan := newCatalogActionPlan(action, execution, entry, ex.actionRequiresApproval(action, execution))
 	threshold := actionIntConfig(action, "inactive_days", 90)
 	candidate, candidateOK := staleAccessKeyCandidateFromExecution(execution, threshold)
 	plan.before = captureAccessKeyEvidence(execution, candidate, threshold)
@@ -302,7 +302,7 @@ func (ex *Executor) executeCatalogRemoteAction(ctx context.Context, action Actio
 
 func newCatalogActionPlan(action Action, execution *Execution, entry CatalogEntry, approvalRequired bool) catalogActionPlan {
 	provider := inferProvider(execution)
-	deliveryMode := actionDeliveryMode(action, entry)
+	deliveryMode := actionDeliveryMode(action, execution, entry)
 	tool := ""
 	if deliveryMode == DeliveryModeRemoteApply {
 		tool = firstNonEmpty(action.Config["tool"], catalogToolForProvider(entry, provider))

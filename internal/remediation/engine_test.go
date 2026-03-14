@@ -144,7 +144,7 @@ func TestEngine_ApprovalCatalogRulesDoNotBlockNotificationRules(t *testing.T) {
 	if !ok {
 		t.Fatal("expected s3-public-notify rule")
 	}
-	notifyPlaybook := remediationPlaybookFromRule(*notifyRule, executor)
+	notifyPlaybook := remediationPlaybookFromRule(*notifyRule, executor, nil)
 	if executor.shared.RequiresApproval(notifyPlaybook) {
 		t.Fatal("expected s3-public-notify playbook not to require approval")
 	}
@@ -153,7 +153,7 @@ func TestEngine_ApprovalCatalogRulesDoNotBlockNotificationRules(t *testing.T) {
 	if !ok {
 		t.Fatal("expected s3-public-restrict rule")
 	}
-	restrictPlaybook := remediationPlaybookFromRule(*restrictRule, executor)
+	restrictPlaybook := remediationPlaybookFromRule(*restrictRule, executor, nil)
 	if !executor.shared.RequiresApproval(restrictPlaybook) {
 		t.Fatal("expected s3-public-restrict playbook to require approval")
 	}
@@ -162,7 +162,7 @@ func TestEngine_ApprovalCatalogRulesDoNotBlockNotificationRules(t *testing.T) {
 	if !ok {
 		t.Fatal("expected s3-encryption-notify rule")
 	}
-	notifyEncryptionPlaybook := remediationPlaybookFromRule(*notifyEncryptionRule, executor)
+	notifyEncryptionPlaybook := remediationPlaybookFromRule(*notifyEncryptionRule, executor, nil)
 	if executor.shared.RequiresApproval(notifyEncryptionPlaybook) {
 		t.Fatal("expected s3-encryption-notify playbook not to require approval")
 	}
@@ -171,7 +171,7 @@ func TestEngine_ApprovalCatalogRulesDoNotBlockNotificationRules(t *testing.T) {
 	if !ok {
 		t.Fatal("expected s3-encryption-terraform rule")
 	}
-	enableEncryptionPlaybook := remediationPlaybookFromRule(*enableEncryptionRule, executor)
+	enableEncryptionPlaybook := remediationPlaybookFromRule(*enableEncryptionRule, executor, nil)
 	if executor.shared.RequiresApproval(enableEncryptionPlaybook) {
 		t.Fatal("expected s3-encryption-terraform playbook not to require approval")
 	}
@@ -180,7 +180,7 @@ func TestEngine_ApprovalCatalogRulesDoNotBlockNotificationRules(t *testing.T) {
 	if !ok {
 		t.Fatal("expected aws-unused-access-key-notify rule")
 	}
-	notifyKeyPlaybook := remediationPlaybookFromRule(*notifyKeyRule, executor)
+	notifyKeyPlaybook := remediationPlaybookFromRule(*notifyKeyRule, executor, nil)
 	if executor.shared.RequiresApproval(notifyKeyPlaybook) {
 		t.Fatal("expected aws-unused-access-key-notify playbook not to require approval")
 	}
@@ -189,7 +189,7 @@ func TestEngine_ApprovalCatalogRulesDoNotBlockNotificationRules(t *testing.T) {
 	if !ok {
 		t.Fatal("expected aws-unused-access-key-disable rule")
 	}
-	disableKeyPlaybook := remediationPlaybookFromRule(*disableKeyRule, executor)
+	disableKeyPlaybook := remediationPlaybookFromRule(*disableKeyRule, executor, nil)
 	if !executor.shared.RequiresApproval(disableKeyPlaybook) {
 		t.Fatal("expected aws-unused-access-key-disable playbook to require approval")
 	}
@@ -198,7 +198,7 @@ func TestEngine_ApprovalCatalogRulesDoNotBlockNotificationRules(t *testing.T) {
 	if !ok {
 		t.Fatal("expected aws-security-group-ssh-notify rule")
 	}
-	sshNotifyPlaybook := remediationPlaybookFromRule(*sshNotifyRule, executor)
+	sshNotifyPlaybook := remediationPlaybookFromRule(*sshNotifyRule, executor, nil)
 	if executor.shared.RequiresApproval(sshNotifyPlaybook) {
 		t.Fatal("expected aws-security-group-ssh-notify playbook not to require approval")
 	}
@@ -207,7 +207,7 @@ func TestEngine_ApprovalCatalogRulesDoNotBlockNotificationRules(t *testing.T) {
 	if !ok {
 		t.Fatal("expected aws-security-group-ssh-restrict rule")
 	}
-	sshRestrictPlaybook := remediationPlaybookFromRule(*sshRestrictRule, executor)
+	sshRestrictPlaybook := remediationPlaybookFromRule(*sshRestrictRule, executor, nil)
 	if !executor.shared.RequiresApproval(sshRestrictPlaybook) {
 		t.Fatal("expected aws-security-group-ssh-restrict playbook to require approval")
 	}
