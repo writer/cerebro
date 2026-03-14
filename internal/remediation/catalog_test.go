@@ -37,4 +37,18 @@ func TestCatalogIncludesSafeCloudRemediations(t *testing.T) {
 	if got := accessKey.DefaultRemoteTools["gcp"]; got != "gcp.iam.disable_service_account_key" {
 		t.Fatalf("unexpected gcp tool mapping: %q", got)
 	}
+
+	ingress, ok := byAction[ActionRestrictPublicSecurityGroupIngress]
+	if !ok {
+		t.Fatal("expected public security group ingress catalog entry")
+	}
+	if !ingress.SafeByDefault || !ingress.SupportsDryRun || !ingress.SupportsRollback {
+		t.Fatalf("expected ingress entry to be safe dry-run rollback capable, got %+v", ingress)
+	}
+	if ingress.BlastRadius != BlastRadiusLow {
+		t.Fatalf("expected ingress action blast radius to be low, got %s", ingress.BlastRadius)
+	}
+	if got := ingress.DefaultRemoteTools["aws"]; got != "aws.ec2.revoke_security_group_ingress" {
+		t.Fatalf("unexpected aws ingress tool mapping: %q", got)
+	}
 }
