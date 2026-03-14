@@ -95,6 +95,7 @@ func TestLoadConfigWorkloadScanPathsAndControls(t *testing.T) {
 	t.Setenv("WORKLOAD_SCAN_CLEANUP_TIMEOUT", "4m")
 	t.Setenv("WORKLOAD_SCAN_RECONCILE_OLDER_THAN", "45m")
 	t.Setenv("WORKLOAD_SCAN_TRIVY_BINARY", "/usr/local/bin/trivy-workload")
+	t.Setenv("WORKLOAD_SCAN_GITLEAKS_BINARY", "/usr/local/bin/gitleaks-workload")
 
 	cfg := LoadConfig()
 	if cfg.ExecutionStoreFile != "/tmp/cerebro-executions.db" {
@@ -118,6 +119,9 @@ func TestLoadConfigWorkloadScanPathsAndControls(t *testing.T) {
 	if cfg.WorkloadScanTrivyBinary != "/usr/local/bin/trivy-workload" {
 		t.Fatalf("expected workload scan trivy binary override, got %q", cfg.WorkloadScanTrivyBinary)
 	}
+	if cfg.WorkloadScanGitleaksBinary != "/usr/local/bin/gitleaks-workload" {
+		t.Fatalf("expected workload scan gitleaks binary override, got %q", cfg.WorkloadScanGitleaksBinary)
+	}
 }
 
 func TestLoadConfigImageScanPathsAndControls(t *testing.T) {
@@ -125,6 +129,7 @@ func TestLoadConfigImageScanPathsAndControls(t *testing.T) {
 	t.Setenv("IMAGE_SCAN_ROOTFS_BASE_PATH", "/tmp/cerebro-image-rootfs")
 	t.Setenv("IMAGE_SCAN_CLEANUP_TIMEOUT", "5m")
 	t.Setenv("IMAGE_SCAN_TRIVY_BINARY", "/usr/local/bin/trivy")
+	t.Setenv("IMAGE_SCAN_GITLEAKS_BINARY", "/usr/local/bin/gitleaks-image")
 
 	cfg := LoadConfig()
 	if cfg.ImageScanStateFile != "/tmp/cerebro-executions.db" {
@@ -139,6 +144,9 @@ func TestLoadConfigImageScanPathsAndControls(t *testing.T) {
 	if cfg.ImageScanTrivyBinary != "/usr/local/bin/trivy" {
 		t.Fatalf("expected image scan trivy binary override, got %q", cfg.ImageScanTrivyBinary)
 	}
+	if cfg.ImageScanGitleaksBinary != "/usr/local/bin/gitleaks-image" {
+		t.Fatalf("expected image scan gitleaks binary override, got %q", cfg.ImageScanGitleaksBinary)
+	}
 }
 
 func TestLoadConfigFunctionScanPathsAndControls(t *testing.T) {
@@ -146,6 +154,7 @@ func TestLoadConfigFunctionScanPathsAndControls(t *testing.T) {
 	t.Setenv("FUNCTION_SCAN_ROOTFS_BASE_PATH", "/tmp/cerebro-function-rootfs")
 	t.Setenv("FUNCTION_SCAN_CLEANUP_TIMEOUT", "6m")
 	t.Setenv("FUNCTION_SCAN_TRIVY_BINARY", "/usr/local/bin/trivy-function")
+	t.Setenv("FUNCTION_SCAN_GITLEAKS_BINARY", "/usr/local/bin/gitleaks-function")
 
 	cfg := LoadConfig()
 	if cfg.FunctionScanStateFile != "/tmp/cerebro-executions.db" {
@@ -159,6 +168,9 @@ func TestLoadConfigFunctionScanPathsAndControls(t *testing.T) {
 	}
 	if cfg.FunctionScanTrivyBinary != "/usr/local/bin/trivy-function" {
 		t.Fatalf("expected function scan trivy binary override, got %q", cfg.FunctionScanTrivyBinary)
+	}
+	if cfg.FunctionScanGitleaksBinary != "/usr/local/bin/gitleaks-function" {
+		t.Fatalf("expected function scan gitleaks binary override, got %q", cfg.FunctionScanGitleaksBinary)
 	}
 }
 

@@ -22,6 +22,18 @@ func (s stubFilesystemScanner) ScanFilesystem(context.Context, string) (*scanner
 	return s.result, nil
 }
 
+type stubSecretScanner struct {
+	result *SecretScanResult
+	err    error
+}
+
+func (s stubSecretScanner) ScanFilesystem(context.Context, string) (*SecretScanResult, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.result, nil
+}
+
 func TestAnalyzerCatalogsPackagesSecretsAndConfigs(t *testing.T) {
 	root := t.TempDir()
 	mustWriteFile(t, filepath.Join(root, "etc", "os-release"), "ID=ubuntu\nNAME=Ubuntu\nPRETTY_NAME=Ubuntu 20.04 LTS\nVERSION_ID=20.04\n")
@@ -241,6 +253,109 @@ func TestAnalyzerExtractsResolvableSecretReferences(t *testing.T) {
 	}
 	if got := gcpFinding.References[0].Attributes["private_key_id"]; got != "key-123" {
 		t.Fatalf("expected private_key_id key-123, got %q", got)
+	}
+}
+
+func TestAnalyzerDetectsExpandedSecretPatternsAndDockerRegistryCredentials(t *testing.T) {
+	root := t.TempDir()
+	gitLabToken := "glpat-" + "1234567890abcdefghijklmn"
+	npmToken := "npm_" + "1234567890abcdefghijklmnopqrstuvwxyz"
+	stripeKey := "sk_" + "live_" + "1234567890abcdefghijklmnop"
+	twilioKey := "SK" + strings.Repeat("01234567", 4)
+	sendGridKey := strings.Join([]string{"SG", "ABCDEFGHIJKLMNOP", "QRSTUVWXYZabcdefghi"}, ".")
+	mailgunKey := "key-" + strings.Repeat("0123456789abcdef", 2)
+	jwtToken := strings.Join([]string{
+		"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
+		"eyJzdWIiOiIxMjM0NTY3ODkwIiwiYWRtaW4iOnRydWV9",
+		"c2lnbmF0dXJlLXNlY3JldC12YWx1ZQ",
+	}, ".")
+	mustWriteFile(t, filepath.Join(root, "workspace", ".env"), strings.Join([]string{
+		"GITLAB_TOKEN=" + gitLabToken,
+		"NPM_TOKEN=" + npmToken,
+		"STRIPE_KEY=" + stripeKey,
+		"TWILIO_KEY=" + twilioKey,
+		"SENDGRID_KEY=" + sendGridKey,
+		"MAILGUN_KEY=" + mailgunKey,
+		"JWT_TOKEN=" + jwtToken,
+	}, "\n"))
+	mustWriteFile(t, filepath.Join(root, "root", ".docker", "config.json"), `{
+		"auths": {
+			"https://123456789012.dkr.ecr.us-east-1.amazonaws.com": {
+				"auth": "ZWNydXNlcjpTdXBlclNlY3JldFBhc3M="
+			}
+		}
+	}`)
+
+	report, err := New(Options{}).Analyze(context.Background(), root)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+
+	byType := make(map[string]SecretFinding, len(report.Secrets))
+	for _, finding := range report.Secrets {
+		byType[finding.Type] = finding
+	}
+	for _, kind := range []string{
+		"gitlab_token",
+		"npm_token",
+		"stripe_api_key",
+		"twilio_api_key",
+		"sendgrid_api_key",
+		"mailgun_api_key",
+		"jwt_token",
+		"docker_registry_credentials",
+	} {
+		if _, ok := byType[kind]; !ok {
+			t.Fatalf("expected secret finding %q, got %#v", kind, report.Secrets)
+		}
+	}
+
+	dockerFinding := byType["docker_registry_credentials"]
+	if len(dockerFinding.References) != 1 {
+		t.Fatalf("expected docker registry reference, got %#v", dockerFinding)
+	}
+	ref := dockerFinding.References[0]
+	if ref.Provider != "aws" || ref.Host != "123456789012.dkr.ecr.us-east-1.amazonaws.com" {
+		t.Fatalf("expected ECR reference metadata, got %#v", ref)
+	}
+	if ref.Attributes["username"] != "ecruser" {
+		t.Fatalf("expected docker username extraction, got %#v", ref.Attributes)
+	}
+	if strings.Contains(dockerFinding.Match, "SuperSecretPass") {
+		t.Fatalf("expected docker credential to be redacted, got %#v", dockerFinding)
+	}
+}
+
+func TestAnalyzerMergesExternalSecretScannerResultsWithoutDuplicates(t *testing.T) {
+	root := t.TempDir()
+	mustWriteFile(t, filepath.Join(root, "workspace", ".env"), "GITHUB_TOKEN=ghp_1234567890abcdefghijklmn\n")
+
+	report, err := New(Options{
+		SecretScanner: stubSecretScanner{result: &SecretScanResult{
+			Engine: "stub",
+			Findings: []SecretFinding{{
+				Type:     "github_token",
+				Severity: "high",
+				Path:     "workspace/.env",
+				Line:     1,
+				Match:    fingerprintSecretMatch("ghp_1234567890abcdefghijklmn"),
+			}},
+		}},
+	}).Analyze(context.Background(), root)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if report.Metadata["secret_scan_engine"] != "stub" {
+		t.Fatalf("expected secret scan engine metadata, got %#v", report.Metadata)
+	}
+	count := 0
+	for _, finding := range report.Secrets {
+		if finding.Type == "github_token" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("expected deduped github token finding, got %#v", report.Secrets)
 	}
 }
 

@@ -15,9 +15,14 @@ type PackageVulnerabilityMatcher interface {
 	MatchPackages(ctx context.Context, os OSInfo, packages []PackageRecord) ([]scanner.ImageVulnerability, error)
 }
 
+type SecretScanner interface {
+	ScanFilesystem(ctx context.Context, rootfsPath string) (*SecretScanResult, error)
+}
+
 type Options struct {
 	VulnerabilityScanner scanner.FilesystemScanner
 	VulnerabilityMatcher PackageVulnerabilityMatcher
+	SecretScanner        SecretScanner
 	MalwareScanner       MalwareScanner
 	Now                  func() time.Time
 	MaxWalkEntries       int
@@ -65,6 +70,11 @@ type SecretReference struct {
 	Port       int               `json:"port,omitempty"`
 	Database   string            `json:"database,omitempty"`
 	Attributes map[string]string `json:"attributes,omitempty"`
+}
+
+type SecretScanResult struct {
+	Engine   string          `json:"engine,omitempty"`
+	Findings []SecretFinding `json:"findings,omitempty"`
 }
 
 type ConfigFinding struct {
