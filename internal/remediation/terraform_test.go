@@ -61,6 +61,24 @@ func TestActionDeliveryModeUsesProviderSpecificDefault(t *testing.T) {
 	}
 }
 
+func TestRenderTerraformArtifact_EnableBucketDefaultEncryptionRejectsNonAWSProvider(t *testing.T) {
+	_, err := renderTerraformArtifact(Action{
+		Type: ActionEnableBucketDefaultEncryption,
+	}, &Execution{
+		TriggerData: map[string]any{
+			"resource_id":       "bucket:audit-logs",
+			"resource_type":     "bucket",
+			"resource_platform": "gcp",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected non-aws provider rejection")
+	}
+	if !strings.Contains(err.Error(), "only implemented for aws buckets") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestRenderTerraformBucketDefaultEncryptionArtifact_UsesIaCStateIDModulePath(t *testing.T) {
 	artifact, err := renderTerraformBucketDefaultEncryptionArtifact(&Execution{
 		TriggerData: map[string]any{
@@ -190,6 +208,24 @@ func TestRenderTerraformRestrictPublicStorageAccessArtifact_RejectsNonAWSProvide
 		t.Fatal("expected non-aws provider rejection")
 	}
 	if !strings.Contains(err.Error(), "only implemented for aws") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRenderTerraformRestrictPublicStorageAccessArtifact_RejectsNonBucketResource(t *testing.T) {
+	_, err := renderTerraformArtifact(Action{
+		Type: ActionRestrictPublicStorageAccess,
+	}, &Execution{
+		TriggerData: map[string]any{
+			"resource_id":       "bucket:public-assets",
+			"resource_type":     "database",
+			"resource_platform": "aws",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected non-bucket resource rejection")
+	}
+	if !strings.Contains(err.Error(), "resource_family=database") && !strings.Contains(err.Error(), "got database") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

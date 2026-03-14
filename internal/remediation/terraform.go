@@ -34,9 +34,25 @@ type TerraformArtifact struct {
 
 var terraformIdentifierUnsafeChars = regexp.MustCompile(`[^0-9A-Za-z_]+`)
 
-var terraformArtifactRenderers = map[ActionType]func(Action, *Execution) (TerraformArtifact, error){
-	ActionRestrictPublicStorageAccess:   renderTerraformRestrictPublicStorageAccessActionArtifact,
-	ActionEnableBucketDefaultEncryption: renderTerraformBucketDefaultEncryptionActionArtifact,
+type terraformArtifactRenderer func(Action, *Execution) (TerraformArtifact, error)
+
+type terraformArtifactRendererKey struct {
+	ActionType     ActionType
+	Provider       string
+	ResourceFamily string
+}
+
+var terraformArtifactRenderers = map[terraformArtifactRendererKey]terraformArtifactRenderer{
+	{
+		ActionType:     ActionRestrictPublicStorageAccess,
+		Provider:       "aws",
+		ResourceFamily: "bucket",
+	}: renderTerraformRestrictPublicStorageAccessActionArtifact,
+	{
+		ActionType:     ActionEnableBucketDefaultEncryption,
+		Provider:       "aws",
+		ResourceFamily: "bucket",
+	}: renderTerraformBucketDefaultEncryptionActionArtifact,
 }
 
 func actionDeliveryMode(action Action, execution *Execution, entry CatalogEntry) DeliveryMode {
@@ -73,9 +89,10 @@ func catalogSupportsDeliveryMode(entry CatalogEntry, mode DeliveryMode) bool {
 }
 
 func renderTerraformArtifact(action Action, execution *Execution) (TerraformArtifact, error) {
-	renderer, ok := terraformArtifactRenderers[action.Type]
+	key := terraformArtifactRendererLookupKey(action.Type, execution)
+	renderer, ok := terraformArtifactRenderers[key]
 	if !ok {
-		return TerraformArtifact{}, fmt.Errorf("terraform delivery is not implemented for %s", action.Type)
+		return TerraformArtifact{}, terraformUnsupportedContextError(action.Type, key)
 	}
 	return renderer(action, execution)
 }
@@ -92,8 +109,8 @@ func renderTerraformRestrictPublicStorageAccessActionArtifact(_ Action, executio
 }
 
 func renderTerraformPublicStorageAccessArtifact(execution *Execution) (TerraformArtifact, error) {
-	if provider := inferProvider(execution); provider != "" && provider != "aws" {
-		return TerraformArtifact{}, fmt.Errorf("terraform delivery for %s is only implemented for aws buckets, got %s", ActionRestrictPublicStorageAccess, provider)
+	if err := validateTerraformArtifactContext(ActionRestrictPublicStorageAccess, execution, "aws", "bucket"); err != nil {
+		return TerraformArtifact{}, err
 	}
 	bucketName := bucketNameFromExecution(execution)
 	if bucketName == "" {
@@ -150,6 +167,9 @@ func renderTerraformPublicStorageAccessArtifact(execution *Execution) (Terraform
 }
 
 func renderTerraformBucketDefaultEncryptionArtifact(execution *Execution, sseAlgorithm, kmsMasterKeyID string, bucketKeyEnabled bool) (TerraformArtifact, error) {
+	if err := validateTerraformArtifactContext(ActionEnableBucketDefaultEncryption, execution, "aws", "bucket"); err != nil {
+		return TerraformArtifact{}, err
+	}
 	bucketName := bucketNameFromExecution(execution)
 	if bucketName == "" {
 		return TerraformArtifact{}, fmt.Errorf("missing bucket identifier for terraform artifact")
@@ -224,6 +244,115 @@ func terraformArtifactMetadata(artifact TerraformArtifact) map[string]any {
 		"iac_module":       artifact.IaCModule,
 		"iac_state_id":     artifact.IaCStateID,
 	})
+}
+
+func terraformArtifactRendererLookupKey(actionType ActionType, execution *Execution) terraformArtifactRendererKey {
+	return terraformArtifactRendererKey{
+		ActionType:     actionType,
+		Provider:       terraformActionProvider(actionType, execution),
+		ResourceFamily: terraformActionResourceFamily(actionType, execution),
+	}
+}
+
+func validateTerraformArtifactContext(actionType ActionType, execution *Execution, expectedProvider, expectedResourceFamily string) error {
+	key := terraformArtifactRendererLookupKey(actionType, execution)
+	if expectedProvider != "" && key.Provider != "" && key.Provider != expectedProvider {
+		return fmt.Errorf("terraform delivery for %s is only implemented for %s %ss, got %s", actionType, expectedProvider, expectedResourceFamily, key.Provider)
+	}
+	if expectedResourceFamily != "" && key.ResourceFamily != "" && key.ResourceFamily != expectedResourceFamily {
+		return fmt.Errorf("terraform delivery for %s is only implemented for %s %ss, got %s", actionType, expectedProvider, expectedResourceFamily, key.ResourceFamily)
+	}
+	return nil
+}
+
+func terraformUnsupportedContextError(actionType ActionType, key terraformArtifactRendererKey) error {
+	providers := map[string]struct{}{}
+	resourceFamilies := map[string]struct{}{}
+	for candidate := range terraformArtifactRenderers {
+		if candidate.ActionType != actionType {
+			continue
+		}
+		if candidate.Provider != "" {
+			providers[candidate.Provider] = struct{}{}
+		}
+		if candidate.ResourceFamily != "" {
+			resourceFamilies[candidate.ResourceFamily] = struct{}{}
+		}
+	}
+	if len(providers) == 1 && len(resourceFamilies) == 1 {
+		return fmt.Errorf(
+			"terraform delivery for %s is only implemented for %s %ss, got provider=%s resource_family=%s",
+			actionType,
+			firstMapKey(providers),
+			firstMapKey(resourceFamilies),
+			firstNonEmpty(key.Provider, "unknown"),
+			firstNonEmpty(key.ResourceFamily, "unknown"),
+		)
+	}
+	return fmt.Errorf(
+		"terraform delivery is not implemented for %s (provider=%s resource_family=%s)",
+		actionType,
+		firstNonEmpty(key.Provider, "unknown"),
+		firstNonEmpty(key.ResourceFamily, "unknown"),
+	)
+}
+
+func firstMapKey(values map[string]struct{}) string {
+	for value := range values {
+		return value
+	}
+	return ""
+}
+
+func terraformActionProvider(actionType ActionType, execution *Execution) string {
+	provider := strings.ToLower(strings.TrimSpace(inferProvider(execution)))
+	if provider != "" {
+		return provider
+	}
+	entry, ok := CatalogEntryByAction(actionType)
+	if ok && len(entry.Providers) == 1 {
+		return strings.ToLower(strings.TrimSpace(entry.Providers[0]))
+	}
+	return ""
+}
+
+func terraformActionResourceFamily(actionType ActionType, execution *Execution) string {
+	raw := ""
+	if execution != nil {
+		raw = strings.ToLower(strings.TrimSpace(remediationMapValueToString(execution.TriggerData, "resource_type")))
+	}
+	entry, ok := CatalogEntryByAction(actionType)
+	if raw != "" {
+		canonical := canonicalTerraformResourceFamily(raw)
+		if !ok {
+			return canonical
+		}
+		for _, candidate := range entry.ResourceTypes {
+			if raw == strings.ToLower(strings.TrimSpace(candidate)) || canonical == canonicalTerraformResourceFamily(candidate) {
+				return canonicalTerraformResourceFamily(candidate)
+			}
+		}
+		return canonical
+	}
+	if ok && len(entry.ResourceTypes) > 0 {
+		return canonicalTerraformResourceFamily(entry.ResourceTypes[0])
+	}
+	return ""
+}
+
+func canonicalTerraformResourceFamily(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "bucket", "storage/bucket", "storage_bucket", "aws:s3:bucket", "blob_container", "storage/container":
+		return "bucket"
+	case "security_group", "security_group_rule", "aws:ec2:security_group":
+		return "security_group"
+	case "iam_user", "identity/user":
+		return "identity_user"
+	case "service_account", "identity/service_account":
+		return "service_account"
+	default:
+		return strings.ToLower(strings.TrimSpace(raw))
+	}
 }
 
 func bucketNameFromExecution(execution *Execution) string {
