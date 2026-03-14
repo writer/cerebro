@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/graph"
+	entities "github.com/writer/cerebro/internal/graph/entities"
 )
 
 const maxControlEvidence = 25
@@ -43,7 +44,7 @@ func EvaluateFramework(g *graph.Graph, framework *Framework, opts EvaluationOpti
 		recordedAt:           recordedAt,
 		generatedAt:          now,
 		openFindingsByPolicy: cloneFindingCounts(opts.OpenFindingsByPolicy),
-		entityCache:          make(map[string][]graph.EntityRecord),
+		entityCache:          make(map[string][]entities.EntityRecord),
 	}
 
 	report := ComplianceReport{
@@ -98,7 +99,7 @@ type graphComplianceEvaluator struct {
 	recordedAt           time.Time
 	generatedAt          time.Time
 	openFindingsByPolicy map[string]int
-	entityCache          map[string][]graph.EntityRecord
+	entityCache          map[string][]entities.EntityRecord
 }
 
 type policyEvaluation struct {

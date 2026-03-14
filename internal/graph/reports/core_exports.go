@@ -7,6 +7,7 @@ import (
 	"time"
 
 	graph "github.com/writer/cerebro/internal/graph"
+	entities "github.com/writer/cerebro/internal/graph/entities"
 )
 
 type (
@@ -41,14 +42,14 @@ type (
 	SecurityReport                = graph.SecurityReport
 	RankedRisk                    = graph.RankedRisk
 	Chokepoint                    = graph.Chokepoint
-	EntityFacetDefinition         = graph.EntityFacetDefinition
-	EntityPostureSummary          = graph.EntityPostureSummary
+	EntityFacetDefinition         = entities.EntityFacetDefinition
+	EntityPostureSummary          = entities.EntityPostureSummary
 	SchemaKindCount               = graph.SchemaKindCount
-	EntityRecord                  = graph.EntityRecord
-	EntityPostureClaimRecord      = graph.EntityPostureClaimRecord
-	EntityFacetRecord             = graph.EntityFacetRecord
-	EntitySubresourceRecord       = graph.EntitySubresourceRecord
-	EntityKnowledgeSupportSummary = graph.EntityKnowledgeSupportSummary
+	EntityRecord                  = entities.EntityRecord
+	EntityPostureClaimRecord      = entities.EntityPostureClaimRecord
+	EntityFacetRecord             = entities.EntityFacetRecord
+	EntitySubresourceRecord       = entities.EntitySubresourceRecord
+	EntityKnowledgeSupportSummary = entities.EntityKnowledgeSupportSummary
 )
 
 const (
@@ -103,14 +104,14 @@ const (
 )
 
 var (
-	GetEntityRecord                    = graph.GetEntityRecord
+	GetEntityRecord                    = entities.GetEntityRecord
 	AnalyzeSchemaHealth                = graph.AnalyzeSchemaHealth
 	BuildIdentityCalibrationReport     = graph.BuildIdentityCalibrationReport
 	BuildReportGraphSnapshotID         = graph.BuildReportGraphSnapshotID
 	CurrentGraphSnapshotRecord         = graph.CurrentGraphSnapshotRecord
-	DefaultEntityFacetDefinitions      = graph.DefaultEntityFacetDefinitions
+	DefaultEntityFacetDefinitions      = entities.DefaultEntityFacetDefinitions
 	DefaultGraphQueryTemplates         = graph.DefaultGraphQueryTemplates
-	EntityFacetAppliesToNode           = graph.EntityFacetAppliesToNode
+	EntityFacetAppliesToNode           = entities.EntityFacetAppliesToNode
 	FirstNonEmpty                      = graph.FirstNonEmpty
 	GlobalSchemaRegistry               = graph.GlobalSchemaRegistry
 	GraphSnapshotCollectionFromRecords = graph.GraphSnapshotCollectionFromRecords
