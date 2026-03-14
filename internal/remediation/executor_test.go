@@ -491,7 +491,6 @@ func TestExecutor_NonCatalogTerraformDeliveryDoesNotBypassApproval(t *testing.T)
 		t.Fatal("expected non-catalog action to keep approval requirement")
 	}
 }
-
 func TestExecutor_EnableBucketDefaultEncryptionRemoteApplyRequiresApprovalByDefault(t *testing.T) {
 	engine := NewEngine(testutil.Logger())
 	rule := Rule{
