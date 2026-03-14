@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/graph"
+	"github.com/writer/cerebro/internal/graph/knowledge"
 	reports "github.com/writer/cerebro/internal/graph/reports"
 	"github.com/writer/cerebro/internal/graphingest"
 )
@@ -373,7 +374,7 @@ func (s *Server) graphIntelligenceClaimConflicts(w http.ResponseWriter, r *http.
 		recordedAt = parsed
 	}
 
-	report := graph.BuildClaimConflictReport(g, graph.ClaimConflictReportOptions{
+	report := knowledge.BuildClaimConflictReport(g, knowledge.ClaimConflictReportOptions{
 		ValidAt:         validAt,
 		RecordedAt:      recordedAt,
 		MaxConflicts:    maxConflicts,
