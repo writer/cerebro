@@ -7,7 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/evalops/cerebro/internal/metrics"
 	"github.com/evalops/cerebro/internal/testutil"
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 )
 
 func waitForCondition(t *testing.T, timeout time.Duration, description string, condition func() bool) {
@@ -736,4 +739,104 @@ func TestScheduler_RunDueJobs_RemovedJobNotExecuted(t *testing.T) {
 	if _, ok := s.GetJob("remove-me"); ok {
 		t.Fatal("expected removed job to be deleted")
 	}
+}
+
+func TestSchedulerMetricsTrackQueueDepthRunningJobsAndSuccess(t *testing.T) {
+	metrics.Register()
+
+	logger := testutil.Logger()
+	s := NewScheduler(logger)
+
+	started := make(chan struct{}, 1)
+	release := make(chan struct{})
+	s.AddJob("due", time.Hour, func(ctx context.Context) error {
+		select {
+		case started <- struct{}{}:
+		default:
+		}
+		<-release
+		return nil
+	})
+
+	beforeRuns := schedulerCounterValue(t, metrics.SchedulerJobRuns, "due", "success")
+
+	s.mu.Lock()
+	s.running = true
+	s.ctx = testutil.Context(t)
+	s.jobs["due"].NextRun = time.Now().Add(-time.Second)
+	s.refreshMetricsLocked(time.Now())
+	s.mu.Unlock()
+
+	if got := schedulerGaugeValue(t, metrics.SchedulerQueueDepth); got != 1 {
+		t.Fatalf("expected queue depth 1 before dispatch, got %v", got)
+	}
+
+	s.runDueJobs()
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("expected due job to start")
+	}
+
+	if got := schedulerGaugeValue(t, metrics.SchedulerQueueDepth); got != 0 {
+		t.Fatalf("expected queue depth 0 after dispatch, got %v", got)
+	}
+	if got := schedulerGaugeValue(t, metrics.SchedulerRunningJobs); got != 1 {
+		t.Fatalf("expected running jobs gauge 1 while executing, got %v", got)
+	}
+
+	close(release)
+	s.wg.Wait()
+
+	if got := schedulerGaugeValue(t, metrics.SchedulerRunningJobs); got != 0 {
+		t.Fatalf("expected running jobs gauge 0 after completion, got %v", got)
+	}
+	if got := schedulerCounterValue(t, metrics.SchedulerJobRuns, "due", "success"); got != beforeRuns+1 {
+		t.Fatalf("expected scheduler success counter to increase by 1, got before=%v after=%v", beforeRuns, got)
+	}
+}
+
+func TestSchedulerRunJobRecordsErrorMetric(t *testing.T) {
+	metrics.Register()
+
+	s := NewScheduler(testutil.Logger())
+	job := &Job{
+		Name:           "failing",
+		Interval:       time.Hour,
+		Handler:        func(ctx context.Context) error { return errors.New("boom") },
+		Enabled:        true,
+		MaxRetries:     1,
+		InitialBackoff: time.Second,
+		MaxBackoff:     time.Second,
+	}
+
+	beforeRuns := schedulerCounterValue(t, metrics.SchedulerJobRuns, "failing", "error")
+	s.runJob(testutil.Context(t), job)
+
+	if got := schedulerCounterValue(t, metrics.SchedulerJobRuns, "failing", "error"); got != beforeRuns+1 {
+		t.Fatalf("expected scheduler error counter to increase by 1, got before=%v after=%v", beforeRuns, got)
+	}
+}
+
+func schedulerCounterValue(t *testing.T, vec *prometheus.CounterVec, labels ...string) float64 {
+	t.Helper()
+	counter, err := vec.GetMetricWithLabelValues(labels...)
+	if err != nil {
+		t.Fatalf("get metric with labels %v: %v", labels, err)
+	}
+	var metric dto.Metric
+	if err := counter.Write(&metric); err != nil {
+		t.Fatalf("write counter metric: %v", err)
+	}
+	return metric.GetCounter().GetValue()
+}
+
+func schedulerGaugeValue(t *testing.T, gauge interface{ Write(*dto.Metric) error }) float64 {
+	t.Helper()
+	var metric dto.Metric
+	if err := gauge.Write(&metric); err != nil {
+		t.Fatalf("write gauge metric: %v", err)
+	}
+	return metric.GetGauge().GetValue()
 }

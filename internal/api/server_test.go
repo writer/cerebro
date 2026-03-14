@@ -26,11 +26,14 @@ import (
 	"github.com/evalops/cerebro/internal/graph"
 	"github.com/evalops/cerebro/internal/health"
 	"github.com/evalops/cerebro/internal/identity"
+	"github.com/evalops/cerebro/internal/metrics"
 	"github.com/evalops/cerebro/internal/notifications"
 	"github.com/evalops/cerebro/internal/policy"
 	"github.com/evalops/cerebro/internal/providers"
 	"github.com/evalops/cerebro/internal/remediation"
 	"github.com/evalops/cerebro/internal/snowflake"
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 )
 
 // newTestApp creates a minimal in-memory App suitable for API integration tests.
@@ -1285,6 +1288,49 @@ func TestGetAttackPath_RespectsMaxDepth(t *testing.T) {
 	}
 }
 
+func TestListAttackPaths_RecordsMetrics(t *testing.T) {
+	metrics.Register()
+
+	s := newTestServer(t)
+	s.app.AttackPath.AddNode(&attackpath.Node{ID: "external", Type: attackpath.NodeTypeExternal, Name: "Internet", Risk: attackpath.RiskHigh})
+	s.app.AttackPath.AddNode(&attackpath.Node{ID: "db", Type: attackpath.NodeTypeDatabase, Name: "Prod DB", Risk: attackpath.RiskCritical})
+	s.app.AttackPath.AddEdge(&attackpath.Edge{ID: "edge-1", Source: "external", Target: "db", Type: attackpath.EdgeTypeHasAccess, Risk: attackpath.RiskHigh})
+
+	beforeQueries := apiCounterValue(t, metrics.AttackPathQueriesTotal, "list", "success")
+	beforeResults := apiHistogramCount(t, metrics.AttackPathResultCount, "list")
+
+	w := do(t, s, "GET", "/api/v1/attack-paths", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	if got := apiCounterValue(t, metrics.AttackPathQueriesTotal, "list", "success"); got != beforeQueries+1 {
+		t.Fatalf("expected list query counter to increase by 1, got before=%v after=%v", beforeQueries, got)
+	}
+	if got := apiHistogramCount(t, metrics.AttackPathResultCount, "list"); got != beforeResults+1 {
+		t.Fatalf("expected list result histogram count to increase by 1, got before=%v after=%v", beforeResults, got)
+	}
+}
+
+func TestAnalyzeAttackPaths_InvalidRequestRecordsMetric(t *testing.T) {
+	metrics.Register()
+
+	s := newTestServer(t)
+	beforeQueries := apiCounterValue(t, metrics.AttackPathQueriesTotal, "analyze", "invalid_request")
+
+	req := httptest.NewRequest("POST", "/api/v1/attack-paths/analyze", strings.NewReader("{"))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if got := apiCounterValue(t, metrics.AttackPathQueriesTotal, "analyze", "invalid_request"); got != beforeQueries+1 {
+		t.Fatalf("expected invalid analyze counter to increase by 1, got before=%v after=%v", beforeQueries, got)
+	}
+}
+
 func TestListToxicCombinations_PaginationMetadata(t *testing.T) {
 	s := newTestServer(t)
 	w := do(t, s, "GET", "/api/v1/graph/toxic-combinations?limit=1&offset=0", nil)
@@ -1346,6 +1392,36 @@ func TestWebhookCRUD(t *testing.T) {
 	if w.Code != http.StatusNoContent && w.Code != http.StatusOK {
 		t.Fatalf("expected 200/204, got %d: %s", w.Code, w.Body.String())
 	}
+}
+
+func apiCounterValue(t *testing.T, vec *prometheus.CounterVec, labels ...string) float64 {
+	t.Helper()
+	counter, err := vec.GetMetricWithLabelValues(labels...)
+	if err != nil {
+		t.Fatalf("get counter metric with labels %v: %v", labels, err)
+	}
+	var metric dto.Metric
+	if err := counter.Write(&metric); err != nil {
+		t.Fatalf("write counter metric: %v", err)
+	}
+	return metric.GetCounter().GetValue()
+}
+
+func apiHistogramCount(t *testing.T, histogram *prometheus.HistogramVec, labels ...string) uint64 {
+	t.Helper()
+	metric, err := histogram.GetMetricWithLabelValues(labels...)
+	if err != nil {
+		t.Fatalf("get histogram metric with labels %v: %v", labels, err)
+	}
+	metricCollector, ok := metric.(prometheus.Metric)
+	if !ok {
+		t.Fatalf("histogram collector does not implement prometheus.Metric")
+	}
+	var dtoMetric dto.Metric
+	if err := metricCollector.Write(&dtoMetric); err != nil {
+		t.Fatalf("write histogram metric: %v", err)
+	}
+	return dtoMetric.GetHistogram().GetSampleCount()
 }
 
 func TestListWebhooks_Pagination(t *testing.T) {

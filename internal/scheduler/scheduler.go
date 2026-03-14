@@ -10,6 +10,8 @@ import (
 	"runtime/debug"
 	"sync"
 	"time"
+
+	"github.com/evalops/cerebro/internal/metrics"
 )
 
 var (
@@ -81,10 +83,13 @@ type Scheduler struct {
 
 // NewScheduler creates a new job scheduler
 func NewScheduler(logger *slog.Logger) *Scheduler {
-	return &Scheduler{
+	s := &Scheduler{
 		jobs:   make(map[string]*Job),
 		logger: logger,
 	}
+	metrics.SetSchedulerQueueDepth(0)
+	metrics.SetSchedulerRunningJobs(0)
+	return s
 }
 
 // AddJob registers a new periodic job
@@ -108,6 +113,7 @@ func (s *Scheduler) AddJobWithOptions(name string, interval time.Duration, handl
 		InitialBackoff: options.InitialBackoff,
 		MaxBackoff:     options.MaxBackoff,
 	}
+	s.refreshMetricsLocked(time.Now())
 }
 
 // RemoveJob removes a scheduled job
@@ -123,6 +129,7 @@ func (s *Scheduler) RemoveJob(name string) {
 	if !job.Running {
 		delete(s.jobs, name)
 	}
+	s.refreshMetricsLocked(time.Now())
 }
 
 // EnableJob enables a job
@@ -133,6 +140,7 @@ func (s *Scheduler) EnableJob(name string) {
 		job.Enabled = true
 		job.NextRun = time.Now().Add(job.Interval)
 	}
+	s.refreshMetricsLocked(time.Now())
 }
 
 // DisableJob disables a job
@@ -142,6 +150,7 @@ func (s *Scheduler) DisableJob(name string) {
 	if job, ok := s.jobs[name]; ok {
 		job.Enabled = false
 	}
+	s.refreshMetricsLocked(time.Now())
 }
 
 // Start begins the scheduler loop
@@ -157,6 +166,7 @@ func (s *Scheduler) Start(ctx context.Context) {
 	s.ctx, s.cancel = context.WithCancel(ctx) // #nosec G118 -- cancel is stored and invoked by Stop()
 	s.running = true
 	jobCount := len(s.jobs)
+	s.refreshMetricsLocked(time.Now())
 	s.mu.Unlock()
 
 	s.logger.Info("scheduler started", "jobs", jobCount)
@@ -186,6 +196,8 @@ func (s *Scheduler) Stop() {
 		s.cancel()
 	}
 	s.running = false
+	metrics.SetSchedulerQueueDepth(0)
+	metrics.SetSchedulerRunningJobs(0)
 	s.mu.Unlock()
 
 	done := make(chan struct{})
@@ -218,6 +230,7 @@ func (s *Scheduler) runDueJobs() {
 			job.Running = true
 		}
 	}
+	s.refreshMetricsLocked(now)
 	s.mu.Unlock()
 
 	for _, job := range dueJobs {
@@ -284,6 +297,7 @@ func (s *Scheduler) RunNow(name string) error {
 	}
 	job.Running = true
 	ctx := s.ctx // Capture context under lock
+	s.refreshMetricsLocked(time.Now())
 	s.mu.Unlock()
 
 	s.wg.Add(1)
@@ -367,6 +381,10 @@ func (s *Scheduler) Status() Status {
 func (s *Scheduler) finalizeJobRun(start time.Time, job *Job, runErr error, panicValue any, panicStack []byte) {
 	now := time.Now()
 	duration := time.Since(start)
+	resultStatus := "success"
+	if runErr != nil {
+		resultStatus = "error"
+	}
 
 	s.mu.Lock()
 	job.LastRun = start
@@ -374,7 +392,9 @@ func (s *Scheduler) finalizeJobRun(start time.Time, job *Job, runErr error, pani
 
 	if job.removeRequested {
 		delete(s.jobs, job.Name)
+		s.refreshMetricsLocked(now)
 		s.mu.Unlock()
+		metrics.RecordSchedulerJobRun(job.Name, resultStatus, duration)
 		if panicValue != nil {
 			s.logger.Error("job panicked", "job", job.Name, "panic", fmt.Sprintf("%v", panicValue), "stack", string(panicStack))
 		}
@@ -385,7 +405,9 @@ func (s *Scheduler) finalizeJobRun(start time.Time, job *Job, runErr error, pani
 		job.RetryCount = 0
 		job.LastError = ""
 		job.NextRun = now.Add(job.Interval)
+		s.refreshMetricsLocked(now)
 		s.mu.Unlock()
+		metrics.RecordSchedulerJobRun(job.Name, resultStatus, duration)
 		s.logger.Info("job completed", "job", job.Name, "duration", duration)
 		return
 	}
@@ -398,7 +420,9 @@ func (s *Scheduler) finalizeJobRun(start time.Time, job *Job, runErr error, pani
 		job.NextRun = nextRun
 		attempt := job.RetryCount
 		maxRetries := job.MaxRetries
+		s.refreshMetricsLocked(now)
 		s.mu.Unlock()
+		metrics.RecordSchedulerJobRun(job.Name, resultStatus, duration)
 
 		if panicValue != nil {
 			s.logger.Error("job panicked", "job", job.Name, "panic", fmt.Sprintf("%v", panicValue), "stack", string(panicStack))
@@ -418,12 +442,29 @@ func (s *Scheduler) finalizeJobRun(start time.Time, job *Job, runErr error, pani
 
 	job.RetryCount = 0
 	job.NextRun = now.Add(job.Interval)
+	s.refreshMetricsLocked(now)
 	s.mu.Unlock()
+	metrics.RecordSchedulerJobRun(job.Name, resultStatus, duration)
 
 	if panicValue != nil {
 		s.logger.Error("job panicked", "job", job.Name, "panic", fmt.Sprintf("%v", panicValue), "stack", string(panicStack))
 	}
 	s.logger.Error("job failed", "job", job.Name, "error", runErr, "duration", duration)
+}
+
+func (s *Scheduler) refreshMetricsLocked(now time.Time) {
+	queueDepth := 0
+	runningJobs := 0
+	for _, job := range s.jobs {
+		if job.Running {
+			runningJobs++
+		}
+		if job.Enabled && !job.Running && !job.NextRun.IsZero() && !now.Before(job.NextRun) {
+			queueDepth++
+		}
+	}
+	metrics.SetSchedulerQueueDepth(queueDepth)
+	metrics.SetSchedulerRunningJobs(runningJobs)
 }
 
 func normalizeJobOptions(options JobOptions) JobOptions {
