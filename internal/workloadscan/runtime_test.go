@@ -8,6 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
+	"github.com/writer/cerebro/internal/metrics"
 	"github.com/writer/cerebro/internal/webhooks"
 )
 
@@ -154,9 +157,13 @@ type fakeMounter struct {
 	mu        sync.Mutex
 	failMount bool
 	unmounted []string
+	mountErr  error
 }
 
 func (m *fakeMounter) Mount(_ context.Context, attachment VolumeAttachment, _ SourceVolume) (*MountedVolume, error) {
+	if m.mountErr != nil {
+		return nil, m.mountErr
+	}
 	if m.failMount {
 		return nil, fmt.Errorf("mount %s failed", attachment.VolumeID)
 	}
@@ -201,6 +208,18 @@ func (e *captureEmitter) EmitWithErrors(_ context.Context, eventType webhooks.Ev
 	defer e.mu.Unlock()
 	e.events = append(e.events, eventType)
 	return nil
+}
+
+type failingRunStore struct {
+	RunStore
+	failCompletedRunSave bool
+}
+
+func (s *failingRunStore) SaveRun(ctx context.Context, run *RunRecord) error {
+	if s.failCompletedRunSave && run != nil && run.Status == RunStatusSucceeded && run.Stage == RunStageCompleted {
+		return fmt.Errorf("persist completed run failed")
+	}
+	return s.RunStore.SaveRun(ctx, run)
 }
 
 func TestSQLiteRunStoreRoundTripAndEvents(t *testing.T) {
@@ -619,4 +638,185 @@ func TestRunnerUsesSharedSnapshotArtifactForInspectionVolumeCreation(t *testing.
 	if got := provider.lastInspectionSource; got != "snap-vol-a-shared" {
 		t.Fatalf("expected inspection volume to use shared snapshot id, got %s", got)
 	}
+}
+
+func TestRunnerRunVMScanRecordsObservabilityMetrics(t *testing.T) {
+	metrics.Register()
+
+	store, err := NewSQLiteRunStore(filepath.Join(t.TempDir(), "workload-scan.db"))
+	if err != nil {
+		t.Fatalf("new sqlite run store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	provider := &fakeProvider{
+		volumes: []SourceVolume{{ID: "vol-a", SizeGiB: 10}},
+	}
+	runner := NewRunner(RunnerOptions{
+		Store:     store,
+		Providers: []Provider{provider},
+		Mounter:   &fakeMounter{},
+		Analyzer:  fakeAnalyzer{},
+	})
+
+	beforeRuns := workloadCounterValue(t, metrics.WorkloadScanRunsTotal, "aws", "succeeded", "false")
+	beforeInventory := workloadHistogramCount(t, metrics.WorkloadScanStageDuration, "aws", "inventory", "succeeded")
+	beforeMount := workloadHistogramCount(t, metrics.WorkloadScanStageDuration, "aws", "mount", "succeeded")
+
+	if _, err := runner.RunVMScan(context.Background(), ScanRequest{
+		ID:          "workload_scan:metrics-success",
+		Target:      VMTarget{Provider: ProviderAWS, Region: "us-east-1", InstanceID: "i-target"},
+		ScannerHost: ScannerHost{HostID: "i-scan", Region: "us-east-1"},
+	}); err != nil {
+		t.Fatalf("run vm scan: %v", err)
+	}
+
+	if got := workloadCounterValue(t, metrics.WorkloadScanRunsTotal, "aws", "succeeded", "false"); got != beforeRuns+1 {
+		t.Fatalf("expected workload run counter to increase by 1, got before=%v after=%v", beforeRuns, got)
+	}
+	if got := workloadHistogramCount(t, metrics.WorkloadScanStageDuration, "aws", "inventory", "succeeded"); got != beforeInventory+1 {
+		t.Fatalf("expected inventory histogram count to increase by 1, got before=%v after=%v", beforeInventory, got)
+	}
+	if got := workloadHistogramCount(t, metrics.WorkloadScanStageDuration, "aws", "mount", "succeeded"); got != beforeMount+1 {
+		t.Fatalf("expected mount histogram count to increase by 1, got before=%v after=%v", beforeMount, got)
+	}
+	if got := workloadGaugeVecValue(t, metrics.WorkloadScanActiveRuns, "aws"); got != 0 {
+		t.Fatalf("expected active run gauge to return to 0, got %v", got)
+	}
+	if got := workloadGaugeVecValue(t, metrics.WorkloadScanActiveVolumeOps, "aws", "mount"); got != 0 {
+		t.Fatalf("expected active volume ops gauge to return to 0, got %v", got)
+	}
+}
+
+func TestRunnerRunVMScanRecordsMountFailureMetrics(t *testing.T) {
+	metrics.Register()
+
+	store, err := NewSQLiteRunStore(filepath.Join(t.TempDir(), "workload-scan.db"))
+	if err != nil {
+		t.Fatalf("new sqlite run store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	provider := &fakeProvider{
+		volumes: []SourceVolume{{ID: "vol-a", SizeGiB: 10}},
+	}
+	runner := NewRunner(RunnerOptions{
+		Store:     store,
+		Providers: []Provider{provider},
+		Mounter:   &fakeMounter{mountErr: fmt.Errorf("mount failed")},
+		Analyzer:  fakeAnalyzer{},
+	})
+
+	beforeRuns := workloadCounterValue(t, metrics.WorkloadScanRunsTotal, "aws", "failed", "false")
+	beforeMountFailures := workloadCounterValue(t, metrics.WorkloadScanMountFailuresTotal, "aws")
+	beforeMount := workloadHistogramCount(t, metrics.WorkloadScanStageDuration, "aws", "mount", "failed")
+
+	if _, err := runner.RunVMScan(context.Background(), ScanRequest{
+		ID:          "workload_scan:metrics-mount-failure",
+		Target:      VMTarget{Provider: ProviderAWS, Region: "us-east-1", InstanceID: "i-target"},
+		ScannerHost: ScannerHost{HostID: "i-scan", Region: "us-east-1"},
+	}); err == nil {
+		t.Fatal("expected run vm scan to fail on mount error")
+	}
+
+	if got := workloadCounterValue(t, metrics.WorkloadScanRunsTotal, "aws", "failed", "false"); got != beforeRuns+1 {
+		t.Fatalf("expected failed workload run counter to increase by 1, got before=%v after=%v", beforeRuns, got)
+	}
+	if got := workloadCounterValue(t, metrics.WorkloadScanMountFailuresTotal, "aws"); got != beforeMountFailures+1 {
+		t.Fatalf("expected mount failure counter to increase by 1, got before=%v after=%v", beforeMountFailures, got)
+	}
+	if got := workloadHistogramCount(t, metrics.WorkloadScanStageDuration, "aws", "mount", "failed"); got != beforeMount+1 {
+		t.Fatalf("expected failed mount histogram count to increase by 1, got before=%v after=%v", beforeMount, got)
+	}
+	if got := workloadGaugeVecValue(t, metrics.WorkloadScanActiveRuns, "aws"); got != 0 {
+		t.Fatalf("expected active run gauge to return to 0 after failure, got %v", got)
+	}
+	if got := workloadGaugeVecValue(t, metrics.WorkloadScanActiveVolumeOps, "aws", "mount"); got != 0 {
+		t.Fatalf("expected active volume ops gauge to return to 0 after failure, got %v", got)
+	}
+}
+
+func TestRunnerRunVMScanRecordsFailedMetricWhenFinalSaveFails(t *testing.T) {
+	metrics.Register()
+
+	baseStore, err := NewSQLiteRunStore(filepath.Join(t.TempDir(), "workload-scan.db"))
+	if err != nil {
+		t.Fatalf("new sqlite run store: %v", err)
+	}
+	defer func() { _ = baseStore.Close() }()
+
+	store := &failingRunStore{
+		RunStore:             baseStore,
+		failCompletedRunSave: true,
+	}
+	provider := &fakeProvider{
+		volumes: []SourceVolume{{ID: "vol-a", SizeGiB: 10}},
+	}
+	runner := NewRunner(RunnerOptions{
+		Store:     store,
+		Providers: []Provider{provider},
+		Mounter:   &fakeMounter{},
+		Analyzer:  fakeAnalyzer{},
+	})
+
+	beforeFailed := workloadCounterValue(t, metrics.WorkloadScanRunsTotal, "aws", "failed", "false")
+	beforeSucceeded := workloadCounterValue(t, metrics.WorkloadScanRunsTotal, "aws", "succeeded", "false")
+
+	if _, err := runner.RunVMScan(context.Background(), ScanRequest{
+		ID:          "workload_scan:metrics-final-save-failure",
+		Target:      VMTarget{Provider: ProviderAWS, Region: "us-east-1", InstanceID: "i-target"},
+		ScannerHost: ScannerHost{HostID: "i-scan", Region: "us-east-1"},
+	}); err == nil {
+		t.Fatal("expected run vm scan to fail when completed run persistence fails")
+	}
+
+	if got := workloadCounterValue(t, metrics.WorkloadScanRunsTotal, "aws", "failed", "false"); got != beforeFailed+1 {
+		t.Fatalf("expected failed run counter to increase by 1, got before=%v after=%v", beforeFailed, got)
+	}
+	if got := workloadCounterValue(t, metrics.WorkloadScanRunsTotal, "aws", "succeeded", "false"); got != beforeSucceeded {
+		t.Fatalf("expected succeeded run counter to remain unchanged, got before=%v after=%v", beforeSucceeded, got)
+	}
+}
+
+func workloadCounterValue(t *testing.T, vec *prometheus.CounterVec, labels ...string) float64 {
+	t.Helper()
+	counter, err := vec.GetMetricWithLabelValues(labels...)
+	if err != nil {
+		t.Fatalf("get counter metric with labels %v: %v", labels, err)
+	}
+	var metric dto.Metric
+	if err := counter.Write(&metric); err != nil {
+		t.Fatalf("write counter metric: %v", err)
+	}
+	return metric.GetCounter().GetValue()
+}
+
+func workloadGaugeVecValue(t *testing.T, gauge *prometheus.GaugeVec, labels ...string) float64 {
+	t.Helper()
+	metric, err := gauge.GetMetricWithLabelValues(labels...)
+	if err != nil {
+		t.Fatalf("get gauge metric with labels %v: %v", labels, err)
+	}
+	var dtoMetric dto.Metric
+	if err := metric.Write(&dtoMetric); err != nil {
+		t.Fatalf("write gauge metric: %v", err)
+	}
+	return dtoMetric.GetGauge().GetValue()
+}
+
+func workloadHistogramCount(t *testing.T, histogram *prometheus.HistogramVec, labels ...string) uint64 {
+	t.Helper()
+	metric, err := histogram.GetMetricWithLabelValues(labels...)
+	if err != nil {
+		t.Fatalf("get histogram metric with labels %v: %v", labels, err)
+	}
+	metricCollector, ok := metric.(prometheus.Metric)
+	if !ok {
+		t.Fatalf("histogram collector does not implement prometheus.Metric")
+	}
+	var dtoMetric dto.Metric
+	if err := metricCollector.Write(&dtoMetric); err != nil {
+		t.Fatalf("write histogram metric: %v", err)
+	}
+	return dtoMetric.GetHistogram().GetSampleCount()
 }

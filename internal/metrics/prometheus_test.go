@@ -219,6 +219,30 @@ func TestSchedulerMetrics(t *testing.T) {
 	SchedulerJobDuration.WithLabelValues("sync-feeds").Observe(30.0)
 }
 
+func TestSchedulerObservationHelpers(t *testing.T) {
+	Register()
+
+	beforeRuns := counterValue(t, SchedulerJobRuns, "sync-feeds", "success")
+	beforeDurations := histogramCountVec(t, SchedulerJobDuration, "sync-feeds")
+
+	RecordSchedulerJobRun("sync-feeds", "success", 2*time.Second)
+	SetSchedulerQueueDepth(3)
+	SetSchedulerRunningJobs(2)
+
+	if got := counterValue(t, SchedulerJobRuns, "sync-feeds", "success"); got != beforeRuns+1 {
+		t.Fatalf("expected scheduler run counter to increase by 1, got before=%v after=%v", beforeRuns, got)
+	}
+	if got := histogramCountVec(t, SchedulerJobDuration, "sync-feeds"); got != beforeDurations+1 {
+		t.Fatalf("expected scheduler duration histogram count to increase by 1, got before=%v after=%v", beforeDurations, got)
+	}
+	if got := gaugeValue(t, SchedulerQueueDepth); got != 3 {
+		t.Fatalf("expected scheduler queue depth 3, got %v", got)
+	}
+	if got := gaugeValue(t, SchedulerRunningJobs); got != 2 {
+		t.Fatalf("expected scheduler running jobs 2, got %v", got)
+	}
+}
+
 func TestRecordScheduledAuthPreflight(t *testing.T) {
 	Register()
 
@@ -243,6 +267,47 @@ func TestIdentityMetrics(t *testing.T) {
 
 	StaleAccessFindings.WithLabelValues("ssh_keys").Set(15)
 	StaleAccessFindings.WithLabelValues("iam_users").Set(3)
+}
+
+func TestWorkloadAndAttackPathMetricsHelpers(t *testing.T) {
+	Register()
+
+	beforeRuns := counterValue(t, WorkloadScanRunsTotal, "aws", "succeeded", "false")
+	beforeMountFailures := counterValue(t, WorkloadScanMountFailuresTotal, "aws")
+	beforeStageDurations := histogramCountVec(t, WorkloadScanStageDuration, "aws", "mount", "failed")
+	beforeAttackQueries := counterValue(t, AttackPathQueriesTotal, "get", "not_found")
+	beforeAttackResults := histogramCountVec(t, AttackPathResultCount, "get")
+
+	AddWorkloadScanActiveRun("aws", 1)
+	AddWorkloadScanActiveRun("aws", -1)
+	AddWorkloadScanActiveVolumeOp("aws", "mount", 1)
+	AddWorkloadScanActiveVolumeOp("aws", "mount", -1)
+	RecordWorkloadScanRun("aws", "succeeded", false, time.Second)
+	RecordWorkloadScanStage("aws", "mount", "failed", 500*time.Millisecond)
+	RecordWorkloadScanMountFailure("aws")
+	RecordAttackPathQuery("get", "not_found", 25*time.Millisecond, 0)
+
+	if got := counterValue(t, WorkloadScanRunsTotal, "aws", "succeeded", "false"); got != beforeRuns+1 {
+		t.Fatalf("expected workload scan run counter to increase by 1, got before=%v after=%v", beforeRuns, got)
+	}
+	if got := counterValue(t, WorkloadScanMountFailuresTotal, "aws"); got != beforeMountFailures+1 {
+		t.Fatalf("expected workload mount failure counter to increase by 1, got before=%v after=%v", beforeMountFailures, got)
+	}
+	if got := histogramCountVec(t, WorkloadScanStageDuration, "aws", "mount", "failed"); got != beforeStageDurations+1 {
+		t.Fatalf("expected workload stage histogram count to increase by 1, got before=%v after=%v", beforeStageDurations, got)
+	}
+	if got := gaugeVecValue(t, WorkloadScanActiveRuns, "aws"); got != 0 {
+		t.Fatalf("expected workload active runs gauge to return to 0, got %v", got)
+	}
+	if got := gaugeVecValue(t, WorkloadScanActiveVolumeOps, "aws", "mount"); got != 0 {
+		t.Fatalf("expected workload active volume ops gauge to return to 0, got %v", got)
+	}
+	if got := counterValue(t, AttackPathQueriesTotal, "get", "not_found"); got != beforeAttackQueries+1 {
+		t.Fatalf("expected attack path query counter to increase by 1, got before=%v after=%v", beforeAttackQueries, got)
+	}
+	if got := histogramCountVec(t, AttackPathResultCount, "get"); got != beforeAttackResults+1 {
+		t.Fatalf("expected attack path result histogram count to increase by 1, got before=%v after=%v", beforeAttackResults, got)
+	}
 }
 
 func TestFindingsMetrics(t *testing.T) {
@@ -336,4 +401,34 @@ func gaugeValue(t *testing.T, gauge prometheus.Gauge) float64 {
 		t.Fatalf("write gauge metric: %v", err)
 	}
 	return metric.GetGauge().GetValue()
+}
+
+func gaugeVecValue(t *testing.T, gauge *prometheus.GaugeVec, labels ...string) float64 {
+	t.Helper()
+	metric, err := gauge.GetMetricWithLabelValues(labels...)
+	if err != nil {
+		t.Fatalf("get gauge metric with labels %v: %v", labels, err)
+	}
+	var dtoMetric dto.Metric
+	if err := metric.Write(&dtoMetric); err != nil {
+		t.Fatalf("write gauge vec metric: %v", err)
+	}
+	return dtoMetric.GetGauge().GetValue()
+}
+
+func histogramCountVec(t *testing.T, histogram *prometheus.HistogramVec, labels ...string) uint64 {
+	t.Helper()
+	collector, err := histogram.GetMetricWithLabelValues(labels...)
+	if err != nil {
+		t.Fatalf("get histogram metric with labels %v: %v", labels, err)
+	}
+	metricCollector, ok := collector.(prometheus.Metric)
+	if !ok {
+		t.Fatalf("histogram collector does not implement prometheus.Metric")
+	}
+	var metric dto.Metric
+	if err := metricCollector.Write(&metric); err != nil {
+		t.Fatalf("write histogram metric: %v", err)
+	}
+	return metric.GetHistogram().GetSampleCount()
 }
