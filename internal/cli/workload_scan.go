@@ -52,25 +52,35 @@ var workloadScanReconcileAWSCmd = &cobra.Command{
 }
 
 var (
-	workloadScanOutput              string
-	workloadScanStateFile           string
-	workloadScanMountBasePath       string
-	workloadScanMaxConcurrent       int
-	workloadScanCleanupTimeout      time.Duration
-	workloadScanReconcileOlderThan  time.Duration
-	workloadScanTrivyBinary         string
-	workloadScanListStatuses        string
-	workloadScanListLimit           int
-	workloadScanAWSRegion           string
-	workloadScanAWSInstanceID       string
-	workloadScanAWSAccountID        string
-	workloadScanAWSScannerInstance  string
-	workloadScanAWSScannerAccountID string
-	workloadScanAWSScannerZone      string
-	workloadScanRequestedBy         string
-	workloadScanDryRun              bool
-	workloadScanMetadataPairs       []string
-	workloadScanPriorityOverride    string
+	workloadScanOutput                     string
+	workloadScanStateFile                  string
+	workloadScanMountBasePath              string
+	workloadScanMaxConcurrent              int
+	workloadScanCleanupTimeout             time.Duration
+	workloadScanReconcileOlderThan         time.Duration
+	workloadScanTrivyBinary                string
+	workloadScanListStatuses               string
+	workloadScanListLimit                  int
+	workloadScanAWSRegion                  string
+	workloadScanAWSInstanceID              string
+	workloadScanAWSAccountID               string
+	workloadScanAWSSourceProfile           string
+	workloadScanAWSSourceRoleARN           string
+	workloadScanAWSSourceRoleSession       string
+	workloadScanAWSSourceRoleExternalID    string
+	workloadScanAWSScannerInstance         string
+	workloadScanAWSScannerAccountID        string
+	workloadScanAWSScannerZone             string
+	workloadScanAWSScannerProfile          string
+	workloadScanAWSScannerRoleARN          string
+	workloadScanAWSScannerRoleSession      string
+	workloadScanAWSScannerRoleExternalID   string
+	workloadScanAWSShareKMSKeyID           string
+	workloadScanAWSScannerSnapshotKMSKeyID string
+	workloadScanRequestedBy                string
+	workloadScanDryRun                     bool
+	workloadScanMetadataPairs              []string
+	workloadScanPriorityOverride           string
 )
 
 func init() {
@@ -81,6 +91,16 @@ func init() {
 	workloadScanCmd.PersistentFlags().DurationVar(&workloadScanCleanupTimeout, "cleanup-timeout", 0, "Override cleanup timeout")
 	workloadScanCmd.PersistentFlags().DurationVar(&workloadScanReconcileOlderThan, "reconcile-older-than", 0, "Override minimum run age before reconciliation")
 	workloadScanCmd.PersistentFlags().StringVar(&workloadScanTrivyBinary, "trivy-binary", "", "Override trivy binary path")
+	workloadScanCmd.PersistentFlags().StringVar(&workloadScanAWSSourceProfile, "source-profile", "", "Optional AWS profile for source-account snapshot operations")
+	workloadScanCmd.PersistentFlags().StringVar(&workloadScanAWSSourceRoleARN, "source-role-arn", "", "Optional AWS role ARN assumed for source-account snapshot operations")
+	workloadScanCmd.PersistentFlags().StringVar(&workloadScanAWSSourceRoleSession, "source-role-session-name", "", "Optional AWS source role session name")
+	workloadScanCmd.PersistentFlags().StringVar(&workloadScanAWSSourceRoleExternalID, "source-role-external-id", "", "Optional AWS source role external ID")
+	workloadScanCmd.PersistentFlags().StringVar(&workloadScanAWSScannerProfile, "scanner-profile", "", "Optional AWS profile for scanner-account inspection volume operations")
+	workloadScanCmd.PersistentFlags().StringVar(&workloadScanAWSScannerRoleARN, "scanner-role-arn", "", "Optional AWS role ARN assumed for scanner-account inspection volume operations")
+	workloadScanCmd.PersistentFlags().StringVar(&workloadScanAWSScannerRoleSession, "scanner-role-session-name", "", "Optional AWS scanner role session name")
+	workloadScanCmd.PersistentFlags().StringVar(&workloadScanAWSScannerRoleExternalID, "scanner-role-external-id", "", "Optional AWS scanner role external ID")
+	workloadScanCmd.PersistentFlags().StringVar(&workloadScanAWSShareKMSKeyID, "share-kms-key-id", "", "Optional customer-managed source-account KMS key for shareable snapshot copies")
+	workloadScanCmd.PersistentFlags().StringVar(&workloadScanAWSScannerSnapshotKMSKeyID, "scanner-snapshot-kms-key-id", "", "Optional customer-managed scanner-account KMS key for copied inspection snapshots")
 
 	workloadScanListCmd.Flags().StringVar(&workloadScanListStatuses, "status", "", "Optional comma-separated status filter")
 	workloadScanListCmd.Flags().IntVar(&workloadScanListLimit, "limit", 20, "Maximum runs to list")
@@ -154,7 +174,7 @@ func runWorkloadScanAWS(cmd *cobra.Command, args []string) error {
 	}
 	defer func() { _ = vulnDBCloser.Close() }()
 
-	provider, err := workloadscan.NewAWSProvider(ctx, strings.TrimSpace(workloadScanAWSRegion))
+	provider, err := buildWorkloadScanAWSProvider(ctx)
 	if err != nil {
 		return err
 	}
@@ -222,7 +242,7 @@ func reconcileWorkloadScanAWS(cmd *cobra.Command, args []string) error {
 	}
 	defer func() { _ = vulnDBCloser.Close() }()
 
-	provider, err := workloadscan.NewAWSProvider(ctx, strings.TrimSpace(workloadScanAWSRegion))
+	provider, err := buildWorkloadScanAWSProvider(ctx)
 	if err != nil {
 		return err
 	}
@@ -464,4 +484,80 @@ func parseWorkloadRunStatuses(raw string) ([]workloadscan.RunStatus, error) {
 		}
 	}
 	return statuses, nil
+}
+
+func buildWorkloadScanAWSProvider(ctx context.Context) (*workloadscan.AWSProvider, error) {
+	if err := validateWorkloadScanAWSFlags(); err != nil {
+		return nil, err
+	}
+	sourceCfg, err := loadScheduledAWSConfig(ctx, buildWorkloadScanSourceAWSSpec())
+	if err != nil {
+		return nil, fmt.Errorf("load source aws config: %w", err)
+	}
+	region := strings.TrimSpace(workloadScanAWSRegion)
+	if region != "" {
+		sourceCfg.Region = region
+	}
+	inspectionCfg := sourceCfg
+	if workloadScanHasScannerAuthOverrides() {
+		inspectionCfg, err = loadScheduledAWSConfig(ctx, buildWorkloadScanScannerAWSSpec())
+		if err != nil {
+			return nil, fmt.Errorf("load scanner aws config: %w", err)
+		}
+		if region != "" {
+			inspectionCfg.Region = region
+		}
+	}
+	return workloadscan.NewAWSProviderWithConfigs(sourceCfg, inspectionCfg, workloadscan.AWSProviderOptions{
+		ShareKMSKeyID:      strings.TrimSpace(workloadScanAWSShareKMSKeyID),
+		InspectionKMSKeyID: strings.TrimSpace(workloadScanAWSScannerSnapshotKMSKeyID),
+	}), nil
+}
+
+func validateWorkloadScanAWSFlags() error {
+	targetAccount := strings.TrimSpace(workloadScanAWSAccountID)
+	scannerAccount := strings.TrimSpace(workloadScanAWSScannerAccountID)
+	crossAccount := targetAccount != "" && scannerAccount != "" && targetAccount != scannerAccount
+
+	if scannerAccount != "" && targetAccount == "" {
+		return fmt.Errorf("--scanner-account-id requires --account-id so cross-account routing is explicit")
+	}
+	if workloadScanHasScannerAuthOverrides() && scannerAccount == "" {
+		return fmt.Errorf("--scanner-profile/--scanner-role-arn require --scanner-account-id")
+	}
+	if strings.TrimSpace(workloadScanAWSScannerSnapshotKMSKeyID) != "" && scannerAccount == "" {
+		return fmt.Errorf("--scanner-snapshot-kms-key-id requires --scanner-account-id")
+	}
+	if strings.TrimSpace(workloadScanAWSShareKMSKeyID) != "" && scannerAccount == "" {
+		return fmt.Errorf("--share-kms-key-id requires --scanner-account-id")
+	}
+	if crossAccount && !workloadScanHasScannerAuthOverrides() {
+		return fmt.Errorf("cross-account workload scans require scanner credentials via --scanner-profile or --scanner-role-arn")
+	}
+	return nil
+}
+
+func buildWorkloadScanSourceAWSSpec() scheduledSyncSpec {
+	return scheduledSyncSpec{
+		AWSProfile:        strings.TrimSpace(workloadScanAWSSourceProfile),
+		AWSRoleARN:        strings.TrimSpace(workloadScanAWSSourceRoleARN),
+		AWSRoleSession:    strings.TrimSpace(workloadScanAWSSourceRoleSession),
+		AWSRoleExternalID: strings.TrimSpace(workloadScanAWSSourceRoleExternalID),
+	}
+}
+
+func buildWorkloadScanScannerAWSSpec() scheduledSyncSpec {
+	return scheduledSyncSpec{
+		AWSProfile:        strings.TrimSpace(workloadScanAWSScannerProfile),
+		AWSRoleARN:        strings.TrimSpace(workloadScanAWSScannerRoleARN),
+		AWSRoleSession:    strings.TrimSpace(workloadScanAWSScannerRoleSession),
+		AWSRoleExternalID: strings.TrimSpace(workloadScanAWSScannerRoleExternalID),
+	}
+}
+
+func workloadScanHasScannerAuthOverrides() bool {
+	return strings.TrimSpace(workloadScanAWSScannerProfile) != "" ||
+		strings.TrimSpace(workloadScanAWSScannerRoleARN) != "" ||
+		strings.TrimSpace(workloadScanAWSScannerRoleSession) != "" ||
+		strings.TrimSpace(workloadScanAWSScannerRoleExternalID) != ""
 }

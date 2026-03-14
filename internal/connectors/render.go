@@ -230,6 +230,11 @@ Resources:
               - Sid: AllowKMSForEC2SnapshotFlows
                 Effect: Allow
                 Action:
+                  - kms:DescribeKey
+                Resource: '*'
+              - Sid: AllowKMSEC2GrantAndDecryptFlows
+                Effect: Allow
+                Action:
                   - kms:Decrypt
                   - kms:CreateGrant
                   - kms:ReEncryptFrom

@@ -29,7 +29,7 @@ type Provider interface {
 	Kind() ProviderKind
 	InventoryVolumes(ctx context.Context, target VMTarget) ([]SourceVolume, error)
 	CreateSnapshot(ctx context.Context, target VMTarget, volume SourceVolume, metadata map[string]string) (*SnapshotArtifact, error)
-	ShareSnapshot(ctx context.Context, target VMTarget, scannerHost ScannerHost, snapshot SnapshotArtifact) error
+	ShareSnapshot(ctx context.Context, target VMTarget, scannerHost ScannerHost, snapshot SnapshotArtifact) (*SnapshotArtifact, error)
 	CreateInspectionVolume(ctx context.Context, target VMTarget, scannerHost ScannerHost, snapshot SnapshotArtifact) (*InspectionVolume, error)
 	AttachInspectionVolume(ctx context.Context, target VMTarget, scannerHost ScannerHost, volume InspectionVolume, index int) (*VolumeAttachment, error)
 	DetachInspectionVolume(ctx context.Context, attachment VolumeAttachment) error
@@ -405,13 +405,18 @@ func (r *Runner) processVolume(ctx context.Context, provider Provider, req ScanR
 		volume.UpdatedAt = r.now().UTC()
 	}, "snapshot ready", map[string]any{"snapshot_id": snapshot.ID})
 
-	if _, err := scanner.WithRetry(ctx, r.retry, func() error {
+	sharedSnapshot, _, err := scanner.WithRetryValue(ctx, r.retry, func() (*SnapshotArtifact, error) {
 		return provider.ShareSnapshot(ctx, req.Target, req.ScannerHost, *snapshot)
-	}); err != nil {
+	})
+	if err != nil {
 		return failWithCleanup(RunStageShare, fmt.Errorf("share snapshot %s: %w", snapshot.ID, err))
+	}
+	if sharedSnapshot != nil {
+		snapshot = sharedSnapshot
 	}
 	r.updateVolume(ctx, run, idx, runMu, func(volume *VolumeScanRecord) {
 		volume.Stage = RunStageVolumeCreate
+		volume.Snapshot = snapshot
 		if volume.Snapshot != nil {
 			volume.Snapshot.Shared = true
 		}

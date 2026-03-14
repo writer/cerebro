@@ -85,6 +85,18 @@ Current AWS execution path:
 
 `scanner-zone` is a required scheduling input because EBS temporary volumes are AZ-scoped.
 
+Encrypted cross-account AWS scans add two more behaviors:
+
+- customer-managed source keys receive a short-lived KMS grant for the scanner account before snapshot sharing
+- AWS-managed/default EBS keys are not shareable cross-account, so Cerebro first re-encrypts the snapshot onto a customer-managed source key when `--share-kms-key-id` is supplied
+
+Optional AWS CLI knobs for that path:
+
+- `--source-profile` / `--source-role-arn` for source-account snapshot operations
+- `--scanner-profile` / `--scanner-role-arn` for scanner-account inspection-volume operations
+- `--share-kms-key-id` for a shareable source-account CMK
+- `--scanner-snapshot-kms-key-id` when the scanner account wants its own re-encrypted snapshot copy before creating the inspection volume
+
 ## Lifecycle Events
 
 The runtime emits webhook-compatible lifecycle events:
