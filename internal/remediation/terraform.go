@@ -201,6 +201,10 @@ func terraformArtifactPath(execution *Execution, fileName string) string {
 }
 
 func terraformModuleAddressFromStateID(stateID string) string {
+	stateID = strings.TrimSpace(stateID)
+	if stateID == "" || !strings.Contains(stateID, "module.") {
+		return ""
+	}
 	segments := terraformModulePathSegments(stateID)
 	if len(segments) == 0 {
 		return ""

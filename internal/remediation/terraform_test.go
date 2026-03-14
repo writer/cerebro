@@ -50,3 +50,22 @@ func TestRenderTerraformBucketDefaultEncryptionArtifact_UsesIaCStateIDModulePath
 		t.Fatalf("unexpected artifact path: %#v", artifact.Path)
 	}
 }
+
+func TestRenderTerraformBucketDefaultEncryptionArtifact_DoesNotTreatRootStateIDAsModulePath(t *testing.T) {
+	artifact, err := renderTerraformBucketDefaultEncryptionArtifact(&Execution{
+		TriggerData: map[string]any{
+			"resource_id":  "bucket:audit-logs",
+			"iac_state_id": "aws_s3_bucket.audit_logs",
+		},
+	}, "AES256", "", false)
+	if err != nil {
+		t.Fatalf("render artifact: %v", err)
+	}
+
+	if artifact.IaCModule != "" {
+		t.Fatalf("expected empty inferred module for root state id, got %#v", artifact.IaCModule)
+	}
+	if artifact.Path != "generated/terraform/aws/cerebro_s3_bucket_default_encryption_audit_logs.tf" {
+		t.Fatalf("unexpected artifact path: %#v", artifact.Path)
+	}
+}
