@@ -456,7 +456,7 @@ func TestPlatformGraphChangelogAndDiffDetailsEndpoints(t *testing.T) {
 		}
 		return nil
 	})
-	changelog := do(t, s, http.MethodGet, "/api/v1/platform/graph/changelog?last=7d&provider=aws&limit=1", nil)
+	changelog := do(t, s, http.MethodGet, "/api/v1/platform/graph/changelog?since=2026-03-07T00:00:00Z&provider=aws&limit=1", nil)
 	if changelog.Code != http.StatusOK {
 		t.Fatalf("expected 200 for graph changelog, got %d: %s", changelog.Code, changelog.Body.String())
 	}

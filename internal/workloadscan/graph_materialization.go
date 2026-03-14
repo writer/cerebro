@@ -239,6 +239,7 @@ func materializeOneRun(g *graph.Graph, target *graph.Node, run RunRecord, validT
 			"sbom_ref":                        summary.SBOMRef,
 		},
 	}
+	applyPriorityProperties(scanNode.Properties, run.Priority)
 	writeMeta.ApplyTo(scanNode.Properties)
 	g.AddNode(scanNode)
 	result.ScanNodesUpserted++
@@ -384,6 +385,43 @@ func materializeOneRun(g *graph.Graph, target *graph.Node, run RunRecord, validT
 
 	result.RunsMaterialized = 1
 	return result
+}
+
+func applyPriorityProperties(properties map[string]any, assessment *PriorityAssessment) {
+	if properties == nil || assessment == nil {
+		return
+	}
+	if assessment.Score > 0 {
+		properties["priority_score"] = assessment.Score
+	}
+	if assessment.Priority != "" {
+		properties["priority"] = string(assessment.Priority)
+	}
+	if strings.TrimSpace(assessment.Source) != "" {
+		properties["priority_source"] = strings.TrimSpace(assessment.Source)
+	}
+	properties["priority_eligible"] = assessment.Eligible
+	if assessment.LastScannedAt != nil && !assessment.LastScannedAt.IsZero() {
+		properties["priority_last_scanned_at"] = formatTimePtr(assessment.LastScannedAt)
+	}
+	if len(assessment.Reasons) > 0 {
+		properties["priority_reasons"] = append([]string(nil), assessment.Reasons...)
+	}
+	if assessment.Exposure != "" {
+		properties["priority_exposure"] = assessment.Exposure
+	}
+	if assessment.Privilege != "" {
+		properties["priority_privilege"] = assessment.Privilege
+	}
+	if assessment.Criticality != "" {
+		properties["priority_criticality"] = assessment.Criticality
+	}
+	if assessment.Staleness != "" {
+		properties["priority_staleness"] = assessment.Staleness
+	}
+	if len(assessment.ComplianceScopes) > 0 {
+		properties["priority_compliance_scopes"] = append([]string(nil), assessment.ComplianceScopes...)
+	}
 }
 
 func resolveTargetNode(g *graph.Graph, run RunRecord) (*graph.Node, bool) {

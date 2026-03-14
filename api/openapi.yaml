@@ -7019,6 +7019,51 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/platform/workload-scan/targets:
+    get:
+      tags:
+        - Platform
+      summary: List prioritized workload scan targets from the current graph
+      parameters:
+        - name: provider
+          in: query
+          required: false
+          description: Optional provider filter. Repeat or comma-separate values.
+          schema:
+            type: string
+        - name: include_deferred
+          in: query
+          required: false
+          description: Include recently scanned targets that are deferred from immediate execution.
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of prioritized targets to return (1-200).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        '200':
+          description: Prioritized workload scan targets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformWorkloadScanTargetCollection'
+        '400':
+          description: Invalid workload scan target query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Failed to prioritize workload scan targets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/graph/actuate/recommendation:
     post:
       tags:
@@ -14799,6 +14844,22 @@ components:
           type: string
         target:
           type: string
+        priority:
+          type: string
+          enum:
+            - critical
+            - high
+            - medium
+            - low
+        priority_score:
+          type: integer
+        priority_source:
+          type: string
+        priority_eligible:
+          type: boolean
+        last_scanned_at:
+          type: string
+          format: date-time
       required:
         - namespace
         - run_id
@@ -14820,6 +14881,134 @@ components:
       required:
         - count
         - executions
+    WorkloadScanVMTarget:
+      type: object
+      additionalProperties: false
+      properties:
+        provider:
+          type: string
+          enum:
+            - aws
+            - gcp
+            - azure
+        account_id:
+          type: string
+        project_id:
+          type: string
+        subscription_id:
+          type: string
+        resource_group:
+          type: string
+        region:
+          type: string
+        zone:
+          type: string
+        instance_id:
+          type: string
+        instance_name:
+          type: string
+      required:
+        - provider
+        - region
+    WorkloadScanPrioritySignal:
+      type: object
+      additionalProperties: false
+      properties:
+        category:
+          type: string
+        weight:
+          type: integer
+        summary:
+          type: string
+      required:
+        - category
+        - weight
+        - summary
+    WorkloadScanPriorityAssessment:
+      type: object
+      additionalProperties: false
+      properties:
+        score:
+          type: integer
+        priority:
+          type: string
+          enum:
+            - critical
+            - high
+            - medium
+            - low
+        eligible:
+          type: boolean
+        source:
+          type: string
+        reasons:
+          type: array
+          items:
+            type: string
+        exposure:
+          type: string
+        privilege:
+          type: string
+        criticality:
+          type: string
+        compliance_scopes:
+          type: array
+          items:
+            type: string
+        staleness:
+          type: string
+        last_scanned_at:
+          type: string
+          format: date-time
+        signals:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkloadScanPrioritySignal'
+      required:
+        - score
+        - priority
+        - eligible
+    PlatformWorkloadScanTarget:
+      type: object
+      additionalProperties: false
+      properties:
+        node_id:
+          type: string
+        display_name:
+          type: string
+        provider:
+          type: string
+          enum:
+            - aws
+            - gcp
+            - azure
+        target:
+          $ref: '#/components/schemas/WorkloadScanVMTarget'
+        assessment:
+          $ref: '#/components/schemas/WorkloadScanPriorityAssessment'
+      required:
+        - node_id
+        - display_name
+        - provider
+        - target
+        - assessment
+    PlatformWorkloadScanTargetCollection:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        count:
+          type: integer
+        targets:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformWorkloadScanTarget'
+      required:
+        - generated_at
+        - count
+        - targets
     PlatformReportRunRequest:
       type: object
       additionalProperties: false

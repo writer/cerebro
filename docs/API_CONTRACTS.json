@@ -2,7 +2,7 @@
   "api_version": "devex.cerebro/v1alpha1",
   "kind": "HTTPAPIContractCatalog",
   "generated_at": "0001-01-01T00:00:00Z",
-  "endpoint_count": 297,
+  "endpoint_count": 298,
   "endpoints": [
     {
       "id": "DELETE /api/v1/findings/{id}",
@@ -9535,7 +9535,27 @@
               "type": "string"
             },
             {
+              "path": "executions[].last_scanned_at",
+              "type": "string"
+            },
+            {
               "path": "executions[].namespace",
+              "type": "string"
+            },
+            {
+              "path": "executions[].priority",
+              "type": "string"
+            },
+            {
+              "path": "executions[].priority_eligible",
+              "type": "boolean"
+            },
+            {
+              "path": "executions[].priority_score",
+              "type": "integer"
+            },
+            {
+              "path": "executions[].priority_source",
               "type": "string"
             },
             {
@@ -26230,6 +26250,182 @@
             },
             {
               "path": "valid_to",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GET /api/v1/platform/workload-scan/targets",
+      "path": "/api/v1/platform/workload-scan/targets",
+      "method": "GET",
+      "query_params": [
+        {
+          "name": "include_deferred",
+          "required": false,
+          "schema_type": "boolean"
+        },
+        {
+          "name": "limit",
+          "required": false,
+          "schema_type": "integer"
+        },
+        {
+          "name": "provider",
+          "required": false,
+          "schema_type": "string"
+        }
+      ],
+      "success_responses": [
+        {
+          "status_code": "200",
+          "content_types": [
+            "application/json"
+          ],
+          "fields": [
+            {
+              "path": "count",
+              "type": "integer"
+            },
+            {
+              "path": "generated_at",
+              "type": "string"
+            },
+            {
+              "path": "targets",
+              "type": "array"
+            },
+            {
+              "path": "targets[]",
+              "type": "object"
+            },
+            {
+              "path": "targets[].assessment",
+              "type": "object"
+            },
+            {
+              "path": "targets[].assessment.compliance_scopes",
+              "type": "array"
+            },
+            {
+              "path": "targets[].assessment.compliance_scopes[]",
+              "type": "string"
+            },
+            {
+              "path": "targets[].assessment.criticality",
+              "type": "string"
+            },
+            {
+              "path": "targets[].assessment.eligible",
+              "type": "boolean"
+            },
+            {
+              "path": "targets[].assessment.exposure",
+              "type": "string"
+            },
+            {
+              "path": "targets[].assessment.last_scanned_at",
+              "type": "string"
+            },
+            {
+              "path": "targets[].assessment.priority",
+              "type": "string"
+            },
+            {
+              "path": "targets[].assessment.privilege",
+              "type": "string"
+            },
+            {
+              "path": "targets[].assessment.reasons",
+              "type": "array"
+            },
+            {
+              "path": "targets[].assessment.reasons[]",
+              "type": "string"
+            },
+            {
+              "path": "targets[].assessment.score",
+              "type": "integer"
+            },
+            {
+              "path": "targets[].assessment.signals",
+              "type": "array"
+            },
+            {
+              "path": "targets[].assessment.signals[]",
+              "type": "object"
+            },
+            {
+              "path": "targets[].assessment.signals[].category",
+              "type": "string"
+            },
+            {
+              "path": "targets[].assessment.signals[].summary",
+              "type": "string"
+            },
+            {
+              "path": "targets[].assessment.signals[].weight",
+              "type": "integer"
+            },
+            {
+              "path": "targets[].assessment.source",
+              "type": "string"
+            },
+            {
+              "path": "targets[].assessment.staleness",
+              "type": "string"
+            },
+            {
+              "path": "targets[].display_name",
+              "type": "string"
+            },
+            {
+              "path": "targets[].node_id",
+              "type": "string"
+            },
+            {
+              "path": "targets[].provider",
+              "type": "string"
+            },
+            {
+              "path": "targets[].target",
+              "type": "object"
+            },
+            {
+              "path": "targets[].target.account_id",
+              "type": "string"
+            },
+            {
+              "path": "targets[].target.instance_id",
+              "type": "string"
+            },
+            {
+              "path": "targets[].target.instance_name",
+              "type": "string"
+            },
+            {
+              "path": "targets[].target.project_id",
+              "type": "string"
+            },
+            {
+              "path": "targets[].target.provider",
+              "type": "string"
+            },
+            {
+              "path": "targets[].target.region",
+              "type": "string"
+            },
+            {
+              "path": "targets[].target.resource_group",
+              "type": "string"
+            },
+            {
+              "path": "targets[].target.subscription_id",
+              "type": "string"
+            },
+            {
+              "path": "targets[].target.zone",
               "type": "string"
             }
           ]

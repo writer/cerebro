@@ -277,6 +277,13 @@ func TestOpenAPIContract_CriticalRoutes(t *testing.T) {
 			requestPath:    "/api/v1/tickets/",
 			expectedStatus: http.StatusOK,
 		},
+		{
+			name:           "platform workload scan targets contract",
+			method:         http.MethodGet,
+			pathTemplate:   "/api/v1/platform/workload-scan/targets",
+			requestPath:    "/api/v1/platform/workload-scan/targets",
+			expectedStatus: http.StatusOK,
+		},
 	}
 
 	for _, tc := range cases {

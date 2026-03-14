@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/evalops/cerebro/internal/workloadscan"
 	"github.com/spf13/cobra"
 )
 
@@ -225,6 +226,62 @@ func TestWorkloadScanReconcileAWSRequiredFlags(t *testing.T) {
 	}
 	if values, ok := flag.Annotations[cobra.BashCompOneRequiredFlag]; !ok || len(values) == 0 {
 		t.Fatal("expected reconcile aws region flag to be marked required")
+	}
+}
+
+func TestParseWorkloadScanPriorityOverride(t *testing.T) {
+	tests := []struct {
+		name    string
+		raw     string
+		want    *workloadscan.PriorityAssessment
+		wantErr string
+	}{
+		{
+			name: "empty",
+			raw:  "",
+		},
+		{
+			name: "critical alias",
+			raw:  "urgent",
+			want: &workloadscan.PriorityAssessment{
+				Priority: workloadscan.ScanPriorityCritical,
+				Score:    100,
+				Eligible: true,
+				Source:   "manual_override",
+			},
+		},
+		{
+			name:    "invalid",
+			raw:     "asap-ish",
+			wantErr: "priority override must be one of critical, high, medium, low",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parseWorkloadScanPriorityOverride(tc.raw)
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("expected error containing %q, got %v", tc.wantErr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseWorkloadScanPriorityOverride(%q): %v", tc.raw, err)
+			}
+			if tc.want == nil {
+				if got != nil {
+					t.Fatalf("expected nil priority assessment, got %#v", got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatal("expected priority assessment")
+			}
+			if got.Priority != tc.want.Priority || got.Score != tc.want.Score || got.Eligible != tc.want.Eligible || got.Source != tc.want.Source {
+				t.Fatalf("unexpected priority assessment: %#v", got)
+			}
+		})
 	}
 }
 

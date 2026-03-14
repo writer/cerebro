@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -36,17 +37,22 @@ import (
 func NewConfig(t *testing.T) *app.Config {
 	t.Helper()
 
-	reportStateDir := t.TempDir()
-	if os.Getenv("GRAPH_SNAPSHOT_PATH") == "" {
-		t.Setenv("GRAPH_SNAPSHOT_PATH", filepath.Join(reportStateDir, "graph-snapshots"))
+	stateDir := t.TempDir()
+	graphSnapshotPath := strings.TrimSpace(os.Getenv("GRAPH_SNAPSHOT_PATH"))
+	if graphSnapshotPath == "" {
+		graphSnapshotPath = filepath.Join(stateDir, "graph-snapshots")
+		t.Setenv("GRAPH_SNAPSHOT_PATH", graphSnapshotPath)
 	}
 
 	return &app.Config{
 		LogLevel:                   "error",
 		Port:                       0,
-		ExecutionStoreFile:         filepath.Join(reportStateDir, "executions.db"),
-		PlatformReportRunStateFile: filepath.Join(reportStateDir, "state.json"),
-		PlatformReportSnapshotPath: filepath.Join(reportStateDir, "snapshots"),
+		ExecutionStoreFile:         filepath.Join(stateDir, "executions.db"),
+		PlatformReportRunStateFile: filepath.Join(stateDir, "state.json"),
+		PlatformReportSnapshotPath: filepath.Join(stateDir, "snapshots"),
+		GraphSnapshotPath:          graphSnapshotPath,
+		WorkloadScanStateFile:      filepath.Join(stateDir, "workload-scan.db"),
+		WorkloadScanMountBasePath:  filepath.Join(stateDir, "workload-scan", "mounts"),
 	}
 }
 

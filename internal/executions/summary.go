@@ -28,24 +28,29 @@ type ListOptions struct {
 }
 
 type Summary struct {
-	Namespace     string     `json:"namespace"`
-	RunID         string     `json:"run_id"`
-	Kind          string     `json:"kind"`
-	Status        string     `json:"status"`
-	Stage         string     `json:"stage"`
-	SubmittedAt   time.Time  `json:"submitted_at"`
-	StartedAt     *time.Time `json:"started_at,omitempty"`
-	CompletedAt   *time.Time `json:"completed_at,omitempty"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-	DisplayName   string     `json:"display_name,omitempty"`
-	ScopeID       string     `json:"scope_id,omitempty"`
-	RequestedBy   string     `json:"requested_by,omitempty"`
-	ExecutionMode string     `json:"execution_mode,omitempty"`
-	StatusURL     string     `json:"status_url,omitempty"`
-	JobID         string     `json:"job_id,omitempty"`
-	Error         string     `json:"error,omitempty"`
-	Provider      string     `json:"provider,omitempty"`
-	Target        string     `json:"target,omitempty"`
+	Namespace        string     `json:"namespace"`
+	RunID            string     `json:"run_id"`
+	Kind             string     `json:"kind"`
+	Status           string     `json:"status"`
+	Stage            string     `json:"stage"`
+	SubmittedAt      time.Time  `json:"submitted_at"`
+	StartedAt        *time.Time `json:"started_at,omitempty"`
+	CompletedAt      *time.Time `json:"completed_at,omitempty"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+	DisplayName      string     `json:"display_name,omitempty"`
+	ScopeID          string     `json:"scope_id,omitempty"`
+	RequestedBy      string     `json:"requested_by,omitempty"`
+	ExecutionMode    string     `json:"execution_mode,omitempty"`
+	StatusURL        string     `json:"status_url,omitempty"`
+	JobID            string     `json:"job_id,omitempty"`
+	Error            string     `json:"error,omitempty"`
+	Provider         string     `json:"provider,omitempty"`
+	Target           string     `json:"target,omitempty"`
+	Priority         string     `json:"priority,omitempty"`
+	PriorityScore    int        `json:"priority_score,omitempty"`
+	PrioritySource   string     `json:"priority_source,omitempty"`
+	PriorityEligible *bool      `json:"priority_eligible,omitempty"`
+	LastScannedAt    *time.Time `json:"last_scanned_at,omitempty"`
 }
 
 func List(ctx context.Context, store executionstore.Store, opts ListOptions) ([]Summary, error) {
@@ -188,21 +193,26 @@ func summarizeWorkloadRun(env executionstore.RunEnvelope) (Summary, bool, error)
 		return Summary{}, false, fmt.Errorf("decode workload execution %q: %w", env.RunID, err)
 	}
 	return Summary{
-		Namespace:   env.Namespace,
-		RunID:       env.RunID,
-		Kind:        env.Kind,
-		Status:      env.Status,
-		Stage:       env.Stage,
-		SubmittedAt: env.SubmittedAt,
-		StartedAt:   env.StartedAt,
-		CompletedAt: env.CompletedAt,
-		UpdatedAt:   env.UpdatedAt,
-		DisplayName: "workload:" + run.Target.Identity(),
-		ScopeID:     run.Target.Identity(),
-		RequestedBy: strings.TrimSpace(run.RequestedBy),
-		Error:       strings.TrimSpace(run.Error),
-		Provider:    string(run.Provider),
-		Target:      run.Target.Identity(),
+		Namespace:        env.Namespace,
+		RunID:            env.RunID,
+		Kind:             env.Kind,
+		Status:           env.Status,
+		Stage:            env.Stage,
+		SubmittedAt:      env.SubmittedAt,
+		StartedAt:        env.StartedAt,
+		CompletedAt:      env.CompletedAt,
+		UpdatedAt:        env.UpdatedAt,
+		DisplayName:      "workload:" + run.Target.Identity(),
+		ScopeID:          run.Target.Identity(),
+		RequestedBy:      strings.TrimSpace(run.RequestedBy),
+		Error:            strings.TrimSpace(run.Error),
+		Provider:         string(run.Provider),
+		Target:           run.Target.Identity(),
+		Priority:         string(priorityValue(run.Priority)),
+		PriorityScore:    priorityScore(run.Priority),
+		PrioritySource:   prioritySource(run.Priority),
+		PriorityEligible: priorityEligible(run.Priority),
+		LastScannedAt:    priorityLastScannedAt(run.Priority),
 	}, true, nil
 }
 
@@ -287,4 +297,41 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func priorityValue(value *workloadscan.PriorityAssessment) workloadscan.ScanPriority {
+	if value == nil {
+		return ""
+	}
+	return value.Priority
+}
+
+func priorityScore(value *workloadscan.PriorityAssessment) int {
+	if value == nil {
+		return 0
+	}
+	return value.Score
+}
+
+func prioritySource(value *workloadscan.PriorityAssessment) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(value.Source)
+}
+
+func priorityEligible(value *workloadscan.PriorityAssessment) *bool {
+	if value == nil {
+		return nil
+	}
+	copy := value.Eligible
+	return &copy
+}
+
+func priorityLastScannedAt(value *workloadscan.PriorityAssessment) *time.Time {
+	if value == nil || value.LastScannedAt == nil || value.LastScannedAt.IsZero() {
+		return nil
+	}
+	copy := value.LastScannedAt.UTC()
+	return &copy
 }
