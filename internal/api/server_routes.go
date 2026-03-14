@@ -134,6 +134,8 @@ func (s *Server) setupRoutes() {
 		r.Route("/compliance", func(r chi.Router) {
 			r.Get("/frameworks", s.listFrameworks)
 			r.Get("/frameworks/{id}", s.getFramework)
+			r.Get("/frameworks/{id}/status", s.getFrameworkStatus)
+			r.Get("/frameworks/{id}/controls/{control_id}", s.getFrameworkControl)
 			r.Get("/frameworks/{id}/report", s.generateComplianceReport)
 			r.Get("/frameworks/{id}/pre-audit", s.preAuditCheck)
 			r.Get("/frameworks/{id}/export", s.exportAuditPackage)

@@ -200,38 +200,12 @@ func (e *graphComplianceEvaluator) evaluateControl(ctrl Control) ControlStatus {
 }
 
 func (e *graphComplianceEvaluator) evaluatePolicy(policyID string) policyEvaluation {
-	switch strings.TrimSpace(policyID) {
-	case "aws-s3-bucket-encryption-enabled":
-		return e.evaluateFacetBoolPolicy(policyID, "aws", []graph.NodeKind{graph.NodeKindBucket}, "bucket_encryption", "encrypted", true, "Bucket encryption is enabled", "Bucket encryption is disabled or incomplete")
-	case "aws-s3-bucket-no-public-access":
-		return e.evaluateFacetBoolPolicy(policyID, "aws", []graph.NodeKind{graph.NodeKindBucket}, "bucket_public_access", "public_access", false, "Bucket is not publicly accessible", "Bucket is publicly accessible")
-	case "aws-s3-bucket-policy-public":
-		return e.evaluateBucketPublicPolicy(policyID, "aws")
-	case "aws-s3-bucket-logging-enabled":
-		return e.evaluateFacetBoolPolicy(policyID, "aws", []graph.NodeKind{graph.NodeKindBucket}, "bucket_logging", "logging_enabled", true, "Bucket access logging is enabled", "Bucket access logging is disabled")
-	case "aws-s3-bucket-versioning-enabled":
-		return e.evaluateBucketVersioning(policyID, "aws")
-	case "aws-rds-encryption-enabled":
-		return e.evaluatePropertyBoolPolicy(policyID, "aws", []graph.NodeKind{graph.NodeKindDatabase}, []string{"encrypted", "storage_encrypted", "kms_encrypted"}, true, "", "Database encryption is enabled", "Database encryption is disabled")
-	case "aws-rds-no-public-access":
-		return e.evaluatePropertyBoolPolicy(policyID, "aws", []graph.NodeKind{graph.NodeKindDatabase}, []string{"public", "public_access", "publicly_accessible"}, false, "", "Database is not publicly accessible", "Database is publicly accessible")
-	case "dspm-restricted-data-unencrypted":
-		return e.evaluateSensitiveDataEncryption(policyID)
-	case "dspm-confidential-data-public":
-		return e.evaluateSensitiveDataExposure(policyID)
-	case "gcp-storage-bucket-no-public":
-		return e.evaluateFacetBoolPolicy(policyID, "gcp", []graph.NodeKind{graph.NodeKindBucket}, "bucket_public_access", "public_access", false, "Bucket is not publicly accessible", "Bucket is publicly accessible")
-	case "gcp-storage-no-public-allusers":
-		return e.evaluateBucketPublicPolicy(policyID, "gcp")
-	case "gcp-iam-sa-no-admin-privileges", "gcp-sa-admin-privileges":
-		return e.evaluateServiceAccountAdminPrivileges(policyID)
-	case "gcp-service-account-key-rotation":
-		return e.evaluateServiceAccountKeyRotation(policyID)
-	case "gcp-iam-minimize-user-managed-keys":
-		return e.evaluateServiceAccountMinimizeKeys(policyID)
-	default:
+	policyID = strings.TrimSpace(policyID)
+	evaluator, ok := lookupPolicyEvaluator(policyID)
+	if !ok {
 		return policyEvaluation{PolicyID: policyID}
 	}
+	return evaluator.evaluate(e, policyID)
 }
 
 func (e *graphComplianceEvaluator) fallbackPolicy(policyID string) policyEvaluation {

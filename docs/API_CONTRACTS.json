@@ -2,7 +2,7 @@
   "api_version": "devex.cerebro/v1alpha1",
   "kind": "HTTPAPIContractCatalog",
   "generated_at": "0001-01-01T00:00:00Z",
-  "endpoint_count": 298,
+  "endpoint_count": 300,
   "endpoints": [
     {
       "id": "DELETE /api/v1/findings/{id}",
@@ -2827,6 +2827,26 @@
               "type": "string"
             },
             {
+              "path": "frameworks[].controls[].graph_queries",
+              "type": "array"
+            },
+            {
+              "path": "frameworks[].controls[].graph_queries[]",
+              "type": "object"
+            },
+            {
+              "path": "frameworks[].controls[].graph_queries[].description",
+              "type": "string"
+            },
+            {
+              "path": "frameworks[].controls[].graph_queries[].id",
+              "type": "string"
+            },
+            {
+              "path": "frameworks[].controls[].graph_queries[].provider",
+              "type": "string"
+            },
+            {
               "path": "frameworks[].controls[].id",
               "type": "string"
             },
@@ -2836,6 +2856,10 @@
             },
             {
               "path": "frameworks[].controls[].policy_ids[]",
+              "type": "string"
+            },
+            {
+              "path": "frameworks[].controls[].severity",
               "type": "string"
             },
             {
@@ -2886,6 +2910,26 @@
               "type": "string"
             },
             {
+              "path": "controls[].graph_queries",
+              "type": "array"
+            },
+            {
+              "path": "controls[].graph_queries[]",
+              "type": "object"
+            },
+            {
+              "path": "controls[].graph_queries[].description",
+              "type": "string"
+            },
+            {
+              "path": "controls[].graph_queries[].id",
+              "type": "string"
+            },
+            {
+              "path": "controls[].graph_queries[].provider",
+              "type": "string"
+            },
+            {
               "path": "controls[].id",
               "type": "string"
             },
@@ -2895,6 +2939,10 @@
             },
             {
               "path": "controls[].policy_ids[]",
+              "type": "string"
+            },
+            {
+              "path": "controls[].severity",
               "type": "string"
             },
             {
@@ -2922,9 +2970,208 @@
       ]
     },
     {
+      "id": "GET /api/v1/compliance/frameworks/{id}/controls/{control_id}",
+      "path": "/api/v1/compliance/frameworks/{id}/controls/{control_id}",
+      "method": "GET",
+      "query_params": [
+        {
+          "name": "recorded_at",
+          "required": false,
+          "schema_type": "string"
+        },
+        {
+          "name": "valid_at",
+          "required": false,
+          "schema_type": "string"
+        }
+      ],
+      "success_responses": [
+        {
+          "status_code": "200",
+          "content_types": [
+            "application/json"
+          ],
+          "fields": [
+            {
+              "path": "control",
+              "type": "object"
+            },
+            {
+              "path": "control.description",
+              "type": "string"
+            },
+            {
+              "path": "control.graph_queries",
+              "type": "array"
+            },
+            {
+              "path": "control.graph_queries[]",
+              "type": "object"
+            },
+            {
+              "path": "control.graph_queries[].description",
+              "type": "string"
+            },
+            {
+              "path": "control.graph_queries[].id",
+              "type": "string"
+            },
+            {
+              "path": "control.graph_queries[].provider",
+              "type": "string"
+            },
+            {
+              "path": "control.id",
+              "type": "string"
+            },
+            {
+              "path": "control.policy_ids",
+              "type": "array"
+            },
+            {
+              "path": "control.policy_ids[]",
+              "type": "string"
+            },
+            {
+              "path": "control.severity",
+              "type": "string"
+            },
+            {
+              "path": "control.title",
+              "type": "string"
+            },
+            {
+              "path": "framework_id",
+              "type": "string"
+            },
+            {
+              "path": "framework_name",
+              "type": "string"
+            },
+            {
+              "path": "generated_at",
+              "type": "string"
+            },
+            {
+              "path": "recorded_at",
+              "type": "string"
+            },
+            {
+              "path": "status",
+              "type": "object"
+            },
+            {
+              "path": "status.control_id",
+              "type": "string"
+            },
+            {
+              "path": "status.description",
+              "type": "string"
+            },
+            {
+              "path": "status.evaluation_source",
+              "type": "string"
+            },
+            {
+              "path": "status.evidence",
+              "type": "array"
+            },
+            {
+              "path": "status.evidence[]",
+              "type": "object"
+            },
+            {
+              "path": "status.evidence[].entity_id",
+              "type": "string"
+            },
+            {
+              "path": "status.evidence[].entity_kind",
+              "type": "string"
+            },
+            {
+              "path": "status.evidence[].entity_name",
+              "type": "string"
+            },
+            {
+              "path": "status.evidence[].facet_id",
+              "type": "string"
+            },
+            {
+              "path": "status.evidence[].policy_id",
+              "type": "string"
+            },
+            {
+              "path": "status.evidence[].reason",
+              "type": "string"
+            },
+            {
+              "path": "status.evidence[].status",
+              "type": "string"
+            },
+            {
+              "path": "status.fail_count",
+              "type": "integer"
+            },
+            {
+              "path": "status.last_evaluated",
+              "type": "string"
+            },
+            {
+              "path": "status.pass_count",
+              "type": "integer"
+            },
+            {
+              "path": "status.policy_ids",
+              "type": "array"
+            },
+            {
+              "path": "status.policy_ids[]",
+              "type": "string"
+            },
+            {
+              "path": "status.severity",
+              "type": "string"
+            },
+            {
+              "path": "status.status",
+              "type": "string"
+            },
+            {
+              "path": "status.title",
+              "type": "string"
+            },
+            {
+              "path": "status.total_assets",
+              "type": "integer"
+            },
+            {
+              "path": "valid_at",
+              "type": "string"
+            },
+            {
+              "path": "version",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "id": "GET /api/v1/compliance/frameworks/{id}/export",
       "path": "/api/v1/compliance/frameworks/{id}/export",
       "method": "GET",
+      "query_params": [
+        {
+          "name": "recorded_at",
+          "required": false,
+          "schema_type": "string"
+        },
+        {
+          "name": "valid_at",
+          "required": false,
+          "schema_type": "string"
+        }
+      ],
       "success_responses": [
         {
           "status_code": "200",
@@ -3036,6 +3283,18 @@
       "id": "GET /api/v1/compliance/frameworks/{id}/pre-audit",
       "path": "/api/v1/compliance/frameworks/{id}/pre-audit",
       "method": "GET",
+      "query_params": [
+        {
+          "name": "recorded_at",
+          "required": false,
+          "schema_type": "string"
+        },
+        {
+          "name": "valid_at",
+          "required": false,
+          "schema_type": "string"
+        }
+      ],
       "success_responses": [
         {
           "status_code": "200",
@@ -3079,6 +3338,18 @@
       "id": "GET /api/v1/compliance/frameworks/{id}/report",
       "path": "/api/v1/compliance/frameworks/{id}/report",
       "method": "GET",
+      "query_params": [
+        {
+          "name": "recorded_at",
+          "required": false,
+          "schema_type": "string"
+        },
+        {
+          "name": "valid_at",
+          "required": false,
+          "schema_type": "string"
+        }
+      ],
       "success_responses": [
         {
           "status_code": "200",
@@ -3229,6 +3500,177 @@
             {
               "path": "summary.weighted_score",
               "type": "number"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GET /api/v1/compliance/frameworks/{id}/status",
+      "path": "/api/v1/compliance/frameworks/{id}/status",
+      "method": "GET",
+      "query_params": [
+        {
+          "name": "recorded_at",
+          "required": false,
+          "schema_type": "string"
+        },
+        {
+          "name": "valid_at",
+          "required": false,
+          "schema_type": "string"
+        }
+      ],
+      "success_responses": [
+        {
+          "status_code": "200",
+          "content_types": [
+            "application/json"
+          ],
+          "fields": [
+            {
+              "path": "controls",
+              "type": "array"
+            },
+            {
+              "path": "controls[]",
+              "type": "object"
+            },
+            {
+              "path": "controls[].control_id",
+              "type": "string"
+            },
+            {
+              "path": "controls[].description",
+              "type": "string"
+            },
+            {
+              "path": "controls[].evaluation_source",
+              "type": "string"
+            },
+            {
+              "path": "controls[].fail_count",
+              "type": "integer"
+            },
+            {
+              "path": "controls[].graph_queries",
+              "type": "array"
+            },
+            {
+              "path": "controls[].graph_queries[]",
+              "type": "object"
+            },
+            {
+              "path": "controls[].graph_queries[].description",
+              "type": "string"
+            },
+            {
+              "path": "controls[].graph_queries[].id",
+              "type": "string"
+            },
+            {
+              "path": "controls[].graph_queries[].provider",
+              "type": "string"
+            },
+            {
+              "path": "controls[].last_evaluated",
+              "type": "string"
+            },
+            {
+              "path": "controls[].pass_count",
+              "type": "integer"
+            },
+            {
+              "path": "controls[].policy_ids",
+              "type": "array"
+            },
+            {
+              "path": "controls[].policy_ids[]",
+              "type": "string"
+            },
+            {
+              "path": "controls[].severity",
+              "type": "string"
+            },
+            {
+              "path": "controls[].status",
+              "type": "string"
+            },
+            {
+              "path": "controls[].title",
+              "type": "string"
+            },
+            {
+              "path": "controls[].total_assets",
+              "type": "integer"
+            },
+            {
+              "path": "framework_id",
+              "type": "string"
+            },
+            {
+              "path": "framework_name",
+              "type": "string"
+            },
+            {
+              "path": "generated_at",
+              "type": "string"
+            },
+            {
+              "path": "recorded_at",
+              "type": "string"
+            },
+            {
+              "path": "summary",
+              "type": "object"
+            },
+            {
+              "path": "summary.compliance_score",
+              "type": "number"
+            },
+            {
+              "path": "summary.failing_controls",
+              "type": "integer"
+            },
+            {
+              "path": "summary.fallback_controls",
+              "type": "integer"
+            },
+            {
+              "path": "summary.graph_evaluated_controls",
+              "type": "integer"
+            },
+            {
+              "path": "summary.not_applicable_controls",
+              "type": "integer"
+            },
+            {
+              "path": "summary.partial_controls",
+              "type": "integer"
+            },
+            {
+              "path": "summary.passing_controls",
+              "type": "integer"
+            },
+            {
+              "path": "summary.total_controls",
+              "type": "integer"
+            },
+            {
+              "path": "summary.weighted_score",
+              "type": "number"
+            },
+            {
+              "path": "total_findings",
+              "type": "integer"
+            },
+            {
+              "path": "valid_at",
+              "type": "string"
+            },
+            {
+              "path": "version",
+              "type": "string"
             }
           ]
         }

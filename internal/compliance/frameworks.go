@@ -40,13 +40,22 @@ func (s ControlSeverity) Weight() int {
 	}
 }
 
+// GraphQueryDefinition describes a graph-backed control query that can evaluate
+// a compliance control directly from the security graph.
+type GraphQueryDefinition struct {
+	ID          string `json:"id"`
+	Provider    string `json:"provider,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
 // Control represents a specific requirement within a framework
 type Control struct {
-	ID          string          `json:"id"`
-	Title       string          `json:"title"`
-	Description string          `json:"description"`
-	Severity    ControlSeverity `json:"severity,omitempty"` // Control criticality for weighted scoring
-	PolicyIDs   []string        `json:"policy_ids"`         // Cerebro policy IDs that implement this control
+	ID           string                 `json:"id"`
+	Title        string                 `json:"title"`
+	Description  string                 `json:"description"`
+	Severity     ControlSeverity        `json:"severity,omitempty"`      // Control criticality for weighted scoring
+	PolicyIDs    []string               `json:"policy_ids"`              // Cerebro policy IDs that implement this control
+	GraphQueries []GraphQueryDefinition `json:"graph_queries,omitempty"` // Graph-backed query catalog entries for directly evaluated policies
 }
 
 const (
@@ -785,15 +794,15 @@ var FinancialControlsV1 = Framework{
 // GetFrameworks returns all available compliance frameworks
 func GetFrameworks() []Framework {
 	return []Framework{
-		CISAWSv15,
-		PCIDSS40,
-		HIPAA,
-		SOC2,
-		CISGCPv13,
-		CISAzurev15,
-		SLAComplianceV1,
-		RevOpsHygieneV1,
-		FinancialControlsV1,
+		enrichFramework(CISAWSv15),
+		enrichFramework(PCIDSS40),
+		enrichFramework(HIPAA),
+		enrichFramework(SOC2),
+		enrichFramework(CISGCPv13),
+		enrichFramework(CISAzurev15),
+		enrichFramework(SLAComplianceV1),
+		enrichFramework(RevOpsHygieneV1),
+		enrichFramework(FinancialControlsV1),
 	}
 }
 
@@ -815,6 +824,19 @@ func GetFrameworkIDs() []string {
 		ids[i] = f.ID
 	}
 	return ids
+}
+
+// GetControl returns a framework control by ID.
+func GetControl(framework *Framework, controlID string) (Control, bool) {
+	if framework == nil {
+		return Control{}, false
+	}
+	for _, control := range framework.Controls {
+		if control.ID == controlID {
+			return control, true
+		}
+	}
+	return Control{}, false
 }
 
 // GetControlsForPolicy returns all controls that reference a given policy ID
@@ -865,4 +887,13 @@ func CalculateWeightedScore(controls []Control, failingControlIDs map[string]boo
 
 	score := float64(passingWeight) / float64(totalWeight) * 100
 	return score, totalWeight, passingWeight
+}
+
+func enrichFramework(framework Framework) Framework {
+	framework.Controls = append([]Control(nil), framework.Controls...)
+	for i, control := range framework.Controls {
+		framework.Controls[i].PolicyIDs = append([]string(nil), control.PolicyIDs...)
+		framework.Controls[i].GraphQueries = graphQueryDefinitionsForPolicies(control.PolicyIDs)
+	}
+	return framework
 }

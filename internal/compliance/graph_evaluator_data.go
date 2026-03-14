@@ -2,6 +2,21 @@ package compliance
 
 import "github.com/evalops/cerebro/internal/graph"
 
+var dataPolicyEvaluators = map[string]registeredPolicyEvaluator{
+	"dspm-restricted-data-unencrypted": {
+		definition: GraphQueryDefinition{ID: "dspm-restricted-data-unencrypted", Provider: "multi", Description: "Evaluate whether restricted or sensitive data assets are encrypted"},
+		evaluate: func(e *graphComplianceEvaluator, policyID string) policyEvaluation {
+			return e.evaluateSensitiveDataEncryption(policyID)
+		},
+	},
+	"dspm-confidential-data-public": {
+		definition: GraphQueryDefinition{ID: "dspm-confidential-data-public", Provider: "multi", Description: "Evaluate whether restricted or sensitive data assets are publicly exposed"},
+		evaluate: func(e *graphComplianceEvaluator, policyID string) policyEvaluation {
+			return e.evaluateSensitiveDataExposure(policyID)
+		},
+	},
+}
+
 func (e *graphComplianceEvaluator) evaluateSensitiveDataEncryption(policyID string) policyEvaluation {
 	records := e.entityRecords("", graph.NodeKindBucket, graph.NodeKindDatabase, graph.NodeKindSecret, graph.NodeKindService)
 	result := newGraphPolicyEvaluation(policyID)

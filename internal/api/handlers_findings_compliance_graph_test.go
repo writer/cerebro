@@ -169,3 +169,140 @@ func TestPreAuditMetricsExcludeNotApplicableControls(t *testing.T) {
 		t.Fatalf("expected score to exclude not-applicable controls, got %f", score)
 	}
 }
+
+func TestComplianceFrameworkStatusIncludesGraphQueryCatalog(t *testing.T) {
+	s := newTestServer(t)
+	now := time.Date(2026, 3, 14, 1, 0, 0, 0, time.UTC)
+	s.app.SecurityGraph.AddNode(&graph.Node{
+		ID:        "arn:aws:s3:::status-bucket",
+		Kind:      graph.NodeKindBucket,
+		Name:      "status-bucket",
+		Provider:  "aws",
+		Account:   "123456789012",
+		CreatedAt: now,
+		Properties: map[string]any{
+			"encrypted":           false,
+			"public":              true,
+			"block_public_acls":   false,
+			"block_public_policy": false,
+			"logging_enabled":     false,
+			"observed_at":         now,
+			"valid_from":          now,
+			"recorded_at":         now,
+			"transaction_from":    now,
+		},
+	})
+
+	w := do(t, s, http.MethodGet, "/api/v1/compliance/frameworks/cis-aws-1.5/status", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := decodeJSON(t, w)
+	if got := body["framework_id"]; got != "cis-aws-1.5" {
+		t.Fatalf("unexpected framework_id: %v", got)
+	}
+	if got, ok := body["total_findings"].(float64); !ok || got == 0 {
+		t.Fatalf("expected non-zero total_findings, got %v", body["total_findings"])
+	}
+
+	controls, ok := body["controls"].([]interface{})
+	if !ok || len(controls) == 0 {
+		t.Fatalf("expected controls payload, got %#v", body["controls"])
+	}
+
+	found := false
+	for _, item := range controls {
+		control, ok := item.(map[string]interface{})
+		if !ok || control["control_id"] != "2.1.1" {
+			continue
+		}
+		found = true
+		if control["status"] != "failing" {
+			t.Fatalf("expected failing encryption control, got %#v", control)
+		}
+		if _, exists := control["evidence"]; exists {
+			t.Fatalf("status response should not include evidence payload, got %#v", control)
+		}
+		queries, ok := control["graph_queries"].([]interface{})
+		if !ok || len(queries) != 1 {
+			t.Fatalf("expected one graph query for control, got %#v", control["graph_queries"])
+		}
+		query, ok := queries[0].(map[string]interface{})
+		if !ok || query["id"] != "aws-s3-bucket-encryption-enabled" {
+			t.Fatalf("unexpected graph query payload: %#v", queries[0])
+		}
+	}
+	if !found {
+		t.Fatalf("expected control 2.1.1 in status payload: %#v", controls)
+	}
+}
+
+func TestComplianceFrameworkControlReturnsEvidenceAndGraphQueries(t *testing.T) {
+	s := newTestServer(t)
+	now := time.Date(2026, 3, 14, 2, 0, 0, 0, time.UTC)
+	s.app.SecurityGraph.AddNode(&graph.Node{
+		ID:        "arn:aws:s3:::detail-bucket",
+		Kind:      graph.NodeKindBucket,
+		Name:      "detail-bucket",
+		Provider:  "aws",
+		Account:   "123456789012",
+		CreatedAt: now,
+		Properties: map[string]any{
+			"encrypted":        false,
+			"observed_at":      now,
+			"valid_from":       now,
+			"recorded_at":      now,
+			"transaction_from": now,
+		},
+	})
+
+	path := "/api/v1/compliance/frameworks/cis-aws-1.5/controls/2.1.1?valid_at=2026-03-14T02:00:00Z&recorded_at=2026-03-14T02:00:00Z"
+	w := do(t, s, http.MethodGet, path, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("control detail expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := decodeJSON(t, w)
+	if body["valid_at"] != "2026-03-14T02:00:00Z" || body["recorded_at"] != "2026-03-14T02:00:00Z" {
+		t.Fatalf("expected temporal parameters echoed in response, got %#v", body)
+	}
+	control, ok := body["control"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected control payload, got %#v", body["control"])
+	}
+	queries, ok := control["graph_queries"].([]interface{})
+	if !ok || len(queries) != 1 {
+		t.Fatalf("expected graph queries in control payload, got %#v", control["graph_queries"])
+	}
+	status, ok := body["status"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected status payload, got %#v", body["status"])
+	}
+	evidence, ok := status["evidence"].([]interface{})
+	if !ok || len(evidence) == 0 {
+		t.Fatalf("expected detailed evidence, got %#v", status["evidence"])
+	}
+	firstEvidence, ok := evidence[0].(map[string]interface{})
+	if !ok || firstEvidence["entity_id"] != "arn:aws:s3:::detail-bucket" {
+		t.Fatalf("expected entity-backed evidence, got %#v", evidence[0])
+	}
+}
+
+func TestComplianceFrameworkStatusRejectsInvalidTemporalQueries(t *testing.T) {
+	s := newTestServer(t)
+
+	w := do(t, s, http.MethodGet, "/api/v1/compliance/frameworks/cis-aws-1.5/status?valid_at=not-a-time", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid valid_at, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestComplianceFrameworkControlNotFound(t *testing.T) {
+	s := newTestServer(t)
+
+	w := do(t, s, http.MethodGet, "/api/v1/compliance/frameworks/cis-aws-1.5/controls/does-not-exist", nil)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for missing control, got %d: %s", w.Code, w.Body.String())
+	}
+}

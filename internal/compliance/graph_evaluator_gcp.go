@@ -2,6 +2,45 @@ package compliance
 
 import "github.com/evalops/cerebro/internal/graph"
 
+var gcpPolicyEvaluators = map[string]registeredPolicyEvaluator{
+	"gcp-storage-bucket-no-public": {
+		definition: GraphQueryDefinition{ID: "gcp-storage-bucket-no-public", Provider: "gcp", Description: "Evaluate whether GCS buckets are publicly accessible"},
+		evaluate: func(e *graphComplianceEvaluator, policyID string) policyEvaluation {
+			return e.evaluateFacetBoolPolicy(policyID, "gcp", []graph.NodeKind{graph.NodeKindBucket}, "bucket_public_access", "public_access", false, "Bucket is not publicly accessible", "Bucket is publicly accessible")
+		},
+	},
+	"gcp-storage-no-public-allusers": {
+		definition: GraphQueryDefinition{ID: "gcp-storage-no-public-allusers", Provider: "gcp", Description: "Evaluate whether GCS bucket policies expose public principals"},
+		evaluate: func(e *graphComplianceEvaluator, policyID string) policyEvaluation {
+			return e.evaluateBucketPublicPolicy(policyID, "gcp")
+		},
+	},
+	"gcp-iam-sa-no-admin-privileges": {
+		definition: GraphQueryDefinition{ID: "gcp-iam-sa-no-admin-privileges", Provider: "gcp", Description: "Evaluate whether service accounts avoid admin or high-privilege roles"},
+		evaluate: func(e *graphComplianceEvaluator, policyID string) policyEvaluation {
+			return e.evaluateServiceAccountAdminPrivileges(policyID)
+		},
+	},
+	"gcp-sa-admin-privileges": {
+		definition: GraphQueryDefinition{ID: "gcp-sa-admin-privileges", Provider: "gcp", Description: "Evaluate whether service accounts avoid admin or high-privilege roles"},
+		evaluate: func(e *graphComplianceEvaluator, policyID string) policyEvaluation {
+			return e.evaluateServiceAccountAdminPrivileges(policyID)
+		},
+	},
+	"gcp-service-account-key-rotation": {
+		definition: GraphQueryDefinition{ID: "gcp-service-account-key-rotation", Provider: "gcp", Description: "Evaluate whether service account user-managed keys rotate within 90 days"},
+		evaluate: func(e *graphComplianceEvaluator, policyID string) policyEvaluation {
+			return e.evaluateServiceAccountKeyRotation(policyID)
+		},
+	},
+	"gcp-iam-minimize-user-managed-keys": {
+		definition: GraphQueryDefinition{ID: "gcp-iam-minimize-user-managed-keys", Provider: "gcp", Description: "Evaluate whether service accounts minimize user-managed keys"},
+		evaluate: func(e *graphComplianceEvaluator, policyID string) policyEvaluation {
+			return e.evaluateServiceAccountMinimizeKeys(policyID)
+		},
+	},
+}
+
 func (e *graphComplianceEvaluator) evaluateServiceAccountAdminPrivileges(policyID string) policyEvaluation {
 	records := e.entityRecords("gcp", graph.NodeKindServiceAccount)
 	result := newGraphPolicyEvaluation(policyID)

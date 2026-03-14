@@ -412,7 +412,12 @@ func (s *Server) frameworkComplianceReport(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	report := s.evaluateComplianceFramework(r.Context(), definition)
+	opts, err := parseComplianceEvaluationOptions(r)
+	if err != nil {
+		s.error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	report := s.evaluateComplianceFramework(r.Context(), definition, opts)
 	legacy := map[string]interface{}{
 		"framework":             definition.Name,
 		"total_controls":        report.Summary.TotalControls,
@@ -453,6 +458,44 @@ func (s *Server) frameworkComplianceReport(w http.ResponseWriter, r *http.Reques
 
 // Compliance endpoints
 
+type complianceFrameworkStatusControl struct {
+	ControlID        string                            `json:"control_id"`
+	Title            string                            `json:"title,omitempty"`
+	Description      string                            `json:"description,omitempty"`
+	Severity         compliance.ControlSeverity        `json:"severity,omitempty"`
+	Status           string                            `json:"status"`
+	PassCount        int                               `json:"pass_count"`
+	FailCount        int                               `json:"fail_count"`
+	TotalAssets      int                               `json:"total_assets"`
+	EvaluationSource string                            `json:"evaluation_source,omitempty"`
+	LastEvaluated    string                            `json:"last_evaluated,omitempty"`
+	PolicyIDs        []string                          `json:"policy_ids,omitempty"`
+	GraphQueries     []compliance.GraphQueryDefinition `json:"graph_queries,omitempty"`
+}
+
+type complianceFrameworkStatusResponse struct {
+	FrameworkID   string                             `json:"framework_id"`
+	FrameworkName string                             `json:"framework_name"`
+	Version       string                             `json:"version,omitempty"`
+	GeneratedAt   string                             `json:"generated_at"`
+	ValidAt       string                             `json:"valid_at,omitempty"`
+	RecordedAt    string                             `json:"recorded_at,omitempty"`
+	Summary       compliance.ComplianceSummary       `json:"summary"`
+	Controls      []complianceFrameworkStatusControl `json:"controls"`
+	TotalFindings int                                `json:"total_findings"`
+}
+
+type complianceControlDetailResponse struct {
+	FrameworkID   string                   `json:"framework_id"`
+	FrameworkName string                   `json:"framework_name"`
+	Version       string                   `json:"version,omitempty"`
+	GeneratedAt   string                   `json:"generated_at"`
+	ValidAt       string                   `json:"valid_at,omitempty"`
+	RecordedAt    string                   `json:"recorded_at,omitempty"`
+	Control       compliance.Control       `json:"control"`
+	Status        compliance.ControlStatus `json:"status"`
+}
+
 func (s *Server) listFrameworks(w http.ResponseWriter, r *http.Request) {
 	frameworks := compliance.GetFrameworks()
 	s.json(w, http.StatusOK, map[string]interface{}{"frameworks": frameworks, "count": len(frameworks)})
@@ -468,6 +511,77 @@ func (s *Server) getFramework(w http.ResponseWriter, r *http.Request) {
 	s.json(w, http.StatusOK, f)
 }
 
+func (s *Server) getFrameworkStatus(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	framework := compliance.GetFramework(id)
+	if framework == nil {
+		s.error(w, http.StatusNotFound, "framework not found")
+		return
+	}
+
+	opts, err := parseComplianceEvaluationOptions(r)
+	if err != nil {
+		s.error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	report := s.evaluateComplianceFramework(r.Context(), framework, opts)
+
+	s.json(w, http.StatusOK, complianceFrameworkStatusResponse{
+		FrameworkID:   framework.ID,
+		FrameworkName: framework.Name,
+		Version:       framework.Version,
+		GeneratedAt:   report.GeneratedAt,
+		ValidAt:       formatOptionalTime(opts.ValidAt),
+		RecordedAt:    formatOptionalTime(opts.RecordedAt),
+		Summary:       report.Summary,
+		Controls:      buildComplianceStatusControls(framework, report),
+		TotalFindings: complianceReportFailCount(report),
+	})
+}
+
+func (s *Server) getFrameworkControl(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	framework := compliance.GetFramework(id)
+	if framework == nil {
+		s.error(w, http.StatusNotFound, "framework not found")
+		return
+	}
+
+	controlID := strings.TrimSpace(chi.URLParam(r, "control_id"))
+	if controlID == "" {
+		s.error(w, http.StatusBadRequest, "control id required")
+		return
+	}
+	control, ok := compliance.GetControl(framework, controlID)
+	if !ok {
+		s.error(w, http.StatusNotFound, "control not found")
+		return
+	}
+
+	opts, err := parseComplianceEvaluationOptions(r)
+	if err != nil {
+		s.error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	report := s.evaluateComplianceFramework(r.Context(), framework, opts)
+	status, ok := complianceStatusByID(report, controlID)
+	if !ok {
+		s.error(w, http.StatusNotFound, "control status not found")
+		return
+	}
+
+	s.json(w, http.StatusOK, complianceControlDetailResponse{
+		FrameworkID:   framework.ID,
+		FrameworkName: framework.Name,
+		Version:       framework.Version,
+		GeneratedAt:   report.GeneratedAt,
+		ValidAt:       formatOptionalTime(opts.ValidAt),
+		RecordedAt:    formatOptionalTime(opts.RecordedAt),
+		Control:       control,
+		Status:        status,
+	})
+}
+
 func (s *Server) generateComplianceReport(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	framework := compliance.GetFramework(id)
@@ -475,7 +589,13 @@ func (s *Server) generateComplianceReport(w http.ResponseWriter, r *http.Request
 		s.error(w, http.StatusNotFound, "framework not found")
 		return
 	}
-	report := compliance.RedactReportEvidence(s.evaluateComplianceFramework(r.Context(), framework))
+
+	opts, err := parseComplianceEvaluationOptions(r)
+	if err != nil {
+		s.error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	report := compliance.RedactReportEvidence(s.evaluateComplianceFramework(r.Context(), framework, opts))
 	totalFindings := 0
 	controlEvidence := make(map[string][]compliance.ControlEvidence)
 	for _, ctrl := range report.Controls {
@@ -513,7 +633,12 @@ func (s *Server) preAuditCheck(w http.ResponseWriter, r *http.Request) {
 
 	checks := make([]ControlCheck, 0, len(framework.Controls))
 
-	report := s.evaluateComplianceFramework(r.Context(), framework)
+	opts, err := parseComplianceEvaluationOptions(r)
+	if err != nil {
+		s.error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	report := s.evaluateComplianceFramework(r.Context(), framework, opts)
 	for _, ctrl := range report.Controls {
 		check := ControlCheck{
 			ControlID: ctrl.ControlID,
@@ -631,8 +756,14 @@ func (s *Server) exportAuditPackage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	opts, err := parseComplianceEvaluationOptions(r)
+	if err != nil {
+		metrics.RecordComplianceExport(false)
+		s.error(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	generatedAt := time.Now().UTC()
-	report := s.evaluateComplianceFramework(r.Context(), framework)
+	report := s.evaluateComplianceFramework(r.Context(), framework, opts)
 	if report.GeneratedAt == "" {
 		report.GeneratedAt = generatedAt.Format(time.RFC3339)
 	}
@@ -657,9 +788,77 @@ func (s *Server) exportAuditPackage(w http.ResponseWriter, r *http.Request) {
 	metrics.RecordComplianceExport(true)
 }
 
-func (s *Server) evaluateComplianceFramework(ctx context.Context, framework *compliance.Framework) compliance.ComplianceReport {
-	return compliance.EvaluateFramework(s.currentTenantSecurityGraph(ctx), framework, compliance.EvaluationOptions{
-		GeneratedAt:          time.Now().UTC(),
-		OpenFindingsByPolicy: s.openFindingsByPolicy(s.findingsStoreForRequest(ctx)),
-	})
+func (s *Server) evaluateComplianceFramework(ctx context.Context, framework *compliance.Framework, opts compliance.EvaluationOptions) compliance.ComplianceReport {
+	if opts.GeneratedAt.IsZero() {
+		opts.GeneratedAt = time.Now().UTC()
+	}
+	opts.OpenFindingsByPolicy = s.openFindingsByPolicy(s.findingsStoreForRequest(ctx))
+	return compliance.EvaluateFramework(s.currentTenantSecurityGraph(ctx), framework, opts)
+}
+
+func parseComplianceEvaluationOptions(r *http.Request) (compliance.EvaluationOptions, error) {
+	validAt, err := parseOptionalRFC3339Query(r, "valid_at")
+	if err != nil {
+		return compliance.EvaluationOptions{}, err
+	}
+	recordedAt, err := parseOptionalRFC3339Query(r, "recorded_at")
+	if err != nil {
+		return compliance.EvaluationOptions{}, err
+	}
+	return compliance.EvaluationOptions{
+		ValidAt:    validAt,
+		RecordedAt: recordedAt,
+	}, nil
+}
+
+func buildComplianceStatusControls(framework *compliance.Framework, report compliance.ComplianceReport) []complianceFrameworkStatusControl {
+	if framework == nil || len(report.Controls) == 0 {
+		return nil
+	}
+	controls := make([]complianceFrameworkStatusControl, 0, len(report.Controls))
+	for _, control := range framework.Controls {
+		status, ok := complianceStatusByID(report, control.ID)
+		if !ok {
+			continue
+		}
+		controls = append(controls, complianceFrameworkStatusControl{
+			ControlID:        status.ControlID,
+			Title:            status.Title,
+			Description:      status.Description,
+			Severity:         status.Severity,
+			Status:           status.Status,
+			PassCount:        status.PassCount,
+			FailCount:        status.FailCount,
+			TotalAssets:      status.TotalAssets,
+			EvaluationSource: status.EvaluationSource,
+			LastEvaluated:    status.LastEvaluated,
+			PolicyIDs:        append([]string(nil), status.PolicyIDs...),
+			GraphQueries:     append([]compliance.GraphQueryDefinition(nil), control.GraphQueries...),
+		})
+	}
+	return controls
+}
+
+func complianceStatusByID(report compliance.ComplianceReport, controlID string) (compliance.ControlStatus, bool) {
+	for _, control := range report.Controls {
+		if control.ControlID == controlID {
+			return control, true
+		}
+	}
+	return compliance.ControlStatus{}, false
+}
+
+func complianceReportFailCount(report compliance.ComplianceReport) int {
+	total := 0
+	for _, control := range report.Controls {
+		total += control.FailCount
+	}
+	return total
+}
+
+func formatOptionalTime(ts time.Time) string {
+	if ts.IsZero() {
+		return ""
+	}
+	return ts.UTC().Format(time.RFC3339)
 }
