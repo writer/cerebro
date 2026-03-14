@@ -108,44 +108,24 @@ var (
 	GetEntityRecord                    = entities.GetEntityRecord
 	AnalyzeSchemaHealth                = graph.AnalyzeSchemaHealth
 	BuildIdentityCalibrationReport     = graph.BuildIdentityCalibrationReport
-	BuildReportGraphSnapshotID         = graph.BuildReportGraphSnapshotID
 	CurrentGraphSnapshotRecord         = graph.CurrentGraphSnapshotRecord
 	DefaultGraphQueryTemplates         = graph.DefaultGraphQueryTemplates
-	FirstNonEmpty                      = graph.FirstNonEmpty
 	GlobalSchemaRegistry               = graph.GlobalSchemaRegistry
 	GraphSnapshotCollectionFromRecords = graph.GraphSnapshotCollectionFromRecords
-	HasNodeMetadataProfile             = graph.HasNodeMetadataProfile
 	IsNodeKindInCategory               = graph.IsNodeKindInCategory
-	MatchesPropertyType                = graph.MatchesPropertyType
 	NewRiskEngine                      = risk.NewRiskEngine
 	New                                = graph.New
-	NormalizeNodeMetadataProfile       = graph.NormalizeNodeMetadataProfile
 	ReviewIdentityAlias                = graph.ReviewIdentityAlias
-	SanitizeReportFileName             = graph.SanitizeReportFileName
 	SchemaVersion                      = graph.SchemaVersion
-	SortedSchemaKindCounts             = graph.SortedSchemaKindCounts
-	SliceContainsString                = graph.SliceContainsString
-	TemporalNowUTC                     = graph.TemporalNowUTC
 	ValidateEdgeAgainstSchema          = graph.ValidateEdgeAgainstSchema
 	ValidateNodeAgainstSchema          = graph.ValidateNodeAgainstSchema
-	WriteJSONAtomic                    = graph.WriteJSONAtomic
 )
 
 const defaultFreshnessStaleAfter = 30 * 24 * time.Hour
 
 var (
-	temporalNowUTC                = TemporalNowUTC
-	firstNonEmpty                 = FirstNonEmpty
-	buildReportGraphSnapshotID    = BuildReportGraphSnapshotID
 	defaultEntityFacetDefinitions = entities.DefaultEntityFacetDefinitions()
 	entityFacetAppliesToNode      = entities.EntityFacetAppliesToNode
-	sanitizeReportFileName        = SanitizeReportFileName
-	sortedSchemaKindCounts        = SortedSchemaKindCounts
-	normalizeNodeMetadataProfile  = NormalizeNodeMetadataProfile
-	hasNodeMetadataProfile        = HasNodeMetadataProfile
-	matchesPropertyType           = MatchesPropertyType
-	sliceContainsString           = SliceContainsString
-	writeJSONAtomic               = WriteJSONAtomic
 )
 
 func cloneTimePtr(value *time.Time) *time.Time {
