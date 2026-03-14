@@ -26,6 +26,12 @@ func TestCatalogIncludesSafeCloudRemediations(t *testing.T) {
 	if got := storage.DefaultRemoteTools["aws"]; got != "aws.s3.block_public_access" {
 		t.Fatalf("unexpected aws tool mapping: %q", got)
 	}
+	if storage.DefaultDeliveryMode != DeliveryModeRemoteApply {
+		t.Fatalf("expected public storage default delivery mode to remain remote apply, got %s", storage.DefaultDeliveryMode)
+	}
+	if len(storage.SupportedDeliveryModes) != 2 || storage.SupportedDeliveryModes[0] != DeliveryModeRemoteApply || storage.SupportedDeliveryModes[1] != DeliveryModeTerraform {
+		t.Fatalf("unexpected public storage supported delivery modes: %#v", storage.SupportedDeliveryModes)
+	}
 
 	accessKey, ok := byAction[ActionDisableStaleAccessKey]
 	if !ok {

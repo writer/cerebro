@@ -53,19 +53,50 @@ func (ex *Executor) restrictPublicStorageAccess(ctx context.Context, action Acti
 	plan := newCatalogActionPlan(action, execution, entry, ex.actionRequiresApproval(action))
 	plan.before = captureStorageAccessEvidence(execution)
 
+	providerSupported := false
+	providerDetail := firstNonEmpty(plan.provider, "missing provider")
+	switch plan.deliveryMode {
+	case DeliveryModeTerraform:
+		providerSupported = plan.provider == "aws"
+		if !providerSupported && plan.provider != "" {
+			providerDetail = fmt.Sprintf("terraform delivery is only implemented for aws buckets, got %s", plan.provider)
+		}
+	case DeliveryModeRemoteApply:
+		providerSupported = plan.provider != "" && plan.tool != ""
+	}
+
 	publicAccess, detail := publicStorageAccessStillEnabled(execution)
 	plan.preconditionCheck = append(plan.preconditionCheck,
 		preconditionResult("resource identifier available", plan.resourceID != "", firstNonEmpty(plan.resourceID, "missing resource identifier")),
-		preconditionResult("provider supported", plan.provider != "" && plan.tool != "", firstNonEmpty(plan.provider, "missing provider")),
+		preconditionResult("provider supported", providerSupported, providerDetail),
 		preconditionResult("resource still public", publicAccess, detail),
 	)
 
 	metadata := plan.metadata(nil)
+	if !catalogSupportsDeliveryMode(entry, plan.deliveryMode) {
+		return "", compactAnyMap(metadata), fmt.Errorf("delivery mode %q is not supported for %s", plan.deliveryMode, action.Type)
+	}
+	metadata = compactAnyMap(metadata)
 	if !allPreconditionsPassed(plan.preconditionCheck) {
 		return "", metadata, fmt.Errorf("restrict public storage access precondition failed")
 	}
 
 	enrichExecutionWithCatalogPlan(execution, plan)
+	if plan.deliveryMode == DeliveryModeTerraform {
+		artifact, err := renderTerraformArtifact(action, execution)
+		if err != nil {
+			return "", compactAnyMap(metadata), err
+		}
+		metadata["artifact"] = terraformArtifactMetadata(artifact)
+		metadata["after"] = map[string]any{
+			"planned":          true,
+			"delivery_mode":    string(plan.deliveryMode),
+			"change":           "terraform configuration generated to block public S3 bucket access",
+			"artifact_path":    artifact.Path,
+			"resource_address": artifact.ResourceAddress,
+		}
+		return fmt.Sprintf("Generated Terraform remediation at %s", artifact.Path), compactAnyMap(metadata), nil
+	}
 	if plan.dryRun {
 		metadata["after"] = map[string]any{
 			"planned": true,

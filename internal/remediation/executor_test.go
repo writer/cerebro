@@ -346,6 +346,145 @@ func TestExecutor_RestrictPublicStorageAccessDoesNotTrustStalePolicyWithoutCurre
 	}
 }
 
+func TestExecutor_RestrictPublicStorageAccessTerraformModeCapturesArtifact(t *testing.T) {
+	engine := NewEngine(testutil.Logger())
+	rule := Rule{
+		ID:      "restrict-public-storage-terraform",
+		Name:    "Restrict Public Storage Terraform",
+		Enabled: true,
+		Trigger: Trigger{Type: TriggerManual},
+		Actions: []Action{{
+			Type: ActionRestrictPublicStorageAccess,
+			Config: map[string]string{
+				"delivery_mode": "terraform",
+			},
+		}},
+	}
+	if err := engine.AddRule(rule); err != nil {
+		t.Fatalf("add rule: %v", err)
+	}
+
+	executions, err := engine.Evaluate(context.Background(), Event{
+		Type:     TriggerManual,
+		PolicyID: "aws-s3-bucket-no-public-access",
+		EntityID: "bucket:public-assets",
+		Data: map[string]any{
+			"resource_id":       "bucket:public-assets",
+			"resource_name":     "public-assets",
+			"resource_type":     "bucket",
+			"resource_platform": "aws",
+			"iac_file":          "infra/storage/main.tf",
+			"resource": map[string]any{
+				"public_access": true,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	execution := executions[0]
+	executor := NewExecutor(engine, nil, nil, nil, nil)
+
+	if err := executor.Execute(context.Background(), execution); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if execution.Status != ExecutionCompleted {
+		t.Fatalf("status = %s, want %s", execution.Status, ExecutionCompleted)
+	}
+	if len(execution.Actions) != 1 {
+		t.Fatalf("expected one action result, got %d", len(execution.Actions))
+	}
+	metadata := execution.Actions[0].Metadata
+	if metadata["delivery_mode"] != "terraform" {
+		t.Fatalf("expected terraform delivery mode, got %#v", metadata["delivery_mode"])
+	}
+	if requiresApproval, _ := metadata["requires_approval"].(bool); requiresApproval {
+		t.Fatalf("expected terraform generation not to require approval by default, got %#v", metadata)
+	}
+	if plannedTool := stringValue(metadata["planned_tool"]); plannedTool != "" {
+		t.Fatalf("expected no planned tool for terraform delivery, got %#v", metadata["planned_tool"])
+	}
+	artifact, _ := metadata["artifact"].(map[string]any)
+	if artifact["path"] != "infra/storage/cerebro_s3_bucket_public_access_block_public_assets.tf" {
+		t.Fatalf("unexpected terraform artifact path: %#v", artifact["path"])
+	}
+	if artifact["resource_address"] != "aws_s3_bucket_public_access_block.public_assets_public_access_block" {
+		t.Fatalf("unexpected terraform resource address: %#v", artifact["resource_address"])
+	}
+	content, _ := artifact["content"].(string)
+	if !strings.Contains(content, `resource "aws_s3_bucket_public_access_block" "public_assets_public_access_block"`) {
+		t.Fatalf("expected terraform resource block, got %q", content)
+	}
+	after, _ := metadata["after"].(map[string]any)
+	if planned, _ := after["planned"].(bool); !planned {
+		t.Fatalf("expected planned after-state metadata, got %#v", after)
+	}
+}
+
+func TestExecutor_RestrictPublicStorageAccessTerraformModeRequiresAWSProvider(t *testing.T) {
+	engine := NewEngine(testutil.Logger())
+	rule := Rule{
+		ID:      "restrict-public-storage-terraform-gcp",
+		Name:    "Restrict Public Storage Terraform GCP",
+		Enabled: true,
+		Trigger: Trigger{Type: TriggerManual},
+		Actions: []Action{{
+			Type: ActionRestrictPublicStorageAccess,
+			Config: map[string]string{
+				"delivery_mode": "terraform",
+			},
+		}},
+	}
+	if err := engine.AddRule(rule); err != nil {
+		t.Fatalf("add rule: %v", err)
+	}
+
+	executions, err := engine.Evaluate(context.Background(), Event{
+		Type:     TriggerManual,
+		PolicyID: "gcp-storage-bucket-no-public-access",
+		EntityID: "bucket:public-assets",
+		Data: map[string]any{
+			"resource_id":       "bucket:public-assets",
+			"resource_name":     "public-assets",
+			"resource_type":     "bucket",
+			"resource_platform": "gcp",
+			"resource": map[string]any{
+				"public_access": true,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	execution := executions[0]
+	executor := NewExecutor(engine, nil, nil, nil, nil)
+
+	err = executor.Execute(context.Background(), execution)
+	if err == nil {
+		t.Fatal("expected precondition failure")
+	}
+	if !strings.Contains(err.Error(), "precondition failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if execution.Status != ExecutionFailed {
+		t.Fatalf("status = %s, want %s", execution.Status, ExecutionFailed)
+	}
+	if len(execution.Actions) != 1 || execution.Actions[0].Metadata == nil {
+		t.Fatalf("expected failed action metadata, got %#v", execution.Actions)
+	}
+	metadata := execution.Actions[0].Metadata
+	if metadata["delivery_mode"] != "terraform" {
+		t.Fatalf("expected terraform delivery mode metadata, got %#v", metadata["delivery_mode"])
+	}
+	preconditions, _ := metadata["preconditions"].([]map[string]any)
+	if len(preconditions) < 2 {
+		t.Fatalf("expected provider precondition metadata, got %#v", metadata)
+	}
+	if passed, _ := preconditions[1]["passed"].(bool); passed {
+		t.Fatalf("expected provider precondition failure, got %#v", preconditions[1])
+	}
+}
+
 func TestExecutor_EnableBucketDefaultEncryptionTerraformModeCapturesArtifact(t *testing.T) {
 	engine := NewEngine(testutil.Logger())
 	rule := Rule{

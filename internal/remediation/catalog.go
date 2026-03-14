@@ -64,6 +64,7 @@ var remediationCatalog = []CatalogEntry{
 		},
 		SupportedDeliveryModes: []DeliveryMode{
 			DeliveryModeRemoteApply,
+			DeliveryModeTerraform,
 		},
 		DefaultDeliveryMode: DeliveryModeRemoteApply,
 		DefaultRemoteTools: map[string]string{
