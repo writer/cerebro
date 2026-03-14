@@ -32,10 +32,6 @@ type (
 	EntitySuggestOptions          = graph.EntitySuggestOptions
 	EntitySuggestCollection       = graph.EntitySuggestCollection
 	EntitySuggestion              = graph.EntitySuggestion
-	EntityTimeReconstruction      = graph.EntityTimeReconstruction
-	EntityTimeRecord              = graph.EntityTimeRecord
-	EntityPropertyDiff            = graph.EntityPropertyDiff
-	EntityTimeDiffRecord          = graph.EntityTimeDiffRecord
 )
 
 func QueryEntities(g *graph.Graph, opts EntityQueryOptions) EntityCollection {
@@ -46,38 +42,10 @@ func GetEntityRecord(g *graph.Graph, id string, validAt, recordedAt time.Time) (
 	return graph.GetEntityRecord(g, id, validAt, recordedAt)
 }
 
-func GetEntityRecordAtTime(g *graph.Graph, id string, asOf, recordedAt time.Time) (EntityTimeRecord, bool) {
-	return graph.GetEntityRecordAtTime(g, id, asOf, recordedAt)
-}
-
-func GetEntityTimeDiff(g *graph.Graph, id string, from, to, recordedAt time.Time) (EntityTimeDiffRecord, bool) {
-	return graph.GetEntityTimeDiff(g, id, from, to, recordedAt)
-}
-
 func SearchEntities(g *graph.Graph, opts EntitySearchOptions) EntitySearchCollection {
 	return graph.SearchEntities(g, opts)
 }
 
 func SuggestEntities(g *graph.Graph, opts EntitySuggestOptions) EntitySuggestCollection {
 	return graph.SuggestEntities(g, opts)
-}
-
-func GetEntityFacetDefinition(id string) (EntityFacetDefinition, bool) {
-	return graph.GetEntityFacetDefinition(id)
-}
-
-func DefaultEntityFacetDefinitions() []EntityFacetDefinition {
-	return graph.ListEntityFacetDefinitions()
-}
-
-func EntityFacetAppliesToNode(def EntityFacetDefinition, kind graph.NodeKind) bool {
-	if len(def.ApplicableKinds) == 0 {
-		return true
-	}
-	for _, candidate := range def.ApplicableKinds {
-		if candidate == kind {
-			return true
-		}
-	}
-	return false
 }
