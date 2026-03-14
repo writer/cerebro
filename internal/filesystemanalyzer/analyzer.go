@@ -205,6 +205,15 @@ func (a *Analyzer) Analyze(ctx context.Context, rootfsPath string) (*Report, err
 				inv.metadataErrors = append(inv.metadataErrors, err.Error())
 			}
 		}
+		if shouldInspectIaCFile(filePath, info.Mode(), info.Size(), a.maxSecretFileBytes) {
+			if data, ok, err := readLimitedFile(root, filePath, a.maxSecretFileBytes); err == nil && ok {
+				artifacts, findings := inspectIaCFile(filePath, data)
+				inv.addIaCArtifacts(artifacts...)
+				inv.addConfigs(findings...)
+			} else if err != nil {
+				inv.metadataErrors = append(inv.metadataErrors, err.Error())
+			}
+		}
 		if shouldSecretScan(filePath, info.Mode(), info.Size(), a.maxSecretFileBytes) {
 			if data, ok, err := readLimitedFile(root, filePath, a.maxSecretFileBytes); err == nil && ok {
 				inv.addSecrets(scanSecrets(filePath, data)...)
@@ -253,6 +262,7 @@ func (a *Analyzer) Analyze(ctx context.Context, rootfsPath string) (*Report, err
 	}
 	report.Secrets = inv.secrets
 	report.Misconfigurations = inv.configs
+	report.IaCArtifacts = inv.iacArtifacts
 	report.Malware = inv.malware
 	report.SBOM = buildSBOM(report.GeneratedAt, report.Packages)
 	report.Findings = dedupeFindings(append(report.Findings, inv.findings...))
@@ -261,6 +271,7 @@ func (a *Analyzer) Analyze(ctx context.Context, rootfsPath string) (*Report, err
 		VulnerabilityCount:    len(report.Vulnerabilities),
 		SecretCount:           len(report.Secrets),
 		MisconfigurationCount: len(report.Misconfigurations),
+		IaCArtifactCount:      len(report.IaCArtifacts),
 		MalwareCount:          len(report.Malware),
 		Truncated:             inv.truncated,
 	}
@@ -278,8 +289,10 @@ type inventory struct {
 	generatedAt    time.Time
 	os             OSInfo
 	packages       map[string]PackageRecord
+	iacArtifactIDs map[string]struct{}
 	secrets        []SecretFinding
 	configs        []ConfigFinding
+	iacArtifacts   []IaCArtifact
 	malware        []MalwareFinding
 	findings       []scanner.ContainerFinding
 	entriesVisited int
@@ -289,8 +302,9 @@ type inventory struct {
 
 func newInventory(now time.Time) *inventory {
 	return &inventory{
-		generatedAt: now,
-		packages:    make(map[string]PackageRecord),
+		generatedAt:    now,
+		packages:       make(map[string]PackageRecord),
+		iacArtifactIDs: make(map[string]struct{}),
 	}
 }
 
@@ -338,6 +352,22 @@ func (i *inventory) addConfig(finding ConfigFinding) {
 func (i *inventory) addConfigs(findings ...ConfigFinding) {
 	for _, finding := range findings {
 		i.addConfig(finding)
+	}
+}
+
+func (i *inventory) addIaCArtifacts(artifacts ...IaCArtifact) {
+	for _, artifact := range artifacts {
+		artifact.ID = strings.TrimSpace(artifact.ID)
+		artifact.Type = strings.TrimSpace(artifact.Type)
+		artifact.Path = strings.TrimSpace(artifact.Path)
+		if artifact.ID == "" || artifact.Type == "" || artifact.Path == "" {
+			continue
+		}
+		if _, exists := i.iacArtifactIDs[artifact.ID]; exists {
+			continue
+		}
+		i.iacArtifactIDs[artifact.ID] = struct{}{}
+		i.iacArtifacts = append(i.iacArtifacts, artifact)
 	}
 }
 
@@ -459,6 +489,38 @@ func shouldParseConfigFile(filePath string) bool {
 		return true
 	}
 	return false
+}
+
+func shouldInspectIaCFile(filePath string, mode fs.FileMode, size int64, maxBytes int64) bool {
+	if mode&fs.ModeSymlink != 0 || mode.IsDir() || size <= 0 || size > maxBytes {
+		return false
+	}
+	if strings.Contains(filePath, "/testdata/") || strings.Contains(filePath, "/fixtures/") || strings.Contains(filePath, "/examples/") {
+		return false
+	}
+	lowerPath := strings.ToLower(strings.TrimSpace(filePath))
+	base := path.Base(lowerPath)
+	switch {
+	case strings.HasSuffix(lowerPath, ".tf"),
+		strings.HasSuffix(lowerPath, ".tfvars"),
+		strings.HasSuffix(lowerPath, ".tfstate"),
+		strings.HasSuffix(lowerPath, ".tfstate.backup"),
+		strings.HasSuffix(lowerPath, ".template"):
+		return true
+	}
+	switch base {
+	case "dockerfile", "docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml",
+		"chart.yaml", "values.yaml", "playbook.yml", "playbook.yaml", "site.yml", "site.yaml",
+		"inventory", ".env", "config.json", "application.properties", "ansible.cfg":
+		return true
+	}
+	ext := strings.ToLower(path.Ext(lowerPath))
+	switch ext {
+	case ".yaml", ".yml", ".json":
+		return true
+	default:
+		return false
+	}
 }
 
 func shouldSecretScan(filePath string, mode fs.FileMode, size int64, maxBytes int64) bool {
@@ -851,6 +913,233 @@ func parseConfigFindings(filePath string, data []byte) []ConfigFinding {
 		}
 	}
 	return findings
+}
+
+func inspectIaCFile(filePath string, data []byte) ([]IaCArtifact, []ConfigFinding) {
+	if looksBinary(data) {
+		return nil, nil
+	}
+	artifacts := detectIaCArtifacts(filePath, data)
+	findings := parseIaCFindings(filePath, data, artifacts)
+	return artifacts, findings
+}
+
+func detectIaCArtifacts(filePath string, data []byte) []IaCArtifact {
+	lowerPath := strings.ToLower(strings.TrimSpace(filePath))
+	base := path.Base(lowerPath)
+	ext := strings.ToLower(path.Ext(lowerPath))
+	format := "text"
+	switch ext {
+	case ".tf", ".tfvars":
+		format = "hcl"
+	case ".yaml", ".yml", ".template":
+		format = "yaml"
+	case ".json", ".tfstate", ".backup":
+		format = "json"
+	case ".properties":
+		format = "properties"
+	}
+
+	artifacts := make([]IaCArtifact, 0, 1)
+	appendArtifact := func(kind, artifactFormat, resourceType string) {
+		kind = strings.TrimSpace(kind)
+		if kind == "" {
+			return
+		}
+		if artifactFormat == "" {
+			artifactFormat = format
+		}
+		artifacts = append(artifacts, IaCArtifact{
+			ID:           findingID("iac_artifact", kind+":"+filePath),
+			Type:         kind,
+			Path:         filePath,
+			Format:       artifactFormat,
+			ResourceType: strings.TrimSpace(resourceType),
+		})
+	}
+
+	switch {
+	case strings.HasSuffix(lowerPath, ".tf"):
+		appendArtifact("terraform", "hcl", inferIaCResourceType(lowerPath, string(data)))
+	case strings.HasSuffix(lowerPath, ".tfvars"):
+		appendArtifact("terraform_variables", "hcl", "")
+	case strings.HasSuffix(lowerPath, ".tfstate"), strings.HasSuffix(lowerPath, ".tfstate.backup"):
+		appendArtifact("terraform_state", "json", "terraform_state")
+	case base == "dockerfile":
+		appendArtifact("dockerfile", "dockerfile", "container_image")
+	case base == "docker-compose.yml" || base == "docker-compose.yaml" || base == "compose.yml" || base == "compose.yaml":
+		appendArtifact("docker_compose", "yaml", "container_service")
+	case base == "chart.yaml":
+		appendArtifact("helm_chart", "yaml", "helm_chart")
+	case base == "values.yaml":
+		appendArtifact("helm_values", "yaml", "")
+	case base == "playbook.yml" || base == "playbook.yaml" || base == "site.yml" || base == "site.yaml" || base == "inventory" || base == "ansible.cfg" || strings.Contains(lowerPath, "/roles/"):
+		appendArtifact("ansible", format, "configuration")
+	case base == ".env":
+		appendArtifact("environment_file", "env", "configuration")
+	case base == "config.json":
+		appendArtifact("json_config", "json", "configuration")
+	case base == "application.properties":
+		appendArtifact("application_properties", "properties", "configuration")
+	default:
+		text := string(data)
+		lowerText := strings.ToLower(text)
+		switch {
+		case strings.Contains(text, "AWSTemplateFormatVersion"):
+			appendArtifact("cloudformation", format, inferIaCResourceType(lowerPath, text))
+		case strings.Contains(text, "apiVersion:") && strings.Contains(text, "kind:"):
+			appendArtifact("kubernetes_manifest", format, inferIaCResourceType(lowerPath, text))
+		case strings.Contains(lowerPath, "/templates/") && (ext == ".yaml" || ext == ".yml"):
+			appendArtifact("helm_template", "yaml", inferIaCResourceType(lowerPath, text))
+		case ext == ".json" && (strings.Contains(lowerText, "\"resources\"") || strings.Contains(lowerText, "\"terraform_version\"")):
+			appendArtifact("terraform_json", "json", inferIaCResourceType(lowerPath, text))
+		}
+	}
+	return artifacts
+}
+
+func parseIaCFindings(filePath string, data []byte, artifacts []IaCArtifact) []ConfigFinding {
+	if len(artifacts) == 0 {
+		return nil
+	}
+	text := string(data)
+	lowerText := strings.ToLower(text)
+	resourceType := ""
+	artifactType := ""
+	format := ""
+	for _, artifact := range artifacts {
+		resourceType = firstNonEmpty(resourceType, artifact.ResourceType)
+		artifactType = firstNonEmpty(artifactType, artifact.Type)
+		format = firstNonEmpty(format, artifact.Format)
+	}
+
+	findings := make([]ConfigFinding, 0, 3)
+	appendFinding := func(kind, severity, title, description, remediation, findingResourceType string) {
+		findings = append(findings, ConfigFinding{
+			ID:           findingID(kind, filePath),
+			Type:         kind,
+			Severity:     severity,
+			Path:         filePath,
+			Title:        title,
+			Description:  description,
+			Remediation:  remediation,
+			ResourceType: firstNonEmpty(findingResourceType, resourceType),
+			ArtifactType: artifactType,
+			Format:       format,
+		})
+	}
+
+	if artifactType == "terraform_state" {
+		appendFinding(
+			"terraform_state",
+			"high",
+			"Terraform state file detected",
+			"Terraform state frequently persists provider credentials, infrastructure metadata, and plaintext secrets.",
+			"Remove state files from deployed artifacts and store state only in encrypted remote backends with access controls.",
+			"terraform_state",
+		)
+	}
+
+	if hasIaCPublicExposure(lowerText) {
+		appendFinding(
+			"iac_public_exposure",
+			"high",
+			"Public network exposure in IaC or config",
+			"IaC or configuration content allows unrestricted ingress or public exposure.",
+			"Replace public CIDRs or principals with scoped identities, private networking, or tightly bounded ranges.",
+			firstNonEmpty(inferPublicExposureResourceType(lowerText), resourceType),
+		)
+	}
+
+	if hasPublicStorageExposure(lowerText) {
+		appendFinding(
+			"iac_public_storage",
+			"high",
+			"Public storage access configured",
+			"Template or configuration grants public read access to storage resources.",
+			"Remove public principals and ACLs, then require authenticated access through scoped identities or signed requests.",
+			"bucket",
+		)
+	}
+
+	if supportsBucketEncryptionCheck(artifactType) && missingBucketEncryption(lowerText) {
+		appendFinding(
+			"iac_missing_bucket_encryption",
+			"medium",
+			"Bucket definition missing encryption setting",
+			"Storage bucket configuration is present without an explicit encryption setting.",
+			"Enable provider-managed encryption or a customer-managed KMS key in the IaC definition.",
+			"bucket",
+		)
+	}
+
+	return findings
+}
+
+func supportsBucketEncryptionCheck(artifactType string) bool {
+	switch strings.TrimSpace(artifactType) {
+	case "terraform", "terraform_json", "cloudformation":
+		return true
+	default:
+		return false
+	}
+}
+
+func inferIaCResourceType(filePath, text string) string {
+	lowerText := strings.ToLower(text)
+	switch {
+	case strings.Contains(lowerText, "aws_security_group"), strings.Contains(lowerText, "google_compute_firewall"), strings.Contains(lowerText, "networksecuritygroup"):
+		return "firewall_rule"
+	case strings.Contains(lowerText, "aws_s3_bucket"), strings.Contains(lowerText, "google_storage_bucket"), strings.Contains(lowerText, "azurerm_storage_account"), strings.Contains(lowerText, "aws::s3::bucket"):
+		return "bucket"
+	case strings.Contains(lowerText, "kind: service"), strings.Contains(lowerText, "kind: ingress"), strings.Contains(lowerText, "kind: networkpolicy"):
+		return "kubernetes_network"
+	case strings.Contains(strings.ToLower(filePath), "dockerfile"), strings.Contains(lowerText, "services:"):
+		return "container_service"
+	default:
+		return ""
+	}
+}
+
+func hasIaCPublicExposure(lowerText string) bool {
+	return strings.Contains(lowerText, "0.0.0.0/0") ||
+		strings.Contains(lowerText, "::/0") ||
+		strings.Contains(lowerText, "\"cidr\": \"0.0.0.0/0\"") ||
+		strings.Contains(lowerText, "host: 0.0.0.0") ||
+		strings.Contains(lowerText, "listen_address=0.0.0.0") ||
+		strings.Contains(lowerText, "source_ranges") && strings.Contains(lowerText, "0.0.0.0/0")
+}
+
+func hasPublicStorageExposure(lowerText string) bool {
+	return strings.Contains(lowerText, "allusers") ||
+		strings.Contains(lowerText, "allauthenticatedusers") ||
+		strings.Contains(lowerText, "public-read") ||
+		strings.Contains(lowerText, "\"principal\": \"*\"") && strings.Contains(lowerText, "s3:getobject")
+}
+
+func inferPublicExposureResourceType(lowerText string) string {
+	switch {
+	case strings.Contains(lowerText, "aws_security_group"), strings.Contains(lowerText, "google_compute_firewall"), strings.Contains(lowerText, "networksecuritygroup"), strings.Contains(lowerText, "source_ranges"):
+		return "firewall_rule"
+	case strings.Contains(lowerText, "kind: service"), strings.Contains(lowerText, "kind: ingress"):
+		return "kubernetes_service"
+	default:
+		return ""
+	}
+}
+
+func missingBucketEncryption(lowerText string) bool {
+	hasBucket := strings.Contains(lowerText, "aws_s3_bucket") ||
+		strings.Contains(lowerText, "google_storage_bucket") ||
+		strings.Contains(lowerText, "aws::s3::bucket")
+	if !hasBucket {
+		return false
+	}
+	return !strings.Contains(lowerText, "server_side_encryption_configuration") &&
+		!strings.Contains(lowerText, "bucketencryption") &&
+		!strings.Contains(lowerText, "default_kms_key_name") &&
+		!strings.Contains(lowerText, "kms_key_name") &&
+		!strings.Contains(lowerText, "encryption")
 }
 
 func scanSecrets(filePath string, data []byte) []SecretFinding {

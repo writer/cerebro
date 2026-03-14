@@ -16,23 +16,25 @@ const graphMaterializationSourceSystem = "cerebro_workload_scan"
 
 // GraphMaterializationResult summarizes one batch of graph writes derived from workload scans.
 type GraphMaterializationResult struct {
-	RunsConsidered         int `json:"runs_considered"`
-	RunsMaterialized       int `json:"runs_materialized"`
-	RunsSkipped            int `json:"runs_skipped"`
-	TargetLinksCreated     int `json:"target_links_created"`
-	ScanNodesUpserted      int `json:"scan_nodes_upserted"`
-	SecretNodesUpserted    int `json:"secret_nodes_upserted"`
-	PackageNodesUpserted   int `json:"package_nodes_upserted"`
-	VulnNodesUpserted      int `json:"vulnerability_nodes_upserted"`
-	ScanSecretEdges        int `json:"scan_secret_edges"`
-	SecretTargetEdges      int `json:"secret_target_edges"`
-	CredentialPivotEdges   int `json:"credential_pivot_edges"`
-	ScanPackageEdges       int `json:"scan_package_edges"`
-	ScanVulnEdges          int `json:"scan_vulnerability_edges"`
-	PackageVulnEdges       int `json:"package_vulnerability_edges"`
-	SkippedUnresolvedRuns  int `json:"skipped_unresolved_runs"`
-	SkippedIncompleteRuns  int `json:"skipped_incomplete_runs"`
-	SkippedUnsupportedRuns int `json:"skipped_unsupported_runs"`
+	RunsConsidered           int `json:"runs_considered"`
+	RunsMaterialized         int `json:"runs_materialized"`
+	RunsSkipped              int `json:"runs_skipped"`
+	TargetLinksCreated       int `json:"target_links_created"`
+	ScanNodesUpserted        int `json:"scan_nodes_upserted"`
+	ObservationNodesUpserted int `json:"observation_nodes_upserted"`
+	SecretNodesUpserted      int `json:"secret_nodes_upserted"`
+	PackageNodesUpserted     int `json:"package_nodes_upserted"`
+	VulnNodesUpserted        int `json:"vulnerability_nodes_upserted"`
+	ScanObservationEdges     int `json:"scan_observation_edges"`
+	ScanSecretEdges          int `json:"scan_secret_edges"`
+	SecretTargetEdges        int `json:"secret_target_edges"`
+	CredentialPivotEdges     int `json:"credential_pivot_edges"`
+	ScanPackageEdges         int `json:"scan_package_edges"`
+	ScanVulnEdges            int `json:"scan_vulnerability_edges"`
+	PackageVulnEdges         int `json:"package_vulnerability_edges"`
+	SkippedUnresolvedRuns    int `json:"skipped_unresolved_runs"`
+	SkippedIncompleteRuns    int `json:"skipped_incomplete_runs"`
+	SkippedUnsupportedRuns   int `json:"skipped_unsupported_runs"`
 }
 
 type resolvedRun struct {
@@ -50,6 +52,10 @@ type secretAggregate struct {
 
 type vulnerabilityAggregate struct {
 	record scanner.ImageVulnerability
+}
+
+type configAggregate struct {
+	record filesystemanalyzer.ConfigFinding
 }
 
 type packageVulnerabilityAggregate struct {
@@ -71,6 +77,7 @@ type scanSummary struct {
 	FixableCount               int
 	SecretCount                int
 	MisconfigurationCount      int
+	IaCArtifactCount           int
 	MalwareCount               int
 	FindingCount               int64
 	OSName                     string
@@ -137,9 +144,11 @@ func MaterializeRunsIntoGraph(g *graph.Graph, runs []RunRecord, now time.Time) G
 			result.RunsSkipped += batch.RunsSkipped
 			result.TargetLinksCreated += batch.TargetLinksCreated
 			result.ScanNodesUpserted += batch.ScanNodesUpserted
+			result.ObservationNodesUpserted += batch.ObservationNodesUpserted
 			result.SecretNodesUpserted += batch.SecretNodesUpserted
 			result.PackageNodesUpserted += batch.PackageNodesUpserted
 			result.VulnNodesUpserted += batch.VulnNodesUpserted
+			result.ScanObservationEdges += batch.ScanObservationEdges
 			result.ScanSecretEdges += batch.ScanSecretEdges
 			result.SecretTargetEdges += batch.SecretTargetEdges
 			result.CredentialPivotEdges += batch.CredentialPivotEdges
@@ -173,7 +182,7 @@ func materializeOneRun(g *graph.Graph, target *graph.Node, run RunRecord, validT
 		return result
 	}
 	validFrom := runValidFrom(run, seenAt)
-	summary, secrets, packages, vulns, relations := summarizeRun(run)
+	summary, findings, secrets, packages, vulns, relations := summarizeRun(run)
 	sourceEventID := fmt.Sprintf("workload_scan:%s", firstNonEmpty(strings.TrimSpace(run.ID), syntheticRunKey(run)))
 	writeMeta := graph.NormalizeWriteMetadata(
 		seenAt,
@@ -224,6 +233,7 @@ func materializeOneRun(g *graph.Graph, target *graph.Node, run RunRecord, validT
 			"fixable_vulnerability_count":     summary.FixableCount,
 			"secret_count":                    summary.SecretCount,
 			"misconfiguration_count":          summary.MisconfigurationCount,
+			"iac_artifact_count":              summary.IaCArtifactCount,
 			"malware_count":                   summary.MalwareCount,
 			"finding_count":                   summary.FindingCount,
 			"sbom_ref":                        summary.SBOMRef,
@@ -335,6 +345,37 @@ func materializeOneRun(g *graph.Graph, target *graph.Node, run RunRecord, validT
 		}
 	}
 
+	for _, findingAgg := range findings {
+		observationMeta := graph.NormalizeWriteMetadata(
+			seenAt,
+			validFrom,
+			nil,
+			graphMaterializationSourceSystem,
+			fmt.Sprintf("%s:iac_finding:%s", sourceEventID, slugify(findingAgg.record.ID)),
+			1.0,
+			graph.WriteMetadataDefaults{
+				Now:             now,
+				RecordedAt:      seenAt,
+				TransactionFrom: seenAt,
+				SourceSystem:    graphMaterializationSourceSystem,
+			},
+		)
+		observationNode := buildIaCFindingObservationNode(scanNode, target, findingAgg.record, observationMeta)
+		g.AddNode(observationNode)
+		result.ObservationNodesUpserted++
+		if addEdgeIfMissing(g, &graph.Edge{
+			ID:         edgeID(observationNode.ID, scanNode.ID, graph.EdgeKindTargets),
+			Source:     observationNode.ID,
+			Target:     scanNode.ID,
+			Kind:       graph.EdgeKindTargets,
+			Effect:     graph.EdgeEffectAllow,
+			Properties: cloneWorkloadAnyMap(observationMeta.PropertyMap()),
+			Risk:       observationNode.Risk,
+		}) {
+			result.ScanObservationEdges++
+		}
+	}
+
 	secretResult := materializeSecretPivots(g, target, scanNode, secrets, writeMeta, now)
 	result.SecretNodesUpserted += secretResult.SecretNodesUpserted
 	result.ScanSecretEdges += secretResult.ScanSecretEdges
@@ -399,15 +440,17 @@ func resolveTargetNode(g *graph.Graph, run RunRecord) (*graph.Node, bool) {
 	return nil, false
 }
 
-func summarizeRun(run RunRecord) (scanSummary, map[string]secretAggregate, map[string]packageAggregate, map[string]vulnerabilityAggregate, map[string]packageVulnerabilityAggregate) {
+func summarizeRun(run RunRecord) (scanSummary, map[string]configAggregate, map[string]secretAggregate, map[string]packageAggregate, map[string]vulnerabilityAggregate, map[string]packageVulnerabilityAggregate) {
 	summary := scanSummary{
 		FindingCount: run.Summary.Findings,
 		Risk:         graph.RiskNone,
 	}
+	findings := make(map[string]configAggregate)
 	secrets := make(map[string]secretAggregate)
 	packages := make(map[string]packageAggregate)
 	vulns := make(map[string]vulnerabilityAggregate)
 	relations := make(map[string]packageVulnerabilityAggregate)
+	iacArtifacts := make(map[string]filesystemanalyzer.IaCArtifact)
 
 	for _, volume := range run.Volumes {
 		if volume.Analysis == nil || volume.Analysis.Catalog == nil {
@@ -425,6 +468,15 @@ func summarizeRun(run RunRecord) (scanSummary, map[string]secretAggregate, map[s
 		summary.SecretCount += len(catalog.Secrets)
 		summary.MisconfigurationCount += len(catalog.Misconfigurations)
 		summary.MalwareCount += len(catalog.Malware)
+		for _, artifact := range catalog.IaCArtifacts {
+			artifactID := strings.TrimSpace(artifact.ID)
+			if artifactID == "" {
+				continue
+			}
+			if _, exists := iacArtifacts[artifactID]; !exists {
+				iacArtifacts[artifactID] = artifact
+			}
+		}
 		for _, secret := range catalog.Secrets {
 			secretID := strings.TrimSpace(secret.ID)
 			if secretID == "" {
@@ -433,6 +485,19 @@ func summarizeRun(run RunRecord) (scanSummary, map[string]secretAggregate, map[s
 			if _, exists := secrets[secretID]; !exists {
 				secrets[secretID] = secretAggregate{record: secret}
 			}
+			summary.Risk = maxRiskLevel(summary.Risk, severityToRisk(secret.Severity, false))
+		}
+		for _, finding := range catalog.Misconfigurations {
+			summary.Risk = maxRiskLevel(summary.Risk, severityToRisk(finding.Severity, false))
+			if strings.TrimSpace(finding.ID) == "" || strings.TrimSpace(finding.ArtifactType) == "" {
+				continue
+			}
+			if _, exists := findings[finding.ID]; !exists {
+				findings[finding.ID] = configAggregate{record: finding}
+			}
+		}
+		for _, malware := range catalog.Malware {
+			summary.Risk = maxRiskLevel(summary.Risk, severityToRisk(malware.Severity, false))
 		}
 
 		for _, pkg := range catalog.Packages {
@@ -470,6 +535,7 @@ func summarizeRun(run RunRecord) (scanSummary, map[string]secretAggregate, map[s
 		}
 	}
 
+	summary.IaCArtifactCount = len(iacArtifacts)
 	summary.PackageCount = len(packages)
 	summary.VulnerabilityCount = len(vulns)
 	for _, vulnAgg := range vulns {
@@ -495,8 +561,8 @@ func summarizeRun(run RunRecord) (scanSummary, map[string]secretAggregate, map[s
 			summary.FixableCount++
 		}
 	}
-	summary.Risk = summaryRisk(summary)
-	return summary, secrets, packages, vulns, relations
+	summary.Risk = maxRiskLevel(summary.Risk, summaryRisk(summary))
+	return summary, findings, secrets, packages, vulns, relations
 }
 
 func mergeVulnerabilityRecord(existing, incoming scanner.ImageVulnerability) scanner.ImageVulnerability {
@@ -577,11 +643,43 @@ func buildVulnerabilityNode(vuln scanner.ImageVulnerability, target *graph.Node,
 	}
 }
 
+func buildIaCFindingObservationNode(scanNode, target *graph.Node, finding filesystemanalyzer.ConfigFinding, metadata graph.WriteMetadata) *graph.Node {
+	properties := map[string]any{
+		"observation_type": "workload_iac_finding",
+		"subject_id":       scanNode.ID,
+		"detail":           finding.Title,
+		"finding_id":       strings.TrimSpace(finding.ID),
+		"finding_type":     strings.TrimSpace(finding.Type),
+		"severity":         normalizeSeverity(finding.Severity),
+		"file_path":        strings.TrimSpace(finding.Path),
+		"description":      strings.TrimSpace(finding.Description),
+		"remediation":      strings.TrimSpace(finding.Remediation),
+		"resource_type":    strings.TrimSpace(finding.ResourceType),
+		"artifact_type":    strings.TrimSpace(finding.ArtifactType),
+		"format":           strings.TrimSpace(finding.Format),
+	}
+	metadata.ApplyTo(properties)
+	return &graph.Node{
+		ID:         iacFindingObservationNodeID(scanNode.ID, finding),
+		Kind:       graph.NodeKindObservation,
+		Name:       firstNonEmpty(strings.TrimSpace(finding.Title), strings.TrimSpace(finding.Type), "workload iac finding"),
+		Provider:   target.Provider,
+		Account:    target.Account,
+		Region:     target.Region,
+		Risk:       severityToRisk(finding.Severity, false),
+		Properties: properties,
+	}
+}
+
 func nodeID(run RunRecord) string {
 	if id := strings.TrimSpace(run.ID); id != "" {
 		return id
 	}
 	return "workload_scan:" + syntheticRunKey(run)
+}
+
+func iacFindingObservationNodeID(scanNodeID string, finding filesystemanalyzer.ConfigFinding) string {
+	return fmt.Sprintf("observation:iac:%s:%s", slugify(scanNodeID), slugify(firstNonEmpty(strings.TrimSpace(finding.ID), strings.TrimSpace(finding.Path), strings.TrimSpace(finding.Title))))
 }
 
 func packageNodeID(pkg filesystemanalyzer.PackageRecord) string {
