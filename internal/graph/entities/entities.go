@@ -26,12 +26,6 @@ type (
 	EntityPostureClaimRecord      = graph.EntityPostureClaimRecord
 	EntityPostureSummary          = graph.EntityPostureSummary
 	EntitySubresourceRecord       = graph.EntitySubresourceRecord
-	EntitySearchOptions           = graph.EntitySearchOptions
-	EntitySearchResult            = graph.EntitySearchResult
-	EntitySearchCollection        = graph.EntitySearchCollection
-	EntitySuggestOptions          = graph.EntitySuggestOptions
-	EntitySuggestCollection       = graph.EntitySuggestCollection
-	EntitySuggestion              = graph.EntitySuggestion
 )
 
 func QueryEntities(g *graph.Graph, opts EntityQueryOptions) EntityCollection {
@@ -40,12 +34,4 @@ func QueryEntities(g *graph.Graph, opts EntityQueryOptions) EntityCollection {
 
 func GetEntityRecord(g *graph.Graph, id string, validAt, recordedAt time.Time) (EntityRecord, bool) {
 	return graph.GetEntityRecord(g, id, validAt, recordedAt)
-}
-
-func SearchEntities(g *graph.Graph, opts EntitySearchOptions) EntitySearchCollection {
-	return graph.SearchEntities(g, opts)
-}
-
-func SuggestEntities(g *graph.Graph, opts EntitySuggestOptions) EntitySuggestCollection {
-	return graph.SuggestEntities(g, opts)
 }
