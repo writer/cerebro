@@ -73,11 +73,19 @@ func GetEntityFacetDefinition(id string) (EntityFacetDefinition, bool) {
 }
 
 func DefaultEntityFacetDefinitions() []EntityFacetDefinition {
-	return graph.DefaultEntityFacetDefinitions()
+	return graph.ListEntityFacetDefinitions()
 }
 
 func EntityFacetAppliesToNode(def EntityFacetDefinition, kind graph.NodeKind) bool {
-	return graph.EntityFacetAppliesToNode(def, kind)
+	if len(def.ApplicableKinds) == 0 {
+		return true
+	}
+	for _, candidate := range def.ApplicableKinds {
+		if candidate == kind {
+			return true
+		}
+	}
+	return false
 }
 
 func CompareEntityFacetContractCatalogs(baseline, current EntityFacetContractCatalog, now time.Time) EntityFacetCompatibilityReport {

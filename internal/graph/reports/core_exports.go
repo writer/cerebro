@@ -109,9 +109,7 @@ var (
 	BuildIdentityCalibrationReport     = graph.BuildIdentityCalibrationReport
 	BuildReportGraphSnapshotID         = graph.BuildReportGraphSnapshotID
 	CurrentGraphSnapshotRecord         = graph.CurrentGraphSnapshotRecord
-	DefaultEntityFacetDefinitions      = entities.DefaultEntityFacetDefinitions
 	DefaultGraphQueryTemplates         = graph.DefaultGraphQueryTemplates
-	EntityFacetAppliesToNode           = entities.EntityFacetAppliesToNode
 	FirstNonEmpty                      = graph.FirstNonEmpty
 	GlobalSchemaRegistry               = graph.GlobalSchemaRegistry
 	GraphSnapshotCollectionFromRecords = graph.GraphSnapshotCollectionFromRecords
@@ -138,8 +136,8 @@ var (
 	temporalNowUTC                = TemporalNowUTC
 	firstNonEmpty                 = FirstNonEmpty
 	buildReportGraphSnapshotID    = BuildReportGraphSnapshotID
-	defaultEntityFacetDefinitions = DefaultEntityFacetDefinitions()
-	entityFacetAppliesToNode      = EntityFacetAppliesToNode
+	defaultEntityFacetDefinitions = entities.DefaultEntityFacetDefinitions()
+	entityFacetAppliesToNode      = entities.EntityFacetAppliesToNode
 	sanitizeReportFileName        = SanitizeReportFileName
 	sortedSchemaKindCounts        = SortedSchemaKindCounts
 	normalizeNodeMetadataProfile  = NormalizeNodeMetadataProfile

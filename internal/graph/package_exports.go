@@ -12,14 +12,6 @@ func FirstNonEmpty(values ...string) string {
 	return firstNonEmpty(values...)
 }
 
-func DefaultEntityFacetDefinitions() []EntityFacetDefinition {
-	return append([]EntityFacetDefinition(nil), defaultEntityFacetDefinitions...)
-}
-
-func EntityFacetAppliesToNode(def EntityFacetDefinition, kind NodeKind) bool {
-	return entityFacetAppliesToNode(def, kind)
-}
-
 func SortedSchemaKindCounts(values map[string]int) []SchemaKindCount {
 	return sortedSchemaKindCounts(values)
 }

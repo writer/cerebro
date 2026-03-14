@@ -242,14 +242,14 @@ func TestPlatformWorkloadScanTargetsPrioritizeGraphSignals(t *testing.T) {
 	g.AddEdge(&graph.Edge{ID: "role->db", Source: "role:admin", Target: "db:prod", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow})
 	g.BuildIndex()
 
-	lastCompletedAt := time.Date(2026, 3, 13, 11, 30, 0, 0, time.UTC)
+	lastCompletedAt := time.Now().UTC().Add(-12 * time.Hour)
 	workloadRun := workloadscan.RunRecord{
 		ID:          "workload_scan:fresh",
 		Provider:    workloadscan.ProviderAWS,
 		Status:      workloadscan.RunStatusSucceeded,
 		Stage:       workloadscan.RunStageCompleted,
 		Target:      workloadscan.VMTarget{Provider: workloadscan.ProviderAWS, Region: "us-east-1", InstanceID: "i-fresh"},
-		SubmittedAt: time.Date(2026, 3, 13, 11, 0, 0, 0, time.UTC),
+		SubmittedAt: lastCompletedAt.Add(-30 * time.Minute),
 		UpdatedAt:   lastCompletedAt,
 		CompletedAt: &lastCompletedAt,
 	}
