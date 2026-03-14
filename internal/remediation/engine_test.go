@@ -45,6 +45,12 @@ func TestEngine_ListRules(t *testing.T) {
 		"aws-unused-access-key-disable",
 		"gcp-user-managed-key-notify",
 		"gcp-user-managed-key-disable",
+		"aws-security-group-ssh-notify",
+		"aws-security-group-ssh-restrict",
+		"aws-security-group-rdp-notify",
+		"aws-security-group-rdp-restrict",
+		"aws-security-group-all-traffic-notify",
+		"aws-security-group-all-traffic-restrict",
 		"identity-excessive-privilege-remediation",
 		"dspm-restricted-data-unencrypted-remediation",
 		"dspm-confidential-data-public-remediation",
@@ -93,6 +99,17 @@ func TestEngine_DefaultSafeCatalogRulesIncludeApprovalGatedActions(t *testing.T)
 	}
 	if !foundDisable {
 		t.Fatalf("expected aws-unused-access-key-disable to include %s", ActionDisableStaleAccessKey)
+	}
+
+	sshRestrictRule, ok := engine.GetRule("aws-security-group-ssh-restrict")
+	if !ok {
+		t.Fatal("expected aws-security-group-ssh-restrict rule")
+	}
+	if len(sshRestrictRule.Actions) != 1 || sshRestrictRule.Actions[0].Type != ActionRestrictPublicSecurityGroupIngress {
+		t.Fatalf("expected dedicated ingress restriction action rule, got %+v", sshRestrictRule.Actions)
+	}
+	if sshRestrictRule.Actions[0].Config["approval_mode"] != "required" {
+		t.Fatalf("expected ingress restriction rule to require approval, got %#v", sshRestrictRule.Actions[0].Config)
 	}
 
 	staleUserRule, ok := engine.GetRule("identity-stale-user-remediation")
@@ -144,6 +161,24 @@ func TestEngine_ApprovalCatalogRulesDoNotBlockNotificationRules(t *testing.T) {
 	disableKeyPlaybook := remediationPlaybookFromRule(*disableKeyRule, executor)
 	if !executor.shared.RequiresApproval(disableKeyPlaybook) {
 		t.Fatal("expected aws-unused-access-key-disable playbook to require approval")
+	}
+
+	sshNotifyRule, ok := engine.GetRule("aws-security-group-ssh-notify")
+	if !ok {
+		t.Fatal("expected aws-security-group-ssh-notify rule")
+	}
+	sshNotifyPlaybook := remediationPlaybookFromRule(*sshNotifyRule, executor)
+	if executor.shared.RequiresApproval(sshNotifyPlaybook) {
+		t.Fatal("expected aws-security-group-ssh-notify playbook not to require approval")
+	}
+
+	sshRestrictRule, ok := engine.GetRule("aws-security-group-ssh-restrict")
+	if !ok {
+		t.Fatal("expected aws-security-group-ssh-restrict rule")
+	}
+	sshRestrictPlaybook := remediationPlaybookFromRule(*sshRestrictRule, executor)
+	if !executor.shared.RequiresApproval(sshRestrictPlaybook) {
+		t.Fatal("expected aws-security-group-ssh-restrict playbook to require approval")
 	}
 }
 

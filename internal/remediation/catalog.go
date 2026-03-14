@@ -104,6 +104,42 @@ var remediationCatalog = []CatalogEntry{
 		},
 		BlastRadiusRationale: "Disables one stale credential instead of deleting an identity or broadening access.",
 	},
+	{
+		ID:               "restrict_public_security_group_ingress",
+		ActionType:       ActionRestrictPublicSecurityGroupIngress,
+		Name:             "Restrict public security group ingress",
+		Description:      "Revoke public AWS security group ingress rules for SSH, RDP, or all-traffic exposures.",
+		Providers:        []string{"aws"},
+		ResourceTypes:    []string{"security_group", "security_group_rule", "aws:ec2:security_group"},
+		SafeByDefault:    true,
+		SupportsDryRun:   true,
+		SupportsRollback: true,
+		RequiresApproval: true,
+		BlastRadius:      BlastRadiusLow,
+		Preconditions: []string{
+			"A matching public ingress rule is still present on the security group.",
+			"The security group identifier and provider are known.",
+		},
+		RollbackSteps: []string{
+			"Re-authorize the captured ingress rule if access was intentionally public.",
+			"Restore the previous CIDR, protocol, and port range from the captured evidence snapshot.",
+		},
+		EvidenceFields: []string{
+			"policy_id",
+			"resource_id",
+			"resource_name",
+			"provider",
+			"matched_rule_count",
+			"matched_ports",
+			"matched_cidrs",
+			"before",
+			"after",
+		},
+		DefaultRemoteTools: map[string]string{
+			"aws": "aws.ec2.revoke_security_group_ingress",
+		},
+		BlastRadiusRationale: "Revokes targeted public ingress rules on one security group without deleting the resource.",
+	},
 }
 
 func Catalog() []CatalogEntry {

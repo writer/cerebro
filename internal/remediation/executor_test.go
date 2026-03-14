@@ -346,6 +346,229 @@ func TestExecutor_RestrictPublicStorageAccessDoesNotTrustStalePolicyWithoutCurre
 	}
 }
 
+func TestExecutor_RestrictPublicSecurityGroupIngressDryRunCapturesMetadata(t *testing.T) {
+	engine := NewEngine(testutil.Logger())
+	rule := Rule{
+		ID:      "restrict-public-security-group-ingress-dry-run",
+		Name:    "Restrict Public Security Group Ingress Dry Run",
+		Enabled: true,
+		Trigger: Trigger{Type: TriggerManual},
+		Actions: []Action{{
+			Type: ActionRestrictPublicSecurityGroupIngress,
+			Config: map[string]string{
+				"dry_run":       "true",
+				"approval_mode": "auto",
+			},
+		}},
+	}
+	if err := engine.AddRule(rule); err != nil {
+		t.Fatalf("add rule: %v", err)
+	}
+
+	executions, err := engine.Evaluate(context.Background(), Event{
+		Type:     TriggerManual,
+		PolicyID: "aws-security-group-restrict-ssh",
+		EntityID: "arn:aws:ec2:us-east-1:123456789012:security-group/sg-123",
+		Data: map[string]any{
+			"resource_id":       "arn:aws:ec2:us-east-1:123456789012:security-group/sg-123",
+			"resource_name":     "public-ssh",
+			"resource_type":     "security_group",
+			"resource_platform": "aws",
+			"resource": map[string]any{
+				"ip_permissions": []any{
+					map[string]any{
+						"IpProtocol": "tcp",
+						"FromPort":   22,
+						"ToPort":     22,
+						"IpRanges": []any{
+							map[string]any{"CidrIp": "0.0.0.0/0"},
+						},
+					},
+					map[string]any{
+						"IpProtocol": "tcp",
+						"FromPort":   443,
+						"ToPort":     443,
+						"IpRanges": []any{
+							map[string]any{"CidrIp": "0.0.0.0/0"},
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	execution := executions[0]
+	executor := NewExecutor(engine, nil, nil, nil, nil)
+
+	if err := executor.Execute(context.Background(), execution); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if execution.Status != ExecutionCompleted {
+		t.Fatalf("status = %s, want %s", execution.Status, ExecutionCompleted)
+	}
+	if len(execution.Actions) != 1 {
+		t.Fatalf("expected one action result, got %d", len(execution.Actions))
+	}
+	metadata := execution.Actions[0].Metadata
+	if dryRun, _ := metadata["dry_run"].(bool); !dryRun {
+		t.Fatalf("expected dry_run metadata, got %#v", metadata)
+	}
+	if metadata["planned_tool"] != "aws.ec2.revoke_security_group_ingress" {
+		t.Fatalf("unexpected planned tool metadata: %#v", metadata["planned_tool"])
+	}
+	if matchedRuleCount, _ := metadata["matched_rule_count"].(int); matchedRuleCount != 1 {
+		t.Fatalf("matched_rule_count = %#v, want 1", metadata["matched_rule_count"])
+	}
+	matchedPorts, _ := metadata["matched_ports"].([]string)
+	if len(matchedPorts) != 1 || matchedPorts[0] != "22" {
+		t.Fatalf("matched_ports = %#v, want [22]", metadata["matched_ports"])
+	}
+	matchedCIDRs, _ := metadata["matched_cidrs"].([]string)
+	if len(matchedCIDRs) != 1 || matchedCIDRs[0] != "0.0.0.0/0" {
+		t.Fatalf("matched_cidrs = %#v, want [0.0.0.0/0]", metadata["matched_cidrs"])
+	}
+	after, _ := metadata["after"].(map[string]any)
+	if planned, _ := after["planned"].(bool); !planned {
+		t.Fatalf("expected planned after-state metadata, got %#v", after)
+	}
+}
+
+func TestExecutor_RestrictPublicSecurityGroupIngressRequiresApprovalByDefault(t *testing.T) {
+	engine := NewEngine(testutil.Logger())
+	rule := Rule{
+		ID:      "restrict-public-security-group-ingress",
+		Name:    "Restrict Public Security Group Ingress",
+		Enabled: true,
+		Trigger: Trigger{Type: TriggerManual},
+		Actions: []Action{{
+			Type: ActionRestrictPublicSecurityGroupIngress,
+		}},
+	}
+	if err := engine.AddRule(rule); err != nil {
+		t.Fatalf("add rule: %v", err)
+	}
+
+	executions, err := engine.Evaluate(context.Background(), Event{
+		Type:     TriggerManual,
+		PolicyID: "aws-security-group-restrict-rdp",
+		EntityID: "arn:aws:ec2:us-east-1:123456789012:security-group/sg-456",
+		Data: map[string]any{
+			"resource_id":       "arn:aws:ec2:us-east-1:123456789012:security-group/sg-456",
+			"resource_name":     "public-rdp",
+			"resource_type":     "security_group_rule",
+			"resource_platform": "aws",
+			"direction":         "ingress",
+			"protocol":          "tcp",
+			"from_port":         3389,
+			"to_port":           3389,
+			"ip_ranges": []any{
+				map[string]any{"CidrIp": "0.0.0.0/0"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	execution := executions[0]
+	caller := &fakeRemoteCaller{
+		responses: map[string][]fakeRemoteCallResult{
+			"aws.ec2.revoke_security_group_ingress": {{output: `{"revoked":1}`}},
+		},
+	}
+	executor := NewExecutor(engine, nil, nil, nil, nil)
+	executor.SetRemoteCaller(caller)
+
+	if err := executor.Execute(context.Background(), execution); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if execution.Status != ExecutionApproval {
+		t.Fatalf("status = %s, want %s", execution.Status, ExecutionApproval)
+	}
+	if len(caller.calls) != 0 {
+		t.Fatalf("expected no remote call before approval, got %v", caller.calls)
+	}
+
+	if err := executor.Approve(context.Background(), execution.ID, "security@example.com"); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if execution.Status != ExecutionCompleted {
+		t.Fatalf("status = %s, want %s", execution.Status, ExecutionCompleted)
+	}
+	if len(caller.calls) != 1 || caller.calls[0] != "aws.ec2.revoke_security_group_ingress" {
+		t.Fatalf("unexpected remote calls: %v", caller.calls)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(caller.payloads[0], &payload); err != nil {
+		t.Fatalf("unmarshal remote payload: %v", err)
+	}
+	triggerData, _ := payload["trigger_data"].(map[string]any)
+	if _, ok := triggerData["security_group_rule_matches"].([]any); !ok {
+		t.Fatalf("expected security_group_rule_matches in trigger data payload, got %#v", triggerData["security_group_rule_matches"])
+	}
+}
+
+func TestExecutor_RestrictPublicSecurityGroupIngressFailsPreconditionWhenPolicyDoesNotMatchRule(t *testing.T) {
+	engine := NewEngine(testutil.Logger())
+	rule := Rule{
+		ID:      "restrict-public-security-group-ingress-no-match",
+		Name:    "Restrict Public Security Group Ingress No Match",
+		Enabled: true,
+		Trigger: Trigger{Type: TriggerManual},
+		Actions: []Action{{
+			Type: ActionRestrictPublicSecurityGroupIngress,
+			Config: map[string]string{
+				"dry_run":       "true",
+				"approval_mode": "auto",
+			},
+		}},
+	}
+	if err := engine.AddRule(rule); err != nil {
+		t.Fatalf("add rule: %v", err)
+	}
+
+	executions, err := engine.Evaluate(context.Background(), Event{
+		Type:     TriggerManual,
+		PolicyID: "aws-security-group-restrict-ssh",
+		EntityID: "arn:aws:ec2:us-east-1:123456789012:security-group/sg-789",
+		Data: map[string]any{
+			"resource_id":       "arn:aws:ec2:us-east-1:123456789012:security-group/sg-789",
+			"resource_name":     "public-web",
+			"resource_type":     "security_group",
+			"resource_platform": "aws",
+			"resource": map[string]any{
+				"ip_permissions": []any{
+					map[string]any{
+						"IpProtocol": "tcp",
+						"FromPort":   443,
+						"ToPort":     443,
+						"IpRanges": []any{
+							map[string]any{"CidrIp": "0.0.0.0/0"},
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	execution := executions[0]
+	executor := NewExecutor(engine, nil, nil, nil, nil)
+
+	err = executor.Execute(context.Background(), execution)
+	if err == nil {
+		t.Fatal("expected precondition failure")
+	}
+	if !strings.Contains(err.Error(), "precondition failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if execution.Status != ExecutionFailed {
+		t.Fatalf("status = %s, want %s", execution.Status, ExecutionFailed)
+	}
+}
+
 func TestExecutor_DisableStaleAccessKeyFailsPreconditionWhenKeyIsFresh(t *testing.T) {
 	engine := NewEngine(testutil.Logger())
 	rule := Rule{
