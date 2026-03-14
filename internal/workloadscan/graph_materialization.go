@@ -50,6 +50,10 @@ type secretAggregate struct {
 	record filesystemanalyzer.SecretFinding
 }
 
+type malwareAggregate struct {
+	record filesystemanalyzer.MalwareFinding
+}
+
 type vulnerabilityAggregate struct {
 	record scanner.ImageVulnerability
 }
@@ -182,7 +186,7 @@ func materializeOneRun(g *graph.Graph, target *graph.Node, run RunRecord, validT
 		return result
 	}
 	validFrom := runValidFrom(run, seenAt)
-	summary, findings, secrets, packages, vulns, relations := summarizeRun(run)
+	summary, findings, secrets, malware, packages, vulns, relations := summarizeRun(run)
 	sourceEventID := fmt.Sprintf("workload_scan:%s", firstNonEmpty(strings.TrimSpace(run.ID), syntheticRunKey(run)))
 	writeMeta := graph.NormalizeWriteMetadata(
 		seenAt,
@@ -377,6 +381,37 @@ func materializeOneRun(g *graph.Graph, target *graph.Node, run RunRecord, validT
 		}
 	}
 
+	for _, malwareAgg := range malware {
+		observationMeta := graph.NormalizeWriteMetadata(
+			seenAt,
+			validFrom,
+			nil,
+			graphMaterializationSourceSystem,
+			fmt.Sprintf("%s:malware:%s", sourceEventID, malwareKey(malwareAgg.record)),
+			1.0,
+			graph.WriteMetadataDefaults{
+				Now:             now,
+				RecordedAt:      seenAt,
+				TransactionFrom: seenAt,
+				SourceSystem:    graphMaterializationSourceSystem,
+			},
+		)
+		observationNode := buildMalwareObservationNode(scanNode, target, malwareAgg.record, observationMeta)
+		g.AddNode(observationNode)
+		result.ObservationNodesUpserted++
+		if addEdgeIfMissing(g, &graph.Edge{
+			ID:         edgeID(observationNode.ID, scanNode.ID, graph.EdgeKindTargets),
+			Source:     observationNode.ID,
+			Target:     scanNode.ID,
+			Kind:       graph.EdgeKindTargets,
+			Effect:     graph.EdgeEffectAllow,
+			Properties: cloneWorkloadAnyMap(observationMeta.PropertyMap()),
+			Risk:       observationNode.Risk,
+		}) {
+			result.ScanObservationEdges++
+		}
+	}
+
 	secretResult := materializeSecretPivots(g, target, scanNode, secrets, writeMeta, now)
 	result.SecretNodesUpserted += secretResult.SecretNodesUpserted
 	result.ScanSecretEdges += secretResult.ScanSecretEdges
@@ -478,13 +513,14 @@ func resolveTargetNode(g *graph.Graph, run RunRecord) (*graph.Node, bool) {
 	return nil, false
 }
 
-func summarizeRun(run RunRecord) (scanSummary, map[string]configAggregate, map[string]secretAggregate, map[string]packageAggregate, map[string]vulnerabilityAggregate, map[string]packageVulnerabilityAggregate) {
+func summarizeRun(run RunRecord) (scanSummary, map[string]configAggregate, map[string]secretAggregate, map[string]malwareAggregate, map[string]packageAggregate, map[string]vulnerabilityAggregate, map[string]packageVulnerabilityAggregate) {
 	summary := scanSummary{
 		FindingCount: run.Summary.Findings,
 		Risk:         graph.RiskNone,
 	}
 	findings := make(map[string]configAggregate)
 	secrets := make(map[string]secretAggregate)
+	malware := make(map[string]malwareAggregate)
 	packages := make(map[string]packageAggregate)
 	vulns := make(map[string]vulnerabilityAggregate)
 	relations := make(map[string]packageVulnerabilityAggregate)
@@ -534,8 +570,12 @@ func summarizeRun(run RunRecord) (scanSummary, map[string]configAggregate, map[s
 				findings[finding.ID] = configAggregate{record: finding}
 			}
 		}
-		for _, malware := range catalog.Malware {
-			summary.Risk = maxRiskLevel(summary.Risk, severityToRisk(malware.Severity, false))
+		for _, malwareFinding := range catalog.Malware {
+			summary.Risk = maxRiskLevel(summary.Risk, severityToRisk(malwareFinding.Severity, false))
+			key := malwareKey(malwareFinding)
+			if _, exists := malware[key]; !exists {
+				malware[key] = malwareAggregate{record: malwareFinding}
+			}
 		}
 
 		for _, pkg := range catalog.Packages {
@@ -600,7 +640,7 @@ func summarizeRun(run RunRecord) (scanSummary, map[string]configAggregate, map[s
 		}
 	}
 	summary.Risk = maxRiskLevel(summary.Risk, summaryRisk(summary))
-	return summary, findings, secrets, packages, vulns, relations
+	return summary, findings, secrets, malware, packages, vulns, relations
 }
 
 func mergeVulnerabilityRecord(existing, incoming scanner.ImageVulnerability) scanner.ImageVulnerability {
@@ -709,6 +749,33 @@ func buildIaCFindingObservationNode(scanNode, target *graph.Node, finding filesy
 	}
 }
 
+func buildMalwareObservationNode(scanNode, target *graph.Node, finding filesystemanalyzer.MalwareFinding, metadata graph.WriteMetadata) *graph.Node {
+	properties := map[string]any{
+		"observation_type": "workload_malware_finding",
+		"subject_id":       scanNode.ID,
+		"detail":           firstNonEmpty(strings.TrimSpace(finding.MalwareName), strings.TrimSpace(finding.MalwareType), "malware signature detected"),
+		"finding_id":       strings.TrimSpace(finding.ID),
+		"malware_type":     strings.TrimSpace(finding.MalwareType),
+		"malware_name":     strings.TrimSpace(finding.MalwareName),
+		"severity":         normalizeSeverity(finding.Severity),
+		"file_path":        strings.TrimSpace(finding.Path),
+		"hash":             strings.TrimSpace(finding.Hash),
+		"engine":           strings.TrimSpace(finding.Engine),
+		"confidence":       finding.Confidence,
+	}
+	metadata.ApplyTo(properties)
+	return &graph.Node{
+		ID:         malwareObservationNodeID(scanNode.ID, finding),
+		Kind:       graph.NodeKindObservation,
+		Name:       firstNonEmpty(strings.TrimSpace(finding.MalwareName), strings.TrimSpace(finding.MalwareType), "workload malware finding"),
+		Provider:   target.Provider,
+		Account:    target.Account,
+		Region:     target.Region,
+		Risk:       severityToRisk(finding.Severity, false),
+		Properties: properties,
+	}
+}
+
 func nodeID(run RunRecord) string {
 	if id := strings.TrimSpace(run.ID); id != "" {
 		return id
@@ -718,6 +785,10 @@ func nodeID(run RunRecord) string {
 
 func iacFindingObservationNodeID(scanNodeID string, finding filesystemanalyzer.ConfigFinding) string {
 	return fmt.Sprintf("observation:iac:%s:%s", slugify(scanNodeID), slugify(firstNonEmpty(strings.TrimSpace(finding.ID), strings.TrimSpace(finding.Path), strings.TrimSpace(finding.Title))))
+}
+
+func malwareObservationNodeID(scanNodeID string, finding filesystemanalyzer.MalwareFinding) string {
+	return fmt.Sprintf("observation:malware:%s:%s", slugify(scanNodeID), slugify(malwareKey(finding)))
 }
 
 func packageNodeID(pkg filesystemanalyzer.PackageRecord) string {
@@ -793,6 +864,13 @@ func vulnerabilityKey(vuln scanner.ImageVulnerability) string {
 
 func packageVulnerabilityKey(pkg filesystemanalyzer.PackageRecord, vuln scanner.ImageVulnerability) string {
 	return slugify(fmt.Sprintf("%s|%s|%s", packageNodeID(pkg), vulnerabilityNodeID(vuln), firstNonEmpty(vuln.FixedVersion, "none")))
+}
+
+func malwareKey(finding filesystemanalyzer.MalwareFinding) string {
+	return firstNonEmpty(
+		strings.TrimSpace(finding.ID),
+		fmt.Sprintf("%s|%s|%s|%s", strings.TrimSpace(finding.Path), strings.TrimSpace(finding.Hash), strings.TrimSpace(finding.MalwareName), strings.TrimSpace(finding.MalwareType)),
+	)
 }
 
 func syntheticRunKey(run RunRecord) string {
