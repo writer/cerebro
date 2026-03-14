@@ -2,30 +2,27 @@ package entities
 
 import (
 	"testing"
-	"time"
 
 	graph "github.com/evalops/cerebro/internal/graph"
 )
 
-func TestGetEntityRecordDelegatesToGraphEntityReadModel(t *testing.T) {
-	g := graph.New()
-	now := time.Now().UTC()
-	g.AddNode(&graph.Node{
-		ID:        "service:payments",
-		Kind:      graph.NodeKindService,
-		Name:      "payments",
-		CreatedAt: now,
-	})
-
-	record, ok := GetEntityRecord(g, "service:payments", now, now)
+func TestGetEntityFacetDefinitionReturnsDeepCopy(t *testing.T) {
+	def, ok := GetEntityFacetDefinition("ownership")
 	if !ok {
-		t.Fatal("expected entity record")
+		t.Fatal("expected ownership facet definition")
 	}
-	if record.ID != "service:payments" {
-		t.Fatalf("unexpected record id %q", record.ID)
+	if len(def.ClaimPredicates) == 0 {
+		t.Fatalf("expected cloned definition to retain claim predicates, got %#v", def)
 	}
-	if record.Kind != graph.NodeKindService {
-		t.Fatalf("unexpected record kind %q", record.Kind)
+	original := def.ClaimPredicates[0]
+	def.ClaimPredicates[0] = "mutated"
+
+	again, ok := GetEntityFacetDefinition("ownership")
+	if !ok {
+		t.Fatal("expected ownership facet definition on second lookup")
+	}
+	if again.ClaimPredicates[0] != original {
+		t.Fatalf("expected registry definition to be isolated from caller mutation, got %#v", again)
 	}
 }
 
