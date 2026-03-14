@@ -5,6 +5,16 @@ import (
 	"testing"
 )
 
+func TestRenderTerraformArtifact_RejectsUnsupportedAction(t *testing.T) {
+	_, err := renderTerraformArtifact(Action{Type: ActionRestrictPublicStorageAccess}, &Execution{})
+	if err == nil {
+		t.Fatal("expected unsupported terraform action error")
+	}
+	if !strings.Contains(err.Error(), "not implemented") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestRenderTerraformBucketDefaultEncryptionArtifact_InfersBucketNameFromARN(t *testing.T) {
 	artifact, err := renderTerraformBucketDefaultEncryptionArtifact(&Execution{
 		TriggerData: map[string]any{
@@ -48,6 +58,26 @@ func TestRenderTerraformBucketDefaultEncryptionArtifact_UsesIaCStateIDModulePath
 
 	if artifact.Path != "generated/terraform/platform/storage/cerebro_s3_bucket_default_encryption_audit_logs.tf" {
 		t.Fatalf("unexpected artifact path: %#v", artifact.Path)
+	}
+}
+
+func TestRenderTerraformArtifact_EnableBucketDefaultEncryptionEscapesLiteralStrings(t *testing.T) {
+	artifact, err := renderTerraformArtifact(Action{
+		Type: ActionEnableBucketDefaultEncryption,
+		Config: map[string]string{
+			"kms_master_key_id": `arn:aws:kms:::key/${literal}%{ if injected }`,
+		},
+	}, &Execution{
+		TriggerData: map[string]any{
+			"resource_id": "bucket:audit-logs",
+		},
+	})
+	if err != nil {
+		t.Fatalf("render artifact: %v", err)
+	}
+
+	if !strings.Contains(artifact.Content, `kms_master_key_id = "arn:aws:kms:::key/$${literal}%%{ if injected }"`) {
+		t.Fatalf("expected literal terraform markers to be escaped, got:\n%s", artifact.Content)
 	}
 }
 

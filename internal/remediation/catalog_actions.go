@@ -122,7 +122,7 @@ func (ex *Executor) enableBucketDefaultEncryption(ctx context.Context, action Ac
 	}
 
 	if plan.deliveryMode == DeliveryModeTerraform {
-		artifact, err := renderTerraformBucketDefaultEncryptionArtifact(execution, sseAlgorithm, kmsMasterKeyID, bucketKeyEnabled)
+		artifact, err := renderTerraformArtifact(action, execution)
 		if err != nil {
 			return "", compactAnyMap(metadata), err
 		}

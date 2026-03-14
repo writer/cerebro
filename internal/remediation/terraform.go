@@ -1,12 +1,12 @@
 package remediation
 
 import (
-	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"regexp"
 	"strings"
-	"text/template"
+
+	"github.com/writer/cerebro/internal/iacrender"
 )
 
 type DeliveryMode string
@@ -33,6 +33,10 @@ type TerraformArtifact struct {
 }
 
 var terraformIdentifierUnsafeChars = regexp.MustCompile(`[^0-9A-Za-z_]+`)
+
+var terraformArtifactRenderers = map[ActionType]func(Action, *Execution) (TerraformArtifact, error){
+	ActionEnableBucketDefaultEncryption: renderTerraformBucketDefaultEncryptionActionArtifact,
+}
 
 func actionDeliveryMode(action Action, entry CatalogEntry) DeliveryMode {
 	raw := strings.ToLower(strings.TrimSpace(action.Config["delivery_mode"]))
@@ -61,6 +65,21 @@ func catalogSupportsDeliveryMode(entry CatalogEntry, mode DeliveryMode) bool {
 	return false
 }
 
+func renderTerraformArtifact(action Action, execution *Execution) (TerraformArtifact, error) {
+	renderer, ok := terraformArtifactRenderers[action.Type]
+	if !ok {
+		return TerraformArtifact{}, fmt.Errorf("terraform delivery is not implemented for %s", action.Type)
+	}
+	return renderer(action, execution)
+}
+
+func renderTerraformBucketDefaultEncryptionActionArtifact(action Action, execution *Execution) (TerraformArtifact, error) {
+	sseAlgorithm := firstNonEmpty(strings.TrimSpace(action.Config["sse_algorithm"]), "AES256")
+	kmsMasterKeyID := strings.TrimSpace(action.Config["kms_master_key_id"])
+	bucketKeyEnabled := configBool(action.Config["bucket_key_enabled"])
+	return renderTerraformBucketDefaultEncryptionArtifact(execution, sseAlgorithm, kmsMasterKeyID, bucketKeyEnabled)
+}
+
 func renderTerraformBucketDefaultEncryptionArtifact(execution *Execution, sseAlgorithm, kmsMasterKeyID string, bucketKeyEnabled bool) (TerraformArtifact, error) {
 	bucketName := bucketNameFromExecution(execution)
 	if bucketName == "" {
@@ -81,14 +100,14 @@ func renderTerraformBucketDefaultEncryptionArtifact(execution *Execution, sseAlg
 	resourceName := terraformIdentifier(bucketName + "_default_encryption")
 	address := "aws_s3_bucket_server_side_encryption_configuration." + resourceName
 	path := terraformArtifactPath(execution, "cerebro_s3_bucket_default_encryption_"+terraformIdentifier(bucketName)+".tf")
-	content := renderTerraformTemplate(terraformBucketDefaultEncryptionTemplate, map[string]string{
-		"BucketName":        terraformString(bucketName),
+	content := iacrender.RenderTemplate("terraform", terraformBucketDefaultEncryptionTemplate, map[string]string{
+		"BucketName":        iacrender.HCLString(bucketName),
 		"ResourceName":      resourceName,
-		"SSEAlgorithm":      terraformString(firstNonEmpty(strings.TrimSpace(sseAlgorithm), "AES256")),
-		"KMSMasterKeyID":    terraformString(strings.TrimSpace(kmsMasterKeyID)),
+		"SSEAlgorithm":      iacrender.HCLString(firstNonEmpty(strings.TrimSpace(sseAlgorithm), "AES256")),
+		"KMSMasterKeyID":    iacrender.HCLString(strings.TrimSpace(kmsMasterKeyID)),
 		"BucketKeyEnabled":  fmt.Sprintf("%t", bucketKeyEnabled),
 		"ImportAddress":     address,
-		"ImportIdentifier":  terraformString(bucketName),
+		"ImportIdentifier":  iacrender.HCLString(bucketName),
 		"ExistingIaCFile":   iacFile,
 		"ExistingIaCModule": iacModule,
 	})
@@ -274,20 +293,6 @@ func terraformIdentifier(raw string) string {
 		return "r_" + text
 	}
 	return text
-}
-
-func terraformString(value string) string {
-	encoded, _ := json.Marshal(strings.TrimSpace(value))
-	return string(encoded)
-}
-
-func renderTerraformTemplate(src string, data map[string]string) string {
-	tmpl := template.Must(template.New("terraform").Parse(src))
-	var builder strings.Builder
-	if err := tmpl.Execute(&builder, data); err != nil {
-		panic(err)
-	}
-	return strings.TrimLeft(builder.String(), "\n")
 }
 
 const terraformBucketDefaultEncryptionTemplate = `
