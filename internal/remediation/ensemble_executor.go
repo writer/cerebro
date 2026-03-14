@@ -48,7 +48,7 @@ func (e *EnsembleExecutor) HasRemoteCaller() bool {
 
 func (e *EnsembleExecutor) ActionRequiresApproval(actionType ActionType) bool {
 	switch actionType {
-	case ActionPauseSubscription, ActionSendCustomerComm, ActionRestrictPublicStorageAccess, ActionDisableStaleAccessKey, ActionRestrictPublicSecurityGroupIngress:
+	case ActionPauseSubscription, ActionSendCustomerComm, ActionRestrictPublicStorageAccess, ActionEnableBucketDefaultEncryption, ActionDisableStaleAccessKey, ActionRestrictPublicSecurityGroupIngress:
 		return true
 	default:
 		return false
@@ -111,7 +111,7 @@ func (e *EnsembleExecutor) ExecuteWithOutput(ctx context.Context, action Action,
 		tool := firstNonEmpty(action.Config["tool"], "slack.send_message")
 		return e.callWithRetry(ctx, tool, action, execution, args, timeout)
 
-	case ActionRestrictPublicStorageAccess, ActionDisableStaleAccessKey, ActionRestrictPublicSecurityGroupIngress:
+	case ActionRestrictPublicStorageAccess, ActionEnableBucketDefaultEncryption, ActionDisableStaleAccessKey, ActionRestrictPublicSecurityGroupIngress:
 		tool := strings.TrimSpace(action.Config["tool"])
 		if tool == "" {
 			return "", fmt.Errorf("ensemble tool name is required")

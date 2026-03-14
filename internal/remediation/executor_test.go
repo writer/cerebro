@@ -346,6 +346,347 @@ func TestExecutor_RestrictPublicStorageAccessDoesNotTrustStalePolicyWithoutCurre
 	}
 }
 
+func TestExecutor_EnableBucketDefaultEncryptionTerraformModeCapturesArtifact(t *testing.T) {
+	engine := NewEngine(testutil.Logger())
+	rule := Rule{
+		ID:      "enable-bucket-default-encryption-terraform",
+		Name:    "Enable Bucket Default Encryption Terraform",
+		Enabled: true,
+		Trigger: Trigger{Type: TriggerManual},
+		Actions: []Action{{
+			Type: ActionEnableBucketDefaultEncryption,
+			Config: map[string]string{
+				"delivery_mode": "terraform",
+			},
+		}},
+	}
+	if err := engine.AddRule(rule); err != nil {
+		t.Fatalf("add rule: %v", err)
+	}
+
+	executions, err := engine.Evaluate(context.Background(), Event{
+		Type:     TriggerManual,
+		PolicyID: "aws-s3-bucket-encryption-enabled",
+		EntityID: "bucket:audit-logs",
+		Data: map[string]any{
+			"resource_id":       "bucket:audit-logs",
+			"resource_name":     "audit-logs",
+			"resource_type":     "bucket",
+			"resource_platform": "aws",
+			"iac_file":          "infra/storage/main.tf",
+			"iac_module":        "storage",
+			"resource": map[string]any{
+				"default_encryption_enabled": false,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	execution := executions[0]
+	executor := NewExecutor(engine, nil, nil, nil, nil)
+
+	if err := executor.Execute(context.Background(), execution); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if execution.Status != ExecutionCompleted {
+		t.Fatalf("status = %s, want %s", execution.Status, ExecutionCompleted)
+	}
+	if len(execution.Actions) != 1 {
+		t.Fatalf("expected one action result, got %d", len(execution.Actions))
+	}
+	metadata := execution.Actions[0].Metadata
+	if metadata["delivery_mode"] != "terraform" {
+		t.Fatalf("expected terraform delivery mode, got %#v", metadata["delivery_mode"])
+	}
+	if requiresApproval, _ := metadata["requires_approval"].(bool); requiresApproval {
+		t.Fatalf("expected terraform generation not to require approval by default, got %#v", metadata)
+	}
+	if plannedTool := stringValue(metadata["planned_tool"]); plannedTool != "" {
+		t.Fatalf("expected no planned tool for terraform delivery, got %#v", metadata["planned_tool"])
+	}
+	if metadata["sse_algorithm"] != "AES256" {
+		t.Fatalf("unexpected sse_algorithm metadata: %#v", metadata["sse_algorithm"])
+	}
+	artifact, _ := metadata["artifact"].(map[string]any)
+	if artifact["path"] != "infra/storage/cerebro_s3_bucket_default_encryption_audit_logs.tf" {
+		t.Fatalf("unexpected terraform artifact path: %#v", artifact["path"])
+	}
+	if artifact["resource_address"] != "aws_s3_bucket_server_side_encryption_configuration.audit_logs_default_encryption" {
+		t.Fatalf("unexpected terraform resource address: %#v", artifact["resource_address"])
+	}
+	content, _ := artifact["content"].(string)
+	if !strings.Contains(content, `resource "aws_s3_bucket_server_side_encryption_configuration" "audit_logs_default_encryption"`) {
+		t.Fatalf("expected terraform resource block, got %q", content)
+	}
+	after, _ := metadata["after"].(map[string]any)
+	if planned, _ := after["planned"].(bool); !planned {
+		t.Fatalf("expected planned after-state metadata, got %#v", after)
+	}
+}
+
+func TestExecutor_EnableBucketDefaultEncryptionUsesCatalogDefaultTerraformMode(t *testing.T) {
+	engine := NewEngine(testutil.Logger())
+	rule := Rule{
+		ID:      "enable-bucket-default-encryption-catalog-default",
+		Name:    "Enable Bucket Default Encryption Catalog Default",
+		Enabled: true,
+		Trigger: Trigger{Type: TriggerManual},
+		Actions: []Action{{
+			Type: ActionEnableBucketDefaultEncryption,
+		}},
+	}
+	if err := engine.AddRule(rule); err != nil {
+		t.Fatalf("add rule: %v", err)
+	}
+
+	executions, err := engine.Evaluate(context.Background(), Event{
+		Type:     TriggerManual,
+		PolicyID: "aws-s3-bucket-encryption-enabled",
+		EntityID: "bucket:audit-logs",
+		Data: map[string]any{
+			"resource_id":       "bucket:audit-logs",
+			"resource_name":     "audit-logs",
+			"resource_type":     "bucket",
+			"resource_platform": "aws",
+			"iac_state_id":      "module.platform.module.storage.aws_s3_bucket.audit_logs",
+			"resource": map[string]any{
+				"default_encryption_enabled": false,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	execution := executions[0]
+	executor := NewExecutor(engine, nil, nil, nil, nil)
+
+	if err := executor.Execute(context.Background(), execution); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if execution.Status != ExecutionCompleted {
+		t.Fatalf("status = %s, want %s", execution.Status, ExecutionCompleted)
+	}
+	metadata := execution.Actions[0].Metadata
+	if metadata["delivery_mode"] != "terraform" {
+		t.Fatalf("expected catalog default terraform delivery mode, got %#v", metadata["delivery_mode"])
+	}
+	if requiresApproval, _ := metadata["requires_approval"].(bool); requiresApproval {
+		t.Fatalf("expected catalog default terraform delivery not to require approval, got %#v", metadata)
+	}
+	artifact, _ := metadata["artifact"].(map[string]any)
+	if artifact["path"] != "generated/terraform/platform/storage/cerebro_s3_bucket_default_encryption_audit_logs.tf" {
+		t.Fatalf("unexpected terraform artifact path: %#v", artifact["path"])
+	}
+}
+
+func TestExecutor_NonCatalogTerraformDeliveryDoesNotBypassApproval(t *testing.T) {
+	executor := NewExecutor(NewEngine(testutil.Logger()), nil, nil, nil, nil)
+	if !executor.actionRequiresApproval(Action{
+		Type: ActionPauseSubscription,
+		Config: map[string]string{
+			"delivery_mode": "terraform",
+		},
+	}) {
+		t.Fatal("expected non-catalog action to keep approval requirement")
+	}
+}
+
+func TestExecutor_EnableBucketDefaultEncryptionRemoteApplyRequiresApprovalByDefault(t *testing.T) {
+	engine := NewEngine(testutil.Logger())
+	rule := Rule{
+		ID:      "enable-bucket-default-encryption",
+		Name:    "Enable Bucket Default Encryption",
+		Enabled: true,
+		Trigger: Trigger{Type: TriggerManual},
+		Actions: []Action{{
+			Type: ActionEnableBucketDefaultEncryption,
+			Config: map[string]string{
+				"delivery_mode": "remote_apply",
+			},
+		}},
+	}
+	if err := engine.AddRule(rule); err != nil {
+		t.Fatalf("add rule: %v", err)
+	}
+
+	executions, err := engine.Evaluate(context.Background(), Event{
+		Type:     TriggerManual,
+		PolicyID: "aws-s3-bucket-encryption-enabled",
+		EntityID: "arn:aws:s3:::audit-logs",
+		Data: map[string]any{
+			"resource_id":       "arn:aws:s3:::audit-logs",
+			"resource_name":     "audit-logs",
+			"resource_type":     "bucket",
+			"resource_platform": "aws",
+			"resource": map[string]any{
+				"default_encryption_enabled": false,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	execution := executions[0]
+	caller := &fakeRemoteCaller{
+		responses: map[string][]fakeRemoteCallResult{
+			"aws.s3.put_bucket_encryption": {{output: `{"changed":true}`}},
+		},
+	}
+	executor := NewExecutor(engine, nil, nil, nil, nil)
+	executor.SetRemoteCaller(caller)
+
+	if err := executor.Execute(context.Background(), execution); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if execution.Status != ExecutionApproval {
+		t.Fatalf("status = %s, want %s", execution.Status, ExecutionApproval)
+	}
+	if len(caller.calls) != 0 {
+		t.Fatalf("expected no remote call before approval, got %v", caller.calls)
+	}
+
+	if err := executor.Approve(context.Background(), execution.ID, "security@example.com"); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if execution.Status != ExecutionCompleted {
+		t.Fatalf("status = %s, want %s", execution.Status, ExecutionCompleted)
+	}
+	if len(caller.calls) != 1 || caller.calls[0] != "aws.s3.put_bucket_encryption" {
+		t.Fatalf("unexpected remote calls: %v", caller.calls)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(caller.payloads[0], &payload); err != nil {
+		t.Fatalf("unmarshal remote payload: %v", err)
+	}
+	triggerData, _ := payload["trigger_data"].(map[string]any)
+	if triggerData["sse_algorithm"] != "AES256" {
+		t.Fatalf("expected default sse_algorithm in trigger data, got %#v", triggerData["sse_algorithm"])
+	}
+}
+
+func TestExecutor_EnableBucketDefaultEncryptionTerraformModeHonorsExplicitApprovalOverride(t *testing.T) {
+	engine := NewEngine(testutil.Logger())
+	rule := Rule{
+		ID:      "enable-bucket-default-encryption-terraform-approval",
+		Name:    "Enable Bucket Default Encryption Terraform Approval",
+		Enabled: true,
+		Trigger: Trigger{Type: TriggerManual},
+		Actions: []Action{{
+			Type: ActionEnableBucketDefaultEncryption,
+			Config: map[string]string{
+				"delivery_mode": "terraform",
+				"approval_mode": "required",
+			},
+		}},
+	}
+	if err := engine.AddRule(rule); err != nil {
+		t.Fatalf("add rule: %v", err)
+	}
+
+	executions, err := engine.Evaluate(context.Background(), Event{
+		Type:     TriggerManual,
+		PolicyID: "aws-s3-bucket-encryption-enabled",
+		EntityID: "arn:aws:s3:::audit-logs",
+		Data: map[string]any{
+			"resource_id":       "arn:aws:s3:::audit-logs",
+			"resource_name":     "audit-logs",
+			"resource_type":     "bucket",
+			"resource_platform": "aws",
+			"iac_file":          "infra/storage/main.tf",
+			"resource": map[string]any{
+				"default_encryption_enabled": false,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	execution := executions[0]
+	executor := NewExecutor(engine, nil, nil, nil, nil)
+
+	if err := executor.Execute(context.Background(), execution); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if execution.Status != ExecutionApproval {
+		t.Fatalf("status = %s, want %s", execution.Status, ExecutionApproval)
+	}
+
+	if err := executor.Approve(context.Background(), execution.ID, "security@example.com"); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if execution.Status != ExecutionCompleted {
+		t.Fatalf("status = %s, want %s", execution.Status, ExecutionCompleted)
+	}
+	artifact, _ := execution.Actions[0].Metadata["artifact"].(map[string]any)
+	if artifact["path"] != "infra/storage/cerebro_s3_bucket_default_encryption_audit_logs.tf" {
+		t.Fatalf("unexpected terraform artifact path after approval: %#v", artifact["path"])
+	}
+}
+
+func TestExecutor_EnableBucketDefaultEncryptionDoesNotTrustStalePolicyWhenResourceJSONShowsEncrypted(t *testing.T) {
+	engine := NewEngine(testutil.Logger())
+	rule := Rule{
+		ID:      "enable-bucket-default-encryption-stale-policy",
+		Name:    "Enable Bucket Default Encryption Stale Policy",
+		Enabled: true,
+		Trigger: Trigger{Type: TriggerManual},
+		Actions: []Action{{
+			Type: ActionEnableBucketDefaultEncryption,
+			Config: map[string]string{
+				"delivery_mode": "terraform",
+			},
+		}},
+	}
+	if err := engine.AddRule(rule); err != nil {
+		t.Fatalf("add rule: %v", err)
+	}
+
+	executions, err := engine.Evaluate(context.Background(), Event{
+		Type:     TriggerManual,
+		PolicyID: "aws-s3-bucket-encryption-enabled",
+		EntityID: "bucket:audit-logs",
+		Data: map[string]any{
+			"resource_id":       "bucket:audit-logs",
+			"resource_name":     "audit-logs",
+			"resource_type":     "bucket",
+			"resource_platform": "aws",
+			"resource": map[string]any{
+				"resource_json": map[string]any{
+					"encryption_configuration": map[string]any{
+						"rules": []any{
+							map[string]any{"sse_algorithm": "AES256"},
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	execution := executions[0]
+	executor := NewExecutor(engine, nil, nil, nil, nil)
+
+	err = executor.Execute(context.Background(), execution)
+	if err == nil {
+		t.Fatal("expected precondition failure")
+	}
+	if !strings.Contains(err.Error(), "precondition failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if execution.Status != ExecutionFailed {
+		t.Fatalf("status = %s, want %s", execution.Status, ExecutionFailed)
+	}
+	if len(execution.Actions) != 1 || execution.Actions[0].Metadata == nil {
+		t.Fatalf("expected failed action metadata, got %#v", execution.Actions)
+	}
+	preconditions, _ := execution.Actions[0].Metadata["preconditions"].([]map[string]any)
+	if len(preconditions) == 0 {
+		t.Fatalf("expected preconditions metadata, got %#v", execution.Actions[0].Metadata)
+	}
+}
+
 func TestExecutor_RestrictPublicSecurityGroupIngressDryRunCapturesMetadata(t *testing.T) {
 	engine := NewEngine(testutil.Logger())
 	rule := Rule{
