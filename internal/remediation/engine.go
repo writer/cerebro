@@ -104,6 +104,9 @@ const (
 	ActionEscalateToOwner   ActionType = "escalate_to_owner"
 	ActionPauseSubscription ActionType = "pause_subscription"
 	ActionSendCustomerComm  ActionType = "send_customer_comm"
+
+	ActionRestrictPublicStorageAccess ActionType = "restrict_public_storage_access"
+	ActionDisableStaleAccessKey       ActionType = "disable_stale_access_key"
 )
 
 // Execution tracks a rule execution
@@ -132,12 +135,13 @@ const (
 )
 
 type ActionResult struct {
-	ActionType ActionType `json:"action_type"`
-	Status     string     `json:"status"`
-	Output     string     `json:"output,omitempty"`
-	Error      string     `json:"error,omitempty"`
-	StartedAt  time.Time  `json:"started_at"`
-	Duration   string     `json:"duration,omitempty"`
+	ActionType ActionType     `json:"action_type"`
+	Status     string         `json:"status"`
+	Output     string         `json:"output,omitempty"`
+	Error      string         `json:"error,omitempty"`
+	Metadata   map[string]any `json:"metadata,omitempty"`
+	StartedAt  time.Time      `json:"started_at"`
+	Duration   string         `json:"duration,omitempty"`
 }
 
 func NewEngine(logger *slog.Logger) *Engine {
@@ -247,6 +251,111 @@ func (e *Engine) loadDefaultRules() {
 			},
 		},
 		{
+			ID:          "s3-public-restrict",
+			Name:        "Restrict public S3 bucket",
+			Description: "Approval-gated automatic public access restriction for S3 buckets",
+			Enabled:     true,
+			Trigger: Trigger{
+				Type:     TriggerFindingCreated,
+				PolicyID: "aws-s3-bucket-no-public-access",
+			},
+			Actions: []Action{
+				{
+					Type: ActionRestrictPublicStorageAccess,
+					Config: map[string]string{
+						"approval_mode": "required",
+					},
+					RequiresApproval: false,
+				},
+			},
+		},
+		{
+			ID:          "gcs-public-notify",
+			Name:        "Alert on public GCS bucket",
+			Description: "Create tracking for public GCS bucket findings",
+			Enabled:     true,
+			Trigger: Trigger{
+				Type:     TriggerFindingCreated,
+				PolicyID: "gcp-storage-bucket-no-public",
+			},
+			Actions: []Action{
+				{
+					Type: ActionNotifySlack,
+					Config: map[string]string{
+						"channel": "#security-alerts",
+						"message": "PUBLIC GCS BUCKET DETECTED - Approval required for access restriction",
+					},
+					RequiresApproval: false,
+				},
+				{
+					Type: ActionCreateTicket,
+					Config: map[string]string{
+						"priority": "highest",
+						"labels":   "gcs,public-access,data-exposure",
+					},
+					RequiresApproval: false,
+				},
+			},
+		},
+		{
+			ID:          "gcs-public-restrict",
+			Name:        "Restrict public GCS bucket",
+			Description: "Approval-gated automatic public access restriction for GCS buckets",
+			Enabled:     true,
+			Trigger: Trigger{
+				Type:     TriggerFindingCreated,
+				PolicyID: "gcp-storage-bucket-no-public",
+			},
+			Actions: []Action{
+				{
+					Type: ActionRestrictPublicStorageAccess,
+					Config: map[string]string{
+						"approval_mode": "required",
+					},
+					RequiresApproval: false,
+				},
+			},
+		},
+		{
+			ID:          "gcs-public-principal-notify",
+			Name:        "Alert on GCS bucket with public principals",
+			Description: "Create tracking when GCS bucket IAM exposes public principals",
+			Enabled:     true,
+			Trigger: Trigger{
+				Type:     TriggerFindingCreated,
+				PolicyID: "gcp-storage-no-public-allusers",
+			},
+			Actions: []Action{
+				{
+					Type: ActionCreateTicket,
+					Config: map[string]string{
+						"priority": "highest",
+						"labels":   "gcs,public-principal,data-exposure",
+					},
+					RequiresApproval: false,
+				},
+			},
+		},
+		{
+			ID:          "gcs-public-principal-restrict",
+			Name:        "Restrict GCS bucket with public principals",
+			Description: "Approval-gated automatic public principal removal for GCS bucket IAM",
+			Enabled:     true,
+			Trigger: Trigger{
+				Type:     TriggerFindingCreated,
+				PolicyID: "gcp-storage-no-public-allusers",
+			},
+			Actions: []Action{
+				{
+					Type: ActionRestrictPublicStorageAccess,
+					Config: map[string]string{
+						"approval_mode": "required",
+					},
+					RequiresApproval: false,
+				},
+			},
+		},
+		{
 			ID:          "identity-stale-user-remediation",
 			Name:        "Stale User Access Remediation",
 			Description: "Create and notify on stale inactive user findings for identity hygiene follow-up",
@@ -268,6 +377,86 @@ func (e *Engine) loadDefaultRules() {
 					Type: ActionNotifySlack,
 					Config: map[string]string{
 						"channel": "#identity-security",
+					},
+					RequiresApproval: false,
+				},
+			},
+		},
+		{
+			ID:          "aws-unused-access-key-notify",
+			Name:        "Track stale AWS access keys",
+			Description: "Create tracking for unused AWS IAM access key findings",
+			Enabled:     true,
+			Trigger: Trigger{
+				Type:     TriggerFindingCreated,
+				PolicyID: "aws-iam-user-unused-credentials",
+			},
+			Actions: []Action{
+				{
+					Type: ActionCreateTicket,
+					Config: map[string]string{
+						"priority": "high",
+						"labels":   "identity,access-key,stale,auto-generated",
+					},
+					RequiresApproval: false,
+				},
+			},
+		},
+		{
+			ID:          "aws-unused-access-key-disable",
+			Name:        "Disable stale AWS access keys",
+			Description: "Disable unused AWS IAM access keys after approval once they cross the inactivity threshold",
+			Enabled:     true,
+			Trigger: Trigger{
+				Type:     TriggerFindingCreated,
+				PolicyID: "aws-iam-user-unused-credentials",
+			},
+			Actions: []Action{
+				{
+					Type: ActionDisableStaleAccessKey,
+					Config: map[string]string{
+						"inactive_days": "90",
+						"approval_mode": "required",
+					},
+					RequiresApproval: false,
+				},
+			},
+		},
+		{
+			ID:          "gcp-user-managed-key-notify",
+			Name:        "Track stale GCP user-managed service account keys",
+			Description: "Create tracking for stale GCP service account key findings",
+			Enabled:     true,
+			Trigger: Trigger{
+				Type:     TriggerFindingCreated,
+				PolicyID: "gcp-iam-minimize-user-managed-keys",
+			},
+			Actions: []Action{
+				{
+					Type: ActionCreateTicket,
+					Config: map[string]string{
+						"priority": "high",
+						"labels":   "gcp,service-account-key,stale,auto-generated",
+					},
+					RequiresApproval: false,
+				},
+			},
+		},
+		{
+			ID:          "gcp-user-managed-key-disable",
+			Name:        "Disable stale GCP user-managed service account keys",
+			Description: "Disable stale GCP service account keys once they cross the inactivity threshold and are approved",
+			Enabled:     true,
+			Trigger: Trigger{
+				Type:     TriggerFindingCreated,
+				PolicyID: "gcp-iam-minimize-user-managed-keys",
+			},
+			Actions: []Action{
+				{
+					Type: ActionDisableStaleAccessKey,
+					Config: map[string]string{
+						"inactive_days": "90",
+						"approval_mode": "required",
 					},
 					RequiresApproval: false,
 				},

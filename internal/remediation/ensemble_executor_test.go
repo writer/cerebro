@@ -17,11 +17,15 @@ type fakeRemoteCallResult struct {
 
 type fakeRemoteCaller struct {
 	calls     []string
+	payloads  []json.RawMessage
 	responses map[string][]fakeRemoteCallResult
 }
 
-func (f *fakeRemoteCaller) CallTool(_ context.Context, toolName string, _ json.RawMessage, _ time.Duration) (string, error) {
+func (f *fakeRemoteCaller) CallTool(_ context.Context, toolName string, args json.RawMessage, _ time.Duration) (string, error) {
 	f.calls = append(f.calls, toolName)
+	if len(args) > 0 {
+		f.payloads = append(f.payloads, append(json.RawMessage(nil), args...))
+	}
 	queue := f.responses[toolName]
 	if len(queue) == 0 {
 		return "{}", nil
