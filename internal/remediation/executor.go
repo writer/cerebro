@@ -117,6 +117,12 @@ func (ex *Executor) Execute(ctx context.Context, execution *Execution) error {
 }
 
 func (ex *Executor) actionRequiresApproval(action Action) bool {
+	switch strings.ToLower(strings.TrimSpace(action.Config["approval_mode"])) {
+	case "auto", "none", "disabled", "not_required":
+		return false
+	case "required", "manual":
+		return true
+	}
 	if action.RequiresApproval {
 		return true
 	}
@@ -147,6 +153,18 @@ func (r remediationStepRunner) RunStep(ctx context.Context, step actionengine.St
 	}
 	nativeExecution.TriggerData["_approval_granted"] = true
 	result := r.executor.executeAction(ctx, action, nativeExecution)
+	if execution.TriggerData == nil {
+		execution.TriggerData = map[string]any{}
+	}
+	for key, value := range nativeExecution.TriggerData {
+		if key == "_approval_granted" {
+			continue
+		}
+		execution.TriggerData[key] = value
+	}
+	if len(result.Metadata) > 0 {
+		actionengine.SetStepMetadata(execution, step.ID, result.Metadata)
+	}
 	if result.Error != "" {
 		return "", errors.New(result.Error)
 	}
@@ -213,7 +231,7 @@ func remediationExecutionToShared(execution *Execution) *actionengine.Execution 
 		PlaybookID:   execution.RuleID,
 		PlaybookName: execution.RuleName,
 		Status:       remediationStatusToShared(execution.Status),
-		ResourceID:   remediationMapValueToString(execution.TriggerData, "entity_id"),
+		ResourceID:   firstNonEmpty(remediationMapValueToString(execution.TriggerData, "entity_id"), remediationMapValueToString(execution.TriggerData, "resource_id")),
 		ResourceType: remediationMapValueToString(execution.TriggerData, "resource_type"),
 		TriggerData:  cloneAnyMap(execution.TriggerData),
 		Results:      make([]actionengine.ActionResult, 0, len(execution.Actions)),
@@ -227,6 +245,7 @@ func remediationExecutionToShared(execution *Execution) *actionengine.Execution 
 			Status:    remediationResultStatusToShared(action.Status),
 			Output:    action.Output,
 			Error:     action.Error,
+			Metadata:  cloneAnyMap(action.Metadata),
 			StartedAt: action.StartedAt,
 			Duration:  action.Duration,
 		})
@@ -264,6 +283,7 @@ func applySharedExecution(target *Execution, shared *actionengine.Execution) {
 			Status:     sharedActionResultStatus(result.Status),
 			Output:     result.Output,
 			Error:      result.Error,
+			Metadata:   cloneAnyMap(result.Metadata),
 			StartedAt:  result.StartedAt,
 			Duration:   result.Duration,
 		})
@@ -437,74 +457,80 @@ func (ex *Executor) executeAction(ctx context.Context, action Action, execution 
 	}
 
 	if err == nil {
-		switch action.Type {
-		case ActionCreateTicket:
-			err = ex.createTicket(ctx, action, execution)
-			if err == nil {
-				result.Output = "Ticket created"
-			}
+		if output, metadata, catalogErr, handled := ex.executeCatalogAction(ctx, action, execution); handled {
+			result.Output = output
+			result.Metadata = metadata
+			err = catalogErr
+		} else {
+			switch action.Type {
+			case ActionCreateTicket:
+				err = ex.createTicket(ctx, action, execution)
+				if err == nil {
+					result.Output = "Ticket created"
+				}
 
-		case ActionNotifySlack:
-			err = ex.notifySlack(ctx, action, execution)
-			if err == nil {
-				result.Output = "Slack notification sent"
-			}
+			case ActionNotifySlack:
+				err = ex.notifySlack(ctx, action, execution)
+				if err == nil {
+					result.Output = "Slack notification sent"
+				}
 
-		case ActionNotifyPagerDuty:
-			err = ex.notifyPagerDuty(ctx, action, execution)
-			if err == nil {
-				result.Output = "PagerDuty alert sent"
-			}
+			case ActionNotifyPagerDuty:
+				err = ex.notifyPagerDuty(ctx, action, execution)
+				if err == nil {
+					result.Output = "PagerDuty alert sent"
+				}
 
-		case ActionResolveFinding:
-			err = ex.resolveFinding(ctx, action, execution)
-			if err == nil {
-				result.Output = "Finding resolved"
-			}
+			case ActionResolveFinding:
+				err = ex.resolveFinding(ctx, action, execution)
+				if err == nil {
+					result.Output = "Finding resolved"
+				}
 
-		case ActionRunWebhook:
-			err = ex.runWebhook(ctx, action, execution)
-			if err == nil {
-				result.Output = "Webhook executed"
-			}
+			case ActionRunWebhook:
+				err = ex.runWebhook(ctx, action, execution)
+				if err == nil {
+					result.Output = "Webhook executed"
+				}
 
-		case ActionUpdateCRMField:
-			err = ex.updateCRMField(ctx, action, execution)
-			if err == nil {
-				result.Output = "CRM field updated"
-			}
+			case ActionUpdateCRMField:
+				err = ex.updateCRMField(ctx, action, execution)
+				if err == nil {
+					result.Output = "CRM field updated"
+				}
 
-		case ActionTriggerWorkflow:
-			err = ex.triggerWorkflow(ctx, action, execution)
-			if err == nil {
-				result.Output = "Workflow triggered"
-			}
+			case ActionTriggerWorkflow:
+				err = ex.triggerWorkflow(ctx, action, execution)
+				if err == nil {
+					result.Output = "Workflow triggered"
+				}
 
-		case ActionCreateReview:
-			err = ex.createReview(ctx, action, execution)
-			if err == nil {
-				result.Output = "Review created"
-			}
+			case ActionCreateReview:
+				err = ex.createReview(ctx, action, execution)
+				if err == nil {
+					result.Output = "Review created"
+				}
 
-		case ActionEscalateToOwner:
-			err = ex.escalateToOwner(ctx, action, execution)
-			if err == nil {
-				result.Output = "Escalated to owner"
-			}
+			case ActionEscalateToOwner:
+				err = ex.escalateToOwner(ctx, action, execution)
+				if err == nil {
+					result.Output = "Escalated to owner"
+				}
 
-		case ActionPauseSubscription:
-			err = ex.pauseSubscription(ctx, action, execution)
-			if err == nil {
-				result.Output = "Subscription paused"
-			}
-		case ActionSendCustomerComm:
-			err = ex.sendCustomerCommunication(ctx, action, execution)
-			if err == nil {
-				result.Output = "Customer communication sent"
-			}
+			case ActionPauseSubscription:
+				err = ex.pauseSubscription(ctx, action, execution)
+				if err == nil {
+					result.Output = "Subscription paused"
+				}
+			case ActionSendCustomerComm:
+				err = ex.sendCustomerCommunication(ctx, action, execution)
+				if err == nil {
+					result.Output = "Customer communication sent"
+				}
 
-		default:
-			err = fmt.Errorf("unknown action type: %s", action.Type)
+			default:
+				err = fmt.Errorf("unknown action type: %s", action.Type)
+			}
 		}
 	}
 
@@ -824,7 +850,7 @@ func (ex *Executor) emitApprovalRequested(ctx context.Context, execution *Execut
 	}
 	actions := make([]string, 0, len(rule.Actions))
 	for _, action := range rule.Actions {
-		if action.RequiresApproval {
+		if ex.actionRequiresApproval(action) {
 			actions = append(actions, string(action.Type))
 		}
 	}

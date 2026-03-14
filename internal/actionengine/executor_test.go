@@ -10,10 +10,14 @@ import (
 type fakeRunner struct {
 	calls []string
 	fail  map[string]error
+	meta  map[string]map[string]any
 }
 
-func (r *fakeRunner) RunStep(_ context.Context, step Step, _ Signal, _ *Execution) (string, error) {
+func (r *fakeRunner) RunStep(_ context.Context, step Step, _ Signal, execution *Execution) (string, error) {
 	r.calls = append(r.calls, step.Type)
+	if metadata := r.meta[step.Type]; len(metadata) > 0 {
+		SetStepMetadata(execution, step.ID, metadata)
+	}
 	if err := r.fail[step.Type]; err != nil {
 		return "", err
 	}
@@ -113,5 +117,36 @@ func TestPlaybookMatchesSignalSeverityModes(t *testing.T) {
 	}
 	if !PlaybookMatchesSignal(minimum, signal) {
 		t.Fatal("expected minimum severity playbook to match")
+	}
+}
+
+func TestExecutorPersistsStepMetadata(t *testing.T) {
+	executor := NewExecutor(nil)
+	playbook := Playbook{
+		ID:      "playbook-meta",
+		Name:    "Metadata Playbook",
+		Enabled: true,
+		Steps: []Step{
+			{ID: "step-1", Type: "notify", OnFailure: FailurePolicyAbort},
+		},
+	}
+	signal := Signal{Kind: "manual", CreatedAt: time.Now().UTC()}
+	runner := &fakeRunner{
+		meta: map[string]map[string]any{
+			"notify": {
+				"planned_tool": "slack.send_message",
+			},
+		},
+	}
+
+	execution := executor.NewExecution(playbook, signal)
+	if err := executor.Execute(context.Background(), execution, playbook, signal, runner); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if len(execution.Results) != 1 {
+		t.Fatalf("expected one result, got %d", len(execution.Results))
+	}
+	if execution.Results[0].Metadata["planned_tool"] != "slack.send_message" {
+		t.Fatalf("unexpected result metadata: %#v", execution.Results[0].Metadata)
 	}
 }
