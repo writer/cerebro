@@ -43,12 +43,16 @@ type OSInfo struct {
 }
 
 type PackageRecord struct {
-	Ecosystem string `json:"ecosystem"`
-	Manager   string `json:"manager,omitempty"`
-	Name      string `json:"name"`
-	Version   string `json:"version"`
-	PURL      string `json:"purl,omitempty"`
-	Location  string `json:"location,omitempty"`
+	Ecosystem        string `json:"ecosystem"`
+	Manager          string `json:"manager,omitempty"`
+	Name             string `json:"name"`
+	Version          string `json:"version"`
+	PURL             string `json:"purl,omitempty"`
+	Location         string `json:"location,omitempty"`
+	DirectDependency bool   `json:"direct_dependency,omitempty"`
+	Reachable        bool   `json:"reachable,omitempty"`
+	DependencyDepth  int    `json:"dependency_depth,omitempty"`
+	ImportFileCount  int    `json:"import_file_count,omitempty"`
 }
 
 type SecretFinding struct {
@@ -118,24 +122,35 @@ type TechnologyRecord struct {
 }
 
 type SBOMComponent struct {
-	BOMRef    string `json:"bom_ref"`
-	Type      string `json:"type"`
-	Name      string `json:"name"`
-	Version   string `json:"version,omitempty"`
-	PURL      string `json:"purl,omitempty"`
-	Ecosystem string `json:"ecosystem,omitempty"`
-	Location  string `json:"location,omitempty"`
+	BOMRef           string `json:"bom_ref"`
+	Type             string `json:"type"`
+	Name             string `json:"name"`
+	Version          string `json:"version,omitempty"`
+	PURL             string `json:"purl,omitempty"`
+	Ecosystem        string `json:"ecosystem,omitempty"`
+	Location         string `json:"location,omitempty"`
+	DirectDependency bool   `json:"direct_dependency,omitempty"`
+	Reachable        bool   `json:"reachable,omitempty"`
+	DependencyDepth  int    `json:"dependency_depth,omitempty"`
+	ImportFileCount  int    `json:"import_file_count,omitempty"`
+}
+
+type SBOMDependency struct {
+	Ref       string   `json:"ref"`
+	DependsOn []string `json:"depends_on,omitempty"`
 }
 
 type SBOMDocument struct {
-	Format      string          `json:"format"`
-	SpecVersion string          `json:"spec_version"`
-	GeneratedAt time.Time       `json:"generated_at"`
-	Components  []SBOMComponent `json:"components,omitempty"`
+	Format       string           `json:"format"`
+	SpecVersion  string           `json:"spec_version"`
+	GeneratedAt  time.Time        `json:"generated_at"`
+	Components   []SBOMComponent  `json:"components,omitempty"`
+	Dependencies []SBOMDependency `json:"dependencies,omitempty"`
 }
 
 type Summary struct {
 	PackageCount          int  `json:"package_count"`
+	DependencyCount       int  `json:"dependency_count"`
 	VulnerabilityCount    int  `json:"vulnerability_count"`
 	SecretCount           int  `json:"secret_count"`
 	MisconfigurationCount int  `json:"misconfiguration_count"`
