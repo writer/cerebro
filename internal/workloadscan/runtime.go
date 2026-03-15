@@ -946,12 +946,18 @@ func validateRequest(req ScanRequest) error {
 			return fmt.Errorf("aws target instance id is required")
 		}
 	case ProviderGCP:
-		if strings.TrimSpace(req.Target.ProjectID) == "" || strings.TrimSpace(req.Target.InstanceName) == "" {
-			return fmt.Errorf("gcp target project id and instance name are required")
+		if strings.TrimSpace(req.Target.ProjectID) == "" || strings.TrimSpace(req.Target.Zone) == "" || strings.TrimSpace(req.Target.InstanceName) == "" {
+			return fmt.Errorf("gcp target project id, zone, and instance name are required")
+		}
+		if strings.TrimSpace(req.ScannerHost.Zone) == "" {
+			return fmt.Errorf("gcp scanner host zone is required")
 		}
 	case ProviderAzure:
 		if strings.TrimSpace(req.Target.SubscriptionID) == "" || strings.TrimSpace(req.Target.ResourceGroup) == "" || strings.TrimSpace(req.Target.InstanceName) == "" {
 			return fmt.Errorf("azure target subscription id, resource group, and instance name are required")
+		}
+		if strings.TrimSpace(req.ScannerHost.ResourceGroup) == "" {
+			return fmt.Errorf("azure scanner host resource group is required")
 		}
 	default:
 		return fmt.Errorf("unsupported provider %s", req.Target.Provider)

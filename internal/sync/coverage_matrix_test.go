@@ -198,6 +198,17 @@ func TestBuildAzureCoverageMatrix(t *testing.T) {
 		t.Fatalf("unexpected AKS primary keys: %#v", aks.PrimaryKeys)
 	}
 
+	aksNodePools, ok := lookup["azure_aks_node_pools"]
+	if !ok {
+		t.Fatal("expected azure_aks_node_pools entry")
+	}
+	if aksNodePools.Service != "aks" {
+		t.Fatalf("expected aks service for node pools, got %q", aksNodePools.Service)
+	}
+	if !reflect.DeepEqual(aksNodePools.PrimaryKeys, []string{"id"}) {
+		t.Fatalf("unexpected AKS node pool primary keys: %#v", aksNodePools.PrimaryKeys)
+	}
+
 	rbac, ok := lookup["azure_rbac_role_assignments"]
 	if !ok {
 		t.Fatal("expected azure_rbac_role_assignments entry")
