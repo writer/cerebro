@@ -383,10 +383,10 @@ func (b *Builder) buildEdgesFromPolicy(principalARN, policyDoc, via string) {
 			priority = 100
 		}
 
-		for _, resource := range stmt.Resources {
+		for resourceIdx, resource := range stmt.Resources {
 			matchingNodes := FindMatchingNodes(b.graph, resource)
-			for _, node := range matchingNodes {
-				edgeID := fmt.Sprintf("%s->%s:%s", principalARN, node.ID, stmt.Effect)
+			for nodeIdx, node := range matchingNodes {
+				edgeID := fmt.Sprintf("%s->%s:%s:%s:%d:%d", principalARN, node.ID, stmt.Effect, via, resourceIdx, nodeIdx)
 				b.graph.AddEdge(&Edge{
 					ID:       edgeID,
 					Source:   principalARN,
@@ -395,8 +395,9 @@ func (b *Builder) buildEdgesFromPolicy(principalARN, policyDoc, via string) {
 					Effect:   effect,
 					Priority: priority,
 					Properties: map[string]any{
-						"actions": stmt.Actions,
-						"via":     via,
+						"actions":    append([]string(nil), stmt.Actions...),
+						"conditions": cloneAnyMap(stmt.Conditions),
+						"via":        via,
 					},
 				})
 			}
@@ -446,7 +447,6 @@ func (b *Builder) buildEdgesFromResourcePolicy(ownerResourceID, policyDoc, via, 
 					properties := map[string]any{
 						"actions":               append([]string(nil), stmt.Actions...),
 						"conditions":            cloneAnyMap(stmt.Conditions),
-						"conditions_present":    conditionsPresent,
 						"mechanism":             "resource_policy",
 						"policy_type":           policyType,
 						"resource_policy_owner": ownerResourceID,
@@ -568,6 +568,7 @@ func (b *Builder) buildTrustEdges(ctx context.Context) error {
 						"source_account": principalAccount,
 						"target_account": roleAccount,
 						"trust_type":     "account_root",
+						"conditions":     cloneAnyMap(principal.Conditions),
 					},
 				})
 
@@ -584,6 +585,7 @@ func (b *Builder) buildTrustEdges(ctx context.Context) error {
 								"mechanism":     "account_trust",
 								"cross_account": isCrossAccount,
 								"via":           principal.ARN,
+								"conditions":    cloneAnyMap(principal.Conditions),
 							},
 						})
 					}
@@ -600,6 +602,7 @@ func (b *Builder) buildTrustEdges(ctx context.Context) error {
 						"mechanism":  "service_trust",
 						"trust_type": "service",
 						"is_service": true,
+						"conditions": cloneAnyMap(principal.Conditions),
 					},
 				})
 			} else if principal.IsPublic {
@@ -615,6 +618,7 @@ func (b *Builder) buildTrustEdges(ctx context.Context) error {
 						"mechanism":  "public_trust",
 						"trust_type": "public",
 						"is_public":  true,
+						"conditions": cloneAnyMap(principal.Conditions),
 					},
 				})
 			} else {
@@ -630,6 +634,7 @@ func (b *Builder) buildTrustEdges(ctx context.Context) error {
 						"cross_account":  isCrossAccount,
 						"source_account": principalAccount,
 						"target_account": roleAccount,
+						"conditions":     cloneAnyMap(principal.Conditions),
 					},
 				})
 			}
