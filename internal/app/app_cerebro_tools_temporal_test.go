@@ -96,7 +96,7 @@ func TestCerebroGraphChangelogTool(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GRAPH_SNAPSHOT_PATH", dir)
 
-	base := time.Now().UTC().Add(-6 * 24 * time.Hour).Truncate(time.Minute)
+	base := time.Now().UTC().Add(-6 * 24 * time.Hour).Truncate(time.Second)
 	older := &graph.Snapshot{
 		Version:   "1.0",
 		CreatedAt: base.Add(5 * time.Minute),

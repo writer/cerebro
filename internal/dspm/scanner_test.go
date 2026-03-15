@@ -2,6 +2,7 @@ package dspm
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -395,6 +396,9 @@ func TestScanner_EnrichGraphNode(t *testing.T) {
 		}
 		if props["dspm_risk_score"] != 85.0 {
 			t.Errorf("expected risk score 85.0, got %v", props["dspm_risk_score"])
+		}
+		if frameworks, ok := props["compliance_frameworks"].([]string); !ok || !reflect.DeepEqual(frameworks, []string{"ccpa", "gdpr"}) {
+			t.Errorf("expected compliance frameworks [ccpa gdpr], got %v", props["compliance_frameworks"])
 		}
 	})
 

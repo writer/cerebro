@@ -910,8 +910,13 @@ func findSensitiveDataReachable(g *Graph, nodeID string, maxDepth int) []*Reacha
 		if rn.Node.Kind == NodeKindDatabase || rn.Node.Kind == NodeKindSecret || rn.Node.Kind == NodeKindBucket {
 			if rn.Node.Risk == RiskCritical || rn.Node.Risk == RiskHigh {
 				sensitive = append(sensitive, rn)
+				continue
 			}
-			// Check for sensitive data tags
+			if detectSensitiveDataExplicit(rn.Node) != nil {
+				sensitive = append(sensitive, rn)
+				continue
+			}
+			// Retain legacy tag-based signals for graphs that have not been enriched yet.
 			if tags := rn.Node.Tags; tags != nil {
 				if tags["contains_pii"] == "true" || tags["classification"] == "confidential" {
 					sensitive = append(sensitive, rn)
