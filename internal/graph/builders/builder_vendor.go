@@ -506,6 +506,10 @@ func (b *Builder) refreshVendorSignals(vendor *Node, projection *vendorProjectio
 	adminTargets := make(map[string]struct{})
 	accessibleResourceKinds := make(map[string]struct{})
 	sensitiveTargets := make(map[string]struct{})
+	dependentPrincipals := make(map[string]struct{})
+	dependentUsers := make(map[string]struct{})
+	dependentGroups := make(map[string]struct{})
+	dependentServiceAccounts := make(map[string]struct{})
 
 	for managedNodeID := range projection.managedNodeIDs {
 		node, ok := b.graph.GetNode(managedNodeID)
@@ -547,7 +551,19 @@ func (b *Builder) refreshVendorSignals(vendor *Node, projection *vendorProjectio
 		for target := range sensitiveTargetsForEdges(b.graph, outEdges) {
 			sensitiveTargets[target] = struct{}{}
 		}
+		collectVendorDependentPrincipals(b.graph, managedNodeID, dependentPrincipals, dependentUsers, dependentGroups, dependentServiceAccounts)
 	}
+
+	riskScore := vendorRiskScore(
+		len(readableTargets),
+		len(writableTargets),
+		len(adminTargets),
+		len(accessibleTargets),
+		len(sensitiveTargets),
+		len(dependentPrincipals),
+		len(dependentGroups),
+		appRoleAssignmentOptionalCount,
+	)
 
 	vendor.Properties["canonical_name"] = vendor.Name
 	vendor.Properties["source_system"] = vendorProjectionSourceSystem
@@ -567,8 +583,13 @@ func (b *Builder) refreshVendorSignals(vendor *Node, projection *vendorProjectio
 	vendor.Properties["read_access_count"] = len(readableTargets)
 	vendor.Properties["write_access_count"] = len(writableTargets)
 	vendor.Properties["admin_access_count"] = len(adminTargets)
+	vendor.Properties["dependent_principal_count"] = len(dependentPrincipals)
+	vendor.Properties["dependent_user_count"] = len(dependentUsers)
+	vendor.Properties["dependent_group_count"] = len(dependentGroups)
+	vendor.Properties["dependent_service_account_count"] = len(dependentServiceAccounts)
+	vendor.Properties["vendor_risk_score"] = riskScore
 	vendor.Properties["permission_level"] = vendorPermissionLevel(len(readableTargets), len(writableTargets), len(adminTargets))
-	vendor.Risk = vendorRiskLevel(len(readableTargets), len(writableTargets), len(adminTargets))
+	vendor.Risk = vendorRiskLevelFromScore(riskScore)
 }
 
 func vendorIdentityForNode(node *Node) (vendorIdentity, bool) {
@@ -623,17 +644,107 @@ func vendorNodeID(name string) string {
 	return "vendor:" + normalized
 }
 
-func vendorRiskLevel(readCount, writeCount, adminCount int) RiskLevel {
+func collectVendorDependentPrincipals(g *Graph, managedNodeID string, all, users, groups, serviceAccounts map[string]struct{}) {
+	if g == nil || managedNodeID == "" {
+		return
+	}
+	seenGroups := make(map[string]struct{})
+	for _, edge := range permissionEdges(g.GetInEdges(managedNodeID)) {
+		if edge == nil {
+			continue
+		}
+		source, ok := g.GetNode(edge.Source)
+		if !ok || source == nil {
+			continue
+		}
+		switch source.Kind {
+		case NodeKindUser:
+			all[source.ID] = struct{}{}
+			users[source.ID] = struct{}{}
+		case NodeKindServiceAccount:
+			all[source.ID] = struct{}{}
+			serviceAccounts[source.ID] = struct{}{}
+		case NodeKindGroup:
+			collectVendorGroupDependents(g, source.ID, seenGroups, all, users, groups, serviceAccounts)
+		}
+	}
+}
+
+func collectVendorGroupDependents(g *Graph, groupID string, seenGroups, all, users, groups, serviceAccounts map[string]struct{}) {
+	if g == nil || groupID == "" {
+		return
+	}
+	queue := []string{groupID}
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+		if _, ok := seenGroups[current]; ok {
+			continue
+		}
+		seenGroups[current] = struct{}{}
+		all[current] = struct{}{}
+		groups[current] = struct{}{}
+		for _, edge := range g.GetInEdges(current) {
+			if edge == nil || edge.Kind != EdgeKindMemberOf {
+				continue
+			}
+			source, ok := g.GetNode(edge.Source)
+			if !ok || source == nil {
+				continue
+			}
+			switch source.Kind {
+			case NodeKindUser:
+				all[source.ID] = struct{}{}
+				users[source.ID] = struct{}{}
+			case NodeKindServiceAccount:
+				all[source.ID] = struct{}{}
+				serviceAccounts[source.ID] = struct{}{}
+			case NodeKindGroup:
+				queue = append(queue, source.ID)
+			}
+		}
+	}
+}
+
+func vendorRiskScore(readCount, writeCount, adminCount, accessibleResourceCount, sensitiveResourceCount, dependentPrincipalCount, dependentGroupCount, optionalAssignmentCount int) int {
+	score := 0
 	switch {
 	case adminCount > 0:
-		return RiskHigh
+		score += 70
 	case writeCount > 0:
-		return RiskMedium
+		score += 45
 	case readCount > 0:
+		score += 20
+	}
+	score += minInt(10, accessibleResourceCount*3)
+	score += minInt(15, sensitiveResourceCount*10)
+	score += minInt(15, dependentPrincipalCount*2)
+	score += minInt(10, dependentGroupCount*5)
+	score += minInt(10, optionalAssignmentCount*5)
+	if score > 100 {
+		return 100
+	}
+	return score
+}
+
+func vendorRiskLevelFromScore(score int) RiskLevel {
+	switch {
+	case score >= 70:
+		return RiskHigh
+	case score >= 40:
+		return RiskMedium
+	case score > 0:
 		return RiskLow
 	default:
 		return RiskNone
 	}
+}
+
+func minInt(left, right int) int {
+	if left < right {
+		return left
+	}
+	return right
 }
 
 func propertyString(properties map[string]any, key string) string {

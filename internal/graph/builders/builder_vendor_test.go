@@ -103,6 +103,9 @@ func TestBuilder_ProjectsVendorNodesFromIdentityIntegrations(t *testing.T) {
 	if got := intProperty(t, vendor.Properties, "accessible_resource_count"); got != 2 {
 		t.Fatalf("expected two accessible resources, got %d", got)
 	}
+	if got := intProperty(t, vendor.Properties, "dependent_principal_count"); got != 0 {
+		t.Fatalf("expected no dependent principals in this fixture, got %d", got)
+	}
 	if got := intProperty(t, vendor.Properties, "read_access_count"); got != 1 {
 		t.Fatalf("expected one readable resource, got %d", got)
 	}
@@ -120,6 +123,9 @@ func TestBuilder_ProjectsVendorNodesFromIdentityIntegrations(t *testing.T) {
 	}
 	if got, _ := vendor.Properties["vendor_category"].(string); got != "saas_integration" {
 		t.Fatalf("expected saas integration category, got %#v", vendor.Properties["vendor_category"])
+	}
+	if got := intProperty(t, vendor.Properties, "vendor_risk_score"); got != 86 {
+		t.Fatalf("expected vendor risk score 86, got %d", got)
 	}
 	if vendor.Risk != RiskHigh {
 		t.Fatalf("expected high vendor risk from admin access, got %s", vendor.Risk)
@@ -214,11 +220,106 @@ func TestBuilder_CanonicalizesVendorAliasesAndAggregatesProvenance(t *testing.T)
 	if got := intProperty(t, vendor.Properties, "app_role_assignment_required_count"); got != 1 {
 		t.Fatalf("expected one assignment-required integration, got %d", got)
 	}
+	if got := intProperty(t, vendor.Properties, "vendor_risk_score"); got != 33 {
+		t.Fatalf("expected vendor risk score 33, got %d", got)
+	}
 	if got, _ := vendor.Properties["permission_level"].(string); got != "read" {
 		t.Fatalf("expected permission level read, got %#v", vendor.Properties["permission_level"])
 	}
 	assertEdgeExists(t, g, "okta-app-zoom", "vendor:zoom", EdgeKindManagedBy)
 	assertEdgeExists(t, g, "sp-zoom", "vendor:zoom", EdgeKindManagedBy)
+}
+
+func TestBuilder_AggregatesVendorDependencyBreadthFromAssignments(t *testing.T) {
+	t.Parallel()
+
+	source := newMockDataSource()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	source.setResult(`SELECT id, label, name, status, sign_on_mode FROM okta_applications`, &DataQueryResult{
+		Rows: []map[string]any{{
+			"id":           "okta-app-slack",
+			"label":        "Slack",
+			"name":         "slack",
+			"status":       "ACTIVE",
+			"sign_on_mode": "SAML_2_0",
+		}},
+	})
+	source.setResult(`SELECT id, display_name, app_id, service_principal_type, account_enabled, app_owner_organization_id, app_role_assignment_required, publisher_name, created_date_time, tags, subscription_id FROM azure_graph_service_principals`, &DataQueryResult{
+		Rows: []map[string]any{{
+			"id":                        "sp-slack",
+			"display_name":              "Slack Enterprise Grid",
+			"app_id":                    "app-slack",
+			"service_principal_type":    "Application",
+			"account_enabled":           true,
+			"app_owner_organization_id": "tenant-vendor",
+			"publisher_name":            "Slack",
+			"subscription_id":           "sub-1",
+		}},
+	})
+	source.setResult(`
+		SELECT source_id, source_type, target_id, target_type, rel_type, properties
+		FROM resource_relationships
+	`, &DataQueryResult{
+		Rows: []map[string]any{
+			{
+				"source_id":   "user-alice",
+				"source_type": "okta:user",
+				"target_id":   "okta-app-slack",
+				"target_type": "okta:application",
+				"rel_type":    "CAN_ACCESS",
+			},
+			{
+				"source_id":   "group-ops",
+				"source_type": "okta:group",
+				"target_id":   "okta-app-slack",
+				"target_type": "okta:application",
+				"rel_type":    "CAN_ACCESS",
+			},
+			{
+				"source_id":   "user-bob",
+				"source_type": "okta:user",
+				"target_id":   "group-ops",
+				"target_type": "okta:group",
+				"rel_type":    "MEMBER_OF",
+			},
+			{
+				"source_id":   "sp-worker",
+				"source_type": "entra:service_principal",
+				"target_id":   "sp-slack",
+				"target_type": "entra:service_principal",
+				"rel_type":    "CAN_ACCESS",
+			},
+		},
+	})
+
+	builder := NewBuilder(source, logger)
+	if err := builder.Build(context.Background()); err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+
+	vendor, ok := builder.Graph().GetNode("vendor:slack")
+	if !ok {
+		t.Fatal("expected vendor node for Slack")
+	}
+	if got := intProperty(t, vendor.Properties, "dependent_principal_count"); got != 4 {
+		t.Fatalf("expected four dependent principals, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "dependent_user_count"); got != 2 {
+		t.Fatalf("expected two dependent users, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "dependent_group_count"); got != 1 {
+		t.Fatalf("expected one dependent group, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "dependent_service_account_count"); got != 1 {
+		t.Fatalf("expected one dependent service account, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "vendor_risk_score"); got != 13 {
+		t.Fatalf("expected dependency-only vendor risk score 13, got %d", got)
+	}
+	if vendor.Risk != RiskLow {
+		t.Fatalf("expected dependency breadth to surface low risk, got %s", vendor.Risk)
+	}
 }
 
 func TestBuilder_KeepsDistinctVendorProductAliasesSeparate(t *testing.T) {
