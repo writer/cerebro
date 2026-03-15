@@ -42,6 +42,17 @@ Status: executed end-to-end via PR workflow
 - [x] Fix the regression where derived `managed_by` edges polluted the vendor's own access-scope summary.
 - [x] Regenerate ontology docs and rerun graph/builders validation plus lint.
 
+## Deep Review Cycle 115 - Vendor Dependency Breadth and Graph-Derived Risk Score (2026-03-15)
+
+- [x] Gap: issue `#255` explicitly called for scoring vendors by the number of users/resources depending on them, but vendor nodes still only summarized what the vendor could touch, not who depended on that integration.
+- [x] Gap: direct group assignments undercount blast radius unless vendor dependency breadth expands transitive `member_of` edges to the actual impacted users and workload identities.
+- [x] Gap: vendor nodes still lacked a graph-derived numeric score that combined permission depth, sensitive-resource reach, and dependency breadth into one stable signal for downstream ranking.
+
+- [x] Add TDD coverage for vendor dependency breadth across direct user assignment, group assignment with transitive members, and service-principal assignment.
+- [x] Aggregate dependent principal/user/group/service-account counts from inbound permission edges on vendor-managed integrations.
+- [x] Add a deterministic `vendor_risk_score` that combines privilege depth, sensitive-resource reach, dependency breadth, and assignment-optional exposure.
+- [x] Keep the coarse `Risk` level derived from the score bands so existing graph/report consumers continue to work.
+
 ## Deep Review Cycle 111 - Vulnerability Reachability Prioritization on Workload Scans (2026-03-15)
 
 ### Review findings
