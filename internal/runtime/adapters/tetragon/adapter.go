@@ -19,10 +19,11 @@ type Adapter struct{}
 var _ adapters.Adapter = Adapter{}
 
 type payload struct {
-	ProcessExec *processExecEnvelope `json:"process_exec,omitempty"`
-	ProcessExit *processExitEnvelope `json:"process_exit,omitempty"`
-	NodeName    string               `json:"node_name"`
-	Time        time.Time            `json:"time"`
+	ProcessExec   *processExecEnvelope   `json:"process_exec,omitempty"`
+	ProcessExit   *processExitEnvelope   `json:"process_exit,omitempty"`
+	ProcessKprobe *processKprobeEnvelope `json:"process_kprobe,omitempty"`
+	NodeName      string                 `json:"node_name"`
+	Time          time.Time              `json:"time"`
 }
 
 type processExecEnvelope struct {
@@ -35,6 +36,29 @@ type processExitEnvelope struct {
 	Parent  processInfo `json:"parent"`
 	Signal  string      `json:"signal"`
 	Status  uint32      `json:"status"`
+}
+
+type processKprobeEnvelope struct {
+	Process      processInfo `json:"process"`
+	Parent       processInfo `json:"parent"`
+	FunctionName string      `json:"function_name"`
+	Args         []kprobeArg `json:"args"`
+	Return       *kprobeArg  `json:"return,omitempty"`
+	Action       string      `json:"action"`
+	PolicyName   string      `json:"policy_name"`
+	ReturnAction string      `json:"return_action"`
+}
+
+type kprobeArg struct {
+	FileArg *pathLikeArg `json:"file_arg,omitempty"`
+	PathArg *pathLikeArg `json:"path_arg,omitempty"`
+	IntArg  *int64       `json:"int_arg,omitempty"`
+	UintArg *uint64      `json:"uint_arg,omitempty"`
+}
+
+type pathLikeArg struct {
+	Path       string `json:"path"`
+	Permission string `json:"permission"`
 }
 
 type processInfo struct {
@@ -84,6 +108,12 @@ func (Adapter) Normalize(_ context.Context, raw []byte) ([]*runtime.RuntimeObser
 		return []*runtime.RuntimeObservation{observationFromProcessExec(event)}, nil
 	case event.ProcessExit != nil:
 		return []*runtime.RuntimeObservation{observationFromProcessExit(event)}, nil
+	case event.ProcessKprobe != nil:
+		observation, err := observationFromProcessKprobe(event)
+		if err != nil {
+			return nil, err
+		}
+		return []*runtime.RuntimeObservation{observation}, nil
 	default:
 		return nil, fmt.Errorf("decode tetragon payload: unsupported event")
 	}
@@ -133,6 +163,91 @@ func observationFromProcessExit(event payload) *runtime.RuntimeObservation {
 			"exit_status":    event.ProcessExit.Status,
 		},
 	)
+}
+
+func observationFromProcessKprobe(event payload) (*runtime.RuntimeObservation, error) {
+	kprobe := event.ProcessKprobe
+	functionName := strings.TrimSpace(kprobe.FunctionName)
+
+	var (
+		kind         runtime.RuntimeObservationKind
+		operation    string
+		path         string
+		permission   string
+		accessValue  int64
+		accessValueU uint64
+		accessKey    string
+		metadata     = map[string]any{
+			"exec_id":        kprobe.Process.ExecID,
+			"parent_exec_id": kprobe.Process.ParentExecID,
+			"cwd":            kprobe.Process.CWD,
+			"flags":          kprobe.Process.Flags,
+			"workload_name":  kprobe.Process.Pod.Workload,
+			"pod_labels":     runtime.CloneStringMap(kprobe.Process.Pod.Labels),
+			"node_name":      event.NodeName,
+			"function_name":  functionName,
+			"policy_name":    strings.TrimSpace(kprobe.PolicyName),
+			"action":         strings.TrimSpace(kprobe.Action),
+			"return_action":  strings.TrimSpace(kprobe.ReturnAction),
+		}
+	)
+
+	switch functionName {
+	case "security_file_permission":
+		path, permission = firstFilePathArg(kprobe.Args)
+		accessValue = firstSignedArgValue(kprobe.Args)
+		kind, operation = filePermissionAccess(accessValue)
+		accessKey = "access_mask"
+	case "security_mmap_file":
+		path, permission = firstFilePathArg(kprobe.Args)
+		accessValueU = firstUnsignedArgValue(kprobe.Args)
+		kind, operation = fileMmapAccess(accessValueU)
+		accessKey = "prot_flags"
+	case "security_path_truncate":
+		path, permission = firstPathArg(kprobe.Args)
+		kind, operation = runtime.ObservationKindFileWrite, "modify"
+	case "security_file_truncate":
+		path, permission = firstFilePathArg(kprobe.Args)
+		kind, operation = runtime.ObservationKindFileWrite, "modify"
+	default:
+		return nil, fmt.Errorf("decode tetragon payload: unsupported event")
+	}
+
+	if strings.TrimSpace(path) == "" {
+		return nil, fmt.Errorf("decode tetragon payload: missing file path for %s", functionName)
+	}
+
+	if permission = strings.TrimSpace(permission); permission != "" {
+		metadata["file_permission"] = permission
+	}
+	if accessKey != "" {
+		if functionName == "security_mmap_file" {
+			metadata[accessKey] = accessValueU
+		} else {
+			metadata[accessKey] = accessValue
+		}
+	}
+	if returnCode, ok := firstReturnCode(kprobe.Return); ok {
+		metadata["return_code"] = returnCode
+	}
+
+	observation := newProcessObservation(
+		kind,
+		"process_kprobe",
+		event.Time,
+		event.NodeName,
+		kprobe.Process,
+		kprobe.Parent,
+		metadata,
+	)
+	observation.ID = fileObservationID(kprobe.Process, kind, functionName, path, observation.ObservedAt)
+	observation.File = &runtime.FileEvent{
+		Operation: operation,
+		Path:      path,
+		User:      fmt.Sprintf("%d", kprobe.Process.UID),
+	}
+	observation.Tags = compactTags("tetragon", "process_kprobe", string(kind), functionName)
+	return observation, nil
 }
 
 func newProcessObservation(
@@ -207,6 +322,15 @@ func processObservationID(execID string, kind runtime.RuntimeObservationKind, pr
 	return strings.Join(fallback, ":")
 }
 
+func fileObservationID(process processInfo, kind runtime.RuntimeObservationKind, functionName, path string, observedAt time.Time) string {
+	base := processObservationID(process.ExecID, kind, process)
+	parts := []string{base, strings.TrimSpace(functionName), strings.TrimSpace(path)}
+	if !observedAt.IsZero() {
+		parts = append(parts, observedAt.UTC().Format(time.RFC3339Nano))
+	}
+	return strings.Join(parts, ":")
+}
+
 func podResourceID(namespace, name string) string {
 	if namespace == "" || name == "" {
 		return ""
@@ -220,4 +344,89 @@ func baseNameOrEmpty(path string) string {
 		return ""
 	}
 	return filepath.Base(path)
+}
+
+func firstFilePathArg(args []kprobeArg) (string, string) {
+	for _, arg := range args {
+		if arg.FileArg != nil {
+			return strings.TrimSpace(arg.FileArg.Path), strings.TrimSpace(arg.FileArg.Permission)
+		}
+	}
+	return "", ""
+}
+
+func firstPathArg(args []kprobeArg) (string, string) {
+	for _, arg := range args {
+		if arg.PathArg != nil {
+			return strings.TrimSpace(arg.PathArg.Path), strings.TrimSpace(arg.PathArg.Permission)
+		}
+	}
+	return "", ""
+}
+
+func firstSignedArgValue(args []kprobeArg) int64 {
+	for _, arg := range args {
+		if arg.IntArg != nil {
+			return *arg.IntArg
+		}
+	}
+	return 0
+}
+
+func firstUnsignedArgValue(args []kprobeArg) uint64 {
+	for _, arg := range args {
+		if arg.UintArg != nil {
+			return *arg.UintArg
+		}
+	}
+	return 0
+}
+
+func firstReturnCode(arg *kprobeArg) (any, bool) {
+	if arg == nil {
+		return 0, false
+	}
+	if arg.IntArg != nil {
+		return *arg.IntArg, true
+	}
+	if arg.UintArg != nil {
+		return *arg.UintArg, true
+	}
+	return 0, false
+}
+
+func filePermissionAccess(mask int64) (runtime.RuntimeObservationKind, string) {
+	switch {
+	case mask&(0x02|0x08) != 0:
+		return runtime.ObservationKindFileWrite, "modify"
+	case mask&0x04 != 0:
+		return runtime.ObservationKindFileOpen, "read"
+	case mask&0x01 != 0:
+		return runtime.ObservationKindFileOpen, "execute"
+	default:
+		return runtime.ObservationKindFileOpen, "read"
+	}
+}
+
+func fileMmapAccess(protFlags uint64) (runtime.RuntimeObservationKind, string) {
+	switch {
+	case protFlags&0x02 != 0:
+		return runtime.ObservationKindFileWrite, "modify"
+	case protFlags&0x01 != 0:
+		return runtime.ObservationKindFileOpen, "read"
+	case protFlags&0x04 != 0:
+		return runtime.ObservationKindFileOpen, "execute"
+	default:
+		return runtime.ObservationKindFileOpen, "read"
+	}
+}
+
+func compactTags(values ...string) []string {
+	tags := make([]string, 0, len(values))
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			tags = append(tags, value)
+		}
+	}
+	return tags
 }

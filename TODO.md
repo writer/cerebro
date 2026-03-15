@@ -5,6 +5,23 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 123 - Tetragon File Observation Normalization (2026-03-15)
+
+### Review findings
+- [x] Gap: the runtime visibility substrate could normalize `process_exec` and `process_exit`, but it still dropped Tetragon `process_kprobe` file-access events entirely even though the architecture and slice plan explicitly call out file telemetry as the next source class.
+- [x] Gap: the documented Tetragon filename-monitoring hooks span both legacy and newer kernels, so supporting only `security_path_truncate` would leave `security_file_truncate` blind on newer kernels.
+- [x] Gap: file observations need stable IDs distinct from process lifecycle observations and from sibling file accesses in the same process, or downstream dedupe/finding correlation will collapse unrelated file events.
+
+### Execution plan
+- [x] Normalize Tetragon `process_kprobe` file events from the documented hooks:
+  - [x] `security_file_permission`
+  - [x] `security_mmap_file`
+  - [x] `security_path_truncate`
+  - [x] `security_file_truncate`
+- [x] Map read vs modify semantics onto the existing `RuntimeObservation` / `FileEvent` contract.
+- [x] Preserve Tetragon function name, policy, return code, and access mask metadata on normalized observations.
+- [x] Add regression tests for write, read, truncate, kernel-6.2 file truncate, and file-observation ID uniqueness.
+
 ## Deep Review Cycle 122 - Runtime Visibility Architecture and Integration Plan (2026-03-15)
 
 ### Review findings
@@ -52,7 +69,7 @@ Status: executed end-to-end via PR workflow
 - [x] 017. Add a Tetragon adapter package.
 - [x] 018. Normalize Tetragon process exec events.
 - [x] 019. Normalize Tetragon process exit events.
-- [ ] 020. Normalize Tetragon file events.
+- [x] 020. Normalize Tetragon file events.
 - [ ] 021. Normalize Tetragon network events.
 - [ ] 022. Normalize Tetragon DNS events.
 - [ ] 023. Normalize Tetragon security signal payloads.
