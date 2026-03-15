@@ -33,6 +33,7 @@ const (
 	NodeKindWorkloadScan            NodeKind = "workload_scan"
 	NodeKindPackage                 NodeKind = "package"
 	NodeKindVulnerability           NodeKind = "vulnerability"
+	NodeKindTechnology              NodeKind = "technology"
 	NodeKindNetwork                 NodeKind = "network"
 	NodeKindApplication             NodeKind = "application"
 	NodeKindOrganization            NodeKind = "organization"

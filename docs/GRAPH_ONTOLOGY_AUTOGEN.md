@@ -2,7 +2,7 @@
 
 Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and `internal/graphingest/mappings.yaml` via `go run ./scripts/generate_graph_ontology_docs/main.go`.
 
-- Node kinds: **67**
+- Node kinds: **68**
 - Edge kinds: **44**
 - Mapping rules: **13**
 - Source domains: **9**
@@ -73,6 +73,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `service_account` | identity | - | - |
 | `source` | business | `canonical_name`, `observed_at`, `recorded_at`, `source_type`, `transaction_from`, `valid_from` | - |
 | `subscription` | business | - | - |
+| `technology` | resource | `category`, `observed_at`, `recorded_at`, `technology_id`, `technology_name`, `transaction_from`, `valid_from` | `based_on` |
 | `ticket` | business | - | - |
 | `user` | identity | - | - |
 | `vulnerability` | resource | `observed_at`, `recorded_at`, `severity`, `transaction_from`, `valid_from`, `vulnerability_id` | `based_on` |
@@ -113,6 +114,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `service` | `observed_at`, `source_system`, `valid_from` | `confidence`, `recorded_at`, `source_event_id`, `transaction_from`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `criticality`=`critical`, `high`, `low`, `medium`, `tier0`, `tier1`, `tier2`, `tier3` |
 | `service_account` | - | `confidence`, `observed_at`, `recorded_at`, `source_event_id`, `source_system`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
 | `source` | `observed_at`, `recorded_at`, `source_system`, `transaction_from`, `valid_from` | `confidence`, `source_event_id`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `source_type`=`document`, `external_api`, `human`, `model`, `pipeline`, `sensor`, `system`<br>`trust_tier`=`authoritative`, `derived`, `unverified`, `verified` |
+| `technology` | `observed_at`, `recorded_at`, `source_system`, `transaction_from`, `valid_from` | `confidence`, `source_event_id`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
 | `user` | - | `confidence`, `observed_at`, `recorded_at`, `source_event_id`, `source_system`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
 | `vulnerability` | `observed_at`, `recorded_at`, `source_system`, `transaction_from`, `valid_from` | `confidence`, `source_event_id`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `severity`=`critical`, `high`, `low`, `medium`, `unknown` |
 | `workload` | `observed_at`, `source_system`, `valid_from` | `confidence`, `recorded_at`, `source_event_id`, `transaction_from`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `environment`=`dev`, `prod`, `production`, `qa`, `sandbox`, `staging`, `test` |
@@ -183,7 +185,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 
 ## Unmapped Built-in Node Kinds
 
-Total unmapped kinds: **44**
+Total unmapped kinds: **45**
 
 - `activity`
 - `application`
@@ -226,6 +228,7 @@ Total unmapped kinds: **44**
 - `secret`
 - `service_account`
 - `source`
+- `technology`
 - `user`
 - `vulnerability`
 - `workload_scan`

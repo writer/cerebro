@@ -5,6 +5,73 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 101 - Technology Schema Metadata Preservation (2026-03-14)
+
+### Review findings
+- [x] Gap: the canonical-technology-node fix on `#308` removed all write metadata from `technology` nodes.
+- [x] Gap: `technology` is a schema-registered node kind that still requires canonical write metadata fields: `source_system`, `observed_at`, `valid_from`, `recorded_at`, and `transaction_from`.
+- [x] Gap: under schema enforcement, workload materialization could reject every technology node even though the canonical-node refactor was otherwise correct.
+
+### Execution plan
+- [x] Add TDD coverage that exercises technology materialization under `SchemaValidationEnforce`.
+- [x] Restore schema-required metadata on canonical technology nodes without reintroducing workload-specific provenance like `source_event_id` or `file_path`.
+- [x] Preserve the earliest canonical timestamps across repeated upserts from multiple workloads.
+- [x] Rerun targeted workload/graph tests and lint before pushing the fix.
+
+## Deep Review Cycle 100 - Canonical Technology Node Integrity (2026-03-14)
+
+### Review findings
+- [x] Gap: `#308` modeled `technology` nodes as canonical global entities by name/category/version, but still stamped them with per-scan write metadata like `source_event_id`, `observed_at`, and workload-specific `file_path`.
+- [x] Gap: when multiple workloads reported the same technology, the later scan overwrote the canonical node properties and erased earlier observation metadata.
+- [x] Gap: that workload-specific context belongs on the `workload -> technology` observation edge, not on the canonical technology node itself.
+
+### Execution plan
+- [x] Add TDD coverage for the multi-workload collision case where two workloads report the same technology version.
+- [x] Keep canonical technology node properties stable:
+  - [x] retain only technology identity fields on the node
+  - [x] remove per-workload/per-scan metadata from the node
+- [x] move workload-specific evidence to the `runs` edge:
+  - [x] file path
+  - [x] temporal/source metadata already derived from the scan
+- [x] rerun targeted workload/filesystem/graph validation and lint on the fix
+
+## Deep Review Cycle 97 - Workload Technology Stack Detection and Graph Inventory (2026-03-14)
+
+### Review findings
+- [x] Gap: issue `#240` was still open even though the workload-scan substrate already had the right seam to derive running technology signals during the existing filesystem walk.
+- [x] Gap: package inventory alone could not answer the intended queries from the issue body such as "what runs Redis?" or "what runs Java 8?" because workload scans were not producing a first-class technology inventory.
+- [x] Gap: the graph materialization layer had package/vulnerability/secret/malware projections but no corresponding technology nodes or workload-to-technology edges.
+- [x] Gap: the ontology also lacked a first-class `technology` node kind and workload scan summaries did not persist a `technology_count`.
+- [x] Gap: the initial six detector cases were a valid first slice, but the same seam could cheaply cover additional high-signal runtime/service configs without extra scan passes.
+
+### Execution plan
+- [x] Add TDD coverage for filesystem-derived technology detection across:
+  - [x] Node.js
+  - [x] Go
+  - [x] .NET
+  - [x] Nginx
+  - [x] PostgreSQL
+  - [x] Redis
+- [x] Extend the same TDD surface for additional high-signal artifact families:
+  - [x] Java
+  - [x] Python
+  - [x] Caddy
+  - [x] RabbitMQ
+  - [x] Kafka
+  - [x] NATS
+  - [x] Prometheus
+- [x] Add first-class `TechnologyRecord` inventory to the filesystem analyzer report and summary.
+- [x] Derive technology signals during the existing filesystem walk with no additional scan pass.
+- [x] Add a first-class `technology` node kind and `technology_count` ontology support.
+- [x] Materialize deduped technology inventory from workload scans into the graph as:
+  - [x] `Technology` nodes
+  - [x] `Workload --runs--> Technology` edges
+- [x] Add workload graph TDD coverage for deduped multi-volume technology projection.
+- [ ] Next depth cuts after this slice:
+  - [ ] add more detector families from the issue backlog: Datadog/New Relic, selected orchestration/container runtime signals, and additional CI/CD runner/service-process fingerprints
+  - [ ] expose technology inventory as a dedicated report/query surface instead of only graph/search traversal
+  - [ ] correlate detected technology versions with vulnerability/advisory data where we have trustworthy version specificity
+
 ## Deep Review Cycle 94 - Entra Directory Role CDC Removal Parity (2026-03-14)
 
 ### Review findings
