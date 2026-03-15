@@ -484,6 +484,10 @@ func (b *Builder) ensureRelationshipNode(id, resourceType string) {
 		node.Account = arn.Account
 		node.Region = arn.Region
 	}
+	if node.Provider == "azure" {
+		node.Account = azureIDSegment(id, "subscriptions")
+		node.Name = azureResourceDisplayName(id)
+	}
 
 	b.graph.AddNode(node)
 }
@@ -508,18 +512,43 @@ func nodeKindForResourceType(resourceType string) NodeKind {
 		return NodeKindApplication
 	case "gcp:iam:service_account", "gcp:iam:serviceaccount":
 		return NodeKindServiceAccount
+	case "azure:ad:user", "entra:user":
+		return NodeKindUser
+	case "azure:ad:group", "entra:group":
+		return NodeKindGroup
+	case "azure:ad:service_principal", "entra:service_principal":
+		return NodeKindServiceAccount
+	case "azure:management:tenant":
+		return NodeKindOrganization
+	case "azure:management:management_group", "azure:management:resource_group":
+		return NodeKindFolder
+	case "azure:management:subscription":
+		return NodeKindProject
 	case "aws:s3:bucket", "gcp:storage:bucket":
+		return NodeKindBucket
+	case "azure:storage:account", "azure:storage:container", "azure:storage:blob":
 		return NodeKindBucket
 	case "aws:ec2:instance", "gcp:compute:instance":
 		return NodeKindInstance
+	case "azure:compute:virtual_machine":
+		return NodeKindInstance
 	case "aws:lambda:function", "gcp:cloudfunctions:function":
+		return NodeKindFunction
+	case "azure:web:function_app":
 		return NodeKindFunction
 	case "aws:rds:db_instance", "gcp:sql:instance":
 		return NodeKindDatabase
+	case "azure:sql:server", "azure:sql:database":
+		return NodeKindDatabase
 	case "aws:secretsmanager:secret", "gcp:secretmanager:secret":
 		return NodeKindSecret
-	case "aws:ec2:security_group", "aws:ec2:vpc", "aws:ec2:subnet", "gcp:compute:network", "gcp:compute:subnetwork":
+	case "azure:keyvault:vault", "azure:keyvault:key":
+		return NodeKindSecret
+	case "aws:ec2:security_group", "aws:ec2:vpc", "aws:ec2:subnet", "gcp:compute:network", "gcp:compute:subnetwork",
+		"azure:network:interface", "azure:network:security_group", "azure:network:virtual_network", "azure:network:subnet", "azure:network:public_ip", "azure:network:load_balancer":
 		return NodeKindNetwork
+	case "azure:policy:assignment", "azure:compute:disk", "azure:compute:availability_set", "azure:compute:managed_cluster":
+		return NodeKindService
 	case "network:internet":
 		return NodeKindInternet
 	default:
@@ -535,7 +564,7 @@ func providerForResourceType(resourceType string) string {
 	if strings.HasPrefix(resourceType, "gcp:") {
 		return "gcp"
 	}
-	if strings.HasPrefix(resourceType, "azure:") {
+	if strings.HasPrefix(resourceType, "azure:") || strings.HasPrefix(resourceType, "entra:") {
 		return "azure"
 	}
 	if strings.HasPrefix(resourceType, "okta:") {
@@ -546,7 +575,11 @@ func providerForResourceType(resourceType string) string {
 
 func isIdentityType(resourceType string) bool {
 	switch strings.ToLower(resourceType) {
-	case "aws:iam:user", "aws:iam:role", "aws:iam:group", "aws:iam:instance_profile", "gcp:iam:service_account", "gcp:iam:serviceaccount", "okta:user", "okta:group", "okta:admin_role":
+	case "aws:iam:user", "aws:iam:role", "aws:iam:group", "aws:iam:instance_profile",
+		"gcp:iam:service_account", "gcp:iam:serviceaccount",
+		"okta:user", "okta:group", "okta:admin_role",
+		"azure:ad:user", "azure:ad:group", "azure:ad:service_principal",
+		"entra:user", "entra:group", "entra:service_principal":
 		return true
 	default:
 		return false

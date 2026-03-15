@@ -102,10 +102,7 @@ func (b *Builder) ApplyChanges(ctx context.Context, since time.Time) (GraphMutat
 
 		switch normalizeCDCChangeType(event.ChangeType) {
 		case "removed":
-			nodeID := strings.TrimSpace(event.ResourceID)
-			if nodeID == "" {
-				nodeID = cdcNodeID(table, event.Payload, "")
-			}
+			nodeID := cdcNodeID(table, event.Payload, event.ResourceID)
 			if nodeID == "" {
 				continue
 			}
@@ -504,32 +501,81 @@ func cdcEventToNode(table string, event cdcEvent) *Node {
 			cdcNodeID(table, payload, event.ResourceID),
 		)
 
-	case "azure_ad_service_principals":
+	case "azure_graph_service_principals", "entra_service_principals", "azure_ad_service_principals":
 		id := cdcNodeID(table, payload, event.ResourceID)
-		return &Node{
-			ID:       id,
-			Kind:     NodeKindServiceAccount,
-			Name:     firstNonEmpty(queryRowString(payload, "display_name"), id),
-			Provider: firstNonEmpty(provider, "azure"),
-			Account:  firstNonEmpty(queryRowString(payload, "subscription_id"), account),
-			Region:   firstNonEmpty(queryRowString(payload, "location"), region),
-			Properties: map[string]any{
-				"app_id": queryRow(payload, "app_id"),
-				"type":   queryRow(payload, "service_principal_type"),
-			},
+		servicePrincipalType := firstNonEmpty(queryRowString(payload, "service_principal_type"), queryRowString(payload, "type"))
+		properties := map[string]any{
+			"app_id":              queryRow(payload, "app_id"),
+			"type":                servicePrincipalType,
+			"account_enabled":     queryRow(payload, "account_enabled"),
+			"publisher_name":      queryRow(payload, "publisher_name"),
+			"tags":                queryRow(payload, "tags"),
+			"created_datetime":    firstNonEmpty(queryRowString(payload, "created_datetime"), queryRowString(payload, "created_date_time")),
+			"azure_resource_type": "service_principal",
 		}
-	case "azure_ad_users":
+		if strings.Contains(strings.ToLower(servicePrincipalType), "managed") {
+			properties["identity_type"] = servicePrincipalType
+		}
+		return &Node{
+			ID:         id,
+			Kind:       NodeKindServiceAccount,
+			Name:       firstNonEmpty(queryRowString(payload, "display_name"), id),
+			Provider:   firstNonEmpty(provider, "azure"),
+			Account:    firstNonEmpty(queryRowString(payload, "subscription_id"), account),
+			Region:     firstNonEmpty(queryRowString(payload, "location"), region),
+			Properties: properties,
+		}
+	case "entra_users", "azure_ad_users":
 		id := cdcNodeID(table, payload, event.ResourceID)
 		return &Node{
 			ID:       id,
 			Kind:     NodeKindUser,
-			Name:     firstNonEmpty(queryRowString(payload, "display_name"), id),
+			Name:     firstNonEmpty(queryRowString(payload, "display_name"), queryRowString(payload, "user_principal_name"), id),
 			Provider: firstNonEmpty(provider, "azure"),
 			Account:  firstNonEmpty(queryRowString(payload, "subscription_id"), account),
 			Region:   firstNonEmpty(queryRowString(payload, "location"), region),
 			Properties: map[string]any{
-				"upn":  queryRow(payload, "user_principal_name"),
-				"mail": queryRow(payload, "mail"),
+				"upn":                 queryRow(payload, "user_principal_name"),
+				"mail":                queryRow(payload, "mail"),
+				"department":          queryRow(payload, "department"),
+				"job_title":           queryRow(payload, "job_title"),
+				"account_enabled":     queryRow(payload, "account_enabled"),
+				"user_type":           queryRow(payload, "user_type"),
+				"last_sign_in":        queryRow(payload, "last_sign_in_datetime"),
+				"azure_resource_type": "user",
+			},
+		}
+	case "entra_groups":
+		id := cdcNodeID(table, payload, event.ResourceID)
+		return &Node{
+			ID:       id,
+			Kind:     NodeKindGroup,
+			Name:     firstNonEmpty(queryRowString(payload, "display_name"), id),
+			Provider: firstNonEmpty(provider, "azure"),
+			Properties: map[string]any{
+				"description":         queryRow(payload, "description"),
+				"mail":                queryRow(payload, "mail"),
+				"security_enabled":    queryRow(payload, "security_enabled"),
+				"group_types":         queryRow(payload, "group_types"),
+				"azure_resource_type": "entra_group",
+			},
+		}
+	case "entra_directory_roles":
+		rawID := firstNonEmpty(strings.TrimSpace(event.ResourceID), queryRowString(payload, "id"))
+		if rawID == "" {
+			return nil
+		}
+		return &Node{
+			ID:       azureDirectoryRoleNodeID(rawID),
+			Kind:     NodeKindRole,
+			Name:     firstNonEmpty(queryRowString(payload, "display_name"), rawID),
+			Provider: firstNonEmpty(provider, "azure"),
+			Properties: map[string]any{
+				"directory_role_id":   rawID,
+				"description":         queryRow(payload, "description"),
+				"is_built_in":         queryRow(payload, "is_built_in"),
+				"is_enabled":          queryRow(payload, "is_enabled"),
+				"azure_resource_type": "entra_directory_role",
 			},
 		}
 	case "azure_compute_virtual_machines":
@@ -542,8 +588,38 @@ func cdcEventToNode(table string, event cdcEvent) *Node {
 			Account:  firstNonEmpty(queryRowString(payload, "subscription_id"), account),
 			Region:   firstNonEmpty(queryRowString(payload, "location"), region),
 			Properties: map[string]any{
-				"resource_group": queryRow(payload, "resource_group"),
-				"identity":       queryRow(payload, "identity"),
+				"resource_group":      queryRow(payload, "resource_group"),
+				"identity":            queryRow(payload, "identity"),
+				"vm_size":             queryRow(payload, "vm_size"),
+				"os_type":             queryRow(payload, "os_type"),
+				"provisioning_state":  queryRow(payload, "provisioning_state"),
+				"azure_resource_type": "virtual_machine",
+			},
+		}
+	case "azure_aks_clusters":
+		public := azureAuthorizedIPRangesPublic(queryRow(payload, "authorized_ip_ranges"))
+		risk := RiskNone
+		if public {
+			risk = RiskMedium
+		}
+		id := cdcNodeID(table, payload, event.ResourceID)
+		return &Node{
+			ID:       id,
+			Kind:     NodeKindService,
+			Name:     firstNonEmpty(queryRowString(payload, "name"), id),
+			Provider: firstNonEmpty(provider, "azure"),
+			Account:  firstNonEmpty(queryRowString(payload, "subscription_id"), account),
+			Region:   firstNonEmpty(queryRowString(payload, "location"), region),
+			Risk:     risk,
+			Properties: map[string]any{
+				"resource_group":          queryRow(payload, "resource_group"),
+				"identity":                queryRow(payload, "identity"),
+				"kubernetes_version":      queryRow(payload, "kubernetes_version"),
+				"fqdn":                    queryRow(payload, "fqdn"),
+				"private_cluster_enabled": queryRow(payload, "private_cluster_enabled"),
+				"authorized_ip_ranges":    queryRow(payload, "authorized_ip_ranges"),
+				"public":                  public,
+				"azure_resource_type":     "aks_cluster",
 			},
 		}
 	case "azure_storage_accounts":
@@ -562,8 +638,80 @@ func cdcEventToNode(table string, event cdcEvent) *Node {
 			Region:   firstNonEmpty(queryRowString(payload, "location"), region),
 			Risk:     risk,
 			Properties: map[string]any{
-				"resource_group": queryRow(payload, "resource_group"),
-				"public":         isPublic,
+				"resource_group":           queryRow(payload, "resource_group"),
+				"public":                   isPublic,
+				"allow_blob_public_access": queryRow(payload, "allow_blob_public_access"),
+				"network_acls":             queryRow(payload, "network_acls"),
+				"minimum_tls_version":      queryRow(payload, "minimum_tls_version"),
+				"https_only":               queryRow(payload, "https_only"),
+				"azure_resource_type":      "storage_account",
+			},
+		}
+	case "azure_storage_containers":
+		publicAccess := queryRowString(payload, "public_access")
+		isPublic := publicAccess != "" && !strings.EqualFold(publicAccess, "none")
+		risk := RiskNone
+		if isPublic {
+			risk = RiskCritical
+		}
+		id := cdcNodeID(table, payload, event.ResourceID)
+		return &Node{
+			ID:       id,
+			Kind:     NodeKindBucket,
+			Name:     firstNonEmpty(queryRowString(payload, "name"), id),
+			Provider: firstNonEmpty(provider, "azure"),
+			Account:  firstNonEmpty(queryRowString(payload, "subscription_id"), account),
+			Risk:     risk,
+			Properties: map[string]any{
+				"resource_group":          queryRow(payload, "resource_group"),
+				"account_name":            queryRow(payload, "account_name"),
+				"public":                  isPublic,
+				"public_access":           publicAccess,
+				"has_immutability_policy": queryRow(payload, "has_immutability_policy"),
+				"legal_hold":              queryRow(payload, "legal_hold"),
+				"azure_resource_type":     "storage_container",
+			},
+		}
+	case "azure_storage_blobs":
+		id := cdcNodeID(table, payload, event.ResourceID)
+		return &Node{
+			ID:       id,
+			Kind:     NodeKindBucket,
+			Name:     firstNonEmpty(queryRowString(payload, "name"), id),
+			Provider: firstNonEmpty(provider, "azure"),
+			Account:  firstNonEmpty(queryRowString(payload, "subscription_id"), account),
+			Properties: map[string]any{
+				"resource_group":      queryRow(payload, "resource_group"),
+				"account_name":        queryRow(payload, "account_name"),
+				"container_name":      queryRow(payload, "container_name"),
+				"content_length":      queryRow(payload, "content_length"),
+				"content_type":        queryRow(payload, "content_type"),
+				"azure_resource_type": "storage_blob",
+			},
+		}
+	case "azure_sql_servers":
+		isPublic := strings.EqualFold(strings.TrimSpace(queryRowString(payload, "public_network_access")), "enabled")
+		risk := RiskNone
+		if isPublic {
+			risk = RiskHigh
+		}
+		id := cdcNodeID(table, payload, event.ResourceID)
+		return &Node{
+			ID:       id,
+			Kind:     NodeKindDatabase,
+			Name:     firstNonEmpty(queryRowString(payload, "name"), id),
+			Provider: firstNonEmpty(provider, "azure"),
+			Account:  firstNonEmpty(queryRowString(payload, "subscription_id"), account),
+			Region:   firstNonEmpty(queryRowString(payload, "location"), region),
+			Risk:     risk,
+			Properties: map[string]any{
+				"resource_group":        queryRow(payload, "resource_group"),
+				"version":               queryRow(payload, "version"),
+				"state":                 queryRow(payload, "state"),
+				"administrator_login":   queryRow(payload, "administrator_login"),
+				"public_network_access": queryRow(payload, "public_network_access"),
+				"public":                isPublic,
+				"azure_resource_type":   "sql_server",
 			},
 		}
 	case "azure_sql_databases":
@@ -576,8 +724,10 @@ func cdcEventToNode(table string, event cdcEvent) *Node {
 			Account:  firstNonEmpty(queryRowString(payload, "subscription_id"), account),
 			Region:   firstNonEmpty(queryRowString(payload, "location"), region),
 			Properties: map[string]any{
-				"resource_group": queryRow(payload, "resource_group"),
-				"server":         queryRow(payload, "server_name"),
+				"resource_group":      queryRow(payload, "resource_group"),
+				"server":              queryRow(payload, "server_name"),
+				"status":              queryRow(payload, "status"),
+				"azure_resource_type": "sql_database",
 			},
 		}
 	case "azure_keyvault_vaults":
@@ -591,10 +741,37 @@ func cdcEventToNode(table string, event cdcEvent) *Node {
 			Region:   firstNonEmpty(queryRowString(payload, "location"), region),
 			Risk:     RiskHigh,
 			Properties: map[string]any{
-				"resource_group": queryRow(payload, "resource_group"),
+				"resource_group":          queryRow(payload, "resource_group"),
+				"vault_uri":               queryRow(payload, "vault_uri"),
+				"access_policies":         queryRow(payload, "access_policies"),
+				"enable_purge_protection": queryRow(payload, "enable_purge_protection"),
+				"enable_soft_delete":      queryRow(payload, "enable_soft_delete"),
+				"azure_resource_type":     "key_vault",
+			},
+		}
+	case "azure_keyvault_keys":
+		id := cdcNodeID(table, payload, event.ResourceID)
+		return &Node{
+			ID:       id,
+			Kind:     NodeKindSecret,
+			Name:     firstNonEmpty(queryRowString(payload, "name"), id),
+			Provider: firstNonEmpty(provider, "azure"),
+			Account:  firstNonEmpty(queryRowString(payload, "subscription_id"), account),
+			Risk:     RiskHigh,
+			Properties: map[string]any{
+				"vault_id":            azureVaultResourceIDFromKeyID(id),
+				"vault_uri":           queryRow(payload, "vault_uri"),
+				"managed":             queryRow(payload, "managed"),
+				"attributes":          queryRow(payload, "attributes"),
+				"azure_resource_type": "key_vault_key",
 			},
 		}
 	case "azure_functions_apps":
+		public := toBool(queryRow(payload, "http_trigger")) && !strings.EqualFold(queryRowString(payload, "auth_level"), "admin")
+		risk := RiskNone
+		if public {
+			risk = RiskMedium
+		}
 		id := cdcNodeID(table, payload, event.ResourceID)
 		return &Node{
 			ID:       id,
@@ -603,9 +780,141 @@ func cdcEventToNode(table string, event cdcEvent) *Node {
 			Provider: firstNonEmpty(provider, "azure"),
 			Account:  firstNonEmpty(queryRowString(payload, "subscription_id"), account),
 			Region:   firstNonEmpty(queryRowString(payload, "location"), region),
+			Risk:     risk,
 			Properties: map[string]any{
-				"resource_group": queryRow(payload, "resource_group"),
-				"identity":       queryRow(payload, "identity"),
+				"resource_group":      queryRow(payload, "resource_group"),
+				"identity":            queryRow(payload, "identity"),
+				"auth_level":          queryRow(payload, "auth_level"),
+				"http_trigger":        queryRow(payload, "http_trigger"),
+				"https_only":          queryRow(payload, "https_only"),
+				"public":              public,
+				"azure_resource_type": "function_app",
+			},
+		}
+	case "azure_network_virtual_networks":
+		id := cdcNodeID(table, payload, event.ResourceID)
+		return &Node{
+			ID:       id,
+			Kind:     NodeKindNetwork,
+			Name:     firstNonEmpty(queryRowString(payload, "name"), id),
+			Provider: firstNonEmpty(provider, "azure"),
+			Account:  firstNonEmpty(queryRowString(payload, "subscription_id"), account),
+			Region:   firstNonEmpty(queryRowString(payload, "location"), region),
+			Properties: map[string]any{
+				"resource_group":         queryRow(payload, "resource_group"),
+				"address_space":          queryRow(payload, "address_space"),
+				"subnets":                queryRow(payload, "subnets"),
+				"peerings":               queryRow(payload, "peerings"),
+				"enable_ddos_protection": queryRow(payload, "enable_ddos_protection"),
+				"azure_resource_type":    "virtual_network",
+			},
+		}
+	case "azure_network_public_ip_addresses":
+		ipAddress := queryRowString(payload, "ip_address")
+		public := strings.TrimSpace(ipAddress) != ""
+		risk := RiskNone
+		if public {
+			risk = RiskMedium
+		}
+		id := cdcNodeID(table, payload, event.ResourceID)
+		return &Node{
+			ID:       id,
+			Kind:     NodeKindNetwork,
+			Name:     firstNonEmpty(queryRowString(payload, "name"), id),
+			Provider: firstNonEmpty(provider, "azure"),
+			Account:  firstNonEmpty(queryRowString(payload, "subscription_id"), account),
+			Region:   firstNonEmpty(queryRowString(payload, "location"), region),
+			Risk:     risk,
+			Properties: map[string]any{
+				"resource_group":              queryRow(payload, "resource_group"),
+				"public_ip":                   ipAddress,
+				"public":                      public,
+				"public_ip_allocation_method": queryRow(payload, "public_ip_allocation_method"),
+				"ip_configuration":            queryRow(payload, "ip_configuration"),
+				"azure_resource_type":         "public_ip",
+			},
+		}
+	case "azure_network_load_balancers":
+		public := azureLoadBalancerHasPublicFrontend(queryRow(payload, "frontend_ip_configurations"))
+		risk := RiskNone
+		if public {
+			risk = RiskMedium
+		}
+		id := cdcNodeID(table, payload, event.ResourceID)
+		return &Node{
+			ID:       id,
+			Kind:     NodeKindNetwork,
+			Name:     firstNonEmpty(queryRowString(payload, "name"), id),
+			Provider: firstNonEmpty(provider, "azure"),
+			Account:  firstNonEmpty(queryRowString(payload, "subscription_id"), account),
+			Region:   firstNonEmpty(queryRowString(payload, "location"), region),
+			Risk:     risk,
+			Properties: map[string]any{
+				"resource_group":             queryRow(payload, "resource_group"),
+				"sku":                        queryRow(payload, "sku"),
+				"frontend_ip_configurations": queryRow(payload, "frontend_ip_configurations"),
+				"public":                     public,
+				"azure_resource_type":        "load_balancer",
+			},
+		}
+	case "azure_network_interfaces":
+		public := azureNICHasPublicFrontend(queryRow(payload, "ip_configurations"))
+		risk := RiskNone
+		if public {
+			risk = RiskMedium
+		}
+		id := cdcNodeID(table, payload, event.ResourceID)
+		return &Node{
+			ID:       id,
+			Kind:     NodeKindNetwork,
+			Name:     firstNonEmpty(queryRowString(payload, "name"), id),
+			Provider: firstNonEmpty(provider, "azure"),
+			Account:  firstNonEmpty(queryRowString(payload, "subscription_id"), account),
+			Region:   firstNonEmpty(queryRowString(payload, "location"), region),
+			Risk:     risk,
+			Properties: map[string]any{
+				"resource_group":         queryRow(payload, "resource_group"),
+				"ip_configurations":      queryRow(payload, "ip_configurations"),
+				"network_security_group": queryRow(payload, "network_security_group"),
+				"virtual_machine":        queryRow(payload, "virtual_machine"),
+				"public":                 public,
+				"azure_resource_type":    "network_interface",
+			},
+		}
+	case "azure_compute_disks":
+		id := cdcNodeID(table, payload, event.ResourceID)
+		return &Node{
+			ID:       id,
+			Kind:     NodeKindService,
+			Name:     firstNonEmpty(queryRowString(payload, "name"), id),
+			Provider: firstNonEmpty(provider, "azure"),
+			Account:  firstNonEmpty(queryRowString(payload, "subscription_id"), account),
+			Region:   firstNonEmpty(queryRowString(payload, "location"), region),
+			Properties: map[string]any{
+				"resource_group":      queryRow(payload, "resource_group"),
+				"disk_size_gb":        queryRow(payload, "disk_size_gb"),
+				"disk_state":          queryRow(payload, "disk_state"),
+				"managed_by":          queryRow(payload, "managed_by"),
+				"azure_resource_type": "disk",
+			},
+		}
+	case "azure_policy_assignments":
+		id := cdcNodeID(table, payload, event.ResourceID)
+		return &Node{
+			ID:       id,
+			Kind:     NodeKindService,
+			Name:     firstNonEmpty(queryRowString(payload, "display_name"), queryRowString(payload, "name"), id),
+			Provider: firstNonEmpty(provider, "azure"),
+			Account:  firstNonEmpty(queryRowString(payload, "subscription_id"), account),
+			Region:   firstNonEmpty(queryRowString(payload, "location"), region),
+			Properties: map[string]any{
+				"scope":                queryRow(payload, "scope"),
+				"policy_definition_id": queryRow(payload, "policy_definition_id"),
+				"enforcement_mode":     queryRow(payload, "enforcement_mode"),
+				"identity":             queryRow(payload, "identity"),
+				"metadata":             queryRow(payload, "metadata"),
+				"parameters":           queryRow(payload, "parameters"),
+				"azure_resource_type":  "policy_assignment",
 			},
 		}
 	case "azure_network_security_groups":
@@ -725,7 +1034,23 @@ func cdcNodeID(table string, payload map[string]any, fallback string) string {
 			return id
 		}
 		return azureNetworkSecurityGroupNodeID(payload)
-	case "azure_ad_service_principals", "azure_ad_users", "azure_compute_virtual_machines", "azure_storage_accounts", "azure_sql_databases", "azure_keyvault_vaults", "azure_functions_apps", "okta_users", "okta_groups", "okta_applications":
+	case "entra_directory_roles":
+		rawID := firstNonEmpty(strings.TrimSpace(fallback), queryRowString(payload, "id"), queryRowString(payload, "name"))
+		if rawID == "" {
+			return ""
+		}
+		return azureDirectoryRoleNodeID(rawID)
+	case "azure_graph_service_principals", "entra_service_principals", "azure_ad_service_principals",
+		"entra_users", "azure_ad_users", "entra_groups",
+		"azure_compute_virtual_machines", "azure_aks_clusters",
+		"azure_storage_accounts", "azure_storage_containers", "azure_storage_blobs",
+		"azure_sql_servers", "azure_sql_databases",
+		"azure_keyvault_vaults", "azure_keyvault_keys",
+		"azure_functions_apps",
+		"azure_network_virtual_networks", "azure_network_public_ip_addresses",
+		"azure_network_load_balancers", "azure_network_interfaces",
+		"azure_compute_disks", "azure_policy_assignments",
+		"okta_users", "okta_groups", "okta_applications":
 		if id := strings.TrimSpace(fallback); id != "" {
 			return id
 		}

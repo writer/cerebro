@@ -5,6 +5,57 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 94 - Entra Directory Role CDC Removal Parity (2026-03-14)
+
+### Review findings
+- [x] Gap: issue `#275` created Entra directory role nodes with the prefixed `azure_directory_role:` ID, but CDC removals still preferred the raw `resource_id`.
+- [x] Gap: delete events for `entra_directory_roles` therefore left stale role nodes in the graph even after the source record was removed.
+- [x] Gap: adding an `entra_directory_roles` branch to `cdcNodeID` alone was insufficient because the removal path bypassed `cdcNodeID` whenever `resource_id` was present.
+
+### Execution plan
+- [x] Add TDD coverage for:
+  - [x] `cdcNodeID` returning the prefixed directory-role ID
+  - [x] incremental CDC removal actually soft-deleting the prefixed directory-role node
+- [x] Normalize CDC removal IDs through `cdcNodeID(table, payload, resourceID)` instead of trusting the raw event ID first.
+- [x] Keep the table-specific `entra_directory_roles` ID normalization in `cdcNodeID` so adds and removes use the same node contract.
+
+## Deep Review Cycle 93 - Azure Key Vault Key Lineage and Scope Cleanup Follow-through (2026-03-14)
+
+### Review findings
+- [x] Gap: issue `#275` was already fixing Azure RBAC scope correctness, but Azure Key Vault key nodes still did not persist a `vault_id`, even though `azureKeyNodesForVault` advertised that as a matching path.
+- [x] Gap: full-build and CDC Azure Key Vault key nodes therefore relied only on `vault_uri`, which is weaker and can be absent in partial datasets.
+- [x] Gap: `azurePermissionsToEdgeKind` still used a redundant score switch that duplicated `azurePermissionScore` instead of directly taking the highest score.
+
+### Execution plan
+- [x] Add TDD coverage for:
+  - [x] Key Vault access-policy edges still linking keys when only the key resource ID is available
+  - [x] CDC Azure Key Vault key nodes deriving and storing `vault_id`
+  - [x] Azure permission scoring still honoring the highest observed permission
+- [x] Derive `vault_id` from Azure Key Vault key resource IDs in both full-build and CDC paths.
+- [x] Keep key-to-vault matching working through either explicit `vault_id` or normalized `vault_uri`.
+- [x] Replace the redundant Azure permission-score switch with direct max-of-score aggregation.
+
+## Deep Review Cycle 92 - Azure RBAC Scope Boundaries and Fallback Table Correctness (2026-03-14)
+
+### Review findings
+- [x] Gap: issue `#275` was correctly trying to add first-class Azure RBAC graph modeling, but `azureNodeWithinScope` still had an over-broad substring fallback that could match sibling resources and similarly named subscriptions/resource groups.
+- [x] Gap: resource-scoped Azure RBAC assignments could therefore over-grant `Can*` edges to unrelated resources in the same resource group instead of staying bounded to the scoped resource and its descendants.
+- [x] Gap: `loadAzurePreferredIdentityNodes` stopped on the first discovered table with zero rows, which prevented fallback identity tables from loading in racey or partially populated environments.
+- [x] Gap: `queryAzureRBACRoleAssignments` could not fall back from `azure_rbac_role_assignments` to `azure_authorization_role_assignments` when table discovery was unavailable and the preferred table query failed.
+
+### Execution plan
+- [x] Add TDD coverage for:
+  - [x] resource-scoped Azure RBAC staying out of sibling resources in the same group
+  - [x] direct scope matching rejecting similar subscription/resource-group substrings
+  - [x] discovered-table identity fallback after an empty first result
+  - [x] RBAC table fallback when discovery is unavailable and the preferred query fails
+- [x] Remove the broad substring fallback from `azureNodeWithinScope` and keep matching boundary-aware:
+  - [x] exact resource match
+  - [x] descendant prefix match
+  - [x] explicit subscription/resource-group scope handling
+- [x] Continue across Azure identity fallback candidates on empty/error results instead of returning early.
+- [x] Make Azure RBAC assignment loading iterate preferred tables in order and fall through to the legacy table when the preferred query is unavailable or empty.
+
 ## Deep Review Cycle 91 - Conditional Resource Enforcement in IAM Boundary and SCP Evaluation (2026-03-14)
 
 ### Review findings
