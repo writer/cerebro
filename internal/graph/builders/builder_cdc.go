@@ -506,15 +506,18 @@ func cdcEventToNode(table string, event cdcEvent) *Node {
 		id := cdcNodeID(table, payload, event.ResourceID)
 		servicePrincipalType := firstNonEmpty(queryRowString(payload, "service_principal_type"), queryRowString(payload, "type"))
 		properties := map[string]any{
-			"app_id":                       queryRow(payload, "app_id"),
-			"type":                         servicePrincipalType,
-			"account_enabled":              queryRow(payload, "account_enabled"),
-			"app_owner_organization_id":    queryRow(payload, "app_owner_organization_id"),
-			"app_role_assignment_required": queryRow(payload, "app_role_assignment_required"),
-			"publisher_name":               queryRow(payload, "publisher_name"),
-			"tags":                         queryRow(payload, "tags"),
-			"created_datetime":             firstNonEmpty(queryRowString(payload, "created_datetime"), queryRowString(payload, "created_date_time")),
-			"azure_resource_type":          "service_principal",
+			"app_id":                            queryRow(payload, "app_id"),
+			"type":                              servicePrincipalType,
+			"account_enabled":                   queryRow(payload, "account_enabled"),
+			"app_owner_organization_id":         queryRow(payload, "app_owner_organization_id"),
+			"app_role_assignment_required":      queryRow(payload, "app_role_assignment_required"),
+			"publisher_name":                    queryRow(payload, "publisher_name"),
+			"verified_publisher_display_name":   queryRow(payload, "verified_publisher_display_name"),
+			"verified_publisher_id":             queryRow(payload, "verified_publisher_id"),
+			"verified_publisher_added_datetime": queryRow(payload, "verified_publisher_added_datetime"),
+			"tags":                              queryRow(payload, "tags"),
+			"created_datetime":                  firstNonEmpty(queryRowString(payload, "created_datetime"), queryRowString(payload, "created_date_time")),
+			"azure_resource_type":               "service_principal",
 		}
 		if strings.Contains(strings.ToLower(servicePrincipalType), "managed") {
 			properties["identity_type"] = servicePrincipalType

@@ -53,6 +53,18 @@ Status: executed end-to-end via PR workflow
 - [x] Add a deterministic `vendor_risk_score` that combines privilege depth, sensitive-resource reach, dependency breadth, and assignment-optional exposure.
 - [x] Keep the coarse `Risk` level derived from the score bands so existing graph/report consumers continue to work.
 
+## Deep Review Cycle 116 - Verified Publisher Trust Signals for Vendor Nodes (2026-03-15)
+
+- [x] Gap: Microsoft Graph already exposes `verifiedPublisher` on service principals, but Cerebro was discarding it at both Entra sync and Azure Graph sync time, so vendor identity still depended on weaker raw publisher strings.
+- [x] Gap: that meant verified-publisher IDs could not anchor cross-product vendor merges, and vendor nodes had no first-class trust/provenance signal distinguishing verified from unverified integrations.
+- [x] Gap: CDC replay and fallback Entra builds also needed the same flattening so the trust signal survived regardless of ingestion path.
+
+- [x] Flatten `verifiedPublisher.displayName`, `verifiedPublisherId`, and `addedDateTime` into both Entra and Azure Graph service-principal tables.
+- [x] Thread the verified-publisher fields through builder queries and CDC replay for Azure/Entra service principals.
+- [x] Prefer verified-publisher display name as the stronger vendor identity label and merge vendor projections by verified-publisher ID when present.
+- [x] Persist verified/unverified integration counts plus verification status on vendor nodes.
+- [x] Add TDD coverage for verified-publisher preservation and verified-publisher-based vendor projection merge behavior.
+
 ## Deep Review Cycle 111 - Vulnerability Reachability Prioritization on Workload Scans (2026-03-15)
 
 ### Review findings

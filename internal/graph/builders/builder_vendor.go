@@ -39,10 +39,11 @@ var vendorCorporateSuffixPhrases = [][]string{
 }
 
 type vendorIdentity struct {
-	rawName         string
-	aliasKey        string
-	ownerOrgID      string
-	integrationType string
+	rawName             string
+	aliasKey            string
+	ownerOrgID          string
+	verifiedPublisherID string
+	integrationType     string
 }
 
 type vendorProjection struct {
@@ -52,6 +53,7 @@ type vendorProjection struct {
 	rawNames             map[string]struct{}
 	aliasKeys            map[string]struct{}
 	ownerOrganizationIDs map[string]struct{}
+	verifiedPublisherIDs map[string]struct{}
 	sourceProviders      map[string]struct{}
 	integrationTypes     map[string]struct{}
 	managedNodeIDs       map[string]struct{}
@@ -88,6 +90,7 @@ func (b *Builder) buildVendorNodes() {
 				rawNames:             make(map[string]struct{}),
 				aliasKeys:            make(map[string]struct{}),
 				ownerOrganizationIDs: make(map[string]struct{}),
+				verifiedPublisherIDs: make(map[string]struct{}),
 				sourceProviders:      make(map[string]struct{}),
 				integrationTypes:     make(map[string]struct{}),
 				managedNodeIDs:       make(map[string]struct{}),
@@ -139,6 +142,9 @@ func (p *vendorProjection) absorb(identity vendorIdentity, node *Node) {
 	if ownerOrgID := strings.TrimSpace(identity.ownerOrgID); ownerOrgID != "" {
 		p.ownerOrganizationIDs[ownerOrgID] = struct{}{}
 	}
+	if verifiedPublisherID := strings.TrimSpace(identity.verifiedPublisherID); verifiedPublisherID != "" {
+		p.verifiedPublisherIDs[verifiedPublisherID] = struct{}{}
+	}
 	if provider := strings.TrimSpace(node.Provider); provider != "" {
 		p.sourceProviders[provider] = struct{}{}
 	}
@@ -170,6 +176,11 @@ func matchVendorProjection(projections []*vendorProjection, identity vendorIdent
 		}
 		if identity.ownerOrgID != "" {
 			if _, ok := projection.ownerOrganizationIDs[identity.ownerOrgID]; ok {
+				return projection
+			}
+		}
+		if identity.verifiedPublisherID != "" {
+			if _, ok := projection.verifiedPublisherIDs[identity.verifiedPublisherID]; ok {
 				return projection
 			}
 		}
@@ -500,6 +511,8 @@ func (b *Builder) refreshVendorSignals(vendor *Node, projection *vendorProjectio
 	var managedServiceAccountCount int
 	var appRoleAssignmentRequiredCount int
 	var appRoleAssignmentOptionalCount int
+	var verifiedIntegrationCount int
+	var unverifiedIntegrationCount int
 	accessibleTargets := make(map[string]struct{})
 	readableTargets := make(map[string]struct{})
 	writableTargets := make(map[string]struct{})
@@ -510,6 +523,8 @@ func (b *Builder) refreshVendorSignals(vendor *Node, projection *vendorProjectio
 	dependentUsers := make(map[string]struct{})
 	dependentGroups := make(map[string]struct{})
 	dependentServiceAccounts := make(map[string]struct{})
+	verifiedPublisherIDs := make(map[string]struct{})
+	verifiedPublisherNames := make(map[string]struct{})
 
 	for managedNodeID := range projection.managedNodeIDs {
 		node, ok := b.graph.GetNode(managedNodeID)
@@ -529,6 +544,15 @@ func (b *Builder) refreshVendorSignals(vendor *Node, projection *vendorProjectio
 				} else {
 					appRoleAssignmentOptionalCount++
 				}
+			}
+			if verifiedPublisherID := strings.TrimSpace(propertyString(node.Properties, "verified_publisher_id")); verifiedPublisherID != "" {
+				verifiedIntegrationCount++
+				verifiedPublisherIDs[verifiedPublisherID] = struct{}{}
+				if verifiedPublisherName := strings.TrimSpace(propertyString(node.Properties, "verified_publisher_display_name")); verifiedPublisherName != "" {
+					verifiedPublisherNames[verifiedPublisherName] = struct{}{}
+				}
+			} else if strings.TrimSpace(propertyString(node.Properties, "publisher_name")) != "" {
+				unverifiedIntegrationCount++
 			}
 		}
 		outEdges := permissionEdges(b.graph.GetOutEdges(managedNodeID))
@@ -575,6 +599,11 @@ func (b *Builder) refreshVendorSignals(vendor *Node, projection *vendorProjectio
 	vendor.Properties["managed_node_count"] = len(projection.managedNodeIDs)
 	vendor.Properties["managed_application_count"] = managedApplicationCount
 	vendor.Properties["managed_service_account_count"] = managedServiceAccountCount
+	vendor.Properties["verified_publisher_count"] = verifiedIntegrationCount
+	vendor.Properties["verified_publisher_ids"] = sortedVendorKeys(verifiedPublisherIDs)
+	vendor.Properties["verified_publisher_names"] = sortedVendorKeys(verifiedPublisherNames)
+	vendor.Properties["unverified_integration_count"] = unverifiedIntegrationCount
+	vendor.Properties["verification_status"] = vendorVerificationStatus(verifiedIntegrationCount, unverifiedIntegrationCount)
 	vendor.Properties["app_role_assignment_required_count"] = appRoleAssignmentRequiredCount
 	vendor.Properties["app_role_assignment_optional_count"] = appRoleAssignmentOptionalCount
 	vendor.Properties["accessible_resource_count"] = len(accessibleTargets)
@@ -620,16 +649,20 @@ func vendorIdentityForNode(node *Node) (vendorIdentity, bool) {
 		if strings.Contains(principalType, "managed") {
 			return vendorIdentity{}, false
 		}
-		rawName := strings.TrimSpace(propertyString(node.Properties, "publisher_name"))
+		rawName := strings.TrimSpace(firstNonEmpty(
+			propertyString(node.Properties, "verified_publisher_display_name"),
+			propertyString(node.Properties, "publisher_name"),
+		))
 		aliasKey := vendorAliasKey(rawName)
 		if rawName == "" || aliasKey == "" {
 			return vendorIdentity{}, false
 		}
 		return vendorIdentity{
-			rawName:         rawName,
-			aliasKey:        aliasKey,
-			ownerOrgID:      strings.TrimSpace(propertyString(node.Properties, "app_owner_organization_id")),
-			integrationType: "entra_service_principal",
+			rawName:             rawName,
+			aliasKey:            aliasKey,
+			ownerOrgID:          strings.TrimSpace(propertyString(node.Properties, "app_owner_organization_id")),
+			verifiedPublisherID: strings.TrimSpace(propertyString(node.Properties, "verified_publisher_id")),
+			integrationType:     "entra_service_principal",
 		}, true
 	default:
 		return vendorIdentity{}, false
@@ -745,6 +778,19 @@ func minInt(left, right int) int {
 		return left
 	}
 	return right
+}
+
+func vendorVerificationStatus(verifiedIntegrationCount, unverifiedIntegrationCount int) string {
+	switch {
+	case verifiedIntegrationCount > 0 && unverifiedIntegrationCount == 0:
+		return "verified"
+	case verifiedIntegrationCount > 0 && unverifiedIntegrationCount > 0:
+		return "mixed"
+	case unverifiedIntegrationCount > 0:
+		return "unverified"
+	default:
+		return "unknown"
+	}
 }
 
 func propertyString(properties map[string]any, key string) string {

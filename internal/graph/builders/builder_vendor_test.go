@@ -25,17 +25,20 @@ func TestBuilder_ProjectsVendorNodesFromIdentityIntegrations(t *testing.T) {
 			"sign_on_mode": "SAML_2_0",
 		}},
 	})
-	source.setResult(`SELECT id, display_name, app_id, service_principal_type, account_enabled, app_owner_organization_id, app_role_assignment_required, publisher_name, created_date_time, tags, subscription_id FROM azure_graph_service_principals`, &DataQueryResult{
+	source.setResult(`SELECT id, display_name, app_id, service_principal_type, account_enabled, app_owner_organization_id, app_role_assignment_required, publisher_name, verified_publisher_display_name, verified_publisher_id, verified_publisher_added_datetime, created_date_time, tags, subscription_id FROM azure_graph_service_principals`, &DataQueryResult{
 		Rows: []map[string]any{
 			{
-				"id":                        "sp-slack",
-				"display_name":              "Slack Enterprise Grid",
-				"app_id":                    "app-slack",
-				"service_principal_type":    "Application",
-				"account_enabled":           true,
-				"app_owner_organization_id": "tenant-vendor",
-				"publisher_name":            "Slack",
-				"subscription_id":           "sub-1",
+				"id":                                "sp-slack",
+				"display_name":                      "Slack Enterprise Grid",
+				"app_id":                            "app-slack",
+				"service_principal_type":            "Application",
+				"account_enabled":                   true,
+				"app_owner_organization_id":         "tenant-vendor",
+				"publisher_name":                    "Slack",
+				"verified_publisher_display_name":   "Slack Technologies",
+				"verified_publisher_id":             "slack-publisher",
+				"verified_publisher_added_datetime": "2026-03-02T00:00:00Z",
+				"subscription_id":                   "sub-1",
 			},
 			{
 				"id":                        "sp-managed",
@@ -91,6 +94,8 @@ func TestBuilder_ProjectsVendorNodesFromIdentityIntegrations(t *testing.T) {
 	assertStringSliceProperty(t, vendor.Properties, "integration_types", []string{"entra_service_principal", "okta_application"})
 	assertStringSliceProperty(t, vendor.Properties, "owner_organization_ids", []string{"tenant-vendor"})
 	assertStringSliceProperty(t, vendor.Properties, "accessible_resource_kinds", []string{"bucket", "secret"})
+	assertStringSliceProperty(t, vendor.Properties, "verified_publisher_ids", []string{"slack-publisher"})
+	assertStringSliceProperty(t, vendor.Properties, "verified_publisher_names", []string{"Slack Technologies"})
 	if got := intProperty(t, vendor.Properties, "managed_node_count"); got != 2 {
 		t.Fatalf("expected two managed nodes, got %d", got)
 	}
@@ -99,6 +104,12 @@ func TestBuilder_ProjectsVendorNodesFromIdentityIntegrations(t *testing.T) {
 	}
 	if got := intProperty(t, vendor.Properties, "managed_service_account_count"); got != 1 {
 		t.Fatalf("expected one managed service account, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "verified_publisher_count"); got != 1 {
+		t.Fatalf("expected one verified integration, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "unverified_integration_count"); got != 0 {
+		t.Fatalf("expected no unverified integrations, got %d", got)
 	}
 	if got := intProperty(t, vendor.Properties, "accessible_resource_count"); got != 2 {
 		t.Fatalf("expected two accessible resources, got %d", got)
@@ -123,6 +134,9 @@ func TestBuilder_ProjectsVendorNodesFromIdentityIntegrations(t *testing.T) {
 	}
 	if got, _ := vendor.Properties["vendor_category"].(string); got != "saas_integration" {
 		t.Fatalf("expected saas integration category, got %#v", vendor.Properties["vendor_category"])
+	}
+	if got, _ := vendor.Properties["verification_status"].(string); got != "verified" {
+		t.Fatalf("expected verified status, got %#v", vendor.Properties["verification_status"])
 	}
 	if got := intProperty(t, vendor.Properties, "vendor_risk_score"); got != 86 {
 		t.Fatalf("expected vendor risk score 86, got %d", got)
@@ -158,17 +172,20 @@ func TestBuilder_CanonicalizesVendorAliasesAndAggregatesProvenance(t *testing.T)
 			"sign_on_mode": "SAML_2_0",
 		}},
 	})
-	source.setResult(`SELECT id, display_name, app_id, service_principal_type, account_enabled, app_owner_organization_id, app_role_assignment_required, publisher_name, created_date_time, tags, subscription_id FROM azure_graph_service_principals`, &DataQueryResult{
+	source.setResult(`SELECT id, display_name, app_id, service_principal_type, account_enabled, app_owner_organization_id, app_role_assignment_required, publisher_name, verified_publisher_display_name, verified_publisher_id, verified_publisher_added_datetime, created_date_time, tags, subscription_id FROM azure_graph_service_principals`, &DataQueryResult{
 		Rows: []map[string]any{{
-			"id":                           "sp-zoom",
-			"display_name":                 "Zoom for Enterprise",
-			"app_id":                       "app-zoom",
-			"service_principal_type":       "Application",
-			"account_enabled":              true,
-			"app_owner_organization_id":    "tenant-zoom",
-			"app_role_assignment_required": true,
-			"publisher_name":               "Zoom Video Communications, Inc.",
-			"subscription_id":              "sub-1",
+			"id":                                "sp-zoom",
+			"display_name":                      "Zoom for Enterprise",
+			"app_id":                            "app-zoom",
+			"service_principal_type":            "Application",
+			"account_enabled":                   true,
+			"app_owner_organization_id":         "tenant-zoom",
+			"app_role_assignment_required":      true,
+			"publisher_name":                    "Zoom Video Communications, Inc.",
+			"verified_publisher_display_name":   "Zoom Video Communications",
+			"verified_publisher_id":             "zoom-publisher",
+			"verified_publisher_added_datetime": "2026-03-02T00:00:00Z",
+			"subscription_id":                   "sub-1",
 		}},
 	})
 	source.setResult(`
@@ -211,9 +228,10 @@ func TestBuilder_CanonicalizesVendorAliasesAndAggregatesProvenance(t *testing.T)
 	if vendor.Name != "Zoom" {
 		t.Fatalf("expected canonical vendor display name Zoom, got %q", vendor.Name)
 	}
-	assertStringSliceProperty(t, vendor.Properties, "aliases", []string{"Zoom Video Communications, Inc."})
+	assertStringSliceProperty(t, vendor.Properties, "aliases", []string{"Zoom Video Communications"})
 	assertStringSliceProperty(t, vendor.Properties, "owner_organization_ids", []string{"tenant-zoom"})
 	assertStringSliceProperty(t, vendor.Properties, "accessible_resource_kinds", []string{"secret"})
+	assertStringSliceProperty(t, vendor.Properties, "verified_publisher_ids", []string{"zoom-publisher"})
 	if got := intProperty(t, vendor.Properties, "sensitive_resource_count"); got != 1 {
 		t.Fatalf("expected one sensitive resource, got %d", got)
 	}
@@ -225,6 +243,9 @@ func TestBuilder_CanonicalizesVendorAliasesAndAggregatesProvenance(t *testing.T)
 	}
 	if got, _ := vendor.Properties["permission_level"].(string); got != "read" {
 		t.Fatalf("expected permission level read, got %#v", vendor.Properties["permission_level"])
+	}
+	if got, _ := vendor.Properties["verification_status"].(string); got != "verified" {
+		t.Fatalf("expected verified status, got %#v", vendor.Properties["verification_status"])
 	}
 	assertEdgeExists(t, g, "okta-app-zoom", "vendor:zoom", EdgeKindManagedBy)
 	assertEdgeExists(t, g, "sp-zoom", "vendor:zoom", EdgeKindManagedBy)
@@ -245,16 +266,19 @@ func TestBuilder_AggregatesVendorDependencyBreadthFromAssignments(t *testing.T) 
 			"sign_on_mode": "SAML_2_0",
 		}},
 	})
-	source.setResult(`SELECT id, display_name, app_id, service_principal_type, account_enabled, app_owner_organization_id, app_role_assignment_required, publisher_name, created_date_time, tags, subscription_id FROM azure_graph_service_principals`, &DataQueryResult{
+	source.setResult(`SELECT id, display_name, app_id, service_principal_type, account_enabled, app_owner_organization_id, app_role_assignment_required, publisher_name, verified_publisher_display_name, verified_publisher_id, verified_publisher_added_datetime, created_date_time, tags, subscription_id FROM azure_graph_service_principals`, &DataQueryResult{
 		Rows: []map[string]any{{
-			"id":                        "sp-slack",
-			"display_name":              "Slack Enterprise Grid",
-			"app_id":                    "app-slack",
-			"service_principal_type":    "Application",
-			"account_enabled":           true,
-			"app_owner_organization_id": "tenant-vendor",
-			"publisher_name":            "Slack",
-			"subscription_id":           "sub-1",
+			"id":                                "sp-slack",
+			"display_name":                      "Slack Enterprise Grid",
+			"app_id":                            "app-slack",
+			"service_principal_type":            "Application",
+			"account_enabled":                   true,
+			"app_owner_organization_id":         "tenant-vendor",
+			"publisher_name":                    "Slack",
+			"verified_publisher_display_name":   "Slack Technologies",
+			"verified_publisher_id":             "slack-publisher",
+			"verified_publisher_added_datetime": "2026-03-02T00:00:00Z",
+			"subscription_id":                   "sub-1",
 		}},
 	})
 	source.setResult(`
@@ -319,6 +343,60 @@ func TestBuilder_AggregatesVendorDependencyBreadthFromAssignments(t *testing.T) 
 	}
 	if vendor.Risk != RiskLow {
 		t.Fatalf("expected dependency breadth to surface low risk, got %s", vendor.Risk)
+	}
+}
+
+func TestBuilder_MergesVendorProjectionsByVerifiedPublisherID(t *testing.T) {
+	t.Parallel()
+
+	source := newMockDataSource()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	source.setResult(`SELECT id, display_name, app_id, service_principal_type, account_enabled, app_owner_organization_id, app_role_assignment_required, publisher_name, verified_publisher_display_name, verified_publisher_id, verified_publisher_added_datetime, created_date_time, tags, subscription_id FROM azure_graph_service_principals`, &DataQueryResult{
+		Rows: []map[string]any{
+			{
+				"id":                                "sp-one",
+				"display_name":                      "PagerDuty Operations Cloud",
+				"app_id":                            "app-one",
+				"service_principal_type":            "Application",
+				"account_enabled":                   true,
+				"publisher_name":                    "PagerDuty Operations Cloud",
+				"verified_publisher_display_name":   "PagerDuty",
+				"verified_publisher_id":             "pagerduty-publisher",
+				"verified_publisher_added_datetime": "2026-03-02T00:00:00Z",
+				"subscription_id":                   "sub-1",
+			},
+			{
+				"id":                                "sp-two",
+				"display_name":                      "PagerDuty Incident Response",
+				"app_id":                            "app-two",
+				"service_principal_type":            "Application",
+				"account_enabled":                   true,
+				"publisher_name":                    "PagerDuty Inc.",
+				"verified_publisher_display_name":   "PagerDuty",
+				"verified_publisher_id":             "pagerduty-publisher",
+				"verified_publisher_added_datetime": "2026-03-02T00:00:00Z",
+				"subscription_id":                   "sub-1",
+			},
+		},
+	})
+
+	builder := NewBuilder(source, logger)
+	if err := builder.Build(context.Background()); err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+
+	g := builder.Graph()
+	vendor, ok := g.GetNode("vendor:pagerduty")
+	if !ok {
+		t.Fatal("expected vendor node to merge on verified publisher id")
+	}
+	if got := intProperty(t, vendor.Properties, "managed_service_account_count"); got != 2 {
+		t.Fatalf("expected two service-principal integrations, got %d", got)
+	}
+	assertStringSliceProperty(t, vendor.Properties, "verified_publisher_ids", []string{"pagerduty-publisher"})
+	if got, _ := vendor.Properties["verification_status"].(string); got != "verified" {
+		t.Fatalf("expected verified status, got %#v", vendor.Properties["verification_status"])
 	}
 }
 
