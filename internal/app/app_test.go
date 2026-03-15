@@ -830,6 +830,10 @@ func TestNew_WithoutSnowflake(t *testing.T) {
 		t.Error("RuntimeDetect should be initialized")
 	}
 
+	if app.RuntimeIngest == nil {
+		t.Error("RuntimeIngest should be initialized")
+	}
+
 	if app.RuntimeRespond == nil {
 		t.Error("RuntimeRespond should be initialized")
 	}

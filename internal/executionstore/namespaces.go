@@ -8,5 +8,6 @@ const (
 	NamespaceActionEngine         = "action_engine"
 	NamespaceIdentityAccessReview = "identity_access_review"
 	NamespaceAutonomousWorkflow   = "autonomous_workflow"
+	NamespaceRuntimeIngest        = "runtime_ingest"
 	NamespaceProcessedCloudEvent  = "processed_cloud_event"
 )

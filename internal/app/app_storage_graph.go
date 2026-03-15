@@ -301,6 +301,11 @@ func (a *App) Close() error {
 			errs = append(errs, fmt.Errorf("alert router: %w", err))
 		}
 	}
+	if a.RuntimeIngest != nil {
+		if err := a.RuntimeIngest.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("runtime ingest store: %w", err))
+		}
+	}
 	if a.ExecutionStore != nil {
 		if err := a.ExecutionStore.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("execution store: %w", err))

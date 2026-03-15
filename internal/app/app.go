@@ -139,6 +139,7 @@ type App struct {
 	Remediation         *remediation.Engine
 	RemediationExecutor *remediation.Executor
 	RuntimeDetect       *runtime.DetectionEngine
+	RuntimeIngest       runtime.IngestStore
 	RuntimeRespond      *runtime.ResponseEngine
 
 	// Security Graph

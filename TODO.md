@@ -5,6 +5,135 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 122 - Runtime Visibility Architecture and Integration Plan (2026-03-15)
+
+### Review findings
+- [x] Gap: Cerebro already has runtime event ingest, detections, responses, and shared execution-state durability, but it still does not have a first-class runtime observation substrate that can safely absorb real process, file, network, and control-plane telemetry.
+- [x] Gap: the current `internal/runtime.RuntimeEvent` shape is too narrow for production-grade runtime visibility, and treating it as the permanent canonical contract would force provider-specific drift and weak graph identity binding.
+- [x] Gap: runtime response execution is now durable and action-engine-backed, but response outcomes still are not projected back into the same runtime causal graph as observations and findings.
+- [x] Gap: the shared `internal/executionstore` seam is the right place for ingestion jobs, checkpoints, and response history, but not the right place to persist every raw runtime observation at production rates.
+- [x] Gap: the right initial source mix is layered rather than monolithic:
+  - [x] Kubernetes audit for control-plane causality
+  - [x] Tetragon for process/file/runtime security telemetry
+  - [x] Hubble for network flow visibility
+  - [x] OpenTelemetry for service/trace/resource correlation
+
+### Execution plan
+- [x] Write and link a dedicated runtime visibility architecture doc in [docs/RUNTIME_VISIBILITY_ARCHITECTURE.md](./docs/RUNTIME_VISIBILITY_ARCHITECTURE.md).
+- [x] Add a canonical normalized `RuntimeObservation` contract behind provider adapters while keeping `RuntimeEvent` as a compatibility path.
+- [ ] Add provider adapter seams for:
+  - [x] Tetragon
+  - [x] Kubernetes audit
+  - [ ] Hubble
+  - [ ] OpenTelemetry
+- [ ] Persist runtime-ingest runs, checkpoints, and replay/materialization jobs through `internal/executionstore` without routing every raw observation through the same store.
+  - [x] Persist the existing `/api/v1/runtime/events` and `/api/v1/telemetry/ingest` HTTP ingest flows as execution-store-backed runtime ingest runs with checkpoints and `run_id` responses.
+- [ ] Project promoted runtime observations and response outcomes into graph `observation` / `evidence` resources with causal edges to workload, deployment, incident, and response execution context.
+- [ ] Make runtime response executions emit typed outcome observations so containment success/failure becomes part of graph intelligence instead of staying local to the response subsystem.
+- [ ] Expose runtime visibility coverage and source health through platform intelligence endpoints once the substrate exists.
+
+### Runtime visibility slice list
+- [x] 001. Write the runtime visibility architecture document.
+- [x] 002. Cross-link runtime visibility architecture from runtime response and graph intelligence docs.
+- [x] 003. Add a canonical `RuntimeObservationKind` enum-like contract.
+- [x] 004. Add a canonical `RuntimeObservation` struct in `internal/runtime`.
+- [x] 005. Add control-plane and trace context fragments to the observation contract.
+- [x] 006. Add compatibility conversion from `RuntimeEvent` to `RuntimeObservation`.
+- [x] 007. Add compatibility conversion from `RuntimeObservation` back to `RuntimeEvent`.
+- [x] 008. Add `DetectionEngine.ProcessObservation`.
+- [x] 009. Preserve legacy finding `Event` payloads while attaching normalized observations.
+- [x] 010. Add a runtime response outcome observation helper.
+- [x] 011. Add a generic runtime adapter interface package.
+- [x] 012. Add a first Kubernetes audit adapter package.
+- [x] 013. Parse single Kubernetes audit events into normalized observations.
+- [x] 014. Parse Kubernetes audit list payloads into normalized observations.
+- [x] 015. Tag Kubernetes `exec` events explicitly.
+- [x] 016. Add malformed Kubernetes audit payload tests.
+- [x] 017. Add a Tetragon adapter package.
+- [x] 018. Normalize Tetragon process exec events.
+- [ ] 019. Normalize Tetragon process exit events.
+- [ ] 020. Normalize Tetragon file events.
+- [ ] 021. Normalize Tetragon network events.
+- [ ] 022. Normalize Tetragon DNS events.
+- [ ] 023. Normalize Tetragon security signal payloads.
+- [ ] 024. Add Tetragon adapter golden payload tests.
+- [ ] 025. Add Hubble adapter package.
+- [ ] 026. Normalize Hubble L3/L4 flow events.
+- [ ] 027. Normalize Hubble DNS flow events.
+- [ ] 028. Normalize Hubble verdict and identity metadata.
+- [ ] 029. Add Hubble adapter golden payload tests.
+- [ ] 030. Add OpenTelemetry adapter package.
+- [ ] 031. Normalize OTLP log records into observation enrichments.
+- [ ] 032. Normalize OTLP trace/span identity into observation enrichments.
+- [ ] 033. Normalize OTel resource attributes into workload/service context.
+- [ ] 034. Add OTLP adapter tests.
+- [ ] 035. Add Falco adapter package.
+- [ ] 036. Normalize Falco JSON outputs into observation/finding inputs.
+- [ ] 037. Add Falco adapter tests.
+- [x] 038. Add a runtime ingest namespace to the execution-store-backed control plane.
+- [x] 039. Add a runtime ingest run record type.
+- [x] 040. Add runtime ingest event/checkpoint records.
+- [ ] 041. Add runtime replay/materialization job records.
+- [x] 042. Add checkpoint cursor persistence per source.
+- [ ] 043. Add processed-event dedupe for runtime source payload IDs.
+- [x] 044. Add runtime ingest store tests.
+- [ ] 045. Add runtime observation validation and normalization helpers.
+- [ ] 046. Reject structurally invalid observations early.
+- [ ] 047. Add bounded raw/provenance payload trimming.
+- [ ] 048. Add observation ID generation when sources omit stable IDs.
+- [ ] 049. Add observation timestamp fallback rules.
+- [ ] 050. Add observation normalization tests.
+- [ ] 051. Bind observations to cluster identity.
+- [ ] 052. Bind observations to namespace identity.
+- [ ] 053. Bind observations to workload identity.
+- [ ] 054. Bind observations to container identity.
+- [ ] 055. Bind observations to image identity.
+- [ ] 056. Bind observations to principal identity.
+- [ ] 057. Bind observations to service identity from OTel/resource context.
+- [ ] 058. Bind observations to deployment runs when temporal evidence is strong.
+- [ ] 059. Add identity-binding tests for conflicting or partial runtime metadata.
+- [ ] 060. Add a runtime observation graph materializer package.
+- [ ] 061. Project promoted runtime observations into graph `observation` nodes.
+- [ ] 062. Project promoted runtime evidence into graph `evidence` nodes.
+- [ ] 063. Add workload-to-observation edges.
+- [ ] 064. Add finding-to-evidence edges.
+- [ ] 065. Add response-to-target edges for runtime response outcomes.
+- [ ] 066. Add causal edges from response outcomes back to findings.
+- [ ] 067. Add causal edges from runtime observations to deployment runs where justified.
+- [ ] 068. Add causal edges from runtime observations to Kubernetes audit events where justified.
+- [ ] 069. Add graph materialization tests for runtime observations.
+- [ ] 070. Add graph ontology/schema entries required for runtime evidence projection.
+- [ ] 071. Add response-engine hooks to emit outcome observations on action completion.
+- [ ] 072. Add response-engine hooks to emit outcome observations on action failure.
+- [ ] 073. Add response-engine hooks to emit approval outcome observations.
+- [ ] 074. Preserve actuator/provider metadata on response outcome observations.
+- [ ] 075. Add response outcome observation tests.
+- [ ] 076. Add runtime-source health reporting.
+- [ ] 077. Add runtime-source coverage reporting.
+- [ ] 078. Add runtime replay status reporting.
+- [ ] 079. Add runtime visibility platform intelligence measures.
+- [ ] 080. Add runtime visibility docs for operator configuration and source coverage.
+- [ ] 081. Add a platform/runtime observations read surface.
+- [ ] 082. Add a platform/runtime sources read surface.
+- [ ] 083. Add a platform/runtime coverage read surface.
+- [ ] 084. Add a platform/runtime replay/job surface.
+- [ ] 085. Add API contract tests for runtime visibility endpoints.
+- [ ] 086. Add RBAC mapping for runtime visibility platform endpoints.
+- [ ] 087. Add Kubernetes audit ingestion endpoint or collector bridge.
+- [ ] 088. Add Tetragon ingestion endpoint or collector bridge.
+- [ ] 089. Add Hubble ingestion endpoint or collector bridge.
+- [ ] 090. Add OTLP/OTel ingestion bridge for runtime enrichment.
+- [ ] 091. Add performance tests for high-volume runtime normalization.
+- [ ] 092. Add backpressure/drop strategy tests for bursty runtime sources.
+- [ ] 093. Add raw telemetry retention and pruning controls.
+- [ ] 094. Add source health alerting hooks.
+- [ ] 095. Add runtime observation replay tooling for incident investigation.
+- [ ] 096. Add runtime-vs-control-plane causality experiments and fixtures.
+- [ ] 097. Add network-flow plus process-correlation experiments and fixtures.
+- [ ] 098. Add vendor/package/image enrichment from runtime observations.
+- [ ] 099. Add confidence/outcome feedback loops from runtime response results.
+- [ ] 100. Document the production rollout sequence and default source recommendation.
+
 ## Deep Review Cycle 121 - Vendor Grant Monitoring Signals for Okta and Google Workspace (2026-03-15)
 
 ### Review findings

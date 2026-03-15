@@ -97,6 +97,7 @@ func NewAppWithWarehouse(t *testing.T, store warehouse.DataWarehouse) *app.App {
 		Lineage:        lineage.NewLineageMapper(),
 		Remediation:    remediation.NewEngine(logger),
 		RuntimeDetect:  runtime.NewDetectionEngine(),
+		RuntimeIngest:  runtime.NewSQLiteIngestStoreWithExecutionStore(executionStore),
 		RuntimeRespond: runtime.NewResponseEngine(),
 		SecurityGraph:  graph.New(),
 		ScanWatermarks: scanner.NewWatermarkStore(nil),

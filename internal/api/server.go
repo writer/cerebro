@@ -6,7 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"runtime"
+	goruntime "runtime"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +20,7 @@ import (
 	risk "github.com/evalops/cerebro/internal/graph/risk"
 	"github.com/evalops/cerebro/internal/health"
 	"github.com/evalops/cerebro/internal/metrics"
+	cerebroruntime "github.com/evalops/cerebro/internal/runtime"
 	"github.com/evalops/cerebro/internal/snowflake"
 )
 
@@ -55,7 +56,7 @@ type auditLogWriter interface {
 	Log(ctx context.Context, entry *snowflake.AuditEntry) error
 }
 
-var runtimeNumGoroutine = runtime.NumGoroutine
+var runtimeNumGoroutine = goruntime.NumGoroutine
 
 // NewServer creates a new server with all services wired
 func NewServer(application *app.App) *Server {
@@ -68,6 +69,9 @@ func NewServer(application *app.App) *Server {
 func NewServerWithDependencies(deps serverDependencies) *Server {
 	if deps.Logger == nil {
 		deps.Logger = slog.New(slog.NewJSONHandler(io.Discard, nil))
+	}
+	if deps.RuntimeIngest == nil && deps.ExecutionStore != nil {
+		deps.RuntimeIngest = cerebroruntime.NewSQLiteIngestStoreWithExecutionStore(deps.ExecutionStore)
 	}
 	if adapter, ok := deps.graphRuntime.(*graphRuntimeAdapter); ok {
 		adapter.deps = &deps

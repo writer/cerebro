@@ -100,6 +100,7 @@ type serverDependencies struct {
 	Lineage        *lineage.LineageMapper
 	Remediation    *remediation.Engine
 	RuntimeDetect  *runtime.DetectionEngine
+	RuntimeIngest  runtime.IngestStore
 	RuntimeRespond *runtime.ResponseEngine
 
 	RemediationExecutor *remediation.Executor
@@ -160,6 +161,7 @@ func newServerDependenciesFromApp(application *app.App) serverDependencies {
 		Remediation:          application.Remediation,
 		RemediationExecutor:  application.RemediationExecutor,
 		RuntimeDetect:        application.RuntimeDetect,
+		RuntimeIngest:        application.RuntimeIngest,
 		RuntimeRespond:       application.RuntimeRespond,
 		SecurityGraph:        application.SecurityGraph,
 		SecurityGraphBuilder: application.SecurityGraphBuilder,
