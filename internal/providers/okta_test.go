@@ -294,6 +294,67 @@ func TestOktaSyncAppAssignments(t *testing.T) {
 	}
 }
 
+func TestOktaSyncAppGrants(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "SSWS token" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"error": "unauthorized"})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/apps":
+			_ = json.NewEncoder(w).Encode([]map[string]interface{}{{
+				"id":    "app-1",
+				"label": "Slack",
+			}})
+		case "/api/v1/apps/app-1/grants":
+			if got := r.URL.Query().Get("expand"); got != "scope" {
+				t.Fatalf("expected app grants request to expand scope, got %q", got)
+			}
+			_ = json.NewEncoder(w).Encode([]map[string]interface{}{
+				{
+					"id":          "grant-1",
+					"issuer":      "https://example.okta.com",
+					"scopeId":     "okta.users.read",
+					"source":      "ADMIN",
+					"status":      "ACTIVE",
+					"created":     "2026-03-01T00:00:00Z",
+					"lastUpdated": "2026-03-02T00:00:00Z",
+				},
+				{
+					"id":          "grant-2",
+					"issuer":      "https://example.okta.com",
+					"scopeId":     "okta.apps.manage",
+					"source":      "END_USER",
+					"status":      "ACTIVE",
+					"userId":      "user-1",
+					"created":     "2026-03-03T00:00:00Z",
+					"lastUpdated": "2026-03-04T00:00:00Z",
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	provider := newTLSTestOktaProvider(t, server)
+	table, err := provider.syncAppGrants(context.Background())
+	if err != nil {
+		t.Fatalf("syncAppGrants failed: %v", err)
+	}
+	if table.Rows != 2 {
+		t.Fatalf("syncAppGrants rows = %d, want 2", table.Rows)
+	}
+	if table.Inserted != 2 {
+		t.Fatalf("syncAppGrants inserted = %d, want 2", table.Inserted)
+	}
+}
+
 func TestOktaSyncAdminRoles(t *testing.T) {
 	t.Parallel()
 
