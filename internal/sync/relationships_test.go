@@ -250,6 +250,98 @@ func TestAppendOktaAdminRoleRelationships(t *testing.T) {
 	}
 }
 
+func TestAppendOktaAppGrantRelationships(t *testing.T) {
+	t.Parallel()
+
+	rels := appendOktaAppGrantRelationships(nil, []map[string]interface{}{
+		{
+			"id":       "grant-1",
+			"app_id":   "app-1",
+			"scope_id": "okta.users.read",
+			"issuer":   "https://example.okta.com",
+			"source":   "ADMIN",
+			"status":   "ACTIVE",
+		},
+		{
+			"id":       "grant-2",
+			"app_id":   "app-1",
+			"scope_id": "okta.apps.manage",
+			"issuer":   "https://example.okta.com",
+			"source":   "END_USER",
+			"user_id":  "user-1",
+			"status":   "ACTIVE",
+		},
+		{
+			"id":       "grant-3",
+			"app_id":   "app-1",
+			"scope_id": "okta.users.manage",
+			"issuer":   "https://example.okta.com",
+			"source":   "ADMIN",
+			"status":   "INACTIVE",
+		},
+	})
+
+	if len(rels) != 3 {
+		t.Fatalf("expected 3 relationships, got %d", len(rels))
+	}
+	if rels[0].SourceType != "okta:application" || rels[0].TargetType != "okta:scope" || rels[0].RelType != RelCanAccess {
+		t.Fatalf("unexpected read-scope relationship: %+v", rels[0])
+	}
+	if rels[1].RelType != RelHasPermission {
+		t.Fatalf("expected manage scope to map to HAS_PERMISSION, got %+v", rels[1])
+	}
+	if rels[2].SourceType != "okta:user" || rels[2].TargetType != "okta:application" || rels[2].RelType != RelCanAccess {
+		t.Fatalf("unexpected principal consent relationship: %+v", rels[2])
+	}
+
+	props := map[string]interface{}{}
+	if err := json.Unmarshal([]byte(rels[1].Properties), &props); err != nil {
+		t.Fatalf("failed to parse relationship properties: %v", err)
+	}
+	if props["scope"] != "okta.apps.manage" || props["grant_id"] != "grant-2" || props["source"] != "END_USER" || props["grant_type"] != "delegated_permission" || props["consent_type"] != "Principal" {
+		t.Fatalf("unexpected relationship properties: %+v", props)
+	}
+
+	principalProps := map[string]interface{}{}
+	if err := json.Unmarshal([]byte(rels[2].Properties), &principalProps); err != nil {
+		t.Fatalf("failed to parse principal relationship properties: %v", err)
+	}
+	if principalProps["grant_type"] != "delegated_permission_consent" || principalProps["consent_type"] != "Principal" || principalProps["user_id"] != "user-1" {
+		t.Fatalf("unexpected principal relationship properties: %+v", principalProps)
+	}
+}
+
+func TestAppendGoogleWorkspaceTokenRelationships(t *testing.T) {
+	t.Parallel()
+
+	rels := appendGoogleWorkspaceTokenRelationships(nil, []map[string]interface{}{
+		{
+			"id":           "user-1|client-1",
+			"user_id":      "user-1",
+			"client_id":    "client-1",
+			"display_text": "Slack",
+			"anonymous":    false,
+			"native_app":   true,
+			"scope":        "https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/admin.directory.user.readonly",
+			"scope_count":  2,
+		},
+	})
+
+	if len(rels) != 3 {
+		t.Fatalf("expected 3 relationships, got %d", len(rels))
+	}
+
+	if rels[0].SourceType != "google_workspace:user" || rels[0].TargetType != "google_workspace:application" || rels[0].RelType != RelCanAccess {
+		t.Fatalf("unexpected token consent relationship: %+v", rels[0])
+	}
+	if rels[1].SourceID != "client-1" || rels[1].TargetID != "google_workspace_scope:https://www.googleapis.com/auth/admin.directory.user.readonly" {
+		t.Fatalf("unexpected first scope relationship: %+v", rels[1])
+	}
+	if rels[2].SourceID != "client-1" || rels[2].TargetID != "google_workspace_scope:https://www.googleapis.com/auth/calendar.readonly" {
+		t.Fatalf("unexpected second scope relationship: %+v", rels[2])
+	}
+}
+
 func TestAppendEntraAppRoleAssignmentRelationships(t *testing.T) {
 	t.Parallel()
 

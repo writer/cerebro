@@ -98,6 +98,39 @@ Status: executed end-to-end via PR workflow
 - [x] Remove beta-only grant timestamps from the Entra provider schema, request path, and relationship payload projection.
 - [x] Rerun provider, sync, builder, lint, and full-repo validation on the corrected v1.0 contract.
 
+## Deep Review Cycle 120 - Okta and Google Workspace OAuth Vendor Coverage (2026-03-15)
+
+### Review findings
+- [x] Gap: issue `#255` still had a major identity-provider blind spot. Vendor discovery and scoring now handled Entra delegated grants, but Okta application grants and Google Workspace third-party OAuth tokens were still invisible to the graph.
+- [x] Gap: the first Okta cut only modeled app-to-scope access, which lost the difference between tenant-wide admin-approved grants and user-scoped consent. That undercounted both delegated grant inventory and affected principals.
+- [x] Gap: Google Workspace token metadata exposes `anonymous` and `nativeApp`, but leaving those as inert provider fields wasted a concrete risk signal for unmanaged OAuth clients.
+- [x] Gap: status-bearing Okta grants need active-state filtering at relationship extraction time. Otherwise stale or revoked grants can continue to project live vendor access.
+- [x] Gap: the right Google Workspace seam is graph-native: sync tokens, project application + scope + user-consent edges, and let vendor nodes aggregate from those edges instead of adding a provider-specific side table.
+
+### Execution plan
+- [x] Add Okta and Google Workspace provider coverage:
+  - [x] sync `okta_app_grants` from `/api/v1/apps/{appId}/grants`
+  - [x] sync `google_workspace_tokens` from Admin Directory `users/{userKey}/tokens`
+  - [x] keep Google Workspace group member `member_id` so dependency breadth can expand through real identity nodes
+- [x] Project graph relationships and nodes:
+  - [x] map Okta application grants into scope permission edges
+  - [x] emit principal-to-application consent edges for user-scoped Okta grants
+  - [x] build first-class Google Workspace application nodes from token inventory
+  - [x] emit Google Workspace user-to-app consent edges plus app-to-scope edges
+- [x] Harden semantics with TDD:
+  - [x] skip inactive Okta grants during relationship extraction
+  - [x] preserve Okta admin consent vs principal consent in relationship properties
+  - [x] keep Google token scope edges deterministic
+  - [x] carry Google `anonymous` and `native_app` flags into vendor aggregation and scoring
+- [x] Enrich vendor risk scoring:
+  - [x] count anonymous and native Google Workspace applications on vendor nodes
+  - [x] increase vendor risk for anonymous/native delegated OAuth apps
+  - [x] let Okta grant consent edges contribute delegated grant, scope, and dependent-principal counts alongside Entra/Google
+- [ ] Next vendor-access depth cuts after this slice:
+  - [ ] add Okta application grant lifecycle/drift monitoring so vendor score changes alert when scopes or consent source change
+  - [ ] ingest more Google Workspace admin-side app governance signals to distinguish merely-used apps from sanctioned apps
+  - [ ] separate generic OAuth grant inventory from delegated-consent inventory on vendor nodes once more providers land
+
 ## Deep Review Cycle 111 - Vulnerability Reachability Prioritization on Workload Scans (2026-03-15)
 
 ### Review findings

@@ -96,6 +96,7 @@ var relationshipExtractionSteps = func(r *RelationshipExtractor) []relationshipE
 		{name: "GCP", fn: r.extractGCPRelationships},
 		{name: "Azure", fn: r.extractAzureRelationships},
 		{name: "Okta", fn: r.extractOktaRelationships},
+		{name: "Google Workspace", fn: r.extractGoogleWorkspaceRelationships},
 	}
 }
 

@@ -85,6 +85,7 @@ func (g *GoogleWorkspaceProvider) Configure(ctx context.Context, config map[stri
 	// Create OAuth2 client with domain-wide delegation
 	conf, err := google.JWTConfigFromJSON(g.credentials,
 		"https://www.googleapis.com/auth/admin.directory.user.readonly",
+		"https://www.googleapis.com/auth/admin.directory.user.security",
 		"https://www.googleapis.com/auth/admin.directory.group.readonly",
 		"https://www.googleapis.com/auth/admin.directory.group.member.readonly",
 		"https://www.googleapis.com/auth/admin.directory.domain.readonly",
@@ -152,6 +153,7 @@ func (g *GoogleWorkspaceProvider) Schema() []TableSchema {
 			Columns: []ColumnSchema{
 				{Name: "id", Type: "string", Required: true},
 				{Name: "group_id", Type: "string", Required: true},
+				{Name: "member_id", Type: "string"},
 				{Name: "email", Type: "string"},
 				{Name: "role", Type: "string"},
 				{Name: "type", Type: "string"},
@@ -169,6 +171,23 @@ func (g *GoogleWorkspaceProvider) Schema() []TableSchema {
 				{Name: "creation_time", Type: "timestamp"},
 			},
 			PrimaryKey: []string{"domain_name"},
+		},
+		{
+			Name:        "google_workspace_tokens",
+			Description: "Google Workspace third-party OAuth tokens",
+			Columns: []ColumnSchema{
+				{Name: "id", Type: "string", Required: true},
+				{Name: "user_id", Type: "string", Required: true},
+				{Name: "user_email", Type: "string"},
+				{Name: "client_id", Type: "string", Required: true},
+				{Name: "display_text", Type: "string"},
+				{Name: "anonymous", Type: "boolean"},
+				{Name: "native_app", Type: "boolean"},
+				{Name: "scope", Type: "string"},
+				{Name: "scope_count", Type: "integer"},
+				{Name: "app_type", Type: "string"},
+			},
+			PrimaryKey: []string{"id"},
 		},
 		{
 			Name:        "google_workspace_calendar_events",
@@ -254,6 +273,14 @@ func (g *GoogleWorkspaceProvider) Sync(ctx context.Context, opts SyncOptions) (*
 	} else {
 		result.Tables = append(result.Tables, *domains)
 		result.TotalRows += domains.Rows
+	}
+
+	tokens, err := g.syncTokens(ctx)
+	if err != nil {
+		result.Errors = append(result.Errors, "tokens: "+err.Error())
+	} else {
+		result.Tables = append(result.Tables, *tokens)
+		result.TotalRows += tokens.Rows
 	}
 
 	calendarEvents, err := g.syncCalendarEvents(ctx)
@@ -409,13 +436,82 @@ func (g *GoogleWorkspaceProvider) syncGroupMembers(ctx context.Context) (*TableR
 			seen[id] = struct{}{}
 
 			rows = append(rows, map[string]interface{}{
-				"id":       id,
-				"group_id": groupID,
-				"email":    member["email"],
-				"role":     member["role"],
-				"type":     member["type"],
-				"status":   member["status"],
+				"id":        id,
+				"group_id":  groupID,
+				"member_id": member["id"],
+				"email":     member["email"],
+				"role":      member["role"],
+				"type":      member["type"],
+				"status":    member["status"],
 			})
+		}
+	}
+
+	return g.syncTable(ctx, schema, rows)
+}
+
+func (g *GoogleWorkspaceProvider) syncTokens(ctx context.Context) (*TableResult, error) {
+	schema, err := g.schemaFor("google_workspace_tokens")
+	result := &TableResult{Name: "google_workspace_tokens"}
+	if err != nil {
+		return result, err
+	}
+
+	users, err := g.listAll(ctx, "https://admin.googleapis.com/admin/directory/v1/users", map[string]string{
+		"domain":     g.domain,
+		"maxResults": "500",
+		"projection": "basic",
+	}, "users")
+	if err != nil {
+		return result, err
+	}
+
+	rows := make([]map[string]interface{}, 0)
+	seen := make(map[string]struct{})
+
+	for _, rawUser := range users {
+		user := normalizeGoogleUser(rawUser)
+		userID := strings.TrimSpace(providerStringValue(user["id"]))
+		userEmail := strings.ToLower(strings.TrimSpace(providerStringValue(user["primary_email"])))
+		if userID == "" {
+			continue
+		}
+		if suspended, _ := user["suspended"].(bool); suspended {
+			continue
+		}
+
+		body, tokenErr := g.request(ctx, fmt.Sprintf("https://admin.googleapis.com/admin/directory/v1/users/%s/tokens", url.PathEscape(userID)))
+		if tokenErr != nil {
+			if isGoogleWorkspaceIgnorableError(tokenErr) {
+				continue
+			}
+			return result, fmt.Errorf("list tokens for %q: %w", userID, tokenErr)
+		}
+
+		var resp struct {
+			Items []map[string]interface{} `json:"items"`
+		}
+		if err := json.Unmarshal(body, &resp); err != nil {
+			return result, err
+		}
+
+		for _, rawToken := range resp.Items {
+			row := normalizeGoogleToken(rawToken)
+			clientID := strings.TrimSpace(providerStringValue(row["client_id"]))
+			if clientID == "" {
+				continue
+			}
+
+			rowID := userID + "|" + clientID
+			if _, ok := seen[rowID]; ok {
+				continue
+			}
+			seen[rowID] = struct{}{}
+
+			row["id"] = rowID
+			row["user_id"] = userID
+			row["user_email"] = userEmail
+			rows = append(rows, row)
 		}
 	}
 
@@ -700,6 +796,30 @@ func normalizeGoogleGroup(group map[string]interface{}) map[string]interface{} {
 	}
 }
 
+func normalizeGoogleToken(token map[string]interface{}) map[string]interface{} {
+	normalized := normalizeGoogleRow(token)
+	scopes := stringSliceValue(normalized["scopes"])
+	sort.Strings(scopes)
+
+	appType := "web"
+	if nativeApp, _ := normalized["native_app"].(bool); nativeApp {
+		appType = "native"
+	}
+	if anonymous, _ := normalized["anonymous"].(bool); anonymous {
+		appType = "anonymous"
+	}
+
+	return map[string]interface{}{
+		"client_id":    normalized["client_id"],
+		"display_text": normalized["display_text"],
+		"anonymous":    normalized["anonymous"],
+		"native_app":   normalized["native_app"],
+		"scope":        strings.Join(scopes, " "),
+		"scope_count":  len(scopes),
+		"app_type":     appType,
+	}
+}
+
 func normalizeGoogleCalendarEvent(eventID string, calendarID string, event map[string]interface{}) map[string]interface{} {
 	startTime := googleCalendarEventTime(event["start"])
 	endTime := googleCalendarEventTime(event["end"])
@@ -874,6 +994,37 @@ func parseGoogleCount(value interface{}) interface{} {
 		return typed
 	default:
 		return value
+	}
+}
+
+func stringSliceValue(value interface{}) []string {
+	switch typed := value.(type) {
+	case []string:
+		out := make([]string, 0, len(typed))
+		for _, entry := range typed {
+			entry = strings.TrimSpace(entry)
+			if entry == "" {
+				continue
+			}
+			out = append(out, entry)
+		}
+		return out
+	case []interface{}:
+		out := make([]string, 0, len(typed))
+		for _, entry := range typed {
+			text := strings.TrimSpace(providerStringValue(entry))
+			if text == "" {
+				continue
+			}
+			out = append(out, text)
+		}
+		return out
+	default:
+		text := strings.TrimSpace(providerStringValue(value))
+		if text == "" {
+			return nil
+		}
+		return strings.Fields(text)
 	}
 }
 
