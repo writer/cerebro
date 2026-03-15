@@ -116,6 +116,24 @@ func (b *Builder) buildAWSNodes(ctx context.Context) {
 			},
 		},
 		{
+			table: "aws_ec2_security_groups",
+			query: `
+		SELECT arn, group_id, group_name, description, account_id, region, vpc_id, ip_permissions, ip_permissions_egress
+		FROM aws_ec2_security_groups
+	`,
+			parse: func(rows []map[string]any) []*Node {
+				nodes := make([]*Node, 0, len(rows))
+				for _, sg := range rows {
+					node := awsSecurityGroupNodeFromRecord(sg, "aws", "", "")
+					if node == nil {
+						continue
+					}
+					nodes = append(nodes, node)
+				}
+				return nodes
+			},
+		},
+		{
 			table: "aws_rds_instances",
 			query: `
 		SELECT arn, db_instance_identifier, account_id, region, publicly_accessible, storage_encrypted

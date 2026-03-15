@@ -417,6 +417,59 @@ func TestBuilderApplyChanges_AWSNetworkExposureUsesPrivateSubnetSuppression(t *t
 	}
 }
 
+func TestBuilderApplyChanges_NetworkAssetAddAndRemoveReuseResolvedResourceID(t *testing.T) {
+	source := newCDCRoutingSource()
+	builder := NewBuilder(source, nil)
+	builder.Graph().AddNode(&Node{ID: "internet", Kind: NodeKindInternet, Provider: "external", Name: "Internet", Risk: RiskCritical})
+
+	base := time.Now().UTC().Add(-1 * time.Minute)
+	source.events = []map[string]any{
+		{
+			"event_id":    "evt-sg-add",
+			"table_name":  "aws_ec2_security_groups",
+			"resource_id": "sg-123",
+			"change_type": "added",
+			"provider":    "aws",
+			"region":      "us-east-1",
+			"account_id":  "123456789012",
+			"payload": map[string]any{
+				"_cq_id":         "cq-sg-123",
+				"group_id":       "sg-123",
+				"group_name":     "web",
+				"account_id":     "123456789012",
+				"region":         "us-east-1",
+				"ip_permissions": []map[string]any{{"IpRanges": []map[string]any{{"CidrIp": "0.0.0.0/0"}}}},
+			},
+			"event_time": base.Add(5 * time.Second),
+		},
+		{
+			"event_id":    "evt-sg-remove",
+			"table_name":  "aws_ec2_security_groups",
+			"resource_id": "sg-123",
+			"change_type": "removed",
+			"provider":    "aws",
+			"event_time":  base.Add(10 * time.Second),
+		},
+	}
+
+	summary, err := builder.ApplyChanges(context.Background(), base)
+	if err != nil {
+		t.Fatalf("ApplyChanges failed: %v", err)
+	}
+	if summary.NodesAdded != 1 || summary.NodesRemoved != 1 {
+		t.Fatalf("expected one add and one remove, got %+v", summary)
+	}
+	if _, ok := builder.Graph().GetNode("sg-123"); ok {
+		t.Fatal("expected security group node to be removed from active graph")
+	}
+	if deleted, ok := builder.Graph().GetNodeIncludingDeleted("sg-123"); !ok || deleted.DeletedAt == nil {
+		t.Fatal("expected security group node to be soft-deleted by the removal event")
+	}
+	if _, ok := builder.Graph().GetNodeIncludingDeleted("cq-sg-123"); ok {
+		t.Fatal("expected payload-only identifier not to survive as a separate node ID")
+	}
+}
+
 func TestBuilderApplyChanges_UsesCopyOnWriteSwap(t *testing.T) {
 	source := newCDCRoutingSource()
 	source.blockNeedle = "from aws_iam_policy_versions"

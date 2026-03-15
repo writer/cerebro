@@ -522,6 +522,11 @@ func cdcEventToNode(table string, event cdcEvent) *Node {
 			Region:   firstNonEmpty(queryRowString(payload, "region"), region),
 			Risk:     RiskHigh,
 		}
+	case "aws_ec2_security_groups":
+		return nodeWithResolvedID(
+			awsSecurityGroupNodeFromRecord(payload, firstNonEmpty(provider, "aws"), account, region),
+			cdcNodeID(table, payload, event.ResourceID),
+		)
 
 	case "gcp_iam_service_accounts":
 		id := cdcNodeID(table, payload, event.ResourceID)
@@ -635,6 +640,11 @@ func cdcEventToNode(table string, event cdcEvent) *Node {
 				"uri":     queryRow(payload, "uri"),
 			},
 		}
+	case "gcp_compute_firewalls":
+		return nodeWithResolvedID(
+			gcpFirewallNodeFromRecord(payload, firstNonEmpty(provider, "gcp"), account, region),
+			cdcNodeID(table, payload, event.ResourceID),
+		)
 
 	case "azure_ad_service_principals":
 		id := cdcNodeID(table, payload, event.ResourceID)
@@ -740,6 +750,11 @@ func cdcEventToNode(table string, event cdcEvent) *Node {
 				"identity":       queryRow(payload, "identity"),
 			},
 		}
+	case "azure_network_security_groups":
+		return nodeWithResolvedID(
+			azureNetworkSecurityGroupNodeFromRecord(payload, firstNonEmpty(provider, "azure"), account, region),
+			cdcNodeID(table, payload, event.ResourceID),
+		)
 
 	case "okta_users":
 		id := cdcNodeID(table, payload, event.ResourceID)
@@ -822,6 +837,11 @@ func cdcEventToNode(table string, event cdcEvent) *Node {
 
 func cdcNodeID(table string, payload map[string]any, fallback string) string {
 	switch strings.ToLower(strings.TrimSpace(table)) {
+	case "aws_ec2_security_groups":
+		if id := strings.TrimSpace(fallback); id != "" {
+			return id
+		}
+		return awsSecurityGroupNodeID(payload)
 	case "aws_iam_users", "aws_iam_roles", "aws_iam_groups", "aws_s3_buckets", "aws_ec2_instances", "aws_rds_instances", "aws_lambda_functions", "aws_secretsmanager_secrets":
 		if id := strings.TrimSpace(fallback); id != "" {
 			return id
@@ -832,11 +852,21 @@ func cdcNodeID(table string, payload map[string]any, fallback string) string {
 			return id
 		}
 		return firstNonEmpty(queryRowString(payload, "unique_id"), queryRowString(payload, "email"), queryRowString(payload, "name"), queryRowString(payload, "id"))
+	case "gcp_compute_firewalls":
+		if id := strings.TrimSpace(fallback); id != "" {
+			return id
+		}
+		return gcpFirewallNodeID(payload)
 	case "gcp_compute_instances", "gcp_storage_buckets", "gcp_sql_instances", "gcp_cloudfunctions_functions", "gcp_cloudrun_services":
 		if id := strings.TrimSpace(fallback); id != "" {
 			return id
 		}
 		return firstNonEmpty(queryRowString(payload, "id"), queryRowString(payload, "name"))
+	case "azure_network_security_groups":
+		if id := strings.TrimSpace(fallback); id != "" {
+			return id
+		}
+		return azureNetworkSecurityGroupNodeID(payload)
 	case "azure_ad_service_principals", "azure_ad_users", "azure_compute_virtual_machines", "azure_storage_accounts", "azure_sql_databases", "azure_keyvault_vaults", "azure_functions_apps", "okta_users", "okta_groups", "okta_applications":
 		if id := strings.TrimSpace(fallback); id != "" {
 			return id
@@ -868,6 +898,26 @@ func cdcNodeID(table string, payload map[string]any, fallback string) string {
 		}
 		return firstNonEmpty(queryRowString(payload, "arn"), queryRowString(payload, "id"), queryRowString(payload, "unique_id"), queryRowString(payload, "name"))
 	}
+}
+
+func CDCResourceIDForTable(table string, payload map[string]any) string {
+	return cdcNodeID(table, payload, "")
+}
+
+func nodeWithResolvedID(node *Node, resolvedID string) *Node {
+	if node == nil {
+		return nil
+	}
+	resolvedID = strings.TrimSpace(resolvedID)
+	if resolvedID == "" || node.ID == resolvedID {
+		return node
+	}
+	previousID := node.ID
+	node.ID = resolvedID
+	if strings.TrimSpace(node.Name) == "" || node.Name == previousID {
+		node.Name = resolvedID
+	}
+	return node
 }
 
 func normalizeCDCChangeType(changeType string) string {

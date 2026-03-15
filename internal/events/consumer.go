@@ -35,6 +35,7 @@ type ConsumerConfig struct {
 	URLs                []string
 	Stream              string
 	Subject             string
+	Subjects            []string
 	Durable             string
 	BatchSize           int
 	AckWait             time.Duration
@@ -165,14 +166,24 @@ func NewJetStreamConsumer(cfg ConsumerConfig, logger *slog.Logger, handler Event
 		nc.Close()
 		return nil, err
 	}
-	sub, err := c.js.PullSubscribe(
-		config.Subject,
-		config.Durable,
-		nats.BindStream(config.Stream),
-		nats.AckExplicit(),
-		nats.AckWait(config.AckWait),
-		nats.MaxAckPending(config.MaxAckPending),
-	)
+	subjects := consumerSubjects(config)
+	if err := c.ensureCompatibleConsumer(subjects); err != nil {
+		nc.Close()
+		return nil, err
+	}
+	sub, err := c.pullSubscribe(subjects)
+	if errors.Is(err, nats.ErrSubjectMismatch) {
+		c.logger.Warn("recreating incompatible jetstream durable consumer",
+			"stream", config.Stream,
+			"durable", config.Durable,
+			"subjects", subjects,
+		)
+		if deleteErr := c.js.DeleteConsumer(config.Stream, config.Durable); deleteErr != nil && !errors.Is(deleteErr, nats.ErrConsumerNotFound) {
+			nc.Close()
+			return nil, fmt.Errorf("delete incompatible consumer %s/%s: %w", config.Stream, config.Durable, deleteErr)
+		}
+		sub, err = c.pullSubscribe(subjects)
+	}
 	if err != nil {
 		nc.Close()
 		return nil, fmt.Errorf("create consumer subscription: %w", err)
@@ -623,17 +634,31 @@ func payloadPreview(payload []byte, limit int) string {
 }
 
 func (c *Consumer) ensureStream() error {
+	subjects := consumerSubjects(c.config)
+	if len(subjects) == 0 {
+		return errors.New("consumer subject is required")
+	}
 	stream, err := c.js.StreamInfo(c.config.Stream)
 	if err == nil {
-		for _, subj := range stream.Config.Subjects {
-			if subj == c.config.Subject || subj == ">" || subj == "ensemble.tap.>" {
-				return nil
+		missing := make([]string, 0, len(subjects))
+		for _, expected := range subjects {
+			if streamHasSubject(stream.Config.Subjects, expected) {
+				continue
 			}
+			missing = append(missing, expected)
 		}
-		c.logger.Warn("consumer stream exists without matching subject filter",
+		if len(missing) == 0 {
+			return nil
+		}
+		updated := stream.Config
+		updated.Subjects = append(append([]string(nil), stream.Config.Subjects...), missing...)
+		if _, err := c.js.UpdateStream(&updated); err != nil {
+			return fmt.Errorf("update consumer stream %s subjects: %w", c.config.Stream, err)
+		}
+		c.logger.Info("updated jetstream consumer stream subjects",
 			"stream", c.config.Stream,
-			"stream_subjects", stream.Config.Subjects,
-			"expected_subject", c.config.Subject,
+			"stream_subjects", updated.Subjects,
+			"added_subjects", missing,
 		)
 		return nil
 	}
@@ -642,7 +667,7 @@ func (c *Consumer) ensureStream() error {
 	}
 	_, err = c.js.AddStream(&nats.StreamConfig{
 		Name:      c.config.Stream,
-		Subjects:  []string{c.config.Subject},
+		Subjects:  subjects,
 		Retention: nats.LimitsPolicy,
 		Storage:   nats.FileStorage,
 		Replicas:  1,
@@ -650,8 +675,83 @@ func (c *Consumer) ensureStream() error {
 	if err != nil {
 		return fmt.Errorf("create consumer stream %s: %w", c.config.Stream, err)
 	}
-	c.logger.Info("created jetstream consumer stream", "stream", c.config.Stream, "subject", c.config.Subject)
+	c.logger.Info("created jetstream consumer stream", "stream", c.config.Stream, "subjects", subjects)
 	return nil
+}
+
+func (c *Consumer) pullSubscribe(subjects []string) (*nats.Subscription, error) {
+	subOpts := []nats.SubOpt{
+		nats.BindStream(c.config.Stream),
+		nats.AckExplicit(),
+		nats.AckWait(c.config.AckWait),
+		nats.MaxAckPending(c.config.MaxAckPending),
+	}
+	subject := c.config.Subject
+	if len(subjects) > 1 {
+		subject = ""
+		subOpts = append(subOpts, nats.ConsumerFilterSubjects(subjects...))
+	} else if len(subjects) == 1 {
+		subject = subjects[0]
+	}
+	return c.js.PullSubscribe(subject, c.config.Durable, subOpts...)
+}
+
+func (c *Consumer) ensureCompatibleConsumer(subjects []string) error {
+	if c == nil || c.js == nil {
+		return nil
+	}
+	info, err := c.js.ConsumerInfo(c.config.Stream, c.config.Durable)
+	if errors.Is(err, nats.ErrConsumerNotFound) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("lookup consumer %s/%s: %w", c.config.Stream, c.config.Durable, err)
+	}
+	if info == nil || consumerFilterSubjectsMatch(info.Config, subjects) {
+		return nil
+	}
+	if err := c.js.DeleteConsumer(c.config.Stream, c.config.Durable); err != nil && !errors.Is(err, nats.ErrConsumerNotFound) {
+		return fmt.Errorf("delete incompatible consumer %s/%s: %w", c.config.Stream, c.config.Durable, err)
+	}
+	c.logger.Info("deleted incompatible jetstream consumer before resubscribe",
+		"stream", c.config.Stream,
+		"durable", c.config.Durable,
+		"existing_filter_subject", strings.TrimSpace(info.Config.FilterSubject),
+		"existing_filter_subjects", info.Config.FilterSubjects,
+		"expected_subjects", subjects,
+	)
+	return nil
+}
+
+func consumerFilterSubjectsMatch(cfg nats.ConsumerConfig, subjects []string) bool {
+	expected := consumerFilterSubjects(subjects)
+	actual := consumerFilterSubjects(append(append([]string(nil), cfg.FilterSubjects...), cfg.FilterSubject))
+	if len(actual) != len(expected) {
+		return false
+	}
+	for i := range actual {
+		if actual[i] != expected[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func consumerFilterSubjects(subjects []string) []string {
+	normalized := make([]string, 0, len(subjects))
+	seen := make(map[string]struct{}, len(subjects))
+	for _, subject := range subjects {
+		subject = strings.TrimSpace(subject)
+		if subject == "" {
+			continue
+		}
+		if _, ok := seen[subject]; ok {
+			continue
+		}
+		seen[subject] = struct{}{}
+		normalized = append(normalized, subject)
+	}
+	return normalized
 }
 
 func (c ConsumerConfig) withDefaults() ConsumerConfig {
@@ -662,8 +762,12 @@ func (c ConsumerConfig) withDefaults() ConsumerConfig {
 	if cfg.Stream == "" {
 		cfg.Stream = defaultConsumerStream
 	}
-	if cfg.Subject == "" {
+	if len(cfg.Subjects) == 0 && cfg.Subject == "" {
 		cfg.Subject = defaultConsumerSubject
+	}
+	cfg.Subjects = consumerSubjects(cfg)
+	if len(cfg.Subjects) == 1 {
+		cfg.Subject = cfg.Subjects[0]
 	}
 	if cfg.Durable == "" {
 		cfg.Durable = defaultConsumerDurable
@@ -708,7 +812,7 @@ func (c ConsumerConfig) validate() error {
 	if strings.TrimSpace(c.Stream) == "" {
 		return errors.New("consumer stream is required")
 	}
-	if strings.TrimSpace(c.Subject) == "" {
+	if len(consumerSubjects(c)) == 0 {
 		return errors.New("consumer subject is required")
 	}
 	if strings.TrimSpace(c.Durable) == "" {
@@ -727,6 +831,44 @@ func (c ConsumerConfig) validate() error {
 		return errors.New("consumer fetch timeout must be > 0")
 	}
 	return nil
+}
+
+func consumerSubjects(cfg ConsumerConfig) []string {
+	seen := make(map[string]struct{}, len(cfg.Subjects)+1)
+	subjects := make([]string, 0, len(cfg.Subjects)+1)
+	appendSubject := func(raw string) {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			return
+		}
+		if _, ok := seen[raw]; ok {
+			return
+		}
+		seen[raw] = struct{}{}
+		subjects = append(subjects, raw)
+	}
+	for _, subject := range cfg.Subjects {
+		appendSubject(subject)
+	}
+	appendSubject(cfg.Subject)
+	return subjects
+}
+
+func streamHasSubject(streamSubjects []string, expected string) bool {
+	expected = strings.TrimSpace(expected)
+	if expected == "" {
+		return false
+	}
+	for _, subject := range streamSubjects {
+		subject = strings.TrimSpace(subject)
+		if subject == "" {
+			continue
+		}
+		if subject == expected || subject == ">" {
+			return true
+		}
+	}
+	return false
 }
 
 type consumerDeadLetterRecord struct {

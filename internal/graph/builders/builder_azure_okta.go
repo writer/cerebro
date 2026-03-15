@@ -53,6 +53,21 @@ func (b *Builder) buildAzureNodes(ctx context.Context) {
 			},
 		},
 		{
+			table: "azure_network_security_groups",
+			query: `SELECT id, name, subscription_id, resource_group, location, security_rules, default_security_rules FROM azure_network_security_groups`,
+			parse: func(rows []map[string]any) []*Node {
+				nodes := make([]*Node, 0, len(rows))
+				for _, nsg := range rows {
+					node := azureNetworkSecurityGroupNodeFromRecord(nsg, "azure", "", "")
+					if node == nil {
+						continue
+					}
+					nodes = append(nodes, node)
+				}
+				return nodes
+			},
+		},
+		{
 			table: "azure_storage_accounts",
 			query: `SELECT id, name, subscription_id, resource_group, location, allow_blob_public_access FROM azure_storage_accounts`,
 			parse: func(rows []map[string]any) []*Node {
