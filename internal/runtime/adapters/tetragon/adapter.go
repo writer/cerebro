@@ -19,11 +19,12 @@ type Adapter struct{}
 var _ adapters.Adapter = Adapter{}
 
 type payload struct {
-	ProcessExec   *processExecEnvelope   `json:"process_exec,omitempty"`
-	ProcessExit   *processExitEnvelope   `json:"process_exit,omitempty"`
-	ProcessKprobe *processKprobeEnvelope `json:"process_kprobe,omitempty"`
-	NodeName      string                 `json:"node_name"`
-	Time          time.Time              `json:"time"`
+	ProcessExec    *processExecEnvelope    `json:"process_exec,omitempty"`
+	ProcessExit    *processExitEnvelope    `json:"process_exit,omitempty"`
+	ProcessConnect *processConnectEnvelope `json:"process_connect,omitempty"`
+	ProcessKprobe  *processKprobeEnvelope  `json:"process_kprobe,omitempty"`
+	NodeName       string                  `json:"node_name"`
+	Time           time.Time               `json:"time"`
 }
 
 type processExecEnvelope struct {
@@ -38,6 +39,16 @@ type processExitEnvelope struct {
 	Status  uint32      `json:"status"`
 }
 
+type processConnectEnvelope struct {
+	Process         processInfo `json:"process"`
+	Parent          processInfo `json:"parent"`
+	SourceIP        string      `json:"source_ip"`
+	SourcePort      uint32      `json:"source_port"`
+	DestinationIP   string      `json:"destination_ip"`
+	DestinationPort uint32      `json:"destination_port"`
+	Protocol        string      `json:"protocol"`
+}
+
 type processKprobeEnvelope struct {
 	Process      processInfo `json:"process"`
 	Parent       processInfo `json:"parent"`
@@ -50,10 +61,28 @@ type processKprobeEnvelope struct {
 }
 
 type kprobeArg struct {
-	FileArg *pathLikeArg `json:"file_arg,omitempty"`
-	PathArg *pathLikeArg `json:"path_arg,omitempty"`
-	IntArg  *int64       `json:"int_arg,omitempty"`
-	UintArg *uint64      `json:"uint_arg,omitempty"`
+	SockArg     *sockArg     `json:"sock_arg,omitempty"`
+	SockaddrArg *sockaddrArg `json:"sockaddr_arg,omitempty"`
+	FileArg     *pathLikeArg `json:"file_arg,omitempty"`
+	PathArg     *pathLikeArg `json:"path_arg,omitempty"`
+	IntArg      *int64       `json:"int_arg,omitempty"`
+	UintArg     *uint64      `json:"uint_arg,omitempty"`
+}
+
+type sockArg struct {
+	Family   string `json:"family"`
+	Type     string `json:"type"`
+	Protocol string `json:"protocol"`
+	SAddr    string `json:"saddr"`
+	DAddr    string `json:"daddr"`
+	SPort    uint32 `json:"sport"`
+	DPort    uint32 `json:"dport"`
+}
+
+type sockaddrArg struct {
+	Family string `json:"family"`
+	Addr   string `json:"addr"`
+	Port   uint32 `json:"port"`
 }
 
 type pathLikeArg struct {
@@ -108,6 +137,8 @@ func (Adapter) Normalize(_ context.Context, raw []byte) ([]*runtime.RuntimeObser
 		return []*runtime.RuntimeObservation{observationFromProcessExec(event)}, nil
 	case event.ProcessExit != nil:
 		return []*runtime.RuntimeObservation{observationFromProcessExit(event)}, nil
+	case event.ProcessConnect != nil:
+		return []*runtime.RuntimeObservation{observationFromProcessConnect(event)}, nil
 	case event.ProcessKprobe != nil:
 		observation, err := observationFromProcessKprobe(event)
 		if err != nil {
@@ -168,6 +199,14 @@ func observationFromProcessExit(event payload) *runtime.RuntimeObservation {
 func observationFromProcessKprobe(event payload) (*runtime.RuntimeObservation, error) {
 	kprobe := event.ProcessKprobe
 	functionName := strings.TrimSpace(kprobe.FunctionName)
+
+	if isNetworkKprobe(functionName) {
+		observation, err := observationFromNetworkKprobe(event)
+		if err != nil {
+			return nil, err
+		}
+		return observation, nil
+	}
 
 	var (
 		kind         runtime.RuntimeObservationKind
@@ -247,6 +286,121 @@ func observationFromProcessKprobe(event payload) (*runtime.RuntimeObservation, e
 		User:      fmt.Sprintf("%d", kprobe.Process.UID),
 	}
 	observation.Tags = compactTags("tetragon", "process_kprobe", string(kind), functionName)
+	return observation, nil
+}
+
+func observationFromProcessConnect(event payload) *runtime.RuntimeObservation {
+	connect := event.ProcessConnect
+	metadata := map[string]any{
+		"exec_id":        connect.Process.ExecID,
+		"parent_exec_id": connect.Process.ParentExecID,
+		"cwd":            connect.Process.CWD,
+		"flags":          connect.Process.Flags,
+		"workload_name":  connect.Process.Pod.Workload,
+		"pod_labels":     runtime.CloneStringMap(connect.Process.Pod.Labels),
+		"node_name":      event.NodeName,
+		"event_type":     "process_connect",
+	}
+	observation := newProcessObservation(
+		runtime.ObservationKindNetworkFlow,
+		"process_connect",
+		event.Time,
+		event.NodeName,
+		connect.Process,
+		connect.Parent,
+		metadata,
+	)
+	observation.ID = networkObservationID(connect.Process, "process_connect", connect.DestinationIP, connect.DestinationPort, observation.ObservedAt)
+	observation.Network = &runtime.NetworkEvent{
+		Direction: "outbound",
+		Protocol:  strings.TrimSpace(connect.Protocol),
+		SrcIP:     strings.TrimSpace(connect.SourceIP),
+		SrcPort:   int(connect.SourcePort),
+		DstIP:     strings.TrimSpace(connect.DestinationIP),
+		DstPort:   int(connect.DestinationPort),
+	}
+	observation.Tags = compactTags("tetragon", "process_connect", "network_flow", strings.TrimSpace(connect.Protocol))
+	return observation
+}
+
+func observationFromNetworkKprobe(event payload) (*runtime.RuntimeObservation, error) {
+	kprobe := event.ProcessKprobe
+	functionName := strings.TrimSpace(kprobe.FunctionName)
+	sock, sockaddr := firstSocketArgs(kprobe.Args)
+
+	protocol := ""
+	srcIP := ""
+	srcPort := 0
+	dstIP := ""
+	dstPort := 0
+	if sock != nil {
+		protocol = strings.TrimSpace(sock.Protocol)
+		srcIP = strings.TrimSpace(sock.SAddr)
+		srcPort = int(sock.SPort)
+		dstIP = strings.TrimSpace(sock.DAddr)
+		dstPort = int(sock.DPort)
+	}
+	if sockaddr != nil {
+		if dstIP == "" {
+			dstIP = strings.TrimSpace(sockaddr.Addr)
+		}
+		if dstPort == 0 {
+			dstPort = int(sockaddr.Port)
+		}
+	}
+	if dstIP == "" || dstPort == 0 {
+		return nil, fmt.Errorf("decode tetragon payload: missing network destination for %s", functionName)
+	}
+
+	metadata := map[string]any{
+		"exec_id":        kprobe.Process.ExecID,
+		"parent_exec_id": kprobe.Process.ParentExecID,
+		"cwd":            kprobe.Process.CWD,
+		"flags":          kprobe.Process.Flags,
+		"workload_name":  kprobe.Process.Pod.Workload,
+		"pod_labels":     runtime.CloneStringMap(kprobe.Process.Pod.Labels),
+		"node_name":      event.NodeName,
+		"function_name":  functionName,
+		"policy_name":    strings.TrimSpace(kprobe.PolicyName),
+		"action":         strings.TrimSpace(kprobe.Action),
+		"return_action":  strings.TrimSpace(kprobe.ReturnAction),
+	}
+	if returnCode, ok := firstReturnCode(kprobe.Return); ok {
+		metadata["return_code"] = returnCode
+	}
+	if sock != nil {
+		if value := strings.TrimSpace(sock.Family); value != "" {
+			metadata["socket_family"] = value
+		}
+		if value := strings.TrimSpace(sock.Type); value != "" {
+			metadata["socket_type"] = value
+		}
+	}
+	if sockaddr != nil {
+		if value := strings.TrimSpace(sockaddr.Family); value != "" {
+			metadata["sockaddr_family"] = value
+		}
+	}
+
+	observation := newProcessObservation(
+		runtime.ObservationKindNetworkFlow,
+		"process_kprobe",
+		event.Time,
+		event.NodeName,
+		kprobe.Process,
+		kprobe.Parent,
+		metadata,
+	)
+	observation.ID = networkObservationID(kprobe.Process, functionName, dstIP, uint32(dstPort), observation.ObservedAt)
+	observation.Network = &runtime.NetworkEvent{
+		Direction: "outbound",
+		Protocol:  protocol,
+		SrcIP:     srcIP,
+		SrcPort:   srcPort,
+		DstIP:     dstIP,
+		DstPort:   dstPort,
+	}
+	observation.Tags = compactTags("tetragon", "process_kprobe", "network_flow", functionName, protocol)
 	return observation, nil
 }
 
@@ -331,6 +485,19 @@ func fileObservationID(process processInfo, kind runtime.RuntimeObservationKind,
 	return strings.Join(parts, ":")
 }
 
+func networkObservationID(process processInfo, eventType, dstIP string, dstPort uint32, observedAt time.Time) string {
+	parts := []string{
+		processObservationID(process.ExecID, runtime.ObservationKindNetworkFlow, process),
+		strings.TrimSpace(eventType),
+		strings.TrimSpace(dstIP),
+		fmt.Sprintf("%d", dstPort),
+	}
+	if !observedAt.IsZero() {
+		parts = append(parts, observedAt.UTC().Format(time.RFC3339Nano))
+	}
+	return strings.Join(parts, ":")
+}
+
 func podResourceID(namespace, name string) string {
 	if namespace == "" || name == "" {
 		return ""
@@ -382,6 +549,20 @@ func firstUnsignedArgValue(args []kprobeArg) uint64 {
 	return 0
 }
 
+func firstSocketArgs(args []kprobeArg) (*sockArg, *sockaddrArg) {
+	var sock *sockArg
+	var sockaddr *sockaddrArg
+	for _, arg := range args {
+		if sock == nil && arg.SockArg != nil {
+			sock = arg.SockArg
+		}
+		if sockaddr == nil && arg.SockaddrArg != nil {
+			sockaddr = arg.SockaddrArg
+		}
+	}
+	return sock, sockaddr
+}
+
 func firstReturnCode(arg *kprobeArg) (any, bool) {
 	if arg == nil {
 		return 0, false
@@ -429,4 +610,13 @@ func compactTags(values ...string) []string {
 		}
 	}
 	return tags
+}
+
+func isNetworkKprobe(functionName string) bool {
+	switch functionName {
+	case "tcp_connect", "security_socket_connect":
+		return true
+	default:
+		return false
+	}
 }
