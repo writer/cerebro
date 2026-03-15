@@ -284,6 +284,16 @@ func (b *Builder) Graph() *Graph {
 	return b.graph
 }
 
+// ReplaceGraph swaps the builder's live graph reference.
+func (b *Builder) ReplaceGraph(g *Graph) {
+	if b == nil || g == nil {
+		return
+	}
+	b.stateMu.Lock()
+	defer b.stateMu.Unlock()
+	b.graph = g
+}
+
 // LastMutation returns metadata for the most recent graph update operation.
 func (b *Builder) LastMutation() GraphMutationSummary {
 	b.stateMu.RLock()

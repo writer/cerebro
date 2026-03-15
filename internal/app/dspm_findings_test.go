@@ -6,6 +6,8 @@ import (
 
 	"github.com/evalops/cerebro/internal/dspm"
 	"github.com/evalops/cerebro/internal/findings"
+	"github.com/evalops/cerebro/internal/graph"
+	"github.com/evalops/cerebro/internal/graph/builders"
 	"github.com/evalops/cerebro/internal/notifications"
 	"github.com/evalops/cerebro/internal/remediation"
 	"github.com/evalops/cerebro/internal/testutil"
@@ -101,6 +103,144 @@ func TestScanAndPersistDSPMFindings_SkipsNonScannableTables(t *testing.T) {
 	}
 	if fetcher.fetchCalls != 0 {
 		t.Fatalf("expected no DSPM fetch calls for non-DSPM table, got %d", fetcher.fetchCalls)
+	}
+}
+
+func TestScanAndPersistDSPMFindings_EnrichesSecurityGraphNodes(t *testing.T) {
+	logger := testutil.Logger()
+	fetcher := &stubDSPMFetcher{
+		samples: []dspm.DataSample{
+			{ObjectKey: "sample-1", Data: []byte("customer email jane@example.com and card 4111-1111-1111-1111")},
+		},
+	}
+
+	builder := builders.NewBuilder(newSchedulerGraphSource(), logger)
+	builderNodeID := "arn:aws:s3:::customer-card-bucket"
+	builder.Graph().AddNode(&graph.Node{
+		ID:         builderNodeID,
+		Kind:       graph.NodeKindBucket,
+		Name:       "customer-card-bucket",
+		Provider:   "aws",
+		Properties: map[string]any{},
+	})
+
+	liveGraph := graph.New()
+	liveGraph.AddNode(&graph.Node{
+		ID:         builderNodeID,
+		Kind:       graph.NodeKindBucket,
+		Name:       "customer-card-bucket",
+		Provider:   "aws",
+		Properties: map[string]any{},
+	})
+
+	app := &App{
+		Logger:               logger,
+		Findings:             findings.NewStore(),
+		DSPM:                 dspm.NewScanner(fetcher, logger, dspm.DefaultScannerConfig()),
+		SecurityGraph:        liveGraph,
+		SecurityGraphBuilder: builder,
+	}
+
+	assets := []map[string]interface{}{
+		{
+			"_cq_id":          "bucket-1",
+			"_cq_source_name": "aws",
+			"name":            "customer-card-bucket",
+			"arn":             builderNodeID,
+			"is_public":       true,
+			"is_encrypted":    false,
+			"region":          "us-west-2",
+		},
+	}
+
+	app.scanAndPersistDSPMFindings(context.Background(), "aws_s3_buckets", assets)
+
+	for name, g := range map[string]*graph.Graph{
+		"live":    app.CurrentSecurityGraph(),
+		"builder": builder.Graph(),
+	} {
+		node, ok := g.GetNode(builderNodeID)
+		if !ok || node == nil {
+			t.Fatalf("expected %s graph node %q to exist", name, builderNodeID)
+		}
+		if scanned, _ := node.Properties["dspm_scanned"].(bool); !scanned {
+			t.Fatalf("expected %s graph node to be marked as DSPM scanned", name)
+		}
+		if classification, _ := node.Properties["data_classification"].(string); classification != string(dspm.ClassificationRestricted) {
+			t.Fatalf("expected %s graph node classification %q, got %v", name, dspm.ClassificationRestricted, node.Properties["data_classification"])
+		}
+		if containsPII, _ := node.Properties["contains_pii"].(bool); !containsPII {
+			t.Fatalf("expected %s graph node to contain PII", name)
+		}
+		if containsPCI, _ := node.Properties["contains_pci"].(bool); !containsPCI {
+			t.Fatalf("expected %s graph node to contain PCI", name)
+		}
+	}
+}
+
+func TestScanAndPersistDSPMFindings_NameFallbackRequiresScopedUniqueMatch(t *testing.T) {
+	logger := testutil.Logger()
+	fetcher := &stubDSPMFetcher{
+		samples: []dspm.DataSample{
+			{ObjectKey: "sample-1", Data: []byte("customer email jane@example.com and card 4111-1111-1111-1111")},
+		},
+	}
+
+	liveGraph := graph.New()
+	liveGraph.AddNode(&graph.Node{
+		ID:       "bucket:acct-a:shared-bucket",
+		Kind:     graph.NodeKindBucket,
+		Name:     "shared-bucket",
+		Provider: "aws",
+		Account:  "acct-a",
+		Region:   "us-west-2",
+		Properties: map[string]any{
+			"bucket_name": "shared-bucket",
+		},
+	})
+	liveGraph.AddNode(&graph.Node{
+		ID:       "bucket:acct-b:shared-bucket",
+		Kind:     graph.NodeKindBucket,
+		Name:     "shared-bucket",
+		Provider: "aws",
+		Account:  "acct-b",
+		Region:   "us-west-2",
+		Properties: map[string]any{
+			"bucket_name": "shared-bucket",
+		},
+	})
+
+	app := &App{
+		Logger:        logger,
+		Findings:      findings.NewStore(),
+		DSPM:          dspm.NewScanner(fetcher, logger, dspm.DefaultScannerConfig()),
+		SecurityGraph: liveGraph,
+	}
+
+	app.scanAndPersistDSPMFindings(context.Background(), "aws_s3_buckets", []map[string]interface{}{
+		{
+			"_cq_id":          "scan-target-id",
+			"_cq_source_name": "aws",
+			"name":            "shared-bucket",
+			"account_id":      "acct-b",
+			"region":          "us-west-2",
+			"is_public":       true,
+			"is_encrypted":    false,
+		},
+	})
+
+	current := app.CurrentSecurityGraph()
+	accountANode, _ := current.GetNode("bucket:acct-a:shared-bucket")
+	if scanned, _ := accountANode.Properties["dspm_scanned"].(bool); scanned {
+		t.Fatal("expected scoped name fallback to avoid enriching same-name bucket in another account")
+	}
+
+	accountBNode, ok := current.GetNode("bucket:acct-b:shared-bucket")
+	if !ok || accountBNode == nil {
+		t.Fatal("expected scoped same-name bucket to exist")
+	}
+	if scanned, _ := accountBNode.Properties["dspm_scanned"].(bool); !scanned {
+		t.Fatal("expected scoped name fallback to enrich the uniquely matched bucket")
 	}
 }
 

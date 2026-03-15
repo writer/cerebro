@@ -36,6 +36,7 @@ func (a *App) scanAndPersistDSPMFindings(ctx context.Context, table string, asse
 				findingCount++
 			}
 		}
+		a.enrichSecurityGraphWithDSPMResult(target, result)
 	}
 
 	return findingCount
