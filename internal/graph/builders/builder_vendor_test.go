@@ -89,6 +89,8 @@ func TestBuilder_ProjectsVendorNodesFromIdentityIntegrations(t *testing.T) {
 	}
 	assertStringSliceProperty(t, vendor.Properties, "source_providers", []string{"azure", "okta"})
 	assertStringSliceProperty(t, vendor.Properties, "integration_types", []string{"entra_service_principal", "okta_application"})
+	assertStringSliceProperty(t, vendor.Properties, "owner_organization_ids", []string{"tenant-vendor"})
+	assertStringSliceProperty(t, vendor.Properties, "accessible_resource_kinds", []string{"bucket", "secret"})
 	if got := intProperty(t, vendor.Properties, "managed_node_count"); got != 2 {
 		t.Fatalf("expected two managed nodes, got %d", got)
 	}
@@ -107,6 +109,18 @@ func TestBuilder_ProjectsVendorNodesFromIdentityIntegrations(t *testing.T) {
 	if got := intProperty(t, vendor.Properties, "admin_access_count"); got != 1 {
 		t.Fatalf("expected one admin resource, got %d", got)
 	}
+	if got := intProperty(t, vendor.Properties, "app_role_assignment_required_count"); got != 0 {
+		t.Fatalf("expected no assignment-required integrations in this fixture, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "app_role_assignment_optional_count"); got != 0 {
+		t.Fatalf("expected no assignment-optional integrations in this fixture, got %d", got)
+	}
+	if got, _ := vendor.Properties["permission_level"].(string); got != "admin" {
+		t.Fatalf("expected permission level admin, got %#v", vendor.Properties["permission_level"])
+	}
+	if got, _ := vendor.Properties["vendor_category"].(string); got != "saas_integration" {
+		t.Fatalf("expected saas integration category, got %#v", vendor.Properties["vendor_category"])
+	}
 	if vendor.Risk != RiskHigh {
 		t.Fatalf("expected high vendor risk from admin access, got %s", vendor.Risk)
 	}
@@ -120,6 +134,148 @@ func TestBuilder_ProjectsVendorNodesFromIdentityIntegrations(t *testing.T) {
 	}
 	if _, ok := g.GetNode("vendor:microsoft"); ok {
 		t.Fatal("expected managed identity publisher to avoid vendor node creation")
+	}
+}
+
+func TestBuilder_CanonicalizesVendorAliasesAndAggregatesProvenance(t *testing.T) {
+	t.Parallel()
+
+	source := newMockDataSource()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	source.setResult(`SELECT id, label, name, status, sign_on_mode FROM okta_applications`, &DataQueryResult{
+		Rows: []map[string]any{{
+			"id":           "okta-app-zoom",
+			"label":        "Zoom",
+			"name":         "zoom",
+			"status":       "ACTIVE",
+			"sign_on_mode": "SAML_2_0",
+		}},
+	})
+	source.setResult(`SELECT id, display_name, app_id, service_principal_type, account_enabled, app_owner_organization_id, app_role_assignment_required, publisher_name, created_date_time, tags, subscription_id FROM azure_graph_service_principals`, &DataQueryResult{
+		Rows: []map[string]any{{
+			"id":                           "sp-zoom",
+			"display_name":                 "Zoom for Enterprise",
+			"app_id":                       "app-zoom",
+			"service_principal_type":       "Application",
+			"account_enabled":              true,
+			"app_owner_organization_id":    "tenant-zoom",
+			"app_role_assignment_required": true,
+			"publisher_name":               "Zoom Video Communications, Inc.",
+			"subscription_id":              "sub-1",
+		}},
+	})
+	source.setResult(`
+		SELECT arn, name, account_id, region
+		FROM aws_secretsmanager_secrets
+	`, &DataQueryResult{
+		Rows: []map[string]any{{
+			"arn":        "arn:aws:secretsmanager:us-east-1:111111111111:secret:zoom-api",
+			"name":       "zoom-api",
+			"account_id": "111111111111",
+			"region":     "us-east-1",
+		}},
+	})
+	source.setResult(`
+		SELECT source_id, source_type, target_id, target_type, rel_type, properties
+		FROM resource_relationships
+	`, &DataQueryResult{
+		Rows: []map[string]any{{
+			"source_id":   "sp-zoom",
+			"source_type": "entra:service_principal",
+			"target_id":   "arn:aws:secretsmanager:us-east-1:111111111111:secret:zoom-api",
+			"target_type": "aws:secretsmanager:secret",
+			"rel_type":    "READS_FROM",
+		}},
+	})
+
+	builder := NewBuilder(source, logger)
+	if err := builder.Build(context.Background()); err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+
+	g := builder.Graph()
+	vendor, ok := g.GetNode("vendor:zoom")
+	if !ok {
+		t.Fatal("expected canonical vendor node for Zoom")
+	}
+	if _, ok := g.GetNode("vendor:zoom-video-communications"); ok {
+		t.Fatal("expected alias form to collapse into canonical vendor node")
+	}
+	if vendor.Name != "Zoom" {
+		t.Fatalf("expected canonical vendor display name Zoom, got %q", vendor.Name)
+	}
+	assertStringSliceProperty(t, vendor.Properties, "aliases", []string{"Zoom Video Communications, Inc."})
+	assertStringSliceProperty(t, vendor.Properties, "owner_organization_ids", []string{"tenant-zoom"})
+	assertStringSliceProperty(t, vendor.Properties, "accessible_resource_kinds", []string{"secret"})
+	if got := intProperty(t, vendor.Properties, "sensitive_resource_count"); got != 1 {
+		t.Fatalf("expected one sensitive resource, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "app_role_assignment_required_count"); got != 1 {
+		t.Fatalf("expected one assignment-required integration, got %d", got)
+	}
+	if got, _ := vendor.Properties["permission_level"].(string); got != "read" {
+		t.Fatalf("expected permission level read, got %#v", vendor.Properties["permission_level"])
+	}
+	assertEdgeExists(t, g, "okta-app-zoom", "vendor:zoom", EdgeKindManagedBy)
+	assertEdgeExists(t, g, "sp-zoom", "vendor:zoom", EdgeKindManagedBy)
+}
+
+func TestBuilder_KeepsDistinctVendorProductAliasesSeparate(t *testing.T) {
+	t.Parallel()
+
+	source := newMockDataSource()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	source.setResult(`SELECT id, label, name, status, sign_on_mode FROM okta_applications`, &DataQueryResult{
+		Rows: []map[string]any{
+			{
+				"id":           "okta-app-google",
+				"label":        "Google",
+				"name":         "google",
+				"status":       "ACTIVE",
+				"sign_on_mode": "SAML_2_0",
+			},
+			{
+				"id":           "okta-app-google-analytics",
+				"label":        "Google Analytics",
+				"name":         "google_analytics",
+				"status":       "ACTIVE",
+				"sign_on_mode": "SAML_2_0",
+			},
+		},
+	})
+
+	builder := NewBuilder(source, logger)
+	if err := builder.Build(context.Background()); err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+
+	g := builder.Graph()
+	assertEdgeExists(t, g, "okta-app-google", "vendor:google", EdgeKindManagedBy)
+	assertEdgeExists(t, g, "okta-app-google-analytics", "vendor:google-analytics", EdgeKindManagedBy)
+	if _, ok := g.GetNode("vendor:google"); !ok {
+		t.Fatal("expected vendor node for Google")
+	}
+	if _, ok := g.GetNode("vendor:google-analytics"); !ok {
+		t.Fatal("expected separate vendor node for Google Analytics")
+	}
+}
+
+func TestVendorAliasKey_TrimsCorporateSuffixesConservatively(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]string{
+		"Zoom Video Communications, Inc.": "zoom",
+		"Slack Technologies, LLC":         "slack",
+		"Google Analytics":                "google analytics",
+		"Palo Alto Networks, Inc.":        "palo alto networks",
+	}
+
+	for input, want := range cases {
+		if got := vendorAliasKey(input); got != want {
+			t.Fatalf("vendorAliasKey(%q) = %q, want %q", input, got, want)
+		}
 	}
 }
 
