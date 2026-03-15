@@ -237,6 +237,23 @@ func TestLoadConfigWorkloadScanPathsAndControls(t *testing.T) {
 	}
 }
 
+func TestLoadConfigMalwareScannerControls(t *testing.T) {
+	t.Setenv("MALWARE_SCAN_CLAMAV_HOST", "clamav.internal")
+	t.Setenv("MALWARE_SCAN_CLAMAV_PORT", "3310")
+	t.Setenv("MALWARE_SCAN_VIRUSTOTAL_API_KEY", "vt-test-key")
+
+	cfg := LoadConfig()
+	if cfg.MalwareScanClamAVHost != "clamav.internal" {
+		t.Fatalf("expected malware scan clamd host override, got %q", cfg.MalwareScanClamAVHost)
+	}
+	if cfg.MalwareScanClamAVPort != 3310 {
+		t.Fatalf("expected malware scan clamd port override, got %d", cfg.MalwareScanClamAVPort)
+	}
+	if cfg.MalwareScanVirusTotalAPIKey != "vt-test-key" {
+		t.Fatalf("expected malware scan vt api key override, got %q", cfg.MalwareScanVirusTotalAPIKey)
+	}
+}
+
 func TestLoadConfigImageScanPathsAndControls(t *testing.T) {
 	t.Setenv("EXECUTION_STORE_FILE", "/tmp/cerebro-executions.db")
 	t.Setenv("IMAGE_SCAN_ROOTFS_BASE_PATH", "/tmp/cerebro-image-rootfs")

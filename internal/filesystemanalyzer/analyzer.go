@@ -36,20 +36,23 @@ const (
 )
 
 var (
-	awsAccessKeyPattern = regexp.MustCompile(`AKIA[0-9A-Z]{16}`)
-	jwtTokenPattern     = regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b`)
-	githubTokenPattern  = regexp.MustCompile(`gh[pousr]_[A-Za-z0-9_]{20,}`)
-	gitlabTokenPattern  = regexp.MustCompile(`glpat-[A-Za-z0-9_-]{20,}`)
-	npmTokenPattern     = regexp.MustCompile(`npm_[A-Za-z0-9]{36}`)
-	slackTokenPattern   = regexp.MustCompile(`xox[baprs]-[A-Za-z0-9-]{10,}`)
-	stripeKeyPattern    = regexp.MustCompile(`\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}\b`)
-	twilioKeyPattern    = regexp.MustCompile(`\bSK[0-9a-fA-F]{32}\b`)
-	sendGridKeyPattern  = regexp.MustCompile(`\bSG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}\b`)
-	mailgunKeyPattern   = regexp.MustCompile(`\bkey-[0-9a-fA-F]{32}\b`)
-	privateKeyPattern   = regexp.MustCompile(`-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----`)
-	inlineSecretPattern = regexp.MustCompile(`(?i)(password|passwd|pwd|secret|token|api[_-]?key|client[_-]?secret|connection[_-]?string)\s*[:=]`)
-	secretTokenPattern  = regexp.MustCompile(`[A-Za-z0-9+/=_-]{20,}`)
-	databaseURLPattern  = regexp.MustCompile(`(?i)(?:jdbc:sqlserver://[^\s'"]+|(?:jdbc:)?(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis|rediss|sqlserver)://[^\s'"]+)`)
+	awsAccessKeyPattern            = regexp.MustCompile(`AKIA[0-9A-Z]{16}`)
+	jwtTokenPattern                = regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b`)
+	githubTokenPattern             = regexp.MustCompile(`gh[pousr]_[A-Za-z0-9_]{20,}`)
+	gitlabTokenPattern             = regexp.MustCompile(`glpat-[A-Za-z0-9_-]{20,}`)
+	npmTokenPattern                = regexp.MustCompile(`npm_[A-Za-z0-9]{36}`)
+	slackTokenPattern              = regexp.MustCompile(`xox(?:[abprs]-|e[a-z]-)[A-Za-z0-9-]{10,}`)
+	gcpAPIKeyPattern               = regexp.MustCompile(`AIza[0-9A-Za-z\-_]{35}`)
+	googleOAuthClientSecretPattern = regexp.MustCompile(`GOCSPX-[0-9A-Za-z\-_]{20,}`)
+	stripeAPIKeyPattern            = regexp.MustCompile(`\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}\b`)
+	twilioAPIKeyPattern            = regexp.MustCompile(`\bSK[0-9a-f]{32}\b`)
+	sendGridAPIKeyPattern          = regexp.MustCompile(`\bSG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}\b`)
+	mailgunKeyPattern              = regexp.MustCompile(`\bkey-[0-9a-fA-F]{32}\b`)
+	privateKeyPattern              = regexp.MustCompile(`-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP |ENCRYPTED )?PRIVATE KEY-----`)
+	inlineSecretPattern            = regexp.MustCompile(`(?i)(password|passwd|pwd|secret|token|api[_-]?key|client[_-]?secret|connection[_-]?string|access[_-]?key|private[_-]?key)\s*[:=]`)
+	inlineSecretAssignmentPattern  = regexp.MustCompile(`(?i)(password|passwd|pwd|secret|token|api[_-]?key|client[_-]?secret|connection[_-]?string|access[_-]?key|private[_-]?key)\s*[:=]\s*(.+)$`)
+	secretTokenPattern             = regexp.MustCompile(`[A-Za-z0-9+/=_-]{20,}`)
+	databaseURLPattern             = regexp.MustCompile(`(?i)(?:jdbc:sqlserver://[^\s'"]+|(?:jdbc:)?(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis|rediss|sqlserver)://[^\s'"]+)`)
 )
 
 type Analyzer struct {
@@ -252,7 +255,7 @@ func (a *Analyzer) Analyze(ctx context.Context, rootfsPath string) (*Report, err
 				inv.metadataErrors = append(inv.metadataErrors, err.Error())
 			}
 		}
-		if a.malwareScanner != nil && shouldMalwareScan(filePath, info.Mode(), info.Size()) {
+		if a.malwareScanner != nil && shouldMalwareScan(filePath, info.Mode(), info.Size(), a.maxMalwareFileBytes) {
 			if data, ok, err := readLimitedFile(root, filePath, a.maxMalwareFileBytes); err == nil && ok {
 				result, scanErr := a.malwareScanner.ScanData(ctx, data, filePath)
 				if scanErr != nil {
@@ -576,19 +579,22 @@ func shouldSecretScan(filePath string, mode fs.FileMode, size int64, maxBytes in
 	}
 	ext := strings.ToLower(path.Ext(filePath))
 	switch ext {
-	case ".env", ".ini", ".cfg", ".conf", ".yaml", ".yml", ".json", ".xml", ".sh", ".bashrc", ".zshrc", ".py", ".js", ".ts", ".go", ".java", ".rb", ".php", ".txt":
+	case ".env", ".ini", ".cfg", ".conf", ".yaml", ".yml", ".json", ".xml", ".toml", ".properties", ".sh", ".bashrc", ".zshrc", ".py", ".js", ".ts", ".go", ".java", ".rb", ".php", ".ps1", ".cs", ".pem", ".key", ".txt":
 		return true
 	}
 	base := path.Base(filePath)
 	switch base {
-	case ".env", "config", "authorized_keys", "known_hosts", ".bash_history", ".zsh_history", "credentials", "secrets", "Dockerfile":
+	case ".env", ".envrc", "config", "authorized_keys", "known_hosts", ".bash_history", ".zsh_history", "credentials", "secrets", "Dockerfile", "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", "application.properties":
 		return true
 	}
 	return ext == ""
 }
 
-func shouldMalwareScan(filePath string, mode fs.FileMode, size int64) bool {
-	if mode.IsDir() || mode&fs.ModeSymlink != 0 || size <= 0 || size > defaultMaxMalwareBytes {
+func shouldMalwareScan(filePath string, mode fs.FileMode, size int64, maxBytes int64) bool {
+	if maxBytes <= 0 {
+		maxBytes = defaultMaxMalwareBytes
+	}
+	if mode.IsDir() || mode&fs.ModeSymlink != 0 || size <= 0 || size > maxBytes {
 		return false
 	}
 	if mode&0o111 != 0 {
@@ -596,7 +602,7 @@ func shouldMalwareScan(filePath string, mode fs.FileMode, size int64) bool {
 	}
 	ext := strings.ToLower(path.Ext(filePath))
 	switch ext {
-	case ".sh", ".py", ".js", ".jar", ".bin", ".exe":
+	case ".sh", ".py", ".js", ".php", ".rb", ".pl", ".ps1", ".jar", ".war", ".bin", ".so", ".dll", ".exe", ".com", ".bat", ".cmd", ".scr":
 		return true
 	default:
 		return false
@@ -1229,8 +1235,9 @@ func scanSecrets(filePath string, data []byte) []SecretFinding {
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
-		matchedSpecific := false
-		if match := awsAccessKeyPattern.FindString(line); match != "" {
+		matchedSpecificSecret := false
+		for _, match := range awsAccessKeyPattern.FindAllString(line, -1) {
+			matchedSpecificSecret = true
 			appendFinding(
 				"aws_access_key",
 				"critical",
@@ -1239,46 +1246,74 @@ func scanSecrets(filePath string, data []byte) []SecretFinding {
 				lineNo,
 				SecretReference{Kind: "cloud_identity", Provider: "aws", Identifier: strings.TrimSpace(match)},
 			)
-			matchedSpecific = true
 		}
-		if match := githubTokenPattern.FindString(line); match != "" {
+		for _, match := range githubTokenPattern.FindAllString(line, -1) {
+			matchedSpecificSecret = true
 			appendFinding("github_token", "high", fingerprintSecretMatch(match), "Potential GitHub token detected.", lineNo)
-			matchedSpecific = true
 		}
-		if match := gitlabTokenPattern.FindString(line); match != "" {
+		for _, match := range gitlabTokenPattern.FindAllString(line, -1) {
+			matchedSpecificSecret = true
 			appendFinding("gitlab_token", "high", fingerprintSecretMatch(match), "Potential GitLab token detected.", lineNo)
-			matchedSpecific = true
 		}
-		if match := npmTokenPattern.FindString(line); match != "" {
+		for _, match := range npmTokenPattern.FindAllString(line, -1) {
+			matchedSpecificSecret = true
 			appendFinding("npm_token", "high", fingerprintSecretMatch(match), "Potential npm token detected.", lineNo)
-			matchedSpecific = true
 		}
-		if match := slackTokenPattern.FindString(line); match != "" {
+		for _, match := range slackTokenPattern.FindAllString(line, -1) {
+			matchedSpecificSecret = true
 			appendFinding("slack_token", "high", fingerprintSecretMatch(match), "Potential Slack token detected.", lineNo)
-			matchedSpecific = true
 		}
-		if match := stripeKeyPattern.FindString(line); match != "" {
+		for _, match := range gcpAPIKeyPattern.FindAllString(line, -1) {
+			matchedSpecificSecret = true
+			appendFinding("gcp_api_key", "high", fingerprintSecretMatch(match), "Potential GCP API key detected.", lineNo, SecretReference{
+				Kind: "cloud_identity", Provider: "gcp", Identifier: strings.TrimSpace(match),
+			})
+		}
+		for _, match := range googleOAuthClientSecretPattern.FindAllString(line, -1) {
+			matchedSpecificSecret = true
+			appendFinding("google_oauth_client_secret", "high", fingerprintSecretMatch(match), "Potential Google OAuth client secret detected.", lineNo)
+		}
+		for _, match := range stripeAPIKeyPattern.FindAllString(line, -1) {
+			matchedSpecificSecret = true
 			appendFinding("stripe_api_key", "high", fingerprintSecretMatch(match), "Potential Stripe API key detected.", lineNo)
-			matchedSpecific = true
 		}
-		if match := twilioKeyPattern.FindString(line); match != "" {
-			appendFinding("twilio_api_key", "high", fingerprintSecretMatch(match), "Potential Twilio API key detected.", lineNo)
-			matchedSpecific = true
-		}
-		if match := sendGridKeyPattern.FindString(line); match != "" {
+		for _, match := range sendGridAPIKeyPattern.FindAllString(line, -1) {
+			matchedSpecificSecret = true
 			appendFinding("sendgrid_api_key", "high", fingerprintSecretMatch(match), "Potential SendGrid API key detected.", lineNo)
-			matchedSpecific = true
 		}
-		if match := mailgunKeyPattern.FindString(line); match != "" {
+		for _, match := range twilioAPIKeyPattern.FindAllString(line, -1) {
+			matchedSpecificSecret = true
+			appendFinding("twilio_api_key", "high", fingerprintSecretMatch(match), "Potential Twilio API key detected.", lineNo)
+		}
+		for _, match := range mailgunKeyPattern.FindAllString(line, -1) {
+			matchedSpecificSecret = true
 			appendFinding("mailgun_api_key", "high", fingerprintSecretMatch(match), "Potential Mailgun API key detected.", lineNo)
-			matchedSpecific = true
+		}
+		for _, match := range jwtTokenPattern.FindAllString(line, -1) {
+			if !likelyJWTSecretLine(line) || !isLikelyJWT(match) {
+				continue
+			}
+			matchedSpecificSecret = true
+			appendFinding("jwt_token", "high", fingerprintSecretMatch(match), "Potential JWT bearer token detected.", lineNo)
 		}
 		if privateKeyPattern.MatchString(line) {
+			matchedSpecificSecret = true
 			appendFinding("private_key", "critical", "private_key", "Private key material detected.", lineNo)
-			matchedSpecific = true
 		}
-		if match := databaseURLPattern.FindString(line); match != "" {
+		if ref, ok := parseAzureStorageConnectionReference(line); ok {
+			matchedSpecificSecret = true
+			appendFinding(
+				"azure_storage_connection_string",
+				"critical",
+				fingerprintSecretMatch(line),
+				"Potential Azure storage connection string detected.",
+				lineNo,
+				ref,
+			)
+		}
+		for _, match := range databaseURLPattern.FindAllString(line, -1) {
 			if ref, ok := parseDatabaseConnectionReference(match); ok {
+				matchedSpecificSecret = true
 				appendFinding(
 					"database_connection_string",
 					"critical",
@@ -1287,18 +1322,20 @@ func scanSecrets(filePath string, data []byte) []SecretFinding {
 					lineNo,
 					ref,
 				)
-			} else {
+				continue
+			}
+			if databaseConnectionLooksSecretLike(match) {
+				matchedSpecificSecret = true
 				appendFinding("database_connection_string", "critical", fingerprintSecretMatch(match), "Potential database connection string detected.", lineNo)
 			}
-			matchedSpecific = true
 		}
-		if match := jwtTokenPattern.FindString(line); match != "" && likelyJWTSecretLine(line) {
-			appendFinding("jwt_token", "high", fingerprintSecretMatch(match), "Potential JWT detected.", lineNo)
-			matchedSpecific = true
+		if !matchedSpecificSecret {
+			if value, key := inlineSecretValue(line); value != "" {
+				appendFinding("inline_secret", "high", fingerprintSecretMatch(key+"="+value), "Inline secret-like assignment detected.", lineNo)
+				matchedSpecificSecret = true
+			}
 		}
-		if !matchedSpecific && inlineSecretPattern.MatchString(line) {
-			appendFinding("inline_secret", "high", fingerprintSecretMatch(line), "Inline secret-like assignment detected.", lineNo)
-		} else if !matchedSpecific {
+		if !matchedSpecificSecret {
 			if token := entropySecretToken(line); token != "" {
 				appendFinding("high_entropy_token", "medium", fingerprintSecretMatch(token), "High-entropy token detected in text content.", lineNo)
 			}
@@ -1545,6 +1582,9 @@ func parseDatabaseConnectionReference(raw string) (SecretReference, bool) {
 	if err != nil || parsed == nil {
 		return SecretReference{}, false
 	}
+	if !databaseConnectionContainsSecret(parsed) {
+		return SecretReference{}, false
+	}
 	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
 	if host == "" {
 		return SecretReference{}, false
@@ -1595,6 +1635,7 @@ func parseJDBCSQLServerReference(raw string) (SecretReference, bool) {
 		return SecretReference{}, false
 	}
 	database := ""
+	hasSecret := false
 	for _, segment := range strings.Split(raw, ";") {
 		key, value, ok := strings.Cut(segment, "=")
 		if !ok {
@@ -1603,7 +1644,12 @@ func parseJDBCSQLServerReference(raw string) (SecretReference, bool) {
 		switch strings.ToLower(strings.TrimSpace(key)) {
 		case "databasename", "database":
 			database = strings.TrimSpace(value)
+		case "password", "pwd", "access_token", "token", "secret":
+			hasSecret = hasSecret || strings.TrimSpace(value) != ""
 		}
+	}
+	if !hasSecret {
+		return SecretReference{}, false
 	}
 	return SecretReference{
 		Kind:       "database",
@@ -1612,6 +1658,37 @@ func parseJDBCSQLServerReference(raw string) (SecretReference, bool) {
 		Port:       port,
 		Database:   database,
 		Attributes: map[string]string{"scheme": "sqlserver"},
+	}, true
+}
+
+func parseAzureStorageConnectionReference(raw string) (SecretReference, bool) {
+	values := parseDelimitedKeyValuePairs(raw, ";")
+	if strings.TrimSpace(values["accountkey"]) == "" && strings.TrimSpace(values["sharedaccesssignature"]) == "" {
+		return SecretReference{}, false
+	}
+	accountName := strings.TrimSpace(values["accountname"])
+	if accountName == "" {
+		return SecretReference{}, false
+	}
+	attributes := map[string]string{
+		"credential_format": "connection_string",
+	}
+	if protocol := strings.TrimSpace(values["defaultendpointsprotocol"]); protocol != "" {
+		attributes["protocol"] = protocol
+	}
+	if suffix := strings.TrimSpace(values["endpointsuffix"]); suffix != "" {
+		attributes["endpoint_suffix"] = suffix
+	}
+	if strings.TrimSpace(values["sharedaccesssignature"]) != "" {
+		attributes["auth_type"] = "sas"
+	} else {
+		attributes["auth_type"] = "account_key"
+	}
+	return SecretReference{
+		Kind:       "cloud_identity",
+		Provider:   "azure",
+		Identifier: accountName,
+		Attributes: attributes,
 	}, true
 }
 
@@ -1758,15 +1835,183 @@ func looksBinary(data []byte) bool {
 }
 
 func entropySecretToken(line string) string {
-	if !strings.Contains(line, "=") && !strings.Contains(line, ":") {
+	lowerLine := strings.ToLower(line)
+	if !inlineSecretPattern.MatchString(line) && !strings.Contains(lowerLine, "bearer ") && !strings.Contains(lowerLine, "authorization:") {
 		return ""
 	}
 	for _, token := range secretTokenPattern.FindAllString(line, -1) {
+		if looksPlaceholderSecretValue(token) || looksSecretReferenceValue(token) {
+			continue
+		}
 		if secretEntropy(token) >= 3.8 {
 			return token
 		}
 	}
 	return ""
+}
+
+func inlineSecretValue(line string) (string, string) {
+	matches := inlineSecretAssignmentPattern.FindStringSubmatch(line)
+	if len(matches) != 3 {
+		return "", ""
+	}
+	key := strings.TrimSpace(matches[1])
+	value := strings.TrimSpace(matches[2])
+	value = strings.TrimRight(value, ",;")
+	value = strings.TrimSpace(strings.Trim(value, `"'`))
+	if key == "" || value == "" {
+		return "", ""
+	}
+	if looksPlaceholderSecretValue(value) || looksSecretReferenceValue(value) {
+		return "", ""
+	}
+	return value, key
+}
+
+func looksPlaceholderSecretValue(value string) bool {
+	trimmed := strings.TrimSpace(strings.ToLower(value))
+	switch trimmed {
+	case "", "***", "******", "<redacted>", "changeme", "change-me", "replace-me", "replace_me", "example", "sample", "placeholder", "tbd", "todo", "null", "nil", "none":
+		return true
+	}
+	return strings.HasPrefix(trimmed, "${") ||
+		strings.HasPrefix(trimmed, "{{") ||
+		strings.HasPrefix(trimmed, "<%") ||
+		strings.HasPrefix(trimmed, "ref+") ||
+		strings.HasPrefix(trimmed, "secret://") ||
+		strings.HasPrefix(trimmed, "vault://") ||
+		strings.HasPrefix(trimmed, "op://")
+}
+
+func looksSecretReferenceValue(value string) bool {
+	trimmed := strings.TrimSpace(strings.ToLower(value))
+	if trimmed == "" {
+		return false
+	}
+	return strings.Contains(trimmed, "secretsmanager") ||
+		strings.Contains(trimmed, "secretmanager.googleapis.com") ||
+		strings.Contains(trimmed, "/secrets/") ||
+		strings.Contains(trimmed, "vault:") ||
+		strings.Contains(trimmed, "keyvault") ||
+		strings.HasPrefix(trimmed, "projects/") ||
+		strings.HasPrefix(trimmed, "arn:aws:secretsmanager:")
+}
+
+func databaseConnectionContainsSecret(parsed *url.URL) bool {
+	if parsed == nil {
+		return false
+	}
+	if parsed.User != nil {
+		if password, ok := parsed.User.Password(); ok && strings.TrimSpace(password) != "" {
+			return true
+		}
+	}
+	query := parsed.Query()
+	for key, values := range query {
+		if !databaseQueryKeyLooksSensitive(key) {
+			continue
+		}
+		for _, value := range values {
+			if strings.TrimSpace(value) != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func databaseQueryKeyLooksSensitive(key string) bool {
+	key = strings.TrimSpace(strings.ToLower(key))
+	if key == "" {
+		return false
+	}
+	key = strings.NewReplacer("-", "_", ".", "_").Replace(key)
+	switch key {
+	case "password", "passwd", "pwd", "token", "access_token", "secret", "api_key", "apikey", "client_secret", "private_key", "access_key":
+		return true
+	}
+	return strings.Contains(key, "password") || strings.Contains(key, "token") || strings.Contains(key, "secret") || strings.Contains(key, "api_key")
+}
+
+func parseDelimitedKeyValuePairs(raw, separator string) map[string]string {
+	parts := strings.Split(raw, separator)
+	values := make(map[string]string, len(parts))
+	for _, part := range parts {
+		key, value, ok := strings.Cut(strings.TrimSpace(part), "=")
+		if !ok {
+			continue
+		}
+		key = strings.TrimSpace(strings.ToLower(key))
+		value = strings.TrimSpace(value)
+		if key == "" || value == "" {
+			continue
+		}
+		values[key] = value
+	}
+	return values
+}
+
+func databaseConnectionLooksSecretLike(raw string) bool {
+	trimmed := strings.ToLower(strings.TrimSpace(raw))
+	if trimmed == "" {
+		return false
+	}
+	if strings.Contains(trimmed, "@") && strings.Contains(trimmed, "://") {
+		return true
+	}
+	for _, token := range []string{
+		";password=",
+		";pwd=",
+		";access_token=",
+		";token=",
+		";secret=",
+		"?password=",
+		"&password=",
+		"?token=",
+		"&token=",
+		"?secret=",
+		"&secret=",
+		"?client_secret=",
+		"&client_secret=",
+	} {
+		if strings.Contains(trimmed, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func isLikelyJWT(token string) bool {
+	parts := strings.Split(strings.TrimSpace(token), ".")
+	if len(parts) != 3 {
+		return false
+	}
+	header, ok := decodeJWTJSONSegment(parts[0])
+	if !ok || strings.TrimSpace(fmt.Sprint(header["alg"])) == "" {
+		return false
+	}
+	payload, ok := decodeJWTJSONSegment(parts[1])
+	if !ok {
+		return false
+	}
+	for _, key := range []string{"iss", "sub", "aud", "exp"} {
+		if _, present := payload[key]; present {
+			return true
+		}
+	}
+	return false
+}
+
+func decodeJWTJSONSegment(segment string) (map[string]any, bool) {
+	decoded, err := base64.RawURLEncoding.DecodeString(strings.TrimSpace(segment))
+	if err != nil {
+		return nil, false
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(decoded, &payload); err != nil {
+		return nil, false
+	}
+	return payload, true
 }
 
 func secretEntropy(value string) float64 {

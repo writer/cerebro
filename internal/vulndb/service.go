@@ -41,12 +41,16 @@ func (s *Service) LookupCVE(cve string) (*scanner.CVEInfo, bool) {
 		return nil, false
 	}
 	return &scanner.CVEInfo{
-		ID:          vuln.ID,
-		Severity:    vuln.Severity,
-		CVSS:        vuln.CVSS,
-		Published:   vuln.PublishedAt,
-		Exploitable: vuln.InKEV || vuln.EPSSScore >= 0.5,
-		InKEV:       vuln.InKEV,
+		ID:             vuln.ID,
+		Severity:       vuln.Severity,
+		Description:    firstNonEmpty(vuln.Summary, vuln.Details),
+		CVSS:           vuln.CVSS,
+		EPSSScore:      vuln.EPSSScore,
+		EPSSPercentile: vuln.EPSSPercentile,
+		Published:      vuln.PublishedAt,
+		Exploitable:    vuln.InKEV || vuln.EPSSScore >= 0.5,
+		InKEV:          vuln.InKEV,
+		References:     uniqueStrings(vuln.References),
 	}, true
 }
 
@@ -69,7 +73,7 @@ func (s *Service) ListSyncStates(ctx context.Context) ([]SyncState, error) {
 	return s.store.ListSyncStates(ctx)
 }
 
-func (s *Service) MatchPackages(ctx context.Context, _ filesystemanalyzer.OSInfo, packages []filesystemanalyzer.PackageRecord) ([]scanner.ImageVulnerability, error) {
+func (s *Service) MatchPackages(ctx context.Context, osInfo filesystemanalyzer.OSInfo, packages []filesystemanalyzer.PackageRecord) ([]scanner.ImageVulnerability, error) {
 	if s == nil || s.store == nil || len(packages) == 0 {
 		return nil, nil
 	}
@@ -85,6 +89,7 @@ func (s *Service) MatchPackages(ctx context.Context, _ filesystemanalyzer.OSInfo
 		if err != nil {
 			return nil, err
 		}
+		candidates = filterCandidatesForOS(candidates, osInfo)
 		for _, candidate := range candidates {
 			if candidate.Vulnerability.WithdrawnAt != nil {
 				continue
@@ -108,6 +113,8 @@ func (s *Service) MatchPackages(ctx context.Context, _ filesystemanalyzer.OSInfo
 				FixedVersion:     fixedVersion,
 				Description:      firstNonEmpty(candidate.Vulnerability.Summary, candidate.Vulnerability.Details),
 				CVSS:             candidate.Vulnerability.CVSS,
+				EPSSScore:        candidate.Vulnerability.EPSSScore,
+				EPSSPercentile:   candidate.Vulnerability.EPSSPercentile,
 				Published:        candidate.Vulnerability.PublishedAt,
 				Exploitable:      candidate.Vulnerability.InKEV || candidate.Vulnerability.EPSSScore >= 0.5,
 				InKEV:            candidate.Vulnerability.InKEV,
@@ -116,6 +123,106 @@ func (s *Service) MatchPackages(ctx context.Context, _ filesystemanalyzer.OSInfo
 		}
 	}
 	return matches, nil
+}
+
+func filterCandidatesForOS(candidates []candidateRecord, osInfo filesystemanalyzer.OSInfo) []candidateRecord {
+	if len(candidates) == 0 {
+		return nil
+	}
+	distribution, version := normalizeOSDistribution(osInfo)
+	if distribution == "" {
+		return candidates
+	}
+	filtered := make([]candidateRecord, 0, len(candidates))
+	unscoped := make([]candidateRecord, 0, len(candidates))
+	hasScopedCandidates := false
+	matchedScopedVulns := make(map[string]struct{})
+	for _, candidate := range candidates {
+		affectedDistribution := normalizeDistributionName(candidate.Affected.Distribution)
+		if affectedDistribution == "" {
+			unscoped = append(unscoped, candidate)
+			continue
+		}
+		hasScopedCandidates = true
+		if affectedDistribution != distribution {
+			continue
+		}
+		if !distributionVersionMatches(version, candidate.Affected.DistributionVersion) {
+			continue
+		}
+		matchedScopedVulns[primaryVulnerabilityID(candidate.Vulnerability)] = struct{}{}
+		filtered = append(filtered, candidate)
+	}
+	if len(filtered) == 0 && hasScopedCandidates {
+		return unscoped
+	}
+	for _, candidate := range unscoped {
+		if _, ok := matchedScopedVulns[primaryVulnerabilityID(candidate.Vulnerability)]; ok {
+			continue
+		}
+		filtered = append(filtered, candidate)
+	}
+	return filtered
+}
+
+func normalizeOSDistribution(osInfo filesystemanalyzer.OSInfo) (string, string) {
+	distribution := normalizeDistributionName(firstNonEmpty(osInfo.ID, osInfo.Family, osInfo.Name))
+	version := firstNonEmpty(osInfo.VersionID, osInfo.Version)
+	return distribution, version
+}
+
+func normalizeDistributionName(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "alpine":
+		return "alpine"
+	case "ubuntu":
+		return "ubuntu"
+	case "deb", "debian":
+		return "debian"
+	case "rhel", "redhat", "red hat", "centos", "rocky", "almalinux", "ubi":
+		return "rhel"
+	case "amzn", "amazon", "amazonlinux":
+		return "amzn"
+	default:
+		return strings.ToLower(strings.TrimSpace(value))
+	}
+}
+
+func distributionVersionMatches(installed, affected string) bool {
+	affected = strings.TrimSpace(affected)
+	if affected == "" {
+		return true
+	}
+	installed = strings.TrimSpace(installed)
+	if installed == "" {
+		return true
+	}
+	if installed == affected || strings.HasPrefix(installed, affected+".") || strings.HasPrefix(affected, installed+".") {
+		return true
+	}
+	installedMajor := leadingNumericComponent(installed)
+	affectedMajor := leadingNumericComponent(affected)
+	if installedMajor == "" || affectedMajor == "" {
+		return false
+	}
+	return installedMajor == affectedMajor
+}
+
+func leadingNumericComponent(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	parts := strings.FieldsFunc(value, func(r rune) bool {
+		return r == '.' || r == '-' || r == ' '
+	})
+	if len(parts) == 0 {
+		return ""
+	}
+	if _, err := strconv.Atoi(parts[0]); err != nil {
+		return ""
+	}
+	return parts[0]
 }
 
 func matchPackageVersion(installed string, affected AffectedPackage) (bool, string) {

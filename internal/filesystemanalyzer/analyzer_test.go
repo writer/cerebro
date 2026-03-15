@@ -358,6 +358,136 @@ func TestAnalyzerDetectsExpandedSecretPatternsAndDockerRegistryCredentials(t *te
 	}
 }
 
+func TestAnalyzerDetectsExpandedCloudSecretFamiliesAndSkipsPlaceholders(t *testing.T) {
+	root := t.TempDir()
+	twilioKey := "SK" + strings.Repeat("01234567", 4)
+	mustWriteFile(t, filepath.Join(root, "app", ".env"), strings.Join([]string{
+		"STRIPE_SECRET_KEY=sk_live_1234567890abcdefghijklmnop",
+		"SENDGRID_API_KEY=SG.abcdefghijklmnop.ABCDEFGHIJKLMNOP",
+		"GCP_API_KEY=AIza12345678901234567890123456789012345",
+		"GOOGLE_OAUTH_CLIENT_SECRET=GOCSPX-1234567890abcdefghijklmnop",
+		"TWILIO_API_KEY=" + twilioKey,
+		"AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=opsstore;AccountKey=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=;EndpointSuffix=core.windows.net",
+		"JWT_TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2lzc3Vlci5leGFtcGxlLmNvbSIsInN1YiI6InN2Yy1hY2NvdW50IiwiZXhwIjoyMDAwMDAwMDAwfQ.c2lnbmF0dXJl",
+		"API_KEY=${SECRET_VALUE}",
+		"DATABASE_URL=postgresql://localhost:5432/appdb",
+	}, "\n"))
+
+	report, err := New(Options{}).Analyze(context.Background(), root)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+
+	types := make(map[string]SecretFinding, len(report.Secrets))
+	for _, finding := range report.Secrets {
+		types[finding.Type] = finding
+	}
+
+	for _, expected := range []string{
+		"stripe_api_key",
+		"sendgrid_api_key",
+		"gcp_api_key",
+		"google_oauth_client_secret",
+		"twilio_api_key",
+		"azure_storage_connection_string",
+		"jwt_token",
+	} {
+		if _, ok := types[expected]; !ok {
+			t.Fatalf("expected secret type %q, got %#v", expected, report.Secrets)
+		}
+	}
+
+	if _, ok := types["database_connection_string"]; ok {
+		t.Fatalf("expected credential-less database URL to be ignored, got %#v", report.Secrets)
+	}
+	if _, ok := types["inline_secret"]; ok {
+		t.Fatalf("expected placeholder inline secret assignment to be ignored, got %#v", report.Secrets)
+	}
+
+	azureFinding := types["azure_storage_connection_string"]
+	if len(azureFinding.References) != 1 {
+		t.Fatalf("expected azure connection string reference, got %#v", azureFinding)
+	}
+	if azureFinding.References[0].Provider != "azure" || azureFinding.References[0].Identifier != "opsstore" {
+		t.Fatalf("expected azure storage account reference, got %#v", azureFinding.References[0])
+	}
+}
+
+func TestAnalyzerDoesNotMatchUppercaseTwilioLikeKeys(t *testing.T) {
+	root := t.TempDir()
+	twilioLikeValue := "SK" + strings.Repeat("ABCD", 8)
+	mustWriteFile(t, filepath.Join(root, "app", ".env"), "TWILIO_API_KEY="+twilioLikeValue+"\n")
+
+	report, err := New(Options{}).Analyze(context.Background(), root)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+
+	for _, finding := range report.Secrets {
+		if finding.Type == "twilio_api_key" {
+			t.Fatalf("expected uppercase Twilio-like value to be ignored, got %#v", finding)
+		}
+	}
+}
+
+func TestAnalyzerDetectsDatabaseURLWithCustomSecretQueryKey(t *testing.T) {
+	root := t.TempDir()
+	mustWriteFile(t, filepath.Join(root, "app", ".env"), "DATABASE_URL=postgresql://db.internal:5432/appdb?client.secret=topsecret\n")
+
+	report, err := New(Options{}).Analyze(context.Background(), root)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+
+	for _, finding := range report.Secrets {
+		if finding.Type != "database_connection_string" {
+			continue
+		}
+		if len(finding.References) != 1 {
+			t.Fatalf("expected database reference, got %#v", finding)
+		}
+		if finding.References[0].Host != "db.internal" || finding.References[0].Database != "appdb" {
+			t.Fatalf("expected parsed database reference, got %#v", finding.References[0])
+		}
+		return
+	}
+	t.Fatalf("expected database connection finding, got %#v", report.Secrets)
+}
+
+func TestAnalyzerDetectsJDBCSQLServerReferenceWhenLaterSecretFieldEmpty(t *testing.T) {
+	root := t.TempDir()
+	mustWriteFile(t, filepath.Join(root, "app", ".env"), "DATABASE_URL=jdbc:sqlserver://db.internal:1433;databaseName=appdb;password=s3cr3t;token=\n")
+
+	report, err := New(Options{}).Analyze(context.Background(), root)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+
+	for _, finding := range report.Secrets {
+		if finding.Type != "database_connection_string" {
+			continue
+		}
+		if len(finding.References) != 1 {
+			t.Fatalf("expected sqlserver reference, got %#v", finding)
+		}
+		ref := finding.References[0]
+		if ref.Host != "db.internal" || ref.Database != "appdb" || ref.Attributes["scheme"] != "sqlserver" {
+			t.Fatalf("expected sqlserver reference metadata, got %#v", ref)
+		}
+		return
+	}
+	t.Fatalf("expected sqlserver database connection finding, got %#v", report.Secrets)
+}
+func TestInlineSecretValueHandlesQuotedValuesWithSemicolons(t *testing.T) {
+	value, key := inlineSecretValue(`PASSWORD='secret;value';`)
+	if key != "PASSWORD" {
+		t.Fatalf("expected PASSWORD key, got %q", key)
+	}
+	if value != "secret;value" {
+		t.Fatalf("expected semicolon-delimited secret value to remain intact, got %q", value)
+	}
+}
+
 func TestAnalyzerMergesExternalSecretScannerResultsWithoutDuplicates(t *testing.T) {
 	root := t.TempDir()
 	mustWriteFile(t, filepath.Join(root, "workspace", ".env"), "GITHUB_TOKEN=ghp_1234567890abcdefghijklmn\n")
@@ -438,6 +568,16 @@ func TestShouldSecretScanUsesConfiguredMaxBytes(t *testing.T) {
 	}
 	if !shouldSecretScan("workspace/.env", 0, size, defaultMaxSecretBytes+1024) {
 		t.Fatalf("expected configured secret byte cap to allow scan")
+	}
+}
+
+func TestShouldMalwareScanUsesConfiguredMaxBytes(t *testing.T) {
+	size := defaultMaxMalwareBytes + 1
+	if shouldMalwareScan("workspace/payload.sh", 0o755, size, defaultMaxMalwareBytes) {
+		t.Fatalf("expected file larger than default cap to be skipped")
+	}
+	if !shouldMalwareScan("workspace/payload.sh", 0o755, size, defaultMaxMalwareBytes+1024) {
+		t.Fatalf("expected configured malware byte cap to allow scan")
 	}
 }
 

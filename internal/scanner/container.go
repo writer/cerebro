@@ -117,6 +117,8 @@ type ImageVulnerability struct {
 	FixedVersion     string    `json:"fixed_version,omitempty"`
 	Description      string    `json:"description"`
 	CVSS             float64   `json:"cvss"`
+	EPSSScore        float64   `json:"epss_score,omitempty"`
+	EPSSPercentile   float64   `json:"epss_percentile,omitempty"`
 	Published        time.Time `json:"published"`
 	Exploitable      bool      `json:"exploitable"`
 	InKEV            bool      `json:"in_kev"`
@@ -165,12 +167,16 @@ type VulnerabilityDB interface {
 }
 
 type CVEInfo struct {
-	ID          string    `json:"id"`
-	Severity    string    `json:"severity"`
-	CVSS        float64   `json:"cvss"`
-	Published   time.Time `json:"published"`
-	Exploitable bool      `json:"exploitable"`
-	InKEV       bool      `json:"in_kev"`
+	ID             string    `json:"id"`
+	Severity       string    `json:"severity"`
+	Description    string    `json:"description,omitempty"`
+	CVSS           float64   `json:"cvss"`
+	EPSSScore      float64   `json:"epss_score,omitempty"`
+	EPSSPercentile float64   `json:"epss_percentile,omitempty"`
+	Published      time.Time `json:"published"`
+	Exploitable    bool      `json:"exploitable"`
+	InKEV          bool      `json:"in_kev"`
+	References     []string  `json:"references,omitempty"`
 }
 
 var manifestParseFailures atomic.Int64
@@ -224,13 +230,7 @@ func (s *ContainerScanner) ScanImage(ctx context.Context, registry, repo, tag st
 		}
 	}
 
-	// Enrich with KEV data
-	for i := range vulns {
-		if s.vulnDB != nil && s.vulnDB.IsKEV(vulns[i].CVE) {
-			vulns[i].InKEV = true
-			vulns[i].Exploitable = true
-		}
-	}
+	vulns = s.enrichVulnerabilities(vulns)
 
 	signatureStatus, signatureErr := verifyImageSignature(ctx, client, repo, tag, manifest)
 
@@ -309,6 +309,83 @@ func min(a, b int) int {
 	return b
 }
 
+func (s *ContainerScanner) enrichVulnerabilities(vulns []ImageVulnerability) []ImageVulnerability {
+	if s == nil || s.vulnDB == nil || len(vulns) == 0 {
+		return vulns
+	}
+	for i := range vulns {
+		lookupID := firstNonEmptyString(vulns[i].CVE, vulns[i].ID)
+		if lookupID == "" {
+			continue
+		}
+		info, ok := s.vulnDB.LookupCVE(lookupID)
+		if !ok || info == nil {
+			if s.vulnDB.IsKEV(vulns[i].CVE) {
+				vulns[i].InKEV = true
+				vulns[i].Exploitable = true
+			}
+			continue
+		}
+		if isCVEIdentifier(info.ID) && !isCVEIdentifier(vulns[i].CVE) {
+			vulns[i].CVE = info.ID
+		}
+		if strings.TrimSpace(vulns[i].Severity) == "" || strings.EqualFold(vulns[i].Severity, "unknown") {
+			vulns[i].Severity = info.Severity
+		}
+		if strings.TrimSpace(vulns[i].Description) == "" {
+			vulns[i].Description = info.Description
+		}
+		if vulns[i].CVSS == 0 && info.CVSS > 0 {
+			vulns[i].CVSS = info.CVSS
+		}
+		if vulns[i].EPSSScore == 0 && info.EPSSScore > 0 {
+			vulns[i].EPSSScore = info.EPSSScore
+		}
+		if vulns[i].EPSSPercentile == 0 && info.EPSSPercentile > 0 {
+			vulns[i].EPSSPercentile = info.EPSSPercentile
+		}
+		if vulns[i].Published.IsZero() && !info.Published.IsZero() {
+			vulns[i].Published = info.Published
+		}
+		vulns[i].InKEV = vulns[i].InKEV || info.InKEV
+		vulns[i].Exploitable = vulns[i].Exploitable || info.Exploitable || vulns[i].InKEV
+		vulns[i].References = mergeUniqueStrings(vulns[i].References, info.References)
+	}
+	return vulns
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func isCVEIdentifier(value string) bool {
+	return strings.HasPrefix(strings.ToUpper(strings.TrimSpace(value)), "CVE-")
+}
+
+func mergeUniqueStrings(existing, incoming []string) []string {
+	merged := make([]string, 0, len(existing)+len(incoming))
+	seen := make(map[string]struct{}, len(existing)+len(incoming))
+	for _, collection := range [][]string{existing, incoming} {
+		for _, value := range collection {
+			value = strings.TrimSpace(value)
+			if value == "" {
+				continue
+			}
+			if _, ok := seen[value]; ok {
+				continue
+			}
+			seen[value] = struct{}{}
+			merged = append(merged, value)
+		}
+	}
+	return merged
+}
+
 func summarizeVulnerabilities(vulns []ImageVulnerability) VulnerabilitySummary {
 	summary := VulnerabilitySummary{}
 
@@ -340,7 +417,7 @@ func generateFindings(vulns []ImageVulnerability, manifest *ImageManifest) []Con
 
 	// Vulnerability findings
 	for _, v := range vulns {
-		if v.Severity == "critical" || v.Severity == "high" || v.InKEV {
+		if v.Severity == "critical" || v.Severity == "high" || v.InKEV || v.Exploitable {
 			finding := ContainerFinding{
 				ID:          fmt.Sprintf("vuln-%s-%s", v.CVE, v.Package),
 				Type:        "vulnerability",
@@ -360,6 +437,11 @@ func generateFindings(vulns []ImageVulnerability, manifest *ImageManifest) []Con
 			if v.InKEV {
 				finding.Severity = "critical"
 				finding.Title = "[KEV] " + finding.Title
+			} else if v.Exploitable {
+				if strings.ToLower(strings.TrimSpace(finding.Severity)) != "critical" {
+					finding.Severity = "high"
+				}
+				finding.Title = "[Exploitable] " + finding.Title
 			}
 
 			findings = append(findings, finding)

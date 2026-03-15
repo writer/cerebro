@@ -33,19 +33,40 @@ func buildFilesystemAnalyzer(cfg *app.Config, trivyBinary, gitleaksBinary, clama
 		return nil, nil, fmt.Errorf("open vulnerability db: %w", err)
 	}
 	var secretScanner filesystemanalyzer.SecretScanner
-	var malwareScanner filesystemanalyzer.MalwareScanner
 	if strings.TrimSpace(gitleaksBinary) != "" {
 		secretScanner = filesystemanalyzer.NewGitleaksScanner(strings.TrimSpace(gitleaksBinary))
-	}
-	if strings.TrimSpace(clamavBinary) != "" {
-		engine := scanner.NewMalwareScanner()
-		engine.RegisterEngine(scanner.NewClamAVBinaryEngine(strings.TrimSpace(clamavBinary)))
-		malwareScanner = engine
 	}
 	return filesystemanalyzer.New(filesystemanalyzer.Options{
 		VulnerabilityScanner: scanner.NewTrivyFilesystemScanner(strings.TrimSpace(trivyBinary)),
 		VulnerabilityMatcher: vulnService,
 		SecretScanner:        secretScanner,
-		MalwareScanner:       malwareScanner,
+		MalwareScanner:       buildMalwareScanner(cfg, clamavBinary),
 	}), closer, nil
+}
+
+func buildMalwareScanner(cfg *app.Config, clamavBinary string) filesystemanalyzer.MalwareScanner {
+	malwareScanner := scanner.NewMalwareScanner()
+	configured := false
+	if strings.TrimSpace(clamavBinary) != "" {
+		malwareScanner.RegisterEngine(scanner.NewClamAVBinaryEngine(strings.TrimSpace(clamavBinary)))
+		configured = true
+	}
+	if cfg == nil {
+		if !configured {
+			return nil
+		}
+		return malwareScanner
+	}
+	if host := strings.TrimSpace(cfg.MalwareScanClamAVHost); host != "" && cfg.MalwareScanClamAVPort > 0 {
+		malwareScanner.RegisterEngine(scanner.NewClamAVEngine(host, cfg.MalwareScanClamAVPort))
+		configured = true
+	}
+	if apiKey := strings.TrimSpace(cfg.MalwareScanVirusTotalAPIKey); apiKey != "" {
+		malwareScanner.RegisterEngine(scanner.NewVirusTotalEngine(apiKey))
+		configured = true
+	}
+	if !configured {
+		return nil
+	}
+	return malwareScanner
 }
