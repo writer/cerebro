@@ -20,6 +20,23 @@ Status: executed end-to-end via PR workflow
 - [x] Preserve Tetragon socket family, socket type, policy, action, and return-code metadata on normalized observations.
 - [x] Add regression tests for first-class `process_connect`, `tcp_connect`, and `security_socket_connect` payloads.
 
+## Deep Review Cycle 126 - Hubble Adapter and L3/L4 Flow Normalization (2026-03-15)
+
+### Review findings
+- [x] Gap: the runtime visibility architecture explicitly calls for Hubble as the cluster-wide network flow substrate, but Cerebro still had no Hubble adapter package at all.
+- [x] Gap: waiting for full DNS/L7 support should not block the lower-risk L3/L4 path, because exported Hubble flow payloads already provide stable IP, L4, verdict, endpoint, and traffic-direction context that maps cleanly onto `ObservationKindNetworkFlow`.
+- [x] Gap: Hubble DNS/L7 payloads need a dedicated normalization slice instead of being silently downgraded to generic network flows, or Cerebro will erase query-specific semantics before slice `027` lands.
+
+### Execution plan
+- [x] Add `internal/runtime/adapters/hubble` with the shared adapter contract.
+- [x] Normalize exported Hubble `GetFlowsResponse.flow` JSON payloads for L3/L4 flows into `ObservationKindNetworkFlow`.
+- [x] Anchor egress flows to the source workload and ingress flows to the destination workload while preserving peer/service/verdict metadata.
+- [x] Add regression tests for:
+  - [x] dropped TCP egress flow normalization
+  - [x] forwarded UDP ingress flow normalization
+  - [x] explicit rejection of DNS/L7 payloads pending the dedicated DNS slice
+  - [x] explicit rejection of unsupported wrapper-only events
+
 ## Deep Review Cycle 125 - Tetragon Adapter Golden Payload Coverage (2026-03-15)
 
 ### Review findings
@@ -105,8 +122,8 @@ Status: executed end-to-end via PR workflow
 - [ ] 022. Normalize Tetragon DNS events.
 - [ ] 023. Normalize Tetragon security signal payloads.
 - [x] 024. Add Tetragon adapter golden payload tests.
-- [ ] 025. Add Hubble adapter package.
-- [ ] 026. Normalize Hubble L3/L4 flow events.
+- [x] 025. Add Hubble adapter package.
+- [x] 026. Normalize Hubble L3/L4 flow events.
 - [ ] 027. Normalize Hubble DNS flow events.
 - [ ] 028. Normalize Hubble verdict and identity metadata.
 - [ ] 029. Add Hubble adapter golden payload tests.
