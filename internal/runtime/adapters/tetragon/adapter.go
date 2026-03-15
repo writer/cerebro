@@ -285,7 +285,7 @@ func observationFromProcessKprobe(event payload) (*runtime.RuntimeObservation, e
 		Path:      path,
 		User:      fmt.Sprintf("%d", kprobe.Process.UID),
 	}
-	observation.Tags = compactTags("tetragon", "process_kprobe", string(kind), functionName)
+	observation.Tags = adapters.CompactTags("tetragon", "process_kprobe", string(kind), functionName)
 	return observation, nil
 }
 
@@ -319,7 +319,7 @@ func observationFromProcessConnect(event payload) *runtime.RuntimeObservation {
 		DstIP:     strings.TrimSpace(connect.DestinationIP),
 		DstPort:   int(connect.DestinationPort),
 	}
-	observation.Tags = compactTags("tetragon", "process_connect", "network_flow", strings.TrimSpace(connect.Protocol))
+	observation.Tags = adapters.CompactTags("tetragon", "process_connect", "network_flow", strings.TrimSpace(connect.Protocol))
 	return observation
 }
 
@@ -400,7 +400,7 @@ func observationFromNetworkKprobe(event payload) (*runtime.RuntimeObservation, e
 		DstIP:     dstIP,
 		DstPort:   dstPort,
 	}
-	observation.Tags = compactTags("tetragon", "process_kprobe", "network_flow", functionName, protocol)
+	observation.Tags = adapters.CompactTags("tetragon", "process_kprobe", "network_flow", functionName, protocol)
 	return observation, nil
 }
 
@@ -600,16 +600,6 @@ func fileMmapAccess(protFlags uint64) (runtime.RuntimeObservationKind, string) {
 	default:
 		return runtime.ObservationKindFileOpen, "read"
 	}
-}
-
-func compactTags(values ...string) []string {
-	tags := make([]string, 0, len(values))
-	for _, value := range values {
-		if value = strings.TrimSpace(value); value != "" {
-			tags = append(tags, value)
-		}
-	}
-	return tags
 }
 
 func isNetworkKprobe(functionName string) bool {
