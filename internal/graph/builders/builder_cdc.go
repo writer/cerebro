@@ -376,7 +376,7 @@ func (b *Builder) rebuildEdges(ctx context.Context) error {
 		return err
 	}
 
-	b.buildExposureEdges()
+	b.buildExposureEdges(ctx)
 	if err := ctx.Err(); err != nil {
 		return err
 	}

@@ -318,6 +318,105 @@ func TestBuilderApplyChanges_EdgeOnlyTableChangeRebuildsEdges(t *testing.T) {
 	}
 }
 
+func TestBuilderApplyChanges_AWSNetworkExposureUsesPrivateSubnetSuppression(t *testing.T) {
+	source := newCDCRoutingSource()
+	source.routes["from resource_relationships"] = &DataQueryResult{Rows: []map[string]any{
+		{
+			"source_id":   "arn:aws:ec2:us-east-1:111111111111:instance/i-private-topology",
+			"source_type": "aws:ec2:instance",
+			"target_id":   "arn:aws:ec2:us-east-1:111111111111:security-group/sg-missing",
+			"target_type": "aws:ec2:security_group",
+			"rel_type":    "MEMBER_OF",
+		},
+		{
+			"source_id":   "arn:aws:ec2:us-east-1:111111111111:instance/i-private-topology",
+			"source_type": "aws:ec2:instance",
+			"target_id":   "arn:aws:ec2:us-east-1:111111111111:subnet/subnet-private",
+			"target_type": "aws:ec2:subnet",
+			"rel_type":    "IN_SUBNET",
+		},
+	}}
+	source.routes["from aws_ec2_security_group_rules"] = &DataQueryResult{Rows: []map[string]any{
+		{
+			"account_id":        "111111111111",
+			"region":            "us-east-1",
+			"security_group_id": "sg-other",
+			"direction":         "ingress",
+			"protocol":          "tcp",
+			"from_port":         80,
+			"to_port":           80,
+			"ip_ranges":         []any{map[string]any{"CidrIp": "10.0.0.0/8"}},
+			"ipv6_ranges":       []any{},
+		},
+	}}
+	source.routes["from aws_ec2_subnets"] = &DataQueryResult{Rows: []map[string]any{
+		{
+			"arn":        "arn:aws:ec2:us-east-1:111111111111:subnet/subnet-private",
+			"subnet_id":  "subnet-private",
+			"account_id": "111111111111",
+			"region":     "us-east-1",
+			"vpc_id":     "vpc-123",
+		},
+	}}
+	source.routes["from aws_ec2_route_tables"] = &DataQueryResult{Rows: []map[string]any{
+		{
+			"route_table_id": "rtb-private",
+			"account_id":     "111111111111",
+			"region":         "us-east-1",
+			"vpc_id":         "vpc-123",
+			"routes": []any{
+				map[string]any{
+					"DestinationCidrBlock": "0.0.0.0/0",
+					"GatewayId":            "nat-123",
+					"State":                "active",
+				},
+			},
+			"associations": []any{map[string]any{"SubnetId": "subnet-private"}},
+		},
+	}}
+
+	builder := NewBuilder(source, nil)
+	builder.Graph().AddNode(&Node{ID: "internet", Kind: NodeKindInternet, Provider: "external", Name: "Internet", Risk: RiskCritical})
+	builder.Graph().AddNode(&Node{
+		ID:       "arn:aws:ec2:us-east-1:111111111111:instance/i-private-topology",
+		Kind:     NodeKindInstance,
+		Name:     "i-private-topology",
+		Provider: "aws",
+		Account:  "111111111111",
+		Region:   "us-east-1",
+		Properties: map[string]any{
+			"public_ip": "198.51.100.40",
+		},
+	})
+
+	since := time.Now().UTC().Add(-2 * time.Minute)
+	source.events = []map[string]any{{
+		"event_id":    "evt-network-1",
+		"table_name":  "aws_ec2_route_tables",
+		"resource_id": "rtb-private",
+		"change_type": "modified",
+		"provider":    "aws",
+		"region":      "us-east-1",
+		"account_id":  "111111111111",
+		"payload": map[string]any{
+			"route_table_id": "rtb-private",
+		},
+		"event_time": since.Add(5 * time.Second),
+	}}
+
+	summary, err := builder.ApplyChanges(context.Background(), since)
+	if err != nil {
+		t.Fatalf("ApplyChanges failed: %v", err)
+	}
+	if summary.EventsProcessed != 1 {
+		t.Fatalf("expected 1 event processed, got %d", summary.EventsProcessed)
+	}
+
+	if edge := findNetworkEdge(builder.Graph(), "internet", "arn:aws:ec2:us-east-1:111111111111:instance/i-private-topology", EdgeKindExposedTo); edge != nil {
+		t.Fatalf("did not expect internet exposure edge after incremental private-subnet suppression: %+v", edge.Properties)
+	}
+}
+
 func TestBuilderApplyChanges_UsesCopyOnWriteSwap(t *testing.T) {
 	source := newCDCRoutingSource()
 	source.blockNeedle = "from aws_iam_policy_versions"

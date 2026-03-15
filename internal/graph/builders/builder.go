@@ -182,7 +182,7 @@ func (b *Builder) BuildCandidate(ctx context.Context) (*Graph, GraphMutationSumm
 	if err := ctx.Err(); err != nil {
 		return nil, GraphMutationSummary{}, err
 	}
-	working.buildExposureEdges()
+	working.buildExposureEdges(ctx)
 	if err := ctx.Err(); err != nil {
 		return nil, GraphMutationSummary{}, err
 	}
@@ -558,13 +558,14 @@ func isIdentityType(resourceType string) bool {
 	}
 }
 
-func (b *Builder) addEdgeIfMissing(edge *Edge) {
+func (b *Builder) addEdgeIfMissing(edge *Edge) bool {
 	for _, existing := range b.graph.GetOutEdges(edge.Source) {
 		if existing.Target == edge.Target && existing.Kind == edge.Kind {
-			return
+			return false
 		}
 	}
 	b.graph.AddEdge(edge)
+	return true
 }
 
 func (b *Builder) runNodeQueries(ctx context.Context, queries []nodeQuery) {
@@ -618,22 +619,28 @@ func (b *Builder) addInternetNode() {
 	})
 }
 
-func (b *Builder) buildExposureEdges() {
+func (b *Builder) buildExposureEdges(ctx context.Context) {
 	count := 0
+	networkHandled, networkCount := b.buildAWSNetworkExposureEdges(ctx)
+	count += networkCount
 	for _, node := range b.graph.GetAllNodes() {
 		if !node.IsResource() {
 			continue
 		}
+		if _, handled := networkHandled[node.ID]; handled {
+			continue
+		}
 		if isNodePublic(node) {
-			b.graph.AddEdge(&Edge{
+			if b.addEdgeIfMissing(&Edge{
 				ID:     "internet->" + node.ID,
 				Source: "internet",
 				Target: node.ID,
 				Kind:   EdgeKindExposedTo,
 				Effect: EdgeEffectAllow,
 				Risk:   RiskHigh,
-			})
-			count++
+			}) {
+				count++
+			}
 		}
 	}
 	b.logger.Debug("added internet exposure edges", "count", count)
