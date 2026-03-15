@@ -148,6 +148,387 @@ func TestAdapterNormalizeProcessExit(t *testing.T) {
 	}
 }
 
+func TestAdapterNormalizeFileWriteKprobe(t *testing.T) {
+	raw := []byte(`{
+		"process_kprobe": {
+			"process": {
+				"exec_id": "exec-file-1",
+				"pid": 64746,
+				"uid": 0,
+				"cwd": "/",
+				"binary": "/bin/vi",
+				"arguments": "/etc/passwd",
+				"flags": "execve rootcwd clone",
+				"start_time": "2024-04-14T02:18:02.240856427Z",
+				"pod": {
+					"namespace": "default",
+					"name": "file-access",
+					"workload": "file-access",
+					"container": {
+						"id": "containerd://6b742e38",
+						"name": "file-access",
+						"image": {
+							"id": "docker.io/library/busybox@sha256:c3839dd8",
+							"name": "docker.io/library/busybox:latest"
+						}
+					},
+					"pod_labels": {
+						"run": "file-access"
+					}
+				},
+				"docker": "6b742e38",
+				"parent_exec_id": "parent-file-1"
+			},
+			"parent": {
+				"binary": "/bin/sh"
+			},
+			"function_name": "security_file_permission",
+			"args": [
+				{
+					"file_arg": {
+						"path": "/etc/passwd",
+						"permission": "-rw-r--r--"
+					}
+				},
+				{
+					"int_arg": 2
+				}
+			],
+			"return": {
+				"int_arg": 0
+			},
+			"action": "KPROBE_ACTION_POST",
+			"policy_name": "file-monitoring",
+			"return_action": "KPROBE_ACTION_POST"
+		},
+		"node_name": "worker-1",
+		"time": "2024-04-14T02:18:14.376304204Z"
+	}`)
+
+	observations, err := (Adapter{}).Normalize(context.Background(), raw)
+	if err != nil {
+		t.Fatalf("Normalize: %v", err)
+	}
+	if len(observations) != 1 {
+		t.Fatalf("len(observations) = %d, want 1", len(observations))
+	}
+	observation := observations[0]
+	if observation.Kind != runtime.ObservationKindFileWrite {
+		t.Fatalf("kind = %s, want %s", observation.Kind, runtime.ObservationKindFileWrite)
+	}
+	if observation.File == nil {
+		t.Fatal("expected file context")
+	}
+	if observation.File.Operation != "modify" {
+		t.Fatalf("file.operation = %q, want %q", observation.File.Operation, "modify")
+	}
+	if observation.File.Path != "/etc/passwd" {
+		t.Fatalf("file.path = %q, want %q", observation.File.Path, "/etc/passwd")
+	}
+	if observation.Process == nil || observation.Process.Name != "vi" {
+		t.Fatalf("process = %#v, want vi", observation.Process)
+	}
+	if got := observation.Metadata["function_name"]; got != "security_file_permission" {
+		t.Fatalf("function_name = %#v, want security_file_permission", got)
+	}
+	if got := observation.Metadata["return_code"]; got != int64(0) && got != uint64(0) && got != 0 {
+		t.Fatalf("return_code = %#v, want 0", got)
+	}
+}
+
+func TestAdapterNormalizeFileReadAndTruncateKprobes(t *testing.T) {
+	tests := []struct {
+		name          string
+		raw           string
+		wantKind      runtime.RuntimeObservationKind
+		wantOperation string
+	}{
+		{
+			name: "read",
+			raw: `{
+				"process_kprobe": {
+					"process": {
+						"exec_id": "exec-file-read-1",
+						"pid": 123,
+						"uid": 0,
+						"binary": "/usr/bin/cat",
+						"start_time": "2024-04-14T02:18:02.240856427Z",
+						"pod": {
+							"namespace": "default",
+							"name": "file-access",
+							"container": {
+								"id": "containerd://read",
+								"name": "file-access",
+								"image": {
+									"id": "sha256:read",
+									"name": "busybox:latest"
+								}
+							}
+						}
+					},
+					"parent": {
+						"binary": "/bin/sh"
+					},
+					"function_name": "security_mmap_file",
+					"args": [
+						{
+							"file_arg": {
+								"path": "/etc/shadow",
+								"permission": "-rw-------"
+							}
+						},
+						{
+							"uint_arg": 1
+						}
+					],
+					"return": {
+						"int_arg": 0
+					}
+				},
+				"time": "2024-04-14T02:18:14.376304204Z"
+			}`,
+			wantKind:      runtime.ObservationKindFileOpen,
+			wantOperation: "read",
+		},
+		{
+			name: "append",
+			raw: `{
+				"process_kprobe": {
+					"process": {
+						"exec_id": "exec-file-append-1",
+						"pid": 124,
+						"uid": 0,
+						"binary": "/usr/bin/tee",
+						"start_time": "2024-04-14T02:18:02.240856427Z",
+						"pod": {
+							"namespace": "default",
+							"name": "file-access",
+							"container": {
+								"id": "containerd://append",
+								"name": "file-access",
+								"image": {
+									"id": "sha256:append",
+									"name": "busybox:latest"
+								}
+							}
+						}
+					},
+					"parent": {
+						"binary": "/bin/sh"
+					},
+					"function_name": "security_file_permission",
+					"args": [
+						{
+							"file_arg": {
+								"path": "/var/log/app.log",
+								"permission": "-rw-r--r--"
+							}
+						},
+						{
+							"int_arg": 8
+						}
+					],
+					"return": {
+						"int_arg": 0
+					}
+				},
+				"time": "2024-04-14T02:18:14.376304204Z"
+			}`,
+			wantKind:      runtime.ObservationKindFileWrite,
+			wantOperation: "modify",
+		},
+		{
+			name: "truncate",
+			raw: `{
+				"process_kprobe": {
+					"process": {
+						"exec_id": "exec-file-truncate-1",
+						"pid": 321,
+						"uid": 0,
+						"binary": "/usr/bin/truncate",
+						"start_time": "2024-04-14T02:18:02.240856427Z",
+						"pod": {
+							"namespace": "default",
+							"name": "file-access",
+							"container": {
+								"id": "containerd://truncate",
+								"name": "file-access",
+								"image": {
+									"id": "sha256:truncate",
+									"name": "busybox:latest"
+								}
+							}
+						}
+					},
+					"parent": {
+						"binary": "/bin/sh"
+					},
+					"function_name": "security_path_truncate",
+					"args": [
+						{
+							"path_arg": {
+								"path": "/etc/passwd",
+								"permission": "-rw-r--r--"
+							}
+						}
+					],
+					"return": {
+						"int_arg": 0
+					}
+				},
+				"time": "2024-04-14T02:18:14.376304204Z"
+			}`,
+			wantKind:      runtime.ObservationKindFileWrite,
+			wantOperation: "modify",
+		},
+		{
+			name: "file truncate",
+			raw: `{
+				"process_kprobe": {
+					"process": {
+						"exec_id": "exec-file-truncate-2",
+						"pid": 322,
+						"uid": 0,
+						"binary": "/usr/bin/truncate",
+						"start_time": "2024-04-14T02:18:02.240856427Z",
+						"pod": {
+							"namespace": "default",
+							"name": "file-access",
+							"container": {
+								"id": "containerd://truncate-fd",
+								"name": "file-access",
+								"image": {
+									"id": "sha256:truncate-fd",
+									"name": "busybox:latest"
+								}
+							}
+						}
+					},
+					"parent": {
+						"binary": "/bin/sh"
+					},
+					"function_name": "security_file_truncate",
+					"args": [
+						{
+							"file_arg": {
+								"path": "/etc/shadow",
+								"permission": "-rw-------"
+							}
+						}
+					],
+					"return": {
+						"int_arg": 0
+					}
+				},
+				"time": "2024-04-14T02:18:14.376304204Z"
+			}`,
+			wantKind:      runtime.ObservationKindFileWrite,
+			wantOperation: "modify",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			observations, err := (Adapter{}).Normalize(context.Background(), []byte(tt.raw))
+			if err != nil {
+				t.Fatalf("Normalize: %v", err)
+			}
+			if len(observations) != 1 {
+				t.Fatalf("len(observations) = %d, want 1", len(observations))
+			}
+			observation := observations[0]
+			if observation.Kind != tt.wantKind {
+				t.Fatalf("kind = %s, want %s", observation.Kind, tt.wantKind)
+			}
+			if observation.File == nil {
+				t.Fatal("expected file context")
+			}
+			if observation.File.Operation != tt.wantOperation {
+				t.Fatalf("file.operation = %q, want %q", observation.File.Operation, tt.wantOperation)
+			}
+		})
+	}
+}
+
+func TestFileKprobeObservationsUseDistinctIDs(t *testing.T) {
+	firstRaw := []byte(`{
+		"process_kprobe": {
+			"process": {
+				"exec_id": "shared-file-exec-id",
+				"pid": 42,
+				"uid": 0,
+				"binary": "/usr/bin/cat",
+				"start_time": "2024-04-14T02:18:02.240856427Z",
+				"pod": {
+					"namespace": "default",
+					"name": "api-0",
+					"container": {
+						"id": "containerd://abc",
+						"name": "api",
+						"image": {
+							"id": "sha256:abc",
+							"name": "ghcr.io/acme/api:latest"
+						}
+					}
+				}
+			},
+			"parent": {
+				"binary": "/bin/bash"
+			},
+			"function_name": "security_file_permission",
+			"args": [
+				{"file_arg": {"path": "/etc/passwd"}},
+				{"int_arg": 4}
+			]
+		},
+		"time": "2024-04-14T02:18:14.376304204Z"
+	}`)
+	secondRaw := []byte(`{
+		"process_kprobe": {
+			"process": {
+				"exec_id": "shared-file-exec-id",
+				"pid": 42,
+				"uid": 0,
+				"binary": "/usr/bin/cat",
+				"start_time": "2024-04-14T02:18:02.240856427Z",
+				"pod": {
+					"namespace": "default",
+					"name": "api-0",
+					"container": {
+						"id": "containerd://abc",
+						"name": "api",
+						"image": {
+							"id": "sha256:abc",
+							"name": "ghcr.io/acme/api:latest"
+						}
+					}
+				}
+			},
+			"parent": {
+				"binary": "/bin/bash"
+			},
+			"function_name": "security_file_permission",
+			"args": [
+				{"file_arg": {"path": "/etc/shadow"}},
+				{"int_arg": 4}
+			]
+		},
+		"time": "2024-04-14T02:18:14.376304204Z"
+	}`)
+
+	firstObservations, err := (Adapter{}).Normalize(context.Background(), firstRaw)
+	if err != nil {
+		t.Fatalf("Normalize first: %v", err)
+	}
+	secondObservations, err := (Adapter{}).Normalize(context.Background(), secondRaw)
+	if err != nil {
+		t.Fatalf("Normalize second: %v", err)
+	}
+	if firstObservations[0].ID == secondObservations[0].ID {
+		t.Fatalf("file observation IDs collided: %q", firstObservations[0].ID)
+	}
+}
+
 func TestAdapterNormalizeUnsupportedEvent(t *testing.T) {
 	raw := []byte(`{"process_kprobe":{"process":{"exec_id":"exec-1"}}}`)
 	if _, err := (Adapter{}).Normalize(context.Background(), raw); err == nil {
