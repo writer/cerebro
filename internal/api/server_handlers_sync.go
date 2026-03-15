@@ -60,19 +60,33 @@ func (s *Server) backfillRelationshipIDs(w http.ResponseWriter, r *http.Request)
 }
 
 type azureSyncRequest struct {
-	Subscription string   `json:"subscription"`
-	Concurrency  int      `json:"concurrency"`
-	Tables       []string `json:"tables"`
-	Validate     bool     `json:"validate"`
+	Subscription            string   `json:"subscription"`
+	Subscriptions           []string `json:"subscriptions"`
+	ManagementGroup         string   `json:"management_group"`
+	Concurrency             int      `json:"concurrency"`
+	SubscriptionConcurrency int      `json:"subscription_concurrency"`
+	Tables                  []string `json:"tables"`
+	Validate                bool     `json:"validate"`
 }
 
 var runAzureSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req azureSyncRequest) ([]nativesync.SyncResult, error) {
 	opts := []nativesync.AzureEngineOption{}
-	if req.Subscription != "" {
-		opts = append(opts, nativesync.WithAzureSubscription(req.Subscription))
+	switch len(req.Subscriptions) {
+	case 1:
+		opts = append(opts, nativesync.WithAzureSubscription(req.Subscriptions[0]))
+	case 0:
+		// let the engine discover all enabled subscriptions if no explicit scope is provided
+	default:
+		opts = append(opts, nativesync.WithAzureSubscriptions(req.Subscriptions))
+	}
+	if req.ManagementGroup != "" {
+		opts = append(opts, nativesync.WithAzureManagementGroup(req.ManagementGroup))
 	}
 	if req.Concurrency > 0 {
 		opts = append(opts, nativesync.WithAzureConcurrency(req.Concurrency))
+	}
+	if req.SubscriptionConcurrency > 0 {
+		opts = append(opts, nativesync.WithAzureSubscriptionConcurrency(req.SubscriptionConcurrency))
 	}
 	if len(req.Tables) > 0 {
 		opts = append(opts, nativesync.WithAzureTableFilter(req.Tables))
@@ -106,7 +120,13 @@ func (s *Server) syncAzure(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req.Subscription = strings.TrimSpace(req.Subscription)
+	req.Subscriptions = nativesync.NormalizeAzureSubscriptionIDs(append(req.Subscriptions, req.Subscription))
+	req.ManagementGroup = strings.TrimSpace(req.ManagementGroup)
 	req.Tables = normalizeSyncTables(req.Tables)
+	if req.ManagementGroup != "" && len(req.Subscriptions) > 0 {
+		s.error(w, http.StatusBadRequest, "management_group cannot be combined with subscription or subscriptions")
+		return
+	}
 
 	if s.app.Snowflake == nil {
 		s.error(w, http.StatusServiceUnavailable, "snowflake not configured")
@@ -766,18 +786,25 @@ func appendGCPPermissionUsageRequestOptions(options []nativesync.GCPEngineOption
 }
 
 type gcpAssetSyncRequest struct {
-	Projects    []string `json:"projects"`
-	Concurrency int      `json:"concurrency"`
-	Tables      []string `json:"tables"`
-	Validate    bool     `json:"validate"`
+	Projects     []string `json:"projects"`
+	Organization string   `json:"organization"`
+	Concurrency  int      `json:"concurrency"`
+	Tables       []string `json:"tables"`
+	Validate     bool     `json:"validate"`
 }
 
 var runGCPAssetSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req gcpAssetSyncRequest) ([]nativesync.SyncResult, error) {
-	if len(req.Projects) == 0 {
-		return nil, fmt.Errorf("projects are required")
+	organization := strings.TrimSpace(req.Organization)
+	if len(req.Projects) == 0 && organization == "" {
+		return nil, fmt.Errorf("projects or organization are required")
 	}
 
-	opts := []nativesync.GCPAssetOption{nativesync.WithProjects(req.Projects)}
+	opts := make([]nativesync.GCPAssetOption, 0, 3)
+	if organization != "" {
+		opts = append(opts, nativesync.WithAssetScope("organizations/"+organization))
+	} else {
+		opts = append(opts, nativesync.WithProjects(req.Projects))
+	}
 	if req.Concurrency > 0 {
 		opts = append(opts, nativesync.WithAssetConcurrency(req.Concurrency))
 	}
@@ -809,9 +836,14 @@ func (s *Server) syncGCPAsset(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req.Projects = normalizeSyncProjects(req.Projects)
+	req.Organization = strings.TrimSpace(req.Organization)
 	req.Tables = normalizeSyncTables(req.Tables)
-	if len(req.Projects) == 0 {
-		s.error(w, http.StatusBadRequest, "projects are required")
+	if req.Organization != "" && len(req.Projects) > 0 {
+		s.error(w, http.StatusBadRequest, "organization cannot be combined with projects")
+		return
+	}
+	if len(req.Projects) == 0 && req.Organization == "" {
+		s.error(w, http.StatusBadRequest, "projects or organization are required")
 		return
 	}
 

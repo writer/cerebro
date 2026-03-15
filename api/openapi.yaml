@@ -1030,7 +1030,16 @@ paths:
               properties:
                 subscription:
                   type: string
+                subscriptions:
+                  type: array
+                  items:
+                    type: string
+                management_group:
+                  type: string
                 concurrency:
+                  type: integer
+                  minimum: 1
+                subscription_concurrency:
                   type: integer
                   minimum: 1
                 tables:
@@ -1116,6 +1125,8 @@ paths:
                   type: array
                   items:
                     type: string
+                organization:
+                  type: string
                 concurrency:
                   type: integer
                   minimum: 1

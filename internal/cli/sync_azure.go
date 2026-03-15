@@ -12,10 +12,19 @@ import (
 )
 
 func runAzureSync(ctx context.Context, start time.Time) error {
-	if syncAzureSubscription != "" {
-		Info("Starting Azure sync for subscription: %s", syncAzureSubscription)
-	} else {
-		Info("Starting Azure sync (auto-discovering subscriptions)...")
+	explicitSubscriptions, managementGroupID, err := resolveAzureSyncScope()
+	if err != nil {
+		return err
+	}
+	switch {
+	case managementGroupID != "":
+		Info("Starting Azure sync for management group: %s", managementGroupID)
+	case len(explicitSubscriptions) == 1:
+		Info("Starting Azure sync for subscription: %s", explicitSubscriptions[0])
+	case len(explicitSubscriptions) > 1:
+		Info("Starting Azure sync for %d Azure subscriptions", len(explicitSubscriptions))
+	default:
+		Info("Starting Azure sync (auto-discovering all enabled subscriptions)...")
 	}
 	tableFilter := parseTableFilter(syncTable)
 	if len(tableFilter) > 0 {
@@ -36,10 +45,13 @@ func runAzureSync(ctx context.Context, start time.Time) error {
 			Warning("API client configuration invalid; using direct mode: %v", err)
 		} else {
 			resp, err := apiClient.RunAzureSync(ctx, apiclient.AzureSyncRequest{
-				Subscription: syncAzureSubscription,
-				Concurrency:  syncConcurrency,
-				Tables:       tableFilter,
-				Validate:     syncValidate,
+				Subscription:            strings.TrimSpace(syncAzureSubscription),
+				Subscriptions:           explicitSubscriptions,
+				ManagementGroup:         managementGroupID,
+				Concurrency:             syncConcurrency,
+				SubscriptionConcurrency: syncAzureSubConcurrency,
+				Tables:                  tableFilter,
+				Validate:                syncValidate,
 			})
 			if err == nil {
 				provider := "Azure"
@@ -74,6 +86,10 @@ func runAzureSync(ctx context.Context, start time.Time) error {
 var runAzureSyncDirectFn = runAzureSyncDirect
 
 func runAzureSyncDirect(ctx context.Context, start time.Time, tableFilter []string) error {
+	explicitSubscriptions, managementGroupID, err := resolveAzureSyncScope()
+	if err != nil {
+		return err
+	}
 	client, err := createSnowflakeClient()
 	if err != nil {
 		return fmt.Errorf("create snowflake client: %w", err)
@@ -81,11 +97,22 @@ func runAzureSyncDirect(ctx context.Context, start time.Time, tableFilter []stri
 	defer func() { _ = client.Close() }()
 
 	opts := []nativesync.AzureEngineOption{}
-	if syncAzureSubscription != "" {
-		opts = append(opts, nativesync.WithAzureSubscription(syncAzureSubscription))
+	switch len(explicitSubscriptions) {
+	case 1:
+		opts = append(opts, nativesync.WithAzureSubscription(explicitSubscriptions[0]))
+	case 0:
+		// let the engine enumerate enabled subscriptions if no explicit scope is set
+	default:
+		opts = append(opts, nativesync.WithAzureSubscriptions(explicitSubscriptions))
+	}
+	if managementGroupID != "" {
+		opts = append(opts, nativesync.WithAzureManagementGroup(managementGroupID))
 	}
 	if syncConcurrency > 0 {
 		opts = append(opts, nativesync.WithAzureConcurrency(syncConcurrency))
+	}
+	if syncAzureSubConcurrency > 0 {
+		opts = append(opts, nativesync.WithAzureSubscriptionConcurrency(syncAzureSubConcurrency))
 	}
 	if len(tableFilter) > 0 {
 		opts = append(opts, nativesync.WithAzureTableFilter(tableFilter))
@@ -117,4 +144,14 @@ func runAzureSyncDirect(ctx context.Context, start time.Time, tableFilter []stri
 	}
 
 	return nil
+}
+
+func resolveAzureSyncScope() ([]string, string, error) {
+	subscriptions := append(parseCommaSeparatedValues(syncAzureSubscriptions), strings.TrimSpace(syncAzureSubscription))
+	subscriptions = uniqueNonEmpty(subscriptions)
+	managementGroupID := strings.TrimSpace(syncAzureMgmtGroup)
+	if managementGroupID != "" && len(subscriptions) > 0 {
+		return nil, "", fmt.Errorf("--azure-management-group cannot be combined with --azure-subscription or --azure-subscriptions")
+	}
+	return subscriptions, managementGroupID, nil
 }

@@ -410,6 +410,11 @@ func runGCPOrgSync(ctx context.Context, start time.Time, orgID string) error {
 		return runGCPSync(ctx, start, "")
 	}
 
+	if syncUseAssetAPI && !runSecuritySync {
+		Info("Using organization scope directly with Cloud Asset Inventory API")
+		return runGCPAssetAPISync(ctx, start, nil)
+	}
+
 	Info("Discovering projects in organization: %s", orgID)
 
 	// List all projects in the organization using Cloud Asset Inventory
@@ -609,11 +614,16 @@ func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []str
 
 func runGCPAssetAPISync(ctx context.Context, start time.Time, projects []string) error {
 	projects = normalizeProjectIDs(projects)
-	if len(projects) == 0 {
+	orgID := strings.TrimSpace(syncGCPOrg)
+	if len(projects) == 0 && orgID == "" {
 		return fmt.Errorf("no GCP projects provided for asset API sync")
 	}
 
-	Info("Starting GCP sync via Cloud Asset Inventory API for %d projects...", len(projects))
+	if orgID != "" && len(projects) == 0 {
+		Info("Starting GCP sync via Cloud Asset Inventory API for organization %s...", orgID)
+	} else {
+		Info("Starting GCP sync via Cloud Asset Inventory API for %d projects...", len(projects))
+	}
 	tableFilter := parseTableFilter(syncTable)
 	nativeTableFilter, securityTableFilter, runNativeSync, runSecuritySync, err := resolveGCPTableFilters(tableFilter, syncSecurity)
 	if err != nil {
@@ -650,10 +660,11 @@ func runGCPAssetAPISync(ctx context.Context, start time.Time, projects []string)
 			Warning("API client configuration invalid; using direct mode: %v", err)
 		} else {
 			resp, err := apiClient.RunGCPAssetSync(ctx, apiclient.GCPAssetSyncRequest{
-				Projects:    projects,
-				Concurrency: syncConcurrency,
-				Tables:      nativeTableFilter,
-				Validate:    syncValidate,
+				Projects:     projects,
+				Organization: orgID,
+				Concurrency:  syncConcurrency,
+				Tables:       nativeTableFilter,
+				Validate:     syncValidate,
 			})
 			if err == nil {
 				provider := "GCP (Asset API)"
@@ -723,7 +734,12 @@ func runGCPAssetAPISyncDirect(
 	var syncErrs []error
 
 	if runNativeSync {
-		options := []nativesync.GCPAssetOption{nativesync.WithProjects(projects)}
+		options := make([]nativesync.GCPAssetOption, 0, 3)
+		if strings.TrimSpace(syncGCPOrg) != "" && len(projects) == 0 {
+			options = append(options, nativesync.WithAssetScope("organizations/"+strings.TrimSpace(syncGCPOrg)))
+		} else {
+			options = append(options, nativesync.WithProjects(projects))
+		}
 		if syncConcurrency > 0 {
 			options = append(options, nativesync.WithAssetConcurrency(syncConcurrency))
 		}

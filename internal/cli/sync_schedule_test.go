@@ -21,13 +21,19 @@ import (
 )
 
 func TestParseScheduledSyncSpec(t *testing.T) {
-	spec := parseScheduledSyncSpec("project=proj-a,projects=proj-b|proj-c,org:org-123,subscription=sub-123,gcp_compute_instances, azure_compute_virtual_machines")
+	spec := parseScheduledSyncSpec("project=proj-a,projects=proj-b|proj-c,org:org-123,subscription=sub-123,subscriptions=sub-234|sub-345,subscription_concurrency=5,gcp_compute_instances, azure_compute_virtual_machines")
 
 	if spec.GCPOrg != "org-123" {
 		t.Fatalf("expected org-123, got %q", spec.GCPOrg)
 	}
 	if spec.AzureSubscription != "sub-123" {
 		t.Fatalf("expected sub-123, got %q", spec.AzureSubscription)
+	}
+	if len(spec.AzureSubscriptions) != 2 || !slices.Contains(spec.AzureSubscriptions, "sub-234") || !slices.Contains(spec.AzureSubscriptions, "sub-345") {
+		t.Fatalf("unexpected Azure subscriptions: %v", spec.AzureSubscriptions)
+	}
+	if spec.AzureSubscriptionConcurrency != "5" {
+		t.Fatalf("expected Azure subscription concurrency 5, got %q", spec.AzureSubscriptionConcurrency)
 	}
 	if len(spec.GCPProjects) != 3 {
 		t.Fatalf("expected 3 projects, got %d (%v)", len(spec.GCPProjects), spec.GCPProjects)
@@ -40,6 +46,29 @@ func TestParseScheduledSyncSpec(t *testing.T) {
 	}
 	if spec.TableFilter[0] != "gcp_compute_instances" || spec.TableFilter[1] != "azure_compute_virtual_machines" {
 		t.Fatalf("unexpected table filters: %v", spec.TableFilter)
+	}
+}
+
+func TestParseScheduledSyncSpec_AzureManagementGroupAndAWSOrg(t *testing.T) {
+	spec := parseScheduledSyncSpec("management_group=mg-platform,aws_org=true,aws_org_role=SecurityAuditRole,aws_org_include_accounts=111111111111|222222222222,aws_org_exclude_accounts=333333333333,aws_org_account_concurrency=8,aws_iam_roles")
+
+	if spec.AzureManagementGroup != "mg-platform" {
+		t.Fatalf("expected Azure management group mg-platform, got %q", spec.AzureManagementGroup)
+	}
+	if !spec.AWSOrg {
+		t.Fatal("expected AWS org directive to be enabled")
+	}
+	if spec.AWSOrgRole != "SecurityAuditRole" {
+		t.Fatalf("unexpected AWS org role: %q", spec.AWSOrgRole)
+	}
+	if len(spec.AWSOrgIncludeAccounts) != 2 || !slices.Contains(spec.AWSOrgIncludeAccounts, "111111111111") || !slices.Contains(spec.AWSOrgIncludeAccounts, "222222222222") {
+		t.Fatalf("unexpected AWS org include accounts: %v", spec.AWSOrgIncludeAccounts)
+	}
+	if len(spec.AWSOrgExcludeAccounts) != 1 || spec.AWSOrgExcludeAccounts[0] != "333333333333" {
+		t.Fatalf("unexpected AWS org exclude accounts: %v", spec.AWSOrgExcludeAccounts)
+	}
+	if spec.AWSOrgAccountConcurrency != "8" {
+		t.Fatalf("unexpected AWS org account concurrency: %q", spec.AWSOrgAccountConcurrency)
 	}
 }
 
@@ -466,10 +495,12 @@ func TestExecuteAWSSync_UsesScheduledAuthDirectives(t *testing.T) {
 	originalLoad := loadScheduledAWSConfigFn
 	originalPreflight := preflightScheduledAWSAuthFn
 	originalRun := runScheduledAWSNativeSyncFn
+	originalOrgRun := runScheduledAWSOrgSyncFn
 	t.Cleanup(func() {
 		loadScheduledAWSConfigFn = originalLoad
 		preflightScheduledAWSAuthFn = originalPreflight
 		runScheduledAWSNativeSyncFn = originalRun
+		runScheduledAWSOrgSyncFn = originalOrgRun
 	})
 
 	loadCalled := false
@@ -525,6 +556,73 @@ func TestExecuteAWSSync_UsesScheduledAuthDirectives(t *testing.T) {
 	}
 	if !runCalled {
 		t.Fatal("expected runScheduledAWSNativeSyncFn to be called")
+	}
+}
+
+func TestExecuteAWSSync_UsesAWSOrgDirectives(t *testing.T) {
+	originalLoad := loadScheduledAWSConfigFn
+	originalPreflight := preflightScheduledAWSAuthFn
+	originalRun := runScheduledAWSNativeSyncFn
+	originalOrgRun := runScheduledAWSOrgSyncFn
+	t.Cleanup(func() {
+		loadScheduledAWSConfigFn = originalLoad
+		preflightScheduledAWSAuthFn = originalPreflight
+		runScheduledAWSNativeSyncFn = originalRun
+		runScheduledAWSOrgSyncFn = originalOrgRun
+	})
+
+	loadScheduledAWSConfigFn = func(_ context.Context, spec scheduledSyncSpec) (aws.Config, error) {
+		if !spec.AWSOrg {
+			t.Fatal("expected AWS org directive to be set")
+		}
+		if spec.AWSOrgRole != "SecurityAuditRole" {
+			t.Fatalf("unexpected AWS org role: %q", spec.AWSOrgRole)
+		}
+		return aws.Config{}, nil
+	}
+	preflightScheduledAWSAuthFn = func(context.Context, *SyncSchedule, scheduledSyncSpec, aws.Config) error {
+		return nil
+	}
+	runScheduledAWSNativeSyncFn = func(_ context.Context, _ *snowflake.Client, _ aws.Config, _ []string) error {
+		t.Fatal("did not expect single-account scheduled sync to run")
+		return nil
+	}
+
+	orgRunCalled := false
+	runScheduledAWSOrgSyncFn = func(_ context.Context, _ *snowflake.Client, _ aws.Config, spec scheduledSyncSpec) error {
+		orgRunCalled = true
+		if len(spec.AWSOrgIncludeAccounts) != 1 || spec.AWSOrgIncludeAccounts[0] != "111111111111" {
+			t.Fatalf("unexpected include accounts: %v", spec.AWSOrgIncludeAccounts)
+		}
+		if spec.AWSOrgAccountConcurrency != "8" {
+			t.Fatalf("unexpected org account concurrency: %q", spec.AWSOrgAccountConcurrency)
+		}
+		return nil
+	}
+
+	err := executeAWSSync(context.Background(), nil, &SyncSchedule{
+		Name:  "aws-org",
+		Table: "aws_org=true,aws_org_role=SecurityAuditRole,aws_org_include_accounts=111111111111,aws_org_account_concurrency=8,aws_iam_roles",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !orgRunCalled {
+		t.Fatal("expected AWS org scheduled sync to be called")
+	}
+}
+
+func TestParseAzureSubscriptionConcurrency(t *testing.T) {
+	value, err := parseAzureSubscriptionConcurrency("6")
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	if value != 6 {
+		t.Fatalf("expected 6, got %d", value)
+	}
+
+	if _, err := parseAzureSubscriptionConcurrency("0"); err == nil {
+		t.Fatal("expected bounds error")
 	}
 }
 

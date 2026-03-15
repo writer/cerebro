@@ -5,6 +5,373 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 94 - Entra Directory Role CDC Removal Parity (2026-03-14)
+
+### Review findings
+- [x] Gap: issue `#275` created Entra directory role nodes with the prefixed `azure_directory_role:` ID, but CDC removals still preferred the raw `resource_id`.
+- [x] Gap: delete events for `entra_directory_roles` therefore left stale role nodes in the graph even after the source record was removed.
+- [x] Gap: adding an `entra_directory_roles` branch to `cdcNodeID` alone was insufficient because the removal path bypassed `cdcNodeID` whenever `resource_id` was present.
+
+### Execution plan
+- [x] Add TDD coverage for:
+  - [x] `cdcNodeID` returning the prefixed directory-role ID
+  - [x] incremental CDC removal actually soft-deleting the prefixed directory-role node
+- [x] Normalize CDC removal IDs through `cdcNodeID(table, payload, resourceID)` instead of trusting the raw event ID first.
+- [x] Keep the table-specific `entra_directory_roles` ID normalization in `cdcNodeID` so adds and removes use the same node contract.
+
+## Deep Review Cycle 95 - Azure Management Group Subscription Scope Hardening (2026-03-14)
+
+### Review findings
+- [x] Gap: issue `#279` was correctly trying to expand Azure discovery to org-scale management groups, but the enabled-subscription filter in `listManagementGroupSubscriptions` still compared subscription IDs case-sensitively.
+- [x] Gap: Azure APIs can return the same subscription ID with different casing across the subscription list and management-group tree, which could incorrectly drop valid subscriptions and surface a false `no enabled subscriptions found` error.
+- [x] Gap: management-group HTTP status checking happened after JSON decode, so non-2xx HTML/proxy responses were reported as decode failures instead of the real status error.
+- [x] Gap: API-layer Azure subscription normalization duplicated the sync-layer logic, which would let future fixes drift again.
+
+### Execution plan
+- [x] Add TDD coverage for:
+  - [x] case-insensitive enabled-subscription filtering for management-group expansion
+  - [x] HTTP status evaluation preceding JSON decode for management-group queries
+  - [x] sync API subscription normalization using the shared Azure helper contract
+- [x] Make management-group filtering compare normalized lowercase keys while preserving the discovered subscription ID value.
+- [x] Check management-group HTTP status before decoding the response body.
+- [x] Replace duplicate API subscription normalization with the shared sync-layer helper.
+
+## Deep Review Cycle 96 - GCP Asset Sync Contract Compatibility for Org Scope (2026-03-14)
+
+### Review findings
+- [x] Gap: issue `#279` was correctly trying to add organization-scoped GCP Asset sync, but the OpenAPI request schema silently removed the pre-existing required `projects` field.
+- [x] Gap: the API contract compatibility gate treated that as a breaking change for `POST /api/v1/sync/gcp-asset`, which would block push/merge and also break generated clients that rely on the existing schema contract.
+- [x] Gap: the internal API client also omitted `projects` entirely for organization-scoped requests, so the implementation and contract drifted in the same direction.
+
+### Execution plan
+- [x] Preserve the existing `projects` request-field contract in OpenAPI for `POST /api/v1/sync/gcp-asset`.
+- [x] Represent organization-scoped asset sync as `projects: []` plus `organization`, so new org-scope behavior works without removing the old field contract.
+- [x] Add/update client tests to lock the explicit-empty-projects payload for organization-scoped requests.
+- [x] Re-run the contract-compatibility and OpenAPI checks before push.
+
+## Deep Review Cycle 93 - Azure Key Vault Key Lineage and Scope Cleanup Follow-through (2026-03-14)
+
+### Review findings
+- [x] Gap: issue `#275` was already fixing Azure RBAC scope correctness, but Azure Key Vault key nodes still did not persist a `vault_id`, even though `azureKeyNodesForVault` advertised that as a matching path.
+- [x] Gap: full-build and CDC Azure Key Vault key nodes therefore relied only on `vault_uri`, which is weaker and can be absent in partial datasets.
+- [x] Gap: `azurePermissionsToEdgeKind` still used a redundant score switch that duplicated `azurePermissionScore` instead of directly taking the highest score.
+
+### Execution plan
+- [x] Add TDD coverage for:
+  - [x] Key Vault access-policy edges still linking keys when only the key resource ID is available
+  - [x] CDC Azure Key Vault key nodes deriving and storing `vault_id`
+  - [x] Azure permission scoring still honoring the highest observed permission
+- [x] Derive `vault_id` from Azure Key Vault key resource IDs in both full-build and CDC paths.
+- [x] Keep key-to-vault matching working through either explicit `vault_id` or normalized `vault_uri`.
+- [x] Replace the redundant Azure permission-score switch with direct max-of-score aggregation.
+
+## Deep Review Cycle 92 - Azure RBAC Scope Boundaries and Fallback Table Correctness (2026-03-14)
+
+### Review findings
+- [x] Gap: issue `#275` was correctly trying to add first-class Azure RBAC graph modeling, but `azureNodeWithinScope` still had an over-broad substring fallback that could match sibling resources and similarly named subscriptions/resource groups.
+- [x] Gap: resource-scoped Azure RBAC assignments could therefore over-grant `Can*` edges to unrelated resources in the same resource group instead of staying bounded to the scoped resource and its descendants.
+- [x] Gap: `loadAzurePreferredIdentityNodes` stopped on the first discovered table with zero rows, which prevented fallback identity tables from loading in racey or partially populated environments.
+- [x] Gap: `queryAzureRBACRoleAssignments` could not fall back from `azure_rbac_role_assignments` to `azure_authorization_role_assignments` when table discovery was unavailable and the preferred table query failed.
+
+### Execution plan
+- [x] Add TDD coverage for:
+  - [x] resource-scoped Azure RBAC staying out of sibling resources in the same group
+  - [x] direct scope matching rejecting similar subscription/resource-group substrings
+  - [x] discovered-table identity fallback after an empty first result
+  - [x] RBAC table fallback when discovery is unavailable and the preferred query fails
+- [x] Remove the broad substring fallback from `azureNodeWithinScope` and keep matching boundary-aware:
+  - [x] exact resource match
+  - [x] descendant prefix match
+  - [x] explicit subscription/resource-group scope handling
+- [x] Continue across Azure identity fallback candidates on empty/error results instead of returning early.
+- [x] Make Azure RBAC assignment loading iterate preferred tables in order and fall through to the legacy table when the preferred query is unavailable or empty.
+
+## Deep Review Cycle 91 - Conditional Resource Enforcement in IAM Boundary and SCP Evaluation (2026-03-14)
+
+### Review findings
+- [x] Gap: issue `#277` was correctly separating conditional and unconditional access, but the later SCP allow-list / deny filtering and permission-boundary filtering only iterated `ep.Resources`.
+- [x] Gap: conditional-only resources in `ep.Conditional` could therefore bypass SCP implicit-deny behavior and permission-boundary trimming entirely.
+- [x] Gap: wildcard-target SCP edges with resource-dependent conditions such as `aws:ResourceAccount` were evaluated once against a `nil` target node, so valid per-resource denies could be skipped.
+
+### Execution plan
+- [x] Add TDD coverage for:
+  - [x] permission boundaries stripping conditional-only access
+  - [x] wildcard SCP resource-account conditions being evaluated per concrete resource
+- [x] Evaluate SCP allow/deny edges against the concrete effective-permission target set instead of a single wildcard placeholder target.
+- [x] Apply SCP allow-list and permission-boundary implicit denies across both unconditional and conditional resource buckets.
+- [x] Keep wildcard resource evaluation deduplicated so shared resource IDs across unconditional/conditional buckets do not double-apply actions.
+
+## Deep Review Cycle 90 - Audit Mutation Batch Poison-Pill and Change-Type Normalization (2026-03-14)
+
+### Review findings
+- [x] Gap: issue `#276` still allowed a single semantically invalid audit mutation record inside a batch to fail `parseAuditMutationCloudEvent`, which bubbles back into the JetStream consumer and `Nak()`s the whole message.
+- [x] Gap: that creates a poison-pill loop for otherwise valid audit batches because the malformed record is retried forever and blocks the valid mutations that share the same message.
+- [x] Gap: the parser compared the raw `change_type` string against `"removed"` before normalization, so valid deletion aliases like `"deleted"` and `"delete"` could be rejected when `resource_id` was absent.
+- [x] Gap: the audit parser had no structured way to surface partial-drop behavior back to the handler for observability.
+
+### Execution plan
+- [x] Switch audit mutation parsing to best-effort batch handling:
+  - [x] skip malformed records instead of failing the whole message
+  - [x] preserve valid records from the same batch for CDC persistence
+- [x] Normalize audit mutation change types before `resource_id` validation so delete aliases map to `removed`.
+- [x] Return structured parse-drop metadata and log dropped-record counts/reasons from the audit handler.
+- [x] Add TDD coverage for:
+  - [x] mixed valid/invalid audit mutation batches persisting only the valid subset
+  - [x] delete-synonym normalization with missing `resource_id`
+
+## Deep Review Cycle 89 - Audit CDC Graph Ingestion Identity and Consumer Upgrade Correctness (2026-03-14)
+
+### Review findings
+- [x] Gap: issue `#276` was correctly trying to ingest cloud audit mutation events into CDC and then materialize them into the live graph, but the ID contract was not consistent end to end.
+- [x] Gap: audit mutation fallback `resource_id` selection did not match graph node ID selection for network assets, so persisted CDC removals could target a different identifier than the one used to create the node.
+- [x] Gap: the three network-asset CDC node cases bypassed the normal `event.ResourceID` path and built IDs directly from payload fields, which left add/remove behavior asymmetric when audit events carried a canonical top-level resource ID.
+- [x] Gap: Azure NSG public-ingress detection was still using string heuristics over serialized rule blobs, which is too fragile for structured rule arrays and misses plural-prefix wildcard cases.
+- [x] Gap: JetStream upgrade safety was incomplete for the new multi-subject audit ingestion path:
+  - [x] existing streams were not updated to include newly configured subjects
+  - [x] existing single-subject durable consumers could remain incompatible with multi-subject configs
+
+### Execution plan
+- [x] Unify audit CDC resource identity with graph identity:
+  - [x] export table-aware CDC resource-ID resolution from graph builders
+  - [x] route audit mutation fallback `resource_id` derivation through that shared resolver
+- [x] Make network-asset CDC node creation honor the resolved/event resource ID:
+  - [x] apply resolved IDs to AWS security-group CDC nodes
+  - [x] apply resolved IDs to GCP firewall CDC nodes
+  - [x] apply resolved IDs to Azure NSG CDC nodes
+- [x] Replace Azure NSG public-exposure string heuristics with structured rule parsing first, plus string fallback only for unstructured inputs.
+- [x] Harden JetStream consumer upgrade behavior for the new audit sources:
+  - [x] update existing streams to include missing configured subjects
+  - [x] delete/recreate incompatible durable consumers before multi-subject resubscribe
+  - [x] add end-to-end JetStream upgrade tests once `nats-server` is available locally
+- [x] Add TDD coverage for:
+  - [x] table-aware audit mutation resource IDs for AWS/GCP/Azure network assets
+  - [x] add/remove symmetry for network-asset CDC nodes
+  - [x] structured Azure NSG wildcard prefix lists
+  - [x] stream-subject and durable-consumer JetStream upgrade paths
+
+## Deep Review Cycle 86 - Reuse Existing Terraform Subresource Addresses for Bucket Remediations (2026-03-14)
+
+### Review findings
+- [x] Gap: even after reusing existing bucket resource references, generated Terraform still minted new subresource labels for bucket remediations when `iac_state_id` already pointed at an existing `aws_s3_bucket_public_access_block` or `aws_s3_bucket_server_side_encryption_configuration`.
+- [x] Gap: that creates duplicate Terraform resources and weakens the new state-reconciliation contract because the artifact no longer lines up with the resource Terraform is already managing.
+- [x] Gap: `for_each` instances need an explicit boundary here. Reusing exact addresses is correct for plain managed resources, but blindly turning instance addresses like `resource.name["key"]` into block labels would generate invalid HCL.
+
+### Execution plan
+- [x] Reuse existing Terraform-managed subresource addresses when `iac_state_id` points directly at:
+  - [x] `aws_s3_bucket_public_access_block.*`
+  - [x] `aws_s3_bucket_server_side_encryption_configuration.*`
+- [x] Keep generated fallback names for cases that cannot be represented as a single resource block:
+  - [x] `for_each` instance addresses
+  - [x] unrelated resource types
+- [x] Add TDD coverage at both renderer and executor metadata layers.
+- [ ] Next Terraform/IaC codegen depth cuts after this slice:
+  - [ ] add the next Terraform-backed safe actions: public security-group ingress restriction and selected encryption defaults beyond S3
+  - [ ] use parsed HCL and lineage to anchor generated blocks to existing module files/labels instead of only path-level placement
+
+## Deep Review Cycle 87 - Normalize Terraform Attribute-Path State IDs Back to Managed Resources (2026-03-14)
+
+### Review findings
+- [x] Gap: the Terraform state-address parser only recognized bare managed resource addresses. When `iac_state_id` included an attribute suffix like `.id`, remediation codegen dropped back to literal identifiers and generated weaker patches.
+- [x] Gap: that parser limitation also blocked reuse of existing `aws_s3_bucket_public_access_block` and `aws_s3_bucket_server_side_encryption_configuration` resources when lineage/state data pointed at one of their attributes instead of the bare resource address.
+- [x] Gap: the right behavior is to normalize attribute-path state IDs back to the managed resource address and let the existing bucket/subresource reuse logic operate on that normalized form.
+
+### Execution plan
+- [x] Add TDD coverage for attribute-path `iac_state_id` inputs at the renderer layer:
+  - [x] bucket reference reuse from `aws_s3_bucket.*.id`
+  - [x] public-access-block reuse from `aws_s3_bucket_public_access_block.*.id`
+  - [x] bucket-encryption reuse from `aws_s3_bucket_server_side_encryption_configuration.*.id`
+- [x] Add parser-boundary coverage for `for_each` instance attribute paths so:
+  - [x] bucket references still normalize to `<resource>.id` without `.id.id`
+  - [x] subresource renderers still refuse to reuse invalid `for_each` instance labels as block names
+- [x] Add executor-level regressions so artifact metadata keeps the normalized managed resource address.
+- [x] Normalize `terraformStateResourceAddress` to accept attribute-path state IDs by stripping trailing attribute segments after the managed resource address.
+- [ ] Next Terraform/IaC codegen depth cuts after this slice:
+  - [ ] add the next Terraform-backed safe actions: public security-group ingress restriction and selected encryption defaults beyond S3
+  - [ ] use parsed HCL and lineage to anchor generated blocks to existing module files/labels instead of only path-level placement
+
+## Deep Review Cycle 88 - Terraform Removal Artifacts for Standalone Public Ingress Rules (2026-03-14)
+
+### Review findings
+- [x] Gap: `restrict_public_security_group_ingress` existed in the remediation catalog, but the Terraform path still stopped at S3. That left one of the core low-blast-radius network remediations stuck on remote apply only.
+- [x] Gap: SG ingress is not the same shape as bucket subresources. The safe Terraform-first seam is not inline `aws_security_group` rewriting; it is targeting standalone managed rule resources where the desired end state is removal.
+- [x] Gap: the current lineage/IaC context is already sufficient for that narrow cut when `iac_state_id` points at standalone `aws_security_group_rule` or `aws_vpc_security_group_ingress_rule` resources.
+- [x] Gap: Terraform `removed` blocks impose a stricter boundary than ordinary address reuse. Multi-instance rule addresses with instance keys cannot be represented safely in this cut, so they need an explicit rejection path rather than optimistic generation.
+
+### Execution plan
+- [x] Extend the catalog so SG ingress restriction supports Terraform delivery while keeping remote apply as the default.
+- [x] Add a Terraform renderer for standalone rule resources that emits a `removed` block targeting the existing managed rule address.
+- [x] Preserve state-address fidelity for:
+  - [x] plain managed rule addresses
+  - [x] attribute-path forms of those addresses
+- [x] Reject unsupported Terraform contexts explicitly until we add real HCL-editing support:
+  - [x] inline `aws_security_group` resources
+  - [x] multi-instance rule addresses with `for_each` / instance keys
+- [x] Add renderer and executor TDD coverage for:
+  - [x] standalone rule removal artifacts
+  - [x] inline-security-group rejection
+- [ ] Next Terraform/IaC codegen depth cuts after this slice:
+  - [ ] add HCL-edit support for inline `aws_security_group` ingress blocks so Terraform remediation can rewrite existing rule blocks instead of only handling standalone rule resources
+  - [ ] add the next Terraform-backed safe actions: selected encryption defaults beyond S3 and additional low-blast-radius network remediations
+
+## Deep Review Cycle 85 - Structured Terraform Import and State-Reconciliation Guidance (2026-03-14)
+
+### Review findings
+- [x] Gap: the Terraform remediation artifacts still exposed import/state handling mostly as freeform notes plus `resource_address` and `import_id`, which is weak for downstream automation and UI rendering.
+- [x] Gap: now that Terraform resource selection is state-aware, the next practical step is not another renderer template. It is a structured artifact model that tells operators exactly how to reconcile generated HCL with Terraform state.
+- [x] Gap: upstream reverse-Terraform tools reinforce that shape:
+  - [x] `GoogleCloudPlatform/terraformer` keeps import identity, output paths, and plan-time behavior explicit rather than burying state handling in prose.
+  - [x] `cycloidio/terracognita` similarly treats generated Terraform and Terraform state/import semantics as first-class output, not just side comments.
+
+### Execution plan
+- [x] Extend `TerraformArtifact` with structured state-reconciliation metadata.
+- [x] Emit machine-readable Terraform commands for:
+  - [x] `terraform state show`
+  - [x] `terraform import`
+  - [x] `terraform plan`
+- [x] Emit Terraform v1.5-style import-block HCL as structured artifact data instead of only freeform notes.
+- [ ] Next Terraform/IaC codegen depth cuts after this slice:
+  - [ ] add the next Terraform-backed safe actions: public security-group ingress restriction and selected encryption defaults beyond S3
+  - [ ] use parsed HCL and lineage to anchor generated blocks to existing module files/labels instead of only path-level placement
+
+## Deep Review Cycle 84 - Preserve Terraform `for_each` State Addresses in Remediation Codegen (2026-03-14)
+
+### Review findings
+- [x] Gap: the new state-aware bucket-reference reuse path still parsed `iac_state_id` by splitting on raw dots, which breaks valid Terraform addresses like `aws_s3_bucket.buckets["audit.logs"]`.
+- [x] Gap: when that happens, generated remediation HCL silently falls back to literal bucket strings even though the lineage/state context already points at the managed Terraform resource.
+- [x] Gap: the parser seam needs to respect Terraform bracket/quote syntax so `for_each` and indexed resource addresses remain reusable instead of being degraded into weaker literal patches.
+
+### Execution plan
+- [x] Add TDD coverage for dotted `for_each` keys in Terraform state addresses.
+- [x] Replace the raw dot splitter with an address parser that preserves bracketed and quoted segments.
+- [x] Keep fallback behavior intact for malformed or unsupported addresses instead of guessing.
+- [ ] Next Terraform/IaC codegen depth cuts after this slice:
+  - [ ] emit import-block/state-reconciliation guidance in a structured artifact model once Terraform v1.5+ import surfaces become first-class in generated output
+  - [ ] add the next Terraform-backed safe actions: public security-group ingress restriction and selected encryption defaults beyond S3
+
+## Deep Review Cycle 83 - Reuse Existing Terraform Bucket References from State (2026-03-14)
+
+### Review findings
+- [x] Gap: even after the renderer-registry cut, generated remediation HCL still hardcoded literal bucket names when `iac_state_id` already pointed at the managed `aws_s3_bucket` resource.
+- [x] Gap: that loses module/resource address fidelity and makes generated Terraform patches weaker than the lineage data Cerebro already has from state-derived provenance.
+- [x] Gap: the right first reuse seam is state-aware address reuse, not speculative full-file rewriting. If `iac_state_id` is already an `aws_s3_bucket` address, generated remediation resources should bind to `<address>.id`; if not, they should fall back to the literal bucket identifier.
+
+### Execution plan
+- [x] Reuse existing bucket resource addresses when `iac_state_id` points at `aws_s3_bucket.*`
+- [x] Apply that reuse consistently to:
+  - [x] public access block generation
+  - [x] default encryption generation
+- [x] Keep fallback behavior explicit:
+  - [x] root state IDs still work
+  - [x] non-bucket state IDs fall back to the literal bucket name instead of emitting the wrong reference
+- [ ] Next Terraform/IaC codegen depth cuts after this slice:
+  - [ ] emit import-block/state-reconciliation guidance in a structured artifact model once Terraform v1.5+ import surfaces become first-class in generated output
+  - [ ] add the next Terraform-backed safe actions: public security-group ingress restriction and selected encryption defaults beyond S3
+
+## Deep Review Cycle 82 - Terraform Renderer Registry by Action, Provider, and Resource Family (2026-03-14)
+
+### Review findings
+- [x] Gap: the Terraform codegen path still used a flat action-to-renderer map, which is the wrong seam for multi-provider remediation actions and would force future support into per-renderer guard logic instead of an explicit dispatch model.
+- [x] Gap: that flat map was already hiding a real bug: `enable_bucket_default_encryption` could still emit AWS Terraform for explicit non-AWS input because its direct renderer had no provider guard.
+- [x] Gap: the same flat map was also too trusting of resource shape. A public-storage action with an explicit non-bucket `resource_type` could still fall through to bucket Terraform generation as long as the identifier looked bucket-like.
+
+### Execution plan
+- [x] Replace the flat Terraform renderer map with an explicit registry keyed by:
+  - [x] remediation action
+  - [x] provider
+  - [x] resource family
+- [x] Infer registry lookup context from existing remediation data:
+  - [x] normalize provider from execution context with catalog fallback when the action is single-provider
+  - [x] normalize resource family from `resource_type` with catalog alias fallback when the action is single-family
+- [x] Fail fast with explicit unsupported-context errors:
+  - [x] reject non-AWS Terraform bucket-encryption rendering
+  - [x] reject non-bucket Terraform public-storage rendering even when the identifier looks bucket-like
+- [ ] Next Terraform/IaC codegen depth cuts after this slice:
+  - [x] use lineage/state/HCL parsing to prefer existing Terraform resource references when available instead of literal identifiers
+  - [ ] emit import-block/state-reconciliation guidance in a structured artifact model once Terraform v1.5+ import surfaces become first-class in generated output
+  - [ ] add the next Terraform-backed safe actions: public security-group ingress restriction and selected encryption defaults beyond S3
+
+## Deep Review Cycle 81 - Provider-Aware Terraform Delivery Defaults (2026-03-14)
+
+### Review findings
+- [x] Gap: the first Terraform-backed public-storage cut still left delivery defaults modeled globally per action, which is wrong for mixed-provider actions where AWS is ready for Terraform-first change control but GCP/Azure still require remote apply.
+- [x] Gap: approval and delivery selection were computed without execution context in parts of the remediation pipeline, so provider-aware defaults could not be applied consistently to playbook generation, approval gating, metadata, and approval webhooks.
+- [x] Gap: explicit operator overrides still need to win. Provider-aware defaults are useful only if `delivery_mode=remote_apply` can still force a reviewed remote action on AWS when teams want imperative execution.
+
+### Execution plan
+- [x] Add provider-aware catalog defaults:
+  - [x] support per-provider default delivery modes on catalog entries
+  - [x] make `restrict_public_storage_access` default to Terraform for AWS while keeping the action-level global default at `remote_apply`
+- [x] Thread execution-aware mode selection through remediation execution:
+  - [x] compute delivery mode with provider context from the current execution
+  - [x] compute approval requirements from the effective mode, not just the static catalog entry
+  - [x] make catalog action plans, playbook generation, and approval notifications all use that same effective mode
+- [x] Add TDD coverage for the new semantics:
+  - [x] AWS default path auto-selects Terraform and skips approval
+  - [x] GCP default path stays on remote apply and keeps approval
+  - [x] explicit `delivery_mode=remote_apply` overrides the AWS default and still requires approval
+- [ ] Next Terraform/IaC codegen depth cuts after this slice:
+  - [ ] introduce a remediation codegen registry keyed by action + provider + resource family, not just a flat action-to-template map
+  - [ ] use lineage/state/HCL parsing to prefer existing Terraform resource references when available instead of literal identifiers
+  - [ ] emit import-block/state-reconciliation guidance in a structured artifact model once Terraform v1.5+ import surfaces become first-class in generated output
+  - [ ] add the next Terraform-backed safe actions: public security-group ingress restriction and selected encryption defaults beyond S3
+
+## Deep Review Cycle 80 - Terraform-Backed Public Storage Remediation (2026-03-14)
+
+### Review findings
+- [x] Gap: the new remediation Terraform seam from `#301` only covered S3 encryption, so one of the highest-confidence catalog actions still fell back to remote apply even when operators wanted IaC-first change control.
+- [x] Gap: `restrict_public_storage_access` was still modeled as a multi-provider remote action only; simply flipping the whole catalog entry to Terraform-first would have been wrong because the current default-delivery model is global per action, not provider-specific.
+- [x] Gap: the renderer boundary itself was too trusting. Without a provider guard, any future direct caller could have generated AWS HCL for a non-AWS storage finding as long as a bucket-like identifier existed.
+- [x] Gap: upstream IaC tooling points to the right next seam, not a template explosion:
+  - [x] `GoogleCloudPlatform/terraformer` keeps resource import identity, output path structure, and plan-time customization explicit instead of burying them inside per-resource ad hoc writers.
+  - [x] Cerebro already has the key placement hints for that model in `internal/lineage` and remediation trigger data: `iac_file`, `iac_module`, and `iac_state_id`.
+  - [x] the shared `internal/iacrender` helper from `#301` is the correct base layer, but it still needs a higher-level remediation codegen registry once more Terraform-backed actions arrive.
+
+### Execution plan
+- [x] Extend the catalog/action path for Terraform-backed public storage remediation:
+  - [x] allow `restrict_public_storage_access` to support both `remote_apply` and `terraform`
+  - [x] keep the default delivery mode as `remote_apply` until provider-specific delivery defaults exist
+- [x] Add the first AWS Terraform implementation for the action:
+  - [x] generate `aws_s3_bucket_public_access_block` artifacts
+  - [x] reuse existing IaC placement hints from `iac_file`, `iac_module`, and `iac_state_id`
+  - [x] persist artifact metadata/evidence through execution results
+- [x] Harden provider and approval semantics with TDD:
+  - [x] terraform delivery completes without approval for this catalog action
+  - [x] non-AWS terraform delivery fails preconditions instead of emitting the wrong provider HCL
+  - [x] the renderer itself rejects explicit non-AWS provider context
+- [ ] Next Terraform/IaC codegen depth cuts after this slice:
+  - [x] add provider-specific default delivery preferences instead of one global default per remediation action
+  - [ ] introduce a remediation codegen registry keyed by action + provider + resource family, not just a flat action-to-template map
+  - [ ] use lineage/state/HCL parsing to prefer existing Terraform resource references when available instead of literal identifiers
+  - [ ] emit import-block/state-reconciliation guidance in a structured artifact model once Terraform v1.5+ import surfaces become first-class in generated output
+  - [ ] add the next Terraform-backed safe actions: public security-group ingress restriction and selected encryption defaults beyond S3
+
+## Deep Review Cycle 80 - AWS Network Reachability Edge Correctness (2026-03-14)
+
+### Review findings
+- [x] Gap: issue `#272` was directionally correct, but the initial implementation treated security-group completeness as a prerequisite for both positive and negative reachability inference.
+- [x] Gap: AWS network reachability is asymmetric. One observed public security-group rule plus one observed public subnet path is enough to prove exposure, while one fully observed private side of the path is enough to disprove it.
+- [x] Gap: the original gating caused both false negatives and false positives:
+  - [x] a resource with one observed public security group and one unobserved extra group fell back to the generic heuristic instead of emitting the intended path-aware edge
+  - [x] a resource in a fully observed private subnet still fell through to heuristic public exposure if its security-group rows were missing
+  - [x] partial subnet observation could suppress heuristic exposure entirely even when topology evidence was incomplete
+- [x] Gap: subnet inventory alone is not route-topology coverage. Treating a subnet row as sufficient negative evidence can suppress heuristic exposure even when no applicable route table association is known for that subnet.
+- [x] Gap: the PR also claimed incremental/full-build parity, but that behavior was not explicitly locked down with a CDC-path regression.
+
+### Execution plan
+- [x] Add TDD regressions for the incorrect inference cases:
+  - [x] positive inference with one observed public SG and one missing SG
+  - [x] negative suppression from fully observed private subnet topology with missing SG rows
+  - [x] heuristic fallback when subnet coverage is partial
+- [x] Refactor AWS network exposure inference semantics:
+  - [x] allow positive path-aware inference from any observed public SG rule plus any observed public subnet path
+  - [x] suppress heuristic exposure when either side of the path is fully observed and definitively private
+  - [x] avoid suppressing heuristic exposure when the topology evidence is incomplete
+- [x] Separate subnet inventory from route-topology coverage:
+  - [x] track subnet route applicability from explicit or main route-table associations
+  - [x] only use subnet-based negative suppression when every attached subnet has applicable route-topology coverage
+- [x] Add incremental rebuild coverage:
+  - [x] prove `ApplyChanges` uses the same private-subnet suppression semantics as full builds
+
 ## Deep Review Cycle 79 - Filesystem IaC Detection During Workload Scans (2026-03-13)
 
 ### Review findings

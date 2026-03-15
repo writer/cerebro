@@ -2,8 +2,8 @@ package sync
 
 import "context"
 
-func (e *AzureSyncEngine) fetchWithRetry(ctx context.Context, table AzureTableSpec) ([]map[string]interface{}, error) {
-	logFields := []any{"table", table.Name, "subscription", e.subscriptionID}
+func (e *AzureSyncEngine) fetchWithRetry(ctx context.Context, table AzureTableSpec, subscriptionID string) ([]map[string]interface{}, error) {
+	logFields := []any{"table", table.Name, "subscription", subscriptionID}
 	return retryFetch(
 		ctx,
 		e.rateLimiter,
@@ -14,7 +14,7 @@ func (e *AzureSyncEngine) fetchWithRetry(ctx context.Context, table AzureTableSp
 		classifyAzureError,
 		nil,
 		func() ([]map[string]interface{}, error) {
-			return table.Fetch(ctx, e.credential, e.subscriptionID)
+			return table.Fetch(ctx, e.credential, subscriptionID)
 		},
 	)
 }
