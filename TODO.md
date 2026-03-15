@@ -20,7 +20,23 @@ Status: executed end-to-end via PR workflow
 - [x] Preserve Tetragon socket family, socket type, policy, action, and return-code metadata on normalized observations.
 - [x] Add regression tests for first-class `process_connect`, `tcp_connect`, and `security_socket_connect` payloads.
 
-## Deep Review Cycle 123 - Tetragon File Observation Normalization (2026-03-15)
+## Deep Review Cycle 125 - Tetragon Adapter Golden Payload Coverage (2026-03-15)
+
+### Review findings
+- [x] Gap: the adapter had edge-case unit tests for individual payload shapes, but it still lacked fixture-backed golden coverage to catch contract drift against representative upstream Tetragon event payloads.
+- [x] Gap: runtime visibility needs stable sample coverage for both first-class event envelopes and `process_kprobe`-backed telemetry, or future parser refactors can silently break one family while the inline tests keep passing.
+- [x] Gap: relying only on inline JSON literals makes it harder to compare Cerebro’s normalized contract against the upstream Tetragon examples the adapter is meant to support.
+
+### Execution plan
+- [x] Add repo-local golden fixtures for representative Tetragon payload families:
+  - [x] `process_exec`
+  - [x] `process_exit`
+  - [x] `process_connect`
+  - [x] `security_file_permission`
+  - [x] `tcp_connect`
+- [x] Add fixture-backed normalization tests that assert the normalized observation kind and key process/file/network fields for each payload family.
+
+## Deep Review Cycle 124 - Tetragon Network Observation Normalization (2026-03-15)
 
 ### Review findings
 - [x] Gap: the runtime visibility substrate could normalize `process_exec` and `process_exit`, but it still dropped Tetragon `process_kprobe` file-access events entirely even though the architecture and slice plan explicitly call out file telemetry as the next source class.
@@ -88,7 +104,7 @@ Status: executed end-to-end via PR workflow
 - [x] 021. Normalize Tetragon network events.
 - [ ] 022. Normalize Tetragon DNS events.
 - [ ] 023. Normalize Tetragon security signal payloads.
-- [ ] 024. Add Tetragon adapter golden payload tests.
+- [x] 024. Add Tetragon adapter golden payload tests.
 - [ ] 025. Add Hubble adapter package.
 - [ ] 026. Normalize Hubble L3/L4 flow events.
 - [ ] 027. Normalize Hubble DNS flow events.
