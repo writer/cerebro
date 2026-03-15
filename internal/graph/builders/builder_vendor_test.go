@@ -623,6 +623,26 @@ func TestBuilder_ProjectsGoogleWorkspaceOAuthAppsIntoVendorRisk(t *testing.T) {
 		},
 	})
 	source.setResult(`
+		SELECT client_id, display_text, event_name, event_time
+		FROM google_workspace_token_activities
+		WHERE client_id IS NOT NULL
+	`, &DataQueryResult{
+		Rows: []map[string]any{
+			{
+				"client_id":    "client-1",
+				"display_text": "Slack",
+				"event_name":   "authorize",
+				"event_time":   "2026-03-10T00:00:00Z",
+			},
+			{
+				"client_id":    "client-1",
+				"display_text": "Slack",
+				"event_name":   "revoke",
+				"event_time":   "2026-03-11T00:00:00Z",
+			},
+		},
+	})
+	source.setResult(`
 		SELECT source_id, source_type, target_id, target_type, rel_type, properties
 		FROM resource_relationships
 	`, &DataQueryResult{
@@ -687,6 +707,18 @@ func TestBuilder_ProjectsGoogleWorkspaceOAuthAppsIntoVendorRisk(t *testing.T) {
 	}
 	if got := intProperty(t, vendor.Properties, "delegated_scope_count"); got != 2 {
 		t.Fatalf("expected two delegated scopes, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "recent_oauth_activity_count"); got != 2 {
+		t.Fatalf("expected two recent oauth activity events, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "recent_oauth_authorize_event_count"); got != 1 {
+		t.Fatalf("expected one authorize event, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "recent_oauth_revoke_event_count"); got != 1 {
+		t.Fatalf("expected one revoke event, got %d", got)
+	}
+	if got, _ := vendor.Properties["last_oauth_activity_at"].(string); got != "2026-03-11T00:00:00Z" {
+		t.Fatalf("expected last_oauth_activity_at to track newest event, got %#v", vendor.Properties["last_oauth_activity_at"])
 	}
 	if got := intProperty(t, vendor.Properties, "anonymous_application_count"); got != 0 {
 		t.Fatalf("expected no anonymous applications, got %d", got)
@@ -788,6 +820,60 @@ func TestBuilder_AnonymousGoogleWorkspaceOAuthAppsRaiseVendorRisk(t *testing.T) 
 	}
 }
 
+func TestBuilder_ProjectsGoogleWorkspaceAuditOnlyOAuthAppsIntoVendorRisk(t *testing.T) {
+	t.Parallel()
+
+	source := newMockDataSource()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	source.setResult(`SELECT id, primary_email, name, given_name, family_name, is_admin, is_delegated_admin, suspended, archived, is_enrolled_in_2sv, is_enforced_in_2sv, creation_time, last_login_time, org_unit_path FROM google_workspace_users`, &DataQueryResult{
+		Rows: []map[string]any{{"id": "user-1", "primary_email": "user-1@example.com", "name": "Alice Example"}},
+	})
+	source.setResult(`SELECT id, email, name, description, direct_members_count, admin_created FROM google_workspace_groups`, &DataQueryResult{Rows: []map[string]any{}})
+	source.setResult(`SELECT client_id, display_text, anonymous, native_app, app_type FROM google_workspace_tokens`, &DataQueryResult{Rows: []map[string]any{}})
+	source.setResult(`
+		SELECT client_id, display_text, event_name, event_time
+		FROM google_workspace_token_activities
+		WHERE client_id IS NOT NULL
+	`, &DataQueryResult{
+		Rows: []map[string]any{{
+			"client_id":    "client-audit-only",
+			"display_text": "Notion",
+			"event_name":   "authorize",
+			"event_time":   "2026-03-12T00:00:00Z",
+		}},
+	})
+
+	builder := NewBuilder(source, logger)
+	if err := builder.Build(context.Background()); err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+
+	app, ok := builder.Graph().GetNode("client-audit-only")
+	if !ok {
+		t.Fatal("expected application node from audit-only token activity")
+	}
+	if app.Provider != "google_workspace" || app.Kind != NodeKindApplication {
+		t.Fatalf("expected google workspace application node, got %#v", app)
+	}
+	if app.Name != "Notion" {
+		t.Fatalf("expected audit-only app name from display text, got %q", app.Name)
+	}
+	vendor, ok := builder.Graph().GetNode("vendor:notion")
+	if !ok {
+		t.Fatal("expected vendor node from audit-only token activity")
+	}
+	if got := intProperty(t, vendor.Properties, "managed_application_count"); got != 1 {
+		t.Fatalf("expected one managed application, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "recent_oauth_activity_count"); got != 1 {
+		t.Fatalf("expected one recent oauth activity event, got %d", got)
+	}
+	if got, _ := vendor.Properties["last_oauth_activity_at"].(string); got != "2026-03-12T00:00:00Z" {
+		t.Fatalf("expected last_oauth_activity_at to reflect audit-only activity, got %#v", vendor.Properties["last_oauth_activity_at"])
+	}
+}
+
 func TestBuilder_ProjectsOktaAppGrantScopesIntoVendorRisk(t *testing.T) {
 	t.Parallel()
 
@@ -811,6 +897,36 @@ func TestBuilder_ProjectsOktaAppGrantScopesIntoVendorRisk(t *testing.T) {
 				"name":         "slack",
 				"status":       "ACTIVE",
 				"sign_on_mode": "OPENID_CONNECT",
+			},
+		},
+	})
+	source.setResult(`
+		SELECT app_id, source, user_id, status, created, last_updated
+		FROM okta_app_grants
+		WHERE app_id IS NOT NULL
+	`, &DataQueryResult{
+		Rows: []map[string]any{
+			{
+				"app_id":       "okta-app-slack",
+				"source":       "ADMIN",
+				"status":       "ACTIVE",
+				"created":      "2026-03-01T00:00:00Z",
+				"last_updated": "2026-03-03T00:00:00Z",
+			},
+			{
+				"app_id":       "okta-app-slack",
+				"source":       "END_USER",
+				"user_id":      "user-1",
+				"status":       "ACTIVE",
+				"created":      "2026-03-02T00:00:00Z",
+				"last_updated": "2026-03-04T00:00:00Z",
+			},
+			{
+				"app_id":       "okta-app-slack",
+				"source":       "ADMIN",
+				"status":       "INACTIVE",
+				"created":      "2026-02-01T00:00:00Z",
+				"last_updated": "2026-02-02T00:00:00Z",
 			},
 		},
 	})
@@ -890,6 +1006,18 @@ func TestBuilder_ProjectsOktaAppGrantScopesIntoVendorRisk(t *testing.T) {
 	}
 	if got := intProperty(t, vendor.Properties, "dependent_user_count"); got != 1 {
 		t.Fatalf("expected one dependent user from principal grant, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "active_grant_count"); got != 2 {
+		t.Fatalf("expected two active grant records, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "admin_grant_count"); got != 1 {
+		t.Fatalf("expected one admin-sourced active grant, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "principal_grant_count"); got != 1 {
+		t.Fatalf("expected one principal-sourced active grant, got %d", got)
+	}
+	if got, _ := vendor.Properties["last_grant_updated_at"].(string); got != "2026-03-04T00:00:00Z" {
+		t.Fatalf("expected last_grant_updated_at to track newest active grant, got %#v", vendor.Properties["last_grant_updated_at"])
 	}
 	if got := intProperty(t, vendor.Properties, "vendor_risk_score"); got != 97 {
 		t.Fatalf("expected Okta grant signals to raise vendor risk score to 97, got %d", got)

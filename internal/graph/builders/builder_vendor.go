@@ -574,6 +574,14 @@ func (b *Builder) refreshVendorSignals(vendor *Node, projection *vendorProjectio
 	var managedServiceAccountCount int
 	var anonymousApplicationCount int
 	var nativeApplicationCount int
+	var activeGrantCount int
+	var adminGrantCount int
+	var principalGrantCount int
+	var recentOAuthActivityCount int
+	var recentOAuthAuthorizeEventCount int
+	var recentOAuthRevokeEventCount int
+	var lastGrantUpdatedAt string
+	var lastOAuthActivityAt string
 	var appRoleAssignmentRequiredCount int
 	var appRoleAssignmentOptionalCount int
 	var verifiedIntegrationCount int
@@ -609,6 +617,14 @@ func (b *Builder) refreshVendorSignals(vendor *Node, projection *vendorProjectio
 			if nativeApp, ok := boolPropertyValue(node.Properties, "native_app"); ok && nativeApp {
 				nativeApplicationCount++
 			}
+			activeGrantCount += intPropertyValue(node.Properties, "active_grant_count")
+			adminGrantCount += intPropertyValue(node.Properties, "admin_grant_count")
+			principalGrantCount += intPropertyValue(node.Properties, "principal_grant_count")
+			recentOAuthActivityCount += intPropertyValue(node.Properties, "recent_token_activity_count")
+			recentOAuthAuthorizeEventCount += intPropertyValue(node.Properties, "recent_token_authorize_event_count")
+			recentOAuthRevokeEventCount += intPropertyValue(node.Properties, "recent_token_revoke_event_count")
+			lastGrantUpdatedAt = maxRFC3339String(lastGrantUpdatedAt, propertyString(node.Properties, "last_grant_updated_at"))
+			lastOAuthActivityAt = maxRFC3339String(lastOAuthActivityAt, propertyString(node.Properties, "last_token_activity_at"))
 		case NodeKindServiceAccount:
 			managedServiceAccountCount++
 		}
@@ -703,6 +719,14 @@ func (b *Builder) refreshVendorSignals(vendor *Node, projection *vendorProjectio
 	vendor.Properties["managed_service_account_count"] = managedServiceAccountCount
 	vendor.Properties["anonymous_application_count"] = anonymousApplicationCount
 	vendor.Properties["native_application_count"] = nativeApplicationCount
+	vendor.Properties["active_grant_count"] = activeGrantCount
+	vendor.Properties["admin_grant_count"] = adminGrantCount
+	vendor.Properties["principal_grant_count"] = principalGrantCount
+	vendor.Properties["recent_oauth_activity_count"] = recentOAuthActivityCount
+	vendor.Properties["recent_oauth_authorize_event_count"] = recentOAuthAuthorizeEventCount
+	vendor.Properties["recent_oauth_revoke_event_count"] = recentOAuthRevokeEventCount
+	vendor.Properties["last_grant_updated_at"] = lastGrantUpdatedAt
+	vendor.Properties["last_oauth_activity_at"] = lastOAuthActivityAt
 	vendor.Properties["verified_publisher_count"] = verifiedIntegrationCount
 	vendor.Properties["verified_publisher_ids"] = sortedVendorKeys(verifiedPublisherIDs)
 	vendor.Properties["verified_publisher_names"] = sortedVendorKeys(verifiedPublisherNames)
