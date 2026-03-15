@@ -239,6 +239,13 @@ func (a *Analyzer) Analyze(ctx context.Context, rootfsPath string) (*Report, err
 				inv.metadataErrors = append(inv.metadataErrors, err.Error())
 			}
 		}
+		if shouldInspectTechnologyFile(filePath, info.Mode(), info.Size(), a.maxFileBytes) {
+			if data, ok, err := readLimitedFile(root, filePath, a.maxFileBytes); err == nil && ok {
+				inv.addTechnologies(detectTechnologies(filePath, data)...)
+			} else if err != nil {
+				inv.metadataErrors = append(inv.metadataErrors, err.Error())
+			}
+		}
 		if shouldInspectIaCFile(filePath, info.Mode(), info.Size(), a.maxSecretFileBytes) {
 			if data, ok, err := readLimitedFile(root, filePath, a.maxSecretFileBytes); err == nil && ok {
 				artifacts, findings := inspectIaCFile(filePath, data)
@@ -298,6 +305,7 @@ func (a *Analyzer) Analyze(ctx context.Context, rootfsPath string) (*Report, err
 	report.Misconfigurations = inv.configs
 	report.IaCArtifacts = inv.iacArtifacts
 	report.Malware = inv.malware
+	report.Technologies = inv.sortedTechnologies()
 	report.SBOM = buildSBOM(report.GeneratedAt, report.Packages)
 	report.Findings = dedupeFindings(append(report.Findings, inv.findings...))
 	report.Summary = Summary{
@@ -307,6 +315,7 @@ func (a *Analyzer) Analyze(ctx context.Context, rootfsPath string) (*Report, err
 		MisconfigurationCount: len(report.Misconfigurations),
 		IaCArtifactCount:      len(report.IaCArtifacts),
 		MalwareCount:          len(report.Malware),
+		TechnologyCount:       len(report.Technologies),
 		Truncated:             inv.truncated,
 	}
 	report.Metadata["entries_visited"] = inv.entriesVisited
@@ -325,10 +334,12 @@ type inventory struct {
 	packages       map[string]PackageRecord
 	iacArtifactIDs map[string]struct{}
 	secretKeys     map[string]struct{}
+	technologyKeys map[string]struct{}
 	secrets        []SecretFinding
 	configs        []ConfigFinding
 	iacArtifacts   []IaCArtifact
 	malware        []MalwareFinding
+	technologies   []TechnologyRecord
 	findings       []scanner.ContainerFinding
 	entriesVisited int
 	truncated      bool
@@ -341,6 +352,7 @@ func newInventory(now time.Time) *inventory {
 		packages:       make(map[string]PackageRecord),
 		iacArtifactIDs: make(map[string]struct{}),
 		secretKeys:     make(map[string]struct{}),
+		technologyKeys: make(map[string]struct{}),
 	}
 }
 
@@ -425,6 +437,21 @@ func (i *inventory) addMalware(finding MalwareFinding) {
 	})
 }
 
+func (i *inventory) addTechnologies(records ...TechnologyRecord) {
+	for _, record := range records {
+		record = normalizeTechnologyRecord(record)
+		key := technologyKey(record)
+		if key == "" {
+			continue
+		}
+		if _, exists := i.technologyKeys[key]; exists {
+			continue
+		}
+		i.technologyKeys[key] = struct{}{}
+		i.technologies = append(i.technologies, record)
+	}
+}
+
 func (i *inventory) sortedPackages() []PackageRecord {
 	pkgs := make([]PackageRecord, 0, len(i.packages))
 	for _, pkg := range i.packages {
@@ -445,6 +472,26 @@ func (i *inventory) sortedPackages() []PackageRecord {
 		return left.Location < right.Location
 	})
 	return pkgs
+}
+
+func (i *inventory) sortedTechnologies() []TechnologyRecord {
+	records := make([]TechnologyRecord, len(i.technologies))
+	copy(records, i.technologies)
+	sort.Slice(records, func(a, b int) bool {
+		left := records[a]
+		right := records[b]
+		if left.Category != right.Category {
+			return left.Category < right.Category
+		}
+		if left.Name != right.Name {
+			return left.Name < right.Name
+		}
+		if left.Version != right.Version {
+			return left.Version < right.Version
+		}
+		return left.Path < right.Path
+	})
+	return records
 }
 
 func readLimitedFile(root *os.Root, filePath string, limit int64) ([]byte, bool, error) {

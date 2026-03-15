@@ -109,6 +109,14 @@ type MalwareFinding struct {
 	Engine      string `json:"engine,omitempty"`
 }
 
+type TechnologyRecord struct {
+	Name       string            `json:"name"`
+	Category   string            `json:"category"`
+	Version    string            `json:"version,omitempty"`
+	Path       string            `json:"path,omitempty"`
+	Attributes map[string]string `json:"attributes,omitempty"`
+}
+
 type SBOMComponent struct {
 	BOMRef    string `json:"bom_ref"`
 	Type      string `json:"type"`
@@ -133,6 +141,7 @@ type Summary struct {
 	MisconfigurationCount int  `json:"misconfiguration_count"`
 	IaCArtifactCount      int  `json:"iac_artifact_count"`
 	MalwareCount          int  `json:"malware_count"`
+	TechnologyCount       int  `json:"technology_count"`
 	Truncated             bool `json:"truncated,omitempty"`
 }
 
@@ -147,6 +156,7 @@ type Report struct {
 	Misconfigurations []ConfigFinding              `json:"misconfigurations,omitempty"`
 	IaCArtifacts      []IaCArtifact                `json:"iac_artifacts,omitempty"`
 	Malware           []MalwareFinding             `json:"malware,omitempty"`
+	Technologies      []TechnologyRecord           `json:"technologies,omitempty"`
 	SBOM              SBOMDocument                 `json:"sbom"`
 	Summary           Summary                      `json:"summary"`
 	Metadata          map[string]any               `json:"metadata,omitempty"`

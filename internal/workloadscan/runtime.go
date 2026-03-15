@@ -87,9 +87,10 @@ func (a FilesystemAnalyzer) Analyze(ctx context.Context, input AnalysisInput) (*
 		FindingCount: int64(len(catalog.Findings)),
 		Catalog:      catalog,
 		Metadata: map[string]any{
-			"analyzer":      "filesystem",
-			"mount_path":    input.Mount.MountPath,
-			"package_count": catalog.Summary.PackageCount,
+			"analyzer":         "filesystem",
+			"mount_path":       input.Mount.MountPath,
+			"package_count":    catalog.Summary.PackageCount,
+			"technology_count": catalog.Summary.TechnologyCount,
 		},
 	}
 	if catalog.SBOM.Format != "" {
