@@ -28,6 +28,18 @@ Status: executed end-to-end via PR workflow
 - [x] Extend the native Entra provider schema/select list to include `app_owner_organization_id` and `publisher_name`.
 - [x] Align builder identity queries with the parser contract for both Azure Graph and Entra fallback paths.
 - [x] Add build-path and CDC-path regressions that assert the vendor-relevant service-principal metadata survives end to end.
+
+## Deep Review Cycle 114 - Vendor Canonicalization and Provenance (2026-03-15)
+
+- [x] Gap: explicit vendor nodes still fragmented on raw publisher/display strings, so `Slack` and `Slack Technologies, LLC` would project as separate vendors despite representing the same integration boundary.
+- [x] Gap: vendor inventory still lacked first-class provenance and scope fields from issue `#255`, making the node kind present but not yet stable enough for downstream scoring.
+- [x] Gap: vendor scope summaries were vulnerable to self-contamination from the new `managed_by` edges unless access aggregation stayed permission-edge-only.
+
+- [x] Add deterministic vendor alias canonicalization using conservative token normalization and legal-suffix stripping.
+- [x] Collapse vendor projections by owner-organization ID first, then by canonical alias/prefix match.
+- [x] Persist explicit vendor aliases, owner organization IDs, assignment-required counts, permission level, accessible resource kinds, and sensitive resource counts on vendor nodes.
+- [x] Add TDD coverage for canonical alias collapse and provenance/scope aggregation.
+- [x] Fix the regression where derived `managed_by` edges polluted the vendor's own access-scope summary.
 - [x] Regenerate ontology docs and rerun graph/builders validation plus lint.
 
 ## Deep Review Cycle 111 - Vulnerability Reachability Prioritization on Workload Scans (2026-03-15)
