@@ -58,6 +58,9 @@ func TestAdapterNormalizeProcessExec(t *testing.T) {
 	if observation.Kind != runtime.ObservationKindProcessExec {
 		t.Fatalf("kind = %s, want %s", observation.Kind, runtime.ObservationKindProcessExec)
 	}
+	if observation.ID != "exec-1:process_exec" {
+		t.Fatalf("id = %q, want %q", observation.ID, "exec-1:process_exec")
+	}
 	if observation.ResourceID != "pod:default/xwing" {
 		t.Fatalf("resource_id = %q, want %q", observation.ResourceID, "pod:default/xwing")
 	}
@@ -72,8 +75,81 @@ func TestAdapterNormalizeProcessExec(t *testing.T) {
 	}
 }
 
+func TestAdapterNormalizeProcessExit(t *testing.T) {
+	raw := []byte(`{
+		"process_exit": {
+			"process": {
+				"exec_id": "exec-exit-1",
+				"pid": 51583,
+				"uid": 0,
+				"cwd": "/",
+				"binary": "/usr/bin/whoami",
+				"arguments": "--version",
+				"flags": "execve rootcwd clone",
+				"start_time": "2022-05-11T12:54:45.615Z",
+				"pod": {
+					"namespace": "default",
+					"name": "xwing",
+					"workload": "xwing",
+					"container": {
+						"id": "containerd://1fb931d2f6e5",
+						"name": "spaceship",
+						"image": {
+							"id": "docker.io/tgraf/netperf@sha256:deadbeef",
+							"name": "docker.io/tgraf/netperf:latest"
+						}
+					},
+					"pod_labels": {
+						"app.kubernetes.io/name": "xwing"
+					}
+				},
+				"docker": "1fb931d2f6e5",
+				"parent_exec_id": "parent-exit-1"
+			},
+			"parent": {
+				"binary": "/bin/bash",
+				"arguments": "-c whoami --version"
+			},
+			"signal": "SIGTERM",
+			"status": 143
+		},
+		"node_name": "worker-2",
+		"time": "2022-05-11T12:54:46.000Z"
+	}`)
+
+	observations, err := (Adapter{}).Normalize(context.Background(), raw)
+	if err != nil {
+		t.Fatalf("Normalize: %v", err)
+	}
+	if len(observations) != 1 {
+		t.Fatalf("len(observations) = %d, want 1", len(observations))
+	}
+	observation := observations[0]
+	if observation.Kind != runtime.ObservationKindProcessExit {
+		t.Fatalf("kind = %s, want %s", observation.Kind, runtime.ObservationKindProcessExit)
+	}
+	if observation.ID != "exec-exit-1:process_exit" {
+		t.Fatalf("id = %q, want %q", observation.ID, "exec-exit-1:process_exit")
+	}
+	if observation.Process == nil || observation.Process.Name != "whoami" {
+		t.Fatalf("process = %#v, want whoami", observation.Process)
+	}
+	if observation.Process.ParentName != "bash" {
+		t.Fatalf("parent_name = %q, want bash", observation.Process.ParentName)
+	}
+	if got := observation.Metadata["exit_signal"]; got != "SIGTERM" {
+		t.Fatalf("exit_signal = %#v, want SIGTERM", got)
+	}
+	if got := observation.Metadata["exit_status"]; got != float64(143) && got != uint32(143) && got != 143 {
+		t.Fatalf("exit_status = %#v, want 143", got)
+	}
+	if len(observation.Tags) != 2 || observation.Tags[1] != "process_exit" {
+		t.Fatalf("tags = %#v, want process_exit tag", observation.Tags)
+	}
+}
+
 func TestAdapterNormalizeUnsupportedEvent(t *testing.T) {
-	raw := []byte(`{"process_exit":{"process":{"exec_id":"exec-1"}}}`)
+	raw := []byte(`{"process_kprobe":{"process":{"exec_id":"exec-1"}}}`)
 	if _, err := (Adapter{}).Normalize(context.Background(), raw); err == nil {
 		t.Fatal("expected unsupported event error")
 	}
@@ -121,5 +197,71 @@ func TestAdapterNormalizeEmptyBinaryDoesNotEmitDotNames(t *testing.T) {
 	}
 	if observation.Process.ParentName != "" {
 		t.Fatalf("parent name = %q, want empty", observation.Process.ParentName)
+	}
+}
+
+func TestProcessExecAndExitObservationsUseDistinctIDs(t *testing.T) {
+	execRaw := []byte(`{
+		"process_exec": {
+			"process": {
+				"exec_id": "shared-exec-id",
+				"pid": 42,
+				"uid": 0,
+				"binary": "/usr/bin/sh",
+				"pod": {
+					"namespace": "default",
+					"name": "api-0",
+					"container": {
+						"id": "containerd://abc",
+						"name": "api",
+						"image": {
+							"id": "sha256:abc",
+							"name": "ghcr.io/acme/api:latest"
+						}
+					}
+				}
+			},
+			"parent": {
+				"binary": "/bin/bash"
+			}
+		}
+	}`)
+	exitRaw := []byte(`{
+		"process_exit": {
+			"process": {
+				"exec_id": "shared-exec-id",
+				"pid": 42,
+				"uid": 0,
+				"binary": "/usr/bin/sh",
+				"pod": {
+					"namespace": "default",
+					"name": "api-0",
+					"container": {
+						"id": "containerd://abc",
+						"name": "api",
+						"image": {
+							"id": "sha256:abc",
+							"name": "ghcr.io/acme/api:latest"
+						}
+					}
+				}
+			},
+			"parent": {
+				"binary": "/bin/bash"
+			},
+			"status": 0
+		}
+	}`)
+
+	execObservations, err := (Adapter{}).Normalize(context.Background(), execRaw)
+	if err != nil {
+		t.Fatalf("Normalize exec: %v", err)
+	}
+	exitObservations, err := (Adapter{}).Normalize(context.Background(), exitRaw)
+	if err != nil {
+		t.Fatalf("Normalize exit: %v", err)
+	}
+	if execObservations[0].ID == exitObservations[0].ID {
+		t.Fatalf("observation IDs collided: %q", execObservations[0].ID)
 	}
 }
