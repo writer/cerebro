@@ -30,15 +30,17 @@ func TestImpactPathAnalyzer_IncidentBlastRadius(t *testing.T) {
 	g.AddNode(&Node{ID: "service-1", Kind: NodeKindApplication, Name: "API Service", Properties: map[string]any{"outage_detected": true}})
 	g.AddNode(&Node{ID: "customer-1", Kind: NodeKindCustomer, Name: "Acme", Properties: map[string]any{"arr": 500000}})
 	g.AddNode(&Node{ID: "customer-2", Kind: NodeKindCustomer, Name: "Beta", Properties: map[string]any{"arr": 400000}})
+	g.AddNode(&Node{ID: "vendor-1", Kind: NodeKindVendor, Name: "Slack"})
 
 	g.AddEdge(&Edge{ID: "s-c1", Source: "service-1", Target: "customer-1", Kind: EdgeKindOwns, Effect: EdgeEffectAllow})
 	g.AddEdge(&Edge{ID: "s-c2", Source: "service-1", Target: "customer-2", Kind: EdgeKindOwns, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "s-v1", Source: "service-1", Target: "vendor-1", Kind: EdgeKindOwns, Effect: EdgeEffectAllow})
 
 	analyzer := NewImpactPathAnalyzer(g)
 	result := analyzer.Analyze("service-1", ImpactScenarioIncidentBlast, 3)
 
-	if result.TotalAffectedEntities < 2 {
-		t.Fatalf("expected at least 2 affected entities, got %d", result.TotalAffectedEntities)
+	if result.TotalAffectedEntities < 3 {
+		t.Fatalf("expected at least 3 affected entities, got %d", result.TotalAffectedEntities)
 	}
 	if len(result.Paths) == 0 {
 		t.Fatal("expected at least one incident impact path")
