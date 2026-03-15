@@ -229,6 +229,48 @@ func TestWorkloadScanReconcileAWSRequiredFlags(t *testing.T) {
 	}
 }
 
+func TestWorkloadScanAzureRegionFlagUsesDedicatedVariable(t *testing.T) {
+	previousAWS := workloadScanAWSRegion
+	previousAzure := workloadScanAzureRegion
+	t.Cleanup(func() {
+		workloadScanAWSRegion = previousAWS
+		workloadScanAzureRegion = previousAzure
+	})
+
+	workloadScanAWSRegion = ""
+	workloadScanAzureRegion = ""
+	if err := workloadScanRunAzureCmd.Flags().Set("region", "eastus"); err != nil {
+		t.Fatalf("set azure region flag: %v", err)
+	}
+	if workloadScanAzureRegion != "eastus" {
+		t.Fatalf("expected azure region variable to be populated, got %q", workloadScanAzureRegion)
+	}
+	if workloadScanAWSRegion != "" {
+		t.Fatalf("expected aws region variable to remain unchanged, got %q", workloadScanAWSRegion)
+	}
+}
+
+func TestGCPRegionFromZone(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "zone", in: "us-central1-a", want: "us-central1"},
+		{name: "region", in: "us-central1", want: "us-central1"},
+		{name: "trims whitespace", in: " europe-west1-b ", want: "europe-west1"},
+		{name: "empty", in: "   ", want: ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := gcpRegionFromZone(tc.in); got != tc.want {
+				t.Fatalf("gcpRegionFromZone(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestParseWorkloadScanPriorityOverride(t *testing.T) {
 	tests := []struct {
 		name    string

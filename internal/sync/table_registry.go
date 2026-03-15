@@ -81,6 +81,7 @@ var ExpectedTables = []string{
 	"gcp_scc_findings",
 	"azure_compute_virtual_machines",
 	"azure_aks_clusters",
+	"azure_aks_node_pools",
 	"azure_rbac_role_assignments",
 	"azure_policy_assignments",
 	"azure_graph_service_principals",
