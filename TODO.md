@@ -5,6 +5,21 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 91 - Conditional Resource Enforcement in IAM Boundary and SCP Evaluation (2026-03-14)
+
+### Review findings
+- [x] Gap: issue `#277` was correctly separating conditional and unconditional access, but the later SCP allow-list / deny filtering and permission-boundary filtering only iterated `ep.Resources`.
+- [x] Gap: conditional-only resources in `ep.Conditional` could therefore bypass SCP implicit-deny behavior and permission-boundary trimming entirely.
+- [x] Gap: wildcard-target SCP edges with resource-dependent conditions such as `aws:ResourceAccount` were evaluated once against a `nil` target node, so valid per-resource denies could be skipped.
+
+### Execution plan
+- [x] Add TDD coverage for:
+  - [x] permission boundaries stripping conditional-only access
+  - [x] wildcard SCP resource-account conditions being evaluated per concrete resource
+- [x] Evaluate SCP allow/deny edges against the concrete effective-permission target set instead of a single wildcard placeholder target.
+- [x] Apply SCP allow-list and permission-boundary implicit denies across both unconditional and conditional resource buckets.
+- [x] Keep wildcard resource evaluation deduplicated so shared resource IDs across unconditional/conditional buckets do not double-apply actions.
+
 ## Deep Review Cycle 90 - Audit Mutation Batch Poison-Pill and Change-Type Normalization (2026-03-14)
 
 ### Review findings

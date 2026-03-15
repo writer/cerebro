@@ -3,6 +3,8 @@ package api
 import (
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -349,9 +351,124 @@ func (s *Server) getEffectivePermissions(w http.ResponseWriter, r *http.Request)
 	}
 
 	calc := graph.NewEffectivePermissionsCalculator(s.app.SecurityGraph)
+	if ctx := permissionEvaluationContextFromRequest(r); ctx != nil {
+		s.json(w, http.StatusOK, calc.CalculateWithContext(principalID, ctx))
+		return
+	}
 	perms := calc.Calculate(principalID)
 
 	s.json(w, http.StatusOK, perms)
+}
+
+func permissionEvaluationContextFromRequest(r *http.Request) *graph.PermissionEvaluationContext {
+	if r == nil || r.URL == nil {
+		return nil
+	}
+
+	query := r.URL.Query()
+	ctx := &graph.PermissionEvaluationContext{
+		Keys:          make(map[string]any),
+		Request:       make(map[string]any),
+		Principal:     make(map[string]any),
+		Resource:      make(map[string]any),
+		PrincipalTags: make(map[string]string),
+		ResourceTags:  make(map[string]string),
+	}
+	populated := false
+
+	if value := strings.TrimSpace(query.Get("source_ip")); value != "" {
+		ctx.SourceIP = value
+		populated = true
+	}
+	if value := strings.TrimSpace(query.Get("source_vpce")); value != "" {
+		ctx.SourceVPCe = value
+		populated = true
+	}
+	if value := strings.TrimSpace(query.Get("principal_arn")); value != "" {
+		ctx.PrincipalARN = value
+		populated = true
+	}
+	if value := strings.TrimSpace(query.Get("principal_account")); value != "" {
+		ctx.PrincipalAccount = value
+		populated = true
+	}
+	if value := strings.TrimSpace(query.Get("resource_arn")); value != "" {
+		ctx.ResourceARN = value
+		populated = true
+	}
+	if value := strings.TrimSpace(query.Get("resource_account")); value != "" {
+		ctx.ResourceAccount = value
+		populated = true
+	}
+	if value := strings.TrimSpace(query.Get("current_time")); value != "" {
+		if parsed, err := time.Parse(time.RFC3339, value); err == nil {
+			ctx.CurrentTime = parsed.UTC()
+			populated = true
+		}
+	}
+
+	for key, values := range query {
+		if len(values) == 0 {
+			continue
+		}
+		assign := func(target map[string]any, trimmedKey string) {
+			if trimmedKey == "" {
+				return
+			}
+			populated = true
+			if len(values) == 1 {
+				target[trimmedKey] = values[0]
+				return
+			}
+			target[trimmedKey] = append([]string(nil), values...)
+		}
+
+		switch {
+		case strings.HasPrefix(key, "context."):
+			assign(ctx.Keys, strings.TrimPrefix(key, "context."))
+		case strings.HasPrefix(key, "request."):
+			assign(ctx.Request, strings.TrimPrefix(key, "request."))
+		case strings.HasPrefix(key, "principal."):
+			assign(ctx.Principal, strings.TrimPrefix(key, "principal."))
+		case strings.HasPrefix(key, "resource."):
+			assign(ctx.Resource, strings.TrimPrefix(key, "resource."))
+		case strings.HasPrefix(key, "principal_tag."):
+			tagKey := strings.TrimPrefix(key, "principal_tag.")
+			if tagKey != "" {
+				ctx.PrincipalTags[tagKey] = values[len(values)-1]
+				populated = true
+			}
+		case strings.HasPrefix(key, "resource_tag."):
+			tagKey := strings.TrimPrefix(key, "resource_tag.")
+			if tagKey != "" {
+				ctx.ResourceTags[tagKey] = values[len(values)-1]
+				populated = true
+			}
+		}
+	}
+
+	if !populated {
+		return nil
+	}
+	if len(ctx.Keys) == 0 {
+		ctx.Keys = nil
+	}
+	if len(ctx.Request) == 0 {
+		ctx.Request = nil
+	}
+	if len(ctx.Principal) == 0 {
+		ctx.Principal = nil
+	}
+	if len(ctx.Resource) == 0 {
+		ctx.Resource = nil
+	}
+	if len(ctx.PrincipalTags) == 0 {
+		ctx.PrincipalTags = nil
+	}
+	if len(ctx.ResourceTags) == 0 {
+		ctx.ResourceTags = nil
+	}
+	return ctx
 }
 
 func (s *Server) comparePermissions(w http.ResponseWriter, r *http.Request) {
