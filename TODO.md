@@ -5,6 +5,21 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 124 - Tetragon Network Observation Normalization (2026-03-15)
+
+### Review findings
+- [x] Gap: the runtime visibility substrate now normalizes process lifecycle and file telemetry, but it still drops Tetragon network observations even though outbound connection context is the next required seam for runtime causality.
+- [x] Gap: Tetragon emits both first-class `process_connect` events and socket-oriented `process_kprobe` connect hooks, so handling only one shape would leave real deployments with partial network coverage.
+- [x] Gap: network observations need IDs distinct from process/file telemetry while still preserving destination identity and observation timestamp so downstream dedupe does not collapse repeated connections.
+
+### Execution plan
+- [x] Normalize first-class Tetragon `process_connect` events into `ObservationKindNetworkFlow`.
+- [x] Normalize socket-oriented `process_kprobe` connect hooks:
+  - [x] `tcp_connect`
+  - [x] `security_socket_connect`
+- [x] Preserve Tetragon socket family, socket type, policy, action, and return-code metadata on normalized observations.
+- [x] Add regression tests for first-class `process_connect`, `tcp_connect`, and `security_socket_connect` payloads.
+
 ## Deep Review Cycle 123 - Tetragon File Observation Normalization (2026-03-15)
 
 ### Review findings
@@ -70,7 +85,7 @@ Status: executed end-to-end via PR workflow
 - [x] 018. Normalize Tetragon process exec events.
 - [x] 019. Normalize Tetragon process exit events.
 - [x] 020. Normalize Tetragon file events.
-- [ ] 021. Normalize Tetragon network events.
+- [x] 021. Normalize Tetragon network events.
 - [ ] 022. Normalize Tetragon DNS events.
 - [ ] 023. Normalize Tetragon security signal payloads.
 - [ ] 024. Add Tetragon adapter golden payload tests.

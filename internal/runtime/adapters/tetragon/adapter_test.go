@@ -529,6 +529,220 @@ func TestFileKprobeObservationsUseDistinctIDs(t *testing.T) {
 	}
 }
 
+func TestAdapterNormalizeProcessConnect(t *testing.T) {
+	raw := []byte(`{
+		"process_connect":{
+			"process":{
+				"exec_id":"exec-connect-1",
+				"pid":115153,
+				"uid":0,
+				"cwd":"/usr/share/elasticsearch/",
+				"binary":"/usr/bin/curl",
+				"arguments":"www.google.com",
+				"flags":"execve clone",
+				"start_time":"2022-01-19T16:29:01.861Z",
+				"pod":{
+					"namespace":"tenant-jobs",
+					"name":"elasticsearch-56f8fc6988-pb8c7",
+					"workload":"elasticsearch",
+					"container":{
+						"id":"docker://86eb9e29",
+						"name":"elasticsearch",
+						"image":{
+							"id":"docker-pullable://quay.io/isovalent/jobs-app-elasticsearch@sha256:ff3aa586",
+							"name":"quay.io/isovalent/jobs-app-elasticsearch:latest"
+						}
+					}
+				},
+				"docker":"86eb9e29",
+				"parent_exec_id":"parent-connect-1"
+			},
+			"parent":{
+				"binary":"/bin/bash"
+			},
+			"source_ip":"10.88.0.7",
+			"source_port":49168,
+			"destination_ip":"142.250.180.196",
+			"destination_port":80,
+			"protocol":"TCP"
+		},
+		"node_name":"minikube",
+		"time":"2022-01-19T16:29:02.021Z"
+	}`)
+
+	observations, err := (Adapter{}).Normalize(context.Background(), raw)
+	if err != nil {
+		t.Fatalf("Normalize: %v", err)
+	}
+	if len(observations) != 1 {
+		t.Fatalf("len(observations) = %d, want 1", len(observations))
+	}
+	observation := observations[0]
+	if observation.Kind != runtime.ObservationKindNetworkFlow {
+		t.Fatalf("kind = %s, want %s", observation.Kind, runtime.ObservationKindNetworkFlow)
+	}
+	if observation.Network == nil {
+		t.Fatal("expected network context")
+	}
+	if observation.Network.Direction != "outbound" {
+		t.Fatalf("direction = %q, want outbound", observation.Network.Direction)
+	}
+	if observation.Network.Protocol != "TCP" {
+		t.Fatalf("protocol = %q, want TCP", observation.Network.Protocol)
+	}
+	if observation.Network.SrcIP != "10.88.0.7" || observation.Network.DstIP != "142.250.180.196" {
+		t.Fatalf("network = %#v, want src/dst IPs", observation.Network)
+	}
+	if observation.Network.SrcPort != 49168 || observation.Network.DstPort != 80 {
+		t.Fatalf("network ports = %#v, want 49168 -> 80", observation.Network)
+	}
+	if observation.Process == nil || observation.Process.Name != "curl" {
+		t.Fatalf("process = %#v, want curl", observation.Process)
+	}
+}
+
+func TestAdapterNormalizeTcpConnectKprobe(t *testing.T) {
+	raw := []byte(`{
+		"process_kprobe": {
+			"process": {
+				"exec_id": "exec-tcp-connect-1",
+				"pid": 64746,
+				"uid": 0,
+				"cwd": "/",
+				"binary": "/usr/bin/curl",
+				"arguments": "http://ebpf.io",
+				"flags": "execve rootcwd clone",
+				"start_time": "2024-04-14T02:18:02.240856427Z",
+				"pod": {
+					"namespace": "default",
+					"name": "net-access",
+					"workload": "net-access",
+					"container": {
+						"id": "containerd://6b742e38",
+						"name": "net-access",
+						"image": {
+							"id": "docker.io/library/busybox@sha256:c3839dd8",
+							"name": "docker.io/library/busybox:latest"
+						}
+					},
+					"pod_labels": {
+						"run": "net-access"
+					}
+				},
+				"docker": "6b742e38",
+				"parent_exec_id": "parent-tcp-connect-1"
+			},
+			"parent": {
+				"binary": "/bin/sh"
+			},
+			"function_name": "tcp_connect",
+			"args": [
+				{
+					"sock_arg": {
+						"family": "AF_INET",
+						"type": "SOCK_STREAM",
+						"protocol": "IPPROTO_TCP",
+						"saddr": "10.88.0.6",
+						"daddr": "104.198.14.52",
+						"sport": 48272,
+						"dport": 80
+					}
+				}
+			]
+		},
+		"node_name": "worker-1",
+		"time": "2024-04-14T02:18:14.376304204Z"
+	}`)
+
+	observations, err := (Adapter{}).Normalize(context.Background(), raw)
+	if err != nil {
+		t.Fatalf("Normalize: %v", err)
+	}
+	observation := observations[0]
+	if observation.Kind != runtime.ObservationKindNetworkFlow {
+		t.Fatalf("kind = %s, want %s", observation.Kind, runtime.ObservationKindNetworkFlow)
+	}
+	if observation.Network == nil || observation.Network.DstIP != "104.198.14.52" || observation.Network.DstPort != 80 {
+		t.Fatalf("network = %#v, want outbound connect", observation.Network)
+	}
+	if got := observation.Metadata["function_name"]; got != "tcp_connect" {
+		t.Fatalf("function_name = %#v, want tcp_connect", got)
+	}
+}
+
+func TestAdapterNormalizeSecuritySocketConnectKprobe(t *testing.T) {
+	raw := []byte(`{
+		"process_kprobe": {
+			"process": {
+				"exec_id": "exec-socket-connect-1",
+				"pid": 64746,
+				"uid": 0,
+				"cwd": "/",
+				"binary": "/usr/bin/nc",
+				"arguments": "127.0.0.1 9939",
+				"flags": "execve rootcwd clone",
+				"start_time": "2024-04-14T02:18:02.240856427Z",
+				"pod": {
+					"namespace": "default",
+					"name": "net-access",
+					"workload": "net-access",
+					"container": {
+						"id": "containerd://6b742e38",
+						"name": "net-access",
+						"image": {
+							"id": "docker.io/library/busybox@sha256:c3839dd8",
+							"name": "docker.io/library/busybox:latest"
+						}
+					}
+				},
+				"docker": "6b742e38",
+				"parent_exec_id": "parent-socket-connect-1"
+			},
+			"parent": {
+				"binary": "/bin/sh"
+			},
+			"function_name": "security_socket_connect",
+			"args": [
+				{
+					"sock_arg": {
+						"protocol": "IPPROTO_TCP"
+					}
+				},
+				{
+					"sockaddr_arg": {
+						"family": "AF_INET",
+						"addr": "127.0.0.1",
+						"port": 9939
+					}
+				}
+			],
+			"return": {
+				"int_arg": 0
+			}
+		},
+		"node_name": "worker-1",
+		"time": "2024-04-14T02:18:14.376304204Z"
+	}`)
+
+	observations, err := (Adapter{}).Normalize(context.Background(), raw)
+	if err != nil {
+		t.Fatalf("Normalize: %v", err)
+	}
+	observation := observations[0]
+	if observation.Kind != runtime.ObservationKindNetworkFlow {
+		t.Fatalf("kind = %s, want %s", observation.Kind, runtime.ObservationKindNetworkFlow)
+	}
+	if observation.Network == nil {
+		t.Fatal("expected network context")
+	}
+	if observation.Network.Protocol != "IPPROTO_TCP" {
+		t.Fatalf("protocol = %q, want IPPROTO_TCP", observation.Network.Protocol)
+	}
+	if observation.Network.DstIP != "127.0.0.1" || observation.Network.DstPort != 9939 {
+		t.Fatalf("network = %#v, want dst 127.0.0.1:9939", observation.Network)
+	}
+}
+
 func TestAdapterNormalizeUnsupportedEvent(t *testing.T) {
 	raw := []byte(`{"process_kprobe":{"process":{"exec_id":"exec-1"}}}`)
 	if _, err := (Adapter{}).Normalize(context.Background(), raw); err == nil {
