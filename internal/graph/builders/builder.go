@@ -342,6 +342,8 @@ func (b *Builder) buildRelationshipEdges(ctx context.Context) {
 			edgeTargetType = sourceType
 		case "HAS_ROLE":
 			kind = EdgeKindCanAssume
+		case "CAN_ACCESS":
+			kind = EdgeKindCanRead
 		case "MEMBER_OF":
 			if isIdentityType(sourceType) && isIdentityType(targetType) {
 				kind = EdgeKindMemberOf
