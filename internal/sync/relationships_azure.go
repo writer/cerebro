@@ -560,6 +560,15 @@ func (r *RelationshipExtractor) extractAzureRelationships(ctx context.Context) (
 		rels = appendEntraAppRoleAssignmentRelationships(rels, result.Rows)
 	}
 
+	query = `SELECT ID, CLIENT_ID, CONSENT_TYPE, PRINCIPAL_ID, RESOURCE_ID, SCOPE
+	         FROM ENTRA_OAUTH2_PERMISSION_GRANTS
+	         WHERE CLIENT_ID IS NOT NULL AND RESOURCE_ID IS NOT NULL`
+	if result, ok, err := r.queryRowsForTable(ctx, "ENTRA_OAUTH2_PERMISSION_GRANTS", query); err != nil {
+		return 0, err
+	} else if ok {
+		rels = appendEntraOAuth2PermissionGrantRelationships(rels, result.Rows)
+	}
+
 	return r.persistRelationships(ctx, rels)
 }
 
@@ -600,6 +609,67 @@ func appendEntraAppRoleAssignmentRelationships(rels []Relationship, rows []map[s
 			TargetType: "entra:service_principal",
 			RelType:    RelCanAccess,
 			Properties: props,
+		})
+	}
+
+	return rels
+}
+
+func appendEntraOAuth2PermissionGrantRelationships(rels []Relationship, rows []map[string]interface{}) []Relationship {
+	for _, row := range rows {
+		clientID := toString(queryRow(row, "client_id"))
+		resourceID := toString(queryRow(row, "resource_id"))
+		if clientID == "" || resourceID == "" {
+			continue
+		}
+
+		baseProps, err := encodeProperties(map[string]interface{}{
+			"grant_id":     toString(queryRow(row, "id")),
+			"grant_type":   "delegated_permission",
+			"consent_type": toString(queryRow(row, "consent_type")),
+			"scope":        toString(queryRow(row, "scope")),
+			"principal_id": toString(queryRow(row, "principal_id")),
+			"resource_id":  resourceID,
+			"client_id":    clientID,
+		})
+		if err != nil {
+			baseProps = "{}"
+		}
+
+		rels = append(rels, Relationship{
+			SourceID:   clientID,
+			SourceType: "entra:service_principal",
+			TargetID:   resourceID,
+			TargetType: "entra:service_principal",
+			RelType:    RelCanAccess,
+			Properties: baseProps,
+		})
+
+		consentType := strings.TrimSpace(strings.ToLower(toString(queryRow(row, "consent_type"))))
+		principalID := toString(queryRow(row, "principal_id"))
+		if consentType != "principal" || principalID == "" {
+			continue
+		}
+
+		userProps, err := encodeProperties(map[string]interface{}{
+			"grant_id":     toString(queryRow(row, "id")),
+			"grant_type":   "delegated_permission_consent",
+			"consent_type": toString(queryRow(row, "consent_type")),
+			"scope":        toString(queryRow(row, "scope")),
+			"resource_id":  resourceID,
+			"client_id":    clientID,
+		})
+		if err != nil {
+			userProps = "{}"
+		}
+
+		rels = append(rels, Relationship{
+			SourceID:   principalID,
+			SourceType: "entra:user",
+			TargetID:   clientID,
+			TargetType: "entra:service_principal",
+			RelType:    RelCanAccess,
+			Properties: userProps,
 		})
 	}
 

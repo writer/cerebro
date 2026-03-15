@@ -118,6 +118,19 @@ func (e *EntraIDProvider) Schema() []TableSchema {
 			PrimaryKey: []string{"id"},
 		},
 		{
+			Name:        "entra_oauth2_permission_grants",
+			Description: "Entra ID delegated OAuth permission grants",
+			Columns: []ColumnSchema{
+				{Name: "id", Type: "string", Required: true},
+				{Name: "client_id", Type: "string"},
+				{Name: "consent_type", Type: "string"},
+				{Name: "principal_id", Type: "string"},
+				{Name: "resource_id", Type: "string"},
+				{Name: "scope", Type: "string"},
+			},
+			PrimaryKey: []string{"id"},
+		},
+		{
 			Name:        "entra_conditional_access_policies",
 			Description: "Entra ID conditional access policies",
 			Columns: []ColumnSchema{
@@ -303,6 +316,15 @@ func (e *EntraIDProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResu
 		result.TotalRows += servicePrincipals.Rows
 	}
 
+	// Sync delegated OAuth permission grants
+	oauth2PermissionGrants, err := e.syncOAuth2PermissionGrants(ctx)
+	if err != nil {
+		result.Errors = append(result.Errors, "oauth2_permission_grants: "+err.Error())
+	} else {
+		result.Tables = append(result.Tables, *oauth2PermissionGrants)
+		result.TotalRows += oauth2PermissionGrants.Rows
+	}
+
 	// Sync conditional access policies
 	caPolicies, err := e.syncConditionalAccessPolicies(ctx)
 	if err != nil {
@@ -467,6 +489,26 @@ func (e *EntraIDProvider) syncServicePrincipals(ctx context.Context) (*TableResu
 	rows := make([]map[string]interface{}, 0, len(sps))
 	for _, sp := range sps {
 		rows = append(rows, normalizeEntraRow(sp))
+	}
+
+	return e.syncTable(ctx, schema, rows)
+}
+
+func (e *EntraIDProvider) syncOAuth2PermissionGrants(ctx context.Context) (*TableResult, error) {
+	schema, err := e.schemaFor("entra_oauth2_permission_grants")
+	result := &TableResult{Name: "entra_oauth2_permission_grants"}
+	if err != nil {
+		return result, err
+	}
+
+	grants, err := e.listAll(ctx, "/v1.0/oauth2PermissionGrants?$select=id,clientId,consentType,principalId,resourceId,scope")
+	if err != nil {
+		return result, err
+	}
+
+	rows := make([]map[string]interface{}, 0, len(grants))
+	for _, grant := range grants {
+		rows = append(rows, normalizeEntraRow(grant))
 	}
 
 	return e.syncTable(ctx, schema, rows)

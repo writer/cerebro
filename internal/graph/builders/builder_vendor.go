@@ -1,6 +1,7 @@
 package builders
 
 import (
+	"encoding/json"
 	"sort"
 	"strings"
 	"unicode"
@@ -443,6 +444,68 @@ func permissionEdges(edges []*Edge) []*Edge {
 	return filtered
 }
 
+func relationshipProperties(edge *Edge) map[string]any {
+	if edge == nil || edge.Properties == nil {
+		return nil
+	}
+	raw, ok := edge.Properties["properties"]
+	if !ok || raw == nil {
+		return nil
+	}
+	switch typed := raw.(type) {
+	case map[string]any:
+		return typed
+	case string:
+		var decoded map[string]any
+		if err := json.Unmarshal([]byte(typed), &decoded); err == nil {
+			return decoded
+		}
+	case []byte:
+		var decoded map[string]any
+		if err := json.Unmarshal(typed, &decoded); err == nil {
+			return decoded
+		}
+	}
+	return nil
+}
+
+func relationshipPropertyString(edge *Edge, key string) string {
+	return strings.TrimSpace(queryRowString(relationshipProperties(edge), key))
+}
+
+func delegatedGrantKey(edge *Edge) string {
+	if edge == nil {
+		return ""
+	}
+	if grantID := relationshipPropertyString(edge, "grant_id"); grantID != "" {
+		return grantID
+	}
+	grantType := strings.ToLower(relationshipPropertyString(edge, "grant_type"))
+	if !strings.HasPrefix(grantType, "delegated_permission") {
+		return ""
+	}
+	return strings.Join([]string{
+		edge.Source,
+		edge.Target,
+		grantType,
+		strings.ToLower(relationshipPropertyString(edge, "consent_type")),
+		relationshipPropertyString(edge, "scope"),
+	}, "|")
+}
+
+func appendDelegatedScopes(edge *Edge, scopes map[string]struct{}) {
+	if edge == nil || scopes == nil {
+		return
+	}
+	for _, scope := range strings.Fields(relationshipPropertyString(edge, "scope")) {
+		scope = strings.TrimSpace(scope)
+		if scope == "" {
+			continue
+		}
+		scopes[scope] = struct{}{}
+	}
+}
+
 func edgesByPermission(edges []*Edge) (map[string]struct{}, map[string]struct{}, map[string]struct{}, map[string]struct{}) {
 	accessibleTargets := make(map[string]struct{})
 	readableTargets := make(map[string]struct{})
@@ -523,6 +586,10 @@ func (b *Builder) refreshVendorSignals(vendor *Node, projection *vendorProjectio
 	dependentUsers := make(map[string]struct{})
 	dependentGroups := make(map[string]struct{})
 	dependentServiceAccounts := make(map[string]struct{})
+	delegatedGrantIDs := make(map[string]struct{})
+	delegatedAdminConsentGrantIDs := make(map[string]struct{})
+	delegatedPrincipalConsentGrantIDs := make(map[string]struct{})
+	delegatedScopes := make(map[string]struct{})
 	verifiedPublisherIDs := make(map[string]struct{})
 	verifiedPublisherNames := make(map[string]struct{})
 
@@ -575,6 +642,29 @@ func (b *Builder) refreshVendorSignals(vendor *Node, projection *vendorProjectio
 		for target := range sensitiveTargetsForEdges(b.graph, outEdges) {
 			sensitiveTargets[target] = struct{}{}
 		}
+		for _, edge := range outEdges {
+			grantType := strings.ToLower(relationshipPropertyString(edge, "grant_type"))
+			if grantType != "delegated_permission" {
+				continue
+			}
+			if grantKey := delegatedGrantKey(edge); grantKey != "" {
+				delegatedGrantIDs[grantKey] = struct{}{}
+				if strings.EqualFold(relationshipPropertyString(edge, "consent_type"), "AllPrincipals") {
+					delegatedAdminConsentGrantIDs[grantKey] = struct{}{}
+				}
+			}
+			appendDelegatedScopes(edge, delegatedScopes)
+		}
+		for _, edge := range permissionEdges(b.graph.GetInEdges(managedNodeID)) {
+			if !strings.EqualFold(relationshipPropertyString(edge, "grant_type"), "delegated_permission_consent") {
+				continue
+			}
+			if grantKey := delegatedGrantKey(edge); grantKey != "" {
+				delegatedGrantIDs[grantKey] = struct{}{}
+				delegatedPrincipalConsentGrantIDs[grantKey] = struct{}{}
+			}
+			appendDelegatedScopes(edge, delegatedScopes)
+		}
 		collectVendorDependentPrincipals(b.graph, managedNodeID, dependentPrincipals, dependentUsers, dependentGroups, dependentServiceAccounts)
 	}
 
@@ -587,6 +677,8 @@ func (b *Builder) refreshVendorSignals(vendor *Node, projection *vendorProjectio
 		len(dependentPrincipals),
 		len(dependentGroups),
 		appRoleAssignmentOptionalCount,
+		len(delegatedAdminConsentGrantIDs),
+		len(delegatedScopes),
 	)
 
 	vendor.Properties["canonical_name"] = vendor.Name
@@ -609,6 +701,11 @@ func (b *Builder) refreshVendorSignals(vendor *Node, projection *vendorProjectio
 	vendor.Properties["accessible_resource_count"] = len(accessibleTargets)
 	vendor.Properties["accessible_resource_kinds"] = sortedVendorKeys(accessibleResourceKinds)
 	vendor.Properties["sensitive_resource_count"] = len(sensitiveTargets)
+	vendor.Properties["delegated_grant_count"] = len(delegatedGrantIDs)
+	vendor.Properties["delegated_admin_consent_count"] = len(delegatedAdminConsentGrantIDs)
+	vendor.Properties["delegated_principal_consent_count"] = len(delegatedPrincipalConsentGrantIDs)
+	vendor.Properties["delegated_scope_count"] = len(delegatedScopes)
+	vendor.Properties["delegated_scopes"] = sortedVendorKeys(delegatedScopes)
 	vendor.Properties["read_access_count"] = len(readableTargets)
 	vendor.Properties["write_access_count"] = len(writableTargets)
 	vendor.Properties["admin_access_count"] = len(adminTargets)
@@ -739,7 +836,7 @@ func collectVendorGroupDependents(g *Graph, groupID string, seenGroups, all, use
 	}
 }
 
-func vendorRiskScore(readCount, writeCount, adminCount, accessibleResourceCount, sensitiveResourceCount, dependentPrincipalCount, dependentGroupCount, optionalAssignmentCount int) int {
+func vendorRiskScore(readCount, writeCount, adminCount, accessibleResourceCount, sensitiveResourceCount, dependentPrincipalCount, dependentGroupCount, optionalAssignmentCount, delegatedAdminConsentCount, delegatedScopeCount int) int {
 	score := 0
 	switch {
 	case adminCount > 0:
@@ -754,6 +851,8 @@ func vendorRiskScore(readCount, writeCount, adminCount, accessibleResourceCount,
 	score += minInt(15, dependentPrincipalCount*2)
 	score += minInt(10, dependentGroupCount*5)
 	score += minInt(10, optionalAssignmentCount*5)
+	score += minInt(15, delegatedAdminConsentCount*15)
+	score += minInt(10, delegatedScopeCount*2)
 	if score > 100 {
 		return 100
 	}
