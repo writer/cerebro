@@ -5,6 +5,31 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 112 - Explicit Vendor Ontology + Identity Integration Projection (2026-03-15)
+
+### Review findings
+- [x] Gap: issue `#255` still depended on overloaded `company` semantics even though the world-model architecture already called out `vendor` as a first-class ontology module.
+- [x] Gap: identity-provider integrations with real access semantics existed in the graph, but there was no derived vendor inventory node to aggregate them.
+- [x] Gap: incremental CDC rebuilds would leave any derived vendor inventory stale unless the projection was wired into both full-build and incremental rebuild paths.
+
+### Execution plan
+- [x] Add TDD coverage for builtin `vendor` registration and business-category behavior.
+- [x] Add builder coverage for projecting vendor nodes from Okta applications and Entra service principals while excluding Azure managed identities.
+- [x] Rebuild derived vendor nodes during both full graph builds and CDC edge rebuilds.
+- [x] Aggregate initial vendor risk signals from managed integration nodes onto the vendor node itself.
+
+## Deep Review Cycle 113 - Azure/Entra Service Principal Vendor Metadata Parity (2026-03-15)
+
+- [x] Gap: the Azure/Entra service-principal parser now depends on `app_owner_organization_id`, `app_role_assignment_required`, and `publisher_name`, but the source queries had drifted and no longer selected that full field set consistently.
+- [x] Gap: that drift meant vendor provenance/risk enrichment silently disappeared depending on whether the graph build came from `azure_graph_service_principals`, `entra_service_principals`, or CDC payload replay.
+- [x] Keep the parser contract and repair the source layers instead of trimming the metadata back out, because those fields are the right substrate for explicit vendor nodes.
+
+- [x] Extend the Azure Graph sync table and Microsoft Graph select list to include `app_role_assignment_required`.
+- [x] Extend the native Entra provider schema/select list to include `app_owner_organization_id` and `publisher_name`.
+- [x] Align builder identity queries with the parser contract for both Azure Graph and Entra fallback paths.
+- [x] Add build-path and CDC-path regressions that assert the vendor-relevant service-principal metadata survives end to end.
+- [x] Regenerate ontology docs and rerun graph/builders validation plus lint.
+
 ## Deep Review Cycle 111 - Vulnerability Reachability Prioritization on Workload Scans (2026-03-15)
 
 ### Review findings

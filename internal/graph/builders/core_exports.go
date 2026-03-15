@@ -33,6 +33,7 @@ const (
 	EdgeKindExposedTo      = graph.EdgeKindExposedTo
 	EdgeKindInteractedWith = graph.EdgeKindInteractedWith
 	EdgeKindLocatedIn      = graph.EdgeKindLocatedIn
+	EdgeKindManagedBy      = graph.EdgeKindManagedBy
 	EdgeKindMemberOf       = graph.EdgeKindMemberOf
 	EdgeKindReportsTo      = graph.EdgeKindReportsTo
 	EdgeKindResolvesTo     = graph.EdgeKindResolvesTo
@@ -65,8 +66,10 @@ const (
 	NodeKindServiceAccount     = graph.NodeKindServiceAccount
 	NodeKindUser               = graph.NodeKindUser
 	NodeKindFolder             = graph.NodeKindFolder
+	NodeKindVendor             = graph.NodeKindVendor
 
 	RiskNone     = graph.RiskNone
+	RiskLow      = graph.RiskLow
 	RiskMedium   = graph.RiskMedium
 	RiskHigh     = graph.RiskHigh
 	RiskCritical = graph.RiskCritical

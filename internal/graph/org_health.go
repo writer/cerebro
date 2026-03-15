@@ -860,7 +860,7 @@ func orgHealthTargets(g *Graph) []*Node {
 
 func isOrgHealthTargetKind(kind NodeKind) bool {
 	switch kind {
-	case NodeKindRepository, NodeKindApplication, NodeKindDatabase, NodeKindFunction, NodeKindBucket, NodeKindCustomer, NodeKindCompany:
+	case NodeKindRepository, NodeKindApplication, NodeKindDatabase, NodeKindFunction, NodeKindBucket, NodeKindCustomer, NodeKindCompany, NodeKindVendor:
 		return true
 	default:
 		return false

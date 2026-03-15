@@ -167,6 +167,8 @@ func (b *Builder) BuildCandidate(ctx context.Context) (*Graph, GraphMutationSumm
 		"edges", working.graph.EdgeCount(),
 		"duration", time.Since(edgeStart))
 
+	working.buildVendorNodes()
+
 	// Build unified person graph overlay (person nodes + projected edges).
 	if err := ctx.Err(); err != nil {
 		return nil, GraphMutationSummary{}, err

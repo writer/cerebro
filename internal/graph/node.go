@@ -65,6 +65,7 @@ const (
 	NodeKindCustomer      NodeKind = "customer"
 	NodeKindContact       NodeKind = "contact"
 	NodeKindCompany       NodeKind = "company"
+	NodeKindVendor        NodeKind = "vendor"
 	NodeKindDeal          NodeKind = "deal"
 	NodeKindOpportunity   NodeKind = "opportunity"
 	NodeKindSubscription  NodeKind = "subscription"

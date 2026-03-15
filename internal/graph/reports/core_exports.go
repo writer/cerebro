@@ -68,6 +68,7 @@ const (
 	NodeKindBucket                = graph.NodeKindBucket
 	NodeKindDatabase              = graph.NodeKindDatabase
 	NodeKindCompany               = graph.NodeKindCompany
+	NodeKindVendor                = graph.NodeKindVendor
 	NodeKindActivity              = graph.NodeKindActivity
 	NodeKindDecision              = graph.NodeKindDecision
 	NodeKindOutcome               = graph.NodeKindOutcome

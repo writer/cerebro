@@ -603,12 +603,12 @@ func (b *Builder) buildAzureIdentityNodes(ctx context.Context) {
 	b.loadAzurePreferredIdentityNodes(ctx, []nodeQuery{
 		{
 			table: "azure_graph_service_principals",
-			query: `SELECT id, display_name, app_id, service_principal_type, account_enabled, app_owner_organization_id, publisher_name, created_date_time, tags, subscription_id FROM azure_graph_service_principals`,
+			query: `SELECT id, display_name, app_id, service_principal_type, account_enabled, app_owner_organization_id, app_role_assignment_required, publisher_name, created_date_time, tags, subscription_id FROM azure_graph_service_principals`,
 			parse: parseAzureServicePrincipalNodes,
 		},
 		{
 			table: "entra_service_principals",
-			query: `SELECT id, display_name, app_id, service_principal_type, account_enabled, app_role_assignment_required, created_datetime, tags FROM entra_service_principals`,
+			query: `SELECT id, display_name, app_id, service_principal_type, account_enabled, app_owner_organization_id, app_role_assignment_required, publisher_name, created_datetime, tags FROM entra_service_principals`,
 			parse: parseAzureServicePrincipalNodes,
 		},
 		{
@@ -1087,13 +1087,15 @@ func parseAzureServicePrincipalNodes(rows []map[string]any) []*Node {
 		}
 		servicePrincipalType := firstNonEmpty(queryRowString(sp, "service_principal_type"), queryRowString(sp, "type"))
 		properties := map[string]any{
-			"app_id":              queryRow(sp, "app_id"),
-			"type":                servicePrincipalType,
-			"account_enabled":     queryRow(sp, "account_enabled"),
-			"tags":                queryRow(sp, "tags"),
-			"publisher_name":      queryRow(sp, "publisher_name"),
-			"created_datetime":    firstNonEmpty(queryRowString(sp, "created_datetime"), queryRowString(sp, "created_date_time")),
-			"azure_resource_type": "service_principal",
+			"app_id":                       queryRow(sp, "app_id"),
+			"type":                         servicePrincipalType,
+			"account_enabled":              queryRow(sp, "account_enabled"),
+			"app_owner_organization_id":    queryRow(sp, "app_owner_organization_id"),
+			"app_role_assignment_required": queryRow(sp, "app_role_assignment_required"),
+			"tags":                         queryRow(sp, "tags"),
+			"publisher_name":               queryRow(sp, "publisher_name"),
+			"created_datetime":             firstNonEmpty(queryRowString(sp, "created_datetime"), queryRowString(sp, "created_date_time")),
+			"azure_resource_type":          "service_principal",
 		}
 		if strings.Contains(strings.ToLower(servicePrincipalType), "managed") {
 			properties["identity_type"] = servicePrincipalType

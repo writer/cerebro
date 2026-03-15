@@ -66,6 +66,7 @@ func TestSchemaRegistry_IntelligenceSpineBuiltins(t *testing.T) {
 		NodeKindSource,
 		NodeKindClaim,
 		NodeKindAction,
+		NodeKindVendor,
 	}
 	for _, kind := range requiredNodeKinds {
 		if !reg.IsNodeKindRegistered(kind) {
