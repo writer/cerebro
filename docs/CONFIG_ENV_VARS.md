@@ -2,7 +2,7 @@
 
 Generated from `internal/app/app_config.go` (`LoadConfig`) via `go run ./scripts/generate_config_docs/main.go`.
 
-Total variables: **313**
+Total variables: **316**
 
 | Variable | Reader(s) | Default(s) | Config Field(s) | Validation rule(s) |
 |---|---|---|---|---|
@@ -155,6 +155,9 @@ Total variables: **313**
 | `LINEAR_API_KEY` | `getEnv` | `""` | `LinearAPIKey` | `-` |
 | `LINEAR_TEAM_ID` | `getEnv` | `""` | `LinearTeamID` | `-` |
 | `LOG_LEVEL` | `getEnv` | `"info"` | `LogLevel` | `must be one of debug, info, warn, error` |
+| `MALWARE_SCAN_CLAMAV_HOST` | `getEnv` | `""` | `MalwareScanClamAVHost` | `-` |
+| `MALWARE_SCAN_CLAMAV_PORT` | `getEnvInt` | `0` | `MalwareScanClamAVPort` | `-` |
+| `MALWARE_SCAN_VIRUSTOTAL_API_KEY` | `getEnv` | `""` | `MalwareScanVirusTotalAPIKey` | `-` |
 | `NATS_CONSUMER_ACK_WAIT` | `getEnvDuration` | `120 * time.Second` | `NATSConsumerAckWait` | `when NATS_CONSUMER_ENABLED=true, JetStream must also be enabled; identifiers must be present; durations must be positive; drop threshold must be non-negative` |
 | `NATS_CONSUMER_BATCH_SIZE` | `getEnvInt` | `50` | `NATSConsumerBatchSize` | `when NATS_CONSUMER_ENABLED=true, JetStream must also be enabled; identifiers must be present; durations must be positive; drop threshold must be non-negative` |
 | `NATS_CONSUMER_DEAD_LETTER_PATH` | `getEnv` | `filepath.Join(findings.DefaultFilePath(), "nats-consumer.dlq.jsonl")` | `NATSConsumerDeadLetterPath` | `-` |
