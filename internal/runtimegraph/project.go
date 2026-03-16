@@ -84,12 +84,7 @@ func MaterializeObservationsIntoGraph(g *graph.Graph, observations []*runtime.Ru
 		result.ObservationsMaterialized++
 	}
 
-	g.BuildIndex()
-	meta := g.Metadata()
-	meta.BuiltAt = now.UTC()
-	meta.NodeCount = g.NodeCount()
-	meta.EdgeCount = g.EdgeCount()
-	g.SetMetadata(meta)
+	refreshMaterializedGraphMetadata(g, now)
 	return result
 }
 
