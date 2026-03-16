@@ -244,7 +244,7 @@ func buildObservationContext(event payload) observationContext {
 	direction, primary, peer := primaryEndpoints(flow)
 	metadata := map[string]any{
 		"node_name":         nodeName,
-		"verdict":           strings.TrimSpace(flow.Verdict),
+		"verdict":           strings.ToUpper(strings.TrimSpace(flow.Verdict)),
 		"traffic_direction": strings.TrimSpace(flow.TrafficDirection),
 		"flow_type":         strings.TrimSpace(flow.Type),
 		"ip_version":        strings.TrimSpace(flow.IP.IPVersion),
@@ -264,19 +264,10 @@ func buildObservationContext(event payload) observationContext {
 	}
 	addEndpointMetadata(metadata, "source", flow.Source)
 	addEndpointMetadata(metadata, "destination", flow.Destination)
+	addEndpointMetadata(metadata, "primary", primary)
+	addEndpointMetadata(metadata, "peer", peer)
 	addServiceMetadata(metadata, "source_service", flow.SourceService)
 	addServiceMetadata(metadata, "destination_service", flow.DestinationService)
-	if peer != nil {
-		if value := strings.TrimSpace(peer.Namespace); value != "" {
-			metadata["peer_namespace"] = value
-		}
-		if value := strings.TrimSpace(peer.PodName); value != "" {
-			metadata["peer_pod_name"] = value
-		}
-		if value := primaryWorkloadName(peer); value != "" {
-			metadata["peer_workload_name"] = value
-		}
-	}
 	return observationContext{
 		observedAt: observedAt,
 		nodeName:   nodeName,
@@ -403,6 +394,9 @@ func podResourceID(namespace, pod string) string {
 func addEndpointMetadata(metadata map[string]any, prefix string, endpoint *endpoint) {
 	if metadata == nil || endpoint == nil {
 		return
+	}
+	if endpoint.ID != 0 {
+		metadata[prefix+"_endpoint_id"] = endpoint.ID
 	}
 	if endpoint.Identity != 0 {
 		metadata[prefix+"_identity"] = endpoint.Identity

@@ -5,6 +5,23 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 132 - Hubble Verdict and Identity Metadata (2026-03-15)
+
+### Review findings
+- [x] Gap: the Hubble adapter preserved `source_*` and `destination_*` metadata, but downstream runtime intelligence still had to special-case traffic direction because there was no direction-neutral `primary_*` / `peer_*` identity surface.
+- [x] Gap: Hubble endpoint IDs were still dropped entirely, which weakens future correlation against Cilium/Hubble endpoint-centric telemetry and any replay/debug workflows that need the original endpoint handle.
+- [x] Gap: verdict and peer identity metadata need to stay normalized across ingress and egress flows so later graph materialization and detection logic do not duplicate branchy source-vs-destination interpretation.
+
+### Execution plan
+- [x] Preserve Hubble endpoint IDs in normalized metadata.
+- [x] Add direction-neutral `primary_*` and `peer_*` identity metadata alongside the existing `source_*` / `destination_*` keys.
+- [x] Preserve peer cluster and label context for downstream runtime intelligence.
+- [x] Add regression tests for ingress and egress/DNS flows covering:
+  - [x] peer identity
+  - [x] primary identity
+  - [x] endpoint IDs
+  - [x] peer labels and cluster metadata
+
 ## Deep Review Cycle 130 - Tetragon DNS Observation Normalization (2026-03-15)
 
 ### Review findings
@@ -171,7 +188,7 @@ Status: executed end-to-end via PR workflow
 - [x] 025. Add Hubble adapter package.
 - [x] 026. Normalize Hubble L3/L4 flow events.
 - [x] 027. Normalize Hubble DNS flow events.
-- [ ] 028. Normalize Hubble verdict and identity metadata.
+- [x] 028. Normalize Hubble verdict and identity metadata.
 - [ ] 029. Add Hubble adapter golden payload tests.
 - [ ] 030. Add OpenTelemetry adapter package.
 - [ ] 031. Normalize OTLP log records into observation enrichments.

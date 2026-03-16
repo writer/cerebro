@@ -118,12 +118,14 @@ func TestAdapterNormalizeIngressUDPFlowAnchorsDestination(t *testing.T) {
 				}
 			},
 			"source": {
+				"ID": 17,
 				"identity": 2,
 				"labels": [
 					"reserved:world"
 				]
 			},
 			"destination": {
+				"ID": 42,
 				"identity": 12938,
 				"namespace": "kube-system",
 				"pod_name": "coredns-56f8",
@@ -165,11 +167,23 @@ func TestAdapterNormalizeIngressUDPFlowAnchorsDestination(t *testing.T) {
 	if observation.Network.Protocol != "UDP" {
 		t.Fatalf("protocol = %q, want UDP", observation.Network.Protocol)
 	}
-	if got := observation.Metadata["peer_identity"]; got != nil {
-		t.Fatalf("peer_identity should stay out of metadata, got %#v", got)
+	if got := observation.Metadata["verdict"]; got != "FORWARDED" {
+		t.Fatalf("verdict = %#v, want FORWARDED", got)
 	}
 	if got := observation.Metadata["peer_namespace"]; got != "" && got != nil {
 		t.Fatalf("peer_namespace = %#v, want empty for world source", got)
+	}
+	if got := observation.Metadata["peer_identity"]; got != float64(2) && got != uint32(2) && got != 2 {
+		t.Fatalf("peer_identity = %#v, want 2", got)
+	}
+	if got := observation.Metadata["peer_endpoint_id"]; got != float64(17) && got != uint32(17) && got != 17 {
+		t.Fatalf("peer_endpoint_id = %#v, want 17", got)
+	}
+	if got := observation.Metadata["primary_identity"]; got != float64(12938) && got != uint32(12938) && got != 12938 {
+		t.Fatalf("primary_identity = %#v, want 12938", got)
+	}
+	if got := observation.Metadata["primary_endpoint_id"]; got != float64(42) && got != uint32(42) && got != 42 {
+		t.Fatalf("primary_endpoint_id = %#v, want 42", got)
 	}
 	if got := observation.Metadata["source_identity"]; got != float64(2) && got != uint32(2) && got != 2 {
 		t.Fatalf("source_identity = %#v, want 2", got)
@@ -226,7 +240,12 @@ func TestAdapterNormalizeDNSFlow(t *testing.T) {
 				}
 			},
 			"source": {
+				"ID": 101,
 				"identity": 1234,
+				"cluster_name": "prod-west",
+				"labels": [
+					"k8s:app=xwing"
+				],
 				"namespace": "default",
 				"pod_name": "xwing",
 				"workloads": [
@@ -322,7 +341,12 @@ func TestAdapterNormalizeDNSFlowPreservesSharedFlowMetadata(t *testing.T) {
 				}
 			},
 			"source": {
+				"ID": 101,
 				"identity": 1234,
+				"cluster_name": "prod-west",
+				"labels": [
+					"k8s:app=xwing"
+				],
 				"namespace": "default",
 				"pod_name": "xwing",
 				"workloads": [
@@ -333,7 +357,12 @@ func TestAdapterNormalizeDNSFlowPreservesSharedFlowMetadata(t *testing.T) {
 				]
 			},
 			"destination": {
+				"ID": 202,
 				"identity": 5678,
+				"cluster_name": "remote-east",
+				"labels": [
+					"k8s:app=coredns"
+				],
 				"namespace": "kube-system",
 				"pod_name": "coredns-56f8",
 				"workloads": [
@@ -366,6 +395,24 @@ func TestAdapterNormalizeDNSFlowPreservesSharedFlowMetadata(t *testing.T) {
 	if got := observation.Metadata["destination_service_name"]; got != "kube-dns" {
 		t.Fatalf("destination_service_name = %#v, want kube-dns", got)
 	}
+	if got := observation.Metadata["primary_identity"]; got != float64(1234) && got != uint32(1234) && got != 1234 {
+		t.Fatalf("primary_identity = %#v, want 1234", got)
+	}
+	if got := observation.Metadata["primary_endpoint_id"]; got != float64(101) && got != uint32(101) && got != 101 {
+		t.Fatalf("primary_endpoint_id = %#v, want 101", got)
+	}
+	if got := observation.Metadata["primary_cluster_name"]; got != "prod-west" {
+		t.Fatalf("primary_cluster_name = %#v, want prod-west", got)
+	}
+	if got := observation.Metadata["peer_identity"]; got != float64(5678) && got != uint32(5678) && got != 5678 {
+		t.Fatalf("peer_identity = %#v, want 5678", got)
+	}
+	if got := observation.Metadata["peer_endpoint_id"]; got != float64(202) && got != uint32(202) && got != 202 {
+		t.Fatalf("peer_endpoint_id = %#v, want 202", got)
+	}
+	if got := observation.Metadata["peer_cluster_name"]; got != "remote-east" {
+		t.Fatalf("peer_cluster_name = %#v, want remote-east", got)
+	}
 	if got := observation.Metadata["peer_namespace"]; got != "kube-system" {
 		t.Fatalf("peer_namespace = %#v, want kube-system", got)
 	}
@@ -374,6 +421,9 @@ func TestAdapterNormalizeDNSFlowPreservesSharedFlowMetadata(t *testing.T) {
 	}
 	if got := observation.Metadata["peer_workload_name"]; got != "coredns" {
 		t.Fatalf("peer_workload_name = %#v, want coredns", got)
+	}
+	if got := observation.Metadata["peer_labels"]; !reflect.DeepEqual(got, []string{"k8s:app=coredns"}) {
+		t.Fatalf("peer_labels = %#v, want [k8s:app=coredns]", got)
 	}
 	if got := observation.Metadata["encrypted"]; got != true {
 		t.Fatalf("encrypted = %#v, want true", got)
