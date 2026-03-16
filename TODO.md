@@ -24,6 +24,20 @@ Status: executed end-to-end via PR workflow
   - [x] direction-neutral identity metadata
   - [x] DNS query preservation
 
+## Deep Review Cycle 135 - Runtime Observation Identity Binding (2026-03-16)
+
+### Review findings
+- [x] Gap: `NormalizeObservation` already derived identity from dedicated top-level fields, but it still failed to bind cluster/container/image/principal/workload context when adapters surfaced those values only through metadata or resource IDs.
+- [x] Gap: workload and namespace identity were still one-way; observations with `resource_id=deployment:prod/api` or `workload_ref=statefulset:data/postgres` kept the raw identifier but did not backfill normalized namespace/workload context.
+- [x] Gap: principal identity did not fall back to process or file actors when metadata lacked `principal_id`, which weakens runtime correlation for Falco- and file-oriented alerts.
+
+### Execution plan
+- [x] Bind cluster identity from normalized metadata fallbacks.
+- [x] Bind namespace and workload identity from `resource_id` / `workload_ref` when possible.
+- [x] Bind container and image identity from metadata fallbacks.
+- [x] Bind principal identity from metadata and process/file actor fallbacks.
+- [x] Add regression coverage for metadata-driven and resource-ref-driven identity binding.
+
 ## Deep Review Cycle 134 - Tetragon Security Signal Normalization (2026-03-16)
 
 ### Review findings
@@ -262,12 +276,12 @@ Status: executed end-to-end via PR workflow
 - [x] 048. Add observation ID generation when sources omit stable IDs.
 - [x] 049. Add observation timestamp fallback rules.
 - [x] 050. Add observation normalization tests.
-- [ ] 051. Bind observations to cluster identity.
-- [ ] 052. Bind observations to namespace identity.
-- [ ] 053. Bind observations to workload identity.
-- [ ] 054. Bind observations to container identity.
-- [ ] 055. Bind observations to image identity.
-- [ ] 056. Bind observations to principal identity.
+- [x] 051. Bind observations to cluster identity.
+- [x] 052. Bind observations to namespace identity.
+- [x] 053. Bind observations to workload identity.
+- [x] 054. Bind observations to container identity.
+- [x] 055. Bind observations to image identity.
+- [x] 056. Bind observations to principal identity.
 - [ ] 057. Bind observations to service identity from OTel/resource context.
 - [ ] 058. Bind observations to deployment runs when temporal evidence is strong.
 - [ ] 059. Add identity-binding tests for conflicting or partial runtime metadata.

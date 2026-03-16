@@ -475,6 +475,91 @@ func TestObservationFromEventStillNormalizesMetadataContext(t *testing.T) {
 	}
 }
 
+func TestNormalizeObservationBindsIdentityFromMetadataAndResourceRefs(t *testing.T) {
+	observation, err := NormalizeObservation(&RuntimeObservation{
+		Kind:       ObservationKindRuntimeAlert,
+		Source:     "falco",
+		ObservedAt: time.Date(2026, 3, 16, 16, 0, 0, 0, time.UTC),
+		ResourceID: "deployment:prod/api",
+		Metadata: map[string]any{
+			"cluster_name": "prod-west",
+			"container_id": "ctr-42",
+			"image_ref":    "ghcr.io/acme/api:1.2.3",
+			"image_id":     "sha256:api42",
+		},
+		Process: &ProcessEvent{
+			Name: "bash",
+			User: "root",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NormalizeObservation: %v", err)
+	}
+	if observation.Cluster != "prod-west" {
+		t.Fatalf("cluster = %q, want prod-west", observation.Cluster)
+	}
+	if observation.Namespace != "prod" {
+		t.Fatalf("namespace = %q, want prod", observation.Namespace)
+	}
+	if observation.WorkloadRef != "deployment:prod/api" {
+		t.Fatalf("workload_ref = %q, want deployment:prod/api", observation.WorkloadRef)
+	}
+	if observation.ContainerID != "ctr-42" {
+		t.Fatalf("container_id = %q, want ctr-42", observation.ContainerID)
+	}
+	if observation.ImageRef != "ghcr.io/acme/api:1.2.3" {
+		t.Fatalf("image_ref = %q, want ghcr.io/acme/api:1.2.3", observation.ImageRef)
+	}
+	if observation.ImageID != "sha256:api42" {
+		t.Fatalf("image_id = %q, want sha256:api42", observation.ImageID)
+	}
+	if observation.PrincipalID != "root" {
+		t.Fatalf("principal_id = %q, want root", observation.PrincipalID)
+	}
+}
+
+func TestNormalizeObservationBindsContainerIdentityFromResourceID(t *testing.T) {
+	observation, err := NormalizeObservation(&RuntimeObservation{
+		Kind:         ObservationKindRuntimeAlert,
+		Source:       "falco",
+		ObservedAt:   time.Date(2026, 3, 16, 16, 1, 0, 0, time.UTC),
+		ResourceID:   "container:ctr-99",
+		ResourceType: "container",
+		File: &FileEvent{
+			Operation: "modify",
+			Path:      "/tmp/dropper",
+			User:      "alice",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NormalizeObservation: %v", err)
+	}
+	if observation.ContainerID != "ctr-99" {
+		t.Fatalf("container_id = %q, want ctr-99", observation.ContainerID)
+	}
+	if observation.PrincipalID != "alice" {
+		t.Fatalf("principal_id = %q, want alice", observation.PrincipalID)
+	}
+}
+
+func TestNormalizeObservationBindsNamespaceFromWorkloadRef(t *testing.T) {
+	observation, err := NormalizeObservation(&RuntimeObservation{
+		Kind:        ObservationKindProcessExec,
+		Source:      "tetragon",
+		ObservedAt:  time.Date(2026, 3, 16, 16, 2, 0, 0, time.UTC),
+		WorkloadRef: "statefulset:data/postgres",
+		Process: &ProcessEvent{
+			Name: "postgres",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NormalizeObservation: %v", err)
+	}
+	if observation.Namespace != "data" {
+		t.Fatalf("namespace = %q, want data", observation.Namespace)
+	}
+}
+
 func TestDetectionEngineProcessObservationRejectsInvalidObservation(t *testing.T) {
 	engine := NewDetectionEngine()
 	findings := engine.ProcessObservation(context.Background(), &RuntimeObservation{
