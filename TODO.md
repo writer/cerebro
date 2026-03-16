@@ -260,9 +260,9 @@ Status: executed end-to-end via PR workflow
 - [x] 032. Normalize OTLP trace/span identity into observation enrichments.
 - [x] 033. Normalize OTel resource attributes into workload/service context.
 - [x] 034. Add OTLP adapter tests.
-- [ ] 035. Add Falco adapter package.
-- [ ] 036. Normalize Falco JSON outputs into observation/finding inputs.
-- [ ] 037. Add Falco adapter tests.
+- [x] 035. Add Falco adapter package.
+- [x] 036. Normalize Falco JSON outputs into observation/finding inputs.
+- [x] 037. Add Falco adapter tests.
 - [x] 038. Add a runtime ingest namespace to the execution-store-backed control plane.
 - [x] 039. Add a runtime ingest run record type.
 - [x] 040. Add runtime ingest event/checkpoint records.

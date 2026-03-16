@@ -281,6 +281,8 @@ security signals:
 - resource attributes populate workload, service, cluster, namespace, node,
   container, and image context when those fields are present
 
+For `Falco`, normalize alert JSON into `runtime_alert` observations with extracted process, file, network, and container context from `output_fields`. Do not treat Falco as the canonical process/network/file substrate; it is a detection feed with useful execution context.
+
 ## Ingestion Pipeline
 
 Recommended pipeline:
