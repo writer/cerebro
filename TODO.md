@@ -26,6 +26,28 @@ Status: executed end-to-end via PR workflow
 - [x] Add a benchmark covering repeated observation batches followed by one finalization pass.
 - [x] Re-run focused runtimegraph/graph tests, lint, and changed-file validation.
 
+## Deep Review Cycle 145 - Constant-Time Graph Node and Edge Counts (2026-03-16)
+
+### Review findings
+- [x] Gap: `NodeCount()` and `EdgeCount()` were still full-map/full-adjacency scans, which issue `#376` correctly called out as a hot-path tax on runtimegraph metadata refresh, health checks, snapshot creation, and multiple app/report paths.
+- [x] Gap: graph mutation helpers already centralize the active/inactive transitions for nodes and edges, so the graph had a precise seam for exact counters without inventing approximate background recounts.
+- [x] Gap: the existing tests asserted point counts in a few places but did not explicitly prove counter parity across mixed mutation, clear, and snapshot-restore flows.
+
+### Execution plan
+- [x] Add exact active node and edge counters to `Graph`.
+- [x] Maintain those counters across:
+  - [x] node add/upsert and revive paths
+  - [x] edge add paths
+  - [x] direct edge removal
+  - [x] node removal and incident-edge deletion
+  - [x] graph and edge clearing
+- [x] Switch `NodeCount()` and `EdgeCount()` to constant-time reads.
+- [x] Add TDD coverage for:
+  - [x] mixed mutation parity against a full scan
+  - [x] snapshot restore parity
+- [x] Add microbenchmarks for large-graph `NodeCount()` and `EdgeCount()`.
+- [x] Re-run focused graph tests and lint, then repo-wide tests.
+
 ## Deep Review Cycle 136 - Runtime Service Identity Binding (2026-03-16)
 
 ### Review findings
