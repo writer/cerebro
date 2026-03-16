@@ -39,7 +39,7 @@ func materializeSecretPivots(g *graph.Graph, workloadNode, scanNode *graph.Node,
 		g.AddNode(secretNode)
 		result.SecretNodesUpserted++
 
-		if addEdgeIfMissing(g, &graph.Edge{
+		if graph.AddEdgeIfMissing(g, &graph.Edge{
 			ID:         edgeID(scanNode.ID, secretNode.ID, graph.EdgeKindTargets),
 			Source:     scanNode.ID,
 			Target:     secretNode.ID,
@@ -60,7 +60,7 @@ func materializeSecretPivots(g *graph.Graph, workloadNode, scanNode *graph.Node,
 			props["credential_type"] = secret.Type
 			props["credential_finding_id"] = secret.ID
 			props["match_fingerprint"] = matchFingerprint
-			if addEdgeIfMissing(g, &graph.Edge{
+			if graph.AddEdgeIfMissing(g, &graph.Edge{
 				ID:         edgeID(secretNode.ID, target.ID, graph.EdgeKindTargets),
 				Source:     secretNode.ID,
 				Target:     target.ID,
@@ -88,7 +88,7 @@ func materializeSecretPivots(g *graph.Graph, workloadNode, scanNode *graph.Node,
 			if strings.TrimSpace(target.reason) != "" {
 				props["resolution_reason"] = target.reason
 			}
-			if addEdgeIfMissing(g, &graph.Edge{
+			if graph.AddEdgeIfMissing(g, &graph.Edge{
 				ID:         credentialPivotEdgeID(workloadNode.ID, target.node.ID, secret.ID, target.viaPrincipalID),
 				Source:     workloadNode.ID,
 				Target:     target.node.ID,

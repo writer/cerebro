@@ -95,6 +95,39 @@ Status: executed end-to-end via PR workflow
 - [x] Rebuild graph indexes and metadata after evidence projection.
 - [x] Re-run focused runtimegraph tests and lint.
 
+## Deep Review Cycle 141 - Workload To Observation Target Edges (2026-03-16)
+
+### Review findings
+- [x] Gap: runtime observation projection already creates `observation -> targets -> subject`, but the runtime visibility design explicitly calls for the reverse workload-centric navigation edge `workload -> targets -> observation`.
+- [x] Gap: that reverse edge should be limited to workload-class subjects rather than every observation target, otherwise service and other non-workload subjects would get noisy mirrored edges with no architectural justification.
+- [x] Gap: the runtime observation materialization result needs to report how many workload-target edges were added so later graph-causal slices can measure the projection delta directly.
+
+### Execution plan
+- [x] Extend runtime observation materialization to add reverse `targets` edges from workload-class subjects to observation nodes.
+- [x] Keep the new reverse edge scoped to workload-class node kinds only.
+- [x] Add TDD coverage for:
+  - [x] reverse edge creation for workload subjects
+  - [x] no reverse edge for service subjects
+- [x] result counter increments
+- [x] Re-run focused runtimegraph tests and lint.
+
+## Deep Review Cycle 142 - Runtime Evidence Based-On Edges (2026-03-16)
+
+### Review findings
+- [x] Gap: runtime findings now materialize as first-class `evidence` nodes, but they still float unconnected from the underlying `observation` that triggered promotion.
+- [x] Gap: without a causal `based_on` edge, graph queries cannot walk from promoted detection evidence back to the raw runtime observation context.
+- [x] Gap: repeated evidence materialization must stay idempotent, so the new `based_on` edge projection needs explicit deduplication and missing-target handling instead of raw `AddEdge` calls.
+
+### Execution plan
+- [x] Add runtime finding -> observation `based_on` edge construction in `internal/runtimegraph`.
+- [x] Keep the edge conditional on a real materialized observation node rather than creating dangling graph links.
+- [x] Reuse the runtimegraph dedupe helper so repeated materialization stays stable.
+- [x] Add TDD coverage for:
+  - [x] successful evidence -> observation linking
+  - [x] skip behavior when the underlying observation node is missing
+  - [x] idempotent repeated evidence projection
+- [x] Re-run focused runtimegraph tests and lint.
+
 ## Deep Review Cycle 133 - Hubble Golden Payload Coverage (2026-03-15)
 
 ### Review findings
@@ -378,8 +411,8 @@ Status: executed end-to-end via PR workflow
 - [x] 060. Add a runtime observation graph materializer package.
 - [x] 061. Project promoted runtime observations into graph `observation` nodes.
 - [x] 062. Project promoted runtime evidence into graph `evidence` nodes.
-- [ ] 063. Add workload-to-observation edges.
-- [ ] 064. Add finding-to-evidence edges.
+- [x] 063. Add workload-to-observation edges.
+- [x] 064. Add finding-to-evidence edges.
 - [ ] 065. Add response-to-target edges for runtime response outcomes.
 - [ ] 066. Add causal edges from response outcomes back to findings.
 - [ ] 067. Add causal edges from runtime observations to deployment runs where justified.
