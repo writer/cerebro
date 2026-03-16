@@ -36,11 +36,11 @@ func (a *App) MutateSecurityGraphMaybe(ctx context.Context, mutate func(*graph.G
 	current := a.CurrentSecurityGraph()
 	if current == nil {
 		current = graph.New()
-		a.configureGraphSchemaValidation(current)
+		a.configureGraphRuntimeBehavior(current)
 	}
 
 	candidate := current.Clone()
-	a.configureGraphSchemaValidation(candidate)
+	a.configureGraphRuntimeBehavior(candidate)
 
 	changed, err := mutate(candidate)
 	if err != nil {

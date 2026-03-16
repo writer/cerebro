@@ -15,6 +15,7 @@ import (
 	reports "github.com/writer/cerebro/internal/graph/reports"
 	"github.com/writer/cerebro/internal/health"
 	"github.com/writer/cerebro/internal/lineage"
+	"github.com/writer/cerebro/internal/metrics"
 	"github.com/writer/cerebro/internal/remediation"
 	"github.com/writer/cerebro/internal/runtime"
 	"github.com/writer/cerebro/internal/threatintel"
@@ -483,7 +484,7 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 	source := builders.NewSnowflakeSource(a.Warehouse)
 	a.SecurityGraphBuilder = builders.NewBuilder(source, a.Logger)
 	securityGraph := a.SecurityGraphBuilder.Graph()
-	a.configureGraphSchemaValidation(securityGraph)
+	a.configureGraphRuntimeBehavior(securityGraph)
 	a.setSecurityGraph(securityGraph)
 
 	graphCtx, cancel := context.WithCancel(backgroundWorkContext(ctx))
@@ -539,16 +540,26 @@ func backgroundWorkContext(ctx context.Context) context.Context {
 	return context.WithoutCancel(ctx)
 }
 
-func (a *App) configureGraphSchemaValidation(g *graph.Graph) {
+func (a *App) configureGraphRuntimeBehavior(g *graph.Graph) {
 	if g == nil {
 		return
 	}
 
 	mode := graph.SchemaValidationWarn
+	maxEntries := graph.DefaultTemporalHistoryMaxEntries
+	ttl := graph.DefaultTemporalHistoryTTL
 	if a != nil && a.Config != nil {
 		mode = graph.ParseSchemaValidationMode(a.Config.GraphSchemaValidationMode)
+		if a.Config.GraphPropertyHistoryMaxEntries > 0 {
+			maxEntries = a.Config.GraphPropertyHistoryMaxEntries
+		}
+		if a.Config.GraphPropertyHistoryTTL > 0 {
+			ttl = a.Config.GraphPropertyHistoryTTL
+		}
 	}
 	g.SetSchemaValidationMode(mode)
+	g.SetTemporalHistoryConfig(maxEntries, ttl)
+	metrics.SetGraphPropertyHistoryDepth(maxEntries)
 }
 
 // WaitForGraph blocks until the initial graph build completes (or ctx is cancelled).
@@ -622,7 +633,7 @@ func (a *App) activateBuiltSecurityGraph(ctx context.Context, securityGraph *gra
 		)
 	}
 	a.rematerializeEventCorrelations(securityGraph, "graph_activation")
-	a.configureGraphSchemaValidation(securityGraph)
+	a.configureGraphRuntimeBehavior(securityGraph)
 	a.setSecurityGraph(securityGraph)
 	meta := securityGraph.Metadata()
 	a.setGraphBuildState(GraphBuildSuccess, meta.BuiltAt, nil)

@@ -44,6 +44,10 @@ type Graph struct {
 	// Runtime ontology validation behavior and counters.
 	schemaValidationMode  SchemaValidationMode
 	schemaValidationStats SchemaValidationStats
+
+	// Property history retention controls.
+	temporalHistoryMaxEntries int
+	temporalHistoryTTL        time.Duration
 }
 
 // Metadata contains information about the graph
@@ -60,12 +64,14 @@ type Metadata struct {
 func New() *Graph {
 	mode := SchemaValidationWarn
 	return &Graph{
-		nodes:                 make(map[string]*Node),
-		outEdges:              make(map[string][]*Edge),
-		inEdges:               make(map[string][]*Edge),
-		blastRadiusVersion:    1,
-		schemaValidationMode:  mode,
-		schemaValidationStats: newSchemaValidationStats(mode),
+		nodes:                     make(map[string]*Node),
+		outEdges:                  make(map[string][]*Edge),
+		inEdges:                   make(map[string][]*Edge),
+		blastRadiusVersion:        1,
+		schemaValidationMode:      mode,
+		schemaValidationStats:     newSchemaValidationStats(mode),
+		temporalHistoryMaxEntries: DefaultTemporalHistoryMaxEntries,
+		temporalHistoryTTL:        DefaultTemporalHistoryTTL,
 	}
 }
 

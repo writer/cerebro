@@ -113,7 +113,7 @@ func TestGetEntityRecordAtTimeHonorsTransactionTo(t *testing.T) {
 }
 
 func TestGetEntityRecordAtTimeUsesRecordedAtHistoryAndTombstones(t *testing.T) {
-	base := time.Date(2026, 3, 10, 9, 0, 0, 0, time.UTC)
+	base := time.Now().UTC().Add(-6 * 24 * time.Hour).Truncate(time.Second)
 	correctionAt := base.Add(2 * time.Hour)
 	g := graph.New()
 	g.AddNode(&graph.Node{
