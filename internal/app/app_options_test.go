@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+
+	"github.com/writer/cerebro/internal/apiauth"
 )
 
 func TestNewWithOptions_UsesProvidedLogger(t *testing.T) {
@@ -25,10 +27,10 @@ func TestNewWithOptions_UsesProvidedLogger(t *testing.T) {
 }
 
 func TestNewWithOptions_APIAuthEnabledWithoutKeys(t *testing.T) {
-	cfg := &Config{
-		APIAuthEnabled: true,
-		APIKeys:        map[string]string{},
-	}
+	cfg := LoadConfig()
+	cfg.APIAuthEnabled = true
+	cfg.APIKeys = map[string]string{}
+	cfg.APICredentials = map[string]apiauth.Credential{}
 
 	_, err := NewWithOptions(context.Background(), WithConfig(cfg))
 	if err == nil {

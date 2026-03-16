@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -20,69 +19,24 @@ import (
 
 	"github.com/writer/cerebro/internal/agents"
 	"github.com/writer/cerebro/internal/app"
+	"github.com/writer/cerebro/internal/apptest"
 	"github.com/writer/cerebro/internal/attackpath"
 	"github.com/writer/cerebro/internal/auth"
-	"github.com/writer/cerebro/internal/cache"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/health"
 	"github.com/writer/cerebro/internal/identity"
-	"github.com/writer/cerebro/internal/lineage"
 	"github.com/writer/cerebro/internal/notifications"
 	"github.com/writer/cerebro/internal/policy"
 	"github.com/writer/cerebro/internal/providers"
 	"github.com/writer/cerebro/internal/remediation"
-	"github.com/writer/cerebro/internal/runtime"
-	"github.com/writer/cerebro/internal/scanner"
-	"github.com/writer/cerebro/internal/scheduler"
 	"github.com/writer/cerebro/internal/snowflake"
-	"github.com/writer/cerebro/internal/threatintel"
-	"github.com/writer/cerebro/internal/ticketing"
-	"github.com/writer/cerebro/internal/webhooks"
 )
 
 // newTestApp creates a minimal in-memory App suitable for API integration tests.
 func newTestApp(t *testing.T) *app.App {
 	t.Helper()
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	pe := policy.NewEngine()
-	fs := findings.NewStore()
-	sc := scanner.NewScanner(pe, scanner.ScanConfig{Workers: 2}, logger)
-	reportStateDir := t.TempDir()
-	if os.Getenv("GRAPH_SNAPSHOT_PATH") == "" {
-		t.Setenv("GRAPH_SNAPSHOT_PATH", filepath.Join(reportStateDir, "graph-snapshots"))
-	}
-
-	return &app.App{
-		Config: &app.Config{
-			LogLevel:                   "error",
-			Port:                       0,
-			PlatformReportRunStateFile: filepath.Join(reportStateDir, "state.json"),
-			PlatformReportSnapshotPath: filepath.Join(reportStateDir, "snapshots"),
-		},
-		Logger:         logger,
-		Policy:         pe,
-		Findings:       fs,
-		Scanner:        sc,
-		Cache:          cache.NewPolicyCache(1000, 5*time.Minute),
-		Agents:         agents.NewAgentRegistry(),
-		RBAC:           auth.NewRBAC(),
-		Webhooks:       webhooks.NewServiceForTesting(),
-		Notifications:  notifications.NewManager(),
-		Scheduler:      scheduler.NewScheduler(logger),
-		Ticketing:      ticketing.NewService(),
-		Identity:       identity.NewService(),
-		AttackPath:     attackpath.NewGraph(),
-		Providers:      providers.NewRegistry(),
-		Health:         health.NewRegistry(),
-		Lineage:        lineage.NewLineageMapper(),
-		Remediation:    remediation.NewEngine(logger),
-		RuntimeDetect:  runtime.NewDetectionEngine(),
-		RuntimeRespond: runtime.NewResponseEngine(),
-		SecurityGraph:  graph.New(),
-		ScanWatermarks: scanner.NewWatermarkStore(nil),
-		ThreatIntel:    threatintel.NewThreatIntelService(),
-	}
+	return apptest.NewApp(t)
 }
 
 // newTestServer creates a Server backed by the in-memory test app.
@@ -295,6 +249,15 @@ func TestReady_UnhealthyReturns503(t *testing.T) {
 
 func TestStatus(t *testing.T) {
 	s := newTestServer(t)
+	base := time.Date(2026, 3, 10, 10, 0, 0, 0, time.UTC)
+	s.app.SecurityGraph.AddNode(&graph.Node{
+		ID:       "service:payments",
+		Kind:     graph.NodeKindService,
+		Provider: "github",
+		Properties: map[string]any{
+			"observed_at": base.Add(-30 * time.Minute).Format(time.RFC3339),
+		},
+	})
 	w := do(t, s, "GET", "/status", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
@@ -306,10 +269,24 @@ func TestStatus(t *testing.T) {
 	if _, ok := body["retention"]; !ok {
 		t.Fatalf("expected retention in status response, got %v", body)
 	}
+	if freshness, ok := body["freshness"].(map[string]any); !ok || freshness["healthy"] == nil {
+		t.Fatalf("expected freshness in status response, got %v", body["freshness"])
+	}
+
+	freshness := do(t, s, "GET", "/api/v1/status/freshness", nil)
+	if freshness.Code != http.StatusOK {
+		t.Fatalf("expected 200 for /api/v1/status/freshness, got %d: %s", freshness.Code, freshness.Body.String())
+	}
+	freshnessBody := decodeJSON(t, freshness)
+	breakdown := freshnessBody["breakdown"].(map[string]any)
+	providers, ok := breakdown["providers"].([]any)
+	if !ok || len(providers) != 1 {
+		t.Fatalf("expected one provider freshness scope, got %#v", breakdown["providers"])
+	}
 }
 
 func TestGraphBuildWarningHeadersSkipHealthAndStatus(t *testing.T) {
-	for _, path := range []string{"/health", "/ready", "/status", "/metrics"} {
+	for _, path := range []string{"/health", "/ready", "/status", "/metrics", "/api/v1/status/freshness"} {
 		if !skipGraphBuildWarningHeaders(path) {
 			t.Fatalf("expected graph build warning headers to be skipped for %s", path)
 		}

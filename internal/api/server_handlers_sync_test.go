@@ -2,13 +2,56 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/snowflake"
 	nativesync "github.com/writer/cerebro/internal/sync"
 )
+
+type syncGraphSource struct {
+	mu     sync.Mutex
+	latest time.Time
+	events []map[string]any
+	err    error
+	block  bool
+}
+
+func (s *syncGraphSource) Query(ctx context.Context, query string, args ...any) (*graph.QueryResult, error) {
+	_ = ctx
+	_ = args
+	lower := strings.ToLower(query)
+
+	s.mu.Lock()
+	block := s.block
+	s.mu.Unlock()
+
+	if block {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if strings.Contains(lower, "select max(event_time)") && strings.Contains(lower, "from cdc_events") {
+		return &graph.QueryResult{Rows: []map[string]any{{"latest": s.latest}}, Count: 1}, nil
+	}
+	if strings.Contains(lower, "select event_id") && strings.Contains(lower, "from cdc_events") {
+		if s.err != nil {
+			return nil, s.err
+		}
+		rows := make([]map[string]any, 0, len(s.events))
+		rows = append(rows, s.events...)
+		return &graph.QueryResult{Rows: rows, Count: len(rows)}, nil
+	}
+	return &graph.QueryResult{Rows: []map[string]any{}}, nil
+}
 
 func TestBackfillRelationshipIDs_RequiresSnowflake(t *testing.T) {
 	s := newTestServer(t)
@@ -222,18 +265,6 @@ func TestSyncAWS_UsesRequestOptions(t *testing.T) {
 		if len(req.Tables) != 2 || req.Tables[0] != "aws_iam_users" || req.Tables[1] != "aws_s3_buckets" {
 			t.Fatalf("unexpected table filter: %#v", req.Tables)
 		}
-		if req.PermissionUsageLookbackDays != 240 {
-			t.Fatalf("expected permission usage lookback 240, got %d", req.PermissionUsageLookbackDays)
-		}
-		if req.PermissionRemovalThresholdDays != 180 {
-			t.Fatalf("expected permission removal threshold 180, got %d", req.PermissionRemovalThresholdDays)
-		}
-		if len(req.AWSIdentityCenterPermissionSetsInclude) != 2 || req.AWSIdentityCenterPermissionSetsInclude[0] != "Admin" || req.AWSIdentityCenterPermissionSetsInclude[1] != "arn:aws:sso:::permissionSet/ssoins-123/ps-123" {
-			t.Fatalf("unexpected permission set include filter: %#v", req.AWSIdentityCenterPermissionSetsInclude)
-		}
-		if len(req.AWSIdentityCenterPermissionSetsExclude) != 1 || req.AWSIdentityCenterPermissionSetsExclude[0] != "ReadOnly" {
-			t.Fatalf("unexpected permission set exclude filter: %#v", req.AWSIdentityCenterPermissionSetsExclude)
-		}
 		if !req.Validate {
 			t.Fatal("expected validate=true")
 		}
@@ -245,16 +276,12 @@ func TestSyncAWS_UsesRequestOptions(t *testing.T) {
 	}
 
 	w := do(t, s, http.MethodPost, "/api/v1/sync/aws", map[string]interface{}{
-		"profile":                           " prod-profile ",
-		"region":                            " us-west-2 ",
-		"multi_region":                      true,
-		"concurrency":                       6,
-		"tables":                            []string{"AWS_IAM_USERS", "aws_iam_users", " aws_s3_buckets "},
-		"validate":                          true,
-		"permission_usage_lookback_days":    240,
-		"permission_removal_threshold_days": 180,
-		"aws_identity_center_permission_sets_include": []string{" Admin ", "arn:aws:sso:::permissionSet/ssoins-123/ps-123"},
-		"aws_identity_center_permission_sets_exclude": []string{" ReadOnly "},
+		"profile":      " prod-profile ",
+		"region":       " us-west-2 ",
+		"multi_region": true,
+		"concurrency":  6,
+		"tables":       []string{"AWS_IAM_USERS", "aws_iam_users", " aws_s3_buckets "},
+		"validate":     true,
 	})
 	if !called {
 		t.Fatal("expected sync runner to be called")
@@ -267,6 +294,263 @@ func TestSyncAWS_UsesRequestOptions(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), `"relationships_extracted":11`) {
 		t.Fatalf("expected relationships count in response body, got %s", w.Body.String())
+	}
+}
+
+func TestSyncAWS_AppliesIncrementalGraphChangesAfterSync(t *testing.T) {
+	s := newTestServer(t)
+	s.app.Snowflake = &snowflake.Client{}
+
+	source := &syncGraphSource{}
+	builder := graph.NewBuilder(source, s.app.Logger)
+	s.app.SecurityGraphBuilder = builder
+	s.app.SecurityGraph = builder.Graph()
+
+	base := time.Now().UTC()
+	source.latest = base.Add(30 * time.Second)
+	source.events = []map[string]any{{
+		"event_id":    "evt-1",
+		"table_name":  "aws_s3_buckets",
+		"resource_id": "arn:aws:s3:::sync-bucket",
+		"change_type": "added",
+		"provider":    "aws",
+		"region":      "us-east-1",
+		"account_id":  "111111111111",
+		"payload": map[string]any{
+			"arn":                 "arn:aws:s3:::sync-bucket",
+			"name":                "sync-bucket",
+			"account_id":          "111111111111",
+			"region":              "us-east-1",
+			"block_public_acls":   false,
+			"block_public_policy": false,
+		},
+		"event_time": base.Add(30 * time.Second),
+	}}
+
+	originalRun := runAWSSyncWithOptions
+	t.Cleanup(func() { runAWSSyncWithOptions = originalRun })
+	runAWSSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req awsSyncRequest) (*awsSyncOutcome, error) {
+		return &awsSyncOutcome{
+			Results: []nativesync.SyncResult{{Table: "aws_s3_buckets", Synced: 1}},
+		}, nil
+	}
+
+	w := do(t, s, http.MethodPost, "/api/v1/sync/aws", map[string]interface{}{
+		"region": "us-east-1",
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := decodeJSON(t, w)
+	graphUpdate, ok := body["graph_update"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected graph_update payload, got %#v", body["graph_update"])
+	}
+	if graphUpdate["status"] != "applied" {
+		t.Fatalf("expected graph update status applied, got %#v", graphUpdate)
+	}
+	if _, ok := s.app.SecurityGraph.GetNode("arn:aws:s3:::sync-bucket"); !ok {
+		t.Fatal("expected incrementally applied bucket node in live security graph")
+	}
+}
+
+func TestSyncAWS_GraphUpdateFailureIsSanitized(t *testing.T) {
+	s := newTestServer(t)
+	s.app.Snowflake = &snowflake.Client{}
+
+	source := &syncGraphSource{block: true}
+	builder := graph.NewBuilder(source, s.app.Logger)
+	s.app.SecurityGraphBuilder = builder
+	s.app.SecurityGraph = builder.Graph()
+
+	originalRun := runAWSSyncWithOptions
+	t.Cleanup(func() { runAWSSyncWithOptions = originalRun })
+	runAWSSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req awsSyncRequest) (*awsSyncOutcome, error) {
+		return &awsSyncOutcome{
+			Results: []nativesync.SyncResult{{Table: "aws_s3_buckets", Synced: 1}},
+		}, nil
+	}
+
+	originalTimeout := postSyncGraphUpdateTimeout
+	postSyncGraphUpdateTimeout = 5 * time.Millisecond
+	t.Cleanup(func() { postSyncGraphUpdateTimeout = originalTimeout })
+
+	w := do(t, s, http.MethodPost, "/api/v1/sync/aws", map[string]interface{}{
+		"region": "us-east-1",
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := decodeJSON(t, w)
+	graphUpdate, ok := body["graph_update"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected graph_update payload, got %#v", body["graph_update"])
+	}
+	if graphUpdate["status"] != "failed" {
+		t.Fatalf("expected graph update status failed, got %#v", graphUpdate)
+	}
+	if graphUpdate["error"] != "graph update failed" {
+		t.Fatalf("expected sanitized graph update error, got %#v", graphUpdate["error"])
+	}
+	if graphUpdate["error_code"] != "GRAPH_UPDATE_FAILED" {
+		t.Fatalf("expected graph update error code, got %#v", graphUpdate["error_code"])
+	}
+	if strings.Contains(w.Body.String(), context.DeadlineExceeded.Error()) {
+		t.Fatalf("expected raw backend error to stay out of response body, got %s", w.Body.String())
+	}
+}
+
+func TestSyncAWS_GraphUpdateBusyReturnsBusyStatus(t *testing.T) {
+	s := newTestServer(t)
+	s.app.Snowflake = &snowflake.Client{}
+
+	source := &syncGraphSource{block: true}
+	builder := graph.NewBuilder(source, s.app.Logger)
+	s.app.SecurityGraphBuilder = builder
+	s.app.SecurityGraph = builder.Graph()
+
+	rebuildCtx, rebuildCancel := context.WithCancel(context.Background())
+	defer rebuildCancel()
+	rebuildDone := make(chan error, 1)
+	go func() {
+		rebuildDone <- s.app.RebuildSecurityGraph(rebuildCtx)
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		snapshot := s.app.GraphBuildSnapshot()
+		if snapshot.State == "building" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for rebuild to start, latest snapshot=%+v", snapshot)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	originalRun := runAWSSyncWithOptions
+	t.Cleanup(func() { runAWSSyncWithOptions = originalRun })
+	runAWSSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req awsSyncRequest) (*awsSyncOutcome, error) {
+		return &awsSyncOutcome{
+			Results: []nativesync.SyncResult{{Table: "aws_s3_buckets", Synced: 1}},
+		}, nil
+	}
+
+	w := do(t, s, http.MethodPost, "/api/v1/sync/aws", map[string]interface{}{
+		"region": "us-east-1",
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := decodeJSON(t, w)
+	graphUpdate, ok := body["graph_update"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected graph_update payload, got %#v", body["graph_update"])
+	}
+	if graphUpdate["status"] != "busy" {
+		t.Fatalf("expected graph update status busy, got %#v", graphUpdate)
+	}
+	if graphUpdate["error_code"] != "GRAPH_UPDATE_BUSY" {
+		t.Fatalf("expected graph update busy code, got %#v", graphUpdate["error_code"])
+	}
+
+	rebuildCancel()
+	select {
+	case err := <-rebuildDone:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("expected rebuild to exit on cancel, got %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for blocked rebuild to exit")
+	}
+}
+
+func TestSyncAWS_GraphUpdateNoopSummaryUsesEmptyTablesArray(t *testing.T) {
+	s := newTestServer(t)
+	s.app.Snowflake = &snowflake.Client{}
+
+	source := &syncGraphSource{}
+	builder := graph.NewBuilder(source, s.app.Logger)
+	s.app.SecurityGraphBuilder = builder
+	s.app.SecurityGraph = builder.Graph()
+
+	originalRun := runAWSSyncWithOptions
+	t.Cleanup(func() { runAWSSyncWithOptions = originalRun })
+	runAWSSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req awsSyncRequest) (*awsSyncOutcome, error) {
+		return &awsSyncOutcome{
+			Results: []nativesync.SyncResult{{Table: "aws_s3_buckets", Synced: 1}},
+		}, nil
+	}
+
+	w := do(t, s, http.MethodPost, "/api/v1/sync/aws", map[string]interface{}{
+		"region": "us-east-1",
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := decodeJSON(t, w)
+	graphUpdate, ok := body["graph_update"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected graph_update payload, got %#v", body["graph_update"])
+	}
+	if graphUpdate["status"] != "noop" {
+		t.Fatalf("expected graph update status noop, got %#v", graphUpdate)
+	}
+	summary, ok := graphUpdate["summary"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected graph update summary, got %#v", graphUpdate["summary"])
+	}
+	tables, ok := summary["tables"].([]any)
+	if !ok {
+		t.Fatalf("expected tables array, got %#v", summary["tables"])
+	}
+	if len(tables) != 0 {
+		t.Fatalf("expected empty tables array, got %#v", tables)
+	}
+}
+
+func TestSyncAWS_FullRebuildFallbackReportsAppliedStatus(t *testing.T) {
+	s := newTestServer(t)
+	s.app.Snowflake = &snowflake.Client{}
+
+	source := &syncGraphSource{err: errors.New("cdc unavailable")}
+	builder := graph.NewBuilder(source, s.app.Logger)
+	s.app.SecurityGraphBuilder = builder
+	s.app.SecurityGraph = builder.Graph()
+
+	originalRun := runAWSSyncWithOptions
+	t.Cleanup(func() { runAWSSyncWithOptions = originalRun })
+	runAWSSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req awsSyncRequest) (*awsSyncOutcome, error) {
+		return &awsSyncOutcome{
+			Results: []nativesync.SyncResult{{Table: "aws_s3_buckets", Synced: 1}},
+		}, nil
+	}
+
+	w := do(t, s, http.MethodPost, "/api/v1/sync/aws", map[string]interface{}{
+		"region": "us-east-1",
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := decodeJSON(t, w)
+	graphUpdate, ok := body["graph_update"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected graph_update payload, got %#v", body["graph_update"])
+	}
+	if graphUpdate["status"] != "applied" {
+		t.Fatalf("expected graph update status applied after full rebuild fallback, got %#v", graphUpdate)
+	}
+	summary, ok := graphUpdate["summary"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected graph update summary, got %#v", graphUpdate["summary"])
+	}
+	if summary["mode"] != graph.GraphMutationModeFullRebuild {
+		t.Fatalf("expected full rebuild summary mode, got %#v", summary["mode"])
 	}
 }
 
@@ -330,18 +614,6 @@ func TestSyncAWSOrg_UsesRequestOptions(t *testing.T) {
 		if len(req.Tables) != 2 || req.Tables[0] != "aws_iam_users" || req.Tables[1] != "aws_s3_buckets" {
 			t.Fatalf("unexpected table filter: %#v", req.Tables)
 		}
-		if req.PermissionUsageLookbackDays != 365 {
-			t.Fatalf("expected permission usage lookback 365, got %d", req.PermissionUsageLookbackDays)
-		}
-		if req.PermissionRemovalThresholdDays != 210 {
-			t.Fatalf("expected permission removal threshold 210, got %d", req.PermissionRemovalThresholdDays)
-		}
-		if len(req.AWSIdentityCenterPermissionSetsInclude) != 1 || req.AWSIdentityCenterPermissionSetsInclude[0] != "Admin" {
-			t.Fatalf("unexpected permission set include filter: %#v", req.AWSIdentityCenterPermissionSetsInclude)
-		}
-		if len(req.AWSIdentityCenterPermissionSetsExclude) != 1 || req.AWSIdentityCenterPermissionSetsExclude[0] != "Billing" {
-			t.Fatalf("unexpected permission set exclude filter: %#v", req.AWSIdentityCenterPermissionSetsExclude)
-		}
 		if !req.Validate {
 			t.Fatal("expected validate=true")
 		}
@@ -352,20 +624,16 @@ func TestSyncAWSOrg_UsesRequestOptions(t *testing.T) {
 	}
 
 	w := do(t, s, http.MethodPost, "/api/v1/sync/aws-org", map[string]interface{}{
-		"profile":                           " prod-profile ",
-		"region":                            " us-west-2 ",
-		"multi_region":                      true,
-		"concurrency":                       6,
-		"tables":                            []string{"AWS_IAM_USERS", "aws_iam_users", " aws_s3_buckets "},
-		"validate":                          true,
-		"org_role":                          " OrganizationAccountAccessRole ",
-		"include_accounts":                  []string{" 111111111111 ", "111111111111", "222222222222"},
-		"exclude_accounts":                  []string{"333333333333", "333333333333"},
-		"account_concurrency":               3,
-		"permission_usage_lookback_days":    365,
-		"permission_removal_threshold_days": 210,
-		"aws_identity_center_permission_sets_include": []string{" Admin "},
-		"aws_identity_center_permission_sets_exclude": []string{" Billing "},
+		"profile":             " prod-profile ",
+		"region":              " us-west-2 ",
+		"multi_region":        true,
+		"concurrency":         6,
+		"tables":              []string{"AWS_IAM_USERS", "aws_iam_users", " aws_s3_buckets "},
+		"validate":            true,
+		"org_role":            " OrganizationAccountAccessRole ",
+		"include_accounts":    []string{" 111111111111 ", "111111111111", "222222222222"},
+		"exclude_accounts":    []string{"333333333333", "333333333333"},
+		"account_concurrency": 3,
 	})
 	if !called {
 		t.Fatal("expected sync runner to be called")
@@ -438,15 +706,6 @@ func TestSyncGCP_UsesRequestOptions(t *testing.T) {
 		if len(req.Tables) != 2 || req.Tables[0] != "gcp_compute_instances" || req.Tables[1] != "gcp_storage_buckets" {
 			t.Fatalf("unexpected table filter: %#v", req.Tables)
 		}
-		if req.PermissionUsageLookbackDays != 120 {
-			t.Fatalf("expected permission usage lookback 120, got %d", req.PermissionUsageLookbackDays)
-		}
-		if req.PermissionRemovalThresholdDays != 240 {
-			t.Fatalf("expected permission removal threshold 240, got %d", req.PermissionRemovalThresholdDays)
-		}
-		if len(req.GCPIAMTargetGroups) != 2 || req.GCPIAMTargetGroups[0] != "eng@example.com" || req.GCPIAMTargetGroups[1] != "ops@example.com" {
-			t.Fatalf("unexpected IAM target groups: %#v", req.GCPIAMTargetGroups)
-		}
 		if !req.Validate {
 			t.Fatal("expected validate=true")
 		}
@@ -458,13 +717,10 @@ func TestSyncGCP_UsesRequestOptions(t *testing.T) {
 	}
 
 	w := do(t, s, http.MethodPost, "/api/v1/sync/gcp", map[string]interface{}{
-		"project":                           "  proj-123  ",
-		"concurrency":                       5,
-		"tables":                            []string{"GCP_COMPUTE_INSTANCES", "gcp_compute_instances", " gcp_storage_buckets "},
-		"validate":                          true,
-		"permission_usage_lookback_days":    120,
-		"permission_removal_threshold_days": 240,
-		"gcp_iam_target_groups":             []string{" eng@example.com ", "ops@example.com", "ENG@example.com"},
+		"project":     "  proj-123  ",
+		"concurrency": 5,
+		"tables":      []string{"GCP_COMPUTE_INSTANCES", "gcp_compute_instances", " gcp_storage_buckets "},
+		"validate":    true,
 	})
 	if !called {
 		t.Fatal("expected sync runner to be called")

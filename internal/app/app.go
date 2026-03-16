@@ -7,7 +7,7 @@
 // Core Services:
 //   - Snowflake: Data warehouse client for asset and findings storage
 //   - Policy: Security policy engine for evaluating cloud resources
-//   - Findings: In-memory findings store with deduplication
+//   - Findings: Durable findings store with semantic and exact-ID deduplication
 //   - Scanner: Asset scanner that applies policies to cloud resources
 //   - Cache: Policy evaluation cache for performance
 //
@@ -138,28 +138,35 @@ type App struct {
 	RuntimeRespond      *runtime.ResponseEngine
 
 	// Security Graph
-	SecurityGraph         *graph.Graph
-	SecurityGraphBuilder  *graph.Builder
-	Propagation           *graph.PropagationEngine
-	graphReady            chan struct{} // closed when initial graph build completes
-	graphCancel           context.CancelFunc
-	graphBuildMu          sync.RWMutex
-	graphBuildState       GraphBuildState
-	graphBuildLastAt      time.Time
-	graphBuildErr         string
-	threatIntelSyncCancel context.CancelFunc
-	threatIntelSyncWG     sync.WaitGroup
-	traceShutdown         func(context.Context) error
-	secretsReloadCancel   context.CancelFunc
-	secretsReloadWG       sync.WaitGroup
-	tapMapperOnce         sync.Once
-	tapMapperErr          error
-	securityGraphInitMu   sync.RWMutex
-	reloadMu              sync.Mutex
-	apiKeys               atomic.Value // map[string]string
-	apiCredentials        atomic.Value // map[string]apiauth.Credential
-	apiCredentialStore    *apiauth.ManagedCredentialStore
-	secretsLoader         secretsLoader
+	SecurityGraph          *graph.Graph
+	SecurityGraphBuilder   *graph.Builder
+	Propagation            *graph.PropagationEngine
+	graphReady             chan struct{} // closed when initial graph build completes
+	graphCtx               context.Context
+	graphCancel            context.CancelFunc
+	graphUpdateMu          sync.Mutex
+	graphBuildMu           sync.RWMutex
+	graphBuildState        GraphBuildState
+	graphBuildLastAt       time.Time
+	graphBuildErr          string
+	graphConsistencyMu     sync.Mutex
+	graphConsistencyLast   time.Time
+	graphConsistencyRun    bool
+	graphConsistencyCancel context.CancelFunc
+	graphConsistencyWG     sync.WaitGroup
+	threatIntelSyncCancel  context.CancelFunc
+	threatIntelSyncWG      sync.WaitGroup
+	traceShutdown          func(context.Context) error
+	secretsReloadCancel    context.CancelFunc
+	secretsReloadWG        sync.WaitGroup
+	tapMapperOnce          sync.Once
+	tapMapperErr           error
+	securityGraphInitMu    sync.RWMutex
+	reloadMu               sync.Mutex
+	apiKeys                atomic.Value // map[string]string
+	apiCredentials         atomic.Value // map[string]apiauth.Credential
+	apiCredentialStore     *apiauth.ManagedCredentialStore
+	secretsLoader          secretsLoader
 
 	// Cached table list from Snowflake (shared by graph builder + policy coverage)
 	AvailableTables []string
@@ -188,6 +195,9 @@ func NewWithOptions(ctx context.Context, opts ...Option) (*App, error) {
 		cfg = LoadConfig()
 	}
 	cfg.RefreshProviderAwareConfig()
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
 
 	managedCredentialStore := apiauth.NewManagedCredentialStore(cfg.APICredentialStateFile)
 	if err := managedCredentialStore.Load(); err != nil {

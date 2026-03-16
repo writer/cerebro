@@ -114,15 +114,32 @@ func remediationEventFromWebhook(event webhooks.Event) (remediation.Event, bool)
 }
 
 func (a *App) propagationEngine() *graph.PropagationEngine {
-	if a.Propagation != nil {
-		return a.Propagation
+	if a == nil {
+		return nil
 	}
-	securityGraph := a.CurrentSecurityGraph()
+
+	a.securityGraphInitMu.RLock()
+	if a.Propagation != nil {
+		engine := a.Propagation
+		a.securityGraphInitMu.RUnlock()
+		return engine
+	}
+	securityGraph := a.SecurityGraph
+	a.securityGraphInitMu.RUnlock()
 	if securityGraph == nil {
 		return nil
 	}
-	a.Propagation = graph.NewPropagationEngine(securityGraph)
-	return a.Propagation
+
+	engine := graph.NewPropagationEngine(securityGraph)
+
+	a.securityGraphInitMu.Lock()
+	if a.Propagation == nil {
+		a.Propagation = engine
+	} else {
+		engine = a.Propagation
+	}
+	a.securityGraphInitMu.Unlock()
+	return engine
 }
 
 func (a *App) executionChangeProposal(execution *remediation.Execution, event remediation.Event) *graph.ChangeProposal {

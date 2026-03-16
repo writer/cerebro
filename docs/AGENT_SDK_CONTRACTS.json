@@ -556,6 +556,52 @@
       "execution_kind": "direct_tool"
     },
     {
+      "id": "cerebro_entity_history",
+      "version": "1.0.0",
+      "tool_name": "cerebro.entity_history",
+      "sdk_method": "entity_history",
+      "title": "Entity History",
+      "description": "Reconstruct one entity at a historical time or diff one entity across two times",
+      "category": "query",
+      "required_permission": "sdk.context.read",
+      "input_schema": {
+        "properties": {
+          "entity_id": {
+            "description": "Stable entity identifier.",
+            "type": "string"
+          },
+          "from": {
+            "description": "RFC3339 start timestamp for one entity diff window.",
+            "type": "string"
+          },
+          "recorded_at": {
+            "description": "Optional RFC3339 system-time selector.",
+            "type": "string"
+          },
+          "timestamp": {
+            "description": "RFC3339 point-in-time selector for one reconstructed entity state.",
+            "type": "string"
+          },
+          "to": {
+            "description": "RFC3339 end timestamp for one entity diff window.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entity_id"
+        ],
+        "type": "object"
+      },
+      "example_input": {
+        "entity_id": "service:payments",
+        "from": "from",
+        "recorded_at": "recorded_at",
+        "timestamp": "timestamp",
+        "to": "to"
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
       "id": "cerebro_findings",
       "version": "1.0.0",
       "tool_name": "cerebro.findings",
@@ -604,6 +650,65 @@
         "severity": "severity",
         "signal_type": "signal_type",
         "status": "status"
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
+      "id": "cerebro_graph_changelog",
+      "version": "1.0.0",
+      "tool_name": "cerebro.graph_changelog",
+      "sdk_method": "graph_changelog",
+      "title": "Graph Changelog",
+      "description": "Inspect recent graph snapshot changes or one stored/derived graph diff in detail",
+      "category": "query",
+      "required_permission": "sdk.context.read",
+      "input_schema": {
+        "properties": {
+          "account": {
+            "description": "Optional account filter.",
+            "type": "string"
+          },
+          "diff_id": {
+            "description": "Optional graph diff ID from changelog results. When set, returns detailed filtered diff data for either a stored artifact or a derived adjacent snapshot diff.",
+            "type": "string"
+          },
+          "kind": {
+            "description": "Optional node kind filter.",
+            "type": "string"
+          },
+          "last": {
+            "description": "Optional duration window for changelog listing, for example 24h or 7d.",
+            "type": "string"
+          },
+          "limit": {
+            "default": 20,
+            "description": "Maximum changelog entries to return (1-200).",
+            "type": "integer"
+          },
+          "provider": {
+            "description": "Optional provider filter.",
+            "type": "string"
+          },
+          "since": {
+            "description": "Optional RFC3339 lower bound for changelog listing.",
+            "type": "string"
+          },
+          "until": {
+            "description": "Optional RFC3339 upper bound for changelog listing.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "example_input": {
+        "account": "account",
+        "diff_id": "diff_id",
+        "kind": "kind",
+        "last": "last",
+        "limit": 20,
+        "provider": "provider",
+        "since": "since",
+        "until": "until"
       },
       "execution_kind": "direct_tool"
     },

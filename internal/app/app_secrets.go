@@ -156,6 +156,9 @@ func (a *App) ReloadSecrets(ctx context.Context) error {
 	if next == nil {
 		return fmt.Errorf("reload config is nil")
 	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
 	if len(next.APICredentials) == 0 && len(next.APIKeys) > 0 {
 		next.APICredentials = credentialsFromAPIKeys(next.APIKeys)
 		next.APIKeys = apiauth.CredentialsToUserMap(next.APICredentials)

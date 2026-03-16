@@ -62,6 +62,7 @@ type EventMapping struct {
 
 type NodeMapping struct {
 	ID         string         `json:"id" yaml:"id"`
+	When       string         `json:"when,omitempty" yaml:"when,omitempty"`
 	Kind       string         `json:"kind" yaml:"kind"`
 	Name       string         `json:"name" yaml:"name"`
 	Provider   string         `json:"provider" yaml:"provider"`
@@ -71,6 +72,7 @@ type NodeMapping struct {
 
 type EdgeMapping struct {
 	ID         string         `json:"id" yaml:"id"`
+	When       string         `json:"when,omitempty" yaml:"when,omitempty"`
 	Source     string         `json:"source" yaml:"source"`
 	Target     string         `json:"target" yaml:"target"`
 	Kind       string         `json:"kind" yaml:"kind"`
@@ -287,6 +289,9 @@ func (m *Mapper) Apply(g *graph.Graph, evt events.CloudEvent) (ApplyResult, erro
 		matchedNames = append(matchedNames, mapping.Name)
 
 		for _, nodeDef := range mapping.Nodes {
+			if !m.conditionMatches(nodeDef.When, context, evt) {
+				continue
+			}
 			nodeID := strings.TrimSpace(m.renderTemplate(nodeDef.ID, context, evt))
 			if nodeID == "" {
 				continue
@@ -337,6 +342,9 @@ func (m *Mapper) Apply(g *graph.Graph, evt events.CloudEvent) (ApplyResult, erro
 		}
 
 		for _, edgeDef := range mapping.Edges {
+			if !m.conditionMatches(edgeDef.When, context, evt) {
+				continue
+			}
 			source := strings.TrimSpace(m.renderTemplate(edgeDef.Source, context, evt))
 			target := strings.TrimSpace(m.renderTemplate(edgeDef.Target, context, evt))
 			if source == "" || target == "" {
@@ -432,6 +440,28 @@ func (m *Mapper) renderProperties(raw map[string]any, context map[string]any, ev
 		}
 	}
 	return out
+}
+
+func (m *Mapper) conditionMatches(raw string, context map[string]any, evt events.CloudEvent) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return true
+	}
+	if strings.Contains(raw, "&&") {
+		for _, part := range strings.Split(raw, "&&") {
+			if !m.conditionMatches(part, context, evt) {
+				return false
+			}
+		}
+		return true
+	}
+	rendered := strings.TrimSpace(m.renderTemplate(raw, context, evt))
+	switch strings.ToLower(rendered) {
+	case "", "<nil>", "[]", "{}":
+		return false
+	default:
+		return true
+	}
 }
 
 func (m *Mapper) renderTemplate(input string, context map[string]any, evt events.CloudEvent) string {

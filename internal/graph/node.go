@@ -39,6 +39,7 @@ const (
 	NodeKindNamespace          NodeKind = "namespace"
 	NodeKindClusterRole        NodeKind = "cluster_role"
 	NodeKindClusterRoleBinding NodeKind = "cluster_role_binding"
+	NodeKindRoleBinding        NodeKind = "role_binding"
 	NodeKindConfigMap          NodeKind = "configmap"
 	NodeKindPersistentVolume   NodeKind = "persistent_volume"
 
@@ -98,6 +99,7 @@ const (
 type PropertySnapshot struct {
 	Timestamp time.Time `json:"timestamp"`
 	Value     any       `json:"value"`
+	Deleted   bool      `json:"deleted,omitempty"`
 }
 
 // Node represents an entity in the graph platform.

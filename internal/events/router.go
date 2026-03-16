@@ -78,6 +78,7 @@ type AlertRouterOptions struct {
 	Config        AlertRoutingConfig
 	Resolver      AlertRecipientResolver
 	Sender        AlertSender
+	StateStore    AlertRouterStateStore
 	SubjectPrefix string
 	Logger        *slog.Logger
 	Now           func() time.Time
@@ -110,10 +111,12 @@ type AlertRouter struct {
 	routes        []compiledAlertRoute
 	resolver      AlertRecipientResolver
 	sender        AlertSender
+	stateStore    AlertRouterStateStore
 	subjectPrefix string
 	now           func() time.Time
 
 	mu             sync.Mutex
+	stateRevision  uint64
 	throttleUntil  map[string]time.Time
 	digestBuckets  map[string]*digestBucket
 	pendingAcks    map[string]pendingAck
@@ -228,18 +231,28 @@ func NewAlertRouter(options AlertRouterOptions) (*AlertRouter, error) {
 		compiled = append(compiled, next)
 	}
 
-	return &AlertRouter{
+	router := &AlertRouter{
 		logger:         logger,
 		routes:         compiled,
 		resolver:       options.Resolver,
 		sender:         options.Sender,
+		stateStore:     options.StateStore,
 		subjectPrefix:  subjectPrefix,
 		now:            now,
 		throttleUntil:  make(map[string]time.Time),
 		digestBuckets:  make(map[string]*digestBucket),
 		pendingAcks:    make(map[string]pendingAck),
 		fallbackAlerts: make([]outboundAlert, 0),
-	}, nil
+	}
+	if options.StateStore != nil {
+		snapshot, err := options.StateStore.Load(context.Background())
+		if err != nil {
+			logger.Warn("failed to load alert router state; continuing without persisted state", "error", err)
+		} else {
+			router.restoreState(snapshot, now().UTC())
+		}
+	}
+	return router, nil
 }
 
 func compileAlertRoute(route AlertRoute, idx int) (compiledAlertRoute, error) {
@@ -313,9 +326,12 @@ func (r *AlertRouter) Route(ctx context.Context, event webhooks.Event) error {
 	now := r.now().UTC()
 
 	r.mu.Lock()
+	previousSnapshot := r.snapshotStateLocked(now)
 	outbound := r.planDueDigestMessagesLocked(now)
 	outbound = append(outbound, r.planEscalationMessagesLocked(ctx, now)...)
 	outbound = append(outbound, r.planRouteMessagesLocked(ctx, event, now)...)
+	r.stateRevision++
+	nextSnapshot := r.snapshotStateLocked(now)
 	r.mu.Unlock()
 
 	var errs []error
@@ -327,7 +343,18 @@ func (r *AlertRouter) Route(ctx context.Context, event webhooks.Event) error {
 			errs = append(errs, err)
 		}
 	}
-	return errors.Join(errs...)
+	if sendErr := errors.Join(errs...); sendErr != nil {
+		r.mu.Lock()
+		if r.stateRevision == nextSnapshot.Revision {
+			r.restoreStateLocked(previousSnapshot, now)
+		}
+		r.mu.Unlock()
+		return sendErr
+	}
+	if err := r.persistSnapshot(ctx, nextSnapshot); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (r *AlertRouter) Acknowledge(alertID string, recipientID string) bool {
@@ -341,7 +368,8 @@ func (r *AlertRouter) Acknowledge(alertID string, recipientID string) bool {
 	}
 
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	now := r.now().UTC()
+	previousSnapshot := r.snapshotStateLocked(now)
 
 	acknowledged := false
 	for key, pending := range r.pendingAcks {
@@ -354,14 +382,50 @@ func (r *AlertRouter) Acknowledge(alertID string, recipientID string) bool {
 		delete(r.pendingAcks, key)
 		acknowledged = true
 	}
+	nextSnapshot := alertRouterStateSnapshot{}
+	if acknowledged {
+		r.stateRevision++
+		nextSnapshot = r.snapshotStateLocked(now)
+	}
+	r.mu.Unlock()
+
+	if acknowledged {
+		if err := r.persistSnapshot(context.Background(), nextSnapshot); err != nil {
+			r.mu.Lock()
+			if r.stateRevision == nextSnapshot.Revision {
+				r.restoreStateLocked(previousSnapshot, now)
+			}
+			r.mu.Unlock()
+			r.logger.Warn("failed to persist alert router state after acknowledgement", "error", err)
+			return false
+		}
+	}
 	return acknowledged
 }
 
 func (r *AlertRouter) Close() error {
-	if r == nil || r.sender == nil {
+	if r == nil {
 		return nil
 	}
-	return r.sender.Close()
+	r.mu.Lock()
+	snapshot := r.snapshotStateLocked(r.now().UTC())
+	r.mu.Unlock()
+
+	var errs []error
+	if err := r.persistSnapshot(context.Background(), snapshot); err != nil {
+		errs = append(errs, err)
+	}
+	if r.sender != nil {
+		if err := r.sender.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if r.stateStore != nil {
+		if err := r.stateStore.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 func (r *AlertRouter) planRouteMessagesLocked(ctx context.Context, event webhooks.Event, now time.Time) []outboundAlert {
@@ -690,6 +754,128 @@ func (r *AlertRouter) subjectForRecipient(recipient AlertRecipient) string {
 		token = "alerts"
 	}
 	return r.subjectPrefix + "." + token
+}
+
+func (r *AlertRouter) persistSnapshot(ctx context.Context, snapshot alertRouterStateSnapshot) error {
+	if r == nil || r.stateStore == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := r.stateStore.Save(ctx, snapshot); err != nil {
+		return fmt.Errorf("persist alert router state: %w", err)
+	}
+	return nil
+}
+
+func (r *AlertRouter) snapshotStateLocked(now time.Time) alertRouterStateSnapshot {
+	r.pruneStateLocked(now)
+	snapshot := alertRouterStateSnapshot{
+		Revision:      r.stateRevision,
+		ThrottleUntil: make(map[string]time.Time, len(r.throttleUntil)),
+		DigestBuckets: make(map[string]digestBucketState, len(r.digestBuckets)),
+		PendingAcks:   make(map[string]pendingAckState, len(r.pendingAcks)),
+	}
+	for key, until := range r.throttleUntil {
+		snapshot.ThrottleUntil[key] = until
+	}
+	for key, bucket := range r.digestBuckets {
+		if bucket == nil {
+			continue
+		}
+		snapshot.DigestBuckets[key] = digestBucketState{
+			Key:       bucket.key,
+			RouteID:   bucket.routeID,
+			Recipient: bucket.recipient,
+			GroupKey:  bucket.groupKey,
+			FirstSeen: bucket.firstSeen,
+			DueAt:     bucket.dueAt,
+			Events:    append([]webhooks.Event(nil), bucket.events...),
+		}
+	}
+	for key, pending := range r.pendingAcks {
+		snapshot.PendingAcks[key] = pendingAckState{
+			Key:       pending.key,
+			AlertID:   pending.alertID,
+			RouteID:   pending.routeID,
+			Event:     pending.event,
+			EntityID:  pending.entityID,
+			GroupKey:  pending.groupKey,
+			Recipient: pending.recipient,
+			Deadline:  pending.deadline,
+		}
+	}
+	return snapshot
+}
+
+func (r *AlertRouter) restoreState(snapshot alertRouterStateSnapshot, now time.Time) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.restoreStateLocked(snapshot, now)
+}
+
+func (r *AlertRouter) restoreStateLocked(snapshot alertRouterStateSnapshot, now time.Time) {
+	r.stateRevision = snapshot.Revision
+	r.throttleUntil = make(map[string]time.Time, len(snapshot.ThrottleUntil))
+	for key, until := range snapshot.ThrottleUntil {
+		r.throttleUntil[key] = until
+	}
+
+	r.digestBuckets = make(map[string]*digestBucket, len(snapshot.DigestBuckets))
+	for key, bucket := range snapshot.DigestBuckets {
+		next := bucket
+		r.digestBuckets[key] = &digestBucket{
+			key:       next.Key,
+			routeID:   next.RouteID,
+			recipient: next.Recipient,
+			groupKey:  next.GroupKey,
+			firstSeen: next.FirstSeen,
+			dueAt:     next.DueAt,
+			events:    append([]webhooks.Event(nil), next.Events...),
+		}
+	}
+
+	r.pendingAcks = make(map[string]pendingAck, len(snapshot.PendingAcks))
+	for key, pending := range snapshot.PendingAcks {
+		r.pendingAcks[key] = pendingAck{
+			key:       pending.Key,
+			alertID:   pending.AlertID,
+			routeID:   pending.RouteID,
+			event:     pending.Event,
+			entityID:  pending.EntityID,
+			groupKey:  pending.GroupKey,
+			recipient: pending.Recipient,
+			deadline:  pending.Deadline,
+		}
+	}
+	r.pruneStateLocked(now)
+}
+
+func (r *AlertRouter) pruneStateLocked(now time.Time) {
+	for key, until := range r.throttleUntil {
+		if !until.After(now) {
+			delete(r.throttleUntil, key)
+		}
+	}
+	for key, bucket := range r.digestBuckets {
+		if bucket == nil || strings.TrimSpace(bucket.routeID) == "" || len(bucket.events) == 0 {
+			delete(r.digestBuckets, key)
+			continue
+		}
+		if _, ok := r.routeByID(bucket.routeID); !ok {
+			delete(r.digestBuckets, key)
+		}
+	}
+	for key, pending := range r.pendingAcks {
+		if strings.TrimSpace(pending.routeID) == "" || strings.TrimSpace(pending.recipient.ID) == "" {
+			delete(r.pendingAcks, key)
+			continue
+		}
+		if _, ok := r.routeByID(pending.routeID); !ok {
+			delete(r.pendingAcks, key)
+		}
+	}
 }
 
 func (route compiledAlertRoute) matches(event webhooks.Event, severity string, delta float64, deltaFound bool) bool {

@@ -8,6 +8,12 @@ mappings:
   - name: github_pr_merged
     source: ensemble.tap.github.pull_request.merged
     nodes:
+      - id: 'repository:github:{{data.repository}}'
+        kind: repository
+        name: '{{data.repository}}'
+        provider: github
+        properties:
+          repository: '{{data.repository}}'
       - id: 'service:{{data.repository}}'
         kind: service
         name: '{{data.repository}}'
@@ -29,6 +35,14 @@ mappings:
       - source: '{{resolve(data.merged_by_email)}}'
         target: 'service:{{data.repository}}'
         kind: interacted_with
+        effect: allow
+      - source: 'repository:github:{{data.repository}}'
+        target: 'service:{{data.repository}}'
+        kind: targets
+        effect: allow
+      - source: 'pull_request:{{data.repository}}:{{data.number}}'
+        target: 'repository:github:{{data.repository}}'
+        kind: targets
         effect: allow
       - source: 'pull_request:{{data.repository}}:{{data.number}}'
         target: 'service:{{data.repository}}'
@@ -105,6 +119,12 @@ mappings:
   - name: github_pr_opened
     source: ensemble.tap.github.pull_request.opened
     nodes:
+      - id: 'repository:github:{{data.repository}}'
+        kind: repository
+        name: '{{data.repository}}'
+        provider: github
+        properties:
+          repository: '{{data.repository}}'
       - id: 'service:{{data.repository}}'
         kind: service
         name: '{{data.repository}}'
@@ -126,6 +146,14 @@ mappings:
         target: 'service:{{data.repository}}'
         kind: interacted_with
         effect: allow
+      - source: 'repository:github:{{data.repository}}'
+        target: 'service:{{data.repository}}'
+        kind: targets
+        effect: allow
+      - source: 'pull_request:{{data.repository}}:{{data.number}}'
+        target: 'repository:github:{{data.repository}}'
+        kind: targets
+        effect: allow
       - source: 'pull_request:{{data.repository}}:{{data.number}}'
         target: 'service:{{data.repository}}'
         kind: targets
@@ -133,6 +161,12 @@ mappings:
   - name: github_pr_review_submitted
     source: ensemble.tap.github.pull_request.review_submitted
     nodes:
+      - id: 'repository:github:{{data.repository}}'
+        kind: repository
+        name: '{{data.repository}}'
+        provider: github
+        properties:
+          repository: '{{data.repository}}'
       - id: 'service:{{data.repository}}'
         kind: service
         name: '{{data.repository}}'
@@ -154,19 +188,41 @@ mappings:
         target: 'service:{{data.repository}}'
         kind: interacted_with
         effect: allow
+      - source: 'repository:github:{{data.repository}}'
+        target: 'service:{{data.repository}}'
+        kind: targets
+        effect: allow
+      - source: 'pull_request:{{data.repository}}:{{data.number}}'
+        target: 'repository:github:{{data.repository}}'
+        kind: targets
+        effect: allow
       - source: 'pull_request:{{data.repository}}:{{data.number}}'
         target: 'service:{{data.repository}}'
         kind: targets
         effect: allow
   - name: github_check_run_completed
     source: ensemble.tap.github.check_run.completed
+    contractVersion: 2.0.0
     nodes:
+      - id: 'repository:github:{{data.repository}}'
+        kind: repository
+        name: '{{data.repository}}'
+        provider: github
+        properties:
+          repository: '{{data.repository}}'
       - id: 'service:{{data.repository}}'
         kind: service
         name: '{{data.repository}}'
         provider: github
         properties:
           service_id: '{{data.repository}}'
+      - id: 'ci_workflow:github:{{data.repository}}:{{data.check_name}}'
+        kind: ci_workflow
+        name: '{{data.check_name}}'
+        provider: github
+        properties:
+          repository: '{{data.repository}}'
+          workflow_name: '{{data.check_name}}'
       - id: 'check_run:{{data.repository}}:{{data.check_run_id}}'
         kind: check_run
         name: '{{data.check_name}}'
@@ -180,6 +236,22 @@ mappings:
           commit_sha: '{{data.commit_sha}}'
           url: '{{data.url}}'
     edges:
+      - source: 'repository:github:{{data.repository}}'
+        target: 'service:{{data.repository}}'
+        kind: targets
+        effect: allow
+      - source: 'ci_workflow:github:{{data.repository}}:{{data.check_name}}'
+        target: 'repository:github:{{data.repository}}'
+        kind: targets
+        effect: allow
+      - source: 'check_run:{{data.repository}}:{{data.check_run_id}}'
+        target: 'repository:github:{{data.repository}}'
+        kind: targets
+        effect: allow
+      - source: 'check_run:{{data.repository}}:{{data.check_run_id}}'
+        target: 'ci_workflow:github:{{data.repository}}:{{data.check_name}}'
+        kind: based_on
+        effect: allow
       - source: 'check_run:{{data.repository}}:{{data.check_run_id}}'
         target: 'service:{{data.repository}}'
         kind: targets
@@ -302,6 +374,14 @@ mappings:
         provider: ci
         properties:
           service_id: '{{data.service}}'
+      - id: 'ci_workflow:ci:{{data.service}}:{{data.pipeline_id}}'
+        kind: ci_workflow
+        name: '{{data.pipeline_name}}'
+        provider: ci
+        properties:
+          pipeline_id: '{{data.pipeline_id}}'
+          workflow_name: '{{data.pipeline_name}}'
+          service_id: '{{data.service}}'
       - id: 'pipeline_run:{{data.service}}:{{data.pipeline_id}}:{{data.run_id}}'
         kind: pipeline_run
         name: '{{data.pipeline_name}}'
@@ -316,6 +396,14 @@ mappings:
           completed_at: '{{data.completed_at}}'
           service_id: '{{data.service}}'
     edges:
+      - source: 'ci_workflow:ci:{{data.service}}:{{data.pipeline_id}}'
+        target: 'service:{{data.service}}'
+        kind: targets
+        effect: allow
+      - source: 'pipeline_run:{{data.service}}:{{data.pipeline_id}}:{{data.run_id}}'
+        target: 'ci_workflow:ci:{{data.service}}:{{data.pipeline_id}}'
+        kind: based_on
+        effect: allow
       - source: 'pipeline_run:{{data.service}}:{{data.pipeline_id}}:{{data.run_id}}'
         target: 'service:{{data.service}}'
         kind: targets
@@ -388,6 +476,28 @@ mappings:
         properties:
           status: '{{data.status}}'
           priority: '{{data.priority}}'
+      - when: '{{data.customer_id}}'
+        id: 'customer:{{data.customer_id}}'
+        kind: customer
+        name: '{{data.customer_name}}'
+        provider: support
+        properties:
+          customer_id: '{{data.customer_id}}'
+      - when: '{{data.company_id}}'
+        id: 'company:{{data.company_id}}'
+        kind: company
+        name: '{{data.company_name}}'
+        provider: support
+        properties:
+          company_id: '{{data.company_id}}'
+      - when: '{{data.subscription_id}}'
+        id: 'subscription:{{data.subscription_id}}'
+        kind: subscription
+        name: '{{data.subscription_name}}'
+        provider: support
+        properties:
+          subscription_id: '{{data.subscription_id}}'
+          plan: '{{data.subscription_plan}}'
       - id: 'action:support_update:{{data.ticket_id}}:{{data.update_id}}'
         kind: action
         name: 'Support update {{data.status}}'
@@ -403,6 +513,26 @@ mappings:
         target: 'ticket:support:{{data.ticket_id}}'
         kind: targets
         effect: allow
+      - when: '{{data.customer_id}}'
+        source: 'ticket:support:{{data.ticket_id}}'
+        target: 'customer:{{data.customer_id}}'
+        kind: targets
+        effect: allow
+      - when: '{{data.company_id}}'
+        source: 'ticket:support:{{data.ticket_id}}'
+        target: 'company:{{data.company_id}}'
+        kind: targets
+        effect: allow
+      - when: '{{data.subscription_id}}'
+        source: 'ticket:support:{{data.ticket_id}}'
+        target: 'subscription:{{data.subscription_id}}'
+        kind: targets
+        effect: allow
+      - when: '{{data.customer_id}} && {{data.subscription_id}}'
+        source: 'customer:{{data.customer_id}}'
+        target: 'subscription:{{data.subscription_id}}'
+        kind: subscribed_to
+        effect: allow
       - source: '{{resolve(data.agent_email)}}'
         target: 'ticket:support:{{data.ticket_id}}'
         kind: assigned_to
@@ -416,6 +546,39 @@ mappings:
         provider: sales
         properties:
           email: '{{data.contact_email}}'
+      - when: '{{data.company_id}}'
+        id: 'company:{{data.company_id}}'
+        kind: company
+        name: '{{data.company_name}}'
+        provider: sales
+        properties:
+          company_id: '{{data.company_id}}'
+          domain: '{{data.company_domain}}'
+      - when: '{{data.lead_id}}'
+        id: 'lead:{{data.lead_id}}'
+        kind: lead
+        name: '{{data.lead_name}}'
+        provider: sales
+        properties:
+          lead_id: '{{data.lead_id}}'
+          source: '{{data.lead_source}}'
+      - when: '{{data.opportunity_id}}'
+        id: 'opportunity:{{data.opportunity_id}}'
+        kind: opportunity
+        name: '{{data.opportunity_name}}'
+        provider: sales
+        properties:
+          opportunity_id: '{{data.opportunity_id}}'
+          stage: '{{data.opportunity_stage}}'
+          amount: '{{data.opportunity_amount}}'
+      - when: '{{data.deal_id}}'
+        id: 'deal:{{data.deal_id}}'
+        kind: deal
+        name: '{{data.deal_name}}'
+        provider: sales
+        properties:
+          deal_id: '{{data.deal_id}}'
+          stage: '{{data.deal_stage}}'
       - id: 'action:sales_call:{{data.call_id}}'
         kind: action
         name: '{{data.summary}}'
@@ -431,7 +594,32 @@ mappings:
         target: 'contact:{{data.contact_id}}'
         kind: interacted_with
         effect: allow
+      - when: '{{data.company_id}}'
+        source: 'contact:{{data.contact_id}}'
+        target: 'company:{{data.company_id}}'
+        kind: works_at
+        effect: allow
       - source: 'action:sales_call:{{data.call_id}}'
         target: 'contact:{{data.contact_id}}'
+        kind: targets
+        effect: allow
+      - when: '{{data.company_id}}'
+        source: 'action:sales_call:{{data.call_id}}'
+        target: 'company:{{data.company_id}}'
+        kind: targets
+        effect: allow
+      - when: '{{data.lead_id}}'
+        source: 'action:sales_call:{{data.call_id}}'
+        target: 'lead:{{data.lead_id}}'
+        kind: targets
+        effect: allow
+      - when: '{{data.opportunity_id}}'
+        source: 'action:sales_call:{{data.call_id}}'
+        target: 'opportunity:{{data.opportunity_id}}'
+        kind: targets
+        effect: allow
+      - when: '{{data.deal_id}}'
+        source: 'action:sales_call:{{data.call_id}}'
+        target: 'deal:{{data.deal_id}}'
         kind: targets
         effect: allow

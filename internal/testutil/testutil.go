@@ -5,6 +5,8 @@ import (
 	"io"
 	"log/slog"
 	"testing"
+
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 // Logger returns a discard-backed logger for tests that need structured logging.
@@ -18,4 +20,13 @@ func Context(t *testing.T) context.Context {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	return ctx
+}
+
+// NewMemoryWarehouse returns a warehouse test double with stable metadata defaults.
+func NewMemoryWarehouse() *warehouse.MemoryWarehouse {
+	return &warehouse.MemoryWarehouse{
+		DatabaseValue:  "TEST_DB",
+		SchemaValue:    "PUBLIC",
+		AppSchemaValue: "CEREBRO_APP",
+	}
 }

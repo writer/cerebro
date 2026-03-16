@@ -104,8 +104,16 @@ class Client:
         return self.call_tool("cerebro_decide", args)
 
 
+    def entity_history(self, args: Any) -> Any:
+        return self.call_tool("cerebro_entity_history", args)
+
+
     def findings(self, args: Any) -> Any:
         return self.call_tool("cerebro_findings", args)
+
+
+    def graph_changelog(self, args: Any) -> Any:
+        return self.call_tool("cerebro_graph_changelog", args)
 
 
     def graph_query(self, args: Any) -> Any:

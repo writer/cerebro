@@ -7,6 +7,14 @@ import (
 	"github.com/writer/cerebro/internal/policy"
 )
 
+// PolicyCatalog captures the policy lookups required for compliance reporting.
+type PolicyCatalog interface {
+	ListPolicies() []*policy.Policy
+	GetPolicy(id string) (*policy.Policy, bool)
+}
+
+var _ PolicyCatalog = (*policy.Engine)(nil)
+
 // ComplianceReport summarizes findings by compliance framework
 type ComplianceReport struct {
 	Framework           string                   `json:"framework"`
@@ -44,12 +52,12 @@ type RiskSummary struct {
 // ComplianceReporter generates compliance reports from findings
 type ComplianceReporter struct {
 	store    FindingStore
-	policies *policy.Engine
+	policies PolicyCatalog
 	registry *policy.ComplianceRegistry
 }
 
 // NewComplianceReporter creates a new compliance reporter
-func NewComplianceReporter(store FindingStore, policies *policy.Engine) *ComplianceReporter {
+func NewComplianceReporter(store FindingStore, policies PolicyCatalog) *ComplianceReporter {
 	return &ComplianceReporter{
 		store:    store,
 		policies: policies,

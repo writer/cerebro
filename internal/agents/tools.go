@@ -13,15 +13,22 @@ import (
 	"github.com/writer/cerebro/internal/snowflake"
 )
 
+// PolicyEvaluator captures the policy evaluation surface the agent tools need.
+type PolicyEvaluator interface {
+	EvaluateAsset(ctx context.Context, asset map[string]interface{}) ([]policy.Finding, error)
+}
+
+var _ PolicyEvaluator = (*policy.Engine)(nil)
+
 // SecurityTools provides investigation tools for agents
 type SecurityTools struct {
 	snowflake *snowflake.Client
 	findings  findings.FindingStore
-	policies  *policy.Engine
+	policies  PolicyEvaluator
 	scm       scm.Client
 }
 
-func NewSecurityTools(sf *snowflake.Client, fs findings.FindingStore, pe *policy.Engine, sc scm.Client) *SecurityTools {
+func NewSecurityTools(sf *snowflake.Client, fs findings.FindingStore, pe PolicyEvaluator, sc scm.Client) *SecurityTools {
 	return &SecurityTools{
 		snowflake: sf,
 		findings:  fs,

@@ -27,12 +27,15 @@ type QueryResult struct {
 
 // Builder constructs the graph platform from data sources.
 type Builder struct {
-	source          DataSource
-	graph           *Graph
-	logger          *slog.Logger
-	availableTables map[string]bool // populated tables, skips queries for missing ones
-	lastBuildTime   time.Time       // when the last successful build finished
-	lastMutation    GraphMutationSummary
+	source           DataSource
+	logger           *slog.Logger
+	stateMu          sync.RWMutex
+	updateMu         sync.Mutex
+	graph            *Graph
+	availableTables  map[string]bool // populated tables, skips queries for missing ones
+	lastBuildTime    time.Time       // event_time watermark for the last successful build (or build completion when CDC watermark is unavailable)
+	lastCDCWatermark cdcWatermark
+	lastMutation     GraphMutationSummary
 }
 
 // NewBuilder creates a new graph builder
@@ -66,6 +69,17 @@ func (b *Builder) discoverTables(ctx context.Context) {
 	b.logger.Debug("discovered populated tables", "count", len(b.availableTables))
 }
 
+func cloneAvailableTables(tables map[string]bool) map[string]bool {
+	if len(tables) == 0 {
+		return nil
+	}
+	cloned := make(map[string]bool, len(tables))
+	for name, exists := range tables {
+		cloned[name] = exists
+	}
+	return cloned
+}
+
 // hasTable returns true if the table exists and has rows (or if discovery was skipped).
 func (b *Builder) hasTable(name string) bool {
 	if b.availableTables == nil {
@@ -82,145 +96,180 @@ func (b *Builder) queryIfExists(ctx context.Context, table, query string) (*Quer
 	return b.source.Query(ctx, query)
 }
 
-// Build constructs the entire graph from the data source.
-// Phase 1: discover populated tables (1 query)
-// Phase 2: load all nodes in parallel across providers
-// Phase 3: build index for O(1) lookups during edge building
-// Phase 4: build all edges in parallel across providers
-// Phase 5: build inferred edges (exposure, SCM, relationships)
-func (b *Builder) Build(ctx context.Context) error {
+// BuildCandidate constructs a fresh graph instance from the data source without
+// mutating the live builder graph. Callers can diff or swap the returned graph.
+func (b *Builder) BuildCandidate(ctx context.Context) (*Graph, GraphMutationSummary, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	if err := ctx.Err(); err != nil {
-		return err
+		return nil, GraphMutationSummary{}, err
 	}
 
-	start := time.Now()
-	b.graph.Clear()
+	validationMode := SchemaValidationWarn
+	b.stateMu.RLock()
+	if b.graph != nil {
+		validationMode = b.graph.SchemaValidationMode()
+	}
+	b.stateMu.RUnlock()
 
-	b.logger.Info("building graph platform")
+	working := &Builder{
+		source: b.source,
+		graph:  New(),
+		logger: b.logger,
+	}
+	working.graph.SetSchemaValidationMode(validationMode)
+	start := time.Now()
+
+	working.logger.Info("building graph platform")
 
 	// Phase 1: discover which tables have data (1 round-trip)
-	b.discoverTables(ctx)
+	working.discoverTables(ctx)
 	if err := ctx.Err(); err != nil {
-		return err
+		return nil, GraphMutationSummary{}, err
 	}
 
 	// Phase 2: load all nodes in parallel
 	g, gctx := errgroup.WithContext(ctx)
-	g.Go(func() error { b.buildAWSNodes(gctx); return nil })
-	g.Go(func() error { b.buildGCPNodes(gctx); return nil })
-	g.Go(func() error { b.buildAzureNodes(gctx); return nil })
-	g.Go(func() error { b.buildOktaNodes(gctx); return nil })
+	g.Go(func() error { working.buildAWSNodes(gctx); return nil })
+	g.Go(func() error { working.buildGCPNodes(gctx); return nil })
+	g.Go(func() error { working.buildAzureNodes(gctx); return nil })
+	g.Go(func() error { working.buildOktaNodes(gctx); return nil })
+	g.Go(func() error { working.buildK8sNodes(gctx); return nil })
 	_ = g.Wait()
 	if err := ctx.Err(); err != nil {
-		return err
+		return nil, GraphMutationSummary{}, err
 	}
 
 	// Add internet entry point (needed before edge building)
-	b.addInternetNode()
+	working.addInternetNode()
 
 	// Phase 3: build indexes so edge builders get O(1) lookups
-	b.graph.BuildIndex()
+	working.graph.BuildIndex()
 
-	b.logger.Info("graph nodes loaded",
-		"nodes", b.graph.NodeCount(),
+	working.logger.Info("graph nodes loaded",
+		"nodes", working.graph.NodeCount(),
 		"duration", time.Since(start))
 
 	// Phase 4: build provider edges in parallel
 	edgeStart := time.Now()
 	eg, ectx := errgroup.WithContext(ctx)
-	eg.Go(func() error { b.buildAWSEdges(ectx); return nil })
-	eg.Go(func() error { b.buildGCPEdges(ectx); return nil })
-	eg.Go(func() error { b.buildAzureEdges(ectx); return nil })
-	eg.Go(func() error { b.buildRelationshipEdges(ectx); return nil })
+	eg.Go(func() error { working.buildAWSEdges(ectx); return nil })
+	eg.Go(func() error { working.buildGCPEdges(ectx); return nil })
+	eg.Go(func() error { working.buildAzureEdges(ectx); return nil })
+	eg.Go(func() error { working.buildKubernetesEdges(ectx); return nil })
+	eg.Go(func() error { working.buildRelationshipEdges(ectx); return nil })
 	_ = eg.Wait()
 	if err := ctx.Err(); err != nil {
-		return err
+		return nil, GraphMutationSummary{}, err
 	}
 
-	b.logger.Info("graph edges built",
-		"edges", b.graph.EdgeCount(),
+	working.logger.Info("graph edges built",
+		"edges", working.graph.EdgeCount(),
 		"duration", time.Since(edgeStart))
 
-	b.buildIAMPermissionUsageKnowledge(ctx)
+	working.buildIAMPermissionUsageKnowledge(ctx)
 
 	// Build unified person graph overlay (person nodes + projected edges).
 	if err := ctx.Err(); err != nil {
-		return err
+		return nil, GraphMutationSummary{}, err
 	}
-	b.buildUnifiedPersonGraph(ctx)
-	b.buildPersonInteractionEdges(ctx)
+	working.buildUnifiedPersonGraph(ctx)
+	working.buildPersonInteractionEdges(ctx)
 
 	// Phase 5: inferred edges (these iterate nodes, run sequentially)
 	inferStart := time.Now()
 	if err := ctx.Err(); err != nil {
-		return err
+		return nil, GraphMutationSummary{}, err
 	}
-	b.buildExposureEdges()
+	working.buildExposureEdges()
 	if err := ctx.Err(); err != nil {
-		return err
+		return nil, GraphMutationSummary{}, err
 	}
-	b.buildSCMInference()
-	normalization := NormalizeEntityAssetSupport(b.graph, temporalNowUTC())
+	working.buildSCMInference()
+	normalization := NormalizeEntityAssetSupport(working.graph, temporalNowUTC())
 
-	b.logger.Info("graph inferred edges built",
-		"edges", b.graph.EdgeCount(),
+	working.logger.Info("graph inferred edges built",
+		"edges", working.graph.EdgeCount(),
 		"duration", time.Since(inferStart))
-	b.logger.Info("graph asset support normalized",
+	working.logger.Info("graph asset support normalized",
 		"buckets", normalization.BucketsProcessed,
 		"subresources", normalization.SubresourcesCreated,
 		"observations", normalization.ObservationsCreated,
 		"claims", normalization.ClaimsCreated)
 
 	// Rebuild index with edges included
-	b.graph.BuildIndex()
+	working.graph.BuildIndex()
 
 	// Update metadata
-	b.graph.SetMetadata(Metadata{
-		BuiltAt:       time.Now(),
-		NodeCount:     b.graph.NodeCount(),
-		EdgeCount:     b.graph.EdgeCount(),
-		BuildDuration: time.Since(start),
+	finishedAt := time.Now().UTC()
+	buildDuration := time.Since(start)
+	working.graph.SetMetadata(Metadata{
+		BuiltAt:       finishedAt,
+		NodeCount:     working.graph.NodeCount(),
+		EdgeCount:     working.graph.EdgeCount(),
+		BuildDuration: buildDuration,
 	})
 
-	b.logger.Info("graph platform built",
-		"nodes", b.graph.NodeCount(),
-		"edges", b.graph.EdgeCount(),
-		"duration", time.Since(start))
-
-	finishedAt := time.Now().UTC()
-	b.lastBuildTime = finishedAt
-	b.lastMutation = GraphMutationSummary{
+	summary := GraphMutationSummary{
 		Mode:      GraphMutationModeFullRebuild,
 		Since:     start,
 		Until:     finishedAt,
-		NodeCount: b.graph.NodeCount(),
-		EdgeCount: b.graph.EdgeCount(),
-		Duration:  time.Since(start),
+		NodeCount: working.graph.NodeCount(),
+		EdgeCount: working.graph.EdgeCount(),
+		Duration:  buildDuration,
 	}
+	working.logger.Info("graph platform built",
+		"nodes", summary.NodeCount,
+		"edges", summary.EdgeCount,
+		"duration", summary.Duration)
+	return working.graph, summary, nil
+}
+
+// Build constructs the entire graph from the data source using a fresh graph
+// instance and atomically swapping it into the builder when complete.
+func (b *Builder) Build(ctx context.Context) error {
+	b.updateMu.Lock()
+	defer b.updateMu.Unlock()
+
+	candidate, summary, err := b.BuildCandidate(ctx)
+	if err != nil {
+		return err
+	}
+
+	watermark, watermarkErr := b.queryLatestCDCWatermark(ctx)
+	if watermarkErr != nil || watermark.EventTime.IsZero() {
+		watermark = cdcWatermark{EventTime: summary.Until}
+	}
+
+	b.stateMu.Lock()
+	b.graph = candidate
+	b.availableTables = nil
+	b.lastBuildTime = watermark.EventTime
+	b.lastCDCWatermark = watermark
+	b.lastMutation = summary
+	b.stateMu.Unlock()
 	return nil
 }
 
 // HasChanges checks whether any asset tables have been modified since the last
-// graph build by looking at MAX(event_time) from CDC_EVENTS. Returns true if
-// changes are detected or if the check fails (fail-open to ensure freshness).
+// graph build by looking at the latest CDC watermark. Returns true if changes
+// are detected or if the check fails (fail-open to ensure freshness).
 func (b *Builder) HasChanges(ctx context.Context) bool {
-	if b.lastBuildTime.IsZero() {
+	b.stateMu.RLock()
+	lastBuildTime := b.lastBuildTime
+	lastCDCWatermark := b.lastCDCWatermark
+	b.stateMu.RUnlock()
+
+	currentWatermark := effectiveCDCWatermark(lastBuildTime, lastCDCWatermark)
+	if currentWatermark.EventTime.IsZero() {
 		return true
 	}
-	result, err := b.source.Query(ctx, `
-		SELECT MAX(event_time) AS latest
-		FROM CDC_EVENTS
-	`)
-	if err != nil || len(result.Rows) == 0 {
+	latest, err := b.queryLatestCDCWatermark(ctx)
+	if err != nil || latest.EventTime.IsZero() {
 		return true // fail-open
 	}
-	if latest, ok := queryRow(result.Rows[0], "latest").(time.Time); ok && !latest.IsZero() {
-		return latest.After(b.lastBuildTime)
-	}
-	return true
+	return latest.After(currentWatermark)
 }
 
 // RebuildIfChanged rebuilds the graph only if data has changed since the last build.
@@ -235,11 +284,15 @@ func (b *Builder) RebuildIfChanged(ctx context.Context) (bool, error) {
 
 // Graph returns the built graph
 func (b *Builder) Graph() *Graph {
+	b.stateMu.RLock()
+	defer b.stateMu.RUnlock()
 	return b.graph
 }
 
 // LastMutation returns metadata for the most recent graph update operation.
 func (b *Builder) LastMutation() GraphMutationSummary {
+	b.stateMu.RLock()
+	defer b.stateMu.RUnlock()
 	return b.lastMutation
 }
 

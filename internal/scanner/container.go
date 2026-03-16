@@ -2,13 +2,14 @@ package scanner
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
+	"net/url"
 	"os/exec"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -77,13 +78,16 @@ type ImageTag struct {
 
 // ImageManifest represents container image metadata
 type ImageManifest struct {
-	Digest    string            `json:"digest"`
-	MediaType string            `json:"media_type"`
-	Config    ImageConfig       `json:"config"`
-	Layers    []Layer           `json:"layers"`
-	History   []string          `json:"history,omitempty"`
-	Labels    map[string]string `json:"labels"`
-	Created   time.Time         `json:"created"`
+	Digest          string            `json:"digest"`
+	MediaType       string            `json:"media_type"`
+	ConfigDigest    string            `json:"config_digest,omitempty"`
+	Config          ImageConfig       `json:"config"`
+	Layers          []Layer           `json:"layers"`
+	History         []string          `json:"history,omitempty"`
+	Labels          map[string]string `json:"labels"`
+	Created         time.Time         `json:"created"`
+	BaseImageRef    string            `json:"base_image_ref,omitempty"`
+	BaseImageDigest string            `json:"base_image_digest,omitempty"`
 }
 
 type ImageConfig struct {
@@ -553,6 +557,7 @@ type ecrAPI interface {
 	DescribeRepositories(ctx context.Context, params *ecr.DescribeRepositoriesInput, optFns ...func(*ecr.Options)) (*ecr.DescribeRepositoriesOutput, error)
 	DescribeImages(ctx context.Context, params *ecr.DescribeImagesInput, optFns ...func(*ecr.Options)) (*ecr.DescribeImagesOutput, error)
 	BatchGetImage(ctx context.Context, params *ecr.BatchGetImageInput, optFns ...func(*ecr.Options)) (*ecr.BatchGetImageOutput, error)
+	GetDownloadUrlForLayer(ctx context.Context, params *ecr.GetDownloadUrlForLayerInput, optFns ...func(*ecr.Options)) (*ecr.GetDownloadUrlForLayerOutput, error)
 	DescribeImageScanFindings(ctx context.Context, params *ecr.DescribeImageScanFindingsInput, optFns ...func(*ecr.Options)) (*ecr.DescribeImageScanFindingsOutput, error)
 }
 
@@ -667,56 +672,99 @@ func (c *ECRClient) GetManifest(ctx context.Context, repo, tag string) (*ImageMa
 	if err := c.ensureClient(ctx); err != nil {
 		return nil, err
 	}
+	return resolveRegistryManifest(ctx, tag, func(ctx context.Context, reference string) ([]byte, http.Header, error) {
+		return c.fetchManifest(ctx, repo, reference)
+	}, func(ctx context.Context, digest string) ([]byte, error) {
+		return downloadBlobBytes(ctx, c, repo, digest)
+	})
+}
 
-	input := &ecr.BatchGetImageInput{
-		RepositoryName: aws.String(repo),
-		ImageIds: []ecrtypes.ImageIdentifier{
-			{ImageTag: aws.String(tag)},
-		},
+func (c *ECRClient) DownloadBlob(ctx context.Context, repo, digest string) (io.ReadCloser, error) {
+	if err := c.ensureClient(ctx); err != nil {
+		return nil, err
+	}
+	input := &ecr.GetDownloadUrlForLayerInput{
+		RepositoryName: aws.String(strings.TrimSpace(repo)),
+		LayerDigest:    aws.String(strings.TrimSpace(digest)),
 	}
 	if c.accountID != "" {
 		input.RegistryId = aws.String(c.accountID)
 	}
-
-	out, err := c.client.BatchGetImage(ctx, input)
+	out, err := c.client.GetDownloadUrlForLayer(ctx, input)
 	if err != nil {
 		return nil, err
 	}
+	url := strings.TrimSpace(aws.ToString(out.DownloadUrl))
+	if url == "" {
+		return nil, fmt.Errorf("ecr returned empty layer download url for %s", digest)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, sanitizeTransportError(err)
+	}
+	if resp.StatusCode >= 400 {
+		defer func() { _ = resp.Body.Close() }()
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("ecr layer download failed %d: %s", resp.StatusCode, string(body))
+	}
+	return resp.Body, nil
+}
+
+func (c *ECRClient) fetchManifest(ctx context.Context, repo, reference string) ([]byte, http.Header, error) {
+	input := &ecr.BatchGetImageInput{
+		RepositoryName: aws.String(strings.TrimSpace(repo)),
+		ImageIds: []ecrtypes.ImageIdentifier{
+			imageIdentifierForReference(reference),
+		},
+		AcceptedMediaTypes: manifestAcceptMediaTypes(),
+	}
+	if c.accountID != "" {
+		input.RegistryId = aws.String(c.accountID)
+	}
+	out, err := c.client.BatchGetImage(ctx, input)
+	if err != nil {
+		return nil, nil, err
+	}
 	if len(out.Images) == 0 {
-		return nil, fmt.Errorf("image not found")
+		return nil, nil, fmt.Errorf("image manifest not found")
 	}
-
 	img := out.Images[0]
-	manifest := &ImageManifest{
-		Digest:    aws.ToString(img.ImageId.ImageDigest),
-		MediaType: aws.ToString(img.ImageManifestMediaType),
+	if img.ImageManifest == nil {
+		return nil, nil, fmt.Errorf("image manifest payload is empty")
 	}
-	if img.ImageManifest != nil {
-		if err := parseManifest([]byte(*img.ImageManifest), manifest); err != nil {
-			slog.Warn("failed to parse image manifest",
-				"registry", "ecr",
-				"repository", repo,
-				"tag", tag,
-				"digest", manifest.Digest,
-				"manifest_size", len(*img.ImageManifest),
-				"error", err,
-			)
-			return nil, fmt.Errorf("parse manifest: %w", err)
-		}
+	headers := make(http.Header)
+	if mediaType := strings.TrimSpace(aws.ToString(img.ImageManifestMediaType)); mediaType != "" {
+		headers.Set("Content-Type", mediaType)
 	}
-
-	return manifest, nil
+	if digest := strings.TrimSpace(aws.ToString(img.ImageId.ImageDigest)); digest != "" {
+		headers.Set("Docker-Content-Digest", digest)
+	}
+	return []byte(*img.ImageManifest), headers, nil
 }
 
 func (c *ECRClient) GetVulnerabilities(ctx context.Context, repo, tag string) ([]ImageVulnerability, error) {
 	if err := c.ensureClient(ctx); err != nil {
 		return nil, err
 	}
+	reference := strings.TrimSpace(tag)
+	if reference == "" {
+		return nil, fmt.Errorf("image reference is required")
+	}
 
 	var vulns []ImageVulnerability
+	imageID := &ecrtypes.ImageIdentifier{}
+	if strings.HasPrefix(reference, "sha256:") {
+		imageID.ImageDigest = aws.String(reference)
+	} else {
+		imageID.ImageTag = aws.String(reference)
+	}
 	input := &ecr.DescribeImageScanFindingsInput{
 		RepositoryName: aws.String(repo),
-		ImageId:        &ecrtypes.ImageIdentifier{ImageTag: aws.String(tag)},
+		ImageId:        imageID,
 	}
 	if c.accountID != "" {
 		input.RegistryId = aws.String(c.accountID)
@@ -856,28 +904,33 @@ func (c *GCRClient) ListTags(ctx context.Context, repo string) ([]ImageTag, erro
 
 func (c *GCRClient) GetManifest(ctx context.Context, repo, tag string) (*ImageManifest, error) {
 	fullRepo := c.qualifyRepo(repo)
-	url := fmt.Sprintf("%s/v2/%s/manifests/%s", c.baseURL(), fullRepo, tag)
-	body, headers, err := c.doRequest(ctx, http.MethodGet, url, "application/vnd.docker.distribution.manifest.v2+json")
+	return resolveRegistryManifest(ctx, tag, func(ctx context.Context, reference string) ([]byte, http.Header, error) {
+		url := fmt.Sprintf("%s/v2/%s/manifests/%s", c.baseURL(), fullRepo, reference)
+		return c.doRequest(ctx, http.MethodGet, url, manifestAcceptHeader())
+	}, func(ctx context.Context, digest string) ([]byte, error) {
+		return downloadBlobBytes(ctx, c, fullRepo, digest)
+	})
+}
+
+func (c *GCRClient) DownloadBlob(ctx context.Context, repo, digest string) (io.ReadCloser, error) {
+	url := fmt.Sprintf("%s/v2/%s/blobs/%s", c.baseURL(), c.qualifyRepo(repo), strings.TrimSpace(digest))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
-
-	manifest := &ImageManifest{
-		Digest:    headers.Get("Docker-Content-Digest"),
-		MediaType: headers.Get("Content-Type"),
+	if c.accessToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.accessToken)
 	}
-	if err := parseManifest(body, manifest); err != nil {
-		slog.Warn("failed to parse image manifest",
-			"registry", "gcr",
-			"repository", repo,
-			"tag", tag,
-			"digest", manifest.Digest,
-			"manifest_size", len(body),
-			"error", err,
-		)
-		return nil, fmt.Errorf("parse manifest: %w", err)
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, sanitizeTransportError(err)
 	}
-	return manifest, nil
+	if resp.StatusCode >= 400 {
+		defer func() { _ = resp.Body.Close() }()
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("registry API error %d: %s", resp.StatusCode, string(body))
+	}
+	return resp.Body, nil
 }
 
 func (c *GCRClient) GetVulnerabilities(ctx context.Context, repo, tag string) ([]ImageVulnerability, error) {
@@ -922,7 +975,7 @@ func (c *GCRClient) doRequest(ctx context.Context, method, url, accept string) (
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, sanitizeTransportError(err)
 	}
 	defer func() {
 		_ = resp.Body.Close()
@@ -1018,28 +1071,34 @@ func (c *ACRClient) ListTags(ctx context.Context, repo string) ([]ImageTag, erro
 }
 
 func (c *ACRClient) GetManifest(ctx context.Context, repo, tag string) (*ImageManifest, error) {
-	url := fmt.Sprintf("%s/v2/%s/manifests/%s", c.baseURL(), repo, tag)
-	body, headers, err := c.doRequest(ctx, http.MethodGet, url, "application/vnd.docker.distribution.manifest.v2+json")
+	repo = strings.TrimSpace(repo)
+	return resolveRegistryManifest(ctx, tag, func(ctx context.Context, reference string) ([]byte, http.Header, error) {
+		url := fmt.Sprintf("%s/v2/%s/manifests/%s", c.baseURL(), repo, reference)
+		return c.doRequest(ctx, http.MethodGet, url, manifestAcceptHeader())
+	}, func(ctx context.Context, digest string) ([]byte, error) {
+		return downloadBlobBytes(ctx, c, repo, digest)
+	})
+}
+
+func (c *ACRClient) DownloadBlob(ctx context.Context, repo, digest string) (io.ReadCloser, error) {
+	url := fmt.Sprintf("%s/v2/%s/blobs/%s", c.baseURL(), strings.TrimSpace(repo), strings.TrimSpace(digest))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
-
-	manifest := &ImageManifest{
-		Digest:    headers.Get("Docker-Content-Digest"),
-		MediaType: headers.Get("Content-Type"),
+	if c.username != "" || c.password != "" {
+		req.SetBasicAuth(c.username, c.password)
 	}
-	if err := parseManifest(body, manifest); err != nil {
-		slog.Warn("failed to parse image manifest",
-			"registry", "acr",
-			"repository", repo,
-			"tag", tag,
-			"digest", manifest.Digest,
-			"manifest_size", len(body),
-			"error", err,
-		)
-		return nil, fmt.Errorf("parse manifest: %w", err)
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, sanitizeTransportError(err)
 	}
-	return manifest, nil
+	if resp.StatusCode >= 400 {
+		defer func() { _ = resp.Body.Close() }()
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("registry API error %d: %s", resp.StatusCode, string(body))
+	}
+	return resp.Body, nil
 }
 
 func (c *ACRClient) GetVulnerabilities(ctx context.Context, repo, tag string) ([]ImageVulnerability, error) {
@@ -1071,13 +1130,12 @@ func (c *ACRClient) doRequest(ctx context.Context, method, url, accept string) (
 		req.Header.Set("Accept", accept)
 	}
 	if c.username != "" || c.password != "" {
-		credentials := base64.StdEncoding.EncodeToString([]byte(c.username + ":" + c.password))
-		req.Header.Set("Authorization", "Basic "+credentials)
+		req.SetBasicAuth(c.username, c.password)
 	}
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, sanitizeTransportError(err)
 	}
 	defer func() {
 		_ = resp.Body.Close()
@@ -1219,6 +1277,7 @@ func parseManifest(data []byte, manifest *ImageManifest) error {
 	if decoded.MediaType != "" {
 		manifest.MediaType = decoded.MediaType
 	}
+	manifest.ConfigDigest = strings.TrimSpace(decoded.Config.Digest)
 	manifest.Config = ImageConfig{Labels: make(map[string]string)}
 	manifest.Layers = make([]Layer, 0, len(decoded.Layers))
 	manifest.History = manifest.History[:0]
@@ -1260,4 +1319,49 @@ func stripURLScheme(host string) string {
 	host = strings.TrimPrefix(host, "https://")
 	host = strings.TrimPrefix(host, "http://")
 	return host
+}
+
+func sanitizeTransportError(err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%s", sanitizeTransportMessage(err))
+}
+
+var scannerEmbeddedURLPattern = regexp.MustCompile(`https?://[^\s"'<>]+`)
+
+func sanitizeTransportMessage(err error) string {
+	if err == nil {
+		return "registry transport request failed"
+	}
+	var urlErr *url.Error
+	if !errors.As(err, &urlErr) {
+		return scannerEmbeddedURLPattern.ReplaceAllStringFunc(strings.TrimSpace(err.Error()), sanitizeTransportURLString)
+	}
+	target := strings.TrimSpace(urlErr.URL)
+	if target == "" {
+		return "registry transport request failed: " + sanitizeTransportMessage(urlErr.Err)
+	}
+	target = sanitizeTransportURLString(target)
+	if target == "" {
+		return "registry transport request failed: " + sanitizeTransportMessage(urlErr.Err)
+	}
+	return fmt.Sprintf("registry transport request failed for %s: %s", target, sanitizeTransportMessage(urlErr.Err))
+}
+
+func sanitizeTransportURLString(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return raw
+	}
+	if parsed, err := url.Parse(raw); err == nil {
+		parsed.RawQuery = ""
+		parsed.Fragment = ""
+		parsed.User = nil
+		return parsed.String()
+	}
+	if idx := strings.Index(raw, "?"); idx >= 0 {
+		return raw[:idx]
+	}
+	return raw
 }

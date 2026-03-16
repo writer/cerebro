@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,6 +25,7 @@ type stubECR struct {
 	describeRepositoriesFn      func(*ecr.DescribeRepositoriesInput) (*ecr.DescribeRepositoriesOutput, error)
 	describeImagesFn            func(*ecr.DescribeImagesInput) (*ecr.DescribeImagesOutput, error)
 	batchGetImageFn             func(*ecr.BatchGetImageInput) (*ecr.BatchGetImageOutput, error)
+	getDownloadURLForLayerFn    func(*ecr.GetDownloadUrlForLayerInput) (*ecr.GetDownloadUrlForLayerOutput, error)
 	describeImageScanFindingsFn func(*ecr.DescribeImageScanFindingsInput) (*ecr.DescribeImageScanFindingsOutput, error)
 }
 
@@ -37,6 +40,12 @@ type stubSignedRegistry struct {
 	*stubRegistry
 	signature    *SignatureVerification
 	signatureErr error
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }
 
 func (s *stubRegistry) Name() string { return s.name }
@@ -121,6 +130,13 @@ func (s *stubECR) BatchGetImage(_ context.Context, params *ecr.BatchGetImageInpu
 		return nil, errors.New("BatchGetImage not configured")
 	}
 	return s.batchGetImageFn(params)
+}
+
+func (s *stubECR) GetDownloadUrlForLayer(_ context.Context, params *ecr.GetDownloadUrlForLayerInput, _ ...func(*ecr.Options)) (*ecr.GetDownloadUrlForLayerOutput, error) {
+	if s.getDownloadURLForLayerFn == nil {
+		return nil, errors.New("GetDownloadUrlForLayer not configured")
+	}
+	return s.getDownloadURLForLayerFn(params)
 }
 
 func (s *stubECR) DescribeImageScanFindings(_ context.Context, params *ecr.DescribeImageScanFindingsInput, _ ...func(*ecr.Options)) (*ecr.DescribeImageScanFindingsOutput, error) {
@@ -483,6 +499,72 @@ func TestGCRClientSuccess(t *testing.T) {
 	}
 }
 
+func TestGCRClientDownloadBlobQualifiesRepository(t *testing.T) {
+	var requestedPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestedPath = r.URL.Path
+		_, _ = w.Write([]byte("blob"))
+	}))
+	defer server.Close()
+
+	client := NewGCRClient("my-project")
+	client.SetRegistryHost(server.URL)
+
+	reader, err := client.DownloadBlob(context.Background(), "repo", "sha256:layer")
+	if err != nil {
+		t.Fatalf("DownloadBlob: %v", err)
+	}
+	defer func() { _ = reader.Close() }()
+	body, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if string(body) != "blob" {
+		t.Fatalf("unexpected body %q", string(body))
+	}
+	if requestedPath != "/v2/my-project/repo/blobs/sha256:layer" {
+		t.Fatalf("unexpected blob path %q", requestedPath)
+	}
+}
+
+func TestECRClientDownloadBlobSanitizesPresignedURLTransportErrors(t *testing.T) {
+	originalClient := http.DefaultClient
+	http.DefaultClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return nil, &url.Error{
+				Op:  req.Method,
+				URL: req.URL.String(),
+				Err: context.DeadlineExceeded,
+			}
+		}),
+	}
+	t.Cleanup(func() {
+		http.DefaultClient = originalClient
+	})
+
+	stub := &stubECR{
+		getDownloadURLForLayerFn: func(input *ecr.GetDownloadUrlForLayerInput) (*ecr.GetDownloadUrlForLayerOutput, error) {
+			if got := aws.ToString(input.RepositoryName); got != "repo" {
+				t.Fatalf("unexpected repository %q", got)
+			}
+			return &ecr.GetDownloadUrlForLayerOutput{
+				DownloadUrl: aws.String("https://registry.example.com/layer?X-Amz-Signature=secret&X-Amz-Credential=creds"),
+			}, nil
+		},
+	}
+	client := NewECRClientWithAPI("us-west-2", "", stub)
+	_, err := client.DownloadBlob(context.Background(), "repo", "sha256:layer")
+	if err == nil {
+		t.Fatal("expected transport error")
+	}
+	if strings.Contains(err.Error(), "X-Amz-Signature=secret") || strings.Contains(err.Error(), "X-Amz-Credential=creds") {
+		t.Fatalf("expected sanitized transport error, got %q", err)
+	}
+	if !strings.Contains(err.Error(), "https://registry.example.com/layer") {
+		t.Fatalf("expected sanitized error to retain base URL context, got %q", err)
+	}
+}
+
 func TestGCRClientGetManifest_ParseError(t *testing.T) {
 	manifestParseFailures.Store(0)
 	token := "token"
@@ -747,6 +829,32 @@ func TestTrivyScannerError(t *testing.T) {
 
 	scanner := NewTrivyScanner(path)
 	_, err := scanner.ScanImage(context.Background(), "repo:tag")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestTrivyFilesystemScanner(t *testing.T) {
+	payload := `{"Results":[{"Target":"rootfs","Vulnerabilities":[{"VulnerabilityID":"CVE-1","PkgName":"openssl","InstalledVersion":"1","FixedVersion":"2","Severity":"HIGH","Description":"desc","CVSS":{"nvd":{"V3Score":7.5}}}]}]}`
+	script := "#!/bin/sh\nprintf '%s' '" + payload + "'\n"
+	path := writeExecutable(t, script)
+
+	scanner := NewTrivyFilesystemScanner(path)
+	result, err := scanner.ScanFilesystem(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatalf("ScanFilesystem: %v", err)
+	}
+	if result.Summary.High != 1 || len(result.Vulnerabilities) != 1 {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+}
+
+func TestTrivyFilesystemScannerError(t *testing.T) {
+	script := "#!/bin/sh\necho boom >&2\nexit 1\n"
+	path := writeExecutable(t, script)
+
+	scanner := NewTrivyFilesystemScanner(path)
+	_, err := scanner.ScanFilesystem(context.Background(), t.TempDir())
 	if err == nil {
 		t.Fatal("expected error")
 	}

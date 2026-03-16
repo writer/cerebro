@@ -69,6 +69,11 @@ func (a *App) setSecurityGraph(g *graph.Graph) {
 	a.securityGraphInitMu.Lock()
 	defer a.securityGraphInitMu.Unlock()
 	a.SecurityGraph = g
+	if g == nil {
+		a.Propagation = nil
+		return
+	}
+	a.Propagation = graph.NewPropagationEngine(g)
 }
 
 func (a *App) GraphBuildSnapshot() GraphBuildSnapshot {

@@ -30,6 +30,8 @@ func TestK8sTables(t *testing.T) {
 
 	required := map[string]bool{
 		"k8s_cluster_inventory":             false,
+		"k8s_core_configmaps":               false,
+		"k8s_core_persistent_volumes":       false,
 		"k8s_core_service_accounts":         false,
 		"k8s_rbac_service_account_bindings": false,
 		"k8s_rbac_risky_bindings":           false,
@@ -284,6 +286,13 @@ func TestPodSpecToMapDerivedSignals(t *testing.T) {
 			t.Error("expected all_containers_runtime_default_seccomp to be true")
 		}
 	})
+}
+
+func TestBuildTypedNamespacedID_UsesMissingNamespacePlaceholder(t *testing.T) {
+	got := buildTypedNamespacedID("prod-cluster", "Pod", "", "payments-api")
+	if got != "prod-cluster/pod/_missing_namespace/payments-api" {
+		t.Fatalf("expected placeholder namespace segment, got %q", got)
+	}
 }
 
 func TestServiceAccountSubjects(t *testing.T) {

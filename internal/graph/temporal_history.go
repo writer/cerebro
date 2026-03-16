@@ -41,7 +41,8 @@ func (g *Graph) GetNodePropertyHistory(nodeID, property string, window time.Dura
 		}
 		out = append(out, PropertySnapshot{
 			Timestamp: snapshot.Timestamp,
-			Value:     snapshot.Value,
+			Value:     cloneAny(snapshot.Value),
+			Deleted:   snapshot.Deleted,
 		})
 	}
 	return out
@@ -250,7 +251,7 @@ func temporalCompare(value float64, operator string, threshold float64) bool {
 	}
 }
 
-func (g *Graph) appendNodePropertyHistoryLocked(node *Node, property string, value any, at time.Time) {
+func (g *Graph) appendNodePropertySnapshotLocked(node *Node, property string, snapshot PropertySnapshot) {
 	if node == nil {
 		return
 	}
@@ -258,10 +259,11 @@ func (g *Graph) appendNodePropertyHistoryLocked(node *Node, property string, val
 	if property == "" {
 		return
 	}
-	if at.IsZero() {
-		at = temporalNowUTC()
+	if snapshot.Timestamp.IsZero() {
+		snapshot.Timestamp = temporalNowUTC()
 	}
-	at = at.UTC()
+	snapshot.Timestamp = snapshot.Timestamp.UTC()
+	snapshot.Value = cloneAny(snapshot.Value)
 
 	if node.PropertyHistory == nil {
 		node.PropertyHistory = make(map[string][]PropertySnapshot)
@@ -269,27 +271,43 @@ func (g *Graph) appendNodePropertyHistoryLocked(node *Node, property string, val
 	history := node.PropertyHistory[property]
 	if len(history) > 0 {
 		last := history[len(history)-1]
-		if reflect.DeepEqual(last.Value, value) {
-			if at.After(last.Timestamp) {
-				history[len(history)-1].Timestamp = at
+		if last.Deleted == snapshot.Deleted && reflect.DeepEqual(last.Value, snapshot.Value) {
+			if snapshot.Timestamp.After(last.Timestamp) {
+				history[len(history)-1].Timestamp = snapshot.Timestamp
 				node.PropertyHistory[property] = history
 			}
 			return
 		}
 	}
 
-	history = append(history, PropertySnapshot{Timestamp: at, Value: value})
+	history = append(history, snapshot)
 	if len(history) > maxTemporalHistoryPerProperty {
 		history = history[len(history)-maxTemporalHistoryPerProperty:]
 	}
 	node.PropertyHistory[property] = history
 }
 
+func (g *Graph) appendNodePropertyHistoryLocked(node *Node, property string, value any, at time.Time) {
+	g.appendNodePropertySnapshotLocked(node, property, PropertySnapshot{Timestamp: at, Value: value})
+}
+
+func (g *Graph) appendNodePropertyTombstoneLocked(node *Node, property string, at time.Time) {
+	g.appendNodePropertySnapshotLocked(node, property, PropertySnapshot{Timestamp: at, Deleted: true})
+}
+
 func (g *Graph) appendNodePropertiesHistoryLocked(node *Node, at time.Time) {
-	if node == nil || len(node.Properties) == 0 {
+	if node == nil {
 		return
 	}
+	seen := make(map[string]struct{}, len(node.Properties))
 	for property, value := range node.Properties {
+		seen[property] = struct{}{}
 		g.appendNodePropertyHistoryLocked(node, property, value, at)
+	}
+	for property := range node.PreviousProperties {
+		if _, ok := seen[property]; ok {
+			continue
+		}
+		g.appendNodePropertyTombstoneLocked(node, property, at)
 	}
 }

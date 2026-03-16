@@ -168,6 +168,39 @@ func TestHandleTapCloudEvent_BuildsBusinessNodeAndEdge(t *testing.T) {
 	}
 }
 
+func TestHandleTapCloudEvent_IsIdempotentForDuplicateBusinessEvent(t *testing.T) {
+	a := &App{SecurityGraph: graph.New()}
+	evt := events.CloudEvent{
+		ID:   "evt-idempotent-1",
+		Type: "ensemble.tap.hubspot.contact.updated",
+		Time: time.Date(2026, 3, 11, 18, 0, 0, 0, time.UTC),
+		Data: map[string]interface{}{
+			"entity_id": "contact-1",
+			"snapshot": map[string]interface{}{
+				"name":       "Alice",
+				"company_id": "company-1",
+			},
+		},
+	}
+
+	if err := a.handleTapCloudEvent(context.Background(), evt); err != nil {
+		t.Fatalf("first handleTapCloudEvent failed: %v", err)
+	}
+	nodesAfterFirst := a.SecurityGraph.NodeCount()
+	edgesAfterFirst := a.SecurityGraph.EdgeCount()
+
+	if err := a.handleTapCloudEvent(context.Background(), evt); err != nil {
+		t.Fatalf("second handleTapCloudEvent failed: %v", err)
+	}
+
+	if got := a.SecurityGraph.NodeCount(); got != nodesAfterFirst {
+		t.Fatalf("expected duplicate event to keep node count %d, got %d", nodesAfterFirst, got)
+	}
+	if got := a.SecurityGraph.EdgeCount(); got != edgesAfterFirst {
+		t.Fatalf("expected duplicate event to keep edge count %d, got %d", edgesAfterFirst, got)
+	}
+}
+
 func TestHandleTapCloudEvent_InvalidCustomMapperPathDoesNotBlockPipeline(t *testing.T) {
 	t.Setenv("GRAPH_EVENT_MAPPING_PATH", "/tmp/non-existent-mapper.yaml")
 
