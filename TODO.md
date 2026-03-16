@@ -77,6 +77,24 @@ Status: executed end-to-end via PR workflow
 - [x] Rebuild graph indexes and metadata after projection.
 - [x] Re-run focused runtimegraph tests and lint.
 
+## Deep Review Cycle 140 - Runtime Evidence Node Projection (2026-03-16)
+
+### Review findings
+- [x] Gap: runtime graph projection can now materialize raw `observation` nodes, but promoted detection results still have no first-class `evidence` node representation in the graph.
+- [x] Gap: evidence nodes should represent the detection-layer artifact, not duplicate raw sensor provenance; runtime-source details belong in metadata while `source_system` should remain the detection system.
+- [x] Gap: promoted runtime evidence still needs deterministic node IDs and temporal fallbacks from the underlying observation/event when the finding timestamp is absent.
+
+### Execution plan
+- [x] Add runtime-finding-to-evidence node builders in `internal/runtimegraph`.
+- [x] Materialize runtime findings into graph `evidence` nodes without introducing the later `based_on` edges yet.
+- [x] Add TDD coverage for:
+  - [x] detection provenance and metadata shaping
+  - [x] observation timestamp fallback
+  - [x] bulk evidence-node projection
+  - [x] skip behavior when no temporal context exists
+- [x] Rebuild graph indexes and metadata after evidence projection.
+- [x] Re-run focused runtimegraph tests and lint.
+
 ## Deep Review Cycle 133 - Hubble Golden Payload Coverage (2026-03-15)
 
 ### Review findings
@@ -359,7 +377,7 @@ Status: executed end-to-end via PR workflow
 - [x] 059. Add identity-binding tests for conflicting or partial runtime metadata.
 - [x] 060. Add a runtime observation graph materializer package.
 - [x] 061. Project promoted runtime observations into graph `observation` nodes.
-- [ ] 062. Project promoted runtime evidence into graph `evidence` nodes.
+- [x] 062. Project promoted runtime evidence into graph `evidence` nodes.
 - [ ] 063. Add workload-to-observation edges.
 - [ ] 064. Add finding-to-evidence edges.
 - [ ] 065. Add response-to-target edges for runtime response outcomes.
