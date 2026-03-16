@@ -109,6 +109,10 @@ func (s *listAllRunsExecutionStore) TouchProcessedEvent(context.Context, string,
 	return nil
 }
 
+func (s *listAllRunsExecutionStore) ClaimProcessedEvent(context.Context, executionstore.ProcessedEventRecord, int) (bool, *executionstore.ProcessedEventRecord, error) {
+	return true, nil, nil
+}
+
 func (s *listAllRunsExecutionStore) RememberProcessedEvent(context.Context, executionstore.ProcessedEventRecord, int) error {
 	return nil
 }
@@ -139,6 +143,10 @@ func (s *casConflictExecutionStore) LookupProcessedEvent(context.Context, string
 
 func (s *casConflictExecutionStore) TouchProcessedEvent(context.Context, string, string, time.Time, time.Duration) error {
 	return nil
+}
+
+func (s *casConflictExecutionStore) ClaimProcessedEvent(context.Context, executionstore.ProcessedEventRecord, int) (bool, *executionstore.ProcessedEventRecord, error) {
+	return true, nil, nil
 }
 
 func (s *casConflictExecutionStore) RememberProcessedEvent(context.Context, executionstore.ProcessedEventRecord, int) error {
@@ -619,5 +627,174 @@ func TestSQLiteIngestStoreSaveCheckpointRetriesCompareAndSwap(t *testing.T) {
 	}
 	if storedRun.LastCheckpoint == nil || storedRun.LastCheckpoint.Cursor != "cursor-99" {
 		t.Fatalf("stored payload checkpoint = %#v, want cursor-99", storedRun.LastCheckpoint)
+	}
+}
+
+func TestSQLiteIngestStoreSourceEventDedupesMatchingPayloadHashes(t *testing.T) {
+	store, err := NewSQLiteIngestStore(filepath.Join(t.TempDir(), "runtime-ingest.db"))
+	if err != nil {
+		t.Fatalf("NewSQLiteIngestStore: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	observedAt := time.Date(2026, 3, 15, 18, 0, 0, 0, time.UTC)
+	if err := store.MarkSourceEventProcessed(context.Background(), "telemetry", "evt-1", "hash-a", observedAt); err != nil {
+		t.Fatalf("MarkSourceEventProcessed: %v", err)
+	}
+
+	duplicate, err := store.checkDuplicateSourceEvent(context.Background(), "telemetry", "evt-1", "hash-a")
+	if err != nil {
+		t.Fatalf("checkDuplicateSourceEvent: %v", err)
+	}
+	if !duplicate {
+		t.Fatal("expected duplicate match for same source/id/hash")
+	}
+
+	record, err := store.store.LookupProcessedEvent(context.Background(), runtimeProcessedEventNamespace, runtimeProcessedEventKey("telemetry", "evt-1"), observedAt.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("LookupProcessedEvent: %v", err)
+	}
+	if record == nil {
+		t.Fatal("expected processed event record")
+	}
+	if record.DuplicateCount != 1 {
+		t.Fatalf("duplicate_count = %d, want 1", record.DuplicateCount)
+	}
+}
+
+func TestSQLiteIngestStoreClaimSourceEventProcessingDedupesActiveClaim(t *testing.T) {
+	store, err := NewSQLiteIngestStore(filepath.Join(t.TempDir(), "runtime-ingest.db"))
+	if err != nil {
+		t.Fatalf("NewSQLiteIngestStore: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	observedAt := time.Date(2026, 3, 15, 18, 0, 0, 0, time.UTC)
+	duplicate, err := store.ClaimSourceEventProcessing(context.Background(), "telemetry", "evt-claim-1", "hash-a", observedAt)
+	if err != nil {
+		t.Fatalf("ClaimSourceEventProcessing first: %v", err)
+	}
+	if duplicate {
+		t.Fatal("expected first claim to be accepted")
+	}
+
+	duplicate, err = store.ClaimSourceEventProcessing(context.Background(), "telemetry", "evt-claim-1", "hash-a", observedAt.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("ClaimSourceEventProcessing second: %v", err)
+	}
+	if !duplicate {
+		t.Fatal("expected active claim to suppress duplicate")
+	}
+
+	record, err := store.store.LookupProcessedEvent(context.Background(), runtimeProcessedEventNamespace, runtimeProcessedEventKey("telemetry", "evt-claim-1"), observedAt.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("LookupProcessedEvent: %v", err)
+	}
+	if record == nil {
+		t.Fatal("expected processed event claim record")
+	}
+	if record.Status != executionstore.ProcessedEventStatusProcessing {
+		t.Fatalf("status = %q, want %q", record.Status, executionstore.ProcessedEventStatusProcessing)
+	}
+	if record.DuplicateCount != 0 {
+		t.Fatalf("duplicate_count = %d, want 0 for in-flight claim", record.DuplicateCount)
+	}
+}
+
+func TestSQLiteIngestStoreSourceEventAllowsSameIDWithDifferentPayloadHash(t *testing.T) {
+	store, err := NewSQLiteIngestStore(filepath.Join(t.TempDir(), "runtime-ingest.db"))
+	if err != nil {
+		t.Fatalf("NewSQLiteIngestStore: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	observedAt := time.Date(2026, 3, 15, 18, 0, 0, 0, time.UTC)
+	if err := store.MarkSourceEventProcessed(context.Background(), "telemetry", "evt-1", "hash-a", observedAt); err != nil {
+		t.Fatalf("MarkSourceEventProcessed: %v", err)
+	}
+
+	duplicate, err := store.checkDuplicateSourceEvent(context.Background(), "telemetry", "evt-1", "hash-b")
+	if err != nil {
+		t.Fatalf("checkDuplicateSourceEvent: %v", err)
+	}
+	if duplicate {
+		t.Fatal("expected hash mismatch to bypass duplicate suppression")
+	}
+
+	record, err := store.store.LookupProcessedEvent(context.Background(), runtimeProcessedEventNamespace, runtimeProcessedEventKey("telemetry", "evt-1"), observedAt.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("LookupProcessedEvent: %v", err)
+	}
+	if record == nil {
+		t.Fatal("expected processed event record")
+	}
+	if record.DuplicateCount != 0 {
+		t.Fatalf("duplicate_count = %d, want 0", record.DuplicateCount)
+	}
+}
+
+func TestSQLiteIngestStoreSourceEventDuplicateTouchUsesWallClockTTL(t *testing.T) {
+	store, err := NewSQLiteIngestStore(filepath.Join(t.TempDir(), "runtime-ingest.db"))
+	if err != nil {
+		t.Fatalf("NewSQLiteIngestStore: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	now := time.Now().UTC()
+	staleObservedAt := now.Add(-(runtimeProcessedEventTTL + 24*time.Hour))
+	if err := store.MarkSourceEventProcessed(context.Background(), "telemetry", "evt-stale", "hash-a", staleObservedAt); err != nil {
+		t.Fatalf("MarkSourceEventProcessed: %v", err)
+	}
+
+	duplicate, err := store.checkDuplicateSourceEvent(context.Background(), "telemetry", "evt-stale", "hash-a")
+	if err != nil {
+		t.Fatalf("checkDuplicateSourceEvent: %v", err)
+	}
+	if !duplicate {
+		t.Fatal("expected duplicate match for stale observed_at")
+	}
+
+	record, err := store.store.LookupProcessedEvent(context.Background(), runtimeProcessedEventNamespace, runtimeProcessedEventKey("telemetry", "evt-stale"), now)
+	if err != nil {
+		t.Fatalf("LookupProcessedEvent: %v", err)
+	}
+	if record == nil {
+		t.Fatal("expected processed event record to remain after duplicate touch")
+	}
+	if !record.ExpiresAt.After(now) {
+		t.Fatalf("expires_at = %s, want after %s", record.ExpiresAt, now)
+	}
+	if record.DuplicateCount != 1 {
+		t.Fatalf("duplicate_count = %d, want 1", record.DuplicateCount)
+	}
+}
+
+func TestSQLiteIngestStoreSourceEventDuplicateComparisonTrimsStoredHash(t *testing.T) {
+	store, err := NewSQLiteIngestStore(filepath.Join(t.TempDir(), "runtime-ingest.db"))
+	if err != nil {
+		t.Fatalf("NewSQLiteIngestStore: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	now := time.Now().UTC()
+	if err := store.store.RememberProcessedEvent(context.Background(), executionstore.ProcessedEventRecord{
+		Namespace:   runtimeProcessedEventNamespace,
+		EventKey:    runtimeProcessedEventKey("telemetry", "evt-trim-1"),
+		Status:      executionstore.ProcessedEventStatusProcessed,
+		PayloadHash: "  hash-a  ",
+		FirstSeenAt: now,
+		LastSeenAt:  now,
+		ProcessedAt: now,
+		ExpiresAt:   now.Add(runtimeProcessedEventTTL),
+	}, runtimeProcessedEventMaxRecords); err != nil {
+		t.Fatalf("RememberProcessedEvent: %v", err)
+	}
+
+	duplicate, err := store.checkDuplicateSourceEvent(context.Background(), "telemetry", "evt-trim-1", "hash-a")
+	if err != nil {
+		t.Fatalf("checkDuplicateSourceEvent: %v", err)
+	}
+	if !duplicate {
+		t.Fatal("expected trimmed stored hash to match trimmed input")
 	}
 }
