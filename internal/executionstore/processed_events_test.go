@@ -129,3 +129,122 @@ func TestSQLiteStoreDeleteProcessedEvent(t *testing.T) {
 		t.Fatalf("expected processed event to be deleted, got %#v", record)
 	}
 }
+
+func TestSQLiteStoreClaimProcessedEventPreservesFirstSeenAtOnHashReplacement(t *testing.T) {
+	store, err := NewSQLiteStore(filepath.Join(t.TempDir(), "executions.db"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	firstSeen := time.Now().UTC().Add(-2 * time.Hour)
+	if err := store.RememberProcessedEvent(context.Background(), ProcessedEventRecord{
+		Namespace:   NamespaceProcessedCloudEvent,
+		EventKey:    "evt-replace",
+		Status:      ProcessedEventStatusProcessed,
+		PayloadHash: "hash-a",
+		FirstSeenAt: firstSeen,
+		LastSeenAt:  firstSeen,
+		ProcessedAt: firstSeen,
+		ExpiresAt:   firstSeen.Add(24 * time.Hour),
+	}, 100); err != nil {
+		t.Fatalf("RememberProcessedEvent: %v", err)
+	}
+
+	claimed, existing, err := store.ClaimProcessedEvent(context.Background(), ProcessedEventRecord{
+		Namespace:   NamespaceProcessedCloudEvent,
+		EventKey:    "evt-replace",
+		Status:      ProcessedEventStatusProcessing,
+		PayloadHash: "hash-b",
+		FirstSeenAt: firstSeen.Add(2 * time.Hour),
+		LastSeenAt:  firstSeen.Add(2 * time.Hour),
+		ProcessedAt: firstSeen.Add(2 * time.Hour),
+		ExpiresAt:   time.Now().UTC().Add(2 * time.Hour),
+	}, 100)
+	if err != nil {
+		t.Fatalf("ClaimProcessedEvent: %v", err)
+	}
+	if !claimed {
+		t.Fatalf("claimed = %v, want true", claimed)
+	}
+	if existing != nil {
+		t.Fatalf("existing = %#v, want nil on successful replacement", existing)
+	}
+
+	record, err := store.LookupProcessedEvent(context.Background(), NamespaceProcessedCloudEvent, "evt-replace", time.Now().UTC())
+	if err != nil {
+		t.Fatalf("LookupProcessedEvent: %v", err)
+	}
+	if record == nil {
+		t.Fatal("expected processed event record")
+	}
+	if !record.FirstSeenAt.Equal(firstSeen) {
+		t.Fatalf("first_seen_at = %s, want %s", record.FirstSeenAt, firstSeen)
+	}
+	if record.PayloadHash != "hash-b" {
+		t.Fatalf("payload_hash = %q, want hash-b", record.PayloadHash)
+	}
+}
+
+func TestSQLiteStoreClaimProcessedEventDoesNotReplaceActiveMismatchedClaim(t *testing.T) {
+	store, err := NewSQLiteStore(filepath.Join(t.TempDir(), "executions.db"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	now := time.Now().UTC()
+	claimed, existing, err := store.ClaimProcessedEvent(context.Background(), ProcessedEventRecord{
+		Namespace:   NamespaceProcessedCloudEvent,
+		EventKey:    "evt-processing",
+		Status:      ProcessedEventStatusProcessing,
+		PayloadHash: "hash-a",
+		FirstSeenAt: now,
+		LastSeenAt:  now,
+		ProcessedAt: now,
+		ExpiresAt:   now.Add(5 * time.Minute),
+	}, 100)
+	if err != nil {
+		t.Fatalf("ClaimProcessedEvent first: %v", err)
+	}
+	if !claimed || existing != nil {
+		t.Fatalf("first claim = (%v, %#v), want (true, nil)", claimed, existing)
+	}
+
+	claimed, existing, err = store.ClaimProcessedEvent(context.Background(), ProcessedEventRecord{
+		Namespace:   NamespaceProcessedCloudEvent,
+		EventKey:    "evt-processing",
+		Status:      ProcessedEventStatusProcessing,
+		PayloadHash: "hash-b",
+		FirstSeenAt: now.Add(time.Minute),
+		LastSeenAt:  now.Add(time.Minute),
+		ProcessedAt: now.Add(time.Minute),
+		ExpiresAt:   now.Add(6 * time.Minute),
+	}, 100)
+	if err != nil {
+		t.Fatalf("ClaimProcessedEvent second: %v", err)
+	}
+	if claimed {
+		t.Fatal("expected active mismatched claim to stay unclaimed")
+	}
+	if existing == nil {
+		t.Fatal("expected existing active claim")
+	}
+	if existing.PayloadHash != "hash-a" {
+		t.Fatalf("existing payload_hash = %q, want hash-a", existing.PayloadHash)
+	}
+	if existing.Status != ProcessedEventStatusProcessing {
+		t.Fatalf("existing status = %q, want processing", existing.Status)
+	}
+
+	record, err := store.LookupProcessedEvent(context.Background(), NamespaceProcessedCloudEvent, "evt-processing", now.Add(2*time.Minute))
+	if err != nil {
+		t.Fatalf("LookupProcessedEvent: %v", err)
+	}
+	if record == nil {
+		t.Fatal("expected processed event record")
+	}
+	if record.PayloadHash != "hash-a" {
+		t.Fatalf("payload_hash = %q, want hash-a", record.PayloadHash)
+	}
+}

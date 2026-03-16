@@ -13,8 +13,15 @@ import (
 
 const runtimeIngestNamespace = executionstore.NamespaceRuntimeIngest
 const (
-	runtimeReplayNamespace      = executionstore.NamespaceRuntimeReplay
-	runtimeMaterializeNamespace = executionstore.NamespaceRuntimeMaterialization
+	runtimeReplayNamespace         = executionstore.NamespaceRuntimeReplay
+	runtimeMaterializeNamespace    = executionstore.NamespaceRuntimeMaterialization
+	runtimeProcessedEventNamespace = executionstore.NamespaceProcessedRuntimeEvent
+)
+
+const (
+	runtimeProcessedEventTTL        = 7 * 24 * time.Hour
+	runtimeProcessingClaimTTL       = 5 * time.Minute
+	runtimeProcessedEventMaxRecords = 100000
 )
 
 type IngestRunStatus string
@@ -108,6 +115,8 @@ type IngestStore interface {
 	LoadEvents(context.Context, string) ([]IngestEvent, error)
 	SaveCheckpoint(context.Context, string, IngestCheckpoint) (IngestCheckpoint, error)
 	LoadCheckpoint(context.Context, string) (*IngestCheckpoint, error)
+	ClaimSourceEventProcessing(context.Context, string, string, string, time.Time) (bool, error)
+	MarkSourceEventProcessed(context.Context, string, string, string, time.Time) error
 }
 
 type SQLiteIngestStore struct {
@@ -353,6 +362,109 @@ func (s *SQLiteIngestStore) SaveCheckpoint(ctx context.Context, runID string, ch
 	return checkpoint, fmt.Errorf("save runtime ingest checkpoint: concurrent update conflict")
 }
 
+func (s *SQLiteIngestStore) checkDuplicateSourceEvent(ctx context.Context, source, eventID, payloadHash string) (bool, error) {
+	if s == nil || s.store == nil {
+		return false, nil
+	}
+	eventKey := runtimeProcessedEventKey(source, eventID)
+	if eventKey == "" {
+		return false, nil
+	}
+	lookupAt := time.Now().UTC()
+	record, err := s.store.LookupProcessedEvent(ctx, runtimeProcessedEventNamespace, eventKey, lookupAt)
+	if err != nil {
+		return false, err
+	}
+	if record == nil {
+		return false, nil
+	}
+	payloadHash = strings.TrimSpace(payloadHash)
+	recordHash := strings.TrimSpace(record.PayloadHash)
+	if payloadHash != "" && recordHash != "" && recordHash != payloadHash {
+		return false, nil
+	}
+	if strings.TrimSpace(record.Status) != executionstore.ProcessedEventStatusProcessed {
+		return true, nil
+	}
+	if err := s.store.TouchProcessedEvent(ctx, runtimeProcessedEventNamespace, eventKey, lookupAt, runtimeProcessedEventTTL); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (s *SQLiteIngestStore) ClaimSourceEventProcessing(ctx context.Context, source, eventID, payloadHash string, observedAt time.Time) (bool, error) {
+	if s == nil || s.store == nil {
+		return false, nil
+	}
+	eventKey := runtimeProcessedEventKey(source, eventID)
+	if eventKey == "" {
+		return false, nil
+	}
+	claimAt := time.Now().UTC()
+	if observedAt.IsZero() {
+		observedAt = claimAt
+	} else {
+		observedAt = observedAt.UTC()
+	}
+	claimed, existing, err := s.store.ClaimProcessedEvent(ctx, executionstore.ProcessedEventRecord{
+		Namespace:      runtimeProcessedEventNamespace,
+		EventKey:       eventKey,
+		Status:         executionstore.ProcessedEventStatusProcessing,
+		PayloadHash:    strings.TrimSpace(payloadHash),
+		FirstSeenAt:    observedAt,
+		LastSeenAt:     observedAt,
+		ProcessedAt:    claimAt,
+		ExpiresAt:      claimAt.Add(runtimeProcessingClaimTTL),
+		DuplicateCount: 0,
+	}, runtimeProcessedEventMaxRecords)
+	if err != nil {
+		return false, err
+	}
+	if claimed {
+		return false, nil
+	}
+	if existing == nil {
+		return false, nil
+	}
+	recordHash := strings.TrimSpace(existing.PayloadHash)
+	payloadHash = strings.TrimSpace(payloadHash)
+	if payloadHash != "" && recordHash != "" && recordHash != payloadHash {
+		return false, nil
+	}
+	if strings.TrimSpace(existing.Status) == executionstore.ProcessedEventStatusProcessed {
+		if err := s.store.TouchProcessedEvent(ctx, runtimeProcessedEventNamespace, eventKey, claimAt, runtimeProcessedEventTTL); err != nil {
+			return false, err
+		}
+	}
+	return true, nil
+}
+
+func (s *SQLiteIngestStore) MarkSourceEventProcessed(ctx context.Context, source, eventID, payloadHash string, observedAt time.Time) error {
+	if s == nil || s.store == nil {
+		return nil
+	}
+	eventKey := runtimeProcessedEventKey(source, eventID)
+	if eventKey == "" {
+		return nil
+	}
+	processedAt := time.Now().UTC()
+	if observedAt.IsZero() {
+		observedAt = processedAt
+	} else {
+		observedAt = observedAt.UTC()
+	}
+	return s.store.RememberProcessedEvent(ctx, executionstore.ProcessedEventRecord{
+		Namespace:   runtimeProcessedEventNamespace,
+		EventKey:    eventKey,
+		Status:      executionstore.ProcessedEventStatusProcessed,
+		PayloadHash: strings.TrimSpace(payloadHash),
+		FirstSeenAt: observedAt,
+		LastSeenAt:  observedAt,
+		ProcessedAt: processedAt,
+		ExpiresAt:   processedAt.Add(runtimeProcessedEventTTL),
+	}, runtimeProcessedEventMaxRecords)
+}
+
 func runtimeIngestRunEnvelope(run *IngestRunRecord) (executionstore.RunEnvelope, error) {
 	payload, err := json.Marshal(run)
 	if err != nil {
@@ -471,4 +583,13 @@ func runtimeJobNamespaces(types []IngestJobType) []string {
 		return nil
 	}
 	return namespaces
+}
+
+func runtimeProcessedEventKey(source, eventID string) string {
+	source = strings.TrimSpace(source)
+	eventID = strings.TrimSpace(eventID)
+	if source == "" || eventID == "" {
+		return ""
+	}
+	return source + "|" + eventID
 }

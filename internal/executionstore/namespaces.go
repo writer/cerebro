@@ -11,5 +11,6 @@ const (
 	NamespaceRuntimeIngest          = "runtime_ingest"
 	NamespaceRuntimeReplay          = "runtime_replay"
 	NamespaceRuntimeMaterialization = "runtime_materialization"
+	NamespaceProcessedRuntimeEvent  = "processed_runtime_event"
 	NamespaceProcessedCloudEvent    = "processed_cloud_event"
 )

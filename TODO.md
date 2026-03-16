@@ -40,6 +40,22 @@ Status: executed end-to-end via PR workflow
 - [x] Preserve explicit observation kind through `RuntimeObservation <-> RuntimeEvent` compatibility even when DNS observations do not have a domain string.
 - [x] Add regression and golden coverage for Tetragon DNS normalization plus the explicit-kind round-trip seam.
 
+## Deep Review Cycle 131 - Runtime Source Payload Dedupe (2026-03-15)
+
+### Review findings
+- [x] Gap: runtime ingest runs now persist checkpoints and normalization outcomes, but they still treat repeated source payload IDs as fresh observations, which can inflate findings and response executions when collectors retry or replay.
+- [x] Gap: dedupe needs payload-hash awareness instead of raw ID-only suppression, or legitimate upstream corrections using the same event ID will be dropped as duplicates.
+- [x] Gap: duplicate runtime payloads should become explicit ingest events and counters rather than silently disappearing, or operators cannot distinguish successful suppression from ingest loss.
+
+### Execution plan
+- [x] Add processed-event dedupe for runtime source payload IDs through `internal/executionstore`.
+- [x] Treat same source + event ID + payload hash as duplicates while allowing hash-mismatched replays through.
+- [x] Record duplicate runtime payloads as `observation_duplicate` ingest events and expose duplicate counters in run checkpoints and API responses.
+- [x] Add store and API regression coverage for:
+  - [x] same-payload duplicate suppression
+  - [x] hash mismatch pass-through
+  - [x] duplicate telemetry counters and ingest events
+
 ## Deep Review Cycle 124 - Tetragon Network Observation Normalization (2026-03-15)
 
 ### Review findings
@@ -203,7 +219,7 @@ Status: executed end-to-end via PR workflow
 - [x] 040. Add runtime ingest event/checkpoint records.
 - [x] 041. Add runtime replay/materialization job records.
 - [x] 042. Add checkpoint cursor persistence per source.
-- [ ] 043. Add processed-event dedupe for runtime source payload IDs.
+- [x] 043. Add processed-event dedupe for runtime source payload IDs.
 - [x] 044. Add runtime ingest store tests.
 - [x] 045. Add runtime observation validation and normalization helpers.
 - [x] 046. Reject structurally invalid observations early.
