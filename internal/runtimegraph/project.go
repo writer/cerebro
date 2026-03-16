@@ -2,6 +2,7 @@ package runtimegraph
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -63,19 +64,25 @@ func MaterializeObservationsIntoGraph(g *graph.Graph, observations []*runtime.Ru
 			continue
 		}
 
+		graph.MergeEdgeProperties(g, observationTargetEdgeID(req.ID, req.SubjectID), responseOutcomeTargetEdgeProperties(observation))
+
 		if subjectNode, ok := g.GetNode(req.SubjectID); ok && isWorkloadSubjectNode(subjectNode) {
+			properties := map[string]any{
+				"source_system":   req.SourceSystem,
+				"source_event_id": req.SourceEventID,
+				"observed_at":     req.ObservedAt.UTC().Format(time.RFC3339),
+				"valid_from":      req.ValidFrom.UTC().Format(time.RFC3339),
+			}
+			for key, value := range responseOutcomeTargetEdgeProperties(observation) {
+				properties[key] = value
+			}
 			if graph.AddEdgeIfMissing(g, &graph.Edge{
-				ID:     req.SubjectID + "->" + req.ID + ":" + string(graph.EdgeKindTargets),
-				Source: req.SubjectID,
-				Target: req.ID,
-				Kind:   graph.EdgeKindTargets,
-				Effect: graph.EdgeEffectAllow,
-				Properties: map[string]any{
-					"source_system":   req.SourceSystem,
-					"source_event_id": req.SourceEventID,
-					"observed_at":     req.ObservedAt.UTC().Format(time.RFC3339),
-					"valid_from":      req.ValidFrom.UTC().Format(time.RFC3339),
-				},
+				ID:         req.SubjectID + "->" + req.ID + ":" + string(graph.EdgeKindTargets),
+				Source:     req.SubjectID,
+				Target:     req.ID,
+				Kind:       graph.EdgeKindTargets,
+				Effect:     graph.EdgeEffectAllow,
+				Properties: properties,
 			}) {
 				result.WorkloadTargetEdgesCreated++
 			}
@@ -117,4 +124,24 @@ func isWorkloadSubjectNode(node *graph.Node) bool {
 	default:
 		return false
 	}
+}
+
+func observationTargetEdgeID(observationID, subjectID string) string {
+	return fmt.Sprintf("%s->%s:%s", strings.TrimSpace(observationID), strings.TrimSpace(subjectID), graph.EdgeKindTargets)
+}
+
+func responseOutcomeTargetEdgeProperties(observation *runtime.RuntimeObservation) map[string]any {
+	if observation == nil || observation.Kind != runtime.ObservationKindResponseOutcome {
+		return nil
+	}
+
+	properties := make(map[string]any, 4)
+	addMetadataString(properties, "response_execution_id", metadataString(observation.Metadata, "execution_id"))
+	addMetadataString(properties, "response_policy_id", metadataString(observation.Metadata, "policy_id"))
+	addMetadataString(properties, "response_action_type", metadataString(observation.Metadata, "action_type"))
+	addMetadataString(properties, "response_action_status", metadataString(observation.Metadata, "action_status"))
+	if len(properties) == 0 {
+		return nil
+	}
+	return properties
 }

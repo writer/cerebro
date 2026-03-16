@@ -285,6 +285,64 @@ func TestMaterializeObservationsIntoGraphDoesNotDuplicateReverseTargetEdges(t *t
 	}
 }
 
+func TestMaterializeObservationsIntoGraphCarriesResponseOutcomeTargetMetadata(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:   "deployment:prod/web",
+		Kind: graph.NodeKindDeployment,
+		Name: "web",
+	})
+
+	observation := &runtime.RuntimeObservation{
+		ID:          "runtime:response_outcome:block-ip",
+		Source:      "runtime_response",
+		Kind:        runtime.ObservationKindResponseOutcome,
+		ObservedAt:  time.Date(2026, 3, 16, 20, 45, 0, 0, time.UTC),
+		RecordedAt:  time.Date(2026, 3, 16, 20, 45, 1, 0, time.UTC),
+		WorkloadRef: "deployment:prod/web",
+		Metadata: map[string]any{
+			"execution_id":  "exec-1",
+			"policy_id":     "policy-1",
+			"action_type":   "block_ip",
+			"action_status": "completed",
+		},
+	}
+
+	result := MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{observation}, time.Date(2026, 3, 16, 20, 46, 0, 0, time.UTC))
+	if result.ObservationsMaterialized != 1 {
+		t.Fatalf("ObservationsMaterialized = %d, want 1", result.ObservationsMaterialized)
+	}
+
+	observationNodeID := "observation:" + observation.ID
+	forwardEdges := g.GetOutEdges(observationNodeID)
+	if len(forwardEdges) != 1 {
+		t.Fatalf("len(forwardEdges) = %d, want 1", len(forwardEdges))
+	}
+	if got := forwardEdges[0].Properties["response_execution_id"]; got != "exec-1" {
+		t.Fatalf("forward response_execution_id = %#v, want exec-1", got)
+	}
+	if got := forwardEdges[0].Properties["response_policy_id"]; got != "policy-1" {
+		t.Fatalf("forward response_policy_id = %#v, want policy-1", got)
+	}
+	if got := forwardEdges[0].Properties["response_action_type"]; got != "block_ip" {
+		t.Fatalf("forward response_action_type = %#v, want block_ip", got)
+	}
+	if got := forwardEdges[0].Properties["response_action_status"]; got != "completed" {
+		t.Fatalf("forward response_action_status = %#v, want completed", got)
+	}
+
+	reverseEdges := g.GetOutEdges("deployment:prod/web")
+	if len(reverseEdges) != 1 {
+		t.Fatalf("len(reverseEdges) = %d, want 1", len(reverseEdges))
+	}
+	if got := reverseEdges[0].Properties["response_execution_id"]; got != "exec-1" {
+		t.Fatalf("reverse response_execution_id = %#v, want exec-1", got)
+	}
+	if got := reverseEdges[0].Properties["response_action_type"]; got != "block_ip" {
+		t.Fatalf("reverse response_action_type = %#v, want block_ip", got)
+	}
+}
+
 func TestMaterializeObservationsIntoGraphDefersIndexBuildToCaller(t *testing.T) {
 	g := graph.New()
 	g.AddNode(&graph.Node{

@@ -5,6 +5,27 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 144 - Runtime Response Outcome Target Edges (2026-03-16)
+
+### Review findings
+- [x] Gap: response executions were already normalized into `response_outcome` observations, but the graph `targets` edges still carried only generic observation timing/source metadata and dropped the response execution/action context that makes those target links actionable.
+- [x] Gap: the runtimegraph package had no regression coverage proving response outcome observations preserve execution/policy/action metadata on the graph edge that links the outcome back to its target workload.
+- [x] Gap: the graph package lacked a small, safe helper for enriching an existing edge in place by ID, which forced any runtimegraph response-edge enrichment to either duplicate lookup logic or mutate edge pointers ad hoc.
+
+### Execution plan
+- [x] Add a graph helper to merge properties onto an existing active edge by ID.
+- [x] Enrich response-outcome `targets` edges with:
+  - [x] `response_execution_id`
+  - [x] `response_policy_id`
+  - [x] `response_action_type`
+  - [x] `response_action_status`
+- [x] Apply the same response metadata to the reverse workload -> observation `targets` edge when present.
+- [x] Add TDD coverage for:
+  - [x] graph edge property merging
+  - [x] response-outcome forward target-edge metadata
+  - [x] response-outcome reverse target-edge metadata
+- [x] Re-run focused runtimegraph/graph tests and lint.
+
 ## Deep Review Cycle 143 - Runtime Graph Deferred Index Finalization (2026-03-16)
 
 ### Review findings
@@ -456,7 +477,7 @@ Status: executed end-to-end via PR workflow
 - [x] 062. Project promoted runtime evidence into graph `evidence` nodes.
 - [x] 063. Add workload-to-observation edges.
 - [x] 064. Add finding-to-evidence edges.
-- [ ] 065. Add response-to-target edges for runtime response outcomes.
+- [x] 065. Add response-to-target edges for runtime response outcomes.
 - [ ] 066. Add causal edges from response outcomes back to findings.
 - [ ] 067. Add causal edges from runtime observations to deployment runs where justified.
 - [ ] 068. Add causal edges from runtime observations to Kubernetes audit events where justified.
