@@ -192,3 +192,122 @@ func TestGraphTemporalNodesAliases(t *testing.T) {
 		t.Fatalf("expected NodesIncludingDeleted() to include soft-deleted nodes")
 	}
 }
+
+func TestGraphTemporalCompactDeletedNodesRemovesTombstones(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "user:alice", Kind: NodeKindUser})
+	g.AddNode(&Node{ID: "user:bob", Kind: NodeKindUser})
+	g.AddNode(&Node{ID: "user:carol", Kind: NodeKindUser})
+
+	if !g.RemoveNode("user:bob") {
+		t.Fatal("expected RemoveNode to succeed")
+	}
+	if !g.RemoveNode("user:carol") {
+		t.Fatal("expected RemoveNode to succeed")
+	}
+
+	if got := g.NodeCount(); got != 1 {
+		t.Fatalf("expected active node count 1 before compaction, got %d", got)
+	}
+	if got := len(g.GetAllNodesIncludingDeleted()); got != 3 {
+		t.Fatalf("expected 3 nodes including tombstones before compaction, got %d", got)
+	}
+
+	g.CompactDeletedNodes()
+
+	if got := g.NodeCount(); got != 1 {
+		t.Fatalf("expected active node count to stay 1 after compaction, got %d", got)
+	}
+	if got := len(g.GetAllNodesIncludingDeleted()); got != 1 {
+		t.Fatalf("expected only active nodes to remain after compaction, got %d", got)
+	}
+	if _, ok := g.GetNodeIncludingDeleted("user:bob"); ok {
+		t.Fatal("expected compacted tombstone to be removed from the node map")
+	}
+	if _, ok := g.GetNodeIncludingDeleted("user:carol"); ok {
+		t.Fatal("expected compacted tombstone to be removed from the node map")
+	}
+}
+
+func TestGraphTemporalCompactDeletedNodesRemovesAdjacencyBuckets(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "user:alice", Kind: NodeKindUser})
+	g.AddNode(&Node{ID: "user:bob", Kind: NodeKindUser})
+	g.AddNode(&Node{ID: "user:carol", Kind: NodeKindUser})
+	g.AddEdge(&Edge{ID: "alice-bob", Source: "user:alice", Target: "user:bob", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "bob-carol", Source: "user:bob", Target: "user:carol", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+
+	if !g.RemoveNode("user:bob") {
+		t.Fatal("expected RemoveNode to succeed")
+	}
+	if _, ok := g.outEdges["user:bob"]; !ok {
+		t.Fatal("expected deleted node source bucket to exist before compaction")
+	}
+	if _, ok := g.inEdges["user:bob"]; !ok {
+		t.Fatal("expected deleted node target bucket to exist before compaction")
+	}
+
+	g.CompactDeletedNodes()
+
+	if _, ok := g.outEdges["user:bob"]; ok {
+		t.Fatal("expected deleted node source bucket to be removed during compaction")
+	}
+	if _, ok := g.inEdges["user:bob"]; ok {
+		t.Fatal("expected deleted node target bucket to be removed during compaction")
+	}
+}
+
+func TestGraphTemporalCompactDeletedNodesEvictsDeletedEdgeIDs(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "user:alice", Kind: NodeKindUser})
+	g.AddNode(&Node{ID: "user:bob", Kind: NodeKindUser})
+	g.AddNode(&Node{ID: "user:carol", Kind: NodeKindUser})
+	g.AddEdge(&Edge{ID: "alice-bob", Source: "user:alice", Target: "user:bob", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "bob-carol", Source: "user:bob", Target: "user:carol", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+
+	if !g.RemoveNode("user:bob") {
+		t.Fatal("expected RemoveNode to succeed")
+	}
+	if _, ok := g.edgeByID["alice-bob"]; !ok {
+		t.Fatal("expected deleted edge ID to remain indexed before compaction")
+	}
+	if _, ok := g.edgeByID["bob-carol"]; !ok {
+		t.Fatal("expected deleted edge ID to remain indexed before compaction")
+	}
+
+	g.CompactDeletedNodes()
+
+	if _, ok := g.edgeByID["alice-bob"]; ok {
+		t.Fatal("expected compacted deleted source edge ID to be evicted")
+	}
+	if _, ok := g.edgeByID["bob-carol"]; ok {
+		t.Fatal("expected compacted deleted target edge ID to be evicted")
+	}
+}
+
+func TestGraphTemporalCompactDeletedNodesInvalidatesIndexOnlyOnChange(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "user:alice", Kind: NodeKindUser})
+	g.BuildIndex()
+
+	if !g.IsIndexBuilt() {
+		t.Fatal("expected index to start built")
+	}
+
+	g.CompactDeletedNodes()
+
+	if !g.IsIndexBuilt() {
+		t.Fatal("expected no-op node compaction to leave index current")
+	}
+
+	g.nodes["nil-entry"] = nil
+
+	g.CompactDeletedNodes()
+
+	if g.IsIndexBuilt() {
+		t.Fatal("expected compaction that removes entries to invalidate the index")
+	}
+	if _, ok := g.GetNodeIncludingDeleted("nil-entry"); ok {
+		t.Fatal("expected nil node entry to be removed during compaction")
+	}
+}
