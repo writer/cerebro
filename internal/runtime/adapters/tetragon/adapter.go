@@ -61,12 +61,24 @@ type processKprobeEnvelope struct {
 }
 
 type kprobeArg struct {
+	SkbArg      *skbArg      `json:"skb_arg,omitempty"`
 	SockArg     *sockArg     `json:"sock_arg,omitempty"`
 	SockaddrArg *sockaddrArg `json:"sockaddr_arg,omitempty"`
 	FileArg     *pathLikeArg `json:"file_arg,omitempty"`
 	PathArg     *pathLikeArg `json:"path_arg,omitempty"`
 	IntArg      *int64       `json:"int_arg,omitempty"`
 	UintArg     *uint64      `json:"uint_arg,omitempty"`
+}
+
+type skbArg struct {
+	Len      uint32 `json:"len"`
+	SAddr    string `json:"saddr"`
+	DAddr    string `json:"daddr"`
+	SPort    uint32 `json:"sport"`
+	DPort    uint32 `json:"dport"`
+	Proto    uint32 `json:"proto"`
+	Protocol string `json:"protocol"`
+	Family   string `json:"family"`
 }
 
 type sockArg struct {
@@ -199,6 +211,14 @@ func observationFromProcessExit(event payload) *runtime.RuntimeObservation {
 func observationFromProcessKprobe(event payload) (*runtime.RuntimeObservation, error) {
 	kprobe := event.ProcessKprobe
 	functionName := strings.TrimSpace(kprobe.FunctionName)
+
+	if isDNSKprobe(kprobe.Args) {
+		observation, err := observationFromDNSKprobe(event)
+		if err != nil {
+			return nil, err
+		}
+		return observation, nil
+	}
 
 	if isNetworkKprobe(functionName) {
 		observation, err := observationFromNetworkKprobe(event)
@@ -404,6 +424,65 @@ func observationFromNetworkKprobe(event payload) (*runtime.RuntimeObservation, e
 	return observation, nil
 }
 
+func observationFromDNSKprobe(event payload) (*runtime.RuntimeObservation, error) {
+	kprobe := event.ProcessKprobe
+	functionName := strings.TrimSpace(kprobe.FunctionName)
+	skb := firstSkbArg(kprobe.Args)
+	if skb == nil {
+		return nil, fmt.Errorf("decode tetragon payload: missing dns packet context for %s", functionName)
+	}
+
+	dstIP := strings.TrimSpace(skb.DAddr)
+	dstPort := int(skb.DPort)
+	if dstIP == "" || dstPort == 0 {
+		return nil, fmt.Errorf("decode tetragon payload: missing dns destination for %s", functionName)
+	}
+
+	metadata := map[string]any{
+		"exec_id":                   kprobe.Process.ExecID,
+		"parent_exec_id":            kprobe.Process.ParentExecID,
+		"cwd":                       kprobe.Process.CWD,
+		"flags":                     kprobe.Process.Flags,
+		"workload_name":             kprobe.Process.Pod.Workload,
+		"pod_labels":                runtime.CloneStringMap(kprobe.Process.Pod.Labels),
+		"node_name":                 event.NodeName,
+		"function_name":             functionName,
+		"policy_name":               strings.TrimSpace(kprobe.PolicyName),
+		"action":                    strings.TrimSpace(kprobe.Action),
+		"return_action":             strings.TrimSpace(kprobe.ReturnAction),
+		"transport_protocol":        strings.TrimSpace(skb.Protocol),
+		"transport_protocol_number": skb.Proto,
+	}
+	if value := strings.TrimSpace(skb.Family); value != "" {
+		metadata["socket_family"] = value
+	}
+	if returnCode, ok := firstReturnCode(kprobe.Return); ok {
+		metadata["return_code"] = returnCode
+	}
+
+	observation := newProcessObservation(
+		runtime.ObservationKindDNSQuery,
+		"process_kprobe",
+		event.Time,
+		event.NodeName,
+		kprobe.Process,
+		kprobe.Parent,
+		metadata,
+	)
+	observation.ID = transportObservationID(kprobe.Process, runtime.ObservationKindDNSQuery, functionName, dstIP, skb.DPort, observation.ObservedAt)
+	observation.Network = &runtime.NetworkEvent{
+		Direction: "outbound",
+		Protocol:  "dns",
+		SrcIP:     strings.TrimSpace(skb.SAddr),
+		SrcPort:   int(skb.SPort),
+		DstIP:     dstIP,
+		DstPort:   dstPort,
+		BytesSent: int64(skb.Len),
+	}
+	observation.Tags = adapters.CompactTags("tetragon", "process_kprobe", "dns_query", functionName, strings.ToLower(strings.TrimSpace(skb.Protocol)))
+	return observation, nil
+}
+
 func newProcessObservation(
 	kind runtime.RuntimeObservationKind,
 	tag string,
@@ -486,8 +565,12 @@ func fileObservationID(process processInfo, kind runtime.RuntimeObservationKind,
 }
 
 func networkObservationID(process processInfo, eventType, dstIP string, dstPort uint32, observedAt time.Time) string {
+	return transportObservationID(process, runtime.ObservationKindNetworkFlow, eventType, dstIP, dstPort, observedAt)
+}
+
+func transportObservationID(process processInfo, kind runtime.RuntimeObservationKind, eventType, dstIP string, dstPort uint32, observedAt time.Time) string {
 	parts := []string{
-		processObservationID(process.ExecID, runtime.ObservationKindNetworkFlow, process),
+		processObservationID(process.ExecID, kind, process),
 		strings.TrimSpace(eventType),
 		strings.TrimSpace(dstIP),
 		fmt.Sprintf("%d", dstPort),
@@ -563,6 +646,15 @@ func firstSocketArgs(args []kprobeArg) (*sockArg, *sockaddrArg) {
 	return sock, sockaddr
 }
 
+func firstSkbArg(args []kprobeArg) *skbArg {
+	for _, arg := range args {
+		if arg.SkbArg != nil {
+			return arg.SkbArg
+		}
+	}
+	return nil
+}
+
 func firstReturnCode(arg *kprobeArg) (any, bool) {
 	if arg == nil {
 		return 0, false
@@ -609,4 +701,9 @@ func isNetworkKprobe(functionName string) bool {
 	default:
 		return false
 	}
+}
+
+func isDNSKprobe(args []kprobeArg) bool {
+	skb := firstSkbArg(args)
+	return skb != nil && skb.DPort == 53
 }
