@@ -40,27 +40,24 @@ Status: executed end-to-end via PR workflow
 - [x] Add TDD coverage for:
   - [x] graph edge property merging
   - [x] response-outcome forward target-edge metadata
-  - [x] response-outcome reverse target-edge metadata
+- [x] response-outcome reverse target-edge metadata
 - [x] Re-run focused runtimegraph/graph tests and lint.
 
-## Deep Review Cycle 146 - Runtime Detection Rule Routing and Regex Compilation (2026-03-16)
+## Deep Review Cycle 148 - Deleted Node Tombstone Compaction (2026-03-16)
 
 ### Review findings
-- [x] Gap: the runtime detection engine still evaluated every enabled rule against every observation even when the observation lacked the rule's required field domains, which matches issue `#373` and wastes hot-path CPU on impossible matches.
-- [x] Gap: regex-based detection conditions were compiled on every evaluation through `regexp.MatchString`, even though the rule set is static after engine initialization and rule registration.
-- [x] Gap: the runtime package had no benchmark lock for process-only or file-only normalized observations after the shared runtime visibility ingestion path started calling `ProcessNormalizedObservation` directly.
+- [x] Gap: the graph already exposes `CompactDeletedEdges()`, but soft-deleted nodes remained in the backing `nodes` map indefinitely after `RemoveNode`, which matches issue `#377` and causes tombstone accumulation in long-lived graphs.
+- [x] Gap: scans like `GetAllNodesIncludingDeleted()` and other map-wide maintenance paths still paid for deleted-node tombstones even when active-node counts were unchanged.
+- [x] Gap: node compaction needed explicit index-invalidating behavior only when entries were actually removed, otherwise maintenance calls would create avoidable secondary-index churn.
 
 ### Execution plan
-- [x] Add per-rule required-field masks covering `process`, `network`, `file`, and `container` domains.
-- [x] Pre-index rules by compatible event mask so observations only evaluate candidate rules that have the fields they can actually satisfy.
-- [x] Precompile regex conditions during default-rule loading and `AddRule`.
+- [x] Add `CompactDeletedNodes()` to prune soft-deleted and nil node entries from the backing node map.
+- [x] Keep compaction side effects cheap by invalidating indexes only when compaction removes at least one entry.
 - [x] Add TDD coverage for:
-  - [x] skipping rules whose required domains are absent from the event
-  - [x] compiling regex conditions at rule registration time
-- [x] Add runtime detection benchmarks for:
-  - [x] process-only normalized observations
-  - [x] file-only normalized observations
-- [x] Re-run focused runtime tests, lint, and changed-file validation.
+  - [x] removing deleted-node tombstones from the backing map
+  - [x] preserving active node counts across compaction
+  - [x] leaving indexes current on no-op compaction and invalidating only on real removals
+- [x] Re-run focused graph tests, lint, and changed-file validation.
 
 ## Deep Review Cycle 143 - Runtime Graph Deferred Index Finalization (2026-03-16)
 
