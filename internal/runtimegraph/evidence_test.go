@@ -138,6 +138,11 @@ func TestBuildFindingEvidenceNodeUsesStableHashWhenFindingIDMissing(t *testing.T
 
 func TestMaterializeFindingEvidenceIntoGraphAddsEvidenceNodes(t *testing.T) {
 	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:   "observation:runtime:process_exec:seed",
+		Kind: graph.NodeKindObservation,
+		Name: "seed observation",
+	})
 	findings := []*runtime.RuntimeFinding{
 		{
 			ID:          "finding-3",
@@ -147,6 +152,9 @@ func TestMaterializeFindingEvidenceIntoGraphAddsEvidenceNodes(t *testing.T) {
 			Severity:    "critical",
 			Description: "Detected nsenter execution",
 			Timestamp:   time.Date(2026, 3, 16, 20, 10, 0, 0, time.UTC),
+			Observation: &runtime.RuntimeObservation{
+				ID: "runtime:process_exec:seed",
+			},
 		},
 	}
 
@@ -157,11 +165,22 @@ func TestMaterializeFindingEvidenceIntoGraphAddsEvidenceNodes(t *testing.T) {
 	if result.EvidenceNodesUpserted != 1 {
 		t.Fatalf("EvidenceNodesUpserted = %d, want 1", result.EvidenceNodesUpserted)
 	}
+	if result.BasedOnEdgesCreated != 1 {
+		t.Fatalf("BasedOnEdgesCreated = %d, want 1", result.BasedOnEdgesCreated)
+	}
 	if result.FindingsSkipped != 0 {
 		t.Fatalf("FindingsSkipped = %d, want 0", result.FindingsSkipped)
 	}
 	if len(g.GetNodesByKind(graph.NodeKindEvidence)) != 1 {
 		t.Fatalf("evidence node count = %d, want 1", len(g.GetNodesByKind(graph.NodeKindEvidence)))
+	}
+	evidenceNode := g.GetNodesByKind(graph.NodeKindEvidence)[0]
+	outEdges := g.GetOutEdges(evidenceNode.ID)
+	if len(outEdges) != 1 {
+		t.Fatalf("len(outEdges) = %d, want 1", len(outEdges))
+	}
+	if outEdges[0].Kind != graph.EdgeKindBasedOn || outEdges[0].Target != "observation:runtime:process_exec:seed" {
+		t.Fatalf("edge = %+v, want based_on edge to observation", outEdges[0])
 	}
 	meta := g.Metadata()
 	if meta.BuiltAt.IsZero() {
@@ -196,6 +215,71 @@ func TestMaterializeFindingEvidenceIntoGraphSkipsFindingsWithoutTemporalContext(
 	}
 	if result.InvalidFindings != 1 {
 		t.Fatalf("InvalidFindings = %d, want 1", result.InvalidFindings)
+	}
+}
+
+func TestMaterializeFindingEvidenceIntoGraphSkipsBasedOnEdgeWhenObservationMissing(t *testing.T) {
+	g := graph.New()
+	result := MaterializeFindingEvidenceIntoGraph(g, []*runtime.RuntimeFinding{
+		{
+			ID:          "finding-missing-observation",
+			RuleID:      "container-drift-shell",
+			RuleName:    "Unexpected Shell",
+			Category:    runtime.CategoryContainerDrift,
+			Severity:    "medium",
+			Description: "Detected unexpected shell",
+			Timestamp:   time.Date(2026, 3, 16, 20, 12, 0, 0, time.UTC),
+			Observation: &runtime.RuntimeObservation{
+				ID: "runtime:process_exec:missing",
+			},
+		},
+	}, time.Date(2026, 3, 16, 20, 13, 0, 0, time.UTC))
+
+	if result.EvidenceNodesUpserted != 1 {
+		t.Fatalf("EvidenceNodesUpserted = %d, want 1", result.EvidenceNodesUpserted)
+	}
+	if result.BasedOnEdgesCreated != 0 {
+		t.Fatalf("BasedOnEdgesCreated = %d, want 0", result.BasedOnEdgesCreated)
+	}
+	evidenceNode := g.GetNodesByKind(graph.NodeKindEvidence)[0]
+	if got := len(g.GetOutEdges(evidenceNode.ID)); got != 0 {
+		t.Fatalf("len(outEdges) = %d, want 0", got)
+	}
+}
+
+func TestMaterializeFindingEvidenceIntoGraphDoesNotDuplicateBasedOnEdges(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:   "observation:runtime:process_exec:repeat",
+		Kind: graph.NodeKindObservation,
+		Name: "repeat observation",
+	})
+
+	finding := &runtime.RuntimeFinding{
+		ID:          "finding-repeat",
+		RuleID:      "container-drift-shell",
+		RuleName:    "Unexpected Shell",
+		Category:    runtime.CategoryContainerDrift,
+		Severity:    "medium",
+		Description: "Detected unexpected shell",
+		Timestamp:   time.Date(2026, 3, 16, 20, 12, 0, 0, time.UTC),
+		Observation: &runtime.RuntimeObservation{
+			ID: "runtime:process_exec:repeat",
+		},
+	}
+
+	first := MaterializeFindingEvidenceIntoGraph(g, []*runtime.RuntimeFinding{finding}, time.Date(2026, 3, 16, 20, 13, 0, 0, time.UTC))
+	second := MaterializeFindingEvidenceIntoGraph(g, []*runtime.RuntimeFinding{finding}, time.Date(2026, 3, 16, 20, 14, 0, 0, time.UTC))
+
+	if first.BasedOnEdgesCreated != 1 {
+		t.Fatalf("first BasedOnEdgesCreated = %d, want 1", first.BasedOnEdgesCreated)
+	}
+	if second.BasedOnEdgesCreated != 0 {
+		t.Fatalf("second BasedOnEdgesCreated = %d, want 0", second.BasedOnEdgesCreated)
+	}
+	evidenceNode := g.GetNodesByKind(graph.NodeKindEvidence)[0]
+	if got := len(g.GetOutEdges(evidenceNode.ID)); got != 1 {
+		t.Fatalf("len(outEdges) = %d, want 1", got)
 	}
 }
 
