@@ -24,6 +24,21 @@ Status: executed end-to-end via PR workflow
   - [x] workload/container precedence over service identity
   - [x] adapter `resource_id` fallback to service identity
 
+## Deep Review Cycle 137 - Runtime Identity Conflict and Partial Metadata Coverage (2026-03-16)
+
+### Review findings
+- [x] Gap: shared runtime identity binding still treated whitespace-only metadata as authoritative because `firstNonEmptyRuntime` returned raw strings instead of trimmed values.
+- [x] Gap: that allowed partial metadata like `principal_id=\" \"` or `namespace=\" \"` to block stronger fallbacks from process actors, workload resource IDs, and container resource IDs.
+- [x] Gap: the runtime visibility backlog explicitly calls for conflict and partial-metadata coverage before graph materialization builds on top of the normalized identity layer.
+
+### Execution plan
+- [x] Trim candidate values inside the shared `firstNonEmptyRuntime` helper so whitespace-only metadata no longer wins precedence checks.
+- [x] Add regressions covering:
+  - [x] whitespace-only metadata vs process-user principal fallback
+  - [x] whitespace-only namespace metadata vs workload namespace backfill
+  - [x] whitespace-only container metadata vs container resource-id backfill
+- [x] Re-run focused runtime tests and lint on the shared normalization package.
+
 ## Deep Review Cycle 133 - Hubble Golden Payload Coverage (2026-03-15)
 
 ### Review findings
@@ -303,7 +318,7 @@ Status: executed end-to-end via PR workflow
 - [x] 056. Bind observations to principal identity.
 - [x] 057. Bind observations to service identity from OTel/resource context.
 - [ ] 058. Bind observations to deployment runs when temporal evidence is strong.
-- [ ] 059. Add identity-binding tests for conflicting or partial runtime metadata.
+- [x] 059. Add identity-binding tests for conflicting or partial runtime metadata.
 - [ ] 060. Add a runtime observation graph materializer package.
 - [ ] 061. Project promoted runtime observations into graph `observation` nodes.
 - [ ] 062. Project promoted runtime evidence into graph `evidence` nodes.
