@@ -84,7 +84,7 @@ func WriteObservation(g *Graph, req ObservationWriteRequest) (ObservationWriteRe
 		Target:     request.SubjectID,
 		Kind:       EdgeKindTargets,
 		Effect:     EdgeEffectAllow,
-		Properties: cloneAnyMap(edgeProperties),
+		Properties: edgeProperties,
 	})
 
 	return ObservationWriteResult{
