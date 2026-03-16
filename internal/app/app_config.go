@@ -7,6 +7,7 @@ import (
 
 	"github.com/evalops/cerebro/internal/apiauth"
 	"github.com/evalops/cerebro/internal/findings"
+	"github.com/evalops/cerebro/internal/graph"
 	"github.com/evalops/cerebro/internal/secretsource"
 	"github.com/evalops/cerebro/internal/snowflake"
 )
@@ -470,6 +471,8 @@ type Config struct {
 	GraphSnapshotPath                   string
 	GraphSnapshotMaxRetained            int
 	GraphSnapshotReplicaURI             string
+	GraphPropertyHistoryMaxEntries      int
+	GraphPropertyHistoryTTL             time.Duration
 	GraphSchemaValidationMode           string
 	GraphEventMapperValidationMode      string
 	GraphEventMapperDeadLetterPath      string
@@ -839,6 +842,8 @@ func LoadConfig() *Config {
 				GraphSnapshotPath:                   getEnv("GRAPH_SNAPSHOT_PATH", filepath.Join(".cerebro", "graph-snapshots")),
 				GraphSnapshotMaxRetained:            getEnvInt("GRAPH_SNAPSHOT_MAX_RETAINED", 10),
 				GraphSnapshotReplicaURI:             getEnv("GRAPH_SNAPSHOT_REPLICA_URI", ""),
+				GraphPropertyHistoryMaxEntries:      getEnvInt("GRAPH_PROPERTY_HISTORY_MAX_ENTRIES", graph.DefaultTemporalHistoryMaxEntries),
+				GraphPropertyHistoryTTL:             getEnvDuration("GRAPH_PROPERTY_HISTORY_TTL", graph.DefaultTemporalHistoryTTL),
 				GraphSchemaValidationMode:           getEnv("GRAPH_SCHEMA_VALIDATION_MODE", "warn"),
 				GraphEventMapperValidationMode:      getEnv("GRAPH_EVENT_MAPPER_VALIDATION_MODE", "enforce"),
 				GraphEventMapperDeadLetterPath:      getEnv("GRAPH_EVENT_MAPPER_DEAD_LETTER_PATH", filepath.Join(findings.DefaultFilePath(), "graph-event-mapper.dlq.jsonl")),

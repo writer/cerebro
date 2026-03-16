@@ -153,6 +153,8 @@ func ConfigValidationRules() []ConfigValidationRule {
 			Summary:  "when GRAPH_CROSS_TENANT_REQUIRE_SIGNED_INGEST=true, signing key is required and skew/TTL/support thresholds must be positive",
 			Category: "dependency",
 		},
+		{EnvVars: []string{"GRAPH_PROPERTY_HISTORY_MAX_ENTRIES"}, Summary: "non-positive values fall back to the default max property-history depth", Category: "behavior"},
+		{EnvVars: []string{"GRAPH_PROPERTY_HISTORY_TTL"}, Summary: "non-positive values fall back to the default property-history TTL", Category: "behavior"},
 		{EnvVars: []string{"GRAPH_SCHEMA_VALIDATION_MODE"}, Summary: "must be one of off, warn, enforce", Category: "enum"},
 		{EnvVars: []string{"GRAPH_EVENT_MAPPER_VALIDATION_MODE"}, Summary: "must be one of warn, enforce", Category: "enum"},
 	}
@@ -189,6 +191,12 @@ func (c *Config) Validate() error {
 	}
 	if c.FindingsResolvedRetention < 0 {
 		problems = addConfigProblem(problems, "FINDINGS_RESOLVED_RETENTION must be >= 0")
+	}
+	if c.GraphPropertyHistoryMaxEntries < 0 {
+		problems = addConfigProblem(problems, "GRAPH_PROPERTY_HISTORY_MAX_ENTRIES must be >= 0")
+	}
+	if c.GraphPropertyHistoryTTL < 0 {
+		problems = addConfigProblem(problems, "GRAPH_PROPERTY_HISTORY_TTL must be >= 0")
 	}
 
 	switch strings.ToLower(strings.TrimSpace(c.WarehouseBackend)) {

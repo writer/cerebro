@@ -2,7 +2,7 @@
 
 Generated from `internal/app/app_config.go` (`LoadConfig`) via `go run ./scripts/generate_config_docs/main.go`.
 
-Total variables: **333**
+Total variables: **335**
 
 | Variable | Reader(s) | Default(s) | Config Field(s) | Validation rule(s) |
 |---|---|---|---|---|
@@ -126,6 +126,8 @@ Total variables: **333**
 | `GRAPH_EVENT_MAPPER_DEAD_LETTER_PATH` | `getEnv` | `filepath.Join(findings.DefaultFilePath(), "graph-event-mapper.dlq.jsonl")` | `GraphEventMapperDeadLetterPath` | `-` |
 | `GRAPH_EVENT_MAPPER_VALIDATION_MODE` | `getEnv` | `"enforce"` | `GraphEventMapperValidationMode` | `must be one of warn, enforce` |
 | `GRAPH_MIGRATE_LEGACY_ACTIVITY_ON_START` | `getEnvBool` | `false` | `GraphMigrateLegacyActivityOnStart` | `-` |
+| `GRAPH_PROPERTY_HISTORY_MAX_ENTRIES` | `getEnvInt` | `graph.DefaultTemporalHistoryMaxEntries` | `GraphPropertyHistoryMaxEntries` | `non-positive values fall back to the default max property-history depth` |
+| `GRAPH_PROPERTY_HISTORY_TTL` | `getEnvDuration` | `graph.DefaultTemporalHistoryTTL` | `GraphPropertyHistoryTTL` | `non-positive values fall back to the default property-history TTL` |
 | `GRAPH_SCHEMA_VALIDATION_MODE` | `getEnv` | `"warn"` | `GraphSchemaValidationMode` | `must be one of off, warn, enforce` |
 | `GRAPH_SNAPSHOT_MAX_RETAINED` | `getEnvInt` | `10` | `GraphSnapshotMaxRetained` | `-` |
 | `GRAPH_SNAPSHOT_PATH` | `getEnv` | `filepath.Join(".cerebro", "graph-snapshots")` | `GraphSnapshotPath` | `-` |

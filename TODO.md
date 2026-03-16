@@ -69,6 +69,30 @@ Status: executed end-to-end via PR workflow
 - [x] Add microbenchmarks for large-graph `NodeCount()` and `EdgeCount()`.
 - [x] Re-run focused graph tests and lint, then repo-wide tests.
 
+## Deep Review Cycle 147 - Graph Property History TTL and Depth Controls (2026-03-16)
+
+### Review findings
+- [x] Gap: node `PropertyHistory` was still effectively unbounded for long-lived high-churn nodes because the only guardrail was a hardcoded per-property cap buried inside the graph package.
+- [x] Gap: there was no write-path TTL trimming, so long-idle snapshots accumulated until an explicit compaction pass, which is the wrong place to enforce a hard memory bound.
+- [x] Gap: operators had no metric or env-backed control surface for property-history retention, so graph memory growth from runtime-heavy workloads was not observable or tunable.
+- [x] Gap: long-horizon graph tests that intentionally reason across multi-week temporal history needed explicit larger TTLs once the new default seven-day retention started applying on writes.
+
+### Execution plan
+- [x] Replace the hardcoded temporal history cap with per-graph retention config defaults:
+  - [x] max entries default `50`
+  - [x] TTL default `7d`
+- [x] Trim expired and over-cap snapshots on every property-history write.
+- [x] Reuse the same bounded trimming for temporal compaction output.
+- [x] Add TDD coverage for:
+  - [x] max-entry enforcement
+  - [x] TTL trimming on the next write
+  - [x] snapshot size shrink after TTL enforcement
+- [x] Wire env-backed controls:
+- [x] `GRAPH_PROPERTY_HISTORY_MAX_ENTRIES`
+- [x] `GRAPH_PROPERTY_HISTORY_TTL`
+- [x] Expose `cerebro_graph_property_history_depth`.
+- [x] Update the affected long-horizon graph test to request an explicit larger TTL instead of depending on effectively infinite history.
+
 ## Deep Review Cycle 136 - Runtime Service Identity Binding (2026-03-16)
 
 ### Review findings

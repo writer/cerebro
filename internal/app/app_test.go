@@ -17,9 +17,12 @@ import (
 
 	"github.com/evalops/cerebro/internal/apiauth"
 	"github.com/evalops/cerebro/internal/findings"
+	"github.com/evalops/cerebro/internal/graph"
+	"github.com/evalops/cerebro/internal/metrics"
 	"github.com/evalops/cerebro/internal/policy"
 	"github.com/evalops/cerebro/internal/snowflake"
 	"github.com/evalops/cerebro/internal/warehouse"
+	dto "github.com/prometheus/client_model/go"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -317,6 +320,19 @@ func TestLoadConfigGraphSchemaValidationMode(t *testing.T) {
 	cfg := LoadConfig()
 	if cfg.GraphSchemaValidationMode != "enforce" {
 		t.Fatalf("expected graph schema validation mode enforce, got %q", cfg.GraphSchemaValidationMode)
+	}
+}
+
+func TestLoadConfigGraphPropertyHistoryControls(t *testing.T) {
+	t.Setenv("GRAPH_PROPERTY_HISTORY_MAX_ENTRIES", "17")
+	t.Setenv("GRAPH_PROPERTY_HISTORY_TTL", "36h")
+
+	cfg := LoadConfig()
+	if cfg.GraphPropertyHistoryMaxEntries != 17 {
+		t.Fatalf("expected graph property history max entries 17, got %d", cfg.GraphPropertyHistoryMaxEntries)
+	}
+	if cfg.GraphPropertyHistoryTTL != 36*time.Hour {
+		t.Fatalf("expected graph property history ttl 36h, got %s", cfg.GraphPropertyHistoryTTL)
 	}
 }
 
@@ -661,6 +677,8 @@ func TestLoadConfigValidateAggregatesProblems(t *testing.T) {
 	t.Setenv("NATS_CONSUMER_ENABLED", "true")
 	t.Setenv("NATS_JETSTREAM_ENABLED", "false")
 	t.Setenv("GRAPH_CROSS_TENANT_REQUIRE_SIGNED_INGEST", "true")
+	t.Setenv("GRAPH_PROPERTY_HISTORY_MAX_ENTRIES", "-1")
+	t.Setenv("GRAPH_PROPERTY_HISTORY_TTL", "-1s")
 
 	cfg := LoadConfig()
 	err := cfg.Validate()
@@ -679,6 +697,8 @@ func TestLoadConfigValidateAggregatesProblems(t *testing.T) {
 		"QUERY_POLICY_ROW_LIMIT must be greater than 0",
 		"NATS_JETSTREAM_ENABLED must be true when NATS_CONSUMER_ENABLED=true",
 		"GRAPH_CROSS_TENANT_SIGNING_KEY is required when GRAPH_CROSS_TENANT_REQUIRE_SIGNED_INGEST=true",
+		"GRAPH_PROPERTY_HISTORY_MAX_ENTRIES must be >= 0",
+		"GRAPH_PROPERTY_HISTORY_TTL must be >= 0",
 	}
 	for _, want := range wantProblems {
 		found := false
@@ -692,6 +712,44 @@ func TestLoadConfigValidateAggregatesProblems(t *testing.T) {
 			t.Fatalf("expected validation problem containing %q, got %#v", want, validationErr.Problems)
 		}
 	}
+}
+
+func TestConfigureGraphRuntimeBehaviorAppliesPropertyHistoryConfig(t *testing.T) {
+	metrics.Register()
+
+	application := &App{
+		Config: &Config{
+			GraphSchemaValidationMode:      "enforce",
+			GraphPropertyHistoryMaxEntries: 17,
+			GraphPropertyHistoryTTL:        3 * time.Hour,
+		},
+	}
+	g := graph.New()
+
+	application.configureGraphRuntimeBehavior(g)
+
+	if g.SchemaValidationMode() != graph.SchemaValidationEnforce {
+		t.Fatalf("expected graph schema validation enforce, got %q", g.SchemaValidationMode())
+	}
+	maxEntries, ttl := g.TemporalHistoryConfig()
+	if maxEntries != 17 {
+		t.Fatalf("expected graph property history max entries 17, got %d", maxEntries)
+	}
+	if ttl != 3*time.Hour {
+		t.Fatalf("expected graph property history ttl 3h, got %s", ttl)
+	}
+	if got := gaugeValue(t, metrics.GraphPropertyHistoryDepth); got != 17 {
+		t.Fatalf("expected graph property history depth gauge 17, got %v", got)
+	}
+}
+
+func gaugeValue(t *testing.T, gauge interface{ Write(*dto.Metric) error }) float64 {
+	t.Helper()
+	var metric dto.Metric
+	if err := gauge.Write(&metric); err != nil {
+		t.Fatalf("write gauge metric: %v", err)
+	}
+	return metric.GetGauge().GetValue()
 }
 
 func TestNewWithConfigFailsFastOnInvalidConfig(t *testing.T) {
