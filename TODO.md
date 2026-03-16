@@ -1,6 +1,6 @@
 # Cerebro Intelligence Layer Execution TODO
 
-Last updated: 2026-03-15 (America/Los_Angeles)
+Last updated: 2026-03-16 (America/Los_Angeles)
 Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
@@ -23,6 +23,22 @@ Status: executed end-to-end via PR workflow
   - [x] direction and network protocol
   - [x] direction-neutral identity metadata
   - [x] DNS query preservation
+
+## Deep Review Cycle 134 - Tetragon Security Signal Normalization (2026-03-16)
+
+### Review findings
+- [x] Gap: the Tetragon adapter already normalized `process_kprobe` file, network, and DNS telemetry, but it still rejected policy-driven security hooks like capability checks and credential changes as unsupported events.
+- [x] Gap: upstream Tetragon emits high-value runtime security signals through `process_kprobe` payloads with typed args such as `capability_arg`, `user_ns_arg`, and `process_credentials_arg`, so continuing to drop them would leave privilege-escalation monitoring blind even with the source adapter in place.
+- [x] Gap: generic security-policy `process_kprobe` events need to preserve enforcement metadata (`policy_name`, `action`, `return_action`, `return_code`) so downstream detection and graph correlation can distinguish observed signals from blocking/enforcement outcomes.
+
+### Execution plan
+- [x] Normalize security-oriented `process_kprobe` payloads into `ObservationKindRuntimeAlert`.
+- [x] Preserve extracted capability and credential metadata:
+  - [x] capability name/value
+  - [x] user-namespace context
+  - [x] credential UID/GID and capability-mask state
+- [x] Preserve policy/action/return metadata on normalized runtime alerts.
+- [x] Keep malformed bare `process_kprobe` payloads failing fast instead of silently normalizing junk input.
 
 ## Deep Review Cycle 132 - Hubble Verdict and Identity Metadata (2026-03-15)
 
@@ -218,7 +234,7 @@ Status: executed end-to-end via PR workflow
 - [x] 020. Normalize Tetragon file events.
 - [x] 021. Normalize Tetragon network events.
 - [x] 022. Normalize Tetragon DNS events.
-- [ ] 023. Normalize Tetragon security signal payloads.
+- [x] 023. Normalize Tetragon security signal payloads.
 - [x] 024. Add Tetragon adapter golden payload tests.
 - [x] 025. Add Hubble adapter package.
 - [x] 026. Normalize Hubble L3/L4 flow events.
