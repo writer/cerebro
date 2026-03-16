@@ -190,11 +190,11 @@ Status: executed end-to-end via PR workflow
 - [x] 027. Normalize Hubble DNS flow events.
 - [x] 028. Normalize Hubble verdict and identity metadata.
 - [ ] 029. Add Hubble adapter golden payload tests.
-- [ ] 030. Add OpenTelemetry adapter package.
-- [ ] 031. Normalize OTLP log records into observation enrichments.
-- [ ] 032. Normalize OTLP trace/span identity into observation enrichments.
-- [ ] 033. Normalize OTel resource attributes into workload/service context.
-- [ ] 034. Add OTLP adapter tests.
+- [x] 030. Add OpenTelemetry adapter package.
+- [x] 031. Normalize OTLP log records into observation enrichments.
+- [x] 032. Normalize OTLP trace/span identity into observation enrichments.
+- [x] 033. Normalize OTel resource attributes into workload/service context.
+- [x] 034. Add OTLP adapter tests.
 - [ ] 035. Add Falco adapter package.
 - [ ] 036. Normalize Falco JSON outputs into observation/finding inputs.
 - [ ] 037. Add Falco adapter tests.
