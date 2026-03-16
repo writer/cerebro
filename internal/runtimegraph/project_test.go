@@ -285,6 +285,55 @@ func TestMaterializeObservationsIntoGraphDoesNotDuplicateReverseTargetEdges(t *t
 	}
 }
 
+func TestMaterializeObservationsIntoGraphDefersIndexBuildToCaller(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:   "deployment:prod/api",
+		Kind: graph.NodeKindDeployment,
+		Name: "api",
+	})
+	g.BuildIndex()
+	if !g.IsIndexBuilt() {
+		t.Fatal("expected initial graph index to be built")
+	}
+
+	now := time.Date(2026, 3, 16, 19, 40, 0, 0, time.UTC)
+	observation := &runtime.RuntimeObservation{
+		ID:          "runtime:process_exec:defer-index",
+		Source:      "tetragon",
+		Kind:        runtime.ObservationKindProcessExec,
+		ObservedAt:  now.Add(-10 * time.Second),
+		RecordedAt:  now.Add(-5 * time.Second),
+		WorkloadRef: "deployment:prod/api",
+		Process: &runtime.ProcessEvent{
+			Name: "sh",
+			Path: "/bin/sh",
+		},
+	}
+
+	result := MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{observation}, now)
+	if result.ObservationsMaterialized != 1 {
+		t.Fatalf("ObservationsMaterialized = %d, want 1", result.ObservationsMaterialized)
+	}
+	if g.IsIndexBuilt() {
+		t.Fatal("expected index to remain stale until caller finalizes materialized graph")
+	}
+	if got := g.Metadata().BuiltAt; !got.Equal(now) {
+		t.Fatalf("metadata.BuiltAt = %s, want %s", got, now)
+	}
+
+	FinalizeMaterializedGraph(g, now.Add(time.Minute))
+	if !g.IsIndexBuilt() {
+		t.Fatal("expected FinalizeMaterializedGraph to rebuild indexes")
+	}
+	if got := len(g.GetNodesByKindIndexed(graph.NodeKindObservation)); got != 1 {
+		t.Fatalf("len(GetNodesByKindIndexed(observation)) = %d, want 1", got)
+	}
+	if got := g.Metadata().BuiltAt; !got.Equal(now.Add(time.Minute)) {
+		t.Fatalf("metadata.BuiltAt after finalize = %s, want %s", got, now.Add(time.Minute))
+	}
+}
+
 func TestGraphAddEdgeIfMissingReturnsFalseWhenSchemaRejectsEdge(t *testing.T) {
 	g := graph.New()
 	g.SetSchemaValidationMode(graph.SchemaValidationEnforce)

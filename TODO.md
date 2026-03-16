@@ -5,6 +5,27 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 143 - Runtime Graph Deferred Index Finalization (2026-03-16)
+
+### Review findings
+- [x] Gap: runtime observation and evidence materializers were each calling `BuildIndex()` after every batch, which directly matches issue `#371` and makes batched runtime graph projection pay repeated full-index rebuild cost.
+- [x] Gap: the eager index rebuilds were bundled together with graph metadata refresh, so callers had no way to defer expensive secondary-index work while still keeping node/edge counts and build timestamps current between batches.
+- [x] Gap: the runtimegraph package had no explicit regression coverage proving that batched materialization can intentionally leave indexes stale until one caller-controlled finalization step.
+
+### Execution plan
+- [x] Split runtimegraph materialization finalization into:
+  - [x] cheap metadata refresh after each batch
+  - [x] explicit caller-controlled graph finalization for index rebuilds
+- [x] Remove eager `BuildIndex()` calls from:
+  - [x] observation materialization
+  - [x] evidence materialization
+- [x] Add `FinalizeMaterializedGraph` so callers can rebuild indexes once after multiple batches.
+- [x] Add TDD coverage for:
+  - [x] deferred index rebuild after observation projection
+  - [x] deferred index rebuild after evidence projection
+- [x] Add a benchmark covering repeated observation batches followed by one finalization pass.
+- [x] Re-run focused runtimegraph/graph tests, lint, and changed-file validation.
+
 ## Deep Review Cycle 136 - Runtime Service Identity Binding (2026-03-16)
 
 ### Review findings

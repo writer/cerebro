@@ -122,12 +122,7 @@ func MaterializeFindingEvidenceIntoGraph(g *graph.Graph, findings []*runtime.Run
 		}
 	}
 
-	g.BuildIndex()
-	meta := g.Metadata()
-	meta.BuiltAt = now.UTC()
-	meta.NodeCount = g.NodeCount()
-	meta.EdgeCount = g.EdgeCount()
-	g.SetMetadata(meta)
+	refreshMaterializedGraphMetadata(g, now)
 	return result
 }
 
