@@ -5,6 +5,25 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 136 - Runtime Service Identity Binding (2026-03-16)
+
+### Review findings
+- [x] Gap: shared runtime observation normalization already bound cluster, namespace, workload, container, image, and principal identity, but service identity was still trapped inside source-specific adapters instead of being normalized once at the shared runtime layer.
+- [x] Gap: legacy `RuntimeEvent` ingestion could carry `service_name`, `service_namespace`, `trace_id`, and `span_id` metadata without reconstructing a `TraceContext`, which meant service-scoped resource identity was silently lost on the compatibility path.
+- [x] Gap: the service-binding seam needed explicit precedence coverage so workload and container identity continue to win when both stronger identities and service metadata are present on the same observation.
+- [x] Gap: adapter-provided non-service `resource_id` values were incorrectly blocking service binding even when no higher-precedence workload or container identity existed.
+
+### Execution plan
+- [x] Reconstruct `TraceContext` from runtime metadata during `ObservationFromEvent`.
+- [x] Bind service resource identity from shared normalized observation context when a service name is present and workload/container identity is absent.
+- [x] Fall back namespace binding from `service_namespace` metadata when Kubernetes namespace is unavailable.
+- [x] Keep service identity out of the workload-ref backfill path.
+- [x] Add regressions for:
+  - [x] direct normalization from `TraceContext` plus metadata
+  - [x] legacy event reconstruction from metadata
+  - [x] workload/container precedence over service identity
+  - [x] adapter `resource_id` fallback to service identity
+
 ## Deep Review Cycle 133 - Hubble Golden Payload Coverage (2026-03-15)
 
 ### Review findings
@@ -282,7 +301,7 @@ Status: executed end-to-end via PR workflow
 - [x] 054. Bind observations to container identity.
 - [x] 055. Bind observations to image identity.
 - [x] 056. Bind observations to principal identity.
-- [ ] 057. Bind observations to service identity from OTel/resource context.
+- [x] 057. Bind observations to service identity from OTel/resource context.
 - [ ] 058. Bind observations to deployment runs when temporal evidence is strong.
 - [ ] 059. Add identity-binding tests for conflicting or partial runtime metadata.
 - [ ] 060. Add a runtime observation graph materializer package.
