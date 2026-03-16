@@ -5,6 +5,25 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 133 - Hubble Golden Payload Coverage (2026-03-15)
+
+### Review findings
+- [x] Gap: the Hubble adapter had edge-case unit coverage for egress, ingress, and DNS paths, but it still lacked repo-local fixtures that lock the normalized contract to representative payloads.
+- [x] Gap: relying only on inline JSON literals makes it too easy for future refactors to drift away from realistic Hubble exporter payload structure without tripping a stable fixture-backed test.
+- [x] Gap: the direction-neutral `primary_*` / `peer_*` metadata path added in cycle 132 needs fixture-backed coverage so ingress/egress anchoring changes do not silently break later graph and detection work.
+
+### Execution plan
+- [x] Add repo-local Hubble golden fixtures for representative:
+  - [x] egress TCP L3/L4 flow
+  - [x] ingress UDP L3/L4 flow
+  - [x] DNS L7 flow
+- [x] Add fixture-backed normalization coverage that asserts:
+  - [x] observation kind
+  - [x] resource/workload anchoring
+  - [x] direction and network protocol
+  - [x] direction-neutral identity metadata
+  - [x] DNS query preservation
+
 ## Deep Review Cycle 132 - Hubble Verdict and Identity Metadata (2026-03-15)
 
 ### Review findings
@@ -205,7 +224,7 @@ Status: executed end-to-end via PR workflow
 - [x] 026. Normalize Hubble L3/L4 flow events.
 - [x] 027. Normalize Hubble DNS flow events.
 - [x] 028. Normalize Hubble verdict and identity metadata.
-- [ ] 029. Add Hubble adapter golden payload tests.
+- [x] 029. Add Hubble adapter golden payload tests.
 - [x] 030. Add OpenTelemetry adapter package.
 - [x] 031. Normalize OTLP log records into observation enrichments.
 - [x] 032. Normalize OTLP trace/span identity into observation enrichments.
