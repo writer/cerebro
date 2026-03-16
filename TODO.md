@@ -5,6 +5,23 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 150 - Runtime Observation Metadata Allocation Trim (2026-03-16)
+
+### Review findings
+- [x] Gap: issue `#374` is real on the current runtime observation materialization path because each observation still pays multiple metadata-map allocations even before the graph stores the node and edge.
+- [x] Gap: `observationMetadata()` and `WriteMetadata.PropertyMap()` were both building small fixed-shape maps without any capacity hint, which causes avoidable growth churn across large observation batches.
+- [x] Gap: `WriteMetadata.ApplyTo()` was allocating a full temporary metadata map just to copy the same fixed fields back into another map, and `WriteObservation()` was cloning a freshly allocated edge-property map before inserting it into the graph.
+- [x] Gap: the runtimegraph package had no benchmark locking down observation-write allocation behavior after the deferred-finalization changes.
+
+### Execution plan
+- [x] Pre-size the fixed-shape observation metadata map in `internal/runtimegraph/materializer.go`.
+- [x] Pre-size `WriteMetadata.PropertyMap()` and make `ApplyTo()` write fields directly without allocating an intermediate map.
+- [x] Stop cloning the freshly allocated observation `targets` edge-property map in `internal/graph/knowledge_observations.go`.
+- [x] Add allocation benchmarks for:
+  - [x] `BuildObservationWriteRequest`
+  - [x] `WriteObservation`
+- [x] Re-run focused runtimegraph/graph tests, lint, and changed-file validation.
+
 ## Deep Review Cycle 144 - Runtime Response Outcome Target Edges (2026-03-16)
 
 ### Review findings
