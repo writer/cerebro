@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -11,6 +12,10 @@ import (
 )
 
 const runtimeIngestNamespace = executionstore.NamespaceRuntimeIngest
+const (
+	runtimeReplayNamespace      = executionstore.NamespaceRuntimeReplay
+	runtimeMaterializeNamespace = executionstore.NamespaceRuntimeMaterialization
+)
 
 type IngestRunStatus string
 
@@ -50,7 +55,40 @@ type IngestEvent struct {
 	Data       map[string]any `json:"data,omitempty"`
 }
 
+type IngestJobType string
+
+const (
+	IngestJobTypeReplay          IngestJobType = "replay"
+	IngestJobTypeMaterialization IngestJobType = "materialization"
+)
+
+type IngestJobRecord struct {
+	ID               string            `json:"id"`
+	Type             IngestJobType     `json:"type"`
+	Source           string            `json:"source"`
+	Status           IngestRunStatus   `json:"status"`
+	Stage            string            `json:"stage"`
+	SubmittedAt      time.Time         `json:"submitted_at"`
+	StartedAt        *time.Time        `json:"started_at,omitempty"`
+	CompletedAt      *time.Time        `json:"completed_at,omitempty"`
+	UpdatedAt        time.Time         `json:"updated_at"`
+	ParentRunID      string            `json:"parent_run_id,omitempty"`
+	ObservationCount int               `json:"observation_count,omitempty"`
+	PromotedCount    int               `json:"promoted_count,omitempty"`
+	Error            string            `json:"error,omitempty"`
+	Metadata         map[string]string `json:"metadata,omitempty"`
+}
+
 type IngestRunListOptions struct {
+	Statuses           []IngestRunStatus
+	Limit              int
+	Offset             int
+	OrderBySubmittedAt bool
+	ActiveOnly         bool
+}
+
+type IngestJobListOptions struct {
+	Types              []IngestJobType
 	Statuses           []IngestRunStatus
 	Limit              int
 	Offset             int
@@ -63,6 +101,9 @@ type IngestStore interface {
 	SaveRun(context.Context, *IngestRunRecord) error
 	LoadRun(context.Context, string) (*IngestRunRecord, error)
 	ListRuns(context.Context, IngestRunListOptions) ([]IngestRunRecord, error)
+	SaveJob(context.Context, *IngestJobRecord) error
+	LoadJob(context.Context, string) (*IngestJobRecord, error)
+	ListJobs(context.Context, IngestJobListOptions) ([]IngestJobRecord, error)
 	AppendEvent(context.Context, string, IngestEvent) (IngestEvent, error)
 	LoadEvents(context.Context, string) ([]IngestEvent, error)
 	SaveCheckpoint(context.Context, string, IngestCheckpoint) (IngestCheckpoint, error)
@@ -146,6 +187,70 @@ func (s *SQLiteIngestStore) ListRuns(ctx context.Context, opts IngestRunListOpti
 		runs = append(runs, *run)
 	}
 	return runs, nil
+}
+
+func (s *SQLiteIngestStore) SaveJob(ctx context.Context, job *IngestJobRecord) error {
+	if s == nil || s.store == nil || job == nil {
+		return nil
+	}
+	env, err := runtimeIngestJobEnvelope(job)
+	if err != nil {
+		return err
+	}
+	return s.store.UpsertRun(ctx, env)
+}
+
+func (s *SQLiteIngestStore) LoadJob(ctx context.Context, jobID string) (*IngestJobRecord, error) {
+	if s == nil || s.store == nil {
+		return nil, nil
+	}
+	jobID = strings.TrimSpace(jobID)
+	for _, namespace := range []string{runtimeReplayNamespace, runtimeMaterializeNamespace} {
+		env, err := s.store.LoadRun(ctx, namespace, jobID)
+		if err != nil {
+			return nil, err
+		}
+		if env == nil {
+			continue
+		}
+		return runtimeIngestJobFromEnvelope(env)
+	}
+	return nil, nil
+}
+
+func (s *SQLiteIngestStore) ListJobs(ctx context.Context, opts IngestJobListOptions) ([]IngestJobRecord, error) {
+	if s == nil || s.store == nil {
+		return nil, nil
+	}
+
+	query := executionstore.RunListOptions{
+		Limit:              opts.Limit,
+		Offset:             opts.Offset,
+		Statuses:           ingestStatusesToStrings(opts.Statuses),
+		OrderBySubmittedAt: opts.OrderBySubmittedAt,
+	}
+	if opts.ActiveOnly {
+		query.ExcludeStatuses = []string{string(IngestRunStatusCompleted), string(IngestRunStatusFailed)}
+	}
+
+	namespaces := runtimeJobNamespaces(opts.Types)
+	if len(opts.Types) > 0 && len(namespaces) == 0 {
+		return []IngestJobRecord{}, nil
+	}
+	query.Namespaces = namespaces
+	envs, err := s.store.ListAllRuns(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	jobs := make([]IngestJobRecord, 0, len(envs))
+	for _, env := range envs {
+		job, err := runtimeIngestJobFromEnvelope(&env)
+		if err != nil {
+			return nil, err
+		}
+		jobs = append(jobs, *job)
+	}
+	return jobs, nil
 }
 
 func (s *SQLiteIngestStore) AppendEvent(ctx context.Context, runID string, event IngestEvent) (IngestEvent, error) {
@@ -278,6 +383,48 @@ func runtimeIngestRunFromEnvelope(env *executionstore.RunEnvelope) (*IngestRunRe
 	return &run, nil
 }
 
+func runtimeIngestJobEnvelope(job *IngestJobRecord) (executionstore.RunEnvelope, error) {
+	namespace, err := runtimeJobNamespace(job.Type)
+	if err != nil {
+		return executionstore.RunEnvelope{}, err
+	}
+	payload, err := json.Marshal(job)
+	if err != nil {
+		return executionstore.RunEnvelope{}, fmt.Errorf("encode runtime ingest job: %w", err)
+	}
+	return executionstore.RunEnvelope{
+		Namespace:   namespace,
+		RunID:       strings.TrimSpace(job.ID),
+		Kind:        strings.TrimSpace(job.Source),
+		Status:      string(job.Status),
+		Stage:       strings.TrimSpace(job.Stage),
+		SubmittedAt: job.SubmittedAt,
+		StartedAt:   job.StartedAt,
+		CompletedAt: job.CompletedAt,
+		UpdatedAt:   job.UpdatedAt,
+		Payload:     payload,
+	}, nil
+}
+
+func runtimeIngestJobFromEnvelope(env *executionstore.RunEnvelope) (*IngestJobRecord, error) {
+	if env == nil {
+		return nil, nil
+	}
+	var job IngestJobRecord
+	if err := json.Unmarshal(env.Payload, &job); err != nil {
+		return nil, fmt.Errorf("decode runtime ingest job: %w", err)
+	}
+	if job.Type == "" {
+		switch env.Namespace {
+		case runtimeReplayNamespace:
+			job.Type = IngestJobTypeReplay
+		case runtimeMaterializeNamespace:
+			job.Type = IngestJobTypeMaterialization
+		}
+	}
+	return &job, nil
+}
+
 func (s *SQLiteIngestStore) LoadCheckpoint(ctx context.Context, runID string) (*IngestCheckpoint, error) {
 	run, err := s.LoadRun(ctx, runID)
 	if err != nil || run == nil {
@@ -295,4 +442,33 @@ func ingestStatusesToStrings(statuses []IngestRunStatus) []string {
 		values = append(values, string(status))
 	}
 	return values
+}
+
+func runtimeJobNamespace(jobType IngestJobType) (string, error) {
+	switch jobType {
+	case IngestJobTypeReplay:
+		return runtimeReplayNamespace, nil
+	case IngestJobTypeMaterialization:
+		return runtimeMaterializeNamespace, nil
+	default:
+		return "", fmt.Errorf("unsupported runtime ingest job type: %q", strings.TrimSpace(string(jobType)))
+	}
+}
+
+func runtimeJobNamespaces(types []IngestJobType) []string {
+	if len(types) == 0 {
+		return []string{runtimeReplayNamespace, runtimeMaterializeNamespace}
+	}
+	namespaces := make([]string, 0, len(types))
+	for _, jobType := range types {
+		namespace, err := runtimeJobNamespace(jobType)
+		if err != nil || slices.Contains(namespaces, namespace) {
+			continue
+		}
+		namespaces = append(namespaces, namespace)
+	}
+	if len(namespaces) == 0 {
+		return nil
+	}
+	return namespaces
 }

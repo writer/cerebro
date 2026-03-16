@@ -42,6 +42,18 @@ func (s *failingRuntimeIngestStore) ListRuns(context.Context, runtime.IngestRunL
 	return nil, nil
 }
 
+func (s *failingRuntimeIngestStore) SaveJob(context.Context, *runtime.IngestJobRecord) error {
+	return nil
+}
+
+func (s *failingRuntimeIngestStore) LoadJob(context.Context, string) (*runtime.IngestJobRecord, error) {
+	return nil, nil
+}
+
+func (s *failingRuntimeIngestStore) ListJobs(context.Context, runtime.IngestJobListOptions) ([]runtime.IngestJobRecord, error) {
+	return nil, nil
+}
+
 func (s *failingRuntimeIngestStore) AppendEvent(context.Context, string, runtime.IngestEvent) (runtime.IngestEvent, error) {
 	s.appendEventCalls++
 	if s.appendEventErr != nil && (s.appendEventErrOnCall == 0 || s.appendEventErrOnCall == s.appendEventCalls) {
@@ -83,6 +95,18 @@ func (s *nilReloadRuntimeIngestStore) LoadRun(context.Context, string) (*runtime
 }
 
 func (s *nilReloadRuntimeIngestStore) ListRuns(context.Context, runtime.IngestRunListOptions) ([]runtime.IngestRunRecord, error) {
+	return nil, nil
+}
+
+func (s *nilReloadRuntimeIngestStore) SaveJob(context.Context, *runtime.IngestJobRecord) error {
+	return nil
+}
+
+func (s *nilReloadRuntimeIngestStore) LoadJob(context.Context, string) (*runtime.IngestJobRecord, error) {
+	return nil, nil
+}
+
+func (s *nilReloadRuntimeIngestStore) ListJobs(context.Context, runtime.IngestJobListOptions) ([]runtime.IngestJobRecord, error) {
 	return nil, nil
 }
 

@@ -160,7 +160,7 @@ Status: executed end-to-end via PR workflow
 - [x] 038. Add a runtime ingest namespace to the execution-store-backed control plane.
 - [x] 039. Add a runtime ingest run record type.
 - [x] 040. Add runtime ingest event/checkpoint records.
-- [ ] 041. Add runtime replay/materialization job records.
+- [x] 041. Add runtime replay/materialization job records.
 - [x] 042. Add checkpoint cursor persistence per source.
 - [ ] 043. Add processed-event dedupe for runtime source payload IDs.
 - [x] 044. Add runtime ingest store tests.
