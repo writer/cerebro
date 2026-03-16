@@ -449,7 +449,11 @@ func normalizeObservationContexts(observation *RuntimeObservation) {
 	}
 	if observation.Metadata != nil {
 		if observation.Cluster == "" {
-			observation.Cluster = stringMapValue(observation.Metadata, "cluster")
+			observation.Cluster = firstNonEmptyRuntime(
+				stringMapValue(observation.Metadata, "cluster"),
+				stringMapValue(observation.Metadata, "cluster_name"),
+				stringMapValue(observation.Metadata, "k8s_cluster_name"),
+			)
 		}
 		if observation.NodeName == "" {
 			observation.NodeName = firstNonEmptyRuntime(
@@ -463,6 +467,25 @@ func normalizeObservationContexts(observation *RuntimeObservation) {
 		if observation.WorkloadUID == "" {
 			observation.WorkloadUID = stringMapValue(observation.Metadata, "workload_uid")
 		}
+		if observation.ContainerID == "" {
+			observation.ContainerID = firstNonEmptyRuntime(
+				stringMapValue(observation.Metadata, "container_id"),
+				stringMapValue(observation.Metadata, "k8s_container_id"),
+			)
+		}
+		if observation.ImageRef == "" {
+			observation.ImageRef = firstNonEmptyRuntime(
+				stringMapValue(observation.Metadata, "image_ref"),
+				stringMapValue(observation.Metadata, "image"),
+				stringMapValue(observation.Metadata, "container_image"),
+			)
+		}
+		if observation.ImageID == "" {
+			observation.ImageID = firstNonEmptyRuntime(
+				stringMapValue(observation.Metadata, "image_id"),
+				stringMapValue(observation.Metadata, "container_image_id"),
+			)
+		}
 		if observation.Namespace == "" {
 			observation.Namespace = firstNonEmptyRuntime(
 				stringMapValue(observation.Metadata, "namespace"),
@@ -474,8 +497,36 @@ func normalizeObservationContexts(observation *RuntimeObservation) {
 				stringMapValue(observation.Metadata, "principal_id"),
 				stringMapValue(observation.Metadata, "credential_id"),
 				stringMapValue(observation.Metadata, "access_key_id"),
+				stringMapValue(observation.Metadata, "username"),
+				stringMapValue(observation.Metadata, "user"),
 			)
 		}
+	}
+	if observation.WorkloadRef == "" {
+		if kind, namespace, _ := parseObservationResourceRef(observation.ResourceID); isWorkloadResourceKind(kind) {
+			observation.WorkloadRef = observation.ResourceID
+			if observation.Namespace == "" {
+				observation.Namespace = namespace
+			}
+		}
+	}
+	if observation.Namespace == "" {
+		if _, namespace, _ := parseObservationResourceRef(observation.WorkloadRef); namespace != "" {
+			observation.Namespace = namespace
+		} else if _, namespace, _ := parseObservationResourceRef(observation.ResourceID); namespace != "" {
+			observation.Namespace = namespace
+		}
+	}
+	if observation.ContainerID == "" {
+		if kind, _, name := parseObservationResourceRef(observation.ResourceID); kind == "container" {
+			observation.ContainerID = name
+		}
+	}
+	if observation.PrincipalID == "" {
+		observation.PrincipalID = firstNonEmptyRuntime(
+			observation.Process.GetUser(),
+			observation.File.GetUser(),
+		)
 	}
 }
 
@@ -502,6 +553,55 @@ func inferObservationKind(observation *RuntimeObservation) RuntimeObservationKin
 	default:
 		return ObservationKindUnknown
 	}
+}
+
+func parseObservationResourceRef(value string) (string, string, string) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", "", ""
+	}
+	kind, remainder, ok := strings.Cut(value, ":")
+	if !ok {
+		return "", "", ""
+	}
+	kind = strings.TrimSpace(kind)
+	remainder = strings.TrimSpace(remainder)
+	if kind == "" || remainder == "" {
+		return "", "", ""
+	}
+	namespace, name, hasNamespace := strings.Cut(remainder, "/")
+	if hasNamespace {
+		namespace = strings.TrimSpace(namespace)
+		name = strings.TrimSpace(name)
+		if namespace == "" || name == "" {
+			return kind, "", ""
+		}
+		return kind, namespace, name
+	}
+	return kind, "", remainder
+}
+
+func isWorkloadResourceKind(kind string) bool {
+	switch strings.TrimSpace(kind) {
+	case "workload", "deployment", "daemonset", "statefulset", "replicaset", "job", "cronjob", "service":
+		return true
+	default:
+		return false
+	}
+}
+
+func (p *ProcessEvent) GetUser() string {
+	if p == nil {
+		return ""
+	}
+	return strings.TrimSpace(p.User)
+}
+
+func (f *FileEvent) GetUser() string {
+	if f == nil {
+		return ""
+	}
+	return strings.TrimSpace(f.User)
 }
 
 func validateObservation(observation *RuntimeObservation) error {
