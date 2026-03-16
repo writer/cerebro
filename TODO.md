@@ -39,6 +39,27 @@ Status: executed end-to-end via PR workflow
   - [x] whitespace-only container metadata vs container resource-id backfill
 - [x] Re-run focused runtime tests and lint on the shared normalization package.
 
+## Deep Review Cycle 138 - Runtime Observation Graph Materializer Package (2026-03-16)
+
+### Review findings
+- [x] Gap: the graph layer already has a generic `WriteObservation` path, but the runtime subsystem still lacks a dedicated seam that turns normalized `RuntimeObservation` records into graph observation write requests.
+- [x] Gap: without a runtime-specific materializer package, later graph projection slices would either duplicate runtime-to-graph field mapping in multiple places or push runtime-specific subject-selection logic into the generic graph package.
+- [x] Gap: runtime observations need deterministic graph IDs, concrete subject selection, and compact summary/metadata shaping before they can be written safely as first-class graph observations.
+
+### Execution plan
+- [x] Add a dedicated `internal/runtimegraph` package for runtime observation graph materialization helpers.
+- [x] Convert normalized runtime observations into `graph.ObservationWriteRequest` values with:
+  - [x] deterministic observation IDs
+  - [x] concrete subject selection
+  - [x] normalized temporal metadata
+  - [x] compact runtime-specific summary fields
+- [x] Add TDD coverage for:
+  - [x] workload-subject precedence
+  - [x] service-resource fallback
+  - [x] concrete control-plane resource handling
+  - [x] rejection when no concrete graph subject exists
+- [x] Re-run focused runtime/runtimegraph tests, lint, and changed-file validation.
+
 ## Deep Review Cycle 133 - Hubble Golden Payload Coverage (2026-03-15)
 
 ### Review findings
@@ -319,7 +340,7 @@ Status: executed end-to-end via PR workflow
 - [x] 057. Bind observations to service identity from OTel/resource context.
 - [ ] 058. Bind observations to deployment runs when temporal evidence is strong.
 - [x] 059. Add identity-binding tests for conflicting or partial runtime metadata.
-- [ ] 060. Add a runtime observation graph materializer package.
+- [x] 060. Add a runtime observation graph materializer package.
 - [ ] 061. Project promoted runtime observations into graph `observation` nodes.
 - [ ] 062. Project promoted runtime evidence into graph `evidence` nodes.
 - [ ] 063. Add workload-to-observation edges.
