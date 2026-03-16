@@ -124,8 +124,19 @@ func (s *Server) ingestRuntimeEvent(w http.ResponseWriter, r *http.Request) {
 		session = nil
 	}
 
-	observation := runtime.ObservationFromEvent(&event)
-	findings := s.app.RuntimeDetect.ProcessObservation(r.Context(), observation)
+	observation, err := runtime.ObservationFromEvent(&event)
+	if err != nil {
+		s.warnInvalidRuntimeObservation("runtime_event", err, "event_id", event.ID, "resource_id", event.ResourceID, "resource_type", event.ResourceType)
+		if session != nil {
+			if rejectErr := session.recordRejectedObservation(r.Context(), &event, 1, err); rejectErr != nil {
+				s.warnRuntimeIngestPersistence("record_rejected_observation", rejectErr, "source", "runtime_event", "event_id", event.ID, "run_id", session.runID())
+			}
+			session.fail(r.Context(), "normalize", err)
+		}
+		s.error(w, http.StatusBadRequest, "invalid event")
+		return
+	}
+	findings := s.app.RuntimeDetect.ProcessNormalizedObservation(r.Context(), observation)
 	if session != nil {
 		if err := session.recordObservation(r.Context(), observation, len(findings), 1); err != nil {
 			session.fail(r.Context(), "detect", err)
@@ -251,11 +262,27 @@ func (s *Server) ingestTelemetry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	totalFindings := 0
+	processedEvents := 0
+	rejectedEvents := 0
 	if s.app.RuntimeDetect != nil {
 		for idx, event := range payload.Events {
-			observation := enrichRuntimeObservation(runtime.ObservationFromEvent(&event), payload.Cluster, payload.Node, payload.AgentVersion)
-			findings := s.app.RuntimeDetect.ProcessObservation(r.Context(), observation)
+			observation, err := runtime.ObservationFromEvent(&event)
+			if err != nil {
+				rejectedEvents++
+				s.warnInvalidRuntimeObservation("telemetry", err, "event_id", event.ID, "index", idx+1, "resource_id", event.ResourceID, "resource_type", event.ResourceType)
+				if session != nil {
+					if rejectErr := session.recordRejectedObservation(r.Context(), &event, idx+1, err); rejectErr != nil {
+						session.fail(r.Context(), "normalize", rejectErr)
+						s.warnRuntimeIngestPersistence("record_rejected_observation", rejectErr, "source", "telemetry", "event_id", event.ID, "index", idx+1, "run_id", session.runID())
+						session = nil
+					}
+				}
+				continue
+			}
+			observation = enrichRuntimeObservation(observation, payload.Cluster, payload.Node, payload.AgentVersion)
+			findings := s.app.RuntimeDetect.ProcessNormalizedObservation(r.Context(), observation)
 			totalFindings += len(findings)
+			processedEvents++
 			if session != nil {
 				if err := session.recordObservation(r.Context(), observation, len(findings), idx+1); err != nil {
 					session.fail(r.Context(), "detect", err)
@@ -280,7 +307,8 @@ func (s *Server) ingestTelemetry(w http.ResponseWriter, r *http.Request) {
 		if err := session.complete(r.Context(), runtime.IngestCheckpoint{
 			Cursor: lastCursor,
 			Metadata: map[string]string{
-				"processed_events": strconv.Itoa(len(payload.Events)),
+				"processed_events": strconv.Itoa(processedEvents),
+				"rejected_events":  strconv.Itoa(rejectedEvents),
 				"finding_count":    strconv.Itoa(totalFindings),
 				"cluster":          payload.Cluster,
 				"node":             payload.Node,
@@ -295,7 +323,8 @@ func (s *Server) ingestTelemetry(w http.ResponseWriter, r *http.Request) {
 	if s.app.Webhooks != nil {
 		webhookPayload := map[string]interface{}{
 			"source":           "telemetry",
-			"events_processed": len(payload.Events),
+			"events_processed": processedEvents,
+			"events_rejected":  rejectedEvents,
 			"findings":         totalFindings,
 			"node":             payload.Node,
 			"cluster":          payload.Cluster,
@@ -309,7 +338,8 @@ func (s *Server) ingestTelemetry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := map[string]interface{}{
-		"processed": len(payload.Events),
+		"processed": processedEvents,
+		"rejected":  rejectedEvents,
 		"findings":  totalFindings,
 	}
 	if session != nil && session.run != nil {
@@ -325,4 +355,13 @@ func (s *Server) warnRuntimeIngestPersistence(stage string, err error, args ...a
 	fields := []any{"stage", strings.TrimSpace(stage), "error", err}
 	fields = append(fields, args...)
 	s.app.Logger.Warn("runtime ingest persistence degraded; continuing detection and response", fields...)
+}
+
+func (s *Server) warnInvalidRuntimeObservation(source string, err error, args ...any) {
+	if s == nil || s.app == nil || s.app.Logger == nil || err == nil {
+		return
+	}
+	fields := []any{"source", strings.TrimSpace(source), "error", err}
+	fields = append(fields, args...)
+	s.app.Logger.Warn("runtime observation rejected during normalization", fields...)
 }

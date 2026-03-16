@@ -207,6 +207,58 @@ func TestIngestRuntimeEventPersistsIngestRun(t *testing.T) {
 	}
 }
 
+func TestIngestRuntimeEventRejectsInvalidObservationAndFailsRun(t *testing.T) {
+	a := newTestApp(t)
+	s := NewServer(a)
+
+	w := do(t, s, http.MethodPost, "/api/v1/runtime/events", map[string]any{
+		"id":            "evt-invalid",
+		"timestamp":     "2026-03-15T19:35:00Z",
+		"source":        "hubble",
+		"resource_id":   "pod/default/miner-0",
+		"resource_type": "pod",
+		"event_type":    "network",
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+
+	runs, err := a.RuntimeIngest.ListRuns(context.Background(), runtime.IngestRunListOptions{})
+	if err != nil {
+		t.Fatalf("ListRuns: %v", err)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("len(runs) = %d, want 1", len(runs))
+	}
+	run := runs[0]
+	if run.Status != runtime.IngestRunStatusFailed {
+		t.Fatalf("status = %q, want %q", run.Status, runtime.IngestRunStatusFailed)
+	}
+	if run.Stage != "normalize" {
+		t.Fatalf("stage = %q, want normalize", run.Stage)
+	}
+	if run.ObservationCount != 0 {
+		t.Fatalf("observation_count = %d, want 0", run.ObservationCount)
+	}
+
+	events, err := a.RuntimeIngest.LoadEvents(context.Background(), run.ID)
+	if err != nil {
+		t.Fatalf("LoadEvents: %v", err)
+	}
+	if len(events) != 3 {
+		t.Fatalf("len(events) = %d, want 3", len(events))
+	}
+	if events[0].Type != "ingest_started" {
+		t.Fatalf("events[0].Type = %q, want ingest_started", events[0].Type)
+	}
+	if events[1].Type != "observation_rejected" {
+		t.Fatalf("events[1].Type = %q, want observation_rejected", events[1].Type)
+	}
+	if events[2].Type != "ingest_failed" {
+		t.Fatalf("events[2].Type = %q, want ingest_failed", events[2].Type)
+	}
+}
+
 func TestTelemetryIngestPersistsRunMetadataAndCheckpoint(t *testing.T) {
 	a := newTestApp(t)
 	s := NewServer(a)
@@ -301,6 +353,98 @@ func TestTelemetryIngestPersistsRunMetadataAndCheckpoint(t *testing.T) {
 	}
 	if got := events[1].Data["node_name"]; got != "worker-7" {
 		t.Fatalf("first observation node_name = %#v, want worker-7", got)
+	}
+}
+
+func TestTelemetryIngestTracksRejectedObservationsSeparately(t *testing.T) {
+	a := newTestApp(t)
+	s := NewServer(a)
+
+	w := do(t, s, http.MethodPost, "/api/v1/telemetry/ingest", map[string]any{
+		"cluster":       "prod-west",
+		"node":          "worker-7",
+		"agent_version": "1.4.2",
+		"events": []map[string]any{
+			{
+				"id":            "telemetry-invalid",
+				"timestamp":     "2026-03-15T19:36:00Z",
+				"source":        "runtime-agent",
+				"resource_id":   "pod/default/api-0",
+				"resource_type": "pod",
+				"event_type":    "network",
+			},
+			{
+				"id":            "telemetry-valid",
+				"timestamp":     "2026-03-15T19:36:05Z",
+				"source":        "runtime-agent",
+				"resource_id":   "pod/default/api-0",
+				"resource_type": "pod",
+				"event_type":    "process",
+				"process": map[string]any{
+					"pid":  101,
+					"name": "xmrig",
+					"path": "/usr/bin/xmrig",
+				},
+			},
+		},
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := decodeJSON(t, w)
+	runID, ok := body["run_id"].(string)
+	if !ok || runID == "" {
+		t.Fatalf("expected run_id in response, got %#v", body["run_id"])
+	}
+	if got := body["processed"]; got != float64(1) && got != 1 {
+		t.Fatalf("processed = %#v, want 1", got)
+	}
+	if got := body["rejected"]; got != float64(1) && got != 1 {
+		t.Fatalf("rejected = %#v, want 1", got)
+	}
+	if got := body["findings"]; got != float64(1) && got != 1 {
+		t.Fatalf("findings = %#v, want 1", got)
+	}
+
+	run, err := a.RuntimeIngest.LoadRun(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("LoadRun: %v", err)
+	}
+	if run == nil {
+		t.Fatal("expected persisted run")
+	}
+	if run.Status != runtime.IngestRunStatusCompleted {
+		t.Fatalf("status = %q, want %q", run.Status, runtime.IngestRunStatusCompleted)
+	}
+	if run.ObservationCount != 1 {
+		t.Fatalf("observation_count = %d, want 1", run.ObservationCount)
+	}
+	if run.FindingCount != 1 {
+		t.Fatalf("finding_count = %d, want 1", run.FindingCount)
+	}
+	if run.LastCheckpoint == nil {
+		t.Fatal("expected checkpoint")
+	}
+	if got := run.LastCheckpoint.Metadata["processed_events"]; got != "1" {
+		t.Fatalf("checkpoint processed_events = %q, want 1", got)
+	}
+	if got := run.LastCheckpoint.Metadata["rejected_events"]; got != "1" {
+		t.Fatalf("checkpoint rejected_events = %q, want 1", got)
+	}
+
+	events, err := a.RuntimeIngest.LoadEvents(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("LoadEvents: %v", err)
+	}
+	if len(events) != 5 {
+		t.Fatalf("len(events) = %d, want 5", len(events))
+	}
+	if events[1].Type != "observation_rejected" {
+		t.Fatalf("events[1].Type = %q, want observation_rejected", events[1].Type)
+	}
+	if events[2].Type != "observation_processed" {
+		t.Fatalf("events[2].Type = %q, want observation_processed", events[2].Type)
 	}
 }
 
