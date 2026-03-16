@@ -60,6 +60,23 @@ Status: executed end-to-end via PR workflow
   - [x] rejection when no concrete graph subject exists
 - [x] Re-run focused runtime/runtimegraph tests, lint, and changed-file validation.
 
+## Deep Review Cycle 139 - Runtime Observation Node Projection (2026-03-16)
+
+### Review findings
+- [x] Gap: the new runtime graph materializer seam can build `graph.ObservationWriteRequest` values, but nothing is using it yet to project normalized runtime observations into first-class graph `observation` nodes.
+- [x] Gap: graph projection needs explicit skip semantics for observations that still have no concrete subject or that reference graph subjects not present in the current graph snapshot.
+- [x] Gap: the runtime graph projection step should update graph indexes and metadata after bulk writes so downstream queries see consistent node/edge counts on the same pass.
+
+### Execution plan
+- [x] Add runtime observation projection helpers that materialize batches of normalized runtime observations into graph observation nodes.
+- [x] Reuse the runtime-specific observation write-request seam instead of duplicating node-property shaping.
+- [x] Add TDD coverage for:
+  - [x] successful node + edge projection against an existing workload subject
+  - [x] skip behavior when the graph subject is missing
+  - [x] skip behavior when the observation still has no concrete subject
+- [x] Rebuild graph indexes and metadata after projection.
+- [x] Re-run focused runtimegraph tests and lint.
+
 ## Deep Review Cycle 133 - Hubble Golden Payload Coverage (2026-03-15)
 
 ### Review findings
@@ -341,7 +358,7 @@ Status: executed end-to-end via PR workflow
 - [ ] 058. Bind observations to deployment runs when temporal evidence is strong.
 - [x] 059. Add identity-binding tests for conflicting or partial runtime metadata.
 - [x] 060. Add a runtime observation graph materializer package.
-- [ ] 061. Project promoted runtime observations into graph `observation` nodes.
+- [x] 061. Project promoted runtime observations into graph `observation` nodes.
 - [ ] 062. Project promoted runtime evidence into graph `evidence` nodes.
 - [ ] 063. Add workload-to-observation edges.
 - [ ] 064. Add finding-to-evidence edges.
