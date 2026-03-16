@@ -442,12 +442,9 @@ func normalizeObservationContexts(observation *RuntimeObservation) {
 			observation.PrincipalID = observation.ControlPlane.User
 		}
 	}
-	if observation.Trace != nil {
-		observation.Trace.TraceID = strings.TrimSpace(observation.Trace.TraceID)
-		observation.Trace.SpanID = strings.TrimSpace(observation.Trace.SpanID)
-		observation.Trace.ServiceName = strings.TrimSpace(observation.Trace.ServiceName)
-	}
 	if observation.Metadata != nil {
+		serviceName := stringMapValue(observation.Metadata, "service_name")
+		serviceNamespace := stringMapValue(observation.Metadata, "service_namespace")
 		if observation.Cluster == "" {
 			observation.Cluster = firstNonEmptyRuntime(
 				stringMapValue(observation.Metadata, "cluster"),
@@ -490,6 +487,7 @@ func normalizeObservationContexts(observation *RuntimeObservation) {
 			observation.Namespace = firstNonEmptyRuntime(
 				stringMapValue(observation.Metadata, "namespace"),
 				stringMapValue(observation.Metadata, "kubernetes_namespace"),
+				serviceNamespace,
 			)
 		}
 		if observation.PrincipalID == "" {
@@ -501,7 +499,13 @@ func normalizeObservationContexts(observation *RuntimeObservation) {
 				stringMapValue(observation.Metadata, "user"),
 			)
 		}
+		if observation.Trace == nil {
+			observation.Trace = traceContextFromMetadata(observation.Metadata)
+		} else if observation.Trace.ServiceName == "" {
+			observation.Trace.ServiceName = serviceName
+		}
 	}
+	observation.Trace = normalizeTraceContext(observation.Trace)
 	if observation.WorkloadRef == "" {
 		if kind, namespace, _ := parseObservationResourceRef(observation.ResourceID); isWorkloadResourceKind(kind) {
 			observation.WorkloadRef = observation.ResourceID
@@ -521,6 +525,10 @@ func normalizeObservationContexts(observation *RuntimeObservation) {
 		if kind, _, name := parseObservationResourceRef(observation.ResourceID); kind == "container" {
 			observation.ContainerID = name
 		}
+	}
+	if observation.Trace != nil && observation.Trace.ServiceName != "" && observation.WorkloadRef == "" && observation.ContainerID == "" && controlPlaneResourceID(observation.ControlPlane) == "" {
+		observation.ResourceID = serviceObservationResourceID(observation)
+		observation.ResourceType = "service"
 	}
 	if observation.PrincipalID == "" {
 		observation.PrincipalID = firstNonEmptyRuntime(
@@ -569,6 +577,9 @@ func parseObservationResourceRef(value string) (string, string, string) {
 	if kind == "" || remainder == "" {
 		return "", "", ""
 	}
+	if kind == "container" {
+		return kind, "", remainder
+	}
 	namespace, name, hasNamespace := strings.Cut(remainder, "/")
 	if hasNamespace {
 		namespace = strings.TrimSpace(namespace)
@@ -583,11 +594,53 @@ func parseObservationResourceRef(value string) (string, string, string) {
 
 func isWorkloadResourceKind(kind string) bool {
 	switch strings.TrimSpace(kind) {
-	case "workload", "deployment", "daemonset", "statefulset", "replicaset", "job", "cronjob", "service":
+	case "workload", "deployment", "daemonset", "statefulset", "replicaset", "job", "cronjob":
 		return true
 	default:
 		return false
 	}
+}
+
+func traceContextFromMetadata(metadata map[string]any) *TraceContext {
+	if len(metadata) == 0 {
+		return nil
+	}
+	return normalizeTraceContext(&TraceContext{
+		TraceID:     stringMapValue(metadata, "trace_id"),
+		SpanID:      stringMapValue(metadata, "span_id"),
+		ServiceName: stringMapValue(metadata, "service_name"),
+	})
+}
+
+func normalizeTraceContext(trace *TraceContext) *TraceContext {
+	if trace == nil {
+		return nil
+	}
+	trace.TraceID = strings.TrimSpace(trace.TraceID)
+	trace.SpanID = strings.TrimSpace(trace.SpanID)
+	trace.ServiceName = strings.TrimSpace(trace.ServiceName)
+	if trace.TraceID == "" && trace.SpanID == "" && trace.ServiceName == "" {
+		return nil
+	}
+	return trace
+}
+
+func serviceObservationResourceID(observation *RuntimeObservation) string {
+	if observation == nil || observation.Trace == nil {
+		return ""
+	}
+	serviceName := strings.TrimSpace(observation.Trace.ServiceName)
+	if serviceName == "" {
+		return ""
+	}
+	namespace := strings.TrimSpace(observation.Namespace)
+	if namespace == "" && observation.Metadata != nil {
+		namespace = stringMapValue(observation.Metadata, "service_namespace")
+	}
+	if namespace != "" {
+		return "service:" + namespace + "/" + serviceName
+	}
+	return "service:" + serviceName
 }
 
 func (p *ProcessEvent) GetUser() string {
