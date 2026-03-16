@@ -107,7 +107,14 @@ type layer7Envelope struct {
 }
 
 type dnsEnvelope struct {
-	Query string `json:"query,omitempty"`
+	Query             string   `json:"query,omitempty"`
+	IPs               []string `json:"ips,omitempty"`
+	TTL               uint32   `json:"ttl,omitempty"`
+	CNames            []string `json:"cnames,omitempty"`
+	ObservationSource string   `json:"observation_source,omitempty"`
+	RCode             uint32   `json:"rcode,omitempty"`
+	QTypes            []string `json:"qtypes,omitempty"`
+	RRTypes           []string `json:"rrtypes,omitempty"`
 }
 
 type httpEnvelope struct {
@@ -142,6 +149,9 @@ func observationFromFlow(event payload) (*runtime.RuntimeObservation, error) {
 		return nil, fmt.Errorf("decode hubble payload: missing IP context")
 	}
 	if flow.L7 != nil {
+		if flow.L7.DNS != nil {
+			return dnsObservationFromFlow(event)
+		}
 		return nil, fmt.Errorf("decode hubble payload: unsupported l7 flow")
 	}
 
@@ -150,10 +160,88 @@ func observationFromFlow(event payload) (*runtime.RuntimeObservation, error) {
 		return nil, fmt.Errorf("decode hubble payload: missing supported L4 context")
 	}
 
+	context := buildObservationContext(event)
+	observation := context.observation(flow, runtime.ObservationKindNetworkFlow, protocol, adapters.CompactTags(
+		"hubble",
+		"network_flow",
+		strings.ToLower(strings.TrimSpace(flow.Verdict)),
+		strings.ToLower(strings.TrimSpace(protocol)),
+	))
+	observation.Network = &runtime.NetworkEvent{
+		Direction: context.direction,
+		Protocol:  protocol,
+		SrcIP:     strings.TrimSpace(flow.IP.Source),
+		SrcPort:   srcPort,
+		DstIP:     strings.TrimSpace(flow.IP.Destination),
+		DstPort:   dstPort,
+	}
+	return observation, nil
+}
+
+func dnsObservationFromFlow(event payload) (*runtime.RuntimeObservation, error) {
+	flow := event.Flow
+	dns := flow.L7.DNS
+	if dns == nil {
+		return nil, fmt.Errorf("decode hubble payload: missing dns context")
+	}
+	protocol, srcPort, dstPort := protocolFromL4(flow.L4)
+	if protocol == "" {
+		return nil, fmt.Errorf("decode hubble payload: missing supported L4 context")
+	}
+
+	context := buildObservationContext(event)
+	context.metadata["l7_type"] = strings.TrimSpace(flow.L7.Type)
+	context.metadata["dns_ttl"] = dns.TTL
+	context.metadata["dns_rcode"] = dns.RCode
+	if value := strings.TrimSpace(dns.ObservationSource); value != "" {
+		context.metadata["dns_observation_source"] = value
+	}
+	if len(dns.IPs) > 0 {
+		context.metadata["dns_ips"] = append([]string(nil), dns.IPs...)
+	}
+	if len(dns.CNames) > 0 {
+		context.metadata["dns_cnames"] = append([]string(nil), dns.CNames...)
+	}
+	if len(dns.QTypes) > 0 {
+		context.metadata["dns_qtypes"] = append([]string(nil), dns.QTypes...)
+	}
+	if len(dns.RRTypes) > 0 {
+		context.metadata["dns_rrtypes"] = append([]string(nil), dns.RRTypes...)
+	}
+
+	observation := context.observation(flow, runtime.ObservationKindDNSQuery, "dns", adapters.CompactTags(
+		"hubble",
+		"dns_query",
+		strings.ToLower(strings.TrimSpace(flow.Verdict)),
+		strings.ToLower(strings.TrimSpace(protocol)),
+		strings.ToLower(strings.TrimSpace(flow.L7.Type)),
+	))
+	observation.Network = &runtime.NetworkEvent{
+		Direction: context.direction,
+		Protocol:  protocol,
+		SrcIP:     strings.TrimSpace(flow.IP.Source),
+		SrcPort:   srcPort,
+		DstIP:     strings.TrimSpace(flow.IP.Destination),
+		DstPort:   dstPort,
+		Domain:    strings.TrimSpace(dns.Query),
+	}
+	return observation, nil
+}
+
+type observationContext struct {
+	observedAt time.Time
+	nodeName   string
+	direction  string
+	primary    *endpoint
+	peer       *endpoint
+	metadata   map[string]any
+}
+
+func buildObservationContext(event payload) observationContext {
+	flow := event.Flow
 	observedAt := firstNonZeroTime(flow.Time, event.Time)
 	nodeName := firstNonEmpty(event.NodeName, flow.NodeName)
 	direction, primary, peer := primaryEndpoints(flow)
-
 	metadata := map[string]any{
 		"node_name":         nodeName,
 		"verdict":           strings.TrimSpace(flow.Verdict),
@@ -189,39 +277,34 @@ func observationFromFlow(event payload) (*runtime.RuntimeObservation, error) {
 			metadata["peer_workload_name"] = value
 		}
 	}
+	return observationContext{
+		observedAt: observedAt,
+		nodeName:   nodeName,
+		direction:  direction,
+		primary:    primary,
+		peer:       peer,
+		metadata:   metadata,
+	}
+}
 
+func (c observationContext) observation(flow *flowEnvelope, kind runtime.RuntimeObservationKind, idProtocol string, tags []string) *runtime.RuntimeObservation {
 	observation := &runtime.RuntimeObservation{
-		ID:         hubbleObservationID(flow, protocol, observedAt),
-		Kind:       runtime.ObservationKindNetworkFlow,
+		ID:         hubbleObservationID(flow, idProtocol, c.observedAt),
+		Kind:       kind,
 		Source:     "hubble",
-		ObservedAt: observedAt,
-		NodeName:   nodeName,
-		Cluster:    clusterName(primary, peer),
-		Namespace:  namespace(primary, peer),
-		Network: &runtime.NetworkEvent{
-			Direction: direction,
-			Protocol:  protocol,
-			SrcIP:     strings.TrimSpace(flow.IP.Source),
-			SrcPort:   srcPort,
-			DstIP:     strings.TrimSpace(flow.IP.Destination),
-			DstPort:   dstPort,
-		},
-		Metadata: metadata,
-		Tags: adapters.CompactTags(
-			"hubble",
-			"network_flow",
-			strings.ToLower(strings.TrimSpace(flow.Verdict)),
-			strings.ToLower(strings.TrimSpace(protocol)),
-		),
+		ObservedAt: c.observedAt,
+		NodeName:   c.nodeName,
+		Cluster:    clusterName(c.primary, c.peer),
+		Namespace:  namespace(c.primary, c.peer),
+		Metadata:   c.metadata,
+		Tags:       tags,
 	}
-
-	if primary != nil {
-		observation.ResourceID = podResourceID(primary.Namespace, primary.PodName)
+	if c.primary != nil {
+		observation.ResourceID = podResourceID(c.primary.Namespace, c.primary.PodName)
 		observation.ResourceType = "pod"
-		observation.WorkloadRef = workloadRef(primary)
+		observation.WorkloadRef = workloadRef(c.primary)
 	}
-
-	return observation, nil
+	return observation
 }
 
 func protocolFromL4(l4 *layer4Envelope) (string, int, int) {

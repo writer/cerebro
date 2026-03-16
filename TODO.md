@@ -20,6 +20,28 @@ Status: executed end-to-end via PR workflow
 - [x] Preserve Tetragon socket family, socket type, policy, action, and return-code metadata on normalized observations.
 - [x] Add regression tests for first-class `process_connect`, `tcp_connect`, and `security_socket_connect` payloads.
 
+## Deep Review Cycle 127 - Hubble DNS Flow Normalization (2026-03-15)
+
+### Review findings
+- [x] Gap: the first Hubble adapter cut deliberately rejected DNS/L7 payloads to avoid silently flattening them into generic network flows, but that still left one of the highest-value runtime visibility signals unmodeled.
+- [x] Gap: Hubble’s DNS proto already exposes `query`, `ips`, `ttl`, `cnames`, `rcode`, `qtypes`, and `rrtypes`, so continuing to reject DNS would be an unnecessary blind spot rather than a data-model limitation.
+- [x] Gap: DNS flows should become `ObservationKindDNSQuery` while non-DNS L7 payloads remain explicitly unsupported until a later slice adds HTTP/Kafka or generalized L7 semantics.
+
+### Execution plan
+- [x] Normalize Hubble DNS L7 payloads into `ObservationKindDNSQuery`.
+- [x] Preserve DNS-specific metadata:
+  - [x] query result IPs
+  - [x] TTL
+  - [x] CNAMEs
+  - [x] observation source
+  - [x] rcode
+  - [x] qtypes
+  - [x] rrtypes
+- [x] Keep anchoring semantics consistent with the L3/L4 flow adapter cut.
+- [x] Add regression tests for:
+  - [x] DNS query normalization
+  - [x] rejection of unsupported non-DNS L7 payloads
+
 ## Deep Review Cycle 126 - Hubble Adapter and L3/L4 Flow Normalization (2026-03-15)
 
 ### Review findings
@@ -124,7 +146,7 @@ Status: executed end-to-end via PR workflow
 - [x] 024. Add Tetragon adapter golden payload tests.
 - [x] 025. Add Hubble adapter package.
 - [x] 026. Normalize Hubble L3/L4 flow events.
-- [ ] 027. Normalize Hubble DNS flow events.
+- [x] 027. Normalize Hubble DNS flow events.
 - [ ] 028. Normalize Hubble verdict and identity metadata.
 - [ ] 029. Add Hubble adapter golden payload tests.
 - [ ] 030. Add OpenTelemetry adapter package.
