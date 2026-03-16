@@ -26,6 +26,30 @@ Status: executed end-to-end via PR workflow
   - [x] response-outcome reverse target-edge metadata
 - [x] Re-run focused runtimegraph/graph tests and lint.
 
+## Deep Review Cycle 149 - Graph Edge ID Dedup And Adjacency Stability (2026-03-16)
+
+### Review findings
+- [x] Gap: `addEdgeLocked` was blindly appending every edge insert, so replayed runtime materialization and any repeated direct `AddEdge` call could accumulate duplicate adjacency entries with the same edge ID.
+- [x] Gap: the graph package had no regression coverage proving that same-ID edge updates reuse storage instead of appending a second pointer, which left both edge-count accuracy and adjacency-query cost vulnerable to replay bloat.
+- [x] Gap: the safe fix needed to preserve legitimate distinct edges on the same `(source, target, kind)` tuple, such as allow and deny permission edges, while still reviving deleted same-ID edges and correctly relinking moved edges.
+- [x] Gap: event-correlation reruns compact deleted edges out of adjacency slices, so any same-ID replacement path also needs to reattach missing pointers instead of assuming they are still present after compaction.
+
+### Execution plan
+- [x] Add TDD coverage for:
+  - [x] same-ID edge update reuse
+  - [x] distinct IDs on the same tuple remaining valid
+  - [x] same-ID revive without adjacency bloat
+  - [x] same-ID relink when source or target changes
+  - [x] event-correlation rerun stability after deleted-edge compaction
+- [x] Introduce a graph-local edge-ID index to make same-ID replacement deterministic.
+- [x] Update edge replacement to:
+  - [x] preserve original `created_at` when callers omit it
+  - [x] increment edge version on implicit same-ID updates
+  - [x] remove stale adjacency references when endpoints move
+  - [x] reattach pointers when deleted-edge compaction has already pruned the old slice entry
+- [x] Add a benchmark covering the same-ID update path.
+- [x] Re-run focused graph tests, full `internal/graph` tests, lint, and changed-file validation.
+
 ## Deep Review Cycle 143 - Runtime Graph Deferred Index Finalization (2026-03-16)
 
 ### Review findings

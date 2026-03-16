@@ -16,6 +16,7 @@ type Graph struct {
 	nodes    map[string]*Node
 	outEdges map[string][]*Edge // source -> edges
 	inEdges  map[string][]*Edge // target -> edges
+	edgeByID map[string]*Edge
 	mu       sync.RWMutex
 	metadata Metadata
 
@@ -67,6 +68,7 @@ func New() *Graph {
 		nodes:                     make(map[string]*Node),
 		outEdges:                  make(map[string][]*Edge),
 		inEdges:                   make(map[string][]*Edge),
+		edgeByID:                  make(map[string]*Edge),
 		blastRadiusVersion:        1,
 		schemaValidationMode:      mode,
 		schemaValidationStats:     newSchemaValidationStats(mode),
@@ -397,6 +399,7 @@ func (g *Graph) Clear() {
 	g.inEdges = make(map[string][]*Edge)
 	g.activeNodeCount.Store(0)
 	g.activeEdgeCount.Store(0)
+	g.edgeByID = make(map[string]*Edge)
 	g.markGraphChangedLocked()
 }
 
@@ -407,6 +410,7 @@ func (g *Graph) ClearEdges() {
 	g.outEdges = make(map[string][]*Edge)
 	g.inEdges = make(map[string][]*Edge)
 	g.activeEdgeCount.Store(0)
+	g.edgeByID = make(map[string]*Edge)
 	g.markGraphChangedLocked()
 }
 
@@ -835,6 +839,11 @@ func (g *Graph) addEdgeLocked(edge *Edge) bool {
 	}
 
 	now := temporalNowUTC()
+	if edge.ID != "" {
+		if existing := g.edgeByID[edge.ID]; existing != nil {
+			return g.replaceEdgeLocked(existing, edge, now)
+		}
+	}
 	if edge.CreatedAt.IsZero() {
 		edge.CreatedAt = now
 	}
@@ -845,6 +854,60 @@ func (g *Graph) addEdgeLocked(edge *Edge) bool {
 	g.outEdges[edge.Source] = append(g.outEdges[edge.Source], edge)
 	g.inEdges[edge.Target] = append(g.inEdges[edge.Target], edge)
 	g.activeEdgeCount.Add(1)
+	if edge.ID != "" {
+		g.edgeByID[edge.ID] = edge
+	}
+	return true
+}
+
+func (g *Graph) replaceEdgeLocked(existing *Edge, next *Edge, now time.Time) bool {
+	if existing == nil || next == nil {
+		return false
+	}
+
+	oldSource := existing.Source
+	oldTarget := existing.Target
+
+	if next.CreatedAt.IsZero() {
+		if existing.CreatedAt.IsZero() {
+			next.CreatedAt = now
+		} else {
+			next.CreatedAt = existing.CreatedAt
+		}
+	}
+	if next.Version <= 0 {
+		if existing.Version > 0 {
+			next.Version = existing.Version + 1
+		} else {
+			next.Version = 1
+		}
+	}
+	next.DeletedAt = nil
+	if existing.DeletedAt != nil {
+		g.activeEdgeCount.Add(1)
+	}
+
+	if oldSource != next.Source {
+		g.outEdges[oldSource] = removeEdgePointerLocked(g.outEdges[oldSource], existing)
+		if len(g.outEdges[oldSource]) == 0 {
+			delete(g.outEdges, oldSource)
+		}
+	}
+	if oldTarget != next.Target {
+		g.inEdges[oldTarget] = removeEdgePointerLocked(g.inEdges[oldTarget], existing)
+		if len(g.inEdges[oldTarget]) == 0 {
+			delete(g.inEdges, oldTarget)
+		}
+	}
+
+	*existing = *next
+	if !edgePointerPresentLocked(g.outEdges[next.Source], existing) {
+		g.outEdges[next.Source] = append(g.outEdges[next.Source], existing)
+	}
+	if !edgePointerPresentLocked(g.inEdges[next.Target], existing) {
+		g.inEdges[next.Target] = append(g.inEdges[next.Target], existing)
+	}
+	g.edgeByID[next.ID] = existing
 	return true
 }
 
@@ -878,7 +941,11 @@ func (g *Graph) compactDeletedEdgesLocked() {
 	for source, edges := range g.outEdges {
 		compacted := edges[:0]
 		for _, edge := range edges {
-			if edge == nil || edge.DeletedAt != nil {
+			if edge == nil {
+				continue
+			}
+			if edge.DeletedAt != nil {
+				g.evictEdgeIDLocked(edge)
 				continue
 			}
 			compacted = append(compacted, edge)
@@ -892,7 +959,11 @@ func (g *Graph) compactDeletedEdgesLocked() {
 	for target, edges := range g.inEdges {
 		compacted := edges[:0]
 		for _, edge := range edges {
-			if edge == nil || edge.DeletedAt != nil {
+			if edge == nil {
+				continue
+			}
+			if edge.DeletedAt != nil {
+				g.evictEdgeIDLocked(edge)
 				continue
 			}
 			compacted = append(compacted, edge)
@@ -903,6 +974,38 @@ func (g *Graph) compactDeletedEdgesLocked() {
 		}
 		g.inEdges[target] = compacted
 	}
+}
+
+func (g *Graph) evictEdgeIDLocked(edge *Edge) {
+	if edge == nil || edge.ID == "" {
+		return
+	}
+	if g.edgeByID[edge.ID] == edge {
+		delete(g.edgeByID, edge.ID)
+	}
+}
+
+func removeEdgePointerLocked(edges []*Edge, target *Edge) []*Edge {
+	if len(edges) == 0 || target == nil {
+		return edges
+	}
+	compacted := edges[:0]
+	for _, edge := range edges {
+		if edge == target {
+			continue
+		}
+		compacted = append(compacted, edge)
+	}
+	return compacted
+}
+
+func edgePointerPresentLocked(edges []*Edge, target *Edge) bool {
+	for _, edge := range edges {
+		if edge == target {
+			return true
+		}
+	}
+	return false
 }
 
 func (g *Graph) removeEdgesByNodeLocked(nodeID string) bool {
