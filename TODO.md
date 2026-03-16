@@ -5,6 +5,24 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 130 - Tetragon DNS Observation Normalization (2026-03-15)
+
+### Review findings
+- [x] Gap: the Tetragon adapter could normalize connect/file/process telemetry, but it still discarded `process_kprobe` packet-hook payloads that carry DNS-server traffic through `skb_arg`.
+- [x] Gap: upstream Tetragon exposes DNS-server enforcement/examples through `ip_output` packet hooks with `KprobeSkb` metadata, so continuing to ignore `skb_arg` would leave the Tetragon DNS slice unimplemented even though the source contract is already stable.
+- [x] Gap: explicit `ObservationKindDNSQuery` observations without a populated `network.domain` would round-trip through the legacy `RuntimeEvent` compatibility path as generic `network_flow`, which would silently degrade this new Tetragon DNS seam.
+
+### Execution plan
+- [x] Parse Tetragon `process_kprobe` DNS packet payloads from `skb_arg` into `ObservationKindDNSQuery`.
+- [x] Preserve DNS packet metadata:
+  - [x] source/destination IPs and ports
+  - [x] packet length as `network.bytes_sent`
+  - [x] transport protocol / protocol number
+  - [x] socket family
+- [x] Keep DNS observations on IDs distinct from generic network-flow observations.
+- [x] Preserve explicit observation kind through `RuntimeObservation <-> RuntimeEvent` compatibility even when DNS observations do not have a domain string.
+- [x] Add regression and golden coverage for Tetragon DNS normalization plus the explicit-kind round-trip seam.
+
 ## Deep Review Cycle 124 - Tetragon Network Observation Normalization (2026-03-15)
 
 ### Review findings
@@ -147,7 +165,7 @@ Status: executed end-to-end via PR workflow
 - [x] 019. Normalize Tetragon process exit events.
 - [x] 020. Normalize Tetragon file events.
 - [x] 021. Normalize Tetragon network events.
-- [ ] 022. Normalize Tetragon DNS events.
+- [x] 022. Normalize Tetragon DNS events.
 - [ ] 023. Normalize Tetragon security signal payloads.
 - [x] 024. Add Tetragon adapter golden payload tests.
 - [x] 025. Add Hubble adapter package.

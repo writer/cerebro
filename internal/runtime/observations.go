@@ -13,6 +13,7 @@ import (
 )
 
 const runtimeObservationLegacyEventTypeKey = "legacy_event_type"
+const runtimeObservationKindKey = "runtime_observation_kind"
 
 const (
 	maxObservationPayloadEntries   = 32
@@ -155,6 +156,7 @@ func (o *RuntimeObservation) AsRuntimeEvent() *RuntimeEvent {
 	if event.Metadata == nil {
 		event.Metadata = make(map[string]any)
 	}
+	addMetadataString(event.Metadata, runtimeObservationKindKey, string(o.Kind))
 	addMetadataString(event.Metadata, "cluster", o.Cluster)
 	addMetadataString(event.Metadata, "node_name", o.NodeName)
 	addMetadataString(event.Metadata, "namespace", o.Namespace)
@@ -309,6 +311,9 @@ func NormalizeObservation(observation *RuntimeObservation) (*RuntimeObservation,
 func observationKindFromEvent(event *RuntimeEvent) RuntimeObservationKind {
 	if event == nil {
 		return ObservationKindUnknown
+	}
+	if kind := observationKindFromMetadata(event.Metadata); kind != ObservationKindUnknown {
+		return kind
 	}
 	switch event.EventType {
 	case "process":
@@ -557,6 +562,24 @@ func stringMapValue(metadata map[string]any, key string) string {
 		return typed
 	default:
 		return ""
+	}
+}
+
+func observationKindFromMetadata(metadata map[string]any) RuntimeObservationKind {
+	switch kind := RuntimeObservationKind(strings.TrimSpace(stringMapValue(metadata, runtimeObservationKindKey))); kind {
+	case ObservationKindProcessExec,
+		ObservationKindProcessExit,
+		ObservationKindFileOpen,
+		ObservationKindFileWrite,
+		ObservationKindNetworkFlow,
+		ObservationKindDNSQuery,
+		ObservationKindKubernetesAudit,
+		ObservationKindRuntimeAlert,
+		ObservationKindTraceLink,
+		ObservationKindResponseOutcome:
+		return kind
+	default:
+		return ObservationKindUnknown
 	}
 }
 

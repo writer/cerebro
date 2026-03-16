@@ -61,6 +61,15 @@ func TestAdapterNormalizeGoldenPayloads(t *testing.T) {
 			wantDstIP:    "104.198.14.52",
 			wantDstPort:  80,
 		},
+		{
+			name:         "dns kprobe",
+			fixture:      "dns_ip_output.golden.json",
+			wantKind:     runtime.ObservationKindDNSQuery,
+			wantProcess:  "dig",
+			wantProtocol: "dns",
+			wantDstIP:    "10.96.0.10",
+			wantDstPort:  53,
+		},
 	}
 
 	for _, tt := range tests {
