@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/evalops/cerebro/internal/filesystemanalyzer"
-	"github.com/evalops/cerebro/internal/graph"
+	"github.com/writer/cerebro/internal/filesystemanalyzer"
+	"github.com/writer/cerebro/internal/graph"
 )
 
 const credentialPivotDepth = 3
