@@ -115,6 +115,12 @@ Status: executed end-to-end via PR workflow
   - [ ] OpenTelemetry
 - [ ] Persist runtime-ingest runs, checkpoints, and replay/materialization jobs through `internal/executionstore` without routing every raw observation through the same store.
   - [x] Persist the existing `/api/v1/runtime/events` and `/api/v1/telemetry/ingest` HTTP ingest flows as execution-store-backed runtime ingest runs with checkpoints and `run_id` responses.
+- [x] Close the normalization seam before more sources land:
+  - [x] observations now pass through central validation and normalization instead of adapter-local cleanup
+  - [x] invalid runtime observations are rejected before detection evaluation
+  - [x] raw and provenance payloads are bounded so replay/state surfaces do not quietly balloon
+  - [x] observations without stable source IDs still get deterministic generated IDs
+  - [x] missing observation timestamps now fall back consistently from `recorded_at`
 - [ ] Project promoted runtime observations and response outcomes into graph `observation` / `evidence` resources with causal edges to workload, deployment, incident, and response execution context.
 - [ ] Make runtime response executions emit typed outcome observations so containment success/failure becomes part of graph intelligence instead of staying local to the response subsystem.
 - [ ] Expose runtime visibility coverage and source health through platform intelligence endpoints once the substrate exists.
@@ -164,12 +170,12 @@ Status: executed end-to-end via PR workflow
 - [x] 042. Add checkpoint cursor persistence per source.
 - [ ] 043. Add processed-event dedupe for runtime source payload IDs.
 - [x] 044. Add runtime ingest store tests.
-- [ ] 045. Add runtime observation validation and normalization helpers.
-- [ ] 046. Reject structurally invalid observations early.
-- [ ] 047. Add bounded raw/provenance payload trimming.
-- [ ] 048. Add observation ID generation when sources omit stable IDs.
-- [ ] 049. Add observation timestamp fallback rules.
-- [ ] 050. Add observation normalization tests.
+- [x] 045. Add runtime observation validation and normalization helpers.
+- [x] 046. Reject structurally invalid observations early.
+- [x] 047. Add bounded raw/provenance payload trimming.
+- [x] 048. Add observation ID generation when sources omit stable IDs.
+- [x] 049. Add observation timestamp fallback rules.
+- [x] 050. Add observation normalization tests.
 - [ ] 051. Bind observations to cluster identity.
 - [ ] 052. Bind observations to namespace identity.
 - [ ] 053. Bind observations to workload identity.

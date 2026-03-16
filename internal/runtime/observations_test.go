@@ -2,9 +2,25 @@ package runtime
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
+
+func mustObservationFromEvent(t *testing.T, event *RuntimeEvent) *RuntimeObservation {
+	t.Helper()
+	observation, err := ObservationFromEvent(event)
+	if err != nil {
+		t.Fatalf("ObservationFromEvent: %v", err)
+	}
+	if observation == nil {
+		t.Fatal("expected observation")
+	}
+	return observation
+}
 
 func TestObservationRoundTripPreservesDetectionFields(t *testing.T) {
 	event := &RuntimeEvent{
@@ -32,10 +48,7 @@ func TestObservationRoundTripPreservesDetectionFields(t *testing.T) {
 		},
 	}
 
-	observation := ObservationFromEvent(event)
-	if observation == nil {
-		t.Fatal("expected observation")
-	}
+	observation := mustObservationFromEvent(t, event)
 	if observation.Kind != ObservationKindProcessExec {
 		t.Fatalf("kind = %s, want %s", observation.Kind, ObservationKindProcessExec)
 	}
@@ -69,10 +82,7 @@ func TestObservationRoundTripPreservesCustomEventType(t *testing.T) {
 		},
 	}
 
-	observation := ObservationFromEvent(event)
-	if observation == nil {
-		t.Fatal("expected observation")
-	}
+	observation := mustObservationFromEvent(t, event)
 	if got := stringMapValue(observation.Metadata, runtimeObservationLegacyEventTypeKey); got != "tracepoint" {
 		t.Fatalf("legacy event type metadata = %q, want %q", got, "tracepoint")
 	}
@@ -133,10 +143,7 @@ func TestObservationRoundTripDoesNotAliasMutableFields(t *testing.T) {
 		},
 	}
 
-	observation := ObservationFromEvent(event)
-	if observation == nil {
-		t.Fatal("expected observation")
-	}
+	observation := mustObservationFromEvent(t, event)
 	if observation.Process == event.Process || observation.Network == event.Network || observation.File == event.File || observation.Container == event.Container {
 		t.Fatal("expected observation conversion to clone mutable event sub-structs")
 	}
@@ -216,6 +223,235 @@ func TestDetectionEngineProcessObservation(t *testing.T) {
 	}
 	if findings[0].Event.Process == findings[0].Observation.Process {
 		t.Fatal("expected finding event and observation to keep independent process structs")
+	}
+}
+
+func TestNormalizeObservationInfersKindAndGeneratedID(t *testing.T) {
+	recordedAt := time.Date(2026, 3, 15, 21, 5, 0, 0, time.UTC)
+	observation, err := NormalizeObservation(&RuntimeObservation{
+		Source:     " tetragon ",
+		RecordedAt: recordedAt,
+		Network: &NetworkEvent{
+			Protocol: " UDP ",
+			SrcIP:    "10.0.0.1",
+			DstIP:    "10.0.0.2",
+			DstPort:  53,
+			Domain:   " api.github.com. ",
+		},
+		Container: &ContainerEvent{
+			ContainerID: " ctr-1 ",
+			Namespace:   " prod ",
+			Image:       " ghcr.io/acme/web:1.2.3 ",
+		},
+		Metadata: map[string]any{
+			"cluster":      "prod-west",
+			"node_name":    "node-7",
+			"principal_id": "system:serviceaccount:prod:web",
+		},
+		Tags: []string{" dns ", "dns", ""},
+	})
+	if err != nil {
+		t.Fatalf("NormalizeObservation: %v", err)
+	}
+	if observation.Kind != ObservationKindDNSQuery {
+		t.Fatalf("kind = %s, want %s", observation.Kind, ObservationKindDNSQuery)
+	}
+	if observation.ObservedAt != recordedAt {
+		t.Fatalf("observed_at = %s, want %s", observation.ObservedAt, recordedAt)
+	}
+	if observation.ID == "" || !strings.HasPrefix(observation.ID, "runtime:dns_query:") {
+		t.Fatalf("id = %q, want generated dns_query id", observation.ID)
+	}
+	if observation.Namespace != "prod" {
+		t.Fatalf("namespace = %q, want prod", observation.Namespace)
+	}
+	if observation.ContainerID != "ctr-1" {
+		t.Fatalf("container_id = %q, want ctr-1", observation.ContainerID)
+	}
+	if observation.ImageRef != "ghcr.io/acme/web:1.2.3" {
+		t.Fatalf("image_ref = %q, want ghcr.io/acme/web:1.2.3", observation.ImageRef)
+	}
+	if observation.Cluster != "prod-west" || observation.NodeName != "node-7" {
+		t.Fatalf("cluster/node = %q/%q, want prod-west/node-7", observation.Cluster, observation.NodeName)
+	}
+	if observation.PrincipalID != "system:serviceaccount:prod:web" {
+		t.Fatalf("principal_id = %q, want system:serviceaccount:prod:web", observation.PrincipalID)
+	}
+	if got := observation.Tags; len(got) != 1 || got[0] != "dns" {
+		t.Fatalf("tags = %#v, want [dns]", got)
+	}
+	if observation.ResourceType != "container" {
+		t.Fatalf("resource_type = %q, want container", observation.ResourceType)
+	}
+	if observation.ResourceID != "container:ctr-1" {
+		t.Fatalf("resource_id = %q, want container:ctr-1", observation.ResourceID)
+	}
+}
+
+func TestNormalizeObservationRejectsInvalidStructure(t *testing.T) {
+	_, err := NormalizeObservation(&RuntimeObservation{
+		Kind:       ObservationKindNetworkFlow,
+		Source:     "hubble",
+		ObservedAt: time.Date(2026, 3, 15, 21, 10, 0, 0, time.UTC),
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !errors.Is(err, ErrInvalidObservation) {
+		t.Fatalf("error = %v, want ErrInvalidObservation", err)
+	}
+}
+
+func TestObservationFromEventRejectsInvalidObservation(t *testing.T) {
+	observation, err := ObservationFromEvent(&RuntimeEvent{
+		ID:        "evt-invalid",
+		Timestamp: time.Date(2026, 3, 15, 21, 11, 0, 0, time.UTC),
+		Source:    "hubble",
+		EventType: "network",
+	})
+	if observation != nil {
+		t.Fatalf("observation = %#v, want nil", observation)
+	}
+	if !errors.Is(err, ErrInvalidObservation) {
+		t.Fatalf("error = %v, want ErrInvalidObservation", err)
+	}
+}
+
+func TestNormalizeObservationBoundsRawAndProvenancePayloads(t *testing.T) {
+	raw := make(map[string]any, maxObservationPayloadEntries+5)
+	for i := 0; i < maxObservationPayloadEntries+5; i++ {
+		raw[fmt.Sprintf("raw_%02d", i)] = strings.Repeat("x", maxObservationStringValueBytes+100)
+	}
+	raw["nested"] = map[string]any{
+		"deep": map[string]any{
+			"drop": "value",
+		},
+	}
+	raw["list"] = make([]any, 0, maxObservationListEntries+5)
+	for i := 0; i < maxObservationListEntries+5; i++ {
+		raw["list"] = append(raw["list"].([]any), fmt.Sprintf(" item-%02d ", i))
+	}
+
+	observation, err := NormalizeObservation(&RuntimeObservation{
+		Kind:       ObservationKindRuntimeAlert,
+		Source:     "falco",
+		ObservedAt: time.Date(2026, 3, 15, 21, 12, 0, 0, time.UTC),
+		Metadata: map[string]any{
+			"execution_id": "exec-1",
+		},
+		Raw: raw,
+		Provenance: map[string]any{
+			"collector": strings.Repeat("p", maxObservationStringValueBytes+50),
+		},
+	})
+	if err != nil {
+		t.Fatalf("NormalizeObservation: %v", err)
+	}
+	if len(observation.Raw) != maxObservationPayloadEntries {
+		t.Fatalf("len(raw) = %d, want %d", len(observation.Raw), maxObservationPayloadEntries)
+	}
+	if got := observation.Raw["raw_00"].(string); len(got) != maxObservationStringValueBytes {
+		t.Fatalf("len(raw_00) = %d, want %d", len(got), maxObservationStringValueBytes)
+	}
+	list, ok := observation.Raw["list"].([]any)
+	if !ok {
+		t.Fatalf("list = %#v, want []any", observation.Raw["list"])
+	}
+	if len(list) != maxObservationListEntries {
+		t.Fatalf("len(list) = %d, want %d", len(list), maxObservationListEntries)
+	}
+	nested, ok := observation.Raw["nested"].(map[string]any)
+	if !ok {
+		t.Fatalf("nested = %#v, want map", observation.Raw["nested"])
+	}
+	if _, exists := nested["deep"]; exists {
+		t.Fatalf("nested deep payload should be trimmed, got %#v", nested)
+	}
+	if got := observation.Provenance["collector"].(string); len(got) != maxObservationStringValueBytes {
+		t.Fatalf("len(provenance.collector) = %d, want %d", len(got), maxObservationStringValueBytes)
+	}
+}
+
+func TestNormalizeObservationAnyMapSelectsTrimmedKeysDeterministically(t *testing.T) {
+	normalized := normalizeObservationAnyMap(map[string]any{
+		"  alpha  ": "from-spaced",
+		"alpha":     "from-plain",
+	}, 0)
+	if got := normalized["alpha"]; got != "from-spaced" {
+		t.Fatalf("normalized[alpha] = %#v, want %#v", got, "from-spaced")
+	}
+}
+
+func TestNormalizeObservationPreservesUTF8WhenTruncatingStrings(t *testing.T) {
+	trimmed := strings.Repeat("界", maxObservationStringValueBytes/3+4)
+	observation, err := NormalizeObservation(&RuntimeObservation{
+		Kind:       ObservationKindRuntimeAlert,
+		Source:     "falco",
+		ObservedAt: time.Date(2026, 3, 15, 21, 12, 30, 0, time.UTC),
+		Metadata: map[string]any{
+			"execution_id": "exec-1",
+		},
+		Raw: map[string]any{
+			"message": trimmed,
+		},
+		Provenance: map[string]any{
+			"collector": trimmed,
+		},
+	})
+	if err != nil {
+		t.Fatalf("NormalizeObservation: %v", err)
+	}
+	message := observation.Raw["message"].(string)
+	if !utf8.ValidString(message) {
+		t.Fatalf("message is not valid UTF-8: %q", message)
+	}
+	if len(message) > maxObservationStringValueBytes {
+		t.Fatalf("len(message) = %d, want <= %d", len(message), maxObservationStringValueBytes)
+	}
+	collector := observation.Provenance["collector"].(string)
+	if !utf8.ValidString(collector) {
+		t.Fatalf("collector is not valid UTF-8: %q", collector)
+	}
+	if len(collector) > maxObservationStringValueBytes {
+		t.Fatalf("len(collector) = %d, want <= %d", len(collector), maxObservationStringValueBytes)
+	}
+}
+
+func TestObservationFromEventStillNormalizesMetadataContext(t *testing.T) {
+	observation := mustObservationFromEvent(t, &RuntimeEvent{
+		ID:        "evt-1",
+		Timestamp: time.Date(2026, 3, 15, 21, 12, 0, 0, time.UTC),
+		Source:    "tetragon",
+		EventType: "process_exec",
+		Process:   &ProcessEvent{Name: "bash", Path: "/bin/bash"},
+		Metadata: map[string]any{
+			"cluster":              "prod-west",
+			"node_name":            "worker-1",
+			"workload_ref":         "deployment:prod/api",
+			"workload_uid":         "uid-123",
+			"kubernetes_namespace": "prod",
+			"principal_id":         "alice",
+		},
+	})
+	if observation.Cluster != "prod-west" || observation.NodeName != "worker-1" {
+		t.Fatalf("cluster/node = %q/%q, want prod-west/worker-1", observation.Cluster, observation.NodeName)
+	}
+	if observation.WorkloadRef != "deployment:prod/api" || observation.WorkloadUID != "uid-123" {
+		t.Fatalf("workload = %q/%q, want deployment:prod/api/uid-123", observation.WorkloadRef, observation.WorkloadUID)
+	}
+	if observation.Namespace != "prod" || observation.PrincipalID != "alice" {
+		t.Fatalf("namespace/principal = %q/%q, want prod/alice", observation.Namespace, observation.PrincipalID)
+	}
+}
+
+func TestDetectionEngineProcessObservationRejectsInvalidObservation(t *testing.T) {
+	engine := NewDetectionEngine()
+	findings := engine.ProcessObservation(context.Background(), &RuntimeObservation{
+		Kind:       ObservationKindNetworkFlow,
+		ObservedAt: time.Now(),
+	})
+	if len(findings) != 0 {
+		t.Fatalf("len(findings) = %d, want 0", len(findings))
 	}
 }
 

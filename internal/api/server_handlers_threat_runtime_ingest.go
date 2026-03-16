@@ -119,6 +119,52 @@ func (r *runtimeIngestSession) recordObservation(ctx context.Context, observatio
 	return nil
 }
 
+func (r *runtimeIngestSession) recordRejectedObservation(ctx context.Context, event *runtime.RuntimeEvent, index int, observationErr error) error {
+	if r == nil || r.store == nil || r.run == nil {
+		return nil
+	}
+
+	recordedAt := time.Now().UTC()
+	r.run.UpdatedAt = recordedAt
+
+	data := map[string]any{
+		"index": index,
+		"error": strings.TrimSpace(errorString(observationErr)),
+	}
+	if event != nil {
+		if event.ID != "" {
+			data["event_id"] = strings.TrimSpace(event.ID)
+		}
+		if observedAt := event.Timestamp.UTC(); !observedAt.IsZero() {
+			data["observed_at"] = observedAt.Format(time.RFC3339Nano)
+		}
+		if source := strings.TrimSpace(event.Source); source != "" {
+			data["source"] = source
+		}
+		if eventType := strings.TrimSpace(event.EventType); eventType != "" {
+			data["event_type"] = eventType
+		}
+		if resourceID := strings.TrimSpace(event.ResourceID); resourceID != "" {
+			data["resource_id"] = resourceID
+		}
+		if resourceType := strings.TrimSpace(event.ResourceType); resourceType != "" {
+			data["resource_type"] = resourceType
+		}
+	}
+
+	if err := r.store.SaveRun(ctx, r.run); err != nil {
+		return fmt.Errorf("save runtime ingest rejection progress: %w", err)
+	}
+	if _, err := r.store.AppendEvent(ctx, r.run.ID, runtime.IngestEvent{
+		Type:       "observation_rejected",
+		RecordedAt: recordedAt,
+		Data:       data,
+	}); err != nil {
+		return fmt.Errorf("append runtime ingest rejection event: %w", err)
+	}
+	return nil
+}
+
 func (r *runtimeIngestSession) complete(ctx context.Context, checkpoint runtime.IngestCheckpoint) error {
 	if r == nil || r.store == nil || r.run == nil {
 		return nil

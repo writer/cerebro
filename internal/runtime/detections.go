@@ -474,12 +474,28 @@ func (e *DetectionEngine) loadDefaultRules() {
 
 // ProcessEvent evaluates an event against all rules and stores resulting findings
 func (e *DetectionEngine) ProcessEvent(ctx context.Context, event *RuntimeEvent) []RuntimeFinding {
-	return e.process(ctx, event, ObservationFromEvent(event))
+	observation := observationFromEventBase(event)
+	if normalized, err := NormalizeObservation(observation); err == nil {
+		observation = normalized
+	}
+	return e.process(ctx, event, observation)
 }
 
-// ProcessObservation evaluates a normalized runtime observation against all
-// rules while preserving a legacy event representation for existing consumers.
+// ProcessObservation evaluates a runtime observation after normalizing it.
 func (e *DetectionEngine) ProcessObservation(ctx context.Context, observation *RuntimeObservation) []RuntimeFinding {
+	if observation == nil {
+		return nil
+	}
+	normalized, err := NormalizeObservation(observation)
+	if err != nil {
+		return nil
+	}
+	return e.ProcessNormalizedObservation(ctx, normalized)
+}
+
+// ProcessNormalizedObservation evaluates a previously-normalized runtime
+// observation without re-running normalization in the hot path.
+func (e *DetectionEngine) ProcessNormalizedObservation(ctx context.Context, observation *RuntimeObservation) []RuntimeFinding {
 	if observation == nil {
 		return nil
 	}
