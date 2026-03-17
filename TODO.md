@@ -70,6 +70,26 @@ Status: executed end-to-end via PR workflow
   - [x] reverse workload-edge presence or absence as appropriate
 - [x] Re-run focused runtimegraph tests, lint, and changed-file validation.
 
+## Deep Review Cycle 159 - Runtime Dedup Bloom Fast Path (2026-03-16)
+
+### Review findings
+- [x] Gap: issue `#351` is real on the runtime ingest hot path because every source event still paid a read-before-write SQLite round trip just to learn that a brand-new event key had never been seen.
+- [x] Gap: the fast path still needs to preserve durable dedupe correctness for in-flight processing claims, so the optimization cannot simply skip persistence or trust a stale in-memory filter as authoritative.
+- [x] Gap: there was no regression coverage proving startup bloom hydration avoids the extra duplicate-path fast-claim attempt, that unseen events take the optimized insert-only path, or that the filter stays within a defensible false-positive envelope.
+
+### Execution plan
+- [x] Add a lightweight in-memory bloom filter for runtime processed-event keys with rebuild support from the durable execution store.
+- [x] Add an execution-store fast claim primitive that uses insert-or-ignore semantics so bloom misses avoid the expensive read-before-write query while still taking a durable claim.
+- [x] Keep correctness conservative by falling back to the existing full claim path on conflicts and by leaving direct duplicate lookups backed by SQLite.
+- [x] Add TDD coverage for:
+  - [x] fast-claim insertion behavior
+  - [x] active-key listing and expired-key pruning
+  - [x] runtime ingest fast path for unseen events
+  - [x] startup bloom hydration for existing duplicates
+  - [x] bloom-filter false-positive envelope
+- [x] Add a benchmark for new-event claim throughput with and without the bloom fast path.
+- [x] Re-run focused runtime/executionstore tests, lint, changed-file validation, and the new benchmark.
+
 ## Deep Review Cycle 157 - Runtime Observation Causal Links To Kubernetes Audit Events (2026-03-16)
 
 ### Review findings

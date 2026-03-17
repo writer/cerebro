@@ -275,6 +275,160 @@ func (s *SQLiteStore) ClaimProcessedEvent(ctx context.Context, record ProcessedE
 	return false, &existing, nil
 }
 
+func (s *SQLiteStore) TryClaimProcessedEvent(ctx context.Context, record ProcessedEventRecord, maxRecords int) (bool, error) {
+	if s == nil || s.db == nil {
+		return true, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	record.Namespace = strings.TrimSpace(record.Namespace)
+	record.EventKey = strings.TrimSpace(record.EventKey)
+	record.PayloadHash = strings.TrimSpace(record.PayloadHash)
+	record.Status = strings.TrimSpace(record.Status)
+	if record.Namespace == "" || record.EventKey == "" {
+		return false, fmt.Errorf("processed event namespace and key are required")
+	}
+	if record.Status == "" {
+		record.Status = ProcessedEventStatusProcessing
+	}
+	claimAt := time.Now().UTC()
+	if record.FirstSeenAt.IsZero() {
+		record.FirstSeenAt = claimAt
+	} else {
+		record.FirstSeenAt = record.FirstSeenAt.UTC()
+	}
+	if record.LastSeenAt.IsZero() {
+		record.LastSeenAt = record.FirstSeenAt
+	} else {
+		record.LastSeenAt = record.LastSeenAt.UTC()
+	}
+	if record.ProcessedAt.IsZero() {
+		record.ProcessedAt = claimAt
+	} else {
+		record.ProcessedAt = record.ProcessedAt.UTC()
+	}
+	if record.ExpiresAt.IsZero() {
+		record.ExpiresAt = claimAt
+	} else {
+		record.ExpiresAt = record.ExpiresAt.UTC()
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("begin processed event fast claim tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM processed_events
+		WHERE namespace = ? AND expires_at <= ?
+	`, record.Namespace, claimAt); err != nil {
+		return false, fmt.Errorf("prune expired processed events: %w", err)
+	}
+
+	result, err := tx.ExecContext(ctx, `
+		INSERT OR IGNORE INTO processed_events (
+			namespace, event_key, status, payload_hash, first_seen_at, last_seen_at, processed_at, expires_at, duplicate_count
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, record.Namespace, record.EventKey, record.Status, record.PayloadHash, record.FirstSeenAt, record.LastSeenAt, record.ProcessedAt, record.ExpiresAt, record.DuplicateCount)
+	if err != nil {
+		return false, fmt.Errorf("insert processed event fast claim: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("read processed event fast claim rows: %w", err)
+	}
+	claimed := rowsAffected > 0
+
+	if maxRecords > 0 && claimed {
+		if _, err := tx.ExecContext(ctx, `
+			DELETE FROM processed_events
+			WHERE namespace = ?
+			  AND event_key IN (
+				SELECT event_key
+				FROM processed_events
+				WHERE namespace = ?
+				ORDER BY processed_at DESC, event_key DESC
+				LIMIT -1 OFFSET ?
+			  )
+		`, record.Namespace, record.Namespace, maxRecords); err != nil {
+			return false, fmt.Errorf("trim processed events: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit processed event fast claim: %w", err)
+	}
+	return claimed, nil
+}
+
+func (s *SQLiteStore) ListActiveProcessedEventKeys(ctx context.Context, namespace string, observedAt time.Time, limit int) ([]string, error) {
+	if s == nil || s.db == nil {
+		return nil, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	namespace = strings.TrimSpace(namespace)
+	if namespace == "" {
+		return nil, fmt.Errorf("processed event namespace is required")
+	}
+	if observedAt.IsZero() {
+		observedAt = time.Now().UTC()
+	} else {
+		observedAt = observedAt.UTC()
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin processed event list tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM processed_events
+		WHERE namespace = ? AND expires_at <= ?
+	`, namespace, observedAt); err != nil {
+		return nil, fmt.Errorf("prune expired processed events: %w", err)
+	}
+
+	query := `
+		SELECT event_key
+		FROM processed_events
+		WHERE namespace = ?
+		ORDER BY processed_at DESC, event_key DESC
+	`
+	args := []any{namespace}
+	if limit > 0 {
+		query += ` LIMIT ?`
+		args = append(args, limit)
+	}
+	rows, err := tx.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list processed event keys: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	keys := make([]string, 0)
+	for rows.Next() {
+		var eventKey string
+		if err := rows.Scan(&eventKey); err != nil {
+			return nil, fmt.Errorf("scan processed event key: %w", err)
+		}
+		keys = append(keys, eventKey)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate processed event keys: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit processed event list: %w", err)
+	}
+	return keys, nil
+}
+
 func (s *SQLiteStore) RememberProcessedEvent(ctx context.Context, record ProcessedEventRecord, maxRecords int) error {
 	if s == nil || s.db == nil {
 		return nil

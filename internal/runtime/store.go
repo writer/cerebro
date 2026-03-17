@@ -120,8 +120,9 @@ type IngestStore interface {
 }
 
 type SQLiteIngestStore struct {
-	store     executionstore.Store
-	ownsStore bool
+	store               executionstore.Store
+	ownsStore           bool
+	processedEventBloom *processedEventBloom
 }
 
 func NewSQLiteIngestStore(path string) (*SQLiteIngestStore, error) {
@@ -129,13 +130,32 @@ func NewSQLiteIngestStore(path string) (*SQLiteIngestStore, error) {
 	if err != nil {
 		return nil, err
 	}
-	ingestStore := NewSQLiteIngestStoreWithExecutionStore(store)
+	ingestStore, err := NewSQLiteIngestStoreWithExecutionStore(store)
+	if err != nil {
+		_ = store.Close()
+		return nil, err
+	}
 	ingestStore.ownsStore = true
 	return ingestStore, nil
 }
 
-func NewSQLiteIngestStoreWithExecutionStore(store executionstore.Store) *SQLiteIngestStore {
+func NewSQLiteIngestStoreWithExecutionStore(store executionstore.Store) (*SQLiteIngestStore, error) {
+	return newSQLiteIngestStoreWithExecutionStore(store)
+}
+
+func NewSQLiteIngestStoreWithoutBloom(store executionstore.Store) *SQLiteIngestStore {
 	return &SQLiteIngestStore{store: store}
+}
+
+func newSQLiteIngestStoreWithExecutionStore(store executionstore.Store) (*SQLiteIngestStore, error) {
+	ingestStore := &SQLiteIngestStore{
+		store:               store,
+		processedEventBloom: newProcessedEventBloom(runtimeProcessedEventMaxRecords, runtimeProcessedEventBloomFalsePositiveRate),
+	}
+	if err := ingestStore.reloadProcessedEventBloom(context.Background()); err != nil {
+		return nil, err
+	}
+	return ingestStore, nil
 }
 
 func (s *SQLiteIngestStore) Close() error {
@@ -378,6 +398,7 @@ func (s *SQLiteIngestStore) checkDuplicateSourceEvent(ctx context.Context, sourc
 	if record == nil {
 		return false, nil
 	}
+	s.rememberProcessedEventBloomKey(eventKey)
 	payloadHash = strings.TrimSpace(payloadHash)
 	recordHash := strings.TrimSpace(record.PayloadHash)
 	if payloadHash != "" && recordHash != "" && recordHash != payloadHash {
@@ -406,7 +427,7 @@ func (s *SQLiteIngestStore) ClaimSourceEventProcessing(ctx context.Context, sour
 	} else {
 		observedAt = observedAt.UTC()
 	}
-	claimed, existing, err := s.store.ClaimProcessedEvent(ctx, executionstore.ProcessedEventRecord{
+	record := executionstore.ProcessedEventRecord{
 		Namespace:      runtimeProcessedEventNamespace,
 		EventKey:       eventKey,
 		Status:         executionstore.ProcessedEventStatusProcessing,
@@ -416,16 +437,23 @@ func (s *SQLiteIngestStore) ClaimSourceEventProcessing(ctx context.Context, sour
 		ProcessedAt:    claimAt,
 		ExpiresAt:      claimAt.Add(runtimeProcessingClaimTTL),
 		DuplicateCount: 0,
-	}, runtimeProcessedEventMaxRecords)
+	}
+	// Fast-claim is an optimization only; durable claim remains the source of truth.
+	if claimed, attempted, err := s.tryFastClaimProcessedEvent(ctx, record); err == nil && attempted && claimed {
+		return false, nil
+	}
+	claimed, existing, err := s.store.ClaimProcessedEvent(ctx, record, runtimeProcessedEventMaxRecords)
 	if err != nil {
 		return false, err
 	}
 	if claimed {
+		s.rememberProcessedEventBloomKey(eventKey)
 		return false, nil
 	}
 	if existing == nil {
 		return false, nil
 	}
+	s.rememberProcessedEventBloomKey(eventKey)
 	recordHash := strings.TrimSpace(existing.PayloadHash)
 	payloadHash = strings.TrimSpace(payloadHash)
 	if payloadHash != "" && recordHash != "" && recordHash != payloadHash {
@@ -453,7 +481,7 @@ func (s *SQLiteIngestStore) MarkSourceEventProcessed(ctx context.Context, source
 	} else {
 		observedAt = observedAt.UTC()
 	}
-	return s.store.RememberProcessedEvent(ctx, executionstore.ProcessedEventRecord{
+	err := s.store.RememberProcessedEvent(ctx, executionstore.ProcessedEventRecord{
 		Namespace:   runtimeProcessedEventNamespace,
 		EventKey:    eventKey,
 		Status:      executionstore.ProcessedEventStatusProcessed,
@@ -463,6 +491,11 @@ func (s *SQLiteIngestStore) MarkSourceEventProcessed(ctx context.Context, source
 		ProcessedAt: processedAt,
 		ExpiresAt:   processedAt.Add(runtimeProcessedEventTTL),
 	}, runtimeProcessedEventMaxRecords)
+	if err != nil {
+		return err
+	}
+	s.rememberProcessedEventBloomKey(eventKey)
+	return nil
 }
 
 func runtimeIngestRunEnvelope(run *IngestRunRecord) (executionstore.RunEnvelope, error) {
@@ -592,4 +625,50 @@ func runtimeProcessedEventKey(source, eventID string) string {
 		return ""
 	}
 	return source + "|" + eventID
+}
+
+func (s *SQLiteIngestStore) tryFastClaimProcessedEvent(ctx context.Context, record executionstore.ProcessedEventRecord) (bool, bool, error) {
+	if s == nil || s.store == nil || s.processedEventBloom == nil {
+		return false, false, nil
+	}
+	if s.processedEventBloom.maybeContains(record.EventKey) {
+		return false, false, nil
+	}
+	fastStore, ok := s.store.(processedEventFastClaimStore)
+	if !ok {
+		return false, false, nil
+	}
+	claimed, err := fastStore.TryClaimProcessedEvent(ctx, record, runtimeProcessedEventMaxRecords)
+	if err != nil {
+		return false, true, err
+	}
+	if claimed {
+		s.rememberProcessedEventBloomKey(record.EventKey)
+	}
+	return claimed, true, nil
+}
+
+func (s *SQLiteIngestStore) reloadProcessedEventBloom(ctx context.Context) error {
+	if s == nil || s.store == nil || s.processedEventBloom == nil {
+		return nil
+	}
+	lister, ok := s.store.(processedEventKeyLister)
+	if !ok {
+		return nil
+	}
+	keys, err := lister.ListActiveProcessedEventKeys(ctx, runtimeProcessedEventNamespace, time.Now().UTC(), runtimeProcessedEventMaxRecords)
+	if err != nil {
+		return err
+	}
+	s.processedEventBloom.replace(keys)
+	return nil
+}
+
+func (s *SQLiteIngestStore) rememberProcessedEventBloomKey(eventKey string) {
+	if s == nil || s.processedEventBloom == nil {
+		return
+	}
+	if needsRebuild := s.processedEventBloom.add(eventKey); needsRebuild {
+		_ = s.reloadProcessedEventBloom(context.Background())
+	}
 }

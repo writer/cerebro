@@ -248,3 +248,98 @@ func TestSQLiteStoreClaimProcessedEventDoesNotReplaceActiveMismatchedClaim(t *te
 		t.Fatalf("payload_hash = %q, want hash-a", record.PayloadHash)
 	}
 }
+
+func TestSQLiteStoreTryClaimProcessedEventInsertsOnce(t *testing.T) {
+	store, err := NewSQLiteStore(filepath.Join(t.TempDir(), "executions.db"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	now := time.Now().UTC()
+	record := ProcessedEventRecord{
+		Namespace:   NamespaceProcessedCloudEvent,
+		EventKey:    "evt-fast-claim",
+		Status:      ProcessedEventStatusProcessing,
+		PayloadHash: "hash-a",
+		FirstSeenAt: now,
+		LastSeenAt:  now,
+		ProcessedAt: now,
+		ExpiresAt:   now.Add(5 * time.Minute),
+	}
+
+	claimed, err := store.TryClaimProcessedEvent(context.Background(), record, 100)
+	if err != nil {
+		t.Fatalf("TryClaimProcessedEvent first: %v", err)
+	}
+	if !claimed {
+		t.Fatal("expected first fast claim to succeed")
+	}
+
+	claimed, err = store.TryClaimProcessedEvent(context.Background(), record, 100)
+	if err != nil {
+		t.Fatalf("TryClaimProcessedEvent second: %v", err)
+	}
+	if claimed {
+		t.Fatal("expected duplicate fast claim to report existing record")
+	}
+
+	stored, err := store.LookupProcessedEvent(context.Background(), NamespaceProcessedCloudEvent, "evt-fast-claim", now.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("LookupProcessedEvent: %v", err)
+	}
+	if stored == nil {
+		t.Fatal("expected stored processed event claim")
+	}
+	if stored.Status != ProcessedEventStatusProcessing {
+		t.Fatalf("status = %q, want %q", stored.Status, ProcessedEventStatusProcessing)
+	}
+}
+
+func TestSQLiteStoreListActiveProcessedEventKeysPrunesExpired(t *testing.T) {
+	store, err := NewSQLiteStore(filepath.Join(t.TempDir(), "executions.db"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	now := time.Now().UTC()
+	if err := store.RememberProcessedEvent(context.Background(), ProcessedEventRecord{
+		Namespace:   NamespaceProcessedCloudEvent,
+		EventKey:    "evt-expired",
+		PayloadHash: "hash-expired",
+		FirstSeenAt: now.Add(-2 * time.Hour),
+		LastSeenAt:  now.Add(-2 * time.Hour),
+		ProcessedAt: now.Add(-2 * time.Hour),
+		ExpiresAt:   now.Add(-time.Minute),
+	}, 100); err != nil {
+		t.Fatalf("RememberProcessedEvent expired: %v", err)
+	}
+	if err := store.RememberProcessedEvent(context.Background(), ProcessedEventRecord{
+		Namespace:   NamespaceProcessedCloudEvent,
+		EventKey:    "evt-active",
+		PayloadHash: "hash-active",
+		FirstSeenAt: now,
+		LastSeenAt:  now,
+		ProcessedAt: now,
+		ExpiresAt:   now.Add(time.Hour),
+	}, 100); err != nil {
+		t.Fatalf("RememberProcessedEvent active: %v", err)
+	}
+
+	keys, err := store.ListActiveProcessedEventKeys(context.Background(), NamespaceProcessedCloudEvent, now, 100)
+	if err != nil {
+		t.Fatalf("ListActiveProcessedEventKeys: %v", err)
+	}
+	if len(keys) != 1 || keys[0] != "evt-active" {
+		t.Fatalf("keys = %#v, want [evt-active]", keys)
+	}
+
+	expired, err := store.LookupProcessedEvent(context.Background(), NamespaceProcessedCloudEvent, "evt-expired", now)
+	if err != nil {
+		t.Fatalf("LookupProcessedEvent expired: %v", err)
+	}
+	if expired != nil {
+		t.Fatalf("expected expired processed event to be pruned, got %#v", expired)
+	}
+}

@@ -504,7 +504,12 @@ func (a *App) initRemediation() {
 func (a *App) initRuntime() {
 	a.RuntimeDetect = runtime.NewDetectionEngine()
 	if a.ExecutionStore != nil {
-		a.RuntimeIngest = runtime.NewSQLiteIngestStoreWithExecutionStore(a.ExecutionStore)
+		ingestStore, err := runtime.NewSQLiteIngestStoreWithExecutionStore(a.ExecutionStore)
+		if err != nil {
+			a.Logger.Warn("failed to initialize runtime ingest bloom fast path; using durable dedupe only", "error", err)
+			ingestStore = runtime.NewSQLiteIngestStoreWithoutBloom(a.ExecutionStore)
+		}
+		a.RuntimeIngest = ingestStore
 	}
 	a.RuntimeRespond = runtime.NewResponseEngine()
 	a.RuntimeRespond.SetSharedExecutor(a.newSharedActionExecutor())

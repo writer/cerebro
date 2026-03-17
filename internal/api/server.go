@@ -71,7 +71,12 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 		deps.Logger = slog.New(slog.NewJSONHandler(io.Discard, nil))
 	}
 	if deps.RuntimeIngest == nil && deps.ExecutionStore != nil {
-		deps.RuntimeIngest = cerebroruntime.NewSQLiteIngestStoreWithExecutionStore(deps.ExecutionStore)
+		ingestStore, err := cerebroruntime.NewSQLiteIngestStoreWithExecutionStore(deps.ExecutionStore)
+		if err != nil {
+			deps.Logger.Warn("failed to initialize runtime ingest bloom fast path; using durable dedupe only", "error", err)
+			ingestStore = cerebroruntime.NewSQLiteIngestStoreWithoutBloom(deps.ExecutionStore)
+		}
+		deps.RuntimeIngest = ingestStore
 	}
 	if adapter, ok := deps.graphRuntime.(*graphRuntimeAdapter); ok {
 		adapter.deps = &deps

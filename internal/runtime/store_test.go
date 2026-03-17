@@ -3,7 +3,9 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -119,6 +121,62 @@ func (s *listAllRunsExecutionStore) RememberProcessedEvent(context.Context, exec
 
 func (s *listAllRunsExecutionStore) DeleteProcessedEvent(context.Context, string, string) error {
 	return nil
+}
+
+type countingProcessedEventStore struct {
+	*executionstore.SQLiteStore
+	lookupCalls   int
+	claimCalls    int
+	tryClaimCalls int
+}
+
+type failingFastClaimProcessedEventStore struct {
+	*countingProcessedEventStore
+	err error
+}
+
+func (s *countingProcessedEventStore) LookupProcessedEvent(ctx context.Context, namespace, eventKey string, observedAt time.Time) (*executionstore.ProcessedEventRecord, error) {
+	s.lookupCalls++
+	return s.SQLiteStore.LookupProcessedEvent(ctx, namespace, eventKey, observedAt)
+}
+
+func (s *countingProcessedEventStore) ClaimProcessedEvent(ctx context.Context, record executionstore.ProcessedEventRecord, maxRecords int) (bool, *executionstore.ProcessedEventRecord, error) {
+	s.claimCalls++
+	return s.SQLiteStore.ClaimProcessedEvent(ctx, record, maxRecords)
+}
+
+func (s *countingProcessedEventStore) TryClaimProcessedEvent(ctx context.Context, record executionstore.ProcessedEventRecord, maxRecords int) (bool, error) {
+	s.tryClaimCalls++
+	return s.SQLiteStore.TryClaimProcessedEvent(ctx, record, maxRecords)
+}
+
+func (s *failingFastClaimProcessedEventStore) TryClaimProcessedEvent(context.Context, executionstore.ProcessedEventRecord, int) (bool, error) {
+	s.tryClaimCalls++
+	return false, s.err
+}
+
+type failingProcessedEventKeyLister struct {
+	*executionstore.SQLiteStore
+	err error
+}
+
+type countingProcessedEventKeyLister struct {
+	*countingProcessedEventStore
+	listActiveKeysCalls int
+	failAfterCalls      int
+	err                 error
+}
+
+func (s *failingProcessedEventKeyLister) ListActiveProcessedEventKeys(context.Context, string, time.Time, int) ([]string, error) {
+	return nil, s.err
+}
+
+func (s *countingProcessedEventKeyLister) ListActiveProcessedEventKeys(ctx context.Context, namespace string, observedAt time.Time, limit int) ([]string, error) {
+	s.listActiveKeysCalls++
+	if s.err != nil && s.listActiveKeysCalls > s.failAfterCalls {
+		return nil, s.err
+	}
+	return s.SQLiteStore.ListActiveProcessedEventKeys(ctx, namespace, observedAt, limit)
 }
 
 func (s *casConflictExecutionStore) DeleteRun(context.Context, string, string) error { return nil }
@@ -436,7 +494,10 @@ func TestSQLiteIngestStoreListJobsUsesListAllRunsAcrossNamespaces(t *testing.T) 
 	execStore := &listAllRunsExecutionStore{
 		envs: []executionstore.RunEnvelope{materializeEnv, replayEnv},
 	}
-	store := NewSQLiteIngestStoreWithExecutionStore(execStore)
+	store, err := NewSQLiteIngestStoreWithExecutionStore(execStore)
+	if err != nil {
+		t.Fatalf("NewSQLiteIngestStoreWithExecutionStore: %v", err)
+	}
 
 	jobs, err := store.ListJobs(context.Background(), IngestJobListOptions{
 		Types:              []IngestJobType{IngestJobTypeReplay, IngestJobTypeMaterialization},
@@ -580,7 +641,10 @@ func TestSQLiteIngestStoreSaveCheckpointRetriesCompareAndSwap(t *testing.T) {
 	}
 
 	fakeStore := &casConflictExecutionStore{env: env}
-	store := NewSQLiteIngestStoreWithExecutionStore(fakeStore)
+	store, err := NewSQLiteIngestStoreWithExecutionStore(fakeStore)
+	if err != nil {
+		t.Fatalf("NewSQLiteIngestStoreWithExecutionStore: %v", err)
+	}
 
 	checkpoint, err := store.SaveCheckpoint(context.Background(), run.ID, IngestCheckpoint{
 		Cursor:     "cursor-99",
@@ -796,5 +860,194 @@ func TestSQLiteIngestStoreSourceEventDuplicateComparisonTrimsStoredHash(t *testi
 	}
 	if !duplicate {
 		t.Fatal("expected trimmed stored hash to match trimmed input")
+	}
+}
+
+func TestSQLiteIngestStoreClaimSourceEventProcessingUsesBloomFastPathForNewEvents(t *testing.T) {
+	baseStore, err := executionstore.NewSQLiteStore(filepath.Join(t.TempDir(), "runtime-ingest.db"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	t.Cleanup(func() { _ = baseStore.Close() })
+
+	countingStore := &countingProcessedEventStore{SQLiteStore: baseStore}
+	store, err := NewSQLiteIngestStoreWithExecutionStore(countingStore)
+	if err != nil {
+		t.Fatalf("NewSQLiteIngestStoreWithExecutionStore: %v", err)
+	}
+
+	duplicate, err := store.ClaimSourceEventProcessing(context.Background(), "telemetry", "evt-fast", "hash-a", time.Now().UTC())
+	if err != nil {
+		t.Fatalf("ClaimSourceEventProcessing: %v", err)
+	}
+	if duplicate {
+		t.Fatal("expected bloom fast path to accept new event")
+	}
+	if countingStore.tryClaimCalls != 1 {
+		t.Fatalf("tryClaimCalls = %d, want 1", countingStore.tryClaimCalls)
+	}
+	if countingStore.claimCalls != 0 {
+		t.Fatalf("claimCalls = %d, want 0", countingStore.claimCalls)
+	}
+	if countingStore.lookupCalls != 0 {
+		t.Fatalf("lookupCalls = %d, want 0", countingStore.lookupCalls)
+	}
+}
+
+func TestSQLiteIngestStoreClaimSourceEventProcessingFallsBackWhenFastClaimFails(t *testing.T) {
+	baseStore, err := executionstore.NewSQLiteStore(filepath.Join(t.TempDir(), "runtime-ingest.db"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	t.Cleanup(func() { _ = baseStore.Close() })
+
+	backingStore := &failingFastClaimProcessedEventStore{
+		countingProcessedEventStore: &countingProcessedEventStore{SQLiteStore: baseStore},
+		err:                         errors.New("fast claim unavailable"),
+	}
+	store, err := NewSQLiteIngestStoreWithExecutionStore(backingStore)
+	if err != nil {
+		t.Fatalf("NewSQLiteIngestStoreWithExecutionStore: %v", err)
+	}
+
+	duplicate, err := store.ClaimSourceEventProcessing(context.Background(), "telemetry", "evt-fast-fallback", "hash-a", time.Now().UTC())
+	if err != nil {
+		t.Fatalf("ClaimSourceEventProcessing: %v", err)
+	}
+	if duplicate {
+		t.Fatal("expected slow-path fallback to accept new event")
+	}
+	if backingStore.tryClaimCalls != 1 {
+		t.Fatalf("tryClaimCalls = %d, want 1", backingStore.tryClaimCalls)
+	}
+	if backingStore.claimCalls != 1 {
+		t.Fatalf("claimCalls = %d, want 1 after fast-claim failure", backingStore.claimCalls)
+	}
+	if backingStore.lookupCalls != 0 {
+		t.Fatalf("lookupCalls = %d, want 0", backingStore.lookupCalls)
+	}
+}
+
+func TestSQLiteIngestStoreReloadsProcessedEventBloomOnStartup(t *testing.T) {
+	baseStore, err := executionstore.NewSQLiteStore(filepath.Join(t.TempDir(), "runtime-ingest.db"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	t.Cleanup(func() { _ = baseStore.Close() })
+
+	now := time.Now().UTC()
+	if err := baseStore.RememberProcessedEvent(context.Background(), executionstore.ProcessedEventRecord{
+		Namespace:   runtimeProcessedEventNamespace,
+		EventKey:    runtimeProcessedEventKey("telemetry", "evt-existing"),
+		Status:      executionstore.ProcessedEventStatusProcessed,
+		PayloadHash: "hash-a",
+		FirstSeenAt: now,
+		LastSeenAt:  now,
+		ProcessedAt: now,
+		ExpiresAt:   now.Add(runtimeProcessedEventTTL),
+	}, runtimeProcessedEventMaxRecords); err != nil {
+		t.Fatalf("RememberProcessedEvent: %v", err)
+	}
+
+	countingStore := &countingProcessedEventStore{SQLiteStore: baseStore}
+	store, err := NewSQLiteIngestStoreWithExecutionStore(countingStore)
+	if err != nil {
+		t.Fatalf("NewSQLiteIngestStoreWithExecutionStore: %v", err)
+	}
+
+	duplicate, err := store.ClaimSourceEventProcessing(context.Background(), "telemetry", "evt-existing", "hash-a", now.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("ClaimSourceEventProcessing: %v", err)
+	}
+	if !duplicate {
+		t.Fatal("expected startup-loaded bloom filter to route duplicate through durable dedupe path")
+	}
+	if countingStore.tryClaimCalls != 0 {
+		t.Fatalf("tryClaimCalls = %d, want 0 when bloom was hydrated from store", countingStore.tryClaimCalls)
+	}
+	if countingStore.claimCalls != 1 {
+		t.Fatalf("claimCalls = %d, want 1", countingStore.claimCalls)
+	}
+}
+
+func TestSQLiteIngestStoreBloomReloadFailureDoesNotRetryImmediately(t *testing.T) {
+	baseStore, err := executionstore.NewSQLiteStore(filepath.Join(t.TempDir(), "runtime-ingest.db"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	t.Cleanup(func() { _ = baseStore.Close() })
+
+	countingStore := &countingProcessedEventKeyLister{
+		countingProcessedEventStore: &countingProcessedEventStore{SQLiteStore: baseStore},
+		failAfterCalls:              1,
+		err:                         errors.New("reload failed"),
+	}
+	store, err := NewSQLiteIngestStoreWithExecutionStore(countingStore)
+	if err != nil {
+		t.Fatalf("NewSQLiteIngestStoreWithExecutionStore: %v", err)
+	}
+	store.processedEventBloom.rebuildThreshold = 2
+	store.processedEventBloom.nextRebuildAt = 2
+
+	for _, eventID := range []string{"evt-one", "evt-two", "evt-three"} {
+		duplicate, err := store.ClaimSourceEventProcessing(context.Background(), "telemetry", eventID, "hash-"+eventID, time.Now().UTC())
+		if err != nil {
+			t.Fatalf("ClaimSourceEventProcessing(%s): %v", eventID, err)
+		}
+		if duplicate {
+			t.Fatalf("expected new event %s to be accepted", eventID)
+		}
+	}
+
+	if countingStore.listActiveKeysCalls != 2 {
+		t.Fatalf("listActiveKeysCalls = %d, want 2 (startup + one failed rebuild attempt)", countingStore.listActiveKeysCalls)
+	}
+}
+
+func BenchmarkSQLiteIngestStoreClaimSourceEventProcessingNewEvents(b *testing.B) {
+	for _, tc := range []struct {
+		name     string
+		useBloom bool
+	}{
+		{name: "without_bloom", useBloom: false},
+		{name: "with_bloom", useBloom: true},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			store, err := NewSQLiteIngestStore(filepath.Join(b.TempDir(), "runtime-ingest.db"))
+			if err != nil {
+				b.Fatalf("NewSQLiteIngestStore: %v", err)
+			}
+			defer func() { _ = store.Close() }()
+			if !tc.useBloom {
+				store.processedEventBloom = nil
+			}
+
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				eventID := "evt-bench-" + strconv.Itoa(i)
+				if _, err := store.ClaimSourceEventProcessing(context.Background(), "telemetry", eventID, "hash-"+eventID, time.Now().UTC()); err != nil {
+					b.Fatalf("ClaimSourceEventProcessing: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestNewSQLiteIngestStoreWithExecutionStoreReturnsBloomReloadError(t *testing.T) {
+	baseStore, err := executionstore.NewSQLiteStore(filepath.Join(t.TempDir(), "runtime-ingest.db"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	t.Cleanup(func() { _ = baseStore.Close() })
+
+	store, err := NewSQLiteIngestStoreWithExecutionStore(&failingProcessedEventKeyLister{
+		SQLiteStore: baseStore,
+		err:         errors.New("reload failed"),
+	})
+	if err == nil {
+		t.Fatal("expected bloom reload error")
+	}
+	if store != nil {
+		t.Fatalf("expected nil store on bloom reload error, got %#v", store)
 	}
 }
