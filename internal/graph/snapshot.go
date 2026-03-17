@@ -733,6 +733,9 @@ func cloneNode(node *Node) *Node {
 	cloned.PropertyHistory = clonePropertyHistoryMap(node.PropertyHistory)
 	cloned.Tags = cloneStringMap(node.Tags)
 	cloned.Findings = append([]string(nil), node.Findings...)
+	if node.observationProps != nil {
+		cloned.observationProps = ptrObservationProperties(*node.observationProps)
+	}
 	return &cloned
 }
 

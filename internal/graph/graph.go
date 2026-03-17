@@ -279,6 +279,7 @@ func (g *Graph) SetNodeProperty(id string, key string, value any) bool {
 		node.Properties = make(map[string]any)
 	}
 	node.Properties[key] = value
+	hydrateNodeTypedProperties(node)
 	now := temporalNowUTC()
 	if node.CreatedAt.IsZero() {
 		node.CreatedAt = now
@@ -895,6 +896,7 @@ func (g *Graph) addNodeLocked(node *Node) bool {
 		node.Version = 1
 	}
 	node.DeletedAt = nil
+	hydrateNodeTypedProperties(node)
 	g.appendNodePropertiesHistoryLocked(node, node.UpdatedAt)
 	g.removeNodeFromLookupIndexesLocked(existing)
 	g.nodes[node.ID] = node

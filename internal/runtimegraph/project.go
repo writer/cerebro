@@ -426,14 +426,32 @@ func observationKubernetesAuditCandidate(g *graph.Graph, observationNodeID strin
 		if node == nil || strings.TrimSpace(node.ID) == observationNodeID {
 			continue
 		}
-		if propertyString(node.Properties, "observation_type") != string(runtime.ObservationKindKubernetesAudit) {
-			continue
-		}
-		if propertyString(node.Properties, "subject_id") != subjectID {
-			continue
+		auditProps, ok := node.ObservationProperties()
+		if ok {
+			if strings.TrimSpace(auditProps.ObservationType) != string(runtime.ObservationKindKubernetesAudit) {
+				continue
+			}
+			if strings.TrimSpace(auditProps.SubjectID) != subjectID {
+				continue
+			}
+		} else {
+			if propertyString(node.Properties, "observation_type") != string(runtime.ObservationKindKubernetesAudit) {
+				continue
+			}
+			if propertyString(node.Properties, "subject_id") != subjectID {
+				continue
+			}
 		}
 
-		auditObservedAt, ok := propertyTime(node.Properties, "observed_at")
+		auditObservedAt := auditProps.ObservedAt
+		if auditObservedAt.IsZero() {
+			auditObservedAt = auditProps.ValidFrom
+		}
+		if auditObservedAt.IsZero() {
+			auditObservedAt, ok = propertyTime(node.Properties, "observed_at")
+		} else {
+			ok = true
+		}
 		if !ok {
 			auditObservedAt, ok = propertyTime(node.Properties, "valid_from")
 		}

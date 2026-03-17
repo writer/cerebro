@@ -511,6 +511,9 @@ func graphObservedAt(node *Node) (time.Time, bool) {
 	if node == nil {
 		return time.Time{}, false
 	}
+	if props, ok := node.ObservationProperties(); ok && !props.ObservedAt.IsZero() {
+		return props.ObservedAt, true
+	}
 	if ts, ok := temporalPropertyTime(node.Properties, "observed_at"); ok {
 		return ts, true
 	}

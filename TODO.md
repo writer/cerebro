@@ -1,6 +1,6 @@
 # Cerebro Intelligence Layer Execution TODO
 
-Last updated: 2026-03-16 (America/Los_Angeles)
+Last updated: 2026-03-17 (America/Los_Angeles)
 Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
@@ -18,6 +18,21 @@ Status: executed end-to-end via PR workflow
 - [x] Add compaction-through-sequence support that rewrites or removes fully checkpointed logs.
 - [x] Add TDD coverage for append/load, post-sequence filtering, compaction, and checkpoint replay.
 - [ ] Re-run focused graph tests, lint, and changed-file validation.
+
+## Deep Review Cycle 179 - Typed Observation Property Substrate (2026-03-17)
+
+### Review findings
+- [x] Gap: `NodeKindObservation` still stores its hot artifact fields exclusively in `map[string]any`, so the graph has no typed substrate for the highest-cardinality runtime node kind targeted by `#385`.
+- [x] Gap: artifact and runtime read paths such as `buildKnowledgeArtifactRecord()`, `graphObservedAt()`, and runtime audit-candidate projection repeatedly parse the same observation metadata from string-keyed maps even after write-time normalization.
+- [x] Gap: there was no regression proving typed observation fields survive graph mutation and snapshot restore boundaries, and no focused benchmark isolating cached typed reads versus raw map fallback.
+
+### Execution plan
+- [x] Add a typed observation property cache on `Node` with safe fallback parsing from the existing `properties` map.
+- [x] Hydrate or invalidate that typed cache in core graph mutation paths and node cloning helpers.
+- [x] Switch artifact/runtime hot readers onto the typed observation substrate where available.
+- [x] Add TDD coverage for write hydration, mutation refresh, and snapshot restore.
+- [x] Add a focused typed-vs-map observation property benchmark.
+- [ ] Re-run focused graph/runtimegraph tests, lint, changed-file validation, and the new benchmark.
 
 ## Deep Review Cycle 176 - Information Flow Ordinal BFS State (2026-03-16)
 
