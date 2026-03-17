@@ -6,58 +6,6 @@ import (
 	"strings"
 )
 
-type queryVisitSet struct {
-	nodeIDs *NodeIDIndex
-	words   []uint64
-}
-
-func newQueryVisitSet(nodeIDs *NodeIDIndex) queryVisitSet {
-	return queryVisitSet{nodeIDs: nodeIDs}
-}
-
-func (s *queryVisitSet) mark(nodeID string) {
-	if s == nil || s.nodeIDs == nil {
-		return
-	}
-	ordinal := s.nodeIDs.Intern(nodeID)
-	word, mask, ok := ordinalWordAndMask(ordinal)
-	if !ok {
-		return
-	}
-	if word >= len(s.words) {
-		grown := make([]uint64, word+1)
-		copy(grown, s.words)
-		s.words = grown
-	}
-	s.words[word] |= mask
-}
-
-func (s queryVisitSet) has(nodeID string) bool {
-	if s.nodeIDs == nil {
-		return false
-	}
-	ordinal, ok := s.nodeIDs.Lookup(nodeID)
-	if !ok {
-		return false
-	}
-	word, mask, ok := ordinalWordAndMask(ordinal)
-	if !ok {
-		return false
-	}
-	if word >= len(s.words) {
-		return false
-	}
-	return s.words[word]&mask != 0
-}
-
-func (s queryVisitSet) clone() queryVisitSet {
-	cloned := queryVisitSet{nodeIDs: s.nodeIDs}
-	if len(s.words) > 0 {
-		cloned.words = append([]uint64(nil), s.words...)
-	}
-	return cloned
-}
-
 type blastRadiusCacheKey struct {
 	principalID string
 	maxDepth    int
@@ -141,7 +89,7 @@ func BlastRadius(g *Graph, principalID string, maxDepth int) *BlastRadiusResult 
 	}
 
 	startAccount := principal.Account
-	visited := newQueryVisitSet(NewNodeIDIndex())
+	visited := newOrdinalVisitSet(NewNodeIDIndex())
 	accountsReached := make(map[string]bool)
 
 	type queueItem struct {
@@ -394,7 +342,7 @@ func ReverseAccess(g *Graph, resourceID string, maxDepth int) *ReverseAccessResu
 		ResourceName: resource.Name,
 	}
 
-	visited := newQueryVisitSet(NewNodeIDIndex())
+	visited := newOrdinalVisitSet(NewNodeIDIndex())
 	type queueItem struct {
 		nodeID string
 		depth  int
@@ -498,11 +446,11 @@ func findAllPaths(g *Graph, from, to string, maxDepth int) [][]*Edge {
 		nodeID  string
 		depth   int
 		path    []*Edge
-		visited queryVisitSet
+		visited ordinalVisitSet
 	}
 
 	nodeIDs := NewNodeIDIndex()
-	initialVisited := newQueryVisitSet(nodeIDs)
+	initialVisited := newOrdinalVisitSet(nodeIDs)
 	initialVisited.mark(from)
 	initial := state{
 		nodeID:  from,
@@ -599,6 +547,7 @@ type AccountBoundaryCross struct {
 }
 
 type cascadeItem struct {
+	ordinal   NodeOrdinal
 	nodeID    string
 	depth     int
 	path      []string
@@ -661,12 +610,16 @@ func CascadingBlastRadius(g *Graph, sourceID string, maxDepth int) *CascadingBla
 		AccountBoundaries: make([]*AccountBoundaryCross, 0),
 	}
 
-	visited := make(map[string]bool)
-	bestTime := map[string]int64{sourceID: 0}
+	nodeIDs := NewNodeIDIndex()
+	sourceOrdinal := nodeIDs.Intern(sourceID)
+	visited := newOrdinalVisitSet(nodeIDs)
+	visitedCount := 0
+	bestTime := map[NodeOrdinal]int64{sourceOrdinal: 0}
 
 	queue := &cascadePriorityQueue{}
 	heap.Init(queue)
 	heap.Push(queue, &cascadeItem{
+		ordinal:   sourceOrdinal,
 		nodeID:    sourceID,
 		depth:     0,
 		path:      []string{sourceID},
@@ -679,11 +632,11 @@ func CascadingBlastRadius(g *Graph, sourceID string, maxDepth int) *CascadingBla
 		if item.depth > maxDepth {
 			continue
 		}
-		if item.timeMs > bestTime[item.nodeID] {
+		if item.timeMs > bestTime[item.ordinal] {
 			continue
 		}
-		if !visited[item.nodeID] {
-			visited[item.nodeID] = true
+		if visited.markOrdinal(item.ordinal) {
+			visitedCount++
 		}
 
 		currentNode, ok := g.GetNode(item.nodeID)
@@ -783,12 +736,14 @@ func CascadingBlastRadius(g *Graph, sourceID string, maxDepth int) *CascadingBla
 			}
 
 			nextTime := item.timeMs + timeIncrement
-			if best, ok := bestTime[edge.Target]; ok && nextTime >= best {
+			targetOrdinal := nodeIDs.Intern(edge.Target)
+			if best, ok := bestTime[targetOrdinal]; ok && nextTime >= best {
 				continue
 			}
-			bestTime[edge.Target] = nextTime
+			bestTime[targetOrdinal] = nextTime
 
 			heap.Push(queue, &cascadeItem{
+				ordinal:   targetOrdinal,
 				nodeID:    edge.Target,
 				depth:     nextDepth,
 				path:      newPath,
@@ -799,7 +754,7 @@ func CascadingBlastRadius(g *Graph, sourceID string, maxDepth int) *CascadingBla
 	}
 
 	// Calculate total impact and score
-	result.TotalImpact = len(visited) - 1 // Exclude source
+	result.TotalImpact = visitedCount - 1 // Exclude source
 	result.ImpactScore = calculateImpactScore(result)
 	result.RemediationPaths = suggestRemediationPaths(result)
 

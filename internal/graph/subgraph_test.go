@@ -208,6 +208,32 @@ func TestExtractSubgraphIncludesEdgesBetweenMaxDepthBoundaryNodes(t *testing.T) 
 	}
 }
 
+func TestExtractSubgraphHandlesCycles(t *testing.T) {
+	g := New()
+	for _, node := range []*Node{
+		{ID: "root", Kind: NodeKindRole},
+		{ID: "mid", Kind: NodeKindRole},
+		{ID: "leaf", Kind: NodeKindRole},
+	} {
+		g.AddNode(node)
+	}
+	g.AddEdge(&Edge{ID: "root-mid", Source: "root", Target: "mid", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "mid-leaf", Source: "mid", Target: "leaf", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "leaf-root", Source: "leaf", Target: "root", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+
+	sub := ExtractSubgraph(g, "root", ExtractSubgraphOptions{
+		MaxDepth:  3,
+		Direction: ExtractSubgraphDirectionOutgoing,
+	})
+
+	if got := sub.NodeCount(); got != 3 {
+		t.Fatalf("NodeCount() = %d, want 3", got)
+	}
+	if got := sub.EdgeCount(); got != 3 {
+		t.Fatalf("EdgeCount() = %d, want 3", got)
+	}
+}
+
 func TestExtractSubgraphReleasesLockWhenEdgeFilterPanics(t *testing.T) {
 	g := New()
 	g.AddNode(&Node{ID: "root", Kind: NodeKindRole})

@@ -44,8 +44,9 @@ func ExtractSubgraph(g *Graph, rootID string, opts ExtractSubgraphOptions) *Grap
 	edgesToCopy := make(map[*Edge]struct{})
 	clonedNodes := make([]*Node, 0, 16)
 	clonedEdges := make([]*Edge, 0, 16)
-	seen := make(map[string]struct{})
+	seen := newOrdinalVisitSet(NewNodeIDIndex())
 	queue := make([]subgraphQueueItem, 0, 16)
+	queueHead := 0
 
 	g.mu.RLock()
 	defer g.mu.RUnlock()
@@ -55,7 +56,7 @@ func ExtractSubgraph(g *Graph, rootID string, opts ExtractSubgraphOptions) *Grap
 	}
 
 	nodesToCopy[rootID] = root
-	seen[rootID] = struct{}{}
+	seen.mark(rootID)
 	queue = append(queue, subgraphQueueItem{nodeID: rootID, depth: 0})
 
 	visitEdges := func(current string, depth int, edges []*Edge, nextNodeID func(*Edge) string) {
@@ -73,11 +74,11 @@ func ExtractSubgraph(g *Graph, rootID string, opts ExtractSubgraphOptions) *Grap
 				continue
 			}
 
-			if _, ok := seen[neighborID]; !ok {
+			if !seen.has(neighborID) {
 				if depth >= maxDepth || len(nodesToCopy) >= maxNodes {
 					continue
 				}
-				seen[neighborID] = struct{}{}
+				seen.mark(neighborID)
 				nodesToCopy[neighborID] = neighbor
 				queue = append(queue, subgraphQueueItem{nodeID: neighborID, depth: depth + 1})
 			}
@@ -88,9 +89,9 @@ func ExtractSubgraph(g *Graph, rootID string, opts ExtractSubgraphOptions) *Grap
 		}
 	}
 
-	for len(queue) > 0 {
-		item := queue[0]
-		queue = queue[1:]
+	for queueHead < len(queue) {
+		item := queue[queueHead]
+		queueHead++
 
 		if opts.Direction == ExtractSubgraphDirectionBoth || opts.Direction == ExtractSubgraphDirectionOutgoing {
 			visitEdges(item.nodeID, item.depth, g.outEdges[item.nodeID], func(edge *Edge) string {

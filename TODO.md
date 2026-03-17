@@ -5,6 +5,34 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 172 - Cascading Blast Radius Ordinal Traversal State (2026-03-16)
+
+### Review findings
+- [x] Gap: `CascadingBlastRadius` still kept its traversal frontier state in string-keyed `visited` and `bestTime` maps even after the shared ordinal visit substrate landed for attack, impact, query, and subgraph traversal.
+- [x] Gap: the cascading query path is a priority-queue traversal over wide blast radii, so keeping string-keyed dedupe on every edge expansion leaves one of the heavier graph query paths outside the `#384` memory reduction work.
+- [x] Gap: there was no cycle regression or focused benchmark locking down the cascading query path before moving it onto interned ordinals.
+
+### Execution plan
+- [x] Move cascading blast-radius visited tracking onto the shared ordinal visit set.
+- [x] Move the traversal `bestTime` map onto ordinal keys carried through the queue state.
+- [x] Add TDD coverage for cycle-safe cascading blast-radius traversal.
+- [x] Add a focused `CascadingBlastRadius` benchmark on a wide graph.
+- [ ] Re-run focused graph tests, lint, changed-file validation, and the new benchmark.
+
+## Deep Review Cycle 171 - Subgraph Extraction Ordinal Visited Sets (2026-03-16)
+
+### Review findings
+- [x] Gap: `ExtractSubgraph` still used a string-keyed `seen` set even after the `#384` traversal substrate moved attack paths, impact paths, and query traversal onto interned ordinals.
+- [x] Gap: subgraph extraction still advanced breadth-first traversal by reslicing the queue on every pop, which keeps an avoidable allocation-retention cost on a hot graph inspection path.
+- [x] Gap: there was no focused cycle regression or benchmark locking down subgraph extraction behavior once visited tracking moved onto the ordinal substrate.
+
+### Execution plan
+- [x] Promote the ordinal-backed visit set into a shared graph helper instead of keeping it query-local.
+- [x] Switch `ExtractSubgraph` to the shared ordinal visit set and a head-indexed queue.
+- [x] Add TDD coverage for cycle-safe subgraph extraction.
+- [x] Add a focused `ExtractSubgraph` benchmark on a wide graph neighborhood.
+- [ ] Re-run focused graph tests, lint, changed-file validation, and the new benchmark.
+
 ## Deep Review Cycle 170 - Query Traversal Ordinal Visited Sets (2026-03-16)
 
 ### Review findings

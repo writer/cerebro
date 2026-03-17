@@ -723,6 +723,28 @@ func TestCascadingBlastRadius(t *testing.T) {
 		}
 	})
 
+	t.Run("cascading blast radius handles cycles without duplicating impact", func(t *testing.T) {
+		cycleGraph := New()
+		cycleGraph.AddNode(&Node{ID: "user:start", Kind: NodeKindUser})
+		cycleGraph.AddNode(&Node{ID: "role:a", Kind: NodeKindRole})
+		cycleGraph.AddNode(&Node{ID: "role:b", Kind: NodeKindRole})
+		cycleGraph.AddEdge(&Edge{ID: "start-a", Source: "user:start", Target: "role:a", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+		cycleGraph.AddEdge(&Edge{ID: "a-b", Source: "role:a", Target: "role:b", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+		cycleGraph.AddEdge(&Edge{ID: "b-a", Source: "role:b", Target: "role:a", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+
+		result := CascadingBlastRadius(cycleGraph, "user:start", 6)
+
+		if got := result.TotalImpact; got != 2 {
+			t.Fatalf("TotalImpact = %d, want 2", got)
+		}
+		if got := len(result.TimeToCompromise[1]); got != 1 {
+			t.Fatalf("depth 1 impacted count = %d, want 1", got)
+		}
+		if got := len(result.TimeToCompromise[2]); got != 1 {
+			t.Fatalf("depth 2 impacted count = %d, want 1", got)
+		}
+	})
+
 	t.Run("cascading blast radius calculates impact score", func(t *testing.T) {
 		result := CascadingBlastRadius(g, "user:attacker", 4)
 
