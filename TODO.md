@@ -5,6 +5,20 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 187 - Observation Correlation Windows (2026-03-17)
+
+### Review findings
+- [x] Gap: issue `#364` still materialized runtime observations independently, so multi-step workload activity had no first-class graph node representing one correlated attack sequence.
+- [x] Gap: repeated graph rebuilds had no deterministic, idempotent sequence materialization pass that could regroup observations by workload and time window without duplicating prior sequence nodes.
+- [x] Gap: there was no graph-native edge model linking workloads to correlated observation windows and projecting the underlying `based_on` evidence back onto the derived sequence node.
+
+### Execution plan
+- [x] Add an `attack_sequence` node kind plus `has_sequence` and `contains` edge kinds to the graph schema.
+- [x] Materialize deterministic workload-scoped observation windows during runtimegraph finalization using configurable duration and inactivity-gap policy.
+- [x] Project ordered observation membership and inherited `based_on` evidence targets onto each derived sequence node.
+- [x] Add TDD coverage for single-window grouping, window splits, evidence propagation, and idempotent rematerialization.
+- [x] Re-run focused and full graph/runtimegraph tests, lint, and changed-file validation.
+
 ## Deep Review Cycle 185 - Correlation Refresh Coalescing Queue (2026-03-17)
 
 ### Review findings

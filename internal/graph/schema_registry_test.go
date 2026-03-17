@@ -63,6 +63,7 @@ func TestSchemaRegistry_IntelligenceSpineBuiltins(t *testing.T) {
 		NodeKindOutcome,
 		NodeKindEvidence,
 		NodeKindObservation,
+		NodeKindAttackSequence,
 		NodeKindSource,
 		NodeKindClaim,
 		NodeKindAction,
@@ -86,6 +87,7 @@ func TestSchemaRegistry_IntelligenceSpineBuiltins(t *testing.T) {
 		EdgeKindHasScan,
 		EdgeKindFoundVuln,
 		EdgeKindContainsPkg,
+		EdgeKindContains,
 		EdgeKindAffectedBy,
 		EdgeKindAssertedBy,
 		EdgeKindSupports,
@@ -94,6 +96,7 @@ func TestSchemaRegistry_IntelligenceSpineBuiltins(t *testing.T) {
 		EdgeKindContradicts,
 		EdgeKindTriggeredBy,
 		EdgeKindCausedBy,
+		EdgeKindHasSequence,
 	}
 	for _, kind := range requiredEdgeKinds {
 		if !reg.IsEdgeKindRegistered(kind) {

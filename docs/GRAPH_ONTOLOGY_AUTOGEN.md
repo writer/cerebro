@@ -2,8 +2,8 @@
 
 Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and `internal/graphingest/mappings.yaml` via `go run ./scripts/generate_graph_ontology_docs/main.go`.
 
-- Node kinds: **69**
-- Edge kinds: **44**
+- Node kinds: **70**
+- Edge kinds: **46**
 - Mapping rules: **13**
 - Source domains: **9**
 
@@ -15,6 +15,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `activity` | business | - | - |
 | `any` | - | - | - |
 | `application` | resource | - | - |
+| `attack_sequence` | business | `observed_at`, `recorded_at`, `sequence_end`, `sequence_start`, `sequence_type`, `transaction_from`, `valid_from`, `workload_ref` | `based_on`, `contains` |
 | `bucket` | resource | - | `configures`, `depends_on`, `exposed_to`, `managed_by`, `owns`, `targets` |
 | `bucket_encryption_config` | resource | `bucket_id`, `encryption_config_id`, `observed_at`, `recorded_at`, `transaction_from`, `valid_from` | `asserted_by`, `based_on`, `configures`, `refers` |
 | `bucket_logging_config` | resource | `bucket_id`, `logging_config_id`, `observed_at`, `recorded_at`, `transaction_from`, `valid_from` | `asserted_by`, `based_on`, `configures`, `targets` |
@@ -35,7 +36,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `deal` | business | - | - |
 | `decision` | business | `decision_type`, `made_at`, `observed_at`, `status`, `valid_from` | `based_on`, `executed_by`, `targets` |
 | `department` | business | - | - |
-| `deployment` | kubernetes, resource | - | - |
+| `deployment` | kubernetes, resource | - | `has_sequence`, `targets` |
 | `deployment_run` | business, resource | `deploy_id`, `environment`, `observed_at`, `service_id`, `status`, `valid_from` | `based_on`, `depends_on`, `targets`, `triggered_by` |
 | `document` | business | `document_id`, `observed_at`, `title`, `valid_from` | `based_on`, `targets` |
 | `evidence` | business | `evidence_type`, `observed_at`, `source_system`, `valid_from` | `based_on`, `targets` |
@@ -61,7 +62,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `persistent_volume` | kubernetes, resource | - | - |
 | `person` | identity | - | - |
 | `pipeline_run` | business, resource | `observed_at`, `pipeline_id`, `run_id`, `service_id`, `status`, `valid_from` | `based_on`, `executed_by`, `targets` |
-| `pod` | kubernetes, resource | - | - |
+| `pod` | kubernetes, resource | - | `has_sequence`, `targets` |
 | `project` | resource | `project_id`, `resource_name` | `located_in` |
 | `pull_request` | business | `number`, `observed_at`, `repository`, `state`, `valid_from` | `based_on`, `targets` |
 | `repository` | - | - | - |
@@ -78,7 +79,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `user` | identity | - | - |
 | `vendor` | business | - | - |
 | `vulnerability` | resource | `observed_at`, `recorded_at`, `severity`, `transaction_from`, `valid_from`, `vulnerability_id` | `based_on` |
-| `workload` | resource | `observed_at`, `runtime`, `valid_from`, `workload_id` | `connects_to`, `depends_on`, `targets` |
+| `workload` | resource | `observed_at`, `runtime`, `valid_from`, `workload_id` | `connects_to`, `depends_on`, `has_sequence`, `targets` |
 | `workload_scan` | resource | `observed_at`, `recorded_at`, `scan_id`, `status`, `target_id`, `target_kind`, `transaction_from`, `valid_from` | `based_on`, `contains_package`, `found_vulnerability`, `has_scan`, `targets` |
 
 ## Node Metadata Profiles
@@ -86,6 +87,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | Kind | Required Metadata | Optional Metadata | Timestamp Keys | Enum Constraints |
 |---|---|---|---|---|
 | `action` | `observed_at`, `source_system`, `valid_from` | `confidence`, `recorded_at`, `source_event_id`, `transaction_from`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
+| `attack_sequence` | `observed_at`, `recorded_at`, `source_system`, `transaction_from`, `valid_from` | `confidence`, `source_event_id`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `severity`=`critical`, `high`, `low`, `medium`, `unknown` |
 | `bucket_encryption_config` | `observed_at`, `recorded_at`, `source_system`, `transaction_from`, `valid_from` | `confidence`, `source_event_id`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
 | `bucket_logging_config` | `observed_at`, `recorded_at`, `source_system`, `transaction_from`, `valid_from` | `confidence`, `source_event_id`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
 | `bucket_policy_statement` | `observed_at`, `recorded_at`, `source_system`, `transaction_from`, `valid_from` | `confidence`, `source_event_id`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `effect`=`allow`, `deny`<br>`principal_type`=`account`, `all_authenticated_users`, `all_users`, `anonymous`, `public`, `service`, `user` |
@@ -139,6 +141,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `caused_by` | - |
 | `configures` | - |
 | `connects_to` | - |
+| `contains` | - |
 | `contains_package` | - |
 | `contradicts` | - |
 | `depends_on` | - |
@@ -150,6 +153,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `found_vulnerability` | - |
 | `has_credential_for` | - |
 | `has_scan` | - |
+| `has_sequence` | - |
 | `interacted_with` | - |
 | `located_in` | - |
 | `managed_by` | - |
@@ -186,10 +190,11 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 
 ## Unmapped Built-in Node Kinds
 
-Total unmapped kinds: **46**
+Total unmapped kinds: **47**
 
 - `activity`
 - `application`
+- `attack_sequence`
 - `bucket`
 - `bucket_encryption_config`
 - `bucket_logging_config`

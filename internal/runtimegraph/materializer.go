@@ -22,6 +22,7 @@ func FinalizeMaterializedGraph(g *graph.Graph, now time.Time) {
 		now = time.Now().UTC()
 	}
 	CompactHistoricalObservations(g, now, DefaultObservationCompactionPolicy())
+	MaterializeObservationSequences(g, now, DefaultObservationSequencePolicy())
 	g.BuildIndex()
 	refreshMaterializedGraphMetadata(g, now)
 }
