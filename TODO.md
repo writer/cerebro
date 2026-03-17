@@ -56,6 +56,19 @@ Status: executed end-to-end via PR workflow
 - [x] Add TDD coverage for filtered change delivery, irrelevant-change suppression, and rapid-change coalescing.
 - [x] Re-run focused and full graph tests, lint, and changed-file validation.
 
+## Deep Review Cycle 192 - Streaming Event Pipeline With Backpressure (2026-03-17)
+
+### Review findings
+- [x] Gap: issue `#358` still processed each fetched JetStream message sequentially inside one loop, so handler throughput stayed capped at one in-flight event even when batches contained unrelated entities.
+- [x] Gap: the existing consumer heartbeat model only covered the current sequential message, so introducing concurrency without a queue-aware handoff would risk losing `InProgress()` extensions for messages waiting behind slow handlers.
+- [x] Gap: batch-local duplicate events could only stay suppressed if dedupe and handler execution remained ordered for a stable shard key, which ruled out naive per-message goroutines.
+
+### Execution plan
+- [x] Split the batch path into parallel decode plus ordered worker-shard execution, keeping malformed payload handling in decode and preserving per-shard ordering for dedupe, handler, and ack.
+- [x] Add configurable handler worker concurrency, bounded shard queues, and adaptive fetch sizing that backs off after observed queue saturation and ramps back up when batches stay healthy.
+- [x] Keep batch heartbeats active until a worker starts a message, then switch to the existing per-message heartbeat so queued work continues extending ack wait under backpressure.
+- [x] Add TDD coverage for same-entity ordering across concurrent workers, duplicate suppression within one batch, and adaptive batch-size behavior.
+
 ## Deep Review Cycle 188 - Cross-Adapter Observation Corroboration (2026-03-17)
 
 ### Review findings

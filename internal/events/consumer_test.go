@@ -27,7 +27,7 @@ func TestConsumerConfigWithDefaults(t *testing.T) {
 	if cfg.Stream == "" || cfg.Subject == "" || cfg.Durable == "" {
 		t.Fatal("expected default stream/subject/durable")
 	}
-	if cfg.BatchSize <= 0 || cfg.AckWait <= 0 || cfg.FetchTimeout <= 0 {
+	if cfg.BatchSize <= 0 || cfg.HandlerWorkers <= 0 || cfg.AckWait <= 0 || cfg.FetchTimeout <= 0 {
 		t.Fatal("expected positive default batch/ack/fetch settings")
 	}
 }
@@ -528,6 +528,323 @@ func TestConsumerStartBatchInProgressHeartbeatSkipsDeactivatedEntries(t *testing
 	}
 }
 
+func TestConsumerStartInProgressHeartbeatContinuesAfterContextCancelUntilStopped(t *testing.T) {
+	consumer := &Consumer{
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		config: (ConsumerConfig{
+			InProgressInterval: 10 * time.Millisecond,
+		}).withDefaults(),
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	var beats atomic.Int64
+	stop := consumer.startInProgressHeartbeat(ctx, func() error {
+		beats.Add(1)
+		return nil
+	})
+
+	cancel()
+	time.Sleep(35 * time.Millisecond)
+	if beats.Load() == 0 {
+		stop()
+		t.Fatal("expected in-progress heartbeat to continue after context cancellation")
+	}
+
+	beforeStop := beats.Load()
+	stop()
+	time.Sleep(20 * time.Millisecond)
+	if beats.Load() != beforeStop {
+		t.Fatalf("expected in-progress heartbeat to stop after stop(), got before=%d after=%d", beforeStop, beats.Load())
+	}
+}
+
+func TestConsumerStartBatchInProgressHeartbeatContinuesAfterContextCancelUntilStopped(t *testing.T) {
+	consumer := &Consumer{
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		config: (ConsumerConfig{
+			InProgressInterval: 10 * time.Millisecond,
+		}).withDefaults(),
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	var first atomic.Int64
+	var second atomic.Int64
+	deactivate, stop := consumer.startBatchInProgressHeartbeat(ctx, []func() error{
+		func() error {
+			first.Add(1)
+			return nil
+		},
+		func() error {
+			second.Add(1)
+			return nil
+		},
+	})
+
+	cancel()
+	time.Sleep(35 * time.Millisecond)
+	if first.Load() == 0 || second.Load() == 0 {
+		stop()
+		t.Fatalf("expected batch heartbeats to continue after context cancellation, got first=%d second=%d", first.Load(), second.Load())
+	}
+
+	deactivate(0)
+	firstBefore := first.Load()
+	secondBefore := second.Load()
+	time.Sleep(20 * time.Millisecond)
+	stop()
+	if first.Load() != firstBefore {
+		t.Fatalf("expected deactivated batch heartbeat to stop after cancellation, got before=%d after=%d", firstBefore, first.Load())
+	}
+	if second.Load() <= secondBefore {
+		t.Fatalf("expected active batch heartbeat to continue after cancellation, got before=%d after=%d", secondBefore, second.Load())
+	}
+}
+
+func TestConsumerProcessBatchPreservesPerEntityOrderingAcrossWorkers(t *testing.T) {
+	cfg := (ConsumerConfig{
+		Stream:         "ENSEMBLE_TAP",
+		Durable:        "cerebro_graph_builder",
+		DeadLetterPath: t.TempDir() + "/consumer.dlq.jsonl",
+		BatchSize:      8,
+		HandlerWorkers: 4,
+	}).withDefaults()
+	dlq, err := newConsumerDeadLetterSink(cfg.DeadLetterPath)
+	if err != nil {
+		t.Fatalf("new consumer dead-letter sink: %v", err)
+	}
+
+	entityA := "customer:a"
+	entityB := ""
+	for _, candidate := range []string{"customer:b", "customer:c", "customer:d", "customer:e"} {
+		if consumerShardIndex(testConsumerEvent(candidate, 1, true), cfg.HandlerWorkers) != consumerShardIndex(testConsumerEvent(entityA, 1, true), cfg.HandlerWorkers) {
+			entityB = candidate
+			break
+		}
+	}
+	if entityB == "" {
+		t.Fatal("expected distinct shard candidate for concurrent worker test")
+	}
+
+	var (
+		mu      sync.Mutex
+		started = make(map[string][]int)
+		aOnce   sync.Once
+		bOnce   sync.Once
+	)
+	aStarted := make(chan struct{})
+	bStarted := make(chan struct{})
+	releaseA := make(chan struct{})
+
+	consumer := &Consumer{
+		config: cfg,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		dlq:    dlq,
+		handler: func(ctx context.Context, evt CloudEvent) error {
+			entityID := extractEntityID(evt.Data)
+			seq := int(evt.Data["seq"].(float64))
+			mu.Lock()
+			started[entityID] = append(started[entityID], seq)
+			mu.Unlock()
+			if entityID == entityA && seq == 1 {
+				aOnce.Do(func() { close(aStarted) })
+				<-releaseA
+			}
+			if entityID == entityB {
+				bOnce.Do(func() { close(bStarted) })
+			}
+			return nil
+		},
+	}
+
+	messages := []consumerPipelineMessage{
+		testConsumerPipelineMessage(t, 0, testConsumerEvent(entityA, 1, true), nil),
+		testConsumerPipelineMessage(t, 1, testConsumerEvent(entityB, 1, true), nil),
+		testConsumerPipelineMessage(t, 2, testConsumerEvent(entityA, 2, true), nil),
+		testConsumerPipelineMessage(t, 3, testConsumerEvent(entityA, 3, true), nil),
+		testConsumerPipelineMessage(t, 4, testConsumerEvent(entityA, 4, true), nil),
+	}
+
+	done := make(chan bool, 1)
+	go func() {
+		done <- consumer.processBatch(context.Background(), messages)
+	}()
+
+	select {
+	case <-aStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for first entity-a handler start")
+	}
+	select {
+	case <-bStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for concurrent entity-b handler start")
+	}
+
+	mu.Lock()
+	gotWhileBlocked := append([]int(nil), started[entityA]...)
+	mu.Unlock()
+	if !equalIntSlices(gotWhileBlocked, []int{1}) {
+		t.Fatalf("expected only the first entity-a event to start before release, got %v", gotWhileBlocked)
+	}
+
+	close(releaseA)
+	backpressured := false
+	select {
+	case backpressured = <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for batch pipeline to finish")
+	}
+	if backpressured {
+		t.Fatal("expected one hot shard to preserve throughput without reporting global backpressure")
+	}
+
+	mu.Lock()
+	gotA := append([]int(nil), started[entityA]...)
+	gotB := append([]int(nil), started[entityB]...)
+	mu.Unlock()
+	if !equalIntSlices(gotA, []int{1, 2, 3, 4}) {
+		t.Fatalf("expected entity-a processing order [1 2 3 4], got %v", gotA)
+	}
+	if !equalIntSlices(gotB, []int{1}) {
+		t.Fatalf("expected entity-b processing order [1], got %v", gotB)
+	}
+}
+
+func TestConsumerProcessBatchSkipsDuplicateEventsWithinSameBatch(t *testing.T) {
+	cfg := (ConsumerConfig{
+		Stream:         "ENSEMBLE_TAP",
+		Durable:        "cerebro_graph_builder",
+		DeadLetterPath: t.TempDir() + "/consumer.dlq.jsonl",
+		DedupStateFile: t.TempDir() + "/executions.db",
+		DedupEnabled:   true,
+		BatchSize:      4,
+		HandlerWorkers: 4,
+	}).withDefaults()
+	deduper, err := newConsumerProcessedEventDeduper(cfg.DedupStateFile, cfg.Stream, cfg.Durable, cfg.DedupTTL, cfg.DedupMaxRecords)
+	if err != nil {
+		t.Fatalf("new deduper: %v", err)
+	}
+	defer func() { _ = deduper.Close() }()
+	dlq, err := newConsumerDeadLetterSink(cfg.DeadLetterPath)
+	if err != nil {
+		t.Fatalf("new consumer dead-letter sink: %v", err)
+	}
+
+	var handlerCalls atomic.Int32
+	var ackCalls atomic.Int32
+	consumer := &Consumer{
+		config:  cfg,
+		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+		dlq:     dlq,
+		deduper: deduper,
+		handler: func(context.Context, CloudEvent) error {
+			handlerCalls.Add(1)
+			time.Sleep(20 * time.Millisecond)
+			return nil
+		},
+	}
+
+	event := testConsumerEvent("", 1, false)
+	event.ID = "evt-duplicate-batch"
+	payload, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("marshal duplicate event: %v", err)
+	}
+	messages := []consumerPipelineMessage{
+		{
+			index:   0,
+			subject: "ensemble.tap.test",
+			payload: payload,
+			ack: func() error {
+				ackCalls.Add(1)
+				return nil
+			},
+			nak: func() error { return nil },
+		},
+		{
+			index:   1,
+			subject: "ensemble.tap.test",
+			payload: payload,
+			ack: func() error {
+				ackCalls.Add(1)
+				return nil
+			},
+			nak: func() error { return nil },
+		},
+	}
+
+	consumer.processBatch(context.Background(), messages)
+	if handlerCalls.Load() != 1 {
+		t.Fatalf("expected one handler call for duplicate batch events, got %d", handlerCalls.Load())
+	}
+	if ackCalls.Load() != 2 {
+		t.Fatalf("expected both duplicate batch events to ack, got %d", ackCalls.Load())
+	}
+}
+
+func TestConsumerProcessBatchStopsDispatchOnContextCancel(t *testing.T) {
+	cfg := (ConsumerConfig{
+		Stream:         "ENSEMBLE_TAP",
+		Durable:        "cerebro_graph_builder",
+		DeadLetterPath: t.TempDir() + "/consumer.dlq.jsonl",
+		BatchSize:      4,
+		HandlerWorkers: 4,
+	}).withDefaults()
+	dlq, err := newConsumerDeadLetterSink(cfg.DeadLetterPath)
+	if err != nil {
+		t.Fatalf("new consumer dead-letter sink: %v", err)
+	}
+
+	var handlerCalls atomic.Int32
+	firstStarted := make(chan struct{})
+	consumer := &Consumer{
+		config: cfg,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		dlq:    dlq,
+		handler: func(ctx context.Context, evt CloudEvent) error {
+			if extractEntityID(evt.Data) != "customer:a" {
+				t.Fatalf("unexpected entity routed to blocked shard: %#v", evt.Data)
+			}
+			if handlerCalls.Add(1) == 1 {
+				close(firstStarted)
+			}
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	messages := []consumerPipelineMessage{
+		testConsumerPipelineMessage(t, 0, testConsumerEvent("customer:a", 1, true), nil),
+		testConsumerPipelineMessage(t, 1, testConsumerEvent("customer:a", 2, true), nil),
+		testConsumerPipelineMessage(t, 2, testConsumerEvent("customer:a", 3, true), nil),
+	}
+
+	done := make(chan bool, 1)
+	go func() {
+		done <- consumer.processBatch(ctx, messages)
+	}()
+
+	select {
+	case <-firstStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for first shard handler to start")
+	}
+
+	cancel()
+
+	select {
+	case backpressured := <-done:
+		if backpressured {
+			t.Fatal("expected context cancellation to stop dispatch without reporting global backpressure")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("processBatch did not stop after context cancellation")
+	}
+}
+
 func TestConsumerHandleMessageSkipsAlreadyProcessedCloudEvent(t *testing.T) {
 	cfg := (ConsumerConfig{
 		Stream:         "ENSEMBLE_TAP",
@@ -775,6 +1092,38 @@ func TestSaturatingUint64ToInt(t *testing.T) {
 	}
 	if got := saturatingUint64ToInt(42); got != 42 {
 		t.Fatalf("expected exact conversion for small values, got %d", got)
+	}
+}
+
+func TestAdaptiveConsumerBatchSize(t *testing.T) {
+	if got := initialAdaptiveConsumerBatchSize(1); got != 1 {
+		t.Fatalf("initialAdaptiveConsumerBatchSize(1) = %d, want 1", got)
+	}
+	if got := initialAdaptiveConsumerBatchSize(50); got != 8 {
+		t.Fatalf("initialAdaptiveConsumerBatchSize(50) = %d, want 8", got)
+	}
+	if got := nextAdaptiveConsumerBatchSize(8, 50, 8, false); got != 16 {
+		t.Fatalf("nextAdaptiveConsumerBatchSize(8, 50, 8, false) = %d, want 16", got)
+	}
+	if got := nextAdaptiveConsumerBatchSize(16, 50, 4, false); got != 16 {
+		t.Fatalf("nextAdaptiveConsumerBatchSize(16, 50, 4, false) = %d, want 16", got)
+	}
+	if got := nextAdaptiveConsumerBatchSize(16, 50, 16, true); got != 8 {
+		t.Fatalf("nextAdaptiveConsumerBatchSize(16, 50, 16, true) = %d, want 8", got)
+	}
+}
+
+func TestConsumerShardIndexStaysWithinWorkerRange(t *testing.T) {
+	evt := CloudEvent{
+		ID:       "evt-1",
+		TenantID: "tenant-a",
+		Subject:  "ensemble.tap.test",
+		Type:     "tap.test",
+	}
+	workers := 1 << 20
+	got := consumerShardIndex(evt, workers)
+	if got < 0 || got >= workers {
+		t.Fatalf("consumerShardIndex() = %d, want range [0,%d)", got, workers)
 	}
 }
 
@@ -1065,4 +1414,53 @@ func containsAll(s string, parts ...string) bool {
 		}
 	}
 	return true
+}
+
+func equalIntSlices(left, right []int) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func testConsumerEvent(entityID string, seq int, includeEntity bool) CloudEvent {
+	event := CloudEvent{
+		SpecVersion: cloudEventSpecVersion,
+		ID:          "evt-" + strings.ReplaceAll(entityID, ":", "-") + "-" + strings.TrimSpace(time.Unix(int64(seq), 0).UTC().Format("150405")),
+		Source:      "urn:cerebro:test",
+		Type:        "ensemble.tap.test",
+		Time:        time.Now().UTC(),
+		DataSchema:  "urn:cerebro:events:test",
+		TenantID:    "tenant-a",
+		Data: map[string]any{
+			"seq": seq,
+		},
+	}
+	if includeEntity {
+		event.Data["entity_id"] = entityID
+	}
+	return event
+}
+
+func testConsumerPipelineMessage(t *testing.T, index int, event CloudEvent, ack func() error) consumerPipelineMessage {
+	t.Helper()
+	payload, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("marshal pipeline event: %v", err)
+	}
+	if ack == nil {
+		ack = func() error { return nil }
+	}
+	return consumerPipelineMessage{
+		index:   index,
+		subject: "ensemble.tap.test",
+		payload: payload,
+		ack:     ack,
+		nak:     func() error { return nil },
+	}
 }

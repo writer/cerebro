@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"log/slog"
 	"math"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -39,6 +41,7 @@ type ConsumerConfig struct {
 	Subjects            []string
 	Durable             string
 	BatchSize           int
+	HandlerWorkers      int
 	AckWait             time.Duration
 	FetchTimeout        time.Duration
 	InProgressInterval  time.Duration
@@ -289,6 +292,7 @@ func (c *Consumer) run() {
 	}()
 
 	lastLagRefresh := time.Time{}
+	fetchBatchSize := initialAdaptiveConsumerBatchSize(c.config.BatchSize)
 	for {
 		select {
 		case <-c.stopCh:
@@ -299,7 +303,7 @@ func (c *Consumer) run() {
 		default:
 		}
 
-		msgs, err := c.sub.Fetch(c.config.BatchSize, nats.MaxWait(c.config.FetchTimeout))
+		msgs, err := c.sub.Fetch(fetchBatchSize, nats.MaxWait(c.config.FetchTimeout))
 		if err != nil {
 			if errors.Is(err, nats.ErrTimeout) {
 				if time.Since(lastLagRefresh) >= defaultConsumerLagRefreshInterval {
@@ -315,32 +319,25 @@ func (c *Consumer) run() {
 		c.refreshLagMetrics(time.Now().UTC())
 		lastLagRefresh = time.Now().UTC()
 
-		batchInProgress := make([]func() error, len(msgs))
-		for i, msg := range msgs {
-			msg := msg
-			batchInProgress[i] = func() error { return msg.InProgress() }
-		}
-		deactivateBatchHeartbeat, stopBatchHeartbeat := c.startBatchInProgressHeartbeat(runCtx, batchInProgress)
+		batch := make([]consumerPipelineMessage, len(msgs))
 		for _, msg := range msgs {
 			if meta, err := msg.Metadata(); err == nil && meta != nil && meta.NumDelivered > 1 {
 				metrics.RecordNATSConsumerRedelivery(c.config.Stream, c.config.Durable)
 			}
 		}
 		for i, msg := range msgs {
-			deactivateBatchHeartbeat(i)
-			result := c.handleMessage(
-				runCtx,
-				msg.Subject,
-				msg.Data,
-				func() error { return msg.Ack() },
-				func() error { return msg.Nak() },
-				batchInProgress[i],
-			)
-			if result.Processed {
-				c.recordProcessed(result.ProcessedAt, result.EventTime)
+			msg := msg
+			batch[i] = consumerPipelineMessage{
+				index:      i,
+				subject:    msg.Subject,
+				payload:    msg.Data,
+				ack:        func() error { return msg.Ack() },
+				nak:        func() error { return msg.Nak() },
+				inProgress: func() error { return msg.InProgress() },
 			}
 		}
-		stopBatchHeartbeat()
+		backpressured := c.processBatch(runCtx, batch)
+		fetchBatchSize = nextAdaptiveConsumerBatchSize(fetchBatchSize, c.config.BatchSize, len(batch), backpressured)
 	}
 }
 
@@ -350,46 +347,84 @@ type consumerMessageResult struct {
 	ProcessedAt time.Time
 }
 
+type consumerPipelineMessage struct {
+	index      int
+	subject    string
+	payload    []byte
+	ack        func() error
+	nak        func() error
+	inProgress func() error
+}
+
+type consumerDecodedMessage struct {
+	message consumerPipelineMessage
+	event   CloudEvent
+	handled bool
+	result  consumerMessageResult
+}
+
 func (c *Consumer) handleMessage(ctx context.Context, subject string, payload []byte, ack func() error, nak func() error, inProgress func() error) consumerMessageResult {
-	var evt CloudEvent
-	if err := json.Unmarshal(payload, &evt); err != nil {
-		preview := payloadPreview(payload, c.config.PayloadPreviewBytes)
+	decoded := c.decodePipelineMessage(consumerPipelineMessage{
+		subject:    subject,
+		payload:    payload,
+		ack:        ack,
+		nak:        nak,
+		inProgress: inProgress,
+	})
+	if decoded.handled {
+		return decoded.result
+	}
+	return c.handleDecodedMessage(ctx, decoded)
+}
+
+func (c *Consumer) decodePipelineMessage(message consumerPipelineMessage) consumerDecodedMessage {
+	decoded := consumerDecodedMessage{message: message}
+	if err := json.Unmarshal(message.payload, &decoded.event); err != nil {
+		preview := payloadPreview(message.payload, c.config.PayloadPreviewBytes)
 		if dlqErr := c.dlq.Write(consumerDeadLetterRecord{
 			RecordedAt: time.Now().UTC(),
 			Stream:     c.config.Stream,
 			Durable:    c.config.Durable,
-			Subject:    subject,
+			Subject:    message.subject,
 			Reason:     "malformed",
 			Error:      err.Error(),
-			Payload:    string(payload),
+			Payload:    string(message.payload),
 		}); dlqErr != nil {
 			c.logger.Error("tap consumer failed to dead-letter malformed cloud event; message requeued",
 				"error", dlqErr,
-				"subject", subject,
+				"subject", message.subject,
 				"stream", c.config.Stream,
 				"durable", c.config.Durable,
 				"payload_preview", preview,
 			)
-			if nakErr := nak(); nakErr != nil {
-				c.logger.Warn("tap consumer nak failed after dead-letter error", "error", nakErr, "subject", subject)
+			if nakErr := message.nak(); nakErr != nil {
+				c.logger.Warn("tap consumer nak failed after dead-letter error", "error", nakErr, "subject", message.subject)
 			}
-			return consumerMessageResult{}
+			decoded.handled = true
+			return decoded
 		}
 		c.logger.Error("tap consumer dead-lettered malformed cloud event",
 			"error", err,
-			"subject", subject,
+			"subject", message.subject,
 			"stream", c.config.Stream,
 			"durable", c.config.Durable,
 			"payload_preview", preview,
 		)
 		c.recordDropped("malformed", time.Now().UTC())
-		if err := ack(); err != nil {
-			c.logger.Warn("tap consumer ack failed after dead-lettering malformed event", "error", err, "subject", subject)
+		if err := message.ack(); err != nil {
+			c.logger.Warn("tap consumer ack failed after dead-lettering malformed event", "error", err, "subject", message.subject)
 		}
-		return consumerMessageResult{}
+		decoded.handled = true
+		return decoded
 	}
+	return decoded
+}
+
+func (c *Consumer) handleDecodedMessage(ctx context.Context, decoded consumerDecodedMessage) consumerMessageResult {
+	evt := decoded.event
+	message := decoded.message
 	if c.deduper != nil {
-		record, hashMismatch, err := c.deduper.Lookup(ctx, evt, payload, time.Now().UTC())
+		record, hashMismatch, err := c.deduper.Lookup(ctx, evt, message.payload, time.Now().UTC())
 		if err != nil {
 			c.logger.Warn("tap consumer dedupe lookup failed; continuing without duplicate suppression",
 				"error", err,
@@ -406,7 +441,7 @@ func (c *Consumer) handleMessage(ctx context.Context, subject string, payload []
 						"source", evt.Source,
 						"processed_at", record.ProcessedAt.UTC().Format(time.RFC3339Nano),
 					)
-					if nakErr := nak(); nakErr != nil {
+					if nakErr := message.nak(); nakErr != nil {
 						c.logger.Warn("tap consumer nak failed after dedupe hash mismatch state clear failure", "error", nakErr, "event_type", evt.Type)
 					}
 					return consumerMessageResult{}
@@ -415,10 +450,10 @@ func (c *Consumer) handleMessage(ctx context.Context, subject string, payload []
 					RecordedAt: time.Now().UTC(),
 					Stream:     c.config.Stream,
 					Durable:    c.config.Durable,
-					Subject:    subject,
+					Subject:    message.subject,
 					Reason:     "dedupe_hash_mismatch",
 					Error:      fmt.Sprintf("duplicate event key matched different payload hash: processed_at=%s", record.ProcessedAt.UTC().Format(time.RFC3339Nano)),
-					Payload:    string(payload),
+					Payload:    string(message.payload),
 				}); dlqErr != nil {
 					c.logger.Error("tap consumer failed to dead-letter duplicate hash mismatch; message requeued",
 						"error", dlqErr,
@@ -426,7 +461,7 @@ func (c *Consumer) handleMessage(ctx context.Context, subject string, payload []
 						"event_type", evt.Type,
 						"source", evt.Source,
 					)
-					if nakErr := nak(); nakErr != nil {
+					if nakErr := message.nak(); nakErr != nil {
 						c.logger.Warn("tap consumer nak failed after dedupe hash mismatch dead-letter error", "error", nakErr, "event_type", evt.Type)
 					}
 					return consumerMessageResult{}
@@ -437,7 +472,7 @@ func (c *Consumer) handleMessage(ctx context.Context, subject string, payload []
 					"source", evt.Source,
 					"processed_at", record.ProcessedAt.UTC().Format(time.RFC3339Nano),
 				)
-				if nakErr := nak(); nakErr != nil {
+				if nakErr := message.nak(); nakErr != nil {
 					c.logger.Warn("tap consumer nak failed after clearing dedupe hash mismatch state", "error", nakErr, "event_type", evt.Type)
 				}
 				return consumerMessageResult{}
@@ -450,17 +485,17 @@ func (c *Consumer) handleMessage(ctx context.Context, subject string, payload []
 				)
 			}
 			metrics.RecordNATSConsumerDeduplicated(c.config.Stream, c.config.Durable)
-			if err := ack(); err != nil {
+			if err := message.ack(); err != nil {
 				c.logger.Warn("tap consumer ack failed after duplicate suppression", "error", err, "event_type", evt.Type)
 			}
 			return consumerMessageResult{}
 		}
 	}
-	stopHeartbeat := c.startInProgressHeartbeat(ctx, inProgress)
+	stopHeartbeat := c.startInProgressHeartbeat(ctx, message.inProgress)
 	defer stopHeartbeat()
 	if err := c.handler(ctx, evt); err != nil {
 		c.logger.Warn("tap consumer handler failed; message requeued", "error", err, "event_type", evt.Type)
-		if nakErr := nak(); nakErr != nil {
+		if nakErr := message.nak(); nakErr != nil {
 			c.logger.Warn("tap consumer nak failed", "error", nakErr, "event_type", evt.Type)
 		}
 		return consumerMessageResult{}
@@ -468,7 +503,7 @@ func (c *Consumer) handleMessage(ctx context.Context, subject string, payload []
 	processedAt := time.Now().UTC()
 	metrics.RecordNATSConsumerProcessed(c.config.Stream, c.config.Durable)
 	if c.deduper != nil {
-		if err := c.deduper.Remember(ctx, evt, payload, processedAt); err != nil {
+		if err := c.deduper.Remember(ctx, evt, message.payload, processedAt); err != nil {
 			c.logger.Warn("tap consumer failed to persist processed event dedupe state",
 				"error", err,
 				"event_id", evt.ID,
@@ -476,7 +511,7 @@ func (c *Consumer) handleMessage(ctx context.Context, subject string, payload []
 			)
 		}
 	}
-	if err := ack(); err != nil {
+	if err := message.ack(); err != nil {
 		c.logger.Warn("tap consumer ack failed", "error", err, "event_type", evt.Type)
 	}
 	return consumerMessageResult{
@@ -484,6 +519,216 @@ func (c *Consumer) handleMessage(ctx context.Context, subject string, payload []
 		EventTime:   evt.Time.UTC(),
 		ProcessedAt: processedAt,
 	}
+}
+
+func (c *Consumer) processBatch(ctx context.Context, messages []consumerPipelineMessage) bool {
+	if len(messages) == 0 {
+		return false
+	}
+	batchInProgress := make([]func() error, len(messages))
+	for i := range messages {
+		batchInProgress[i] = messages[i].inProgress
+	}
+	deactivateBatchHeartbeat, stopBatchHeartbeat := c.startBatchInProgressHeartbeat(ctx, batchInProgress)
+	defer stopBatchHeartbeat()
+
+	decoded := c.decodeBatch(messages)
+	workerCount := consumerHandlerWorkers(c.config)
+	queueDepth := consumerHandlerQueueDepth(c.config, workerCount)
+	workerChans := make([]chan consumerDecodedMessage, workerCount)
+
+	var workerWG sync.WaitGroup
+	for i := range workerChans {
+		ch := make(chan consumerDecodedMessage, queueDepth)
+		workerChans[i] = ch
+		workerWG.Add(1)
+		go func(ch <-chan consumerDecodedMessage) {
+			defer workerWG.Done()
+			for decoded := range ch {
+				deactivateBatchHeartbeat(decoded.message.index)
+				result := c.handleDecodedMessage(ctx, decoded)
+				if result.Processed {
+					c.recordProcessed(result.ProcessedAt, result.EventTime)
+				}
+			}
+		}(ch)
+	}
+
+	backpressured := false
+	for _, decoded := range decoded {
+		if decoded.handled {
+			deactivateBatchHeartbeat(decoded.message.index)
+			if decoded.result.Processed {
+				c.recordProcessed(decoded.result.ProcessedAt, decoded.result.EventTime)
+			}
+			continue
+		}
+		shard := consumerShardIndex(decoded.event, workerCount)
+		if consumerAllWorkerQueuesFull(workerChans) {
+			backpressured = true
+		}
+		select {
+		case workerChans[shard] <- decoded:
+		case <-ctx.Done():
+			deactivateBatchHeartbeat(decoded.message.index)
+			for _, ch := range workerChans {
+				close(ch)
+			}
+			workerWG.Wait()
+			return backpressured
+		}
+	}
+	for _, ch := range workerChans {
+		close(ch)
+	}
+	workerWG.Wait()
+	return backpressured
+}
+
+func consumerAllWorkerQueuesFull(workerChans []chan consumerDecodedMessage) bool {
+	if len(workerChans) == 0 {
+		return false
+	}
+	for _, ch := range workerChans {
+		if len(ch) < cap(ch) {
+			return false
+		}
+	}
+	return true
+}
+
+func (c *Consumer) decodeBatch(messages []consumerPipelineMessage) []consumerDecodedMessage {
+	decoded := make([]consumerDecodedMessage, len(messages))
+	if len(messages) == 0 {
+		return decoded
+	}
+	workerCount := consumerDecodeWorkers(c.config, len(messages))
+	jobs := make(chan int, len(messages))
+	var wg sync.WaitGroup
+	for i := 0; i < workerCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for index := range jobs {
+				decoded[index] = c.decodePipelineMessage(messages[index])
+			}
+		}()
+	}
+	for i := range messages {
+		jobs <- i
+	}
+	close(jobs)
+	wg.Wait()
+	return decoded
+}
+
+func consumerDecodeWorkers(cfg ConsumerConfig, messages int) int {
+	workers := consumerHandlerWorkers(cfg)
+	if workers > messages {
+		return messages
+	}
+	if workers <= 0 {
+		return 1
+	}
+	return workers
+}
+
+func consumerHandlerWorkers(cfg ConsumerConfig) int {
+	if cfg.HandlerWorkers > 0 {
+		if cfg.BatchSize > 0 && cfg.HandlerWorkers > cfg.BatchSize {
+			return cfg.BatchSize
+		}
+		return cfg.HandlerWorkers
+	}
+	workers := runtime.GOMAXPROCS(0)
+	if workers < 1 {
+		workers = 1
+	}
+	if cfg.BatchSize > 0 && workers > cfg.BatchSize {
+		return cfg.BatchSize
+	}
+	return workers
+}
+
+func consumerHandlerQueueDepth(cfg ConsumerConfig, workers int) int {
+	if workers <= 0 {
+		return 1
+	}
+	depth := cfg.BatchSize / workers
+	if depth < 1 {
+		depth = 1
+	}
+	return depth
+}
+
+func initialAdaptiveConsumerBatchSize(maxBatchSize int) int {
+	if maxBatchSize <= 1 {
+		return 1
+	}
+	initial := maxBatchSize / 4
+	if initial < 1 {
+		initial = 1
+	}
+	if initial > 8 {
+		initial = 8
+	}
+	return initial
+}
+
+func nextAdaptiveConsumerBatchSize(current, maxBatchSize, fetched int, backpressured bool) int {
+	if maxBatchSize <= 1 {
+		return 1
+	}
+	if current <= 0 {
+		current = initialAdaptiveConsumerBatchSize(maxBatchSize)
+	}
+	if backpressured {
+		next := current / 2
+		if next < 1 {
+			next = 1
+		}
+		return next
+	}
+	if fetched >= current && current < maxBatchSize {
+		next := current * 2
+		if next > maxBatchSize {
+			next = maxBatchSize
+		}
+		return next
+	}
+	return current
+}
+
+func consumerShardIndex(evt CloudEvent, workers int) int {
+	if workers <= 1 {
+		return 0
+	}
+	key := consumerOrderingKey(evt)
+	if key == "" {
+		return 0
+	}
+	hasher := fnv.New32a()
+	_, _ = hasher.Write([]byte(key))
+	hash := int(hasher.Sum32() & math.MaxInt32)
+	return hash % workers
+}
+
+func consumerOrderingKey(evt CloudEvent) string {
+	tenantID := strings.TrimSpace(evt.TenantID)
+	entityID := extractEntityID(evt.Data)
+	if entityID != "" {
+		return tenantID + "|" + entityID
+	}
+	if key, ok := consumerProcessedEventKey(evt); ok {
+		return key
+	}
+	if subject := strings.TrimSpace(evt.Subject); subject != "" {
+		return tenantID + "|" + subject
+	}
+	if eventID := strings.TrimSpace(evt.ID); eventID != "" {
+		return tenantID + "|" + eventID
+	}
+	return strings.TrimSpace(evt.Type)
 }
 
 func (c *Consumer) recordDropped(reason string, at time.Time) {
@@ -545,6 +790,7 @@ func (c *Consumer) startInProgressHeartbeat(ctx context.Context, inProgress func
 	if c == nil || inProgress == nil || c.config.InProgressInterval <= 0 {
 		return func() {}
 	}
+	heartbeatCtx := context.WithoutCancel(ctx)
 	stopCh := make(chan struct{})
 	var once sync.Once
 	go func() {
@@ -552,7 +798,7 @@ func (c *Consumer) startInProgressHeartbeat(ctx context.Context, inProgress func
 		defer ticker.Stop()
 		for {
 			select {
-			case <-ctx.Done():
+			case <-heartbeatCtx.Done():
 				return
 			case <-stopCh:
 				return
@@ -572,6 +818,7 @@ func (c *Consumer) startBatchInProgressHeartbeat(ctx context.Context, inProgress
 	if c == nil || c.config.InProgressInterval <= 0 || len(inProgress) == 0 {
 		return func(int) {}, func() {}
 	}
+	heartbeatCtx := context.WithoutCancel(ctx)
 	active := make([]bool, len(inProgress))
 	for i := range active {
 		active[i] = inProgress[i] != nil
@@ -588,7 +835,7 @@ func (c *Consumer) startBatchInProgressHeartbeat(ctx context.Context, inProgress
 		defer ticker.Stop()
 		for {
 			select {
-			case <-ctx.Done():
+			case <-heartbeatCtx.Done():
 				return
 			case <-stopCh:
 				return
@@ -877,6 +1124,9 @@ func (c ConsumerConfig) withDefaults() ConsumerConfig {
 	if cfg.BatchSize <= 0 {
 		cfg.BatchSize = defaultConsumerBatchSize
 	}
+	if cfg.HandlerWorkers <= 0 {
+		cfg.HandlerWorkers = consumerHandlerWorkers(cfg)
+	}
 	if cfg.AckWait <= 0 {
 		cfg.AckWait = defaultConsumerAckWait
 	}
@@ -931,6 +1181,9 @@ func (c ConsumerConfig) validate() error {
 	}
 	if c.BatchSize <= 0 {
 		return errors.New("consumer batch size must be > 0")
+	}
+	if c.HandlerWorkers <= 0 {
+		return errors.New("consumer handler workers must be > 0")
 	}
 	if c.AckWait <= 0 {
 		return errors.New("consumer ack wait must be > 0")
