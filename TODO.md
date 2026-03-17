@@ -32,6 +32,20 @@ Status: executed end-to-end via PR workflow
 - [x] Add TDD coverage for clone sharing followed by mutation detachment.
 - [x] Re-run focused graph tests, lint, changed-file validation, and clone benchmarks.
 
+## Deep Review Cycle 185 - Observation Summary Compaction (2026-03-17)
+
+### Review findings
+- [x] Gap: issue `#368` still let runtime observation nodes accumulate indefinitely even after the graph package started landing memory and traversal optimizations, leaving cardinality pressure unbounded on the runtime side.
+- [x] Gap: there was no graph-native compaction path that could roll stale observations into bounded per-workload summaries while preserving evidence and correlation chains.
+- [x] Gap: repeated compaction would have duplicated daily summaries without an idempotent merge path for later stale observations from the same workload and day bucket.
+
+### Execution plan
+- [x] Add runtimegraph observation compaction policy defaults with per-kind active windows.
+- [x] Compact stale observation nodes into deterministic per-subject, per-kind, per-day summary observation nodes.
+- [x] Preserve any observation participating in `based_on` chains so finding/evidence correlation does not get truncated.
+- [x] Merge later stale observations into an existing daily summary node instead of creating duplicates.
+- [x] Re-run focused runtimegraph tests, lint, changed-file validation, and summary-compaction coverage.
+
 ## Deep Review Cycle 182 - Parallel Blast/Reverse Frontier Traversal (2026-03-17)
 
 ### Review findings

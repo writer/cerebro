@@ -21,6 +21,7 @@ func FinalizeMaterializedGraph(g *graph.Graph, now time.Time) {
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
+	CompactHistoricalObservations(g, now, DefaultObservationCompactionPolicy())
 	g.BuildIndex()
 	refreshMaterializedGraphMetadata(g, now)
 }
