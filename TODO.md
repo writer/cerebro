@@ -18,6 +18,18 @@ Status: executed end-to-end via PR workflow
 - [x] Add TDD coverage for irrelevant-change suppression, burst coalescing, and post-mutation view consistency.
 - [x] Re-run focused and full graph tests, lint, and changed-file validation.
 
+## Deep Review Cycle 193 - Tenant-Scoped Live Graph Readers (2026-03-17)
+
+### Review findings
+- [x] Gap: issue `#347` still enforced tenant isolation for many API reads by cloning `SubgraphForTenant()` snapshots, which preserved correctness but turned every tenant-scoped query into an avoidable graph copy.
+- [x] Gap: the graph package had no first-class reader abstraction that could derive tenant scope from context, reject implicit multi-tenant reads, and filter nodes and edges in-place over the live graph.
+- [x] Gap: cross-tenant graph reads had no graph-level audit hook or tenant-count summary, so later boundary handlers could not reuse one consistent authorization and observability substrate.
+
+### Execution plan
+- [x] Add a context-derived tenant read scope with explicit cross-tenant opt-in and graph-level audit hook support.
+- [x] Add a tenant reader that filters nodes, temporal node reads, and temporal edge reads over the live graph without cloning.
+- [x] Add TDD coverage for required scope on multi-tenant graphs, tenant filtering, cross-tenant audit hook execution, and focused reader throughput.
+
 ## Deep Review Cycle 191 - Reactive Graph Monitors (2026-03-17)
 
 ### Review findings
