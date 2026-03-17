@@ -12,15 +12,18 @@ import (
 
 // MaterializationResult summarizes one batch of runtime observation graph writes.
 type MaterializationResult struct {
-	ObservationsConsidered      int   `json:"observations_considered"`
-	ObservationsMaterialized    int   `json:"observations_materialized"`
-	ObservationsSkipped         int   `json:"observations_skipped"`
-	WorkloadTargetEdgesCreated  int   `json:"workload_target_edges_created"`
-	ResponseBasedOnEdgesCreated int   `json:"response_based_on_edges_created"`
-	MissingSubjects             int   `json:"missing_subjects"`
-	InvalidObservations         int   `json:"invalid_observations"`
-	LastError                   error `json:"-"`
+	ObservationsConsidered           int   `json:"observations_considered"`
+	ObservationsMaterialized         int   `json:"observations_materialized"`
+	ObservationsSkipped              int   `json:"observations_skipped"`
+	WorkloadTargetEdgesCreated       int   `json:"workload_target_edges_created"`
+	ResponseBasedOnEdgesCreated      int   `json:"response_based_on_edges_created"`
+	DeploymentRunBasedOnEdgesCreated int   `json:"deployment_run_based_on_edges_created"`
+	MissingSubjects                  int   `json:"missing_subjects"`
+	InvalidObservations              int   `json:"invalid_observations"`
+	LastError                        error `json:"-"`
 }
+
+const deploymentRunObservationMaxGap = 30 * time.Minute
 
 // MaterializeObservationsIntoGraph projects runtime observations into graph observation nodes.
 func MaterializeObservationsIntoGraph(g *graph.Graph, observations []*runtime.RuntimeObservation, now time.Time) MaterializationResult {
@@ -94,6 +97,12 @@ func MaterializeObservationsIntoGraph(g *graph.Graph, observations []*runtime.Ru
 				if graph.AddEdgeIfMissing(g, buildResponseOutcomeBasedOnEdge(req.ID, evidenceNodeID, observation)) {
 					result.ResponseBasedOnEdgesCreated++
 				}
+			}
+		}
+
+		if deploymentRunID, serviceID, gap, ok := observationDeploymentRunCandidate(g, observation, req.SubjectID); ok {
+			if graph.AddEdgeIfMissing(g, buildObservationDeploymentRunBasedOnEdge(req.ID, deploymentRunID, serviceID, gap, observation)) {
+				result.DeploymentRunBasedOnEdgesCreated++
 			}
 		}
 
@@ -188,6 +197,174 @@ func buildResponseOutcomeBasedOnEdge(observationNodeID, evidenceNodeID string, o
 		ID:         observationNodeID + "->" + evidenceNodeID + ":" + string(graph.EdgeKindBasedOn),
 		Source:     observationNodeID,
 		Target:     evidenceNodeID,
+		Kind:       graph.EdgeKindBasedOn,
+		Effect:     graph.EdgeEffectAllow,
+		Properties: properties,
+	}
+}
+
+func observationDeploymentRunCandidate(g *graph.Graph, observation *runtime.RuntimeObservation, subjectID string) (string, string, time.Duration, bool) {
+	if g == nil || observation == nil || observation.ObservedAt.IsZero() {
+		return "", "", 0, false
+	}
+
+	serviceID := observationDeploymentServiceID(observation, subjectID)
+	if serviceID == "" {
+		return "", "", 0, false
+	}
+
+	var candidateID string
+	var candidateGap time.Duration
+	for _, node := range g.GetNodesByKind(graph.NodeKindDeploymentRun) {
+		if !deploymentRunTargetsService(g, node, serviceID) {
+			continue
+		}
+
+		deployedAt, ok := deploymentRunObservedAt(node)
+		if !ok || deployedAt.After(observation.ObservedAt) {
+			continue
+		}
+
+		gap := observation.ObservedAt.Sub(deployedAt)
+		if gap < 0 || gap > deploymentRunObservationMaxGap {
+			continue
+		}
+
+		if candidateID != "" {
+			return "", "", 0, false
+		}
+		candidateID = strings.TrimSpace(node.ID)
+		candidateGap = gap
+	}
+
+	if candidateID == "" {
+		return "", "", 0, false
+	}
+	return candidateID, serviceID, candidateGap, true
+}
+
+func observationDeploymentServiceID(observation *runtime.RuntimeObservation, subjectID string) string {
+	subjectID = strings.TrimSpace(subjectID)
+	if strings.HasPrefix(subjectID, "service:") {
+		return subjectID
+	}
+	if observation == nil {
+		return ""
+	}
+
+	resourceID := strings.TrimSpace(observation.ResourceID)
+	if strings.HasPrefix(resourceID, "service:") {
+		return resourceID
+	}
+
+	if serviceID := metadataString(observation.Metadata, "service_id"); strings.HasPrefix(serviceID, "service:") {
+		return serviceID
+	}
+
+	serviceName := metadataString(observation.Metadata, "service_name")
+	if observation.Trace != nil {
+		serviceName = firstNonEmpty(observation.Trace.ServiceName, serviceName)
+	}
+	if serviceName == "" {
+		return ""
+	}
+
+	namespace := firstNonEmpty(observation.Namespace, metadataString(observation.Metadata, "service_namespace"))
+	if namespace == "" {
+		return "service:" + serviceName
+	}
+	return "service:" + namespace + "/" + serviceName
+}
+
+func deploymentRunTargetsService(g *graph.Graph, node *graph.Node, serviceID string) bool {
+	if g == nil || node == nil || strings.TrimSpace(serviceID) == "" {
+		return false
+	}
+	for _, edge := range g.GetOutEdges(node.ID) {
+		if edge == nil || edge.Kind != graph.EdgeKindTargets {
+			continue
+		}
+		if strings.TrimSpace(edge.Target) == serviceID {
+			return true
+		}
+	}
+	return false
+}
+
+func deploymentRunObservedAt(node *graph.Node) (time.Time, bool) {
+	if node == nil {
+		return time.Time{}, false
+	}
+	if ts, ok := propertyTime(node.Properties, "observed_at"); ok {
+		return ts.UTC(), true
+	}
+	if ts, ok := propertyTime(node.Properties, "valid_from"); ok {
+		return ts.UTC(), true
+	}
+	if !node.CreatedAt.IsZero() {
+		return node.CreatedAt.UTC(), true
+	}
+	return time.Time{}, false
+}
+
+func propertyTime(properties map[string]any, key string) (time.Time, bool) {
+	if len(properties) == 0 {
+		return time.Time{}, false
+	}
+	raw, ok := properties[key]
+	if !ok {
+		return time.Time{}, false
+	}
+	switch typed := raw.(type) {
+	case time.Time:
+		if typed.IsZero() {
+			return time.Time{}, false
+		}
+		return typed.UTC(), true
+	case string:
+		return parseRFC3339Time(typed)
+	case []byte:
+		return parseRFC3339Time(string(typed))
+	default:
+		return time.Time{}, false
+	}
+}
+
+func parseRFC3339Time(value string) (time.Time, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, false
+	}
+	if ts, err := time.Parse(time.RFC3339Nano, value); err == nil {
+		return ts.UTC(), true
+	}
+	if ts, err := time.Parse(time.RFC3339, value); err == nil {
+		return ts.UTC(), true
+	}
+	return time.Time{}, false
+}
+
+func buildObservationDeploymentRunBasedOnEdge(observationNodeID, deploymentRunID, serviceID string, gap time.Duration, observation *runtime.RuntimeObservation) *graph.Edge {
+	observationNodeID = strings.TrimSpace(observationNodeID)
+	deploymentRunID = strings.TrimSpace(deploymentRunID)
+	serviceID = strings.TrimSpace(serviceID)
+	if observationNodeID == "" || deploymentRunID == "" || serviceID == "" {
+		return nil
+	}
+
+	properties := map[string]any{
+		"source_system":          firstNonEmpty(strings.TrimSpace(observation.Source), "runtime"),
+		"service_id":             serviceID,
+		"deployment_gap_seconds": int64(gap.Seconds()),
+	}
+	addMetadataString(properties, "source_event_id", strings.TrimSpace(observation.ID))
+	addMetadataString(properties, "observed_at", observation.ObservedAt.UTC().Format(time.RFC3339))
+	addMetadataString(properties, "valid_from", observation.ObservedAt.UTC().Format(time.RFC3339))
+
+	return &graph.Edge{
+		ID:         observationNodeID + "->" + deploymentRunID + ":" + string(graph.EdgeKindBasedOn),
+		Source:     observationNodeID,
+		Target:     deploymentRunID,
 		Kind:       graph.EdgeKindBasedOn,
 		Effect:     graph.EdgeEffectAllow,
 		Properties: properties,

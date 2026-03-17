@@ -501,6 +501,231 @@ func TestMaterializeObservationsIntoGraphDoesNotDuplicateResponseOutcomeBasedOnE
 	}
 }
 
+func TestMaterializeObservationsIntoGraphAddsDeploymentRunBasedOnEdge(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:   "deployment:storefront/checkout",
+		Kind: graph.NodeKindDeployment,
+		Name: "checkout",
+	})
+	g.AddNode(&graph.Node{
+		ID:   "service:storefront/checkout",
+		Kind: graph.NodeKindService,
+		Name: "checkout",
+	})
+	g.AddNode(&graph.Node{
+		ID:       "deployment_run:storefront/checkout:deploy-1",
+		Kind:     graph.NodeKindDeploymentRun,
+		Name:     "deploy-1",
+		Provider: "github_actions",
+		Properties: map[string]any{
+			"status":      "completed",
+			"service_id":  "service:storefront/checkout",
+			"observed_at": "2026-03-16T20:30:00Z",
+			"valid_from":  "2026-03-16T20:30:00Z",
+		},
+	})
+	g.AddEdge(&graph.Edge{
+		ID:     "deployment_run:storefront/checkout:deploy-1->service:storefront/checkout:targets",
+		Source: "deployment_run:storefront/checkout:deploy-1",
+		Target: "service:storefront/checkout",
+		Kind:   graph.EdgeKindTargets,
+		Effect: graph.EdgeEffectAllow,
+	})
+
+	observation := &runtime.RuntimeObservation{
+		ID:          "runtime:process_exec:deploy-linked",
+		Source:      "tetragon",
+		Kind:        runtime.ObservationKindProcessExec,
+		ObservedAt:  time.Date(2026, 3, 16, 20, 45, 0, 0, time.UTC),
+		RecordedAt:  time.Date(2026, 3, 16, 20, 45, 1, 0, time.UTC),
+		WorkloadRef: "deployment:storefront/checkout",
+		Namespace:   "storefront",
+		Trace: &runtime.TraceContext{
+			ServiceName: "checkout",
+		},
+		Process: &runtime.ProcessEvent{
+			Name: "sh",
+			Path: "/bin/sh",
+		},
+		Metadata: map[string]any{
+			"service_namespace": "storefront",
+		},
+	}
+
+	result := MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{observation}, time.Date(2026, 3, 16, 20, 46, 0, 0, time.UTC))
+	if result.ObservationsMaterialized != 1 {
+		t.Fatalf("ObservationsMaterialized = %d, want 1", result.ObservationsMaterialized)
+	}
+	if result.DeploymentRunBasedOnEdgesCreated != 1 {
+		t.Fatalf("DeploymentRunBasedOnEdgesCreated = %d, want 1", result.DeploymentRunBasedOnEdgesCreated)
+	}
+
+	observationNodeID := "observation:" + observation.ID
+	var found bool
+	for _, edge := range g.GetOutEdges(observationNodeID) {
+		if edge.Kind != graph.EdgeKindBasedOn {
+			continue
+		}
+		found = true
+		if edge.Target != "deployment_run:storefront/checkout:deploy-1" {
+			t.Fatalf("based_on target = %q, want deployment_run:storefront/checkout:deploy-1", edge.Target)
+		}
+		if got := edge.Properties["service_id"]; got != "service:storefront/checkout" {
+			t.Fatalf("based_on service_id = %#v, want service:storefront/checkout", got)
+		}
+		if got := edge.Properties["deployment_gap_seconds"]; got != int64((15 * time.Minute).Seconds()) {
+			t.Fatalf("based_on deployment_gap_seconds = %#v, want %d", got, int64((15 * time.Minute).Seconds()))
+		}
+	}
+	if !found {
+		t.Fatal("expected deployment_run based_on edge")
+	}
+}
+
+func TestMaterializeObservationsIntoGraphSkipsDeploymentRunBasedOnEdgeWhenAmbiguous(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:   "deployment:storefront/checkout",
+		Kind: graph.NodeKindDeployment,
+		Name: "checkout",
+	})
+	g.AddNode(&graph.Node{
+		ID:   "service:storefront/checkout",
+		Kind: graph.NodeKindService,
+		Name: "checkout",
+	})
+	for _, id := range []string{
+		"deployment_run:storefront/checkout:deploy-1",
+		"deployment_run:storefront/checkout:deploy-2",
+	} {
+		g.AddNode(&graph.Node{
+			ID:       id,
+			Kind:     graph.NodeKindDeploymentRun,
+			Name:     id,
+			Provider: "github_actions",
+			Properties: map[string]any{
+				"status":      "completed",
+				"service_id":  "service:storefront/checkout",
+				"observed_at": "2026-03-16T20:30:00Z",
+				"valid_from":  "2026-03-16T20:30:00Z",
+			},
+		})
+		g.AddEdge(&graph.Edge{
+			ID:     id + "->service:storefront/checkout:targets",
+			Source: id,
+			Target: "service:storefront/checkout",
+			Kind:   graph.EdgeKindTargets,
+			Effect: graph.EdgeEffectAllow,
+		})
+	}
+
+	observation := &runtime.RuntimeObservation{
+		ID:          "runtime:process_exec:deploy-ambiguous",
+		Source:      "tetragon",
+		Kind:        runtime.ObservationKindProcessExec,
+		ObservedAt:  time.Date(2026, 3, 16, 20, 45, 0, 0, time.UTC),
+		RecordedAt:  time.Date(2026, 3, 16, 20, 45, 1, 0, time.UTC),
+		WorkloadRef: "deployment:storefront/checkout",
+		Namespace:   "storefront",
+		Trace: &runtime.TraceContext{
+			ServiceName: "checkout",
+		},
+		Process: &runtime.ProcessEvent{
+			Name: "sh",
+			Path: "/bin/sh",
+		},
+		Metadata: map[string]any{
+			"service_namespace": "storefront",
+		},
+	}
+
+	result := MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{observation}, time.Date(2026, 3, 16, 20, 46, 0, 0, time.UTC))
+	if result.DeploymentRunBasedOnEdgesCreated != 0 {
+		t.Fatalf("DeploymentRunBasedOnEdgesCreated = %d, want 0", result.DeploymentRunBasedOnEdgesCreated)
+	}
+
+	observationNodeID := "observation:" + observation.ID
+	for _, edge := range g.GetOutEdges(observationNodeID) {
+		if edge.Kind == graph.EdgeKindBasedOn {
+			t.Fatalf("unexpected based_on edge = %+v", edge)
+		}
+	}
+}
+
+func TestMaterializeObservationsIntoGraphDoesNotDuplicateDeploymentRunBasedOnEdges(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:   "deployment:storefront/checkout",
+		Kind: graph.NodeKindDeployment,
+		Name: "checkout",
+	})
+	g.AddNode(&graph.Node{
+		ID:   "service:storefront/checkout",
+		Kind: graph.NodeKindService,
+		Name: "checkout",
+	})
+	g.AddNode(&graph.Node{
+		ID:       "deployment_run:storefront/checkout:deploy-1",
+		Kind:     graph.NodeKindDeploymentRun,
+		Name:     "deploy-1",
+		Provider: "github_actions",
+		Properties: map[string]any{
+			"status":      "completed",
+			"service_id":  "service:storefront/checkout",
+			"observed_at": "2026-03-16T20:30:00Z",
+			"valid_from":  "2026-03-16T20:30:00Z",
+		},
+	})
+	g.AddEdge(&graph.Edge{
+		ID:     "deployment_run:storefront/checkout:deploy-1->service:storefront/checkout:targets",
+		Source: "deployment_run:storefront/checkout:deploy-1",
+		Target: "service:storefront/checkout",
+		Kind:   graph.EdgeKindTargets,
+		Effect: graph.EdgeEffectAllow,
+	})
+
+	observation := &runtime.RuntimeObservation{
+		ID:          "runtime:process_exec:deploy-dedupe",
+		Source:      "tetragon",
+		Kind:        runtime.ObservationKindProcessExec,
+		ObservedAt:  time.Date(2026, 3, 16, 20, 45, 0, 0, time.UTC),
+		RecordedAt:  time.Date(2026, 3, 16, 20, 45, 1, 0, time.UTC),
+		WorkloadRef: "deployment:storefront/checkout",
+		Namespace:   "storefront",
+		Trace: &runtime.TraceContext{
+			ServiceName: "checkout",
+		},
+		Process: &runtime.ProcessEvent{
+			Name: "sh",
+			Path: "/bin/sh",
+		},
+		Metadata: map[string]any{
+			"service_namespace": "storefront",
+		},
+	}
+
+	first := MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{observation}, time.Date(2026, 3, 16, 20, 46, 0, 0, time.UTC))
+	second := MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{observation}, time.Date(2026, 3, 16, 20, 47, 0, 0, time.UTC))
+	if first.DeploymentRunBasedOnEdgesCreated != 1 {
+		t.Fatalf("first DeploymentRunBasedOnEdgesCreated = %d, want 1", first.DeploymentRunBasedOnEdgesCreated)
+	}
+	if second.DeploymentRunBasedOnEdgesCreated != 0 {
+		t.Fatalf("second DeploymentRunBasedOnEdgesCreated = %d, want 0", second.DeploymentRunBasedOnEdgesCreated)
+	}
+
+	observationNodeID := "observation:" + observation.ID
+	basedOnCount := 0
+	for _, edge := range g.GetOutEdges(observationNodeID) {
+		if edge.Kind == graph.EdgeKindBasedOn && edge.Target == "deployment_run:storefront/checkout:deploy-1" {
+			basedOnCount++
+		}
+	}
+	if basedOnCount != 1 {
+		t.Fatalf("deployment_run based_on edge count = %d, want 1", basedOnCount)
+	}
+}
+
 func TestMaterializeObservationsIntoGraphDefersIndexBuildToCaller(t *testing.T) {
 	g := graph.New()
 	g.AddNode(&graph.Node{

@@ -5,6 +5,25 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 156 - Runtime Observation Causal Links To Deployment Runs (2026-03-16)
+
+### Review findings
+- [x] Gap: runtime observation projection already materializes `observation` nodes, but there was still no causal link back to the one deployment run most likely to have introduced the observed behavior when service and time evidence are both strong.
+- [x] Gap: this correlation needs to stay conservative; multiple recent deployments on the same service should suppress the edge rather than guessing a cause.
+- [x] Gap: runtimegraph had no regression coverage proving deployment-run causal edges can be added for workload-scoped observations with service metadata, skipped on ambiguity, and deduplicated across repeated materialization passes.
+
+### Execution plan
+- [x] Add a deployment-run matcher in runtimegraph that requires:
+  - [x] one derivable service ID for the observation
+  - [x] exactly one recent `deployment_run` targeting that service
+  - [x] a bounded pre-observation time window
+- [x] Materialize `observation -> based_on -> deployment_run` edges with service and time-gap metadata.
+- [x] Add TDD coverage for:
+  - [x] unique deployment correlation
+  - [x] ambiguity skip behavior
+  - [x] idempotent repeated projection
+- [x] Re-run focused runtimegraph tests, lint, and changed-file validation.
+
 ## Deep Review Cycle 155 - Runtime Response Outcome Causal Links To Findings (2026-03-16)
 
 ### Review findings
@@ -583,8 +602,8 @@ Status: executed end-to-end via PR workflow
 - [x] 063. Add workload-to-observation edges.
 - [x] 064. Add finding-to-evidence edges.
 - [x] 065. Add response-to-target edges for runtime response outcomes.
-- [ ] 066. Add causal edges from response outcomes back to findings.
-- [ ] 067. Add causal edges from runtime observations to deployment runs where justified.
+- [x] 066. Add causal edges from response outcomes back to findings.
+- [x] 067. Add causal edges from runtime observations to deployment runs where justified.
 - [ ] 068. Add causal edges from runtime observations to Kubernetes audit events where justified.
 - [ ] 069. Add graph materialization tests for runtime observations.
 - [ ] 070. Add graph ontology/schema entries required for runtime evidence projection.
