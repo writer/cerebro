@@ -939,7 +939,7 @@ func dedupeVulnerabilities(vulns []scanner.ImageVulnerability) []scanner.ImageVu
 	if len(vulns) == 0 {
 		return nil
 	}
-	seen := make(map[string]struct{}, len(vulns))
+	seen := make(map[string]int, len(vulns))
 	out := make([]scanner.ImageVulnerability, 0, len(vulns))
 	for _, vuln := range vulns {
 		identifier := strings.TrimSpace(vuln.CVE)
@@ -950,13 +950,43 @@ func dedupeVulnerabilities(vulns []scanner.ImageVulnerability) []scanner.ImageVu
 		if key == "||" {
 			key = strings.TrimSpace(vuln.FixedVersion) + "|" + strings.TrimSpace(vuln.Severity)
 		}
-		if _, ok := seen[key]; ok {
+		if idx, ok := seen[key]; ok {
+			out[idx] = mergeImageVulnerability(out[idx], vuln)
 			continue
 		}
-		seen[key] = struct{}{}
+		seen[key] = len(out)
 		out = append(out, vuln)
 	}
 	return out
+}
+
+func mergeImageVulnerability(existing, incoming scanner.ImageVulnerability) scanner.ImageVulnerability {
+	merged := existing
+	if strings.TrimSpace(merged.ID) == "" {
+		merged.ID = strings.TrimSpace(incoming.ID)
+	}
+	if strings.TrimSpace(merged.CVE) == "" {
+		merged.CVE = strings.TrimSpace(incoming.CVE)
+	}
+	if strings.TrimSpace(merged.Severity) == "" || strings.EqualFold(strings.TrimSpace(merged.Severity), "unknown") {
+		merged.Severity = strings.TrimSpace(incoming.Severity)
+	}
+	if strings.TrimSpace(merged.FixedVersion) == "" {
+		merged.FixedVersion = strings.TrimSpace(incoming.FixedVersion)
+	}
+	if strings.TrimSpace(merged.Description) == "" {
+		merged.Description = strings.TrimSpace(incoming.Description)
+	}
+	if merged.CVSS == 0 {
+		merged.CVSS = incoming.CVSS
+	}
+	if merged.Published.IsZero() {
+		merged.Published = incoming.Published
+	}
+	merged.Exploitable = merged.Exploitable || incoming.Exploitable
+	merged.InKEV = merged.InKEV || incoming.InKEV
+	merged.References = dedupeStrings(append(append([]string{}, merged.References...), incoming.References...))
+	return merged
 }
 
 func buildVulnerabilityFindings(vulns []scanner.ImageVulnerability) []scanner.ContainerFinding {

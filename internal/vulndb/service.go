@@ -23,6 +23,17 @@ type advisoryStore interface {
 	UpsertEPSS(ctx context.Context, cve string, score, percentile float64) (int64, error)
 }
 
+type advisoryWriteStore interface {
+	UpsertAdvisory(ctx context.Context, vuln Vulnerability, affected []AffectedPackage) error
+	UpdateSyncState(ctx context.Context, state SyncState) error
+	MarkKEV(ctx context.Context, cves []string) (int64, error)
+	UpsertEPSS(ctx context.Context, cve string, score, percentile float64) (int64, error)
+}
+
+type transactionalWriteStore interface {
+	WithWriteTx(ctx context.Context, fn func(advisoryWriteStore) error) error
+}
+
 type Service struct {
 	store advisoryStore
 	now   func() time.Time
@@ -74,7 +85,7 @@ func (s *Service) MatchPackages(ctx context.Context, _ filesystemanalyzer.OSInfo
 		return nil, nil
 	}
 	matches := make([]scanner.ImageVulnerability, 0)
-	seen := make(map[string]struct{})
+	matchIndexes := make(map[string]int)
 	for _, pkg := range packages {
 		ecosystem := normalizeEcosystem(pkg.Ecosystem)
 		name := strings.TrimSpace(strings.ToLower(pkg.Name))
@@ -95,11 +106,7 @@ func (s *Service) MatchPackages(ctx context.Context, _ filesystemanalyzer.OSInfo
 			}
 			identifier := primaryVulnerabilityID(candidate.Vulnerability)
 			key := strings.ToLower(identifier + "|" + name + "|" + pkg.Version)
-			if _, ok := seen[key]; ok {
-				continue
-			}
-			seen[key] = struct{}{}
-			matches = append(matches, scanner.ImageVulnerability{
+			match := scanner.ImageVulnerability{
 				ID:               fmt.Sprintf("vulndb:%s:%s", sanitizeID(identifier), sanitizeID(name)),
 				CVE:              identifier,
 				Severity:         normalizeSeverity(candidate.Vulnerability.Severity),
@@ -109,13 +116,48 @@ func (s *Service) MatchPackages(ctx context.Context, _ filesystemanalyzer.OSInfo
 				Description:      firstNonEmpty(candidate.Vulnerability.Summary, candidate.Vulnerability.Details),
 				CVSS:             candidate.Vulnerability.CVSS,
 				Published:        candidate.Vulnerability.PublishedAt,
-				Exploitable:      candidate.Vulnerability.InKEV || candidate.Vulnerability.EPSSScore >= 0.5,
-				InKEV:            candidate.Vulnerability.InKEV,
-				References:       uniqueStrings(candidate.Vulnerability.References),
-			})
+			}
+			match.Exploitable = candidate.Vulnerability.InKEV || candidate.Vulnerability.EPSSScore >= 0.5
+			match.InKEV = candidate.Vulnerability.InKEV
+			match.References = uniqueStrings(candidate.Vulnerability.References)
+			if idx, ok := matchIndexes[key]; ok {
+				matches[idx] = mergeMatchedVulnerability(matches[idx], match)
+				continue
+			}
+			matchIndexes[key] = len(matches)
+			matches = append(matches, match)
 		}
 	}
 	return matches, nil
+}
+
+func mergeMatchedVulnerability(existing, incoming scanner.ImageVulnerability) scanner.ImageVulnerability {
+	merged := existing
+	if strings.TrimSpace(merged.ID) == "" {
+		merged.ID = strings.TrimSpace(incoming.ID)
+	}
+	if strings.TrimSpace(merged.CVE) == "" {
+		merged.CVE = strings.TrimSpace(incoming.CVE)
+	}
+	if strings.TrimSpace(merged.Severity) == "" || strings.EqualFold(strings.TrimSpace(merged.Severity), "unknown") {
+		merged.Severity = strings.TrimSpace(incoming.Severity)
+	}
+	if strings.TrimSpace(merged.FixedVersion) == "" {
+		merged.FixedVersion = strings.TrimSpace(incoming.FixedVersion)
+	}
+	if strings.TrimSpace(merged.Description) == "" {
+		merged.Description = strings.TrimSpace(incoming.Description)
+	}
+	if merged.CVSS == 0 {
+		merged.CVSS = incoming.CVSS
+	}
+	if merged.Published.IsZero() {
+		merged.Published = incoming.Published
+	}
+	merged.Exploitable = merged.Exploitable || incoming.Exploitable
+	merged.InKEV = merged.InKEV || incoming.InKEV
+	merged.References = uniqueStrings(append(append([]string{}, merged.References...), incoming.References...))
+	return merged
 }
 
 func matchPackageVersion(installed string, affected AffectedPackage) (bool, string) {
@@ -190,10 +232,7 @@ func compareAPKVersions(left, right string) (int, bool) {
 	if !ok {
 		return 0, false
 	}
-	cmp, ok := compareSemverLooseVersions(leftBase, rightBase)
-	if !ok {
-		return 0, false
-	}
+	cmp := compareAPKBaseVersions(leftBase, rightBase)
 	if cmp != 0 {
 		return cmp, true
 	}
@@ -205,6 +244,136 @@ func compareAPKVersions(left, right string) (int, bool) {
 	default:
 		return 0, true
 	}
+}
+
+type apkToken struct {
+	numeric bool
+	value   string
+}
+
+func compareAPKBaseVersions(left, right string) int {
+	leftTokens := tokenizeAPKVersion(left)
+	rightTokens := tokenizeAPKVersion(right)
+	length := len(leftTokens)
+	if len(rightTokens) > length {
+		length = len(rightTokens)
+	}
+	for i := 0; i < length; i++ {
+		leftToken := apkToken{value: ""}
+		if i < len(leftTokens) {
+			leftToken = leftTokens[i]
+		}
+		rightToken := apkToken{value: ""}
+		if i < len(rightTokens) {
+			rightToken = rightTokens[i]
+		}
+		cmp := compareAPKToken(leftToken, rightToken)
+		if cmp != 0 {
+			return cmp
+		}
+	}
+	return 0
+}
+
+func tokenizeAPKVersion(value string) []apkToken {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	tokens := make([]apkToken, 0, len(value))
+	for i := 0; i < len(value); {
+		switch {
+		case isAPKDigit(value[i]):
+			start := i
+			for i < len(value) && isAPKDigit(value[i]) {
+				i++
+			}
+			tokens = append(tokens, apkToken{numeric: true, value: value[start:i]})
+		case isAPKAlpha(value[i]):
+			start := i
+			for i < len(value) && isAPKAlpha(value[i]) {
+				i++
+			}
+			tokens = append(tokens, apkToken{value: strings.ToLower(value[start:i])})
+		default:
+			i++
+		}
+	}
+	return tokens
+}
+
+func compareAPKToken(left, right apkToken) int {
+	switch {
+	case left.numeric && right.numeric:
+		return compareNumericToken(left.value, right.value)
+	case left.numeric:
+		return 1
+	case right.numeric:
+		return -1
+	default:
+		return compareAPKTextToken(left.value, right.value)
+	}
+}
+
+func compareNumericToken(left, right string) int {
+	left = strings.TrimLeft(left, "0")
+	right = strings.TrimLeft(right, "0")
+	if left == "" {
+		left = "0"
+	}
+	if right == "" {
+		right = "0"
+	}
+	switch {
+	case len(left) < len(right):
+		return -1
+	case len(left) > len(right):
+		return 1
+	default:
+		return strings.Compare(left, right)
+	}
+}
+
+func compareAPKTextToken(left, right string) int {
+	leftOrder := apkTextOrder(left)
+	rightOrder := apkTextOrder(right)
+	switch {
+	case leftOrder < rightOrder:
+		return -1
+	case leftOrder > rightOrder:
+		return 1
+	case leftOrder != 5:
+		return 0
+	default:
+		return strings.Compare(left, right)
+	}
+}
+
+func apkTextOrder(value string) int {
+	switch value {
+	case "alpha":
+		return -40
+	case "beta":
+		return -30
+	case "pre":
+		return -20
+	case "rc":
+		return -10
+	case "":
+		return 0
+	case "p":
+		return 10
+	default:
+		return 5
+	}
+}
+
+func isAPKDigit(value byte) bool {
+	return value >= '0' && value <= '9'
+}
+
+func isAPKAlpha(value byte) bool {
+	return (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z')
 }
 
 func splitAPKRevision(value string) (string, int, bool) {

@@ -23,6 +23,14 @@ type SQLiteStore struct {
 	db *sql.DB
 }
 
+type sqlExecer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+type sqliteTxStore struct {
+	tx *sql.Tx
+}
+
 func NewSQLiteStore(path string) (*SQLiteStore, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
@@ -106,6 +114,27 @@ func (s *SQLiteStore) Close() error {
 	return s.db.Close()
 }
 
+func (s *SQLiteStore) WithWriteTx(ctx context.Context, fn func(advisoryWriteStore) error) error {
+	if s == nil || s.db == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin vulnerability sqlite tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := fn(&sqliteTxStore{tx: tx}); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit vulnerability sqlite tx: %w", err)
+	}
+	return nil
+}
+
 func (s *SQLiteStore) UpsertAdvisory(ctx context.Context, vuln Vulnerability, affected []AffectedPackage) error {
 	if s == nil || s.db == nil {
 		return nil
@@ -113,15 +142,35 @@ func (s *SQLiteStore) UpsertAdvisory(ctx context.Context, vuln Vulnerability, af
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin vulnerability sqlite tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := upsertAdvisoryExec(ctx, tx, vuln, affected); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit vulnerability advisory: %w", err)
+	}
+	return nil
+}
+
+func (s *sqliteTxStore) UpsertAdvisory(ctx context.Context, vuln Vulnerability, affected []AffectedPackage) error {
+	if s == nil || s.tx == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return upsertAdvisoryExec(ctx, s.tx, vuln, affected)
+}
+
+func upsertAdvisoryExec(ctx context.Context, exec sqlExecer, vuln Vulnerability, affected []AffectedPackage) error {
 	vuln.ID = strings.TrimSpace(vuln.ID)
 	if vuln.ID == "" {
 		return fmt.Errorf("vulnerability id is required")
 	}
-	aliasJSON, err := json.Marshal(uniqueStrings(vuln.Aliases))
-	if err != nil {
-		return fmt.Errorf("marshal vulnerability aliases: %w", err)
-	}
-	_ = aliasJSON
 	refJSON, err := json.Marshal(uniqueStrings(vuln.References))
 	if err != nil {
 		return fmt.Errorf("marshal vulnerability references: %w", err)
@@ -151,12 +200,7 @@ func (s *SQLiteStore) UpsertAdvisory(ctx context.Context, vuln Vulnerability, af
 		affected[i].Distribution = strings.TrimSpace(strings.ToLower(affected[i].Distribution))
 		affected[i].DistributionVersion = strings.TrimSpace(affected[i].DistributionVersion)
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin vulnerability sqlite tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	_, err = tx.ExecContext(ctx, `
+	_, err = exec.ExecContext(ctx, `
 		INSERT INTO vulnerabilities (
 			id, summary, details, severity, cvss, published_at, modified_at, withdrawn_at, source, references_json, epss_score, epss_percentile, in_kev
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -169,15 +213,12 @@ func (s *SQLiteStore) UpsertAdvisory(ctx context.Context, vuln Vulnerability, af
 			modified_at = excluded.modified_at,
 			withdrawn_at = excluded.withdrawn_at,
 			source = excluded.source,
-			references_json = excluded.references_json,
-			epss_score = excluded.epss_score,
-			epss_percentile = excluded.epss_percentile,
-			in_kev = excluded.in_kev
+			references_json = excluded.references_json
 	`, vuln.ID, vuln.Summary, vuln.Details, vuln.Severity, vuln.CVSS, nullableTimeValueRef(vuln.PublishedAt), nullableTimeValueRef(vuln.ModifiedAt), nullableTime(vuln.WithdrawnAt), vuln.Source, refJSON, vuln.EPSSScore, vuln.EPSSPercentile, boolToInt(vuln.InKEV))
 	if err != nil {
 		return fmt.Errorf("upsert vulnerability advisory: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM vulnerability_aliases WHERE vulnerability_id = ?`, vuln.ID); err != nil {
+	if _, err := exec.ExecContext(ctx, `DELETE FROM vulnerability_aliases WHERE vulnerability_id = ?`, vuln.ID); err != nil {
 		return fmt.Errorf("reset vulnerability aliases: %w", err)
 	}
 	aliases := uniqueStrings(append([]string{vuln.ID}, vuln.Aliases...))
@@ -186,27 +227,24 @@ func (s *SQLiteStore) UpsertAdvisory(ctx context.Context, vuln Vulnerability, af
 		if alias == "" {
 			continue
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO vulnerability_aliases (vulnerability_id, alias) VALUES (?, ?)`, vuln.ID, alias); err != nil {
+		if _, err := exec.ExecContext(ctx, `INSERT INTO vulnerability_aliases (vulnerability_id, alias) VALUES (?, ?)`, vuln.ID, alias); err != nil {
 			return fmt.Errorf("insert vulnerability alias: %w", err)
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM package_advisories WHERE vulnerability_id = ?`, vuln.ID); err != nil {
+	if _, err := exec.ExecContext(ctx, `DELETE FROM package_advisories WHERE vulnerability_id = ?`, vuln.ID); err != nil {
 		return fmt.Errorf("reset package advisories: %w", err)
 	}
 	for _, item := range affected {
 		if item.Ecosystem == "" || item.PackageName == "" {
 			continue
 		}
-		if _, err := tx.ExecContext(ctx, `
+		if _, err := exec.ExecContext(ctx, `
 			INSERT INTO package_advisories (
 				vulnerability_id, ecosystem, package_name, range_type, introduced, fixed, last_affected, vulnerable_version, distribution, distribution_version
 			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`, item.VulnerabilityID, item.Ecosystem, item.PackageName, item.RangeType, item.Introduced, item.Fixed, item.LastAffected, item.VulnerableVersion, item.Distribution, item.DistributionVersion); err != nil {
 			return fmt.Errorf("insert package advisory: %w", err)
 		}
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit vulnerability advisory: %w", err)
 	}
 	return nil
 }
@@ -363,6 +401,20 @@ func (s *SQLiteStore) UpdateSyncState(ctx context.Context, state SyncState) erro
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	return updateSyncStateExec(ctx, s.db, state)
+}
+
+func (s *sqliteTxStore) UpdateSyncState(ctx context.Context, state SyncState) error {
+	if s == nil || s.tx == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return updateSyncStateExec(ctx, s.tx, state)
+}
+
+func updateSyncStateExec(ctx context.Context, exec sqlExecer, state SyncState) error {
 	state.Source = strings.TrimSpace(state.Source)
 	if state.Source == "" {
 		return fmt.Errorf("sync state source is required")
@@ -371,7 +423,7 @@ func (s *SQLiteStore) UpdateSyncState(ctx context.Context, state SyncState) erro
 	if err != nil {
 		return fmt.Errorf("marshal sync state metadata: %w", err)
 	}
-	_, err = s.db.ExecContext(ctx, `
+	_, err = exec.ExecContext(ctx, `
 		INSERT INTO sync_state (source, etag, cursor, last_attempt_at, last_success_at, records_synced, metadata_json)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(source) DO UPDATE SET
@@ -469,13 +521,27 @@ func (s *SQLiteStore) MarkKEV(ctx context.Context, cves []string) (int64, error)
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	return markKEVExec(ctx, s.db, cves)
+}
+
+func (s *sqliteTxStore) MarkKEV(ctx context.Context, cves []string) (int64, error) {
+	if s == nil || s.tx == nil {
+		return 0, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return markKEVExec(ctx, s.tx, cves)
+}
+
+func markKEVExec(ctx context.Context, exec sqlExecer, cves []string) (int64, error) {
 	var updated int64
 	for _, cve := range uniqueStrings(cves) {
 		alias := strings.TrimSpace(strings.ToUpper(cve))
 		if alias == "" {
 			continue
 		}
-		res, err := s.db.ExecContext(ctx, `
+		res, err := exec.ExecContext(ctx, `
 			UPDATE vulnerabilities
 			SET in_kev = 1
 			WHERE id IN (SELECT vulnerability_id FROM vulnerability_aliases WHERE alias = ?)
@@ -498,11 +564,25 @@ func (s *SQLiteStore) UpsertEPSS(ctx context.Context, cve string, score, percent
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	return upsertEPSSExec(ctx, s.db, cve, score, percentile)
+}
+
+func (s *sqliteTxStore) UpsertEPSS(ctx context.Context, cve string, score, percentile float64) (int64, error) {
+	if s == nil || s.tx == nil {
+		return 0, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return upsertEPSSExec(ctx, s.tx, cve, score, percentile)
+}
+
+func upsertEPSSExec(ctx context.Context, exec sqlExecer, cve string, score, percentile float64) (int64, error) {
 	cve = strings.TrimSpace(strings.ToUpper(cve))
 	if cve == "" {
 		return 0, nil
 	}
-	res, err := s.db.ExecContext(ctx, `
+	res, err := exec.ExecContext(ctx, `
 		UPDATE vulnerabilities
 		SET epss_score = ?, epss_percentile = ?
 		WHERE id IN (SELECT vulnerability_id FROM vulnerability_aliases WHERE alias = ?)

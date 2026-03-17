@@ -209,11 +209,6 @@ func reconcileWorkloadScanAWS(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	defer func() { _ = emitter.Close() }()
-	filesystemAnalyzer, vulnDBCloser, err := buildFilesystemAnalyzer(cfg, resolveWorkloadScanTrivyBinary(cfg))
-	if err != nil {
-		return err
-	}
-	defer func() { _ = vulnDBCloser.Close() }()
 
 	provider, err := workloadscan.NewAWSProvider(ctx, strings.TrimSpace(workloadScanAWSRegion))
 	if err != nil {
@@ -223,7 +218,6 @@ func reconcileWorkloadScanAWS(cmd *cobra.Command, args []string) error {
 		Store:          store,
 		Providers:      []workloadscan.Provider{provider},
 		Mounter:        workloadscan.NewLocalMounter(resolveWorkloadScanMountBasePath(cfg)),
-		Analyzer:       workloadscan.FilesystemAnalyzer{Analyzer: filesystemAnalyzer},
 		Events:         emitter,
 		CleanupTimeout: resolveWorkloadScanCleanupTimeout(cfg),
 	})
