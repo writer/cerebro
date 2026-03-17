@@ -5,6 +5,20 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 176 - Information Flow Ordinal BFS State (2026-03-16)
+
+### Review findings
+- [x] Gap: `shortestPathBetweenSets()` in `information_flow.go` still kept BFS visitation and predecessor state in string-keyed maps after the graph package had already moved other hot traversals onto interned ordinals.
+- [x] Gap: information-flow metrics call this shortest-path helper repeatedly across category samples and recommendation scoring, so per-call string map allocation keeps a read-heavy graph analysis surface outside the `#384` memory work.
+- [x] Gap: there was no regression proving path reconstruction still works once the traversed path extends beyond the first 64 ordinal slots, and no focused benchmark isolating the information-flow shortest-path helper.
+
+### Execution plan
+- [x] Build information-flow shortest-path traversal on top of a local ordinal index and ordinal visit set.
+- [x] Move predecessor tracking onto ordinal keys and rebuild string paths only at the end.
+- [x] Add TDD coverage for wide-path reconstruction beyond the first ordinal word.
+- [x] Add a focused `BenchmarkShortestPathBetweenSets`.
+- [ ] Re-run focused graph tests, lint, changed-file validation, and the new benchmark.
+
 ## Deep Review Cycle 175 - Attack Path Spur Avoidance Ordinal Sets (2026-03-16)
 
 ### Review findings

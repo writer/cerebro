@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -84,6 +85,39 @@ func TestRecommendEdges_ReturnsSharedContextBridge(t *testing.T) {
 	}
 	if top.Suggestion == "" {
 		t.Fatalf("expected suggestion text")
+	}
+}
+
+func TestShortestPathBetweenSetsHandlesWideOrdinalPath(t *testing.T) {
+	adjacency := make(map[string]map[string]struct{})
+	link := func(source, target string) {
+		if adjacency[source] == nil {
+			adjacency[source] = make(map[string]struct{})
+		}
+		adjacency[source][target] = struct{}{}
+	}
+
+	const chainLen = 70
+	link("source", "node-0")
+	for i := 0; i < chainLen-1; i++ {
+		link(fmt.Sprintf("node-%d", i), fmt.Sprintf("node-%d", i+1))
+	}
+	link(fmt.Sprintf("node-%d", chainLen-1), "target")
+	link(fmt.Sprintf("node-%d", chainLen-1), "node-10")
+
+	path := shortestPathBetweenSets(
+		adjacency,
+		map[string]struct{}{"source": {}},
+		map[string]struct{}{"target": {}},
+	)
+	if len(path) != chainLen+2 {
+		t.Fatalf("expected %d path nodes, got %d", chainLen+2, len(path))
+	}
+	if path[0] != "source" || path[len(path)-1] != "target" {
+		t.Fatalf("unexpected endpoints: %#v", path)
+	}
+	if path[65] != "node-64" || path[70] != "node-69" {
+		t.Fatalf("unexpected wide path reconstruction: %#v", path)
 	}
 }
 
