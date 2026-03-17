@@ -24,6 +24,7 @@ package runtime
 import (
 	"context"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -38,12 +39,15 @@ import (
 //
 // Thread-safe for concurrent event processing.
 type DetectionEngine struct {
-	rules          []DetectionRule // Active detection rules
-	rulesByMask    [16][]DetectionRule
-	suppressions   map[string]bool  // Rule IDs that are suppressed
-	recentFindings []RuntimeFinding // Recent findings ring buffer
-	maxFindings    int              // Max findings to retain
-	mu             sync.RWMutex     // Protects recentFindings
+	rules              []DetectionRule // Active detection rules
+	rulesByMask        [16][]DetectionRule
+	suppressions       map[string]bool  // Rule IDs that are suppressed
+	recentFindings     []RuntimeFinding // Recent findings ring buffer
+	maxFindings        int              // Max findings to retain
+	behaviorProfiles   map[string]*workloadBehaviorProfile
+	behaviorProfileCfg behaviorProfileConfig
+	behaviorProfileSeq uint64
+	mu                 sync.RWMutex // Protects recentFindings and behavior profile state
 }
 
 // DetectionRule defines a runtime threat detection rule with conditions,
@@ -83,6 +87,7 @@ const (
 	CategoryPersistence         DetectionCategory = "persistence"          // Mechanisms for maintaining access
 	CategoryCredentialAccess    DetectionCategory = "credential_access"    //nolint:gosec // Attempts to steal credentials
 	CategoryContainerDrift      DetectionCategory = "container_drift"      // Unexpected changes to container filesystem
+	CategoryBehavioralAnomaly   DetectionCategory = "behavioral_anomaly"   // Learned workload behavior deviations
 )
 
 type Condition struct {
@@ -185,10 +190,12 @@ type RuntimeFinding struct {
 
 func NewDetectionEngine() *DetectionEngine {
 	engine := &DetectionEngine{
-		rules:          make([]DetectionRule, 0),
-		suppressions:   make(map[string]bool),
-		recentFindings: make([]RuntimeFinding, 0),
-		maxFindings:    1000,
+		rules:              make([]DetectionRule, 0),
+		suppressions:       make(map[string]bool),
+		recentFindings:     make([]RuntimeFinding, 0),
+		maxFindings:        1000,
+		behaviorProfiles:   make(map[string]*workloadBehaviorProfile),
+		behaviorProfileCfg: defaultBehaviorProfileConfig(),
 	}
 	engine.loadDefaultRules()
 	return engine
@@ -519,7 +526,7 @@ func (e *DetectionEngine) process(_ context.Context, event *RuntimeEvent, observ
 	if event == nil {
 		return nil
 	}
-	var findings []RuntimeFinding
+	findings := make([]RuntimeFinding, 0, 2)
 
 	for _, rule := range e.candidateRulesForEvent(event) {
 		if !rule.Enabled {
@@ -545,6 +552,10 @@ func (e *DetectionEngine) process(_ context.Context, event *RuntimeEvent, observ
 			}
 			findings = append(findings, finding)
 		}
+	}
+
+	if behavioral := e.behavioralFindingForObservation(observation); behavioral != nil {
+		findings = append(findings, *behavioral)
 	}
 
 	if len(findings) > 0 {
@@ -697,6 +708,110 @@ func (e *DetectionEngine) SetSuppression(ruleID string, suppressed bool) {
 
 func (e *DetectionEngine) ListRules() []DetectionRule {
 	return e.rules
+}
+
+func (e *DetectionEngine) behavioralFindingForObservation(observation *RuntimeObservation) *RuntimeFinding {
+	if e == nil || observation == nil {
+		return nil
+	}
+	workloadID := strings.TrimSpace(observation.WorkloadRef)
+	if workloadID == "" || !e.behaviorProfileCfg.enabled {
+		return nil
+	}
+	observedAt := observation.ObservedAt.UTC()
+	if observedAt.IsZero() {
+		observedAt = time.Now().UTC()
+	}
+
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	profile := e.behaviorProfiles[workloadID]
+	if profile == nil {
+		profile = newWorkloadBehaviorProfile(workloadID, observedAt, e.behaviorProfileCfg)
+		e.behaviorProfiles[workloadID] = profile
+	}
+	e.behaviorProfileSeq++
+	profile.lastAccessSeq = e.behaviorProfileSeq
+	e.evictBehaviorProfilesLocked()
+
+	evaluation := profile.evaluate(observation, e.behaviorProfileCfg)
+	if len(evaluation.anomalies) == 0 {
+		return nil
+	}
+
+	event := observation.AsRuntimeEvent()
+	if event == nil {
+		event = &RuntimeEvent{ID: observation.ID}
+	}
+	if strings.TrimSpace(event.ResourceID) == "" {
+		event.ResourceID = firstNonEmptyRuntime(observation.ResourceID, observation.WorkloadRef, observation.ContainerID)
+	}
+	if strings.TrimSpace(event.ResourceType) == "" {
+		event.ResourceType = firstNonEmptyRuntime(observation.ResourceType, observationResourceType(observation))
+	}
+
+	description := "Observed workload behavior outside learned baseline: " + strings.Join(evaluation.anomalies, ", ")
+	return &RuntimeFinding{
+		ID:           generateFindingID("behavioral-anomaly-"+string(observation.Kind), event),
+		RuleID:       "behavioral-anomaly",
+		RuleName:     "Workload Behavioral Anomaly",
+		Category:     CategoryBehavioralAnomaly,
+		Severity:     evaluation.severity,
+		ResourceID:   event.ResourceID,
+		ResourceType: event.ResourceType,
+		Description:  description,
+		Event:        event,
+		Observation:  observation,
+		Remediation:  "Review whether this workload behavior is expected. If not, investigate the workload, image, and recent deployment changes.",
+		Timestamp:    time.Now(),
+	}
+}
+
+func (e *DetectionEngine) evictBehaviorProfilesLocked() {
+	if e == nil {
+		return
+	}
+	limit := e.behaviorProfileCfg.maxProfiles
+	if limit <= 0 || len(e.behaviorProfiles) <= limit {
+		return
+	}
+
+	workloads := make([]string, 0, len(e.behaviorProfiles))
+	for workloadID := range e.behaviorProfiles {
+		workloads = append(workloads, workloadID)
+	}
+	slices.SortFunc(workloads, func(a, b string) int {
+		left := e.behaviorProfiles[a]
+		right := e.behaviorProfiles[b]
+		switch {
+		case left == nil && right == nil:
+			return 0
+		case left == nil:
+			return -1
+		case right == nil:
+			return 1
+		case left.lastAccessSeq < right.lastAccessSeq:
+			return -1
+		case left.lastAccessSeq > right.lastAccessSeq:
+			return 1
+		case left.lastSeen.Before(right.lastSeen):
+			return -1
+		case left.lastSeen.After(right.lastSeen):
+			return 1
+		case a < b:
+			return -1
+		case a > b:
+			return 1
+		default:
+			return 0
+		}
+	})
+	for len(e.behaviorProfiles) > limit && len(workloads) > 0 {
+		evict := workloads[0]
+		workloads = workloads[1:]
+		delete(e.behaviorProfiles, evict)
+	}
 }
 
 func (e *DetectionEngine) candidateRulesForEvent(event *RuntimeEvent) []DetectionRule {

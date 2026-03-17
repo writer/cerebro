@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 )
@@ -252,6 +253,329 @@ func TestDetectionEngineProcessNormalizedObservation(t *testing.T) {
 	}
 	if findings[0].Observation == nil || findings[0].Observation.ID != observation.ID {
 		t.Fatalf("finding observation = %#v, want normalized observation id %q", findings[0].Observation, observation.ID)
+	}
+}
+
+func TestDetectionEngineBehaviorProfilesLearnWithoutFindings(t *testing.T) {
+	engine := NewDetectionEngine()
+	base := time.Date(2026, 3, 17, 12, 0, 0, 0, time.UTC)
+
+	findings := engine.ProcessObservation(context.Background(), &RuntimeObservation{
+		ID:          "obs-learn-1",
+		Kind:        ObservationKindProcessExec,
+		Source:      "tetragon",
+		ObservedAt:  base,
+		WorkloadRef: "deployment:prod/api",
+		Process: &ProcessEvent{
+			Name: "nginx",
+			Path: "/usr/sbin/nginx",
+		},
+	})
+	if len(findings) != 0 {
+		t.Fatalf("len(findings) = %d, want 0 during learning mode", len(findings))
+	}
+}
+
+func TestDetectionEngineBehaviorProfilesKnownProcessDoesNotAlertAfterLearning(t *testing.T) {
+	engine := NewDetectionEngine()
+	base := time.Date(2026, 3, 17, 12, 0, 0, 0, time.UTC)
+
+	engine.ProcessObservation(context.Background(), &RuntimeObservation{
+		ID:          "obs-known-1",
+		Kind:        ObservationKindProcessExec,
+		Source:      "tetragon",
+		ObservedAt:  base,
+		WorkloadRef: "deployment:prod/api",
+		Process: &ProcessEvent{
+			Name: "nginx",
+			Path: "/usr/sbin/nginx",
+		},
+	})
+
+	findings := engine.ProcessObservation(context.Background(), &RuntimeObservation{
+		ID:          "obs-known-2",
+		Kind:        ObservationKindProcessExec,
+		Source:      "tetragon",
+		ObservedAt:  base.Add(25 * time.Hour),
+		WorkloadRef: "deployment:prod/api",
+		Process: &ProcessEvent{
+			Name: "nginx",
+			Path: "/usr/sbin/nginx",
+		},
+	})
+	if len(findings) != 0 {
+		t.Fatalf("len(findings) = %d, want 0 for learned process", len(findings))
+	}
+}
+
+func TestDetectionEngineBehaviorProfilesDetectNovelProcessAfterLearning(t *testing.T) {
+	engine := NewDetectionEngine()
+	base := time.Date(2026, 3, 17, 12, 0, 0, 0, time.UTC)
+
+	engine.ProcessObservation(context.Background(), &RuntimeObservation{
+		ID:          "obs-novel-1",
+		Kind:        ObservationKindProcessExec,
+		Source:      "tetragon",
+		ObservedAt:  base,
+		WorkloadRef: "deployment:prod/api",
+		Process: &ProcessEvent{
+			Name: "nginx",
+			Path: "/usr/sbin/nginx",
+		},
+	})
+
+	findings := engine.ProcessObservation(context.Background(), &RuntimeObservation{
+		ID:          "obs-novel-2",
+		Kind:        ObservationKindProcessExec,
+		Source:      "tetragon",
+		ObservedAt:  base.Add(25 * time.Hour),
+		WorkloadRef: "deployment:prod/api",
+		Process: &ProcessEvent{
+			Name: "bash",
+			Path: "/bin/bash",
+		},
+	})
+	if len(findings) != 1 {
+		t.Fatalf("len(findings) = %d, want 1", len(findings))
+	}
+	if findings[0].Category != CategoryBehavioralAnomaly {
+		t.Fatalf("category = %s, want %s", findings[0].Category, CategoryBehavioralAnomaly)
+	}
+	if findings[0].Severity != "high" {
+		t.Fatalf("severity = %s, want high", findings[0].Severity)
+	}
+	if findings[0].Observation == nil || findings[0].Observation.WorkloadRef != "deployment:prod/api" {
+		t.Fatalf("observation = %#v, want workload-backed finding", findings[0].Observation)
+	}
+	if !strings.Contains(findings[0].Description, "process_name=bash") {
+		t.Fatalf("description = %q, want novel process signal", findings[0].Description)
+	}
+}
+
+func TestDetectionEngineBehaviorProfilesDetectNovelNetworkSignalsAfterLearning(t *testing.T) {
+	engine := NewDetectionEngine()
+	base := time.Date(2026, 3, 17, 12, 0, 0, 0, time.UTC)
+
+	engine.ProcessObservation(context.Background(), &RuntimeObservation{
+		ID:          "obs-net-1",
+		Kind:        ObservationKindNetworkFlow,
+		Source:      "tetragon",
+		ObservedAt:  base,
+		WorkloadRef: "deployment:prod/api",
+		Network: &NetworkEvent{
+			DstIP:   "10.0.0.10",
+			DstPort: 443,
+			Domain:  "api.internal",
+		},
+	})
+
+	findings := engine.ProcessObservation(context.Background(), &RuntimeObservation{
+		ID:          "obs-net-2",
+		Kind:        ObservationKindNetworkFlow,
+		Source:      "tetragon",
+		ObservedAt:  base.Add(25 * time.Hour),
+		WorkloadRef: "deployment:prod/api",
+		Network: &NetworkEvent{
+			DstIP:   "10.0.0.99",
+			DstPort: 5432,
+			Domain:  "db.internal",
+		},
+	})
+	if len(findings) != 1 {
+		t.Fatalf("len(findings) = %d, want 1", len(findings))
+	}
+	if findings[0].Category != CategoryBehavioralAnomaly {
+		t.Fatalf("category = %s, want %s", findings[0].Category, CategoryBehavioralAnomaly)
+	}
+	if findings[0].Severity != "high" {
+		t.Fatalf("severity = %s, want high", findings[0].Severity)
+	}
+	if !strings.Contains(findings[0].Description, "network_dest=10.0.0.99:5432") {
+		t.Fatalf("description = %q, want novel network destination", findings[0].Description)
+	}
+	if !strings.Contains(findings[0].Description, "dns_domain=db.internal") {
+		t.Fatalf("description = %q, want novel DNS domain", findings[0].Description)
+	}
+}
+
+func TestDetectionEngineBehaviorProfilesDetectNovelFileAfterLearning(t *testing.T) {
+	engine := NewDetectionEngine()
+	base := time.Date(2026, 3, 17, 12, 0, 0, 0, time.UTC)
+
+	engine.ProcessObservation(context.Background(), &RuntimeObservation{
+		ID:          "obs-file-1",
+		Kind:        ObservationKindFileWrite,
+		Source:      "tetragon",
+		ObservedAt:  base,
+		WorkloadRef: "deployment:prod/api",
+		File: &FileEvent{
+			Operation: "modify",
+			Path:      "/var/log/app.log",
+		},
+	})
+
+	findings := engine.ProcessObservation(context.Background(), &RuntimeObservation{
+		ID:          "obs-file-2",
+		Kind:        ObservationKindFileWrite,
+		Source:      "tetragon",
+		ObservedAt:  base.Add(25 * time.Hour),
+		WorkloadRef: "deployment:prod/api",
+		File: &FileEvent{
+			Operation: "create",
+			Path:      "/tmp/dropper.sh",
+		},
+	})
+	if len(findings) != 1 {
+		t.Fatalf("len(findings) = %d, want 1", len(findings))
+	}
+	if findings[0].Category != CategoryBehavioralAnomaly {
+		t.Fatalf("category = %s, want %s", findings[0].Category, CategoryBehavioralAnomaly)
+	}
+	if findings[0].Severity != "medium" {
+		t.Fatalf("severity = %s, want medium", findings[0].Severity)
+	}
+	if !strings.Contains(findings[0].Description, "file_path=/tmp/dropper.sh") {
+		t.Fatalf("description = %q, want novel file path", findings[0].Description)
+	}
+}
+
+func TestDetectionEngineBehaviorProfilesDetectRateSpikeAfterLearning(t *testing.T) {
+	engine := NewDetectionEngine()
+	engine.behaviorProfileCfg.rateAlertMultiplier = 3
+	base := time.Date(2026, 3, 17, 12, 0, 0, 0, time.UTC)
+
+	engine.ProcessObservation(context.Background(), &RuntimeObservation{
+		ID:          "obs-rate-learn",
+		Kind:        ObservationKindProcessExec,
+		Source:      "tetragon",
+		ObservedAt:  base,
+		WorkloadRef: "deployment:prod/api",
+		Process: &ProcessEvent{
+			Name: "nginx",
+			Path: "/usr/sbin/nginx",
+		},
+	})
+
+	var findings []RuntimeFinding
+	for i := 0; i < 3; i++ {
+		findings = engine.ProcessObservation(context.Background(), &RuntimeObservation{
+			ID:          "obs-rate-" + itoa(i+1),
+			Kind:        ObservationKindProcessExec,
+			Source:      "tetragon",
+			ObservedAt:  base.Add(25 * time.Hour).Add(time.Duration(i) * time.Second),
+			WorkloadRef: "deployment:prod/api",
+			Process: &ProcessEvent{
+				Name: "nginx",
+				Path: "/usr/sbin/nginx",
+			},
+		})
+	}
+	if len(findings) != 1 {
+		t.Fatalf("len(findings) = %d, want 1 on rate spike", len(findings))
+	}
+	if findings[0].Category != CategoryBehavioralAnomaly {
+		t.Fatalf("category = %s, want %s", findings[0].Category, CategoryBehavioralAnomaly)
+	}
+	if !strings.Contains(findings[0].Description, "process_rate") {
+		t.Fatalf("description = %q, want process_rate spike", findings[0].Description)
+	}
+}
+
+func TestDetectionEngineBehaviorProfilesOutOfOrderEventDoesNotResetRateBucket(t *testing.T) {
+	engine := NewDetectionEngine()
+	engine.behaviorProfileCfg.rateAlertMultiplier = 3
+	base := time.Date(2026, 3, 17, 12, 0, 0, 0, time.UTC)
+
+	engine.ProcessObservation(context.Background(), &RuntimeObservation{
+		ID:          "obs-rate-learn-ooo",
+		Kind:        ObservationKindProcessExec,
+		Source:      "tetragon",
+		ObservedAt:  base,
+		WorkloadRef: "deployment:prod/api",
+		Process: &ProcessEvent{
+			Name: "nginx",
+			Path: "/usr/sbin/nginx",
+		},
+	})
+
+	for i := 0; i < 2; i++ {
+		findings := engine.ProcessObservation(context.Background(), &RuntimeObservation{
+			ID:          "obs-rate-current-ooo-" + itoa(i+1),
+			Kind:        ObservationKindProcessExec,
+			Source:      "tetragon",
+			ObservedAt:  base.Add(25 * time.Hour).Add(time.Duration(i) * time.Second),
+			WorkloadRef: "deployment:prod/api",
+			Process: &ProcessEvent{
+				Name: "nginx",
+				Path: "/usr/sbin/nginx",
+			},
+		})
+		if len(findings) != 0 {
+			t.Fatalf("len(findings) before threshold = %d, want 0", len(findings))
+		}
+	}
+
+	staleFindings := engine.ProcessObservation(context.Background(), &RuntimeObservation{
+		ID:          "obs-rate-stale-ooo",
+		Kind:        ObservationKindProcessExec,
+		Source:      "falco",
+		ObservedAt:  base.Add(10 * time.Second),
+		WorkloadRef: "deployment:prod/api",
+		Process: &ProcessEvent{
+			Name: "nginx",
+			Path: "/usr/sbin/nginx",
+		},
+	})
+	if len(staleFindings) != 0 {
+		t.Fatalf("len(findings) for stale event = %d, want 0", len(staleFindings))
+	}
+
+	findings := engine.ProcessObservation(context.Background(), &RuntimeObservation{
+		ID:          "obs-rate-trigger-ooo",
+		Kind:        ObservationKindProcessExec,
+		Source:      "tetragon",
+		ObservedAt:  base.Add(25*time.Hour + 2*time.Second),
+		WorkloadRef: "deployment:prod/api",
+		Process: &ProcessEvent{
+			Name: "nginx",
+			Path: "/usr/sbin/nginx",
+		},
+	})
+	if len(findings) != 1 {
+		t.Fatalf("len(findings) after stale event = %d, want 1", len(findings))
+	}
+	if !strings.Contains(findings[0].Description, "process_rate") {
+		t.Fatalf("description = %q, want process_rate spike", findings[0].Description)
+	}
+}
+
+func TestDetectionEngineBehaviorProfilesEvictLeastRecentlyUsed(t *testing.T) {
+	engine := NewDetectionEngine()
+	engine.behaviorProfileCfg.maxProfiles = 2
+	base := time.Date(2026, 3, 17, 12, 0, 0, 0, time.UTC)
+
+	workloads := []string{"deployment:prod/a", "deployment:prod/b", "deployment:prod/a", "deployment:prod/c"}
+	for i, workload := range workloads {
+		engine.ProcessObservation(context.Background(), &RuntimeObservation{
+			ID:          "obs-evict-" + itoa(i+1),
+			Kind:        ObservationKindProcessExec,
+			Source:      "tetragon",
+			ObservedAt:  base.Add(time.Duration(i) * time.Minute),
+			WorkloadRef: workload,
+			Process: &ProcessEvent{
+				Name: "nginx",
+				Path: "/usr/sbin/nginx",
+			},
+		})
+	}
+
+	engine.mu.RLock()
+	defer engine.mu.RUnlock()
+	if got := len(engine.behaviorProfiles); got != 2 {
+		t.Fatalf("len(behaviorProfiles) = %d, want 2", got)
+	}
+	if _, ok := engine.behaviorProfiles["deployment:prod/b"]; ok {
+		t.Fatal("expected least recently used workload profile to be evicted")
 	}
 }
 
