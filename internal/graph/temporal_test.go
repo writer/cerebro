@@ -375,8 +375,8 @@ func TestGraphTemporalCompactDeletedNodesInvalidatesIndexOnlyOnChange(t *testing
 
 	g.CompactDeletedNodes()
 
-	if g.IsIndexBuilt() {
-		t.Fatal("expected compaction that removes entries to invalidate the index")
+	if !g.IsIndexBuilt() {
+		t.Fatal("expected node compaction to keep derived index current")
 	}
 	if _, ok := g.GetNodeIncludingDeleted("nil-entry"); ok {
 		t.Fatal("expected nil node entry to be removed during compaction")

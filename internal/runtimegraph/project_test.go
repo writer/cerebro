@@ -1195,7 +1195,7 @@ func TestMaterializeObservationsIntoGraphDoesNotLinkNormalizedAuditObservationBa
 	}
 }
 
-func TestMaterializeObservationsIntoGraphDefersIndexBuildToCaller(t *testing.T) {
+func TestMaterializeObservationsIntoGraphKeepsIncrementalIndexesCurrentUntilFinalize(t *testing.T) {
 	g := graph.New()
 	g.AddNode(&graph.Node{
 		ID:   "deployment:prod/api",
@@ -1225,8 +1225,11 @@ func TestMaterializeObservationsIntoGraphDefersIndexBuildToCaller(t *testing.T) 
 	if result.ObservationsMaterialized != 1 {
 		t.Fatalf("ObservationsMaterialized = %d, want 1", result.ObservationsMaterialized)
 	}
-	if g.IsIndexBuilt() {
-		t.Fatal("expected index to remain stale until caller finalizes materialized graph")
+	if !g.IsIndexBuilt() {
+		t.Fatal("expected incremental indexes to remain current during materialization")
+	}
+	if got := len(g.GetNodesByKindIndexed(graph.NodeKindObservation)); got != 1 {
+		t.Fatalf("len(GetNodesByKindIndexed(observation)) before finalize = %d, want 1", got)
 	}
 	if got := g.Metadata().BuiltAt; !got.Equal(now) {
 		t.Fatalf("metadata.BuiltAt = %s, want %s", got, now)

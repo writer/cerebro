@@ -312,12 +312,16 @@ func TestGraph_IncrementalNodeLookupIndexesTrackNodeMutations(t *testing.T) {
 	g.AddNode(&Node{
 		ID:       "identity:alice",
 		Kind:     NodeKindUser,
+		Name:     "Alice",
 		Account:  "acct-a",
 		Provider: "aws",
 		Risk:     RiskHigh,
+		Properties: map[string]any{
+			"internet_exposed": true,
+		},
 	})
-	if g.IsIndexBuilt() {
-		t.Fatal("expected full index to be invalidated after AddNode")
+	if !g.IsIndexBuilt() {
+		t.Fatal("expected derived index to remain built after AddNode")
 	}
 	g.mu.RLock()
 	if !g.nodeLookupIndexBuilt {
@@ -334,14 +338,28 @@ func TestGraph_IncrementalNodeLookupIndexesTrackNodeMutations(t *testing.T) {
 	if got := len(g.GetNodesByRisk(RiskHigh)); got != 1 {
 		t.Fatalf("GetNodesByRisk(high) = %d, want 1", got)
 	}
+	if got := len(g.GetInternetFacingNodes()); got != 1 {
+		t.Fatalf("GetInternetFacingNodes() = %d, want 1", got)
+	}
+	if got := len(g.GetCrownJewels()); got != 1 {
+		t.Fatalf("GetCrownJewels() = %d, want 1", got)
+	}
+	results := SearchEntities(g, EntitySearchOptions{Query: "alice", Limit: 5})
+	if results.Count != 1 || results.Results[0].Entity.ID != "identity:alice" {
+		t.Fatalf("SearchEntities(alice) = %#v, want identity:alice", results)
+	}
 
 	g.AddNode(&Node{
 		ID:       "identity:alice",
 		Kind:     NodeKindRole,
+		Name:     "Prod Role",
 		Account:  "acct-b",
 		Provider: "gcp",
 		Risk:     RiskCritical,
 	})
+	if !g.IsIndexBuilt() {
+		t.Fatal("expected derived index to remain built after replacement")
+	}
 	if got := len(g.GetNodesByKindIndexed(NodeKindUser)); got != 0 {
 		t.Fatalf("GetNodesByKindIndexed(user) after replace = %d, want 0", got)
 	}
@@ -360,9 +378,22 @@ func TestGraph_IncrementalNodeLookupIndexesTrackNodeMutations(t *testing.T) {
 	if got := len(g.GetNodesByRisk(RiskCritical)); got != 1 {
 		t.Fatalf("GetNodesByRisk(critical) after replace = %d, want 1", got)
 	}
+	if got := len(g.GetInternetFacingNodes()); got != 0 {
+		t.Fatalf("GetInternetFacingNodes() after replace = %d, want 0", got)
+	}
+	if got := len(g.GetCrownJewels()); got != 1 {
+		t.Fatalf("GetCrownJewels() after replace = %d, want 1", got)
+	}
+	results = SearchEntities(g, EntitySearchOptions{Query: "prod role", Limit: 5})
+	if results.Count != 1 || results.Results[0].Entity.ID != "identity:alice" {
+		t.Fatalf("SearchEntities(prod role) = %#v, want identity:alice", results)
+	}
 
 	if !g.RemoveNode("identity:alice") {
 		t.Fatal("expected RemoveNode to remove replacement node")
+	}
+	if !g.IsIndexBuilt() {
+		t.Fatal("expected derived index to remain built after removal")
 	}
 	if got := len(g.GetNodesByKindIndexed(NodeKindRole)); got != 0 {
 		t.Fatalf("GetNodesByKindIndexed(role) after removal = %d, want 0", got)
@@ -372,6 +403,12 @@ func TestGraph_IncrementalNodeLookupIndexesTrackNodeMutations(t *testing.T) {
 	}
 	if got := len(g.GetNodesByRisk(RiskCritical)); got != 0 {
 		t.Fatalf("GetNodesByRisk(critical) after removal = %d, want 0", got)
+	}
+	if got := len(g.GetCrownJewels()); got != 0 {
+		t.Fatalf("GetCrownJewels() after removal = %d, want 0", got)
+	}
+	if results := SearchEntities(g, EntitySearchOptions{Query: "prod role", Limit: 5}); results.Count != 0 {
+		t.Fatalf("SearchEntities(prod role) after removal = %#v, want 0 results", results)
 	}
 }
 
@@ -388,8 +425,8 @@ func TestGraph_IncrementalNodeLookupIndexesStayBuiltAcrossNonLookupMutations(t *
 		Kind:   EdgeKindTargets,
 		Effect: EdgeEffectAllow,
 	})
-	if g.IsIndexBuilt() {
-		t.Fatal("expected full index to be invalidated after AddEdge")
+	if !g.IsIndexBuilt() {
+		t.Fatal("expected derived index to stay built after AddEdge")
 	}
 	g.mu.RLock()
 	if !g.nodeLookupIndexBuilt {
@@ -404,6 +441,9 @@ func TestGraph_IncrementalNodeLookupIndexesStayBuiltAcrossNonLookupMutations(t *
 	if !g.SetNodeProperty("workload:payments", "internet_exposed", true) {
 		t.Fatal("expected SetNodeProperty to succeed")
 	}
+	if !g.IsIndexBuilt() {
+		t.Fatal("expected derived index to stay built after SetNodeProperty")
+	}
 	g.mu.RLock()
 	if !g.nodeLookupIndexBuilt {
 		g.mu.RUnlock()
@@ -412,6 +452,23 @@ func TestGraph_IncrementalNodeLookupIndexesStayBuiltAcrossNonLookupMutations(t *
 	g.mu.RUnlock()
 	if got := len(g.GetNodesByKindIndexed(NodeKindWorkload)); got != 2 {
 		t.Fatalf("GetNodesByKindIndexed(workload) after SetNodeProperty = %d, want 2", got)
+	}
+	if got := len(g.GetInternetFacingNodes()); got != 1 {
+		t.Fatalf("GetInternetFacingNodes() after SetNodeProperty = %d, want 1", got)
+	}
+
+	g.AddNode(&Node{
+		ID:       "db:prod",
+		Kind:     NodeKindDatabase,
+		Account:  "acct-a",
+		Provider: "aws",
+		Risk:     RiskLow,
+	})
+	if !g.SetNodeProperty("db:prod", "data_classification", "restricted") {
+		t.Fatal("expected SetNodeProperty(data_classification) to succeed")
+	}
+	if got := len(g.GetCrownJewels()); got != 1 {
+		t.Fatalf("GetCrownJewels() after crown-jewel property set = %d, want 1", got)
 	}
 }
 
@@ -560,8 +617,8 @@ func TestGraph_IncrementalCrossAccountEdgesStayBuiltAcrossEdgeMutations(t *testi
 			"cross_account": true,
 		},
 	})
-	if g.IsIndexBuilt() {
-		t.Fatal("expected full index to be invalidated after AddEdge")
+	if !g.IsIndexBuilt() {
+		t.Fatal("expected derived index to stay built after AddEdge")
 	}
 	g.mu.RLock()
 	if !g.crossAccountIndexBuilt {
@@ -712,8 +769,8 @@ func TestGraph_IncrementalARNPrefixIndexStayBuiltAcrossNodeMutations(t *testing.
 		ID:   "arn:aws:lambda:us-west-2:123456789012:function:queue",
 		Kind: NodeKindFunction,
 	})
-	if g.IsIndexBuilt() {
-		t.Fatal("expected full index to be invalidated after AddNode")
+	if !g.IsIndexBuilt() {
+		t.Fatal("expected derived index to stay built after AddNode")
 	}
 	if !g.HasResourceARNPrefixIndex() {
 		t.Fatal("expected ARN prefix index to stay built after AddNode")
@@ -774,8 +831,8 @@ func TestFindMatchingNodesUsesIncrementalARNPrefixIndexAfterNodeMutation(t *test
 		ID:   "arn:aws:lambda:us-west-2:123456789012:function:payments-canary",
 		Kind: NodeKindFunction,
 	})
-	if g.IsIndexBuilt() {
-		t.Fatal("expected full index to be invalidated after AddNode")
+	if !g.IsIndexBuilt() {
+		t.Fatal("expected derived index to stay built after AddNode")
 	}
 	if !g.HasResourceARNPrefixIndex() {
 		t.Fatal("expected ARN prefix index to stay built after AddNode")
@@ -806,8 +863,8 @@ func TestGraph_RemoveNode(t *testing.T) {
 	if !g.RemoveNode("role:admin") {
 		t.Fatal("expected RemoveNode to delete existing node")
 	}
-	if g.IsIndexBuilt() {
-		t.Fatal("expected RemoveNode to invalidate index")
+	if !g.IsIndexBuilt() {
+		t.Fatal("expected RemoveNode to keep derived index current")
 	}
 	if _, ok := g.GetNode("role:admin"); ok {
 		t.Fatal("expected removed node to be absent")
@@ -847,8 +904,8 @@ func TestGraph_RemoveEdge(t *testing.T) {
 	if !g.RemoveEdge("user:alice", "role:admin", EdgeKindCanAssume) {
 		t.Fatal("expected RemoveEdge to remove matching edges")
 	}
-	if g.IsIndexBuilt() {
-		t.Fatal("expected RemoveEdge to invalidate index")
+	if !g.IsIndexBuilt() {
+		t.Fatal("expected RemoveEdge to keep derived index current")
 	}
 
 	if got := len(g.GetOutEdges("user:alice")); got != 1 {
@@ -878,8 +935,8 @@ func TestGraph_RemoveEdgesByNode(t *testing.T) {
 	g.BuildIndex()
 	g.RemoveEdgesByNode("b")
 
-	if g.IsIndexBuilt() {
-		t.Fatal("expected RemoveEdgesByNode to invalidate index")
+	if !g.IsIndexBuilt() {
+		t.Fatal("expected RemoveEdgesByNode to keep derived index current")
 	}
 	if len(g.GetOutEdges("a")) != 0 {
 		t.Fatal("expected outgoing edge to removed node to be deleted")
@@ -903,8 +960,8 @@ func TestGraph_SetNodeProperty(t *testing.T) {
 	if !g.SetNodeProperty("node-1", "department", "security") {
 		t.Fatal("expected SetNodeProperty to update existing node")
 	}
-	if g.IsIndexBuilt() {
-		t.Fatal("expected SetNodeProperty to invalidate index")
+	if !g.IsIndexBuilt() {
+		t.Fatal("expected SetNodeProperty to keep derived index current")
 	}
 	n, ok := g.GetNode("node-1")
 	if !ok {

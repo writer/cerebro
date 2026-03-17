@@ -100,7 +100,7 @@ func (g *Graph) AddNode(node *Node) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.addNodeLocked(node) {
-		g.markGraphChangedPreservingNodeLookupLocked()
+		g.markGraphChangedPreservingNodeIndexesLocked()
 	}
 }
 
@@ -126,7 +126,7 @@ func (g *Graph) AddNodesBatch(nodes []*Node) {
 		}
 	}
 	if changed {
-		g.markGraphChangedPreservingNodeLookupLocked()
+		g.markGraphChangedPreservingNodeIndexesLocked()
 	}
 }
 
@@ -143,7 +143,7 @@ func (g *Graph) AddEdge(edge *Edge) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.addEdgeLocked(edge) {
-		g.markGraphChangedPreservingNodeLookupLocked()
+		g.markGraphEdgeMutationLocked()
 	}
 }
 
@@ -169,7 +169,7 @@ func (g *Graph) AddEdgesBatch(edges []*Edge) {
 		}
 	}
 	if changed {
-		g.markGraphChangedPreservingNodeLookupLocked()
+		g.markGraphEdgeMutationLocked()
 	}
 }
 
@@ -193,7 +193,8 @@ func (g *Graph) RemoveNode(id string) bool {
 	node.Version++
 	g.activeNodeCount.Add(-1)
 	g.removeNodeFromLookupIndexesLocked(node)
-	g.markGraphChangedPreservingNodeLookupLocked()
+	g.removeNodeFromDerivedIndexesLocked(node)
+	g.markGraphChangedPreservingNodeIndexesLocked()
 	return true
 }
 
@@ -214,7 +215,7 @@ func (g *Graph) RemoveEdge(source, target string, kind EdgeKind) bool {
 	}
 
 	if removed {
-		g.markGraphChangedPreservingNodeLookupLocked()
+		g.markGraphEdgeMutationLocked()
 	}
 	return removed
 }
@@ -225,7 +226,7 @@ func (g *Graph) RemoveEdgesByNode(nodeID string) {
 	defer g.mu.Unlock()
 
 	if g.removeEdgesByNodeLocked(nodeID) {
-		g.markGraphChangedPreservingNodeLookupLocked()
+		g.markGraphEdgeMutationLocked()
 	}
 }
 
@@ -243,7 +244,7 @@ func (g *Graph) CompactDeletedNodes() {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.compactDeletedNodesLocked() {
-		g.markGraphChangedPreservingNodeLookupLocked()
+		g.markGraphChangedPreservingNodeIndexesLocked()
 	}
 }
 
@@ -261,6 +262,8 @@ func (g *Graph) SetNodeProperty(id string, key string, value any) bool {
 	if !ok || node.DeletedAt != nil {
 		return false
 	}
+	wasInternetFacing := g.isInternetFacing(node)
+	wasCrownJewel := g.isCrownJewel(node)
 
 	previousValue, hadPreviousValue := node.Properties[key]
 	if hadPreviousValue {
@@ -290,7 +293,8 @@ func (g *Graph) SetNodeProperty(id string, key string, value any) bool {
 	}
 	node.Version++
 	g.appendNodePropertyHistoryLocked(node, key, value, now)
-	g.markGraphChangedPreservingNodeLookupLocked()
+	g.refreshNodeClassifiedIndexesLocked(node, wasInternetFacing, wasCrownJewel)
+	g.markGraphChangedPreservingNodeIndexesLocked()
 	return true
 }
 
@@ -477,7 +481,7 @@ func (g *Graph) ClearEdges() {
 	g.edgeByID = make(map[string]*Edge)
 	g.crossAccountEdge = nil
 	g.crossAccountIndexBuilt = false
-	g.markGraphChangedPreservingNodeLookupLocked()
+	g.markGraphEdgeMutationLocked()
 }
 
 // SetMetadata sets the graph metadata
@@ -899,8 +903,10 @@ func (g *Graph) addNodeLocked(node *Node) bool {
 	hydrateNodeTypedProperties(node)
 	g.appendNodePropertiesHistoryLocked(node, node.UpdatedAt)
 	g.removeNodeFromLookupIndexesLocked(existing)
+	g.removeNodeFromDerivedIndexesLocked(existing)
 	g.nodes[node.ID] = node
 	g.addNodeToLookupIndexesLocked(node)
+	g.addNodeToDerivedIndexesLocked(node)
 	if !wasActive {
 		g.activeNodeCount.Add(1)
 	}
@@ -1258,9 +1264,13 @@ func (g *Graph) markGraphChangedLocked() {
 	g.blastRadiusNeedsCompaction = true
 }
 
-func (g *Graph) markGraphChangedPreservingNodeLookupLocked() {
-	g.indexBuilt = false
+func (g *Graph) markGraphChangedPreservingNodeIndexesLocked() {
 	g.entitySuggestBuilt = false
+	g.blastRadiusVersion++
+	g.blastRadiusNeedsCompaction = true
+}
+
+func (g *Graph) markGraphEdgeMutationLocked() {
 	g.blastRadiusVersion++
 	g.blastRadiusNeedsCompaction = true
 }

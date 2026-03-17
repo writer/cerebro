@@ -75,7 +75,7 @@ func MergeEdgeProperties(g *Graph, edgeID string, properties map[string]any) boo
 						g.addCrossAccountEdgeLocked(edge)
 					}
 				}
-				g.markGraphChangedPreservingNodeLookupLocked()
+				g.markGraphEdgeMutationLocked()
 			}
 			return changed
 		}

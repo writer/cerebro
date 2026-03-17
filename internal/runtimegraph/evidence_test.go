@@ -326,7 +326,7 @@ func TestMaterializeFindingEvidenceIntoGraphRefreshesBuiltAtOnSubsequentWrites(t
 	}
 }
 
-func TestMaterializeFindingEvidenceIntoGraphDefersIndexBuildToCaller(t *testing.T) {
+func TestMaterializeFindingEvidenceIntoGraphKeepsIncrementalIndexesCurrentUntilFinalize(t *testing.T) {
 	g := graph.New()
 	g.BuildIndex()
 	if !g.IsIndexBuilt() {
@@ -348,8 +348,11 @@ func TestMaterializeFindingEvidenceIntoGraphDefersIndexBuildToCaller(t *testing.
 	if result.EvidenceNodesUpserted != 1 {
 		t.Fatalf("EvidenceNodesUpserted = %d, want 1", result.EvidenceNodesUpserted)
 	}
-	if g.IsIndexBuilt() {
-		t.Fatal("expected index to remain stale until caller finalizes materialized graph")
+	if !g.IsIndexBuilt() {
+		t.Fatal("expected incremental indexes to remain current during materialization")
+	}
+	if got := len(g.GetNodesByKindIndexed(graph.NodeKindEvidence)); got != 1 {
+		t.Fatalf("len(GetNodesByKindIndexed(evidence)) before finalize = %d, want 1", got)
 	}
 	if got := g.Metadata().BuiltAt; !got.Equal(now) {
 		t.Fatalf("metadata.BuiltAt = %s, want %s", got, now)

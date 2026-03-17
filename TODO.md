@@ -19,6 +19,20 @@ Status: executed end-to-end via PR workflow
 - [x] Add TDD coverage proving multi-worker results match single-worker results on wide frontiers.
 - [x] Re-run focused graph tests, lint, changed-file validation, and blast-radius benchmarks.
 
+## Deep Review Cycle 181 - Incremental Derived Node Indexes (2026-03-17)
+
+### Review findings
+- [x] Gap: `BuildIndex()` still rebuilt derived node sets and entity-search corpus under the global graph lock even after node lookup indexes became incremental.
+- [x] Gap: node mutations were dropping `indexBuilt` wholesale even though internet-facing nodes, crown jewels, and entity-search docs depend only on node state and can be updated locally.
+- [x] Gap: edge-only mutations were also invalidating node-derived index state and lazy entity suggestions despite not affecting any node-derived search corpus.
+
+### Execution plan
+- [x] Incrementally maintain internet-facing and crown-jewel slices on node add/replace/remove/property mutations.
+- [x] Incrementally maintain entity-search documents, token indexes, and trigram indexes on node add/replace/remove.
+- [x] Split node-derived invalidation from edge invalidation so edge changes stop forcing node-derived rebuilds.
+- [x] Add correctness coverage for add/replace/remove/property mutation behavior.
+- [x] Re-run focused graph tests, lint, changed-file validation, and incremental-vs-rebuild benchmarks.
+
 ## Deep Review Cycle 180 - Attack Path Flat Adjacency Snapshot (2026-03-17)
 
 ### Review findings

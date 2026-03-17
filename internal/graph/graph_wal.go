@@ -134,7 +134,7 @@ func applyReplayedAddEdge(g *Graph, edge *Edge) error {
 	if !g.addEdgeLocked(edge) {
 		return fmt.Errorf("apply graph mutation record: edge %q rejected", edge.ID)
 	}
-	g.markGraphChangedPreservingNodeLookupLocked()
+	g.markGraphEdgeMutationLocked()
 	return nil
 }
 
