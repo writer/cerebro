@@ -137,6 +137,20 @@ Status: executed end-to-end via PR workflow
 - [x] Add TDD coverage for single-window grouping, window splits, evidence propagation, and idempotent rematerialization.
 - [x] Re-run focused and full graph/runtimegraph tests, lint, and changed-file validation.
 
+## Deep Review Cycle 188 - Observation Compaction Protections (2026-03-17)
+
+### Review findings
+- [x] Gap: issue `#368` still compacted stale runtime observations even when an active `attack_sequence` node still referenced them through `contains` edges, which could delete the evidence backing a live sequence.
+- [x] Gap: the first compaction slice only treated `based_on` chains as protected, so corroborated multi-sensor observations with live `corroborates` relationships could also be summarized away prematurely.
+- [x] Gap: compaction metrics did not distinguish why stale observations were retained, which made it hard to tell whether hot-graph cardinality was driven by findings, sequences, or corroboration state.
+
+### Execution plan
+- [x] Extend compaction protection to retain observations referenced by attack-sequence `contains` edges.
+- [x] Extend compaction protection to retain observations participating in corroboration groups through metadata or `corroborates` edges.
+- [x] Split preserved-observation counters by linked, sequenced, and correlated reasons.
+- [x] Add TDD coverage for attack-sequence and corroboration preservation.
+- [ ] Re-run focused and changed-file runtimegraph validation before pushing the follow-up branch.
+
 ## Deep Review Cycle 186 - Workload Behavioral Baseline Profiles (2026-03-17)
 
 ### Review findings

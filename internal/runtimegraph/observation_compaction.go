@@ -25,14 +25,25 @@ type ObservationCompactionPolicy struct {
 
 // ObservationCompactionResult summarizes one compaction pass.
 type ObservationCompactionResult struct {
-	ObservationsConsidered      int `json:"observations_considered"`
-	ObservationsCompacted       int `json:"observations_compacted"`
-	ObservationsPreservedActive int `json:"observations_preserved_active"`
-	ObservationsPreservedLinked int `json:"observations_preserved_linked"`
-	SummaryNodesCreated         int `json:"summary_nodes_created"`
-	SummaryNodesUpdated         int `json:"summary_nodes_updated"`
-	SummaryTargetEdgesCreated   int `json:"summary_target_edges_created"`
+	ObservationsConsidered          int `json:"observations_considered"`
+	ObservationsCompacted           int `json:"observations_compacted"`
+	ObservationsPreservedActive     int `json:"observations_preserved_active"`
+	ObservationsPreservedLinked     int `json:"observations_preserved_linked"`
+	ObservationsPreservedSequenced  int `json:"observations_preserved_sequenced"`
+	ObservationsPreservedCorrelated int `json:"observations_preserved_correlated"`
+	SummaryNodesCreated             int `json:"summary_nodes_created"`
+	SummaryNodesUpdated             int `json:"summary_nodes_updated"`
+	SummaryTargetEdgesCreated       int `json:"summary_target_edges_created"`
 }
+
+type observationCompactionProtectionReason int
+
+const (
+	observationCompactionProtectionNone observationCompactionProtectionReason = iota
+	observationCompactionProtectionLinked
+	observationCompactionProtectionSequenced
+	observationCompactionProtectionCorrelated
+)
 
 type observationCompactionGroupKey struct {
 	SubjectID       string
@@ -71,7 +82,8 @@ func DefaultObservationCompactionPolicy() ObservationCompactionPolicy {
 
 // CompactHistoricalObservations rolls stale runtime observation nodes into
 // deterministic daily summary observation nodes per subject and observation
-// kind. Any observation participating in a based_on chain is preserved.
+// kind. Any observation participating in a finding/evidence chain, an active
+// attack sequence, or a corroboration group is preserved.
 func CompactHistoricalObservations(g *graph.Graph, now time.Time, policy ObservationCompactionPolicy) ObservationCompactionResult {
 	result := ObservationCompactionResult{}
 	if g == nil {
@@ -108,8 +120,15 @@ func CompactHistoricalObservations(g *graph.Graph, now time.Time, policy Observa
 			result.ObservationsPreservedActive++
 			continue
 		}
-		if observationProtectedFromCompaction(g, node) {
+		switch observationCompactionProtectionReasonForNode(g, node) {
+		case observationCompactionProtectionLinked:
 			result.ObservationsPreservedLinked++
+			continue
+		case observationCompactionProtectionSequenced:
+			result.ObservationsPreservedSequenced++
+			continue
+		case observationCompactionProtectionCorrelated:
+			result.ObservationsPreservedCorrelated++
 			continue
 		}
 
@@ -201,21 +220,37 @@ func isObservationSummaryNode(node *graph.Node) bool {
 	return node != nil && strings.HasPrefix(strings.TrimSpace(node.ID), observationSummaryNodePrefix)
 }
 
-func observationProtectedFromCompaction(g *graph.Graph, node *graph.Node) bool {
+func observationCompactionProtectionReasonForNode(g *graph.Graph, node *graph.Node) observationCompactionProtectionReason {
 	if g == nil || node == nil {
-		return false
+		return observationCompactionProtectionNone
 	}
 	for _, edge := range g.GetOutEdges(node.ID) {
-		if edge != nil && edge.Kind == graph.EdgeKindBasedOn {
-			return true
+		if edge == nil {
+			continue
+		}
+		switch edge.Kind {
+		case graph.EdgeKindBasedOn:
+			return observationCompactionProtectionLinked
+		case graph.EdgeKindCorroborates:
+			return observationCompactionProtectionCorrelated
 		}
 	}
 	for _, edge := range g.GetInEdges(node.ID) {
-		if edge != nil && edge.Kind == graph.EdgeKindBasedOn {
-			return true
+		if edge == nil {
+			continue
+		}
+		switch edge.Kind {
+		case graph.EdgeKindBasedOn:
+			return observationCompactionProtectionLinked
+		case graph.EdgeKindCorroborates:
+			return observationCompactionProtectionCorrelated
+		case graph.EdgeKindContains:
+			if sequenceNode, ok := g.GetNode(edge.Source); ok && sequenceNode != nil && sequenceNode.Kind == graph.NodeKindAttackSequence {
+				return observationCompactionProtectionSequenced
+			}
 		}
 	}
-	return false
+	return observationCompactionProtectionNone
 }
 
 func observationSummaryNodeID(subjectID, observationType, day string) string {

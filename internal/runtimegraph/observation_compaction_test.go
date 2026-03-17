@@ -112,6 +112,123 @@ func TestCompactHistoricalObservationsPreservesBasedOnLinkedObservations(t *test
 	}
 }
 
+func TestCompactHistoricalObservationsPreservesAttackSequenceObservations(t *testing.T) {
+	now := time.Date(2026, 3, 17, 12, 0, 0, 0, time.UTC)
+	g := graph.New()
+	g.AddNode(&graph.Node{ID: "workload:prod/api", Kind: graph.NodeKindWorkload, Name: "api"})
+
+	writeCompactionObservation(t, g, "observation:stale-sequenced", "workload:prod/api", "process_exec", now.Add(-8*time.Hour), map[string]any{
+		"process_name": "curl",
+	})
+	sequence := observationSequence{
+		WorkloadID:  "workload:prod/api",
+		WindowStart: now.Add(-8 * time.Hour),
+		WindowEnd:   now.Add(-8 * time.Hour),
+		Observations: []observationSequenceCandidate{{
+			Node:       mustCompactionNode(t, g, "observation:stale-sequenced"),
+			ObservedAt: now.Add(-8 * time.Hour),
+			WorkloadID: "workload:prod/api",
+		}},
+	}
+	sequenceID := attackSequenceNodeID(sequence)
+	g.AddNode(buildObservationSequenceNode(sequenceID, sequence, now))
+	g.AddEdge(buildSequenceContainsEdge(sequenceID, "observation:stale-sequenced", 0, now.Add(-8*time.Hour), now))
+
+	result := CompactHistoricalObservations(g, now, DefaultObservationCompactionPolicy())
+	if result.ObservationsCompacted != 0 {
+		t.Fatalf("ObservationsCompacted = %d, want 0", result.ObservationsCompacted)
+	}
+	if result.ObservationsPreservedSequenced != 1 {
+		t.Fatalf("ObservationsPreservedSequenced = %d, want 1", result.ObservationsPreservedSequenced)
+	}
+	if _, ok := g.GetNode("observation:stale-sequenced"); !ok {
+		t.Fatal("expected attack-sequence observation to be preserved")
+	}
+	if got := len(observationSummaryNodes(g)); got != 0 {
+		t.Fatalf("len(summary nodes) = %d, want 0", got)
+	}
+}
+
+func TestCompactHistoricalObservationsPreservesCorroboratedObservations(t *testing.T) {
+	now := time.Date(2026, 3, 17, 12, 0, 0, 0, time.UTC)
+	g := graph.New()
+	g.AddNode(&graph.Node{ID: "workload:prod/api", Kind: graph.NodeKindWorkload, Name: "api"})
+
+	writeCompactionObservation(t, g, "observation:primary", "workload:prod/api", "process_exec", now.Add(-8*time.Hour), map[string]any{
+		"process_name": "sh",
+	})
+	writeCompactionObservation(t, g, "observation:secondary", "workload:prod/api", "process_exec", now.Add(-8*time.Hour), map[string]any{
+		"process_name": "sh",
+	})
+
+	primary := mustCompactionNode(t, g, "observation:primary")
+	primaryClone := *primary
+	primaryClone.Properties = cloneProperties(primary.Properties)
+	primaryClone.Properties["correlation_primary"] = true
+	g.AddNode(&primaryClone)
+
+	secondary := mustCompactionNode(t, g, "observation:secondary")
+	secondaryClone := *secondary
+	secondaryClone.Properties = cloneProperties(secondary.Properties)
+	secondaryClone.Properties["correlation_primary"] = false
+	secondaryClone.Properties["corroboration_primary_id"] = "observation:primary"
+	g.AddNode(&secondaryClone)
+
+	g.AddEdge(&graph.Edge{
+		ID:     "observation:secondary->observation:primary:corroborates",
+		Source: "observation:secondary",
+		Target: "observation:primary",
+		Kind:   graph.EdgeKindCorroborates,
+		Effect: graph.EdgeEffectAllow,
+	})
+
+	result := CompactHistoricalObservations(g, now, DefaultObservationCompactionPolicy())
+	if result.ObservationsCompacted != 0 {
+		t.Fatalf("ObservationsCompacted = %d, want 0", result.ObservationsCompacted)
+	}
+	if result.ObservationsPreservedCorrelated != 2 {
+		t.Fatalf("ObservationsPreservedCorrelated = %d, want 2", result.ObservationsPreservedCorrelated)
+	}
+	if _, ok := g.GetNode("observation:primary"); !ok {
+		t.Fatal("expected primary corroborated observation to be preserved")
+	}
+	if _, ok := g.GetNode("observation:secondary"); !ok {
+		t.Fatal("expected corroborating observation to be preserved")
+	}
+	if got := len(observationSummaryNodes(g)); got != 0 {
+		t.Fatalf("len(summary nodes) = %d, want 0", got)
+	}
+}
+
+func TestCompactHistoricalObservationsIgnoresUntrustedCorrelationMetadata(t *testing.T) {
+	now := time.Date(2026, 3, 17, 12, 0, 0, 0, time.UTC)
+	g := graph.New()
+	g.AddNode(&graph.Node{ID: "workload:prod/api", Kind: graph.NodeKindWorkload, Name: "api"})
+
+	writeCompactionObservation(t, g, "observation:forged-primary", "workload:prod/api", "process_exec", now.Add(-8*time.Hour), map[string]any{
+		"process_name":        "sh",
+		"correlation_primary": true,
+	})
+	writeCompactionObservation(t, g, "observation:forged-secondary", "workload:prod/api", "process_exec", now.Add(-7*time.Hour), map[string]any{
+		"process_name":             "bash",
+		"corroboration_primary_id": "observation:forged-primary",
+	})
+
+	result := CompactHistoricalObservations(g, now, DefaultObservationCompactionPolicy())
+	if result.ObservationsPreservedCorrelated != 0 {
+		t.Fatalf("ObservationsPreservedCorrelated = %d, want 0", result.ObservationsPreservedCorrelated)
+	}
+	if result.ObservationsCompacted != 2 {
+		t.Fatalf("ObservationsCompacted = %d, want 2", result.ObservationsCompacted)
+	}
+	if _, ok := g.GetNode("observation:forged-primary"); ok {
+		t.Fatal("expected forged correlation_primary observation to be compacted")
+	}
+	if _, ok := g.GetNode("observation:forged-secondary"); ok {
+		t.Fatal("expected forged corroboration_primary_id observation to be compacted")
+	}
+}
+
 func TestCompactHistoricalObservationsMergesIntoExistingDailySummary(t *testing.T) {
 	now := time.Date(2026, 3, 17, 12, 0, 0, 0, time.UTC)
 	g := graph.New()
@@ -184,6 +301,15 @@ func mustSingleObservationSummary(t *testing.T, g *graph.Graph) *graph.Node {
 		t.Fatalf("len(summary nodes) = %d, want 1", len(summaries))
 	}
 	return summaries[0]
+}
+
+func mustCompactionNode(t *testing.T, g *graph.Graph, id string) *graph.Node {
+	t.Helper()
+	node, ok := g.GetNode(id)
+	if !ok || node == nil {
+		t.Fatalf("expected node %q to exist", id)
+	}
+	return node
 }
 
 func observationSummaryNodes(g *graph.Graph) []*graph.Node {
