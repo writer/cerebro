@@ -24,6 +24,21 @@ Status: executed end-to-end via PR workflow
   - [x] legacy-vs-streaming compressed write benchmark
 - [ ] Re-run focused graph tests, lint, and changed-file validation.
 
+## Deep Review Cycle 164 - Incremental Basic Graph Lookup Indexes (2026-03-16)
+
+### Review findings
+- [x] Gap: issue `#345` is too broad for one safe cut, but the cheapest node lookup indexes (`kind`, `account`, `risk`, `provider`) are already isolated enough to maintain incrementally without widening the heavier search and derived-index surface.
+- [x] Gap: the current graph invalidates every secondary index on every mutation, so even node-only lookups fall back to scans or force a full `BuildIndex()` after small updates.
+- [x] Gap: there was no benchmark coverage measuring the delta between incremental node lookup maintenance and a forced full rebuild after a single-node mutation.
+
+### Execution plan
+- [x] Add a separately tracked incremental-build flag for basic node lookup indexes.
+- [x] Update node and edge mutation paths to preserve the basic lookup indexes when the heavy derived indexes are the only stale pieces.
+- [x] Handle node replacement and deletion so incremental lookups do not retain stale entries under old kind/account/risk/provider buckets.
+- [x] Add regressions for add/replace/remove behavior and for non-lookup mutations preserving the basic lookup indexes.
+- [x] Add a benchmark comparing incremental add-node lookup behavior against add-node-plus-full-rebuild.
+- [x] Re-run focused graph tests, benchmark, lint, and changed-file validation.
+
 ## Deep Review Cycle 161 - Runtime Admission Policy Substrate (2026-03-16)
 
 ### Review findings

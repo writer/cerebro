@@ -298,6 +298,196 @@ func TestGraph_InvalidateIndex(t *testing.T) {
 	}
 }
 
+func TestGraph_IncrementalNodeLookupIndexesTrackNodeMutations(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{
+		ID:       "workload:payments",
+		Kind:     NodeKindWorkload,
+		Account:  "acct-a",
+		Provider: "aws",
+		Risk:     RiskLow,
+	})
+	g.BuildIndex()
+
+	g.AddNode(&Node{
+		ID:       "identity:alice",
+		Kind:     NodeKindUser,
+		Account:  "acct-a",
+		Provider: "aws",
+		Risk:     RiskHigh,
+	})
+	if g.IsIndexBuilt() {
+		t.Fatal("expected full index to be invalidated after AddNode")
+	}
+	g.mu.RLock()
+	if !g.nodeLookupIndexBuilt {
+		g.mu.RUnlock()
+		t.Fatal("expected node lookup indexes to remain built after AddNode")
+	}
+	g.mu.RUnlock()
+	if got := len(g.GetNodesByKindIndexed(NodeKindUser)); got != 1 {
+		t.Fatalf("GetNodesByKindIndexed(user) = %d, want 1", got)
+	}
+	if got := len(g.GetNodesByAccountIndexed("acct-a")); got != 2 {
+		t.Fatalf("GetNodesByAccountIndexed(acct-a) = %d, want 2", got)
+	}
+	if got := len(g.GetNodesByRisk(RiskHigh)); got != 1 {
+		t.Fatalf("GetNodesByRisk(high) = %d, want 1", got)
+	}
+
+	g.AddNode(&Node{
+		ID:       "identity:alice",
+		Kind:     NodeKindRole,
+		Account:  "acct-b",
+		Provider: "gcp",
+		Risk:     RiskCritical,
+	})
+	if got := len(g.GetNodesByKindIndexed(NodeKindUser)); got != 0 {
+		t.Fatalf("GetNodesByKindIndexed(user) after replace = %d, want 0", got)
+	}
+	if got := len(g.GetNodesByKindIndexed(NodeKindRole)); got != 1 {
+		t.Fatalf("GetNodesByKindIndexed(role) after replace = %d, want 1", got)
+	}
+	if got := len(g.GetNodesByAccountIndexed("acct-a")); got != 1 {
+		t.Fatalf("GetNodesByAccountIndexed(acct-a) after replace = %d, want 1", got)
+	}
+	if got := len(g.GetNodesByAccountIndexed("acct-b")); got != 1 {
+		t.Fatalf("GetNodesByAccountIndexed(acct-b) after replace = %d, want 1", got)
+	}
+	if got := len(g.GetNodesByRisk(RiskHigh)); got != 0 {
+		t.Fatalf("GetNodesByRisk(high) after replace = %d, want 0", got)
+	}
+	if got := len(g.GetNodesByRisk(RiskCritical)); got != 1 {
+		t.Fatalf("GetNodesByRisk(critical) after replace = %d, want 1", got)
+	}
+
+	if !g.RemoveNode("identity:alice") {
+		t.Fatal("expected RemoveNode to remove replacement node")
+	}
+	if got := len(g.GetNodesByKindIndexed(NodeKindRole)); got != 0 {
+		t.Fatalf("GetNodesByKindIndexed(role) after removal = %d, want 0", got)
+	}
+	if got := len(g.GetNodesByAccountIndexed("acct-b")); got != 0 {
+		t.Fatalf("GetNodesByAccountIndexed(acct-b) after removal = %d, want 0", got)
+	}
+	if got := len(g.GetNodesByRisk(RiskCritical)); got != 0 {
+		t.Fatalf("GetNodesByRisk(critical) after removal = %d, want 0", got)
+	}
+}
+
+func TestGraph_IncrementalNodeLookupIndexesStayBuiltAcrossNonLookupMutations(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "workload:payments", Kind: NodeKindWorkload, Account: "acct-a", Risk: RiskLow})
+	g.AddNode(&Node{ID: "workload:queue", Kind: NodeKindWorkload, Account: "acct-a", Risk: RiskMedium})
+	g.BuildIndex()
+
+	g.AddEdge(&Edge{
+		ID:     "payments-queue",
+		Source: "workload:payments",
+		Target: "workload:queue",
+		Kind:   EdgeKindTargets,
+		Effect: EdgeEffectAllow,
+	})
+	if g.IsIndexBuilt() {
+		t.Fatal("expected full index to be invalidated after AddEdge")
+	}
+	g.mu.RLock()
+	if !g.nodeLookupIndexBuilt {
+		g.mu.RUnlock()
+		t.Fatal("expected node lookup indexes to stay built after AddEdge")
+	}
+	g.mu.RUnlock()
+	if got := len(g.GetNodesByAccountIndexed("acct-a")); got != 2 {
+		t.Fatalf("GetNodesByAccountIndexed(acct-a) after AddEdge = %d, want 2", got)
+	}
+
+	if !g.SetNodeProperty("workload:payments", "internet_exposed", true) {
+		t.Fatal("expected SetNodeProperty to succeed")
+	}
+	g.mu.RLock()
+	if !g.nodeLookupIndexBuilt {
+		g.mu.RUnlock()
+		t.Fatal("expected node lookup indexes to stay built after SetNodeProperty")
+	}
+	g.mu.RUnlock()
+	if got := len(g.GetNodesByKindIndexed(NodeKindWorkload)); got != 2 {
+		t.Fatalf("GetNodesByKindIndexed(workload) after SetNodeProperty = %d, want 2", got)
+	}
+}
+
+func TestGraph_IncrementalNodeLookupIndexedResultsAreDetachedFromFutureMutations(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "workload:a", Kind: NodeKindWorkload, Account: "acct-a", Risk: RiskLow})
+	g.AddNode(&Node{ID: "workload:b", Kind: NodeKindWorkload, Account: "acct-a", Risk: RiskLow})
+	g.BuildIndex()
+
+	kindNodes := g.GetNodesByKindIndexed(NodeKindWorkload)
+	accountNodes := g.GetNodesByAccountIndexed("acct-a")
+	riskNodes := g.GetNodesByRisk(RiskLow)
+
+	if !g.RemoveNode("workload:a") {
+		t.Fatal("expected RemoveNode to succeed")
+	}
+
+	if got := len(accountNodes); got != 2 {
+		t.Fatalf("len(accountNodes) = %d, want 2", got)
+	}
+	if got := len(kindNodes); got != 2 {
+		t.Fatalf("len(kindNodes) = %d, want 2", got)
+	}
+	if got := len(riskNodes); got != 2 {
+		t.Fatalf("len(riskNodes) = %d, want 2", got)
+	}
+	assertNodeIDs := func(name string, nodes []*Node, wantIDs ...string) {
+		t.Helper()
+		got := make(map[string]int, len(nodes))
+		for _, node := range nodes {
+			if node == nil {
+				got["<nil>"]++
+				continue
+			}
+			got[node.ID]++
+		}
+		for _, id := range wantIDs {
+			if got[id] == 0 {
+				t.Fatalf("%s missing %q in %#v", name, id, nodes)
+			}
+			got[id]--
+			if got[id] == 0 {
+				delete(got, id)
+			}
+		}
+		if len(got) != 0 {
+			t.Fatalf("%s has unexpected members %#v", name, got)
+		}
+	}
+	assertNodeIDs("kindNodes", kindNodes, "workload:a", "workload:b")
+	assertNodeIDs("accountNodes", accountNodes, "workload:a", "workload:b")
+	assertNodeIDs("riskNodes", riskNodes, "workload:a", "workload:b")
+}
+
+func TestRemoveIndexedNodeLockedClearsCompactedTail(t *testing.T) {
+	nodes := []*Node{
+		{ID: "workload:a"},
+		{ID: "workload:b"},
+		{ID: "workload:c"},
+	}
+
+	compacted := removeIndexedNodeLocked(nodes, "workload:b")
+	if got := len(compacted); got != 2 {
+		t.Fatalf("len(compacted) = %d, want 2", got)
+	}
+	if compacted[0] == nil || compacted[0].ID != "workload:a" {
+		t.Fatalf("compacted[0] = %#v, want workload:a", compacted[0])
+	}
+	if compacted[1] == nil || compacted[1].ID != "workload:c" {
+		t.Fatalf("compacted[1] = %#v, want workload:c", compacted[1])
+	}
+	if nodes[2] != nil {
+		t.Fatalf("nodes[2] = %#v, want nil tail after compaction", nodes[2])
+	}
+}
+
 func TestGraph_IndexFallback(t *testing.T) {
 	g := New()
 
