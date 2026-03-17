@@ -48,6 +48,7 @@ func MergeEdgeProperties(g *Graph, edgeID string, properties map[string]any) boo
 			if !g.activeEdgeLocked(edge) || edge.ID != edgeID {
 				continue
 			}
+			wasCrossAccount := edge.IsCrossAccount()
 			if edge.Properties == nil {
 				edge.Properties = make(map[string]any, len(properties))
 			}
@@ -65,7 +66,16 @@ func MergeEdgeProperties(g *Graph, edgeID string, properties map[string]any) boo
 					edge.Version = 1
 				}
 				edge.Version++
-				g.markGraphChangedLocked()
+				if g.crossAccountIndexBuilt {
+					isCrossAccount := edge.IsCrossAccount()
+					switch {
+					case wasCrossAccount && !isCrossAccount:
+						g.removeCrossAccountEdgeLocked(edge)
+					case !wasCrossAccount && isCrossAccount:
+						g.addCrossAccountEdgeLocked(edge)
+					}
+				}
+				g.markGraphChangedPreservingNodeLookupLocked()
 			}
 			return changed
 		}

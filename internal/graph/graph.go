@@ -36,6 +36,7 @@ type Graph struct {
 	indexByRisk            map[RiskLevel][]*Node
 	indexByProvider        map[string][]*Node
 	nodeLookupIndexBuilt   bool
+	arnPrefixIndexBuilt    bool
 	crossAccountIndexBuilt bool
 
 	// Heavier derived/search indexes are still rebuilt on BuildIndex().
@@ -525,6 +526,7 @@ func (g *Graph) buildIndexLocked() {
 	g.entitySuggestIndex = make(map[string][]EntitySuggestion)
 	g.entitySuggestBuilt = false
 	g.nodeLookupIndexBuilt = true
+	g.arnPrefixIndexBuilt = true
 
 	entityTokenSets := make(map[string]map[string]struct{})
 	entityTrigramSets := make(map[string]map[string]struct{})
@@ -546,12 +548,8 @@ func (g *Graph) buildIndexLocked() {
 			g.indexByProvider[node.Provider] = append(g.indexByProvider[node.Provider], node)
 		}
 
-		// Index resource nodes by ARN service:resourceType prefix
-		if node.IsResource() {
-			if parsed, err := ParseARN(node.ID); err == nil {
-				prefix := parsed.ResourcePrefix()
-				g.indexByARNPrefix[prefix] = append(g.indexByARNPrefix[prefix], node)
-			}
+		if prefix, ok := resourceNodeARNPrefix(node); ok {
+			g.indexByARNPrefix[prefix] = append(g.indexByARNPrefix[prefix], node)
 		}
 
 		// Pre-compute internet-facing nodes
@@ -820,6 +818,13 @@ func (g *Graph) GetCrossAccountEdgesIndexed() []*Edge {
 	return append([]*Edge(nil), g.crossAccountEdge...)
 }
 
+// HasResourceARNPrefixIndex reports whether the ARN prefix index is current.
+func (g *Graph) HasResourceARNPrefixIndex() bool {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.arnPrefixIndexBuilt
+}
+
 // InvalidateIndex marks the index as stale (call after modifications)
 func (g *Graph) InvalidateIndex() {
 	g.mu.Lock()
@@ -839,10 +844,10 @@ func (g *Graph) IsIndexBuilt() bool {
 func (g *Graph) GetResourceNodesByARNPrefix(prefix string) []*Node {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
-	if !g.indexBuilt {
+	if !g.arnPrefixIndexBuilt {
 		return nil
 	}
-	return g.indexByARNPrefix[prefix]
+	return append([]*Node(nil), g.indexByARNPrefix[prefix]...)
 }
 
 func (g *Graph) addNodeLocked(node *Node) bool {
@@ -912,6 +917,11 @@ func (g *Graph) addNodeToLookupIndexesLocked(node *Node) {
 	if node.Provider != "" {
 		g.indexByProvider[node.Provider] = append(g.indexByProvider[node.Provider], node)
 	}
+	if g.arnPrefixIndexBuilt {
+		if prefix, ok := resourceNodeARNPrefix(node); ok {
+			g.indexByARNPrefix[prefix] = append(g.indexByARNPrefix[prefix], node)
+		}
+	}
 }
 
 func (g *Graph) removeNodeFromLookupIndexesLocked(node *Node) {
@@ -938,6 +948,25 @@ func (g *Graph) removeNodeFromLookupIndexesLocked(node *Node) {
 			delete(g.indexByProvider, node.Provider)
 		}
 	}
+	if g.arnPrefixIndexBuilt {
+		if prefix, ok := resourceNodeARNPrefix(node); ok {
+			g.indexByARNPrefix[prefix] = removeIndexedNodeLocked(g.indexByARNPrefix[prefix], node.ID)
+			if len(g.indexByARNPrefix[prefix]) == 0 {
+				delete(g.indexByARNPrefix, prefix)
+			}
+		}
+	}
+}
+
+func resourceNodeARNPrefix(node *Node) (string, bool) {
+	if node == nil || !node.IsResource() {
+		return "", false
+	}
+	parsed, err := ParseARN(node.ID)
+	if err != nil {
+		return "", false
+	}
+	return parsed.ResourcePrefix(), true
 }
 
 func removeIndexedNodeLocked(nodes []*Node, nodeID string) []*Node {
@@ -1219,6 +1248,7 @@ func (g *Graph) markEdgeDeletedLocked(edge *Edge) bool {
 
 func (g *Graph) markGraphChangedLocked() {
 	g.nodeLookupIndexBuilt = false
+	g.arnPrefixIndexBuilt = false
 	g.crossAccountIndexBuilt = false
 	g.indexBuilt = false
 	g.entitySuggestBuilt = false

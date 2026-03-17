@@ -5,6 +5,24 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 166 - Incremental ARN Prefix Index Maintenance (2026-03-16)
+
+### Review findings
+- [x] Gap: issue `#345` still left ARN-prefix lookups on the full `BuildIndex()` path even after kind/account/risk and cross-account indexes were made incrementally maintainable.
+- [x] Gap: `FindMatchingNodes()` still gated ARN-prefix acceleration on `IsIndexBuilt()`, so a single node mutation discarded the fast path for concrete ARN queries even though the required index can be maintained from node-level deltas.
+- [x] Gap: there was no regression or benchmark coverage proving ARN-prefix candidates remain correct and detached after incremental node add/replace/remove mutations.
+
+### Execution plan
+- [x] Add a dedicated incremental-build flag for the ARN-prefix index.
+- [x] Maintain ARN-prefix buckets incrementally in node add/replace/remove paths once built.
+- [x] Let `FindMatchingNodes()` use the ARN-prefix index whenever that narrower index is current, even if the broader full index is stale.
+- [x] Return detached slices from `GetResourceNodesByARNPrefix()`.
+- [x] Add regressions for:
+  - [x] add/replace/remove behavior
+  - [x] detached getter results surviving later mutations
+  - [x] ARN matcher usage after the full index becomes stale
+- [x] Add a benchmark comparing incremental ARN-prefix maintenance versus add-node-plus-full-rebuild.
+
 ## Deep Review Cycle 165 - Incremental Cross-Account Edge Index Maintenance (2026-03-16)
 
 ### Review findings

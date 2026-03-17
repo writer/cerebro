@@ -78,3 +78,62 @@ func TestMergeEdgePropertiesUpdatesActiveEdgeByID(t *testing.T) {
 		t.Fatalf("response_action_type = %#v, want block_ip", got)
 	}
 }
+
+func TestMergeEdgePropertiesPreservesARNPrefixIndex(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{
+		ID:   "arn:aws:lambda:us-west-2:123456789012:function:payments",
+		Kind: NodeKindFunction,
+	})
+	g.AddNode(&Node{ID: "observation:runtime:1", Kind: NodeKindObservation})
+	g.AddEdge(&Edge{
+		ID:     "observation:runtime:1->arn:aws:lambda:us-west-2:123456789012:function:payments:targets",
+		Source: "observation:runtime:1",
+		Target: "arn:aws:lambda:us-west-2:123456789012:function:payments",
+		Kind:   EdgeKindTargets,
+		Effect: EdgeEffectAllow,
+	})
+	g.BuildIndex()
+
+	if !MergeEdgeProperties(g, "observation:runtime:1->arn:aws:lambda:us-west-2:123456789012:function:payments:targets", map[string]any{
+		"response_execution_id": "exec-1",
+	}) {
+		t.Fatal("expected MergeEdgeProperties to update the edge")
+	}
+	if !g.HasResourceARNPrefixIndex() {
+		t.Fatal("expected ARN prefix index to remain built after MergeEdgeProperties")
+	}
+	if got := len(g.GetResourceNodesByARNPrefix("lambda:function")); got != 1 {
+		t.Fatalf("len(GetResourceNodesByARNPrefix(lambda:function)) = %d, want 1", got)
+	}
+}
+
+func TestMergeEdgePropertiesUpdatesCrossAccountIndex(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "source", Kind: NodeKindWorkload})
+	g.AddNode(&Node{ID: "target", Kind: NodeKindObservation})
+	g.AddEdge(&Edge{
+		ID:     "source->target:targets",
+		Source: "source",
+		Target: "target",
+		Kind:   EdgeKindTargets,
+		Effect: EdgeEffectAllow,
+	})
+	g.BuildIndex()
+
+	if got := len(g.GetCrossAccountEdgesIndexed()); got != 0 {
+		t.Fatalf("len(GetCrossAccountEdgesIndexed()) before merge = %d, want 0", got)
+	}
+	if !MergeEdgeProperties(g, "source->target:targets", map[string]any{"cross_account": true}) {
+		t.Fatal("expected MergeEdgeProperties to update the edge")
+	}
+	if got := len(g.GetCrossAccountEdgesIndexed()); got != 1 {
+		t.Fatalf("len(GetCrossAccountEdgesIndexed()) after enabling cross_account = %d, want 1", got)
+	}
+	if !MergeEdgeProperties(g, "source->target:targets", map[string]any{"cross_account": false}) {
+		t.Fatal("expected MergeEdgeProperties to update the edge")
+	}
+	if got := len(g.GetCrossAccountEdgesIndexed()); got != 0 {
+		t.Fatalf("len(GetCrossAccountEdgesIndexed()) after disabling cross_account = %d, want 0", got)
+	}
+}

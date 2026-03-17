@@ -700,6 +700,93 @@ func TestGraph_ClearEdgesInvalidatesCrossAccountIndex(t *testing.T) {
 	}
 }
 
+func TestGraph_IncrementalARNPrefixIndexStayBuiltAcrossNodeMutations(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{
+		ID:   "arn:aws:lambda:us-west-2:123456789012:function:payments",
+		Kind: NodeKindFunction,
+	})
+	g.BuildIndex()
+
+	g.AddNode(&Node{
+		ID:   "arn:aws:lambda:us-west-2:123456789012:function:queue",
+		Kind: NodeKindFunction,
+	})
+	if g.IsIndexBuilt() {
+		t.Fatal("expected full index to be invalidated after AddNode")
+	}
+	if !g.HasResourceARNPrefixIndex() {
+		t.Fatal("expected ARN prefix index to stay built after AddNode")
+	}
+	if got := len(g.GetResourceNodesByARNPrefix("lambda:function")); got != 2 {
+		t.Fatalf("len(GetResourceNodesByARNPrefix(lambda:function)) after AddNode = %d, want 2", got)
+	}
+
+	g.AddNode(&Node{
+		ID:   "arn:aws:rds:us-west-2:123456789012:db:queue",
+		Kind: NodeKindDatabase,
+	})
+	if got := len(g.GetResourceNodesByARNPrefix("lambda:function")); got != 2 {
+		t.Fatalf("len(GetResourceNodesByARNPrefix(lambda:function)) after add = %d, want 2", got)
+	}
+	if got := len(g.GetResourceNodesByARNPrefix("rds:db")); got != 1 {
+		t.Fatalf("len(GetResourceNodesByARNPrefix(rds:db)) after add = %d, want 1", got)
+	}
+
+	if !g.RemoveNode("arn:aws:lambda:us-west-2:123456789012:function:queue") {
+		t.Fatal("expected RemoveNode to succeed")
+	}
+	if got := len(g.GetResourceNodesByARNPrefix("lambda:function")); got != 1 {
+		t.Fatalf("len(GetResourceNodesByARNPrefix(lambda:function)) after RemoveNode = %d, want 1", got)
+	}
+}
+
+func TestGraph_IncrementalARNPrefixIndexedResultsAreDetached(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{
+		ID:   "arn:aws:lambda:us-west-2:123456789012:function:payments",
+		Kind: NodeKindFunction,
+	})
+	g.BuildIndex()
+
+	nodes := g.GetResourceNodesByARNPrefix("lambda:function")
+	if !g.RemoveNode("arn:aws:lambda:us-west-2:123456789012:function:payments") {
+		t.Fatal("expected RemoveNode to succeed")
+	}
+
+	if got := len(nodes); got != 1 {
+		t.Fatalf("len(nodes) = %d, want 1", got)
+	}
+	if nodes[0] == nil || nodes[0].ID != "arn:aws:lambda:us-west-2:123456789012:function:payments" {
+		t.Fatalf("nodes[0] = %#v, want payments function", nodes[0])
+	}
+}
+
+func TestFindMatchingNodesUsesIncrementalARNPrefixIndexAfterNodeMutation(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{
+		ID:   "arn:aws:lambda:us-west-2:123456789012:function:payments",
+		Kind: NodeKindFunction,
+	})
+	g.BuildIndex()
+
+	g.AddNode(&Node{
+		ID:   "arn:aws:lambda:us-west-2:123456789012:function:payments-canary",
+		Kind: NodeKindFunction,
+	})
+	if g.IsIndexBuilt() {
+		t.Fatal("expected full index to be invalidated after AddNode")
+	}
+	if !g.HasResourceARNPrefixIndex() {
+		t.Fatal("expected ARN prefix index to stay built after AddNode")
+	}
+
+	matches := FindMatchingNodes(g, "arn:aws:lambda:us-west-2:123456789012:function:payments*")
+	if len(matches) != 2 {
+		t.Fatalf("len(matches) = %d, want 2", len(matches))
+	}
+}
+
 func TestGraph_RemoveNode(t *testing.T) {
 	g := New()
 
