@@ -226,7 +226,19 @@ func (g *Graph) SetNodeProperty(id string, key string, value any) bool {
 		return false
 	}
 
-	node.PreviousProperties = cloneAnyMap(node.Properties)
+	previousValue, hadPreviousValue := node.Properties[key]
+	if hadPreviousValue {
+		if node.PreviousProperties == nil {
+			node.PreviousProperties = make(map[string]any, 1)
+		} else {
+			for previousKey := range node.PreviousProperties {
+				delete(node.PreviousProperties, previousKey)
+			}
+		}
+		node.PreviousProperties[key] = cloneAny(previousValue)
+	} else {
+		node.PreviousProperties = nil
+	}
 	if node.Properties == nil {
 		node.Properties = make(map[string]any)
 	}

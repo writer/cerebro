@@ -92,8 +92,79 @@ func TestGraphTemporalSetNodePropertyTracksPreviousAndVersion(t *testing.T) {
 	if node.PreviousProperties["department"] != "security" {
 		t.Fatalf("expected previous properties to keep old value, got %#v", node.PreviousProperties)
 	}
+	if len(node.PreviousProperties) != 1 {
+		t.Fatalf("expected only changed key in previous properties, got %#v", node.PreviousProperties)
+	}
 	if node.Properties["department"] != "platform" {
 		t.Fatalf("expected new property value, got %#v", node.Properties)
+	}
+}
+
+func TestGraphTemporalSetNodePropertyPreviousPropertiesOmitUnchangedKeys(t *testing.T) {
+	origNow := temporalNowUTC
+	defer func() { temporalNowUTC = origNow }()
+
+	t0 := time.Date(2026, 3, 8, 10, 0, 0, 0, time.UTC)
+	calls := 0
+	temporalNowUTC = func() time.Time {
+		calls++
+		return t0.Add(time.Duration(calls) * time.Minute)
+	}
+
+	g := New()
+	g.AddNode(&Node{
+		ID:   "node-1",
+		Kind: NodeKindUser,
+		Properties: map[string]any{
+			"department": "security",
+			"team":       "platform",
+		},
+	})
+	if !g.SetNodeProperty("node-1", "department", "product-security") {
+		t.Fatal("expected SetNodeProperty to succeed")
+	}
+
+	node, _ := g.GetNode("node-1")
+	if len(node.PreviousProperties) != 1 {
+		t.Fatalf("len(previous_properties) = %d, want 1", len(node.PreviousProperties))
+	}
+	if _, ok := node.PreviousProperties["team"]; ok {
+		t.Fatalf("unexpected unchanged key in previous_properties: %#v", node.PreviousProperties)
+	}
+}
+
+func TestGraphTemporalSetNodePropertyClonesCompositePreviousValue(t *testing.T) {
+	origNow := temporalNowUTC
+	defer func() { temporalNowUTC = origNow }()
+
+	t0 := time.Date(2026, 3, 8, 10, 0, 0, 0, time.UTC)
+	calls := 0
+	temporalNowUTC = func() time.Time {
+		calls++
+		return t0.Add(time.Duration(calls) * time.Minute)
+	}
+
+	previous := map[string]any{"stage": "security"}
+	g := New()
+	g.AddNode(&Node{
+		ID:   "node-1",
+		Kind: NodeKindUser,
+		Properties: map[string]any{
+			"profile": previous,
+		},
+	})
+	if !g.SetNodeProperty("node-1", "profile", map[string]any{"stage": "platform"}) {
+		t.Fatal("expected SetNodeProperty to succeed")
+	}
+
+	previous["stage"] = "mutated"
+	node, _ := g.GetNode("node-1")
+	stored, ok := node.PreviousProperties["profile"].(map[string]any)
+	if !ok {
+		t.Fatalf("previous profile = %#v, want map[string]any", node.PreviousProperties["profile"])
+	}
+	if stored["stage"] != "security" {
+		t.Fatalf("stored previous profile = %#v, want cloned original value", stored)
 	}
 }
 

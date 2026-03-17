@@ -22,6 +22,23 @@ Status: executed end-to-end via PR workflow
   - [x] idempotent repeated projection
 - [x] Re-run focused runtime/runtimegraph tests, lint, and changed-file validation.
 
+## Deep Review Cycle 151 - SetNodeProperty PreviousProperties Narrowing (2026-03-16)
+
+### Review findings
+- [x] Gap: issue `#379` is real on the hot path because `SetNodeProperty()` was deep-cloning the entire node property map into `PreviousProperties` on every single-key update.
+- [x] Gap: the existing temporal tests only required `PreviousProperties` to preserve the prior value for the changed key; they did not require a full snapshot of unrelated keys.
+- [x] Gap: the graph package had no benchmark locking down `SetNodeProperty()` allocation behavior for a realistic runtime-observation-sized property map.
+
+### Execution plan
+- [x] Narrow `SetNodeProperty()` so `PreviousProperties` stores only the previous value for the touched key.
+- [x] Reuse the small `PreviousProperties` map instead of re-allocating/cloning the whole property bag on each update.
+- [x] Preserve deep-copy behavior for composite prior values so callers do not retain aliases into mutable old state.
+- [x] Add regressions for:
+  - [x] unchanged keys omitted from `PreviousProperties`
+  - [x] composite previous-value cloning
+- [x] Add a focused benchmark for `SetNodeProperty()` on a 20-property node.
+- [x] Re-run focused graph tests, lint, and changed-file validation.
+
 ## Deep Review Cycle 150 - Runtime Observation Metadata Allocation Trim (2026-03-16)
 
 ### Review findings
