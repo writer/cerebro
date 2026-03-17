@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -188,6 +189,25 @@ func (d serverDependencies) CurrentSecurityGraph() *graph.Graph {
 	return d.SecurityGraph
 }
 
+func (d serverDependencies) CurrentSecurityGraphForTenant(tenantID string) *graph.Graph {
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		return d.CurrentSecurityGraph()
+	}
+	if scoped, ok := d.graphRuntime.(interface {
+		CurrentSecurityGraphForTenant(string) *graph.Graph
+	}); ok {
+		if g := scoped.CurrentSecurityGraphForTenant(tenantID); g != nil {
+			return g
+		}
+	}
+	current := d.CurrentSecurityGraph()
+	if current == nil {
+		return nil
+	}
+	return current.SubgraphForTenant(tenantID)
+}
+
 func (d serverDependencies) GraphBuildSnapshot() app.GraphBuildSnapshot {
 	if d.graphRuntime == nil {
 		return app.GraphBuildSnapshot{}
@@ -307,6 +327,19 @@ func (r *graphRuntimeAdapter) CurrentSecurityGraph() *graph.Graph {
 		return r.deps.SecurityGraph
 	}
 	return nil
+}
+
+func (r *graphRuntimeAdapter) CurrentSecurityGraphForTenant(tenantID string) *graph.Graph {
+	if scoped, ok := r.fallback.(interface {
+		CurrentSecurityGraphForTenant(string) *graph.Graph
+	}); ok {
+		return scoped.CurrentSecurityGraphForTenant(tenantID)
+	}
+	current := r.CurrentSecurityGraph()
+	if current == nil {
+		return nil
+	}
+	return current.SubgraphForTenant(tenantID)
 }
 
 func (r *graphRuntimeAdapter) GraphBuildSnapshot() app.GraphBuildSnapshot {

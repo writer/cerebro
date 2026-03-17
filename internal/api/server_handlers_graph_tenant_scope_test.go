@@ -61,6 +61,32 @@ func TestGraphRiskHandlersUseTenantScopedGraph(t *testing.T) {
 	}
 }
 
+func TestCurrentTenantSecurityGraphReusesTenantShard(t *testing.T) {
+	s := newTestServer(t)
+	g := s.app.SecurityGraph
+	g.AddNode(&graph.Node{ID: "service:shared", Kind: graph.NodeKindService, Name: "Shared"})
+	g.AddNode(&graph.Node{ID: "service:tenant-a", Kind: graph.NodeKindService, Name: "Tenant A", TenantID: "tenant-a"})
+	g.AddNode(&graph.Node{ID: "service:tenant-b", Kind: graph.NodeKindService, Name: "Tenant B", TenantID: "tenant-b"})
+	g.AddEdge(&graph.Edge{ID: "shared-a", Source: "service:shared", Target: "service:tenant-a", Kind: graph.EdgeKindDependsOn})
+	g.AddEdge(&graph.Edge{ID: "shared-b", Source: "service:shared", Target: "service:tenant-b", Kind: graph.EdgeKindDependsOn})
+
+	ctx := context.WithValue(context.Background(), contextKeyTenant, "tenant-a")
+	first := s.currentTenantSecurityGraph(ctx)
+	second := s.currentTenantSecurityGraph(ctx)
+	if first == nil || second == nil {
+		t.Fatal("expected tenant-scoped live graph")
+	}
+	if first != second {
+		t.Fatalf("expected live tenant graph reuse, got %p then %p", first, second)
+	}
+	if first == g {
+		t.Fatal("expected tenant-scoped graph to differ from the global live graph")
+	}
+	if _, ok := first.GetNode("service:tenant-b"); ok {
+		t.Fatal("expected tenant shard to exclude foreign-tenant nodes")
+	}
+}
+
 func TestGraphIntelligenceHandlersUseTenantScopedGraph(t *testing.T) {
 	s := newTestServer(t)
 	g := s.app.SecurityGraph

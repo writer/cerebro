@@ -5,6 +5,19 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 193 - Tenant-Sharded Hot Graphs (2026-03-17)
+
+### Review findings
+- [x] Gap: issue `#354` still served tenant-scoped graph reads by cloning a fresh `SubgraphForTenant` on every request, so large multi-tenant graphs paid repeated clone/index cost even when the live graph had not changed.
+- [x] Gap: the app had no first-class tenant shard lifecycle, so there was no cache boundary for lazy per-tenant hydration, idle eviction, or invalidation when the hot global graph pointer swapped after rebuilds or incremental mutations.
+- [x] Gap: the API layer had no dedicated tenant-scoped live-graph accessor, which kept tenant graph routing coupled to ad hoc per-handler cloning instead of one app-owned read path.
+
+### Execution plan
+- [x] Add an app-owned tenant shard manager that lazily hydrates tenant subgraphs from the current live graph and evicts idle shards after a configurable inactivity TTL.
+- [x] Invalidate cached tenant shards whenever `setSecurityGraph` swaps the live graph so tenant reads never outlive the source graph version boundary.
+- [x] Route the live tenant API graph path through the shard manager while preserving clone-based scoping for snapshot and other non-live graph views.
+- [x] Add TDD coverage for shard reuse, source-swap invalidation, idle eviction, and tenant API reuse, then re-run focused and broad app/API validation.
+
 ## Deep Review Cycle 192 - Materialized Detection Views (2026-03-17)
 
 ### Review findings

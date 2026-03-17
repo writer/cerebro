@@ -28,7 +28,7 @@ func (s *Server) currentTenantSecurityGraph(ctx context.Context) *graph.Graph {
 	if s == nil || s.app == nil {
 		return nil
 	}
-	return s.tenantScopedGraph(ctx, s.app.CurrentSecurityGraph())
+	return s.app.CurrentSecurityGraphForTenant(currentTenantScopeID(ctx))
 }
 
 func (s *Server) currentTenantRiskEngine(ctx context.Context) *risk.RiskEngine {

@@ -2,7 +2,7 @@
 
 Generated from `internal/app/app_config.go` (`LoadConfig`) via `go run ./scripts/generate_config_docs/main.go`.
 
-Total variables: **335**
+Total variables: **336**
 
 | Variable | Reader(s) | Default(s) | Config Field(s) | Validation rule(s) |
 |---|---|---|---|---|
@@ -132,6 +132,7 @@ Total variables: **335**
 | `GRAPH_SNAPSHOT_MAX_RETAINED` | `getEnvInt` | `10` | `GraphSnapshotMaxRetained` | `-` |
 | `GRAPH_SNAPSHOT_PATH` | `getEnv` | `filepath.Join(".cerebro", "graph-snapshots")` | `GraphSnapshotPath` | `-` |
 | `GRAPH_SNAPSHOT_REPLICA_URI` | `getEnv` | `""` | `GraphSnapshotReplicaURI` | `-` |
+| `GRAPH_TENANT_SHARD_IDLE_TTL` | `getEnvDuration` | `defaultGraphTenantShardIdleTTL` | `GraphTenantShardIdleTTL` | `must be greater than 0` |
 | `IMAGE_SCAN_CLAMAV_BINARY` | `getEnv` | `""` | `ImageScanClamAVBinary` | `-` |
 | `IMAGE_SCAN_CLEANUP_TIMEOUT` | `getEnvDuration` | `2 * time.Minute` | `ImageScanCleanupTimeout` | `-` |
 | `IMAGE_SCAN_GITLEAKS_BINARY` | `getEnv` | `""` | `ImageScanGitleaksBinary` | `-` |

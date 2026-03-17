@@ -336,6 +336,15 @@ func TestLoadConfigGraphPropertyHistoryControls(t *testing.T) {
 	}
 }
 
+func TestLoadConfigGraphTenantShardControls(t *testing.T) {
+	t.Setenv("GRAPH_TENANT_SHARD_IDLE_TTL", "27m")
+
+	cfg := LoadConfig()
+	if cfg.GraphTenantShardIdleTTL != 27*time.Minute {
+		t.Fatalf("expected graph tenant shard idle ttl 27m, got %s", cfg.GraphTenantShardIdleTTL)
+	}
+}
+
 func TestLoadConfigGraphEventMapperControls(t *testing.T) {
 	t.Setenv("GRAPH_EVENT_MAPPER_VALIDATION_MODE", "warn")
 	t.Setenv("GRAPH_EVENT_MAPPER_DEAD_LETTER_PATH", "/tmp/test-graph-mapper.dlq.jsonl")
@@ -677,6 +686,7 @@ func TestLoadConfigValidateAggregatesProblems(t *testing.T) {
 	t.Setenv("NATS_CONSUMER_ENABLED", "true")
 	t.Setenv("NATS_JETSTREAM_ENABLED", "false")
 	t.Setenv("GRAPH_CROSS_TENANT_REQUIRE_SIGNED_INGEST", "true")
+	t.Setenv("GRAPH_TENANT_SHARD_IDLE_TTL", "-1s")
 	t.Setenv("GRAPH_PROPERTY_HISTORY_MAX_ENTRIES", "-1")
 	t.Setenv("GRAPH_PROPERTY_HISTORY_TTL", "-1s")
 
@@ -697,6 +707,7 @@ func TestLoadConfigValidateAggregatesProblems(t *testing.T) {
 		"QUERY_POLICY_ROW_LIMIT must be greater than 0",
 		"NATS_JETSTREAM_ENABLED must be true when NATS_CONSUMER_ENABLED=true",
 		"GRAPH_CROSS_TENANT_SIGNING_KEY is required when GRAPH_CROSS_TENANT_REQUIRE_SIGNED_INGEST=true",
+		"GRAPH_TENANT_SHARD_IDLE_TTL must be > 0",
 		"GRAPH_PROPERTY_HISTORY_MAX_ENTRIES must be >= 0",
 		"GRAPH_PROPERTY_HISTORY_TTL must be >= 0",
 	}

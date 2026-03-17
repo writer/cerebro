@@ -159,6 +159,8 @@ type App struct {
 	graphConsistencyRun           bool
 	graphConsistencyCancel        context.CancelFunc
 	graphConsistencyWG            sync.WaitGroup
+	tenantShardMu                 sync.Mutex
+	tenantSecurityGraphShards     *tenantGraphShardManager
 	eventCorrelationRefreshQueue  *eventCorrelationRefreshQueue
 	eventCorrelationRefreshCancel context.CancelFunc
 	eventCorrelationRefreshWG     sync.WaitGroup

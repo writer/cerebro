@@ -471,6 +471,7 @@ type Config struct {
 	GraphSnapshotPath                   string
 	GraphSnapshotMaxRetained            int
 	GraphSnapshotReplicaURI             string
+	GraphTenantShardIdleTTL             time.Duration
 	GraphPropertyHistoryMaxEntries      int
 	GraphPropertyHistoryTTL             time.Duration
 	GraphSchemaValidationMode           string
@@ -842,6 +843,7 @@ func LoadConfig() *Config {
 				GraphSnapshotPath:                   getEnv("GRAPH_SNAPSHOT_PATH", filepath.Join(".cerebro", "graph-snapshots")),
 				GraphSnapshotMaxRetained:            getEnvInt("GRAPH_SNAPSHOT_MAX_RETAINED", 10),
 				GraphSnapshotReplicaURI:             getEnv("GRAPH_SNAPSHOT_REPLICA_URI", ""),
+				GraphTenantShardIdleTTL:             getEnvDuration("GRAPH_TENANT_SHARD_IDLE_TTL", defaultGraphTenantShardIdleTTL),
 				GraphPropertyHistoryMaxEntries:      getEnvInt("GRAPH_PROPERTY_HISTORY_MAX_ENTRIES", graph.DefaultTemporalHistoryMaxEntries),
 				GraphPropertyHistoryTTL:             getEnvDuration("GRAPH_PROPERTY_HISTORY_TTL", graph.DefaultTemporalHistoryTTL),
 				GraphSchemaValidationMode:           getEnv("GRAPH_SCHEMA_VALIDATION_MODE", "warn"),
