@@ -77,6 +77,58 @@ func (l *GraphMutationLog) LoadAfterSequence(sequence uint64) ([]GraphMutationRe
 	return filtered, nil
 }
 
+func (l *GraphMutationLog) LoadSequenceWindow(afterSequence, throughSequence uint64) ([]GraphMutationRecord, error) {
+	if l == nil || l.path == "" {
+		return nil, fmt.Errorf("graph mutation log path required")
+	}
+	if throughSequence < afterSequence {
+		return nil, fmt.Errorf("graph mutation log through sequence %d precedes after sequence %d", throughSequence, afterSequence)
+	}
+	records, err := l.LoadAll()
+	if err != nil {
+		return nil, err
+	}
+	if len(records) == 0 || throughSequence == afterSequence {
+		return nil, nil
+	}
+	filtered := make([]GraphMutationRecord, 0, len(records))
+	for _, record := range records {
+		if record.Sequence > afterSequence && record.Sequence <= throughSequence {
+			filtered = append(filtered, record)
+		}
+	}
+	return filtered, nil
+}
+
+func (l *GraphMutationLog) RestoreGraphFromSnapshot(checkpoint *Snapshot, checkpointSequence, throughSequence uint64) (*Graph, error) {
+	if checkpoint == nil {
+		return nil, fmt.Errorf("graph checkpoint snapshot required")
+	}
+	if throughSequence < checkpointSequence {
+		return nil, fmt.Errorf("graph recovery through sequence %d precedes checkpoint sequence %d", throughSequence, checkpointSequence)
+	}
+
+	recovered := RestoreFromSnapshot(checkpoint)
+	if throughSequence == checkpointSequence {
+		return recovered, nil
+	}
+	if l == nil || l.path == "" {
+		return nil, fmt.Errorf("graph mutation log path required")
+	}
+
+	records, err := l.LoadSequenceWindow(checkpointSequence, throughSequence)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateGraphMutationSequenceWindow(records, checkpointSequence, throughSequence); err != nil {
+		return nil, err
+	}
+	if err := ReplayGraphMutationRecords(recovered, records); err != nil {
+		return nil, err
+	}
+	return recovered, nil
+}
+
 func (l *GraphMutationLog) CompactThroughSequence(sequence uint64) error {
 	if l == nil || l.path == "" {
 		return fmt.Errorf("graph mutation log path required")
@@ -131,4 +183,31 @@ func loadGraphMutationRecordsFromReadCloser(reader io.ReadCloser) ([]GraphMutati
 		return records, closeErr
 	}
 	return records, loadErr
+}
+
+func validateGraphMutationSequenceWindow(records []GraphMutationRecord, afterSequence, throughSequence uint64) error {
+	if throughSequence == afterSequence {
+		return nil
+	}
+	if len(records) == 0 {
+		return fmt.Errorf("graph mutation log missing recovery records for sequences %d-%d", afterSequence+1, throughSequence)
+	}
+
+	expected := afterSequence + 1
+	lastApplied := afterSequence
+	for _, record := range records {
+		switch {
+		case record.Sequence < expected:
+			return fmt.Errorf("graph mutation log out of order at sequence %d", record.Sequence)
+		case record.Sequence > expected:
+			return fmt.Errorf("graph mutation log missing recovery records for sequences %d-%d", expected, throughSequence)
+		default:
+			lastApplied = record.Sequence
+			expected = record.Sequence + 1
+		}
+	}
+	if lastApplied != throughSequence {
+		return fmt.Errorf("graph mutation log missing recovery records for sequences %d-%d", lastApplied+1, throughSequence)
+	}
+	return nil
 }

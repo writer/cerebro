@@ -5,6 +5,20 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 178 - Point-in-Time WAL Recovery Windows (2026-03-16)
+
+### Review findings
+- [x] Gap: issue `#352` still lacked a first-class point-in-time recovery helper even after the file-backed WAL landed, so callers had to hand-roll record-window filtering before replay.
+- [x] Gap: checkpoint replay only covered "replay everything after sequence 0", which left the core "recover to mutation N" requirement unimplemented and untested.
+- [x] Gap: there was no focused benchmark on snapshot-plus-WAL recovery cost once sequence-window filtering became part of the graph package API surface.
+
+### Execution plan
+- [x] Add explicit WAL sequence-window loading for inclusive point-in-time replay ranges.
+- [x] Add a checkpoint-plus-log recovery helper that restores a graph through a requested mutation sequence.
+- [x] Add TDD coverage for sequence-window filtering, point-in-time recovery, invalid checkpoint ordering, and checkpoint-only recovery.
+- [x] Add a focused recovery benchmark.
+- [ ] Re-run focused graph tests, lint, changed-file validation, and the new benchmark.
+
 ## Deep Review Cycle 177 - File-Backed Graph WAL Store (2026-03-16)
 
 ### Review findings
