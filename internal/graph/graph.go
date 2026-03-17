@@ -25,8 +25,10 @@ type Graph struct {
 	activeEdgeCount atomic.Int64
 
 	// Traversal cache for expensive reachability queries.
-	blastRadiusCache   sync.Map
-	blastRadiusVersion uint64
+	blastRadiusCache           sync.Map
+	blastRadiusCacheWriteMu    sync.Mutex
+	blastRadiusVersion         uint64
+	blastRadiusNeedsCompaction bool
 
 	// Indexes for O(1) lookups - rebuilt on BuildIndex()
 	indexByKind              map[NodeKind][]*Node
@@ -67,15 +69,16 @@ type Metadata struct {
 func New() *Graph {
 	mode := SchemaValidationWarn
 	return &Graph{
-		nodes:                     make(map[string]*Node),
-		outEdges:                  make(map[string][]*Edge),
-		inEdges:                   make(map[string][]*Edge),
-		edgeByID:                  make(map[string]*Edge),
-		blastRadiusVersion:        1,
-		schemaValidationMode:      mode,
-		schemaValidationStats:     newSchemaValidationStats(mode),
-		temporalHistoryMaxEntries: DefaultTemporalHistoryMaxEntries,
-		temporalHistoryTTL:        DefaultTemporalHistoryTTL,
+		nodes:                      make(map[string]*Node),
+		outEdges:                   make(map[string][]*Edge),
+		inEdges:                    make(map[string][]*Edge),
+		edgeByID:                   make(map[string]*Edge),
+		blastRadiusVersion:         1,
+		blastRadiusNeedsCompaction: false,
+		schemaValidationMode:       mode,
+		schemaValidationStats:      newSchemaValidationStats(mode),
+		temporalHistoryMaxEntries:  DefaultTemporalHistoryMaxEntries,
+		temporalHistoryTTL:         DefaultTemporalHistoryTTL,
 	}
 }
 
@@ -1106,8 +1109,5 @@ func (g *Graph) markGraphChangedLocked() {
 	g.indexBuilt = false
 	g.entitySuggestBuilt = false
 	g.blastRadiusVersion++
-	g.blastRadiusCache.Range(func(key, _ any) bool {
-		g.blastRadiusCache.Delete(key)
-		return true
-	})
+	g.blastRadiusNeedsCompaction = true
 }

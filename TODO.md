@@ -210,6 +210,22 @@ Status: executed end-to-end via PR workflow
 - [x] Add a restore benchmark for a multi-thousand-node snapshot.
 - [x] Re-run focused graph tests, lint, and changed-file validation.
 
+## Deep Review Cycle 153 - Blast Radius Cache Version-Only Invalidation (2026-03-16)
+
+### Review findings
+- [x] Gap: graph mutation already increments a blast-radius cache version, but `markGraphChangedLocked` was still doing a full `sync.Map.Range+Delete` sweep on every mutation, which matches issue `#380` and makes every write scale with the current cache size.
+- [x] Gap: blast-radius cache entries already include a version stamp and are keyed by stable `(principalID, maxDepth)` tuples, so a version mismatch is sufficient to invalidate stale entries without eagerly deleting the whole map.
+- [x] Gap: the graph tests covered cache correctness but did not prove that post-mutation invalidation preserves cache slots and recomputes by version instead of by full-map eviction.
+
+### Execution plan
+- [x] Remove eager `blastRadiusCache.Range+Delete` invalidation from graph mutations.
+- [x] Keep invalidation correctness by relying on `blastRadiusVersion` mismatch during cache reads.
+- [x] Add TDD coverage proving:
+  - [x] cached blast-radius entries survive graph mutation structurally
+  - [x] stale entries still force recomputation after mutation
+  - [x] recomputation overwrites existing cache keys instead of growing the map
+- [x] Re-run focused graph tests, lint, and changed-file validation.
+
 ## Deep Review Cycle 143 - Runtime Graph Deferred Index Finalization (2026-03-16)
 
 ### Review findings

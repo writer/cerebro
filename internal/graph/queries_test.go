@@ -153,6 +153,258 @@ func TestBlastRadius_CacheIsolationAndInvalidation(t *testing.T) {
 	}
 }
 
+func TestBlastRadius_CacheInvalidationUsesVersioning(t *testing.T) {
+	g := setupTestGraph()
+
+	computeCalls := 0
+	blastRadiusComputeHook = func(_ string, _ int) {
+		computeCalls++
+	}
+	defer func() {
+		blastRadiusComputeHook = nil
+	}()
+
+	if got := countBlastRadiusCacheEntries(g); got != 0 {
+		t.Fatalf("expected empty blast radius cache, got %d entries", got)
+	}
+
+	BlastRadius(g, "user:alice", 3)
+	BlastRadius(g, "user:bob", 3)
+	if computeCalls != 2 {
+		t.Fatalf("expected 2 blast radius computations, got %d", computeCalls)
+	}
+	if got := countBlastRadiusCacheEntries(g); got != 2 {
+		t.Fatalf("expected 2 cached blast radius entries before mutation, got %d", got)
+	}
+
+	g.AddNode(&Node{
+		ID:      "bucket:versioned-cache",
+		Kind:    NodeKindBucket,
+		Name:    "versioned-cache",
+		Account: "111111111111",
+		Risk:    RiskLow,
+	})
+
+	if got := countBlastRadiusCacheEntries(g); got != 2 {
+		t.Fatalf("expected version invalidation to leave cached entries in place, got %d", got)
+	}
+	if !g.blastRadiusNeedsCompaction {
+		t.Fatal("expected mutation to mark blast radius cache for deferred compaction")
+	}
+
+	BlastRadius(g, "user:alice", 3)
+	if computeCalls != 3 {
+		t.Fatalf("expected stale cache entry to force recomputation after mutation, got %d computations", computeCalls)
+	}
+	if got := countBlastRadiusCacheEntries(g); got != 1 {
+		t.Fatalf("expected recomputation to compact stale cache entries, got %d entries", got)
+	}
+	if g.blastRadiusNeedsCompaction {
+		t.Fatal("expected deferred compaction marker to clear after stale cache cleanup")
+	}
+}
+
+func TestBlastRadius_DoesNotCacheMissingPrincipal(t *testing.T) {
+	g := setupTestGraph()
+
+	result := BlastRadius(g, "user:missing", 3)
+	if result.PrincipalID != "user:missing" {
+		t.Fatalf("expected missing principal result, got %#v", result.PrincipalID)
+	}
+	if got := countBlastRadiusCacheEntries(g); got != 0 {
+		t.Fatalf("expected missing principal lookups to skip cache writes, got %d entries", got)
+	}
+}
+
+func TestBlastRadius_DoesNotStoreStaleEntryAfterVersionAdvance(t *testing.T) {
+	g := setupTestGraph()
+
+	hooked := false
+	blastRadiusCacheStoreHook = func(g *Graph, version uint64) {
+		if hooked {
+			return
+		}
+		hooked = true
+		g.AddNode(&Node{
+			ID:      "bucket:stale-write-race",
+			Kind:    NodeKindBucket,
+			Name:    "stale-write-race",
+			Account: "111111111111",
+			Risk:    RiskLow,
+		})
+	}
+	defer func() {
+		blastRadiusCacheStoreHook = nil
+	}()
+
+	result := BlastRadius(g, "user:alice", 3)
+	if result.TotalCount == 0 {
+		t.Fatal("expected blast radius results for alice")
+	}
+	if got := countBlastRadiusCacheEntries(g); got != 0 {
+		t.Fatalf("expected stale version write to be skipped after graph mutation, got %d cache entries", got)
+	}
+
+	BlastRadius(g, "user:alice", 3)
+	if got := countBlastRadiusCacheEntries(g); got != 1 {
+		t.Fatalf("expected follow-up computation on current version to populate one cache entry, got %d", got)
+	}
+}
+
+func TestBlastRadius_StaleWriterDoesNotCompactCurrentEntries(t *testing.T) {
+	g := setupTestGraph()
+
+	hooked := false
+	blastRadiusCacheBeforeWriteHook = func(g *Graph, version uint64) {
+		if hooked {
+			return
+		}
+		hooked = true
+
+		g.AddNode(&Node{
+			ID:      "bucket:compaction-race",
+			Kind:    NodeKindBucket,
+			Name:    "compaction-race",
+			Account: "111111111111",
+			Risk:    RiskLow,
+		})
+
+		currentVersion := g.currentBlastRadiusCacheVersion()
+		g.blastRadiusCache.Store(blastRadiusCacheKey{principalID: "user:bob", maxDepth: 3}, &cachedBlastRadius{
+			version: currentVersion,
+			result:  &BlastRadiusResult{PrincipalID: "user:bob"},
+		})
+	}
+	defer func() {
+		blastRadiusCacheBeforeWriteHook = nil
+	}()
+
+	staleVersion := g.currentBlastRadiusCacheVersion()
+	g.putBlastRadiusInCache("user:alice", 3, staleVersion, &BlastRadiusResult{PrincipalID: "user:alice"})
+
+	raw, ok := g.blastRadiusCache.Load(blastRadiusCacheKey{principalID: "user:bob", maxDepth: 3})
+	if !ok {
+		t.Fatal("expected current-version cache entry to survive stale writer")
+	}
+	cached, ok := raw.(*cachedBlastRadius)
+	if !ok || cached == nil {
+		t.Fatalf("expected cached blast radius entry, got %#v", raw)
+	}
+	if cached.version != g.currentBlastRadiusCacheVersion() {
+		t.Fatalf("cached.version = %d, want current version %d", cached.version, g.currentBlastRadiusCacheVersion())
+	}
+
+	if _, ok := g.blastRadiusCache.Load(blastRadiusCacheKey{principalID: "user:alice", maxDepth: 3}); ok {
+		t.Fatal("expected stale writer to skip caching its obsolete result")
+	}
+}
+
+func TestBlastRadius_StaleReaderDoesNotDeleteFreshEntry(t *testing.T) {
+	g := setupTestGraph()
+
+	key := blastRadiusCacheKey{principalID: "user:alice", maxDepth: 3}
+	g.blastRadiusCache.Store(key, &cachedBlastRadius{
+		version: 0,
+		result:  &BlastRadiusResult{PrincipalID: "user:alice"},
+	})
+
+	hooked := false
+	blastRadiusCacheAfterLoadHook = func(g *Graph, loadedKey blastRadiusCacheKey) {
+		if hooked {
+			return
+		}
+		hooked = true
+		if loadedKey != key {
+			t.Fatalf("loaded key = %#v, want %#v", loadedKey, key)
+		}
+		g.blastRadiusCache.Store(key, &cachedBlastRadius{
+			version: g.currentBlastRadiusCacheVersion(),
+			result:  &BlastRadiusResult{PrincipalID: "user:alice", TotalCount: 42},
+		})
+	}
+	defer func() {
+		blastRadiusCacheAfterLoadHook = nil
+	}()
+
+	if cached, ok := g.getBlastRadiusFromCache("user:alice", 3); ok || cached != nil {
+		t.Fatalf("expected stale loaded entry to miss cache, got (%#v, %v)", cached, ok)
+	}
+
+	raw, ok := g.blastRadiusCache.Load(key)
+	if !ok {
+		t.Fatal("expected fresh cache entry to remain after stale read miss")
+	}
+	cached, ok := raw.(*cachedBlastRadius)
+	if !ok || cached == nil {
+		t.Fatalf("expected cached blast radius entry, got %#v", raw)
+	}
+	if cached.version != g.currentBlastRadiusCacheVersion() {
+		t.Fatalf("cached.version = %d, want current version %d", cached.version, g.currentBlastRadiusCacheVersion())
+	}
+	if cached.result == nil || cached.result.TotalCount != 42 {
+		t.Fatalf("cached.result = %#v, want TotalCount 42", cached.result)
+	}
+}
+
+func TestBlastRadius_CompactionRetainsFlagAcrossConcurrentMutation(t *testing.T) {
+	g := setupTestGraph()
+
+	key := blastRadiusCacheKey{principalID: "user:alice", maxDepth: 3}
+	g.blastRadiusCache.Store(key, &cachedBlastRadius{
+		version: 0,
+		result:  &BlastRadiusResult{PrincipalID: "user:alice"},
+	})
+
+	g.mu.Lock()
+	g.blastRadiusNeedsCompaction = true
+	version := g.blastRadiusVersion
+	g.mu.Unlock()
+
+	hooked := false
+	blastRadiusCacheAfterCompactionScanHook = func(g *Graph, scannedVersion uint64, removed int) {
+		if hooked {
+			return
+		}
+		hooked = true
+		if scannedVersion != version {
+			t.Fatalf("scannedVersion = %d, want %d", scannedVersion, version)
+		}
+		if removed != 1 {
+			t.Fatalf("removed = %d, want 1", removed)
+		}
+		g.AddNode(&Node{
+			ID:      "bucket:compaction-flag-race",
+			Kind:    NodeKindBucket,
+			Name:    "compaction-flag-race",
+			Account: "111111111111",
+		})
+	}
+	defer func() {
+		blastRadiusCacheAfterCompactionScanHook = nil
+	}()
+
+	g.maybeCompactStaleBlastRadiusCache(version)
+
+	if !g.blastRadiusNeedsCompaction {
+		t.Fatal("expected concurrent mutation to keep compaction flag set")
+	}
+	if got := g.currentBlastRadiusCacheVersion(); got == version {
+		t.Fatalf("expected graph version to advance, still %d", got)
+	}
+	if got := countBlastRadiusCacheEntries(g); got != 0 {
+		t.Fatalf("expected stale cache entry to be removed, got %d entries", got)
+	}
+}
+
+func countBlastRadiusCacheEntries(g *Graph) int {
+	count := 0
+	g.blastRadiusCache.Range(func(_, _ any) bool {
+		count++
+		return true
+	})
+	return count
+}
+
 func TestReverseAccess(t *testing.T) {
 	g := setupTestGraph()
 

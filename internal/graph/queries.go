@@ -16,8 +16,25 @@ type cachedBlastRadius struct {
 	result  *BlastRadiusResult
 }
 
+const blastRadiusCacheCompactionDeleteLimit = 128
+
 // blastRadiusComputeHook is used by tests to verify cache hit/miss behavior.
 var blastRadiusComputeHook func(principalID string, maxDepth int)
+
+// blastRadiusCacheBeforeWriteHook is used by tests to force interleavings right
+// before cache compaction/store is serialized.
+var blastRadiusCacheBeforeWriteHook func(g *Graph, version uint64)
+
+// blastRadiusCacheStoreHook is used by tests to force interleavings around cache writes.
+var blastRadiusCacheStoreHook func(g *Graph, version uint64)
+
+// blastRadiusCacheAfterLoadHook is used by tests to force interleavings after a
+// cache load but before stale-state handling.
+var blastRadiusCacheAfterLoadHook func(g *Graph, key blastRadiusCacheKey)
+
+// blastRadiusCacheAfterCompactionScanHook is used by tests to force
+// interleavings after a stale-cache scan but before compaction state is cleared.
+var blastRadiusCacheAfterCompactionScanHook func(g *Graph, version uint64, removed int)
 
 // BlastRadiusResult represents the result of a blast radius analysis
 type BlastRadiusResult struct {
@@ -58,9 +75,7 @@ func BlastRadius(g *Graph, principalID string, maxDepth int) *BlastRadiusResult 
 
 	principal, ok := g.GetNode(principalID)
 	if !ok {
-		result := &BlastRadiusResult{PrincipalID: principalID}
-		g.putBlastRadiusInCache(principalID, maxDepth, cacheVersion, result)
-		return result
+		return &BlastRadiusResult{PrincipalID: principalID}
 	}
 
 	if blastRadiusComputeHook != nil {
@@ -181,6 +196,9 @@ func (g *Graph) getBlastRadiusFromCache(principalID string, maxDepth int) (*Blas
 	if !ok {
 		return nil, false
 	}
+	if blastRadiusCacheAfterLoadHook != nil {
+		blastRadiusCacheAfterLoadHook(g, key)
+	}
 
 	cached, ok := raw.(*cachedBlastRadius)
 	if !ok || cached == nil || cached.version != version || cached.result == nil {
@@ -199,11 +217,64 @@ func (g *Graph) putBlastRadiusInCache(principalID string, maxDepth int, version 
 		return
 	}
 
+	if blastRadiusCacheBeforeWriteHook != nil {
+		blastRadiusCacheBeforeWriteHook(g, version)
+	}
+
+	g.blastRadiusCacheWriteMu.Lock()
+	defer g.blastRadiusCacheWriteMu.Unlock()
+
+	currentVersion := g.currentBlastRadiusCacheVersion()
+	if version != currentVersion {
+		return
+	}
+
+	g.maybeCompactStaleBlastRadiusCache(currentVersion)
+	if blastRadiusCacheStoreHook != nil {
+		blastRadiusCacheStoreHook(g, currentVersion)
+	}
+	currentVersion = g.currentBlastRadiusCacheVersion()
+	if version != currentVersion {
+		return
+	}
+
 	key := blastRadiusCacheKey{principalID: principalID, maxDepth: maxDepth}
 	g.blastRadiusCache.Store(key, &cachedBlastRadius{
-		version: version,
+		version: currentVersion,
 		result:  cloneBlastRadiusResult(result),
 	})
+}
+
+func (g *Graph) maybeCompactStaleBlastRadiusCache(version uint64) {
+	g.mu.RLock()
+	needsCompaction := g.blastRadiusNeedsCompaction
+	g.mu.RUnlock()
+	if !needsCompaction {
+		return
+	}
+
+	removed := 0
+	g.blastRadiusCache.Range(func(key, value any) bool {
+		cached, ok := value.(*cachedBlastRadius)
+		if !ok || cached == nil || cached.version != version || cached.result == nil {
+			g.blastRadiusCache.Delete(key)
+			removed++
+			if removed >= blastRadiusCacheCompactionDeleteLimit {
+				return false
+			}
+		}
+		return true
+	})
+
+	if blastRadiusCacheAfterCompactionScanHook != nil {
+		blastRadiusCacheAfterCompactionScanHook(g, version, removed)
+	}
+
+	g.mu.Lock()
+	if removed < blastRadiusCacheCompactionDeleteLimit && g.blastRadiusNeedsCompaction && g.blastRadiusVersion == version {
+		g.blastRadiusNeedsCompaction = false
+	}
+	g.mu.Unlock()
 }
 
 func (g *Graph) currentBlastRadiusCacheVersion() uint64 {
