@@ -67,6 +67,28 @@ Status: executed end-to-end via PR workflow
   - [x] multi-technique multiplier
 - [x] Re-run focused graph tests, lint, and changed-file validation.
 
+## Deep Review Cycle 159 - Bounded Subgraph Extraction Primitive (2026-03-16)
+
+### Review findings
+- [x] Gap: issue `#362` has no substrate in the current graph package; detectors and reports still have to traverse the full graph even when they only need a bounded neighborhood around one root.
+- [x] Gap: the first useful slice is not caching or parallel scheduling, it is a deterministic extraction primitive with explicit depth and node bounds plus edge filtering.
+- [x] Gap: the graph package had no regression coverage proving an extracted subgraph is bounded, direction-aware, filterable, and detached from later parent mutations.
+
+### Execution plan
+- [x] Add `ExtractSubgraph()` with:
+  - [x] max-depth bounds
+  - [x] max-node bounds
+  - [x] direction control
+  - [x] optional edge filter
+- [x] Keep extraction snapshot-consistent by traversing under parent `RLock`.
+- [x] Return a detached graph by deep-cloning included nodes and edges.
+- [x] Add TDD coverage for:
+  - [x] bounded neighborhood extraction
+  - [x] direction control
+  - [x] edge filtering and max-node enforcement
+  - [x] parent/subgraph mutation isolation
+- [x] Re-run focused graph tests, lint, and changed-file validation.
+
 ## Deep Review Cycle 158 - Runtime Graph Materialization Coverage Expansion (2026-03-16)
 
 ### Review findings
