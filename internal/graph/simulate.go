@@ -62,7 +62,7 @@ func (g *Graph) Simulate(delta GraphDelta) (*GraphSimulationResult, error) {
 
 	before := analyzeSimulationSnapshot(g, changedNodeIDs)
 
-	hypothetical := g.Clone()
+	hypothetical := g.Fork()
 	if err := hypothetical.ApplyDelta(delta); err != nil {
 		return nil, err
 	}

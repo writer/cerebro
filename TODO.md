@@ -33,6 +33,20 @@ Status: executed end-to-end via PR workflow
 - [x] Add TDD coverage for destination-service extraction, trace observation metadata persistence, call-edge creation, aggregation, and duplicate replay suppression.
 - [x] Re-run focused graph/runtimegraph/OTel tests, lint, ontology doc generation, and changed-file validation.
 
+## Deep Review Cycle 190 - Copy-On-Write Graph Mutation Forks (2026-03-17)
+
+### Review findings
+- [x] Gap: issue `#348` still routed speculative graph mutation workloads through full `Clone()` calls, so simulations and incremental rebuilds paid O(n) deep-copy cost before the first actual write.
+- [x] Gap: the existing graph API returns mutable node and edge pointers from getters, which means full persistent sharing cannot be dropped into public `Clone()` without violating current semantics.
+- [x] Gap: the mutation-heavy internal workflows already mutate through graph methods, so they lacked only a graph-method-safe copy-on-write fork substrate to unlock structural sharing without breaking external behavior.
+
+### Execution plan
+- [x] Add a copy-on-write `Fork()` path that shares node, edge, and adjacency storage until graph-method mutations detach the touched objects and buckets.
+- [x] Switch internal mutation-heavy workflows to the fork path for simulations, reorg analysis, CDC rebuild working graphs, and scale-profile mutation measurement.
+- [x] Add regression coverage proving parent and fork diverge cleanly across node-property, node-add, edge-add, and edge-remove mutations.
+- [x] Add a focused benchmark comparing deep clone plus one mutation against fork plus one mutation.
+- [x] Re-run focused and broad graph tests plus lint before pushing the branch.
+
 ## Deep Review Cycle 187 - Observation Correlation Windows (2026-03-17)
 
 ### Review findings

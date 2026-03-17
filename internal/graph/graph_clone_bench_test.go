@@ -30,6 +30,28 @@ func BenchmarkGraphClonePropertyHistory(b *testing.B) {
 			}
 		}
 	})
+
+	b.Run("clone_then_mutate", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			candidate := base.Clone()
+			if !candidate.SetNodeProperty("customer:0000", "health_score", float64(i)) {
+				b.Fatal("expected clone mutation to succeed")
+			}
+		}
+	})
+
+	b.Run("fork_then_mutate", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			candidate := base.Fork()
+			if !candidate.SetNodeProperty("customer:0000", "health_score", float64(i)) {
+				b.Fatal("expected fork mutation to succeed")
+			}
+		}
+	})
 }
 
 func newGraphClonePropertyHistoryBenchmarkGraph(nodes, historyDepth int) *Graph {

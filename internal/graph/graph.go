@@ -60,6 +60,16 @@ type Graph struct {
 	// Property history retention controls.
 	temporalHistoryMaxEntries int
 	temporalHistoryTTL        time.Duration
+
+	// Copy-on-write fork tracking for mutation-heavy internal workflows.
+	sharedNodes          map[string]struct{}
+	sharedEdges          map[*Edge]struct{}
+	sharedOutEdgeBuckets map[string]struct{}
+	sharedInEdgeBuckets  map[string]struct{}
+	nodesShared          bool
+	outEdgesShared       bool
+	inEdgesShared        bool
+	edgeByIDShared       bool
 }
 
 // Metadata contains information about the graph
@@ -184,6 +194,7 @@ func (g *Graph) RemoveNode(id string) bool {
 	if !ok || node.DeletedAt != nil {
 		return false
 	}
+	node = g.ensureWritableNodeLocked(id)
 
 	g.removeEdgesByNodeLocked(id)
 	now := temporalNowUTC()
@@ -264,6 +275,7 @@ func (g *Graph) SetNodeProperty(id string, key string, value any) bool {
 	if !ok || node.DeletedAt != nil {
 		return false
 	}
+	node = g.ensureWritableNodeLocked(id)
 	wasInternetFacing := g.isInternetFacing(node)
 	wasCrownJewel := g.isCrownJewel(node)
 
@@ -312,6 +324,14 @@ func (g *Graph) Clone() *Graph {
 	defer g.mu.RUnlock()
 
 	return cloneGraphWithSharedPropertyHistory(g)
+}
+
+// Fork returns a copy-on-write graph optimized for graph-method mutations.
+// Callers must treat nodes and edges returned from getters as read-only.
+func (g *Graph) Fork() *Graph {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return forkGraphForMutation(g)
 }
 
 // GetNode retrieves a node by ID
@@ -474,6 +494,14 @@ func (g *Graph) Clear() {
 	g.activeNodeCount.Store(0)
 	g.activeEdgeCount.Store(0)
 	g.edgeByID = make(map[string]*Edge)
+	g.sharedNodes = nil
+	g.sharedEdges = nil
+	g.sharedOutEdgeBuckets = nil
+	g.sharedInEdgeBuckets = nil
+	g.nodesShared = false
+	g.outEdgesShared = false
+	g.inEdgesShared = false
+	g.edgeByIDShared = false
 	g.nodeLookupIndexBuilt = false
 	g.markGraphChangedLocked()
 }
@@ -486,6 +514,12 @@ func (g *Graph) ClearEdges() {
 	g.inEdges = make(map[string][]*Edge)
 	g.activeEdgeCount.Store(0)
 	g.edgeByID = make(map[string]*Edge)
+	g.sharedEdges = nil
+	g.sharedOutEdgeBuckets = nil
+	g.sharedInEdgeBuckets = nil
+	g.outEdgesShared = false
+	g.inEdgesShared = false
+	g.edgeByIDShared = false
 	g.crossAccountEdge = nil
 	g.crossAccountIndexBuilt = false
 	g.markGraphEdgeMutationLocked()
@@ -874,11 +908,12 @@ func (g *Graph) addNodeLocked(node *Node) bool {
 	if current, ok := g.nodes[node.ID]; ok && current != nil {
 		existing = current
 		wasActive = existing.DeletedAt == nil
-		if existing.CreatedAt.IsZero() {
-			existing.CreatedAt = now
+		existingCreatedAt := existing.CreatedAt
+		if existingCreatedAt.IsZero() {
+			existingCreatedAt = now
 		}
 		if node.CreatedAt.IsZero() {
-			node.CreatedAt = existing.CreatedAt
+			node.CreatedAt = existingCreatedAt
 		}
 		node.PreviousProperties = cloneAnyMap(existing.Properties)
 		if len(existing.PropertyHistory) > 0 {
@@ -911,7 +946,9 @@ func (g *Graph) addNodeLocked(node *Node) bool {
 	g.appendNodePropertiesHistoryLocked(node, node.UpdatedAt)
 	g.removeNodeFromLookupIndexesLocked(existing)
 	g.removeNodeFromDerivedIndexesLocked(existing)
+	g.detachNodesMapLocked()
 	g.nodes[node.ID] = node
+	delete(g.sharedNodes, node.ID)
 	g.addNodeToLookupIndexesLocked(node)
 	g.addNodeToDerivedIndexesLocked(node)
 	if !wasActive {
@@ -1020,11 +1057,14 @@ func (g *Graph) addEdgeLocked(edge *Edge) bool {
 		edge.Version = 1
 	}
 	edge.DeletedAt = nil
+	g.detachOutBucketLocked(edge.Source)
 	g.outEdges[edge.Source] = append(g.outEdges[edge.Source], edge)
+	g.detachInBucketLocked(edge.Target)
 	g.inEdges[edge.Target] = append(g.inEdges[edge.Target], edge)
 	g.activeEdgeCount.Add(1)
 	g.addCrossAccountEdgeLocked(edge)
 	if edge.ID != "" {
+		g.detachEdgeByIDMapLocked()
 		g.edgeByID[edge.ID] = edge
 	}
 	return true
@@ -1034,6 +1074,7 @@ func (g *Graph) replaceEdgeLocked(existing *Edge, next *Edge, now time.Time) boo
 	if existing == nil || next == nil {
 		return false
 	}
+	existing = g.ensureWritableEdgeLocked(existing)
 
 	oldSource := existing.Source
 	oldTarget := existing.Target
@@ -1059,12 +1100,14 @@ func (g *Graph) replaceEdgeLocked(existing *Edge, next *Edge, now time.Time) boo
 	g.removeCrossAccountEdgeLocked(existing)
 
 	if oldSource != next.Source {
+		g.detachOutBucketLocked(oldSource)
 		g.outEdges[oldSource] = removeEdgePointerLocked(g.outEdges[oldSource], existing)
 		if len(g.outEdges[oldSource]) == 0 {
 			delete(g.outEdges, oldSource)
 		}
 	}
 	if oldTarget != next.Target {
+		g.detachInBucketLocked(oldTarget)
 		g.inEdges[oldTarget] = removeEdgePointerLocked(g.inEdges[oldTarget], existing)
 		if len(g.inEdges[oldTarget]) == 0 {
 			delete(g.inEdges, oldTarget)
@@ -1073,12 +1116,15 @@ func (g *Graph) replaceEdgeLocked(existing *Edge, next *Edge, now time.Time) boo
 
 	*existing = *next
 	if !edgePointerPresentLocked(g.outEdges[next.Source], existing) {
+		g.detachOutBucketLocked(next.Source)
 		g.outEdges[next.Source] = append(g.outEdges[next.Source], existing)
 	}
 	if !edgePointerPresentLocked(g.inEdges[next.Target], existing) {
+		g.detachInBucketLocked(next.Target)
 		g.inEdges[next.Target] = append(g.inEdges[next.Target], existing)
 	}
 	g.addCrossAccountEdgeLocked(existing)
+	g.detachEdgeByIDMapLocked()
 	g.edgeByID[next.ID] = existing
 	return true
 }
@@ -1135,7 +1181,9 @@ func (g *Graph) activeEdgeLocked(edge *Edge) bool {
 }
 
 func (g *Graph) compactDeletedEdgesLocked() {
-	for source, edges := range g.outEdges {
+	for source := range g.outEdges {
+		g.detachOutBucketLocked(source)
+		edges := g.outEdges[source]
 		compacted := edges[:0]
 		for _, edge := range edges {
 			if edge == nil {
@@ -1153,7 +1201,9 @@ func (g *Graph) compactDeletedEdgesLocked() {
 		}
 		g.outEdges[source] = compacted
 	}
-	for target, edges := range g.inEdges {
+	for target := range g.inEdges {
+		g.detachInBucketLocked(target)
+		edges := g.inEdges[target]
 		compacted := edges[:0]
 		for _, edge := range edges {
 			if edge == nil {
@@ -1178,6 +1228,7 @@ func (g *Graph) evictEdgeIDLocked(edge *Edge) {
 		return
 	}
 	if g.edgeByID[edge.ID] == edge {
+		g.detachEdgeByIDMapLocked()
 		delete(g.edgeByID, edge.ID)
 	}
 }
@@ -1211,6 +1262,9 @@ func (g *Graph) compactDeletedNodesLocked() bool {
 		if node != nil && node.DeletedAt == nil {
 			continue
 		}
+		g.detachNodesMapLocked()
+		g.detachOutEdgesMapLocked()
+		g.detachInEdgesMapLocked()
 		for _, edge := range g.outEdges[id] {
 			g.evictEdgeIDLocked(edge)
 		}
@@ -1227,27 +1281,39 @@ func (g *Graph) compactDeletedNodesLocked() bool {
 
 func (g *Graph) removeEdgesByNodeLocked(nodeID string) bool {
 	removed := false
+	seen := make(map[*Edge]struct{})
 
-	if edges, ok := g.outEdges[nodeID]; ok {
+	markDeleted := func(edges []*Edge) {
 		for _, edge := range edges {
+			if edge == nil {
+				continue
+			}
+			if _, ok := seen[edge]; ok {
+				continue
+			}
+			seen[edge] = struct{}{}
 			if g.markEdgeDeletedLocked(edge) {
 				removed = true
 			}
 		}
 	}
+
+	if edges, ok := g.outEdges[nodeID]; ok {
+		markDeleted(edges)
+	}
 	if edges, ok := g.inEdges[nodeID]; ok {
-		for _, edge := range edges {
-			if g.markEdgeDeletedLocked(edge) {
-				removed = true
-			}
-		}
+		markDeleted(edges)
 	}
 
 	return removed
 }
 
 func (g *Graph) markEdgeDeletedLocked(edge *Edge) bool {
-	if edge == nil || edge.DeletedAt != nil {
+	if edge == nil {
+		return false
+	}
+	edge = g.ensureWritableEdgeLocked(edge)
+	if edge.DeletedAt != nil {
 		return false
 	}
 	g.removeCrossAccountEdgeLocked(edge)

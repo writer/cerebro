@@ -86,7 +86,7 @@ func (b *Builder) ApplyChanges(ctx context.Context, since time.Time) (GraphMutat
 		return summary, nil
 	}
 
-	working.graph = currentGraph.Clone()
+	working.graph = currentGraph.Fork()
 
 	tableSet := make(map[string]struct{}, len(events))
 	latest := since

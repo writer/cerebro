@@ -1193,3 +1193,130 @@ func TestGraphCloneHistoryReadsDetachMutableSnapshotValues(t *testing.T) {
 		t.Fatalf("expected cloned history snapshot to remain v1, got %#v", got)
 	}
 }
+
+func TestGraphForkMutationsDoNotAffectParent(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{
+		ID:       "node-1",
+		Kind:     NodeKindUser,
+		Name:     "original",
+		Provider: "aws",
+		Account:  "123456789012",
+		Properties: map[string]any{
+			"flat": "value",
+		},
+	})
+	g.AddNode(&Node{
+		ID:       "node-2",
+		Kind:     NodeKindRole,
+		Name:     "role",
+		Provider: "aws",
+		Account:  "123456789012",
+	})
+	g.AddEdge(&Edge{
+		ID:     "e1",
+		Source: "node-1",
+		Target: "node-2",
+		Kind:   EdgeKindCanAssume,
+		Effect: EdgeEffectAllow,
+		Properties: map[string]any{
+			"reason": "delegation",
+		},
+	})
+
+	fork := g.Fork()
+	if !fork.SetNodeProperty("node-1", "flat", "changed") {
+		t.Fatal("expected fork SetNodeProperty to succeed")
+	}
+	fork.AddNode(&Node{
+		ID:       "node-3",
+		Kind:     NodeKindBucket,
+		Name:     "new",
+		Provider: "aws",
+		Account:  "123456789012",
+	})
+	fork.AddEdge(&Edge{
+		ID:     "e2",
+		Source: "node-2",
+		Target: "node-3",
+		Kind:   EdgeKindCanWrite,
+		Effect: EdgeEffectAllow,
+	})
+	if !fork.RemoveEdge("node-1", "node-2", EdgeKindCanAssume) {
+		t.Fatal("expected fork RemoveEdge to succeed")
+	}
+
+	parentNode, ok := g.GetNode("node-1")
+	if !ok {
+		t.Fatal("expected parent node to exist")
+	}
+	if got := parentNode.Properties["flat"]; got != "value" {
+		t.Fatalf("parent property = %#v, want value", got)
+	}
+	if _, ok := g.GetNode("node-3"); ok {
+		t.Fatal("expected parent graph to not contain fork-only node")
+	}
+	parentEdges := g.GetOutEdges("node-1")
+	if len(parentEdges) != 1 {
+		t.Fatalf("len(parent out edges) = %d, want 1", len(parentEdges))
+	}
+	if parentEdges[0].DeletedAt != nil {
+		t.Fatal("expected parent edge to remain active")
+	}
+
+	forkNode, ok := fork.GetNode("node-1")
+	if !ok {
+		t.Fatal("expected fork node to exist")
+	}
+	if got := forkNode.Properties["flat"]; got != "changed" {
+		t.Fatalf("fork property = %#v, want changed", got)
+	}
+	if _, ok := fork.GetNode("node-3"); !ok {
+		t.Fatal("expected fork graph to contain added node")
+	}
+	forkEdges := fork.GetOutEdges("node-1")
+	if len(forkEdges) != 0 {
+		t.Fatalf("len(fork out edges) = %d, want 0 after removal", len(forkEdges))
+	}
+	if len(fork.GetOutEdges("node-2")) != 1 {
+		t.Fatalf("expected fork to contain new edge from node-2 to node-3")
+	}
+}
+
+func TestGraphForkRemoveNodeWithSelfLoopDoesNotAffectParent(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{
+		ID:       "role:self",
+		Kind:     NodeKindRole,
+		Name:     "self",
+		Provider: "aws",
+		Account:  "123456789012",
+	})
+	g.AddEdge(&Edge{
+		ID:     "self-loop",
+		Source: "role:self",
+		Target: "role:self",
+		Kind:   EdgeKindCanAssume,
+		Effect: EdgeEffectAllow,
+	})
+
+	fork := g.Fork()
+	if !fork.RemoveNode("role:self") {
+		t.Fatal("expected fork RemoveNode to succeed")
+	}
+
+	parentNode, ok := g.GetNode("role:self")
+	if !ok {
+		t.Fatal("expected parent node to remain active")
+	}
+	if parentNode.DeletedAt != nil {
+		t.Fatal("expected parent node to remain undeleted")
+	}
+	parentEdges := g.GetOutEdges("role:self")
+	if len(parentEdges) != 1 {
+		t.Fatalf("len(parent out edges) = %d, want 1", len(parentEdges))
+	}
+	if parentEdges[0].DeletedAt != nil {
+		t.Fatal("expected parent self-loop edge to remain active")
+	}
+}
