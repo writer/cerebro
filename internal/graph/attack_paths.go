@@ -15,6 +15,7 @@ type AttackPathSimulator struct {
 	crownJewels    []*Node
 	exploitability map[string]float64 // node ID -> exploitability score
 	nodeIDs        *NodeIDIndex
+	adjacency      *attackAdjacencySnapshot
 	visitedWords   int
 }
 
@@ -30,6 +31,7 @@ func NewAttackPathSimulator(g *Graph) *AttackPathSimulator {
 		exploitability: make(map[string]float64),
 		nodeIDs:        nodeIDs,
 	}
+	sim.adjacency = newAttackAdjacencySnapshot(g, nodeIDs)
 	sim.visitedWords = (nodeIDs.Len() + 63) / 64
 	sim.identifyEntryPoints()
 	sim.identifyCrownJewels()
@@ -306,48 +308,50 @@ func (sim *AttackPathSimulator) findAttackPaths(entry, target *Node, maxLen int)
 		}
 
 		// Explore outbound edges
-		for _, edge := range sim.graph.GetOutEdges(current.nodeID) {
-			if sim.isVisited(current.visitedBits, edge.Target) {
-				continue
+		sim.forEachOutEdge(current.nodeID, func(targetOrdinal NodeOrdinal, targetID string, kind EdgeKind, effect EdgeEffect) bool {
+			if sim.isVisited(current.visitedBits, targetID) {
+				return true
 			}
-			if edge.IsDeny() {
-				continue
+			if effect == EdgeEffectDeny {
+				return true
 			}
 
-			targetNode, ok := sim.graph.GetNode(edge.Target)
+			targetNode, ok := sim.graph.GetNode(targetID)
 			if !ok {
-				continue
+				return true
 			}
 
 			// Calculate step cost (inverse of exploitability)
-			stepCost := 1.0 - sim.exploitability[edge.Target]
+			stepCost := 1.0 - sim.exploitability[targetID]
 			if stepCost < 0.1 {
 				stepCost = 0.1
 			}
 
 			newVisited := cloneVisitedBits(current.visitedBits)
-			sim.markVisited(newVisited, edge.Target)
+			sim.markVisited(newVisited, targetID)
 
 			newStep := &AttackStep{
 				Order:         len(current.path) + 1,
 				FromNode:      current.nodeID,
-				ToNode:        edge.Target,
-				Technique:     edgeToTechnique(edge.Kind),
-				EdgeKind:      edge.Kind,
-				Description:   fmt.Sprintf("Move from %s to %s via %s", current.nodeID, targetNode.Name, edge.Kind),
-				MITREAttackID: edgeToMITRE(edge.Kind),
+				ToNode:        targetID,
+				Technique:     edgeToTechnique(kind),
+				EdgeKind:      kind,
+				Description:   fmt.Sprintf("Move from %s to %s via %s", current.nodeID, targetNode.Name, kind),
+				MITREAttackID: edgeToMITRE(kind),
 			}
 
 			newPath := append([]*AttackStep{}, current.path...)
 			newPath = append(newPath, newStep)
 
 			heap.Push(pq, &pathState{
-				nodeID:      edge.Target,
+				nodeID:      targetID,
 				path:        newPath,
 				visitedBits: newVisited,
 				cost:        current.cost + stepCost,
 			})
-		}
+			_ = targetOrdinal
+			return true
+		})
 	}
 
 	return paths
@@ -741,16 +745,24 @@ func (sim *AttackPathSimulator) KShortestPaths(entryID, targetID string, k, maxL
 			copy(rootPath, prevPath.Steps[:spurIdx])
 
 			// Temporarily remove edges that would lead to already-found paths
-			removedEdges := make(map[string][]*Edge)
+			removedEdges := make(map[NodeOrdinal]ordinalVisitSet)
+			spurOrdinal, ok := sim.nodeIDs.Lookup(spurNodeID)
+			if !ok {
+				continue
+			}
 			for _, p := range result {
 				if len(p.Steps) > spurIdx && pathPrefixMatch(p.Steps, rootPath) {
 					edgeToRemove := p.Steps[spurIdx]
-					edges := sim.graph.GetOutEdges(spurNodeID)
-					for _, e := range edges {
-						if e.Target == edgeToRemove.ToNode {
-							removedEdges[spurNodeID] = append(removedEdges[spurNodeID], e)
-						}
+					targetOrdinal, ok := sim.nodeIDs.Lookup(edgeToRemove.ToNode)
+					if !ok {
+						continue
 					}
+					removed := removedEdges[spurOrdinal]
+					if removed.nodeIDs == nil {
+						removed = newOrdinalVisitSet(sim.nodeIDs)
+					}
+					removed.markOrdinal(targetOrdinal)
+					removedEdges[spurOrdinal] = removed
 				}
 			}
 
@@ -815,7 +827,7 @@ func (sim *AttackPathSimulator) findShortestPath(entry, target *Node, maxLen int
 }
 
 // findShortestPathAvoiding finds shortest path while avoiding certain nodes/edges
-func (sim *AttackPathSimulator) findShortestPathAvoiding(entry, target *Node, maxLen int, avoidNodes ordinalVisitSet, avoidEdges map[string][]*Edge) *ScoredAttackPath {
+func (sim *AttackPathSimulator) findShortestPathAvoiding(entry, target *Node, maxLen int, avoidNodes ordinalVisitSet, avoidEdges map[NodeOrdinal]ordinalVisitSet) *ScoredAttackPath {
 	type bfsState struct {
 		nodeID string
 		path   []*AttackStep
@@ -824,9 +836,8 @@ func (sim *AttackPathSimulator) findShortestPathAvoiding(entry, target *Node, ma
 	queue := []bfsState{{nodeID: entry.ID, path: nil}}
 	visitedBits := sim.newVisitedBits(entry.ID)
 
-	for len(queue) > 0 {
-		current := queue[0]
-		queue = queue[1:]
+	for head := 0; head < len(queue); head++ {
+		current := queue[head]
 
 		if len(current.path) > maxLen {
 			continue
@@ -844,34 +855,25 @@ func (sim *AttackPathSimulator) findShortestPathAvoiding(entry, target *Node, ma
 			return path
 		}
 
-		for _, edge := range sim.graph.GetOutEdges(current.nodeID) {
-			if sim.isVisited(visitedBits, edge.Target) {
-				continue
+		currentOrdinal, _ := sim.nodeIDs.Lookup(current.nodeID)
+		removedTargets := avoidEdges[currentOrdinal]
+		sim.forEachOutEdge(current.nodeID, func(targetOrdinal NodeOrdinal, targetID string, kind EdgeKind, effect EdgeEffect) bool {
+			if sim.isVisited(visitedBits, targetID) {
+				return true
 			}
-			if edge.IsDeny() {
-				continue
+			if effect == EdgeEffectDeny {
+				return true
 			}
-			if avoidNodes.has(edge.Target) {
-				continue
+			if avoidNodes.has(targetID) {
+				return true
 			}
-
-			// Check if this edge should be avoided
-			skip := false
-			if avoidEdges != nil {
-				for _, avoidEdge := range avoidEdges[current.nodeID] {
-					if avoidEdge.Target == edge.Target {
-						skip = true
-						break
-					}
-				}
-			}
-			if skip {
-				continue
+			if removedTargets.hasOrdinal(targetOrdinal) {
+				return true
 			}
 
-			targetNode, ok := sim.graph.GetNode(edge.Target)
+			targetNode, ok := sim.graph.GetNode(targetID)
 			if !ok {
-				continue
+				return true
 			}
 
 			newPath := make([]*AttackStep, len(current.path)+1)
@@ -879,16 +881,17 @@ func (sim *AttackPathSimulator) findShortestPathAvoiding(entry, target *Node, ma
 			newPath[len(current.path)] = &AttackStep{
 				Order:         len(current.path) + 1,
 				FromNode:      current.nodeID,
-				ToNode:        edge.Target,
-				Technique:     edgeToTechnique(edge.Kind),
-				EdgeKind:      edge.Kind,
-				Description:   fmt.Sprintf("Move from %s to %s via %s", current.nodeID, targetNode.Name, edge.Kind),
-				MITREAttackID: edgeToMITRE(edge.Kind),
+				ToNode:        targetID,
+				Technique:     edgeToTechnique(kind),
+				EdgeKind:      kind,
+				Description:   fmt.Sprintf("Move from %s to %s via %s", current.nodeID, targetNode.Name, kind),
+				MITREAttackID: edgeToMITRE(kind),
 			}
 
-			sim.markVisited(visitedBits, edge.Target)
-			queue = append(queue, bfsState{nodeID: edge.Target, path: newPath})
-		}
+			sim.markVisited(visitedBits, targetID)
+			queue = append(queue, bfsState{nodeID: targetID, path: newPath})
+			return true
+		})
 	}
 
 	return nil
@@ -914,6 +917,28 @@ func pathToKey(path *ScoredAttackPath) string {
 		key += "->" + step.ToNode
 	}
 	return key
+}
+
+func (sim *AttackPathSimulator) forEachOutEdge(sourceID string, visit func(targetOrdinal NodeOrdinal, targetID string, kind EdgeKind, effect EdgeEffect) bool) {
+	if sim == nil || visit == nil {
+		return
+	}
+	if sim.adjacency != nil {
+		sim.adjacency.forEachOutEdge(sourceID, visit)
+		return
+	}
+	for _, edge := range sim.graph.GetOutEdges(sourceID) {
+		if edge == nil {
+			continue
+		}
+		targetOrdinal, ok := sim.nodeIDs.Lookup(edge.Target)
+		if !ok {
+			targetOrdinal = sim.nodeIDs.Intern(edge.Target)
+		}
+		if !visit(targetOrdinal, edge.Target, edge.Kind, edge.Effect) {
+			return
+		}
+	}
 }
 
 // kPathHeap is a min-heap of paths ordered by length (for Yen's algorithm)

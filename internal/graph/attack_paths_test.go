@@ -287,9 +287,14 @@ func TestAttackPathSimulatorFindShortestPathAvoidingHonorsWideAvoidSet(t *testin
 	for i := 0; i <= 65; i++ {
 		avoidNodes.mark(fmt.Sprintf("chain-%d", i))
 	}
-	avoidEdges := map[string][]*Edge{
-		"chain-68": {{Target: "chain-69"}},
+	avoidEdges := make(map[NodeOrdinal]ordinalVisitSet)
+	sourceOrdinal, ok := sim.nodeIDs.Lookup("chain-68")
+	if !ok {
+		t.Fatal("expected chain-68 ordinal")
 	}
+	removedTargets := newOrdinalVisitSet(sim.nodeIDs)
+	removedTargets.mark("chain-69")
+	avoidEdges[sourceOrdinal] = removedTargets
 
 	path := sim.findShortestPathAvoiding(entry, target, 20, avoidNodes, avoidEdges)
 	if path == nil {
@@ -300,6 +305,58 @@ func TestAttackPathSimulatorFindShortestPathAvoidingHonorsWideAvoidSet(t *testin
 	}
 	if path.Steps[0].FromNode != "chain-68" || path.Steps[0].ToNode != "alt-0" {
 		t.Fatalf("expected avoiding path to branch to alt-0, got %#v", path.Steps)
+	}
+}
+
+func TestAttackPathSimulatorAdjacencySnapshotSkipsDeletedNodesAndEdges(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "internet", Kind: NodeKindInternet, Name: "Internet"})
+	g.AddNode(&Node{ID: "stale", Kind: NodeKindRole, Name: "Stale"})
+	g.AddNode(&Node{ID: "fresh", Kind: NodeKindRole, Name: "Fresh"})
+	g.AddNode(&Node{ID: "target", Kind: NodeKindDatabase, Name: "Target", Risk: RiskCritical})
+
+	g.AddEdge(&Edge{ID: "internet-stale", Source: "internet", Target: "stale", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "stale-target", Source: "stale", Target: "target", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "internet-fresh", Source: "internet", Target: "fresh", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "fresh-target", Source: "fresh", Target: "target", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+
+	if !g.RemoveNode("stale") {
+		t.Fatal("expected stale node to be removed")
+	}
+
+	sim := NewAttackPathSimulator(g)
+	entry, ok := g.GetNode("internet")
+	if !ok {
+		t.Fatal("expected internet node")
+	}
+	target, ok := g.GetNode("target")
+	if !ok {
+		t.Fatal("expected target node")
+	}
+
+	seenStale := false
+	sim.forEachOutEdge("internet", func(targetOrdinal NodeOrdinal, targetID string, kind EdgeKind, effect EdgeEffect) bool {
+		if targetID == "stale" {
+			seenStale = true
+		}
+		_ = targetOrdinal
+		_ = kind
+		_ = effect
+		return true
+	})
+	if seenStale {
+		t.Fatal("expected adjacency snapshot to skip deleted-node edges")
+	}
+
+	path := sim.findShortestPath(entry, target, 4)
+	if path == nil {
+		t.Fatal("expected path through fresh node")
+	}
+	if len(path.Steps) != 2 {
+		t.Fatalf("expected 2-step path, got %d", len(path.Steps))
+	}
+	if path.Steps[0].ToNode != "fresh" || path.Steps[1].ToNode != "target" {
+		t.Fatalf("expected path through fresh node, got %#v", path.Steps)
 	}
 }
 

@@ -5,6 +5,20 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 180 - Attack Path Flat Adjacency Snapshot (2026-03-17)
+
+### Review findings
+- [x] Gap: `AttackPathSimulator` still called `GetOutEdges()` on every path expansion even after the graph package had started moving hot traversal surfaces onto interned ordinals and shared bitset state.
+- [x] Gap: repeated outbound edge materialization keeps shortest-path, k-shortest spur search, and scored path enumeration tied to per-expansion slice allocation rather than a reusable read-only adjacency view.
+- [x] Gap: there was no regression proving a precomputed attack adjacency snapshot still excludes soft-deleted nodes and edges once traversal stops consulting live `GetOutEdges()` slices.
+
+### Execution plan
+- [x] Build a flat per-source attack adjacency snapshot keyed by `NodeIDIndex`.
+- [x] Route attack traversal edge expansion through the snapshot iterator instead of `GetOutEdges()`.
+- [x] Keep shortest-path avoidance on ordinal edge suppression state and remove BFS queue reslicing while touching the traversal core.
+- [x] Add TDD coverage for deleted-node edge filtering and wide ordinal avoid sets.
+- [x] Re-run focused graph tests, lint, changed-file validation, and benchmarks.
+
 ## Deep Review Cycle 178 - Point-in-Time WAL Recovery Windows (2026-03-16)
 
 ### Review findings
