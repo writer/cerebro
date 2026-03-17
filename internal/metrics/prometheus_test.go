@@ -397,6 +397,49 @@ func TestSetGraphPropertyHistoryDepth(t *testing.T) {
 	}
 }
 
+func TestGraphOperationMetricHelpers(t *testing.T) {
+	Register()
+
+	beforeIndex := histogramCountVec(t, GraphIndexBuildDuration, "manual")
+	beforeMutation := histogramCountVec(t, GraphMutationLatency, "add_node")
+	beforeSearch := histogramCountVec(t, GraphSearchLatency, "entity_search")
+	beforeSnapshot := histogramCountVec(t, GraphSnapshotDuration, "create")
+	beforeClone := histogramCount(t, GraphCloneDuration)
+
+	ObserveGraphIndexBuild("manual", 25*time.Millisecond)
+	ObserveGraphMutation("add_node", 10*time.Millisecond)
+	ObserveGraphSearch("entity_search", 15*time.Millisecond)
+	ObserveGraphSnapshot("create", 30*time.Millisecond)
+	SetGraphSnapshotSizeBytes(2048)
+	SetGraphCounts(17, 29)
+	ObserveGraphCloneDuration(20 * time.Millisecond)
+
+	if got := histogramCountVec(t, GraphIndexBuildDuration, "manual"); got != beforeIndex+1 {
+		t.Fatalf("expected graph index build histogram count to increase by 1, got before=%d after=%d", beforeIndex, got)
+	}
+	if got := histogramCountVec(t, GraphMutationLatency, "add_node"); got != beforeMutation+1 {
+		t.Fatalf("expected graph mutation histogram count to increase by 1, got before=%d after=%d", beforeMutation, got)
+	}
+	if got := histogramCountVec(t, GraphSearchLatency, "entity_search"); got != beforeSearch+1 {
+		t.Fatalf("expected graph search histogram count to increase by 1, got before=%d after=%d", beforeSearch, got)
+	}
+	if got := histogramCountVec(t, GraphSnapshotDuration, "create"); got != beforeSnapshot+1 {
+		t.Fatalf("expected graph snapshot histogram count to increase by 1, got before=%d after=%d", beforeSnapshot, got)
+	}
+	if got := histogramCount(t, GraphCloneDuration); got != beforeClone+1 {
+		t.Fatalf("expected graph clone histogram count to increase by 1, got before=%d after=%d", beforeClone, got)
+	}
+	if got := gaugeValue(t, GraphSnapshotSizeBytes); got != 2048 {
+		t.Fatalf("expected graph snapshot size gauge 2048, got %v", got)
+	}
+	if got := gaugeValue(t, GraphNodesTotal); got != 17 {
+		t.Fatalf("expected graph nodes gauge 17, got %v", got)
+	}
+	if got := gaugeValue(t, GraphEdgesTotal); got != 29 {
+		t.Fatalf("expected graph edges gauge 29, got %v", got)
+	}
+}
+
 func counterValue(t *testing.T, vec *prometheus.CounterVec, labels ...string) float64 {
 	t.Helper()
 	counter, err := vec.GetMetricWithLabelValues(labels...)
@@ -444,6 +487,15 @@ func histogramCountVec(t *testing.T, histogram *prometheus.HistogramVec, labels 
 	}
 	var metric dto.Metric
 	if err := metricCollector.Write(&metric); err != nil {
+		t.Fatalf("write histogram metric: %v", err)
+	}
+	return metric.GetHistogram().GetSampleCount()
+}
+
+func histogramCount(t *testing.T, histogram prometheus.Histogram) uint64 {
+	t.Helper()
+	var metric dto.Metric
+	if err := histogram.Write(&metric); err != nil {
 		t.Fatalf("write histogram metric: %v", err)
 	}
 	return metric.GetHistogram().GetSampleCount()

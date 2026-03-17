@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/evalops/cerebro/internal/metrics"
 )
 
 // Snapshot represents a serializable graph snapshot
@@ -27,6 +29,11 @@ const snapshotVersion = "1.0"
 
 // CreateSnapshot creates a snapshot of the current graph state
 func CreateSnapshot(g *Graph) *Snapshot {
+	start := time.Now()
+	defer func() {
+		metrics.ObserveGraphSnapshot("create", time.Since(start))
+	}()
+
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 
@@ -57,6 +64,11 @@ func CreateSnapshot(g *Graph) *Snapshot {
 
 // RestoreFromSnapshot restores a graph from a snapshot
 func RestoreFromSnapshot(snapshot *Snapshot) *Graph {
+	start := time.Now()
+	defer func() {
+		metrics.ObserveGraphSnapshot("restore", time.Since(start))
+	}()
+
 	g := New()
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -87,29 +99,31 @@ func GraphViewFromSnapshot(snapshot *Snapshot) *Graph {
 		return nil
 	}
 	g := New()
+	g.mu.Lock()
+	defer g.mu.Unlock()
 	for _, node := range snapshot.Nodes {
 		if node == nil || node.DeletedAt != nil {
 			continue
 		}
 		cloned := cloneNode(node)
 		cloned.DeletedAt = nil
-		g.AddNode(cloned)
+		g.addNodeLocked(cloned)
 	}
 	for _, edge := range snapshot.Edges {
 		if edge == nil || edge.DeletedAt != nil {
 			continue
 		}
-		if _, ok := g.GetNode(edge.Source); !ok {
+		if source, ok := g.nodes[edge.Source]; !ok || source == nil || source.DeletedAt != nil {
 			continue
 		}
-		if _, ok := g.GetNode(edge.Target); !ok {
+		if target, ok := g.nodes[edge.Target]; !ok || target == nil || target.DeletedAt != nil {
 			continue
 		}
 		cloned := cloneEdge(edge)
 		cloned.DeletedAt = nil
-		g.AddEdge(cloned)
+		g.addEdgeLocked(cloned)
 	}
-	g.SetMetadata(snapshot.Metadata)
+	g.metadata = snapshot.Metadata
 	return g
 }
 
@@ -211,6 +225,9 @@ func (s *SnapshotStore) SaveGraph(g *Graph) (*GraphSnapshotRecord, *GraphSnapsho
 
 	if err := snapshot.SaveToFile(path); err != nil {
 		return nil, nil, err
+	}
+	if info, err := os.Stat(path); err == nil {
+		metrics.SetGraphSnapshotSizeBytes(info.Size())
 	}
 
 	// Clean up old snapshots

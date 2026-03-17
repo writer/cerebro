@@ -368,6 +368,71 @@ var (
 		[]string{"provider"},
 	)
 
+	GraphIndexBuildDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "cerebro_graph_index_build_duration_seconds",
+			Help:    "Duration of graph secondary-index builds",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"trigger"},
+	)
+
+	GraphMutationLatency = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "cerebro_graph_mutation_latency_seconds",
+			Help:    "Duration of graph mutation operations",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"op"},
+	)
+
+	GraphSearchLatency = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "cerebro_graph_search_latency_seconds",
+			Help:    "Duration of graph search operations",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"query_type"},
+	)
+
+	GraphSnapshotDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "cerebro_graph_snapshot_duration_seconds",
+			Help:    "Duration of graph snapshot operations",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"op"},
+	)
+
+	GraphSnapshotSizeBytes = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "cerebro_graph_snapshot_size_bytes",
+			Help: "Size in bytes of the most recently persisted graph snapshot artifact",
+		},
+	)
+
+	GraphNodesTotal = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "cerebro_graph_nodes_total",
+			Help: "Node count of the current live security graph",
+		},
+	)
+
+	GraphEdgesTotal = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "cerebro_graph_edges_total",
+			Help: "Edge count of the current live security graph",
+		},
+	)
+
+	GraphCloneDuration = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "cerebro_graph_clone_duration_seconds",
+			Help:    "Duration of full graph clone operations",
+			Buckets: prometheus.DefBuckets,
+		},
+	)
+
 	EventProcessingDuration = prometheus.NewHistogram(
 		prometheus.HistogramOpts{
 			Name:    "cerebro_event_processing_duration_seconds",
@@ -674,6 +739,14 @@ func Register() {
 			GraphFreshnessByProvider,
 			GraphOldestNodeAgeSeconds,
 			GraphProviderLastSyncTimestamp,
+			GraphIndexBuildDuration,
+			GraphMutationLatency,
+			GraphSearchLatency,
+			GraphSnapshotDuration,
+			GraphSnapshotSizeBytes,
+			GraphNodesTotal,
+			GraphEdgesTotal,
+			GraphCloneDuration,
 			EventProcessingDuration,
 			// Notifications
 			NotificationsSent,
@@ -1147,6 +1220,75 @@ func SetGraphPropertyHistoryDepth(depth int) {
 		depth = 0
 	}
 	GraphPropertyHistoryDepth.Set(float64(depth))
+}
+
+func ObserveGraphIndexBuild(trigger string, duration time.Duration) {
+	if duration < 0 {
+		return
+	}
+	trigger = strings.ToLower(strings.TrimSpace(trigger))
+	if trigger == "" {
+		trigger = "manual"
+	}
+	GraphIndexBuildDuration.WithLabelValues(trigger).Observe(duration.Seconds())
+}
+
+func ObserveGraphMutation(op string, duration time.Duration) {
+	if duration < 0 {
+		return
+	}
+	op = strings.ToLower(strings.TrimSpace(op))
+	if op == "" {
+		op = "unknown"
+	}
+	GraphMutationLatency.WithLabelValues(op).Observe(duration.Seconds())
+}
+
+func ObserveGraphSearch(queryType string, duration time.Duration) {
+	if duration < 0 {
+		return
+	}
+	queryType = strings.ToLower(strings.TrimSpace(queryType))
+	if queryType == "" {
+		queryType = "unknown"
+	}
+	GraphSearchLatency.WithLabelValues(queryType).Observe(duration.Seconds())
+}
+
+func ObserveGraphSnapshot(op string, duration time.Duration) {
+	if duration < 0 {
+		return
+	}
+	op = strings.ToLower(strings.TrimSpace(op))
+	if op == "" {
+		op = "unknown"
+	}
+	GraphSnapshotDuration.WithLabelValues(op).Observe(duration.Seconds())
+}
+
+func SetGraphSnapshotSizeBytes(size int64) {
+	if size < 0 {
+		size = 0
+	}
+	GraphSnapshotSizeBytes.Set(float64(size))
+}
+
+func SetGraphCounts(nodes, edges int) {
+	if nodes < 0 {
+		nodes = 0
+	}
+	if edges < 0 {
+		edges = 0
+	}
+	GraphNodesTotal.Set(float64(nodes))
+	GraphEdgesTotal.Set(float64(edges))
+}
+
+func ObserveGraphCloneDuration(duration time.Duration) {
+	if duration < 0 {
+		return
+	}
+	GraphCloneDuration.Observe(duration.Seconds())
 }
 
 func ResetGraphFreshnessProviderMetrics() {

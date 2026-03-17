@@ -46,6 +46,30 @@ Status: executed end-to-end via PR workflow
   - [x] idempotent repeated projection
 - [x] Re-run focused runtimegraph tests, lint, and changed-file validation.
 
+## Deep Review Cycle 158 - Graph Operation Metrics (2026-03-16)
+
+### Review findings
+- [x] Gap: issue `#349` is real because the graph hot path still exposes no first-class metrics for mutation cost, index rebuild cost, search latency, snapshot duration, snapshot size, clone cost, or live node/edge counts.
+- [x] Gap: the current graph code was triggering implicit index builds from entity search without any way to distinguish search-triggered rebuilds from explicit manual rebuilds in Prometheus.
+- [x] Gap: there was no regression coverage proving the new graph metric helpers are registered, incremented on the real graph paths, and updated when the app swaps the active security graph.
+
+### Execution plan
+- [x] Add Prometheus metrics and helpers for:
+  - [x] graph index build duration by trigger
+  - [x] mutation latency by operation
+  - [x] search latency by query type
+  - [x] snapshot duration by operation
+  - [x] snapshot size bytes
+  - [x] live node and edge counts
+  - [x] clone duration
+- [x] Instrument graph mutation, search, index-build, snapshot, and clone paths with those helpers.
+- [x] Publish active graph node and edge gauges from `setSecurityGraph()` so only the live security graph drives the exported counts.
+- [x] Add TDD coverage for:
+  - [x] metric helper registration and observation
+  - [x] integrated graph metric emission across mutation/search/snapshot/clone flows
+  - [x] app-layer live graph count publication and reset
+- [x] Re-run focused graph/app/metrics tests, lint, and changed-file validation.
+
 ## Deep Review Cycle 156 - Runtime Observation Causal Links To Deployment Runs (2026-03-16)
 
 ### Review findings

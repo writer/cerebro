@@ -6,6 +6,8 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/evalops/cerebro/internal/metrics"
 )
 
 const (
@@ -72,6 +74,11 @@ type EntitySuggestCollection struct {
 }
 
 func SearchEntities(g *Graph, opts EntitySearchOptions) EntitySearchCollection {
+	start := time.Now()
+	defer func() {
+		metrics.ObserveGraphSearch("entity_search", time.Since(start))
+	}()
+
 	query := normalizeEntitySearchOptions(opts)
 	result := EntitySearchCollection{
 		GeneratedAt: temporalNowUTC(),
@@ -131,6 +138,11 @@ func SearchEntities(g *Graph, opts EntitySearchOptions) EntitySearchCollection {
 }
 
 func SuggestEntities(g *Graph, opts EntitySuggestOptions) EntitySuggestCollection {
+	start := time.Now()
+	defer func() {
+		metrics.ObserveGraphSearch("entity_suggest", time.Since(start))
+	}()
+
 	query := normalizeEntitySuggestOptions(opts)
 	result := EntitySuggestCollection{
 		GeneratedAt: temporalNowUTC(),

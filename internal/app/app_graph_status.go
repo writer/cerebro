@@ -70,9 +70,11 @@ func (a *App) setSecurityGraph(g *graph.Graph) {
 	defer a.securityGraphInitMu.Unlock()
 	a.SecurityGraph = g
 	if g == nil {
+		metrics.SetGraphCounts(0, 0)
 		a.Propagation = nil
 		return
 	}
+	metrics.SetGraphCounts(g.NodeCount(), g.EdgeCount())
 	a.Propagation = graph.NewPropagationEngine(g)
 }
 

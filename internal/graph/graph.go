@@ -4,6 +4,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/evalops/cerebro/internal/metrics"
 )
 
 var temporalNowUTC = func() time.Time {
@@ -79,6 +81,11 @@ func New() *Graph {
 
 // AddNode adds a node to the graph
 func (g *Graph) AddNode(node *Node) {
+	start := time.Now()
+	defer func() {
+		metrics.ObserveGraphMutation("add_node", time.Since(start))
+	}()
+
 	if node == nil || node.ID == "" {
 		return
 	}
@@ -91,6 +98,11 @@ func (g *Graph) AddNode(node *Node) {
 
 // AddNodesBatch adds multiple nodes in a single lock acquisition
 func (g *Graph) AddNodesBatch(nodes []*Node) {
+	start := time.Now()
+	defer func() {
+		metrics.ObserveGraphMutation("add_nodes_batch", time.Since(start))
+	}()
+
 	if len(nodes) == 0 {
 		return
 	}
@@ -112,6 +124,11 @@ func (g *Graph) AddNodesBatch(nodes []*Node) {
 
 // AddEdge adds an edge to the graph
 func (g *Graph) AddEdge(edge *Edge) {
+	start := time.Now()
+	defer func() {
+		metrics.ObserveGraphMutation("add_edge", time.Since(start))
+	}()
+
 	if edge == nil || edge.Source == "" || edge.Target == "" {
 		return
 	}
@@ -124,6 +141,11 @@ func (g *Graph) AddEdge(edge *Edge) {
 
 // AddEdgesBatch adds multiple edges in a single lock acquisition
 func (g *Graph) AddEdgesBatch(edges []*Edge) {
+	start := time.Now()
+	defer func() {
+		metrics.ObserveGraphMutation("add_edges_batch", time.Since(start))
+	}()
+
 	if len(edges) == 0 {
 		return
 	}
@@ -218,6 +240,11 @@ func (g *Graph) CompactDeletedNodes() {
 
 // SetNodeProperty sets or updates a single property on a node.
 func (g *Graph) SetNodeProperty(id string, key string, value any) bool {
+	start := time.Now()
+	defer func() {
+		metrics.ObserveGraphMutation("set_property", time.Since(start))
+	}()
+
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
@@ -259,6 +286,10 @@ func (g *Graph) SetNodeProperty(id string, key string, value any) bool {
 
 // Clone returns a deep copy of the graph via snapshot/restore.
 func (g *Graph) Clone() *Graph {
+	start := time.Now()
+	defer func() {
+		metrics.ObserveGraphCloneDuration(time.Since(start))
+	}()
 	return RestoreFromSnapshot(CreateSnapshot(g))
 }
 
@@ -453,12 +484,18 @@ func (g *Graph) Metadata() Metadata {
 // BuildIndex builds all secondary indexes for O(1) lookups.
 // Should be called after bulk graph construction for optimal performance.
 func (g *Graph) BuildIndex() {
+	g.buildIndexWithTrigger("manual")
+}
+
+func (g *Graph) buildIndexWithTrigger(trigger string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.indexBuilt {
 		return
 	}
+	start := time.Now()
 	g.buildIndexLocked()
+	metrics.ObserveGraphIndexBuild(trigger, time.Since(start))
 }
 
 func (g *Graph) buildIndexLocked() {
