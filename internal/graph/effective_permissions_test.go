@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -364,6 +365,105 @@ func TestEffectivePermissionsCalculator_Calculate(t *testing.T) {
 			t.Error("expected nil for nonexistent principal")
 		}
 	})
+}
+
+func TestEffectivePermissionsCalculator_HandlesRoleCycles(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "user:start", Kind: NodeKindUser, Name: "start"})
+	g.AddNode(&Node{ID: "role:a", Kind: NodeKindRole, Name: "role-a"})
+	g.AddNode(&Node{ID: "role:b", Kind: NodeKindRole, Name: "role-b"})
+	g.AddNode(&Node{ID: "bucket:logs", Kind: NodeKindBucket, Name: "logs"})
+	g.AddNode(&Node{ID: "db:prod", Kind: NodeKindDatabase, Name: "prod"})
+
+	g.AddEdge(&Edge{ID: "user-role-a", Source: "user:start", Target: "role:a", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "role-a-role-b", Source: "role:a", Target: "role:b", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "role-b-role-a", Source: "role:b", Target: "role:a", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "role-b-logs", Source: "role:b", Target: "bucket:logs", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "role-a-db", Source: "role:a", Target: "db:prod", Kind: EdgeKindCanWrite, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "role-b-deny-db", Source: "role:b", Target: "db:prod", Kind: EdgeKindCanWrite, Effect: EdgeEffectDeny})
+
+	ep := NewEffectivePermissionsCalculator(g).Calculate("user:start")
+	if ep == nil {
+		t.Fatal("expected effective permissions, got nil")
+	}
+	if _, ok := ep.Resources["bucket:logs"]; !ok {
+		t.Fatal("expected role cycle traversal to reach bucket:logs")
+	}
+	if access, ok := ep.Resources["db:prod"]; ok {
+		for _, action := range access.Actions {
+			if action == "write" {
+				t.Fatalf("did not expect denied write action to survive role-cycle deny traversal: %#v", access.Actions)
+			}
+		}
+	}
+}
+
+func TestEffectivePermissionsCalculator_SharesVisitedAcrossWideRoleBranches(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "user:start", Kind: NodeKindUser, Name: "start"})
+	g.AddNode(&Node{ID: "role:left", Kind: NodeKindRole, Name: "left"})
+	g.AddNode(&Node{ID: "role:right", Kind: NodeKindRole, Name: "right"})
+	g.AddNode(&Node{ID: "role:shared", Kind: NodeKindRole, Name: "shared"})
+	g.AddNode(&Node{ID: "role:leaf", Kind: NodeKindRole, Name: "leaf"})
+	g.AddNode(&Node{ID: "bucket:logs", Kind: NodeKindBucket, Name: "logs"})
+	g.AddNode(&Node{ID: "db:prod", Kind: NodeKindDatabase, Name: "prod"})
+
+	g.AddEdge(&Edge{ID: "user-left", Source: "user:start", Target: "role:left", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "user-right", Source: "user:start", Target: "role:right", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+
+	previous := "role:left"
+	for i := range 70 {
+		roleID := "role:chain:" + strconv.Itoa(i)
+		g.AddNode(&Node{ID: roleID, Kind: NodeKindRole, Name: roleID})
+		g.AddEdge(&Edge{
+			ID:     "chain-" + strconv.Itoa(i),
+			Source: previous,
+			Target: roleID,
+			Kind:   EdgeKindCanAssume,
+			Effect: EdgeEffectAllow,
+		})
+		previous = roleID
+	}
+	g.AddEdge(&Edge{ID: "chain-shared", Source: previous, Target: "role:shared", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "right-shared", Source: "role:right", Target: "role:shared", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "shared-leaf", Source: "role:shared", Target: "role:leaf", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "leaf-logs", Source: "role:leaf", Target: "bucket:logs", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "leaf-deny-db", Source: "role:leaf", Target: "db:prod", Kind: EdgeKindCanWrite, Effect: EdgeEffectDeny})
+
+	ep := NewEffectivePermissionsCalculator(g).Calculate("user:start")
+	if ep == nil {
+		t.Fatal("expected effective permissions, got nil")
+	}
+	if _, ok := ep.Resources["bucket:logs"]; !ok {
+		t.Fatal("expected shared role traversal to grant access to bucket:logs")
+	}
+	if access, ok := ep.Resources["db:prod"]; ok {
+		for _, action := range access.Actions {
+			if action == "write" {
+				t.Fatalf("did not expect denied write action to survive shared traversal: %#v", access.Actions)
+			}
+		}
+	}
+
+	allowCount := 0
+	denyCount := 0
+	for _, source := range ep.InheritanceChain {
+		if source.SourceID != "role:leaf" {
+			continue
+		}
+		switch source.Effect {
+		case "allow":
+			allowCount++
+		case "deny":
+			denyCount++
+		}
+	}
+	if allowCount != 1 {
+		t.Fatalf("expected shared allow source exactly once, got %d", allowCount)
+	}
+	if denyCount != 1 {
+		t.Fatalf("expected shared deny source exactly once, got %d", denyCount)
+	}
 }
 
 func TestEffectivePermissionsCalculator_DenyRules(t *testing.T) {

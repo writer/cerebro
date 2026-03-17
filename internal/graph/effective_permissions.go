@@ -264,23 +264,23 @@ func (c *EffectivePermissionsCalculator) collectRolePermissions(
 	ctx *PermissionEvaluationContext,
 ) {
 	// Find roles this principal can assume
-	visited := make(map[string]bool)
-	c.collectRolePermissionsRecursive(ep, principalID, visited, []string{principalID}, nil, conditionMatchYes, ctx)
+	visited := newOrdinalVisitSet(NewNodeIDIndex())
+	c.collectRolePermissionsRecursive(ep, principalID, &visited, []string{principalID}, nil, conditionMatchYes, ctx)
 }
 
 func (c *EffectivePermissionsCalculator) collectRolePermissionsRecursive(
 	ep *EffectivePermissions,
 	currentID string,
-	visited map[string]bool,
+	visited *ordinalVisitSet,
 	path []string,
 	pathConditions []string,
 	pathState conditionMatchResult,
 	ctx *PermissionEvaluationContext,
 ) {
-	if visited[currentID] {
+	if visited.has(currentID) {
 		return
 	}
-	visited[currentID] = true
+	visited.mark(currentID)
 	currentNode, _ := c.graph.GetNode(currentID)
 
 	for _, edge := range c.graph.GetOutEdges(currentID) {
@@ -406,8 +406,8 @@ func (c *EffectivePermissionsCalculator) applyDenyRules(
 	}
 
 	// 3. Role denies - check all roles the principal can assume
-	visited := make(map[string]bool)
-	c.collectRoleDenies(ep, principalID, denies, visited, conditionMatchYes, ctx)
+	visited := newOrdinalVisitSet(NewNodeIDIndex())
+	c.collectRoleDenies(ep, principalID, denies, &visited, conditionMatchYes, ctx)
 
 	// 4. Service Control Policies (SCPs) - apply organization-level restrictions
 	// SCPs are stored as special nodes with EdgeKindSCP edges
@@ -428,14 +428,14 @@ func (c *EffectivePermissionsCalculator) collectRoleDenies(
 	ep *EffectivePermissions,
 	currentID string,
 	denies map[string][]string,
-	visited map[string]bool,
+	visited *ordinalVisitSet,
 	pathState conditionMatchResult,
 	ctx *PermissionEvaluationContext,
 ) {
-	if visited[currentID] {
+	if visited.has(currentID) {
 		return
 	}
-	visited[currentID] = true
+	visited.mark(currentID)
 	currentNode, _ := c.graph.GetNode(currentID)
 
 	for _, edge := range c.graph.GetOutEdges(currentID) {

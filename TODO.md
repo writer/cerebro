@@ -5,6 +5,20 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 173 - Effective Permissions Ordinal Role Traversal (2026-03-16)
+
+### Review findings
+- [x] Gap: `EffectivePermissionsCalculator` still walked assumable-role chains with string-keyed visited maps in both its allow and deny recursion paths after the shared ordinal traversal substrate landed elsewhere in the graph package.
+- [x] Gap: permission calculation is one of the heavier graph read paths, so leaving role-chain cycle detection on string-keyed maps keeps repeated calculator runs outside the `#384` memory and allocation work.
+- [x] Gap: there was no cycle-specific regression or benchmark locking down effective-permissions traversal behavior before moving those recursive walkers onto interned ordinals.
+
+### Execution plan
+- [x] Move effective-permissions role traversal dedupe onto the shared ordinal visit set.
+- [x] Apply the same ordinal traversal state to deny-walk recursion so allow and deny passes stay consistent under role cycles.
+- [x] Add TDD coverage for cycle-safe permission calculation and deny application.
+- [x] Add a focused `EffectivePermissionsCalculator` benchmark on a wide assumable-role graph.
+- [ ] Re-run focused graph tests, lint, changed-file validation, and the new benchmark.
+
 ## Deep Review Cycle 172 - Cascading Blast Radius Ordinal Traversal State (2026-03-16)
 
 ### Review findings
