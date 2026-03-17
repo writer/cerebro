@@ -16,7 +16,13 @@ import (
 	"github.com/evalops/cerebro/internal/executionstore"
 	"github.com/evalops/cerebro/internal/jsonl"
 	"github.com/evalops/cerebro/internal/metrics"
+	"github.com/evalops/cerebro/internal/telemetry"
 	"github.com/nats-io/nats.go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -303,8 +309,17 @@ func (c *Consumer) run() {
 		default:
 		}
 
+		_, fetchSpan := c.startTracingSpan(runCtx, "cerebro.event.fetch",
+			attribute.String("cerebro.stream", c.config.Stream),
+			attribute.String("cerebro.durable", c.config.Durable),
+			attribute.Int("cerebro.event.batch.requested", fetchBatchSize),
+		)
 		msgs, err := c.sub.Fetch(fetchBatchSize, nats.MaxWait(c.config.FetchTimeout))
 		if err != nil {
+			if !errors.Is(err, nats.ErrTimeout) {
+				consumerRecordSpanError(fetchSpan, err)
+			}
+			fetchSpan.End()
 			if errors.Is(err, nats.ErrTimeout) {
 				if time.Since(lastLagRefresh) >= defaultConsumerLagRefreshInterval {
 					c.refreshLagMetrics(time.Now().UTC())
@@ -316,6 +331,8 @@ func (c *Consumer) run() {
 			time.Sleep(500 * time.Millisecond)
 			continue
 		}
+		fetchSpan.SetAttributes(attribute.Int("cerebro.event.batch.received", len(msgs)))
+		fetchSpan.End()
 		c.refreshLagMetrics(time.Now().UTC())
 		lastLagRefresh = time.Now().UTC()
 
@@ -336,6 +353,8 @@ func (c *Consumer) run() {
 				inProgress: func() error { return msg.InProgress() },
 			}
 		}
+		// The fetch span is ended before batch processing starts, so the batch
+		// work must stay attached to the long-lived run span instead.
 		backpressured := c.processBatch(runCtx, batch)
 		fetchBatchSize = nextAdaptiveConsumerBatchSize(fetchBatchSize, c.config.BatchSize, len(batch), backpressured)
 	}
@@ -359,12 +378,13 @@ type consumerPipelineMessage struct {
 type consumerDecodedMessage struct {
 	message consumerPipelineMessage
 	event   CloudEvent
+	ctx     context.Context
 	handled bool
 	result  consumerMessageResult
 }
 
 func (c *Consumer) handleMessage(ctx context.Context, subject string, payload []byte, ack func() error, nak func() error, inProgress func() error) consumerMessageResult {
-	decoded := c.decodePipelineMessage(consumerPipelineMessage{
+	decoded := c.decodePipelineMessage(ctx, consumerPipelineMessage{
 		subject:    subject,
 		payload:    payload,
 		ack:        ack,
@@ -374,12 +394,21 @@ func (c *Consumer) handleMessage(ctx context.Context, subject string, payload []
 	if decoded.handled {
 		return decoded.result
 	}
-	return c.handleDecodedMessage(ctx, decoded)
+	return c.handleDecodedMessage(decoded)
 }
 
-func (c *Consumer) decodePipelineMessage(message consumerPipelineMessage) consumerDecodedMessage {
-	decoded := consumerDecodedMessage{message: message}
+func (c *Consumer) decodePipelineMessage(ctx context.Context, message consumerPipelineMessage) consumerDecodedMessage {
+	envelope := consumerTraceEnvelopeFromPayload(message.payload)
+	traceCtx := consumerTraceContext(ctx, envelope.TraceParent)
+	decodeCtx, decodeSpan := c.startTracingSpan(traceCtx, "cerebro.event.decode", c.consumerEnvelopeAttributes(message, envelope)...)
+	defer decodeSpan.End()
+
+	decoded := consumerDecodedMessage{
+		message: message,
+		ctx:     decodeCtx,
+	}
 	if err := json.Unmarshal(message.payload, &decoded.event); err != nil {
+		consumerRecordSpanError(decodeSpan, err)
 		preview := payloadPreview(message.payload, c.config.PayloadPreviewBytes)
 		if dlqErr := c.dlq.Write(consumerDeadLetterRecord{
 			RecordedAt: time.Now().UTC(),
@@ -417,15 +446,22 @@ func (c *Consumer) decodePipelineMessage(message consumerPipelineMessage) consum
 		decoded.handled = true
 		return decoded
 	}
+	decoded.ctx = decodeCtx
+	decodeSpan.SetAttributes(c.consumerEventAttributes(message, decoded.event)...)
 	return decoded
 }
 
-func (c *Consumer) handleDecodedMessage(ctx context.Context, decoded consumerDecodedMessage) consumerMessageResult {
+func (c *Consumer) handleDecodedMessage(decoded consumerDecodedMessage) consumerMessageResult {
 	evt := decoded.event
 	message := decoded.message
+	ingestCtx, ingestSpan := c.startTracingSpan(decoded.ctx, "cerebro.event.ingest", c.consumerEventAttributes(message, evt)...)
+	defer ingestSpan.End()
+
+	dedupCtx, dedupSpan := c.startTracingSpan(ingestCtx, "cerebro.event.dedup", c.consumerEventAttributes(message, evt)...)
 	if c.deduper != nil {
-		record, hashMismatch, err := c.deduper.Lookup(ctx, evt, message.payload, time.Now().UTC())
+		record, hashMismatch, err := c.deduper.Lookup(dedupCtx, evt, message.payload, time.Now().UTC())
 		if err != nil {
+			consumerRecordSpanError(dedupSpan, err)
 			c.logger.Warn("tap consumer dedupe lookup failed; continuing without duplicate suppression",
 				"error", err,
 				"event_id", evt.ID,
@@ -433,7 +469,8 @@ func (c *Consumer) handleDecodedMessage(ctx context.Context, decoded consumerDec
 			)
 		} else if record != nil {
 			if hashMismatch {
-				if err := c.deduper.Forget(ctx, evt); err != nil {
+				if err := c.deduper.Forget(dedupCtx, evt); err != nil {
+					consumerRecordSpanError(dedupSpan, err)
 					c.logger.Error("tap consumer failed to clear conflicting dedupe state; message requeued",
 						"error", err,
 						"event_id", evt.ID,
@@ -441,7 +478,8 @@ func (c *Consumer) handleDecodedMessage(ctx context.Context, decoded consumerDec
 						"source", evt.Source,
 						"processed_at", record.ProcessedAt.UTC().Format(time.RFC3339Nano),
 					)
-					if nakErr := message.nak(); nakErr != nil {
+					dedupSpan.End()
+					if nakErr := c.consumerAckWithTracing(ingestCtx, message, evt, "nak", message.nak); nakErr != nil {
 						c.logger.Warn("tap consumer nak failed after dedupe hash mismatch state clear failure", "error", nakErr, "event_type", evt.Type)
 					}
 					return consumerMessageResult{}
@@ -455,13 +493,15 @@ func (c *Consumer) handleDecodedMessage(ctx context.Context, decoded consumerDec
 					Error:      fmt.Sprintf("duplicate event key matched different payload hash: processed_at=%s", record.ProcessedAt.UTC().Format(time.RFC3339Nano)),
 					Payload:    string(message.payload),
 				}); dlqErr != nil {
+					consumerRecordSpanError(dedupSpan, dlqErr)
 					c.logger.Error("tap consumer failed to dead-letter duplicate hash mismatch; message requeued",
 						"error", dlqErr,
 						"event_id", evt.ID,
 						"event_type", evt.Type,
 						"source", evt.Source,
 					)
-					if nakErr := message.nak(); nakErr != nil {
+					dedupSpan.End()
+					if nakErr := c.consumerAckWithTracing(ingestCtx, message, evt, "nak", message.nak); nakErr != nil {
 						c.logger.Warn("tap consumer nak failed after dedupe hash mismatch dead-letter error", "error", nakErr, "event_type", evt.Type)
 					}
 					return consumerMessageResult{}
@@ -472,12 +512,15 @@ func (c *Consumer) handleDecodedMessage(ctx context.Context, decoded consumerDec
 					"source", evt.Source,
 					"processed_at", record.ProcessedAt.UTC().Format(time.RFC3339Nano),
 				)
-				if nakErr := message.nak(); nakErr != nil {
+				dedupSpan.End()
+				if nakErr := c.consumerAckWithTracing(ingestCtx, message, evt, "nak", message.nak); nakErr != nil {
 					c.logger.Warn("tap consumer nak failed after clearing dedupe hash mismatch state", "error", nakErr, "event_type", evt.Type)
 				}
 				return consumerMessageResult{}
 			}
-			if err := c.deduper.ObserveDuplicate(ctx, evt, time.Now().UTC()); err != nil {
+			dedupSpan.SetAttributes(attribute.Bool("cerebro.event.duplicate", true))
+			if err := c.deduper.ObserveDuplicate(dedupCtx, evt, time.Now().UTC()); err != nil {
+				consumerRecordSpanError(dedupSpan, err)
 				c.logger.Warn("tap consumer failed to refresh duplicate dedupe state",
 					"error", err,
 					"event_id", evt.ID,
@@ -485,25 +528,34 @@ func (c *Consumer) handleDecodedMessage(ctx context.Context, decoded consumerDec
 				)
 			}
 			metrics.RecordNATSConsumerDeduplicated(c.config.Stream, c.config.Durable)
-			if err := message.ack(); err != nil {
+			dedupSpan.End()
+			if err := c.consumerAckWithTracing(ingestCtx, message, evt, "ack", message.ack); err != nil {
 				c.logger.Warn("tap consumer ack failed after duplicate suppression", "error", err, "event_type", evt.Type)
 			}
 			return consumerMessageResult{}
 		}
 	}
-	stopHeartbeat := c.startInProgressHeartbeat(ctx, message.inProgress)
+	dedupSpan.End()
+
+	stopHeartbeat := c.startInProgressHeartbeat(ingestCtx, message.inProgress)
 	defer stopHeartbeat()
-	if err := c.handler(ctx, evt); err != nil {
+
+	handlerCtx, handlerSpan := c.startTracingSpan(ingestCtx, "cerebro.event.handle", c.consumerEventAttributes(message, evt)...)
+	if err := c.handler(handlerCtx, evt); err != nil {
+		consumerRecordSpanError(handlerSpan, err)
+		handlerSpan.End()
 		c.logger.Warn("tap consumer handler failed; message requeued", "error", err, "event_type", evt.Type)
-		if nakErr := message.nak(); nakErr != nil {
+		if nakErr := c.consumerAckWithTracing(ingestCtx, message, evt, "nak", message.nak); nakErr != nil {
 			c.logger.Warn("tap consumer nak failed", "error", nakErr, "event_type", evt.Type)
 		}
 		return consumerMessageResult{}
 	}
+	handlerSpan.End()
+
 	processedAt := time.Now().UTC()
 	metrics.RecordNATSConsumerProcessed(c.config.Stream, c.config.Durable)
 	if c.deduper != nil {
-		if err := c.deduper.Remember(ctx, evt, message.payload, processedAt); err != nil {
+		if err := c.deduper.Remember(ingestCtx, evt, message.payload, processedAt); err != nil {
 			c.logger.Warn("tap consumer failed to persist processed event dedupe state",
 				"error", err,
 				"event_id", evt.ID,
@@ -511,7 +563,7 @@ func (c *Consumer) handleDecodedMessage(ctx context.Context, decoded consumerDec
 			)
 		}
 	}
-	if err := message.ack(); err != nil {
+	if err := c.consumerAckWithTracing(ingestCtx, message, evt, "ack", message.ack); err != nil {
 		c.logger.Warn("tap consumer ack failed", "error", err, "event_type", evt.Type)
 	}
 	return consumerMessageResult{
@@ -532,7 +584,7 @@ func (c *Consumer) processBatch(ctx context.Context, messages []consumerPipeline
 	deactivateBatchHeartbeat, stopBatchHeartbeat := c.startBatchInProgressHeartbeat(ctx, batchInProgress)
 	defer stopBatchHeartbeat()
 
-	decoded := c.decodeBatch(messages)
+	decoded := c.decodeBatch(ctx, messages)
 	workerCount := consumerHandlerWorkers(c.config)
 	queueDepth := consumerHandlerQueueDepth(c.config, workerCount)
 	workerChans := make([]chan consumerDecodedMessage, workerCount)
@@ -546,7 +598,7 @@ func (c *Consumer) processBatch(ctx context.Context, messages []consumerPipeline
 			defer workerWG.Done()
 			for decoded := range ch {
 				deactivateBatchHeartbeat(decoded.message.index)
-				result := c.handleDecodedMessage(ctx, decoded)
+				result := c.handleDecodedMessage(decoded)
 				if result.Processed {
 					c.recordProcessed(result.ProcessedAt, result.EventTime)
 				}
@@ -597,7 +649,7 @@ func consumerAllWorkerQueuesFull(workerChans []chan consumerDecodedMessage) bool
 	return true
 }
 
-func (c *Consumer) decodeBatch(messages []consumerPipelineMessage) []consumerDecodedMessage {
+func (c *Consumer) decodeBatch(ctx context.Context, messages []consumerPipelineMessage) []consumerDecodedMessage {
 	decoded := make([]consumerDecodedMessage, len(messages))
 	if len(messages) == 0 {
 		return decoded
@@ -610,7 +662,7 @@ func (c *Consumer) decodeBatch(messages []consumerPipelineMessage) []consumerDec
 		go func() {
 			defer wg.Done()
 			for index := range jobs {
-				decoded[index] = c.decodePipelineMessage(messages[index])
+				decoded[index] = c.decodePipelineMessage(ctx, messages[index])
 			}
 		}()
 	}
@@ -729,6 +781,113 @@ func consumerOrderingKey(evt CloudEvent) string {
 		return tenantID + "|" + eventID
 	}
 	return strings.TrimSpace(evt.Type)
+}
+
+type consumerTraceEnvelope struct {
+	ID          string `json:"id"`
+	Source      string `json:"source"`
+	Type        string `json:"type"`
+	Subject     string `json:"subject,omitempty"`
+	TenantID    string `json:"tenant_id"`
+	TraceParent string `json:"traceparent"`
+}
+
+func consumerTraceEnvelopeFromPayload(payload []byte) consumerTraceEnvelope {
+	var envelope consumerTraceEnvelope
+	_ = json.Unmarshal(payload, &envelope)
+	return envelope
+}
+
+func consumerTraceContext(ctx context.Context, traceParent string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	traceParent = strings.TrimSpace(traceParent)
+	if traceParent == "" {
+		return ctx
+	}
+	carrier := propagation.MapCarrier{"traceparent": traceParent}
+	return otel.GetTextMapPropagator().Extract(ctx, carrier)
+}
+
+func (c *Consumer) consumerEnvelopeAttributes(message consumerPipelineMessage, envelope consumerTraceEnvelope) []attribute.KeyValue {
+	return c.consumerTraceAttributes(
+		message.subject,
+		len(message.payload),
+		envelope.ID,
+		envelope.Source,
+		envelope.Type,
+		envelope.Subject,
+		envelope.TenantID,
+	)
+}
+
+func (c *Consumer) consumerEventAttributes(message consumerPipelineMessage, evt CloudEvent) []attribute.KeyValue {
+	return c.consumerTraceAttributes(
+		message.subject,
+		len(message.payload),
+		evt.ID,
+		evt.Source,
+		evt.Type,
+		evt.Subject,
+		evt.TenantID,
+	)
+}
+
+func (c *Consumer) consumerTraceAttributes(subject string, payloadSize int, eventID, source, eventType, eventSubject, tenantID string) []attribute.KeyValue {
+	attrs := []attribute.KeyValue{
+		attribute.String("cerebro.stream", c.config.Stream),
+		attribute.String("cerebro.durable", c.config.Durable),
+		attribute.String("messaging.system", "nats"),
+		attribute.String("messaging.destination.name", strings.TrimSpace(subject)),
+		attribute.Int("cerebro.event.payload_bytes", payloadSize),
+	}
+	if eventID = strings.TrimSpace(eventID); eventID != "" {
+		attrs = append(attrs, attribute.String("cerebro.event.id", eventID))
+	}
+	if source = strings.TrimSpace(source); source != "" {
+		attrs = append(attrs, attribute.String("cerebro.event.source", source))
+	}
+	if eventType = strings.TrimSpace(eventType); eventType != "" {
+		attrs = append(attrs, attribute.String("cerebro.event.type", eventType))
+	}
+	if eventSubject = strings.TrimSpace(eventSubject); eventSubject != "" {
+		attrs = append(attrs, attribute.String("cerebro.event.subject", eventSubject))
+	}
+	if tenantID = strings.TrimSpace(tenantID); tenantID != "" {
+		attrs = append(attrs, attribute.String("cerebro.tenant_id", tenantID))
+	}
+	return attrs
+}
+
+func (c *Consumer) startTracingSpan(ctx context.Context, name string, attrs ...attribute.KeyValue) (context.Context, trace.Span) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return telemetry.Tracer("cerebro.events").Start(ctx, name, trace.WithAttributes(attrs...))
+}
+
+func (c *Consumer) consumerAckWithTracing(ctx context.Context, message consumerPipelineMessage, evt CloudEvent, operation string, fn func() error) error {
+	if fn == nil {
+		return nil
+	}
+	_, ackSpan := c.startTracingSpan(ctx, "cerebro.event.ack",
+		append(c.consumerEventAttributes(message, evt), attribute.String("cerebro.event.ack_operation", strings.TrimSpace(operation)))...,
+	)
+	defer ackSpan.End()
+	err := fn()
+	if err != nil {
+		consumerRecordSpanError(ackSpan, err)
+	}
+	return err
+}
+
+func consumerRecordSpanError(span trace.Span, err error) {
+	if err == nil {
+		return
+	}
+	span.RecordError(err)
+	span.SetStatus(codes.Error, err.Error())
 }
 
 func (c *Consumer) recordDropped(reason string, at time.Time) {

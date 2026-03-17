@@ -17,6 +17,12 @@ import (
 	"github.com/evalops/cerebro/internal/metrics"
 	"github.com/nats-io/nats.go"
 	dto "github.com/prometheus/client_model/go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	tracetest "go.opentelemetry.io/otel/sdk/trace/tracetest"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func TestConsumerConfigWithDefaults(t *testing.T) {
@@ -1383,6 +1389,160 @@ func TestConsumerHandleMessageExtendsAckWaitWhileProcessing(t *testing.T) {
 	}
 }
 
+func TestConsumerHandleMessagePropagatesTraceparentIntoHandlerSpans(t *testing.T) {
+	exporter := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+	prevProvider := otel.GetTracerProvider()
+	prevPropagator := otel.GetTextMapPropagator()
+	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(traceContextPropagator())
+	t.Cleanup(func() {
+		otel.SetTracerProvider(prevProvider)
+		otel.SetTextMapPropagator(prevPropagator)
+		_ = tp.Shutdown(t.Context())
+	})
+
+	var handlerTraceID trace.TraceID
+	consumer := &Consumer{
+		config: ConsumerConfig{
+			Stream:  "ENSEMBLE_TAP_TEST",
+			Durable: "cerebro_trace_test",
+		},
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		handler: func(ctx context.Context, evt CloudEvent) error {
+			handlerTraceID = trace.SpanFromContext(ctx).SpanContext().TraceID()
+			if evt.ID != "evt-trace-1" {
+				t.Fatalf("unexpected event %q", evt.ID)
+			}
+			return nil
+		},
+	}
+
+	event := CloudEvent{
+		SpecVersion: cloudEventSpecVersion,
+		ID:          "evt-trace-1",
+		Source:      "cerebro.events.test",
+		Type:        "tap.test",
+		Time:        time.Now().UTC(),
+		DataSchema:  "urn:cerebro:events:test",
+		TenantID:    "tenant-a",
+		TraceParent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+	}
+	payload, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("marshal cloud event: %v", err)
+	}
+
+	var acked atomic.Int64
+	result := consumer.handleMessage(context.Background(), "ensemble.tap.trace.event", payload, func() error {
+		acked.Add(1)
+		return nil
+	}, func() error {
+		t.Fatal("expected message to be acked, not nacked")
+		return nil
+	}, func() error { return nil })
+
+	if !result.Processed {
+		t.Fatal("expected traced message to be processed successfully")
+	}
+	if acked.Load() != 1 {
+		t.Fatalf("expected one ack, got %d", acked.Load())
+	}
+	expectedTraceID, err := trace.TraceIDFromHex("4bf92f3577b34da6a3ce929d0e0e4736")
+	if err != nil {
+		t.Fatalf("trace id parse: %v", err)
+	}
+	if handlerTraceID != expectedTraceID {
+		t.Fatalf("handler trace id = %s, want %s", handlerTraceID.String(), expectedTraceID.String())
+	}
+
+	spans := exporter.GetSpans()
+	for _, name := range []string{"cerebro.event.decode", "cerebro.event.ingest", "cerebro.event.dedup", "cerebro.event.handle", "cerebro.event.ack"} {
+		span := testConsumerSpanByName(t, spans, name)
+		if span.SpanContext.TraceID() != expectedTraceID {
+			t.Fatalf("%s trace id = %s, want %s", name, span.SpanContext.TraceID().String(), expectedTraceID.String())
+		}
+	}
+
+	ingestSpan := testConsumerSpanByName(t, spans, "cerebro.event.ingest")
+	if ingestSpan.Parent.SpanID() != testConsumerSpanByName(t, spans, "cerebro.event.decode").SpanContext.SpanID() {
+		t.Fatalf("ingest span parent = %s, want decode span", ingestSpan.Parent.SpanID().String())
+	}
+	handleSpan := testConsumerSpanByName(t, spans, "cerebro.event.handle")
+	if handleSpan.Parent.SpanID() != ingestSpan.SpanContext.SpanID() {
+		t.Fatalf("handle span parent = %s, want ingest span", handleSpan.Parent.SpanID().String())
+	}
+	if got, ok := testConsumerSpanAttribute(handleSpan, "cerebro.event.id"); !ok || got != "evt-trace-1" {
+		t.Fatalf("handle span event id = %q, ok=%t", got, ok)
+	}
+}
+
+func TestConsumerHandleMessageTracesNakOnHandlerFailure(t *testing.T) {
+	exporter := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+	prevProvider := otel.GetTracerProvider()
+	prevPropagator := otel.GetTextMapPropagator()
+	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(traceContextPropagator())
+	t.Cleanup(func() {
+		otel.SetTracerProvider(prevProvider)
+		otel.SetTextMapPropagator(prevPropagator)
+		_ = tp.Shutdown(t.Context())
+	})
+
+	consumer := &Consumer{
+		config: ConsumerConfig{
+			Stream:  "ENSEMBLE_TAP_TEST",
+			Durable: "cerebro_trace_test",
+		},
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		handler: func(context.Context, CloudEvent) error {
+			return errors.New("boom")
+		},
+	}
+
+	event := CloudEvent{
+		SpecVersion: cloudEventSpecVersion,
+		ID:          "evt-trace-fail-1",
+		Source:      "cerebro.events.test",
+		Type:        "tap.test",
+		Time:        time.Now().UTC(),
+		DataSchema:  "urn:cerebro:events:test",
+		TenantID:    "tenant-a",
+		TraceParent: "00-4bf92f3577b34da6a3ce929d0e0e4736-1111111111111111-01",
+	}
+	payload, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("marshal cloud event: %v", err)
+	}
+
+	var nacked atomic.Int64
+	result := consumer.handleMessage(context.Background(), "ensemble.tap.trace.event", payload, func() error {
+		t.Fatal("expected failed handler to nack, not ack")
+		return nil
+	}, func() error {
+		nacked.Add(1)
+		return nil
+	}, func() error { return nil })
+
+	if result.Processed {
+		t.Fatal("expected failed handler result to remain unprocessed")
+	}
+	if nacked.Load() != 1 {
+		t.Fatalf("expected one nak, got %d", nacked.Load())
+	}
+
+	spans := exporter.GetSpans()
+	handleSpan := testConsumerSpanByName(t, spans, "cerebro.event.handle")
+	if handleSpan.Status.Code != codes.Error {
+		t.Fatalf("handler span status = %v, want error", handleSpan.Status.Code)
+	}
+	ackSpan := testConsumerSpanByName(t, spans, "cerebro.event.ack")
+	if got, ok := testConsumerSpanAttribute(ackSpan, "cerebro.event.ack_operation"); !ok || got != "nak" {
+		t.Fatalf("ack span operation = %q, ok=%t", got, ok)
+	}
+}
+
 func counterValue(t *testing.T, metric interface{ Write(*dto.Metric) error }) float64 {
 	t.Helper()
 	snapshot := &dto.Metric{}
@@ -1405,6 +1565,75 @@ func gaugeValue(t *testing.T, metric interface{ Write(*dto.Metric) error }) floa
 		t.Fatal("expected gauge metric")
 	}
 	return snapshot.Gauge.GetValue()
+}
+
+func traceContextPropagator() propagation.TextMapPropagator {
+	return propagation.TraceContext{}
+}
+
+func TestConsumerProcessBatchWithoutTraceparentUsesRunSpanAsParent(t *testing.T) {
+	exporter := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+	prevProvider := otel.GetTracerProvider()
+	prevPropagator := otel.GetTextMapPropagator()
+	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(traceContextPropagator())
+	t.Cleanup(func() {
+		otel.SetTracerProvider(prevProvider)
+		otel.SetTextMapPropagator(prevPropagator)
+		_ = tp.Shutdown(t.Context())
+	})
+
+	consumer := &Consumer{
+		config: ConsumerConfig{
+			Stream:         "ENSEMBLE_TAP_TEST",
+			Durable:        "cerebro_trace_test",
+			HandlerWorkers: 1,
+		},
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		handler: func(context.Context, CloudEvent) error {
+			return nil
+		},
+	}
+
+	event := testConsumerEvent("customer:a", 1, true)
+	event.TraceParent = ""
+	runCtx, runSpan := otel.Tracer("cerebro.events").Start(context.Background(), "cerebro.event.run")
+	consumer.processBatch(runCtx, []consumerPipelineMessage{
+		testConsumerPipelineMessage(t, 0, event, nil),
+	})
+	runSpan.End()
+
+	spans := exporter.GetSpans()
+	run := testConsumerSpanByName(t, spans, "cerebro.event.run")
+	decode := testConsumerSpanByName(t, spans, "cerebro.event.decode")
+	ingest := testConsumerSpanByName(t, spans, "cerebro.event.ingest")
+	if decode.Parent.SpanID() != run.SpanContext.SpanID() {
+		t.Fatalf("decode span parent = %s, want run span %s", decode.Parent.SpanID().String(), run.SpanContext.SpanID().String())
+	}
+	if ingest.Parent.SpanID() != decode.SpanContext.SpanID() {
+		t.Fatalf("ingest span parent = %s, want decode span %s", ingest.Parent.SpanID().String(), decode.SpanContext.SpanID().String())
+	}
+}
+
+func testConsumerSpanByName(t *testing.T, spans []tracetest.SpanStub, name string) tracetest.SpanStub {
+	t.Helper()
+	for _, span := range spans {
+		if span.Name == name {
+			return span
+		}
+	}
+	t.Fatalf("span %q not found in %#v", name, spans)
+	return tracetest.SpanStub{}
+}
+
+func testConsumerSpanAttribute(span tracetest.SpanStub, key string) (string, bool) {
+	for _, attr := range span.Attributes {
+		if string(attr.Key) == key {
+			return attr.Value.AsString(), true
+		}
+	}
+	return "", false
 }
 
 func containsAll(s string, parts ...string) bool {

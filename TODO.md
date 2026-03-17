@@ -17,6 +17,19 @@ Status: executed end-to-end via PR workflow
 - [x] Preserve tenant generation state across live-graph clears so warm shards stay usable after restart-like transitions, while still invalidating hot shards when the live graph version changes.
 - [x] Pin hot tenant shards when the tenant has open findings, and add TDD coverage for cold recovery, warm recovery, and pin-aware eviction.
 
+## Deep Review Cycle 194 - Event Pipeline Distributed Tracing (2026-03-17)
+
+### Review findings
+- [x] Gap: issue `#360` still injected `traceparent` at JetStream publish time, but the staged consumer path dropped that upstream context before decode, dedupe, handler execution, and ack/nak.
+- [x] Gap: the ingest path had no first-class consumer spans for fetch, decode, ingest, dedupe, handler, or ack, so pipeline latency could not be attributed to the stage actually stalling.
+- [x] Gap: the events package had no regression coverage proving handler contexts inherited the upstream trace or that handler failures stayed in the same trace through `nak`.
+
+### Execution plan
+- [x] Extract remote `traceparent` into the consumer context and emit consumer-side fetch/decode/ingest/dedup/handle/ack spans with event and stream attributes.
+- [x] Record handler and dedupe failures on spans while keeping `nak` and `ack` in the same trace as the event ingest span.
+- [x] Add TDD coverage for happy-path trace propagation and failure-path `nak` tracing.
+- [x] Re-run focused event tests plus lint and changed-file validation.
+
 ## Deep Review Cycle 193 - Tenant-Sharded Hot Graphs (2026-03-17)
 
 ### Review findings
