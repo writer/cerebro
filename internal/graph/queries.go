@@ -66,6 +66,19 @@ type RiskSummary struct {
 	Low      int `json:"low"`
 }
 
+type blastRadiusFrontierItem struct {
+	nodeID string
+	path   []string
+}
+
+type blastRadiusExpansion struct {
+	next             blastRadiusFrontierItem
+	reachable        *ReachableNode
+	crossAccountRisk bool
+	accounts         [2]string
+	accountCount     int
+}
+
 // BlastRadius performs forward reachability analysis from a principal
 func BlastRadius(g *Graph, principalID string, maxDepth int) *BlastRadiusResult {
 	if cached, ok := g.getBlastRadiusFromCache(principalID, maxDepth); ok {
@@ -82,8 +95,19 @@ func BlastRadius(g *Graph, principalID string, maxDepth int) *BlastRadiusResult 
 		blastRadiusComputeHook(principalID, maxDepth)
 	}
 
+	result := computeBlastRadius(g, principal, maxDepth)
+
+	g.putBlastRadiusInCache(principalID, maxDepth, cacheVersion, result)
+	return cloneBlastRadiusResult(result)
+}
+
+func computeBlastRadius(g *Graph, principal *Node, maxDepth int) *BlastRadiusResult {
+	if principal == nil {
+		return &BlastRadiusResult{}
+	}
+
 	result := &BlastRadiusResult{
-		PrincipalID:   principalID,
+		PrincipalID:   principal.ID,
 		PrincipalName: principal.Name,
 		MaxDepth:      maxDepth,
 	}
@@ -91,70 +115,38 @@ func BlastRadius(g *Graph, principalID string, maxDepth int) *BlastRadiusResult 
 	startAccount := principal.Account
 	visited := newOrdinalVisitSet(NewNodeIDIndex())
 	accountsReached := make(map[string]bool)
+	frontier := []blastRadiusFrontierItem{{nodeID: principal.ID, path: []string{principal.ID}}}
 
-	type queueItem struct {
-		nodeID string
-		depth  int
-		path   []string
-	}
-	queue := []queueItem{{principalID, 0, []string{principalID}}}
-
-	for len(queue) > 0 {
-		item := queue[0]
-		queue = queue[1:]
-
-		if item.depth > maxDepth || visited.has(item.nodeID) {
-			continue
+	for depth := 0; depth <= maxDepth && len(frontier) > 0; depth++ {
+		activeFrontier := make([]blastRadiusFrontierItem, 0, len(frontier))
+		for _, item := range frontier {
+			if visited.has(item.nodeID) {
+				continue
+			}
+			visited.mark(item.nodeID)
+			activeFrontier = append(activeFrontier, item)
 		}
-		visited.mark(item.nodeID)
+		if len(activeFrontier) == 0 {
+			break
+		}
 
-		for _, edge := range g.GetOutEdges(item.nodeID) {
-			// Skip deny edges - they block access
-			if edge.IsDeny() {
-				continue
-			}
+		expansions := parallelProcessOrdered(activeFrontier, func(item blastRadiusFrontierItem) []blastRadiusExpansion {
+			return expandBlastRadiusFrontierItem(g, item, depth, startAccount)
+		})
 
-			// Check if there's a deny that blocks this allow
-			if isDenied(g, item.nodeID, edge.Target) {
-				continue
-			}
-
-			targetNode, ok := g.GetNode(edge.Target)
-			if !ok {
-				continue
-			}
-
-			newPath := append([]string{}, item.path...)
-			newPath = append(newPath, edge.Target)
-
-			// Track cross-account access
-			if edge.IsCrossAccount() {
+		nextFrontier := make([]blastRadiusFrontierItem, 0, len(expansions))
+		for _, expansion := range expansions {
+			if expansion.crossAccountRisk {
 				result.CrossAccountRisk = true
-				if targetAccount, ok := edge.Properties["target_account"].(string); ok {
-					accountsReached[targetAccount] = true
+			}
+			for i := 0; i < expansion.accountCount; i++ {
+				if expansion.accounts[i] != "" {
+					accountsReached[expansion.accounts[i]] = true
 				}
 			}
-			if targetNode.Account != "" && targetNode.Account != startAccount {
-				accountsReached[targetNode.Account] = true
-			}
-
-			// Only collect resource nodes in results
-			if targetNode.IsResource() {
-				var actions []string
-				if a, ok := edge.Properties["actions"].([]string); ok {
-					actions = a
-				}
-
-				result.ReachableNodes = append(result.ReachableNodes, &ReachableNode{
-					Node:     targetNode,
-					Depth:    item.depth + 1,
-					Path:     newPath,
-					EdgeKind: edge.Kind,
-					Actions:  actions,
-				})
-
-				// Update risk summary
-				switch targetNode.Risk {
+			if expansion.reachable != nil {
+				result.ReachableNodes = append(result.ReachableNodes, expansion.reachable)
+				switch expansion.reachable.Node.Risk {
 				case RiskCritical:
 					result.RiskSummary.Critical++
 				case RiskHigh:
@@ -165,14 +157,9 @@ func BlastRadius(g *Graph, principalID string, maxDepth int) *BlastRadiusResult 
 					result.RiskSummary.Low++
 				}
 			}
-
-			// Continue traversal for role chains
-			queue = append(queue, queueItem{
-				nodeID: edge.Target,
-				depth:  item.depth + 1,
-				path:   newPath,
-			})
+			nextFrontier = append(nextFrontier, expansion.next)
 		}
+		frontier = nextFrontier
 	}
 
 	result.TotalCount = len(result.ReachableNodes)
@@ -184,8 +171,60 @@ func BlastRadius(g *Graph, principalID string, maxDepth int) *BlastRadiusResult 
 		result.ForeignAccounts = append(result.ForeignAccounts, acc)
 	}
 
-	g.putBlastRadiusInCache(principalID, maxDepth, cacheVersion, result)
-	return cloneBlastRadiusResult(result)
+	return result
+}
+
+func expandBlastRadiusFrontierItem(g *Graph, item blastRadiusFrontierItem, depth int, startAccount string) []blastRadiusExpansion {
+	expansions := make([]blastRadiusExpansion, 0, len(g.GetOutEdges(item.nodeID)))
+	for _, edge := range g.GetOutEdges(item.nodeID) {
+		if edge.IsDeny() || isDenied(g, item.nodeID, edge.Target) {
+			continue
+		}
+
+		targetNode, ok := g.GetNode(edge.Target)
+		if !ok {
+			continue
+		}
+
+		newPath := append(append([]string{}, item.path...), edge.Target)
+		expansion := blastRadiusExpansion{
+			next: blastRadiusFrontierItem{
+				nodeID: edge.Target,
+				path:   newPath,
+			},
+		}
+
+		if edge.IsCrossAccount() {
+			expansion.crossAccountRisk = true
+			if targetAccount, ok := edge.Properties["target_account"].(string); ok && targetAccount != "" {
+				expansion.accounts[expansion.accountCount] = targetAccount
+				expansion.accountCount++
+			}
+		}
+		if targetNode.Account != "" && targetNode.Account != startAccount {
+			if expansion.accountCount == 0 || expansion.accounts[0] != targetNode.Account {
+				expansion.accounts[expansion.accountCount] = targetNode.Account
+				expansion.accountCount++
+			}
+		}
+
+		if targetNode.IsResource() {
+			var actions []string
+			if a, ok := edge.Properties["actions"].([]string); ok {
+				actions = a
+			}
+			expansion.reachable = &ReachableNode{
+				Node:     targetNode,
+				Depth:    depth + 1,
+				Path:     newPath,
+				EdgeKind: edge.Kind,
+				Actions:  actions,
+			}
+		}
+
+		expansions = append(expansions, expansion)
+	}
+	return expansions
 }
 
 func (g *Graph) getBlastRadiusFromCache(principalID string, maxDepth int) (*BlastRadiusResult, bool) {
@@ -322,6 +361,16 @@ type ReverseAccessResult struct {
 	TotalCount   int             `json:"total_count"`
 }
 
+type reverseAccessFrontierItem struct {
+	nodeID string
+	path   []string
+}
+
+type reverseAccessExpansion struct {
+	next     reverseAccessFrontierItem
+	accessor *AccessorNode
+}
+
 // AccessorNode represents a principal that can access a resource
 type AccessorNode struct {
 	Node     *Node    `json:"node"`
@@ -337,66 +386,85 @@ func ReverseAccess(g *Graph, resourceID string, maxDepth int) *ReverseAccessResu
 		return &ReverseAccessResult{ResourceID: resourceID}
 	}
 
+	return computeReverseAccess(g, resource, maxDepth)
+}
+
+func computeReverseAccess(g *Graph, resource *Node, maxDepth int) *ReverseAccessResult {
 	result := &ReverseAccessResult{
-		ResourceID:   resourceID,
+		ResourceID:   resource.ID,
 		ResourceName: resource.Name,
 	}
 
 	visited := newOrdinalVisitSet(NewNodeIDIndex())
-	type queueItem struct {
-		nodeID string
-		depth  int
-		path   []string
-	}
-	queue := []queueItem{{resourceID, 0, []string{resourceID}}}
+	frontier := []reverseAccessFrontierItem{{nodeID: resource.ID, path: []string{resource.ID}}}
 
-	for len(queue) > 0 {
-		item := queue[0]
-		queue = queue[1:]
-
-		if item.depth > maxDepth || visited.has(item.nodeID) {
-			continue
-		}
-		visited.mark(item.nodeID)
-
-		// Use inbound edges for reverse traversal
-		for _, edge := range g.GetInEdges(item.nodeID) {
-			if edge.IsDeny() {
+	for depth := 0; depth <= maxDepth && len(frontier) > 0; depth++ {
+		activeFrontier := make([]reverseAccessFrontierItem, 0, len(frontier))
+		for _, item := range frontier {
+			if visited.has(item.nodeID) {
 				continue
 			}
-
-			sourceNode, ok := g.GetNode(edge.Source)
-			if !ok {
-				continue
-			}
-
-			newPath := append([]string{edge.Source}, item.path...)
-
-			// Collect identity nodes
-			if sourceNode.IsIdentity() {
-				var actions []string
-				if a, ok := edge.Properties["actions"].([]string); ok {
-					actions = a
-				}
-
-				result.AccessibleBy = append(result.AccessibleBy, &AccessorNode{
-					Node:     sourceNode,
-					EdgeKind: edge.Kind,
-					Path:     newPath,
-					Actions:  actions,
-				})
-			}
-
-			queue = append(queue, queueItem{
-				nodeID: edge.Source,
-				depth:  item.depth + 1,
-				path:   newPath,
-			})
+			visited.mark(item.nodeID)
+			activeFrontier = append(activeFrontier, item)
 		}
+		if len(activeFrontier) == 0 {
+			break
+		}
+
+		expansions := parallelProcessOrdered(activeFrontier, func(item reverseAccessFrontierItem) []reverseAccessExpansion {
+			return expandReverseAccessFrontierItem(g, item)
+		})
+
+		nextFrontier := make([]reverseAccessFrontierItem, 0, len(expansions))
+		for _, expansion := range expansions {
+			if expansion.accessor != nil {
+				result.AccessibleBy = append(result.AccessibleBy, expansion.accessor)
+			}
+			nextFrontier = append(nextFrontier, expansion.next)
+		}
+		frontier = nextFrontier
 	}
 
 	result.TotalCount = len(result.AccessibleBy)
 	return result
+}
+
+func expandReverseAccessFrontierItem(g *Graph, item reverseAccessFrontierItem) []reverseAccessExpansion {
+	expansions := make([]reverseAccessExpansion, 0, len(g.GetInEdges(item.nodeID)))
+	for _, edge := range g.GetInEdges(item.nodeID) {
+		if edge.IsDeny() {
+			continue
+		}
+
+		sourceNode, ok := g.GetNode(edge.Source)
+		if !ok {
+			continue
+		}
+
+		newPath := append([]string{edge.Source}, item.path...)
+		expansion := reverseAccessExpansion{
+			next: reverseAccessFrontierItem{
+				nodeID: edge.Source,
+				path:   newPath,
+			},
+		}
+
+		if sourceNode.IsIdentity() {
+			var actions []string
+			if a, ok := edge.Properties["actions"].([]string); ok {
+				actions = a
+			}
+			expansion.accessor = &AccessorNode{
+				Node:     sourceNode,
+				EdgeKind: edge.Kind,
+				Path:     newPath,
+				Actions:  actions,
+			}
+		}
+
+		expansions = append(expansions, expansion)
+	}
+	return expansions
 }
 
 // EffectiveAccessResult shows whether a principal can access a resource

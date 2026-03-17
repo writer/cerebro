@@ -5,6 +5,20 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 182 - Parallel Blast/Reverse Frontier Traversal (2026-03-17)
+
+### Review findings
+- [x] Gap: issue `#357` still had every graph frontier query expanding nodes serially even after the traversal package had moved several hot paths onto ordinals and detached adjacency state.
+- [x] Gap: `BlastRadius()` and `ReverseAccess()` both process wide same-depth frontiers where each node expansion is independent, but they still burn a single core while repeatedly cloning paths and collecting outputs.
+- [x] Gap: there was no deterministic parallel traversal substrate that could fan out work across cores without reordering user-visible results or changing duplicate-frontier semantics.
+
+### Execution plan
+- [x] Add a deterministic parallel frontier processor that distributes contiguous work chunks across worker goroutines and preserves output ordering.
+- [x] Move `BlastRadius()` onto level-synchronous frontier processing with parallel expansion and sequential result assembly.
+- [x] Move `ReverseAccess()` onto the same traversal substrate.
+- [x] Add TDD coverage proving multi-worker results match single-worker results on wide frontiers.
+- [x] Re-run focused graph tests, lint, changed-file validation, and blast-radius benchmarks.
+
 ## Deep Review Cycle 180 - Attack Path Flat Adjacency Snapshot (2026-03-17)
 
 ### Review findings

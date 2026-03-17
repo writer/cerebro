@@ -1,6 +1,8 @@
 package graph
 
 import (
+	"fmt"
+	"sort"
 	"testing"
 )
 
@@ -615,6 +617,186 @@ func TestBlastRadius_CrossAccountTracking(t *testing.T) {
 	}
 	if len(result.ForeignAccounts) != 1 || result.ForeignAccounts[0] != "222222222222" {
 		t.Errorf("expected foreign account 222222222222, got %v", result.ForeignAccounts)
+	}
+}
+
+func TestBlastRadius_ParallelMatchesSequentialWideFrontier(t *testing.T) {
+	single := runBlastRadiusWithWorkers(setupWideBlastRadiusGraph(), 1)
+	parallel := runBlastRadiusWithWorkers(setupWideBlastRadiusGraph(), 8)
+
+	assertBlastRadiusResultsEqual(t, single, parallel)
+}
+
+func TestReverseAccess_ParallelMatchesSequentialWideFrontier(t *testing.T) {
+	single := runReverseAccessWithWorkers(setupWideReverseAccessGraph(), 1)
+	parallel := runReverseAccessWithWorkers(setupWideReverseAccessGraph(), 8)
+
+	assertReverseAccessResultsEqual(t, single, parallel)
+}
+
+func runBlastRadiusWithWorkers(g *Graph, workers int) *BlastRadiusResult {
+	previous := parallelTraversalWorkerOverride
+	parallelTraversalWorkerOverride = workers
+	defer func() {
+		parallelTraversalWorkerOverride = previous
+	}()
+	return BlastRadius(g, "user:wide", 4)
+}
+
+func runReverseAccessWithWorkers(g *Graph, workers int) *ReverseAccessResult {
+	previous := parallelTraversalWorkerOverride
+	parallelTraversalWorkerOverride = workers
+	defer func() {
+		parallelTraversalWorkerOverride = previous
+	}()
+	return ReverseAccess(g, "bucket:wide-target", 4)
+}
+
+func setupWideBlastRadiusGraph() *Graph {
+	g := New()
+	g.AddNode(&Node{ID: "user:wide", Kind: NodeKindUser, Account: "111111111111"})
+	g.AddNode(&Node{ID: "role:shared-wide", Kind: NodeKindRole, Account: "222222222222"})
+	g.AddNode(&Node{ID: "bucket:shared-wide", Kind: NodeKindBucket, Account: "222222222222", Risk: RiskCritical})
+	g.AddEdge(&Edge{ID: "shared-wide-resource", Source: "role:shared-wide", Target: "bucket:shared-wide", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+
+	for i := 0; i < 96; i++ {
+		roleID := fmt.Sprintf("role:wide-%03d", i)
+		bucketID := fmt.Sprintf("bucket:wide-%03d", i)
+		accountID := "111111111111"
+		risk := RiskLow
+		edgeProps := map[string]any{}
+		if i%12 == 0 {
+			accountID = "222222222222"
+			edgeProps["cross_account"] = true
+			edgeProps["target_account"] = accountID
+			risk = RiskHigh
+		}
+		if i%10 == 0 {
+			risk = RiskCritical
+		}
+
+		g.AddNode(&Node{ID: roleID, Kind: NodeKindRole, Account: accountID})
+		g.AddNode(&Node{ID: bucketID, Kind: NodeKindBucket, Account: accountID, Risk: risk})
+		g.AddEdge(&Edge{ID: fmt.Sprintf("user-wide-%03d", i), Source: "user:wide", Target: roleID, Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow, Properties: edgeProps})
+		g.AddEdge(&Edge{
+			ID:         fmt.Sprintf("role-wide-bucket-%03d", i),
+			Source:     roleID,
+			Target:     bucketID,
+			Kind:       EdgeKindCanRead,
+			Effect:     EdgeEffectAllow,
+			Properties: map[string]any{"actions": []string{"s3:GetObject"}},
+		})
+		if i%3 == 0 {
+			g.AddEdge(&Edge{
+				ID:         fmt.Sprintf("role-wide-shared-%03d", i),
+				Source:     roleID,
+				Target:     "role:shared-wide",
+				Kind:       EdgeKindCanAssume,
+				Effect:     EdgeEffectAllow,
+				Properties: map[string]any{"cross_account": true, "target_account": "222222222222"},
+			})
+		}
+	}
+
+	return g
+}
+
+func setupWideReverseAccessGraph() *Graph {
+	g := New()
+	g.AddNode(&Node{ID: "bucket:wide-target", Kind: NodeKindBucket, Account: "111111111111", Risk: RiskHigh})
+
+	for i := 0; i < 96; i++ {
+		roleID := fmt.Sprintf("role:reverse-%03d", i)
+		userID := fmt.Sprintf("user:reverse-%03d", i)
+		g.AddNode(&Node{ID: roleID, Kind: NodeKindRole, Account: "111111111111"})
+		g.AddNode(&Node{ID: userID, Kind: NodeKindUser, Account: "111111111111"})
+		g.AddEdge(&Edge{ID: fmt.Sprintf("reverse-role-target-%03d", i), Source: roleID, Target: "bucket:wide-target", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+		g.AddEdge(&Edge{ID: fmt.Sprintf("reverse-user-role-%03d", i), Source: userID, Target: roleID, Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	}
+
+	return g
+}
+
+func assertBlastRadiusResultsEqual(t *testing.T, want, got *BlastRadiusResult) {
+	t.Helper()
+
+	if want.PrincipalID != got.PrincipalID || want.PrincipalName != got.PrincipalName {
+		t.Fatalf("principal mismatch: want %s/%s got %s/%s", want.PrincipalID, want.PrincipalName, got.PrincipalID, got.PrincipalName)
+	}
+	if want.TotalCount != got.TotalCount || want.MaxDepth != got.MaxDepth || want.CrossAccountRisk != got.CrossAccountRisk || want.AccountsReached != got.AccountsReached || want.RiskSummary != got.RiskSummary {
+		t.Fatalf("blast radius summary mismatch: want %#v got %#v", want, got)
+	}
+
+	wantAccounts := append([]string(nil), want.ForeignAccounts...)
+	gotAccounts := append([]string(nil), got.ForeignAccounts...)
+	sort.Strings(wantAccounts)
+	sort.Strings(gotAccounts)
+	if len(wantAccounts) != len(gotAccounts) {
+		t.Fatalf("foreign account count mismatch: want %v got %v", wantAccounts, gotAccounts)
+	}
+	for i := range wantAccounts {
+		if wantAccounts[i] != gotAccounts[i] {
+			t.Fatalf("foreign accounts mismatch: want %v got %v", wantAccounts, gotAccounts)
+		}
+	}
+
+	if len(want.ReachableNodes) != len(got.ReachableNodes) {
+		t.Fatalf("reachable node count mismatch: want %d got %d", len(want.ReachableNodes), len(got.ReachableNodes))
+	}
+	for i := range want.ReachableNodes {
+		assertReachableNodeEqual(t, want.ReachableNodes[i], got.ReachableNodes[i], i)
+	}
+}
+
+func assertReachableNodeEqual(t *testing.T, want, got *ReachableNode, index int) {
+	t.Helper()
+
+	if want.Node.ID != got.Node.ID || want.Depth != got.Depth || want.EdgeKind != got.EdgeKind {
+		t.Fatalf("reachable node %d mismatch: want %#v got %#v", index, want, got)
+	}
+	if len(want.Path) != len(got.Path) || len(want.Actions) != len(got.Actions) {
+		t.Fatalf("reachable node %d path/action length mismatch: want %#v got %#v", index, want, got)
+	}
+	for i := range want.Path {
+		if want.Path[i] != got.Path[i] {
+			t.Fatalf("reachable node %d path mismatch: want %v got %v", index, want.Path, got.Path)
+		}
+	}
+	for i := range want.Actions {
+		if want.Actions[i] != got.Actions[i] {
+			t.Fatalf("reachable node %d actions mismatch: want %v got %v", index, want.Actions, got.Actions)
+		}
+	}
+}
+
+func assertReverseAccessResultsEqual(t *testing.T, want, got *ReverseAccessResult) {
+	t.Helper()
+
+	if want.ResourceID != got.ResourceID || want.ResourceName != got.ResourceName || want.TotalCount != got.TotalCount {
+		t.Fatalf("reverse access summary mismatch: want %#v got %#v", want, got)
+	}
+	if len(want.AccessibleBy) != len(got.AccessibleBy) {
+		t.Fatalf("accessible-by count mismatch: want %d got %d", len(want.AccessibleBy), len(got.AccessibleBy))
+	}
+	for i := range want.AccessibleBy {
+		wantAccessor := want.AccessibleBy[i]
+		gotAccessor := got.AccessibleBy[i]
+		if wantAccessor.Node.ID != gotAccessor.Node.ID || wantAccessor.EdgeKind != gotAccessor.EdgeKind {
+			t.Fatalf("accessible-by %d mismatch: want %#v got %#v", i, wantAccessor, gotAccessor)
+		}
+		if len(wantAccessor.Path) != len(gotAccessor.Path) || len(wantAccessor.Actions) != len(gotAccessor.Actions) {
+			t.Fatalf("accessible-by %d path/action length mismatch: want %#v got %#v", i, wantAccessor, gotAccessor)
+		}
+		for j := range wantAccessor.Path {
+			if wantAccessor.Path[j] != gotAccessor.Path[j] {
+				t.Fatalf("accessible-by %d path mismatch: want %v got %v", i, wantAccessor.Path, gotAccessor.Path)
+			}
+		}
+		for j := range wantAccessor.Actions {
+			if wantAccessor.Actions[j] != gotAccessor.Actions[j] {
+				t.Fatalf("accessible-by %d actions mismatch: want %v got %v", i, wantAccessor.Actions, gotAccessor.Actions)
+			}
+		}
 	}
 }
 
