@@ -472,6 +472,8 @@ type Config struct {
 	GraphSnapshotMaxRetained            int
 	GraphSnapshotReplicaURI             string
 	GraphTenantShardIdleTTL             time.Duration
+	GraphTenantWarmShardTTL             time.Duration
+	GraphTenantWarmShardMaxRetained     int
 	GraphPropertyHistoryMaxEntries      int
 	GraphPropertyHistoryTTL             time.Duration
 	GraphSchemaValidationMode           string
@@ -844,6 +846,8 @@ func LoadConfig() *Config {
 				GraphSnapshotMaxRetained:            getEnvInt("GRAPH_SNAPSHOT_MAX_RETAINED", 10),
 				GraphSnapshotReplicaURI:             getEnv("GRAPH_SNAPSHOT_REPLICA_URI", ""),
 				GraphTenantShardIdleTTL:             getEnvDuration("GRAPH_TENANT_SHARD_IDLE_TTL", defaultGraphTenantShardIdleTTL),
+				GraphTenantWarmShardTTL:             getEnvDuration("GRAPH_TENANT_WARM_SHARD_TTL", defaultGraphTenantWarmShardTTL),
+				GraphTenantWarmShardMaxRetained:     getEnvInt("GRAPH_TENANT_WARM_SHARD_MAX_RETAINED", defaultGraphTenantWarmShardMaxRetained),
 				GraphPropertyHistoryMaxEntries:      getEnvInt("GRAPH_PROPERTY_HISTORY_MAX_ENTRIES", graph.DefaultTemporalHistoryMaxEntries),
 				GraphPropertyHistoryTTL:             getEnvDuration("GRAPH_PROPERTY_HISTORY_TTL", graph.DefaultTemporalHistoryTTL),
 				GraphSchemaValidationMode:           getEnv("GRAPH_SCHEMA_VALIDATION_MODE", "warn"),

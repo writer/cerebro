@@ -1,32 +1,27 @@
 package app
 
 import (
+	"context"
 	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/evalops/cerebro/internal/findings"
 	"github.com/evalops/cerebro/internal/graph"
+	"github.com/evalops/cerebro/internal/policy"
 )
 
 func TestCurrentSecurityGraphForTenantReusesShardUntilSourceSwap(t *testing.T) {
 	application := &App{
 		Config: &Config{
-			GraphTenantShardIdleTTL: 10 * time.Minute,
+			GraphTenantShardIdleTTL:         10 * time.Minute,
+			GraphTenantWarmShardTTL:         time.Hour,
+			GraphTenantWarmShardMaxRetained: 1,
 		},
 	}
 
-	live := graph.New()
-	live.AddNode(&graph.Node{ID: "service:shared", Kind: graph.NodeKindService, Name: "shared"})
-	live.AddNode(&graph.Node{ID: "service:tenant-a", Kind: graph.NodeKindService, TenantID: "tenant-a"})
-	live.AddNode(&graph.Node{ID: "service:tenant-b", Kind: graph.NodeKindService, TenantID: "tenant-b"})
-	live.AddEdge(&graph.Edge{ID: "shared-a", Source: "service:shared", Target: "service:tenant-a", Kind: graph.EdgeKindDependsOn})
-	live.AddEdge(&graph.Edge{ID: "shared-b", Source: "service:shared", Target: "service:tenant-b", Kind: graph.EdgeKindDependsOn})
-	live.BuildIndex()
-	live.SetMetadata(graph.Metadata{
-		BuiltAt:   time.Date(2026, time.March, 17, 20, 0, 0, 0, time.UTC),
-		NodeCount: live.NodeCount(),
-		EdgeCount: live.EdgeCount(),
-	})
+	live := buildTenantShardTestGraph(time.Date(2026, time.March, 17, 20, 0, 0, 0, time.UTC))
 	application.setSecurityGraph(live)
 
 	first := application.CurrentSecurityGraphForTenant("tenant-a")
@@ -64,7 +59,7 @@ func TestCurrentSecurityGraphForTenantReusesShardUntilSourceSwap(t *testing.T) {
 }
 
 func TestTenantGraphShardManagerEvictsIdleShards(t *testing.T) {
-	manager := newTenantGraphShardManager(time.Minute)
+	manager := newTenantGraphShardManager(time.Minute, time.Hour, "", 1, nil, nil)
 	now := time.Date(2026, time.March, 17, 21, 0, 0, 0, time.UTC)
 	manager.now = func() time.Time { return now }
 
@@ -91,6 +86,52 @@ func TestTenantGraphShardManagerEvictsIdleShards(t *testing.T) {
 	}
 }
 
+func TestTenantGraphShardManagerPromoteHotShardReturnsShardWithoutCachingOnSourceRace(t *testing.T) {
+	manager := newTenantGraphShardManager(time.Minute, time.Hour, "", 1, nil, nil)
+	now := time.Date(2026, time.March, 17, 21, 5, 0, 0, time.UTC)
+
+	staleSource := buildTenantShardTestGraph(time.Date(2026, time.March, 17, 20, 0, 0, 0, time.UTC))
+	currentSource := buildTenantShardTestGraph(time.Date(2026, time.March, 17, 20, 10, 0, 0, time.UTC))
+
+	manager.source = currentSource
+	manager.generation = tenantGraphSourceGeneration(currentSource)
+
+	shard := staleSource.SubgraphForTenant("tenant-a")
+	if shard == nil {
+		t.Fatal("expected stale tenant shard to exist")
+	}
+
+	returned := manager.promoteHotShard(staleSource, tenantGraphSourceGeneration(staleSource), "tenant-a", shard, now)
+	if returned != shard {
+		t.Fatalf("expected computed shard to be returned on race, got %p want %p", returned, shard)
+	}
+	if _, ok := manager.shards["tenant-a"]; ok {
+		t.Fatal("did not expect stale shard to be promoted into hot cache")
+	}
+}
+
+func TestTenantGraphShardManagerPromoteHotShardReturnsWarmShardWithoutCachingWhenLiveGraphAppears(t *testing.T) {
+	manager := newTenantGraphShardManager(time.Minute, time.Hour, "", 1, nil, nil)
+	now := time.Date(2026, time.March, 17, 21, 10, 0, 0, time.UTC)
+
+	currentSource := buildTenantShardTestGraph(time.Date(2026, time.March, 17, 20, 10, 0, 0, time.UTC))
+	manager.source = currentSource
+	manager.generation = tenantGraphSourceGeneration(currentSource)
+
+	warmShard := currentSource.SubgraphForTenant("tenant-a")
+	if warmShard == nil {
+		t.Fatal("expected warm tenant shard to exist")
+	}
+
+	returned := manager.promoteHotShard(nil, manager.generation, "tenant-a", warmShard, now)
+	if returned != warmShard {
+		t.Fatalf("expected warm shard to be returned while skipping cache promotion, got %p want %p", returned, warmShard)
+	}
+	if _, ok := manager.shards["tenant-a"]; ok {
+		t.Fatal("did not expect warm shard to be promoted when live graph reappeared")
+	}
+}
+
 func TestEnsureTenantSecurityGraphShardsDoesNotWaitOnSecurityGraphLock(t *testing.T) {
 	application := &App{
 		Config: &Config{
@@ -113,6 +154,116 @@ func TestEnsureTenantSecurityGraphShardsDoesNotWaitOnSecurityGraphLock(t *testin
 	}
 
 	application.securityGraphInitMu.Unlock()
+}
+
+func TestCurrentSecurityGraphForTenantHydratesFromPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+	basePath := filepath.Join(t.TempDir(), "graph-snapshots")
+	store, err := graph.NewGraphPersistenceStore(graph.GraphPersistenceOptions{LocalPath: basePath, MaxSnapshots: 4})
+	if err != nil {
+		t.Fatalf("NewGraphPersistenceStore() error = %v", err)
+	}
+
+	live := buildTenantShardTestGraph(time.Date(2026, time.March, 17, 22, 0, 0, 0, time.UTC))
+	if _, err := store.SaveGraph(live); err != nil {
+		t.Fatalf("SaveGraph() error = %v", err)
+	}
+
+	application := &App{
+		Config: &Config{
+			GraphSnapshotPath:               basePath,
+			GraphTenantShardIdleTTL:         10 * time.Minute,
+			GraphTenantWarmShardTTL:         time.Hour,
+			GraphTenantWarmShardMaxRetained: 1,
+		},
+		GraphSnapshots: store,
+	}
+
+	scoped := application.CurrentSecurityGraphForTenant("tenant-a")
+	if scoped == nil {
+		t.Fatal("expected tenant shard recovered from persisted snapshot")
+	}
+	if _, ok := scoped.GetNode("service:tenant-a"); !ok {
+		t.Fatal("expected tenant shard to include tenant-a node")
+	}
+	if _, ok := scoped.GetNode("service:tenant-b"); ok {
+		t.Fatal("expected tenant shard to exclude tenant-b node")
+	}
+}
+
+func TestCurrentSecurityGraphForTenantReusesWarmShardAfterLiveGraphClear(t *testing.T) {
+	basePath := filepath.Join(t.TempDir(), "graph-snapshots")
+	application := &App{
+		Config: &Config{
+			GraphSnapshotPath:               basePath,
+			GraphTenantShardIdleTTL:         10 * time.Minute,
+			GraphTenantWarmShardTTL:         time.Hour,
+			GraphTenantWarmShardMaxRetained: 1,
+		},
+	}
+
+	live := buildTenantShardTestGraph(time.Date(2026, time.March, 17, 22, 15, 0, 0, time.UTC))
+	application.setSecurityGraph(live)
+
+	first := application.CurrentSecurityGraphForTenant("tenant-a")
+	if first == nil {
+		t.Fatal("expected warm tier seed from live graph")
+	}
+
+	application.setSecurityGraph(nil)
+	application.GraphSnapshots = nil
+
+	second := application.CurrentSecurityGraphForTenant("tenant-a")
+	if second == nil {
+		t.Fatal("expected tenant shard recovered from warm tier after live graph clear")
+	}
+	if second == first {
+		t.Fatalf("expected warm-tier recovery to rebuild shard, still got %p", second)
+	}
+	if _, ok := second.GetNode("service:tenant-a"); !ok {
+		t.Fatal("expected warm shard to preserve tenant-a node")
+	}
+}
+
+func TestTenantGraphShardManagerPinsTenantsWithOpenFindings(t *testing.T) {
+	store := findings.NewStore()
+	store.Upsert(context.Background(), policy.Finding{
+		ID:          "finding:tenant-a",
+		PolicyID:    "tenant-a-open",
+		PolicyName:  "Tenant A Open Finding",
+		Severity:    "high",
+		Description: "open finding for pinning",
+		Resource: map[string]any{
+			"tenant_id": "tenant-a",
+		},
+	})
+
+	manager := newTenantGraphShardManager(time.Minute, time.Hour, "", 1, nil, store)
+	now := time.Date(2026, time.March, 17, 23, 0, 0, 0, time.UTC)
+	manager.now = func() time.Time { return now }
+
+	live := graph.New()
+	live.AddNode(&graph.Node{ID: "service:tenant-a", Kind: graph.NodeKindService, TenantID: "tenant-a"})
+	live.BuildIndex()
+
+	if shard := manager.GraphForTenant(live, "tenant-a"); shard == nil {
+		t.Fatal("expected initial tenant shard")
+	}
+
+	now = now.Add(2 * time.Minute)
+	if evicted := manager.EvictExpired(now); evicted != 0 {
+		t.Fatalf("expected pinned tenant shard to survive eviction, got %d evictions", evicted)
+	}
+	if shard := manager.GraphForTenant(live, "tenant-a"); shard == nil {
+		t.Fatal("expected pinned tenant shard to remain available")
+	}
+
+	if !store.Resolve("finding:tenant-a") {
+		t.Fatal("expected finding resolution to succeed")
+	}
+	now = now.Add(2 * time.Minute)
+	if evicted := manager.EvictExpired(now); evicted != 1 {
+		t.Fatalf("expected tenant shard eviction after findings resolved, got %d", evicted)
+	}
 }
 
 func BenchmarkCurrentSecurityGraphForTenant(b *testing.B) {
@@ -149,10 +300,17 @@ func BenchmarkCurrentSecurityGraphForTenant(b *testing.B) {
 		})
 	}
 	live.BuildIndex()
+	live.SetMetadata(graph.Metadata{
+		BuiltAt:   time.Date(2026, time.March, 17, 23, 30, 0, 0, time.UTC),
+		NodeCount: live.NodeCount(),
+		EdgeCount: live.EdgeCount(),
+	})
 
 	application := &App{
 		Config: &Config{
-			GraphTenantShardIdleTTL: time.Hour,
+			GraphTenantShardIdleTTL:         time.Hour,
+			GraphTenantWarmShardTTL:         time.Hour,
+			GraphTenantWarmShardMaxRetained: 1,
 		},
 	}
 	application.setSecurityGraph(live)
@@ -176,4 +334,20 @@ func BenchmarkCurrentSecurityGraphForTenant(b *testing.B) {
 			}
 		}
 	})
+}
+
+func buildTenantShardTestGraph(builtAt time.Time) *graph.Graph {
+	live := graph.New()
+	live.AddNode(&graph.Node{ID: "service:shared", Kind: graph.NodeKindService, Name: "shared"})
+	live.AddNode(&graph.Node{ID: "service:tenant-a", Kind: graph.NodeKindService, TenantID: "tenant-a"})
+	live.AddNode(&graph.Node{ID: "service:tenant-b", Kind: graph.NodeKindService, TenantID: "tenant-b"})
+	live.AddEdge(&graph.Edge{ID: "shared-a", Source: "service:shared", Target: "service:tenant-a", Kind: graph.EdgeKindDependsOn})
+	live.AddEdge(&graph.Edge{ID: "shared-b", Source: "service:shared", Target: "service:tenant-b", Kind: graph.EdgeKindDependsOn})
+	live.BuildIndex()
+	live.SetMetadata(graph.Metadata{
+		BuiltAt:   builtAt,
+		NodeCount: live.NodeCount(),
+		EdgeCount: live.EdgeCount(),
+	})
+	return live
 }

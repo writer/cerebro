@@ -338,10 +338,18 @@ func TestLoadConfigGraphPropertyHistoryControls(t *testing.T) {
 
 func TestLoadConfigGraphTenantShardControls(t *testing.T) {
 	t.Setenv("GRAPH_TENANT_SHARD_IDLE_TTL", "27m")
+	t.Setenv("GRAPH_TENANT_WARM_SHARD_TTL", "3h")
+	t.Setenv("GRAPH_TENANT_WARM_SHARD_MAX_RETAINED", "2")
 
 	cfg := LoadConfig()
 	if cfg.GraphTenantShardIdleTTL != 27*time.Minute {
 		t.Fatalf("expected graph tenant shard idle ttl 27m, got %s", cfg.GraphTenantShardIdleTTL)
+	}
+	if cfg.GraphTenantWarmShardTTL != 3*time.Hour {
+		t.Fatalf("expected graph tenant warm shard ttl 3h, got %s", cfg.GraphTenantWarmShardTTL)
+	}
+	if cfg.GraphTenantWarmShardMaxRetained != 2 {
+		t.Fatalf("expected graph tenant warm shard max retained 2, got %d", cfg.GraphTenantWarmShardMaxRetained)
 	}
 }
 
@@ -687,6 +695,8 @@ func TestLoadConfigValidateAggregatesProblems(t *testing.T) {
 	t.Setenv("NATS_JETSTREAM_ENABLED", "false")
 	t.Setenv("GRAPH_CROSS_TENANT_REQUIRE_SIGNED_INGEST", "true")
 	t.Setenv("GRAPH_TENANT_SHARD_IDLE_TTL", "-1s")
+	t.Setenv("GRAPH_TENANT_WARM_SHARD_TTL", "-1s")
+	t.Setenv("GRAPH_TENANT_WARM_SHARD_MAX_RETAINED", "0")
 	t.Setenv("GRAPH_PROPERTY_HISTORY_MAX_ENTRIES", "-1")
 	t.Setenv("GRAPH_PROPERTY_HISTORY_TTL", "-1s")
 
@@ -708,6 +718,8 @@ func TestLoadConfigValidateAggregatesProblems(t *testing.T) {
 		"NATS_JETSTREAM_ENABLED must be true when NATS_CONSUMER_ENABLED=true",
 		"GRAPH_CROSS_TENANT_SIGNING_KEY is required when GRAPH_CROSS_TENANT_REQUIRE_SIGNED_INGEST=true",
 		"GRAPH_TENANT_SHARD_IDLE_TTL must be > 0",
+		"GRAPH_TENANT_WARM_SHARD_TTL must be > 0",
+		"GRAPH_TENANT_WARM_SHARD_MAX_RETAINED must be > 0",
 		"GRAPH_PROPERTY_HISTORY_MAX_ENTRIES must be >= 0",
 		"GRAPH_PROPERTY_HISTORY_TTL must be >= 0",
 	}

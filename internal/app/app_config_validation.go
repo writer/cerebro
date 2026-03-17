@@ -154,6 +154,8 @@ func ConfigValidationRules() []ConfigValidationRule {
 			Category: "dependency",
 		},
 		{EnvVars: []string{"GRAPH_TENANT_SHARD_IDLE_TTL"}, Summary: "must be greater than 0", Category: "range"},
+		{EnvVars: []string{"GRAPH_TENANT_WARM_SHARD_TTL"}, Summary: "must be greater than 0", Category: "range"},
+		{EnvVars: []string{"GRAPH_TENANT_WARM_SHARD_MAX_RETAINED"}, Summary: "must be greater than 0", Category: "range"},
 		{EnvVars: []string{"GRAPH_PROPERTY_HISTORY_MAX_ENTRIES"}, Summary: "non-positive values fall back to the default max property-history depth", Category: "behavior"},
 		{EnvVars: []string{"GRAPH_PROPERTY_HISTORY_TTL"}, Summary: "non-positive values fall back to the default property-history TTL", Category: "behavior"},
 		{EnvVars: []string{"GRAPH_SCHEMA_VALIDATION_MODE"}, Summary: "must be one of off, warn, enforce", Category: "enum"},
@@ -195,6 +197,12 @@ func (c *Config) Validate() error {
 	}
 	if c.GraphTenantShardIdleTTL <= 0 {
 		problems = addConfigProblem(problems, "GRAPH_TENANT_SHARD_IDLE_TTL must be > 0")
+	}
+	if c.GraphTenantWarmShardTTL <= 0 {
+		problems = addConfigProblem(problems, "GRAPH_TENANT_WARM_SHARD_TTL must be > 0")
+	}
+	if c.GraphTenantWarmShardMaxRetained <= 0 {
+		problems = addConfigProblem(problems, "GRAPH_TENANT_WARM_SHARD_MAX_RETAINED must be > 0")
 	}
 	if c.GraphPropertyHistoryMaxEntries < 0 {
 		problems = addConfigProblem(problems, "GRAPH_PROPERTY_HISTORY_MAX_ENTRIES must be >= 0")

@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 194 - Tiered Tenant Graph Storage (2026-03-17)
+
+### Review findings
+- [x] Gap: issue `#356` still kept tenant-scoped graph access entirely in the hot in-memory layer, so a live-graph clear or restart dropped tenant queryability even when persisted graph snapshots were available.
+- [x] Gap: the tenant shard cache had no warm tier, so every invalidation forced tenant reads back through `SubgraphForTenant` against the live graph instead of reusing a versioned on-disk tenant snapshot.
+- [x] Gap: idle shard eviction treated every tenant the same, so active-incident tenants with open findings could fall out of the hot cache even though they are the least acceptable candidates for cold recovery latency.
+
+### Execution plan
+- [x] Extend the tenant shard manager into a tier manager with hot memory shards, warm on-disk tenant snapshots, and cold recovery through `GraphPersistenceStore`.
+- [x] Preserve tenant generation state across live-graph clears so warm shards stay usable after restart-like transitions, while still invalidating hot shards when the live graph version changes.
+- [x] Pin hot tenant shards when the tenant has open findings, and add TDD coverage for cold recovery, warm recovery, and pin-aware eviction.
+
 ## Deep Review Cycle 193 - Tenant-Sharded Hot Graphs (2026-03-17)
 
 ### Review findings

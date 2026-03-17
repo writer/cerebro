@@ -63,13 +63,19 @@ func (a *App) CurrentSecurityGraph() *graph.Graph {
 }
 
 func (a *App) CurrentSecurityGraphForTenant(tenantID string) *graph.Graph {
+	if a == nil {
+		return nil
+	}
 	tenantID = strings.TrimSpace(tenantID)
 	current := a.CurrentSecurityGraph()
-	if current == nil || tenantID == "" {
+	if tenantID == "" {
 		return current
 	}
 	manager := a.ensureTenantSecurityGraphShards()
 	if manager == nil {
+		if current == nil {
+			return nil
+		}
 		return current.SubgraphForTenant(tenantID)
 	}
 	return manager.GraphForTenant(current, tenantID)
@@ -85,6 +91,9 @@ func (a *App) setSecurityGraph(g *graph.Graph) {
 	if g == nil {
 		metrics.SetGraphCounts(0, 0)
 		a.Propagation = nil
+		if manager := a.currentTenantSecurityGraphShards(); manager != nil {
+			manager.SetSource(nil)
+		}
 		return
 	}
 	metrics.SetGraphCounts(g.NodeCount(), g.EdgeCount())
