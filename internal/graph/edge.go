@@ -62,6 +62,7 @@ const (
 	EdgeKindTriggeredBy      EdgeKind = "triggered_by"
 	EdgeKindCausedBy         EdgeKind = "caused_by"
 	EdgeKindHasSequence      EdgeKind = "has_sequence"
+	EdgeKindCorroborates     EdgeKind = "corroborates"
 	EdgeKindHasCredentialFor EdgeKind = "has_credential_for"
 )
 

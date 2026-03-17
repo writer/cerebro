@@ -81,6 +81,7 @@ func MaterializeObservationsIntoGraph(g *graph.Graph, observations []*runtime.Ru
 			result.LastError = err
 			continue
 		}
+		applyObservationCorroboration(g, req.ID)
 
 		graph.MergeEdgeProperties(g, observationTargetEdgeID(req.ID, req.SubjectID), responseOutcomeTargetEdgeProperties(normalized))
 

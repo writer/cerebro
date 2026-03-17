@@ -3,7 +3,7 @@
 Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and `internal/graphingest/mappings.yaml` via `go run ./scripts/generate_graph_ontology_docs/main.go`.
 
 - Node kinds: **70**
-- Edge kinds: **46**
+- Edge kinds: **47**
 - Mapping rules: **13**
 - Source domains: **9**
 
@@ -53,7 +53,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `meeting` | business | `ends_at`, `meeting_id`, `observed_at`, `starts_at`, `valid_from` | `assigned_to`, `based_on`, `targets` |
 | `namespace` | kubernetes | - | - |
 | `network` | resource | - | - |
-| `observation` | business | `observation_type`, `observed_at`, `recorded_at`, `subject_id`, `transaction_from`, `valid_from` | `asserted_by`, `based_on`, `targets` |
+| `observation` | business | `observation_type`, `observed_at`, `recorded_at`, `subject_id`, `transaction_from`, `valid_from` | `asserted_by`, `based_on`, `corroborates`, `targets` |
 | `opportunity` | business | - | - |
 | `organization` | resource | `organization_id`, `resource_name` | - |
 | `outcome` | business | `observed_at`, `outcome_type`, `valid_from`, `verdict` | `evaluates`, `targets` |
@@ -144,6 +144,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `contains` | - |
 | `contains_package` | - |
 | `contradicts` | - |
+| `corroborates` | Links one observation to the primary observation that semantically corroborates the same activity. |
 | `depends_on` | - |
 | `deployed_from` | - |
 | `escalated_to` | - |

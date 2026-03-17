@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -14,6 +15,7 @@ import (
 
 const runtimeObservationLegacyEventTypeKey = "legacy_event_type"
 const runtimeObservationKindKey = "runtime_observation_kind"
+const observationCorrelationBucketSize = 5 * time.Second
 
 const (
 	maxObservationPayloadEntries   = 32
@@ -309,6 +311,258 @@ func NormalizeObservation(observation *RuntimeObservation) (*RuntimeObservation,
 		return nil, err
 	}
 	return normalized, nil
+}
+
+// ObservationCorrelationKey returns the semantic dedupe key used to correlate
+// near-simultaneous observations from multiple adapters onto one activity.
+func ObservationCorrelationKey(observation *RuntimeObservation, subjectID string) string {
+	if observation == nil {
+		return ""
+	}
+	subjectID = strings.TrimSpace(subjectID)
+	if subjectID == "" {
+		subjectID = firstNonEmptyRuntime(
+			observation.WorkloadRef,
+			observation.ResourceID,
+			containerResourceID(observation.ContainerID),
+		)
+	}
+	kind := strings.TrimSpace(string(observation.Kind))
+	if subjectID == "" || kind == "" || observation.ObservedAt.IsZero() {
+		return ""
+	}
+	digest := sha256.Sum256([]byte(canonicalObservationCorrelationFields(
+		subjectID,
+		kind,
+		observationCorrelationDetailKey(observation),
+		strconv.FormatInt(observation.ObservedAt.UTC().Truncate(observationCorrelationBucketSize).Unix(), 10),
+	)))
+	return hex.EncodeToString(digest[:16])
+}
+
+func observationCorrelationDetailKey(observation *RuntimeObservation) string {
+	if observation == nil {
+		return ""
+	}
+	switch observation.Kind {
+	case ObservationKindProcessExec, ObservationKindProcessExit:
+		return joinObservationDetailFields(
+			"path="+firstNonEmptyRuntime(processPathForObservationKey(observation), processNameForObservationKey(observation)),
+			"user="+processUserForObservationKey(observation),
+		)
+	case ObservationKindFileOpen, ObservationKindFileWrite:
+		return joinObservationDetailFields(
+			"op="+fileOperationForObservationKey(observation),
+			"path="+filePathForObservationKey(observation),
+		)
+	case ObservationKindNetworkFlow:
+		return joinObservationDetailFields(
+			"proto="+networkProtocolForObservationKey(observation),
+			"dst_ip="+networkDstIPForObservationKey(observation),
+			"dst_port="+networkDstPortForObservationKey(observation),
+			"domain="+networkDomainForObservationKey(observation),
+		)
+	case ObservationKindDNSQuery:
+		return joinObservationDetailFields(
+			"domain="+networkDomainForObservationKey(observation),
+			"dst_ip="+networkDstIPForObservationKey(observation),
+		)
+	case ObservationKindKubernetesAudit:
+		return joinObservationDetailFields(
+			"verb="+auditVerbForObservationKey(observation),
+			"resource="+auditResourceForObservationKey(observation),
+			"namespace="+auditNamespaceForObservationKey(observation),
+			"name="+auditNameForObservationKey(observation),
+			"subresource="+auditSubresourceForObservationKey(observation),
+		)
+	case ObservationKindTraceLink:
+		return joinObservationDetailFields(
+			"service="+traceServiceForObservationKey(observation),
+			"trace="+traceIDForObservationKey(observation),
+			"span="+traceSpanIDForObservationKey(observation),
+		)
+	case ObservationKindResponseOutcome:
+		return joinObservationDetailFields(
+			"finding="+observationMetadataString(observation, "finding_id"),
+			"action="+observationMetadataString(observation, "action_type"),
+			"status="+observationMetadataString(observation, "action_status"),
+			"execution="+observationMetadataString(observation, "execution_id"),
+		)
+	case ObservationKindRuntimeAlert:
+		return joinObservationDetailFields(
+			"signal="+observationMetadataString(observation, "signal_name"),
+			"severity="+observationMetadataString(observation, "severity"),
+			"policy="+observationMetadataString(observation, "policy_id"),
+		)
+	default:
+		return joinObservationDetailFields(
+			"resource=" + strings.TrimSpace(observation.ResourceID),
+		)
+	}
+}
+
+func joinObservationDetailFields(values ...string) string {
+	parts := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		key, raw, ok := strings.Cut(value, "=")
+		if !ok {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		raw = strings.TrimSpace(raw)
+		if key == "" || raw == "" {
+			continue
+		}
+		parts = append(parts, canonicalObservationCorrelationField(key, raw))
+	}
+	return strings.Join(parts, "|")
+}
+
+func canonicalObservationCorrelationField(key, value string) string {
+	return strconv.Itoa(len(key)) + ":" + key + "=" + strconv.Itoa(len(value)) + ":" + value
+}
+
+func canonicalObservationCorrelationFields(values ...string) string {
+	var builder strings.Builder
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		builder.WriteString(strconv.Itoa(len(value)))
+		builder.WriteByte(':')
+		builder.WriteString(value)
+		builder.WriteByte('|')
+	}
+	return builder.String()
+}
+
+func processPathForObservationKey(observation *RuntimeObservation) string {
+	if observation == nil || observation.Process == nil {
+		return ""
+	}
+	return strings.TrimSpace(observation.Process.Path)
+}
+
+func processNameForObservationKey(observation *RuntimeObservation) string {
+	if observation == nil || observation.Process == nil {
+		return ""
+	}
+	return strings.TrimSpace(observation.Process.Name)
+}
+
+func processUserForObservationKey(observation *RuntimeObservation) string {
+	if observation == nil || observation.Process == nil {
+		return ""
+	}
+	return strings.TrimSpace(observation.Process.User)
+}
+
+func fileOperationForObservationKey(observation *RuntimeObservation) string {
+	if observation == nil || observation.File == nil {
+		return ""
+	}
+	return strings.TrimSpace(observation.File.Operation)
+}
+
+func filePathForObservationKey(observation *RuntimeObservation) string {
+	if observation == nil || observation.File == nil {
+		return ""
+	}
+	return strings.TrimSpace(observation.File.Path)
+}
+
+func networkProtocolForObservationKey(observation *RuntimeObservation) string {
+	if observation == nil || observation.Network == nil {
+		return ""
+	}
+	return strings.TrimSpace(observation.Network.Protocol)
+}
+
+func networkDstIPForObservationKey(observation *RuntimeObservation) string {
+	if observation == nil || observation.Network == nil {
+		return ""
+	}
+	return strings.TrimSpace(observation.Network.DstIP)
+}
+
+func networkDstPortForObservationKey(observation *RuntimeObservation) string {
+	if observation == nil || observation.Network == nil || observation.Network.DstPort <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d", observation.Network.DstPort)
+}
+
+func networkDomainForObservationKey(observation *RuntimeObservation) string {
+	if observation == nil || observation.Network == nil {
+		return ""
+	}
+	return strings.TrimSpace(observation.Network.Domain)
+}
+
+func auditVerbForObservationKey(observation *RuntimeObservation) string {
+	if observation == nil || observation.ControlPlane == nil {
+		return ""
+	}
+	return strings.TrimSpace(observation.ControlPlane.Verb)
+}
+
+func auditResourceForObservationKey(observation *RuntimeObservation) string {
+	if observation == nil || observation.ControlPlane == nil {
+		return ""
+	}
+	return strings.TrimSpace(observation.ControlPlane.Resource)
+}
+
+func auditNamespaceForObservationKey(observation *RuntimeObservation) string {
+	if observation == nil || observation.ControlPlane == nil {
+		return ""
+	}
+	return strings.TrimSpace(observation.ControlPlane.Namespace)
+}
+
+func auditNameForObservationKey(observation *RuntimeObservation) string {
+	if observation == nil || observation.ControlPlane == nil {
+		return ""
+	}
+	return strings.TrimSpace(observation.ControlPlane.Name)
+}
+
+func auditSubresourceForObservationKey(observation *RuntimeObservation) string {
+	if observation == nil || observation.ControlPlane == nil {
+		return ""
+	}
+	return strings.TrimSpace(observation.ControlPlane.Subresource)
+}
+
+func traceServiceForObservationKey(observation *RuntimeObservation) string {
+	if observation == nil || observation.Trace == nil {
+		return ""
+	}
+	return strings.TrimSpace(observation.Trace.ServiceName)
+}
+
+func traceIDForObservationKey(observation *RuntimeObservation) string {
+	if observation == nil || observation.Trace == nil {
+		return ""
+	}
+	return strings.TrimSpace(observation.Trace.TraceID)
+}
+
+func traceSpanIDForObservationKey(observation *RuntimeObservation) string {
+	if observation == nil || observation.Trace == nil {
+		return ""
+	}
+	return strings.TrimSpace(observation.Trace.SpanID)
+}
+
+func observationMetadataString(observation *RuntimeObservation, key string) string {
+	if observation == nil || len(observation.Metadata) == 0 {
+		return ""
+	}
+	value, _ := observation.Metadata[key].(string)
+	return strings.TrimSpace(value)
 }
 
 func observationKindFromEvent(event *RuntimeEvent) RuntimeObservationKind {

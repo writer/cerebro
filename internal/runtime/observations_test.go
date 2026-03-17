@@ -226,6 +226,145 @@ func TestObservationRoundTripDoesNotAliasMutableFields(t *testing.T) {
 	}
 }
 
+func TestObservationCorrelationKeyMatchesAcrossAdaptersWithinBucket(t *testing.T) {
+	base := time.Date(2026, 3, 17, 12, 0, 2, 0, time.UTC)
+
+	tetragon := &RuntimeObservation{
+		ID:          "obs-tetragon",
+		Kind:        ObservationKindProcessExec,
+		Source:      "tetragon",
+		ObservedAt:  base,
+		WorkloadRef: "deployment:prod/api",
+		Process: &ProcessEvent{
+			Path: "/usr/bin/curl",
+			User: "root",
+		},
+	}
+	falco := &RuntimeObservation{
+		ID:          "obs-falco",
+		Kind:        ObservationKindProcessExec,
+		Source:      "falco",
+		ObservedAt:  base.Add(2 * time.Second),
+		WorkloadRef: "deployment:prod/api",
+		Process: &ProcessEvent{
+			Path: "/usr/bin/curl",
+			User: "root",
+		},
+	}
+
+	left := ObservationCorrelationKey(tetragon, tetragon.WorkloadRef)
+	right := ObservationCorrelationKey(falco, falco.WorkloadRef)
+	if left == "" || right == "" {
+		t.Fatalf("expected non-empty correlation keys, got %q and %q", left, right)
+	}
+	if left != right {
+		t.Fatalf("correlation keys differ across adapters: %q != %q", left, right)
+	}
+}
+
+func TestObservationCorrelationKeySplitsFiveSecondBuckets(t *testing.T) {
+	observation := &RuntimeObservation{
+		ID:          "obs-a",
+		Kind:        ObservationKindDNSQuery,
+		Source:      "hubble",
+		ObservedAt:  time.Date(2026, 3, 17, 12, 0, 4, 0, time.UTC),
+		WorkloadRef: "deployment:prod/api",
+		Network: &NetworkEvent{
+			Domain: "db.internal",
+			DstIP:  "10.0.0.20",
+		},
+	}
+	other := &RuntimeObservation{
+		ID:          "obs-b",
+		Kind:        ObservationKindDNSQuery,
+		Source:      "falco",
+		ObservedAt:  observation.ObservedAt.Add(2 * time.Second),
+		WorkloadRef: observation.WorkloadRef,
+		Network: &NetworkEvent{
+			Domain: "db.internal",
+			DstIP:  "10.0.0.20",
+		},
+	}
+
+	left := ObservationCorrelationKey(observation, observation.WorkloadRef)
+	right := ObservationCorrelationKey(other, other.WorkloadRef)
+	if left == right {
+		t.Fatalf("expected different correlation keys across bucket boundary, got %q", left)
+	}
+}
+
+func TestObservationCorrelationKeyUsesSemanticDetail(t *testing.T) {
+	base := &RuntimeObservation{
+		ID:          "obs-base",
+		Kind:        ObservationKindNetworkFlow,
+		Source:      "hubble",
+		ObservedAt:  time.Date(2026, 3, 17, 12, 0, 1, 0, time.UTC),
+		WorkloadRef: "deployment:prod/api",
+		Network: &NetworkEvent{
+			Protocol: "tcp",
+			DstIP:    "10.0.0.20",
+			DstPort:  443,
+			Domain:   "api.internal",
+		},
+	}
+	changed := &RuntimeObservation{
+		ID:          "obs-changed",
+		Kind:        base.Kind,
+		Source:      base.Source,
+		ObservedAt:  base.ObservedAt,
+		WorkloadRef: base.WorkloadRef,
+		Network: &NetworkEvent{
+			Protocol: "tcp",
+			DstIP:    "10.0.0.21",
+			DstPort:  443,
+			Domain:   "api.internal",
+		},
+	}
+
+	if ObservationCorrelationKey(base, base.WorkloadRef) == ObservationCorrelationKey(changed, changed.WorkloadRef) {
+		t.Fatal("expected semantic detail change to produce a new correlation key")
+	}
+}
+
+func TestObservationCorrelationKeyDoesNotCollideOnDelimiterBearingValues(t *testing.T) {
+	base := time.Date(2026, 3, 17, 12, 0, 2, 0, time.UTC)
+
+	left := &RuntimeObservation{
+		ID:          "obs-left",
+		Kind:        ObservationKindProcessExec,
+		Source:      "tetragon",
+		ObservedAt:  base,
+		WorkloadRef: "deployment:prod/api",
+		Process: &ProcessEvent{
+			Path: "/usr/bin/demo,user=root",
+			User: "alice",
+		},
+	}
+	right := &RuntimeObservation{
+		ID:          "obs-right",
+		Kind:        ObservationKindProcessExec,
+		Source:      "falco",
+		ObservedAt:  base,
+		WorkloadRef: "deployment:prod/api",
+		Process: &ProcessEvent{
+			Path: "/usr/bin/demo",
+			User: "root,user=alice",
+		},
+	}
+
+	if ObservationCorrelationKey(left, left.WorkloadRef) == ObservationCorrelationKey(right, right.WorkloadRef) {
+		t.Fatal("expected delimiter-bearing fields to produce distinct correlation keys")
+	}
+}
+
+func TestJoinObservationDetailFieldsSkipsEmptyValues(t *testing.T) {
+	got := joinObservationDetailFields("path=/usr/bin/curl", "user=", "ignored")
+	want := canonicalObservationCorrelationField("path", "/usr/bin/curl")
+	if got != want {
+		t.Fatalf("joinObservationDetailFields() = %q, want %q", got, want)
+	}
+}
+
 func TestDetectionEngineProcessObservation(t *testing.T) {
 	engine := NewDetectionEngine()
 	observation := &RuntimeObservation{

@@ -5,6 +5,20 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 188 - Cross-Adapter Observation Corroboration (2026-03-17)
+
+### Review findings
+- [x] Gap: issue `#367` still materialized semantically identical runtime observations from Falco, Tetragon, and other adapters as unrelated graph observation nodes even when they described the same workload activity inside one short time window.
+- [x] Gap: runtimegraph had no graph-native corroboration edge or deterministic primary-selection rule, so multi-sensor agreement could not increase confidence or reduce investigation noise.
+- [x] Gap: the primary observation node was not inheriting richer metadata from corroborating adapters, which kept high-value fields such as image, domain, and tags fragmented across sibling nodes.
+
+### Execution plan
+- [x] Add a semantic observation correlation key keyed by subject, kind, detail, and 5-second observation bucket.
+- [x] Extend the graph ontology with observation corroboration properties plus a first-class `corroborates` edge kind.
+- [x] Materialize deterministic primary/corroborating observation relationships during runtimegraph projection and update primary confidence from corroborating source count.
+- [x] Merge richer corroborating metadata onto the primary observation while keeping corroborating nodes and edges explicit.
+- [x] Add TDD coverage for cross-adapter corroboration, confidence scaling, metadata inheritance, and 5-second bucket boundaries.
+
 ## Deep Review Cycle 187 - Observation Correlation Windows (2026-03-17)
 
 ### Review findings

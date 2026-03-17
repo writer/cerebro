@@ -3,6 +3,7 @@ package runtimegraph
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -104,6 +105,226 @@ func TestMaterializeObservationsIntoGraphAddsObservationNode(t *testing.T) {
 	}
 	if meta.NodeCount != g.NodeCount() || meta.EdgeCount != g.EdgeCount() {
 		t.Fatalf("metadata counts = %d/%d, want %d/%d", meta.NodeCount, meta.EdgeCount, g.NodeCount(), g.EdgeCount())
+	}
+}
+
+func TestMaterializeObservationsIntoGraphCorroboratesMatchingObservations(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:   "deployment:prod/api",
+		Kind: graph.NodeKindDeployment,
+		Name: "api",
+	})
+
+	base := time.Date(2026, 3, 16, 22, 0, 1, 0, time.UTC)
+	primaryObservation := &runtime.RuntimeObservation{
+		ID:          "obs:tetragon",
+		Source:      "tetragon",
+		Kind:        runtime.ObservationKindProcessExec,
+		ObservedAt:  base,
+		RecordedAt:  base.Add(time.Second),
+		WorkloadRef: "deployment:prod/api",
+		Process: &runtime.ProcessEvent{
+			Path: "/usr/bin/curl",
+			User: "root",
+		},
+	}
+	corroboratingObservation := &runtime.RuntimeObservation{
+		ID:          "obs:falco",
+		Source:      "falco",
+		Kind:        runtime.ObservationKindProcessExec,
+		ObservedAt:  base.Add(2 * time.Second),
+		RecordedAt:  base.Add(3 * time.Second),
+		WorkloadRef: "deployment:prod/api",
+		ImageRef:    "ghcr.io/acme/api:1.2.3",
+		Tags:        []string{"process", "curl"},
+		Process: &runtime.ProcessEvent{
+			Path: "/usr/bin/curl",
+			User: "root",
+		},
+	}
+
+	result := MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{primaryObservation, corroboratingObservation}, base.Add(time.Minute))
+	if result.ObservationsMaterialized != 2 {
+		t.Fatalf("ObservationsMaterialized = %d, want 2", result.ObservationsMaterialized)
+	}
+
+	primaryReq, err := BuildObservationWriteRequest(primaryObservation)
+	if err != nil {
+		t.Fatalf("BuildObservationWriteRequest(primary) returned error: %v", err)
+	}
+	corroboratingReq, err := BuildObservationWriteRequest(corroboratingObservation)
+	if err != nil {
+		t.Fatalf("BuildObservationWriteRequest(corroborating) returned error: %v", err)
+	}
+
+	primaryNode := mustNode(t, g, primaryReq.ID)
+	if got := testMetadataString(primaryNode.Properties, "correlation_key"); got == "" {
+		t.Fatal("expected primary correlation_key to be populated")
+	}
+	if got, ok := primaryNode.Properties["correlation_primary"].(bool); !ok || !got {
+		t.Fatalf("primary correlation_primary = %#v, want true", primaryNode.Properties["correlation_primary"])
+	}
+	if got := primaryNode.Properties["corroboration_count"]; got != 2 {
+		t.Fatalf("primary corroboration_count = %#v, want 2", got)
+	}
+	if got := primaryNode.Properties["corroborating_source_count"]; got != 2 {
+		t.Fatalf("primary corroborating_source_count = %#v, want 2", got)
+	}
+	if got := primaryNode.Properties["corroboration_multiplier"]; got != 1.5 {
+		t.Fatalf("primary corroboration_multiplier = %#v, want 1.5", got)
+	}
+	if got := primaryNode.Properties["confidence"]; got != 0.75 {
+		t.Fatalf("primary confidence = %#v, want 0.75", got)
+	}
+	if got := testMetadataString(primaryNode.Properties, "image_ref"); got != "ghcr.io/acme/api:1.2.3" {
+		t.Fatalf("primary image_ref = %q, want corroborating metadata to enrich primary", got)
+	}
+	if got := testStringSliceProperty(primaryNode.Properties, "corroborating_sources"); len(got) != 2 || got[0] != "falco" || got[1] != "tetragon" {
+		t.Fatalf("primary corroborating_sources = %#v, want [falco tetragon]", got)
+	}
+	if got := testStringSliceProperty(primaryNode.Properties, "tags"); len(got) != 2 || got[0] != "curl" || got[1] != "process" {
+		t.Fatalf("primary tags = %#v, want merged corroborating tags", got)
+	}
+
+	corroboratingNode := mustNode(t, g, corroboratingReq.ID)
+	if got, ok := corroboratingNode.Properties["correlation_primary"].(bool); !ok || got {
+		t.Fatalf("corroborating correlation_primary = %#v, want false", corroboratingNode.Properties["correlation_primary"])
+	}
+	if got := testMetadataString(corroboratingNode.Properties, "corroboration_primary_id"); got != primaryReq.ID {
+		t.Fatalf("corroboration_primary_id = %q, want %q", got, primaryReq.ID)
+	}
+	if got := corroboratingNode.Properties["confidence"]; got != runtimeObservationBaseConfidence {
+		t.Fatalf("corroborating confidence = %#v, want %f", got, runtimeObservationBaseConfidence)
+	}
+
+	corroborates := testFindEdge(g.GetOutEdges(corroboratingReq.ID), graph.EdgeKindCorroborates, primaryReq.ID)
+	if corroborates == nil {
+		t.Fatalf("expected corroborates edge from %s to %s", corroboratingReq.ID, primaryReq.ID)
+	}
+	if got := testMetadataString(corroborates.Properties, "correlation_key"); got != testMetadataString(primaryNode.Properties, "correlation_key") {
+		t.Fatalf("corroborates correlation_key = %q, want %q", got, testMetadataString(primaryNode.Properties, "correlation_key"))
+	}
+	if issues := graph.GlobalSchemaRegistry().ValidateEdge(corroborates, corroboratingNode, primaryNode); len(issues) != 0 {
+		t.Fatalf("ValidateEdge(corroborates) returned issues: %+v", issues)
+	}
+}
+
+func TestMaterializeObservationsIntoGraphDoesNotCorroborateAcrossCorrelationBuckets(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:   "deployment:prod/api",
+		Kind: graph.NodeKindDeployment,
+		Name: "api",
+	})
+
+	base := time.Date(2026, 3, 16, 22, 5, 4, 0, time.UTC)
+	first := &runtime.RuntimeObservation{
+		ID:          "obs:first",
+		Source:      "tetragon",
+		Kind:        runtime.ObservationKindDNSQuery,
+		ObservedAt:  base,
+		RecordedAt:  base.Add(time.Second),
+		WorkloadRef: "deployment:prod/api",
+		Network: &runtime.NetworkEvent{
+			Domain: "db.internal",
+			DstIP:  "10.0.0.20",
+		},
+	}
+	second := &runtime.RuntimeObservation{
+		ID:          "obs:second",
+		Source:      "falco",
+		Kind:        runtime.ObservationKindDNSQuery,
+		ObservedAt:  base.Add(2 * time.Second),
+		RecordedAt:  base.Add(3 * time.Second),
+		WorkloadRef: "deployment:prod/api",
+		Network: &runtime.NetworkEvent{
+			Domain: "db.internal",
+			DstIP:  "10.0.0.20",
+		},
+	}
+
+	MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{first, second}, base.Add(time.Minute))
+
+	firstReq, err := BuildObservationWriteRequest(first)
+	if err != nil {
+		t.Fatalf("BuildObservationWriteRequest(first) returned error: %v", err)
+	}
+	secondReq, err := BuildObservationWriteRequest(second)
+	if err != nil {
+		t.Fatalf("BuildObservationWriteRequest(second) returned error: %v", err)
+	}
+	firstNode := mustNode(t, g, firstReq.ID)
+	secondNode := mustNode(t, g, secondReq.ID)
+	if testFindEdge(g.GetOutEdges(firstReq.ID), graph.EdgeKindCorroborates, secondReq.ID) != nil {
+		t.Fatalf("did not expect corroborates edge from %s to %s across bucket boundary", firstReq.ID, secondReq.ID)
+	}
+	if testFindEdge(g.GetOutEdges(secondReq.ID), graph.EdgeKindCorroborates, firstReq.ID) != nil {
+		t.Fatalf("did not expect corroborates edge from %s to %s across bucket boundary", secondReq.ID, firstReq.ID)
+	}
+	if got := firstNode.Properties["corroboration_count"]; got != 1 {
+		t.Fatalf("first corroboration_count = %#v, want 1", got)
+	}
+	if got := secondNode.Properties["corroboration_count"]; got != 1 {
+		t.Fatalf("second corroboration_count = %#v, want 1", got)
+	}
+}
+
+func TestMaterializeObservationsIntoGraphDoesNotInflateConfidenceForUntrustedSourceAliases(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:   "deployment:prod/api",
+		Kind: graph.NodeKindDeployment,
+		Name: "api",
+	})
+
+	base := time.Date(2026, 3, 16, 22, 0, 2, 0, time.UTC)
+	first := &runtime.RuntimeObservation{
+		ID:          "obs:untrusted-1",
+		Source:      "collector-a",
+		Kind:        runtime.ObservationKindProcessExec,
+		ObservedAt:  base,
+		RecordedAt:  base.Add(time.Second),
+		WorkloadRef: "deployment:prod/api",
+		Process: &runtime.ProcessEvent{
+			Path: "/usr/bin/curl",
+			User: "root",
+		},
+	}
+	second := &runtime.RuntimeObservation{
+		ID:          "obs:untrusted-2",
+		Source:      "collector-b",
+		Kind:        runtime.ObservationKindProcessExec,
+		ObservedAt:  base.Add(time.Second),
+		RecordedAt:  base.Add(2 * time.Second),
+		WorkloadRef: "deployment:prod/api",
+		Process: &runtime.ProcessEvent{
+			Path: "/usr/bin/curl",
+			User: "root",
+		},
+	}
+
+	result := MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{first, second}, base.Add(time.Minute))
+	if result.ObservationsMaterialized != 2 {
+		t.Fatalf("ObservationsMaterialized = %d, want 2", result.ObservationsMaterialized)
+	}
+
+	firstReq, err := BuildObservationWriteRequest(first)
+	if err != nil {
+		t.Fatalf("BuildObservationWriteRequest(first) returned error: %v", err)
+	}
+	primaryNode := mustNode(t, g, firstReq.ID)
+	if got := primaryNode.Properties["corroborating_source_count"]; got != 1 {
+		t.Fatalf("corroborating_source_count = %#v, want 1", got)
+	}
+	if got := primaryNode.Properties["corroboration_multiplier"]; got != 1.0 {
+		t.Fatalf("corroboration_multiplier = %#v, want 1.0", got)
+	}
+	if got := primaryNode.Properties["confidence"]; got != runtimeObservationBaseConfidence {
+		t.Fatalf("confidence = %#v, want %f", got, runtimeObservationBaseConfidence)
+	}
+	if got := testStringSliceProperty(primaryNode.Properties, "corroborating_sources"); len(got) != 0 {
+		t.Fatalf("corroborating_sources = %#v, want empty for untrusted aliases", got)
 	}
 }
 
@@ -1284,4 +1505,39 @@ func mustNode(t *testing.T, g *graph.Graph, id string) *graph.Node {
 		t.Fatalf("node %q not found", id)
 	}
 	return node
+}
+
+func testFindEdge(edges []*graph.Edge, kind graph.EdgeKind, target string) *graph.Edge {
+	target = strings.TrimSpace(target)
+	for _, edge := range edges {
+		if edge == nil || edge.Kind != kind {
+			continue
+		}
+		if strings.TrimSpace(edge.Target) == target {
+			return edge
+		}
+	}
+	return nil
+}
+
+func testStringSliceProperty(properties map[string]any, key string) []string {
+	if len(properties) == 0 {
+		return nil
+	}
+	switch typed := properties[key].(type) {
+	case []string:
+		return append([]string(nil), typed...)
+	case []any:
+		out := make([]string, 0, len(typed))
+		for _, item := range typed {
+			value, ok := item.(string)
+			if !ok {
+				continue
+			}
+			out = append(out, value)
+		}
+		return out
+	default:
+		return nil
+	}
 }

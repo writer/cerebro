@@ -12,6 +12,8 @@ import (
 
 var ErrMissingObservationSubject = errors.New("runtime observation missing concrete graph subject")
 
+const runtimeObservationBaseConfidence = 0.5
+
 // FinalizeMaterializedGraph rebuilds graph indexes and refreshes metadata after
 // one or more runtimegraph materialization batches.
 func FinalizeMaterializedGraph(g *graph.Graph, now time.Time) {
@@ -57,6 +59,7 @@ func buildObservationWriteRequestFromNormalized(normalized *runtime.RuntimeObser
 	if subjectID == "" {
 		return graph.ObservationWriteRequest{}, ErrMissingObservationSubject
 	}
+	correlationKey := runtime.ObservationCorrelationKey(normalized, subjectID)
 
 	return graph.ObservationWriteRequest{
 		ID:              "observation:" + normalized.ID,
@@ -69,8 +72,8 @@ func buildObservationWriteRequestFromNormalized(normalized *runtime.RuntimeObser
 		ValidFrom:       normalized.ObservedAt,
 		RecordedAt:      normalized.RecordedAt,
 		TransactionFrom: normalized.RecordedAt,
-		Confidence:      1.0,
-		Metadata:        observationMetadata(normalized),
+		Confidence:      runtimeObservationBaseConfidence,
+		Metadata:        observationMetadata(normalized, correlationKey),
 	}, nil
 }
 
@@ -150,10 +153,11 @@ func observationSummary(observation *runtime.RuntimeObservation) string {
 	}
 }
 
-func observationMetadata(observation *runtime.RuntimeObservation) map[string]any {
-	metadata := make(map[string]any, 35)
+func observationMetadata(observation *runtime.RuntimeObservation, correlationKey string) map[string]any {
+	metadata := make(map[string]any, 40)
 	metadata["runtime_observation_id"] = observation.ID
 	metadata["runtime_source"] = observation.Source
+	addMetadataString(metadata, "correlation_key", correlationKey)
 	addMetadataString(metadata, "resource_id", observation.ResourceID)
 	addMetadataString(metadata, "resource_type", observation.ResourceType)
 	addMetadataString(metadata, "cluster", observation.Cluster)

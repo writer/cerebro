@@ -97,6 +97,7 @@ func TestSchemaRegistry_IntelligenceSpineBuiltins(t *testing.T) {
 		EdgeKindTriggeredBy,
 		EdgeKindCausedBy,
 		EdgeKindHasSequence,
+		EdgeKindCorroborates,
 	}
 	for _, kind := range requiredEdgeKinds {
 		if !reg.IsEdgeKindRegistered(kind) {

@@ -43,6 +43,9 @@ func TestBuildObservationWriteRequestPrefersWorkloadSubject(t *testing.T) {
 	if req.SourceSystem != "tetragon" {
 		t.Fatalf("SourceSystem = %q, want tetragon", req.SourceSystem)
 	}
+	if req.Confidence != runtimeObservationBaseConfidence {
+		t.Fatalf("Confidence = %f, want %f", req.Confidence, runtimeObservationBaseConfidence)
+	}
 	if req.SourceEventID == "" {
 		t.Fatal("SourceEventID should not be empty")
 	}
@@ -63,6 +66,25 @@ func TestBuildObservationWriteRequestPrefersWorkloadSubject(t *testing.T) {
 	}
 	if got := testMetadataString(req.Metadata, "process_path"); got != "/bin/sh" {
 		t.Fatalf("metadata.process_path = %q, want /bin/sh", got)
+	}
+	if got := testMetadataString(req.Metadata, "correlation_key"); got != runtime.ObservationCorrelationKey(&runtime.RuntimeObservation{
+		Source:      "tetragon",
+		Kind:        runtime.ObservationKindProcessExec,
+		ObservedAt:  observedAt,
+		RecordedAt:  recordedAt,
+		WorkloadRef: "deployment:prod/api",
+		ContainerID: "containerd://abc123",
+		Namespace:   "prod",
+		Cluster:     "prod-cluster",
+		PrincipalID: "root",
+		Process: &runtime.ProcessEvent{
+			Name:    "sh",
+			Path:    "/bin/sh",
+			Cmdline: "sh -c id",
+			User:    "root",
+		},
+	}, "deployment:prod/api") {
+		t.Fatalf("metadata.correlation_key = %q, want semantic correlation key", got)
 	}
 	if !req.ObservedAt.Equal(observedAt) {
 		t.Fatalf("ObservedAt = %s, want %s", req.ObservedAt, observedAt)
