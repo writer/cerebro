@@ -3,7 +3,7 @@
 Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and `internal/graphingest/mappings.yaml` via `go run ./scripts/generate_graph_ontology_docs/main.go`.
 
 - Node kinds: **70**
-- Edge kinds: **47**
+- Edge kinds: **48**
 - Mapping rules: **13**
 - Source domains: **9**
 
@@ -36,7 +36,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `deal` | business | - | - |
 | `decision` | business | `decision_type`, `made_at`, `observed_at`, `status`, `valid_from` | `based_on`, `executed_by`, `targets` |
 | `department` | business | - | - |
-| `deployment` | kubernetes, resource | - | `has_sequence`, `targets` |
+| `deployment` | kubernetes, resource | - | `calls`, `has_sequence`, `targets` |
 | `deployment_run` | business, resource | `deploy_id`, `environment`, `observed_at`, `service_id`, `status`, `valid_from` | `based_on`, `depends_on`, `targets`, `triggered_by` |
 | `document` | business | `document_id`, `observed_at`, `title`, `valid_from` | `based_on`, `targets` |
 | `evidence` | business | `evidence_type`, `observed_at`, `source_system`, `valid_from` | `based_on`, `targets` |
@@ -62,7 +62,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `persistent_volume` | kubernetes, resource | - | - |
 | `person` | identity | - | - |
 | `pipeline_run` | business, resource | `observed_at`, `pipeline_id`, `run_id`, `service_id`, `status`, `valid_from` | `based_on`, `executed_by`, `targets` |
-| `pod` | kubernetes, resource | - | `has_sequence`, `targets` |
+| `pod` | kubernetes, resource | - | `calls`, `has_sequence`, `targets` |
 | `project` | resource | `project_id`, `resource_name` | `located_in` |
 | `pull_request` | business | `number`, `observed_at`, `repository`, `state`, `valid_from` | `based_on`, `targets` |
 | `repository` | - | - | - |
@@ -70,7 +70,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `role_binding` | kubernetes | - | - |
 | `scp` | - | - | - |
 | `secret` | resource | - | - |
-| `service` | business, resource | `observed_at`, `service_id`, `valid_from` | `depends_on`, `owns`, `runs`, `targets` |
+| `service` | business, resource | `observed_at`, `service_id`, `valid_from` | `calls`, `depends_on`, `owns`, `runs`, `targets` |
 | `service_account` | identity | - | - |
 | `source` | business | `canonical_name`, `observed_at`, `recorded_at`, `source_type`, `transaction_from`, `valid_from` | - |
 | `subscription` | business | - | - |
@@ -79,7 +79,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `user` | identity | - | - |
 | `vendor` | business | - | - |
 | `vulnerability` | resource | `observed_at`, `recorded_at`, `severity`, `transaction_from`, `valid_from`, `vulnerability_id` | `based_on` |
-| `workload` | resource | `observed_at`, `runtime`, `valid_from`, `workload_id` | `connects_to`, `depends_on`, `has_sequence`, `targets` |
+| `workload` | resource | `observed_at`, `runtime`, `valid_from`, `workload_id` | `calls`, `connects_to`, `depends_on`, `has_sequence`, `targets` |
 | `workload_scan` | resource | `observed_at`, `recorded_at`, `scan_id`, `status`, `target_id`, `target_kind`, `transaction_from`, `valid_from` | `based_on`, `contains_package`, `found_vulnerability`, `has_scan`, `targets` |
 
 ## Node Metadata Profiles
@@ -133,6 +133,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `assigned_to` | - |
 | `based_on` | - |
 | `billed_by` | - |
+| `calls` | - |
 | `can_admin` | - |
 | `can_assume` | - |
 | `can_delete` | - |

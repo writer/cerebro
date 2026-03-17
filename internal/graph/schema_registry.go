@@ -1518,7 +1518,7 @@ var builtInNodeKinds = []NodeKindDefinition{
 			"confidence":      "number",
 		},
 		RequiredProperties: []string{"service_id", "observed_at", "valid_from"},
-		Relationships:      []EdgeKind{EdgeKindOwns, EdgeKindRuns, EdgeKindDependsOn, EdgeKindTargets},
+		Relationships:      []EdgeKind{EdgeKindOwns, EdgeKindRuns, EdgeKindDependsOn, EdgeKindCalls, EdgeKindTargets},
 		MetadataProfile: writeMetadataProfile(
 			[]string{"source_system", "observed_at", "valid_from"},
 			map[string][]string{
@@ -1588,7 +1588,7 @@ var builtInNodeKinds = []NodeKindDefinition{
 			"confidence":      "number",
 		},
 		RequiredProperties: []string{"workload_id", "runtime", "observed_at", "valid_from"},
-		Relationships:      []EdgeKind{EdgeKindConnectsTo, EdgeKindDependsOn, EdgeKindTargets, EdgeKindHasSequence},
+		Relationships:      []EdgeKind{EdgeKindConnectsTo, EdgeKindCalls, EdgeKindDependsOn, EdgeKindTargets, EdgeKindHasSequence},
 		MetadataProfile: writeMetadataProfile(
 			[]string{"source_system", "observed_at", "valid_from"},
 			map[string][]string{
@@ -1896,8 +1896,8 @@ var builtInNodeKinds = []NodeKindDefinition{
 	},
 	{Kind: NodeKindNetwork, Categories: []NodeKindCategory{NodeCategoryResource}, Capabilities: []NodeKindCapability{NodeCapabilityInternetExposable}},
 	{Kind: NodeKindApplication, Categories: []NodeKindCategory{NodeCategoryResource}},
-	{Kind: NodeKindPod, Categories: []NodeKindCategory{NodeCategoryResource, NodeCategoryKubernetes}, Relationships: []EdgeKind{EdgeKindTargets, EdgeKindHasSequence}},
-	{Kind: NodeKindDeployment, Categories: []NodeKindCategory{NodeCategoryResource, NodeCategoryKubernetes}, Relationships: []EdgeKind{EdgeKindTargets, EdgeKindHasSequence}},
+	{Kind: NodeKindPod, Categories: []NodeKindCategory{NodeCategoryResource, NodeCategoryKubernetes}, Relationships: []EdgeKind{EdgeKindCalls, EdgeKindTargets, EdgeKindHasSequence}},
+	{Kind: NodeKindDeployment, Categories: []NodeKindCategory{NodeCategoryResource, NodeCategoryKubernetes}, Relationships: []EdgeKind{EdgeKindCalls, EdgeKindTargets, EdgeKindHasSequence}},
 	{Kind: NodeKindNamespace, Categories: []NodeKindCategory{NodeCategoryKubernetes}},
 	{Kind: NodeKindClusterRole, Categories: []NodeKindCategory{NodeCategoryKubernetes}},
 	{Kind: NodeKindClusterRoleBinding, Categories: []NodeKindCategory{NodeCategoryKubernetes}},
@@ -2348,6 +2348,7 @@ var builtInEdgeKinds = []EdgeKindDefinition{
 	{Kind: EdgeKindCanDelete},
 	{Kind: EdgeKindCanAdmin},
 	{Kind: EdgeKindConnectsTo},
+	{Kind: EdgeKindCalls},
 	{Kind: EdgeKindRuns},
 	{Kind: EdgeKindDependsOn},
 	{Kind: EdgeKindConfigures},

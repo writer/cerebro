@@ -3,6 +3,7 @@ package runtimegraph
 import (
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ type MaterializationResult struct {
 	ObservationsMaterialized           int   `json:"observations_materialized"`
 	ObservationsSkipped                int   `json:"observations_skipped"`
 	WorkloadTargetEdgesCreated         int   `json:"workload_target_edges_created"`
+	TraceCallEdgesCreated              int   `json:"trace_call_edges_created"`
 	ResponseBasedOnEdgesCreated        int   `json:"response_based_on_edges_created"`
 	DeploymentRunBasedOnEdgesCreated   int   `json:"deployment_run_based_on_edges_created"`
 	KubernetesAuditBasedOnEdgesCreated int   `json:"kubernetes_audit_based_on_edges_created"`
@@ -71,6 +73,9 @@ func MaterializeObservationsIntoGraph(g *graph.Graph, observations []*runtime.Ru
 			continue
 		}
 
+		existingObservationNode, _ := g.GetNode(req.ID)
+		traceCallAlreadyProjected := observationTraceCallProjectionApplied(existingObservationNode)
+
 		if _, err := graph.WriteObservation(g, req); err != nil {
 			result.ObservationsSkipped++
 			if classifyObservationMaterializationError(err) == observationMaterializationErrorMissingSubject {
@@ -82,6 +87,16 @@ func MaterializeObservationsIntoGraph(g *graph.Graph, observations []*runtime.Ru
 			continue
 		}
 		applyObservationCorroboration(g, req.ID)
+
+		if !traceCallAlreadyProjected {
+			created, edgeID, sourceID, targetID := materializeObservationTraceCallEdge(g, normalized, req.SubjectID)
+			if edgeID != "" {
+				markObservationTraceCallProjection(g, req.ID, edgeID, sourceID, targetID)
+			}
+			if created {
+				result.TraceCallEdgesCreated++
+			}
+		}
 
 		graph.MergeEdgeProperties(g, observationTargetEdgeID(req.ID, req.SubjectID), responseOutcomeTargetEdgeProperties(normalized))
 
@@ -194,6 +209,312 @@ func responseOutcomeEvidenceNodeID(observation *runtime.RuntimeObservation) stri
 		return ""
 	}
 	return "evidence:runtime_finding:" + findingID
+}
+
+func observationTraceCallProjectionApplied(node *graph.Node) bool {
+	return node != nil && propertyString(node.Properties, "trace_calls_edge_id") != ""
+}
+
+func markObservationTraceCallProjection(g *graph.Graph, observationNodeID, edgeID, sourceID, targetID string) {
+	if g == nil {
+		return
+	}
+	node, ok := g.GetNode(strings.TrimSpace(observationNodeID))
+	if !ok || node == nil {
+		return
+	}
+
+	updated := *node
+	updated.Properties = cloneProperties(node.Properties)
+	if updated.Properties == nil {
+		updated.Properties = make(map[string]any, 3)
+	}
+	addMetadataString(updated.Properties, "trace_calls_edge_id", edgeID)
+	addMetadataString(updated.Properties, "trace_calls_source_id", sourceID)
+	addMetadataString(updated.Properties, "trace_calls_target_id", targetID)
+	g.AddNode(&updated)
+}
+
+func materializeObservationTraceCallEdge(g *graph.Graph, observation *runtime.RuntimeObservation, subjectID string) (bool, string, string, string) {
+	if g == nil || !isTraceCallObservation(observation) {
+		return false, "", "", ""
+	}
+
+	sourceID := observationTraceCallSourceID(g, observation, subjectID)
+	targetID := observationTraceCallTargetID(g, observation)
+	if sourceID == "" || targetID == "" || sourceID == targetID {
+		return false, "", "", ""
+	}
+
+	edgeID := traceCallEdgeID(sourceID, targetID)
+	properties := traceCallEdgeProperties(g, edgeID, observation)
+	created := graph.AddEdgeIfMissing(g, &graph.Edge{
+		ID:         edgeID,
+		Source:     sourceID,
+		Target:     targetID,
+		Kind:       graph.EdgeKindCalls,
+		Effect:     graph.EdgeEffectAllow,
+		Properties: properties,
+	})
+	if created {
+		return true, edgeID, sourceID, targetID
+	}
+	graph.MergeEdgeProperties(g, edgeID, properties)
+	return false, edgeID, sourceID, targetID
+}
+
+func isTraceCallObservation(observation *runtime.RuntimeObservation) bool {
+	if observation == nil || observation.Kind != runtime.ObservationKindTraceLink {
+		return false
+	}
+	switch metadataString(observation.Metadata, "span_kind") {
+	case "client", "producer":
+		return true
+	default:
+		return false
+	}
+}
+
+func observationTraceCallSourceID(g *graph.Graph, observation *runtime.RuntimeObservation, subjectID string) string {
+	if g == nil || observation == nil {
+		return ""
+	}
+	serviceID := observationDeploymentServiceID(observation, subjectID)
+	if serviceID != "" {
+		if _, ok := g.GetNode(serviceID); ok {
+			return serviceID
+		}
+	}
+	subjectID = strings.TrimSpace(subjectID)
+	if subjectID == "" {
+		return ""
+	}
+	node, ok := g.GetNode(subjectID)
+	if !ok || node == nil {
+		return ""
+	}
+	switch node.Kind {
+	case graph.NodeKindService, graph.NodeKindWorkload, graph.NodeKindDeployment, graph.NodeKindPod:
+		return subjectID
+	default:
+		return ""
+	}
+}
+
+func observationTraceCallTargetID(g *graph.Graph, observation *runtime.RuntimeObservation) string {
+	if g == nil || observation == nil {
+		return ""
+	}
+	serviceName := metadataString(observation.Metadata, "destination_service_name")
+	if serviceName == "" {
+		return ""
+	}
+	namespace := firstNonEmpty(
+		metadataString(observation.Metadata, "destination_service_namespace"),
+		metadataString(observation.Metadata, "peer_namespace"),
+	)
+	serviceID := "service:" + serviceName
+	if namespace != "" {
+		serviceID = "service:" + namespace + "/" + serviceName
+	}
+	if _, ok := g.GetNode(serviceID); ok {
+		return serviceID
+	}
+	return ""
+}
+
+func traceCallEdgeID(sourceID, targetID string) string {
+	return fmt.Sprintf("%s->%s:%s", strings.TrimSpace(sourceID), strings.TrimSpace(targetID), graph.EdgeKindCalls)
+}
+
+func traceCallEdgeProperties(g *graph.Graph, edgeID string, observation *runtime.RuntimeObservation) map[string]any {
+	observedAt := observation.ObservedAt.UTC()
+	latencyMS := traceCallLatencyMS(observation)
+	errorCount := int64(0)
+	if traceCallErrored(observation) {
+		errorCount = 1
+	}
+
+	callCount := int64(1)
+	totalLatencyMS := latencyMS
+	firstSeen := observedAt
+	lastSeen := observedAt
+	if existing := activeEdgeByID(g, edgeID); existing != nil {
+		callCount = maxInt64(propertyInt64(existing.Properties, "call_count"), 0) + 1
+		totalLatencyMS = maxInt64(propertyInt64(existing.Properties, "total_latency_ms"), 0) + latencyMS
+		errorCount += maxInt64(propertyInt64(existing.Properties, "error_count"), 0)
+		if ts, ok := propertyTime(existing.Properties, "first_seen"); ok && ts.Before(firstSeen) {
+			firstSeen = ts
+		}
+		if ts, ok := propertyTime(existing.Properties, "last_seen"); ok && ts.After(lastSeen) {
+			lastSeen = ts
+		}
+	}
+
+	properties := map[string]any{
+		"source_system":      firstNonEmpty(strings.TrimSpace(observation.Source), "runtime_trace"),
+		"source_event_id":    strings.TrimSpace(observation.ID),
+		"trace_id":           traceID(observation),
+		"span_id":            spanID(observation),
+		"parent_span_id":     metadataString(observation.Metadata, "parent_span_id"),
+		"protocol":           firstNonEmpty(metadataString(observation.Metadata, "call_protocol"), networkProtocol(observation)),
+		"call_count":         callCount,
+		"error_count":        errorCount,
+		"total_latency_ms":   totalLatencyMS,
+		"avg_latency_ms":     traceCallAverageLatencyMS(totalLatencyMS, callCount),
+		"error_rate":         traceCallErrorRate(errorCount, callCount),
+		"call_rate_per_min":  traceCallRatePerMinute(firstSeen, lastSeen, callCount),
+		"first_seen":         firstSeen.Format(time.RFC3339),
+		"last_seen":          lastSeen.Format(time.RFC3339),
+		"observed_at":        observedAt.Format(time.RFC3339),
+		"valid_from":         observedAt.Format(time.RFC3339),
+		"destination_system": "runtime_trace",
+	}
+	if statusCode := metadataString(observation.Metadata, "span_status_code"); statusCode != "" {
+		properties["span_status_code"] = statusCode
+	}
+	return properties
+}
+
+func traceCallLatencyMS(observation *runtime.RuntimeObservation) int64 {
+	if observation == nil || observation.RecordedAt.IsZero() || observation.RecordedAt.Before(observation.ObservedAt) {
+		return 0
+	}
+	return observation.RecordedAt.Sub(observation.ObservedAt).Milliseconds()
+}
+
+func traceCallErrored(observation *runtime.RuntimeObservation) bool {
+	if observation == nil {
+		return false
+	}
+	if metadataString(observation.Metadata, "span_status_code") == "error" {
+		return true
+	}
+	if attrs, ok := observation.Metadata["otel_span_attributes"].(map[string]any); ok {
+		if status, ok := numericMapValue(attrs, "http.response.status_code"); ok && status >= 500 {
+			return true
+		}
+	}
+	return false
+}
+
+func traceCallAverageLatencyMS(totalLatencyMS, callCount int64) float64 {
+	if callCount <= 0 {
+		return 0
+	}
+	return float64(totalLatencyMS) / float64(callCount)
+}
+
+func traceCallErrorRate(errorCount, callCount int64) float64 {
+	if callCount <= 0 {
+		return 0
+	}
+	return float64(errorCount) / float64(callCount)
+}
+
+func traceCallRatePerMinute(firstSeen, lastSeen time.Time, callCount int64) float64 {
+	if callCount <= 0 {
+		return 0
+	}
+	window := lastSeen.Sub(firstSeen)
+	if window < time.Minute {
+		window = time.Minute
+	}
+	return float64(callCount) / window.Minutes()
+}
+
+func activeEdgeByID(g *graph.Graph, edgeID string) *graph.Edge {
+	if g == nil || strings.TrimSpace(edgeID) == "" {
+		return nil
+	}
+	sourceID, _, _ := strings.Cut(strings.TrimSpace(edgeID), "->")
+	for _, edges := range g.GetOutEdges(sourceID) {
+		if edges != nil && edges.ID == edgeID {
+			return edges
+		}
+	}
+	return nil
+}
+
+func propertyInt64(properties map[string]any, key string) int64 {
+	if len(properties) == 0 {
+		return 0
+	}
+	switch typed := properties[key].(type) {
+	case int:
+		return int64(typed)
+	case int32:
+		return int64(typed)
+	case int64:
+		return typed
+	case uint:
+		return uintToInt64(typed)
+	case uint32:
+		return int64(typed)
+	case uint64:
+		return uint64ToInt64(typed)
+	case float64:
+		return int64(typed)
+	default:
+		return 0
+	}
+}
+
+func numericMapValue(values map[string]any, key string) (int64, bool) {
+	if len(values) == 0 {
+		return 0, false
+	}
+	value, ok := values[key]
+	if !ok || value == nil {
+		return 0, false
+	}
+	switch typed := value.(type) {
+	case int:
+		return int64(typed), true
+	case int32:
+		return int64(typed), true
+	case int64:
+		return typed, true
+	case uint:
+		return uintToInt64(typed), true
+	case uint32:
+		return int64(typed), true
+	case uint64:
+		return uint64ToInt64(typed), true
+	case float64:
+		return int64(typed), true
+	default:
+		return 0, false
+	}
+}
+
+func uintToInt64(value uint) int64 {
+	return uint64ToInt64(uint64(value))
+}
+
+func uint64ToInt64(value uint64) int64 {
+	if value > math.MaxInt64 {
+		return math.MaxInt64
+	}
+	return int64(value)
+}
+
+func cloneProperties(properties map[string]any) map[string]any {
+	if len(properties) == 0 {
+		return nil
+	}
+	cloned := make(map[string]any, len(properties))
+	for key, value := range properties {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func maxInt64(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func buildResponseOutcomeBasedOnEdge(observationNodeID, evidenceNodeID string, observation *runtime.RuntimeObservation) *graph.Edge {

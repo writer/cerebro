@@ -21,6 +21,7 @@ const (
 
 	// Resource -> Resource
 	EdgeKindConnectsTo EdgeKind = "connects_to"
+	EdgeKindCalls      EdgeKind = "calls"
 	EdgeKindRuns       EdgeKind = "runs"
 	EdgeKindDependsOn  EdgeKind = "depends_on"
 	EdgeKindConfigures EdgeKind = "configures"

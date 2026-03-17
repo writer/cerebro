@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -280,6 +282,22 @@ func observationFromSpan(resourceAttrs map[string]any, scope instrumentationScop
 			metadata["span_status_message"] = message
 		}
 	}
+	if serviceName := firstStringAttr(resourceAttrs, "service.name"); serviceName != "" {
+		metadata["source_service_name"] = serviceName
+	}
+	if serviceNamespace := firstStringAttr(resourceAttrs, "service.namespace"); serviceNamespace != "" {
+		metadata["source_service_namespace"] = serviceNamespace
+	}
+	destinationName, destinationNamespace := spanDestinationService(spanAttrs, firstStringAttr(resourceAttrs, "service.namespace"))
+	if destinationName != "" {
+		metadata["destination_service_name"] = destinationName
+	}
+	if destinationNamespace != "" {
+		metadata["destination_service_namespace"] = destinationNamespace
+	}
+	if protocol := spanCallProtocol(spanAttrs); protocol != "" {
+		metadata["call_protocol"] = protocol
+	}
 	applyScopeMetadata(metadata, scope, scopeAttrs)
 
 	observation := &runtime.RuntimeObservation{
@@ -478,6 +496,69 @@ func firstStringAttr(attrs map[string]any, keys ...string) string {
 		if value, ok := attrs[key].(string); ok && strings.TrimSpace(value) != "" {
 			return strings.TrimSpace(value)
 		}
+	}
+	return ""
+}
+
+func spanDestinationService(attrs map[string]any, defaultNamespace string) (string, string) {
+	name := firstStringAttr(attrs, "peer.service", "destination.service.name", "messaging.destination.name")
+	namespace := firstStringAttr(attrs, "peer.service.namespace", "destination.service.namespace")
+	if name != "" {
+		return name, firstNonEmpty(namespace, defaultNamespace)
+	}
+
+	host := firstStringAttr(attrs, "server.address", "net.peer.name", "http.host", "url.full")
+	if host == "" {
+		return "", ""
+	}
+	return serviceIdentityFromHost(host, firstNonEmpty(namespace, defaultNamespace))
+}
+
+func serviceIdentityFromHost(host, defaultNamespace string) (string, string) {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return "", ""
+	}
+	if strings.Contains(host, "://") {
+		parsed, err := url.Parse(host)
+		if err == nil {
+			host = parsed.Host
+		}
+	}
+	if parsedHost, _, err := net.SplitHostPort(host); err == nil {
+		host = parsedHost
+	} else if strings.Count(host, ":") == 1 {
+		if left, _, ok := strings.Cut(host, ":"); ok {
+			host = left
+		}
+	}
+	host = strings.Trim(strings.TrimSpace(host), ".")
+	if host == "" || net.ParseIP(host) != nil {
+		return "", ""
+	}
+	parts := strings.Split(host, ".")
+	switch {
+	case len(parts) >= 3 && parts[2] == "svc":
+		return parts[0], parts[1]
+	case len(parts) >= 4 && parts[2] == "svc" && parts[3] == "cluster":
+		return parts[0], parts[1]
+	case len(parts) >= 2 && parts[1] == "svc":
+		return parts[0], defaultNamespace
+	default:
+		return parts[0], defaultNamespace
+	}
+}
+
+func spanCallProtocol(attrs map[string]any) string {
+	switch value := strings.ToLower(firstStringAttr(attrs, "rpc.system", "network.protocol.name")); value {
+	case "":
+	case "http", "http/1.1", "http/2":
+		return "http"
+	default:
+		return value
+	}
+	if method := firstStringAttr(attrs, "http.request.method", "http.method"); method != "" {
+		return "http"
 	}
 	return ""
 }

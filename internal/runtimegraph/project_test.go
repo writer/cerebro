@@ -198,7 +198,7 @@ func TestMaterializeObservationsIntoGraphCorroboratesMatchingObservations(t *tes
 		t.Fatalf("corroborating confidence = %#v, want %f", got, runtimeObservationBaseConfidence)
 	}
 
-	corroborates := testFindEdge(g.GetOutEdges(corroboratingReq.ID), graph.EdgeKindCorroborates, primaryReq.ID)
+	corroborates := testFindEdgeInList(g.GetOutEdges(corroboratingReq.ID), graph.EdgeKindCorroborates, primaryReq.ID)
 	if corroborates == nil {
 		t.Fatalf("expected corroborates edge from %s to %s", corroboratingReq.ID, primaryReq.ID)
 	}
@@ -256,10 +256,10 @@ func TestMaterializeObservationsIntoGraphDoesNotCorroborateAcrossCorrelationBuck
 	}
 	firstNode := mustNode(t, g, firstReq.ID)
 	secondNode := mustNode(t, g, secondReq.ID)
-	if testFindEdge(g.GetOutEdges(firstReq.ID), graph.EdgeKindCorroborates, secondReq.ID) != nil {
+	if testFindEdgeInList(g.GetOutEdges(firstReq.ID), graph.EdgeKindCorroborates, secondReq.ID) != nil {
 		t.Fatalf("did not expect corroborates edge from %s to %s across bucket boundary", firstReq.ID, secondReq.ID)
 	}
-	if testFindEdge(g.GetOutEdges(secondReq.ID), graph.EdgeKindCorroborates, firstReq.ID) != nil {
+	if testFindEdgeInList(g.GetOutEdges(secondReq.ID), graph.EdgeKindCorroborates, firstReq.ID) != nil {
 		t.Fatalf("did not expect corroborates edge from %s to %s across bucket boundary", secondReq.ID, firstReq.ID)
 	}
 	if got := firstNode.Properties["corroboration_count"]; got != 1 {
@@ -691,6 +691,202 @@ func TestMaterializeObservationsIntoGraphDoesNotAddReverseTargetEdgeForServiceSu
 	}
 	if len(g.GetOutEdges("service:storefront/checkout")) != 0 {
 		t.Fatalf("service out edge count = %d, want 0", len(g.GetOutEdges("service:storefront/checkout")))
+	}
+}
+
+func TestMaterializeObservationsIntoGraphAddsTraceCallEdge(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{ID: "service:storefront/checkout", Kind: graph.NodeKindService, Name: "checkout"})
+	g.AddNode(&graph.Node{ID: "service:storefront/payments", Kind: graph.NodeKindService, Name: "payments"})
+
+	observation := &runtime.RuntimeObservation{
+		ID:         "runtime:trace_link:checkout-payments-1",
+		Source:     "otel",
+		Kind:       runtime.ObservationKindTraceLink,
+		ObservedAt: time.Date(2026, 3, 17, 17, 20, 0, 0, time.UTC),
+		RecordedAt: time.Date(2026, 3, 17, 17, 20, 5, 0, time.UTC),
+		Trace: &runtime.TraceContext{
+			TraceID:     "trace-1",
+			SpanID:      "span-1",
+			ServiceName: "checkout",
+		},
+		Metadata: map[string]any{
+			"service_namespace":             "storefront",
+			"span_kind":                     "client",
+			"span_status_code":              "error",
+			"parent_span_id":                "parent-1",
+			"destination_service_name":      "payments",
+			"destination_service_namespace": "storefront",
+			"call_protocol":                 "grpc",
+		},
+	}
+
+	result := MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{observation}, observation.ObservedAt.Add(time.Minute))
+	if result.TraceCallEdgesCreated != 1 {
+		t.Fatalf("TraceCallEdgesCreated = %d, want 1", result.TraceCallEdgesCreated)
+	}
+
+	edge := testFindEdge(t, g, "service:storefront/checkout", "service:storefront/payments", graph.EdgeKindCalls)
+	if got := edge.Properties["protocol"]; got != "grpc" {
+		t.Fatalf("protocol = %#v, want grpc", got)
+	}
+	if got := edge.Properties["call_count"]; got != int64(1) {
+		t.Fatalf("call_count = %#v, want 1", got)
+	}
+	if got := edge.Properties["error_count"]; got != int64(1) {
+		t.Fatalf("error_count = %#v, want 1", got)
+	}
+	if got := edge.Properties["avg_latency_ms"]; got != float64(5000) {
+		t.Fatalf("avg_latency_ms = %#v, want 5000", got)
+	}
+	if got := edge.Properties["trace_id"]; got != "trace-1" {
+		t.Fatalf("trace_id = %#v, want trace-1", got)
+	}
+
+	observationNode := mustNode(t, g, "observation:"+observation.ID)
+	if got := testMetadataString(observationNode.Properties, "trace_calls_target_id"); got != "service:storefront/payments" {
+		t.Fatalf("trace_calls_target_id = %q, want service:storefront/payments", got)
+	}
+}
+
+func TestMaterializeObservationsIntoGraphAggregatesTraceCallEdges(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{ID: "service:storefront/checkout", Kind: graph.NodeKindService, Name: "checkout"})
+	g.AddNode(&graph.Node{ID: "service:storefront/payments", Kind: graph.NodeKindService, Name: "payments"})
+
+	first := &runtime.RuntimeObservation{
+		ID:         "runtime:trace_link:checkout-payments-1",
+		Source:     "otel",
+		Kind:       runtime.ObservationKindTraceLink,
+		ObservedAt: time.Date(2026, 3, 17, 17, 20, 0, 0, time.UTC),
+		RecordedAt: time.Date(2026, 3, 17, 17, 20, 4, 0, time.UTC),
+		Trace:      &runtime.TraceContext{TraceID: "trace-1", SpanID: "span-1", ServiceName: "checkout"},
+		Metadata: map[string]any{
+			"service_namespace":             "storefront",
+			"span_kind":                     "client",
+			"span_status_code":              "error",
+			"destination_service_name":      "payments",
+			"destination_service_namespace": "storefront",
+			"call_protocol":                 "grpc",
+		},
+	}
+	second := &runtime.RuntimeObservation{
+		ID:         "runtime:trace_link:checkout-payments-2",
+		Source:     "otel",
+		Kind:       runtime.ObservationKindTraceLink,
+		ObservedAt: time.Date(2026, 3, 17, 17, 22, 0, 0, time.UTC),
+		RecordedAt: time.Date(2026, 3, 17, 17, 22, 2, 0, time.UTC),
+		Trace:      &runtime.TraceContext{TraceID: "trace-2", SpanID: "span-2", ServiceName: "checkout"},
+		Metadata: map[string]any{
+			"service_namespace":             "storefront",
+			"span_kind":                     "client",
+			"span_status_code":              "ok",
+			"destination_service_name":      "payments",
+			"destination_service_namespace": "storefront",
+			"call_protocol":                 "grpc",
+		},
+	}
+
+	firstResult := MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{first}, first.ObservedAt.Add(time.Minute))
+	secondResult := MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{second}, second.ObservedAt.Add(time.Minute))
+	if firstResult.TraceCallEdgesCreated != 1 {
+		t.Fatalf("first TraceCallEdgesCreated = %d, want 1", firstResult.TraceCallEdgesCreated)
+	}
+	if secondResult.TraceCallEdgesCreated != 0 {
+		t.Fatalf("second TraceCallEdgesCreated = %d, want 0", secondResult.TraceCallEdgesCreated)
+	}
+
+	edge := testFindEdge(t, g, "service:storefront/checkout", "service:storefront/payments", graph.EdgeKindCalls)
+	if got := edge.Properties["call_count"]; got != int64(2) {
+		t.Fatalf("call_count = %#v, want 2", got)
+	}
+	if got := edge.Properties["error_count"]; got != int64(1) {
+		t.Fatalf("error_count = %#v, want 1", got)
+	}
+	if got := edge.Properties["avg_latency_ms"]; got != float64(3000) {
+		t.Fatalf("avg_latency_ms = %#v, want 3000", got)
+	}
+	if got := edge.Properties["error_rate"]; got != 0.5 {
+		t.Fatalf("error_rate = %#v, want 0.5", got)
+	}
+	if got := edge.Properties["call_rate_per_min"]; got != 1.0 {
+		t.Fatalf("call_rate_per_min = %#v, want 1.0", got)
+	}
+}
+
+func TestMaterializeObservationsIntoGraphDoesNotDoubleCountDuplicateTraceCallObservation(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{ID: "service:storefront/checkout", Kind: graph.NodeKindService, Name: "checkout"})
+	g.AddNode(&graph.Node{ID: "service:storefront/payments", Kind: graph.NodeKindService, Name: "payments"})
+
+	observation := &runtime.RuntimeObservation{
+		ID:         "runtime:trace_link:checkout-payments-1",
+		Source:     "otel",
+		Kind:       runtime.ObservationKindTraceLink,
+		ObservedAt: time.Date(2026, 3, 17, 17, 20, 0, 0, time.UTC),
+		RecordedAt: time.Date(2026, 3, 17, 17, 20, 4, 0, time.UTC),
+		Trace:      &runtime.TraceContext{TraceID: "trace-1", SpanID: "span-1", ServiceName: "checkout"},
+		Metadata: map[string]any{
+			"service_namespace":             "storefront",
+			"span_kind":                     "client",
+			"destination_service_name":      "payments",
+			"destination_service_namespace": "storefront",
+			"call_protocol":                 "grpc",
+		},
+	}
+
+	first := MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{observation}, observation.ObservedAt.Add(time.Minute))
+	second := MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{observation}, observation.ObservedAt.Add(2*time.Minute))
+	if first.TraceCallEdgesCreated != 1 {
+		t.Fatalf("first TraceCallEdgesCreated = %d, want 1", first.TraceCallEdgesCreated)
+	}
+	if second.TraceCallEdgesCreated != 0 {
+		t.Fatalf("second TraceCallEdgesCreated = %d, want 0", second.TraceCallEdgesCreated)
+	}
+
+	edge := testFindEdge(t, g, "service:storefront/checkout", "service:storefront/payments", graph.EdgeKindCalls)
+	if got := edge.Properties["call_count"]; got != int64(1) {
+		t.Fatalf("call_count = %#v, want 1", got)
+	}
+}
+
+func TestMaterializeObservationsIntoGraphIgnoresUntrustedTraceCallTargetMetadata(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{ID: "service:storefront/checkout", Kind: graph.NodeKindService, Name: "checkout"})
+	g.AddNode(&graph.Node{ID: "service:storefront/payments", Kind: graph.NodeKindService, Name: "payments"})
+	g.AddNode(&graph.Node{ID: "deployment:prod/admin", Kind: graph.NodeKindDeployment, Name: "admin"})
+
+	observation := &runtime.RuntimeObservation{
+		ID:         "runtime:trace_link:checkout-payments-untrusted-target",
+		Source:     "otel",
+		Kind:       runtime.ObservationKindTraceLink,
+		ObservedAt: time.Date(2026, 3, 17, 17, 24, 0, 0, time.UTC),
+		RecordedAt: time.Date(2026, 3, 17, 17, 24, 2, 0, time.UTC),
+		Trace:      &runtime.TraceContext{TraceID: "trace-rogue", SpanID: "span-rogue", ServiceName: "checkout"},
+		Metadata: map[string]any{
+			"service_namespace":             "storefront",
+			"span_kind":                     "client",
+			"destination_service_name":      "payments",
+			"destination_service_namespace": "storefront",
+			"destination_workload_ref":      "deployment:prod/admin",
+		},
+	}
+
+	result := MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{observation}, observation.ObservedAt.Add(time.Minute))
+	if result.TraceCallEdgesCreated != 1 {
+		t.Fatalf("TraceCallEdgesCreated = %d, want 1", result.TraceCallEdgesCreated)
+	}
+
+	testFindEdge(t, g, "service:storefront/checkout", "service:storefront/payments", graph.EdgeKindCalls)
+	for _, edge := range g.GetOutEdges("service:storefront/checkout") {
+		if edge.Kind == graph.EdgeKindCalls && edge.Target == "deployment:prod/admin" {
+			t.Fatalf("unexpected forged calls edge = %+v", edge)
+		}
+	}
+
+	observationNode := mustNode(t, g, "observation:"+observation.ID)
+	if got := testMetadataString(observationNode.Properties, "trace_calls_target_id"); got != "service:storefront/payments" {
+		t.Fatalf("trace_calls_target_id = %q, want service:storefront/payments", got)
 	}
 }
 
@@ -1507,7 +1703,7 @@ func mustNode(t *testing.T, g *graph.Graph, id string) *graph.Node {
 	return node
 }
 
-func testFindEdge(edges []*graph.Edge, kind graph.EdgeKind, target string) *graph.Edge {
+func testFindEdgeInList(edges []*graph.Edge, kind graph.EdgeKind, target string) *graph.Edge {
 	target = strings.TrimSpace(target)
 	for _, edge := range edges {
 		if edge == nil || edge.Kind != kind {
@@ -1540,4 +1736,15 @@ func testStringSliceProperty(properties map[string]any, key string) []string {
 	default:
 		return nil
 	}
+}
+
+func testFindEdge(t *testing.T, g *graph.Graph, sourceID, targetID string, kind graph.EdgeKind) *graph.Edge {
+	t.Helper()
+	for _, edge := range g.GetOutEdges(sourceID) {
+		if edge != nil && edge.Target == targetID && edge.Kind == kind {
+			return edge
+		}
+	}
+	t.Fatalf("edge %s -> %s (%s) not found", sourceID, targetID, kind)
+	return nil
 }

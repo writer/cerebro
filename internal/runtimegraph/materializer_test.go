@@ -102,10 +102,16 @@ func TestBuildObservationWriteRequestFallsBackToServiceResourceID(t *testing.T) 
 		Kind:       runtime.ObservationKindTraceLink,
 		ObservedAt: observedAt,
 		Metadata: map[string]any{
-			"service_namespace": "storefront",
-			"trace_id":          "abc123",
-			"span_id":           "def456",
-			"service_name":      "checkout",
+			"service_namespace":             "storefront",
+			"trace_id":                      "abc123",
+			"span_id":                       "def456",
+			"parent_span_id":                "pqr999",
+			"span_kind":                     "client",
+			"span_status_code":              "ok",
+			"service_name":                  "checkout",
+			"destination_service_name":      "payments",
+			"destination_service_namespace": "storefront",
+			"call_protocol":                 "grpc",
 		},
 		Trace: &runtime.TraceContext{
 			TraceID:     "abc123",
@@ -128,6 +134,21 @@ func TestBuildObservationWriteRequestFallsBackToServiceResourceID(t *testing.T) 
 	}
 	if got := testMetadataString(req.Metadata, "service_name"); got != "checkout" {
 		t.Fatalf("metadata.service_name = %q, want checkout", got)
+	}
+	if got := testMetadataString(req.Metadata, "parent_span_id"); got != "pqr999" {
+		t.Fatalf("metadata.parent_span_id = %q, want pqr999", got)
+	}
+	if got := testMetadataString(req.Metadata, "span_kind"); got != "client" {
+		t.Fatalf("metadata.span_kind = %q, want client", got)
+	}
+	if got := testMetadataString(req.Metadata, "destination_service_name"); got != "payments" {
+		t.Fatalf("metadata.destination_service_name = %q, want payments", got)
+	}
+	if got := testMetadataString(req.Metadata, "destination_service_namespace"); got != "storefront" {
+		t.Fatalf("metadata.destination_service_namespace = %q, want storefront", got)
+	}
+	if got := testMetadataString(req.Metadata, "call_protocol"); got != "grpc" {
+		t.Fatalf("metadata.call_protocol = %q, want grpc", got)
 	}
 }
 

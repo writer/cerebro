@@ -161,6 +161,9 @@ func TestAdapterNormalizeSpanRecord(t *testing.T) {
 					"endTimeUnixNano": "1773601005000000000",
 					"attributes": [
 						{"key":"enduser.id","value":{"stringValue":"shopper-7"}},
+						{"key":"peer.service","value":{"stringValue":"payments"}},
+						{"key":"peer.service.namespace","value":{"stringValue":"storefront"}},
+						{"key":"rpc.system","value":{"stringValue":"grpc"}},
 						{"key":"http.request.method","value":{"stringValue":"POST"}},
 						{"key":"http.response.status_code","value":{"intValue":"500"}}
 					],
@@ -219,8 +222,63 @@ func TestAdapterNormalizeSpanRecord(t *testing.T) {
 	if got := observation.Metadata["span_status_message"]; got != "deadline exceeded" {
 		t.Fatalf("span_status_message = %#v, want deadline exceeded", got)
 	}
+	if got := observation.Metadata["destination_service_name"]; got != "payments" {
+		t.Fatalf("destination_service_name = %#v, want payments", got)
+	}
+	if got := observation.Metadata["destination_service_namespace"]; got != "storefront" {
+		t.Fatalf("destination_service_namespace = %#v, want storefront", got)
+	}
+	if got := observation.Metadata["call_protocol"]; got != "grpc" {
+		t.Fatalf("call_protocol = %#v, want grpc", got)
+	}
 	if attrs, ok := observation.Metadata["otel_span_attributes"].(map[string]any); !ok || attrs["http.response.status_code"] != int64(500) {
 		t.Fatalf("otel_span_attributes = %#v, want numeric response code", observation.Metadata["otel_span_attributes"])
+	}
+}
+
+func TestAdapterNormalizeSpanDerivesDestinationServiceFromServerAddress(t *testing.T) {
+	raw := []byte(`{
+		"resourceSpans": [{
+			"resource": {
+				"attributes": [
+					{"key":"service.name","value":{"stringValue":"checkout"}},
+					{"key":"service.namespace","value":{"stringValue":"storefront"}}
+				]
+			},
+			"scopeSpans": [{
+				"spans": [{
+					"traceId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+					"spanId": "bbbbbbbbbbbbbbbb",
+					"name": "GET /payments",
+					"kind": 3,
+					"startTimeUnixNano": "1773601000000000000",
+					"endTimeUnixNano": "1773601001000000000",
+					"attributes": [
+						{"key":"server.address","value":{"stringValue":"payments.storefront.svc.cluster.local:443"}},
+						{"key":"http.request.method","value":{"stringValue":"GET"}}
+					]
+				}]
+			}]
+		}]
+	}`)
+
+	observations, err := (Adapter{}).Normalize(context.Background(), raw)
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	if len(observations) != 1 {
+		t.Fatalf("len(observations) = %d, want 1", len(observations))
+	}
+
+	observation := observations[0]
+	if got := observation.Metadata["destination_service_name"]; got != "payments" {
+		t.Fatalf("destination_service_name = %#v, want payments", got)
+	}
+	if got := observation.Metadata["destination_service_namespace"]; got != "storefront" {
+		t.Fatalf("destination_service_namespace = %#v, want storefront", got)
+	}
+	if got := observation.Metadata["call_protocol"]; got != "http" {
+		t.Fatalf("call_protocol = %#v, want http", got)
 	}
 }
 

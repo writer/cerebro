@@ -19,6 +19,20 @@ Status: executed end-to-end via PR workflow
 - [x] Merge richer corroborating metadata onto the primary observation while keeping corroborating nodes and edges explicit.
 - [x] Add TDD coverage for cross-adapter corroboration, confidence scaling, metadata inheritance, and 5-second bucket boundaries.
 
+## Deep Review Cycle 189 - Runtime Trace Call Topology (2026-03-17)
+
+### Review findings
+- [x] Gap: issue `#369` still reduced OTel spans to isolated `trace_link` observations, so the graph kept per-service runtime breadcrumbs but not the actual caller-to-callee runtime topology.
+- [x] Gap: trace materialization had no replay-safe aggregation path for call frequency, latency, and error rate, so even when both services existed in the graph there was no durable `calls` overlay for blast-radius and dependency analysis.
+- [x] Gap: OTel normalization did not project destination service identity from peer-service or in-cluster address attributes, which prevented later graph stages from resolving the callee side of a span without re-parsing raw OTLP payloads.
+
+### Execution plan
+- [x] Extend OTel span normalization to capture destination service identity and inferred call protocol from peer-service and service-address attributes.
+- [x] Add a first-class `calls` edge kind to the graph ontology and allow it from service and workload-like runtime subjects.
+- [x] Materialize replay-safe runtime `calls` edges with call count, latency, error rate, and first/last seen aggregation from trace observations.
+- [x] Add TDD coverage for destination-service extraction, trace observation metadata persistence, call-edge creation, aggregation, and duplicate replay suppression.
+- [x] Re-run focused graph/runtimegraph/OTel tests, lint, ontology doc generation, and changed-file validation.
+
 ## Deep Review Cycle 187 - Observation Correlation Windows (2026-03-17)
 
 ### Review findings
