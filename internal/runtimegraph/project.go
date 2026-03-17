@@ -12,13 +12,14 @@ import (
 
 // MaterializationResult summarizes one batch of runtime observation graph writes.
 type MaterializationResult struct {
-	ObservationsConsidered     int   `json:"observations_considered"`
-	ObservationsMaterialized   int   `json:"observations_materialized"`
-	ObservationsSkipped        int   `json:"observations_skipped"`
-	WorkloadTargetEdgesCreated int   `json:"workload_target_edges_created"`
-	MissingSubjects            int   `json:"missing_subjects"`
-	InvalidObservations        int   `json:"invalid_observations"`
-	LastError                  error `json:"-"`
+	ObservationsConsidered      int   `json:"observations_considered"`
+	ObservationsMaterialized    int   `json:"observations_materialized"`
+	ObservationsSkipped         int   `json:"observations_skipped"`
+	WorkloadTargetEdgesCreated  int   `json:"workload_target_edges_created"`
+	ResponseBasedOnEdgesCreated int   `json:"response_based_on_edges_created"`
+	MissingSubjects             int   `json:"missing_subjects"`
+	InvalidObservations         int   `json:"invalid_observations"`
+	LastError                   error `json:"-"`
 }
 
 // MaterializeObservationsIntoGraph projects runtime observations into graph observation nodes.
@@ -88,6 +89,14 @@ func MaterializeObservationsIntoGraph(g *graph.Graph, observations []*runtime.Ru
 			}
 		}
 
+		if evidenceNodeID := responseOutcomeEvidenceNodeID(observation); evidenceNodeID != "" {
+			if _, ok := g.GetNode(evidenceNodeID); ok {
+				if graph.AddEdgeIfMissing(g, buildResponseOutcomeBasedOnEdge(req.ID, evidenceNodeID, observation)) {
+					result.ResponseBasedOnEdgesCreated++
+				}
+			}
+		}
+
 		result.ObservationsMaterialized++
 	}
 
@@ -144,4 +153,43 @@ func responseOutcomeTargetEdgeProperties(observation *runtime.RuntimeObservation
 		return nil
 	}
 	return properties
+}
+
+func responseOutcomeEvidenceNodeID(observation *runtime.RuntimeObservation) string {
+	if observation == nil || observation.Kind != runtime.ObservationKindResponseOutcome {
+		return ""
+	}
+	findingID := metadataString(observation.Metadata, "finding_id")
+	if findingID == "" {
+		return ""
+	}
+	return "evidence:runtime_finding:" + findingID
+}
+
+func buildResponseOutcomeBasedOnEdge(observationNodeID, evidenceNodeID string, observation *runtime.RuntimeObservation) *graph.Edge {
+	observationNodeID = strings.TrimSpace(observationNodeID)
+	evidenceNodeID = strings.TrimSpace(evidenceNodeID)
+	if observationNodeID == "" || evidenceNodeID == "" {
+		return nil
+	}
+
+	properties := map[string]any{
+		"source_system": firstNonEmpty(strings.TrimSpace(observation.Source), "runtime_response"),
+	}
+	addMetadataString(properties, "source_event_id", strings.TrimSpace(observation.ID))
+	addMetadataString(properties, "observed_at", observation.ObservedAt.UTC().Format(time.RFC3339))
+	addMetadataString(properties, "valid_from", observation.ObservedAt.UTC().Format(time.RFC3339))
+	addMetadataString(properties, "finding_id", metadataString(observation.Metadata, "finding_id"))
+	for key, value := range responseOutcomeTargetEdgeProperties(observation) {
+		properties[key] = value
+	}
+
+	return &graph.Edge{
+		ID:         observationNodeID + "->" + evidenceNodeID + ":" + string(graph.EdgeKindBasedOn),
+		Source:     observationNodeID,
+		Target:     evidenceNodeID,
+		Kind:       graph.EdgeKindBasedOn,
+		Effect:     graph.EdgeEffectAllow,
+		Properties: properties,
+	}
 }

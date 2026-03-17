@@ -5,6 +5,23 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 155 - Runtime Response Outcome Causal Links To Findings (2026-03-16)
+
+### Review findings
+- [x] Gap: runtime response executions already carry `finding_id` through remediation trigger data, but the normalized `response_outcome` observations were discarding that causal reference before graph materialization.
+- [x] Gap: issue `#366` is only partially complete without a causal edge from response outcomes back to the promoted runtime finding evidence they are acting on.
+- [x] Gap: the runtimegraph package had no regression coverage proving response outcomes add a `based_on` edge when evidence exists, skip it safely when evidence is absent, and remain idempotent on repeated materialization.
+
+### Execution plan
+- [x] Preserve `finding_id` in `observationFromResponseExecution`.
+- [x] Add response-outcome `based_on` edges from observation nodes to runtime finding evidence nodes when the evidence node is already present.
+- [x] Add TDD coverage for:
+  - [x] `finding_id` preservation on response-outcome normalization
+  - [x] response-outcome causal edge creation
+  - [x] missing-evidence skip behavior
+  - [x] idempotent repeated projection
+- [x] Re-run focused runtime/runtimegraph tests, lint, and changed-file validation.
+
 ## Deep Review Cycle 150 - Runtime Observation Metadata Allocation Trim (2026-03-16)
 
 ### Review findings

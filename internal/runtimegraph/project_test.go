@@ -343,6 +343,164 @@ func TestMaterializeObservationsIntoGraphCarriesResponseOutcomeTargetMetadata(t 
 	}
 }
 
+func TestMaterializeObservationsIntoGraphAddsResponseOutcomeBasedOnEvidenceEdge(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:   "deployment:prod/web",
+		Kind: graph.NodeKindDeployment,
+		Name: "web",
+	})
+	g.AddNode(&graph.Node{
+		ID:       "evidence:runtime_finding:finding-1",
+		Kind:     graph.NodeKindEvidence,
+		Name:     "finding-1",
+		Provider: runtimeFindingEvidenceSourceSystem,
+		Properties: map[string]any{
+			"evidence_type": "runtime_finding",
+			"source_system": runtimeFindingEvidenceSourceSystem,
+			"observed_at":   "2026-03-16T20:44:00Z",
+			"valid_from":    "2026-03-16T20:44:00Z",
+		},
+	})
+
+	observation := &runtime.RuntimeObservation{
+		ID:          "runtime:response_outcome:block-ip",
+		Source:      "runtime_response",
+		Kind:        runtime.ObservationKindResponseOutcome,
+		ObservedAt:  time.Date(2026, 3, 16, 20, 45, 0, 0, time.UTC),
+		RecordedAt:  time.Date(2026, 3, 16, 20, 45, 1, 0, time.UTC),
+		WorkloadRef: "deployment:prod/web",
+		Metadata: map[string]any{
+			"finding_id":    "finding-1",
+			"execution_id":  "exec-1",
+			"policy_id":     "policy-1",
+			"action_type":   "block_ip",
+			"action_status": "completed",
+		},
+	}
+
+	result := MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{observation}, time.Date(2026, 3, 16, 20, 46, 0, 0, time.UTC))
+	if result.ObservationsMaterialized != 1 {
+		t.Fatalf("ObservationsMaterialized = %d, want 1", result.ObservationsMaterialized)
+	}
+	if result.ResponseBasedOnEdgesCreated != 1 {
+		t.Fatalf("ResponseBasedOnEdgesCreated = %d, want 1", result.ResponseBasedOnEdgesCreated)
+	}
+
+	observationNodeID := "observation:" + observation.ID
+	var found bool
+	for _, edge := range g.GetOutEdges(observationNodeID) {
+		if edge.Kind != graph.EdgeKindBasedOn {
+			continue
+		}
+		found = true
+		if edge.Target != "evidence:runtime_finding:finding-1" {
+			t.Fatalf("based_on target = %q, want evidence:runtime_finding:finding-1", edge.Target)
+		}
+		if got := edge.Properties["finding_id"]; got != "finding-1" {
+			t.Fatalf("based_on finding_id = %#v, want finding-1", got)
+		}
+		if got := edge.Properties["response_execution_id"]; got != "exec-1" {
+			t.Fatalf("based_on response_execution_id = %#v, want exec-1", got)
+		}
+	}
+	if !found {
+		t.Fatal("expected response outcome based_on edge to evidence")
+	}
+}
+
+func TestMaterializeObservationsIntoGraphSkipsResponseOutcomeBasedOnEdgeWhenEvidenceMissing(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:   "deployment:prod/web",
+		Kind: graph.NodeKindDeployment,
+		Name: "web",
+	})
+
+	observation := &runtime.RuntimeObservation{
+		ID:          "runtime:response_outcome:block-ip",
+		Source:      "runtime_response",
+		Kind:        runtime.ObservationKindResponseOutcome,
+		ObservedAt:  time.Date(2026, 3, 16, 20, 45, 0, 0, time.UTC),
+		RecordedAt:  time.Date(2026, 3, 16, 20, 45, 1, 0, time.UTC),
+		WorkloadRef: "deployment:prod/web",
+		Metadata: map[string]any{
+			"finding_id":    "finding-1",
+			"execution_id":  "exec-1",
+			"policy_id":     "policy-1",
+			"action_type":   "block_ip",
+			"action_status": "completed",
+		},
+	}
+
+	result := MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{observation}, time.Date(2026, 3, 16, 20, 46, 0, 0, time.UTC))
+	if result.ResponseBasedOnEdgesCreated != 0 {
+		t.Fatalf("ResponseBasedOnEdgesCreated = %d, want 0", result.ResponseBasedOnEdgesCreated)
+	}
+
+	observationNodeID := "observation:" + observation.ID
+	if got := len(g.GetOutEdges(observationNodeID)); got != 1 {
+		t.Fatalf("len(out edges) = %d, want 1 target edge only", got)
+	}
+}
+
+func TestMaterializeObservationsIntoGraphDoesNotDuplicateResponseOutcomeBasedOnEdges(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:   "deployment:prod/web",
+		Kind: graph.NodeKindDeployment,
+		Name: "web",
+	})
+	g.AddNode(&graph.Node{
+		ID:       "evidence:runtime_finding:finding-1",
+		Kind:     graph.NodeKindEvidence,
+		Name:     "finding-1",
+		Provider: runtimeFindingEvidenceSourceSystem,
+		Properties: map[string]any{
+			"evidence_type": "runtime_finding",
+			"source_system": runtimeFindingEvidenceSourceSystem,
+			"observed_at":   "2026-03-16T20:44:00Z",
+			"valid_from":    "2026-03-16T20:44:00Z",
+		},
+	})
+
+	observation := &runtime.RuntimeObservation{
+		ID:          "runtime:response_outcome:block-ip",
+		Source:      "runtime_response",
+		Kind:        runtime.ObservationKindResponseOutcome,
+		ObservedAt:  time.Date(2026, 3, 16, 20, 45, 0, 0, time.UTC),
+		RecordedAt:  time.Date(2026, 3, 16, 20, 45, 1, 0, time.UTC),
+		WorkloadRef: "deployment:prod/web",
+		Metadata: map[string]any{
+			"finding_id":    "finding-1",
+			"execution_id":  "exec-1",
+			"policy_id":     "policy-1",
+			"action_type":   "block_ip",
+			"action_status": "completed",
+		},
+	}
+
+	first := MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{observation}, time.Date(2026, 3, 16, 20, 46, 0, 0, time.UTC))
+	second := MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{observation}, time.Date(2026, 3, 16, 20, 47, 0, 0, time.UTC))
+	if first.ResponseBasedOnEdgesCreated != 1 {
+		t.Fatalf("first ResponseBasedOnEdgesCreated = %d, want 1", first.ResponseBasedOnEdgesCreated)
+	}
+	if second.ResponseBasedOnEdgesCreated != 0 {
+		t.Fatalf("second ResponseBasedOnEdgesCreated = %d, want 0", second.ResponseBasedOnEdgesCreated)
+	}
+
+	observationNodeID := "observation:" + observation.ID
+	var basedOn int
+	for _, edge := range g.GetOutEdges(observationNodeID) {
+		if edge.Kind == graph.EdgeKindBasedOn {
+			basedOn++
+		}
+	}
+	if basedOn != 1 {
+		t.Fatalf("based_on edge count = %d, want 1", basedOn)
+	}
+}
+
 func TestMaterializeObservationsIntoGraphDefersIndexBuildToCaller(t *testing.T) {
 	g := graph.New()
 	g.AddNode(&graph.Node{

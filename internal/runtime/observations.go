@@ -216,6 +216,9 @@ func observationFromResponseExecution(execution *ResponseExecution, action *Acti
 		"approved_by":      execution.ApprovedBy,
 		"approved_at":      execution.ApprovedAt,
 	}
+	if findingID, ok := execution.TriggerData["finding_id"].(string); ok && strings.TrimSpace(findingID) != "" {
+		metadata["finding_id"] = strings.TrimSpace(findingID)
+	}
 	if action.Output != "" {
 		metadata["action_output"] = action.Output
 	}

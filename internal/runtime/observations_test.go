@@ -918,7 +918,10 @@ func TestObservationFromResponseExecution(t *testing.T) {
 		ResourceID:   "deployment:prod/web",
 		ResourceType: "deployment",
 		ApprovedBy:   "alice",
-		EndTime:      &endTime,
+		TriggerData: map[string]any{
+			"finding_id": "finding-1",
+		},
+		EndTime: &endTime,
 	}
 	action := &ActionExecution{
 		Type:      ActionBlockIP,
@@ -940,5 +943,8 @@ func TestObservationFromResponseExecution(t *testing.T) {
 	}
 	if observation.ResourceID != "deployment:prod/web" {
 		t.Fatalf("resource_id = %q, want %q", observation.ResourceID, "deployment:prod/web")
+	}
+	if got := observation.Metadata["finding_id"]; got != "finding-1" {
+		t.Fatalf("finding_id = %#v, want finding-1", got)
 	}
 }
