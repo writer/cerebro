@@ -5,6 +5,23 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 165 - Incremental Cross-Account Edge Index Maintenance (2026-03-16)
+
+### Review findings
+- [x] Gap: issue `#345` still left `GetCrossAccountEdgesIndexed()` behind the full `BuildIndex()` invalidation path, so a single edge mutation immediately threw away the precomputed cross-account view.
+- [x] Gap: the cross-account edge getter was also returning the live backing slice, which is the same concurrency hazard already fixed for incremental node lookup results.
+- [x] Gap: there was no benchmark quantifying incremental cross-account edge maintenance versus add-edge-plus-full-rebuild.
+
+### Execution plan
+- [x] Add a separately tracked incremental-build flag for the cross-account edge index.
+- [x] Update edge add/replace/delete and node removal paths to maintain the cross-account edge index incrementally once built.
+- [x] Return detached slices from `GetCrossAccountEdgesIndexed()`.
+- [x] Add regressions for:
+  - [x] add/replace/remove behavior
+  - [x] detached results surviving later mutations
+- [x] Add a benchmark comparing incremental cross-account edge maintenance against a forced rebuild after add-edge.
+- [x] Re-run focused graph tests, benchmark, lint, and changed-file validation.
+
 ## Deep Review Cycle 162 - Streaming Snapshot Serialization Slice (2026-03-16)
 
 ### Review findings

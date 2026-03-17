@@ -544,6 +544,162 @@ func TestGraph_CrossAccountEdgesIndexed(t *testing.T) {
 	}
 }
 
+func TestGraph_IncrementalCrossAccountEdgesStayBuiltAcrossEdgeMutations(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "user:alice", Kind: NodeKindUser, Account: "111"})
+	g.AddNode(&Node{ID: "role:admin", Kind: NodeKindRole, Account: "222"})
+	g.AddNode(&Node{ID: "role:viewer", Kind: NodeKindRole, Account: "111"})
+	g.BuildIndex()
+
+	g.AddEdge(&Edge{
+		ID:     "cross-1",
+		Source: "user:alice",
+		Target: "role:admin",
+		Kind:   EdgeKindCanAssume,
+		Properties: map[string]any{
+			"cross_account": true,
+		},
+	})
+	if g.IsIndexBuilt() {
+		t.Fatal("expected full index to be invalidated after AddEdge")
+	}
+	g.mu.RLock()
+	if !g.crossAccountIndexBuilt {
+		g.mu.RUnlock()
+		t.Fatal("expected cross-account edge index to stay built after AddEdge")
+	}
+	g.mu.RUnlock()
+	if got := len(g.GetCrossAccountEdgesIndexed()); got != 1 {
+		t.Fatalf("len(GetCrossAccountEdgesIndexed()) after AddEdge = %d, want 1", got)
+	}
+
+	g.AddEdge(&Edge{
+		ID:     "cross-1",
+		Source: "user:alice",
+		Target: "role:viewer",
+		Kind:   EdgeKindCanAssume,
+		Properties: map[string]any{
+			"cross_account": false,
+		},
+	})
+	if got := len(g.GetCrossAccountEdgesIndexed()); got != 0 {
+		t.Fatalf("len(GetCrossAccountEdgesIndexed()) after replace = %d, want 0", got)
+	}
+
+	g.AddEdge(&Edge{
+		ID:     "cross-2",
+		Source: "user:alice",
+		Target: "role:admin",
+		Kind:   EdgeKindCanAssume,
+		Properties: map[string]any{
+			"cross_account": true,
+		},
+	})
+	if !g.RemoveNode("role:admin") {
+		t.Fatal("expected RemoveNode(role:admin) to succeed")
+	}
+	if got := len(g.GetCrossAccountEdgesIndexed()); got != 0 {
+		t.Fatalf("len(GetCrossAccountEdgesIndexed()) after RemoveNode = %d, want 0", got)
+	}
+}
+
+func TestGraph_IncrementalCrossAccountEdgesIndexedResultsAreDetached(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "user:alice", Kind: NodeKindUser, Account: "111"})
+	g.AddNode(&Node{ID: "role:admin", Kind: NodeKindRole, Account: "222"})
+	g.BuildIndex()
+	g.AddEdge(&Edge{
+		ID:     "cross-1",
+		Source: "user:alice",
+		Target: "role:admin",
+		Kind:   EdgeKindCanAssume,
+		Properties: map[string]any{
+			"cross_account": true,
+		},
+	})
+
+	edges := g.GetCrossAccountEdgesIndexed()
+	if !g.RemoveEdge("user:alice", "role:admin", EdgeKindCanAssume) {
+		t.Fatal("expected RemoveEdge to succeed")
+	}
+
+	if got := len(edges); got != 1 {
+		t.Fatalf("len(edges) = %d, want 1", got)
+	}
+	if edges[0] == nil || edges[0].ID != "cross-1" {
+		t.Fatalf("edges[0] = %#v, want cross-1", edges[0])
+	}
+}
+
+func TestGraph_RemoveCrossAccountEdgeLockedClearsCompactedTail(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "user:alice", Kind: NodeKindUser, Account: "111"})
+	g.AddNode(&Node{ID: "role:admin", Kind: NodeKindRole, Account: "222"})
+	g.AddNode(&Node{ID: "role:auditor", Kind: NodeKindRole, Account: "333"})
+	g.BuildIndex()
+	g.AddEdge(&Edge{
+		ID:     "cross-1",
+		Source: "user:alice",
+		Target: "role:admin",
+		Kind:   EdgeKindCanAssume,
+		Properties: map[string]any{
+			"cross_account": true,
+		},
+	})
+	g.AddEdge(&Edge{
+		ID:     "cross-2",
+		Source: "user:alice",
+		Target: "role:auditor",
+		Kind:   EdgeKindCanAssume,
+		Properties: map[string]any{
+			"cross_account": true,
+		},
+	})
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if got := len(g.crossAccountEdge); got != 2 {
+		t.Fatalf("len(crossAccountEdge) = %d, want 2", got)
+	}
+	backing := g.crossAccountEdge[:cap(g.crossAccountEdge)]
+	g.removeCrossAccountEdgeLocked(g.crossAccountEdge[0])
+	if got := len(g.crossAccountEdge); got != 1 {
+		t.Fatalf("len(crossAccountEdge) after removal = %d, want 1", got)
+	}
+	if backing[1] != nil {
+		t.Fatalf("compacted tail retained %#v, want nil", backing[1])
+	}
+}
+
+func TestGraph_ClearEdgesInvalidatesCrossAccountIndex(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "user:alice", Kind: NodeKindUser, Account: "111"})
+	g.AddNode(&Node{ID: "role:admin", Kind: NodeKindRole, Account: "222"})
+	g.AddEdge(&Edge{
+		ID:     "cross-1",
+		Source: "user:alice",
+		Target: "role:admin",
+		Kind:   EdgeKindCanAssume,
+		Properties: map[string]any{
+			"cross_account": true,
+		},
+	})
+	g.BuildIndex()
+
+	g.ClearEdges()
+
+	if !g.nodeLookupIndexBuilt {
+		t.Fatal("expected node lookup index to remain built after ClearEdges")
+	}
+	if g.crossAccountIndexBuilt {
+		t.Fatal("expected cross-account index to be invalidated after ClearEdges")
+	}
+	if got := len(g.GetCrossAccountEdgesIndexed()); got != 0 {
+		t.Fatalf("len(GetCrossAccountEdgesIndexed()) after ClearEdges = %d, want 0", got)
+	}
+}
+
 func TestGraph_RemoveNode(t *testing.T) {
 	g := New()
 

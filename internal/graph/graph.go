@@ -31,11 +31,12 @@ type Graph struct {
 	blastRadiusNeedsCompaction bool
 
 	// Basic node lookup indexes are maintained incrementally once built.
-	indexByKind          map[NodeKind][]*Node
-	indexByAccount       map[string][]*Node
-	indexByRisk          map[RiskLevel][]*Node
-	indexByProvider      map[string][]*Node
-	nodeLookupIndexBuilt bool
+	indexByKind            map[NodeKind][]*Node
+	indexByAccount         map[string][]*Node
+	indexByRisk            map[RiskLevel][]*Node
+	indexByProvider        map[string][]*Node
+	nodeLookupIndexBuilt   bool
+	crossAccountIndexBuilt bool
 
 	// Heavier derived/search indexes are still rebuilt on BuildIndex().
 	indexByARNPrefix         map[string][]*Node // "service:resourceType" -> nodes for fast ARN matching
@@ -472,6 +473,8 @@ func (g *Graph) ClearEdges() {
 	g.inEdges = make(map[string][]*Edge)
 	g.activeEdgeCount.Store(0)
 	g.edgeByID = make(map[string]*Edge)
+	g.crossAccountEdge = nil
+	g.crossAccountIndexBuilt = false
 	g.markGraphChangedPreservingNodeLookupLocked()
 }
 
@@ -591,6 +594,7 @@ func (g *Graph) buildIndexLocked() {
 		g.entitySearchTrigramIndex[trigram] = flattenEntitySearchSet(ids)
 	}
 
+	g.crossAccountIndexBuilt = true
 	g.indexBuilt = true
 }
 
@@ -798,11 +802,22 @@ func (g *Graph) GetCrossAccountEdgesIndexed() []*Edge {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 
-	if !g.indexBuilt {
-		return g.GetCrossAccountEdges()
+	if !g.crossAccountIndexBuilt {
+		edges := make([]*Edge, 0, len(g.crossAccountEdge))
+		for _, edgeList := range g.outEdges {
+			for _, edge := range edgeList {
+				if !g.activeEdgeLocked(edge) {
+					continue
+				}
+				if edge.IsCrossAccount() {
+					edges = append(edges, edge)
+				}
+			}
+		}
+		return edges
 	}
 
-	return g.crossAccountEdge
+	return append([]*Edge(nil), g.crossAccountEdge...)
 }
 
 // InvalidateIndex marks the index as stale (call after modifications)
@@ -964,6 +979,7 @@ func (g *Graph) addEdgeLocked(edge *Edge) bool {
 	g.outEdges[edge.Source] = append(g.outEdges[edge.Source], edge)
 	g.inEdges[edge.Target] = append(g.inEdges[edge.Target], edge)
 	g.activeEdgeCount.Add(1)
+	g.addCrossAccountEdgeLocked(edge)
 	if edge.ID != "" {
 		g.edgeByID[edge.ID] = edge
 	}
@@ -996,6 +1012,7 @@ func (g *Graph) replaceEdgeLocked(existing *Edge, next *Edge, now time.Time) boo
 	if existing.DeletedAt != nil {
 		g.activeEdgeCount.Add(1)
 	}
+	g.removeCrossAccountEdgeLocked(existing)
 
 	if oldSource != next.Source {
 		g.outEdges[oldSource] = removeEdgePointerLocked(g.outEdges[oldSource], existing)
@@ -1017,8 +1034,34 @@ func (g *Graph) replaceEdgeLocked(existing *Edge, next *Edge, now time.Time) boo
 	if !edgePointerPresentLocked(g.inEdges[next.Target], existing) {
 		g.inEdges[next.Target] = append(g.inEdges[next.Target], existing)
 	}
+	g.addCrossAccountEdgeLocked(existing)
 	g.edgeByID[next.ID] = existing
 	return true
+}
+
+func (g *Graph) addCrossAccountEdgeLocked(edge *Edge) {
+	if !g.crossAccountIndexBuilt || !g.activeEdgeLocked(edge) || !edge.IsCrossAccount() {
+		return
+	}
+	g.crossAccountEdge = append(g.crossAccountEdge, edge)
+}
+
+func (g *Graph) removeCrossAccountEdgeLocked(target *Edge) {
+	if !g.crossAccountIndexBuilt || len(g.crossAccountEdge) == 0 || target == nil {
+		return
+	}
+	originalLen := len(g.crossAccountEdge)
+	compacted := g.crossAccountEdge[:0]
+	for _, edge := range g.crossAccountEdge {
+		if edge == target {
+			continue
+		}
+		compacted = append(compacted, edge)
+	}
+	for i := len(compacted); i < originalLen; i++ {
+		g.crossAccountEdge[i] = nil
+	}
+	g.crossAccountEdge = compacted
 }
 
 func (g *Graph) activeEdgesForNodeLocked(edges []*Edge) []*Edge {
@@ -1163,6 +1206,7 @@ func (g *Graph) markEdgeDeletedLocked(edge *Edge) bool {
 	if edge == nil || edge.DeletedAt != nil {
 		return false
 	}
+	g.removeCrossAccountEdgeLocked(edge)
 	now := temporalNowUTC()
 	edge.DeletedAt = &now
 	if edge.Version <= 0 {
@@ -1175,6 +1219,7 @@ func (g *Graph) markEdgeDeletedLocked(edge *Edge) bool {
 
 func (g *Graph) markGraphChangedLocked() {
 	g.nodeLookupIndexBuilt = false
+	g.crossAccountIndexBuilt = false
 	g.indexBuilt = false
 	g.entitySuggestBuilt = false
 	g.blastRadiusVersion++
