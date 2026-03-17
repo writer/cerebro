@@ -5,6 +5,20 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 177 - File-Backed Graph WAL Store (2026-03-16)
+
+### Review findings
+- [x] Gap: issue `#352` had typed WAL records and replay helpers, but no durable append-only store abstraction that could actually persist those records between checkpoints.
+- [x] Gap: without a file-backed `load since checkpoint sequence` path, recovery still depends on callers managing raw files themselves, which keeps checkpoint-plus-replay outside the graph package boundary.
+- [x] Gap: compaction was still entirely manual, so there was no tested way to truncate checkpointed WAL segments and bound local log growth after successful persistence.
+
+### Execution plan
+- [x] Add a local file-backed graph mutation log with append and full-load helpers.
+- [x] Add sequence-based loading so checkpoint recovery can replay only post-checkpoint records.
+- [x] Add compaction-through-sequence support that rewrites or removes fully checkpointed logs.
+- [x] Add TDD coverage for append/load, post-sequence filtering, compaction, and checkpoint replay.
+- [ ] Re-run focused graph tests, lint, and changed-file validation.
+
 ## Deep Review Cycle 176 - Information Flow Ordinal BFS State (2026-03-16)
 
 ### Review findings
