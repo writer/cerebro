@@ -12,18 +12,20 @@ import (
 
 // MaterializationResult summarizes one batch of runtime observation graph writes.
 type MaterializationResult struct {
-	ObservationsConsidered           int   `json:"observations_considered"`
-	ObservationsMaterialized         int   `json:"observations_materialized"`
-	ObservationsSkipped              int   `json:"observations_skipped"`
-	WorkloadTargetEdgesCreated       int   `json:"workload_target_edges_created"`
-	ResponseBasedOnEdgesCreated      int   `json:"response_based_on_edges_created"`
-	DeploymentRunBasedOnEdgesCreated int   `json:"deployment_run_based_on_edges_created"`
-	MissingSubjects                  int   `json:"missing_subjects"`
-	InvalidObservations              int   `json:"invalid_observations"`
-	LastError                        error `json:"-"`
+	ObservationsConsidered             int   `json:"observations_considered"`
+	ObservationsMaterialized           int   `json:"observations_materialized"`
+	ObservationsSkipped                int   `json:"observations_skipped"`
+	WorkloadTargetEdgesCreated         int   `json:"workload_target_edges_created"`
+	ResponseBasedOnEdgesCreated        int   `json:"response_based_on_edges_created"`
+	DeploymentRunBasedOnEdgesCreated   int   `json:"deployment_run_based_on_edges_created"`
+	KubernetesAuditBasedOnEdgesCreated int   `json:"kubernetes_audit_based_on_edges_created"`
+	MissingSubjects                    int   `json:"missing_subjects"`
+	InvalidObservations                int   `json:"invalid_observations"`
+	LastError                          error `json:"-"`
 }
 
 const deploymentRunObservationMaxGap = 30 * time.Minute
+const kubernetesAuditObservationMaxGap = 10 * time.Minute
 
 // MaterializeObservationsIntoGraph projects runtime observations into graph observation nodes.
 func MaterializeObservationsIntoGraph(g *graph.Graph, observations []*runtime.RuntimeObservation, now time.Time) MaterializationResult {
@@ -38,7 +40,19 @@ func MaterializeObservationsIntoGraph(g *graph.Graph, observations []*runtime.Ru
 	for _, observation := range observations {
 		result.ObservationsConsidered++
 
-		req, err := BuildObservationWriteRequest(observation)
+		normalized, err := runtime.NormalizeObservation(observation)
+		if err != nil {
+			result.ObservationsSkipped++
+			if errors.Is(err, ErrMissingObservationSubject) {
+				result.MissingSubjects++
+			} else {
+				result.InvalidObservations++
+			}
+			result.LastError = err
+			continue
+		}
+
+		req, err := buildObservationWriteRequestFromNormalized(normalized)
 		if err != nil {
 			result.ObservationsSkipped++
 			if errors.Is(err, ErrMissingObservationSubject) {
@@ -68,7 +82,7 @@ func MaterializeObservationsIntoGraph(g *graph.Graph, observations []*runtime.Ru
 			continue
 		}
 
-		graph.MergeEdgeProperties(g, observationTargetEdgeID(req.ID, req.SubjectID), responseOutcomeTargetEdgeProperties(observation))
+		graph.MergeEdgeProperties(g, observationTargetEdgeID(req.ID, req.SubjectID), responseOutcomeTargetEdgeProperties(normalized))
 
 		if subjectNode, ok := g.GetNode(req.SubjectID); ok && isWorkloadSubjectNode(subjectNode) {
 			properties := map[string]any{
@@ -77,7 +91,7 @@ func MaterializeObservationsIntoGraph(g *graph.Graph, observations []*runtime.Ru
 				"observed_at":     req.ObservedAt.UTC().Format(time.RFC3339),
 				"valid_from":      req.ValidFrom.UTC().Format(time.RFC3339),
 			}
-			for key, value := range responseOutcomeTargetEdgeProperties(observation) {
+			for key, value := range responseOutcomeTargetEdgeProperties(normalized) {
 				properties[key] = value
 			}
 			if graph.AddEdgeIfMissing(g, &graph.Edge{
@@ -92,17 +106,23 @@ func MaterializeObservationsIntoGraph(g *graph.Graph, observations []*runtime.Ru
 			}
 		}
 
-		if evidenceNodeID := responseOutcomeEvidenceNodeID(observation); evidenceNodeID != "" {
+		if evidenceNodeID := responseOutcomeEvidenceNodeID(normalized); evidenceNodeID != "" {
 			if _, ok := g.GetNode(evidenceNodeID); ok {
-				if graph.AddEdgeIfMissing(g, buildResponseOutcomeBasedOnEdge(req.ID, evidenceNodeID, observation)) {
+				if graph.AddEdgeIfMissing(g, buildResponseOutcomeBasedOnEdge(req.ID, evidenceNodeID, normalized)) {
 					result.ResponseBasedOnEdgesCreated++
 				}
 			}
 		}
 
-		if deploymentRunID, serviceID, gap, ok := observationDeploymentRunCandidate(g, observation, req.SubjectID); ok {
-			if graph.AddEdgeIfMissing(g, buildObservationDeploymentRunBasedOnEdge(req.ID, deploymentRunID, serviceID, gap, observation)) {
+		if deploymentRunID, serviceID, gap, ok := observationDeploymentRunCandidate(g, normalized, req.SubjectID); ok {
+			if graph.AddEdgeIfMissing(g, buildObservationDeploymentRunBasedOnEdge(req.ID, deploymentRunID, serviceID, gap, normalized)) {
 				result.DeploymentRunBasedOnEdgesCreated++
+			}
+		}
+
+		if auditObservationID, gap, ok := observationKubernetesAuditCandidate(g, req.ID, normalized, req.SubjectID); ok {
+			if graph.AddEdgeIfMissing(g, buildObservationKubernetesAuditBasedOnEdge(req.ID, auditObservationID, req.SubjectID, gap, normalized)) {
+				result.KubernetesAuditBasedOnEdgesCreated++
 			}
 		}
 
@@ -330,6 +350,24 @@ func propertyTime(properties map[string]any, key string) (time.Time, bool) {
 	}
 }
 
+func propertyString(properties map[string]any, key string) string {
+	if len(properties) == 0 {
+		return ""
+	}
+	raw, ok := properties[key]
+	if !ok {
+		return ""
+	}
+	switch typed := raw.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case []byte:
+		return strings.TrimSpace(string(typed))
+	default:
+		return ""
+	}
+}
+
 func parseRFC3339Time(value string) (time.Time, bool) {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -365,6 +403,83 @@ func buildObservationDeploymentRunBasedOnEdge(observationNodeID, deploymentRunID
 		ID:         observationNodeID + "->" + deploymentRunID + ":" + string(graph.EdgeKindBasedOn),
 		Source:     observationNodeID,
 		Target:     deploymentRunID,
+		Kind:       graph.EdgeKindBasedOn,
+		Effect:     graph.EdgeEffectAllow,
+		Properties: properties,
+	}
+}
+
+func observationKubernetesAuditCandidate(g *graph.Graph, observationNodeID string, observation *runtime.RuntimeObservation, subjectID string) (string, time.Duration, bool) {
+	if g == nil || observation == nil || observation.ObservedAt.IsZero() || observation.Kind == runtime.ObservationKindKubernetesAudit {
+		return "", 0, false
+	}
+
+	observationNodeID = strings.TrimSpace(observationNodeID)
+	subjectID = strings.TrimSpace(subjectID)
+	if subjectID == "" {
+		return "", 0, false
+	}
+
+	var candidateID string
+	var candidateGap time.Duration
+	for _, node := range g.GetNodesByKind(graph.NodeKindObservation) {
+		if node == nil || strings.TrimSpace(node.ID) == observationNodeID {
+			continue
+		}
+		if propertyString(node.Properties, "observation_type") != string(runtime.ObservationKindKubernetesAudit) {
+			continue
+		}
+		if propertyString(node.Properties, "subject_id") != subjectID {
+			continue
+		}
+
+		auditObservedAt, ok := propertyTime(node.Properties, "observed_at")
+		if !ok {
+			auditObservedAt, ok = propertyTime(node.Properties, "valid_from")
+		}
+		if !ok || auditObservedAt.After(observation.ObservedAt) {
+			continue
+		}
+
+		gap := observation.ObservedAt.Sub(auditObservedAt)
+		if gap < 0 || gap > kubernetesAuditObservationMaxGap {
+			continue
+		}
+
+		if candidateID != "" {
+			return "", 0, false
+		}
+		candidateID = strings.TrimSpace(node.ID)
+		candidateGap = gap
+	}
+
+	if candidateID == "" {
+		return "", 0, false
+	}
+	return candidateID, candidateGap, true
+}
+
+func buildObservationKubernetesAuditBasedOnEdge(observationNodeID, auditObservationID, subjectID string, gap time.Duration, observation *runtime.RuntimeObservation) *graph.Edge {
+	observationNodeID = strings.TrimSpace(observationNodeID)
+	auditObservationID = strings.TrimSpace(auditObservationID)
+	subjectID = strings.TrimSpace(subjectID)
+	if observationNodeID == "" || auditObservationID == "" || subjectID == "" {
+		return nil
+	}
+
+	properties := map[string]any{
+		"source_system":     firstNonEmpty(strings.TrimSpace(observation.Source), "runtime"),
+		"subject_id":        subjectID,
+		"audit_gap_seconds": int64(gap.Seconds()),
+	}
+	addMetadataString(properties, "source_event_id", strings.TrimSpace(observation.ID))
+	addMetadataString(properties, "observed_at", observation.ObservedAt.UTC().Format(time.RFC3339))
+	addMetadataString(properties, "valid_from", observation.ObservedAt.UTC().Format(time.RFC3339))
+
+	return &graph.Edge{
+		ID:         observationNodeID + "->" + auditObservationID + ":" + string(graph.EdgeKindBasedOn),
+		Source:     observationNodeID,
+		Target:     auditObservationID,
 		Kind:       graph.EdgeKindBasedOn,
 		Effect:     graph.EdgeEffectAllow,
 		Properties: properties,

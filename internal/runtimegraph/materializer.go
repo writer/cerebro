@@ -43,6 +43,10 @@ func BuildObservationWriteRequest(observation *runtime.RuntimeObservation) (grap
 	if err != nil {
 		return graph.ObservationWriteRequest{}, err
 	}
+	return buildObservationWriteRequestFromNormalized(normalized)
+}
+
+func buildObservationWriteRequestFromNormalized(normalized *runtime.RuntimeObservation) (graph.ObservationWriteRequest, error) {
 	if normalized == nil {
 		return graph.ObservationWriteRequest{}, fmt.Errorf("runtime observation is required")
 	}

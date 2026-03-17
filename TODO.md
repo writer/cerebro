@@ -5,6 +5,25 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 157 - Runtime Observation Causal Links To Kubernetes Audit Events (2026-03-16)
+
+### Review findings
+- [x] Gap: runtime observations can already project into graph `observation` nodes, but the graph still had no causal bridge back to the Kubernetes audit observations that often explain why a workload changed immediately before a runtime signal appeared.
+- [x] Gap: this correlation also needs to stay conservative; if multiple recent audit observations touch the same subject, the projector should skip the causal edge instead of inventing provenance.
+- [x] Gap: runtimegraph had no regression coverage proving audit-observation causal edges can be created, suppressed on ambiguity, and deduplicated across repeated materialization passes.
+
+### Execution plan
+- [x] Add a Kubernetes-audit matcher in runtimegraph that requires:
+  - [x] one concrete shared subject ID
+  - [x] exactly one recent prior `k8s_audit` observation node for that subject
+  - [x] a bounded pre-observation time window
+- [x] Materialize `observation -> based_on -> observation(k8s_audit)` edges with subject and time-gap metadata.
+- [x] Add TDD coverage for:
+  - [x] unique audit correlation
+  - [x] ambiguity skip behavior
+  - [x] idempotent repeated projection
+- [x] Re-run focused runtimegraph tests, lint, and changed-file validation.
+
 ## Deep Review Cycle 156 - Runtime Observation Causal Links To Deployment Runs (2026-03-16)
 
 ### Review findings
@@ -604,7 +623,7 @@ Status: executed end-to-end via PR workflow
 - [x] 065. Add response-to-target edges for runtime response outcomes.
 - [x] 066. Add causal edges from response outcomes back to findings.
 - [x] 067. Add causal edges from runtime observations to deployment runs where justified.
-- [ ] 068. Add causal edges from runtime observations to Kubernetes audit events where justified.
+- [x] 068. Add causal edges from runtime observations to Kubernetes audit events where justified.
 - [ ] 069. Add graph materialization tests for runtime observations.
 - [ ] 070. Add graph ontology/schema entries required for runtime evidence projection.
 - [ ] 071. Add response-engine hooks to emit outcome observations on action completion.

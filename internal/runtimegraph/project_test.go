@@ -726,6 +726,252 @@ func TestMaterializeObservationsIntoGraphDoesNotDuplicateDeploymentRunBasedOnEdg
 	}
 }
 
+func TestMaterializeObservationsIntoGraphAddsKubernetesAuditBasedOnEdge(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:   "deployment:prod/api",
+		Kind: graph.NodeKindDeployment,
+		Name: "api",
+	})
+
+	auditObservation := &runtime.RuntimeObservation{
+		ID:          "runtime:k8s_audit:patch-api",
+		Source:      "k8s_audit",
+		Kind:        runtime.ObservationKindKubernetesAudit,
+		ObservedAt:  time.Date(2026, 3, 16, 21, 30, 0, 0, time.UTC),
+		RecordedAt:  time.Date(2026, 3, 16, 21, 30, 1, 0, time.UTC),
+		WorkloadRef: "deployment:prod/api",
+		Namespace:   "prod",
+		ControlPlane: &runtime.ControlPlaneContext{
+			Verb:      "patch",
+			Resource:  "deployments",
+			Namespace: "prod",
+			Name:      "api",
+			User:      "deployer",
+		},
+	}
+	auditResult := MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{auditObservation}, time.Date(2026, 3, 16, 21, 31, 0, 0, time.UTC))
+	if auditResult.ObservationsMaterialized != 1 {
+		t.Fatalf("audit ObservationsMaterialized = %d, want 1", auditResult.ObservationsMaterialized)
+	}
+
+	observation := &runtime.RuntimeObservation{
+		ID:          "runtime:process_exec:post-deploy",
+		Source:      "tetragon",
+		Kind:        runtime.ObservationKindProcessExec,
+		ObservedAt:  time.Date(2026, 3, 16, 21, 35, 0, 0, time.UTC),
+		RecordedAt:  time.Date(2026, 3, 16, 21, 35, 1, 0, time.UTC),
+		WorkloadRef: "deployment:prod/api",
+		Process: &runtime.ProcessEvent{
+			Name: "sh",
+			Path: "/bin/sh",
+		},
+	}
+
+	result := MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{observation}, time.Date(2026, 3, 16, 21, 36, 0, 0, time.UTC))
+	if result.KubernetesAuditBasedOnEdgesCreated != 1 {
+		t.Fatalf("KubernetesAuditBasedOnEdgesCreated = %d, want 1", result.KubernetesAuditBasedOnEdgesCreated)
+	}
+
+	observationNodeID := "observation:" + observation.ID
+	var found bool
+	for _, edge := range g.GetOutEdges(observationNodeID) {
+		if edge.Kind != graph.EdgeKindBasedOn {
+			continue
+		}
+		found = true
+		if edge.Target != "observation:"+auditObservation.ID {
+			t.Fatalf("based_on target = %q, want %q", edge.Target, "observation:"+auditObservation.ID)
+		}
+		if got := edge.Properties["audit_gap_seconds"]; got != int64((5 * time.Minute).Seconds()) {
+			t.Fatalf("audit_gap_seconds = %#v, want %d", got, int64((5 * time.Minute).Seconds()))
+		}
+		if got := edge.Properties["subject_id"]; got != "deployment:prod/api" {
+			t.Fatalf("subject_id = %#v, want deployment:prod/api", got)
+		}
+	}
+	if !found {
+		t.Fatal("expected kubernetes audit based_on edge")
+	}
+}
+
+func TestMaterializeObservationsIntoGraphSkipsKubernetesAuditBasedOnEdgeWhenAmbiguous(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:   "deployment:prod/api",
+		Kind: graph.NodeKindDeployment,
+		Name: "api",
+	})
+
+	for _, suffix := range []string{"patch-a", "patch-b"} {
+		auditObservation := &runtime.RuntimeObservation{
+			ID:          "runtime:k8s_audit:" + suffix,
+			Source:      "k8s_audit",
+			Kind:        runtime.ObservationKindKubernetesAudit,
+			ObservedAt:  time.Date(2026, 3, 16, 21, 30, 0, 0, time.UTC),
+			RecordedAt:  time.Date(2026, 3, 16, 21, 30, 1, 0, time.UTC),
+			WorkloadRef: "deployment:prod/api",
+			Namespace:   "prod",
+			ControlPlane: &runtime.ControlPlaneContext{
+				Verb:      "patch",
+				Resource:  "deployments",
+				Namespace: "prod",
+				Name:      "api",
+				User:      "deployer",
+			},
+		}
+		MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{auditObservation}, time.Date(2026, 3, 16, 21, 31, 0, 0, time.UTC))
+	}
+
+	observation := &runtime.RuntimeObservation{
+		ID:          "runtime:process_exec:post-deploy-ambiguous",
+		Source:      "tetragon",
+		Kind:        runtime.ObservationKindProcessExec,
+		ObservedAt:  time.Date(2026, 3, 16, 21, 35, 0, 0, time.UTC),
+		RecordedAt:  time.Date(2026, 3, 16, 21, 35, 1, 0, time.UTC),
+		WorkloadRef: "deployment:prod/api",
+		Process: &runtime.ProcessEvent{
+			Name: "sh",
+			Path: "/bin/sh",
+		},
+	}
+
+	result := MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{observation}, time.Date(2026, 3, 16, 21, 36, 0, 0, time.UTC))
+	if result.KubernetesAuditBasedOnEdgesCreated != 0 {
+		t.Fatalf("KubernetesAuditBasedOnEdgesCreated = %d, want 0", result.KubernetesAuditBasedOnEdgesCreated)
+	}
+
+	observationNodeID := "observation:" + observation.ID
+	for _, edge := range g.GetOutEdges(observationNodeID) {
+		if edge.Kind == graph.EdgeKindBasedOn {
+			t.Fatalf("unexpected based_on edge = %+v", edge)
+		}
+	}
+}
+
+func TestMaterializeObservationsIntoGraphDoesNotDuplicateKubernetesAuditBasedOnEdges(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:   "deployment:prod/api",
+		Kind: graph.NodeKindDeployment,
+		Name: "api",
+	})
+
+	auditObservation := &runtime.RuntimeObservation{
+		ID:          "runtime:k8s_audit:patch-api",
+		Source:      "k8s_audit",
+		Kind:        runtime.ObservationKindKubernetesAudit,
+		ObservedAt:  time.Date(2026, 3, 16, 21, 30, 0, 0, time.UTC),
+		RecordedAt:  time.Date(2026, 3, 16, 21, 30, 1, 0, time.UTC),
+		WorkloadRef: "deployment:prod/api",
+		Namespace:   "prod",
+		ControlPlane: &runtime.ControlPlaneContext{
+			Verb:      "patch",
+			Resource:  "deployments",
+			Namespace: "prod",
+			Name:      "api",
+			User:      "deployer",
+		},
+	}
+	MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{auditObservation}, time.Date(2026, 3, 16, 21, 31, 0, 0, time.UTC))
+
+	observation := &runtime.RuntimeObservation{
+		ID:          "runtime:process_exec:post-deploy-dedupe",
+		Source:      "tetragon",
+		Kind:        runtime.ObservationKindProcessExec,
+		ObservedAt:  time.Date(2026, 3, 16, 21, 35, 0, 0, time.UTC),
+		RecordedAt:  time.Date(2026, 3, 16, 21, 35, 1, 0, time.UTC),
+		WorkloadRef: "deployment:prod/api",
+		Process: &runtime.ProcessEvent{
+			Name: "sh",
+			Path: "/bin/sh",
+		},
+	}
+
+	first := MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{observation}, time.Date(2026, 3, 16, 21, 36, 0, 0, time.UTC))
+	second := MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{observation}, time.Date(2026, 3, 16, 21, 37, 0, 0, time.UTC))
+	if first.KubernetesAuditBasedOnEdgesCreated != 1 {
+		t.Fatalf("first KubernetesAuditBasedOnEdgesCreated = %d, want 1", first.KubernetesAuditBasedOnEdgesCreated)
+	}
+	if second.KubernetesAuditBasedOnEdgesCreated != 0 {
+		t.Fatalf("second KubernetesAuditBasedOnEdgesCreated = %d, want 0", second.KubernetesAuditBasedOnEdgesCreated)
+	}
+
+	observationNodeID := "observation:" + observation.ID
+	basedOnCount := 0
+	for _, edge := range g.GetOutEdges(observationNodeID) {
+		if edge.Kind == graph.EdgeKindBasedOn && edge.Target == "observation:"+auditObservation.ID {
+			basedOnCount++
+		}
+	}
+	if basedOnCount != 1 {
+		t.Fatalf("kubernetes audit based_on edge count = %d, want 1", basedOnCount)
+	}
+}
+
+func TestMaterializeObservationsIntoGraphDoesNotLinkNormalizedAuditObservationBackToAudit(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:   "deployment:prod/api",
+		Kind: graph.NodeKindDeployment,
+		Name: "api",
+	})
+
+	priorAuditObservation := &runtime.RuntimeObservation{
+		ID:          "runtime:k8s_audit:prior-patch",
+		Source:      "k8s_audit",
+		Kind:        runtime.ObservationKindKubernetesAudit,
+		ObservedAt:  time.Date(2026, 3, 16, 21, 30, 0, 0, time.UTC),
+		RecordedAt:  time.Date(2026, 3, 16, 21, 30, 1, 0, time.UTC),
+		WorkloadRef: "deployment:prod/api",
+		Namespace:   "prod",
+		ControlPlane: &runtime.ControlPlaneContext{
+			Verb:      "patch",
+			Resource:  "deployments",
+			Namespace: "prod",
+			Name:      "api",
+			User:      "deployer",
+		},
+	}
+	MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{priorAuditObservation}, time.Date(2026, 3, 16, 21, 31, 0, 0, time.UTC))
+
+	inferredAuditObservation := &runtime.RuntimeObservation{
+		ID:          "runtime:k8s_audit:inferred-delete",
+		Source:      "k8s_audit",
+		ObservedAt:  time.Date(2026, 3, 16, 21, 35, 0, 0, time.UTC),
+		RecordedAt:  time.Date(2026, 3, 16, 21, 35, 1, 0, time.UTC),
+		WorkloadRef: "deployment:prod/api",
+		Namespace:   "prod",
+		ControlPlane: &runtime.ControlPlaneContext{
+			Verb:      "delete",
+			Resource:  "pods",
+			Namespace: "prod",
+			Name:      "api-7f9d",
+			User:      "deployer",
+		},
+	}
+
+	result := MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{inferredAuditObservation}, time.Date(2026, 3, 16, 21, 36, 0, 0, time.UTC))
+	if result.ObservationsMaterialized != 1 {
+		t.Fatalf("ObservationsMaterialized = %d, want 1", result.ObservationsMaterialized)
+	}
+	if result.KubernetesAuditBasedOnEdgesCreated != 0 {
+		t.Fatalf("KubernetesAuditBasedOnEdgesCreated = %d, want 0", result.KubernetesAuditBasedOnEdgesCreated)
+	}
+
+	observationNodeID := "observation:" + inferredAuditObservation.ID
+	for _, edge := range g.GetOutEdges(observationNodeID) {
+		if edge.Kind == graph.EdgeKindBasedOn && edge.Target == "observation:"+priorAuditObservation.ID {
+			t.Fatalf("unexpected kubernetes audit based_on edge = %+v", edge)
+		}
+	}
+
+	node := mustNode(t, g, observationNodeID)
+	if got := testMetadataString(node.Properties, "observation_type"); got != string(runtime.ObservationKindKubernetesAudit) {
+		t.Fatalf("observation_type = %q, want %q", got, runtime.ObservationKindKubernetesAudit)
+	}
+}
+
 func TestMaterializeObservationsIntoGraphDefersIndexBuildToCaller(t *testing.T) {
 	g := graph.New()
 	g.AddNode(&graph.Node{
