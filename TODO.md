@@ -23,6 +23,30 @@ Status: executed end-to-end via PR workflow
   - [x] ARN matcher usage after the full index becomes stale
 - [x] Add a benchmark comparing incremental ARN-prefix maintenance versus add-node-plus-full-rebuild.
 
+## Deep Review Cycle 167 - Node ID Interning Substrate (2026-03-16)
+
+### Review findings
+- [x] Gap: issue `#384` is too broad for one safe cut; migrating graph storage, edges, and traversals to integer IDs in one change would create an unnecessary correctness blast radius.
+- [x] Gap: the current graph package had no reusable string↔ordinal interning substrate, so every later graph/traversal optimization would have to rediscover the same ID compaction machinery.
+- [x] Gap: there was no benchmark coverage in-tree showing the visited-set allocation delta between string-keyed sets, ordinal maps, and bitmap-style visitation keyed by interned ordinals.
+
+### Execution plan
+- [x] Add a compact `NodeIDIndex` that supports:
+  - [x] interning string IDs into stable ordinals
+  - [x] non-allocating lookup of existing IDs
+  - [x] reverse resolution from ordinal back to string
+  - [x] bitmap sizing for traversal visited sets
+- [x] Add TDD coverage for:
+  - [x] round-trip interning and resolution
+  - [x] duplicate interning stability
+  - [x] blank/unknown lookup rejection
+  - [x] bitmap sizing against interned cardinality
+- [x] Add a benchmark comparing visited-set representations for:
+  - [x] string maps
+  - [x] ordinal maps
+  - [x] ordinal bitmap slices
+- [ ] Re-run focused graph tests, lint, changed-file validation, and the new benchmark.
+
 ## Deep Review Cycle 165 - Incremental Cross-Account Edge Index Maintenance (2026-03-16)
 
 ### Review findings
