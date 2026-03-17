@@ -6,6 +6,58 @@ import (
 	"strings"
 )
 
+type queryVisitSet struct {
+	nodeIDs *NodeIDIndex
+	words   []uint64
+}
+
+func newQueryVisitSet(nodeIDs *NodeIDIndex) queryVisitSet {
+	return queryVisitSet{nodeIDs: nodeIDs}
+}
+
+func (s *queryVisitSet) mark(nodeID string) {
+	if s == nil || s.nodeIDs == nil {
+		return
+	}
+	ordinal := s.nodeIDs.Intern(nodeID)
+	word, mask, ok := ordinalWordAndMask(ordinal)
+	if !ok {
+		return
+	}
+	if word >= len(s.words) {
+		grown := make([]uint64, word+1)
+		copy(grown, s.words)
+		s.words = grown
+	}
+	s.words[word] |= mask
+}
+
+func (s queryVisitSet) has(nodeID string) bool {
+	if s.nodeIDs == nil {
+		return false
+	}
+	ordinal, ok := s.nodeIDs.Lookup(nodeID)
+	if !ok {
+		return false
+	}
+	word, mask, ok := ordinalWordAndMask(ordinal)
+	if !ok {
+		return false
+	}
+	if word >= len(s.words) {
+		return false
+	}
+	return s.words[word]&mask != 0
+}
+
+func (s queryVisitSet) clone() queryVisitSet {
+	cloned := queryVisitSet{nodeIDs: s.nodeIDs}
+	if len(s.words) > 0 {
+		cloned.words = append([]uint64(nil), s.words...)
+	}
+	return cloned
+}
+
 type blastRadiusCacheKey struct {
 	principalID string
 	maxDepth    int
@@ -89,7 +141,7 @@ func BlastRadius(g *Graph, principalID string, maxDepth int) *BlastRadiusResult 
 	}
 
 	startAccount := principal.Account
-	visited := make(map[string]bool)
+	visited := newQueryVisitSet(NewNodeIDIndex())
 	accountsReached := make(map[string]bool)
 
 	type queueItem struct {
@@ -103,10 +155,10 @@ func BlastRadius(g *Graph, principalID string, maxDepth int) *BlastRadiusResult 
 		item := queue[0]
 		queue = queue[1:]
 
-		if item.depth > maxDepth || visited[item.nodeID] {
+		if item.depth > maxDepth || visited.has(item.nodeID) {
 			continue
 		}
-		visited[item.nodeID] = true
+		visited.mark(item.nodeID)
 
 		for _, edge := range g.GetOutEdges(item.nodeID) {
 			// Skip deny edges - they block access
@@ -342,7 +394,7 @@ func ReverseAccess(g *Graph, resourceID string, maxDepth int) *ReverseAccessResu
 		ResourceName: resource.Name,
 	}
 
-	visited := make(map[string]bool)
+	visited := newQueryVisitSet(NewNodeIDIndex())
 	type queueItem struct {
 		nodeID string
 		depth  int
@@ -354,10 +406,10 @@ func ReverseAccess(g *Graph, resourceID string, maxDepth int) *ReverseAccessResu
 		item := queue[0]
 		queue = queue[1:]
 
-		if item.depth > maxDepth || visited[item.nodeID] {
+		if item.depth > maxDepth || visited.has(item.nodeID) {
 			continue
 		}
-		visited[item.nodeID] = true
+		visited.mark(item.nodeID)
 
 		// Use inbound edges for reverse traversal
 		for _, edge := range g.GetInEdges(item.nodeID) {
@@ -446,14 +498,17 @@ func findAllPaths(g *Graph, from, to string, maxDepth int) [][]*Edge {
 		nodeID  string
 		depth   int
 		path    []*Edge
-		visited map[string]bool
+		visited queryVisitSet
 	}
 
+	nodeIDs := NewNodeIDIndex()
+	initialVisited := newQueryVisitSet(nodeIDs)
+	initialVisited.mark(from)
 	initial := state{
 		nodeID:  from,
 		depth:   0,
 		path:    nil,
-		visited: map[string]bool{from: true},
+		visited: initialVisited,
 	}
 	queue := []state{initial}
 
@@ -466,17 +521,14 @@ func findAllPaths(g *Graph, from, to string, maxDepth int) [][]*Edge {
 		}
 
 		for _, edge := range g.GetOutEdges(current.nodeID) {
-			if current.visited[edge.Target] {
+			if current.visited.has(edge.Target) {
 				continue
 			}
 
 			newPath := append([]*Edge{}, current.path...)
 			newPath = append(newPath, edge)
-			newVisited := make(map[string]bool)
-			for k, v := range current.visited {
-				newVisited[k] = v
-			}
-			newVisited[edge.Target] = true
+			newVisited := current.visited.clone()
+			newVisited.mark(edge.Target)
 
 			if edge.Target == to {
 				allPaths = append(allPaths, newPath)

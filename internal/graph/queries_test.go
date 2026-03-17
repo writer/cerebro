@@ -465,6 +465,28 @@ func TestEffectiveAccess(t *testing.T) {
 	})
 }
 
+func TestEffectiveAccess_CycleHandling(t *testing.T) {
+	g := New()
+
+	g.AddNode(&Node{ID: "user:cycle", Kind: NodeKindUser, Account: "111"})
+	g.AddNode(&Node{ID: "role:a", Kind: NodeKindRole, Account: "111"})
+	g.AddNode(&Node{ID: "role:b", Kind: NodeKindRole, Account: "111"})
+	g.AddNode(&Node{ID: "bucket:cycle", Kind: NodeKindBucket, Account: "111"})
+
+	g.AddEdge(&Edge{ID: "u-a", Source: "user:cycle", Target: "role:a", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "a-b", Source: "role:a", Target: "role:b", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "b-a", Source: "role:b", Target: "role:a", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "b-bucket", Source: "role:b", Target: "bucket:cycle", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+
+	result := EffectiveAccess(g, "user:cycle", "bucket:cycle", 6)
+	if !result.Allowed {
+		t.Fatal("expected cycle traversal to find allowed access")
+	}
+	if len(result.AllowedBy) != 3 {
+		t.Fatalf("expected 3 edges in allowed path, got %d", len(result.AllowedBy))
+	}
+}
+
 func TestBlastRadius_DepthLimit(t *testing.T) {
 	g := New()
 

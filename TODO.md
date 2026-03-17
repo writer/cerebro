@@ -5,6 +5,20 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 170 - Query Traversal Ordinal Visited Sets (2026-03-16)
+
+### Review findings
+- [x] Gap: `queries.go` still used string-keyed visited maps for `BlastRadius`, `ReverseAccess`, and `findAllPaths`, even after the `#384` traversal substrate slices landed in attack and impact path analyzers.
+- [x] Gap: `EffectiveAccess` clones full visited maps per branch when enumerating paths, which keeps one of the core graph query surfaces on the highest-allocation traversal strategy.
+- [x] Gap: there was no focused benchmark locking down query traversal cost after moving visited tracking onto the ordinal substrate.
+
+### Execution plan
+- [x] Add a compact ordinal-backed query visit set built on `NodeIDIndex`.
+- [x] Switch `BlastRadius`, `ReverseAccess`, and `findAllPaths` to the shared ordinal visit set.
+- [x] Add TDD coverage for cycle-safe `EffectiveAccess`.
+- [x] Add a focused `EffectiveAccess` benchmark on a wide role graph.
+- [ ] Re-run focused graph tests, lint, changed-file validation, and the new benchmark.
+
 ## Deep Review Cycle 169 - Impact Path Traversal Ordinal Visited Sets (2026-03-16)
 
 ### Review findings
