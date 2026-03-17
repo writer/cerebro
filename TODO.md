@@ -5,6 +5,27 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 161 - Runtime Admission Policy Substrate (2026-03-16)
+
+### Review findings
+- [x] Gap: issue `#361` had no concrete admission-control substrate in the runtime package, so every caller would have to re-encode lag and memory thresholds ad hoc.
+- [x] Gap: the current codebase already has normalized runtime observations and findings, which makes priority classification the lowest-risk first slice before any consumer or graph integration.
+- [x] Gap: there was no regression coverage locking down the boundary behavior for green/yellow/red transitions or which priorities survive at each level.
+
+### Execution plan
+- [x] Add runtime admission levels and pressure inputs for:
+  - [x] consumer lag
+  - [x] memory utilization
+- [x] Add priority classification helpers for:
+  - [x] generic event types
+  - [x] normalized runtime observations
+  - [x] runtime findings
+- [x] Add admit/drop helpers that enforce:
+  - [x] green accepts all
+  - [x] yellow sheds low-priority work
+  - [x] red admits only critical work
+- [x] Re-run focused runtime tests, lint, and changed-file validation.
+
 ## Deep Review Cycle 160 - Runtime Risk Signals In Workload Security Facet (2026-03-16)
 
 ### Review findings
@@ -26,6 +47,7 @@ Status: executed end-to-end via PR workflow
   - [x] active runtime finding escalation
   - [x] multi-technique multiplier
 - [x] Re-run focused graph tests, lint, and changed-file validation.
+
 ## Deep Review Cycle 158 - Runtime Graph Materialization Coverage Expansion (2026-03-16)
 
 ### Review findings
