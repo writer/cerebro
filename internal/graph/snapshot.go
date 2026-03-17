@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -26,6 +27,47 @@ type Snapshot struct {
 }
 
 const snapshotVersion = "1.0"
+const snapshotStreamVersion = "2.0"
+const snapshotStreamMagic = "cerebro_snapshot_stream_v1\n"
+const (
+	snapshotStreamMaxRecordCount  = 50_000_000
+	snapshotStreamPreallocCapHint = 1_000_000
+)
+
+type snapshotStreamHeader struct {
+	Type      string    `json:"type"`
+	Version   string    `json:"version"`
+	CreatedAt time.Time `json:"created_at"`
+	Metadata  Metadata  `json:"metadata"`
+	NodeCount int       `json:"node_count"`
+	EdgeCount int       `json:"edge_count"`
+}
+
+type snapshotStreamNodeRecord struct {
+	Type string `json:"type"`
+	Node *Node  `json:"node,omitempty"`
+}
+
+type snapshotStreamEdgeRecord struct {
+	Type string `json:"type"`
+	Edge *Edge  `json:"edge,omitempty"`
+}
+
+type snapshotStreamFooter struct {
+	Type      string `json:"type"`
+	NodeCount int    `json:"node_count"`
+	EdgeCount int    `json:"edge_count"`
+}
+
+type capturedGraphSnapshot struct {
+	metadata Metadata
+	nodes    []*Node
+	edges    []*Edge
+}
+
+// snapshotStreamBeforeWriteHook is used by tests to verify that snapshot disk
+// I/O happens after the graph read lock has been released.
+var snapshotStreamBeforeWriteHook func()
 
 // CreateSnapshot creates a snapshot of the current graph state
 func CreateSnapshot(g *Graph) *Snapshot {
@@ -34,31 +76,14 @@ func CreateSnapshot(g *Graph) *Snapshot {
 		metrics.ObserveGraphSnapshot("create", time.Since(start))
 	}()
 
-	g.mu.RLock()
-	defer g.mu.RUnlock()
-
-	nodes := make([]*Node, 0, len(g.nodes))
-	for _, n := range g.nodes {
-		nodes = append(nodes, cloneNode(n))
-	}
-
-	edgeCount := 0
-	for _, edgeList := range g.outEdges {
-		edgeCount += len(edgeList)
-	}
-	edges := make([]*Edge, 0, edgeCount)
-	for _, edgeList := range g.outEdges {
-		for _, edge := range edgeList {
-			edges = append(edges, cloneEdge(edge))
-		}
-	}
+	captured := captureGraphSnapshot(g)
 
 	return &Snapshot{
 		Version:   snapshotVersion,
 		CreatedAt: time.Now(),
-		Metadata:  g.metadata,
-		Nodes:     nodes,
-		Edges:     edges,
+		Metadata:  captured.metadata,
+		Nodes:     captured.nodes,
+		Edges:     captured.edges,
 	}
 }
 
@@ -149,12 +174,128 @@ func (s *Snapshot) SaveToFile(path string) error {
 	return nil
 }
 
+func saveGraphToFile(g *Graph, path string, createdAt time.Time) error {
+	if g == nil {
+		return fmt.Errorf("graph is required")
+	}
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0750); err != nil {
+		return fmt.Errorf("create directory: %w", err)
+	}
+
+	f, err := os.Create(path) // #nosec G304 -- snapshot path is controlled by caller-facing API and intentionally file-system based
+	if err != nil {
+		return fmt.Errorf("create file: %w", err)
+	}
+
+	if err := writeGraphCompressedSnapshot(g, f, createdAt); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close snapshot file: %w", err)
+	}
+	return nil
+}
+
 func (s *Snapshot) writeCompressed(w io.Writer) error {
 	gw := gzip.NewWriter(w)
 	encoder := json.NewEncoder(gw)
 	if err := encoder.Encode(s); err != nil {
 		_ = gw.Close()
 		return fmt.Errorf("encode snapshot: %w", err)
+	}
+	if err := gw.Close(); err != nil {
+		return fmt.Errorf("close compressed snapshot: %w", err)
+	}
+	return nil
+}
+
+func writeGraphCompressedSnapshot(g *Graph, w io.Writer, createdAt time.Time) error {
+	start := time.Now()
+	defer func() {
+		metrics.ObserveGraphSnapshot("create", time.Since(start))
+	}()
+
+	if g == nil {
+		return fmt.Errorf("graph is required")
+	}
+	if createdAt.IsZero() {
+		createdAt = time.Now().UTC()
+	} else {
+		createdAt = createdAt.UTC()
+	}
+
+	captured := captureGraphSnapshot(g)
+	header := snapshotStreamHeader{
+		Type:      "header",
+		Version:   snapshotStreamVersion,
+		CreatedAt: createdAt,
+		Metadata:  captured.metadata,
+		NodeCount: len(captured.nodes),
+		EdgeCount: len(captured.edges),
+	}
+
+	if snapshotStreamBeforeWriteHook != nil {
+		snapshotStreamBeforeWriteHook()
+	}
+
+	return writeCapturedGraphCompressedSnapshot(w, header, captured.nodes, captured.edges)
+}
+
+func captureGraphSnapshot(g *Graph) capturedGraphSnapshot {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	edgeCount := 0
+	for _, edgeList := range g.outEdges {
+		edgeCount += len(edgeList)
+	}
+
+	captured := capturedGraphSnapshot{
+		metadata: cloneMetadata(g.metadata),
+		nodes:    make([]*Node, 0, len(g.nodes)),
+		edges:    make([]*Edge, 0, edgeCount),
+	}
+	for _, node := range g.nodes {
+		captured.nodes = append(captured.nodes, cloneNode(node))
+	}
+	for _, edgeList := range g.outEdges {
+		for _, edge := range edgeList {
+			captured.edges = append(captured.edges, cloneEdge(edge))
+		}
+	}
+
+	return captured
+}
+
+func writeCapturedGraphCompressedSnapshot(w io.Writer, header snapshotStreamHeader, nodes []*Node, edges []*Edge) error {
+	gw := gzip.NewWriter(w)
+	if _, err := io.WriteString(gw, snapshotStreamMagic); err != nil {
+		_ = gw.Close()
+		return fmt.Errorf("write snapshot stream magic: %w", err)
+	}
+	encoder := json.NewEncoder(gw)
+	if err := encoder.Encode(header); err != nil {
+		_ = gw.Close()
+		return fmt.Errorf("encode snapshot header: %w", err)
+	}
+
+	for _, node := range nodes {
+		if err := encoder.Encode(snapshotStreamNodeRecord{Type: "node", Node: node}); err != nil {
+			_ = gw.Close()
+			return fmt.Errorf("encode snapshot node: %w", err)
+		}
+	}
+	for _, edge := range edges {
+		if err := encoder.Encode(snapshotStreamEdgeRecord{Type: "edge", Edge: edge}); err != nil {
+			_ = gw.Close()
+			return fmt.Errorf("encode snapshot edge: %w", err)
+		}
+	}
+	if err := encoder.Encode(snapshotStreamFooter{Type: "footer", NodeCount: header.NodeCount, EdgeCount: header.EdgeCount}); err != nil {
+		_ = gw.Close()
+		return fmt.Errorf("encode snapshot footer: %w", err)
 	}
 	if err := gw.Close(); err != nil {
 		return fmt.Errorf("close compressed snapshot: %w", err)
@@ -169,8 +310,24 @@ func loadSnapshotFromCompressedReader(r io.Reader) (*Snapshot, error) {
 	}
 	defer func() { _ = gr.Close() }()
 
+	buffered := bufio.NewReader(gr)
+	prefix, err := buffered.Peek(len(snapshotStreamMagic))
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, bufio.ErrBufferFull) {
+		return nil, fmt.Errorf("peek snapshot stream magic: %w", err)
+	}
+	if len(prefix) == len(snapshotStreamMagic) && string(prefix) == snapshotStreamMagic {
+		if _, err := buffered.Discard(len(snapshotStreamMagic)); err != nil {
+			return nil, fmt.Errorf("discard snapshot stream magic: %w", err)
+		}
+		return loadSnapshotFromStreamReader(buffered)
+	}
+
+	return loadSnapshotFromJSONReader(buffered)
+}
+
+func loadSnapshotFromJSONReader(r io.Reader) (*Snapshot, error) {
 	var snapshot Snapshot
-	decoder := json.NewDecoder(gr)
+	decoder := json.NewDecoder(r)
 	if err := decoder.Decode(&snapshot); err != nil {
 		return nil, fmt.Errorf("decode snapshot: %w", err)
 	}
@@ -180,6 +337,72 @@ func loadSnapshotFromCompressedReader(r io.Reader) (*Snapshot, error) {
 	}
 
 	return &snapshot, nil
+}
+
+func loadSnapshotFromStreamReader(r io.Reader) (*Snapshot, error) {
+	decoder := json.NewDecoder(r)
+
+	var header snapshotStreamHeader
+	if err := decoder.Decode(&header); err != nil {
+		return nil, fmt.Errorf("decode snapshot stream header: %w", err)
+	}
+	if strings.TrimSpace(header.Type) != "header" {
+		return nil, fmt.Errorf("decode snapshot stream header: unexpected record type %q", header.Type)
+	}
+	if version := strings.TrimSpace(header.Version); version != snapshotStreamVersion {
+		return nil, fmt.Errorf("incompatible snapshot stream version: %s (expected %s)", version, snapshotStreamVersion)
+	}
+	if header.NodeCount < 0 || header.NodeCount > snapshotStreamMaxRecordCount {
+		return nil, fmt.Errorf("decode snapshot stream header: invalid node count %d", header.NodeCount)
+	}
+	if header.EdgeCount < 0 || header.EdgeCount > snapshotStreamMaxRecordCount {
+		return nil, fmt.Errorf("decode snapshot stream header: invalid edge count %d", header.EdgeCount)
+	}
+
+	snapshot := &Snapshot{
+		Version:   snapshotVersion,
+		CreatedAt: header.CreatedAt.UTC(),
+		Metadata:  header.Metadata,
+		Nodes:     make([]*Node, 0, min(header.NodeCount, snapshotStreamPreallocCapHint)),
+		Edges:     make([]*Edge, 0, min(header.EdgeCount, snapshotStreamPreallocCapHint)),
+	}
+	if snapshot.Metadata.NodeCount == 0 {
+		snapshot.Metadata.NodeCount = header.NodeCount
+	}
+	if snapshot.Metadata.EdgeCount == 0 {
+		snapshot.Metadata.EdgeCount = header.EdgeCount
+	}
+
+	for {
+		var probe struct {
+			Type      string `json:"type"`
+			Node      *Node  `json:"node,omitempty"`
+			Edge      *Edge  `json:"edge,omitempty"`
+			NodeCount int    `json:"node_count,omitempty"`
+			EdgeCount int    `json:"edge_count,omitempty"`
+		}
+		if err := decoder.Decode(&probe); err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, fmt.Errorf("decode snapshot stream record: %w", err)
+		}
+		switch strings.TrimSpace(probe.Type) {
+		case "node":
+			snapshot.Nodes = append(snapshot.Nodes, probe.Node)
+		case "edge":
+			snapshot.Edges = append(snapshot.Edges, probe.Edge)
+		case "footer":
+			if probe.NodeCount != len(snapshot.Nodes) || probe.EdgeCount != len(snapshot.Edges) {
+				return nil, fmt.Errorf("decode snapshot stream footer: count mismatch nodes=%d/%d edges=%d/%d", probe.NodeCount, len(snapshot.Nodes), probe.EdgeCount, len(snapshot.Edges))
+			}
+			return snapshot, nil
+		default:
+			return nil, fmt.Errorf("decode snapshot stream record: unexpected record type %q", probe.Type)
+		}
+	}
+
+	return nil, fmt.Errorf("decode snapshot stream footer: missing footer record")
 }
 
 // LoadSnapshotFromFile loads a snapshot from a compressed file
@@ -219,11 +442,11 @@ func (s *SnapshotStore) Save(g *Graph) error {
 // SaveGraph saves a graph snapshot and returns the typed snapshot record and
 // manifest generated for the newest retained artifact.
 func (s *SnapshotStore) SaveGraph(g *Graph) (*GraphSnapshotRecord, *GraphSnapshotManifest, error) {
-	snapshot := CreateSnapshot(g)
-	filename := fmt.Sprintf("graph-%s.json.gz", snapshot.CreatedAt.Format("20060102-150405.000000000"))
+	createdAt := time.Now().UTC()
+	filename := fmt.Sprintf("graph-%s.json.gz", createdAt.Format("20060102-150405.000000000"))
 	path := filepath.Join(s.basePath, filename)
 
-	if err := snapshot.SaveToFile(path); err != nil {
+	if err := saveGraphToFile(g, path, createdAt); err != nil {
 		return nil, nil, err
 	}
 	if info, err := os.Stat(path); err == nil {
@@ -511,6 +734,17 @@ func cloneNode(node *Node) *Node {
 	cloned.Tags = cloneStringMap(node.Tags)
 	cloned.Findings = append([]string(nil), node.Findings...)
 	return &cloned
+}
+
+func cloneMetadata(meta Metadata) Metadata {
+	return Metadata{
+		BuiltAt:       meta.BuiltAt,
+		NodeCount:     meta.NodeCount,
+		EdgeCount:     meta.EdgeCount,
+		Providers:     append([]string(nil), meta.Providers...),
+		Accounts:      append([]string(nil), meta.Accounts...),
+		BuildDuration: meta.BuildDuration,
+	}
 }
 
 func cloneEdge(edge *Edge) *Edge {

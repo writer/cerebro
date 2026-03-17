@@ -5,6 +5,25 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 162 - Streaming Snapshot Serialization Slice (2026-03-16)
+
+### Review findings
+- [x] Gap: issue `#386` is real because `SnapshotStore.SaveGraph()` still materialized a full in-memory `Snapshot` before gzip encoding, preserving the monolithic serialization spike on the main persistence path.
+- [x] Gap: the lowest-risk first slice is the write path, not a full storage-format migration; the store can stream graph artifacts directly while the loader remains backward-compatible with legacy snapshot files.
+- [x] Gap: the graph package had no regression coverage proving a persisted snapshot artifact could use a streaming format without breaking `LoadSnapshotFromFile`, and no benchmark comparing the new writer against the legacy monolithic encode path.
+
+### Execution plan
+- [x] Add a streaming compressed snapshot writer for live graphs with:
+  - [x] explicit stream magic
+  - [x] typed header/node/edge/footer records
+  - [x] backward-compatible loader support for both legacy and streaming artifacts
+- [x] Switch `SnapshotStore.SaveGraph()` to the streaming writer so the hot persistence path no longer depends on `CreateSnapshot()`.
+- [x] Add TDD coverage for:
+  - [x] legacy artifact compatibility
+  - [x] streaming artifact persistence and load round-trip
+  - [x] legacy-vs-streaming compressed write benchmark
+- [ ] Re-run focused graph tests, lint, and changed-file validation.
+
 ## Deep Review Cycle 161 - Runtime Admission Policy Substrate (2026-03-16)
 
 ### Review findings
