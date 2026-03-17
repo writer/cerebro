@@ -5,6 +5,19 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 184 - Materialized Blast Radius Top-N View (2026-03-17)
+
+### Review findings
+- [x] Gap: issue `#359` still had no materialized detection-view substrate, so repeated leaderboard-style blast-radius queries had to rescan every candidate principal on-demand.
+- [x] Gap: the graph already maintains versioned per-principal blast-radius cache entries, but nothing composes those cached traversals into a reusable top-N view for dashboard/report consumers.
+- [x] Gap: there was no regression proving a cached materialized blast-radius leaderboard stays stable until graph mutation invalidates it, and no benchmark isolating cached-view reuse.
+
+### Execution plan
+- [x] Add a versioned `blast_radius_top_n` materialized view cache keyed by `(limit,max_depth)`.
+- [x] Build the view from identity principals using the existing blast-radius computation/cache path and deterministic ranking.
+- [x] Add TDD coverage for cache reuse, mutation invalidation, sorting, and limit behavior.
+- [x] Re-run focused graph tests, lint, changed-file validation, and the new benchmark.
+
 ## Deep Review Cycle 182 - Parallel Blast/Reverse Frontier Traversal (2026-03-17)
 
 ### Review findings

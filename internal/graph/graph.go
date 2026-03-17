@@ -25,10 +25,12 @@ type Graph struct {
 	activeEdgeCount atomic.Int64
 
 	// Traversal cache for expensive reachability queries.
-	blastRadiusCache           sync.Map
-	blastRadiusCacheWriteMu    sync.Mutex
-	blastRadiusVersion         uint64
-	blastRadiusNeedsCompaction bool
+	blastRadiusCache            sync.Map
+	blastRadiusCacheWriteMu     sync.Mutex
+	blastRadiusTopNCache        sync.Map
+	blastRadiusTopNCacheWriteMu sync.Mutex
+	blastRadiusVersion          uint64
+	blastRadiusNeedsCompaction  bool
 
 	// Basic node lookup indexes are maintained incrementally once built.
 	indexByKind            map[NodeKind][]*Node
