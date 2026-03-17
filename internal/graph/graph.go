@@ -14,12 +14,13 @@ var temporalNowUTC = func() time.Time {
 
 // Graph represents the graph platform containing all nodes and edges.
 type Graph struct {
-	nodes    map[string]*Node
-	outEdges map[string][]*Edge // source -> edges
-	inEdges  map[string][]*Edge // target -> edges
-	edgeByID map[string]*Edge
-	mu       sync.RWMutex
-	metadata Metadata
+	nodes      map[string]*Node
+	outEdges   map[string][]*Edge // source -> edges
+	inEdges    map[string][]*Edge // target -> edges
+	edgeByID   map[string]*Edge
+	mu         sync.RWMutex
+	metadata   Metadata
+	changeFeed graphChangeFeed
 
 	activeNodeCount atomic.Int64
 	activeEdgeCount atomic.Int64
@@ -90,6 +91,7 @@ func New() *Graph {
 		outEdges:                   make(map[string][]*Edge),
 		inEdges:                    make(map[string][]*Edge),
 		edgeByID:                   make(map[string]*Edge),
+		changeFeed:                 newGraphChangeFeed(),
 		blastRadiusVersion:         1,
 		blastRadiusNeedsCompaction: false,
 		schemaValidationMode:       mode,
@@ -109,10 +111,19 @@ func (g *Graph) AddNode(node *Node) {
 	if node == nil || node.ID == "" {
 		return
 	}
+	var change *GraphChange
 	g.mu.Lock()
-	defer g.mu.Unlock()
 	if g.addNodeLocked(node) {
 		g.markGraphChangedPreservingNodeIndexesLocked()
+		change = &GraphChange{
+			Type:     GraphChangeNodeUpserted,
+			NodeID:   node.ID,
+			NodeKind: node.Kind,
+		}
+	}
+	g.mu.Unlock()
+	if change != nil {
+		g.emitGraphChanges(*change)
 	}
 }
 
@@ -126,8 +137,8 @@ func (g *Graph) AddNodesBatch(nodes []*Node) {
 	if len(nodes) == 0 {
 		return
 	}
+	changes := make([]GraphChange, 0, len(nodes))
 	g.mu.Lock()
-	defer g.mu.Unlock()
 	changed := false
 	for _, node := range nodes {
 		if node == nil || node.ID == "" {
@@ -135,11 +146,18 @@ func (g *Graph) AddNodesBatch(nodes []*Node) {
 		}
 		if g.addNodeLocked(node) {
 			changed = true
+			changes = append(changes, GraphChange{
+				Type:     GraphChangeNodeUpserted,
+				NodeID:   node.ID,
+				NodeKind: node.Kind,
+			})
 		}
 	}
 	if changed {
 		g.markGraphChangedPreservingNodeIndexesLocked()
 	}
+	g.mu.Unlock()
+	g.emitGraphChanges(changes...)
 }
 
 // AddEdge adds an edge to the graph
@@ -152,10 +170,21 @@ func (g *Graph) AddEdge(edge *Edge) {
 	if edge == nil || edge.Source == "" || edge.Target == "" {
 		return
 	}
+	var change *GraphChange
 	g.mu.Lock()
-	defer g.mu.Unlock()
 	if g.addEdgeLocked(edge) {
 		g.markGraphEdgeMutationLocked()
+		change = &GraphChange{
+			Type:     GraphChangeEdgeUpserted,
+			EdgeID:   edge.ID,
+			SourceID: edge.Source,
+			TargetID: edge.Target,
+			EdgeKind: edge.Kind,
+		}
+	}
+	g.mu.Unlock()
+	if change != nil {
+		g.emitGraphChanges(*change)
 	}
 }
 
@@ -169,8 +198,8 @@ func (g *Graph) AddEdgesBatch(edges []*Edge) {
 	if len(edges) == 0 {
 		return
 	}
+	changes := make([]GraphChange, 0, len(edges))
 	g.mu.Lock()
-	defer g.mu.Unlock()
 	changed := false
 	for _, edge := range edges {
 		if edge == nil || edge.Source == "" || edge.Target == "" {
@@ -178,25 +207,38 @@ func (g *Graph) AddEdgesBatch(edges []*Edge) {
 		}
 		if g.addEdgeLocked(edge) {
 			changed = true
+			changes = append(changes, GraphChange{
+				Type:     GraphChangeEdgeUpserted,
+				EdgeID:   edge.ID,
+				SourceID: edge.Source,
+				TargetID: edge.Target,
+				EdgeKind: edge.Kind,
+			})
 		}
 	}
 	if changed {
 		g.markGraphEdgeMutationLocked()
 	}
+	g.mu.Unlock()
+	g.emitGraphChanges(changes...)
 }
 
 // RemoveNode removes a node and all edges touching it.
 func (g *Graph) RemoveNode(id string) bool {
+	var changes []GraphChange
 	g.mu.Lock()
-	defer g.mu.Unlock()
 
 	node, ok := g.nodes[id]
 	if !ok || node.DeletedAt != nil {
+		g.mu.Unlock()
 		return false
 	}
 	node = g.ensureWritableNodeLocked(id)
 
-	g.removeEdgesByNodeLocked(id)
+	if removed, removedChanges := g.removeEdgesByNodeWithChangesLocked(id); removed {
+		g.markGraphEdgeMutationLocked()
+		changes = append(changes, removedChanges...)
+	}
 	now := temporalNowUTC()
 	node.DeletedAt = &now
 	node.UpdatedAt = now
@@ -208,13 +250,20 @@ func (g *Graph) RemoveNode(id string) bool {
 	g.removeNodeFromLookupIndexesLocked(node)
 	g.removeNodeFromDerivedIndexesLocked(node)
 	g.markGraphChangedPreservingNodeIndexesLocked()
+	changes = append(changes, GraphChange{
+		Type:     GraphChangeNodeRemoved,
+		NodeID:   node.ID,
+		NodeKind: node.Kind,
+	})
+	g.mu.Unlock()
+	g.emitGraphChanges(changes...)
 	return true
 }
 
 // RemoveEdge removes all edges matching source, target, and kind.
 func (g *Graph) RemoveEdge(source, target string, kind EdgeKind) bool {
+	var changes []GraphChange
 	g.mu.Lock()
-	defer g.mu.Unlock()
 
 	removed := false
 	if edges, ok := g.outEdges[source]; ok {
@@ -222,6 +271,13 @@ func (g *Graph) RemoveEdge(source, target string, kind EdgeKind) bool {
 			if edge != nil && edge.Source == source && edge.Target == target && edge.Kind == kind {
 				if g.markEdgeDeletedLocked(edge) {
 					removed = true
+					changes = append(changes, GraphChange{
+						Type:     GraphChangeEdgeRemoved,
+						EdgeID:   edge.ID,
+						SourceID: edge.Source,
+						TargetID: edge.Target,
+						EdgeKind: edge.Kind,
+					})
 				}
 			}
 		}
@@ -230,17 +286,22 @@ func (g *Graph) RemoveEdge(source, target string, kind EdgeKind) bool {
 	if removed {
 		g.markGraphEdgeMutationLocked()
 	}
+	g.mu.Unlock()
+	g.emitGraphChanges(changes...)
 	return removed
 }
 
 // RemoveEdgesByNode removes all edges connected to nodeID.
 func (g *Graph) RemoveEdgesByNode(nodeID string) {
+	var changes []GraphChange
 	g.mu.Lock()
-	defer g.mu.Unlock()
 
-	if g.removeEdgesByNodeLocked(nodeID) {
+	if removed, removedChanges := g.removeEdgesByNodeWithChangesLocked(nodeID); removed {
 		g.markGraphEdgeMutationLocked()
+		changes = removedChanges
 	}
+	g.mu.Unlock()
+	g.emitGraphChanges(changes...)
 }
 
 // CompactDeletedEdges removes soft-deleted edges from adjacency slices to keep
@@ -269,10 +330,10 @@ func (g *Graph) SetNodeProperty(id string, key string, value any) bool {
 	}()
 
 	g.mu.Lock()
-	defer g.mu.Unlock()
 
 	node, ok := g.nodes[id]
 	if !ok || node.DeletedAt != nil {
+		g.mu.Unlock()
 		return false
 	}
 	node = g.ensureWritableNodeLocked(id)
@@ -309,6 +370,14 @@ func (g *Graph) SetNodeProperty(id string, key string, value any) bool {
 	g.appendNodePropertyHistoryLocked(node, key, value, now)
 	g.refreshNodeClassifiedIndexesLocked(node, wasInternetFacing, wasCrownJewel)
 	g.markGraphChangedPreservingNodeIndexesLocked()
+	change := GraphChange{
+		Type:        GraphChangeNodePropertyChanged,
+		NodeID:      node.ID,
+		NodeKind:    node.Kind,
+		PropertyKey: key,
+	}
+	g.mu.Unlock()
+	g.emitGraphChanges(change)
 	return true
 }
 
@@ -487,7 +556,6 @@ func (g *Graph) EdgeCount() int {
 // Clear removes all nodes and edges
 func (g *Graph) Clear() {
 	g.mu.Lock()
-	defer g.mu.Unlock()
 	g.nodes = make(map[string]*Node)
 	g.outEdges = make(map[string][]*Edge)
 	g.inEdges = make(map[string][]*Edge)
@@ -504,12 +572,13 @@ func (g *Graph) Clear() {
 	g.edgeByIDShared = false
 	g.nodeLookupIndexBuilt = false
 	g.markGraphChangedLocked()
+	g.mu.Unlock()
+	g.emitGraphChanges(GraphChange{Type: GraphChangeGraphCleared})
 }
 
 // ClearEdges removes all edges while preserving nodes.
 func (g *Graph) ClearEdges() {
 	g.mu.Lock()
-	defer g.mu.Unlock()
 	g.outEdges = make(map[string][]*Edge)
 	g.inEdges = make(map[string][]*Edge)
 	g.activeEdgeCount.Store(0)
@@ -523,6 +592,8 @@ func (g *Graph) ClearEdges() {
 	g.crossAccountEdge = nil
 	g.crossAccountIndexBuilt = false
 	g.markGraphEdgeMutationLocked()
+	g.mu.Unlock()
+	g.emitGraphChanges(GraphChange{Type: GraphChangeEdgesCleared})
 }
 
 // SetMetadata sets the graph metadata
@@ -1279,8 +1350,9 @@ func (g *Graph) compactDeletedNodesLocked() bool {
 	return removed
 }
 
-func (g *Graph) removeEdgesByNodeLocked(nodeID string) bool {
+func (g *Graph) removeEdgesByNodeWithChangesLocked(nodeID string) (bool, []GraphChange) {
 	removed := false
+	changes := make([]GraphChange, 0)
 	seen := make(map[*Edge]struct{})
 
 	markDeleted := func(edges []*Edge) {
@@ -1294,6 +1366,13 @@ func (g *Graph) removeEdgesByNodeLocked(nodeID string) bool {
 			seen[edge] = struct{}{}
 			if g.markEdgeDeletedLocked(edge) {
 				removed = true
+				changes = append(changes, GraphChange{
+					Type:     GraphChangeEdgeRemoved,
+					EdgeID:   edge.ID,
+					SourceID: edge.Source,
+					TargetID: edge.Target,
+					EdgeKind: edge.Kind,
+				})
 			}
 		}
 	}
@@ -1305,7 +1384,7 @@ func (g *Graph) removeEdgesByNodeLocked(nodeID string) bool {
 		markDeleted(edges)
 	}
 
-	return removed
+	return removed, changes
 }
 
 func (g *Graph) markEdgeDeletedLocked(edge *Edge) bool {

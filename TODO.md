@@ -5,6 +5,19 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 191 - Reactive Graph Monitors (2026-03-17)
+
+### Review findings
+- [x] Gap: issue `#353` still drove `ToxicCombinationMonitor`, `AttackPathMonitor`, and `PrivilegeEscalationMonitor` from fixed polling intervals, which kept detection latency coupled to the next ticker and re-scanned the full graph even when nothing relevant changed.
+- [x] Gap: the graph had no first-class change subscription substrate, so monitors could not express the node kinds or edge kinds they care about and react only when matching mutations happened.
+- [x] Gap: the monitoring package had no regression coverage proving that irrelevant graph changes are ignored and rapid bursts of relevant mutations are coalesced into one debounced rescan.
+
+### Execution plan
+- [x] Add a graph change-feed substrate with typed node/edge reset events plus filtered subscriptions and coalescing delivery.
+- [x] Switch the three graph monitors from ticker polling to an initial scan followed by debounced rescans triggered by relevant graph mutations.
+- [x] Add TDD coverage for filtered change delivery, irrelevant-change suppression, and rapid-change coalescing.
+- [x] Re-run focused and full graph tests, lint, and changed-file validation.
+
 ## Deep Review Cycle 188 - Cross-Adapter Observation Corroboration (2026-03-17)
 
 ### Review findings
