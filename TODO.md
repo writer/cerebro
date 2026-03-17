@@ -59,6 +59,20 @@ Status: executed end-to-end via PR workflow
   - [x] leaving indexes current on no-op compaction and invalidating only on real removals
 - [x] Re-run focused graph tests, lint, and changed-file validation.
 
+## Deep Review Cycle 152 - Snapshot Restore Batch Rehydration (2026-03-16)
+
+### Review findings
+- [x] Gap: `RestoreFromSnapshot` still rebuilt graphs by calling `AddNode` and `AddEdge` for every serialized entry, which matches issue `#378` and turns large snapshot restores into avoidable repeated lock acquisition and mutation-wrapper overhead.
+- [x] Gap: the graph package already has internal locked mutation helpers that preserve restore semantics, so snapshot rehydration can collapse into a single critical section without duplicating node or edge mutation logic.
+- [x] Gap: the snapshot restore path lacked focused regression coverage for invalid-entry skipping and had no benchmark anchored on restore throughput for larger snapshots.
+
+### Execution plan
+- [x] Rework `RestoreFromSnapshot` to rebuild graphs inside one locked bulk pass via the existing internal mutation helpers.
+- [x] Preserve current skip behavior for nil and structurally invalid nodes or edges during restore.
+- [x] Add focused regression coverage for invalid-entry skipping and metadata preservation.
+- [x] Add a restore benchmark for a multi-thousand-node snapshot.
+- [x] Re-run focused graph tests, lint, and changed-file validation.
+
 ## Deep Review Cycle 143 - Runtime Graph Deferred Index Finalization (2026-03-16)
 
 ### Review findings
