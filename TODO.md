@@ -98,6 +98,27 @@ Status: executed end-to-end via PR workflow
 - [x] Add a benchmark comparing incremental add-node lookup behavior against add-node-plus-full-rebuild.
 - [x] Re-run focused graph tests, benchmark, lint, and changed-file validation.
 
+## Deep Review Cycle 163 - Graph Mutation WAL Record And Replay Substrate (2026-03-16)
+
+### Review findings
+- [x] Gap: issue `#352` needs a narrow first slice; file rotation, checkpoints, and compaction are too much to land safely before the mutation record format and replay semantics are pinned down.
+- [x] Gap: the graph persistence path had snapshots but no typed append-only mutation substrate, so later WAL integration would have had to define encoding, validation, and replay behavior all at once.
+- [x] Gap: there was no regression coverage proving checkpoint-plus-mutation replay reproduces the same live graph state or that replay is idempotent for duplicate sequence numbers.
+
+### Execution plan
+- [x] Add typed graph mutation records for:
+  - [x] add node
+  - [x] add edge
+  - [x] set node property
+  - [x] remove node
+- [x] Add JSON append/load helpers for line-delimited mutation records.
+- [x] Add replay helpers with sequence-based duplicate suppression.
+- [x] Add regression coverage for:
+  - [x] mutation record round-trip
+  - [x] checkpoint-plus-replay equivalence
+  - [x] duplicate-sequence idempotence
+- [x] Re-run focused graph tests, lint, and changed-file validation.
+
 ## Deep Review Cycle 161 - Runtime Admission Policy Substrate (2026-03-16)
 
 ### Review findings
