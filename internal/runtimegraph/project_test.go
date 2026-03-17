@@ -107,6 +107,229 @@ func TestMaterializeObservationsIntoGraphAddsObservationNode(t *testing.T) {
 	}
 }
 
+func TestMaterializeObservationsIntoGraphProjectsRepresentativeObservationKinds(t *testing.T) {
+	cases := []struct {
+		name            string
+		subject         *graph.Node
+		observation     *runtime.RuntimeObservation
+		wantType        string
+		wantSubjectID   string
+		wantDetail      string
+		wantReverseEdge bool
+	}{
+		{
+			name: "file write",
+			subject: &graph.Node{
+				ID:   "deployment:prod/api",
+				Kind: graph.NodeKindDeployment,
+				Name: "api",
+			},
+			observation: &runtime.RuntimeObservation{
+				ID:          "runtime:file_write:seed",
+				Source:      "falco",
+				Kind:        runtime.ObservationKindFileWrite,
+				ObservedAt:  time.Date(2026, 3, 16, 19, 2, 0, 0, time.UTC),
+				RecordedAt:  time.Date(2026, 3, 16, 19, 2, 1, 0, time.UTC),
+				WorkloadRef: "deployment:prod/api",
+				File: &runtime.FileEvent{
+					Path: "/tmp/seed.txt",
+				},
+			},
+			wantType:        "file_write",
+			wantSubjectID:   "deployment:prod/api",
+			wantDetail:      "file write /tmp/seed.txt",
+			wantReverseEdge: true,
+		},
+		{
+			name: "network flow",
+			subject: &graph.Node{
+				ID:   "deployment:prod/api",
+				Kind: graph.NodeKindDeployment,
+				Name: "api",
+			},
+			observation: &runtime.RuntimeObservation{
+				ID:          "runtime:network_flow:seed",
+				Source:      "hubble",
+				Kind:        runtime.ObservationKindNetworkFlow,
+				ObservedAt:  time.Date(2026, 3, 16, 19, 3, 0, 0, time.UTC),
+				RecordedAt:  time.Date(2026, 3, 16, 19, 3, 1, 0, time.UTC),
+				WorkloadRef: "deployment:prod/api",
+				Network: &runtime.NetworkEvent{
+					Protocol: "tcp",
+					SrcIP:    "10.0.0.10",
+					SrcPort:  12345,
+					DstIP:    "10.0.0.20",
+					DstPort:  443,
+				},
+			},
+			wantType:        "network_flow",
+			wantSubjectID:   "deployment:prod/api",
+			wantDetail:      "network flow tcp 10.0.0.10:12345 -> 10.0.0.20:443",
+			wantReverseEdge: true,
+		},
+		{
+			name: "dns query",
+			subject: &graph.Node{
+				ID:   "deployment:prod/api",
+				Kind: graph.NodeKindDeployment,
+				Name: "api",
+			},
+			observation: &runtime.RuntimeObservation{
+				ID:          "runtime:dns_query:seed",
+				Source:      "hubble",
+				Kind:        runtime.ObservationKindDNSQuery,
+				ObservedAt:  time.Date(2026, 3, 16, 19, 4, 0, 0, time.UTC),
+				RecordedAt:  time.Date(2026, 3, 16, 19, 4, 1, 0, time.UTC),
+				WorkloadRef: "deployment:prod/api",
+				Network: &runtime.NetworkEvent{
+					Domain: "db.internal",
+					DstIP:  "10.0.0.30",
+				},
+			},
+			wantType:        "dns_query",
+			wantSubjectID:   "deployment:prod/api",
+			wantDetail:      "dns query db.internal",
+			wantReverseEdge: true,
+		},
+		{
+			name: "kubernetes audit",
+			subject: &graph.Node{
+				ID:   "deployment:prod/api",
+				Kind: graph.NodeKindDeployment,
+				Name: "api",
+			},
+			observation: &runtime.RuntimeObservation{
+				ID:          "runtime:k8s_audit:seed",
+				Source:      "k8s_audit",
+				Kind:        runtime.ObservationKindKubernetesAudit,
+				ObservedAt:  time.Date(2026, 3, 16, 19, 5, 0, 0, time.UTC),
+				RecordedAt:  time.Date(2026, 3, 16, 19, 5, 1, 0, time.UTC),
+				WorkloadRef: "deployment:prod/api",
+				ControlPlane: &runtime.ControlPlaneContext{
+					Verb:      "delete",
+					Resource:  "pods",
+					Namespace: "prod",
+					Name:      "api-7f9d",
+					User:      "system:admin",
+				},
+			},
+			wantType:        "k8s_audit",
+			wantSubjectID:   "deployment:prod/api",
+			wantDetail:      "k8s audit delete pods prod/api-7f9d",
+			wantReverseEdge: true,
+		},
+		{
+			name: "runtime alert",
+			subject: &graph.Node{
+				ID:   "deployment:prod/api",
+				Kind: graph.NodeKindDeployment,
+				Name: "api",
+			},
+			observation: &runtime.RuntimeObservation{
+				ID:          "runtime:alert:seed",
+				Source:      "falco",
+				Kind:        runtime.ObservationKindRuntimeAlert,
+				ObservedAt:  time.Date(2026, 3, 16, 19, 6, 0, 0, time.UTC),
+				RecordedAt:  time.Date(2026, 3, 16, 19, 6, 1, 0, time.UTC),
+				WorkloadRef: "deployment:prod/api",
+				Metadata: map[string]any{
+					"signal_name": "unexpected_shell",
+					"severity":    "high",
+				},
+			},
+			wantType:        "runtime_alert",
+			wantSubjectID:   "deployment:prod/api",
+			wantDetail:      "runtime alert unexpected_shell",
+			wantReverseEdge: true,
+		},
+		{
+			name: "trace link",
+			subject: &graph.Node{
+				ID:   "service:storefront/checkout",
+				Kind: graph.NodeKindService,
+				Name: "checkout",
+			},
+			observation: &runtime.RuntimeObservation{
+				ID:         "runtime:trace_link:seed",
+				Source:     "otel",
+				Kind:       runtime.ObservationKindTraceLink,
+				ObservedAt: time.Date(2026, 3, 16, 19, 7, 0, 0, time.UTC),
+				RecordedAt: time.Date(2026, 3, 16, 19, 7, 1, 0, time.UTC),
+				Trace: &runtime.TraceContext{
+					TraceID:     "trace-1",
+					ServiceName: "checkout",
+				},
+				Metadata: map[string]any{
+					"service_namespace": "storefront",
+				},
+			},
+			wantType:        "trace_link",
+			wantSubjectID:   "service:storefront/checkout",
+			wantDetail:      "trace link checkout",
+			wantReverseEdge: false,
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			g := graph.New()
+			g.AddNode(tt.subject)
+
+			result := MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{tt.observation}, tt.observation.ObservedAt.Add(time.Minute))
+			if result.ObservationsMaterialized != 1 {
+				t.Fatalf("ObservationsMaterialized = %d, want 1", result.ObservationsMaterialized)
+			}
+			if result.ObservationsSkipped != 0 {
+				t.Fatalf("ObservationsSkipped = %d, want 0", result.ObservationsSkipped)
+			}
+			if tt.wantReverseEdge && result.WorkloadTargetEdgesCreated != 1 {
+				t.Fatalf("WorkloadTargetEdgesCreated = %d, want 1", result.WorkloadTargetEdgesCreated)
+			}
+			if !tt.wantReverseEdge && result.WorkloadTargetEdgesCreated != 0 {
+				t.Fatalf("WorkloadTargetEdgesCreated = %d, want 0", result.WorkloadTargetEdgesCreated)
+			}
+
+			observationNodeID := "observation:" + tt.observation.ID
+			node := mustNode(t, g, observationNodeID)
+			if got := testMetadataString(node.Properties, "observation_type"); got != tt.wantType {
+				t.Fatalf("observation_type = %q, want %q", got, tt.wantType)
+			}
+			if got := testMetadataString(node.Properties, "subject_id"); got != tt.wantSubjectID {
+				t.Fatalf("subject_id = %q, want %q", got, tt.wantSubjectID)
+			}
+			if got := testMetadataString(node.Properties, "detail"); got != tt.wantDetail {
+				t.Fatalf("detail = %q, want %q", got, tt.wantDetail)
+			}
+			if issues := graph.GlobalSchemaRegistry().ValidateNode(node); len(issues) != 0 {
+				t.Fatalf("ValidateNode returned issues: %+v", issues)
+			}
+
+			outEdges := g.GetOutEdges(observationNodeID)
+			if len(outEdges) != 1 {
+				t.Fatalf("len(outEdges) = %d, want 1", len(outEdges))
+			}
+			if outEdges[0].Kind != graph.EdgeKindTargets || outEdges[0].Target != tt.wantSubjectID {
+				t.Fatalf("edge = %+v, want targets edge to %s", outEdges[0], tt.wantSubjectID)
+			}
+			if issues := graph.GlobalSchemaRegistry().ValidateEdge(outEdges[0], node, mustNode(t, g, tt.wantSubjectID)); len(issues) != 0 {
+				t.Fatalf("ValidateEdge returned issues: %+v", issues)
+			}
+
+			subjectEdges := g.GetOutEdges(tt.wantSubjectID)
+			if tt.wantReverseEdge {
+				if len(subjectEdges) != 1 {
+					t.Fatalf("len(subjectEdges) = %d, want 1", len(subjectEdges))
+				}
+				if subjectEdges[0].Kind != graph.EdgeKindTargets || subjectEdges[0].Target != observationNodeID {
+					t.Fatalf("reverse edge = %+v, want targets edge to %s", subjectEdges[0], observationNodeID)
+				}
+			} else if len(subjectEdges) != 0 {
+				t.Fatalf("len(subjectEdges) = %d, want 0", len(subjectEdges))
+			}
+		})
+	}
+}
+
 func TestMaterializeObservationsIntoGraphSkipsMissingSubjects(t *testing.T) {
 	g := graph.New()
 	observation := &runtime.RuntimeObservation{

@@ -5,6 +5,28 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 158 - Runtime Graph Materialization Coverage Expansion (2026-03-16)
+
+### Review findings
+- [x] Gap: runtimegraph had targeted tests for individual behaviors, but it still lacked one representative integration pass proving the main runtime observation kinds materialize into valid graph observation nodes and `targets` edges end to end.
+- [x] Gap: the supported observation kinds now span workload-scoped and service-scoped subjects, so coverage needed to lock down both reverse-edge behavior for workload subjects and the absence of that reverse edge for service subjects.
+- [x] Gap: future causal-link slices (`067`, `068`) build on these node and edge shapes, so representative materialization coverage is the cheapest place to catch summary, subject, or schema regressions before they fan out.
+
+### Execution plan
+- [x] Add a representative integration test matrix covering:
+  - [x] file writes
+  - [x] network flows
+  - [x] DNS queries
+  - [x] Kubernetes audit observations
+  - [x] runtime alerts
+  - [x] trace links
+- [x] Validate for each case:
+  - [x] observation node creation
+  - [x] normalized summary/detail fields
+  - [x] `targets` edge schema validity
+  - [x] reverse workload-edge presence or absence as appropriate
+- [x] Re-run focused runtimegraph tests, lint, and changed-file validation.
+
 ## Deep Review Cycle 157 - Runtime Observation Causal Links To Kubernetes Audit Events (2026-03-16)
 
 ### Review findings
@@ -624,7 +646,7 @@ Status: executed end-to-end via PR workflow
 - [x] 066. Add causal edges from response outcomes back to findings.
 - [x] 067. Add causal edges from runtime observations to deployment runs where justified.
 - [x] 068. Add causal edges from runtime observations to Kubernetes audit events where justified.
-- [ ] 069. Add graph materialization tests for runtime observations.
+- [x] 069. Add graph materialization tests for runtime observations.
 - [ ] 070. Add graph ontology/schema entries required for runtime evidence projection.
 - [ ] 071. Add response-engine hooks to emit outcome observations on action completion.
 - [ ] 072. Add response-engine hooks to emit outcome observations on action failure.
