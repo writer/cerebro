@@ -348,6 +348,27 @@ func TestJetStreamMetrics(t *testing.T) {
 	RecordNATSConsumerDeduplicated("ENSEMBLE_TAP", "cerebro_graph_builder")
 }
 
+func TestCorrelationRefreshMetrics(t *testing.T) {
+	Register()
+
+	beforeDropped := counterValueSingle(t, CorrelationRefreshDroppedTotal)
+	beforeDuration := histogramCount(t, CorrelationRefreshDuration)
+
+	RecordCorrelationRefreshDrop()
+	ObserveCorrelationRefreshDuration(250 * time.Millisecond)
+	SetCorrelationRefreshQueueDepth(4)
+
+	if got := counterValueSingle(t, CorrelationRefreshDroppedTotal); got != beforeDropped+1 {
+		t.Fatalf("expected correlation refresh dropped counter to increase by 1, got before=%v after=%v", beforeDropped, got)
+	}
+	if got := histogramCount(t, CorrelationRefreshDuration); got != beforeDuration+1 {
+		t.Fatalf("expected correlation refresh duration histogram count to increase by 1, got before=%v after=%v", beforeDuration, got)
+	}
+	if got := gaugeValue(t, CorrelationRefreshQueueDepth); got != 4 {
+		t.Fatalf("expected correlation refresh queue depth 4, got %v", got)
+	}
+}
+
 func TestSetGraphLastUpdateDoesNotRegress(t *testing.T) {
 	Register()
 	graphLastUpdateUnixNano.Store(0)
@@ -449,6 +470,15 @@ func counterValue(t *testing.T, vec *prometheus.CounterVec, labels ...string) fl
 	var metric dto.Metric
 	if err := counter.Write(&metric); err != nil {
 		t.Fatalf("write metric: %v", err)
+	}
+	return metric.GetCounter().GetValue()
+}
+
+func counterValueSingle(t *testing.T, counter prometheus.Counter) float64 {
+	t.Helper()
+	var metric dto.Metric
+	if err := counter.Write(&metric); err != nil {
+		t.Fatalf("write counter metric: %v", err)
 	}
 	return metric.GetCounter().GetValue()
 }

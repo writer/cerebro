@@ -5,6 +5,19 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 185 - Correlation Refresh Coalescing Queue (2026-03-17)
+
+### Review findings
+- [x] Gap: issue `#346` still routed event-correlation refresh through a single-slot `chan string`, so any refresh request arriving while one was already buffered was silently dropped.
+- [x] Gap: the refresh path had no direct observability for backlog, runtime, or dropped work, which made correlation staleness invisible under hot TAP ingest.
+- [x] Gap: the ingest path had no bounded slow-down when refresh work fell behind, so correlation lag and ingestion rate could diverge without any feedback loop.
+
+### Execution plan
+- [x] Replace the single-slot channel with a coalescing refresh queue that merges pending scopes and preserves shutdown semantics.
+- [x] Add Prometheus metrics for dropped refreshes, refresh duration, and pending queue depth.
+- [x] Apply bounded ingest backpressure when refresh work is already running and aged pending work exists.
+- [x] Add TDD coverage for coalescing and backpressure behavior, then re-run focused app/metrics validation.
+
 ## Deep Review Cycle 184 - Materialized Blast Radius Top-N View (2026-03-17)
 
 ### Review findings

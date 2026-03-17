@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -752,67 +751,22 @@ func (a *App) rematerializeEventCorrelations(securityGraph *graph.Graph, reason 
 }
 
 func (a *App) initEventCorrelationRefreshLoop(ctx context.Context) {
-	if a == nil || a.eventCorrelationRefreshCh != nil {
+	if a == nil || a.eventCorrelationRefreshQueue != nil {
 		return
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	loopCtx, cancel := context.WithCancel(ctx) // #nosec G118 -- cancel is stored on App and invoked by stopEventCorrelationRefreshLoop during shutdown.
-	a.eventCorrelationRefreshCh = make(chan string, 1)
+	queue := newEventCorrelationRefreshQueue(a.refreshCurrentEventCorrelations)
+	queue.start()
+	a.eventCorrelationRefreshQueue = queue
 	a.eventCorrelationRefreshCancel = cancel
 	a.eventCorrelationRefreshWG.Add(1)
 	go func() {
 		defer a.eventCorrelationRefreshWG.Done()
-		const debounce = 2 * time.Second
-		pendingReasons := make(map[string]struct{})
-		var (
-			timer   *time.Timer
-			timerCh <-chan time.Time
-		)
-		flush := func() {
-			if len(pendingReasons) == 0 {
-				return
-			}
-			reasons := make([]string, 0, len(pendingReasons))
-			for reason := range pendingReasons {
-				reasons = append(reasons, reason)
-			}
-			sort.Strings(reasons)
-			pendingReasons = make(map[string]struct{})
-			a.refreshCurrentEventCorrelations(strings.Join(reasons, ","))
-		}
-		for {
-			select {
-			case <-loopCtx.Done():
-				if timer != nil {
-					timer.Stop()
-				}
-				return
-			case reason := <-a.eventCorrelationRefreshCh:
-				reason = strings.TrimSpace(reason)
-				if reason == "" {
-					reason = "tap_mapping"
-				}
-				pendingReasons[reason] = struct{}{}
-				if timer == nil {
-					timer = time.NewTimer(debounce)
-					timerCh = timer.C
-					continue
-				}
-				if !timer.Stop() {
-					select {
-					case <-timer.C:
-					default:
-					}
-				}
-				timer.Reset(debounce)
-			case <-timerCh:
-				timerCh = nil
-				if timer != nil {
-					timer.Stop()
-					timer = nil
-				}
-				flush()
-			}
-		}
+		<-loopCtx.Done()
+		queue.stop()
 	}()
 }
 
@@ -820,17 +774,13 @@ func (a *App) queueEventCorrelationRefresh(reason string) {
 	if a == nil {
 		return
 	}
-	reason = strings.TrimSpace(reason)
-	if reason == "" {
-		reason = "tap_mapping"
-	}
-	if a.eventCorrelationRefreshCh == nil {
+	reason = normalizeEventCorrelationRefreshReason(reason)
+	if a.eventCorrelationRefreshQueue == nil {
 		a.refreshCurrentEventCorrelations(reason)
 		return
 	}
-	select {
-	case a.eventCorrelationRefreshCh <- reason:
-	default:
+	if delay := eventCorrelationBackpressureDelay(a.eventCorrelationRefreshQueue.enqueue(reason)); delay > 0 {
+		time.Sleep(delay)
 	}
 }
 
@@ -853,7 +803,7 @@ func (a *App) stopEventCorrelationRefreshLoop() {
 			a.Logger.Warn("timed out waiting for event correlation refresh loop to stop", "timeout", appShutdownTimeout)
 		}
 	}
-	a.eventCorrelationRefreshCh = nil
+	a.eventCorrelationRefreshQueue = nil
 	a.eventCorrelationRefreshCancel = nil
 }
 

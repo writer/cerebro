@@ -441,6 +441,28 @@ var (
 		},
 	)
 
+	CorrelationRefreshDroppedTotal = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "cerebro_correlation_refresh_dropped_total",
+			Help: "Total number of event correlation refresh requests dropped before they could be queued",
+		},
+	)
+
+	CorrelationRefreshDuration = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "cerebro_correlation_refresh_duration_seconds",
+			Help:    "Duration of coalesced event correlation refresh runs",
+			Buckets: prometheus.DefBuckets,
+		},
+	)
+
+	CorrelationRefreshQueueDepth = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "cerebro_correlation_refresh_queue_depth",
+			Help: "Current number of distinct pending event correlation refresh scopes",
+		},
+	)
+
 	// Notification metrics
 	NotificationsSent = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -748,6 +770,9 @@ func Register() {
 			GraphEdgesTotal,
 			GraphCloneDuration,
 			EventProcessingDuration,
+			CorrelationRefreshDroppedTotal,
+			CorrelationRefreshDuration,
+			CorrelationRefreshQueueDepth,
 			// Notifications
 			NotificationsSent,
 			// Scheduler
@@ -1316,6 +1341,24 @@ func ObserveEventProcessingDuration(duration time.Duration) {
 		return
 	}
 	EventProcessingDuration.Observe(duration.Seconds())
+}
+
+func RecordCorrelationRefreshDrop() {
+	CorrelationRefreshDroppedTotal.Inc()
+}
+
+func ObserveCorrelationRefreshDuration(duration time.Duration) {
+	if duration < 0 {
+		return
+	}
+	CorrelationRefreshDuration.Observe(duration.Seconds())
+}
+
+func SetCorrelationRefreshQueueDepth(depth int) {
+	if depth < 0 {
+		depth = 0
+	}
+	CorrelationRefreshQueueDepth.Set(float64(depth))
 }
 
 func SetJetStreamOutboxBackpressureLevel(stream, level string) {

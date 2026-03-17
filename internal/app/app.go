@@ -159,7 +159,7 @@ type App struct {
 	graphConsistencyRun           bool
 	graphConsistencyCancel        context.CancelFunc
 	graphConsistencyWG            sync.WaitGroup
-	eventCorrelationRefreshCh     chan string
+	eventCorrelationRefreshQueue  *eventCorrelationRefreshQueue
 	eventCorrelationRefreshCancel context.CancelFunc
 	eventCorrelationRefreshWG     sync.WaitGroup
 	threatIntelSyncCancel         context.CancelFunc
