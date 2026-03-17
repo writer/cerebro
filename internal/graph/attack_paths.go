@@ -13,22 +13,23 @@ type AttackPathSimulator struct {
 	entryPoints    []*Node
 	crownJewels    []*Node
 	exploitability map[string]float64 // node ID -> exploitability score
-	nodeIndex      map[string]int
+	nodeIDs        *NodeIDIndex
 	visitedWords   int
 }
 
 // NewAttackPathSimulator creates a new simulator
 func NewAttackPathSimulator(g *Graph) *AttackPathSimulator {
 	allNodes := g.GetAllNodes()
+	nodeIDs := NewNodeIDIndex()
+	for _, node := range allNodes {
+		nodeIDs.Intern(node.ID)
+	}
 	sim := &AttackPathSimulator{
 		graph:          g,
 		exploitability: make(map[string]float64),
-		nodeIndex:      make(map[string]int, len(allNodes)),
+		nodeIDs:        nodeIDs,
 	}
-	for idx, node := range allNodes {
-		sim.nodeIndex[node.ID] = idx
-	}
-	sim.visitedWords = (len(allNodes) + 63) / 64
+	sim.visitedWords = (nodeIDs.Len() + 63) / 64
 	sim.identifyEntryPoints()
 	sim.identifyCrownJewels()
 	sim.calculateExploitability()
@@ -507,28 +508,27 @@ func (sim *AttackPathSimulator) newVisitedBits(nodeID string) []uint64 {
 }
 
 func (sim *AttackPathSimulator) markVisited(visited []uint64, nodeID string) {
-	index, ok := sim.nodeIndex[nodeID]
-	if !ok {
+	word, mask, ok := sim.visitedWordAndMask(nodeID)
+	if !ok || word >= len(visited) {
 		return
 	}
-	word := index / 64
-	bit := index % 64
-	if word >= 0 && word < len(visited) {
-		visited[word] |= uint64(1) << bit
-	}
+	visited[word] |= mask
 }
 
 func (sim *AttackPathSimulator) isVisited(visited []uint64, nodeID string) bool {
-	index, ok := sim.nodeIndex[nodeID]
+	word, mask, ok := sim.visitedWordAndMask(nodeID)
+	if !ok || word >= len(visited) {
+		return false
+	}
+	return visited[word]&mask != 0
+}
+
+func (sim *AttackPathSimulator) visitedWordAndMask(nodeID string) (int, uint64, bool) {
+	ordinal, ok := sim.nodeIDs.Lookup(nodeID)
 	if !ok {
-		return false
+		return 0, 0, false
 	}
-	word := index / 64
-	bit := index % 64
-	if word < 0 || word >= len(visited) {
-		return false
-	}
-	return visited[word]&(uint64(1)<<bit) != 0
+	return ordinalWordAndMask(ordinal)
 }
 
 func cloneVisitedBits(visited []uint64) []uint64 {
@@ -769,7 +769,7 @@ func (sim *AttackPathSimulator) findShortestPathAvoiding(entry, target *Node, ma
 	}
 
 	queue := []bfsState{{nodeID: entry.ID, path: nil}}
-	visited := map[string]bool{entry.ID: true}
+	visitedBits := sim.newVisitedBits(entry.ID)
 
 	for len(queue) > 0 {
 		current := queue[0]
@@ -792,7 +792,7 @@ func (sim *AttackPathSimulator) findShortestPathAvoiding(entry, target *Node, ma
 		}
 
 		for _, edge := range sim.graph.GetOutEdges(current.nodeID) {
-			if visited[edge.Target] {
+			if sim.isVisited(visitedBits, edge.Target) {
 				continue
 			}
 			if edge.IsDeny() {
@@ -833,7 +833,7 @@ func (sim *AttackPathSimulator) findShortestPathAvoiding(entry, target *Node, ma
 				MITREAttackID: edgeToMITRE(edge.Kind),
 			}
 
-			visited[edge.Target] = true
+			sim.markVisited(visitedBits, edge.Target)
 			queue = append(queue, bfsState{nodeID: edge.Target, path: newPath})
 		}
 	}

@@ -17,7 +17,9 @@ const (
 
 // ImpactPathAnalyzer generalizes attack-path traversal into business impact chains.
 type ImpactPathAnalyzer struct {
-	graph *Graph
+	graph        *Graph
+	nodeIDs      *NodeIDIndex
+	visitedWords int
 }
 
 const maxImpactPaths = 50
@@ -56,7 +58,16 @@ type ImpactAnalysisResult struct {
 
 // NewImpactPathAnalyzer creates a business impact analyzer over the unified graph.
 func NewImpactPathAnalyzer(g *Graph) *ImpactPathAnalyzer {
-	return &ImpactPathAnalyzer{graph: g}
+	allNodes := g.GetAllNodes()
+	nodeIDs := NewNodeIDIndex()
+	for _, node := range allNodes {
+		nodeIDs.Intern(node.ID)
+	}
+	return &ImpactPathAnalyzer{
+		graph:        g,
+		nodeIDs:      nodeIDs,
+		visitedWords: (nodeIDs.Len() + 63) / 64,
+	}
 }
 
 // Analyze computes scenario-specific impact chains starting from one node.
@@ -74,12 +85,12 @@ func (a *ImpactPathAnalyzer) Analyze(startNodeID string, scenario ImpactScenario
 	}
 
 	type bfsState struct {
-		nodeID  string
-		steps   []ImpactStep
-		visited map[string]bool
+		nodeID      string
+		steps       []ImpactStep
+		visitedBits []uint64
 	}
 
-	queue := []bfsState{{nodeID: startNodeID, visited: map[string]bool{startNodeID: true}}}
+	queue := []bfsState{{nodeID: startNodeID, visitedBits: a.newVisitedBits(startNodeID)}}
 	topPaths := &impactPathMinHeap{}
 	heap.Init(topPaths)
 
@@ -95,7 +106,7 @@ func (a *ImpactPathAnalyzer) Analyze(startNodeID string, scenario ImpactScenario
 			if edge.IsDeny() || !a.allowedEdge(scenario, edge.Kind) {
 				continue
 			}
-			if state.visited[edge.Target] {
+			if a.isVisited(state.visitedBits, edge.Target) {
 				continue
 			}
 			targetNode, ok := a.graph.GetNode(edge.Target)
@@ -103,8 +114,8 @@ func (a *ImpactPathAnalyzer) Analyze(startNodeID string, scenario ImpactScenario
 				continue
 			}
 
-			nextVisited := cloneVisited(state.visited)
-			nextVisited[edge.Target] = true
+			nextVisited := cloneVisitedBits(state.visitedBits)
+			a.markVisited(nextVisited, edge.Target)
 			nextSteps := append(copySteps(state.steps), ImpactStep{
 				FromNode: edge.Source,
 				ToNode:   edge.Target,
@@ -117,7 +128,7 @@ func (a *ImpactPathAnalyzer) Analyze(startNodeID string, scenario ImpactScenario
 				pushImpactPathTopK(topPaths, path, maxImpactPaths)
 			}
 
-			queue = append(queue, bfsState{nodeID: edge.Target, steps: nextSteps, visited: nextVisited})
+			queue = append(queue, bfsState{nodeID: edge.Target, steps: nextSteps, visitedBits: nextVisited})
 		}
 	}
 
@@ -376,12 +387,34 @@ func copySteps(steps []ImpactStep) []ImpactStep {
 	return copied
 }
 
-func cloneVisited(visited map[string]bool) map[string]bool {
-	cloned := make(map[string]bool, len(visited))
-	for key, value := range visited {
-		cloned[key] = value
+func (a *ImpactPathAnalyzer) newVisitedBits(nodeID string) []uint64 {
+	visited := make([]uint64, a.visitedWords)
+	a.markVisited(visited, nodeID)
+	return visited
+}
+
+func (a *ImpactPathAnalyzer) markVisited(visited []uint64, nodeID string) {
+	word, mask, ok := a.visitedWordAndMask(nodeID)
+	if !ok || word >= len(visited) {
+		return
 	}
-	return cloned
+	visited[word] |= mask
+}
+
+func (a *ImpactPathAnalyzer) isVisited(visited []uint64, nodeID string) bool {
+	word, mask, ok := a.visitedWordAndMask(nodeID)
+	if !ok || word >= len(visited) {
+		return false
+	}
+	return visited[word]&mask != 0
+}
+
+func (a *ImpactPathAnalyzer) visitedWordAndMask(nodeID string) (int, uint64, bool) {
+	ordinal, ok := a.nodeIDs.Lookup(nodeID)
+	if !ok {
+		return 0, 0, false
+	}
+	return ordinalWordAndMask(ordinal)
 }
 
 func pathHasIntermediateNode(path *ImpactPath, nodeID, startNodeID string) bool {

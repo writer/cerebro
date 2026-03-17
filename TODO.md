@@ -5,6 +5,39 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 169 - Impact Path Traversal Ordinal Visited Sets (2026-03-16)
+
+### Review findings
+- [x] Gap: `ImpactPathAnalyzer` still cloned `map[string]bool` visited state on every BFS branch, even after the node-ID interning substrate landed.
+- [x] Gap: impact-path analysis traverses the same graph surface as attack paths, so leaving it on string-keyed visitation would keep one of the remaining hot traversal paths outside the `#384` memory and allocation work.
+- [x] Gap: there was no focused benchmark or cycle regression locking down impact-path traversal behavior after moving to interned ordinals.
+
+### Execution plan
+- [x] Build `ImpactPathAnalyzer` on top of the shared `NodeIDIndex` substrate.
+- [x] Replace per-branch `map[string]bool` visitation with compact ordinal-backed word bitsets.
+- [x] Add TDD coverage for:
+  - [x] ordinal-backed visited bit behavior
+  - [x] cycle-safe revenue impact traversal
+- [x] Add a focused impact-path analyzer benchmark on a wide graph.
+- [ ] Re-run focused graph tests, lint, changed-file validation, and the new benchmark.
+
+## Deep Review Cycle 168 - Attack Path Traversal Ordinal Visited Sets (2026-03-16)
+
+### Review findings
+- [x] Gap: issue `#384` still left `AttackPathSimulator` carrying a private string-to-index lookup, duplicating the new `NodeIDIndex` substrate instead of moving a real hot traversal onto it.
+- [x] Gap: `findShortestPathAvoiding()` still allocated a `map[string]bool` visited set for BFS, so shortest-path traversal kept paying string-map costs despite the new ordinal interning slice.
+- [x] Gap: there was no focused benchmark locking down shortest-path attack traversal cost once visited tracking moved onto interned ordinals.
+
+### Execution plan
+- [x] Replace `AttackPathSimulator`'s private `nodeIndex` with shared `NodeIDIndex` lookups.
+- [x] Keep the compact word-bitset visited representation for attack path search, but derive bit positions from interned ordinals.
+- [x] Switch shortest-path BFS visited tracking from `map[string]bool` to the shared ordinal-backed visited bits.
+- [x] Add TDD coverage for:
+  - [x] ordinal-backed visited bit behavior
+  - [x] shortest-path traversal through a cycle
+- [x] Add a focused shortest-path benchmark on a wide attack graph.
+- [ ] Re-run focused graph tests, lint, changed-file validation, and the new benchmark.
+
 ## Deep Review Cycle 166 - Incremental ARN Prefix Index Maintenance (2026-03-16)
 
 ### Review findings

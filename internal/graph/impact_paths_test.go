@@ -5,6 +5,60 @@ import (
 	"testing"
 )
 
+func TestImpactPathAnalyzerVisitedBitsUseInternedOrdinals(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "start", Kind: NodeKindSubscription, Name: "Start"})
+	g.AddNode(&Node{ID: "service", Kind: NodeKindApplication, Name: "Service"})
+	g.AddNode(&Node{ID: "customer", Kind: NodeKindCustomer, Name: "Customer"})
+	g.AddEdge(&Edge{ID: "start-service", Source: "start", Target: "service", Kind: EdgeKindSubscribedTo, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "service-customer", Source: "service", Target: "customer", Kind: EdgeKindOwns, Effect: EdgeEffectAllow})
+
+	analyzer := NewImpactPathAnalyzer(g)
+	visited := analyzer.newVisitedBits("start")
+
+	if !analyzer.isVisited(visited, "start") {
+		t.Fatal("expected start node to be marked visited")
+	}
+	if analyzer.isVisited(visited, "service") {
+		t.Fatal("did not expect unrelated node to start visited")
+	}
+	if analyzer.isVisited(visited, "missing") {
+		t.Fatal("did not expect unknown node to be treated as visited")
+	}
+
+	analyzer.markVisited(visited, "service")
+	if !analyzer.isVisited(visited, "service") {
+		t.Fatal("expected service node to become visited")
+	}
+}
+
+func TestImpactPathAnalyzerAnalyzeHandlesCycles(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "start", Kind: NodeKindSubscription, Name: "Start"})
+	g.AddNode(&Node{ID: "service", Kind: NodeKindApplication, Name: "Service"})
+	g.AddNode(&Node{ID: "bridge", Kind: NodeKindApplication, Name: "Bridge"})
+	g.AddNode(&Node{ID: "customer", Kind: NodeKindCustomer, Name: "Customer", Properties: map[string]any{"arr": 100000}})
+
+	g.AddEdge(&Edge{ID: "start-service", Source: "start", Target: "service", Kind: EdgeKindSubscribedTo, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "service-bridge", Source: "service", Target: "bridge", Kind: EdgeKindOwns, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "bridge-service", Source: "bridge", Target: "service", Kind: EdgeKindOriginatedFrom, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "bridge-customer", Source: "bridge", Target: "customer", Kind: EdgeKindOwns, Effect: EdgeEffectAllow})
+
+	analyzer := NewImpactPathAnalyzer(g)
+	result := analyzer.Analyze("start", ImpactScenarioRevenueImpact, 5)
+
+	if len(result.Paths) != 1 {
+		t.Fatalf("expected exactly one path through cycle-safe traversal, got %d", len(result.Paths))
+	}
+	path := result.Paths[0]
+	if len(path.Steps) != 3 {
+		t.Fatalf("expected path length 3, got %d", len(path.Steps))
+	}
+	if path.Steps[0].ToNode != "service" || path.Steps[1].ToNode != "bridge" || path.Steps[2].ToNode != "customer" {
+		t.Fatalf("unexpected path sequence: %#v", path.Steps)
+	}
+}
+
 func TestImpactPathAnalyzer_RevenueImpact(t *testing.T) {
 	g := New()
 	g.AddNode(&Node{ID: "subscription-1", Kind: NodeKindSubscription, Name: "Subscription", Properties: map[string]any{"failed_payment_count": 2}})

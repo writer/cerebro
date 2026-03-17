@@ -4,6 +4,70 @@ import (
 	"testing"
 )
 
+func TestAttackPathSimulatorVisitedBitsUseInternedOrdinals(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "internet", Kind: NodeKindInternet, Name: "Internet"})
+	g.AddNode(&Node{ID: "role", Kind: NodeKindRole, Name: "Role"})
+	g.AddNode(&Node{ID: "db", Kind: NodeKindDatabase, Name: "DB", Risk: RiskCritical})
+	g.AddEdge(&Edge{ID: "i-role", Source: "internet", Target: "role", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "role-db", Source: "role", Target: "db", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+
+	sim := NewAttackPathSimulator(g)
+	visited := sim.newVisitedBits("internet")
+
+	if !sim.isVisited(visited, "internet") {
+		t.Fatal("expected entry node to be marked visited")
+	}
+	if sim.isVisited(visited, "role") {
+		t.Fatal("did not expect unrelated node to start visited")
+	}
+	if sim.isVisited(visited, "missing") {
+		t.Fatal("did not expect unknown node to be treated as visited")
+	}
+
+	sim.markVisited(visited, "role")
+	if !sim.isVisited(visited, "role") {
+		t.Fatal("expected interned node to become visited")
+	}
+}
+
+func TestAttackPathSimulatorFindShortestPathAvoidingHandlesCycles(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "internet", Kind: NodeKindInternet, Name: "Internet"})
+	g.AddNode(&Node{ID: "web", Kind: NodeKindInstance, Name: "Web", Risk: RiskHigh})
+	g.AddNode(&Node{ID: "role", Kind: NodeKindRole, Name: "Role"})
+	g.AddNode(&Node{ID: "db", Kind: NodeKindDatabase, Name: "DB", Risk: RiskCritical})
+
+	g.AddEdge(&Edge{ID: "i-web", Source: "internet", Target: "web", Kind: EdgeKindExposedTo, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "web-role", Source: "web", Target: "role", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "role-web", Source: "role", Target: "web", Kind: EdgeKindCanWrite, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "role-db", Source: "role", Target: "db", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+
+	sim := NewAttackPathSimulator(g)
+	entry, ok := g.GetNode("internet")
+	if !ok {
+		t.Fatal("expected internet node")
+	}
+	target, ok := g.GetNode("db")
+	if !ok {
+		t.Fatal("expected db node")
+	}
+
+	path := sim.findShortestPath(entry, target, 6)
+	if path == nil {
+		t.Fatal("expected shortest path through cycle to be found")
+	}
+	if path.Length != 3 {
+		t.Fatalf("expected shortest path length 3, got %d", path.Length)
+	}
+	if len(path.Steps) != 3 {
+		t.Fatalf("expected 3 path steps, got %d", len(path.Steps))
+	}
+	if path.Steps[0].ToNode != "web" || path.Steps[1].ToNode != "role" || path.Steps[2].ToNode != "db" {
+		t.Fatalf("unexpected shortest path sequence: %#v", path.Steps)
+	}
+}
+
 func TestFindChokepoints_DirectPaths(t *testing.T) {
 	// 4 direct Internet -> target paths with no shared intermediary.
 	// Targets appear on only 1 path each, so no chokepoints.

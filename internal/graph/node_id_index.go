@@ -93,3 +93,16 @@ func nodeOrdinalFromLength(length int) (NodeOrdinal, bool) {
 	}
 	return NodeOrdinal(uint32(length)), true
 }
+
+func ordinalWordAndMask(ordinal NodeOrdinal) (int, uint64, bool) {
+	if ordinal == InvalidNodeOrdinal {
+		return 0, 0, false
+	}
+	slot := int(ordinal - 1)
+	if slot < 0 {
+		return 0, 0, false
+	}
+	word := slot / 64
+	bit := slot & 63
+	return word, uint64(1) << bit, true
+}
