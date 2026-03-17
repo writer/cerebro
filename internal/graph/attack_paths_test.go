@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -204,6 +205,101 @@ func TestFindChokepoints_DirectPathsSharedTarget(t *testing.T) {
 		if cp.PathsThrough < 2 {
 			t.Errorf("chokepoint %s has only %d paths through (need >= 2)", cp.Node.ID, cp.PathsThrough)
 		}
+	}
+}
+
+func TestAttackPathSimulatorFindShortestPathAvoidingHonorsWideAvoidSet(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "internet", Kind: NodeKindInternet, Name: "Internet"})
+	g.AddNode(&Node{ID: "target", Kind: NodeKindDatabase, Name: "Target", Risk: RiskCritical})
+
+	const chainLen = 70
+	prevID := "internet"
+	for i := 0; i < chainLen; i++ {
+		nodeID := fmt.Sprintf("chain-%d", i)
+		g.AddNode(&Node{ID: nodeID, Kind: NodeKindRole, Name: nodeID})
+		g.AddEdge(&Edge{
+			ID:     fmt.Sprintf("%s->%s", prevID, nodeID),
+			Source: prevID,
+			Target: nodeID,
+			Kind:   EdgeKindCanAssume,
+			Effect: EdgeEffectAllow,
+		})
+		prevID = nodeID
+	}
+	g.AddEdge(&Edge{
+		ID:     "chain-69->target",
+		Source: "chain-69",
+		Target: "target",
+		Kind:   EdgeKindCanRead,
+		Effect: EdgeEffectAllow,
+	})
+
+	// This back-edge points to a prefix node whose ordinal is beyond the first 64-bit word.
+	// The avoiding BFS must still reject it after the ordinal visit-set conversion.
+	g.AddEdge(&Edge{
+		ID:     "chain-68->chain-65",
+		Source: "chain-68",
+		Target: "chain-65",
+		Kind:   EdgeKindCanAssume,
+		Effect: EdgeEffectAllow,
+	})
+	g.AddEdge(&Edge{
+		ID:     "chain-65->target",
+		Source: "chain-65",
+		Target: "target",
+		Kind:   EdgeKindCanRead,
+		Effect: EdgeEffectAllow,
+	})
+
+	prevID = "chain-68"
+	for i := 0; i < 8; i++ {
+		nodeID := fmt.Sprintf("alt-%d", i)
+		g.AddNode(&Node{ID: nodeID, Kind: NodeKindRole, Name: nodeID})
+		g.AddEdge(&Edge{
+			ID:     fmt.Sprintf("%s->%s", prevID, nodeID),
+			Source: prevID,
+			Target: nodeID,
+			Kind:   EdgeKindCanAssume,
+			Effect: EdgeEffectAllow,
+		})
+		prevID = nodeID
+	}
+	g.AddEdge(&Edge{
+		ID:     "alt-7->target",
+		Source: "alt-7",
+		Target: "target",
+		Kind:   EdgeKindCanRead,
+		Effect: EdgeEffectAllow,
+	})
+
+	sim := NewAttackPathSimulator(g)
+	entry, ok := g.GetNode("chain-68")
+	if !ok {
+		t.Fatal("expected spur node")
+	}
+	target, ok := g.GetNode("target")
+	if !ok {
+		t.Fatal("expected target node")
+	}
+
+	avoidNodes := newOrdinalVisitSet(sim.nodeIDs)
+	for i := 0; i <= 65; i++ {
+		avoidNodes.mark(fmt.Sprintf("chain-%d", i))
+	}
+	avoidEdges := map[string][]*Edge{
+		"chain-68": {{Target: "chain-69"}},
+	}
+
+	path := sim.findShortestPathAvoiding(entry, target, 20, avoidNodes, avoidEdges)
+	if path == nil {
+		t.Fatal("expected alternate path")
+	}
+	if len(path.Steps) == 0 {
+		t.Fatal("expected path steps")
+	}
+	if path.Steps[0].FromNode != "chain-68" || path.Steps[0].ToNode != "alt-0" {
+		t.Fatalf("expected avoiding path to branch to alt-0, got %#v", path.Steps)
 	}
 }
 

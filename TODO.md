@@ -5,6 +5,20 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 175 - Attack Path Spur Avoidance Ordinal Sets (2026-03-16)
+
+### Review findings
+- [x] Gap: `AttackPathSimulator.KShortestPaths()` still rebuilt Yen spur-path root exclusions with a fresh `map[string]bool` on every deviation, even after the rest of the attack traversal stack moved onto interned ordinals.
+- [x] Gap: alternative-path generation is the highest-allocation attack-path branch because each spur search clones prefix state, so leaving root-node avoidance on string maps keeps the expensive part of k-shortest search outside the `#384` memory reduction work.
+- [x] Gap: there was no regression proving spur-path avoidance still rejects root-prefix nodes once the avoided prefix grows beyond the first 64 ordinal bits, and no focused benchmark isolating `KShortestPaths`.
+
+### Execution plan
+- [x] Move Yen spur-path root exclusions onto the shared ordinal visit set keyed by `NodeIDIndex`.
+- [x] Thread the ordinal avoid-set through `findShortestPathAvoiding` so k-shortest spur BFS no longer depends on string-keyed lookups.
+- [x] Add TDD coverage for wide-prefix spur avoidance beyond the first ordinal word.
+- [x] Add a focused `KShortestPaths` benchmark.
+- [ ] Re-run focused graph tests, lint, changed-file validation, and the new benchmark.
+
 ## Deep Review Cycle 173 - Effective Permissions Ordinal Role Traversal (2026-03-16)
 
 ### Review findings

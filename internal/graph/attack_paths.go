@@ -756,9 +756,9 @@ func (sim *AttackPathSimulator) KShortestPaths(entryID, targetID string, k, maxL
 
 			// Find spur path from spur node to target, avoiding root path nodes
 			spurNode, _ := sim.graph.GetNode(spurNodeID)
-			avoidNodes := make(map[string]bool)
+			avoidNodes := newOrdinalVisitSet(sim.nodeIDs)
 			for _, step := range rootPath {
-				avoidNodes[step.ToNode] = true
+				avoidNodes.mark(step.ToNode)
 			}
 
 			spurPath := sim.findShortestPathAvoiding(spurNode, target, maxLen-len(rootPath), avoidNodes, removedEdges)
@@ -811,11 +811,11 @@ func (sim *AttackPathSimulator) KShortestPaths(entryID, targetID string, k, maxL
 
 // findShortestPath finds the shortest path using BFS
 func (sim *AttackPathSimulator) findShortestPath(entry, target *Node, maxLen int) *ScoredAttackPath {
-	return sim.findShortestPathAvoiding(entry, target, maxLen, nil, nil)
+	return sim.findShortestPathAvoiding(entry, target, maxLen, ordinalVisitSet{}, nil)
 }
 
 // findShortestPathAvoiding finds shortest path while avoiding certain nodes/edges
-func (sim *AttackPathSimulator) findShortestPathAvoiding(entry, target *Node, maxLen int, avoidNodes map[string]bool, avoidEdges map[string][]*Edge) *ScoredAttackPath {
+func (sim *AttackPathSimulator) findShortestPathAvoiding(entry, target *Node, maxLen int, avoidNodes ordinalVisitSet, avoidEdges map[string][]*Edge) *ScoredAttackPath {
 	type bfsState struct {
 		nodeID string
 		path   []*AttackStep
@@ -851,7 +851,7 @@ func (sim *AttackPathSimulator) findShortestPathAvoiding(entry, target *Node, ma
 			if edge.IsDeny() {
 				continue
 			}
-			if avoidNodes != nil && avoidNodes[edge.Target] {
+			if avoidNodes.has(edge.Target) {
 				continue
 			}
 

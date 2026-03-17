@@ -66,6 +66,21 @@ func BenchmarkAttackPathSimulatorFindChokepoints(b *testing.B) {
 	}
 }
 
+func BenchmarkAttackPathSimulatorKShortestPaths(b *testing.B) {
+	g, entry, target := newAttackPathKShortestBenchmarkGraph(72, 8)
+	sim := NewAttackPathSimulator(g)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		paths := sim.KShortestPaths(entry.ID, target.ID, 3, 96)
+		if len(paths) == 0 {
+			b.Fatal("expected k-shortest paths")
+		}
+	}
+}
+
 func newAttackPathTraversalBenchmarkGraph(levels, fanout int) (*Graph, *Node, *Node) {
 	g := New()
 	internet := &Node{ID: "internet", Kind: NodeKindInternet, Name: "Internet"}
@@ -103,4 +118,74 @@ func newAttackPathTraversalBenchmarkGraph(levels, fanout int) (*Graph, *Node, *N
 	})
 
 	return g, internet, target
+}
+
+func newAttackPathKShortestBenchmarkGraph(chainLen, altLen int) (*Graph, *Node, *Node) {
+	g := New()
+	entry := &Node{ID: "internet", Kind: NodeKindInternet, Name: "Internet"}
+	target := &Node{ID: "target", Kind: NodeKindDatabase, Name: "Target", Risk: RiskCritical}
+	g.AddNode(entry)
+	g.AddNode(target)
+
+	prevID := entry.ID
+	for i := 0; i < chainLen; i++ {
+		nodeID := fmt.Sprintf("chain-%d", i)
+		g.AddNode(&Node{ID: nodeID, Kind: NodeKindRole, Name: nodeID})
+		g.AddEdge(&Edge{
+			ID:     fmt.Sprintf("%s->%s", prevID, nodeID),
+			Source: prevID,
+			Target: nodeID,
+			Kind:   EdgeKindCanAssume,
+			Effect: EdgeEffectAllow,
+		})
+		prevID = nodeID
+	}
+	lastChainID := fmt.Sprintf("chain-%d", chainLen-1)
+	g.AddEdge(&Edge{
+		ID:     fmt.Sprintf("%s->%s", lastChainID, target.ID),
+		Source: lastChainID,
+		Target: target.ID,
+		Kind:   EdgeKindCanRead,
+		Effect: EdgeEffectAllow,
+	})
+
+	spurID := fmt.Sprintf("chain-%d", chainLen-2)
+	rejoinID := fmt.Sprintf("chain-%d", chainLen-5)
+	g.AddEdge(&Edge{
+		ID:     fmt.Sprintf("%s->%s", spurID, rejoinID),
+		Source: spurID,
+		Target: rejoinID,
+		Kind:   EdgeKindCanAssume,
+		Effect: EdgeEffectAllow,
+	})
+	g.AddEdge(&Edge{
+		ID:     fmt.Sprintf("%s->%s", rejoinID, target.ID),
+		Source: rejoinID,
+		Target: target.ID,
+		Kind:   EdgeKindCanRead,
+		Effect: EdgeEffectAllow,
+	})
+
+	prevID = spurID
+	for i := 0; i < altLen; i++ {
+		nodeID := fmt.Sprintf("alt-%d", i)
+		g.AddNode(&Node{ID: nodeID, Kind: NodeKindRole, Name: nodeID})
+		g.AddEdge(&Edge{
+			ID:     fmt.Sprintf("%s->%s", prevID, nodeID),
+			Source: prevID,
+			Target: nodeID,
+			Kind:   EdgeKindCanAssume,
+			Effect: EdgeEffectAllow,
+		})
+		prevID = nodeID
+	}
+	g.AddEdge(&Edge{
+		ID:     fmt.Sprintf("%s->%s", prevID, target.ID),
+		Source: prevID,
+		Target: target.ID,
+		Kind:   EdgeKindCanRead,
+		Effect: EdgeEffectAllow,
+	})
+
+	return g, entry, target
 }
