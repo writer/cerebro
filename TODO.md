@@ -5,6 +5,19 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 192 - Materialized Detection Views (2026-03-17)
+
+### Review findings
+- [x] Gap: issue `#359` still left common dashboard-heavy graph queries on the synchronous request path, so blast-radius leaderboards and toxic-combination summaries recomputed after every request even when the graph had not changed.
+- [x] Gap: the graph had a point-in-time `BlastRadiusTopN` cache, but nothing proactively kept that cache warm or maintained any durable snapshot for toxic combinations as mutations streamed in.
+- [x] Gap: there was no regression coverage proving a manager could ignore irrelevant graph changes, coalesce rapid relevant mutations, and keep a materialized view consistent with the current graph version.
+
+### Execution plan
+- [x] Add a materialized detection view manager that owns reactive refresh workers on top of the graph change-feed substrate.
+- [x] Materialize and keep warm the blast-radius top-N leaderboard and active toxic-combination snapshot with bounded debounce windows.
+- [x] Add TDD coverage for irrelevant-change suppression, burst coalescing, and post-mutation view consistency.
+- [x] Re-run focused and full graph tests, lint, and changed-file validation.
+
 ## Deep Review Cycle 191 - Reactive Graph Monitors (2026-03-17)
 
 ### Review findings
