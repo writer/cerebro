@@ -106,3 +106,14 @@ func ordinalWordAndMask(ordinal NodeOrdinal) (int, uint64, bool) {
 	bit := slot & 63
 	return word, uint64(1) << bit, true
 }
+
+func nodeOrdinalFromWordBit(wordIndex, bit int) (NodeOrdinal, bool) {
+	if wordIndex < 0 || bit < 0 || bit >= 64 {
+		return InvalidNodeOrdinal, false
+	}
+	ordinal := uint64(wordIndex)*64 + uint64(bit) + 1
+	if ordinal == 0 || ordinal > math.MaxUint32 {
+		return InvalidNodeOrdinal, false
+	}
+	return NodeOrdinal(ordinal), true
+}

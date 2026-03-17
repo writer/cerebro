@@ -134,6 +134,53 @@ func TestFindChokepoints_SharedIntermediary(t *testing.T) {
 	}
 }
 
+func TestFindChokepoints_TracksDistinctEntriesAndTargets(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "internet", Kind: NodeKindInternet, Name: "Internet"})
+	g.AddNode(&Node{ID: "user1", Kind: NodeKindUser, Name: "User1"})
+	g.AddNode(&Node{ID: "role", Kind: NodeKindRole, Name: "SharedRole"})
+	g.AddNode(&Node{ID: "db1", Kind: NodeKindDatabase, Name: "DB1", Risk: RiskCritical})
+	g.AddNode(&Node{ID: "db2", Kind: NodeKindDatabase, Name: "DB2", Risk: RiskCritical})
+
+	g.AddEdge(&Edge{ID: "internet-role", Source: "internet", Target: "role", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "user-role", Source: "user1", Target: "role", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "role-db1", Source: "role", Target: "db1", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "role-db2", Source: "role", Target: "db2", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+
+	sim := NewAttackPathSimulator(g)
+	result := sim.Simulate(6)
+
+	var roleChokepoint *Chokepoint
+	for _, cp := range result.Chokepoints {
+		if cp.Node.ID == "role" {
+			roleChokepoint = cp
+			break
+		}
+	}
+	if roleChokepoint == nil {
+		t.Fatal("expected shared role to be identified as a chokepoint")
+	}
+	if roleChokepoint.PathsThrough != 4 {
+		t.Fatalf("expected shared role on 4 paths, got %d", roleChokepoint.PathsThrough)
+	}
+
+	upstream := make(map[string]bool, len(roleChokepoint.UpstreamEntries))
+	for _, id := range roleChokepoint.UpstreamEntries {
+		upstream[id] = true
+	}
+	if len(upstream) != 2 || !upstream["internet"] || !upstream["user1"] {
+		t.Fatalf("unexpected upstream entries: %#v", roleChokepoint.UpstreamEntries)
+	}
+
+	downstream := make(map[string]bool, len(roleChokepoint.DownstreamTargets))
+	for _, id := range roleChokepoint.DownstreamTargets {
+		downstream[id] = true
+	}
+	if len(downstream) != 2 || !downstream["db1"] || !downstream["db2"] {
+		t.Fatalf("unexpected downstream targets: %#v", roleChokepoint.DownstreamTargets)
+	}
+}
+
 func TestFindChokepoints_DirectPathsSharedTarget(t *testing.T) {
 	// Two entry points (Internet and a User) both reach the same DB directly.
 	// Since they have different entry points, sharedEntry is "" and targets are

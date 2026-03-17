@@ -47,6 +47,20 @@ Status: executed end-to-end via PR workflow
 - [x] Add a focused `ExtractSubgraph` benchmark on a wide graph neighborhood.
 - [ ] Re-run focused graph tests, lint, changed-file validation, and the new benchmark.
 
+## Deep Review Cycle 174 - Attack Path Chokepoint Ordinal Aggregation (2026-03-16)
+
+### Review findings
+- [x] Gap: `AttackPathSimulator.findChokepoints()` still rebuilt per-path and per-node aggregation state with nested string-keyed maps even after the shortest-path attack traversal moved onto interned node ordinals.
+- [x] Gap: chokepoint analysis runs across every discovered attack path, so repeated `map[string]bool` allocation for path-local dedupe and upstream/downstream fan-in tracking keeps a high-cardinality post-processing path outside the `#384` memory reduction work.
+- [x] Gap: there was no regression explicitly locking down distinct upstream-entry / downstream-target aggregation for a shared chokepoint, and no dedicated benchmark isolating chokepoint analysis cost from the rest of the simulator.
+
+### Execution plan
+- [x] Move per-path chokepoint node dedupe onto ordinal-backed bitsets keyed by `NodeIDIndex`.
+- [x] Move upstream/downstream entry/target aggregation onto ordinal-backed bitsets instead of nested string maps.
+- [x] Add TDD coverage for distinct upstream/downstream aggregation on a shared chokepoint.
+- [x] Add a focused `findChokepoints()` benchmark.
+- [x] Re-run focused graph tests, lint, changed-file validation, and the new benchmark.
+
 ## Deep Review Cycle 170 - Query Traversal Ordinal Visited Sets (2026-03-16)
 
 ### Review findings

@@ -90,3 +90,19 @@ func TestNodeIDIndexBitmapMatchesInternedCardinality(t *testing.T) {
 		}
 	}
 }
+
+func TestNodeOrdinalFromWordBitBounds(t *testing.T) {
+	if ordinal, ok := nodeOrdinalFromWordBit(0, 0); !ok || ordinal != 1 {
+		t.Fatalf("nodeOrdinalFromWordBit(0, 0) = (%d, %t), want 1,true", ordinal, ok)
+	}
+	if ordinal, ok := nodeOrdinalFromWordBit(-1, 0); ok || ordinal != InvalidNodeOrdinal {
+		t.Fatalf("nodeOrdinalFromWordBit(-1, 0) = (%d, %t), want invalid,false", ordinal, ok)
+	}
+	if ordinal, ok := nodeOrdinalFromWordBit(0, 64); ok || ordinal != InvalidNodeOrdinal {
+		t.Fatalf("nodeOrdinalFromWordBit(0, 64) = (%d, %t), want invalid,false", ordinal, ok)
+	}
+	overflowWordIndex := int(^uint32(0))/64 + 1
+	if ordinal, ok := nodeOrdinalFromWordBit(overflowWordIndex, 0); ok || ordinal != InvalidNodeOrdinal {
+		t.Fatalf("nodeOrdinalFromWordBit(%d, 0) = (%d, %t), want invalid,false", overflowWordIndex, ordinal, ok)
+	}
+}

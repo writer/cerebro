@@ -3,6 +3,7 @@ package graph
 import (
 	"container/heap"
 	"fmt"
+	"math/bits"
 	"sort"
 	"sync"
 )
@@ -395,9 +396,9 @@ func (sim *AttackPathSimulator) scorePath(path *ScoredAttackPath) {
 
 func (sim *AttackPathSimulator) findChokepoints(paths []*ScoredAttackPath) []*Chokepoint {
 	// Count how many paths go through each node
-	nodePathCount := make(map[string]int)
-	nodeUpstream := make(map[string]map[string]bool)
-	nodeDownstream := make(map[string]map[string]bool)
+	nodePathCount := make([]int, sim.nodeIDs.Len()+1)
+	nodeUpstream := make(map[NodeOrdinal][]uint64)
+	nodeDownstream := make(map[NodeOrdinal][]uint64)
 
 	// Check if all paths share the same entry point (e.g. Internet).
 	// When they do, include intermediate nodes AND shared entry points
@@ -414,42 +415,30 @@ func (sim *AttackPathSimulator) findChokepoints(paths []*ScoredAttackPath) []*Ch
 	}
 
 	for _, path := range paths {
-		pathNodes := make(map[string]bool)
-		for _, step := range path.Steps {
-			pathNodes[step.ToNode] = true
-			pathNodes[step.FromNode] = true
+		entryOrdinal, ok := sim.nodeIDs.Lookup(path.EntryPoint.ID)
+		if !ok {
+			continue
 		}
-
-		for nodeID := range pathNodes {
-			// Always skip the shared entry point itself (e.g. Internet)
-			if nodeID == sharedEntry {
-				continue
-			}
-			// For multi-hop paths, skip entry/target to find true intermediaries.
-			// For direct paths (length <= 1), include targets so they can be
-			// identified as convergence points reachable from the shared entry.
-			if path.Length > 1 && (nodeID == path.EntryPoint.ID || nodeID == path.Target.ID) {
-				continue
-			}
-			nodePathCount[nodeID]++
-
-			if nodeUpstream[nodeID] == nil {
-				nodeUpstream[nodeID] = make(map[string]bool)
-			}
-			nodeUpstream[nodeID][path.EntryPoint.ID] = true
-
-			if nodeDownstream[nodeID] == nil {
-				nodeDownstream[nodeID] = make(map[string]bool)
-			}
-			nodeDownstream[nodeID][path.Target.ID] = true
+		targetOrdinal, ok := sim.nodeIDs.Lookup(path.Target.ID)
+		if !ok {
+			continue
+		}
+		pathNodes := make([]uint64, sim.visitedWords)
+		for _, step := range path.Steps {
+			sim.recordChokepointNode(path, sharedEntry, step.FromNode, entryOrdinal, targetOrdinal, pathNodes, nodePathCount, nodeUpstream, nodeDownstream)
+			sim.recordChokepointNode(path, sharedEntry, step.ToNode, entryOrdinal, targetOrdinal, pathNodes, nodePathCount, nodeUpstream, nodeDownstream)
 		}
 	}
 
 	// Convert to chokepoints
 	chokepoints := make([]*Chokepoint, 0, len(nodePathCount))
-	for nodeID, count := range nodePathCount {
+	for ordinal, count := range nodePathCount {
 		if count < 2 {
 			continue // Only nodes with multiple paths through them
+		}
+		nodeID, ok := sim.nodeIDs.Resolve(NodeOrdinal(ordinal))
+		if !ok {
+			continue
 		}
 
 		node, ok := sim.graph.GetNode(nodeID)
@@ -457,15 +446,8 @@ func (sim *AttackPathSimulator) findChokepoints(paths []*ScoredAttackPath) []*Ch
 			continue
 		}
 
-		upstream := make([]string, 0, len(nodeUpstream[nodeID]))
-		for id := range nodeUpstream[nodeID] {
-			upstream = append(upstream, id)
-		}
-
-		downstream := make([]string, 0, len(nodeDownstream[nodeID]))
-		for id := range nodeDownstream[nodeID] {
-			downstream = append(downstream, id)
-		}
+		upstream := sim.ordinalBitsToNodeIDs(nodeUpstream[NodeOrdinal(ordinal)])
+		downstream := sim.ordinalBitsToNodeIDs(nodeDownstream[NodeOrdinal(ordinal)])
 
 		// Calculate betweenness centrality approximation
 		centrality := float64(count) / float64(len(paths))
@@ -491,6 +473,77 @@ func (sim *AttackPathSimulator) findChokepoints(paths []*ScoredAttackPath) []*Ch
 	})
 
 	return chokepoints
+}
+
+func (sim *AttackPathSimulator) recordChokepointNode(
+	path *ScoredAttackPath,
+	sharedEntry string,
+	nodeID string,
+	entryOrdinal NodeOrdinal,
+	targetOrdinal NodeOrdinal,
+	pathNodes []uint64,
+	nodePathCount []int,
+	nodeUpstream map[NodeOrdinal][]uint64,
+	nodeDownstream map[NodeOrdinal][]uint64,
+) {
+	// Always skip the shared entry point itself (e.g. Internet)
+	if nodeID == sharedEntry {
+		return
+	}
+	// For multi-hop paths, skip entry/target to find true intermediaries.
+	// For direct paths (length <= 1), include targets so they can be
+	// identified as convergence points reachable from the shared entry.
+	if path.Length > 1 && (nodeID == path.EntryPoint.ID || nodeID == path.Target.ID) {
+		return
+	}
+	nodeOrdinal, ok := sim.nodeIDs.Lookup(nodeID)
+	if !ok || !markOrdinalBits(pathNodes, nodeOrdinal) {
+		return
+	}
+	if int(nodeOrdinal) >= len(nodePathCount) {
+		return
+	}
+	nodePathCount[nodeOrdinal]++
+	if nodeUpstream[nodeOrdinal] == nil {
+		nodeUpstream[nodeOrdinal] = make([]uint64, sim.visitedWords)
+	}
+	markOrdinalBits(nodeUpstream[nodeOrdinal], entryOrdinal)
+	if nodeDownstream[nodeOrdinal] == nil {
+		nodeDownstream[nodeOrdinal] = make([]uint64, sim.visitedWords)
+	}
+	markOrdinalBits(nodeDownstream[nodeOrdinal], targetOrdinal)
+}
+
+func markOrdinalBits(visited []uint64, ordinal NodeOrdinal) bool {
+	word, mask, ok := ordinalWordAndMask(ordinal)
+	if !ok || word >= len(visited) {
+		return false
+	}
+	alreadyVisited := visited[word]&mask != 0
+	visited[word] |= mask
+	return !alreadyVisited
+}
+
+func (sim *AttackPathSimulator) ordinalBitsToNodeIDs(visited []uint64) []string {
+	if len(visited) == 0 {
+		return nil
+	}
+	ids := make([]string, 0)
+	for wordIndex, word := range visited {
+		for word != 0 {
+			bit := bits.TrailingZeros64(word)
+			ordinal, ok := nodeOrdinalFromWordBit(wordIndex, bit)
+			if !ok {
+				word &^= uint64(1) << bit
+				continue
+			}
+			if id, ok := sim.nodeIDs.Resolve(ordinal); ok {
+				ids = append(ids, id)
+			}
+			word &^= uint64(1) << bit
+		}
+	}
+	return ids
 }
 
 // pathState is used for pathfinding algorithms

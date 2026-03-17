@@ -20,6 +20,52 @@ func BenchmarkAttackPathSimulatorFindShortestPath(b *testing.B) {
 	}
 }
 
+func BenchmarkAttackPathSimulatorFindChokepoints(b *testing.B) {
+	g := New()
+	for i := range 6 {
+		entryID := fmt.Sprintf("entry-%d", i)
+		g.AddNode(&Node{ID: entryID, Kind: NodeKindUser, Name: entryID})
+	}
+	g.AddNode(&Node{ID: "pivot", Kind: NodeKindRole, Name: "Pivot"})
+	for i := range 12 {
+		targetID := fmt.Sprintf("target-%d", i)
+		g.AddNode(&Node{ID: targetID, Kind: NodeKindDatabase, Name: targetID, Risk: RiskCritical})
+		g.AddEdge(&Edge{
+			ID:     fmt.Sprintf("pivot-%s", targetID),
+			Source: "pivot",
+			Target: targetID,
+			Kind:   EdgeKindCanRead,
+			Effect: EdgeEffectAllow,
+		})
+	}
+	for i := range 6 {
+		entryID := fmt.Sprintf("entry-%d", i)
+		g.AddEdge(&Edge{
+			ID:     fmt.Sprintf("%s-pivot", entryID),
+			Source: entryID,
+			Target: "pivot",
+			Kind:   EdgeKindCanAssume,
+			Effect: EdgeEffectAllow,
+		})
+	}
+
+	sim := NewAttackPathSimulator(g)
+	result := sim.Simulate(6)
+	if len(result.Paths) == 0 {
+		b.Fatal("expected attack paths")
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		chokepoints := sim.findChokepoints(result.Paths)
+		if len(chokepoints) == 0 {
+			b.Fatal("expected chokepoints")
+		}
+	}
+}
+
 func newAttackPathTraversalBenchmarkGraph(levels, fanout int) (*Graph, *Node, *Node) {
 	g := New()
 	internet := &Node{ID: "internet", Kind: NodeKindInternet, Name: "Internet"}
