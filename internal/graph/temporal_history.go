@@ -107,7 +107,7 @@ func (g *Graph) GetNodePropertyHistory(nodeID, property string, window time.Dura
 		}
 		out = append(out, PropertySnapshot{
 			Timestamp: snapshot.Timestamp,
-			Value:     snapshot.Value,
+			Value:     cloneAny(snapshot.Value),
 		})
 	}
 	return out
@@ -332,6 +332,7 @@ func (g *Graph) appendNodePropertyHistoryLocked(node *Node, property string, val
 	}
 	history := node.PropertyHistory[property]
 	if len(history) > 0 {
+		history = clonePropertySnapshotsShared(history)
 		last := history[len(history)-1]
 		if reflect.DeepEqual(last.Value, value) {
 			if at.After(last.Timestamp) {
@@ -347,7 +348,7 @@ func (g *Graph) appendNodePropertyHistoryLocked(node *Node, property string, val
 		}
 	}
 
-	history = append(history, PropertySnapshot{Timestamp: at, Value: value})
+	history = append(history, PropertySnapshot{Timestamp: at, Value: cloneAny(value)})
 	history = g.trimTemporalHistoryLocked(history, at)
 	if len(history) == 0 {
 		delete(node.PropertyHistory, property)

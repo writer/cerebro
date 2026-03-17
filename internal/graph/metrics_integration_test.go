@@ -67,11 +67,11 @@ func TestGraphOperationMetrics(t *testing.T) {
 	if got := histogramCountVec(t, metrics.GraphSearchLatency, "entity_suggest"); got != beforeSuggest+1 {
 		t.Fatalf("expected entity_suggest histogram count to increase by 1, got before=%d after=%d", beforeSuggest, got)
 	}
-	if got := histogramCountVec(t, metrics.GraphSnapshotDuration, "create"); got != beforeCreateSnapshot+2 {
-		t.Fatalf("expected create snapshot histogram count to increase by 2, got before=%d after=%d", beforeCreateSnapshot, got)
+	if got := histogramCountVec(t, metrics.GraphSnapshotDuration, "create"); got != beforeCreateSnapshot+1 {
+		t.Fatalf("expected create snapshot histogram count to increase by 1, got before=%d after=%d", beforeCreateSnapshot, got)
 	}
-	if got := histogramCountVec(t, metrics.GraphSnapshotDuration, "restore"); got != beforeRestoreSnapshot+2 {
-		t.Fatalf("expected restore snapshot histogram count to increase by 2, got before=%d after=%d", beforeRestoreSnapshot, got)
+	if got := histogramCountVec(t, metrics.GraphSnapshotDuration, "restore"); got != beforeRestoreSnapshot+1 {
+		t.Fatalf("expected restore snapshot histogram count to increase by 1, got before=%d after=%d", beforeRestoreSnapshot, got)
 	}
 	if got := histogramCount(t, metrics.GraphCloneDuration); got != beforeClone+1 {
 		t.Fatalf("expected clone histogram count to increase by 1, got before=%d after=%d", beforeClone, got)

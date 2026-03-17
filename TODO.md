@@ -18,6 +18,20 @@ Status: executed end-to-end via PR workflow
 - [x] Add TDD coverage for cache reuse, mutation invalidation, sorting, and limit behavior.
 - [x] Re-run focused graph tests, lint, changed-file validation, and the new benchmark.
 
+## Deep Review Cycle 183 - Property History Structural Sharing (2026-03-17)
+
+### Review findings
+- [x] Gap: issue `#348` still left `Graph.Clone()` routed through snapshot deep-copying, so every clone duplicated the full property-history corpus even when only one later mutation would touch it.
+- [x] Gap: node replacement paths also deep-copied `PropertyHistory`, despite those histories being append-only data that can be safely shared until a later write targets one property.
+- [x] Gap: there was no regression or benchmark proving graph clones could share immutable property-history slices and then detach on the first property-history mutation.
+
+### Execution plan
+- [x] Add a direct graph-clone path that preserves current graph semantics while sharing immutable property-history slices.
+- [x] Change property-history mutation paths to detach only the touched snapshot slice before in-place updates or append.
+- [x] Carry forward shared property history on node replacement/update flows.
+- [x] Add TDD coverage for clone sharing followed by mutation detachment.
+- [x] Re-run focused graph tests, lint, changed-file validation, and clone benchmarks.
+
 ## Deep Review Cycle 182 - Parallel Blast/Reverse Frontier Traversal (2026-03-17)
 
 ### Review findings

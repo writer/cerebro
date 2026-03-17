@@ -2,6 +2,7 @@ package graph
 
 import (
 	"testing"
+	"time"
 )
 
 func TestGraph_AddNode(t *testing.T) {
@@ -1053,5 +1054,142 @@ func TestGraph_Clone(t *testing.T) {
 	origEdge := g.GetOutEdges("node-1")[0]
 	if got := origEdge.Properties["reason"]; got != "delegation" {
 		t.Fatalf("expected original edge properties to remain unchanged, got %v", got)
+	}
+}
+
+func TestGraphCloneSharesPropertyHistoryUntilMutation(t *testing.T) {
+	origNow := temporalNowUTC
+	defer func() { temporalNowUTC = origNow }()
+
+	base := time.Date(2026, 3, 17, 12, 0, 0, 0, time.UTC)
+	now := base
+	temporalNowUTC = func() time.Time { return now }
+
+	g := New()
+	g.AddNode(&Node{
+		ID:         "customer:shared",
+		Kind:       NodeKindCustomer,
+		Properties: map[string]any{"health_score": 100.0},
+	})
+
+	now = base.Add(1 * time.Hour)
+	g.SetNodeProperty("customer:shared", "health_score", 90.0)
+	now = base.Add(2 * time.Hour)
+	g.SetNodeProperty("customer:shared", "health_score", 80.0)
+
+	clone := g.Clone()
+
+	g.mu.RLock()
+	origNode := g.nodes["customer:shared"]
+	origHistory := origNode.PropertyHistory["health_score"]
+	g.mu.RUnlock()
+
+	clone.mu.RLock()
+	clonedNode := clone.nodes["customer:shared"]
+	clonedHistory := clonedNode.PropertyHistory["health_score"]
+	clone.mu.RUnlock()
+
+	if len(origHistory) == 0 || len(clonedHistory) == 0 {
+		t.Fatal("expected property history to exist on both graphs")
+	}
+	if &origHistory[0] != &clonedHistory[0] {
+		t.Fatal("expected cloned graph to share immutable property history slices before mutation")
+	}
+
+	now = base.Add(3 * time.Hour)
+	if !clone.SetNodeProperty("customer:shared", "health_score", 70.0) {
+		t.Fatal("expected clone SetNodeProperty to succeed")
+	}
+
+	g.mu.RLock()
+	origHistory = g.nodes["customer:shared"].PropertyHistory["health_score"]
+	g.mu.RUnlock()
+
+	clone.mu.RLock()
+	clonedHistory = clone.nodes["customer:shared"].PropertyHistory["health_score"]
+	clone.mu.RUnlock()
+
+	if len(origHistory) != 3 {
+		t.Fatalf("expected original history length 3, got %d", len(origHistory))
+	}
+	if len(clonedHistory) != 4 {
+		t.Fatalf("expected clone history length 4 after mutation, got %d", len(clonedHistory))
+	}
+	if &origHistory[0] == &clonedHistory[0] {
+		t.Fatal("expected property history slice to detach on clone mutation")
+	}
+	if got := origHistory[len(origHistory)-1].Value; got != 80.0 {
+		t.Fatalf("expected original latest history value 80.0, got %#v", got)
+	}
+	if got := clonedHistory[len(clonedHistory)-1].Value; got != 70.0 {
+		t.Fatalf("expected cloned latest history value 70.0, got %#v", got)
+	}
+}
+
+func TestGraphCloneKeepsSchemaValidationCountersWritable(t *testing.T) {
+	requiredKind := NodeKind("test_clone_required_kind_v1")
+	if _, err := RegisterNodeKindDefinition(NodeKindDefinition{
+		Kind:               requiredKind,
+		Categories:         []NodeKindCategory{NodeCategoryBusiness},
+		RequiredProperties: []string{"owner"},
+	}); err != nil {
+		t.Fatalf("register required kind: %v", err)
+	}
+
+	g := New()
+	clone := g.Clone()
+
+	clone.AddNode(&Node{ID: "node:warn", Kind: requiredKind, Name: "warn"})
+
+	stats := clone.SchemaValidationStats()
+	if stats.NodeWarnings == 0 {
+		t.Fatalf("expected cloned graph to record schema warnings, got %#v", stats)
+	}
+	if stats.NodeWarningByCode == nil {
+		t.Fatal("expected cloned graph warning counters to stay writable")
+	}
+}
+
+func TestGraphCloneHistoryReadsDetachMutableSnapshotValues(t *testing.T) {
+	origNow := temporalNowUTC
+	defer func() { temporalNowUTC = origNow }()
+
+	base := time.Date(2026, 3, 17, 12, 0, 0, 0, time.UTC)
+	now := base
+	temporalNowUTC = func() time.Time { return now }
+
+	g := New()
+	g.AddNode(&Node{
+		ID:         "customer:mutable-history",
+		Kind:       NodeKindCustomer,
+		Properties: map[string]any{"state": map[string]any{"version": "v1"}},
+	})
+
+	now = base.Add(1 * time.Hour)
+	if !g.SetNodeProperty("customer:mutable-history", "state", map[string]any{"version": "v2"}) {
+		t.Fatal("expected SetNodeProperty to succeed")
+	}
+
+	clone := g.Clone()
+
+	readHistory := clone.GetNodePropertyHistory("customer:mutable-history", "state", 0)
+	if len(readHistory) != 2 {
+		t.Fatalf("expected 2 history entries, got %d", len(readHistory))
+	}
+
+	mutable, ok := readHistory[0].Value.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map snapshot value, got %#v", readHistory[0].Value)
+	}
+	mutable["version"] = "tampered"
+
+	origHistory := g.GetNodePropertyHistory("customer:mutable-history", "state", 0)
+	cloneHistory := clone.GetNodePropertyHistory("customer:mutable-history", "state", 0)
+
+	if got := origHistory[0].Value.(map[string]any)["version"]; got != "v1" {
+		t.Fatalf("expected original history snapshot to remain v1, got %#v", got)
+	}
+	if got := cloneHistory[0].Value.(map[string]any)["version"]; got != "v1" {
+		t.Fatalf("expected cloned history snapshot to remain v1, got %#v", got)
 	}
 }

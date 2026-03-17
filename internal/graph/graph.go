@@ -300,13 +300,18 @@ func (g *Graph) SetNodeProperty(id string, key string, value any) bool {
 	return true
 }
 
-// Clone returns a deep copy of the graph via snapshot/restore.
+// Clone returns a copy of the graph while structurally sharing immutable
+// property history slices until later writes detach them.
 func (g *Graph) Clone() *Graph {
 	start := time.Now()
 	defer func() {
 		metrics.ObserveGraphCloneDuration(time.Since(start))
 	}()
-	return RestoreFromSnapshot(CreateSnapshot(g))
+
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	return cloneGraphWithSharedPropertyHistory(g)
 }
 
 // GetNode retrieves a node by ID
@@ -878,11 +883,11 @@ func (g *Graph) addNodeLocked(node *Node) bool {
 		node.PreviousProperties = cloneAnyMap(existing.Properties)
 		if len(existing.PropertyHistory) > 0 {
 			if node.PropertyHistory == nil {
-				node.PropertyHistory = clonePropertyHistoryMap(existing.PropertyHistory)
+				node.PropertyHistory = sharePropertyHistoryMap(existing.PropertyHistory)
 			} else {
 				for property, history := range existing.PropertyHistory {
 					if len(node.PropertyHistory[property]) == 0 {
-						node.PropertyHistory[property] = clonePropertySnapshots(history)
+						node.PropertyHistory[property] = history
 					}
 				}
 			}
