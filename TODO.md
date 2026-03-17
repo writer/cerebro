@@ -5,6 +5,27 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 160 - Runtime Risk Signals In Workload Security Facet (2026-03-16)
+
+### Review findings
+- [x] Gap: issue `#370` had no graph-side substrate for runtime-aware workload risk; static scan facets could not distinguish a dark workload from one with active runtime findings.
+- [x] Gap: runtimegraph already projects workload-targeted observations and finding evidence, so the cheapest first slice is a read-side signal summary instead of a new scoring engine.
+- [x] Gap: the workload security facet had no regression coverage proving runtime darkness and active multi-technique findings change the facet assessment and exposed fields.
+
+### Execution plan
+- [x] Add a graph helper that summarizes workload runtime signals at a bitemporal slice:
+  - [x] observation count
+  - [x] runtime finding count
+  - [x] distinct MITRE technique count
+  - [x] dark-workload detection
+  - [x] composite runtime multiplier
+- [x] Surface runtime signal fields in the workload security facet.
+- [x] Make the facet warn on dark workloads and fail on active runtime findings.
+- [x] Add TDD coverage for:
+  - [x] dark workload penalty
+  - [x] active runtime finding escalation
+  - [x] multi-technique multiplier
+- [x] Re-run focused graph tests, lint, and changed-file validation.
 ## Deep Review Cycle 158 - Runtime Graph Materialization Coverage Expansion (2026-03-16)
 
 ### Review findings

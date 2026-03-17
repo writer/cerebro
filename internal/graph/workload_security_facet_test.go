@@ -84,6 +84,134 @@ func TestWorkloadSecurityFacetUsesLatestVisibleScan(t *testing.T) {
 	}
 }
 
+func TestWorkloadSecurityFacetWarnsForDarkRuntimeWorkload(t *testing.T) {
+	now := time.Date(2026, 3, 16, 18, 0, 0, 0, time.UTC)
+	g := New()
+	g.AddNode(&Node{
+		ID:        "workload:payments",
+		Kind:      NodeKindWorkload,
+		Name:      "payments",
+		CreatedAt: now.Add(-2 * time.Hour),
+		UpdatedAt: now.Add(-2 * time.Hour),
+	})
+	addWorkloadScanFixture(g, "workload_scan:payments", "workload:payments", now.Add(-30*time.Minute), nil, 0, 0, 0)
+	g.BuildIndex()
+
+	record, ok := GetEntityRecord(g, "workload:payments", now, now)
+	if !ok {
+		t.Fatal("expected workload entity record")
+	}
+	facet := findFacetByID(record.Facets, "workload_security")
+	if facet == nil {
+		t.Fatalf("expected workload_security facet, got %#v", record.Facets)
+	}
+	if facet.Assessment != "warn" {
+		t.Fatalf("assessment = %q, want warn", facet.Assessment)
+	}
+	if facet.Summary != "No runtime observations recorded for this workload" {
+		t.Fatalf("summary = %q", facet.Summary)
+	}
+	if !readBool(facet.Fields, "runtime_dark_workload") {
+		t.Fatalf("expected runtime_dark_workload true, got %#v", facet.Fields)
+	}
+	if got := readInt(facet.Fields, "runtime_observation_count"); got != 0 {
+		t.Fatalf("runtime_observation_count = %d, want 0", got)
+	}
+	if got := readFloat(facet.Fields, "runtime_risk_multiplier"); got != 1.2 {
+		t.Fatalf("runtime_risk_multiplier = %v, want 1.2", got)
+	}
+}
+
+func TestWorkloadSecurityFacetFailsOnRuntimeFindingSignals(t *testing.T) {
+	now := time.Date(2026, 3, 16, 19, 0, 0, 0, time.UTC)
+	g := New()
+	g.AddNode(&Node{
+		ID:        "workload:payments",
+		Kind:      NodeKindWorkload,
+		Name:      "payments",
+		CreatedAt: now.Add(-2 * time.Hour),
+		UpdatedAt: now.Add(-2 * time.Hour),
+	})
+	addWorkloadScanFixture(g, "workload_scan:payments", "workload:payments", now.Add(-30*time.Minute), nil, 0, 0, 0)
+
+	observationObservedAt := now.Add(-10 * time.Minute)
+	observationProperties := map[string]any{
+		"observation_type": "runtime_alert",
+		"summary":          "Suspicious runtime behavior",
+		"source_system":    "falco",
+		"observed_at":      observationObservedAt.Format(time.RFC3339),
+		"valid_from":       observationObservedAt.Format(time.RFC3339),
+	}
+	g.AddNode(&Node{
+		ID:         "observation:payments:alert",
+		Kind:       NodeKindObservation,
+		Name:       "Suspicious runtime behavior",
+		Properties: observationProperties,
+		CreatedAt:  observationObservedAt,
+		UpdatedAt:  observationObservedAt,
+	})
+	g.AddEdge(&Edge{
+		ID:        "workload:payments->observation:payments:alert:targets",
+		Source:    "workload:payments",
+		Target:    "observation:payments:alert",
+		Kind:      EdgeKindTargets,
+		Effect:    EdgeEffectAllow,
+		CreatedAt: observationObservedAt,
+	})
+
+	evidenceObservedAt := now.Add(-9 * time.Minute)
+	g.AddNode(&Node{
+		ID:       "evidence:runtime_finding:payments",
+		Kind:     NodeKindEvidence,
+		Name:     "Suspicious runtime finding",
+		Provider: "cerebro_runtime_detection",
+		Properties: map[string]any{
+			"evidence_type": "runtime_finding",
+			"mitre_attack":  []string{"T1059", "T1041"},
+			"observed_at":   evidenceObservedAt.Format(time.RFC3339),
+			"valid_from":    evidenceObservedAt.Format(time.RFC3339),
+		},
+		CreatedAt: evidenceObservedAt,
+		UpdatedAt: evidenceObservedAt,
+	})
+	g.AddEdge(&Edge{
+		ID:        "evidence:runtime_finding:payments->observation:payments:alert:based_on",
+		Source:    "evidence:runtime_finding:payments",
+		Target:    "observation:payments:alert",
+		Kind:      EdgeKindBasedOn,
+		Effect:    EdgeEffectAllow,
+		CreatedAt: evidenceObservedAt,
+	})
+	g.BuildIndex()
+
+	record, ok := GetEntityRecord(g, "workload:payments", now, now)
+	if !ok {
+		t.Fatal("expected workload entity record")
+	}
+	facet := findFacetByID(record.Facets, "workload_security")
+	if facet == nil {
+		t.Fatalf("expected workload_security facet, got %#v", record.Facets)
+	}
+	if facet.Assessment != "fail" {
+		t.Fatalf("assessment = %q, want fail", facet.Assessment)
+	}
+	if facet.Summary != "Runtime findings show active multi-technique behavior on this workload" {
+		t.Fatalf("summary = %q", facet.Summary)
+	}
+	if got := readInt(facet.Fields, "runtime_observation_count"); got != 1 {
+		t.Fatalf("runtime_observation_count = %d, want 1", got)
+	}
+	if got := readInt(facet.Fields, "runtime_finding_count"); got != 1 {
+		t.Fatalf("runtime_finding_count = %d, want 1", got)
+	}
+	if got := readInt(facet.Fields, "runtime_mitre_technique_count"); got != 2 {
+		t.Fatalf("runtime_mitre_technique_count = %d, want 2", got)
+	}
+	if got := readFloat(facet.Fields, "runtime_risk_multiplier"); got != 3.0 {
+		t.Fatalf("runtime_risk_multiplier = %v, want 3.0", got)
+	}
+}
+
 func TestWorkloadSecurityPrioritizedRiskPrefersReachableVulnerabilityCounts(t *testing.T) {
 	unreachableCritical := &Node{Properties: map[string]any{
 		"vulnerability_count":                    1,

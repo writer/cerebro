@@ -736,6 +736,7 @@ func materializeWorkloadSecurityFacet(g *Graph, node *Node, validAt, recordedAt 
 	blast := BlastRadius(g, node.ID, 3)
 	cascade := CascadingBlastRadius(g, node.ID, 4)
 	internetExposed := entityHasInternetExposureAt(g, node.ID, validAt, recordedAt)
+	runtimeRisk := WorkloadRuntimeRiskSummaryAt(g, node.ID, validAt, recordedAt)
 	adminReachable := 0
 	for _, reachable := range blast.ReachableNodes {
 		if reachable == nil {
@@ -776,6 +777,12 @@ func materializeWorkloadSecurityFacet(g *Graph, node *Node, validAt, recordedAt 
 		"sensitive_data_path_count":              len(cascade.SensitiveDataHits),
 		"cross_account_risk":                     blast.CrossAccountRisk,
 		"prioritized_risk":                       string(workloadSecurityPrioritizedRisk(scanNode, internetExposed, adminReachable, len(cascade.SensitiveDataHits), blast.CrossAccountRisk)),
+		"runtime_observation_count":              runtimeRisk.ObservationCount,
+		"runtime_finding_count":                  runtimeRisk.FindingCount,
+		"runtime_mitre_technique_count":          runtimeRisk.MITRETechniqueCount,
+		"runtime_dark_workload":                  runtimeRisk.Dark,
+		"runtime_risk_multiplier":                runtimeRisk.Multiplier,
+		"runtime_last_observed_at":               formatWorkloadSecurityFacetTime(runtimeRisk.LastObservedAt),
 	}
 
 	assessment := "pass"
@@ -794,6 +801,18 @@ func materializeWorkloadSecurityFacet(g *Graph, node *Node, validAt, recordedAt 
 	if readInt(scanNode.Properties, "vulnerability_count") == 0 && !fields["stale"].(bool) {
 		assessment = "pass"
 		summary = "Latest workload scan found no tracked package vulnerabilities"
+	}
+	if runtimeRisk.Dark && assessment == "pass" {
+		assessment = "warn"
+		summary = "No runtime observations recorded for this workload"
+	}
+	if runtimeRisk.FindingCount > 0 {
+		assessment = "fail"
+		if runtimeRisk.MITRETechniqueCount > 1 {
+			summary = "Runtime findings show active multi-technique behavior on this workload"
+		} else {
+			summary = "Runtime findings show active suspicious behavior on this workload"
+		}
 	}
 
 	return EntityFacetRecord{
