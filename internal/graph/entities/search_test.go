@@ -75,3 +75,51 @@ func TestSearchEntitiesUsesRuneLengthForShortQueries(t *testing.T) {
 		t.Fatalf("expected unicode search hit, got %#v", results.Results[0].Entity.ID)
 	}
 }
+
+func TestSearchAndSuggestEntitiesSkipRuntimeArtifacts(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:   "workload:payments",
+		Kind: graph.NodeKindWorkload,
+		Name: "Payments",
+	})
+	g.AddNode(&graph.Node{
+		ID:   "observation:runtime-beacon",
+		Kind: graph.NodeKindObservation,
+		Name: "Runtime Beacon",
+	})
+	g.AddNode(&graph.Node{
+		ID:   "evidence:runtime-beacon",
+		Kind: graph.NodeKindEvidence,
+		Name: "Runtime Beacon Evidence",
+	})
+	g.BuildIndex()
+
+	results := SearchEntities(g, EntitySearchOptions{Query: "runtime beacon", Limit: 5})
+	if results.Count != 0 {
+		t.Fatalf("expected runtime artifacts to be excluded from search, got %#v", results)
+	}
+
+	suggestions := SuggestEntities(g, EntitySuggestOptions{Prefix: "runtime", Limit: 5})
+	if suggestions.Count != 0 {
+		t.Fatalf("expected runtime artifacts to be excluded from suggestions, got %#v", suggestions)
+	}
+}
+
+func TestSearchEntitiesShortQueryBuildsSuggestionsLazily(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:   "workload:payments",
+		Kind: graph.NodeKindWorkload,
+		Name: "Payments",
+	})
+	g.BuildIndex()
+
+	results := SearchEntities(g, EntitySearchOptions{Query: "pa", Limit: 5})
+	if results.Count != 1 {
+		t.Fatalf("expected short-query search to build suggestion index lazily, got %#v", results)
+	}
+	if results.Results[0].Entity.ID != "workload:payments" {
+		t.Fatalf("expected payments search hit, got %#v", results.Results[0].Entity.ID)
+	}
+}

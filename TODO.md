@@ -82,6 +82,25 @@ Status: executed end-to-end via PR workflow
   - [x] idempotent repeated projection
 - [x] Re-run focused runtime/runtimegraph tests, lint, and changed-file validation.
 
+## Deep Review Cycle 154 - Lazy Entity Suggest Index Construction (2026-03-16)
+
+### Review findings
+- [x] Gap: issue `#372` is only partially addressed in the current tree; runtime `observation` and `evidence` nodes are already excluded from entity search, but `BuildIndex()` still eagerly expands every search suggestion prefix for every searchable node on every rebuild.
+- [x] Gap: the eager prefix expansion work is independent from token/trigram indexing, so it is wasted on callers that only need graph indexes, entity search, or runtimegraph finalization and never call entity suggestions.
+- [x] Gap: the graph package had no regression coverage proving suggestion prefixes can be deferred until the first short-query search or explicit `SuggestEntities()` call.
+
+### Execution plan
+- [x] Keep `BuildIndex()` responsible for entity search documents plus token/trigram indexes only.
+- [x] Add an on-demand suggestion-index builder shared by:
+  - [x] short-query `SearchEntities`
+  - [x] `SuggestEntities`
+- [x] Add TDD coverage for:
+  - [x] deferring suggestion-index construction after `BuildIndex()`
+  - [x] preserving short-query search behavior after lazy construction
+  - [x] existing exclusion of runtime artifacts from entity search
+- [x] Add a graph benchmark covering repeated `BuildIndex()` on a large entity-search corpus.
+- [x] Re-run focused graph/entity-search tests, lint, and changed-file validation.
+
 ## Deep Review Cycle 151 - SetNodeProperty PreviousProperties Narrowing (2026-03-16)
 
 ### Review findings

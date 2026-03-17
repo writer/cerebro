@@ -215,6 +215,73 @@ func TestGraph_BuildIndexSkipsRebuildWhenCurrent(t *testing.T) {
 	}
 }
 
+func TestGraph_BuildIndexSkipsRuntimeArtifactsFromEntitySearch(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{
+		ID:   "workload:payments",
+		Kind: NodeKindWorkload,
+		Name: "Payments",
+	})
+	g.AddNode(&Node{
+		ID:   "observation:exec",
+		Kind: NodeKindObservation,
+		Name: "Runtime Exec",
+	})
+	g.AddNode(&Node{
+		ID:   "evidence:alert",
+		Kind: NodeKindEvidence,
+		Name: "Detection Evidence",
+	})
+
+	g.BuildIndex()
+
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	if _, ok := g.entitySearchDocs["workload:payments"]; !ok {
+		t.Fatal("expected workload to remain entity-search indexed")
+	}
+	if _, ok := g.entitySearchDocs["observation:exec"]; ok {
+		t.Fatal("expected observation nodes to be excluded from entity-search indexing")
+	}
+	if _, ok := g.entitySearchDocs["evidence:alert"]; ok {
+		t.Fatal("expected evidence nodes to be excluded from entity-search indexing")
+	}
+}
+
+func TestGraph_BuildIndexDefersEntitySuggestionIndexConstruction(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{
+		ID:   "workload:payments",
+		Kind: NodeKindWorkload,
+		Name: "Payments",
+	})
+
+	g.BuildIndex()
+
+	g.mu.RLock()
+	if _, ok := g.entitySearchDocs["workload:payments"]; !ok {
+		g.mu.RUnlock()
+		t.Fatal("expected workload search document to exist after BuildIndex")
+	}
+	if len(g.entitySuggestIndex) != 0 {
+		g.mu.RUnlock()
+		t.Fatal("expected BuildIndex to defer entity suggestion index construction")
+	}
+	g.mu.RUnlock()
+
+	suggestions := SuggestEntities(g, EntitySuggestOptions{Prefix: "pa", Limit: 5})
+	if suggestions.Count != 1 {
+		t.Fatalf("expected deferred suggestion index to be built on demand, got %#v", suggestions)
+	}
+
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	if len(g.entitySuggestIndex) == 0 {
+		t.Fatal("expected suggestion index to be populated after on-demand build")
+	}
+}
+
 func TestGraph_InvalidateIndex(t *testing.T) {
 	g := New()
 	g.AddNode(&Node{ID: "test", Kind: NodeKindUser})

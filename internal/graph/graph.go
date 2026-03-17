@@ -1,7 +1,6 @@
 package graph
 
 import (
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -40,6 +39,7 @@ type Graph struct {
 	entitySearchTokenIndex   map[string][]string
 	entitySearchTrigramIndex map[string][]string
 	entitySuggestIndex       map[string][]EntitySuggestion
+	entitySuggestBuilt       bool
 	indexBuilt               bool
 
 	// Runtime ontology validation behavior and counters.
@@ -458,7 +458,10 @@ func (g *Graph) BuildIndex() {
 	if g.indexBuilt {
 		return
 	}
+	g.buildIndexLocked()
+}
 
+func (g *Graph) buildIndexLocked() {
 	// Initialize index maps
 	g.indexByKind = make(map[NodeKind][]*Node)
 	g.indexByAccount = make(map[string][]*Node)
@@ -472,10 +475,10 @@ func (g *Graph) BuildIndex() {
 	g.entitySearchTokenIndex = make(map[string][]string)
 	g.entitySearchTrigramIndex = make(map[string][]string)
 	g.entitySuggestIndex = make(map[string][]EntitySuggestion)
+	g.entitySuggestBuilt = false
 
 	entityTokenSets := make(map[string]map[string]struct{})
 	entityTrigramSets := make(map[string]map[string]struct{})
-	entitySuggestSets := make(map[string]map[string]EntitySuggestion)
 
 	// Index all nodes
 	for _, node := range g.nodes {
@@ -520,26 +523,6 @@ func (g *Graph) BuildIndex() {
 			for _, trigram := range entitySearchTrigrams(doc.SearchText) {
 				appendEntitySearchSet(entityTrigramSets, trigram, node.ID)
 			}
-			for _, suggestion := range doc.Suggestions {
-				normalized := entitySearchNormalize(suggestion)
-				if normalized == "" {
-					continue
-				}
-				runes := []rune(normalized)
-				for length := 1; length <= len(runes) && length <= 24; length++ {
-					prefix := string(runes[:length])
-					if entitySuggestSets[prefix] == nil {
-						entitySuggestSets[prefix] = make(map[string]EntitySuggestion)
-					}
-					key := node.ID + "\x00" + normalized
-					entitySuggestSets[prefix][key] = EntitySuggestion{
-						EntityID: node.ID,
-						Kind:     node.Kind,
-						Name:     strings.TrimSpace(node.Name),
-						Value:    suggestion,
-					}
-				}
-			}
 		}
 	}
 
@@ -560,9 +543,6 @@ func (g *Graph) BuildIndex() {
 	}
 	for trigram, ids := range entityTrigramSets {
 		g.entitySearchTrigramIndex[trigram] = flattenEntitySearchSet(ids)
-	}
-	for prefix, candidates := range entitySuggestSets {
-		g.entitySuggestIndex[prefix] = flattenEntitySuggestionSet(candidates)
 	}
 
 	g.indexBuilt = true
@@ -1087,6 +1067,7 @@ func (g *Graph) markEdgeDeletedLocked(edge *Edge) bool {
 
 func (g *Graph) markGraphChangedLocked() {
 	g.indexBuilt = false
+	g.entitySuggestBuilt = false
 	g.blastRadiusVersion++
 	g.blastRadiusCache.Range(func(key, _ any) bool {
 		g.blastRadiusCache.Delete(key)
