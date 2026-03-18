@@ -93,3 +93,38 @@ func TestPlatformGraphSnapshotGetUsesGraphStoreWhenRawGraphUnavailable(t *testin
 		t.Fatalf("expected current snapshot flag, got %#v", got)
 	}
 }
+
+func TestPlatformGraphSnapshotCatalogUsesRuntimeGraphWithoutStoredSecurityGraphField(t *testing.T) {
+	g := buildPlatformGraphSnapshotCatalogTestGraph()
+	s := NewServerWithDependencies(serverDependencies{
+		Config: &app.Config{GraphSnapshotPath: t.TempDir()},
+		graphRuntime: stubGraphRuntime{
+			graph: g,
+			store: failingSnapshotGraphStore{GraphStore: g},
+		},
+	})
+	t.Cleanup(func() { s.Close() })
+
+	resp := do(t, s, http.MethodGet, "/api/v1/platform/graph/snapshots", nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected snapshot catalog 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+	body := decodeJSON(t, resp)
+	if got := body["count"]; got != float64(1) {
+		t.Fatalf("expected one snapshot from runtime graph, got %#v", got)
+	}
+	snapshots, ok := body["snapshots"].([]any)
+	if !ok || len(snapshots) != 1 {
+		t.Fatalf("expected one snapshot entry, got %#v", body["snapshots"])
+	}
+	snapshot, ok := snapshots[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected snapshot object, got %#v", snapshots[0])
+	}
+	if got := snapshot["current"]; got != true {
+		t.Fatalf("expected current snapshot flag, got %#v", got)
+	}
+	if got := snapshot["node_count"]; got != float64(1) {
+		t.Fatalf("expected runtime-backed node_count=1, got %#v", got)
+	}
+}

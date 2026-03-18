@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 207 - Graph Runtime Snapshot Catalog Paths (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left the platform snapshot catalog's synthetic current record coupled to the raw `SecurityGraph` field, so runtime-backed servers with no stored in-memory pointer could still lose the current snapshot entry even after the earlier graph-store catalog migration.
+- [x] Gap: this helper only needs the current graph view abstraction, not direct field access, so continuing to read `s.app.SecurityGraph` was an infrastructure leak inside the server layer.
+- [x] Gap: there was no regression proving the platform snapshot catalog prefers the runtime-provided live graph over `GraphStore.Snapshot()` when the runtime abstraction supplies a graph without populating the raw field.
+
+### Execution plan
+- [x] Route `currentPlatformGraphSnapshotRecord()` through `CurrentSecurityGraph()` instead of the raw `SecurityGraph` field.
+- [x] Add a runtime-backed API regression that fails if the catalog falls through to `GraphStore.Snapshot()` while a runtime graph is already available.
+- [x] Re-run focused API tests, lint, and changed-file validation before opening the next `#392` PR.
+
 ## Deep Review Cycle 206 - Graph View Resolver Infrastructure (2026-03-18)
 
 ### Review findings

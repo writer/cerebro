@@ -410,7 +410,7 @@ func (s *Server) currentPlatformGraphSnapshotRecord() *graph.GraphSnapshotRecord
 	if s == nil || s.app == nil {
 		return nil
 	}
-	if current := graph.CurrentGraphSnapshotRecord(s.app.SecurityGraph); current != nil {
+	if current := graph.CurrentGraphSnapshotRecord(s.app.CurrentSecurityGraph()); current != nil {
 		return current
 	}
 	store := s.app.CurrentSecurityGraphStore()
