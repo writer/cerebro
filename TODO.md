@@ -5,6 +5,114 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 66 - Shared Execution Store Convergence (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#209` was still only partially true; the repo had a shared execution-store package, but report runs, action executions, consumer dedupe, and scan materialization still reopened concrete SQLite stores and therefore kept backend assumptions in leaf services.
+- [x] Gap: that concrete `*executionstore.SQLiteStore` coupling would make a future multi-worker backend migration harder than it needs to be, which matters because SQLite is an acceptable default but not the long-term answer for larger customers.
+- [x] Gap: API/server tests were still proving persistence behavior through wrapper ownership assumptions instead of the actual shared execution-store boundary.
+- [x] Gap: GitHub/wider-project references reinforce the right seam:
+  - [x] `dagster-io/dagster` keeps run state on a generic storage contract while layering richer indexes/tags on top.
+  - [x] `argoproj/argo-workflows` keeps execution status and node state explicit rather than hiding orchestration state in process memory.
+  - [x] the Wiz schema dump in `/Users/jonathanhaas/Downloads/other/wiz.graphql` is a useful reminder that broad query surfaces stay tractable only when the underlying execution resources remain typed and inspectable.
+
+### Execution plan
+- [x] Extract a backend-neutral shared execution-store contract:
+  - [x] add `executionstore.Store`
+  - [x] move callers off concrete `*executionstore.SQLiteStore` dependencies where they only need the shared contract
+- [x] Centralize app-level shared execution-store ownership:
+  - [x] initialize one shared app execution store from `EXECUTION_STORE_FILE`
+  - [x] thread that shared handle into API/report/action/consumer paths when they point at the same underlying store
+  - [x] keep wrapper-specific `Close()` semantics from accidentally closing borrowed shared stores
+- [x] Preserve durable behavior while removing wrapper-owned assumptions:
+  - [x] update report-run persistence tests to fail through the shared store itself
+  - [x] keep scan/action/report/consumer paths green under the shared contract
+- [x] Add follow-on scale direction to the backlog:
+  - [x] document that SQLite remains the default implementation for now
+  - [x] make “higher-scale backend behind `executionstore.Store`” the next scale seam instead of deepening SQLite-only code paths
+
+## Deep Review Cycle 65 - Durable CloudEvent Deduplication for NATS Consumer (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#248` was still materially open because the JetStream consumer acknowledged events after handler success but had no durable CloudEvent-ID suppression, so transient ack failures and consumer restarts could re-run the same mutation path.
+- [x] Gap: the issue proposal allowed an in-memory sliding window with periodic persistence, but that would still leave a correctness hole on restart and does not match the broader platform direction toward shared execution state.
+- [x] Gap: consumer observability exposed redeliveries and dropped messages, but not the actual successful-vs-deduplicated throughput split needed to prove the pipeline is suppressing duplicates instead of just retrying them.
+- [x] Gap: external references were directionally useful but not prescriptive here:
+  - [x] `argoproj/argo-events` reinforces durable event-processing state over process-local memory when workflows restart.
+  - [x] `OpenLineage/OpenLineage` reinforces treating event identity as a first-class contract surface instead of an incidental transport detail.
+  - [x] the Wiz schema dump in `/Users/jonathanhaas/Downloads/other/wiz.graphql` is a useful caution that very broad event/query surfaces become harder to reason about unless identity and processing contracts are explicit and inspectable.
+
+### Execution plan
+- [x] Add durable processed-event storage in the shared execution store:
+  - [x] add `processed_events` persistence + indexes in the SQLite execution store
+  - [x] add processed-event lookup/remember helpers with TTL and bounded retention
+- [x] Add consumer-level CloudEvent dedupe:
+  - [x] derive a deterministic dedupe key from tenant/source/event ID
+  - [x] skip handler execution when the CloudEvent is already recorded in the dedupe window
+  - [x] log payload-hash mismatches for duplicate IDs carrying different payloads
+- [x] Expose config and metrics:
+  - [x] add NATS consumer dedupe env/config fields with validation
+  - [x] add processed and deduplicated Prometheus counters
+  - [x] document the new config in `docs/CONFIG_ENV_VARS.md`
+- [x] Add regression coverage:
+  - [x] execution-store round trip + bounded retention tests
+  - [x] consumer duplicate suppression tests
+  - [x] metrics registration coverage
+
+### Detailed follow-on backlog
+- [ ] Track A - Stronger idempotency semantics
+  - Exit criteria:
+  - [ ] add durable in-flight / completed processing states instead of completed-event memory only
+  - [ ] thread idempotency keys into graph mutation write paths so handler replay becomes a true no-op
+- [ ] Track B - Dedupe lifecycle observability
+  - Exit criteria:
+  - [ ] add dedupe-store health metrics and storage-pressure telemetry
+  - [ ] expose dedupe hit/miss posture in consumer health/readiness reporting
+- [ ] Track C - Ordered entity-local sequencing
+  - Exit criteria:
+  - [ ] add per-entity ordering windows for create/update/delete event families that cannot tolerate reorder
+  - [ ] keep that sequencing logic separate from the generic dedupe window
+
+## Deep Review Cycle 64 - Coverage Ratchet for Critical Packages: Sync + API (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#152` was still open even after warehouse/test seams improved because CI was still enforcing stale package floors: `internal/api` at `40%` despite already exceeding `55%`, and `internal/sync` at `11.5%` despite the highest orchestration complexity in the repo.
+- [x] Gap: the real blocker was not `internal/api`; shared app test helpers already existed via `internal/apptest`, and package coverage was already above the requested floor.
+- [x] Gap: `internal/sync` needed honest coverage work in the warehouse-backed orchestration seams we actually rely on today: sync coordination, CDC event emission, scoped persistence helpers, and provider-specific change-history paths.
+- [x] Gap: external references reinforced the same discipline from different angles:
+  - [x] `openfga/openfga` keeps transport and service seams narrow enough that handler/service tests are cheap instead of requiring full-process integration.
+  - [x] `grafana/grafana` is the warning case for broad surface area where package-level ratchets only work if helper seams exist first.
+  - [x] the Wiz schema dump in `/Users/jonathanhaas/Downloads/wiz.graphql` remains the opposite cautionary example: large ambient surfaces become difficult to test rigorously unless they are broken into explicit modules and query seams.
+
+### Execution plan
+- [x] Raise real sync coverage with warehouse-backed tests:
+  - [x] add CDC builder tests for event IDs, payload extraction, and scope fallback
+  - [x] add sync engine tests for change history, partial fetch backfill, and CDC emission
+  - [x] add scoped table operation tests for scoped deletes, provider change history, and merge behavior
+  - [x] add GCP/Kubernetes provider tests covering CDC emission and shared persistence helpers
+  - [x] add helper/fetch-wrapper tests for retry helpers, region-limit helpers, and thin provider fetch delegates
+- [x] Re-measure package coverage before touching CI:
+  - [x] `internal/sync` now measures `21.0%`
+  - [x] `internal/api` measures `64.4%`
+- [x] Ratchet CI floors to measured reality:
+  - [x] raise `internal/api` threshold from `40.0` to `55.0`
+  - [x] raise `internal/sync` threshold from `11.5` to `20.0`
+
+### Detailed follow-on backlog
+- [ ] Track A - Next sync coverage ratchet to `30%`
+  - Exit criteria:
+  - [ ] add deeper relationship extraction tests for AWS/GCP relationship builders
+  - [ ] add more provider fetch/retry edge-case coverage around partial-page and auth failure handling
+  - [ ] raise the `internal/sync` CI floor from `20.0` to `30.0` only after measured package coverage holds above that mark with headroom
+- [ ] Track B - Coverage by package seam, not full-process setup
+  - Exit criteria:
+  - [ ] keep using `internal/apptest` / warehouse memory doubles instead of reintroducing full Snowflake/process dependencies into unit suites
+  - [ ] extract any remaining broad setup helpers only where a new handler or sync surface still cannot be tested cheaply
+- [ ] Track C - Package split pressure
+  - Exit criteria:
+  - [ ] use the next `internal/sync` coverage wave to identify the worst ambient files for later package extraction
+  - [ ] keep coverage work aligned with the larger graph/app package-boundary cleanup instead of growing more monolithic provider files
+
 ## Deep Review Cycle 63 - Graph Package Split Phase 1: Reports Extraction (2026-03-12)
 
 ### Review findings

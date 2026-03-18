@@ -188,6 +188,33 @@ func TestReportRunStoreSaveRunReplacesPersistedEvents(t *testing.T) {
 	}
 }
 
+func TestReportRunStoreWithSharedExecutionStoreDoesNotOwnClose(t *testing.T) {
+	stateDir := t.TempDir()
+	executionStore, err := executionstore.NewSQLiteStore(filepath.Join(stateDir, "executions.db"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	defer func() { _ = executionStore.Close() }()
+
+	store := NewReportRunStoreWithExecutionStore(executionStore, filepath.Join(stateDir, "executions.db"), filepath.Join(stateDir, "snapshots"), filepath.Join(stateDir, "legacy-state.json"))
+	if err := store.Close(); err != nil {
+		t.Fatalf("ReportRunStore.Close(): %v", err)
+	}
+
+	if err := executionStore.UpsertRun(t.Context(), executionstore.RunEnvelope{
+		Namespace:   executionstore.NamespacePlatformReportRun,
+		RunID:       "report_run:shared-close",
+		Kind:        "quality",
+		Status:      string(ReportRunStatusQueued),
+		Stage:       string(ReportRunStatusQueued),
+		SubmittedAt: time.Date(2026, 3, 12, 9, 0, 0, 0, time.UTC),
+		UpdatedAt:   time.Date(2026, 3, 12, 9, 0, 0, 0, time.UTC),
+		Payload:     []byte(`{"run":{"id":"report_run:shared-close","report_id":"quality","status":"queued","submitted_at":"2026-03-12T09:00:00Z"}}`),
+	}); err != nil {
+		t.Fatalf("UpsertRun after borrowed store close: %v", err)
+	}
+}
+
 func timePtr(value time.Time) *time.Time {
 	return &value
 }

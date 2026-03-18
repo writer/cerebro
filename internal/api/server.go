@@ -85,12 +85,20 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 		agentSDKReportProgress: make(map[string]agentSDKReportProgressSubscription),
 	}
 	if cfg := deps.Config; cfg != nil {
-		store, err := reports.NewReportRunStore(cfg.ExecutionStoreFile, cfg.PlatformReportSnapshotPath, cfg.PlatformReportRunStateFile)
+		var (
+			store *reports.ReportRunStore
+			err   error
+		)
+		if deps.ExecutionStore != nil {
+			store = reports.NewReportRunStoreWithExecutionStore(deps.ExecutionStore, cfg.ExecutionStoreFile, cfg.PlatformReportSnapshotPath, cfg.PlatformReportRunStateFile)
+		} else {
+			store, err = reports.NewReportRunStore(cfg.ExecutionStoreFile, cfg.PlatformReportSnapshotPath, cfg.PlatformReportRunStateFile)
+		}
 		if err != nil {
 			if deps.Logger != nil {
 				deps.Logger.Warn("failed to initialize shared platform report execution store", "execution_store", cfg.ExecutionStoreFile, "legacy_state_file", cfg.PlatformReportRunStateFile, "snapshot_dir", cfg.PlatformReportSnapshotPath, "error", err)
 			}
-		} else {
+		} else if store != nil {
 			s.platformReportStore = store
 			if restoredRuns, err := s.platformReportStore.Load(); err != nil {
 				if deps.Logger != nil {

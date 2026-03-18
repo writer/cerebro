@@ -3,9 +3,34 @@ package executionstore
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestSQLiteStoreConfiguresWALAndBusyTimeout(t *testing.T) {
+	store, err := NewSQLiteStore(filepath.Join(t.TempDir(), "executions.db"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	var journalMode string
+	if err := store.DB().QueryRowContext(context.Background(), "PRAGMA journal_mode").Scan(&journalMode); err != nil {
+		t.Fatalf("PRAGMA journal_mode: %v", err)
+	}
+	if strings.ToLower(strings.TrimSpace(journalMode)) != "wal" {
+		t.Fatalf("expected journal_mode WAL, got %q", journalMode)
+	}
+
+	var busyTimeout int
+	if err := store.DB().QueryRowContext(context.Background(), "PRAGMA busy_timeout").Scan(&busyTimeout); err != nil {
+		t.Fatalf("PRAGMA busy_timeout: %v", err)
+	}
+	if busyTimeout != sqliteBusyTimeoutMS {
+		t.Fatalf("expected busy_timeout %d, got %d", sqliteBusyTimeoutMS, busyTimeout)
+	}
+}
 
 func TestSQLiteStoreIsolatesNamespaces(t *testing.T) {
 	store, err := NewSQLiteStore(filepath.Join(t.TempDir(), "executions.db"))

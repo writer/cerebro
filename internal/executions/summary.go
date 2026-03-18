@@ -47,7 +47,7 @@ type Summary struct {
 	Target        string     `json:"target,omitempty"`
 }
 
-func List(ctx context.Context, store *executionstore.SQLiteStore, opts ListOptions) ([]Summary, error) {
+func List(ctx context.Context, store executionstore.Store, opts ListOptions) ([]Summary, error) {
 	if store == nil {
 		return nil, nil
 	}

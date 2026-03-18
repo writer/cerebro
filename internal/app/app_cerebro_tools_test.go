@@ -849,7 +849,10 @@ func TestCerebroExecutionStatusTool(t *testing.T) {
 		t.Fatalf("UpsertRun: %v", err)
 	}
 
-	application := &App{Config: &Config{ExecutionStoreFile: filepath.Join(dir, "executions.db")}}
+	application := &App{
+		Config:         &Config{ExecutionStoreFile: filepath.Join(dir, "executions.db")},
+		ExecutionStore: store,
+	}
 	tool := findCerebroTool(application.AgentSDKTools(), "cerebro.execution_status")
 	if tool == nil {
 		t.Fatal("expected cerebro.execution_status tool")
