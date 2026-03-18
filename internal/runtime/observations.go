@@ -1,11 +1,28 @@
 package runtime
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"slices"
+	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const runtimeObservationLegacyEventTypeKey = "legacy_event_type"
+const runtimeObservationKindKey = "runtime_observation_kind"
+
+const (
+	maxObservationPayloadEntries   = 32
+	maxObservationPayloadDepth     = 2
+	maxObservationStringValueBytes = 1024
+	maxObservationListEntries      = 32
+)
+
+var ErrInvalidObservation = errors.New("invalid runtime observation")
 
 type RuntimeObservationKind string
 
@@ -76,7 +93,20 @@ type RuntimeObservation struct {
 	Provenance   map[string]any       `json:"provenance,omitempty"`
 }
 
-func ObservationFromEvent(event *RuntimeEvent) *RuntimeObservation {
+func ObservationFromEvent(event *RuntimeEvent) (*RuntimeObservation, error) {
+	if event == nil {
+		return nil, nil
+	}
+
+	observation := observationFromEventBase(event)
+	normalized, err := NormalizeObservation(observation)
+	if err != nil {
+		return nil, err
+	}
+	return normalized, nil
+}
+
+func observationFromEventBase(event *RuntimeEvent) *RuntimeObservation {
 	if event == nil {
 		return nil
 	}
@@ -100,32 +130,7 @@ func ObservationFromEvent(event *RuntimeEvent) *RuntimeObservation {
 		}
 		observation.Metadata[runtimeObservationLegacyEventTypeKey] = strings.TrimSpace(event.EventType)
 	}
-
-	if event.Container != nil {
-		observation.Namespace = event.Container.Namespace
-		observation.ContainerID = event.Container.ContainerID
-		observation.ImageRef = event.Container.Image
-		observation.ImageID = event.Container.ImageID
-	}
-
-	if observation.Metadata != nil {
-		observation.Cluster = stringMapValue(observation.Metadata, "cluster")
-		observation.NodeName = firstNonEmptyRuntime(stringMapValue(observation.Metadata, "node_name"), stringMapValue(observation.Metadata, "node"))
-		observation.WorkloadRef = stringMapValue(observation.Metadata, "workload_ref")
-		observation.WorkloadUID = stringMapValue(observation.Metadata, "workload_uid")
-		observation.PrincipalID = firstNonEmptyRuntime(
-			stringMapValue(observation.Metadata, "principal_id"),
-			stringMapValue(observation.Metadata, "credential_id"),
-			stringMapValue(observation.Metadata, "access_key_id"),
-		)
-		if observation.Namespace == "" {
-			observation.Namespace = firstNonEmptyRuntime(
-				stringMapValue(observation.Metadata, "namespace"),
-				stringMapValue(observation.Metadata, "kubernetes_namespace"),
-			)
-		}
-	}
-
+	normalizeObservationContexts(observation)
 	return observation
 }
 
@@ -151,6 +156,7 @@ func (o *RuntimeObservation) AsRuntimeEvent() *RuntimeEvent {
 	if event.Metadata == nil {
 		event.Metadata = make(map[string]any)
 	}
+	addMetadataString(event.Metadata, runtimeObservationKindKey, string(o.Kind))
 	addMetadataString(event.Metadata, "cluster", o.Cluster)
 	addMetadataString(event.Metadata, "node_name", o.NodeName)
 	addMetadataString(event.Metadata, "namespace", o.Namespace)
@@ -220,7 +226,7 @@ func observationFromResponseExecution(execution *ResponseExecution, action *Acti
 		metadata["execution_error"] = execution.Error
 	}
 
-	return &RuntimeObservation{
+	observation := &RuntimeObservation{
 		ID:           execution.ID + ":" + string(action.Type),
 		Kind:         ObservationKindResponseOutcome,
 		Source:       "runtime_response",
@@ -230,11 +236,84 @@ func observationFromResponseExecution(execution *ResponseExecution, action *Acti
 		Metadata:     metadata,
 		Tags:         []string{"response_outcome"},
 	}
+	normalized, err := NormalizeObservation(observation)
+	if err != nil {
+		return observation
+	}
+	return normalized
+}
+
+func NormalizeObservation(observation *RuntimeObservation) (*RuntimeObservation, error) {
+	if observation == nil {
+		return nil, nil
+	}
+
+	normalized := &RuntimeObservation{
+		ID:           strings.TrimSpace(observation.ID),
+		Kind:         RuntimeObservationKind(strings.TrimSpace(string(observation.Kind))),
+		Source:       strings.TrimSpace(observation.Source),
+		ObservedAt:   observation.ObservedAt.UTC(),
+		RecordedAt:   observation.RecordedAt.UTC(),
+		ResourceID:   strings.TrimSpace(observation.ResourceID),
+		ResourceType: strings.TrimSpace(observation.ResourceType),
+		Cluster:      strings.TrimSpace(observation.Cluster),
+		Namespace:    strings.TrimSpace(observation.Namespace),
+		NodeName:     strings.TrimSpace(observation.NodeName),
+		WorkloadRef:  strings.TrimSpace(observation.WorkloadRef),
+		WorkloadUID:  strings.TrimSpace(observation.WorkloadUID),
+		ContainerID:  strings.TrimSpace(observation.ContainerID),
+		ImageRef:     strings.TrimSpace(observation.ImageRef),
+		ImageID:      strings.TrimSpace(observation.ImageID),
+		PrincipalID:  strings.TrimSpace(observation.PrincipalID),
+		Process:      cloneProcessEvent(observation.Process),
+		Network:      cloneNetworkEvent(observation.Network),
+		File:         cloneFileEvent(observation.File),
+		Container:    cloneContainerEvent(observation.Container),
+		ControlPlane: cloneControlPlaneContext(observation.ControlPlane),
+		Trace:        cloneTraceContext(observation.Trace),
+		Tags:         compactObservationTags(observation.Tags),
+		Metadata:     cloneRuntimeAnyMap(observation.Metadata),
+		Raw:          normalizeObservationAnyMap(cloneRuntimeAnyMap(observation.Raw), 0),
+		Provenance:   normalizeObservationAnyMap(cloneRuntimeAnyMap(observation.Provenance), 0),
+	}
+
+	normalizeObservationContexts(normalized)
+
+	if normalized.Kind == "" || normalized.Kind == ObservationKindUnknown {
+		normalized.Kind = inferObservationKind(normalized)
+	}
+	if normalized.ObservedAt.IsZero() {
+		normalized.ObservedAt = normalized.RecordedAt
+	}
+	if normalized.RecordedAt.IsZero() {
+		normalized.RecordedAt = normalized.ObservedAt
+	}
+	if normalized.ResourceType == "" {
+		normalized.ResourceType = observationResourceType(normalized)
+	}
+	if normalized.ResourceID == "" {
+		normalized.ResourceID = firstNonEmptyRuntime(
+			normalized.WorkloadRef,
+			containerResourceID(normalized.ContainerID),
+			controlPlaneResourceID(normalized.ControlPlane),
+		)
+	}
+	if normalized.ID == "" {
+		normalized.ID = generatedObservationID(normalized)
+	}
+
+	if err := validateObservation(normalized); err != nil {
+		return nil, err
+	}
+	return normalized, nil
 }
 
 func observationKindFromEvent(event *RuntimeEvent) RuntimeObservationKind {
 	if event == nil {
 		return ObservationKindUnknown
+	}
+	if kind := observationKindFromMetadata(event.Metadata); kind != ObservationKindUnknown {
+		return kind
 	}
 	switch event.EventType {
 	case "process":
@@ -295,6 +374,174 @@ func observationResourceType(observation *RuntimeObservation) string {
 	}
 }
 
+func normalizeObservationContexts(observation *RuntimeObservation) {
+	if observation == nil {
+		return
+	}
+	if observation.Process != nil {
+		observation.Process.Name = strings.TrimSpace(observation.Process.Name)
+		observation.Process.Path = strings.TrimSpace(observation.Process.Path)
+		observation.Process.Cmdline = strings.TrimSpace(observation.Process.Cmdline)
+		observation.Process.User = strings.TrimSpace(observation.Process.User)
+		observation.Process.Hash = strings.TrimSpace(observation.Process.Hash)
+		observation.Process.ParentName = strings.TrimSpace(observation.Process.ParentName)
+		observation.Process.Ancestors = compactObservationTags(observation.Process.Ancestors)
+	}
+	if observation.Network != nil {
+		observation.Network.Direction = strings.TrimSpace(observation.Network.Direction)
+		observation.Network.Protocol = strings.TrimSpace(observation.Network.Protocol)
+		observation.Network.SrcIP = strings.TrimSpace(observation.Network.SrcIP)
+		observation.Network.DstIP = strings.TrimSpace(observation.Network.DstIP)
+		observation.Network.Domain = strings.TrimSpace(observation.Network.Domain)
+	}
+	if observation.File != nil {
+		observation.File.Operation = strings.TrimSpace(observation.File.Operation)
+		observation.File.Path = strings.TrimSpace(observation.File.Path)
+		observation.File.Hash = strings.TrimSpace(observation.File.Hash)
+		observation.File.User = strings.TrimSpace(observation.File.User)
+	}
+	if observation.Container != nil {
+		observation.Container.ContainerID = strings.TrimSpace(observation.Container.ContainerID)
+		observation.Container.ContainerName = strings.TrimSpace(observation.Container.ContainerName)
+		observation.Container.Image = strings.TrimSpace(observation.Container.Image)
+		observation.Container.ImageID = strings.TrimSpace(observation.Container.ImageID)
+		observation.Container.Namespace = strings.TrimSpace(observation.Container.Namespace)
+		observation.Container.PodName = strings.TrimSpace(observation.Container.PodName)
+		observation.Container.Capabilities = compactObservationTags(observation.Container.Capabilities)
+		if observation.Namespace == "" {
+			observation.Namespace = observation.Container.Namespace
+		}
+		if observation.ContainerID == "" {
+			observation.ContainerID = observation.Container.ContainerID
+		}
+		if observation.ImageRef == "" {
+			observation.ImageRef = observation.Container.Image
+		}
+		if observation.ImageID == "" {
+			observation.ImageID = observation.Container.ImageID
+		}
+	}
+	if observation.ControlPlane != nil {
+		observation.ControlPlane.Source = strings.TrimSpace(observation.ControlPlane.Source)
+		observation.ControlPlane.Verb = strings.TrimSpace(observation.ControlPlane.Verb)
+		observation.ControlPlane.Stage = strings.TrimSpace(observation.ControlPlane.Stage)
+		observation.ControlPlane.User = strings.TrimSpace(observation.ControlPlane.User)
+		observation.ControlPlane.ImpersonatedUser = strings.TrimSpace(observation.ControlPlane.ImpersonatedUser)
+		observation.ControlPlane.UserAgent = strings.TrimSpace(observation.ControlPlane.UserAgent)
+		observation.ControlPlane.RequestURI = strings.TrimSpace(observation.ControlPlane.RequestURI)
+		observation.ControlPlane.Resource = strings.TrimSpace(observation.ControlPlane.Resource)
+		observation.ControlPlane.Namespace = strings.TrimSpace(observation.ControlPlane.Namespace)
+		observation.ControlPlane.Name = strings.TrimSpace(observation.ControlPlane.Name)
+		observation.ControlPlane.Subresource = strings.TrimSpace(observation.ControlPlane.Subresource)
+		observation.ControlPlane.SourceIPs = compactObservationTags(observation.ControlPlane.SourceIPs)
+		observation.ControlPlane.Annotations = cloneRuntimeStringMap(observation.ControlPlane.Annotations)
+		if observation.Namespace == "" {
+			observation.Namespace = observation.ControlPlane.Namespace
+		}
+		if observation.PrincipalID == "" {
+			observation.PrincipalID = observation.ControlPlane.User
+		}
+	}
+	if observation.Trace != nil {
+		observation.Trace.TraceID = strings.TrimSpace(observation.Trace.TraceID)
+		observation.Trace.SpanID = strings.TrimSpace(observation.Trace.SpanID)
+		observation.Trace.ServiceName = strings.TrimSpace(observation.Trace.ServiceName)
+	}
+	if observation.Metadata != nil {
+		if observation.Cluster == "" {
+			observation.Cluster = stringMapValue(observation.Metadata, "cluster")
+		}
+		if observation.NodeName == "" {
+			observation.NodeName = firstNonEmptyRuntime(
+				stringMapValue(observation.Metadata, "node_name"),
+				stringMapValue(observation.Metadata, "node"),
+			)
+		}
+		if observation.WorkloadRef == "" {
+			observation.WorkloadRef = stringMapValue(observation.Metadata, "workload_ref")
+		}
+		if observation.WorkloadUID == "" {
+			observation.WorkloadUID = stringMapValue(observation.Metadata, "workload_uid")
+		}
+		if observation.Namespace == "" {
+			observation.Namespace = firstNonEmptyRuntime(
+				stringMapValue(observation.Metadata, "namespace"),
+				stringMapValue(observation.Metadata, "kubernetes_namespace"),
+			)
+		}
+		if observation.PrincipalID == "" {
+			observation.PrincipalID = firstNonEmptyRuntime(
+				stringMapValue(observation.Metadata, "principal_id"),
+				stringMapValue(observation.Metadata, "credential_id"),
+				stringMapValue(observation.Metadata, "access_key_id"),
+			)
+		}
+	}
+}
+
+func inferObservationKind(observation *RuntimeObservation) RuntimeObservationKind {
+	switch {
+	case observation == nil:
+		return ObservationKindUnknown
+	case observation.ControlPlane != nil:
+		return ObservationKindKubernetesAudit
+	case observation.Network != nil && observation.Network.Domain != "":
+		return ObservationKindDNSQuery
+	case observation.Network != nil:
+		return ObservationKindNetworkFlow
+	case observation.File != nil && strings.EqualFold(strings.TrimSpace(observation.File.Operation), "read"):
+		return ObservationKindFileOpen
+	case observation.File != nil:
+		return ObservationKindFileWrite
+	case observation.Process != nil:
+		return ObservationKindProcessExec
+	case observation.Trace != nil:
+		return ObservationKindTraceLink
+	case stringMapValue(observation.Metadata, "execution_id") != "" || slices.Contains(observation.Tags, "response_outcome"):
+		return ObservationKindResponseOutcome
+	default:
+		return ObservationKindUnknown
+	}
+}
+
+func validateObservation(observation *RuntimeObservation) error {
+	if observation == nil {
+		return nil
+	}
+	if observation.Source == "" {
+		return fmt.Errorf("%w: missing source", ErrInvalidObservation)
+	}
+	if observation.Kind == "" || observation.Kind == ObservationKindUnknown {
+		return fmt.Errorf("%w: missing observation kind", ErrInvalidObservation)
+	}
+	if observation.ObservedAt.IsZero() {
+		return fmt.Errorf("%w: missing observed_at", ErrInvalidObservation)
+	}
+	switch observation.Kind {
+	case ObservationKindProcessExec, ObservationKindProcessExit:
+		if observation.Process == nil {
+			return fmt.Errorf("%w: %s observations require process context", ErrInvalidObservation, observation.Kind)
+		}
+	case ObservationKindNetworkFlow, ObservationKindDNSQuery:
+		if observation.Network == nil {
+			return fmt.Errorf("%w: %s observations require network context", ErrInvalidObservation, observation.Kind)
+		}
+	case ObservationKindFileOpen, ObservationKindFileWrite:
+		if observation.File == nil {
+			return fmt.Errorf("%w: %s observations require file context", ErrInvalidObservation, observation.Kind)
+		}
+	case ObservationKindKubernetesAudit:
+		if observation.ControlPlane == nil {
+			return fmt.Errorf("%w: %s observations require control-plane context", ErrInvalidObservation, observation.Kind)
+		}
+	case ObservationKindTraceLink:
+		if observation.Trace == nil {
+			return fmt.Errorf("%w: %s observations require trace context", ErrInvalidObservation, observation.Kind)
+		}
+	}
+	return nil
+}
+
 func addMetadataString(metadata map[string]any, key, value string) {
 	if strings.TrimSpace(value) == "" {
 		return
@@ -318,12 +565,48 @@ func stringMapValue(metadata map[string]any, key string) string {
 	}
 }
 
+func observationKindFromMetadata(metadata map[string]any) RuntimeObservationKind {
+	switch kind := RuntimeObservationKind(strings.TrimSpace(stringMapValue(metadata, runtimeObservationKindKey))); kind {
+	case ObservationKindProcessExec,
+		ObservationKindProcessExit,
+		ObservationKindFileOpen,
+		ObservationKindFileWrite,
+		ObservationKindNetworkFlow,
+		ObservationKindDNSQuery,
+		ObservationKindKubernetesAudit,
+		ObservationKindRuntimeAlert,
+		ObservationKindTraceLink,
+		ObservationKindResponseOutcome:
+		return kind
+	default:
+		return ObservationKindUnknown
+	}
+}
+
 func cloneProcessEvent(input *ProcessEvent) *ProcessEvent {
 	if input == nil {
 		return nil
 	}
 	cloned := *input
 	cloned.Ancestors = append([]string(nil), input.Ancestors...)
+	return &cloned
+}
+
+func cloneControlPlaneContext(input *ControlPlaneContext) *ControlPlaneContext {
+	if input == nil {
+		return nil
+	}
+	cloned := *input
+	cloned.SourceIPs = append([]string(nil), input.SourceIPs...)
+	cloned.Annotations = cloneRuntimeStringMap(input.Annotations)
+	return &cloned
+}
+
+func cloneTraceContext(input *TraceContext) *TraceContext {
+	if input == nil {
+		return nil
+	}
+	cloned := *input
 	return &cloned
 }
 
@@ -350,4 +633,214 @@ func cloneContainerEvent(input *ContainerEvent) *ContainerEvent {
 	cloned := *input
 	cloned.Capabilities = append([]string(nil), input.Capabilities...)
 	return &cloned
+}
+
+func compactObservationTags(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	compacted := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" || slices.Contains(compacted, trimmed) {
+			continue
+		}
+		compacted = append(compacted, trimmed)
+	}
+	if len(compacted) == 0 {
+		return nil
+	}
+	return compacted
+}
+
+func normalizeObservationAnyMap(input map[string]any, depth int) map[string]any {
+	if len(input) == 0 {
+		return nil
+	}
+
+	originalKeys := make([]string, 0, len(input))
+	for key := range input {
+		if trimmed := strings.TrimSpace(key); trimmed != "" {
+			originalKeys = append(originalKeys, key)
+		}
+	}
+	if len(originalKeys) == 0 {
+		return nil
+	}
+	sort.Slice(originalKeys, func(i, j int) bool {
+		leftTrimmed := strings.TrimSpace(originalKeys[i])
+		rightTrimmed := strings.TrimSpace(originalKeys[j])
+		if leftTrimmed == rightTrimmed {
+			return originalKeys[i] < originalKeys[j]
+		}
+		return leftTrimmed < rightTrimmed
+	})
+
+	originalByTrimmed := make(map[string]string, len(originalKeys))
+	keys := make([]string, 0, len(originalKeys))
+	for _, key := range originalKeys {
+		trimmed := strings.TrimSpace(key)
+		if _, exists := originalByTrimmed[trimmed]; exists {
+			continue
+		}
+		originalByTrimmed[trimmed] = key
+		keys = append(keys, trimmed)
+	}
+	if len(keys) == 0 {
+		return nil
+	}
+	if len(keys) > maxObservationPayloadEntries {
+		keys = keys[:maxObservationPayloadEntries]
+	}
+	normalized := make(map[string]any, len(keys))
+	for _, key := range keys {
+		value := normalizeObservationValue(input[originalByTrimmed[key]], depth+1)
+		if value == nil {
+			continue
+		}
+		normalized[key] = value
+	}
+	if len(normalized) == 0 {
+		if depth > 0 {
+			return map[string]any{}
+		}
+		return nil
+	}
+	return normalized
+}
+
+func normalizeObservationValue(value any, depth int) any {
+	switch typed := value.(type) {
+	case string:
+		trimmed := strings.TrimSpace(typed)
+		trimmed = truncateObservationString(trimmed)
+		if trimmed == "" {
+			return nil
+		}
+		return trimmed
+	case []string:
+		return compactLimitedObservationStrings(typed)
+	case []any:
+		if depth >= maxObservationPayloadDepth {
+			return nil
+		}
+		normalized := make([]any, 0, min(len(typed), maxObservationListEntries))
+		for _, entry := range typed {
+			if len(normalized) == maxObservationListEntries {
+				break
+			}
+			next := normalizeObservationValue(entry, depth+1)
+			if next != nil {
+				normalized = append(normalized, next)
+			}
+		}
+		if len(normalized) == 0 {
+			return nil
+		}
+		return normalized
+	case map[string]any:
+		if depth >= maxObservationPayloadDepth {
+			return nil
+		}
+		return normalizeObservationAnyMap(typed, depth)
+	default:
+		return value
+	}
+}
+
+func compactLimitedObservationStrings(values []string) []string {
+	compacted := compactObservationTags(values)
+	if len(compacted) == 0 {
+		return nil
+	}
+	if len(compacted) > maxObservationListEntries {
+		compacted = compacted[:maxObservationListEntries]
+	}
+	for i := range compacted {
+		compacted[i] = truncateObservationString(compacted[i])
+	}
+	return compacted
+}
+
+func truncateObservationString(value string) string {
+	if len(value) <= maxObservationStringValueBytes {
+		return value
+	}
+	value = value[:maxObservationStringValueBytes]
+	for len(value) > 0 && !utf8.ValidString(value) {
+		value = value[:len(value)-1]
+	}
+	return value
+}
+
+func generatedObservationID(observation *RuntimeObservation) string {
+	digest := sha256.Sum256([]byte(strings.Join([]string{
+		observation.Source,
+		string(observation.Kind),
+		observation.ResourceID,
+		observation.ResourceType,
+		observation.WorkloadRef,
+		observation.ContainerID,
+		observation.PrincipalID,
+		observation.ObservedAt.UTC().Format(time.RFC3339Nano),
+		observationDetailKey(observation),
+	}, "|")))
+	return "runtime:" + string(observation.Kind) + ":" + hex.EncodeToString(digest[:8])
+}
+
+func observationDetailKey(observation *RuntimeObservation) string {
+	switch {
+	case observation == nil:
+		return ""
+	case observation.Process != nil:
+		return strings.Join([]string{observation.Process.Name, observation.Process.Path, observation.Process.Cmdline}, "|")
+	case observation.Network != nil:
+		return strings.Join([]string{
+			observation.Network.Protocol,
+			observation.Network.SrcIP,
+			fmt.Sprintf("%d", observation.Network.SrcPort),
+			observation.Network.DstIP,
+			fmt.Sprintf("%d", observation.Network.DstPort),
+			observation.Network.Domain,
+		}, "|")
+	case observation.File != nil:
+		return strings.Join([]string{observation.File.Operation, observation.File.Path, observation.File.Hash}, "|")
+	case observation.ControlPlane != nil:
+		return strings.Join([]string{
+			observation.ControlPlane.Verb,
+			observation.ControlPlane.Resource,
+			observation.ControlPlane.Namespace,
+			observation.ControlPlane.Name,
+			observation.ControlPlane.Subresource,
+		}, "|")
+	default:
+		return ""
+	}
+}
+
+func containerResourceID(containerID string) string {
+	containerID = strings.TrimSpace(containerID)
+	if containerID == "" {
+		return ""
+	}
+	return "container:" + containerID
+}
+
+func controlPlaneResourceID(controlPlane *ControlPlaneContext) string {
+	if controlPlane == nil {
+		return ""
+	}
+	resource := strings.TrimSpace(controlPlane.Resource)
+	if resource == "" {
+		return ""
+	}
+	name := strings.TrimSpace(controlPlane.Name)
+	namespace := strings.TrimSpace(controlPlane.Namespace)
+	if name == "" {
+		return resource
+	}
+	if namespace == "" {
+		return resource + ":" + name
+	}
+	return resource + ":" + namespace + "/" + name
 }
