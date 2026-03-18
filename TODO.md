@@ -41,6 +41,18 @@ Status: executed end-to-end via PR workflow
 - [x] Add store-only API regressions covering platform snapshot catalog listing and lookup by snapshot ID.
 - [x] Re-run focused API tests, lint, and changed-file validation before pushing the next `#392` slice.
 
+## Deep Review Cycle 205 - Graph Store Platform Report Run Paths (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left platform report-run creation and retry rebuilding lineage from `s.app.SecurityGraph`, so queued and retried runs lost graph snapshot lineage whenever the runtime exposed only a `GraphStore`.
+- [x] Gap: report section summarization still injected `s.app.SecurityGraph` directly into `ReportSectionBuildOptions`, so section lineage disappeared in store-backed runtimes even after the report execution path itself succeeded.
+- [x] Gap: there was no store-only regression proving sync report runs, sync retries, or section lineage still work when the live in-memory graph pointer is absent.
+
+### Execution plan
+- [x] Route platform report lineage and section graph resolution through a shared current-platform graph-view helper that falls back to `CurrentSecurityGraphStore().Snapshot(...)`.
+- [x] Keep the rest of the platform report execution flow unchanged so this slice only covers read-only lineage and section summarization.
+- [x] Add store-only regressions for sync create, sync retry, and artifact section lineage, then rerun focused API tests, lint, and changed-file validation.
+
 ## Deep Review Cycle 203 - Graph Store Risk Engine Feedback Paths (2026-03-18)
 
 ### Review findings

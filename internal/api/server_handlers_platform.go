@@ -156,6 +156,35 @@ func (s *Server) getPlatformGraphSnapshot(w http.ResponseWriter, r *http.Request
 	s.json(w, http.StatusOK, snapshot)
 }
 
+func (s *Server) currentPlatformSecurityGraphView(ctx context.Context) (*graph.Graph, error) {
+	if s == nil || s.app == nil {
+		return nil, graph.ErrStoreUnavailable
+	}
+	if g := s.app.CurrentSecurityGraph(); g != nil {
+		return g, nil
+	}
+	store := s.app.CurrentSecurityGraphStore()
+	if store == nil {
+		return nil, graph.ErrStoreUnavailable
+	}
+	snapshot, err := store.Snapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if snapshot == nil {
+		return nil, graph.ErrStoreUnavailable
+	}
+	return graph.GraphViewFromSnapshot(snapshot), nil
+}
+
+func (s *Server) currentPlatformReportLineage(ctx context.Context, definition reports.ReportDefinition) reports.ReportLineage {
+	g, err := s.currentPlatformSecurityGraphView(ctx)
+	if err != nil {
+		return reports.BuildReportLineage(nil, definition)
+	}
+	return reports.BuildReportLineage(g, definition)
+}
+
 func (s *Server) platformWriteClaim(w http.ResponseWriter, r *http.Request) {
 	s.graphWriteClaim(w, r)
 }
@@ -399,7 +428,7 @@ func (s *Server) startPlatformReportRun(ctx context.Context, reportID string, re
 	}
 
 	now := time.Now().UTC()
-	lineage := reports.BuildReportLineage(s.app.SecurityGraph, definition)
+	lineage := s.currentPlatformReportLineage(ctx, definition)
 	storagePolicy := reports.BuildReportStoragePolicy(materializeResult, false)
 	cacheSource := s.reusablePlatformReportRun(reportID, cacheKey, lineage, "")
 	if strings.TrimSpace(requestedBy) == "" {
@@ -663,7 +692,7 @@ func (s *Server) retryPlatformIntelligenceReportRun(w http.ResponseWriter, r *ht
 		retryPolicy = *req.RetryPolicy
 	}
 	retryPolicy = reports.NormalizeReportRetryPolicy(retryPolicy)
-	lineage := reports.BuildReportLineage(s.app.SecurityGraph, definition)
+	lineage := s.currentPlatformReportLineage(r.Context(), definition)
 	cacheSource := s.reusablePlatformReportRun(reportID, cacheKey, lineage, runID)
 
 	now := time.Now().UTC()
@@ -1006,7 +1035,7 @@ func (s *Server) executePlatformReportRun(ctx context.Context, runID string, def
 	if !ok || artifactRun == nil {
 		return fmt.Errorf("report run disappeared before artifact build: %s", runID)
 	}
-	sections, sectionEmissions, snapshot, err := s.buildPlatformReportArtifacts(artifactRun, runID, definition, result, materializeResult, completedAt)
+	sections, sectionEmissions, snapshot, err := s.buildPlatformReportArtifacts(ctx, artifactRun, runID, definition, result, materializeResult, completedAt)
 	if err != nil {
 		classification := platformReportAttemptClassification(err)
 		if updateErr := s.updatePlatformReportRun(runID, func(run *reports.ReportRun) {
@@ -1692,8 +1721,8 @@ func (s *Server) selectPlatformReportCacheSource(run *reports.ReportRun) *report
 	return s.reusablePlatformReportRun(run.ReportID, run.CacheKey, run.Lineage, run.ID)
 }
 
-func (s *Server) buildPlatformReportArtifacts(run *reports.ReportRun, runID string, definition reports.ReportDefinition, result map[string]any, materializeResult bool, completedAt time.Time) ([]reports.ReportSectionResult, []reports.ReportSectionEmission, *reports.ReportSnapshot, error) {
-	options := s.platformReportSectionBuildOptions(run)
+func (s *Server) buildPlatformReportArtifacts(ctx context.Context, run *reports.ReportRun, runID string, definition reports.ReportDefinition, result map[string]any, materializeResult bool, completedAt time.Time) ([]reports.ReportSectionResult, []reports.ReportSectionEmission, *reports.ReportSnapshot, error) {
+	options := s.platformReportSectionBuildOptions(ctx, run)
 	sections := reports.BuildReportSectionResultsWithOptions(definition, result, options)
 	sectionEmissions := reports.BuildReportSectionEmissionsFromResults(sections, result, completedAt)
 	var snapshot *reports.ReportSnapshot
@@ -1707,12 +1736,16 @@ func (s *Server) buildPlatformReportArtifacts(run *reports.ReportRun, runID stri
 	return sections, sectionEmissions, snapshot, nil
 }
 
-func (s *Server) platformReportSectionBuildOptions(run *reports.ReportRun) *reports.ReportSectionBuildOptions {
+func (s *Server) platformReportSectionBuildOptions(ctx context.Context, run *reports.ReportRun) *reports.ReportSectionBuildOptions {
 	if run == nil {
 		return nil
 	}
+	g, err := s.currentPlatformSecurityGraphView(ctx)
+	if err != nil {
+		g = nil
+	}
 	options := &reports.ReportSectionBuildOptions{
-		Graph:            s.app.SecurityGraph,
+		Graph:            g,
 		TimeSlice:        run.TimeSlice,
 		CacheStatus:      run.CacheStatus,
 		CacheSourceRunID: run.CacheSourceRunID,
