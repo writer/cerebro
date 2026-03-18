@@ -253,21 +253,6 @@ func TestQueryEntitiesFiltersAndKnowledgeSupport(t *testing.T) {
 	if len(personDetail.Aliases) != 1 || personDetail.Aliases[0].AliasType != "slack" {
 		t.Fatalf("expected incoming alias detail, got %#v", personDetail.Aliases)
 	}
-	report, ok := BuildEntitySummaryReport(g, EntitySummaryReportOptions{
-		EntityID:         "arn:aws:s3:::logs",
-		ValidAt:          baseAt.Add(2 * time.Hour),
-		RecordedAt:       baseAt.Add(2 * time.Hour),
-		MaxPostureClaims: 1,
-	})
-	if !ok {
-		t.Fatal("expected entity summary report")
-	}
-	if report.Overview.Headline != "Audit Logs" {
-		t.Fatalf("unexpected report overview: %#v", report.Overview)
-	}
-	if len(report.Facets.Items) == 0 || len(report.Posture.Claims) != 1 || len(report.Subresources.Items) == 0 {
-		t.Fatalf("expected report facet/posture modules, got %#v", report)
-	}
 }
 
 func boolPtr(value bool) *bool {

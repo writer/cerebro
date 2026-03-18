@@ -100,7 +100,7 @@ func ConfigValidationRules() []ConfigValidationRule {
 				"NATS_CONSUMER_DROP_HEALTH_THRESHOLD",
 				"NATS_CONSUMER_GRAPH_STALENESS_THRESHOLD",
 			},
-			Summary:  "when NATS_CONSUMER_ENABLED=true, JetStream must also be enabled; identifiers must be present; durations must be positive; drop threshold must be non-negative",
+			Summary:  "when NATS_CONSUMER_ENABLED=true, JetStream must also be enabled; identifiers must be present; durations must be positive; drop threshold must be non-negative; dedupe settings must be valid when enabled",
 			Category: "dependency",
 		},
 		{
@@ -241,6 +241,17 @@ func (c *Config) Validate() error {
 		}
 		if c.NATSConsumerDropHealthThreshold < 0 {
 			problems = addConfigProblem(problems, "NATS_CONSUMER_DROP_HEALTH_THRESHOLD must be >= 0 when NATS_CONSUMER_ENABLED=true")
+		}
+		if c.NATSConsumerDedupEnabled {
+			if strings.TrimSpace(c.NATSConsumerDedupStateFile) == "" {
+				problems = addConfigProblem(problems, "NATS_CONSUMER_DEDUP_STATE_FILE is required when NATS_CONSUMER_DEDUP_ENABLED=true")
+			}
+			if c.NATSConsumerDedupTTL <= 0 {
+				problems = addConfigProblem(problems, "NATS_CONSUMER_DEDUP_TTL must be > 0 when NATS_CONSUMER_DEDUP_ENABLED=true")
+			}
+			if c.NATSConsumerDedupMaxRecords <= 0 {
+				problems = addConfigProblem(problems, "NATS_CONSUMER_DEDUP_MAX_RECORDS must be > 0 when NATS_CONSUMER_DEDUP_ENABLED=true")
+			}
 		}
 		if c.NATSConsumerGraphStalenessThreshold <= 0 {
 			problems = addConfigProblem(problems, "NATS_CONSUMER_GRAPH_STALENESS_THRESHOLD must be > 0 when NATS_CONSUMER_ENABLED=true")
