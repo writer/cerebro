@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"net/http"
 	"strconv"
 
@@ -10,26 +9,10 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-func (s *Server) currentTenantSecurityGraphView(ctx context.Context) (*graph.Graph, error) {
-	store := s.currentTenantSecurityGraphStore(ctx)
-	if store == nil {
-		return nil, graph.ErrStoreUnavailable
-	}
-	snapshot, err := store.Snapshot(ctx)
-	if err != nil {
-		return nil, err
-	}
-	view := graph.GraphViewFromSnapshot(snapshot)
-	if view == nil {
-		return nil, graph.ErrStoreUnavailable
-	}
-	return view, nil
-}
-
 // Visualization endpoints (Mermaid)
 
 func (s *Server) visualizeAttackPath(w http.ResponseWriter, r *http.Request) {
-	g, err := s.currentTenantSecurityGraphView(r.Context())
+	g, err := s.currentTenantSecurityGraphSnapshotView(r.Context())
 	if err != nil {
 		s.errorFromErr(w, err)
 		return
@@ -59,7 +42,7 @@ func (s *Server) visualizeAttackPath(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) visualizeToxicCombination(w http.ResponseWriter, r *http.Request) {
-	g, err := s.currentTenantSecurityGraphView(r.Context())
+	g, err := s.currentTenantSecurityGraphSnapshotView(r.Context())
 	if err != nil {
 		s.errorFromErr(w, err)
 		return
@@ -129,7 +112,7 @@ func (s *Server) visualizeBlastRadius(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) visualizeReport(w http.ResponseWriter, r *http.Request) {
-	g, err := s.currentTenantSecurityGraphView(r.Context())
+	g, err := s.currentTenantSecurityGraphSnapshotView(r.Context())
 	if err != nil {
 		s.errorFromErr(w, err)
 		return

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"testing"
@@ -8,6 +9,14 @@ import (
 	"github.com/evalops/cerebro/internal/app"
 	"github.com/evalops/cerebro/internal/graph"
 )
+
+type nilSnapshotGraphStore struct {
+	graph.GraphStore
+}
+
+func (n nilSnapshotGraphStore) Snapshot(context.Context) (*graph.Snapshot, error) {
+	return nil, nil
+}
 
 func newStoreBackedGraphServer(t *testing.T, store graph.GraphStore) *Server {
 	t.Helper()
@@ -146,5 +155,14 @@ func TestVisualizeReportUsesGraphStoreSnapshotWhenRawGraphUnavailable(t *testing
 	body := resp.Body.String()
 	if !strings.Contains(body, "# Security Report") || !strings.Contains(body, "Risk Score") {
 		t.Fatalf("expected report visualization output, got %q", body)
+	}
+}
+
+func TestVisualizeReportReturnsServiceUnavailableWhenStoreSnapshotMissing(t *testing.T) {
+	s := newStoreBackedGraphServer(t, nilSnapshotGraphStore{GraphStore: buildGraphStoreVisualizationTestGraph()})
+
+	resp := do(t, s, http.MethodGet, "/api/v1/graph/visualize/report", nil)
+	if resp.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected report visualization 503, got %d: %s", resp.Code, resp.Body.String())
 	}
 }

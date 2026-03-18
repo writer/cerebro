@@ -434,6 +434,18 @@ Status: executed end-to-end via PR workflow
 - [x] Route org onboarding, meeting insights, meeting analysis, information flow, clock speed, and recommended-connections handlers through the snapshot-backed tenant graph view.
 - [x] Add store-only API regressions covering the migrated org analytics handlers.
 
+## Deep Review Cycle 200 - Graph Store Org Expertise Paths (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left the org expertise and team recommendation endpoints hard-wired to `s.app.SecurityGraph`, so they could not run against a store-backed graph runtime once the raw in-memory graph pointer is absent.
+- [x] Gap: the existing graph-store migration slices already covered traversal, visualization, and risk analysis paths, but these org knowledge endpoints still bypassed `GraphStore.Snapshot()` entirely.
+- [x] Gap: there was no regression proving the org expertise endpoints still behave correctly when the server is constructed with only a `GraphStore` and no raw graph.
+
+### Execution plan
+- [x] Add a shared tenant-scoped graph-view helper that restores read-only graph views from `GraphStore.Snapshot()` when a store is present.
+- [x] Route `whoKnows` and `recommendTeam` through the snapshot-backed graph view instead of directly reading `s.app.SecurityGraph`.
+- [x] Add store-only API regressions covering both org expertise endpoints.
+
 ## Deep Review Cycle 202 - Graph Store Entity Impact Paths (2026-03-18)
 
 ### Review findings

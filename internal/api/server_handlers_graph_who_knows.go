@@ -1,15 +1,26 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 
+	"github.com/evalops/cerebro/internal/graph"
 	"github.com/evalops/cerebro/internal/graph/knowledge"
 )
 
 func (s *Server) whoKnows(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g, err := s.currentTenantSecurityGraphView(r.Context())
+	if err != nil {
+		if errors.Is(err, graph.ErrStoreUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+			return
+		}
+		s.errorFromErr(w, err)
+		return
+	}
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
@@ -32,7 +43,7 @@ func (s *Server) whoKnows(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result := knowledge.WhoKnows(s.app.SecurityGraph, query)
+	result := knowledge.WhoKnows(g, query)
 	s.json(w, http.StatusOK, result)
 }
 

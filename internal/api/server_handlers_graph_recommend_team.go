@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -9,7 +10,16 @@ import (
 )
 
 func (s *Server) recommendTeam(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g, err := s.currentTenantSecurityGraphView(r.Context())
+	if err != nil {
+		if errors.Is(err, graph.ErrStoreUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+			return
+		}
+		s.errorFromErr(w, err)
+		return
+	}
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
@@ -32,5 +42,5 @@ func (s *Server) recommendTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.json(w, http.StatusOK, graph.RecommendTeam(s.app.SecurityGraph, req))
+	s.json(w, http.StatusOK, graph.RecommendTeam(g, req))
 }

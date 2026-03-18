@@ -87,6 +87,32 @@ func TestCurrentTenantSecurityGraphReusesTenantShard(t *testing.T) {
 	}
 }
 
+func TestCurrentTenantSecurityGraphSnapshotViewIsIsolatedFromLiveShard(t *testing.T) {
+	s := newTestServer(t)
+	g := s.app.SecurityGraph
+	g.AddNode(&graph.Node{ID: "service:shared", Kind: graph.NodeKindService, Name: "Shared"})
+	g.AddNode(&graph.Node{ID: "service:tenant-a", Kind: graph.NodeKindService, Name: "Tenant A", TenantID: "tenant-a"})
+	g.AddEdge(&graph.Edge{ID: "shared-a", Source: "service:shared", Target: "service:tenant-a", Kind: graph.EdgeKindDependsOn})
+
+	ctx := context.WithValue(context.Background(), contextKeyTenant, "tenant-a")
+	live := s.currentTenantSecurityGraph(ctx)
+	snapshot, err := s.currentTenantSecurityGraphSnapshotView(ctx)
+	if err != nil {
+		t.Fatalf("expected snapshot-backed tenant graph, got error: %v", err)
+	}
+	if live == nil || snapshot == nil {
+		t.Fatal("expected both live and snapshot tenant graphs")
+	}
+	if snapshot == live {
+		t.Fatal("expected snapshot-backed tenant graph to differ from the live tenant shard")
+	}
+
+	snapshot.AddNode(&graph.Node{ID: "service:snapshot-only", Kind: graph.NodeKindService, Name: "Snapshot Only", TenantID: "tenant-a"})
+	if _, ok := live.GetNode("service:snapshot-only"); ok {
+		t.Fatal("expected snapshot-backed tenant graph mutations to stay isolated from the live tenant shard")
+	}
+}
+
 func TestGraphIntelligenceHandlersUseTenantScopedGraph(t *testing.T) {
 	s := newTestServer(t)
 	g := s.app.SecurityGraph

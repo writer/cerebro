@@ -13,10 +13,11 @@ import (
 
 type stubGraphRuntime struct {
 	freshness app.GraphFreshnessStatus
+	graph     *graph.Graph
 	store     graph.GraphStore
 }
 
-func (s stubGraphRuntime) CurrentSecurityGraph() *graph.Graph { return nil }
+func (s stubGraphRuntime) CurrentSecurityGraph() *graph.Graph { return s.graph }
 
 func (s stubGraphRuntime) CurrentSecurityGraphStore() graph.GraphStore { return s.store }
 

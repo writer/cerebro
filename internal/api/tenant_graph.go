@@ -31,6 +31,53 @@ func (s *Server) currentTenantSecurityGraph(ctx context.Context) *graph.Graph {
 	return s.app.CurrentSecurityGraphForTenant(currentTenantScopeID(ctx))
 }
 
+func (s *Server) currentTenantSecurityGraphView(ctx context.Context) (*graph.Graph, error) {
+	if s == nil || s.app == nil {
+		return nil, graph.ErrStoreUnavailable
+	}
+	if g := s.currentTenantSecurityGraph(ctx); g != nil {
+		return g, nil
+	}
+	if store := s.currentTenantSecurityGraphStore(ctx); store != nil {
+		snapshot, err := store.Snapshot(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if snapshot == nil {
+			return nil, graph.ErrStoreUnavailable
+		}
+		return graph.GraphViewFromSnapshot(snapshot), nil
+	}
+	return nil, graph.ErrStoreUnavailable
+}
+
+func (s *Server) currentTenantSecurityGraphSnapshotView(ctx context.Context) (*graph.Graph, error) {
+	if s == nil || s.app == nil {
+		return nil, graph.ErrStoreUnavailable
+	}
+	if store := s.currentTenantSecurityGraphStore(ctx); store != nil {
+		snapshot, err := store.Snapshot(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if snapshot == nil {
+			return nil, graph.ErrStoreUnavailable
+		}
+		return graph.GraphViewFromSnapshot(snapshot), nil
+	}
+	if g := s.currentTenantSecurityGraph(ctx); g != nil {
+		snapshot, err := g.Snapshot(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if snapshot == nil {
+			return nil, graph.ErrStoreUnavailable
+		}
+		return graph.GraphViewFromSnapshot(snapshot), nil
+	}
+	return nil, graph.ErrStoreUnavailable
+}
+
 func (s *Server) currentTenantSecurityGraphStore(ctx context.Context) graph.GraphStore {
 	if s == nil || s.app == nil {
 		return nil
