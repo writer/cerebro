@@ -174,6 +174,7 @@ func TestExecutorContinueOnFailureKeepsExecutionRunningUntilCompletion(t *testin
 			}
 			if loaded == nil {
 				t.Fatal("expected persisted execution during continue")
+				return
 			}
 			if loaded.Status != StatusRunning {
 				t.Fatalf("persisted status during continue = %s, want %s", loaded.Status, StatusRunning)

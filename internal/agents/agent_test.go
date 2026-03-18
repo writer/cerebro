@@ -47,6 +47,7 @@ func TestNewMemory(t *testing.T) {
 	m := NewMemory(100)
 	if m == nil {
 		t.Fatal("expected memory to be created")
+		return
 	}
 	if m.maxSize != 100 {
 		t.Errorf("expected maxSize 100, got %d", m.maxSize)
@@ -138,6 +139,7 @@ func TestNewAgentRegistry(t *testing.T) {
 	r := NewAgentRegistry()
 	if r == nil {
 		t.Fatal("expected registry to be created")
+		return
 	}
 	if r.agents == nil {
 		t.Error("expected agents map to be initialized")
