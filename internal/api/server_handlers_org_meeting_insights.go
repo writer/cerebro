@@ -9,18 +9,28 @@ import (
 )
 
 func (s *Server) orgMeetingInsights(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g, err := s.currentTenantSecurityGraphView(r.Context())
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
 
 	team := strings.TrimSpace(r.URL.Query().Get("team"))
-	report := graph.AnalyzeMeetingInsights(s.app.SecurityGraph, team)
+	report := graph.AnalyzeMeetingInsights(g, team)
 	s.json(w, http.StatusOK, report)
 }
 
 func (s *Server) orgMeetingAnalysis(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g, err := s.currentTenantSecurityGraphView(r.Context())
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
@@ -31,7 +41,7 @@ func (s *Server) orgMeetingAnalysis(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis := graph.AnalyzeMeetingByID(s.app.SecurityGraph, meetingID)
+	analysis := graph.AnalyzeMeetingByID(g, meetingID)
 	if analysis == nil {
 		s.error(w, http.StatusNotFound, "meeting analysis not found")
 		return

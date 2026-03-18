@@ -9,7 +9,12 @@ import (
 )
 
 func (s *Server) orgInformationFlow(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g, err := s.currentTenantSecurityGraphView(r.Context())
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
@@ -21,7 +26,7 @@ func (s *Server) orgInformationFlow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path := graph.ShortestInformationPath(s.app.SecurityGraph, from, to)
+	path := graph.ShortestInformationPath(g, from, to)
 	if path == nil {
 		s.error(w, http.StatusNotFound, "no information path found for provided endpoints")
 		return
@@ -31,17 +36,27 @@ func (s *Server) orgInformationFlow(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) orgClockSpeed(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g, err := s.currentTenantSecurityGraphView(r.Context())
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
 
-	clock := graph.ComputeClockSpeed(s.app.SecurityGraph)
+	clock := graph.ComputeClockSpeed(g)
 	s.json(w, http.StatusOK, clock)
 }
 
 func (s *Server) orgRecommendedConnections(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g, err := s.currentTenantSecurityGraphView(r.Context())
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
@@ -56,7 +71,7 @@ func (s *Server) orgRecommendedConnections(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	recommendations := graph.RecommendEdges(s.app.SecurityGraph, limit)
+	recommendations := graph.RecommendEdges(g, limit)
 	s.json(w, http.StatusOK, map[string]any{
 		"count":           len(recommendations),
 		"recommendations": recommendations,

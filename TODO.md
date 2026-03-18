@@ -398,3 +398,15 @@ Status: executed end-to-end via PR workflow
 - [x] Add Prometheus metrics for dropped refreshes, refresh duration, and pending queue depth.
 - [x] Apply bounded ingest backpressure when refresh work is already running and aged pending work exists.
 - [x] Add TDD coverage for coalescing and backpressure behavior, then re-run focused app/metrics validation.
+
+## Deep Review Cycle 201 - Graph Store Org Analytics Paths (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left the org analytics handlers backed by raw `s.app.SecurityGraph` reads, so onboarding plans, meeting insights, information-flow queries, and org graph recommendations would fail in a store-backed runtime with no live graph pointer.
+- [x] Gap: those handlers only need a stable read-only graph view, but they still bypassed the existing `GraphStore.Snapshot()` plus `graph.GraphViewFromSnapshot(...)` seam already used by the other migration slices.
+- [x] Gap: API regressions did not prove these org analytics endpoints could execute with only a `GraphStore`, so pointer-only behavior could slip back in unnoticed.
+
+### Execution plan
+- [x] Route org onboarding, meeting insights, meeting analysis, information flow, clock speed, and recommended-connections handlers through the snapshot-backed tenant graph view.
+- [x] Add store-only API regressions covering the migrated org analytics handlers.
+- [x] Re-run focused and changed-file API validation before pushing the branch.
