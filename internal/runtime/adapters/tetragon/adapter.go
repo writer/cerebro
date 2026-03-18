@@ -61,13 +61,16 @@ type processKprobeEnvelope struct {
 }
 
 type kprobeArg struct {
-	SkbArg      *skbArg      `json:"skb_arg,omitempty"`
-	SockArg     *sockArg     `json:"sock_arg,omitempty"`
-	SockaddrArg *sockaddrArg `json:"sockaddr_arg,omitempty"`
-	FileArg     *pathLikeArg `json:"file_arg,omitempty"`
-	PathArg     *pathLikeArg `json:"path_arg,omitempty"`
-	IntArg      *int64       `json:"int_arg,omitempty"`
-	UintArg     *uint64      `json:"uint_arg,omitempty"`
+	SkbArg                *skbArg                `json:"skb_arg,omitempty"`
+	SockArg               *sockArg               `json:"sock_arg,omitempty"`
+	SockaddrArg           *sockaddrArg           `json:"sockaddr_arg,omitempty"`
+	FileArg               *pathLikeArg           `json:"file_arg,omitempty"`
+	PathArg               *pathLikeArg           `json:"path_arg,omitempty"`
+	CapabilityArg         *capabilityArg         `json:"capability_arg,omitempty"`
+	UserNamespaceArg      *userNamespaceArg      `json:"user_ns_arg,omitempty"`
+	ProcessCredentialsArg *processCredentialsArg `json:"process_credentials_arg,omitempty"`
+	IntArg                *int64                 `json:"int_arg,omitempty"`
+	UintArg               *uint64                `json:"uint_arg,omitempty"`
 }
 
 type skbArg struct {
@@ -100,6 +103,34 @@ type sockaddrArg struct {
 type pathLikeArg struct {
 	Path       string `json:"path"`
 	Permission string `json:"permission"`
+}
+
+type capabilityArg struct {
+	Value int    `json:"value"`
+	Name  string `json:"name"`
+}
+
+type userNamespaceArg struct {
+	Level uint32 `json:"level"`
+	UID   uint32 `json:"uid"`
+	GID   uint32 `json:"gid"`
+	NS    uint32 `json:"ns"`
+}
+
+type processCredentialsArg struct {
+	UID            uint32            `json:"uid"`
+	EUID           uint32            `json:"euid"`
+	SUID           uint32            `json:"suid"`
+	FSUID          uint32            `json:"fsuid"`
+	GID            uint32            `json:"gid"`
+	EGID           uint32            `json:"egid"`
+	SGID           uint32            `json:"sgid"`
+	FSGID          uint32            `json:"fsgid"`
+	SecureBits     uint32            `json:"securebits"`
+	CapInheritable string            `json:"cap_inheritable"`
+	CapPermitted   string            `json:"cap_permitted"`
+	CapEffective   string            `json:"cap_effective"`
+	UserNamespace  *userNamespaceArg `json:"user_ns,omitempty"`
 }
 
 type processInfo struct {
@@ -269,6 +300,9 @@ func observationFromProcessKprobe(event payload) (*runtime.RuntimeObservation, e
 		path, permission = firstFilePathArg(kprobe.Args)
 		kind, operation = runtime.ObservationKindFileWrite, "modify"
 	default:
+		if isSecuritySignalKprobe(kprobe) {
+			return observationFromSecuritySignalKprobe(event), nil
+		}
 		return nil, fmt.Errorf("decode tetragon payload: unsupported event")
 	}
 
@@ -307,6 +341,52 @@ func observationFromProcessKprobe(event payload) (*runtime.RuntimeObservation, e
 	}
 	observation.Tags = adapters.CompactTags("tetragon", "process_kprobe", string(kind), functionName)
 	return observation, nil
+}
+
+func observationFromSecuritySignalKprobe(event payload) *runtime.RuntimeObservation {
+	kprobe := event.ProcessKprobe
+	functionName := strings.TrimSpace(kprobe.FunctionName)
+	signalType := securitySignalType(functionName, kprobe.Args)
+	metadata := map[string]any{
+		"exec_id":         kprobe.Process.ExecID,
+		"parent_exec_id":  kprobe.Process.ParentExecID,
+		"cwd":             kprobe.Process.CWD,
+		"flags":           kprobe.Process.Flags,
+		"workload_name":   kprobe.Process.Pod.Workload,
+		"pod_labels":      runtime.CloneStringMap(kprobe.Process.Pod.Labels),
+		"node_name":       event.NodeName,
+		"function_name":   functionName,
+		"policy_name":     strings.TrimSpace(kprobe.PolicyName),
+		"action":          strings.TrimSpace(kprobe.Action),
+		"return_action":   strings.TrimSpace(kprobe.ReturnAction),
+		"signal_category": signalType,
+	}
+	if returnCode, ok := firstReturnCode(kprobe.Return); ok {
+		metadata["return_code"] = returnCode
+	}
+	if capability := firstCapabilityArg(kprobe.Args); capability != nil {
+		metadata["capability_name"] = strings.TrimSpace(capability.Name)
+		metadata["capability_value"] = capability.Value
+	}
+	if userNamespace := firstUserNamespaceArg(kprobe.Args); userNamespace != nil {
+		applyUserNamespaceMetadata(metadata, userNamespace)
+	}
+	if credentials := firstProcessCredentialsArg(kprobe.Args); credentials != nil {
+		applyProcessCredentialsMetadata(metadata, credentials)
+	}
+
+	observation := newProcessObservation(
+		runtime.ObservationKindRuntimeAlert,
+		"process_kprobe",
+		event.Time,
+		event.NodeName,
+		kprobe.Process,
+		kprobe.Parent,
+		metadata,
+	)
+	observation.ID = securitySignalObservationID(kprobe.Process, functionName, observation.ObservedAt)
+	observation.Tags = adapters.CompactTags("tetragon", "process_kprobe", "runtime_alert", signalType, functionName)
+	return observation
 }
 
 func observationFromProcessConnect(event payload) *runtime.RuntimeObservation {
@@ -581,6 +661,15 @@ func transportObservationID(process processInfo, kind runtime.RuntimeObservation
 	return strings.Join(parts, ":")
 }
 
+func securitySignalObservationID(process processInfo, functionName string, observedAt time.Time) string {
+	base := processObservationID(process.ExecID, runtime.ObservationKindRuntimeAlert, process)
+	parts := []string{base, strings.TrimSpace(functionName)}
+	if !observedAt.IsZero() {
+		parts = append(parts, observedAt.UTC().Format(time.RFC3339Nano))
+	}
+	return strings.Join(parts, ":")
+}
+
 func podResourceID(namespace, name string) string {
 	if namespace == "" || name == "" {
 		return ""
@@ -655,6 +744,33 @@ func firstSkbArg(args []kprobeArg) *skbArg {
 	return nil
 }
 
+func firstCapabilityArg(args []kprobeArg) *capabilityArg {
+	for _, arg := range args {
+		if arg.CapabilityArg != nil {
+			return arg.CapabilityArg
+		}
+	}
+	return nil
+}
+
+func firstUserNamespaceArg(args []kprobeArg) *userNamespaceArg {
+	for _, arg := range args {
+		if arg.UserNamespaceArg != nil {
+			return arg.UserNamespaceArg
+		}
+	}
+	return nil
+}
+
+func firstProcessCredentialsArg(args []kprobeArg) *processCredentialsArg {
+	for _, arg := range args {
+		if arg.ProcessCredentialsArg != nil {
+			return arg.ProcessCredentialsArg
+		}
+	}
+	return nil
+}
+
 func firstReturnCode(arg *kprobeArg) (any, bool) {
 	if arg == nil {
 		return 0, false
@@ -706,4 +822,85 @@ func isNetworkKprobe(functionName string) bool {
 func isDNSKprobe(args []kprobeArg) bool {
 	skb := firstSkbArg(args)
 	return skb != nil && skb.DPort == 53
+}
+
+func isSecuritySignalKprobe(kprobe *processKprobeEnvelope) bool {
+	if kprobe == nil || strings.TrimSpace(kprobe.FunctionName) == "" {
+		return false
+	}
+	if firstCapabilityArg(kprobe.Args) != nil || firstProcessCredentialsArg(kprobe.Args) != nil || firstUserNamespaceArg(kprobe.Args) != nil {
+		return true
+	}
+	return strings.TrimSpace(kprobe.PolicyName) != "" ||
+		strings.TrimSpace(kprobe.Action) != "" ||
+		strings.TrimSpace(kprobe.ReturnAction) != ""
+}
+
+func securitySignalType(functionName string, args []kprobeArg) string {
+	switch strings.TrimSpace(functionName) {
+	case "cap_capable":
+		return "capability_check"
+	case "security_capset":
+		return "capability_set"
+	case "commit_creds":
+		return "credential_change"
+	case "create_user_ns":
+		return "user_namespace_create"
+	default:
+		if firstProcessCredentialsArg(args) != nil {
+			return "credential_change"
+		}
+		if firstCapabilityArg(args) != nil {
+			return "capability_check"
+		}
+		if firstUserNamespaceArg(args) != nil {
+			return "user_namespace_signal"
+		}
+		return "security_signal"
+	}
+}
+
+func applyUserNamespaceMetadata(metadata map[string]any, userNamespace *userNamespaceArg) {
+	if metadata == nil || userNamespace == nil {
+		return
+	}
+	metadata["user_ns_level"] = userNamespace.Level
+	metadata["user_ns_uid"] = userNamespace.UID
+	metadata["user_ns_gid"] = userNamespace.GID
+	metadata["user_ns_id"] = userNamespace.NS
+}
+
+func applyProcessCredentialsMetadata(metadata map[string]any, credentials *processCredentialsArg) {
+	if metadata == nil || credentials == nil {
+		return
+	}
+	metadata["credential_uid"] = credentials.UID
+	metadata["credential_euid"] = credentials.EUID
+	metadata["credential_suid"] = credentials.SUID
+	metadata["credential_fsuid"] = credentials.FSUID
+	metadata["credential_gid"] = credentials.GID
+	metadata["credential_egid"] = credentials.EGID
+	metadata["credential_sgid"] = credentials.SGID
+	metadata["credential_fsgid"] = credentials.FSGID
+	metadata["credential_securebits"] = credentials.SecureBits
+	if strings.TrimSpace(credentials.CapEffective) != "" {
+		metadata["cap_effective"] = strings.TrimSpace(credentials.CapEffective)
+	}
+	if strings.TrimSpace(credentials.CapPermitted) != "" {
+		metadata["cap_permitted"] = strings.TrimSpace(credentials.CapPermitted)
+	}
+	if strings.TrimSpace(credentials.CapInheritable) != "" {
+		metadata["cap_inheritable"] = strings.TrimSpace(credentials.CapInheritable)
+	}
+	applyCredentialUserNamespaceMetadata(metadata, credentials.UserNamespace)
+}
+
+func applyCredentialUserNamespaceMetadata(metadata map[string]any, userNamespace *userNamespaceArg) {
+	if metadata == nil || userNamespace == nil {
+		return
+	}
+	metadata["credential_user_ns_level"] = userNamespace.Level
+	metadata["credential_user_ns_uid"] = userNamespace.UID
+	metadata["credential_user_ns_gid"] = userNamespace.GID
+	metadata["credential_user_ns_id"] = userNamespace.NS
 }

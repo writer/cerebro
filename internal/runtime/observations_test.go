@@ -475,6 +475,427 @@ func TestObservationFromEventStillNormalizesMetadataContext(t *testing.T) {
 	}
 }
 
+func TestNormalizeObservationBindsIdentityFromMetadataAndResourceRefs(t *testing.T) {
+	observation, err := NormalizeObservation(&RuntimeObservation{
+		Kind:       ObservationKindRuntimeAlert,
+		Source:     "falco",
+		ObservedAt: time.Date(2026, 3, 16, 16, 0, 0, 0, time.UTC),
+		ResourceID: "deployment:prod/api",
+		Metadata: map[string]any{
+			"cluster_name": "prod-west",
+			"container_id": "ctr-42",
+			"image_ref":    "ghcr.io/acme/api:1.2.3",
+			"image_id":     "sha256:api42",
+		},
+		Process: &ProcessEvent{
+			Name: "bash",
+			User: "root",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NormalizeObservation: %v", err)
+	}
+	if observation.Cluster != "prod-west" {
+		t.Fatalf("cluster = %q, want prod-west", observation.Cluster)
+	}
+	if observation.Namespace != "prod" {
+		t.Fatalf("namespace = %q, want prod", observation.Namespace)
+	}
+	if observation.WorkloadRef != "deployment:prod/api" {
+		t.Fatalf("workload_ref = %q, want deployment:prod/api", observation.WorkloadRef)
+	}
+	if observation.ContainerID != "ctr-42" {
+		t.Fatalf("container_id = %q, want ctr-42", observation.ContainerID)
+	}
+	if observation.ImageRef != "ghcr.io/acme/api:1.2.3" {
+		t.Fatalf("image_ref = %q, want ghcr.io/acme/api:1.2.3", observation.ImageRef)
+	}
+	if observation.ImageID != "sha256:api42" {
+		t.Fatalf("image_id = %q, want sha256:api42", observation.ImageID)
+	}
+	if observation.PrincipalID != "root" {
+		t.Fatalf("principal_id = %q, want root", observation.PrincipalID)
+	}
+}
+
+func TestNormalizeObservationBindsContainerIdentityFromResourceID(t *testing.T) {
+	observation, err := NormalizeObservation(&RuntimeObservation{
+		Kind:         ObservationKindRuntimeAlert,
+		Source:       "falco",
+		ObservedAt:   time.Date(2026, 3, 16, 16, 1, 0, 0, time.UTC),
+		ResourceID:   "container:ctr-99",
+		ResourceType: "container",
+		File: &FileEvent{
+			Operation: "modify",
+			Path:      "/tmp/dropper",
+			User:      "alice",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NormalizeObservation: %v", err)
+	}
+	if observation.ContainerID != "ctr-99" {
+		t.Fatalf("container_id = %q, want ctr-99", observation.ContainerID)
+	}
+	if observation.PrincipalID != "alice" {
+		t.Fatalf("principal_id = %q, want alice", observation.PrincipalID)
+	}
+}
+
+func TestNormalizeObservationBindsNamespaceFromWorkloadRef(t *testing.T) {
+	observation, err := NormalizeObservation(&RuntimeObservation{
+		Kind:        ObservationKindProcessExec,
+		Source:      "tetragon",
+		ObservedAt:  time.Date(2026, 3, 16, 16, 2, 0, 0, time.UTC),
+		WorkloadRef: "statefulset:data/postgres",
+		Process: &ProcessEvent{
+			Name: "postgres",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NormalizeObservation: %v", err)
+	}
+	if observation.Namespace != "data" {
+		t.Fatalf("namespace = %q, want data", observation.Namespace)
+	}
+}
+
+func TestNormalizeObservationBindsServiceIdentityFromTraceContext(t *testing.T) {
+	observation, err := NormalizeObservation(&RuntimeObservation{
+		Source:     "otel",
+		ObservedAt: time.Date(2026, 3, 16, 9, 30, 0, 0, time.UTC),
+		Trace: &TraceContext{
+			TraceID:     "abc123",
+			ServiceName: "payments-api",
+		},
+		Metadata: map[string]any{
+			"service_namespace": "backend",
+			"cluster_name":      "prod-west",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NormalizeObservation: %v", err)
+	}
+	if observation.ResourceType != "service" {
+		t.Fatalf("ResourceType = %q, want service", observation.ResourceType)
+	}
+	if observation.ResourceID != "service:backend/payments-api" {
+		t.Fatalf("ResourceID = %q, want service:backend/payments-api", observation.ResourceID)
+	}
+	if observation.WorkloadRef != "" {
+		t.Fatalf("WorkloadRef = %q, want empty", observation.WorkloadRef)
+	}
+	if observation.Namespace != "backend" {
+		t.Fatalf("Namespace = %q, want backend", observation.Namespace)
+	}
+	if observation.Cluster != "prod-west" {
+		t.Fatalf("Cluster = %q, want prod-west", observation.Cluster)
+	}
+}
+
+func TestObservationFromEventReconstructsServiceIdentityFromMetadata(t *testing.T) {
+	observation := mustObservationFromEvent(t, &RuntimeEvent{
+		ID:        "evt-service-1",
+		Timestamp: time.Date(2026, 3, 16, 9, 31, 0, 0, time.UTC),
+		Source:    "otel",
+		EventType: "span",
+		Metadata: map[string]any{
+			"trace_id":          " abc123 ",
+			"span_id":           " def456 ",
+			"service_name":      "checkout",
+			"service_namespace": "storefront",
+			"cluster_name":      "prod-east",
+		},
+	})
+	if observation.Trace == nil {
+		t.Fatal("expected trace context")
+	}
+	if observation.Trace.ServiceName != "checkout" {
+		t.Fatalf("Trace.ServiceName = %q, want checkout", observation.Trace.ServiceName)
+	}
+	if observation.Trace.TraceID != "abc123" || observation.Trace.SpanID != "def456" {
+		t.Fatalf("Trace IDs = %q/%q, want abc123/def456", observation.Trace.TraceID, observation.Trace.SpanID)
+	}
+	if observation.ResourceType != "service" {
+		t.Fatalf("ResourceType = %q, want service", observation.ResourceType)
+	}
+	if observation.ResourceID != "service:storefront/checkout" {
+		t.Fatalf("ResourceID = %q, want service:storefront/checkout", observation.ResourceID)
+	}
+	if observation.WorkloadRef != "" {
+		t.Fatalf("WorkloadRef = %q, want empty", observation.WorkloadRef)
+	}
+	if observation.Namespace != "storefront" {
+		t.Fatalf("Namespace = %q, want storefront", observation.Namespace)
+	}
+	if observation.Cluster != "prod-east" {
+		t.Fatalf("Cluster = %q, want prod-east", observation.Cluster)
+	}
+}
+
+func TestObservationFromEventRejectsWhitespaceOnlyTraceMetadata(t *testing.T) {
+	observation, err := ObservationFromEvent(&RuntimeEvent{
+		ID:        "evt-trace-whitespace-1",
+		Timestamp: time.Date(2026, 3, 16, 9, 31, 30, 0, time.UTC),
+		Source:    "otel",
+		EventType: "span",
+		Metadata: map[string]any{
+			"trace_id":     " ",
+			"span_id":      "\t",
+			"service_name": "\n",
+		},
+	})
+	if err == nil {
+		t.Fatalf("ObservationFromEvent() error = nil, want invalid observation")
+	}
+	if observation != nil {
+		t.Fatalf("ObservationFromEvent() observation = %#v, want nil", observation)
+	}
+}
+
+func TestNormalizeObservationPrefersWorkloadIdentityOverServiceIdentity(t *testing.T) {
+	observation, err := NormalizeObservation(&RuntimeObservation{
+		Source:      "otel",
+		ObservedAt:  time.Date(2026, 3, 16, 9, 32, 0, 0, time.UTC),
+		WorkloadRef: "deployment:payments/api",
+		Trace: &TraceContext{
+			ServiceName: "payments-api",
+		},
+		Metadata: map[string]any{
+			"service_namespace": "backend",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NormalizeObservation: %v", err)
+	}
+	if observation.WorkloadRef != "deployment:payments/api" {
+		t.Fatalf("WorkloadRef = %q, want deployment:payments/api", observation.WorkloadRef)
+	}
+	if observation.ResourceID != "deployment:payments/api" {
+		t.Fatalf("ResourceID = %q, want workload identity preserved", observation.ResourceID)
+	}
+	if observation.ResourceType != "workload" {
+		t.Fatalf("ResourceType = %q, want workload", observation.ResourceType)
+	}
+}
+
+func TestNormalizeObservationPrefersContainerIdentityOverServiceIdentity(t *testing.T) {
+	observation, err := NormalizeObservation(&RuntimeObservation{
+		Source:      "otel",
+		ObservedAt:  time.Date(2026, 3, 16, 9, 33, 0, 0, time.UTC),
+		ContainerID: "containerd://abc123",
+		Trace: &TraceContext{
+			ServiceName: "payments-api",
+		},
+		Metadata: map[string]any{
+			"service_namespace": "backend",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NormalizeObservation: %v", err)
+	}
+	if observation.ContainerID != "containerd://abc123" {
+		t.Fatalf("ContainerID = %q, want containerd://abc123", observation.ContainerID)
+	}
+	if observation.ResourceID != "container:containerd://abc123" {
+		t.Fatalf("ResourceID = %q, want container identity preserved", observation.ResourceID)
+	}
+	if observation.ResourceType != "container" {
+		t.Fatalf("ResourceType = %q, want container", observation.ResourceType)
+	}
+}
+
+func TestNormalizeObservationBindsServiceIdentityOverAdapterResourceID(t *testing.T) {
+	observation, err := NormalizeObservation(&RuntimeObservation{
+		Source:       "hubble",
+		ObservedAt:   time.Date(2026, 3, 16, 9, 34, 0, 0, time.UTC),
+		ResourceID:   "pods:backend/payments-api-7f9d:exec",
+		ResourceType: "pods",
+		Trace: &TraceContext{
+			ServiceName: "payments-api",
+		},
+		Metadata: map[string]any{
+			"service_namespace": "backend",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NormalizeObservation: %v", err)
+	}
+	if observation.ResourceID != "service:backend/payments-api" {
+		t.Fatalf("ResourceID = %q, want service:backend/payments-api", observation.ResourceID)
+	}
+	if observation.ResourceType != "service" {
+		t.Fatalf("ResourceType = %q, want service", observation.ResourceType)
+	}
+	if observation.WorkloadRef != "" {
+		t.Fatalf("WorkloadRef = %q, want empty", observation.WorkloadRef)
+	}
+}
+
+func TestNormalizeObservationPrefersResourceIDBackfilledWorkloadOverServiceIdentity(t *testing.T) {
+	observation, err := NormalizeObservation(&RuntimeObservation{
+		Source:     "otel",
+		ObservedAt: time.Date(2026, 3, 16, 9, 34, 30, 0, time.UTC),
+		ResourceID: "deployment:backend/payments-api",
+		Trace: &TraceContext{
+			ServiceName: "payments-api",
+		},
+		Metadata: map[string]any{
+			"service_namespace": "backend",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NormalizeObservation: %v", err)
+	}
+	if observation.WorkloadRef != "deployment:backend/payments-api" {
+		t.Fatalf("WorkloadRef = %q, want deployment:backend/payments-api", observation.WorkloadRef)
+	}
+	if observation.ResourceID != "deployment:backend/payments-api" {
+		t.Fatalf("ResourceID = %q, want deployment:backend/payments-api", observation.ResourceID)
+	}
+	if observation.ResourceType != "workload" {
+		t.Fatalf("ResourceType = %q, want workload", observation.ResourceType)
+	}
+}
+
+func TestNormalizeObservationPrefersResourceIDBackfilledContainerOverServiceIdentity(t *testing.T) {
+	observation, err := NormalizeObservation(&RuntimeObservation{
+		Source:     "otel",
+		ObservedAt: time.Date(2026, 3, 16, 9, 34, 45, 0, time.UTC),
+		ResourceID: "container:containerd://svc-123",
+		Trace: &TraceContext{
+			ServiceName: "payments-api",
+		},
+		Metadata: map[string]any{
+			"service_namespace": "backend",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NormalizeObservation: %v", err)
+	}
+	if observation.ContainerID != "containerd://svc-123" {
+		t.Fatalf("ContainerID = %q, want containerd://svc-123", observation.ContainerID)
+	}
+	if observation.ResourceID != "container:containerd://svc-123" {
+		t.Fatalf("ResourceID = %q, want container:containerd://svc-123", observation.ResourceID)
+	}
+	if observation.ResourceType != "container" {
+		t.Fatalf("ResourceType = %q, want container", observation.ResourceType)
+	}
+}
+
+func TestNormalizeObservationPrefersControlPlaneIdentityOverServiceIdentity(t *testing.T) {
+	observation, err := NormalizeObservation(&RuntimeObservation{
+		Source:     "k8s_audit",
+		ObservedAt: time.Date(2026, 3, 16, 9, 35, 0, 0, time.UTC),
+		ControlPlane: &ControlPlaneContext{
+			Resource:  "pods",
+			Namespace: "backend",
+			Name:      "payments-api-7f9d",
+		},
+		Trace: &TraceContext{
+			ServiceName: "payments-api",
+		},
+		Metadata: map[string]any{
+			"service_namespace": "backend",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NormalizeObservation: %v", err)
+	}
+	if observation.ResourceID != "pods:backend/payments-api-7f9d" {
+		t.Fatalf("ResourceID = %q, want pods:backend/payments-api-7f9d", observation.ResourceID)
+	}
+	if observation.ResourceType != "pods" {
+		t.Fatalf("ResourceType = %q, want pods", observation.ResourceType)
+	}
+}
+
+func TestNormalizeObservationSkipsWhitespaceMetadataBeforePrincipalFallback(t *testing.T) {
+	observation, err := NormalizeObservation(&RuntimeObservation{
+		Source:     "falco",
+		ObservedAt: time.Date(2026, 3, 16, 9, 35, 15, 0, time.UTC),
+		Process: &ProcessEvent{
+			Name: "sh",
+			User: "root",
+		},
+		Metadata: map[string]any{
+			"principal_id": " ",
+			"user":         "\t",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NormalizeObservation: %v", err)
+	}
+	if observation.PrincipalID != "root" {
+		t.Fatalf("PrincipalID = %q, want root", observation.PrincipalID)
+	}
+}
+
+func TestNormalizeObservationSkipsWhitespaceMetadataBeforeWorkloadNamespaceBackfill(t *testing.T) {
+	observation, err := NormalizeObservation(&RuntimeObservation{
+		Source:     "otel",
+		ObservedAt: time.Date(2026, 3, 16, 9, 35, 45, 0, time.UTC),
+		ResourceID: "deployment:backend/payments-api",
+		Process: &ProcessEvent{
+			Name: "payments-api",
+		},
+		Metadata: map[string]any{
+			"namespace": " ",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NormalizeObservation: %v", err)
+	}
+	if observation.WorkloadRef != "deployment:backend/payments-api" {
+		t.Fatalf("WorkloadRef = %q, want deployment:backend/payments-api", observation.WorkloadRef)
+	}
+	if observation.Namespace != "backend" {
+		t.Fatalf("Namespace = %q, want backend", observation.Namespace)
+	}
+}
+
+func TestNormalizeObservationSkipsWhitespaceMetadataBeforeContainerBackfill(t *testing.T) {
+	observation, err := NormalizeObservation(&RuntimeObservation{
+		Source:     "otel",
+		ObservedAt: time.Date(2026, 3, 16, 9, 36, 0, 0, time.UTC),
+		ResourceID: "container:containerd://svc-123",
+		Process: &ProcessEvent{
+			Name: "payments-api",
+		},
+		Metadata: map[string]any{
+			"container_id": "\n",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NormalizeObservation: %v", err)
+	}
+	if observation.ContainerID != "containerd://svc-123" {
+		t.Fatalf("ContainerID = %q, want containerd://svc-123", observation.ContainerID)
+	}
+	if observation.ResourceType != "container" {
+		t.Fatalf("ResourceType = %q, want container", observation.ResourceType)
+	}
+}
+
+func TestNormalizeObservationRejectsWhitespaceOnlyTraceContext(t *testing.T) {
+	observation, err := NormalizeObservation(&RuntimeObservation{
+		Source:     "otel",
+		ObservedAt: time.Date(2026, 3, 16, 9, 35, 30, 0, time.UTC),
+		Trace: &TraceContext{
+			TraceID:     " ",
+			SpanID:      "\t",
+			ServiceName: "\n",
+		},
+	})
+	if err == nil {
+		t.Fatalf("NormalizeObservation() error = nil, want invalid observation")
+	}
+	if observation != nil {
+		t.Fatalf("NormalizeObservation() observation = %#v, want nil", observation)
+	}
+}
+
 func TestDetectionEngineProcessObservationRejectsInvalidObservation(t *testing.T) {
 	engine := NewDetectionEngine()
 	findings := engine.ProcessObservation(context.Background(), &RuntimeObservation{

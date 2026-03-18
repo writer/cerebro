@@ -878,6 +878,205 @@ func TestAdapterNormalizeDNSKprobeRequiresDestination(t *testing.T) {
 	}
 }
 
+func TestAdapterNormalizeSecuritySignalCapabilityKprobe(t *testing.T) {
+	raw := []byte(`{
+		"process_kprobe": {
+			"process": {
+				"exec_id": "exec-cap-1",
+				"pid": 7157,
+				"uid": 1000,
+				"binary": "/usr/bin/unshare",
+				"arguments": "-Ur /bin/sh",
+				"start_time": "2024-03-01T12:00:00Z",
+				"pod": {
+					"namespace": "default",
+					"name": "security-lab",
+					"workload": "security-lab",
+					"container": {
+						"id": "containerd://cap",
+						"name": "security-lab",
+						"image": {
+							"id": "sha256:cap",
+							"name": "busybox:latest"
+						}
+					}
+				}
+			},
+			"parent": {
+				"binary": "/bin/bash"
+			},
+			"function_name": "cap_capable",
+			"policy_name": "trace-capabilities",
+			"action": "SIGKILL",
+			"return_action": "SIGKILL",
+			"args": [
+				{
+					"capability_arg": {
+						"value": 21,
+						"name": "CAP_SYS_ADMIN"
+					}
+				},
+				{
+					"user_ns_arg": {
+						"level": 0,
+						"uid": 1000,
+						"gid": 1000,
+						"ns": 4026531837
+					}
+				}
+			],
+			"return": {
+				"int_arg": -1
+			}
+		},
+		"node_name": "worker-7",
+		"time": "2024-03-01T12:00:01Z"
+	}`)
+
+	observations, err := (Adapter{}).Normalize(context.Background(), raw)
+	if err != nil {
+		t.Fatalf("Normalize: %v", err)
+	}
+	if len(observations) != 1 {
+		t.Fatalf("len(observations) = %d, want 1", len(observations))
+	}
+
+	observation := observations[0]
+	if observation.Kind != runtime.ObservationKindRuntimeAlert {
+		t.Fatalf("kind = %s, want %s", observation.Kind, runtime.ObservationKindRuntimeAlert)
+	}
+	if observation.ID != "exec-cap-1:runtime_alert:cap_capable:2024-03-01T12:00:01Z" {
+		t.Fatalf("id = %q, want runtime alert security-signal id", observation.ID)
+	}
+	if got := observation.Metadata["signal_category"]; got != "capability_check" {
+		t.Fatalf("signal_category = %#v, want capability_check", got)
+	}
+	if got := observation.Metadata["capability_name"]; got != "CAP_SYS_ADMIN" {
+		t.Fatalf("capability_name = %#v, want CAP_SYS_ADMIN", got)
+	}
+	if got := observation.Metadata["capability_value"]; got != 21 && got != float64(21) {
+		t.Fatalf("capability_value = %#v, want 21", got)
+	}
+	if got := observation.Metadata["user_ns_level"]; got != uint32(0) && got != 0 && got != float64(0) {
+		t.Fatalf("user_ns_level = %#v, want 0", got)
+	}
+	if got := observation.Metadata["return_code"]; got != int64(-1) && got != -1 && got != float64(-1) {
+		t.Fatalf("return_code = %#v, want -1", got)
+	}
+	if observation.Process == nil || observation.Process.Name != "unshare" {
+		t.Fatalf("process = %#v, want unshare", observation.Process)
+	}
+	if observation.WorkloadRef != "workload:default/security-lab" {
+		t.Fatalf("workload_ref = %q, want workload ref", observation.WorkloadRef)
+	}
+}
+
+func TestAdapterNormalizeSecuritySignalCredentialKprobe(t *testing.T) {
+	raw := []byte(`{
+		"process_kprobe": {
+			"process": {
+				"exec_id": "exec-creds-1",
+				"pid": 417430,
+				"uid": 1000,
+				"binary": "/usr/bin/sudo",
+				"arguments": "id",
+				"start_time": "2024-03-01T12:00:00Z",
+				"pod": {
+					"namespace": "default",
+					"name": "cred-lab",
+					"workload": "cred-lab",
+					"container": {
+						"id": "containerd://creds",
+						"name": "cred-lab",
+						"image": {
+							"id": "sha256:creds",
+							"name": "busybox:latest"
+						}
+					}
+				}
+			},
+			"parent": {
+				"binary": "/bin/bash"
+			},
+			"function_name": "commit_creds",
+			"policy_name": "trace-credentials",
+			"action": "KPROBE_ACTION_POST",
+			"return_action": "KPROBE_ACTION_POST",
+			"args": [
+				{
+					"user_ns_arg": {
+						"level": 1,
+						"uid": 1000,
+						"gid": 1000,
+						"ns": 4026532000
+					}
+				},
+				{
+					"process_credentials_arg": {
+						"uid": 0,
+						"euid": 0,
+						"suid": 0,
+						"fsuid": 0,
+						"gid": 0,
+						"egid": 0,
+						"sgid": 0,
+						"fsgid": 0,
+						"securebits": 0,
+						"cap_inheritable": "0x0",
+						"cap_permitted": "0x1ffffffffff",
+						"cap_effective": "0x1ffffffffff",
+						"user_ns": {
+							"level": 0,
+							"uid": 0,
+							"gid": 0,
+							"ns": 4026531837
+						}
+					}
+				}
+			],
+			"return": {
+				"int_arg": 0
+			}
+		},
+		"node_name": "worker-8",
+		"time": "2024-03-01T12:00:02Z"
+	}`)
+
+	observations, err := (Adapter{}).Normalize(context.Background(), raw)
+	if err != nil {
+		t.Fatalf("Normalize: %v", err)
+	}
+	if len(observations) != 1 {
+		t.Fatalf("len(observations) = %d, want 1", len(observations))
+	}
+
+	observation := observations[0]
+	if observation.Kind != runtime.ObservationKindRuntimeAlert {
+		t.Fatalf("kind = %s, want %s", observation.Kind, runtime.ObservationKindRuntimeAlert)
+	}
+	if got := observation.Metadata["signal_category"]; got != "credential_change" {
+		t.Fatalf("signal_category = %#v, want credential_change", got)
+	}
+	if got := observation.Metadata["credential_euid"]; got != uint32(0) && got != 0 && got != float64(0) {
+		t.Fatalf("credential_euid = %#v, want 0", got)
+	}
+	if got := observation.Metadata["cap_effective"]; got != "0x1ffffffffff" {
+		t.Fatalf("cap_effective = %#v, want capability mask", got)
+	}
+	if got := observation.Metadata["policy_name"]; got != "trace-credentials" {
+		t.Fatalf("policy_name = %#v, want trace-credentials", got)
+	}
+	if got := observation.Metadata["user_ns_level"]; got != uint32(1) && got != 1 && got != float64(1) {
+		t.Fatalf("user_ns_level = %#v, want top-level namespace level 1", got)
+	}
+	if got := observation.Metadata["credential_user_ns_level"]; got != uint32(0) && got != 0 && got != float64(0) {
+		t.Fatalf("credential_user_ns_level = %#v, want credential namespace level 0", got)
+	}
+	if len(observation.Tags) == 0 || observation.Tags[2] != "runtime_alert" {
+		t.Fatalf("tags = %#v, want runtime_alert tag", observation.Tags)
+	}
+}
+
 func TestAdapterNormalizeUnsupportedEvent(t *testing.T) {
 	raw := []byte(`{"process_kprobe":{"process":{"exec_id":"exec-1"}}}`)
 	if _, err := (Adapter{}).Normalize(context.Background(), raw); err == nil {
