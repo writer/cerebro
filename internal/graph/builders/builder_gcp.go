@@ -3,6 +3,7 @@ package builders
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 )
 
@@ -12,6 +13,102 @@ const maxGCPIAMPolicyJSONBytes = 1 << 20
 
 func (b *Builder) buildGCPNodes(ctx context.Context) {
 	queries := []nodeQuery{
+		{
+			table: "gcp_resource_manager_organizations",
+			query: `SELECT DISTINCT resource_name, organization_id, display_name, state, lineage_complete, lineage_error FROM gcp_resource_manager_organizations`,
+			parse: func(rows []map[string]any) []*Node {
+				nodes := make([]*Node, 0, len(rows))
+				for _, org := range rows {
+					resourceName := firstNonEmptyString(toString(org["resource_name"]), "organizations/"+toString(org["organization_id"]))
+					orgID := firstNonEmptyString(toString(org["organization_id"]), gcpHierarchyResourceSegment(resourceName, "organizations"))
+					if resourceName == "" || orgID == "" {
+						continue
+					}
+					nodes = append(nodes, &Node{
+						ID:       resourceName,
+						Kind:     NodeKindOrganization,
+						Name:     firstNonEmptyString(toString(org["display_name"]), orgID),
+						Provider: "gcp",
+						Account:  orgID,
+						Properties: map[string]any{
+							"resource_name":    resourceName,
+							"organization_id":  orgID,
+							"state":            org["state"],
+							"lineage_complete": org["lineage_complete"],
+							"lineage_error":    org["lineage_error"],
+						},
+					})
+				}
+				return nodes
+			},
+		},
+		{
+			table: "gcp_resource_manager_folders",
+			query: `SELECT DISTINCT resource_name, folder_id, display_name, parent, state, organization_id, depth, lineage_complete, lineage_error FROM gcp_resource_manager_folders`,
+			parse: func(rows []map[string]any) []*Node {
+				nodes := make([]*Node, 0, len(rows))
+				for _, folder := range rows {
+					resourceName := toString(folder["resource_name"])
+					folderID := firstNonEmptyString(toString(folder["folder_id"]), gcpHierarchyResourceSegment(resourceName, "folders"))
+					if resourceName == "" || folderID == "" {
+						continue
+					}
+					orgID := toString(folder["organization_id"])
+					nodes = append(nodes, &Node{
+						ID:       resourceName,
+						Kind:     NodeKindFolder,
+						Name:     firstNonEmptyString(toString(folder["display_name"]), folderID),
+						Provider: "gcp",
+						Account:  firstNonEmptyString(orgID, folderID),
+						Properties: map[string]any{
+							"resource_name":    resourceName,
+							"folder_id":        folderID,
+							"parent":           folder["parent"],
+							"state":            folder["state"],
+							"organization_id":  orgID,
+							"depth":            folder["depth"],
+							"lineage_complete": folder["lineage_complete"],
+							"lineage_error":    folder["lineage_error"],
+						},
+					})
+				}
+				return nodes
+			},
+		},
+		{
+			table: "gcp_resource_manager_projects",
+			query: `SELECT resource_name, project_id, project_number, display_name, parent, state, labels, organization_id, folder_ids, lineage_complete, lineage_error FROM gcp_resource_manager_projects`,
+			parse: func(rows []map[string]any) []*Node {
+				nodes := make([]*Node, 0, len(rows))
+				for _, project := range rows {
+					resourceName := firstNonEmptyString(toString(project["resource_name"]), "projects/"+toString(project["project_id"]))
+					projectID := toString(project["project_id"])
+					if resourceName == "" || projectID == "" {
+						continue
+					}
+					nodes = append(nodes, &Node{
+						ID:       resourceName,
+						Kind:     NodeKindProject,
+						Name:     firstNonEmptyString(toString(project["display_name"]), projectID),
+						Provider: "gcp",
+						Account:  projectID,
+						Properties: map[string]any{
+							"resource_name":    resourceName,
+							"project_id":       projectID,
+							"project_number":   project["project_number"],
+							"parent":           project["parent"],
+							"state":            project["state"],
+							"labels":           project["labels"],
+							"organization_id":  project["organization_id"],
+							"folder_ids":       project["folder_ids"],
+							"lineage_complete": project["lineage_complete"],
+							"lineage_error":    project["lineage_error"],
+						},
+					})
+				}
+				return nodes
+			},
+		},
 		{
 			table: "gcp_iam_service_accounts",
 			query: `SELECT unique_id, email, project_id, display_name FROM gcp_iam_service_accounts`,
@@ -148,8 +245,11 @@ func (b *Builder) buildGCPNodes(ctx context.Context) {
 
 func (b *Builder) buildGCPEdges(ctx context.Context) {
 	edgeCount, policyProjects := b.buildGCPEdgesFromPolicies(ctx)
+	edgeCount += b.buildGCPInheritedHierarchyIAMPolicyEdges(ctx, "gcp_folder_iam_policies", "folder")
+	edgeCount += b.buildGCPInheritedHierarchyIAMPolicyEdges(ctx, "gcp_organization_iam_policies", "organization")
 	edgeCount += b.buildGCPEdgesFromMembers(ctx, policyProjects)
 	edgeCount += b.buildGCPBucketIAMPolicyEdges(ctx)
+	edgeCount += b.buildGCPHierarchyEdges(ctx)
 	b.logger.Debug("processed GCP IAM bindings", "count", edgeCount)
 
 	b.buildGCPServiceAccountEdges(ctx)
@@ -331,6 +431,144 @@ func (b *Builder) buildGCPBucketIAMPolicyEdges(ctx context.Context) int {
 	return count
 }
 
+func (b *Builder) buildGCPHierarchyEdges(ctx context.Context) int {
+	count := 0
+
+	projectRows, err := b.queryIfExists(ctx, "gcp_resource_manager_projects",
+		`SELECT resource_name, parent FROM gcp_resource_manager_projects`)
+	if err != nil {
+		b.logger.Debug("failed to query GCP project hierarchy", "error", err)
+		return 0
+	}
+	for _, row := range projectRows.Rows {
+		sourceID := toString(row["resource_name"])
+		parentID := toString(row["parent"])
+		if sourceID == "" || parentID == "" {
+			continue
+		}
+		sourceNode, ok := b.graph.GetNode(sourceID)
+		if !ok || sourceNode == nil {
+			continue
+		}
+		if _, ok := b.graph.GetNode(parentID); !ok {
+			continue
+		}
+		b.graph.AddEdge(&Edge{
+			ID:     sourceID + "->" + parentID + ":located_in",
+			Source: sourceID,
+			Target: parentID,
+			Kind:   EdgeKindLocatedIn,
+			Effect: EdgeEffectAllow,
+			Properties: map[string]any{
+				"relationship": "resource_hierarchy",
+				"provider":     "gcp",
+			},
+		})
+		count++
+	}
+
+	folderRows, err := b.queryIfExists(ctx, "gcp_resource_manager_folders",
+		`SELECT DISTINCT resource_name, parent FROM gcp_resource_manager_folders`)
+	if err != nil {
+		b.logger.Debug("failed to query GCP folder hierarchy", "error", err)
+		return count
+	}
+	for _, row := range folderRows.Rows {
+		sourceID := toString(row["resource_name"])
+		parentID := toString(row["parent"])
+		if sourceID == "" || parentID == "" {
+			continue
+		}
+		if _, ok := b.graph.GetNode(sourceID); !ok {
+			continue
+		}
+		if _, ok := b.graph.GetNode(parentID); !ok {
+			continue
+		}
+		b.graph.AddEdge(&Edge{
+			ID:     sourceID + "->" + parentID + ":located_in",
+			Source: sourceID,
+			Target: parentID,
+			Kind:   EdgeKindLocatedIn,
+			Effect: EdgeEffectAllow,
+			Properties: map[string]any{
+				"relationship": "resource_hierarchy",
+				"provider":     "gcp",
+			},
+		})
+		count++
+	}
+
+	return count
+}
+
+func (b *Builder) buildGCPInheritedHierarchyIAMPolicyEdges(ctx context.Context, tableName, scopeKind string) int {
+	rows, err := b.queryIfExists(ctx, tableName,
+		fmt.Sprintf(`SELECT project_id, resource_name, bindings, ancestor_path, lineage_complete, lineage_error FROM %s`, tableName))
+	if err != nil {
+		b.logger.Debug("failed to query GCP inherited IAM policies", "table", tableName, "error", err)
+		return 0
+	}
+
+	count := 0
+	for _, row := range rows.Rows {
+		projectID := toString(row["project_id"])
+		scopeResource := toString(row["resource_name"])
+		if projectID == "" || scopeResource == "" {
+			continue
+		}
+		projectNodes := b.graph.GetNodesByAccountIndexed(projectID)
+		if len(projectNodes) == 0 {
+			continue
+		}
+
+		for _, bindingMap := range gcpIAMBindingsFromPolicy(row["bindings"]) {
+			role := strings.TrimSpace(toString(bindingMap["role"]))
+			if role == "" {
+				continue
+			}
+			edgeKind := gcpRoleToEdgeKind(role)
+			condition := gcpIAMBindingCondition(bindingMap)
+			members := toAnySlice(bindingMap["members"])
+			for _, memberValue := range members {
+				member := strings.TrimSpace(toString(memberValue))
+				if member == "" {
+					continue
+				}
+				sourceID := b.resolveGCPPrincipalID(projectID, member)
+				for _, node := range projectNodes {
+					if node.Provider != "gcp" || !node.IsResource() {
+						continue
+					}
+					b.graph.AddEdge(&Edge{
+						ID:     sourceID + "->" + node.ID + ":" + role + ":" + scopeResource,
+						Source: sourceID,
+						Target: node.ID,
+						Kind:   edgeKind,
+						Effect: EdgeEffectAllow,
+						Properties: map[string]any{
+							"role":             role,
+							"binding":          scopeKind,
+							"member":           member,
+							"scope":            scopeKind,
+							"scope_resource":   scopeResource,
+							"condition":        condition,
+							"inherited":        true,
+							"mechanism":        "hierarchy_policy",
+							"ancestor_path":    row["ancestor_path"],
+							"lineage_complete": row["lineage_complete"],
+							"lineage_error":    row["lineage_error"],
+						},
+					})
+					count++
+				}
+			}
+		}
+	}
+
+	return count
+}
+
 func extractGCPRoleNames(v any) []string {
 	items := toAnySlice(v)
 	if len(items) == 0 {
@@ -358,6 +596,25 @@ func extractGCPRoleNames(v any) []string {
 	}
 
 	return roles
+}
+
+func gcpHierarchyResourceSegment(resourceName, segment string) string {
+	parts := strings.Split(resourceName, "/")
+	for i, part := range parts {
+		if part == segment && i+1 < len(parts) {
+			return parts[i+1]
+		}
+	}
+	return ""
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func toAnySlice(v any) []any {
