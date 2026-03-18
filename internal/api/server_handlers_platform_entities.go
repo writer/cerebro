@@ -20,7 +20,7 @@ func platformEntityQueryLengthExceeds(value string) bool {
 }
 
 func (s *Server) listPlatformEntities(w http.ResponseWriter, r *http.Request) {
-	g := s.app.CurrentSecurityGraph()
+	g := s.currentTenantSecurityGraph(r.Context())
 	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -36,7 +36,7 @@ func (s *Server) listPlatformEntities(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) searchPlatformEntities(w http.ResponseWriter, r *http.Request) {
-	g := s.app.CurrentSecurityGraph()
+	g := s.currentTenantSecurityGraph(r.Context())
 	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -51,7 +51,7 @@ func (s *Server) searchPlatformEntities(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) suggestPlatformEntities(w http.ResponseWriter, r *http.Request) {
-	g := s.app.CurrentSecurityGraph()
+	g := s.currentTenantSecurityGraph(r.Context())
 	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -84,7 +84,7 @@ func (s *Server) getPlatformEntityFacet(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) getPlatformEntity(w http.ResponseWriter, r *http.Request) {
-	g := s.app.CurrentSecurityGraph()
+	g := s.currentTenantSecurityGraph(r.Context())
 	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -116,7 +116,7 @@ func (s *Server) getPlatformEntity(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getPlatformEntityAtTime(w http.ResponseWriter, r *http.Request) {
-	g := s.app.CurrentSecurityGraph()
+	g := s.currentTenantSecurityGraph(r.Context())
 	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -147,7 +147,7 @@ func (s *Server) getPlatformEntityAtTime(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) getPlatformEntityTimeDiff(w http.ResponseWriter, r *http.Request) {
-	g := s.app.CurrentSecurityGraph()
+	g := s.currentTenantSecurityGraph(r.Context())
 	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return

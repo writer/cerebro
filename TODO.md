@@ -1,9 +1,46 @@
 # Cerebro Intelligence Layer Execution TODO
 
-Last updated: 2026-03-12 (America/Los_Angeles)
+Last updated: 2026-03-13 (America/Los_Angeles)
 Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
+
+## Deep Review Cycle 69 - Tenant-Scoped Graph Reads and Cross-Tenant Audit Guards (2026-03-13)
+
+### Review findings
+- [x] Gap: issue `#247` still had the classic half-secure shape: tenant context existed in middleware, but the graph/entity/intelligence/risk read surfaces were still free to operate on the full graph.
+- [x] Gap: cross-tenant routes were reachable through generic graph permissions instead of one explicit permission boundary, which made the audit story weaker than the API shape implied.
+- [x] Gap: the right upstream patterns are consistent:
+  - [x] `openfga/openfga` keeps storage/authorization seams explicit instead of relying on ambient context in downstream handlers.
+  - [x] `authzed/spicedb` treats multi-backend datastore structure as a first-class contract, which is the right lead-in for `#250` after tenant scoping is correct.
+  - [x] `dagster-io/dagster` keeps execution/storage boundaries explicit, which matches the current shared execution-store and graph-persistence direction.
+  - [x] the local Wiz schema dump in `/Users/jonathanhaas/Downloads/other/wiz.graphql` reinforces that project/issue/entity surfaces stay usable only when tenant/project boundaries are first-class in the graph substrate.
+
+### Execution plan
+- [x] Add first-class tenant metadata to graph nodes:
+  - [x] add `tenant_id` to `graph.Node`
+  - [x] normalize `tenant_id` from node properties on write
+  - [x] preserve `tenant_id` through cloned/scoped graph views
+- [x] Add one shared tenant-scope graph helper:
+  - [x] add `Graph.SubgraphForTenant(...)`
+  - [x] treat untagged nodes as shared/global for the incremental rollout
+  - [x] rebuild indexes on scoped graph views so entity search/suggest stay correct
+- [x] Enforce tenant-scoped reads on high-value graph surfaces:
+  - [x] platform entity list/search/detail/time-diff
+  - [x] platform intelligence event/risk/report query surfaces
+  - [x] graph risk traversal/query surfaces (`blast-radius`, `attack-paths`, `toxic-combinations`, etc.)
+  - [x] platform knowledge read/diff surfaces
+- [x] Add explicit cross-tenant authorization and audit:
+  - [x] add `platform.cross_tenant.read`
+  - [x] add `platform.cross_tenant.write`
+  - [x] route `/api/v1/graph/cross-tenant/*` through explicit permissions instead of generic graph read/write
+  - [x] add structured audit entries for allowed cross-tenant reads
+  - [x] add Prometheus access counters by operation and requesting/target tenant pair
+- [x] Add regression coverage:
+  - [x] graph tenant normalization/scoping tests
+  - [x] platform entity tenant isolation tests
+  - [x] intelligence/risk tenant isolation tests
+  - [x] cross-tenant audit + metrics tests
 
 ## Deep Review Cycle 68 - Distributed Graph Persistence Foundation and Replica Recovery (2026-03-12)
 
@@ -98,8 +135,8 @@ Status: executed end-to-end via PR workflow
 - [ ] Track B - `#247` tenant/account partitioning
   - Exit criteria:
   - [ ] add tenant/account partition keys to graph snapshot and query paths
-  - [ ] enforce tenant-scoped query guards on platform graph reads
-  - [ ] add explicit audited cross-tenant read/report paths rather than ambient joins
+  - [x] enforce tenant-scoped query guards on platform graph reads
+  - [x] add explicit audited cross-tenant read/report paths rather than ambient joins
 - [ ] Track C - graph persistence backend decision
   - Exit criteria:
   - [ ] keep the hot graph in memory for low-latency traversals

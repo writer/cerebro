@@ -400,6 +400,8 @@ func TestRoutePermissionCoverage(t *testing.T) {
 		{name: "platform intelligence", method: http.MethodGet, path: "/api/v1/platform/intelligence/leverage", expectedRB: "platform.intelligence.read"},
 		{name: "platform intelligence run", method: http.MethodPost, path: "/api/v1/platform/intelligence/reports/quality/runs", expectedRB: "platform.intelligence.run"},
 		{name: "platform graph diff materialize", method: http.MethodPost, path: "/api/v1/platform/graph/diffs", expectedRB: "platform.graph.write"},
+		{name: "cross tenant read", method: http.MethodGet, path: "/api/v1/graph/cross-tenant/patterns", expectedRB: "platform.cross_tenant.read"},
+		{name: "cross tenant write", method: http.MethodPost, path: "/api/v1/graph/cross-tenant/patterns/ingest", expectedRB: "platform.cross_tenant.write"},
 		{name: "platform knowledge read", method: http.MethodGet, path: "/api/v1/platform/knowledge/claims", expectedRB: "platform.knowledge.read"},
 		{name: "platform knowledge write", method: http.MethodPost, path: "/api/v1/platform/knowledge/claims", expectedRB: "platform.knowledge.write"},
 		{name: "org expertise read", method: http.MethodGet, path: "/api/v1/org/expertise/queries", expectedRB: "org.expertise.read"},

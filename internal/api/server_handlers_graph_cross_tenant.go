@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/metrics"
+	"github.com/writer/cerebro/internal/snowflake"
 )
 
 type crossTenantBuildRequest struct {
@@ -50,9 +52,11 @@ func (s *Server) buildCrossTenantPatternSamples(w http.ResponseWriter, r *http.R
 
 	samples, err := engine.BuildAnonymizedPatternSamples(req.TenantID, time.Duration(req.WindowDays)*24*time.Hour)
 	if err != nil {
+		s.logCrossTenantRead(r.Context(), r, "build_samples", req.TenantID, 0, "error")
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.logCrossTenantRead(r.Context(), r, "build_samples", req.TenantID, len(samples), "allowed")
 	s.json(w, http.StatusOK, map[string]any{
 		"count":   len(samples),
 		"samples": samples,
@@ -130,6 +134,7 @@ func (s *Server) listCrossTenantPatterns(w http.ResponseWriter, r *http.Request)
 
 	patterns := engine.CrossTenantPatterns(minTenants)
 	metrics.RecordGraphCrossTenantPatterns(len(patterns))
+	s.logCrossTenantRead(r.Context(), r, "list_patterns", "aggregate_library", len(patterns), "allowed")
 	s.json(w, http.StatusOK, map[string]any{
 		"count":    len(patterns),
 		"patterns": patterns,
@@ -168,8 +173,86 @@ func (s *Server) matchCrossTenantPatterns(w http.ResponseWriter, r *http.Request
 
 	matches := engine.MatchCrossTenantPatterns(minProbability, limit)
 	metrics.RecordGraphCrossTenantMatches(len(matches))
+	s.logCrossTenantRead(r.Context(), r, "match_patterns", "aggregate_library", len(matches), "allowed")
 	s.json(w, http.StatusOK, map[string]any{
 		"count":   len(matches),
 		"matches": matches,
 	})
+}
+
+func (s *Server) logCrossTenantRead(ctx context.Context, r *http.Request, operation, targetTenant string, resultCount int, outcome string) {
+	requestingTenant := strings.TrimSpace(GetTenantID(ctx))
+	auditRequestingTenant := requestingTenant
+	if auditRequestingTenant == "" {
+		auditRequestingTenant = "unknown"
+	}
+	targetTenant = strings.TrimSpace(targetTenant)
+	auditTargetTenant := targetTenant
+	if auditTargetTenant == "" {
+		auditTargetTenant = "unknown"
+	}
+	outcome = strings.TrimSpace(strings.ToLower(outcome))
+	if outcome == "" {
+		outcome = "unknown"
+	}
+
+	metrics.RecordGraphCrossTenantRead(
+		operation,
+		crossTenantRequestScope(requestingTenant),
+		crossTenantTargetScope(targetTenant),
+		outcome,
+	)
+
+	details := map[string]any{
+		"requesting_tenant": auditRequestingTenant,
+		"target_tenant":     auditTargetTenant,
+		"operation":         strings.TrimSpace(operation),
+		"result_count":      resultCount,
+		"outcome":           outcome,
+		"timestamp":         time.Now().UTC().Format(time.RFC3339Nano),
+	}
+
+	if auditLoggerIsNil(s.auditLogger) {
+		if s.app != nil && s.app.Logger != nil {
+			s.app.Logger.Info("cross-tenant graph read", "requesting_tenant", auditRequestingTenant, "target_tenant", auditTargetTenant, "operation", operation, "result_count", resultCount, "outcome", outcome)
+		}
+		return
+	}
+
+	actorID := strings.TrimSpace(GetUserID(ctx))
+	if actorID == "" {
+		actorID = "api"
+	}
+	entry := &snowflake.AuditEntry{
+		Action:       "graph.cross_tenant.read",
+		ActorID:      actorID,
+		ActorType:    "user",
+		ResourceType: "graph_cross_tenant",
+		ResourceID:   strings.TrimSpace(operation) + ":" + auditTargetTenant,
+		Details:      details,
+		IPAddress:    r.RemoteAddr,
+		UserAgent:    r.UserAgent(),
+	}
+	if err := s.auditLogger.Log(ctx, entry); err != nil && s.app != nil && s.app.Logger != nil {
+		s.app.Logger.Warn("failed to persist cross-tenant graph audit log", "error", err, "operation", operation, "requesting_tenant", auditRequestingTenant, "target_tenant", auditTargetTenant)
+	}
+}
+
+func crossTenantRequestScope(requestingTenant string) string {
+	if strings.TrimSpace(requestingTenant) == "" {
+		return "global"
+	}
+	return "tenant"
+}
+
+func crossTenantTargetScope(targetTenant string) string {
+	targetTenant = strings.TrimSpace(targetTenant)
+	switch targetTenant {
+	case "":
+		return "unknown"
+	case "aggregate_library":
+		return "aggregate"
+	default:
+		return "tenant"
+	}
 }
