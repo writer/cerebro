@@ -29,6 +29,18 @@ Status: executed end-to-end via PR workflow
 - [x] Leave the adjudication write path on the writable live graph so the slice stays scoped to read-path migration only.
 - [x] Add store-only platform knowledge handler regressions, then rerun API tests, lint, and changed-file validation before opening the PR.
 
+## Deep Review Cycle 205 - Graph Store Platform Snapshot Catalog Paths (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left the platform graph snapshot catalog building its synthetic "current" entry from `s.app.SecurityGraph`, so `/api/v1/platform/graph/snapshots` and snapshot lookup by current ID lost the current graph record whenever the runtime exposed only a `GraphStore`.
+- [x] Gap: the platform snapshot catalog only needs graph metadata plus persisted report lineage, but it bypassed the existing store snapshot seam and therefore diverged from the other store-backed read paths.
+- [x] Gap: there was no store-only API regression proving the platform snapshot catalog still returns the current graph snapshot record when the live in-memory graph pointer is absent.
+
+### Execution plan
+- [x] Synthesize the current platform snapshot record from `CurrentSecurityGraphStore().Snapshot(...)` when no live `SecurityGraph` pointer is available, while preserving the persisted-record merge path.
+- [x] Add store-only API regressions covering platform snapshot catalog listing and lookup by snapshot ID.
+- [x] Re-run focused API tests, lint, and changed-file validation before pushing the next `#392` slice.
+
 ## Deep Review Cycle 203 - Graph Store Risk Engine Feedback Paths (2026-03-18)
 
 ### Review findings

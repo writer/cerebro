@@ -406,13 +406,34 @@ func (s *Server) platformGraphSnapshotStore() *graph.GraphPersistenceStore {
 	return s.app.PlatformGraphSnapshotStore()
 }
 
+func (s *Server) currentPlatformGraphSnapshotRecord() *graph.GraphSnapshotRecord {
+	if s == nil || s.app == nil {
+		return nil
+	}
+	if current := graph.CurrentGraphSnapshotRecord(s.app.SecurityGraph); current != nil {
+		return current
+	}
+	store := s.app.CurrentSecurityGraphStore()
+	if store == nil {
+		return nil
+	}
+	snapshot, err := store.Snapshot(context.Background())
+	if err != nil || snapshot == nil {
+		return nil
+	}
+	return graph.CurrentGraphSnapshotRecord(graph.GraphViewFromSnapshot(snapshot))
+}
+
 func (s *Server) platformGraphSnapshotRecords() map[string]*graph.GraphSnapshotRecord {
-	collection := reports.GraphSnapshotCollectionSnapshot(s.app.SecurityGraph, s.platformReportRunSnapshotMap(), time.Now().UTC())
+	collection := reports.GraphSnapshotCollectionSnapshot(nil, s.platformReportRunSnapshotMap(), time.Now().UTC())
 	records := make(map[string]*graph.GraphSnapshotRecord, collection.Count)
 	for i := range collection.Snapshots {
 		record := collection.Snapshots[i]
 		copy := record
 		records[record.ID] = &copy
+	}
+	if current := s.currentPlatformGraphSnapshotRecord(); current != nil {
+		records[current.ID] = current
 	}
 	store := s.platformGraphSnapshotStore()
 	if store == nil {
