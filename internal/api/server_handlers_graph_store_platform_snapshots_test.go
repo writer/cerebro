@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"testing"
 	"time"
@@ -126,5 +127,32 @@ func TestPlatformGraphSnapshotCatalogUsesRuntimeGraphWithoutStoredSecurityGraphF
 	}
 	if got := snapshot["node_count"]; got != float64(1) {
 		t.Fatalf("expected runtime-backed node_count=1, got %#v", got)
+	}
+}
+
+func TestPlatformGraphSnapshotCatalogUsesRequestContextForStoreSnapshot(t *testing.T) {
+	store := &blockingSnapshotStore{
+		GraphStore: buildPlatformGraphSnapshotCatalogTestGraph(),
+		started:    make(chan struct{}),
+		release:    make(chan struct{}),
+	}
+	s := newStoreBackedPlatformSnapshotServer(t, store)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan map[string]*graph.GraphSnapshotRecord, 1)
+	go func() {
+		done <- s.platformGraphSnapshotRecords(ctx)
+	}()
+
+	<-store.started
+	cancel()
+
+	select {
+	case records := <-done:
+		if len(records) != 0 {
+			t.Fatalf("expected no snapshot records after cancellation, got %#v", records)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected snapshot catalog to respect request context cancellation")
 	}
 }

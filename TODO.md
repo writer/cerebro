@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 209 - Platform Snapshot Catalog Context Propagation (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left the platform snapshot catalog resolving the current graph snapshot via `context.Background()`, so managed `GraphStore` backends could not observe request cancellation or deadlines on that path.
+- [x] Gap: the snapshot catalog helpers fanned out into list, lookup, ancestry, changelog, and diff reads, but they did not thread a request context through their shared record-resolution path, which left a hidden runtime/store escape hatch even after the earlier graph-store migration.
+- [x] Gap: there was no regression proving the catalog stops waiting on a blocked store snapshot once the caller context is canceled.
+
+### Execution plan
+- [x] Thread `context.Context` through the platform snapshot catalog helper chain that resolves current snapshot records and diff inputs.
+- [x] Keep synchronous request paths on `r.Context()` and async diff jobs on the job context so cancellation behavior stays correct in both modes.
+- [x] Add a blocking-store regression for caller cancellation, then rerun focused API tests, lint, and changed-file validation before opening the PR.
+
 ## Deep Review Cycle 207 - Graph Runtime Snapshot Catalog Paths (2026-03-18)
 
 ### Review findings

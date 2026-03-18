@@ -34,13 +34,13 @@ func (s *Server) createPlatformGraphDiff(w http.ResponseWriter, r *http.Request)
 	}
 	switch strings.TrimSpace(req.ExecutionMode) {
 	case "", "sync":
-		diff, status, err := s.platformGraphSnapshotDiff(req.FromSnapshotID, req.ToSnapshotID)
+		diff, status, err := s.platformGraphSnapshotDiff(r.Context(), req.FromSnapshotID, req.ToSnapshotID)
 		if err != nil {
 			s.error(w, status, err.Error())
 			return
 		}
 		if req.MaterializeResult != nil && *req.MaterializeResult {
-			stored, err := s.materializePlatformGraphDiff(diff, "")
+			stored, err := s.materializePlatformGraphDiff(r.Context(), diff, "")
 			if err != nil {
 				s.error(w, http.StatusInternalServerError, err.Error())
 				return
@@ -55,12 +55,12 @@ func (s *Server) createPlatformGraphDiff(w http.ResponseWriter, r *http.Request)
 			"to_snapshot_id":   req.ToSnapshotID,
 			"execution_mode":   "async",
 		}, requestedBy)
-		s.startPlatformJob(job.ID, func(_ context.Context) (any, error) {
-			diff, status, err := s.platformGraphSnapshotDiff(req.FromSnapshotID, req.ToSnapshotID)
+		s.startPlatformJob(job.ID, func(ctx context.Context) (any, error) {
+			diff, status, err := s.platformGraphSnapshotDiff(ctx, req.FromSnapshotID, req.ToSnapshotID)
 			if err != nil {
 				return nil, reportExecutionError{StatusCode: status, Message: err.Error()}
 			}
-			stored, err := s.materializePlatformGraphDiff(diff, job.ID)
+			stored, err := s.materializePlatformGraphDiff(ctx, diff, job.ID)
 			if err != nil {
 				return nil, err
 			}
@@ -105,7 +105,7 @@ func (s *Server) getPlatformGraphDiffDetails(w http.ResponseWriter, r *http.Requ
 		s.error(w, http.StatusBadRequest, "diff id required")
 		return
 	}
-	record, _, status, err := s.platformGraphDiffForRead(diffID)
+	record, _, status, err := s.platformGraphDiffForRead(r.Context(), diffID)
 	if err != nil {
 		s.error(w, status, err.Error())
 		return
@@ -146,7 +146,7 @@ func (s *Server) listPlatformGraphChangelog(w http.ResponseWriter, r *http.Reque
 	}
 
 	records := make([]graph.GraphSnapshotRecord, 0)
-	for _, record := range s.platformGraphSnapshotRecordMap() {
+	for _, record := range s.platformGraphSnapshotRecordMap(r.Context()) {
 		if record == nil || !record.Diffable {
 			continue
 		}
@@ -172,7 +172,7 @@ func (s *Server) listPlatformGraphChangelog(w http.ResponseWriter, r *http.Reque
 		if !until.IsZero() && changeTime.After(until) {
 			continue
 		}
-		record, snapshots, _, err := s.platformGraphSnapshotDiffWithSnapshots(fromRecord.ID, toRecord.ID)
+		record, snapshots, _, err := s.platformGraphSnapshotDiffWithSnapshots(r.Context(), fromRecord.ID, toRecord.ID)
 		if err != nil {
 			continue
 		}
@@ -213,7 +213,7 @@ func (s *Server) listPlatformGraphChangelog(w http.ResponseWriter, r *http.Reque
 	s.json(w, http.StatusOK, changelog)
 }
 
-func (s *Server) materializePlatformGraphDiff(record *graph.GraphSnapshotDiffRecord, jobID string) (*graph.GraphSnapshotDiffRecord, error) {
+func (s *Server) materializePlatformGraphDiff(ctx context.Context, record *graph.GraphSnapshotDiffRecord, jobID string) (*graph.GraphSnapshotDiffRecord, error) {
 	store := s.platformGraphDiffStore()
 	if store == nil {
 		return nil, fmt.Errorf("graph snapshot diff store not configured")
@@ -230,7 +230,7 @@ func (s *Server) materializePlatformGraphDiff(record *graph.GraphSnapshotDiffRec
 	if err != nil {
 		return nil, err
 	}
-	s.emitPlatformGraphChangelogComputed(context.Background(), stored)
+	s.emitPlatformGraphChangelogComputed(ctx, stored)
 	return stored, nil
 }
 
@@ -242,7 +242,7 @@ func (s *Server) loadPlatformGraphDiff(diffID string) (*graph.GraphSnapshotDiffR
 	return store.Load(diffID)
 }
 
-func (s *Server) platformGraphDiffForRead(diffID string) (*graph.GraphSnapshotDiffRecord, map[string]*graph.Snapshot, int, error) {
+func (s *Server) platformGraphDiffForRead(ctx context.Context, diffID string) (*graph.GraphSnapshotDiffRecord, map[string]*graph.Snapshot, int, error) {
 	diffID = strings.TrimSpace(diffID)
 	if diffID == "" {
 		return nil, nil, http.StatusBadRequest, fmt.Errorf("diff id required")
@@ -254,7 +254,7 @@ func (s *Server) platformGraphDiffForRead(diffID string) (*graph.GraphSnapshotDi
 		}
 		return stored, snapshots, 0, nil
 	}
-	return s.platformGraphSnapshotDiffByID(diffID)
+	return s.platformGraphSnapshotDiffByID(ctx, diffID)
 }
 
 func (s *Server) platformGraphSnapshotsForRecord(record *graph.GraphSnapshotDiffRecord) (map[string]*graph.Snapshot, int, error) {
@@ -277,13 +277,13 @@ func (s *Server) platformGraphSnapshotsForRecord(record *graph.GraphSnapshotDiff
 	return snapshots, 0, nil
 }
 
-func (s *Server) platformGraphSnapshotDiffByID(diffID string) (*graph.GraphSnapshotDiffRecord, map[string]*graph.Snapshot, int, error) {
+func (s *Server) platformGraphSnapshotDiffByID(ctx context.Context, diffID string) (*graph.GraphSnapshotDiffRecord, map[string]*graph.Snapshot, int, error) {
 	diffID = strings.TrimSpace(diffID)
 	if diffID == "" {
 		return nil, nil, http.StatusBadRequest, fmt.Errorf("diff id required")
 	}
 	records := make([]graph.GraphSnapshotRecord, 0)
-	for _, record := range s.platformGraphSnapshotRecordMap() {
+	for _, record := range s.platformGraphSnapshotRecordMap(ctx) {
 		if record == nil || !record.Diffable {
 			continue
 		}
@@ -302,7 +302,7 @@ func (s *Server) platformGraphSnapshotDiffByID(diffID string) (*graph.GraphSnaps
 		if candidate == nil || candidate.ID != diffID {
 			continue
 		}
-		return s.platformGraphSnapshotDiffWithSnapshots(records[i].ID, records[i+1].ID)
+		return s.platformGraphSnapshotDiffWithSnapshots(ctx, records[i].ID, records[i+1].ID)
 	}
 	return nil, nil, http.StatusNotFound, fmt.Errorf("graph snapshot diff not found: %s", diffID)
 }
@@ -318,8 +318,8 @@ func (s *Server) platformGraphDiffStore() *graph.GraphSnapshotDiffStore {
 	return graph.NewGraphSnapshotDiffStore(filepath.Join(snapshotPath, "diffs"))
 }
 
-func (s *Server) platformGraphSnapshotRecordMap() map[string]*graph.GraphSnapshotRecord {
-	records := s.platformGraphSnapshotRecords()
+func (s *Server) platformGraphSnapshotRecordMap(ctx context.Context) map[string]*graph.GraphSnapshotRecord {
+	records := s.platformGraphSnapshotRecords(ctx)
 	if len(records) == 0 {
 		return records
 	}
@@ -340,7 +340,7 @@ func (s *Server) getPlatformGraphSnapshotAncestry(w http.ResponseWriter, r *http
 		s.error(w, http.StatusBadRequest, "snapshot id required")
 		return
 	}
-	collection := s.platformGraphSnapshotCollection()
+	collection := s.platformGraphSnapshotCollection(r.Context())
 	ancestry, ok := graph.GraphSnapshotAncestryFromCollection(collection, snapshotID)
 	if !ok {
 		s.error(w, http.StatusNotFound, "graph snapshot not found")
@@ -352,7 +352,7 @@ func (s *Server) getPlatformGraphSnapshotAncestry(w http.ResponseWriter, r *http
 func (s *Server) getPlatformGraphSnapshotDiff(w http.ResponseWriter, r *http.Request) {
 	fromSnapshotID := strings.TrimSpace(chi.URLParam(r, "snapshot_id"))
 	toSnapshotID := strings.TrimSpace(chi.URLParam(r, "other_snapshot_id"))
-	diff, status, err := s.platformGraphSnapshotDiff(fromSnapshotID, toSnapshotID)
+	diff, status, err := s.platformGraphSnapshotDiff(r.Context(), fromSnapshotID, toSnapshotID)
 	if err != nil {
 		s.error(w, status, err.Error())
 		return
@@ -360,18 +360,18 @@ func (s *Server) getPlatformGraphSnapshotDiff(w http.ResponseWriter, r *http.Req
 	s.json(w, http.StatusOK, diff)
 }
 
-func (s *Server) platformGraphSnapshotDiff(fromSnapshotID, toSnapshotID string) (*graph.GraphSnapshotDiffRecord, int, error) {
-	record, _, status, err := s.platformGraphSnapshotDiffWithSnapshots(fromSnapshotID, toSnapshotID)
+func (s *Server) platformGraphSnapshotDiff(ctx context.Context, fromSnapshotID, toSnapshotID string) (*graph.GraphSnapshotDiffRecord, int, error) {
+	record, _, status, err := s.platformGraphSnapshotDiffWithSnapshots(ctx, fromSnapshotID, toSnapshotID)
 	return record, status, err
 }
 
-func (s *Server) platformGraphSnapshotDiffWithSnapshots(fromSnapshotID, toSnapshotID string) (*graph.GraphSnapshotDiffRecord, map[string]*graph.Snapshot, int, error) {
+func (s *Server) platformGraphSnapshotDiffWithSnapshots(ctx context.Context, fromSnapshotID, toSnapshotID string) (*graph.GraphSnapshotDiffRecord, map[string]*graph.Snapshot, int, error) {
 	fromSnapshotID = strings.TrimSpace(fromSnapshotID)
 	toSnapshotID = strings.TrimSpace(toSnapshotID)
 	if fromSnapshotID == "" || toSnapshotID == "" {
 		return nil, nil, http.StatusBadRequest, fmt.Errorf("from_snapshot_id and to_snapshot_id are required")
 	}
-	records := s.platformGraphSnapshotRecordMap()
+	records := s.platformGraphSnapshotRecordMap(ctx)
 	fromRecord, ok := records[fromSnapshotID]
 	if !ok {
 		return nil, nil, http.StatusNotFound, fmt.Errorf("graph snapshot not found: %s", fromSnapshotID)
@@ -406,7 +406,7 @@ func (s *Server) platformGraphSnapshotStore() *graph.GraphPersistenceStore {
 	return s.app.PlatformGraphSnapshotStore()
 }
 
-func (s *Server) currentPlatformGraphSnapshotRecord() *graph.GraphSnapshotRecord {
+func (s *Server) currentPlatformGraphSnapshotRecord(ctx context.Context) *graph.GraphSnapshotRecord {
 	if s == nil || s.app == nil {
 		return nil
 	}
@@ -417,14 +417,14 @@ func (s *Server) currentPlatformGraphSnapshotRecord() *graph.GraphSnapshotRecord
 	if store == nil {
 		return nil
 	}
-	snapshot, err := store.Snapshot(context.Background())
+	snapshot, err := store.Snapshot(ctx)
 	if err != nil || snapshot == nil {
 		return nil
 	}
 	return graph.CurrentGraphSnapshotRecord(graph.GraphViewFromSnapshot(snapshot))
 }
 
-func (s *Server) platformGraphSnapshotRecords() map[string]*graph.GraphSnapshotRecord {
+func (s *Server) platformGraphSnapshotRecords(ctx context.Context) map[string]*graph.GraphSnapshotRecord {
 	collection := reports.GraphSnapshotCollectionSnapshot(nil, s.platformReportRunSnapshotMap(), time.Now().UTC())
 	records := make(map[string]*graph.GraphSnapshotRecord, collection.Count)
 	for i := range collection.Snapshots {
@@ -432,7 +432,7 @@ func (s *Server) platformGraphSnapshotRecords() map[string]*graph.GraphSnapshotR
 		copy := record
 		records[record.ID] = &copy
 	}
-	if current := s.currentPlatformGraphSnapshotRecord(); current != nil {
+	if current := s.currentPlatformGraphSnapshotRecord(ctx); current != nil {
 		records[current.ID] = current
 	}
 	store := s.platformGraphSnapshotStore()

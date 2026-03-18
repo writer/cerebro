@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"path/filepath"
@@ -517,6 +518,81 @@ func TestPlatformGraphChangelogAndDiffDetailsEndpoints(t *testing.T) {
 	case event := <-changelogEvents:
 		t.Fatalf("expected changelog reads to avoid webhook emission, got %#v", event)
 	default:
+	}
+}
+
+func TestMaterializePlatformGraphDiffUsesCallerContextForWebhookEmission(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GRAPH_SNAPSHOT_PATH", dir)
+
+	base := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Minute)
+	older := &graph.Snapshot{
+		Version:   "1.0",
+		CreatedAt: base.Add(5 * time.Minute),
+		Metadata: graph.Metadata{
+			BuiltAt:   base,
+			NodeCount: 1,
+			EdgeCount: 0,
+			Providers: []string{"aws"},
+		},
+		Nodes: []*graph.Node{
+			{ID: "node-a", Kind: graph.NodeKindUser, Name: "a"},
+		},
+	}
+	newer := &graph.Snapshot{
+		Version:   "1.0",
+		CreatedAt: base.Add(65 * time.Minute),
+		Metadata: graph.Metadata{
+			BuiltAt:   base.Add(1 * time.Hour),
+			NodeCount: 2,
+			EdgeCount: 0,
+			Providers: []string{"aws"},
+		},
+		Nodes: []*graph.Node{
+			{ID: "node-a", Kind: graph.NodeKindUser, Name: "a"},
+			{ID: "node-b", Kind: graph.NodeKindBucket, Name: "b"},
+		},
+	}
+	mustSaveGraphSnapshot(t, dir, older)
+	mustSaveGraphSnapshot(t, dir, newer)
+
+	s := newTestServer(t)
+	body := decodeJSON(t, do(t, s, http.MethodGet, "/api/v1/platform/graph/snapshots", nil))
+	snapshots := body["snapshots"].([]any)
+	newerID, _ := snapshots[0].(map[string]any)["id"].(string)
+	olderID, _ := snapshots[1].(map[string]any)["id"].(string)
+
+	diff, status, err := s.platformGraphSnapshotDiff(context.Background(), olderID, newerID)
+	if err != nil {
+		t.Fatalf("platformGraphSnapshotDiff() status=%d err=%v", status, err)
+	}
+
+	webhookCtxErr := make(chan error, 1)
+	s.app.Webhooks.Subscribe(func(ctx context.Context, event webhooks.Event) error {
+		if event.Type == webhooks.EventPlatformGraphChangelogComputed {
+			webhookCtxErr <- ctx.Err()
+		}
+		return nil
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	stored, err := s.materializePlatformGraphDiff(ctx, diff, "")
+	if err != nil {
+		t.Fatalf("materializePlatformGraphDiff() error = %v", err)
+	}
+	if stored == nil || stored.ID == "" {
+		t.Fatalf("expected stored diff record, got %#v", stored)
+	}
+
+	select {
+	case err := <-webhookCtxErr:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("expected canceled webhook context, got %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected changelog webhook emission")
 	}
 }
 

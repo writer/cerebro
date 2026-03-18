@@ -129,8 +129,8 @@ func (s *Server) platformGraphTemplates(w http.ResponseWriter, r *http.Request) 
 	s.graphQueryTemplates(w, r)
 }
 
-func (s *Server) listPlatformGraphSnapshots(w http.ResponseWriter, _ *http.Request) {
-	s.json(w, http.StatusOK, s.platformGraphSnapshotCollection())
+func (s *Server) listPlatformGraphSnapshots(w http.ResponseWriter, r *http.Request) {
+	s.json(w, http.StatusOK, s.platformGraphSnapshotCollection(r.Context()))
 }
 
 func (s *Server) getCurrentPlatformGraphSnapshot(w http.ResponseWriter, r *http.Request) {
@@ -157,7 +157,7 @@ func (s *Server) getPlatformGraphSnapshot(w http.ResponseWriter, r *http.Request
 		s.error(w, http.StatusBadRequest, "snapshot id required")
 		return
 	}
-	snapshot, ok := s.platformGraphSnapshot(snapshotID)
+	snapshot, ok := s.platformGraphSnapshot(r.Context(), snapshotID)
 	if !ok {
 		s.error(w, http.StatusNotFound, "graph snapshot not found")
 		return
@@ -1800,12 +1800,12 @@ func (s *Server) clonePlatformReportRunsLocked() map[string]*reports.ReportRun {
 	return cloned
 }
 
-func (s *Server) platformGraphSnapshotCollection() graph.GraphSnapshotCollection {
-	return graph.GraphSnapshotCollectionFromRecords(s.platformGraphSnapshotRecords(), time.Now().UTC())
+func (s *Server) platformGraphSnapshotCollection(ctx context.Context) graph.GraphSnapshotCollection {
+	return graph.GraphSnapshotCollectionFromRecords(s.platformGraphSnapshotRecords(ctx), time.Now().UTC())
 }
 
-func (s *Server) platformGraphSnapshot(snapshotID string) (*graph.GraphSnapshotRecord, bool) {
-	record, ok := s.platformGraphSnapshotRecords()[strings.TrimSpace(snapshotID)]
+func (s *Server) platformGraphSnapshot(ctx context.Context, snapshotID string) (*graph.GraphSnapshotRecord, bool) {
+	record, ok := s.platformGraphSnapshotRecords(ctx)[strings.TrimSpace(snapshotID)]
 	if !ok || record == nil {
 		return nil, false
 	}

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"testing"
@@ -353,7 +354,7 @@ func TestPlatformGraphSnapshotRecordsIncludePersistedReportRuns(t *testing.T) {
 	s.platformReportRuns = map[string]*reports.ReportRun{}
 	s.platformReportRunMu.Unlock()
 
-	records := s.platformGraphSnapshotRecords()
+	records := s.platformGraphSnapshotRecords(context.Background())
 	record, ok := records["graph_snapshot:historic"]
 	if !ok || record == nil {
 		t.Fatalf("expected persisted report-run lineage snapshot to be present, got %#v", records)
