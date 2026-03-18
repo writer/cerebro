@@ -6,6 +6,7 @@ import (
 
 	"github.com/writer/cerebro/internal/apiauth"
 	"github.com/writer/cerebro/internal/findings"
+	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/providers"
 	"github.com/writer/cerebro/internal/snowflake"
 )
@@ -449,6 +450,8 @@ type Config struct {
 	GraphCrossTenantReplayTTL           time.Duration
 	GraphCrossTenantMinTenants          int
 	GraphCrossTenantMinSupport          int
+	GraphPropertyHistoryMaxEntries      int
+	GraphPropertyHistoryTTL             time.Duration
 	GraphSchemaValidationMode           string
 	GraphEventMapperValidationMode      string
 	GraphEventMapperDeadLetterPath      string
@@ -787,6 +790,8 @@ func LoadConfig() *Config {
 			GraphCrossTenantReplayTTL:           getEnvDuration("GRAPH_CROSS_TENANT_REPLAY_TTL", 24*time.Hour),
 			GraphCrossTenantMinTenants:          getEnvInt("GRAPH_CROSS_TENANT_MIN_TENANTS", 2),
 			GraphCrossTenantMinSupport:          getEnvInt("GRAPH_CROSS_TENANT_MIN_SUPPORT", 2),
+			GraphPropertyHistoryMaxEntries:      getEnvInt("GRAPH_PROPERTY_HISTORY_MAX_ENTRIES", graph.DefaultTemporalHistoryMaxEntries),
+			GraphPropertyHistoryTTL:             getEnvDuration("GRAPH_PROPERTY_HISTORY_TTL", graph.DefaultTemporalHistoryTTL),
 			GraphSchemaValidationMode:           getEnv("GRAPH_SCHEMA_VALIDATION_MODE", "warn"),
 			GraphEventMapperValidationMode:      getEnv("GRAPH_EVENT_MAPPER_VALIDATION_MODE", "enforce"),
 			GraphEventMapperDeadLetterPath:      getEnv("GRAPH_EVENT_MAPPER_DEAD_LETTER_PATH", filepath.Join(findings.DefaultFilePath(), "graph-event-mapper.dlq.jsonl")),

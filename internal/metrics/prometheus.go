@@ -321,6 +321,13 @@ var (
 		},
 	)
 
+	GraphPropertyHistoryDepth = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "cerebro_graph_property_history_depth",
+			Help: "Configured maximum number of property-history snapshots retained per node property",
+		},
+	)
+
 	GraphFreshnessByProvider = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "cerebro_graph_freshness_by_provider",
@@ -637,6 +644,7 @@ func Register() {
 			GraphBuildStatus,
 			GraphLastUpdateTimestamp,
 			GraphStalenessSeconds,
+			GraphPropertyHistoryDepth,
 			GraphFreshnessByProvider,
 			GraphOldestNodeAgeSeconds,
 			GraphProviderLastSyncTimestamp,
@@ -1065,6 +1073,13 @@ func SetGraphStaleness(age time.Duration) {
 		age = 0
 	}
 	GraphStalenessSeconds.Set(age.Seconds())
+}
+
+func SetGraphPropertyHistoryDepth(depth int) {
+	if depth < 0 {
+		depth = 0
+	}
+	GraphPropertyHistoryDepth.Set(float64(depth))
 }
 
 func ResetGraphFreshnessProviderMetrics() {

@@ -8,7 +8,73 @@ import (
 	"time"
 )
 
-const maxTemporalHistoryPerProperty = 256
+const (
+	DefaultTemporalHistoryMaxEntries = 50
+	DefaultTemporalHistoryTTL        = 7 * 24 * time.Hour
+)
+
+func sanitizeTemporalHistoryConfig(maxEntries int, ttl time.Duration) (int, time.Duration) {
+	if maxEntries <= 0 {
+		maxEntries = DefaultTemporalHistoryMaxEntries
+	}
+	if ttl <= 0 {
+		ttl = DefaultTemporalHistoryTTL
+	}
+	return maxEntries, ttl
+}
+
+func (g *Graph) SetTemporalHistoryConfig(maxEntries int, ttl time.Duration) {
+	if g == nil {
+		return
+	}
+	maxEntries, ttl = sanitizeTemporalHistoryConfig(maxEntries, ttl)
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.temporalHistoryMaxEntries = maxEntries
+	g.temporalHistoryTTL = ttl
+}
+
+func (g *Graph) TemporalHistoryConfig() (int, time.Duration) {
+	if g == nil {
+		return sanitizeTemporalHistoryConfig(0, 0)
+	}
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return sanitizeTemporalHistoryConfig(g.temporalHistoryMaxEntries, g.temporalHistoryTTL)
+}
+
+func (g *Graph) temporalHistoryConfigLocked() (int, time.Duration) {
+	if g == nil {
+		return sanitizeTemporalHistoryConfig(0, 0)
+	}
+	return sanitizeTemporalHistoryConfig(g.temporalHistoryMaxEntries, g.temporalHistoryTTL)
+}
+
+func (g *Graph) trimTemporalHistoryLocked(history []PropertySnapshot, _ time.Time) []PropertySnapshot {
+	if len(history) == 0 {
+		return nil
+	}
+	maxEntries, ttl := g.temporalHistoryConfigLocked()
+
+	if ttl > 0 {
+		cutoff := temporalNowUTC().UTC().Add(-ttl)
+		trimmed := history[:0]
+		for _, snapshot := range history {
+			if snapshot.Timestamp.Before(cutoff) {
+				continue
+			}
+			trimmed = append(trimmed, snapshot)
+		}
+		history = trimmed
+	}
+	if len(history) > maxEntries {
+		history = history[len(history)-maxEntries:]
+	}
+	if len(history) == 0 {
+		return nil
+	}
+	return history
+}
 
 // GetNodePropertyHistory returns timestamped values for one node property.
 // When window > 0, only snapshots within [now-window, now] are returned.
@@ -176,9 +242,7 @@ func (g *Graph) CompactTemporalHistory(retention, rollup time.Duration) {
 				}
 			}
 			combined = append(combined, recent...)
-			if len(combined) > maxTemporalHistoryPerProperty {
-				combined = combined[len(combined)-maxTemporalHistoryPerProperty:]
-			}
+			combined = g.trimTemporalHistoryLocked(combined, now)
 			if len(combined) == 0 {
 				delete(node.PropertyHistory, property)
 			} else {
@@ -274,15 +338,22 @@ func (g *Graph) appendNodePropertySnapshotLocked(node *Node, property string, sn
 		if last.Deleted == snapshot.Deleted && reflect.DeepEqual(last.Value, snapshot.Value) {
 			if snapshot.Timestamp.After(last.Timestamp) {
 				history[len(history)-1].Timestamp = snapshot.Timestamp
-				node.PropertyHistory[property] = history
+				history = g.trimTemporalHistoryLocked(history, snapshot.Timestamp)
+				if len(history) == 0 {
+					delete(node.PropertyHistory, property)
+				} else {
+					node.PropertyHistory[property] = history
+				}
 			}
 			return
 		}
 	}
 
 	history = append(history, snapshot)
-	if len(history) > maxTemporalHistoryPerProperty {
-		history = history[len(history)-maxTemporalHistoryPerProperty:]
+	history = g.trimTemporalHistoryLocked(history, snapshot.Timestamp)
+	if len(history) == 0 {
+		delete(node.PropertyHistory, property)
+		return
 	}
 	node.PropertyHistory[property] = history
 }
