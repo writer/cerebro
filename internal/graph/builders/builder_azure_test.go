@@ -14,13 +14,16 @@ func TestBuilder_AzureBuildsScopesRBACPoliciesAndVaultEdges(t *testing.T) {
 	source := newMockDataSource()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 
-	source.setResult(`SELECT id, display_name, app_id, service_principal_type, account_enabled, app_owner_organization_id, publisher_name, created_date_time, tags, subscription_id FROM azure_graph_service_principals`, &DataQueryResult{
+	source.setResult(`SELECT id, display_name, app_id, service_principal_type, account_enabled, app_owner_organization_id, app_role_assignment_required, publisher_name, created_date_time, tags, subscription_id FROM azure_graph_service_principals`, &DataQueryResult{
 		Rows: []map[string]any{{
-			"id":                     "sp-managed",
-			"display_name":           "vm-managed-identity",
-			"app_id":                 "app-1",
-			"service_principal_type": "ManagedIdentity",
-			"subscription_id":        "sub-1",
+			"id":                           "sp-managed",
+			"display_name":                 "vm-managed-identity",
+			"app_id":                       "app-1",
+			"service_principal_type":       "ManagedIdentity",
+			"app_owner_organization_id":    "tenant-local",
+			"app_role_assignment_required": true,
+			"publisher_name":               "Microsoft",
+			"subscription_id":              "sub-1",
 		}},
 	})
 	source.setResult(`SELECT id, user_principal_name, display_name, mail, department, job_title, account_enabled, user_type, last_sign_in_datetime FROM entra_users`, &DataQueryResult{
@@ -196,6 +199,12 @@ func TestBuilder_AzureBuildsScopesRBACPoliciesAndVaultEdges(t *testing.T) {
 	if len(assignments) != 1 {
 		t.Fatalf("expected one RBAC role assignment on managed identity, got %#v", spNode.Properties["role_assignments"])
 	}
+	if got := queryRowString(spNode.Properties, "app_owner_organization_id"); got != "tenant-local" {
+		t.Fatalf("expected app owner organization to be preserved, got %#v", spNode.Properties)
+	}
+	if got, _ := spNode.Properties["app_role_assignment_required"].(bool); !got {
+		t.Fatalf("expected app role assignment requirement to be preserved, got %#v", spNode.Properties)
+	}
 }
 
 func TestBuilder_AzureRelationshipEdgesCreatePlaceholderNodes(t *testing.T) {
@@ -238,10 +247,13 @@ func TestCDCEventToNode_AzureModernTables(t *testing.T) {
 	spNode := cdcEventToNode("azure_graph_service_principals", cdcEvent{
 		ResourceID: "sp-managed",
 		Payload: map[string]any{
-			"id":                     "sp-managed",
-			"display_name":           "vm-managed-identity",
-			"service_principal_type": "ManagedIdentity",
-			"subscription_id":        "sub-1",
+			"id":                           "sp-managed",
+			"display_name":                 "vm-managed-identity",
+			"service_principal_type":       "ManagedIdentity",
+			"app_owner_organization_id":    "tenant-local",
+			"app_role_assignment_required": true,
+			"publisher_name":               "Microsoft",
+			"subscription_id":              "sub-1",
 		},
 	})
 	if spNode == nil || spNode.Kind != NodeKindServiceAccount {
@@ -249,6 +261,33 @@ func TestCDCEventToNode_AzureModernTables(t *testing.T) {
 	}
 	if got := queryRowString(spNode.Properties, "identity_type"); got != "ManagedIdentity" {
 		t.Fatalf("expected managed identity marker on service principal, got %#v", spNode.Properties)
+	}
+	if got := queryRowString(spNode.Properties, "app_owner_organization_id"); got != "tenant-local" {
+		t.Fatalf("expected app owner organization to be preserved, got %#v", spNode.Properties)
+	}
+	if got, _ := spNode.Properties["app_role_assignment_required"].(bool); !got {
+		t.Fatalf("expected app role assignment requirement to be preserved, got %#v", spNode.Properties)
+	}
+
+	entraNode := cdcEventToNode("entra_service_principals", cdcEvent{
+		ResourceID: "sp-app",
+		Payload: map[string]any{
+			"id":                           "sp-app",
+			"display_name":                 "Slack Enterprise Grid",
+			"service_principal_type":       "Application",
+			"app_owner_organization_id":    "tenant-vendor",
+			"app_role_assignment_required": false,
+			"publisher_name":               "Slack",
+		},
+	})
+	if entraNode == nil || entraNode.Kind != NodeKindServiceAccount {
+		t.Fatalf("expected service account node from Entra service principal, got %#v", entraNode)
+	}
+	if got := queryRowString(entraNode.Properties, "app_owner_organization_id"); got != "tenant-vendor" {
+		t.Fatalf("expected Entra owner organization to be preserved, got %#v", entraNode.Properties)
+	}
+	if got := queryRowString(entraNode.Properties, "publisher_name"); got != "Slack" {
+		t.Fatalf("expected Entra publisher name to be preserved, got %#v", entraNode.Properties)
 	}
 
 	policyNode := cdcEventToNode("azure_policy_assignments", cdcEvent{
@@ -269,6 +308,45 @@ func TestCDCEventToNode_AzureModernTables(t *testing.T) {
 	}
 }
 
+func TestBuilder_AzureIdentityFallsBackToEntraServicePrincipalsWithVendorMetadata(t *testing.T) {
+	t.Parallel()
+
+	source := newMockDataSource()
+	builder := NewBuilder(source, nil)
+
+	source.setResult(`SELECT id, display_name, app_id, service_principal_type, account_enabled, app_owner_organization_id, app_role_assignment_required, publisher_name, created_datetime, tags FROM entra_service_principals`, &DataQueryResult{
+		Rows: []map[string]any{{
+			"id":                           "sp-slack",
+			"display_name":                 "Slack Enterprise Grid",
+			"app_id":                       "app-slack",
+			"service_principal_type":       "Application",
+			"account_enabled":              true,
+			"app_owner_organization_id":    "tenant-vendor",
+			"app_role_assignment_required": true,
+			"publisher_name":               "Slack",
+			"created_datetime":             "2026-03-01T00:00:00Z",
+		}},
+	})
+
+	if err := builder.Build(context.Background()); err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+
+	spNode, ok := builder.Graph().GetNode("sp-slack")
+	if !ok || spNode.Kind != NodeKindServiceAccount {
+		t.Fatalf("expected service principal node from Entra fallback query, got %#v", spNode)
+	}
+	if got := queryRowString(spNode.Properties, "app_owner_organization_id"); got != "tenant-vendor" {
+		t.Fatalf("expected Entra owner organization to be preserved, got %#v", spNode.Properties)
+	}
+	if got, _ := spNode.Properties["app_role_assignment_required"].(bool); !got {
+		t.Fatalf("expected Entra app role assignment requirement to be preserved, got %#v", spNode.Properties)
+	}
+	if got := queryRowString(spNode.Properties, "publisher_name"); got != "Slack" {
+		t.Fatalf("expected Entra publisher name to be preserved, got %#v", spNode.Properties)
+	}
+}
+
 func TestBuilder_AzureRBACResourceScopeDoesNotOvergrantResourceGroup(t *testing.T) {
 	t.Parallel()
 
@@ -279,7 +357,7 @@ func TestBuilder_AzureRBACResourceScopeDoesNotOvergrantResourceGroup(t *testing.
 	keyID := vaultID + "/keys/key-1"
 	vmID := "/subscriptions/sub-1/resourceGroups/rg-app/providers/Microsoft.Compute/virtualMachines/vm-1"
 
-	source.setResult(`SELECT id, display_name, app_id, service_principal_type, account_enabled, app_owner_organization_id, publisher_name, created_date_time, tags, subscription_id FROM azure_graph_service_principals`, &DataQueryResult{
+	source.setResult(`SELECT id, display_name, app_id, service_principal_type, account_enabled, app_owner_organization_id, app_role_assignment_required, publisher_name, created_date_time, tags, subscription_id FROM azure_graph_service_principals`, &DataQueryResult{
 		Rows: []map[string]any{{
 			"id":                     "sp-managed",
 			"display_name":           "vm-managed-identity",

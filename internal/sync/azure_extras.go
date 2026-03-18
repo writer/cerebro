@@ -135,15 +135,16 @@ type azureGraphServicePrincipalListResponse struct {
 }
 
 type azureGraphServicePrincipal struct {
-	ID                     *string  `json:"id"`
-	AppID                  *string  `json:"appId"`
-	DisplayName            *string  `json:"displayName"`
-	ServicePrincipalType   *string  `json:"servicePrincipalType"`
-	AccountEnabled         *bool    `json:"accountEnabled"`
-	AppOwnerOrganizationID *string  `json:"appOwnerOrganizationId"`
-	PublisherName          *string  `json:"publisherName"`
-	CreatedDateTime        *string  `json:"createdDateTime"`
-	Tags                   []string `json:"tags"`
+	ID                        *string  `json:"id"`
+	AppID                     *string  `json:"appId"`
+	DisplayName               *string  `json:"displayName"`
+	ServicePrincipalType      *string  `json:"servicePrincipalType"`
+	AccountEnabled            *bool    `json:"accountEnabled"`
+	AppOwnerOrganizationID    *string  `json:"appOwnerOrganizationId"`
+	AppRoleAssignmentRequired *bool    `json:"appRoleAssignmentRequired"`
+	PublisherName             *string  `json:"publisherName"`
+	CreatedDateTime           *string  `json:"createdDateTime"`
+	Tags                      []string `json:"tags"`
 }
 
 type azureDefenderAssessmentListResponse struct {
@@ -547,6 +548,7 @@ func (e *AzureSyncEngine) azureGraphServicePrincipalTable() AzureTableSpec {
 			"service_principal_type",
 			"account_enabled",
 			"app_owner_organization_id",
+			"app_role_assignment_required",
 			"publisher_name",
 			"created_date_time",
 			"tags",
@@ -582,6 +584,9 @@ func (e *AzureSyncEngine) azureGraphServicePrincipalTable() AzureTableSpec {
 
 				if principal.AccountEnabled != nil {
 					row["account_enabled"] = *principal.AccountEnabled
+				}
+				if principal.AppRoleAssignmentRequired != nil {
+					row["app_role_assignment_required"] = *principal.AppRoleAssignmentRequired
 				}
 				if len(principal.Tags) > 0 {
 					row["tags"] = principal.Tags
@@ -981,7 +986,7 @@ func listAzureGraphServicePrincipals(ctx context.Context, cred *azidentity.Defau
 		return nil, err
 	}
 
-	nextURL := "https://graph.microsoft.com/v1.0/servicePrincipals?$select=id,appId,displayName,servicePrincipalType,accountEnabled,appOwnerOrganizationId,publisherName,createdDateTime,tags"
+	nextURL := "https://graph.microsoft.com/v1.0/servicePrincipals?$select=id,appId,displayName,servicePrincipalType,accountEnabled,appOwnerOrganizationId,appRoleAssignmentRequired,publisherName,createdDateTime,tags"
 	servicePrincipals := make([]azureGraphServicePrincipal, 0)
 	for nextURL != "" {
 		var page azureGraphServicePrincipalListResponse

@@ -106,7 +106,9 @@ func (e *EntraIDProvider) Schema() []TableSchema {
 				{Name: "display_name", Type: "string"},
 				{Name: "service_principal_type", Type: "string"},
 				{Name: "account_enabled", Type: "boolean"},
+				{Name: "app_owner_organization_id", Type: "string"},
 				{Name: "app_role_assignment_required", Type: "boolean"},
+				{Name: "publisher_name", Type: "string"},
 				{Name: "created_datetime", Type: "timestamp"},
 				{Name: "tags", Type: "array"},
 			},
@@ -454,7 +456,7 @@ func (e *EntraIDProvider) syncServicePrincipals(ctx context.Context) (*TableResu
 		return result, err
 	}
 
-	sps, err := e.listAll(ctx, "/v1.0/servicePrincipals?$select=id,appId,displayName,servicePrincipalType,accountEnabled,appRoleAssignmentRequired,createdDateTime,tags")
+	sps, err := e.listAll(ctx, "/v1.0/servicePrincipals?$select=id,appId,displayName,servicePrincipalType,accountEnabled,appOwnerOrganizationId,appRoleAssignmentRequired,publisherName,createdDateTime,tags")
 	if err != nil {
 		return result, err
 	}

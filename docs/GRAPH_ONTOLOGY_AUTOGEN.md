@@ -2,7 +2,7 @@
 
 Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and `internal/graphingest/mappings.yaml` via `go run ./scripts/generate_graph_ontology_docs/main.go`.
 
-- Node kinds: **68**
+- Node kinds: **69**
 - Edge kinds: **44**
 - Mapping rules: **13**
 - Source domains: **9**
@@ -76,6 +76,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `technology` | resource | `category`, `observed_at`, `recorded_at`, `technology_id`, `technology_name`, `transaction_from`, `valid_from` | `based_on` |
 | `ticket` | business | - | - |
 | `user` | identity | - | - |
+| `vendor` | business | - | - |
 | `vulnerability` | resource | `observed_at`, `recorded_at`, `severity`, `transaction_from`, `valid_from`, `vulnerability_id` | `based_on` |
 | `workload` | resource | `observed_at`, `runtime`, `valid_from`, `workload_id` | `connects_to`, `depends_on`, `targets` |
 | `workload_scan` | resource | `observed_at`, `recorded_at`, `scan_id`, `status`, `target_id`, `target_kind`, `transaction_from`, `valid_from` | `based_on`, `contains_package`, `found_vulnerability`, `has_scan`, `targets` |
@@ -185,7 +186,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 
 ## Unmapped Built-in Node Kinds
 
-Total unmapped kinds: **45**
+Total unmapped kinds: **46**
 
 - `activity`
 - `application`
@@ -230,5 +231,6 @@ Total unmapped kinds: **45**
 - `source`
 - `technology`
 - `user`
+- `vendor`
 - `vulnerability`
 - `workload_scan`

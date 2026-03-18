@@ -7,6 +7,7 @@ func TestNodeIsBusinessEntity(t *testing.T) {
 		NodeKindCustomer,
 		NodeKindContact,
 		NodeKindCompany,
+		NodeKindVendor,
 		NodeKindDeal,
 		NodeKindOpportunity,
 		NodeKindSubscription,
