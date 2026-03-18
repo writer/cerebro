@@ -29,6 +29,39 @@ func buildGraphStoreTraversalTestGraph() *graph.Graph {
 	return g
 }
 
+func buildGraphStoreVisualizationTestGraph() *graph.Graph {
+	g := graph.New()
+	g.AddNode(&graph.Node{ID: "internet", Kind: graph.NodeKindInternet, Name: "Internet"})
+	g.AddNode(&graph.Node{
+		ID:      "web-server",
+		Kind:    graph.NodeKindInstance,
+		Name:    "Web Server",
+		Account: "123456789012",
+		Risk:    graph.RiskHigh,
+		Properties: map[string]any{
+			"vulnerabilities": []any{"CVE-2021-44228"},
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:      "web-role",
+		Kind:    graph.NodeKindRole,
+		Name:    "WebServerRole",
+		Account: "123456789012",
+	})
+	g.AddNode(&graph.Node{
+		ID:      "prod-db",
+		Kind:    graph.NodeKindDatabase,
+		Name:    "Production Database",
+		Account: "123456789012",
+		Risk:    graph.RiskCritical,
+		Tags:    map[string]string{"contains_pii": "true"},
+	})
+	g.AddEdge(&graph.Edge{ID: "internet-to-web", Source: "internet", Target: "web-server", Kind: graph.EdgeKindExposedTo, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "web-server-assumes", Source: "web-server", Target: "web-role", Kind: graph.EdgeKindCanAssume, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "role-to-db", Source: "web-role", Target: "prod-db", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow})
+	return g
+}
+
 func TestGraphTraversalHandlersUseGraphStoreWhenRawGraphUnavailable(t *testing.T) {
 	s := newStoreBackedGraphServer(t, buildGraphStoreTraversalTestGraph())
 
@@ -69,5 +102,49 @@ func TestVisualizeBlastRadiusUsesGraphStoreWhenRawGraphUnavailable(t *testing.T)
 	body := resp.Body.String()
 	if !strings.Contains(body, "```mermaid") || !strings.Contains(body, "Alice") {
 		t.Fatalf("expected mermaid blast radius output, got %q", body)
+	}
+}
+
+func TestVisualizeAttackPathUsesGraphStoreSnapshotWhenRawGraphUnavailable(t *testing.T) {
+	s := newStoreBackedGraphServer(t, buildGraphStoreVisualizationTestGraph())
+
+	resp := do(t, s, http.MethodGet, "/api/v1/graph/visualize/attack-path/0", nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected attack-path visualization 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+	body := resp.Body.String()
+	if !strings.Contains(body, "```mermaid") || !strings.Contains(body, "Production Database") {
+		t.Fatalf("expected mermaid attack path output, got %q", body)
+	}
+}
+
+func TestVisualizeToxicCombinationUsesGraphStoreSnapshotWhenRawGraphUnavailable(t *testing.T) {
+	g := buildGraphStoreVisualizationTestGraph()
+	results := graph.NewToxicCombinationEngine().Analyze(g)
+	if len(results) == 0 {
+		t.Fatal("expected at least one toxic combination in test graph")
+	}
+
+	s := newStoreBackedGraphServer(t, g)
+	resp := do(t, s, http.MethodGet, "/api/v1/graph/visualize/toxic-combination/"+results[0].ID, nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected toxic-combination visualization 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+	body := resp.Body.String()
+	if !strings.Contains(body, "```mermaid") || !strings.Contains(body, results[0].Name) {
+		t.Fatalf("expected mermaid toxic combination output, got %q", body)
+	}
+}
+
+func TestVisualizeReportUsesGraphStoreSnapshotWhenRawGraphUnavailable(t *testing.T) {
+	s := newStoreBackedGraphServer(t, buildGraphStoreVisualizationTestGraph())
+
+	resp := do(t, s, http.MethodGet, "/api/v1/graph/visualize/report", nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected report visualization 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+	body := resp.Body.String()
+	if !strings.Contains(body, "# Security Report") || !strings.Contains(body, "Risk Score") {
+		t.Fatalf("expected report visualization output, got %q", body)
 	}
 }

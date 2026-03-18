@@ -128,6 +128,18 @@ Status: executed end-to-end via PR workflow
 - [x] Route tenant-scoped blast-radius, cascading-blast-radius, reverse-access, and blast-radius visualization handlers through `CurrentSecurityGraphStoreForTenant`.
 - [x] Add regression coverage proving store-backed traversal handlers succeed when the server only has a `GraphStore` runtime and no raw `SecurityGraph` pointer.
 
+## Deep Review Cycle 199 - Graph Store Visualization Paths (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left Mermaid attack-path, toxic-combination, and report handlers coupled to raw `*graph.Graph` pointers, so the store seam stopped at JSON traversal reads instead of covering the rest of the graph read surface.
+- [x] Gap: those handlers only need a read-only graph view, but they bypassed the existing `GraphStore.Snapshot()` contract and would fail in any future backend that does not expose an in-memory graph pointer.
+- [x] Gap: API tests only proved store-backed traversal JSON endpoints, so visualization/report routes could regress back to pointer-only behavior without detection.
+
+### Execution plan
+- [x] Materialize read-only graph views for visualization handlers via `GraphStore.Snapshot()` and `graph.GraphViewFromSnapshot(...)`.
+- [x] Route Mermaid attack-path, toxic-combination, and report handlers through the store-backed view path instead of `s.app.SecurityGraph`.
+- [x] Add store-only API regression coverage for the visualization/report handlers so they succeed with no raw live graph pointer.
+
 ## Deep Review Cycle 195 - Graph Store Abstraction (2026-03-17)
 
 ### Review findings
