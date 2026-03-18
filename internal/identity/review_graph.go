@@ -16,11 +16,36 @@ type toxicReviewContext struct {
 	AttackPaths int
 }
 
-func (s *Service) generateReviewItems(_ context.Context, review *AccessReview) ([]ReviewItem, error) {
-	if s == nil || s.graphResolver == nil {
+type resolvedGraphContextKey struct{}
+
+// WithResolvedGraph reuses a caller-resolved graph so downstream access-review
+// generation does not repeat store snapshot work during the same request.
+func WithResolvedGraph(ctx context.Context, g *graph.Graph) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if g == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, resolvedGraphContextKey{}, g)
+}
+
+func resolvedGraphFromContext(ctx context.Context) *graph.Graph {
+	if ctx == nil {
+		return nil
+	}
+	g, _ := ctx.Value(resolvedGraphContextKey{}).(*graph.Graph)
+	return g
+}
+
+func (s *Service) generateReviewItems(ctx context.Context, review *AccessReview) ([]ReviewItem, error) {
+	if s == nil {
 		return review.Items, nil
 	}
-	g := s.graphResolver()
+	g := resolvedGraphFromContext(ctx)
+	if g == nil && s.graphResolver != nil {
+		g = s.graphResolver(ctx)
+	}
 	if g == nil {
 		return review.Items, nil
 	}

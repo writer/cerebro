@@ -1875,7 +1875,7 @@ func (a *App) toolCerebroAccessReview(ctx context.Context, args json.RawMessage)
 
 	reviewService := a.Identity
 	if reviewService == nil {
-		reviewService = identity.NewService(identity.WithGraphResolver(func() *graph.Graph { return g }))
+		reviewService = identity.NewService(identity.WithGraphResolver(func(context.Context) *graph.Graph { return g }))
 	}
 
 	review, err := reviewService.CreateReview(ctx, &identity.AccessReview{

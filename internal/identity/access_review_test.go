@@ -462,7 +462,7 @@ func TestServiceCreateReviewGeneratesGraphCampaignItems(t *testing.T) {
 		Effect: graph.EdgeEffectAllow,
 	})
 
-	svc := NewService(WithGraphResolver(func() *graph.Graph { return g }))
+	svc := NewService(WithGraphResolver(func(context.Context) *graph.Graph { return g }))
 	review, err := svc.CreateReview(context.Background(), &AccessReview{
 		Name:             "Quarterly Prod Review",
 		CreatedBy:        "secops@example.com",
@@ -566,7 +566,7 @@ func TestServiceCreateReviewDoesNotAutoGenerateManualGraphCampaigns(t *testing.T
 		Effect: graph.EdgeEffectAllow,
 	})
 
-	svc := NewService(WithGraphResolver(func() *graph.Graph { return g }))
+	svc := NewService(WithGraphResolver(func(context.Context) *graph.Graph { return g }))
 	review, err := svc.CreateReview(context.Background(), &AccessReview{
 		Name:      "Manual Review",
 		CreatedBy: "secops@example.com",

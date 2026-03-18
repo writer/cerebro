@@ -52,6 +52,18 @@ Status: executed end-to-end via PR workflow
 - [x] Preserve the live-graph fast path so existing in-memory runtimes do not pay the snapshot restore cost.
 - [x] Add store-only and live-graph-preference regressions for compliance framework handlers, then rerun focused API tests, lint, and changed-file validation.
 
+## Deep Review Cycle 205 - Graph Store Access Review Paths (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left graph access-review creation hard-gated on `s.app.SecurityGraph`, so `/api/v1/graph/access-reviews` returned `503` whenever the API runtime exposed only a graph store.
+- [x] Gap: the default server wiring did not initialize an identity review service when `NewServerWithDependencies(...)` was used without a full `App`, so store-backed API workers had no shared access-review service at all.
+- [x] Gap: there was no regression proving graph-generated access reviews still create and persist when the API is backed only by `GraphStore` snapshots.
+
+### Execution plan
+- [x] Teach the server constructor to default an identity service whose graph resolver can rebuild a tenant-scoped read-only graph view from `CurrentSecurityGraphStoreForTenant(...).Snapshot()`.
+- [x] Remove the obsolete live-graph gate from graph access-review creation and preserve `503` only for the real no-graph/no-store case.
+- [x] Add a store-only API regression, then rerun focused API tests, identity tests, lint, and changed-file validation.
+
 ## Deep Review Cycle 205 - Graph Store Stats Path (2026-03-18)
 
 ### Review findings

@@ -171,7 +171,7 @@ type ReviewStats struct {
 
 type Service struct {
 	store          Store
-	graphResolver  func() *graph.Graph
+	graphResolver  func(context.Context) *graph.Graph
 	riskCalculator *RiskCalculator
 }
 
@@ -193,7 +193,7 @@ func WithExecutionStore(store executionstore.Store) ServiceOption {
 	}
 }
 
-func WithGraphResolver(resolver func() *graph.Graph) ServiceOption {
+func WithGraphResolver(resolver func(context.Context) *graph.Graph) ServiceOption {
 	return func(s *Service) {
 		s.graphResolver = resolver
 	}

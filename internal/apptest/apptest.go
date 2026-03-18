@@ -1,6 +1,7 @@
 package apptest
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"os"
@@ -111,7 +112,7 @@ func NewAppWithWarehouse(t *testing.T, store warehouse.DataWarehouse) *app.App {
 	}
 	application.Identity = identity.NewService(
 		identity.WithExecutionStore(executionStore),
-		identity.WithGraphResolver(func() *graph.Graph { return application.SecurityGraph }),
+		identity.WithGraphResolver(func(context.Context) *graph.Graph { return application.SecurityGraph }),
 	)
 	t.Cleanup(func() { _ = application.Close() })
 	return application

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/evalops/cerebro/internal/graph"
 	"github.com/evalops/cerebro/internal/identity"
 	"github.com/go-chi/chi/v5"
 )
@@ -16,8 +17,14 @@ import (
 // identity surfaces observe the same durable campaign state.
 
 func (s *Server) createGraphAccessReview(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+	ctx := graph.WithTenantScope(r.Context(), currentTenantScopeID(r.Context()))
+	g, err := s.currentTenantSecurityGraphView(ctx)
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
+	if s == nil || s.app == nil || s.app.Identity == nil {
+		s.error(w, http.StatusServiceUnavailable, "identity service not initialized")
 		return
 	}
 
@@ -40,11 +47,11 @@ func (s *Server) createGraphAccessReview(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	review, err := s.app.Identity.CreateReview(r.Context(), &identity.AccessReview{
+	review, err := s.app.Identity.CreateReview(identity.WithResolvedGraph(ctx, g), &identity.AccessReview{
 		Name:        req.Name,
 		Description: req.Description,
 		Type:        identity.ReviewTypeUserAccess,
-		CreatedBy:   requestReviewActor(r.Context(), req.CreatedBy),
+		CreatedBy:   requestReviewActor(ctx, req.CreatedBy),
 		DueAt:       req.DueDate,
 		Reviewers:   req.Reviewers,
 		Scope: identity.ReviewScope{
@@ -65,6 +72,10 @@ func (s *Server) createGraphAccessReview(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) listGraphAccessReviews(w http.ResponseWriter, r *http.Request) {
+	if s == nil || s.app == nil || s.app.Identity == nil {
+		s.error(w, http.StatusServiceUnavailable, "identity service not initialized")
+		return
+	}
 	allReviews := s.app.Identity.ListReviews(r.Context(), "")
 	reviews := make([]*identity.AccessReview, 0, len(allReviews))
 	for _, review := range allReviews {
@@ -79,6 +90,10 @@ func (s *Server) listGraphAccessReviews(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) getGraphAccessReview(w http.ResponseWriter, r *http.Request) {
+	if s == nil || s.app == nil || s.app.Identity == nil {
+		s.error(w, http.StatusServiceUnavailable, "identity service not initialized")
+		return
+	}
 	id := chi.URLParam(r, "id")
 	review, ok := s.app.Identity.GetReview(r.Context(), id)
 	if !ok || review.GenerationSource != "graph" {
@@ -89,6 +104,10 @@ func (s *Server) getGraphAccessReview(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) startGraphAccessReview(w http.ResponseWriter, r *http.Request) {
+	if s == nil || s.app == nil || s.app.Identity == nil {
+		s.error(w, http.StatusServiceUnavailable, "identity service not initialized")
+		return
+	}
 	id := chi.URLParam(r, "id")
 	review, ok := s.app.Identity.GetReview(r.Context(), id)
 	if !ok || review.GenerationSource != "graph" {
@@ -104,6 +123,10 @@ func (s *Server) startGraphAccessReview(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) decideGraphAccessReviewItem(w http.ResponseWriter, r *http.Request) {
+	if s == nil || s.app == nil || s.app.Identity == nil {
+		s.error(w, http.StatusServiceUnavailable, "identity service not initialized")
+		return
+	}
 	reviewID := chi.URLParam(r, "id")
 	review, ok := s.app.Identity.GetReview(r.Context(), reviewID)
 	if !ok || review.GenerationSource != "graph" {

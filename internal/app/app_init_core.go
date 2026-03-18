@@ -312,7 +312,12 @@ func validateTicketingProvider(parent context.Context, provider ticketing.Provid
 func (a *App) initIdentity() {
 	a.Identity = identity.NewService(
 		identity.WithExecutionStore(a.ExecutionStore),
-		identity.WithGraphResolver(func() *graph.Graph { return a.CurrentSecurityGraph() }),
+		identity.WithGraphResolver(func(ctx context.Context) *graph.Graph {
+			if scope, ok := graph.TenantReadScopeFromContext(ctx); ok && !scope.CrossTenant && len(scope.TenantIDs) == 1 {
+				return a.CurrentSecurityGraphForTenant(scope.TenantIDs[0])
+			}
+			return a.CurrentSecurityGraph()
+		}),
 	)
 }
 

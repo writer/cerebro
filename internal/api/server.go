@@ -19,6 +19,7 @@ import (
 	reports "github.com/evalops/cerebro/internal/graph/reports"
 	risk "github.com/evalops/cerebro/internal/graph/risk"
 	"github.com/evalops/cerebro/internal/health"
+	"github.com/evalops/cerebro/internal/identity"
 	"github.com/evalops/cerebro/internal/metrics"
 	cerebroruntime "github.com/evalops/cerebro/internal/runtime"
 	"github.com/evalops/cerebro/internal/snowflake"
@@ -86,6 +87,26 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 	}
 	if adapter, ok := deps.graphRuntime.(*graphRuntimeAdapter); ok {
 		adapter.deps = &deps
+	}
+	if deps.Identity == nil {
+		deps.Identity = identity.NewService(
+			identity.WithExecutionStore(deps.ExecutionStore),
+			identity.WithGraphResolver(func(ctx context.Context) *graph.Graph {
+				tenantID := currentTenantScopeID(ctx)
+				if g := deps.CurrentSecurityGraphForTenant(tenantID); g != nil {
+					return g
+				}
+				store := deps.CurrentSecurityGraphStoreForTenant(tenantID)
+				if store == nil {
+					return nil
+				}
+				snapshot, err := store.Snapshot(ctx)
+				if err != nil || snapshot == nil {
+					return nil
+				}
+				return graph.GraphViewFromSnapshot(snapshot)
+			}),
+		)
 	}
 	platformKnowledge := deps.platformKnowledge
 	if platformKnowledge == nil {
