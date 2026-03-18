@@ -13,6 +13,7 @@ import (
 	"github.com/writer/cerebro/internal/attackpath"
 	"github.com/writer/cerebro/internal/auth"
 	"github.com/writer/cerebro/internal/cache"
+	"github.com/writer/cerebro/internal/executionstore"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/graph/builders"
@@ -76,6 +77,7 @@ type serverDependencies struct {
 	Scanner        *scanner.Scanner
 	Cache          *cache.PolicyCache
 	GraphSnapshots *graph.GraphPersistenceStore
+	ExecutionStore executionstore.Store
 
 	Agents         *agents.AgentRegistry
 	Ticketing      *ticketing.Service
@@ -137,6 +139,7 @@ func newServerDependenciesFromApp(application *app.App) serverDependencies {
 		Scanner:              application.Scanner,
 		Cache:                application.Cache,
 		GraphSnapshots:       application.GraphSnapshots,
+		ExecutionStore:       application.ExecutionStore,
 		Agents:               application.Agents,
 		Ticketing:            application.Ticketing,
 		Identity:             application.Identity,

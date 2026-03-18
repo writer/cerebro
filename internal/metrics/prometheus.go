@@ -284,6 +284,22 @@ var (
 		[]string{"stream", "durable"},
 	)
 
+	NATSConsumerProcessedTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_nats_consumer_processed_total",
+			Help: "Total number of NATS consumer messages processed successfully",
+		},
+		[]string{"stream", "durable"},
+	)
+
+	NATSConsumerDeduplicatedTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_nats_consumer_deduplicated_total",
+			Help: "Total number of NATS consumer messages skipped because the CloudEvent was already processed",
+		},
+		[]string{"stream", "durable"},
+	)
+
 	NATSConsumerLag = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "cerebro_nats_consumer_lag",
@@ -550,6 +566,8 @@ func Register() {
 			JetStreamBackpressureAlertsTotal,
 			NATSConsumerDroppedTotal,
 			NATSConsumerRedeliveriesTotal,
+			NATSConsumerProcessedTotal,
+			NATSConsumerDeduplicatedTotal,
 			NATSConsumerLag,
 			NATSConsumerLagSeconds,
 			GraphBuildStatus,
@@ -835,6 +853,26 @@ func RecordNATSConsumerRedelivery(stream, durable string) {
 		durable = "unknown"
 	}
 	NATSConsumerRedeliveriesTotal.WithLabelValues(stream, durable).Inc()
+}
+
+func RecordNATSConsumerProcessed(stream, durable string) {
+	if strings.TrimSpace(stream) == "" {
+		stream = "unknown"
+	}
+	if strings.TrimSpace(durable) == "" {
+		durable = "unknown"
+	}
+	NATSConsumerProcessedTotal.WithLabelValues(stream, durable).Inc()
+}
+
+func RecordNATSConsumerDeduplicated(stream, durable string) {
+	if strings.TrimSpace(stream) == "" {
+		stream = "unknown"
+	}
+	if strings.TrimSpace(durable) == "" {
+		durable = "unknown"
+	}
+	NATSConsumerDeduplicatedTotal.WithLabelValues(stream, durable).Inc()
 }
 
 func SetNATSConsumerLag(stream, durable string, lag int) {

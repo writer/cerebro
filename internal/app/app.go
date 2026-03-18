@@ -51,6 +51,7 @@ import (
 	"github.com/writer/cerebro/internal/compliance"
 	"github.com/writer/cerebro/internal/dspm"
 	"github.com/writer/cerebro/internal/events"
+	"github.com/writer/cerebro/internal/executionstore"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/graph/builders"
@@ -98,6 +99,7 @@ type App struct {
 	DSPM           *dspm.Scanner
 	Cache          *cache.PolicyCache
 	GraphSnapshots *graph.GraphPersistenceStore
+	ExecutionStore executionstore.Store
 
 	// Feature services
 	Agents         *agents.AgentRegistry

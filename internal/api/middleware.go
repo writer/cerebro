@@ -398,6 +398,8 @@ func routePermission(method, path string) string {
 			return "platform.intelligence.run"
 		}
 		return "platform.intelligence.read"
+	case strings.HasPrefix(path, "/api/v1/platform/executions"):
+		return "platform.jobs.read"
 	case strings.HasPrefix(path, "/api/v1/platform/jobs"):
 		return "platform.jobs.read"
 	case strings.HasPrefix(path, "/api/v1/platform/knowledge"):

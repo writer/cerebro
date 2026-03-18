@@ -22,6 +22,9 @@ import (
 )
 
 func (a *App) newSharedActionExecutor() *actionengine.Executor {
+	if a != nil && a.ExecutionStore != nil {
+		return actionengine.NewExecutor(actionengine.NewSQLiteStoreWithExecutionStore(a.ExecutionStore, actionengine.DefaultNamespace))
+	}
 	store, err := actionengine.NewSQLiteStore(a.Config.ExecutionStoreFile, actionengine.DefaultNamespace)
 	if err != nil {
 		a.Logger.Warn("failed to initialize shared action execution store; falling back to in-memory", "error", err, "path", a.Config.ExecutionStoreFile)

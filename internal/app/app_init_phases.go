@@ -55,6 +55,7 @@ func (a *App) initPhase1(ctx context.Context) error {
 
 func (a *App) initPhase2a(ctx context.Context) error {
 	a.initGraphPersistenceStore()
+	a.initExecutionStore()
 	if err := runInitTasksConcurrently(ctx, []concurrentInitTask{
 		{name: "cache", run: func(context.Context) { a.initCache() }},
 		{name: "ticketing", run: func(taskCtx context.Context) { a.initTicketing(taskCtx) }},

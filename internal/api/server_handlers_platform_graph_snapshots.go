@@ -492,6 +492,27 @@ func (s *Server) platformGraphSnapshotRecords() map[string]*graph.GraphSnapshotR
 }
 
 func (s *Server) platformReportRunSnapshotMap() map[string]*reports.ReportRun {
+	if s.platformReportStore != nil {
+		runs, err := s.platformReportStore.ListRuns("")
+		if err == nil {
+			records := make(map[string]*reports.ReportRun, len(runs))
+			for _, run := range runs {
+				if run == nil || strings.TrimSpace(run.ID) == "" {
+					continue
+				}
+				records[run.ID] = reports.CloneReportRun(run)
+			}
+			s.platformReportRunMu.RLock()
+			for id, run := range s.platformReportRuns {
+				if run == nil {
+					continue
+				}
+				records[id] = reports.CloneReportRun(run)
+			}
+			s.platformReportRunMu.RUnlock()
+			return records
+		}
+	}
 	s.platformReportRunMu.RLock()
 	defer s.platformReportRunMu.RUnlock()
 	return s.clonePlatformReportRunsLocked()
