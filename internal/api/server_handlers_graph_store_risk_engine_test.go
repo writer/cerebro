@@ -257,8 +257,8 @@ func TestGraphRiskEngineReusesStoreBackedEngineForStableSnapshot(t *testing.T) {
 	store := &countingSnapshotStore{GraphStore: buildGraphStoreRiskEngineStateTestGraph()}
 	s := newStoreBackedGraphServer(t, store)
 
-	first := s.graphRiskEngine()
-	second := s.graphRiskEngine()
+	first := s.graphRiskEngine(context.Background())
+	second := s.graphRiskEngine(context.Background())
 	if first == nil || second == nil {
 		t.Fatal("expected store-backed risk engine")
 	}
@@ -282,7 +282,7 @@ func TestGraphRiskEngineUsesGraphRuntimeWithoutStoredSecurityGraphField(t *testi
 		t.Fatalf("expected dependency bundle to start without a direct security graph, got %p", s.app.SecurityGraph)
 	}
 
-	engine := s.graphRiskEngine()
+	engine := s.graphRiskEngine(context.Background())
 	if engine == nil {
 		t.Fatal("expected graph risk engine to use graphRuntime.CurrentSecurityGraph()")
 	}
@@ -299,13 +299,13 @@ func TestGraphRiskEngineRefreshesWhenGraphRuntimeGraphChanges(t *testing.T) {
 	})
 	t.Cleanup(func() { s.Close() })
 
-	first := s.graphRiskEngine()
+	first := s.graphRiskEngine(context.Background())
 	if first == nil {
 		t.Fatal("expected initial runtime-backed risk engine")
 	}
 
 	runtime.graph = buildGraphStoreRiskEngineAlternateTestGraph()
-	second := s.graphRiskEngine()
+	second := s.graphRiskEngine(context.Background())
 	if second == nil {
 		t.Fatal("expected refreshed runtime-backed risk engine")
 	}
@@ -342,7 +342,7 @@ func TestGraphRiskEngineDoesNotRestoreStaleInMemoryStateAcrossChangedStoreSnapsh
 	s := newStoreBackedGraphServer(t, store)
 	s.app.RiskEngineStateRepo = &snowflake.RiskEngineStateRepository{}
 
-	first := s.graphRiskEngine()
+	first := s.graphRiskEngine(context.Background())
 	if first == nil {
 		t.Fatal("expected initial store-backed risk engine")
 	}
@@ -354,7 +354,7 @@ func TestGraphRiskEngineDoesNotRestoreStaleInMemoryStateAcrossChangedStoreSnapsh
 		t.Fatalf("RecordOutcome() error = %v", err)
 	}
 
-	second := s.graphRiskEngine()
+	second := s.graphRiskEngine(context.Background())
 	if second == nil {
 		t.Fatal("expected refreshed store-backed risk engine")
 	}
@@ -376,7 +376,7 @@ func TestGraphRiskEngineStoreSnapshotDoesNotHoldMutex(t *testing.T) {
 
 	done := make(chan struct{}, 1)
 	go func() {
-		if s.graphRiskEngine() == nil {
+		if s.graphRiskEngine(context.Background()) == nil {
 			t.Error("expected graphRiskEngine to initialize after snapshot release")
 		}
 		done <- struct{}{}
@@ -407,5 +407,58 @@ func TestGraphRiskEngineStoreSnapshotDoesNotHoldMutex(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for graphRiskEngine to finish")
+	}
+}
+
+func TestGraphRiskEngineStoreSnapshotUsesCallerContext(t *testing.T) {
+	store := &blockingSnapshotStore{
+		GraphStore: buildGraphStoreRiskEngineStateTestGraph(),
+		started:    make(chan struct{}),
+		release:    make(chan struct{}),
+	}
+	s := newStoreBackedGraphServer(t, store)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan *risk.RiskEngine, 1)
+	go func() {
+		done <- s.graphRiskEngine(ctx)
+	}()
+
+	select {
+	case <-store.started:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for store snapshot to start")
+	}
+
+	cancel()
+
+	select {
+	case engine := <-done:
+		if engine != nil {
+			t.Fatalf("expected nil risk engine after caller cancellation, got %p", engine)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("expected graphRiskEngine to stop waiting after caller cancellation")
+	}
+}
+
+func TestRiskEngineStateRestoreContextIgnoresCallerCancellation(t *testing.T) {
+	s := NewServerWithDependencies(serverDependencies{
+		Config: &app.Config{GraphRiskEngineStateTimeout: 250 * time.Millisecond},
+	})
+	t.Cleanup(func() { s.Close() })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	restoreCtx, restoreCancel := s.riskEngineStateRestoreContext(ctx)
+	defer restoreCancel()
+
+	select {
+	case <-restoreCtx.Done():
+		t.Fatalf("expected restore context to detach caller cancellation, got %v", restoreCtx.Err())
+	default:
 	}
 }

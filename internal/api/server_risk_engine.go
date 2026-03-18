@@ -15,7 +15,7 @@ import (
 
 const riskEngineStateGraphID = "security-graph"
 
-func (s *Server) graphRiskEngine() *risk.RiskEngine {
+func (s *Server) graphRiskEngine(ctx context.Context) *risk.RiskEngine {
 	if s == nil || s.app == nil {
 		return nil
 	}
@@ -26,7 +26,7 @@ func (s *Server) graphRiskEngine() *risk.RiskEngine {
 		defer s.riskEngineMu.Unlock()
 		if s.riskEngine == nil || s.riskEngineSource != source {
 			engine := s.newConfiguredRiskEngine(source)
-			s.restoreRiskEngineStateLocked(engine)
+			s.restoreRiskEngineStateLocked(ctx, engine)
 			s.riskEngine = engine
 			s.riskEngineSource = source
 			s.riskEngineSnapshotKey = riskEngineSnapshotKey(graph.CreateSnapshot(source))
@@ -39,7 +39,7 @@ func (s *Server) graphRiskEngine() *risk.RiskEngine {
 		return nil
 	}
 
-	snapshotCtx, cancel := context.WithTimeout(context.Background(), s.riskEngineStateTimeout())
+	snapshotCtx, cancel := s.riskEngineStateContext(ctx)
 	defer cancel()
 	snapshot, err := store.Snapshot(snapshotCtx)
 	if err != nil {
@@ -63,7 +63,7 @@ func (s *Server) graphRiskEngine() *risk.RiskEngine {
 	previousEngine := s.riskEngine
 	previousKey := s.riskEngineSnapshotKey
 	engine := s.newConfiguredRiskEngine(view)
-	if !s.restoreRiskEngineStateLocked(engine) && previousEngine != nil && previousKey == snapshotKey {
+	if !s.restoreRiskEngineStateLocked(ctx, engine) && previousEngine != nil && previousKey == snapshotKey {
 		if err := engine.RestoreSnapshot(previousEngine.Snapshot()); err != nil && s.app.Logger != nil {
 			s.app.Logger.Warn("failed to restore in-memory risk engine state snapshot", "error", err)
 		}
@@ -73,6 +73,26 @@ func (s *Server) graphRiskEngine() *risk.RiskEngine {
 	s.riskEngineSource = nil
 	s.riskEngineSnapshotKey = snapshotKey
 	return s.riskEngine
+}
+
+func (s *Server) riskEngineStateContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	// #nosec G118 -- this helper returns the cancel func to callers, which always defer it.
+	timeoutCtx, cancel := context.WithTimeout(ctx, s.riskEngineStateTimeout())
+	return timeoutCtx, cancel
+}
+
+func (s *Server) riskEngineStateRestoreContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if ctx == nil {
+		ctx = context.Background()
+	} else {
+		ctx = context.WithoutCancel(ctx)
+	}
+	// #nosec G118 -- this helper returns the cancel func to callers, which always defer it.
+	timeoutCtx, cancel := context.WithTimeout(ctx, s.riskEngineStateTimeout())
+	return timeoutCtx, cancel
 }
 
 func riskEngineSnapshotKey(snapshot *graph.Snapshot) string {
@@ -150,7 +170,7 @@ func (s *Server) newConfiguredRiskEngine(g *graph.Graph) *risk.RiskEngine {
 	return engine
 }
 
-func (s *Server) restoreRiskEngineStateLocked(engine *risk.RiskEngine) bool {
+func (s *Server) restoreRiskEngineStateLocked(ctx context.Context, engine *risk.RiskEngine) bool {
 	if s == nil || s.app == nil || engine == nil {
 		return false
 	}
@@ -159,7 +179,7 @@ func (s *Server) restoreRiskEngineStateLocked(engine *risk.RiskEngine) bool {
 		return false
 	}
 
-	loadCtx, cancel := context.WithTimeout(context.Background(), s.riskEngineStateTimeout())
+	loadCtx, cancel := s.riskEngineStateRestoreContext(ctx)
 	defer cancel()
 	payload, err := repo.LoadSnapshot(loadCtx, riskEngineStateGraphID)
 	if err != nil {

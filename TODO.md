@@ -17,6 +17,18 @@ Status: executed end-to-end via PR workflow
 - [x] Keep synchronous request paths on `r.Context()` and async diff jobs on the job context so cancellation behavior stays correct in both modes.
 - [x] Add a blocking-store regression for caller cancellation, then rerun focused API tests, lint, and changed-file validation before opening the PR.
 
+## Deep Review Cycle 210 - Risk Engine Caller Context Propagation (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left `graphRiskEngine()` loading graph snapshots and durable risk-engine state under `context.Background()`, so store-backed runtimes could keep blocking on managed graph reads even after the caller canceled the request.
+- [x] Gap: the cross-tenant patterns, rule-discovery, and risk-feedback handlers all reuse that cached risk engine, so they silently inherited the same unmanaged snapshot/state load behavior.
+- [x] Gap: there was no regression proving a blocked store snapshot stops waiting once the caller context is canceled.
+
+### Execution plan
+- [x] Thread caller context into `graphRiskEngine()` and the durable risk-engine state restore path, preserving the existing timeout wrapper.
+- [x] Update the non-tenant handlers that rely on the cached risk engine to pass `r.Context()`.
+- [x] Add a blocking-store cancellation regression, then rerun focused API tests, lint, and changed-file validation before opening the PR.
+
 ## Deep Review Cycle 207 - Graph Runtime Snapshot Catalog Paths (2026-03-18)
 
 ### Review findings

@@ -49,7 +49,7 @@ func (s *Server) currentTenantRiskEngine(ctx context.Context) *risk.RiskEngine {
 		return nil
 	}
 	if !requestUsesTenantScope(ctx) {
-		return s.graphRiskEngine()
+		return s.graphRiskEngine(ctx)
 	}
 	g, err := s.currentTenantSecurityGraphView(ctx)
 	if err != nil || g == nil {
