@@ -237,6 +237,125 @@ func TestMaterializeRunsIntoGraphAddsCredentialPivotEdges(t *testing.T) {
 	}
 }
 
+func TestMaterializeRunsIntoGraphAddsIaCFindingObservations(t *testing.T) {
+	now := time.Date(2026, 3, 12, 18, 0, 0, 0, time.UTC)
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:       "arn:aws:ec2:us-east-1:123456789012:instance/i-abc123",
+		Kind:     graph.NodeKindInstance,
+		Name:     "i-abc123",
+		Provider: "aws",
+		Account:  "123456789012",
+		Region:   "us-east-1",
+	})
+	g.BuildIndex()
+
+	run := buildGraphMaterializationTestRun("workload_scan:run-iac", now.Add(-2*time.Hour), 0)
+	run.Summary.Findings = 2
+	run.Volumes[0].Analysis.FindingCount = 2
+	run.Volumes[0].Analysis.Catalog.IaCArtifacts = []filesystemanalyzer.IaCArtifact{
+		{ID: "artifact:terraform", Type: "terraform", Path: "infra/main.tf", Format: "hcl", ResourceType: "firewall_rule"},
+		{ID: "artifact:terraform-state", Type: "terraform_state", Path: "infra/terraform.tfstate", Format: "json", ResourceType: "terraform_state"},
+	}
+	run.Volumes[0].Analysis.Catalog.Misconfigurations = []filesystemanalyzer.ConfigFinding{
+		{
+			ID:           "finding:terraform-state",
+			Type:         "terraform_state",
+			Severity:     "high",
+			Path:         "infra/terraform.tfstate",
+			Title:        "Terraform state file detected",
+			ArtifactType: "terraform_state",
+			Format:       "json",
+			ResourceType: "terraform_state",
+		},
+		{
+			ID:           "finding:public-exposure",
+			Type:         "iac_public_exposure",
+			Severity:     "high",
+			Path:         "infra/main.tf",
+			Title:        "Public network exposure in IaC or config",
+			ArtifactType: "terraform",
+			Format:       "hcl",
+			ResourceType: "firewall_rule",
+		},
+	}
+
+	summary := MaterializeRunsIntoGraph(g, []RunRecord{run}, now)
+	if summary.ObservationNodesUpserted != 2 {
+		t.Fatalf("expected two IaC observation nodes, got %#v", summary)
+	}
+	if summary.ScanObservationEdges != 2 {
+		t.Fatalf("expected two IaC observation edges, got %#v", summary)
+	}
+
+	scanNode, ok := g.GetNode(run.ID)
+	if !ok {
+		t.Fatalf("expected workload scan node %q", run.ID)
+	}
+	if scanNode.Risk != graph.RiskHigh {
+		t.Fatalf("expected scan node risk high from IaC findings, got %#v", scanNode)
+	}
+	if got := graphValueInt(scanNode.Properties["iac_artifact_count"]); got != 2 {
+		t.Fatalf("expected iac_artifact_count=2, got %#v", scanNode.Properties)
+	}
+
+	observationID := iacFindingObservationNodeID(run.ID, run.Volumes[0].Analysis.Catalog.Misconfigurations[0])
+	observationNode, ok := g.GetNode(observationID)
+	if !ok {
+		t.Fatalf("expected observation node %q", observationID)
+	}
+	if observationNode.Kind != graph.NodeKindObservation {
+		t.Fatalf("expected observation kind, got %#v", observationNode)
+	}
+	if got := graphValueString(observationNode.Properties["observation_type"]); got != "workload_iac_finding" {
+		t.Fatalf("expected observation_type workload_iac_finding, got %#v", observationNode.Properties)
+	}
+	if got := graphValueString(observationNode.Properties["resource_type"]); got != "terraform_state" {
+		t.Fatalf("expected observation resource_type terraform_state, got %#v", observationNode.Properties)
+	}
+	if edge := findOutEdge(g, observationID, graph.EdgeKindTargets, run.ID); edge == nil {
+		t.Fatalf("expected observation to target scan node, got %#v", g.GetOutEdges(observationID))
+	}
+}
+
+func TestMaterializeRunsIntoGraphAppliesLegacyMisconfigurationRiskWithoutObservation(t *testing.T) {
+	now := time.Date(2026, 3, 12, 18, 0, 0, 0, time.UTC)
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:       "arn:aws:ec2:us-east-1:123456789012:instance/i-abc123",
+		Kind:     graph.NodeKindInstance,
+		Name:     "i-abc123",
+		Provider: "aws",
+		Account:  "123456789012",
+		Region:   "us-east-1",
+	})
+	g.BuildIndex()
+
+	run := buildGraphMaterializationTestRun("workload_scan:run-legacy-misconfig", now.Add(-2*time.Hour), 0)
+	run.Summary.Findings = 1
+	run.Volumes[0].Analysis.FindingCount = 1
+	run.Volumes[0].Analysis.Catalog.Misconfigurations = []filesystemanalyzer.ConfigFinding{{
+		ID:       "finding:ssh-root-login",
+		Type:     "ssh",
+		Severity: "high",
+		Path:     "etc/ssh/sshd_config",
+		Title:    "SSH root login enabled",
+	}}
+
+	summary := MaterializeRunsIntoGraph(g, []RunRecord{run}, now)
+	if summary.ObservationNodesUpserted != 0 {
+		t.Fatalf("expected no IaC observations for legacy config finding, got %#v", summary)
+	}
+
+	scanNode, ok := g.GetNode(run.ID)
+	if !ok {
+		t.Fatalf("expected workload scan node %q", run.ID)
+	}
+	if scanNode.Risk != graph.RiskHigh {
+		t.Fatalf("expected legacy misconfiguration to raise scan risk, got %#v", scanNode)
+	}
+}
+
 func TestMaterializeRunsIntoGraphMapsDatabaseConnectionStrings(t *testing.T) {
 	now := time.Date(2026, 3, 12, 18, 0, 0, 0, time.UTC)
 	g := graph.New()
