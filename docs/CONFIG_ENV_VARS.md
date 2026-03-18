@@ -2,7 +2,7 @@
 
 Generated from `internal/app/app_config.go` (`LoadConfig`) via `go run ./scripts/generate_config_docs/main.go`.
 
-Total variables: **307**
+Total variables: **311**
 
 | Variable | Reader(s) | Default(s) | Config Field(s) | Validation rule(s) |
 |---|---|---|---|---|
@@ -75,7 +75,7 @@ Total variables: **307**
 | `ENTRA_CLIENT_ID` | `getEnv` | `""` | `EntraClientID` | `-` |
 | `ENTRA_CLIENT_SECRET` | `getEnv` | `""` | `EntraClientSecret` | `-` |
 | `ENTRA_TENANT_ID` | `getEnv` | `""` | `EntraTenantID` | `-` |
-| `EXECUTION_STORE_FILE` | `getEnv` | `filepath.Join(".cerebro", "executions.db")` | `ExecutionStoreFile`, `FunctionScanStateFile`, `ImageScanStateFile`, `WorkloadScanStateFile` | `-` |
+| `EXECUTION_STORE_FILE` | `getEnv` | `filepath.Join(".cerebro", "executions.db")` | `ExecutionStoreFile`, `FunctionScanStateFile`, `ImageScanStateFile`, `NATSConsumerDedupStateFile`, `WorkloadScanStateFile` | `-` |
 | `FIGMA_API_TOKEN` | `getEnv` | `""` | `FigmaAPIToken` | `-` |
 | `FIGMA_BASE_URL` | `getEnv` | `"https://api.figma.com"` | `FigmaBaseURL` | `-` |
 | `FIGMA_TEAM_ID` | `getEnv` | `""` | `FigmaTeamID` | `-` |
@@ -151,22 +151,26 @@ Total variables: **307**
 | `LINEAR_API_KEY` | `getEnv` | `""` | `LinearAPIKey` | `-` |
 | `LINEAR_TEAM_ID` | `getEnv` | `""` | `LinearTeamID` | `-` |
 | `LOG_LEVEL` | `getEnv` | `"info"` | `LogLevel` | `must be one of debug, info, warn, error` |
-| `NATS_CONSUMER_ACK_WAIT` | `getEnvDuration` | `120 * time.Second` | `NATSConsumerAckWait` | `when NATS_CONSUMER_ENABLED=true, JetStream must also be enabled; identifiers must be present; durations must be positive; drop threshold must be non-negative` |
-| `NATS_CONSUMER_BATCH_SIZE` | `getEnvInt` | `50` | `NATSConsumerBatchSize` | `when NATS_CONSUMER_ENABLED=true, JetStream must also be enabled; identifiers must be present; durations must be positive; drop threshold must be non-negative` |
+| `NATS_CONSUMER_ACK_WAIT` | `getEnvDuration` | `120 * time.Second` | `NATSConsumerAckWait` | `when NATS_CONSUMER_ENABLED=true, JetStream must also be enabled; identifiers must be present; durations must be positive; drop threshold must be non-negative; dedupe settings must be valid when enabled` |
+| `NATS_CONSUMER_BATCH_SIZE` | `getEnvInt` | `50` | `NATSConsumerBatchSize` | `when NATS_CONSUMER_ENABLED=true, JetStream must also be enabled; identifiers must be present; durations must be positive; drop threshold must be non-negative; dedupe settings must be valid when enabled` |
 | `NATS_CONSUMER_DEAD_LETTER_PATH` | `getEnv` | `filepath.Join(findings.DefaultFilePath(), "nats-consumer.dlq.jsonl")` | `NATSConsumerDeadLetterPath` | `-` |
-| `NATS_CONSUMER_DRAIN_TIMEOUT` | `getEnvDuration` | `30 * time.Second` | `NATSConsumerDrainTimeout` | `when NATS_CONSUMER_ENABLED=true, JetStream must also be enabled; identifiers must be present; durations must be positive; drop threshold must be non-negative` |
-| `NATS_CONSUMER_DROP_HEALTH_LOOKBACK` | `getEnvDuration` | `5 * time.Minute` | `NATSConsumerDropHealthLookback` | `when NATS_CONSUMER_ENABLED=true, JetStream must also be enabled; identifiers must be present; durations must be positive; drop threshold must be non-negative` |
-| `NATS_CONSUMER_DROP_HEALTH_THRESHOLD` | `getEnvInt` | `1` | `NATSConsumerDropHealthThreshold` | `when NATS_CONSUMER_ENABLED=true, JetStream must also be enabled; identifiers must be present; durations must be positive; drop threshold must be non-negative` |
-| `NATS_CONSUMER_DURABLE` | `getEnv` | `"cerebro_graph_builder"` | `NATSConsumerDurable` | `when NATS_CONSUMER_ENABLED=true, JetStream must also be enabled; identifiers must be present; durations must be positive; drop threshold must be non-negative` |
-| `NATS_CONSUMER_ENABLED` | `getEnvBool` | `false` | `NATSConsumerEnabled` | `when NATS_CONSUMER_ENABLED=true, JetStream must also be enabled; identifiers must be present; durations must be positive; drop threshold must be non-negative` |
-| `NATS_CONSUMER_FETCH_TIMEOUT` | `getEnvDuration` | `2 * time.Second` | `NATSConsumerFetchTimeout` | `when NATS_CONSUMER_ENABLED=true, JetStream must also be enabled; identifiers must be present; durations must be positive; drop threshold must be non-negative` |
-| `NATS_CONSUMER_GRAPH_STALENESS_THRESHOLD` | `getEnvDuration` | `15 * time.Minute` | `NATSConsumerGraphStalenessThreshold` | `when NATS_CONSUMER_ENABLED=true, JetStream must also be enabled; identifiers must be present; durations must be positive; drop threshold must be non-negative` |
-| `NATS_CONSUMER_IN_PROGRESS_INTERVAL` | `getEnvDuration` | `15 * time.Second` | `NATSConsumerInProgressInterval` | `when NATS_CONSUMER_ENABLED=true, JetStream must also be enabled; identifiers must be present; durations must be positive; drop threshold must be non-negative` |
-| `NATS_CONSUMER_STREAM` | `getEnv` | `"ENSEMBLE_TAP"` | `NATSConsumerStream` | `when NATS_CONSUMER_ENABLED=true, JetStream must also be enabled; identifiers must be present; durations must be positive; drop threshold must be non-negative` |
-| `NATS_CONSUMER_SUBJECTS` | `getEnv` | `"ensemble.tap.>"` | `NATSConsumerSubjects` | `when NATS_CONSUMER_ENABLED=true, JetStream must also be enabled; identifiers must be present; durations must be positive; drop threshold must be non-negative` |
+| `NATS_CONSUMER_DEDUP_ENABLED` | `getEnvBool` | `true` | `NATSConsumerDedupEnabled` | `-` |
+| `NATS_CONSUMER_DEDUP_MAX_RECORDS` | `getEnvInt` | `100000` | `NATSConsumerDedupMaxRecords` | `-` |
+| `NATS_CONSUMER_DEDUP_STATE_FILE` | `getEnv` | `getEnv("EXECUTION_STORE_FILE", filepath.Join(".cerebro", "executions.db"))` | `NATSConsumerDedupStateFile` | `-` |
+| `NATS_CONSUMER_DEDUP_TTL` | `getEnvDuration` | `24 * time.Hour` | `NATSConsumerDedupTTL` | `-` |
+| `NATS_CONSUMER_DRAIN_TIMEOUT` | `getEnvDuration` | `30 * time.Second` | `NATSConsumerDrainTimeout` | `when NATS_CONSUMER_ENABLED=true, JetStream must also be enabled; identifiers must be present; durations must be positive; drop threshold must be non-negative; dedupe settings must be valid when enabled` |
+| `NATS_CONSUMER_DROP_HEALTH_LOOKBACK` | `getEnvDuration` | `5 * time.Minute` | `NATSConsumerDropHealthLookback` | `when NATS_CONSUMER_ENABLED=true, JetStream must also be enabled; identifiers must be present; durations must be positive; drop threshold must be non-negative; dedupe settings must be valid when enabled` |
+| `NATS_CONSUMER_DROP_HEALTH_THRESHOLD` | `getEnvInt` | `1` | `NATSConsumerDropHealthThreshold` | `when NATS_CONSUMER_ENABLED=true, JetStream must also be enabled; identifiers must be present; durations must be positive; drop threshold must be non-negative; dedupe settings must be valid when enabled` |
+| `NATS_CONSUMER_DURABLE` | `getEnv` | `"cerebro_graph_builder"` | `NATSConsumerDurable` | `when NATS_CONSUMER_ENABLED=true, JetStream must also be enabled; identifiers must be present; durations must be positive; drop threshold must be non-negative; dedupe settings must be valid when enabled` |
+| `NATS_CONSUMER_ENABLED` | `getEnvBool` | `false` | `NATSConsumerEnabled` | `when NATS_CONSUMER_ENABLED=true, JetStream must also be enabled; identifiers must be present; durations must be positive; drop threshold must be non-negative; dedupe settings must be valid when enabled` |
+| `NATS_CONSUMER_FETCH_TIMEOUT` | `getEnvDuration` | `2 * time.Second` | `NATSConsumerFetchTimeout` | `when NATS_CONSUMER_ENABLED=true, JetStream must also be enabled; identifiers must be present; durations must be positive; drop threshold must be non-negative; dedupe settings must be valid when enabled` |
+| `NATS_CONSUMER_GRAPH_STALENESS_THRESHOLD` | `getEnvDuration` | `15 * time.Minute` | `NATSConsumerGraphStalenessThreshold` | `when NATS_CONSUMER_ENABLED=true, JetStream must also be enabled; identifiers must be present; durations must be positive; drop threshold must be non-negative; dedupe settings must be valid when enabled` |
+| `NATS_CONSUMER_IN_PROGRESS_INTERVAL` | `getEnvDuration` | `15 * time.Second` | `NATSConsumerInProgressInterval` | `when NATS_CONSUMER_ENABLED=true, JetStream must also be enabled; identifiers must be present; durations must be positive; drop threshold must be non-negative; dedupe settings must be valid when enabled` |
+| `NATS_CONSUMER_STREAM` | `getEnv` | `"ENSEMBLE_TAP"` | `NATSConsumerStream` | `when NATS_CONSUMER_ENABLED=true, JetStream must also be enabled; identifiers must be present; durations must be positive; drop threshold must be non-negative; dedupe settings must be valid when enabled` |
+| `NATS_CONSUMER_SUBJECTS` | `getEnv` | `"ensemble.tap.>"` | `NATSConsumerSubjects` | `when NATS_CONSUMER_ENABLED=true, JetStream must also be enabled; identifiers must be present; durations must be positive; drop threshold must be non-negative; dedupe settings must be valid when enabled` |
 | `NATS_JETSTREAM_AUTH_MODE` | `getEnv` | `"none"` | `NATSJetStreamAuthMode` | `-` |
 | `NATS_JETSTREAM_CONNECT_TIMEOUT` | `getEnvDuration` | `5 * time.Second` | `NATSJetStreamConnectTimeout` | `when NATS_JETSTREAM_ENABLED=true, required values must be present and timing/retention values must be positive` |
-| `NATS_JETSTREAM_ENABLED` | `getEnvBool` | `false` | `NATSJetStreamEnabled` | `when NATS_CONSUMER_ENABLED=true, JetStream must also be enabled; identifiers must be present; durations must be positive; drop threshold must be non-negative`, `when NATS_JETSTREAM_ENABLED=true, required values must be present and timing/retention values must be positive` |
+| `NATS_JETSTREAM_ENABLED` | `getEnvBool` | `false` | `NATSJetStreamEnabled` | `when NATS_CONSUMER_ENABLED=true, JetStream must also be enabled; identifiers must be present; durations must be positive; drop threshold must be non-negative; dedupe settings must be valid when enabled`, `when NATS_JETSTREAM_ENABLED=true, required values must be present and timing/retention values must be positive` |
 | `NATS_JETSTREAM_FLUSH_INTERVAL` | `getEnvDuration` | `10 * time.Second` | `NATSJetStreamFlushInterval` | `when NATS_JETSTREAM_ENABLED=true, required values must be present and timing/retention values must be positive` |
 | `NATS_JETSTREAM_NKEY_SEED` | `getEnv` | `""` | `NATSJetStreamNKeySeed` | `-` |
 | `NATS_JETSTREAM_OUTBOX_CRITICAL_AGE` | `getEnvDuration` | `6 * time.Hour` | `NATSJetStreamOutboxCriticalAge` | `-` |

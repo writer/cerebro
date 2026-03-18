@@ -21,8 +21,9 @@ type Store interface {
 }
 
 type SQLiteStore struct {
-	store     *executionstore.SQLiteStore
+	store     executionstore.Store
 	namespace string
+	ownsStore bool
 }
 
 func NewSQLiteStore(path, namespace string) (*SQLiteStore, error) {
@@ -30,15 +31,21 @@ func NewSQLiteStore(path, namespace string) (*SQLiteStore, error) {
 	if err != nil {
 		return nil, err
 	}
+	sqliteStore := NewSQLiteStoreWithExecutionStore(store, namespace)
+	sqliteStore.ownsStore = true
+	return sqliteStore, nil
+}
+
+func NewSQLiteStoreWithExecutionStore(store executionstore.Store, namespace string) *SQLiteStore {
 	namespace = strings.TrimSpace(namespace)
 	if namespace == "" {
 		namespace = DefaultNamespace
 	}
-	return &SQLiteStore{store: store, namespace: namespace}, nil
+	return &SQLiteStore{store: store, namespace: namespace}
 }
 
 func (s *SQLiteStore) Close() error {
-	if s == nil || s.store == nil {
+	if s == nil || s.store == nil || !s.ownsStore {
 		return nil
 	}
 	return s.store.Close()
