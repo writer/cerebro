@@ -155,19 +155,20 @@ type ContainerEvent struct {
 
 // RuntimeFinding represents a detected threat
 type RuntimeFinding struct {
-	ID           string            `json:"id"`
-	RuleID       string            `json:"rule_id"`
-	RuleName     string            `json:"rule_name"`
-	Category     DetectionCategory `json:"category"`
-	Severity     string            `json:"severity"`
-	ResourceID   string            `json:"resource_id"`
-	ResourceType string            `json:"resource_type"`
-	Description  string            `json:"description"`
-	Event        *RuntimeEvent     `json:"event"`
-	MITRE        []string          `json:"mitre_attack"`
-	Remediation  string            `json:"remediation"`
-	Suppressed   bool              `json:"suppressed"`
-	Timestamp    time.Time         `json:"timestamp"`
+	ID           string              `json:"id"`
+	RuleID       string              `json:"rule_id"`
+	RuleName     string              `json:"rule_name"`
+	Category     DetectionCategory   `json:"category"`
+	Severity     string              `json:"severity"`
+	ResourceID   string              `json:"resource_id"`
+	ResourceType string              `json:"resource_type"`
+	Description  string              `json:"description"`
+	Event        *RuntimeEvent       `json:"event"`
+	Observation  *RuntimeObservation `json:"observation,omitempty"`
+	MITRE        []string            `json:"mitre_attack"`
+	Remediation  string              `json:"remediation"`
+	Suppressed   bool                `json:"suppressed"`
+	Timestamp    time.Time           `json:"timestamp"`
 }
 
 func NewDetectionEngine() *DetectionEngine {
@@ -473,6 +474,22 @@ func (e *DetectionEngine) loadDefaultRules() {
 
 // ProcessEvent evaluates an event against all rules and stores resulting findings
 func (e *DetectionEngine) ProcessEvent(ctx context.Context, event *RuntimeEvent) []RuntimeFinding {
+	return e.process(ctx, event, ObservationFromEvent(event))
+}
+
+// ProcessObservation evaluates a normalized runtime observation against all
+// rules while preserving a legacy event representation for existing consumers.
+func (e *DetectionEngine) ProcessObservation(ctx context.Context, observation *RuntimeObservation) []RuntimeFinding {
+	if observation == nil {
+		return nil
+	}
+	return e.process(ctx, observation.AsRuntimeEvent(), observation)
+}
+
+func (e *DetectionEngine) process(_ context.Context, event *RuntimeEvent, observation *RuntimeObservation) []RuntimeFinding {
+	if event == nil {
+		return nil
+	}
 	var findings []RuntimeFinding
 
 	for _, rule := range e.rules {
@@ -491,6 +508,7 @@ func (e *DetectionEngine) ProcessEvent(ctx context.Context, event *RuntimeEvent)
 				ResourceType: event.ResourceType,
 				Description:  rule.Description,
 				Event:        event,
+				Observation:  observation,
 				MITRE:        rule.MITRE,
 				Remediation:  getRemediation(rule),
 				Suppressed:   e.suppressions[rule.ID],

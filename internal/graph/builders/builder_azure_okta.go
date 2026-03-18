@@ -123,4 +123,64 @@ func (b *Builder) buildOktaNodes(ctx context.Context) {
 	}
 
 	b.runNodeQueries(ctx, queries)
+	b.enrichOktaApplicationGrantSignals(ctx)
+}
+
+func (b *Builder) enrichOktaApplicationGrantSignals(ctx context.Context) {
+	rows, err := b.queryIfExists(ctx, "okta_app_grants", `
+		SELECT app_id, source, user_id, status, created, last_updated
+		FROM okta_app_grants
+		WHERE app_id IS NOT NULL
+	`)
+	if err != nil {
+		b.logger.Debug("okta app grant monitoring unavailable", "error", err)
+		return
+	}
+
+	type appGrantSummary struct {
+		activeGrantCount    int
+		adminGrantCount     int
+		principalGrantCount int
+		lastGrantUpdatedAt  string
+	}
+
+	summaries := make(map[string]*appGrantSummary)
+	for _, row := range rows.Rows {
+		appID := toString(row["app_id"])
+		if appID == "" {
+			continue
+		}
+		status := strings.TrimSpace(toString(row["status"]))
+		if status != "" && !strings.EqualFold(status, "ACTIVE") {
+			continue
+		}
+		summary := summaries[appID]
+		if summary == nil {
+			summary = &appGrantSummary{}
+			summaries[appID] = summary
+		}
+		summary.activeGrantCount++
+		userID := strings.TrimSpace(toString(row["user_id"]))
+		source := strings.TrimSpace(toString(row["source"]))
+		if userID == "" && strings.EqualFold(source, "ADMIN") {
+			summary.adminGrantCount++
+		} else {
+			summary.principalGrantCount++
+		}
+		summary.lastGrantUpdatedAt = maxRFC3339String(summary.lastGrantUpdatedAt, strings.TrimSpace(firstNonEmpty(toString(row["last_updated"]), toString(row["created"]))))
+	}
+
+	for appID, summary := range summaries {
+		node, ok := b.graph.GetNode(appID)
+		if !ok || node == nil || node.Provider != "okta" || node.Kind != NodeKindApplication {
+			continue
+		}
+		if node.Properties == nil {
+			node.Properties = make(map[string]any)
+		}
+		node.Properties["active_grant_count"] = summary.activeGrantCount
+		node.Properties["admin_grant_count"] = summary.adminGrantCount
+		node.Properties["principal_grant_count"] = summary.principalGrantCount
+		node.Properties["last_grant_updated_at"] = summary.lastGrantUpdatedAt
+	}
 }
