@@ -1,7 +1,10 @@
 package api
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -107,6 +110,8 @@ func (s *Server) ingestRuntimeEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	dedupeStore := s.runtimeIngestStore()
+
 	var event runtime.RuntimeEvent
 	if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
 		s.error(w, http.StatusBadRequest, "invalid event")
@@ -124,6 +129,10 @@ func (s *Server) ingestRuntimeEvent(w http.ResponseWriter, r *http.Request) {
 		session = nil
 	}
 
+	payloadHash, hashErr := runtimeSourceEventPayloadHash(&event)
+	if hashErr != nil {
+		s.warnRuntimeIngestPersistence("hash_source_event", hashErr, "source", "runtime_event", "event_id", event.ID, "run_id", session.runID())
+	}
 	observation, err := runtime.ObservationFromEvent(&event)
 	if err != nil {
 		s.warnInvalidRuntimeObservation("runtime_event", err, "event_id", event.ID, "resource_id", event.ResourceID, "resource_type", event.ResourceType)
@@ -135,6 +144,47 @@ func (s *Server) ingestRuntimeEvent(w http.ResponseWriter, r *http.Request) {
 		}
 		s.error(w, http.StatusBadRequest, "invalid event")
 		return
+	}
+	if dedupeStore != nil && event.ID != "" && payloadHash != "" {
+		duplicate, dedupeErr := dedupeStore.ClaimSourceEventProcessing(r.Context(), runtimeSourceEventSource(&event, "runtime_event"), event.ID, payloadHash, event.Timestamp)
+		if dedupeErr != nil {
+			s.warnRuntimeIngestPersistence("check_duplicate_source_event", dedupeErr, "source", "runtime_event", "event_id", event.ID, "run_id", session.runID())
+			if rejectErr := session.recordRejectedObservation(r.Context(), &event, 1, fmt.Errorf("dedupe check: %w", dedupeErr)); rejectErr != nil {
+				s.warnRuntimeIngestPersistence("record_rejected_observation", rejectErr, "source", "runtime_event", "event_id", event.ID, "run_id", session.runID())
+			}
+			session.fail(r.Context(), "dedupe", dedupeErr)
+			s.error(w, http.StatusServiceUnavailable, "runtime ingest dedupe unavailable")
+			return
+		} else if duplicate {
+			if err := session.recordDuplicateObservation(r.Context(), &event, 1); err != nil {
+				s.warnRuntimeIngestPersistence("record_duplicate_observation", err, "source", "runtime_event", "event_id", event.ID, "run_id", session.runID())
+			}
+			if session != nil {
+				if err := session.complete(r.Context(), runtime.IngestCheckpoint{
+					Cursor: event.ID,
+					Metadata: map[string]string{
+						"processed_events": "0",
+						"duplicate_events": "1",
+						"finding_count":    "0",
+					},
+				}); err != nil {
+					session.fail(r.Context(), "complete", err)
+					s.warnRuntimeIngestPersistence("complete", err, "source", "runtime_event", "event_id", event.ID, "run_id", session.runID())
+					session = nil
+				}
+			}
+
+			response := map[string]interface{}{
+				"processed": false,
+				"duplicate": true,
+				"findings":  0,
+			}
+			if session != nil && session.run != nil {
+				response["run_id"] = session.run.ID
+			}
+			s.json(w, http.StatusOK, response)
+			return
+		}
 	}
 	findings := s.app.RuntimeDetect.ProcessNormalizedObservation(r.Context(), observation)
 	if session != nil {
@@ -151,11 +201,24 @@ func (s *Server) ingestRuntimeEvent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if dedupeStore != nil && event.ID != "" && payloadHash != "" {
+		if err := dedupeStore.MarkSourceEventProcessed(r.Context(), runtimeSourceEventSource(&event, "runtime_event"), event.ID, payloadHash, event.Timestamp); err != nil {
+			s.warnRuntimeIngestPersistence("mark_source_event_processed", err, "source", "runtime_event", "event_id", event.ID, "run_id", session.runID())
+			if rejectErr := session.recordRejectedObservation(r.Context(), &event, 1, fmt.Errorf("mark processed: %w", err)); rejectErr != nil {
+				s.warnRuntimeIngestPersistence("record_rejected_observation", rejectErr, "source", "runtime_event", "event_id", event.ID, "run_id", session.runID())
+			}
+			session.fail(r.Context(), "dedupe", err)
+			s.error(w, http.StatusServiceUnavailable, "runtime ingest dedupe unavailable")
+			return
+		}
+	}
+
 	if session != nil {
 		if err := session.complete(r.Context(), runtime.IngestCheckpoint{
 			Cursor: observation.ID,
 			Metadata: map[string]string{
 				"processed_events": "1",
+				"duplicate_events": "0",
 				"finding_count":    strconv.Itoa(len(findings)),
 			},
 		}); err != nil {
@@ -180,6 +243,7 @@ func (s *Server) ingestRuntimeEvent(w http.ResponseWriter, r *http.Request) {
 
 	response := map[string]interface{}{
 		"processed": true,
+		"duplicate": false,
 		"findings":  len(findings),
 	}
 	if session != nil && session.run != nil {
@@ -238,6 +302,8 @@ func (s *Server) disableResponsePolicy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) ingestTelemetry(w http.ResponseWriter, r *http.Request) {
+	dedupeStore := s.runtimeIngestStore()
+
 	var payload struct {
 		Events       []runtime.RuntimeEvent `json:"events"`
 		Node         string                 `json:"node"`
@@ -264,8 +330,13 @@ func (s *Server) ingestTelemetry(w http.ResponseWriter, r *http.Request) {
 	totalFindings := 0
 	processedEvents := 0
 	rejectedEvents := 0
+	duplicateEvents := 0
 	if s.app.RuntimeDetect != nil {
 		for idx, event := range payload.Events {
+			payloadHash, hashErr := runtimeSourceEventPayloadHash(&event)
+			if hashErr != nil {
+				s.warnRuntimeIngestPersistence("hash_source_event", hashErr, "source", "telemetry", "event_id", event.ID, "index", idx+1, "run_id", session.runID())
+			}
 			observation, err := runtime.ObservationFromEvent(&event)
 			if err != nil {
 				rejectedEvents++
@@ -280,9 +351,27 @@ func (s *Server) ingestTelemetry(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			observation = enrichRuntimeObservation(observation, payload.Cluster, payload.Node, payload.AgentVersion)
+			if dedupeStore != nil && event.ID != "" && payloadHash != "" {
+				duplicate, dedupeErr := dedupeStore.ClaimSourceEventProcessing(r.Context(), runtimeSourceEventSource(&event, "telemetry"), event.ID, payloadHash, event.Timestamp)
+				if dedupeErr != nil {
+					rejectedEvents++
+					s.warnRuntimeIngestPersistence("check_duplicate_source_event", dedupeErr, "source", "telemetry", "event_id", event.ID, "index", idx+1, "run_id", session.runID())
+					if rejectErr := session.recordRejectedObservation(r.Context(), &event, idx+1, fmt.Errorf("dedupe check: %w", dedupeErr)); rejectErr != nil {
+						session.fail(r.Context(), "dedupe", dedupeErr)
+						s.warnRuntimeIngestPersistence("record_rejected_observation", rejectErr, "source", "telemetry", "event_id", event.ID, "index", idx+1, "run_id", session.runID())
+						session = nil
+					}
+					continue
+				} else if duplicate {
+					duplicateEvents++
+					if err := session.recordDuplicateObservation(r.Context(), &event, idx+1); err != nil {
+						s.warnRuntimeIngestPersistence("record_duplicate_observation", err, "source", "telemetry", "event_id", event.ID, "index", idx+1, "run_id", session.runID())
+					}
+					continue
+				}
+			}
 			findings := s.app.RuntimeDetect.ProcessNormalizedObservation(r.Context(), observation)
 			totalFindings += len(findings)
-			processedEvents++
 			if session != nil {
 				if err := session.recordObservation(r.Context(), observation, len(findings), idx+1); err != nil {
 					session.fail(r.Context(), "detect", err)
@@ -296,6 +385,19 @@ func (s *Server) ingestTelemetry(w http.ResponseWriter, r *http.Request) {
 					_, _ = s.app.RuntimeRespond.ProcessFinding(r.Context(), &f)
 				}
 			}
+			if dedupeStore != nil && event.ID != "" && payloadHash != "" {
+				if err := dedupeStore.MarkSourceEventProcessed(r.Context(), runtimeSourceEventSource(&event, "telemetry"), event.ID, payloadHash, event.Timestamp); err != nil {
+					rejectedEvents++
+					s.warnRuntimeIngestPersistence("mark_source_event_processed", err, "source", "telemetry", "event_id", event.ID, "index", idx+1, "run_id", session.runID())
+					if rejectErr := session.recordRejectedObservation(r.Context(), &event, idx+1, fmt.Errorf("mark processed: %w", err)); rejectErr != nil {
+						session.fail(r.Context(), "dedupe", err)
+						s.warnRuntimeIngestPersistence("record_rejected_observation", rejectErr, "source", "telemetry", "event_id", event.ID, "index", idx+1, "run_id", session.runID())
+						session = nil
+					}
+					continue
+				}
+			}
+			processedEvents++
 		}
 	}
 
@@ -309,6 +411,7 @@ func (s *Server) ingestTelemetry(w http.ResponseWriter, r *http.Request) {
 			Metadata: map[string]string{
 				"processed_events": strconv.Itoa(processedEvents),
 				"rejected_events":  strconv.Itoa(rejectedEvents),
+				"duplicate_events": strconv.Itoa(duplicateEvents),
 				"finding_count":    strconv.Itoa(totalFindings),
 				"cluster":          payload.Cluster,
 				"node":             payload.Node,
@@ -325,6 +428,7 @@ func (s *Server) ingestTelemetry(w http.ResponseWriter, r *http.Request) {
 			"source":           "telemetry",
 			"events_processed": processedEvents,
 			"events_rejected":  rejectedEvents,
+			"events_duplicate": duplicateEvents,
 			"findings":         totalFindings,
 			"node":             payload.Node,
 			"cluster":          payload.Cluster,
@@ -338,9 +442,10 @@ func (s *Server) ingestTelemetry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := map[string]interface{}{
-		"processed": processedEvents,
-		"rejected":  rejectedEvents,
-		"findings":  totalFindings,
+		"processed":  processedEvents,
+		"rejected":   rejectedEvents,
+		"duplicates": duplicateEvents,
+		"findings":   totalFindings,
 	}
 	if session != nil && session.run != nil {
 		response["run_id"] = session.run.ID
@@ -364,4 +469,26 @@ func (s *Server) warnInvalidRuntimeObservation(source string, err error, args ..
 	fields := []any{"source", strings.TrimSpace(source), "error", err}
 	fields = append(fields, args...)
 	s.app.Logger.Warn("runtime observation rejected during normalization", fields...)
+}
+
+func runtimeSourceEventPayloadHash(event *runtime.RuntimeEvent) (string, error) {
+	if event == nil {
+		return "", nil
+	}
+	payload, err := json.Marshal(event)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(payload)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+func runtimeSourceEventSource(event *runtime.RuntimeEvent, fallback string) string {
+	if event == nil {
+		return fallback
+	}
+	if source := strings.TrimSpace(event.Source); source != "" {
+		return source
+	}
+	return strings.TrimSpace(fallback)
 }

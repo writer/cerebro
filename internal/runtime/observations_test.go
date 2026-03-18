@@ -107,6 +107,37 @@ func TestObservationRoundTripPreservesCustomEventType(t *testing.T) {
 	}
 }
 
+func TestObservationRoundTripPreservesExplicitKindWithoutDomain(t *testing.T) {
+	observation, err := NormalizeObservation(&RuntimeObservation{
+		ID:         "obs-dns-1",
+		Kind:       ObservationKindDNSQuery,
+		Source:     "tetragon",
+		ObservedAt: time.Date(2026, 3, 15, 20, 2, 0, 0, time.UTC),
+		Network: &NetworkEvent{
+			Direction: "outbound",
+			Protocol:  "dns",
+			SrcIP:     "10.0.0.5",
+			SrcPort:   41522,
+			DstIP:     "10.96.0.10",
+			DstPort:   53,
+			BytesSent: 88,
+		},
+	})
+	if err != nil {
+		t.Fatalf("NormalizeObservation: %v", err)
+	}
+
+	roundTrip := observation.AsRuntimeEvent()
+	if roundTrip == nil {
+		t.Fatal("expected round-trip event")
+	}
+
+	reconstructed := mustObservationFromEvent(t, roundTrip)
+	if reconstructed.Kind != ObservationKindDNSQuery {
+		t.Fatalf("kind = %s, want %s", reconstructed.Kind, ObservationKindDNSQuery)
+	}
+}
+
 func TestLegacyEventTypeFromObservationNil(t *testing.T) {
 	if got := legacyEventTypeFromObservation(nil); got != "" {
 		t.Fatalf("legacyEventTypeFromObservation(nil) = %q, want empty string", got)
