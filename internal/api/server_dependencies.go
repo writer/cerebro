@@ -40,6 +40,8 @@ var errManagedAPICredentialsUnavailable = errors.New("managed api credentials un
 
 type graphRuntimeService interface {
 	CurrentSecurityGraph() *graph.Graph
+	CurrentSecurityGraphStore() graph.GraphStore
+	CurrentSecurityGraphStoreForTenant(tenantID string) graph.GraphStore
 	GraphBuildSnapshot() app.GraphBuildSnapshot
 	CurrentRetentionStatus() app.RetentionStatus
 	GraphFreshnessStatusSnapshot(now time.Time) app.GraphFreshnessStatus
@@ -189,6 +191,18 @@ func (d serverDependencies) CurrentSecurityGraph() *graph.Graph {
 	return d.SecurityGraph
 }
 
+func (d serverDependencies) CurrentSecurityGraphStore() graph.GraphStore {
+	if d.graphRuntime != nil {
+		if store := d.graphRuntime.CurrentSecurityGraphStore(); store != nil {
+			return store
+		}
+	}
+	if d.SecurityGraph != nil {
+		return d.SecurityGraph
+	}
+	return nil
+}
+
 func (d serverDependencies) CurrentSecurityGraphForTenant(tenantID string) *graph.Graph {
 	tenantID = strings.TrimSpace(tenantID)
 	if tenantID == "" {
@@ -206,6 +220,22 @@ func (d serverDependencies) CurrentSecurityGraphForTenant(tenantID string) *grap
 		return nil
 	}
 	return current.SubgraphForTenant(tenantID)
+}
+
+func (d serverDependencies) CurrentSecurityGraphStoreForTenant(tenantID string) graph.GraphStore {
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		return d.CurrentSecurityGraphStore()
+	}
+	if d.graphRuntime != nil {
+		if store := d.graphRuntime.CurrentSecurityGraphStoreForTenant(tenantID); store != nil {
+			return store
+		}
+	}
+	if scoped := d.CurrentSecurityGraphForTenant(tenantID); scoped != nil {
+		return scoped
+	}
+	return nil
 }
 
 func (d serverDependencies) GraphBuildSnapshot() app.GraphBuildSnapshot {
@@ -329,7 +359,28 @@ func (r *graphRuntimeAdapter) CurrentSecurityGraph() *graph.Graph {
 	return nil
 }
 
+func (r *graphRuntimeAdapter) CurrentSecurityGraphStore() graph.GraphStore {
+	if r == nil {
+		return nil
+	}
+	if r.useLocalGraph() && r.deps != nil && r.deps.SecurityGraph != nil {
+		return r.deps.SecurityGraph
+	}
+	if scoped, ok := r.fallback.(interface {
+		CurrentSecurityGraphStore() graph.GraphStore
+	}); ok {
+		return scoped.CurrentSecurityGraphStore()
+	}
+	return r.CurrentSecurityGraph()
+}
+
 func (r *graphRuntimeAdapter) CurrentSecurityGraphForTenant(tenantID string) *graph.Graph {
+	if r.useLocalGraph() && r.deps != nil {
+		if r.deps.SecurityGraph == nil {
+			return nil
+		}
+		return r.deps.SecurityGraph.SubgraphForTenant(tenantID)
+	}
 	if scoped, ok := r.fallback.(interface {
 		CurrentSecurityGraphForTenant(string) *graph.Graph
 	}); ok {
@@ -340,6 +391,28 @@ func (r *graphRuntimeAdapter) CurrentSecurityGraphForTenant(tenantID string) *gr
 		return nil
 	}
 	return current.SubgraphForTenant(tenantID)
+}
+
+func (r *graphRuntimeAdapter) CurrentSecurityGraphStoreForTenant(tenantID string) graph.GraphStore {
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		return r.CurrentSecurityGraphStore()
+	}
+	if r.useLocalGraph() && r.deps != nil {
+		if r.deps.SecurityGraph == nil {
+			return nil
+		}
+		return r.deps.SecurityGraph.SubgraphForTenant(tenantID)
+	}
+	if scoped, ok := r.fallback.(interface {
+		CurrentSecurityGraphStoreForTenant(string) graph.GraphStore
+	}); ok {
+		return scoped.CurrentSecurityGraphStoreForTenant(tenantID)
+	}
+	if current := r.CurrentSecurityGraphForTenant(tenantID); current != nil {
+		return current
+	}
+	return nil
 }
 
 func (r *graphRuntimeAdapter) GraphBuildSnapshot() app.GraphBuildSnapshot {

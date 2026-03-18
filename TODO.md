@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 195 - Graph Store Abstraction (2026-03-17)
+
+### Review findings
+- [x] Gap: issue `#392` still left app and API graph access hard-wired to raw `*graph.Graph` pointers, so every future Neptune/Spanner slice would have to peel apart direct in-memory reads and writes before a backend seam even existed.
+- [x] Gap: the graph package had no backend-shaped contract for CRUD, snapshot, or traversal parity, which made it hard to prove an external store could match the current in-memory semantics without copying call sites first.
+- [x] Gap: tenant-scoped graph readers had no live store wrapper, so any first abstraction would have gone stale across graph swaps unless callers re-fetched raw pointers manually.
+
+### Execution plan
+- [x] Add a `graph.GraphStore` contract and make the in-memory `*graph.Graph` satisfy it through thin context-aware wrappers over the existing CRUD, snapshot, and traversal primitives.
+- [x] Expose live and tenant-scoped graph-store accessors from the app/runtime layer so future API and app slices can depend on a backend seam that survives graph swaps.
+- [x] Add regression coverage for store CRUD/traversal parity, context cancellation, live-store graph swaps, and API dependency wiring.
+
 ## Deep Review Cycle 194 - Tiered Tenant Graph Storage (2026-03-17)
 
 ### Review findings

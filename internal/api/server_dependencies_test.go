@@ -13,9 +13,16 @@ import (
 
 type stubGraphRuntime struct {
 	freshness app.GraphFreshnessStatus
+	store     graph.GraphStore
 }
 
 func (s stubGraphRuntime) CurrentSecurityGraph() *graph.Graph { return nil }
+
+func (s stubGraphRuntime) CurrentSecurityGraphStore() graph.GraphStore { return s.store }
+
+func (s stubGraphRuntime) CurrentSecurityGraphStoreForTenant(_ string) graph.GraphStore {
+	return s.store
+}
 
 func (s stubGraphRuntime) GraphBuildSnapshot() app.GraphBuildSnapshot {
 	return app.GraphBuildSnapshot{State: app.GraphBuildSuccess}
@@ -81,5 +88,26 @@ func TestNewServerWithDependencies_InitializesRuntimeIngestFromExecutionStore(t 
 	}
 	if got := s.runtimeIngestStore(); got == nil {
 		t.Fatal("expected runtimeIngestStore to return initialized store")
+	}
+}
+
+func TestServerDependenciesCurrentSecurityGraphStoreUsesRuntimeStore(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService})
+
+	deps := serverDependencies{
+		graphRuntime: stubGraphRuntime{store: g},
+	}
+
+	store := deps.CurrentSecurityGraphStore()
+	if store == nil {
+		t.Fatal("expected graph store from runtime")
+	}
+	node, ok, err := store.LookupNode(context.Background(), "service:payments")
+	if err != nil {
+		t.Fatalf("LookupNode() error = %v", err)
+	}
+	if !ok || node == nil || node.ID != "service:payments" {
+		t.Fatalf("LookupNode() = (%#v, %v), want service:payments", node, ok)
 	}
 }
