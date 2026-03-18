@@ -17,6 +17,18 @@ Status: executed end-to-end via PR workflow
 - [x] Preserve the live-graph fast path so the endpoint avoids snapshot work when the graph is already resident.
 - [x] Add store-only and live-graph-preference regressions, then rerun focused API tests, lint, and changed-file validation before opening the PR.
 
+## Deep Review Cycle 205 - Graph Store Platform Knowledge Paths (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left platform knowledge reads bound to `CurrentSecurityGraphForTenant(...)`, so claims, evidence, observations, claim groups, timelines, explanations, and proofs returned `503` whenever the runtime exposed only tenant-scoped `GraphStore` readers.
+- [x] Gap: the server already had tenant-aware snapshot helpers for other read-only graph surfaces, but the platform-knowledge service bypassed them and therefore diverged from the rest of the graph-store migration.
+- [x] Gap: there was no regression proving platform knowledge read handlers still work when the API is constructed with only a graph store and no live in-memory graph pointer.
+
+### Execution plan
+- [x] Teach `serverPlatformKnowledgeService.tenantGraph(...)` to fall back from the live tenant graph to `CurrentSecurityGraphStoreForTenant(...).Snapshot()` and build a read-only graph view from that snapshot.
+- [x] Leave the adjudication write path on the writable live graph so the slice stays scoped to read-path migration only.
+- [x] Add store-only platform knowledge handler regressions, then rerun API tests, lint, and changed-file validation before opening the PR.
+
 ## Deep Review Cycle 203 - Graph Store Risk Engine Feedback Paths (2026-03-18)
 
 ### Review findings

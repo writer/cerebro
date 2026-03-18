@@ -195,11 +195,23 @@ func (s serverPlatformKnowledgeService) tenantGraph(ctx context.Context) (*graph
 	if s.deps == nil {
 		return nil, errPlatformKnowledgeUnavailable
 	}
-	g := s.deps.CurrentSecurityGraphForTenant(currentTenantScopeID(ctx))
-	if g == nil {
+	tenantID := currentTenantScopeID(ctx)
+	if g := s.deps.CurrentSecurityGraphForTenant(tenantID); g != nil {
+		return g, nil
+	}
+	store := s.deps.CurrentSecurityGraphStoreForTenant(tenantID)
+	if store == nil {
 		return nil, errPlatformKnowledgeUnavailable
 	}
-	return g, nil
+	snapshot, err := store.Snapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	view := graph.GraphViewFromSnapshot(snapshot)
+	if view == nil {
+		return nil, errPlatformKnowledgeUnavailable
+	}
+	return view, nil
 }
 
 func (s serverPlatformKnowledgeService) writableGraph() (*graph.Graph, error) {
