@@ -541,6 +541,7 @@ func (c *Consumer) handleDecodedMessage(decoded consumerDecodedMessage) consumer
 	defer stopHeartbeat()
 
 	handlerCtx, handlerSpan := c.startTracingSpan(ingestCtx, "cerebro.event.handle", c.consumerEventAttributes(message, evt)...)
+	handlerCtx = telemetry.ContextWithAttributes(handlerCtx, c.consumerEventAttributes(message, evt)...)
 	if err := c.handler(handlerCtx, evt); err != nil {
 		consumerRecordSpanError(handlerSpan, err)
 		handlerSpan.End()

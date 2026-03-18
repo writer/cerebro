@@ -67,6 +67,18 @@ Status: executed end-to-end via PR workflow
 - [x] Add TDD coverage for happy-path trace propagation and failure-path `nak` tracing.
 - [x] Re-run focused event tests plus lint and changed-file validation.
 
+## Deep Review Cycle 195 - App Graph And Detection Tracing (2026-03-17)
+
+### Review findings
+- [x] Gap: issue `#360` still lost event identity once control moved from the consumer handler into app-layer graph mutation, so downstream graph spans could not be tied back to the original event or tenant.
+- [x] Gap: the live graph mutation path rebuilt indexes as an opaque side effect, which meant trace data could not distinguish mutation cost from index rebuild cost.
+- [x] Gap: runtime detections still evaluated rules without emitting a dedicated span, so end-to-end traces stopped before the detection phase that actually produced findings.
+
+### Execution plan
+- [x] Add a telemetry context helper that carries event attributes from the consumer handler into downstream child spans without widening every handler signature.
+- [x] Emit `cerebro.graph.mutate` and nested `cerebro.graph.index_update` spans from `MutateSecurityGraphMaybe` with before/after graph counts and mutation totals.
+- [x] Emit `cerebro.detection.evaluate` spans from the runtime detection engine and add TDD coverage for consumer-to-child attribute propagation plus graph/detection tracing.
+
 ## Deep Review Cycle 194 - Typed Observation Property Storage (2026-03-17)
 
 ### Review findings

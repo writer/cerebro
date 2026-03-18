@@ -8,7 +8,6 @@ import (
 	"github.com/evalops/cerebro/internal/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/trace"
 )
 
 func (a *App) MutateSecurityGraph(ctx context.Context, mutate func(*graph.Graph) error) (*graph.Graph, error) {
@@ -36,9 +35,6 @@ func (a *App) MutateSecurityGraphMaybe(ctx context.Context, mutate func(*graph.G
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	ctx, span := telemetry.Tracer("cerebro.graph").Start(ctx, "cerebro.graph.mutate")
-	defer span.End()
-
 	a.graphUpdateMu.Lock()
 	defer a.graphUpdateMu.Unlock()
 
@@ -49,6 +45,11 @@ func (a *App) MutateSecurityGraphMaybe(ctx context.Context, mutate func(*graph.G
 	}
 	beforeNodeCount := current.NodeCount()
 	beforeEdgeCount := current.EdgeCount()
+	ctx, span := telemetry.StartSpan(ctx, "cerebro.graph", "cerebro.graph.mutate",
+		attribute.Int("cerebro.graph.before_node_count", beforeNodeCount),
+		attribute.Int("cerebro.graph.before_edge_count", beforeEdgeCount),
+	)
+	defer span.End()
 
 	candidate := current.Clone()
 	a.configureGraphRuntimeBehavior(candidate)
@@ -79,13 +80,15 @@ func (a *App) MutateSecurityGraphMaybe(ctx context.Context, mutate func(*graph.G
 		return nil, err
 	}
 
-	_, indexSpan := telemetry.Tracer("cerebro.graph").Start(ctx, "cerebro.graph.index_update",
-		trace.WithAttributes(
-			attribute.Int("cerebro.graph.before_node_count", beforeNodeCount),
-			attribute.Int("cerebro.graph.before_edge_count", beforeEdgeCount),
-		),
+	_, indexSpan := telemetry.StartSpan(ctx, "cerebro.graph", "cerebro.graph.index_update",
+		attribute.Int("cerebro.graph.before_node_count", beforeNodeCount),
+		attribute.Int("cerebro.graph.before_edge_count", beforeEdgeCount),
 	)
 	candidate.BuildIndex()
+	indexSpan.SetAttributes(
+		attribute.Int("cerebro.graph.after_node_count", candidate.NodeCount()),
+		attribute.Int("cerebro.graph.after_edge_count", candidate.EdgeCount()),
+	)
 	indexSpan.End()
 	meta := current.Metadata()
 	meta.NodeCount = candidate.NodeCount()

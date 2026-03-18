@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/evalops/cerebro/internal/metrics"
+	"github.com/evalops/cerebro/internal/telemetry"
 	"github.com/nats-io/nats.go"
 	dto "github.com/prometheus/client_model/go"
 	"go.opentelemetry.io/otel"
@@ -1540,6 +1541,71 @@ func TestConsumerHandleMessageTracesNakOnHandlerFailure(t *testing.T) {
 	ackSpan := testConsumerSpanByName(t, spans, "cerebro.event.ack")
 	if got, ok := testConsumerSpanAttribute(ackSpan, "cerebro.event.ack_operation"); !ok || got != "nak" {
 		t.Fatalf("ack span operation = %q, ok=%t", got, ok)
+	}
+}
+
+func TestConsumerHandleMessagePropagatesEventAttributesIntoHandlerChildSpans(t *testing.T) {
+	exporter := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+	prevProvider := otel.GetTracerProvider()
+	prevPropagator := otel.GetTextMapPropagator()
+	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(traceContextPropagator())
+	t.Cleanup(func() {
+		otel.SetTracerProvider(prevProvider)
+		otel.SetTextMapPropagator(prevPropagator)
+		_ = tp.Shutdown(t.Context())
+	})
+
+	consumer := &Consumer{
+		config: ConsumerConfig{
+			Stream:  "ENSEMBLE_TAP_TEST",
+			Durable: "cerebro_trace_test",
+		},
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		handler: func(ctx context.Context, evt CloudEvent) error {
+			_, span := telemetry.StartSpan(ctx, "cerebro.test", "cerebro.test.child")
+			span.End()
+			return nil
+		},
+	}
+
+	event := CloudEvent{
+		SpecVersion: cloudEventSpecVersion,
+		ID:          "evt-trace-attrs-1",
+		Source:      "cerebro.events.test",
+		Type:        "tap.test",
+		Subject:     "workload-a",
+		Time:        time.Now().UTC(),
+		DataSchema:  "urn:cerebro:events:test",
+		TenantID:    "tenant-a",
+	}
+	payload, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("marshal cloud event: %v", err)
+	}
+
+	result := consumer.handleMessage(context.Background(), "ensemble.tap.trace.event", payload, func() error {
+		return nil
+	}, func() error {
+		t.Fatal("expected message to be acked, not nacked")
+		return nil
+	}, func() error { return nil })
+	if !result.Processed {
+		t.Fatal("expected message to be processed successfully")
+	}
+
+	childSpan := testConsumerSpanByName(t, exporter.GetSpans(), "cerebro.test.child")
+	for key, want := range map[string]string{
+		"cerebro.event.id":      "evt-trace-attrs-1",
+		"cerebro.event.source":  "cerebro.events.test",
+		"cerebro.event.type":    "tap.test",
+		"cerebro.event.subject": "workload-a",
+		"cerebro.tenant_id":     "tenant-a",
+	} {
+		if got, ok := testConsumerSpanAttribute(childSpan, key); !ok || got != want {
+			t.Fatalf("child span attribute %s = %q, ok=%t, want %q", key, got, ok, want)
+		}
 	}
 }
 

@@ -31,7 +31,6 @@ import (
 
 	"github.com/evalops/cerebro/internal/telemetry"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
 
 // DetectionEngine is the core runtime threat detection component. It maintains
@@ -534,8 +533,8 @@ func (e *DetectionEngine) process(ctx context.Context, event *RuntimeEvent, obse
 		ctx = context.Background()
 	}
 	candidateRules := e.candidateRulesForEvent(event)
-	_, span := telemetry.Tracer("cerebro.runtime").Start(ctx, "cerebro.detection.evaluate",
-		trace.WithAttributes(detectionSpanAttributes(event, observation, len(candidateRules))...),
+	_, span := telemetry.StartSpan(ctx, "cerebro.runtime", "cerebro.detection.evaluate",
+		detectionSpanAttributes(event, observation, len(candidateRules))...,
 	)
 	defer span.End()
 
