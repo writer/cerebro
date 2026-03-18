@@ -324,6 +324,10 @@ type Config struct {
 	NATSConsumerInProgressInterval      time.Duration
 	NATSConsumerDrainTimeout            time.Duration
 	NATSConsumerDeadLetterPath          string
+	NATSConsumerDedupEnabled            bool
+	NATSConsumerDedupStateFile          string
+	NATSConsumerDedupTTL                time.Duration
+	NATSConsumerDedupMaxRecords         int
 	NATSConsumerDropHealthLookback      time.Duration
 	NATSConsumerDropHealthThreshold     int
 	NATSConsumerGraphStalenessThreshold time.Duration
@@ -440,6 +444,9 @@ type Config struct {
 	GraphCrossTenantReplayTTL           time.Duration
 	GraphCrossTenantMinTenants          int
 	GraphCrossTenantMinSupport          int
+	GraphSnapshotPath                   string
+	GraphSnapshotMaxRetained            int
+	GraphSnapshotReplicaURI             string
 	GraphSchemaValidationMode           string
 	GraphEventMapperValidationMode      string
 	GraphEventMapperDeadLetterPath      string
@@ -679,6 +686,10 @@ func LoadConfig() *Config {
 			NATSConsumerInProgressInterval:      getEnvDuration("NATS_CONSUMER_IN_PROGRESS_INTERVAL", 15*time.Second),
 			NATSConsumerDrainTimeout:            getEnvDuration("NATS_CONSUMER_DRAIN_TIMEOUT", 30*time.Second),
 			NATSConsumerDeadLetterPath:          getEnv("NATS_CONSUMER_DEAD_LETTER_PATH", filepath.Join(findings.DefaultFilePath(), "nats-consumer.dlq.jsonl")),
+			NATSConsumerDedupEnabled:            getEnvBool("NATS_CONSUMER_DEDUP_ENABLED", true),
+			NATSConsumerDedupStateFile:          getEnv("NATS_CONSUMER_DEDUP_STATE_FILE", getEnv("EXECUTION_STORE_FILE", filepath.Join(".cerebro", "executions.db"))),
+			NATSConsumerDedupTTL:                getEnvDuration("NATS_CONSUMER_DEDUP_TTL", 24*time.Hour),
+			NATSConsumerDedupMaxRecords:         getEnvInt("NATS_CONSUMER_DEDUP_MAX_RECORDS", 100000),
 			NATSConsumerDropHealthLookback:      getEnvDuration("NATS_CONSUMER_DROP_HEALTH_LOOKBACK", 5*time.Minute),
 			NATSConsumerDropHealthThreshold:     getEnvInt("NATS_CONSUMER_DROP_HEALTH_THRESHOLD", 1),
 			NATSConsumerGraphStalenessThreshold: getEnvDuration("NATS_CONSUMER_GRAPH_STALENESS_THRESHOLD", 15*time.Minute),
@@ -769,6 +780,9 @@ func LoadConfig() *Config {
 			GraphCrossTenantReplayTTL:           getEnvDuration("GRAPH_CROSS_TENANT_REPLAY_TTL", 24*time.Hour),
 			GraphCrossTenantMinTenants:          getEnvInt("GRAPH_CROSS_TENANT_MIN_TENANTS", 2),
 			GraphCrossTenantMinSupport:          getEnvInt("GRAPH_CROSS_TENANT_MIN_SUPPORT", 2),
+			GraphSnapshotPath:                   getEnv("GRAPH_SNAPSHOT_PATH", filepath.Join(".cerebro", "graph-snapshots")),
+			GraphSnapshotMaxRetained:            getEnvInt("GRAPH_SNAPSHOT_MAX_RETAINED", 10),
+			GraphSnapshotReplicaURI:             getEnv("GRAPH_SNAPSHOT_REPLICA_URI", ""),
 			GraphSchemaValidationMode:           getEnv("GRAPH_SCHEMA_VALIDATION_MODE", "warn"),
 			GraphEventMapperValidationMode:      getEnv("GRAPH_EVENT_MAPPER_VALIDATION_MODE", "enforce"),
 			GraphEventMapperDeadLetterPath:      getEnv("GRAPH_EVENT_MAPPER_DEAD_LETTER_PATH", filepath.Join(findings.DefaultFilePath(), "graph-event-mapper.dlq.jsonl")),

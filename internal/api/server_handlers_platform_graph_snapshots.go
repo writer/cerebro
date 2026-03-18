@@ -280,6 +280,9 @@ func (s *Server) platformGraphSnapshotDiffByID(diffID string) (*graph.GraphSnaps
 
 func (s *Server) platformGraphDiffStore() *graph.GraphSnapshotDiffStore {
 	snapshotPath := strings.TrimSpace(os.Getenv("GRAPH_SNAPSHOT_PATH"))
+	if s != nil && s.app != nil && s.app.Config != nil && strings.TrimSpace(s.app.Config.GraphSnapshotPath) != "" {
+		snapshotPath = strings.TrimSpace(s.app.Config.GraphSnapshotPath)
+	}
 	if snapshotPath == "" {
 		snapshotPath = filepath.Join(".cerebro", "graph-snapshots")
 	}
@@ -432,12 +435,31 @@ func (s *Server) platformGraphSnapshotDiffWithSnapshots(fromSnapshotID, toSnapsh
 	return record, snapshots, 0, nil
 }
 
-func (s *Server) platformGraphSnapshotStore() *graph.SnapshotStore {
+func (s *Server) platformGraphSnapshotStore() *graph.GraphPersistenceStore {
+	if s != nil && s.app != nil && s.app.GraphSnapshots != nil {
+		return s.app.GraphSnapshots
+	}
 	snapshotPath := strings.TrimSpace(os.Getenv("GRAPH_SNAPSHOT_PATH"))
+	maxSnapshots := 10
+	if s != nil && s.app != nil && s.app.Config != nil {
+		if configured := strings.TrimSpace(s.app.Config.GraphSnapshotPath); configured != "" {
+			snapshotPath = configured
+		}
+		if s.app.Config.GraphSnapshotMaxRetained > 0 {
+			maxSnapshots = s.app.Config.GraphSnapshotMaxRetained
+		}
+	}
 	if snapshotPath == "" {
 		snapshotPath = filepath.Join(".cerebro", "graph-snapshots")
 	}
-	return graph.NewSnapshotStore(snapshotPath, 10)
+	store, err := graph.NewGraphPersistenceStore(graph.GraphPersistenceOptions{
+		LocalPath:    snapshotPath,
+		MaxSnapshots: maxSnapshots,
+	})
+	if err != nil {
+		return nil
+	}
+	return store
 }
 
 func (s *Server) platformGraphSnapshotRecords() map[string]*graph.GraphSnapshotRecord {
@@ -470,6 +492,27 @@ func (s *Server) platformGraphSnapshotRecords() map[string]*graph.GraphSnapshotR
 }
 
 func (s *Server) platformReportRunSnapshotMap() map[string]*reports.ReportRun {
+	if s.platformReportStore != nil {
+		runs, err := s.platformReportStore.ListRuns("")
+		if err == nil {
+			records := make(map[string]*reports.ReportRun, len(runs))
+			for _, run := range runs {
+				if run == nil || strings.TrimSpace(run.ID) == "" {
+					continue
+				}
+				records[run.ID] = reports.CloneReportRun(run)
+			}
+			s.platformReportRunMu.RLock()
+			for id, run := range s.platformReportRuns {
+				if run == nil {
+					continue
+				}
+				records[id] = reports.CloneReportRun(run)
+			}
+			s.platformReportRunMu.RUnlock()
+			return records
+		}
+	}
 	s.platformReportRunMu.RLock()
 	defer s.platformReportRunMu.RUnlock()
 	return s.clonePlatformReportRunsLocked()

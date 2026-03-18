@@ -380,6 +380,11 @@ func routePermission(method, path string) string {
 		return "sdk.worldmodel.write"
 	case strings.HasPrefix(path, "/api/v1/mcp"):
 		return "sdk.invoke"
+	case strings.HasPrefix(path, "/api/v1/graph/cross-tenant"):
+		if isWrite {
+			return "platform.cross_tenant.write"
+		}
+		return "platform.cross_tenant.read"
 	case isWrite && path == "/api/v1/platform/graph/diffs":
 		return "platform.graph.write"
 	case strings.HasPrefix(path, "/api/v1/platform/graph"):
@@ -393,6 +398,8 @@ func routePermission(method, path string) string {
 			return "platform.intelligence.run"
 		}
 		return "platform.intelligence.read"
+	case strings.HasPrefix(path, "/api/v1/platform/executions"):
+		return "platform.jobs.read"
 	case strings.HasPrefix(path, "/api/v1/platform/jobs"):
 		return "platform.jobs.read"
 	case strings.HasPrefix(path, "/api/v1/platform/knowledge"):

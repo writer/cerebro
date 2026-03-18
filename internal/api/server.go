@@ -85,13 +85,28 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 		agentSDKReportProgress: make(map[string]agentSDKReportProgressSubscription),
 	}
 	if cfg := deps.Config; cfg != nil {
-		s.platformReportStore = reports.NewReportRunStore(cfg.PlatformReportRunStateFile, cfg.PlatformReportSnapshotPath)
-		if restoredRuns, err := s.platformReportStore.Load(); err != nil {
-			if deps.Logger != nil {
-				deps.Logger.Warn("failed to load persisted platform report runs", "state_file", s.platformReportStore.StateFile(), "snapshot_dir", s.platformReportStore.SnapshotDir(), "error", err)
-			}
+		var (
+			store *reports.ReportRunStore
+			err   error
+		)
+		if deps.ExecutionStore != nil {
+			store = reports.NewReportRunStoreWithExecutionStore(deps.ExecutionStore, cfg.ExecutionStoreFile, cfg.PlatformReportSnapshotPath, cfg.PlatformReportRunStateFile)
 		} else {
-			s.platformReportRuns = restoredRuns
+			store, err = reports.NewReportRunStore(cfg.ExecutionStoreFile, cfg.PlatformReportSnapshotPath, cfg.PlatformReportRunStateFile)
+		}
+		if err != nil {
+			if deps.Logger != nil {
+				deps.Logger.Warn("failed to initialize shared platform report execution store", "execution_store", cfg.ExecutionStoreFile, "legacy_state_file", cfg.PlatformReportRunStateFile, "snapshot_dir", cfg.PlatformReportSnapshotPath, "error", err)
+			}
+		} else if store != nil {
+			s.platformReportStore = store
+			if restoredRuns, err := s.platformReportStore.Load(); err != nil {
+				if deps.Logger != nil {
+					deps.Logger.Warn("failed to load persisted platform report runs", "execution_store", s.platformReportStore.StateFile(), "legacy_state_file", s.platformReportStore.LegacyStateFile(), "snapshot_dir", s.platformReportStore.SnapshotDir(), "error", err)
+				}
+			} else {
+				s.platformReportRuns = restoredRuns
+			}
 		}
 	}
 	s.platformReportHandlers = map[string]http.HandlerFunc{
@@ -137,6 +152,9 @@ func (s *Server) Close() {
 		s.cancelPlatformJob(jobID, "server shutdown")
 	}
 	s.platformJobWG.Wait()
+	if s.platformReportStore != nil {
+		_ = s.platformReportStore.Close()
+	}
 }
 
 func (s *Server) Run() error {

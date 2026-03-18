@@ -126,11 +126,12 @@ func (a *App) maybeStartGraphConsistencyCheck(trigger string, summary graph.Grap
 	if baseCtx == nil {
 		baseCtx = context.Background()
 	}
+	// #nosec G118 -- cancel is stored for shutdown coordination and also deferred inside the check goroutine.
 	checkCtx, cancel := context.WithTimeout(baseCtx, 30*time.Minute)
 	a.graphConsistencyCancel = cancel
 	a.graphConsistencyMu.Unlock()
 
-	go func() {
+	go func(checkCtx context.Context, cancel context.CancelFunc) {
 		defer a.graphConsistencyWG.Done()
 		defer func() {
 			a.graphConsistencyMu.Lock()
@@ -174,7 +175,7 @@ func (a *App) maybeStartGraphConsistencyCheck(trigger string, summary graph.Grap
 			"edges_added", len(diff.EdgesAdded),
 			"edges_removed", len(diff.EdgesRemoved),
 		)
-	}()
+	}(checkCtx, cancel)
 }
 
 func graphDiffHasChanges(diff *graph.GraphDiff) bool {

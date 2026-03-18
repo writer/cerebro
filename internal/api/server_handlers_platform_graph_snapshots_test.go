@@ -458,7 +458,11 @@ func TestPlatformGraphChangelogAndDiffDetailsEndpoints(t *testing.T) {
 		}
 		return nil
 	})
-	changelog := do(t, s, http.MethodGet, "/api/v1/platform/graph/changelog?last=7d&provider=aws&limit=1", nil)
+	changelog := do(t, s, http.MethodGet, fmt.Sprintf(
+		"/api/v1/platform/graph/changelog?since=%s&until=%s&provider=aws&limit=1",
+		base.Add(-time.Hour).Format(time.RFC3339),
+		base.Add(3*time.Hour).Format(time.RFC3339),
+	), nil)
 	if changelog.Code != http.StatusOK {
 		t.Fatalf("expected 200 for graph changelog, got %d: %s", changelog.Code, changelog.Body.String())
 	}
@@ -572,7 +576,11 @@ func TestPlatformGraphChangelogUsesExplicitParentSnapshotLineage(t *testing.T) {
 	})
 
 	s := newTestServer(t)
-	changelog := do(t, s, http.MethodGet, "/api/v1/platform/graph/changelog?last=7d&provider=aws&limit=1", nil)
+	changelog := do(t, s, http.MethodGet, fmt.Sprintf(
+		"/api/v1/platform/graph/changelog?since=%s&until=%s&provider=aws&limit=1",
+		base.Add(-time.Hour).Format(time.RFC3339),
+		base.Add(3*time.Hour).Format(time.RFC3339),
+	), nil)
 	if changelog.Code != http.StatusOK {
 		t.Fatalf("expected 200 for graph changelog, got %d: %s", changelog.Code, changelog.Body.String())
 	}

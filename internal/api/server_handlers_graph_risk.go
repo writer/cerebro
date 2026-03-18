@@ -10,12 +10,13 @@ import (
 )
 
 func (s *Server) graphStats(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g := s.currentTenantSecurityGraph(r.Context())
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
 
-	meta := s.app.SecurityGraph.Metadata()
+	meta := g.Metadata()
 	s.json(w, http.StatusOK, map[string]interface{}{
 		"built_at":       meta.BuiltAt,
 		"node_count":     meta.NodeCount,
@@ -27,7 +28,8 @@ func (s *Server) graphStats(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) blastRadius(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g := s.currentTenantSecurityGraph(r.Context())
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
@@ -45,12 +47,13 @@ func (s *Server) blastRadius(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result := graph.BlastRadius(s.app.SecurityGraph, principalID, maxDepth)
+	result := graph.BlastRadius(g, principalID, maxDepth)
 	s.json(w, http.StatusOK, result)
 }
 
 func (s *Server) cascadingBlastRadius(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g := s.currentTenantSecurityGraph(r.Context())
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
@@ -68,12 +71,13 @@ func (s *Server) cascadingBlastRadius(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result := graph.CascadingBlastRadius(s.app.SecurityGraph, principalID, maxDepth)
+	result := graph.CascadingBlastRadius(g, principalID, maxDepth)
 	s.json(w, http.StatusOK, result)
 }
 
 func (s *Server) reverseAccess(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g := s.currentTenantSecurityGraph(r.Context())
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
@@ -91,7 +95,7 @@ func (s *Server) reverseAccess(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result := graph.ReverseAccess(s.app.SecurityGraph, resourceID, maxDepth)
+	result := graph.ReverseAccess(g, resourceID, maxDepth)
 	s.json(w, http.StatusOK, result)
 }
 
@@ -119,30 +123,36 @@ func (s *Server) rebuildGraph(w http.ResponseWriter, r *http.Request) {
 // Risk Intelligence endpoints
 
 func (s *Server) riskReport(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g := s.currentTenantSecurityGraph(r.Context())
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
 
-	engine := s.graphRiskEngine()
+	engine := s.currentTenantRiskEngine(r.Context())
 	if engine == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
 	report := engine.Analyze()
-	s.persistRiskEngineState(r.Context(), engine)
+	// Persist only for global requests. Context-derived scope is stable even if the
+	// live graph pointer changes during a concurrent rebuild.
+	if !requestUsesTenantScope(r.Context()) {
+		s.persistRiskEngineState(r.Context(), engine)
+	}
 	s.json(w, http.StatusOK, report)
 }
 
 func (s *Server) listToxicCombinations(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g := s.currentTenantSecurityGraph(r.Context())
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
 	pagination := ParsePagination(r, 100, 1000)
 
 	engine := graph.NewToxicCombinationEngine()
-	results := engine.Analyze(s.app.SecurityGraph)
+	results := engine.Analyze(g)
 
 	// Filter by severity if requested
 	severityFilter := r.URL.Query().Get("severity")
@@ -168,12 +178,13 @@ func (s *Server) listToxicCombinations(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listGraphAttackPaths(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g := s.currentTenantSecurityGraph(r.Context())
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
 
-	simulator := graph.NewAttackPathSimulator(s.app.SecurityGraph)
+	simulator := graph.NewAttackPathSimulator(g)
 
 	maxDepth := 6
 	if depthStr := r.URL.Query().Get("max_depth"); depthStr != "" {
@@ -217,7 +228,8 @@ func (s *Server) listGraphAttackPaths(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) simulateAttackPathFix(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g := s.currentTenantSecurityGraph(r.Context())
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
@@ -228,7 +240,7 @@ func (s *Server) simulateAttackPathFix(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	simulator := graph.NewAttackPathSimulator(s.app.SecurityGraph)
+	simulator := graph.NewAttackPathSimulator(g)
 	result := simulator.Simulate(6)
 	fixSim := simulator.SimulateFix(result, nodeID)
 
@@ -236,12 +248,13 @@ func (s *Server) simulateAttackPathFix(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listChokepoints(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g := s.currentTenantSecurityGraph(r.Context())
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
 
-	simulator := graph.NewAttackPathSimulator(s.app.SecurityGraph)
+	simulator := graph.NewAttackPathSimulator(g)
 	result := simulator.Simulate(6)
 
 	limit := 20

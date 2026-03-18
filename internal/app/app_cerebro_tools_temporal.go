@@ -329,16 +329,38 @@ func (a *App) platformGraphSnapshotRecordsForTool(now time.Time) []graph.GraphSn
 	return append([]graph.GraphSnapshotRecord(nil), collection.Snapshots...)
 }
 
-func (a *App) platformGraphSnapshotStoreForTool() *graph.SnapshotStore {
+func (a *App) platformGraphSnapshotStoreForTool() *graph.GraphPersistenceStore {
+	if a != nil && a.GraphSnapshots != nil {
+		return a.GraphSnapshots
+	}
 	snapshotPath := strings.TrimSpace(os.Getenv("GRAPH_SNAPSHOT_PATH"))
+	maxSnapshots := 10
+	if a != nil && a.Config != nil {
+		if configured := strings.TrimSpace(a.Config.GraphSnapshotPath); configured != "" {
+			snapshotPath = configured
+		}
+		if a.Config.GraphSnapshotMaxRetained > 0 {
+			maxSnapshots = a.Config.GraphSnapshotMaxRetained
+		}
+	}
 	if snapshotPath == "" {
 		snapshotPath = filepath.Join(".cerebro", "graph-snapshots")
 	}
-	return graph.NewSnapshotStore(snapshotPath, 10)
+	store, err := graph.NewGraphPersistenceStore(graph.GraphPersistenceOptions{
+		LocalPath:    snapshotPath,
+		MaxSnapshots: maxSnapshots,
+	})
+	if err != nil {
+		return nil
+	}
+	return store
 }
 
 func (a *App) platformGraphDiffStoreForTool() *graph.GraphSnapshotDiffStore {
 	snapshotPath := strings.TrimSpace(os.Getenv("GRAPH_SNAPSHOT_PATH"))
+	if a != nil && a.Config != nil && strings.TrimSpace(a.Config.GraphSnapshotPath) != "" {
+		snapshotPath = strings.TrimSpace(a.Config.GraphSnapshotPath)
+	}
 	if snapshotPath == "" {
 		snapshotPath = filepath.Join(".cerebro", "graph-snapshots")
 	}
