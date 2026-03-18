@@ -17,6 +17,19 @@ Status: executed end-to-end via PR workflow
 - [x] Route the affected API and app lifecycle call sites through the config-backed helpers and add startup validation for positive bounds plus simple feasibility checks.
 - [x] Regenerate config docs and add focused tests that prove the new env vars load, validate, and influence runtime behavior.
 
+## Deep Review Cycle 196 - Graph Writeback Service Seam (2026-03-17)
+
+### Review findings
+- [x] Gap: issue `#210` still left the graph writeback handlers reaching directly through `s.app` for graph mutation, lifecycle webhook emission, and identity calibration reads, so those endpoints could not be tested against a narrow service stub.
+- [x] Gap: the handler layer still owned mutation-side orchestration for knowledge writes, annotation writes, identity resolution/review flows, and recommendation actuation, which kept transport logic tangled with graph write semantics.
+- [x] Gap: `NewServerWithDependencies` still had no writeback-family seam, so tests for these endpoints had to construct a live mutable graph runtime even when they only needed request parsing and response wiring.
+
+### Execution plan
+- [x] Add a dedicated `graphWritebackService` interface plus a default adapter that owns mutation, lifecycle event emission, and identity calibration reads.
+- [x] Route the graph writeback handler family through the new service so the HTTP layer no longer reaches through `s.app` for graph mutation and lifecycle side effects.
+- [x] Add `NewServerWithDependencies` stub tests covering knowledge writes, identity writeback flows, and recommendation actuation without a full `*app.App`.
+- [x] Re-run focused and changed-file API validation, then push the stacked branch once the seam compiles cleanly.
+
 ## Deep Review Cycle 196 - Platform Knowledge Service Seam (2026-03-17)
 
 ### Review findings

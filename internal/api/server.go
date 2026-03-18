@@ -30,6 +30,7 @@ type Server struct {
 	findingsCompliance       findingsComplianceService
 	graphRisk                graphRiskService
 	graphIntelligence        graphIntelligenceService
+	graphWriteback           graphWritebackService
 	platformKnowledge        platformKnowledgeService
 	syncHandlers             syncHandlerService
 	router                   *chi.Mux
@@ -93,6 +94,7 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 	if syncHandlers == nil {
 		syncHandlers = newSyncHandlerService(&deps)
 	}
+	graphWriteback := deps.graphWriteback
 	s := &Server{
 		app:                    &deps,
 		findingsCompliance:     newFindingsComplianceService(&deps),
@@ -110,6 +112,10 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 		agentSDKReportProgress: make(map[string]agentSDKReportProgressSubscription),
 	}
 	s.graphRisk = newGraphRiskService(s, &deps)
+	if graphWriteback == nil {
+		graphWriteback = newGraphWritebackService(s, &deps)
+	}
+	s.graphWriteback = graphWriteback
 	if cfg := deps.Config; cfg != nil {
 		var (
 			store *reports.ReportRunStore

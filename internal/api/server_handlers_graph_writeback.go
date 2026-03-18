@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -10,7 +11,6 @@ import (
 	"time"
 
 	"github.com/evalops/cerebro/internal/graph"
-	"github.com/evalops/cerebro/internal/graph/knowledge"
 	"github.com/evalops/cerebro/internal/webhooks"
 )
 
@@ -188,48 +188,14 @@ func (s *Server) graphWriteObservation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var result knowledge.ObservationWriteResult
-	_, err := s.mutateSecurityGraph(r.Context(), func(g *graph.Graph) error {
-		var writeErr error
-		result, writeErr = knowledge.WriteObservation(g, knowledge.ObservationWriteRequest{
-			ID:              req.ID,
-			SubjectID:       subjectID,
-			ObservationType: observationType,
-			Summary:         req.Summary,
-			SourceSystem:    req.SourceSystem,
-			SourceEventID:   req.SourceEventID,
-			ObservedAt:      req.ObservedAt,
-			ValidFrom:       req.ValidFrom,
-			ValidTo:         req.ValidTo,
-			RecordedAt:      req.RecordedAt,
-			TransactionFrom: req.TransactionFrom,
-			TransactionTo:   req.TransactionTo,
-			Confidence:      req.Confidence,
-			Metadata:        cloneJSONMap(req.Metadata),
-		})
-		return writeErr
-	})
+	req.SubjectID = subjectID
+	req.ObservationType = observationType
+	result, err := s.graphWriteback.WriteObservation(r.Context(), req)
 	if err != nil {
-		switch {
-		case strings.Contains(err.Error(), "not initialized"):
-			s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		case strings.Contains(err.Error(), "required"):
-			s.error(w, http.StatusBadRequest, err.Error())
-		case strings.Contains(err.Error(), "not found"):
-			s.error(w, http.StatusNotFound, err.Error())
-		default:
-			s.error(w, http.StatusBadRequest, err.Error())
-		}
+		s.graphWritebackError(w, err)
 		return
 	}
-
-	s.json(w, http.StatusCreated, map[string]any{
-		"observation_id": result.ObservationID,
-		"subject_id":     result.SubjectID,
-		"entity_id":      result.SubjectID,
-		"observed_at":    result.ObservedAt,
-		"recorded_at":    result.RecordedAt,
-	})
+	s.json(w, http.StatusCreated, result)
 }
 
 func (s *Server) graphWriteClaim(w http.ResponseWriter, r *http.Request) {
@@ -239,75 +205,11 @@ func (s *Server) graphWriteClaim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var result knowledge.ClaimWriteResult
-	mutatedGraph, err := s.mutateSecurityGraph(r.Context(), func(g *graph.Graph) error {
-		var writeErr error
-		result, writeErr = knowledge.WriteClaim(g, knowledge.ClaimWriteRequest{
-			ID:                 req.ID,
-			ClaimType:          req.ClaimType,
-			SubjectID:          req.SubjectID,
-			Predicate:          req.Predicate,
-			ObjectID:           req.ObjectID,
-			ObjectValue:        req.ObjectValue,
-			Status:             req.Status,
-			Summary:            req.Summary,
-			EvidenceIDs:        req.EvidenceIDs,
-			SupportingClaimIDs: req.SupportingClaimIDs,
-			RefutingClaimIDs:   req.RefutingClaimIDs,
-			SupersedesClaimID:  req.SupersedesClaimID,
-			SourceID:           req.SourceID,
-			SourceName:         req.SourceName,
-			SourceType:         req.SourceType,
-			SourceURL:          req.SourceURL,
-			TrustTier:          req.TrustTier,
-			ReliabilityScore:   req.ReliabilityScore,
-			SourceSystem:       req.SourceSystem,
-			SourceEventID:      req.SourceEventID,
-			ObservedAt:         req.ObservedAt,
-			ValidFrom:          req.ValidFrom,
-			ValidTo:            req.ValidTo,
-			RecordedAt:         req.RecordedAt,
-			TransactionFrom:    req.TransactionFrom,
-			TransactionTo:      req.TransactionTo,
-			Confidence:         req.Confidence,
-			Metadata:           req.Metadata,
-		})
-		return writeErr
-	})
+	result, err := s.graphWriteback.WriteClaim(r.Context(), req)
 	if err != nil {
-		status := http.StatusBadRequest
-		switch {
-		case strings.Contains(err.Error(), "not initialized"):
-			status = http.StatusServiceUnavailable
-		case strings.Contains(err.Error(), "not found"):
-			status = http.StatusNotFound
-		}
-		s.error(w, status, err.Error())
+		s.graphWritebackError(w, err)
 		return
 	}
-
-	var claimNode *graph.Node
-	if node, ok := mutatedGraph.GetNode(result.ClaimID); ok && node != nil {
-		claimNode = node
-	}
-	s.emitPlatformLifecycleEvent(r.Context(), webhooks.EventPlatformClaimWritten, map[string]any{
-		"claim_id":             result.ClaimID,
-		"subject_id":           strings.TrimSpace(req.SubjectID),
-		"predicate":            strings.TrimSpace(req.Predicate),
-		"claim_type":           readStringProperty(claimNode, "claim_type", req.ClaimType),
-		"status":               readStringProperty(claimNode, "status", req.Status),
-		"source_id":            result.SourceID,
-		"object_id":            strings.TrimSpace(req.ObjectID),
-		"object_value":         strings.TrimSpace(req.ObjectValue),
-		"evidence_ids":         append([]string(nil), req.EvidenceIDs...),
-		"supporting_claim_ids": append([]string(nil), req.SupportingClaimIDs...),
-		"refuting_claim_ids":   append([]string(nil), req.RefutingClaimIDs...),
-		"source_system":        readStringProperty(claimNode, "source_system", req.SourceSystem),
-		"source_event_id":      readStringProperty(claimNode, "source_event_id", req.SourceEventID),
-		"observed_at":          readStringProperty(claimNode, "observed_at", result.ObservedAt.Format(time.RFC3339)),
-		"recorded_at":          readStringProperty(claimNode, "recorded_at", result.RecordedAt.Format(time.RFC3339)),
-		"transaction_from":     readStringProperty(claimNode, "transaction_from"),
-	})
 	s.json(w, http.StatusCreated, result)
 }
 
@@ -328,71 +230,12 @@ func (s *Server) graphAnnotateEntity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var (
-		annotationID string
-		count        int
-	)
-	_, err := s.mutateSecurityGraph(r.Context(), func(g *graph.Graph) error {
-		entity, ok := g.GetNode(req.EntityID)
-		if !ok || entity == nil {
-			return fmt.Errorf("entity not found: %s", req.EntityID)
-		}
-
-		metadata := graph.NormalizeWriteMetadata(req.ObservedAt, req.ValidFrom, req.ValidTo, req.SourceSystem, req.SourceEventID, req.Confidence, graph.WriteMetadataDefaults{
-			SourceSystem:      "api",
-			SourceEventPrefix: "api",
-			DefaultConfidence: 0.80,
-		})
-
-		annotationID = fmt.Sprintf("annotation:%s:%d", req.EntityID, metadata.ObservedAt.UnixNano())
-		properties := cloneJSONMap(entity.Properties)
-		if properties == nil {
-			properties = make(map[string]any)
-		}
-		existing := annotationsFromProperties(properties["annotations"])
-		entry := map[string]any{
-			"id":              annotationID,
-			"annotation":      req.Annotation,
-			"tags":            normalizeStringSlice(req.Tags),
-			"source_system":   metadata.SourceSystem,
-			"source_event_id": metadata.SourceEventID,
-			"observed_at":     metadata.ObservedAt.Format(time.RFC3339),
-			"valid_from":      metadata.ValidFrom.Format(time.RFC3339),
-			"confidence":      metadata.Confidence,
-		}
-		if metadata.ValidTo != nil {
-			entry["valid_to"] = metadata.ValidTo.Format(time.RFC3339)
-		}
-		if len(req.Metadata) > 0 {
-			entry["metadata"] = cloneJSONMap(req.Metadata)
-		}
-		existing = append(existing, entry)
-		properties["annotations"] = existing
-		metadata.ApplyTo(properties)
-
-		entity.Properties = properties
-		g.AddNode(entity)
-		count = len(existing)
-		return nil
-	})
+	result, err := s.graphWriteback.AnnotateEntity(r.Context(), req)
 	if err != nil {
-		if strings.Contains(err.Error(), "not initialized") {
-			s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-			return
-		}
-		if strings.Contains(err.Error(), "not found") {
-			s.error(w, http.StatusNotFound, err.Error())
-			return
-		}
-		s.error(w, http.StatusBadRequest, err.Error())
+		s.graphWritebackError(w, err)
 		return
 	}
-
-	s.json(w, http.StatusCreated, map[string]any{
-		"annotation_id": annotationID,
-		"entity_id":     req.EntityID,
-		"count":         count,
-	})
+	s.json(w, http.StatusCreated, result)
 }
 
 func (s *Server) graphWriteDecision(w http.ResponseWriter, r *http.Request) {
@@ -413,113 +256,13 @@ func (s *Server) graphWriteDecision(w http.ResponseWriter, r *http.Request) {
 		s.error(w, http.StatusBadRequest, "target_ids requires at least one target")
 		return
 	}
-	targetIDs := uniqueNormalizedIDs(req.TargetIDs)
-	var decisionID string
-	metadata := graph.NormalizeWriteMetadata(req.ObservedAt, req.ValidFrom, req.ValidTo, req.SourceSystem, req.SourceEventID, req.Confidence, graph.WriteMetadataDefaults{
-		SourceSystem:      "api",
-		SourceEventPrefix: "api",
-		DefaultConfidence: 0.80,
-	})
-	_, err := s.mutateSecurityGraph(r.Context(), func(g *graph.Graph) error {
-		for _, targetID := range targetIDs {
-			if _, ok := g.GetNode(targetID); !ok {
-				return fmt.Errorf("target not found: %s", targetID)
-			}
-		}
-
-		decisionID = strings.TrimSpace(req.ID)
-		if decisionID == "" {
-			decisionID = fmt.Sprintf("decision:%d", metadata.ObservedAt.UnixNano())
-		}
-		properties := cloneJSONMap(req.Metadata)
-		properties["decision_type"] = req.DecisionType
-		properties["status"] = firstNonEmpty(req.Status, "proposed")
-		properties["made_at"] = metadata.ObservedAt.Format(time.RFC3339)
-		properties["made_by"] = req.MadeBy
-		properties["rationale"] = req.Rationale
-		metadata.ApplyTo(properties)
-
-		g.AddNode(&graph.Node{
-			ID:         decisionID,
-			Kind:       graph.NodeKindDecision,
-			Name:       firstNonEmpty(req.DecisionType, decisionID),
-			Provider:   metadata.SourceSystem,
-			Properties: properties,
-			Risk:       graph.RiskNone,
-		})
-
-		for _, targetID := range targetIDs {
-			edgeProperties := metadata.PropertyMap()
-			g.AddEdge(&graph.Edge{
-				ID:         fmt.Sprintf("%s->%s:%s", decisionID, targetID, graph.EdgeKindTargets),
-				Source:     decisionID,
-				Target:     targetID,
-				Kind:       graph.EdgeKindTargets,
-				Effect:     graph.EdgeEffectAllow,
-				Properties: edgeProperties,
-			})
-		}
-		for _, evidenceID := range uniqueNormalizedIDs(req.EvidenceIDs) {
-			if _, ok := g.GetNode(evidenceID); !ok {
-				continue
-			}
-			edgeProperties := metadata.PropertyMap()
-			g.AddEdge(&graph.Edge{
-				ID:         fmt.Sprintf("%s->%s:%s", decisionID, evidenceID, graph.EdgeKindBasedOn),
-				Source:     decisionID,
-				Target:     evidenceID,
-				Kind:       graph.EdgeKindBasedOn,
-				Effect:     graph.EdgeEffectAllow,
-				Properties: edgeProperties,
-			})
-		}
-		for _, actionID := range uniqueNormalizedIDs(req.ActionIDs) {
-			if _, ok := g.GetNode(actionID); !ok {
-				continue
-			}
-			edgeProperties := metadata.PropertyMap()
-			g.AddEdge(&graph.Edge{
-				ID:         fmt.Sprintf("%s->%s:%s", decisionID, actionID, graph.EdgeKindExecutedBy),
-				Source:     decisionID,
-				Target:     actionID,
-				Kind:       graph.EdgeKindExecutedBy,
-				Effect:     graph.EdgeEffectAllow,
-				Properties: edgeProperties,
-			})
-		}
-		return nil
-	})
+	req.TargetIDs = uniqueNormalizedIDs(req.TargetIDs)
+	result, err := s.graphWriteback.WriteDecision(r.Context(), req)
 	if err != nil {
-		if strings.Contains(err.Error(), "not initialized") {
-			s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-			return
-		}
-		if strings.Contains(err.Error(), "not found") {
-			s.error(w, http.StatusNotFound, err.Error())
-			return
-		}
-		s.error(w, http.StatusBadRequest, err.Error())
+		s.graphWritebackError(w, err)
 		return
 	}
-
-	s.emitPlatformLifecycleEvent(r.Context(), webhooks.EventPlatformDecisionRecorded, map[string]any{
-		"decision_id":     decisionID,
-		"decision_type":   req.DecisionType,
-		"status":          firstNonEmpty(req.Status, "proposed"),
-		"made_by":         req.MadeBy,
-		"rationale":       req.Rationale,
-		"target_ids":      append([]string(nil), targetIDs...),
-		"evidence_ids":    append([]string(nil), uniqueNormalizedIDs(req.EvidenceIDs)...),
-		"action_ids":      append([]string(nil), uniqueNormalizedIDs(req.ActionIDs)...),
-		"source_system":   metadata.SourceSystem,
-		"source_event_id": metadata.SourceEventID,
-		"observed_at":     metadata.ObservedAt.Format(time.RFC3339),
-		"valid_from":      metadata.ValidFrom.Format(time.RFC3339),
-	})
-	s.json(w, http.StatusCreated, map[string]any{
-		"decision_id":  decisionID,
-		"target_count": len(targetIDs),
-	})
+	s.json(w, http.StatusCreated, result)
 }
 
 func (s *Server) graphWriteOutcome(w http.ResponseWriter, r *http.Request) {
@@ -539,92 +282,13 @@ func (s *Server) graphWriteOutcome(w http.ResponseWriter, r *http.Request) {
 		s.error(w, http.StatusBadRequest, "outcome_type and verdict are required")
 		return
 	}
-	var outcomeID string
-	targetIDs := uniqueNormalizedIDs(req.TargetIDs)
-	metadata := graph.NormalizeWriteMetadata(req.ObservedAt, req.ValidFrom, req.ValidTo, req.SourceSystem, req.SourceEventID, req.Confidence, graph.WriteMetadataDefaults{
-		SourceSystem:      "api",
-		SourceEventPrefix: "api",
-		DefaultConfidence: 0.80,
-	})
-	_, err := s.mutateSecurityGraph(r.Context(), func(g *graph.Graph) error {
-		if _, ok := g.GetNode(req.DecisionID); !ok {
-			return fmt.Errorf("decision not found: %s", req.DecisionID)
-		}
-
-		outcomeID = strings.TrimSpace(req.ID)
-		if outcomeID == "" {
-			outcomeID = fmt.Sprintf("outcome:%d", metadata.ObservedAt.UnixNano())
-		}
-		properties := cloneJSONMap(req.Metadata)
-		properties["outcome_type"] = req.OutcomeType
-		properties["verdict"] = req.Verdict
-		properties["impact_score"] = req.ImpactScore
-		metadata.ApplyTo(properties)
-
-		g.AddNode(&graph.Node{
-			ID:         outcomeID,
-			Kind:       graph.NodeKindOutcome,
-			Name:       firstNonEmpty(req.OutcomeType, outcomeID),
-			Provider:   metadata.SourceSystem,
-			Properties: properties,
-			Risk:       graph.RiskNone,
-		})
-		evaluatesEdgeProperties := metadata.PropertyMap()
-		g.AddEdge(&graph.Edge{
-			ID:         fmt.Sprintf("%s->%s:%s", outcomeID, req.DecisionID, graph.EdgeKindEvaluates),
-			Source:     outcomeID,
-			Target:     req.DecisionID,
-			Kind:       graph.EdgeKindEvaluates,
-			Effect:     graph.EdgeEffectAllow,
-			Properties: evaluatesEdgeProperties,
-		})
-
-		for _, targetID := range targetIDs {
-			if _, ok := g.GetNode(targetID); !ok {
-				continue
-			}
-			edgeProperties := metadata.PropertyMap()
-			g.AddEdge(&graph.Edge{
-				ID:         fmt.Sprintf("%s->%s:%s", outcomeID, targetID, graph.EdgeKindTargets),
-				Source:     outcomeID,
-				Target:     targetID,
-				Kind:       graph.EdgeKindTargets,
-				Effect:     graph.EdgeEffectAllow,
-				Properties: edgeProperties,
-			})
-		}
-		return nil
-	})
+	req.TargetIDs = uniqueNormalizedIDs(req.TargetIDs)
+	result, err := s.graphWriteback.WriteOutcome(r.Context(), req)
 	if err != nil {
-		if strings.Contains(err.Error(), "not initialized") {
-			s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-			return
-		}
-		if strings.Contains(err.Error(), "not found") {
-			s.error(w, http.StatusNotFound, err.Error())
-			return
-		}
-		s.error(w, http.StatusBadRequest, err.Error())
+		s.graphWritebackError(w, err)
 		return
 	}
-
-	s.emitPlatformLifecycleEvent(r.Context(), webhooks.EventPlatformOutcomeRecorded, map[string]any{
-		"outcome_id":      outcomeID,
-		"decision_id":     req.DecisionID,
-		"outcome_type":    req.OutcomeType,
-		"verdict":         req.Verdict,
-		"impact_score":    req.ImpactScore,
-		"target_ids":      append([]string(nil), targetIDs...),
-		"source_system":   metadata.SourceSystem,
-		"source_event_id": metadata.SourceEventID,
-		"observed_at":     metadata.ObservedAt.Format(time.RFC3339),
-		"valid_from":      metadata.ValidFrom.Format(time.RFC3339),
-	})
-	s.json(w, http.StatusCreated, map[string]any{
-		"outcome_id":   outcomeID,
-		"decision_id":  req.DecisionID,
-		"target_count": len(targetIDs),
-	})
+	s.json(w, http.StatusCreated, result)
 }
 
 func (s *Server) graphResolveIdentity(w http.ResponseWriter, r *http.Request) {
@@ -633,32 +297,9 @@ func (s *Server) graphResolveIdentity(w http.ResponseWriter, r *http.Request) {
 		s.error(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	var result graph.IdentityResolutionResult
-	_, err := s.mutateSecurityGraph(r.Context(), func(g *graph.Graph) error {
-		var resolveErr error
-		result, resolveErr = graph.ResolveIdentityAlias(g, graph.IdentityAliasAssertion{
-			AliasID:       req.AliasID,
-			SourceSystem:  req.SourceSystem,
-			SourceEventID: req.SourceEventID,
-			ExternalID:    req.ExternalID,
-			AliasType:     req.AliasType,
-			CanonicalHint: req.CanonicalHint,
-			Email:         req.Email,
-			Name:          req.Name,
-			ObservedAt:    req.ObservedAt,
-			Confidence:    req.Confidence,
-		}, graph.IdentityResolutionOptions{
-			AutoLinkThreshold: req.AutoLinkThreshold,
-			SuggestThreshold:  req.SuggestThreshold,
-		})
-		return resolveErr
-	})
+	result, err := s.graphWriteback.ResolveIdentity(r.Context(), req)
 	if err != nil {
-		if strings.Contains(err.Error(), "not initialized") {
-			s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-			return
-		}
-		s.error(w, http.StatusBadRequest, err.Error())
+		s.graphWritebackError(w, err)
 		return
 	}
 	s.json(w, http.StatusOK, result)
@@ -670,33 +311,12 @@ func (s *Server) graphSplitIdentity(w http.ResponseWriter, r *http.Request) {
 		s.error(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	var removed bool
-	_, err := s.mutateSecurityGraph(r.Context(), func(g *graph.Graph) error {
-		var splitErr error
-		removed, splitErr = graph.SplitIdentityAlias(
-			g,
-			req.AliasNodeID,
-			req.CanonicalNodeID,
-			req.Reason,
-			req.SourceSystem,
-			req.SourceEventID,
-			req.ObservedAt,
-		)
-		return splitErr
-	})
+	result, err := s.graphWriteback.SplitIdentity(r.Context(), req)
 	if err != nil {
-		if strings.Contains(err.Error(), "not initialized") {
-			s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-			return
-		}
-		s.error(w, http.StatusBadRequest, err.Error())
+		s.graphWritebackError(w, err)
 		return
 	}
-	s.json(w, http.StatusOK, map[string]any{
-		"removed":           removed,
-		"alias_node_id":     strings.TrimSpace(req.AliasNodeID),
-		"canonical_node_id": strings.TrimSpace(req.CanonicalNodeID),
-	})
+	s.json(w, http.StatusOK, result)
 }
 
 func (s *Server) graphReviewIdentity(w http.ResponseWriter, r *http.Request) {
@@ -706,40 +326,15 @@ func (s *Server) graphReviewIdentity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var record graph.IdentityReviewRecord
-	_, err := s.mutateSecurityGraph(r.Context(), func(g *graph.Graph) error {
-		var reviewErr error
-		record, reviewErr = graph.ReviewIdentityAlias(g, graph.IdentityReviewDecision{
-			AliasNodeID:     req.AliasNodeID,
-			CanonicalNodeID: req.CanonicalNodeID,
-			Verdict:         req.Verdict,
-			Reviewer:        req.Reviewer,
-			Reason:          req.Reason,
-			SourceSystem:    req.SourceSystem,
-			SourceEventID:   req.SourceEventID,
-			ObservedAt:      req.ObservedAt,
-			Confidence:      req.Confidence,
-		})
-		return reviewErr
-	})
+	result, err := s.graphWriteback.ReviewIdentity(r.Context(), req)
 	if err != nil {
-		if strings.Contains(err.Error(), "not initialized") {
-			s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-			return
-		}
-		s.error(w, http.StatusBadRequest, err.Error())
+		s.graphWritebackError(w, err)
 		return
 	}
-	s.json(w, http.StatusOK, record)
+	s.json(w, http.StatusOK, result)
 }
 
 func (s *Server) graphIdentityCalibration(w http.ResponseWriter, r *http.Request) {
-	g := s.app.CurrentSecurityGraph()
-	if g == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-
 	includeQueue := true
 	if raw := strings.TrimSpace(r.URL.Query().Get("include_queue")); raw != "" {
 		parsed, err := strconv.ParseBool(raw)
@@ -770,11 +365,15 @@ func (s *Server) graphIdentityCalibration(w http.ResponseWriter, r *http.Request
 		queueLimit = parsed
 	}
 
-	report := graph.BuildIdentityCalibrationReport(g, graph.IdentityCalibrationOptions{
+	report, err := s.graphWriteback.IdentityCalibration(r.Context(), graph.IdentityCalibrationOptions{
 		SuggestThreshold: suggestThreshold,
 		QueueLimit:       queueLimit,
 		IncludeQueue:     includeQueue,
 	})
+	if err != nil {
+		s.graphWritebackError(w, err)
+		return
+	}
 	s.json(w, http.StatusOK, report)
 }
 
@@ -785,55 +384,11 @@ func (s *Server) graphActuateRecommendation(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	var result graph.RecommendationActuationResult
-	mutatedGraph, err := s.mutateSecurityGraph(r.Context(), func(g *graph.Graph) error {
-		var actuationErr error
-		result, actuationErr = graph.ActuateRecommendation(g, graph.RecommendationActuationRequest{
-			ID:               req.ID,
-			RecommendationID: req.RecommendationID,
-			InsightType:      req.InsightType,
-			Title:            req.Title,
-			Summary:          req.Summary,
-			DecisionID:       req.DecisionID,
-			TargetIDs:        req.TargetIDs,
-			SourceSystem:     req.SourceSystem,
-			SourceEventID:    req.SourceEventID,
-			ObservedAt:       req.ObservedAt,
-			ValidFrom:        req.ValidFrom,
-			ValidTo:          req.ValidTo,
-			Confidence:       req.Confidence,
-			AutoGenerated:    req.AutoGenerated,
-			Metadata:         req.Metadata,
-		})
-		return actuationErr
-	})
+	result, err := s.graphWriteback.ActuateRecommendation(r.Context(), req)
 	if err != nil {
-		if strings.Contains(err.Error(), "not initialized") {
-			s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-			return
-		}
-		s.error(w, http.StatusBadRequest, err.Error())
+		s.graphWritebackError(w, err)
 		return
 	}
-	var actionNode *graph.Node
-	if node, ok := mutatedGraph.GetNode(result.ActionID); ok && node != nil {
-		actionNode = node
-	}
-	s.emitPlatformLifecycleEvent(r.Context(), webhooks.EventPlatformActionRecorded, map[string]any{
-		"action_id":         result.ActionID,
-		"title":             firstNonEmpty(strings.TrimSpace(req.Title), nodeName(actionNode)),
-		"decision_id":       strings.TrimSpace(req.DecisionID),
-		"recommendation_id": strings.TrimSpace(req.RecommendationID),
-		"insight_type":      strings.TrimSpace(req.InsightType),
-		"summary":           strings.TrimSpace(req.Summary),
-		"status":            readStringProperty(actionNode, "status", "planned"),
-		"target_ids":        append([]string(nil), uniqueNormalizedIDs(req.TargetIDs)...),
-		"source_system":     result.SourceSystem,
-		"source_event_id":   result.SourceEventID,
-		"observed_at":       readStringProperty(actionNode, "observed_at", normalizeRFC3339(req.ObservedAt)),
-		"valid_from":        readStringProperty(actionNode, "valid_from", normalizeRFC3339(req.ValidFrom)),
-		"auto_generated":    req.AutoGenerated,
-	})
 	s.json(w, http.StatusCreated, result)
 }
 
@@ -898,13 +453,6 @@ func normalizeStringSlice(values []string) []string {
 	return out
 }
 
-func (s *Server) mutateSecurityGraph(ctx context.Context, mutate func(*graph.Graph) error) (*graph.Graph, error) {
-	if s == nil || s.app == nil {
-		return nil, fmt.Errorf("graph platform not initialized")
-	}
-	return s.app.MutateSecurityGraph(ctx, mutate)
-}
-
 func (s *Server) emitPlatformLifecycleEvent(ctx context.Context, eventType webhooks.EventType, data map[string]any) {
 	if s == nil || s.app == nil || s.app.Webhooks == nil {
 		return
@@ -927,6 +475,19 @@ func readStringProperty(node *graph.Node, key string, fallback ...string) string
 		}
 	}
 	return firstNonEmpty(fallback...)
+}
+
+func (s *Server) graphWritebackError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, errGraphWritebackUnavailable),
+		strings.Contains(err.Error(), "not initialized"),
+		strings.Contains(err.Error(), "graph writer lease not held"):
+		s.error(w, http.StatusServiceUnavailable, errGraphWritebackUnavailable.Error())
+	case strings.Contains(err.Error(), "not found"):
+		s.error(w, http.StatusNotFound, err.Error())
+	default:
+		s.error(w, http.StatusBadRequest, err.Error())
+	}
 }
 
 func normalizeRFC3339(value time.Time) string {
