@@ -190,6 +190,114 @@ func TestParseTapType(t *testing.T) {
 	}
 }
 
+func TestBuildTapBusinessEventPlan_ParsesWithoutGraph(t *testing.T) {
+	evt := events.CloudEvent{
+		Type: "ensemble.tap.salesforce.opportunity.updated",
+		Time: time.Date(2026, 3, 11, 18, 0, 0, 0, time.UTC),
+		Data: map[string]any{
+			"entity_id": "opp-1",
+			"snapshot": map[string]any{
+				"name":             "Renewal Opp",
+				"LastModifiedDate": "2026-03-11T18:00:00Z",
+				"account_id":       "acct-1",
+			},
+			"changes": map[string]any{
+				"CloseDate": map[string]any{
+					"old": "2026-04-01",
+					"new": "2026-04-15",
+				},
+			},
+		},
+	}
+
+	plan, ok := buildTapBusinessEventPlan("salesforce", "opportunity", "updated", evt.Type, evt, map[string]any{
+		"close_date_push_count": 1,
+	})
+	if !ok {
+		t.Fatal("expected business plan to be created")
+	}
+	if plan.Node == nil || plan.Node.ID != "salesforce:opportunity:opp-1" {
+		t.Fatalf("plan.Node.ID = %v, want salesforce:opportunity:opp-1", plan.Node)
+	}
+	if got := toInt(plan.Node.Properties["close_date_push_count"]); got != 2 {
+		t.Fatalf("close_date_push_count = %d, want 2", got)
+	}
+	if len(plan.TargetStubs) != 1 || plan.TargetStubs[0].ID != "salesforce:account:acct-1" {
+		t.Fatalf("TargetStubs = %#v, want account stub", plan.TargetStubs)
+	}
+	if len(plan.Edges) != 1 || plan.Edges[0].Kind != graph.EdgeKindOwns {
+		t.Fatalf("Edges = %#v, want one owns edge", plan.Edges)
+	}
+}
+
+func TestBuildTapInteractionEventPlan_ParsesWithoutGraph(t *testing.T) {
+	evt := events.CloudEvent{
+		Type: "ensemble.tap.interaction.slack.message",
+		Time: time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC),
+		Data: map[string]any{
+			"participants": []any{
+				map[string]any{"email": "alice@example.com", "name": "Alice"},
+				map[string]any{"email": "bob@example.com", "name": "Bob"},
+			},
+			"duration_minutes": 10,
+		},
+	}
+
+	plan, ok := buildTapInteractionEventPlan(evt.Type, evt)
+	if !ok {
+		t.Fatal("expected interaction plan to be created")
+	}
+	if plan.Channel != "slack" || plan.InteractionType != "message" {
+		t.Fatalf("channel/type = %q/%q, want slack/message", plan.Channel, plan.InteractionType)
+	}
+	if plan.Duration != 10*time.Minute {
+		t.Fatalf("Duration = %s, want 10m", plan.Duration)
+	}
+	if len(plan.Participants) != 2 || plan.Participants[0].ID != "person:alice@example.com" || plan.Participants[1].ID != "person:bob@example.com" {
+		t.Fatalf("Participants = %#v, want normalized person IDs", plan.Participants)
+	}
+}
+
+func TestBuildTapActivityEventPlan_ParsesWithoutGraph(t *testing.T) {
+	evt := events.CloudEvent{
+		ID:   "evt-activity-1",
+		Type: "ensemble.tap.activity.gong.call_completed",
+		Time: time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC),
+		Data: map[string]any{
+			"actor": map[string]any{
+				"email": "alice@example.com",
+				"name":  "Alice",
+			},
+			"target": map[string]any{
+				"id":   "deal-123",
+				"type": "deal",
+				"name": "Enterprise Renewal",
+			},
+			"action": "call_completed",
+			"metadata": map[string]any{
+				"duration_seconds": 1800,
+			},
+		},
+	}
+
+	plan, ok := buildTapActivityEventPlan("gong", "call_completed", evt)
+	if !ok {
+		t.Fatal("expected activity plan to be created")
+	}
+	if plan.Actor == nil || plan.Actor.ID != "person:alice@example.com" {
+		t.Fatalf("Actor = %#v, want person:alice@example.com", plan.Actor)
+	}
+	if plan.Target == nil || plan.Target.ID != "gong:deal:deal-123" {
+		t.Fatalf("Target = %#v, want gong:deal:deal-123", plan.Target)
+	}
+	if plan.Activity == nil || plan.Activity.ID != "action:gong:call_completed:evt-activity-1" {
+		t.Fatalf("Activity = %#v, want action:gong:call_completed:evt-activity-1", plan.Activity)
+	}
+	if plan.ActivityTarget == nil || plan.ActivityTarget.Kind != graph.EdgeKindTargets {
+		t.Fatalf("ActivityTarget = %#v, want targets edge", plan.ActivityTarget)
+	}
+}
+
 func TestDeriveComputedFields(t *testing.T) {
 	now := time.Date(2026, 3, 6, 12, 0, 0, 0, time.UTC)
 
