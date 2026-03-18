@@ -187,6 +187,11 @@ export class Client {
   }
 
 
+  async executionStatus(args: unknown): Promise<ToolCallResponse> {
+    return this.callTool("cerebro_execution_status", args);
+  }
+
+
   async findings(args: unknown): Promise<ToolCallResponse> {
     return this.callTool("cerebro_findings", args);
   }

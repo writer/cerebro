@@ -17,6 +17,7 @@ import (
 	"github.com/writer/cerebro/internal/agents"
 	"github.com/writer/cerebro/internal/agentsdk"
 	"github.com/writer/cerebro/internal/graph"
+	reports "github.com/writer/cerebro/internal/graph/reports"
 )
 
 const agentSDKMCPProtocolVersion = agentsdk.ProtocolVersion
@@ -60,11 +61,11 @@ type agentSDKMCPResourceReadParams struct {
 }
 
 type agentSDKReportRequest struct {
-	ReportID          string                       `json:"report_id,omitempty"`
-	ExecutionMode     string                       `json:"execution_mode,omitempty"`
-	MaterializeResult *bool                        `json:"materialize_result,omitempty"`
-	Parameters        []graph.ReportParameterValue `json:"parameters,omitempty"`
-	RetryPolicy       *graph.ReportRetryPolicy     `json:"retry_policy,omitempty"`
+	ReportID          string                         `json:"report_id,omitempty"`
+	ExecutionMode     string                         `json:"execution_mode,omitempty"`
+	MaterializeResult *bool                          `json:"materialize_result,omitempty"`
+	Parameters        []reports.ReportParameterValue `json:"parameters,omitempty"`
+	RetryPolicy       *reports.ReportRetryPolicy     `json:"retry_policy,omitempty"`
 }
 
 type agentSDKPermissionError struct {
@@ -339,7 +340,7 @@ func (s *Server) agentSDKToolHTTPProxy(w http.ResponseWriter, r *http.Request, t
 	s.json(w, status, result)
 }
 
-func (s *Server) executeAgentSDKReportRequest(ctx context.Context, req agentSDKReportRequest) (*graph.ReportRun, int, error) {
+func (s *Server) executeAgentSDKReportRequest(ctx context.Context, req agentSDKReportRequest) (*reports.ReportRun, int, error) {
 	reportID := strings.TrimSpace(req.ReportID)
 	if reportID == "" {
 		reportID = "insights"
@@ -347,7 +348,7 @@ func (s *Server) executeAgentSDKReportRequest(ctx context.Context, req agentSDKR
 	return s.startPlatformReportRun(ctx, reportID, platformReportRunRequest{
 		ExecutionMode:     req.ExecutionMode,
 		MaterializeResult: req.MaterializeResult,
-		Parameters:        graph.CloneReportParameterValues(req.Parameters),
+		Parameters:        reports.CloneReportParameterValues(req.Parameters),
 		RetryPolicy:       req.RetryPolicy,
 	}, strings.TrimSpace(GetUserID(ctx)), agentSDKInvocationSurface(ctx))
 }
@@ -591,7 +592,7 @@ func (s *Server) readAgentSDKResource(r *http.Request, uri string) (agentSDKReso
 		case "cerebro://tools/catalog":
 			payload = s.visibleAgentSDKCatalog(r.Context()).Tools
 		case "cerebro://reports/catalog":
-			payload = graph.ReportCatalogSnapshot(time.Now().UTC())
+			payload = reports.ReportCatalogSnapshot(time.Now().UTC())
 		default:
 			return agentSDKResourceDefinition{}, "", fmt.Errorf("resource not found: %s", uri)
 		}

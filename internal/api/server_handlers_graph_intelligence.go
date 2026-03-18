@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/graph"
+	reports "github.com/writer/cerebro/internal/graph/reports"
 	"github.com/writer/cerebro/internal/graphingest"
 )
 
@@ -19,8 +20,16 @@ func (s *Server) graphIntelligenceEventPatterns(w http.ResponseWriter, _ *http.R
 	s.json(w, http.StatusOK, graph.EventCorrelationPatternCatalogSnapshot(time.Now().UTC()))
 }
 
+func (s *Server) currentGraphIntelligenceGraph() *graph.Graph {
+	if s == nil || s.graphIntelligence == nil {
+		return nil
+	}
+	return s.graphIntelligence.CurrentGraph()
+}
+
 func (s *Server) graphIntelligenceEventCorrelations(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g := s.currentGraphIntelligenceGraph()
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
@@ -73,7 +82,7 @@ func (s *Server) graphIntelligenceEventCorrelations(w http.ResponseWriter, r *ht
 		return
 	}
 
-	result := graph.QueryEventCorrelations(s.app.SecurityGraph, time.Now().UTC(), graph.EventCorrelationQuery{
+	result := graph.QueryEventCorrelations(g, time.Now().UTC(), graph.EventCorrelationQuery{
 		EventID:          eventID,
 		EntityID:         entityID,
 		PatternID:        patternID,
@@ -86,7 +95,8 @@ func (s *Server) graphIntelligenceEventCorrelations(w http.ResponseWriter, r *ht
 }
 
 func (s *Server) graphIntelligenceEventAnomalies(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g := s.currentGraphIntelligenceGraph()
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
@@ -109,7 +119,7 @@ func (s *Server) graphIntelligenceEventAnomalies(w http.ResponseWriter, r *http.
 		return
 	}
 
-	result := graph.QueryEventCorrelations(s.app.SecurityGraph, time.Now().UTC(), graph.EventCorrelationQuery{
+	result := graph.QueryEventCorrelations(g, time.Now().UTC(), graph.EventCorrelationQuery{
 		EventID:          eventID,
 		EntityID:         entityID,
 		PatternID:        patternID,
@@ -127,7 +137,8 @@ func (s *Server) graphIntelligenceEventAnomalies(w http.ResponseWriter, r *http.
 }
 
 func (s *Server) graphIntelligenceInsights(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g := s.currentGraphIntelligenceGraph()
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
@@ -225,7 +236,7 @@ func (s *Server) graphIntelligenceInsights(w http.ResponseWriter, r *http.Reques
 		temporalDiff = diff
 	}
 
-	report := graph.BuildIntelligenceReport(s.app.SecurityGraph, engine, graph.IntelligenceReportOptions{
+	report := reports.BuildIntelligenceReport(g, engine, reports.IntelligenceReportOptions{
 		EntityID:              strings.TrimSpace(r.URL.Query().Get("entity_id")),
 		OutcomeWindow:         time.Duration(windowDays) * 24 * time.Hour,
 		SchemaHistoryLimit:    historyLimit,
@@ -238,7 +249,8 @@ func (s *Server) graphIntelligenceInsights(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) graphIntelligenceQuality(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g := s.currentGraphIntelligenceGraph()
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
@@ -273,7 +285,7 @@ func (s *Server) graphIntelligenceQuality(w http.ResponseWriter, r *http.Request
 		staleAfter = time.Duration(parsed) * time.Hour
 	}
 
-	report := graph.BuildGraphQualityReport(s.app.SecurityGraph, graph.GraphQualityReportOptions{
+	report := reports.BuildGraphQualityReport(g, reports.GraphQualityReportOptions{
 		FreshnessStaleAfter: staleAfter,
 		SchemaHistoryLimit:  historyLimit,
 		SchemaSinceVersion:  sinceVersion,
@@ -282,7 +294,8 @@ func (s *Server) graphIntelligenceQuality(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) graphIntelligenceMetadataQuality(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g := s.currentGraphIntelligenceGraph()
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
@@ -297,14 +310,15 @@ func (s *Server) graphIntelligenceMetadataQuality(w http.ResponseWriter, r *http
 		topKinds = parsed
 	}
 
-	report := graph.BuildGraphMetadataQualityReport(s.app.SecurityGraph, graph.GraphMetadataQualityReportOptions{
+	report := reports.BuildGraphMetadataQualityReport(g, reports.GraphMetadataQualityReportOptions{
 		TopKinds: topKinds,
 	})
 	s.json(w, http.StatusOK, report)
 }
 
 func (s *Server) graphIntelligenceClaimConflicts(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g := s.currentGraphIntelligenceGraph()
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
@@ -359,7 +373,7 @@ func (s *Server) graphIntelligenceClaimConflicts(w http.ResponseWriter, r *http.
 		recordedAt = parsed
 	}
 
-	report := graph.BuildClaimConflictReport(s.app.SecurityGraph, graph.ClaimConflictReportOptions{
+	report := graph.BuildClaimConflictReport(g, graph.ClaimConflictReportOptions{
 		ValidAt:         validAt,
 		RecordedAt:      recordedAt,
 		MaxConflicts:    maxConflicts,
@@ -370,7 +384,8 @@ func (s *Server) graphIntelligenceClaimConflicts(w http.ResponseWriter, r *http.
 }
 
 func (s *Server) graphIntelligenceEntitySummary(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g := s.currentGraphIntelligenceGraph()
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
@@ -402,7 +417,7 @@ func (s *Server) graphIntelligenceEntitySummary(w http.ResponseWriter, r *http.R
 		maxPostureClaims = parsed
 	}
 
-	report, ok := graph.BuildEntitySummaryReport(s.app.SecurityGraph, graph.EntitySummaryReportOptions{
+	report, ok := reports.BuildEntitySummaryReport(g, reports.EntitySummaryReportOptions{
 		EntityID:         entityID,
 		ValidAt:          validAt,
 		RecordedAt:       recordedAt,
@@ -416,7 +431,8 @@ func (s *Server) graphIntelligenceEntitySummary(w http.ResponseWriter, r *http.R
 }
 
 func (s *Server) graphIntelligenceLeverage(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g := s.currentGraphIntelligenceGraph()
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
@@ -491,7 +507,7 @@ func (s *Server) graphIntelligenceLeverage(w http.ResponseWriter, r *http.Reques
 		queueLimit = parsed
 	}
 
-	report := graph.BuildGraphLeverageReport(s.app.SecurityGraph, graph.GraphLeverageReportOptions{
+	report := reports.BuildGraphLeverageReport(g, reports.GraphLeverageReportOptions{
 		FreshnessStaleAfter:      staleAfter,
 		SchemaHistoryLimit:       historyLimit,
 		SchemaSinceVersion:       sinceVersion,
@@ -516,18 +532,16 @@ func (s *Server) graphIngestHealth(w http.ResponseWriter, r *http.Request) {
 
 	validationMode := string(graphingest.MapperValidationEnforce)
 	deadLetterPath := ""
-	if s.app != nil && s.app.Config != nil {
-		if mode := strings.ToLower(strings.TrimSpace(s.app.Config.GraphEventMapperValidationMode)); mode != "" {
-			validationMode = mode
-		}
-		deadLetterPath = strings.TrimSpace(s.app.Config.GraphEventMapperDeadLetterPath)
+	if s.graphIntelligence != nil {
+		validationMode = s.graphIntelligence.MapperValidationMode()
+		deadLetterPath = s.graphIntelligence.MapperDeadLetterPath()
 	}
 
 	stats := graphingest.MapperStats{}
 	initialized := false
-	if s.app != nil && s.app.TapEventMapper != nil {
-		initialized = true
-		stats = s.app.TapEventMapper.Stats()
+	if s.graphIntelligence != nil {
+		initialized = s.graphIntelligence.MapperInitialized()
+		stats = s.graphIntelligence.MapperStats()
 	}
 
 	deadLetter := graphingest.DeadLetterTailMetrics{
@@ -583,8 +597,8 @@ func (s *Server) graphIngestDeadLetter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	deadLetterPath := ""
-	if s.app != nil && s.app.Config != nil {
-		deadLetterPath = strings.TrimSpace(s.app.Config.GraphEventMapperDeadLetterPath)
+	if s.graphIntelligence != nil {
+		deadLetterPath = s.graphIntelligence.MapperDeadLetterPath()
 	}
 	if deadLetterPath == "" {
 		s.error(w, http.StatusServiceUnavailable, "graph event mapper dead-letter path is not configured")
@@ -623,14 +637,15 @@ func (s *Server) graphIngestDeadLetter(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) graphIngestContracts(w http.ResponseWriter, _ *http.Request) {
 	now := time.Now().UTC()
-	if s.app != nil && s.app.TapEventMapper != nil {
-		catalog := s.app.TapEventMapper.ContractCatalog(now)
-		s.json(w, http.StatusOK, map[string]any{
-			"generated_at": now,
-			"source":       "runtime_mapper",
-			"catalog":      catalog,
-		})
-		return
+	if s.graphIntelligence != nil {
+		if catalog, ok := s.graphIntelligence.MapperContractCatalog(now); ok {
+			s.json(w, http.StatusOK, map[string]any{
+				"generated_at": now,
+				"source":       "runtime_mapper",
+				"catalog":      catalog,
+			})
+			return
+		}
 	}
 
 	config, err := graphingest.LoadDefaultConfig()
@@ -647,7 +662,8 @@ func (s *Server) graphIngestContracts(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) graphIntelligenceWeeklyCalibration(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g := s.currentGraphIntelligenceGraph()
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
@@ -698,7 +714,7 @@ func (s *Server) graphIntelligenceWeeklyCalibration(w http.ResponseWriter, r *ht
 	}
 
 	profile := strings.TrimSpace(r.URL.Query().Get("profile"))
-	report := graph.BuildWeeklyCalibrationReport(s.app.SecurityGraph, engine, graph.WeeklyCalibrationReportOptions{
+	report := reports.BuildWeeklyCalibrationReport(g, engine, reports.WeeklyCalibrationReportOptions{
 		Now:              time.Now().UTC(),
 		WindowDays:       windowDays,
 		TrendDays:        trendDays,
@@ -796,11 +812,11 @@ type graphQueryNeighborResult struct {
 }
 
 func (s *Server) graphQuery(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g := s.currentGraphIntelligenceGraph()
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
-	g := s.app.SecurityGraph
 	queryGraph := g
 
 	var asOf time.Time

@@ -168,6 +168,37 @@ func TestHandleTapCloudEvent_BuildsBusinessNodeAndEdge(t *testing.T) {
 	}
 }
 
+func TestHandleTapCloudEvent_SwapsGraphForLegacyFallbackMutation(t *testing.T) {
+	original := graph.New()
+	a := &App{SecurityGraph: original}
+	evt := events.CloudEvent{
+		Type: "ensemble.tap.hubspot.contact.updated",
+		Time: time.Date(2026, 3, 6, 12, 0, 0, 0, time.UTC),
+		Data: map[string]any{
+			"entity_id": "contact-1",
+			"snapshot": map[string]any{
+				"name":       "Alice",
+				"company_id": "company-1",
+			},
+		},
+	}
+
+	if err := a.handleTapCloudEvent(context.Background(), evt); err != nil {
+		t.Fatalf("handleTapCloudEvent failed: %v", err)
+	}
+
+	current := a.CurrentSecurityGraph()
+	if current == original {
+		t.Fatal("expected TAP fallback mutation to swap the live graph pointer")
+	}
+	if _, ok := original.GetNode("hubspot:contact:contact-1"); ok {
+		t.Fatal("expected original graph to remain unchanged after swap")
+	}
+	if _, ok := current.GetNode("hubspot:contact:contact-1"); !ok {
+		t.Fatal("expected swapped graph to contain TAP fallback node")
+	}
+}
+
 func TestHandleTapCloudEvent_IsIdempotentForDuplicateBusinessEvent(t *testing.T) {
 	a := &App{SecurityGraph: graph.New()}
 	evt := events.CloudEvent{
@@ -266,6 +297,42 @@ func TestHandleTapCloudEvent_MaterializesEventCorrelations(t *testing.T) {
 	}
 }
 
+func TestHandleTapCloudEvent_DeclarativeMappingsSwapGraphAndResolveIdentityOnCandidate(t *testing.T) {
+	original := graph.New()
+	a := &App{SecurityGraph: original}
+	evt := events.CloudEvent{
+		ID:     "evt-pr-identity-1",
+		Source: "ensemble.tap.github",
+		Type:   "ensemble.tap.github.pull_request.merged",
+		Time:   time.Date(2026, 3, 12, 10, 0, 0, 0, time.UTC),
+		Data: map[string]any{
+			"repository":      "payments",
+			"number":          42,
+			"title":           "Fix checkout race",
+			"merged_by":       "alice",
+			"merged_by_email": "alice@example.com",
+		},
+	}
+
+	if err := a.handleTapCloudEvent(context.Background(), evt); err != nil {
+		t.Fatalf("handleTapCloudEvent failed: %v", err)
+	}
+
+	current := a.CurrentSecurityGraph()
+	if current == original {
+		t.Fatal("expected declarative TAP mapping to swap the live graph pointer")
+	}
+	if _, ok := original.GetNode("person:alice@example.com"); ok {
+		t.Fatal("expected original graph to remain unchanged after mapped identity resolution")
+	}
+	if _, ok := current.GetNode("person:alice@example.com"); !ok {
+		t.Fatal("expected swapped graph to contain resolved person node")
+	}
+	if _, ok := current.GetNode("pull_request:payments:42"); !ok {
+		t.Fatal("expected swapped graph to contain mapped pull request node")
+	}
+}
+
 func TestQueueEventCorrelationRefresh_DebouncesHotPathRebuilds(t *testing.T) {
 	a := &App{SecurityGraph: graph.New()}
 	base := time.Date(2026, 3, 12, 10, 0, 0, 0, time.UTC)
@@ -300,12 +367,13 @@ func TestQueueEventCorrelationRefresh_DebouncesHotPathRebuilds(t *testing.T) {
 	defer a.stopEventCorrelationRefreshLoop()
 
 	a.queueEventCorrelationRefresh("tap_mapping")
-	if graphEdgeExists(a.SecurityGraph.GetOutEdges("deployment:payments:deploy-1"), graph.EdgeKindTriggeredBy, "pull_request:payments:42") {
+	if current := a.CurrentSecurityGraph(); current != nil && graphEdgeExists(current.GetOutEdges("deployment:payments:deploy-1"), graph.EdgeKindTriggeredBy, "pull_request:payments:42") {
 		t.Fatal("expected debounced refresh to avoid immediate rematerialization")
 	}
 
 	time.Sleep(2500 * time.Millisecond)
-	if !graphEdgeExists(a.SecurityGraph.GetOutEdges("deployment:payments:deploy-1"), graph.EdgeKindTriggeredBy, "pull_request:payments:42") {
+	current := a.CurrentSecurityGraph()
+	if current == nil || !graphEdgeExists(current.GetOutEdges("deployment:payments:deploy-1"), graph.EdgeKindTriggeredBy, "pull_request:payments:42") {
 		t.Fatal("expected debounced refresh to materialize correlation after debounce window")
 	}
 }

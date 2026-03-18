@@ -43,6 +43,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/cel-go/cel"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -55,9 +56,11 @@ import (
 //
 // The engine is thread-safe and supports concurrent policy evaluation.
 type Engine struct {
-	policies map[string]*Policy       // Policies indexed by ID
-	history  map[string][]PolicyEvent // Version history indexed by policy ID
-	mu       sync.RWMutex             // Protects policies/history maps
+	policies    map[string]*Policy       // Policies indexed by ID
+	history     map[string][]PolicyEvent // Version history indexed by policy ID
+	celPrograms map[string][]cel.Program // Compiled CEL programs indexed by policy ID
+	celEnv      *cel.Env                 // Shared CEL environment for condition validation/eval
+	mu          sync.RWMutex             // Protects policies/history maps
 }
 
 // Policy defines a security policy rule. Policies specify what configurations
@@ -67,21 +70,22 @@ type Engine struct {
 // or generate violations ("forbid"). Conditions are evaluated against resource
 // attributes to determine if the policy matches.
 type Policy struct {
-	ID            string    `json:"id"`                       // Unique policy identifier
-	Version       int       `json:"version,omitempty"`        // Monotonic policy version
-	LastModified  time.Time `json:"last_modified,omitempty"`  // Last policy change timestamp (UTC)
-	PinnedVersion int       `json:"pinned_version,omitempty"` // Source version used for rollback pinning
-	Name          string    `json:"name"`                     // Human-readable policy name
-	Description   string    `json:"description"`              // Detailed description of policy intent
-	Query         string    `json:"query,omitempty"`          // Optional SQL query-based policy definition
-	Effect        string    `json:"effect"`                   // "permit" or "forbid"
-	Principal     string    `json:"principal"`                // Who the policy applies to (optional)
-	Action        string    `json:"action"`                   // What action is being evaluated
-	Resource      string    `json:"resource"`                 // Resource type pattern (e.g., "aws::s3::bucket")
-	Conditions    []string  `json:"conditions"`               // Conditions that must be true for policy to match
-	Severity      string    `json:"severity"`                 // critical, high, medium, low
-	Tags          []string  `json:"tags"`                     // Tags for categorization
-	Raw           string    `json:"raw,omitempty"`            // Raw Cedar policy text (optional)
+	ID              string    `json:"id"`                         // Unique policy identifier
+	Version         int       `json:"version,omitempty"`          // Monotonic policy version
+	LastModified    time.Time `json:"last_modified,omitempty"`    // Last policy change timestamp (UTC)
+	PinnedVersion   int       `json:"pinned_version,omitempty"`   // Source version used for rollback pinning
+	Name            string    `json:"name"`                       // Human-readable policy name
+	Description     string    `json:"description"`                // Detailed description of policy intent
+	Query           string    `json:"query,omitempty"`            // Optional SQL query-based policy definition
+	Effect          string    `json:"effect"`                     // "permit" or "forbid"
+	Principal       string    `json:"principal"`                  // Who the policy applies to (optional)
+	Action          string    `json:"action"`                     // What action is being evaluated
+	Resource        string    `json:"resource"`                   // Resource type pattern (e.g., "aws::s3::bucket")
+	Conditions      []string  `json:"conditions"`                 // Conditions that must be true for policy to match
+	ConditionFormat string    `json:"condition_format,omitempty"` // "legacy" or "cel"
+	Severity        string    `json:"severity"`                   // critical, high, medium, low
+	Tags            []string  `json:"tags"`                       // Tags for categorization
+	Raw             string    `json:"raw,omitempty"`              // Raw Cedar policy text (optional)
 
 	// External control mapping
 	ControlID string `json:"control_id,omitempty"` // External control ID for reference
@@ -163,10 +167,16 @@ type Finding struct {
 
 func NewEngine() *Engine {
 	MustValidateStartupMappings()
+	celEnv, err := newPolicyConditionEnv()
+	if err != nil {
+		panic(fmt.Sprintf("initialize CEL environment: %v", err))
+	}
 
 	return &Engine{
-		policies: make(map[string]*Policy),
-		history:  make(map[string][]PolicyEvent),
+		policies:    make(map[string]*Policy),
+		history:     make(map[string][]PolicyEvent),
+		celPrograms: make(map[string][]cel.Program),
+		celEnv:      celEnv,
 	}
 }
 
@@ -176,6 +186,10 @@ func (e *Engine) LoadPolicies(dir string) error {
 
 	e.policies = make(map[string]*Policy)
 	e.history = make(map[string][]PolicyEvent)
+	e.celPrograms = make(map[string][]cel.Program)
+	if err := e.ensureConditionEnvLocked(); err != nil {
+		return err
+	}
 
 	registry := NewComplianceRegistry()
 	seenPolicyFiles := make(map[string]string)
@@ -204,6 +218,9 @@ func (e *Engine) LoadPolicies(dir string) error {
 
 		if err := validateLoadedPolicy(&policyDef, path); err != nil {
 			return err
+		}
+		if err := validatePolicyConditionProgramsWithEnv(e.celEnv, &policyDef); err != nil {
+			return fmt.Errorf("invalid policy %s (%s): %w", path, policyDef.ID, err)
 		}
 
 		if existingPath, exists := seenPolicyFiles[policyDef.ID]; exists {
@@ -235,6 +252,9 @@ func (e *Engine) LoadPolicies(dir string) error {
 
 		stored := clonePolicy(&policyDef)
 		e.policies[policyDef.ID] = stored
+		if err := e.syncConditionProgramsLocked(stored); err != nil {
+			return fmt.Errorf("register policy %s (%s): %w", path, policyDef.ID, err)
+		}
 		e.appendPolicyEventLocked(policyDef.ID, stored, policyDef.LastModified, nil, PolicyEventLoaded)
 		return nil
 	})
@@ -288,6 +308,7 @@ func validateLoadedPolicy(policyDef *Policy, path string) error {
 	policyDef.Resource = strings.TrimSpace(policyDef.Resource)
 	policyDef.Query = strings.TrimSpace(policyDef.Query)
 	policyDef.Severity = normalizeSeverity(policyDef.Severity)
+	policyDef.ConditionFormat = normalizeConditionFormat(policyDef.ConditionFormat)
 
 	missing := make([]string, 0, 4)
 	if policyDef.ID == "" {
@@ -309,6 +330,9 @@ func validateLoadedPolicy(policyDef *Policy, path string) error {
 	if !isValidSeverity(policyDef.Severity) {
 		return fmt.Errorf("invalid policy %s (%s): unsupported severity %q (allowed: critical, high, medium, low)", path, policyDef.ID, policyDef.Severity)
 	}
+	if !validConditionFormat(policyDef.ConditionFormat) {
+		return fmt.Errorf("invalid policy %s (%s): unsupported condition_format %q (allowed: legacy, cel)", path, policyDef.ID, policyDef.ConditionFormat)
+	}
 
 	hasQuery := policyDef.Query != ""
 	hasResource := policyDef.Resource != ""
@@ -324,6 +348,17 @@ func validateLoadedPolicy(policyDef *Policy, path string) error {
 	default:
 		return fmt.Errorf("invalid policy %s (%s): policy must define either query OR resource+conditions", path, policyDef.ID)
 	}
+}
+
+func (e *Engine) ValidatePolicyDefinition(policyDef *Policy) error {
+	if policyDef == nil {
+		return fmt.Errorf("policy is required")
+	}
+	copy := clonePolicy(policyDef)
+	if err := validateLoadedPolicy(copy, "inline policy"); err != nil {
+		return err
+	}
+	return e.validatePolicyConditionPrograms(copy)
 }
 
 func normalizeSeverity(severity string) string {
@@ -355,14 +390,21 @@ func (e *Engine) AddPolicy(p *Policy) {
 	stored := clonePolicy(p)
 	stored.ID = policyID
 	stored.LastModified = now
+	stored.ConditionFormat = normalizeConditionFormat(stored.ConditionFormat)
 
 	if existing, ok := e.policies[policyID]; ok {
 		stored.Version = existing.Version + 1
+		if err := e.syncConditionProgramsLocked(stored); err != nil {
+			return
+		}
 		e.closeActivePolicyEventLocked(policyID, now)
 		e.appendPolicyEventLocked(policyID, stored, now, nil, PolicyEventUpdated)
 	} else {
 		if stored.Version <= 0 {
 			stored.Version = 1
+		}
+		if err := e.syncConditionProgramsLocked(stored); err != nil {
+			return
 		}
 		e.appendPolicyEventLocked(policyID, stored, now, nil, PolicyEventCreated)
 	}
@@ -384,6 +426,10 @@ func (e *Engine) UpdatePolicy(id string, p *Policy) bool {
 	stored.Version = e.nextPolicyVersionLocked(id)
 	stored.LastModified = now
 	stored.PinnedVersion = 0
+	stored.ConditionFormat = normalizeConditionFormat(stored.ConditionFormat)
+	if err := e.syncConditionProgramsLocked(stored); err != nil {
+		return false
+	}
 
 	e.closeActivePolicyEventLocked(id, now)
 	e.appendPolicyEventLocked(id, stored, now, nil, PolicyEventUpdated)
@@ -403,6 +449,7 @@ func (e *Engine) DeletePolicy(id string) bool {
 	now := time.Now().UTC()
 	e.closeActivePolicyEventLocked(id, now)
 	if existing != nil {
+		delete(e.celPrograms, id)
 		existing.Version = e.nextPolicyVersionLocked(id)
 		existing.LastModified = now
 		effectiveTo := now
@@ -757,9 +804,16 @@ func (e *Engine) checkAssetViolation(p *Policy, asset map[string]interface{}) st
 	if len(p.Conditions) == 0 {
 		return ""
 	}
-	for _, cond := range p.Conditions {
-		if !evaluateCondition(cond, asset) {
-			return "" // If any condition doesn't match, no violation
+	switch normalizeConditionFormat(p.ConditionFormat) {
+	case ConditionFormatCEL:
+		if !e.evaluateCELConditions(p, asset) {
+			return ""
+		}
+	default:
+		for _, cond := range p.Conditions {
+			if !evaluateCondition(cond, asset) {
+				return "" // If any condition doesn't match, no violation
+			}
 		}
 	}
 	return p.Description // All conditions matched - violation

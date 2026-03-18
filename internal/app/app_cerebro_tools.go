@@ -13,6 +13,7 @@ import (
 	"github.com/writer/cerebro/internal/agents"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graph"
+	reports "github.com/writer/cerebro/internal/graph/reports"
 )
 
 func (a *App) cerebroTools() []agents.Tool {
@@ -183,6 +184,41 @@ func (a *App) cerebroTools() []agents.Tool {
 				"properties": map[string]any{},
 			},
 			Handler: a.toolCerebroGraphQueryTemplates,
+		},
+		{
+			Name:        "cerebro.execution_status",
+			Description: "List recent shared-platform executions across report runs, scans, and action workflows",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"namespace": map[string]any{
+						"type":        "array",
+						"description": "Optional execution namespaces to filter, for example report_run, workload_scan, image_scan, function_scan, action_engine.",
+						"items":       map[string]any{"type": "string"},
+					},
+					"status": map[string]any{
+						"type":        "array",
+						"description": "Optional execution statuses to include.",
+						"items":       map[string]any{"type": "string"},
+					},
+					"report_id": map[string]any{
+						"type":        "string",
+						"description": "Optional report definition ID filter for report executions.",
+					},
+					"limit": map[string]any{
+						"type":        "integer",
+						"description": "Maximum executions to return (1-100).",
+						"default":     20,
+					},
+					"order": map[string]any{
+						"type":        "string",
+						"description": "Sort order: updated or submitted.",
+						"enum":        []string{"updated", "submitted"},
+						"default":     "updated",
+					},
+				},
+			},
+			Handler: a.toolCerebroExecutionStatus,
 		},
 		{
 			Name:        "cerebro.graph_changelog",
@@ -863,7 +899,7 @@ func (a *App) toolCerebroIntelligenceReport(_ context.Context, args json.RawMess
 	historyLimit := clampInt(req.HistoryLimit, 20, 1, 200)
 	maxInsights := clampInt(req.MaxInsights, 8, 1, 20)
 
-	report := graph.BuildIntelligenceReport(g, graph.NewRiskEngine(g), graph.IntelligenceReportOptions{
+	report := reports.BuildIntelligenceReport(g, graph.NewRiskEngine(g), reports.IntelligenceReportOptions{
 		EntityID:              strings.TrimSpace(req.EntityID),
 		OutcomeWindow:         time.Duration(windowDays) * 24 * time.Hour,
 		SchemaHistoryLimit:    historyLimit,
@@ -895,7 +931,7 @@ func (a *App) toolCerebroGraphQualityReport(_ context.Context, args json.RawMess
 	historyLimit := clampInt(req.HistoryLimit, 20, 1, 200)
 	staleAfterHours := clampInt(req.StaleAfterHours, 720, 1, 8760)
 
-	report := graph.BuildGraphQualityReport(g, graph.GraphQualityReportOptions{
+	report := reports.BuildGraphQualityReport(g, reports.GraphQualityReportOptions{
 		SchemaHistoryLimit:  historyLimit,
 		SchemaSinceVersion:  req.SinceVersion,
 		FreshnessStaleAfter: time.Duration(staleAfterHours) * time.Hour,
@@ -938,7 +974,7 @@ func (a *App) toolCerebroGraphLeverageReport(_ context.Context, args json.RawMes
 		suggestThreshold = 0.55
 	}
 
-	report := graph.BuildGraphLeverageReport(g, graph.GraphLeverageReportOptions{
+	report := reports.BuildGraphLeverageReport(g, reports.GraphLeverageReportOptions{
 		SchemaHistoryLimit:       historyLimit,
 		SchemaSinceVersion:       req.SinceVersion,
 		FreshnessStaleAfter:      time.Duration(staleAfterHours) * time.Hour,

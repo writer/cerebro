@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/graph"
+	"github.com/writer/cerebro/internal/graph/builders"
 	"github.com/writer/cerebro/internal/snowflake"
 	nativesync "github.com/writer/cerebro/internal/sync"
 )
@@ -22,7 +23,7 @@ type syncGraphSource struct {
 	block  bool
 }
 
-func (s *syncGraphSource) Query(ctx context.Context, query string, args ...any) (*graph.QueryResult, error) {
+func (s *syncGraphSource) Query(ctx context.Context, query string, args ...any) (*builders.DataQueryResult, error) {
 	_ = ctx
 	_ = args
 	lower := strings.ToLower(query)
@@ -40,7 +41,7 @@ func (s *syncGraphSource) Query(ctx context.Context, query string, args ...any) 
 	defer s.mu.Unlock()
 
 	if strings.Contains(lower, "select max(event_time)") && strings.Contains(lower, "from cdc_events") {
-		return &graph.QueryResult{Rows: []map[string]any{{"latest": s.latest}}, Count: 1}, nil
+		return &builders.DataQueryResult{Rows: []map[string]any{{"latest": s.latest}}, Count: 1}, nil
 	}
 	if strings.Contains(lower, "select event_id") && strings.Contains(lower, "from cdc_events") {
 		if s.err != nil {
@@ -48,9 +49,9 @@ func (s *syncGraphSource) Query(ctx context.Context, query string, args ...any) 
 		}
 		rows := make([]map[string]any, 0, len(s.events))
 		rows = append(rows, s.events...)
-		return &graph.QueryResult{Rows: rows, Count: len(rows)}, nil
+		return &builders.DataQueryResult{Rows: rows, Count: len(rows)}, nil
 	}
-	return &graph.QueryResult{Rows: []map[string]any{}}, nil
+	return &builders.DataQueryResult{Rows: []map[string]any{}}, nil
 }
 
 func TestBackfillRelationshipIDs_RequiresSnowflake(t *testing.T) {
@@ -302,7 +303,7 @@ func TestSyncAWS_AppliesIncrementalGraphChangesAfterSync(t *testing.T) {
 	s.app.Snowflake = &snowflake.Client{}
 
 	source := &syncGraphSource{}
-	builder := graph.NewBuilder(source, s.app.Logger)
+	builder := builders.NewBuilder(source, s.app.Logger)
 	s.app.SecurityGraphBuilder = builder
 	s.app.SecurityGraph = builder.Graph()
 
@@ -360,7 +361,7 @@ func TestSyncAWS_GraphUpdateFailureIsSanitized(t *testing.T) {
 	s.app.Snowflake = &snowflake.Client{}
 
 	source := &syncGraphSource{block: true}
-	builder := graph.NewBuilder(source, s.app.Logger)
+	builder := builders.NewBuilder(source, s.app.Logger)
 	s.app.SecurityGraphBuilder = builder
 	s.app.SecurityGraph = builder.Graph()
 
@@ -407,7 +408,7 @@ func TestSyncAWS_GraphUpdateBusyReturnsBusyStatus(t *testing.T) {
 	s.app.Snowflake = &snowflake.Client{}
 
 	source := &syncGraphSource{block: true}
-	builder := graph.NewBuilder(source, s.app.Logger)
+	builder := builders.NewBuilder(source, s.app.Logger)
 	s.app.SecurityGraphBuilder = builder
 	s.app.SecurityGraph = builder.Graph()
 
@@ -473,7 +474,7 @@ func TestSyncAWS_GraphUpdateNoopSummaryUsesEmptyTablesArray(t *testing.T) {
 	s.app.Snowflake = &snowflake.Client{}
 
 	source := &syncGraphSource{}
-	builder := graph.NewBuilder(source, s.app.Logger)
+	builder := builders.NewBuilder(source, s.app.Logger)
 	s.app.SecurityGraphBuilder = builder
 	s.app.SecurityGraph = builder.Graph()
 
@@ -518,7 +519,7 @@ func TestSyncAWS_FullRebuildFallbackReportsAppliedStatus(t *testing.T) {
 	s.app.Snowflake = &snowflake.Client{}
 
 	source := &syncGraphSource{err: errors.New("cdc unavailable")}
-	builder := graph.NewBuilder(source, s.app.Logger)
+	builder := builders.NewBuilder(source, s.app.Logger)
 	s.app.SecurityGraphBuilder = builder
 	s.app.SecurityGraph = builder.Graph()
 

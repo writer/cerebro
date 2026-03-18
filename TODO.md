@@ -5,6 +5,369 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 66 - Shared Execution Store Convergence (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#209` was still only partially true; the repo had a shared execution-store package, but report runs, action executions, consumer dedupe, and scan materialization still reopened concrete SQLite stores and therefore kept backend assumptions in leaf services.
+- [x] Gap: that concrete `*executionstore.SQLiteStore` coupling would make a future multi-worker backend migration harder than it needs to be, which matters because SQLite is an acceptable default but not the long-term answer for larger customers.
+- [x] Gap: API/server tests were still proving persistence behavior through wrapper ownership assumptions instead of the actual shared execution-store boundary.
+- [x] Gap: GitHub/wider-project references reinforce the right seam:
+  - [x] `dagster-io/dagster` keeps run state on a generic storage contract while layering richer indexes/tags on top.
+  - [x] `argoproj/argo-workflows` keeps execution status and node state explicit rather than hiding orchestration state in process memory.
+  - [x] the Wiz schema dump in `/Users/jonathanhaas/Downloads/other/wiz.graphql` is a useful reminder that broad query surfaces stay tractable only when the underlying execution resources remain typed and inspectable.
+
+### Execution plan
+- [x] Extract a backend-neutral shared execution-store contract:
+  - [x] add `executionstore.Store`
+  - [x] move callers off concrete `*executionstore.SQLiteStore` dependencies where they only need the shared contract
+- [x] Centralize app-level shared execution-store ownership:
+  - [x] initialize one shared app execution store from `EXECUTION_STORE_FILE`
+  - [x] thread that shared handle into API/report/action/consumer paths when they point at the same underlying store
+  - [x] keep wrapper-specific `Close()` semantics from accidentally closing borrowed shared stores
+- [x] Preserve durable behavior while removing wrapper-owned assumptions:
+  - [x] update report-run persistence tests to fail through the shared store itself
+  - [x] keep scan/action/report/consumer paths green under the shared contract
+- [x] Add follow-on scale direction to the backlog:
+  - [x] document that SQLite remains the default implementation for now
+  - [x] make “higher-scale backend behind `executionstore.Store`” the next scale seam instead of deepening SQLite-only code paths
+
+## Deep Review Cycle 65 - Durable CloudEvent Deduplication for NATS Consumer (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#248` was still materially open because the JetStream consumer acknowledged events after handler success but had no durable CloudEvent-ID suppression, so transient ack failures and consumer restarts could re-run the same mutation path.
+- [x] Gap: the issue proposal allowed an in-memory sliding window with periodic persistence, but that would still leave a correctness hole on restart and does not match the broader platform direction toward shared execution state.
+- [x] Gap: consumer observability exposed redeliveries and dropped messages, but not the actual successful-vs-deduplicated throughput split needed to prove the pipeline is suppressing duplicates instead of just retrying them.
+- [x] Gap: external references were directionally useful but not prescriptive here:
+  - [x] `argoproj/argo-events` reinforces durable event-processing state over process-local memory when workflows restart.
+  - [x] `OpenLineage/OpenLineage` reinforces treating event identity as a first-class contract surface instead of an incidental transport detail.
+  - [x] the Wiz schema dump in `/Users/jonathanhaas/Downloads/other/wiz.graphql` is a useful caution that very broad event/query surfaces become harder to reason about unless identity and processing contracts are explicit and inspectable.
+
+### Execution plan
+- [x] Add durable processed-event storage in the shared execution store:
+  - [x] add `processed_events` persistence + indexes in the SQLite execution store
+  - [x] add processed-event lookup/remember helpers with TTL and bounded retention
+- [x] Add consumer-level CloudEvent dedupe:
+  - [x] derive a deterministic dedupe key from tenant/source/event ID
+  - [x] skip handler execution when the CloudEvent is already recorded in the dedupe window
+  - [x] log payload-hash mismatches for duplicate IDs carrying different payloads
+- [x] Expose config and metrics:
+  - [x] add NATS consumer dedupe env/config fields with validation
+  - [x] add processed and deduplicated Prometheus counters
+  - [x] document the new config in `docs/CONFIG_ENV_VARS.md`
+- [x] Add regression coverage:
+  - [x] execution-store round trip + bounded retention tests
+  - [x] consumer duplicate suppression tests
+  - [x] metrics registration coverage
+
+### Detailed follow-on backlog
+- [ ] Track A - Stronger idempotency semantics
+  - Exit criteria:
+  - [ ] add durable in-flight / completed processing states instead of completed-event memory only
+  - [ ] thread idempotency keys into graph mutation write paths so handler replay becomes a true no-op
+- [ ] Track B - Dedupe lifecycle observability
+  - Exit criteria:
+  - [ ] add dedupe-store health metrics and storage-pressure telemetry
+  - [ ] expose dedupe hit/miss posture in consumer health/readiness reporting
+- [ ] Track C - Ordered entity-local sequencing
+  - Exit criteria:
+  - [ ] add per-entity ordering windows for create/update/delete event families that cannot tolerate reorder
+  - [ ] keep that sequencing logic separate from the generic dedupe window
+
+## Deep Review Cycle 64 - Coverage Ratchet for Critical Packages: Sync + API (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#152` was still open even after warehouse/test seams improved because CI was still enforcing stale package floors: `internal/api` at `40%` despite already exceeding `55%`, and `internal/sync` at `11.5%` despite the highest orchestration complexity in the repo.
+- [x] Gap: the real blocker was not `internal/api`; shared app test helpers already existed via `internal/apptest`, and package coverage was already above the requested floor.
+- [x] Gap: `internal/sync` needed honest coverage work in the warehouse-backed orchestration seams we actually rely on today: sync coordination, CDC event emission, scoped persistence helpers, and provider-specific change-history paths.
+- [x] Gap: external references reinforced the same discipline from different angles:
+  - [x] `openfga/openfga` keeps transport and service seams narrow enough that handler/service tests are cheap instead of requiring full-process integration.
+  - [x] `grafana/grafana` is the warning case for broad surface area where package-level ratchets only work if helper seams exist first.
+  - [x] the Wiz schema dump in `/Users/jonathanhaas/Downloads/wiz.graphql` remains the opposite cautionary example: large ambient surfaces become difficult to test rigorously unless they are broken into explicit modules and query seams.
+
+### Execution plan
+- [x] Raise real sync coverage with warehouse-backed tests:
+  - [x] add CDC builder tests for event IDs, payload extraction, and scope fallback
+  - [x] add sync engine tests for change history, partial fetch backfill, and CDC emission
+  - [x] add scoped table operation tests for scoped deletes, provider change history, and merge behavior
+  - [x] add GCP/Kubernetes provider tests covering CDC emission and shared persistence helpers
+  - [x] add helper/fetch-wrapper tests for retry helpers, region-limit helpers, and thin provider fetch delegates
+- [x] Re-measure package coverage before touching CI:
+  - [x] `internal/sync` now measures `21.0%`
+  - [x] `internal/api` measures `64.4%`
+- [x] Ratchet CI floors to measured reality:
+  - [x] raise `internal/api` threshold from `40.0` to `55.0`
+  - [x] raise `internal/sync` threshold from `11.5` to `20.0`
+
+### Detailed follow-on backlog
+- [ ] Track A - Next sync coverage ratchet to `30%`
+  - Exit criteria:
+  - [ ] add deeper relationship extraction tests for AWS/GCP relationship builders
+  - [ ] add more provider fetch/retry edge-case coverage around partial-page and auth failure handling
+  - [ ] raise the `internal/sync` CI floor from `20.0` to `30.0` only after measured package coverage holds above that mark with headroom
+- [ ] Track B - Coverage by package seam, not full-process setup
+  - Exit criteria:
+  - [ ] keep using `internal/apptest` / warehouse memory doubles instead of reintroducing full Snowflake/process dependencies into unit suites
+  - [ ] extract any remaining broad setup helpers only where a new handler or sync surface still cannot be tested cheaply
+- [ ] Track C - Package split pressure
+  - Exit criteria:
+  - [ ] use the next `internal/sync` coverage wave to identify the worst ambient files for later package extraction
+  - [ ] keep coverage work aligned with the larger graph/app package-boundary cleanup instead of growing more monolithic provider files
+
+## Deep Review Cycle 63 - Graph Package Split Phase 1: Reports Extraction (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#141` was still materially open because `internal/graph` remained a monolith even after concurrency and execution-store work, so every report/runtime change still loaded the full graph namespace and its private helpers.
+- [x] Gap: reports were the best first extraction seam because they already behaved like a distinct runtime: definitions, executions, attempts, events, snapshots, contract catalogs, and typed result models.
+- [x] Gap: the first extraction surfaced exactly the hidden coupling we needed to expose: report code was reaching into private graph helpers for temporal visibility, schema/profile utilities, facet applicability, and JSON-schema cloning.
+- [x] Gap: external references reinforced the same package-boundary lesson from different angles:
+  - [x] `open-metadata/OpenMetadata` keeps report/test/catalog resources under explicit module seams rather than one ambient metadata package.
+  - [x] `backstage/backstage` keeps plugin contracts in bounded packages and pushes shared primitives through explicit exported surfaces.
+  - [x] `OpenLineage/OpenLineage` treats contract catalogs and lineage payloads as versioned resources, not incidental helper code.
+  - [x] the Wiz GraphQL schema dump in `/Users/jonathanhaas/Downloads/wiz.graphql` exposes `185` top-level `Query` fields and `144` top-level `Mutation` fields, which is a concrete warning against letting one ambient graph surface absorb every report/runtime concern.
+
+### Execution plan
+- [x] Extract the report subsystem into `internal/graph/reports`:
+  - [x] move typed report payloads, report registry/contracts, run/attempt/event history, snapshot logic, and report-store logic out of root `internal/graph`
+  - [x] keep the root `graph` package focused on graph primitives, schemas, entities, knowledge, snapshots, and risk substrate
+- [x] Replace implicit same-package access with explicit boundaries:
+  - [x] add narrow exported compatibility helpers in `internal/graph/package_exports.go` where reports genuinely need root graph services
+  - [x] move report-local helper behavior into `reports` where it should not be shared ambiently
+  - [x] convert report node visibility from direct `g.mu`/`g.nodes` access to an exported `GetNodeBitemporal(...)` graph API
+- [x] Rewire external callers onto the new package:
+  - [x] update API/app/client/script imports from `graph.*report*` to `reports.*`
+  - [x] keep graph snapshot record types in root `graph` while moving report-run and report-contract types into `reports`
+  - [x] update report contract/result-schema strings from `graph.*` to `reports.*`
+- [x] Regenerate and validate the report contract surface:
+  - [x] regenerate `docs/GRAPH_REPORT_CONTRACTS_AUTOGEN.md`
+  - [x] regenerate `docs/GRAPH_REPORT_CONTRACTS.json`
+  - [x] run report contract compatibility checks after the package-path migration
+
+### Detailed follow-on backlog
+- [ ] Track A - `internal/graph/entities`
+  - Exit criteria:
+  - [ ] move entity query/detail/facet/subresource/search logic behind an `entities` package
+  - [ ] eliminate report compatibility shims that currently expose entity-facet helper behavior from root `graph`
+- [ ] Track B - `internal/graph/knowledge`
+  - Exit criteria:
+  - [ ] split claims/evidence/observations/sources/proofs/diffs/adjudication into a dedicated `knowledge` package
+  - [ ] replace remaining root/entity cross-calls with exported interfaces or package-level query functions
+- [ ] Track C - `internal/graph/risk`
+  - Exit criteria:
+  - [ ] isolate risk engine, toxic combos, attack paths, and feedback/calibration into a dedicated package
+  - [ ] prevent report/intelligence code from depending on root risk internals beyond explicit exported types
+- [ ] Track D - remove migration shims
+  - Exit criteria:
+  - [ ] audit `internal/graph/package_exports.go` and delete compatibility exports once downstream packages are properly split
+  - [ ] keep only stable graph-surface APIs that are justified independently of the migration
+
+## Deep Review Cycle 62 - Graph Concurrency Phase 1: Copy-on-Write Live Mutations (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#144` was still materially open even after builder extraction because the live app/API surfaces were mutating the current `SecurityGraph` instance directly, so copy-on-write rebuilds existed alongside in-place writes on the hot path.
+- [x] Gap: platform knowledge reads and identity calibration were still reading the injected `SecurityGraph` field in the API dependency bundle rather than the runtime's current graph pointer, which made copy-on-write swaps invisible to some read surfaces.
+- [x] Gap: TAP/NATS consumer paths still mutated the live graph directly in multiple places: legacy business fallback ingestion, declarative mapper application, identity resolution during mapper `resolve(...)`, interaction aggregation, and activity materialization.
+- [x] Gap: external references reinforced the same boundary lesson from different angles: `temporalio/temporal` isolates mutable execution/history state behind explicit services, `argoproj/argo-workflows` separates executor/progress/sync responsibilities instead of one shared mutable runtime, `open-metadata/OpenMetadata` treats jobs/events/metadata reads as explicit resources, and the large Wiz GraphQL schema in `/Users/jonathanhaas/Downloads/wiz.graphql` is a useful warning about how fast one ambient graph surface becomes ungovernable when mutation/read boundaries are not explicit.
+
+### Execution plan
+- [x] Introduce an app-level live-graph mutation seam:
+  - [x] add `MutateSecurityGraph(...)` and `MutateSecurityGraphMaybe(...)`
+  - [x] perform clone/mutate/index/swap under `graphUpdateMu`
+  - [x] preserve schema validation and metadata counts across swaps
+  - [x] allow lazy graph initialization through the mutation seam instead of direct hot-path graph creation
+- [x] Move platform/API writeback flows onto copy-on-write:
+  - [x] route claim/observation/decision/outcome/annotation/identity/actuation handlers through the graph mutation seam
+  - [x] fix lifecycle-event emission and tests to reference the swapped current graph instead of stale pointers
+- [x] Move app/tool writeback flows onto copy-on-write:
+  - [x] route Cerebro writeback tools through the same mutation seam
+  - [x] update tool tests to assert against `CurrentSecurityGraph()` after writes
+- [x] Fix stale live-read surfaces:
+  - [x] switch platform knowledge handlers to `CurrentSecurityGraph()`
+  - [x] switch identity calibration to `CurrentSecurityGraph()`
+  - [x] add regressions proving writes become visible through the runtime read surface after swap
+- [x] Move TAP consumer mutation paths onto copy-on-write:
+  - [x] route legacy business fallback event ingestion through `MutateSecurityGraphMaybe(...)`
+  - [x] route declarative mapper application through the mutation seam
+  - [x] bind mapper `resolve(...)` identity writes to the candidate graph instead of the live graph pointer
+  - [x] route interaction aggregation and activity materialization through the mutation seam
+  - [x] keep event-correlation refresh asynchronous and post-swap instead of nested under the mutation lock
+- [x] Prove the concurrency cut with regressions:
+  - [x] add swap-semantics tests for app writebacks
+  - [x] add swap-semantics tests for TAP fallback mutation
+  - [x] add swap-semantics tests for declarative mapping plus identity resolution
+
+### Detailed follow-on backlog
+- [ ] Track A - Shared execution store
+  - Exit criteria:
+  - [ ] move report runs, runtime response attempts, scan executions, replay jobs, and future graph mutation jobs onto one shared execution-state substrate instead of per-process in-memory coordination
+  - [ ] define common execution records for status, attempts, progress, lease/ownership, retry policy, and durable event history
+  - [ ] make API/app/worker paths consume the same execution records so horizontal scale does not depend on sticky process memory
+- [ ] Track B - Graph read-view isolation
+  - Exit criteria:
+  - [ ] identify the hottest read-heavy graph surfaces (`blast_radius`, entity facets, knowledge lists, event correlations) and decide which should remain direct graph traversals vs materialized read views
+  - [ ] add benchmarks for concurrent read throughput during event-ingest write load
+  - [ ] only introduce sharding or MVCC beyond copy-on-write where the benchmark shows actual lock pressure remains
+- [ ] Track C - Consumer/runtime cleanup
+  - Exit criteria:
+  - [ ] remove remaining direct `a.SecurityGraph` hot-path reads in app services where `CurrentSecurityGraph()` is the correct runtime source
+  - [ ] isolate TAP ingestion mutation helpers from read-only parsing helpers so the consumer file stops mixing event parsing, graph mutation, and runtime coordination in one surface
+  - [ ] feed the same mutation seam into later package splits for `internal/graph/knowledge`, `internal/graph/entities`, and future worker-only graph executors
+
+## Deep Review Cycle 60 - API Service Bundle + App Composition Root Narrowing (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#146` remained open because `internal/api` still stored `*app.App` directly, so the HTTP layer kept a hidden dependency on the full composition root even after earlier graph-intelligence service seams landed.
+- [x] Gap: the current server constructor made later graph/package splitting harder because handler code could still reach through `s.app.*` for any field added to `App`.
+- [x] Gap: sync/graph tests were implicitly proving the API surface against the full app object, not against a minimal dependency bundle that a future graph-only or worker binary could construct.
+- [x] Gap: external project references kept pointing at the same architectural lesson: `openfga/openfga` keeps transport surfaces thin around explicit services, while larger server monoliths like `argoproj/argo-cd` and `grafana/grafana` show how quickly composition roots become ambient dependencies.
+
+### Execution plan
+- [x] Replace the server's direct `*app.App` dependency with an explicit dependency bundle:
+  - [x] add `internal/api/server_dependencies.go`
+  - [x] capture only the concrete services and narrow runtime interfaces the API layer actually consumes
+  - [x] keep `NewServer(*app.App)` as an adapter around `NewServerWithDependencies(...)`
+- [x] Preserve graph-runtime behavior without tying the API layer back to `App`:
+  - [x] add a graph-runtime adapter that follows the server dependency bundle's current graph/builder fields
+  - [x] preserve incremental graph-update and rebuild behavior for sync handlers and tests
+- [x] Remove remaining direct `internal/app` imports from handler/service files:
+  - [x] rewire graph-intelligence service construction through the dependency bundle instead of `*app.App`
+  - [x] keep `internal/api` imports of `internal/app` limited to the constructor/adapter surface and test config types
+- [x] Prove the new seam with minimal construction:
+  - [x] add a test that instantiates `Server` through `NewServerWithDependencies(...)` and a stub graph runtime, without constructing a full `*app.App`
+- [x] Pull external reference patterns with `gh` and fold them into the design:
+  - [x] `openfga/openfga` for thin transport/service boundaries
+  - [x] `argoproj/argo-cd` as the warning case for server/composition-root sprawl
+  - [x] `grafana/grafana` as another example of how broad server surfaces need explicit dependency seams
+
+### Detailed follow-on backlog
+- [ ] Track A - Finish API service slicing
+  - Exit criteria:
+  - [ ] extract explicit dependency bundles for graph-risk, findings/compliance, and ticketing/runtime handler families instead of relying on a single broad server bundle
+  - [ ] reduce `s.app.*` field access in handlers by routing new work through service-specific helpers or interfaces first
+  - [ ] add more `NewServerWithDependencies(...)` tests that stub only the handler family under test
+- [ ] Track B - App container decomposition
+  - Exit criteria:
+  - [ ] use the same consumption-point dependency inventory to shrink `internal/app.App`
+  - [ ] feed the resulting seams into issue `#141` package splitting and issue `#144` graph concurrency work
+  - [ ] make graph-only and scan-only processes construct dependency bundles without initializing unrelated services
+
+## Deep Review Cycle 61 - Graph Package Split Phase 1: Builders Extraction (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#141` remained blocked because `internal/graph` still forced builder/ETL code, report contracts, knowledge logic, and core mutation/query code through one namespace and one import path.
+- [x] Gap: the first attempted extraction showed `reports/` was not the right first cut yet; it still depended on too many package-private helpers and would have created a cosmetic split with hidden coupling.
+- [x] Gap: `builders/` was the cleanest real leaf package, but the move still exposed ad hoc helper duplication (`query_rows`, JSON snapshot helpers, mutation formatting) that needed explicit shared seams instead of dot-import sprawl.
+- [x] Gap: external references pointed at the same lesson from different directions: `temporalio/temporal` keeps execution/history concerns behind explicit service boundaries, `argoproj/argo-workflows` isolates executor/progress/sync packages instead of one workflow namespace, and the large Wiz GraphQL schema in `/Users/jonathanhaas/Downloads/wiz.graphql` is a useful warning about how fast graph-adjacent surfaces become one giant ambient API when boundaries are not enforced early.
+
+### Execution plan
+- [x] Extract the builder/ETL subsystem into its own package:
+  - [x] move graph build orchestration, provider-specific builders, and Snowflake graph-source code into `internal/graph/builders`
+  - [x] colocate builder-focused tests with that package
+  - [x] update `internal/app` and `internal/api` to depend on the extracted builders package explicitly
+- [x] Keep the split honest instead of over-extracting:
+  - [x] revert the initial `reports/` package move after confirming the dependency boundary was still too porous
+  - [x] leave report execution/registry code in `internal/graph` until it can depend on stable shared helpers rather than package-private reach-through
+- [x] Replace ambient helper leakage with explicit bridges:
+  - [x] add shared compatibility helpers for atomic JSON writes and snapshot-record loading in core graph
+  - [x] add a builders-local helper layer instead of dot-importing core graph symbols
+  - [x] move `GraphMutationSummary` formatting back into core so builders depend on graph contracts, not the reverse
+- [x] Validate the first split as a real package boundary:
+  - [x] keep full-repo tests green
+  - [x] keep lint green after removing dot-import usage
+  - [x] verify API/app graph consumers build against the new package seam
+
+### Detailed follow-on backlog
+- [ ] Track A - Continue domain package extraction
+  - Exit criteria:
+  - [ ] extract `internal/graph/knowledge` behind explicit read/write/query interfaces instead of direct core reach-through
+  - [ ] extract `internal/graph/entities` with stable facet/query contracts
+  - [ ] extract `internal/graph/reports` only after its helper/state dependencies are reduced enough to avoid a fake split
+  - [ ] extract `internal/graph/risk` and `internal/graph/simulate` once the core query/mutation interfaces are narrow enough
+- [ ] Track B - Shared graph utility boundary
+  - Exit criteria:
+  - [ ] move remaining cross-domain helpers out of `internal/graph` file-local scopes into explicit shared utility contracts
+  - [ ] remove any remaining need for alias-heavy bridge files by narrowing builder/core interfaces further
+  - [ ] ensure new sibling packages depend on interfaces or small exported contracts, not broad type alias sets
+- [ ] Track C - Shared execution store convergence
+  - Exit criteria:
+  - [ ] route graph/report/runtime derivation execution metadata through `internal/executionstore` instead of package-local persistence patterns
+  - [ ] unify correlation/report/materialization run records on a shared execution-store contract for multi-worker consistency
+  - [ ] keep package extraction aligned with execution-store ownership so new packages do not invent their own run-state silos
+
+## Deep Review Cycle 59 - Policy CEL Migration + Legacy Conversion Path (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#145` was still only half-solved if CEL existed beside the legacy parser but no migration surface existed for repository policies.
+- [x] Gap: API validation and policy loading now rejected invalid CEL cleanly, but the public contract still did not advertise `condition_format`.
+- [x] Gap: a credible migration needed a deterministic converter for the common legacy operator surface instead of a manual rewrite expectation.
+- [x] Gap: CEL evaluation for converted policies needed safe helpers for legacy semantics like missing nested paths, recursive `CONTAINS` / `MATCHES`, and array membership.
+- [x] Gap: the CLI still described Cerebro as Cedar-backed even after the policy engine seam had started moving to CEL.
+
+### Execution plan
+- [x] Harden the CEL runtime seam:
+  - [x] extend the CEL environment with safe helper functions for path lookup, existence, recursive contains/matches, list coercion, membership, and comparison
+  - [x] keep compiled CEL programs cached in the engine while preserving legacy-default behavior
+- [x] Add legacy-to-CEL conversion helpers:
+  - [x] add typed conversion helpers for comparisons, `exists` / `not exists`, `IN` / `NOT IN`, `MATCHES`, `CONTAINS`, `starts_with`, and nested `ANY` / `NOT ANY`
+  - [x] add round-trip regression coverage comparing converted CEL conditions against the legacy evaluator
+- [x] Add a real operator-facing migration surface:
+  - [x] add `cerebro policy convert [policy-file]`
+  - [x] support stdout JSON output by default and `--write` for in-place conversion
+  - [x] add CLI regression coverage
+- [x] Update public/docs contract:
+  - [x] advertise `condition_format` in OpenAPI
+  - [x] update CLI copy to describe the CEL-backed policy engine
+- [x] Pull external reference patterns with `gh` and fold them into the design:
+  - [x] `google/cel-go` for the core parse/check/program model and extension registration shape
+  - [x] `kubernetes/kubernetes` for practical CEL migration pressure in real policy surfaces
+  - [x] `open-policy-agent/opa` as the contrast point for “policy engine” scope versus lightweight embedded expressions
+
+### Detailed follow-on backlog
+- [ ] Track A - Full repository migration
+  - Exit criteria:
+  - [ ] convert repository policies that are trivially translatable to `condition_format: cel`
+  - [ ] report the remaining non-trivial policy files that still need manual review
+  - [ ] decide when to flip new authored policies to CEL by default
+- [ ] Track B - Legacy parser retirement
+  - Exit criteria:
+  - [ ] add shadow/dual evaluation for a bounded migration window if policy drift appears
+  - [ ] remove the legacy recursive-descent evaluator once repo policies and API-created policies are predominantly CEL
+  - [ ] delete legacy-only parser helpers no longer needed by conversion tooling
+
+## Deep Review Cycle 58 - API Service Seams for Graph Intelligence Handlers (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#146` was still open because API handlers were reaching through `*app.App` for graph-intelligence reads, even after shared app-aware test helpers landed in cycle 47.
+- [x] Gap: graph-intelligence routes mixed three concerns in one place: transport parsing, graph/report logic, and mapper/runtime configuration reads from `App`.
+- [x] Gap: existing API tests still proved the handler family only through the full app container, not through a narrow consumption-point service seam.
+- [x] Gap: external project references showed the same split pressure repeatedly: `openfga/openfga` keeps handler packages thin around narrower service/command seams, while `argoproj/argo-cd`'s large server surface is the cautionary example to avoid reproducing.
+
+### Execution plan
+- [x] Add a narrow graph-intelligence handler service surface:
+  - [x] add `internal/api/server_services_graph_intelligence.go`
+  - [x] model only the primitives this handler family actually consumes: current graph, mapper initialization, mapper stats, mapper config, and mapper contract catalog
+  - [x] keep `*app.App` as the composition root by adapting it into that interface in `NewServer(...)`
+- [x] Remove direct `*app.App` reach-through from the graph-intelligence handler family:
+  - [x] route event-correlation, intelligence, quality, ingest-health, contract, weekly calibration, and graph-query reads through the new service seam
+  - [x] keep legacy server-wide `app` access for unrelated handler families until their own slices are extracted
+- [x] Prove the seam with a minimal mock:
+  - [x] add a stub `graphIntelligenceService` in API tests
+  - [x] force `app.SecurityGraph` / `TapEventMapper` to `nil` in the test and verify the handlers still operate through the stub service
+- [x] Fold `gh` research into the design:
+  - [x] `openfga/openfga` for thinner server/command boundaries
+  - [x] `argoproj/argo-cd` as the anti-pattern warning for server monolith drift
+  - [x] `grafana/grafana` as another example of large surface area needing consumption-point seams
+
+### Detailed follow-on backlog
+- [ ] Track A - Broaden handler/service decomposition
+  - Exit criteria:
+  - [ ] extract equivalent seams for findings/compliance, platform knowledge, and graph-risk handler families
+  - [ ] reduce `internal/api` direct `s.app.*` reach-through counts materially from the current baseline
+  - [ ] make new handler slices testable with interface stubs before touching the wider app container
+- [ ] Track B - Constructor cleanup
+  - Exit criteria:
+  - [ ] decide whether `Server` should grow explicit dependency bundles/options instead of only `NewServer(*app.App)`
+  - [ ] keep `App` as composition root while preventing new handler code from reaching back through it ad hoc
+
 ## Deep Review Cycle 57 - Cross-Event Correlation + Incident Pattern Detection (2026-03-12)
 
 ### Review findings
@@ -1203,7 +1566,7 @@ Status: executed end-to-end via PR workflow
   - [x] include support/dispute/staleness signals on posture claims
   - [x] keep raw config in `properties` while exposing normalized posture separately
 - [x] Add report-level asset view:
-  - [x] add `graph.BuildEntitySummaryReport(...)`
+  - [x] add `reports.BuildEntitySummaryReport(...)`
   - [x] register `entity-summary` in the platform report catalog
   - [x] expose `GET /api/v1/platform/intelligence/entity-summary`
   - [x] make the report runnable through the existing report-run substrate
@@ -2346,7 +2709,7 @@ Status: executed end-to-end via PR workflow
   - [x] Add concrete `/api/v1/platform/intelligence/*` OpenAPI paths for `insights`, `quality`, `metadata-quality`, `claim-conflicts`, `leverage`, and `calibration/weekly`.
   - [x] Keep `/api/v1/graph/intelligence/*` as deprecated compatibility aliases.
   - [x] Replace `additionalProperties: true` response contracts for those endpoints with typed report schemas.
-  - [x] Add a typed `graph.WeeklyCalibrationReport` model and route handler output.
+  - [x] Add a typed `reports.WeeklyCalibrationReport` model and route handler output.
 - [x] Add lifecycle event emission + contract hardening:
   - [x] Emit `platform.claim.written`, `platform.decision.recorded`, `platform.outcome.recorded`, and `platform.action.recorded` from writeback handlers.
   - [x] Add generated lifecycle event contract metadata under `internal/platformevents`.

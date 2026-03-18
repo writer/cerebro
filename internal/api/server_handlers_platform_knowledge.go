@@ -14,7 +14,7 @@ import (
 )
 
 func (s *Server) listPlatformKnowledgeClaims(w http.ResponseWriter, r *http.Request) {
-	g := s.app.SecurityGraph
+	g := s.app.CurrentSecurityGraph()
 	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -30,7 +30,7 @@ func (s *Server) listPlatformKnowledgeClaims(w http.ResponseWriter, r *http.Requ
 }
 
 func (s *Server) listPlatformKnowledgeEvidence(w http.ResponseWriter, r *http.Request) {
-	g := s.app.SecurityGraph
+	g := s.app.CurrentSecurityGraph()
 	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -50,7 +50,7 @@ func (s *Server) getPlatformKnowledgeEvidence(w http.ResponseWriter, r *http.Req
 }
 
 func (s *Server) listPlatformKnowledgeObservations(w http.ResponseWriter, r *http.Request) {
-	g := s.app.SecurityGraph
+	g := s.app.CurrentSecurityGraph()
 	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -70,7 +70,7 @@ func (s *Server) getPlatformKnowledgeObservation(w http.ResponseWriter, r *http.
 }
 
 func (s *Server) getPlatformKnowledgeClaim(w http.ResponseWriter, r *http.Request) {
-	g := s.app.SecurityGraph
+	g := s.app.CurrentSecurityGraph()
 	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -102,7 +102,7 @@ func (s *Server) getPlatformKnowledgeClaim(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) listPlatformKnowledgeClaimGroups(w http.ResponseWriter, r *http.Request) {
-	g := s.app.SecurityGraph
+	g := s.app.CurrentSecurityGraph()
 	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -118,7 +118,7 @@ func (s *Server) listPlatformKnowledgeClaimGroups(w http.ResponseWriter, r *http
 }
 
 func (s *Server) getPlatformKnowledgeClaimGroup(w http.ResponseWriter, r *http.Request) {
-	g := s.app.SecurityGraph
+	g := s.app.CurrentSecurityGraph()
 	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -155,7 +155,7 @@ func (s *Server) getPlatformKnowledgeClaimGroup(w http.ResponseWriter, r *http.R
 }
 
 func (s *Server) getPlatformKnowledgeClaimTimeline(w http.ResponseWriter, r *http.Request) {
-	g := s.app.SecurityGraph
+	g := s.app.CurrentSecurityGraph()
 	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -182,7 +182,7 @@ func (s *Server) getPlatformKnowledgeClaimTimeline(w http.ResponseWriter, r *htt
 }
 
 func (s *Server) getPlatformKnowledgeClaimExplanation(w http.ResponseWriter, r *http.Request) {
-	g := s.app.SecurityGraph
+	g := s.app.CurrentSecurityGraph()
 	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -214,7 +214,7 @@ func (s *Server) getPlatformKnowledgeClaimExplanation(w http.ResponseWriter, r *
 }
 
 func (s *Server) getPlatformKnowledgeClaimProofs(w http.ResponseWriter, r *http.Request) {
-	g := s.app.SecurityGraph
+	g := s.app.CurrentSecurityGraph()
 	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -241,7 +241,7 @@ func (s *Server) getPlatformKnowledgeClaimProofs(w http.ResponseWriter, r *http.
 }
 
 func (s *Server) listPlatformKnowledgeClaimDiffs(w http.ResponseWriter, r *http.Request) {
-	g := s.app.SecurityGraph
+	g := s.app.CurrentSecurityGraph()
 	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -257,7 +257,7 @@ func (s *Server) listPlatformKnowledgeClaimDiffs(w http.ResponseWriter, r *http.
 }
 
 func (s *Server) listPlatformKnowledgeDiffs(w http.ResponseWriter, r *http.Request) {
-	g := s.app.SecurityGraph
+	g := s.app.CurrentSecurityGraph()
 	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -299,7 +299,7 @@ func (s *Server) listPlatformKnowledgeDiffs(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *Server) adjudicatePlatformKnowledgeClaimGroup(w http.ResponseWriter, r *http.Request) {
-	g := s.app.SecurityGraph
+	g := s.app.CurrentSecurityGraph()
 	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -674,7 +674,7 @@ func parsePlatformKnowledgeDiffQueryOptions(r *http.Request) (graph.KnowledgeDif
 }
 
 func (s *Server) getPlatformKnowledgeArtifact(w http.ResponseWriter, r *http.Request, kind graph.NodeKind) {
-	g := s.app.SecurityGraph
+	g := s.app.CurrentSecurityGraph()
 	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return

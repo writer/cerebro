@@ -159,7 +159,7 @@ func TestOpenAPIContract_CriticalRoutes(t *testing.T) {
 			method:         http.MethodPost,
 			pathTemplate:   "/api/v1/policies",
 			requestPath:    "/api/v1/policies/",
-			body:           map[string]interface{}{"id": "openapi-policy", "name": "OpenAPI Policy", "effect": "forbid", "resource": "aws::s3::bucket", "conditions": []string{"public == true"}, "severity": "high"},
+			body:           map[string]interface{}{"id": "openapi-policy", "name": "OpenAPI Policy", "description": "OpenAPI policy contract", "effect": "forbid", "resource": "aws::s3::bucket", "conditions": []string{"public == true"}, "severity": "high"},
 			expectedStatus: http.StatusCreated,
 		},
 		{

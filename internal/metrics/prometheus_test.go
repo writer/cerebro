@@ -279,6 +279,8 @@ func TestJetStreamMetrics(t *testing.T) {
 	RecordJetStreamBackpressureAlert("CEREBRO_EVENTS", "warning")
 	RecordJetStreamBackpressureAlert("CEREBRO_EVENTS", "critical")
 	RecordJetStreamBackpressureAlert("CEREBRO_EVENTS", "recovered")
+	RecordNATSConsumerProcessed("ENSEMBLE_TAP", "cerebro_graph_builder")
+	RecordNATSConsumerDeduplicated("ENSEMBLE_TAP", "cerebro_graph_builder")
 }
 
 func TestSetGraphLastUpdateDoesNotRegress(t *testing.T) {

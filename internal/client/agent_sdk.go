@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/writer/cerebro/internal/agentsdk"
-	"github.com/writer/cerebro/internal/graph"
+	reports "github.com/writer/cerebro/internal/graph/reports"
 )
 
 type AgentSDKToolCallResponse struct {
@@ -33,11 +33,11 @@ type AgentSDKToolCallResponse struct {
 }
 
 type AgentSDKReportRequest struct {
-	ReportID          string                       `json:"report_id,omitempty"`
-	ExecutionMode     string                       `json:"execution_mode,omitempty"`
-	MaterializeResult *bool                        `json:"materialize_result,omitempty"`
-	Parameters        []graph.ReportParameterValue `json:"parameters,omitempty"`
-	RetryPolicy       *graph.ReportRetryPolicy     `json:"retry_policy,omitempty"`
+	ReportID          string                         `json:"report_id,omitempty"`
+	ExecutionMode     string                         `json:"execution_mode,omitempty"`
+	MaterializeResult *bool                          `json:"materialize_result,omitempty"`
+	Parameters        []reports.ReportParameterValue `json:"parameters,omitempty"`
+	RetryPolicy       *reports.ReportRetryPolicy     `json:"retry_policy,omitempty"`
 }
 
 type AgentSDKMCPRequest struct {
@@ -91,8 +91,8 @@ func (c *Client) CallAgentSDKTool(ctx context.Context, toolID string, args any) 
 	return &resp, nil
 }
 
-func (c *Client) ExecuteAgentSDKReport(ctx context.Context, req AgentSDKReportRequest) (*graph.ReportRun, error) {
-	var run graph.ReportRun
+func (c *Client) ExecuteAgentSDKReport(ctx context.Context, req AgentSDKReportRequest) (*reports.ReportRun, error) {
+	var run reports.ReportRun
 	if err := c.doJSON(ctx, http.MethodPost, "/api/v1/agent-sdk/report", nil, req, &run); err != nil {
 		return nil, err
 	}
