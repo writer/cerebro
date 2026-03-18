@@ -123,6 +123,23 @@ func (o *OktaProvider) Schema() []TableSchema {
 			PrimaryKey: []string{"app_id", "assignee_id", "assignee_type"},
 		},
 		{
+			Name:        "okta_app_grants",
+			Description: "Okta application OAuth scope consent grants",
+			Columns: []ColumnSchema{
+				{Name: "app_id", Type: "string", Required: true},
+				{Name: "app_label", Type: "string"},
+				{Name: "grant_id", Type: "string", Required: true},
+				{Name: "issuer", Type: "string"},
+				{Name: "scope_id", Type: "string"},
+				{Name: "source", Type: "string"},
+				{Name: "status", Type: "string"},
+				{Name: "user_id", Type: "string"},
+				{Name: "created", Type: "timestamp"},
+				{Name: "last_updated", Type: "timestamp"},
+			},
+			PrimaryKey: []string{"app_id", "grant_id"},
+		},
+		{
 			Name:        "okta_admin_roles",
 			Description: "Okta admin role assignments",
 			Columns: []ColumnSchema{
@@ -237,6 +254,14 @@ func (o *OktaProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResult,
 	} else {
 		result.Tables = append(result.Tables, *appAssignments)
 		result.TotalRows += appAssignments.Rows
+	}
+
+	appGrants, err := o.syncAppGrants(ctx)
+	if err != nil {
+		result.Errors = append(result.Errors, "app_grants: "+err.Error())
+	} else {
+		result.Tables = append(result.Tables, *appGrants)
+		result.TotalRows += appGrants.Rows
 	}
 
 	// Sync password policies
@@ -618,6 +643,88 @@ func (o *OktaProvider) syncAppAssignments(ctx context.Context) (*TableResult, er
 	return o.syncTable(ctx, schema, rows)
 }
 
+func (o *OktaProvider) syncAppGrants(ctx context.Context) (*TableResult, error) {
+	schema, err := o.schemaFor("okta_app_grants")
+	result := &TableResult{Name: "okta_app_grants"}
+	if err != nil {
+		return result, err
+	}
+
+	apps, err := o.requestAll(ctx, "/api/v1/apps?limit=200")
+	if err != nil {
+		return result, err
+	}
+
+	if len(apps) == 0 {
+		return o.syncTable(ctx, schema, nil)
+	}
+
+	type appGrantJob struct {
+		appID    string
+		appLabel string
+	}
+
+	jobs := make(chan appGrantJob, len(apps))
+	rows := make([]map[string]interface{}, 0, len(apps))
+	workerCount := oktaWorkerCount(len(apps))
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var processed int64
+	total := int64(len(apps))
+
+	for w := 0; w < workerCount; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for job := range jobs {
+				grants, err := o.requestAll(ctx, fmt.Sprintf("/api/v1/apps/%s/grants?limit=200&expand=scope", url.PathEscape(job.appID)))
+				if err != nil {
+					slog.Warn("okta app grant sync failed", "app_id", job.appID, "error", err)
+					current := atomic.AddInt64(&processed, 1)
+					logOktaFanoutProgress("app_grants", current, total)
+					continue
+				}
+
+				appRows := make([]map[string]interface{}, 0, len(grants))
+				for _, grant := range grants {
+					row := normalizeOktaAppGrant(grant)
+					if asString(row["grant_id"]) == "" {
+						continue
+					}
+					row["app_id"] = job.appID
+					row["app_label"] = job.appLabel
+					appRows = append(appRows, row)
+				}
+
+				if len(appRows) > 0 {
+					mu.Lock()
+					rows = append(rows, appRows...)
+					mu.Unlock()
+				}
+
+				current := atomic.AddInt64(&processed, 1)
+				logOktaFanoutProgress("app_grants", current, total)
+			}
+		}()
+	}
+
+	for _, app := range apps {
+		normalized := normalizeOktaRow(app)
+		appID := asString(normalized["id"])
+		if appID == "" {
+			continue
+		}
+		jobs <- appGrantJob{
+			appID:    appID,
+			appLabel: asString(normalized["label"]),
+		}
+	}
+	close(jobs)
+	wg.Wait()
+
+	return o.syncTable(ctx, schema, rows)
+}
+
 func (o *OktaProvider) syncAdminRoles(ctx context.Context) (*TableResult, error) {
 	schema, err := o.schemaFor("okta_admin_roles")
 	result := &TableResult{Name: "okta_admin_roles"}
@@ -915,6 +1022,20 @@ func normalizeOktaApplication(app map[string]interface{}) map[string]interface{}
 		"status":       normalized["status"],
 		"sign_on_mode": normalized["sign_on_mode"],
 		"created":      normalized["created"],
+	}
+}
+
+func normalizeOktaAppGrant(grant map[string]interface{}) map[string]interface{} {
+	normalized := normalizeOktaRow(grant)
+	return map[string]interface{}{
+		"grant_id":     normalized["id"],
+		"issuer":       normalized["issuer"],
+		"scope_id":     normalized["scope_id"],
+		"source":       normalized["source"],
+		"status":       normalized["status"],
+		"user_id":      normalized["user_id"],
+		"created":      normalized["created"],
+		"last_updated": normalized["last_updated"],
 	}
 }
 

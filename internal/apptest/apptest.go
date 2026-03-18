@@ -14,6 +14,7 @@ import (
 	"github.com/writer/cerebro/internal/attackpath"
 	"github.com/writer/cerebro/internal/auth"
 	"github.com/writer/cerebro/internal/cache"
+	"github.com/writer/cerebro/internal/executionstore"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/health"
@@ -40,8 +41,8 @@ func NewConfig(t *testing.T) *app.Config {
 	graphSnapshotPath := strings.TrimSpace(os.Getenv("GRAPH_SNAPSHOT_PATH"))
 	if graphSnapshotPath == "" {
 		graphSnapshotPath = filepath.Join(stateDir, "graph-snapshots")
-		t.Setenv("GRAPH_SNAPSHOT_PATH", graphSnapshotPath)
 	}
+	t.Setenv("GRAPH_SNAPSHOT_PATH", graphSnapshotPath)
 
 	return &app.Config{
 		LogLevel:                   "error",
@@ -69,8 +70,12 @@ func NewAppWithWarehouse(t *testing.T, store warehouse.DataWarehouse) *app.App {
 	pe := policy.NewEngine()
 	fs := findings.NewStore()
 	sc := scanner.NewScanner(pe, scanner.ScanConfig{Workers: 2}, logger)
+	executionStore, err := executionstore.NewSQLiteStore(cfg.ExecutionStoreFile)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
 
-	return &app.App{
+	application := &app.App{
 		Config:         cfg,
 		Logger:         logger,
 		Warehouse:      store,
@@ -78,22 +83,26 @@ func NewAppWithWarehouse(t *testing.T, store warehouse.DataWarehouse) *app.App {
 		Findings:       fs,
 		Scanner:        sc,
 		Cache:          cache.NewPolicyCache(1000, 5*time.Minute),
+		ExecutionStore: executionStore,
 		Agents:         agents.NewAgentRegistry(),
 		RBAC:           auth.NewRBAC(),
 		Webhooks:       webhooks.NewServiceForTesting(),
 		Notifications:  notifications.NewManager(),
 		Scheduler:      scheduler.NewScheduler(logger),
 		Ticketing:      ticketing.NewService(),
-		Identity:       identity.NewService(),
 		AttackPath:     attackpath.NewGraph(),
 		Providers:      providers.NewRegistry(),
 		Health:         health.NewRegistry(),
 		Lineage:        lineage.NewLineageMapper(),
 		Remediation:    remediation.NewEngine(logger),
 		RuntimeDetect:  runtime.NewDetectionEngine(),
+		RuntimeIngest:  runtime.NewSQLiteIngestStoreWithExecutionStore(executionStore),
 		RuntimeRespond: runtime.NewResponseEngine(),
 		SecurityGraph:  graph.New(),
 		ScanWatermarks: scanner.NewWatermarkStore(nil),
 		ThreatIntel:    threatintel.NewThreatIntelService(),
 	}
+	application.Identity = identity.NewService()
+	t.Cleanup(func() { _ = application.Close() })
+	return application
 }

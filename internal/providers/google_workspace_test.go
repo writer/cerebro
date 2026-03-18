@@ -105,6 +105,40 @@ func TestGoogleWorkspaceProviderSync_IncludesGroupMembers(t *testing.T) {
 					},
 				},
 			})
+		case req.URL.Path == "/admin/directory/v1/users/user-1/tokens":
+			return jsonHTTPResponse(http.StatusOK, map[string]interface{}{
+				"items": []map[string]interface{}{
+					{
+						"clientId":    "client-1",
+						"displayText": "Slack",
+						"userKey":     "user-1",
+						"anonymous":   false,
+						"nativeApp":   true,
+						"scopes": []string{
+							"https://www.googleapis.com/auth/admin.directory.user.readonly",
+						},
+					},
+				},
+			})
+		case req.URL.Path == "/admin/reports/v1/activity/users/all/applications/token":
+			return jsonHTTPResponse(http.StatusOK, map[string]interface{}{
+				"items": []map[string]interface{}{
+					{
+						"id": map[string]interface{}{
+							"time":            "2026-03-10T00:00:00Z",
+							"uniqueQualifier": "activity-1",
+						},
+						"actor": map[string]interface{}{
+							"email": "user-1@example.com",
+						},
+						"ipAddress": "203.0.113.10",
+						"events": []map[string]interface{}{{
+							"name":       "authorize",
+							"parameters": []map[string]interface{}{{"name": "client_id", "value": "client-1"}, {"name": "app_name", "value": "Slack"}, {"name": "scope", "value": "https://www.googleapis.com/auth/admin.directory.user.readonly"}},
+						}},
+					},
+				},
+			})
 		case strings.HasPrefix(req.URL.Path, "/calendar/v3/calendars/") && strings.HasSuffix(req.URL.Path, "/events"):
 			if !strings.Contains(req.URL.Path, "user-1@example.com") && !strings.Contains(req.URL.Path, "user-1%40example.com") {
 				t.Fatalf("unexpected calendar path %q", req.URL.Path)
@@ -176,6 +210,12 @@ func TestGoogleWorkspaceProviderSync_IncludesGroupMembers(t *testing.T) {
 	if got := rowsByTable["google_workspace_domains"]; got != 1 {
 		t.Fatalf("google_workspace_domains rows = %d, want 1", got)
 	}
+	if got := rowsByTable["google_workspace_tokens"]; got != 1 {
+		t.Fatalf("google_workspace_tokens rows = %d, want 1", got)
+	}
+	if got := rowsByTable["google_workspace_token_activities"]; got != 1 {
+		t.Fatalf("google_workspace_token_activities rows = %d, want 1", got)
+	}
 	if got := rowsByTable["google_workspace_calendar_events"]; got != 1 {
 		t.Fatalf("google_workspace_calendar_events rows = %d, want 1", got)
 	}
@@ -227,6 +267,134 @@ func TestGoogleWorkspaceProviderSyncGroupMembers_IgnoresPermissionDeniedGroups(t
 	}
 	if table.Inserted != 1 {
 		t.Fatalf("syncGroupMembers inserted = %d, want 1", table.Inserted)
+	}
+}
+
+func TestGoogleWorkspaceProviderSyncTokens_IncludesGrantedApps(t *testing.T) {
+	t.Parallel()
+
+	provider := NewGoogleWorkspaceProvider()
+	provider.domain = "example.com"
+	provider.client = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Path {
+		case "/admin/directory/v1/users":
+			return jsonHTTPResponse(http.StatusOK, map[string]interface{}{
+				"users": []map[string]interface{}{
+					{
+						"id":           "user-1",
+						"primaryEmail": "user-1@example.com",
+						"suspended":    false,
+					},
+				},
+			})
+		case "/admin/directory/v1/users/user-1/tokens":
+			return jsonHTTPResponse(http.StatusOK, map[string]interface{}{
+				"items": []map[string]interface{}{
+					{
+						"clientId":    "client-1",
+						"displayText": "Slack",
+						"userKey":     "user-1",
+						"anonymous":   false,
+						"nativeApp":   true,
+						"scopes": []string{
+							"https://www.googleapis.com/auth/admin.directory.user.readonly",
+							"https://www.googleapis.com/auth/calendar.readonly",
+						},
+					},
+				},
+			})
+		default:
+			t.Fatalf("unexpected path %q", req.URL.Path)
+			return nil, nil
+		}
+	})}
+
+	table, err := provider.syncTokens(context.Background())
+	if err != nil {
+		t.Fatalf("syncTokens failed: %v", err)
+	}
+	if table.Rows != 1 {
+		t.Fatalf("syncTokens rows = %d, want 1", table.Rows)
+	}
+	if table.Inserted != 1 {
+		t.Fatalf("syncTokens inserted = %d, want 1", table.Inserted)
+	}
+}
+
+func TestGoogleWorkspaceProviderSyncTokenActivities_IncludesTokenAuditEvents(t *testing.T) {
+	t.Parallel()
+
+	provider := NewGoogleWorkspaceProvider()
+	provider.domain = "example.com"
+	provider.client = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Path {
+		case "/admin/reports/v1/activity/users/all/applications/token":
+			return jsonHTTPResponse(http.StatusOK, map[string]interface{}{
+				"items": []map[string]interface{}{
+					{
+						"id": map[string]interface{}{
+							"time":            "2026-03-10T00:00:00Z",
+							"uniqueQualifier": "activity-1",
+						},
+						"actor":     map[string]interface{}{"email": "user-1@example.com"},
+						"ipAddress": "203.0.113.10",
+						"events": []map[string]interface{}{
+							{
+								"name":       "authorize",
+								"parameters": []map[string]interface{}{{"name": "client_id", "value": "client-1"}, {"name": "app_name", "value": "Slack"}, {"name": "scope", "value": "https://www.googleapis.com/auth/admin.directory.user.readonly https://www.googleapis.com/auth/calendar.readonly"}},
+							},
+							{
+								"name":       "revoke",
+								"parameters": []map[string]interface{}{{"name": "client_id", "value": "client-1"}, {"name": "app_name", "value": "Slack"}},
+							},
+						},
+					},
+				},
+			})
+		default:
+			t.Fatalf("unexpected path %q", req.URL.Path)
+			return nil, nil
+		}
+	})}
+
+	table, err := provider.syncTokenActivities(context.Background())
+	if err != nil {
+		t.Fatalf("syncTokenActivities failed: %v", err)
+	}
+	if table.Rows != 2 {
+		t.Fatalf("syncTokenActivities rows = %d, want 2", table.Rows)
+	}
+	if table.Inserted != 2 {
+		t.Fatalf("syncTokenActivities inserted = %d, want 2", table.Inserted)
+	}
+}
+
+func TestNormalizeGoogleTokenActivityRows_IgnoresMalformedEvents(t *testing.T) {
+	t.Parallel()
+
+	rows := normalizeGoogleTokenActivityRows(map[string]interface{}{
+		"id": map[string]interface{}{
+			"time":            "2026-03-10T00:00:00Z",
+			"uniqueQualifier": "activity-1",
+		},
+		"actor": map[string]interface{}{"email": "user-1@example.com"},
+		"events": []interface{}{
+			"not-a-map",
+			map[string]interface{}{
+				"name": "authorize",
+				"parameters": []map[string]interface{}{
+					{"name": "client_id", "value": "client-1"},
+					{"name": "app_name", "value": "Slack"},
+				},
+			},
+		},
+	})
+
+	if len(rows) != 1 {
+		t.Fatalf("normalizeGoogleTokenActivityRows rows = %d, want 1", len(rows))
+	}
+	if got := rows[0]["client_id"]; got != "client-1" {
+		t.Fatalf("client_id = %#v, want client-1", got)
 	}
 }
 

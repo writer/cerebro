@@ -3,6 +3,7 @@
 This document defines how Cerebro's graph becomes the organization's intelligence layer: decision-grade, evidence-backed, and action-oriented.
 
 See [GRAPH_ONTOLOGY_ARCHITECTURE.md](./GRAPH_ONTOLOGY_ARCHITECTURE.md) for ontology layering, extension workflow, and metadata contract details, [GRAPH_REPORT_EXTENSIBILITY_RESEARCH.md](./GRAPH_REPORT_EXTENSIBILITY_RESEARCH.md) for the report registry/module model that should sit on top of the graph, [GRAPH_ASSET_DEEPENING_RESEARCH.md](./GRAPH_ASSET_DEEPENING_RESEARCH.md) for external asset-model patterns, and [GRAPH_ENTITY_FACET_ARCHITECTURE.md](./GRAPH_ENTITY_FACET_ARCHITECTURE.md) for the current entity/facet/report layering.
+See [RUNTIME_VISIBILITY_ARCHITECTURE.md](./RUNTIME_VISIBILITY_ARCHITECTURE.md) for the runtime observation, sensor, and graph-projection design that should back the runtime execution graph described here.
 
 ## Principles
 - Every insight must be **decision-grade**: include evidence, confidence, coverage, and clear next actions.

@@ -1,6 +1,7 @@
 package builders
 
 import (
+	"encoding/json"
 	"sort"
 	"strings"
 	"unicode"
@@ -443,6 +444,68 @@ func permissionEdges(edges []*Edge) []*Edge {
 	return filtered
 }
 
+func relationshipProperties(edge *Edge) map[string]any {
+	if edge == nil || edge.Properties == nil {
+		return nil
+	}
+	raw, ok := edge.Properties["properties"]
+	if !ok || raw == nil {
+		return nil
+	}
+	switch typed := raw.(type) {
+	case map[string]any:
+		return typed
+	case string:
+		var decoded map[string]any
+		if err := json.Unmarshal([]byte(typed), &decoded); err == nil {
+			return decoded
+		}
+	case []byte:
+		var decoded map[string]any
+		if err := json.Unmarshal(typed, &decoded); err == nil {
+			return decoded
+		}
+	}
+	return nil
+}
+
+func relationshipPropertyString(edge *Edge, key string) string {
+	return strings.TrimSpace(queryRowString(relationshipProperties(edge), key))
+}
+
+func delegatedGrantKey(edge *Edge) string {
+	if edge == nil {
+		return ""
+	}
+	if grantID := relationshipPropertyString(edge, "grant_id"); grantID != "" {
+		return grantID
+	}
+	grantType := strings.ToLower(relationshipPropertyString(edge, "grant_type"))
+	if !strings.HasPrefix(grantType, "delegated_permission") {
+		return ""
+	}
+	return strings.Join([]string{
+		edge.Source,
+		edge.Target,
+		grantType,
+		strings.ToLower(relationshipPropertyString(edge, "consent_type")),
+		relationshipPropertyString(edge, "scope"),
+	}, "|")
+}
+
+func appendDelegatedScopes(edge *Edge, scopes map[string]struct{}) {
+	if edge == nil || scopes == nil {
+		return
+	}
+	for _, scope := range strings.Fields(relationshipPropertyString(edge, "scope")) {
+		scope = strings.TrimSpace(scope)
+		if scope == "" {
+			continue
+		}
+		scopes[scope] = struct{}{}
+	}
+}
+
 func edgesByPermission(edges []*Edge) (map[string]struct{}, map[string]struct{}, map[string]struct{}, map[string]struct{}) {
 	accessibleTargets := make(map[string]struct{})
 	readableTargets := make(map[string]struct{})
@@ -509,6 +572,16 @@ func (b *Builder) refreshVendorSignals(vendor *Node, projection *vendorProjectio
 
 	var managedApplicationCount int
 	var managedServiceAccountCount int
+	var anonymousApplicationCount int
+	var nativeApplicationCount int
+	var activeGrantCount int
+	var adminGrantCount int
+	var principalGrantCount int
+	var recentOAuthActivityCount int
+	var recentOAuthAuthorizeEventCount int
+	var recentOAuthRevokeEventCount int
+	var lastGrantUpdatedAt string
+	var lastOAuthActivityAt string
 	var appRoleAssignmentRequiredCount int
 	var appRoleAssignmentOptionalCount int
 	var verifiedIntegrationCount int
@@ -523,6 +596,10 @@ func (b *Builder) refreshVendorSignals(vendor *Node, projection *vendorProjectio
 	dependentUsers := make(map[string]struct{})
 	dependentGroups := make(map[string]struct{})
 	dependentServiceAccounts := make(map[string]struct{})
+	delegatedGrantIDs := make(map[string]struct{})
+	delegatedAdminConsentGrantIDs := make(map[string]struct{})
+	delegatedPrincipalConsentGrantIDs := make(map[string]struct{})
+	delegatedScopes := make(map[string]struct{})
 	verifiedPublisherIDs := make(map[string]struct{})
 	verifiedPublisherNames := make(map[string]struct{})
 
@@ -534,6 +611,20 @@ func (b *Builder) refreshVendorSignals(vendor *Node, projection *vendorProjectio
 		switch node.Kind {
 		case NodeKindApplication:
 			managedApplicationCount++
+			if anonymous, ok := boolPropertyValue(node.Properties, "anonymous"); ok && anonymous {
+				anonymousApplicationCount++
+			}
+			if nativeApp, ok := boolPropertyValue(node.Properties, "native_app"); ok && nativeApp {
+				nativeApplicationCount++
+			}
+			activeGrantCount += intPropertyValue(node.Properties, "active_grant_count")
+			adminGrantCount += intPropertyValue(node.Properties, "admin_grant_count")
+			principalGrantCount += intPropertyValue(node.Properties, "principal_grant_count")
+			recentOAuthActivityCount += intPropertyValue(node.Properties, "recent_token_activity_count")
+			recentOAuthAuthorizeEventCount += intPropertyValue(node.Properties, "recent_token_authorize_event_count")
+			recentOAuthRevokeEventCount += intPropertyValue(node.Properties, "recent_token_revoke_event_count")
+			lastGrantUpdatedAt = maxRFC3339String(lastGrantUpdatedAt, propertyString(node.Properties, "last_grant_updated_at"))
+			lastOAuthActivityAt = maxRFC3339String(lastOAuthActivityAt, propertyString(node.Properties, "last_token_activity_at"))
 		case NodeKindServiceAccount:
 			managedServiceAccountCount++
 		}
@@ -575,6 +666,29 @@ func (b *Builder) refreshVendorSignals(vendor *Node, projection *vendorProjectio
 		for target := range sensitiveTargetsForEdges(b.graph, outEdges) {
 			sensitiveTargets[target] = struct{}{}
 		}
+		for _, edge := range outEdges {
+			grantType := strings.ToLower(relationshipPropertyString(edge, "grant_type"))
+			if grantType != "delegated_permission" {
+				continue
+			}
+			if grantKey := delegatedGrantKey(edge); grantKey != "" {
+				delegatedGrantIDs[grantKey] = struct{}{}
+				if strings.EqualFold(relationshipPropertyString(edge, "consent_type"), "AllPrincipals") {
+					delegatedAdminConsentGrantIDs[grantKey] = struct{}{}
+				}
+			}
+			appendDelegatedScopes(edge, delegatedScopes)
+		}
+		for _, edge := range permissionEdges(b.graph.GetInEdges(managedNodeID)) {
+			if !strings.EqualFold(relationshipPropertyString(edge, "grant_type"), "delegated_permission_consent") {
+				continue
+			}
+			if grantKey := delegatedGrantKey(edge); grantKey != "" {
+				delegatedGrantIDs[grantKey] = struct{}{}
+				delegatedPrincipalConsentGrantIDs[grantKey] = struct{}{}
+			}
+			appendDelegatedScopes(edge, delegatedScopes)
+		}
 		collectVendorDependentPrincipals(b.graph, managedNodeID, dependentPrincipals, dependentUsers, dependentGroups, dependentServiceAccounts)
 	}
 
@@ -587,6 +701,10 @@ func (b *Builder) refreshVendorSignals(vendor *Node, projection *vendorProjectio
 		len(dependentPrincipals),
 		len(dependentGroups),
 		appRoleAssignmentOptionalCount,
+		len(delegatedAdminConsentGrantIDs),
+		len(delegatedScopes),
+		anonymousApplicationCount,
+		nativeApplicationCount,
 	)
 
 	vendor.Properties["canonical_name"] = vendor.Name
@@ -599,6 +717,16 @@ func (b *Builder) refreshVendorSignals(vendor *Node, projection *vendorProjectio
 	vendor.Properties["managed_node_count"] = len(projection.managedNodeIDs)
 	vendor.Properties["managed_application_count"] = managedApplicationCount
 	vendor.Properties["managed_service_account_count"] = managedServiceAccountCount
+	vendor.Properties["anonymous_application_count"] = anonymousApplicationCount
+	vendor.Properties["native_application_count"] = nativeApplicationCount
+	vendor.Properties["active_grant_count"] = activeGrantCount
+	vendor.Properties["admin_grant_count"] = adminGrantCount
+	vendor.Properties["principal_grant_count"] = principalGrantCount
+	vendor.Properties["recent_oauth_activity_count"] = recentOAuthActivityCount
+	vendor.Properties["recent_oauth_authorize_event_count"] = recentOAuthAuthorizeEventCount
+	vendor.Properties["recent_oauth_revoke_event_count"] = recentOAuthRevokeEventCount
+	vendor.Properties["last_grant_updated_at"] = lastGrantUpdatedAt
+	vendor.Properties["last_oauth_activity_at"] = lastOAuthActivityAt
 	vendor.Properties["verified_publisher_count"] = verifiedIntegrationCount
 	vendor.Properties["verified_publisher_ids"] = sortedVendorKeys(verifiedPublisherIDs)
 	vendor.Properties["verified_publisher_names"] = sortedVendorKeys(verifiedPublisherNames)
@@ -609,6 +737,11 @@ func (b *Builder) refreshVendorSignals(vendor *Node, projection *vendorProjectio
 	vendor.Properties["accessible_resource_count"] = len(accessibleTargets)
 	vendor.Properties["accessible_resource_kinds"] = sortedVendorKeys(accessibleResourceKinds)
 	vendor.Properties["sensitive_resource_count"] = len(sensitiveTargets)
+	vendor.Properties["delegated_grant_count"] = len(delegatedGrantIDs)
+	vendor.Properties["delegated_admin_consent_count"] = len(delegatedAdminConsentGrantIDs)
+	vendor.Properties["delegated_principal_consent_count"] = len(delegatedPrincipalConsentGrantIDs)
+	vendor.Properties["delegated_scope_count"] = len(delegatedScopes)
+	vendor.Properties["delegated_scopes"] = sortedVendorKeys(delegatedScopes)
 	vendor.Properties["read_access_count"] = len(readableTargets)
 	vendor.Properties["write_access_count"] = len(writableTargets)
 	vendor.Properties["admin_access_count"] = len(adminTargets)
@@ -663,6 +796,20 @@ func vendorIdentityForNode(node *Node) (vendorIdentity, bool) {
 			ownerOrgID:          strings.TrimSpace(propertyString(node.Properties, "app_owner_organization_id")),
 			verifiedPublisherID: strings.TrimSpace(propertyString(node.Properties, "verified_publisher_id")),
 			integrationType:     "entra_service_principal",
+		}, true
+	case node.Provider == "google_workspace" && node.Kind == NodeKindApplication:
+		rawName := strings.TrimSpace(firstNonEmpty(
+			propertyString(node.Properties, "display_text"),
+			node.Name,
+		))
+		aliasKey := vendorAliasKey(rawName)
+		if rawName == "" || aliasKey == "" {
+			return vendorIdentity{}, false
+		}
+		return vendorIdentity{
+			rawName:         rawName,
+			aliasKey:        aliasKey,
+			integrationType: "google_workspace_application",
 		}, true
 	default:
 		return vendorIdentity{}, false
@@ -739,7 +886,7 @@ func collectVendorGroupDependents(g *Graph, groupID string, seenGroups, all, use
 	}
 }
 
-func vendorRiskScore(readCount, writeCount, adminCount, accessibleResourceCount, sensitiveResourceCount, dependentPrincipalCount, dependentGroupCount, optionalAssignmentCount int) int {
+func vendorRiskScore(readCount, writeCount, adminCount, accessibleResourceCount, sensitiveResourceCount, dependentPrincipalCount, dependentGroupCount, optionalAssignmentCount, delegatedAdminConsentCount, delegatedScopeCount, anonymousApplicationCount, nativeApplicationCount int) int {
 	score := 0
 	switch {
 	case adminCount > 0:
@@ -754,6 +901,10 @@ func vendorRiskScore(readCount, writeCount, adminCount, accessibleResourceCount,
 	score += minInt(15, dependentPrincipalCount*2)
 	score += minInt(10, dependentGroupCount*5)
 	score += minInt(10, optionalAssignmentCount*5)
+	score += minInt(15, delegatedAdminConsentCount*15)
+	score += minInt(10, delegatedScopeCount*2)
+	score += minInt(10, anonymousApplicationCount*8)
+	score += minInt(5, nativeApplicationCount*2)
 	if score > 100 {
 		return 100
 	}

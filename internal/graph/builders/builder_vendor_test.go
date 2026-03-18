@@ -400,6 +400,636 @@ func TestBuilder_MergesVendorProjectionsByVerifiedPublisherID(t *testing.T) {
 	}
 }
 
+func TestBuilder_AggregatesVendorSignalsFromDelegatedOAuthGrantRelationships(t *testing.T) {
+	t.Parallel()
+
+	source := newMockDataSource()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	source.setResult(`SELECT id, display_name, app_id, service_principal_type, account_enabled, app_owner_organization_id, app_role_assignment_required, publisher_name, verified_publisher_display_name, verified_publisher_id, verified_publisher_added_datetime, created_date_time, tags, subscription_id FROM azure_graph_service_principals`, &DataQueryResult{
+		Rows: []map[string]any{
+			{
+				"id":                                "sp-client",
+				"display_name":                      "Slack Enterprise Grid",
+				"app_id":                            "app-slack",
+				"service_principal_type":            "Application",
+				"account_enabled":                   true,
+				"app_owner_organization_id":         "tenant-vendor",
+				"publisher_name":                    "Slack",
+				"verified_publisher_display_name":   "Slack Technologies",
+				"verified_publisher_id":             "slack-publisher",
+				"verified_publisher_added_datetime": "2026-03-02T00:00:00Z",
+				"subscription_id":                   "sub-1",
+			},
+			{
+				"id":                                "sp-resource",
+				"display_name":                      "Microsoft Graph",
+				"app_id":                            "app-msgraph",
+				"service_principal_type":            "Application",
+				"account_enabled":                   true,
+				"publisher_name":                    "Microsoft",
+				"verified_publisher_display_name":   "Microsoft",
+				"verified_publisher_id":             "msft-publisher",
+				"verified_publisher_added_datetime": "2026-03-02T00:00:00Z",
+				"subscription_id":                   "sub-1",
+			},
+		},
+	})
+	source.setResult(`
+		SELECT source_id, source_type, target_id, target_type, rel_type, properties
+		FROM resource_relationships
+	`, &DataQueryResult{
+		Rows: []map[string]any{
+			{
+				"source_id":   "sp-client",
+				"source_type": "entra:service_principal",
+				"target_id":   "sp-resource",
+				"target_type": "entra:service_principal",
+				"rel_type":    "CAN_ACCESS",
+				"properties": map[string]any{
+					"grant_id":     "grant-slack-mail-read",
+					"grant_type":   "delegated_permission",
+					"consent_type": "AllPrincipals",
+					"scope":        "Mail.Read Files.Read",
+				},
+			},
+			{
+				"source_id":   "user-alice",
+				"source_type": "entra:user",
+				"target_id":   "sp-client",
+				"target_type": "entra:service_principal",
+				"rel_type":    "CAN_ACCESS",
+				"properties": map[string]any{
+					"grant_id":     "grant-slack-mail-read",
+					"grant_type":   "delegated_permission_consent",
+					"consent_type": "Principal",
+					"scope":        "Mail.Read Files.Read",
+				},
+			},
+		},
+	})
+
+	builder := NewBuilder(source, logger)
+	if err := builder.Build(context.Background()); err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+
+	vendor, ok := builder.Graph().GetNode("vendor:slack-technologies")
+	if !ok {
+		t.Fatal("expected vendor node for Slack")
+	}
+	if got := intProperty(t, vendor.Properties, "dependent_user_count"); got != 1 {
+		t.Fatalf("expected delegated consent to count one dependent user, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "delegated_grant_count"); got != 1 {
+		t.Fatalf("expected one delegated grant, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "delegated_admin_consent_count"); got != 1 {
+		t.Fatalf("expected one admin-consented delegated grant, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "delegated_principal_consent_count"); got != 1 {
+		t.Fatalf("expected one principal-consented delegated grant, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "delegated_scope_count"); got != 2 {
+		t.Fatalf("expected two delegated scopes, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "accessible_resource_count"); got != 1 {
+		t.Fatalf("expected one accessible downstream API resource, got %d", got)
+	}
+	assertStringSliceProperty(t, vendor.Properties, "accessible_resource_kinds", []string{"service_account"})
+	assertStringSliceProperty(t, vendor.Properties, "delegated_scopes", []string{"Files.Read", "Mail.Read"})
+	if got := intProperty(t, vendor.Properties, "vendor_risk_score"); got != 44 {
+		t.Fatalf("expected delegated grant signals to lift vendor risk score to 44, got %d", got)
+	}
+	if vendor.Risk != RiskMedium {
+		t.Fatalf("expected delegated admin consent to lift vendor risk to medium, got %s", vendor.Risk)
+	}
+}
+
+func TestBuilder_TenantWideDelegatedGrantElevatesVendorRiskWithoutPrincipalAssignments(t *testing.T) {
+	t.Parallel()
+
+	source := newMockDataSource()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	source.setResult(`SELECT id, display_name, app_id, service_principal_type, account_enabled, app_owner_organization_id, app_role_assignment_required, publisher_name, verified_publisher_display_name, verified_publisher_id, verified_publisher_added_datetime, created_date_time, tags, subscription_id FROM azure_graph_service_principals`, &DataQueryResult{
+		Rows: []map[string]any{
+			{
+				"id":                                "sp-client",
+				"display_name":                      "Dropbox Enterprise",
+				"app_id":                            "app-dropbox",
+				"service_principal_type":            "Application",
+				"account_enabled":                   true,
+				"app_owner_organization_id":         "tenant-vendor",
+				"publisher_name":                    "Dropbox",
+				"verified_publisher_display_name":   "Dropbox",
+				"verified_publisher_id":             "dropbox-publisher",
+				"verified_publisher_added_datetime": "2026-03-02T00:00:00Z",
+				"subscription_id":                   "sub-1",
+			},
+			{
+				"id":                                "sp-resource",
+				"display_name":                      "Microsoft Graph",
+				"app_id":                            "app-msgraph",
+				"service_principal_type":            "Application",
+				"account_enabled":                   true,
+				"publisher_name":                    "Microsoft",
+				"verified_publisher_display_name":   "Microsoft",
+				"verified_publisher_id":             "msft-publisher",
+				"verified_publisher_added_datetime": "2026-03-02T00:00:00Z",
+				"subscription_id":                   "sub-1",
+			},
+		},
+	})
+	source.setResult(`
+		SELECT source_id, source_type, target_id, target_type, rel_type, properties
+		FROM resource_relationships
+	`, &DataQueryResult{
+		Rows: []map[string]any{
+			{
+				"source_id":   "sp-client",
+				"source_type": "entra:service_principal",
+				"target_id":   "sp-resource",
+				"target_type": "entra:service_principal",
+				"rel_type":    "CAN_ACCESS",
+				"properties": map[string]any{
+					"grant_id":     "grant-dropbox-tenant",
+					"grant_type":   "delegated_permission",
+					"consent_type": "AllPrincipals",
+					"scope":        "Files.Read Sites.Read.All User.Read",
+				},
+			},
+		},
+	})
+
+	builder := NewBuilder(source, logger)
+	if err := builder.Build(context.Background()); err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+
+	vendor, ok := builder.Graph().GetNode("vendor:dropbox")
+	if !ok {
+		t.Fatal("expected vendor node for Dropbox")
+	}
+	if got := intProperty(t, vendor.Properties, "dependent_principal_count"); got != 0 {
+		t.Fatalf("expected no explicit dependent principals for tenant-wide admin consent, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "delegated_grant_count"); got != 1 {
+		t.Fatalf("expected one delegated grant, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "delegated_admin_consent_count"); got != 1 {
+		t.Fatalf("expected one tenant-wide admin consent, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "delegated_principal_consent_count"); got != 0 {
+		t.Fatalf("expected no principal-specific delegated consents, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "delegated_scope_count"); got != 3 {
+		t.Fatalf("expected three delegated scopes, got %d", got)
+	}
+	assertStringSliceProperty(t, vendor.Properties, "delegated_scopes", []string{"Files.Read", "Sites.Read.All", "User.Read"})
+	if got := intProperty(t, vendor.Properties, "vendor_risk_score"); got != 44 {
+		t.Fatalf("expected tenant-wide delegated admin consent to elevate vendor risk score to 44, got %d", got)
+	}
+	if vendor.Risk != RiskMedium {
+		t.Fatalf("expected tenant-wide delegated admin consent to elevate vendor risk to medium, got %s", vendor.Risk)
+	}
+}
+
+func TestBuilder_ProjectsGoogleWorkspaceOAuthAppsIntoVendorRisk(t *testing.T) {
+	t.Parallel()
+
+	source := newMockDataSource()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	source.setResult(`SELECT id, primary_email, name, given_name, family_name, is_admin, is_delegated_admin, suspended, archived, is_enrolled_in_2sv, is_enforced_in_2sv, creation_time, last_login_time, org_unit_path FROM google_workspace_users`, &DataQueryResult{
+		Rows: []map[string]any{
+			{
+				"id":            "user-1",
+				"primary_email": "user-1@example.com",
+				"name":          "Alice Example",
+			},
+		},
+	})
+	source.setResult(`SELECT id, email, name, description, direct_members_count, admin_created FROM google_workspace_groups`, &DataQueryResult{Rows: []map[string]any{}})
+	source.setResult(`SELECT client_id, display_text, anonymous, native_app, app_type FROM google_workspace_tokens`, &DataQueryResult{
+		Rows: []map[string]any{
+			{
+				"client_id":    "client-1",
+				"display_text": "Slack",
+				"anonymous":    false,
+				"native_app":   true,
+				"app_type":     "native",
+			},
+		},
+	})
+	source.setResult(`
+		SELECT client_id, display_text, event_name, event_time
+		FROM google_workspace_token_activities
+		WHERE client_id IS NOT NULL
+	`, &DataQueryResult{
+		Rows: []map[string]any{
+			{
+				"client_id":    "client-1",
+				"display_text": "Slack",
+				"event_name":   "authorize",
+				"event_time":   "2026-03-10T00:00:00Z",
+			},
+			{
+				"client_id":    "client-1",
+				"display_text": "Slack",
+				"event_name":   "revoke",
+				"event_time":   "2026-03-11T00:00:00Z",
+			},
+		},
+	})
+	source.setResult(`
+		SELECT source_id, source_type, target_id, target_type, rel_type, properties
+		FROM resource_relationships
+	`, &DataQueryResult{
+		Rows: []map[string]any{
+			{
+				"source_id":   "user-1",
+				"source_type": "google_workspace:user",
+				"target_id":   "client-1",
+				"target_type": "google_workspace:application",
+				"rel_type":    "CAN_ACCESS",
+				"properties": map[string]any{
+					"grant_id":     "user-1|client-1",
+					"grant_type":   "delegated_permission_consent",
+					"consent_type": "Principal",
+					"scope":        "https://www.googleapis.com/auth/admin.directory.user.readonly https://www.googleapis.com/auth/calendar.readonly",
+				},
+			},
+			{
+				"source_id":   "client-1",
+				"source_type": "google_workspace:application",
+				"target_id":   "google_workspace_scope:https://www.googleapis.com/auth/admin.directory.user.readonly",
+				"target_type": "google_workspace:scope",
+				"rel_type":    "CAN_ACCESS",
+				"properties": map[string]any{
+					"grant_id":   "user-1|client-1",
+					"grant_type": "delegated_permission",
+					"scope":      "https://www.googleapis.com/auth/admin.directory.user.readonly",
+				},
+			},
+			{
+				"source_id":   "client-1",
+				"source_type": "google_workspace:application",
+				"target_id":   "google_workspace_scope:https://www.googleapis.com/auth/calendar.readonly",
+				"target_type": "google_workspace:scope",
+				"rel_type":    "CAN_ACCESS",
+				"properties": map[string]any{
+					"grant_id":   "user-1|client-1",
+					"grant_type": "delegated_permission",
+					"scope":      "https://www.googleapis.com/auth/calendar.readonly",
+				},
+			},
+		},
+	})
+
+	builder := NewBuilder(source, logger)
+	if err := builder.Build(context.Background()); err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+
+	vendor, ok := builder.Graph().GetNode("vendor:slack")
+	if !ok {
+		t.Fatal("expected vendor node for Slack")
+	}
+	if got := intProperty(t, vendor.Properties, "managed_application_count"); got != 1 {
+		t.Fatalf("expected one managed application, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "dependent_user_count"); got != 1 {
+		t.Fatalf("expected one dependent user, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "delegated_grant_count"); got != 1 {
+		t.Fatalf("expected one delegated grant, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "delegated_scope_count"); got != 2 {
+		t.Fatalf("expected two delegated scopes, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "recent_oauth_activity_count"); got != 2 {
+		t.Fatalf("expected two recent oauth activity events, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "recent_oauth_authorize_event_count"); got != 1 {
+		t.Fatalf("expected one authorize event, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "recent_oauth_revoke_event_count"); got != 1 {
+		t.Fatalf("expected one revoke event, got %d", got)
+	}
+	if got, _ := vendor.Properties["last_oauth_activity_at"].(string); got != "2026-03-11T00:00:00Z" {
+		t.Fatalf("expected last_oauth_activity_at to track newest event, got %#v", vendor.Properties["last_oauth_activity_at"])
+	}
+	if got := intProperty(t, vendor.Properties, "anonymous_application_count"); got != 0 {
+		t.Fatalf("expected no anonymous applications, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "native_application_count"); got != 1 {
+		t.Fatalf("expected one native application, got %d", got)
+	}
+	assertStringSliceProperty(t, vendor.Properties, "integration_types", []string{"google_workspace_application"})
+}
+
+func TestBuilder_AnonymousGoogleWorkspaceOAuthAppsRaiseVendorRisk(t *testing.T) {
+	t.Parallel()
+
+	source := newMockDataSource()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	source.setResult(`SELECT id, primary_email, name, given_name, family_name, is_admin, is_delegated_admin, suspended, archived, is_enrolled_in_2sv, is_enforced_in_2sv, creation_time, last_login_time, org_unit_path FROM google_workspace_users`, &DataQueryResult{
+		Rows: []map[string]any{{
+			"id":            "user-1",
+			"primary_email": "user-1@example.com",
+			"name":          "Alice Example",
+		}},
+	})
+	source.setResult(`SELECT id, email, name, description, direct_members_count, admin_created FROM google_workspace_groups`, &DataQueryResult{Rows: []map[string]any{}})
+	source.setResult(`SELECT client_id, display_text, anonymous, native_app, app_type FROM google_workspace_tokens`, &DataQueryResult{
+		Rows: []map[string]any{{
+			"client_id":    "client-2",
+			"display_text": "Shadow AI",
+			"anonymous":    true,
+			"native_app":   true,
+			"app_type":     "anonymous",
+		}},
+	})
+	source.setResult(`
+		SELECT source_id, source_type, target_id, target_type, rel_type, properties
+		FROM resource_relationships
+	`, &DataQueryResult{
+		Rows: []map[string]any{
+			{
+				"source_id":   "user-1",
+				"source_type": "google_workspace:user",
+				"target_id":   "client-2",
+				"target_type": "google_workspace:application",
+				"rel_type":    "CAN_ACCESS",
+				"properties": map[string]any{
+					"grant_id":     "user-1|client-2",
+					"grant_type":   "delegated_permission_consent",
+					"consent_type": "Principal",
+					"scope":        "https://www.googleapis.com/auth/admin.directory.user.readonly https://www.googleapis.com/auth/calendar.readonly",
+				},
+			},
+			{
+				"source_id":   "client-2",
+				"source_type": "google_workspace:application",
+				"target_id":   "google_workspace_scope:https://www.googleapis.com/auth/admin.directory.user.readonly",
+				"target_type": "google_workspace:scope",
+				"rel_type":    "CAN_ACCESS",
+				"properties": map[string]any{
+					"grant_id":   "user-1|client-2",
+					"grant_type": "delegated_permission",
+					"scope":      "https://www.googleapis.com/auth/admin.directory.user.readonly",
+				},
+			},
+			{
+				"source_id":   "client-2",
+				"source_type": "google_workspace:application",
+				"target_id":   "google_workspace_scope:https://www.googleapis.com/auth/calendar.readonly",
+				"target_type": "google_workspace:scope",
+				"rel_type":    "CAN_ACCESS",
+				"properties": map[string]any{
+					"grant_id":   "user-1|client-2",
+					"grant_type": "delegated_permission",
+					"scope":      "https://www.googleapis.com/auth/calendar.readonly",
+				},
+			},
+		},
+	})
+
+	builder := NewBuilder(source, logger)
+	if err := builder.Build(context.Background()); err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+
+	vendor, ok := builder.Graph().GetNode("vendor:shadow-ai")
+	if !ok {
+		t.Fatal("expected vendor node for Shadow AI")
+	}
+	if got := intProperty(t, vendor.Properties, "anonymous_application_count"); got != 1 {
+		t.Fatalf("expected one anonymous application, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "native_application_count"); got != 1 {
+		t.Fatalf("expected one native application, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "vendor_risk_score"); got != 42 {
+		t.Fatalf("expected anonymous/native delegated app risk score 42, got %d", got)
+	}
+	if vendor.Risk != RiskMedium {
+		t.Fatalf("expected anonymous delegated app to reach medium risk, got %v", vendor.Risk)
+	}
+}
+
+func TestBuilder_ProjectsGoogleWorkspaceAuditOnlyOAuthAppsIntoVendorRisk(t *testing.T) {
+	t.Parallel()
+
+	source := newMockDataSource()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	source.setResult(`SELECT id, primary_email, name, given_name, family_name, is_admin, is_delegated_admin, suspended, archived, is_enrolled_in_2sv, is_enforced_in_2sv, creation_time, last_login_time, org_unit_path FROM google_workspace_users`, &DataQueryResult{
+		Rows: []map[string]any{{"id": "user-1", "primary_email": "user-1@example.com", "name": "Alice Example"}},
+	})
+	source.setResult(`SELECT id, email, name, description, direct_members_count, admin_created FROM google_workspace_groups`, &DataQueryResult{Rows: []map[string]any{}})
+	source.setResult(`SELECT client_id, display_text, anonymous, native_app, app_type FROM google_workspace_tokens`, &DataQueryResult{Rows: []map[string]any{}})
+	source.setResult(`
+		SELECT client_id, display_text, event_name, event_time
+		FROM google_workspace_token_activities
+		WHERE client_id IS NOT NULL
+	`, &DataQueryResult{
+		Rows: []map[string]any{{
+			"client_id":    "client-audit-only",
+			"display_text": "Notion",
+			"event_name":   "authorize",
+			"event_time":   "2026-03-12T00:00:00Z",
+		}},
+	})
+
+	builder := NewBuilder(source, logger)
+	if err := builder.Build(context.Background()); err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+
+	app, ok := builder.Graph().GetNode("client-audit-only")
+	if !ok {
+		t.Fatal("expected application node from audit-only token activity")
+	}
+	if app.Provider != "google_workspace" || app.Kind != NodeKindApplication {
+		t.Fatalf("expected google workspace application node, got %#v", app)
+	}
+	if app.Name != "Notion" {
+		t.Fatalf("expected audit-only app name from display text, got %q", app.Name)
+	}
+	vendor, ok := builder.Graph().GetNode("vendor:notion")
+	if !ok {
+		t.Fatal("expected vendor node from audit-only token activity")
+	}
+	if got := intProperty(t, vendor.Properties, "managed_application_count"); got != 1 {
+		t.Fatalf("expected one managed application, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "recent_oauth_activity_count"); got != 1 {
+		t.Fatalf("expected one recent oauth activity event, got %d", got)
+	}
+	if got, _ := vendor.Properties["last_oauth_activity_at"].(string); got != "2026-03-12T00:00:00Z" {
+		t.Fatalf("expected last_oauth_activity_at to reflect audit-only activity, got %#v", vendor.Properties["last_oauth_activity_at"])
+	}
+}
+
+func TestBuilder_ProjectsOktaAppGrantScopesIntoVendorRisk(t *testing.T) {
+	t.Parallel()
+
+	source := newMockDataSource()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	source.setResult(`SELECT id, login, email, status, last_login, mfa_enrolled, is_admin FROM okta_users`, &DataQueryResult{
+		Rows: []map[string]any{
+			{
+				"id":    "user-1",
+				"login": "alice@example.com",
+				"email": "alice@example.com",
+			},
+		},
+	})
+	source.setResult(`SELECT id, label, name, status, sign_on_mode FROM okta_applications`, &DataQueryResult{
+		Rows: []map[string]any{
+			{
+				"id":           "okta-app-slack",
+				"label":        "Slack",
+				"name":         "slack",
+				"status":       "ACTIVE",
+				"sign_on_mode": "OPENID_CONNECT",
+			},
+		},
+	})
+	source.setResult(`
+		SELECT app_id, source, user_id, status, created, last_updated
+		FROM okta_app_grants
+		WHERE app_id IS NOT NULL
+	`, &DataQueryResult{
+		Rows: []map[string]any{
+			{
+				"app_id":       "okta-app-slack",
+				"source":       "ADMIN",
+				"status":       "ACTIVE",
+				"created":      "2026-03-01T00:00:00Z",
+				"last_updated": "2026-03-03T00:00:00Z",
+			},
+			{
+				"app_id":       "okta-app-slack",
+				"source":       "END_USER",
+				"user_id":      "user-1",
+				"status":       "ACTIVE",
+				"created":      "2026-03-02T00:00:00Z",
+				"last_updated": "2026-03-04T00:00:00Z",
+			},
+			{
+				"app_id":       "okta-app-slack",
+				"source":       "ADMIN",
+				"status":       "INACTIVE",
+				"created":      "2026-02-01T00:00:00Z",
+				"last_updated": "2026-02-02T00:00:00Z",
+			},
+		},
+	})
+	source.setResult(`
+		SELECT source_id, source_type, target_id, target_type, rel_type, properties
+		FROM resource_relationships
+	`, &DataQueryResult{
+		Rows: []map[string]any{
+			{
+				"source_id":   "user-1",
+				"source_type": "okta:user",
+				"target_id":   "okta-app-slack",
+				"target_type": "okta:application",
+				"rel_type":    "CAN_ACCESS",
+				"properties": map[string]any{
+					"grant_id":     "grant-2",
+					"grant_type":   "delegated_permission_consent",
+					"consent_type": "Principal",
+					"scope":        "okta.apps.manage",
+				},
+			},
+			{
+				"source_id":   "okta-app-slack",
+				"source_type": "okta:application",
+				"target_id":   "okta_scope:okta.users.read",
+				"target_type": "okta:scope",
+				"rel_type":    "CAN_ACCESS",
+				"properties": map[string]any{
+					"grant_id":     "grant-1",
+					"grant_type":   "delegated_permission",
+					"consent_type": "AllPrincipals",
+					"scope":        "okta.users.read",
+				},
+			},
+			{
+				"source_id":   "okta-app-slack",
+				"source_type": "okta:application",
+				"target_id":   "okta_scope:okta.apps.manage",
+				"target_type": "okta:scope",
+				"rel_type":    "HAS_PERMISSION",
+				"properties": map[string]any{
+					"grant_id":     "grant-2",
+					"grant_type":   "delegated_permission",
+					"consent_type": "Principal",
+					"scope":        "okta.apps.manage",
+				},
+			},
+		},
+	})
+
+	builder := NewBuilder(source, logger)
+	if err := builder.Build(context.Background()); err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+
+	vendor, ok := builder.Graph().GetNode("vendor:slack")
+	if !ok {
+		t.Fatal("expected vendor node for Slack")
+	}
+	if got := intProperty(t, vendor.Properties, "read_access_count"); got != 1 {
+		t.Fatalf("expected one read-granted Okta scope, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "admin_access_count"); got != 1 {
+		t.Fatalf("expected one manage-granted Okta scope, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "delegated_grant_count"); got != 2 {
+		t.Fatalf("expected two Okta grant records, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "delegated_admin_consent_count"); got != 1 {
+		t.Fatalf("expected one admin-consented Okta grant, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "delegated_principal_consent_count"); got != 1 {
+		t.Fatalf("expected one principal-consented Okta grant, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "delegated_scope_count"); got != 2 {
+		t.Fatalf("expected two delegated Okta scopes, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "dependent_user_count"); got != 1 {
+		t.Fatalf("expected one dependent user from principal grant, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "active_grant_count"); got != 2 {
+		t.Fatalf("expected two active grant records, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "admin_grant_count"); got != 1 {
+		t.Fatalf("expected one admin-sourced active grant, got %d", got)
+	}
+	if got := intProperty(t, vendor.Properties, "principal_grant_count"); got != 1 {
+		t.Fatalf("expected one principal-sourced active grant, got %d", got)
+	}
+	if got, _ := vendor.Properties["last_grant_updated_at"].(string); got != "2026-03-04T00:00:00Z" {
+		t.Fatalf("expected last_grant_updated_at to track newest active grant, got %#v", vendor.Properties["last_grant_updated_at"])
+	}
+	if got := intProperty(t, vendor.Properties, "vendor_risk_score"); got != 97 {
+		t.Fatalf("expected Okta grant signals to raise vendor risk score to 97, got %d", got)
+	}
+	if got, _ := vendor.Properties["permission_level"].(string); got != "admin" {
+		t.Fatalf("expected admin permission level from Okta manage scope, got %#v", vendor.Properties["permission_level"])
+	}
+	if vendor.Risk != RiskHigh {
+		t.Fatalf("expected Okta grant signals to produce high risk, got %v", vendor.Risk)
+	}
+}
+
 func TestBuilder_KeepsDistinctVendorProductAliasesSeparate(t *testing.T) {
 	t.Parallel()
 
