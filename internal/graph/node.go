@@ -19,6 +19,7 @@ const (
 
 	// Resource nodes
 	NodeKindService                 NodeKind = "service"
+	NodeKindAPIEndpoint             NodeKind = "api_endpoint"
 	NodeKindWorkload                NodeKind = "workload"
 	NodeKindBucket                  NodeKind = "bucket"
 	NodeKindBucketPolicyStatement   NodeKind = "bucket_policy_statement"

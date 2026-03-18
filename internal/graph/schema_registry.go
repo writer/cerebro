@@ -1546,7 +1546,7 @@ var builtInNodeKinds = []NodeKindDefinition{
 			"confidence":      "number",
 		},
 		RequiredProperties: []string{"service_id", "observed_at", "valid_from"},
-		Relationships:      []EdgeKind{EdgeKindOwns, EdgeKindRuns, EdgeKindDependsOn, EdgeKindCalls, EdgeKindTargets},
+		Relationships:      []EdgeKind{EdgeKindOwns, EdgeKindRuns, EdgeKindDependsOn, EdgeKindCalls, EdgeKindServes, EdgeKindTargets},
 		MetadataProfile: writeMetadataProfile(
 			[]string{"source_system", "observed_at", "valid_from"},
 			map[string][]string{
@@ -1616,13 +1616,28 @@ var builtInNodeKinds = []NodeKindDefinition{
 			"confidence":      "number",
 		},
 		RequiredProperties: []string{"workload_id", "runtime", "observed_at", "valid_from"},
-		Relationships:      []EdgeKind{EdgeKindConnectsTo, EdgeKindCalls, EdgeKindDependsOn, EdgeKindTargets, EdgeKindHasSequence},
+		Relationships:      []EdgeKind{EdgeKindConnectsTo, EdgeKindCalls, EdgeKindDependsOn, EdgeKindServes, EdgeKindTargets, EdgeKindHasSequence},
 		MetadataProfile: writeMetadataProfile(
 			[]string{"source_system", "observed_at", "valid_from"},
 			map[string][]string{
 				"environment": {"prod", "production", "staging", "qa", "dev", "test", "sandbox"},
 			},
 		),
+	},
+	{
+		Kind:         NodeKindAPIEndpoint,
+		Categories:   []NodeKindCategory{NodeCategoryResource},
+		Capabilities: []NodeKindCapability{NodeCapabilityInternetExposable},
+		Properties: map[string]string{
+			"url":             "string",
+			"scheme":          "string",
+			"host":            "string",
+			"path":            "string",
+			"public":          "boolean",
+			"exposure_source": "string",
+		},
+		RequiredProperties: []string{"url", "scheme", "host"},
+		MetadataProfile:    writeMetadataProfile(nil, nil),
 	},
 	{
 		Kind:         NodeKindBucket,
@@ -1781,7 +1796,14 @@ var builtInNodeKinds = []NodeKindDefinition{
 	{Kind: NodeKindInstance, Categories: []NodeKindCategory{NodeCategoryResource}, Capabilities: []NodeKindCapability{NodeCapabilityInternetExposable}},
 	{Kind: NodeKindDatabase, Categories: []NodeKindCategory{NodeCategoryResource}, Capabilities: []NodeKindCapability{NodeCapabilitySensitiveData}},
 	{Kind: NodeKindSecret, Categories: []NodeKindCategory{NodeCategoryResource}, Capabilities: []NodeKindCapability{NodeCapabilitySensitiveData, NodeCapabilityCredentialStore}},
-	{Kind: NodeKindFunction, Categories: []NodeKindCategory{NodeCategoryResource}, Capabilities: []NodeKindCapability{NodeCapabilityInternetExposable}},
+	{
+		Kind:         NodeKindFunction,
+		Categories:   []NodeKindCategory{NodeCategoryResource},
+		Capabilities: []NodeKindCapability{NodeCapabilityInternetExposable},
+		Relationships: []EdgeKind{
+			EdgeKindServes,
+		},
+	},
 	{
 		Kind:       NodeKindWorkloadScan,
 		Categories: []NodeKindCategory{NodeCategoryResource},
@@ -2378,6 +2400,7 @@ var builtInEdgeKinds = []EdgeKindDefinition{
 	{Kind: EdgeKindCanAdmin},
 	{Kind: EdgeKindConnectsTo},
 	{Kind: EdgeKindCalls},
+	{Kind: EdgeKindServes},
 	{Kind: EdgeKindRuns},
 	{Kind: EdgeKindDependsOn},
 	{Kind: EdgeKindConfigures},

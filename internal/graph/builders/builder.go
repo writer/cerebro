@@ -182,6 +182,10 @@ func (b *Builder) BuildCandidate(ctx context.Context) (*Graph, GraphMutationSumm
 	if err := ctx.Err(); err != nil {
 		return nil, GraphMutationSummary{}, err
 	}
+	working.buildAPIEndpointNodes()
+	if err := ctx.Err(); err != nil {
+		return nil, GraphMutationSummary{}, err
+	}
 	working.buildExposureEdges(ctx)
 	if err := ctx.Err(); err != nil {
 		return nil, GraphMutationSummary{}, err

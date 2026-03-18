@@ -2,8 +2,8 @@
 
 Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and `internal/graphingest/mappings.yaml` via `go run ./scripts/generate_graph_ontology_docs/main.go`.
 
-- Node kinds: **71**
-- Edge kinds: **49**
+- Node kinds: **72**
+- Edge kinds: **50**
 - Mapping rules: **13**
 - Source domains: **9**
 
@@ -14,6 +14,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `action` | business | `action_type`, `observed_at`, `status`, `valid_from` | `based_on`, `evaluates`, `interacted_with`, `targets` |
 | `activity` | business | - | - |
 | `any` | - | - | - |
+| `api_endpoint` | resource | `host`, `scheme`, `url` | - |
 | `application` | resource | - | - |
 | `attack_sequence` | business | `observed_at`, `recorded_at`, `sequence_end`, `sequence_start`, `sequence_type`, `transaction_from`, `valid_from`, `workload_ref` | `based_on`, `contains` |
 | `bucket` | resource | - | `configures`, `depends_on`, `exposed_to`, `managed_by`, `owns`, `targets` |
@@ -41,7 +42,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `document` | business | `document_id`, `observed_at`, `title`, `valid_from` | `based_on`, `targets` |
 | `evidence` | business | `evidence_type`, `observed_at`, `source_system`, `valid_from` | `based_on`, `targets` |
 | `folder` | resource | `folder_id`, `resource_name` | `located_in` |
-| `function` | resource | - | - |
+| `function` | resource | - | `serves` |
 | `group` | identity | - | - |
 | `identity_alias` | identity | `external_id`, `observed_at`, `source_system`, `valid_from` | `alias_of` |
 | `incident` | business | `incident_id`, `observed_at`, `status`, `valid_from` | `based_on`, `caused_by`, `evaluates`, `targets` |
@@ -71,7 +72,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `role_binding` | kubernetes | - | - |
 | `scp` | - | - | - |
 | `secret` | resource | - | - |
-| `service` | business, resource | `observed_at`, `service_id`, `valid_from` | `calls`, `depends_on`, `owns`, `runs`, `targets` |
+| `service` | business, resource | `observed_at`, `service_id`, `valid_from` | `calls`, `depends_on`, `owns`, `runs`, `serves`, `targets` |
 | `service_account` | identity | - | - |
 | `source` | business | `canonical_name`, `observed_at`, `recorded_at`, `source_type`, `transaction_from`, `valid_from` | - |
 | `subscription` | business | - | - |
@@ -80,7 +81,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `user` | identity | - | - |
 | `vendor` | business | - | - |
 | `vulnerability` | resource | `observed_at`, `recorded_at`, `severity`, `transaction_from`, `valid_from`, `vulnerability_id` | `based_on` |
-| `workload` | resource | `observed_at`, `runtime`, `valid_from`, `workload_id` | `calls`, `connects_to`, `depends_on`, `has_sequence`, `targets` |
+| `workload` | resource | `observed_at`, `runtime`, `valid_from`, `workload_id` | `calls`, `connects_to`, `depends_on`, `has_sequence`, `serves`, `targets` |
 | `workload_scan` | resource | `observed_at`, `recorded_at`, `scan_id`, `status`, `target_id`, `target_kind`, `transaction_from`, `valid_from` | `based_on`, `contains_package`, `found_vulnerability`, `has_scan`, `targets` |
 
 ## Node Metadata Profiles
@@ -88,6 +89,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | Kind | Required Metadata | Optional Metadata | Timestamp Keys | Enum Constraints |
 |---|---|---|---|---|
 | `action` | `observed_at`, `source_system`, `valid_from` | `confidence`, `recorded_at`, `source_event_id`, `transaction_from`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
+| `api_endpoint` | - | `confidence`, `observed_at`, `recorded_at`, `source_event_id`, `source_system`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
 | `attack_sequence` | `observed_at`, `recorded_at`, `source_system`, `transaction_from`, `valid_from` | `confidence`, `source_event_id`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `severity`=`critical`, `high`, `low`, `medium`, `unknown` |
 | `bucket_encryption_config` | `observed_at`, `recorded_at`, `source_system`, `transaction_from`, `valid_from` | `confidence`, `source_event_id`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
 | `bucket_logging_config` | `observed_at`, `recorded_at`, `source_system`, `transaction_from`, `valid_from` | `confidence`, `source_event_id`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
@@ -172,6 +174,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `reports_to` | - |
 | `resolves_to` | - |
 | `runs` | - |
+| `serves` | - |
 | `subscribed_to` | - |
 | `supersedes` | - |
 | `supports` | - |
@@ -195,9 +198,10 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 
 ## Unmapped Built-in Node Kinds
 
-Total unmapped kinds: **48**
+Total unmapped kinds: **49**
 
 - `activity`
+- `api_endpoint`
 - `application`
 - `attack_sequence`
 - `bucket`

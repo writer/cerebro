@@ -37,7 +37,9 @@ const (
 	EdgeKindMemberOf       = graph.EdgeKindMemberOf
 	EdgeKindReportsTo      = graph.EdgeKindReportsTo
 	EdgeKindResolvesTo     = graph.EdgeKindResolvesTo
+	EdgeKindServes         = graph.EdgeKindServes
 
+	NodeKindAPIEndpoint        = graph.NodeKindAPIEndpoint
 	NodeKindApplication        = graph.NodeKindApplication
 	NodeKindBucket             = graph.NodeKindBucket
 	NodeKindClusterRole        = graph.NodeKindClusterRole

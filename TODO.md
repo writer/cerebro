@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 199 - API Endpoint Graph Substrate (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#242` had no first-class `api_endpoint` node kind, so URI-backed workloads were still represented only as generic functions or services and could not participate in API-specific graph queries.
+- [x] Gap: the graph builder already knew about public Cloud Run workloads through `uri` and `ingress`, but it never materialized those endpoints as graph entities or linked them back to the serving workload.
+- [x] Gap: incremental CDC rebuilds would have diverged from full builds for endpoint projection unless the endpoint substrate was added to both rebuild paths.
+
+### Execution plan
+- [x] Add a first-class `api_endpoint` node kind plus a `serves` edge kind and register both in the graph ontology.
+- [x] Project endpoint nodes from existing URI-backed workloads, starting with Cloud Run data already present in the builders, and connect public endpoints to the existing `internet` entry node through the normal exposure pipeline.
+- [x] Add full-build and CDC regression coverage, then regenerate ontology docs and rerun the graph validation guardrails.
+
 ## Deep Review Cycle 198 - Organizational Policy Graph Substrate (2026-03-17)
 
 ### Review findings

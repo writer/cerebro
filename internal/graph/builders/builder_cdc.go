@@ -236,6 +236,10 @@ func (b *Builder) rebuildEdges(ctx context.Context) error {
 		return err
 	}
 
+	b.buildAPIEndpointNodes()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	b.buildExposureEdges(ctx)
 	if err := ctx.Err(); err != nil {
 		return err
