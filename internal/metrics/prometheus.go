@@ -691,6 +691,20 @@ var (
 		[]string{"result"},
 	)
 
+	GraphWriterActive = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "cerebro_graph_writer_active",
+			Help: "Whether this process currently holds the graph writer lease (1 held, 0 not held)",
+		},
+	)
+
+	GraphWriterLeaseRemainingSeconds = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "cerebro_graph_writer_lease_remaining_seconds",
+			Help: "Seconds remaining until the current graph writer lease expires on this process",
+		},
+	)
+
 	// Build info
 	BuildInfo = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -805,6 +819,8 @@ func Register() {
 			GraphCrossTenantMatches,
 			GraphCrossTenantReadsTotal,
 			GraphStatePersistenceTotal,
+			GraphWriterActive,
+			GraphWriterLeaseRemainingSeconds,
 			// Build
 			BuildInfo,
 		)
@@ -1065,6 +1081,26 @@ func RecordGraphStatePersistence(result string) {
 		result = "unknown"
 	}
 	GraphStatePersistenceTotal.WithLabelValues(result).Inc()
+}
+
+func SetGraphWriterLeaseState(active bool, leaseUntil, now time.Time) {
+	if active {
+		GraphWriterActive.Set(1)
+	} else {
+		GraphWriterActive.Set(0)
+	}
+	if leaseUntil.IsZero() {
+		GraphWriterLeaseRemainingSeconds.Set(0)
+		return
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	remaining := leaseUntil.Sub(now)
+	if remaining < 0 {
+		remaining = 0
+	}
+	GraphWriterLeaseRemainingSeconds.Set(remaining.Seconds())
 }
 
 func RecordJetStreamPublish(stream, result string) {

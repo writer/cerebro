@@ -159,6 +159,8 @@ type App struct {
 	graphConsistencyRun           bool
 	graphConsistencyCancel        context.CancelFunc
 	graphConsistencyWG            sync.WaitGroup
+	graphWriterLease              *graphWriterLeaseManager
+	graphWriterLeaseTransitionWG  sync.WaitGroup
 	tenantShardMu                 sync.Mutex
 	tenantSecurityGraphShards     *tenantGraphShardManager
 	eventCorrelationRefreshQueue  *eventCorrelationRefreshQueue
@@ -173,6 +175,7 @@ type App struct {
 	tapMapperErr                  error
 	tapResolveGraphMu             sync.RWMutex
 	tapResolveGraph               *graph.Graph
+	tapConsumerMu                 sync.Mutex
 	securityGraphInitMu           sync.RWMutex
 	reloadMu                      sync.Mutex
 	apiKeys                       atomic.Value // map[string]string

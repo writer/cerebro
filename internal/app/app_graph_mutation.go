@@ -24,6 +24,9 @@ func (a *App) MutateSecurityGraphMaybe(ctx context.Context, mutate func(*graph.G
 	if a == nil {
 		return nil, fmt.Errorf("security graph not initialized")
 	}
+	if err := a.requireGraphWriterLease("mutate security graph"); err != nil {
+		return nil, err
+	}
 	if mutate == nil {
 		return a.CurrentSecurityGraph(), nil
 	}
@@ -70,6 +73,9 @@ func (a *App) MutateSecurityGraphMaybe(ctx context.Context, mutate func(*graph.G
 	if err := ctx.Err(); err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
+		return nil, err
+	}
+	if err := a.requireGraphWriterLease("mutate security graph"); err != nil {
 		return nil, err
 	}
 

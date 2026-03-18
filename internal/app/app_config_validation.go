@@ -210,6 +210,29 @@ func (c *Config) Validate() error {
 	if c.GraphPropertyHistoryTTL < 0 {
 		problems = addConfigProblem(problems, "GRAPH_PROPERTY_HISTORY_TTL must be >= 0")
 	}
+	if c.GraphWriterLeaseEnabled {
+		if !c.NATSJetStreamEnabled {
+			problems = addConfigProblem(problems, "NATS_JETSTREAM_ENABLED must be true when GRAPH_WRITER_LEASE_ENABLED=true")
+		}
+		if strings.TrimSpace(c.GraphWriterLeaseBucket) == "" {
+			problems = addConfigProblem(problems, "GRAPH_WRITER_LEASE_BUCKET is required when GRAPH_WRITER_LEASE_ENABLED=true")
+		}
+		if strings.TrimSpace(c.GraphWriterLeaseName) == "" {
+			problems = addConfigProblem(problems, "GRAPH_WRITER_LEASE_NAME is required when GRAPH_WRITER_LEASE_ENABLED=true")
+		}
+		if strings.TrimSpace(c.GraphWriterLeaseOwnerID) == "" {
+			problems = addConfigProblem(problems, "GRAPH_WRITER_LEASE_OWNER_ID is required when GRAPH_WRITER_LEASE_ENABLED=true")
+		}
+		if c.GraphWriterLeaseTTL <= 0 {
+			problems = addConfigProblem(problems, "GRAPH_WRITER_LEASE_TTL must be > 0 when GRAPH_WRITER_LEASE_ENABLED=true")
+		}
+		if c.GraphWriterLeaseHeartbeat <= 0 {
+			problems = addConfigProblem(problems, "GRAPH_WRITER_LEASE_HEARTBEAT must be > 0 when GRAPH_WRITER_LEASE_ENABLED=true")
+		}
+		if c.GraphWriterLeaseTTL > 0 && c.GraphWriterLeaseHeartbeat >= c.GraphWriterLeaseTTL {
+			problems = addConfigProblem(problems, "GRAPH_WRITER_LEASE_HEARTBEAT must be less than GRAPH_WRITER_LEASE_TTL when GRAPH_WRITER_LEASE_ENABLED=true")
+		}
+	}
 
 	switch strings.ToLower(strings.TrimSpace(c.WarehouseBackend)) {
 	case "", "snowflake", "sqlite", "postgres":

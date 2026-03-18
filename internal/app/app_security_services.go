@@ -176,6 +176,7 @@ func (a *App) initHealth() {
 	}))
 
 	a.Health.Register("graph_ontology_slo", a.graphOntologySLOHealthCheck())
+	a.Health.Register("graph_writer_lease", a.graphWriterLeaseHealthCheck())
 	a.Health.Register("graph_build", func(_ context.Context) health.CheckResult {
 		start := time.Now().UTC()
 		result := health.CheckResult{
@@ -559,6 +560,14 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 			)
 		}
 	}
+	if !a.graphWriterLeaseAllowsWrites() {
+		a.Logger.Info("security graph initialized in follower mode",
+			"lease", a.Config.GraphWriterLeaseName,
+			"holder", a.GraphWriterLeaseStatusSnapshot().LeaseHolderID,
+		)
+		close(a.graphReady)
+		return
+	}
 
 	graphCtx, cancel := context.WithCancel(backgroundWorkContext(ctx))
 	a.graphCtx = graphCtx
@@ -657,6 +666,9 @@ func (a *App) RebuildSecurityGraph(ctx context.Context) error {
 	if a.SecurityGraphBuilder == nil {
 		return fmt.Errorf("security graph not initialized")
 	}
+	if err := a.requireGraphWriterLease("rebuild security graph"); err != nil {
+		return err
+	}
 
 	a.graphUpdateMu.Lock()
 	defer a.graphUpdateMu.Unlock()
@@ -669,6 +681,9 @@ func (a *App) RebuildSecurityGraph(ctx context.Context) error {
 	}
 
 	securityGraph := a.SecurityGraphBuilder.Graph()
+	if err := a.requireGraphWriterLease("rebuild security graph"); err != nil {
+		return err
+	}
 	meta, err := a.activateBuiltSecurityGraph(ctx, securityGraph)
 	if err != nil {
 		return err
@@ -689,6 +704,10 @@ func (a *App) RebuildSecurityGraph(ctx context.Context) error {
 func (a *App) activateBuiltSecurityGraph(ctx context.Context, securityGraph *graph.Graph) (graph.Metadata, error) {
 	if securityGraph == nil {
 		err := fmt.Errorf("security graph not initialized")
+		a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
+		return graph.Metadata{}, err
+	}
+	if err := a.requireGraphWriterLease("activate security graph"); err != nil {
 		a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
 		return graph.Metadata{}, err
 	}

@@ -471,6 +471,12 @@ type Config struct {
 	GraphSnapshotPath                   string
 	GraphSnapshotMaxRetained            int
 	GraphSnapshotReplicaURI             string
+	GraphWriterLeaseEnabled             bool
+	GraphWriterLeaseBucket              string
+	GraphWriterLeaseName                string
+	GraphWriterLeaseOwnerID             string
+	GraphWriterLeaseTTL                 time.Duration
+	GraphWriterLeaseHeartbeat           time.Duration
 	GraphTenantShardIdleTTL             time.Duration
 	GraphTenantWarmShardTTL             time.Duration
 	GraphTenantWarmShardMaxRetained     int
@@ -845,6 +851,12 @@ func LoadConfig() *Config {
 				GraphSnapshotPath:                   getEnv("GRAPH_SNAPSHOT_PATH", filepath.Join(".cerebro", "graph-snapshots")),
 				GraphSnapshotMaxRetained:            getEnvInt("GRAPH_SNAPSHOT_MAX_RETAINED", 10),
 				GraphSnapshotReplicaURI:             getEnv("GRAPH_SNAPSHOT_REPLICA_URI", ""),
+				GraphWriterLeaseEnabled:             getEnvBool("GRAPH_WRITER_LEASE_ENABLED", false),
+				GraphWriterLeaseBucket:              getEnv("GRAPH_WRITER_LEASE_BUCKET", defaultGraphWriterLeaseBucket),
+				GraphWriterLeaseName:                getEnv("GRAPH_WRITER_LEASE_NAME", defaultGraphWriterLeaseName),
+				GraphWriterLeaseOwnerID:             getEnv("GRAPH_WRITER_LEASE_OWNER_ID", defaultGraphWriterLeaseOwnerID()),
+				GraphWriterLeaseTTL:                 getEnvDuration("GRAPH_WRITER_LEASE_TTL", 15*time.Second),
+				GraphWriterLeaseHeartbeat:           getEnvDuration("GRAPH_WRITER_LEASE_HEARTBEAT", 5*time.Second),
 				GraphTenantShardIdleTTL:             getEnvDuration("GRAPH_TENANT_SHARD_IDLE_TTL", defaultGraphTenantShardIdleTTL),
 				GraphTenantWarmShardTTL:             getEnvDuration("GRAPH_TENANT_WARM_SHARD_TTL", defaultGraphTenantWarmShardTTL),
 				GraphTenantWarmShardMaxRetained:     getEnvInt("GRAPH_TENANT_WARM_SHARD_MAX_RETAINED", defaultGraphTenantWarmShardMaxRetained),

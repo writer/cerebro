@@ -2,7 +2,7 @@
 
 Generated from `internal/app/app_config.go` (`LoadConfig`) via `go run ./scripts/generate_config_docs/main.go`.
 
-Total variables: **338**
+Total variables: **344**
 
 | Variable | Reader(s) | Default(s) | Config Field(s) | Validation rule(s) |
 |---|---|---|---|---|
@@ -135,6 +135,12 @@ Total variables: **338**
 | `GRAPH_TENANT_SHARD_IDLE_TTL` | `getEnvDuration` | `defaultGraphTenantShardIdleTTL` | `GraphTenantShardIdleTTL` | `must be greater than 0` |
 | `GRAPH_TENANT_WARM_SHARD_MAX_RETAINED` | `getEnvInt` | `defaultGraphTenantWarmShardMaxRetained` | `GraphTenantWarmShardMaxRetained` | `must be greater than 0` |
 | `GRAPH_TENANT_WARM_SHARD_TTL` | `getEnvDuration` | `defaultGraphTenantWarmShardTTL` | `GraphTenantWarmShardTTL` | `must be greater than 0` |
+| `GRAPH_WRITER_LEASE_BUCKET` | `getEnv` | `defaultGraphWriterLeaseBucket` | `GraphWriterLeaseBucket` | `-` |
+| `GRAPH_WRITER_LEASE_ENABLED` | `getEnvBool` | `false` | `GraphWriterLeaseEnabled` | `-` |
+| `GRAPH_WRITER_LEASE_HEARTBEAT` | `getEnvDuration` | `5 * time.Second` | `GraphWriterLeaseHeartbeat` | `-` |
+| `GRAPH_WRITER_LEASE_NAME` | `getEnv` | `defaultGraphWriterLeaseName` | `GraphWriterLeaseName` | `-` |
+| `GRAPH_WRITER_LEASE_OWNER_ID` | `getEnv` | `defaultGraphWriterLeaseOwnerID()` | `GraphWriterLeaseOwnerID` | `-` |
+| `GRAPH_WRITER_LEASE_TTL` | `getEnvDuration` | `15 * time.Second` | `GraphWriterLeaseTTL` | `-` |
 | `IMAGE_SCAN_CLAMAV_BINARY` | `getEnv` | `""` | `ImageScanClamAVBinary` | `-` |
 | `IMAGE_SCAN_CLEANUP_TIMEOUT` | `getEnvDuration` | `2 * time.Minute` | `ImageScanCleanupTimeout` | `-` |
 | `IMAGE_SCAN_GITLEAKS_BINARY` | `getEnv` | `""` | `ImageScanGitleaksBinary` | `-` |

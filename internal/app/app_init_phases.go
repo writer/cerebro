@@ -56,6 +56,9 @@ func (a *App) initPhase1(ctx context.Context) error {
 func (a *App) initPhase2a(ctx context.Context) error {
 	a.initExecutionStore()
 	a.initGraphPersistenceStore()
+	if err := runInitErrorStep("graph_writer_lease", func() error { return a.initGraphWriterLease(ctx) }); err != nil {
+		return err
+	}
 
 	if err := runInitTasksConcurrently(ctx, []concurrentInitTask{
 		{name: "cache", run: func(context.Context) { a.initCache() }},

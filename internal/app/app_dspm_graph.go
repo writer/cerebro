@@ -13,6 +13,12 @@ func (a *App) enrichSecurityGraphWithDSPMResult(target *dspm.ScanTarget, result 
 	if a == nil || a.DSPM == nil || target == nil {
 		return
 	}
+	if err := a.requireGraphWriterLease("enrich security graph with DSPM result"); err != nil {
+		if a.Logger != nil {
+			a.Logger.Debug("skipping DSPM graph enrichment without writer lease", "target_id", target.ID, "error", err)
+		}
+		return
+	}
 
 	exactNodeIDs, fallbackNames := dspmGraphNodeLookupCandidates(target)
 	if len(exactNodeIDs) == 0 && len(fallbackNames) == 0 {

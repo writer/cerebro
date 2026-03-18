@@ -29,6 +29,19 @@ Status: executed end-to-end via PR workflow
 - [x] Extend graph clone, snapshot restore, and temporal readers to preserve the new typed property carrier.
 - [x] Add regression and benchmark coverage for compact live storage, property mutation semantics, snapshot restore, and typed-vs-map property reads.
 
+## Deep Review Cycle 195 - HA Graph Writer Lease And Follower Fencing (2026-03-17)
+
+### Review findings
+- [x] Gap: issue `#355` still assumed one local graph writer, so a second Cerebro instance could race the first and mutate the security graph without any split-brain fence.
+- [x] Gap: persisted graph snapshots could restore a follower-readable graph after restart, but the app had no explicit writer election path to keep followers read-only until they safely promote.
+- [x] Gap: TAP ingest and graph mutation paths had no shared HA control point, so even if leader election existed later, stale writers could keep ingesting and mutating after lease loss.
+
+### Execution plan
+- [x] Add an app-owned graph writer lease manager with NATS KV-backed acquire/renew/release semantics, status reporting, and explicit follower versus writer role tracking.
+- [x] Fence security-graph rebuild, incremental apply, ad hoc mutation, DSPM enrichment, and TAP consumer startup behind the writer lease so stale writers demote cleanly.
+- [x] Start the app in follower mode from the recovered snapshot when the lease is held elsewhere, and promote by rebuilding plus starting TAP consumption only after local lease acquisition.
+- [x] Add TDD coverage for write fencing, deferred consumer startup, and NATS-backed lease acquire/renew/failover, then regenerate config docs and rerun focused plus broad validation.
+
 ## Deep Review Cycle 194 - Tiered Tenant Graph Storage (2026-03-17)
 
 ### Review findings

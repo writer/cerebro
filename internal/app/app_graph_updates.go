@@ -37,6 +37,9 @@ func (a *App) TryApplySecurityGraphChanges(ctx context.Context, trigger string) 
 }
 
 func (a *App) applySecurityGraphChangesLocked(ctx context.Context, trigger string) (graph.GraphMutationSummary, error) {
+	if err := a.requireGraphWriterLease("apply security graph changes"); err != nil {
+		return graph.GraphMutationSummary{}, err
+	}
 	start := time.Now()
 	summary, err := a.SecurityGraphBuilder.ApplyChanges(ctx, time.Time{})
 	if err != nil {
@@ -79,6 +82,9 @@ func (a *App) applySecurityGraphChangesLocked(ctx context.Context, trigger strin
 	}
 
 	securityGraph := a.SecurityGraphBuilder.Graph()
+	if err := a.requireGraphWriterLease("apply security graph changes"); err != nil {
+		return graph.GraphMutationSummary{}, err
+	}
 	meta, activateErr := a.activateBuiltSecurityGraph(ctx, securityGraph)
 	if activateErr != nil {
 		return graph.GraphMutationSummary{}, activateErr

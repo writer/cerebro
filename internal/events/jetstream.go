@@ -856,6 +856,16 @@ func (c JetStreamConfig) natsOptions() ([]nats.Option, error) {
 	return options, nil
 }
 
+// NATSOptions returns connection options derived from the JetStream config.
+// It applies the same defaults used by the publisher and consumer setup paths.
+func (c JetStreamConfig) NATSOptions() ([]nats.Option, error) {
+	config := c.withDefaults()
+	if err := config.validate(); err != nil {
+		return nil, err
+	}
+	return config.natsOptions()
+}
+
 func (c JetStreamConfig) authOptions() ([]nats.Option, error) {
 	switch c.AuthMode {
 	case defaultJetStreamAuthMode:

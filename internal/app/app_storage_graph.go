@@ -204,30 +204,31 @@ func (a *App) Close() error {
 		}
 	}
 
-	if a.TapConsumer != nil {
-		drainTimeout := appShutdownTimeout
-		if a.Config != nil && a.Config.NATSConsumerDrainTimeout > 0 {
-			drainTimeout = a.Config.NATSConsumerDrainTimeout
-		}
-		// Drain gets its own phase budget so earlier shutdown work does not silently
-		// shorten the configured consumer drain window.
-		var (
-			drainCtx    context.Context
-			drainCancel context.CancelFunc
-		)
-		if drainTimeout <= 0 {
-			drainCtx, drainCancel = context.WithCancel(context.Background())
-		} else {
-			drainCtx, drainCancel = context.WithTimeout(context.Background(), drainTimeout)
-		}
-		if err := a.TapConsumer.Drain(drainCtx); err != nil {
-			errs = append(errs, fmt.Errorf("tap consumer drain: %w", err))
-			if a.Logger != nil {
-				a.Logger.Warn("timed out draining tap consumer before graph shutdown", "timeout", drainTimeout, "error", err)
-			}
-		}
-		drainCancel()
+	a.stopGraphWriterLeaseLoop()
+	a.graphWriterLeaseTransitionWG.Wait()
+
+	drainTimeout := appShutdownTimeout
+	if a.Config != nil && a.Config.NATSConsumerDrainTimeout > 0 {
+		drainTimeout = a.Config.NATSConsumerDrainTimeout
 	}
+	// Drain gets its own phase budget so earlier shutdown work does not silently
+	// shorten the configured consumer drain window.
+	var (
+		drainCtx    context.Context
+		drainCancel context.CancelFunc
+	)
+	if drainTimeout <= 0 {
+		drainCtx, drainCancel = context.WithCancel(context.Background())
+	} else {
+		drainCtx, drainCancel = context.WithTimeout(context.Background(), drainTimeout)
+	}
+	if err := a.stopTapGraphConsumer(drainCtx); err != nil {
+		errs = append(errs, fmt.Errorf("tap consumer drain: %w", err))
+		if a.Logger != nil {
+			a.Logger.Warn("timed out draining tap consumer before graph shutdown", "timeout", drainTimeout, "error", err)
+		}
+	}
+	drainCancel()
 
 	if a.graphCancel != nil {
 		a.graphCancel()
@@ -277,12 +278,6 @@ func (a *App) Close() error {
 			if err := closer.Close(); err != nil {
 				errs = append(errs, fmt.Errorf("warehouse: %w", err))
 			}
-		}
-	}
-
-	if a.TapConsumer != nil {
-		if err := a.TapConsumer.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("tap consumer: %w", err))
 		}
 	}
 

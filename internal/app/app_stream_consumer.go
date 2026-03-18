@@ -18,7 +18,31 @@ import (
 )
 
 func (a *App) initTapGraphConsumer(ctx context.Context) {
+	if a == nil || a.Config == nil {
+		return
+	}
+	if !a.graphWriterLeaseAllowsWrites() {
+		if a.Logger != nil {
+			a.Logger.Info("deferring tap graph consumer until graph writer lease is acquired",
+				"lease", a.Config.GraphWriterLeaseName,
+				"holder", a.GraphWriterLeaseStatusSnapshot().LeaseHolderID,
+			)
+		}
+		return
+	}
+	a.startTapGraphConsumer(ctx)
+}
+
+func (a *App) startTapGraphConsumer(ctx context.Context) {
+	if a == nil || a.Config == nil {
+		return
+	}
 	if !a.Config.NATSConsumerEnabled {
+		return
+	}
+	a.tapConsumerMu.Lock()
+	defer a.tapConsumerMu.Unlock()
+	if a.TapConsumer != nil {
 		return
 	}
 
@@ -103,6 +127,29 @@ func (a *App) initTapGraphConsumer(ctx context.Context) {
 	)
 
 	_ = ctx
+}
+
+func (a *App) stopTapGraphConsumer(ctx context.Context) error {
+	if a == nil {
+		return nil
+	}
+	a.tapConsumerMu.Lock()
+	defer a.tapConsumerMu.Unlock()
+	consumer := a.TapConsumer
+	if consumer == nil {
+		return nil
+	}
+	defer func() {
+		a.TapConsumer = nil
+	}()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := consumer.Drain(ctx); err != nil {
+		_ = consumer.Close()
+		return err
+	}
+	return consumer.Close()
 }
 
 func (a *App) handleGraphCloudEvent(ctx context.Context, evt events.CloudEvent) error {
