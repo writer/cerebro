@@ -109,6 +109,9 @@ func (e *EntraIDProvider) Schema() []TableSchema {
 				{Name: "app_owner_organization_id", Type: "string"},
 				{Name: "app_role_assignment_required", Type: "boolean"},
 				{Name: "publisher_name", Type: "string"},
+				{Name: "verified_publisher_display_name", Type: "string"},
+				{Name: "verified_publisher_id", Type: "string"},
+				{Name: "verified_publisher_added_datetime", Type: "timestamp"},
 				{Name: "created_datetime", Type: "timestamp"},
 				{Name: "tags", Type: "array"},
 			},
@@ -456,7 +459,7 @@ func (e *EntraIDProvider) syncServicePrincipals(ctx context.Context) (*TableResu
 		return result, err
 	}
 
-	sps, err := e.listAll(ctx, "/v1.0/servicePrincipals?$select=id,appId,displayName,servicePrincipalType,accountEnabled,appOwnerOrganizationId,appRoleAssignmentRequired,publisherName,createdDateTime,tags")
+	sps, err := e.listAll(ctx, "/v1.0/servicePrincipals?$select=id,appId,displayName,servicePrincipalType,accountEnabled,appOwnerOrganizationId,appRoleAssignmentRequired,publisherName,verifiedPublisher,createdDateTime,tags")
 	if err != nil {
 		return result, err
 	}
@@ -676,6 +679,17 @@ func normalizeEntraRow(row map[string]interface{}) map[string]interface{} {
 	if signInActivity, ok := normalized["sign_in_activity"].(map[string]interface{}); ok {
 		if lastSignIn, ok := signInActivity["last_sign_in_datetime"]; ok {
 			normalized["last_sign_in_datetime"] = lastSignIn
+		}
+	}
+	if verifiedPublisher, ok := normalized["verified_publisher"].(map[string]interface{}); ok {
+		if displayName, ok := verifiedPublisher["display_name"]; ok {
+			normalized["verified_publisher_display_name"] = displayName
+		}
+		if verifiedPublisherID, ok := verifiedPublisher["verified_publisher_id"]; ok {
+			normalized["verified_publisher_id"] = verifiedPublisherID
+		}
+		if addedDateTime, ok := verifiedPublisher["added_date_time"]; ok {
+			normalized["verified_publisher_added_datetime"] = addedDateTime
 		}
 	}
 

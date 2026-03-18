@@ -39,10 +39,11 @@ var vendorCorporateSuffixPhrases = [][]string{
 }
 
 type vendorIdentity struct {
-	rawName         string
-	aliasKey        string
-	ownerOrgID      string
-	integrationType string
+	rawName             string
+	aliasKey            string
+	ownerOrgID          string
+	verifiedPublisherID string
+	integrationType     string
 }
 
 type vendorProjection struct {
@@ -52,6 +53,7 @@ type vendorProjection struct {
 	rawNames             map[string]struct{}
 	aliasKeys            map[string]struct{}
 	ownerOrganizationIDs map[string]struct{}
+	verifiedPublisherIDs map[string]struct{}
 	sourceProviders      map[string]struct{}
 	integrationTypes     map[string]struct{}
 	managedNodeIDs       map[string]struct{}
@@ -88,6 +90,7 @@ func (b *Builder) buildVendorNodes() {
 				rawNames:             make(map[string]struct{}),
 				aliasKeys:            make(map[string]struct{}),
 				ownerOrganizationIDs: make(map[string]struct{}),
+				verifiedPublisherIDs: make(map[string]struct{}),
 				sourceProviders:      make(map[string]struct{}),
 				integrationTypes:     make(map[string]struct{}),
 				managedNodeIDs:       make(map[string]struct{}),
@@ -139,6 +142,9 @@ func (p *vendorProjection) absorb(identity vendorIdentity, node *Node) {
 	if ownerOrgID := strings.TrimSpace(identity.ownerOrgID); ownerOrgID != "" {
 		p.ownerOrganizationIDs[ownerOrgID] = struct{}{}
 	}
+	if verifiedPublisherID := strings.TrimSpace(identity.verifiedPublisherID); verifiedPublisherID != "" {
+		p.verifiedPublisherIDs[verifiedPublisherID] = struct{}{}
+	}
 	if provider := strings.TrimSpace(node.Provider); provider != "" {
 		p.sourceProviders[provider] = struct{}{}
 	}
@@ -170,6 +176,11 @@ func matchVendorProjection(projections []*vendorProjection, identity vendorIdent
 		}
 		if identity.ownerOrgID != "" {
 			if _, ok := projection.ownerOrganizationIDs[identity.ownerOrgID]; ok {
+				return projection
+			}
+		}
+		if identity.verifiedPublisherID != "" {
+			if _, ok := projection.verifiedPublisherIDs[identity.verifiedPublisherID]; ok {
 				return projection
 			}
 		}
@@ -500,12 +511,20 @@ func (b *Builder) refreshVendorSignals(vendor *Node, projection *vendorProjectio
 	var managedServiceAccountCount int
 	var appRoleAssignmentRequiredCount int
 	var appRoleAssignmentOptionalCount int
+	var verifiedIntegrationCount int
+	var unverifiedIntegrationCount int
 	accessibleTargets := make(map[string]struct{})
 	readableTargets := make(map[string]struct{})
 	writableTargets := make(map[string]struct{})
 	adminTargets := make(map[string]struct{})
 	accessibleResourceKinds := make(map[string]struct{})
 	sensitiveTargets := make(map[string]struct{})
+	dependentPrincipals := make(map[string]struct{})
+	dependentUsers := make(map[string]struct{})
+	dependentGroups := make(map[string]struct{})
+	dependentServiceAccounts := make(map[string]struct{})
+	verifiedPublisherIDs := make(map[string]struct{})
+	verifiedPublisherNames := make(map[string]struct{})
 
 	for managedNodeID := range projection.managedNodeIDs {
 		node, ok := b.graph.GetNode(managedNodeID)
@@ -525,6 +544,15 @@ func (b *Builder) refreshVendorSignals(vendor *Node, projection *vendorProjectio
 				} else {
 					appRoleAssignmentOptionalCount++
 				}
+			}
+			if verifiedPublisherID := strings.TrimSpace(propertyString(node.Properties, "verified_publisher_id")); verifiedPublisherID != "" {
+				verifiedIntegrationCount++
+				verifiedPublisherIDs[verifiedPublisherID] = struct{}{}
+				if verifiedPublisherName := strings.TrimSpace(propertyString(node.Properties, "verified_publisher_display_name")); verifiedPublisherName != "" {
+					verifiedPublisherNames[verifiedPublisherName] = struct{}{}
+				}
+			} else if strings.TrimSpace(propertyString(node.Properties, "publisher_name")) != "" {
+				unverifiedIntegrationCount++
 			}
 		}
 		outEdges := permissionEdges(b.graph.GetOutEdges(managedNodeID))
@@ -547,7 +575,19 @@ func (b *Builder) refreshVendorSignals(vendor *Node, projection *vendorProjectio
 		for target := range sensitiveTargetsForEdges(b.graph, outEdges) {
 			sensitiveTargets[target] = struct{}{}
 		}
+		collectVendorDependentPrincipals(b.graph, managedNodeID, dependentPrincipals, dependentUsers, dependentGroups, dependentServiceAccounts)
 	}
+
+	riskScore := vendorRiskScore(
+		len(readableTargets),
+		len(writableTargets),
+		len(adminTargets),
+		len(accessibleTargets),
+		len(sensitiveTargets),
+		len(dependentPrincipals),
+		len(dependentGroups),
+		appRoleAssignmentOptionalCount,
+	)
 
 	vendor.Properties["canonical_name"] = vendor.Name
 	vendor.Properties["source_system"] = vendorProjectionSourceSystem
@@ -559,6 +599,11 @@ func (b *Builder) refreshVendorSignals(vendor *Node, projection *vendorProjectio
 	vendor.Properties["managed_node_count"] = len(projection.managedNodeIDs)
 	vendor.Properties["managed_application_count"] = managedApplicationCount
 	vendor.Properties["managed_service_account_count"] = managedServiceAccountCount
+	vendor.Properties["verified_publisher_count"] = verifiedIntegrationCount
+	vendor.Properties["verified_publisher_ids"] = sortedVendorKeys(verifiedPublisherIDs)
+	vendor.Properties["verified_publisher_names"] = sortedVendorKeys(verifiedPublisherNames)
+	vendor.Properties["unverified_integration_count"] = unverifiedIntegrationCount
+	vendor.Properties["verification_status"] = vendorVerificationStatus(verifiedIntegrationCount, unverifiedIntegrationCount)
 	vendor.Properties["app_role_assignment_required_count"] = appRoleAssignmentRequiredCount
 	vendor.Properties["app_role_assignment_optional_count"] = appRoleAssignmentOptionalCount
 	vendor.Properties["accessible_resource_count"] = len(accessibleTargets)
@@ -567,8 +612,13 @@ func (b *Builder) refreshVendorSignals(vendor *Node, projection *vendorProjectio
 	vendor.Properties["read_access_count"] = len(readableTargets)
 	vendor.Properties["write_access_count"] = len(writableTargets)
 	vendor.Properties["admin_access_count"] = len(adminTargets)
+	vendor.Properties["dependent_principal_count"] = len(dependentPrincipals)
+	vendor.Properties["dependent_user_count"] = len(dependentUsers)
+	vendor.Properties["dependent_group_count"] = len(dependentGroups)
+	vendor.Properties["dependent_service_account_count"] = len(dependentServiceAccounts)
+	vendor.Properties["vendor_risk_score"] = riskScore
 	vendor.Properties["permission_level"] = vendorPermissionLevel(len(readableTargets), len(writableTargets), len(adminTargets))
-	vendor.Risk = vendorRiskLevel(len(readableTargets), len(writableTargets), len(adminTargets))
+	vendor.Risk = vendorRiskLevelFromScore(riskScore)
 }
 
 func vendorIdentityForNode(node *Node) (vendorIdentity, bool) {
@@ -599,16 +649,20 @@ func vendorIdentityForNode(node *Node) (vendorIdentity, bool) {
 		if strings.Contains(principalType, "managed") {
 			return vendorIdentity{}, false
 		}
-		rawName := strings.TrimSpace(propertyString(node.Properties, "publisher_name"))
+		rawName := strings.TrimSpace(firstNonEmpty(
+			propertyString(node.Properties, "verified_publisher_display_name"),
+			propertyString(node.Properties, "publisher_name"),
+		))
 		aliasKey := vendorAliasKey(rawName)
 		if rawName == "" || aliasKey == "" {
 			return vendorIdentity{}, false
 		}
 		return vendorIdentity{
-			rawName:         rawName,
-			aliasKey:        aliasKey,
-			ownerOrgID:      strings.TrimSpace(propertyString(node.Properties, "app_owner_organization_id")),
-			integrationType: "entra_service_principal",
+			rawName:             rawName,
+			aliasKey:            aliasKey,
+			ownerOrgID:          strings.TrimSpace(propertyString(node.Properties, "app_owner_organization_id")),
+			verifiedPublisherID: strings.TrimSpace(propertyString(node.Properties, "verified_publisher_id")),
+			integrationType:     "entra_service_principal",
 		}, true
 	default:
 		return vendorIdentity{}, false
@@ -623,16 +677,119 @@ func vendorNodeID(name string) string {
 	return "vendor:" + normalized
 }
 
-func vendorRiskLevel(readCount, writeCount, adminCount int) RiskLevel {
+func collectVendorDependentPrincipals(g *Graph, managedNodeID string, all, users, groups, serviceAccounts map[string]struct{}) {
+	if g == nil || managedNodeID == "" {
+		return
+	}
+	seenGroups := make(map[string]struct{})
+	for _, edge := range permissionEdges(g.GetInEdges(managedNodeID)) {
+		if edge == nil {
+			continue
+		}
+		source, ok := g.GetNode(edge.Source)
+		if !ok || source == nil {
+			continue
+		}
+		switch source.Kind {
+		case NodeKindUser:
+			all[source.ID] = struct{}{}
+			users[source.ID] = struct{}{}
+		case NodeKindServiceAccount:
+			all[source.ID] = struct{}{}
+			serviceAccounts[source.ID] = struct{}{}
+		case NodeKindGroup:
+			collectVendorGroupDependents(g, source.ID, seenGroups, all, users, groups, serviceAccounts)
+		}
+	}
+}
+
+func collectVendorGroupDependents(g *Graph, groupID string, seenGroups, all, users, groups, serviceAccounts map[string]struct{}) {
+	if g == nil || groupID == "" {
+		return
+	}
+	queue := []string{groupID}
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+		if _, ok := seenGroups[current]; ok {
+			continue
+		}
+		seenGroups[current] = struct{}{}
+		all[current] = struct{}{}
+		groups[current] = struct{}{}
+		for _, edge := range g.GetInEdges(current) {
+			if edge == nil || edge.Kind != EdgeKindMemberOf {
+				continue
+			}
+			source, ok := g.GetNode(edge.Source)
+			if !ok || source == nil {
+				continue
+			}
+			switch source.Kind {
+			case NodeKindUser:
+				all[source.ID] = struct{}{}
+				users[source.ID] = struct{}{}
+			case NodeKindServiceAccount:
+				all[source.ID] = struct{}{}
+				serviceAccounts[source.ID] = struct{}{}
+			case NodeKindGroup:
+				queue = append(queue, source.ID)
+			}
+		}
+	}
+}
+
+func vendorRiskScore(readCount, writeCount, adminCount, accessibleResourceCount, sensitiveResourceCount, dependentPrincipalCount, dependentGroupCount, optionalAssignmentCount int) int {
+	score := 0
 	switch {
 	case adminCount > 0:
-		return RiskHigh
+		score += 70
 	case writeCount > 0:
-		return RiskMedium
+		score += 45
 	case readCount > 0:
+		score += 20
+	}
+	score += minInt(10, accessibleResourceCount*3)
+	score += minInt(15, sensitiveResourceCount*10)
+	score += minInt(15, dependentPrincipalCount*2)
+	score += minInt(10, dependentGroupCount*5)
+	score += minInt(10, optionalAssignmentCount*5)
+	if score > 100 {
+		return 100
+	}
+	return score
+}
+
+func vendorRiskLevelFromScore(score int) RiskLevel {
+	switch {
+	case score >= 70:
+		return RiskHigh
+	case score >= 40:
+		return RiskMedium
+	case score > 0:
 		return RiskLow
 	default:
 		return RiskNone
+	}
+}
+
+func minInt(left, right int) int {
+	if left < right {
+		return left
+	}
+	return right
+}
+
+func vendorVerificationStatus(verifiedIntegrationCount, unverifiedIntegrationCount int) string {
+	switch {
+	case verifiedIntegrationCount > 0 && unverifiedIntegrationCount == 0:
+		return "verified"
+	case verifiedIntegrationCount > 0 && unverifiedIntegrationCount > 0:
+		return "mixed"
+	case unverifiedIntegrationCount > 0:
+		return "unverified"
+	default:
+		return "unknown"
 	}
 }
 
