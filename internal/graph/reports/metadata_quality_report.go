@@ -372,7 +372,7 @@ func metadataValueInEnum(value any, allowed []string) bool {
 	if normalized == "" {
 		return false
 	}
-	return sliceContainsString(allowed, normalized)
+	return containsString(allowed, normalized)
 }
 
 func normalizeIntMap(values map[string]int) map[string]int {
