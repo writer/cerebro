@@ -49,6 +49,9 @@ func TestMaterializeObservationsIntoGraphAddsObservationNode(t *testing.T) {
 	if result.MissingSubjects != 0 {
 		t.Fatalf("MissingSubjects = %d, want 0", result.MissingSubjects)
 	}
+	if result.WorkloadTargetEdgesCreated != 1 {
+		t.Fatalf("WorkloadTargetEdgesCreated = %d, want 1", result.WorkloadTargetEdgesCreated)
+	}
 
 	node, ok := g.GetNode(req.ID)
 	if !ok {
@@ -82,6 +85,17 @@ func TestMaterializeObservationsIntoGraphAddsObservationNode(t *testing.T) {
 	}
 	if issues := graph.GlobalSchemaRegistry().ValidateEdge(outEdges[0], node, mustNode(t, g, "deployment:prod/api")); len(issues) != 0 {
 		t.Fatalf("ValidateEdge returned issues: %+v", issues)
+	}
+
+	workloadEdges := g.GetOutEdges("deployment:prod/api")
+	if len(workloadEdges) != 1 {
+		t.Fatalf("len(workloadEdges) = %d, want 1", len(workloadEdges))
+	}
+	if workloadEdges[0].Kind != graph.EdgeKindTargets || workloadEdges[0].Target != req.ID {
+		t.Fatalf("workload edge = %+v, want targets edge to %s", workloadEdges[0], req.ID)
+	}
+	if issues := graph.GlobalSchemaRegistry().ValidateEdge(workloadEdges[0], mustNode(t, g, "deployment:prod/api"), node); len(issues) != 0 {
+		t.Fatalf("ValidateEdge(workload edge) returned issues: %+v", issues)
 	}
 
 	meta := g.Metadata()
@@ -157,7 +171,6 @@ func TestMaterializeObservationsIntoGraphSkipsObservationsWithoutConcreteSubject
 		t.Fatalf("LastError = %v, want ErrMissingObservationSubject", result.LastError)
 	}
 }
-
 func TestMaterializeObservationsIntoGraphRefreshesBuiltAtOnSubsequentWrites(t *testing.T) {
 	g := graph.New()
 	g.AddNode(&graph.Node{
@@ -206,6 +219,145 @@ func TestMaterializeObservationsIntoGraphRefreshesBuiltAtOnSubsequentWrites(t *t
 		t.Fatalf("after second materialization BuiltAt = %s, want %s", got, secondNow)
 	}
 }
+
+func TestMaterializeObservationsIntoGraphDoesNotAddReverseTargetEdgeForServiceSubjects(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:   "service:storefront/checkout",
+		Kind: graph.NodeKindService,
+		Name: "checkout",
+	})
+
+	observation := &runtime.RuntimeObservation{
+		Source:     "otel",
+		Kind:       runtime.ObservationKindTraceLink,
+		ObservedAt: time.Date(2026, 3, 16, 19, 20, 0, 0, time.UTC),
+		Trace: &runtime.TraceContext{
+			TraceID:     "abc123",
+			ServiceName: "checkout",
+		},
+		Metadata: map[string]any{
+			"service_namespace": "storefront",
+		},
+	}
+
+	result := MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{observation}, time.Date(2026, 3, 16, 19, 21, 0, 0, time.UTC))
+	if result.WorkloadTargetEdgesCreated != 0 {
+		t.Fatalf("WorkloadTargetEdgesCreated = %d, want 0", result.WorkloadTargetEdgesCreated)
+	}
+	if len(g.GetOutEdges("service:storefront/checkout")) != 0 {
+		t.Fatalf("service out edge count = %d, want 0", len(g.GetOutEdges("service:storefront/checkout")))
+	}
+}
+
+func TestMaterializeObservationsIntoGraphDoesNotDuplicateReverseTargetEdges(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:   "deployment:prod/api",
+		Kind: graph.NodeKindDeployment,
+		Name: "api",
+	})
+
+	observation := &runtime.RuntimeObservation{
+		ID:          "runtime:process_exec:abc",
+		Source:      "tetragon",
+		Kind:        runtime.ObservationKindProcessExec,
+		ObservedAt:  time.Date(2026, 3, 16, 19, 0, 0, 0, time.UTC),
+		RecordedAt:  time.Date(2026, 3, 16, 19, 0, 1, 0, time.UTC),
+		WorkloadRef: "deployment:prod/api",
+		Process: &runtime.ProcessEvent{
+			Name: "sh",
+			Path: "/bin/sh",
+		},
+	}
+
+	first := MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{observation}, time.Date(2026, 3, 16, 19, 1, 0, 0, time.UTC))
+	second := MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{observation}, time.Date(2026, 3, 16, 19, 2, 0, 0, time.UTC))
+
+	if first.WorkloadTargetEdgesCreated != 1 {
+		t.Fatalf("first WorkloadTargetEdgesCreated = %d, want 1", first.WorkloadTargetEdgesCreated)
+	}
+	if second.WorkloadTargetEdgesCreated != 0 {
+		t.Fatalf("second WorkloadTargetEdgesCreated = %d, want 0", second.WorkloadTargetEdgesCreated)
+	}
+	if got := len(g.GetOutEdges("deployment:prod/api")); got != 1 {
+		t.Fatalf("len(workload out edges) = %d, want 1", got)
+	}
+}
+
+func TestMaterializeObservationsIntoGraphDefersIndexBuildToCaller(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:   "deployment:prod/api",
+		Kind: graph.NodeKindDeployment,
+		Name: "api",
+	})
+	g.BuildIndex()
+	if !g.IsIndexBuilt() {
+		t.Fatal("expected initial graph index to be built")
+	}
+
+	now := time.Date(2026, 3, 16, 19, 40, 0, 0, time.UTC)
+	observation := &runtime.RuntimeObservation{
+		ID:          "runtime:process_exec:defer-index",
+		Source:      "tetragon",
+		Kind:        runtime.ObservationKindProcessExec,
+		ObservedAt:  now.Add(-10 * time.Second),
+		RecordedAt:  now.Add(-5 * time.Second),
+		WorkloadRef: "deployment:prod/api",
+		Process: &runtime.ProcessEvent{
+			Name: "sh",
+			Path: "/bin/sh",
+		},
+	}
+
+	result := MaterializeObservationsIntoGraph(g, []*runtime.RuntimeObservation{observation}, now)
+	if result.ObservationsMaterialized != 1 {
+		t.Fatalf("ObservationsMaterialized = %d, want 1", result.ObservationsMaterialized)
+	}
+	if g.IsIndexBuilt() {
+		t.Fatal("expected index to remain stale until caller finalizes materialized graph")
+	}
+	if got := g.Metadata().BuiltAt; !got.Equal(now) {
+		t.Fatalf("metadata.BuiltAt = %s, want %s", got, now)
+	}
+
+	FinalizeMaterializedGraph(g, now.Add(time.Minute))
+	if !g.IsIndexBuilt() {
+		t.Fatal("expected FinalizeMaterializedGraph to rebuild indexes")
+	}
+	if got := len(g.GetNodesByKindIndexed(graph.NodeKindObservation)); got != 1 {
+		t.Fatalf("len(GetNodesByKindIndexed(observation)) = %d, want 1", got)
+	}
+	if got := g.Metadata().BuiltAt; !got.Equal(now.Add(time.Minute)) {
+		t.Fatalf("metadata.BuiltAt after finalize = %s, want %s", got, now.Add(time.Minute))
+	}
+}
+
+func TestGraphAddEdgeIfMissingReturnsFalseWhenSchemaRejectsEdge(t *testing.T) {
+	g := graph.New()
+	g.SetSchemaValidationMode(graph.SchemaValidationEnforce)
+	g.AddNode(&graph.Node{
+		ID:   "deployment:prod/api",
+		Kind: graph.NodeKindDeployment,
+		Name: "api",
+	})
+
+	added := graph.AddEdgeIfMissing(g, &graph.Edge{
+		ID:     "deployment:prod/api->observation:missing:targets",
+		Source: "deployment:prod/api",
+		Target: "observation:missing",
+		Kind:   graph.EdgeKindTargets,
+		Effect: graph.EdgeEffectAllow,
+	})
+	if added {
+		t.Fatal("expected addRuntimeGraphEdgeIfMissing to report false when schema rejects edge")
+	}
+	if got := len(g.GetOutEdges("deployment:prod/api")); got != 0 {
+		t.Fatalf("len(workload out edges) = %d, want 0", got)
+	}
+}
+
 func TestClassifyObservationMaterializationErrorTreatsSubjectNotFoundAsMissingSubject(t *testing.T) {
 	if got := classifyObservationMaterializationError(fmt.Errorf("subject not found: service:storefront/checkout")); got != observationMaterializationErrorMissingSubject {
 		t.Fatalf("classifyObservationMaterializationError(subject not found) = %v, want %v", got, observationMaterializationErrorMissingSubject)

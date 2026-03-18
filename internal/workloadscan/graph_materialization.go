@@ -282,7 +282,7 @@ func materializeOneRun(g *graph.Graph, target *graph.Node, run RunRecord, validT
 	g.AddNode(scanNode)
 	result.ScanNodesUpserted++
 
-	if addEdgeIfMissing(g, &graph.Edge{
+	if graph.AddEdgeIfMissing(g, &graph.Edge{
 		ID:         edgeID(target.ID, scanNode.ID, graph.EdgeKindHasScan),
 		Source:     target.ID,
 		Target:     scanNode.ID,
@@ -317,7 +317,7 @@ func materializeOneRun(g *graph.Graph, target *graph.Node, run RunRecord, validT
 		edgeProps["reachable"] = pkgAgg.record.Reachable
 		edgeProps["dependency_depth"] = pkgAgg.record.DependencyDepth
 		edgeProps["import_file_count"] = pkgAgg.record.ImportFileCount
-		if addEdgeIfMissing(g, &graph.Edge{
+		if graph.AddEdgeIfMissing(g, &graph.Edge{
 			ID:         edgeID(scanNode.ID, pkgNode.ID, graph.EdgeKindContainsPkg),
 			Source:     scanNode.ID,
 			Target:     pkgNode.ID,
@@ -336,7 +336,7 @@ func materializeOneRun(g *graph.Graph, target *graph.Node, run RunRecord, validT
 		if parentID == "" || childID == "" {
 			continue
 		}
-		if addEdgeIfMissing(g, &graph.Edge{
+		if graph.AddEdgeIfMissing(g, &graph.Edge{
 			ID:     edgeID(parentID, childID, graph.EdgeKindDependsOn),
 			Source: parentID,
 			Target: childID,
@@ -381,7 +381,7 @@ func materializeOneRun(g *graph.Graph, target *graph.Node, run RunRecord, validT
 		techEdgeProperties["category"] = techAgg.record.Category
 		techEdgeProperties["version"] = strings.TrimSpace(techAgg.record.Version)
 		techEdgeProperties["file_path"] = strings.TrimSpace(techAgg.record.Path)
-		if addEdgeIfMissing(g, &graph.Edge{
+		if graph.AddEdgeIfMissing(g, &graph.Edge{
 			ID:         edgeID(target.ID, techNode.ID, graph.EdgeKindRuns),
 			Source:     target.ID,
 			Target:     techNode.ID,
@@ -413,7 +413,7 @@ func materializeOneRun(g *graph.Graph, target *graph.Node, run RunRecord, validT
 		g.AddNode(vulnNode)
 		result.VulnNodesUpserted++
 		usage := vulnUsage[vulnKey]
-		if addEdgeIfMissing(g, &graph.Edge{
+		if graph.AddEdgeIfMissing(g, &graph.Edge{
 			ID:         edgeID(scanNode.ID, vulnNode.ID, graph.EdgeKindFoundVuln),
 			Source:     scanNode.ID,
 			Target:     vulnNode.ID,
@@ -434,7 +434,7 @@ func materializeOneRun(g *graph.Graph, target *graph.Node, run RunRecord, validT
 		vuln := vulnAgg.record
 		pkgID := packageNodeID(relation.pkg)
 		vulnID := vulnerabilityNodeID(vuln)
-		if addEdgeIfMissing(g, &graph.Edge{
+		if graph.AddEdgeIfMissing(g, &graph.Edge{
 			ID:     packageVulnerabilityEdgeID(pkgID, vulnID),
 			Source: pkgID,
 			Target: vulnID,
@@ -477,7 +477,7 @@ func materializeOneRun(g *graph.Graph, target *graph.Node, run RunRecord, validT
 		observationNode := buildIaCFindingObservationNode(scanNode, target, findingAgg.record, observationMeta)
 		g.AddNode(observationNode)
 		result.ObservationNodesUpserted++
-		if addEdgeIfMissing(g, &graph.Edge{
+		if graph.AddEdgeIfMissing(g, &graph.Edge{
 			ID:         edgeID(observationNode.ID, scanNode.ID, graph.EdgeKindTargets),
 			Source:     observationNode.ID,
 			Target:     scanNode.ID,
@@ -508,7 +508,7 @@ func materializeOneRun(g *graph.Graph, target *graph.Node, run RunRecord, validT
 		observationNode := buildMalwareObservationNode(scanNode, target, malwareAgg.record, observationMeta)
 		g.AddNode(observationNode)
 		result.ObservationNodesUpserted++
-		if addEdgeIfMissing(g, &graph.Edge{
+		if graph.AddEdgeIfMissing(g, &graph.Edge{
 			ID:         edgeID(observationNode.ID, scanNode.ID, graph.EdgeKindTargets),
 			Source:     observationNode.ID,
 			Target:     scanNode.ID,
@@ -1425,22 +1425,6 @@ func applyVulnerabilityUsageSummaryProperties(properties map[string]any, ctx vul
 	properties["reachable_package_count"] = len(ctx.reachablePackageKeys)
 	properties["direct_reachable_package_count"] = len(ctx.directReachablePackageKeys)
 	return properties
-}
-
-func addEdgeIfMissing(g *graph.Graph, edge *graph.Edge) bool {
-	if g == nil || edge == nil {
-		return false
-	}
-	for _, existing := range g.GetOutEdges(edge.Source) {
-		if existing == nil {
-			continue
-		}
-		if existing.ID == edge.ID || (existing.Target == edge.Target && existing.Kind == edge.Kind) {
-			return false
-		}
-	}
-	g.AddEdge(edge)
-	return true
 }
 
 func cloneWorkloadAnyMap(values map[string]any) map[string]any {
