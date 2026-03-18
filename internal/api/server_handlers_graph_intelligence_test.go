@@ -64,6 +64,93 @@ func TestGraphIntelligenceInsightsEndpoint(t *testing.T) {
 	}
 }
 
+func TestGraphIntelligenceEventCorrelationEndpoints(t *testing.T) {
+	s := newTestServer(t)
+	g := s.app.SecurityGraph
+	base := time.Date(2026, 3, 12, 10, 0, 0, 0, time.UTC)
+
+	g.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "Payments"})
+	g.AddNode(&graph.Node{
+		ID:   "pull_request:payments:42",
+		Kind: graph.NodeKindPullRequest,
+		Name: "payments pr",
+		Properties: map[string]any{
+			"repository":  "payments",
+			"number":      "42",
+			"state":       "merged",
+			"observed_at": base.Format(time.RFC3339),
+			"valid_from":  base.Format(time.RFC3339),
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:   "deployment:payments:deploy-1",
+		Kind: graph.NodeKindDeploymentRun,
+		Name: "deploy-1",
+		Properties: map[string]any{
+			"deploy_id":   "deploy-1",
+			"service_id":  "payments",
+			"environment": "prod",
+			"status":      "succeeded",
+			"observed_at": base.Add(5 * time.Minute).Format(time.RFC3339),
+			"valid_from":  base.Add(5 * time.Minute).Format(time.RFC3339),
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:   "incident:inc-1",
+		Kind: graph.NodeKindIncident,
+		Name: "inc-1",
+		Properties: map[string]any{
+			"incident_id": "inc-1",
+			"status":      "open",
+			"severity":    "high",
+			"service_id":  "payments",
+			"observed_at": base.Add(7 * time.Minute).Format(time.RFC3339),
+			"valid_from":  base.Add(7 * time.Minute).Format(time.RFC3339),
+		},
+	})
+	g.AddEdge(&graph.Edge{ID: "pr->service", Source: "pull_request:payments:42", Target: "service:payments", Kind: graph.EdgeKindTargets, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "deploy->service", Source: "deployment:payments:deploy-1", Target: "service:payments", Kind: graph.EdgeKindTargets, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "incident->service", Source: "incident:inc-1", Target: "service:payments", Kind: graph.EdgeKindTargets, Effect: graph.EdgeEffectAllow})
+	graph.MaterializeEventCorrelations(g, base.Add(10*time.Minute))
+
+	patterns := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/event-patterns", nil)
+	if patterns.Code != http.StatusOK {
+		t.Fatalf("expected 200 for event-patterns, got %d: %s", patterns.Code, patterns.Body.String())
+	}
+	patternBody := decodeJSON(t, patterns)
+	if items, ok := patternBody["patterns"].([]any); !ok || len(items) < 2 {
+		t.Fatalf("expected built-in event correlation patterns, got %#v", patternBody["patterns"])
+	}
+
+	correlations := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/event-correlations?event_id=incident:inc-1&limit=10", nil)
+	if correlations.Code != http.StatusOK {
+		t.Fatalf("expected 200 for event-correlations, got %d: %s", correlations.Code, correlations.Body.String())
+	}
+	correlationBody := decodeJSON(t, correlations)
+	summary, ok := correlationBody["summary"].(map[string]any)
+	if !ok || int(summary["correlation_count"].(float64)) != 2 {
+		t.Fatalf("expected two correlations, got %#v", correlationBody)
+	}
+
+	anomalies := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/event-anomalies?entity_id=service:payments&limit=10", nil)
+	if anomalies.Code != http.StatusOK {
+		t.Fatalf("expected 200 for event-anomalies, got %d: %s", anomalies.Code, anomalies.Body.String())
+	}
+	if _, ok := decodeJSON(t, anomalies)["anomalies"].([]any); !ok {
+		t.Fatalf("expected anomalies array, got %s", anomalies.Body.String())
+	}
+
+	unscopedCorrelations := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/event-correlations?limit=10", nil)
+	if unscopedCorrelations.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for unscoped event-correlations, got %d: %s", unscopedCorrelations.Code, unscopedCorrelations.Body.String())
+	}
+
+	unscopedAnomalies := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/event-anomalies?limit=10", nil)
+	if unscopedAnomalies.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for unscoped event-anomalies, got %d: %s", unscopedAnomalies.Code, unscopedAnomalies.Body.String())
+	}
+}
+
 func TestGraphIntelligenceInsightsEndpoint_InvalidParams(t *testing.T) {
 	s := newTestServer(t)
 

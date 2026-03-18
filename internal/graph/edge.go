@@ -49,11 +49,17 @@ const (
 	EdgeKindBasedOn        EdgeKind = "based_on"
 	EdgeKindExecutedBy     EdgeKind = "executed_by"
 	EdgeKindEvaluates      EdgeKind = "evaluates"
+	EdgeKindHasScan        EdgeKind = "has_scan"
+	EdgeKindFoundVuln      EdgeKind = "found_vulnerability"
+	EdgeKindContainsPkg    EdgeKind = "contains_package"
+	EdgeKindAffectedBy     EdgeKind = "affected_by"
 	EdgeKindAssertedBy     EdgeKind = "asserted_by"
 	EdgeKindSupports       EdgeKind = "supports"
 	EdgeKindRefutes        EdgeKind = "refutes"
 	EdgeKindSupersedes     EdgeKind = "supersedes"
 	EdgeKindContradicts    EdgeKind = "contradicts"
+	EdgeKindTriggeredBy    EdgeKind = "triggered_by"
+	EdgeKindCausedBy       EdgeKind = "caused_by"
 )
 
 // EdgeEffect represents whether an edge allows or denies access

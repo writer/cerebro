@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/writer/cerebro/internal/actionengine"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/notifications"
 	"github.com/writer/cerebro/internal/ticketing"
@@ -54,6 +56,7 @@ type Executor struct {
 	webhooks      EventPublisher
 	remoteCaller  RemoteActionCaller
 	ensemble      *EnsembleExecutor
+	shared        *actionengine.Executor
 }
 
 func NewExecutor(
@@ -70,6 +73,7 @@ func NewExecutor(
 		findings:      findings,
 		webhooks:      webhookService,
 		ensemble:      NewEnsembleExecutor(nil, webhookService),
+		shared:        actionengine.NewExecutor(nil),
 	}
 }
 
@@ -80,50 +84,35 @@ func (ex *Executor) SetRemoteCaller(caller RemoteActionCaller) {
 	}
 }
 
+func (ex *Executor) SetSharedExecutor(shared *actionengine.Executor) {
+	if shared == nil {
+		return
+	}
+	ex.shared = shared
+}
+
 // Execute runs an execution
 func (ex *Executor) Execute(ctx context.Context, execution *Execution) error {
-	execution.Status = ExecutionRunning
-
 	rule, ok := ex.engine.GetRule(execution.RuleID)
 	if !ok {
 		execution.Status = ExecutionFailed
 		execution.Error = "rule not found"
 		return fmt.Errorf("rule not found: %s", execution.RuleID)
 	}
-
-	approvalGranted, _ := execution.TriggerData["_approval_granted"].(bool)
-
-	// Check if any action requires approval
-	if !approvalGranted {
-		for _, action := range rule.Actions {
-			if ex.actionRequiresApproval(action) {
-				execution.Status = ExecutionApproval
-				execution.ApprovalID = fmt.Sprintf("approval-%s", execution.ID)
-				ex.emitApprovalRequested(ctx, execution, rule)
-				return nil
-			}
-		}
+	playbook := remediationPlaybookFromRule(*rule, ex)
+	signal := remediationSignalFromTriggerData(execution.TriggerData)
+	sharedExecution := remediationExecutionToShared(execution)
+	err := ex.shared.Execute(ctx, sharedExecution, playbook, signal, remediationStepRunner{executor: ex})
+	applySharedExecution(execution, sharedExecution)
+	if execution.Status == ExecutionApproval {
+		execution.ApprovalID = fmt.Sprintf("approval-%s", execution.ID)
+		ex.emitApprovalRequested(ctx, execution, rule)
+		return nil
 	}
-
-	// Execute all actions
-	for _, action := range rule.Actions {
-		result := ex.executeAction(ctx, action, execution)
-		execution.Actions = append(execution.Actions, result)
-
-		if result.Error != "" {
-			execution.Status = ExecutionFailed
-			execution.Error = result.Error
-			now := time.Now().UTC()
-			execution.CompletedAt = &now
-			return fmt.Errorf("action failed: %s", result.Error)
-		}
-	}
-
-	execution.Status = ExecutionCompleted
-	now := time.Now().UTC()
-	execution.CompletedAt = &now
 	delete(execution.TriggerData, "_approval_granted")
-
+	if err != nil {
+		return fmt.Errorf("action failed: %w", err)
+	}
 	return nil
 }
 
@@ -135,6 +124,303 @@ func (ex *Executor) actionRequiresApproval(action Action) bool {
 		return ex.ensemble.ActionRequiresApproval(action.Type)
 	}
 	return false
+}
+
+type remediationStepRunner struct {
+	executor *Executor
+}
+
+func (r remediationStepRunner) RunStep(ctx context.Context, step actionengine.Step, signal actionengine.Signal, execution *actionengine.Execution) (string, error) {
+	if r.executor == nil {
+		return "", fmt.Errorf("remediation executor is nil")
+	}
+	action := remediationActionFromStep(step)
+	nativeExecution := &Execution{
+		ID:          execution.ID,
+		RuleID:      execution.PlaybookID,
+		RuleName:    execution.PlaybookName,
+		TriggerData: remediationTriggerDataFromSignal(signal),
+		StartedAt:   execution.StartedAt,
+	}
+	if nativeExecution.TriggerData == nil {
+		nativeExecution.TriggerData = map[string]any{}
+	}
+	nativeExecution.TriggerData["_approval_granted"] = true
+	result := r.executor.executeAction(ctx, action, nativeExecution)
+	if result.Error != "" {
+		return "", errors.New(result.Error)
+	}
+	return result.Output, nil
+}
+
+func remediationPlaybookFromRule(rule Rule, executor *Executor) actionengine.Playbook {
+	steps := make([]actionengine.Step, 0, len(rule.Actions))
+	for idx, action := range rule.Actions {
+		failurePolicy := actionengine.FailurePolicyAbort
+		steps = append(steps, actionengine.Step{
+			ID:               fmt.Sprintf("%s-step-%d", firstNonEmpty(rule.ID, "rule"), idx+1),
+			Type:             string(action.Type),
+			Parameters:       cloneStringMap(action.Config),
+			RequiresApproval: executor != nil && executor.actionRequiresApproval(action),
+			TimeoutSeconds:   action.TimeoutSeconds,
+			OnFailure:        failurePolicy,
+		})
+	}
+	trigger := actionengine.Trigger{
+		Kind:              string(rule.Trigger.Type),
+		Severity:          rule.Trigger.Severity,
+		SeverityMatchMode: actionengine.SeverityMatchExact,
+		PolicyID:          rule.Trigger.PolicyID,
+		Tags:              append([]string(nil), rule.Trigger.Tags...),
+		Conditions:        cloneStringMap(rule.Conditions),
+	}
+	return actionengine.Playbook{
+		ID:          rule.ID,
+		Name:        rule.Name,
+		Description: rule.Description,
+		Enabled:     rule.Enabled,
+		Triggers:    []actionengine.Trigger{trigger},
+		Steps:       steps,
+		CreatedAt:   rule.CreatedAt,
+	}
+}
+
+func remediationSignalFromTriggerData(data map[string]any) actionengine.Signal {
+	signal := actionengine.Signal{
+		Kind:         remediationMapValueToString(data, "event_type"),
+		Severity:     remediationMapValueToString(data, "severity"),
+		PolicyID:     remediationMapValueToString(data, "policy_id"),
+		ResourceID:   firstNonEmpty(remediationMapValueToString(data, "entity_id"), remediationMapValueToString(data, "resource_id")),
+		ResourceType: remediationMapValueToString(data, "resource_type"),
+		Data:         cloneAnyMap(data),
+		Attributes: map[string]string{
+			"signal_type": remediationMapValueToString(data, "signal_type"),
+			"domain":      remediationMapValueToString(data, "domain"),
+			"entity_id":   remediationMapValueToString(data, "entity_id"),
+			"finding_id":  remediationMapValueToString(data, "finding_id"),
+		},
+		CreatedAt: time.Now().UTC(),
+	}
+	if rawTags, ok := data["tags"]; ok {
+		signal.Tags = remediationAnyToStringSlice(rawTags)
+	}
+	return signal
+}
+
+func remediationExecutionToShared(execution *Execution) *actionengine.Execution {
+	shared := &actionengine.Execution{
+		ID:           execution.ID,
+		PlaybookID:   execution.RuleID,
+		PlaybookName: execution.RuleName,
+		Status:       remediationStatusToShared(execution.Status),
+		ResourceID:   remediationMapValueToString(execution.TriggerData, "entity_id"),
+		ResourceType: remediationMapValueToString(execution.TriggerData, "resource_type"),
+		TriggerData:  cloneAnyMap(execution.TriggerData),
+		Results:      make([]actionengine.ActionResult, 0, len(execution.Actions)),
+		StartedAt:    execution.StartedAt,
+		CompletedAt:  execution.CompletedAt,
+		Error:        execution.Error,
+	}
+	for _, action := range execution.Actions {
+		shared.Results = append(shared.Results, actionengine.ActionResult{
+			Type:      string(action.ActionType),
+			Status:    remediationResultStatusToShared(action.Status),
+			Output:    action.Output,
+			Error:     action.Error,
+			StartedAt: action.StartedAt,
+			Duration:  action.Duration,
+		})
+	}
+	if approvedBy := remediationMapValueToString(execution.TriggerData, "approved_by"); approvedBy != "" {
+		shared.ApprovedBy = approvedBy
+	}
+	return shared
+}
+
+func applySharedExecution(target *Execution, shared *actionengine.Execution) {
+	if target == nil || shared == nil {
+		return
+	}
+	target.Status = sharedStatusToRemediation(shared.Status)
+	target.Error = shared.Error
+	target.StartedAt = shared.StartedAt
+	target.CompletedAt = shared.CompletedAt
+	if target.TriggerData == nil {
+		target.TriggerData = map[string]any{}
+	}
+	for key, value := range shared.TriggerData {
+		target.TriggerData[key] = value
+	}
+	if shared.ApprovedBy != "" {
+		target.TriggerData["approved_by"] = shared.ApprovedBy
+	}
+	if shared.ApprovedAt != nil && !shared.ApprovedAt.IsZero() {
+		target.TriggerData["approved_at"] = shared.ApprovedAt.UTC().Format(time.RFC3339Nano)
+	}
+	target.Actions = make([]ActionResult, 0, len(shared.Results))
+	for _, result := range shared.Results {
+		target.Actions = append(target.Actions, ActionResult{
+			ActionType: ActionType(result.Type),
+			Status:     sharedActionResultStatus(result.Status),
+			Output:     result.Output,
+			Error:      result.Error,
+			StartedAt:  result.StartedAt,
+			Duration:   result.Duration,
+		})
+	}
+}
+
+func remediationActionFromStep(step actionengine.Step) Action {
+	return Action{
+		Type:             ActionType(step.Type),
+		Config:           cloneStringMap(step.Parameters),
+		RequiresApproval: step.RequiresApproval,
+		TimeoutSeconds:   step.TimeoutSeconds,
+	}
+}
+
+func remediationTriggerDataFromSignal(signal actionengine.Signal) map[string]any {
+	data := cloneAnyMap(signal.Data)
+	if data == nil {
+		data = map[string]any{}
+	}
+	for key, value := range signal.Attributes {
+		if _, exists := data[key]; !exists {
+			data[key] = value
+		}
+	}
+	data["event_type"] = signal.Kind
+	if signal.Severity != "" {
+		data["severity"] = signal.Severity
+	}
+	if signal.PolicyID != "" {
+		data["policy_id"] = signal.PolicyID
+	}
+	if signal.ResourceID != "" {
+		data["entity_id"] = signal.ResourceID
+	}
+	if signal.ResourceType != "" {
+		data["resource_type"] = signal.ResourceType
+	}
+	if len(signal.Tags) > 0 {
+		data["tags"] = append([]string(nil), signal.Tags...)
+	}
+	return data
+}
+
+func remediationStatusToShared(status ExecutionStatus) actionengine.Status {
+	switch status {
+	case ExecutionApproval:
+		return actionengine.StatusAwaitingApproval
+	case ExecutionRunning:
+		return actionengine.StatusRunning
+	case ExecutionCompleted:
+		return actionengine.StatusCompleted
+	case ExecutionFailed:
+		return actionengine.StatusFailed
+	case ExecutionCancelled:
+		return actionengine.StatusCanceled
+	default:
+		return actionengine.StatusPending
+	}
+}
+
+func sharedStatusToRemediation(status actionengine.Status) ExecutionStatus {
+	switch status {
+	case actionengine.StatusAwaitingApproval:
+		return ExecutionApproval
+	case actionengine.StatusRunning:
+		return ExecutionRunning
+	case actionengine.StatusCompleted:
+		return ExecutionCompleted
+	case actionengine.StatusFailed:
+		return ExecutionFailed
+	case actionengine.StatusCanceled:
+		return ExecutionCancelled
+	default:
+		return ExecutionPending
+	}
+}
+
+func remediationResultStatusToShared(status string) actionengine.Status {
+	switch strings.TrimSpace(strings.ToLower(status)) {
+	case "running":
+		return actionengine.StatusRunning
+	case "completed":
+		return actionengine.StatusCompleted
+	case "failed":
+		return actionengine.StatusFailed
+	default:
+		return actionengine.StatusPending
+	}
+}
+
+func sharedActionResultStatus(status actionengine.Status) string {
+	switch status {
+	case actionengine.StatusRunning:
+		return "running"
+	case actionengine.StatusCompleted:
+		return "completed"
+	case actionengine.StatusFailed:
+		return "failed"
+	default:
+		return "pending"
+	}
+}
+
+func remediationMapValueToString(values map[string]any, key string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	value, ok := values[key]
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf("%v", value)
+}
+
+func cloneStringMap(input map[string]string) map[string]string {
+	if len(input) == 0 {
+		return nil
+	}
+	cloned := make(map[string]string, len(input))
+	for key, value := range input {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func cloneAnyMap(input map[string]any) map[string]any {
+	if len(input) == 0 {
+		return nil
+	}
+	cloned := make(map[string]any, len(input))
+	for key, value := range input {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func remediationAnyToStringSlice(value any) []string {
+	switch typed := value.(type) {
+	case []string:
+		return append([]string(nil), typed...)
+	case []any:
+		out := make([]string, 0, len(typed))
+		for _, item := range typed {
+			text := strings.TrimSpace(fmt.Sprintf("%v", item))
+			if text != "" {
+				out = append(out, text)
+			}
+		}
+		return out
+	default:
+		text := strings.TrimSpace(fmt.Sprintf("%v", value))
+		if text == "" || text == "<nil>" {
+			return nil
+		}
+		return []string{text}
+	}
 }
 
 func (ex *Executor) executeAction(ctx context.Context, action Action, execution *Execution) ActionResult {
@@ -571,6 +857,20 @@ func (ex *Executor) Approve(ctx context.Context, executionID, approverID string)
 	execution.TriggerData["approved_by"] = approverID
 	execution.TriggerData["approved_at"] = time.Now().UTC().Format(time.RFC3339Nano)
 
+	if rule, ok := ex.engine.GetRule(execution.RuleID); ok {
+		sharedExecution := remediationExecutionToShared(execution)
+		sharedExecution.ApprovedBy = approverID
+		if approvedAt, _ := time.Parse(time.RFC3339Nano, remediationMapValueToString(execution.TriggerData, "approved_at")); !approvedAt.IsZero() {
+			sharedExecution.ApprovedAt = &approvedAt
+		}
+		playbook := remediationPlaybookFromRule(*rule, ex)
+		signal := remediationSignalFromTriggerData(execution.TriggerData)
+		err := ex.shared.Approve(ctx, sharedExecution, approverID, playbook, signal, remediationStepRunner{executor: ex})
+		applySharedExecution(execution, sharedExecution)
+		delete(execution.TriggerData, "_approval_granted")
+		return err
+	}
+
 	return ex.Execute(ctx, execution)
 }
 
@@ -589,6 +889,10 @@ func (ex *Executor) Reject(ctx context.Context, executionID, rejecterID, reason 
 	execution.Error = fmt.Sprintf("Rejected by %s: %s", rejecterID, reason)
 	now := time.Now().UTC()
 	execution.CompletedAt = &now
+	if sharedExecution := remediationExecutionToShared(execution); sharedExecution != nil {
+		_ = ex.shared.Reject(ctx, sharedExecution, rejecterID, reason)
+		applySharedExecution(execution, sharedExecution)
+	}
 
 	return nil
 }
