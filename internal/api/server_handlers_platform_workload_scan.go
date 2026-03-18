@@ -19,9 +19,13 @@ func (s *Server) listPlatformWorkloadScanTargets(w http.ResponseWriter, r *http.
 		s.error(w, http.StatusServiceUnavailable, "platform not initialized")
 		return
 	}
-	g := s.app.CurrentSecurityGraph()
+	g, err := s.currentTenantSecurityGraphView(r.Context())
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
 	if g == nil {
-		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
 	limit, err := parseOptionalIntQuery(r, "limit", 50, 1, 200)

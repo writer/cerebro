@@ -493,3 +493,14 @@ Status: executed end-to-end via PR workflow
 - [x] Route the entity-impact handlers through the snapshot-backed tenant graph view.
 - [x] Add store-only API regressions for cohort, outlier-score, and impact-analysis.
 - [x] Re-run focused and changed-file API validation before pushing the branch.
+## Deep Review Cycle 204 - Graph Store Workload Scan Paths (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left the platform workload-scan target endpoint hard-wired to `CurrentSecurityGraph()`, so target prioritization would fail whenever the runtime exposes only a graph store and no live in-memory graph pointer.
+- [x] Gap: the workload-scan prioritization path is read-only and only needs the tenant-scoped graph view helper that already restores `GraphStore.Snapshot()` into a stable graph view for the other migration slices.
+- [x] Gap: there was no regression proving workload-scan target prioritization still works, or returns `503`, when the server runs with only a graph store.
+
+### Execution plan
+- [x] Route the workload-scan target handler through the snapshot-backed tenant graph view helper.
+- [x] Add store-only API regressions for the workload-scan happy path and missing-snapshot `503` path.
+- [x] Re-run focused and changed-file API validation before pushing the branch.
