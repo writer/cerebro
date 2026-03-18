@@ -43,7 +43,7 @@ func TestObservationWrappersRoundTripRecords(t *testing.T) {
 	}
 
 	records := QueryObservations(g, KnowledgeArtifactQueryOptions{
-		ID:         result.ObservationID,
+		Type:       "deployment",
 		ValidAt:    baseAt.Add(time.Minute),
 		RecordedAt: baseAt.Add(time.Minute),
 	})
