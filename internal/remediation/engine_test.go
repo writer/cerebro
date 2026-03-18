@@ -35,7 +35,24 @@ func TestEngine_ListRules(t *testing.T) {
 		"pagerduty-critical",
 		"auto-ticket-high",
 		"s3-public-notify",
+		"s3-public-restrict",
+		"s3-encryption-notify",
+		"s3-encryption-terraform",
+		"gcs-public-notify",
+		"gcs-public-restrict",
+		"gcs-public-principal-notify",
+		"gcs-public-principal-restrict",
 		"identity-stale-user-remediation",
+		"aws-unused-access-key-notify",
+		"aws-unused-access-key-disable",
+		"gcp-user-managed-key-notify",
+		"gcp-user-managed-key-disable",
+		"aws-security-group-ssh-notify",
+		"aws-security-group-ssh-restrict",
+		"aws-security-group-rdp-notify",
+		"aws-security-group-rdp-restrict",
+		"aws-security-group-all-traffic-notify",
+		"aws-security-group-all-traffic-restrict",
 		"identity-excessive-privilege-remediation",
 		"dspm-restricted-data-unencrypted-remediation",
 		"dspm-confidential-data-public-remediation",
@@ -45,6 +62,154 @@ func TestEngine_ListRules(t *testing.T) {
 		if !ruleIDs[id] {
 			t.Errorf("expected rule %s to be loaded", id)
 		}
+	}
+}
+
+func TestEngine_DefaultSafeCatalogRulesIncludeApprovalGatedActions(t *testing.T) {
+	engine := NewEngine(testutil.Logger())
+
+	s3Rule, ok := engine.GetRule("s3-public-notify")
+	if !ok {
+		t.Fatal("expected s3-public-notify rule")
+	}
+	for _, action := range s3Rule.Actions {
+		if action.Type == ActionRestrictPublicStorageAccess {
+			t.Fatalf("expected s3-public-notify to remain notification-only, got %+v", s3Rule.Actions)
+		}
+	}
+
+	s3RestrictRule, ok := engine.GetRule("s3-public-restrict")
+	if !ok {
+		t.Fatal("expected s3-public-restrict rule")
+	}
+	if len(s3RestrictRule.Actions) != 1 || s3RestrictRule.Actions[0].Type != ActionRestrictPublicStorageAccess {
+		t.Fatalf("expected dedicated restrict action rule, got %+v", s3RestrictRule.Actions)
+	}
+
+	s3EncryptionRule, ok := engine.GetRule("s3-encryption-terraform")
+	if !ok {
+		t.Fatal("expected s3-encryption-terraform rule")
+	}
+	if len(s3EncryptionRule.Actions) != 1 || s3EncryptionRule.Actions[0].Type != ActionEnableBucketDefaultEncryption {
+		t.Fatalf("expected dedicated encryption action rule, got %+v", s3EncryptionRule.Actions)
+	}
+	if s3EncryptionRule.Actions[0].Config["delivery_mode"] != "terraform" {
+		t.Fatalf("expected bucket encryption rule to default to terraform delivery, got %#v", s3EncryptionRule.Actions[0].Config)
+	}
+
+	keyRule, ok := engine.GetRule("aws-unused-access-key-disable")
+	if !ok {
+		t.Fatal("expected aws-unused-access-key-disable rule")
+	}
+	foundDisable := false
+	for _, action := range keyRule.Actions {
+		if action.Type == ActionDisableStaleAccessKey {
+			foundDisable = true
+			if action.Config["inactive_days"] != "90" {
+				t.Fatalf("expected inactive_days=90 on key disable action, got %#v", action.Config)
+			}
+		}
+	}
+	if !foundDisable {
+		t.Fatalf("expected aws-unused-access-key-disable to include %s", ActionDisableStaleAccessKey)
+	}
+
+	sshRestrictRule, ok := engine.GetRule("aws-security-group-ssh-restrict")
+	if !ok {
+		t.Fatal("expected aws-security-group-ssh-restrict rule")
+	}
+	if len(sshRestrictRule.Actions) != 1 || sshRestrictRule.Actions[0].Type != ActionRestrictPublicSecurityGroupIngress {
+		t.Fatalf("expected dedicated ingress restriction action rule, got %+v", sshRestrictRule.Actions)
+	}
+	if sshRestrictRule.Actions[0].Config["approval_mode"] != "required" {
+		t.Fatalf("expected ingress restriction rule to require approval, got %#v", sshRestrictRule.Actions[0].Config)
+	}
+
+	staleUserRule, ok := engine.GetRule("identity-stale-user-remediation")
+	if !ok {
+		t.Fatal("expected identity-stale-user-remediation rule")
+	}
+	for _, action := range staleUserRule.Actions {
+		if action.Type == ActionDisableStaleAccessKey {
+			t.Fatalf("expected identity-stale-user-remediation to remain tracking-only, got %+v", staleUserRule.Actions)
+		}
+	}
+}
+
+func TestEngine_ApprovalCatalogRulesDoNotBlockNotificationRules(t *testing.T) {
+	engine := NewEngine(testutil.Logger())
+	executor := NewExecutor(engine, nil, nil, nil, nil)
+
+	notifyRule, ok := engine.GetRule("s3-public-notify")
+	if !ok {
+		t.Fatal("expected s3-public-notify rule")
+	}
+	notifyPlaybook := remediationPlaybookFromRule(*notifyRule, executor)
+	if executor.shared.RequiresApproval(notifyPlaybook) {
+		t.Fatal("expected s3-public-notify playbook not to require approval")
+	}
+
+	restrictRule, ok := engine.GetRule("s3-public-restrict")
+	if !ok {
+		t.Fatal("expected s3-public-restrict rule")
+	}
+	restrictPlaybook := remediationPlaybookFromRule(*restrictRule, executor)
+	if !executor.shared.RequiresApproval(restrictPlaybook) {
+		t.Fatal("expected s3-public-restrict playbook to require approval")
+	}
+
+	notifyEncryptionRule, ok := engine.GetRule("s3-encryption-notify")
+	if !ok {
+		t.Fatal("expected s3-encryption-notify rule")
+	}
+	notifyEncryptionPlaybook := remediationPlaybookFromRule(*notifyEncryptionRule, executor)
+	if executor.shared.RequiresApproval(notifyEncryptionPlaybook) {
+		t.Fatal("expected s3-encryption-notify playbook not to require approval")
+	}
+
+	enableEncryptionRule, ok := engine.GetRule("s3-encryption-terraform")
+	if !ok {
+		t.Fatal("expected s3-encryption-terraform rule")
+	}
+	enableEncryptionPlaybook := remediationPlaybookFromRule(*enableEncryptionRule, executor)
+	if executor.shared.RequiresApproval(enableEncryptionPlaybook) {
+		t.Fatal("expected s3-encryption-terraform playbook not to require approval")
+	}
+
+	notifyKeyRule, ok := engine.GetRule("aws-unused-access-key-notify")
+	if !ok {
+		t.Fatal("expected aws-unused-access-key-notify rule")
+	}
+	notifyKeyPlaybook := remediationPlaybookFromRule(*notifyKeyRule, executor)
+	if executor.shared.RequiresApproval(notifyKeyPlaybook) {
+		t.Fatal("expected aws-unused-access-key-notify playbook not to require approval")
+	}
+
+	disableKeyRule, ok := engine.GetRule("aws-unused-access-key-disable")
+	if !ok {
+		t.Fatal("expected aws-unused-access-key-disable rule")
+	}
+	disableKeyPlaybook := remediationPlaybookFromRule(*disableKeyRule, executor)
+	if !executor.shared.RequiresApproval(disableKeyPlaybook) {
+		t.Fatal("expected aws-unused-access-key-disable playbook to require approval")
+	}
+
+	sshNotifyRule, ok := engine.GetRule("aws-security-group-ssh-notify")
+	if !ok {
+		t.Fatal("expected aws-security-group-ssh-notify rule")
+	}
+	sshNotifyPlaybook := remediationPlaybookFromRule(*sshNotifyRule, executor)
+	if executor.shared.RequiresApproval(sshNotifyPlaybook) {
+		t.Fatal("expected aws-security-group-ssh-notify playbook not to require approval")
+	}
+
+	sshRestrictRule, ok := engine.GetRule("aws-security-group-ssh-restrict")
+	if !ok {
+		t.Fatal("expected aws-security-group-ssh-restrict rule")
+	}
+	sshRestrictPlaybook := remediationPlaybookFromRule(*sshRestrictRule, executor)
+	if !executor.shared.RequiresApproval(sshRestrictPlaybook) {
+		t.Fatal("expected aws-security-group-ssh-restrict playbook to require approval")
 	}
 }
 
