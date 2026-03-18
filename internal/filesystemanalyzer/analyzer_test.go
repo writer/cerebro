@@ -254,6 +254,100 @@ func TestShouldSecretScanUsesConfiguredMaxBytes(t *testing.T) {
 	}
 }
 
+func TestAnalyzerDetectsIaCArtifactsAndMisconfigurations(t *testing.T) {
+	root := t.TempDir()
+	mustWriteFile(t, filepath.Join(root, "infra", "main.tf"), strings.Join([]string{
+		`resource "aws_security_group" "public" {`,
+		`  ingress {`,
+		`    cidr_blocks = ["0.0.0.0/0"]`,
+		`  }`,
+		`}`,
+		`resource "aws_s3_bucket" "logs" {`,
+		`  bucket = "prod-logs"`,
+		`}`,
+	}, "\n"))
+	mustWriteFile(t, filepath.Join(root, "infra", "terraform.tfstate"), `{"version":4,"terraform_version":"1.8.0","resources":[{"type":"aws_s3_bucket","name":"logs"}]}`)
+	mustWriteFile(t, filepath.Join(root, "deploy", "service.yaml"), "apiVersion: v1\nkind: Service\nmetadata:\n  name: api\n")
+	mustWriteFile(t, filepath.Join(root, "app", ".env"), "DATABASE_PASSWORD=super-secret-password\n")
+
+	report, err := New(Options{}).Analyze(context.Background(), root)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if report.Summary.IaCArtifactCount != 4 {
+		t.Fatalf("expected four IaC/config artifacts, got %#v", report.IaCArtifacts)
+	}
+
+	artifactTypes := make(map[string]IaCArtifact, len(report.IaCArtifacts))
+	for _, artifact := range report.IaCArtifacts {
+		artifactTypes[artifact.Type] = artifact
+	}
+	for _, kind := range []string{"terraform", "terraform_state", "kubernetes_manifest", "environment_file"} {
+		if _, ok := artifactTypes[kind]; !ok {
+			t.Fatalf("expected artifact %q, got %#v", kind, report.IaCArtifacts)
+		}
+	}
+
+	findingTypes := make(map[string]ConfigFinding, len(report.Misconfigurations))
+	for _, finding := range report.Misconfigurations {
+		findingTypes[finding.Type] = finding
+	}
+	if finding, ok := findingTypes["terraform_state"]; !ok {
+		t.Fatalf("expected terraform_state finding, got %#v", report.Misconfigurations)
+	} else if finding.ArtifactType != "terraform_state" || finding.ResourceType != "terraform_state" {
+		t.Fatalf("expected terraform_state metadata, got %#v", finding)
+	}
+	if _, ok := findingTypes["iac_public_exposure"]; !ok {
+		t.Fatalf("expected public exposure finding, got %#v", report.Misconfigurations)
+	}
+	if finding, ok := findingTypes["iac_missing_bucket_encryption"]; !ok {
+		t.Fatalf("expected missing bucket encryption finding, got %#v", report.Misconfigurations)
+	} else if finding.ResourceType != "bucket" {
+		t.Fatalf("expected bucket resource type, got %#v", finding)
+	}
+
+	foundMisconfigFinding := false
+	for _, finding := range report.Findings {
+		if finding.Type == "misconfiguration" && strings.Contains(strings.ToLower(finding.Title), "terraform state") {
+			foundMisconfigFinding = true
+			break
+		}
+	}
+	if !foundMisconfigFinding {
+		t.Fatalf("expected terraform state finding in container findings, got %#v", report.Findings)
+	}
+}
+
+func TestAnalyzerDoesNotFlagBucketEncryptionForHelmValuesReference(t *testing.T) {
+	root := t.TempDir()
+	mustWriteFile(t, filepath.Join(root, "charts", "api", "values.yaml"), strings.Join([]string{
+		"# terraform module provisions aws_s3_bucket elsewhere",
+		"bucketName: app-logs",
+	}, "\n"))
+
+	report, err := New(Options{}).Analyze(context.Background(), root)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+
+	foundHelmValues := false
+	for _, artifact := range report.IaCArtifacts {
+		if artifact.Type == "helm_values" {
+			foundHelmValues = true
+			break
+		}
+	}
+	if !foundHelmValues {
+		t.Fatalf("expected helm_values artifact, got %#v", report.IaCArtifacts)
+	}
+
+	for _, finding := range report.Misconfigurations {
+		if finding.Type == "iac_missing_bucket_encryption" {
+			t.Fatalf("expected no bucket encryption finding for Helm values reference, got %#v", report.Misconfigurations)
+		}
+	}
+}
+
 func mustWriteFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
