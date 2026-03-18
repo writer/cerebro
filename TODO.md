@@ -16,6 +16,17 @@ Status: executed end-to-end via PR workflow
 - [x] Add a graph-layer organizational policy template catalog covering the common policies listed in issue `#256`.
 - [x] Add helpers to list templates, filter them by framework, and build concrete policy write requests from a selected template.
 - [x] Add focused graph tests for catalog coverage, framework filtering, write-request defaults, overrides, and invalid input handling.
+## Deep Review Cycle 206 - Organizational Policy Reminder Candidates (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#256` still had no reusable graph helper for automated policy reminders, so follow-up workflows could only see aggregate pending counts and not the specific people who needed current-version acknowledgment.
+- [x] Gap: stale acknowledgments after a policy update were treated as generic pending gaps in policy rollups, which meant reminder automation could not distinguish "never acknowledged" from "needs re-acknowledgment".
+- [x] Gap: reminder targeting needed direct-assignment and department-assignment context on each person so future notification and onboarding flows can explain why the person owes the policy.
+
+### Execution plan
+- [x] Add a policy-scoped reminder helper that returns pending and stale reminder candidates for the current policy version.
+- [x] Include assignment scope and acknowledgment metadata in the candidate records so future automation can render actionable notifications.
+- [x] Add focused graph tests for pending reminders, stale reminders, direct assignments, and invalid policy input, then rerun graph validation.
 
 ## Deep Review Cycle 205 - Graph Store Compliance Evaluation Paths (2026-03-18)
 
