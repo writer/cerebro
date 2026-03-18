@@ -35,6 +35,9 @@ const (
 	NodeKindVulnerability           NodeKind = "vulnerability"
 	NodeKindNetwork                 NodeKind = "network"
 	NodeKindApplication             NodeKind = "application"
+	NodeKindOrganization            NodeKind = "organization"
+	NodeKindFolder                  NodeKind = "folder"
+	NodeKindProject                 NodeKind = "project"
 
 	// Kubernetes nodes
 	NodeKindPod                NodeKind = "pod"
