@@ -126,7 +126,7 @@ func TestBuildIntelligenceReport_DeterministicInsightOrderAndIDs(t *testing.T) {
 }
 
 func TestBuildIntelligenceReport_FreshnessPenalizesConfidence(t *testing.T) {
-	now := time.Date(2026, 3, 8, 22, 0, 0, 0, time.UTC)
+	now := time.Now().UTC().Truncate(time.Second)
 
 	fresh := New()
 	fresh.AddNode(&Node{ID: "service:fresh", Kind: NodeKindService, Name: "Fresh", Properties: map[string]any{

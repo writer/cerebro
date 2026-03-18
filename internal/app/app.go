@@ -98,6 +98,7 @@ type App struct {
 	Scanner        *scanner.Scanner
 	DSPM           *dspm.Scanner
 	Cache          *cache.PolicyCache
+	GraphSnapshots *graph.GraphPersistenceStore
 	ExecutionStore executionstore.Store
 
 	// Feature services

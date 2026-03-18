@@ -76,6 +76,7 @@ type serverDependencies struct {
 	Findings       findings.FindingStore
 	Scanner        *scanner.Scanner
 	Cache          *cache.PolicyCache
+	GraphSnapshots *graph.GraphPersistenceStore
 	ExecutionStore executionstore.Store
 
 	Agents         *agents.AgentRegistry
@@ -137,6 +138,7 @@ func newServerDependenciesFromApp(application *app.App) serverDependencies {
 		Findings:             application.Findings,
 		Scanner:              application.Scanner,
 		Cache:                application.Cache,
+		GraphSnapshots:       application.GraphSnapshots,
 		ExecutionStore:       application.ExecutionStore,
 		Agents:               application.Agents,
 		Ticketing:            application.Ticketing,

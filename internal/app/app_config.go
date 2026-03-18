@@ -444,6 +444,9 @@ type Config struct {
 	GraphCrossTenantReplayTTL           time.Duration
 	GraphCrossTenantMinTenants          int
 	GraphCrossTenantMinSupport          int
+	GraphSnapshotPath                   string
+	GraphSnapshotMaxRetained            int
+	GraphSnapshotReplicaURI             string
 	GraphSchemaValidationMode           string
 	GraphEventMapperValidationMode      string
 	GraphEventMapperDeadLetterPath      string
@@ -777,6 +780,9 @@ func LoadConfig() *Config {
 			GraphCrossTenantReplayTTL:           getEnvDuration("GRAPH_CROSS_TENANT_REPLAY_TTL", 24*time.Hour),
 			GraphCrossTenantMinTenants:          getEnvInt("GRAPH_CROSS_TENANT_MIN_TENANTS", 2),
 			GraphCrossTenantMinSupport:          getEnvInt("GRAPH_CROSS_TENANT_MIN_SUPPORT", 2),
+			GraphSnapshotPath:                   getEnv("GRAPH_SNAPSHOT_PATH", filepath.Join(".cerebro", "graph-snapshots")),
+			GraphSnapshotMaxRetained:            getEnvInt("GRAPH_SNAPSHOT_MAX_RETAINED", 10),
+			GraphSnapshotReplicaURI:             getEnv("GRAPH_SNAPSHOT_REPLICA_URI", ""),
 			GraphSchemaValidationMode:           getEnv("GRAPH_SCHEMA_VALIDATION_MODE", "warn"),
 			GraphEventMapperValidationMode:      getEnv("GRAPH_EVENT_MAPPER_VALIDATION_MODE", "enforce"),
 			GraphEventMapperDeadLetterPath:      getEnv("GRAPH_EVENT_MAPPER_DEAD_LETTER_PATH", filepath.Join(findings.DefaultFilePath(), "graph-event-mapper.dlq.jsonl")),

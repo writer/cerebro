@@ -19,7 +19,7 @@ func TestPlatformGraphSnapshotAncestryAndDiffEndpoints(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GRAPH_SNAPSHOT_PATH", dir)
 
-	base := time.Date(2026, 3, 7, 0, 0, 0, 0, time.UTC)
+	base := time.Now().UTC().Add(-6 * 24 * time.Hour).Truncate(time.Minute)
 	older := &graph.Snapshot{
 		Version:   "1.0",
 		CreatedAt: base.Add(5 * time.Minute),
@@ -395,7 +395,7 @@ func TestPlatformGraphChangelogAndDiffDetailsEndpoints(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GRAPH_SNAPSHOT_PATH", dir)
 
-	base := time.Date(2026, 3, 7, 0, 0, 0, 0, time.UTC)
+	base := time.Now().UTC().Add(-6 * 24 * time.Hour).Truncate(time.Minute)
 	older := &graph.Snapshot{
 		Version:   "1.0",
 		CreatedAt: base.Add(5 * time.Minute),
@@ -458,7 +458,11 @@ func TestPlatformGraphChangelogAndDiffDetailsEndpoints(t *testing.T) {
 		}
 		return nil
 	})
-	changelog := do(t, s, http.MethodGet, "/api/v1/platform/graph/changelog?last=7d&provider=aws&limit=1", nil)
+	changelog := do(t, s, http.MethodGet, fmt.Sprintf(
+		"/api/v1/platform/graph/changelog?since=%s&until=%s&provider=aws&limit=1",
+		base.Add(-time.Hour).Format(time.RFC3339),
+		base.Add(3*time.Hour).Format(time.RFC3339),
+	), nil)
 	if changelog.Code != http.StatusOK {
 		t.Fatalf("expected 200 for graph changelog, got %d: %s", changelog.Code, changelog.Body.String())
 	}
@@ -526,7 +530,7 @@ func TestPlatformGraphChangelogUsesExplicitParentSnapshotLineage(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GRAPH_SNAPSHOT_PATH", dir)
 
-	base := time.Date(2026, 3, 7, 7, 0, 0, 0, time.UTC)
+	base := time.Now().UTC().Add(-6 * 24 * time.Hour).Truncate(time.Minute)
 	root := &graph.Snapshot{
 		Version:   "1.0",
 		CreatedAt: base.Add(5 * time.Minute),
@@ -572,7 +576,11 @@ func TestPlatformGraphChangelogUsesExplicitParentSnapshotLineage(t *testing.T) {
 	})
 
 	s := newTestServer(t)
-	changelog := do(t, s, http.MethodGet, "/api/v1/platform/graph/changelog?last=7d&provider=aws&limit=1", nil)
+	changelog := do(t, s, http.MethodGet, fmt.Sprintf(
+		"/api/v1/platform/graph/changelog?since=%s&until=%s&provider=aws&limit=1",
+		base.Add(-time.Hour).Format(time.RFC3339),
+		base.Add(3*time.Hour).Format(time.RFC3339),
+	), nil)
 	if changelog.Code != http.StatusOK {
 		t.Fatalf("expected 200 for graph changelog, got %d: %s", changelog.Code, changelog.Body.String())
 	}
