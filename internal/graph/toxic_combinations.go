@@ -1014,6 +1014,8 @@ func edgeToTechnique(kind EdgeKind) string {
 		return "Full Control"
 	case EdgeKindConnectsTo:
 		return "Lateral Movement"
+	case EdgeKindHasCredentialFor:
+		return "Credential Pivot"
 	default:
 		return "Access"
 	}
@@ -1029,6 +1031,8 @@ func edgeToMITRE(kind EdgeKind) string {
 		return "T1565"
 	case EdgeKindConnectsTo:
 		return "T1021"
+	case EdgeKindHasCredentialFor:
+		return "T1552"
 	default:
 		return ""
 	}
@@ -1084,6 +1088,24 @@ func detectPrivilegeEscalation(_ *Graph, node *Node) []*AttackStep {
 
 func detectLateralMovement(g *Graph, node *Node) []*AttackStep {
 	var paths []*AttackStep
+	seen := make(map[string]struct{})
+
+	appendPath := func(targetID, technique, description string, kind EdgeKind, mitre string) {
+		key := targetID + "|" + string(kind)
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		paths = append(paths, &AttackStep{
+			Order:         1,
+			FromNode:      node.ID,
+			ToNode:        targetID,
+			Technique:     technique,
+			Description:   description,
+			EdgeKind:      kind,
+			MITREAttackID: mitre,
+		})
+	}
 
 	// Check for assumed role with data access
 	for _, edge := range g.GetOutEdges(node.ID) {
@@ -1097,16 +1119,49 @@ func detectLateralMovement(g *Graph, node *Node) []*AttackStep {
 			roleBlast := BlastRadius(g, roleNode.ID, 2)
 			for _, rn := range roleBlast.ReachableNodes {
 				if rn.Node.Kind == NodeKindDatabase || rn.Node.Kind == NodeKindSecret {
-					paths = append(paths, &AttackStep{
-						Order:         1,
-						FromNode:      node.ID,
-						ToNode:        rn.Node.ID,
-						Technique:     "Role Assumption",
-						Description:   fmt.Sprintf("Assume %s to access %s", roleNode.Name, rn.Node.Name),
-						EdgeKind:      EdgeKindCanAssume,
-						MITREAttackID: "T1550",
-					})
+					appendPath(
+						rn.Node.ID,
+						"Role Assumption",
+						fmt.Sprintf("Assume %s to access %s", roleNode.Name, rn.Node.Name),
+						EdgeKindCanAssume,
+						"T1550",
+					)
 				}
+			}
+		}
+		if edge.Kind == EdgeKindHasCredentialFor {
+			targetNode, ok := g.GetNode(edge.Target)
+			if !ok {
+				continue
+			}
+			if targetNode.Kind == NodeKindDatabase || targetNode.Kind == NodeKindSecret || targetNode.Kind == NodeKindBucket {
+				appendPath(
+					targetNode.ID,
+					"Credential Pivot",
+					fmt.Sprintf("Use discovered credential to access %s", targetNode.Name),
+					EdgeKindHasCredentialFor,
+					"T1552",
+				)
+				continue
+			}
+			if !targetNode.IsIdentity() {
+				continue
+			}
+			blast := BlastRadius(g, targetNode.ID, 2)
+			for _, reachable := range blast.ReachableNodes {
+				if reachable == nil || reachable.Node == nil {
+					continue
+				}
+				if reachable.Node.Kind != NodeKindDatabase && reachable.Node.Kind != NodeKindSecret && reachable.Node.Kind != NodeKindBucket {
+					continue
+				}
+				appendPath(
+					reachable.Node.ID,
+					"Credential Pivot",
+					fmt.Sprintf("Use discovered credential for %s to access %s", targetNode.Name, reachable.Node.Name),
+					EdgeKindHasCredentialFor,
+					"T1552",
+				)
 			}
 		}
 	}

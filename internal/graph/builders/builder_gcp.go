@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+const maxGCPIAMPolicyJSONBytes = 1 << 20
+
 // GCP Builder Methods
 
 func (b *Builder) buildGCPNodes(ctx context.Context) {
@@ -141,20 +143,20 @@ func (b *Builder) buildGCPNodes(ctx context.Context) {
 	}
 
 	b.runNodeQueries(ctx, queries)
+	b.enrichGCPIAMServiceAccounts(ctx)
 }
 
 func (b *Builder) buildGCPEdges(ctx context.Context) {
-	edgeCount := b.buildGCPEdgesFromMembers(ctx)
-	if edgeCount == 0 {
-		edgeCount = b.buildGCPEdgesFromPolicies(ctx)
-	}
+	edgeCount, policyProjects := b.buildGCPEdgesFromPolicies(ctx)
+	edgeCount += b.buildGCPEdgesFromMembers(ctx, policyProjects)
+	edgeCount += b.buildGCPBucketIAMPolicyEdges(ctx)
 	b.logger.Debug("processed GCP IAM bindings", "count", edgeCount)
 
 	b.buildGCPServiceAccountEdges(ctx)
 	b.buildGCPFirewallEdges(ctx)
 }
 
-func (b *Builder) buildGCPEdgesFromMembers(ctx context.Context) int {
+func (b *Builder) buildGCPEdgesFromMembers(ctx context.Context, policyProjects map[string]struct{}) int {
 	members, err := b.queryIfExists(ctx, "gcp_iam_members",
 		`SELECT project_id, member, roles FROM gcp_iam_members`)
 	if err != nil {
@@ -167,6 +169,9 @@ func (b *Builder) buildGCPEdgesFromMembers(ctx context.Context) int {
 		projectID := toString(row["project_id"])
 		member := toString(row["member"])
 		if projectID == "" || member == "" {
+			continue
+		}
+		if _, ok := policyProjects[projectID]; ok {
 			continue
 		}
 
@@ -193,6 +198,7 @@ func (b *Builder) buildGCPEdgesFromMembers(ctx context.Context) int {
 						"role":    role,
 						"binding": "project",
 						"member":  member,
+						"scope":   "project",
 					},
 				})
 				count++
@@ -203,15 +209,16 @@ func (b *Builder) buildGCPEdgesFromMembers(ctx context.Context) int {
 	return count
 }
 
-func (b *Builder) buildGCPEdgesFromPolicies(ctx context.Context) int {
+func (b *Builder) buildGCPEdgesFromPolicies(ctx context.Context) (int, map[string]struct{}) {
 	policies, err := b.queryIfExists(ctx, "gcp_iam_policies",
 		`SELECT project_id, bindings FROM gcp_iam_policies`)
 	if err != nil {
 		b.logger.Debug("failed to query GCP IAM policies", "error", err)
-		return 0
+		return 0, nil
 	}
 
 	count := 0
+	policyProjects := make(map[string]struct{})
 	for _, policy := range policies.Rows {
 		projectID := toString(policy["project_id"])
 		if projectID == "" {
@@ -219,19 +226,19 @@ func (b *Builder) buildGCPEdgesFromPolicies(ctx context.Context) int {
 		}
 		projectNodes := b.graph.GetNodesByAccountIndexed(projectID)
 
-		bindings := toAnySlice(policy["bindings"])
-		for _, binding := range bindings {
-			bindingMap, ok := binding.(map[string]any)
-			if !ok {
-				continue
-			}
+		for _, bindingMap := range gcpIAMBindingsFromPolicy(policy["bindings"]) {
 			role := toString(bindingMap["role"])
 			if role == "" {
 				continue
 			}
 
 			members := toAnySlice(bindingMap["members"])
+			if len(members) == 0 {
+				continue
+			}
+			policyProjects[projectID] = struct{}{}
 			edgeKind := gcpRoleToEdgeKind(role)
+			condition := gcpIAMBindingCondition(bindingMap)
 			for _, memberValue := range members {
 				member := toString(memberValue)
 				if member == "" {
@@ -249,13 +256,74 @@ func (b *Builder) buildGCPEdgesFromPolicies(ctx context.Context) int {
 						Kind:   edgeKind,
 						Effect: EdgeEffectAllow,
 						Properties: map[string]any{
-							"role":    role,
-							"binding": "project",
-							"member":  member,
+							"role":      role,
+							"binding":   "project",
+							"member":    member,
+							"scope":     "project",
+							"condition": condition,
 						},
 					})
 					count++
 				}
+			}
+		}
+	}
+
+	return count, policyProjects
+}
+
+func (b *Builder) buildGCPBucketIAMPolicyEdges(ctx context.Context) int {
+	rows, err := b.queryIfExists(ctx, "gcp_storage_buckets",
+		`SELECT name, project_id, location, iam_policy, public_access_prevention, uniform_bucket_level_access FROM gcp_storage_buckets`)
+	if err != nil {
+		b.logger.Debug("failed to query GCP storage buckets for IAM bindings", "error", err)
+		return 0
+	}
+
+	count := 0
+	for _, row := range rows.Rows {
+		bucketID := toString(row["name"])
+		projectID := toString(row["project_id"])
+		if bucketID == "" || projectID == "" {
+			continue
+		}
+		bucketNode, ok := b.graph.GetNode(bucketID)
+		if !ok || bucketNode == nil {
+			continue
+		}
+
+		for _, bindingMap := range gcpIAMBindingsFromPolicy(row["iam_policy"]) {
+			role := strings.TrimSpace(toString(bindingMap["role"]))
+			if role == "" {
+				continue
+			}
+			edgeKind := gcpRoleToEdgeKind(role)
+			condition := gcpIAMBindingCondition(bindingMap)
+			members := toAnySlice(bindingMap["members"])
+			for _, memberValue := range members {
+				member := strings.TrimSpace(toString(memberValue))
+				if member == "" {
+					continue
+				}
+				sourceID := b.resolveGCPPrincipalID(projectID, member)
+				properties := map[string]any{
+					"role":      role,
+					"binding":   "resource",
+					"member":    member,
+					"scope":     "resource",
+					"resource":  bucketID,
+					"condition": condition,
+					"mechanism": "resource_policy",
+				}
+				b.graph.AddEdge(&Edge{
+					ID:         sourceID + "->" + bucketNode.ID + ":" + role + ":bucket_iam",
+					Source:     sourceID,
+					Target:     bucketNode.ID,
+					Kind:       edgeKind,
+					Effect:     EdgeEffectAllow,
+					Properties: properties,
+				})
+				count++
 			}
 		}
 	}
@@ -331,6 +399,13 @@ func (b *Builder) resolveGCPPrincipalID(projectID, member string) string {
 	if member == "" {
 		return ""
 	}
+	switch strings.ToLower(member) {
+	case "allusers":
+		return "internet"
+	case "allauthenticatedusers":
+		b.ensureGCPAuthenticatedUsersNode()
+		return "allAuthenticatedUsers"
+	}
 
 	parts := strings.SplitN(member, ":", 2)
 	if len(parts) != 2 {
@@ -360,6 +435,82 @@ func (b *Builder) resolveGCPServiceAccountNodeID(projectID, email string) string
 	}
 
 	return email
+}
+
+func (b *Builder) ensureGCPAuthenticatedUsersNode() {
+	b.graph.AddNode(&Node{
+		ID:       "allAuthenticatedUsers",
+		Kind:     NodeKindGroup,
+		Name:     "All Authenticated Users",
+		Provider: "external",
+		Account:  "global",
+		Risk:     RiskHigh,
+		Properties: map[string]any{
+			"broad_principal": true,
+			"principal_scope": "authenticated_public",
+		},
+	})
+}
+
+func gcpIAMBindingsFromPolicy(policy any) []map[string]any {
+	switch typed := policy.(type) {
+	case map[string]any:
+		if bindings, ok := typed["bindings"]; ok {
+			return gcpIAMBindingsFromPolicy(bindings)
+		}
+		if len(typed) == 0 {
+			return nil
+		}
+		if _, hasRole := typed["role"]; hasRole {
+			return []map[string]any{cloneAnyMap(typed)}
+		}
+		return nil
+	case []any:
+		result := make([]map[string]any, 0, len(typed))
+		for _, binding := range typed {
+			if bindingMap, ok := binding.(map[string]any); ok {
+				result = append(result, cloneAnyMap(bindingMap))
+			}
+		}
+		return result
+	case []map[string]any:
+		result := make([]map[string]any, 0, len(typed))
+		for _, binding := range typed {
+			result = append(result, cloneAnyMap(binding))
+		}
+		return result
+	case string:
+		raw := strings.TrimSpace(typed)
+		if raw == "" {
+			return nil
+		}
+		if len(raw) > maxGCPIAMPolicyJSONBytes {
+			return nil
+		}
+		var parsed map[string]any
+		if err := json.Unmarshal([]byte(raw), &parsed); err == nil {
+			return gcpIAMBindingsFromPolicy(parsed)
+		}
+		var parsedBindings []any
+		if err := json.Unmarshal([]byte(raw), &parsedBindings); err == nil {
+			return gcpIAMBindingsFromPolicy(parsedBindings)
+		}
+		return nil
+	default:
+		return nil
+	}
+}
+
+func gcpIAMBindingCondition(binding map[string]any) map[string]any {
+	raw, ok := binding["condition"]
+	if !ok || raw == nil {
+		return nil
+	}
+	condition, ok := raw.(map[string]any)
+	if !ok || len(condition) == 0 {
+		return nil
+	}
+	return cloneAnyMap(condition)
 }
 
 func (b *Builder) buildGCPServiceAccountEdges(_ context.Context) {
