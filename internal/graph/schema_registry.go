@@ -1881,7 +1881,7 @@ var builtInNodeKinds = []NodeKindDefinition{
 			"confidence":      "number",
 		},
 		RequiredProperties: []string{"deploy_id", "service_id", "environment", "status", "observed_at", "valid_from"},
-		Relationships:      []EdgeKind{EdgeKindTargets, EdgeKindBasedOn, EdgeKindDependsOn},
+		Relationships:      []EdgeKind{EdgeKindTargets, EdgeKindBasedOn, EdgeKindDependsOn, EdgeKindTriggeredBy},
 		MetadataProfile: writeMetadataProfile(
 			[]string{"source_system", "observed_at", "valid_from"},
 			map[string][]string{
@@ -1937,7 +1937,7 @@ var builtInNodeKinds = []NodeKindDefinition{
 			"confidence":      "number",
 		},
 		RequiredProperties: []string{"check_run_id", "repository", "check_name", "status", "observed_at", "valid_from"},
-		Relationships:      []EdgeKind{EdgeKindTargets, EdgeKindBasedOn, EdgeKindEvaluates},
+		Relationships:      []EdgeKind{EdgeKindTargets, EdgeKindBasedOn, EdgeKindEvaluates, EdgeKindCausedBy},
 		MetadataProfile: writeMetadataProfile(
 			[]string{"source_system", "observed_at", "valid_from"},
 			map[string][]string{
@@ -2026,7 +2026,7 @@ var builtInNodeKinds = []NodeKindDefinition{
 			"confidence":      "number",
 		},
 		RequiredProperties: []string{"incident_id", "status", "observed_at", "valid_from"},
-		Relationships:      []EdgeKind{EdgeKindTargets, EdgeKindBasedOn, EdgeKindEvaluates},
+		Relationships:      []EdgeKind{EdgeKindTargets, EdgeKindBasedOn, EdgeKindEvaluates, EdgeKindCausedBy},
 		MetadataProfile: writeMetadataProfile(
 			[]string{"source_system", "observed_at", "valid_from"},
 			map[string][]string{
@@ -2260,4 +2260,6 @@ var builtInEdgeKinds = []EdgeKindDefinition{
 	{Kind: EdgeKindRefutes},
 	{Kind: EdgeKindSupersedes},
 	{Kind: EdgeKindContradicts},
+	{Kind: EdgeKindTriggeredBy},
+	{Kind: EdgeKindCausedBy},
 }

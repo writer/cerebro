@@ -72,8 +72,11 @@ var supportedResponseActions = []ResponseActionType{
 	ActionKillProcess,
 	ActionIsolateContainer,
 	ActionIsolateHost,
+	ActionQuarantineFile,
 	ActionBlockIP,
 	ActionBlockDomain,
+	ActionRevokeCredentials,
+	ActionScaleDown,
 	ActionAlert,
 	ActionCreateTicket,
 }
@@ -156,6 +159,10 @@ type ActionHandler interface {
 	ScaleDown(ctx context.Context, resourceID string, replicas int) error
 }
 
+type actionRemoteCallerSetter interface {
+	SetRemoteCaller(RemoteActionCaller)
+}
+
 func NewResponseEngine() *ResponseEngine {
 	engine := &ResponseEngine{
 		policies:   make(map[string]*ResponsePolicy),
@@ -180,11 +187,29 @@ func (e *ResponseEngine) SetActionHandler(handler ActionHandler) {
 	e.actionHandler = handler
 }
 
+func (e *ResponseEngine) SetRemoteCaller(caller RemoteActionCaller) {
+	if e == nil || e.actionHandler == nil {
+		return
+	}
+	setter, ok := e.actionHandler.(actionRemoteCallerSetter)
+	if !ok {
+		return
+	}
+	setter.SetRemoteCaller(caller)
+}
+
 func (e *ResponseEngine) SetSharedExecutor(shared *actionengine.Executor) {
 	if shared == nil {
 		return
 	}
 	e.shared = shared
+}
+
+func (e *ResponseEngine) Blocklist() *Blocklist {
+	if e == nil {
+		return nil
+	}
+	return e.blocklist
 }
 
 func (e *ResponseEngine) loadDefaultPolicies() {
@@ -202,7 +227,7 @@ func (e *ResponseEngine) loadDefaultPolicies() {
 				{Type: ActionKillProcess, Timeout: 30},
 				{Type: ActionAlert, Parameters: map[string]string{"channel": "security"}},
 			},
-			RequireApproval: false,
+			RequireApproval: true,
 		},
 		{
 			ID:          "auto-isolate-container-escape",
@@ -218,7 +243,7 @@ func (e *ResponseEngine) loadDefaultPolicies() {
 				{Type: ActionAlert, Parameters: map[string]string{"channel": "security", "severity": "critical"}},
 				{Type: ActionCreateTicket, Parameters: map[string]string{"priority": "critical"}},
 			},
-			RequireApproval: false,
+			RequireApproval: true,
 		},
 		{
 			ID:          "auto-kill-reverse-shell",
@@ -234,7 +259,7 @@ func (e *ResponseEngine) loadDefaultPolicies() {
 				{Type: ActionBlockIP, Parameters: map[string]string{"target": "destination"}},
 				{Type: ActionAlert, Parameters: map[string]string{"channel": "security", "severity": "critical"}},
 			},
-			RequireApproval: false,
+			RequireApproval: true,
 		},
 		{
 			ID:          "block-c2-communication",
@@ -398,6 +423,17 @@ func (e *ResponseEngine) executeAction(ctx context.Context, action PolicyAction,
 		if finding.Event != nil && finding.Event.Network != nil {
 			return e.actionHandler.BlockDomain(ctx, finding.Event.Network.Domain)
 		}
+
+	case ActionQuarantineFile:
+		if finding.Event != nil && finding.Event.File != nil {
+			return e.actionHandler.QuarantineFile(ctx, finding.ResourceID, finding.Event.File.Path)
+		}
+
+	case ActionRevokeCredentials:
+		return e.actionHandler.RevokeCredentials(ctx, runtimePrincipalIDFromFinding(finding), runtimeProviderFromFinding(finding))
+
+	case ActionScaleDown:
+		return e.actionHandler.ScaleDown(ctx, runtimeScaleDownTargetFromFinding(finding), runtimeScaleDownReplicas(action))
 
 	case ActionAlert:
 		// Alert is handled separately by notification system

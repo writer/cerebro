@@ -5,7 +5,7 @@ Generated from the shared `App.AgentSDKTools()` registry and `internal/agentsdk`
 - Catalog API version: **cerebro.agent-sdk.contracts/v1alpha1**
 - Catalog kind: **AgentSDKCatalog**
 - MCP protocol version: **2025-06-18**
-- Tools: **25**
+- Tools: **26**
 - Resources: **5**
 - MCP methods + notifications: **7**
 
@@ -20,6 +20,7 @@ Generated from the shared `App.AgentSDKTools()` registry and `internal/agentsdk`
 | `cerebro_check` | `1.0.0` | `evaluate_policy` | `check` | `enforcement` | `direct_tool` | false | false | `POST /api/v1/agent-sdk/check` | `sdk.enforcement.run` |
 | `cerebro_claim` | `1.0.0` | `cerebro.write_claim` | `claim` | `writeback` | `direct_tool` | false | false | `POST /api/v1/agent-sdk/claims` | `sdk.worldmodel.write` |
 | `cerebro_context` | `1.0.0` | `insight_card` | `context` | `query` | `direct_tool` | false | false | `GET /api/v1/agent-sdk/context/{entity_id}` | `sdk.context.read` |
+| `cerebro_correlate_events` | `1.0.0` | `cerebro.correlate_events` | `correlate_events` | `query` | `direct_tool` | false | false | ` ` | `sdk.context.read` |
 | `cerebro_decide` | `1.0.0` | `cerebro.record_decision` | `decide` | `writeback` | `direct_tool` | false | false | `POST /api/v1/agent-sdk/decisions` | `sdk.worldmodel.write` |
 | `cerebro_entity_history` | `1.0.0` | `cerebro.entity_history` | `entity_history` | `query` | `direct_tool` | false | false | ` ` | `sdk.context.read` |
 | `cerebro_findings` | `1.0.0` | `cerebro.findings` | `findings` | `query` | `direct_tool` | false | false | ` ` | `sdk.context.read` |
@@ -194,6 +195,18 @@ Generated from the shared `App.AgentSDKTools()` registry and `internal/agentsdk`
   "sections": [
     "sections"
   ]
+}
+```
+
+### `cerebro_correlate_events`
+
+```json
+{
+  "entity_id": "service:payments",
+  "event_id": "event_id",
+  "include_anomalies": false,
+  "limit": 25,
+  "pattern_id": "pattern_id"
 }
 ```
 

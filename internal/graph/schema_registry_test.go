@@ -87,6 +87,8 @@ func TestSchemaRegistry_IntelligenceSpineBuiltins(t *testing.T) {
 		EdgeKindRefutes,
 		EdgeKindSupersedes,
 		EdgeKindContradicts,
+		EdgeKindTriggeredBy,
+		EdgeKindCausedBy,
 	}
 	for _, kind := range requiredEdgeKinds {
 		if !reg.IsEdgeKindRegistered(kind) {
@@ -132,9 +134,19 @@ func TestSchemaRegistry_IntelligenceSpineBuiltins(t *testing.T) {
 			t.Fatalf("expected incident required property %q, got %#v", property, incidentDef.RequiredProperties)
 		}
 	}
-	for _, relationship := range []EdgeKind{EdgeKindTargets, EdgeKindBasedOn} {
+	for _, relationship := range []EdgeKind{EdgeKindTargets, EdgeKindBasedOn, EdgeKindCausedBy} {
 		if !containsEdgeKind(incidentDef.Relationships, relationship) {
 			t.Fatalf("expected incident relationship %q, got %#v", relationship, incidentDef.Relationships)
+		}
+	}
+
+	deploymentDef, ok := defByKind[NodeKindDeploymentRun]
+	if !ok {
+		t.Fatal("expected deployment_run definition")
+	}
+	for _, relationship := range []EdgeKind{EdgeKindTargets, EdgeKindBasedOn, EdgeKindDependsOn, EdgeKindTriggeredBy} {
+		if !containsEdgeKind(deploymentDef.Relationships, relationship) {
+			t.Fatalf("expected deployment_run relationship %q, got %#v", relationship, deploymentDef.Relationships)
 		}
 	}
 

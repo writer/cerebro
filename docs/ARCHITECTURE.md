@@ -14,6 +14,7 @@ Graph-specific architecture references:
 - [Graph Report Extensibility Research](./GRAPH_REPORT_EXTENSIBILITY_RESEARCH.md)
 - [Graph Asset Deepening Research](./GRAPH_ASSET_DEEPENING_RESEARCH.md)
 - [Shared Action Engine Architecture](./ACTION_ENGINE_ARCHITECTURE.md)
+- [Runtime Response Execution Architecture](./RUNTIME_RESPONSE_EXECUTION_ARCHITECTURE.md)
 - [Connector Provisioning Architecture](./CONNECTOR_PROVISIONING_ARCHITECTURE.md)
 - [Workload Scan Architecture](./WORKLOAD_SCAN_ARCHITECTURE.md)
 - [Image Scan Architecture](./IMAGE_SCAN_ARCHITECTURE.md)
