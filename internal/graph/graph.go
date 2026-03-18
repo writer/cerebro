@@ -715,6 +715,14 @@ func (g *Graph) buildIndexLocked() {
 			if !g.activeEdgeLocked(edge) {
 				continue
 			}
+			source, ok := g.nodes[edge.Source]
+			if !ok || source == nil {
+				continue
+			}
+			target, ok := g.nodes[edge.Target]
+			if !ok || target == nil {
+				continue
+			}
 			if edge.IsCrossAccount() {
 				g.crossAccountEdge = append(g.crossAccountEdge, edge)
 			}

@@ -98,22 +98,7 @@ func RestoreFromSnapshot(snapshot *Snapshot) *Graph {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	for _, node := range snapshot.Nodes {
-		if node == nil || node.ID == "" {
-			continue
-		}
-		g.addNodeLocked(node)
-	}
-
-	for _, edge := range snapshot.Edges {
-		if edge == nil || edge.Source == "" || edge.Target == "" {
-			continue
-		}
-		g.addEdgeLocked(edge)
-	}
-
-	g.metadata = snapshot.Metadata
-
+	g.restoreSnapshotLocked(snapshot, false)
 	return g
 }
 
@@ -126,30 +111,118 @@ func GraphViewFromSnapshot(snapshot *Snapshot) *Graph {
 	g := New()
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	g.restoreSnapshotLocked(snapshot, true)
+	return g
+}
+
+func (g *Graph) restoreSnapshotLocked(snapshot *Snapshot, activeOnly bool) {
+	if g == nil || snapshot == nil {
+		return
+	}
+
 	for _, node := range snapshot.Nodes {
-		if node == nil || node.DeletedAt != nil {
-			continue
-		}
-		cloned := cloneNode(node)
-		cloned.DeletedAt = nil
-		g.addNodeLocked(cloned)
+		g.restoreSnapshotNodeLocked(node, activeOnly)
 	}
 	for _, edge := range snapshot.Edges {
-		if edge == nil || edge.DeletedAt != nil {
-			continue
-		}
-		if source, ok := g.nodes[edge.Source]; !ok || source == nil || source.DeletedAt != nil {
-			continue
-		}
-		if target, ok := g.nodes[edge.Target]; !ok || target == nil || target.DeletedAt != nil {
-			continue
-		}
-		cloned := cloneEdge(edge)
-		cloned.DeletedAt = nil
-		g.addEdgeLocked(cloned)
+		g.restoreSnapshotEdgeLocked(edge, activeOnly)
 	}
-	g.metadata = snapshot.Metadata
-	return g
+
+	g.buildIndexLocked()
+	g.metadata = cloneMetadata(snapshot.Metadata)
+}
+
+func (g *Graph) restoreSnapshotNodeLocked(node *Node, activeOnly bool) bool {
+	if g == nil || node == nil || node.ID == "" {
+		return false
+	}
+
+	restored := cloneNode(node)
+	if activeOnly {
+		if restored.DeletedAt != nil {
+			return false
+		}
+		restored.DeletedAt = nil
+	}
+
+	normalizeNodeTenantID(restored)
+	if !g.applyNodeSchemaValidationLocked(restored) {
+		return false
+	}
+	hydrateNodeTypedProperties(restored)
+
+	if existing := g.nodes[restored.ID]; existing != nil && existing.DeletedAt == nil {
+		g.activeNodeCount.Add(-1)
+	}
+	g.nodes[restored.ID] = restored
+	if restored.DeletedAt == nil {
+		g.activeNodeCount.Add(1)
+	}
+	return true
+}
+
+func (g *Graph) restoreSnapshotEdgeLocked(edge *Edge, activeOnly bool) bool {
+	if g == nil || edge == nil || edge.Source == "" || edge.Target == "" {
+		return false
+	}
+
+	restored := cloneEdge(edge)
+	if activeOnly {
+		if restored.DeletedAt != nil {
+			return false
+		}
+		source, ok := g.nodes[restored.Source]
+		if !ok || source == nil || source.DeletedAt != nil {
+			return false
+		}
+		target, ok := g.nodes[restored.Target]
+		if !ok || target == nil || target.DeletedAt != nil {
+			return false
+		}
+		restored.DeletedAt = nil
+	}
+
+	if !g.applyEdgeSchemaValidationLocked(restored) {
+		return false
+	}
+
+	if restored.ID != "" {
+		if existing := g.edgeByID[restored.ID]; existing != nil {
+			g.outEdges[existing.Source] = removeEdgePointerLocked(g.outEdges[existing.Source], existing)
+			if len(g.outEdges[existing.Source]) == 0 {
+				delete(g.outEdges, existing.Source)
+			}
+			g.inEdges[existing.Target] = removeEdgePointerLocked(g.inEdges[existing.Target], existing)
+			if len(g.inEdges[existing.Target]) == 0 {
+				delete(g.inEdges, existing.Target)
+			}
+			if g.activeRestoredEdgeLocked(existing) {
+				g.activeEdgeCount.Add(-1)
+			}
+		}
+		g.edgeByID[restored.ID] = restored
+	}
+
+	g.outEdges[restored.Source] = append(g.outEdges[restored.Source], restored)
+	g.inEdges[restored.Target] = append(g.inEdges[restored.Target], restored)
+	if g.activeRestoredEdgeLocked(restored) {
+		g.activeEdgeCount.Add(1)
+	}
+	return true
+}
+
+func (g *Graph) activeRestoredEdgeLocked(edge *Edge) bool {
+	if !g.activeEdgeLocked(edge) {
+		return false
+	}
+	source, ok := g.nodes[edge.Source]
+	if !ok || source == nil {
+		return false
+	}
+	target, ok := g.nodes[edge.Target]
+	if !ok || target == nil {
+		return false
+	}
+	return true
 }
 
 // SaveToFile saves a snapshot to a compressed file
