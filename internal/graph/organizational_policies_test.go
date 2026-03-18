@@ -1,6 +1,8 @@
 package graph
 
 import (
+	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -29,6 +31,9 @@ func TestWriteOrganizationalPolicyCreatesAssignments(t *testing.T) {
 
 	if result.PolicyID != "policy:acceptable-use-policy" {
 		t.Fatalf("policy id = %q, want policy:acceptable-use-policy", result.PolicyID)
+	}
+	if result.VersionHistoryEntries != 1 {
+		t.Fatalf("version history entries = %d, want 1", result.VersionHistoryEntries)
 	}
 
 	policy, ok := g.GetNode(result.PolicyID)
@@ -65,6 +70,20 @@ func TestWriteOrganizationalPolicyCreatesAssignments(t *testing.T) {
 		t.Fatalf("expected policy assignments to department and person, got %#v", g.GetOutEdges(result.PolicyID))
 	}
 
+	history, err := OrganizationalPolicyVersionHistory(g, result.PolicyID)
+	if err != nil {
+		t.Fatalf("OrganizationalPolicyVersionHistory returned error: %v", err)
+	}
+	if len(history) != 1 {
+		t.Fatalf("version history length = %d, want 1", len(history))
+	}
+	if history[0].PolicyVersion != "2026.03" {
+		t.Fatalf("history[0] policy version = %q, want 2026.03", history[0].PolicyVersion)
+	}
+	if len(history[0].ChangedFields) != 0 {
+		t.Fatalf("history[0] changed fields = %#v, want none", history[0].ChangedFields)
+	}
+
 	_, err = WriteOrganizationalPolicy(g, OrganizationalPolicyWriteRequest{
 		ID:                    result.PolicyID,
 		Title:                 "Acceptable Use Policy",
@@ -81,6 +100,204 @@ func TestWriteOrganizationalPolicyCreatesAssignments(t *testing.T) {
 		if edge != nil && edge.Kind == EdgeKindAssignedTo && edge.Target == "person:alice" {
 			t.Fatalf("expected stale direct assignment to be removed")
 		}
+	}
+}
+
+func TestWriteOrganizationalPolicyTracksVersionHistoryAndDiffs(t *testing.T) {
+	g := New()
+	now := time.Date(2026, 3, 18, 9, 0, 0, 0, time.UTC)
+
+	g.AddNode(&Node{ID: "person:owner", Kind: NodeKindPerson, Name: "Owner"})
+	g.AddNode(&Node{ID: "person:alice", Kind: NodeKindPerson, Name: "Alice"})
+	g.AddNode(&Node{ID: "person:bob", Kind: NodeKindPerson, Name: "Bob"})
+	g.AddNode(&Node{ID: "department:engineering", Kind: NodeKindDepartment, Name: "Engineering"})
+	g.AddNode(&Node{ID: "department:security", Kind: NodeKindDepartment, Name: "Security"})
+
+	created, err := WriteOrganizationalPolicy(g, OrganizationalPolicyWriteRequest{
+		Title:                 "Data Classification Policy",
+		Summary:               "Initial summary",
+		PolicyVersion:         "v1",
+		Content:               "employees must classify data before sharing",
+		OwnerID:               "person:owner",
+		ReviewCycleDays:       90,
+		FrameworkMappings:     []string{"hipaa:164.312", "pci:3.2"},
+		RequiredDepartmentIDs: []string{"department:engineering"},
+		RequiredPersonIDs:     []string{"person:alice"},
+		ObservedAt:            now,
+	})
+	if err != nil {
+		t.Fatalf("WriteOrganizationalPolicy(create) returned error: %v", err)
+	}
+	if created.VersionHistoryEntries != 1 {
+		t.Fatalf("create version history entries = %d, want 1", created.VersionHistoryEntries)
+	}
+
+	updated, err := WriteOrganizationalPolicy(g, OrganizationalPolicyWriteRequest{
+		ID:                    created.PolicyID,
+		Title:                 "Data Classification Policy",
+		Summary:               "Updated summary",
+		PolicyVersion:         "v2",
+		Content:               "employees must classify and label data before sharing",
+		OwnerID:               "person:owner",
+		ReviewCycleDays:       180,
+		FrameworkMappings:     []string{"hipaa:164.312", "soc2:cc6.1"},
+		RequiredDepartmentIDs: []string{"department:security"},
+		RequiredPersonIDs:     []string{"person:bob"},
+		ObservedAt:            now.Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("WriteOrganizationalPolicy(update) returned error: %v", err)
+	}
+
+	wantChanged := []string{
+		"content_digest",
+		"framework_mappings",
+		"policy_version",
+		"required_department_ids",
+		"required_person_ids",
+		"review_cycle_days",
+		"summary",
+	}
+	if !slices.Equal(updated.ChangedFields, wantChanged) {
+		t.Fatalf("changed fields = %#v, want %#v", updated.ChangedFields, wantChanged)
+	}
+	if updated.VersionHistoryEntries != 2 {
+		t.Fatalf("update version history entries = %d, want 2", updated.VersionHistoryEntries)
+	}
+
+	history, err := OrganizationalPolicyVersionHistory(g, created.PolicyID)
+	if err != nil {
+		t.Fatalf("OrganizationalPolicyVersionHistory returned error: %v", err)
+	}
+	if len(history) != 2 {
+		t.Fatalf("version history length = %d, want 2", len(history))
+	}
+	if history[0].PolicyVersion != "v1" || history[1].PolicyVersion != "v2" {
+		t.Fatalf("history versions = [%q %q], want [v1 v2]", history[0].PolicyVersion, history[1].PolicyVersion)
+	}
+	if !strings.HasPrefix(history[0].ContentDigest, "sha256:") || !strings.HasPrefix(history[1].ContentDigest, "sha256:") {
+		t.Fatalf("history content digests = [%q %q], want sha256-prefixed digests", history[0].ContentDigest, history[1].ContentDigest)
+	}
+	if !slices.Equal(history[1].ChangedFields, wantChanged) {
+		t.Fatalf("history[1] changed fields = %#v, want %#v", history[1].ChangedFields, wantChanged)
+	}
+	if !slices.Equal(history[0].RequiredDepartmentIDs, []string{"department:engineering"}) {
+		t.Fatalf("history[0] required departments = %#v, want [department:engineering]", history[0].RequiredDepartmentIDs)
+	}
+	if !slices.Equal(history[1].RequiredPersonIDs, []string{"person:bob"}) {
+		t.Fatalf("history[1] required people = %#v, want [person:bob]", history[1].RequiredPersonIDs)
+	}
+}
+
+func TestWriteOrganizationalPolicyDoesNotAppendHistoryForNoopRewrite(t *testing.T) {
+	g := New()
+	now := time.Date(2026, 3, 18, 10, 0, 0, 0, time.UTC)
+
+	g.AddNode(&Node{ID: "person:owner", Kind: NodeKindPerson, Name: "Owner"})
+	g.AddNode(&Node{ID: "person:alice", Kind: NodeKindPerson, Name: "Alice"})
+
+	created, err := WriteOrganizationalPolicy(g, OrganizationalPolicyWriteRequest{
+		Title:             "Acceptable Use Policy",
+		Summary:           "Baseline",
+		PolicyVersion:     "v1",
+		ContentDigest:     "sha256:baseline",
+		OwnerID:           "person:owner",
+		RequiredPersonIDs: []string{"person:alice"},
+		ObservedAt:        now,
+	})
+	if err != nil {
+		t.Fatalf("WriteOrganizationalPolicy(create) returned error: %v", err)
+	}
+
+	rewritten, err := WriteOrganizationalPolicy(g, OrganizationalPolicyWriteRequest{
+		ID:                created.PolicyID,
+		Title:             "Acceptable Use Policy",
+		Summary:           "Baseline",
+		PolicyVersion:     "v1",
+		ContentDigest:     "sha256:baseline",
+		OwnerID:           "person:owner",
+		RequiredPersonIDs: []string{"person:alice"},
+		ObservedAt:        now.Add(2 * time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("WriteOrganizationalPolicy(rewrite) returned error: %v", err)
+	}
+	if len(rewritten.ChangedFields) != 0 {
+		t.Fatalf("changed fields = %#v, want none", rewritten.ChangedFields)
+	}
+	if rewritten.VersionHistoryEntries != 1 {
+		t.Fatalf("version history entries = %d, want 1", rewritten.VersionHistoryEntries)
+	}
+
+	history, err := OrganizationalPolicyVersionHistory(g, created.PolicyID)
+	if err != nil {
+		t.Fatalf("OrganizationalPolicyVersionHistory returned error: %v", err)
+	}
+	if len(history) != 1 {
+		t.Fatalf("version history length = %d, want 1", len(history))
+	}
+}
+
+func TestWriteOrganizationalPolicyBackfillsLegacyVersionHistory(t *testing.T) {
+	g := New()
+	now := time.Date(2026, 3, 18, 11, 0, 0, 0, time.UTC)
+
+	g.AddNode(&Node{ID: "person:owner", Kind: NodeKindPerson, Name: "Owner"})
+	g.AddNode(&Node{ID: "person:alice", Kind: NodeKindPerson, Name: "Alice"})
+	g.AddNode(&Node{ID: "person:bob", Kind: NodeKindPerson, Name: "Bob"})
+
+	created, err := WriteOrganizationalPolicy(g, OrganizationalPolicyWriteRequest{
+		Title:             "Access Control Policy",
+		Summary:           "Original",
+		PolicyVersion:     "v1",
+		ContentDigest:     "sha256:legacy-v1",
+		OwnerID:           "person:owner",
+		RequiredPersonIDs: []string{"person:alice"},
+		ObservedAt:        now,
+	})
+	if err != nil {
+		t.Fatalf("WriteOrganizationalPolicy(create) returned error: %v", err)
+	}
+
+	policy, ok := g.GetNode(created.PolicyID)
+	if !ok || policy == nil {
+		t.Fatalf("policy node not found")
+	}
+	delete(policy.Properties, "version_history")
+
+	updated, err := WriteOrganizationalPolicy(g, OrganizationalPolicyWriteRequest{
+		ID:                created.PolicyID,
+		Title:             "Access Control Policy",
+		Summary:           "Original",
+		PolicyVersion:     "v2",
+		ContentDigest:     "sha256:legacy-v2",
+		OwnerID:           "person:owner",
+		RequiredPersonIDs: []string{"person:bob"},
+		ObservedAt:        now.Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("WriteOrganizationalPolicy(update) returned error: %v", err)
+	}
+	wantChanged := []string{"content_digest", "policy_version", "required_person_ids"}
+	if !slices.Equal(updated.ChangedFields, wantChanged) {
+		t.Fatalf("changed fields = %#v, want %#v", updated.ChangedFields, wantChanged)
+	}
+
+	history, err := OrganizationalPolicyVersionHistory(g, created.PolicyID)
+	if err != nil {
+		t.Fatalf("OrganizationalPolicyVersionHistory returned error: %v", err)
+	}
+	if len(history) != 2 {
+		t.Fatalf("version history length = %d, want 2", len(history))
+	}
+	if history[0].PolicyVersion != "v1" || history[1].PolicyVersion != "v2" {
+		t.Fatalf("history versions = [%q %q], want [v1 v2]", history[0].PolicyVersion, history[1].PolicyVersion)
+	}
+	if !slices.Equal(history[0].RequiredPersonIDs, []string{"person:alice"}) {
+		t.Fatalf("legacy history required people = %#v, want [person:alice]", history[0].RequiredPersonIDs)
+	}
+	if !slices.Equal(history[1].ChangedFields, wantChanged) {
+		t.Fatalf("history[1] changed fields = %#v, want %#v", history[1].ChangedFields, wantChanged)
 	}
 }
 

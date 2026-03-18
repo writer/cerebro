@@ -161,6 +161,18 @@ Status: executed end-to-end via PR workflow
 - [x] Add graph helper APIs to write policies, scope required acknowledgments to departments and people, and record person acknowledgments against the active policy version.
 - [x] Add rollup coverage that computes department-level acknowledgment gaps from existing membership edges and validates re-acknowledgment on policy version updates.
 
+## Deep Review Cycle 199 - Organizational Policy Version History (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#256` still lacked version-history and diff tracking on policy writes, so the graph could only answer the latest policy state and could not support audit-friendly change review.
+- [x] Gap: a no-op policy rewrite would have been indistinguishable from a meaningful policy revision, which would create noisy history once API-level management arrives.
+- [x] Gap: policies created before explicit history tracking needed a compatibility path so the first tracked update preserved the previous baseline instead of starting history at the new version.
+
+### Execution plan
+- [x] Extend organizational policy writes to derive stable content digests, track changed fields, and persist structured version-history entries on the policy node.
+- [x] Add a reusable graph helper to read back policy version history with a synthesized baseline for pre-history nodes.
+- [x] Add focused regressions for version diffs, no-op rewrites, and legacy-policy history backfill, then rerun graph and ontology validation.
+
 ## Deep Review Cycle 198 - CEL Policy Migration Parity (2026-03-17)
 
 ### Review findings

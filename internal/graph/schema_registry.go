@@ -1517,6 +1517,7 @@ var builtInNodeKinds = []NodeKindDefinition{
 			"owner_id":           "string",
 			"review_cycle_days":  "number",
 			"framework_mappings": "array",
+			"version_history":    "array",
 			"observed_at":        "string",
 			"valid_from":         "string",
 			"valid_to":           "string",
