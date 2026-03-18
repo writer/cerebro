@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/writer/cerebro/internal/graph"
+	risk "github.com/writer/cerebro/internal/graph/risk"
 	"github.com/writer/cerebro/internal/metrics"
 )
 
@@ -57,7 +57,7 @@ func (s *Server) recordGraphOutcome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	recorded, err := engine.RecordOutcome(graph.OutcomeEvent{
+	recorded, err := engine.RecordOutcome(risk.OutcomeEvent{
 		ID:         req.ID,
 		EntityID:   req.EntityID,
 		Outcome:    req.Outcome,

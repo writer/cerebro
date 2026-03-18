@@ -364,6 +364,137 @@ func TestMaterializeRunsIntoGraphAddsIaCFindingObservations(t *testing.T) {
 	}
 }
 
+func TestMaterializeRunsIntoGraphAddsMalwareObservations(t *testing.T) {
+	now := time.Date(2026, 3, 12, 18, 0, 0, 0, time.UTC)
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:       "arn:aws:ec2:us-east-1:123456789012:instance/i-abc123",
+		Kind:     graph.NodeKindInstance,
+		Name:     "i-abc123",
+		Provider: "aws",
+		Account:  "123456789012",
+		Region:   "us-east-1",
+	})
+	g.BuildIndex()
+
+	run := buildGraphMaterializationTestRun("workload_scan:run-malware", now.Add(-2*time.Hour), 0)
+	run.Summary.Findings = 1
+	run.Volumes[0].Analysis.FindingCount = 1
+	run.Volumes[0].Analysis.Catalog.Malware = []filesystemanalyzer.MalwareFinding{{
+		ID:          "malware:/bin/payload.sh",
+		Path:        "bin/payload.sh",
+		Hash:        "abc123",
+		MalwareType: "signature_match",
+		MalwareName: "Eicar-Test-Signature",
+		Severity:    "critical",
+		Confidence:  90,
+		Engine:      "clamav_binary",
+	}}
+
+	summary := MaterializeRunsIntoGraph(g, []RunRecord{run}, now)
+	if summary.ObservationNodesUpserted != 1 {
+		t.Fatalf("expected one malware observation node, got %#v", summary)
+	}
+	if summary.ScanObservationEdges != 1 {
+		t.Fatalf("expected one malware observation edge, got %#v", summary)
+	}
+
+	scanNode, ok := g.GetNode(run.ID)
+	if !ok {
+		t.Fatalf("expected workload scan node %q", run.ID)
+	}
+	if scanNode.Risk != graph.RiskCritical {
+		t.Fatalf("expected malware to raise scan risk to critical, got %#v", scanNode)
+	}
+	if got := graphValueInt(scanNode.Properties["malware_count"]); got != 1 {
+		t.Fatalf("expected malware_count=1, got %#v", scanNode.Properties)
+	}
+
+	observationID := malwareObservationNodeID(run.ID, run.Volumes[0].Analysis.Catalog.Malware[0])
+	observationNode, ok := g.GetNode(observationID)
+	if !ok {
+		t.Fatalf("expected malware observation node %q", observationID)
+	}
+	if got := graphValueString(observationNode.Properties["observation_type"]); got != "workload_malware_finding" {
+		t.Fatalf("expected malware observation type, got %#v", observationNode.Properties)
+	}
+	if got := graphValueString(observationNode.Properties["malware_name"]); got != "Eicar-Test-Signature" {
+		t.Fatalf("expected malware name property, got %#v", observationNode.Properties)
+	}
+	if edge := findOutEdge(g, observationID, graph.EdgeKindTargets, run.ID); edge == nil {
+		t.Fatalf("expected malware observation to target scan node, got %#v", g.GetOutEdges(observationID))
+	}
+}
+
+func TestMaterializeRunsIntoGraphCountsMalwareFindingsAcrossVolumes(t *testing.T) {
+	now := time.Date(2026, 3, 12, 18, 0, 0, 0, time.UTC)
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:       "arn:aws:ec2:us-east-1:123456789012:instance/i-abc123",
+		Kind:     graph.NodeKindInstance,
+		Name:     "i-abc123",
+		Provider: "aws",
+		Account:  "123456789012",
+		Region:   "us-east-1",
+	})
+	g.BuildIndex()
+
+	run := buildGraphMaterializationTestRun("workload_scan:run-malware-duplicate", now.Add(-2*time.Hour), 0)
+	run.Summary.VolumeCount = 2
+	run.Summary.SucceededVolumes = 2
+	run.Summary.Findings = 2
+	run.Volumes[0].Analysis.FindingCount = 1
+	run.Volumes[0].Analysis.Catalog.Malware = []filesystemanalyzer.MalwareFinding{{
+		ID:          "malware:/bin/payload.sh",
+		Path:        "bin/payload.sh",
+		Hash:        "abc123",
+		MalwareType: "signature_match",
+		MalwareName: "Eicar-Test-Signature",
+		Severity:    "critical",
+		Confidence:  90,
+		Engine:      "clamav_binary",
+	}}
+
+	startedAt := now.Add(-2*time.Hour - 15*time.Minute)
+	completedAt := now.Add(-2 * time.Hour)
+	run.Volumes = append(run.Volumes, VolumeScanRecord{
+		Source:      SourceVolume{ID: "vol-2"},
+		Status:      RunStatusSucceeded,
+		Stage:       RunStageCompleted,
+		StartedAt:   startedAt,
+		UpdatedAt:   completedAt,
+		CompletedAt: &completedAt,
+		Analysis: &AnalysisReport{
+			FindingCount: 1,
+			Catalog: &filesystemanalyzer.Report{
+				Malware: []filesystemanalyzer.MalwareFinding{{
+					ID:          "malware:/bin/payload.sh",
+					Path:        "bin/payload.sh",
+					Hash:        "abc123",
+					MalwareType: "signature_match",
+					MalwareName: "Eicar-Test-Signature",
+					Severity:    "critical",
+					Confidence:  90,
+					Engine:      "clamav_binary",
+				}},
+			},
+		},
+	})
+
+	summary := MaterializeRunsIntoGraph(g, []RunRecord{run}, now)
+	if summary.ObservationNodesUpserted != 1 {
+		t.Fatalf("expected deduped malware observation node, got %#v", summary)
+	}
+
+	scanNode, ok := g.GetNode(run.ID)
+	if !ok {
+		t.Fatalf("expected workload scan node %q", run.ID)
+	}
+	if got := graphValueInt(scanNode.Properties["malware_count"]); got != 2 {
+		t.Fatalf("expected malware_count=2 across volumes, got %#v", scanNode.Properties)
+	}
+}
+
 func TestMaterializeRunsIntoGraphAppliesLegacyMisconfigurationRiskWithoutObservation(t *testing.T) {
 	now := time.Date(2026, 3, 12, 18, 0, 0, 0, time.UTC)
 	g := graph.New()

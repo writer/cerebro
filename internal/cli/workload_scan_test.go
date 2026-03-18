@@ -1,6 +1,10 @@
 package cli
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/writer/cerebro/internal/app"
+)
 
 type workloadScanAWSFlagState struct {
 	targetAccountID         string
@@ -15,6 +19,9 @@ type workloadScanAWSFlagState struct {
 	scannerRoleExternalID   string
 	shareKMSKeyID           string
 	scannerSnapshotKMSKeyID string
+	trivyBinary             string
+	gitleaksBinary          string
+	clamavBinary            string
 }
 
 func snapshotWorkloadScanAWSFlagState() workloadScanAWSFlagState {
@@ -31,6 +38,9 @@ func snapshotWorkloadScanAWSFlagState() workloadScanAWSFlagState {
 		scannerRoleExternalID:   workloadScanAWSScannerRoleExternalID,
 		shareKMSKeyID:           workloadScanAWSShareKMSKeyID,
 		scannerSnapshotKMSKeyID: workloadScanAWSScannerSnapshotKMSKeyID,
+		trivyBinary:             workloadScanTrivyBinary,
+		gitleaksBinary:          workloadScanGitleaksBinary,
+		clamavBinary:            workloadScanClamAVBinary,
 	}
 }
 
@@ -47,6 +57,9 @@ func restoreWorkloadScanAWSFlagState(state workloadScanAWSFlagState) {
 	workloadScanAWSScannerRoleExternalID = state.scannerRoleExternalID
 	workloadScanAWSShareKMSKeyID = state.shareKMSKeyID
 	workloadScanAWSScannerSnapshotKMSKeyID = state.scannerSnapshotKMSKeyID
+	workloadScanTrivyBinary = state.trivyBinary
+	workloadScanGitleaksBinary = state.gitleaksBinary
+	workloadScanClamAVBinary = state.clamavBinary
 }
 
 func TestValidateWorkloadScanAWSFlagsRequiresAccountIDForScannerAccount(t *testing.T) {
@@ -117,9 +130,82 @@ func TestWorkloadScanAWSFlagsRegistered(t *testing.T) {
 		"scanner-role-arn",
 		"share-kms-key-id",
 		"scanner-snapshot-kms-key-id",
+		"clamav-binary",
 	} {
 		if flag := workloadScanCmd.PersistentFlags().Lookup(name); flag == nil {
 			t.Fatalf("expected flag %s to be registered", name)
 		}
+	}
+}
+
+func TestResolveWorkloadScanTrivyBinaryFallsBackToDefaultOnWhitespaceConfig(t *testing.T) {
+	state := snapshotWorkloadScanAWSFlagState()
+	t.Cleanup(func() { restoreWorkloadScanAWSFlagState(state) })
+
+	workloadScanTrivyBinary = ""
+
+	got := resolveWorkloadScanTrivyBinary(&app.Config{WorkloadScanTrivyBinary: "   "})
+	if got != "trivy" {
+		t.Fatalf("expected default trivy binary, got %q", got)
+	}
+}
+
+func TestResolveWorkloadScanTrivyBinaryPrefersCLIOverride(t *testing.T) {
+	state := snapshotWorkloadScanAWSFlagState()
+	t.Cleanup(func() { restoreWorkloadScanAWSFlagState(state) })
+
+	workloadScanTrivyBinary = "/usr/local/bin/trivy"
+
+	got := resolveWorkloadScanTrivyBinary(&app.Config{WorkloadScanTrivyBinary: "/opt/trivy"})
+	if got != "/usr/local/bin/trivy" {
+		t.Fatalf("expected CLI override to win, got %q", got)
+	}
+}
+
+func TestResolveWorkloadScanGitleaksBinaryFallsBackToEmptyOnWhitespaceConfig(t *testing.T) {
+	state := snapshotWorkloadScanAWSFlagState()
+	t.Cleanup(func() { restoreWorkloadScanAWSFlagState(state) })
+
+	workloadScanGitleaksBinary = ""
+
+	got := resolveWorkloadScanGitleaksBinary(&app.Config{WorkloadScanGitleaksBinary: "   "})
+	if got != "" {
+		t.Fatalf("expected empty default gitleaks binary, got %q", got)
+	}
+}
+
+func TestResolveWorkloadScanGitleaksBinaryPrefersCLIOverride(t *testing.T) {
+	state := snapshotWorkloadScanAWSFlagState()
+	t.Cleanup(func() { restoreWorkloadScanAWSFlagState(state) })
+
+	workloadScanGitleaksBinary = "/usr/local/bin/gitleaks"
+
+	got := resolveWorkloadScanGitleaksBinary(&app.Config{WorkloadScanGitleaksBinary: "/opt/gitleaks"})
+	if got != "/usr/local/bin/gitleaks" {
+		t.Fatalf("expected CLI override to win, got %q", got)
+	}
+}
+
+func TestResolveWorkloadScanClamAVBinaryFallsBackToEmptyOnWhitespaceConfig(t *testing.T) {
+	state := snapshotWorkloadScanAWSFlagState()
+	t.Cleanup(func() { restoreWorkloadScanAWSFlagState(state) })
+
+	workloadScanClamAVBinary = ""
+
+	got := resolveWorkloadScanClamAVBinary(&app.Config{WorkloadScanClamAVBinary: "   "})
+	if got != "" {
+		t.Fatalf("expected empty default clamav binary, got %q", got)
+	}
+}
+
+func TestResolveWorkloadScanClamAVBinaryPrefersCLIOverride(t *testing.T) {
+	state := snapshotWorkloadScanAWSFlagState()
+	t.Cleanup(func() { restoreWorkloadScanAWSFlagState(state) })
+
+	workloadScanClamAVBinary = "/usr/local/bin/clamscan"
+
+	got := resolveWorkloadScanClamAVBinary(&app.Config{WorkloadScanClamAVBinary: "/opt/clamscan"})
+	if got != "/usr/local/bin/clamscan" {
+		t.Fatalf("expected CLI override to win, got %q", got)
 	}
 }

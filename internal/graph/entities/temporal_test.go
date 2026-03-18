@@ -1,16 +1,18 @@
-package graph
+package entities
 
 import (
 	"testing"
 	"time"
+
+	graph "github.com/writer/cerebro/internal/graph"
 )
 
 func TestGetEntityRecordAtTimeAndDiff(t *testing.T) {
 	base := time.Date(2026, 3, 10, 9, 0, 0, 0, time.UTC)
-	g := New()
-	g.AddNode(&Node{
+	g := graph.New()
+	g.AddNode(&graph.Node{
 		ID:       "service:payments",
-		Kind:     NodeKindService,
+		Kind:     graph.NodeKindService,
 		Name:     "Payments",
 		Provider: "aws",
 		Properties: map[string]any{
@@ -26,12 +28,12 @@ func TestGetEntityRecordAtTimeAndDiff(t *testing.T) {
 	if !ok || node == nil {
 		t.Fatal("expected seeded node")
 	}
-	node.PropertyHistory = map[string][]PropertySnapshot{
-		"status": []PropertySnapshot{
+	node.PropertyHistory = map[string][]graph.PropertySnapshot{
+		"status": {
 			{Timestamp: base, Value: "healthy"},
 			{Timestamp: base.Add(2 * time.Hour), Value: "degraded"},
 		},
-		"owner": []PropertySnapshot{
+		"owner": {
 			{Timestamp: base.Add(2 * time.Hour), Value: "team-payments"},
 		},
 	}
@@ -84,10 +86,10 @@ func TestGetEntityRecordAtTimeAndDiff(t *testing.T) {
 func TestGetEntityRecordAtTimeHonorsTransactionTo(t *testing.T) {
 	base := time.Date(2026, 3, 10, 9, 0, 0, 0, time.UTC)
 	transactionTo := base.Add(2 * time.Hour)
-	g := New()
-	g.AddNode(&Node{
+	g := graph.New()
+	g.AddNode(&graph.Node{
 		ID:        "service:ephemeral",
-		Kind:      NodeKindService,
+		Kind:      graph.NodeKindService,
 		Name:      "Ephemeral",
 		Provider:  "aws",
 		CreatedAt: base,
@@ -113,10 +115,10 @@ func TestGetEntityRecordAtTimeHonorsTransactionTo(t *testing.T) {
 func TestGetEntityRecordAtTimeUsesRecordedAtHistoryAndTombstones(t *testing.T) {
 	base := time.Date(2026, 3, 10, 9, 0, 0, 0, time.UTC)
 	correctionAt := base.Add(2 * time.Hour)
-	g := New()
-	g.AddNode(&Node{
+	g := graph.New()
+	g.AddNode(&graph.Node{
 		ID:        "service:checkout",
-		Kind:      NodeKindService,
+		Kind:      graph.NodeKindService,
 		Name:      "Checkout",
 		Provider:  "aws",
 		CreatedAt: base,
@@ -130,9 +132,9 @@ func TestGetEntityRecordAtTimeUsesRecordedAtHistoryAndTombstones(t *testing.T) {
 			"transaction_from": base.Format(time.RFC3339),
 		},
 	})
-	g.AddNode(&Node{
+	g.AddNode(&graph.Node{
 		ID:        "service:checkout",
-		Kind:      NodeKindService,
+		Kind:      graph.NodeKindService,
 		Name:      "Checkout",
 		Provider:  "aws",
 		CreatedAt: base,
@@ -181,10 +183,10 @@ func TestGetEntityRecordAtTimeUsesRecordedAtHistoryAndTombstones(t *testing.T) {
 func TestGetEntityTimeDiffAcrossDeletion(t *testing.T) {
 	base := time.Date(2026, 3, 10, 9, 0, 0, 0, time.UTC)
 	deletedAt := base.Add(2 * time.Hour)
-	g := New()
-	g.AddNode(&Node{
+	g := graph.New()
+	g.AddNode(&graph.Node{
 		ID:       "service:legacy",
-		Kind:     NodeKindService,
+		Kind:     graph.NodeKindService,
 		Name:     "Legacy",
 		Provider: "aws",
 		Properties: map[string]any{

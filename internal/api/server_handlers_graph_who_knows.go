@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/writer/cerebro/internal/graph"
+	"github.com/writer/cerebro/internal/graph/knowledge"
 )
 
 func (s *Server) whoKnows(w http.ResponseWriter, r *http.Request) {
@@ -14,7 +14,7 @@ func (s *Server) whoKnows(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := graph.KnowledgeQuery{
+	query := knowledge.KnowledgeQuery{
 		Topic:         strings.TrimSpace(r.URL.Query().Get("topic")),
 		Customer:      strings.TrimSpace(r.URL.Query().Get("customer")),
 		System:        strings.TrimSpace(r.URL.Query().Get("system")),
@@ -32,7 +32,7 @@ func (s *Server) whoKnows(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result := graph.WhoKnows(s.app.SecurityGraph, query)
+	result := knowledge.WhoKnows(s.app.SecurityGraph, query)
 	s.json(w, http.StatusOK, result)
 }
 

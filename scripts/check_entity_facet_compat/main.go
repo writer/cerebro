@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/writer/cerebro/internal/graph"
+	entities "github.com/writer/cerebro/internal/graph/entities"
 )
 
 const contractsPath = "docs/GRAPH_ENTITY_FACETS.json"
@@ -23,7 +23,7 @@ func main() {
 	requireBaseline := flag.Bool("require-baseline", false, "fail when no baseline entity facet catalog can be loaded")
 	flag.Parse()
 
-	currentCatalog := graph.BuildEntityFacetContractCatalog(time.Time{})
+	currentCatalog := entities.BuildEntityFacetContractCatalog(time.Time{})
 	baselineCatalog, baselineRef, err := loadBaselineCatalog(strings.TrimSpace(*baseRefFlag))
 	if err != nil {
 		if *requireBaseline {
@@ -32,7 +32,7 @@ func main() {
 		fmt.Printf("entity facet compatibility check skipped: %v\n", err)
 		return
 	}
-	report := graph.CompareEntityFacetContractCatalogs(baselineCatalog, currentCatalog, time.Now().UTC())
+	report := entities.CompareEntityFacetContractCatalogs(baselineCatalog, currentCatalog, time.Now().UTC())
 	fmt.Printf("baseline_ref=%s baseline_facets=%d current_facets=%d added=%d removed=%d breaking=%d violations=%d diffs=%d\n",
 		baselineRef,
 		report.BaselineFacets,
@@ -72,7 +72,7 @@ func main() {
 	fmt.Println("entity facet compatibility check passed")
 }
 
-func loadBaselineCatalog(baseRef string) (graph.EntityFacetContractCatalog, string, error) {
+func loadBaselineCatalog(baseRef string) (entities.EntityFacetContractCatalog, string, error) {
 	candidates := make([]string, 0, 4)
 	if baseRef != "" {
 		candidates = append(candidates, baseRef)
@@ -92,16 +92,16 @@ func loadBaselineCatalog(baseRef string) (graph.EntityFacetContractCatalog, stri
 		if err != nil {
 			continue
 		}
-		var catalog graph.EntityFacetContractCatalog
+		var catalog entities.EntityFacetContractCatalog
 		if err := json.Unmarshal(payload, &catalog); err != nil {
 			continue
 		}
 		return catalog, candidate, nil
 	}
 	if _, err := os.Stat(contractsPath); err == nil {
-		return graph.EntityFacetContractCatalog{}, "bootstrap:none", nil
+		return entities.EntityFacetContractCatalog{}, "bootstrap:none", nil
 	}
-	return graph.EntityFacetContractCatalog{}, "", fmt.Errorf("no readable baseline entity facet catalog found for refs %v", candidates)
+	return entities.EntityFacetContractCatalog{}, "", fmt.Errorf("no readable baseline entity facet catalog found for refs %v", candidates)
 }
 
 func gitShowFile(ref, filePath string) ([]byte, error) {
