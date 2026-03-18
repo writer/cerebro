@@ -1,9 +1,21 @@
 # Cerebro Intelligence Layer Execution TODO
 
-Last updated: 2026-03-17 (America/Los_Angeles)
+Last updated: 2026-03-18 (America/Los_Angeles)
 Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
+
+## Deep Review Cycle 206 - Organizational Policy Template Catalog (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#256` still had no shipped library of starter organizational policies, so teams could model acknowledgments and versioning only after hand-authoring every common policy from scratch.
+- [x] Gap: there was no graph-layer helper to filter templates by framework or turn a template into a concrete `OrganizationalPolicyWriteRequest`, which would force the future API layer to duplicate policy defaults and mapping logic.
+- [x] Gap: template content, review cadence, and framework mappings needed deterministic defaults so follow-on policy management slices could reuse them without inventing per-handler copies.
+
+### Execution plan
+- [x] Add a graph-layer organizational policy template catalog covering the common policies listed in issue `#256`.
+- [x] Add helpers to list templates, filter them by framework, and build concrete policy write requests from a selected template.
+- [x] Add focused graph tests for catalog coverage, framework filtering, write-request defaults, overrides, and invalid input handling.
 
 ## Deep Review Cycle 205 - Graph Store Compliance Evaluation Paths (2026-03-18)
 
