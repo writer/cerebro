@@ -41,6 +41,16 @@ func TestConsumerConfigWithDefaultsPreservesZeroDropHealthThreshold(t *testing.T
 	}
 }
 
+func TestConsumerConfigWithDefaultsSetsDedupDefaults(t *testing.T) {
+	cfg := (ConsumerConfig{DedupEnabled: true}).withDefaults()
+	if cfg.DedupTTL <= 0 {
+		t.Fatalf("expected positive dedupe ttl, got %s", cfg.DedupTTL)
+	}
+	if cfg.DedupMaxRecords <= 0 {
+		t.Fatalf("expected positive dedupe max records, got %d", cfg.DedupMaxRecords)
+	}
+}
+
 func TestConsumerConfigValidate(t *testing.T) {
 	valid := (ConsumerConfig{
 		URLs:           []string{"nats://127.0.0.1:4222"},
@@ -48,6 +58,7 @@ func TestConsumerConfigValidate(t *testing.T) {
 		Subject:        "ensemble.tap.>",
 		Durable:        "cerebro_graph_builder",
 		DeadLetterPath: t.TempDir() + "/consumer.dlq.jsonl",
+		DedupStateFile: t.TempDir() + "/executions.db",
 		BatchSize:      10,
 		AckWait:        5,
 		FetchTimeout:   5,
@@ -277,6 +288,247 @@ func TestConsumerStartBatchInProgressHeartbeatSkipsDeactivatedEntries(t *testing
 	}
 	if firstCount.Load() != firstBefore {
 		t.Fatalf("expected deactivated batch heartbeat to stop extending first message, got before=%d after=%d", firstBefore, firstCount.Load())
+	}
+}
+
+func TestConsumerHandleMessageSkipsAlreadyProcessedCloudEvent(t *testing.T) {
+	cfg := (ConsumerConfig{
+		Stream:         "ENSEMBLE_TAP",
+		Durable:        "cerebro_graph_builder",
+		DeadLetterPath: t.TempDir() + "/consumer.dlq.jsonl",
+		DedupStateFile: t.TempDir() + "/executions.db",
+	}).withDefaults()
+	deduper, err := newConsumerProcessedEventDeduper(cfg.DedupStateFile, cfg.Stream, cfg.Durable, cfg.DedupTTL, cfg.DedupMaxRecords)
+	if err != nil {
+		t.Fatalf("new deduper: %v", err)
+	}
+	defer func() { _ = deduper.Close() }()
+
+	consumer := &Consumer{
+		config:  cfg,
+		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+		dlq:     &consumerDeadLetterSink{},
+		deduper: deduper,
+	}
+
+	evt := CloudEvent{
+		SpecVersion: cloudEventSpecVersion,
+		ID:          "evt-dedup-1",
+		Source:      "urn:cerebro:test",
+		Type:        "ensemble.tap.test",
+		Time:        time.Now().UTC(),
+		DataSchema:  "urn:cerebro:events:test",
+		TenantID:    "tenant-a",
+		Data:        map[string]any{"id": "1"},
+	}
+	payload, err := json.Marshal(evt)
+	if err != nil {
+		t.Fatalf("marshal event: %v", err)
+	}
+
+	var handlerCalls int
+	consumer.handler = func(context.Context, CloudEvent) error {
+		handlerCalls++
+		return nil
+	}
+	var ackCalls int
+	ack := func() error {
+		ackCalls++
+		return nil
+	}
+
+	first := consumer.handleMessage(context.Background(), "ensemble.tap.test", payload, ack, func() error { return nil }, func() error { return nil })
+	if !first.Processed {
+		t.Fatalf("expected first event to be processed, got %+v", first)
+	}
+	if handlerCalls != 1 {
+		t.Fatalf("expected handler call count 1, got %d", handlerCalls)
+	}
+
+	before := counterValue(t, metrics.NATSConsumerDeduplicatedTotal.WithLabelValues(cfg.Stream, cfg.Durable))
+	second := consumer.handleMessage(context.Background(), "ensemble.tap.test", payload, ack, func() error { return nil }, func() error { return nil })
+	if second.Processed {
+		t.Fatalf("expected duplicate event to be skipped, got %+v", second)
+	}
+	after := counterValue(t, metrics.NATSConsumerDeduplicatedTotal.WithLabelValues(cfg.Stream, cfg.Durable))
+	if after != before+1 {
+		t.Fatalf("expected deduplicated counter to increment from %v to %v", before, after)
+	}
+	if handlerCalls != 1 {
+		t.Fatalf("expected duplicate event to avoid handler, got %d calls", handlerCalls)
+	}
+	if ackCalls != 2 {
+		t.Fatalf("expected both events to ack, got %d", ackCalls)
+	}
+}
+
+func TestConsumerHandleMessageDeadLettersDuplicateKeyPayloadMismatch(t *testing.T) {
+	cfg := (ConsumerConfig{
+		Stream:         "ENSEMBLE_TAP",
+		Durable:        "cerebro_graph_builder",
+		DeadLetterPath: t.TempDir() + "/consumer.dlq.jsonl",
+		DedupStateFile: t.TempDir() + "/executions.db",
+	}).withDefaults()
+	deduper, err := newConsumerProcessedEventDeduper(cfg.DedupStateFile, cfg.Stream, cfg.Durable, cfg.DedupTTL, cfg.DedupMaxRecords)
+	if err != nil {
+		t.Fatalf("new deduper: %v", err)
+	}
+	defer func() { _ = deduper.Close() }()
+
+	dlq, err := newConsumerDeadLetterSink(cfg.DeadLetterPath)
+	if err != nil {
+		t.Fatalf("new consumer dead-letter sink: %v", err)
+	}
+
+	consumer := &Consumer{
+		config:  cfg,
+		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+		dlq:     dlq,
+		deduper: deduper,
+	}
+
+	firstEvent := CloudEvent{
+		SpecVersion: cloudEventSpecVersion,
+		ID:          "evt-dedup-collision-1",
+		Source:      "urn:cerebro:test",
+		Type:        "ensemble.tap.test",
+		Time:        time.Now().UTC(),
+		DataSchema:  "urn:cerebro:events:test",
+		TenantID:    "tenant-a",
+		Data:        map[string]any{"id": "1", "value": "first"},
+	}
+	firstPayload, err := json.Marshal(firstEvent)
+	if err != nil {
+		t.Fatalf("marshal first event: %v", err)
+	}
+
+	secondEvent := firstEvent
+	secondEvent.Type = "ensemble.tap.test.updated"
+	secondEvent.Data = map[string]any{"id": "1", "value": "second"}
+	secondPayload, err := json.Marshal(secondEvent)
+	if err != nil {
+		t.Fatalf("marshal second event: %v", err)
+	}
+
+	var handlerCalls int
+	consumer.handler = func(context.Context, CloudEvent) error {
+		handlerCalls++
+		return nil
+	}
+	var ackCalls int
+	var nakCalls int
+	ack := func() error {
+		ackCalls++
+		return nil
+	}
+	nak := func() error {
+		nakCalls++
+		return nil
+	}
+
+	first := consumer.handleMessage(context.Background(), "ensemble.tap.test", firstPayload, ack, nak, func() error { return nil })
+	if !first.Processed {
+		t.Fatalf("expected first event to be processed, got %+v", first)
+	}
+
+	beforeDedup := counterValue(t, metrics.NATSConsumerDeduplicatedTotal.WithLabelValues(cfg.Stream, cfg.Durable))
+	beforeDropped := counterValue(t, metrics.NATSConsumerDroppedTotal.WithLabelValues(cfg.Stream, cfg.Durable, "dedupe_hash_mismatch"))
+	second := consumer.handleMessage(context.Background(), "ensemble.tap.test", secondPayload, ack, nak, func() error { return nil })
+	if second.Processed {
+		t.Fatalf("expected hash-mismatch duplicate to avoid normal processing, got %+v", second)
+	}
+
+	afterDedup := counterValue(t, metrics.NATSConsumerDeduplicatedTotal.WithLabelValues(cfg.Stream, cfg.Durable))
+	if afterDedup != beforeDedup {
+		t.Fatalf("expected deduplicated counter unchanged on hash mismatch, before=%v after=%v", beforeDedup, afterDedup)
+	}
+	afterDropped := counterValue(t, metrics.NATSConsumerDroppedTotal.WithLabelValues(cfg.Stream, cfg.Durable, "dedupe_hash_mismatch"))
+	if afterDropped != beforeDropped {
+		t.Fatalf("expected hash mismatch to requeue instead of drop, before=%v after=%v", beforeDropped, afterDropped)
+	}
+	if handlerCalls != 1 {
+		t.Fatalf("expected handler to run only for first event, got %d calls", handlerCalls)
+	}
+	if ackCalls != 1 {
+		t.Fatalf("expected only the first event to ack before requeue, got %d", ackCalls)
+	}
+	if nakCalls != 1 {
+		t.Fatalf("expected hash mismatch to requeue once, got %d nacks", nakCalls)
+	}
+
+	payload, err := os.ReadFile(cfg.DeadLetterPath)
+	if err != nil {
+		t.Fatalf("read consumer dead-letter file: %v", err)
+	}
+	if got := string(payload); !containsAll(got, "\"reason\":\"dedupe_hash_mismatch\"", "\"subject\":\"ensemble.tap.test\"", "ensemble.tap.test.updated", "\\\"value\\\":\\\"second\\\"") {
+		t.Fatalf("expected hash mismatch payload to be written to dead-letter file, got %s", got)
+	}
+
+	snapshot := consumer.HealthSnapshot(time.Now().UTC())
+	if snapshot.LastDropReason != "" {
+		t.Fatalf("expected hash mismatch requeue not to mark a drop, got %q", snapshot.LastDropReason)
+	}
+
+	eventKey, ok := consumerProcessedEventKey(firstEvent)
+	if !ok {
+		t.Fatal("expected event key for first event")
+	}
+	record, err := deduper.store.LookupProcessedEvent(context.Background(), deduper.namespace, eventKey, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("LookupProcessedEvent after hash mismatch: %v", err)
+	}
+	if record != nil {
+		t.Fatalf("expected hash mismatch to clear processed event record, got %#v", record)
+	}
+
+	third := consumer.handleMessage(context.Background(), "ensemble.tap.test", secondPayload, ack, nak, func() error { return nil })
+	if !third.Processed {
+		t.Fatalf("expected replayed hash-mismatch event to process after dedupe reset, got %+v", third)
+	}
+	if handlerCalls != 2 {
+		t.Fatalf("expected handler to run again after hash-mismatch reset, got %d calls", handlerCalls)
+	}
+	if ackCalls != 2 {
+		t.Fatalf("expected replayed event to ack after processing, got %d", ackCalls)
+	}
+	if nakCalls != 1 {
+		t.Fatalf("expected only one hash-mismatch requeue, got %d", nakCalls)
+	}
+
+	record, err = deduper.store.LookupProcessedEvent(context.Background(), deduper.namespace, eventKey, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("LookupProcessedEvent after replayed hash mismatch: %v", err)
+	}
+	if record == nil {
+		t.Fatal("expected replayed hash-mismatch event to persist a new processed event record")
+	}
+	if record.DuplicateCount != 0 {
+		t.Fatalf("expected replayed hash-mismatch event to persist without duplicate count, got %#v", record)
+	}
+}
+
+func TestConsumerProcessedEventKeyIsUnambiguous(t *testing.T) {
+	first, ok := consumerProcessedEventKey(CloudEvent{
+		ID:       "d",
+		Source:   "c",
+		TenantID: "a|b",
+	})
+	if !ok {
+		t.Fatal("expected first dedupe key")
+	}
+	second, ok := consumerProcessedEventKey(CloudEvent{
+		ID:       "d",
+		Source:   "b|c",
+		TenantID: "a",
+	})
+	if !ok {
+		t.Fatal("expected second dedupe key")
+	}
+	if first == second {
+		t.Fatalf("expected canonical dedupe keys to differ, both were %q", first)
+	}
+	if !strings.HasPrefix(first, "sha256:") || !strings.HasPrefix(second, "sha256:") {
+		t.Fatalf("expected canonical hashed dedupe keys, got %q and %q", first, second)
 	}
 }
 

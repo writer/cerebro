@@ -10,6 +10,7 @@ import (
 	"github.com/writer/cerebro/internal/events"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graph"
+	"github.com/writer/cerebro/internal/graph/builders"
 	"github.com/writer/cerebro/internal/health"
 	"github.com/writer/cerebro/internal/identity"
 	"github.com/writer/cerebro/internal/lineage"
@@ -66,7 +67,7 @@ type SecurityServices struct {
 	RuntimeDetect       *runtime.DetectionEngine
 	RuntimeRespond      *runtime.ResponseEngine
 	SecurityGraph       *graph.Graph
-	GraphBuilder        *graph.Builder
+	GraphBuilder        *builders.Builder
 	Propagation         *graph.PropagationEngine
 }
 

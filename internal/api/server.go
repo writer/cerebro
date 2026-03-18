@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"runtime"
 	"strings"
@@ -14,6 +16,7 @@ import (
 	apicontract "github.com/writer/cerebro/api"
 	"github.com/writer/cerebro/internal/app"
 	"github.com/writer/cerebro/internal/graph"
+	reports "github.com/writer/cerebro/internal/graph/reports"
 	"github.com/writer/cerebro/internal/health"
 	"github.com/writer/cerebro/internal/metrics"
 	"github.com/writer/cerebro/internal/snowflake"
@@ -21,7 +24,7 @@ import (
 
 // Server is the fully wired API server
 type Server struct {
-	app                      *app.App
+	app                      *serverDependencies
 	graphIntelligence        graphIntelligenceService
 	router                   *chi.Mux
 	auditLogger              auditLogWriter
@@ -36,8 +39,8 @@ type Server struct {
 	platformJobs             map[string]*platformJob
 	platformReportHandlers   map[string]http.HandlerFunc
 	platformReportRunMu      sync.RWMutex
-	platformReportRuns       map[string]*graph.ReportRun
-	platformReportStore      *graph.ReportRunStore
+	platformReportRuns       map[string]*reports.ReportRun
+	platformReportStore      *reports.ReportRunStore
 	platformReportSaveMu     sync.Mutex
 	platformReportStreamMu   sync.RWMutex
 	platformReportStreams    map[string]map[chan platformReportStreamMessage]struct{}
@@ -55,25 +58,55 @@ var runtimeNumGoroutine = runtime.NumGoroutine
 
 // NewServer creates a new server with all services wired
 func NewServer(application *app.App) *Server {
+	return NewServerWithDependencies(newServerDependenciesFromApp(application))
+}
+
+// NewServerWithDependencies creates a new server from an explicit dependency
+// bundle. This keeps App as the composition root while allowing tests and
+// future workers to construct only the services they actually need.
+func NewServerWithDependencies(deps serverDependencies) *Server {
+	if deps.Logger == nil {
+		deps.Logger = slog.New(slog.NewJSONHandler(io.Discard, nil))
+	}
+	if adapter, ok := deps.graphRuntime.(*graphRuntimeAdapter); ok {
+		adapter.deps = &deps
+	}
 	s := &Server{
-		app:                    application,
-		graphIntelligence:      newAppGraphIntelligenceService(application),
+		app:                    &deps,
+		graphIntelligence:      newGraphIntelligenceService(&deps),
 		router:                 chi.NewRouter(),
-		auditLogger:            application.AuditRepo,
+		auditLogger:            deps.AuditRepo,
 		crossTenantReplay:      make(map[string]time.Time),
 		platformJobs:           make(map[string]*platformJob),
 		platformReportHandlers: make(map[string]http.HandlerFunc),
-		platformReportRuns:     make(map[string]*graph.ReportRun),
+		platformReportRuns:     make(map[string]*reports.ReportRun),
 		platformReportStreams:  make(map[string]map[chan platformReportStreamMessage]struct{}),
 		agentSDKMCPSessions:    make(map[string]*agentSDKMCPSession),
 		agentSDKReportProgress: make(map[string]agentSDKReportProgressSubscription),
 	}
-	if cfg := application.Config; cfg != nil {
-		s.platformReportStore = graph.NewReportRunStore(cfg.PlatformReportRunStateFile, cfg.PlatformReportSnapshotPath)
-		if restoredRuns, err := s.platformReportStore.Load(); err != nil {
-			application.Logger.Warn("failed to load persisted platform report runs", "state_file", s.platformReportStore.StateFile(), "snapshot_dir", s.platformReportStore.SnapshotDir(), "error", err)
+	if cfg := deps.Config; cfg != nil {
+		var (
+			store *reports.ReportRunStore
+			err   error
+		)
+		if deps.ExecutionStore != nil {
+			store = reports.NewReportRunStoreWithExecutionStore(deps.ExecutionStore, cfg.ExecutionStoreFile, cfg.PlatformReportSnapshotPath, cfg.PlatformReportRunStateFile)
 		} else {
-			s.platformReportRuns = restoredRuns
+			store, err = reports.NewReportRunStore(cfg.ExecutionStoreFile, cfg.PlatformReportSnapshotPath, cfg.PlatformReportRunStateFile)
+		}
+		if err != nil {
+			if deps.Logger != nil {
+				deps.Logger.Warn("failed to initialize shared platform report execution store", "execution_store", cfg.ExecutionStoreFile, "legacy_state_file", cfg.PlatformReportRunStateFile, "snapshot_dir", cfg.PlatformReportSnapshotPath, "error", err)
+			}
+		} else if store != nil {
+			s.platformReportStore = store
+			if restoredRuns, err := s.platformReportStore.Load(); err != nil {
+				if deps.Logger != nil {
+					deps.Logger.Warn("failed to load persisted platform report runs", "execution_store", s.platformReportStore.StateFile(), "legacy_state_file", s.platformReportStore.LegacyStateFile(), "snapshot_dir", s.platformReportStore.SnapshotDir(), "error", err)
+				}
+			} else {
+				s.platformReportRuns = restoredRuns
+			}
 		}
 	}
 	s.platformReportHandlers = map[string]http.HandlerFunc{
@@ -119,6 +152,9 @@ func (s *Server) Close() {
 		s.cancelPlatformJob(jobID, "server shutdown")
 	}
 	s.platformJobWG.Wait()
+	if s.platformReportStore != nil {
+		_ = s.platformReportStore.Close()
+	}
 }
 
 func (s *Server) Run() error {

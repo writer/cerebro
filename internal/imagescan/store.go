@@ -20,7 +20,8 @@ type RunStore interface {
 }
 
 type SQLiteRunStore struct {
-	store *executionstore.SQLiteStore
+	store     executionstore.Store
+	ownsStore bool
 }
 
 func NewSQLiteRunStore(path string) (*SQLiteRunStore, error) {
@@ -28,7 +29,13 @@ func NewSQLiteRunStore(path string) (*SQLiteRunStore, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &SQLiteRunStore{store: store}, nil
+	runStore := NewSQLiteRunStoreWithExecutionStore(store)
+	runStore.ownsStore = true
+	return runStore, nil
+}
+
+func NewSQLiteRunStoreWithExecutionStore(store executionstore.Store) *SQLiteRunStore {
+	return &SQLiteRunStore{store: store}
 }
 
 func (s *SQLiteRunStore) SaveRun(ctx context.Context, run *RunRecord) error {
@@ -142,7 +149,7 @@ func (s *SQLiteRunStore) LoadEvents(ctx context.Context, runID string) ([]RunEve
 }
 
 func (s *SQLiteRunStore) Close() error {
-	if s == nil || s.store == nil {
+	if s == nil || s.store == nil || !s.ownsStore {
 		return nil
 	}
 	return s.store.Close()

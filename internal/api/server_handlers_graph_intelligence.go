@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/graph"
+	reports "github.com/writer/cerebro/internal/graph/reports"
 	"github.com/writer/cerebro/internal/graphingest"
 )
 
@@ -235,7 +236,7 @@ func (s *Server) graphIntelligenceInsights(w http.ResponseWriter, r *http.Reques
 		temporalDiff = diff
 	}
 
-	report := graph.BuildIntelligenceReport(g, engine, graph.IntelligenceReportOptions{
+	report := reports.BuildIntelligenceReport(g, engine, reports.IntelligenceReportOptions{
 		EntityID:              strings.TrimSpace(r.URL.Query().Get("entity_id")),
 		OutcomeWindow:         time.Duration(windowDays) * 24 * time.Hour,
 		SchemaHistoryLimit:    historyLimit,
@@ -284,7 +285,7 @@ func (s *Server) graphIntelligenceQuality(w http.ResponseWriter, r *http.Request
 		staleAfter = time.Duration(parsed) * time.Hour
 	}
 
-	report := graph.BuildGraphQualityReport(g, graph.GraphQualityReportOptions{
+	report := reports.BuildGraphQualityReport(g, reports.GraphQualityReportOptions{
 		FreshnessStaleAfter: staleAfter,
 		SchemaHistoryLimit:  historyLimit,
 		SchemaSinceVersion:  sinceVersion,
@@ -309,7 +310,7 @@ func (s *Server) graphIntelligenceMetadataQuality(w http.ResponseWriter, r *http
 		topKinds = parsed
 	}
 
-	report := graph.BuildGraphMetadataQualityReport(g, graph.GraphMetadataQualityReportOptions{
+	report := reports.BuildGraphMetadataQualityReport(g, reports.GraphMetadataQualityReportOptions{
 		TopKinds: topKinds,
 	})
 	s.json(w, http.StatusOK, report)
@@ -416,7 +417,7 @@ func (s *Server) graphIntelligenceEntitySummary(w http.ResponseWriter, r *http.R
 		maxPostureClaims = parsed
 	}
 
-	report, ok := graph.BuildEntitySummaryReport(g, graph.EntitySummaryReportOptions{
+	report, ok := reports.BuildEntitySummaryReport(g, reports.EntitySummaryReportOptions{
 		EntityID:         entityID,
 		ValidAt:          validAt,
 		RecordedAt:       recordedAt,
@@ -506,7 +507,7 @@ func (s *Server) graphIntelligenceLeverage(w http.ResponseWriter, r *http.Reques
 		queueLimit = parsed
 	}
 
-	report := graph.BuildGraphLeverageReport(g, graph.GraphLeverageReportOptions{
+	report := reports.BuildGraphLeverageReport(g, reports.GraphLeverageReportOptions{
 		FreshnessStaleAfter:      staleAfter,
 		SchemaHistoryLimit:       historyLimit,
 		SchemaSinceVersion:       sinceVersion,
@@ -713,7 +714,7 @@ func (s *Server) graphIntelligenceWeeklyCalibration(w http.ResponseWriter, r *ht
 	}
 
 	profile := strings.TrimSpace(r.URL.Query().Get("profile"))
-	report := graph.BuildWeeklyCalibrationReport(g, engine, graph.WeeklyCalibrationReportOptions{
+	report := reports.BuildWeeklyCalibrationReport(g, engine, reports.WeeklyCalibrationReportOptions{
 		Now:              time.Now().UTC(),
 		WindowDays:       windowDays,
 		TrendDays:        trendDays,
