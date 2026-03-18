@@ -206,6 +206,16 @@ func (g *Graph) CompactDeletedEdges() {
 	g.compactDeletedEdgesLocked()
 }
 
+// CompactDeletedNodes removes soft-deleted node tombstones from the backing
+// node map to keep long-lived graphs from accumulating dead entries.
+func (g *Graph) CompactDeletedNodes() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.compactDeletedNodesLocked() {
+		g.markGraphChangedLocked()
+	}
+}
+
 // SetNodeProperty sets or updates a single property on a node.
 func (g *Graph) SetNodeProperty(id string, key string, value any) bool {
 	g.mu.Lock()
@@ -1005,6 +1015,26 @@ func edgePointerPresentLocked(edges []*Edge, target *Edge) bool {
 		}
 	}
 	return false
+}
+
+func (g *Graph) compactDeletedNodesLocked() bool {
+	removed := false
+	for id, node := range g.nodes {
+		if node != nil && node.DeletedAt == nil {
+			continue
+		}
+		for _, edge := range g.outEdges[id] {
+			g.evictEdgeIDLocked(edge)
+		}
+		for _, edge := range g.inEdges[id] {
+			g.evictEdgeIDLocked(edge)
+		}
+		delete(g.nodes, id)
+		delete(g.outEdges, id)
+		delete(g.inEdges, id)
+		removed = true
+	}
+	return removed
 }
 
 func (g *Graph) removeEdgesByNodeLocked(nodeID string) bool {
