@@ -129,7 +129,7 @@ func (a *App) ensureSecurityGraph() *graph.Graph {
 
 	if a.SecurityGraph == nil {
 		a.SecurityGraph = graph.New()
-		a.configureGraphSchemaValidation(a.SecurityGraph)
+		a.configureGraphRuntimeBehavior(a.SecurityGraph)
 	}
 	return a.SecurityGraph
 }

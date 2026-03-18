@@ -1332,6 +1332,7 @@ func TestToxicCombination_BusinessTrajectoryDeterioration(t *testing.T) {
 
 	engine := NewToxicCombinationEngine()
 	g := New()
+	g.SetTemporalHistoryConfig(DefaultTemporalHistoryMaxEntries, 45*24*time.Hour)
 
 	g.AddNode(&Node{
 		ID:   "customer-trajectory",

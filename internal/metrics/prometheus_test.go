@@ -381,6 +381,20 @@ func TestSetGraphLastUpdatePublishesStoredTimestamp(t *testing.T) {
 	}
 }
 
+func TestSetGraphPropertyHistoryDepth(t *testing.T) {
+	Register()
+
+	SetGraphPropertyHistoryDepth(17)
+	if got := gaugeValue(t, GraphPropertyHistoryDepth); got != 17 {
+		t.Fatalf("expected graph property history depth gauge 17, got %v", got)
+	}
+
+	SetGraphPropertyHistoryDepth(-1)
+	if got := gaugeValue(t, GraphPropertyHistoryDepth); got != 0 {
+		t.Fatalf("expected negative depth to clamp to 0, got %v", got)
+	}
+}
+
 func counterValue(t *testing.T, vec *prometheus.CounterVec, labels ...string) float64 {
 	t.Helper()
 	counter, err := vec.GetMetricWithLabelValues(labels...)

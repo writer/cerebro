@@ -145,10 +145,9 @@ func observationSummary(observation *runtime.RuntimeObservation) string {
 }
 
 func observationMetadata(observation *runtime.RuntimeObservation) map[string]any {
-	metadata := map[string]any{
-		"runtime_observation_id": observation.ID,
-		"runtime_source":         observation.Source,
-	}
+	metadata := make(map[string]any, 35)
+	metadata["runtime_observation_id"] = observation.ID
+	metadata["runtime_source"] = observation.Source
 	addMetadataString(metadata, "resource_id", observation.ResourceID)
 	addMetadataString(metadata, "resource_type", observation.ResourceType)
 	addMetadataString(metadata, "cluster", observation.Cluster)
