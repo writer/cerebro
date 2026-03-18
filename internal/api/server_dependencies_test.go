@@ -67,3 +67,19 @@ func TestNewServerWithDependencies_DefaultsLoggerWhenNil(t *testing.T) {
 		t.Fatalf("expected constructor to default logger, got %#v", s.app)
 	}
 }
+
+func TestNewServerWithDependencies_InitializesRuntimeIngestFromExecutionStore(t *testing.T) {
+	a := newTestApp(t)
+	deps := newServerDependenciesFromApp(a)
+	deps.RuntimeIngest = nil
+
+	s := NewServerWithDependencies(deps)
+	t.Cleanup(func() { s.Close() })
+
+	if s.app == nil || s.app.RuntimeIngest == nil {
+		t.Fatalf("expected constructor to initialize runtime ingest store, got %#v", s.app)
+	}
+	if got := s.runtimeIngestStore(); got == nil {
+		t.Fatal("expected runtimeIngestStore to return initialized store")
+	}
+}

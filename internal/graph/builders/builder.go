@@ -135,6 +135,7 @@ func (b *Builder) BuildCandidate(ctx context.Context) (*Graph, GraphMutationSumm
 	g.Go(func() error { working.buildGCPNodes(gctx); return nil })
 	g.Go(func() error { working.buildAzureNodes(gctx); return nil })
 	g.Go(func() error { working.buildOktaNodes(gctx); return nil })
+	g.Go(func() error { working.buildGoogleWorkspaceNodes(gctx); return nil })
 	g.Go(func() error { working.buildK8sNodes(gctx); return nil })
 	_ = g.Wait()
 	if err := ctx.Err(); err != nil {
@@ -518,6 +519,14 @@ func nodeKindForResourceType(resourceType string) NodeKind {
 		return NodeKindRole
 	case "okta:application":
 		return NodeKindApplication
+	case "okta:scope", "google_workspace:scope":
+		return NodeKindRole
+	case "google_workspace:user":
+		return NodeKindUser
+	case "google_workspace:group":
+		return NodeKindGroup
+	case "google_workspace:application":
+		return NodeKindApplication
 	case "gcp:iam:service_account", "gcp:iam:serviceaccount":
 		return NodeKindServiceAccount
 	case "azure:ad:user", "entra:user":
@@ -578,6 +587,9 @@ func providerForResourceType(resourceType string) string {
 	if strings.HasPrefix(resourceType, "okta:") {
 		return "okta"
 	}
+	if strings.HasPrefix(resourceType, "google_workspace:") {
+		return "google_workspace"
+	}
 	return ""
 }
 
@@ -586,6 +598,7 @@ func isIdentityType(resourceType string) bool {
 	case "aws:iam:user", "aws:iam:role", "aws:iam:group", "aws:iam:instance_profile",
 		"gcp:iam:service_account", "gcp:iam:serviceaccount",
 		"okta:user", "okta:group", "okta:admin_role",
+		"google_workspace:user", "google_workspace:group",
 		"azure:ad:user", "azure:ad:group", "azure:ad:service_principal",
 		"entra:user", "entra:group", "entra:service_principal":
 		return true

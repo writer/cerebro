@@ -572,6 +572,16 @@ func (b *Builder) refreshVendorSignals(vendor *Node, projection *vendorProjectio
 
 	var managedApplicationCount int
 	var managedServiceAccountCount int
+	var anonymousApplicationCount int
+	var nativeApplicationCount int
+	var activeGrantCount int
+	var adminGrantCount int
+	var principalGrantCount int
+	var recentOAuthActivityCount int
+	var recentOAuthAuthorizeEventCount int
+	var recentOAuthRevokeEventCount int
+	var lastGrantUpdatedAt string
+	var lastOAuthActivityAt string
 	var appRoleAssignmentRequiredCount int
 	var appRoleAssignmentOptionalCount int
 	var verifiedIntegrationCount int
@@ -601,6 +611,20 @@ func (b *Builder) refreshVendorSignals(vendor *Node, projection *vendorProjectio
 		switch node.Kind {
 		case NodeKindApplication:
 			managedApplicationCount++
+			if anonymous, ok := boolPropertyValue(node.Properties, "anonymous"); ok && anonymous {
+				anonymousApplicationCount++
+			}
+			if nativeApp, ok := boolPropertyValue(node.Properties, "native_app"); ok && nativeApp {
+				nativeApplicationCount++
+			}
+			activeGrantCount += intPropertyValue(node.Properties, "active_grant_count")
+			adminGrantCount += intPropertyValue(node.Properties, "admin_grant_count")
+			principalGrantCount += intPropertyValue(node.Properties, "principal_grant_count")
+			recentOAuthActivityCount += intPropertyValue(node.Properties, "recent_token_activity_count")
+			recentOAuthAuthorizeEventCount += intPropertyValue(node.Properties, "recent_token_authorize_event_count")
+			recentOAuthRevokeEventCount += intPropertyValue(node.Properties, "recent_token_revoke_event_count")
+			lastGrantUpdatedAt = maxRFC3339String(lastGrantUpdatedAt, propertyString(node.Properties, "last_grant_updated_at"))
+			lastOAuthActivityAt = maxRFC3339String(lastOAuthActivityAt, propertyString(node.Properties, "last_token_activity_at"))
 		case NodeKindServiceAccount:
 			managedServiceAccountCount++
 		}
@@ -679,6 +703,8 @@ func (b *Builder) refreshVendorSignals(vendor *Node, projection *vendorProjectio
 		appRoleAssignmentOptionalCount,
 		len(delegatedAdminConsentGrantIDs),
 		len(delegatedScopes),
+		anonymousApplicationCount,
+		nativeApplicationCount,
 	)
 
 	vendor.Properties["canonical_name"] = vendor.Name
@@ -691,6 +717,16 @@ func (b *Builder) refreshVendorSignals(vendor *Node, projection *vendorProjectio
 	vendor.Properties["managed_node_count"] = len(projection.managedNodeIDs)
 	vendor.Properties["managed_application_count"] = managedApplicationCount
 	vendor.Properties["managed_service_account_count"] = managedServiceAccountCount
+	vendor.Properties["anonymous_application_count"] = anonymousApplicationCount
+	vendor.Properties["native_application_count"] = nativeApplicationCount
+	vendor.Properties["active_grant_count"] = activeGrantCount
+	vendor.Properties["admin_grant_count"] = adminGrantCount
+	vendor.Properties["principal_grant_count"] = principalGrantCount
+	vendor.Properties["recent_oauth_activity_count"] = recentOAuthActivityCount
+	vendor.Properties["recent_oauth_authorize_event_count"] = recentOAuthAuthorizeEventCount
+	vendor.Properties["recent_oauth_revoke_event_count"] = recentOAuthRevokeEventCount
+	vendor.Properties["last_grant_updated_at"] = lastGrantUpdatedAt
+	vendor.Properties["last_oauth_activity_at"] = lastOAuthActivityAt
 	vendor.Properties["verified_publisher_count"] = verifiedIntegrationCount
 	vendor.Properties["verified_publisher_ids"] = sortedVendorKeys(verifiedPublisherIDs)
 	vendor.Properties["verified_publisher_names"] = sortedVendorKeys(verifiedPublisherNames)
@@ -760,6 +796,20 @@ func vendorIdentityForNode(node *Node) (vendorIdentity, bool) {
 			ownerOrgID:          strings.TrimSpace(propertyString(node.Properties, "app_owner_organization_id")),
 			verifiedPublisherID: strings.TrimSpace(propertyString(node.Properties, "verified_publisher_id")),
 			integrationType:     "entra_service_principal",
+		}, true
+	case node.Provider == "google_workspace" && node.Kind == NodeKindApplication:
+		rawName := strings.TrimSpace(firstNonEmpty(
+			propertyString(node.Properties, "display_text"),
+			node.Name,
+		))
+		aliasKey := vendorAliasKey(rawName)
+		if rawName == "" || aliasKey == "" {
+			return vendorIdentity{}, false
+		}
+		return vendorIdentity{
+			rawName:         rawName,
+			aliasKey:        aliasKey,
+			integrationType: "google_workspace_application",
 		}, true
 	default:
 		return vendorIdentity{}, false
@@ -836,7 +886,7 @@ func collectVendorGroupDependents(g *Graph, groupID string, seenGroups, all, use
 	}
 }
 
-func vendorRiskScore(readCount, writeCount, adminCount, accessibleResourceCount, sensitiveResourceCount, dependentPrincipalCount, dependentGroupCount, optionalAssignmentCount, delegatedAdminConsentCount, delegatedScopeCount int) int {
+func vendorRiskScore(readCount, writeCount, adminCount, accessibleResourceCount, sensitiveResourceCount, dependentPrincipalCount, dependentGroupCount, optionalAssignmentCount, delegatedAdminConsentCount, delegatedScopeCount, anonymousApplicationCount, nativeApplicationCount int) int {
 	score := 0
 	switch {
 	case adminCount > 0:
@@ -853,6 +903,8 @@ func vendorRiskScore(readCount, writeCount, adminCount, accessibleResourceCount,
 	score += minInt(10, optionalAssignmentCount*5)
 	score += minInt(15, delegatedAdminConsentCount*15)
 	score += minInt(10, delegatedScopeCount*2)
+	score += minInt(10, anonymousApplicationCount*8)
+	score += minInt(5, nativeApplicationCount*2)
 	if score > 100 {
 		return 100
 	}
