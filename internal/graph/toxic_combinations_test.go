@@ -592,6 +592,76 @@ func TestToxicCombination_PublicRDSUnencryptedHighBlastRadius(t *testing.T) {
 	t.Fatal("expected TC-AWS-005 toxic combination")
 }
 
+func TestToxicCombination_PublicExposureReachesDSPMClassifiedBucket(t *testing.T) {
+	engine := NewToxicCombinationEngine()
+	g := New()
+
+	g.AddNode(&Node{ID: "internet", Kind: NodeKindInternet, Name: "internet"})
+	g.AddNode(&Node{
+		ID:       "instance-1",
+		Kind:     NodeKindInstance,
+		Name:     "public-api",
+		Provider: "aws",
+	})
+	g.AddNode(&Node{
+		ID:       "bucket-1",
+		Kind:     NodeKindBucket,
+		Name:     "customer-data",
+		Provider: "aws",
+		Properties: map[string]any{
+			"data_classification": "confidential",
+			"contains_pii":        true,
+		},
+	})
+
+	g.AddEdge(&Edge{ID: "internet-instance-1", Source: "internet", Target: "instance-1", Kind: EdgeKindExposedTo})
+	g.AddEdge(&Edge{ID: "instance-bucket-1", Source: "instance-1", Target: "bucket-1", Kind: EdgeKindCanRead})
+
+	results := engine.Analyze(g)
+	for _, tc := range results {
+		if tc.ID == "TC002-instance-1" {
+			if tc.Severity != SeverityCritical {
+				t.Fatalf("expected critical severity, got %s", tc.Severity)
+			}
+			return
+		}
+	}
+
+	t.Fatal("expected TC002 toxic combination for DSPM-classified bucket")
+}
+
+func TestToxicCombination_PublicExposureDoesNotTreatNameOnlyBucketAsSensitive(t *testing.T) {
+	engine := NewToxicCombinationEngine()
+	g := New()
+
+	g.AddNode(&Node{ID: "internet", Kind: NodeKindInternet, Name: "internet"})
+	g.AddNode(&Node{
+		ID:       "instance-1",
+		Kind:     NodeKindInstance,
+		Name:     "public-api",
+		Provider: "aws",
+	})
+	g.AddNode(&Node{
+		ID:       "bucket-1",
+		Kind:     NodeKindBucket,
+		Name:     "backup-logs",
+		Provider: "aws",
+		Properties: map[string]any{
+			"encrypted": true,
+		},
+	})
+
+	g.AddEdge(&Edge{ID: "internet-instance-1", Source: "internet", Target: "instance-1", Kind: EdgeKindExposedTo})
+	g.AddEdge(&Edge{ID: "instance-bucket-1", Source: "instance-1", Target: "bucket-1", Kind: EdgeKindCanRead})
+
+	results := engine.Analyze(g)
+	for _, tc := range results {
+		if tc.ID == "TC002-instance-1" {
+			t.Fatalf("expected no TC002 toxic combination for name-only bucket heuristics, got %+v", tc)
+		}
+	}
+}
+
 func TestToxicCombination_AWSTransitiveCrossAccountTrustChain(t *testing.T) {
 	engine := NewToxicCombinationEngine()
 	g := New()

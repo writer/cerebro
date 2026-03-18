@@ -699,6 +699,14 @@ func riskToImpact(risk RiskLevel) string {
 
 // detectSensitiveData checks if a node contains sensitive data
 func detectSensitiveData(node *Node) *SensitiveDataNode {
+	return detectSensitiveDataWithOptions(node, true)
+}
+
+func detectSensitiveDataExplicit(node *Node) *SensitiveDataNode {
+	return detectSensitiveDataWithOptions(node, false)
+}
+
+func detectSensitiveDataWithOptions(node *Node, includeNameHeuristics bool) *SensitiveDataNode {
 	if node.Properties == nil {
 		return nil
 	}
@@ -735,20 +743,30 @@ func detectSensitiveData(node *Node) *SensitiveDataNode {
 		result.ComplianceImpact = append(result.ComplianceImpact, "PCI-DSS")
 	}
 
+	// Buckets and databases can also contain secrets surfaced by DSPM scans.
+	if containsSecrets, ok := node.Properties["contains_secrets"].(bool); ok && containsSecrets {
+		result.DataTypes = append(result.DataTypes, "secrets")
+		if !sliceContains(result.ComplianceImpact, "SOC2") {
+			result.ComplianceImpact = append(result.ComplianceImpact, "SOC2")
+		}
+	}
+
 	// Check for credentials/secrets via ontology capability.
 	if NodeKindHasCapability(node.Kind, NodeCapabilityCredentialStore) {
 		result.DataTypes = append(result.DataTypes, "credentials")
 	}
 
-	// Check node name for sensitive patterns
-	sensitivePatterns := []string{"secret", "credential", "password", "key", "token", "backup", "pii", "phi"}
-	nodeName := node.Name
-	for _, pattern := range sensitivePatterns {
-		if containsIgnoreCase(nodeName, pattern) {
-			if !sliceContains(result.DataTypes, "sensitive_by_name") {
-				result.DataTypes = append(result.DataTypes, "sensitive_by_name")
+	if includeNameHeuristics {
+		// Check node name for sensitive patterns
+		sensitivePatterns := []string{"secret", "credential", "password", "key", "token", "backup", "pii", "phi"}
+		nodeName := node.Name
+		for _, pattern := range sensitivePatterns {
+			if containsIgnoreCase(nodeName, pattern) {
+				if !sliceContains(result.DataTypes, "sensitive_by_name") {
+					result.DataTypes = append(result.DataTypes, "sensitive_by_name")
+				}
+				break
 			}
-			break
 		}
 	}
 

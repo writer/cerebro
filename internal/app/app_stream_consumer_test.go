@@ -8,6 +8,7 @@ import (
 
 	"github.com/writer/cerebro/internal/events"
 	"github.com/writer/cerebro/internal/graph"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 func TestEnsureSecurityGraph_ConcurrentInitSingleInstance(t *testing.T) {
@@ -83,6 +84,92 @@ func TestHandleTapCloudEventWaitsForGraphReady(t *testing.T) {
 	}
 	if _, ok := a.SecurityGraph.GetNode("salesforce:opportunity:opp-blocked"); !ok {
 		t.Fatal("expected tap event node to be applied after graph readiness")
+	}
+}
+
+func TestHandleGraphCloudEvent_AuditMutationPersistsCDCEvents(t *testing.T) {
+	store := &warehouse.MemoryWarehouse{}
+	a := &App{Warehouse: store}
+	evt := events.CloudEvent{
+		ID:     "evt-audit-1",
+		Source: "urn:aws:cloudtrail",
+		Type:   "aws.cloudtrail.asset.changed",
+		Time:   time.Date(2026, 3, 14, 12, 0, 0, 0, time.UTC),
+		Data: map[string]any{
+			"table_name":  "aws_ec2_security_groups",
+			"resource_id": "arn:aws:ec2:us-east-1:123456789012:security-group/sg-123",
+			"change_type": "modified",
+			"account_id":  "123456789012",
+			"region":      "us-east-1",
+			"payload": map[string]any{
+				"arn":            "arn:aws:ec2:us-east-1:123456789012:security-group/sg-123",
+				"group_id":       "sg-123",
+				"group_name":     "web",
+				"account_id":     "123456789012",
+				"region":         "us-east-1",
+				"ip_permissions": []map[string]any{{"IpRanges": []map[string]any{{"CidrIp": "0.0.0.0/0"}}}},
+			},
+		},
+	}
+
+	if err := a.handleGraphCloudEvent(context.Background(), evt); err != nil {
+		t.Fatalf("handleGraphCloudEvent failed: %v", err)
+	}
+	if len(store.CDCBatches) != 1 || len(store.CDCBatches[0]) != 1 {
+		t.Fatalf("expected one persisted audit CDC event, got %#v", store.CDCBatches)
+	}
+	got := store.CDCBatches[0][0]
+	if got.TableName != "aws_ec2_security_groups" {
+		t.Fatalf("expected table aws_ec2_security_groups, got %q", got.TableName)
+	}
+	if got.Provider != "aws" {
+		t.Fatalf("expected provider aws, got %q", got.Provider)
+	}
+	if got.ResourceID != "arn:aws:ec2:us-east-1:123456789012:security-group/sg-123" {
+		t.Fatalf("unexpected resource id %q", got.ResourceID)
+	}
+}
+
+func TestHandleGraphCloudEvent_AuditMutationSkipsInvalidBatchRecords(t *testing.T) {
+	store := &warehouse.MemoryWarehouse{}
+	a := &App{Warehouse: store}
+	evt := events.CloudEvent{
+		ID:     "evt-audit-batch-invalid-1",
+		Source: "urn:aws:cloudtrail",
+		Type:   "aws.cloudtrail.asset.changed",
+		Time:   time.Date(2026, 3, 14, 12, 30, 0, 0, time.UTC),
+		Data: map[string]any{
+			"mutations": []any{
+				map[string]any{
+					"payload": map[string]any{"id": "missing-table"},
+				},
+				map[string]any{
+					"table_name":  "aws_ec2_security_groups",
+					"change_type": "modified",
+					"resource_id": "arn:aws:ec2:us-east-1:123456789012:security-group/sg-456",
+					"payload": map[string]any{
+						"arn":        "arn:aws:ec2:us-east-1:123456789012:security-group/sg-456",
+						"group_id":   "sg-456",
+						"group_name": "api",
+					},
+				},
+				map[string]any{
+					"table_name":  "aws_ec2_security_groups",
+					"change_type": "modified",
+					"payload":     map[string]any{},
+				},
+			},
+		},
+	}
+
+	if err := a.handleGraphCloudEvent(context.Background(), evt); err != nil {
+		t.Fatalf("handleGraphCloudEvent failed: %v", err)
+	}
+	if len(store.CDCBatches) != 1 || len(store.CDCBatches[0]) != 1 {
+		t.Fatalf("expected one persisted audit CDC event from valid subset, got %#v", store.CDCBatches)
+	}
+	if got := store.CDCBatches[0][0].ResourceID; got != "arn:aws:ec2:us-east-1:123456789012:security-group/sg-456" {
+		t.Fatalf("unexpected persisted resource id %q", got)
 	}
 }
 
