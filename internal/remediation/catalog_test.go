@@ -80,4 +80,10 @@ func TestCatalogIncludesSafeCloudRemediations(t *testing.T) {
 	if got := ingress.DefaultRemoteTools["aws"]; got != "aws.ec2.revoke_security_group_ingress" {
 		t.Fatalf("unexpected aws ingress tool mapping: %q", got)
 	}
+	if ingress.DefaultDeliveryMode != DeliveryModeRemoteApply {
+		t.Fatalf("expected ingress default delivery mode to remain remote apply, got %s", ingress.DefaultDeliveryMode)
+	}
+	if len(ingress.SupportedDeliveryModes) != 2 || ingress.SupportedDeliveryModes[0] != DeliveryModeRemoteApply || ingress.SupportedDeliveryModes[1] != DeliveryModeTerraform {
+		t.Fatalf("unexpected ingress supported delivery modes: %#v", ingress.SupportedDeliveryModes)
+	}
 }
