@@ -115,3 +115,50 @@ func TestGraphRiskServiceRiskReportUsesStoreBackedGraphWithoutServer(t *testing.
 		t.Fatal("expected store-backed risk report")
 	}
 }
+
+func TestCurrentOrStoredTenantGraphViewUsesTenantRuntimeGraph(t *testing.T) {
+	live := graph.New()
+	live.AddNode(&graph.Node{ID: "service:live", Kind: graph.NodeKindService})
+	store := &countingGraphViewStore{GraphStore: graph.New()}
+	deps := &serverDependencies{
+		graphRuntime: stubGraphRuntime{
+			graph: live,
+			store: store,
+		},
+	}
+
+	ctx := context.WithValue(context.Background(), contextKeyTenant, "tenant-a")
+	view, err := currentOrStoredTenantGraphView(ctx, deps)
+	if err != nil {
+		t.Fatalf("currentOrStoredTenantGraphView() error = %v", err)
+	}
+	if _, ok := view.GetNode("service:live"); !ok {
+		t.Fatalf("expected live tenant graph view to include restored node, got %#v", view)
+	}
+	if store.snapshots != 0 {
+		t.Fatalf("expected no store snapshots, got %d", store.snapshots)
+	}
+}
+
+func TestCurrentOrStoredTenantGraphViewFallsBackToTenantStore(t *testing.T) {
+	storeGraph := graph.New()
+	storeGraph.AddNode(&graph.Node{ID: "service:store", Kind: graph.NodeKindService})
+	store := &countingGraphViewStore{GraphStore: storeGraph}
+	deps := &serverDependencies{
+		graphRuntime: stubGraphRuntime{
+			store: store,
+		},
+	}
+
+	ctx := context.WithValue(context.Background(), contextKeyTenant, "tenant-a")
+	view, err := currentOrStoredTenantGraphView(ctx, deps)
+	if err != nil {
+		t.Fatalf("currentOrStoredTenantGraphView() error = %v", err)
+	}
+	if _, ok := view.GetNode("service:store"); !ok {
+		t.Fatalf("expected tenant store-backed view to include restored node, got %#v", view)
+	}
+	if store.snapshots != 1 {
+		t.Fatalf("expected one tenant store snapshot lookup, got %d", store.snapshots)
+	}
+}

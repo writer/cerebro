@@ -92,19 +92,11 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 		deps.Identity = identity.NewService(
 			identity.WithExecutionStore(deps.ExecutionStore),
 			identity.WithGraphResolver(func(ctx context.Context) *graph.Graph {
-				tenantID := currentTenantScopeID(ctx)
-				if g := deps.CurrentSecurityGraphForTenant(tenantID); g != nil {
-					return g
-				}
-				store := deps.CurrentSecurityGraphStoreForTenant(tenantID)
-				if store == nil {
+				view, err := currentOrStoredTenantGraphView(ctx, &deps)
+				if err != nil {
 					return nil
 				}
-				snapshot, err := store.Snapshot(ctx)
-				if err != nil || snapshot == nil {
-					return nil
-				}
-				return graph.GraphViewFromSnapshot(snapshot)
+				return view
 			}),
 		)
 	}

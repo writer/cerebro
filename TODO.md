@@ -17,6 +17,18 @@ Status: executed end-to-end via PR workflow
 - [x] Add a runtime-backed API regression that fails if the catalog falls through to `GraphStore.Snapshot()` while a runtime graph is already available.
 - [x] Re-run focused API tests, lint, and changed-file validation before opening the next `#392` PR.
 
+## Deep Review Cycle 208 - Tenant Resolver Reuse For Identity Services (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left `NewServerWithDependencies(...)` hand-rolling its own tenant live-graph-or-store fallback inside the default identity service resolver instead of reusing the shared graph-view resolver seam.
+- [x] Gap: `tenant_graph.go` and the constructor-level identity resolver were both making the same tenant-scoped graph resolution decision in different places, which raises the odds that future graph-runtime changes will update one path and miss the other.
+- [x] Gap: there was no focused unit coverage proving the dependency-based tenant resolver still prefers the runtime graph when available and only snapshots the store when the live graph is absent.
+
+### Execution plan
+- [x] Add shared tenant-scoped resolver helpers on top of the existing graph-view resolver primitives.
+- [x] Route both the request-path tenant graph helpers and the default identity graph resolver through the shared tenant-scoped helpers.
+- [x] Add focused resolver tests for tenant live-graph preference and tenant store fallback, then rerun API validation.
+
 ## Deep Review Cycle 206 - Graph View Resolver Infrastructure (2026-03-18)
 
 ### Review findings

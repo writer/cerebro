@@ -40,3 +40,19 @@ func snapshotGraphView(ctx context.Context, store graph.GraphStore) (*graph.Grap
 	}
 	return view, nil
 }
+
+func currentOrStoredTenantGraphView(ctx context.Context, deps *serverDependencies) (*graph.Graph, error) {
+	if deps == nil {
+		return nil, graph.ErrStoreUnavailable
+	}
+	tenantID := currentTenantScopeID(ctx)
+	return currentOrStoredGraphView(ctx, deps.CurrentSecurityGraphForTenant(tenantID), deps.CurrentSecurityGraphStoreForTenant(tenantID))
+}
+
+func snapshotBackedTenantGraphView(ctx context.Context, deps *serverDependencies) (*graph.Graph, error) {
+	if deps == nil {
+		return nil, graph.ErrStoreUnavailable
+	}
+	tenantID := currentTenantScopeID(ctx)
+	return snapshotBackedGraphView(ctx, deps.CurrentSecurityGraphForTenant(tenantID), deps.CurrentSecurityGraphStoreForTenant(tenantID))
+}
