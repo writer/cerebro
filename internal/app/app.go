@@ -138,35 +138,38 @@ type App struct {
 	RuntimeRespond      *runtime.ResponseEngine
 
 	// Security Graph
-	SecurityGraph          *graph.Graph
-	SecurityGraphBuilder   *graph.Builder
-	Propagation            *graph.PropagationEngine
-	graphReady             chan struct{} // closed when initial graph build completes
-	graphCtx               context.Context
-	graphCancel            context.CancelFunc
-	graphUpdateMu          sync.Mutex
-	graphBuildMu           sync.RWMutex
-	graphBuildState        GraphBuildState
-	graphBuildLastAt       time.Time
-	graphBuildErr          string
-	graphConsistencyMu     sync.Mutex
-	graphConsistencyLast   time.Time
-	graphConsistencyRun    bool
-	graphConsistencyCancel context.CancelFunc
-	graphConsistencyWG     sync.WaitGroup
-	threatIntelSyncCancel  context.CancelFunc
-	threatIntelSyncWG      sync.WaitGroup
-	traceShutdown          func(context.Context) error
-	secretsReloadCancel    context.CancelFunc
-	secretsReloadWG        sync.WaitGroup
-	tapMapperOnce          sync.Once
-	tapMapperErr           error
-	securityGraphInitMu    sync.RWMutex
-	reloadMu               sync.Mutex
-	apiKeys                atomic.Value // map[string]string
-	apiCredentials         atomic.Value // map[string]apiauth.Credential
-	apiCredentialStore     *apiauth.ManagedCredentialStore
-	secretsLoader          secretsLoader
+	SecurityGraph                 *graph.Graph
+	SecurityGraphBuilder          *graph.Builder
+	Propagation                   *graph.PropagationEngine
+	graphReady                    chan struct{} // closed when initial graph build completes
+	graphCtx                      context.Context
+	graphCancel                   context.CancelFunc
+	graphUpdateMu                 sync.Mutex
+	graphBuildMu                  sync.RWMutex
+	graphBuildState               GraphBuildState
+	graphBuildLastAt              time.Time
+	graphBuildErr                 string
+	graphConsistencyMu            sync.Mutex
+	graphConsistencyLast          time.Time
+	graphConsistencyRun           bool
+	graphConsistencyCancel        context.CancelFunc
+	graphConsistencyWG            sync.WaitGroup
+	eventCorrelationRefreshCh     chan string
+	eventCorrelationRefreshCancel context.CancelFunc
+	eventCorrelationRefreshWG     sync.WaitGroup
+	threatIntelSyncCancel         context.CancelFunc
+	threatIntelSyncWG             sync.WaitGroup
+	traceShutdown                 func(context.Context) error
+	secretsReloadCancel           context.CancelFunc
+	secretsReloadWG               sync.WaitGroup
+	tapMapperOnce                 sync.Once
+	tapMapperErr                  error
+	securityGraphInitMu           sync.RWMutex
+	reloadMu                      sync.Mutex
+	apiKeys                       atomic.Value // map[string]string
+	apiCredentials                atomic.Value // map[string]apiauth.Credential
+	apiCredentialStore            *apiauth.ManagedCredentialStore
+	secretsLoader                 secretsLoader
 
 	// Cached table list from Snowflake (shared by graph builder + policy coverage)
 	AvailableTables []string

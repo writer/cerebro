@@ -48,6 +48,8 @@ See [GRAPH_ONTOLOGY_ARCHITECTURE.md](./GRAPH_ONTOLOGY_ARCHITECTURE.md) for ontol
 - `refutes`: contradictory-claim relationship.
 - `supersedes`: correction/replacement relationship for stale or withdrawn claims.
 - `contradicts`: explicit contradiction relationship when retained as graph state.
+- `triggered_by`: derived event-causal edge from one operational effect back to the triggering event.
+- `caused_by`: derived event-causal edge from one operational effect back to the most likely causing event.
 - `has_scan`: asset-to-scan relationship for projected workload coverage.
 - `contains_package`: scan-to-package relationship for observed package inventory.
 - `found_vulnerability`: scan-to-vulnerability relationship for observed vulnerable components.
@@ -88,6 +90,9 @@ Current endpoint:
 - `GET /api/v1/platform/intelligence/insights`
 - `GET /api/v1/platform/intelligence/quality`
 - `GET /api/v1/platform/intelligence/metadata-quality`
+- `GET /api/v1/platform/intelligence/event-patterns`
+- `GET /api/v1/platform/intelligence/event-correlations`
+- `GET /api/v1/platform/intelligence/event-anomalies`
 - `GET /api/v1/platform/intelligence/claim-conflicts`
 - `GET /api/v1/platform/intelligence/entity-summary`
 - `GET /api/v1/platform/intelligence/leverage`
@@ -122,6 +127,13 @@ Claim conflict report characteristics:
 - Source-backed versus sourceless claim counts.
 - Evidence-backed versus unsupported claim counts.
 - Optional bitemporal slice using `valid_at` and `recorded_at`.
+
+Event correlation characteristics:
+- Built-in typed pattern catalog instead of ad hoc per-endpoint heuristics.
+- Current derived chains cover `pull_request -> deployment_run` (`triggered_by`) and `deployment_run -> incident` (`caused_by`).
+- Correlations are materialized onto the graph so agents and reports can ask causal questions without replaying temporal joins client-side.
+- Event anomaly summaries compare the current 7d window against the prior 28d baseline and currently flag failure spikes plus first incidents in 90d.
+- Live TAP ingest rematerializes these derived edges when relevant event nodes are updated, not just during full graph activation.
 
 Knowledge inspection characteristics:
 - typed entity/resource collection/detail reads under `/api/v1/platform/entities*`
