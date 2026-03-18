@@ -28,6 +28,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/evalops/cerebro/internal/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // DetectionEngine is the core runtime threat detection component. It maintains
@@ -522,13 +526,22 @@ func (e *DetectionEngine) ProcessNormalizedObservation(ctx context.Context, obse
 	return e.process(ctx, observation.AsRuntimeEvent(), observation)
 }
 
-func (e *DetectionEngine) process(_ context.Context, event *RuntimeEvent, observation *RuntimeObservation) []RuntimeFinding {
+func (e *DetectionEngine) process(ctx context.Context, event *RuntimeEvent, observation *RuntimeObservation) []RuntimeFinding {
 	if event == nil {
 		return nil
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	candidateRules := e.candidateRulesForEvent(event)
+	_, span := telemetry.Tracer("cerebro.runtime").Start(ctx, "cerebro.detection.evaluate",
+		trace.WithAttributes(detectionSpanAttributes(event, observation, len(candidateRules))...),
+	)
+	defer span.End()
+
 	findings := make([]RuntimeFinding, 0, 2)
 
-	for _, rule := range e.candidateRulesForEvent(event) {
+	for _, rule := range candidateRules {
 		if !rule.Enabled {
 			continue
 		}
@@ -561,8 +574,48 @@ func (e *DetectionEngine) process(_ context.Context, event *RuntimeEvent, observ
 	if len(findings) > 0 {
 		e.storeFindings(findings)
 	}
+	span.SetAttributes(
+		attribute.Int("cerebro.detection.findings_count", len(findings)),
+		attribute.String("cerebro.detection.scope", detectionScope(event, observation)),
+	)
 
 	return findings
+}
+
+func detectionSpanAttributes(event *RuntimeEvent, observation *RuntimeObservation, candidateCount int) []attribute.KeyValue {
+	attrs := []attribute.KeyValue{
+		attribute.String("cerebro.event.id", strings.TrimSpace(event.ID)),
+		attribute.String("cerebro.event.type", strings.TrimSpace(event.EventType)),
+		attribute.String("cerebro.resource.id", strings.TrimSpace(event.ResourceID)),
+		attribute.String("cerebro.resource.type", strings.TrimSpace(event.ResourceType)),
+		attribute.Int("cerebro.detection.rule_candidates", candidateCount),
+	}
+	if tenantID := detectionTenantID(event, observation); tenantID != "" {
+		attrs = append(attrs, attribute.String("cerebro.tenant_id", tenantID))
+	}
+	return attrs
+}
+
+func detectionTenantID(event *RuntimeEvent, observation *RuntimeObservation) string {
+	if observation != nil {
+		if tenantID := stringMapValue(observation.Metadata, "tenant_id"); tenantID != "" {
+			return tenantID
+		}
+	}
+	if event == nil {
+		return ""
+	}
+	return stringMapValue(event.Metadata, "tenant_id")
+}
+
+func detectionScope(event *RuntimeEvent, observation *RuntimeObservation) string {
+	if observation != nil && strings.TrimSpace(string(observation.Kind)) != "" {
+		return strings.TrimSpace(string(observation.Kind))
+	}
+	if event == nil {
+		return ""
+	}
+	return strings.TrimSpace(event.EventType)
 }
 
 // storeFindings appends findings to the in-memory ring buffer
