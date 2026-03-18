@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 205 - Graph Store Compliance Evaluation Paths (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left compliance framework evaluation coupled to `CurrentSecurityGraphForTenant(...)`, so report and status endpoints silently dropped graph-derived evidence whenever the runtime exposed only a tenant `GraphStore`.
+- [x] Gap: the findings/compliance service only needs a read-only tenant graph view, so it can rebuild from `CurrentSecurityGraphStoreForTenant(...).Snapshot()` without changing any handler contracts.
+- [x] Gap: there was no regression proving compliance framework endpoints still return graph-backed control results in store-only runtimes or that the live graph still wins when both sources exist.
+
+### Execution plan
+- [x] Teach the findings/compliance service to fall back from the live tenant graph to a snapshot-backed graph view sourced from `CurrentSecurityGraphStoreForTenant(...)`.
+- [x] Preserve the live-graph fast path so existing in-memory runtimes do not pay the snapshot restore cost.
+- [x] Add store-only and live-graph-preference regressions for compliance framework handlers, then rerun focused API tests, lint, and changed-file validation.
+
 ## Deep Review Cycle 205 - Graph Store Stats Path (2026-03-18)
 
 ### Review findings
