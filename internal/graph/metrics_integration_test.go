@@ -28,6 +28,7 @@ func TestGraphOperationMetrics(t *testing.T) {
 	g.AddNode(&Node{ID: "bucket:critical", Kind: NodeKindBucket, Name: "critical", Account: "111111111111"})
 	g.AddEdge(&Edge{ID: "role:admin->bucket:critical", Source: "role:admin", Target: "bucket:critical", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
 	g.SetNodeProperty("bucket:critical", "internet_exposed", true)
+	g.InvalidateIndex()
 	g.BuildIndex()
 	_ = SearchEntities(g, EntitySearchOptions{Query: "admin"})
 	_ = SuggestEntities(g, EntitySuggestOptions{Prefix: "adm"})

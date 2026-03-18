@@ -283,6 +283,88 @@ func TestGraph_BuildIndexDefersEntitySuggestionIndexConstruction(t *testing.T) {
 	}
 }
 
+func TestGraph_IncrementalIndexesWorkBeforeManualBuild(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{
+		ID:       "workload:payments",
+		Kind:     NodeKindWorkload,
+		Name:     "Payments API",
+		Account:  "acct-a",
+		Provider: "aws",
+		Risk:     RiskHigh,
+		Properties: map[string]any{
+			"internet_exposed": true,
+		},
+	})
+	g.AddNode(&Node{
+		ID:      "role:admin",
+		Kind:    NodeKindRole,
+		Name:    "Admin",
+		Account: "acct-b",
+		Risk:    RiskLow,
+	})
+	g.AddEdge(&Edge{
+		ID:     "role:admin->workload:payments",
+		Source: "role:admin",
+		Target: "workload:payments",
+		Kind:   EdgeKindCanRead,
+		Properties: map[string]any{
+			"cross_account": true,
+		},
+	})
+
+	if !g.IsIndexBuilt() {
+		t.Fatal("expected incremental indexes to start current")
+	}
+	if got := len(g.GetNodesByKindIndexed(NodeKindWorkload)); got != 1 {
+		t.Fatalf("len(GetNodesByKindIndexed(workload)) = %d, want 1", got)
+	}
+	if got := len(g.GetNodesByAccountIndexed("acct-a")); got != 1 {
+		t.Fatalf("len(GetNodesByAccountIndexed(acct-a)) = %d, want 1", got)
+	}
+	if got := len(g.GetInternetFacingNodes()); got != 1 {
+		t.Fatalf("len(GetInternetFacingNodes()) = %d, want 1", got)
+	}
+	if got := len(g.GetCrownJewels()); got != 1 {
+		t.Fatalf("len(GetCrownJewels()) = %d, want 1", got)
+	}
+	if got := len(g.GetCrossAccountEdgesIndexed()); got != 1 {
+		t.Fatalf("len(GetCrossAccountEdgesIndexed()) = %d, want 1", got)
+	}
+	if got := SearchEntities(g, EntitySearchOptions{Query: "payments", Limit: 5}).Count; got != 1 {
+		t.Fatalf("SearchEntities(payments).Count = %d, want 1", got)
+	}
+	if got := SuggestEntities(g, EntitySuggestOptions{Prefix: "pay", Limit: 5}).Count; got != 1 {
+		t.Fatalf("SuggestEntities(pay).Count = %d, want 1", got)
+	}
+}
+
+func TestGraph_ClonePreservesCurrentIncrementalIndexes(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{
+		ID:       "workload:payments",
+		Kind:     NodeKindWorkload,
+		Name:     "Payments API",
+		Account:  "acct-a",
+		Provider: "aws",
+		Properties: map[string]any{
+			"internet_exposed": true,
+		},
+	})
+
+	clone := g.Clone()
+
+	if !clone.IsIndexBuilt() {
+		t.Fatal("expected cloned graph indexes to remain current")
+	}
+	if got := SearchEntities(clone, EntitySearchOptions{Query: "payments", Limit: 5}).Count; got != 1 {
+		t.Fatalf("SearchEntities(clone, payments).Count = %d, want 1", got)
+	}
+	if got := SuggestEntities(clone, EntitySuggestOptions{Prefix: "pay", Limit: 5}).Count; got != 1 {
+		t.Fatalf("SuggestEntities(clone, pay).Count = %d, want 1", got)
+	}
+}
+
 func TestGraph_InvalidateIndex(t *testing.T) {
 	g := New()
 	g.AddNode(&Node{ID: "test", Kind: NodeKindUser})
@@ -730,7 +812,7 @@ func TestGraph_RemoveCrossAccountEdgeLockedClearsCompactedTail(t *testing.T) {
 	}
 }
 
-func TestGraph_ClearEdgesInvalidatesCrossAccountIndex(t *testing.T) {
+func TestGraph_ClearEdgesPreservesCrossAccountIndexBootstrap(t *testing.T) {
 	g := New()
 	g.AddNode(&Node{ID: "user:alice", Kind: NodeKindUser, Account: "111"})
 	g.AddNode(&Node{ID: "role:admin", Kind: NodeKindRole, Account: "222"})
@@ -750,11 +832,24 @@ func TestGraph_ClearEdgesInvalidatesCrossAccountIndex(t *testing.T) {
 	if !g.nodeLookupIndexBuilt {
 		t.Fatal("expected node lookup index to remain built after ClearEdges")
 	}
-	if g.crossAccountIndexBuilt {
-		t.Fatal("expected cross-account index to be invalidated after ClearEdges")
+	if !g.crossAccountIndexBuilt {
+		t.Fatal("expected cross-account index to remain current after ClearEdges")
 	}
 	if got := len(g.GetCrossAccountEdgesIndexed()); got != 0 {
 		t.Fatalf("len(GetCrossAccountEdgesIndexed()) after ClearEdges = %d, want 0", got)
+	}
+
+	g.AddEdge(&Edge{
+		ID:     "cross-2",
+		Source: "user:alice",
+		Target: "role:admin",
+		Kind:   EdgeKindCanAssume,
+		Properties: map[string]any{
+			"cross_account": true,
+		},
+	})
+	if got := len(g.GetCrossAccountEdgesIndexed()); got != 1 {
+		t.Fatalf("len(GetCrossAccountEdgesIndexed()) after add = %d, want 1", got)
 	}
 }
 

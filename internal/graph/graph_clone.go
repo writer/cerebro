@@ -38,6 +38,13 @@ func cloneGraphWithSharedPropertyHistory(g *Graph) *Graph {
 		cloned.edgeByID[id] = cloneEdgeReference(edgeClones, edge)
 	}
 
+	// New() bootstraps empty indexes immediately, so the clone must rebuild them
+	// after copying graph state or it will retain "built" flags backed by empty maps.
+	cloned.buildIndexLocked()
+	if g.entitySuggestBuilt {
+		cloned.ensureEntitySuggestIndexBuiltLocked()
+	}
+
 	return cloned
 }
 

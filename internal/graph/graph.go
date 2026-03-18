@@ -33,7 +33,9 @@ type Graph struct {
 	blastRadiusVersion          uint64
 	blastRadiusNeedsCompaction  bool
 
-	// Basic node lookup indexes are maintained incrementally once built.
+	// Lookup and derived indexes are maintained incrementally during normal
+	// mutations. BuildIndex is primarily a repair/rebuild path after explicit
+	// invalidation.
 	indexByKind            map[NodeKind][]*Node
 	indexByAccount         map[string][]*Node
 	indexByRisk            map[RiskLevel][]*Node
@@ -42,7 +44,6 @@ type Graph struct {
 	arnPrefixIndexBuilt    bool
 	crossAccountIndexBuilt bool
 
-	// Heavier derived/search indexes are still rebuilt on BuildIndex().
 	indexByARNPrefix         map[string][]*Node // "service:resourceType" -> nodes for fast ARN matching
 	crossAccountEdge         []*Edge
 	internetNodes            []*Node // Pre-computed internet-facing nodes
@@ -86,7 +87,7 @@ type Metadata struct {
 // New creates a new empty graph
 func New() *Graph {
 	mode := SchemaValidationWarn
-	return &Graph{
+	g := &Graph{
 		nodes:                      make(map[string]*Node),
 		outEdges:                   make(map[string][]*Edge),
 		inEdges:                    make(map[string][]*Edge),
@@ -99,6 +100,8 @@ func New() *Graph {
 		temporalHistoryMaxEntries:  DefaultTemporalHistoryMaxEntries,
 		temporalHistoryTTL:         DefaultTemporalHistoryTTL,
 	}
+	g.buildIndexLocked()
+	return g
 }
 
 // AddNode adds a node to the graph
@@ -586,8 +589,8 @@ func (g *Graph) Clear() {
 	g.outEdgesShared = false
 	g.inEdgesShared = false
 	g.edgeByIDShared = false
-	g.nodeLookupIndexBuilt = false
-	g.markGraphChangedLocked()
+	g.buildIndexLocked()
+	g.markGraphChangedPreservingNodeIndexesLocked()
 	g.mu.Unlock()
 	g.emitGraphChanges(GraphChange{Type: GraphChangeGraphCleared})
 }
@@ -606,7 +609,7 @@ func (g *Graph) ClearEdges() {
 	g.inEdgesShared = false
 	g.edgeByIDShared = false
 	g.crossAccountEdge = nil
-	g.crossAccountIndexBuilt = false
+	g.crossAccountIndexBuilt = true
 	g.markGraphEdgeMutationLocked()
 	g.mu.Unlock()
 	g.emitGraphChanges(GraphChange{Type: GraphChangeEdgesCleared})
