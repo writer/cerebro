@@ -21,21 +21,11 @@ func (a *App) initTapGraphConsumer(ctx context.Context) {
 	if !a.Config.NATSConsumerEnabled {
 		return
 	}
-	subject := "ensemble.tap.>"
-	if len(a.Config.NATSConsumerSubjects) > 0 && strings.TrimSpace(a.Config.NATSConsumerSubjects[0]) != "" {
-		subject = strings.TrimSpace(a.Config.NATSConsumerSubjects[0])
-	}
-	if len(a.Config.NATSConsumerSubjects) > 1 {
-		a.Logger.Warn("multiple NATS consumer subjects configured; using first subject only",
-			"configured_subjects", a.Config.NATSConsumerSubjects,
-			"active_subject", subject,
-		)
-	}
 
 	consumer, err := events.NewJetStreamConsumer(events.ConsumerConfig{
 		URLs:                  a.Config.NATSJetStreamURLs,
 		Stream:                a.Config.NATSConsumerStream,
-		Subject:               subject,
+		Subjects:              a.Config.NATSConsumerSubjects,
 		Durable:               a.Config.NATSConsumerDurable,
 		BatchSize:             a.Config.NATSConsumerBatchSize,
 		AckWait:               a.Config.NATSConsumerAckWait,
@@ -56,7 +46,7 @@ func (a *App) initTapGraphConsumer(ctx context.Context) {
 		TLSKeyFile:            a.Config.NATSJetStreamTLSKeyFile,
 		TLSServerName:         a.Config.NATSJetStreamTLSServerName,
 		TLSInsecureSkipVerify: a.Config.NATSJetStreamTLSInsecure,
-	}, a.Logger, a.handleTapCloudEvent)
+	}, a.Logger, a.handleGraphCloudEvent)
 	if err != nil {
 		a.Logger.Warn("failed to initialize tap graph consumer", "error", err)
 		return
@@ -101,12 +91,32 @@ func (a *App) initTapGraphConsumer(ctx context.Context) {
 	}
 	a.Logger.Info("tap graph consumer enabled",
 		"stream", a.Config.NATSConsumerStream,
-		"subject", subject,
+		"subjects", a.Config.NATSConsumerSubjects,
 		"durable", a.Config.NATSConsumerDurable,
 		"batch_size", a.Config.NATSConsumerBatchSize,
 	)
 
 	_ = ctx
+}
+
+func (a *App) handleGraphCloudEvent(ctx context.Context, evt events.CloudEvent) error {
+	eventType := cloudEventType(evt)
+	switch {
+	case strings.HasPrefix(strings.ToLower(eventType), "ensemble.tap."):
+		return a.handleTapCloudEvent(ctx, evt)
+	case isAuditMutationEventType(eventType):
+		return a.handleAuditMutationCloudEvent(ctx, evt)
+	default:
+		return nil
+	}
+}
+
+func cloudEventType(evt events.CloudEvent) string {
+	eventType := strings.TrimSpace(evt.Type)
+	if eventType != "" {
+		return eventType
+	}
+	return strings.TrimSpace(evt.Subject)
 }
 
 func (a *App) ensureSecurityGraph() *graph.Graph {
@@ -137,10 +147,7 @@ func (a *App) waitForSecurityGraphReady(ctx context.Context) error {
 }
 
 func (a *App) handleTapCloudEvent(ctx context.Context, evt events.CloudEvent) error {
-	eventType := strings.TrimSpace(evt.Type)
-	if eventType == "" {
-		eventType = strings.TrimSpace(evt.Subject)
-	}
+	eventType := cloudEventType(evt)
 	if !strings.HasPrefix(strings.ToLower(eventType), "ensemble.tap.") {
 		return nil
 	}

@@ -36,20 +36,23 @@ const (
 )
 
 var (
-	awsAccessKeyPattern = regexp.MustCompile(`AKIA[0-9A-Z]{16}`)
-	jwtTokenPattern     = regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b`)
-	githubTokenPattern  = regexp.MustCompile(`gh[pousr]_[A-Za-z0-9_]{20,}`)
-	gitlabTokenPattern  = regexp.MustCompile(`glpat-[A-Za-z0-9_-]{20,}`)
-	npmTokenPattern     = regexp.MustCompile(`npm_[A-Za-z0-9]{36}`)
-	slackTokenPattern   = regexp.MustCompile(`xox[baprs]-[A-Za-z0-9-]{10,}`)
-	stripeKeyPattern    = regexp.MustCompile(`\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}\b`)
-	twilioKeyPattern    = regexp.MustCompile(`\bSK[0-9a-fA-F]{32}\b`)
-	sendGridKeyPattern  = regexp.MustCompile(`\bSG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}\b`)
-	mailgunKeyPattern   = regexp.MustCompile(`\bkey-[0-9a-fA-F]{32}\b`)
-	privateKeyPattern   = regexp.MustCompile(`-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----`)
-	inlineSecretPattern = regexp.MustCompile(`(?i)(password|passwd|pwd|secret|token|api[_-]?key|client[_-]?secret|connection[_-]?string)\s*[:=]`)
-	secretTokenPattern  = regexp.MustCompile(`[A-Za-z0-9+/=_-]{20,}`)
-	databaseURLPattern  = regexp.MustCompile(`(?i)(?:jdbc:sqlserver://[^\s'"]+|(?:jdbc:)?(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis|rediss|sqlserver)://[^\s'"]+)`)
+	awsAccessKeyPattern            = regexp.MustCompile(`AKIA[0-9A-Z]{16}`)
+	jwtTokenPattern                = regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b`)
+	githubTokenPattern             = regexp.MustCompile(`gh[pousr]_[A-Za-z0-9_]{20,}`)
+	gitlabTokenPattern             = regexp.MustCompile(`glpat-[A-Za-z0-9_-]{20,}`)
+	npmTokenPattern                = regexp.MustCompile(`npm_[A-Za-z0-9]{36}`)
+	slackTokenPattern              = regexp.MustCompile(`xox(?:[abprs]-|e[a-z]-)[A-Za-z0-9-]{10,}`)
+	gcpAPIKeyPattern               = regexp.MustCompile(`AIza[0-9A-Za-z\-_]{35}`)
+	googleOAuthClientSecretPattern = regexp.MustCompile(`GOCSPX-[0-9A-Za-z\-_]{20,}`)
+	stripeAPIKeyPattern            = regexp.MustCompile(`\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}\b`)
+	twilioAPIKeyPattern            = regexp.MustCompile(`\bSK[0-9a-f]{32}\b`)
+	sendGridAPIKeyPattern          = regexp.MustCompile(`\bSG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}\b`)
+	mailgunKeyPattern              = regexp.MustCompile(`\bkey-[0-9a-fA-F]{32}\b`)
+	privateKeyPattern              = regexp.MustCompile(`-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP |ENCRYPTED )?PRIVATE KEY-----`)
+	inlineSecretPattern            = regexp.MustCompile(`(?i)(password|passwd|pwd|secret|token|api[_-]?key|client[_-]?secret|connection[_-]?string|access[_-]?key|private[_-]?key)\s*[:=]`)
+	inlineSecretAssignmentPattern  = regexp.MustCompile(`(?i)(password|passwd|pwd|secret|token|api[_-]?key|client[_-]?secret|connection[_-]?string|access[_-]?key|private[_-]?key)\s*[:=]\s*(.+)$`)
+	secretTokenPattern             = regexp.MustCompile(`[A-Za-z0-9+/=_-]{20,}`)
+	databaseURLPattern             = regexp.MustCompile(`(?i)(?:jdbc:sqlserver://[^\s'"]+|(?:jdbc:)?(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis|rediss|sqlserver)://[^\s'"]+)`)
 )
 
 type Analyzer struct {
@@ -217,7 +220,27 @@ func (a *Analyzer) Analyze(ctx context.Context, rootfsPath string) (*Report, err
 		}
 		if shouldParsePackageFile(filePath) {
 			if data, ok, err := readLimitedFile(root, filePath, a.maxFileBytes); err == nil && ok {
-				inv.addPackages(parsePackageRecords(filePath, data)...)
+				if graph := parseNPMDependencyGraph(filePath, data); graph != nil {
+					inv.addNPMDependencyGraph(*graph)
+				} else if graph := parseGoDependencyGraph(filePath, data); graph != nil {
+					inv.addGoDependencyGraph(*graph)
+				} else {
+					inv.addPackages(parsePackageRecords(filePath, data)...)
+				}
+			} else if err != nil {
+				inv.metadataErrors = append(inv.metadataErrors, err.Error())
+			}
+		}
+		if shouldInspectJSImportFile(filePath, info.Mode(), info.Size(), a.maxFileBytes) {
+			if data, ok, err := readLimitedFile(root, filePath, a.maxFileBytes); err == nil && ok {
+				inv.addJSImportFile(filePath, scanJSImportSpecifiers(data))
+			} else if err != nil {
+				inv.metadataErrors = append(inv.metadataErrors, err.Error())
+			}
+		}
+		if shouldInspectGoImportFile(filePath, info.Mode(), info.Size(), a.maxFileBytes) {
+			if data, ok, err := readLimitedFile(root, filePath, a.maxFileBytes); err == nil && ok {
+				inv.addGoImportFile(filePath, scanGoImportSpecifiers(filePath, data))
 			} else if err != nil {
 				inv.metadataErrors = append(inv.metadataErrors, err.Error())
 			}
@@ -232,6 +255,13 @@ func (a *Analyzer) Analyze(ctx context.Context, rootfsPath string) (*Report, err
 		if shouldParseConfigFile(filePath) {
 			if data, ok, err := readLimitedFile(root, filePath, a.maxSecretFileBytes); err == nil && ok {
 				inv.addConfigs(parseConfigFindings(filePath, data)...)
+			} else if err != nil {
+				inv.metadataErrors = append(inv.metadataErrors, err.Error())
+			}
+		}
+		if shouldInspectTechnologyFile(filePath, info.Mode(), info.Size(), a.maxFileBytes) {
+			if data, ok, err := readLimitedFile(root, filePath, a.maxFileBytes); err == nil && ok {
+				inv.addTechnologies(detectTechnologies(filePath, data)...)
 			} else if err != nil {
 				inv.metadataErrors = append(inv.metadataErrors, err.Error())
 			}
@@ -252,7 +282,7 @@ func (a *Analyzer) Analyze(ctx context.Context, rootfsPath string) (*Report, err
 				inv.metadataErrors = append(inv.metadataErrors, err.Error())
 			}
 		}
-		if a.malwareScanner != nil && shouldMalwareScan(filePath, info.Mode(), info.Size()) {
+		if a.malwareScanner != nil && shouldMalwareScan(filePath, info.Mode(), info.Size(), a.maxMalwareFileBytes) {
 			if data, ok, err := readLimitedFile(root, filePath, a.maxMalwareFileBytes); err == nil && ok {
 				result, scanErr := a.malwareScanner.ScanData(ctx, data, filePath)
 				if scanErr != nil {
@@ -281,6 +311,8 @@ func (a *Analyzer) Analyze(ctx context.Context, rootfsPath string) (*Report, err
 
 	mergeOSInfo(&report.OS, inv.os)
 	report.OS.EOL = isLikelyEOL(report.OS)
+	inv.applyDependencyReachability()
+	inv.canonicalizeGraphBackedPackages()
 	report.Packages = inv.sortedPackages()
 	if a.vulnerabilityMatcher != nil && len(report.Packages) > 0 {
 		matchedVulns, err := a.vulnerabilityMatcher.MatchPackages(ctx, report.OS, report.Packages)
@@ -295,15 +327,18 @@ func (a *Analyzer) Analyze(ctx context.Context, rootfsPath string) (*Report, err
 	report.Misconfigurations = inv.configs
 	report.IaCArtifacts = inv.iacArtifacts
 	report.Malware = inv.malware
-	report.SBOM = buildSBOM(report.GeneratedAt, report.Packages)
+	report.Technologies = inv.sortedTechnologies()
+	report.SBOM = buildSBOM(report.GeneratedAt, inv.sortedSBOMComponents(report.Packages), inv.sortedSBOMDependencies())
 	report.Findings = dedupeFindings(append(report.Findings, inv.findings...))
 	report.Summary = Summary{
 		PackageCount:          len(report.Packages),
+		DependencyCount:       len(report.SBOM.Dependencies),
 		VulnerabilityCount:    len(report.Vulnerabilities),
 		SecretCount:           len(report.Secrets),
 		MisconfigurationCount: len(report.Misconfigurations),
 		IaCArtifactCount:      len(report.IaCArtifacts),
 		MalwareCount:          len(report.Malware),
+		TechnologyCount:       len(report.Technologies),
 		Truncated:             inv.truncated,
 	}
 	report.Metadata["entries_visited"] = inv.entriesVisited
@@ -320,12 +355,21 @@ type inventory struct {
 	generatedAt    time.Time
 	os             OSInfo
 	packages       map[string]PackageRecord
+	packageDeps    map[string]map[string]struct{}
+	sbomComponents map[string]SBOMComponent
+	sbomDeps       map[string]map[string]struct{}
 	iacArtifactIDs map[string]struct{}
 	secretKeys     map[string]struct{}
+	technologyKeys map[string]struct{}
+	npmGraphs      []npmDependencyGraph
+	jsImports      map[string][]string
+	goGraphs       []goDependencyGraph
+	goImports      map[string][]string
 	secrets        []SecretFinding
 	configs        []ConfigFinding
 	iacArtifacts   []IaCArtifact
 	malware        []MalwareFinding
+	technologies   []TechnologyRecord
 	findings       []scanner.ContainerFinding
 	entriesVisited int
 	truncated      bool
@@ -336,8 +380,14 @@ func newInventory(now time.Time) *inventory {
 	return &inventory{
 		generatedAt:    now,
 		packages:       make(map[string]PackageRecord),
+		packageDeps:    make(map[string]map[string]struct{}),
+		sbomComponents: make(map[string]SBOMComponent),
+		sbomDeps:       make(map[string]map[string]struct{}),
 		iacArtifactIDs: make(map[string]struct{}),
 		secretKeys:     make(map[string]struct{}),
+		technologyKeys: make(map[string]struct{}),
+		jsImports:      make(map[string][]string),
+		goImports:      make(map[string][]string),
 	}
 }
 
@@ -351,9 +401,71 @@ func (i *inventory) addPackages(pkgs ...PackageRecord) {
 		pkg.Ecosystem = strings.TrimSpace(pkg.Ecosystem)
 		pkg.Manager = firstNonEmpty(pkg.Manager, pkg.Ecosystem)
 		pkg.PURL = firstNonEmpty(pkg.PURL, buildPURL(pkg))
-		key := pkg.Ecosystem + "|" + pkg.Name + "|" + pkg.Version + "|" + pkg.Location
+		key := packageInventoryKey(pkg)
+		if existing, ok := i.packages[key]; ok {
+			i.packages[key] = MergePackageRecord(existing, pkg)
+			continue
+		}
 		i.packages[key] = pkg
 	}
+}
+
+func (i *inventory) addNPMDependencyGraph(graph npmDependencyGraph) {
+	if len(graph.Packages) > 0 {
+		i.addPackages(graph.Packages...)
+	}
+	for parentKey, children := range graph.DependencyKeys {
+		if _, ok := i.packageDeps[parentKey]; !ok {
+			i.packageDeps[parentKey] = make(map[string]struct{})
+		}
+		for childKey := range children {
+			i.packageDeps[parentKey][childKey] = struct{}{}
+		}
+	}
+	i.npmGraphs = append(i.npmGraphs, graph)
+}
+
+func (i *inventory) addGoDependencyGraph(graph goDependencyGraph) {
+	if len(graph.Packages) > 0 {
+		i.addPackages(graph.Packages...)
+	}
+	if modulePath := strings.TrimSpace(graph.ModulePath); modulePath != "" {
+		root := SBOMComponent{
+			BOMRef:    sbomApplicationRef("golang", modulePath, graph.ManifestPath),
+			Type:      "application",
+			Name:      modulePath,
+			Ecosystem: "golang",
+			Location:  graph.ManifestPath,
+		}
+		i.sbomComponents[root.BOMRef] = root
+		if len(graph.DirectKeys) > 0 {
+			if _, ok := i.sbomDeps[root.BOMRef]; !ok {
+				i.sbomDeps[root.BOMRef] = make(map[string]struct{})
+			}
+			for key := range graph.DirectKeys {
+				pkg, ok := i.packages[key]
+				if !ok {
+					continue
+				}
+				i.sbomDeps[root.BOMRef][sbomComponentRef(pkg)] = struct{}{}
+			}
+		}
+	}
+	i.goGraphs = append(i.goGraphs, graph)
+}
+
+func (i *inventory) addJSImportFile(filePath string, imports []string) {
+	if len(imports) == 0 {
+		return
+	}
+	i.jsImports[filePath] = append(i.jsImports[filePath], imports...)
+}
+
+func (i *inventory) addGoImportFile(filePath string, imports []string) {
+	if len(imports) == 0 {
+		return
+	}
+	i.goImports[filePath] = append(i.goImports[filePath], imports...)
 }
 
 func (i *inventory) addSecrets(findings ...SecretFinding) {
@@ -422,6 +534,21 @@ func (i *inventory) addMalware(finding MalwareFinding) {
 	})
 }
 
+func (i *inventory) addTechnologies(records ...TechnologyRecord) {
+	for _, record := range records {
+		record = normalizeTechnologyRecord(record)
+		key := technologyKey(record)
+		if key == "" {
+			continue
+		}
+		if _, exists := i.technologyKeys[key]; exists {
+			continue
+		}
+		i.technologyKeys[key] = struct{}{}
+		i.technologies = append(i.technologies, record)
+	}
+}
+
 func (i *inventory) sortedPackages() []PackageRecord {
 	pkgs := make([]PackageRecord, 0, len(i.packages))
 	for _, pkg := range i.packages {
@@ -442,6 +569,318 @@ func (i *inventory) sortedPackages() []PackageRecord {
 		return left.Location < right.Location
 	})
 	return pkgs
+}
+
+func (i *inventory) sortedSBOMDependencies() []SBOMDependency {
+	depsByRef := make(map[string]map[string]struct{}, len(i.packageDeps)+len(i.sbomDeps))
+	for parentKey, children := range i.packageDeps {
+		parent, ok := i.packages[parentKey]
+		if !ok {
+			continue
+		}
+		parentRef := sbomComponentRef(parent)
+		if _, ok := depsByRef[parentRef]; !ok {
+			depsByRef[parentRef] = make(map[string]struct{})
+		}
+		for childKey := range children {
+			child, ok := i.packages[childKey]
+			if !ok {
+				continue
+			}
+			depsByRef[parentRef][sbomComponentRef(child)] = struct{}{}
+		}
+	}
+	for parentRef, children := range i.sbomDeps {
+		if _, ok := depsByRef[parentRef]; !ok {
+			depsByRef[parentRef] = make(map[string]struct{})
+		}
+		for childRef := range children {
+			depsByRef[parentRef][childRef] = struct{}{}
+		}
+	}
+	out := make([]SBOMDependency, 0, len(depsByRef))
+	for parentRef, children := range depsByRef {
+		dep := SBOMDependency{Ref: parentRef}
+		for childRef := range children {
+			dep.DependsOn = append(dep.DependsOn, childRef)
+		}
+		sort.Strings(dep.DependsOn)
+		if len(dep.DependsOn) > 0 {
+			out = append(out, dep)
+		}
+	}
+	sort.Slice(out, func(a, b int) bool {
+		return out[a].Ref < out[b].Ref
+	})
+	return out
+}
+
+func (i *inventory) sortedSBOMComponents(packages []PackageRecord) []SBOMComponent {
+	components := make([]SBOMComponent, 0, len(packages)+len(i.sbomComponents))
+	for _, pkg := range packages {
+		components = append(components, SBOMComponent{
+			BOMRef:           sbomComponentRef(pkg),
+			Type:             "library",
+			Name:             pkg.Name,
+			Version:          pkg.Version,
+			PURL:             pkg.PURL,
+			Ecosystem:        pkg.Ecosystem,
+			Location:         pkg.Location,
+			DirectDependency: pkg.DirectDependency,
+			Reachable:        pkg.Reachable,
+			DependencyDepth:  pkg.DependencyDepth,
+			ImportFileCount:  pkg.ImportFileCount,
+		})
+	}
+	for _, component := range i.sbomComponents {
+		components = append(components, component)
+	}
+	sort.Slice(components, func(a, b int) bool {
+		return components[a].BOMRef < components[b].BOMRef
+	})
+	return components
+}
+
+func (i *inventory) sortedTechnologies() []TechnologyRecord {
+	records := make([]TechnologyRecord, len(i.technologies))
+	copy(records, i.technologies)
+	sort.Slice(records, func(a, b int) bool {
+		left := records[a]
+		right := records[b]
+		if left.Category != right.Category {
+			return left.Category < right.Category
+		}
+		if left.Name != right.Name {
+			return left.Name < right.Name
+		}
+		if left.Version != right.Version {
+			return left.Version < right.Version
+		}
+		return left.Path < right.Path
+	})
+	return records
+}
+
+func (i *inventory) applyDependencyReachability() {
+	npmBaseDirs := collectManifestBaseDirs(i.npmGraphs)
+	for _, graph := range i.npmGraphs {
+		reachable := make(map[string]map[string]struct{})
+		for filePath, imports := range i.jsImports {
+			if !manifestOwnsFile(filePath, graph.BaseDir, npmBaseDirs) {
+				continue
+			}
+			for _, imp := range imports {
+				for key := range graph.ImportableKeys[imp] {
+					if _, ok := reachable[key]; !ok {
+						reachable[key] = make(map[string]struct{})
+					}
+					reachable[key][filePath] = struct{}{}
+				}
+			}
+		}
+		type queueItem struct {
+			key      string
+			filePath string
+		}
+		queue := make([]queueItem, 0, len(reachable))
+		for key, fileSet := range reachable {
+			for filePath := range fileSet {
+				queue = append(queue, queueItem{key: key, filePath: filePath})
+			}
+		}
+		for len(queue) > 0 {
+			current := queue[0]
+			queue = queue[1:]
+			pkg, ok := i.packages[current.key]
+			if ok {
+				pkg.Reachable = true
+				pkg.ImportFileCount = max(pkg.ImportFileCount, len(reachable[current.key]))
+				i.packages[current.key] = pkg
+			}
+			for child := range graph.DependencyKeys[current.key] {
+				if _, ok := reachable[child]; !ok {
+					reachable[child] = make(map[string]struct{})
+				}
+				if _, seen := reachable[child][current.filePath]; seen {
+					continue
+				}
+				reachable[child][current.filePath] = struct{}{}
+				queue = append(queue, queueItem{key: child, filePath: current.filePath})
+			}
+		}
+	}
+	goBaseDirs := collectManifestBaseDirs(i.goGraphs)
+	for _, graph := range i.goGraphs {
+		reachable := make(map[string]map[string]struct{})
+		for filePath, imports := range i.goImports {
+			if !manifestOwnsFile(filePath, graph.BaseDir, goBaseDirs) {
+				continue
+			}
+			for _, imp := range imports {
+				for _, key := range matchGoImportablePackageKeys(graph.ImportableKeys, imp) {
+					if _, ok := reachable[key]; !ok {
+						reachable[key] = make(map[string]struct{})
+					}
+					reachable[key][filePath] = struct{}{}
+				}
+			}
+		}
+		for key, fileSet := range reachable {
+			pkg, ok := i.packages[key]
+			if !ok {
+				continue
+			}
+			pkg.Reachable = true
+			pkg.ImportFileCount = max(pkg.ImportFileCount, len(fileSet))
+			i.packages[key] = pkg
+		}
+	}
+}
+
+func (i *inventory) canonicalizeGraphBackedPackages() {
+	if len(i.packages) == 0 {
+		return
+	}
+	i.canonicalizeNPMGraphBackedPackages()
+}
+
+func (i *inventory) canonicalizeNPMGraphBackedPackages() {
+	if len(i.npmGraphs) == 0 {
+		return
+	}
+	baseDirs := collectManifestBaseDirs(i.npmGraphs)
+	canonicalKeys := make(map[string]string, len(i.npmGraphs))
+	manifestPaths := make(map[string]string, len(i.npmGraphs))
+	for _, graph := range i.npmGraphs {
+		manifestPaths[graph.BaseDir] = graph.ManifestPath
+		for _, pkg := range graph.Packages {
+			canonicalKeys[npmGraphCanonicalKey(graph.BaseDir, pkg.Name, pkg.Version)] = packageInventoryKey(pkg)
+		}
+	}
+	for oldKey, pkg := range i.packages {
+		if !isInstalledNPMPackageLocation(pkg.Location) {
+			continue
+		}
+		baseDir := nearestManifestBaseDir(pkg.Location, baseDirs)
+		manifestPath := manifestPaths[baseDir]
+		if manifestPath == "" {
+			continue
+		}
+		newKey := canonicalKeys[npmGraphCanonicalKey(baseDir, pkg.Name, pkg.Version)]
+		if newKey == "" || newKey == oldKey {
+			continue
+		}
+		existing, ok := i.packages[newKey]
+		if !ok {
+			continue
+		}
+		i.packages[newKey] = MergePackageRecord(existing, pkg)
+		delete(i.packages, oldKey)
+		i.remapPackageDependencyKey(oldKey, newKey)
+	}
+}
+
+func npmGraphCanonicalKey(baseDir, name, version string) string {
+	return strings.Join([]string{
+		normalizeManifestBaseDir(baseDir),
+		strings.TrimSpace(name),
+		strings.TrimSpace(version),
+	}, "|")
+}
+
+func isInstalledNPMPackageLocation(location string) bool {
+	location = strings.TrimSpace(location)
+	return strings.HasSuffix(location, "/package.json") && strings.Contains(location, "/node_modules/")
+}
+
+func (i *inventory) remapPackageDependencyKey(oldKey, newKey string) {
+	if oldKey == "" || newKey == "" || oldKey == newKey {
+		return
+	}
+	if children, ok := i.packageDeps[oldKey]; ok {
+		if _, exists := i.packageDeps[newKey]; !exists {
+			i.packageDeps[newKey] = make(map[string]struct{}, len(children))
+		}
+		for childKey := range children {
+			if childKey == oldKey {
+				childKey = newKey
+			}
+			i.packageDeps[newKey][childKey] = struct{}{}
+		}
+		delete(i.packageDeps, oldKey)
+	}
+	for parentKey, children := range i.packageDeps {
+		if _, ok := children[oldKey]; !ok {
+			continue
+		}
+		delete(children, oldKey)
+		children[newKey] = struct{}{}
+		if len(children) == 0 {
+			delete(i.packageDeps, parentKey)
+		}
+	}
+}
+
+func collectManifestBaseDirs[T interface{ manifestBaseDir() string }](graphs []T) []string {
+	seen := make(map[string]struct{}, len(graphs))
+	out := make([]string, 0, len(graphs))
+	for _, graph := range graphs {
+		baseDir := normalizeManifestBaseDir(graph.manifestBaseDir())
+		if _, ok := seen[baseDir]; ok {
+			continue
+		}
+		seen[baseDir] = struct{}{}
+		out = append(out, baseDir)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return len(out[i]) > len(out[j])
+	})
+	return out
+}
+
+func manifestOwnsFile(filePath, baseDir string, manifestBaseDirs []string) bool {
+	baseDir = normalizeManifestBaseDir(baseDir)
+	filePath = strings.TrimSpace(filePath)
+	if filePath == "" {
+		return false
+	}
+	if !pathWithinManifestBase(filePath, baseDir) {
+		return false
+	}
+	return nearestManifestBaseDir(filePath, manifestBaseDirs) == baseDir
+}
+
+func nearestManifestBaseDir(filePath string, manifestBaseDirs []string) string {
+	filePath = strings.TrimSpace(filePath)
+	if filePath == "" {
+		return ""
+	}
+	for _, baseDir := range manifestBaseDirs {
+		if pathWithinManifestBase(filePath, baseDir) {
+			return baseDir
+		}
+	}
+	return ""
+}
+
+func pathWithinManifestBase(filePath, baseDir string) bool {
+	baseDir = normalizeManifestBaseDir(baseDir)
+	filePath = strings.TrimSpace(filePath)
+	if filePath == "" {
+		return false
+	}
+	if baseDir == "" {
+		return true
+	}
+	return filePath == baseDir || strings.HasPrefix(filePath, baseDir+"/")
+}
+
+func normalizeManifestBaseDir(baseDir string) string {
+	baseDir = strings.TrimSpace(baseDir)
+	if baseDir == "." {
+		return ""
+	}
+	return baseDir
 }
 
 func readLimitedFile(root *os.Root, filePath string, limit int64) ([]byte, bool, error) {
@@ -493,6 +932,12 @@ func shouldParsePackageFile(filePath string) bool {
 		return true
 	case strings.Contains(filePath, "/node_modules/") && strings.HasSuffix(filePath, "/package.json"):
 		return true
+	case path.Base(filePath) == "package-lock.json":
+		return true
+	case path.Base(filePath) == "npm-shrinkwrap.json":
+		return true
+	case path.Base(filePath) == "go.mod":
+		return true
 	case path.Base(filePath) == "go.sum":
 		return true
 	case path.Base(filePath) == "Cargo.lock":
@@ -515,6 +960,46 @@ func shouldParseOSFile(filePath string) bool {
 	default:
 		return false
 	}
+}
+
+func shouldInspectJSImportFile(filePath string, mode fs.FileMode, size int64, maxBytes int64) bool {
+	if mode&fs.ModeSymlink != 0 || mode.IsDir() || size <= 0 || size > maxBytes {
+		return false
+	}
+	if pathHasSegment(filePath, "node_modules") || pathHasSegment(filePath, "vendor") || pathHasSegment(filePath, "dist") || pathHasSegment(filePath, "build") {
+		return false
+	}
+	switch strings.ToLower(path.Ext(filePath)) {
+	case ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs":
+		return true
+	default:
+		return false
+	}
+}
+
+func shouldInspectGoImportFile(filePath string, mode fs.FileMode, size int64, maxBytes int64) bool {
+	if mode&fs.ModeSymlink != 0 || mode.IsDir() || size <= 0 || size > maxBytes {
+		return false
+	}
+	if pathHasSegment(filePath, "vendor") || pathHasSegment(filePath, "testdata") || pathHasSegment(filePath, "fixtures") {
+		return false
+	}
+	return strings.EqualFold(path.Ext(filePath), ".go")
+}
+
+func pathHasSegment(filePath, segment string) bool {
+	filePath = strings.Trim(strings.TrimSpace(filePath), "/")
+	segment = strings.Trim(strings.TrimSpace(segment), "/")
+	if filePath == "" || segment == "" {
+		return false
+	}
+	parts := strings.Split(filePath, "/")
+	for _, part := range parts {
+		if part == segment {
+			return true
+		}
+	}
+	return false
 }
 
 func shouldParseConfigFile(filePath string) bool {
@@ -576,19 +1061,22 @@ func shouldSecretScan(filePath string, mode fs.FileMode, size int64, maxBytes in
 	}
 	ext := strings.ToLower(path.Ext(filePath))
 	switch ext {
-	case ".env", ".ini", ".cfg", ".conf", ".yaml", ".yml", ".json", ".xml", ".sh", ".bashrc", ".zshrc", ".py", ".js", ".ts", ".go", ".java", ".rb", ".php", ".txt":
+	case ".env", ".ini", ".cfg", ".conf", ".yaml", ".yml", ".json", ".xml", ".toml", ".properties", ".sh", ".bashrc", ".zshrc", ".py", ".js", ".ts", ".go", ".java", ".rb", ".php", ".ps1", ".cs", ".pem", ".key", ".txt":
 		return true
 	}
 	base := path.Base(filePath)
 	switch base {
-	case ".env", "config", "authorized_keys", "known_hosts", ".bash_history", ".zsh_history", "credentials", "secrets", "Dockerfile":
+	case ".env", ".envrc", "config", "authorized_keys", "known_hosts", ".bash_history", ".zsh_history", "credentials", "secrets", "Dockerfile", "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", "application.properties":
 		return true
 	}
 	return ext == ""
 }
 
-func shouldMalwareScan(filePath string, mode fs.FileMode, size int64) bool {
-	if mode.IsDir() || mode&fs.ModeSymlink != 0 || size <= 0 || size > defaultMaxMalwareBytes {
+func shouldMalwareScan(filePath string, mode fs.FileMode, size int64, maxBytes int64) bool {
+	if maxBytes <= 0 {
+		maxBytes = defaultMaxMalwareBytes
+	}
+	if mode.IsDir() || mode&fs.ModeSymlink != 0 || size <= 0 || size > maxBytes {
 		return false
 	}
 	if mode&0o111 != 0 {
@@ -596,7 +1084,7 @@ func shouldMalwareScan(filePath string, mode fs.FileMode, size int64) bool {
 	}
 	ext := strings.ToLower(path.Ext(filePath))
 	switch ext {
-	case ".sh", ".py", ".js", ".jar", ".bin", ".exe":
+	case ".sh", ".py", ".js", ".php", ".rb", ".pl", ".ps1", ".jar", ".war", ".bin", ".so", ".dll", ".exe", ".com", ".bat", ".cmd", ".scr":
 		return true
 	default:
 		return false
@@ -765,6 +1253,10 @@ func parseNPMPackage(filePath string, data []byte) []PackageRecord {
 func parseGoSum(filePath string, data []byte) []PackageRecord {
 	seen := make(map[string]struct{})
 	pkgs := make([]PackageRecord, 0)
+	location := strings.TrimSpace(filePath)
+	if path.Base(location) == "go.sum" {
+		location = path.Join(path.Dir(location), "go.mod")
+	}
 	scanner := bufio.NewScanner(bytes.NewReader(data))
 	for scanner.Scan() {
 		parts := strings.Fields(scanner.Text())
@@ -781,7 +1273,7 @@ func parseGoSum(filePath string, data []byte) []PackageRecord {
 			continue
 		}
 		seen[key] = struct{}{}
-		pkgs = append(pkgs, PackageRecord{Ecosystem: "golang", Manager: "go", Name: name, Version: version, Location: filePath})
+		pkgs = append(pkgs, PackageRecord{Ecosystem: "golang", Manager: "go", Name: name, Version: version, Location: location})
 	}
 	return pkgs
 }
@@ -1229,8 +1721,9 @@ func scanSecrets(filePath string, data []byte) []SecretFinding {
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
-		matchedSpecific := false
-		if match := awsAccessKeyPattern.FindString(line); match != "" {
+		matchedSpecificSecret := false
+		for _, match := range awsAccessKeyPattern.FindAllString(line, -1) {
+			matchedSpecificSecret = true
 			appendFinding(
 				"aws_access_key",
 				"critical",
@@ -1239,46 +1732,74 @@ func scanSecrets(filePath string, data []byte) []SecretFinding {
 				lineNo,
 				SecretReference{Kind: "cloud_identity", Provider: "aws", Identifier: strings.TrimSpace(match)},
 			)
-			matchedSpecific = true
 		}
-		if match := githubTokenPattern.FindString(line); match != "" {
+		for _, match := range githubTokenPattern.FindAllString(line, -1) {
+			matchedSpecificSecret = true
 			appendFinding("github_token", "high", fingerprintSecretMatch(match), "Potential GitHub token detected.", lineNo)
-			matchedSpecific = true
 		}
-		if match := gitlabTokenPattern.FindString(line); match != "" {
+		for _, match := range gitlabTokenPattern.FindAllString(line, -1) {
+			matchedSpecificSecret = true
 			appendFinding("gitlab_token", "high", fingerprintSecretMatch(match), "Potential GitLab token detected.", lineNo)
-			matchedSpecific = true
 		}
-		if match := npmTokenPattern.FindString(line); match != "" {
+		for _, match := range npmTokenPattern.FindAllString(line, -1) {
+			matchedSpecificSecret = true
 			appendFinding("npm_token", "high", fingerprintSecretMatch(match), "Potential npm token detected.", lineNo)
-			matchedSpecific = true
 		}
-		if match := slackTokenPattern.FindString(line); match != "" {
+		for _, match := range slackTokenPattern.FindAllString(line, -1) {
+			matchedSpecificSecret = true
 			appendFinding("slack_token", "high", fingerprintSecretMatch(match), "Potential Slack token detected.", lineNo)
-			matchedSpecific = true
 		}
-		if match := stripeKeyPattern.FindString(line); match != "" {
+		for _, match := range gcpAPIKeyPattern.FindAllString(line, -1) {
+			matchedSpecificSecret = true
+			appendFinding("gcp_api_key", "high", fingerprintSecretMatch(match), "Potential GCP API key detected.", lineNo, SecretReference{
+				Kind: "cloud_identity", Provider: "gcp", Identifier: strings.TrimSpace(match),
+			})
+		}
+		for _, match := range googleOAuthClientSecretPattern.FindAllString(line, -1) {
+			matchedSpecificSecret = true
+			appendFinding("google_oauth_client_secret", "high", fingerprintSecretMatch(match), "Potential Google OAuth client secret detected.", lineNo)
+		}
+		for _, match := range stripeAPIKeyPattern.FindAllString(line, -1) {
+			matchedSpecificSecret = true
 			appendFinding("stripe_api_key", "high", fingerprintSecretMatch(match), "Potential Stripe API key detected.", lineNo)
-			matchedSpecific = true
 		}
-		if match := twilioKeyPattern.FindString(line); match != "" {
-			appendFinding("twilio_api_key", "high", fingerprintSecretMatch(match), "Potential Twilio API key detected.", lineNo)
-			matchedSpecific = true
-		}
-		if match := sendGridKeyPattern.FindString(line); match != "" {
+		for _, match := range sendGridAPIKeyPattern.FindAllString(line, -1) {
+			matchedSpecificSecret = true
 			appendFinding("sendgrid_api_key", "high", fingerprintSecretMatch(match), "Potential SendGrid API key detected.", lineNo)
-			matchedSpecific = true
 		}
-		if match := mailgunKeyPattern.FindString(line); match != "" {
+		for _, match := range twilioAPIKeyPattern.FindAllString(line, -1) {
+			matchedSpecificSecret = true
+			appendFinding("twilio_api_key", "high", fingerprintSecretMatch(match), "Potential Twilio API key detected.", lineNo)
+		}
+		for _, match := range mailgunKeyPattern.FindAllString(line, -1) {
+			matchedSpecificSecret = true
 			appendFinding("mailgun_api_key", "high", fingerprintSecretMatch(match), "Potential Mailgun API key detected.", lineNo)
-			matchedSpecific = true
+		}
+		for _, match := range jwtTokenPattern.FindAllString(line, -1) {
+			if !likelyJWTSecretLine(line) || !isLikelyJWT(match) {
+				continue
+			}
+			matchedSpecificSecret = true
+			appendFinding("jwt_token", "high", fingerprintSecretMatch(match), "Potential JWT bearer token detected.", lineNo)
 		}
 		if privateKeyPattern.MatchString(line) {
+			matchedSpecificSecret = true
 			appendFinding("private_key", "critical", "private_key", "Private key material detected.", lineNo)
-			matchedSpecific = true
 		}
-		if match := databaseURLPattern.FindString(line); match != "" {
+		if ref, ok := parseAzureStorageConnectionReference(line); ok {
+			matchedSpecificSecret = true
+			appendFinding(
+				"azure_storage_connection_string",
+				"critical",
+				fingerprintSecretMatch(line),
+				"Potential Azure storage connection string detected.",
+				lineNo,
+				ref,
+			)
+		}
+		for _, match := range databaseURLPattern.FindAllString(line, -1) {
 			if ref, ok := parseDatabaseConnectionReference(match); ok {
+				matchedSpecificSecret = true
 				appendFinding(
 					"database_connection_string",
 					"critical",
@@ -1287,18 +1808,20 @@ func scanSecrets(filePath string, data []byte) []SecretFinding {
 					lineNo,
 					ref,
 				)
-			} else {
+				continue
+			}
+			if databaseConnectionLooksSecretLike(match) {
+				matchedSpecificSecret = true
 				appendFinding("database_connection_string", "critical", fingerprintSecretMatch(match), "Potential database connection string detected.", lineNo)
 			}
-			matchedSpecific = true
 		}
-		if match := jwtTokenPattern.FindString(line); match != "" && likelyJWTSecretLine(line) {
-			appendFinding("jwt_token", "high", fingerprintSecretMatch(match), "Potential JWT detected.", lineNo)
-			matchedSpecific = true
+		if !matchedSpecificSecret {
+			if value, key := inlineSecretValue(line); value != "" {
+				appendFinding("inline_secret", "high", fingerprintSecretMatch(key+"="+value), "Inline secret-like assignment detected.", lineNo)
+				matchedSpecificSecret = true
+			}
 		}
-		if !matchedSpecific && inlineSecretPattern.MatchString(line) {
-			appendFinding("inline_secret", "high", fingerprintSecretMatch(line), "Inline secret-like assignment detected.", lineNo)
-		} else if !matchedSpecific {
+		if !matchedSpecificSecret {
 			if token := entropySecretToken(line); token != "" {
 				appendFinding("high_entropy_token", "medium", fingerprintSecretMatch(token), "High-entropy token detected in text content.", lineNo)
 			}
@@ -1545,6 +2068,9 @@ func parseDatabaseConnectionReference(raw string) (SecretReference, bool) {
 	if err != nil || parsed == nil {
 		return SecretReference{}, false
 	}
+	if !databaseConnectionContainsSecret(parsed) {
+		return SecretReference{}, false
+	}
 	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
 	if host == "" {
 		return SecretReference{}, false
@@ -1595,6 +2121,7 @@ func parseJDBCSQLServerReference(raw string) (SecretReference, bool) {
 		return SecretReference{}, false
 	}
 	database := ""
+	hasSecret := false
 	for _, segment := range strings.Split(raw, ";") {
 		key, value, ok := strings.Cut(segment, "=")
 		if !ok {
@@ -1603,7 +2130,12 @@ func parseJDBCSQLServerReference(raw string) (SecretReference, bool) {
 		switch strings.ToLower(strings.TrimSpace(key)) {
 		case "databasename", "database":
 			database = strings.TrimSpace(value)
+		case "password", "pwd", "access_token", "token", "secret":
+			hasSecret = hasSecret || strings.TrimSpace(value) != ""
 		}
+	}
+	if !hasSecret {
+		return SecretReference{}, false
 	}
 	return SecretReference{
 		Kind:       "database",
@@ -1615,25 +2147,79 @@ func parseJDBCSQLServerReference(raw string) (SecretReference, bool) {
 	}, true
 }
 
-func buildSBOM(generatedAt time.Time, packages []PackageRecord) SBOMDocument {
-	components := make([]SBOMComponent, 0, len(packages))
-	for _, pkg := range packages {
-		components = append(components, SBOMComponent{
-			BOMRef:    findingID("pkg", pkg.Ecosystem+":"+pkg.Name+":"+pkg.Version+":"+pkg.Location),
-			Type:      "library",
-			Name:      pkg.Name,
-			Version:   pkg.Version,
-			PURL:      pkg.PURL,
-			Ecosystem: pkg.Ecosystem,
-			Location:  pkg.Location,
-		})
+func parseAzureStorageConnectionReference(raw string) (SecretReference, bool) {
+	values := parseDelimitedKeyValuePairs(raw, ";")
+	if strings.TrimSpace(values["accountkey"]) == "" && strings.TrimSpace(values["sharedaccesssignature"]) == "" {
+		return SecretReference{}, false
 	}
+	accountName := strings.TrimSpace(values["accountname"])
+	if accountName == "" {
+		return SecretReference{}, false
+	}
+	attributes := map[string]string{
+		"credential_format": "connection_string",
+	}
+	if protocol := strings.TrimSpace(values["defaultendpointsprotocol"]); protocol != "" {
+		attributes["protocol"] = protocol
+	}
+	if suffix := strings.TrimSpace(values["endpointsuffix"]); suffix != "" {
+		attributes["endpoint_suffix"] = suffix
+	}
+	if strings.TrimSpace(values["sharedaccesssignature"]) != "" {
+		attributes["auth_type"] = "sas"
+	} else {
+		attributes["auth_type"] = "account_key"
+	}
+	return SecretReference{
+		Kind:       "cloud_identity",
+		Provider:   "azure",
+		Identifier: accountName,
+		Attributes: attributes,
+	}, true
+}
+
+func buildSBOM(generatedAt time.Time, components []SBOMComponent, dependencies []SBOMDependency) SBOMDocument {
 	return SBOMDocument{
-		Format:      "cyclonedx-json",
-		SpecVersion: "1.5",
-		GeneratedAt: generatedAt.UTC(),
-		Components:  components,
+		Format:       "cyclonedx-json",
+		SpecVersion:  "1.5",
+		GeneratedAt:  generatedAt.UTC(),
+		Components:   components,
+		Dependencies: dependencies,
 	}
+}
+
+func sbomComponentRef(pkg PackageRecord) string {
+	return findingID("pkg", packageInventoryKey(pkg))
+}
+
+func sbomApplicationRef(ecosystem, name, location string) string {
+	return findingID("app", strings.Join([]string{
+		strings.TrimSpace(ecosystem),
+		strings.TrimSpace(name),
+		strings.TrimSpace(location),
+	}, "|"))
+}
+
+func packageInventoryKey(pkg PackageRecord) string {
+	return pkg.Ecosystem + "|" + pkg.Name + "|" + pkg.Version + "|" + pkg.Location
+}
+
+// MergePackageRecord applies the analyzer's canonical merge semantics for package inventory.
+func MergePackageRecord(existing, incoming PackageRecord) PackageRecord {
+	merged := existing
+	merged.Manager = firstNonEmpty(existing.Manager, incoming.Manager)
+	merged.PURL = firstNonEmpty(existing.PURL, incoming.PURL)
+	merged.Location = firstNonEmpty(existing.Location, incoming.Location)
+	merged.DirectDependency = existing.DirectDependency || incoming.DirectDependency
+	merged.Reachable = existing.Reachable || incoming.Reachable
+	merged.ImportFileCount = max(existing.ImportFileCount, incoming.ImportFileCount)
+	switch {
+	case merged.DependencyDepth == 0:
+		merged.DependencyDepth = incoming.DependencyDepth
+	case incoming.DependencyDepth > 0 && incoming.DependencyDepth < merged.DependencyDepth:
+		merged.DependencyDepth = incoming.DependencyDepth
+	}
+	return merged
 }
 
 func dedupeFindings(findings []scanner.ContainerFinding) []scanner.ContainerFinding {
@@ -1758,15 +2344,183 @@ func looksBinary(data []byte) bool {
 }
 
 func entropySecretToken(line string) string {
-	if !strings.Contains(line, "=") && !strings.Contains(line, ":") {
+	lowerLine := strings.ToLower(line)
+	if !inlineSecretPattern.MatchString(line) && !strings.Contains(lowerLine, "bearer ") && !strings.Contains(lowerLine, "authorization:") {
 		return ""
 	}
 	for _, token := range secretTokenPattern.FindAllString(line, -1) {
+		if looksPlaceholderSecretValue(token) || looksSecretReferenceValue(token) {
+			continue
+		}
 		if secretEntropy(token) >= 3.8 {
 			return token
 		}
 	}
 	return ""
+}
+
+func inlineSecretValue(line string) (string, string) {
+	matches := inlineSecretAssignmentPattern.FindStringSubmatch(line)
+	if len(matches) != 3 {
+		return "", ""
+	}
+	key := strings.TrimSpace(matches[1])
+	value := strings.TrimSpace(matches[2])
+	value = strings.TrimRight(value, ",;")
+	value = strings.TrimSpace(strings.Trim(value, `"'`))
+	if key == "" || value == "" {
+		return "", ""
+	}
+	if looksPlaceholderSecretValue(value) || looksSecretReferenceValue(value) {
+		return "", ""
+	}
+	return value, key
+}
+
+func looksPlaceholderSecretValue(value string) bool {
+	trimmed := strings.TrimSpace(strings.ToLower(value))
+	switch trimmed {
+	case "", "***", "******", "<redacted>", "changeme", "change-me", "replace-me", "replace_me", "example", "sample", "placeholder", "tbd", "todo", "null", "nil", "none":
+		return true
+	}
+	return strings.HasPrefix(trimmed, "${") ||
+		strings.HasPrefix(trimmed, "{{") ||
+		strings.HasPrefix(trimmed, "<%") ||
+		strings.HasPrefix(trimmed, "ref+") ||
+		strings.HasPrefix(trimmed, "secret://") ||
+		strings.HasPrefix(trimmed, "vault://") ||
+		strings.HasPrefix(trimmed, "op://")
+}
+
+func looksSecretReferenceValue(value string) bool {
+	trimmed := strings.TrimSpace(strings.ToLower(value))
+	if trimmed == "" {
+		return false
+	}
+	return strings.Contains(trimmed, "secretsmanager") ||
+		strings.Contains(trimmed, "secretmanager.googleapis.com") ||
+		strings.Contains(trimmed, "/secrets/") ||
+		strings.Contains(trimmed, "vault:") ||
+		strings.Contains(trimmed, "keyvault") ||
+		strings.HasPrefix(trimmed, "projects/") ||
+		strings.HasPrefix(trimmed, "arn:aws:secretsmanager:")
+}
+
+func databaseConnectionContainsSecret(parsed *url.URL) bool {
+	if parsed == nil {
+		return false
+	}
+	if parsed.User != nil {
+		if password, ok := parsed.User.Password(); ok && strings.TrimSpace(password) != "" {
+			return true
+		}
+	}
+	query := parsed.Query()
+	for key, values := range query {
+		if !databaseQueryKeyLooksSensitive(key) {
+			continue
+		}
+		for _, value := range values {
+			if strings.TrimSpace(value) != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func databaseQueryKeyLooksSensitive(key string) bool {
+	key = strings.TrimSpace(strings.ToLower(key))
+	if key == "" {
+		return false
+	}
+	key = strings.NewReplacer("-", "_", ".", "_").Replace(key)
+	switch key {
+	case "password", "passwd", "pwd", "token", "access_token", "secret", "api_key", "apikey", "client_secret", "private_key", "access_key":
+		return true
+	}
+	return strings.Contains(key, "password") || strings.Contains(key, "token") || strings.Contains(key, "secret") || strings.Contains(key, "api_key")
+}
+
+func parseDelimitedKeyValuePairs(raw, separator string) map[string]string {
+	parts := strings.Split(raw, separator)
+	values := make(map[string]string, len(parts))
+	for _, part := range parts {
+		key, value, ok := strings.Cut(strings.TrimSpace(part), "=")
+		if !ok {
+			continue
+		}
+		key = strings.TrimSpace(strings.ToLower(key))
+		value = strings.TrimSpace(value)
+		if key == "" || value == "" {
+			continue
+		}
+		values[key] = value
+	}
+	return values
+}
+
+func databaseConnectionLooksSecretLike(raw string) bool {
+	trimmed := strings.ToLower(strings.TrimSpace(raw))
+	if trimmed == "" {
+		return false
+	}
+	if strings.Contains(trimmed, "@") && strings.Contains(trimmed, "://") {
+		return true
+	}
+	for _, token := range []string{
+		";password=",
+		";pwd=",
+		";access_token=",
+		";token=",
+		";secret=",
+		"?password=",
+		"&password=",
+		"?token=",
+		"&token=",
+		"?secret=",
+		"&secret=",
+		"?client_secret=",
+		"&client_secret=",
+	} {
+		if strings.Contains(trimmed, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func isLikelyJWT(token string) bool {
+	parts := strings.Split(strings.TrimSpace(token), ".")
+	if len(parts) != 3 {
+		return false
+	}
+	header, ok := decodeJWTJSONSegment(parts[0])
+	if !ok || strings.TrimSpace(fmt.Sprint(header["alg"])) == "" {
+		return false
+	}
+	payload, ok := decodeJWTJSONSegment(parts[1])
+	if !ok {
+		return false
+	}
+	for _, key := range []string{"iss", "sub", "aud", "exp"} {
+		if _, present := payload[key]; present {
+			return true
+		}
+	}
+	return false
+}
+
+func decodeJWTJSONSegment(segment string) (map[string]any, bool) {
+	decoded, err := base64.RawURLEncoding.DecodeString(strings.TrimSpace(segment))
+	if err != nil {
+		return nil, false
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(decoded, &payload); err != nil {
+		return nil, false
+	}
+	return payload, true
 }
 
 func secretEntropy(value string) float64 {

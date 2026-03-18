@@ -241,6 +241,243 @@ func TestJetStreamConsumer_DrainWaitsForHandlerWithoutCancel(t *testing.T) {
 	}
 }
 
+func TestJetStreamConsumerProcessesMultipleFilterSubjects(t *testing.T) {
+	natsURL := startJetStreamServer(t)
+
+	received := make(chan string, 4)
+	consumer, err := NewJetStreamConsumer(ConsumerConfig{
+		URLs:           []string{natsURL},
+		Stream:         "ENSEMBLE_GRAPH_MULTI_SUBJECT_TEST",
+		Subjects:       []string{"ensemble.tap.>", "aws.cloudtrail.>"},
+		Durable:        "cerebro_multi_subject_test",
+		DeadLetterPath: t.TempDir() + "/consumer.dlq.jsonl",
+		BatchSize:      2,
+		AckWait:        5 * time.Second,
+		FetchTimeout:   100 * time.Millisecond,
+	}, nil, func(_ context.Context, evt CloudEvent) error {
+		received <- evt.ID
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("new consumer: %v", err)
+	}
+	defer func() { _ = consumer.Close() }()
+
+	nc, err := nats.Connect(natsURL)
+	if err != nil {
+		t.Fatalf("connect nats: %v", err)
+	}
+	defer nc.Close()
+	js, err := nc.JetStream()
+	if err != nil {
+		t.Fatalf("jetstream context: %v", err)
+	}
+
+	for _, tc := range []struct {
+		subject string
+		id      string
+		typ     string
+	}{
+		{subject: "ensemble.tap.github.pull_request.merged", id: "evt-tap-1", typ: "ensemble.tap.github.pull_request.merged"},
+		{subject: "aws.cloudtrail.asset.changed", id: "evt-audit-1", typ: "aws.cloudtrail.asset.changed"},
+	} {
+		payload, err := json.Marshal(CloudEvent{
+			SpecVersion: cloudEventSpecVersion,
+			ID:          tc.id,
+			Source:      "urn:test",
+			Type:        tc.typ,
+			Time:        time.Now().UTC(),
+			DataSchema:  "urn:test:schema",
+		})
+		if err != nil {
+			t.Fatalf("marshal cloud event: %v", err)
+		}
+		if _, err := js.Publish(tc.subject, payload); err != nil {
+			t.Fatalf("publish cloud event %s: %v", tc.id, err)
+		}
+	}
+
+	want := map[string]bool{"evt-tap-1": false, "evt-audit-1": false}
+	deadline := time.After(5 * time.Second)
+	for range want {
+		select {
+		case id := <-received:
+			want[id] = true
+		case <-deadline:
+			t.Fatalf("timed out waiting for multi-subject deliveries: %#v", want)
+		}
+	}
+	for id, seen := range want {
+		if !seen {
+			t.Fatalf("expected event %s to be delivered, got %#v", id, want)
+		}
+	}
+}
+
+func TestJetStreamConsumerUpgradesExistingDurableToMultipleFilterSubjects(t *testing.T) {
+	natsURL := startJetStreamServer(t)
+
+	nc, err := nats.Connect(natsURL)
+	if err != nil {
+		t.Fatalf("connect nats: %v", err)
+	}
+	defer nc.Close()
+	js, err := nc.JetStream()
+	if err != nil {
+		t.Fatalf("jetstream context: %v", err)
+	}
+
+	_, err = js.AddStream(&nats.StreamConfig{
+		Name:     "ENSEMBLE_GRAPH_UPGRADE_TEST",
+		Subjects: []string{"ensemble.tap.>", "aws.cloudtrail.>"},
+		Storage:  nats.FileStorage,
+	})
+	if err != nil {
+		t.Fatalf("add stream: %v", err)
+	}
+	_, err = js.AddConsumer("ENSEMBLE_GRAPH_UPGRADE_TEST", &nats.ConsumerConfig{
+		Durable:       "cerebro_upgrade_multi_subject_test",
+		AckPolicy:     nats.AckExplicitPolicy,
+		FilterSubject: "ensemble.tap.>",
+	})
+	if err != nil {
+		t.Fatalf("add legacy consumer: %v", err)
+	}
+
+	received := make(chan string, 4)
+	consumer, err := NewJetStreamConsumer(ConsumerConfig{
+		URLs:           []string{natsURL},
+		Stream:         "ENSEMBLE_GRAPH_UPGRADE_TEST",
+		Subjects:       []string{"ensemble.tap.>", "aws.cloudtrail.>"},
+		Durable:        "cerebro_upgrade_multi_subject_test",
+		DeadLetterPath: t.TempDir() + "/consumer.dlq.jsonl",
+		BatchSize:      2,
+		AckWait:        5 * time.Second,
+		FetchTimeout:   100 * time.Millisecond,
+	}, nil, func(_ context.Context, evt CloudEvent) error {
+		received <- evt.ID
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("new consumer: %v", err)
+	}
+	defer func() { _ = consumer.Close() }()
+
+	for _, tc := range []struct {
+		subject string
+		id      string
+		typ     string
+	}{
+		{subject: "ensemble.tap.github.pull_request.merged", id: "evt-tap-upgrade-1", typ: "ensemble.tap.github.pull_request.merged"},
+		{subject: "aws.cloudtrail.asset.changed", id: "evt-audit-upgrade-1", typ: "aws.cloudtrail.asset.changed"},
+	} {
+		payload, err := json.Marshal(CloudEvent{
+			SpecVersion: cloudEventSpecVersion,
+			ID:          tc.id,
+			Source:      "urn:test",
+			Type:        tc.typ,
+			Time:        time.Now().UTC(),
+			DataSchema:  "urn:test:schema",
+		})
+		if err != nil {
+			t.Fatalf("marshal cloud event: %v", err)
+		}
+		if _, err := js.Publish(tc.subject, payload); err != nil {
+			t.Fatalf("publish cloud event %s: %v", tc.id, err)
+		}
+	}
+
+	want := map[string]bool{"evt-tap-upgrade-1": false, "evt-audit-upgrade-1": false}
+	deadline := time.After(5 * time.Second)
+	for range want {
+		select {
+		case id := <-received:
+			want[id] = true
+		case <-deadline:
+			t.Fatalf("timed out waiting for upgraded durable deliveries: %#v", want)
+		}
+	}
+	for id, seen := range want {
+		if !seen {
+			t.Fatalf("expected event %s to be delivered after durable upgrade, got %#v", id, want)
+		}
+	}
+}
+
+func TestJetStreamConsumerUpdatesExistingStreamSubjectsForAuditSources(t *testing.T) {
+	natsURL := startJetStreamServer(t)
+
+	nc, err := nats.Connect(natsURL)
+	if err != nil {
+		t.Fatalf("connect nats: %v", err)
+	}
+	defer nc.Close()
+	js, err := nc.JetStream()
+	if err != nil {
+		t.Fatalf("jetstream context: %v", err)
+	}
+
+	_, err = js.AddStream(&nats.StreamConfig{
+		Name:     "ENSEMBLE_GRAPH_STREAM_UPGRADE_TEST",
+		Subjects: []string{"ensemble.tap.>"},
+		Storage:  nats.FileStorage,
+	})
+	if err != nil {
+		t.Fatalf("add stream: %v", err)
+	}
+
+	received := make(chan string, 2)
+	consumer, err := NewJetStreamConsumer(ConsumerConfig{
+		URLs:           []string{natsURL},
+		Stream:         "ENSEMBLE_GRAPH_STREAM_UPGRADE_TEST",
+		Subjects:       []string{"ensemble.tap.>", "aws.cloudtrail.>"},
+		Durable:        "cerebro_stream_upgrade_test",
+		DeadLetterPath: t.TempDir() + "/consumer.dlq.jsonl",
+		BatchSize:      1,
+		AckWait:        5 * time.Second,
+		FetchTimeout:   100 * time.Millisecond,
+	}, nil, func(_ context.Context, evt CloudEvent) error {
+		received <- evt.ID
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("new consumer: %v", err)
+	}
+	defer func() { _ = consumer.Close() }()
+
+	streamInfo, err := js.StreamInfo("ENSEMBLE_GRAPH_STREAM_UPGRADE_TEST")
+	if err != nil {
+		t.Fatalf("stream info: %v", err)
+	}
+	if !streamHasSubject(streamInfo.Config.Subjects, "aws.cloudtrail.>") {
+		t.Fatalf("expected stream subjects to be updated, got %v", streamInfo.Config.Subjects)
+	}
+
+	payload, err := json.Marshal(CloudEvent{
+		SpecVersion: cloudEventSpecVersion,
+		ID:          "evt-audit-stream-upgrade-1",
+		Source:      "urn:test",
+		Type:        "aws.cloudtrail.asset.changed",
+		Time:        time.Now().UTC(),
+		DataSchema:  "urn:test:schema",
+	})
+	if err != nil {
+		t.Fatalf("marshal cloud event: %v", err)
+	}
+	if _, err := js.Publish("aws.cloudtrail.asset.changed", payload); err != nil {
+		t.Fatalf("publish audit cloud event: %v", err)
+	}
+
+	select {
+	case id := <-received:
+		if id != "evt-audit-stream-upgrade-1" {
+			t.Fatalf("unexpected delivered event %q", id)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for audit delivery after stream subject upgrade")
+	}
+}
+
 func TestConsumerStartBatchInProgressHeartbeatSkipsDeactivatedEntries(t *testing.T) {
 	consumer := &Consumer{
 		config: ConsumerConfig{
