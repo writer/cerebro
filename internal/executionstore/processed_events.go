@@ -12,6 +12,7 @@ import (
 type ProcessedEventRecord struct {
 	Namespace      string
 	EventKey       string
+	Status         string
 	PayloadHash    string
 	FirstSeenAt    time.Time
 	LastSeenAt     time.Time
@@ -19,6 +20,11 @@ type ProcessedEventRecord struct {
 	ExpiresAt      time.Time
 	DuplicateCount int
 }
+
+const (
+	ProcessedEventStatusProcessing = "processing"
+	ProcessedEventStatusProcessed  = "processed"
+)
 
 func (s *SQLiteStore) LookupProcessedEvent(ctx context.Context, namespace, eventKey string, observedAt time.Time) (*ProcessedEventRecord, error) {
 	if s == nil || s.db == nil {
@@ -53,12 +59,13 @@ func (s *SQLiteStore) LookupProcessedEvent(ctx context.Context, namespace, event
 
 	var record ProcessedEventRecord
 	err = tx.QueryRowContext(ctx, `
-		SELECT namespace, event_key, payload_hash, first_seen_at, last_seen_at, processed_at, expires_at, duplicate_count
+		SELECT namespace, event_key, status, payload_hash, first_seen_at, last_seen_at, processed_at, expires_at, duplicate_count
 		FROM processed_events
 		WHERE namespace = ? AND event_key = ?
 	`, namespace, eventKey).Scan(
 		&record.Namespace,
 		&record.EventKey,
+		&record.Status,
 		&record.PayloadHash,
 		&record.FirstSeenAt,
 		&record.LastSeenAt,
@@ -140,6 +147,134 @@ func (s *SQLiteStore) TouchProcessedEvent(ctx context.Context, namespace, eventK
 	return nil
 }
 
+func (s *SQLiteStore) ClaimProcessedEvent(ctx context.Context, record ProcessedEventRecord, maxRecords int) (bool, *ProcessedEventRecord, error) {
+	if s == nil || s.db == nil {
+		return true, nil, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	record.Namespace = strings.TrimSpace(record.Namespace)
+	record.EventKey = strings.TrimSpace(record.EventKey)
+	record.PayloadHash = strings.TrimSpace(record.PayloadHash)
+	record.Status = strings.TrimSpace(record.Status)
+	if record.Namespace == "" || record.EventKey == "" {
+		return false, nil, fmt.Errorf("processed event namespace and key are required")
+	}
+	if record.Status == "" {
+		record.Status = ProcessedEventStatusProcessing
+	}
+	claimAt := time.Now().UTC()
+	if record.FirstSeenAt.IsZero() {
+		record.FirstSeenAt = claimAt
+	} else {
+		record.FirstSeenAt = record.FirstSeenAt.UTC()
+	}
+	if record.LastSeenAt.IsZero() {
+		record.LastSeenAt = record.FirstSeenAt
+	} else {
+		record.LastSeenAt = record.LastSeenAt.UTC()
+	}
+	if record.ProcessedAt.IsZero() {
+		record.ProcessedAt = claimAt
+	} else {
+		record.ProcessedAt = record.ProcessedAt.UTC()
+	}
+	if record.ExpiresAt.IsZero() {
+		record.ExpiresAt = claimAt
+	} else {
+		record.ExpiresAt = record.ExpiresAt.UTC()
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, nil, fmt.Errorf("begin processed event claim tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM processed_events
+		WHERE namespace = ? AND expires_at <= ?
+	`, record.Namespace, claimAt); err != nil {
+		return false, nil, fmt.Errorf("prune expired processed events: %w", err)
+	}
+
+	var existing ProcessedEventRecord
+	err = tx.QueryRowContext(ctx, `
+		SELECT namespace, event_key, status, payload_hash, first_seen_at, last_seen_at, processed_at, expires_at, duplicate_count
+		FROM processed_events
+		WHERE namespace = ? AND event_key = ?
+	`, record.Namespace, record.EventKey).Scan(
+		&existing.Namespace,
+		&existing.EventKey,
+		&existing.Status,
+		&existing.PayloadHash,
+		&existing.FirstSeenAt,
+		&existing.LastSeenAt,
+		&existing.ProcessedAt,
+		&existing.ExpiresAt,
+		&existing.DuplicateCount,
+	)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return false, nil, fmt.Errorf("load processed event for claim: %w", err)
+	}
+
+	claimed := false
+	if errors.Is(err, sql.ErrNoRows) {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO processed_events (
+				namespace, event_key, status, payload_hash, first_seen_at, last_seen_at, processed_at, expires_at, duplicate_count
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, record.Namespace, record.EventKey, record.Status, record.PayloadHash, record.FirstSeenAt, record.LastSeenAt, record.ProcessedAt, record.ExpiresAt, record.DuplicateCount); err != nil {
+			return false, nil, fmt.Errorf("insert processed event claim: %w", err)
+		}
+		claimed = true
+	} else {
+		existing.PayloadHash = strings.TrimSpace(existing.PayloadHash)
+		if record.PayloadHash == "" || existing.PayloadHash == "" || existing.PayloadHash != record.PayloadHash {
+			if strings.TrimSpace(existing.Status) == ProcessedEventStatusProcessing {
+				if err := tx.Commit(); err != nil {
+					return false, nil, fmt.Errorf("commit processed event claim: %w", err)
+				}
+				return false, &existing, nil
+			}
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE processed_events
+				SET status = ?, payload_hash = ?, first_seen_at = ?, last_seen_at = ?, processed_at = ?, expires_at = ?, duplicate_count = ?
+				WHERE namespace = ? AND event_key = ?
+			`, record.Status, record.PayloadHash, existing.FirstSeenAt, record.LastSeenAt, record.ProcessedAt, record.ExpiresAt, record.DuplicateCount, record.Namespace, record.EventKey); err != nil {
+				return false, nil, fmt.Errorf("replace processed event claim: %w", err)
+			}
+			claimed = true
+			existing = ProcessedEventRecord{}
+		}
+	}
+
+	if maxRecords > 0 && claimed {
+		if _, err := tx.ExecContext(ctx, `
+			DELETE FROM processed_events
+			WHERE namespace = ?
+			  AND event_key IN (
+				SELECT event_key
+				FROM processed_events
+				WHERE namespace = ?
+				ORDER BY processed_at DESC, event_key DESC
+				LIMIT -1 OFFSET ?
+			  )
+		`, record.Namespace, record.Namespace, maxRecords); err != nil {
+			return false, nil, fmt.Errorf("trim processed events: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return false, nil, fmt.Errorf("commit processed event claim: %w", err)
+	}
+	if claimed {
+		return true, nil, nil
+	}
+	return false, &existing, nil
+}
+
 func (s *SQLiteStore) RememberProcessedEvent(ctx context.Context, record ProcessedEventRecord, maxRecords int) error {
 	if s == nil || s.db == nil {
 		return nil
@@ -149,9 +284,13 @@ func (s *SQLiteStore) RememberProcessedEvent(ctx context.Context, record Process
 	}
 	record.Namespace = strings.TrimSpace(record.Namespace)
 	record.EventKey = strings.TrimSpace(record.EventKey)
+	record.Status = strings.TrimSpace(record.Status)
 	record.PayloadHash = strings.TrimSpace(record.PayloadHash)
 	if record.Namespace == "" || record.EventKey == "" {
 		return fmt.Errorf("processed event namespace and key are required")
+	}
+	if record.Status == "" {
+		record.Status = ProcessedEventStatusProcessed
 	}
 	if record.FirstSeenAt.IsZero() {
 		record.FirstSeenAt = time.Now().UTC()
@@ -189,14 +328,15 @@ func (s *SQLiteStore) RememberProcessedEvent(ctx context.Context, record Process
 
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO processed_events (
-			namespace, event_key, payload_hash, first_seen_at, last_seen_at, processed_at, expires_at, duplicate_count
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			namespace, event_key, status, payload_hash, first_seen_at, last_seen_at, processed_at, expires_at, duplicate_count
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(namespace, event_key) DO UPDATE SET
+			status = excluded.status,
 			payload_hash = excluded.payload_hash,
 			last_seen_at = excluded.last_seen_at,
 			processed_at = excluded.processed_at,
 			expires_at = excluded.expires_at
-	`, record.Namespace, record.EventKey, record.PayloadHash, record.FirstSeenAt, record.LastSeenAt, record.ProcessedAt, record.ExpiresAt, record.DuplicateCount); err != nil {
+	`, record.Namespace, record.EventKey, record.Status, record.PayloadHash, record.FirstSeenAt, record.LastSeenAt, record.ProcessedAt, record.ExpiresAt, record.DuplicateCount); err != nil {
 		return fmt.Errorf("persist processed event: %w", err)
 	}
 
