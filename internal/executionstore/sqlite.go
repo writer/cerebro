@@ -115,6 +115,7 @@ func initSQLiteStore(db *sql.DB) error {
 	CREATE TABLE IF NOT EXISTS processed_events (
 		namespace TEXT NOT NULL,
 		event_key TEXT NOT NULL,
+		status TEXT NOT NULL DEFAULT 'processed',
 		payload_hash TEXT NOT NULL,
 		first_seen_at TIMESTAMP NOT NULL,
 		last_seen_at TIMESTAMP NOT NULL,
@@ -130,6 +131,9 @@ func initSQLiteStore(db *sql.DB) error {
 	`
 	if _, err := db.ExecContext(context.Background(), schema); err != nil {
 		return fmt.Errorf("init execution sqlite schema: %w", err)
+	}
+	if _, err := db.ExecContext(context.Background(), `ALTER TABLE processed_events ADD COLUMN status TEXT NOT NULL DEFAULT 'processed'`); err != nil && !strings.Contains(err.Error(), "duplicate column name: status") {
+		return fmt.Errorf("migrate processed_events status column: %w", err)
 	}
 	return nil
 }

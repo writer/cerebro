@@ -204,3 +204,53 @@ func TestDetectionEngine_Suppression(t *testing.T) {
 		}
 	}
 }
+
+func TestDetectionEngineProcessEventPreservesObservationForSparseLegacyEvents(t *testing.T) {
+	engine := NewDetectionEngine()
+	findings := engine.ProcessEvent(context.Background(), &RuntimeEvent{
+		ID:        "legacy-1",
+		Timestamp: time.Now(),
+		EventType: "process",
+		Process: &ProcessEvent{
+			Name:    "xmrig",
+			Cmdline: "xmrig --pool stratum://pool.example.com",
+		},
+	})
+	if len(findings) != 1 {
+		t.Fatalf("len(findings) = %d, want 1", len(findings))
+	}
+	if findings[0].Observation == nil {
+		t.Fatal("expected finding observation")
+	}
+	if findings[0].Observation.Process == nil || findings[0].Observation.Process.Name != "xmrig" {
+		t.Fatalf("finding observation process = %#v", findings[0].Observation.Process)
+	}
+}
+
+func TestDetectionEngineProcessNormalizedObservation(t *testing.T) {
+	engine := NewDetectionEngine()
+	observation, err := NormalizeObservation(&RuntimeObservation{
+		ID:         "obs-1",
+		Kind:       ObservationKindProcessExec,
+		Source:     "tetragon",
+		ObservedAt: time.Now(),
+		Process: &ProcessEvent{
+			Name:    "xmrig",
+			Cmdline: "xmrig --pool stratum://pool.example.com",
+		},
+		Container: &ContainerEvent{
+			ContainerID: "ctr-1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NormalizeObservation: %v", err)
+	}
+
+	findings := engine.ProcessNormalizedObservation(context.Background(), observation)
+	if len(findings) != 1 {
+		t.Fatalf("len(findings) = %d, want 1", len(findings))
+	}
+	if findings[0].Observation == nil || findings[0].Observation.ID != observation.ID {
+		t.Fatalf("finding observation = %#v, want normalized observation id %q", findings[0].Observation, observation.ID)
+	}
+}
