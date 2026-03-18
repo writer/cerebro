@@ -20,6 +20,7 @@ var ErrInvalidFindingEvidence = errors.New("invalid runtime finding evidence")
 type EvidenceMaterializationResult struct {
 	FindingsConsidered    int   `json:"findings_considered"`
 	EvidenceNodesUpserted int   `json:"evidence_nodes_upserted"`
+	BasedOnEdgesCreated   int   `json:"based_on_edges_created"`
 	FindingsSkipped       int   `json:"findings_skipped"`
 	InvalidFindings       int   `json:"invalid_findings"`
 	LastError             error `json:"-"`
@@ -115,14 +116,13 @@ func MaterializeFindingEvidenceIntoGraph(g *graph.Graph, findings []*runtime.Run
 		}
 		g.AddNode(node)
 		result.EvidenceNodesUpserted++
+
+		if graph.AddEdgeIfMissing(g, buildFindingEvidenceBasedOnEdge(node, finding)) {
+			result.BasedOnEdgesCreated++
+		}
 	}
 
-	g.BuildIndex()
-	meta := g.Metadata()
-	meta.BuiltAt = now.UTC()
-	meta.NodeCount = g.NodeCount()
-	meta.EdgeCount = g.EdgeCount()
-	g.SetMetadata(meta)
+	refreshMaterializedGraphMetadata(g, now)
 	return result
 }
 
@@ -152,4 +152,42 @@ func findingEvidenceNodeID(finding *runtime.RuntimeFinding, sourceEventID string
 		observedAt.UTC().Format(time.RFC3339Nano),
 	}, "|")))
 	return "evidence:runtime_finding:" + hex.EncodeToString(digest[:8])
+}
+
+func buildFindingEvidenceBasedOnEdge(node *graph.Node, finding *runtime.RuntimeFinding) *graph.Edge {
+	if node == nil || finding == nil || finding.Observation == nil {
+		return nil
+	}
+	observationID := evidenceObservationNodeID(strings.TrimSpace(finding.Observation.ID))
+	if observationID == "" {
+		return nil
+	}
+
+	properties := map[string]any{
+		"source_system": runtimeFindingEvidenceSourceSystem,
+	}
+	addMetadataString(properties, "source_event_id", strings.TrimSpace(finding.ID))
+	addMetadataString(properties, "observed_at", metadataString(node.Properties, "observed_at"))
+	addMetadataString(properties, "valid_from", metadataString(node.Properties, "valid_from"))
+	addMetadataString(properties, "runtime_source", metadataString(node.Properties, "runtime_source"))
+
+	return &graph.Edge{
+		ID:         node.ID + "->" + observationID + ":" + string(graph.EdgeKindBasedOn),
+		Source:     node.ID,
+		Target:     observationID,
+		Kind:       graph.EdgeKindBasedOn,
+		Effect:     graph.EdgeEffectAllow,
+		Properties: properties,
+	}
+}
+
+func evidenceObservationNodeID(observationID string) string {
+	observationID = strings.TrimSpace(observationID)
+	if observationID == "" {
+		return ""
+	}
+	if strings.HasPrefix(observationID, "observation:") {
+		return observationID
+	}
+	return "observation:" + observationID
 }
