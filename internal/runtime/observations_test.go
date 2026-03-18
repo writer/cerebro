@@ -811,6 +811,73 @@ func TestNormalizeObservationPrefersControlPlaneIdentityOverServiceIdentity(t *t
 	}
 }
 
+func TestNormalizeObservationSkipsWhitespaceMetadataBeforePrincipalFallback(t *testing.T) {
+	observation, err := NormalizeObservation(&RuntimeObservation{
+		Source:     "falco",
+		ObservedAt: time.Date(2026, 3, 16, 9, 35, 15, 0, time.UTC),
+		Process: &ProcessEvent{
+			Name: "sh",
+			User: "root",
+		},
+		Metadata: map[string]any{
+			"principal_id": " ",
+			"user":         "\t",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NormalizeObservation: %v", err)
+	}
+	if observation.PrincipalID != "root" {
+		t.Fatalf("PrincipalID = %q, want root", observation.PrincipalID)
+	}
+}
+
+func TestNormalizeObservationSkipsWhitespaceMetadataBeforeWorkloadNamespaceBackfill(t *testing.T) {
+	observation, err := NormalizeObservation(&RuntimeObservation{
+		Source:     "otel",
+		ObservedAt: time.Date(2026, 3, 16, 9, 35, 45, 0, time.UTC),
+		ResourceID: "deployment:backend/payments-api",
+		Process: &ProcessEvent{
+			Name: "payments-api",
+		},
+		Metadata: map[string]any{
+			"namespace": " ",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NormalizeObservation: %v", err)
+	}
+	if observation.WorkloadRef != "deployment:backend/payments-api" {
+		t.Fatalf("WorkloadRef = %q, want deployment:backend/payments-api", observation.WorkloadRef)
+	}
+	if observation.Namespace != "backend" {
+		t.Fatalf("Namespace = %q, want backend", observation.Namespace)
+	}
+}
+
+func TestNormalizeObservationSkipsWhitespaceMetadataBeforeContainerBackfill(t *testing.T) {
+	observation, err := NormalizeObservation(&RuntimeObservation{
+		Source:     "otel",
+		ObservedAt: time.Date(2026, 3, 16, 9, 36, 0, 0, time.UTC),
+		ResourceID: "container:containerd://svc-123",
+		Process: &ProcessEvent{
+			Name: "payments-api",
+		},
+		Metadata: map[string]any{
+			"container_id": "\n",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NormalizeObservation: %v", err)
+	}
+	if observation.ContainerID != "containerd://svc-123" {
+		t.Fatalf("ContainerID = %q, want containerd://svc-123", observation.ContainerID)
+	}
+	if observation.ResourceType != "container" {
+		t.Fatalf("ResourceType = %q, want container", observation.ResourceType)
+	}
+}
+
 func TestNormalizeObservationRejectsWhitespaceOnlyTraceContext(t *testing.T) {
 	observation, err := NormalizeObservation(&RuntimeObservation{
 		Source:     "otel",
