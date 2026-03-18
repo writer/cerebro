@@ -3,6 +3,7 @@ package graph
 import (
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -17,6 +18,9 @@ type Graph struct {
 	inEdges  map[string][]*Edge // target -> edges
 	mu       sync.RWMutex
 	metadata Metadata
+
+	activeNodeCount atomic.Int64
+	activeEdgeCount atomic.Int64
 
 	// Traversal cache for expensive reachability queries.
 	blastRadiusCache   sync.Map
@@ -141,6 +145,7 @@ func (g *Graph) RemoveNode(id string) bool {
 		return false
 	}
 
+	g.removeEdgesByNodeLocked(id)
 	now := temporalNowUTC()
 	node.DeletedAt = &now
 	node.UpdatedAt = now
@@ -148,7 +153,7 @@ func (g *Graph) RemoveNode(id string) bool {
 		node.Version = 1
 	}
 	node.Version++
-	g.removeEdgesByNodeLocked(id)
+	g.activeNodeCount.Add(-1)
 	g.markGraphChangedLocked()
 	return true
 }
@@ -161,17 +166,10 @@ func (g *Graph) RemoveEdge(source, target string, kind EdgeKind) bool {
 	removed := false
 	if edges, ok := g.outEdges[source]; ok {
 		for _, edge := range edges {
-			if edge == nil || edge.DeletedAt != nil {
-				continue
-			}
-			if edge.Source == source && edge.Target == target && edge.Kind == kind {
-				now := temporalNowUTC()
-				edge.DeletedAt = &now
-				if edge.Version <= 0 {
-					edge.Version = 1
+			if edge != nil && edge.Source == source && edge.Target == target && edge.Kind == kind {
+				if g.markEdgeDeletedLocked(edge) {
+					removed = true
 				}
-				edge.Version++
-				removed = true
 			}
 		}
 	}
@@ -376,31 +374,12 @@ func (g *Graph) GetAllEdges() map[string][]*Edge {
 
 // NodeCount returns the number of nodes
 func (g *Graph) NodeCount() int {
-	g.mu.RLock()
-	defer g.mu.RUnlock()
-	count := 0
-	for _, node := range g.nodes {
-		if node == nil || node.DeletedAt != nil {
-			continue
-		}
-		count++
-	}
-	return count
+	return int(g.activeNodeCount.Load())
 }
 
 // EdgeCount returns the total number of edges
 func (g *Graph) EdgeCount() int {
-	g.mu.RLock()
-	defer g.mu.RUnlock()
-	count := 0
-	for _, edges := range g.outEdges {
-		for _, edge := range edges {
-			if g.activeEdgeLocked(edge) {
-				count++
-			}
-		}
-	}
-	return count
+	return int(g.activeEdgeCount.Load())
 }
 
 // Clear removes all nodes and edges
@@ -410,6 +389,8 @@ func (g *Graph) Clear() {
 	g.nodes = make(map[string]*Node)
 	g.outEdges = make(map[string][]*Edge)
 	g.inEdges = make(map[string][]*Edge)
+	g.activeNodeCount.Store(0)
+	g.activeEdgeCount.Store(0)
 	g.markGraphChangedLocked()
 }
 
@@ -419,6 +400,7 @@ func (g *Graph) ClearEdges() {
 	defer g.mu.Unlock()
 	g.outEdges = make(map[string][]*Edge)
 	g.inEdges = make(map[string][]*Edge)
+	g.activeEdgeCount.Store(0)
 	g.markGraphChangedLocked()
 }
 
@@ -796,7 +778,9 @@ func (g *Graph) addNodeLocked(node *Node) bool {
 	}
 
 	now := temporalNowUTC()
+	wasActive := false
 	if existing, ok := g.nodes[node.ID]; ok && existing != nil {
+		wasActive = existing.DeletedAt == nil
 		if existing.CreatedAt.IsZero() {
 			existing.CreatedAt = now
 		}
@@ -832,6 +816,9 @@ func (g *Graph) addNodeLocked(node *Node) bool {
 	node.DeletedAt = nil
 	g.appendNodePropertiesHistoryLocked(node, node.UpdatedAt)
 	g.nodes[node.ID] = node
+	if !wasActive {
+		g.activeNodeCount.Add(1)
+	}
 	return true
 }
 
@@ -850,6 +837,7 @@ func (g *Graph) addEdgeLocked(edge *Edge) bool {
 	edge.DeletedAt = nil
 	g.outEdges[edge.Source] = append(g.outEdges[edge.Source], edge)
 	g.inEdges[edge.Target] = append(g.inEdges[edge.Target], edge)
+	g.activeEdgeCount.Add(1)
 	return true
 }
 
@@ -941,6 +929,7 @@ func (g *Graph) markEdgeDeletedLocked(edge *Edge) bool {
 		edge.Version = 1
 	}
 	edge.Version++
+	g.activeEdgeCount.Add(-1)
 	return true
 }
 
