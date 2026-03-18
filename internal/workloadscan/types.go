@@ -14,6 +14,13 @@ const (
 	ProviderAzure ProviderKind = "azure"
 )
 
+type SnapshotScope string
+
+const (
+	SnapshotScopeSource     SnapshotScope = "source"
+	SnapshotScopeInspection SnapshotScope = "inspection"
+)
+
 type RunStatus string
 
 const (
@@ -151,18 +158,29 @@ type SourceVolume struct {
 }
 
 type SnapshotArtifact struct {
-	ID        string         `json:"id"`
-	VolumeID  string         `json:"volume_id"`
-	AccountID string         `json:"account_id,omitempty"`
-	ProjectID string         `json:"project_id,omitempty"`
-	Region    string         `json:"region,omitempty"`
-	Zone      string         `json:"zone,omitempty"`
-	SizeGiB   int64          `json:"size_gib"`
-	Shared    bool           `json:"shared,omitempty"`
-	CreatedAt time.Time      `json:"created_at"`
-	ReadyAt   *time.Time     `json:"ready_at,omitempty"`
-	DeletedAt *time.Time     `json:"deleted_at,omitempty"`
-	Metadata  map[string]any `json:"metadata,omitempty"`
+	ID               string               `json:"id"`
+	VolumeID         string               `json:"volume_id"`
+	AccountID        string               `json:"account_id,omitempty"`
+	ProjectID        string               `json:"project_id,omitempty"`
+	Region           string               `json:"region,omitempty"`
+	Zone             string               `json:"zone,omitempty"`
+	SizeGiB          int64                `json:"size_gib"`
+	Encrypted        bool                 `json:"encrypted,omitempty"`
+	KMSKeyID         string               `json:"kms_key_id,omitempty"`
+	Scope            SnapshotScope        `json:"scope,omitempty"`
+	Shared           bool                 `json:"shared,omitempty"`
+	CleanupSnapshots []SnapshotCleanupRef `json:"cleanup_snapshots,omitempty"`
+	CreatedAt        time.Time            `json:"created_at"`
+	ReadyAt          *time.Time           `json:"ready_at,omitempty"`
+	DeletedAt        *time.Time           `json:"deleted_at,omitempty"`
+	Metadata         map[string]any       `json:"metadata,omitempty"`
+}
+
+type SnapshotCleanupRef struct {
+	ID        string        `json:"id"`
+	Scope     SnapshotScope `json:"scope,omitempty"`
+	AccountID string        `json:"account_id,omitempty"`
+	Region    string        `json:"region,omitempty"`
 }
 
 type InspectionVolume struct {

@@ -48,7 +48,7 @@ func (e *EnsembleExecutor) HasRemoteCaller() bool {
 
 func (e *EnsembleExecutor) ActionRequiresApproval(actionType ActionType) bool {
 	switch actionType {
-	case ActionPauseSubscription, ActionSendCustomerComm:
+	case ActionPauseSubscription, ActionSendCustomerComm, ActionRestrictPublicStorageAccess, ActionEnableBucketDefaultEncryption, ActionDisableStaleAccessKey, ActionRestrictPublicSecurityGroupIngress:
 		return true
 	default:
 		return false
@@ -57,8 +57,14 @@ func (e *EnsembleExecutor) ActionRequiresApproval(actionType ActionType) bool {
 
 // Execute runs one remediation action through Ensemble remote tools.
 func (e *EnsembleExecutor) Execute(ctx context.Context, action Action, execution *Execution) error {
+	_, err := e.ExecuteWithOutput(ctx, action, execution)
+	return err
+}
+
+// ExecuteWithOutput runs one remediation action through Ensemble remote tools and returns the tool output.
+func (e *EnsembleExecutor) ExecuteWithOutput(ctx context.Context, action Action, execution *Execution) (string, error) {
 	if e == nil || e.caller == nil {
-		return fmt.Errorf("remote tool caller not configured")
+		return "", fmt.Errorf("remote tool caller not configured")
 	}
 
 	timeout := defaultEnsembleActionTimeout
@@ -67,18 +73,17 @@ func (e *EnsembleExecutor) Execute(ctx context.Context, action Action, execution
 	}
 	args, err := marshalEnsembleActionArgs(action, execution)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	switch action.Type {
 	case ActionEscalateToOwner:
 		ownerMsgTool := firstNonEmpty(action.Config["tool"], action.Config["owner_message_tool"], "slack.send_message")
 		if _, err := e.callWithRetry(ctx, ownerMsgTool, action, execution, args, timeout); err != nil {
-			return err
+			return "", err
 		}
 		ownerTaskTool := firstNonEmpty(action.Config["task_tool"], action.Config["owner_task_tool"], "hubspot.create_task")
-		_, err := e.callWithRetry(ctx, ownerTaskTool, action, execution, args, timeout)
-		return err
+		return e.callWithRetry(ctx, ownerTaskTool, action, execution, args, timeout)
 
 	case ActionSendCustomerComm:
 		return e.callFirstSuccess(ctx, []string{
@@ -100,21 +105,26 @@ func (e *EnsembleExecutor) Execute(ctx context.Context, action Action, execution
 
 	case ActionPauseSubscription:
 		tool := firstNonEmpty(action.Config["tool"], "stripe.pause_subscription")
-		_, err := e.callWithRetry(ctx, tool, action, execution, args, timeout)
-		return err
+		return e.callWithRetry(ctx, tool, action, execution, args, timeout)
 
 	case ActionNotifySlack:
 		tool := firstNonEmpty(action.Config["tool"], "slack.send_message")
-		_, err := e.callWithRetry(ctx, tool, action, execution, args, timeout)
-		return err
+		return e.callWithRetry(ctx, tool, action, execution, args, timeout)
+
+	case ActionRestrictPublicStorageAccess, ActionEnableBucketDefaultEncryption, ActionDisableStaleAccessKey, ActionRestrictPublicSecurityGroupIngress:
+		tool := strings.TrimSpace(action.Config["tool"])
+		if tool == "" {
+			return "", fmt.Errorf("ensemble tool name is required")
+		}
+		return e.callWithRetry(ctx, tool, action, execution, args, timeout)
 
 	default:
 		// Keep unsupported actions on the existing executor path.
-		return fmt.Errorf("unsupported ensemble action type: %s", action.Type)
+		return "", fmt.Errorf("unsupported ensemble action type: %s", action.Type)
 	}
 }
 
-func (e *EnsembleExecutor) callFirstSuccess(ctx context.Context, tools []string, action Action, execution *Execution, args json.RawMessage, timeout time.Duration) error {
+func (e *EnsembleExecutor) callFirstSuccess(ctx context.Context, tools []string, action Action, execution *Execution, args json.RawMessage, timeout time.Duration) (string, error) {
 	errorsByTool := make([]string, 0)
 	seen := make(map[string]struct{})
 	for _, tool := range tools {
@@ -127,16 +137,16 @@ func (e *EnsembleExecutor) callFirstSuccess(ctx context.Context, tools []string,
 		}
 		seen[tool] = struct{}{}
 
-		if _, err := e.callWithRetry(ctx, tool, action, execution, args, timeout); err == nil {
-			return nil
+		if result, err := e.callWithRetry(ctx, tool, action, execution, args, timeout); err == nil {
+			return result, nil
 		} else {
 			errorsByTool = append(errorsByTool, err.Error())
 		}
 	}
 	if len(errorsByTool) == 0 {
-		return fmt.Errorf("no ensemble tool configured for action %s", action.Type)
+		return "", fmt.Errorf("no ensemble tool configured for action %s", action.Type)
 	}
-	return fmt.Errorf("ensemble action %s failed: %s", action.Type, strings.Join(errorsByTool, "; "))
+	return "", fmt.Errorf("ensemble action %s failed: %s", action.Type, strings.Join(errorsByTool, "; "))
 }
 
 func (e *EnsembleExecutor) callWithRetry(ctx context.Context, tool string, action Action, execution *Execution, args json.RawMessage, timeout time.Duration) (string, error) {
@@ -216,6 +226,15 @@ func marshalEnsembleActionArgs(action Action, execution *Execution) (json.RawMes
 	}
 	if policyID, ok := execution.TriggerData["policy_id"].(string); ok && strings.TrimSpace(policyID) != "" {
 		payload["policy_id"] = policyID
+	}
+	if provider, ok := execution.TriggerData["provider"].(string); ok && strings.TrimSpace(provider) != "" {
+		payload["provider"] = provider
+	}
+	if resourceName, ok := execution.TriggerData["resource_name"].(string); ok && strings.TrimSpace(resourceName) != "" {
+		payload["resource_name"] = resourceName
+	}
+	if resourceType, ok := execution.TriggerData["resource_type"].(string); ok && strings.TrimSpace(resourceType) != "" {
+		payload["resource_type"] = resourceType
 	}
 
 	args, err := json.Marshal(payload)

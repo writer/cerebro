@@ -109,11 +109,14 @@ func TestSyncAzure_UsesRequestOptions(t *testing.T) {
 		if client != s.app.Snowflake {
 			t.Fatalf("expected server snowflake client to be passed through")
 		}
-		if req.Subscription != "sub-123" {
-			t.Fatalf("expected trimmed subscription, got %q", req.Subscription)
+		if len(req.Subscriptions) != 1 || req.Subscriptions[0] != "sub-123" {
+			t.Fatalf("expected normalized subscriptions, got %#v", req.Subscriptions)
 		}
 		if req.Concurrency != 7 {
 			t.Fatalf("expected concurrency 7, got %d", req.Concurrency)
+		}
+		if req.SubscriptionConcurrency != 3 {
+			t.Fatalf("expected subscription concurrency 3, got %d", req.SubscriptionConcurrency)
 		}
 		if len(req.Tables) != 2 || req.Tables[0] != "azure_vm_instances" || req.Tables[1] != "azure_storage_accounts" {
 			t.Fatalf("unexpected table filter: %#v", req.Tables)
@@ -125,10 +128,12 @@ func TestSyncAzure_UsesRequestOptions(t *testing.T) {
 	}
 
 	w := do(t, s, http.MethodPost, "/api/v1/sync/azure", map[string]interface{}{
-		"subscription": "  sub-123  ",
-		"concurrency":  7,
-		"tables":       []string{"Azure_VM_Instances", "azure_vm_instances", " azure_storage_accounts "},
-		"validate":     true,
+		"subscription":             "  sub-123  ",
+		"subscriptions":            []string{"sub-123", "SUB-123"},
+		"concurrency":              7,
+		"subscription_concurrency": 3,
+		"tables":                   []string{"Azure_VM_Instances", "azure_vm_instances", " azure_storage_accounts "},
+		"validate":                 true,
 	})
 	if !called {
 		t.Fatal("expected sync runner to be called")
@@ -138,6 +143,51 @@ func TestSyncAzure_UsesRequestOptions(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), `"provider":"azure"`) {
 		t.Fatalf("expected provider in response body, got %s", w.Body.String())
+	}
+}
+
+func TestSyncAzure_RejectsMixedManagementGroupAndSubscriptions(t *testing.T) {
+	s := newTestServer(t)
+	s.app.Snowflake = &snowflake.Client{}
+
+	w := do(t, s, http.MethodPost, "/api/v1/sync/azure", map[string]interface{}{
+		"management_group": "mg-platform",
+		"subscriptions":    []string{"sub-123"},
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestSyncAzure_NormalizesSubscriptionsCaseInsensitively(t *testing.T) {
+	s := newTestServer(t)
+	s.app.Snowflake = &snowflake.Client{}
+
+	originalRun := runAzureSyncWithOptions
+	t.Cleanup(func() { runAzureSyncWithOptions = originalRun })
+
+	runAzureSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req azureSyncRequest) ([]nativesync.SyncResult, error) {
+		if client != s.app.Snowflake {
+			t.Fatalf("expected server snowflake client to be passed through")
+		}
+		want := []string{"SUB-A", "Sub-B"}
+		if len(req.Subscriptions) != len(want) {
+			t.Fatalf("expected %d normalized subscriptions, got %#v", len(want), req.Subscriptions)
+		}
+		for i := range want {
+			if req.Subscriptions[i] != want[i] {
+				t.Fatalf("expected subscriptions %v, got %v", want, req.Subscriptions)
+			}
+		}
+		return []nativesync.SyncResult{{Table: "azure_vm_instances", Synced: 1}}, nil
+	}
+
+	w := do(t, s, http.MethodPost, "/api/v1/sync/azure", map[string]interface{}{
+		"subscription":  " sub-b ",
+		"subscriptions": []string{"SUB-A", "sub-a", "Sub-B"},
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
@@ -772,6 +822,19 @@ func TestSyncGCPAsset_RequiresProjects(t *testing.T) {
 	}
 }
 
+func TestSyncGCPAsset_RejectsMixedOrganizationAndProjects(t *testing.T) {
+	s := newTestServer(t)
+	s.app.Snowflake = &snowflake.Client{}
+
+	w := do(t, s, http.MethodPost, "/api/v1/sync/gcp-asset", map[string]interface{}{
+		"organization": "1234567890",
+		"projects":     []string{"proj-123"},
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestSyncGCPAsset_UsesRequestOptions(t *testing.T) {
 	s := newTestServer(t)
 	s.app.Snowflake = &snowflake.Client{}
@@ -814,5 +877,38 @@ func TestSyncGCPAsset_UsesRequestOptions(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), `"provider":"gcp_asset"`) {
 		t.Fatalf("expected provider in response body, got %s", w.Body.String())
+	}
+}
+
+func TestSyncGCPAsset_UsesOrganizationScope(t *testing.T) {
+	s := newTestServer(t)
+	s.app.Snowflake = &snowflake.Client{}
+
+	originalRun := runGCPAssetSyncWithOptions
+	t.Cleanup(func() { runGCPAssetSyncWithOptions = originalRun })
+
+	called := false
+	runGCPAssetSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req gcpAssetSyncRequest) ([]nativesync.SyncResult, error) {
+		called = true
+		if client != s.app.Snowflake {
+			t.Fatalf("expected server snowflake client to be passed through")
+		}
+		if req.Organization != "1234567890" {
+			t.Fatalf("expected organization 1234567890, got %q", req.Organization)
+		}
+		if len(req.Projects) != 0 {
+			t.Fatalf("did not expect explicit projects, got %#v", req.Projects)
+		}
+		return []nativesync.SyncResult{{Table: "gcp_compute_instances", Synced: 6}}, nil
+	}
+
+	w := do(t, s, http.MethodPost, "/api/v1/sync/gcp-asset", map[string]interface{}{
+		"organization": " 1234567890 ",
+	})
+	if !called {
+		t.Fatal("expected sync runner to be called")
+	}
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 }

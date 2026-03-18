@@ -37,3 +37,48 @@ func TestAzureScopeWhereClause(t *testing.T) {
 		t.Fatalf("unexpected args: %#v", args)
 	}
 }
+
+func TestNormalizeAzureSubscriptionIDs(t *testing.T) {
+	got := NormalizeAzureSubscriptionIDs([]string{" sub-b ", "SUB-A", "sub-a", "", "sub-c"})
+	want := []string{"SUB-A", "sub-b", "sub-c"}
+	if len(got) != len(want) {
+		t.Fatalf("expected %d subscriptions, got %d (%v)", len(want), len(got), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("expected %v, got %v", want, got)
+		}
+	}
+}
+
+func TestExtractAzureManagementGroupSubscriptionIDs(t *testing.T) {
+	payload := map[string]any{
+		"id":   "/providers/Microsoft.Management/managementGroups/root",
+		"type": "Microsoft.Management/managementGroups",
+		"properties": map[string]any{
+			"children": []any{
+				map[string]any{
+					"childType": "Subscription",
+					"id":        "/subscriptions/sub-b",
+					"name":      "sub-b",
+				},
+				map[string]any{
+					"childType": "ManagementGroup",
+					"name":      "platform",
+					"children": []any{
+						map[string]any{
+							"type": "Microsoft.Management/managementGroups/subscriptions",
+							"id":   "/subscriptions/sub-a",
+							"name": "sub-a",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	got := extractAzureManagementGroupSubscriptionIDs(payload)
+	if len(got) != 2 || got[0] != "sub-a" || got[1] != "sub-b" {
+		t.Fatalf("unexpected subscription discovery result: %#v", got)
+	}
+}

@@ -19,6 +19,7 @@ import (
 
 	"github.com/writer/cerebro/internal/graph"
 	reports "github.com/writer/cerebro/internal/graph/reports"
+	risk "github.com/writer/cerebro/internal/graph/risk"
 	"github.com/writer/cerebro/internal/webhooks"
 )
 
@@ -204,10 +205,10 @@ func (s *Server) createSecurityAttackPathJob(w http.ResponseWriter, r *http.Requ
 
 	// #nosec G118 -- platform jobs intentionally outlive the originating request and use job-owned cancellation.
 	s.startPlatformJob(job.ID, func(_ context.Context) (any, error) {
-		simulator := graph.NewAttackPathSimulator(s.app.SecurityGraph)
+		simulator := risk.NewAttackPathSimulator(s.app.SecurityGraph)
 		result := simulator.Simulate(maxDepth)
 		if req.Threshold > 0 {
-			filtered := make([]*graph.ScoredAttackPath, 0, len(result.Paths))
+			filtered := make([]*risk.ScoredAttackPath, 0, len(result.Paths))
 			for _, path := range result.Paths {
 				if path.TotalScore >= req.Threshold {
 					filtered = append(filtered, path)

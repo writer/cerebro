@@ -13,6 +13,7 @@ import (
 
 	"github.com/writer/cerebro/internal/attackpath"
 	"github.com/writer/cerebro/internal/identity"
+	"github.com/writer/cerebro/internal/metrics"
 	"github.com/writer/cerebro/internal/remediation"
 	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/webhooks"
@@ -212,17 +213,21 @@ func (s *Server) identityReport(w http.ResponseWriter, r *http.Request) {
 // Attack Path endpoints
 
 func (s *Server) listAttackPaths(w http.ResponseWriter, r *http.Request) {
+	started := time.Now()
 	finder := attackpath.NewPathFinder(s.app.AttackPath, 10)
 	paths := finder.FindPaths(r.Context())
+	s.recordAttackPathQuery("list", started, "success", len(paths), nil)
 	s.json(w, http.StatusOK, map[string]interface{}{"paths": paths, "count": len(paths)})
 }
 
 func (s *Server) analyzeAttackPaths(w http.ResponseWriter, r *http.Request) {
+	started := time.Now()
 	var req struct {
 		HighValueTargets []string `json:"high_value_targets"`
 		MaxDepth         int      `json:"max_depth"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.recordAttackPathQuery("analyze", started, "invalid_request", 0, map[string]any{"error": err.Error()})
 		s.error(w, http.StatusBadRequest, "invalid request")
 		return
 	}
@@ -234,6 +239,10 @@ func (s *Server) analyzeAttackPaths(w http.ResponseWriter, r *http.Request) {
 	finder := attackpath.NewPathFinder(s.app.AttackPath, req.MaxDepth)
 	finder.SetHighValueTargets(req.HighValueTargets)
 	paths := finder.FindPaths(r.Context())
+	s.recordAttackPathQuery("analyze", started, "success", len(paths), map[string]any{
+		"max_depth":          req.MaxDepth,
+		"high_value_targets": len(req.HighValueTargets),
+	})
 
 	s.json(w, http.StatusOK, map[string]interface{}{
 		"paths":       paths,
@@ -243,8 +252,10 @@ func (s *Server) analyzeAttackPaths(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getAttackPath(w http.ResponseWriter, r *http.Request) {
+	started := time.Now()
 	pathID := chi.URLParam(r, "id")
 	if pathID == "" {
+		s.recordAttackPathQuery("get", started, "invalid_request", 0, map[string]any{"error": "path ID required"})
 		s.error(w, http.StatusBadRequest, "path ID required")
 		return
 	}
@@ -279,11 +290,21 @@ func (s *Server) getAttackPath(w http.ResponseWriter, r *http.Request) {
 
 	for _, path := range finder.FindPaths(r.Context()) {
 		if path.ID == pathID {
+			s.recordAttackPathQuery("get", started, "success", 1, map[string]any{
+				"path_id":   pathID,
+				"max_depth": maxDepth,
+				"targets":   len(highValueTargets),
+			})
 			s.json(w, http.StatusOK, path)
 			return
 		}
 	}
 
+	s.recordAttackPathQuery("get", started, "not_found", 0, map[string]any{
+		"path_id":   pathID,
+		"max_depth": maxDepth,
+		"targets":   len(highValueTargets),
+	})
 	s.error(w, http.StatusNotFound, "attack path not found")
 }
 
@@ -313,6 +334,29 @@ func (s *Server) addEdge(w http.ResponseWriter, r *http.Request) {
 	}
 	s.app.AttackPath.AddEdge(&edge)
 	s.json(w, http.StatusCreated, edge)
+}
+
+func (s *Server) recordAttackPathQuery(operation string, started time.Time, status string, resultCount int, extra map[string]any) {
+	duration := time.Since(started)
+	metrics.RecordAttackPathQuery(operation, status, duration, resultCount)
+	if s == nil || s.app == nil || s.app.Logger == nil {
+		return
+	}
+	payload := []any{
+		"operation", operation,
+		"status", status,
+		"duration", duration,
+		"result_count", resultCount,
+	}
+	for key, value := range extra {
+		payload = append(payload, key, value)
+	}
+	switch status {
+	case "success", "not_found":
+		s.app.Logger.Info("attack path query completed", payload...)
+	default:
+		s.app.Logger.Warn("attack path query failed", payload...)
+	}
 }
 
 // Webhook endpoints
