@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 205 - Graph Store Stats Path (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left `GET /api/v1/graph/stats` dependent on a live tenant graph pointer, so the endpoint returned `503` whenever the runtime exposed only a graph store.
+- [x] Gap: the stats endpoint only needs graph metadata, which is already present in `Snapshot.Metadata`, so requiring a live graph was unnecessary coupling.
+- [x] Gap: there was no regression proving graph stats still work when the API is constructed with only a `GraphStore`.
+
+### Execution plan
+- [x] Teach `graphRisk.GraphStats(...)` to fall back from the live tenant graph to `CurrentSecurityGraphStoreForTenant(...).Snapshot()` and return stats from snapshot metadata.
+- [x] Preserve the live-graph fast path so the endpoint avoids snapshot work when the graph is already resident.
+- [x] Add store-only and live-graph-preference regressions, then rerun focused API tests, lint, and changed-file validation before opening the PR.
+
 ## Deep Review Cycle 203 - Graph Store Risk Engine Feedback Paths (2026-03-18)
 
 ### Review findings

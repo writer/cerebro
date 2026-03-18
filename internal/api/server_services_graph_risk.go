@@ -55,19 +55,21 @@ func newGraphRiskService(server *Server, deps *serverDependencies) graphRiskServ
 }
 
 func (s serverGraphRiskService) GraphStats(ctx context.Context) (*graphRiskStatsResponse, error) {
-	g := s.tenantGraph(ctx)
-	if g == nil {
+	if g := s.tenantGraph(ctx); g != nil {
+		return graphRiskStatsFromMetadata(g.Metadata()), nil
+	}
+	store := s.tenantStore(ctx)
+	if store == nil {
 		return nil, errGraphRiskUnavailable
 	}
-	meta := g.Metadata()
-	return &graphRiskStatsResponse{
-		BuiltAt:       meta.BuiltAt,
-		NodeCount:     meta.NodeCount,
-		EdgeCount:     meta.EdgeCount,
-		Providers:     append([]string(nil), meta.Providers...),
-		Accounts:      append([]string(nil), meta.Accounts...),
-		BuildDuration: meta.BuildDuration.String(),
-	}, nil
+	snapshot, err := store.Snapshot(ctx)
+	if err != nil {
+		return nil, graphRiskErr(err)
+	}
+	if snapshot == nil {
+		return nil, errGraphRiskUnavailable
+	}
+	return graphRiskStatsFromMetadata(snapshot.Metadata), nil
 }
 
 func (s serverGraphRiskService) BlastRadius(ctx context.Context, principalID string, maxDepth int) (*risk.BlastRadiusResult, error) {
@@ -242,6 +244,17 @@ func graphRiskErr(err error) error {
 		return errGraphRiskUnavailable
 	}
 	return err
+}
+
+func graphRiskStatsFromMetadata(meta graph.Metadata) *graphRiskStatsResponse {
+	return &graphRiskStatsResponse{
+		BuiltAt:       meta.BuiltAt,
+		NodeCount:     meta.NodeCount,
+		EdgeCount:     meta.EdgeCount,
+		Providers:     append([]string(nil), meta.Providers...),
+		Accounts:      append([]string(nil), meta.Accounts...),
+		BuildDuration: meta.BuildDuration.String(),
+	}
 }
 
 var _ graphRiskService = serverGraphRiskService{}
