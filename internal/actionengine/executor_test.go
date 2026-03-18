@@ -50,6 +50,7 @@ func TestNewExecutionPersistsSubmittedWithoutStartedAt(t *testing.T) {
 	}
 	if env == nil {
 		t.Fatal("expected persisted run envelope")
+		return
 	}
 	if env.StartedAt != nil {
 		t.Fatalf("envelope started_at = %v, want nil", env.StartedAt)
@@ -64,6 +65,7 @@ func TestNewExecutionPersistsSubmittedWithoutStartedAt(t *testing.T) {
 	}
 	if loaded == nil {
 		t.Fatal("expected persisted execution payload")
+		return
 	}
 	if loaded.SubmittedAt.IsZero() {
 		t.Fatal("expected persisted submitted_at")
@@ -128,6 +130,7 @@ func TestExecutorApprovalFlowAndStorePersistence(t *testing.T) {
 	}
 	if loaded == nil {
 		t.Fatal("expected persisted execution")
+		return
 	}
 	if loaded.Status != StatusCompleted {
 		t.Fatalf("persisted status = %s, want %s", loaded.Status, StatusCompleted)
