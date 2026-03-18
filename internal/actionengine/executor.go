@@ -3,6 +3,7 @@ package actionengine
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,6 +12,8 @@ import (
 type StepRunner interface {
 	RunStep(ctx context.Context, step Step, signal Signal, execution *Execution) (string, error)
 }
+
+const stepMetadataTriggerPrefix = "_step_metadata:"
 
 type Executor struct {
 	store Store
@@ -169,6 +172,7 @@ func (e *Executor) Execute(ctx context.Context, execution *Execution, playbook P
 		completedAt := e.now()
 		result.CompletedAt = &completedAt
 		result.Duration = completedAt.Sub(result.StartedAt).String()
+		result.Metadata = ConsumeStepMetadata(execution, step.ID)
 		if err != nil {
 			result.Status = StatusFailed
 			result.Error = err.Error()
@@ -182,9 +186,10 @@ func (e *Executor) Execute(ctx context.Context, execution *Execution, playbook P
 				ExecutionID: execution.ID,
 				RecordedAt:  completedAt,
 				Data: map[string]any{
-					"step_id": step.ID,
-					"type":    step.Type,
-					"error":   err.Error(),
+					"step_id":  step.ID,
+					"type":     step.Type,
+					"error":    err.Error(),
+					"metadata": result.Metadata,
 				},
 			})
 			if step.OnFailure != FailurePolicyContinue {
@@ -209,9 +214,10 @@ func (e *Executor) Execute(ctx context.Context, execution *Execution, playbook P
 				ExecutionID: execution.ID,
 				RecordedAt:  completedAt,
 				Data: map[string]any{
-					"step_id": step.ID,
-					"type":    step.Type,
-					"output":  output,
+					"step_id":  step.ID,
+					"type":     step.Type,
+					"output":   output,
+					"metadata": result.Metadata,
 				},
 			})
 		}
@@ -297,4 +303,39 @@ func cloneAnyMap(input map[string]any) map[string]any {
 		cloned[key] = value
 	}
 	return cloned
+}
+
+func SetStepMetadata(execution *Execution, stepID string, metadata map[string]any) {
+	if execution == nil || len(metadata) == 0 {
+		return
+	}
+	stepID = strings.TrimSpace(stepID)
+	if stepID == "" {
+		return
+	}
+	if execution.TriggerData == nil {
+		execution.TriggerData = map[string]any{}
+	}
+	execution.TriggerData[stepMetadataTriggerPrefix+stepID] = cloneAnyMap(metadata)
+}
+
+func ConsumeStepMetadata(execution *Execution, stepID string) map[string]any {
+	if execution == nil || len(execution.TriggerData) == 0 {
+		return nil
+	}
+	stepID = strings.TrimSpace(stepID)
+	if stepID == "" {
+		return nil
+	}
+	key := stepMetadataTriggerPrefix + stepID
+	raw, ok := execution.TriggerData[key]
+	if !ok {
+		return nil
+	}
+	delete(execution.TriggerData, key)
+	values, ok := raw.(map[string]any)
+	if !ok {
+		return nil
+	}
+	return cloneAnyMap(values)
 }
