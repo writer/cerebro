@@ -249,6 +249,63 @@ func TestAppendOktaAdminRoleRelationships(t *testing.T) {
 	}
 }
 
+func TestAppendEntraAppRoleAssignmentRelationships(t *testing.T) {
+	t.Parallel()
+
+	rels := appendEntraAppRoleAssignmentRelationships(nil, []map[string]interface{}{
+		{
+			"id":             "assignment-1",
+			"principal_id":   "user-1",
+			"principal_type": "User",
+			"resource_id":    "sp-app-1",
+			"app_role_id":    "role-1",
+		},
+		{
+			"id":             "assignment-2",
+			"principal_id":   "group-1",
+			"principal_type": "Group",
+			"resource_id":    "sp-app-1",
+			"app_role_id":    "role-2",
+		},
+		{
+			"id":             "assignment-3",
+			"principal_id":   "sp-caller-1",
+			"principal_type": "ServicePrincipal",
+			"resource_id":    "sp-app-2",
+		},
+		{
+			"id":             "assignment-4",
+			"principal_id":   "ignored-1",
+			"principal_type": "DirectoryRole",
+			"resource_id":    "sp-app-3",
+		},
+	})
+
+	if len(rels) != 3 {
+		t.Fatalf("expected 3 relationships, got %d", len(rels))
+	}
+
+	if rels[0].SourceType != "entra:user" || rels[0].TargetType != "entra:service_principal" || rels[0].RelType != RelCanAccess {
+		t.Fatalf("unexpected user assignment relationship: %+v", rels[0])
+	}
+	if rels[1].SourceType != "entra:group" || rels[1].TargetType != "entra:service_principal" || rels[1].RelType != RelCanAccess {
+		t.Fatalf("unexpected group assignment relationship: %+v", rels[1])
+	}
+	if rels[2].SourceType != "entra:service_principal" || rels[2].TargetType != "entra:service_principal" || rels[2].RelType != RelCanAccess {
+		t.Fatalf("unexpected service principal assignment relationship: %+v", rels[2])
+	}
+
+	for _, rel := range rels {
+		props := map[string]interface{}{}
+		if err := json.Unmarshal([]byte(rel.Properties), &props); err != nil {
+			t.Fatalf("failed to parse relationship properties: %v", err)
+		}
+		if props["assignment_id"] == "" {
+			t.Fatalf("expected assignment_id property on relationship: %+v", props)
+		}
+	}
+}
+
 func TestGCPAssetNodeType(t *testing.T) {
 	if got := gcpAssetNodeType("compute.googleapis.com/Instance"); got != "gcp:compute:instance" {
 		t.Fatalf("unexpected node type: %s", got)

@@ -168,6 +168,7 @@ func (b *Builder) BuildCandidate(ctx context.Context) (*Graph, GraphMutationSumm
 		"edges", working.graph.EdgeCount(),
 		"duration", time.Since(edgeStart))
 
+	working.buildVendorNodes()
 	working.buildIAMPermissionUsageKnowledge(ctx)
 
 	// Build unified person graph overlay (person nodes + projected edges).
@@ -342,6 +343,8 @@ func (b *Builder) buildRelationshipEdges(ctx context.Context) {
 			edgeTargetType = sourceType
 		case "HAS_ROLE":
 			kind = EdgeKindCanAssume
+		case "CAN_ACCESS":
+			kind = EdgeKindCanRead
 		case "MEMBER_OF":
 			if isIdentityType(sourceType) && isIdentityType(targetType) {
 				kind = EdgeKindMemberOf

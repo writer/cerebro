@@ -169,7 +169,7 @@ func (a *ImpactPathAnalyzer) isScenarioTarget(scenario ImpactScenario, node *Nod
 	case ImpactScenarioRevenueImpact:
 		return node.Kind == NodeKindCustomer || node.Kind == NodeKindCompany || node.Kind == NodeKindDeal || node.Kind == NodeKindOpportunity
 	case ImpactScenarioIncidentBlast:
-		return node.Kind == NodeKindCustomer || node.Kind == NodeKindCompany || node.Kind == NodeKindSubscription
+		return node.Kind == NodeKindCustomer || node.Kind == NodeKindCompany || node.Kind == NodeKindVendor || node.Kind == NodeKindSubscription
 	default:
 		return node.IsBusinessEntity()
 	}

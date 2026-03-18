@@ -1912,6 +1912,7 @@ var builtInNodeKinds = []NodeKindDefinition{
 	{Kind: NodeKindCustomer, Categories: []NodeKindCategory{NodeCategoryBusiness}},
 	{Kind: NodeKindContact, Categories: []NodeKindCategory{NodeCategoryBusiness}},
 	{Kind: NodeKindCompany, Categories: []NodeKindCategory{NodeCategoryBusiness}},
+	{Kind: NodeKindVendor, Categories: []NodeKindCategory{NodeCategoryBusiness}},
 	{Kind: NodeKindDeal, Categories: []NodeKindCategory{NodeCategoryBusiness}},
 	{Kind: NodeKindOpportunity, Categories: []NodeKindCategory{NodeCategoryBusiness}},
 	{Kind: NodeKindSubscription, Categories: []NodeKindCategory{NodeCategoryBusiness}},

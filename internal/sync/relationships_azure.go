@@ -551,5 +551,57 @@ func (r *RelationshipExtractor) extractAzureRelationships(ctx context.Context) (
 		}
 	}
 
+	query = `SELECT ID, PRINCIPAL_ID, PRINCIPAL_TYPE, RESOURCE_ID, APP_ROLE_ID, RESOURCE_DISPLAY_NAME
+	         FROM ENTRA_APP_ROLE_ASSIGNMENTS
+	         WHERE PRINCIPAL_ID IS NOT NULL AND RESOURCE_ID IS NOT NULL`
+	if result, ok, err := r.queryRowsForTable(ctx, "ENTRA_APP_ROLE_ASSIGNMENTS", query); err != nil {
+		return 0, err
+	} else if ok {
+		rels = appendEntraAppRoleAssignmentRelationships(rels, result.Rows)
+	}
+
 	return r.persistRelationships(ctx, rels)
+}
+
+func appendEntraAppRoleAssignmentRelationships(rels []Relationship, rows []map[string]interface{}) []Relationship {
+	for _, row := range rows {
+		principalID := toString(queryRow(row, "principal_id"))
+		resourceID := toString(queryRow(row, "resource_id"))
+		if principalID == "" || resourceID == "" {
+			continue
+		}
+
+		principalType := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(toString(queryRow(row, "principal_type"))), " ", ""))
+		sourceType := ""
+		switch principalType {
+		case "user":
+			sourceType = "entra:user"
+		case "group":
+			sourceType = "entra:group"
+		case "serviceprincipal", "service_principal", "application":
+			sourceType = "entra:service_principal"
+		default:
+			continue
+		}
+
+		props, err := encodeProperties(map[string]interface{}{
+			"assignment_id":         toString(queryRow(row, "id")),
+			"app_role_id":           toString(queryRow(row, "app_role_id")),
+			"resource_display_name": toString(queryRow(row, "resource_display_name")),
+		})
+		if err != nil {
+			props = "{}"
+		}
+
+		rels = append(rels, Relationship{
+			SourceID:   principalID,
+			SourceType: sourceType,
+			TargetID:   resourceID,
+			TargetType: "entra:service_principal",
+			RelType:    RelCanAccess,
+			Properties: props,
+		})
+	}
+
+	return rels
 }
