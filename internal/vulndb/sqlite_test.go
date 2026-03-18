@@ -236,6 +236,63 @@ func TestServiceMatchesAPKRevisionAwareFixedVersion(t *testing.T) {
 	}
 }
 
+func TestServiceFiltersScopedCandidatesByDistribution(t *testing.T) {
+	store, err := NewSQLiteStore(t.TempDir() + "/vulndb.db")
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+	service := NewService(store)
+
+	if err := store.UpsertAdvisory(context.Background(), Vulnerability{
+		ID:       "GHSA-test-ubuntu",
+		Aliases:  []string{"CVE-2026-2501"},
+		Summary:  "ubuntu scoped advisory",
+		Severity: "high",
+	}, []AffectedPackage{{
+		Ecosystem:           "deb",
+		PackageName:         "openssl",
+		RangeType:           "ECOSYSTEM",
+		Introduced:          "0",
+		Fixed:               "1.2.4",
+		Distribution:        "ubuntu",
+		DistributionVersion: "22.04",
+	}}); err != nil {
+		t.Fatalf("UpsertAdvisory ubuntu: %v", err)
+	}
+	if err := store.UpsertAdvisory(context.Background(), Vulnerability{
+		ID:       "GHSA-test-debian",
+		Aliases:  []string{"CVE-2026-2502"},
+		Summary:  "debian scoped advisory",
+		Severity: "high",
+	}, []AffectedPackage{{
+		Ecosystem:           "deb",
+		PackageName:         "openssl",
+		RangeType:           "ECOSYSTEM",
+		Introduced:          "0",
+		Fixed:               "1.2.4",
+		Distribution:        "debian",
+		DistributionVersion: "12",
+	}}); err != nil {
+		t.Fatalf("UpsertAdvisory debian: %v", err)
+	}
+
+	matches, err := service.MatchPackages(context.Background(), filesystemanalyzer.OSInfo{
+		ID:        "ubuntu",
+		VersionID: "22.04",
+	}, []filesystemanalyzer.PackageRecord{{
+		Ecosystem: "deb",
+		Name:      "openssl",
+		Version:   "1.2.3",
+	}})
+	if err != nil {
+		t.Fatalf("MatchPackages ubuntu: %v", err)
+	}
+	if len(matches) != 1 || matches[0].CVE != "CVE-2026-2501" {
+		t.Fatalf("expected only ubuntu-scoped advisory to match, got %#v", matches)
+	}
+}
+
 func TestServiceSkipsUnparseableRangeBounds(t *testing.T) {
 	store, err := NewSQLiteStore(t.TempDir() + "/vulndb.db")
 	if err != nil {
