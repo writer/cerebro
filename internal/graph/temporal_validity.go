@@ -575,6 +575,9 @@ func graphObservedAt(node *Node) (time.Time, bool) {
 	if props, ok := node.ObservationProperties(); ok && !props.ObservedAt.IsZero() {
 		return props.ObservedAt, true
 	}
+	if props, ok := node.AttackSequenceProperties(); ok && !props.ObservedAt.IsZero() {
+		return props.ObservedAt, true
+	}
 	if ts, ok := temporalPropertyTime(node.Properties, "observed_at"); ok {
 		return ts, true
 	}
@@ -616,6 +619,37 @@ func nodePropertyTime(node *Node, key string) (time.Time, bool) {
 		case "transaction_to":
 			if props.TransactionTo != nil && !props.TransactionTo.IsZero() {
 				return props.TransactionTo.UTC(), true
+			}
+		}
+	}
+	if props, ok := node.AttackSequenceProperties(); ok {
+		switch strings.TrimSpace(key) {
+		case "sequence_start", "valid_from":
+			if !props.SequenceStart.IsZero() {
+				return props.SequenceStart.UTC(), true
+			}
+			if !props.ValidFrom.IsZero() {
+				return props.ValidFrom.UTC(), true
+			}
+		case "sequence_end":
+			if !props.SequenceEnd.IsZero() {
+				return props.SequenceEnd.UTC(), true
+			}
+		case "observed_at":
+			if !props.ObservedAt.IsZero() {
+				return props.ObservedAt.UTC(), true
+			}
+		case "valid_to":
+			if props.ValidTo != nil && !props.ValidTo.IsZero() {
+				return props.ValidTo.UTC(), true
+			}
+		case "recorded_at":
+			if !props.RecordedAt.IsZero() {
+				return props.RecordedAt.UTC(), true
+			}
+		case "transaction_from":
+			if !props.TransactionFrom.IsZero() {
+				return props.TransactionFrom.UTC(), true
 			}
 		}
 	}

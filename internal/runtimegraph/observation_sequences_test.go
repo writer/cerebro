@@ -77,16 +77,17 @@ func TestMaterializeObservationSequencesGroupsObservationsWithinWindow(t *testin
 		t.Fatalf("len(attack_sequence nodes) = %d, want 1", len(sequences))
 	}
 	sequence := sequences[0]
-	if got := propertyString(sequence.Properties, "workload_ref"); got != "deployment:prod/api" {
+	sequenceProps := sequence.PropertyMap()
+	if got := propertyString(sequenceProps, "workload_ref"); got != "deployment:prod/api" {
 		t.Fatalf("workload_ref = %q, want deployment:prod/api", got)
 	}
-	if got := propertyString(sequence.Properties, "severity"); got != "critical" {
+	if got := propertyString(sequenceProps, "severity"); got != "critical" {
 		t.Fatalf("severity = %q, want critical", got)
 	}
-	if got := propertyStringSlice(sequence.Properties, "mitre_attack"); len(got) != 2 || got[0] != "T1041" || got[1] != "T1059" {
+	if got := propertyStringSlice(sequenceProps, "mitre_attack"); len(got) != 2 || got[0] != "T1041" || got[1] != "T1059" {
 		t.Fatalf("mitre_attack = %#v, want sorted techniques", got)
 	}
-	if got := propertyInt(sequence.Properties, "observation_count"); got != 3 {
+	if got := propertyInt(sequenceProps, "observation_count"); got != 3 {
 		t.Fatalf("observation_count = %d, want 3", got)
 	}
 

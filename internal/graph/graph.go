@@ -346,6 +346,11 @@ func (g *Graph) SetNodeProperty(id string, key string, value any) bool {
 			g.mu.Unlock()
 			return false
 		}
+	} else if node.Kind == NodeKindAttackSequence && isAttackSequencePropertyKey(key) {
+		if !setAttackSequencePropertyValue(node, key, value) {
+			g.mu.Unlock()
+			return false
+		}
 	} else if !setObservationPropertyValue(node, key, value) {
 		if node.Properties == nil {
 			node.Properties = make(map[string]any)

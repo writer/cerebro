@@ -130,6 +130,36 @@ func TestGetAllNodesAt_UsesTypedObservationTemporalBounds(t *testing.T) {
 	}
 }
 
+func TestGetAllNodesAt_UsesTypedAttackSequenceObservedAtAsStartFallback(t *testing.T) {
+	g := New()
+	observedAt := time.Date(2026, 3, 5, 12, 0, 0, 0, time.UTC)
+	sequenceEnd := observedAt.Add(2 * time.Hour)
+	g.AddNode(&Node{
+		ID:   "attack_sequence:runtime:payments",
+		Kind: NodeKindAttackSequence,
+		Name: "payments sequence",
+		Properties: map[string]any{
+			"sequence_id":      "runtime:payments",
+			"status":           "open",
+			"severity":         "high",
+			"sequence_end":     sequenceEnd.Format(time.RFC3339),
+			"observed_at":      observedAt.Format(time.RFC3339),
+			"recorded_at":      observedAt.Format(time.RFC3339),
+			"transaction_from": observedAt.Format(time.RFC3339),
+		},
+	})
+
+	beforeObserved := observedAt.Add(-time.Minute)
+	if got := len(g.GetAllNodesAt(beforeObserved)); got != 0 {
+		t.Fatalf("expected attack sequence to be inactive before observed_at fallback, got %d nodes", got)
+	}
+
+	duringWindow := observedAt.Add(time.Minute)
+	if got := len(g.GetAllNodesAt(duringWindow)); got != 1 {
+		t.Fatalf("expected attack sequence to be active after observed_at fallback, got %d nodes", got)
+	}
+}
+
 func TestFreshnessMetrics(t *testing.T) {
 	g := New()
 	g.AddNode(&Node{

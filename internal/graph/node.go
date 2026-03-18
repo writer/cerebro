@@ -112,24 +112,25 @@ type PropertySnapshot struct {
 
 // Node represents an entity in the graph platform.
 type Node struct {
-	ID                 string                        `json:"id"`
-	Kind               NodeKind                      `json:"kind"`
-	Name               string                        `json:"name"`
-	TenantID           string                        `json:"tenant_id,omitempty"`
-	Provider           string                        `json:"provider"`
-	Account            string                        `json:"account"`
-	Region             string                        `json:"region,omitempty"`
-	Properties         map[string]any                `json:"properties,omitempty"`
-	Tags               map[string]string             `json:"tags,omitempty"`
-	Risk               RiskLevel                     `json:"risk"`
-	Findings           []string                      `json:"findings,omitempty"`
-	CreatedAt          time.Time                     `json:"created_at"`
-	UpdatedAt          time.Time                     `json:"updated_at"`
-	DeletedAt          *time.Time                    `json:"deleted_at,omitempty"`
-	Version            int                           `json:"version"`
-	PreviousProperties map[string]any                `json:"previous_properties,omitempty"`
-	PropertyHistory    map[string][]PropertySnapshot `json:"property_history,omitempty"`
-	observationProps   *ObservationProperties        `json:"-"`
+	ID                  string                        `json:"id"`
+	Kind                NodeKind                      `json:"kind"`
+	Name                string                        `json:"name"`
+	TenantID            string                        `json:"tenant_id,omitempty"`
+	Provider            string                        `json:"provider"`
+	Account             string                        `json:"account"`
+	Region              string                        `json:"region,omitempty"`
+	Properties          map[string]any                `json:"properties,omitempty"`
+	Tags                map[string]string             `json:"tags,omitempty"`
+	Risk                RiskLevel                     `json:"risk"`
+	Findings            []string                      `json:"findings,omitempty"`
+	CreatedAt           time.Time                     `json:"created_at"`
+	UpdatedAt           time.Time                     `json:"updated_at"`
+	DeletedAt           *time.Time                    `json:"deleted_at,omitempty"`
+	Version             int                           `json:"version"`
+	PreviousProperties  map[string]any                `json:"previous_properties,omitempty"`
+	PropertyHistory     map[string][]PropertySnapshot `json:"property_history,omitempty"`
+	observationProps    *ObservationProperties        `json:"-"`
+	attackSequenceProps *AttackSequenceProperties     `json:"-"`
 }
 
 // IsIdentity returns true if the node is an identity type

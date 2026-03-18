@@ -54,6 +54,9 @@ func cloneNodeForGraphClone(node *Node) *Node {
 	if node.observationProps != nil {
 		cloned.observationProps = ptrObservationProperties(*node.observationProps)
 	}
+	if node.attackSequenceProps != nil {
+		cloned.attackSequenceProps = ptrAttackSequenceProperties(*node.attackSequenceProps)
+	}
 	return &cloned
 }
 

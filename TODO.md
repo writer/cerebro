@@ -17,6 +17,18 @@ Status: executed end-to-end via PR workflow
 - [x] Expose live and tenant-scoped graph-store accessors from the app/runtime layer so future API and app slices can depend on a backend seam that survives graph swaps.
 - [x] Add regression coverage for store CRUD/traversal parity, context cancellation, live-store graph swaps, and API dependency wiring.
 
+## Deep Review Cycle 195 - Typed Attack Sequence Property Storage (2026-03-17)
+
+### Review findings
+- [x] Gap: issue `#385` still left `attack_sequence` nodes fully map-backed even though they carry a fixed temporal/runtime schema and are created in a hot runtime correlation path.
+- [x] Gap: clone, snapshot, and temporal query paths only preserved typed storage for observations, so extending compact storage to another node kind would silently regress if those paths were not updated together.
+- [x] Gap: there was no regression coverage proving compact `attack_sequence` storage preserved property mutation validation, snapshot restore behavior, and materialized property export.
+
+### Execution plan
+- [x] Add compact typed storage for stable `attack_sequence` fields with on-demand `PropertyValue` and `PropertyMap` materialization.
+- [x] Extend graph clone, snapshot restore, and temporal readers to preserve the new typed property carrier.
+- [x] Add regression and benchmark coverage for compact live storage, property mutation semantics, snapshot restore, and typed-vs-map property reads.
+
 ## Deep Review Cycle 194 - Tiered Tenant Graph Storage (2026-03-17)
 
 ### Review findings

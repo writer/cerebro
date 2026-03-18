@@ -71,6 +71,11 @@ func (n *Node) PropertyValue(key string) (any, bool) {
 			return value, true
 		}
 	}
+	if props, ok := n.AttackSequenceProperties(); ok {
+		if value, ok := attackSequencePropertyValue(props, key); ok {
+			return value, true
+		}
+	}
 	if n.Properties == nil {
 		return nil, false
 	}
@@ -109,8 +114,28 @@ func hydrateNodeTypedProperties(node *Node) {
 		if len(node.Properties) == 0 {
 			node.Properties = nil
 		}
+		node.attackSequenceProps = nil
+	case NodeKindAttackSequence:
+		props, ok := attackSequencePropertiesFromMap(node.Properties)
+		if !ok {
+			if node.attackSequenceProps != nil {
+				props = cloneAttackSequenceProperties(*node.attackSequenceProps)
+				ok = props.present != 0
+			}
+		}
+		if ok {
+			node.attackSequenceProps = ptrAttackSequenceProperties(props)
+		} else {
+			node.attackSequenceProps = nil
+		}
+		stripAttackSequencePropertyKeys(node.Properties)
+		if len(node.Properties) == 0 {
+			node.Properties = nil
+		}
+		node.observationProps = nil
 	default:
 		node.observationProps = nil
+		node.attackSequenceProps = nil
 	}
 }
 
@@ -205,6 +230,12 @@ func cloneNodeProperties(node *Node) map[string]any {
 			properties = make(map[string]any, 12)
 		}
 		materializeObservationProperties(properties, props)
+	}
+	if props, ok := node.AttackSequenceProperties(); ok {
+		if properties == nil {
+			properties = make(map[string]any, 19)
+		}
+		materializeAttackSequenceProperties(properties, props)
 	}
 	if len(properties) == 0 {
 		return nil
