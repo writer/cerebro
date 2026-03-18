@@ -90,6 +90,25 @@ type stubImageScanner struct {
 	err    error
 }
 
+type stubVulnDB struct {
+	entries map[string]CVEInfo
+}
+
+func (s stubVulnDB) LookupCVE(cve string) (*CVEInfo, bool) {
+	for key, entry := range s.entries {
+		if strings.EqualFold(strings.TrimSpace(key), strings.TrimSpace(cve)) {
+			copyEntry := entry
+			return &copyEntry, true
+		}
+	}
+	return nil, false
+}
+
+func (s stubVulnDB) IsKEV(cve string) bool {
+	info, ok := s.LookupCVE(cve)
+	return ok && info.InKEV
+}
+
 func (s *stubImageScanner) ScanImage(context.Context, string) (*ContainerScanResult, error) {
 	if s.err != nil {
 		return nil, s.err
@@ -429,6 +448,61 @@ func TestContainerScannerScanImage_AddsLayerHistoryFinding(t *testing.T) {
 	}
 	if !hasFindingID(result.Findings, "supply-chain-insecure-download") {
 		t.Fatalf("expected insecure download finding, got %#v", result.Findings)
+	}
+}
+
+func TestContainerScannerScanImage_EnrichesNativeVulnerabilitiesFromDB(t *testing.T) {
+	registry := &stubRegistry{
+		name: "stub-enriched",
+		manifest: &ImageManifest{
+			Digest: "sha256:abc",
+			Config: ImageConfig{OS: "linux", Architecture: "amd64", User: "nonroot"},
+		},
+		vulns: []ImageVulnerability{{
+			ID:               "GHSA-2026-0001",
+			CVE:              "GHSA-2026-0001",
+			Severity:         "unknown",
+			Package:          "openssl",
+			InstalledVersion: "1.0.2",
+		}},
+	}
+
+	scanner := NewContainerScanner()
+	scanner.RegisterRegistry(registry)
+	scanner.SetVulnDB(stubVulnDB{
+		entries: map[string]CVEInfo{
+			"GHSA-2026-0001": {
+				ID:             "CVE-2026-9999",
+				Severity:       "medium",
+				Description:    "Actively exploited openssl issue",
+				CVSS:           6.8,
+				EPSSScore:      0.91,
+				EPSSPercentile: 0.99,
+				Exploitable:    true,
+				References:     []string{"https://example.com/CVE-2026-9999"},
+			},
+		},
+	})
+
+	result, err := scanner.ScanImage(context.Background(), "stub-enriched", "repo", "v1.2.3")
+	if err != nil {
+		t.Fatalf("ScanImage: %v", err)
+	}
+	if len(result.Vulnerabilities) != 1 {
+		t.Fatalf("expected one vulnerability, got %#v", result.Vulnerabilities)
+	}
+	vuln := result.Vulnerabilities[0]
+	if vuln.CVE != "CVE-2026-9999" {
+		t.Fatalf("expected CVE alias normalization, got %#v", vuln)
+	}
+	if vuln.CVSS != 6.8 || vuln.EPSSScore != 0.91 || !vuln.Exploitable {
+		t.Fatalf("expected vulnerability enrichment, got %#v", vuln)
+	}
+	if len(vuln.References) != 1 || vuln.References[0] != "https://example.com/CVE-2026-9999" {
+		t.Fatalf("expected references from vuln DB, got %#v", vuln)
+	}
+	if !hasFindingID(result.Findings, "vuln-CVE-2026-9999-openssl") {
+		t.Fatalf("expected enriched vulnerability finding, got %#v", result.Findings)
 	}
 }
 

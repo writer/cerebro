@@ -17,11 +17,14 @@ func TestResourceToTableMapping(t *testing.T) {
 		{"gcp::storage::bucket", 1},
 		{"gcp::sql::database_instance", 1},
 		{"gcp::artifact_registry::repository", 1},
+		{"gcp::artifact_registry::image", 1},
 		{"gcp::container_registry::registry", 1},
-		{"container::image", 2},
+		{"container::image", 3},
 		{"azure::compute::virtual_machine", 1},
 		{"azure::compute::vm", 1},
 		{"azure::functionapp::function", 1},
+		{"azure::containerservice::managed_cluster", 1},
+		{"azure::containerservice::agent_pool", 1},
 		{"github::repository_dependabot_alert", 1},
 		{"github::user", 1},
 		{"k8s::role", 1},
@@ -29,6 +32,7 @@ func TestResourceToTableMapping(t *testing.T) {
 		{"k8s::rbac::risky_binding", 1},
 		{"k8s::cluster::inventory", 1},
 		{"compute::instance", 3},
+		{"container::node_pool", 3},
 	}
 
 	for _, tt := range tests {
@@ -90,7 +94,14 @@ func TestPolicyGetRequiredTables(t *testing.T) {
 
 	p.Resource = "container::image"
 	tables = p.GetRequiredTables()
-	want = []string{"snyk_container_images", "gcp_artifact_registry_images"}
+	want = []string{"snyk_container_images", "aws_ecr_images", "gcp_artifact_registry_images"}
+	if !reflect.DeepEqual(tables, want) {
+		t.Errorf("got %v, want %v", tables, want)
+	}
+
+	p.Resource = "container::node_pool"
+	tables = p.GetRequiredTables()
+	want = []string{"aws_eks_node_groups", "gcp_container_node_pools", "azure_aks_node_pools"}
 	if !reflect.DeepEqual(tables, want) {
 		t.Errorf("got %v, want %v", tables, want)
 	}
