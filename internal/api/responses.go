@@ -38,6 +38,8 @@ func statusFromError(err error) int {
 	switch {
 	case cerrors.IsValidation(err):
 		return http.StatusBadRequest
+	case errors.Is(err, errGraphRiskUnavailable):
+		return http.StatusServiceUnavailable
 	case errors.Is(err, graph.ErrStoreUnavailable):
 		return http.StatusServiceUnavailable
 	case cerrors.IsNotFound(err):

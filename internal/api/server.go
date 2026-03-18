@@ -28,6 +28,7 @@ import (
 type Server struct {
 	app                      *serverDependencies
 	findingsCompliance       findingsComplianceService
+	graphRisk                graphRiskService
 	graphIntelligence        graphIntelligenceService
 	platformKnowledge        platformKnowledgeService
 	syncHandlers             syncHandlerService
@@ -108,6 +109,7 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 		agentSDKMCPSessions:    make(map[string]*agentSDKMCPSession),
 		agentSDKReportProgress: make(map[string]agentSDKReportProgressSubscription),
 	}
+	s.graphRisk = newGraphRiskService(s, &deps)
 	if cfg := deps.Config; cfg != nil {
 		var (
 			store *reports.ReportRunStore

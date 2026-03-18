@@ -33,6 +33,18 @@ Status: executed end-to-end via PR workflow
 
 ## Deep Review Cycle 195 - Findings And Compliance Handler Service Seam (2026-03-17)
 
+## Deep Review Cycle 196 - Graph Risk Handler Service Seam (2026-03-17)
+
+### Review findings
+- [x] Gap: issue `#210` still left the graph-risk handler family reaching directly through `s.app` and ad hoc server state for graph metadata, rebuilds, risk reports, toxic-combination analysis, attack-path simulation, privilege-escalation checks, peer-group analysis, and effective-permission reads.
+- [x] Gap: the risk family had route coverage but no `NewServerWithDependencies` seam tests proving those handlers can run against a narrow graph-risk stub without a live `*app.App`, `SecurityGraph`, or `SecurityGraphBuilder`.
+- [x] Gap: the first traversal endpoints had already moved to `GraphStore`, but the rest of the risk surface still mixed store-backed and pointer-backed reads in one handler file, which kept future backend migration and handler testing inconsistent.
+
+### Execution plan
+- [x] Add a dedicated graph-risk handler service in `internal/api/` that owns graph stats, store-backed traversals, rebuild orchestration, risk-report evaluation/persistence, attack-path simulation, privilege-escalation checks, peer-group analysis, and effective-permission reads.
+- [x] Route the graph-risk handler family through the new service so the HTTP layer no longer reaches directly through `s.app` or server-side risk-engine state helpers.
+- [x] Add `NewServerWithDependencies` stub tests covering traversal, rebuild, risk-intelligence, and access-analysis endpoints without a full app.
+
 ### Review findings
 - [x] Gap: issue `#210` still left the findings/compliance handler family reaching directly through `s.app` for tenant findings stores, warehouse scans, policy-backed compliance reporters, graph-backed compliance evaluation, and logger warnings.
 - [x] Gap: that family had route coverage, but not `NewServerWithDependencies` tests proving findings, scan, reporting, and compliance status endpoints can run against a narrow stub without constructing a full `*app.App`.
