@@ -22,6 +22,7 @@ type Store interface {
 	LoadEvents(context.Context, string, string) ([]EventEnvelope, error)
 	LookupProcessedEvent(context.Context, string, string, time.Time) (*ProcessedEventRecord, error)
 	TouchProcessedEvent(context.Context, string, string, time.Time, time.Duration) error
+	ClaimProcessedEvent(context.Context, ProcessedEventRecord, int) (bool, *ProcessedEventRecord, error)
 	RememberProcessedEvent(context.Context, ProcessedEventRecord, int) error
 	DeleteProcessedEvent(context.Context, string, string) error
 }
