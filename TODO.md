@@ -29,6 +29,18 @@ Status: executed end-to-end via PR workflow
 - [x] Add store-only HTTP regressions for both handlers so the API surface no longer depends on a raw in-memory graph.
 - [x] Re-run focused API tests, lint, and changed-file validation before pushing the next `#392` slice.
 
+## Deep Review Cycle 202 - Graph Store Simulation Paths (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left `graph/simulate` and org reorg simulation hard-wired to `s.app.SecurityGraph`, so those endpoints would fail once the runtime exposes only a graph store.
+- [x] Gap: both handlers are read-only analysis flows, but they still bypassed the snapshot-backed tenant graph view already used by the other store-migration slices.
+- [x] Gap: there was no API regression proving either simulation endpoint still works when the server is constructed with only a `GraphStore`.
+
+### Execution plan
+- [x] Route graph simulation and reorg simulation through the snapshot-backed tenant graph view.
+- [x] Add store-only API regressions for both simulation endpoints.
+- [x] Re-run focused and changed-file API validation before pushing the next `#392` slice.
+
 ## Deep Review Cycle 198 - Organizational Policy Graph Substrate (2026-03-17)
 
 ### Review findings
