@@ -284,6 +284,22 @@ var (
 		[]string{"stream", "durable"},
 	)
 
+	NATSConsumerProcessedTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_nats_consumer_processed_total",
+			Help: "Total number of NATS consumer messages processed successfully",
+		},
+		[]string{"stream", "durable"},
+	)
+
+	NATSConsumerDeduplicatedTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_nats_consumer_deduplicated_total",
+			Help: "Total number of NATS consumer messages skipped because the CloudEvent was already processed",
+		},
+		[]string{"stream", "durable"},
+	)
+
 	NATSConsumerLag = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "cerebro_nats_consumer_lag",
@@ -475,6 +491,14 @@ var (
 		},
 	)
 
+	GraphCrossTenantReadsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_graph_cross_tenant_reads_total",
+			Help: "Total number of allowed cross-tenant graph reads by operation and bounded access scope",
+		},
+		[]string{"operation", "request_scope", "target_scope", "outcome"},
+	)
+
 	GraphStatePersistenceTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "cerebro_graph_state_persistence_total",
@@ -542,6 +566,8 @@ func Register() {
 			JetStreamBackpressureAlertsTotal,
 			NATSConsumerDroppedTotal,
 			NATSConsumerRedeliveriesTotal,
+			NATSConsumerProcessedTotal,
+			NATSConsumerDeduplicatedTotal,
 			NATSConsumerLag,
 			NATSConsumerLagSeconds,
 			GraphBuildStatus,
@@ -570,6 +596,7 @@ func Register() {
 			GraphCrossTenantIngestSamplesTotal,
 			GraphCrossTenantPatterns,
 			GraphCrossTenantMatches,
+			GraphCrossTenantReadsTotal,
 			GraphStatePersistenceTotal,
 			// Build
 			BuildInfo,
@@ -736,6 +763,26 @@ func RecordGraphCrossTenantMatches(count int) {
 	GraphCrossTenantMatches.Set(float64(count))
 }
 
+func RecordGraphCrossTenantRead(operation, requestScope, targetScope, outcome string) {
+	operation = strings.TrimSpace(strings.ToLower(operation))
+	if operation == "" {
+		operation = "unknown"
+	}
+	requestScope = strings.TrimSpace(strings.ToLower(requestScope))
+	if requestScope == "" {
+		requestScope = "unknown"
+	}
+	targetScope = strings.TrimSpace(strings.ToLower(targetScope))
+	if targetScope == "" {
+		targetScope = "unknown"
+	}
+	outcome = strings.TrimSpace(strings.ToLower(outcome))
+	if outcome == "" {
+		outcome = "unknown"
+	}
+	GraphCrossTenantReadsTotal.WithLabelValues(operation, requestScope, targetScope, outcome).Inc()
+}
+
 func RecordGraphStatePersistence(result string) {
 	result = strings.TrimSpace(strings.ToLower(result))
 	if result == "" {
@@ -806,6 +853,26 @@ func RecordNATSConsumerRedelivery(stream, durable string) {
 		durable = "unknown"
 	}
 	NATSConsumerRedeliveriesTotal.WithLabelValues(stream, durable).Inc()
+}
+
+func RecordNATSConsumerProcessed(stream, durable string) {
+	if strings.TrimSpace(stream) == "" {
+		stream = "unknown"
+	}
+	if strings.TrimSpace(durable) == "" {
+		durable = "unknown"
+	}
+	NATSConsumerProcessedTotal.WithLabelValues(stream, durable).Inc()
+}
+
+func RecordNATSConsumerDeduplicated(stream, durable string) {
+	if strings.TrimSpace(stream) == "" {
+		stream = "unknown"
+	}
+	if strings.TrimSpace(durable) == "" {
+		durable = "unknown"
+	}
+	NATSConsumerDeduplicatedTotal.WithLabelValues(stream, durable).Inc()
 }
 
 func SetNATSConsumerLag(stream, durable string, lag int) {

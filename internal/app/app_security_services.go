@@ -11,6 +11,8 @@ import (
 	"github.com/writer/cerebro/internal/actionengine"
 	"github.com/writer/cerebro/internal/auth"
 	"github.com/writer/cerebro/internal/graph"
+	"github.com/writer/cerebro/internal/graph/builders"
+	reports "github.com/writer/cerebro/internal/graph/reports"
 	"github.com/writer/cerebro/internal/health"
 	"github.com/writer/cerebro/internal/lineage"
 	"github.com/writer/cerebro/internal/remediation"
@@ -20,6 +22,9 @@ import (
 )
 
 func (a *App) newSharedActionExecutor() *actionengine.Executor {
+	if a != nil && a.ExecutionStore != nil {
+		return actionengine.NewExecutor(actionengine.NewSQLiteStoreWithExecutionStore(a.ExecutionStore, actionengine.DefaultNamespace))
+	}
 	store, err := actionengine.NewSQLiteStore(a.Config.ExecutionStoreFile, actionengine.DefaultNamespace)
 	if err != nil {
 		a.Logger.Warn("failed to initialize shared action execution store; falling back to in-memory", "error", err, "path", a.Config.ExecutionStoreFile)
@@ -232,6 +237,53 @@ func (a *App) initHealth() {
 		result.Latency = time.Since(start)
 		return result
 	})
+	a.Health.Register("graph_persistence", func(_ context.Context) health.CheckResult {
+		start := time.Now().UTC()
+		result := health.CheckResult{
+			Name:      "graph_persistence",
+			Timestamp: start,
+		}
+		if a.Warehouse == nil {
+			result.Status = health.StatusHealthy
+			result.Message = "graph disabled - warehouse not configured"
+			result.Latency = time.Since(start)
+			return result
+		}
+		if a.GraphSnapshots == nil {
+			result.Status = health.StatusDegraded
+			result.Message = "graph persistence store not configured"
+			result.Latency = time.Since(start)
+			return result
+		}
+		status := a.GraphSnapshots.Status()
+		switch {
+		case status.ReplicaConfigured && status.LastReplicationError != "":
+			result.Status = health.StatusDegraded
+			result.Message = "local snapshot persistence healthy; replica sync failing"
+		case status.ReplicaConfigured && status.LastReplicatedSnapshot == "":
+			records, err := a.GraphSnapshots.ListGraphSnapshotRecords()
+			switch {
+			case err == nil && len(records) > 0:
+				result.Status = health.StatusHealthy
+				result.Message = "replicated snapshot persistence active"
+			default:
+				result.Status = health.StatusDegraded
+				result.Message = "replica configured but not seeded yet"
+			}
+		default:
+			result.Status = health.StatusHealthy
+			message := "local snapshot persistence active"
+			if status.ReplicaConfigured {
+				message = "replicated snapshot persistence active"
+			}
+			if status.LastRecoverySource != "" {
+				message += " (last recovery: " + status.LastRecoverySource + ")"
+			}
+			result.Message = message
+		}
+		result.Latency = time.Since(start)
+		return result
+	})
 
 	a.Logger.Info("health service initialized")
 }
@@ -320,7 +372,7 @@ func (a *App) graphOntologySLOHealthCheck() health.Checker {
 		}
 
 		thresholds := a.graphOntologySLOThresholds()
-		slo := graph.BuildGraphOntologySLO(securityGraph, time.Now().UTC(), 7)
+		slo := reports.BuildGraphOntologySLO(securityGraph, time.Now().UTC(), 7)
 		status, message := evaluateGraphOntologySLOStatus(slo, thresholds)
 		result.Status = status
 		result.Message = message
@@ -329,7 +381,7 @@ func (a *App) graphOntologySLOHealthCheck() health.Checker {
 	}
 }
 
-func evaluateGraphOntologySLOStatus(slo graph.GraphOntologySLO, thresholds graphOntologySLOThresholds) (health.Status, string) {
+func evaluateGraphOntologySLOStatus(slo reports.GraphOntologySLO, thresholds graphOntologySLOThresholds) (health.Status, string) {
 	status := health.StatusHealthy
 	issues := make([]string, 0, 4)
 
@@ -378,7 +430,7 @@ func evaluateGraphOntologySLOStatus(slo graph.GraphOntologySLO, thresholds graph
 	return status, strings.Join(issues, "; ")
 }
 
-func burnRatesForHigherIsWorse(current, warn, critical float64, trend []graph.GraphOntologySLOPoint) (float64, float64) {
+func burnRatesForHigherIsWorse(current, warn, critical float64, trend []reports.GraphOntologySLOPoint) (float64, float64) {
 	budget := critical - warn
 	if budget <= 0 {
 		return 0, 0
@@ -402,7 +454,7 @@ func burnRatesForHigherIsWorse(current, warn, critical float64, trend []graph.Gr
 	return positiveBurnRate(fastValue-warn, budget), positiveBurnRate(slowValue-warn, budget)
 }
 
-func burnRatesForLowerIsWorse(current, warn, critical float64, trend []graph.GraphOntologySLOPoint) (float64, float64) {
+func burnRatesForLowerIsWorse(current, warn, critical float64, trend []reports.GraphOntologySLOPoint) (float64, float64) {
 	budget := warn - critical
 	if budget <= 0 {
 		return 0, 0
@@ -472,11 +524,30 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 		return
 	}
 
-	source := graph.NewSnowflakeSource(a.Warehouse)
-	a.SecurityGraphBuilder = graph.NewBuilder(source, a.Logger)
+	source := builders.NewSnowflakeSource(a.Warehouse)
+	a.SecurityGraphBuilder = builders.NewBuilder(source, a.Logger)
 	securityGraph := a.SecurityGraphBuilder.Graph()
 	a.configureGraphSchemaValidation(securityGraph)
 	a.setSecurityGraph(securityGraph)
+	if a.GraphSnapshots != nil {
+		recovered, record, recoverySource, err := a.GraphSnapshots.LoadLatestSnapshot()
+		if err != nil {
+			a.Logger.Warn("failed to recover persisted security graph snapshot", "error", err)
+		} else if recovered != nil {
+			recoveredGraph := graph.RestoreFromSnapshot(recovered)
+			a.configureGraphSchemaValidation(recoveredGraph)
+			a.setSecurityGraph(recoveredGraph)
+			if record != nil && record.BuiltAt != nil {
+				a.setGraphBuildState(GraphBuildSuccess, record.BuiltAt.UTC(), nil)
+			}
+			a.Logger.Info("recovered persisted security graph snapshot",
+				"source", recoverySource,
+				"snapshot_id", recordID(record),
+				"nodes", recoveredGraph.NodeCount(),
+				"edges", recoveredGraph.EdgeCount(),
+			)
+		}
+	}
 
 	graphCtx, cancel := context.WithCancel(backgroundWorkContext(ctx))
 	a.graphCtx = graphCtx
@@ -616,9 +687,27 @@ func (a *App) activateBuiltSecurityGraph(ctx context.Context, securityGraph *gra
 	a.rematerializeEventCorrelations(securityGraph, "graph_activation")
 	a.configureGraphSchemaValidation(securityGraph)
 	a.setSecurityGraph(securityGraph)
+	if a.GraphSnapshots != nil {
+		if record, err := a.GraphSnapshots.SaveGraph(securityGraph); err != nil {
+			if record != nil {
+				a.Logger.Warn("replicated security graph snapshot failed after local persist", "snapshot_id", record.ID, "error", err)
+			} else {
+				a.Logger.Warn("failed to persist security graph snapshot", "error", err)
+			}
+		} else if record != nil {
+			a.Logger.Info("persisted security graph snapshot", "snapshot_id", record.ID)
+		}
+	}
 	meta := securityGraph.Metadata()
 	a.setGraphBuildState(GraphBuildSuccess, meta.BuiltAt, nil)
 	return meta, nil
+}
+
+func recordID(record *graph.GraphSnapshotRecord) string {
+	if record == nil {
+		return ""
+	}
+	return record.ID
 }
 
 func (a *App) rematerializeEventCorrelations(securityGraph *graph.Graph, reason string) {
@@ -666,7 +755,7 @@ func (a *App) initEventCorrelationRefreshLoop(ctx context.Context) {
 			}
 			sort.Strings(reasons)
 			pendingReasons = make(map[string]struct{})
-			a.rematerializeEventCorrelations(a.CurrentSecurityGraph(), strings.Join(reasons, ","))
+			a.refreshCurrentEventCorrelations(strings.Join(reasons, ","))
 		}
 		for {
 			select {
@@ -714,7 +803,7 @@ func (a *App) queueEventCorrelationRefresh(reason string) {
 		reason = "tap_mapping"
 	}
 	if a.eventCorrelationRefreshCh == nil {
-		a.rematerializeEventCorrelations(a.CurrentSecurityGraph(), reason)
+		a.refreshCurrentEventCorrelations(reason)
 		return
 	}
 	select {
@@ -744,6 +833,39 @@ func (a *App) stopEventCorrelationRefreshLoop() {
 	}
 	a.eventCorrelationRefreshCh = nil
 	a.eventCorrelationRefreshCancel = nil
+}
+
+func (a *App) refreshCurrentEventCorrelations(reason string) {
+	if a == nil {
+		return
+	}
+	baseCtx := a.graphCtx
+	if baseCtx == nil {
+		baseCtx = context.Background()
+	}
+	var summary graph.EventCorrelationMaterializationSummary
+	_, err := a.MutateSecurityGraphMaybe(baseCtx, func(candidate *graph.Graph) (bool, error) {
+		summary = graph.MaterializeEventCorrelations(candidate, time.Now().UTC())
+		return summary.CorrelationsCreated > 0 || summary.CorrelationsRemoved > 0, nil
+	})
+	if err != nil {
+		if a.Logger != nil {
+			a.Logger.Warn("failed to refresh event correlations on live graph", "reason", strings.TrimSpace(reason), "error", err)
+		}
+		return
+	}
+	if a.Logger == nil {
+		return
+	}
+	if summary.CorrelationsCreated == 0 && summary.CorrelationsRemoved == 0 {
+		return
+	}
+	a.Logger.Info("materialized event correlations into security graph",
+		"reason", strings.TrimSpace(reason),
+		"patterns", summary.PatternsEvaluated,
+		"created", summary.CorrelationsCreated,
+		"removed", summary.CorrelationsRemoved,
+	)
 }
 
 func shouldRefreshEventCorrelations(securityGraph *graph.Graph, nodeIDs []string) bool {

@@ -13,6 +13,7 @@ import (
 	"github.com/writer/cerebro/internal/attackpath"
 	"github.com/writer/cerebro/internal/auth"
 	"github.com/writer/cerebro/internal/cache"
+	"github.com/writer/cerebro/internal/executionstore"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/health"
@@ -43,6 +44,7 @@ func NewConfig(t *testing.T) *app.Config {
 	return &app.Config{
 		LogLevel:                   "error",
 		Port:                       0,
+		ExecutionStoreFile:         filepath.Join(reportStateDir, "executions.db"),
 		PlatformReportRunStateFile: filepath.Join(reportStateDir, "state.json"),
 		PlatformReportSnapshotPath: filepath.Join(reportStateDir, "snapshots"),
 	}
@@ -63,8 +65,12 @@ func NewAppWithWarehouse(t *testing.T, store warehouse.DataWarehouse) *app.App {
 	pe := policy.NewEngine()
 	fs := findings.NewStore()
 	sc := scanner.NewScanner(pe, scanner.ScanConfig{Workers: 2}, logger)
+	executionStore, err := executionstore.NewSQLiteStore(cfg.ExecutionStoreFile)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
 
-	return &app.App{
+	application := &app.App{
 		Config:         cfg,
 		Logger:         logger,
 		Warehouse:      store,
@@ -72,6 +78,7 @@ func NewAppWithWarehouse(t *testing.T, store warehouse.DataWarehouse) *app.App {
 		Findings:       fs,
 		Scanner:        sc,
 		Cache:          cache.NewPolicyCache(1000, 5*time.Minute),
+		ExecutionStore: executionStore,
 		Agents:         agents.NewAgentRegistry(),
 		RBAC:           auth.NewRBAC(),
 		Webhooks:       webhooks.NewServiceForTesting(),
@@ -90,4 +97,6 @@ func NewAppWithWarehouse(t *testing.T, store warehouse.DataWarehouse) *app.App {
 		ScanWatermarks: scanner.NewWatermarkStore(nil),
 		ThreatIntel:    threatintel.NewThreatIntelService(),
 	}
+	t.Cleanup(func() { _ = application.Close() })
+	return application
 }

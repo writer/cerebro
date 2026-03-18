@@ -266,6 +266,8 @@ func defaultPermissions() []Permission {
 
 		{ID: "platform.graph.read", Resource: "platform.graph", Action: "read"},
 		{ID: "platform.graph.write", Resource: "platform.graph", Action: "write"},
+		{ID: "platform.cross_tenant.read", Resource: "platform.cross_tenant", Action: "read"},
+		{ID: "platform.cross_tenant.write", Resource: "platform.cross_tenant", Action: "write"},
 		{ID: "platform.intelligence.read", Resource: "platform.intelligence", Action: "read"},
 		{ID: "platform.intelligence.run", Resource: "platform.intelligence", Action: "run"},
 		{ID: "platform.jobs.read", Resource: "platform.jobs", Action: "read"},
@@ -332,7 +334,7 @@ func defaultAdminRolePermissions() []string {
 		"assets:read", "compliance:read", "compliance:export",
 		"admin:users", "admin:roles",
 
-		"platform.graph.read", "platform.graph.write", "platform.intelligence.read",
+		"platform.graph.read", "platform.graph.write", "platform.cross_tenant.read", "platform.cross_tenant.write", "platform.intelligence.read",
 		"platform.intelligence.run",
 		"platform.jobs.read", "platform.knowledge.read", "platform.knowledge.write", "platform.workflow.write",
 		"platform.schema.read", "platform.schema.manage", "platform.identity.review",

@@ -2262,4 +2262,5 @@ var builtInEdgeKinds = []EdgeKindDefinition{
 	{Kind: EdgeKindContradicts},
 	{Kind: EdgeKindTriggeredBy},
 	{Kind: EdgeKindCausedBy},
+	{Kind: EdgeKindHasCredentialFor},
 }

@@ -110,6 +110,7 @@ type Node struct {
 	ID                 string                        `json:"id"`
 	Kind               NodeKind                      `json:"kind"`
 	Name               string                        `json:"name"`
+	TenantID           string                        `json:"tenant_id,omitempty"`
 	Provider           string                        `json:"provider"`
 	Account            string                        `json:"account"`
 	Region             string                        `json:"region,omitempty"`

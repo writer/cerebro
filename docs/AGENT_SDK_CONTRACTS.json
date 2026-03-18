@@ -647,6 +647,65 @@
       "execution_kind": "direct_tool"
     },
     {
+      "id": "cerebro_execution_status",
+      "version": "1.0.0",
+      "tool_name": "cerebro.execution_status",
+      "sdk_method": "execution_status",
+      "title": "Execution Status",
+      "description": "List recent shared-platform executions across report runs, scans, and action workflows",
+      "category": "query",
+      "required_permission": "sdk.context.read",
+      "input_schema": {
+        "properties": {
+          "limit": {
+            "default": 20,
+            "description": "Maximum executions to return (1-100).",
+            "type": "integer"
+          },
+          "namespace": {
+            "description": "Optional execution namespaces to filter, for example report_run, workload_scan, image_scan, function_scan, action_engine.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "order": {
+            "default": "updated",
+            "description": "Sort order: updated or submitted.",
+            "enum": [
+              "updated",
+              "submitted"
+            ],
+            "type": "string"
+          },
+          "report_id": {
+            "description": "Optional report definition ID filter for report executions.",
+            "type": "string"
+          },
+          "status": {
+            "description": "Optional execution statuses to include.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "example_input": {
+        "limit": 20,
+        "namespace": [
+          "namespace"
+        ],
+        "order": "updated",
+        "report_id": "insights",
+        "status": [
+          "status"
+        ]
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
       "id": "cerebro_findings",
       "version": "1.0.0",
       "tool_name": "cerebro.findings",
