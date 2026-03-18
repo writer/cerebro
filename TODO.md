@@ -17,6 +17,18 @@ Status: executed end-to-end via PR workflow
 - [x] Route the tenant graph helpers plus the findings/compliance, graph-intelligence, graph-risk, platform-knowledge, and platform graph-view call sites through those helpers.
 - [x] Add focused unit coverage for helper precedence and for store-backed risk reports without a full server wrapper, then rerun focused API validation.
 
+## Deep Review Cycle 206 - Risk Engine Runtime Graph Abstraction (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left `graphRiskEngine()` coupled to the raw `serverDependencies.SecurityGraph` field instead of the graph runtime abstraction, so runtime-backed servers could expose a current graph without the cached risk engine ever seeing it.
+- [x] Gap: that coupling meant the risk-engine cache could miss runtime graph swaps even though `serverDependencies.CurrentSecurityGraph()` already models the managed-graph seam the API is supposed to consume.
+- [x] Gap: there was no regression proving `graphRiskEngine()` works when the server is constructed from a graph runtime without a stored in-memory `SecurityGraph` pointer.
+
+### Execution plan
+- [x] Teach `graphRiskEngine()` to resolve its live source through `CurrentSecurityGraph()` instead of the raw dependency field.
+- [x] Preserve the existing store-snapshot fallback and cache invalidation behavior so handler contracts stay unchanged.
+- [x] Add runtime-only regressions covering initial engine creation and engine refresh after a graph runtime swap, then rerun focused API validation.
+
 ## Deep Review Cycle 206 - Organizational Policy Template Catalog (2026-03-18)
 
 ### Review findings

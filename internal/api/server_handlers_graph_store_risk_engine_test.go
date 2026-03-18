@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/evalops/cerebro/internal/app"
 	"github.com/evalops/cerebro/internal/graph"
 	risk "github.com/evalops/cerebro/internal/graph/risk"
 	"github.com/evalops/cerebro/internal/snowflake"
@@ -266,6 +267,53 @@ func TestGraphRiskEngineReusesStoreBackedEngineForStableSnapshot(t *testing.T) {
 	}
 	if got := store.count.Load(); got < 2 {
 		t.Fatalf("expected snapshot lookups while checking for store updates, got %d", got)
+	}
+}
+
+func TestGraphRiskEngineUsesGraphRuntimeWithoutStoredSecurityGraphField(t *testing.T) {
+	runtime := &stubGraphRuntime{graph: buildGraphStoreRiskEngineStateTestGraph()}
+	s := NewServerWithDependencies(serverDependencies{
+		Config:       &app.Config{},
+		graphRuntime: runtime,
+	})
+	t.Cleanup(func() { s.Close() })
+
+	if s.app.SecurityGraph != nil {
+		t.Fatalf("expected dependency bundle to start without a direct security graph, got %p", s.app.SecurityGraph)
+	}
+
+	engine := s.graphRiskEngine()
+	if engine == nil {
+		t.Fatal("expected graph risk engine to use graphRuntime.CurrentSecurityGraph()")
+	}
+	if report := engine.Analyze(); report == nil {
+		t.Fatal("expected runtime-backed risk engine report")
+	}
+}
+
+func TestGraphRiskEngineRefreshesWhenGraphRuntimeGraphChanges(t *testing.T) {
+	runtime := &stubGraphRuntime{graph: buildGraphStoreRiskEngineStateTestGraph()}
+	s := NewServerWithDependencies(serverDependencies{
+		Config:       &app.Config{},
+		graphRuntime: runtime,
+	})
+	t.Cleanup(func() { s.Close() })
+
+	first := s.graphRiskEngine()
+	if first == nil {
+		t.Fatal("expected initial runtime-backed risk engine")
+	}
+
+	runtime.graph = buildGraphStoreRiskEngineAlternateTestGraph()
+	second := s.graphRiskEngine()
+	if second == nil {
+		t.Fatal("expected refreshed runtime-backed risk engine")
+	}
+	if second == first {
+		t.Fatal("expected a new risk engine after runtime graph swap")
+	}
+	if s.riskEngineSource != runtime.graph {
+		t.Fatalf("expected cached risk engine source to track the latest runtime graph, got %p want %p", s.riskEngineSource, runtime.graph)
 	}
 }
 

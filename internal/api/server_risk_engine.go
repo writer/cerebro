@@ -20,7 +20,7 @@ func (s *Server) graphRiskEngine() *risk.RiskEngine {
 		return nil
 	}
 
-	source := s.app.SecurityGraph
+	source := s.app.CurrentSecurityGraph()
 	if source != nil {
 		s.riskEngineMu.Lock()
 		defer s.riskEngineMu.Unlock()
