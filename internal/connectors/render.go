@@ -1,13 +1,10 @@
 package connectors
 
 import (
-	"bytes"
-	"encoding/json"
-	"fmt"
 	"path/filepath"
 	"strings"
-	"text/template"
 
+	"github.com/writer/cerebro/internal/iacrender"
 	"github.com/writer/cerebro/internal/textutil"
 )
 
@@ -107,49 +104,11 @@ func RenderAzureBundle(opts AzureRenderOptions) (Bundle, error) {
 }
 
 func renderTemplate(src string, data any) string {
-	tmpl := template.Must(template.New("bundle").Funcs(renderTemplateFuncs()).Parse(src))
-	return executeTemplate(tmpl, data)
+	return iacrender.RenderTemplate("bundle", src, data)
 }
 
 func renderJSONTemplate(src string, data any) string {
-	tmpl := template.Must(template.New("bundle").Funcs(renderTemplateFuncs()).Parse(src))
-	return executeTemplate(tmpl, data)
-}
-
-func renderTemplateFuncs() template.FuncMap {
-	return template.FuncMap{
-		"jsonString": mustJSONString,
-		"yamlString": mustJSONString,
-		"hclString": func(value any) string {
-			text := asString(value)
-			text = strings.ReplaceAll(text, "${", "$${")
-			text = strings.ReplaceAll(text, "%{", "%%{")
-			return mustJSONString(text)
-		},
-	}
-}
-
-func mustJSONString(value any) string {
-	encoded, err := json.Marshal(value)
-	if err != nil {
-		panic(err)
-	}
-	return string(encoded)
-}
-
-func asString(value any) string {
-	if text, ok := value.(string); ok {
-		return text
-	}
-	return strings.TrimSpace(fmt.Sprint(value))
-}
-
-func executeTemplate(tmpl *template.Template, data any) string {
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, data); err != nil {
-		panic(err)
-	}
-	return strings.TrimLeft(buf.String(), "\n")
+	return iacrender.RenderTemplate("bundle", src, data)
 }
 
 const awsStackSetTemplate = `AWSTemplateFormatVersion: '2010-09-09'
