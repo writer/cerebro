@@ -358,10 +358,10 @@ func (g *Graph) appendNodePropertyHistoryLocked(node *Node, property string, val
 }
 
 func (g *Graph) appendNodePropertiesHistoryLocked(node *Node, at time.Time) {
-	if node == nil || len(node.Properties) == 0 {
+	if node == nil {
 		return
 	}
-	for property, value := range node.Properties {
+	for property, value := range node.PropertyMap() {
 		g.appendNodePropertyHistoryLocked(node, property, value, at)
 	}
 }

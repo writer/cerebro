@@ -64,13 +64,13 @@ func TestMaterializeObservationsIntoGraphAddsObservationNode(t *testing.T) {
 	if node.Provider != "tetragon" {
 		t.Fatalf("node.Provider = %q, want tetragon", node.Provider)
 	}
-	if got := testMetadataString(node.Properties, "observation_type"); got != "process_exec" {
+	if got := testNodeStringProperty(node, "observation_type"); got != "process_exec" {
 		t.Fatalf("node.properties.observation_type = %q, want process_exec", got)
 	}
-	if got := testMetadataString(node.Properties, "subject_id"); got != "deployment:prod/api" {
+	if got := testNodeStringProperty(node, "subject_id"); got != "deployment:prod/api" {
 		t.Fatalf("node.properties.subject_id = %q, want deployment:prod/api", got)
 	}
-	if got := testMetadataString(node.Properties, "detail"); got != "process exec /bin/sh" {
+	if got := testNodeStringProperty(node, "detail"); got != "process exec /bin/sh" {
 		t.Fatalf("node.properties.detail = %q, want process exec /bin/sh", got)
 	}
 	if issues := graph.GlobalSchemaRegistry().ValidateNode(node); len(issues) != 0 {
@@ -174,7 +174,7 @@ func TestMaterializeObservationsIntoGraphCorroboratesMatchingObservations(t *tes
 	if got := primaryNode.Properties["corroboration_multiplier"]; got != 1.5 {
 		t.Fatalf("primary corroboration_multiplier = %#v, want 1.5", got)
 	}
-	if got := primaryNode.Properties["confidence"]; got != 0.75 {
+	if got := testNodeProperty(primaryNode, "confidence"); got != 0.75 {
 		t.Fatalf("primary confidence = %#v, want 0.75", got)
 	}
 	if got := testMetadataString(primaryNode.Properties, "image_ref"); got != "ghcr.io/acme/api:1.2.3" {
@@ -194,7 +194,7 @@ func TestMaterializeObservationsIntoGraphCorroboratesMatchingObservations(t *tes
 	if got := testMetadataString(corroboratingNode.Properties, "corroboration_primary_id"); got != primaryReq.ID {
 		t.Fatalf("corroboration_primary_id = %q, want %q", got, primaryReq.ID)
 	}
-	if got := corroboratingNode.Properties["confidence"]; got != runtimeObservationBaseConfidence {
+	if got := testNodeProperty(corroboratingNode, "confidence"); got != runtimeObservationBaseConfidence {
 		t.Fatalf("corroborating confidence = %#v, want %f", got, runtimeObservationBaseConfidence)
 	}
 
@@ -320,7 +320,7 @@ func TestMaterializeObservationsIntoGraphDoesNotInflateConfidenceForUntrustedSou
 	if got := primaryNode.Properties["corroboration_multiplier"]; got != 1.0 {
 		t.Fatalf("corroboration_multiplier = %#v, want 1.0", got)
 	}
-	if got := primaryNode.Properties["confidence"]; got != runtimeObservationBaseConfidence {
+	if got := testNodeProperty(primaryNode, "confidence"); got != runtimeObservationBaseConfidence {
 		t.Fatalf("confidence = %#v, want %f", got, runtimeObservationBaseConfidence)
 	}
 	if got := testStringSliceProperty(primaryNode.Properties, "corroborating_sources"); len(got) != 0 {
@@ -512,13 +512,13 @@ func TestMaterializeObservationsIntoGraphProjectsRepresentativeObservationKinds(
 
 			observationNodeID := "observation:" + tt.observation.ID
 			node := mustNode(t, g, observationNodeID)
-			if got := testMetadataString(node.Properties, "observation_type"); got != tt.wantType {
+			if got := testNodeStringProperty(node, "observation_type"); got != tt.wantType {
 				t.Fatalf("observation_type = %q, want %q", got, tt.wantType)
 			}
-			if got := testMetadataString(node.Properties, "subject_id"); got != tt.wantSubjectID {
+			if got := testNodeStringProperty(node, "subject_id"); got != tt.wantSubjectID {
 				t.Fatalf("subject_id = %q, want %q", got, tt.wantSubjectID)
 			}
-			if got := testMetadataString(node.Properties, "detail"); got != tt.wantDetail {
+			if got := testNodeStringProperty(node, "detail"); got != tt.wantDetail {
 				t.Fatalf("detail = %q, want %q", got, tt.wantDetail)
 			}
 			if issues := graph.GlobalSchemaRegistry().ValidateNode(node); len(issues) != 0 {
@@ -1607,7 +1607,7 @@ func TestMaterializeObservationsIntoGraphDoesNotLinkNormalizedAuditObservationBa
 	}
 
 	node := mustNode(t, g, observationNodeID)
-	if got := testMetadataString(node.Properties, "observation_type"); got != string(runtime.ObservationKindKubernetesAudit) {
+	if got := testNodeStringProperty(node, "observation_type"); got != string(runtime.ObservationKindKubernetesAudit) {
 		t.Fatalf("observation_type = %q, want %q", got, runtime.ObservationKindKubernetesAudit)
 	}
 }
@@ -1736,6 +1736,19 @@ func testStringSliceProperty(properties map[string]any, key string) []string {
 	default:
 		return nil
 	}
+}
+
+func testNodeProperty(node *graph.Node, key string) any {
+	if node == nil {
+		return nil
+	}
+	value, _ := node.PropertyValue(key)
+	return value
+}
+
+func testNodeStringProperty(node *graph.Node, key string) string {
+	value, _ := testNodeProperty(node, key).(string)
+	return value
 }
 
 func testFindEdge(t *testing.T, g *graph.Graph, sourceID, targetID string, kind graph.EdgeKind) *graph.Edge {

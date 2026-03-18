@@ -57,12 +57,12 @@ func applyObservationCorroboration(g *graph.Graph, observationNodeID string) {
 	}
 	multiplier := corroborationConfidenceMultiplier(sourceCount)
 
-	primaryProperties := cloneObservationPropertiesMap(primary.node.Properties)
+	primaryProperties := cloneObservationPropertiesMap(primary.node.PropertyMap())
 	for _, item := range group {
 		if item.node.ID == primary.node.ID {
 			continue
 		}
-		mergeCorroboratedObservationProperties(primaryProperties, item.node.Properties)
+		mergeCorroboratedObservationProperties(primaryProperties, item.node.PropertyMap())
 	}
 	primaryProperties["correlation_key"] = correlationKey
 	primaryProperties["correlation_primary"] = true
@@ -84,7 +84,7 @@ func applyObservationCorroboration(g *graph.Graph, observationNodeID string) {
 			continue
 		}
 
-		nodeProperties := cloneObservationPropertiesMap(item.node.Properties)
+		nodeProperties := cloneObservationPropertiesMap(item.node.PropertyMap())
 		nodeProperties["correlation_key"] = correlationKey
 		nodeProperties["correlation_primary"] = false
 		nodeProperties["corroboration_primary_id"] = primary.node.ID

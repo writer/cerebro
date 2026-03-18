@@ -313,7 +313,7 @@ func (g *Graph) nodeActiveAtLocked(node *Node, at time.Time) bool {
 	if node == nil || node.DeletedAt != nil {
 		return false
 	}
-	start, end := temporalBounds(node.Properties, node.CreatedAt, node.DeletedAt)
+	start, end := nodeTemporalBounds(node)
 	return temporalContains(start, end, at)
 }
 
@@ -321,8 +321,8 @@ func (g *Graph) nodeVisibleAtLocked(node *Node, validAt, recordedAt time.Time) b
 	if node == nil || node.DeletedAt != nil {
 		return false
 	}
-	validStart, validEnd := temporalBounds(node.Properties, node.CreatedAt, node.DeletedAt)
-	recordedStart, recordedEnd := recordedBounds(node.Properties, node.CreatedAt, node.DeletedAt)
+	validStart, validEnd := nodeTemporalBounds(node)
+	recordedStart, recordedEnd := nodeRecordedBounds(node)
 	return temporalContains(validStart, validEnd, validAt) && temporalContains(recordedStart, recordedEnd, recordedAt)
 }
 
@@ -363,8 +363,69 @@ func (g *Graph) nodeIntersectsWindowLocked(node *Node, from, to time.Time) bool 
 	if node == nil || node.DeletedAt != nil {
 		return false
 	}
-	start, end := temporalBounds(node.Properties, node.CreatedAt, node.DeletedAt)
+	start, end := nodeTemporalBounds(node)
 	return temporalIntersects(start, end, from, to)
+}
+
+func nodeTemporalBounds(node *Node) (time.Time, time.Time) {
+	if node == nil {
+		return time.Time{}, time.Time{}
+	}
+	var start time.Time
+	var end time.Time
+	if ts, ok := nodePropertyTime(node, "valid_from"); ok {
+		start = ts
+	}
+	if start.IsZero() {
+		if ts, ok := nodePropertyTime(node, "observed_at"); ok {
+			start = ts
+		}
+	}
+	if ts, ok := nodePropertyTime(node, "valid_to"); ok {
+		end = ts
+	}
+	if end.IsZero() {
+		if ts, ok := temporalPropertyTime(node.Properties, "expires_at"); ok {
+			end = ts
+		}
+	}
+	if start.IsZero() {
+		start = node.CreatedAt.UTC()
+	}
+	if node.DeletedAt != nil && !node.DeletedAt.IsZero() {
+		if end.IsZero() || node.DeletedAt.UTC().Before(end) {
+			end = node.DeletedAt.UTC()
+		}
+	}
+	return start.UTC(), end.UTC()
+}
+
+func nodeRecordedBounds(node *Node) (time.Time, time.Time) {
+	if node == nil {
+		return time.Time{}, time.Time{}
+	}
+	var start time.Time
+	var end time.Time
+	if ts, ok := nodePropertyTime(node, "transaction_from"); ok {
+		start = ts
+	}
+	if start.IsZero() {
+		if ts, ok := nodePropertyTime(node, "recorded_at"); ok {
+			start = ts
+		}
+	}
+	if ts, ok := nodePropertyTime(node, "transaction_to"); ok {
+		end = ts
+	}
+	if start.IsZero() {
+		start = node.CreatedAt.UTC()
+	}
+	if node.DeletedAt != nil && !node.DeletedAt.IsZero() {
+		if end.IsZero() || node.DeletedAt.UTC().Before(end) {
+			end = node.DeletedAt.UTC()
+		}
+	}
+	return start.UTC(), end.UTC()
 }
 
 func (g *Graph) edgeIntersectsWindowLocked(edge *Edge, from, to time.Time) bool {
@@ -524,4 +585,39 @@ func graphObservedAt(node *Node) (time.Time, bool) {
 		return node.CreatedAt.UTC(), true
 	}
 	return time.Time{}, false
+}
+
+func nodePropertyTime(node *Node, key string) (time.Time, bool) {
+	if node == nil {
+		return time.Time{}, false
+	}
+	if props, ok := node.ObservationProperties(); ok {
+		switch strings.TrimSpace(key) {
+		case "observed_at":
+			if !props.ObservedAt.IsZero() {
+				return props.ObservedAt.UTC(), true
+			}
+		case "valid_from":
+			if !props.ValidFrom.IsZero() {
+				return props.ValidFrom.UTC(), true
+			}
+		case "valid_to":
+			if props.ValidTo != nil && !props.ValidTo.IsZero() {
+				return props.ValidTo.UTC(), true
+			}
+		case "recorded_at":
+			if !props.RecordedAt.IsZero() {
+				return props.RecordedAt.UTC(), true
+			}
+		case "transaction_from":
+			if !props.TransactionFrom.IsZero() {
+				return props.TransactionFrom.UTC(), true
+			}
+		case "transaction_to":
+			if props.TransactionTo != nil && !props.TransactionTo.IsZero() {
+				return props.TransactionTo.UTC(), true
+			}
+		}
+	}
+	return temporalPropertyTime(node.Properties, key)
 }

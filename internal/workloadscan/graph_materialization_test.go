@@ -1086,8 +1086,8 @@ func TestMaterializeRunsIntoGraphAddsIaCFindingObservations(t *testing.T) {
 	if observationNode.Kind != graph.NodeKindObservation {
 		t.Fatalf("expected observation kind, got %#v", observationNode)
 	}
-	if got := graphValueString(observationNode.Properties["observation_type"]); got != "workload_iac_finding" {
-		t.Fatalf("expected observation_type workload_iac_finding, got %#v", observationNode.Properties)
+	if got, ok := observationNode.PropertyValue("observation_type"); !ok || graphValueString(got) != "workload_iac_finding" {
+		t.Fatalf("expected observation_type workload_iac_finding, got %#v ok=%t", got, ok)
 	}
 	if got := graphValueString(observationNode.Properties["resource_type"]); got != "terraform_state" {
 		t.Fatalf("expected observation resource_type terraform_state, got %#v", observationNode.Properties)
@@ -1148,8 +1148,8 @@ func TestMaterializeRunsIntoGraphAddsMalwareObservations(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected malware observation node %q", observationID)
 	}
-	if got := graphValueString(observationNode.Properties["observation_type"]); got != "workload_malware_finding" {
-		t.Fatalf("expected malware observation type, got %#v", observationNode.Properties)
+	if got, ok := observationNode.PropertyValue("observation_type"); !ok || graphValueString(got) != "workload_malware_finding" {
+		t.Fatalf("expected malware observation type, got %#v ok=%t", got, ok)
 	}
 	if got := graphValueString(observationNode.Properties["malware_name"]); got != "Eicar-Test-Signature" {
 		t.Fatalf("expected malware name property, got %#v", observationNode.Properties)

@@ -49,10 +49,10 @@ func TestCompactHistoricalObservationsRollsUpStaleObservations(t *testing.T) {
 	}
 
 	summary := mustSingleObservationSummary(t, g)
-	if got := propertyString(summary.Properties, "subject_id"); got != "workload:prod/api" {
+	if got, _ := summary.PropertyValue("subject_id"); got != "workload:prod/api" {
 		t.Fatalf("subject_id = %q, want workload:prod/api", got)
 	}
-	if got := propertyString(summary.Properties, "observation_type"); got != "process_exec" {
+	if got, _ := summary.PropertyValue("observation_type"); got != "process_exec" {
 		t.Fatalf("observation_type = %q, want process_exec", got)
 	}
 	if got := propertyInt(summary.Properties, "compacted_observation_count"); got != 3 {

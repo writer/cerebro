@@ -266,27 +266,27 @@ func buildKnowledgeArtifactRecord(g *Graph, node *Node, validAt, recordedAt time
 		record.ObservedAt = ts
 	}
 	if record.ValidFrom.IsZero() {
-		if ts, ok := temporalPropertyTime(node.Properties, "valid_from"); ok {
+		if ts, ok := nodePropertyTime(node, "valid_from"); ok {
 			record.ValidFrom = ts
 		}
 	}
 	if record.ValidTo == nil {
-		if ts, ok := temporalPropertyTime(node.Properties, "valid_to"); ok {
+		if ts, ok := nodePropertyTime(node, "valid_to"); ok {
 			record.ValidTo = &ts
 		}
 	}
 	if record.RecordedAt.IsZero() {
-		if ts, ok := temporalPropertyTime(node.Properties, "recorded_at"); ok {
+		if ts, ok := nodePropertyTime(node, "recorded_at"); ok {
 			record.RecordedAt = ts
 		}
 	}
 	if record.TransactionFrom.IsZero() {
-		if ts, ok := temporalPropertyTime(node.Properties, "transaction_from"); ok {
+		if ts, ok := nodePropertyTime(node, "transaction_from"); ok {
 			record.TransactionFrom = ts
 		}
 	}
 	if record.TransactionTo == nil {
-		if ts, ok := temporalPropertyTime(node.Properties, "transaction_to"); ok {
+		if ts, ok := nodePropertyTime(node, "transaction_to"); ok {
 			record.TransactionTo = &ts
 		}
 	}

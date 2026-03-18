@@ -92,6 +92,44 @@ func TestSubgraphAt_FiltersInactiveNodes(t *testing.T) {
 	}
 }
 
+func TestGetAllNodesAt_UsesTypedObservationTemporalBounds(t *testing.T) {
+	g := New()
+	validFrom := time.Date(2026, 3, 5, 12, 0, 0, 0, time.UTC)
+	validTo := validFrom.Add(2 * time.Hour)
+	g.AddNode(&Node{
+		ID:   "observation:runtime:future",
+		Kind: NodeKindObservation,
+		Name: "runtime_signal",
+		Properties: map[string]any{
+			"observation_type": "runtime_signal",
+			"subject_id":       "workload:payments",
+			"detail":           "future window",
+			"source_system":    "agent",
+			"source_event_id":  "evt-future-window",
+			"observed_at":      validFrom.Format(time.RFC3339),
+			"valid_from":       validFrom.Format(time.RFC3339),
+			"valid_to":         validTo.Format(time.RFC3339),
+			"recorded_at":      validFrom.Format(time.RFC3339),
+			"transaction_from": validFrom.Format(time.RFC3339),
+		},
+	})
+
+	before := validFrom.Add(-time.Minute)
+	if got := g.GetAllNodesAt(before); len(got) != 0 {
+		t.Fatalf("expected no active compact observation nodes before valid_from, got %d", len(got))
+	}
+
+	during := validFrom.Add(time.Minute)
+	if got := g.GetAllNodesAt(during); len(got) != 1 {
+		t.Fatalf("expected one active compact observation node during validity, got %d", len(got))
+	}
+
+	after := validTo.Add(time.Minute)
+	if got := len(g.SubgraphAt(after).GetAllNodes()); got != 0 {
+		t.Fatalf("expected compact observation node to be absent after valid_to, got %d nodes", got)
+	}
+}
+
 func TestFreshnessMetrics(t *testing.T) {
 	g := New()
 	g.AddNode(&Node{

@@ -658,8 +658,8 @@ func TestCerebroGraphWritebackTools(t *testing.T) {
 	if observationNode.Kind != graph.NodeKindObservation {
 		t.Fatalf("expected observation node, got %q", observationNode.Kind)
 	}
-	if stringValue(observationNode.Properties["source_system"]) != "agent" {
-		t.Fatalf("expected default source_system=agent, got %#v", observationNode.Properties["source_system"])
+	if got, ok := observationNode.PropertyValue("source_system"); !ok || stringValue(got) != "agent" {
+		t.Fatalf("expected default source_system=agent, got %#v ok=%t", got, ok)
 	}
 
 	annotateEntity := findCerebroTool(application.cerebroTools(), "cerebro.annotate_entity")

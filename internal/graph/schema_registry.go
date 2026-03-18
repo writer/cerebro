@@ -530,6 +530,7 @@ func (r *SchemaRegistry) ValidateNode(node *Node) []SchemaValidationIssue {
 	}
 
 	issues := make([]SchemaValidationIssue, 0)
+	properties := node.PropertyMap()
 	required := make(map[string]struct{})
 	for _, property := range def.RequiredProperties {
 		property = strings.TrimSpace(property)
@@ -545,7 +546,7 @@ func (r *SchemaRegistry) ValidateNode(node *Node) []SchemaValidationIssue {
 	}
 
 	for property := range required {
-		if node.Properties == nil {
+		if properties == nil {
 			issues = append(issues, SchemaValidationIssue{
 				Code:     SchemaIssueMissingRequiredProperty,
 				EntityID: node.ID,
@@ -555,7 +556,7 @@ func (r *SchemaRegistry) ValidateNode(node *Node) []SchemaValidationIssue {
 			})
 			continue
 		}
-		value, exists := node.Properties[property]
+		value, exists := properties[property]
 		if !exists || value == nil {
 			issues = append(issues, SchemaValidationIssue{
 				Code:     SchemaIssueMissingRequiredProperty,
@@ -568,10 +569,10 @@ func (r *SchemaRegistry) ValidateNode(node *Node) []SchemaValidationIssue {
 	}
 
 	for property, spec := range def.Properties {
-		if node.Properties == nil {
+		if properties == nil {
 			continue
 		}
-		value, exists := node.Properties[property]
+		value, exists := properties[property]
 		if !exists || value == nil {
 			continue
 		}
@@ -599,7 +600,7 @@ func validateNodeMetadataProfile(node *Node, kind NodeKind, profile NodeMetadata
 	}
 
 	issues := make([]SchemaValidationIssue, 0)
-	properties := node.Properties
+	properties := node.PropertyMap()
 
 	for _, key := range profile.RequiredKeys {
 		if _, coveredByPropertyRequirement := alreadyRequired[key]; coveredByPropertyRequirement {

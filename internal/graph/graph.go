@@ -340,7 +340,19 @@ func (g *Graph) SetNodeProperty(id string, key string, value any) bool {
 	wasInternetFacing := g.isInternetFacing(node)
 	wasCrownJewel := g.isCrownJewel(node)
 
-	previousValue, hadPreviousValue := node.Properties[key]
+	previousValue, hadPreviousValue := node.PropertyValue(key)
+	if node.Kind == NodeKindObservation && isObservationPropertyKey(key) {
+		if !setObservationPropertyValue(node, key, value) {
+			g.mu.Unlock()
+			return false
+		}
+	} else if !setObservationPropertyValue(node, key, value) {
+		if node.Properties == nil {
+			node.Properties = make(map[string]any)
+		}
+		node.Properties[key] = value
+		hydrateNodeTypedProperties(node)
+	}
 	if hadPreviousValue {
 		if node.PreviousProperties == nil {
 			node.PreviousProperties = make(map[string]any, 1)
@@ -353,11 +365,10 @@ func (g *Graph) SetNodeProperty(id string, key string, value any) bool {
 	} else {
 		node.PreviousProperties = nil
 	}
-	if node.Properties == nil {
-		node.Properties = make(map[string]any)
+	historyValue, ok := node.PropertyValue(key)
+	if !ok {
+		historyValue = nil
 	}
-	node.Properties[key] = value
-	hydrateNodeTypedProperties(node)
 	now := temporalNowUTC()
 	if node.CreatedAt.IsZero() {
 		node.CreatedAt = now
@@ -367,7 +378,7 @@ func (g *Graph) SetNodeProperty(id string, key string, value any) bool {
 		node.Version = 1
 	}
 	node.Version++
-	g.appendNodePropertyHistoryLocked(node, key, value, now)
+	g.appendNodePropertyHistoryLocked(node, key, historyValue, now)
 	g.refreshNodeClassifiedIndexesLocked(node, wasInternetFacing, wasCrownJewel)
 	g.markGraphChangedPreservingNodeIndexesLocked()
 	change := GraphChange{
@@ -986,7 +997,7 @@ func (g *Graph) addNodeLocked(node *Node) bool {
 		if node.CreatedAt.IsZero() {
 			node.CreatedAt = existingCreatedAt
 		}
-		node.PreviousProperties = cloneAnyMap(existing.Properties)
+		node.PreviousProperties = cloneNodeProperties(existing)
 		if len(existing.PropertyHistory) > 0 {
 			if node.PropertyHistory == nil {
 				node.PropertyHistory = sharePropertyHistoryMap(existing.PropertyHistory)

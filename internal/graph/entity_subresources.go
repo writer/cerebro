@@ -302,24 +302,24 @@ func entityNormalizationContextFor(node *Node, fallback time.Time) entityNormali
 	if !ok || observedAt.IsZero() {
 		observedAt = fallback
 	}
-	validFrom, ok := temporalPropertyTime(node.Properties, "valid_from")
+	validFrom, ok := nodePropertyTime(node, "valid_from")
 	if !ok || validFrom.IsZero() {
 		validFrom = observedAt
 	}
-	validTo, ok := temporalPropertyTime(node.Properties, "valid_to")
+	validTo, ok := nodePropertyTime(node, "valid_to")
 	var validToPtr *time.Time
 	if ok {
 		validToPtr = &validTo
 	}
-	recordedAt, ok := temporalPropertyTime(node.Properties, "recorded_at")
+	recordedAt, ok := nodePropertyTime(node, "recorded_at")
 	if !ok || recordedAt.IsZero() {
 		recordedAt = observedAt
 	}
-	transactionFrom, ok := temporalPropertyTime(node.Properties, "transaction_from")
+	transactionFrom, ok := nodePropertyTime(node, "transaction_from")
 	if !ok || transactionFrom.IsZero() {
 		transactionFrom = recordedAt
 	}
-	transactionTo, ok := temporalPropertyTime(node.Properties, "transaction_to")
+	transactionTo, ok := nodePropertyTime(node, "transaction_to")
 	var transactionToPtr *time.Time
 	if ok {
 		transactionToPtr = &transactionTo

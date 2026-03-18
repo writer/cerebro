@@ -30,6 +30,18 @@ Status: executed end-to-end via PR workflow
 - [x] Add TDD coverage for happy-path trace propagation and failure-path `nak` tracing.
 - [x] Re-run focused event tests plus lint and changed-file validation.
 
+## Deep Review Cycle 194 - Typed Observation Property Storage (2026-03-17)
+
+### Review findings
+- [x] Gap: issue `#385` still stored high-frequency observation fields in the generic per-node `map[string]any`, so every live observation duplicated hot-path strings and timestamps even though the graph already had typed readers for those fields.
+- [x] Gap: observation-heavy query, temporal, and snapshot paths assumed raw map-backed properties, which made a typed-storage migration risky unless the read model stayed stable across live graphs, JSON round-trips, and bitemporal filtering.
+- [x] Gap: schema validation and runtimegraph tests still reached directly into live observation maps, so they would silently regress the compact-storage contract unless the exported property surface stayed materialized.
+
+### Execution plan
+- [x] Add compact typed storage for the stable observation fields with on-demand `PropertyValue` and `PropertyMap` materialization, while keeping overflow metadata in the generic map.
+- [x] Preserve observation semantics across snapshots, WAL normalization, bitemporal visibility, schema validation, and knowledge/runtimegraph readers by routing those paths through the materialized property surface.
+- [x] Add regression coverage for compact live storage, snapshot restore, observation-property mutation history, and affected runtimegraph/materialization expectations, then re-run focused and changed-file validation.
+
 ## Deep Review Cycle 193 - Tenant-Sharded Hot Graphs (2026-03-17)
 
 ### Review findings

@@ -63,11 +63,6 @@ func WriteObservation(g *Graph, req ObservationWriteRequest) (ObservationWriteRe
 	if properties == nil {
 		properties = make(map[string]any)
 	}
-	properties["observation_type"] = request.ObservationType
-	properties["subject_id"] = request.SubjectID
-	properties["detail"] = firstNonEmpty(request.Summary, request.ObservationType)
-	metadata.ApplyTo(properties)
-
 	g.AddNode(&Node{
 		ID:         observationID,
 		Kind:       NodeKindObservation,
@@ -75,6 +70,40 @@ func WriteObservation(g *Graph, req ObservationWriteRequest) (ObservationWriteRe
 		Provider:   metadata.SourceSystem,
 		Properties: properties,
 		Risk:       RiskNone,
+		observationProps: ptrObservationProperties(ObservationProperties{
+			ObservationType: request.ObservationType,
+			SubjectID:       request.SubjectID,
+			Detail:          firstNonEmpty(request.Summary, request.ObservationType),
+			SourceSystem:    metadata.SourceSystem,
+			SourceEventID:   metadata.SourceEventID,
+			Confidence:      metadata.Confidence,
+			ObservedAt:      metadata.ObservedAt,
+			ValidFrom:       metadata.ValidFrom,
+			ValidTo:         metadata.ValidTo,
+			RecordedAt:      metadata.RecordedAt,
+			TransactionFrom: metadata.TransactionFrom,
+			TransactionTo:   metadata.TransactionTo,
+			present: observationPropertyObservationType |
+				observationPropertySubjectID |
+				observationPropertyDetail |
+				observationPropertySourceSystem |
+				observationPropertySourceEventID |
+				observationPropertyConfidence |
+				observationPropertyObservedAt |
+				observationPropertyValidFrom |
+				observationPropertyRecordedAt |
+				observationPropertyTransactionFrom |
+				func() observationPropertyPresence {
+					mask := observationPropertyPresence(0)
+					if metadata.ValidTo != nil {
+						mask |= observationPropertyValidTo
+					}
+					if metadata.TransactionTo != nil {
+						mask |= observationPropertyTransactionTo
+					}
+					return mask
+				}(),
+		}),
 	})
 
 	edgeProperties := metadata.PropertyMap()
