@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -830,8 +831,8 @@ func runtimeMapValueToString(values map[string]any, key string) string {
 
 func firstNonEmptyRuntime(values ...string) string {
 	for _, value := range values {
-		if value != "" {
-			return value
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
 		}
 	}
 	return ""
