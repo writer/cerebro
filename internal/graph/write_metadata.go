@@ -118,15 +118,14 @@ func NormalizeWriteMetadata(observedAt, validFrom time.Time, validTo *time.Time,
 
 // PropertyMap returns metadata as normalized graph property key/value pairs.
 func (m WriteMetadata) PropertyMap() map[string]any {
-	properties := map[string]any{
-		"source_system":    m.SourceSystem,
-		"source_event_id":  m.SourceEventID,
-		"observed_at":      m.ObservedAt.UTC().Format(time.RFC3339),
-		"valid_from":       m.ValidFrom.UTC().Format(time.RFC3339),
-		"recorded_at":      m.RecordedAt.UTC().Format(time.RFC3339),
-		"transaction_from": m.TransactionFrom.UTC().Format(time.RFC3339),
-		"confidence":       m.Confidence,
-	}
+	properties := make(map[string]any, 9)
+	properties["source_system"] = m.SourceSystem
+	properties["source_event_id"] = m.SourceEventID
+	properties["observed_at"] = m.ObservedAt.UTC().Format(time.RFC3339)
+	properties["valid_from"] = m.ValidFrom.UTC().Format(time.RFC3339)
+	properties["recorded_at"] = m.RecordedAt.UTC().Format(time.RFC3339)
+	properties["transaction_from"] = m.TransactionFrom.UTC().Format(time.RFC3339)
+	properties["confidence"] = m.Confidence
 	if m.ValidTo != nil && !m.ValidTo.IsZero() {
 		properties["valid_to"] = m.ValidTo.UTC().Format(time.RFC3339)
 	}
@@ -141,7 +140,17 @@ func (m WriteMetadata) ApplyTo(properties map[string]any) {
 	if properties == nil {
 		return
 	}
-	for key, value := range m.PropertyMap() {
-		properties[key] = value
+	properties["source_system"] = m.SourceSystem
+	properties["source_event_id"] = m.SourceEventID
+	properties["observed_at"] = m.ObservedAt.UTC().Format(time.RFC3339)
+	properties["valid_from"] = m.ValidFrom.UTC().Format(time.RFC3339)
+	properties["recorded_at"] = m.RecordedAt.UTC().Format(time.RFC3339)
+	properties["transaction_from"] = m.TransactionFrom.UTC().Format(time.RFC3339)
+	properties["confidence"] = m.Confidence
+	if m.ValidTo != nil && !m.ValidTo.IsZero() {
+		properties["valid_to"] = m.ValidTo.UTC().Format(time.RFC3339)
+	}
+	if m.TransactionTo != nil && !m.TransactionTo.IsZero() {
+		properties["transaction_to"] = m.TransactionTo.UTC().Format(time.RFC3339)
 	}
 }
