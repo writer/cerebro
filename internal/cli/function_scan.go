@@ -57,6 +57,7 @@ var (
 	functionScanCleanupTimeout time.Duration
 	functionScanTrivyBinary    string
 	functionScanGitleaksBinary string
+	functionScanClamAVBinary   string
 	functionScanListStatuses   string
 	functionScanListLimit      int
 	functionScanRequestedBy    string
@@ -85,6 +86,7 @@ func init() {
 	functionScanCmd.PersistentFlags().DurationVar(&functionScanCleanupTimeout, "cleanup-timeout", 0, "Override function scan cleanup timeout")
 	functionScanCmd.PersistentFlags().StringVar(&functionScanTrivyBinary, "trivy-binary", "", "Override trivy binary path")
 	functionScanCmd.PersistentFlags().StringVar(&functionScanGitleaksBinary, "gitleaks-binary", "", "Optional gitleaks binary path for expanded secret scanning")
+	functionScanCmd.PersistentFlags().StringVar(&functionScanClamAVBinary, "clamav-binary", "", "Optional ClamAV clamscan binary path for malware scanning")
 
 	functionScanListCmd.Flags().StringVar(&functionScanListStatuses, "status", "", "Optional comma-separated status filter")
 	functionScanListCmd.Flags().IntVar(&functionScanListLimit, "limit", 20, "Maximum runs to list")
@@ -196,7 +198,7 @@ func runFunctionScan(parent context.Context, target functionscan.FunctionTarget,
 		return err
 	}
 	defer func() { _ = emitter.Close() }()
-	filesystemAnalyzer, vulnDBCloser, err := buildFilesystemAnalyzer(cfg, resolveFunctionScanTrivyBinary(cfg), resolveFunctionScanGitleaksBinary(cfg))
+	filesystemAnalyzer, vulnDBCloser, err := buildFilesystemAnalyzer(cfg, resolveFunctionScanTrivyBinary(cfg), resolveFunctionScanGitleaksBinary(cfg), resolveFunctionScanClamAVBinary(cfg))
 	if err != nil {
 		return err
 	}
@@ -361,6 +363,16 @@ func resolveFunctionScanGitleaksBinary(cfg *app.Config) string {
 	}
 	if cfg != nil && strings.TrimSpace(cfg.FunctionScanGitleaksBinary) != "" {
 		return strings.TrimSpace(cfg.FunctionScanGitleaksBinary)
+	}
+	return ""
+}
+
+func resolveFunctionScanClamAVBinary(cfg *app.Config) string {
+	if strings.TrimSpace(functionScanClamAVBinary) != "" {
+		return strings.TrimSpace(functionScanClamAVBinary)
+	}
+	if cfg != nil && strings.TrimSpace(cfg.FunctionScanClamAVBinary) != "" {
+		return strings.TrimSpace(cfg.FunctionScanClamAVBinary)
 	}
 	return ""
 }

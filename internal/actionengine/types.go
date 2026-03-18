@@ -76,14 +76,15 @@ type Playbook struct {
 }
 
 type ActionResult struct {
-	StepID      string     `json:"step_id,omitempty"`
-	Type        string     `json:"type"`
-	Status      Status     `json:"status"`
-	Output      string     `json:"output,omitempty"`
-	Error       string     `json:"error,omitempty"`
-	StartedAt   time.Time  `json:"started_at"`
-	CompletedAt *time.Time `json:"completed_at,omitempty"`
-	Duration    string     `json:"duration,omitempty"`
+	StepID      string         `json:"step_id,omitempty"`
+	Type        string         `json:"type"`
+	Status      Status         `json:"status"`
+	Output      string         `json:"output,omitempty"`
+	Error       string         `json:"error,omitempty"`
+	Metadata    map[string]any `json:"metadata,omitempty"`
+	StartedAt   time.Time      `json:"started_at"`
+	CompletedAt *time.Time     `json:"completed_at,omitempty"`
+	Duration    string         `json:"duration,omitempty"`
 }
 
 type Execution struct {

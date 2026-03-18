@@ -27,18 +27,25 @@ func openVulnDBService(cfg *app.Config) (*vulndb.Service, io.Closer, error) {
 	return vulndb.NewService(store), store, nil
 }
 
-func buildFilesystemAnalyzer(cfg *app.Config, trivyBinary, gitleaksBinary string) (*filesystemanalyzer.Analyzer, io.Closer, error) {
+func buildFilesystemAnalyzer(cfg *app.Config, trivyBinary, gitleaksBinary, clamavBinary string) (*filesystemanalyzer.Analyzer, io.Closer, error) {
 	vulnService, closer, err := openVulnDBService(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("open vulnerability db: %w", err)
 	}
 	var secretScanner filesystemanalyzer.SecretScanner
+	var malwareScanner filesystemanalyzer.MalwareScanner
 	if strings.TrimSpace(gitleaksBinary) != "" {
 		secretScanner = filesystemanalyzer.NewGitleaksScanner(strings.TrimSpace(gitleaksBinary))
+	}
+	if strings.TrimSpace(clamavBinary) != "" {
+		engine := scanner.NewMalwareScanner()
+		engine.RegisterEngine(scanner.NewClamAVBinaryEngine(strings.TrimSpace(clamavBinary)))
+		malwareScanner = engine
 	}
 	return filesystemanalyzer.New(filesystemanalyzer.Options{
 		VulnerabilityScanner: scanner.NewTrivyFilesystemScanner(strings.TrimSpace(trivyBinary)),
 		VulnerabilityMatcher: vulnService,
 		SecretScanner:        secretScanner,
+		MalwareScanner:       malwareScanner,
 	}), closer, nil
 }

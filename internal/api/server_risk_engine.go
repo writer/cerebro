@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/writer/cerebro/internal/graph"
+	risk "github.com/writer/cerebro/internal/graph/risk"
 	"github.com/writer/cerebro/internal/metrics"
 )
 
 const riskEngineStateGraphID = "security-graph"
 
-func (s *Server) graphRiskEngine() *graph.RiskEngine {
+func (s *Server) graphRiskEngine() *risk.RiskEngine {
 	if s == nil || s.app == nil || s.app.SecurityGraph == nil {
 		return nil
 	}
@@ -21,9 +21,9 @@ func (s *Server) graphRiskEngine() *graph.RiskEngine {
 	defer s.riskEngineMu.Unlock()
 
 	if s.riskEngine == nil || s.riskEngineSource != source {
-		engine := graph.NewRiskEngine(source)
+		engine := risk.NewRiskEngine(source)
 		if s.app.Config != nil {
-			engine.SetCrossTenantPrivacyConfig(graph.CrossTenantPrivacyConfig{
+			engine.SetCrossTenantPrivacyConfig(risk.CrossTenantPrivacyConfig{
 				MinTenantCount:    s.app.Config.GraphCrossTenantMinTenants,
 				MinPatternSupport: s.app.Config.GraphCrossTenantMinSupport,
 			})
@@ -38,7 +38,7 @@ func (s *Server) graphRiskEngine() *graph.RiskEngine {
 				}
 				metrics.RecordGraphStatePersistence("load_failed")
 			} else if len(payload) > 0 {
-				var snapshot graph.RiskEngineSnapshot
+				var snapshot risk.RiskEngineSnapshot
 				if err := json.Unmarshal(payload, &snapshot); err != nil {
 					if s.app.Logger != nil {
 						s.app.Logger.Warn("failed to decode risk engine state snapshot", "error", err)
@@ -60,7 +60,7 @@ func (s *Server) graphRiskEngine() *graph.RiskEngine {
 	return s.riskEngine
 }
 
-func (s *Server) persistRiskEngineState(ctx context.Context, engine *graph.RiskEngine) {
+func (s *Server) persistRiskEngineState(ctx context.Context, engine *risk.RiskEngine) {
 	if s == nil || s.app == nil || engine == nil || s.app.RiskEngineStateRepo == nil {
 		return
 	}

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/writer/cerebro/internal/graph"
+	entities "github.com/writer/cerebro/internal/graph/entities"
 )
 
 const (
@@ -16,7 +16,7 @@ const (
 )
 
 func main() {
-	catalog := graph.BuildEntityFacetContractCatalog(time.Time{})
+	catalog := entities.BuildEntityFacetContractCatalog(time.Time{})
 	markdown := renderMarkdown(catalog)
 	if err := os.WriteFile(outputMarkdownPath, []byte(markdown), 0o644); err != nil { // #nosec G306 -- generated docs are repository-readable artifacts.
 		fatalf("write %s: %v", outputMarkdownPath, err)
@@ -30,7 +30,7 @@ func main() {
 	}
 }
 
-func renderMarkdown(catalog graph.EntityFacetContractCatalog) string {
+func renderMarkdown(catalog entities.EntityFacetContractCatalog) string {
 	var b strings.Builder
 	b.WriteString("# Graph Entity Facet Contract Catalog\n\n")
 	b.WriteString("Generated from the built-in entity facet registry via `go run ./scripts/generate_entity_facet_docs/main.go`.\n\n")

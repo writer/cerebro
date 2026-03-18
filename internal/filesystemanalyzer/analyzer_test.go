@@ -34,6 +34,18 @@ func (s stubSecretScanner) ScanFilesystem(context.Context, string) (*SecretScanR
 	return s.result, nil
 }
 
+type stubMalwareScanner struct {
+	result *scanner.MalwareScanResult
+	err    error
+}
+
+func (s stubMalwareScanner) ScanData(context.Context, []byte, string) (*scanner.MalwareScanResult, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.result, nil
+}
+
 func TestAnalyzerCatalogsPackagesSecretsAndConfigs(t *testing.T) {
 	root := t.TempDir()
 	mustWriteFile(t, filepath.Join(root, "etc", "os-release"), "ID=ubuntu\nNAME=Ubuntu\nPRETTY_NAME=Ubuntu 20.04 LTS\nVERSION_ID=20.04\n")
@@ -156,6 +168,37 @@ func TestAnalyzerRecordsUnreadableFileErrors(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("expected unreadable file error for dpkg status, got %#v", errors)
+	}
+}
+
+func TestAnalyzerRecordsMalwareScannerErrors(t *testing.T) {
+	root := t.TempDir()
+	mustWriteFile(t, filepath.Join(root, "bin", "payload.sh"), "#!/bin/sh\necho payload\n")
+
+	clamav := filepath.Join(root, "clamscan")
+	mustWriteFile(t, clamav, "#!/bin/sh\necho 'database missing' >&2\nexit 2\n")
+	if err := os.Chmod(clamav, 0o755); err != nil {
+		t.Fatalf("Chmod(%s): %v", clamav, err)
+	}
+
+	malwareScanner := scanner.NewMalwareScanner()
+	malwareScanner.RegisterEngine(scanner.NewClamAVBinaryEngine(clamav))
+
+	report, err := New(Options{MalwareScanner: malwareScanner}).Analyze(context.Background(), root)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+
+	rawErrors, ok := report.Metadata["errors"]
+	if !ok {
+		t.Fatalf("expected malware scan metadata errors, got %#v", report.Metadata)
+	}
+	errors, ok := rawErrors.([]string)
+	if !ok {
+		t.Fatalf("expected []string metadata errors, got %T", rawErrors)
+	}
+	if len(errors) == 0 || !strings.Contains(strings.Join(errors, "\n"), "clamav binary scan failed: database missing") {
+		t.Fatalf("expected malware scan error to surface, got %#v", errors)
 	}
 }
 
@@ -356,6 +399,46 @@ func TestAnalyzerMergesExternalSecretScannerResultsWithoutDuplicates(t *testing.
 	}
 	if count != 1 {
 		t.Fatalf("expected deduped github token finding, got %#v", report.Secrets)
+	}
+}
+
+func TestAnalyzerIncludesMalwareScannerResults(t *testing.T) {
+	root := t.TempDir()
+	mustWriteFile(t, filepath.Join(root, "bin", "payload.sh"), "#!/bin/sh\necho infected\n")
+
+	report, err := New(Options{
+		MalwareScanner: stubMalwareScanner{result: &scanner.MalwareScanResult{
+			Hash:        "sha256:feedface",
+			Status:      scanner.ScanStatusMalicious,
+			Malicious:   true,
+			MalwareType: "signature_match",
+			MalwareName: "Eicar-Test-Signature",
+			Engine:      "clamav_binary",
+			Confidence:  90,
+		}},
+	}).Analyze(context.Background(), root)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if report.Summary.MalwareCount != 1 {
+		t.Fatalf("expected one malware finding, got %#v", report.Malware)
+	}
+	if len(report.Malware) != 1 {
+		t.Fatalf("expected malware finding in report, got %#v", report.Malware)
+	}
+	malware := report.Malware[0]
+	if malware.Path != "bin/payload.sh" || malware.Engine != "clamav_binary" {
+		t.Fatalf("unexpected malware finding: %#v", malware)
+	}
+	found := false
+	for _, finding := range report.Findings {
+		if finding.Type == "malware" && strings.Contains(finding.Description, "Eicar-Test-Signature") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected malware container finding, got %#v", report.Findings)
 	}
 }
 
