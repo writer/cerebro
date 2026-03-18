@@ -1,9 +1,25 @@
-package graph
+package entities
 
 import (
 	"testing"
 	"time"
 )
+
+func TestBuildEntityFacetContractCatalogPreservesZeroTimeForDeterministicArtifacts(t *testing.T) {
+	catalog := BuildEntityFacetContractCatalog(time.Time{})
+	if !catalog.GeneratedAt.IsZero() {
+		t.Fatalf("expected zero generated_at for deterministic artifact builds, got %s", catalog.GeneratedAt)
+	}
+	if catalog.APIVersion != defaultEntityFacetContractCatalogAPIVersion {
+		t.Fatalf("unexpected api version %q", catalog.APIVersion)
+	}
+	if catalog.Kind != defaultEntityFacetContractCatalogKind {
+		t.Fatalf("unexpected kind %q", catalog.Kind)
+	}
+	if len(catalog.Facets) == 0 {
+		t.Fatal("expected facet definitions to be materialized")
+	}
+}
 
 func TestCompareEntityFacetContractCatalogsMarksVersionBumpedBreakingChangesIncompatible(t *testing.T) {
 	baseline := EntityFacetContractCatalog{

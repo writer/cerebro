@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/writer/cerebro/internal/graph"
+	entities "github.com/writer/cerebro/internal/graph/entities"
 )
 
 func newGraphPolicyEvaluation(policyID string) policyEvaluation {
@@ -18,7 +19,7 @@ func newGraphPolicyEvaluation(policyID string) policyEvaluation {
 	}
 }
 
-func (e *graphComplianceEvaluator) entityRecords(provider string, kinds ...graph.NodeKind) []graph.EntityRecord {
+func (e *graphComplianceEvaluator) entityRecords(provider string, kinds ...graph.NodeKind) []entities.EntityRecord {
 	sortKinds := append([]graph.NodeKind(nil), kinds...)
 	sort.Slice(sortKinds, func(i, j int) bool { return sortKinds[i] < sortKinds[j] })
 	parts := []string{provider}
@@ -33,7 +34,7 @@ func (e *graphComplianceEvaluator) entityRecords(provider string, kinds ...graph
 	for _, kind := range sortKinds {
 		kindSet[kind] = struct{}{}
 	}
-	records := make([]graph.EntityRecord, 0)
+	records := make([]entities.EntityRecord, 0)
 	if e.graph != nil {
 		for _, node := range e.graph.GetAllNodesBitemporal(e.validAt, e.recordedAt) {
 			if node == nil {
@@ -47,7 +48,7 @@ func (e *graphComplianceEvaluator) entityRecords(provider string, kinds ...graph
 					continue
 				}
 			}
-			record, ok := graph.GetEntityRecord(e.graph, node.ID, e.validAt, e.recordedAt)
+			record, ok := entities.GetEntityRecord(e.graph, node.ID, e.validAt, e.recordedAt)
 			if !ok {
 				continue
 			}
@@ -81,7 +82,7 @@ func summarizePolicyStatus(result policyEvaluation, unknown, totalRecords int) s
 	}
 }
 
-func controlEvidence(record graph.EntityRecord, facetID, policyID, status, reason string) ControlEvidence {
+func controlEvidence(record entities.EntityRecord, facetID, policyID, status, reason string) ControlEvidence {
 	return ControlEvidence{
 		EntityID:   record.ID,
 		EntityKind: string(record.Kind),
@@ -93,16 +94,16 @@ func controlEvidence(record graph.EntityRecord, facetID, policyID, status, reaso
 	}
 }
 
-func entityFacet(record graph.EntityRecord, facetID string) (graph.EntityFacetRecord, bool) {
+func entityFacet(record entities.EntityRecord, facetID string) (entities.EntityFacetRecord, bool) {
 	for _, facet := range record.Facets {
 		if facet.ID == facetID {
 			return facet, true
 		}
 	}
-	return graph.EntityFacetRecord{}, false
+	return entities.EntityFacetRecord{}, false
 }
 
-func sensitiveDataState(record graph.EntityRecord) (bool, bool) {
+func sensitiveDataState(record entities.EntityRecord) (bool, bool) {
 	facet, ok := entityFacet(record, "data_sensitivity")
 	if !ok {
 		return false, false
@@ -124,7 +125,7 @@ func sensitiveDataState(record graph.EntityRecord) (bool, bool) {
 	return false, false
 }
 
-func encryptionState(record graph.EntityRecord) (bool, bool, string) {
+func encryptionState(record entities.EntityRecord) (bool, bool, string) {
 	if facet, ok := entityFacet(record, "bucket_encryption"); ok {
 		if value, ok := boolField(facet.Fields, "encrypted"); ok {
 			return value, true, facet.ID
@@ -136,7 +137,7 @@ func encryptionState(record graph.EntityRecord) (bool, bool, string) {
 	return false, false, ""
 }
 
-func publicExposureState(record graph.EntityRecord) (bool, bool, string) {
+func publicExposureState(record entities.EntityRecord) (bool, bool, string) {
 	if facet, ok := entityFacet(record, "bucket_public_access"); ok {
 		if value, ok := boolField(facet.Fields, "public_access"); ok {
 			return value, true, facet.ID
