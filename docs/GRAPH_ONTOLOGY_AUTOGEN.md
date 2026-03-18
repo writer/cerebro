@@ -2,8 +2,8 @@
 
 Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and `internal/graphingest/mappings.yaml` via `go run ./scripts/generate_graph_ontology_docs/main.go`.
 
-- Node kinds: **70**
-- Edge kinds: **48**
+- Node kinds: **71**
+- Edge kinds: **49**
 - Mapping rules: **13**
 - Source domains: **9**
 
@@ -63,6 +63,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `person` | identity | - | - |
 | `pipeline_run` | business, resource | `observed_at`, `pipeline_id`, `run_id`, `service_id`, `status`, `valid_from` | `based_on`, `executed_by`, `targets` |
 | `pod` | kubernetes, resource | - | `calls`, `has_sequence`, `targets` |
+| `policy` | business | `observed_at`, `policy_id`, `policy_version`, `title`, `valid_from` | `assigned_to` |
 | `project` | resource | `project_id`, `resource_name` | `located_in` |
 | `pull_request` | business | `number`, `observed_at`, `repository`, `state`, `valid_from` | `based_on`, `targets` |
 | `repository` | - | - | - |
@@ -111,6 +112,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `package` | `observed_at`, `recorded_at`, `source_system`, `transaction_from`, `valid_from` | `confidence`, `source_event_id`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
 | `person` | - | `confidence`, `observed_at`, `recorded_at`, `source_event_id`, `source_system`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
 | `pipeline_run` | `observed_at`, `source_system`, `valid_from` | `confidence`, `recorded_at`, `source_event_id`, `transaction_from`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `status`=`action_required`, `cancelled`, `completed`, `failed`, `failure`, `in_progress`, `neutral`, `passed`, `pending`, `queued`, `running`, `skipped`, `succeeded`, `success`, `successful`, `timed_out` |
+| `policy` | `observed_at`, `source_system`, `valid_from` | `confidence`, `recorded_at`, `source_event_id`, `transaction_from`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
 | `project` | - | `confidence`, `observed_at`, `recorded_at`, `source_event_id`, `source_system`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
 | `pull_request` | `observed_at`, `source_system`, `valid_from` | `confidence`, `recorded_at`, `source_event_id`, `transaction_from`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `state`=`closed`, `draft`, `merged`, `open`, `opened`, `review_submitted` |
 | `role` | - | `confidence`, `observed_at`, `recorded_at`, `source_event_id`, `source_system`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
@@ -127,6 +129,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 
 | Kind | Description |
 |---|---|
+| `acknowledged` | - |
 | `affected_by` | - |
 | `alias_of` | - |
 | `asserted_by` | - |
@@ -192,7 +195,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 
 ## Unmapped Built-in Node Kinds
 
-Total unmapped kinds: **47**
+Total unmapped kinds: **48**
 
 - `activity`
 - `application`
@@ -229,6 +232,7 @@ Total unmapped kinds: **47**
 - `persistent_volume`
 - `person`
 - `pod`
+- `policy`
 - `project`
 - `role`
 - `role_binding`

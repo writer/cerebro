@@ -7,11 +7,12 @@ type EdgeKind string
 
 const (
 	// Identity -> Identity
-	EdgeKindCanAssume  EdgeKind = "can_assume"
-	EdgeKindMemberOf   EdgeKind = "member_of"
-	EdgeKindResolvesTo EdgeKind = "resolves_to"
-	EdgeKindAliasOf    EdgeKind = "alias_of"
-	EdgeKindReportsTo  EdgeKind = "reports_to"
+	EdgeKindCanAssume    EdgeKind = "can_assume"
+	EdgeKindMemberOf     EdgeKind = "member_of"
+	EdgeKindResolvesTo   EdgeKind = "resolves_to"
+	EdgeKindAliasOf      EdgeKind = "alias_of"
+	EdgeKindReportsTo    EdgeKind = "reports_to"
+	EdgeKindAcknowledged EdgeKind = "acknowledged"
 
 	// Identity -> Resource (permissions)
 	EdgeKindCanRead   EdgeKind = "can_read"

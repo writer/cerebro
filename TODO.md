@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 198 - Organizational Policy Graph Substrate (2026-03-17)
+
+### Review findings
+- [x] Gap: issue `#256` still had no first-class graph primitive for organizational policies, so policy registry state could not plug into the existing person and department hierarchy.
+- [x] Gap: employee policy acknowledgments were not modeled in the graph, which blocked current-version re-acknowledgment tracking and left compliance evidence disconnected from HR-synced employees.
+- [x] Gap: department-level acknowledgment reporting had no reusable graph helper, even though the graph already stores department membership and org-structure edges.
+
+### Execution plan
+- [x] Add a first-class `policy` node kind plus an `acknowledged` edge kind and register them in the graph ontology.
+- [x] Add graph helper APIs to write policies, scope required acknowledgments to departments and people, and record person acknowledgments against the active policy version.
+- [x] Add rollup coverage that computes department-level acknowledgment gaps from existing membership edges and validates re-acknowledgment on policy version updates.
+
 ## Deep Review Cycle 197 - Configurable Operational Timeouts (2026-03-17)
 
 ### Review findings
