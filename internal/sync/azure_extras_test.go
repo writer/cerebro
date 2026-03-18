@@ -48,6 +48,9 @@ func TestAzureTablesIncludeAKSAndRBACPolicyGraphAndDefender(t *testing.T) {
 	if _, ok := lookup["azure_aks_clusters"]; !ok {
 		t.Fatal("expected azure_aks_clusters in Azure table set")
 	}
+	if _, ok := lookup["azure_aks_node_pools"]; !ok {
+		t.Fatal("expected azure_aks_node_pools in Azure table set")
+	}
 	if _, ok := lookup["azure_rbac_role_assignments"]; !ok {
 		t.Fatal("expected azure_rbac_role_assignments in Azure table set")
 	}

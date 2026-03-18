@@ -84,6 +84,89 @@ func TestWorkloadSecurityFacetUsesLatestVisibleScan(t *testing.T) {
 	}
 }
 
+func TestWorkloadSecurityPrioritizedRiskPrefersReachableVulnerabilityCounts(t *testing.T) {
+	unreachableCritical := &Node{Properties: map[string]any{
+		"vulnerability_count":                    1,
+		"critical_vulnerability_count":           1,
+		"high_vulnerability_count":               0,
+		"known_exploited_count":                  0,
+		"reachable_vulnerability_count":          0,
+		"reachable_critical_vulnerability_count": 0,
+		"reachable_high_vulnerability_count":     0,
+		"reachable_known_exploited_count":        0,
+		"direct_reachable_vulnerability_count":   0,
+	}}
+	if got := workloadSecurityPrioritizedRisk(unreachableCritical, true, 1, 1, false); got != RiskHigh {
+		t.Fatalf("expected unreachable critical vulnerability to downrank to high, got %q", got)
+	}
+
+	reachableCritical := &Node{Properties: map[string]any{
+		"vulnerability_count":                    1,
+		"critical_vulnerability_count":           1,
+		"high_vulnerability_count":               0,
+		"known_exploited_count":                  0,
+		"reachable_vulnerability_count":          1,
+		"reachable_critical_vulnerability_count": 1,
+		"reachable_high_vulnerability_count":     0,
+		"reachable_known_exploited_count":        0,
+		"direct_reachable_vulnerability_count":   1,
+	}}
+	if got := workloadSecurityPrioritizedRisk(reachableCritical, true, 1, 1, false); got != RiskCritical {
+		t.Fatalf("expected reachable critical vulnerability to remain critical, got %q", got)
+	}
+
+	reachableLow := &Node{Properties: map[string]any{
+		"vulnerability_count":                    1,
+		"critical_vulnerability_count":           0,
+		"high_vulnerability_count":               0,
+		"medium_vulnerability_count":             0,
+		"low_vulnerability_count":                1,
+		"known_exploited_count":                  0,
+		"reachable_vulnerability_count":          1,
+		"reachable_critical_vulnerability_count": 0,
+		"reachable_high_vulnerability_count":     0,
+		"reachable_known_exploited_count":        0,
+		"direct_reachable_vulnerability_count":   1,
+	}}
+	if got := workloadSecurityPrioritizedRisk(reachableLow, false, 0, 0, false); got != RiskLow {
+		t.Fatalf("expected reachable low vulnerability to remain low, got %q", got)
+	}
+
+	unreachableKEV := &Node{Properties: map[string]any{
+		"vulnerability_count":                    1,
+		"critical_vulnerability_count":           0,
+		"high_vulnerability_count":               1,
+		"medium_vulnerability_count":             0,
+		"low_vulnerability_count":                0,
+		"known_exploited_count":                  1,
+		"reachable_vulnerability_count":          0,
+		"reachable_critical_vulnerability_count": 0,
+		"reachable_high_vulnerability_count":     0,
+		"reachable_known_exploited_count":        0,
+		"direct_reachable_vulnerability_count":   0,
+	}}
+	if got := workloadSecurityPrioritizedRisk(unreachableKEV, false, 0, 0, false); got != RiskCritical {
+		t.Fatalf("expected known-exploited vulnerability to remain critical without reachability context, got %q", got)
+	}
+
+	zeroVulns := &Node{Properties: map[string]any{
+		"vulnerability_count":                    0,
+		"critical_vulnerability_count":           0,
+		"high_vulnerability_count":               0,
+		"medium_vulnerability_count":             0,
+		"low_vulnerability_count":                0,
+		"known_exploited_count":                  0,
+		"reachable_vulnerability_count":          0,
+		"reachable_critical_vulnerability_count": 0,
+		"reachable_high_vulnerability_count":     0,
+		"reachable_known_exploited_count":        0,
+		"direct_reachable_vulnerability_count":   0,
+	}}
+	if got := workloadSecurityPrioritizedRisk(zeroVulns, false, 0, 0, false); got != RiskNone {
+		t.Fatalf("expected zero-vulnerability scan to remain none, got %q", got)
+	}
+}
+
 func addWorkloadScanFixture(g *Graph, scanID, targetID string, completedAt time.Time, validTo *time.Time, vulnerabilityCount, criticalCount, kevCount int) {
 	metadata := NormalizeWriteMetadata(
 		completedAt,

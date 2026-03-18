@@ -15,7 +15,7 @@ Generated from the built-in entity facet registry via `go run ./scripts/generate
 | `data_sensitivity` | `1.0.0` | `PlatformEntityDataSensitivityFacet` | `urn:cerebro:entity-facet:data-sensitivity:v1` | `bucket`, `database`, `secret`, `service` | `contains_sensitive_data`, `data_classification` | `contains_pii`, `contains_phi`, `contains_pci`, `contains_secrets`, `data_classification` |
 | `exposure` | `1.0.0` | `PlatformEntityExposureFacet` | `urn:cerebro:entity-facet:exposure:v1` | `bucket`, `database`, `function`, `instance`, `network`, `service` | `public_access`, `internet_exposed` | `public`, `public_access`, `internet_accessible`, `publicly_accessible` |
 | `ownership` | `1.0.0` | `PlatformEntityOwnershipFacet` | `urn:cerebro:entity-facet:ownership:v1` | - | `owner`, `managed_by` | - |
-| `workload_security` | `1.0.0` | `PlatformWorkloadSecurityFacet` | `urn:cerebro:entity-facet:workload-security:v1` | `instance`, `function`, `workload` | - | - |
+| `workload_security` | `1.1.0` | `PlatformWorkloadSecurityFacet` | `urn:cerebro:entity-facet:workload-security:v1` | `instance`, `function`, `workload` | - | - |
 
 ## Fields
 
@@ -105,9 +105,14 @@ Latest workload scan posture with vulnerability depth and attack-path context.
 | `os_architecture` | `string` | - |
 | `package_count` | `integer` | - |
 | `vulnerability_count` | `integer` | - |
+| `reachable_vulnerability_count` | `integer` | - |
 | `critical_vulnerability_count` | `integer` | - |
+| `reachable_critical_vulnerability_count` | `integer` | - |
 | `high_vulnerability_count` | `integer` | - |
+| `reachable_high_vulnerability_count` | `integer` | - |
 | `known_exploited_count` | `integer` | - |
+| `reachable_known_exploited_count` | `integer` | - |
+| `direct_reachable_vulnerability_count` | `integer` | - |
 | `fixable_vulnerability_count` | `integer` | - |
 | `internet_exposed` | `boolean` | - |
 | `admin_reachable_count` | `integer` | - |
