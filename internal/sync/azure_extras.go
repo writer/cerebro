@@ -325,6 +325,73 @@ func (e *AzureSyncEngine) azureAKSClusterTable() AzureTableSpec {
 	}
 }
 
+func (e *AzureSyncEngine) azureAKSNodePoolTable() AzureTableSpec {
+	return AzureTableSpec{
+		Name: "azure_aks_node_pools",
+		Columns: []string{
+			"id",
+			"cluster_id",
+			"cluster_name",
+			"name",
+			"location",
+			"resource_group",
+			"node_resource_group",
+			"count",
+			"vm_size",
+			"mode",
+			"os_type",
+			"orchestrator_version",
+			"subscription_id",
+			"tags",
+		},
+		Fetch: func(ctx context.Context, cred *azidentity.DefaultAzureCredential, subscriptionID string) ([]map[string]interface{}, error) {
+			clusters, err := listAzureManagedClusters(ctx, cred, subscriptionID)
+			if err != nil {
+				return nil, err
+			}
+
+			results := make([]map[string]interface{}, 0)
+			for _, cluster := range clusters {
+				clusterID := ptrStr(cluster.ID)
+				resourceGroup := resourceGroupFromID(clusterID)
+				nodeResourceGroup := ""
+				if cluster.Properties == nil {
+					continue
+				}
+				nodeResourceGroup = ptrStr(cluster.Properties.NodeResourceGroup)
+				for _, pool := range cluster.Properties.AgentPoolProfiles {
+					poolID := strings.TrimSpace(clusterID)
+					if poolName := ptrStr(pool.Name); poolID != "" && poolName != "" {
+						poolID += "/agentPools/" + poolName
+					}
+					row := map[string]interface{}{
+						"_cq_id":               poolID,
+						"id":                   poolID,
+						"cluster_id":           clusterID,
+						"cluster_name":         ptrStr(cluster.Name),
+						"name":                 ptrStr(pool.Name),
+						"location":             ptrStr(cluster.Location),
+						"resource_group":       resourceGroup,
+						"node_resource_group":  nodeResourceGroup,
+						"vm_size":              ptrStr(pool.VMSize),
+						"mode":                 ptrStr(pool.Mode),
+						"os_type":              ptrStr(pool.OSType),
+						"orchestrator_version": ptrStr(pool.OrchestratorVersion),
+						"subscription_id":      subscriptionID,
+						"tags":                 cluster.Tags,
+					}
+					if pool.Count != nil {
+						row["count"] = *pool.Count
+					}
+					results = append(results, row)
+				}
+			}
+
+			return results, nil
+		},
+	}
+}
+
 func (e *AzureSyncEngine) azureRBACRoleAssignmentTable() AzureTableSpec {
 	return AzureTableSpec{
 		Name: "azure_rbac_role_assignments",

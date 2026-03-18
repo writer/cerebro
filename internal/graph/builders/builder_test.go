@@ -398,6 +398,9 @@ func TestBuilder_BuildsS3BucketResourcePolicyEdges(t *testing.T) {
 		if conditions, ok := edge.Properties["conditions"].(map[string]any); !ok || len(conditions) == 0 {
 			t.Fatalf("expected statement conditions on edge, got %#v", edge.Properties["conditions"])
 		}
+		if _, ok := edge.Properties["conditions_present"]; ok {
+			t.Fatalf("expected resource-policy edge to omit unused conditions_present flag, got %#v", edge.Properties)
+		}
 		foundAliceResourcePolicy = true
 	}
 	if !foundAliceResourcePolicy {
@@ -414,6 +417,154 @@ func TestBuilder_BuildsS3BucketResourcePolicyEdges(t *testing.T) {
 	}
 	if publicPolicyEdges != 1 {
 		t.Fatalf("expected exactly one unconstrained public policy edge, got %d", publicPolicyEdges)
+	}
+}
+
+func TestBuilder_BuildPreservesIdentityPolicyConditions(t *testing.T) {
+	ctx := context.Background()
+	source := newMockDataSource()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	source.setResult(`
+		SELECT arn, user_name, account_id, password_last_used, tags
+		FROM aws_iam_users
+	`, &DataQueryResult{
+		Rows: []map[string]any{{
+			"arn":        "arn:aws:iam::111111111111:user/alice",
+			"user_name":  "alice",
+			"account_id": "111111111111",
+		}},
+	})
+	source.setResult(`
+		SELECT arn, name, account_id, region, block_public_acls, block_public_policy, versioning_status
+		FROM aws_s3_buckets
+	`, &DataQueryResult{
+		Rows: []map[string]any{{
+			"arn":                 "arn:aws:s3:::sensitive-data",
+			"name":                "sensitive-data",
+			"account_id":          "111111111111",
+			"region":              "us-east-1",
+			"block_public_acls":   true,
+			"block_public_policy": true,
+		}},
+	})
+	source.setResult(`
+		SELECT user_arn, policy_name, policy_document FROM aws_iam_user_policies
+	`, &DataQueryResult{
+		Rows: []map[string]any{{
+			"user_arn":    "arn:aws:iam::111111111111:user/alice",
+			"policy_name": "ConditionalRead",
+			"policy_document": `{
+				"Version": "2012-10-17",
+				"Statement": [{
+					"Effect": "Allow",
+					"Action": "s3:GetObject",
+					"Resource": "arn:aws:s3:::sensitive-data",
+					"Condition": {"StringEquals": {"aws:SourceVpce": "vpce-123"}}
+				}]
+			}`,
+		}},
+	})
+
+	builder := NewBuilder(source, logger)
+	if err := builder.Build(ctx); err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	found := false
+	for _, edge := range builder.Graph().GetOutEdges("arn:aws:iam::111111111111:user/alice") {
+		if edge.Target != "arn:aws:s3:::sensitive-data" || edge.Kind != EdgeKindCanRead {
+			continue
+		}
+		conditions, ok := edge.Properties["conditions"].(map[string]any)
+		if !ok || len(conditions) == 0 {
+			t.Fatalf("expected identity-policy conditions on edge, got %#v", edge.Properties)
+		}
+		if _, ok := edge.Properties["conditions_present"]; ok {
+			t.Fatalf("expected identity-policy edge to omit unused conditions_present flag, got %#v", edge.Properties)
+		}
+		found = true
+	}
+	if !found {
+		t.Fatal("expected conditional identity-policy edge from user to bucket")
+	}
+}
+
+func TestBuilder_BuildPreservesTrustPolicyConditions(t *testing.T) {
+	ctx := context.Background()
+	source := newMockDataSource()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	source.setResult(`
+		SELECT arn, user_name, account_id, password_last_used, tags
+		FROM aws_iam_users
+	`, &DataQueryResult{
+		Rows: []map[string]any{{
+			"arn":        "arn:aws:iam::111111111111:user/alice",
+			"user_name":  "alice",
+			"account_id": "111111111111",
+		}},
+	})
+	source.setResult(`
+		SELECT arn, role_name, account_id, assume_role_policy_document, description
+		FROM aws_iam_roles
+	`, &DataQueryResult{
+		Rows: []map[string]any{{
+			"arn":        "arn:aws:iam::111111111111:role/ConditionalRole",
+			"role_name":  "ConditionalRole",
+			"account_id": "111111111111",
+			"assume_role_policy_document": `{
+				"Version": "2012-10-17",
+				"Statement": [{
+					"Effect": "Allow",
+					"Principal": {"AWS": "arn:aws:iam::111111111111:user/alice"},
+					"Action": "sts:AssumeRole",
+					"Condition": {"StringEquals": {"aws:SourceVpce": "vpce-123"}}
+				}]
+			}`,
+		}},
+	})
+	source.setResult(`
+		SELECT arn, account_id, assume_role_policy_document
+		FROM aws_iam_roles
+		WHERE assume_role_policy_document IS NOT NULL
+	`, &DataQueryResult{
+		Rows: []map[string]any{{
+			"arn":        "arn:aws:iam::111111111111:role/ConditionalRole",
+			"account_id": "111111111111",
+			"assume_role_policy_document": `{
+				"Version": "2012-10-17",
+				"Statement": [{
+					"Effect": "Allow",
+					"Principal": {"AWS": "arn:aws:iam::111111111111:user/alice"},
+					"Action": "sts:AssumeRole",
+					"Condition": {"StringEquals": {"aws:SourceVpce": "vpce-123"}}
+				}]
+			}`,
+		}},
+	})
+
+	builder := NewBuilder(source, logger)
+	if err := builder.Build(ctx); err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	found := false
+	for _, edge := range builder.Graph().GetOutEdges("arn:aws:iam::111111111111:user/alice") {
+		if edge.Target != "arn:aws:iam::111111111111:role/ConditionalRole" || edge.Kind != EdgeKindCanAssume {
+			continue
+		}
+		conditions, ok := edge.Properties["conditions"].(map[string]any)
+		if !ok || len(conditions) == 0 {
+			t.Fatalf("expected trust-policy conditions on assume-role edge, got %#v", edge.Properties)
+		}
+		if _, ok := edge.Properties["conditions_present"]; ok {
+			t.Fatalf("expected trust-policy edge to omit unused conditions_present flag, got %#v", edge.Properties)
+		}
+		found = true
+	}
+	if !found {
+		t.Fatal("expected conditional trust edge from alice to ConditionalRole")
 	}
 }
 
