@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -14,6 +15,7 @@ type catalogActionPlan struct {
 	resourceID        string
 	resourceName      string
 	resourceType      string
+	deliveryMode      DeliveryMode
 	tool              string
 	dryRun            bool
 	approvalRequired  bool
@@ -32,8 +34,14 @@ func (ex *Executor) executeCatalogAction(ctx context.Context, action Action, exe
 	case ActionRestrictPublicStorageAccess:
 		output, metadata, err := ex.restrictPublicStorageAccess(ctx, action, execution)
 		return output, metadata, err, true
+	case ActionEnableBucketDefaultEncryption:
+		output, metadata, err := ex.enableBucketDefaultEncryption(ctx, action, execution)
+		return output, metadata, err, true
 	case ActionDisableStaleAccessKey:
 		output, metadata, err := ex.disableStaleAccessKey(ctx, action, execution)
+		return output, metadata, err, true
+	case ActionRestrictPublicSecurityGroupIngress:
+		output, metadata, err := ex.restrictPublicSecurityGroupIngress(ctx, action, execution)
 		return output, metadata, err, true
 	default:
 		return "", nil, nil, false
@@ -72,6 +80,128 @@ func (ex *Executor) restrictPublicStorageAccess(ctx context.Context, action Acti
 		return "", metadata, err
 	}
 	return firstNonEmpty(strings.TrimSpace(output), "Public access restricted"), metadata, nil
+}
+
+func (ex *Executor) enableBucketDefaultEncryption(ctx context.Context, action Action, execution *Execution) (string, map[string]any, error) {
+	entry, _ := CatalogEntryByAction(action.Type)
+	plan := newCatalogActionPlan(action, execution, entry, ex.actionRequiresApproval(action))
+	sseAlgorithm := firstNonEmpty(strings.TrimSpace(action.Config["sse_algorithm"]), "AES256")
+	kmsMasterKeyID := strings.TrimSpace(action.Config["kms_master_key_id"])
+	bucketKeyEnabled := configBool(action.Config["bucket_key_enabled"])
+	plan.before = captureBucketEncryptionEvidence(execution)
+
+	disabled, detail := bucketDefaultEncryptionStillDisabled(execution)
+	plan.preconditionCheck = append(plan.preconditionCheck,
+		preconditionResult("resource identifier available", plan.resourceID != "", firstNonEmpty(plan.resourceID, "missing resource identifier")),
+		preconditionResult("provider supported", plan.provider == "aws" && (plan.deliveryMode == DeliveryModeTerraform || plan.tool != ""), firstNonEmpty(plan.provider, "missing provider")),
+		preconditionResult("bucket default encryption still disabled", disabled, detail),
+	)
+	metadata := plan.metadata(map[string]any{
+		"sse_algorithm":      sseAlgorithm,
+		"kms_master_key_id":  kmsMasterKeyID,
+		"bucket_key_enabled": bucketKeyEnabled,
+	})
+	if !catalogSupportsDeliveryMode(entry, plan.deliveryMode) {
+		return "", compactAnyMap(metadata), fmt.Errorf("delivery mode %q is not supported for %s", plan.deliveryMode, action.Type)
+	}
+	metadata = compactAnyMap(metadata)
+	if !allPreconditionsPassed(plan.preconditionCheck) {
+		return "", metadata, fmt.Errorf("enable bucket default encryption precondition failed")
+	}
+
+	enrichExecutionWithCatalogPlan(execution, plan)
+	if execution.TriggerData == nil {
+		execution.TriggerData = map[string]any{}
+	}
+	execution.TriggerData["sse_algorithm"] = sseAlgorithm
+	if kmsMasterKeyID != "" {
+		execution.TriggerData["kms_master_key_id"] = kmsMasterKeyID
+	}
+	if bucketKeyEnabled {
+		execution.TriggerData["bucket_key_enabled"] = true
+	}
+
+	if plan.deliveryMode == DeliveryModeTerraform {
+		artifact, err := renderTerraformBucketDefaultEncryptionArtifact(execution, sseAlgorithm, kmsMasterKeyID, bucketKeyEnabled)
+		if err != nil {
+			return "", compactAnyMap(metadata), err
+		}
+		metadata["artifact"] = terraformArtifactMetadata(artifact)
+		metadata["after"] = map[string]any{
+			"planned":          true,
+			"delivery_mode":    string(plan.deliveryMode),
+			"change":           "terraform configuration generated for bucket default encryption",
+			"artifact_path":    artifact.Path,
+			"resource_address": artifact.ResourceAddress,
+		}
+		return fmt.Sprintf("Generated Terraform remediation at %s", artifact.Path), compactAnyMap(metadata), nil
+	}
+
+	if plan.dryRun {
+		metadata["after"] = map[string]any{
+			"planned":            true,
+			"change":             "bucket default encryption would be enabled",
+			"sse_algorithm":      sseAlgorithm,
+			"kms_master_key_id":  kmsMasterKeyID,
+			"bucket_key_enabled": bucketKeyEnabled,
+		}
+		return fmt.Sprintf("Dry-run: would invoke %s", plan.tool), compactAnyMap(metadata), nil
+	}
+
+	output, err := ex.executeCatalogRemoteAction(ctx, action, execution, plan)
+	metadata["after"] = catalogAfterState(output, err)
+	if err != nil {
+		return "", compactAnyMap(metadata), err
+	}
+	return firstNonEmpty(strings.TrimSpace(output), fmt.Sprintf("Enabled bucket default encryption using %s", sseAlgorithm)), compactAnyMap(metadata), nil
+}
+
+func (ex *Executor) restrictPublicSecurityGroupIngress(ctx context.Context, action Action, execution *Execution) (string, map[string]any, error) {
+	entry, _ := CatalogEntryByAction(action.Type)
+	plan := newCatalogActionPlan(action, execution, entry, ex.actionRequiresApproval(action))
+	matches, detail := publicSecurityGroupIngressMatches(execution)
+	plan.before = captureSecurityGroupIngressEvidence(execution, matches)
+
+	matchedPorts := matchedRulePorts(matches)
+	matchedCIDRs := matchedRuleCIDRs(matches)
+	plan.preconditionCheck = append(plan.preconditionCheck,
+		preconditionResult("resource identifier available", plan.resourceID != "", firstNonEmpty(plan.resourceID, "missing resource identifier")),
+		preconditionResult("provider supported", plan.provider == "aws" && plan.tool != "", firstNonEmpty(plan.provider, "missing provider")),
+		preconditionResult("matching public ingress identified", len(matches) > 0, detail),
+	)
+
+	metadata := plan.metadata(map[string]any{
+		"matched_rule_count": len(matches),
+		"matched_ports":      matchedPorts,
+		"matched_cidrs":      matchedCIDRs,
+	})
+	if !allPreconditionsPassed(plan.preconditionCheck) {
+		return "", metadata, fmt.Errorf("restrict public security group ingress precondition failed")
+	}
+
+	enrichExecutionWithCatalogPlan(execution, plan)
+	if execution.TriggerData == nil {
+		execution.TriggerData = map[string]any{}
+	}
+	execution.TriggerData["security_group_rule_matches"] = cloneMapSlice(matches)
+	execution.TriggerData["matched_ports"] = append([]string(nil), matchedPorts...)
+	execution.TriggerData["matched_cidrs"] = append([]string(nil), matchedCIDRs...)
+
+	if plan.dryRun {
+		metadata["after"] = map[string]any{
+			"planned":            true,
+			"change":             "public ingress rules would be revoked",
+			"matched_rule_count": len(matches),
+		}
+		return fmt.Sprintf("Dry-run: would invoke %s", plan.tool), metadata, nil
+	}
+
+	output, err := ex.executeCatalogRemoteAction(ctx, action, execution, plan)
+	metadata["after"] = catalogAfterState(output, err)
+	if err != nil {
+		return "", metadata, err
+	}
+	return firstNonEmpty(strings.TrimSpace(output), fmt.Sprintf("Revoked %d public ingress rule(s)", len(matches))), metadata, nil
 }
 
 func (ex *Executor) disableStaleAccessKey(ctx context.Context, action Action, execution *Execution) (string, map[string]any, error) {
@@ -141,13 +271,19 @@ func (ex *Executor) executeCatalogRemoteAction(ctx context.Context, action Actio
 
 func newCatalogActionPlan(action Action, execution *Execution, entry CatalogEntry, approvalRequired bool) catalogActionPlan {
 	provider := inferProvider(execution)
+	deliveryMode := actionDeliveryMode(action, entry)
+	tool := ""
+	if deliveryMode == DeliveryModeRemoteApply {
+		tool = firstNonEmpty(action.Config["tool"], catalogToolForProvider(entry, provider))
+	}
 	return catalogActionPlan{
 		entry:            entry,
 		provider:         provider,
 		resourceID:       firstNonEmpty(remediationMapValueToString(execution.TriggerData, "entity_id"), remediationMapValueToString(execution.TriggerData, "resource_id"), remediationMapValueToString(execution.TriggerData, "resource_external_id")),
 		resourceName:     remediationMapValueToString(execution.TriggerData, "resource_name"),
 		resourceType:     remediationMapValueToString(execution.TriggerData, "resource_type"),
-		tool:             firstNonEmpty(action.Config["tool"], catalogToolForProvider(entry, provider)),
+		deliveryMode:     deliveryMode,
+		tool:             tool,
 		dryRun:           dryRunEnabled(action, execution),
 		approvalRequired: approvalRequired,
 	}
@@ -161,6 +297,7 @@ func (p catalogActionPlan) metadata(extra map[string]any) map[string]any {
 		"resource_id":         p.resourceID,
 		"resource_name":       p.resourceName,
 		"resource_type":       p.resourceType,
+		"delivery_mode":       string(p.deliveryMode),
 		"dry_run":             p.dryRun,
 		"requires_approval":   p.approvalRequired,
 		"blast_radius":        p.entry.BlastRadius,
@@ -287,6 +424,44 @@ func captureStorageAccessEvidence(execution *Execution) map[string]any {
 	return compactAnyMap(evidence)
 }
 
+func captureBucketEncryptionEvidence(execution *Execution) map[string]any {
+	evidence := map[string]any{
+		"resource_id":          firstNonEmpty(remediationMapValueToString(execution.TriggerData, "entity_id"), remediationMapValueToString(execution.TriggerData, "resource_id")),
+		"resource_name":        remediationMapValueToString(execution.TriggerData, "resource_name"),
+		"resource_type":        remediationMapValueToString(execution.TriggerData, "resource_type"),
+		"resource_platform":    remediationMapValueToString(execution.TriggerData, "resource_platform"),
+		"resource_external_id": remediationMapValueToString(execution.TriggerData, "resource_external_id"),
+		"policy_id":            remediationMapValueToString(execution.TriggerData, "policy_id"),
+	}
+	copyFields(evidence, execution.TriggerData, "encrypted", "default_encryption", "default_encryption_enabled", "encryption_enabled", "server_side_encryption_enabled", "kms_encrypted", "encryption", "sse_algorithm", "encryption_algorithm", "kms_master_key_id", "encryption_key_id", "bucket_key_enabled", "server_side_encryption_configuration", "encryption_configuration")
+	if resource, ok := execution.TriggerData["resource"].(map[string]any); ok && len(resource) > 0 {
+		evidence["resource"] = cloneAnyMap(resource)
+	}
+	return compactAnyMap(evidence)
+}
+
+func captureSecurityGroupIngressEvidence(execution *Execution, matches []map[string]any) map[string]any {
+	evidence := map[string]any{
+		"resource_id":          firstNonEmpty(remediationMapValueToString(execution.TriggerData, "entity_id"), remediationMapValueToString(execution.TriggerData, "resource_id")),
+		"resource_name":        remediationMapValueToString(execution.TriggerData, "resource_name"),
+		"resource_type":        remediationMapValueToString(execution.TriggerData, "resource_type"),
+		"resource_platform":    remediationMapValueToString(execution.TriggerData, "resource_platform"),
+		"resource_external_id": remediationMapValueToString(execution.TriggerData, "resource_external_id"),
+		"policy_id":            remediationMapValueToString(execution.TriggerData, "policy_id"),
+		"matched_rule_count":   len(matches),
+		"matched_ports":        matchedRulePorts(matches),
+		"matched_cidrs":        matchedRuleCIDRs(matches),
+	}
+	if len(matches) > 0 {
+		evidence["matched_rules"] = cloneMapSlice(matches)
+	}
+	copyFields(evidence, execution.TriggerData, "direction", "protocol", "from_port", "to_port", "ip_ranges", "ipv6_ranges")
+	if resource, ok := execution.TriggerData["resource"].(map[string]any); ok && len(resource) > 0 {
+		evidence["resource"] = cloneAnyMap(resource)
+	}
+	return compactAnyMap(evidence)
+}
+
 func captureAccessKeyEvidence(execution *Execution, candidate accessKeyCandidate, threshold int) map[string]any {
 	evidence := map[string]any{
 		"resource_id":          firstNonEmpty(remediationMapValueToString(execution.TriggerData, "entity_id"), remediationMapValueToString(execution.TriggerData, "resource_id")),
@@ -308,6 +483,327 @@ func captureAccessKeyEvidence(execution *Execution, candidate accessKeyCandidate
 		evidence["resource"] = cloneAnyMap(resource)
 	}
 	return compactAnyMap(evidence)
+}
+
+func publicSecurityGroupIngressMatches(execution *Execution) ([]map[string]any, string) {
+	if execution == nil {
+		return nil, "missing execution context"
+	}
+	data := execution.TriggerData
+	policyID := strings.ToLower(strings.TrimSpace(remediationMapValueToString(data, "policy_id")))
+	if resource, ok := data["resource"].(map[string]any); ok {
+		if matches := securityGroupMatchesFromPermissions(resource["ip_permissions"], policyID); len(matches) > 0 {
+			return matches, fmt.Sprintf("resource payload contains %d matching public ingress rule(s)", len(matches))
+		}
+		if matches := securityGroupMatchesFromRuleValues(resource, policyID); len(matches) > 0 {
+			return matches, fmt.Sprintf("resource payload contains %d matching public ingress rule(s)", len(matches))
+		}
+	}
+	if matches := securityGroupMatchesFromPermissions(data["ip_permissions"], policyID); len(matches) > 0 {
+		return matches, fmt.Sprintf("trigger data contains %d matching public ingress rule(s)", len(matches))
+	}
+	if matches := securityGroupMatchesFromRuleValues(data, policyID); len(matches) > 0 {
+		return matches, fmt.Sprintf("trigger data contains %d matching public ingress rule(s)", len(matches))
+	}
+	if policyID != "" {
+		return nil, "current security group data does not confirm a matching public ingress rule"
+	}
+	return nil, "no matching public ingress rule found in trigger data"
+}
+
+func bucketDefaultEncryptionStillDisabled(execution *Execution) (bool, string) {
+	if execution == nil {
+		return false, "missing execution context"
+	}
+	data := execution.TriggerData
+	if value, detail, ok := bucketDefaultEncryptionFromValue(data["resource"], "resource payload"); ok {
+		return value, detail
+	}
+	if resource, ok := anyMap(data["resource"]); ok {
+		if value, detail, ok := bucketDefaultEncryptionFromValue(resource["resource_json"], "resource payload resource_json"); ok {
+			return value, detail
+		}
+	}
+	if value, detail, ok := bucketDefaultEncryptionFromValue(data["resource_json"], "trigger data resource_json"); ok {
+		return value, detail
+	}
+	if value, detail, ok := bucketDefaultEncryptionFromValue(data, "trigger data"); ok {
+		return value, detail
+	}
+	if strings.EqualFold(strings.TrimSpace(remediationMapValueToString(data, "policy_id")), "aws-s3-bucket-encryption-enabled") {
+		return true, "current bucket data does not show default encryption enabled"
+	}
+	return false, "current bucket data does not confirm default encryption is disabled"
+}
+
+func bucketDefaultEncryptionFromValue(raw any, source string) (bool, string, bool) {
+	values, ok := anyMap(raw)
+	if !ok {
+		return false, "", false
+	}
+	enabled, known := bucketDefaultEncryptionEnabled(values)
+	if !known {
+		return false, "", false
+	}
+	if enabled {
+		return false, fmt.Sprintf("%s shows default encryption enabled", source), true
+	}
+	return true, fmt.Sprintf("%s does not show default encryption enabled", source), true
+}
+
+func bucketDefaultEncryptionEnabled(values map[string]any) (bool, bool) {
+	if len(values) == 0 {
+		return false, false
+	}
+	if enabled, ok := firstBool(values, "encrypted", "default_encryption", "default_encryption_enabled", "encryption_enabled", "server_side_encryption_enabled", "kms_encrypted"); ok {
+		return enabled, true
+	}
+	for _, key := range []string{"server_side_encryption_configuration", "encryption_configuration"} {
+		if raw, ok := values[key]; ok {
+			return hasStructuredValue(raw), true
+		}
+	}
+	for _, key := range []string{"sse_algorithm", "encryption_algorithm", "kms_master_key_id", "encryption_key_id", "encryption"} {
+		if raw, ok := values[key]; ok {
+			return strings.TrimSpace(stringValue(raw)) != "", true
+		}
+	}
+	return false, false
+}
+
+func securityGroupMatchesFromPermissions(raw any, policyID string) []map[string]any {
+	items := anySlice(raw)
+	if len(items) == 0 {
+		return nil
+	}
+	matches := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		values, ok := anyMap(item)
+		if !ok {
+			continue
+		}
+		match, ok := securityGroupIngressMatch(values, policyID)
+		if ok {
+			matches = append(matches, match)
+		}
+	}
+	return matches
+}
+
+func securityGroupMatchesFromRuleValues(values map[string]any, policyID string) []map[string]any {
+	if len(values) == 0 {
+		return nil
+	}
+	direction := strings.ToLower(strings.TrimSpace(firstNonEmpty(remediationMapValueToString(values, "direction"), remediationMapValueToString(values, "Direction"))))
+	if direction != "" && direction != "ingress" {
+		return nil
+	}
+	match, ok := securityGroupIngressMatch(values, policyID)
+	if !ok {
+		return nil
+	}
+	return []map[string]any{match}
+}
+
+func securityGroupIngressMatch(values map[string]any, policyID string) (map[string]any, bool) {
+	protocol := strings.ToLower(strings.TrimSpace(firstNonEmpty(
+		remediationMapValueToString(values, "IpProtocol"),
+		remediationMapValueToString(values, "ip_protocol"),
+		remediationMapValueToString(values, "protocol"),
+	)))
+	fromPort, hasFrom := firstInt(values, "FromPort", "from_port")
+	toPort, hasTo := firstInt(values, "ToPort", "to_port")
+	publicCIDRs := publicCIDRs(values["IpRanges"], values["ip_ranges"], values["Ipv6Ranges"], values["ipv6_ranges"])
+	if len(publicCIDRs) == 0 {
+		return nil, false
+	}
+	if !securityGroupPolicyMatchesRule(policyID, protocol, fromPort, toPort, hasFrom, hasTo) {
+		return nil, false
+	}
+	match := map[string]any{
+		"direction":    "ingress",
+		"protocol":     protocol,
+		"public_cidrs": publicCIDRs,
+		"port_label":   securityGroupPortLabel(protocol, fromPort, toPort, hasFrom, hasTo),
+	}
+	if hasFrom {
+		match["from_port"] = fromPort
+	}
+	if hasTo {
+		match["to_port"] = toPort
+	}
+	return compactAnyMap(match), true
+}
+
+func securityGroupPolicyMatchesRule(policyID, protocol string, fromPort, toPort int, hasFrom, hasTo bool) bool {
+	switch policyID {
+	case "aws-security-group-restrict-ssh", "aws-ec2-public-ip-ssh":
+		return securityGroupRuleAllowsPort(protocol, fromPort, toPort, hasFrom, hasTo, 22)
+	case "aws-security-group-restrict-rdp", "aws-ec2-public-ip-rdp":
+		return securityGroupRuleAllowsPort(protocol, fromPort, toPort, hasFrom, hasTo, 3389)
+	case "aws-ec2-sg-no-all-traffic-ingress":
+		return securityGroupRuleAllowsAllTraffic(protocol, fromPort, toPort, hasFrom, hasTo)
+	default:
+		return false
+	}
+}
+
+func securityGroupRuleAllowsPort(protocol string, fromPort, toPort int, hasFrom, hasTo bool, targetPort int) bool {
+	switch protocol {
+	case "-1", "all":
+		return true
+	case "":
+		if !hasFrom && !hasTo {
+			return false
+		}
+	case "tcp":
+	default:
+		return false
+	}
+	if !hasFrom && !hasTo {
+		return true
+	}
+	if !hasFrom {
+		fromPort = toPort
+	}
+	if !hasTo {
+		toPort = fromPort
+	}
+	if fromPort > toPort {
+		fromPort, toPort = toPort, fromPort
+	}
+	return targetPort >= fromPort && targetPort <= toPort
+}
+
+func securityGroupRuleAllowsAllTraffic(protocol string, fromPort, toPort int, hasFrom, hasTo bool) bool {
+	if protocol == "-1" || protocol == "all" {
+		return true
+	}
+	if !hasFrom && !hasTo {
+		return false
+	}
+	if !hasFrom {
+		fromPort = toPort
+	}
+	if !hasTo {
+		toPort = fromPort
+	}
+	if fromPort > toPort {
+		fromPort, toPort = toPort, fromPort
+	}
+	return fromPort <= 0 && toPort >= 65535
+}
+
+func securityGroupPortLabel(protocol string, fromPort, toPort int, hasFrom, hasTo bool) string {
+	if protocol == "-1" || protocol == "all" || (!hasFrom && !hasTo) {
+		return "all"
+	}
+	if !hasFrom {
+		fromPort = toPort
+	}
+	if !hasTo {
+		toPort = fromPort
+	}
+	if fromPort == toPort {
+		return strconv.Itoa(fromPort)
+	}
+	return fmt.Sprintf("%d-%d", fromPort, toPort)
+}
+
+func publicCIDRs(raws ...any) []string {
+	seen := make(map[string]struct{})
+	cidrs := make([]string, 0)
+	for _, raw := range raws {
+		for _, item := range anySlice(raw) {
+			values, ok := anyMap(item)
+			if !ok {
+				continue
+			}
+			for _, key := range []string{"CidrIp", "cidr_ip", "cidr", "CidrIpv6", "cidr_ipv6"} {
+				cidr := strings.TrimSpace(remediationMapValueToString(values, key))
+				if cidr != "0.0.0.0/0" && cidr != "::/0" {
+					continue
+				}
+				if _, ok := seen[cidr]; ok {
+					continue
+				}
+				seen[cidr] = struct{}{}
+				cidrs = append(cidrs, cidr)
+			}
+		}
+	}
+	sort.Strings(cidrs)
+	return cidrs
+}
+
+func anySlice(raw any) []any {
+	switch typed := raw.(type) {
+	case []any:
+		return append([]any(nil), typed...)
+	case []string:
+		items := make([]any, 0, len(typed))
+		for _, item := range typed {
+			items = append(items, item)
+		}
+		return items
+	case []map[string]any:
+		items := make([]any, 0, len(typed))
+		for _, item := range typed {
+			items = append(items, item)
+		}
+		return items
+	default:
+		return nil
+	}
+}
+
+func matchedRulePorts(matches []map[string]any) []string {
+	seen := make(map[string]struct{})
+	ports := make([]string, 0, len(matches))
+	for _, match := range matches {
+		port := strings.TrimSpace(remediationMapValueToString(match, "port_label"))
+		if port == "" {
+			continue
+		}
+		if _, ok := seen[port]; ok {
+			continue
+		}
+		seen[port] = struct{}{}
+		ports = append(ports, port)
+	}
+	sort.Strings(ports)
+	return ports
+}
+
+func matchedRuleCIDRs(matches []map[string]any) []string {
+	seen := make(map[string]struct{})
+	cidrs := make([]string, 0, len(matches))
+	for _, match := range matches {
+		for _, cidr := range anySlice(match["public_cidrs"]) {
+			text := strings.TrimSpace(fmt.Sprintf("%v", cidr))
+			if text == "" {
+				continue
+			}
+			if _, ok := seen[text]; ok {
+				continue
+			}
+			seen[text] = struct{}{}
+			cidrs = append(cidrs, text)
+		}
+	}
+	sort.Strings(cidrs)
+	return cidrs
+}
+
+func cloneMapSlice(values []map[string]any) []map[string]any {
+	if len(values) == 0 {
+		return nil
+	}
+	cloned := make([]map[string]any, 0, len(values))
+	for _, value := range values {
+		cloned = append(cloned, cloneAnyMap(value))
+	}
+	return cloned
 }
 
 func staleAccessKeyCandidateFromExecution(execution *Execution, threshold int) (accessKeyCandidate, bool) {
@@ -570,5 +1066,23 @@ func configBool(raw string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func hasStructuredValue(raw any) bool {
+	switch typed := raw.(type) {
+	case nil:
+		return false
+	case string:
+		text := strings.TrimSpace(typed)
+		return text != "" && text != "null"
+	case []any:
+		return len(typed) > 0
+	case []map[string]any:
+		return len(typed) > 0
+	case map[string]any:
+		return len(typed) > 0
+	default:
+		return strings.TrimSpace(stringValue(raw)) != ""
 	}
 }

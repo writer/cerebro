@@ -105,8 +105,10 @@ const (
 	ActionPauseSubscription ActionType = "pause_subscription"
 	ActionSendCustomerComm  ActionType = "send_customer_comm"
 
-	ActionRestrictPublicStorageAccess ActionType = "restrict_public_storage_access"
-	ActionDisableStaleAccessKey       ActionType = "disable_stale_access_key"
+	ActionRestrictPublicStorageAccess        ActionType = "restrict_public_storage_access"
+	ActionEnableBucketDefaultEncryption      ActionType = "enable_bucket_default_encryption"
+	ActionDisableStaleAccessKey              ActionType = "disable_stale_access_key"
+	ActionRestrictPublicSecurityGroupIngress ActionType = "restrict_public_security_group_ingress"
 )
 
 // Execution tracks a rule execution
@@ -270,6 +272,54 @@ func (e *Engine) loadDefaultRules() {
 			},
 		},
 		{
+			ID:          "s3-encryption-notify",
+			Name:        "Alert on unencrypted S3 bucket",
+			Description: "Create tracking for S3 buckets that do not have default encryption enabled",
+			Enabled:     true,
+			Trigger: Trigger{
+				Type:     TriggerFindingCreated,
+				PolicyID: "aws-s3-bucket-encryption-enabled",
+			},
+			Actions: []Action{
+				{
+					Type: ActionNotifySlack,
+					Config: map[string]string{
+						"channel": "#security-alerts",
+						"message": "UNENCRYPTED S3 BUCKET DETECTED - Approval required for default encryption",
+					},
+					RequiresApproval: false,
+				},
+				{
+					Type: ActionCreateTicket,
+					Config: map[string]string{
+						"priority": "high",
+						"labels":   "s3,encryption,data-protection",
+					},
+					RequiresApproval: false,
+				},
+			},
+		},
+		{
+			ID:          "s3-encryption-terraform",
+			Name:        "Generate Terraform for S3 bucket encryption",
+			Description: "Generate Terraform code for enabling default S3 bucket encryption using the existing IaC context when available",
+			Enabled:     true,
+			Trigger: Trigger{
+				Type:     TriggerFindingCreated,
+				PolicyID: "aws-s3-bucket-encryption-enabled",
+			},
+			Actions: []Action{
+				{
+					Type: ActionEnableBucketDefaultEncryption,
+					Config: map[string]string{
+						"delivery_mode": "terraform",
+						"sse_algorithm": "AES256",
+					},
+					RequiresApproval: false,
+				},
+			},
+		},
+		{
 			ID:          "gcs-public-notify",
 			Name:        "Alert on public GCS bucket",
 			Description: "Create tracking for public GCS bucket findings",
@@ -348,6 +398,123 @@ func (e *Engine) loadDefaultRules() {
 			Actions: []Action{
 				{
 					Type: ActionRestrictPublicStorageAccess,
+					Config: map[string]string{
+						"approval_mode": "required",
+					},
+					RequiresApproval: false,
+				},
+			},
+		},
+		{
+			ID:          "aws-security-group-ssh-notify",
+			Name:        "Track public SSH security group ingress",
+			Description: "Create tracking for AWS security groups that expose SSH to the public internet",
+			Enabled:     true,
+			Trigger: Trigger{
+				Type:     TriggerFindingCreated,
+				PolicyID: "aws-security-group-restrict-ssh",
+			},
+			Actions: []Action{
+				{
+					Type: ActionCreateTicket,
+					Config: map[string]string{
+						"priority": "highest",
+						"labels":   "aws,security-group,ssh,public-ingress",
+					},
+					RequiresApproval: false,
+				},
+			},
+		},
+		{
+			ID:          "aws-security-group-ssh-restrict",
+			Name:        "Restrict public SSH security group ingress",
+			Description: "Approval-gated automatic revocation of public SSH ingress on AWS security groups",
+			Enabled:     true,
+			Trigger: Trigger{
+				Type:     TriggerFindingCreated,
+				PolicyID: "aws-security-group-restrict-ssh",
+			},
+			Actions: []Action{
+				{
+					Type: ActionRestrictPublicSecurityGroupIngress,
+					Config: map[string]string{
+						"approval_mode": "required",
+					},
+					RequiresApproval: false,
+				},
+			},
+		},
+		{
+			ID:          "aws-security-group-rdp-notify",
+			Name:        "Track public RDP security group ingress",
+			Description: "Create tracking for AWS security groups that expose RDP to the public internet",
+			Enabled:     true,
+			Trigger: Trigger{
+				Type:     TriggerFindingCreated,
+				PolicyID: "aws-security-group-restrict-rdp",
+			},
+			Actions: []Action{
+				{
+					Type: ActionCreateTicket,
+					Config: map[string]string{
+						"priority": "highest",
+						"labels":   "aws,security-group,rdp,public-ingress",
+					},
+					RequiresApproval: false,
+				},
+			},
+		},
+		{
+			ID:          "aws-security-group-rdp-restrict",
+			Name:        "Restrict public RDP security group ingress",
+			Description: "Approval-gated automatic revocation of public RDP ingress on AWS security groups",
+			Enabled:     true,
+			Trigger: Trigger{
+				Type:     TriggerFindingCreated,
+				PolicyID: "aws-security-group-restrict-rdp",
+			},
+			Actions: []Action{
+				{
+					Type: ActionRestrictPublicSecurityGroupIngress,
+					Config: map[string]string{
+						"approval_mode": "required",
+					},
+					RequiresApproval: false,
+				},
+			},
+		},
+		{
+			ID:          "aws-security-group-all-traffic-notify",
+			Name:        "Track public all-traffic security group ingress",
+			Description: "Create tracking for AWS security groups that expose all ingress traffic to the public internet",
+			Enabled:     true,
+			Trigger: Trigger{
+				Type:     TriggerFindingCreated,
+				PolicyID: "aws-ec2-sg-no-all-traffic-ingress",
+			},
+			Actions: []Action{
+				{
+					Type: ActionCreateTicket,
+					Config: map[string]string{
+						"priority": "highest",
+						"labels":   "aws,security-group,all-traffic,public-ingress",
+					},
+					RequiresApproval: false,
+				},
+			},
+		},
+		{
+			ID:          "aws-security-group-all-traffic-restrict",
+			Name:        "Restrict public all-traffic security group ingress",
+			Description: "Approval-gated automatic revocation of public all-traffic ingress on AWS security groups",
+			Enabled:     true,
+			Trigger: Trigger{
+				Type:     TriggerFindingCreated,
+				PolicyID: "aws-ec2-sg-no-all-traffic-ingress",
+			},
+			Actions: []Action{
+				{
+					Type: ActionRestrictPublicSecurityGroupIngress,
 					Config: map[string]string{
 						"approval_mode": "required",
 					},
