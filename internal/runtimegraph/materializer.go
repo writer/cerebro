@@ -4,12 +4,37 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/runtime"
 )
 
 var ErrMissingObservationSubject = errors.New("runtime observation missing concrete graph subject")
+
+// FinalizeMaterializedGraph rebuilds graph indexes and refreshes metadata after
+// one or more runtimegraph materialization batches.
+func FinalizeMaterializedGraph(g *graph.Graph, now time.Time) {
+	if g == nil {
+		return
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	g.BuildIndex()
+	refreshMaterializedGraphMetadata(g, now)
+}
+
+func refreshMaterializedGraphMetadata(g *graph.Graph, now time.Time) {
+	if g == nil {
+		return
+	}
+	meta := g.Metadata()
+	meta.BuiltAt = now.UTC()
+	meta.NodeCount = g.NodeCount()
+	meta.EdgeCount = g.EdgeCount()
+	g.SetMetadata(meta)
+}
 
 // BuildObservationWriteRequest converts one normalized runtime observation into
 // a first-class graph observation write request.

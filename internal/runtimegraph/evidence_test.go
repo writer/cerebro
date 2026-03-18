@@ -325,3 +325,44 @@ func TestMaterializeFindingEvidenceIntoGraphRefreshesBuiltAtOnSubsequentWrites(t
 		t.Fatalf("after second materialization BuiltAt = %s, want %s", got, secondNow)
 	}
 }
+
+func TestMaterializeFindingEvidenceIntoGraphDefersIndexBuildToCaller(t *testing.T) {
+	g := graph.New()
+	g.BuildIndex()
+	if !g.IsIndexBuilt() {
+		t.Fatal("expected initial graph index to be built")
+	}
+
+	now := time.Date(2026, 3, 16, 20, 25, 0, 0, time.UTC)
+	result := MaterializeFindingEvidenceIntoGraph(g, []*runtime.RuntimeFinding{
+		{
+			ID:          "finding-defer-index",
+			RuleID:      "reverse-shell",
+			RuleName:    "Reverse Shell",
+			Category:    runtime.CategoryReverseShell,
+			Severity:    "high",
+			Description: "Detected reverse shell connection",
+			Timestamp:   now.Add(-10 * time.Second),
+		},
+	}, now)
+	if result.EvidenceNodesUpserted != 1 {
+		t.Fatalf("EvidenceNodesUpserted = %d, want 1", result.EvidenceNodesUpserted)
+	}
+	if g.IsIndexBuilt() {
+		t.Fatal("expected index to remain stale until caller finalizes materialized graph")
+	}
+	if got := g.Metadata().BuiltAt; !got.Equal(now) {
+		t.Fatalf("metadata.BuiltAt = %s, want %s", got, now)
+	}
+
+	FinalizeMaterializedGraph(g, now.Add(time.Minute))
+	if !g.IsIndexBuilt() {
+		t.Fatal("expected FinalizeMaterializedGraph to rebuild indexes")
+	}
+	if got := len(g.GetNodesByKindIndexed(graph.NodeKindEvidence)); got != 1 {
+		t.Fatalf("len(GetNodesByKindIndexed(evidence)) = %d, want 1", got)
+	}
+	if got := g.Metadata().BuiltAt; !got.Equal(now.Add(time.Minute)) {
+		t.Fatalf("metadata.BuiltAt after finalize = %s, want %s", got, now.Add(time.Minute))
+	}
+}
