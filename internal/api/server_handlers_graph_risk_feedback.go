@@ -21,10 +21,6 @@ type recordOutcomeRequest struct {
 }
 
 func (s *Server) listGraphOutcomes(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
 	engine := s.graphRiskEngine()
 	if engine == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
@@ -41,10 +37,6 @@ func (s *Server) listGraphOutcomes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) recordGraphOutcome(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
 	engine := s.graphRiskEngine()
 	if engine == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
@@ -78,10 +70,6 @@ func (s *Server) recordGraphOutcome(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) graphRiskFeedback(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
 	engine := s.graphRiskEngine()
 	if engine == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")

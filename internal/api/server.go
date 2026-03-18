@@ -39,6 +39,7 @@ type Server struct {
 	riskEngineMu             sync.Mutex
 	riskEngine               *risk.RiskEngine
 	riskEngineSource         *graph.Graph
+	riskEngineSnapshotKey    string
 	crossTenantReplayMu      sync.Mutex
 	crossTenantReplay        map[string]time.Time
 	platformJobMu            sync.RWMutex

@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 203 - Graph Store Risk Engine Feedback Paths (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left outcome feedback, rule discovery, and cross-tenant pattern handlers coupled to `graphRiskEngine()`, which returned `nil` whenever the live `SecurityGraph` pointer was absent even if `GraphStore` snapshots were available.
+- [x] Gap: these endpoints are stateful, so simply switching them to a fresh snapshot-backed graph view would have regressed request-to-request behavior in local and test runtimes that do not configure `RiskEngineStateRepo`.
+- [x] Gap: there was no store-only API regression proving risk-engine state survives across outcome recording, discovery, and cross-tenant pattern learning when the server is backed only by `GraphStore`.
+
+### Execution plan
+- [x] Teach `graphRiskEngine()` to rebuild from `CurrentSecurityGraphStore().Snapshot()` when no live graph pointer exists, while restoring prior risk-engine state from Snowflake or the previous in-memory engine snapshot.
+- [x] Keep the handler surface unchanged so outcomes, feedback, rule discovery, and cross-tenant pattern endpoints inherit store-backed behavior without a separate service seam.
+- [x] Add store-only API regressions covering feedback, discovery, and cross-tenant pattern flows, then rerun focused API tests and changed-file validation.
+
 ## Deep Review Cycle 199 - API Endpoint Graph Substrate (2026-03-18)
 
 ### Review findings
