@@ -135,16 +135,21 @@ type azureGraphServicePrincipalListResponse struct {
 }
 
 type azureGraphServicePrincipal struct {
-	ID                        *string  `json:"id"`
-	AppID                     *string  `json:"appId"`
-	DisplayName               *string  `json:"displayName"`
-	ServicePrincipalType      *string  `json:"servicePrincipalType"`
-	AccountEnabled            *bool    `json:"accountEnabled"`
-	AppOwnerOrganizationID    *string  `json:"appOwnerOrganizationId"`
-	AppRoleAssignmentRequired *bool    `json:"appRoleAssignmentRequired"`
-	PublisherName             *string  `json:"publisherName"`
-	CreatedDateTime           *string  `json:"createdDateTime"`
-	Tags                      []string `json:"tags"`
+	ID                        *string `json:"id"`
+	AppID                     *string `json:"appId"`
+	DisplayName               *string `json:"displayName"`
+	ServicePrincipalType      *string `json:"servicePrincipalType"`
+	AccountEnabled            *bool   `json:"accountEnabled"`
+	AppOwnerOrganizationID    *string `json:"appOwnerOrganizationId"`
+	AppRoleAssignmentRequired *bool   `json:"appRoleAssignmentRequired"`
+	PublisherName             *string `json:"publisherName"`
+	VerifiedPublisher         *struct {
+		DisplayName         *string `json:"displayName"`
+		VerifiedPublisherID *string `json:"verifiedPublisherId"`
+		AddedDateTime       *string `json:"addedDateTime"`
+	} `json:"verifiedPublisher"`
+	CreatedDateTime *string  `json:"createdDateTime"`
+	Tags            []string `json:"tags"`
 }
 
 type azureDefenderAssessmentListResponse struct {
@@ -550,6 +555,9 @@ func (e *AzureSyncEngine) azureGraphServicePrincipalTable() AzureTableSpec {
 			"app_owner_organization_id",
 			"app_role_assignment_required",
 			"publisher_name",
+			"verified_publisher_display_name",
+			"verified_publisher_id",
+			"verified_publisher_added_datetime",
 			"created_date_time",
 			"tags",
 			"subscription_id",
@@ -580,6 +588,11 @@ func (e *AzureSyncEngine) azureGraphServicePrincipalTable() AzureTableSpec {
 					"publisher_name":            ptrStr(principal.PublisherName),
 					"created_date_time":         ptrStr(principal.CreatedDateTime),
 					"subscription_id":           subscriptionID,
+				}
+				if principal.VerifiedPublisher != nil {
+					row["verified_publisher_display_name"] = ptrStr(principal.VerifiedPublisher.DisplayName)
+					row["verified_publisher_id"] = ptrStr(principal.VerifiedPublisher.VerifiedPublisherID)
+					row["verified_publisher_added_datetime"] = ptrStr(principal.VerifiedPublisher.AddedDateTime)
 				}
 
 				if principal.AccountEnabled != nil {
@@ -986,7 +999,7 @@ func listAzureGraphServicePrincipals(ctx context.Context, cred *azidentity.Defau
 		return nil, err
 	}
 
-	nextURL := "https://graph.microsoft.com/v1.0/servicePrincipals?$select=id,appId,displayName,servicePrincipalType,accountEnabled,appOwnerOrganizationId,appRoleAssignmentRequired,publisherName,createdDateTime,tags"
+	nextURL := "https://graph.microsoft.com/v1.0/servicePrincipals?$select=id,appId,displayName,servicePrincipalType,accountEnabled,appOwnerOrganizationId,appRoleAssignmentRequired,publisherName,verifiedPublisher,createdDateTime,tags"
 	servicePrincipals := make([]azureGraphServicePrincipal, 0)
 	for nextURL != "" {
 		var page azureGraphServicePrincipalListResponse
