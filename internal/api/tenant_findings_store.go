@@ -116,7 +116,3 @@ func (s *tenantFindingStore) Stats() findings.Stats {
 func (s *tenantFindingStore) Sync(ctx context.Context) error {
 	return s.base.Sync(ctx)
 }
-
-func (s *Server) findingsStoreForRequest(ctx context.Context) findings.FindingStore {
-	return newTenantFindingStore(s.app.Findings, GetTenantID(ctx))
-}

@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,7 +13,6 @@ import (
 	"github.com/evalops/cerebro/internal/compliance"
 	"github.com/evalops/cerebro/internal/findings"
 	"github.com/evalops/cerebro/internal/metrics"
-	"github.com/evalops/cerebro/internal/snowflake"
 )
 
 var errScanFindingsMissingTables = errors.New("scan request missing tables")
@@ -33,7 +31,7 @@ type scanFindingsTableResult struct {
 }
 
 func (s *Server) listFindings(w http.ResponseWriter, r *http.Request) {
-	store := s.findingsStoreForRequest(r.Context())
+	store := s.findingsCompliance.FindingsStore(r.Context())
 	pagination := ParsePagination(r, 100, 1000)
 
 	filter := findings.FindingFilter{
@@ -58,13 +56,13 @@ func (s *Server) listFindings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) findingsStats(w http.ResponseWriter, r *http.Request) {
-	store := s.findingsStoreForRequest(r.Context())
+	store := s.findingsCompliance.FindingsStore(r.Context())
 	stats := store.Stats()
 	s.json(w, http.StatusOK, stats)
 }
 
 func (s *Server) signalsDashboard(w http.ResponseWriter, r *http.Request) {
-	store := s.findingsStoreForRequest(r.Context())
+	store := s.findingsCompliance.FindingsStore(r.Context())
 	stats := store.Stats()
 	open := store.Count(findings.FindingFilter{Status: "OPEN"})
 	snoozed := store.Count(findings.FindingFilter{Status: "SNOOZED"})
@@ -83,7 +81,7 @@ func (s *Server) signalsDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getFinding(w http.ResponseWriter, r *http.Request) {
-	store := s.findingsStoreForRequest(r.Context())
+	store := s.findingsCompliance.FindingsStore(r.Context())
 	id := chi.URLParam(r, "id")
 	f, ok := store.Get(id)
 	if !ok {
@@ -94,7 +92,7 @@ func (s *Server) getFinding(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteFinding(w http.ResponseWriter, r *http.Request) {
-	store := s.findingsStoreForRequest(r.Context())
+	store := s.findingsCompliance.FindingsStore(r.Context())
 	id := chi.URLParam(r, "id")
 	if strings.TrimSpace(id) == "" {
 		s.error(w, http.StatusBadRequest, "finding id required")
@@ -137,49 +135,22 @@ func (s *Server) scanFindings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	store := s.findingsStoreForRequest(r.Context())
-	if s.app.Warehouse == nil {
-		s.error(w, http.StatusServiceUnavailable, "snowflake not configured")
+	result, err := s.findingsCompliance.ScanFindings(r.Context(), tables, req.Limit)
+	if errors.Is(err, errFindingsComplianceScanUnavailable) {
+		s.error(w, http.StatusServiceUnavailable, "findings scan not configured")
+		return
+	}
+	if err != nil {
+		s.errorFromErr(w, err)
 		return
 	}
 
-	start := time.Now()
-	totalScanned := int64(0)
-	totalViolations := int64(0)
-	allFindings := make([]interface{}, 0)
-	tableResults := make([]scanFindingsTableResult, 0, len(tables))
-
-	for _, table := range tables {
-		tableStart := time.Now()
-		assets, err := s.app.Warehouse.GetAssets(r.Context(), table, snowflake.AssetFilter{Limit: req.Limit})
-		if err != nil {
-			s.errorFromErr(w, err)
-			return
-		}
-
-		result := s.app.Scanner.ScanAssets(r.Context(), assets)
-
-		for _, f := range result.Findings {
-			store.Upsert(r.Context(), f)
-			allFindings = append(allFindings, f)
-		}
-
-		totalScanned += result.Scanned
-		totalViolations += result.Violations
-		tableResults = append(tableResults, scanFindingsTableResult{
-			Table:      table,
-			Scanned:    result.Scanned,
-			Violations: result.Violations,
-			Duration:   time.Since(tableStart).String(),
-		})
-	}
-
 	s.json(w, http.StatusOK, map[string]interface{}{
-		"scanned":    totalScanned,
-		"violations": totalViolations,
-		"duration":   time.Since(start).String(),
-		"findings":   allFindings,
-		"tables":     tableResults,
+		"scanned":    result.Scanned,
+		"violations": result.Violations,
+		"duration":   result.Duration,
+		"findings":   result.Findings,
+		"tables":     result.Tables,
 	})
 }
 
@@ -225,7 +196,7 @@ func normalizeScanRequestTables(table string, tables []string) []string {
 }
 
 func (s *Server) resolveFinding(w http.ResponseWriter, r *http.Request) {
-	store := s.findingsStoreForRequest(r.Context())
+	store := s.findingsCompliance.FindingsStore(r.Context())
 	id := chi.URLParam(r, "id")
 	if store.Resolve(id) {
 		s.json(w, http.StatusOK, map[string]string{"status": "resolved"})
@@ -235,7 +206,7 @@ func (s *Server) resolveFinding(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) suppressFinding(w http.ResponseWriter, r *http.Request) {
-	store := s.findingsStoreForRequest(r.Context())
+	store := s.findingsCompliance.FindingsStore(r.Context())
 	id := chi.URLParam(r, "id")
 	if store.Suppress(id) {
 		s.json(w, http.StatusOK, map[string]string{"status": "suppressed"})
@@ -245,7 +216,7 @@ func (s *Server) suppressFinding(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) exportFindings(w http.ResponseWriter, r *http.Request) {
-	store := s.findingsStoreForRequest(r.Context())
+	store := s.findingsCompliance.FindingsStore(r.Context())
 	filter := findings.FindingFilter{
 		Severity:   r.URL.Query().Get("severity"),
 		Status:     r.URL.Query().Get("status"),
@@ -295,7 +266,7 @@ func (s *Server) exportFindings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) assignFinding(w http.ResponseWriter, r *http.Request) {
-	store := s.findingsStoreForRequest(r.Context())
+	store := s.findingsCompliance.FindingsStore(r.Context())
 	id := chi.URLParam(r, "id")
 	var req struct {
 		Assignee string `json:"assignee"`
@@ -318,7 +289,7 @@ func (s *Server) assignFinding(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) setFindingDueDate(w http.ResponseWriter, r *http.Request) {
-	store := s.findingsStoreForRequest(r.Context())
+	store := s.findingsCompliance.FindingsStore(r.Context())
 	id := chi.URLParam(r, "id")
 	var req struct {
 		DueAt time.Time `json:"due_at"`
@@ -341,7 +312,7 @@ func (s *Server) setFindingDueDate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) addFindingNote(w http.ResponseWriter, r *http.Request) {
-	store := s.findingsStoreForRequest(r.Context())
+	store := s.findingsCompliance.FindingsStore(r.Context())
 	id := chi.URLParam(r, "id")
 	var req struct {
 		Note string `json:"note"`
@@ -364,7 +335,7 @@ func (s *Server) addFindingNote(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) linkFindingTicket(w http.ResponseWriter, r *http.Request) {
-	store := s.findingsStoreForRequest(r.Context())
+	store := s.findingsCompliance.FindingsStore(r.Context())
 	id := chi.URLParam(r, "id")
 	var req struct {
 		URL        string `json:"url"`
@@ -391,13 +362,13 @@ func (s *Server) linkFindingTicket(w http.ResponseWriter, r *http.Request) {
 // Reporting endpoints
 
 func (s *Server) executiveSummary(w http.ResponseWriter, r *http.Request) {
-	reporter := findings.NewComplianceReporter(s.findingsStoreForRequest(r.Context()), s.app.Policy)
+	reporter := s.findingsCompliance.Reporter(r.Context())
 	summary := reporter.GenerateExecutiveSummary()
 	s.json(w, http.StatusOK, summary)
 }
 
 func (s *Server) riskSummary(w http.ResponseWriter, r *http.Request) {
-	reporter := findings.NewComplianceReporter(s.findingsStoreForRequest(r.Context()), s.app.Policy)
+	reporter := s.findingsCompliance.Reporter(r.Context())
 	risks := reporter.GenerateRiskSummary()
 	s.json(w, http.StatusOK, map[string]interface{}{"risks": risks, "count": len(risks)})
 }
@@ -406,7 +377,7 @@ func (s *Server) frameworkComplianceReport(w http.ResponseWriter, r *http.Reques
 	framework := chi.URLParam(r, "framework")
 	definition := compliance.GetFramework(framework)
 	if definition == nil {
-		reporter := findings.NewComplianceReporter(s.findingsStoreForRequest(r.Context()), s.app.Policy)
+		reporter := s.findingsCompliance.Reporter(r.Context())
 		report := reporter.GenerateFrameworkReport(framework)
 		s.json(w, http.StatusOK, report)
 		return
@@ -417,7 +388,7 @@ func (s *Server) frameworkComplianceReport(w http.ResponseWriter, r *http.Reques
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	report := s.evaluateComplianceFramework(r.Context(), definition, opts)
+	report := s.findingsCompliance.EvaluateFramework(r.Context(), definition, opts)
 	legacy := map[string]interface{}{
 		"framework":             definition.Name,
 		"total_controls":        report.Summary.TotalControls,
@@ -524,7 +495,7 @@ func (s *Server) getFrameworkStatus(w http.ResponseWriter, r *http.Request) {
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	report := s.evaluateComplianceFramework(r.Context(), framework, opts)
+	report := s.findingsCompliance.EvaluateFramework(r.Context(), framework, opts)
 
 	s.json(w, http.StatusOK, complianceFrameworkStatusResponse{
 		FrameworkID:   framework.ID,
@@ -563,7 +534,7 @@ func (s *Server) getFrameworkControl(w http.ResponseWriter, r *http.Request) {
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	report := s.evaluateComplianceFramework(r.Context(), framework, opts)
+	report := s.findingsCompliance.EvaluateFramework(r.Context(), framework, opts)
 	status, ok := complianceStatusByID(report, controlID)
 	if !ok {
 		s.error(w, http.StatusNotFound, "control status not found")
@@ -595,7 +566,7 @@ func (s *Server) generateComplianceReport(w http.ResponseWriter, r *http.Request
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	report := compliance.RedactReportEvidence(s.evaluateComplianceFramework(r.Context(), framework, opts))
+	report := compliance.RedactReportEvidence(s.findingsCompliance.EvaluateFramework(r.Context(), framework, opts))
 	totalFindings := 0
 	controlEvidence := make(map[string][]compliance.ControlEvidence)
 	for _, ctrl := range report.Controls {
@@ -638,7 +609,7 @@ func (s *Server) preAuditCheck(w http.ResponseWriter, r *http.Request) {
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	report := s.evaluateComplianceFramework(r.Context(), framework, opts)
+	report := s.findingsCompliance.EvaluateFramework(r.Context(), framework, opts)
 	for _, ctrl := range report.Controls {
 		check := ControlCheck{
 			ControlID: ctrl.ControlID,
@@ -735,8 +706,11 @@ func (s *Server) generateAuditRecommendations(failing, atRisk, total int) []stri
 	return recs
 }
 
-func (s *Server) openFindingsByPolicy(store findings.FindingStore) map[string]int {
+func openFindingsByPolicy(store findings.FindingStore) map[string]int {
 	counts := make(map[string]int)
+	if store == nil {
+		return counts
+	}
 	for _, finding := range store.List(findings.FindingFilter{Status: "OPEN"}) {
 		if finding.PolicyID == "" {
 			continue
@@ -763,7 +737,7 @@ func (s *Server) exportAuditPackage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	generatedAt := time.Now().UTC()
-	report := s.evaluateComplianceFramework(r.Context(), framework, opts)
+	report := s.findingsCompliance.EvaluateFramework(r.Context(), framework, opts)
 	if report.GeneratedAt == "" {
 		report.GeneratedAt = generatedAt.Format(time.RFC3339)
 	}
@@ -782,18 +756,10 @@ func (s *Server) exportAuditPackage(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(zipBytes); err != nil { // #nosec G705 -- payload is server-generated ZIP bytes
 		metrics.RecordComplianceExport(false)
-		s.app.Logger.Warn("failed to stream audit package", "error", err, "framework_id", framework.ID)
+		s.findingsCompliance.Warn("failed to stream audit package", "error", err, "framework_id", framework.ID)
 		return
 	}
 	metrics.RecordComplianceExport(true)
-}
-
-func (s *Server) evaluateComplianceFramework(ctx context.Context, framework *compliance.Framework, opts compliance.EvaluationOptions) compliance.ComplianceReport {
-	if opts.GeneratedAt.IsZero() {
-		opts.GeneratedAt = time.Now().UTC()
-	}
-	opts.OpenFindingsByPolicy = s.openFindingsByPolicy(s.findingsStoreForRequest(ctx))
-	return compliance.EvaluateFramework(s.currentTenantSecurityGraph(ctx), framework, opts)
 }
 
 func parseComplianceEvaluationOptions(r *http.Request) (compliance.EvaluationOptions, error) {

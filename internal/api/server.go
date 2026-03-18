@@ -27,6 +27,7 @@ import (
 // Server is the fully wired API server
 type Server struct {
 	app                      *serverDependencies
+	findingsCompliance       findingsComplianceService
 	graphIntelligence        graphIntelligenceService
 	platformKnowledge        platformKnowledgeService
 	syncHandlers             syncHandlerService
@@ -93,6 +94,7 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 	}
 	s := &Server{
 		app:                    &deps,
+		findingsCompliance:     newFindingsComplianceService(&deps),
 		graphIntelligence:      newGraphIntelligenceService(&deps),
 		platformKnowledge:      platformKnowledge,
 		syncHandlers:           syncHandlers,

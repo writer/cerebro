@@ -31,6 +31,18 @@ Status: executed end-to-end via PR workflow
 - [x] Add `NewServerWithDependencies` tests that stub only the sync family and prove normalized request options reach the service layer.
 - [x] Re-run focused and changed-file API validation, then push the branch once the seam is green.
 
+## Deep Review Cycle 195 - Findings And Compliance Handler Service Seam (2026-03-17)
+
+### Review findings
+- [x] Gap: issue `#210` still left the findings/compliance handler family reaching directly through `s.app` for tenant findings stores, warehouse scans, policy-backed compliance reporters, graph-backed compliance evaluation, and logger warnings.
+- [x] Gap: that family had route coverage, but not `NewServerWithDependencies` tests proving findings, scan, reporting, and compliance status endpoints can run against a narrow stub without constructing a full `*app.App`.
+- [x] Gap: tenant-aware findings access and graph-aware compliance evaluation were implemented as server helpers, which kept the family testable only through the broad dependency bundle instead of a typed seam.
+
+### Execution plan
+- [x] Add a dedicated findings/compliance handler service in `internal/api/` that owns tenant-scoped findings store access, scan orchestration, reporter construction, framework evaluation, and warning logging.
+- [x] Route the findings, reporting, and compliance handlers through the new family service so the handler file no longer reaches through `s.app` for warehouse, scanner, policy, graph, or logger access.
+- [x] Add `NewServerWithDependencies` stub tests covering findings list, findings scan, executive summary, and compliance status endpoints without a full app.
+
 ## Deep Review Cycle 196 - Graph Store Query Paths (2026-03-17)
 
 ### Review findings
