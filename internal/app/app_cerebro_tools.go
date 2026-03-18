@@ -210,6 +210,11 @@ func (a *App) cerebroTools() []agents.Tool {
 						"description": "Maximum executions to return (1-100).",
 						"default":     20,
 					},
+					"offset": map[string]any{
+						"type":        "integer",
+						"description": "Pagination offset for execution history (0 or greater).",
+						"default":     0,
+					},
 					"order": map[string]any{
 						"type":        "string",
 						"description": "Sort order: updated or submitted.",

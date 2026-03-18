@@ -394,6 +394,14 @@ func lookupToolContractOverride(name string) (toolContractOverride, bool) {
 			HTTPPath:           "/api/v1/agent-sdk/templates",
 			RequiredPermission: "sdk.context.read",
 		},
+		"cerebro.execution_status": {
+			ID:                 "cerebro_execution_status",
+			Version:            "1.1.0",
+			SDKMethod:          "execution_status",
+			Title:              "Execution Status",
+			Category:           "query",
+			RequiredPermission: "sdk.context.read",
+		},
 		"evaluate_policy": {
 			ID:                 "cerebro_check",
 			Version:            "1.0.0",

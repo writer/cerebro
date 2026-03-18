@@ -3,9 +3,12 @@ package runtime
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/writer/cerebro/internal/actionengine"
 )
 
 type noopActionHandler struct{}
@@ -491,6 +494,159 @@ func TestRejectExecutionFailsOnceApprovalIsRunning(t *testing.T) {
 
 	if execution.Status != StatusCompleted {
 		t.Fatalf("status = %s, want %s", execution.Status, StatusCompleted)
+	}
+}
+
+func TestProcessFindingRespectsPolicyScope(t *testing.T) {
+	engine := NewResponseEngine()
+	engine.SetActionHandler(noopActionHandler{})
+	engine.policies = map[string]*ResponsePolicy{
+		"scoped-alert": {
+			ID:      "scoped-alert",
+			Name:    "Scoped Alert",
+			Enabled: true,
+			Triggers: []PolicyTrigger{{
+				Type:     "finding",
+				Category: CategoryReverseShell,
+				Severity: "high",
+			}},
+			Scope: PolicyScope{
+				Clusters:   []string{"prod-cluster"},
+				Namespaces: []string{"payments"},
+				Accounts:   []string{"123456789012"},
+				Regions:    []string{"us-east-1"},
+				Tags:       map[string]string{"env": "prod", "team": "payments"},
+			},
+			Actions: []PolicyAction{{Type: ActionAlert}},
+		},
+	}
+
+	matching, err := engine.ProcessFinding(context.Background(), &RuntimeFinding{
+		ID:           "finding-scope-match",
+		RuleID:       "reverse-shell",
+		Category:     CategoryReverseShell,
+		Severity:     "critical",
+		ResourceID:   "pod-1",
+		ResourceType: "pod",
+		Event: &RuntimeEvent{Metadata: map[string]any{
+			"cluster":    "prod-cluster",
+			"namespace":  "payments",
+			"account_id": "123456789012",
+			"region":     "us-east-1",
+			"tags": map[string]any{
+				"env":  "prod",
+				"team": "payments",
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("ProcessFinding match: %v", err)
+	}
+	if matching == nil {
+		t.Fatal("expected matching finding to create an execution")
+	}
+
+	mismatched, err := engine.ProcessFinding(context.Background(), &RuntimeFinding{
+		ID:           "finding-scope-miss",
+		RuleID:       "reverse-shell",
+		Category:     CategoryReverseShell,
+		Severity:     "critical",
+		ResourceID:   "pod-2",
+		ResourceType: "pod",
+		Event: &RuntimeEvent{Metadata: map[string]any{
+			"cluster":    "prod-cluster",
+			"namespace":  "payments",
+			"account_id": "123456789012",
+			"region":     "us-east-1",
+			"tags": map[string]any{
+				"env":  "dev",
+				"team": "payments",
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("ProcessFinding mismatch: %v", err)
+	}
+	if mismatched != nil {
+		t.Fatalf("expected out-of-scope finding to be ignored, got %#v", mismatched)
+	}
+}
+
+func TestResponseEngineListsAndApprovesPersistedExecutionsAfterRestart(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "runtime-executions.db")
+	store, err := actionengine.NewSQLiteStore(dbPath, actionengine.DefaultNamespace)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	engine := NewResponseEngine()
+	engine.policies = map[string]*ResponsePolicy{}
+	engine.SetSharedExecutor(actionengine.NewExecutor(store))
+	engine.SetActionHandler(noopActionHandler{})
+	if err := engine.CreatePolicy(&ResponsePolicy{
+		ID:              "persisted-runtime-policy",
+		Name:            "Persisted Runtime Policy",
+		Enabled:         true,
+		RequireApproval: true,
+		Triggers: []PolicyTrigger{{
+			Type:     "finding",
+			Category: CategoryReverseShell,
+			Severity: "high",
+		}},
+		Actions: []PolicyAction{{Type: ActionBlockIP, Parameters: map[string]string{"target": "destination"}}},
+	}); err != nil {
+		t.Fatalf("CreatePolicy: %v", err)
+	}
+
+	execution, err := engine.ProcessFinding(context.Background(), &RuntimeFinding{
+		ID:           "persisted-runtime-finding",
+		RuleID:       "reverse-shell",
+		Category:     CategoryReverseShell,
+		Severity:     "critical",
+		ResourceID:   "pod-1",
+		ResourceType: "pod",
+		Event: &RuntimeEvent{
+			ID:           "persisted-runtime-event",
+			ResourceID:   "pod-1",
+			ResourceType: "pod",
+			Network: &NetworkEvent{
+				SrcIP: "10.0.0.5",
+				DstIP: "203.0.113.55",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ProcessFinding: %v", err)
+	}
+	if execution == nil || execution.Status != StatusApproval {
+		t.Fatalf("expected awaiting approval execution, got %#v", execution)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close store: %v", err)
+	}
+
+	restartedStore, err := actionengine.NewSQLiteStore(dbPath, actionengine.DefaultNamespace)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore restart: %v", err)
+	}
+	defer func() { _ = restartedStore.Close() }()
+	restarted := NewResponseEngine()
+	restarted.SetSharedExecutor(actionengine.NewExecutor(restartedStore))
+	handler := &recordingActionHandler{}
+	restarted.SetActionHandler(handler)
+
+	listed := restarted.ListExecutions(10)
+	if len(listed) != 1 || listed[0].ID != execution.ID {
+		t.Fatalf("expected persisted execution to be listed after restart, got %#v", listed)
+	}
+	if listed[0].Status != StatusApproval {
+		t.Fatalf("expected persisted execution status awaiting approval, got %#v", listed[0].Status)
+	}
+
+	if err := restarted.ApproveExecution(context.Background(), execution.ID, "alice"); err != nil {
+		t.Fatalf("ApproveExecution after restart: %v", err)
+	}
+	if len(handler.blockedIPs) != 1 || handler.blockedIPs[0] != "203.0.113.55" {
+		t.Fatalf("blocked IPs after restart approval = %v, want [203.0.113.55]", handler.blockedIPs)
 	}
 }
 

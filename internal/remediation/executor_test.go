@@ -3,11 +3,13 @@ package remediation
 import (
 	"context"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/writer/cerebro/internal/actionengine"
 	"github.com/writer/cerebro/internal/testutil"
 )
 
@@ -240,5 +242,77 @@ func TestExecutor_ApprovePreventsConcurrentReject(t *testing.T) {
 
 	if execution.Status != ExecutionCompleted {
 		t.Fatalf("status = %s, want %s", execution.Status, ExecutionCompleted)
+	}
+}
+
+func TestExecutorListsAndApprovesPersistedExecutionsAfterRestart(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "remediation-executions.db")
+	store, err := actionengine.NewSQLiteStore(dbPath, actionengine.DefaultNamespace)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	engine := NewEngine(testutil.Logger())
+	rule := Rule{
+		ID:      "persisted-remediation-rule",
+		Name:    "Persisted Remediation Rule",
+		Enabled: true,
+		Trigger: Trigger{Type: TriggerManual},
+		Actions: []Action{{Type: ActionSendCustomerComm}},
+	}
+	if err := engine.AddRule(rule); err != nil {
+		t.Fatalf("add rule: %v", err)
+	}
+
+	executions, err := engine.Evaluate(context.Background(), Event{
+		Type: TriggerManual,
+		Data: map[string]any{"finding_id": "finding-persisted"},
+	})
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	if len(executions) != 1 {
+		t.Fatalf("expected one execution, got %d", len(executions))
+	}
+	execution := executions[0]
+
+	caller := &fakeRemoteCaller{responses: map[string][]fakeRemoteCallResult{
+		"slack.send_message": {{output: `{"ok":true}`}},
+	}}
+	executor := NewExecutor(engine, nil, nil, nil, nil)
+	executor.SetRemoteCaller(caller)
+	executor.SetSharedExecutor(actionengine.NewExecutor(store))
+
+	if err := executor.Execute(context.Background(), execution); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if execution.Status != ExecutionApproval {
+		t.Fatalf("status = %s, want %s", execution.Status, ExecutionApproval)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close store: %v", err)
+	}
+
+	restartedStore, err := actionengine.NewSQLiteStore(dbPath, actionengine.DefaultNamespace)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore restart: %v", err)
+	}
+	defer func() { _ = restartedStore.Close() }()
+	restartedExecutor := NewExecutor(NewEngine(testutil.Logger()), nil, nil, nil, nil)
+	restartedExecutor.SetRemoteCaller(caller)
+	restartedExecutor.SetSharedExecutor(actionengine.NewExecutor(restartedStore))
+
+	listed := restartedExecutor.ListExecutions(context.Background(), 10)
+	if len(listed) != 1 || listed[0].ID != execution.ID {
+		t.Fatalf("expected persisted remediation execution after restart, got %#v", listed)
+	}
+	if listed[0].Status != ExecutionApproval {
+		t.Fatalf("expected awaiting approval persisted execution, got %#v", listed[0].Status)
+	}
+
+	if err := restartedExecutor.Approve(context.Background(), execution.ID, "alice"); err != nil {
+		t.Fatalf("Approve after restart: %v", err)
+	}
+	if len(caller.calls) == 0 {
+		t.Fatal("expected remote caller to be invoked after restart approval")
 	}
 }

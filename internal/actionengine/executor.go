@@ -286,6 +286,20 @@ func (e *Executor) Reject(ctx context.Context, execution *Execution, rejecter, r
 	return nil
 }
 
+func (e *Executor) LoadExecution(ctx context.Context, executionID string) (*Execution, error) {
+	if e == nil || e.store == nil {
+		return nil, nil
+	}
+	return e.store.LoadExecution(ctx, executionID)
+}
+
+func (e *Executor) ListExecutions(ctx context.Context, limit int) ([]Execution, error) {
+	if e == nil || e.store == nil {
+		return nil, nil
+	}
+	return e.store.ListExecutions(ctx, limit)
+}
+
 func (e *Executor) persist(ctx context.Context, execution *Execution) {
 	if e == nil || e.store == nil || execution == nil {
 		return

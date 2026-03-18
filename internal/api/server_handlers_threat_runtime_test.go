@@ -3,8 +3,10 @@ package api
 import (
 	"context"
 	"net/http"
+	"path/filepath"
 	"testing"
 
+	"github.com/writer/cerebro/internal/actionengine"
 	"github.com/writer/cerebro/internal/runtime"
 )
 
@@ -105,5 +107,51 @@ func TestRuntimeExecutionRejectEndpoint(t *testing.T) {
 	}
 	if execution.Status != runtime.StatusCanceled {
 		t.Fatalf("status = %s, want %s", execution.Status, runtime.StatusCanceled)
+	}
+}
+
+func TestRuntimeExecutionEndpointsUseSharedStoreAfterRestart(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "runtime-api-restart.db")
+	store, err := actionengine.NewSQLiteStore(dbPath, actionengine.DefaultNamespace)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	s1 := newTestServer(t)
+	s1.app.RuntimeRespond.SetSharedExecutor(actionengine.NewExecutor(store))
+	execution := seedRuntimeApprovalExecution(t, s1, "runtime-restart-endpoint", "203.0.113.43")
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close store: %v", err)
+	}
+
+	restartedStore, err := actionengine.NewSQLiteStore(dbPath, actionengine.DefaultNamespace)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore restart: %v", err)
+	}
+	defer func() { _ = restartedStore.Close() }()
+	s2 := newTestServer(t)
+	s2.app.RuntimeRespond.SetSharedExecutor(actionengine.NewExecutor(restartedStore))
+	s2.app.RuntimeRespond.SetActionHandler(runtime.NewDefaultActionHandler(runtime.DefaultActionHandlerOptions{
+		Blocklist: s2.app.RuntimeRespond.Blocklist(),
+	}))
+
+	list := do(t, s2, http.MethodGet, "/api/v1/runtime/executions?limit=10", nil)
+	if list.Code != http.StatusOK {
+		t.Fatalf("expected 200 for persisted runtime executions list, got %d: %s", list.Code, list.Body.String())
+	}
+	listBody := decodeJSON(t, list)
+	executions, ok := listBody["executions"].([]any)
+	if !ok || len(executions) != 1 {
+		t.Fatalf("expected one persisted execution payload, got %#v", listBody["executions"])
+	}
+	if got := executions[0].(map[string]any)["id"]; got != execution.ID {
+		t.Fatalf("listed persisted execution id = %#v, want %s", got, execution.ID)
+	}
+
+	approve := do(t, s2, http.MethodPost, "/api/v1/runtime/executions/"+execution.ID+"/approve", map[string]any{"approver_id": "alice"})
+	if approve.Code != http.StatusOK {
+		t.Fatalf("expected 200 for persisted runtime execution approve, got %d: %s", approve.Code, approve.Body.String())
+	}
+	if !s2.app.RuntimeRespond.Blocklist().IsBlocked("203.0.113.43", "ip") {
+		t.Fatal("expected persisted runtime execution approval to block the destination IP")
 	}
 }

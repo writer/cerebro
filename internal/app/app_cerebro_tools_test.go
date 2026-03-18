@@ -879,6 +879,72 @@ func TestCerebroExecutionStatusTool(t *testing.T) {
 	}
 }
 
+func TestCerebroExecutionStatusToolSupportsOffset(t *testing.T) {
+	dir := t.TempDir()
+	store, err := executionstore.NewSQLiteStore(filepath.Join(dir, "executions.db"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	for idx, updatedAt := range []time.Time{
+		time.Date(2026, 3, 12, 9, 2, 0, 0, time.UTC),
+		time.Date(2026, 3, 12, 9, 1, 0, 0, time.UTC),
+	} {
+		run := imagescan.RunRecord{
+			ID:          fmt.Sprintf("image_scan:offset-%d", idx+1),
+			Registry:    imagescan.RegistryECR,
+			Status:      imagescan.RunStatusRunning,
+			Stage:       imagescan.RunStageAnalyze,
+			Target:      imagescan.ScanTarget{Registry: imagescan.RegistryECR, Repository: "payments/app", Tag: fmt.Sprintf("%d", idx+1)},
+			RequestedBy: "alice",
+			SubmittedAt: updatedAt.Add(-1 * time.Minute),
+			UpdatedAt:   updatedAt,
+		}
+		payload, err := json.Marshal(run)
+		if err != nil {
+			t.Fatalf("marshal image run: %v", err)
+		}
+		if err := store.UpsertRun(context.Background(), executionstore.RunEnvelope{
+			Namespace:   executionstore.NamespaceImageScan,
+			RunID:       run.ID,
+			Kind:        string(run.Registry),
+			Status:      string(run.Status),
+			Stage:       string(run.Stage),
+			SubmittedAt: run.SubmittedAt,
+			UpdatedAt:   run.UpdatedAt,
+			Payload:     payload,
+		}); err != nil {
+			t.Fatalf("UpsertRun: %v", err)
+		}
+	}
+
+	application := &App{
+		Config:         &Config{ExecutionStoreFile: filepath.Join(dir, "executions.db")},
+		ExecutionStore: store,
+	}
+	tool := findCerebroTool(application.AgentSDKTools(), "cerebro.execution_status")
+	if tool == nil {
+		t.Fatal("expected cerebro.execution_status tool")
+	}
+	result, err := tool.Handler(context.Background(), json.RawMessage(`{"namespace":["image_scan"],"limit":1,"offset":1}`))
+	if err != nil {
+		t.Fatalf("execution_status with offset returned error: %v", err)
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal([]byte(result), &body); err != nil {
+		t.Fatalf("decode tool payload: %v", err)
+	}
+	execs, ok := body["executions"].([]any)
+	if !ok || len(execs) != 1 {
+		t.Fatalf("expected one paginated execution, got %#v", body["executions"])
+	}
+	if got := execs[0].(map[string]any)["run_id"]; got != "image_scan:offset-2" {
+		t.Fatalf("expected offset to skip newest execution, got %#v", got)
+	}
+}
+
 func TestCerebroFindingsTool(t *testing.T) {
 	store := policyBackedFindingStore(t)
 	application := &App{Findings: store}

@@ -18,6 +18,7 @@ func (a *App) toolCerebroExecutionStatus(ctx context.Context, args json.RawMessa
 		Status    []string `json:"status,omitempty"`
 		ReportID  string   `json:"report_id,omitempty"`
 		Limit     int      `json:"limit,omitempty"`
+		Offset    int      `json:"offset,omitempty"`
 		Order     string   `json:"order,omitempty"`
 	}
 	if err := decodeToolArgs(args, &req); err != nil {
@@ -29,6 +30,10 @@ func (a *App) toolCerebroExecutionStatus(ctx context.Context, args json.RawMessa
 	}
 	if limit > 100 {
 		return "", fmt.Errorf("limit must be <= 100")
+	}
+	offset := req.Offset
+	if offset < 0 {
+		offset = 0
 	}
 	store := a.ExecutionStore
 	if store == nil {
@@ -44,6 +49,7 @@ func (a *App) toolCerebroExecutionStatus(ctx context.Context, args json.RawMessa
 		Statuses:           req.Status,
 		ReportID:           req.ReportID,
 		Limit:              limit,
+		Offset:             offset,
 		OrderBySubmittedAt: req.Order == "submitted",
 	})
 	if err != nil {
