@@ -183,13 +183,13 @@ func TestExecutor_RestrictPublicStorageAccessDryRunCapturesMetadata(t *testing.T
 
 	executions, err := engine.Evaluate(context.Background(), Event{
 		Type:     TriggerManual,
-		PolicyID: "aws-s3-bucket-no-public-access",
+		PolicyID: "gcp-storage-bucket-no-public",
 		EntityID: "bucket:public-assets",
 		Data: map[string]any{
 			"resource_id":       "bucket:public-assets",
 			"resource_name":     "public-assets",
 			"resource_type":     "bucket",
-			"resource_platform": "aws",
+			"resource_platform": "gcp",
 			"resource": map[string]any{
 				"public_access": true,
 			},
@@ -217,7 +217,7 @@ func TestExecutor_RestrictPublicStorageAccessDryRunCapturesMetadata(t *testing.T
 	if requiresApproval, _ := metadata["requires_approval"].(bool); requiresApproval {
 		t.Fatalf("expected dry-run action with approval_mode=auto to report requires_approval=false, got %#v", metadata)
 	}
-	if metadata["planned_tool"] != "aws.s3.block_public_access" {
+	if metadata["planned_tool"] != "gcp.storage.remove_public_access" {
 		t.Fatalf("unexpected planned tool metadata: %#v", metadata["planned_tool"])
 	}
 	after, _ := metadata["after"].(map[string]any)
@@ -226,15 +226,76 @@ func TestExecutor_RestrictPublicStorageAccessDryRunCapturesMetadata(t *testing.T
 	}
 }
 
-func TestExecutor_RestrictPublicStorageAccessRequiresApprovalByDefault(t *testing.T) {
+func TestExecutor_RestrictPublicStorageAccessUsesProviderDefaultTerraformModeForAWS(t *testing.T) {
 	engine := NewEngine(testutil.Logger())
 	rule := Rule{
-		ID:      "restrict-public-storage",
-		Name:    "Restrict Public Storage",
+		ID:      "restrict-public-storage-aws-default",
+		Name:    "Restrict Public Storage AWS Default",
 		Enabled: true,
 		Trigger: Trigger{Type: TriggerManual},
 		Actions: []Action{{
 			Type: ActionRestrictPublicStorageAccess,
+		}},
+	}
+	if err := engine.AddRule(rule); err != nil {
+		t.Fatalf("add rule: %v", err)
+	}
+
+	executions, err := engine.Evaluate(context.Background(), Event{
+		Type:     TriggerManual,
+		PolicyID: "aws-s3-bucket-no-public-access",
+		EntityID: "bucket:public-assets",
+		Data: map[string]any{
+			"resource_id":       "bucket:public-assets",
+			"resource_name":     "public-assets",
+			"resource_type":     "bucket",
+			"resource_platform": "aws",
+			"iac_file":          "infra/storage/main.tf",
+			"resource": map[string]any{
+				"public_access": true,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	execution := executions[0]
+	executor := NewExecutor(engine, nil, nil, nil, nil)
+
+	if err := executor.Execute(context.Background(), execution); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if execution.Status != ExecutionCompleted {
+		t.Fatalf("status = %s, want %s", execution.Status, ExecutionCompleted)
+	}
+	if len(execution.Actions) != 1 {
+		t.Fatalf("expected one action result, got %d", len(execution.Actions))
+	}
+	metadata := execution.Actions[0].Metadata
+	if metadata["delivery_mode"] != "terraform" {
+		t.Fatalf("expected aws default delivery mode to be terraform, got %#v", metadata["delivery_mode"])
+	}
+	if requiresApproval, _ := metadata["requires_approval"].(bool); requiresApproval {
+		t.Fatalf("expected aws default terraform delivery not to require approval, got %#v", metadata)
+	}
+	artifact, _ := metadata["artifact"].(map[string]any)
+	if artifact["path"] != "infra/storage/cerebro_s3_bucket_public_access_block_public_assets.tf" {
+		t.Fatalf("unexpected terraform artifact path: %#v", artifact["path"])
+	}
+}
+
+func TestExecutor_RestrictPublicStorageAccessExplicitRemoteApplyOverridesAWSDefault(t *testing.T) {
+	engine := NewEngine(testutil.Logger())
+	rule := Rule{
+		ID:      "restrict-public-storage-aws-remote-apply",
+		Name:    "Restrict Public Storage AWS Remote Apply",
+		Enabled: true,
+		Trigger: Trigger{Type: TriggerManual},
+		Actions: []Action{{
+			Type: ActionRestrictPublicStorageAccess,
+			Config: map[string]string{
+				"delivery_mode": "remote_apply",
+			},
 		}},
 	}
 	if err := engine.AddRule(rule); err != nil {
@@ -274,6 +335,75 @@ func TestExecutor_RestrictPublicStorageAccessRequiresApprovalByDefault(t *testin
 		t.Fatalf("status = %s, want %s", execution.Status, ExecutionApproval)
 	}
 	if len(caller.calls) != 0 {
+		t.Fatalf("expected no remote calls before approval, got %v", caller.calls)
+	}
+
+	if err := executor.Approve(context.Background(), execution.ID, "approver-1"); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if execution.Status != ExecutionCompleted {
+		t.Fatalf("status = %s, want %s", execution.Status, ExecutionCompleted)
+	}
+	if len(caller.calls) != 1 || caller.calls[0] != "aws.s3.block_public_access" {
+		t.Fatalf("unexpected remote calls after approval: %v", caller.calls)
+	}
+	metadata := execution.Actions[0].Metadata
+	if metadata["delivery_mode"] != "remote_apply" {
+		t.Fatalf("expected explicit remote_apply override, got %#v", metadata["delivery_mode"])
+	}
+	if requiresApproval, _ := metadata["requires_approval"].(bool); !requiresApproval {
+		t.Fatalf("expected explicit remote_apply override to require approval, got %#v", metadata)
+	}
+}
+
+func TestExecutor_RestrictPublicStorageAccessRequiresApprovalByDefaultForGCP(t *testing.T) {
+	engine := NewEngine(testutil.Logger())
+	rule := Rule{
+		ID:      "restrict-public-storage-gcp",
+		Name:    "Restrict Public Storage GCP",
+		Enabled: true,
+		Trigger: Trigger{Type: TriggerManual},
+		Actions: []Action{{
+			Type: ActionRestrictPublicStorageAccess,
+		}},
+	}
+	if err := engine.AddRule(rule); err != nil {
+		t.Fatalf("add rule: %v", err)
+	}
+
+	executions, err := engine.Evaluate(context.Background(), Event{
+		Type:     TriggerManual,
+		PolicyID: "gcp-storage-bucket-no-public",
+		EntityID: "bucket:public-assets",
+		Data: map[string]any{
+			"resource_id":       "bucket:public-assets",
+			"resource_name":     "public-assets",
+			"resource_type":     "bucket",
+			"resource_platform": "gcp",
+			"resource": map[string]any{
+				"public_access": true,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	execution := executions[0]
+	caller := &fakeRemoteCaller{
+		responses: map[string][]fakeRemoteCallResult{
+			"gcp.storage.remove_public_access": {{output: `{"changed":true}`}},
+		},
+	}
+	executor := NewExecutor(engine, nil, nil, nil, nil)
+	executor.SetRemoteCaller(caller)
+
+	if err := executor.Execute(context.Background(), execution); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if execution.Status != ExecutionApproval {
+		t.Fatalf("status = %s, want %s", execution.Status, ExecutionApproval)
+	}
+	if len(caller.calls) != 0 {
 		t.Fatalf("expected no remote call before approval, got %v", caller.calls)
 	}
 
@@ -283,7 +413,7 @@ func TestExecutor_RestrictPublicStorageAccessRequiresApprovalByDefault(t *testin
 	if execution.Status != ExecutionCompleted {
 		t.Fatalf("status = %s, want %s", execution.Status, ExecutionCompleted)
 	}
-	if len(caller.calls) != 1 || caller.calls[0] != "aws.s3.block_public_access" {
+	if len(caller.calls) != 1 || caller.calls[0] != "gcp.storage.remove_public_access" {
 		t.Fatalf("unexpected remote calls: %v", caller.calls)
 	}
 }
@@ -415,9 +545,120 @@ func TestExecutor_RestrictPublicStorageAccessTerraformModeCapturesArtifact(t *te
 	if !strings.Contains(content, `resource "aws_s3_bucket_public_access_block" "public_assets_public_access_block"`) {
 		t.Fatalf("expected terraform resource block, got %q", content)
 	}
+	stateReconciliation, _ := artifact["state_reconciliation"].(map[string]any)
+	if len(stateReconciliation) == 0 {
+		t.Fatalf("expected structured state reconciliation metadata, got %#v", artifact)
+	}
+	stateShow, _ := stateReconciliation["state_show"].(map[string]any)
+	if stateShow["program"] != "terraform" {
+		t.Fatalf("unexpected state show command metadata: %#v", stateShow)
+	}
+	imports, _ := stateReconciliation["imports"].([]map[string]any)
+	if len(imports) != 1 {
+		t.Fatalf("expected one import instruction in metadata, got %#v", stateReconciliation["imports"])
+	}
+	if imports[0]["to"] != "aws_s3_bucket_public_access_block.public_assets_public_access_block" {
+		t.Fatalf("unexpected import instruction target: %#v", imports[0])
+	}
 	after, _ := metadata["after"].(map[string]any)
 	if planned, _ := after["planned"].(bool); !planned {
 		t.Fatalf("expected planned after-state metadata, got %#v", after)
+	}
+}
+
+func TestExecutor_RestrictPublicStorageAccessTerraformModeReusesExistingPublicAccessBlockAddress(t *testing.T) {
+	engine := NewEngine(testutil.Logger())
+	rule := Rule{
+		ID:      "restrict-public-storage-terraform-existing-address",
+		Name:    "Restrict Public Storage Terraform Existing Address",
+		Enabled: true,
+		Trigger: Trigger{Type: TriggerManual},
+		Actions: []Action{{
+			Type: ActionRestrictPublicStorageAccess,
+			Config: map[string]string{
+				"delivery_mode": "terraform",
+			},
+		}},
+	}
+	if err := engine.AddRule(rule); err != nil {
+		t.Fatalf("add rule: %v", err)
+	}
+
+	executions, err := engine.Evaluate(context.Background(), Event{
+		Type:     TriggerManual,
+		PolicyID: "aws-s3-bucket-no-public-access",
+		EntityID: "bucket:public-assets",
+		Data: map[string]any{
+			"resource_id":       "bucket:public-assets",
+			"resource_name":     "public-assets",
+			"resource_type":     "bucket",
+			"resource_platform": "aws",
+			"iac_state_id":      "module.platform.module.storage.aws_s3_bucket_public_access_block.existing_block",
+			"resource": map[string]any{
+				"public_access": true,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	execution := executions[0]
+	executor := NewExecutor(engine, nil, nil, nil, nil)
+
+	if err := executor.Execute(context.Background(), execution); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	artifact, _ := execution.Actions[0].Metadata["artifact"].(map[string]any)
+	if artifact["resource_address"] != "module.platform.module.storage.aws_s3_bucket_public_access_block.existing_block" {
+		t.Fatalf("unexpected reused terraform resource address: %#v", artifact["resource_address"])
+	}
+}
+
+func TestExecutor_RestrictPublicStorageAccessTerraformModeReusesExistingPublicAccessBlockAddressFromAttributePath(t *testing.T) {
+	engine := NewEngine(testutil.Logger())
+	rule := Rule{
+		ID:      "restrict-public-storage-terraform-existing-address-attribute-path",
+		Name:    "Restrict Public Storage Terraform Existing Address Attribute Path",
+		Enabled: true,
+		Trigger: Trigger{Type: TriggerManual},
+		Actions: []Action{{
+			Type: ActionRestrictPublicStorageAccess,
+			Config: map[string]string{
+				"delivery_mode": "terraform",
+			},
+		}},
+	}
+	if err := engine.AddRule(rule); err != nil {
+		t.Fatalf("add rule: %v", err)
+	}
+
+	executions, err := engine.Evaluate(context.Background(), Event{
+		Type:     TriggerManual,
+		PolicyID: "aws-s3-bucket-no-public-access",
+		EntityID: "bucket:public-assets",
+		Data: map[string]any{
+			"resource_id":       "bucket:public-assets",
+			"resource_name":     "public-assets",
+			"resource_type":     "bucket",
+			"resource_platform": "aws",
+			"iac_state_id":      "module.platform.module.storage.aws_s3_bucket_public_access_block.existing_block.id",
+			"resource": map[string]any{
+				"public_access": true,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	execution := executions[0]
+	executor := NewExecutor(engine, nil, nil, nil, nil)
+
+	if err := executor.Execute(context.Background(), execution); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	artifact, _ := execution.Actions[0].Metadata["artifact"].(map[string]any)
+	if artifact["resource_address"] != "module.platform.module.storage.aws_s3_bucket_public_access_block.existing_block" {
+		t.Fatalf("unexpected reused terraform resource address: %#v", artifact["resource_address"])
 	}
 }
 
@@ -564,6 +805,102 @@ func TestExecutor_EnableBucketDefaultEncryptionTerraformModeCapturesArtifact(t *
 	}
 }
 
+func TestExecutor_EnableBucketDefaultEncryptionTerraformModeReusesExistingEncryptionAddress(t *testing.T) {
+	engine := NewEngine(testutil.Logger())
+	rule := Rule{
+		ID:      "enable-bucket-default-encryption-terraform-existing-address",
+		Name:    "Enable Bucket Default Encryption Terraform Existing Address",
+		Enabled: true,
+		Trigger: Trigger{Type: TriggerManual},
+		Actions: []Action{{
+			Type: ActionEnableBucketDefaultEncryption,
+			Config: map[string]string{
+				"delivery_mode": "terraform",
+			},
+		}},
+	}
+	if err := engine.AddRule(rule); err != nil {
+		t.Fatalf("add rule: %v", err)
+	}
+
+	executions, err := engine.Evaluate(context.Background(), Event{
+		Type:     TriggerManual,
+		PolicyID: "aws-s3-bucket-encryption-enabled",
+		EntityID: "bucket:audit-logs",
+		Data: map[string]any{
+			"resource_id":       "bucket:audit-logs",
+			"resource_name":     "audit-logs",
+			"resource_type":     "bucket",
+			"resource_platform": "aws",
+			"iac_state_id":      "module.platform.module.storage.aws_s3_bucket_server_side_encryption_configuration.existing_encryption",
+			"resource": map[string]any{
+				"default_encryption_enabled": false,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	execution := executions[0]
+	executor := NewExecutor(engine, nil, nil, nil, nil)
+
+	if err := executor.Execute(context.Background(), execution); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	artifact, _ := execution.Actions[0].Metadata["artifact"].(map[string]any)
+	if artifact["resource_address"] != "module.platform.module.storage.aws_s3_bucket_server_side_encryption_configuration.existing_encryption" {
+		t.Fatalf("unexpected reused terraform resource address: %#v", artifact["resource_address"])
+	}
+}
+
+func TestExecutor_EnableBucketDefaultEncryptionTerraformModeReusesExistingEncryptionAddressFromAttributePath(t *testing.T) {
+	engine := NewEngine(testutil.Logger())
+	rule := Rule{
+		ID:      "enable-bucket-default-encryption-terraform-existing-address-attribute-path",
+		Name:    "Enable Bucket Default Encryption Terraform Existing Address Attribute Path",
+		Enabled: true,
+		Trigger: Trigger{Type: TriggerManual},
+		Actions: []Action{{
+			Type: ActionEnableBucketDefaultEncryption,
+			Config: map[string]string{
+				"delivery_mode": "terraform",
+			},
+		}},
+	}
+	if err := engine.AddRule(rule); err != nil {
+		t.Fatalf("add rule: %v", err)
+	}
+
+	executions, err := engine.Evaluate(context.Background(), Event{
+		Type:     TriggerManual,
+		PolicyID: "aws-s3-bucket-encryption-enabled",
+		EntityID: "bucket:audit-logs",
+		Data: map[string]any{
+			"resource_id":       "bucket:audit-logs",
+			"resource_name":     "audit-logs",
+			"resource_type":     "bucket",
+			"resource_platform": "aws",
+			"iac_state_id":      "module.platform.module.storage.aws_s3_bucket_server_side_encryption_configuration.existing_encryption.id",
+			"resource": map[string]any{
+				"default_encryption_enabled": false,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	execution := executions[0]
+	executor := NewExecutor(engine, nil, nil, nil, nil)
+
+	if err := executor.Execute(context.Background(), execution); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	artifact, _ := execution.Actions[0].Metadata["artifact"].(map[string]any)
+	if artifact["resource_address"] != "module.platform.module.storage.aws_s3_bucket_server_side_encryption_configuration.existing_encryption" {
+		t.Fatalf("unexpected reused terraform resource address: %#v", artifact["resource_address"])
+	}
+}
+
 func TestExecutor_EnableBucketDefaultEncryptionUsesCatalogDefaultTerraformMode(t *testing.T) {
 	engine := NewEngine(testutil.Logger())
 	rule := Rule{
@@ -626,7 +963,7 @@ func TestExecutor_NonCatalogTerraformDeliveryDoesNotBypassApproval(t *testing.T)
 		Config: map[string]string{
 			"delivery_mode": "terraform",
 		},
-	}) {
+	}, nil) {
 		t.Fatal("expected non-catalog action to keep approval requirement")
 	}
 }
@@ -911,6 +1248,220 @@ func TestExecutor_RestrictPublicSecurityGroupIngressDryRunCapturesMetadata(t *te
 	after, _ := metadata["after"].(map[string]any)
 	if planned, _ := after["planned"].(bool); !planned {
 		t.Fatalf("expected planned after-state metadata, got %#v", after)
+	}
+}
+
+func TestExecutor_RestrictPublicSecurityGroupIngressTerraformModeCapturesArtifact(t *testing.T) {
+	engine := NewEngine(testutil.Logger())
+	rule := Rule{
+		ID:      "restrict-public-security-group-ingress-terraform",
+		Name:    "Restrict Public Security Group Ingress Terraform",
+		Enabled: true,
+		Trigger: Trigger{Type: TriggerManual},
+		Actions: []Action{{
+			Type: ActionRestrictPublicSecurityGroupIngress,
+			Config: map[string]string{
+				"delivery_mode": "terraform",
+			},
+		}},
+	}
+	if err := engine.AddRule(rule); err != nil {
+		t.Fatalf("add rule: %v", err)
+	}
+
+	executions, err := engine.Evaluate(context.Background(), Event{
+		Type:     TriggerManual,
+		PolicyID: "aws-security-group-restrict-ssh",
+		EntityID: "sg-rule-123",
+		Data: map[string]any{
+			"resource_id":       "sg-rule-123",
+			"resource_name":     "public-ssh",
+			"resource_type":     "security_group_rule",
+			"resource_platform": "aws",
+			"iac_state_id":      "module.platform.aws_security_group_rule.public_ssh",
+			"direction":         "ingress",
+			"protocol":          "tcp",
+			"from_port":         22,
+			"to_port":           22,
+			"ip_ranges": []any{
+				map[string]any{"CidrIp": "0.0.0.0/0"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	execution := executions[0]
+	executor := NewExecutor(engine, nil, nil, nil, nil)
+
+	if err := executor.Execute(context.Background(), execution); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if execution.Status != ExecutionCompleted {
+		t.Fatalf("status = %s, want %s", execution.Status, ExecutionCompleted)
+	}
+	metadata := execution.Actions[0].Metadata
+	if metadata["delivery_mode"] != "terraform" {
+		t.Fatalf("expected terraform delivery mode, got %#v", metadata["delivery_mode"])
+	}
+	if metadata["requires_approval"] != false {
+		t.Fatalf("expected terraform ingress generation not to require approval, got %#v", metadata["requires_approval"])
+	}
+	if plannedTool, ok := metadata["planned_tool"]; ok && plannedTool != "" {
+		t.Fatalf("expected no planned tool for terraform delivery, got %#v", plannedTool)
+	}
+	artifact, _ := metadata["artifact"].(map[string]any)
+	if artifact["resource_address"] != "module.platform.aws_security_group_rule.public_ssh" {
+		t.Fatalf("unexpected terraform resource address: %#v", artifact["resource_address"])
+	}
+	content, _ := artifact["content"].(string)
+	if !strings.Contains(content, "removed {") {
+		t.Fatalf("expected removed block content, got %q", content)
+	}
+}
+
+func TestExecutor_RestrictPublicSecurityGroupIngressTerraformModeRejectsInlineSecurityGroupState(t *testing.T) {
+	engine := NewEngine(testutil.Logger())
+	rule := Rule{
+		ID:      "restrict-public-security-group-ingress-terraform-inline-sg",
+		Name:    "Restrict Public Security Group Ingress Terraform Inline SG",
+		Enabled: true,
+		Trigger: Trigger{Type: TriggerManual},
+		Actions: []Action{{
+			Type: ActionRestrictPublicSecurityGroupIngress,
+			Config: map[string]string{
+				"delivery_mode": "terraform",
+			},
+		}},
+	}
+	if err := engine.AddRule(rule); err != nil {
+		t.Fatalf("add rule: %v", err)
+	}
+
+	executions, err := engine.Evaluate(context.Background(), Event{
+		Type:     TriggerManual,
+		PolicyID: "aws-security-group-restrict-ssh",
+		EntityID: "sg-123",
+		Data: map[string]any{
+			"resource_id":       "sg-123",
+			"resource_name":     "public-ssh",
+			"resource_type":     "security_group",
+			"resource_platform": "aws",
+			"iac_state_id":      "module.platform.aws_security_group.public",
+			"resource": map[string]any{
+				"ip_permissions": []any{
+					map[string]any{
+						"IpProtocol": "tcp",
+						"FromPort":   22,
+						"ToPort":     22,
+						"IpRanges": []any{
+							map[string]any{"CidrIp": "0.0.0.0/0"},
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	execution := executions[0]
+	executor := NewExecutor(engine, nil, nil, nil, nil)
+
+	err = executor.Execute(context.Background(), execution)
+	if err == nil {
+		t.Fatal("expected terraform inline security group rejection")
+	}
+	if !strings.Contains(err.Error(), "precondition failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	preconditions, _ := execution.Actions[0].Metadata["preconditions"].([]map[string]any)
+	if len(preconditions) == 0 {
+		t.Fatalf("expected precondition metadata, got %#v", execution.Actions[0].Metadata)
+	}
+	found := false
+	for _, precondition := range preconditions {
+		detail, _ := precondition["detail"].(string)
+		if strings.Contains(detail, "standalone Terraform security group rule resources") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected standalone-rule precondition detail, got %#v", preconditions)
+	}
+	if _, ok := execution.Actions[0].Metadata["planned_tool"]; ok {
+		t.Fatalf("expected compact metadata to omit planned_tool on terraform precondition failure, got %#v", execution.Actions[0].Metadata["planned_tool"])
+	}
+}
+
+func TestExecutor_RestrictPublicSecurityGroupIngressTerraformModeRejectsForEachRuleState(t *testing.T) {
+	engine := NewEngine(testutil.Logger())
+	rule := Rule{
+		ID:      "restrict-public-security-group-ingress-terraform-foreach-rule",
+		Name:    "Restrict Public Security Group Ingress Terraform ForEach Rule",
+		Enabled: true,
+		Trigger: Trigger{Type: TriggerManual},
+		Actions: []Action{{
+			Type: ActionRestrictPublicSecurityGroupIngress,
+			Config: map[string]string{
+				"delivery_mode": "terraform",
+			},
+		}},
+	}
+	if err := engine.AddRule(rule); err != nil {
+		t.Fatalf("add rule: %v", err)
+	}
+
+	executions, err := engine.Evaluate(context.Background(), Event{
+		Type:     TriggerManual,
+		PolicyID: "aws-security-group-restrict-ssh",
+		EntityID: "sg-rule-123",
+		Data: map[string]any{
+			"resource_id":       "sg-rule-123",
+			"resource_name":     "public-ssh",
+			"resource_type":     "security_group_rule",
+			"resource_platform": "aws",
+			"iac_state_id":      `module.platform.aws_vpc_security_group_ingress_rule.public["ssh_open"].id`,
+			"direction":         "ingress",
+			"protocol":          "tcp",
+			"from_port":         22,
+			"to_port":           22,
+			"ip_ranges": []any{
+				map[string]any{"CidrIp": "0.0.0.0/0"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	execution := executions[0]
+	executor := NewExecutor(engine, nil, nil, nil, nil)
+
+	err = executor.Execute(context.Background(), execution)
+	if err == nil {
+		t.Fatal("expected terraform for_each rule rejection")
+	}
+	if !strings.Contains(err.Error(), "precondition failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	preconditions, _ := execution.Actions[0].Metadata["preconditions"].([]map[string]any)
+	if len(preconditions) == 0 {
+		t.Fatalf("expected precondition metadata, got %#v", execution.Actions[0].Metadata)
+	}
+	found := false
+	for _, precondition := range preconditions {
+		detail, _ := precondition["detail"].(string)
+		if strings.Contains(detail, "standalone Terraform security group rule resources") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected standalone-rule precondition detail, got %#v", preconditions)
+	}
+	if _, ok := execution.Actions[0].Metadata["planned_tool"]; ok {
+		t.Fatalf("expected compact metadata to omit planned_tool on terraform precondition failure, got %#v", execution.Actions[0].Metadata["planned_tool"])
 	}
 }
 

@@ -50,7 +50,7 @@ func (ex *Executor) executeCatalogAction(ctx context.Context, action Action, exe
 
 func (ex *Executor) restrictPublicStorageAccess(ctx context.Context, action Action, execution *Execution) (string, map[string]any, error) {
 	entry, _ := CatalogEntryByAction(action.Type)
-	plan := newCatalogActionPlan(action, execution, entry, ex.actionRequiresApproval(action))
+	plan := newCatalogActionPlan(action, execution, entry, ex.actionRequiresApproval(action, execution))
 	plan.before = captureStorageAccessEvidence(execution)
 
 	providerSupported := false
@@ -115,7 +115,7 @@ func (ex *Executor) restrictPublicStorageAccess(ctx context.Context, action Acti
 
 func (ex *Executor) enableBucketDefaultEncryption(ctx context.Context, action Action, execution *Execution) (string, map[string]any, error) {
 	entry, _ := CatalogEntryByAction(action.Type)
-	plan := newCatalogActionPlan(action, execution, entry, ex.actionRequiresApproval(action))
+	plan := newCatalogActionPlan(action, execution, entry, ex.actionRequiresApproval(action, execution))
 	sseAlgorithm := firstNonEmpty(strings.TrimSpace(action.Config["sse_algorithm"]), "AES256")
 	kmsMasterKeyID := strings.TrimSpace(action.Config["kms_master_key_id"])
 	bucketKeyEnabled := configBool(action.Config["bucket_key_enabled"])
@@ -189,15 +189,28 @@ func (ex *Executor) enableBucketDefaultEncryption(ctx context.Context, action Ac
 
 func (ex *Executor) restrictPublicSecurityGroupIngress(ctx context.Context, action Action, execution *Execution) (string, map[string]any, error) {
 	entry, _ := CatalogEntryByAction(action.Type)
-	plan := newCatalogActionPlan(action, execution, entry, ex.actionRequiresApproval(action))
+	plan := newCatalogActionPlan(action, execution, entry, ex.actionRequiresApproval(action, execution))
 	matches, detail := publicSecurityGroupIngressMatches(execution)
 	plan.before = captureSecurityGroupIngressEvidence(execution, matches)
+	providerSupported := false
+	providerDetail := firstNonEmpty(plan.provider, "missing provider")
+	switch plan.deliveryMode {
+	case DeliveryModeTerraform:
+		if _, _, ok := terraformExistingSecurityGroupRuleAddress(execution); ok && plan.provider == "aws" {
+			providerSupported = true
+			providerDetail = "standalone Terraform security group rule resource found"
+		} else if plan.provider == "aws" {
+			providerDetail = "terraform delivery currently requires standalone Terraform security group rule resources (aws_security_group_rule or aws_vpc_security_group_ingress_rule)"
+		}
+	case DeliveryModeRemoteApply:
+		providerSupported = plan.provider == "aws" && plan.tool != ""
+	}
 
 	matchedPorts := matchedRulePorts(matches)
 	matchedCIDRs := matchedRuleCIDRs(matches)
 	plan.preconditionCheck = append(plan.preconditionCheck,
 		preconditionResult("resource identifier available", plan.resourceID != "", firstNonEmpty(plan.resourceID, "missing resource identifier")),
-		preconditionResult("provider supported", plan.provider == "aws" && plan.tool != "", firstNonEmpty(plan.provider, "missing provider")),
+		preconditionResult("provider supported", providerSupported, providerDetail),
 		preconditionResult("matching public ingress identified", len(matches) > 0, detail),
 	)
 
@@ -206,6 +219,10 @@ func (ex *Executor) restrictPublicSecurityGroupIngress(ctx context.Context, acti
 		"matched_ports":      matchedPorts,
 		"matched_cidrs":      matchedCIDRs,
 	})
+	if !catalogSupportsDeliveryMode(entry, plan.deliveryMode) {
+		return "", compactAnyMap(metadata), fmt.Errorf("delivery mode %q is not supported for %s", plan.deliveryMode, action.Type)
+	}
+	metadata = compactAnyMap(metadata)
 	if !allPreconditionsPassed(plan.preconditionCheck) {
 		return "", metadata, fmt.Errorf("restrict public security group ingress precondition failed")
 	}
@@ -217,6 +234,22 @@ func (ex *Executor) restrictPublicSecurityGroupIngress(ctx context.Context, acti
 	execution.TriggerData["security_group_rule_matches"] = cloneMapSlice(matches)
 	execution.TriggerData["matched_ports"] = append([]string(nil), matchedPorts...)
 	execution.TriggerData["matched_cidrs"] = append([]string(nil), matchedCIDRs...)
+
+	if plan.deliveryMode == DeliveryModeTerraform {
+		artifact, err := renderTerraformArtifact(action, execution)
+		if err != nil {
+			return "", compactAnyMap(metadata), err
+		}
+		metadata["artifact"] = terraformArtifactMetadata(artifact)
+		metadata["after"] = map[string]any{
+			"planned":          true,
+			"delivery_mode":    string(plan.deliveryMode),
+			"change":           "terraform configuration generated to remove the public ingress rule",
+			"artifact_path":    artifact.Path,
+			"resource_address": artifact.ResourceAddress,
+		}
+		return fmt.Sprintf("Generated Terraform remediation at %s", artifact.Path), compactAnyMap(metadata), nil
+	}
 
 	if plan.dryRun {
 		metadata["after"] = map[string]any{
@@ -237,7 +270,7 @@ func (ex *Executor) restrictPublicSecurityGroupIngress(ctx context.Context, acti
 
 func (ex *Executor) disableStaleAccessKey(ctx context.Context, action Action, execution *Execution) (string, map[string]any, error) {
 	entry, _ := CatalogEntryByAction(action.Type)
-	plan := newCatalogActionPlan(action, execution, entry, ex.actionRequiresApproval(action))
+	plan := newCatalogActionPlan(action, execution, entry, ex.actionRequiresApproval(action, execution))
 	threshold := actionIntConfig(action, "inactive_days", 90)
 	candidate, candidateOK := staleAccessKeyCandidateFromExecution(execution, threshold)
 	plan.before = captureAccessKeyEvidence(execution, candidate, threshold)
@@ -302,7 +335,7 @@ func (ex *Executor) executeCatalogRemoteAction(ctx context.Context, action Actio
 
 func newCatalogActionPlan(action Action, execution *Execution, entry CatalogEntry, approvalRequired bool) catalogActionPlan {
 	provider := inferProvider(execution)
-	deliveryMode := actionDeliveryMode(action, entry)
+	deliveryMode := actionDeliveryMode(action, execution, entry)
 	tool := ""
 	if deliveryMode == DeliveryModeRemoteApply {
 		tool = firstNonEmpty(action.Config["tool"], catalogToolForProvider(entry, provider))
