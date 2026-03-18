@@ -743,6 +743,141 @@ func TestAdapterNormalizeSecuritySocketConnectKprobe(t *testing.T) {
 	}
 }
 
+func TestAdapterNormalizeDNSKprobe(t *testing.T) {
+	raw := []byte(`{
+		"process_kprobe": {
+			"process": {
+				"exec_id": "exec-dns-1",
+				"pid": 3141,
+				"uid": 0,
+				"cwd": "/",
+				"binary": "/usr/bin/dig",
+				"arguments": "api.github.com",
+				"flags": "execve rootcwd clone",
+				"start_time": "2024-04-14T02:18:02.240856427Z",
+				"pod": {
+					"namespace": "default",
+					"name": "dns-client",
+					"workload": "dns-client",
+					"container": {
+						"id": "containerd://dns-client",
+						"name": "dns-client",
+						"image": {
+							"id": "sha256:dns-client",
+							"name": "busybox:latest"
+						}
+					},
+					"pod_labels": {
+						"run": "dns-client"
+					}
+				},
+				"docker": "dns-client",
+				"parent_exec_id": "parent-dns-1"
+			},
+			"parent": {
+				"binary": "/bin/sh"
+			},
+			"function_name": "ip_output",
+			"args": [
+				{
+					"skb_arg": {
+						"family": "AF_INET",
+						"protocol": "IPPROTO_UDP",
+						"saddr": "10.88.0.6",
+						"daddr": "10.96.0.10",
+						"sport": 45612,
+						"dport": 53,
+						"len": 88,
+						"proto": 17
+					}
+				}
+			],
+			"return": {
+				"int_arg": 0
+			},
+			"action": "KPROBE_ACTION_POST",
+			"policy_name": "dns-only-specified-servers",
+			"return_action": "KPROBE_ACTION_POST"
+		},
+		"node_name": "worker-1",
+		"time": "2024-04-14T02:18:14.376304204Z"
+	}`)
+
+	observations, err := (Adapter{}).Normalize(context.Background(), raw)
+	if err != nil {
+		t.Fatalf("Normalize: %v", err)
+	}
+	if len(observations) != 1 {
+		t.Fatalf("len(observations) = %d, want 1", len(observations))
+	}
+
+	observation := observations[0]
+	if observation.Kind != runtime.ObservationKindDNSQuery {
+		t.Fatalf("kind = %s, want %s", observation.Kind, runtime.ObservationKindDNSQuery)
+	}
+	if observation.Network == nil {
+		t.Fatal("expected network context")
+	}
+	if observation.Network.Protocol != "dns" {
+		t.Fatalf("network.protocol = %q, want dns", observation.Network.Protocol)
+	}
+	if observation.Network.SrcIP != "10.88.0.6" || observation.Network.DstIP != "10.96.0.10" {
+		t.Fatalf("network = %#v, want DNS src/dst IPs", observation.Network)
+	}
+	if observation.Network.SrcPort != 45612 || observation.Network.DstPort != 53 {
+		t.Fatalf("network ports = %#v, want 45612 -> 53", observation.Network)
+	}
+	if observation.Network.BytesSent != 88 {
+		t.Fatalf("bytes_sent = %d, want 88", observation.Network.BytesSent)
+	}
+	if got := observation.Metadata["transport_protocol"]; got != "IPPROTO_UDP" {
+		t.Fatalf("transport_protocol = %#v, want IPPROTO_UDP", got)
+	}
+	if got := observation.Metadata["transport_protocol_number"]; got != float64(17) && got != uint32(17) && got != 17 {
+		t.Fatalf("transport_protocol_number = %#v, want 17", got)
+	}
+}
+
+func TestAdapterNormalizeDNSKprobeRequiresDestination(t *testing.T) {
+	raw := []byte(`{
+		"process_kprobe": {
+			"process": {
+				"exec_id": "exec-dns-2",
+				"pid": 3142,
+				"uid": 0,
+				"binary": "/usr/bin/dig",
+				"start_time": "2024-04-14T02:18:02.240856427Z",
+				"pod": {
+					"namespace": "default",
+					"name": "dns-client",
+					"container": {
+						"id": "containerd://dns-client",
+						"name": "dns-client",
+						"image": {
+							"id": "sha256:dns-client",
+							"name": "busybox:latest"
+						}
+					}
+				}
+			},
+			"function_name": "ip_output",
+			"args": [
+				{
+					"skb_arg": {
+						"protocol": "IPPROTO_UDP",
+						"dport": 53
+					}
+				}
+			]
+		},
+		"time": "2024-04-14T02:18:14.376304204Z"
+	}`)
+
+	if _, err := (Adapter{}).Normalize(context.Background(), raw); err == nil {
+		t.Fatal("expected missing DNS destination error")
+	}
+}
+
 func TestAdapterNormalizeUnsupportedEvent(t *testing.T) {
 	raw := []byte(`{"process_kprobe":{"process":{"exec_id":"exec-1"}}}`)
 	if _, err := (Adapter{}).Normalize(context.Background(), raw); err == nil {
