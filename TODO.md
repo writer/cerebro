@@ -65,6 +65,18 @@ Status: executed end-to-end via PR workflow
 - [x] Keep the rest of the platform report execution flow unchanged so this slice only covers read-only lineage and section summarization.
 - [x] Add store-only regressions for sync create, sync retry, and artifact section lineage, then rerun focused API tests, lint, and changed-file validation.
 
+## Deep Review Cycle 205 - Graph Store Platform Snapshot And Attack-Path Jobs (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left `GET /api/v1/platform/graph/snapshots/current` bound to `s.app.SecurityGraph`, so the endpoint returned `404` whenever the runtime exposed only a graph store and no live in-memory graph pointer.
+- [x] Gap: the async attack-path analysis job also closed over `s.app.SecurityGraph`, so store-backed runtimes could not queue attack-path analysis even though a stable snapshot view was available.
+- [x] Gap: there was no regression proving either endpoint still works when the server is constructed with only a `GraphStore`.
+
+### Execution plan
+- [x] Route current platform snapshot lookup through the shared snapshot-backed tenant graph helper and preserve `404` only for the genuine no-snapshot case.
+- [x] Capture a stable snapshot-backed graph view before launching the async attack-path job so the job no longer depends on a live mutable graph pointer.
+- [x] Add store-only regressions for both endpoints, then rerun focused API tests, lint, and changed-file validation before opening the PR.
+
 ## Deep Review Cycle 203 - Graph Store Risk Engine Feedback Paths (2026-03-18)
 
 ### Review findings

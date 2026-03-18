@@ -133,8 +133,17 @@ func (s *Server) listPlatformGraphSnapshots(w http.ResponseWriter, _ *http.Reque
 	s.json(w, http.StatusOK, s.platformGraphSnapshotCollection())
 }
 
-func (s *Server) getCurrentPlatformGraphSnapshot(w http.ResponseWriter, _ *http.Request) {
-	current := graph.CurrentGraphSnapshotRecord(s.app.SecurityGraph)
+func (s *Server) getCurrentPlatformGraphSnapshot(w http.ResponseWriter, r *http.Request) {
+	view, err := s.currentTenantSecurityGraphSnapshotView(r.Context())
+	if err != nil {
+		if errors.Is(err, graph.ErrStoreUnavailable) {
+			s.errorFromErr(w, err)
+			return
+		}
+		s.errorFromErr(w, err)
+		return
+	}
+	current := graph.CurrentGraphSnapshotRecord(view)
 	if current == nil {
 		s.error(w, http.StatusNotFound, "graph snapshot not available")
 		return
@@ -194,11 +203,6 @@ func (s *Server) platformWriteDecision(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createSecurityAttackPathJob(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-
 	var req securityAttackPathJobRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.error(w, http.StatusBadRequest, "invalid request body")
@@ -225,6 +229,15 @@ func (s *Server) createSecurityAttackPathJob(w http.ResponseWriter, r *http.Requ
 		s.error(w, http.StatusBadRequest, "threshold must be greater than or equal to 0")
 		return
 	}
+	analysisGraph, err := s.currentTenantSecurityGraphSnapshotView(r.Context())
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
+	if analysisGraph == nil {
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+		return
+	}
 
 	job := s.newPlatformJob(r.Context(), "security.attack_path_analysis", map[string]any{
 		"max_depth": maxDepth,
@@ -234,7 +247,7 @@ func (s *Server) createSecurityAttackPathJob(w http.ResponseWriter, r *http.Requ
 
 	// #nosec G118 -- platform jobs intentionally outlive the originating request and use job-owned cancellation.
 	s.startPlatformJob(job.ID, func(_ context.Context) (any, error) {
-		simulator := risk.NewAttackPathSimulator(s.app.SecurityGraph)
+		simulator := risk.NewAttackPathSimulator(analysisGraph)
 		result := simulator.Simulate(maxDepth)
 		if req.Threshold > 0 {
 			filtered := make([]*risk.ScoredAttackPath, 0, len(result.Paths))
