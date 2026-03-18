@@ -145,7 +145,6 @@ var (
 	hasNodeMetadataProfile        = HasNodeMetadataProfile
 	matchesPropertyType           = MatchesPropertyType
 	sliceContainsString           = SliceContainsString
-	writeJSONAtomic               = WriteJSONAtomic
 )
 
 func cloneTimePtr(value *time.Time) *time.Time {

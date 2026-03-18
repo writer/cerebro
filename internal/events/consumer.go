@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
+	"github.com/writer/cerebro/internal/executionstore"
 	"github.com/writer/cerebro/internal/jsonl"
 	"github.com/writer/cerebro/internal/metrics"
 )
@@ -46,6 +47,11 @@ type ConsumerConfig struct {
 	DropHealthLookback  time.Duration
 	DropHealthThreshold int
 	PayloadPreviewBytes int
+	DedupEnabled        bool
+	DedupStateFile      string
+	DedupStore          executionstore.Store
+	DedupTTL            time.Duration
+	DedupMaxRecords     int
 
 	AuthMode string
 	Username string
@@ -88,6 +94,7 @@ type Consumer struct {
 	lastEventTime   time.Time
 	consumerLag     int
 	consumerLagAge  time.Duration
+	deduper         *consumerProcessedEventDeduper
 }
 
 type ConsumerHealthSnapshot struct {
@@ -117,6 +124,17 @@ func NewJetStreamConsumer(cfg ConsumerConfig, logger *slog.Logger, handler Event
 	dlq, err := newConsumerDeadLetterSink(config.DeadLetterPath)
 	if err != nil {
 		return nil, err
+	}
+	var deduper *consumerProcessedEventDeduper
+	if config.DedupEnabled {
+		if config.DedupStore != nil {
+			deduper = newConsumerProcessedEventDeduperWithStore(config.DedupStore, config.Stream, config.Durable, config.DedupTTL, config.DedupMaxRecords)
+		} else {
+			deduper, err = newConsumerProcessedEventDeduper(config.DedupStateFile, config.Stream, config.Durable, config.DedupTTL, config.DedupMaxRecords)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	base := JetStreamConfig{
@@ -155,6 +173,7 @@ func NewJetStreamConsumer(cfg ConsumerConfig, logger *slog.Logger, handler Event
 		config:  config,
 		handler: handler,
 		dlq:     dlq,
+		deduper: deduper,
 		nc:      nc,
 		js:      js,
 		stopCh:  make(chan struct{}),
@@ -236,6 +255,11 @@ func (c *Consumer) cleanup() error {
 			closeErr = errors.Join(closeErr, fmt.Errorf("drain consumer nats connection: %w", err))
 		}
 		c.nc.Close()
+	}
+	if c.deduper != nil {
+		if err := c.deduper.Close(); err != nil {
+			closeErr = errors.Join(closeErr, fmt.Errorf("close consumer dedupe store: %w", err))
+		}
 	}
 	return closeErr
 }
@@ -353,6 +377,74 @@ func (c *Consumer) handleMessage(ctx context.Context, subject string, payload []
 		}
 		return consumerMessageResult{}
 	}
+	if c.deduper != nil {
+		record, hashMismatch, err := c.deduper.Lookup(ctx, evt, payload, time.Now().UTC())
+		if err != nil {
+			c.logger.Warn("tap consumer dedupe lookup failed; continuing without duplicate suppression",
+				"error", err,
+				"event_id", evt.ID,
+				"event_type", evt.Type,
+			)
+		} else if record != nil {
+			if hashMismatch {
+				if err := c.deduper.Forget(ctx, evt); err != nil {
+					c.logger.Error("tap consumer failed to clear conflicting dedupe state; message requeued",
+						"error", err,
+						"event_id", evt.ID,
+						"event_type", evt.Type,
+						"source", evt.Source,
+						"processed_at", record.ProcessedAt.UTC().Format(time.RFC3339Nano),
+					)
+					if nakErr := nak(); nakErr != nil {
+						c.logger.Warn("tap consumer nak failed after dedupe hash mismatch state clear failure", "error", nakErr, "event_type", evt.Type)
+					}
+					return consumerMessageResult{}
+				}
+				if dlqErr := c.dlq.Write(consumerDeadLetterRecord{
+					RecordedAt: time.Now().UTC(),
+					Stream:     c.config.Stream,
+					Durable:    c.config.Durable,
+					Subject:    subject,
+					Reason:     "dedupe_hash_mismatch",
+					Error:      fmt.Sprintf("duplicate event key matched different payload hash: processed_at=%s", record.ProcessedAt.UTC().Format(time.RFC3339Nano)),
+					Payload:    string(payload),
+				}); dlqErr != nil {
+					c.logger.Error("tap consumer failed to dead-letter duplicate hash mismatch; message requeued",
+						"error", dlqErr,
+						"event_id", evt.ID,
+						"event_type", evt.Type,
+						"source", evt.Source,
+					)
+					if nakErr := nak(); nakErr != nil {
+						c.logger.Warn("tap consumer nak failed after dedupe hash mismatch dead-letter error", "error", nakErr, "event_type", evt.Type)
+					}
+					return consumerMessageResult{}
+				}
+				c.logger.Error("tap consumer dead-lettered duplicate event key with different payload hash",
+					"event_id", evt.ID,
+					"event_type", evt.Type,
+					"source", evt.Source,
+					"processed_at", record.ProcessedAt.UTC().Format(time.RFC3339Nano),
+				)
+				if nakErr := nak(); nakErr != nil {
+					c.logger.Warn("tap consumer nak failed after clearing dedupe hash mismatch state", "error", nakErr, "event_type", evt.Type)
+				}
+				return consumerMessageResult{}
+			}
+			if err := c.deduper.ObserveDuplicate(ctx, evt, time.Now().UTC()); err != nil {
+				c.logger.Warn("tap consumer failed to refresh duplicate dedupe state",
+					"error", err,
+					"event_id", evt.ID,
+					"event_type", evt.Type,
+				)
+			}
+			metrics.RecordNATSConsumerDeduplicated(c.config.Stream, c.config.Durable)
+			if err := ack(); err != nil {
+				c.logger.Warn("tap consumer ack failed after duplicate suppression", "error", err, "event_type", evt.Type)
+			}
+			return consumerMessageResult{}
+		}
+	}
 	stopHeartbeat := c.startInProgressHeartbeat(ctx, inProgress)
 	defer stopHeartbeat()
 	if err := c.handler(ctx, evt); err != nil {
@@ -363,6 +455,16 @@ func (c *Consumer) handleMessage(ctx context.Context, subject string, payload []
 		return consumerMessageResult{}
 	}
 	processedAt := time.Now().UTC()
+	metrics.RecordNATSConsumerProcessed(c.config.Stream, c.config.Durable)
+	if c.deduper != nil {
+		if err := c.deduper.Remember(ctx, evt, payload, processedAt); err != nil {
+			c.logger.Warn("tap consumer failed to persist processed event dedupe state",
+				"error", err,
+				"event_id", evt.ID,
+				"event_type", evt.Type,
+			)
+		}
+	}
 	if err := ack(); err != nil {
 		c.logger.Warn("tap consumer ack failed", "error", err, "event_type", evt.Type)
 	}
@@ -692,6 +794,12 @@ func (c ConsumerConfig) withDefaults() ConsumerConfig {
 	if cfg.PayloadPreviewBytes <= 0 {
 		cfg.PayloadPreviewBytes = defaultConsumerPayloadPreviewBytes
 	}
+	if cfg.DedupTTL <= 0 {
+		cfg.DedupTTL = 24 * time.Hour
+	}
+	if cfg.DedupMaxRecords <= 0 {
+		cfg.DedupMaxRecords = 100_000
+	}
 	if cfg.MaxAckPending <= 0 {
 		cfg.MaxAckPending = cfg.BatchSize * 10
 	}
@@ -725,6 +833,17 @@ func (c ConsumerConfig) validate() error {
 	}
 	if c.FetchTimeout <= 0 {
 		return errors.New("consumer fetch timeout must be > 0")
+	}
+	if c.DedupEnabled {
+		if strings.TrimSpace(c.DedupStateFile) == "" {
+			return errors.New("consumer dedupe state file is required when dedupe is enabled")
+		}
+		if c.DedupTTL <= 0 {
+			return errors.New("consumer dedupe ttl must be > 0 when dedupe is enabled")
+		}
+		if c.DedupMaxRecords <= 0 {
+			return errors.New("consumer dedupe max records must be > 0 when dedupe is enabled")
+		}
 	}
 	return nil
 }
