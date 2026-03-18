@@ -29,6 +29,18 @@ Status: executed end-to-end via PR workflow
 - [x] Teach `currentTenantRiskEngine(...)` to build from the shared tenant graph-view helper so tenant-scoped risk reports work without a live in-memory shard.
 - [x] Add tenant-scoped store-only regressions for graph intelligence and risk report handlers, then rerun focused and changed-file API validation.
 
+## Deep Review Cycle 203 - Graph Store Policy Evaluation Paths (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left `POST /api/v1/policy/evaluate` using the raw `s.app.SecurityGraph` pointer for proposed-change propagation analysis, so store-backed runtimes would deny the analysis path even when a graph snapshot was available.
+- [x] Gap: the graph-store migration already introduced a shared snapshot-backed tenant graph helper, but policy evaluation still bypassed it and therefore diverged from the other read-only analysis endpoints.
+- [x] Gap: there was no regression proving policy evaluation with `proposed_change` still returns propagation results when the server is constructed with only a `GraphStore`.
+
+### Execution plan
+- [x] Route proposed-change propagation analysis in `policy/evaluate` through the shared snapshot-backed tenant graph view helper.
+- [x] Add a store-only API regression for policy evaluation so the proposed-change path no longer depends on a live in-memory graph pointer.
+- [x] Re-run focused API tests, lint, and changed-file validation before pushing the next `#392` slice.
+
 ## Deep Review Cycle 199 - API Endpoint Graph Substrate (2026-03-18)
 
 ### Review findings

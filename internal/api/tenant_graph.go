@@ -30,6 +30,9 @@ func (s *Server) currentTenantSecurityGraphView(ctx context.Context) (*graph.Gra
 	if g := s.currentTenantSecurityGraph(ctx); g != nil {
 		return g, nil
 	}
+	if g := s.currentTenantSecurityGraph(ctx); g != nil {
+		return g, nil
+	}
 	if store := s.currentTenantSecurityGraphStore(ctx); store != nil {
 		snapshot, err := store.Snapshot(ctx)
 		if err != nil {
