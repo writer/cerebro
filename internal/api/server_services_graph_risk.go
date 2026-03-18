@@ -138,25 +138,25 @@ func (s serverGraphRiskService) RiskReport(ctx context.Context) (*risk.SecurityR
 }
 
 func (s serverGraphRiskService) ToxicCombinations(ctx context.Context) ([]*risk.ToxicCombination, error) {
-	g := s.tenantGraph(ctx)
-	if g == nil {
-		return nil, errGraphRiskUnavailable
+	g, err := s.tenantAnalysisGraph(ctx)
+	if err != nil {
+		return nil, err
 	}
 	return risk.NewToxicCombinationEngine().Analyze(g), nil
 }
 
 func (s serverGraphRiskService) AttackPaths(ctx context.Context, maxDepth int) (*risk.SimulationResult, error) {
-	g := s.tenantGraph(ctx)
-	if g == nil {
-		return nil, errGraphRiskUnavailable
+	g, err := s.tenantAnalysisGraph(ctx)
+	if err != nil {
+		return nil, err
 	}
 	return risk.NewAttackPathSimulator(g).Simulate(maxDepth), nil
 }
 
 func (s serverGraphRiskService) SimulateAttackPathFix(ctx context.Context, nodeID string) (*risk.FixSimulation, error) {
-	g := s.tenantGraph(ctx)
-	if g == nil {
-		return nil, errGraphRiskUnavailable
+	g, err := s.tenantAnalysisGraph(ctx)
+	if err != nil {
+		return nil, err
 	}
 	sim := risk.NewAttackPathSimulator(g)
 	result := sim.Simulate(6)
@@ -172,25 +172,25 @@ func (s serverGraphRiskService) Chokepoints(ctx context.Context) ([]*risk.Chokep
 }
 
 func (s serverGraphRiskService) DetectPrivilegeEscalation(ctx context.Context, principalID string) ([]*graph.PrivilegeEscalationRisk, error) {
-	g := s.tenantGraph(ctx)
-	if g == nil {
-		return nil, errGraphRiskUnavailable
+	g, err := s.tenantAnalysisGraph(ctx)
+	if err != nil {
+		return nil, err
 	}
 	return graph.DetectPrivilegeEscalationRisks(g, principalID), nil
 }
 
 func (s serverGraphRiskService) AnalyzePeerGroups(ctx context.Context, minSimilarity float64, minGroupSize int) (*graph.PeerGroupAnalysis, []*graph.OutlierNode, error) {
-	g := s.tenantGraph(ctx)
-	if g == nil {
-		return nil, nil, errGraphRiskUnavailable
+	g, err := s.tenantAnalysisGraph(ctx)
+	if err != nil {
+		return nil, nil, err
 	}
 	return graph.AnalyzePeerGroups(g, minSimilarity, minGroupSize), graph.FindPrivilegeCreep(g, 1.5), nil
 }
 
 func (s serverGraphRiskService) EffectivePermissions(ctx context.Context, principalID string, evalCtx *graph.PermissionEvaluationContext) (*graph.EffectivePermissions, error) {
-	g := s.tenantGraph(ctx)
-	if g == nil {
-		return nil, errGraphRiskUnavailable
+	g, err := s.tenantAnalysisGraph(ctx)
+	if err != nil {
+		return nil, err
 	}
 	calc := graph.NewEffectivePermissionsCalculator(g)
 	if evalCtx != nil {
@@ -200,9 +200,9 @@ func (s serverGraphRiskService) EffectivePermissions(ctx context.Context, princi
 }
 
 func (s serverGraphRiskService) ComparePermissions(ctx context.Context, principal1, principal2 string) (*graph.AccessComparison, error) {
-	g := s.tenantGraph(ctx)
-	if g == nil {
-		return nil, errGraphRiskUnavailable
+	g, err := s.tenantAnalysisGraph(ctx)
+	if err != nil {
+		return nil, err
 	}
 	return graph.CompareAccess(g, principal1, principal2), nil
 }
@@ -219,6 +219,22 @@ func (s serverGraphRiskService) tenantStore(ctx context.Context) graph.GraphStor
 		return nil
 	}
 	return s.deps.CurrentSecurityGraphStoreForTenant(currentTenantScopeID(ctx))
+}
+
+func (s serverGraphRiskService) tenantAnalysisGraph(ctx context.Context) (*graph.Graph, error) {
+	store := s.tenantStore(ctx)
+	if store == nil {
+		return nil, errGraphRiskUnavailable
+	}
+	snapshot, err := store.Snapshot(ctx)
+	if err != nil {
+		return nil, graphRiskErr(err)
+	}
+	view := graph.GraphViewFromSnapshot(snapshot)
+	if view == nil {
+		return nil, errGraphRiskUnavailable
+	}
+	return view, nil
 }
 
 func graphRiskErr(err error) error {

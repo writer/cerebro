@@ -140,6 +140,18 @@ Status: executed end-to-end via PR workflow
 - [x] Route Mermaid attack-path, toxic-combination, and report handlers through the store-backed view path instead of `s.app.SecurityGraph`.
 - [x] Add store-only API regression coverage for the visualization/report handlers so they succeed with no raw live graph pointer.
 
+## Deep Review Cycle 199 - Graph Store Risk Analysis Paths (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left the JSON risk-analysis endpoints backed by raw `*graph.Graph` reads in `serverGraphRiskService`, so the store seam stopped at traversals and Mermaid exports instead of covering the rest of the read-only analysis surface.
+- [x] Gap: toxic combination analysis, attack-path simulation, permission diffing, and peer-group analysis only require a stable read-only graph view, but they bypassed `GraphStore.Snapshot()` and would fail against a future backend with no direct in-memory pointer.
+- [x] Gap: API regression coverage did not prove these analysis endpoints could execute with only a `GraphStore`, so pointer-coupled behavior could silently return during the Neptune/Spanner migration.
+
+### Execution plan
+- [x] Materialize analysis graphs in `serverGraphRiskService` from `GraphStore.Snapshot()` plus `graph.GraphViewFromSnapshot(...)`.
+- [x] Route toxic-combination, attack-path, simulate-fix, chokepoint, privilege-escalation, peer-group, effective-permissions, and compare-permissions analysis through that snapshot-backed view path.
+- [x] Add store-only API regression coverage for the migrated analysis endpoints.
+
 ## Deep Review Cycle 195 - Graph Store Abstraction (2026-03-17)
 
 ### Review findings
