@@ -582,6 +582,38 @@ func (a *App) cerebroTools() []agents.Tool {
 			Handler: a.toolCerebroGraphQuery,
 		},
 		{
+			Name:        "cerebro.correlate_events",
+			Description: "Find temporal causal chains and anomaly signals around one event or entity",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"event_id": map[string]any{
+						"type":        "string",
+						"description": "Optional event node ID to expand into the local causal neighborhood.",
+					},
+					"entity_id": map[string]any{
+						"type":        "string",
+						"description": "Optional entity ID (for example service:payments) to scope correlated events.",
+					},
+					"pattern_id": map[string]any{
+						"type":        "string",
+						"description": "Optional built-in correlation pattern filter applied after event_id/entity_id scoping.",
+					},
+					"limit": map[string]any{
+						"type":        "integer",
+						"description": "Maximum number of correlations/anomalies to return (1-200).",
+						"default":     25,
+					},
+					"include_anomalies": map[string]any{
+						"type":        "boolean",
+						"description": "Include anomaly summaries for the same event/entity context.",
+						"default":     false,
+					},
+				},
+			},
+			Handler: a.toolCerebroCorrelateEvents,
+		},
+		{
 			Name:        "cerebro.findings",
 			Description: "List and search findings with filtering",
 			Parameters: map[string]any{

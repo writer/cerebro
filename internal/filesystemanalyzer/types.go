@@ -11,8 +11,13 @@ type MalwareScanner interface {
 	ScanData(ctx context.Context, data []byte, filename string) (*scanner.MalwareScanResult, error)
 }
 
+type PackageVulnerabilityMatcher interface {
+	MatchPackages(ctx context.Context, os OSInfo, packages []PackageRecord) ([]scanner.ImageVulnerability, error)
+}
+
 type Options struct {
 	VulnerabilityScanner scanner.FilesystemScanner
+	VulnerabilityMatcher PackageVulnerabilityMatcher
 	MalwareScanner       MalwareScanner
 	Now                  func() time.Time
 	MaxWalkEntries       int

@@ -1,9 +1,297 @@
 # Cerebro Intelligence Layer Execution TODO
 
-Last updated: 2026-03-11 (America/Los_Angeles)
+Last updated: 2026-03-12 (America/Los_Angeles)
 Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
+
+## Deep Review Cycle 57 - Cross-Event Correlation + Incident Pattern Detection (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#170` was still leaving Cerebro with event nodes but no shared causal layer, so analysts and agents still had to manually infer `PR -> deploy -> incident` chains from raw neighbors.
+- [x] Gap: graph activation and live TAP ingest were both materializing event nodes independently, but neither path was projecting durable `triggered_by` / `caused_by` edges back into the graph substrate.
+- [x] Gap: temporal pattern detection needed to be a typed catalog, not a report-only heuristic blob, or downstream APIs/tools would drift into duplicated correlation logic.
+- [x] Gap: anomaly detection for event rates had no baseline contract, so operational reports could not distinguish one-off incidents from real volume spikes.
+- [x] Gap: the platform intelligence surface had no dedicated read/tool endpoint for causal event neighborhoods.
+
+### Execution plan
+- [x] Add graph-level event-correlation substrate:
+  - [x] add built-in edge kinds `triggered_by` and `caused_by`
+  - [x] extend schema registry allowances for `deployment_run` and `incident`
+  - [x] add `internal/graph/event_correlation.go` with typed pattern catalog and deterministic edge IDs
+  - [x] materialize `pull_request -> deployment_run` and `deployment_run -> incident` chains from shared service target context plus time windows
+- [x] Add baseline anomaly summaries:
+  - [x] compare current 7d windows against the prior 28d baseline
+  - [x] flag failed-deployment spikes
+  - [x] flag first incident activity in 90d
+- [x] Wire both graph build paths:
+  - [x] rematerialize event correlations during `activateBuiltSecurityGraph(...)`
+  - [x] rematerialize event correlations on live TAP declarative mappings when relevant event kinds change
+- [x] Add platform read surfaces:
+  - [x] `GET /api/v1/platform/intelligence/event-patterns`
+  - [x] `GET /api/v1/platform/intelligence/event-correlations`
+  - [x] `GET /api/v1/platform/intelligence/event-anomalies`
+- [x] Add agent-facing tool surface:
+  - [x] `cerebro.correlate_events`
+  - [x] tool regression coverage
+- [x] Add focused regression coverage:
+  - [x] graph-level causal chain materialization
+  - [x] graph-level anomaly detection
+  - [x] live TAP ingest correlation materialization
+  - [x] platform intelligence endpoint coverage
+- [x] Pull external reference patterns with `gh` and fold them into the design:
+  - [x] `argoproj/argo-events` trigger registry shape
+  - [x] `OpenLineage/OpenLineage` explicit lineage contract surface
+  - [x] `falcosecurity/falco` typed event-pattern/rule engine inspiration
+
+### Detailed follow-on backlog
+- [ ] Track A - Correlation rule expansion
+  - Exit criteria:
+  - [ ] add typed patterns for `pipeline_run -> deployment_run`, `check_run -> deployment_run`, and `incident -> decision/action/outcome`
+  - [ ] support multi-step correlation chains without recomputing the entire graph client-side
+  - [ ] attach confidence decay/ambiguity scoring when multiple candidate causes exist
+- [ ] Track B - Shared execution + persistent derivation store
+  - Exit criteria:
+  - [ ] move event-correlation execution metadata out of process memory and into the shared execution store boundary
+  - [ ] persist correlation runs / refresh metadata for multi-worker consistency
+  - [ ] make manual re-correlation and backfill operations first-class platform jobs
+- [ ] Track C - Report and simulation integration
+  - Exit criteria:
+  - [ ] expose correlation chains directly in incident, runtime, and org-dynamics reports
+  - [ ] feed correlation edges into simulation/explanation payloads instead of duplicating neighborhood traversal
+  - [ ] attach supporting evidence/claim lineage to correlation edges where source artifacts exist
+- [ ] Track D - Asset/runtime deepening
+  - Exit criteria:
+  - [ ] connect image/workload scan findings into the same causal graph so deploy/runtime/incident chains become asset-aware
+  - [ ] project runtime response executions and containment outcomes into event correlation chains
+  - [ ] extend anomaly baselines with workload/image/runtime dimensions once shared execution storage is in place
+
+## Deep Review Cycle 56 - Runtime Response Executors + Capability Boundaries (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#154` was still leaving runtime response policies half-stubbed even after the shared action engine landed in issue `#143`.
+- [x] Gap: default runtime policies referenced `kill_process`, `isolate_container`, `block_ip`, `block_domain`, `revoke_credentials`, and `scale_down`, but only the action model existed; no concrete executor coverage was wired in app runtime initialization.
+- [x] Gap: Cerebro needed an explicit split between direct local actions, Ensemble-delegated actions, and control-plane side effects instead of one undifferentiated handler interface.
+- [x] Gap: scale-down actions needed a typed workload target contract or they would stay permanently heuristic and silently broken.
+- [x] Gap: the architecture/docs still had no record of which runtime actions are genuinely local today versus which ones require remote actuator coverage.
+- [x] Gap: default destructive runtime policies were auto-executing against finding-derived target identifiers without a trusted source/ownership gate.
+
+### Execution plan
+- [x] Add a concrete runtime action handler:
+  - [x] add `internal/runtime/action_handler.go`
+  - [x] implement direct local handlers for `block_ip`, `block_domain`, and `scale_down`
+  - [x] implement Ensemble delegation for `kill_process`, `isolate_container`, `isolate_host`, `quarantine_file`, and `revoke_credentials`
+  - [x] return typed capability errors when a remote-only action has no remote tool provider configured
+- [x] Tighten scale-down targeting:
+  - [x] add typed workload target parsing via `deployment:namespace/name` and `statefulset:namespace/name`
+  - [x] resolve scale-down targets from runtime finding metadata before dispatch
+  - [x] use Kubernetes client-go scale updates for direct workload scale-down
+- [x] Wire runtime response initialization in the app:
+  - [x] set `runtime.NewDefaultActionHandler(...)` during `initRuntime()`
+  - [x] feed the runtime blocklist and optional `RemoteTools` provider into that handler
+- [x] Add trust boundaries for destructive actuation:
+  - [x] require a trusted actuation scope before destructive runtime targets are accepted
+  - [x] force the default destructive runtime policies back behind approval until source identity binding exists
+  - [x] reject out-of-range direct scale-down replica counts
+- [x] Add focused regression coverage:
+  - [x] blocklist containment tests
+  - [x] Ensemble delegation tests
+  - [x] scale-down target resolution tests
+  - [x] app/runtime focused validation on the new handler path
+- [x] Capture architecture + external references:
+  - [x] add `docs/RUNTIME_RESPONSE_EXECUTION_ARCHITECTURE.md`
+  - [x] pull runtime/executor reference patterns via `gh` from `falcosecurity/falco`, `stackrox/stackrox`, and `aquasecurity/trivy-operator`
+
+### Detailed follow-on backlog
+- [ ] Track A - Remote runtime action packs
+  - Exit criteria:
+  - [ ] publish documented contracts for `security.runtime.*` remote tools
+  - [ ] add at least one reference implementation for host/container/process enforcement
+  - [ ] make provider/action capability discovery queryable
+- [ ] Track B - Direct provider-native containment
+  - Exit criteria:
+  - [ ] add first-class cloud credential revocation for supported providers
+  - [ ] add provider-native network containment instead of best-effort remote tooling only
+  - [ ] decide whether host isolation remains remote-only or grows direct cloud implementations
+- [ ] Track C - Shared execution + distributed enforcement
+  - Exit criteria:
+  - [ ] stop treating runtime blocklists as process-local state only
+  - [ ] attach runtime containment state to a shared execution/control-store boundary
+  - [ ] propagate enforcement state cleanly across multi-worker/runtime instances
+- [ ] Track D - Graph/incident integration
+  - Exit criteria:
+  - [ ] project runtime response executions and containment outcomes into the graph
+  - [ ] connect runtime action outcomes to findings, workload vulnerability context, and incident timelines
+  - [ ] feed issue `#170` cross-event correlation with concrete response-action outcomes
+
+## Deep Review Cycle 55 - Shared Action Engine + Durable Security Actuation (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#143` still existed because remediation and runtime response were maintaining separate approval, sequencing, and execution-status models for the same underlying action problem.
+- [x] Gap: issue `#154` would have duplicated "real executor" work again unless both application surfaces moved onto one shared substrate first.
+- [x] Gap: the repo already had a shared execution-store seam, but security actuation was not using it consistently and could still drift back into process-local orchestration.
+- [x] Gap: runtime approval flows were at risk of losing original finding context unless the triggering payload was preserved end-to-end through approval and execution.
+- [x] Gap: a naive lock-scoped runtime refactor would deadlock or serialize action execution behind policy-map reads.
+
+### Execution plan
+- [x] Add a shared action-engine substrate:
+  - [x] add `internal/actionengine` with typed `Signal`, `Trigger`, `Playbook`, `Step`, `Execution`, and `Event`
+  - [x] add trigger matching, approval gating, ordered step execution, timeout handling, and failure-policy support
+  - [x] persist executions and events through `internal/executionstore` under namespace `action_engine`
+- [x] Replatform remediation execution on top of the shared action engine:
+  - [x] map remediation rules to shared playbooks
+  - [x] map trigger data to shared signals
+  - [x] map shared execution state/results back onto remediation-native execution records
+- [x] Replatform runtime response execution on top of the shared action engine:
+  - [x] map response policies to shared playbooks
+  - [x] map findings to shared signals
+  - [x] preserve full finding payload in `TriggerData` so approval resumes with the original context
+- [x] Wire app initialization to one durable action executor:
+  - [x] build the executor from `EXECUTION_STORE_FILE`
+  - [x] inject it into both remediation and runtime services
+  - [x] keep in-memory fallback only as defensive startup behavior when the durable store cannot initialize
+- [x] Harden concurrency and regression coverage:
+  - [x] add `internal/actionengine/executor_test.go`
+  - [x] add runtime approval-context regression coverage in `internal/runtime/response_test.go`
+  - [x] fix the runtime policy lock-upgrade deadlock by copying matched policy state before execution creation
+- [x] Capture the architecture and upstream learnings:
+  - [x] add `docs/ACTION_ENGINE_ARCHITECTURE.md`
+  - [x] pull reference patterns via `gh` from `StackStorm/st2`, `argoproj/argo-events`, and `argoproj/argo-workflows`
+
+### Detailed follow-on backlog
+- [ ] Track A - Shared action read/control surface
+  - Exit criteria:
+  - [ ] expose durable action executions and events over a typed API surface instead of application-local lists only
+  - [ ] decide which parts belong under platform actions vs security application aliases
+  - [ ] unify approval/reject/read semantics across remediation and runtime on top of the shared store
+- [ ] Track B - Real executors on one substrate
+  - Exit criteria:
+  - [ ] land issue `#154` on top of `internal/actionengine` rather than extending runtime-only executors
+  - [ ] support executor capability metadata so unsupported steps fail predictably before dispatch
+  - [ ] capture provider/action output in shared execution events instead of one-off native structs
+- [ ] Track C - Shared execution store extraction
+  - Exit criteria:
+  - [ ] decide whether SQLite remains sufficient for multi-worker action execution
+  - [ ] define locking/lease semantics for multi-process action runners
+  - [ ] avoid introducing new per-subsystem state stores for actions, scans, and graph jobs
+- [ ] Track D - Graph/world-model integration
+  - Exit criteria:
+  - [ ] project action executions, approvals, and outcomes into claim/action/outcome graph primitives where it improves explanation and auditability
+  - [ ] attach remediation/runtime outcomes back to finding, vulnerability, and incident context
+  - [ ] connect future issue `#170` correlation work to the shared action execution timeline
+
+## Deep Review Cycle 54 - Workload Scan Graph Projection + Attack-Path Context (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#182` was still sitting as architecture intent only; successful workload scans were durable in the shared execution store but still absent from the live security graph.
+- [x] Gap: entity summary surfaces had no typed workload-security facet, so vulnerability depth, scan freshness, and attack-path context were still disconnected at read time.
+- [x] Gap: the world-model/security docs still described workload scan graph projection as future work, even though the ontology and execution-store seams were already in place.
+- [x] Gap: older scans needed temporal supersession semantics instead of naive append-only "latest wins" behavior.
+
+### Execution plan
+- [x] Extend the ontology for workload security projection:
+  - [x] add node kinds `workload_scan`, `package`, and `vulnerability`
+  - [x] add edge kinds `has_scan`, `contains_package`, `found_vulnerability`, and `affected_by`
+  - [x] register schema contracts and runtime tests for the new kinds
+- [x] Materialize durable workload scan runs from the shared execution store into the graph:
+  - [x] add `internal/workloadscan/graph_materialization.go`
+  - [x] resolve VM scan targets against existing canonical instance nodes
+  - [x] preserve temporal supersession by setting `valid_to` on older scans when newer successful scans exist for the same workload
+  - [x] keep graph writes idempotent on repeated hydration
+- [x] Add workload-aware entity summaries:
+  - [x] add `workload_security` facet contract
+  - [x] surface last scan time, OS/package/vulnerability counts, KEV/fixable counts, and stale-scan signals
+  - [x] fold in attack-path context via exposure, blast-radius admin reachability, and sensitive-data path counts
+- [x] Wire graph activation to hydrate workload scan state:
+  - [x] load successful workload scans from `WORKLOAD_SCAN_STATE_FILE`
+  - [x] project them into the built security graph before activation
+  - [x] keep the shared execution store as the durability boundary rather than introducing another in-memory side channel
+- [x] Add focused regression coverage:
+  - [x] materialization node/edge tests in `internal/workloadscan/graph_materialization_test.go`
+  - [x] workload facet temporal visibility and attack-path context tests in `internal/graph/workload_security_facet_test.go`
+
+### Detailed follow-on backlog
+- [ ] Track A - Scan family parity
+  - Exit criteria:
+  - [ ] project image scan runs into the same `package` / `vulnerability` ontology
+  - [ ] project function scan runs into the same ontology
+  - [ ] converge image/function/workload asset facets on one reusable workload-security/read model
+- [ ] Track B - Real-time graph refresh
+  - Exit criteria:
+  - [ ] add a fast-path consumer or job hook for `security.workload_scan.completed`
+  - [ ] avoid waiting for the next graph rebuild/incremental apply cycle before new scan context appears
+  - [ ] decide whether scan-driven graph projection becomes its own execution resource/job surface
+- [ ] Track C - Claim/evidence projection depth
+  - Exit criteria:
+  - [ ] project package/vulnerability matches as first-class observations/evidence/claims, not just nodes and edges
+  - [ ] attach advisory source attribution, confidence, and remediation decisions directly to vulnerability context
+  - [ ] connect remediation outcomes back to workload scan history
+- [ ] Track D - Prioritization depth
+  - Exit criteria:
+  - [ ] feed workload vulnerability context into risk-engine/ranking surfaces instead of entity summary only
+  - [ ] distinguish exploitable-but-contained vs exploitable-and-exposed workloads in platform intelligence reports
+  - [ ] include cross-account and crown-jewel reachability directly in vulnerability prioritization views
+
+## Deep Review Cycle 53 - Persisted Vulnerability DB + Package Matching Pipeline (2026-03-12)
+
+### Review findings
+- [x] Gap: issue `#181` still existed only as an issue outline; there was no first-class persisted advisory knowledge layer behind the new shared filesystem analyzer.
+- [x] Gap: package inventories from workload/image/function scans could be cataloged, but they were still dependent on scanner-local vulnerability bridging instead of one reusable package matcher.
+- [x] Gap: KEV/EPSS/advisory context was not persisted together, which meant exploitability enrichment would drift between scan runtimes.
+- [x] Gap: the repo still lacked a concrete operator surface for importing and inspecting the vulnerability database.
+- [x] Gap: the architecture docs still described issue `#181` as future work even though the analyzer/runtime seams were already ready to consume a native advisory substrate.
+
+### Execution plan
+- [x] Add a persisted advisory store:
+  - [x] add `internal/vulndb` with typed `Vulnerability`, `AffectedPackage`, `SyncState`, and `Stats` records
+  - [x] persist advisories, aliases, package ranges, and sync state in SQLite at `VULNDB_STATE_FILE`
+  - [x] support KEV/EPSS enrichment on the same canonical advisory record
+- [x] Add a reusable advisory matching service:
+  - [x] implement `vulndb.Service` as the shared package matcher
+  - [x] normalize package ecosystems and map matches into `scanner.ImageVulnerability`
+  - [x] start with semver-like ecosystem matching while keeping the storage contract broader than the current comparator depth
+- [x] Wire the shared filesystem analyzer to the advisory layer:
+  - [x] add `filesystemanalyzer.PackageVulnerabilityMatcher`
+  - [x] allow workload/image/function scan CLIs to build analyzers backed by the persisted vulnerability DB
+  - [x] keep existing Trivy-based bridging as fallback-compatible analyzer behavior instead of the only path
+- [x] Add operator surface:
+  - [x] add `cerebro vulndb stats`
+  - [x] add `cerebro vulndb import-osv`
+  - [x] add `cerebro vulndb import-kev`
+  - [x] add `cerebro vulndb import-epss`
+  - [x] add `cerebro vulndb sync`
+- [x] Capture architecture and upstream learnings:
+  - [x] add `docs/VULNERABILITY_DB_ARCHITECTURE.md`
+  - [x] update shared analyzer + runtime docs to reflect the native advisory layer
+  - [x] document GitHub-researched patterns from Trivy DB, Grype, OSV Scanner, and GitHub Advisory Database
+- [x] Add focused regression coverage:
+  - [x] advisory import + match + KEV/EPSS enrichment round trip
+  - [x] CLI registration coverage for the new `vulndb` command group
+  - [x] analyzer/runtime package integration coverage via focused package tests
+
+### Detailed follow-on backlog
+- [ ] Track A - Source breadth and sync execution
+  - Exit criteria:
+  - [ ] add NVD feed ingestion with delta semantics and stored cursors/ETags
+  - [ ] add GitHub Advisory Database ingestion without depending on unstable `database_specific` fields
+  - [ ] add distro advisory ingestion for `deb`, `rpm`, and `apk`
+  - [ ] move feed sync orchestration onto the shared execution-store package instead of CLI-only sequencing
+- [ ] Track B - Version comparator depth
+  - Exit criteria:
+  - [ ] add RPM version comparison semantics
+  - [ ] add Debian/Ubuntu package version comparison semantics
+  - [ ] add Alpine `apk` version comparison semantics
+  - [ ] add ecosystem-specific edge-case coverage for prereleases, epochs, and vendor backports
+- [ ] Track C - Scan/runtime integration depth
+  - Exit criteria:
+  - [ ] replace the remaining scanner-local vulnerability bridge paths with the shared matcher where practical
+  - [ ] persist scan-package-to-advisory evidence in a reusable artifact format instead of transient finding-only output
+  - [ ] expose advisory database stats/sync health over API or report surfaces where operators already look
+- [ ] Track D - Graph and prioritization projection
+  - Exit criteria:
+  - [x] map workload scan vulnerabilities/packages into canonical graph entities and edges in issue `#182`
+  - [ ] attach fix availability, KEV, EPSS, and runtime exposure context to prioritization
+  - [ ] use advisory recency and exploitability as first-class report dimensions
 
 ## Deep Review Cycle 52 - Shared Filesystem Analyzer + Shared Execution Store (2026-03-11)
 
@@ -41,14 +329,15 @@ Status: executed end-to-end via PR workflow
 ### Detailed follow-on backlog
 - [ ] Track A - Advisory knowledge layer (`#181`)
   - Exit criteria:
-  - [ ] replace the Trivy vulnerability bridge with a first-class advisory matcher over the shared package catalog
+  - [x] replace the Trivy vulnerability bridge with a first-class advisory matcher over the shared package catalog
   - [ ] ingest NVD/OSV/distro advisory data into a reusable knowledge surface
-  - [ ] score vulnerabilities with fix availability, KEV, EPSS, and distro/package context
+  - [x] score vulnerabilities with fix availability, KEV, EPSS, and distro/package context
 - [ ] Track B - Graph contextualization (`#182`)
   - Exit criteria:
-  - [ ] map scan runs, packages, vulnerabilities, and SBOM coverage into canonical graph node/edge kinds
-  - [ ] attach workload/function/image scan freshness and exposure context to prioritization paths
-  - [ ] surface workload security facets and attack-path-aware vulnerability ranking
+  - [x] map workload scan runs, packages, vulnerabilities, and SBOM coverage into canonical graph node/edge kinds
+  - [x] attach workload scan freshness and exposure context to entity prioritization paths
+  - [x] surface workload security facets with attack-path-aware context
+  - [ ] extend the same graph contextualization to image and function scans
 - [ ] Track C - Analyzer coverage depth
   - Exit criteria:
   - [ ] add RPM parsing and deeper language ecosystem coverage

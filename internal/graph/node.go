@@ -30,6 +30,9 @@ const (
 	NodeKindDatabase                NodeKind = "database"
 	NodeKindSecret                  NodeKind = "secret"
 	NodeKindFunction                NodeKind = "function"
+	NodeKindWorkloadScan            NodeKind = "workload_scan"
+	NodeKindPackage                 NodeKind = "package"
+	NodeKindVulnerability           NodeKind = "vulnerability"
 	NodeKindNetwork                 NodeKind = "network"
 	NodeKindApplication             NodeKind = "application"
 

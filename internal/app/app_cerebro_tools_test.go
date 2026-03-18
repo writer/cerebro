@@ -109,6 +109,82 @@ func TestCerebroGraphQueryPathsTool(t *testing.T) {
 	}
 }
 
+func TestCerebroCorrelateEventsTool(t *testing.T) {
+	g := graph.New()
+	base := time.Date(2026, 3, 12, 10, 0, 0, 0, time.UTC)
+
+	g.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "Payments"})
+	g.AddNode(&graph.Node{
+		ID:   "pull_request:payments:42",
+		Kind: graph.NodeKindPullRequest,
+		Name: "payments pr",
+		Properties: map[string]any{
+			"repository":  "payments",
+			"number":      "42",
+			"state":       "merged",
+			"observed_at": base.Format(time.RFC3339),
+			"valid_from":  base.Format(time.RFC3339),
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:   "deployment:payments:deploy-1",
+		Kind: graph.NodeKindDeploymentRun,
+		Name: "deploy-1",
+		Properties: map[string]any{
+			"deploy_id":   "deploy-1",
+			"service_id":  "payments",
+			"environment": "prod",
+			"status":      "succeeded",
+			"observed_at": base.Add(5 * time.Minute).Format(time.RFC3339),
+			"valid_from":  base.Add(5 * time.Minute).Format(time.RFC3339),
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:   "incident:inc-1",
+		Kind: graph.NodeKindIncident,
+		Name: "inc-1",
+		Properties: map[string]any{
+			"incident_id": "inc-1",
+			"status":      "open",
+			"severity":    "high",
+			"service_id":  "payments",
+			"observed_at": base.Add(7 * time.Minute).Format(time.RFC3339),
+			"valid_from":  base.Add(7 * time.Minute).Format(time.RFC3339),
+		},
+	})
+	g.AddEdge(&graph.Edge{ID: "pr->service", Source: "pull_request:payments:42", Target: "service:payments", Kind: graph.EdgeKindTargets, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "deploy->service", Source: "deployment:payments:deploy-1", Target: "service:payments", Kind: graph.EdgeKindTargets, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "incident->service", Source: "incident:inc-1", Target: "service:payments", Kind: graph.EdgeKindTargets, Effect: graph.EdgeEffectAllow})
+	graph.MaterializeEventCorrelations(g, base.Add(10*time.Minute))
+
+	application := &App{SecurityGraph: g}
+	tool := findCerebroTool(application.cerebroTools(), "cerebro.correlate_events")
+	if tool == nil {
+		t.Fatal("expected correlate_events tool")
+	}
+
+	result, err := tool.Handler(context.Background(), json.RawMessage(`{"event_id":"incident:inc-1","limit":10}`))
+	if err != nil {
+		t.Fatalf("tool returned error: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(result), &payload); err != nil {
+		t.Fatalf("decode tool payload: %v", err)
+	}
+	summary, ok := payload["summary"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected summary object, got %#v", payload["summary"])
+	}
+	if got, ok := summary["correlation_count"].(float64); !ok || int(got) != 2 {
+		t.Fatalf("expected 2 correlations, got %#v", payload)
+	}
+
+	if _, err := tool.Handler(context.Background(), json.RawMessage(`{"pattern_id":"pr_deploy_chain"}`)); err == nil {
+		t.Fatal("expected scope validation error for correlate_events without event_id or entity_id")
+	}
+}
+
 func TestCerebroIntelligenceReportTool(t *testing.T) {
 	g := graph.New()
 	g.AddNode(&graph.Node{ID: "user:alice", Kind: graph.NodeKindUser, Name: "Alice"})

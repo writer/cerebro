@@ -51,7 +51,7 @@ func (a *App) applySecurityGraphChangesLocked(ctx context.Context, trigger strin
 		}
 
 		securityGraph := a.SecurityGraphBuilder.Graph()
-		meta, activateErr := a.activateBuiltSecurityGraph(securityGraph)
+		meta, activateErr := a.activateBuiltSecurityGraph(ctx, securityGraph)
 		if activateErr != nil {
 			return graph.GraphMutationSummary{}, activateErr
 		}
@@ -79,7 +79,7 @@ func (a *App) applySecurityGraphChangesLocked(ctx context.Context, trigger strin
 	}
 
 	securityGraph := a.SecurityGraphBuilder.Graph()
-	meta, activateErr := a.activateBuiltSecurityGraph(securityGraph)
+	meta, activateErr := a.activateBuiltSecurityGraph(ctx, securityGraph)
 	if activateErr != nil {
 		return graph.GraphMutationSummary{}, activateErr
 	}

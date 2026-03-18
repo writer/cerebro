@@ -40,6 +40,9 @@ func (a *App) initAgents(ctx context.Context) {
 			if a.RemediationExecutor != nil {
 				a.RemediationExecutor.SetRemoteCaller(remoteProvider)
 			}
+			if a.RuntimeRespond != nil {
+				a.RuntimeRespond.SetRemoteCaller(remoteProvider)
+			}
 			a.Logger.Info("registered remote tools for agents", "count", len(remoteTools))
 		}
 	}

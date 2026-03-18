@@ -8,7 +8,7 @@ Cerebro's agentless workload scanning pipeline should be durable, provider-neutr
 - Keep provider-specific snapshot/attach APIs behind one execution contract.
 - Separate snapshot orchestration from analyzers so filesystem/package/image inspection can evolve independently.
 - Guarantee cleanup and reconciliation semantics for leaked snapshots, temporary volumes, and mounts.
-- Emit lifecycle events so workload scans can plug into alerting, reports, and later graph provenance.
+- Emit lifecycle events so workload scans can plug into alerting, reports, and graph provenance.
 
 ## Execution Pipeline
 
@@ -68,7 +68,7 @@ This allows the issue stack to progress in layers:
 - `#178`: provider expansion and orchestration hardening
 - `#179`: transport/copy strategy improvements
 - `#180`: analyzers
-- `#181` / `#182`: higher-level reporting and product surfaces
+- `#181` / `#182`: advisory enrichment and graph/report projection
 
 ## AWS Behavior
 
@@ -96,6 +96,18 @@ The runtime emits webhook-compatible lifecycle events:
 
 These events are a bridge into the broader intelligence/reporting platform without making workload scanning a one-off subsystem.
 
+Successful workload scans are also projected into the security graph during graph activation from the shared execution store. That projection currently creates:
+
+- `workload_scan` nodes
+- `package` nodes
+- `vulnerability` nodes
+- `instance -> has_scan -> workload_scan`
+- `workload_scan -> contains_package -> package`
+- `workload_scan -> found_vulnerability -> vulnerability`
+- `package -> affected_by -> vulnerability`
+
+Older successful scans for the same workload are retained with temporal supersession (`valid_to` set when a newer scan exists), so historical scan context remains queryable without polluting the current entity posture.
+
 ## Operational Constraints
 
 Current controls:
@@ -119,12 +131,13 @@ These are meant to bound:
 - The runtime is SQLite-backed and single-node durable today, not yet multi-worker/distributed.
 - The analyzer now catalogs OS/package/SBOM/secret/config data through the shared filesystem analyzer, but RPM/Windows/deeper ecosystem coverage is still incomplete.
 - The execution surface is CLI-first; there is no first-class platform API/job resource yet.
-- Persisted run state is durable, but the live graph/runtime integration is still separate work.
+- Persisted run state is durable and now hydrates into the security graph on graph activation, but real-time graph refresh still depends on the next graph rebuild/incremental-apply cycle.
 
 ## Next Steps
 
 1. Add GCP and Azure providers behind the same `Provider` contract.
-2. Feed the shared analyzer package inventory into the vulnerability knowledge layer (`#181`).
+2. Expand the vulnerability database with richer distro and advisory sources.
 3. Expose run resources and events through the platform API.
-4. Link workload scan runs to graph entities, evidence, and provenance.
-5. Decide whether the long-term state backend remains SQLite or moves to a multi-worker execution store.
+4. Project package/vulnerability matches into first-class observations/evidence/claims instead of node/edge projection alone.
+5. Add a real-time graph refresh path for `security.workload_scan.completed`.
+6. Decide whether the long-term state backend remains SQLite or moves to a multi-worker execution store.

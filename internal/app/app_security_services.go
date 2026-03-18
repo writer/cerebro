@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
+	"github.com/writer/cerebro/internal/actionengine"
 	"github.com/writer/cerebro/internal/auth"
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/health"
@@ -16,6 +18,15 @@ import (
 	"github.com/writer/cerebro/internal/threatintel"
 	"github.com/writer/cerebro/internal/webhooks"
 )
+
+func (a *App) newSharedActionExecutor() *actionengine.Executor {
+	store, err := actionengine.NewSQLiteStore(a.Config.ExecutionStoreFile, actionengine.DefaultNamespace)
+	if err != nil {
+		a.Logger.Warn("failed to initialize shared action execution store; falling back to in-memory", "error", err, "path", a.Config.ExecutionStoreFile)
+		return actionengine.NewExecutor(nil)
+	}
+	return actionengine.NewExecutor(store)
+}
 
 func (a *App) initRBAC() {
 	if a.Config.RBACStateFile == "" {
@@ -430,6 +441,7 @@ func (a *App) initLineage() {
 func (a *App) initRemediation() {
 	a.Remediation = remediation.NewEngine(a.Logger)
 	a.RemediationExecutor = remediation.NewExecutor(a.Remediation, a.Ticketing, a.Notifications, a.Findings, a.Webhooks)
+	a.RemediationExecutor.SetSharedExecutor(a.newSharedActionExecutor())
 	if a.RemoteTools != nil {
 		a.RemediationExecutor.SetRemoteCaller(a.RemoteTools)
 	}
@@ -439,6 +451,11 @@ func (a *App) initRemediation() {
 func (a *App) initRuntime() {
 	a.RuntimeDetect = runtime.NewDetectionEngine()
 	a.RuntimeRespond = runtime.NewResponseEngine()
+	a.RuntimeRespond.SetSharedExecutor(a.newSharedActionExecutor())
+	a.RuntimeRespond.SetActionHandler(runtime.NewDefaultActionHandler(runtime.DefaultActionHandlerOptions{
+		Blocklist:    a.RuntimeRespond.Blocklist(),
+		RemoteCaller: a.RemoteTools,
+	}))
 	a.Logger.Info("runtime detection initialized", "rules", len(a.RuntimeDetect.ListRules()))
 	a.Logger.Info("runtime response initialized", "policies", len(a.RuntimeRespond.ListPolicies()))
 }
@@ -478,9 +495,12 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 			return
 		}
 		builtGraph := a.SecurityGraphBuilder.Graph()
-		a.setSecurityGraph(builtGraph)
-		meta := builtGraph.Metadata()
-		a.setGraphBuildState(GraphBuildSuccess, meta.BuiltAt, nil)
+		meta, err := a.activateBuiltSecurityGraph(graphCtx, builtGraph)
+		if err != nil {
+			a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
+			a.Logger.Error("failed to activate security graph", "error", err)
+			return
+		}
 		a.Logger.Info("security graph built",
 			"nodes", meta.NodeCount,
 			"edges", meta.EdgeCount,
@@ -557,7 +577,7 @@ func (a *App) RebuildSecurityGraph(ctx context.Context) error {
 	}
 
 	securityGraph := a.SecurityGraphBuilder.Graph()
-	meta, err := a.activateBuiltSecurityGraph(securityGraph)
+	meta, err := a.activateBuiltSecurityGraph(ctx, securityGraph)
 	if err != nil {
 		return err
 	}
@@ -574,17 +594,176 @@ func (a *App) RebuildSecurityGraph(ctx context.Context) error {
 	return nil
 }
 
-func (a *App) activateBuiltSecurityGraph(securityGraph *graph.Graph) (graph.Metadata, error) {
+func (a *App) activateBuiltSecurityGraph(ctx context.Context, securityGraph *graph.Graph) (graph.Metadata, error) {
 	if securityGraph == nil {
 		err := fmt.Errorf("security graph not initialized")
 		a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
 		return graph.Metadata{}, err
 	}
+	if materialized, err := a.materializePersistedWorkloadScans(ctx, securityGraph); err != nil {
+		a.Logger.Warn("failed to materialize persisted workload scans into security graph", "error", err)
+	} else if materialized.RunsMaterialized > 0 {
+		a.Logger.Info("materialized workload scans into security graph",
+			"runs", materialized.RunsMaterialized,
+			"scan_nodes", materialized.ScanNodesUpserted,
+			"package_nodes", materialized.PackageNodesUpserted,
+			"vulnerability_nodes", materialized.VulnNodesUpserted,
+			"scan_package_edges", materialized.ScanPackageEdges,
+			"scan_vulnerability_edges", materialized.ScanVulnEdges,
+			"package_vulnerability_edges", materialized.PackageVulnEdges,
+		)
+	}
+	a.rematerializeEventCorrelations(securityGraph, "graph_activation")
 	a.configureGraphSchemaValidation(securityGraph)
 	a.setSecurityGraph(securityGraph)
 	meta := securityGraph.Metadata()
 	a.setGraphBuildState(GraphBuildSuccess, meta.BuiltAt, nil)
 	return meta, nil
+}
+
+func (a *App) rematerializeEventCorrelations(securityGraph *graph.Graph, reason string) {
+	if securityGraph == nil {
+		return
+	}
+	summary := graph.MaterializeEventCorrelations(securityGraph, time.Now().UTC())
+	if a == nil || a.Logger == nil {
+		return
+	}
+	if summary.CorrelationsCreated == 0 && summary.CorrelationsRemoved == 0 {
+		return
+	}
+	a.Logger.Info("materialized event correlations into security graph",
+		"reason", strings.TrimSpace(reason),
+		"patterns", summary.PatternsEvaluated,
+		"created", summary.CorrelationsCreated,
+		"removed", summary.CorrelationsRemoved,
+	)
+}
+
+func (a *App) initEventCorrelationRefreshLoop(ctx context.Context) {
+	if a == nil || a.eventCorrelationRefreshCh != nil {
+		return
+	}
+	loopCtx, cancel := context.WithCancel(ctx) // #nosec G118 -- cancel is stored on App and invoked by stopEventCorrelationRefreshLoop during shutdown.
+	a.eventCorrelationRefreshCh = make(chan string, 1)
+	a.eventCorrelationRefreshCancel = cancel
+	a.eventCorrelationRefreshWG.Add(1)
+	go func() {
+		defer a.eventCorrelationRefreshWG.Done()
+		const debounce = 2 * time.Second
+		pendingReasons := make(map[string]struct{})
+		var (
+			timer   *time.Timer
+			timerCh <-chan time.Time
+		)
+		flush := func() {
+			if len(pendingReasons) == 0 {
+				return
+			}
+			reasons := make([]string, 0, len(pendingReasons))
+			for reason := range pendingReasons {
+				reasons = append(reasons, reason)
+			}
+			sort.Strings(reasons)
+			pendingReasons = make(map[string]struct{})
+			a.rematerializeEventCorrelations(a.CurrentSecurityGraph(), strings.Join(reasons, ","))
+		}
+		for {
+			select {
+			case <-loopCtx.Done():
+				if timer != nil {
+					timer.Stop()
+				}
+				return
+			case reason := <-a.eventCorrelationRefreshCh:
+				reason = strings.TrimSpace(reason)
+				if reason == "" {
+					reason = "tap_mapping"
+				}
+				pendingReasons[reason] = struct{}{}
+				if timer == nil {
+					timer = time.NewTimer(debounce)
+					timerCh = timer.C
+					continue
+				}
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+				timer.Reset(debounce)
+			case <-timerCh:
+				timerCh = nil
+				if timer != nil {
+					timer.Stop()
+					timer = nil
+				}
+				flush()
+			}
+		}
+	}()
+}
+
+func (a *App) queueEventCorrelationRefresh(reason string) {
+	if a == nil {
+		return
+	}
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		reason = "tap_mapping"
+	}
+	if a.eventCorrelationRefreshCh == nil {
+		a.rematerializeEventCorrelations(a.CurrentSecurityGraph(), reason)
+		return
+	}
+	select {
+	case a.eventCorrelationRefreshCh <- reason:
+	default:
+	}
+}
+
+func (a *App) stopEventCorrelationRefreshLoop() {
+	if a == nil {
+		return
+	}
+	if a.eventCorrelationRefreshCancel != nil {
+		a.eventCorrelationRefreshCancel()
+	}
+	done := make(chan struct{})
+	go func() {
+		a.eventCorrelationRefreshWG.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(appShutdownTimeout):
+		if a.Logger != nil {
+			a.Logger.Warn("timed out waiting for event correlation refresh loop to stop", "timeout", appShutdownTimeout)
+		}
+	}
+	a.eventCorrelationRefreshCh = nil
+	a.eventCorrelationRefreshCancel = nil
+}
+
+func shouldRefreshEventCorrelations(securityGraph *graph.Graph, nodeIDs []string) bool {
+	if securityGraph == nil || len(nodeIDs) == 0 {
+		return false
+	}
+	for _, nodeID := range nodeIDs {
+		nodeID = strings.TrimSpace(nodeID)
+		if nodeID == "" {
+			continue
+		}
+		node, ok := securityGraph.GetNode(nodeID)
+		if !ok || node == nil {
+			continue
+		}
+		if graph.IsEventCorrelationNodeKind(node.Kind) {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *App) emitGraphRebuiltEvent(ctx context.Context, meta graph.Metadata, duration time.Duration) {

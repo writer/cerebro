@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/writer/cerebro/internal/scanner"
 )
@@ -85,6 +86,69 @@ func TestAnalyzerIncludesVulnerabilityScannerResults(t *testing.T) {
 	}
 	if len(report.Vulnerabilities) != 1 || len(report.Findings) == 0 {
 		t.Fatalf("expected vulnerability scanner results, got %#v %#v", report.Vulnerabilities, report.Findings)
+	}
+}
+
+func TestDedupeVulnerabilitiesUsesIDWhenCVEIsMissing(t *testing.T) {
+	vulns := dedupeVulnerabilities([]scanner.ImageVulnerability{
+		{
+			ID:               "GHSA-2026-0001",
+			Package:          "busybox",
+			InstalledVersion: "1.36.1-r0",
+		},
+		{
+			ID:               "GHSA-2026-0002",
+			Package:          "busybox",
+			InstalledVersion: "1.36.1-r0",
+		},
+		{
+			ID:               "GHSA-2026-0001",
+			Package:          "busybox",
+			InstalledVersion: "1.36.1-r0",
+		},
+	})
+	if len(vulns) != 2 {
+		t.Fatalf("expected distinct missing-CVE vulnerabilities to survive dedupe, got %#v", vulns)
+	}
+}
+
+func TestDedupeVulnerabilitiesMergesMatcherEnrichment(t *testing.T) {
+	published := time.Date(2026, time.March, 1, 12, 0, 0, 0, time.UTC)
+	vulns := dedupeVulnerabilities([]scanner.ImageVulnerability{
+		{
+			CVE:              "CVE-2026-0001",
+			Severity:         "high",
+			Package:          "busybox",
+			InstalledVersion: "1.36.1-r0",
+			FixedVersion:     "1.36.1-r1",
+			Description:      "scanner description",
+		},
+		{
+			ID:               "vulndb:CVE-2026-0001",
+			CVE:              "CVE-2026-0001",
+			Severity:         "high",
+			Package:          "busybox",
+			InstalledVersion: "1.36.1-r0",
+			Published:        published,
+			Exploitable:      true,
+			InKEV:            true,
+			References:       []string{"https://example.com/CVE-2026-0001"},
+		},
+	})
+	if len(vulns) != 1 {
+		t.Fatalf("expected duplicate vulnerability records to merge, got %#v", vulns)
+	}
+	if vulns[0].FixedVersion != "1.36.1-r1" {
+		t.Fatalf("expected merged vulnerability to preserve fixed version, got %#v", vulns[0])
+	}
+	if !vulns[0].InKEV || !vulns[0].Exploitable {
+		t.Fatalf("expected merged vulnerability to preserve matcher enrichment, got %#v", vulns[0])
+	}
+	if vulns[0].Published.IsZero() || vulns[0].Published != published {
+		t.Fatalf("expected merged vulnerability to preserve published timestamp, got %#v", vulns[0])
+	}
+	if len(vulns[0].References) != 1 {
+		t.Fatalf("expected merged vulnerability to preserve matcher references, got %#v", vulns[0])
 	}
 }
 

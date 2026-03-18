@@ -100,6 +100,10 @@ class Client:
         return self.call_tool("cerebro_context", args)
 
 
+    def correlate_events(self, args: Any) -> Any:
+        return self.call_tool("cerebro_correlate_events", args)
+
+
     def decide(self, args: Any) -> Any:
         return self.call_tool("cerebro_decide", args)
 
