@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 206 - Graph View Resolver Infrastructure (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still had the same live-graph-or-store-snapshot fallback logic hand-copied across tenant graph helpers and multiple API services, which made the migration surface harder to reason about and easier to regress one caller at a time.
+- [x] Gap: `serverGraphRiskService.RiskReport(...)` still had a server-less path that only used the live tenant graph pointer, so store-only runtimes could miss the fallback even though the rest of the risk-analysis surface already supported `GraphStore`.
+- [x] Gap: there was no focused unit coverage for the resolver precedence rules themselves, so future `#392` slices could accidentally flip live-vs-snapshot behavior without any tight regression signal.
+
+### Execution plan
+- [x] Add shared helper functions for current live-or-store graph views and snapshot-backed graph views.
+- [x] Route the tenant graph helpers plus the findings/compliance, graph-intelligence, graph-risk, platform-knowledge, and platform graph-view call sites through those helpers.
+- [x] Add focused unit coverage for helper precedence and for store-backed risk reports without a full server wrapper, then rerun focused API validation.
+
 ## Deep Review Cycle 206 - Organizational Policy Template Catalog (2026-03-18)
 
 ### Review findings

@@ -196,19 +196,8 @@ func (s serverPlatformKnowledgeService) tenantGraph(ctx context.Context) (*graph
 		return nil, errPlatformKnowledgeUnavailable
 	}
 	tenantID := currentTenantScopeID(ctx)
-	if g := s.deps.CurrentSecurityGraphForTenant(tenantID); g != nil {
-		return g, nil
-	}
-	store := s.deps.CurrentSecurityGraphStoreForTenant(tenantID)
-	if store == nil {
-		return nil, errPlatformKnowledgeUnavailable
-	}
-	snapshot, err := store.Snapshot(ctx)
+	view, err := currentOrStoredGraphView(ctx, s.deps.CurrentSecurityGraphForTenant(tenantID), s.deps.CurrentSecurityGraphStoreForTenant(tenantID))
 	if err != nil {
-		return nil, err
-	}
-	view := graph.GraphViewFromSnapshot(snapshot)
-	if view == nil {
 		return nil, errPlatformKnowledgeUnavailable
 	}
 	return view, nil

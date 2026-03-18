@@ -33,21 +33,7 @@ func (s serverGraphIntelligenceService) CurrentGraph(ctx context.Context) (*grap
 		return nil, graph.ErrStoreUnavailable
 	}
 	tenantID := currentTenantScopeID(ctx)
-	if g := s.deps.CurrentSecurityGraphForTenant(tenantID); g != nil {
-		return g, nil
-	}
-	store := s.deps.CurrentSecurityGraphStoreForTenant(tenantID)
-	if store == nil {
-		return nil, graph.ErrStoreUnavailable
-	}
-	snapshot, err := store.Snapshot(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if snapshot == nil {
-		return nil, graph.ErrStoreUnavailable
-	}
-	return graph.GraphViewFromSnapshot(snapshot), nil
+	return currentOrStoredGraphView(ctx, s.deps.CurrentSecurityGraphForTenant(tenantID), s.deps.CurrentSecurityGraphStoreForTenant(tenantID))
 }
 
 func (s serverGraphIntelligenceService) MapperInitialized() bool {

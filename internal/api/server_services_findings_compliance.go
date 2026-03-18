@@ -99,18 +99,12 @@ func (s serverFindingsComplianceService) currentTenantGraph(ctx context.Context)
 	if s.deps == nil {
 		return nil
 	}
-	if g := s.deps.CurrentSecurityGraphForTenant(currentTenantScopeID(ctx)); g != nil {
-		return g
-	}
-	store := s.deps.CurrentSecurityGraphStoreForTenant(currentTenantScopeID(ctx))
-	if store == nil {
+	tenantID := currentTenantScopeID(ctx)
+	g, err := currentOrStoredGraphView(ctx, s.deps.CurrentSecurityGraphForTenant(tenantID), s.deps.CurrentSecurityGraphStoreForTenant(tenantID))
+	if err != nil {
 		return nil
 	}
-	snapshot, err := store.Snapshot(ctx)
-	if err != nil || snapshot == nil {
-		return nil
-	}
-	return graph.GraphViewFromSnapshot(snapshot)
+	return g
 }
 
 func (s serverFindingsComplianceService) scanTable(ctx context.Context, store findings.FindingStore, table string, limit int) (*scanFindingsTableServiceResult, error) {

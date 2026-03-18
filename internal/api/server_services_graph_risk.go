@@ -122,8 +122,8 @@ func (s serverGraphRiskService) Rebuild(ctx context.Context) (*graphRebuildRespo
 
 func (s serverGraphRiskService) RiskReport(ctx context.Context) (*risk.SecurityReport, error) {
 	if s.server == nil {
-		g := s.tenantGraph(ctx)
-		if g == nil {
+		g, err := currentOrStoredGraphView(ctx, s.tenantGraph(ctx), s.tenantStore(ctx))
+		if err != nil {
 			return nil, errGraphRiskUnavailable
 		}
 		return risk.NewRiskEngine(g).Analyze(), nil
@@ -224,17 +224,9 @@ func (s serverGraphRiskService) tenantStore(ctx context.Context) graph.GraphStor
 }
 
 func (s serverGraphRiskService) tenantAnalysisGraph(ctx context.Context) (*graph.Graph, error) {
-	store := s.tenantStore(ctx)
-	if store == nil {
-		return nil, errGraphRiskUnavailable
-	}
-	snapshot, err := store.Snapshot(ctx)
+	view, err := snapshotBackedGraphView(ctx, s.tenantGraph(ctx), s.tenantStore(ctx))
 	if err != nil {
 		return nil, graphRiskErr(err)
-	}
-	view := graph.GraphViewFromSnapshot(snapshot)
-	if view == nil {
-		return nil, errGraphRiskUnavailable
 	}
 	return view, nil
 }

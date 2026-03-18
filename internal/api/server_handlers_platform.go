@@ -169,21 +169,7 @@ func (s *Server) currentPlatformSecurityGraphView(ctx context.Context) (*graph.G
 	if s == nil || s.app == nil {
 		return nil, graph.ErrStoreUnavailable
 	}
-	if g := s.app.CurrentSecurityGraph(); g != nil {
-		return g, nil
-	}
-	store := s.app.CurrentSecurityGraphStore()
-	if store == nil {
-		return nil, graph.ErrStoreUnavailable
-	}
-	snapshot, err := store.Snapshot(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if snapshot == nil {
-		return nil, graph.ErrStoreUnavailable
-	}
-	return graph.GraphViewFromSnapshot(snapshot), nil
+	return currentOrStoredGraphView(ctx, s.app.CurrentSecurityGraph(), s.app.CurrentSecurityGraphStore())
 }
 
 func (s *Server) currentPlatformReportLineage(ctx context.Context, definition reports.ReportDefinition) reports.ReportLineage {
