@@ -100,24 +100,27 @@ func (s serverGraphRiskService) ReverseAccess(ctx context.Context, resourceID st
 }
 
 func (s serverGraphRiskService) Rebuild(ctx context.Context) (*graphRebuildResponse, error) {
-	if s.deps == nil || s.deps.SecurityGraphBuilder == nil {
+	if s.deps == nil {
 		return nil, errGraphRiskUnavailable
 	}
 	if err := s.deps.RebuildSecurityGraph(ctx); err != nil {
 		return nil, err
 	}
-	g := s.deps.CurrentSecurityGraph()
-	if g == nil {
+	if g := s.deps.CurrentSecurityGraph(); g != nil {
+		return graphRebuildResponseFromMetadata(g.Metadata()), nil
+	}
+	store := s.deps.CurrentSecurityGraphStore()
+	if store == nil {
 		return nil, errGraphRiskUnavailable
 	}
-	meta := g.Metadata()
-	return &graphRebuildResponse{
-		Success:       true,
-		BuiltAt:       meta.BuiltAt,
-		NodeCount:     meta.NodeCount,
-		EdgeCount:     meta.EdgeCount,
-		BuildDuration: meta.BuildDuration.String(),
-	}, nil
+	snapshot, err := store.Snapshot(ctx)
+	if err != nil {
+		return nil, graphRiskErr(err)
+	}
+	if snapshot == nil {
+		return nil, errGraphRiskUnavailable
+	}
+	return graphRebuildResponseFromMetadata(snapshot.Metadata), nil
 }
 
 func (s serverGraphRiskService) RiskReport(ctx context.Context) (*risk.SecurityReport, error) {
@@ -236,6 +239,16 @@ func graphRiskErr(err error) error {
 		return errGraphRiskUnavailable
 	}
 	return err
+}
+
+func graphRebuildResponseFromMetadata(meta graph.Metadata) *graphRebuildResponse {
+	return &graphRebuildResponse{
+		Success:       true,
+		BuiltAt:       meta.BuiltAt,
+		NodeCount:     meta.NodeCount,
+		EdgeCount:     meta.EdgeCount,
+		BuildDuration: meta.BuildDuration.String(),
+	}
 }
 
 func graphRiskStatsFromMetadata(meta graph.Metadata) *graphRiskStatsResponse {

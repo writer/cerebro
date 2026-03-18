@@ -62,3 +62,42 @@ func TestGraphStatsPrefersLiveGraphOverSnapshotWhenAvailable(t *testing.T) {
 		t.Fatalf("expected graph stats 200, got %d: %s", resp.Code, resp.Body.String())
 	}
 }
+
+func TestGraphRebuildUsesGraphRuntimeStoreWhenLiveGraphUnavailable(t *testing.T) {
+	s := NewServerWithDependencies(serverDependencies{
+		Config: &app.Config{},
+		graphRuntime: stubGraphRuntime{
+			store: buildGraphStoreStatsTestGraph(),
+		},
+	})
+	t.Cleanup(func() { s.Close() })
+
+	resp := do(t, s, http.MethodPost, "/api/v1/graph/rebuild", nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected graph rebuild 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+	body := decodeJSON(t, resp)
+	if got := int(body["node_count"].(float64)); got != 2 {
+		t.Fatalf("expected node_count=2 from store-backed rebuild, got %#v", body)
+	}
+	if got := int(body["edge_count"].(float64)); got != 1 {
+		t.Fatalf("expected edge_count=1 from store-backed rebuild, got %#v", body)
+	}
+}
+
+func TestGraphRebuildPrefersRuntimeGraphOverSnapshotWhenAvailable(t *testing.T) {
+	g := buildGraphStoreStatsTestGraph()
+	s := NewServerWithDependencies(serverDependencies{
+		Config: &app.Config{},
+		graphRuntime: stubGraphRuntime{
+			graph: g,
+			store: failingSnapshotGraphStore{GraphStore: g},
+		},
+	})
+	t.Cleanup(func() { s.Close() })
+
+	resp := do(t, s, http.MethodPost, "/api/v1/graph/rebuild", nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected graph rebuild 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+}

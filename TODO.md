@@ -29,6 +29,18 @@ Status: executed end-to-end via PR workflow
 - [x] Route both the request-path tenant graph helpers and the default identity graph resolver through the shared tenant-scoped helpers.
 - [x] Add focused resolver tests for tenant live-graph preference and tenant store fallback, then rerun API validation.
 
+## Deep Review Cycle 209 - Graph Rebuild Runtime Metadata Path (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left `POST /api/v1/graph/rebuild` hard-gated on `SecurityGraphBuilder` plus a live `CurrentSecurityGraph()` pointer, so a runtime-backed rebuild could succeed and still return `503` when no in-memory graph field was populated.
+- [x] Gap: the rebuild response only needs graph metadata, which is already available from `CurrentSecurityGraphStore().Snapshot(...)`, so requiring a live graph after rebuild was unnecessary coupling to the old in-memory runtime.
+- [x] Gap: there was no regression proving rebuild works in a runtime/store-backed server or that the live graph still wins when both a runtime graph and a store snapshot are available.
+
+### Execution plan
+- [x] Teach `serverGraphRiskService.Rebuild(...)` to use the graph runtime abstraction first and fall back to store snapshot metadata when no live graph pointer is present.
+- [x] Preserve the live-graph fast path so in-memory runtimes keep returning rebuild metadata without paying the snapshot restore path.
+- [x] Add runtime/store-backed rebuild regressions, then rerun focused API tests, lint, and changed-file validation before opening the PR.
+
 ## Deep Review Cycle 206 - Graph View Resolver Infrastructure (2026-03-18)
 
 ### Review findings
