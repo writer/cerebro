@@ -108,6 +108,15 @@ func TestGraphStoreTraversalWrappersMatchGraphFunctions(t *testing.T) {
 		t.Fatalf("BlastRadius() = %#v, want %#v", blast, wantBlast)
 	}
 
+	reverse, err := store.ReverseAccess(ctx, "service:db", 2)
+	if err != nil {
+		t.Fatalf("ReverseAccess() error = %v", err)
+	}
+	wantReverse := ReverseAccess(g, "service:db", 2)
+	if reverse.TotalCount != wantReverse.TotalCount || reverse.ResourceID != wantReverse.ResourceID {
+		t.Fatalf("ReverseAccess() = %#v, want %#v", reverse, wantReverse)
+	}
+
 	access, err := store.EffectiveAccess(ctx, "service:api", "service:db", 2)
 	if err != nil {
 		t.Fatalf("EffectiveAccess() error = %v", err)

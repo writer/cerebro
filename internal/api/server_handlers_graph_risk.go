@@ -31,8 +31,8 @@ func (s *Server) graphStats(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) blastRadius(w http.ResponseWriter, r *http.Request) {
-	g := s.currentTenantSecurityGraph(r.Context())
-	if g == nil {
+	store := s.currentTenantSecurityGraphStore(r.Context())
+	if store == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
@@ -50,13 +50,17 @@ func (s *Server) blastRadius(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result := risk.BlastRadius(g, principalID, maxDepth)
+	result, err := store.BlastRadius(r.Context(), principalID, maxDepth)
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
 	s.json(w, http.StatusOK, result)
 }
 
 func (s *Server) cascadingBlastRadius(w http.ResponseWriter, r *http.Request) {
-	g := s.currentTenantSecurityGraph(r.Context())
-	if g == nil {
+	store := s.currentTenantSecurityGraphStore(r.Context())
+	if store == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
@@ -74,13 +78,17 @@ func (s *Server) cascadingBlastRadius(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result := risk.CascadingBlastRadius(g, principalID, maxDepth)
+	result, err := store.CascadingBlastRadius(r.Context(), principalID, maxDepth)
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
 	s.json(w, http.StatusOK, result)
 }
 
 func (s *Server) reverseAccess(w http.ResponseWriter, r *http.Request) {
-	g := s.currentTenantSecurityGraph(r.Context())
-	if g == nil {
+	store := s.currentTenantSecurityGraphStore(r.Context())
+	if store == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
@@ -98,7 +106,11 @@ func (s *Server) reverseAccess(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result := risk.ReverseAccess(g, resourceID, maxDepth)
+	result, err := store.ReverseAccess(r.Context(), resourceID, maxDepth)
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
 	s.json(w, http.StatusOK, result)
 }
 

@@ -77,7 +77,8 @@ func (s *Server) visualizeToxicCombination(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) visualizeBlastRadius(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	store := s.currentTenantSecurityGraphStore(r.Context())
+	if store == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
@@ -95,8 +96,12 @@ func (s *Server) visualizeBlastRadius(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result := risk.BlastRadius(s.app.SecurityGraph, principalID, maxDepth)
-	exporter := graph.NewMermaidExporter(s.app.SecurityGraph)
+	result, err := store.BlastRadius(r.Context(), principalID, maxDepth)
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
+	exporter := graph.NewMermaidExporter(nil)
 	mermaid := exporter.ExportBlastRadius(result)
 
 	w.Header().Set("Content-Type", "text/markdown")

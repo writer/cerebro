@@ -147,6 +147,14 @@ func (s liveGraphStore) BlastRadius(ctx context.Context, principalID string, max
 	return g.BlastRadius(ctx, principalID, maxDepth)
 }
 
+func (s liveGraphStore) ReverseAccess(ctx context.Context, resourceID string, maxDepth int) (*graph.ReverseAccessResult, error) {
+	g, err := s.currentGraph(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return g.ReverseAccess(ctx, resourceID, maxDepth)
+}
+
 func (s liveGraphStore) EffectiveAccess(ctx context.Context, principalID, resourceID string, maxDepth int) (*graph.EffectiveAccessResult, error) {
 	g, err := s.currentGraph(ctx)
 	if err != nil {

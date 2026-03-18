@@ -31,6 +31,13 @@ func (s *Server) currentTenantSecurityGraph(ctx context.Context) *graph.Graph {
 	return s.app.CurrentSecurityGraphForTenant(currentTenantScopeID(ctx))
 }
 
+func (s *Server) currentTenantSecurityGraphStore(ctx context.Context) graph.GraphStore {
+	if s == nil || s.app == nil {
+		return nil
+	}
+	return s.app.CurrentSecurityGraphStoreForTenant(currentTenantScopeID(ctx))
+}
+
 func (s *Server) currentTenantRiskEngine(ctx context.Context) *risk.RiskEngine {
 	if s == nil || s.app == nil {
 		return nil

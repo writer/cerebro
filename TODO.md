@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 196 - Graph Store Query Paths (2026-03-17)
+
+### Review findings
+- [x] Gap: issue `#392` still left the highest-traffic graph traversal endpoints calling raw `*graph.Graph` helpers directly, so the new store seam existed on paper but not on the HTTP read path.
+- [x] Gap: `ReverseAccess` was not part of `graph.GraphStore`, which meant one of the core graph risk traversals would still need pointer-specific plumbing in every future backend implementation.
+- [x] Gap: API tests did not prove that traversal handlers could run with only a `GraphStore` and no live raw graph pointer, so the migration seam could regress without detection.
+
+### Execution plan
+- [x] Extend `graph.GraphStore` and the live app-backed store wrapper with `ReverseAccess` parity.
+- [x] Route tenant-scoped blast-radius, cascading-blast-radius, reverse-access, and blast-radius visualization handlers through `CurrentSecurityGraphStoreForTenant`.
+- [x] Add regression coverage proving store-backed traversal handlers succeed when the server only has a `GraphStore` runtime and no raw `SecurityGraph` pointer.
+
 ## Deep Review Cycle 195 - Graph Store Abstraction (2026-03-17)
 
 ### Review findings

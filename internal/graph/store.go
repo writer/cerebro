@@ -37,6 +37,7 @@ type GraphStore interface {
 
 	Snapshot(ctx context.Context) (*Snapshot, error)
 	BlastRadius(ctx context.Context, principalID string, maxDepth int) (*BlastRadiusResult, error)
+	ReverseAccess(ctx context.Context, resourceID string, maxDepth int) (*ReverseAccessResult, error)
 	EffectiveAccess(ctx context.Context, principalID, resourceID string, maxDepth int) (*EffectiveAccessResult, error)
 	CascadingBlastRadius(ctx context.Context, sourceID string, maxDepth int) (*CascadingBlastRadiusResult, error)
 	ExtractSubgraph(ctx context.Context, rootID string, opts ExtractSubgraphOptions) (*Graph, error)
@@ -189,6 +190,16 @@ func (g *Graph) BlastRadius(ctx context.Context, principalID string, maxDepth in
 		return nil, ErrStoreUnavailable
 	}
 	return BlastRadius(g, principalID, maxDepth), nil
+}
+
+func (g *Graph) ReverseAccess(ctx context.Context, resourceID string, maxDepth int) (*ReverseAccessResult, error) {
+	if err := graphStoreContextErr(ctx); err != nil {
+		return nil, err
+	}
+	if g == nil {
+		return nil, ErrStoreUnavailable
+	}
+	return ReverseAccess(g, resourceID, maxDepth), nil
 }
 
 func (g *Graph) EffectiveAccess(ctx context.Context, principalID, resourceID string, maxDepth int) (*EffectiveAccessResult, error) {
