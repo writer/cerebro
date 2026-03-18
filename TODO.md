@@ -17,6 +17,18 @@ Status: executed end-to-end via PR workflow
 - [x] Keep the handler surface unchanged so outcomes, feedback, rule discovery, and cross-tenant pattern endpoints inherit store-backed behavior without a separate service seam.
 - [x] Add store-only API regressions covering feedback, discovery, and cross-tenant pattern flows, then rerun focused API tests and changed-file validation.
 
+## Deep Review Cycle 205 - Tenant Store Intelligence Paths (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left tenant-scoped graph intelligence and tenant-scoped risk-report paths dependent on a live in-memory tenant shard, so those endpoints returned `503` when the runtime exposed only tenant `GraphStore` readers.
+- [x] Gap: `graphIntelligenceService` only surfaced a raw `*graph.Graph`, which meant the intelligence handlers could not fall back to `GraphStore.Snapshot()` the way the other `#392` read-path slices already do.
+- [x] Gap: there was no regression proving tenant-scoped intelligence lookups or tenant-scoped risk reports still work when only tenant-scoped graph stores are available.
+
+### Execution plan
+- [x] Route `graphIntelligenceService` current-graph resolution through tenant-aware live-graph or store-snapshot lookup instead of a raw global graph pointer.
+- [x] Teach `currentTenantRiskEngine(...)` to build from the shared tenant graph-view helper so tenant-scoped risk reports work without a live in-memory shard.
+- [x] Add tenant-scoped store-only regressions for graph intelligence and risk report handlers, then rerun focused and changed-file API validation.
+
 ## Deep Review Cycle 199 - API Endpoint Graph Substrate (2026-03-18)
 
 ### Review findings

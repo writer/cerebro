@@ -37,6 +37,36 @@ func doWithTenantContext(t *testing.T, s *Server, method, path string, body any,
 	return w
 }
 
+type tenantScopedStoreGraphRuntime struct {
+	stubGraphRuntime
+	tenantStores map[string]graph.GraphStore
+}
+
+func (r tenantScopedStoreGraphRuntime) CurrentSecurityGraphStoreForTenant(tenantID string) graph.GraphStore {
+	if store, ok := r.tenantStores[tenantID]; ok {
+		return store
+	}
+	return r.stubGraphRuntime.CurrentSecurityGraphStoreForTenant(tenantID)
+}
+
+func newTenantScopedStoreBackedServer(t *testing.T, g *graph.Graph) *Server {
+	t.Helper()
+	application := newTestApp(t)
+	deps := newServerDependenciesFromApp(application)
+	deps.SecurityGraph = nil
+	deps.SecurityGraphBuilder = nil
+	deps.graphRuntime = tenantScopedStoreGraphRuntime{
+		stubGraphRuntime: stubGraphRuntime{store: g},
+		tenantStores: map[string]graph.GraphStore{
+			"tenant-a": g.SubgraphForTenant("tenant-a"),
+			"tenant-b": g.SubgraphForTenant("tenant-b"),
+		},
+	}
+	s := NewServerWithDependencies(deps)
+	t.Cleanup(func() { s.Close() })
+	return s
+}
+
 func TestGraphRiskHandlersUseTenantScopedGraph(t *testing.T) {
 	s := newTestServer(t)
 	g := s.app.SecurityGraph
@@ -166,6 +196,59 @@ func TestGraphIntelligenceHandlersUseTenantScopedGraph(t *testing.T) {
 	}
 }
 
+func TestGraphIntelligenceHandlersUseTenantScopedStoreBackedGraph(t *testing.T) {
+	g := graph.New()
+	base := time.Date(2026, 3, 12, 10, 0, 0, 0, time.UTC)
+	g.AddNode(&graph.Node{ID: "service:tenant-a", Kind: graph.NodeKindService, Name: "Tenant A", TenantID: "tenant-a"})
+	g.AddNode(&graph.Node{ID: "service:tenant-b", Kind: graph.NodeKindService, Name: "Tenant B", TenantID: "tenant-b"})
+	g.AddNode(&graph.Node{
+		ID:       "pull_request:tenant-b:42",
+		Kind:     graph.NodeKindPullRequest,
+		TenantID: "tenant-b",
+		Properties: map[string]any{
+			"repository":  "tenant-b",
+			"number":      "42",
+			"state":       "merged",
+			"observed_at": base.Format(time.RFC3339),
+			"valid_from":  base.Format(time.RFC3339),
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:       "deployment:tenant-b:deploy-1",
+		Kind:     graph.NodeKindDeploymentRun,
+		TenantID: "tenant-b",
+		Properties: map[string]any{
+			"deploy_id":   "deploy-1",
+			"service_id":  "tenant-b",
+			"environment": "prod",
+			"status":      "succeeded",
+			"observed_at": base.Add(5 * time.Minute).Format(time.RFC3339),
+			"valid_from":  base.Add(5 * time.Minute).Format(time.RFC3339),
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:       "incident:tenant-b:1",
+		Kind:     graph.NodeKindIncident,
+		TenantID: "tenant-b",
+		Properties: map[string]any{
+			"incident_id": "incident-b-1",
+			"service_id":  "tenant-b",
+			"observed_at": base.Add(7 * time.Minute).Format(time.RFC3339),
+			"valid_from":  base.Add(7 * time.Minute).Format(time.RFC3339),
+		},
+	})
+	g.AddEdge(&graph.Edge{ID: "pr-b-service", Source: "pull_request:tenant-b:42", Target: "service:tenant-b", Kind: graph.EdgeKindTargets, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "deploy-b-service", Source: "deployment:tenant-b:deploy-1", Target: "service:tenant-b", Kind: graph.EdgeKindTargets, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "incident-b-service", Source: "incident:tenant-b:1", Target: "service:tenant-b", Kind: graph.EdgeKindTargets, Effect: graph.EdgeEffectAllow})
+	graph.MaterializeEventCorrelations(g, base.Add(10*time.Minute))
+
+	s := newTenantScopedStoreBackedServer(t, g)
+	resp := doWithTenantContext(t, s, http.MethodGet, "/api/v1/platform/intelligence/event-correlations?event_id=incident:tenant-b:1&limit=10", nil, "tenant-a")
+	if resp.Code != http.StatusNotFound {
+		t.Fatalf("expected tenant-scoped store-backed event correlation lookup to hide foreign tenant event, got %d: %s", resp.Code, resp.Body.String())
+	}
+}
+
 func TestCrossTenantReadOperationsEmitAuditAndMetrics(t *testing.T) {
 	s := newTestServer(t)
 	s.auditLogger = &captureAuditLogger{}
@@ -267,5 +350,24 @@ func TestRiskReportPersistsOnlyForGlobalRequests(t *testing.T) {
 	}
 	if afterTenant.GetCounter().GetValue() != afterGlobal.GetCounter().GetValue() {
 		t.Fatalf("expected tenant-scoped risk report to skip persistence, global=%f tenant=%f", afterGlobal.GetCounter().GetValue(), afterTenant.GetCounter().GetValue())
+	}
+}
+
+func TestTenantScopedRiskReportUsesStoreBackedGraphWhenRawGraphUnavailable(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{ID: "user:shared", Kind: graph.NodeKindUser, Name: "Shared User"})
+	g.AddNode(&graph.Node{ID: "service:tenant-a", Kind: graph.NodeKindService, Name: "Tenant A", TenantID: "tenant-a", Risk: graph.RiskHigh})
+	g.AddNode(&graph.Node{ID: "service:tenant-b", Kind: graph.NodeKindService, Name: "Tenant B", TenantID: "tenant-b"})
+	g.AddEdge(&graph.Edge{ID: "shared-a", Source: "user:shared", Target: "service:tenant-a", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "shared-b", Source: "user:shared", Target: "service:tenant-b", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow})
+
+	s := newTenantScopedStoreBackedServer(t, g)
+	resp := doWithTenantContext(t, s, http.MethodGet, "/api/v1/graph/risk-report", nil, "tenant-a")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected tenant-scoped store-backed risk report 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+	body := decodeJSON(t, resp)
+	if _, ok := body["risk_score"].(float64); !ok {
+		t.Fatalf("expected risk_score from tenant-scoped store-backed risk report, got %#v", body["risk_score"])
 	}
 }

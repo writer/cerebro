@@ -25,7 +25,11 @@ func (s *Server) currentGraphIntelligenceGraph(ctx context.Context) *graph.Graph
 	if s == nil || s.graphIntelligence == nil {
 		return nil
 	}
-	return s.tenantScopedGraph(ctx, s.graphIntelligence.CurrentGraph())
+	g, err := s.graphIntelligence.CurrentGraph(ctx)
+	if err != nil {
+		return nil
+	}
+	return g
 }
 
 func (s *Server) graphIntelligenceEventCorrelations(w http.ResponseWriter, r *http.Request) {

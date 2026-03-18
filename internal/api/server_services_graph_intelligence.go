@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"strings"
 	"time"
 
@@ -11,7 +12,7 @@ import (
 // graphIntelligenceService narrows the handler dependency surface to the graph
 // and mapper primitives consumed by the graph-intelligence routes.
 type graphIntelligenceService interface {
-	CurrentGraph() *graph.Graph
+	CurrentGraph(ctx context.Context) (*graph.Graph, error)
 	MapperInitialized() bool
 	MapperValidationMode() string
 	MapperDeadLetterPath() string
@@ -27,11 +28,26 @@ func newGraphIntelligenceService(deps *serverDependencies) graphIntelligenceServ
 	return serverGraphIntelligenceService{deps: deps}
 }
 
-func (s serverGraphIntelligenceService) CurrentGraph() *graph.Graph {
+func (s serverGraphIntelligenceService) CurrentGraph(ctx context.Context) (*graph.Graph, error) {
 	if s.deps == nil {
-		return nil
+		return nil, graph.ErrStoreUnavailable
 	}
-	return s.deps.CurrentSecurityGraph()
+	tenantID := currentTenantScopeID(ctx)
+	if g := s.deps.CurrentSecurityGraphForTenant(tenantID); g != nil {
+		return g, nil
+	}
+	store := s.deps.CurrentSecurityGraphStoreForTenant(tenantID)
+	if store == nil {
+		return nil, graph.ErrStoreUnavailable
+	}
+	snapshot, err := store.Snapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if snapshot == nil {
+		return nil, graph.ErrStoreUnavailable
+	}
+	return graph.GraphViewFromSnapshot(snapshot), nil
 }
 
 func (s serverGraphIntelligenceService) MapperInitialized() bool {

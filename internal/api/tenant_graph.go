@@ -8,14 +8,6 @@ import (
 	risk "github.com/evalops/cerebro/internal/graph/risk"
 )
 
-func (s *Server) tenantScopedGraph(ctx context.Context, g *graph.Graph) *graph.Graph {
-	if s == nil || g == nil {
-		return nil
-	}
-	tenantID := currentTenantScopeID(ctx)
-	return g.SubgraphForTenant(tenantID)
-}
-
 func currentTenantScopeID(ctx context.Context) string {
 	return strings.TrimSpace(GetTenantID(ctx))
 }
@@ -92,8 +84,8 @@ func (s *Server) currentTenantRiskEngine(ctx context.Context) *risk.RiskEngine {
 	if !requestUsesTenantScope(ctx) {
 		return s.graphRiskEngine()
 	}
-	g := s.currentTenantSecurityGraph(ctx)
-	if g == nil {
+	g, err := s.currentTenantSecurityGraphView(ctx)
+	if err != nil || g == nil {
 		return nil
 	}
 	engine := risk.NewRiskEngine(g)
