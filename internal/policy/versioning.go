@@ -246,6 +246,7 @@ func DiffPolicies(before, after *Policy) PolicyDiff {
 		{name: "action", get: func(p *Policy) interface{} { return strings.TrimSpace(p.Action) }},
 		{name: "resource", get: func(p *Policy) interface{} { return strings.TrimSpace(p.Resource) }},
 		{name: "conditions", get: func(p *Policy) interface{} { return normalizeStringSlice(p.Conditions) }},
+		{name: "condition_format", get: func(p *Policy) interface{} { return normalizeConditionFormat(p.ConditionFormat) }},
 		{name: "severity", get: func(p *Policy) interface{} { return strings.TrimSpace(p.Severity) }},
 		{name: "tags", get: func(p *Policy) interface{} { return normalizeStringSlice(p.Tags) }},
 		{name: "raw", get: func(p *Policy) interface{} { return strings.TrimSpace(p.Raw) }},

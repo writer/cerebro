@@ -499,12 +499,13 @@ func TestCreateAndGetPolicy(t *testing.T) {
 	s := newTestServer(t)
 
 	p := policy.Policy{
-		ID:         "test-001",
-		Name:       "No public buckets",
-		Effect:     "forbid",
-		Resource:   "aws::s3::bucket",
-		Conditions: []string{"public == true"},
-		Severity:   "high",
+		ID:          "test-001",
+		Name:        "No public buckets",
+		Description: "test policy",
+		Effect:      "forbid",
+		Resource:    "aws::s3::bucket",
+		Conditions:  []string{"public == true"},
+		Severity:    "high",
 	}
 
 	w := do(t, s, "POST", "/api/v1/policies/", p)
@@ -533,23 +534,25 @@ func TestCreateAndGetPolicy(t *testing.T) {
 func TestPolicyUpdateAndDelete(t *testing.T) {
 	s := newTestServer(t)
 	create := do(t, s, "POST", "/api/v1/policies/", policy.Policy{
-		ID:         "policy-update",
-		Name:       "Original",
-		Effect:     "forbid",
-		Resource:   "aws::s3::bucket",
-		Conditions: []string{"public == true"},
-		Severity:   "high",
+		ID:          "policy-update",
+		Name:        "Original",
+		Description: "original policy",
+		Effect:      "forbid",
+		Resource:    "aws::s3::bucket",
+		Conditions:  []string{"public == true"},
+		Severity:    "high",
 	})
 	if create.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d: %s", create.Code, create.Body.String())
 	}
 
 	update := do(t, s, "PUT", "/api/v1/policies/policy-update", policy.Policy{
-		Name:       "Updated",
-		Effect:     "forbid",
-		Resource:   "aws::s3::bucket",
-		Conditions: []string{"public == false"},
-		Severity:   "critical",
+		Name:        "Updated",
+		Description: "updated policy",
+		Effect:      "forbid",
+		Resource:    "aws::s3::bucket",
+		Conditions:  []string{"public == false"},
+		Severity:    "critical",
 	})
 	if update.Code != http.StatusOK {
 		t.Fatalf("expected 200 on update, got %d: %s", update.Code, update.Body.String())
@@ -572,6 +575,27 @@ func TestPolicyUpdateAndDelete(t *testing.T) {
 	missing := do(t, s, "GET", "/api/v1/policies/policy-update", nil)
 	if missing.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 after delete, got %d", missing.Code)
+	}
+}
+
+func TestCreatePolicy_RejectsInvalidCELCondition(t *testing.T) {
+	s := newTestServer(t)
+
+	w := do(t, s, "POST", "/api/v1/policies/", policy.Policy{
+		ID:              "invalid-cel",
+		Name:            "Invalid CEL",
+		Description:     "test",
+		Effect:          "forbid",
+		Resource:        "aws::s3::bucket",
+		ConditionFormat: policy.ConditionFormatCEL,
+		Conditions:      []string{"resource.public =="},
+		Severity:        "high",
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "invalid CEL condition") {
+		t.Fatalf("expected CEL validation error, got %s", w.Body.String())
 	}
 }
 
@@ -765,12 +789,13 @@ func TestCreatePolicyThenScanFindings(t *testing.T) {
 
 	// Create a policy
 	p := policy.Policy{
-		ID:         "pub-check",
-		Name:       "Public check",
-		Effect:     "forbid",
-		Resource:   "aws::s3::bucket",
-		Conditions: []string{"public == true"},
-		Severity:   "high",
+		ID:          "pub-check",
+		Name:        "Public check",
+		Description: "findings scan test policy",
+		Effect:      "forbid",
+		Resource:    "aws::s3::bucket",
+		Conditions:  []string{"public == true"},
+		Severity:    "high",
 	}
 	w := do(t, s, "POST", "/api/v1/policies/", p)
 	if w.Code != http.StatusCreated {

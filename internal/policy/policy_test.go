@@ -57,6 +57,51 @@ func TestEngineUpdateAndDeletePolicy(t *testing.T) {
 	}
 }
 
+func TestPolicyCELConditions(t *testing.T) {
+	engine := NewEngine()
+	engine.AddPolicy(&Policy{
+		ID:              "cel-policy",
+		Name:            "CEL policy",
+		Description:     "test",
+		Effect:          "forbid",
+		Resource:        "aws::s3::bucket",
+		ConditionFormat: ConditionFormatCEL,
+		Conditions: []string{
+			"resource.public == true",
+			"resource.name.startsWith('prod-')",
+		},
+		Severity: "high",
+	})
+
+	findings, err := engine.EvaluateAsset(context.Background(), map[string]interface{}{
+		"_cq_id":    "bucket-1",
+		"_cq_table": "aws_s3_buckets",
+		"type":      "aws::s3::bucket",
+		"public":    true,
+		"name":      "prod-logs",
+	})
+	if err != nil {
+		t.Fatalf("EvaluateAsset failed: %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(findings))
+	}
+
+	findings, err = engine.EvaluateAsset(context.Background(), map[string]interface{}{
+		"_cq_id":    "bucket-2",
+		"_cq_table": "aws_s3_buckets",
+		"type":      "aws::s3::bucket",
+		"public":    true,
+		"name":      "dev-logs",
+	})
+	if err != nil {
+		t.Fatalf("EvaluateAsset failed: %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("expected 0 findings, got %d", len(findings))
+	}
+}
+
 func TestPublicVMPolicies(t *testing.T) {
 	engine := NewEngine()
 

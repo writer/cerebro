@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/writer/cerebro/internal/graph"
+	reports "github.com/writer/cerebro/internal/graph/reports"
 )
 
 const contractsPath = "docs/GRAPH_REPORT_CONTRACTS.json"
@@ -23,7 +23,7 @@ func main() {
 	requireBaseline := flag.Bool("require-baseline", false, "fail when no baseline report contract catalog can be loaded")
 	flag.Parse()
 
-	currentCatalog := graph.BuildReportContractCatalog(time.Time{})
+	currentCatalog := reports.BuildReportContractCatalog(time.Time{})
 	baselineCatalog, baselineRef, err := loadBaselineCatalog(strings.TrimSpace(*baseRefFlag))
 	if err != nil {
 		if *requireBaseline {
@@ -33,7 +33,7 @@ func main() {
 		return
 	}
 
-	report := graph.CompareReportContractCatalogs(baselineCatalog, currentCatalog, time.Now().UTC())
+	report := reports.CompareReportContractCatalogs(baselineCatalog, currentCatalog, time.Now().UTC())
 	fmt.Printf("baseline_ref=%s baseline_section_envelopes=%d current_section_envelopes=%d baseline_section_fragments=%d current_section_fragments=%d baseline_benchmark_packs=%d current_benchmark_packs=%d added_envelopes=%d removed_envelopes=%d added_fragments=%d removed_fragments=%d added_packs=%d removed_packs=%d breaking=%d violations=%d diffs=%d\n",
 		baselineRef,
 		report.BaselineSectionEnvelopes,
@@ -79,7 +79,7 @@ func main() {
 	fmt.Println("report contract compatibility check passed")
 }
 
-func loadBaselineCatalog(baseRef string) (graph.ReportContractCatalog, string, error) {
+func loadBaselineCatalog(baseRef string) (reports.ReportContractCatalog, string, error) {
 	candidates := make([]string, 0, 4)
 	if baseRef != "" {
 		candidates = append(candidates, baseRef)
@@ -101,16 +101,16 @@ func loadBaselineCatalog(baseRef string) (graph.ReportContractCatalog, string, e
 		if err != nil {
 			continue
 		}
-		var catalog graph.ReportContractCatalog
+		var catalog reports.ReportContractCatalog
 		if err := json.Unmarshal(payload, &catalog); err != nil {
 			continue
 		}
 		return catalog, candidate, nil
 	}
 	if _, err := os.Stat(contractsPath); err == nil {
-		return graph.ReportContractCatalog{}, "bootstrap:none", nil
+		return reports.ReportContractCatalog{}, "bootstrap:none", nil
 	}
-	return graph.ReportContractCatalog{}, "", fmt.Errorf("no readable baseline report contract catalog found for refs %v", candidates)
+	return reports.ReportContractCatalog{}, "", fmt.Errorf("no readable baseline report contract catalog found for refs %v", candidates)
 }
 
 func gitShowFile(ref, filePath string) ([]byte, error) {

@@ -9,7 +9,7 @@
       "title": "Decision Intelligence",
       "category": "decision_support",
       "description": "Prioritized decision-grade insights with evidence, coverage, confidence, and optional counterfactual context.",
-      "result_schema": "graph.IntelligenceReport",
+      "result_schema": "reports.IntelligenceReport",
       "endpoint": {
         "method": "GET",
         "path": "/api/v1/platform/intelligence/insights",
@@ -183,7 +183,7 @@
       "title": "Graph Quality",
       "category": "quality",
       "description": "Graph operability view spanning ontology health, identity linkage, temporal completeness, and closed-loop write-back maturity.",
-      "result_schema": "graph.GraphQualityReport",
+      "result_schema": "reports.GraphQualityReport",
       "endpoint": {
         "method": "GET",
         "path": "/api/v1/platform/intelligence/quality",
@@ -377,7 +377,7 @@
       "title": "Metadata Quality",
       "category": "quality",
       "description": "Metadata-profile coverage view over required keys, timestamp validity, enum normalization, and the highest-volume unprofiled kinds.",
-      "result_schema": "graph.GraphMetadataQualityReport",
+      "result_schema": "reports.GraphMetadataQualityReport",
       "endpoint": {
         "method": "GET",
         "path": "/api/v1/platform/intelligence/metadata-quality",
@@ -664,7 +664,7 @@
       "title": "Entity Summary",
       "category": "entity",
       "description": "Report-level entity view composed from canonical identity, facet modules, posture claims, topology, and support coverage.",
-      "result_schema": "graph.EntitySummaryReport",
+      "result_schema": "reports.EntitySummaryReport",
       "endpoint": {
         "method": "GET",
         "path": "/api/v1/platform/intelligence/entity-summary",
@@ -837,7 +837,7 @@
       "title": "Graph Leverage",
       "category": "operating_model",
       "description": "Combined operating view across quality, identity calibration, ingestion breadth, temporal freshness, predictive readiness, query readiness, and actuation closure.",
-      "result_schema": "graph.GraphLeverageReport",
+      "result_schema": "reports.GraphLeverageReport",
       "endpoint": {
         "method": "GET",
         "path": "/api/v1/platform/intelligence/leverage",
@@ -1092,7 +1092,7 @@
       "title": "Weekly Calibration",
       "category": "calibration",
       "description": "Weekly slice combining outcome backtest, identity calibration status, and ontology trend context.",
-      "result_schema": "graph.WeeklyCalibrationReport",
+      "result_schema": "reports.WeeklyCalibrationReport",
       "endpoint": {
         "method": "GET",
         "path": "/api/v1/platform/intelligence/calibration/weekly",

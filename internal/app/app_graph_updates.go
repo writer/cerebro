@@ -130,7 +130,7 @@ func (a *App) maybeStartGraphConsistencyCheck(trigger string, summary graph.Grap
 	a.graphConsistencyCancel = cancel
 	a.graphConsistencyMu.Unlock()
 
-	go func() {
+	go func(checkCtx context.Context, cancel context.CancelFunc) {
 		defer a.graphConsistencyWG.Done()
 		defer func() {
 			a.graphConsistencyMu.Lock()
@@ -174,7 +174,7 @@ func (a *App) maybeStartGraphConsistencyCheck(trigger string, summary graph.Grap
 			"edges_added", len(diff.EdgesAdded),
 			"edges_removed", len(diff.EdgesRemoved),
 		)
-	}()
+	}(checkCtx, cancel)
 }
 
 func graphDiffHasChanges(diff *graph.GraphDiff) bool {

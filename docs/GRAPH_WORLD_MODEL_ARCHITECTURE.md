@@ -95,7 +95,7 @@ This cycle adds the minimum viable world-model substrate:
 - normalized entity posture summaries derived from posture/support claims attached to the entity
 - persisted workload scan projection through `workload_scan`, `package`, and `vulnerability` nodes plus `has_scan`, `contains_package`, `found_vulnerability`, and `affected_by` edges
 - workload-aware entity posture through the `workload_security` facet, which combines latest scan counts with exposure, blast-radius, and sensitive-data path context
-- report-level asset views through `graph.BuildEntitySummaryReport(...)` and `GET /api/v1/platform/intelligence/entity-summary`
+- report-level asset views through `reports.BuildEntitySummaryReport(...)` and `GET /api/v1/platform/intelligence/entity-summary`
 - claim contradiction reporting through `BuildClaimConflictReport(...)` and `GET /api/v1/platform/intelligence/claim-conflicts`
 - derived claim state surfaced as typed fields (`supported`, `source_backed`, `sourceless`, `conflicted`, `superseded`) instead of forcing every consumer to traverse raw graph links
 - entity support state surfaced as typed fields (`relationships`, `claim_count`, `supported_claim_count`, `conflicted_claim_count`, `evidence_count`, `observation_count`, `facets`, `subresources`, `posture`) instead of leaving asset context trapped in raw table rows or one-off reports
