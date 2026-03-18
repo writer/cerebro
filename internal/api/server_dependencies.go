@@ -13,6 +13,7 @@ import (
 	"github.com/writer/cerebro/internal/attackpath"
 	"github.com/writer/cerebro/internal/auth"
 	"github.com/writer/cerebro/internal/cache"
+	"github.com/writer/cerebro/internal/executionstore"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/graph/builders"
@@ -59,18 +60,23 @@ type agentSDKToolService interface {
 	AgentSDKTools() []agents.Tool
 }
 
+type graphMutationService interface {
+	MutateSecurityGraph(ctx context.Context, mutate func(*graph.Graph) error) (*graph.Graph, error)
+}
+
 // serverDependencies narrows API wiring down to the concrete services and small
 // behavioral interfaces the HTTP layer actually consumes.
 type serverDependencies struct {
 	Config *app.Config
 	Logger *slog.Logger
 
-	Snowflake *snowflake.Client
-	Warehouse warehouse.DataWarehouse
-	Policy    *policy.Engine
-	Findings  findings.FindingStore
-	Scanner   *scanner.Scanner
-	Cache     *cache.PolicyCache
+	Snowflake      *snowflake.Client
+	Warehouse      warehouse.DataWarehouse
+	Policy         *policy.Engine
+	Findings       findings.FindingStore
+	Scanner        *scanner.Scanner
+	Cache          *cache.PolicyCache
+	ExecutionStore executionstore.Store
 
 	Agents         *agents.AgentRegistry
 	Ticketing      *ticketing.Service
@@ -101,6 +107,7 @@ type serverDependencies struct {
 	SecurityGraphBuilder *builders.Builder
 
 	graphRuntime       graphRuntimeService
+	graphMutator       graphMutationService
 	apiCredentials     apiCredentialService
 	agentSDKToolSource agentSDKToolService
 }
@@ -130,6 +137,7 @@ func newServerDependenciesFromApp(application *app.App) serverDependencies {
 		Findings:             application.Findings,
 		Scanner:              application.Scanner,
 		Cache:                application.Cache,
+		ExecutionStore:       application.ExecutionStore,
 		Agents:               application.Agents,
 		Ticketing:            application.Ticketing,
 		Identity:             application.Identity,
@@ -153,6 +161,7 @@ func newServerDependenciesFromApp(application *app.App) serverDependencies {
 		RuntimeRespond:       application.RuntimeRespond,
 		SecurityGraph:        application.SecurityGraph,
 		SecurityGraphBuilder: application.SecurityGraphBuilder,
+		graphMutator:         application,
 		apiCredentials:       application,
 		agentSDKToolSource:   application,
 	}
@@ -208,6 +217,13 @@ func (d serverDependencies) TryApplySecurityGraphChanges(ctx context.Context, tr
 		return graph.GraphMutationSummary{}, false, errors.New("security graph runtime not configured")
 	}
 	return d.graphRuntime.TryApplySecurityGraphChanges(ctx, trigger)
+}
+
+func (d serverDependencies) MutateSecurityGraph(ctx context.Context, mutate func(*graph.Graph) error) (*graph.Graph, error) {
+	if d.graphMutator == nil {
+		return nil, errors.New("security graph runtime not configured")
+	}
+	return d.graphMutator.MutateSecurityGraph(ctx, mutate)
 }
 
 func (d serverDependencies) APICredentialsSnapshot() map[string]apiauth.Credential {

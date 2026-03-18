@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/writer/cerebro/internal/graph"
+	reports "github.com/writer/cerebro/internal/graph/reports"
 )
 
 type agentSDKMCPSession struct {
@@ -90,7 +90,7 @@ func (s *Server) bindAgentSDKReportProgress(runID string, ctx context.Context) {
 	}
 }
 
-func (s *Server) emitAgentSDKReportProgress(run *graph.ReportRun) {
+func (s *Server) emitAgentSDKReportProgress(run *reports.ReportRun) {
 	if run == nil {
 		return
 	}
@@ -131,7 +131,7 @@ func (s *Server) emitAgentSDKReportProgress(run *graph.ReportRun) {
 		paramsData, _ := params["data"].(map[string]any)
 		paramsData["cancel_reason"] = run.CancelReason
 	}
-	if attempt := graph.LatestReportRunAttempt(run); attempt != nil {
+	if attempt := reports.LatestReportRunAttempt(run); attempt != nil {
 		paramsData, _ := params["data"].(map[string]any)
 		paramsData["latest_attempt_status"] = attempt.Status
 		if attempt.RetryBackoffMS > 0 {
@@ -143,14 +143,14 @@ func (s *Server) emitAgentSDKReportProgress(run *graph.ReportRun) {
 		Method:  "notifications/progress",
 		Params:  params,
 	})
-	if run.Status == graph.ReportRunStatusSucceeded || run.Status == graph.ReportRunStatusFailed || run.Status == graph.ReportRunStatusCanceled {
+	if run.Status == reports.ReportRunStatusSucceeded || run.Status == reports.ReportRunStatusFailed || run.Status == reports.ReportRunStatusCanceled {
 		s.agentSDKReportProgressMu.Lock()
 		delete(s.agentSDKReportProgress, run.ID)
 		s.agentSDKReportProgressMu.Unlock()
 	}
 }
 
-func (s *Server) emitAgentSDKReportSection(run *graph.ReportRun, section graph.ReportSectionEmission) {
+func (s *Server) emitAgentSDKReportSection(run *reports.ReportRun, section reports.ReportSectionEmission) {
 	if run == nil {
 		return
 	}
@@ -160,7 +160,7 @@ func (s *Server) emitAgentSDKReportSection(run *graph.ReportRun, section graph.R
 	if !ok {
 		return
 	}
-	emission := graph.CloneReportSectionEmissions([]graph.ReportSectionEmission{section})[0]
+	emission := reports.CloneReportSectionEmissions([]reports.ReportSectionEmission{section})[0]
 	s.emitAgentSDKMCPNotification(subscription.SessionID, agentSDKMCPResponse{
 		JSONRPC: "2.0",
 		Method:  "notifications/report_section",
@@ -199,22 +199,22 @@ func (s *Server) emitAgentSDKReportSection(run *graph.ReportRun, section graph.R
 
 func reportRunProgress(status string) (int, string) {
 	switch strings.TrimSpace(status) {
-	case graph.ReportRunStatusQueued:
+	case reports.ReportRunStatusQueued:
 		return 5, "queued"
-	case graph.ReportRunStatusRunning:
+	case reports.ReportRunStatusRunning:
 		return 50, "running"
-	case graph.ReportRunStatusSucceeded:
+	case reports.ReportRunStatusSucceeded:
 		return 100, "completed"
-	case graph.ReportRunStatusCanceled:
+	case reports.ReportRunStatusCanceled:
 		return 100, "canceled"
-	case graph.ReportRunStatusFailed:
+	case reports.ReportRunStatusFailed:
 		return 100, "failed"
 	default:
 		return 0, "pending"
 	}
 }
 
-func reportSnapshotID(run *graph.ReportRun) string {
+func reportSnapshotID(run *reports.ReportRun) string {
 	if run == nil || run.Snapshot == nil {
 		return ""
 	}

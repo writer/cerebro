@@ -1,4 +1,4 @@
-package graph
+package reports
 
 import (
 	"sort"

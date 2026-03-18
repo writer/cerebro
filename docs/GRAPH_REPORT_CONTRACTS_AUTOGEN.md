@@ -15,13 +15,13 @@ Generated from the built-in report runtime registries via `go run ./scripts/gene
 
 | ID | Version | Category | Result Schema | Run Path | Measure Count | Check Count | Section Count |
 |---|---|---|---|---|---|---|---|
-| `insights` | `1.0.0` | `decision_support` | `graph.IntelligenceReport` | `/api/v1/platform/intelligence/reports/{id}/runs` | 4 | 3 | 4 |
-| `quality` | `1.0.0` | `quality` | `graph.GraphQualityReport` | `/api/v1/platform/intelligence/reports/{id}/runs` | 6 | 4 | 7 |
-| `metadata-quality` | `1.0.0` | `quality` | `graph.GraphMetadataQualityReport` | `/api/v1/platform/intelligence/reports/{id}/runs` | 4 | 4 | 4 |
+| `insights` | `1.0.0` | `decision_support` | `reports.IntelligenceReport` | `/api/v1/platform/intelligence/reports/{id}/runs` | 4 | 3 | 4 |
+| `quality` | `1.0.0` | `quality` | `reports.GraphQualityReport` | `/api/v1/platform/intelligence/reports/{id}/runs` | 6 | 4 | 7 |
+| `metadata-quality` | `1.0.0` | `quality` | `reports.GraphMetadataQualityReport` | `/api/v1/platform/intelligence/reports/{id}/runs` | 4 | 4 | 4 |
 | `claim-conflicts` | `1.0.0` | `knowledge` | `graph.ClaimConflictReport` | `/api/v1/platform/intelligence/reports/{id}/runs` | 5 | 4 | 3 |
-| `entity-summary` | `1.0.0` | `entity` | `graph.EntitySummaryReport` | `/api/v1/platform/intelligence/reports/entity-summary/runs` | 6 | 4 | 6 |
-| `leverage` | `1.0.0` | `operating_model` | `graph.GraphLeverageReport` | `/api/v1/platform/intelligence/reports/{id}/runs` | 7 | 4 | 11 |
-| `calibration-weekly` | `1.0.0` | `calibration` | `graph.WeeklyCalibrationReport` | `/api/v1/platform/intelligence/reports/{id}/runs` | 5 | 3 | 3 |
+| `entity-summary` | `1.0.0` | `entity` | `reports.EntitySummaryReport` | `/api/v1/platform/intelligence/reports/entity-summary/runs` | 6 | 4 | 6 |
+| `leverage` | `1.0.0` | `operating_model` | `reports.GraphLeverageReport` | `/api/v1/platform/intelligence/reports/{id}/runs` | 7 | 4 | 11 |
+| `calibration-weekly` | `1.0.0` | `calibration` | `reports.WeeklyCalibrationReport` | `/api/v1/platform/intelligence/reports/{id}/runs` | 5 | 3 | 3 |
 
 ## Measures
 
