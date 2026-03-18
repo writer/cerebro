@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/graph"
+	entities "github.com/writer/cerebro/internal/graph/entities"
 )
 
 type cerebroGraphChangelogRequest struct {
@@ -90,7 +91,7 @@ func (a *App) toolCerebroEntityHistory(_ context.Context, args json.RawMessage) 
 		if err != nil {
 			return "", err
 		}
-		record, ok := graph.GetEntityRecordAtTime(g, entityID, asOf, recordedAt)
+		record, ok := entities.GetEntityRecordAtTime(g, entityID, asOf, recordedAt)
 		if !ok {
 			return "", fmt.Errorf("entity not found: %s", entityID)
 		}
@@ -111,7 +112,7 @@ func (a *App) toolCerebroEntityHistory(_ context.Context, args json.RawMessage) 
 		return "", err
 	}
 
-	record, ok := graph.GetEntityTimeDiff(g, entityID, from, to, recordedAt)
+	record, ok := entities.GetEntityTimeDiff(g, entityID, from, to, recordedAt)
 	if !ok {
 		return "", fmt.Errorf("entity not found: %s", entityID)
 	}

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/graph"
+	"github.com/writer/cerebro/internal/graph/knowledge"
 )
 
 func (a *App) toolCerebroRecordObservation(ctx context.Context, args json.RawMessage) (string, error) {
@@ -37,13 +38,13 @@ func (a *App) toolCerebroRecordObservation(ctx context.Context, args json.RawMes
 	if req.Observation == "" {
 		return "", fmt.Errorf("observation is required")
 	}
-	var result graph.ObservationWriteResult
+	var result knowledge.ObservationWriteResult
 	_, err := a.MutateSecurityGraph(ctx, func(g *graph.Graph) error {
 		if _, ok := g.GetNode(req.EntityID); !ok {
 			return fmt.Errorf("entity not found: %s", req.EntityID)
 		}
 		var writeErr error
-		result, writeErr = graph.WriteObservation(g, graph.ObservationWriteRequest{
+		result, writeErr = knowledge.WriteObservation(g, knowledge.ObservationWriteRequest{
 			ID:              req.ID,
 			SubjectID:       req.EntityID,
 			ObservationType: req.Observation,
@@ -72,22 +73,22 @@ func (a *App) toolCerebroRecordObservation(ctx context.Context, args json.RawMes
 }
 
 func (a *App) toolCerebroWriteClaim(ctx context.Context, args json.RawMessage) (string, error) {
-	var req graph.ClaimWriteRequest
+	var req knowledge.ClaimWriteRequest
 	if err := decodeToolArgs(args, &req); err != nil {
 		return "", err
 	}
 
-	var result graph.ClaimWriteResult
+	var result knowledge.ClaimWriteResult
 	mutatedGraph, err := a.MutateSecurityGraph(ctx, func(g *graph.Graph) error {
 		var writeErr error
-		result, writeErr = graph.WriteClaim(g, req)
+		result, writeErr = knowledge.WriteClaim(g, req)
 		return writeErr
 	})
 	if err != nil {
 		return "", err
 	}
 
-	conflictReport := graph.BuildClaimConflictReport(mutatedGraph, graph.ClaimConflictReportOptions{
+	conflictReport := knowledge.BuildClaimConflictReport(mutatedGraph, knowledge.ClaimConflictReportOptions{
 		ValidAt:      result.ObservedAt,
 		RecordedAt:   result.RecordedAt,
 		MaxConflicts: 25,

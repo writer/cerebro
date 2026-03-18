@@ -14,6 +14,7 @@ import (
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graph"
 	reports "github.com/writer/cerebro/internal/graph/reports"
+	risk "github.com/writer/cerebro/internal/graph/risk"
 )
 
 func (a *App) cerebroTools() []agents.Tool {
@@ -864,7 +865,7 @@ func (a *App) toolCerebroIntelligenceReport(_ context.Context, args json.RawMess
 	historyLimit := clampInt(req.HistoryLimit, 20, 1, 200)
 	maxInsights := clampInt(req.MaxInsights, 8, 1, 20)
 
-	report := reports.BuildIntelligenceReport(g, graph.NewRiskEngine(g), reports.IntelligenceReportOptions{
+	report := reports.BuildIntelligenceReport(g, risk.NewRiskEngine(g), reports.IntelligenceReportOptions{
 		EntityID:              strings.TrimSpace(req.EntityID),
 		OutcomeWindow:         time.Duration(windowDays) * 24 * time.Hour,
 		SchemaHistoryLimit:    historyLimit,
@@ -1081,7 +1082,7 @@ func buildInsightRiskSection(g *graph.Graph, node *graph.Node) (float64, string,
 	if g == nil || node == nil {
 		return 0, "stable", nil
 	}
-	engine := graph.NewRiskEngine(g)
+	engine := risk.NewRiskEngine(g)
 	entityRisk := engine.ScoreEntity(node.ID)
 	if entityRisk == nil {
 		return mapNodeRiskToScore(node.Risk), "stable", nil
@@ -1104,7 +1105,7 @@ func buildInsightToxicCombinations(g *graph.Graph, entityID string) []string {
 	if g == nil || strings.TrimSpace(entityID) == "" {
 		return nil
 	}
-	engine := graph.NewToxicCombinationEngine()
+	engine := risk.NewToxicCombinationEngine()
 	combinations := engine.Analyze(g)
 	matches := make([]string, 0)
 	for _, combo := range combinations {
@@ -1484,7 +1485,7 @@ func (a *App) toolCerebroBlastRadius(_ context.Context, args json.RawMessage) (s
 	}
 	req.MaxDepth = clampInt(req.MaxDepth, 3, 1, 10)
 
-	result := graph.BlastRadius(g, req.PrincipalID, req.MaxDepth)
+	result := risk.BlastRadius(g, req.PrincipalID, req.MaxDepth)
 	return marshalToolResponse(result)
 }
 
@@ -1506,13 +1507,13 @@ func (a *App) toolCerebroRiskScore(_ context.Context, args json.RawMessage) (str
 		return "", fmt.Errorf("entity_id is required")
 	}
 
-	engine := graph.NewRiskEngine(g)
-	risk := engine.ScoreEntity(req.EntityID)
-	if risk == nil {
+	engine := risk.NewRiskEngine(g)
+	entityRisk := engine.ScoreEntity(req.EntityID)
+	if entityRisk == nil {
 		return "", fmt.Errorf("entity not found: %s", req.EntityID)
 	}
 
-	response := map[string]any{"entity_risk": risk}
+	response := map[string]any{"entity_risk": entityRisk}
 	if req.IncludeOverall {
 		report := engine.Analyze()
 		response["overall_risk_score"] = report.RiskScore
@@ -1667,7 +1668,7 @@ func (a *App) runPathsQuery(g *graph.Graph, req cerebroGraphQueryRequest, tempor
 	k := clampInt(req.K, 3, 1, 10)
 	maxDepth := clampInt(req.MaxDepth, 6, 1, 12)
 
-	simulator := graph.NewAttackPathSimulator(g)
+	simulator := risk.NewAttackPathSimulator(g)
 	paths := simulator.KShortestPaths(req.NodeID, req.TargetID, k, maxDepth)
 
 	return marshalToolResponse(map[string]any{
