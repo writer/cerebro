@@ -8,6 +8,7 @@ import (
 
 	graph "github.com/writer/cerebro/internal/graph"
 	entities "github.com/writer/cerebro/internal/graph/entities"
+	risk "github.com/writer/cerebro/internal/graph/risk"
 )
 
 type (
@@ -19,7 +20,7 @@ type (
 	EdgeEffect                    = graph.EdgeEffect
 	Metadata                      = graph.Metadata
 	RiskLevel                     = graph.RiskLevel
-	Severity                      = graph.Severity
+	Severity                      = risk.Severity
 	GraphDiff                     = graph.GraphDiff
 	GraphDelta                    = graph.GraphDelta
 	NodeMutation                  = graph.NodeMutation
@@ -35,13 +36,13 @@ type (
 	IdentityCalibrationOptions    = graph.IdentityCalibrationOptions
 	IdentityCalibrationReport     = graph.IdentityCalibrationReport
 	IdentityReviewDecision        = graph.IdentityReviewDecision
-	OutcomeEvent                  = graph.OutcomeEvent
+	OutcomeEvent                  = risk.OutcomeEvent
 	GraphSnapshotRecord           = graph.GraphSnapshotRecord
 	GraphSnapshotCollection       = graph.GraphSnapshotCollection
-	RiskEngine                    = graph.RiskEngine
-	SecurityReport                = graph.SecurityReport
-	RankedRisk                    = graph.RankedRisk
-	Chokepoint                    = graph.Chokepoint
+	RiskEngine                    = risk.RiskEngine
+	SecurityReport                = risk.SecurityReport
+	RankedRisk                    = risk.RankedRisk
+	Chokepoint                    = risk.Chokepoint
 	EntityFacetDefinition         = entities.EntityFacetDefinition
 	EntityPostureSummary          = entities.EntityPostureSummary
 	SchemaKindCount               = graph.SchemaKindCount
@@ -94,10 +95,10 @@ const (
 	EdgeKindSupersedes            = graph.EdgeKindSupersedes
 	EdgeEffectAllow               = graph.EdgeEffectAllow
 	EdgeEffectDeny                = graph.EdgeEffectDeny
-	SeverityCritical              = graph.SeverityCritical
-	SeverityHigh                  = graph.SeverityHigh
-	SeverityMedium                = graph.SeverityMedium
-	SeverityLow                   = graph.SeverityLow
+	SeverityCritical              = risk.SeverityCritical
+	SeverityHigh                  = risk.SeverityHigh
+	SeverityMedium                = risk.SeverityMedium
+	SeverityLow                   = risk.SeverityLow
 	GraphOntologyContractVersion  = graph.GraphOntologyContractVersion
 	SchemaValidationEnforce       = graph.SchemaValidationEnforce
 	IdentityReviewVerdictAccepted = graph.IdentityReviewVerdictAccepted
@@ -107,46 +108,24 @@ var (
 	GetEntityRecord                    = entities.GetEntityRecord
 	AnalyzeSchemaHealth                = graph.AnalyzeSchemaHealth
 	BuildIdentityCalibrationReport     = graph.BuildIdentityCalibrationReport
-	BuildReportGraphSnapshotID         = graph.BuildReportGraphSnapshotID
 	CurrentGraphSnapshotRecord         = graph.CurrentGraphSnapshotRecord
-	DefaultEntityFacetDefinitions      = entities.DefaultEntityFacetDefinitions
 	DefaultGraphQueryTemplates         = graph.DefaultGraphQueryTemplates
-	EntityFacetAppliesToNode           = entities.EntityFacetAppliesToNode
-	FirstNonEmpty                      = graph.FirstNonEmpty
 	GlobalSchemaRegistry               = graph.GlobalSchemaRegistry
 	GraphSnapshotCollectionFromRecords = graph.GraphSnapshotCollectionFromRecords
-	HasNodeMetadataProfile             = graph.HasNodeMetadataProfile
 	IsNodeKindInCategory               = graph.IsNodeKindInCategory
-	MatchesPropertyType                = graph.MatchesPropertyType
-	NewRiskEngine                      = graph.NewRiskEngine
+	NewRiskEngine                      = risk.NewRiskEngine
 	New                                = graph.New
-	NormalizeNodeMetadataProfile       = graph.NormalizeNodeMetadataProfile
 	ReviewIdentityAlias                = graph.ReviewIdentityAlias
-	SanitizeReportFileName             = graph.SanitizeReportFileName
 	SchemaVersion                      = graph.SchemaVersion
-	SortedSchemaKindCounts             = graph.SortedSchemaKindCounts
-	SliceContainsString                = graph.SliceContainsString
-	TemporalNowUTC                     = graph.TemporalNowUTC
 	ValidateEdgeAgainstSchema          = graph.ValidateEdgeAgainstSchema
 	ValidateNodeAgainstSchema          = graph.ValidateNodeAgainstSchema
-	WriteJSONAtomic                    = graph.WriteJSONAtomic
 )
 
 const defaultFreshnessStaleAfter = 30 * 24 * time.Hour
 
 var (
-	temporalNowUTC                = TemporalNowUTC
-	firstNonEmpty                 = FirstNonEmpty
-	buildReportGraphSnapshotID    = BuildReportGraphSnapshotID
-	defaultEntityFacetDefinitions = DefaultEntityFacetDefinitions()
-	entityFacetAppliesToNode      = EntityFacetAppliesToNode
-	sanitizeReportFileName        = SanitizeReportFileName
-	sortedSchemaKindCounts        = SortedSchemaKindCounts
-	normalizeNodeMetadataProfile  = NormalizeNodeMetadataProfile
-	hasNodeMetadataProfile        = HasNodeMetadataProfile
-	matchesPropertyType           = MatchesPropertyType
-	sliceContainsString           = SliceContainsString
-	writeJSONAtomic               = WriteJSONAtomic
+	defaultEntityFacetDefinitions = entities.DefaultEntityFacetDefinitions()
+	entityFacetAppliesToNode      = entities.EntityFacetAppliesToNode
 )
 
 func cloneTimePtr(value *time.Time) *time.Time {
