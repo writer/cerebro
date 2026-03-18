@@ -30,12 +30,15 @@ func (a *App) toolCerebroExecutionStatus(ctx context.Context, args json.RawMessa
 	if limit > 100 {
 		return "", fmt.Errorf("limit must be <= 100")
 	}
-	store, err := executionstore.NewSQLiteStore(a.Config.ExecutionStoreFile)
-	if err != nil {
-		return "", fmt.Errorf("open shared execution store: %w", err)
+	store := a.ExecutionStore
+	if store == nil {
+		var err error
+		store, err = executionstore.NewSQLiteStore(a.Config.ExecutionStoreFile)
+		if err != nil {
+			return "", fmt.Errorf("open shared execution store: %w", err)
+		}
+		defer func() { _ = store.Close() }()
 	}
-	defer func() { _ = store.Close() }()
-
 	summaries, err := executions.List(ctx, store, executions.ListOptions{
 		Namespaces:         req.Namespace,
 		Statuses:           req.Status,
