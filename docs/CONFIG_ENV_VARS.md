@@ -2,7 +2,7 @@
 
 Generated from `internal/app/app_config.go` (`LoadConfig`) via `go run ./scripts/generate_config_docs/main.go`.
 
-Total variables: **344**
+Total variables: **355**
 
 | Variable | Reader(s) | Default(s) | Config Field(s) | Validation rule(s) |
 |---|---|---|---|---|
@@ -27,7 +27,9 @@ Total variables: **344**
 | `API_CREDENTIALS_JSON` | `getEnv` | `""` | `-` | `-` |
 | `API_CREDENTIAL_STATE_FILE` | `getEnv` | `filepath.Join(".cerebro", "api-credentials", "state.json")` | `APICredentialStateFile` | `-` |
 | `API_KEYS` | `getEnv` | `""` | `-` | `-` |
+| `API_MAX_BODY_BYTES` | `getEnvInt` | `int(defaultAPIMaxBodyBytes)` | `APIMaxBodyBytes` | `must be greater than 0` |
 | `API_PORT` | `getEnvInt` | `8080` | `Port` | `must be between 1 and 65535` |
+| `API_REQUEST_TIMEOUT` | `getEnvDuration` | `defaultAPIRequestTimeout` | `APIRequestTimeout` | `health checks must not outlive the API request timeout`, `must be greater than 0` |
 | `AUTH0_CLIENT_ID` | `getEnv` | `""` | `Auth0ClientID` | `-` |
 | `AUTH0_CLIENT_SECRET` | `getEnv` | `""` | `Auth0ClientSecret` | `-` |
 | `AUTH0_DOMAIN` | `getEnv` | `""` | `Auth0Domain` | `-` |
@@ -49,6 +51,7 @@ Total variables: **344**
 | `CEREBRO_CREDENTIAL_VAULT_TOKEN` | `bootstrapConfigValue` | `""` | `CredentialVaultToken` | `credential-source settings must be present and valid for the selected source backend` |
 | `CEREBRO_GRAPH_FRESHNESS_DEFAULT_SLA` | `getEnvDuration` | `6 * time.Hour` | `GraphFreshnessDefaultSLA` | `-` |
 | `CEREBRO_GRAPH_RETENTION_DAYS` | `getEnvInt` | `180` | `GraphRetentionDays` | `-` |
+| `CEREBRO_HEALTH_CHECK_TIMEOUT` | `getEnvDuration` | `defaultHealthCheckTimeout` | `HealthCheckTimeout` | `health checks must not outlive the API request timeout`, `must be greater than 0` |
 | `CEREBRO_INIT_TIMEOUT` | `getEnvDuration` | `2 * time.Minute` | `InitTimeout` | `must be greater than or equal to 0` |
 | `CEREBRO_OTEL_ENABLED` | `getEnvBool` | `false` | `TracingEnabled` | `-` |
 | `CEREBRO_OTEL_EXPORTER_OTLP_ENDPOINT` | `getEnv` | `getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "")` | `TracingOTLPEndpoint` | `-` |
@@ -60,6 +63,12 @@ Total variables: **344**
 | `CEREBRO_RETENTION_JOB_INTERVAL` | `getEnvDuration` | `24 * time.Hour` | `RetentionJobInterval` | `-` |
 | `CEREBRO_SECRETS_RELOAD_INTERVAL` | `getEnvDuration` | `0` | `SecretsReloadInterval` | `-` |
 | `CEREBRO_SESSION_RETENTION_DAYS` | `getEnvInt` | `30` | `SessionRetentionDays` | `-` |
+| `CEREBRO_SHUTDOWN_TIMEOUT` | `getEnvDuration` | `defaultShutdownTimeout` | `ShutdownTimeout` | `must be greater than 0` |
+| `CEREBRO_THREAT_INTEL_SYNC_ATTEMPTS` | `getEnvInt` | `defaultThreatIntelSyncAttempts` | `ThreatIntelSyncAttempts` | `must be greater than 0` |
+| `CEREBRO_THREAT_INTEL_SYNC_BACKOFF` | `getEnvDuration` | `defaultThreatIntelSyncBackoff` | `ThreatIntelSyncBackoff` | `must be greater than 0` |
+| `CEREBRO_THREAT_INTEL_SYNC_MAX_AGE` | `getEnvDuration` | `defaultThreatIntelSyncMaxAge` | `ThreatIntelSyncMaxAge` | `must be greater than 0` |
+| `CEREBRO_THREAT_INTEL_SYNC_TIMEOUT` | `getEnvDuration` | `defaultThreatIntelSyncTimeout` | `ThreatIntelSyncTimeout` | `must be greater than 0` |
+| `CEREBRO_TICKETING_PROVIDER_VALIDATE_TIMEOUT` | `getEnvDuration` | `defaultTicketingProviderValidateTimeout` | `TicketingProviderValidateTimeout` | `must be greater than 0` |
 | `CEREBRO_TOOL_ACCESS_REVIEW_REQUIRES_APPROVAL` | `getEnvBool` | `true` | `CerebroAccessReviewNeedsApproval` | `-` |
 | `CEREBRO_TOOL_SIMULATE_REQUIRES_APPROVAL` | `getEnvBool` | `true` | `CerebroSimulateNeedsApproval` | `-` |
 | `CLOUDFLARE_API_TOKEN` | `getEnv` | `""` | `CloudflareAPIToken` | `-` |
@@ -117,6 +126,7 @@ Total variables: **344**
 | `GOOGLE_WORKSPACE_IMPERSONATOR_EMAIL` | `getEnv` | `""` | `GoogleWorkspaceImpersonatorEmail` | `-` |
 | `GRAPH_CONSISTENCY_CHECK_ENABLED` | `getEnvBool` | `false` | `GraphConsistencyCheckEnabled` | `-` |
 | `GRAPH_CONSISTENCY_CHECK_INTERVAL` | `getEnvDuration` | `6 * time.Hour` | `GraphConsistencyCheckInterval` | `-` |
+| `GRAPH_CONSISTENCY_CHECK_TIMEOUT` | `getEnvDuration` | `defaultGraphConsistencyCheckTimeout` | `GraphConsistencyCheckTimeout` | `must be greater than 0` |
 | `GRAPH_CROSS_TENANT_MIN_SUPPORT` | `getEnvInt` | `2` | `GraphCrossTenantMinSupport` | `when GRAPH_CROSS_TENANT_REQUIRE_SIGNED_INGEST=true, signing key is required and skew/TTL/support thresholds must be positive` |
 | `GRAPH_CROSS_TENANT_MIN_TENANTS` | `getEnvInt` | `2` | `GraphCrossTenantMinTenants` | `when GRAPH_CROSS_TENANT_REQUIRE_SIGNED_INGEST=true, signing key is required and skew/TTL/support thresholds must be positive` |
 | `GRAPH_CROSS_TENANT_REPLAY_TTL` | `getEnvDuration` | `24 * time.Hour` | `GraphCrossTenantReplayTTL` | `when GRAPH_CROSS_TENANT_REQUIRE_SIGNED_INGEST=true, signing key is required and skew/TTL/support thresholds must be positive` |
@@ -128,6 +138,7 @@ Total variables: **344**
 | `GRAPH_MIGRATE_LEGACY_ACTIVITY_ON_START` | `getEnvBool` | `false` | `GraphMigrateLegacyActivityOnStart` | `-` |
 | `GRAPH_PROPERTY_HISTORY_MAX_ENTRIES` | `getEnvInt` | `graph.DefaultTemporalHistoryMaxEntries` | `GraphPropertyHistoryMaxEntries` | `non-positive values fall back to the default max property-history depth` |
 | `GRAPH_PROPERTY_HISTORY_TTL` | `getEnvDuration` | `graph.DefaultTemporalHistoryTTL` | `GraphPropertyHistoryTTL` | `non-positive values fall back to the default property-history TTL` |
+| `GRAPH_RISK_ENGINE_STATE_TIMEOUT` | `getEnvDuration` | `defaultGraphRiskEngineStateTimeout` | `GraphRiskEngineStateTimeout` | `must be greater than 0` |
 | `GRAPH_SCHEMA_VALIDATION_MODE` | `getEnv` | `"warn"` | `GraphSchemaValidationMode` | `must be one of off, warn, enforce` |
 | `GRAPH_SNAPSHOT_MAX_RETAINED` | `getEnvInt` | `10` | `GraphSnapshotMaxRetained` | `-` |
 | `GRAPH_SNAPSHOT_PATH` | `getEnv` | `filepath.Join(".cerebro", "graph-snapshots")` | `GraphSnapshotPath` | `-` |

@@ -141,14 +141,11 @@ func TestClose_CancelsGraphBuilderBeforeWaiting(t *testing.T) {
 }
 
 func TestClose_LogsWarningWhenGraphShutdownTimesOut(t *testing.T) {
-	oldTimeout := appShutdownTimeout
-	appShutdownTimeout = 20 * time.Millisecond
-	t.Cleanup(func() {
-		appShutdownTimeout = oldTimeout
-	})
-
 	var logs bytes.Buffer
 	a := &App{
+		Config: &Config{
+			ShutdownTimeout: 20 * time.Millisecond,
+		},
 		Logger: slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn})),
 		graphCancel: func() {
 			// Intentionally leave graphReady open to force timeout path.

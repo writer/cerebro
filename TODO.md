@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 197 - Configurable Operational Timeouts (2026-03-17)
+
+### Review findings
+- [x] Gap: issue `#217` still left API request deadlines, max request body size, shutdown waits, health checks, and several app-side operational budgets hardcoded in transport and lifecycle code instead of flowing through validated config.
+- [x] Gap: `LoadConfig()` accepted the surrounding runtime knobs but had no validation for timeout/resource feasibility, so obviously broken values such as zero deadlines or a health check that outlived the enclosing API request could boot and fail later.
+- [x] Gap: the generated environment variable docs did not describe these operational budgets, which meant deploy-time tuning would stay tribal knowledge even after the code paths were made configurable.
+
+### Execution plan
+- [x] Add explicit app config fields plus default helpers for the operational timeouts and body limit currently hardcoded in API, shutdown, threat intel, graph consistency, risk-engine state, and ticketing validation paths.
+- [x] Route the affected API and app lifecycle call sites through the config-backed helpers and add startup validation for positive bounds plus simple feasibility checks.
+- [x] Regenerate config docs and add focused tests that prove the new env vars load, validate, and influence runtime behavior.
+
 ## Deep Review Cycle 196 - Platform Knowledge Service Seam (2026-03-17)
 
 ### Review findings

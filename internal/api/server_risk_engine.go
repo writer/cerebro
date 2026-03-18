@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"time"
 
 	risk "github.com/evalops/cerebro/internal/graph/risk"
 	"github.com/evalops/cerebro/internal/metrics"
@@ -29,7 +28,7 @@ func (s *Server) graphRiskEngine() *risk.RiskEngine {
 			})
 		}
 		if repo := s.app.RiskEngineStateRepo; repo != nil {
-			loadCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			loadCtx, cancel := context.WithTimeout(context.Background(), s.riskEngineStateTimeout())
 			defer cancel()
 			payload, err := repo.LoadSnapshot(loadCtx, riskEngineStateGraphID)
 			if err != nil {
@@ -78,7 +77,7 @@ func (s *Server) persistRiskEngineState(ctx context.Context, engine *risk.RiskEn
 	if saveCtx == nil {
 		saveCtx = context.Background()
 	}
-	saveCtx, cancel := context.WithTimeout(saveCtx, 2*time.Second)
+	saveCtx, cancel := context.WithTimeout(saveCtx, s.riskEngineStateTimeout())
 	defer cancel()
 	if err := s.app.RiskEngineStateRepo.SaveSnapshot(saveCtx, riskEngineStateGraphID, payload); err != nil {
 		if s.app.Logger != nil {

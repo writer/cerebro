@@ -11,8 +11,6 @@ import (
 	"github.com/evalops/cerebro/internal/snowflake"
 )
 
-var appShutdownTimeout = 30 * time.Second
-
 func (a *App) initRepositories() {
 	a.FindingsRepo = nil
 	a.TicketsRepo = nil
@@ -193,8 +191,9 @@ func topStrings(values []string, limit int) []string {
 
 func (a *App) Close() error {
 	var errs []error
+	shutdownTimeout := a.Config.ShutdownTimeoutOrDefault()
 
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), appShutdownTimeout)
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer shutdownCancel()
 
 	// Sync findings store to persist any pending changes
@@ -207,7 +206,7 @@ func (a *App) Close() error {
 	a.stopGraphWriterLeaseLoop()
 	a.graphWriterLeaseTransitionWG.Wait()
 
-	drainTimeout := appShutdownTimeout
+	drainTimeout := shutdownTimeout
 	if a.Config != nil && a.Config.NATSConsumerDrainTimeout > 0 {
 		drainTimeout = a.Config.NATSConsumerDrainTimeout
 	}
@@ -240,13 +239,13 @@ func (a *App) Close() error {
 	}
 	a.graphConsistencyMu.Unlock()
 	if a.graphReady != nil {
-		graphWaitCtx, graphWaitCancel := context.WithTimeout(context.Background(), appShutdownTimeout)
+		graphWaitCtx, graphWaitCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer graphWaitCancel()
 		select {
 		case <-a.graphReady:
 		case <-graphWaitCtx.Done():
 			if a.Logger != nil {
-				a.Logger.Warn("timed out waiting for security graph shutdown", "timeout", appShutdownTimeout, "error", graphWaitCtx.Err())
+				a.Logger.Warn("timed out waiting for security graph shutdown", "timeout", shutdownTimeout, "error", graphWaitCtx.Err())
 			}
 		}
 	}
@@ -257,9 +256,9 @@ func (a *App) Close() error {
 	}()
 	select {
 	case <-graphConsistencyDone:
-	case <-time.After(appShutdownTimeout):
+	case <-time.After(shutdownTimeout):
 		if a.Logger != nil {
-			a.Logger.Warn("timed out waiting for graph consistency checks to stop", "timeout", appShutdownTimeout)
+			a.Logger.Warn("timed out waiting for graph consistency checks to stop", "timeout", shutdownTimeout)
 		}
 	}
 

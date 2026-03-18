@@ -276,7 +276,7 @@ func (a *App) initTicketing(ctx context.Context) {
 			Project:          a.Config.JiraProject,
 			CloseTransitions: a.Config.JiraCloseTransitions,
 		})
-		if err := validateTicketingProvider(ctx, jira); err != nil {
+		if err := validateTicketingProvider(ctx, jira, a.Config.TicketingProviderValidateTimeoutOrDefault()); err != nil {
 			a.Logger.Error("ticketing provider validation failed", "provider", jira.Name(), "error", err)
 		} else {
 			a.Ticketing.RegisterProvider(jira)
@@ -289,7 +289,7 @@ func (a *App) initTicketing(ctx context.Context) {
 			APIKey: a.Config.LinearAPIKey,
 			TeamID: a.Config.LinearTeamID,
 		})
-		if err := validateTicketingProvider(ctx, linear); err != nil {
+		if err := validateTicketingProvider(ctx, linear, a.Config.TicketingProviderValidateTimeoutOrDefault()); err != nil {
 			a.Logger.Error("ticketing provider validation failed", "provider", linear.Name(), "error", err)
 		} else {
 			a.Ticketing.RegisterProvider(linear)
@@ -297,11 +297,14 @@ func (a *App) initTicketing(ctx context.Context) {
 	}
 }
 
-func validateTicketingProvider(parent context.Context, provider ticketing.Provider) error {
+func validateTicketingProvider(parent context.Context, provider ticketing.Provider, timeout time.Duration) error {
 	if parent == nil {
 		parent = context.Background()
 	}
-	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
+	if timeout <= 0 {
+		timeout = (*Config)(nil).TicketingProviderValidateTimeoutOrDefault()
+	}
+	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 	return provider.Validate(ctx)
 }

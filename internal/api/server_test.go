@@ -2474,6 +2474,23 @@ func TestMaxBodySize_RejectsLargeBody(t *testing.T) {
 	}
 }
 
+func TestMaxBodySize_UsesConfiguredLimit(t *testing.T) {
+	a := newTestApp(t)
+	a.Config.APIMaxBodyBytes = 32
+	s := NewServer(a)
+	t.Cleanup(func() {
+		s.Close()
+	})
+
+	req := httptest.NewRequest("POST", "/api/v1/policies/", bytes.NewReader([]byte(strings.Repeat("x", 64))))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+	if w.Code == http.StatusOK || w.Code == http.StatusCreated {
+		t.Fatalf("expected rejection of body larger than configured limit, got %d", w.Code)
+	}
+}
+
 func TestAgentSendMessageExecutesToolCalls(t *testing.T) {
 	a := newTestApp(t)
 	called := false

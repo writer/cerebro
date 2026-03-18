@@ -56,10 +56,22 @@ func addConfigProblem(problems []string, format string, args ...any) []string {
 func ConfigValidationRules() []ConfigValidationRule {
 	return []ConfigValidationRule{
 		{EnvVars: []string{"API_PORT"}, Summary: "must be between 1 and 65535", Category: "range"},
+		{EnvVars: []string{"API_REQUEST_TIMEOUT"}, Summary: "must be greater than 0", Category: "range"},
+		{EnvVars: []string{"API_MAX_BODY_BYTES"}, Summary: "must be greater than 0", Category: "range"},
+		{EnvVars: []string{"CEREBRO_HEALTH_CHECK_TIMEOUT"}, Summary: "must be greater than 0", Category: "range"},
+		{EnvVars: []string{"CEREBRO_SHUTDOWN_TIMEOUT"}, Summary: "must be greater than 0", Category: "range"},
 		{EnvVars: []string{"LOG_LEVEL"}, Summary: "must be one of debug, info, warn, error", Category: "enum"},
 		{EnvVars: []string{"CEREBRO_OTEL_SAMPLE_RATIO"}, Summary: "must be between 0 and 1", Category: "range"},
 		{EnvVars: []string{"QUERY_POLICY_ROW_LIMIT"}, Summary: "must be greater than 0", Category: "range"},
 		{EnvVars: []string{"CEREBRO_INIT_TIMEOUT"}, Summary: "must be greater than or equal to 0", Category: "range"},
+		{EnvVars: []string{"GRAPH_RISK_ENGINE_STATE_TIMEOUT"}, Summary: "must be greater than 0", Category: "range"},
+		{EnvVars: []string{"CEREBRO_THREAT_INTEL_SYNC_TIMEOUT"}, Summary: "must be greater than 0", Category: "range"},
+		{EnvVars: []string{"CEREBRO_THREAT_INTEL_SYNC_MAX_AGE"}, Summary: "must be greater than 0", Category: "range"},
+		{EnvVars: []string{"CEREBRO_THREAT_INTEL_SYNC_ATTEMPTS"}, Summary: "must be greater than 0", Category: "range"},
+		{EnvVars: []string{"CEREBRO_THREAT_INTEL_SYNC_BACKOFF"}, Summary: "must be greater than 0", Category: "range"},
+		{EnvVars: []string{"CEREBRO_TICKETING_PROVIDER_VALIDATE_TIMEOUT"}, Summary: "must be greater than 0", Category: "range"},
+		{EnvVars: []string{"GRAPH_CONSISTENCY_CHECK_TIMEOUT"}, Summary: "must be greater than 0", Category: "range"},
+		{EnvVars: []string{"CEREBRO_HEALTH_CHECK_TIMEOUT", "API_REQUEST_TIMEOUT"}, Summary: "health checks must not outlive the API request timeout", Category: "dependency"},
 		{EnvVars: []string{"FINDINGS_MAX_IN_MEMORY"}, Summary: "must be greater than or equal to 0", Category: "range"},
 		{EnvVars: []string{"FINDINGS_RESOLVED_RETENTION"}, Summary: "must be greater than or equal to 0", Category: "range"},
 		{EnvVars: []string{"FINDINGS_SEMANTIC_DEDUP_ENABLED"}, Summary: "enables semantic finding identity across policy/version drift", Category: "behavior"},
@@ -173,6 +185,18 @@ func (c *Config) Validate() error {
 	if c.Port < 1 || c.Port > 65535 {
 		problems = addConfigProblem(problems, "API_PORT must be between 1 and 65535")
 	}
+	if c.APIRequestTimeout <= 0 {
+		problems = addConfigProblem(problems, "API_REQUEST_TIMEOUT must be > 0")
+	}
+	if c.APIMaxBodyBytes <= 0 {
+		problems = addConfigProblem(problems, "API_MAX_BODY_BYTES must be > 0")
+	}
+	if c.HealthCheckTimeout <= 0 {
+		problems = addConfigProblem(problems, "CEREBRO_HEALTH_CHECK_TIMEOUT must be > 0")
+	}
+	if c.ShutdownTimeout <= 0 {
+		problems = addConfigProblem(problems, "CEREBRO_SHUTDOWN_TIMEOUT must be > 0")
+	}
 
 	switch strings.ToLower(strings.TrimSpace(c.LogLevel)) {
 	case "", "debug", "info", "warn", "error":
@@ -188,6 +212,30 @@ func (c *Config) Validate() error {
 	}
 	if c.InitTimeout < 0 {
 		problems = addConfigProblem(problems, "CEREBRO_INIT_TIMEOUT must be >= 0")
+	}
+	if c.GraphRiskEngineStateTimeout <= 0 {
+		problems = addConfigProblem(problems, "GRAPH_RISK_ENGINE_STATE_TIMEOUT must be > 0")
+	}
+	if c.ThreatIntelSyncTimeout <= 0 {
+		problems = addConfigProblem(problems, "CEREBRO_THREAT_INTEL_SYNC_TIMEOUT must be > 0")
+	}
+	if c.ThreatIntelSyncMaxAge <= 0 {
+		problems = addConfigProblem(problems, "CEREBRO_THREAT_INTEL_SYNC_MAX_AGE must be > 0")
+	}
+	if c.ThreatIntelSyncAttempts <= 0 {
+		problems = addConfigProblem(problems, "CEREBRO_THREAT_INTEL_SYNC_ATTEMPTS must be > 0")
+	}
+	if c.ThreatIntelSyncBackoff <= 0 {
+		problems = addConfigProblem(problems, "CEREBRO_THREAT_INTEL_SYNC_BACKOFF must be > 0")
+	}
+	if c.TicketingProviderValidateTimeout <= 0 {
+		problems = addConfigProblem(problems, "CEREBRO_TICKETING_PROVIDER_VALIDATE_TIMEOUT must be > 0")
+	}
+	if c.GraphConsistencyCheckTimeout <= 0 {
+		problems = addConfigProblem(problems, "GRAPH_CONSISTENCY_CHECK_TIMEOUT must be > 0")
+	}
+	if c.HealthCheckTimeout > 0 && c.APIRequestTimeout > 0 && c.HealthCheckTimeout > c.APIRequestTimeout {
+		problems = addConfigProblem(problems, "CEREBRO_HEALTH_CHECK_TIMEOUT must be <= API_REQUEST_TIMEOUT")
 	}
 	if c.FindingsMaxInMemory < 0 {
 		problems = addConfigProblem(problems, "FINDINGS_MAX_IN_MEMORY must be >= 0")

@@ -353,6 +353,55 @@ func TestLoadConfigGraphTenantShardControls(t *testing.T) {
 	}
 }
 
+func TestLoadConfigOperationalTimeoutControls(t *testing.T) {
+	t.Setenv("API_REQUEST_TIMEOUT", "33s")
+	t.Setenv("API_MAX_BODY_BYTES", "2048")
+	t.Setenv("CEREBRO_HEALTH_CHECK_TIMEOUT", "4s")
+	t.Setenv("CEREBRO_SHUTDOWN_TIMEOUT", "45s")
+	t.Setenv("GRAPH_RISK_ENGINE_STATE_TIMEOUT", "7s")
+	t.Setenv("CEREBRO_THREAT_INTEL_SYNC_TIMEOUT", "90s")
+	t.Setenv("CEREBRO_THREAT_INTEL_SYNC_MAX_AGE", "4h")
+	t.Setenv("CEREBRO_THREAT_INTEL_SYNC_ATTEMPTS", "5")
+	t.Setenv("CEREBRO_THREAT_INTEL_SYNC_BACKOFF", "9s")
+	t.Setenv("CEREBRO_TICKETING_PROVIDER_VALIDATE_TIMEOUT", "8s")
+	t.Setenv("GRAPH_CONSISTENCY_CHECK_TIMEOUT", "12m")
+
+	cfg := LoadConfig()
+	if cfg.APIRequestTimeout != 33*time.Second {
+		t.Fatalf("expected api request timeout 33s, got %s", cfg.APIRequestTimeout)
+	}
+	if cfg.APIMaxBodyBytes != 2048 {
+		t.Fatalf("expected api max body bytes 2048, got %d", cfg.APIMaxBodyBytes)
+	}
+	if cfg.HealthCheckTimeout != 4*time.Second {
+		t.Fatalf("expected health check timeout 4s, got %s", cfg.HealthCheckTimeout)
+	}
+	if cfg.ShutdownTimeout != 45*time.Second {
+		t.Fatalf("expected shutdown timeout 45s, got %s", cfg.ShutdownTimeout)
+	}
+	if cfg.GraphRiskEngineStateTimeout != 7*time.Second {
+		t.Fatalf("expected graph risk engine state timeout 7s, got %s", cfg.GraphRiskEngineStateTimeout)
+	}
+	if cfg.ThreatIntelSyncTimeout != 90*time.Second {
+		t.Fatalf("expected threat intel sync timeout 90s, got %s", cfg.ThreatIntelSyncTimeout)
+	}
+	if cfg.ThreatIntelSyncMaxAge != 4*time.Hour {
+		t.Fatalf("expected threat intel sync max age 4h, got %s", cfg.ThreatIntelSyncMaxAge)
+	}
+	if cfg.ThreatIntelSyncAttempts != 5 {
+		t.Fatalf("expected threat intel sync attempts 5, got %d", cfg.ThreatIntelSyncAttempts)
+	}
+	if cfg.ThreatIntelSyncBackoff != 9*time.Second {
+		t.Fatalf("expected threat intel sync backoff 9s, got %s", cfg.ThreatIntelSyncBackoff)
+	}
+	if cfg.TicketingProviderValidateTimeout != 8*time.Second {
+		t.Fatalf("expected ticketing provider validate timeout 8s, got %s", cfg.TicketingProviderValidateTimeout)
+	}
+	if cfg.GraphConsistencyCheckTimeout != 12*time.Minute {
+		t.Fatalf("expected graph consistency check timeout 12m, got %s", cfg.GraphConsistencyCheckTimeout)
+	}
+}
+
 func TestLoadConfigGraphEventMapperControls(t *testing.T) {
 	t.Setenv("GRAPH_EVENT_MAPPER_VALIDATION_MODE", "warn")
 	t.Setenv("GRAPH_EVENT_MAPPER_DEAD_LETTER_PATH", "/tmp/test-graph-mapper.dlq.jsonl")
@@ -722,6 +771,56 @@ func TestLoadConfigValidateAggregatesProblems(t *testing.T) {
 		"GRAPH_TENANT_WARM_SHARD_MAX_RETAINED must be > 0",
 		"GRAPH_PROPERTY_HISTORY_MAX_ENTRIES must be >= 0",
 		"GRAPH_PROPERTY_HISTORY_TTL must be >= 0",
+	}
+	for _, want := range wantProblems {
+		found := false
+		for _, problem := range validationErr.Problems {
+			if strings.Contains(problem, want) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected validation problem containing %q, got %#v", want, validationErr.Problems)
+		}
+	}
+}
+
+func TestLoadConfigValidateOperationalTimeoutControls(t *testing.T) {
+	t.Setenv("API_REQUEST_TIMEOUT", "3s")
+	t.Setenv("API_MAX_BODY_BYTES", "0")
+	t.Setenv("CEREBRO_HEALTH_CHECK_TIMEOUT", "4s")
+	t.Setenv("CEREBRO_SHUTDOWN_TIMEOUT", "0s")
+	t.Setenv("GRAPH_RISK_ENGINE_STATE_TIMEOUT", "0s")
+	t.Setenv("CEREBRO_THREAT_INTEL_SYNC_TIMEOUT", "0s")
+	t.Setenv("CEREBRO_THREAT_INTEL_SYNC_MAX_AGE", "0s")
+	t.Setenv("CEREBRO_THREAT_INTEL_SYNC_ATTEMPTS", "0")
+	t.Setenv("CEREBRO_THREAT_INTEL_SYNC_BACKOFF", "0s")
+	t.Setenv("CEREBRO_TICKETING_PROVIDER_VALIDATE_TIMEOUT", "0s")
+	t.Setenv("GRAPH_CONSISTENCY_CHECK_TIMEOUT", "0s")
+
+	cfg := LoadConfig()
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected config validation error")
+	}
+
+	var validationErr *ConfigValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected ConfigValidationError, got %T", err)
+	}
+
+	wantProblems := []string{
+		"API_MAX_BODY_BYTES must be > 0",
+		"CEREBRO_SHUTDOWN_TIMEOUT must be > 0",
+		"GRAPH_RISK_ENGINE_STATE_TIMEOUT must be > 0",
+		"CEREBRO_THREAT_INTEL_SYNC_TIMEOUT must be > 0",
+		"CEREBRO_THREAT_INTEL_SYNC_MAX_AGE must be > 0",
+		"CEREBRO_THREAT_INTEL_SYNC_ATTEMPTS must be > 0",
+		"CEREBRO_THREAT_INTEL_SYNC_BACKOFF must be > 0",
+		"CEREBRO_TICKETING_PROVIDER_VALIDATE_TIMEOUT must be > 0",
+		"GRAPH_CONSISTENCY_CHECK_TIMEOUT must be > 0",
+		"CEREBRO_HEALTH_CHECK_TIMEOUT must be <= API_REQUEST_TIMEOUT",
 	}
 	for _, want := range wantProblems {
 		found := false

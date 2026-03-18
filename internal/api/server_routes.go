@@ -3,8 +3,6 @@
 package api
 
 import (
-	"time"
-
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
@@ -16,9 +14,9 @@ func (s *Server) setupMiddleware() {
 	s.router.Use(middleware.Recoverer)
 	s.router.Use(SecurityHeaders())
 	s.router.Use(s.graphBuildWarningHeaders)
-	s.router.Use(middleware.Timeout(60 * time.Second))
+	s.router.Use(middleware.Timeout(s.apiRequestTimeout()))
 	s.router.Use(middleware.Compress(5))
-	s.router.Use(MaxBodySize(DefaultMaxBodySize))
+	s.router.Use(MaxBodySize(s.apiMaxBodyBytes()))
 	s.router.Use(MetricsMiddleware)
 
 	if len(s.app.Config.CORSAllowedOrigins) > 0 {

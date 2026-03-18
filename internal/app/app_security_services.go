@@ -61,12 +61,10 @@ func (a *App) initThreatIntel(ctx context.Context) {
 	// Sync feeds in background
 	go func() {
 		defer a.threatIntelSyncWG.Done()
-		const (
-			syncTimeout  = 2 * time.Minute
-			syncMaxAge   = 12 * time.Hour
-			syncAttempts = 3
-			syncBackoff  = 5 * time.Second
-		)
+		syncTimeout := a.Config.ThreatIntelSyncTimeoutOrDefault()
+		syncMaxAge := a.Config.ThreatIntelSyncMaxAgeOrDefault()
+		syncAttempts := a.Config.ThreatIntelSyncAttemptsOrDefault()
+		syncBackoff := a.Config.ThreatIntelSyncBackoffOrDefault()
 		if !a.ThreatIntel.ShouldSync(syncMaxAge) {
 			stats := a.ThreatIntel.Stats()
 			a.Logger.Info("threat intel feeds fresh", "last_updated", stats["last_updated"])
@@ -807,6 +805,7 @@ func (a *App) stopEventCorrelationRefreshLoop() {
 	if a == nil {
 		return
 	}
+	shutdownTimeout := a.Config.ShutdownTimeoutOrDefault()
 	if a.eventCorrelationRefreshCancel != nil {
 		a.eventCorrelationRefreshCancel()
 	}
@@ -817,9 +816,9 @@ func (a *App) stopEventCorrelationRefreshLoop() {
 	}()
 	select {
 	case <-done:
-	case <-time.After(appShutdownTimeout):
+	case <-time.After(shutdownTimeout):
 		if a.Logger != nil {
-			a.Logger.Warn("timed out waiting for event correlation refresh loop to stop", "timeout", appShutdownTimeout)
+			a.Logger.Warn("timed out waiting for event correlation refresh loop to stop", "timeout", shutdownTimeout)
 		}
 	}
 	a.eventCorrelationRefreshQueue = nil

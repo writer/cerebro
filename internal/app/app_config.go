@@ -17,6 +17,9 @@ type Config struct {
 	// Server
 	Port                 int
 	LogLevel             string
+	APIRequestTimeout    time.Duration
+	APIMaxBodyBytes      int64
+	HealthCheckTimeout   time.Duration
 	TracingEnabled       bool
 	TracingServiceName   string
 	TracingOTLPEndpoint  string
@@ -57,13 +60,14 @@ type Config struct {
 	OpenAIAPIKey    string
 
 	// Ticketing
-	JiraBaseURL          string
-	JiraEmail            string
-	JiraAPIToken         string
-	JiraProject          string
-	JiraCloseTransitions []string
-	LinearAPIKey         string
-	LinearTeamID         string
+	JiraBaseURL                      string
+	JiraEmail                        string
+	JiraAPIToken                     string
+	JiraProject                      string
+	JiraCloseTransitions             []string
+	TicketingProviderValidateTimeout time.Duration
+	LinearAPIKey                     string
+	LinearTeamID                     string
 
 	// Custom Providers
 	CrowdStrikeClientID     string
@@ -294,7 +298,8 @@ type Config struct {
 	WebhookURLs []string
 
 	// Initialization
-	InitTimeout time.Duration
+	InitTimeout     time.Duration
+	ShutdownTimeout time.Duration
 
 	// NATS JetStream event publishing
 	NATSJetStreamEnabled               bool
@@ -488,12 +493,20 @@ type Config struct {
 	GraphMigrateLegacyActivityOnStart   bool
 	GraphConsistencyCheckEnabled        bool
 	GraphConsistencyCheckInterval       time.Duration
+	GraphConsistencyCheckTimeout        time.Duration
+	GraphRiskEngineStateTimeout         time.Duration
 	GraphFreshnessDefaultSLA            time.Duration
 	GraphFreshnessProviderSLAs          map[string]time.Duration
 	GraphOntologyFallbackWarnPct        float64
 	GraphOntologyFallbackCriticalPct    float64
 	GraphOntologySchemaValidWarnPct     float64
 	GraphOntologySchemaValidCriticalPct float64
+
+	// Threat intel background sync
+	ThreatIntelSyncTimeout  time.Duration
+	ThreatIntelSyncMaxAge   time.Duration
+	ThreatIntelSyncAttempts int
+	ThreatIntelSyncBackoff  time.Duration
 
 	// Nested provider-aware view (derived from flat env-backed fields)
 	Providers ProviderAwareConfig
@@ -537,6 +550,9 @@ func LoadConfig() *Config {
 			cfg = Config{
 				Port:                                getEnvInt("API_PORT", 8080),
 				LogLevel:                            getEnv("LOG_LEVEL", "info"),
+				APIRequestTimeout:                   getEnvDuration("API_REQUEST_TIMEOUT", defaultAPIRequestTimeout),
+				APIMaxBodyBytes:                     int64(getEnvInt("API_MAX_BODY_BYTES", int(defaultAPIMaxBodyBytes))),
+				HealthCheckTimeout:                  getEnvDuration("CEREBRO_HEALTH_CHECK_TIMEOUT", defaultHealthCheckTimeout),
 				TracingEnabled:                      getEnvBool("CEREBRO_OTEL_ENABLED", false),
 				TracingServiceName:                  getEnv("CEREBRO_OTEL_SERVICE_NAME", "cerebro"),
 				TracingOTLPEndpoint:                 getEnv("CEREBRO_OTEL_EXPORTER_OTLP_ENDPOINT", getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "")),
@@ -570,6 +586,7 @@ func LoadConfig() *Config {
 				JiraAPIToken:                        getEnv("JIRA_API_TOKEN", ""),
 				JiraProject:                         getEnv("JIRA_PROJECT", "SEC"),
 				JiraCloseTransitions:                splitCSV(getEnv("JIRA_CLOSE_TRANSITIONS", "Done,Closed,Resolve Issue")),
+				TicketingProviderValidateTimeout:    getEnvDuration("CEREBRO_TICKETING_PROVIDER_VALIDATE_TIMEOUT", defaultTicketingProviderValidateTimeout),
 				LinearAPIKey:                        getEnv("LINEAR_API_KEY", ""),
 				LinearTeamID:                        getEnv("LINEAR_TEAM_ID", ""),
 				CrowdStrikeClientID:                 getEnv("CROWDSTRIKE_CLIENT_ID", ""),
@@ -705,6 +722,7 @@ func LoadConfig() *Config {
 				CloudTrailLookbackDays:              getEnvInt("CLOUDTRAIL_LOOKBACK_DAYS", 7),
 				WebhookURLs:                         splitCSV(getEnv("WEBHOOK_URLS", "")),
 				InitTimeout:                         getEnvDuration("CEREBRO_INIT_TIMEOUT", 2*time.Minute),
+				ShutdownTimeout:                     getEnvDuration("CEREBRO_SHUTDOWN_TIMEOUT", defaultShutdownTimeout),
 				NATSJetStreamEnabled:                getEnvBool("NATS_JETSTREAM_ENABLED", false),
 				NATSJetStreamURLs:                   splitCSV(getEnv("NATS_URLS", "nats://127.0.0.1:4222")),
 				NATSJetStreamStream:                 getEnv("NATS_JETSTREAM_STREAM", "CEREBRO_EVENTS"),
@@ -868,12 +886,18 @@ func LoadConfig() *Config {
 				GraphMigrateLegacyActivityOnStart:   getEnvBool("GRAPH_MIGRATE_LEGACY_ACTIVITY_ON_START", false),
 				GraphConsistencyCheckEnabled:        getEnvBool("GRAPH_CONSISTENCY_CHECK_ENABLED", false),
 				GraphConsistencyCheckInterval:       getEnvDuration("GRAPH_CONSISTENCY_CHECK_INTERVAL", 6*time.Hour),
+				GraphConsistencyCheckTimeout:        getEnvDuration("GRAPH_CONSISTENCY_CHECK_TIMEOUT", defaultGraphConsistencyCheckTimeout),
+				GraphRiskEngineStateTimeout:         getEnvDuration("GRAPH_RISK_ENGINE_STATE_TIMEOUT", defaultGraphRiskEngineStateTimeout),
 				GraphFreshnessDefaultSLA:            getEnvDuration("CEREBRO_GRAPH_FRESHNESS_DEFAULT_SLA", 6*time.Hour),
 				GraphFreshnessProviderSLAs:          parseDurationEnvMap("CEREBRO_FRESHNESS_SLA_"),
 				GraphOntologyFallbackWarnPct:        getEnvFloat("GRAPH_ONTOLOGY_FALLBACK_WARN_PERCENT", 12),
 				GraphOntologyFallbackCriticalPct:    getEnvFloat("GRAPH_ONTOLOGY_FALLBACK_CRITICAL_PERCENT", 25),
 				GraphOntologySchemaValidWarnPct:     getEnvFloat("GRAPH_ONTOLOGY_SCHEMA_VALID_WARN_PERCENT", 98),
 				GraphOntologySchemaValidCriticalPct: getEnvFloat("GRAPH_ONTOLOGY_SCHEMA_VALID_CRITICAL_PERCENT", 92),
+				ThreatIntelSyncTimeout:              getEnvDuration("CEREBRO_THREAT_INTEL_SYNC_TIMEOUT", defaultThreatIntelSyncTimeout),
+				ThreatIntelSyncMaxAge:               getEnvDuration("CEREBRO_THREAT_INTEL_SYNC_MAX_AGE", defaultThreatIntelSyncMaxAge),
+				ThreatIntelSyncAttempts:             getEnvInt("CEREBRO_THREAT_INTEL_SYNC_ATTEMPTS", defaultThreatIntelSyncAttempts),
+				ThreatIntelSyncBackoff:              getEnvDuration("CEREBRO_THREAT_INTEL_SYNC_BACKOFF", defaultThreatIntelSyncBackoff),
 			}
 		})
 	})

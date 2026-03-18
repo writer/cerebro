@@ -209,7 +209,7 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 		20000,
 	))
 
-	status, checks := runHealthChecks(r.Context(), liveness)
+	status, checks := runHealthChecks(r.Context(), liveness, s.healthCheckTimeout())
 
 	s.json(w, healthHTTPStatus(status), map[string]interface{}{
 		"status":    status,
@@ -223,7 +223,7 @@ func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 	checks := map[string]health.CheckResult{}
 
 	if s.app.Health != nil {
-		status, checks = runHealthChecks(r.Context(), s.app.Health)
+		status, checks = runHealthChecks(r.Context(), s.app.Health, s.healthCheckTimeout())
 	}
 
 	s.json(w, healthHTTPStatus(status), map[string]interface{}{
@@ -246,7 +246,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		body["freshness"] = s.app.GraphFreshnessStatusSnapshot(now)
 	}
 	if s.app != nil && s.app.Health != nil {
-		status, checks := runHealthChecks(r.Context(), s.app.Health)
+		status, checks := runHealthChecks(r.Context(), s.app.Health, s.healthCheckTimeout())
 		body["health"] = map[string]any{
 			"status": status,
 			"checks": formatHealthChecks(checks),
@@ -295,15 +295,49 @@ func skipGraphBuildWarningHeaders(path string) bool {
 	}
 }
 
-func runHealthChecks(ctx context.Context, registry *health.Registry) (health.Status, map[string]health.CheckResult) {
+func runHealthChecks(ctx context.Context, registry *health.Registry, timeout time.Duration) (health.Status, map[string]health.CheckResult) {
 	if registry == nil {
 		return health.StatusUnknown, map[string]health.CheckResult{}
 	}
+	if timeout <= 0 {
+		timeout = (*app.Config)(nil).HealthCheckTimeoutOrDefault()
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
-	checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	checkCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	results := registry.RunAll(checkCtx)
 	return overallHealthStatus(results), results
+}
+
+func (s *Server) apiRequestTimeout() time.Duration {
+	if s == nil || s.app == nil {
+		return (*app.Config)(nil).APIRequestTimeoutOrDefault()
+	}
+	return s.app.Config.APIRequestTimeoutOrDefault()
+}
+
+func (s *Server) apiMaxBodyBytes() int64 {
+	if s == nil || s.app == nil {
+		return (*app.Config)(nil).APIMaxBodyBytesOrDefault()
+	}
+	return s.app.Config.APIMaxBodyBytesOrDefault()
+}
+
+func (s *Server) healthCheckTimeout() time.Duration {
+	if s == nil || s.app == nil {
+		return (*app.Config)(nil).HealthCheckTimeoutOrDefault()
+	}
+	return s.app.Config.HealthCheckTimeoutOrDefault()
+}
+
+func (s *Server) riskEngineStateTimeout() time.Duration {
+	if s == nil || s.app == nil {
+		return (*app.Config)(nil).GraphRiskEngineStateTimeoutOrDefault()
+	}
+	return s.app.Config.GraphRiskEngineStateTimeoutOrDefault()
 }
 
 func overallHealthStatus(results map[string]health.CheckResult) health.Status {
@@ -441,7 +475,7 @@ func (s *Server) adminHealth(w http.ResponseWriter, r *http.Request) {
 
 	// Snowflake status
 	if s.app.Snowflake != nil {
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), s.healthCheckTimeout())
 		start := time.Now()
 		err := s.app.Snowflake.Ping(ctx)
 		cancel()

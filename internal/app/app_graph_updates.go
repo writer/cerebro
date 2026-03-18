@@ -132,7 +132,7 @@ func (a *App) maybeStartGraphConsistencyCheck(trigger string, summary graph.Grap
 	if baseCtx == nil {
 		baseCtx = context.Background()
 	}
-	checkCtx, cancel := context.WithTimeout(baseCtx, 30*time.Minute)
+	checkCtx, cancel := context.WithTimeout(baseCtx, a.Config.GraphConsistencyCheckTimeoutOrDefault())
 	a.graphConsistencyCancel = cancel
 	a.graphConsistencyMu.Unlock()
 
