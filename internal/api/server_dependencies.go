@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -115,6 +117,7 @@ type serverDependencies struct {
 	graphMutator       graphMutationService
 	apiCredentials     apiCredentialService
 	agentSDKToolSource agentSDKToolService
+	platformKnowledge  platformKnowledgeService
 }
 
 type graphRuntimeAdapter struct {
@@ -278,6 +281,33 @@ func (d serverDependencies) MutateSecurityGraph(ctx context.Context, mutate func
 		return nil, errors.New("security graph runtime not configured")
 	}
 	return d.graphMutator.MutateSecurityGraph(ctx, mutate)
+}
+
+func (d serverDependencies) PlatformGraphSnapshotStore() *graph.GraphPersistenceStore {
+	if d.GraphSnapshots != nil {
+		return d.GraphSnapshots
+	}
+	snapshotPath := strings.TrimSpace(os.Getenv("GRAPH_SNAPSHOT_PATH"))
+	maxSnapshots := 10
+	if d.Config != nil {
+		if configured := strings.TrimSpace(d.Config.GraphSnapshotPath); configured != "" {
+			snapshotPath = configured
+		}
+		if d.Config.GraphSnapshotMaxRetained > 0 {
+			maxSnapshots = d.Config.GraphSnapshotMaxRetained
+		}
+	}
+	if snapshotPath == "" {
+		snapshotPath = filepath.Join(".cerebro", "graph-snapshots")
+	}
+	store, err := graph.NewGraphPersistenceStore(graph.GraphPersistenceOptions{
+		LocalPath:    snapshotPath,
+		MaxSnapshots: maxSnapshots,
+	})
+	if err != nil {
+		return nil
+	}
+	return store
 }
 
 func (d serverDependencies) APICredentialsSnapshot() map[string]apiauth.Credential {

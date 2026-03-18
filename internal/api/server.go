@@ -28,6 +28,7 @@ import (
 type Server struct {
 	app                      *serverDependencies
 	graphIntelligence        graphIntelligenceService
+	platformKnowledge        platformKnowledgeService
 	router                   *chi.Mux
 	auditLogger              auditLogWriter
 	rateLimiter              *RateLimiter
@@ -81,9 +82,14 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 	if adapter, ok := deps.graphRuntime.(*graphRuntimeAdapter); ok {
 		adapter.deps = &deps
 	}
+	platformKnowledge := deps.platformKnowledge
+	if platformKnowledge == nil {
+		platformKnowledge = newPlatformKnowledgeService(&deps)
+	}
 	s := &Server{
 		app:                    &deps,
 		graphIntelligence:      newGraphIntelligenceService(&deps),
+		platformKnowledge:      platformKnowledge,
 		router:                 chi.NewRouter(),
 		auditLogger:            deps.AuditRepo,
 		crossTenantReplay:      make(map[string]time.Time),

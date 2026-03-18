@@ -5,6 +5,19 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 196 - Platform Knowledge Service Seam (2026-03-17)
+
+### Review findings
+- [x] Gap: issue `#210` still left the platform knowledge handlers wired straight to graph plumbing and snapshot-store lookup, so read endpoints could not be tested against a narrow service stub.
+- [x] Gap: the claim adjudication handler still reached through `s.app` for a mutable graph while the surrounding read handlers used ad hoc graph access, which kept the family split across package functions and raw runtime state.
+- [x] Gap: snapshot-based knowledge diffs rebuilt graph views directly in the handler, which meant the HTTP layer still owned tenant scoping and snapshot-comparison behavior instead of a typed API seam.
+
+### Execution plan
+- [x] Add a dedicated `platformKnowledgeService` interface plus a default adapter backed by the current security graph and snapshot store.
+- [x] Route platform knowledge claim, artifact, claim-group, proof, diff, and adjudication handlers through the service seam instead of direct graph access.
+- [x] Add `NewServerWithDependencies` tests that stub only the platform knowledge family without constructing a full `*app.App`.
+- [x] Re-run focused and changed-file API tests, lint, and push the branch once the seam compiles cleanly.
+
 ## Deep Review Cycle 196 - Graph Store Query Paths (2026-03-17)
 
 ### Review findings

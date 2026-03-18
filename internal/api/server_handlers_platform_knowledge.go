@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -15,35 +16,33 @@ import (
 )
 
 func (s *Server) listPlatformKnowledgeClaims(w http.ResponseWriter, r *http.Request) {
-	g := s.currentTenantSecurityGraph(r.Context())
-	if g == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-
 	opts, err := parsePlatformClaimQueryOptions(r)
 	if err != nil {
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	s.json(w, http.StatusOK, knowledge.QueryClaims(g, opts))
+	claims, err := s.platformKnowledge.QueryClaims(r.Context(), opts)
+	if err != nil {
+		s.error(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	s.json(w, http.StatusOK, claims)
 }
 
 func (s *Server) listPlatformKnowledgeEvidence(w http.ResponseWriter, r *http.Request) {
-	g := s.currentTenantSecurityGraph(r.Context())
-	if g == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-
 	opts, err := parsePlatformKnowledgeArtifactQueryOptions(r)
 	if err != nil {
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	s.json(w, http.StatusOK, knowledge.QueryEvidence(g, opts))
+	evidence, err := s.platformKnowledge.QueryEvidence(r.Context(), opts)
+	if err != nil {
+		s.error(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	s.json(w, http.StatusOK, evidence)
 }
 
 func (s *Server) getPlatformKnowledgeEvidence(w http.ResponseWriter, r *http.Request) {
@@ -51,19 +50,18 @@ func (s *Server) getPlatformKnowledgeEvidence(w http.ResponseWriter, r *http.Req
 }
 
 func (s *Server) listPlatformKnowledgeObservations(w http.ResponseWriter, r *http.Request) {
-	g := s.currentTenantSecurityGraph(r.Context())
-	if g == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-
 	opts, err := parsePlatformKnowledgeArtifactQueryOptions(r)
 	if err != nil {
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	s.json(w, http.StatusOK, knowledge.QueryObservations(g, opts))
+	observations, err := s.platformKnowledge.QueryObservations(r.Context(), opts)
+	if err != nil {
+		s.error(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	s.json(w, http.StatusOK, observations)
 }
 
 func (s *Server) getPlatformKnowledgeObservation(w http.ResponseWriter, r *http.Request) {
@@ -71,12 +69,6 @@ func (s *Server) getPlatformKnowledgeObservation(w http.ResponseWriter, r *http.
 }
 
 func (s *Server) getPlatformKnowledgeClaim(w http.ResponseWriter, r *http.Request) {
-	g := s.currentTenantSecurityGraph(r.Context())
-	if g == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-
 	claimID := strings.TrimSpace(chi.URLParam(r, "claim_id"))
 	if claimID == "" {
 		s.error(w, http.StatusBadRequest, "claim id required")
@@ -94,7 +86,11 @@ func (s *Server) getPlatformKnowledgeClaim(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	record, ok := knowledge.GetClaimRecord(g, claimID, validAt, recordedAt)
+	record, ok, err := s.platformKnowledge.GetClaim(r.Context(), claimID, validAt, recordedAt)
+	if err != nil {
+		s.error(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
 	if !ok {
 		s.error(w, http.StatusNotFound, "claim not found")
 		return
@@ -103,28 +99,21 @@ func (s *Server) getPlatformKnowledgeClaim(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) listPlatformKnowledgeClaimGroups(w http.ResponseWriter, r *http.Request) {
-	g := s.currentTenantSecurityGraph(r.Context())
-	if g == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-
 	opts, err := parsePlatformClaimGroupQueryOptions(r)
 	if err != nil {
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	s.json(w, http.StatusOK, knowledge.QueryClaimGroups(g, opts))
+	groups, err := s.platformKnowledge.QueryClaimGroups(r.Context(), opts)
+	if err != nil {
+		s.error(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	s.json(w, http.StatusOK, groups)
 }
 
 func (s *Server) getPlatformKnowledgeClaimGroup(w http.ResponseWriter, r *http.Request) {
-	g := s.currentTenantSecurityGraph(r.Context())
-	if g == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-
 	groupID := strings.TrimSpace(chi.URLParam(r, "group_id"))
 	if groupID == "" {
 		s.error(w, http.StatusBadRequest, "group id required")
@@ -147,7 +136,11 @@ func (s *Server) getPlatformKnowledgeClaimGroup(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	record, ok := knowledge.GetClaimGroupRecord(g, groupID, validAt, recordedAt, includeResolved)
+	record, ok, err := s.platformKnowledge.GetClaimGroup(r.Context(), groupID, validAt, recordedAt, includeResolved)
+	if err != nil {
+		s.error(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
 	if !ok {
 		s.error(w, http.StatusNotFound, "claim group not found")
 		return
@@ -156,12 +149,6 @@ func (s *Server) getPlatformKnowledgeClaimGroup(w http.ResponseWriter, r *http.R
 }
 
 func (s *Server) getPlatformKnowledgeClaimTimeline(w http.ResponseWriter, r *http.Request) {
-	g := s.currentTenantSecurityGraph(r.Context())
-	if g == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-
 	claimID := strings.TrimSpace(chi.URLParam(r, "claim_id"))
 	if claimID == "" {
 		s.error(w, http.StatusBadRequest, "claim id required")
@@ -174,7 +161,11 @@ func (s *Server) getPlatformKnowledgeClaimTimeline(w http.ResponseWriter, r *htt
 		return
 	}
 
-	timeline, ok := knowledge.GetClaimTimeline(g, claimID, opts)
+	timeline, ok, err := s.platformKnowledge.GetClaimTimeline(r.Context(), claimID, opts)
+	if err != nil {
+		s.error(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
 	if !ok {
 		s.error(w, http.StatusNotFound, "claim not found")
 		return
@@ -183,12 +174,6 @@ func (s *Server) getPlatformKnowledgeClaimTimeline(w http.ResponseWriter, r *htt
 }
 
 func (s *Server) getPlatformKnowledgeClaimExplanation(w http.ResponseWriter, r *http.Request) {
-	g := s.currentTenantSecurityGraph(r.Context())
-	if g == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-
 	claimID := strings.TrimSpace(chi.URLParam(r, "claim_id"))
 	if claimID == "" {
 		s.error(w, http.StatusBadRequest, "claim id required")
@@ -206,7 +191,11 @@ func (s *Server) getPlatformKnowledgeClaimExplanation(w http.ResponseWriter, r *
 		return
 	}
 
-	explanation, ok := knowledge.ExplainClaim(g, claimID, validAt, recordedAt)
+	explanation, ok, err := s.platformKnowledge.ExplainClaim(r.Context(), claimID, validAt, recordedAt)
+	if err != nil {
+		s.error(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
 	if !ok {
 		s.error(w, http.StatusNotFound, "claim not found")
 		return
@@ -215,12 +204,6 @@ func (s *Server) getPlatformKnowledgeClaimExplanation(w http.ResponseWriter, r *
 }
 
 func (s *Server) getPlatformKnowledgeClaimProofs(w http.ResponseWriter, r *http.Request) {
-	g := s.currentTenantSecurityGraph(r.Context())
-	if g == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-
 	claimID := strings.TrimSpace(chi.URLParam(r, "claim_id"))
 	if claimID == "" {
 		s.error(w, http.StatusBadRequest, "claim id required")
@@ -233,7 +216,11 @@ func (s *Server) getPlatformKnowledgeClaimProofs(w http.ResponseWriter, r *http.
 		return
 	}
 
-	proofs, ok := knowledge.BuildClaimProofs(g, claimID, opts)
+	proofs, ok, err := s.platformKnowledge.BuildClaimProofs(r.Context(), claimID, opts)
+	if err != nil {
+		s.error(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
 	if !ok {
 		s.error(w, http.StatusNotFound, "claim not found")
 		return
@@ -242,80 +229,48 @@ func (s *Server) getPlatformKnowledgeClaimProofs(w http.ResponseWriter, r *http.
 }
 
 func (s *Server) listPlatformKnowledgeClaimDiffs(w http.ResponseWriter, r *http.Request) {
-	g := s.currentTenantSecurityGraph(r.Context())
-	if g == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-
 	opts, err := parsePlatformClaimDiffQueryOptions(r)
 	if err != nil {
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	s.json(w, http.StatusOK, knowledge.DiffClaims(g, opts))
+	diffs, err := s.platformKnowledge.DiffClaims(r.Context(), opts)
+	if err != nil {
+		s.error(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	s.json(w, http.StatusOK, diffs)
 }
 
 func (s *Server) listPlatformKnowledgeDiffs(w http.ResponseWriter, r *http.Request) {
-	g := s.currentTenantSecurityGraph(r.Context())
-	if g == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-
 	opts, err := parsePlatformKnowledgeDiffQueryOptions(r)
 	if err != nil {
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	fromGraph := g
-	toGraph := g
-	if opts.FromSnapshotID != "" || opts.ToSnapshotID != "" {
-		store := s.platformGraphSnapshotStore()
-		if store == nil {
-			s.error(w, http.StatusServiceUnavailable, "graph snapshot store not configured")
-			return
+	diffs, err := s.platformKnowledge.DiffKnowledge(r.Context(), opts)
+	if err != nil {
+		switch {
+		case errors.Is(err, errPlatformKnowledgeUnavailable), errors.Is(err, errPlatformKnowledgeSnapshotsUnavailable):
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+		case strings.Contains(err.Error(), "not found"):
+			s.error(w, http.StatusNotFound, err.Error())
+		default:
+			s.error(w, http.StatusBadRequest, err.Error())
 		}
-		snapshots, records, err := store.LoadSnapshotsByRecordIDs(opts.FromSnapshotID, opts.ToSnapshotID)
-		if err != nil {
-			switch {
-			case strings.Contains(err.Error(), "not found"):
-				s.error(w, http.StatusNotFound, err.Error())
-			default:
-				s.error(w, http.StatusBadRequest, err.Error())
-			}
-			return
-		}
-		fromGraph = s.tenantScopedGraph(r.Context(), graph.GraphViewFromSnapshot(snapshots[opts.FromSnapshotID]))
-		toGraph = s.tenantScopedGraph(r.Context(), graph.GraphViewFromSnapshot(snapshots[opts.ToSnapshotID]))
-		opts.FromValidAt = snapshotKnowledgeComparisonTime(snapshots[opts.FromSnapshotID], records[opts.FromSnapshotID])
-		opts.FromRecordedAt = opts.FromValidAt
-		opts.ToValidAt = snapshotKnowledgeComparisonTime(snapshots[opts.ToSnapshotID], records[opts.ToSnapshotID])
-		opts.ToRecordedAt = opts.ToValidAt
-	}
-
-	s.json(w, http.StatusOK, knowledge.DiffKnowledgeGraphs(fromGraph, toGraph, opts))
-}
-
-func (s *Server) adjudicatePlatformKnowledgeClaimGroup(w http.ResponseWriter, r *http.Request) {
-	g := s.app.CurrentSecurityGraph()
-	if g == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
 
+	s.json(w, http.StatusOK, diffs)
+}
+
+func (s *Server) adjudicatePlatformKnowledgeClaimGroup(w http.ResponseWriter, r *http.Request) {
 	groupID := strings.TrimSpace(chi.URLParam(r, "group_id"))
 	if groupID == "" {
 		s.error(w, http.StatusBadRequest, "group id required")
 		return
-	}
-	if scoped := s.currentTenantSecurityGraph(r.Context()); scoped != nil {
-		if _, ok := knowledge.GetClaimGroupRecord(scoped, groupID, time.Time{}, time.Time{}, true); !ok {
-			s.error(w, http.StatusNotFound, "claim group not found")
-			return
-		}
 	}
 
 	var req knowledge.ClaimAdjudicationWriteRequest
@@ -325,10 +280,12 @@ func (s *Server) adjudicatePlatformKnowledgeClaimGroup(w http.ResponseWriter, r 
 	}
 	req.GroupID = groupID
 
-	result, err := knowledge.AdjudicateClaimGroup(g, req)
+	result, err := s.platformKnowledge.AdjudicateClaimGroup(r.Context(), req)
 	if err != nil {
 		status := http.StatusBadRequest
 		switch {
+		case errors.Is(err, errPlatformKnowledgeUnavailable):
+			status = http.StatusServiceUnavailable
 		case strings.Contains(err.Error(), "not found"):
 			status = http.StatusNotFound
 		}
@@ -681,12 +638,6 @@ func parsePlatformKnowledgeDiffQueryOptions(r *http.Request) (knowledge.Knowledg
 }
 
 func (s *Server) getPlatformKnowledgeArtifact(w http.ResponseWriter, r *http.Request, kind graph.NodeKind) {
-	g := s.currentTenantSecurityGraph(r.Context())
-	if g == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-
 	key := "artifact_id"
 	switch kind {
 	case graph.NodeKindEvidence:
@@ -715,9 +666,13 @@ func (s *Server) getPlatformKnowledgeArtifact(w http.ResponseWriter, r *http.Req
 	var ok bool
 	switch kind {
 	case graph.NodeKindObservation:
-		record, ok = knowledge.GetObservationRecord(g, id, validAt, recordedAt)
+		record, ok, err = s.platformKnowledge.GetObservation(r.Context(), id, validAt, recordedAt)
 	default:
-		record, ok = knowledge.GetEvidenceRecord(g, id, validAt, recordedAt)
+		record, ok, err = s.platformKnowledge.GetEvidence(r.Context(), id, validAt, recordedAt)
+	}
+	if err != nil {
+		s.error(w, http.StatusServiceUnavailable, err.Error())
+		return
 	}
 	if !ok {
 		s.error(w, http.StatusNotFound, "knowledge artifact not found")

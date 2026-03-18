@@ -400,30 +400,10 @@ func (s *Server) platformGraphSnapshotDiffWithSnapshots(fromSnapshotID, toSnapsh
 }
 
 func (s *Server) platformGraphSnapshotStore() *graph.GraphPersistenceStore {
-	if s != nil && s.app != nil && s.app.GraphSnapshots != nil {
-		return s.app.GraphSnapshots
-	}
-	snapshotPath := strings.TrimSpace(os.Getenv("GRAPH_SNAPSHOT_PATH"))
-	maxSnapshots := 10
-	if s != nil && s.app != nil && s.app.Config != nil {
-		if configured := strings.TrimSpace(s.app.Config.GraphSnapshotPath); configured != "" {
-			snapshotPath = configured
-		}
-		if s.app.Config.GraphSnapshotMaxRetained > 0 {
-			maxSnapshots = s.app.Config.GraphSnapshotMaxRetained
-		}
-	}
-	if snapshotPath == "" {
-		snapshotPath = filepath.Join(".cerebro", "graph-snapshots")
-	}
-	store, err := graph.NewGraphPersistenceStore(graph.GraphPersistenceOptions{
-		LocalPath:    snapshotPath,
-		MaxSnapshots: maxSnapshots,
-	})
-	if err != nil {
+	if s == nil || s.app == nil {
 		return nil
 	}
-	return store
+	return s.app.PlatformGraphSnapshotStore()
 }
 
 func (s *Server) platformGraphSnapshotRecords() map[string]*graph.GraphSnapshotRecord {
