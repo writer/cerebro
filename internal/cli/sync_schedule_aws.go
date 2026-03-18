@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -16,6 +18,7 @@ import (
 	"github.com/writer/cerebro/internal/metrics"
 	"github.com/writer/cerebro/internal/snowflake"
 	nativesync "github.com/writer/cerebro/internal/sync"
+	"golang.org/x/sync/errgroup"
 )
 
 func executeAWSSync(ctx context.Context, client *snowflake.Client, schedule *SyncSchedule) error {
@@ -62,6 +65,9 @@ func executeAWSSync(ctx context.Context, client *snowflake.Client, schedule *Syn
 	if err := preflightScheduledAWSAuthFn(ctx, schedule, spec, awsCfg); err != nil {
 		return err
 	}
+	if spec.AWSOrg {
+		return runScheduledAWSOrgSyncFn(ctx, client, awsCfg, spec)
+	}
 
 	return runScheduledAWSNativeSyncFn(ctx, client, awsCfg, spec.TableFilter)
 }
@@ -75,6 +81,143 @@ func runScheduledAWSNativeSync(ctx context.Context, client *snowflake.Client, aw
 	syncer := nativesync.NewSyncEngine(client, slog.Default(), opts...)
 	_, err := syncer.SyncAllWithConfig(ctx, awsCfg)
 	return err
+}
+
+func runScheduledAWSOrgSync(ctx context.Context, client *snowflake.Client, awsCfg aws.Config, spec scheduledSyncSpec) error {
+	orgCfg := awsCfg.Copy()
+	if strings.TrimSpace(orgCfg.Region) == "" {
+		orgCfg.Region = "us-east-1"
+	}
+	region := strings.TrimSpace(awsCfg.Region)
+	if region == "" {
+		region = orgCfg.Region
+	}
+	if region == "" {
+		region = "us-east-1"
+	}
+
+	includeSet := buildStringSet(spec.AWSOrgIncludeAccounts)
+	excludeSet := buildStringSet(spec.AWSOrgExcludeAccounts)
+	accounts, err := listAWSOrgAccounts(ctx, orgCfg, includeSet, excludeSet)
+	if err != nil {
+		return fmt.Errorf("list organization accounts: %w", err)
+	}
+	if len(accounts) == 0 {
+		return fmt.Errorf("no AWS organization accounts matched filters")
+	}
+
+	managementAccountID, err := getAWSAccountID(ctx, awsCfg)
+	if err != nil {
+		return fmt.Errorf("get management account ID: %w", err)
+	}
+
+	accountConcurrency, err := parseAWSOrgAccountConcurrency(spec.AWSOrgAccountConcurrency)
+	if err != nil {
+		return err
+	}
+	if accountConcurrency == 0 {
+		accountConcurrency = 4
+	}
+
+	roleName := strings.TrimSpace(spec.AWSOrgRole)
+	if roleName == "" {
+		roleName = "OrganizationAccountAccessRole"
+	}
+
+	mfaSerial := strings.TrimSpace(spec.AWSRoleMFASerial)
+	mfaToken := strings.TrimSpace(spec.AWSRoleMFAToken)
+	if mfaToken != "" && mfaSerial == "" {
+		return fmt.Errorf("aws_role_mfa_token requires aws_role_mfa_serial")
+	}
+	durationSeconds, err := parseBoundedPositiveIntDirective(spec.AWSRoleDurationSeconds, "aws_role_duration_seconds", 900, 43200)
+	if err != nil {
+		return err
+	}
+	tags, transitiveTagKeys, err := parseAWSSessionTagDirectives(spec.AWSRoleSessionTags, spec.AWSRoleTransitiveTagKeys)
+	if err != nil {
+		return err
+	}
+
+	var opts []nativesync.EngineOption
+	if len(spec.TableFilter) > 0 {
+		opts = append(opts, nativesync.WithTableFilter(spec.TableFilter))
+	}
+
+	Info("Syncing AWS organization accounts: %d (account_concurrency=%d)", len(accounts), accountConcurrency)
+
+	results := make([]nativesync.SyncResult, 0, len(accounts))
+	var mu sync.Mutex
+	var errs []error
+	var group errgroup.Group
+	group.SetLimit(accountConcurrency)
+
+	for _, account := range accounts {
+		account := account
+		group.Go(func() error {
+			accountCfg := awsCfg
+			if account.ID != managementAccountID {
+				roleArn, err := buildAWSOrgRoleARN(account.ID, roleName, region)
+				if err != nil {
+					mu.Lock()
+					errs = append(errs, fmt.Errorf("account %s: %w", account.ID, err))
+					mu.Unlock()
+					return nil
+				}
+				assumedCfg, err := assumeRoleConfigWithScheduledOptions(
+					ctx,
+					awsCfg,
+					roleArn,
+					fmt.Sprintf("cerebro-sync-%s", account.ID),
+					strings.TrimSpace(spec.AWSRoleExternalID),
+					mfaSerial,
+					mfaToken,
+					strings.TrimSpace(spec.AWSRoleSourceIdentity),
+					durationSeconds,
+					tags,
+					transitiveTagKeys,
+				)
+				if err != nil {
+					mu.Lock()
+					errs = append(errs, fmt.Errorf("account %s: %w", account.ID, err))
+					mu.Unlock()
+					return nil
+				}
+				accountCfg = assumedCfg
+			}
+
+			syncer := nativesync.NewSyncEngine(client, slog.Default(), opts...)
+			accountResults, syncErr := syncer.SyncAllWithConfig(ctx, accountCfg)
+
+			mu.Lock()
+			results = append(results, accountResults...)
+			if syncErr != nil {
+				errs = append(errs, fmt.Errorf("account %s: %w", account.ID, syncErr))
+			}
+			mu.Unlock()
+			return nil
+		})
+	}
+
+	_ = group.Wait()
+	if len(errs) > 0 {
+		return summarizeSyncRunErrors("AWS org scheduled sync", errs)
+	}
+	return nil
+}
+
+func parseAWSOrgAccountConcurrency(raw string) (int, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return 0, nil
+	}
+	value, err := strconv.Atoi(trimmed)
+	if err != nil {
+		return 0, fmt.Errorf("aws_org_account_concurrency must be an integer: %w", err)
+	}
+	if value < 1 || value > 256 {
+		return 0, fmt.Errorf("aws_org_account_concurrency must be between 1 and 256")
+	}
+	return value, nil
 }
 
 func loadScheduledAWSConfig(ctx context.Context, spec scheduledSyncSpec) (aws.Config, error) {

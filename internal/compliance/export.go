@@ -21,13 +21,16 @@ type AuditManifest struct {
 
 // AuditControlEvidence describes control-level evidence included in an export.
 type AuditControlEvidence struct {
-	ControlID    string   `json:"control_id"`
-	Title        string   `json:"title"`
-	Description  string   `json:"description"`
-	Status       string   `json:"status"`
-	Policies     []string `json:"policies"`
-	Findings     []string `json:"findings"`
-	FindingCount int      `json:"finding_count"`
+	ControlID        string            `json:"control_id"`
+	Title            string            `json:"title"`
+	Description      string            `json:"description"`
+	Status           string            `json:"status"`
+	Policies         []string          `json:"policies"`
+	Findings         []string          `json:"findings"`
+	FindingCount     int               `json:"finding_count"`
+	EvaluationSource string            `json:"evaluation_source,omitempty"`
+	LastEvaluated    string            `json:"last_evaluated,omitempty"`
+	Evidence         []ControlEvidence `json:"evidence,omitempty"`
 }
 
 // AuditSummary contains aggregate control pass/fail information.
@@ -42,6 +45,16 @@ type AuditPackage struct {
 	Manifest AuditManifest          `json:"manifest"`
 	Summary  AuditSummary           `json:"summary"`
 	Controls []AuditControlEvidence `json:"controls"`
+}
+
+// RedactReportEvidence removes per-entity inventory details from compliance output payloads.
+func RedactReportEvidence(report ComplianceReport) ComplianceReport {
+	report.Controls = append([]ControlStatus(nil), report.Controls...)
+	for i, ctrl := range report.Controls {
+		ctrl.Evidence = redactControlEvidence(ctrl.Evidence)
+		report.Controls[i] = ctrl
+	}
+	return report
 }
 
 // BuildAuditPackage builds control evidence for a framework using finding counts by policy ID.
@@ -89,6 +102,69 @@ func BuildAuditPackage(framework *Framework, findingsByPolicy map[string]int, ge
 
 	pkg.Summary.TotalControls = len(pkg.Controls)
 	return pkg
+}
+
+// BuildAuditPackageFromReport builds an audit package from a graph- or findings-derived compliance report.
+func BuildAuditPackageFromReport(framework *Framework, report ComplianceReport) AuditPackage {
+	pkg := AuditPackage{
+		Manifest: AuditManifest{
+			FrameworkID:   framework.ID,
+			FrameworkName: framework.Name,
+			Version:       framework.Version,
+			GeneratedAt:   report.GeneratedAt,
+			GeneratedBy:   "cerebro",
+		},
+		Controls: make([]AuditControlEvidence, 0, len(report.Controls)),
+		Summary: AuditSummary{
+			TotalControls:   report.Summary.TotalControls,
+			PassingControls: report.Summary.PassingControls,
+			FailingControls: report.Summary.FailingControls + report.Summary.PartialControls,
+		},
+	}
+	for _, ctrl := range report.Controls {
+		redactedEvidence := redactControlEvidence(ctrl.Evidence)
+		evidence := AuditControlEvidence{
+			ControlID:        ctrl.ControlID,
+			Title:            ctrl.Title,
+			Description:      ctrl.Description,
+			Status:           ctrl.Status,
+			Policies:         append([]string(nil), ctrl.PolicyIDs...),
+			EvaluationSource: ctrl.EvaluationSource,
+			LastEvaluated:    ctrl.LastEvaluated,
+			Evidence:         redactedEvidence,
+			Findings:         make([]string, 0, len(ctrl.PolicyIDs)),
+			FindingCount:     ctrl.FailCount,
+		}
+		for _, item := range redactedEvidence {
+			if item.PolicyID == "" || item.Status != ControlStateFailing {
+				continue
+			}
+			evidence.Findings = append(evidence.Findings, item.PolicyID)
+		}
+		pkg.Controls = append(pkg.Controls, evidence)
+	}
+	return pkg
+}
+
+func redactControlEvidence(items []ControlEvidence) []ControlEvidence {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]ControlEvidence, 0, len(items))
+	for _, item := range items {
+		if item.Status == ControlStatePassing {
+			continue
+		}
+		out = append(out, ControlEvidence{
+			PolicyID: item.PolicyID,
+			Status:   item.Status,
+			Reason:   item.Reason,
+		})
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // AuditPackageFilename returns a deterministic export filename.

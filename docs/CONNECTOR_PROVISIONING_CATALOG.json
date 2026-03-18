@@ -109,6 +109,12 @@
           "provider_ref": "https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DeleteVolume.html"
         },
         {
+          "name": "kms:DescribeKey",
+          "scope": "account",
+          "summary": "Inspect EBS snapshot key manager metadata before cross-account encrypted scans.",
+          "provider_ref": "https://docs.aws.amazon.com/kms/latest/developerguide/kms-api-permissions-reference.html"
+        },
+        {
           "name": "kms:Decrypt",
           "scope": "account",
           "summary": "Use customer-managed keys when encrypted EBS volumes are snapshotted.",

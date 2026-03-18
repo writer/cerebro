@@ -380,6 +380,20 @@ var (
 		[]string{"job"},
 	)
 
+	SchedulerQueueDepth = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "cerebro_scheduler_queue_depth",
+			Help: "Number of due scheduler jobs awaiting execution",
+		},
+	)
+
+	SchedulerRunningJobs = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "cerebro_scheduler_running_jobs",
+			Help: "Number of scheduler jobs currently executing",
+		},
+	)
+
 	ScheduledAuthPreflightTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "cerebro_scheduled_auth_preflight_total",
@@ -419,6 +433,82 @@ var (
 			Help: "Number of stale access findings",
 		},
 		[]string{"type"},
+	)
+
+	WorkloadScanRunsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_workload_scan_runs_total",
+			Help: "Total number of workload scan runs by provider, status, and dry-run mode",
+		},
+		[]string{"provider", "status", "dry_run"},
+	)
+
+	WorkloadScanRunDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "cerebro_workload_scan_run_duration_seconds",
+			Help:    "Duration of workload scan runs by provider, status, and dry-run mode",
+			Buckets: prometheus.ExponentialBuckets(1, 2, 12),
+		},
+		[]string{"provider", "status", "dry_run"},
+	)
+
+	WorkloadScanStageDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "cerebro_workload_scan_stage_duration_seconds",
+			Help:    "Duration of workload scan stages by provider, stage, and status",
+			Buckets: prometheus.ExponentialBuckets(0.1, 2, 12),
+		},
+		[]string{"provider", "stage", "status"},
+	)
+
+	WorkloadScanActiveRuns = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "cerebro_workload_scan_active_runs",
+			Help: "Number of workload scan runs currently executing",
+		},
+		[]string{"provider"},
+	)
+
+	WorkloadScanActiveVolumeOps = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "cerebro_workload_scan_active_volume_ops",
+			Help: "Number of workload scan volume operations currently executing by provider and stage",
+		},
+		[]string{"provider", "stage"},
+	)
+
+	WorkloadScanMountFailuresTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_workload_scan_mount_failures_total",
+			Help: "Total number of workload scan mount failures by provider",
+		},
+		[]string{"provider"},
+	)
+
+	AttackPathQueriesTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_attack_path_queries_total",
+			Help: "Total number of attack path queries by operation and status",
+		},
+		[]string{"operation", "status"},
+	)
+
+	AttackPathQueryDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "cerebro_attack_path_query_duration_seconds",
+			Help:    "Duration of attack path queries by operation and status",
+			Buckets: prometheus.ExponentialBuckets(0.001, 2, 14),
+		},
+		[]string{"operation", "status"},
+	)
+
+	AttackPathResultCount = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "cerebro_attack_path_result_count",
+			Help:    "Number of attack paths returned per attack path operation",
+			Buckets: []float64{0, 1, 2, 5, 10, 25, 50, 100},
+		},
+		[]string{"operation"},
 	)
 
 	GraphOutcomeEventsTotal = prometheus.NewCounterVec(
@@ -556,12 +646,23 @@ func Register() {
 			// Scheduler
 			SchedulerJobRuns,
 			SchedulerJobDuration,
+			SchedulerQueueDepth,
+			SchedulerRunningJobs,
 			ScheduledAuthPreflightTotal,
 			ProviderCounts,
 			ProviderCircuitState,
 			ComplianceExportsTotal,
 			// Identity
 			StaleAccessFindings,
+			WorkloadScanRunsTotal,
+			WorkloadScanRunDuration,
+			WorkloadScanStageDuration,
+			WorkloadScanActiveRuns,
+			WorkloadScanActiveVolumeOps,
+			WorkloadScanMountFailuresTotal,
+			AttackPathQueriesTotal,
+			AttackPathQueryDuration,
+			AttackPathResultCount,
 			// Graph intelligence
 			GraphOutcomeEventsTotal,
 			GraphRuleDiscoveryCandidatesTotal,
@@ -677,6 +778,75 @@ func RecordScheduledAuthPreflight(provider, authMethod string, success bool) {
 		authMethod = "unknown"
 	}
 	ScheduledAuthPreflightTotal.WithLabelValues(provider, authMethod, status).Inc()
+}
+
+func RecordSchedulerJobRun(job, status string, duration time.Duration) {
+	job = strings.TrimSpace(job)
+	if job == "" {
+		job = "unknown"
+	}
+	status = normalizeResult(status)
+	SchedulerJobRuns.WithLabelValues(job, status).Inc()
+	SchedulerJobDuration.WithLabelValues(job).Observe(duration.Seconds())
+}
+
+func SetSchedulerQueueDepth(depth int) {
+	if depth < 0 {
+		depth = 0
+	}
+	SchedulerQueueDepth.Set(float64(depth))
+}
+
+func SetSchedulerRunningJobs(count int) {
+	if count < 0 {
+		count = 0
+	}
+	SchedulerRunningJobs.Set(float64(count))
+}
+
+func RecordWorkloadScanRun(provider, status string, dryRun bool, duration time.Duration) {
+	provider = normalizeProvider(provider)
+	status = normalizeResult(status)
+	dryRunLabel := "false"
+	if dryRun {
+		dryRunLabel = "true"
+	}
+	WorkloadScanRunsTotal.WithLabelValues(provider, status, dryRunLabel).Inc()
+	WorkloadScanRunDuration.WithLabelValues(provider, status, dryRunLabel).Observe(duration.Seconds())
+}
+
+func RecordWorkloadScanStage(provider, stage, status string, duration time.Duration) {
+	provider = normalizeProvider(provider)
+	stage = normalizeStage(stage)
+	status = normalizeResult(status)
+	WorkloadScanStageDuration.WithLabelValues(provider, stage, status).Observe(duration.Seconds())
+}
+
+func AddWorkloadScanActiveRun(provider string, delta int) {
+	provider = normalizeProvider(provider)
+	WorkloadScanActiveRuns.WithLabelValues(provider).Add(float64(delta))
+}
+
+func AddWorkloadScanActiveVolumeOp(provider, stage string, delta int) {
+	provider = normalizeProvider(provider)
+	stage = normalizeStage(stage)
+	WorkloadScanActiveVolumeOps.WithLabelValues(provider, stage).Add(float64(delta))
+}
+
+func RecordWorkloadScanMountFailure(provider string) {
+	provider = normalizeProvider(provider)
+	WorkloadScanMountFailuresTotal.WithLabelValues(provider).Inc()
+}
+
+func RecordAttackPathQuery(operation, status string, duration time.Duration, resultCount int) {
+	operation = normalizeOperation(operation)
+	status = normalizeResult(status)
+	if resultCount < 0 {
+		resultCount = 0
+	}
+	AttackPathQueriesTotal.WithLabelValues(operation, status).Inc()
+	AttackPathQueryDuration.WithLabelValues(operation, status).Observe(duration.Seconds())
+	AttackPathResultCount.WithLabelValues(operation).Observe(float64(resultCount))
 }
 
 func RecordGraphOutcome(status string) {
@@ -999,10 +1169,35 @@ func statusBucket(status int) string {
 }
 
 func normalizeProvider(provider string) string {
-	if strings.TrimSpace(provider) == "" {
+	provider = strings.TrimSpace(provider)
+	if provider == "" {
 		return "unknown"
 	}
 	return provider
+}
+
+func normalizeOperation(operation string) string {
+	operation = strings.TrimSpace(strings.ToLower(operation))
+	if operation == "" {
+		return "unknown"
+	}
+	return operation
+}
+
+func normalizeResult(status string) string {
+	status = strings.TrimSpace(strings.ToLower(status))
+	if status == "" {
+		return "unknown"
+	}
+	return status
+}
+
+func normalizeStage(stage string) string {
+	stage = strings.TrimSpace(strings.ToLower(stage))
+	if stage == "" {
+		return "unknown"
+	}
+	return stage
 }
 
 func normalizeMetricPath(path string) string {

@@ -14,6 +14,13 @@ const (
 	ProviderAzure ProviderKind = "azure"
 )
 
+type SnapshotScope string
+
+const (
+	SnapshotScopeSource     SnapshotScope = "source"
+	SnapshotScopeInspection SnapshotScope = "inspection"
+)
+
 type RunStatus string
 
 const (
@@ -44,15 +51,54 @@ const (
 	RunStageFailed       RunStage = "failed"
 )
 
+type ScanPriority string
+
+const (
+	ScanPriorityCritical ScanPriority = "critical"
+	ScanPriorityHigh     ScanPriority = "high"
+	ScanPriorityMedium   ScanPriority = "medium"
+	ScanPriorityLow      ScanPriority = "low"
+)
+
+type PrioritySignal struct {
+	Category string `json:"category"`
+	Weight   int    `json:"weight"`
+	Summary  string `json:"summary"`
+}
+
+type PriorityAssessment struct {
+	Score            int              `json:"score"`
+	Priority         ScanPriority     `json:"priority"`
+	Eligible         bool             `json:"eligible"`
+	Source           string           `json:"source,omitempty"`
+	Reasons          []string         `json:"reasons,omitempty"`
+	Exposure         string           `json:"exposure,omitempty"`
+	Privilege        string           `json:"privilege,omitempty"`
+	Criticality      string           `json:"criticality,omitempty"`
+	ComplianceScopes []string         `json:"compliance_scopes,omitempty"`
+	Staleness        string           `json:"staleness,omitempty"`
+	LastScannedAt    *time.Time       `json:"last_scanned_at,omitempty"`
+	Signals          []PrioritySignal `json:"signals,omitempty"`
+}
+
+type TargetPriority struct {
+	NodeID      string             `json:"node_id"`
+	DisplayName string             `json:"display_name"`
+	Provider    ProviderKind       `json:"provider"`
+	Target      VMTarget           `json:"target"`
+	Assessment  PriorityAssessment `json:"assessment"`
+}
+
 type ScanRequest struct {
-	ID                     string            `json:"id"`
-	RequestedBy            string            `json:"requested_by,omitempty"`
-	Target                 VMTarget          `json:"target"`
-	ScannerHost            ScannerHost       `json:"scanner_host"`
-	MaxConcurrentSnapshots int               `json:"max_concurrent_snapshots,omitempty"`
-	DryRun                 bool              `json:"dry_run,omitempty"`
-	Metadata               map[string]string `json:"metadata,omitempty"`
-	SubmittedAt            time.Time         `json:"submitted_at"`
+	ID                     string              `json:"id"`
+	RequestedBy            string              `json:"requested_by,omitempty"`
+	Target                 VMTarget            `json:"target"`
+	ScannerHost            ScannerHost         `json:"scanner_host"`
+	MaxConcurrentSnapshots int                 `json:"max_concurrent_snapshots,omitempty"`
+	DryRun                 bool                `json:"dry_run,omitempty"`
+	Metadata               map[string]string   `json:"metadata,omitempty"`
+	Priority               *PriorityAssessment `json:"priority,omitempty"`
+	SubmittedAt            time.Time           `json:"submitted_at"`
 }
 
 type VMTarget struct {
@@ -112,18 +158,29 @@ type SourceVolume struct {
 }
 
 type SnapshotArtifact struct {
-	ID        string         `json:"id"`
-	VolumeID  string         `json:"volume_id"`
-	AccountID string         `json:"account_id,omitempty"`
-	ProjectID string         `json:"project_id,omitempty"`
-	Region    string         `json:"region,omitempty"`
-	Zone      string         `json:"zone,omitempty"`
-	SizeGiB   int64          `json:"size_gib"`
-	Shared    bool           `json:"shared,omitempty"`
-	CreatedAt time.Time      `json:"created_at"`
-	ReadyAt   *time.Time     `json:"ready_at,omitempty"`
-	DeletedAt *time.Time     `json:"deleted_at,omitempty"`
-	Metadata  map[string]any `json:"metadata,omitempty"`
+	ID               string               `json:"id"`
+	VolumeID         string               `json:"volume_id"`
+	AccountID        string               `json:"account_id,omitempty"`
+	ProjectID        string               `json:"project_id,omitempty"`
+	Region           string               `json:"region,omitempty"`
+	Zone             string               `json:"zone,omitempty"`
+	SizeGiB          int64                `json:"size_gib"`
+	Encrypted        bool                 `json:"encrypted,omitempty"`
+	KMSKeyID         string               `json:"kms_key_id,omitempty"`
+	Scope            SnapshotScope        `json:"scope,omitempty"`
+	Shared           bool                 `json:"shared,omitempty"`
+	CleanupSnapshots []SnapshotCleanupRef `json:"cleanup_snapshots,omitempty"`
+	CreatedAt        time.Time            `json:"created_at"`
+	ReadyAt          *time.Time           `json:"ready_at,omitempty"`
+	DeletedAt        *time.Time           `json:"deleted_at,omitempty"`
+	Metadata         map[string]any       `json:"metadata,omitempty"`
+}
+
+type SnapshotCleanupRef struct {
+	ID        string        `json:"id"`
+	Scope     SnapshotScope `json:"scope,omitempty"`
+	AccountID string        `json:"account_id,omitempty"`
+	Region    string        `json:"region,omitempty"`
 }
 
 type InspectionVolume struct {
@@ -225,22 +282,23 @@ type RunEvent struct {
 }
 
 type RunRecord struct {
-	ID          string             `json:"id"`
-	Provider    ProviderKind       `json:"provider"`
-	Status      RunStatus          `json:"status"`
-	Stage       RunStage           `json:"stage"`
-	Target      VMTarget           `json:"target"`
-	ScannerHost ScannerHost        `json:"scanner_host"`
-	RequestedBy string             `json:"requested_by,omitempty"`
-	DryRun      bool               `json:"dry_run,omitempty"`
-	Metadata    map[string]string  `json:"metadata,omitempty"`
-	SubmittedAt time.Time          `json:"submitted_at"`
-	StartedAt   *time.Time         `json:"started_at,omitempty"`
-	CompletedAt *time.Time         `json:"completed_at,omitempty"`
-	UpdatedAt   time.Time          `json:"updated_at"`
-	Error       string             `json:"error,omitempty"`
-	Summary     RunSummary         `json:"summary"`
-	Volumes     []VolumeScanRecord `json:"volumes,omitempty"`
+	ID          string              `json:"id"`
+	Provider    ProviderKind        `json:"provider"`
+	Status      RunStatus           `json:"status"`
+	Stage       RunStage            `json:"stage"`
+	Target      VMTarget            `json:"target"`
+	ScannerHost ScannerHost         `json:"scanner_host"`
+	RequestedBy string              `json:"requested_by,omitempty"`
+	DryRun      bool                `json:"dry_run,omitempty"`
+	Metadata    map[string]string   `json:"metadata,omitempty"`
+	Priority    *PriorityAssessment `json:"priority,omitempty"`
+	SubmittedAt time.Time           `json:"submitted_at"`
+	StartedAt   *time.Time          `json:"started_at,omitempty"`
+	CompletedAt *time.Time          `json:"completed_at,omitempty"`
+	UpdatedAt   time.Time           `json:"updated_at"`
+	Error       string              `json:"error,omitempty"`
+	Summary     RunSummary          `json:"summary"`
+	Volumes     []VolumeScanRecord  `json:"volumes,omitempty"`
 }
 
 type RunListOptions struct {

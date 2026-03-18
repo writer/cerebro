@@ -1,4 +1,4 @@
-package graph
+package entities
 
 import (
 	"encoding/json"
@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	graph "github.com/writer/cerebro/internal/graph"
 )
 
 const (
@@ -64,7 +66,7 @@ func BuildEntityFacetContractCatalog(now time.Time) EntityFacetContractCatalog {
 		APIVersion:  defaultEntityFacetContractCatalogAPIVersion,
 		Kind:        defaultEntityFacetContractCatalogKind,
 		GeneratedAt: now,
-		Facets:      ListEntityFacetDefinitions(),
+		Facets:      DefaultEntityFacetDefinitions(),
 	}
 }
 
@@ -157,7 +159,7 @@ type entityFacetContractSurface struct {
 	ID              string                            `json:"id"`
 	SchemaName      string                            `json:"schema_name"`
 	SchemaURL       string                            `json:"schema_url"`
-	ApplicableKinds []NodeKind                        `json:"applicable_kinds,omitempty"`
+	ApplicableKinds []graph.NodeKind                  `json:"applicable_kinds,omitempty"`
 	SourceKeys      []string                          `json:"source_keys,omitempty"`
 	ClaimPredicates []string                          `json:"claim_predicates,omitempty"`
 	Fields          []entityFacetFieldContractSurface `json:"fields,omitempty"`
@@ -175,7 +177,7 @@ func buildEntityFacetContractSurface(value EntityFacetDefinition) entityFacetCon
 		ID:              value.ID,
 		SchemaName:      value.SchemaName,
 		SchemaURL:       value.SchemaURL,
-		ApplicableKinds: append([]NodeKind(nil), value.ApplicableKinds...),
+		ApplicableKinds: append([]graph.NodeKind(nil), value.ApplicableKinds...),
 		SourceKeys:      append([]string(nil), value.SourceKeys...),
 		ClaimPredicates: append([]string(nil), value.ClaimPredicates...),
 		Fields:          fields,
@@ -216,7 +218,7 @@ func (s EntityFacetDiffSummary) withVersions(previousVersion, currentVersion str
 	return s
 }
 
-func nodeKindsToStrings(values []NodeKind) []string {
+func nodeKindsToStrings(values []graph.NodeKind) []string {
 	out := make([]string, 0, len(values))
 	for _, value := range values {
 		out = append(out, string(value))

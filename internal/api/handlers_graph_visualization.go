@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/writer/cerebro/internal/graph"
+	risk "github.com/writer/cerebro/internal/graph/risk"
 )
 
 // Visualization endpoints (Mermaid)
@@ -23,7 +24,7 @@ func (s *Server) visualizeAttackPath(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	simulator := graph.NewAttackPathSimulator(s.app.SecurityGraph)
+	simulator := risk.NewAttackPathSimulator(s.app.SecurityGraph)
 	result := simulator.Simulate(6)
 
 	if idx >= len(result.Paths) {
@@ -51,10 +52,10 @@ func (s *Server) visualizeToxicCombination(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	engine := graph.NewToxicCombinationEngine()
+	engine := risk.NewToxicCombinationEngine()
 	results := engine.Analyze(s.app.SecurityGraph)
 
-	var targetTC *graph.ToxicCombination
+	var targetTC *risk.ToxicCombination
 	for _, tc := range results {
 		if tc.ID == tcID {
 			targetTC = tc
@@ -94,7 +95,7 @@ func (s *Server) visualizeBlastRadius(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result := graph.BlastRadius(s.app.SecurityGraph, principalID, maxDepth)
+	result := risk.BlastRadius(s.app.SecurityGraph, principalID, maxDepth)
 	exporter := graph.NewMermaidExporter(s.app.SecurityGraph)
 	mermaid := exporter.ExportBlastRadius(result)
 
@@ -109,7 +110,7 @@ func (s *Server) visualizeReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	engine := graph.NewRiskEngine(s.app.SecurityGraph)
+	engine := risk.NewRiskEngine(s.app.SecurityGraph)
 	report := engine.Analyze()
 
 	exporter := graph.NewMermaidExporter(s.app.SecurityGraph)

@@ -157,7 +157,7 @@ func TestCerebroGraphChangelogTool(t *testing.T) {
 		t.Fatal("expected cerebro.graph_changelog tool")
 	}
 
-	result, err := tool.Handler(context.Background(), json.RawMessage(`{"last":"7d","provider":"aws","limit":1}`))
+	result, err := tool.Handler(context.Background(), json.RawMessage(`{"since":"2026-03-07T00:00:00Z","provider":"aws","limit":1}`))
 	if err != nil {
 		t.Fatalf("graph_changelog returned error: %v", err)
 	}

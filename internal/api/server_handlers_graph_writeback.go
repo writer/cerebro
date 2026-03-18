@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/graph"
+	"github.com/writer/cerebro/internal/graph/knowledge"
 	"github.com/writer/cerebro/internal/webhooks"
 )
 
@@ -187,10 +188,10 @@ func (s *Server) graphWriteObservation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var result graph.ObservationWriteResult
+	var result knowledge.ObservationWriteResult
 	_, err := s.mutateSecurityGraph(r.Context(), func(g *graph.Graph) error {
 		var writeErr error
-		result, writeErr = graph.WriteObservation(g, graph.ObservationWriteRequest{
+		result, writeErr = knowledge.WriteObservation(g, knowledge.ObservationWriteRequest{
 			ID:              req.ID,
 			SubjectID:       subjectID,
 			ObservationType: observationType,
@@ -238,10 +239,10 @@ func (s *Server) graphWriteClaim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var result graph.ClaimWriteResult
+	var result knowledge.ClaimWriteResult
 	mutatedGraph, err := s.mutateSecurityGraph(r.Context(), func(g *graph.Graph) error {
 		var writeErr error
-		result, writeErr = graph.WriteClaim(g, graph.ClaimWriteRequest{
+		result, writeErr = knowledge.WriteClaim(g, knowledge.ClaimWriteRequest{
 			ID:                 req.ID,
 			ClaimType:          req.ClaimType,
 			SubjectID:          req.SubjectID,

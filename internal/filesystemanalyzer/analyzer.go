@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -36,8 +37,15 @@ const (
 
 var (
 	awsAccessKeyPattern = regexp.MustCompile(`AKIA[0-9A-Z]{16}`)
+	jwtTokenPattern     = regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b`)
 	githubTokenPattern  = regexp.MustCompile(`gh[pousr]_[A-Za-z0-9_]{20,}`)
+	gitlabTokenPattern  = regexp.MustCompile(`glpat-[A-Za-z0-9_-]{20,}`)
+	npmTokenPattern     = regexp.MustCompile(`npm_[A-Za-z0-9]{36}`)
 	slackTokenPattern   = regexp.MustCompile(`xox[baprs]-[A-Za-z0-9-]{10,}`)
+	stripeKeyPattern    = regexp.MustCompile(`\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}\b`)
+	twilioKeyPattern    = regexp.MustCompile(`\bSK[0-9a-fA-F]{32}\b`)
+	sendGridKeyPattern  = regexp.MustCompile(`\bSG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}\b`)
+	mailgunKeyPattern   = regexp.MustCompile(`\bkey-[0-9a-fA-F]{32}\b`)
 	privateKeyPattern   = regexp.MustCompile(`-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----`)
 	inlineSecretPattern = regexp.MustCompile(`(?i)(password|passwd|pwd|secret|token|api[_-]?key|client[_-]?secret|connection[_-]?string)\s*[:=]`)
 	secretTokenPattern  = regexp.MustCompile(`[A-Za-z0-9+/=_-]{20,}`)
@@ -47,6 +55,7 @@ var (
 type Analyzer struct {
 	vulnerabilityScanner scanner.FilesystemScanner
 	vulnerabilityMatcher PackageVulnerabilityMatcher
+	secretScanner        SecretScanner
 	malwareScanner       MalwareScanner
 	now                  func() time.Time
 	maxWalkEntries       int
@@ -79,6 +88,7 @@ func New(opts Options) *Analyzer {
 	return &Analyzer{
 		vulnerabilityScanner: opts.VulnerabilityScanner,
 		vulnerabilityMatcher: opts.VulnerabilityMatcher,
+		secretScanner:        opts.SecretScanner,
 		malwareScanner:       opts.MalwareScanner,
 		now:                  now,
 		maxWalkEntries:       maxWalk,
@@ -118,6 +128,23 @@ func (a *Analyzer) Analyze(ctx context.Context, rootfsPath string) (*Report, err
 			report.OS.Architecture = firstNonEmpty(report.OS.Architecture, vulnResult.Architecture)
 		}
 	}
+	if a.secretScanner != nil {
+		secretResult, err := a.secretScanner.ScanFilesystem(ctx, absPath)
+		if err != nil {
+			report.Metadata["secret_scan_error"] = err.Error()
+		} else if secretResult != nil {
+			if strings.TrimSpace(secretResult.Engine) != "" {
+				report.Metadata["secret_scan_engine"] = strings.TrimSpace(secretResult.Engine)
+			}
+			invSecrets := secretResult.Findings
+			for idx := range invSecrets {
+				invSecrets[idx] = normalizeSecretFinding(invSecrets[idx])
+			}
+			if len(invSecrets) > 0 {
+				report.Secrets = append(report.Secrets, invSecrets...)
+			}
+		}
+	}
 	root, err := os.OpenRoot(absPath)
 	if err != nil {
 		return nil, fmt.Errorf("open filesystem root %s: %w", absPath, err)
@@ -125,6 +152,10 @@ func (a *Analyzer) Analyze(ctx context.Context, rootfsPath string) (*Report, err
 	defer func() { _ = root.Close() }()
 
 	inv := newInventory(report.GeneratedAt)
+	if len(report.Secrets) > 0 {
+		inv.addSecrets(report.Secrets...)
+		report.Secrets = nil
+	}
 	walkErr := fs.WalkDir(root.FS(), ".", func(filePath string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			inv.metadataErrors = append(inv.metadataErrors, walkErr.Error())
@@ -290,6 +321,7 @@ type inventory struct {
 	os             OSInfo
 	packages       map[string]PackageRecord
 	iacArtifactIDs map[string]struct{}
+	secretKeys     map[string]struct{}
 	secrets        []SecretFinding
 	configs        []ConfigFinding
 	iacArtifacts   []IaCArtifact
@@ -305,6 +337,7 @@ func newInventory(now time.Time) *inventory {
 		generatedAt:    now,
 		packages:       make(map[string]PackageRecord),
 		iacArtifactIDs: make(map[string]struct{}),
+		secretKeys:     make(map[string]struct{}),
 	}
 }
 
@@ -325,6 +358,12 @@ func (i *inventory) addPackages(pkgs ...PackageRecord) {
 
 func (i *inventory) addSecrets(findings ...SecretFinding) {
 	for _, finding := range findings {
+		finding = normalizeSecretFinding(finding)
+		key := secretFindingKey(finding)
+		if _, ok := i.secretKeys[key]; ok {
+			continue
+		}
+		i.secretKeys[key] = struct{}{}
 		i.secrets = append(i.secrets, finding)
 		i.findings = append(i.findings, scanner.ContainerFinding{
 			ID:          finding.ID,
@@ -1178,6 +1217,9 @@ func scanSecrets(filePath string, data []byte) []SecretFinding {
 			ref,
 		)
 	}
+	for _, finding := range dockerConfigSecretFindings(filePath, data) {
+		appendFinding(finding.Type, finding.Severity, finding.Match, finding.Description, finding.Line, finding.References...)
+	}
 	scanner := bufio.NewScanner(bytes.NewReader(data))
 	lineNo := 0
 	for scanner.Scan() {
@@ -1187,9 +1229,8 @@ func scanSecrets(filePath string, data []byte) []SecretFinding {
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
-		switch {
-		case awsAccessKeyPattern.MatchString(line):
-			match := awsAccessKeyPattern.FindString(line)
+		matchedSpecific := false
+		if match := awsAccessKeyPattern.FindString(line); match != "" {
 			appendFinding(
 				"aws_access_key",
 				"critical",
@@ -1198,14 +1239,45 @@ func scanSecrets(filePath string, data []byte) []SecretFinding {
 				lineNo,
 				SecretReference{Kind: "cloud_identity", Provider: "aws", Identifier: strings.TrimSpace(match)},
 			)
-		case githubTokenPattern.MatchString(line):
-			appendFinding("github_token", "high", fingerprintSecretMatch(githubTokenPattern.FindString(line)), "Potential GitHub token detected.", lineNo)
-		case slackTokenPattern.MatchString(line):
-			appendFinding("slack_token", "high", fingerprintSecretMatch(slackTokenPattern.FindString(line)), "Potential Slack token detected.", lineNo)
-		case privateKeyPattern.MatchString(line):
+			matchedSpecific = true
+		}
+		if match := githubTokenPattern.FindString(line); match != "" {
+			appendFinding("github_token", "high", fingerprintSecretMatch(match), "Potential GitHub token detected.", lineNo)
+			matchedSpecific = true
+		}
+		if match := gitlabTokenPattern.FindString(line); match != "" {
+			appendFinding("gitlab_token", "high", fingerprintSecretMatch(match), "Potential GitLab token detected.", lineNo)
+			matchedSpecific = true
+		}
+		if match := npmTokenPattern.FindString(line); match != "" {
+			appendFinding("npm_token", "high", fingerprintSecretMatch(match), "Potential npm token detected.", lineNo)
+			matchedSpecific = true
+		}
+		if match := slackTokenPattern.FindString(line); match != "" {
+			appendFinding("slack_token", "high", fingerprintSecretMatch(match), "Potential Slack token detected.", lineNo)
+			matchedSpecific = true
+		}
+		if match := stripeKeyPattern.FindString(line); match != "" {
+			appendFinding("stripe_api_key", "high", fingerprintSecretMatch(match), "Potential Stripe API key detected.", lineNo)
+			matchedSpecific = true
+		}
+		if match := twilioKeyPattern.FindString(line); match != "" {
+			appendFinding("twilio_api_key", "high", fingerprintSecretMatch(match), "Potential Twilio API key detected.", lineNo)
+			matchedSpecific = true
+		}
+		if match := sendGridKeyPattern.FindString(line); match != "" {
+			appendFinding("sendgrid_api_key", "high", fingerprintSecretMatch(match), "Potential SendGrid API key detected.", lineNo)
+			matchedSpecific = true
+		}
+		if match := mailgunKeyPattern.FindString(line); match != "" {
+			appendFinding("mailgun_api_key", "high", fingerprintSecretMatch(match), "Potential Mailgun API key detected.", lineNo)
+			matchedSpecific = true
+		}
+		if privateKeyPattern.MatchString(line) {
 			appendFinding("private_key", "critical", "private_key", "Private key material detected.", lineNo)
-		case databaseURLPattern.MatchString(line):
-			match := databaseURLPattern.FindString(line)
+			matchedSpecific = true
+		}
+		if match := databaseURLPattern.FindString(line); match != "" {
 			if ref, ok := parseDatabaseConnectionReference(match); ok {
 				appendFinding(
 					"database_connection_string",
@@ -1218,15 +1290,212 @@ func scanSecrets(filePath string, data []byte) []SecretFinding {
 			} else {
 				appendFinding("database_connection_string", "critical", fingerprintSecretMatch(match), "Potential database connection string detected.", lineNo)
 			}
-		case inlineSecretPattern.MatchString(line):
+			matchedSpecific = true
+		}
+		if match := jwtTokenPattern.FindString(line); match != "" && likelyJWTSecretLine(line) {
+			appendFinding("jwt_token", "high", fingerprintSecretMatch(match), "Potential JWT detected.", lineNo)
+			matchedSpecific = true
+		}
+		if !matchedSpecific && inlineSecretPattern.MatchString(line) {
 			appendFinding("inline_secret", "high", fingerprintSecretMatch(line), "Inline secret-like assignment detected.", lineNo)
-		default:
+		} else if !matchedSpecific {
 			if token := entropySecretToken(line); token != "" {
 				appendFinding("high_entropy_token", "medium", fingerprintSecretMatch(token), "High-entropy token detected in text content.", lineNo)
 			}
 		}
 	}
 	return findings
+}
+
+func dockerConfigSecretFindings(filePath string, data []byte) []SecretFinding {
+	lowerPath := strings.ToLower(strings.TrimSpace(filePath))
+	if path.Base(lowerPath) != "config.json" || !strings.Contains(lowerPath, "docker") {
+		return nil
+	}
+	var cfg struct {
+		Auths map[string]struct {
+			Auth          string `json:"auth"`
+			Username      string `json:"username"`
+			Password      string `json:"password"`
+			IdentityToken string `json:"identitytoken"`
+			RegistryToken string `json:"registrytoken"`
+		} `json:"auths"`
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil || len(cfg.Auths) == 0 {
+		return nil
+	}
+	findings := make([]SecretFinding, 0, len(cfg.Auths))
+	for registry, auth := range cfg.Auths {
+		host := normalizeRegistryHost(registry)
+		if host == "" {
+			continue
+		}
+		credential, fields, attrs := extractDockerRegistryCredential(auth)
+		if credential == "" {
+			continue
+		}
+		if len(fields) > 0 {
+			attrs["credential_fields"] = strings.Join(fields, ",")
+		}
+		findings = append(findings, normalizeSecretFinding(SecretFinding{
+			Type:        "docker_registry_credentials",
+			Severity:    "high",
+			Path:        filePath,
+			Line:        1,
+			Match:       fingerprintSecretMatch(credential),
+			Description: "Potential Docker registry credentials detected.",
+			References: []SecretReference{{
+				Kind:       "registry",
+				Provider:   providerFromRegistryHost(host),
+				Identifier: host,
+				Host:       host,
+				Attributes: attrs,
+			}},
+		}))
+	}
+	return findings
+}
+
+func extractDockerRegistryCredential(auth struct {
+	Auth          string `json:"auth"`
+	Username      string `json:"username"`
+	Password      string `json:"password"`
+	IdentityToken string `json:"identitytoken"`
+	RegistryToken string `json:"registrytoken"`
+}) (string, []string, map[string]string) {
+	attrs := map[string]string{"credential_format": "docker_config"}
+	fields := make([]string, 0, 4)
+	if token := strings.TrimSpace(auth.IdentityToken); token != "" {
+		fields = append(fields, "identitytoken")
+		return token, fields, attrs
+	}
+	if token := strings.TrimSpace(auth.RegistryToken); token != "" {
+		fields = append(fields, "registrytoken")
+		return token, fields, attrs
+	}
+	if password := strings.TrimSpace(auth.Password); password != "" {
+		fields = append(fields, "password")
+		if username := strings.TrimSpace(auth.Username); username != "" {
+			attrs["username"] = username
+			fields = append(fields, "username")
+		}
+		return password, fields, attrs
+	}
+	rawAuth := strings.TrimSpace(auth.Auth)
+	if rawAuth == "" {
+		return "", nil, nil
+	}
+	fields = append(fields, "auth")
+	if decoded, err := base64.StdEncoding.DecodeString(rawAuth); err == nil {
+		if user, pass, ok := strings.Cut(string(decoded), ":"); ok {
+			if strings.TrimSpace(user) != "" {
+				attrs["username"] = strings.TrimSpace(user)
+				fields = append(fields, "username")
+			}
+			if strings.TrimSpace(pass) != "" {
+				return strings.TrimSpace(pass), fields, attrs
+			}
+		}
+	}
+	return rawAuth, fields, attrs
+}
+
+func normalizeRegistryHost(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	raw = strings.TrimPrefix(raw, "https://")
+	raw = strings.TrimPrefix(raw, "http://")
+	raw = strings.TrimSuffix(raw, "/v1/")
+	raw = strings.TrimSuffix(raw, "/v2/")
+	raw = strings.TrimSuffix(raw, "/")
+	if host, _, err := net.SplitHostPort(raw); err == nil {
+		raw = host
+	}
+	return strings.ToLower(strings.TrimSpace(raw))
+}
+
+func providerFromRegistryHost(host string) string {
+	switch {
+	case strings.Contains(host, ".amazonaws.com"):
+		return "aws"
+	case strings.HasSuffix(host, ".gcr.io"), host == "gcr.io", strings.HasSuffix(host, ".pkg.dev"):
+		return "gcp"
+	case strings.HasSuffix(host, ".azurecr.io"):
+		return "azure"
+	case strings.Contains(host, "docker.io"):
+		return "docker"
+	default:
+		return ""
+	}
+}
+
+func likelyJWTSecretLine(line string) bool {
+	lower := strings.ToLower(line)
+	return inlineSecretPattern.MatchString(line) ||
+		strings.Contains(lower, "bearer ") ||
+		strings.Contains(lower, "authorization") ||
+		strings.Contains(lower, "jwt") ||
+		strings.Contains(lower, "token")
+}
+
+func normalizeSecretFinding(finding SecretFinding) SecretFinding {
+	finding.Type = sanitizeSecretType(finding.Type)
+	finding.Severity = strings.ToLower(strings.TrimSpace(finding.Severity))
+	if finding.Severity == "" {
+		finding.Severity = "high"
+	}
+	finding.Path = strings.TrimSpace(finding.Path)
+	finding.Match = strings.TrimSpace(finding.Match)
+	if finding.Match == "" {
+		finding.Match = "<redacted>"
+	}
+	if strings.TrimSpace(finding.ID) == "" {
+		finding.ID = findingID("secret", fmt.Sprintf("%s:%d:%s:%s", finding.Path, finding.Line, finding.Type, finding.Match))
+	}
+	return finding
+}
+
+func secretFindingKey(finding SecretFinding) string {
+	refs := make([]string, 0, len(finding.References))
+	for _, ref := range finding.References {
+		refs = append(refs, strings.ToLower(strings.TrimSpace(strings.Join([]string{
+			ref.Kind,
+			ref.Provider,
+			ref.Identifier,
+			ref.Host,
+			ref.Database,
+		}, "|"))))
+	}
+	sort.Strings(refs)
+	return strings.Join([]string{
+		strings.TrimSpace(finding.Path),
+		strconv.Itoa(finding.Line),
+		strings.TrimSpace(finding.Match),
+		strings.Join(refs, ","),
+	}, "|")
+}
+
+func sanitizeSecretType(raw string) string {
+	raw = strings.ToLower(strings.TrimSpace(raw))
+	if raw == "" {
+		return "secret"
+	}
+	var builder strings.Builder
+	lastUnderscore := false
+	for _, r := range raw {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			builder.WriteRune(r)
+			lastUnderscore = false
+			continue
+		}
+		if !lastUnderscore {
+			builder.WriteByte('_')
+			lastUnderscore = true
+		}
+	}
+	return strings.Trim(builder.String(), "_")
 }
 
 func gcpServiceAccountKeyReference(data []byte) (SecretReference, bool) {
