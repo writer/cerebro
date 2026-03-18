@@ -3,7 +3,7 @@
 Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and `internal/graphingest/mappings.yaml` via `go run ./scripts/generate_graph_ontology_docs/main.go`.
 
 - Node kinds: **64**
-- Edge kinds: **43**
+- Edge kinds: **44**
 - Mapping rules: **13**
 - Source domains: **9**
 
@@ -139,6 +139,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `executed_by` | - |
 | `exposed_to` | - |
 | `found_vulnerability` | - |
+| `has_credential_for` | - |
 | `has_scan` | - |
 | `interacted_with` | - |
 | `located_in` | - |

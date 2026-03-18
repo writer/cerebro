@@ -755,6 +755,266 @@ func TestBuilder_GCPIAMEdgesFallbackToPolicies(t *testing.T) {
 	}
 }
 
+func TestBuilder_GCPIAMPoliciesPreferredOverMembersPreserveConditions(t *testing.T) {
+	ctx := context.Background()
+	source := newMockDataSource()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	source.setResult(`SELECT id, name, project_id, zone, status, service_accounts FROM gcp_compute_instances`, &DataQueryResult{
+		Rows: []map[string]any{{
+			"id":               "instance-4",
+			"name":             "instance-4",
+			"project_id":       "proj-4",
+			"zone":             "us-central1-a",
+			"status":           "RUNNING",
+			"service_accounts": []any{},
+		}},
+	})
+
+	source.setResult(`SELECT project_id, member, roles FROM gcp_iam_members`, &DataQueryResult{
+		Rows: []map[string]any{{
+			"project_id": "proj-4",
+			"member":     "user:alice@example.com",
+			"roles": []any{
+				map[string]any{"name": "roles/owner"},
+			},
+		}},
+	})
+
+	source.setResult(`SELECT project_id, bindings FROM gcp_iam_policies`, &DataQueryResult{
+		Rows: []map[string]any{{
+			"project_id": "proj-4",
+			"bindings": []any{
+				map[string]any{
+					"role":    "roles/viewer",
+					"members": []any{"user:alice@example.com"},
+					"condition": map[string]any{
+						"title":      "expires-soon",
+						"expression": "request.time < timestamp('2026-04-01T00:00:00Z')",
+					},
+				},
+			},
+		}},
+	})
+
+	builder := NewBuilder(source, logger)
+	if err := builder.Build(ctx); err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	edges := builder.Graph().GetOutEdges("user:alice@example.com")
+	foundRead := false
+	foundAdmin := false
+	for _, edge := range edges {
+		if edge.Target != "instance-4" {
+			continue
+		}
+		switch edge.Kind {
+		case EdgeKindCanRead:
+			foundRead = true
+			if edge.Properties["scope"] != "project" {
+				t.Fatalf("expected project scope on policy edge, got %#v", edge.Properties)
+			}
+			condition, ok := edge.Properties["condition"].(map[string]any)
+			if !ok || condition["expression"] == "" {
+				t.Fatalf("expected preserved policy condition, got %#v", edge.Properties["condition"])
+			}
+		case EdgeKindCanAdmin:
+			foundAdmin = true
+		}
+	}
+	if !foundRead {
+		t.Fatal("expected read edge from project policy binding")
+	}
+	if foundAdmin {
+		t.Fatal("did not expect lossy member fallback edge when policy bindings are present")
+	}
+}
+
+func TestBuilder_GCPIAMPoliciesMarkProjectsWithBindingsWithoutMaterializedEdges(t *testing.T) {
+	ctx := context.Background()
+	source := newMockDataSource()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	source.setResult(`SELECT project_id, bindings FROM gcp_iam_policies`, &DataQueryResult{
+		Rows: []map[string]any{{
+			"project_id": "proj-without-resources",
+			"bindings": []any{
+				map[string]any{
+					"role":    "roles/viewer",
+					"members": []any{"user:bob@example.com"},
+				},
+			},
+		}},
+	})
+
+	builder := NewBuilder(source, logger)
+	count, policyProjects := builder.buildGCPEdgesFromPolicies(ctx)
+	if count != 0 {
+		t.Fatalf("expected no edges without project resources, got %d", count)
+	}
+	if _, ok := policyProjects["proj-without-resources"]; !ok {
+		t.Fatalf("expected project to be marked as having policy bindings, got %#v", policyProjects)
+	}
+}
+
+func TestBuilder_GCPIAMMembersFallbackStillAppliesPerProject(t *testing.T) {
+	ctx := context.Background()
+	source := newMockDataSource()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	source.setResult(`SELECT id, name, project_id, zone, status, service_accounts FROM gcp_compute_instances`, &DataQueryResult{
+		Rows: []map[string]any{{
+			"id":               "instance-5",
+			"name":             "instance-5",
+			"project_id":       "proj-5",
+			"zone":             "us-central1-a",
+			"status":           "RUNNING",
+			"service_accounts": []any{},
+		}},
+	})
+
+	source.setResult(`SELECT project_id, member, roles FROM gcp_iam_members`, &DataQueryResult{
+		Rows: []map[string]any{{
+			"project_id": "proj-5",
+			"member":     "user:carol@example.com",
+			"roles": []any{
+				map[string]any{"name": "roles/owner"},
+			},
+		}},
+	})
+
+	source.setResult(`SELECT project_id, bindings FROM gcp_iam_policies`, &DataQueryResult{
+		Rows: []map[string]any{{
+			"project_id": "proj-without-resources",
+			"bindings": []any{
+				map[string]any{
+					"role":    "roles/viewer",
+					"members": []any{"user:bob@example.com"},
+				},
+			},
+		}},
+	})
+
+	builder := NewBuilder(source, logger)
+	if err := builder.Build(ctx); err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	found := false
+	for _, edge := range builder.Graph().GetOutEdges("user:carol@example.com") {
+		if edge.Target == "instance-5" && edge.Kind == EdgeKindCanAdmin {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected member fallback edge for project without policy bindings")
+	}
+}
+
+func TestBuilder_GCPBucketIAMPolicyEdges(t *testing.T) {
+	ctx := context.Background()
+	source := newMockDataSource()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	source.setResult(`SELECT name, project_id, location, iam_policy, public_access_prevention, uniform_bucket_level_access FROM gcp_storage_buckets`, &DataQueryResult{
+		Rows: []map[string]any{{
+			"name":                        "bucket-1",
+			"project_id":                  "proj-bucket",
+			"location":                    "us-central1",
+			"iam_policy":                  `{"bindings":[{"role":"roles/storage.objectViewer","members":["user:alice@example.com","allUsers"],"condition":{"title":"bucket-scope","expression":"resource.name.startsWith('projects/_/buckets/bucket-1')"}}]}`,
+			"public_access_prevention":    "inherited",
+			"uniform_bucket_level_access": true,
+		}},
+	})
+
+	builder := NewBuilder(source, logger)
+	if err := builder.Build(ctx); err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	foundUserEdge := false
+	for _, edge := range builder.Graph().GetOutEdges("user:alice@example.com") {
+		if edge.Target != "bucket-1" || edge.Kind != EdgeKindCanRead {
+			continue
+		}
+		foundUserEdge = true
+		if edge.Properties["mechanism"] != "resource_policy" {
+			t.Fatalf("expected resource_policy mechanism, got %#v", edge.Properties)
+		}
+		if edge.Properties["binding"] != "resource" || edge.Properties["scope"] != "resource" {
+			t.Fatalf("expected resource-scoped bucket IAM edge, got %#v", edge.Properties)
+		}
+		condition, ok := edge.Properties["condition"].(map[string]any)
+		if !ok || condition["expression"] == "" {
+			t.Fatalf("expected bucket IAM condition on explicit user edge, got %#v", edge.Properties["condition"])
+		}
+	}
+	if !foundUserEdge {
+		t.Fatal("expected bucket IAM edge from explicit user principal")
+	}
+
+	foundInternetEdge := false
+	for _, edge := range builder.Graph().GetOutEdges("internet") {
+		if edge.Target == "bucket-1" && edge.Kind == EdgeKindCanRead && edge.Properties["mechanism"] == "resource_policy" {
+			foundInternetEdge = true
+			break
+		}
+	}
+	if !foundInternetEdge {
+		t.Fatal("expected bucket IAM edge from internet for allUsers binding")
+	}
+}
+
+func TestBuilder_GCPBucketIAMPolicyEdgesCreateAuthenticatedUsersPrincipalNode(t *testing.T) {
+	ctx := context.Background()
+	source := newMockDataSource()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	source.setResult(`SELECT name, project_id, location, iam_policy, public_access_prevention, uniform_bucket_level_access FROM gcp_storage_buckets`, &DataQueryResult{
+		Rows: []map[string]any{{
+			"name":                        "bucket-auth-users",
+			"project_id":                  "proj-auth",
+			"location":                    "us-central1",
+			"iam_policy":                  `{"bindings":[{"role":"roles/storage.objectViewer","members":["allAuthenticatedUsers"]}]}`,
+			"public_access_prevention":    "inherited",
+			"uniform_bucket_level_access": true,
+		}},
+	})
+
+	builder := NewBuilder(source, logger)
+	if err := builder.Build(ctx); err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	node, ok := builder.Graph().GetNode("allAuthenticatedUsers")
+	if !ok {
+		t.Fatal("expected allAuthenticatedUsers principal node to exist")
+	}
+	if node.Kind != NodeKindGroup || node.Provider != "external" {
+		t.Fatalf("expected external group node for allAuthenticatedUsers, got %#v", node)
+	}
+
+	found := false
+	for _, edge := range builder.Graph().GetOutEdges("allAuthenticatedUsers") {
+		if edge.Target == "bucket-auth-users" && edge.Kind == EdgeKindCanRead && edge.Properties["mechanism"] == "resource_policy" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected bucket IAM edge from allAuthenticatedUsers principal node")
+	}
+}
+
+func TestGcpIAMBindingsFromPolicyRejectsOversizedJSON(t *testing.T) {
+	oversized := strings.Repeat("x", maxGCPIAMPolicyJSONBytes+1)
+	if bindings := gcpIAMBindingsFromPolicy(oversized); len(bindings) != 0 {
+		t.Fatalf("expected oversized policy payload to be ignored, got %#v", bindings)
+	}
+}
+
 func TestBuilder_GCPIAMServiceAccountMemberResolvesToNodeID(t *testing.T) {
 	ctx := context.Background()
 	source := newMockDataSource()
@@ -850,5 +1110,124 @@ func TestBuilder_GCPInstanceServiceAccountEdgeResolvesToNodeID(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("expected instance-3 runs_as edge to sa-uid-3")
+	}
+}
+
+func TestBuilder_AWSUserAccessKeysEnriched(t *testing.T) {
+	ctx := context.Background()
+	source := newMockDataSource()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	source.setResult(`
+		SELECT arn, user_name, account_id, password_last_used, tags
+		FROM aws_iam_users
+	`, &DataQueryResult{
+		Rows: []map[string]any{{
+			"arn":        "arn:aws:iam::111111111111:user/alice",
+			"user_name":  "alice",
+			"account_id": "111111111111",
+		}},
+	})
+	source.setResult(`
+		SELECT account_id, user_name, access_key_id, status, create_date, last_used_date, last_used_service, last_used_region
+		FROM aws_iam_user_access_keys
+	`, &DataQueryResult{
+		Rows: []map[string]any{{
+			"account_id":        "111111111111",
+			"user_name":         "alice",
+			"access_key_id":     "AKIA1234567890ABCDEF",
+			"status":            "Active",
+			"create_date":       time.Date(2025, 12, 1, 0, 0, 0, 0, time.UTC),
+			"last_used_date":    time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC),
+			"last_used_service": "s3",
+			"last_used_region":  "us-east-1",
+		}},
+	})
+
+	previousNow := temporalNowUTC
+	temporalNowUTC = func() time.Time { return time.Date(2026, 3, 13, 0, 0, 0, 0, time.UTC) }
+	defer func() { temporalNowUTC = previousNow }()
+
+	builder := NewBuilder(source, logger)
+	if err := builder.Build(ctx); err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	user, ok := builder.Graph().GetNode("arn:aws:iam::111111111111:user/alice")
+	if !ok {
+		t.Fatal("expected aws iam user node")
+	}
+	keys, ok := user.Properties["access_keys"].([]any)
+	if !ok || len(keys) != 1 || keys[0] != "AKIA1234567890ABCDEF" {
+		t.Fatalf("expected access_keys enrichment, got %#v", user.Properties["access_keys"])
+	}
+	if got := user.Properties["access_key_count"]; got != 1 {
+		t.Fatalf("expected access_key_count 1, got %#v", got)
+	}
+	if got := user.Properties["oldest_key_age_days"]; got != 102 {
+		t.Fatalf("expected oldest_key_age_days 102, got %#v", got)
+	}
+}
+
+func TestBuilder_GCPServiceAccountKeysEnriched(t *testing.T) {
+	ctx := context.Background()
+	source := newMockDataSource()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	source.setResult(`SELECT unique_id, email, project_id, display_name FROM gcp_iam_service_accounts`, &DataQueryResult{
+		Rows: []map[string]any{{
+			"unique_id":    "sa-uid-9",
+			"email":        "runtime-sa@proj-9.iam.gserviceaccount.com",
+			"project_id":   "proj-9",
+			"display_name": "runtime-sa",
+		}},
+	})
+	source.setResult(`
+		SELECT project_id, email, keys, roles, has_admin_role, has_high_privilege
+		FROM gcp_iam_service_accounts
+	`, &DataQueryResult{
+		Rows: []map[string]any{{
+			"project_id": "proj-9",
+			"email":      "runtime-sa@proj-9.iam.gserviceaccount.com",
+			"keys": []any{
+				map[string]any{
+					"name":          "projects/proj-9/serviceAccounts/runtime-sa@proj-9.iam.gserviceaccount.com/keys/key-1",
+					"key_type":      "USER_MANAGED",
+					"key_algorithm": "KEY_ALG_RSA_2048",
+					"key_origin":    "GOOGLE_PROVIDED",
+					"valid_after":   time.Date(2025, 12, 15, 0, 0, 0, 0, time.UTC),
+					"disabled":      false,
+				},
+			},
+			"roles": []any{
+				map[string]any{"name": "roles/storage.admin"},
+			},
+			"has_admin_role":     false,
+			"has_high_privilege": true,
+		}},
+	})
+
+	previousNow := temporalNowUTC
+	temporalNowUTC = func() time.Time { return time.Date(2026, 3, 13, 0, 0, 0, 0, time.UTC) }
+	defer func() { temporalNowUTC = previousNow }()
+
+	builder := NewBuilder(source, logger)
+	if err := builder.Build(ctx); err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	sa, ok := builder.Graph().GetNode("sa-uid-9")
+	if !ok {
+		t.Fatal("expected gcp service account node")
+	}
+	keys, ok := sa.Properties["access_keys"].([]any)
+	if !ok || len(keys) != 1 {
+		t.Fatalf("expected gcp access key enrichment, got %#v", sa.Properties["access_keys"])
+	}
+	if got := sa.Properties["has_high_privilege"]; got != true {
+		t.Fatalf("expected has_high_privilege true, got %#v", got)
+	}
+	if got := sa.Properties["oldest_key_age_days"]; got != 88 {
+		t.Fatalf("expected oldest_key_age_days 88, got %#v", got)
 	}
 }
