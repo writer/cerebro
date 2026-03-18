@@ -17,6 +17,18 @@ Status: executed end-to-end via PR workflow
 - [x] Project endpoint nodes from existing URI-backed workloads, starting with Cloud Run data already present in the builders, and connect public endpoints to the existing `internet` entry node through the normal exposure pipeline.
 - [x] Add full-build and CDC regression coverage, then regenerate ontology docs and rerun the graph validation guardrails.
 
+## Deep Review Cycle 202 - Graph Store Analysis Paths (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left `evaluate-change` and schema-health reading directly from `s.app.SecurityGraph`, so those analysis endpoints would fail outright in a store-backed runtime with no live graph pointer.
+- [x] Gap: the first store-backed risk and visualization slices proved the snapshot-view helper, but these two read-only analysis handlers were still bypassing it and therefore skipping tenant-aware store fallback.
+- [x] Gap: there was no regression proving change-propagation or schema-health API behavior still works when only `GraphStore` is available.
+
+### Execution plan
+- [x] Route graph change-propagation and schema-health handlers through the shared snapshot-backed graph view helper.
+- [x] Add store-only HTTP regressions for both handlers so the API surface no longer depends on a raw in-memory graph.
+- [x] Re-run focused API tests, lint, and changed-file validation before pushing the next `#392` slice.
+
 ## Deep Review Cycle 198 - Organizational Policy Graph Substrate (2026-03-17)
 
 ### Review findings
