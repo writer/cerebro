@@ -15,6 +15,60 @@ func TestPublicStorageAccessStillEnabled_ParsesResourceJSON(t *testing.T) {
 	}
 }
 
+func TestBucketDefaultEncryptionStillDisabled_MatchesPolicySignalWithoutConfig(t *testing.T) {
+	execution := &Execution{
+		TriggerData: map[string]any{
+			"policy_id": "aws-s3-bucket-encryption-enabled",
+			"resource": map[string]any{
+				"name": "audit-logs",
+			},
+		},
+	}
+
+	disabled, detail := bucketDefaultEncryptionStillDisabled(execution)
+	if !disabled {
+		t.Fatalf("disabled = false, want true (detail=%q)", detail)
+	}
+}
+
+func TestBucketDefaultEncryptionStillDisabled_DetectsExistingConfig(t *testing.T) {
+	execution := &Execution{
+		TriggerData: map[string]any{
+			"policy_id": "aws-s3-bucket-encryption-enabled",
+			"resource": map[string]any{
+				"sse_algorithm": "AES256",
+			},
+		},
+	}
+
+	disabled, detail := bucketDefaultEncryptionStillDisabled(execution)
+	if disabled {
+		t.Fatalf("disabled = true, want false (detail=%q)", detail)
+	}
+}
+
+func TestBucketDefaultEncryptionStillDisabled_DetectsExistingConfigInResourceJSON(t *testing.T) {
+	execution := &Execution{
+		TriggerData: map[string]any{
+			"policy_id": "aws-s3-bucket-encryption-enabled",
+			"resource": map[string]any{
+				"resource_json": map[string]any{
+					"encryption_configuration": map[string]any{
+						"rules": []any{
+							map[string]any{"sse_algorithm": "AES256"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	disabled, detail := bucketDefaultEncryptionStillDisabled(execution)
+	if disabled {
+		t.Fatalf("disabled = true, want false (detail=%q)", detail)
+	}
+}
+
 func TestPublicSecurityGroupIngressMatchesRuleRows(t *testing.T) {
 	execution := &Execution{
 		TriggerData: map[string]any{

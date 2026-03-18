@@ -38,6 +38,26 @@ func TestCatalogIncludesSafeCloudRemediations(t *testing.T) {
 		t.Fatalf("unexpected gcp tool mapping: %q", got)
 	}
 
+	encryption, ok := byAction[ActionEnableBucketDefaultEncryption]
+	if !ok {
+		t.Fatal("expected bucket default encryption catalog entry")
+	}
+	if !encryption.SafeByDefault || !encryption.SupportsDryRun || !encryption.SupportsRollback {
+		t.Fatalf("expected bucket encryption entry to be safe dry-run rollback capable, got %+v", encryption)
+	}
+	if encryption.BlastRadius != BlastRadiusLow {
+		t.Fatalf("expected bucket encryption action blast radius to be low, got %s", encryption.BlastRadius)
+	}
+	if encryption.DefaultDeliveryMode != DeliveryModeTerraform {
+		t.Fatalf("expected bucket encryption default delivery mode to be terraform, got %s", encryption.DefaultDeliveryMode)
+	}
+	if len(encryption.SupportedDeliveryModes) != 2 || encryption.SupportedDeliveryModes[0] != DeliveryModeTerraform || encryption.SupportedDeliveryModes[1] != DeliveryModeRemoteApply {
+		t.Fatalf("unexpected supported delivery modes: %#v", encryption.SupportedDeliveryModes)
+	}
+	if got := encryption.DefaultRemoteTools["aws"]; got != "aws.s3.put_bucket_encryption" {
+		t.Fatalf("unexpected aws bucket encryption tool mapping: %q", got)
+	}
+
 	ingress, ok := byAction[ActionRestrictPublicSecurityGroupIngress]
 	if !ok {
 		t.Fatal("expected public security group ingress catalog entry")
