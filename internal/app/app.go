@@ -90,13 +90,14 @@ type App struct {
 	Logger *slog.Logger
 
 	// Core services
-	Snowflake *snowflake.Client
-	Warehouse warehouse.DataWarehouse
-	Policy    *policy.Engine
-	Findings  findings.FindingStore
-	Scanner   *scanner.Scanner
-	DSPM      *dspm.Scanner
-	Cache     *cache.PolicyCache
+	Snowflake      *snowflake.Client
+	Warehouse      warehouse.DataWarehouse
+	Policy         *policy.Engine
+	Findings       findings.FindingStore
+	Scanner        *scanner.Scanner
+	DSPM           *dspm.Scanner
+	Cache          *cache.PolicyCache
+	GraphSnapshots *graph.GraphPersistenceStore
 
 	// Feature services
 	Agents         *agents.AgentRegistry

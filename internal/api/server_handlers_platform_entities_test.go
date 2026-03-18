@@ -1,7 +1,9 @@
 package api
 
 import (
+	"context"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -299,6 +301,49 @@ func TestPlatformEntitySearchAndSuggest(t *testing.T) {
 	suggestion := suggestBody["suggestions"].([]any)[0].(map[string]any)
 	if suggestion["entity_id"] != "person:alice@example.com" {
 		t.Fatalf("expected alice suggestion, got %#v", suggestion)
+	}
+}
+
+func TestPlatformEntitiesAreTenantScoped(t *testing.T) {
+	s := newTestServer(t)
+	g := s.app.SecurityGraph
+	g.AddNode(&graph.Node{ID: "service:tenant-a", Kind: graph.NodeKindService, Name: "Tenant A", TenantID: "tenant-a"})
+	g.AddNode(&graph.Node{ID: "service:tenant-b", Kind: graph.NodeKindService, Name: "Tenant B", TenantID: "tenant-b"})
+	g.AddNode(&graph.Node{ID: "service:shared", Kind: graph.NodeKindService, Name: "Shared"})
+	g.BuildIndex()
+
+	doWithTenant := func(path, tenantID string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req = req.WithContext(context.WithValue(req.Context(), contextKeyTenant, tenantID))
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, req)
+		return w
+	}
+
+	list := doWithTenant("/api/v1/platform/entities?category=resource&limit=10", "tenant-a")
+	if list.Code != http.StatusOK {
+		t.Fatalf("expected tenant-scoped list 200, got %d: %s", list.Code, list.Body.String())
+	}
+	body := decodeJSON(t, list)
+	entities, ok := body["entities"].([]any)
+	if !ok || len(entities) != 2 {
+		t.Fatalf("expected shared and tenant-a entities only, got %#v", body["entities"])
+	}
+	if list.Body.String() == "" || strings.Contains(list.Body.String(), "service:tenant-b") {
+		t.Fatalf("expected tenant-b entity to be excluded, got %s", list.Body.String())
+	}
+
+	search := doWithTenant("/api/v1/platform/entities/search?q=tenant&limit=10", "tenant-a")
+	if search.Code != http.StatusOK {
+		t.Fatalf("expected tenant-scoped search 200, got %d: %s", search.Code, search.Body.String())
+	}
+	if strings.Contains(search.Body.String(), "service:tenant-b") {
+		t.Fatalf("expected tenant-b search result to be excluded, got %s", search.Body.String())
+	}
+
+	detail := doWithTenant("/api/v1/platform/entities/service:tenant-b", "tenant-a")
+	if detail.Code != http.StatusNotFound {
+		t.Fatalf("expected tenant-b detail to be hidden, got %d: %s", detail.Code, detail.Body.String())
 	}
 }
 

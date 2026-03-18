@@ -69,12 +69,13 @@ type serverDependencies struct {
 	Config *app.Config
 	Logger *slog.Logger
 
-	Snowflake *snowflake.Client
-	Warehouse warehouse.DataWarehouse
-	Policy    *policy.Engine
-	Findings  findings.FindingStore
-	Scanner   *scanner.Scanner
-	Cache     *cache.PolicyCache
+	Snowflake      *snowflake.Client
+	Warehouse      warehouse.DataWarehouse
+	Policy         *policy.Engine
+	Findings       findings.FindingStore
+	Scanner        *scanner.Scanner
+	Cache          *cache.PolicyCache
+	GraphSnapshots *graph.GraphPersistenceStore
 
 	Agents         *agents.AgentRegistry
 	Ticketing      *ticketing.Service
@@ -135,6 +136,7 @@ func newServerDependenciesFromApp(application *app.App) serverDependencies {
 		Findings:             application.Findings,
 		Scanner:              application.Scanner,
 		Cache:                application.Cache,
+		GraphSnapshots:       application.GraphSnapshots,
 		Agents:               application.Agents,
 		Ticketing:            application.Ticketing,
 		Identity:             application.Identity,
