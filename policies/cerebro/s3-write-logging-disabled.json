@@ -1,15 +1,17 @@
 {
   "id": "s3-write-logging-disabled",
-  "control_id": "wc-id-942",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "S3 Bucket with object-level write data events logging disabled",
   "description": "An S3 bucket does not have CloudTrail data event logging enabled for write operations",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::s3::bucket",
   "conditions": [
-    "cloudtrail_data_events.write_enabled == false"
+    "cmp_eq(path(resource, \"cloudtrail_data_events.write_enabled\"), false)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Enable CloudTrail data events for write operations on the bucket.",
   "tags": [
     "wiz",
     "aws",
@@ -17,6 +19,8 @@
     "logging",
     "cloudtrail"
   ],
+  "control_id": "wc-id-942",
+  "remediation": "Enable CloudTrail data events for write operations on the bucket.",
   "risk_categories": [
     "UNPROTECTED_DATA",
     "MISCONFIGURATION"

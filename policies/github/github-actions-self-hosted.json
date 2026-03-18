@@ -1,21 +1,25 @@
 {
   "id": "github-actions-self-hosted-public",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "GitHub Actions Self-Hosted Runner on Public Repo",
   "description": "Self-hosted runner used on public repository poses security risk",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "github::repository",
   "conditions": [
-    "visibility == 'public'",
-    "has_self_hosted_runners == true"
+    "cmp_eq(path(resource, \"visibility\"), \"public\")",
+    "cmp_eq(path(resource, \"has_self_hosted_runners\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Do not use self-hosted runners on public repositories. Use GitHub-hosted runners instead.",
   "tags": [
     "devsecops",
     "github-actions",
     "runners",
     "cicd-security"
   ],
+  "remediation": "Do not use self-hosted runners on public repositories. Use GitHub-hosted runners instead.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE"
   ],

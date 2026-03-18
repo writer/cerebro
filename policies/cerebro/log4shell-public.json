@@ -1,16 +1,18 @@
 {
   "id": "log4shell-public",
-  "control_id": "wc-id-609",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Publicly exposed unprivileged VM/serverless vulnerable to CVE-2021-44228 (Log4Shell)",
   "description": "A publicly exposed resource is vulnerable to Log4Shell",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "compute::instance|serverless::function",
   "conditions": [
-    "is_public == true",
-    "vulnerabilities ANY (cve_id == 'CVE-2021-44228')"
+    "cmp_eq(path(resource, \"is_public\"), true)",
+    "list_value(path(resource, \"vulnerabilities\")).exists(item, cmp_eq(path(item, \"cve_id\"), \"CVE-2021-44228\"))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Patch Log4j immediately. If patching is not possible, remove public access and apply WAF rules.",
   "tags": [
     "wiz",
     "compute",
@@ -18,6 +20,8 @@
     "log4shell",
     "cve-2021-44228"
   ],
+  "control_id": "wc-id-609",
+  "remediation": "Patch Log4j immediately. If patching is not possible, remove public access and apply WAF rules.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "IDENTITY_RISK",

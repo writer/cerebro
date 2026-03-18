@@ -1,20 +1,24 @@
 {
   "id": "azure-keyvault-key-expiry-set",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Azure Key Vault Key Expiry Set",
   "description": "Azure Key Vault keys should have expiration dates set",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "azure::keyvault::key",
   "conditions": [
-    "attributes.expires == null"
+    "cmp_eq(path(resource, \"attributes.expires\"), null)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Set an expiration date on the key to enforce rotation.",
   "tags": [
     "cis-azure-8.1",
     "keyvault",
     "keys",
     "rotation"
   ],
+  "remediation": "Set an expiration date on the key to enforce rotation.",
   "risk_categories": [
     "MISCONFIGURATION"
   ],

@@ -1,20 +1,24 @@
 {
   "id": "k8s-deployment-multiple-replicas",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "K8s Deployment Multiple Replicas",
   "description": "Production deployments should have multiple replicas for availability",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "kubernetes::deployment",
   "conditions": [
-    "spec.replicas \u003c 2",
-    "metadata.namespace != 'kube-system'"
+    "cmp_lt(path(resource, \"spec.replicas\"), 2)",
+    "cmp_ne(path(resource, \"metadata.namespace\"), \"kube-system\")"
   ],
+  "condition_format": "cel",
   "severity": "low",
-  "remediation": "Increase replica count to at least 2 for high availability.",
   "tags": [
     "deployment",
     "availability",
     "ha"
   ],
+  "remediation": "Increase replica count to at least 2 for high availability.",
   "risk_categories": [
     "MISCONFIGURATION"
   ]

@@ -1,15 +1,18 @@
 {
   "id": "aws-ec2-internet-facing-iam",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Internet-Facing EC2 with Privileged IAM Role",
   "description": "EC2 instance with public IP has an IAM role with administrative or sensitive permissions",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::ec2::instance",
   "conditions": [
-    "public_ip_address != null",
-    "iam_instance_profile.role.has_admin_policy == true OR iam_instance_profile.role.has_sensitive_permissions == true"
+    "cmp_ne(path(resource, \"public_ip_address\"), null)",
+    "(cmp_eq(path(resource, \"iam_instance_profile.role.has_admin_policy\"), true)) || (cmp_eq(path(resource, \"iam_instance_profile.role.has_sensitive_permissions\"), true))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Remove public IP or move to private subnet with NAT. Apply least privilege IAM role. Use Systems Manager Session Manager instead of direct SSH access.",
   "tags": [
     "aws",
     "ec2",
@@ -17,6 +20,7 @@
     "network-exposure",
     "privilege-escalation"
   ],
+  "remediation": "Remove public IP or move to private subnet with NAT. Apply least privilege IAM role. Use Systems Manager Session Manager instead of direct SSH access.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA",

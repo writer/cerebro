@@ -1,20 +1,24 @@
 {
   "id": "aws-cloudfront-http",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "CloudFront Distribution Allows HTTP",
   "description": "CloudFront distribution allows unencrypted HTTP traffic instead of requiring HTTPS",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::cloudfront::distribution",
   "conditions": [
-    "viewer_protocol_policy != 'https-only' AND viewer_protocol_policy != 'redirect-to-https'"
+    "(cmp_ne(path(resource, \"viewer_protocol_policy\"), \"https-only\")) \u0026\u0026 (cmp_ne(path(resource, \"viewer_protocol_policy\"), \"redirect-to-https\"))"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Update the distribution's viewer protocol policy to 'redirect-to-https' or 'https-only'. Ensure a valid SSL certificate is configured.",
   "tags": [
     "aws",
     "cloudfront",
     "encryption",
     "transport-security"
   ],
+  "remediation": "Update the distribution's viewer protocol policy to 'redirect-to-https' or 'https-only'. Ensure a valid SSL certificate is configured.",
   "risk_categories": [
     "UNPROTECTED_DATA"
   ],

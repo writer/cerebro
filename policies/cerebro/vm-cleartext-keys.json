@@ -1,14 +1,17 @@
 {
   "id": "vm-cleartext-cloud-keys",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "VM with cleartext cloud keys granting high privileges",
   "description": "Compute instance contains cleartext cloud credentials (service account keys, API keys) that grant high privileges, enabling lateral movement if compromised",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "gcp::compute::instance",
   "conditions": [
-    "metadata CONTAINS 'PRIVATE_KEY' OR metadata CONTAINS 'service_account' OR metadata CONTAINS 'credentials'"
+    "(contains_value(path(resource, \"metadata\"), \"PRIVATE_KEY\")) || (contains_value(path(resource, \"metadata\"), \"service_account\")) || (contains_value(path(resource, \"metadata\"), \"credentials\"))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "1. Remove hardcoded credentials from instance metadata. 2. Use workload identity or attached service accounts instead. 3. Rotate any exposed credentials immediately. 4. Enable Secret Manager for credential storage.",
   "tags": [
     "gcp",
     "compute",
@@ -17,6 +20,7 @@
     "toxic-combination",
     "security"
   ],
+  "remediation": "1. Remove hardcoded credentials from instance metadata. 2. Use workload identity or attached service accounts instead. 3. Rotate any exposed credentials immediately. 4. Enable Secret Manager for credential storage.",
   "risk_categories": [
     "INSECURE_USE_OF_SECRETS",
     "UNPROTECTED_PRINCIPAL"
@@ -24,15 +28,24 @@
   "frameworks": [
     {
       "name": "NIST 800-53 r5",
-      "controls": ["IA-5", "SC-12", "SC-28"]
+      "controls": [
+        "IA-5",
+        "SC-12",
+        "SC-28"
+      ]
     },
     {
       "name": "CIS Controls v8",
-      "controls": ["3", "16"]
+      "controls": [
+        "3",
+        "16"
+      ]
     },
     {
       "name": "SOC 2",
-      "controls": ["CC6"]
+      "controls": [
+        "CC6"
+      ]
     }
   ],
   "mitre_attack": [

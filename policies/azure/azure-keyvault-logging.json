@@ -1,14 +1,17 @@
 {
   "id": "azure-keyvault-logging",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Key Vault Diagnostic Logging Disabled",
   "description": "Azure Key Vault does not have diagnostic logging enabled for audit events",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "azure::keyvault::vault",
   "conditions": [
-    "diagnostic_settings.logs NOT CONTAINS (category == 'AuditEvent' AND enabled == true)"
+    "!(contains_value(path(resource, \"diagnostic_settings.logs\"), \"category == 'AuditEvent' AND enabled == true\"))"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Enable diagnostic settings with AuditEvent logs sent to Log Analytics workspace or storage account.",
   "tags": [
     "azure",
     "keyvault",
@@ -16,6 +19,7 @@
     "audit",
     "cis-azure-5.1.5"
   ],
+  "remediation": "Enable diagnostic settings with AuditEvent logs sent to Log Analytics workspace or storage account.",
   "risk_categories": [
     "MISCONFIGURATION"
   ],

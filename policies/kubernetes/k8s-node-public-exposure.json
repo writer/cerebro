@@ -1,20 +1,24 @@
 {
   "id": "k8s-node-public-exposure",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Kubernetes Node with Public IP",
   "description": "Kubernetes node has a public IP address, potentially exposing cluster infrastructure to the internet",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "k8s::core::node",
   "conditions": [
-    "status.addresses ANY (type == 'ExternalIP' AND address NOT MATCHES '^10\\.|^172\\.(1[6-9]|2[0-9]|3[01])\\.|^192\\.168\\.')"
+    "list_value(path(resource, \"status.addresses\")).exists(item, (cmp_eq(path(item, \"type\"), \"ExternalIP\")) \u0026\u0026 (!(matches_value(path(item, \"address\"), \"^10\\\\.|^172\\\\.(1[6-9]|2[0-9]|3[01])\\\\.|^192\\\\.168\\\\.\"))))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Deploy nodes in private subnets without public IPs. Use NAT gateways for outbound traffic. Access nodes via bastion hosts or VPN. Use private GKE/EKS/AKS clusters.",
   "tags": [
     "kubernetes",
     "network",
     "infrastructure",
     "exposure"
   ],
+  "remediation": "Deploy nodes in private subnets without public IPs. Use NAT gateways for outbound traffic. Access nodes via bastion hosts or VPN. Use private GKE/EKS/AKS clusters.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE"
   ],

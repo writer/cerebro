@@ -1,14 +1,17 @@
 {
   "id": "gcp-vertex-ai-dataset-public",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "GCP Vertex AI Dataset Public Access",
   "description": "Vertex AI dataset is accessible by allUsers or allAuthenticatedUsers",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "gcp::aiplatform::dataset",
   "conditions": [
-    "iam_policy contains 'allUsers' || iam_policy contains 'allAuthenticatedUsers'"
+    "(contains_value(path(resource, \"iam_policy\"), \"allUsers\")) || (contains_value(path(resource, \"iam_policy\"), \"allAuthenticatedUsers\"))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Remove public IAM bindings from the Vertex AI dataset.",
   "tags": [
     "ai",
     "vertex-ai",
@@ -16,6 +19,7 @@
     "training-data",
     "data-exposure"
   ],
+  "remediation": "Remove public IAM bindings from the Vertex AI dataset.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA"

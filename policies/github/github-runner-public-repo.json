@@ -1,21 +1,25 @@
 {
   "id": "github-runner-public-repo",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "GitHub Self-Hosted Runner on Public Repository",
   "description": "Self-hosted runner is configured on a public repository, allowing arbitrary code execution from external pull requests",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "github::runner",
   "conditions": [
-    "repository.visibility == 'public'",
-    "runner_group.allows_public_repositories == true"
+    "cmp_eq(path(resource, \"repository.visibility\"), \"public\")",
+    "cmp_eq(path(resource, \"runner_group.allows_public_repositories\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Move self-hosted runners to private repositories only. Use GitHub-hosted runners for public repositories. Configure runner groups to disallow public repositories.",
   "tags": [
     "github",
     "runners",
     "supply-chain",
     "code-execution"
   ],
+  "remediation": "Move self-hosted runners to private repositories only. Use GitHub-hosted runners for public repositories. Configure runner groups to disallow public repositories.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE"
   ],

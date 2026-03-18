@@ -1,22 +1,26 @@
 {
   "id": "public-resource-keys-data-access",
-  "control_id": "wc-id-1337",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Publicly exposed resource with cleartext cloud keys allowing access to sensitive data",
   "description": "A public resource contains keys that grant access to sensitive data",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "*",
   "conditions": [
-    "is_public == true",
-    "secrets ANY (type == 'cloud_key' AND cleartext == true AND grants_sensitive_data_access == true)"
+    "cmp_eq(path(resource, \"is_public\"), true)",
+    "list_value(path(resource, \"secrets\")).exists(item, (cmp_eq(path(item, \"type\"), \"cloud_key\")) \u0026\u0026 (cmp_eq(path(item, \"cleartext\"), true)) \u0026\u0026 (cmp_eq(path(item, \"grants_sensitive_data_access\"), true)))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Remove public access. Remove cleartext keys. Rotate all potentially exposed credentials.",
   "tags": [
     "wiz",
     "secrets",
     "data-access",
     "public-exposure"
   ],
+  "control_id": "wc-id-1337",
+  "remediation": "Remove public access. Remove cleartext keys. Rotate all potentially exposed credentials.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA"

@@ -1,21 +1,25 @@
 {
   "id": "storage-key-exposed",
-  "control_id": "wc-id-2031",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Validated exposure of storage account key/SAS token",
   "description": "A storage account key or SAS token has been validated as exposed",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "*",
   "conditions": [
-    "secrets ANY (type IN ('storage_account_key', 'sas_token') AND validated_exposed == true)"
+    "list_value(path(resource, \"secrets\")).exists(item, (in_list(path(item, \"type\"), [\"storage_account_key\",\"sas_token\"])) \u0026\u0026 (cmp_eq(path(item, \"validated_exposed\"), true)))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Rotate the exposed keys immediately. Check for unauthorized data access. Regenerate SAS tokens.",
   "tags": [
     "wiz",
     "secrets",
     "storage",
     "validated-exposure"
   ],
+  "control_id": "wc-id-2031",
+  "remediation": "Rotate the exposed keys immediately. Check for unauthorized data access. Regenerate SAS tokens.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA"

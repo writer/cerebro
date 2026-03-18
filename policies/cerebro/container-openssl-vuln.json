@@ -1,21 +1,25 @@
 {
   "id": "container-openssl-vuln",
-  "control_id": "wc-id-1098",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Internal container has an image vulnerable to CVE-2022-3602 or CVE-2022-3786 (OpenSSL vulnerability)",
   "description": "A container is running an image vulnerable to OpenSSL vulnerabilities",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "container::image",
   "conditions": [
-    "has_openssl_vulnerability == true OR vulnerabilities CONTAINS 'CVE-2022-3602' OR vulnerabilities CONTAINS 'CVE-2022-3786'"
+    "(cmp_eq(path(resource, \"has_openssl_vulnerability\"), true)) || (contains_value(path(resource, \"vulnerabilities\"), \"CVE-2022-3602\")) || (contains_value(path(resource, \"vulnerabilities\"), \"CVE-2022-3786\"))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Rebuild container image with OpenSSL 3.0.7 or later.",
   "tags": [
     "wiz",
     "container",
     "vulnerability",
     "openssl"
   ],
+  "control_id": "wc-id-1098",
+  "remediation": "Rebuild container image with OpenSSL 3.0.7 or later.",
   "risk_categories": [
     "VULNERABILITY"
   ],

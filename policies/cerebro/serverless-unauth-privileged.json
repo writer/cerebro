@@ -1,17 +1,19 @@
 {
   "id": "serverless-unauth-privileged",
-  "control_id": "wc-id-851",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Publicly exposed serverless with high privileges can be invoked by unauthenticated users",
   "description": "A privileged serverless function allows unauthenticated invocations",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "serverless::function",
   "conditions": [
-    "is_public == true",
-    "allows_unauthenticated_invocation == true",
-    "execution_role.has_high_privilege == true"
+    "cmp_eq(path(resource, \"is_public\"), true)",
+    "cmp_eq(path(resource, \"allows_unauthenticated_invocation\"), true)",
+    "cmp_eq(path(resource, \"execution_role.has_high_privilege\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Add authentication. Reduce function privileges. Use API Gateway with authorization.",
   "tags": [
     "wiz",
     "serverless",
@@ -19,6 +21,8 @@
     "privileged",
     "public-exposure"
   ],
+  "control_id": "wc-id-851",
+  "remediation": "Add authentication. Reduce function privileges. Use API Gateway with authorization.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "IDENTITY_RISK",

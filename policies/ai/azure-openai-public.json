@@ -1,15 +1,18 @@
 {
   "id": "azure-openai-public-network",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Azure OpenAI Public Network Access",
   "description": "Azure OpenAI service allows public network access",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "azure::cognitive_services::account",
   "conditions": [
-    "kind == 'OpenAI'",
-    "public_network_access == 'Enabled'"
+    "cmp_eq(path(resource, \"kind\"), \"OpenAI\")",
+    "cmp_eq(path(resource, \"public_network_access\"), \"Enabled\")"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Disable public network access and use private endpoints.",
   "tags": [
     "ai",
     "azure-openai",
@@ -17,6 +20,7 @@
     "public-access",
     "network"
   ],
+  "remediation": "Disable public network access and use private endpoints.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE"
   ],

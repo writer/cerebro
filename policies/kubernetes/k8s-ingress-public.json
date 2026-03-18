@@ -1,21 +1,25 @@
 {
   "id": "k8s-ingress-public",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Kubernetes Ingress Exposes Sensitive Service",
   "description": "Ingress resource exposes a service to the internet without authentication or with sensitive paths",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "k8s::networking::ingress",
   "conditions": [
-    "spec.rules ANY (http.paths ANY (path MATCHES '/admin|/api/internal|/debug|/metrics|/health' AND backend.service.name != null))",
-    "metadata.annotations['nginx.ingress.kubernetes.io/auth-type'] == null"
+    "list_value(path(resource, \"spec.rules\")).exists(item, list_value(path(item, \"http.paths\")).exists(item, (matches_value(path(item, \"path\"), \"/admin|/api/internal|/debug|/metrics|/health\")) \u0026\u0026 (cmp_ne(path(item, \"backend.service.name\"), null))))",
+    "cmp_eq(path(resource, \"metadata.annotations['nginx.ingress.kubernetes.io/auth-type']\"), null)"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Add authentication annotations to the Ingress. Use network policies to restrict access. Consider using a service mesh for mTLS.",
   "tags": [
     "kubernetes",
     "ingress",
     "network-exposure",
     "authentication"
   ],
+  "remediation": "Add authentication annotations to the Ingress. Use network policies to restrict access. Consider using a service mesh for mTLS.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA",

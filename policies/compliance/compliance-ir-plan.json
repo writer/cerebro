@@ -1,14 +1,23 @@
 {
   "id": "compliance-ir-plan-exists",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Incident Response Plan Exists",
   "description": "The organization should have a documented incident response plan that is reviewed and approved annually",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "compliance_documents",
   "conditions": [
-    "document_type == INCIDENT_RESPONSE_PLAN",
-    "approved != true"
+    "cmp_eq(path(resource, \"document_type\"), path(resource, \"INCIDENT_RESPONSE_PLAN\"))",
+    "cmp_ne(path(resource, \"approved\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "high",
+  "tags": [
+    "compliance",
+    "incident-response",
+    "documentation"
+  ],
   "remediation": "Create, review, and approve an incident response plan that covers detection, containment, eradication, recovery, and lessons learned",
   "remediation_steps": [
     "Draft or update the incident response plan",
@@ -18,34 +27,44 @@
     "Get management approval and sign-off",
     "Schedule annual review"
   ],
-  "tags": [
-    "compliance",
-    "incident-response",
-    "documentation"
-  ],
   "risk_categories": [
     "MISCONFIGURATION"
   ],
   "frameworks": [
     {
       "name": "SOC 2",
-      "controls": ["CC7.3", "CC7.4", "CC7.5"]
+      "controls": [
+        "CC7.3",
+        "CC7.4",
+        "CC7.5"
+      ]
     },
     {
       "name": "ISO 27001:2022",
-      "controls": ["A.5.24", "A.5.25", "A.5.26"]
+      "controls": [
+        "A.5.24",
+        "A.5.25",
+        "A.5.26"
+      ]
     },
     {
       "name": "NIST 800-53 r5",
-      "controls": ["IR-1", "IR-8"]
+      "controls": [
+        "IR-1",
+        "IR-8"
+      ]
     },
     {
       "name": "HIPAA",
-      "controls": ["164.308(a)(6)"]
+      "controls": [
+        "164.308(a)(6)"
+      ]
     },
     {
       "name": "PCI DSS v4.0.1",
-      "controls": ["12.10.1"]
+      "controls": [
+        "12.10.1"
+      ]
     }
   ]
 }

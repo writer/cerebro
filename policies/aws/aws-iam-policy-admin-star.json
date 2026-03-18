@@ -1,22 +1,26 @@
 {
   "id": "aws-iam-policy-no-admin-star",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "IAM Policy No Admin Star",
   "description": "IAM policy should not grant full administrative privileges (*:*)",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::iam::policy",
   "conditions": [
-    "policy_document.Statement.Effect == 'Allow'",
-    "policy_document.Statement.Action == '*'",
-    "policy_document.Statement.Resource == '*'"
+    "cmp_eq(path(resource, \"policy_document.Statement.Effect\"), \"Allow\")",
+    "cmp_eq(path(resource, \"policy_document.Statement.Action\"), \"*\")",
+    "cmp_eq(path(resource, \"policy_document.Statement.Resource\"), \"*\")"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Replace wildcard permissions with specific actions and resources following least privilege principle.",
   "tags": [
     "cis-aws-1.16",
     "iam",
     "least-privilege",
     "admin"
   ],
+  "remediation": "Replace wildcard permissions with specific actions and resources following least privilege principle.",
   "risk_categories": [
     "IDENTITY_RISK",
     "MISCONFIGURATION",

@@ -1,21 +1,25 @@
 {
   "id": "aws-lambda-not-publicly-accessible",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Lambda Not Publicly Accessible",
   "description": "Lambda functions should not be publicly invocable",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::lambda::function",
   "conditions": [
-    "policy.Statement.Principal == '*'",
-    "policy.Statement.Effect == 'Allow'"
+    "cmp_eq(path(resource, \"policy.Statement.Principal\"), \"*\")",
+    "cmp_eq(path(resource, \"policy.Statement.Effect\"), \"Allow\")"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Restrict Lambda resource policy to specific principals or use API Gateway with authentication.",
   "tags": [
     "lambda",
     "serverless",
     "exposure",
     "public-access"
   ],
+  "remediation": "Restrict Lambda resource policy to specific principals or use API Gateway with authentication.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "MISCONFIGURATION"

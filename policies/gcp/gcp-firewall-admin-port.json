@@ -1,16 +1,19 @@
 {
   "id": "gcp-firewall-admin-port",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "GCP Firewall Allows Admin Ports from Internet",
   "description": "Firewall rule allows SSH (22) or RDP (3389) access from any source (0.0.0.0/0)",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "gcp::compute::firewall",
   "conditions": [
-    "direction == 'INGRESS'",
-    "source_ranges CONTAINS '0.0.0.0/0'",
-    "allowed ANY (ports CONTAINS '22' OR ports CONTAINS '3389' OR ip_protocol == 'all')"
+    "cmp_eq(path(resource, \"direction\"), \"INGRESS\")",
+    "contains_value(path(resource, \"source_ranges\"), \"0.0.0.0/0\")",
+    "list_value(path(resource, \"allowed\")).exists(item, (contains_value(path(item, \"ports\"), \"22\")) || (contains_value(path(item, \"ports\"), \"3389\")) || (cmp_eq(path(item, \"ip_protocol\"), \"all\")))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Restrict source ranges to specific IP addresses or CIDR blocks. Use Identity-Aware Proxy (IAP) for SSH/RDP access. Consider using OS Login.",
   "tags": [
     "gcp",
     "firewall",
@@ -18,6 +21,7 @@
     "admin-access",
     "cis-gcp-3.6"
   ],
+  "remediation": "Restrict source ranges to specific IP addresses or CIDR blocks. Use Identity-Aware Proxy (IAP) for SSH/RDP access. Consider using OS Login.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "IDENTITY_RISK",

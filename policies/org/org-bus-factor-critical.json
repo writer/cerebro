@@ -1,20 +1,24 @@
 {
   "id": "org-bus-factor-critical",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Critical System With Bus Factor 1",
   "description": "A system classified as critical has only one person with active knowledge.",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "org::system",
   "conditions": [
-    "criticality == 'high'",
-    "bus_factor <= 1"
+    "cmp_eq(path(resource, \"criticality\"), \"high\")",
+    "cmp_le(path(resource, \"bus_factor\"), 1)"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Assign at least one additional active owner and execute a knowledge-transfer plan.",
   "tags": [
     "org-topology",
     "knowledge-concentration",
     "resilience"
   ],
+  "remediation": "Assign at least one additional active owner and execute a knowledge-transfer plan.",
   "risk_categories": [
     "RESILIENCE_RISK",
     "KNOWLEDGE_CONCENTRATION"

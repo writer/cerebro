@@ -1,20 +1,24 @@
 {
   "id": "aws-lambda-runtime-supported",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Lambda Runtime Supported",
   "description": "Lambda functions should use supported runtimes",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::lambda::function",
   "conditions": [
-    "runtime in ['python2.7', 'python3.6', 'nodejs10.x', 'nodejs12.x', 'dotnetcore2.1', 'ruby2.5']"
+    "in_list(path(resource, \"runtime\"), [\"['python2.7\",\"python3.6\",\"nodejs10.x\",\"nodejs12.x\",\"dotnetcore2.1\",\"ruby2.5']\"])"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Upgrade Lambda function to a supported runtime version.",
   "tags": [
     "lambda",
     "serverless",
     "runtime",
     "deprecation"
   ],
+  "remediation": "Upgrade Lambda function to a supported runtime version.",
   "risk_categories": [
     "MISCONFIGURATION"
   ],

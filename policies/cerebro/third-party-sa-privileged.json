@@ -1,22 +1,26 @@
 {
   "id": "third-party-sa-privileged",
-  "control_id": "wc-id-971",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Third party service account with high privileges",
   "description": "A service account owned by a third party has high privileges in the environment",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "iam::service_account|iam::role",
   "conditions": [
-    "is_third_party == true",
-    "has_high_privilege == true"
+    "cmp_eq(path(resource, \"is_third_party\"), true)",
+    "cmp_eq(path(resource, \"has_high_privilege\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Review third-party access requirements. Reduce to minimum necessary privileges. Implement logging and monitoring.",
   "tags": [
     "wiz",
     "identity",
     "third-party",
     "privileged"
   ],
+  "control_id": "wc-id-971",
+  "remediation": "Review third-party access requirements. Reduce to minimum necessary privileges. Implement logging and monitoring.",
   "risk_categories": [
     "IDENTITY_RISK",
     "PRIVILEGE_ESCALATION"

@@ -1,20 +1,24 @@
 {
   "id": "aws-s3-bucket-cleartext-key",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "S3 Bucket Contains Potential Credentials",
   "description": "S3 bucket objects contain potential secrets, API keys, or credentials based on filename patterns",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::s3::object",
   "conditions": [
-    "key MATCHES '.*\\.(pem|key|p12|pfx|credentials|env|secret)$' OR key MATCHES '.*(password|secret|api.?key|access.?key|private.?key).*'"
+    "(matches_value(path(resource, \"key\"), \".*\\\\.(pem|key|p12|pfx|credentials|env|secret)$\")) || (matches_value(path(resource, \"key\"), \".*(password|secret|api.?key|access.?key|private.?key).*\"))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Move secrets to AWS Secrets Manager or Parameter Store. Remove credential files from S3. Enable versioning and audit access logs.",
   "tags": [
     "aws",
     "s3",
     "secrets",
     "data-exposure"
   ],
+  "remediation": "Move secrets to AWS Secrets Manager or Parameter Store. Remove credential files from S3. Enable versioning and audit access logs.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA"

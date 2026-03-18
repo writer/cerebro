@@ -1,20 +1,24 @@
 {
   "id": "aws-iam-saml-provider-stale",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "IAM SAML Provider Metadata Stale",
   "description": "IAM SAML provider metadata may be outdated (over 1 year old)",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::iam::saml_provider",
   "conditions": [
-    "valid_until_days \u003c 0"
+    "cmp_lt(path(resource, \"valid_until_days\"), 0)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Update SAML provider metadata from your identity provider.",
   "tags": [
     "iam",
     "saml",
     "federation",
     "maintenance"
   ],
+  "remediation": "Update SAML provider metadata from your identity provider.",
   "risk_categories": [
     "UNPROTECTED_DATA",
     "IDENTITY_RISK"

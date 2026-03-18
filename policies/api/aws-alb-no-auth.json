@@ -1,21 +1,25 @@
 {
   "id": "aws-alb-no-authentication",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "AWS ALB No Authentication",
   "description": "Application Load Balancer listener has no authentication action",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::elbv2::listener",
   "conditions": [
-    "default_actions not contains { type: 'authenticate-oidc' }",
-    "default_actions not contains { type: 'authenticate-cognito' }"
+    "!(contains_value(path(resource, \"default_actions\"), {\"type\":\"authenticate-oidc\"}))",
+    "!(contains_value(path(resource, \"default_actions\"), {\"type\":\"authenticate-cognito\"}))"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Add Cognito or OIDC authentication action to the ALB listener.",
   "tags": [
     "api",
     "alb",
     "authentication",
     "network"
   ],
+  "remediation": "Add Cognito or OIDC authentication action to the ALB listener.",
   "risk_categories": [
     "IDENTITY_RISK"
   ],

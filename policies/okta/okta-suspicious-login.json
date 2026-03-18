@@ -1,21 +1,25 @@
 {
   "id": "okta-suspicious-login",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Okta Suspicious Login Detected",
   "description": "Login from unusual location, impossible travel, or anomalous behavior pattern detected",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "okta::system_log",
   "conditions": [
-    "event_type == 'user.session.start'",
-    "security_context.is_proxy == true OR geographic_context.impossible_travel == true OR behavior_detection.anomaly_score \u003e 0.8"
+    "cmp_eq(path(resource, \"event_type\"), \"user.session.start\")",
+    "(cmp_eq(path(resource, \"security_context.is_proxy\"), true)) || (cmp_eq(path(resource, \"geographic_context.impossible_travel\"), true)) || (cmp_gt(path(resource, \"behavior_detection.anomaly_score\"), 0.8))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Investigate the login event. Verify with the user. Consider forcing password reset and MFA re-enrollment. Review session for suspicious activity.",
   "tags": [
     "okta",
     "identity",
     "threat-detection",
     "anomaly"
   ],
+  "remediation": "Investigate the login event. Verify with the user. Consider forcing password reset and MFA re-enrollment. Review session for suspicious activity.",
   "risk_categories": [
     "IDENTITY_RISK"
   ]

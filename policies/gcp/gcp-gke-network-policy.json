@@ -1,24 +1,28 @@
 {
   "id": "gcp-gke-network-policy-enabled",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "GKE Network Policy Enabled",
   "description": "GKE clusters should have network policy enabled to control traffic flow between pods and implement microsegmentation",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "gcp_container_clusters",
   "conditions": [
-    "network_policy.enabled != true"
+    "cmp_ne(path(resource, \"network_policy.enabled\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Enable network policy on the GKE cluster. Note: This requires recreating node pools",
-  "remediation_steps": [
-    "For existing clusters: gcloud container clusters update CLUSTER_NAME --update-addons=NetworkPolicy=ENABLED",
-    "For new clusters: gcloud container clusters create CLUSTER_NAME --enable-network-policy",
-    "Create NetworkPolicy resources to define allowed traffic flows"
-  ],
   "tags": [
     "gke",
     "kubernetes",
     "network-policy",
     "microsegmentation"
+  ],
+  "remediation": "Enable network policy on the GKE cluster. Note: This requires recreating node pools",
+  "remediation_steps": [
+    "For existing clusters: gcloud container clusters update CLUSTER_NAME --update-addons=NetworkPolicy=ENABLED",
+    "For new clusters: gcloud container clusters create CLUSTER_NAME --enable-network-policy",
+    "Create NetworkPolicy resources to define allowed traffic flows"
   ],
   "risk_categories": [
     "MISCONFIGURATION"
@@ -26,15 +30,22 @@
   "frameworks": [
     {
       "name": "CIS GKE Benchmark v1.4",
-      "controls": ["5.6.3"]
+      "controls": [
+        "5.6.3"
+      ]
     },
     {
       "name": "NIST 800-53 r5",
-      "controls": ["AC-4", "SC-7"]
+      "controls": [
+        "AC-4",
+        "SC-7"
+      ]
     },
     {
       "name": "SOC 2",
-      "controls": ["CC6.6"]
+      "controls": [
+        "CC6.6"
+      ]
     }
   ]
 }

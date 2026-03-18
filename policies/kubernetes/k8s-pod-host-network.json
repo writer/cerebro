@@ -1,19 +1,23 @@
 {
   "id": "k8s-pod-no-host-network",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "K8s Pod No Host Network",
   "description": "Pods should not use host network namespace",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "kubernetes::pod",
   "conditions": [
-    "spec.host_network == true"
+    "cmp_eq(path(resource, \"spec.host_network\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Remove hostNetwork: true from pod spec.",
   "tags": [
     "cis-k8s-5.2.4",
     "pod-security",
     "network"
   ],
+  "remediation": "Remove hostNetwork: true from pod spec.",
   "risk_categories": [
     "MISCONFIGURATION"
   ],

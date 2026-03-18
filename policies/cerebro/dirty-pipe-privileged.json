@@ -1,16 +1,18 @@
 {
   "id": "dirty-pipe-privileged",
-  "control_id": "wc-id-667",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "VM with high privileges vulnerable to CVE-2022-0847 (Dirty Pipe)",
   "description": "A privileged VM is vulnerable to the Dirty Pipe kernel exploit",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "compute::instance",
   "conditions": [
-    "service_account.has_high_privilege == true OR attached_role.has_high_privilege == true",
-    "vulnerabilities ANY (cve_id == 'CVE-2022-0847')"
+    "(cmp_eq(path(resource, \"service_account.has_high_privilege\"), true)) || (cmp_eq(path(resource, \"attached_role.has_high_privilege\"), true))",
+    "list_value(path(resource, \"vulnerabilities\")).exists(item, cmp_eq(path(item, \"cve_id\"), \"CVE-2022-0847\"))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Update the Linux kernel to 5.16.11, 5.15.25, or 5.10.102 or later.",
   "tags": [
     "wiz",
     "compute",
@@ -18,6 +20,8 @@
     "kernel",
     "dirty-pipe"
   ],
+  "control_id": "wc-id-667",
+  "remediation": "Update the Linux kernel to 5.16.11, 5.15.25, or 5.10.102 or later.",
   "risk_categories": [
     "IDENTITY_RISK",
     "VULNERABILITY",

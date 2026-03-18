@@ -1,17 +1,19 @@
 {
   "id": "vm-vuln-keys-data-access",
-  "control_id": "wc-id-1104",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Internet-facing VM/serverless with initial access vulnerabilities and cleartext cloud keys with data access to sensitive data",
   "description": "An internet-facing resource has vulnerabilities and contains keys with sensitive data access",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "compute::instance|serverless::function",
   "conditions": [
-    "is_internet_facing == true",
-    "vulnerabilities ANY (severity IN ('CRITICAL', 'HIGH') AND initial_access == true)",
-    "secrets ANY (type == 'cloud_key' AND cleartext == true AND grants_sensitive_data_access == true)"
+    "cmp_eq(path(resource, \"is_internet_facing\"), true)",
+    "list_value(path(resource, \"vulnerabilities\")).exists(item, (in_list(path(item, \"severity\"), [\"CRITICAL\",\"HIGH\"])) \u0026\u0026 (cmp_eq(path(item, \"initial_access\"), true)))",
+    "list_value(path(resource, \"secrets\")).exists(item, (cmp_eq(path(item, \"type\"), \"cloud_key\")) \u0026\u0026 (cmp_eq(path(item, \"cleartext\"), true)) \u0026\u0026 (cmp_eq(path(item, \"grants_sensitive_data_access\"), true)))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Patch vulnerabilities. Remove cleartext keys. Rotate any potentially exposed credentials.",
   "tags": [
     "wiz",
     "compute",
@@ -19,6 +21,8 @@
     "cleartext-keys",
     "data-access"
   ],
+  "control_id": "wc-id-1104",
+  "remediation": "Patch vulnerabilities. Remove cleartext keys. Rotate any potentially exposed credentials.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA",

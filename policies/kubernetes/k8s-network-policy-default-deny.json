@@ -1,15 +1,18 @@
 {
   "id": "k8s-network-policy-default-deny",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Kubernetes Namespace Without Default Deny NetworkPolicy",
   "description": "Namespace does not have a default-deny NetworkPolicy, allowing unrestricted pod-to-pod traffic",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "k8s::core::namespace",
   "conditions": [
-    "metadata.name NOT IN ('kube-system', 'kube-public', 'kube-node-lease', 'gatekeeper-system')",
-    "network_policies NOT ANY (spec.pod_selector == {} AND spec.policy_types CONTAINS 'Ingress' AND spec.ingress == null)"
+    "!(in_list(path(resource, \"metadata.name\"), [\"kube-system\",\"kube-public\",\"kube-node-lease\",\"gatekeeper-system\"]))",
+    "!(list_value(path(resource, \"network_policies\")).exists(item, (cmp_eq(path(item, \"spec.pod_selector\"), \"{}\")) \u0026\u0026 (contains_value(path(item, \"spec.policy_types\"), \"Ingress\")) \u0026\u0026 (cmp_eq(path(item, \"spec.ingress\"), null))))"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Create a default-deny NetworkPolicy for ingress traffic. Add specific allow policies for required communication paths. Consider using a service mesh for mTLS.",
   "tags": [
     "kubernetes",
     "network",
@@ -17,6 +20,7 @@
     "zero-trust",
     "cis-k8s-5.3.2"
   ],
+  "remediation": "Create a default-deny NetworkPolicy for ingress traffic. Add specific allow policies for required communication paths. Consider using a service mesh for mTLS.",
   "risk_categories": [
     "LATERAL_MOVEMENT"
   ],

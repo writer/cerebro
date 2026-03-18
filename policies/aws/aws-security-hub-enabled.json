@@ -1,14 +1,24 @@
 {
   "id": "aws-security-hub-enabled",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "AWS Security Hub Enabled",
   "description": "AWS Security Hub should be enabled in all regions to provide centralized security findings and compliance checks",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws_securityhub_hubs",
   "conditions": [
-    "hub_arn == null"
+    "cmp_eq(path(resource, \"hub_arn\"), null)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Enable AWS Security Hub in all active regions. Use: aws securityhub enable-security-hub --region <region>",
+  "tags": [
+    "security-hub",
+    "centralized-security",
+    "compliance",
+    "monitoring"
+  ],
+  "remediation": "Enable AWS Security Hub in all active regions. Use: aws securityhub enable-security-hub --region \u003cregion\u003e",
   "remediation_steps": [
     "Navigate to Security Hub in AWS Console",
     "Click 'Go to Security Hub'",
@@ -16,27 +26,29 @@
     "Enable desired security standards (CIS, AWS Foundational)",
     "Repeat for all active regions or use AWS Organizations integration"
   ],
-  "tags": [
-    "security-hub",
-    "centralized-security",
-    "compliance",
-    "monitoring"
-  ],
   "risk_categories": [
     "MISCONFIGURATION"
   ],
   "frameworks": [
     {
       "name": "CIS AWS Foundations Benchmark v2.0",
-      "controls": ["4.16"]
+      "controls": [
+        "4.16"
+      ]
     },
     {
       "name": "NIST 800-53 r5",
-      "controls": ["CA-7", "SI-4"]
+      "controls": [
+        "CA-7",
+        "SI-4"
+      ]
     },
     {
       "name": "SOC 2",
-      "controls": ["CC7.1", "CC7.2"]
+      "controls": [
+        "CC7.1",
+        "CC7.2"
+      ]
     }
   ]
 }

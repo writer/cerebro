@@ -1,21 +1,25 @@
 {
   "id": "vpc-external-peering",
-  "control_id": "wc-id-37",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Virtual network is peered with a virtual network from an external subscription",
   "description": "A VPC/VNet is peered with a network in a different subscription or account",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "network::vpc_peering|network::vnet_peering",
   "conditions": [
-    "peer_subscription_id != subscription_id"
+    "cmp_ne(path(resource, \"peer_subscription_id\"), path(resource, \"subscription_id\"))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Review and validate external peering connections. Remove unauthorized peerings. Document approved connections.",
   "tags": [
     "wiz",
     "network",
     "peering",
     "cross-account"
   ],
+  "control_id": "wc-id-37",
+  "remediation": "Review and validate external peering connections. Remove unauthorized peerings. Document approved connections.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "LATERAL_MOVEMENT"

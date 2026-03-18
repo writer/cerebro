@@ -1,12 +1,16 @@
 {
   "id": "aws-iam-user-mfa-enabled",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "IAM User MFA Enabled",
   "description": "IAM users should have MFA enabled for console access",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::iam::user",
   "conditions": [
-    "mfa_active != true"
+    "cmp_ne(path(resource, \"mfa_active\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "high",
   "tags": [
     "cis-aws-1.4",

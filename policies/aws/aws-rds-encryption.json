@@ -1,12 +1,16 @@
 {
   "id": "aws-rds-encryption-enabled",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "RDS Encryption Enabled",
   "description": "RDS instances should have encryption at rest enabled",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::rds::instance",
   "conditions": [
-    "storage_encrypted != true"
+    "cmp_ne(path(resource, \"storage_encrypted\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "high",
   "tags": [
     "cis-aws-2.3.1",

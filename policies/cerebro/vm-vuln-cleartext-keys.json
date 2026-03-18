@@ -1,17 +1,19 @@
 {
   "id": "vm-vuln-cleartext-keys",
-  "control_id": "wc-id-1368",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Internet-facing VM/serverless with initial access vulnerabilities and cleartext cloud keys granting high privileges",
   "description": "An internet-facing resource has vulnerabilities and contains cleartext cloud keys with high privileges",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "compute::instance|serverless::function",
   "conditions": [
-    "is_internet_facing == true",
-    "vulnerabilities ANY (severity IN ('CRITICAL', 'HIGH') AND initial_access == true)",
-    "secrets ANY (type == 'cloud_key' AND cleartext == true AND grants_high_privilege == true)"
+    "cmp_eq(path(resource, \"is_internet_facing\"), true)",
+    "list_value(path(resource, \"vulnerabilities\")).exists(item, (in_list(path(item, \"severity\"), [\"CRITICAL\",\"HIGH\"])) \u0026\u0026 (cmp_eq(path(item, \"initial_access\"), true)))",
+    "list_value(path(resource, \"secrets\")).exists(item, (cmp_eq(path(item, \"type\"), \"cloud_key\")) \u0026\u0026 (cmp_eq(path(item, \"cleartext\"), true)) \u0026\u0026 (cmp_eq(path(item, \"grants_high_privilege\"), true)))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Patch vulnerabilities. Remove cleartext keys and use IAM roles or managed identities. Rotate any potentially exposed keys.",
   "tags": [
     "wiz",
     "compute",
@@ -19,6 +21,8 @@
     "cleartext-keys",
     "privileged"
   ],
+  "control_id": "wc-id-1368",
+  "remediation": "Patch vulnerabilities. Remove cleartext keys and use IAM roles or managed identities. Rotate any potentially exposed keys.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA",

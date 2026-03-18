@@ -1,13 +1,24 @@
 {
   "id": "aws-s3-https-only",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "S3 Buckets Enforce HTTPS Only",
   "description": "S3 bucket policies should deny requests that are not made over HTTPS (SSL/TLS) to ensure data in transit is encrypted",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws_s3_buckets",
   "conditions": [
-    "policy_requires_ssl != true"
+    "cmp_ne(path(resource, \"policy_requires_ssl\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
+  "tags": [
+    "cis-aws-2.1.2",
+    "s3",
+    "https",
+    "ssl",
+    "encryption-in-transit"
+  ],
   "remediation": "Add a bucket policy that denies requests not using HTTPS. Include a statement with Condition: {\"Bool\": {\"aws:SecureTransport\": \"false\"}} and Effect: Deny",
   "remediation_steps": [
     "Navigate to S3 in AWS Console",
@@ -17,36 +28,41 @@
     "Add a statement denying non-SSL requests",
     "Example policy condition: {\"Bool\": {\"aws:SecureTransport\": \"false\"}}"
   ],
-  "tags": [
-    "cis-aws-2.1.2",
-    "s3",
-    "https",
-    "ssl",
-    "encryption-in-transit"
-  ],
   "risk_categories": [
     "UNPROTECTED_DATA"
   ],
   "frameworks": [
     {
       "name": "CIS AWS Foundations Benchmark v2.0",
-      "controls": ["2.1.2"]
+      "controls": [
+        "2.1.2"
+      ]
     },
     {
       "name": "NIST 800-53 r5",
-      "controls": ["SC-8", "SC-23"]
+      "controls": [
+        "SC-8",
+        "SC-23"
+      ]
     },
     {
       "name": "SOC 2",
-      "controls": ["CC6.1", "CC6.7"]
+      "controls": [
+        "CC6.1",
+        "CC6.7"
+      ]
     },
     {
       "name": "HIPAA",
-      "controls": ["164.312(e)(1)"]
+      "controls": [
+        "164.312(e)(1)"
+      ]
     },
     {
       "name": "PCI DSS v4.0.1",
-      "controls": ["4.2.1"]
+      "controls": [
+        "4.2.1"
+      ]
     }
   ]
 }

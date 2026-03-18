@@ -1,20 +1,24 @@
 {
   "id": "azure-defender-storage",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Microsoft Defender for Storage Disabled",
   "description": "Microsoft Defender for Storage is not enabled on the storage account",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "azure::storage::account",
   "conditions": [
-    "defender_for_storage_enabled != true"
+    "cmp_ne(path(resource, \"defender_for_storage_enabled\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Enable Microsoft Defender for Storage in Security Center. This provides threat detection for storage accounts.",
   "tags": [
     "azure",
     "storage",
     "defender",
     "threat-detection"
   ],
+  "remediation": "Enable Microsoft Defender for Storage in Security Center. This provides threat detection for storage accounts.",
   "risk_categories": [
     "MISCONFIGURATION"
   ],

@@ -1,15 +1,24 @@
 {
   "id": "gcr-unscanned",
-  "control_id": "wc-id-454",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "GCP container registry not scanned by Wiz contains an image that is used by a container",
   "description": "An unscanned container image from GCR is in use",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "container::image",
   "conditions": [
-    "registry_type == 'gcr'",
-    "scanned == false"
+    "cmp_eq(path(resource, \"registry_type\"), \"gcr\")",
+    "cmp_eq(path(resource, \"scanned\"), false)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Enable vulnerability scanning for all container registries. Review unscanned images.",
-  "tags": ["wiz", "gcp", "container-registry", "scanning"]
+  "tags": [
+    "wiz",
+    "gcp",
+    "container-registry",
+    "scanning"
+  ],
+  "control_id": "wc-id-454",
+  "remediation": "Enable vulnerability scanning for all container registries. Review unscanned images."
 }

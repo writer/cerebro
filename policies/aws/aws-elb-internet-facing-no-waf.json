@@ -1,22 +1,26 @@
 {
   "id": "aws-elb-internet-facing-no-waf",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Internet-Facing ALB Without WAF",
   "description": "Application Load Balancer is internet-facing without AWS WAF protection",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::elbv2::load_balancer",
   "conditions": [
-    "scheme == 'internet-facing'",
-    "type == 'application'",
-    "waf_web_acl_arn == null"
+    "cmp_eq(path(resource, \"scheme\"), \"internet-facing\")",
+    "cmp_eq(path(resource, \"type\"), \"application\")",
+    "cmp_eq(path(resource, \"waf_web_acl_arn\"), null)"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Associate an AWS WAF WebACL with the Application Load Balancer to protect against common web exploits.",
   "tags": [
     "alb",
     "waf",
     "exposure",
     "network"
   ],
+  "remediation": "Associate an AWS WAF WebACL with the Application Load Balancer to protect against common web exploits.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE"
   ],

@@ -17,6 +17,18 @@ Status: executed end-to-end via PR workflow
 - [x] Add graph helper APIs to write policies, scope required acknowledgments to departments and people, and record person acknowledgments against the active policy version.
 - [x] Add rollup coverage that computes department-level acknowledgment gaps from existing membership edges and validates re-acknowledgment on policy version updates.
 
+## Deep Review Cycle 198 - CEL Policy Migration Parity (2026-03-17)
+
+### Review findings
+- [x] Gap: issue `#212` still left 466 resource-condition repository policies in implicit legacy mode with no `condition_format`, so CEL runtime coverage existed in code but not in the shipped policy corpus.
+- [x] Gap: the legacy parser and CEL converter still failed on real repository patterns including `IS NULL`, `IS NOT NULL`, single `=`, `not_contains`, `ends_with`, object-literal containment, bucket-public-reference predicates, field-to-field comparisons, and `NOW() - INTERVAL` expressions.
+- [x] Gap: there was no repository-level invariant proving resource-condition policies had actually migrated to CEL, so future policy additions could silently regress the migration.
+
+### Execution plan
+- [x] Extend legacy evaluation and CEL conversion to cover the remaining repository condition shapes, including object containment, relative-time parsing, bucket-public-reference checks, and field-reference operands.
+- [x] Add focused regression coverage for legacy evaluation, legacy-to-CEL round-trips, and a repository invariant requiring `condition_format: cel` for resource-condition policies.
+- [x] Bulk-convert the repository condition-policy corpus to CEL with explicit `condition_format: cel`, then re-run policy tests and bundle validation.
+
 ## Deep Review Cycle 197 - Configurable Operational Timeouts (2026-03-17)
 
 ### Review findings

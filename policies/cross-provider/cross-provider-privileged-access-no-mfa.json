@@ -1,21 +1,25 @@
 {
   "id": "cross-provider-privileged-access-no-mfa",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Privileged Access Without MFA",
   "description": "User with administrative privileges in any cloud provider does not have MFA enabled",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "cross_provider::identity_cluster",
   "conditions": [
-    "has_admin_role == true",
-    "mfa_enabled_count == 0"
+    "cmp_eq(path(resource, \"has_admin_role\"), true)",
+    "cmp_eq(path(resource, \"mfa_enabled_count\"), 0)"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Immediately enable MFA for all accounts with administrative access. Consider using hardware security keys for privileged accounts. Implement just-in-time access for admin roles.",
   "tags": [
     "cross-provider",
     "identity",
     "privileged-access",
     "mfa"
   ],
+  "remediation": "Immediately enable MFA for all accounts with administrative access. Consider using hardware security keys for privileged accounts. Implement just-in-time access for admin roles.",
   "risk_categories": [
     "IDENTITY_RISK",
     "PRIVILEGE_ESCALATION"

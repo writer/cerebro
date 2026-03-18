@@ -1,14 +1,17 @@
 {
   "id": "iam-inactive-privileged-account",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Service account with high privileges is inactive for over 90 days",
   "description": "An IAM role or service account with high privileges has not been used in over 90 days, indicating potential over-provisioning and creating unnecessary attack surface",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::iam::role",
   "conditions": [
-    "role_last_used.last_used_date < NOW() - 90 days OR role_last_used IS NULL"
+    "(cmp_lt(path(resource, \"role_last_used.last_used_date\"), \"NOW() - 90 days\")) || (!exists_path(resource, \"role_last_used\"))"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "1. Review if the role is still needed. 2. If unused, delete or disable the role. 3. If needed, apply least privilege principles. 4. Enable CloudTrail logging to monitor future usage.",
   "tags": [
     "aws",
     "iam",
@@ -17,21 +20,30 @@
     "hygiene",
     "security"
   ],
+  "remediation": "1. Review if the role is still needed. 2. If unused, delete or disable the role. 3. If needed, apply least privilege principles. 4. Enable CloudTrail logging to monitor future usage.",
   "risk_categories": [
     "UNPROTECTED_PRINCIPAL"
   ],
   "frameworks": [
     {
       "name": "NIST 800-53 r5",
-      "controls": ["AC-2", "AC-6"]
+      "controls": [
+        "AC-2",
+        "AC-6"
+      ]
     },
     {
       "name": "CIS Controls v8",
-      "controls": ["5", "6"]
+      "controls": [
+        "5",
+        "6"
+      ]
     },
     {
       "name": "SOC 2",
-      "controls": ["CC6"]
+      "controls": [
+        "CC6"
+      ]
     }
   ],
   "mitre_attack": [

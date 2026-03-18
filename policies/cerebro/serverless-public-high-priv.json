@@ -1,22 +1,26 @@
 {
   "id": "serverless-public-high-priv",
-  "control_id": "wc-id-313",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Publicly exposed serverless with high privileges",
   "description": "A publicly exposed serverless function has high privileges",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "serverless::function",
   "conditions": [
-    "is_public == true",
-    "execution_role.has_high_privilege == true"
+    "cmp_eq(path(resource, \"is_public\"), true)",
+    "cmp_eq(path(resource, \"execution_role.has_high_privilege\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Reduce function privileges to minimum required. Add authentication. Consider using API Gateway with authorization.",
   "tags": [
     "wiz",
     "serverless",
     "high-privilege",
     "public-exposure"
   ],
+  "control_id": "wc-id-313",
+  "remediation": "Reduce function privileges to minimum required. Add authentication. Consider using API Gateway with authorization.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "PRIVILEGE_ESCALATION"

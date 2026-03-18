@@ -1,16 +1,18 @@
 {
   "id": "log4shell-privileged",
-  "control_id": "wc-id-613",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "VM/serverless with high privileges vulnerable to CVE-2021-44228 (Log4Shell)",
   "description": "A privileged resource is vulnerable to Log4Shell",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "compute::instance|serverless::function",
   "conditions": [
-    "service_account.has_high_privilege == true OR attached_role.has_high_privilege == true",
-    "vulnerabilities ANY (cve_id == 'CVE-2021-44228')"
+    "(cmp_eq(path(resource, \"service_account.has_high_privilege\"), true)) || (cmp_eq(path(resource, \"attached_role.has_high_privilege\"), true))",
+    "list_value(path(resource, \"vulnerabilities\")).exists(item, cmp_eq(path(item, \"cve_id\"), \"CVE-2021-44228\"))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Patch Log4j immediately. Reduce privileges until patch is applied.",
   "tags": [
     "wiz",
     "compute",
@@ -18,6 +20,8 @@
     "log4shell",
     "privileged"
   ],
+  "control_id": "wc-id-613",
+  "remediation": "Patch Log4j immediately. Reduce privileges until patch is applied.",
   "risk_categories": [
     "IDENTITY_RISK",
     "VULNERABILITY",

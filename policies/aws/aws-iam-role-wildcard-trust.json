@@ -1,20 +1,24 @@
 {
   "id": "aws-iam-role-wildcard-trust",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "IAM Role Wildcard Trust Policy",
   "description": "IAM role trust policy allows assumption from any AWS account or principal",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::iam::role",
   "conditions": [
-    "assume_role_policy_document.Statement.Principal.AWS == '*'"
+    "cmp_eq(path(resource, \"assume_role_policy_document.Statement.Principal.AWS\"), \"*\")"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Restrict trust policy to specific accounts, roles, or services with conditions.",
   "tags": [
     "iam",
     "trust-policy",
     "lateral-movement",
     "privilege-escalation"
   ],
+  "remediation": "Restrict trust policy to specific accounts, roles, or services with conditions.",
   "risk_categories": [
     "IDENTITY_RISK",
     "LATERAL_MOVEMENT",

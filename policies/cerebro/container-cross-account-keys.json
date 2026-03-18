@@ -1,21 +1,25 @@
 {
   "id": "container-cross-account-keys",
-  "control_id": "wc-id-1037",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Internal container using a container image with cleartext cloud keys granting permission to access resources in other subscriptions",
   "description": "A container uses an image with cleartext cross-account access keys",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "container::image",
   "conditions": [
-    "has_cross_account_cloud_keys == true OR secrets ANY (type == 'cloud_key' AND cleartext == true AND cross_account_access == true)"
+    "(cmp_eq(path(resource, \"has_cross_account_cloud_keys\"), true)) || (list_value(path(resource, \"secrets\")).exists(item, (cmp_eq(path(item, \"type\"), \"cloud_key\")) \u0026\u0026 (cmp_eq(path(item, \"cleartext\"), true)) \u0026\u0026 (cmp_eq(path(item, \"cross_account_access\"), true))))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Rebuild image without embedded keys. Use IAM roles for cross-account access.",
   "tags": [
     "wiz",
     "container",
     "secrets",
     "cross-account"
   ],
+  "control_id": "wc-id-1037",
+  "remediation": "Rebuild image without embedded keys. Use IAM roles for cross-account access.",
   "risk_categories": [
     "UNPROTECTED_DATA",
     "LATERAL_MOVEMENT"

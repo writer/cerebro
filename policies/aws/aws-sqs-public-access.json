@@ -1,20 +1,24 @@
 {
   "id": "aws-sqs-public-access",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "SQS Queue Allows Public Access",
   "description": "SQS queue policy allows access from any AWS account or public access",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::sqs::queue",
   "conditions": [
-    "policy.Statement ANY (Principal == '*' AND Condition == null)"
+    "list_value(path(resource, \"policy.Statement\")).exists(item, (cmp_eq(path(item, \"Principal\"), \"*\")) \u0026\u0026 (cmp_eq(path(item, \"Condition\"), null)))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Update SQS queue policy to restrict access to specific AWS accounts or principals. Add conditions to limit access scope.",
   "tags": [
     "aws",
     "sqs",
     "messaging",
     "public-access"
   ],
+  "remediation": "Update SQS queue policy to restrict access to specific AWS accounts or principals. Add conditions to limit access scope.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE"
   ],

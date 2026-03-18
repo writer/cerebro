@@ -1,17 +1,20 @@
 {
   "id": "azure-vm-public-ip-ssh",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Azure VM Public IP with SSH Exposed",
   "description": "Azure VM has public IP with SSH port 22 allowed from Any source in NSG",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "azure::compute::virtual_machine",
   "conditions": [
-    "public_ip_address != null",
-    "network_security_group.rules.destination_port == '22'",
-    "network_security_group.rules.source_address_prefix == '*'",
-    "network_security_group.rules.access == 'Allow'"
+    "cmp_ne(path(resource, \"public_ip_address\"), null)",
+    "cmp_eq(path(resource, \"network_security_group.rules.destination_port\"), \"22\")",
+    "cmp_eq(path(resource, \"network_security_group.rules.source_address_prefix\"), \"*\")",
+    "cmp_eq(path(resource, \"network_security_group.rules.access\"), \"Allow\")"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Remove public IP or restrict NSG rules to specific IP ranges. Use Azure Bastion for secure access.",
   "tags": [
     "cis-azure-6.1",
     "exposure",
@@ -19,6 +22,7 @@
     "network",
     "ssh"
   ],
+  "remediation": "Remove public IP or restrict NSG rules to specific IP ranges. Use Azure Bastion for secure access.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE"
   ],

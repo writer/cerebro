@@ -1,19 +1,23 @@
 {
   "id": "k8s-rbac-medium-risk-binding",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Kubernetes Medium-Risk RBAC Binding",
   "description": "RBAC binding has medium-risk permissions that may allow lateral movement or privilege expansion.",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "k8s::rbac::risky_binding",
   "conditions": [
-    "risk_level == 'medium'"
+    "cmp_eq(path(resource, \"risk_level\"), \"medium\")"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Review binding scope and subjects, remove unnecessary privileges, and split broad roles into narrowly scoped bindings.",
   "tags": [
     "kubernetes",
     "rbac",
     "least-privilege"
   ],
+  "remediation": "Review binding scope and subjects, remove unnecessary privileges, and split broad roles into narrowly scoped bindings.",
   "risk_categories": [
     "PRIVILEGE_ESCALATION",
     "LATERAL_MOVEMENT",
