@@ -20,11 +20,6 @@ type (
 	EntityCanonicalRef            = graph.EntityCanonicalRef
 	EntityExternalRef             = graph.EntityExternalRef
 	EntityAliasRecord             = graph.EntityAliasRecord
-	EntityFacetFieldDefinition    = graph.EntityFacetFieldDefinition
-	EntityFacetDefinition         = graph.EntityFacetDefinition
-	EntityFacetRecord             = graph.EntityFacetRecord
-	EntityPostureClaimRecord      = graph.EntityPostureClaimRecord
-	EntityPostureSummary          = graph.EntityPostureSummary
 	EntitySubresourceRecord       = graph.EntitySubresourceRecord
 )
 
