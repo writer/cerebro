@@ -118,6 +118,7 @@ type serverDependencies struct {
 	apiCredentials     apiCredentialService
 	agentSDKToolSource agentSDKToolService
 	platformKnowledge  platformKnowledgeService
+	syncHandlers       syncHandlerService
 }
 
 type graphRuntimeAdapter struct {

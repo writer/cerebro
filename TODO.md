@@ -18,6 +18,19 @@ Status: executed end-to-end via PR workflow
 - [x] Add `NewServerWithDependencies` tests that stub only the platform knowledge family without constructing a full `*app.App`.
 - [x] Re-run focused and changed-file API tests, lint, and push the branch once the seam compiles cleanly.
 
+## Deep Review Cycle 196 - Sync Handler Service Seam (2026-03-17)
+
+### Review findings
+- [x] Gap: issue `#210` still left the sync handler family coupled directly to `s.app.Snowflake`, `s.app.SecurityGraphBuilder`, and live graph-update orchestration, so those endpoints could not be tested against a narrow dependency stub.
+- [x] Gap: the provider-specific sync runners were already factored behind package-level helpers, but the HTTP layer still owned post-sync graph mutation status shaping and therefore kept sync behavior split across transport and runtime concerns.
+- [x] Gap: `NewServerWithDependencies` still had no way to supply a sync-only seam, which meant tests for this family had to boot a full in-memory app even when they only needed normalized request parsing and response wiring.
+
+### Execution plan
+- [x] Add a dedicated `syncHandlerService` interface plus a default adapter for relationship backfill and provider sync workflows.
+- [x] Move post-sync graph update orchestration into the sync adapter so handlers depend only on the seam.
+- [x] Add `NewServerWithDependencies` tests that stub only the sync family and prove normalized request options reach the service layer.
+- [x] Re-run focused and changed-file API validation, then push the branch once the seam is green.
+
 ## Deep Review Cycle 196 - Graph Store Query Paths (2026-03-17)
 
 ### Review findings
