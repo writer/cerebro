@@ -421,4 +421,15 @@ Status: executed end-to-end via PR workflow
 ### Execution plan
 - [x] Route org onboarding, meeting insights, meeting analysis, information flow, clock speed, and recommended-connections handlers through the snapshot-backed tenant graph view.
 - [x] Add store-only API regressions covering the migrated org analytics handlers.
+
+## Deep Review Cycle 202 - Graph Store Entity Impact Paths (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left entity cohort lookup, outlier scoring, and impact-path analysis hard-wired to the raw in-memory graph pointer, so those endpoints would fail once the runtime provides only a graph store.
+- [x] Gap: this handler family only requires a read-only graph view, but it still bypassed the existing snapshot-backed tenant graph seam already used by the earlier graph-store API slices.
+- [x] Gap: there was no API regression proving these entity-impact endpoints still work when the server is constructed with only a `GraphStore` and no live `SecurityGraph`.
+
+### Execution plan
+- [x] Route the entity-impact handlers through the snapshot-backed tenant graph view.
+- [x] Add store-only API regressions for cohort, outlier-score, and impact-analysis.
 - [x] Re-run focused and changed-file API validation before pushing the branch.
