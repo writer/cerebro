@@ -38,7 +38,8 @@ import (
 //
 // Thread-safe for concurrent event processing.
 type DetectionEngine struct {
-	rules          []DetectionRule  // Active detection rules
+	rules          []DetectionRule // Active detection rules
+	rulesByMask    [16][]DetectionRule
 	suppressions   map[string]bool  // Rule IDs that are suppressed
 	recentFindings []RuntimeFinding // Recent findings ring buffer
 	maxFindings    int              // Max findings to retain
@@ -52,15 +53,16 @@ type DetectionEngine struct {
 // Each rule includes MITRE ATT&CK technique IDs for threat intelligence
 // correlation and incident response prioritization.
 type DetectionRule struct {
-	ID          string            `json:"id"`           // Unique rule identifier
-	Name        string            `json:"name"`         // Human-readable rule name
-	Description string            `json:"description"`  // Detailed description of what the rule detects
-	Category    DetectionCategory `json:"category"`     // Threat category for grouping/filtering
-	Severity    string            `json:"severity"`     // critical, high, medium, low
-	Enabled     bool              `json:"enabled"`      // Whether rule is active
-	Conditions  []Condition       `json:"conditions"`   // Conditions that must match
-	MITRE       []string          `json:"mitre_attack"` // MITRE ATT&CK technique IDs (e.g., T1496)
-	Response    ResponseAction    `json:"response"`     // Automated response configuration
+	ID           string            `json:"id"`           // Unique rule identifier
+	Name         string            `json:"name"`         // Human-readable rule name
+	Description  string            `json:"description"`  // Detailed description of what the rule detects
+	Category     DetectionCategory `json:"category"`     // Threat category for grouping/filtering
+	Severity     string            `json:"severity"`     // critical, high, medium, low
+	Enabled      bool              `json:"enabled"`      // Whether rule is active
+	Conditions   []Condition       `json:"conditions"`   // Conditions that must match
+	MITRE        []string          `json:"mitre_attack"` // MITRE ATT&CK technique IDs (e.g., T1496)
+	Response     ResponseAction    `json:"response"`     // Automated response configuration
+	requiredMask detectionFieldMask
 }
 
 // DetectionCategory classifies the type of threat being detected.
@@ -84,15 +86,25 @@ const (
 )
 
 type Condition struct {
-	Field    string `json:"field"`
-	Operator string `json:"operator"` // eq, neq, contains, regex, gt, lt
-	Value    string `json:"value"`
+	Field         string `json:"field"`
+	Operator      string `json:"operator"` // eq, neq, contains, regex, gt, lt
+	Value         string `json:"value"`
+	compiledRegex *regexp.Regexp
 }
 
 type ResponseAction struct {
 	Type        string `json:"type"` // alert, isolate, kill, quarantine
 	AutoExecute bool   `json:"auto_execute"`
 }
+
+type detectionFieldMask uint8
+
+const (
+	detectionFieldProcess detectionFieldMask = 1 << iota
+	detectionFieldNetwork
+	detectionFieldFile
+	detectionFieldContainer
+)
 
 // RuntimeEvent represents a telemetry event from agents
 type RuntimeEvent struct {
@@ -183,7 +195,7 @@ func NewDetectionEngine() *DetectionEngine {
 }
 
 func (e *DetectionEngine) loadDefaultRules() {
-	e.rules = []DetectionRule{
+	e.rules = e.prepareRules([]DetectionRule{
 		// Crypto Mining Detection
 		{
 			ID:          "crypto-mining-process",
@@ -469,7 +481,8 @@ func (e *DetectionEngine) loadDefaultRules() {
 			MITRE:    []string{"T1552.001"},
 			Response: ResponseAction{Type: "alert", AutoExecute: true},
 		},
-	}
+	})
+	e.rebuildRuleMaskIndex()
 }
 
 // ProcessEvent evaluates an event against all rules and stores resulting findings
@@ -508,7 +521,7 @@ func (e *DetectionEngine) process(_ context.Context, event *RuntimeEvent, observ
 	}
 	var findings []RuntimeFinding
 
-	for _, rule := range e.rules {
+	for _, rule := range e.candidateRulesForEvent(event) {
 		if !rule.Enabled {
 			continue
 		}
@@ -584,6 +597,9 @@ func (e *DetectionEngine) evaluateCondition(event *RuntimeEvent, cond Condition)
 	case "contains":
 		return strings.Contains(value, cond.Value)
 	case "regex":
+		if cond.compiledRegex != nil {
+			return cond.compiledRegex.MatchString(value)
+		}
 		matched, _ := regexp.MatchString(cond.Value, value)
 		return matched
 	case "gt":
@@ -670,7 +686,9 @@ func (e *DetectionEngine) extractField(event *RuntimeEvent, field string) string
 }
 
 func (e *DetectionEngine) AddRule(rule DetectionRule) {
-	e.rules = append(e.rules, rule)
+	prepared := e.prepareRule(rule)
+	e.rules = append(e.rules, prepared)
+	e.addRuleToMaskIndex(prepared)
 }
 
 func (e *DetectionEngine) SetSuppression(ruleID string, suppressed bool) {
@@ -679,6 +697,112 @@ func (e *DetectionEngine) SetSuppression(ruleID string, suppressed bool) {
 
 func (e *DetectionEngine) ListRules() []DetectionRule {
 	return e.rules
+}
+
+func (e *DetectionEngine) candidateRulesForEvent(event *RuntimeEvent) []DetectionRule {
+	return e.rulesByMask[eventFieldMask(event)]
+}
+
+func (e *DetectionEngine) prepareRules(rules []DetectionRule) []DetectionRule {
+	prepared := make([]DetectionRule, 0, len(rules))
+	for _, rule := range rules {
+		prepared = append(prepared, e.prepareRule(rule))
+	}
+	return prepared
+}
+
+func (e *DetectionEngine) prepareRule(rule DetectionRule) DetectionRule {
+	conditions := make([]Condition, 0, len(rule.Conditions))
+	var mask detectionFieldMask
+	for _, cond := range rule.Conditions {
+		cond.compiledRegex = nil
+		if cond.Operator == "regex" {
+			if compiled, err := regexp.Compile(cond.Value); err == nil {
+				cond.compiledRegex = compiled
+			}
+		}
+		if !conditionCanMatchEmpty(cond) {
+			mask |= conditionFieldMask(cond.Field)
+		}
+		conditions = append(conditions, cond)
+	}
+	rule.Conditions = conditions
+	rule.requiredMask = mask
+	return rule
+}
+
+func (e *DetectionEngine) rebuildRuleMaskIndex() {
+	e.rulesByMask = [16][]DetectionRule{}
+	for _, rule := range e.rules {
+		e.addRuleToMaskIndex(rule)
+	}
+}
+
+func (e *DetectionEngine) addRuleToMaskIndex(rule DetectionRule) {
+	for mask := detectionFieldMask(0); mask < 16; mask++ {
+		if mask&rule.requiredMask != rule.requiredMask {
+			continue
+		}
+		e.rulesByMask[mask] = append(e.rulesByMask[mask], rule)
+	}
+}
+
+func eventFieldMask(event *RuntimeEvent) detectionFieldMask {
+	if event == nil {
+		return 0
+	}
+	var mask detectionFieldMask
+	if event.Process != nil {
+		mask |= detectionFieldProcess
+	}
+	if event.Network != nil {
+		mask |= detectionFieldNetwork
+	}
+	if event.File != nil {
+		mask |= detectionFieldFile
+	}
+	if event.Container != nil {
+		mask |= detectionFieldContainer
+	}
+	return mask
+}
+
+func conditionFieldMask(field string) detectionFieldMask {
+	switch strings.SplitN(field, ".", 2)[0] {
+	case "process":
+		return detectionFieldProcess
+	case "network":
+		return detectionFieldNetwork
+	case "file":
+		return detectionFieldFile
+	case "container":
+		return detectionFieldContainer
+	default:
+		return 0
+	}
+}
+
+func conditionCanMatchEmpty(cond Condition) bool {
+	switch cond.Operator {
+	case "eq":
+		return cond.Value == ""
+	case "neq":
+		return cond.Value != ""
+	case "contains":
+		return cond.Value == ""
+	case "regex":
+		if cond.compiledRegex != nil {
+			return cond.compiledRegex.MatchString("")
+		}
+		matched, err := regexp.MatchString(cond.Value, "")
+		return err == nil && matched
+	case "gt":
+		return false
+	case "lt":
+		return len(cond.Value) > 0
+	default:
+		return false
+	}
 }
 
 func generateFindingID(ruleID string, event *RuntimeEvent) string {

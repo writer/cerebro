@@ -254,3 +254,177 @@ func TestDetectionEngineProcessNormalizedObservation(t *testing.T) {
 		t.Fatalf("finding observation = %#v, want normalized observation id %q", findings[0].Observation, observation.ID)
 	}
 }
+
+func TestDetectionEngineCandidateRulesForEventSkipsStrictlyRequiredDomains(t *testing.T) {
+	engine := &DetectionEngine{
+		suppressions:   make(map[string]bool),
+		recentFindings: make([]RuntimeFinding, 0),
+		maxFindings:    100,
+	}
+	engine.AddRule(DetectionRule{
+		ID:      "process-only",
+		Enabled: true,
+		Conditions: []Condition{
+			{Field: "process.name", Operator: "eq", Value: "bash"},
+		},
+	})
+	engine.AddRule(DetectionRule{
+		ID:      "network-only",
+		Enabled: true,
+		Conditions: []Condition{
+			{Field: "network.dst_port", Operator: "eq", Value: "443"},
+		},
+	})
+	engine.AddRule(DetectionRule{
+		ID:      "process-and-container",
+		Enabled: true,
+		Conditions: []Condition{
+			{Field: "process.name", Operator: "eq", Value: "bash"},
+			{Field: "container.container_id", Operator: "neq", Value: ""},
+		},
+	})
+	engine.AddRule(DetectionRule{
+		ID:      "network-and-process-neq",
+		Enabled: true,
+		Conditions: []Condition{
+			{Field: "network.dst_port", Operator: "eq", Value: "22"},
+			{Field: "process.name", Operator: "neq", Value: "ssh"},
+		},
+	})
+	engine.AddRule(DetectionRule{
+		ID:      "network-and-process-eq",
+		Enabled: true,
+		Conditions: []Condition{
+			{Field: "network.dst_port", Operator: "eq", Value: "22"},
+			{Field: "process.name", Operator: "eq", Value: "ssh"},
+		},
+	})
+
+	candidates := engine.candidateRulesForEvent(&RuntimeEvent{
+		ID:        "evt-1",
+		Timestamp: time.Now(),
+		Network:   &NetworkEvent{DstPort: 22},
+	})
+
+	got := make(map[string]bool, len(candidates))
+	for _, candidate := range candidates {
+		got[candidate.ID] = true
+	}
+
+	if !got["network-only"] {
+		t.Fatal("expected network-only rule to remain a candidate")
+	}
+	if !got["network-and-process-neq"] {
+		t.Fatal("expected cross-domain neq rule to remain a candidate on partial events")
+	}
+	if got["process-only"] {
+		t.Fatal("did not expect process-only rule for network-only event")
+	}
+	if got["process-and-container"] {
+		t.Fatal("did not expect process-and-container rule for network-only event")
+	}
+	if got["network-and-process-eq"] {
+		t.Fatal("did not expect cross-domain eq rule without process data")
+	}
+}
+
+func TestDetectionEngineProcessEventKeepsPartialDomainNeqCoverage(t *testing.T) {
+	engine := &DetectionEngine{
+		suppressions:   make(map[string]bool),
+		recentFindings: make([]RuntimeFinding, 0),
+		maxFindings:    100,
+	}
+	engine.AddRule(DetectionRule{
+		ID:       "lateral-movement-ssh-unusual",
+		Name:     "Unusual SSH Connection",
+		Category: CategoryLateralMovement,
+		Severity: "medium",
+		Enabled:  true,
+		Conditions: []Condition{
+			{Field: "network.dst_port", Operator: "eq", Value: "22"},
+			{Field: "process.name", Operator: "neq", Value: "ssh"},
+		},
+	})
+
+	findings := engine.ProcessEvent(context.Background(), &RuntimeEvent{
+		ID:        "evt-ssh",
+		Timestamp: time.Now(),
+		Network:   &NetworkEvent{DstPort: 22},
+	})
+
+	if len(findings) != 1 {
+		t.Fatalf("len(findings) = %d, want 1", len(findings))
+	}
+	if findings[0].RuleID != "lateral-movement-ssh-unusual" {
+		t.Fatalf("finding rule id = %q, want lateral-movement-ssh-unusual", findings[0].RuleID)
+	}
+}
+
+func TestDetectionEngineAddRulePrecompilesRegexConditions(t *testing.T) {
+	engine := &DetectionEngine{
+		suppressions:   make(map[string]bool),
+		recentFindings: make([]RuntimeFinding, 0),
+		maxFindings:    100,
+	}
+
+	engine.AddRule(DetectionRule{
+		ID:      "regex-rule",
+		Enabled: true,
+		Conditions: []Condition{
+			{Field: "process.name", Operator: "regex", Value: "^bash$"},
+		},
+	})
+
+	if len(engine.rules) != 1 {
+		t.Fatalf("len(engine.rules) = %d, want 1", len(engine.rules))
+	}
+	if engine.rules[0].Conditions[0].compiledRegex == nil {
+		t.Fatal("expected regex condition to be compiled during rule registration")
+	}
+}
+
+func BenchmarkDetectionEngineProcessNormalizedObservationProcessOnly(b *testing.B) {
+	engine := NewDetectionEngine()
+	observation, err := NormalizeObservation(&RuntimeObservation{
+		ID:         "bench-process",
+		Kind:       ObservationKindProcessExec,
+		Source:     "tetragon",
+		ObservedAt: time.Now(),
+		Process: &ProcessEvent{
+			Name:    "nginx",
+			Cmdline: "nginx: worker process",
+		},
+	})
+	if err != nil {
+		b.Fatalf("NormalizeObservation: %v", err)
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = engine.ProcessNormalizedObservation(context.Background(), observation)
+	}
+}
+
+func BenchmarkDetectionEngineProcessNormalizedObservationFileOnly(b *testing.B) {
+	engine := NewDetectionEngine()
+	observation, err := NormalizeObservation(&RuntimeObservation{
+		ID:         "bench-file",
+		Kind:       ObservationKindFileWrite,
+		Source:     "tetragon",
+		ObservedAt: time.Now(),
+		File: &FileEvent{
+			Operation: "modify",
+			Path:      "/tmp/app.log",
+		},
+	})
+	if err != nil {
+		b.Fatalf("NormalizeObservation: %v", err)
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = engine.ProcessNormalizedObservation(context.Background(), observation)
+	}
+}
